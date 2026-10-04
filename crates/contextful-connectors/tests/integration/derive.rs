@@ -10,6 +10,16 @@ use serde_json::{json, Value};
 use std::path::Path;
 use std::sync::Arc;
 
+struct Admitted;
+
+impl contextful_outbound::PreSendHook for Admitted {
+    fn admit(&self, _: &contextful_outbound::Intent) -> Result<(), String> {
+        Ok(())
+    }
+
+    fn settle(&self, _: &contextful_outbound::Intent, _: &contextful_outbound::Outcome) {}
+}
+
 fn binding(toml: &str) -> Binding {
     bindings(toml).unwrap().remove("reader").unwrap()
 }
@@ -196,6 +206,7 @@ fn source(dir: &Path, parents: Value, engine_toml: &str) -> DeriveSource {
         output_schema: json!({}),
         reader: Box::new(Rows(vec![("documents".into(), parents)])),
         resolver: Arc::new(contextful_outbound::Resolver::new(vec![], false, Arc::new(contextful_core::ports::FixedClock(contextful_core::time::Instant::from_unix_secs(0).unwrap())))),
+        mediation: contextful_connectors::http::Mediation { hook: Some(Arc::new(Admitted)), run_id: Some("derive-test".into()), ..Default::default() },
         cwd: dir.to_path_buf(),
     }
 }
@@ -246,6 +257,18 @@ fn a_link_preview_fetches_a_head_document_through_the_mediated_client() {
     assert_eq!(rows[0]["title"], "Example article");
     assert_eq!(rows[0]["description"], "A short summary");
     assert_eq!(site.received("/article").len(), 1);
+}
+
+#[test]
+fn a_link_preview_refuses_a_missing_mediation_hook_before_a_socket() {
+    let site = Server::start(|_| Response::json(200, "{}"));
+    let dir = tempfile::tempdir().unwrap();
+    let address = format!("http://localhost:{}/article", site.port);
+    let mut source = link_source(dir.path(), &address, "");
+    source.mediation.hook = None;
+    let failure = pull(&mut source, &Never).unwrap_err();
+    assert!(failure.message.contains("DeriveMeteredClient"), "{failure:?}");
+    assert!(site.received("/article").is_empty());
 }
 
 fn link_source(dir: &Path, address: &str, extra: &str) -> DeriveSource {
