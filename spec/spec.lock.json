@@ -12764,6 +12764,20 @@
       ]
     },
     {
+      "id": "connector.source.drive-version-consistency",
+      "contract": "connector",
+      "operation": "source",
+      "subject": "drive-version-consistency",
+      "kind": "refusal",
+      "statement": "After a metadata-only download or export, the source re-reads the file version; a change from the listed version raises `ConnectorDriveVersionMoved` before any row or cursor commits.",
+      "why": "because a digest of newer bytes cannot witness the version named by the file row",
+      "file": "spec/40-connector.md",
+      "line": 537,
+      "scenarios": [
+        "WHEN a file changes between listing and download, THEN `ConnectorDriveVersionMoved` refuses the capture without a file row or cursor."
+      ]
+    },
+    {
       "id": "connector.source.drive-named-skip",
       "contract": "connector",
       "operation": "source",
@@ -12772,7 +12786,7 @@
       "statement": "A skipped file row names the file and reason; the per-file bound of {{connector.source.drive-file-cap}} applies in both modes.",
       "why": "because a skipped row cannot attest to bytes the source did not read",
       "file": "spec/40-connector.md",
-      "line": 537,
+      "line": 539,
       "scenarios": [
         "WHEN a selected file exceeds the byte cap, THEN its skipped row names the file and cap."
       ]
@@ -12786,7 +12800,7 @@
       "statement": "A Google Doc, Sheet or Slides deck lands as its `files.export` PDF and any other file as its `alt=media` bytes; another Google-native type lands a `skipped` reason and no bytes.",
       "why": "",
       "file": "spec/40-connector.md",
-      "line": 539
+      "line": 541
     },
     {
       "id": "connector.source.drive-page-grain",
@@ -12797,7 +12811,7 @@
       "statement": "In `bytes-and-pages` mode, each PDF page lands one `pages` row under {{connector.source.document-grain}}, decoded behind {{run.land.parse-boundary}}; bytes land in no column. In `metadata-only` mode, no page content row lands.",
       "why": "because a page is what retrieval ranks and a citation names, and a row column holding a whole file inflates every scan of the table",
       "file": "spec/40-connector.md",
-      "line": 540,
+      "line": 542,
       "scenarios": [
         "WHEN mode is `metadata-only`, THEN no page content row lands."
       ]
@@ -12811,7 +12825,7 @@
       "statement": "In `bytes-and-pages` mode, every whole exported or downloaded body lands as {{store.lay-out.landed-blob}}, named by its file row's `sha256`; in `metadata-only` mode, no blob lands.",
       "why": "",
       "file": "spec/40-connector.md",
-      "line": 542,
+      "line": 544,
       "scenarios": [
         "WHEN mode is `metadata-only`, THEN no landed blob holds the downloaded bytes."
       ]
@@ -12825,7 +12839,7 @@
       "statement": "A file over `max_file_bytes`, 64 MiB by default, lands its file row with a `skipped` reason naming the cap and no pages. No byte past the cap is read, and the read continues.",
       "why": "because a row naming the skipped file answers for it, where truncated bytes read as the whole document",
       "file": "spec/40-connector.md",
-      "line": 543
+      "line": 545
     },
     {
       "id": "connector.source.drive-unreadable",
@@ -12836,7 +12850,7 @@
       "statement": "A PDF body failing to decode behind {{run.land.parse-boundary}} lands its file row with a `skipped` reason naming the failure and no pages, and the read continues.",
       "why": "because one unreadable file failing the fire holds back every other file's row and the position behind them",
       "file": "spec/40-connector.md",
-      "line": 545
+      "line": 547
     },
     {
       "id": "connector.source.drive-export-limit",
@@ -12847,7 +12861,7 @@
       "statement": "A Doc, Sheet or Slides deck whose export Drive answers `403 exportSizeLimitExceeded` lands its file row with a `skipped` reason naming Drive's export limit and no pages, and the read continues.",
       "why": "because Drive refuses that export on every fire, so failing the read stalls the whole tree behind one file",
       "file": "spec/40-connector.md",
-      "line": 547
+      "line": 549
     },
     {
       "id": "connector.source.drive-skip-count",
@@ -12858,7 +12872,7 @@
       "statement": "Each drive pull reports the files it lands with a `skipped` reason as its {{run.record.skipped-count}}, so a fire's `files` run and `pages` run each carry the tally.",
       "why": "",
       "file": "spec/40-connector.md",
-      "line": 549
+      "line": 551
     },
     {
       "id": "connector.source.drive-selection-position",
@@ -12869,7 +12883,7 @@
       "statement": "The position binds the declared drive, sorted root set and mode; changing any of them revalidates every root and rewalks the selected trees, rereading files without reusing an earlier frontier.",
       "why": "A-connector",
       "file": "spec/40-connector.md",
-      "line": 550,
+      "line": 552,
       "scenarios": [
         "WHEN a configured pipeline changes from `bytes-and-pages` to `metadata-only`, THEN the next read rewalks its roots and rereads retained files."
       ]
@@ -12883,7 +12897,7 @@
       "statement": "A complete selected-root walk lands tombstones for files removed, moved outside the roots or deselected, and for excess prior pages; an incomplete walk commits no removals.",
       "why": "A-connector",
       "file": "spec/40-connector.md",
-      "line": 552,
+      "line": 554,
       "scenarios": [
         "WHEN a complete new selection excludes a formerly captured file, THEN its `file_id` lands a tombstone.",
         "WHEN mode changes from `bytes-and-pages` to `metadata-only`, THEN old pages receive tombstones and no page content row remains."
@@ -12898,7 +12912,7 @@
       "statement": "For selected roots, the position also holds each file's `version` and `resolved_root`. A complete walk re-reads the file when either changes, even with matching `modifiedTime` and path.",
       "why": "because a changed version needs a fresh byte witness even when the file id stays stable",
       "file": "spec/40-connector.md",
-      "line": 554,
+      "line": 556,
       "scenarios": [
         "WHEN a retained file's version changes with identical `modifiedTime` and path, THEN the read captures its new bytes and digest."
       ]
@@ -12912,7 +12926,7 @@
       "statement": "The drive position holds each file's `modifiedTime`, path and page count. A read re-lands a file whose time or path changed, and lands a tombstone for a file gone from the tree and for each page past its new count.",
       "why": "",
       "file": "spec/40-connector.md",
-      "line": 556
+      "line": 558
     },
     {
       "id": "connector.source.drive-list-bound",
@@ -12923,7 +12937,7 @@
       "statement": "A selected-root walk shares {{connector.source.page-cap}} across roots; reaching it with a pending folder or page token raises `ConnectorDriveListingExceeded`, naming the folder and committing no selection removals.",
       "why": "because an incomplete listing cannot prove a file left the selected trees",
       "file": "spec/40-connector.md",
-      "line": 557,
+      "line": 559,
       "scenarios": [
         "WHEN listing reaches the request cap with a next-page token but no queued folders, THEN the read refuses and lands no removal tombstone."
       ]
@@ -12937,7 +12951,7 @@
       "statement": "One fire shares one minted token, one walk and one read of each file's bytes across the `files` and `pages` tables.",
       "why": "",
       "file": "spec/40-connector.md",
-      "line": 559
+      "line": 561
     },
     {
       "id": "connector.source.drive-oauth",
@@ -12948,7 +12962,7 @@
       "statement": "The drive source mints its access token from a refresh token and client credentials bound as `secret://` references, once per fire and again on a `401`, holding it in memory and writing it to no store, journal or record.",
       "why": "because Google's refresh token does not turn over, so the minted token is the one rotating material, and it lapses within the hour",
       "file": "spec/40-connector.md",
-      "line": 560
+      "line": 562
     },
     {
       "id": "connector.source.drive-oauth-shape",
@@ -12959,7 +12973,7 @@
       "statement": "`oauth.refresh_token`, `oauth.client_id` and `oauth.client_secret` each hold one `${secret://<name>}` reference and nothing else, checked before any request.",
       "why": "",
       "file": "spec/40-connector.md",
-      "line": 562
+      "line": 564
     },
     {
       "id": "connector.source.drive-origin",
@@ -12970,7 +12984,7 @@
       "statement": "The drive API and token endpoints are `www.googleapis.com` and `oauth2.googleapis.com` over TLS on the default port; another host, port or scheme refuses as {{connector.source.provider-origin}}, loopback excepted.",
       "why": "",
       "file": "spec/40-connector.md",
-      "line": 563
+      "line": 565
     },
     {
       "id": "connector.source.drive-position-owned",
@@ -12981,7 +12995,7 @@
       "statement": "`incremental` beside the drive source refuses as {{connector.package.component-position}} at validation.",
       "why": "",
       "file": "spec/40-connector.md",
-      "line": 564
+      "line": 566
     },
     {
       "id": "connector.reference.credential-plane",
@@ -24753,6 +24767,10 @@
           "ConnectorDriveRootsInvalid": {
             "clause": "connector.source.drive-root-set",
             "gloss": "An empty, oversized, repeated or ambiguous Drive root selection."
+          },
+          "ConnectorDriveVersionMoved": {
+            "clause": "connector.source.drive-version-consistency",
+            "gloss": "A Drive file whose version changes during metadata-only capture."
           },
           "ConnectorEgressRefused": {
             "clause": "connector.meter.hook-refusal",

@@ -7,7 +7,7 @@ An unpinned clause is `committed`; a pinned one is `performed` when its test res
 | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
 | `assurance` | 2 | 15 | 227 | 59 | 22 | 12 | 135 | 0 | 135 |
 | `authority` | 2 | 16 | 267 | 77 | 27 | 10 | 204 | 0 | 204 |
-| `connector` | 2 | 14 | 333 | 84 | 21 | 16 | 206 | 0 | 206 |
+| `connector` | 2 | 14 | 334 | 85 | 21 | 16 | 207 | 0 | 207 |
 | `corpus` | 1 | 10 | 77 | 37 | 7 | 0 | 38 | 0 | 38 |
 | `disclosure` | 3 | 16 | 122 | 64 | 13 | 7 | 54 | 0 | 54 |
 | `read` | 2 | 15 | 179 | 29 | 22 | 21 | 163 | 0 | 163 |
@@ -15,7 +15,7 @@ An unpinned clause is `committed`; a pinned one is `performed` when its test res
 | `store` | 1 | 17 | 235 | 55 | 13 | 20 | 198 | 0 | 198 |
 | `surface` | 2 | 19 | 86 | 46 | 22 | 5 | 51 | 0 | 51 |
 | `topology` | 1 | 6 | 70 | 24 | 5 | 5 | 38 | 0 | 38 |
-| **total** | 19 | 154 | 1968 | 573 | 188 | 133 | 1346 | 0 | |
+| **total** | 19 | 154 | 1969 | 574 | 188 | 133 | 1347 | 0 | |
 
 Decision records: 18.
 
@@ -29,7 +29,7 @@ A milestone reads `closed` when its acceptance test computes `passing` and every
 | 1 — The authority core | 14 | 236 | 184 | passing | closed |
 | 2 — The store | 9 | 162 | 130 | passing | closed |
 | 3 — The run path | 11 | 206 | 142 | passing | closed |
-| 4 — Ingest | 25 | 480 | 301 | passing | open |
+| 4 — Ingest | 25 | 481 | 302 | passing | open |
 | 5 — The read face under enforcement | 17 | 252 | 192 | passing | open |
 | 6 — Sync and replicas | 8 | 73 | 68 | passing | closed |
 | 7 — Memory | 6 | 37 | 37 | passing | closed |
@@ -540,6 +540,7 @@ Unscheduled operations: 10.
 | `connector.source.drive-table-unmatched` | `crates/contextful-connectors/tests/integration/drive.rs::a_table_the_source_does_not_serve_refuses_before_any_request` | performed |
 | `connector.source.drive-tables` | `crates/contextful-connectors/tests/integration/drive.rs::a_file_row_carries_its_metadata_and_names_its_bytes_by_digest` | performed |
 | `connector.source.drive-unreadable` | `crates/contextful-connectors/tests/integration/drive.rs::an_unreadable_or_crashing_pdf_is_skipped_and_every_other_file_lands` | performed |
+| `connector.source.drive-version-consistency` | `crates/contextful-connectors/tests/integration/drive.rs::metadata_only_refuses_a_version_moving_during_capture` | performed |
 | `connector.source.drive-walk` | `crates/contextful-connectors/tests/integration/drive.rs::a_three_level_tree_lands_one_row_per_file_with_its_path_from_the_root` | performed |
 | `connector.source.etag-skip` | `crates/contextful-connectors/tests/integration/object.rs::an_unchanged_etag_lands_nothing_and_a_new_object_lands_alone` | performed |
 | `connector.source.external-reference` | `crates/contextful-decode/tests/integration/workbook.rs::every_form_of_external_reference_is_refused` | performed |

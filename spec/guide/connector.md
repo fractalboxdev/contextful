@@ -91,7 +91,8 @@ A Drive pipeline selecting two folders in one Shared Drive declares its roots to
 ({{connector.source.drive-overlap}}). The selection lives in the position
 ({{connector.source.drive-selection-position}}). A metadata-only pull records the exact
 byte digest and capture outcome ({{connector.source.drive-metadata-only}},
-{{connector.source.drive-capture-record}}); a complete changed selection records removals
+{{connector.source.drive-capture-record}}), checking the file version after download
+({{connector.source.drive-version-consistency}}); a complete changed selection records removals
 ({{connector.source.drive-selection-removals}}), while a capped listing refuses
 ({{connector.source.drive-list-bound}}).
 

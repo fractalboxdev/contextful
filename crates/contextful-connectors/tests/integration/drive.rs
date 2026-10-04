@@ -366,6 +366,7 @@ fn metadata_only_changed_version_updates_digest_and_removed_file() {
 }
 
 /// A download crossing a version change refuses the whole metadata capture.
+// spec: connector.source.drive-version-consistency@058faf68
 #[test]
 fn metadata_only_refuses_a_version_moving_during_capture() {
     let fake = Fake::start();
