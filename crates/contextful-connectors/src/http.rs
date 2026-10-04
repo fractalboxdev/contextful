@@ -65,6 +65,27 @@ const EXPANSION_REQUESTS: usize = 200;
 const EXPANSION_BYTES: usize = 256 * 1024 * 1024;
 const EXPANSION_TIME: Duration = Duration::from_secs(600);
 
+#[cfg(test)]
+mod expansion_budget_tests {
+    use super::*;
+
+    // spec: connector.source.expansion-budget@75af8328
+    #[test]
+    fn an_expanding_read_counts_index_detail_and_elapsed_budgets() {
+        let mut budget = ExpansionBudget::new(7, EXPANSION_TIME);
+        budget.preflight_requests(200).unwrap();
+        assert!(budget.preflight_requests(201).is_err());
+        budget.charge(4).unwrap(); // Index body.
+        assert_eq!(budget.available().unwrap().0, 3);
+        budget.charge(3).unwrap(); // Detail body.
+        assert!(budget.available().is_err(), "another response cannot start beyond the total byte cap");
+
+        let mut elapsed = ExpansionBudget::new(7, EXPANSION_TIME);
+        elapsed.started = Instant::now() - Duration::from_secs(601);
+        assert!(elapsed.available().is_err(), "a completed index walk spends the same read deadline");
+    }
+}
+
 fn expansion(value: &Value) -> Result<Expansion, ConfigError> {
     let block = value.as_object().ok_or_else(|| RunError::Invalid("`expansion` is a table".into()))?;
     if let Some(key) = block.keys().find(|key| !["url_template", "pointer_column", "target_column"].contains(&key.as_str())) {

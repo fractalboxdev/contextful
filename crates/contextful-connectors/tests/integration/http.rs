@@ -12,7 +12,6 @@ fn ids(rows: &[serde_json::Map<String, Value>]) -> Vec<String> {
 }
 
 /// A read with 201 expansion pointers refuses before its first follow-up request.
-// spec: connector.source.expansion-budget@75af8328
 #[test]
 fn expansion_rejects_201_followups_before_the_first() {
     let vendor = Server::start(|r| match r.path() {
