@@ -22,6 +22,14 @@ A connector resolves from one of four forms ({{connector.package.distribution-fo
 remote artifact carries a content pin ({{connector.package.remote-unpinned}}), the host
 re-hashes the bytes before load ({{connector.package.digest-mismatch}}), and a run keeps the
 build it was admitted with, so a rebuild reaches only later runs ({{run.own.admission-pin}}).
+HTTPS and OCI artifact requests use a client restricted to the reference authority
+({{connector.package.remote-transport}}).
+An OCI reference selects one component layer ({{connector.package.oci-component-layer}}),
+checks its descriptor ({{connector.package.oci-layer-integrity}}), and takes an optional
+registry bearer from the project's credential binding ({{connector.package.oci-registry-bearer}}).
+Admitted bytes enter a digest-keyed project cache ({{connector.package.remote-cache}});
+damaged cached bytes refuse instead of reaching the component host
+({{connector.package.remote-cache-corrupt}}).
 
 Host access is declared, not requested. The manifest lists hosts, environment names and the
 clock, and the host decides the grant at load ({{connector.declare-capability.declared-grant}});
@@ -35,29 +43,21 @@ widening review ({{connector.widen.narrowing}}); additional access reaches opera
 ({{connector.widen.approval-binding}}). A host witness is a request both matchers can replay
 ({{connector.widen.host-witness}}).
 
-The host implements outbound HTTP itself ({{connector.attach.host-mediation}}), and a guest,
-a built-in source, a model call, a limiter call and an exec step all pass the same point
-({{connector.attach.mediation-covers-every-egress}}). For each hop it checks the
-allowlist, passes one pre-send hook carrying the hop's intent
-({{connector.meter.pre-send-hook}}), an operator hook in front of the quota reservation
-({{connector.meter.hook-composition}}), and only then resolves the host name through the
-transport port ({{connector.attach.resolve-half}}), once, connecting to the address it vetted
-({{connector.attach.resolve-once}}). It refuses internal ranges
-({{connector.attach.private-address}}), writes the credential header
-({{connector.attach.attach-block}}), and refuses to send it in cleartext
-({{connector.attach.cleartext-endpoint}}). Redirects keep the configured host and port and
-never weaken transport ({{connector.attach.redirect-pinning}}).
+Every outbound request uses the host's mediated client
+({{connector.attach.mediation-covers-every-egress}}). Each hop passes the allowlist and
+one pre-send hook ({{connector.meter.pre-send-hook}}) before host resolution
+({{connector.attach.resolve-half}}). The transport connects to the vetted address
+({{connector.attach.resolve-once}}), refuses internal ranges
+({{connector.attach.private-address}}), and attaches credentials only to the admitted
+destination ({{connector.attach.attach-block}}). Redirects stay on the configured origin
+({{connector.attach.redirect-pinning}}).
 
-Credentials live on their own plane ({{connector.reference.credential-plane}}). A
-declaration names `secret://<name>`, often inside a header template
-({{connector.reference.value-template}}). A provider chain answers the name
-({{connector.resolve.provider-chain}}), the first answering adapter wins
-({{connector.resolve.first-hit-wins}}), and a name answered twice refuses rather than letting
-a stray variable shadow the manager ({{connector.resolve.shadowed-name}}). Material enters
-the process per read, never reaching a journal or log
-({{connector.resolve.hydration-is-just-in-time}}). Rotation changes material and
-keeps the name ({{connector.rotate.turnover-preserves-the-name}}), and each entry carries a
-plaintext record of its grants and expiry ({{connector.record.operator-record}}).
+Credentials use `secret://<name>` references ({{connector.reference.credential-plane}}).
+The provider chain answers a name once ({{connector.resolve.first-hit-wins}}) and refuses
+shadowing ({{connector.resolve.shadowed-name}}). Material hydrates per read
+({{connector.resolve.hydration-is-just-in-time}}); rotation keeps the name
+({{connector.rotate.turnover-preserves-the-name}}), and each entry records its grants
+and expiry ({{connector.record.operator-record}}).
 
 Model calls leave through one configured endpoint ({{connector.infer.model-endpoint}}).
 Ingested values travel fenced; the fence lowers injection odds and bounds nothing

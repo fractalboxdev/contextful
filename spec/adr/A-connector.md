@@ -16,6 +16,19 @@ A reviewed program is identified by a content digest, and a live run completes a
 Consequences: an unpinned local artifact runs whatever bytes sit on disk unless the store policy key or per-connector flag is set.
 Revisit: production runs unpinned local artifacts, arguing for inverting the default; the toolchain stops embedding the host triple.
 
+## Remote artifacts use one verified component blob
+
+The content pin names component bytes rather than a mutable URL, tag or manifest. HTTPS retrieval uses the mediated client with the artifact host alone admitted. OCI retrieval accepts one component layer from a schema-2 manifest; its descriptor digest and the source pin both check the bytes. A project cache publishes only admitted bytes and refuses a damaged cache entry rather than silently replacing the bytes of a recorded run. The operator binds a registry bearer by exact host through `secret://`; that credential reaches registry requests, not the guest.
+
+| Option | Lost on | Cost |
+| --- | --- | --- |
+| Fetch one pinned blob through mediated HTTP or a one-layer OCI manifest, then cache by digest *(chosen)* | — | Multi-layer packages and registry token exchanges need another contract; each cache hit re-hashes bytes. |
+| Resolve every run from the remote reference | Replay availability | An outage stops replay even when the admitted bytes once existed locally. |
+| Reuse the guest's access grant and headers for artifact retrieval | Credential containment | Registry material reaches guest endpoints and vendor material reaches the registry. |
+| Trust an OCI tag and manifest descriptor alone | Review binding | A moved tag changes executable bytes without changing the declaration's pin. |
+
+Consequences: a registry that only accepts a challenge-based token exchange refuses a fetch until it has a directly bound bearer credential. Revisit: a required registry exposes no directly bound bearer; a package needs several blobs or an OCI index.
+
 ## Untrusted input decodes off-process and fails whole
 
 An input lands whole and faithful or refuses by name, and no input ends the serving process. `run.land` decodes behind a process boundary bounding wall clock and resident memory; a crash is the same named diagnosis as a parse error. A partial parse refuses the whole input, naming path and page, worksheet or entry, and fails one table's pull while siblings keep their tick. `connector.source` reads office parts by exact name and refuses external references; an image lands a null body with no pixel decode; `run.fetch` reads UTF-8 only.

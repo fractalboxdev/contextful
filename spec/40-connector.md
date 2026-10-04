@@ -293,6 +293,22 @@ placement-filtered read consults that mapping, not the endpoint URL.
 Distribution form, digest pinning, per-connector resource bounds and world versioning.
 
 - `distribution-form` — A connector resolves in one of four forms: in-tree by name, a project-local artifact path, an HTTPS URL, or an OCI reference.
+- `remote-transport` — HTTPS artifact, OCI manifest and OCI layer requests pass through the mediated client with only the reference's authority admitted, under {{connector.attach.transport-port}}, before {{connector.package.digest-mismatch}}.
+  *A-connector*
+- `oci-reference` — An OCI artifact reference is `oci://<registry>/<repository>[:<tag>|@sha256:<digest>]`, with `latest` for an absent selector; an empty registry, repository or selector raises `ConnectorOciReferenceInvalid` before network access.
+  *because a malformed reference must not turn a registry name into an unintended request destination*
+- `oci-component-layer` — An OCI reference resolves a schema-2 image manifest with exactly one `application/vnd.wasm.content.layer.v1+wasm` layer; another shape raises `ConnectorOciArtifactUnsupported` before any component compiles.
+  *A-connector*
+- `oci-layer-integrity` — The fetched OCI layer matches its manifest descriptor's SHA-256 digest and the source pin under {{connector.package.digest-mismatch}}; a descriptor mismatch raises `ConnectorOciLayerMismatch` before cache publication.
+  *A-connector*
+- `oci-registry-bearer` — An optional `config.toml` `[connector.registry."<authority>"] authorization = "Bearer ${secret://<name>}"` binds one OCI registry authority; hydration reaches manifest and layer requests alone under {{connector.resolve.hydration-is-just-in-time}}.
+  *A-connector*
+- `remote-cache` — A remote artifact admitted under {{connector.package.digest-mismatch}} enters the project cache at `.contextful/artifacts/sha256/<digest>` atomically; a later fire reads matching cached bytes before any network request.
+  *A-connector*
+- `remote-cache-corrupt` — Cached artifact bytes whose SHA-256 differs from their cache key raise `ConnectorArtifactCacheCorrupt`; the host neither fetches a replacement nor compiles those bytes.
+  *because a replay must refuse when its recorded artifact bytes are damaged*
+- `remote-fetch-failure` — A remote artifact whose manifest or bytes cannot be fetched raises `ConnectorArtifactFetchFailed`, naming the scrubbed reference, before any run row or component compilation.
+  *because a failed installation cannot be mistaken for a source returning no rows*
 - `remote-unpinned` — A remote artifact carrying no 64-hex content pin raises `ConnectorRemoteUnpinned` at parse.
   *A-connector*
 - `insecure-artifact` — A plain-HTTP artifact reference raises `ConnectorInsecureArtifact`.
@@ -354,7 +370,16 @@ flowchart LR
   HASH -->|"yes, instantiate"| INST["component instance"]
 ```
 
-unsettled: How does a fire fetch a remote component artifact, over the mediated client for HTTPS and with which registry credential and layer for OCI? owner: connector affects: connector.package
+#### Scenarios
+
+- `connector.package.remote-transport`: WHEN a pinned HTTPS or OCI artifact is fetched, THEN only its reference authority is admitted through the mediated client before compilation.
+- `connector.package.oci-reference`: WHEN an OCI reference has an empty repository, THEN validation raises `ConnectorOciReferenceInvalid` without a request.
+- `connector.package.oci-component-layer`: WHEN an OCI manifest has two component layers, THEN the run raises `ConnectorOciArtifactUnsupported` before compilation.
+- `connector.package.oci-layer-integrity`: WHEN the layer bytes disagree with the manifest descriptor, THEN the run raises `ConnectorOciLayerMismatch` and caches nothing.
+- `connector.package.oci-registry-bearer`: WHEN the registry requires a bearer, THEN manifest and layer requests carry its resolved binding while guest requests do not.
+- `connector.package.remote-cache`: WHEN a second fire names a cached pin, THEN it loads matching bytes without a registry or HTTPS request.
+- `connector.package.remote-cache-corrupt`: WHEN cached bytes disagree with their key, THEN the run raises `ConnectorArtifactCacheCorrupt` without fetching or compiling.
+- `connector.package.remote-fetch-failure`: WHEN a remote endpoint refuses a required fetch, THEN the run raises `ConnectorArtifactFetchFailed` and writes no run row.
 
 unsettled: Does `connector pin` record a precompiled artifact per target under its own digest, so a hardened build links no compiler and deserializes only pinned bytes? owner: connector affects: connector.package
 
