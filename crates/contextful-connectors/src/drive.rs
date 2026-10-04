@@ -545,6 +545,15 @@ impl Drive {
                         return Err(classify(resp.status, retry_after, &scrub(&resp.url)));
                     }
                     Ok(resp) => {
+                        if self.config.mode == CaptureMode::MetadataOnly {
+                            let mut version_url = self.config.api(&format!("/drive/v3/files/{}", e.id));
+                            version_url.query_pairs_mut().append_pair("fields", "version").append_pair("supportsAllDrives", "true");
+                            let current = self.get_json(&version_url)?;
+                            let observed = current.get("version").and_then(Value::as_str).and_then(|v| v.parse::<i64>().ok());
+                            if e.version.is_none() || observed != e.version {
+                                return Err(Failure::new(FailureTag::Transient, ConnectorError::ConnectorDriveVersionMoved(format!("file `{}` listed version {:?}, current version {:?}", e.id, e.version, observed)).to_string()));
+                            }
+                        }
                         let digest = hex(&Sha256::digest(&resp.body));
                         let (sha256, bytes) = (Some(digest), Some(resp.body.len() as u64));
                         if self.config.mode == CaptureMode::MetadataOnly {

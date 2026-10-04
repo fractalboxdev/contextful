@@ -15,6 +15,9 @@ pub enum ConnectorError {
     /// A Drive capture mode other than `bytes-and-pages` or `metadata-only`. (`connector.source.drive-mode`)
     #[error("ConnectorDriveModeUnknown: {0}")]
     ConnectorDriveModeUnknown(String),
+    /// A Drive file whose version changes during metadata-only capture. (`connector.source.drive-version-consistency`)
+    #[error("ConnectorDriveVersionMoved: {0}")]
+    ConnectorDriveVersionMoved(String),
     /// A forwarded guest configuration value that is not a table, over 64 KiB, or carrying a reference. (`connector.import.config-shape`)
     #[error("ConnectorConfigRejected: {0}")]
     ConnectorConfigRejected(String),
