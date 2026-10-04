@@ -364,6 +364,8 @@ pub(crate) fn apply(project: &ProjectArgs, declaration: Option<PathBuf>, id: Opt
         }
         let changes: Vec<Change> = diff(&target, &base).into_iter().filter(|c| c.action != "unchanged").collect();
         let text = render(&target)?;
+        collect(&[ManifestFile { path: "proposed applied snapshot".into(), text: text.clone() }])
+            .map_err(|e| SurfaceError::ApplyValidationRefused(format!("combined snapshot: {e}")))?;
         for c in changes.iter().filter(|c| c.action != "remove") {
             let spec = &target[&c.id];
             check(spec, &l.declaration, tasks)
