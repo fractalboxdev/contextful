@@ -133,6 +133,20 @@ fn an_empty_file_walk_marks_the_snapshot_complete() {
     assert_eq!(pull["snapshot_complete"], json!(true));
 }
 
+#[test]
+fn an_unchanged_file_poll_does_not_claim_an_empty_snapshot() {
+    let dir = tempfile::tempdir().unwrap();
+    write(dir.path(), "held.md", "# Held");
+    let mut source = source(dir.path(), json!({"root": "."}));
+    let request = PullRequest { step_label: "pull-0".into(), position: None, idempotency_key: "k".into() };
+    let first: Value = serde_json::from_slice(&source.pull(&request, &Never).unwrap()).unwrap();
+    assert_eq!(first["rows"].as_array().unwrap().len(), 1);
+    let again = PullRequest { step_label: "pull-1".into(), position: Some(first["cursor"].clone()), idempotency_key: "k2".into() };
+    let second: Value = serde_json::from_slice(&source.pull(&again, &Never).unwrap()).unwrap();
+    assert_eq!(second["rows"], json!([]));
+    assert_eq!(second["snapshot_complete"], json!(false));
+}
+
 /// A root-relative path is read when it matches an `include` glob, or none is declared, and matches no `exclude`
 /// glob. `*` and `?` match within one segment; a `**` segment matches any number.
 // spec: connector.source.file-globs@7c0ba4a7
