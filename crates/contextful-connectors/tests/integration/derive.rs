@@ -311,6 +311,20 @@ fn a_link_preview_probes_advertised_images_with_a_bounded_range() {
     assert_eq!(probes[0].header("range"), Some("bytes=0-65535"));
 }
 
+#[test]
+fn a_link_preview_scans_a_megabyte_prefix_and_drops_the_remainder() {
+    let site = Server::start(|_| {
+        let mut body = b"<head><title>Within prefix</title></head>".to_vec();
+        body.extend(vec![b'x'; 1024 * 1024 + 10]);
+        Response { status: 200, headers: vec![("Content-Type".into(), "text/html".into())], body }
+    });
+    let dir = tempfile::tempdir().unwrap();
+    let address = format!("http://localhost:{}/large", site.port);
+    let rows = pulled(&mut link_source(dir.path(), &address, ""));
+    assert_eq!(rows[0]["title"], "Within prefix", "{rows:?}");
+    assert_eq!(rows[0]["unit_status"], "ok");
+}
+
 fn unit<'a>(rows: &'a [Value], key: &str) -> &'a Value {
     rows.iter().find(|r| r["unit_ref"] == key).unwrap_or_else(|| panic!("no row for `{key}` in {rows:?}"))
 }
