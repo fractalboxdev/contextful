@@ -6,7 +6,7 @@ use contextful_core::surface::worker::{Signed, StepOutcome, StepResult, HEARTBEA
 use contextful_core::time::Instant;
 use contextful_engine::scheduler::Dispatch;
 use contextful_engine::worker::{Relay, Submission, WorkerClient, WorkerDispatch};
-use std::collections::{BTreeMap, BTreeSet};
+use std::collections::BTreeMap;
 use std::sync::mpsc::{channel, Receiver, Sender};
 use std::sync::{Arc, Mutex};
 use std::time::Duration;
@@ -121,7 +121,7 @@ fn a_beating_worker_keeps_its_step_and_its_callback_completes_it() {
 fn killing_a_worker_mid_step_reschedules_it_once_and_fences_the_late_callback() {
     let rig = rig(&["w1", "w2"]);
     let d = rig.dispatch.clone();
-    let run = std::thread::spawn(move || d.fire("orders", &[], &BTreeSet::new(), 7));
+    let run = std::thread::spawn(move || d.fire("orders", &[], &BTreeMap::new(), 7));
     let (worker, first) = next(&rig);
     assert_eq!((worker.as_str(), first.attempt), ("w1", 1));
     let t = token(&first);
@@ -171,7 +171,7 @@ fn a_step_every_worker_refuses_fails_after_one_try_each() {
     rig.fleet.down.lock().unwrap().extend(["w1".to_string(), "w2".to_string(), "w3".to_string()]);
     let d = rig.dispatch.clone();
     let (tx, rx) = channel();
-    std::thread::spawn(move || tx.send(d.fire("orders", &[], &BTreeSet::new(), 1)).unwrap());
+    std::thread::spawn(move || tx.send(d.fire("orders", &[], &BTreeMap::new(), 1)).unwrap());
     let e = rx.recv_timeout(Duration::from_secs(10)).expect("the step ends").unwrap_err();
     assert!(e.contains("no worker took it") && e.contains("w3: connection refused"), "{e}");
     assert_eq!(*rig.fleet.tried.lock().unwrap(), ["w1", "w2", "w3"]);
@@ -184,7 +184,7 @@ fn an_unreachable_worker_passes_the_step_on_and_a_failed_outcome_fails_the_unit(
     let rig = rig(&["w1", "w2"]);
     rig.fleet.down.lock().unwrap().push("w1".into());
     let d = rig.dispatch.clone();
-    let run = std::thread::spawn(move || d.fire("orders", &[], &BTreeSet::new(), 1));
+    let run = std::thread::spawn(move || d.fire("orders", &[], &BTreeMap::new(), 1));
     let (worker, s) = next(&rig);
     assert_eq!((worker.as_str(), s.attempt), ("w2", 2));
     let failed = StepOutcome::Failed { failed: "LeaseHeld: orders".into() };
@@ -198,7 +198,7 @@ fn an_unreachable_worker_passes_the_step_on_and_a_failed_outcome_fails_the_unit(
 fn a_dependent_run_submits_its_steps_in_order_under_one_run() {
     let rig = rig(&["w1"]);
     let d = rig.dispatch.clone();
-    let run = std::thread::spawn(move || d.fire("orders", &["orders-enrich".to_string()], &BTreeSet::new(), 1));
+    let run = std::thread::spawn(move || d.fire("orders", &["orders-enrich".to_string()], &BTreeMap::new(), 1));
     let mut runs = Vec::new();
     for step in ["orders", "orders-enrich"] {
         let (_, s) = next(&rig);
@@ -215,7 +215,7 @@ fn a_dependent_run_submits_its_steps_in_order_under_one_run() {
 fn a_failed_head_still_submits_its_child_and_reports_the_failure() {
     let rig = rig(&["w1"]);
     let d = rig.dispatch.clone();
-    let run = std::thread::spawn(move || d.fire("parent", &["child".to_string()], &BTreeSet::from(["child".to_string()]), 1));
+    let run = std::thread::spawn(move || d.fire("parent", &["child".to_string()], &BTreeMap::from([("child".to_string(), "parent".to_string())]), 1));
     let (_, parent) = next(&rig);
     assert_eq!(parent.step, "parent");
     let h = headers(&parent, 1, rig.clock.now(), KEY);
@@ -231,7 +231,7 @@ fn a_failed_head_still_submits_its_child_and_reports_the_failure() {
 fn a_failed_head_skips_an_explicit_sibling_and_submits_a_later_derive_child() {
     let rig = rig(&["w1"]);
     let d = rig.dispatch.clone();
-    let run = std::thread::spawn(move || d.fire("parent", &["a-after".to_string(), "z-derived".to_string()], &BTreeSet::from(["z-derived".to_string()]), 1));
+    let run = std::thread::spawn(move || d.fire("parent", &["a-after".to_string(), "z-derived".to_string()], &BTreeMap::from([("z-derived".to_string(), "parent".to_string())]), 1));
     let (_, parent) = next(&rig);
     let h = headers(&parent, 1, rig.clock.now(), KEY);
     rig.relay.callback(&token(&parent), &|k| h.get(k).cloned(), &StepOutcome::Failed { failed: "parent failed".into() }.encode()).unwrap();
@@ -243,10 +243,27 @@ fn a_failed_head_skips_an_explicit_sibling_and_submits_a_later_derive_child() {
 }
 
 #[test]
+fn a_derive_child_of_a_skipped_explicit_step_does_not_start() {
+    let rig = rig(&["w1"]);
+    let d = rig.dispatch.clone();
+    let run = std::thread::spawn(move || d.fire(
+        "parent",
+        &["a-after".to_string(), "z-derived".to_string()],
+        &BTreeMap::from([("z-derived".to_string(), "a-after".to_string())]),
+        1,
+    ));
+    let (_, parent) = next(&rig);
+    let h = headers(&parent, 1, rig.clock.now(), KEY);
+    rig.relay.callback(&token(&parent), &|k| h.get(k).cloned(), &StepOutcome::Failed { failed: "parent failed".into() }.encode()).unwrap();
+    assert!(rig.received.recv_timeout(Duration::from_millis(100)).is_err());
+    assert!(run.join().unwrap().unwrap_err().contains("parent: parent failed"));
+}
+
+#[test]
 fn an_explicit_after_step_stops_when_its_head_fails() {
     let rig = rig(&["w1"]);
     let d = rig.dispatch.clone();
-    let run = std::thread::spawn(move || d.fire("parent", &["child".to_string()], &BTreeSet::new(), 1));
+    let run = std::thread::spawn(move || d.fire("parent", &["child".to_string()], &BTreeMap::new(), 1));
     let (_, parent) = next(&rig);
     let h = headers(&parent, 1, rig.clock.now(), KEY);
     rig.relay.callback(&token(&parent), &|k| h.get(k).cloned(), &StepOutcome::Failed { failed: "parent failed".into() }.encode()).unwrap();
@@ -258,7 +275,7 @@ fn an_explicit_after_step_stops_when_its_head_fails() {
 fn a_derived_child_stops_when_no_worker_takes_its_parent() {
     let rig = rig(&["w1"]);
     rig.fleet.down.lock().unwrap().push("w1".into());
-    let result = rig.dispatch.fire("parent", &["child".to_string()], &BTreeSet::from(["child".to_string()]), 1);
+    let result = rig.dispatch.fire("parent", &["child".to_string()], &BTreeMap::from([("child".to_string(), "parent".to_string())]), 1);
     assert!(result.unwrap_err().contains("no worker took it"));
     assert_eq!(*rig.fleet.tried.lock().unwrap(), ["w1"], "a derived child started without a parent outcome");
     assert!(rig.received.try_recv().is_err());

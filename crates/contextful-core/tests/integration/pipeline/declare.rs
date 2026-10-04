@@ -29,7 +29,7 @@ fn a_derived_source_table_orders_its_parent_before_the_child() {
     let runs = dependent_runs([&child, &unrelated, &parent]).unwrap();
     assert_eq!(runs.head_of.get("child").map(String::as_str), Some("parent"));
     assert_eq!(runs.steps.get("parent"), Some(&vec!["child".to_string()]));
-    assert!(runs.derived_children.contains("child"));
+    assert_eq!(runs.derived_parents.get("child").map(String::as_str), Some("parent"));
     assert!(!runs.head_of.contains_key("other"));
 }
 

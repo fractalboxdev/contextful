@@ -3,7 +3,7 @@
 //! `documents` row; `word-copy` lands `copies` and `units` from a `words` row.
 //! `WORD_SPLIT_VERSION` sets the task's version, `1` by default; `WORD_SPLIT_SKIP` names,
 //! comma-separated, the content tables the task returns no rows for. `WORD_SPLIT_FAIL`
-//! makes the parent task panic in the chained-failure fixture.
+//! exits the parent process with a failed run outcome in the chained-failure fixture.
 
 use contextful_core::run::derive::task::{DeriveTask, Derived, HostUnit, Tasks};
 use contextful_core::run::ports::Row;
@@ -71,7 +71,8 @@ impl DeriveTask for WordSplit {
 
     fn derive(&self, unit: &HostUnit) -> Result<Derived, RunError> {
         if self.fail {
-            panic!("word-split failed for this run");
+            eprintln!("word-split failed for this run");
+            std::process::exit(1);
         }
         let body = unit
             .row

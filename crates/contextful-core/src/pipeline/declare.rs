@@ -9,7 +9,7 @@ use crate::store::declare::{TableDecl, WriteMode};
 use crate::store::index::{IndexDecl, IndexKind, Tokenizer};
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
-use std::collections::{BTreeMap, BTreeSet};
+use std::collections::BTreeMap;
 
 /// A connector name beside its free-form configuration object (`run.declare.source-block`).
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
@@ -307,8 +307,8 @@ pub struct DependentRuns {
     pub head_of: BTreeMap<String, String>,
     /// Each head's landing steps in run order: by distance from the head, then by id.
     pub steps: BTreeMap<String, Vec<String>>,
-    /// Derive children that fire with their parent rather than on their own cadence.
-    pub derived_children: BTreeSet<String>,
+    /// Each derive child's direct parent; the child fires after that parent's outcome.
+    pub derived_parents: BTreeMap<String, String>,
 }
 
 /// Resolve explicit `after` links and derive source-table parents to each chain's head.
@@ -337,8 +337,8 @@ pub fn dependent_runs<'a>(specs: impl IntoIterator<Item = &'a PipelineSpec>) -> 
             }
         }
         inferred.insert(&spec.id, parent);
-        if parent.is_some() {
-            runs.derived_children.insert(spec.id.clone());
+        if let Some(parent) = parent {
+            runs.derived_parents.insert(spec.id.clone(), parent.to_string());
         }
         after.insert(&spec.id, spec.after.as_deref().or(parent));
     }

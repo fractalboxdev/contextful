@@ -5,7 +5,7 @@ use contextful_core::coordinate::{Catalog, LeaseKey, CADENCE_LEASE_RENEWAL_SECS,
 use contextful_core::run::record::RunStatus;
 use contextful_core::surface::arm::Schedule;
 use contextful_engine::scheduler::{Dispatch, Entry, LeaseState, Scheduler};
-use std::collections::BTreeSet;
+use std::collections::BTreeMap;
 use std::sync::mpsc::{channel, Receiver, Sender};
 use std::sync::{Arc, Mutex};
 use std::time::Duration;
@@ -46,7 +46,7 @@ impl Gate {
 }
 
 impl Dispatch for Recording {
-    fn fire(&self, id: &str, steps: &[String], _derived_children: &BTreeSet<String>, version: u64) -> Result<String, String> {
+    fn fire(&self, id: &str, steps: &[String], _derived_parents: &BTreeMap<String, String>, version: u64) -> Result<String, String> {
         self.steps.lock().unwrap().push((id.to_string(), steps.to_vec()));
         // The run row lands before the fire is listed, so a test seeing the fire listed reads
         // a start time the clock had not yet moved past.

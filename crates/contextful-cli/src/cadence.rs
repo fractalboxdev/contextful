@@ -27,7 +27,7 @@ use contextful_engine::worker::{Relay, WorkerDispatch};
 use contextful_outbound::egress::{system, Outbound, Transport};
 use serde::Serialize;
 use serde_json::json;
-use std::collections::{BTreeMap, BTreeSet};
+use std::collections::BTreeMap;
 use std::net::SocketAddr;
 use std::path::{Path, PathBuf};
 use std::io::Read;
@@ -522,23 +522,12 @@ fn drain_pipe(pipe: Option<impl Read + Send + 'static>) -> std::thread::JoinHand
 }
 
 impl Dispatch for ChildDispatch {
-    fn fire(&self, id: &str, steps: &[String], derived_children: &BTreeSet<String>, version: u64) -> Result<String, String> {
-        let mut lines = Vec::new();
-        let mut failures = Vec::new();
-        for step in std::iter::once(id).chain(steps.iter().map(String::as_str)) {
-            if !failures.is_empty() && !derived_children.contains(step) {
-                break;
-            }
-            match self.step(step, version) {
-                Ok(line) => lines.push(line),
-                Err(ChildStepError::Run(error)) => failures.push(error),
-                Err(ChildStepError::Infrastructure(error)) => {
-                    failures.push(error);
-                    break;
-                }
-            }
-        }
-        if failures.is_empty() { Ok(lines.join("; ")) } else { Err(failures.join("; ")) }
+    fn fire(&self, id: &str, steps: &[String], derived_parents: &BTreeMap<String, String>, version: u64) -> Result<String, String> {
+        contextful_engine::scheduler::fire_ordered(id, steps, derived_parents, |step| match self.step(step, version) {
+            Ok(line) => Ok(contextful_engine::scheduler::CompletedStep::Succeeded(line)),
+            Err(ChildStepError::Run(error)) => Ok(contextful_engine::scheduler::CompletedStep::Failed(error)),
+            Err(ChildStepError::Infrastructure(error)) => Err(error),
+        })
     }
 }
 
@@ -623,7 +612,7 @@ fn arm(scheduler: &mut Scheduler, snaps: &Source, project: &Project) -> Result<O
     let mut entries = Vec::new();
     let mut unarmed = Vec::new();
     for spec in specs.values() {
-        if runs.derived_children.contains(&spec.id) {
+        if runs.derived_parents.contains_key(&spec.id) {
             let head = runs.head_of.get(&spec.id).expect("a derived child has a head");
             let reason = format!("it lands after its derive parent in the run headed by `{head}`");
             eprintln!("pipeline `{}` stays unarmed: {reason}", spec.id);
@@ -644,7 +633,7 @@ fn arm(scheduler: &mut Scheduler, snaps: &Source, project: &Project) -> Result<O
         eprintln!("pipeline `{}` stays unarmed: {reason}", spec.id);
         unarmed.push(Unarmed { id: spec.id.clone(), reason });
     }
-    scheduler.arm_runs_with_derived(version, entries, runs.steps, runs.derived_children)?;
+    scheduler.arm_runs_with_derived(version, entries, runs.steps, runs.derived_parents)?;
     eprintln!("armed v{version}: {} scheduled pipeline(s), {} unarmed", scheduler.armed().len(), unarmed.len());
     Ok(Some(unarmed))
 }
