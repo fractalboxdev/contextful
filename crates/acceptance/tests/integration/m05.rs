@@ -500,10 +500,11 @@ fn m05_http_face() {
         let interrupted = parse(&interrupted);
         assert_eq!(interrupted["result"]["isError"], json!(true), "{interrupted}");
         assert!(interrupted["result"]["structuredContent"].to_string().contains("ReadDurationExceeded"), "{interrupted}");
+        assert!(interrupted["result"]["structuredContent"].get("rows").is_none(), "{interrupted}");
         assert!(!survivor_done.load(std::sync::atomic::Ordering::SeqCst), "the other statement finished before the deadline interrupted its peer");
         let (status, _, survived) = running.join().unwrap();
         assert_eq!(status, 200);
-        assert!(rows(&survived).is_array(), "{}", String::from_utf8_lossy(&survived));
+        assert_eq!(rows(&survived), json!([["2159"]]), "{}", String::from_utf8_lossy(&survived));
     });
 
     // Revoked between requests: refused on the next, with no restart.
