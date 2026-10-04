@@ -109,6 +109,8 @@ fn a_replaced_public_cache_directory_cannot_supply_an_admitted_component() {
     let artifact = Artifact::parse("https://dl.vendor.example/probe.wasm", Some(&pin)).unwrap();
     host.load_artifact(&artifact, PROBE, PinRequirement::default()).unwrap();
     let entry = std::fs::read_dir(&cache).unwrap().map(|e| e.unwrap().path()).find(|p| p.extension().is_some_and(|x| x == "cwasm")).unwrap();
+    std::fs::remove_file(&entry).unwrap();
+    std::fs::remove_file(entry.with_extension("sha256")).unwrap();
 
     let other_cache = dir.path().join("other-cache");
     let other = ComponentHost::with_cache_dir(Target::Native, &other_cache).unwrap();
@@ -129,6 +131,40 @@ fn a_replaced_public_cache_directory_cannot_supply_an_admitted_component() {
     let mut session = host.open(&connector, loopback(), &Limits::default(), None).unwrap();
     session.open("items", None).unwrap();
     assert!(session.next().unwrap().is_some());
+}
+
+#[cfg(unix)]
+#[test]
+fn a_replaced_private_cache_directory_cannot_supply_an_admitted_component() {
+    use std::os::unix::fs::PermissionsExt;
+
+    let dir = tempfile::tempdir().unwrap();
+    let cache = dir.path().join("cache");
+    let host = ComponentHost::with_cache_dir(Target::Native, &cache).unwrap();
+    let pin = Digest::of(PROBE).to_string();
+    let artifact = Artifact::parse("https://dl.vendor.example/probe.wasm", Some(&pin)).unwrap();
+    host.load_artifact(&artifact, PROBE, PinRequirement::default()).unwrap();
+    let entry = std::fs::read_dir(&cache).unwrap().map(|e| e.unwrap().path()).find(|p| p.extension().is_some_and(|x| x == "cwasm")).unwrap();
+    let entry_name = entry.file_name().unwrap().to_owned();
+    std::fs::remove_file(&entry).unwrap();
+    std::fs::remove_file(entry.with_extension("sha256")).unwrap();
+
+    let other_cache = dir.path().join("other-cache");
+    let other = ComponentHost::with_cache_dir(Target::Native, &other_cache).unwrap();
+    let other_pin = Digest::of(PROBE_BASE).to_string();
+    let other_artifact = Artifact::parse("https://dl.vendor.example/base.wasm", Some(&other_pin)).unwrap();
+    other.load_artifact(&other_artifact, PROBE_BASE, PinRequirement::default()).unwrap();
+    let other_entry = std::fs::read_dir(&other_cache).unwrap().map(|e| e.unwrap().path()).find(|p| p.extension().is_some_and(|x| x == "cwasm")).unwrap();
+
+    std::fs::rename(&cache, dir.path().join("old-cache")).unwrap();
+    std::fs::create_dir(&cache).unwrap();
+    std::fs::set_permissions(&cache, std::fs::Permissions::from_mode(0o700)).unwrap();
+    std::fs::copy(&other_entry, cache.join(&entry_name)).unwrap();
+    std::fs::copy(other_entry.with_extension("sha256"), cache.join(&entry_name).with_extension("sha256")).unwrap();
+
+    let (_, digest) = host.load_artifact(&artifact, PROBE, PinRequirement::default()).unwrap();
+    assert_eq!(digest.as_str(), pin);
+    assert_eq!((host.cache_stats().compilations, host.cache_stats().hits), (2, 0), "a new directory cannot replace the one the host admitted");
 }
 
 #[cfg(not(unix))]

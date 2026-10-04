@@ -1179,6 +1179,7 @@ dependencies = [
  "half",
  "http",
  "http-body-util",
+ "libc",
  "serde_json",
  "tempfile",
  "tokio",
