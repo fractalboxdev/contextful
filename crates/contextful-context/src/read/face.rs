@@ -500,7 +500,7 @@ impl Face {
             "description": decl.agent_description,
             "hint": decl.agent_hint,
             "columns": columns,
-            "indexes": [],
+            "indexes": decl.indexes.clone().unwrap_or_default(),
             "partition_by": decl.partition_by(),
             "zone": policy.placement.effective().labels(),
             "session_zone": session.zone().label(),
