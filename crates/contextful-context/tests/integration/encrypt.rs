@@ -304,6 +304,30 @@ fn an_aes_gcm_sidecar_has_zero_plaintext_canary_hits() {
     assert_eq!(tree(store.path()), files);
 }
 
+/// Parquet modular encryption covers its columns and footer, and Arrow reads only with the key.
+#[test]
+fn encrypted_parquet_has_no_plaintext_canary_and_decrypts() {
+    use arrow_array::{ArrayRef, RecordBatch, StringArray};
+    use contextful_context::parquet_io;
+    use std::sync::Arc;
+
+    let canary = "parquet-canary-5f1e unique plaintext marker";
+    let batch = RecordBatch::try_from_iter([("body", Arc::new(StringArray::from(vec![canary])) as ArrayRef)]).unwrap();
+    let dir = tempfile::tempdir().unwrap();
+    let path = dir.path().join("part.parquet");
+    let key = [0x37; 32];
+    parquet_io::write_encrypted(&path, &batch, &key).unwrap();
+    let bytes = std::fs::read(&path).unwrap();
+    assert!(!bytes.windows(canary.len()).any(|part| part == canary.as_bytes()));
+    assert!(!bytes.starts_with(b"PAR1"), "the footer is encrypted");
+    assert!(parquet_io::read(&path).is_err());
+    assert!(parquet_io::read_encrypted(&path, &[0x42; 32]).is_err());
+    let opened = parquet_io::read_encrypted(&path, &key).unwrap();
+    assert_eq!(opened.len(), 1);
+    let body = opened[0].column_by_name("body").unwrap().as_any().downcast_ref::<StringArray>().unwrap();
+    assert_eq!(body.value(0), canary);
+}
+
 /// A sealed full-text sidecar file larger than 256 MiB stays unopened, and its arm adds no candidates.
 // spec: read.retrieve.fulltext-sealed-cap@5e433a1f
 #[test]
