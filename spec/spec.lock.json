@@ -2826,7 +2826,7 @@
       "operation": "fold",
       "subject": "row-retention",
       "kind": "behavior",
-      "statement": "A fold removes rows older than {{store.declare.retain-rows}} from its snapshot and sidecars after keyed winner selection; an unkeyed partition whose footer maximum precedes the cutoff skips row reads, and an idle pass publishes when rows expire.",
+      "statement": "A fold removes expired rows from its snapshot and sidecars after keyed winner selection and derived supersession; unkeyed partitions whose footer maximum precedes the cutoff skip row reads, and idle passes publish on expiry under {{store.declare.retain-rows}}.",
       "why": "because a time partition follows the sender's clock while the retention clock follows arrival",
       "file": "spec/10-store.md",
       "line": 295
@@ -10258,6 +10258,17 @@
       "line": 235
     },
     {
+      "id": "run.emit.content-marker-retention-clock",
+      "contract": "run",
+      "operation": "emit",
+      "subject": "content-marker-retention-clock",
+      "kind": "behavior",
+      "statement": "A generated host marker copies a custom {{store.declare.retain-rows}} timestamp from the parent row when the parent carries a same-named column.",
+      "why": "because a generated empty marker must carry the declared clock before the content table accepts its landing",
+      "file": "spec/32-derive.md",
+      "line": 237
+    },
+    {
       "id": "run.emit.output-tables",
       "contract": "run",
       "operation": "emit",
@@ -10266,7 +10277,7 @@
       "statement": "A host-task pipeline declares exactly its task's marker and content tables, and a unit returns rows for its content tables alone; either breach raises `DeriveOutputTablesMismatch`, the second failing that unit alone.",
       "why": "A-run",
       "file": "spec/32-derive.md",
-      "line": 237
+      "line": 239
     },
     {
       "id": "run.emit.marker-last",
@@ -10277,7 +10288,7 @@
       "statement": "A host-task run commits each content table under its own commit, then the marker table, and a content table failing stops the fire before its marker lands, so the unit re-runs and its rows collapse by key.",
       "why": "A-run",
       "file": "spec/32-derive.md",
-      "line": 239
+      "line": 241
     },
     {
       "id": "run.emit.version-retained",
@@ -10288,7 +10299,7 @@
       "statement": "On an output table declaring `retain_versions`, {{run.emit.stale-supersedes}} holds per unit and `task_version`, so rows under an earlier task version stay current under that version beside the newer version's rows.",
       "why": "A-run",
       "file": "spec/32-derive.md",
-      "line": 241
+      "line": 243
     },
     {
       "id": "run.emit.marker-row",
@@ -10299,7 +10310,7 @@
       "statement": "A unit yielding no passage lands one marker row, `cue_seq` -1 and `kind` `marker`, carrying its status, attempts, last error and whether it retries.",
       "why": "A-run",
       "file": "spec/32-derive.md",
-      "line": 243
+      "line": 245
     },
     {
       "id": "run.emit.empty-document",
@@ -10310,7 +10321,7 @@
       "statement": "Only a WebVTT document whose blocks are its header, notes and styles establishes nothing to derive; empty output, or blocks none of which parse, lands `unavailable`.",
       "why": "",
       "file": "spec/32-derive.md",
-      "line": 245
+      "line": 247
     },
     {
       "id": "run.emit.canceled-unit",
@@ -10321,7 +10332,7 @@
       "statement": "A unit whose chain a run stop interrupts lands no row and charges no attempt; the pull ends `Canceled` once {{run.cancel.child-reaped}}.",
       "why": "",
       "file": "spec/32-derive.md",
-      "line": 246
+      "line": 248
     },
     {
       "id": "run.parse-cues.backward-cue",
@@ -10332,7 +10343,7 @@
       "statement": "A block starting before the last accepted block raises `DeriveCueOutOfOrder` and is dropped.",
       "why": "P4",
       "file": "spec/32-derive.md",
-      "line": 260
+      "line": 262
     },
     {
       "id": "run.parse-cues.passage-chars",
@@ -10343,7 +10354,7 @@
       "statement": "A passage stays open while it holds fewer than 600 chars.",
       "why": "",
       "file": "spec/32-derive.md",
-      "line": 262
+      "line": 264
     },
     {
       "id": "run.parse-cues.passage-span",
@@ -10354,7 +10365,7 @@
       "statement": "A passage stays open while it spans less than 60 s.",
       "why": "",
       "file": "spec/32-derive.md",
-      "line": 263
+      "line": 265
     },
     {
       "id": "run.parse-cues.passage-bytes",
@@ -10365,7 +10376,7 @@
       "statement": "One passage's text holds at most 8 KiB.",
       "why": "",
       "file": "spec/32-derive.md",
-      "line": 264
+      "line": 266
     },
     {
       "id": "run.parse-cues.passages-per-document",
@@ -10376,7 +10387,7 @@
       "statement": "One document yields at most 2000 rows of passages.",
       "why": "",
       "file": "spec/32-derive.md",
-      "line": 265
+      "line": 267
     },
     {
       "id": "run.parse-cues.grammar",
@@ -10387,7 +10398,7 @@
       "statement": "SubRip and WebVTT read through one grammar: a block's timing line, then its text lines joined by a space.",
       "why": "",
       "file": "spec/32-derive.md",
-      "line": 266
+      "line": 268
     },
     {
       "id": "run.test-engine.unsupported-driver",
@@ -10398,7 +10409,7 @@
       "statement": "A `fetch` engine named to the verb raises `DeriveTestEngineUnsupported`.",
       "why": "because the verb drives a transcriber over media, and a link engine takes no media",
       "file": "spec/32-derive.md",
-      "line": 272
+      "line": 274
     },
     {
       "id": "connector.export.authoring-path",
@@ -23164,6 +23175,10 @@
     [
       "run.emit.content-empty",
       "run.emit.stale-supersedes"
+    ],
+    [
+      "run.emit.content-marker-retention-clock",
+      "store.declare.retain-rows"
     ],
     [
       "run.emit.version-retained",

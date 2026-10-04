@@ -31,6 +31,7 @@
 "store.bound-time.row-age-cutoff" = { test = "contextful_context::retention::a_superseded_snapshot_does_not_restore_a_now_expired_row" }
 "store.fold.row-retention" = { test = "contextful_context::retention::an_idle_fold_removes_an_expired_snapshot_partition" }
 "store.fold.row-retention-report" = { test = "contextful_context::retention::collection_names_each_removed_directory" }
+"run.emit.content-marker-retention-clock" = { test = "contextful_cli::derive::an_empty_host_content_marker_carries_the_declared_parent_retention_clock" }
 "corpus.targets.cap-unrecorded"     = { test = "contextful_spec::targets::a_capped_shape_not_recording_its_exclusions_is_refused" }
 "corpus.targets.function-profile"   = { test = "contextful_spec::targets::a_function_class_shape_hosting_the_full_profile_is_refused" }
 "corpus.targets.incomplete"         = { test = "contextful_spec::targets::a_shape_leaving_a_role_unfilled_is_refused" }
@@ -62,7 +63,7 @@ connector = 218
 corpus = 38
 disclosure = 54
 read = 163
-run = 261
+run = 262
 store = 204
 surface = 51
 topology = 38

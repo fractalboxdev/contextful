@@ -292,7 +292,7 @@ Compaction: pass order, triggers, retention, the compaction lease, and the point
 - `includes-runs` — A snapshot's `includes_runs` names each run it folded as `<run-id>/<node-id>`, the run's own directory; a run committed afterwards reads on top of it.
 - `triggers` — A pass fires at 50 runs committed on a table, 6 h after the table's previous pass, or on `contextful context compact <table>`.
 - `retention` — `retain_runs` defaults to 7 d; a folded run, a superseded snapshot and its sidecars are collected once older than the window.
-- `row-retention` — A fold removes rows older than {{store.declare.retain-rows}} from its snapshot and sidecars after keyed winner selection; an unkeyed partition whose footer maximum precedes the cutoff skips row reads, and an idle pass publishes when rows expire.
+- `row-retention` — A fold removes expired rows from its snapshot and sidecars after keyed winner selection and derived supersession; unkeyed partitions whose footer maximum precedes the cutoff skip row reads, and idle passes publish on expiry under {{store.declare.retain-rows}}.
   *because a time partition follows the sender's clock while the retention clock follows arrival*
 - `row-retention-report` — A pass reports the row-age cutoff, expired row count, dropped partition count and directories collected per table; `collect` returns the removed directory paths.
   *because an operator needs evidence of both logical expiry and physical collection*
