@@ -240,12 +240,17 @@ fn column_type(f: &Field) -> Option<ColumnType> {
             };
             ColumnType::FixedSizeList(item, u32::try_from(*n).ok()?)
         }
-        DataType::Struct(fields) if !fields.is_empty() => ColumnType::Struct(
-            fields
+        DataType::Struct(fields) if !fields.is_empty() => {
+            let decoded = fields
                 .iter()
                 .map(|f| Some(StructField::new(f.name(), column_type(f)?)))
-                .collect::<Option<_>>()?,
-        ),
+                .collect::<Option<Vec<_>>>()?;
+            if f.metadata().get(EXTENSION_NAME).is_some_and(|v| v == VARIANT_EXTENSION) {
+                (decoded == variant_fields()).then_some(ColumnType::Variant)?
+            } else {
+                ColumnType::Struct(decoded)
+            }
+        }
         DataType::List(item) | DataType::LargeList(item) => ColumnType::list(column_type(item)?),
         DataType::Map(entries, _) => {
             let DataType::Struct(kv) = entries.data_type() else {

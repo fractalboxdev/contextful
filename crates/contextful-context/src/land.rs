@@ -250,7 +250,7 @@ fn typed_array(path: &str, ty: &ColumnType, values: &[Option<&Value>]) -> Result
                 let (kind, payload) = match value {
                     Value::String(_) => ("str", value.clone()),
                     Value::Number(n) if n.is_i64() => ("int", value.clone()),
-                    Value::Number(_) => ("double", value.clone()),
+                    Value::Number(n) if n.is_f64() => ("double", value.clone()),
                     Value::Bool(_) => ("bool", value.clone()),
                     Value::Object(fields) => {
                         let kind = fields.get("kind").and_then(Value::as_str).ok_or_else(|| bad(value))?;
@@ -268,6 +268,9 @@ fn typed_array(path: &str, ty: &ColumnType, values: &[Option<&Value>]) -> Result
                     }
                     _ => return Err(bad(value)),
                 };
+                if kind == "double" && payload.as_number().is_some_and(|n| !n.is_f64()) {
+                    return Err(bad(value));
+                }
                 let mut fields = Map::new();
                 fields.insert("kind".into(), Value::String(kind.into()));
                 fields.insert(kind.into(), payload);
