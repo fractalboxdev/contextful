@@ -65,7 +65,7 @@ Revisit: a key shape whose ownership is not derivable from the key; retries exha
 
 **Status:** accepted
 
-Context: schema, manifest, pointer, counter and commit-log files carry names and values from rows, and the at-rest cipher covers the store target. Criteria: zero plaintext canary bytes in a bound store; canonical values survive merge and replay; unencrypted stores keep their wire format.
+Context: schema, manifest, pointer, counter, commit-log and node run-state files carry names and values from rows, and the at-rest cipher covers the store target. Criteria: zero plaintext canary bytes in a bound store; canonical values survive merge and replay; unencrypted stores keep their wire format.
 
 Decision: a bound store seals each metadata file under a fresh wrapped data key and reads it into memory before parsing. Schema merge operates on decrypted canonical structures and seals the merged result. A store without encryption retains canonical JSON or text on disk and in the bucket. A bound store refuses plaintext metadata rather than migrating it implicitly.
 

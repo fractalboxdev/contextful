@@ -419,6 +419,8 @@ At-rest encryption of Parquet, sidecars and ledgers, the key derivation, and for
   *because a cleartext vector graph admits nearest-neighbour search over the embedding space*
 - `metadata-envelope` — With a bound key, schema, manifest, pointer, counter and commit-log files hold their canonical JSON or text inside an authenticated versioned envelope; without encryption they retain their canonical bytes.
   *A-store*
+- `run-state-envelope` — With a bound key, a node's synced run-state JSON holds its canonical bytes inside an authenticated envelope, and a reader refuses a file sealed under another key.
+  *A-store*
 - `machine-catalog-sealing` — A bound `machine.sqlite` holds an authenticated SQLite snapshot; each catalog transaction reads it into process memory under a file lock and seals committed bytes before releasing the lock.
   *A-store*
 - `password-kdf` — A password-derived project key uses Argon2id with 64 MiB memory, 3 iterations and 4 lanes.

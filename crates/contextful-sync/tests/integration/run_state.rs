@@ -13,6 +13,7 @@ use serde_json::json;
 
 const NOW: &str = "2030-01-01T01:00:00Z";
 
+// spec: store.encrypt.run-state-envelope@75ca0ba5
 #[test]
 fn a_bound_run_state_stays_sealed_across_record_and_read() {
     let dir = tempfile::tempdir().unwrap();
