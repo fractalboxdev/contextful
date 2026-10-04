@@ -120,6 +120,10 @@ The control source, the snapshot pointer and its versions, the pure schedule dif
   *A-surface*
 - `loopback-only` — A control URL whose host is not a loopback address raises `ControlSourceNotLoopback` and arms nothing; a poll follows no redirect and routes through no proxy.
   *A-surface*
+- `pulled-control` — A reconciler adopts the project-scoped head {{store.pull.control-head}} carries, descending from its local head, only after verifying the receipt under a locally pinned issuer key and validating the snapshot against this node's declarations.
+  *A-surface*
+- `pulled-control-untrusted` — A pulled control head with an invalid signature, project, digest, predecessor chain or local validation raises `ControlSnapshotUntrusted`, names the reason and arms none of that version.
+  *A-surface*
 - `url-layout` — A control URL serves `manifest@current` and each `manifest@v<N>.toml` directly beneath its path; a pointer answered `404` reads as no applied version, and any other status besides `200` is unreadable.
   *because one layout serves a snapshot directory unchanged over loopback HTTP*
 - `learns-by-reading` — A daemon learns of a new snapshot only by reading its control source, on each poll and on each wake; nothing pushes a snapshot to it.
@@ -148,6 +152,11 @@ sequenceDiagram
     R->>D: dispatch due units
   end
 ```
+
+#### Scenarios
+
+- `surface.reconcile.pulled-control`: WHEN a cold node holds a signed bucket head whose snapshot validates against its declarations, THEN it installs that head and arms its schedules.
+- `surface.reconcile.pulled-control-untrusted`: WHEN a bucket writer replaces the snapshot bytes without a matching signature, THEN the node names the failed verification and arms none of that version.
 
 ## fire
 
@@ -253,6 +262,12 @@ Validation, the immutable version claim, the pointer advance, the owner's storag
   *P3*
 - `local-claim` — A local control plane validates and claims `manifest@v<N>.toml` in its snapshot directory, `.contextful/control/<project>/` unless `[control] snapshot_dir` names one, on its own; `contextful pipeline apply` is that apply, and no hosted plane sits on its path.
   *because {{topology.coordinate.air-gap}} holds a single-node deployment to reach no process outside itself*
+- `synced-attestation` — In a project with `[sync]`, import and apply admit an admin capability, then sign a receipt over the project, version, predecessor receipt digest and snapshot digest through {{authority.issue.signing-port}} before advancing the local pointer.
+  *A-surface*
+- `receipt-message` — A JSON control receipt carries `format: 1`, signer public key and signature over UTF-8 `contextful-control-v1\n<project>\n<version>\n<parent-or-minus>\n<snapshot-sha256>\n`; its parent is `-` only for the first version.
+  *A-surface*
+- `attestation-unavailable` — A synced import or apply lacking an admitted admin capability or issuer signing port raises `ControlAttestationUnavailable` and claims no version.
+  *A-surface*
 - `guarded-import` — `contextful pipeline import` claims v1 from the declared pipelines while the snapshot directory holds no version; a second import claims nothing.
 
 One apply through the engine's store-scoped API:
@@ -284,6 +299,11 @@ sequenceDiagram
     end
   end
 ```
+
+#### Scenarios
+
+- `surface.apply.attestation-unavailable`: WHEN a synced apply presents no admin capability, THEN no version or receipt is claimed.
+- `surface.apply.receipt-message`: WHEN a receipt's parent or snapshot digest changes after signing, THEN its signature does not verify.
 
 ## reside
 

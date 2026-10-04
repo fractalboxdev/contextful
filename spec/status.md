@@ -12,10 +12,10 @@ An unpinned clause is `committed`; a pinned one is `performed` when its test res
 | `disclosure` | 3 | 16 | 122 | 64 | 13 | 7 | 54 | 0 | 54 |
 | `read` | 2 | 15 | 179 | 29 | 22 | 21 | 163 | 0 | 162 |
 | `run` | 3 | 26 | 372 | 98 | 36 | 37 | 259 | 0 | 257 |
-| `store` | 1 | 17 | 235 | 55 | 13 | 20 | 198 | 0 | 194 |
-| `surface` | 2 | 19 | 86 | 46 | 22 | 5 | 51 | 0 | 50 |
+| `store` | 1 | 17 | 238 | 56 | 13 | 19 | 198 | 0 | 194 |
+| `surface` | 2 | 19 | 91 | 48 | 22 | 5 | 51 | 0 | 50 |
 | `topology` | 1 | 6 | 70 | 24 | 5 | 5 | 38 | 0 | 38 |
-| **total** | 19 | 154 | 1956 | 569 | 188 | 133 | 1335 | 0 | |
+| **total** | 19 | 154 | 1964 | 572 | 188 | 132 | 1335 | 0 | |
 
 Decision records: 18.
 
@@ -31,11 +31,11 @@ A milestone reads `closed` when its acceptance test computes `passing` and every
 | 3 — The run path | 11 | 206 | 142 | passing | closed |
 | 4 — Ingest | 25 | 468 | 290 | passing | open |
 | 5 — The read face under enforcement | 17 | 252 | 192 | passing | open |
-| 6 — Sync and replicas | 8 | 73 | 68 | passing | closed |
+| 6 — Sync and replicas | 8 | 76 | 68 | passing | closed |
 | 7 — Memory | 6 | 37 | 37 | passing | closed |
 | 8 — Accountability | 5 | 60 | 47 | passing | open |
 | 9 — Visibility | 6 | 41 | 3 | open | open |
-| 10 — Cadence and the operator plane | 11 | 67 | 56 | passing | open |
+| 10 — Cadence and the operator plane | 11 | 72 | 56 | passing | open |
 | 11 — The derive tier | 7 | 78 | 55 | passing | open |
 | 12 — The console | 11 | 30 | 0 | absent | open |
 | 13 — Disclosure | 5 | 21 | 4 | open | open |
