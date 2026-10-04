@@ -15,6 +15,47 @@ use serde_json::json;
 use std::io::{Seek, SeekFrom, Write};
 
 #[cfg(feature = "read")]
+fn land_keyed_retention_revisions(f: &Fixture, d: &TableDecl) {
+    let timestamp = &[("retained_at", ColumnType::Timestamp)];
+    f.land_typed(
+        d,
+        "older",
+        json!([{"id": "same", "rev": 1, "sender_day": "older", "retained_at": "2300-01-01T00:00:00Z"}]),
+        "2200-01-01T00:00:00Z",
+        timestamp,
+    )
+    .unwrap();
+    f.land_typed(
+        d,
+        "newer",
+        json!([{"id": "same", "rev": 2, "sender_day": "newer", "retained_at": "2000-01-01T00:00:00Z"}]),
+        "2200-01-02T00:00:00Z",
+        timestamp,
+    )
+    .unwrap();
+}
+
+#[cfg(feature = "read")]
+#[test]
+fn an_expired_keyed_winner_does_not_restore_an_older_live_row_on_read() {
+    let f = Fixture::new();
+    let d = decl("name = \"events\"\nprimary_key = [\"id\"]\norder_by = \"rev\"\npartition_by = [\"sender_day\"]\ncolumns = { retained_at = \"timestamp\" }\nretain_rows = { column = \"retained_at\", age = \"30d\" }");
+    land_keyed_retention_revisions(&f, &d);
+    assert!(f.query(&d, Bounds::default(), "SELECT id FROM t").is_empty());
+}
+
+#[cfg(feature = "read")]
+#[test]
+fn an_expired_keyed_winner_does_not_restore_an_older_live_row_after_fold() {
+    let f = Fixture::new();
+    let d = decl("name = \"events\"\nprimary_key = [\"id\"]\norder_by = \"rev\"\npartition_by = [\"sender_day\"]\ncolumns = { retained_at = \"timestamp\" }\nretain_rows = { column = \"retained_at\", age = \"30d\" }");
+    land_keyed_retention_revisions(&f, &d);
+    let outcome = fold(&f.store, &d, at("2200-02-02T00:00:00Z")).unwrap();
+    assert!(matches!(outcome, FoldOutcome::Folded { rows: 0, .. }), "{outcome:?}");
+    assert!(f.query(&d, Bounds::default(), "SELECT id FROM t").is_empty());
+}
+
+#[cfg(feature = "read")]
 #[test]
 fn old_rows_are_hidden_before_fold_and_inside_an_older_snapshot() {
     let f = Fixture::new();
