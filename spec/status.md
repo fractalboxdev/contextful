@@ -11,11 +11,11 @@ An unpinned clause is `committed`; a pinned one is `performed` when its test res
 | `corpus` | 1 | 10 | 77 | 37 | 7 | 0 | 38 | 0 | 38 |
 | `disclosure` | 3 | 16 | 122 | 64 | 13 | 7 | 54 | 0 | 54 |
 | `read` | 2 | 15 | 179 | 29 | 22 | 21 | 163 | 0 | 162 |
-| `run` | 3 | 26 | 372 | 98 | 36 | 37 | 259 | 0 | 257 |
+| `run` | 3 | 26 | 372 | 98 | 36 | 37 | 260 | 0 | 257 |
 | `store` | 1 | 17 | 235 | 55 | 13 | 20 | 198 | 0 | 194 |
 | `surface` | 2 | 19 | 86 | 46 | 22 | 5 | 51 | 0 | 50 |
 | `topology` | 1 | 6 | 70 | 24 | 5 | 5 | 38 | 0 | 38 |
-| **total** | 19 | 154 | 1956 | 569 | 188 | 133 | 1335 | 0 | |
+| **total** | 19 | 154 | 1956 | 569 | 188 | 133 | 1336 | 0 | |
 
 Decision records: 18.
 
@@ -29,7 +29,7 @@ A milestone reads `closed` when its acceptance test computes `passing` and every
 | 1 — The authority core | 14 | 236 | 184 | passing | closed |
 | 2 — The store | 9 | 162 | 130 | passing | closed |
 | 3 — The run path | 11 | 206 | 142 | passing | closed |
-| 4 — Ingest | 25 | 468 | 290 | passing | open |
+| 4 — Ingest | 25 | 468 | 291 | passing | open |
 | 5 — The read face under enforcement | 17 | 252 | 192 | passing | open |
 | 6 — Sync and replicas | 8 | 73 | 68 | passing | closed |
 | 7 — Memory | 6 | 37 | 37 | passing | closed |
@@ -954,6 +954,7 @@ Unscheduled operations: 10.
 | `run.journal.store-input` | `crates/contextful-cli/tests/integration/job.rs::a_fire_reads_its_input_at_the_pinned_as_of_and_lands_its_output_table` | performed |
 | `run.journal.substrate-port` | `crates/contextful-engine/tests/integration/execution.rs::the_substrate_port_opens_steps_suspends_commits_and_closes_an_execution` | performed |
 | `run.journal.unwired-capability` | `crates/contextful-engine/tests/integration/execution.rs::suspending_on_an_engine_without_an_awakeable_store_is_refused_at_the_first_reach` | performed |
+| `run.land.irreconcilable-schema` | `crates/contextful-cli/tests/integration/run.rs::an_irreconcilable_pulled_schema_fails_the_batch` | performed |
 | `run.land.late-type` | `crates/contextful-engine/tests/integration/runner.rs::a_type_declared_after_its_column_staged_refuses` | performed |
 | `run.land.parse-boundary` | `crates/contextful-connectors/tests/integration/boundary.rs::a_decode_runs_in_a_child_the_parent_kills_at_its_deadline` | performed |
 | `run.land.parse-crashed` | `crates/contextful-connectors/tests/integration/boundary.rs::a_crashed_decode_is_named_and_a_refusal_crosses_intact` | performed |
