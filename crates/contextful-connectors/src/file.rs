@@ -529,7 +529,8 @@ impl Source for FileSource {
         let read = self.read(request.position.as_ref(), cancel)?;
         let skipped: u64 = read.declined.values().sum();
         let types = Self::types(&read.rows);
-        serde_json::to_vec(&json!({ "rows": read.rows, "cursor": read.position, "more": false, "snapshot_complete": true, "types": types, "skipped": skipped, "declined": read.declined }))
+        let snapshot_complete = skipped == 0 && read.position["files"].as_object().is_some_and(serde_json::Map::is_empty);
+        serde_json::to_vec(&json!({ "rows": read.rows, "cursor": read.position, "more": false, "snapshot_complete": snapshot_complete, "types": types, "skipped": skipped, "declined": read.declined }))
             .map_err(|e| Failure::new(FailureTag::Permanent, e.to_string()))
     }
 }
