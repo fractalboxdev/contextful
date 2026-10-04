@@ -165,6 +165,19 @@ enum Cmd {
         #[arg(long, requires = "status")]
         check: bool,
     },
+    /// Build one measure report from collected records and earlier Git-note history.
+    MeasureReport {
+        #[arg(long)]
+        commit: String,
+        #[arg(long)]
+        run_id: u64,
+        #[arg(long)]
+        run_attempt: u64,
+        #[arg(long)]
+        exit_code: i32,
+        #[arg(long)]
+        out: PathBuf,
+    },
     /// Deploy-time checks.
     Deploy {
         #[command(subcommand)]
@@ -273,6 +286,8 @@ fn main() {
             selected.dedup();
             measure::run(&root, &selected)
         }),
+        Cmd::MeasureReport { commit, run_id, run_attempt, exit_code, out } =>
+            repo_root().and_then(|root| measure::report(&root, &commit, run_id, run_attempt, exit_code, &out)),
     };
     if let Err(e) = result {
         eprintln!("{e:#}");

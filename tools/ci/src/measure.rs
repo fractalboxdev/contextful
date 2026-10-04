@@ -4,7 +4,9 @@
 
 use anyhow::{bail, Context, Result};
 use contextful_eval::ledger::{self, Ledger, Method, Tier, World};
-use contextful_eval::record::{self, MEASURE_DIR_VAR};
+use contextful_eval::record::{self, Record, MEASURE_DIR_VAR};
+use contextful_eval::trend::{self, Figure};
+use serde::{Deserialize, Serialize};
 use std::collections::{BTreeMap, BTreeSet};
 use std::path::{Path, PathBuf};
 use std::process::Command;
@@ -145,13 +147,13 @@ pub fn run(root: &Path, tiers: &[Tier]) -> Result<()> {
 /// failed — a test that failed, a gate-tier record missing, reseeded or red — and the
 /// outcome, which carries the first failed test's exit ahead of the refusals.
 fn measure(root: &Path, tiers: &[Tier]) -> Result<(BTreeSet<String>, Result<()>)> {
+    let records = root.join(EVALUATE_TARGET).join("records");
+    let _ = std::fs::remove_dir_all(&records);
     let Some(l) = resolved(root)? else {
         eprintln!("measure: no {}; nothing to measure", ledger::LEDGER_FILE);
         return Ok((BTreeSet::new(), Ok(())));
     };
     let open = l.entry.values().filter(|e| matches!(e.method(), Some(Method::Issue(_)))).count();
-    let records = root.join(EVALUATE_TARGET).join("records");
-    let _ = std::fs::remove_dir_all(&records);
     std::fs::create_dir_all(&records)?;
     let (mut held, mut red, mut missing, mut reseeded) = (0usize, Vec::new(), Vec::new(), Vec::new());
     let (mut failed, mut exited) = (BTreeSet::new(), None);
@@ -163,8 +165,12 @@ fn measure(root: &Path, tiers: &[Tier]) -> Result<(BTreeSet<String>, Result<()>)
                 Some(Method::Test(t)) => {
                     if let Err(err) = run_test(root, t, &records) {
                         eprintln!("measure: {id} ({tier}) failed: {err}");
-                        failed.insert(id.clone());
-                        exited.get_or_insert(err);
+                        if *tier == Tier::Trend {
+                            let _ = std::fs::remove_file(record::path(&records, id));
+                        } else {
+                            failed.insert(id.clone());
+                            exited.get_or_insert(err);
+                        }
                         continue;
                     }
                 }
@@ -172,8 +178,12 @@ fn measure(root: &Path, tiers: &[Tier]) -> Result<(BTreeSet<String>, Result<()>)
                 Some(Method::Probe(p)) => {
                     if let Err(err) = run_probe(root, p, &records) {
                         eprintln!("measure: {id} ({tier}) failed: {err}");
-                        failed.insert(id.clone());
-                        exited.get_or_insert(err);
+                        if *tier == Tier::Trend {
+                            let _ = std::fs::remove_file(record::path(&records, id));
+                        } else {
+                            failed.insert(id.clone());
+                            exited.get_or_insert(err);
+                        }
                         continue;
                     }
                 }
@@ -192,8 +202,12 @@ fn measure(root: &Path, tiers: &[Tier]) -> Result<(BTreeSet<String>, Result<()>)
                 Ok(r) if e.seed.is_some_and(|s| s != r.seed) => {
                     let declared = e.seed.unwrap_or_default();
                     eprintln!("MeasureSeedMismatch: `{id}` recorded seed {}, the ledger declares {declared} [{secs:.1} s]", r.seed);
-                    reseeded.push(id.clone());
-                    failed.insert(id.clone());
+                    if *tier == Tier::Trend {
+                        let _ = std::fs::remove_file(record::path(&records, id));
+                    } else {
+                        reseeded.push(id.clone());
+                        failed.insert(id.clone());
+                    }
                 }
                 Ok(r) => match e.target {
                     Some(t) if t.holds(r.value) => {
@@ -261,6 +275,123 @@ fn run_probe(root: &Path, name: &str, records: &Path) -> Result<()> {
     if !status.success() {
         return Err(crate::exited(format!("cargo run --manifest-path {PROBE_MANIFEST} --bin {name}"), status));
     }
+    Ok(())
+}
+
+/// One annotation in a default-branch report; the baseline names its earlier run.
+#[derive(Debug, Serialize, Deserialize)]
+struct TrendAnnotation {
+    id: String,
+    baseline: f64,
+    current: f64,
+    worse_percent: f64,
+    baseline_commit: String,
+    baseline_run_id: u64,
+    annotation: String,
+}
+
+/// One JSON line of `refs/notes/measures`; earlier reports lack `annotations`.
+#[derive(Debug, Serialize, Deserialize)]
+struct RunReport {
+    commit: String,
+    run_id: u64,
+    run_attempt: u64,
+    exit_code: i32,
+    records: Vec<Record>,
+    #[serde(default)]
+    annotations: Vec<TrendAnnotation>,
+}
+
+fn git_text(root: &Path, args: &[&str]) -> Result<String> {
+    let output = Command::new("git").args(args).current_dir(root).output()?;
+    if !output.status.success() {
+        bail!("git {}: {}", args.join(" "), String::from_utf8_lossy(&output.stderr).trim());
+    }
+    String::from_utf8(output.stdout).context("Git output is UTF-8")
+}
+
+/// Reports on the measured commit and its first-parent ancestors, newest run first.
+fn earlier_reports(root: &Path, commit: &str) -> Result<Vec<RunReport>> {
+    let exists = Command::new("git").args(["show-ref", "--verify", "--quiet", "refs/notes/measures"]).current_dir(root).status()?;
+    if exists.code() == Some(1) {
+        return Ok(Vec::new());
+    }
+    if !exists.success() {
+        bail!("reading refs/notes/measures failed: {exists}");
+    }
+    let noted: BTreeSet<String> = git_text(root, &["notes", "--ref=measures", "list"])?
+        .lines()
+        .filter_map(|line| line.split_whitespace().nth(1))
+        .map(str::to_string)
+        .collect();
+    let mut reports = Vec::new();
+    for ancestor in git_text(root, &["rev-list", "--first-parent", commit])?.lines().skip(1) {
+        if !noted.contains(ancestor) {
+            continue;
+        }
+        let note = git_text(root, &["notes", "--ref=measures", "show", ancestor])?;
+        for line in note.lines().filter(|line| !line.trim().is_empty()).rev() {
+            reports.push(serde_json::from_str(line).with_context(|| format!("parsing measure note on {ancestor}"))?);
+        }
+    }
+    Ok(reports)
+}
+
+/// Write one JSON-line run report, annotating a trend only against matching earlier
+/// successful history. The measure's exit status remains a separate workflow verdict.
+pub fn report(root: &Path, commit: &str, run_id: u64, run_attempt: u64, exit_code: i32, out: &Path) -> Result<()> {
+    let dir = root.join(EVALUATE_TARGET).join("records");
+    let mut records = Vec::new();
+    match std::fs::read_dir(&dir) {
+        Ok(entries) => {
+            for entry in entries {
+                let path = entry?.path();
+                if path.extension().is_some_and(|ext| ext == "json") {
+                    let id = path.file_stem().and_then(|s| s.to_str()).context("a measure record filename is UTF-8")?;
+                    records.push(record::read(&dir, id)?);
+                }
+            }
+        }
+        Err(e) if e.kind() == std::io::ErrorKind::NotFound => {}
+        Err(e) => return Err(e).with_context(|| dir.display().to_string()),
+    }
+    records.sort_by(|a, b| a.id.cmp(&b.id));
+    let history = earlier_reports(root, commit)?;
+    let ledger = load(root)?;
+    let mut annotations = Vec::new();
+    for current in &records {
+        let Some(entry) = ledger.as_ref().and_then(|l| l.entry.get(&current.id)) else { continue };
+        if entry.tier != Tier::Trend {
+            continue;
+        }
+        let direction = entry.direction.context("a trend-tier entry declares a direction")?;
+        let baseline = history.iter().filter(|report| report.exit_code == 0).find_map(|report| {
+            report.records.iter().find(|old| old.id == current.id && old.seed == current.seed && old.run == current.run).map(|old| (report, old))
+        });
+        let Some((past, old)) = baseline else { continue };
+        let comparison = trend::compare(
+            &Figure { value: current.value, runner: current.run.clone() },
+            &Figure { value: old.value, runner: old.run.clone() },
+            direction,
+        );
+        if let trend::Comparison::Annotated { worse_percent } = comparison {
+            annotations.push(TrendAnnotation {
+                id: current.id.clone(),
+                baseline: old.value,
+                current: current.value,
+                worse_percent,
+                baseline_commit: past.commit.clone(),
+                baseline_run_id: past.run_id,
+                annotation: comparison.annotation().unwrap_or_default(),
+            });
+        }
+    }
+    let report = RunReport { commit: commit.to_string(), run_id, run_attempt, exit_code, records, annotations };
+    let path = root.join(out);
+    if let Some(parent) = path.parent() {
+        std::fs::create_dir_all(parent)?;
+    }
+    std::fs::write(&path, format!("{}\n", serde_json::to_string(&report)?)).with_context(|| path.display().to_string())?;
     Ok(())
 }
 

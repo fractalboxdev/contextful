@@ -23,6 +23,11 @@ fn doubles_measured() {
 fn doubles_silently() {
     assert_eq!(demo::double(3), 6);
 }
+
+#[test]
+fn doubles_panics() {
+    panic!("trend method failed");
+}
 "#;
 
 fn entry(id: &str, clause: &str, method: &str, target: &str) -> String {
@@ -56,12 +61,14 @@ fn an_entry_naming_no_clause_refuses_before_any_test_runs() {
     let ledger = entry("demo-doubles", "run.journal.entry-keys", "{ test = \"demo::measured::doubles_measured\" }", "target = { op = \"==\", value = 4 }")
         + &entry("demo-missing", "run.journal.entry-key", "{ test = \"demo::measured::doubles_nowhere\" }", "target = { op = \"==\", value = 4 }");
     let r = repo(&ledger);
-    let o = r.gate(&["--stage", "evaluate"]);
+    r.write("target/evaluate/records/old.json", "stale");
+    let o = measure(&r, &[]);
     assert!(!o.status.success());
     let err = stderr(&o);
     assert!(err.contains("MeasureEntryUnresolved: `demo-doubles`: clause `run.journal.entry-keys`"), "{err}");
     assert!(err.contains("MeasureEntryUnresolved: `demo-missing`: test `demo::measured::doubles_nowhere`"), "{err}");
     assert!(!r.root.join("target/evaluate/records/ran.marker").exists(), "a test ran: {err}");
+    assert!(!r.root.join("target/evaluate/records/old.json").exists(), "a stale measure record survived: {err}");
     assert!(!err.contains("Running"), "{err}");
 }
 
@@ -92,7 +99,7 @@ fn a_held_target_passes_and_a_missed_one_reds_the_stage() {
 }
 
 /// A record whose seed differs from its entry's declared seed raises `MeasureSeedMismatch`, and the entry counts as red.
-// spec: assurance.measure.seed-mismatch@4f090e30
+// spec: assurance.measure.seed-mismatch@d5ef949b
 #[test]
 fn a_record_under_another_seed_than_its_entry_declares_is_refused() {
     let held = entry("demo-doubles", "run.journal.entry-key", "{ test = \"demo::measured::doubles_measured\" }", "target = { op = \"==\", value = 4 }\nseed = 7");
@@ -141,9 +148,71 @@ fn a_probe_binary_records_a_gate_figure() {
     std::fs::write(dir.join("demo-doubles.json"),
         r#"{"id":"demo-doubles","value":4,"n":1,"seed":7,"run":{"processor":"t","nproc":1,"memory_limit":null}}"#).unwrap();
 }
+
 "##);
     r.lock();
     let o = measure(&r, &[]);
     assert!(o.status.success(), "{}", stderr(&o));
     assert!(stderr(&o).contains("demo-doubles = 4"), "{}", stderr(&o));
+}
+
+// spec: assurance.measure.trend-baseline@e59a4889
+#[test]
+fn a_trend_report_uses_the_latest_successful_matching_history_without_failing_the_run() {
+    let r = Repo::init();
+    r.write("evals/ledger.toml", "[entry.latency]\nclause = \"run.journal.entry-key\"\nmetric = \"run.latency_ms\"\nkind = \"bench\"\ntier = \"trend\"\ndirection = \"lower_is_better\"\nmethod = { issue = 81 }\n");
+    let old = r.head();
+    let older = r#"{"id":"latency","value":30,"n":200,"seed":7,"run":{"processor":"t","nproc":1,"memory_limit":null}}"#;
+    let baseline = r#"{"id":"latency","value":40,"n":200,"seed":7,"run":{"processor":"t","nproc":1,"memory_limit":null}}"#;
+    let failed = r#"{"id":"latency","value":100,"n":200,"seed":7,"run":{"processor":"t","nproc":1,"memory_limit":null}}"#;
+    r.git(&["notes", "--ref=measures", "add", "-m", &format!("{{\"commit\":\"{old}\",\"run_id\":1,\"run_attempt\":1,\"exit_code\":0,\"records\":[{older}]}}"), &old]);
+    r.git(&["notes", "--ref=measures", "append", "-m", &format!("{{\"commit\":\"{old}\",\"run_id\":2,\"run_attempt\":1,\"exit_code\":0,\"records\":[{baseline}]}}"), &old]);
+    r.git(&["notes", "--ref=measures", "append", "-m", &format!("{{\"commit\":\"{old}\",\"run_id\":3,\"run_attempt\":1,\"exit_code\":1,\"records\":[{failed}]}}"), &old]);
+    r.write("target/evaluate/records/latency.json", &baseline.replace("\"value\":40", "\"value\":52"));
+    r.write("README", "next commit\n");
+    let current = r.commit("next");
+    r.git(&["notes", "--ref=measures", "add", "-m", &format!("{{\"commit\":\"{current}\",\"run_id\":99,\"run_attempt\":1,\"exit_code\":0,\"records\":[{failed}]}}"), &current]);
+    let o = r.run_ci(&["measure-report", "--commit", &current, "--run-id", "4", "--run-attempt", "1", "--exit-code", "0", "--out", "target/measure-report.json"]);
+    assert!(o.status.success(), "{}", stderr(&o));
+    let report: serde_json::Value = serde_json::from_str(&std::fs::read_to_string(r.root.join("target/measure-report.json")).unwrap()).unwrap();
+    assert_eq!(report["records"][0]["value"], 52.0);
+    assert_eq!(report["annotations"][0]["id"], "latency");
+    assert_eq!(report["annotations"][0]["baseline"], 40.0);
+    assert_eq!(report["annotations"][0]["baseline_run_id"], 2);
+    assert_eq!(report["annotations"][0]["worse_percent"], 30.0);
+    assert_eq!(report["exit_code"], 0);
+
+    r.write("target/evaluate/records/latency.json", &baseline.replace("\"value\":40", "\"value\":52").replace("\"nproc\":1", "\"nproc\":2"));
+    let o = r.run_ci(&["measure-report", "--commit", &current, "--run-id", "5", "--run-attempt", "1", "--exit-code", "0", "--out", "target/measure-report.json"]);
+    assert!(o.status.success(), "{}", stderr(&o));
+    let report: serde_json::Value = serde_json::from_str(&std::fs::read_to_string(r.root.join("target/measure-report.json")).unwrap()).unwrap();
+    assert_eq!(report["annotations"].as_array().unwrap().len(), 0);
+
+    r.write("target/evaluate/records/latency.json", &baseline.replace("\"value\":40", "\"value\":52").replace("\"seed\":7", "\"seed\":8"));
+    let o = r.run_ci(&["measure-report", "--commit", &current, "--run-id", "6", "--run-attempt", "1", "--exit-code", "0", "--out", "target/measure-report.json"]);
+    assert!(o.status.success(), "{}", stderr(&o));
+    let report: serde_json::Value = serde_json::from_str(&std::fs::read_to_string(r.root.join("target/measure-report.json")).unwrap()).unwrap();
+    assert_eq!(report["annotations"].as_array().unwrap().len(), 0);
+
+    r.git(&["update-ref", "-d", "refs/notes/measures"]);
+    let o = r.run_ci(&["measure-report", "--commit", &current, "--run-id", "7", "--run-attempt", "1", "--exit-code", "0", "--out", "target/measure-report.json"]);
+    assert!(o.status.success(), "{}", stderr(&o));
+    let report: serde_json::Value = serde_json::from_str(&std::fs::read_to_string(r.root.join("target/measure-report.json")).unwrap()).unwrap();
+    assert_eq!(report["annotations"].as_array().unwrap().len(), 0);
+}
+
+// spec: assurance.measure.tier@0feb15e4
+#[test]
+fn a_failed_or_reseeded_trend_method_does_not_fail_the_measure_run() {
+    let trend = entry("demo-doubles", "run.journal.entry-key", "{ test = \"demo::measured::doubles_measured\" }", "seed = 8")
+        .replace("tier = \"gate\"", "tier = \"trend\"\ndirection = \"lower_is_better\"");
+    let r = repo(&trend);
+    let o = measure(&r, &["--tier", "trend"]);
+    assert!(o.status.success(), "{}", stderr(&o));
+    assert!(stderr(&o).contains("MeasureSeedMismatch"), "{}", stderr(&o));
+
+    r.write("evals/ledger.toml", &trend.replace("doubles_measured", "doubles_panics"));
+    let o = measure(&r, &["--tier", "trend"]);
+    assert!(o.status.success(), "{}", stderr(&o));
+    assert!(stderr(&o).contains("trend method failed") || stderr(&o).contains("failed"), "{}", stderr(&o));
 }

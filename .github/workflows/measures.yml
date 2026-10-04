@@ -39,15 +39,6 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          shopt -s nullglob
-          records=(target/evaluate/records/*.json)
-          if (( ${#records[@]} == 0 )); then
-            records=(/dev/null)
-          fi
-          jq -sc --arg commit "$GITHUB_SHA" --argjson run_id "$GITHUB_RUN_ID" \
-            --argjson run_attempt "$GITHUB_RUN_ATTEMPT" --argjson exit_code "$MEASURE_EXIT" \
-            '{commit: $commit, run_id: $run_id, run_attempt: $run_attempt, exit_code: $exit_code, records: .}' \
-            "${records[@]}" > measure-report.json
           git config user.name 'contextful measures'
           git config user.email 'measures@users.noreply.github.com'
           git config commit.gpgsign false
@@ -58,6 +49,10 @@ jobs:
           elif (( note_ref_status != 2 )); then
             exit "$note_ref_status"
           fi
+          cargo run --locked -q -p contextful-ci -- measure-report \
+            --commit "$GITHUB_SHA" --run-id "$GITHUB_RUN_ID" \
+            --run-attempt "$GITHUB_RUN_ATTEMPT" --exit-code "$MEASURE_EXIT" \
+            --out measure-report.json
           git notes --ref=measures append -F measure-report.json "$GITHUB_SHA"
           git push origin refs/notes/measures
       - name: Hold the measured verdict

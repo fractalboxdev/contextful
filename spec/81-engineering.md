@@ -335,17 +335,21 @@ The target ledger: each tracked target, the clause it serves, how it is measured
 - `unresolved-entry` — An entry whose owning clause, method or metric path resolves to nothing raises `MeasureEntryUnresolved` before any measure runs.
   *P7*
 - `open-entry` — An entry naming an issue in place of a method reports open and gates nothing, and `evals/ledger.md` carries every entry's computed status.
-- `tier` — A gate-tier entry decides the evaluate stage, a trend-tier entry records on every run and decides nothing, and a scheduled-tier entry runs on the scheduled job alone.
+- `tier` — A gate-tier entry decides the evaluate stage, a trend-tier entry is measured on the default-branch run and decides nothing, and a scheduled-tier entry runs on the scheduled job alone.
 - `count-first` — A gate-tier entry measures a count, a ratio within one run or a size under a locked resolve; a wall-clock or resident-memory figure is trend-tier.
   *because a shared container moves wall-clock figures past any band narrow enough to catch a regression*
 - `record` — A measure writes one JSON record carrying its entry id, value, sample count, seed and run stamp; a gate-tier method finishing without one raises `MeasureRecordMissing`.
   *P7*
 - `seeded` — Every generated fixture and randomized schedule derives from the record's seed, and replaying that seed reproduces a count-valued entry's value.
   *because a failure that cannot replay cannot be fixed*
-- `seed-mismatch` — A record whose seed differs from its entry's declared seed raises `MeasureSeedMismatch`, and the entry counts as red.
+- `seed-mismatch` — A gate or scheduled record whose seed differs from its entry's declared seed raises `MeasureSeedMismatch` and counts as red; a trend mismatch leaves no comparable record.
   *because a figure measured under another seed replays nothing the ledger names*
 - `timing-iterations` — A timed batch reports p50 and p95 over 200 repeats of its operation, each after warm-up.
 - `timing-batches` — A timed figure is the median of 5 repeats of its timed batch.
+- `trend-direction` — Each trend-tier ledger entry declares `higher_is_better` or `lower_is_better` for its metric.
+  *A-assurance*
+- `trend-baseline` — A trend figure compares with the newest earlier successful default-branch report for the same entry and seed under {{assurance.measure.runner-stamp}}; absent matching history yields no annotation.
+  *A-assurance*
 - `trend-band` — A trend figure more than 25 percent worse than its baseline annotates the run report and fails no stage.
 - `runner-stamp` — The run block carries the runner's processor model, processor count and memory limit, and a trend figure compares only against a baseline with the same stamp.
 - `absolute-threshold` — A threshold is an absolute figure of this system's own measure, and it tightens only through {{assurance.baseline.raise-only}}.
@@ -368,12 +372,11 @@ flowchart LR
   HOLDS -->|"no"| RED["red evaluate stage"]
 ```
 
-unsettled: Which credential pushes `refs/notes/measures` from the scheduled dispatch? owner: build affects: assurance.measure
-
 #### Scenarios
 
 - `assurance.measure.unresolved-entry`: WHEN an entry names `run.journal.entry-keys`, THEN the run raises `MeasureEntryUnresolved` and no test runs.
 - `assurance.measure.trend-band`: WHEN a trend p95 moves from 40 ms to 52 ms on a matching runner stamp, THEN the report carries a +30 percent annotation and the stage passes.
+- `assurance.measure.trend-baseline`: WHEN a newer failed report follows two successful matches, THEN the trend compares with the newer successful match and the stage passes.
 - `assurance.measure.open-entry`: WHEN an entry's method is `{ issue = 43 }`, THEN `evals/ledger.md` lists it open and the evaluate stage ignores it.
 
 ## release
