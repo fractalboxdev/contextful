@@ -126,6 +126,29 @@ fn an_image_source_refuses_a_bad_header_with_its_path() {
     assert!(!out.status.success() && error.contains("ConnectorImageHeaderUnreadable") && error.contains("bad.png"), "{error}");
 }
 
+#[test]
+fn an_image_source_reads_jpeg_dimensions_without_decoding_pixels() {
+    let dir = project("[[pipeline]]\nid = \"photos\"\ntables = [{ name = \"images\", primary_key = [\"path\"] }]\n[pipeline.source]\nname = \"image\"\nconfig = { root = \"photos\" }\n");
+    std::fs::create_dir_all(dir.path().join("photos")).unwrap();
+    let jpeg = b"\xff\xd8\xff\xe0\x00\x04\x00\x00\xff\xc0\x00\x11\x08\x00\x03\x00\x02\x03\x01\x11\x00\x02\x11\x00\x03\x11\x00\xff\xd9";
+    std::fs::write(dir.path().join("photos/j.jpg"), jpeg).unwrap();
+    ok(&fire(dir.path(), "photos", "run-1", "2030-01-01T00:00:00Z"));
+    let out: serde_json::Value = serde_json::from_str(&ok(&cf(dir.path(), &[
+        "query", "--json", "--project", "research", "SELECT path, width, height FROM photos_images",
+    ]))).unwrap();
+    assert_eq!(out["rows"], serde_json::json!([["j.jpg", "2", "3"]]));
+}
+
+#[test]
+fn an_image_source_refuses_a_bad_jpeg_header_with_its_path() {
+    let dir = project("[[pipeline]]\nid = \"photos\"\ntables = [\"images\"]\n[pipeline.source]\nname = \"image\"\nconfig = { root = \"photos\" }\n");
+    std::fs::create_dir_all(dir.path().join("photos")).unwrap();
+    std::fs::write(dir.path().join("photos/bad.jpg"), b"\xff\xd8\xff\xc0\x00\x03").unwrap();
+    let out = fire(dir.path(), "photos", "run-1", "2030-01-01T00:00:00Z");
+    let error = stderr(&out);
+    assert!(!out.status.success() && error.contains("ConnectorImageHeaderUnreadable") && error.contains("bad.jpg"), "{error}");
+}
+
 /// Startup reads `contextful.toml` for project config and inline `[[pipeline]]` blocks, then `pipelines/*.toml`
 /// and `pipelines/*.json`; specifications are collected by `id`.
 // spec: run.declare.manifest-file@4779cc3b
