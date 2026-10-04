@@ -169,6 +169,7 @@ fn replace_covers_the_newest_complete_run_and_what_follows() {
 }
 
 /// A marked no-part replacing run clears current files while an earlier bound still reaches the displaced run.
+// spec: store.declare.empty-replacement@c29e64a1
 #[test]
 fn a_marked_empty_run_is_a_replacement_frontier() {
     use contextful_core::store::bound_time::Bound;
