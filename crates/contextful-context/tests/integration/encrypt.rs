@@ -337,6 +337,41 @@ fn encrypted_parquet_has_no_plaintext_canary_and_decrypts() {
     }
 }
 
+/// A bound project key opens a store, and a landed row stays encrypted through a store read.
+#[test]
+fn a_bound_store_lands_ciphertext_and_reads_its_row() {
+    use contextful_context::land::{land, Batch, RunContext};
+    use contextful_context::rows::table_rows;
+    use contextful_core::store::declare::TableDecl;
+    use contextful_core::store::lay_out::NodeId;
+    use contextful_core::store::reserve::Injection;
+    use contextful_core::time::Instant;
+    use serde_json::json;
+
+    let key_var = "CONTEXTFUL_TEST_KEY_74_BOUND";
+    // This unique variable is read only by this test's store; no other test changes it.
+    unsafe { std::env::set_var(key_var, "0123456789abcdef0123456789abcdef") };
+    let (dir, opened) = store_with(&format!("[encryption]\nkey_source = \"env:{key_var}\"\n"));
+    let store = opened.unwrap();
+    let decl = TableDecl::parse_pipeline("[[pipeline.tables]]\nname = \"documents\"\n").unwrap().remove(0);
+    let canary = "row-canary-5f1e unique plaintext marker";
+    let batch = Batch { rows: vec![json!({"doc_id": "d1", "body": canary}).as_object().unwrap().clone()], types: Default::default() };
+    let ctx = RunContext {
+        node: NodeId::parse("ingest-a").unwrap(),
+        injection: Injection { run_id: "run-1".into(), site_id: "site-a".into(), batch_seq: Some(0), authored_by: None, taint: None },
+        committed_at: Instant::parse("2030-01-01T00:00:00Z").unwrap(),
+    };
+    land(&store, &decl, &batch, &ctx).unwrap();
+    let files = written(&dir.path().join(".contextful/context/research"));
+    assert!(!files.is_empty());
+    for path in &files {
+        let bytes = std::fs::read(path).unwrap();
+        assert!(!bytes.windows(canary.len()).any(|part| part == canary.as_bytes()), "{} holds plaintext", path.display());
+    }
+    let rows = table_rows(&store, &decl, &["doc_id", "body"]).unwrap();
+    assert_eq!(rows[0]["body"], canary);
+}
+
 /// A sealed full-text sidecar file larger than 256 MiB stays unopened, and its arm adds no candidates.
 // spec: read.retrieve.fulltext-sealed-cap@5e433a1f
 #[test]
