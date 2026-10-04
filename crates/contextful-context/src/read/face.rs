@@ -644,23 +644,29 @@ impl Face {
     pub fn files_with_options(&self, session: &Session, opts: ReadOptions) -> Result<Response, ReadFault> {
         let transaction = Bounds { valid_as_of: None, ..opts.bounds };
         let root = format!("{}/", self.store.root().to_string_lossy());
+        let touched: BTreeSet<String> = session.relations().map(|r| r.name().to_string()).collect();
+        let ceiling = contextful_core::read::respond::FACE_ROW_CEILING;
         let mut rows = Vec::new();
         for r in session.relations() {
             for f in r.files() {
                 rows.push(vec![json!(r.name()), json!(f.strip_prefix(&root).unwrap_or(f))]);
+                if rows.len() as u64 > ceiling {
+                    break;
+                }
+            }
+            if rows.len() as u64 > ceiling {
+                break;
             }
         }
-        let mut response = Response::cut(vec!["table".into(), "path".into()], rows, None);
+        let mut response = Response::cut(vec!["table".into(), "path".into()], rows, Some(ceiling));
         if let Some(b) = transaction.echo() {
             response = response.with_block("bounds", b);
         }
-        let names: Vec<String> = session.relations().map(|r| r.name().to_string()).collect();
-        let response = match super::pin::resolved(session, names.iter().map(String::as_str)) {
+        let response = match super::pin::resolved(session, touched.iter().map(String::as_str)) {
             Some(resolved) => response.with_block(RESOLVED_BLOCK, resolved),
             None => response,
         };
-        let touched = names.into_iter().collect();
-        self.finish_budget(session, &touched, opts, None, contextful_core::read::respond::FACE_ROW_CEILING, response)
+        self.finish_budget(session, &touched, opts, None, ceiling, response)
     }
 
     /// Preview one committed run file through its table's registered relation. A snapshot
