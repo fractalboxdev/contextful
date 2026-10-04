@@ -275,6 +275,35 @@ fn a_sealed_full_text_sidecar_opens_into_memory_alone() {
     assert_eq!(FulltextSidecar::open(sealed.path(), "passages", &entry, &Sealing::Sealed(&TestCipher { key: 0x11 })).err(), Some(Fallback::Unreadable));
 }
 
+/// A real file cipher seals each full-text sidecar file and opens its postings in memory.
+#[test]
+fn an_aes_gcm_sidecar_has_zero_plaintext_canary_hits() {
+    use contextful_context::encrypt::AesGcmFileCipher;
+    use contextful_context::fulltext::{build, FulltextSidecar};
+    use contextful_context::vector::Sealing;
+    use contextful_core::store::lay_out::SnapshotId;
+    use contextful_core::time::Instant;
+
+    let canary = "passage-canary-5f1e";
+    let (rows, decl) = fulltext_rows(canary);
+    let id = SnapshotId::next(Instant::parse("2030-01-01T00:00:00Z").unwrap(), None);
+    let cipher = AesGcmFileCipher::new([0x37; 32], 3);
+    let store = tempfile::tempdir().unwrap();
+    let entry = build(store.path(), &id, &rows, &decl, &decl.indexes()[0], &Sealing::Sealed(&cipher)).unwrap();
+    assert_eq!(entry.key_version, 3);
+    let files = tree(store.path());
+    assert_eq!(files.len(), 2);
+    let hits: usize = files
+        .iter()
+        .map(|(_, bytes)| bytes.windows(canary.len()).filter(|part| *part == canary.as_bytes()).count())
+        .sum();
+    assert_eq!(hits, 0);
+    let entry = contextful_core::store::index::IndexEntry::from(entry);
+    let opened = FulltextSidecar::open(store.path(), "passages", &entry, &Sealing::Sealed(&cipher)).unwrap();
+    assert_eq!(opened.probe(&["zephyrine".into()], 1).unwrap().candidates[0].id, canary);
+    assert_eq!(tree(store.path()), files);
+}
+
 /// A sealed full-text sidecar file larger than 256 MiB stays unopened, and its arm adds no candidates.
 // spec: read.retrieve.fulltext-sealed-cap@5e433a1f
 #[test]
