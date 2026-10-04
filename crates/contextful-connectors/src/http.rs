@@ -65,6 +65,49 @@ const EXPANSION_REQUESTS: usize = 200;
 const EXPANSION_BYTES: usize = 256 * 1024 * 1024;
 const EXPANSION_TIME: Duration = Duration::from_secs(600);
 
+/// One expansion read's budget, started before its first index request.
+struct ExpansionBudget {
+    started: Instant,
+    bytes: usize,
+    max_bytes: usize,
+    max_time: Duration,
+}
+
+impl ExpansionBudget {
+    fn new(max_bytes: usize, max_time: Duration) -> Self {
+        Self { started: Instant::now(), bytes: 0, max_bytes, max_time }
+    }
+
+    fn preflight_requests(&self, count: usize) -> Result<(), Failure> {
+        if count > EXPANSION_REQUESTS {
+            return Err(Failure::deterministic(FailureTag::Permanent, format!("one expanding read admits at most {EXPANSION_REQUESTS} follow-up requests")));
+        }
+        Ok(())
+    }
+
+    fn check_time(&self) -> Result<(), Failure> {
+        if self.started.elapsed() >= self.max_time {
+            return Err(Failure::new(FailureTag::Permanent, "the expansion exceeded 600 s"));
+        }
+        Ok(())
+    }
+
+    fn available(&self) -> Result<(u64, Duration), Failure> {
+        self.check_time()?;
+        let bytes = self.max_bytes.saturating_sub(self.bytes);
+        if bytes == 0 {
+            return Err(Failure::new(FailureTag::Permanent, "the expansion exceeded 256 MiB"));
+        }
+        Ok((bytes as u64, self.max_time.saturating_sub(self.started.elapsed())))
+    }
+
+    fn charge(&mut self, bytes: usize) -> Result<(), Failure> {
+        self.bytes = self.bytes.checked_add(bytes).filter(|total| *total <= self.max_bytes)
+            .ok_or_else(|| Failure::new(FailureTag::Permanent, "the expansion exceeded 256 MiB"))?;
+        self.check_time()
+    }
+}
+
 #[cfg(test)]
 mod expansion_budget_tests {
     use super::*;
@@ -729,12 +772,16 @@ impl HttpSource {
 
     /// Fetch the page `token` names: its rows and the token of the page after it. A next
     /// URL is joined against the page's own, so the token alone names the page.
-    fn page(&self, base: &Url, token: Option<&str>, request: &PullRequest) -> Result<(Vec<Row>, Option<String>), Failure> {
+    fn page(&self, base: &Url, token: Option<&str>, request: &PullRequest, mut budget: Option<&mut ExpansionBudget>) -> Result<(Vec<Row>, Option<String>), Failure> {
         let current = self.page_url(base, token)?;
         // Hydrated per request: the resolver's cache retires a lease ahead of its expiry,
         // so a long walk re-hydrates rather than sending an expired credential.
         let headers = self.headers(&request.idempotency_key)?;
-        let resp = self.client.send("GET", &current, &headers, None)?;
+        let resp = match budget.as_ref().map(|b| b.available()).transpose()? {
+            Some((bytes, time)) => self.client.send_bounded("GET", &current, &headers, None, bytes, time)?,
+            None => self.client.send("GET", &current, &headers, None)?,
+        };
+        if let Some(b) = budget.as_deref_mut() { b.charge(resp.body.len())?; }
         if !(200..300).contains(&resp.status) {
             let retry_after = resp.header("retry-after").and_then(|v| v.trim().parse().ok());
             return Err(classify(resp.status, retry_after, &scrub(&resp.url)));
@@ -754,6 +801,7 @@ impl HttpSource {
             Pagination::NextUrl { path } => body.as_ref().and_then(|b| b.pointer(path)).and_then(scalar).map(|t| join(&resp.url, &t)).transpose()?,
             Pagination::LinkHeader => resp.header("link").and_then(next_link).map(|t| join(&resp.url, &t)).transpose()?,
         };
+        if let Some(b) = budget { b.check_time()?; }
         Ok((batch, next))
     }
 
@@ -775,6 +823,7 @@ impl HttpSource {
 
     /// Walk every page from `position`, returning every record fetched.
     pub fn walk(&self, request: &PullRequest, cancel: &dyn Cancellation) -> Result<Vec<Row>, Failure> {
+        let mut budget = ExpansionBudget::new(EXPANSION_BYTES, EXPANSION_TIME);
         let base = self.base_url(request)?;
         let mut rows = Vec::new();
         let mut seen: Vec<String> = Vec::new();
@@ -783,11 +832,12 @@ impl HttpSource {
             if cancel.requested() {
                 return Err(Failure::canceled("stopped during the page walk"));
             }
-            let (batch, next) = self.page(&base, token.as_deref(), request)?;
+            let index_budget = self.config.expansion.as_ref().map(|_| &mut budget);
+            let (batch, next) = self.page(&base, token.as_deref(), request, index_budget)?;
             rows.extend(batch);
             let Some(next) = next else {
                 self.validate_clock(&rows, request)?;
-                return self.expand(rows, request, cancel, &base)
+                return self.expand(rows, request, cancel, &base, budget)
             };
             HttpSource::advance(&mut seen, &next, &base)?;
             token = Some(next);
@@ -825,7 +875,7 @@ impl HttpSource {
 
     /// Resolve every pointer before the first follow-up so a bad row or an oversized
     /// index never causes a partial expansion walk.
-    fn expand(&self, rows: Vec<Row>, request: &PullRequest, cancel: &dyn Cancellation, base: &Url) -> Result<Vec<Row>, Failure> {
+    fn expand(&self, rows: Vec<Row>, request: &PullRequest, cancel: &dyn Cancellation, base: &Url, mut budget: ExpansionBudget) -> Result<Vec<Row>, Failure> {
         let Some(expansion) = &self.config.expansion else { return Ok(rows) };
         let mut admitted = Vec::new();
         let field = request.position.as_ref().and_then(|p| p.get("field")).and_then(Value::as_str);
@@ -839,9 +889,7 @@ impl HttpSource {
             }
             admitted.push(row);
         }
-        if admitted.len() > EXPANSION_REQUESTS {
-            return Err(Failure::deterministic(FailureTag::Permanent, format!("one expanding read admits at most {EXPANSION_REQUESTS} follow-up requests")));
-        }
+        budget.preflight_requests(admitted.len())?;
         let mut pointers = Vec::with_capacity(admitted.len());
         for row in &admitted {
             if row.contains_key(&expansion.target_column) {
@@ -871,22 +919,13 @@ impl HttpSource {
             let pointer = base.join(&raw).map_err(|e| Failure::deterministic(FailureTag::SchemaIncompatible, ConnectorError::ConnectorPointerColumnMissing(format!("`{}` names no URL: {e}", scrub_text(&raw))).to_string()))?;
             pointers.push(pointer);
         }
-        let started = Instant::now();
-        let mut bytes = 0usize;
         for (row, pointer) in admitted.iter_mut().zip(pointers) {
             if cancel.requested() {
                 return Err(Failure::canceled("stopped during expansion"));
             }
-            if started.elapsed() >= EXPANSION_TIME {
-                return Err(Failure::new(FailureTag::Permanent, "the expansion exceeded 600 s"));
-            }
-            let remaining_body = EXPANSION_BYTES.saturating_sub(bytes);
-            if remaining_body == 0 {
-                return Err(Failure::new(FailureTag::Permanent, "the expansion exceeded 256 MiB"));
-            }
-            let remaining_time = EXPANSION_TIME.saturating_sub(started.elapsed());
+            let (remaining_body, remaining_time) = budget.available()?;
             let headers = self.headers(&request.idempotency_key)?;
-            let response = self.client.send_bounded("GET", &pointer, &headers, None, remaining_body as u64, remaining_time).map_err(|f| Failure {
+            let response = self.client.send_bounded("GET", &pointer, &headers, None, remaining_body, remaining_time).map_err(|f| Failure {
                 message: ConnectorError::ConnectorExpansionFailed(format!("`{}`: {}", scrub(&pointer), f.message)).to_string(),
                 ..f
             })?;
@@ -894,19 +933,14 @@ impl HttpSource {
                 let failure = classify(response.status, response.header("retry-after").and_then(|v| v.trim().parse().ok()), &scrub(&response.url));
                 return Err(Failure { message: ConnectorError::ConnectorExpansionFailed(failure.message).to_string(), ..failure });
             }
-            bytes = bytes.saturating_add(response.body.len());
-            if bytes > EXPANSION_BYTES {
-                return Err(Failure::new(FailureTag::Permanent, "the expansion exceeded 256 MiB"));
-            }
+            budget.charge(response.body.len())?;
             let document: Value = serde_json::from_slice(&response.body).map_err(|e| Failure::deterministic(
                 FailureTag::SchemaIncompatible,
                 ConnectorError::ConnectorExpansionFailed(format!("`{}` served no JSON document: {e}", scrub(&response.url))).to_string(),
             ))?;
             row.insert(expansion.target_column.clone(), document);
         }
-        if started.elapsed() >= EXPANSION_TIME {
-            return Err(Failure::new(FailureTag::Permanent, "the expansion exceeded 600 s"));
-        }
+        budget.check_time()?;
         Ok(admitted)
     }
 
@@ -930,7 +964,7 @@ impl HttpSource {
             return Err(HttpSource::capped(&base));
         }
         self.requests += 1;
-        let (rows, next) = self.page(&base, token.as_deref(), request)?;
+        let (rows, next) = self.page(&base, token.as_deref(), request, None)?;
         if let Some(n) = &next {
             HttpSource::advance(&mut self.seen, n, &base)?;
         }
@@ -1063,13 +1097,20 @@ impl HttpSource {
     /// The validators are the whole position, and the pull reports no further page
     /// (`connector.source.conditional-position`).
     fn conditional_pull(&self, request: &PullRequest, cancel: &dyn Cancellation) -> Result<Value, Failure> {
+        let mut budget = ExpansionBudget::new(EXPANSION_BYTES, EXPANSION_TIME);
         if cancel.requested() {
             return Err(Failure::canceled("stopped ahead of the conditional request"));
         }
         let url = self.config.table_url(&self.table).map_err(|e| Failure::deterministic(FailureTag::Config, e.to_string()))?;
         let mut headers = self.headers(&request.idempotency_key)?;
         headers.extend(conditional_headers(request.position.as_ref()));
-        let resp = self.client.send("GET", &url, &headers, None)?;
+        let resp = if self.config.expansion.is_some() {
+            let (bytes, time) = budget.available()?;
+            self.client.send_bounded("GET", &url, &headers, None, bytes, time)?
+        } else {
+            self.client.send("GET", &url, &headers, None)?
+        };
+        if self.config.expansion.is_some() { budget.charge(resp.body.len())?; }
         if resp.status == 304 {
             return Ok(serde_json::json!({ "rows": [], "cursor": request.position.clone().unwrap_or_else(|| Value::Object(Map::new())), "more": false, "snapshot_complete": false }));
         }
@@ -1081,7 +1122,7 @@ impl HttpSource {
             Format::Workbook => workbook::rows(&resp.body, self.config.sheet.as_deref(), self.config.skip_rows, &scrub(&resp.url))?,
             format => decode_with_encoding(format, &resp.body, self.config.records.as_deref(), &scrub(&resp.url), self.config.encoding.as_deref())?.0,
         };
-        let rows = self.expand(self.stamp(batch, &resp.url)?, request, cancel, &resp.url)?;
+        let rows = self.expand(self.stamp(batch, &resp.url)?, request, cancel, &resp.url, budget)?;
         Ok(serde_json::json!({ "rows": rows, "cursor": served_validators(&resp), "more": false, "snapshot_complete": true }))
     }
 }
