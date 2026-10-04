@@ -1,0 +1,29 @@
+# The fixed seed runs in the workspace and evaluate stages; this schedule explores a
+# fresh sequence over the same three nodes and four lease generations.
+name: protocol differential
+
+on:
+  schedule:
+    - cron: "17 3 * * 0"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  random-seed:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+      - name: Provision the pinned Lean toolchain and run the fixed gate
+        run: cargo run --locked -q -p contextful-ci -- gate --predecessors --stage formal
+      - name: Compare a random protocol schedule
+        run: |
+          seed=$(od -An -N8 -tu8 /dev/urandom | tr -d ' ')
+          cargo run --locked -q -p contextful-cli --no-default-features --bin contextful -- formal protocol-differential --seed "$seed" --cases 256
+      - if: failure()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: protocol-regressions
+          path: formal/protocol/regressions.jsonl

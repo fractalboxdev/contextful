@@ -27,6 +27,8 @@
 # `contextful-spec state` reads this file and the tags and writes spec/status.md.
 
 [pin]
+"assurance.differential-test.protocol-harness" = { test = "contextful_cli::protocol_differential::fixed_seed_replays_protocol_cases_against_the_store" }
+"assurance.differential-test.protocol-drift" = { test = "contextful_cli::protocol_differential::a_protocol_difference_prints_the_minimal_sequence_and_both_states" }
 "corpus.targets.cap-unrecorded"     = { test = "contextful_spec::targets::a_capped_shape_not_recording_its_exclusions_is_refused" }
 "corpus.targets.function-profile"   = { test = "contextful_spec::targets::a_function_class_shape_hosting_the_full_profile_is_refused" }
 "corpus.targets.incomplete"         = { test = "contextful_spec::targets::a_shape_leaving_a_role_unfilled_is_refused" }
@@ -52,7 +54,7 @@
 # its live performed count, and a live count below its floor raises SpecCoverageRegression.
 
 [floor]
-assurance = 135
+assurance = 137
 authority = 204
 connector = 195
 corpus = 38

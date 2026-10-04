@@ -323,7 +323,7 @@ clause = "assurance.differential-test.protocol-harness"
 metric = "protocol.drift_cases"
 kind   = "test"
 tier   = "gate"
-method = { issue = 76 }
+method = { test = "contextful_cli::protocol_differential::fixed_seed_replays_protocol_cases_against_the_store" }
 target = { op = "==", value = 0 }
 
 [entry.fold-single-publisher]
