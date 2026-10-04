@@ -292,7 +292,7 @@ fn docs_sheets_and_slides_export_as_pdf_and_other_files_download() {
 /// In the default `bytes-and-pages` mode, each PDF page lands one `pages` row under
 /// {{connector.source.document-grain}}, decoded behind {{run.land.parse-boundary}};
 /// bytes land in no column.
-// spec: connector.source.drive-page-grain@547c8825
+// spec: connector.source.drive-page-grain@9029df45
 #[test]
 fn a_doc_a_sheet_and_a_deck_land_as_their_pdf_pages() {
     let fake = Fake::start();

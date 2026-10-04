@@ -12794,12 +12794,12 @@
       "operation": "source",
       "subject": "drive-page-grain",
       "kind": "behavior",
-      "statement": "In `bytes-and-pages` mode, each PDF page lands one `pages` row under {{connector.source.document-grain}}, decoded behind {{run.land.parse-boundary}}; bytes land in no column. In `metadata-only` mode, no page row lands.",
+      "statement": "In `bytes-and-pages` mode, each PDF page lands one `pages` row under {{connector.source.document-grain}}, decoded behind {{run.land.parse-boundary}}; bytes land in no column. In `metadata-only` mode, no page content row lands.",
       "why": "because a page is what retrieval ranks and a citation names, and a row column holding a whole file inflates every scan of the table",
       "file": "spec/40-connector.md",
       "line": 540,
       "scenarios": [
-        "WHEN mode is `metadata-only`, THEN no `pages` row lands."
+        "WHEN mode is `metadata-only`, THEN no page content row lands."
       ]
     },
     {
@@ -12885,7 +12885,8 @@
       "file": "spec/40-connector.md",
       "line": 552,
       "scenarios": [
-        "WHEN a complete new selection excludes a formerly captured file, THEN its `file_id` lands a tombstone."
+        "WHEN a complete new selection excludes a formerly captured file, THEN its `file_id` lands a tombstone.",
+        "WHEN mode changes from `bytes-and-pages` to `metadata-only`, THEN old pages receive tombstones and no page content row remains."
       ]
     },
     {

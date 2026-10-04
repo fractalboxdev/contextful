@@ -537,7 +537,7 @@ The declared behavior of each source compiled into the engine.
 - `drive-named-skip` — A skipped file row names the file and reason; the per-file bound of {{connector.source.drive-file-cap}} applies in both modes.
   *because a skipped row cannot attest to bytes the source did not read*
 - `drive-export` — A Google Doc, Sheet or Slides deck lands as its `files.export` PDF and any other file as its `alt=media` bytes; another Google-native type lands a `skipped` reason and no bytes.
-- `drive-page-grain` — In `bytes-and-pages` mode, each PDF page lands one `pages` row under {{connector.source.document-grain}}, decoded behind {{run.land.parse-boundary}}; bytes land in no column. In `metadata-only` mode, no page row lands.
+- `drive-page-grain` — In `bytes-and-pages` mode, each PDF page lands one `pages` row under {{connector.source.document-grain}}, decoded behind {{run.land.parse-boundary}}; bytes land in no column. In `metadata-only` mode, no page content row lands.
   *because a page is what retrieval ranks and a citation names, and a row column holding a whole file inflates every scan of the table*
 - `drive-bytes` — In `bytes-and-pages` mode, every whole exported or downloaded body lands as {{store.lay-out.landed-blob}}, named by its file row's `sha256`; in `metadata-only` mode, no blob lands.
 - `drive-file-cap` — A file over `max_file_bytes`, 64 MiB by default, lands its file row with a `skipped` reason naming the cap and no pages. No byte past the cap is read, and the read continues.
@@ -570,11 +570,12 @@ The declared behavior of each source compiled into the engine.
 - `connector.source.drive-overlap`: WHEN two selected roots reach one file, THEN one `files` row carries the least root id as `resolved_root`.
 - `connector.source.drive-metadata-only`: WHEN a downloaded version has known bytes, THEN its SHA-256 matches those bytes, which the source discards after capture.
 - `connector.source.drive-bytes`: WHEN mode is `metadata-only`, THEN no landed blob holds the downloaded bytes.
-- `connector.source.drive-page-grain`: WHEN mode is `metadata-only`, THEN no `pages` row lands.
+- `connector.source.drive-page-grain`: WHEN mode is `metadata-only`, THEN no page content row lands.
 - `connector.source.drive-selection-position`: WHEN a configured pipeline changes from `bytes-and-pages` to `metadata-only`, THEN the next read rewalks its roots and rereads retained files.
 - `connector.source.drive-metadata-only`: WHEN the separately retained named version is downloaded, THEN its byte SHA-256 reproduces the `files` row's digest.
 - `connector.source.drive-named-skip`: WHEN a selected file exceeds the byte cap, THEN its skipped row names the file and cap.
 - `connector.source.drive-selection-removals`: WHEN a complete new selection excludes a formerly captured file, THEN its `file_id` lands a tombstone.
+- `connector.source.drive-selection-removals`: WHEN mode changes from `bytes-and-pages` to `metadata-only`, THEN old pages receive tombstones and no page content row remains.
 - `connector.source.drive-root-reassignment`: WHEN a retained file's version changes with identical `modifiedTime` and path, THEN the read captures its new bytes and digest.
 - `connector.source.drive-list-bound`: WHEN listing reaches the request cap with a next-page token but no queued folders, THEN the read refuses and lands no removal tombstone.
 
