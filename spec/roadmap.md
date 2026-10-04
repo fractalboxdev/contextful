@@ -28,7 +28,7 @@ flowchart LR
   H -->|unlocks| I[9 Visibility]
   D -->|unlocks| J[10 Cadence]
   B -->|unlocks| K[11 Derive]
-  E -->|unlocks| L[12 Console]
+  E -->|unlocks| L[12 Operator console]
   I -->|unlocks| M[13 Disclosure]
   A -->|unlocks| N[14 Assurance]
 ```
@@ -158,13 +158,13 @@ Reach: A pipeline reads the words inside a landed document and fills them into t
 
 Acceptance: `contextful_acceptance::m11::m11_derive`
 
-## 12 — The console
+## 12 — The operator console
 
 | Operations | Intent |
 | --- | --- |
-| `surface.visualize`, `surface.package`, `surface.speak`, `surface.ground`, `surface.plan-turn`, `surface.set-vantage`, `surface.browse`, `surface.learn`, `surface.render`, `surface.brief`, `surface.publish-answer` | The visitor-facing read surface and published answers. |
+| `surface.open-console`, `surface.visualize`, `surface.package`, `surface.speak`, `surface.ground`, `surface.plan-turn`, `surface.set-vantage`, `surface.browse`, `surface.learn`, `surface.render`, `surface.brief`, `surface.publish-answer` | Independently gated Query and Admin pages, governed answers, and visualized operator workflows. |
 
-Reach: A visitor asks in their own words and gets an answer citing the rows behind it.
+Reach: An operator asks on Query and receives a sourced answer; Admin visualizes the store's workflows and admits only operators with its page grant.
 
 Depth: operation
 
