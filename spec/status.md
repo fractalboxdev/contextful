@@ -10,12 +10,12 @@ An unpinned clause is `committed`; a pinned one is `performed` when its test res
 | `connector` | 2 | 14 | 321 | 80 | 21 | 16 | 195 | 0 | 195 |
 | `corpus` | 1 | 10 | 77 | 37 | 7 | 0 | 38 | 0 | 38 |
 | `disclosure` | 3 | 16 | 122 | 64 | 13 | 7 | 54 | 0 | 54 |
-| `read` | 2 | 15 | 179 | 29 | 22 | 21 | 163 | 0 | 162 |
-| `run` | 3 | 26 | 373 | 98 | 36 | 37 | 259 | 0 | 257 |
-| `store` | 1 | 17 | 237 | 55 | 13 | 20 | 198 | 0 | 194 |
-| `surface` | 2 | 19 | 86 | 46 | 22 | 5 | 51 | 0 | 50 |
+| `read` | 2 | 15 | 179 | 29 | 22 | 21 | 163 | 0 | 163 |
+| `run` | 3 | 26 | 373 | 98 | 36 | 37 | 261 | 0 | 261 |
+| `store` | 1 | 17 | 237 | 55 | 13 | 20 | 200 | 0 | 200 |
+| `surface` | 2 | 19 | 86 | 46 | 22 | 5 | 51 | 0 | 51 |
 | `topology` | 1 | 6 | 70 | 24 | 5 | 5 | 38 | 0 | 38 |
-| **total** | 19 | 154 | 1959 | 569 | 188 | 133 | 1335 | 0 | |
+| **total** | 19 | 154 | 1959 | 569 | 188 | 133 | 1339 | 0 | |
 
 Decision records: 18.
 
@@ -27,8 +27,8 @@ A milestone reads `closed` when its acceptance test computes `passing` and every
 | --- | --- | --- | --- | --- | --- |
 | 0 — The test-first gate | 2 | 18 | 6 | passing | open |
 | 1 — The authority core | 14 | 236 | 184 | passing | closed |
-| 2 — The store | 9 | 164 | 130 | passing | closed |
-| 3 — The run path | 11 | 207 | 142 | passing | closed |
+| 2 — The store | 9 | 164 | 132 | passing | closed |
+| 3 — The run path | 11 | 207 | 144 | passing | closed |
 | 4 — Ingest | 25 | 468 | 290 | passing | open |
 | 5 — The read face under enforcement | 17 | 252 | 192 | passing | open |
 | 6 — Sync and replicas | 8 | 73 | 68 | passing | closed |
@@ -842,8 +842,10 @@ Unscheduled operations: 10.
 | `run.advance.field-rename` | `crates/contextful-core/tests/integration/run/advance.rs::a_position_measured_on_another_field_is_refused` | performed |
 | `run.advance.frontier` | `crates/contextful-core/tests/integration/run/advance.rs::the_position_moves_forward_or_holds` | performed |
 | `run.advance.inclusive-boundary` | `crates/contextful-engine/tests/integration/runner.rs::every_poll_re_lands_the_boundary_instant` | performed |
+| `run.advance.snapshot-completion` | `crates/contextful-cli/tests/integration/empty_replace.rs::a_complete_empty_snapshot_replaces_but_a_skip_and_failed_pull_do_not` | performed |
 | `run.advance.unorderable-position` | `crates/contextful-core/tests/integration/run/advance.rs::an_unorderable_clock_value_refuses_the_pull` | performed |
 | `run.advance.watermark-shape` | `crates/contextful-core/tests/integration/run/advance.rs::a_watermark_names_its_field` | performed |
+| `run.advance.zero-row-commit` | `crates/contextful-cli/tests/integration/empty_replace.rs::a_complete_empty_snapshot_replaces_but_a_skip_and_failed_pull_do_not` | performed |
 | `run.bind.command-in-manifest` | `crates/contextful-core/tests/integration/run/derive.rs::an_executable_key_in_the_manifest_refuses` | performed |
 | `run.bind.driver-mismatch` | `crates/contextful-core/tests/integration/run/derive.rs::a_driver_the_task_does_not_serve_refuses` | performed |
 | `run.bind.host-task` | `crates/contextful-core/tests/integration/run/host_task.rs::a_registered_task_resolves_by_name_and_a_taken_name_refuses` | performed |
@@ -1108,6 +1110,8 @@ Unscheduled operations: 10.
 | `store.declare.column-types` | `crates/contextful-context/tests/integration/reconcile.rs::a_declared_column_type_types_a_landing_that_declares_none` | performed |
 | `store.declare.declaration-set` | `crates/contextful-cli/tests/integration/sync/mod.rs::a_pipeline_file_keeps_a_replicate_off_table_off_the_pull` | performed |
 | `store.declare.dedup-view` | `crates/contextful-context/tests/integration/declare.rs::a_keyed_table_reads_one_row_per_key_before_and_after_a_fold` | performed |
+| `store.declare.empty-frontier-preserved` | `crates/contextful-cli/tests/integration/empty_replace.rs::a_complete_empty_snapshot_replaces_but_a_skip_and_failed_pull_do_not` | performed |
+| `store.declare.empty-replacement` | `crates/contextful-core/tests/integration/store/declare.rs::a_marked_empty_run_is_a_replacement_frontier` | performed |
 | `store.declare.empty-run` | `crates/contextful-context/tests/integration/declare.rs::a_zero_row_run_commits_no_parts_and_an_empty_table_registers` | performed |
 | `store.declare.fold-coverage` | `crates/contextful-cli/tests/integration/pipeline.rs::a_keyed_table_no_fold_job_covers_warns_and_validates` | performed |
 | `store.declare.fold-job` | `crates/contextful-core/tests/integration/store/declare.rs::a_scheduled_enabled_fold_job_covers_its_target_or_every_table` | performed |
