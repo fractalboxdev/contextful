@@ -61,18 +61,39 @@ fn host_manifest(task: &str) -> String {
 }
 
 fn host_project(manifest: &str) -> tempfile::TempDir {
+    host_project_with_rows(
+        manifest,
+        "{\"doc_id\":\"d1\",\"body\":\"alpha beta\"}\n{\"doc_id\":\"d2\",\"body\":\"gamma\"}\n{\"doc_id\":\"d3\",\"body\":\"   \"}\n",
+    )
+}
+
+fn host_project_with_rows(manifest: &str, documents: &str) -> tempfile::TempDir {
     let dir = tempfile::tempdir().unwrap();
     let store = dir.path().join(".contextful/context/research");
     std::fs::create_dir_all(&store).unwrap();
     std::fs::write(store.join("config.toml"), "[node]\nid = \"ingest-a\"\n").unwrap();
     std::fs::write(dir.path().join("contextful.toml"), format!("authoring_posture = \"per_request\"\n{}", manifest)).unwrap();
-    std::fs::write(
-        dir.path().join("documents.jsonl"),
-        "{\"doc_id\":\"d1\",\"body\":\"alpha beta\"}\n{\"doc_id\":\"d2\",\"body\":\"gamma\"}\n{\"doc_id\":\"d3\",\"body\":\"   \"}\n",
-    )
-    .unwrap();
+    std::fs::write(dir.path().join("documents.jsonl"), documents).unwrap();
     ok(&cf(dir.path(), &["context", "land", "documents", "--project", "research", "--rows", "documents.jsonl", "--run-id", "load-1", "--site-id", "site", "--now", "2030-01-01T00:00:00Z"]));
     dir
+}
+
+#[test]
+fn an_empty_host_content_marker_carries_the_declared_parent_retention_clock() {
+    let host = host_binary();
+    let manifest = host_manifest("word-split").replace(
+        "retain_versions = true",
+        "columns = { base_arrived_at = \"timestamp\" }, retain_rows = { column = \"base_arrived_at\", age = \"30d\" }",
+    );
+    let dir = host_project_with_rows(
+        &manifest,
+        "{\"doc_id\":\"d1\",\"body\":\"   \",\"base_arrived_at\":\"2100-01-01T00:00:00Z\"}\n",
+    );
+    ok(&fire(&host, dir.path(), "split-1", "2030-01-01T01:00:00Z", &[]));
+    assert_eq!(
+        select(dir.path(), "SELECT unit_ref, kind, base_arrived_at FROM split_words"),
+        [["d1", "marker", "2100-01-01T00:00:00Z"]]
+    );
 }
 
 /// The rows `sql` answers over the project, each as its cells' text.
