@@ -103,6 +103,11 @@ impl DeriveConfig {
                 )));
             }
         };
+        if task == Task::Transcribe && cfg.contains_key("grant") {
+            return Err(RunError::DeriveUnmeteredGrant(format!(
+                "pipeline `{pipeline_id}` declares `grant` for transcribe, which does not use the shared-quota client"
+            )));
+        }
         let source_table = required("source_table")?;
         let parent_id_column = required("parent_id_column")?;
         // A host task reads the parent columns it declares and binds no engine (`run.bind.driver-mismatch`).

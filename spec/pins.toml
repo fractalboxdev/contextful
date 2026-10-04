@@ -27,6 +27,7 @@
 # `contextful-spec state` reads this file and the tags and writes spec/status.md.
 
 [pin]
+"run.select.unmetered-grant" = { test = "contextful_core::run::derive::a_transcribe_pipeline_declaring_a_shared_quota_grant_refuses" }
 "run.select.incomplete-unit" = { test = "contextful_cli::derive::a_host_task_counts_an_incomplete_parent_on_its_run_records" }
 "run.fetch.hop-timeout" = { test = "contextful_connectors::derive::a_link_preview_times_out_one_slow_hop_but_allows_two_short_hops" }
 "run.emit.output-modality" = { test = "contextful_connectors::derive::a_transcript_passage_carries_text_modality" }
@@ -62,7 +63,7 @@ connector = 195
 corpus = 38
 disclosure = 54
 read = 163
-run = 274
+run = 275
 store = 198
 surface = 51
 topology = 38

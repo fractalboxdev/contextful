@@ -126,6 +126,9 @@ pub enum RunError {
     /// A parent row without a key or media value. (`run.select.incomplete-unit`)
     #[error("DeriveUnitIncomplete: {0}")]
     DeriveUnitIncomplete(String),
+    /// A transcribe pipeline declaring a shared-quota grant. (`run.select.unmetered-grant`)
+    #[error("DeriveUnmeteredGrant: {0}")]
+    DeriveUnmeteredGrant(String),
     /// A unit status outside the four. (`run.emit.unit-status`)
     #[error("DeriveUnitStatusUnknown: {0}")]
     DeriveUnitStatusUnknown(String),
