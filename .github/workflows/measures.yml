@@ -53,8 +53,8 @@ jobs:
             --commit "$GITHUB_SHA" --run-id "$GITHUB_RUN_ID" \
             --run-attempt "$GITHUB_RUN_ATTEMPT" --exit-code "$MEASURE_EXIT" \
             --out measure-report.json
-          git notes --ref=measures append -F measure-report.json "$GITHUB_SHA"
-          git push origin refs/notes/measures
+          cargo run --locked -q -p contextful-ci -- measure-publish \
+            --commit "$GITHUB_SHA" --report measure-report.json
       - name: Hold the measured verdict
         if: steps.run.outputs.exit_code != '0'
         env:

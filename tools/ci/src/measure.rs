@@ -319,17 +319,14 @@ fn earlier_reports(root: &Path, commit: &str) -> Result<Vec<RunReport>> {
     if !exists.success() {
         bail!("reading refs/notes/measures failed: {exists}");
     }
-    let noted: BTreeSet<String> = git_text(root, &["notes", "--ref=measures", "list"])?
-        .lines()
-        .filter_map(|line| line.split_whitespace().nth(1))
-        .map(str::to_string)
-        .collect();
+    let history = git_text(root, &["log", "--first-parent", "--notes=measures", "--format=%H%x00%N%x00", commit])?;
     let mut reports = Vec::new();
-    for ancestor in git_text(root, &["rev-list", "--first-parent", commit])?.lines().skip(1) {
-        if !noted.contains(ancestor) {
+    let mut fields = history.split('\0');
+    while let (Some(ancestor), Some(note)) = (fields.next(), fields.next()) {
+        let ancestor = ancestor.trim();
+        if ancestor == commit || note.trim().is_empty() {
             continue;
         }
-        let note = git_text(root, &["notes", "--ref=measures", "show", ancestor])?;
         for line in note.lines().filter(|line| !line.trim().is_empty()).rev() {
             reports.push(serde_json::from_str(line).with_context(|| format!("parsing measure note on {ancestor}"))?);
         }
@@ -393,6 +390,40 @@ pub fn report(root: &Path, commit: &str, run_id: u64, run_attempt: u64, exit_cod
     }
     std::fs::write(&path, format!("{}\n", serde_json::to_string(&report)?)).with_context(|| path.display().to_string())?;
     Ok(())
+}
+
+/// Append one report to the remote notes ref. Each attempt starts from the remote ref,
+/// so a competing writer's accepted note remains in the next push.
+pub fn publish(root: &Path, commit: &str, report: &Path, remote: &str) -> Result<()> {
+    let body = std::fs::read_to_string(root.join(report)).with_context(|| report.display().to_string())?;
+    let parsed: RunReport = serde_json::from_str(body.trim()).context("measure report is one JSON object")?;
+    if parsed.commit != commit {
+        bail!("measure report names commit {}, not {commit}", parsed.commit);
+    }
+    for attempt in 1..=3 {
+        let listed = git_text(root, &["ls-remote", "--refs", remote, "refs/notes/measures"])?;
+        if listed.trim().is_empty() {
+            let deletion = Command::new("git").args(["update-ref", "-d", "refs/notes/measures"]).current_dir(root).output()?;
+            if !deletion.status.success() && deletion.status.code() != Some(1) {
+                bail!("clearing local measures notes: {}", String::from_utf8_lossy(&deletion.stderr).trim());
+            }
+        } else {
+            git_text(root, &["fetch", remote, "+refs/notes/measures:refs/notes/measures"])?;
+        }
+        let existing = Command::new("git").args(["notes", "--ref=measures", "show", commit]).current_dir(root).output()?;
+        if existing.status.success() && String::from_utf8_lossy(&existing.stdout).lines().any(|line| line == body.trim()) {
+            return Ok(());
+        }
+        git_text(root, &["notes", "--ref=measures", "append", "-F", report.to_str().context("report path is UTF-8")?, commit])?;
+        let push = Command::new("git").args(["push", remote, "refs/notes/measures"]).current_dir(root).output()?;
+        if push.status.success() {
+            return Ok(());
+        }
+        if attempt == 3 {
+            bail!("pushing refs/notes/measures after {attempt} attempts: {}", String::from_utf8_lossy(&push.stderr).trim());
+        }
+    }
+    unreachable!()
 }
 
 /// The native case set, scored in the deterministic tier against its floors and baseline.

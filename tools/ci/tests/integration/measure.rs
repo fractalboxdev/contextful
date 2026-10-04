@@ -201,6 +201,106 @@ fn a_trend_report_uses_the_latest_successful_matching_history_without_failing_th
     assert_eq!(report["annotations"].as_array().unwrap().len(), 0);
 }
 
+#[test]
+fn a_report_reads_noted_history_with_bounded_git_processes() {
+    let r = Repo::init();
+    for n in 1..=4 {
+        r.write("README", &format!("history {n}\n"));
+        let commit = r.commit(&format!("history {n}"));
+        r.git(&["notes", "--ref=measures", "add", "-m", &format!("{{\"commit\":\"{commit}\",\"run_id\":{n},\"run_attempt\":1,\"exit_code\":0,\"records\":[]}}"), &commit]);
+    }
+    r.write("README", "current\n");
+    let current = r.commit("current");
+    let bin = tempfile::tempdir().unwrap();
+    let git = bin.path().join("git");
+    std::fs::write(&git, "#!/bin/sh\nprintf '%s\\n' \"$*\" >> \"$GIT_CALLS\"\nexec \"$REAL_GIT\" \"$@\"\n").unwrap();
+    std::fs::set_permissions(&git, std::os::unix::fs::PermissionsExt::from_mode(0o755)).unwrap();
+    let real_git = std::env::split_paths(&std::env::var_os("PATH").unwrap())
+        .map(|dir| dir.join("git"))
+        .find(|path| path.is_file())
+        .unwrap();
+    let calls = bin.path().join("calls");
+    let path = format!("{}:{}", bin.path().display(), std::env::var("PATH").unwrap());
+    let out = Command::new(env!("CARGO_BIN_EXE_contextful-ci"))
+        .args(["measure-report", "--commit", &current, "--run-id", "5", "--run-attempt", "1", "--exit-code", "0", "--out", "target/measure-report.json"])
+        .current_dir(&r.root)
+        .env("PATH", path)
+        .env("REAL_GIT", real_git)
+        .env("GIT_CALLS", &calls)
+        .output()
+        .unwrap();
+    assert!(out.status.success(), "{}", stderr(&out));
+    let count = std::fs::read_to_string(calls).unwrap().lines().count();
+    assert!(count <= 4, "{count} Git processes for four noted ancestors");
+}
+
+#[test]
+fn publishing_a_report_keeps_notes_added_by_another_writer() {
+    let r = Repo::init();
+    let commit = r.head();
+    let remote = tempfile::tempdir().unwrap();
+    r.git(&["init", "--bare", remote.path().to_str().unwrap()]);
+    r.git(&["remote", "add", "origin", remote.path().to_str().unwrap()]);
+    r.git(&["push", "origin", "HEAD:refs/heads/main"]);
+    r.git(&["notes", "--ref=measures", "add", "-m", "original report", &commit]);
+    r.git(&["push", "origin", "refs/notes/measures"]);
+    let external = Command::new("git")
+        .args(["--git-dir", remote.path().to_str().unwrap(), "-c", "user.name=t", "-c", "user.email=t@example.com", "notes", "--ref=measures", "append", "-m", "external report", &commit])
+        .output()
+        .unwrap();
+    assert!(external.status.success(), "{}", String::from_utf8_lossy(&external.stderr));
+    let report = format!("{{\"commit\":\"{commit}\",\"run_id\":3,\"run_attempt\":1,\"exit_code\":0,\"records\":[]}}\n");
+    r.write("target/measure-report.json", &report);
+    let out = r.run_ci(&["measure-publish", "--commit", &commit, "--report", "target/measure-report.json", "--remote", "origin"]);
+    assert!(out.status.success(), "{}", stderr(&out));
+    let published = Command::new("git")
+        .args(["--git-dir", remote.path().to_str().unwrap(), "notes", "--ref=measures", "show", &commit])
+        .output()
+        .unwrap();
+    assert!(published.status.success(), "{}", String::from_utf8_lossy(&published.stderr));
+    let note = String::from_utf8_lossy(&published.stdout);
+    assert!(note.contains("original report") && note.contains("external report") && note.contains(&report), "{note}");
+}
+
+#[test]
+fn publishing_a_report_retries_a_competing_push() {
+    let r = Repo::init();
+    let commit = r.head();
+    let remote = tempfile::tempdir().unwrap();
+    r.git(&["init", "--bare", remote.path().to_str().unwrap()]);
+    r.git(&["remote", "add", "origin", remote.path().to_str().unwrap()]);
+    r.git(&["push", "origin", "HEAD:refs/heads/main"]);
+    let report = format!("{{\"commit\":\"{commit}\",\"run_id\":4,\"run_attempt\":1,\"exit_code\":0,\"records\":[]}}\n");
+    r.write("target/measure-report.json", &report);
+    let bin = tempfile::tempdir().unwrap();
+    let git = bin.path().join("git");
+    std::fs::write(&git, "#!/bin/sh\nif [ \"$1\" = push ] && [ ! -e \"$RACE_MARKER\" ]; then\n  : > \"$RACE_MARKER\"\n  \"$REAL_GIT\" --git-dir=\"$RACE_REMOTE\" -c user.name=t -c user.email=t@example.com notes --ref=measures add -m 'racer report' \"$RACE_COMMIT\" || exit $?\nfi\nexec \"$REAL_GIT\" \"$@\"\n").unwrap();
+    std::fs::set_permissions(&git, std::os::unix::fs::PermissionsExt::from_mode(0o755)).unwrap();
+    let real_git = std::env::split_paths(&std::env::var_os("PATH").unwrap())
+        .map(|dir| dir.join("git"))
+        .find(|path| path.is_file())
+        .unwrap();
+    let path = format!("{}:{}", bin.path().display(), std::env::var("PATH").unwrap());
+    let out = Command::new(env!("CARGO_BIN_EXE_contextful-ci"))
+        .args(["measure-publish", "--commit", &commit, "--report", "target/measure-report.json", "--remote", "origin"])
+        .current_dir(&r.root)
+        .env("PATH", path)
+        .env("REAL_GIT", real_git)
+        .env("RACE_REMOTE", remote.path())
+        .env("RACE_COMMIT", &commit)
+        .env("RACE_MARKER", bin.path().join("raced"))
+        .output()
+        .unwrap();
+    assert!(out.status.success(), "{}", stderr(&out));
+    let published = Command::new("git")
+        .args(["--git-dir", remote.path().to_str().unwrap(), "notes", "--ref=measures", "show", &commit])
+        .output()
+        .unwrap();
+    assert!(published.status.success(), "{}", String::from_utf8_lossy(&published.stderr));
+    let note = String::from_utf8_lossy(&published.stdout);
+    assert!(note.contains("racer report") && note.contains(&report), "{note}");
+}
+
 // spec: assurance.measure.tier@0feb15e4
 #[test]
 fn a_failed_or_reseeded_trend_method_does_not_fail_the_measure_run() {
