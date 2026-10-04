@@ -286,7 +286,7 @@ fn a_selected_root_page_token_at_the_listing_cap_refuses_by_name() {
 /// A malformed listing cannot prove that previously captured files left the selection.
 #[test]
 fn malformed_selected_root_listings_refuse_before_removals() {
-    for fixture in ["malformed-files.json", "malformed-token.json"] {
+    for fixture in ["malformed-files.json", "malformed-token.json", "malformed-child.json"] {
         let fake = Fake::start();
         fake.overlay(fixture);
         let d = drive(fake.config(json!({})));
