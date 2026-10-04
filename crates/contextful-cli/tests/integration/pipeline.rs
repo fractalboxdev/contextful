@@ -1464,18 +1464,18 @@ fn a_relational_pipeline_shreds_lists_into_indexed_child_rows() {
     ok(&fire(dir.path(), "otel", "r1", "2030-01-01T00:00:00Z"));
     let parent: serde_json::Value = serde_json::from_str(&ok(&cf(dir.path(), &[
         "query", "--json", "--project", "research",
-        "SELECT id, resource_service, resource_pod_name, _row_id FROM otel_spans ORDER BY id",
+        "SELECT id, resource_service, resource_pod_name, row_id FROM otel_spans ORDER BY id",
     ]))).unwrap();
     assert_eq!(&parent["rows"][0].as_array().unwrap()[..3], serde_json::json!(["s1", "api", "p-1"]).as_array().unwrap());
     assert_eq!(&parent["rows"][1].as_array().unwrap()[..3], serde_json::json!(["s2", "db", null]).as_array().unwrap());
     let parent_id = parent["rows"][0][3].as_str().unwrap();
     let child: serde_json::Value = serde_json::from_str(&ok(&cf(dir.path(), &[
         "query", "--json", "--project", "research",
-        "SELECT _parent_id, _list_index, name, attrs_k FROM otel_spans_events ORDER BY _list_index",
+        "SELECT parent_id, list_index, name, attrs_k, typeof(list_index) FROM otel_spans_events ORDER BY list_index",
     ]))).unwrap();
     assert_eq!(child["rows"].as_array().unwrap().len(), 2);
-    assert_eq!(child["rows"][0], serde_json::json!([parent_id, 0, "start", "v"]));
-    assert_eq!(child["rows"][1], serde_json::json!([parent_id, 1, "end", null]));
+    assert_eq!(child["rows"][0], serde_json::json!([parent_id, "0", "start", "v", "BIGINT"]));
+    assert_eq!(child["rows"][1], serde_json::json!([parent_id, "1", "end", null, "BIGINT"]));
 }
 
 /// Recursion stops at the declared `depth`, default 5 levels, landing a deeper subtree as one `Json` value.

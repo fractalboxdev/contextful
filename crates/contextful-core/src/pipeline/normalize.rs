@@ -2,9 +2,11 @@
 //! a batch of deferred-typing JSON for the store sink.
 
 use crate::run::ports::{Row, Types};
+use crate::run::journal::sha256_hex;
 use crate::run::RunError;
 use crate::store::reconcile::{supertype, ColumnType, StructField};
 use serde_json::Value;
+use std::collections::BTreeMap;
 
 /// Levels of nesting `native` keeps before a deeper subtree lands as one `Json` value
 /// (`run.normalize.nesting-depth`).
@@ -89,6 +91,61 @@ impl Normalize {
             Mode::Native => native_types(rows, self.depth),
             Mode::Relational => Types::new(),
         }
+    }
+}
+
+/// A relational batch keyed by destination table. Object fields use their path as a
+/// column name; each list becomes an indexed child table with a parent reference.
+pub fn relational_tables(rows: Vec<Row>, table: &str, load_id: &str, depth: u32) -> BTreeMap<String, Vec<Row>> {
+    let mut tables = BTreeMap::new();
+    for row in rows {
+        let row_id = sha256_hex(&serde_json::to_vec(&row).expect("a JSON row serializes"));
+        let mut flat = Row::new();
+        flat.insert("row_id".into(), Value::String(row_id.clone()));
+        flat.insert("load_id".into(), Value::String(load_id.into()));
+        for (name, value) in row {
+            project(&mut tables, &mut flat, table, &name, value, &row_id, &row_id, 1, depth);
+        }
+        tables.entry(table.into()).or_insert_with(Vec::new).push(flat);
+    }
+    tables
+}
+
+#[allow(clippy::too_many_arguments)]
+fn project(tables: &mut BTreeMap<String, Vec<Row>>, row: &mut Row, table: &str, path: &str, value: Value, parent_id: &str, root_id: &str, level: u32, depth: u32) {
+    if level > depth {
+        row.insert(path.into(), Value::String(value.to_string()));
+        return;
+    }
+    match value {
+        Value::Object(fields) => {
+            for (name, value) in fields {
+                project(tables, row, table, &format!("{path}_{name}"), value, parent_id, root_id, level + 1, depth);
+            }
+        }
+        Value::Array(items) => {
+            let child_table = format!("{table}_{path}");
+            for (index, value) in items.into_iter().enumerate() {
+                let child_id = sha256_hex(&serde_json::to_vec(&value).expect("a JSON value serializes"));
+                let mut child = Row::new();
+                child.insert("row_id".into(), Value::String(child_id.clone()));
+                child.insert("parent_id".into(), Value::String(parent_id.into()));
+                child.insert("list_index".into(), Value::from(index));
+                if parent_id != root_id {
+                    child.insert("root_id".into(), Value::String(root_id.into()));
+                }
+                match value {
+                    Value::Object(fields) => {
+                        for (name, value) in fields {
+                            project(tables, &mut child, &child_table, &name, value, &child_id, root_id, level + 1, depth);
+                        }
+                    }
+                    other => project(tables, &mut child, &child_table, "value", other, &child_id, root_id, level + 1, depth),
+                }
+                tables.entry(child_table.clone()).or_insert_with(Vec::new).push(child);
+            }
+        }
+        scalar => { row.insert(path.into(), scalar); }
     }
 }
 

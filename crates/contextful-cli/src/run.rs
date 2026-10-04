@@ -21,7 +21,7 @@ use contextful_core::run::plan::Plan;
 use contextful_core::run::ports::{AwakeableStore, Commit, Destination, Landed, Marker, Part, Stage};
 use contextful_core::run::record::{describe_ceiling, export_ceiling, parse_bound, select_history, RunStatus, Window};
 use contextful_core::run::{Failure, FailureTag};
-use contextful_core::pipeline::normalize::Normalize;
+use contextful_core::pipeline::normalize::{relational_tables, Mode, Normalize};
 use contextful_core::store::declare::TableDecl;
 use contextful_core::store::reconcile::ColumnType;
 use contextful_core::store::reserve::Injection;
@@ -35,6 +35,7 @@ use contextful_engine::{Engine, Journal, RunSpec};
 use contextful_sqlite::MachineCatalog;
 use contextful_engine::stores::FileAwakeableStore;
 use std::cell::RefCell;
+use std::collections::BTreeMap;
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
 
@@ -220,6 +221,7 @@ pub(crate) struct StoreDestination {
     pub(crate) author: Option<Author>,
     /// The pipeline's normalize declaration; `None` lands every object and array as `Json`.
     pub(crate) normalize: Option<Normalize>,
+    pub(crate) relational_parts: BTreeMap<String, Vec<Part>>,
 }
 
 fn store_failure(e: ContextError) -> Failure {
@@ -252,6 +254,21 @@ impl StoreDestination {
 
 impl Destination for StoreDestination {
     fn stage_batch(&mut self, stage: Stage) -> Result<Part, Failure> {
+        let mut stage = stage;
+        if let Some(normalize) = self.normalize.filter(|n| n.mode == Mode::Relational) {
+            let tables = relational_tables(stage.rows, &stage.table, &stage.run_id, normalize.depth);
+            stage.rows = tables.get(&stage.table).cloned().unwrap_or_default();
+            for (table, rows) in tables {
+                if table == stage.table || rows.is_empty() { continue; }
+                let child_decl = self.decl(&table);
+                let injection = self.injection(&stage.run_id, &stage.site_id);
+                let parts = self.relational_parts.entry(table).or_default();
+                let offset = parts.iter().map(|p| p.rows).sum();
+                let batch = Batch { rows, types: [("list_index".to_string(), ColumnType::Int64)].into() };
+                let part = stage_part(&self.store, &child_decl, &batch, &self.node, &injection, stage.ordinal, offset).map_err(store_failure)?;
+                parts.push(Part { name: part.name, rows: part.rows, bytes: part.bytes });
+            }
+        }
         let decl = self.decl(&stage.table);
         let injection = self.injection(&stage.run_id, &stage.site_id);
         // The pulls' declared types type the batch (`run.land.typed-pull`).
@@ -274,6 +291,10 @@ impl Destination for StoreDestination {
     }
 
     fn discard(&mut self, table: &str, run_id: &str) -> Result<(), Failure> {
+        for child in self.relational_parts.keys() {
+            discard_staged(&self.store, child, &self.node, run_id).map_err(store_failure)?;
+        }
+        self.relational_parts.clear();
         discard_staged(&self.store, table, &self.node, run_id).map_err(store_failure)
     }
 
@@ -306,6 +327,12 @@ impl Destination for StoreDestination {
         };
         let names: Vec<String> = commit.parts.iter().map(|p| p.name.clone()).collect();
         let manifest = commit_parts(&self.store, &decl, &names, &ctx, &position, &precommit, &commit_point).map_err(|e| lapsed.take().unwrap_or_else(|| store_failure(e)))?;
+        for (table, parts) in std::mem::take(&mut self.relational_parts) {
+            let child_decl = self.decl(&table);
+            let names: Vec<String> = parts.into_iter().map(|p| p.name).collect();
+            let child_position = Position { pipeline_id: Some(commit.pipeline_id.clone()), cursor: None, fence: None, logged: false };
+            commit_parts(&self.store, &child_decl, &names, &ctx, &child_position, &|| Ok(()), &|_| Ok(())).map_err(store_failure)?;
+        }
         // The committed parts carry `_commit_seq`, so their bytes are measured after the commit.
         let dir = self.store.table_dir(&commit.table).map_err(store_failure)?.join(contextful_core::store::lay_out::RUNS_DIR).join(&commit.run_id).join(&manifest.node_id);
         let mut bytes = 0;
@@ -384,7 +411,7 @@ pub fn run(cmd: RunCmd) -> Result<()> {
             let connector = plan.connector_pin(&artifact_hash(&plan.spec.connector.command, &cwd));
             let spec = RunSpec { connector, plan: plan.clone(), run_id, site_id, pid: std::process::id(), boot_id: boot_id(), trace_id: None };
             let mut source = CommandSource { argv: plan.spec.connector.command.clone(), cwd };
-            let mut dest = StoreDestination { store, decls, node, author, normalize: None };
+            let mut dest = StoreDestination { store, decls, node, author, normalize: None, relational_parts: BTreeMap::new() };
             let row = w.engine.run(&spec, &mut source, &mut dest)?;
             if row.status == RunStatus::Success {
                 println!("{}: success · {} rows in {} batches", row.run_id, row.rows, row.batches);
