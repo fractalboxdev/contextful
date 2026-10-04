@@ -41,6 +41,27 @@ fn a_bound_key_source_refuses_rather_than_write_cleartext() {
     assert!(err.store().is_none() && err.to_string().contains("no at-rest cipher"), "{err}");
 }
 
+/// A sidecar file carries a fresh wrapped data key and decrypts only under its project key.
+#[test]
+fn an_aes_gcm_file_round_trips_without_plaintext_or_key_reuse() {
+    use contextful_context::encrypt::AesGcmFileCipher;
+    use contextful_core::store::encrypt::FileCipher;
+
+    let cipher = AesGcmFileCipher::new([0x37; 32], 3);
+    let canary = b"ledger-canary-5f1e unique plaintext marker";
+    let first = cipher.seal(canary).unwrap();
+    let second = cipher.seal(canary).unwrap();
+    assert_ne!(first, second);
+    assert!(!first.windows(canary.len()).any(|part| part == canary));
+    assert_eq!(cipher.key_version(), 3);
+    assert_eq!(cipher.open(&first).unwrap(), canary);
+    assert_eq!(cipher.open(&second).unwrap(), canary);
+    assert!(AesGcmFileCipher::new([0x42; 32], 3).open(&first).is_err());
+    let mut tampered = first;
+    *tampered.last_mut().unwrap() ^= 1;
+    assert!(cipher.open(&tampered).is_err());
+}
+
 /// Files under `dir` other than the store's `config.toml`, at any depth.
 fn written(dir: &std::path::Path) -> Vec<std::path::PathBuf> {
     let mut out = Vec::new();
