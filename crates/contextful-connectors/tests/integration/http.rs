@@ -101,6 +101,17 @@ fn expansion_template_binds_row_values_under_the_source_host() {
     assert_eq!(vendor.received("/detail/a%2Fb").len(), 2);
 }
 
+#[test]
+fn expansion_template_accepts_boolean_scalar_columns() {
+    let vendor = Server::start(|r| match r.path() {
+        "/index" => Response::json(200, "[{\"published\":true}]"),
+        _ => Response::json(200, "{\"ok\":true}"),
+    });
+    let s = source(json!({"endpoint": vendor.url("/index"), "expansion": {"url_template": "/detail/{published}", "target_column":"detail"}}), vec![]);
+    assert_eq!(s.walk(&request(None), &Never).unwrap()[0]["detail"]["ok"], true);
+    assert_eq!(vendor.received("/detail/true").len(), 1);
+}
+
 /// A row below the watermark costs no follow-up request.
 #[test]
 fn expansion_runs_after_the_watermark_filter() {
