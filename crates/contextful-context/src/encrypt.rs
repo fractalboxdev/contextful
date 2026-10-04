@@ -5,9 +5,62 @@ use contextful_core::store::StoreError;
 use contextful_core::store::encrypt::{FileCipher, SealError};
 use ring::aead::{self, Aad, LessSafeKey, Nonce, UnboundKey};
 use sha2::{Digest, Sha256};
+use std::path::Path;
+use crate::error::IoPath;
 
 const MAGIC: &[u8; 8] = b"CFSEAL01";
 pub(crate) const PARQUET_KEY_NAME: &str = "contextful_project";
+
+/// Files whose canonical plaintext is JSON or a UTF-8 counter. A bound store keeps
+/// those bytes inside the versioned file envelope and authenticates them on read.
+pub enum MetadataFiles<'a> {
+    Plaintext,
+    Sealed(&'a dyn FileCipher),
+}
+
+impl<'a> MetadataFiles<'a> {
+    pub fn plaintext() -> Self { Self::Plaintext }
+    pub fn sealed(cipher: &'a dyn FileCipher) -> Self { Self::Sealed(cipher) }
+
+    pub fn seal_bytes(&self, path: &Path, bytes: &[u8]) -> ContextResult<Vec<u8>> {
+        match self {
+            Self::Plaintext => Ok(bytes.to_vec()),
+            Self::Sealed(cipher) => cipher.seal(bytes).map_err(|e| ContextError::Invalid(format!("{}: sealing metadata: {e}", path.display()))),
+        }
+    }
+
+    pub fn open_bytes(&self, path: &Path, bytes: &[u8]) -> ContextResult<Vec<u8>> {
+        match self {
+            Self::Plaintext => Ok(bytes.to_vec()),
+            Self::Sealed(cipher) => cipher.open(bytes).map_err(|e| ContextError::Invalid(format!("{}: opening metadata: {e}", path.display()))),
+        }
+    }
+
+    pub fn read(&self, path: &Path) -> ContextResult<Vec<u8>> {
+        let bytes = std::fs::read(path).at(path)?;
+        self.open_bytes(path, &bytes)
+    }
+
+    pub fn read_optional(&self, path: &Path) -> ContextResult<Option<Vec<u8>>> {
+        match std::fs::read(path) {
+            Ok(bytes) => self.open_bytes(path, &bytes).map(Some),
+            Err(e) if e.kind() == std::io::ErrorKind::NotFound => Ok(None),
+            Err(e) => Err(ContextError::Io { path: path.to_path_buf(), source: e }),
+        }
+    }
+
+    pub fn replace(&self, path: &Path, bytes: &[u8]) -> ContextResult<()> {
+        crate::store::replace_file(path, &self.seal_bytes(path, bytes)?)
+    }
+
+    pub fn create_new(&self, path: &Path, bytes: &[u8]) -> ContextResult<bool> {
+        crate::store::create_new_file(path, &self.seal_bytes(path, bytes)?)
+    }
+
+    pub fn write(&self, path: &Path, bytes: &[u8]) -> ContextResult<()> {
+        std::fs::write(path, self.seal_bytes(path, bytes)?).at(path)
+    }
+}
 const NONCE_LEN: usize = 12;
 const KEY_LEN: usize = 32;
 const TAG_LEN: usize = 16;

@@ -3,7 +3,7 @@
 
 use crate::error::{ContextError, IoPath, Result};
 use crate::parquet_io;
-use crate::store::{replace_file, FileLock, Store};
+use crate::store::{FileLock, Store};
 use arrow_array::{Array, ArrayRef, BooleanArray, RecordBatch, StringArray, UInt32Array};
 use arrow_ord::sort::{lexsort_to_indices, SortColumn, SortOptions};
 use arrow_row::{RowConverter, SortField};
@@ -191,7 +191,7 @@ pub fn prepare(store: &Store, decl: &TableDecl, now: Instant) -> Result<Prepared
         publish: None,
     };
     let bytes = serde_json::to_vec_pretty(&manifest).expect("a manifest serializes");
-    fs::write(staging.join(MANIFEST_FILE), bytes).at(staging.join(MANIFEST_FILE))?;
+    store.metadata().write(&staging.join(MANIFEST_FILE), &bytes)?;
     Ok(Prepared::Staged(Box::new(Staged {
         table: table.to_string(),
         manifest,
@@ -289,7 +289,7 @@ pub fn commit(store: &Store, mut staged: Staged) -> Result<Committed> {
     if store.pointer_etag(table)? != staged.etag {
         return Ok(Committed::Lost);
     }
-    replace_file(&table_dir.join(POINTER_FILE), &bytes)?;
+    store.metadata().replace(&table_dir.join(POINTER_FILE), &bytes)?;
     Ok(Committed::Published(Box::new(staged.manifest)))
 }
 

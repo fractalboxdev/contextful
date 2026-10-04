@@ -2,7 +2,7 @@
 //! schemas, committed runs, and the pointer chain.
 
 use crate::error::{ContextError, IoPath, Result};
-use crate::encrypt::{bind_key_source, ProjectEncryption};
+use crate::encrypt::{bind_key_source, MetadataFiles, ProjectEncryption};
 use crate::vector::Sealing;
 use contextful_core::store::declare::TableDecl;
 use contextful_core::store::lay_out::{
@@ -36,7 +36,7 @@ impl Store {
     /// Open the store of `project` under `project_dir`, resolving its configuration at
     /// startup. A declared key source whose binding is absent refuses with no
     /// cleartext fallback (`store.encrypt.key-unbound`); a bound one refuses too, since
-    /// this build links no at-rest cipher and writes no cleartext in its place.
+    /// metadata consumers outside this package still require key-aware reads.
     pub fn open(project_dir: &Path, project: &str) -> Result<Store> {
         crate::project::check_name(project)?;
         let root = project_dir.join(store_root(project));
@@ -63,13 +63,29 @@ impl Store {
         &self.root
     }
 
-    /// How this store's sidecar files sit on disk. A store declaring `[encryption]` refuses
-    /// at [`Store::open`], so every store this build opens holds plaintext sidecars.
+    /// How this store's sidecar files sit on disk.
     pub fn sealing(&self) -> Sealing<'_> {
         match &self.encryption {
             Some(keys) => Sealing::Sealed(keys.files()),
             None => Sealing::Plaintext,
         }
+    }
+
+    pub(crate) fn metadata(&self) -> MetadataFiles<'_> {
+        match &self.encryption {
+            Some(keys) => MetadataFiles::sealed(keys.files()),
+            None => MetadataFiles::plaintext(),
+        }
+    }
+
+    /// Decode a synced metadata object's canonical bytes under this store's key.
+    pub fn open_metadata_bytes(&self, path: &Path, bytes: &[u8]) -> Result<Vec<u8>> {
+        self.metadata().open_bytes(path, bytes)
+    }
+
+    /// Seal canonical metadata bytes before writing a synced object.
+    pub fn seal_metadata_bytes(&self, path: &Path, bytes: &[u8]) -> Result<Vec<u8>> {
+        self.metadata().seal_bytes(path, bytes)
     }
 
     pub(crate) fn parquet_key(&self) -> Option<&[u8; 16]> {
@@ -171,12 +187,8 @@ impl Store {
     /// The table's merged schema, or `None` before its first batch.
     pub fn try_schema(&self, table: &str) -> Result<Option<Schema>> {
         let path = self.table_dir(table)?.join(SCHEMA_FILE);
-        let text = match fs::read_to_string(&path) {
-            Ok(t) => t,
-            Err(e) if e.kind() == std::io::ErrorKind::NotFound => return Ok(None),
-            Err(e) => return Err(ContextError::Io { path, source: e }),
-        };
-        let schema = serde_json::from_str::<Schema>(&text).map_err(|e| {
+        let Some(bytes) = self.metadata().read_optional(&path)? else { return Ok(None) };
+        let schema = serde_json::from_slice::<Schema>(&bytes).map_err(|e| {
             StoreError::StoreManifestUnreadable(format!("table `{table}`: file `{}`: {e}", path.display()))
         })?;
         Ok(Some(schema))
@@ -207,17 +219,16 @@ impl Store {
     pub fn assign_commit_seq(&self, table: &str) -> Result<i64> {
         let data = self.table_dir(table)?.join("data");
         let path = data.join(COMMIT_SEQ_FILE);
-        let counter = match fs::read_to_string(&path) {
-            Ok(text) => text.trim().parse::<i64>().map_err(|e| {
+        let counter = match self.metadata().read_optional(&path)? {
+            Some(bytes) => std::str::from_utf8(&bytes).map_err(|e| ContextError::Invalid(format!("{}: {e}", path.display())))?.trim().parse::<i64>().map_err(|e| {
                 StoreError::StoreManifestUnreadable(format!("table `{table}`: file `{}`: {e}", path.display()))
             })?,
-            Err(e) if e.kind() == std::io::ErrorKind::NotFound => 0,
-            Err(e) => return Err(ContextError::Io { path, source: e }),
+            None => 0,
         };
         let held = counter.max(self.recorded_commit_seq(table)?);
         let next = held.checked_add(1).ok_or_else(|| ContextError::Invalid(format!("table `{table}` exhausted its commit sequence")))?;
         fs::create_dir_all(&data).at(&data)?;
-        replace_file(&path, next.to_string().as_bytes())?;
+        self.metadata().replace(&path, next.to_string().as_bytes())?;
         Ok(next)
     }
 
@@ -230,12 +241,8 @@ impl Store {
             commit_seq: Option<i64>,
         }
         let read = |path: PathBuf| -> Result<i64> {
-            let text = match fs::read_to_string(&path) {
-                Ok(t) => t,
-                Err(e) if e.kind() == std::io::ErrorKind::NotFound => return Ok(0),
-                Err(e) => return Err(ContextError::Io { path, source: e }),
-            };
-            let r: Recorded = serde_json::from_str(&text).map_err(|e| {
+            let Some(bytes) = self.metadata().read_optional(&path)? else { return Ok(0) };
+            let r: Recorded = serde_json::from_slice(&bytes).map_err(|e| {
                 StoreError::StoreManifestUnreadable(format!("table `{table}`: file `{}`: {e}", path.display()))
             })?;
             Ok(r.commit_seq.unwrap_or(0))
@@ -257,7 +264,7 @@ impl Store {
         let dir = self.table_dir(table)?;
         fs::create_dir_all(&dir).at(&dir)?;
         let text = serde_json::to_string_pretty(schema).expect("a schema serializes");
-        replace_file(&dir.join(SCHEMA_FILE), text.as_bytes())
+        self.metadata().replace(&dir.join(SCHEMA_FILE), text.as_bytes())
     }
 
     /// Every table a `schema.json` declares, sorted.
@@ -300,14 +307,10 @@ impl Store {
         for run_dir in sorted_dirs(&runs_dir)? {
             for node_dir in sorted_dirs(&run_dir)? {
                 let path = node_dir.join(MANIFEST_FILE);
-                let text = match fs::read_to_string(&path) {
-                    Ok(t) => t,
-                    Err(e) if e.kind() == std::io::ErrorKind::NotFound => continue,
-                    Err(e) => return Err(ContextError::Io { path, source: e }),
-                };
+                let Some(bytes) = self.metadata().read_optional(&path)? else { continue };
                 let unreadable =
                     |why: String| StoreError::StoreManifestUnreadable(format!("table `{table}`: file `{}`: {why}", path.display()));
-                let m: RunManifest = serde_json::from_str(&text).map_err(|e| unreadable(e.to_string()))?;
+                let m: RunManifest = serde_json::from_slice(&bytes).map_err(|e| unreadable(e.to_string()))?;
                 let (run_seg, node_seg) = (file_name(&run_dir), file_name(&node_dir));
                 if m.run_id != run_seg || m.node_id != node_seg || m.table != table {
                     return Err(unreadable(format!(
@@ -337,15 +340,16 @@ impl Store {
     /// The pointer and the ETag of its bytes, or `None` before the first fold.
     pub fn pointer(&self, table: &str) -> Result<Option<(Pointer, String)>> {
         let path = self.table_dir(table)?.join(POINTER_FILE);
-        let bytes = match fs::read(&path) {
+        let disk = match fs::read(&path) {
             Ok(b) => b,
             Err(e) if e.kind() == std::io::ErrorKind::NotFound => return Ok(None),
             Err(e) => return Err(ContextError::Io { path, source: e }),
         };
+        let bytes = self.metadata().open_bytes(&path, &disk)?;
         let p: Pointer = serde_json::from_slice(&bytes).map_err(|e| {
             StoreError::StoreManifestUnreadable(format!("table `{table}`: file `{}`: {e}", path.display()))
         })?;
-        Ok(Some((p, etag(&bytes))))
+        Ok(Some((p, etag(&disk))))
     }
 
     /// The pointer's ETag: the SHA-256 of its bytes, or `absent`.
@@ -379,12 +383,12 @@ impl Store {
                 .into());
             }
             let path = self.snapshot_dir(table, &id)?.join(MANIFEST_FILE);
-            let text = match fs::read_to_string(&path) {
-                Ok(t) => t,
-                Err(e) if e.kind() == std::io::ErrorKind::NotFound && !chain.is_empty() => return Ok((chain, true)),
-                Err(e) => return Err(ContextError::Io { path, source: e }),
+            let bytes = match self.metadata().read_optional(&path)? {
+                Some(b) => b,
+                None if !chain.is_empty() => return Ok((chain, true)),
+                None => return Err(ContextError::Invalid(format!("{}: missing snapshot manifest", path.display()))),
             };
-            let m: SnapshotManifest = serde_json::from_str(&text).map_err(|e| {
+            let m: SnapshotManifest = serde_json::from_slice(&bytes).map_err(|e| {
                 StoreError::StoreManifestUnreadable(format!("table `{table}`: file `{}`: {e}", path.display()))
             })?;
             next = m.parent.clone();

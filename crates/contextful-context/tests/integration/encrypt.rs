@@ -78,6 +78,9 @@ fn sealed_metadata_files_round_trip_without_plaintext_or_fallback() {
     let disk = std::fs::read(&path).unwrap();
     assert!(!disk.windows(canary.len()).any(|part| part == canary));
     assert!(MetadataFiles::sealed(&AesGcmFileCipher::new([0x42; 32], 1)).read(&path).is_err());
+    std::fs::write(&path, b"CFSEAL01").unwrap();
+    assert!(files.read(&path).is_err());
+    std::fs::write(&path, &disk).unwrap();
     assert!(MetadataFiles::plaintext().read(&path).is_ok_and(|bytes| bytes == disk));
     files.replace(&path, b"{\"marker\":\"next\"}").unwrap();
     assert_eq!(files.read(&path).unwrap(), b"{\"marker\":\"next\"}");
