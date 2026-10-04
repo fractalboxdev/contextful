@@ -262,6 +262,10 @@ fn a_selected_root_page_token_at_the_listing_cap_refuses_by_name() {
 }
 
 /// `metadata-only` records exact bytes without retaining a body or decoding pages.
+// spec: connector.source.drive-capture-record@b9187adf
+// spec: connector.source.drive-metadata-only@6c032057
+// spec: connector.source.drive-page-grain@9029df45
+// spec: connector.source.drive-bytes@2f79acc3
 #[test]
 fn metadata_only_records_digests_without_blobs_or_page_content() {
     struct NoDecode;
@@ -285,6 +289,8 @@ fn metadata_only_records_digests_without_blobs_or_page_content() {
     assert_eq!(plan["sha256"], json!(sha256(&plan_bytes)));
     assert_eq!(plan["export_mime_type"], "application/pdf");
     assert_eq!(by_id(&rows, "short-deck")["capture_status"], "skipped");
+    assert!(by_id(&rows, "short-deck")["sha256"].is_null());
+    assert_eq!(report["resolved_root"], "root-f");
     assert_eq!(*bodies.puts.lock().unwrap(), 0);
     let (pages, _, _) = pull(&mut d.source("pages").unwrap(), None);
     assert!(pages.is_empty(), "fresh metadata capture has no page rows: {pages:?}");
@@ -292,6 +298,8 @@ fn metadata_only_records_digests_without_blobs_or_page_content() {
 }
 
 /// A capture mode change rereads retained files and removes prior page content.
+// spec: connector.source.drive-selection-position@00a84230
+// spec: connector.source.drive-selection-removals@d263dd24
 #[test]
 fn metadata_mode_switch_rereads_files_and_tombstones_pages() {
     let fake = Fake::start();
@@ -311,6 +319,7 @@ fn metadata_mode_switch_rereads_files_and_tombstones_pages() {
 }
 
 /// An unknown mode refuses before any provider request.
+// spec: connector.source.drive-mode@f6f7b4a5
 #[test]
 fn unknown_drive_capture_mode_refuses_before_requests() {
     let fake = Fake::start();
@@ -320,6 +329,8 @@ fn unknown_drive_capture_mode_refuses_before_requests() {
 }
 
 /// A selected-root or drive change binds a new cursor and removes deselected files.
+// spec: connector.source.drive-selection-position@00a84230
+// spec: connector.source.drive-selection-removals@d263dd24
 #[test]
 fn selection_change_replays_retained_files_and_tombstones_deselected_files() {
     let fake = Fake::start();
@@ -357,6 +368,7 @@ fn metadata_only_changed_version_updates_digest_and_removed_file() {
 }
 
 /// A version or resolved-root change re-reads a file despite an unchanged modification time and path.
+// spec: connector.source.drive-root-reassignment@ab410702
 #[test]
 fn held_version_and_resolved_root_trigger_reread() {
     let fake = Fake::start();
