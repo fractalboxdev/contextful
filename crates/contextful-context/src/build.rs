@@ -587,7 +587,12 @@ mod materialize {
         // value to the pointer (`store.reserve.commit-order`).
         let _commit_lock = store.lock_commit(&spec.id)?;
         let commit_seq = store.assign_commit_seq(&spec.id)?;
-        let (snapshot_id, staging, in_flight) = claim(store, &spec.id, SnapshotId::next(req.started_at, parent.as_ref()), req.started_at)?;
+        let last_attempt = attempts(store, &spec.id)?
+            .into_iter()
+            .filter_map(|attempt| SnapshotId::try_from(attempt.build_id).ok())
+            .max();
+        let previous = parent.as_ref().into_iter().chain(last_attempt.as_ref()).max();
+        let (snapshot_id, staging, in_flight) = claim(store, &spec.id, SnapshotId::next(req.started_at, previous), req.started_at)?;
         let build_id = snapshot_id.to_string();
         if publishes {
             let attempt = BuildAttempt {
