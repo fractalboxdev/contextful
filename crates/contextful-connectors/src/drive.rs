@@ -449,8 +449,10 @@ impl Drive {
                 }
                 let page = self.get_json(&url)?;
                 let incomplete = |reason: &str| Failure::new(FailureTag::Permanent, format!("drive listing of folder `{folder}` is incomplete: {reason}"));
-                if page.get("incompleteSearch") == Some(&Value::Bool(true)) {
-                    return Err(incomplete("the provider marked the search incomplete"));
+                match page.get("incompleteSearch") {
+                    Some(Value::Bool(true)) => return Err(incomplete("the provider marked the search incomplete")),
+                    Some(Value::Bool(false)) | None => {}
+                    Some(_) => return Err(incomplete("`incompleteSearch` is not a boolean")),
                 }
                 let files = page.get("files").and_then(Value::as_array).ok_or_else(|| incomplete("`files` is not an array"))?;
                 if files.iter().any(|file| ["id", "name", "mimeType"].iter().any(|key| file.get(key).and_then(Value::as_str).is_none_or(str::is_empty))) {
