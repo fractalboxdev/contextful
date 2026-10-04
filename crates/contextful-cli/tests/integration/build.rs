@@ -4,6 +4,7 @@
 use serde_json::Value;
 use std::path::Path;
 use std::process::{Command, Output};
+use std::time::{Duration, Instant};
 
 const DECLARATION: &str = r#"authoring_posture = "per_request"
 
@@ -51,6 +52,41 @@ fn project() -> tempfile::TempDir {
 
 fn build(p: &Path, now: &str) -> Value {
     serde_json::from_str(&stdout(&run(p, &["build", "daily", "--site-id", "site-a", "--now", now, "--json"]))).unwrap()
+}
+
+#[test]
+fn a_killed_build_reports_failed_and_keeps_the_published_build() {
+    let dir = project();
+    let p = dir.path();
+    let published = build(p, "2030-01-01T01:00:00Z");
+    let slow = DECLARATION.replace("FROM events GROUP BY day", "FROM events CROSS JOIN range(1000000000) GROUP BY day");
+    std::fs::write(p.join("contextful.toml"), slow).unwrap();
+    let mut child = Command::new(env!("CARGO_BIN_EXE_contextful"))
+        .args(["build", "daily", "--site-id", "site-a", "--now", "2030-01-01T02:00:00Z"])
+        .current_dir(p)
+        .env_remove("CONTEXTFUL_NODE_ID")
+        .spawn()
+        .unwrap();
+    let snapshots = p.join(".contextful/context/research/tables/daily/data/snapshots");
+    let until = Instant::now() + Duration::from_secs(10);
+    loop {
+        let staged = std::fs::read_dir(&snapshots).ok().is_some_and(|entries| {
+            entries.filter_map(Result::ok).any(|entry| entry.file_name().to_string_lossy().ends_with(".staging"))
+        });
+        if staged {
+            break;
+        }
+        assert!(child.try_wait().unwrap().is_none(), "build exited before staging");
+        assert!(Instant::now() < until, "build did not reach staging");
+        std::thread::sleep(Duration::from_millis(10));
+    }
+    child.kill().unwrap();
+    child.wait().unwrap();
+    let status: Value = serde_json::from_str(&stdout(&run(p, &["build", "status", "daily", "--json"]))).unwrap();
+    assert_eq!(status["last_build_status"], "failed");
+    assert_eq!(status["published_build_id"], published["build_id"]);
+    let read: Value = serde_json::from_str(&stdout(&run(p, &["query", "--json", "--project", "research", "SELECT day, n FROM daily ORDER BY day"]))).unwrap();
+    assert_eq!(read["rows"], serde_json::json!([["d1", "2"], ["d2", "1"]]));
 }
 
 /// `contextful build <model>` materializes the model into staging, checks its contract, runs its tests, then commits; `--json` prints the build id, row count and watermark.
