@@ -1144,6 +1144,7 @@ dependencies = [
  "contextful-core",
  "contextful-engine",
  "contextful-eval",
+ "contextful-fs",
  "parking_lot",
  "rusqlite",
  "serde",

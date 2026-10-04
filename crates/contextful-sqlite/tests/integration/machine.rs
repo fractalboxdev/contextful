@@ -26,6 +26,7 @@ fn sealed_catalog(dir: &tempfile::TempDir, clock: &SetClock, key: u8) -> Machine
     .unwrap()
 }
 
+// spec: store.encrypt.machine-catalog-sealing@9040e746
 #[test]
 fn sealed_machine_catalog_persists_lease_cursor_and_run_without_plaintext() {
     let dir = tempfile::tempdir().unwrap();

@@ -1,7 +1,7 @@
 //! `machine.sqlite` behind the `Catalog` port: lease rows, each scope's cursor row and
-//! pending owner, and run rows. Every write runs in an immediate transaction, so SQLite's
-//! one write lock serializes it against every other connection to the file and each
-//! conditional update is linearizable on the machine (`topology.coordinate.backends`).
+//! pending owner, and run rows. Plain catalogs use SQLite's write lock; sealed catalogs
+//! lock the snapshot across in-memory transactions. Either lock serializes conditional
+//! updates across connections on the machine (`topology.coordinate.backends`).
 
 use crate::{open, storage};
 use contextful_core::coordinate::{Cas, Catalog, CursorRow, Lease, LeaseKey, LeaseRow};
@@ -10,8 +10,11 @@ use contextful_core::run::own::{ExecutionOwner, OwnerScope};
 use contextful_core::run::record::RunRow;
 use contextful_core::run::{Failure, RunError};
 use contextful_core::store::StoreError;
+use contextful_core::store::encrypt::FileCipher;
 use contextful_core::time::Instant;
 use rusqlite::{params, Connection, OptionalExtension, Transaction, TransactionBehavior};
+use std::fs;
+use std::io::{ErrorKind, Write};
 use std::path::{Path, PathBuf};
 use std::sync::{Arc, Mutex};
 
@@ -48,8 +51,13 @@ CREATE INDEX IF NOT EXISTS run_by_pipeline ON run (pipeline_id);
 /// The machine-local catalog in one SQLite file.
 pub struct MachineCatalog {
     path: PathBuf,
-    conn: Mutex<Connection>,
+    backing: Backing,
     clock: Arc<dyn Clock + Send + Sync>,
+}
+
+enum Backing {
+    Plain(Mutex<Connection>),
+    Sealed { cipher: Arc<dyn FileCipher>, lock_path: PathBuf },
 }
 
 impl MachineCatalog {
@@ -57,8 +65,22 @@ impl MachineCatalog {
     /// (`topology.coordinate.catalog-clock`).
     pub fn open(path: &Path, clock: Arc<dyn Clock + Send + Sync>) -> Result<MachineCatalog, Failure> {
         let conn = open(path, SCHEMA)?;
-        let catalog = MachineCatalog { path: path.to_path_buf(), conn: Mutex::new(conn), clock };
+        let catalog = MachineCatalog { path: path.to_path_buf(), backing: Backing::Plain(Mutex::new(conn)), clock };
         catalog.with(true, migrate_scope_keys)?;
+        Ok(catalog)
+    }
+
+    /// Open an authenticated SQLite snapshot. Every transaction reloads under a
+    /// machine-local file lock and writes only sealed bytes to `path`.
+    pub fn open_sealed(path: &Path, clock: Arc<dyn Clock + Send + Sync>, cipher: Arc<dyn FileCipher>) -> Result<MachineCatalog, Failure> {
+        let mut lock_name = path.as_os_str().to_os_string();
+        lock_name.push(".lock");
+        let catalog = MachineCatalog {
+            path: path.to_path_buf(),
+            backing: Backing::Sealed { cipher, lock_path: PathBuf::from(lock_name) },
+            clock,
+        };
+        catalog.with_sealed(true, true, migrate_scope_keys)?;
         Ok(catalog)
     }
 
@@ -70,15 +92,72 @@ impl MachineCatalog {
         storage(&self.path, e)
     }
 
-    /// Run `f` in one transaction; `write` takes the database's write lock at the start,
-    /// so the read and the conditional update inside `f` see no interleaved writer.
+    /// Run `f` in one transaction under the backing's machine-local write lock, so
+    /// the read and conditional update see no interleaved writer.
     fn with<T>(&self, write: bool, f: impl FnOnce(&Transaction, &dyn Fn(&dyn std::fmt::Display) -> Failure) -> Result<T, Failure>) -> Result<T, Failure> {
-        let mut conn = self.conn.lock().unwrap_or_else(|p| p.into_inner());
+        match &self.backing {
+            Backing::Plain(conn) => {
+                let mut conn = conn.lock().unwrap_or_else(|p| p.into_inner());
+                let behavior = if write { TransactionBehavior::Immediate } else { TransactionBehavior::Deferred };
+                let tx = conn.transaction_with_behavior(behavior).map_err(|e| self.fail(e))?;
+                let out = f(&tx, &|e| self.fail(e))?;
+                tx.commit().map_err(|e| self.fail(e))?;
+                Ok(out)
+            }
+            Backing::Sealed { .. } => self.with_sealed(write, false, f),
+        }
+    }
+
+    fn with_sealed<T>(
+        &self,
+        write: bool,
+        allow_create: bool,
+        f: impl FnOnce(&Transaction, &dyn Fn(&dyn std::fmt::Display) -> Failure) -> Result<T, Failure>,
+    ) -> Result<T, Failure> {
+        let Backing::Sealed { cipher, lock_path } = &self.backing else { unreachable!("sealed catalog has sealed backing") };
+        if let Some(parent) = lock_path.parent() {
+            fs::create_dir_all(parent).map_err(|e| storage(lock_path, e))?;
+        }
+        let lock = fs::OpenOptions::new().read(true).write(true).create(true).truncate(false).open(lock_path).map_err(|e| storage(lock_path, e))?;
+        lock.lock().map_err(|e| storage(lock_path, e))?;
+        let mut conn = Connection::open_in_memory().map_err(|e| self.fail(e))?;
+        conn.execute_batch("PRAGMA temp_store = MEMORY").map_err(|e| self.fail(e))?;
+        match fs::read(&self.path) {
+            Ok(bytes) => {
+                let plain = cipher.open(&bytes).map_err(|e| self.fail(e))?;
+                conn.deserialize_read_exact(rusqlite::MAIN_DB, plain.as_slice(), plain.len(), false).map_err(|e| self.fail(e))?;
+            }
+            Err(e) if e.kind() == ErrorKind::NotFound && allow_create => {
+                conn.execute_batch(SCHEMA).map_err(|e| self.fail(e))?;
+            }
+            Err(e) => return Err(self.fail(e)),
+        }
         let behavior = if write { TransactionBehavior::Immediate } else { TransactionBehavior::Deferred };
         let tx = conn.transaction_with_behavior(behavior).map_err(|e| self.fail(e))?;
         let out = f(&tx, &|e| self.fail(e))?;
         tx.commit().map_err(|e| self.fail(e))?;
+        if write {
+            let plain = conn.serialize(rusqlite::MAIN_DB).map_err(|e| self.fail(e))?;
+            let sealed = cipher.seal(&plain).map_err(|e| self.fail(e))?;
+            self.replace_sealed(&sealed)?;
+        }
         Ok(out)
+    }
+
+    fn replace_sealed(&self, bytes: &[u8]) -> Result<(), Failure> {
+        let tmp = contextful_fs::tmp_sibling(&self.path);
+        let mut staged = fs::OpenOptions::new().write(true).create_new(true).open(&tmp).map_err(|e| storage(&tmp, e))?;
+        let outcome = (|| {
+            staged.write_all(bytes).map_err(|e| storage(&tmp, e))?;
+            staged.sync_all().map_err(|e| storage(&tmp, e))?;
+            fs::rename(&tmp, &self.path).map_err(|e| self.fail(e))?;
+            if let Some(parent) = self.path.parent() {
+                fs::File::open(parent).and_then(|dir| dir.sync_all()).map_err(|e| storage(parent, e))?;
+            }
+            Ok(())
+        })();
+        if outcome.is_err() { let _ = fs::remove_file(&tmp); }
+        outcome
     }
 }
 
