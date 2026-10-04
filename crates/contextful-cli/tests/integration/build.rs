@@ -98,6 +98,13 @@ fn a_killed_build_reports_failed_and_keeps_the_published_build() {
     assert!(entries.iter().any(|entry| entry["status"] == "failed" && entry["build_id"] == status["last_build_id"]));
     let read: Value = serde_json::from_str(&stdout(&run(p, &["query", "--json", "--project", "research", "SELECT day, n FROM daily ORDER BY day"]))).unwrap();
     assert_eq!(read["rows"], serde_json::json!([["d1", "2"], ["d2", "1"]]));
+    std::fs::write(p.join("contextful.toml"), DECLARATION).unwrap();
+    let recovered = build(p, "2030-01-01T03:00:00Z");
+    let status: Value = serde_json::from_str(&stdout(&run(p, &["build", "status", "daily", "--json"]))).unwrap();
+    assert_eq!(status["last_build_status"], "published");
+    assert_eq!(status["published_build_id"], recovered["build_id"]);
+    let history = std::fs::read_to_string(p.join(".contextful/context/research/tables/daily/builds.jsonl")).unwrap();
+    assert!(history.lines().any(|line| line.contains("\"failed\"")), "the failed attempt remains in history");
 }
 
 // spec: run.model.status-verb@dd4c16d2
