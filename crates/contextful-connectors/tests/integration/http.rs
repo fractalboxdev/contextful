@@ -12,6 +12,7 @@ fn ids(rows: &[serde_json::Map<String, Value>]) -> Vec<String> {
 }
 
 /// A read with 201 expansion pointers refuses before its first follow-up request.
+// spec: connector.source.expansion-budget@75af8328
 #[test]
 fn expansion_rejects_201_followups_before_the_first() {
     let vendor = Server::start(|r| match r.path() {
@@ -47,29 +48,56 @@ fn expansion_follows_a_row_pointer() {
     assert_eq!(vendor.received("/detail/1").len(), 1);
 }
 
+/// A normal source pull lands the expanded document in its emitted row.
+// spec: connector.source.expansion@0e1fe94a
+#[test]
+fn expansion_lands_detail_on_the_source_pull() {
+    let vendor = Server::start(|r| match r.path() {
+        "/index" => Response::json(200, "[{\"id\":1,\"detail_url\":\"/detail/1\"}]"),
+        _ => Response::json(200, "{\"description\":\"detail\"}"),
+    });
+    let mut s = source(json!({"endpoint": vendor.url("/index"), "expansion": {"pointer_column": "detail_url", "target_column": "detail"}}), vec![]);
+    let body: Value = serde_json::from_slice(&s.pull(&request(None), &Never).unwrap()).unwrap();
+    assert_eq!(body["rows"][0]["detail"]["description"], "detail");
+    assert_eq!(vendor.received("/detail/1").len(), 1);
+}
+
 /// Both expansion pointer forms refuse at build without issuing a request.
+// spec: connector.source.pointer-ambiguity@d4d52bad
 #[test]
 fn expansion_rejects_two_pointer_forms() {
     let cfg = json!({"endpoint":"https://api.vendor.example/index", "expansion":{"pointer_column":"url", "url_template":"https://api.vendor.example/{id}", "target_column":"detail"}});
     assert!(format!("{}", HttpConfig::parse(&cfg).unwrap_err()).contains("ConnectorPointerAmbiguous"));
 }
 
-/// A malformed row pointer and an occupied destination each refuse before detail I/O.
+fn expansion_preflight_failure(row: Value, error: &str) {
+    let vendor = Server::start(move |r| match r.path() {
+        "/index" => Response::json(200, &json!([{"id": 0, "url": "/detail/0"}, row]).to_string()),
+        _ => Response::json(200, "{\"ok\":true}"),
+    });
+    let s = source(json!({"endpoint": vendor.url("/index"), "expansion": {"pointer_column":"url", "target_column":"detail"}}), vec![]);
+    let failure = s.walk(&request(None), &Never).unwrap_err();
+    assert!(failure.message.contains(error), "{failure}");
+    assert_eq!(vendor.requests.lock().unwrap().len(), 1);
+}
+
+/// A missing pointer in a later index row refuses before detail I/O.
+// spec: connector.source.pointer-column-missing@1185d985
 #[test]
-fn expansion_preflights_every_row_pointer() {
-    for row in [json!({"id": 1}), json!({"id": 1, "url": "/detail/1", "detail": "occupied"})] {
-        let vendor = Server::start(move |r| match r.path() {
-            "/index" => Response::json(200, &json!([{"id": 0, "url": "/detail/0"}, row]).to_string()),
-            _ => Response::json(200, "{\"ok\":true}"),
-        });
-        let s = source(json!({"endpoint": vendor.url("/index"), "expansion": {"pointer_column":"url", "target_column":"detail"}}), vec![]);
-        let failure = s.walk(&request(None), &Never).unwrap_err();
-        assert!(failure.message.contains("ConnectorPointerColumnMissing") || failure.message.contains("ConnectorTargetColumnOccupied"), "{failure}");
-        assert_eq!(vendor.requests.lock().unwrap().len(), 1);
-    }
+fn expansion_refuses_a_missing_row_pointer_before_detail_io() {
+    expansion_preflight_failure(json!({"id": 1}), "ConnectorPointerColumnMissing");
+    expansion_preflight_failure(json!({"id": 1, "url": ["/detail/1"]}), "ConnectorPointerColumnMissing");
+}
+
+/// An occupied target in a later index row refuses before detail I/O.
+// spec: connector.source.target-column-occupied@d8d38b57
+#[test]
+fn expansion_refuses_an_occupied_target_before_detail_io() {
+    expansion_preflight_failure(json!({"id": 1, "url": "/detail/1", "detail": "occupied"}), "ConnectorTargetColumnOccupied");
 }
 
 /// A follow-up failure refuses the complete index read.
+// spec: connector.source.follow-up-failure@89b8e559
 #[test]
 fn expansion_fails_the_read_on_a_failed_followup() {
     let vendor = Server::start(|r| match r.path() {
@@ -82,6 +110,7 @@ fn expansion_fails_the_read_on_a_failed_followup() {
 }
 
 /// Row templates percent-encode scalars, and a template cannot choose its own host.
+// spec: connector.source.template-shape@1a90cc68
 #[test]
 fn expansion_template_binds_row_values_under_the_source_host() {
     for template in ["https://{id}.vendor.example/detail", "https://api.vendor.example/detail", "https://api.vendor.example/detail/{id"] {
@@ -113,6 +142,7 @@ fn expansion_template_accepts_boolean_scalar_columns() {
 }
 
 /// A row below the watermark costs no follow-up request.
+// spec: connector.source.expansion-order@7ae580fa
 #[test]
 fn expansion_runs_after_the_watermark_filter() {
     let vendor = Server::start(|r| match r.path() {
@@ -139,6 +169,7 @@ fn expansion_keeps_the_existing_outbound_host_policy() {
 }
 
 /// A declared non-UTF-8 label decodes CSV and rejects invalid bytes for that label.
+// spec: connector.source.declared-encoding@0914dae0
 #[test]
 fn csv_declared_encoding_decodes_and_refuses_invalid_bytes() {
     let vendor = Server::start(|_| Response { status: 200, headers: vec![], body: b"name\ncaf\xe9\n".to_vec() });
@@ -151,11 +182,12 @@ fn csv_declared_encoding_decodes_and_refuses_invalid_bytes() {
 }
 
 /// A CSV watermark compares either an RFC 3339 instant or fixed-width decimal digits.
+// spec: connector.source.clock-column-spelling@fdc28551
 #[test]
 fn csv_watermark_rejects_variable_width_clocks() {
-    let vendor = Server::start(|_| Response::json(200, "id,at\n1,2025-01-01T00:00:00Z\n2,12\n"));
+    let vendor = Server::start(|_| Response::json(200, "id,at\n1,12\n2,123\n"));
     let s = source(json!({"endpoint": vendor.url("/rows"), "format":"csv"}), vec![]).watermarked();
-    let failure = s.walk(&request(Some(json!({"field":"at", "at":"2024-01-01T00:00:00Z"}))), &Never).unwrap_err();
+    let failure = s.walk(&request(Some(json!({"field":"at", "at":"00"}))), &Never).unwrap_err();
     assert!(failure.message.contains("ConnectorClockColumnRejected"), "{failure}");
 }
 
