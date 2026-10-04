@@ -416,10 +416,14 @@ impl ComponentHost {
         let Some(dir) = &self.cache_dir else {
             return Ok((self.load(wasm)?, digest));
         };
+        #[cfg(unix)]
+        let use_cache = private_cache_dir(dir);
+        #[cfg(not(unix))]
+        let use_cache = false;
         let mut compatibility = std::collections::hash_map::DefaultHasher::new();
         self.engine.precompile_compatibility_hash().hash(&mut compatibility);
         let path = dir.join(format!("{}-{:016x}.cwasm", digest.as_str(), compatibility.finish()));
-        if let Some(component) = read_cached(&self.engine, &path) {
+        if let Some(component) = use_cache.then(|| read_cached(&self.engine, &path)).flatten() {
             let pre = self.linker.instantiate_pre(&component).map_err(load_failure)?;
             self.cache_hits.fetch_add(1, Ordering::Relaxed);
             return Ok((Connector { pre }, digest));
@@ -430,7 +434,9 @@ impl ComponentHost {
         let pre = self.linker.instantiate_pre(&component).map_err(load_failure)?;
         self.cache_compilations.fetch_add(1, Ordering::Relaxed);
         // A cache write failure leaves the admitted, linked component usable.
-        let _ = write_cached(&path, &compiled);
+        if use_cache {
+            let _ = write_cached(&path, &compiled);
+        }
         Ok((Connector { pre }, digest))
     }
 
@@ -460,6 +466,13 @@ impl ComponentHost {
         session.configure()?;
         Ok(session)
     }
+}
+
+#[cfg(unix)]
+fn private_cache_dir(dir: &Path) -> bool {
+    use std::os::unix::fs::PermissionsExt;
+    std::fs::symlink_metadata(dir)
+        .is_ok_and(|meta| meta.file_type().is_dir() && meta.permissions().mode() & 0o077 == 0)
 }
 
 fn read_cached(engine: &Engine, path: &Path) -> Option<Component> {
