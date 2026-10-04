@@ -277,6 +277,8 @@ fn the_schema_stage_regenerates_into_scratch_and_refuses_a_stale_committed_copy(
     assert_eq!(bin.calls().last().map(String::as_str), Some("run --locked -q -p contextful-spec -- lint"));
 }
 
+/// A generated artifact declares the check that fails once its source moves, and the gate's schema stage runs that check.
+// spec: assurance.structure-tree.derivation-check@42484f31
 #[test]
 fn declared_derived_artifact_is_checked_by_schema_stage() {
     let bin = Bin::new();

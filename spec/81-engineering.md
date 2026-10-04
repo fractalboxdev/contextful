@@ -53,13 +53,11 @@ One home per capability, the one enforcement decision module, adapters, mirror a
 - `adapter` — A surface with no engine process on its request path implements an adapter against the engine's ports.
   *P5*
 - `derivation-check` — A generated artifact declares the check that fails once its source moves, and the gate's schema stage runs that check.
-  *P5*
+  *P5, A-assurance*
 - `mirror-exemption` — A review-time restatement of a build-time rule is admitted where its site carries a `mirrors: <clause id>` comment naming the clause it restates; an unannotated restatement stays {{assurance.structure-tree.duplicated-capability}}.
   *because a reviewer-facing check sometimes restates a rule, and the annotation keeps the engine its one home and the copy traceable to it*
 - `mirror-unresolved` — A `mirrors:` comment in a tracked file under `crates/`, `tools/` or `apps/` naming no clause of `spec/spec.lock.json` raises `MirrorUnresolved` in the schema stage, naming the file and line.
   *because an annotation naming nothing exempts a copy while tying it to no rule it could drift from*
-
-unsettled: Does a derived artifact prove currency by a schema-hash comparison, by regeneration and diff, or by a build-time export? owner: build affects: assurance.structure-tree
 
 ## automate
 
