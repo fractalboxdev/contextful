@@ -1140,6 +1140,7 @@ dependencies = [
 name = "contextful-sqlite"
 version = "0.5.0"
 dependencies = [
+ "contextful-context",
  "contextful-core",
  "contextful-engine",
  "contextful-eval",
