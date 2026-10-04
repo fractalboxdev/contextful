@@ -214,3 +214,25 @@ fn unscoped_writers_at_one_instant_record_a_conflict_without_retirement() {
     assert!(resolved.retired.iter().any(|c| c.claim_id == first.claim_id));
     assert!(resolved.retired.iter().any(|c| c.claim_id == second.claim_id));
 }
+
+#[test]
+fn reaffirming_one_conflicting_object_retires_the_other() {
+    use contextful_memory::write::write_observed;
+
+    let f = Fixture::new();
+    let writer = f.writer();
+    let node = NodeId::parse("memory-a").unwrap();
+    let write = |object, observed, key, committed| {
+        write_observed(
+            &f.face, &writer, "memory/facts", candidate(object),
+            &keyed(observed, Some(key)), &node, at(committed), &super::synthesize::admit,
+        ).unwrap()
+    };
+    let first = write("Dana", "2030-01-01T00:00:00Z", "writer-a", "2030-01-11T00:00:00Z").claim.unwrap();
+    let second = write("Lee", "2030-01-01T00:00:00Z", "writer-b", "2030-01-12T00:00:00Z").claim.unwrap();
+    let resolution = write("Dana", "2030-02-01T00:00:00Z", "writer-c", "2030-01-13T00:00:00Z");
+    assert_eq!(resolution.retired.len(), 2, "the later explicit write resolves both earlier claims");
+    assert!(resolution.retired.iter().any(|c| c.claim_id == first.claim_id));
+    assert!(resolution.retired.iter().any(|c| c.claim_id == second.claim_id));
+    assert_eq!(resolution.claim.unwrap().object, "Dana");
+}

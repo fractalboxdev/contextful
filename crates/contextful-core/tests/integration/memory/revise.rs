@@ -81,6 +81,23 @@ fn an_equal_or_higher_claim_retires_its_prior_on_one_line() {
     assert_eq!(demoted.landed, None);
 }
 
+#[test]
+fn a_later_reaffirmation_resolves_multiple_live_objects() {
+    let dana = claim("Dana", Tier::Curated, "2030-01-01T00:00:00Z");
+    let lee = claim("Lee", Tier::Curated, "2030-01-01T00:00:00Z");
+    let mut reaffirmed = claim("Dana", Tier::Curated, "2030-02-01T00:00:00Z");
+    reaffirmed.claim_id = "new-observation".into();
+    let revision = revise(reaffirmed.clone(), &[dana.clone(), lee.clone()]);
+    assert_eq!(revision.landed, Some(reaffirmed.clone()));
+    assert_eq!(revision.retired.len(), 2);
+    assert!(revision.retired.iter().all(|prior| prior.valid_to == Some(reaffirmed.valid_from) && prior.superseded_by.as_deref() == Some(reaffirmed.claim_id.as_str())));
+
+    let same_id = revise(claim("Dana", Tier::Curated, "2030-02-01T00:00:00Z"), &[dana, lee.clone()]);
+    assert!(same_id.landed.is_none(), "the existing claim keeps its original validity interval");
+    assert_eq!(same_id.retired.len(), 1);
+    assert_eq!(same_id.retired[0].claim_id, lee.claim_id);
+}
+
 /// The direct write accepts claims alone. Naming `memory_episodes`, `memory_entities`, `memory_edges` or `memory_preferences` raises `MemoryDirectWriteShapeRefused`; an entity row enters through the entity upsert.
 // spec: read.revise.direct-write@b2e8a7eb
 #[test]
