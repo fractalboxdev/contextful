@@ -170,9 +170,9 @@ fn an_unpinned_local_artifact_under_either_switch_is_refused_with_its_digest() {
     ok(&fire(dir.path(), "run-1", &[], &[]));
 }
 
-/// A component session's grant is its declared `allow` hosts and `attach` headers alone, each header hydrated per
-/// request under {{connector.resolve.hydration-is-just-in-time}}; a source declaring no `allow` reaches no host.
-// spec: connector.package.component-grant@fd049d0f
+/// A component session's grant is its declared `allow` hosts and `attach` headers alone, with credential attachment
+/// governed by {{connector.attach.per-request-hydration}}; a source declaring no `allow` reaches no host.
+// spec: connector.package.component-grant@e8843aa9
 #[test]
 fn a_guest_reaches_only_its_allowlist_and_the_host_attaches_its_credential() {
     let vendor = Vendor::start();

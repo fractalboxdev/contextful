@@ -317,7 +317,7 @@ Distribution form, digest pinning, per-connector resource bounds and world versi
 - `component-source` — A pipeline source named by an artifact path, HTTPS URL or OCI reference runs as a component, its config reading `sha256`, `allow`, `attach`, `guest`, `memory_bytes` and `require_pin`, the manifest flag of {{connector.package.pin-requirement}}.
 - `component-load` — `pipeline run` resolves a component source, admits it against its pin and compiles it once per fire, before any run row, and records its {{connector.import.config-hashing}} content hash as each run's connector hash.
   *A-connector*
-- `component-grant` — A component session's grant is its declared `allow` hosts and `attach` headers alone, each header hydrated per request under {{connector.resolve.hydration-is-just-in-time}}; a source declaring no `allow` reaches no host.
+- `component-grant` — A component session's grant is its declared `allow` hosts and `attach` headers alone, with credential attachment governed by {{connector.attach.per-request-hydration}}; a source declaring no `allow` reaches no host.
   *A-connector*
 - `component-validate` — `pipeline validate` loads a local component artifact from the directory `pipeline run` resolves it against and runs discovery, so a missing export or a world mismatch fails before any run; a remote artifact is checked without I/O.
   *P1*

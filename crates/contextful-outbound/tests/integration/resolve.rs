@@ -86,7 +86,7 @@ fn a_hydrated_value_prints_as_the_sentinel() {
         let v: Hydrated = r.render(&Template::parse(t).unwrap()).unwrap();
         assert_eq!(format!("{v}"), SENTINEL);
         assert_eq!(format!("{v:?}"), SENTINEL);
-        assert_eq!(format!("{:?}", Some(v.clone())), format!("Some({SENTINEL})"));
+        assert_eq!(format!("{:?}", Some(v)), format!("Some({SENTINEL})"));
     }
     assert_eq!(r.render(&Template::parse("Bearer ${secret://vendor-token}").unwrap()).unwrap().reveal(), "Bearer s3cr3t-value");
 }
@@ -126,6 +126,24 @@ fn a_cached_value_retires_at_300_s() {
     assert_eq!(p.calls(), 1);
     clock.advance(1);
     r.hydrate(&name("vendor-token")).unwrap();
+    assert_eq!(p.calls(), 2);
+}
+
+#[test]
+fn cached_hydrations_share_one_buffer_until_retirement() {
+    let clock = SetClock::new();
+    let p = Fixed::new("manager", &[("vendor-token", "first")]);
+    let r = resolver(vec![p.clone()], &clock);
+    let first = r.hydrate(&name("vendor-token")).unwrap();
+    let second = r.hydrate(&name("vendor-token")).unwrap();
+    assert!(Arc::ptr_eq(&first, &second), "a cache hit copied the credential bytes");
+    clock.advance(300);
+    let renewed = r.hydrate(&name("vendor-token")).unwrap();
+    assert!(!Arc::ptr_eq(&first, &renewed), "the expired buffer stayed cached");
+    let retired = Arc::downgrade(&first);
+    drop(first);
+    drop(second);
+    assert!(retired.upgrade().is_none(), "the retired buffer stayed alive");
     assert_eq!(p.calls(), 2);
 }
 

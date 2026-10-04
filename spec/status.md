@@ -7,15 +7,15 @@ An unpinned clause is `committed`; a pinned one is `performed` when its test res
 | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
 | `assurance` | 2 | 15 | 227 | 59 | 22 | 12 | 135 | 0 | 135 |
 | `authority` | 2 | 16 | 267 | 77 | 27 | 10 | 204 | 0 | 204 |
-| `connector` | 2 | 14 | 321 | 80 | 21 | 16 | 195 | 0 | 195 |
+| `connector` | 2 | 14 | 322 | 80 | 21 | 16 | 196 | 0 | 196 |
 | `corpus` | 1 | 10 | 77 | 37 | 7 | 0 | 38 | 0 | 38 |
 | `disclosure` | 3 | 16 | 122 | 64 | 13 | 7 | 54 | 0 | 54 |
-| `read` | 2 | 15 | 179 | 29 | 22 | 21 | 163 | 0 | 162 |
-| `run` | 3 | 26 | 372 | 98 | 36 | 37 | 259 | 0 | 257 |
-| `store` | 1 | 17 | 235 | 55 | 13 | 20 | 198 | 0 | 194 |
-| `surface` | 2 | 19 | 86 | 46 | 22 | 5 | 51 | 0 | 50 |
+| `read` | 2 | 15 | 179 | 29 | 22 | 21 | 163 | 0 | 163 |
+| `run` | 3 | 26 | 372 | 98 | 36 | 37 | 259 | 0 | 259 |
+| `store` | 1 | 17 | 235 | 55 | 13 | 20 | 198 | 0 | 198 |
+| `surface` | 2 | 19 | 86 | 46 | 22 | 5 | 51 | 0 | 51 |
 | `topology` | 1 | 6 | 70 | 24 | 5 | 5 | 38 | 0 | 38 |
-| **total** | 19 | 154 | 1956 | 569 | 188 | 133 | 1335 | 0 | |
+| **total** | 19 | 154 | 1957 | 569 | 188 | 133 | 1336 | 0 | |
 
 Decision records: 18.
 
@@ -29,7 +29,7 @@ A milestone reads `closed` when its acceptance test computes `passing` and every
 | 1 — The authority core | 14 | 236 | 184 | passing | closed |
 | 2 — The store | 9 | 162 | 130 | passing | closed |
 | 3 — The run path | 11 | 206 | 142 | passing | closed |
-| 4 — Ingest | 25 | 468 | 290 | passing | open |
+| 4 — Ingest | 25 | 469 | 291 | passing | open |
 | 5 — The read face under enforcement | 17 | 252 | 192 | passing | open |
 | 6 — Sync and replicas | 8 | 73 | 68 | passing | closed |
 | 7 — Memory | 6 | 37 | 37 | passing | closed |
@@ -392,6 +392,7 @@ Unscheduled operations: 10.
 | `connector.attach.landed-origin` | `crates/contextful-outbound/tests/integration/attach.rs::the_body_that_lands_comes_from_the_configured_origin` | performed |
 | `connector.attach.literal-attach-value` | `crates/contextful-core/tests/integration/connector/component.rs::an_attach_value_embedding_no_reference_is_refused` | performed |
 | `connector.attach.no-material-to-a-guest` | `crates/contextful-wasm/tests/integration/attach.rs::the_host_attaches_the_credential_and_the_guest_sees_only_the_response` | performed |
+| `connector.attach.per-request-hydration` | `crates/contextful-wasm/tests/integration/attach.rs::a_hydrated_header_renders_afresh_for_each_request` | performed |
 | `connector.attach.private-address` | `crates/contextful-core/tests/integration/connector/attach.rs::a_permitted_name_resolving_inward_is_refused` | performed |
 | `connector.attach.redirect-pinning` | `crates/contextful-outbound/tests/integration/attach.rs::a_hop_is_followed_only_within_the_configured_origin` | performed |
 | `connector.attach.referer-off` | `crates/contextful-outbound/tests/integration/attach.rs::no_request_carries_a_referer` | performed |

@@ -559,7 +559,7 @@ impl HttpSource {
         let mut out = vec![("Idempotency-Key".to_string(), HeaderValue::Plain(idempotency_key.to_string()))];
         for (name, t) in &self.config.headers {
             let v = self.resolver.render(t)?;
-            out.push((name.clone(), if t.has_reference() { HeaderValue::Sensitive(v) } else { HeaderValue::Plain(v.reveal().to_string()) }));
+            out.push((name.clone(), if t.has_reference() { HeaderValue::Sensitive(v.into()) } else { HeaderValue::Plain(v.reveal().to_string()) }));
         }
         Ok(out)
     }
@@ -570,7 +570,7 @@ impl HttpSource {
         let (Some(probe), Some(client), false) = (&self.config.scope_probe, &self.probe_client, self.probed) else { return Ok(()) };
         let name = self.config.probe_credential().unwrap_or_default();
         let value = self.resolver.render(&self.config.headers[name])?;
-        probe_through(client, &self.allow, probe, (name, &value))?;
+        probe_through(client, &self.allow, probe, (name, value))?;
         self.probed = true;
         Ok(())
     }
