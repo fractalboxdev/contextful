@@ -7,7 +7,7 @@ An unpinned clause is `committed`; a pinned one is `performed` when its test res
 | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
 | `assurance` | 2 | 15 | 227 | 59 | 22 | 12 | 135 | 0 | 135 |
 | `authority` | 2 | 16 | 267 | 77 | 27 | 10 | 204 | 0 | 204 |
-| `connector` | 2 | 14 | 344 | 90 | 21 | 15 | 217 | 0 | 207 |
+| `connector` | 2 | 14 | 345 | 90 | 21 | 15 | 218 | 0 | 207 |
 | `corpus` | 1 | 10 | 77 | 37 | 7 | 0 | 38 | 0 | 38 |
 | `disclosure` | 3 | 16 | 122 | 64 | 13 | 7 | 54 | 0 | 54 |
 | `read` | 2 | 15 | 179 | 29 | 22 | 21 | 163 | 0 | 163 |
@@ -15,7 +15,7 @@ An unpinned clause is `committed`; a pinned one is `performed` when its test res
 | `store` | 1 | 17 | 237 | 55 | 13 | 20 | 200 | 0 | 200 |
 | `surface` | 2 | 20 | 89 | 49 | 22 | 5 | 51 | 0 | 51 |
 | `topology` | 1 | 6 | 70 | 24 | 5 | 5 | 38 | 0 | 38 |
-| **total** | 19 | 155 | 1985 | 582 | 188 | 132 | 1361 | 0 | |
+| **total** | 19 | 155 | 1986 | 582 | 188 | 132 | 1362 | 0 | |
 
 Decision records: 18.
 
@@ -29,7 +29,7 @@ A milestone reads `closed` when its acceptance test computes `passing` and every
 | 1 — The authority core | 14 | 236 | 184 | passing | closed |
 | 2 — The store | 9 | 164 | 132 | passing | closed |
 | 3 — The run path | 11 | 207 | 144 | passing | closed |
-| 4 — Ingest | 25 | 491 | 312 | passing | open |
+| 4 — Ingest | 25 | 492 | 313 | passing | open |
 | 5 — The read face under enforcement | 17 | 252 | 192 | passing | open |
 | 6 — Sync and replicas | 8 | 73 | 68 | passing | closed |
 | 7 — Memory | 6 | 37 | 37 | passing | closed |
@@ -481,6 +481,7 @@ Unscheduled operations: 10.
 | `connector.package.interpreted-target-absent` | `crates/contextful-wasm/tests/integration/target.rs::a_build_without_the_feature_refuses_the_interpreted_target` | performed |
 | `connector.package.linear-memory` | `crates/contextful-wasm/tests/integration/package.rs::linear_memory_defaults_to_256_mib_and_rises_to_at_most_2_gib` | performed |
 | `connector.package.local-unpinned` | `crates/contextful-cli/tests/integration/component.rs::an_unpinned_local_artifact_under_either_switch_is_refused_with_its_digest` | performed |
+| `connector.package.manifest-host-grant` | `crates/contextful-cli/tests/integration/component.rs::manifest_refuses_pipeline_host_absent_from_declared_capabilities_at_load` | performed |
 | `connector.package.oci-component-layer` | `crates/contextful-cli/src/component.rs::oci_manifest_requires_one_component_layer_with_a_sha256_descriptor` | performed |
 | `connector.package.oci-layer-integrity` | `crates/contextful-cli/src/component.rs::oci_fetch_checks_the_layer_and_caches_only_admitted_bytes` | performed |
 | `connector.package.oci-reference` | `crates/contextful-cli/tests/integration/component.rs::malformed_oci_reference_is_refused_without_a_request` | performed |

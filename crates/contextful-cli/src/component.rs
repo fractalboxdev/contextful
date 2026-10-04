@@ -225,6 +225,7 @@ mod hosted {
     /// `store_pin`. Bytes off their pin never reach the compiler
     /// (`connector.package.digest-mismatch`).
     pub fn load(name: &str, decl: &ComponentSource, base: &Path, project: &str, resolver: Option<&Resolver>, target: ComponentTarget, store_pin: bool) -> Result<Loaded> {
+        crate::connector::admit_hosts(decl, base)?;
         let limits = limits(decl)?;
         let target = match target {
             ComponentTarget::Native => Target::Native,

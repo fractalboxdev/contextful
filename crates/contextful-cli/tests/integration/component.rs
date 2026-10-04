@@ -67,6 +67,61 @@ fn refused(out: &Output, error: &str) -> String {
     stderr
 }
 
+/// Local pin inspection reports the artifact digest and leaves the manifest unchanged.
+#[test]
+fn local_connector_pin_prints_digest_without_rewriting_manifest() {
+    let dir = project("");
+    let manifest = "name = \"probe\"\nversion = \"1.0.0\"\nworld = \"source-connector@1.2.0\"\nwasm = \"connectors/probe.wasm\"\nrequire_wasm_pin = true\n";
+    let path = dir.path().join("connector.toml");
+    std::fs::write(&path, manifest).unwrap();
+    let output = cf(dir.path(), &["connector", "pin", "connector.toml", "--local"], &[]);
+    assert_eq!(ok(&output), digest(PROBE));
+    assert_eq!(std::fs::read_to_string(path).unwrap(), manifest);
+}
+
+// spec: connector.package.manifest-host-grant@22ec1862
+#[test]
+fn manifest_refuses_pipeline_host_absent_from_declared_capabilities_at_load() {
+    let dir = project(&manifest("connectors/probe.wasm", &["items"], "manifest = \"connector.toml\"\nallow = [\"api.other.example\"]"));
+    std::fs::write(dir.path().join("connector.toml"), "name = \"probe\"\nwasm = \"connectors/probe.wasm\"\n[capabilities]\nallow_hosts = [\"api.vendor.example\"]\n").unwrap();
+    let stderr = refused(&cf(dir.path(), &["pipeline", "validate"], &[]), "ConnectorUndeclaredAccess");
+    assert!(stderr.contains("api.other.example"), "{stderr}");
+    let stderr = refused(&fire(dir.path(), "run-1", &[], &[]), "ConnectorUndeclaredAccess");
+    assert!(stderr.contains("api.other.example"), "{stderr}");
+    assert!(!cf(dir.path(), &["run", "show", "run-1", "--project", "research"], &[]).status.success());
+}
+
+/// A relative manifest path stays inside the project after symlinks resolve.
+#[cfg(unix)]
+#[test]
+fn component_manifest_symlink_outside_project_refuses_at_load() {
+    let dir = project(&manifest("connectors/probe.wasm", &["items"], "manifest = \"connector.toml\"\nallow = [\"api.vendor.example\"]"));
+    let outside = tempfile::tempdir().unwrap();
+    let target = outside.path().join("connector.toml");
+    std::fs::write(&target, "[capabilities]\nallow_hosts = [\"api.vendor.example\"]\n").unwrap();
+    std::os::unix::fs::symlink(&target, dir.path().join("connector.toml")).unwrap();
+
+    let stderr = refused(&cf(dir.path(), &["pipeline", "validate"], &[]), "project-relative");
+    assert!(stderr.contains("connector.toml"), "{stderr}");
+}
+
+#[test]
+fn remote_component_validate_checks_its_manifest_without_fetching() {
+    let pin = digest(PROBE);
+    let dir = project(&manifest("https://dl.vendor.invalid/probe.wasm", &["items"], &format!("sha256 = \"{pin}\"\nmanifest = \"connector.toml\"\nallow = [\"api.other.example\"]")));
+    std::fs::write(dir.path().join("connector.toml"), "[capabilities]\nallow_hosts = [\"api.vendor.example\"]\n").unwrap();
+    let stderr = refused(&cf(dir.path(), &["pipeline", "validate"], &[]), "ConnectorUndeclaredAccess");
+    assert!(stderr.contains("api.other.example"), "{stderr}");
+}
+
+#[test]
+fn an_empty_manifest_host_set_admits_a_component_with_no_outbound_grant() {
+    let dir = project(&manifest("connectors/probe.wasm", &["items"], "manifest = \"connector.toml\""));
+    std::fs::write(dir.path().join("connector.toml"), "[capabilities]\nallow_hosts = []\n").unwrap();
+    let out = ok(&cf(dir.path(), &["pipeline", "validate"], &[]));
+    assert!(out.contains("probe: valid"), "{out}");
+}
+
 fn run_row(dir: &Path, run: &str) -> serde_json::Value {
     serde_json::from_str(&ok(&cf(dir, &["run", "show", run, "--project", "research"], &[]))).unwrap()
 }
