@@ -210,3 +210,19 @@ fn a_dependent_run_submits_its_steps_in_order_under_one_run() {
     assert_eq!(runs[0], runs[1]);
     run.join().unwrap().unwrap();
 }
+
+#[test]
+fn a_failed_head_still_submits_its_child_and_reports_the_failure() {
+    let rig = rig(&["w1"]);
+    let d = rig.dispatch.clone();
+    let run = std::thread::spawn(move || d.fire("parent", &["child".to_string()], 1));
+    let (_, parent) = next(&rig);
+    assert_eq!(parent.step, "parent");
+    let h = headers(&parent, 1, rig.clock.now(), KEY);
+    rig.relay.callback(&token(&parent), &|k| h.get(k).cloned(), &StepOutcome::Failed { failed: "parent failed".into() }.encode()).unwrap();
+    let (_, child) = next(&rig);
+    assert_eq!(child.step, "child");
+    let h = headers(&child, 1, rig.clock.now(), KEY);
+    rig.relay.callback(&token(&child), &|k| h.get(k).cloned(), &StepOutcome::Done(StepResult::Pointer("child".into())).encode()).unwrap();
+    assert!(run.join().unwrap().unwrap_err().contains("parent: parent failed"));
+}

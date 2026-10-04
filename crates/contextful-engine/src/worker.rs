@@ -229,12 +229,14 @@ impl Dispatch for WorkerDispatch {
         let nanos = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).map(|d| d.as_nanos()).unwrap_or_default();
         let run = format!("{id}-{nanos}");
         let mut lines = Vec::new();
+        let mut failures = Vec::new();
         for step in std::iter::once(id).chain(steps.iter().map(String::as_str)) {
-            match self.step(&run, step, version)? {
-                StepOutcome::Done(result) => lines.push(format!("{step}: {}", String::from_utf8_lossy(&result.encode()))),
-                StepOutcome::Failed { failed } => return Err(format!("{step}: {failed}")),
+            match self.step(&run, step, version) {
+                Ok(StepOutcome::Done(result)) => lines.push(format!("{step}: {}", String::from_utf8_lossy(&result.encode()))),
+                Ok(StepOutcome::Failed { failed }) => failures.push(format!("{step}: {failed}")),
+                Err(error) => failures.push(error),
             }
         }
-        Ok(lines.join("; "))
+        if failures.is_empty() { Ok(lines.join("; ")) } else { Err(failures.join("; ")) }
     }
 }

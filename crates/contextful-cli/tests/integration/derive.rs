@@ -85,6 +85,36 @@ fn fire(bin: &std::path::Path, dir: &std::path::Path, run: &str, now: &str, env:
     run_bin(bin, dir, &["pipeline", "run", "split", "--project", "research", "--run-id", run, "--site-id", "site", "--now", now], env)
 }
 
+fn chain_manifest() -> String {
+    let child = "site_id = \"site\"\n[[pipeline]]\nid = \"echo\"\nschedule = \"every 1h\"\ntables = [\n  { name = \"copies\", primary_key = [\"unit_ref\", \"derivation_key\", \"cue_seq\"] },\n  { name = \"units\", primary_key = [\"unit_ref\", \"derivation_key\", \"cue_seq\"] },\n]\n[pipeline.source]\nname = \"derive\"\nconfig = { task = \"word-copy\", source_table = \"split_words\", parent_id_column = \"word\" }\n";
+    format!("{child}\n{}", host_manifest("word-split").replace("id = \"split\"\n", "id = \"split\"\nschedule = \"every 1h\"\n"))
+}
+
+// spec: run.select.derive-order@1ff2a000
+#[test]
+fn a_child_declared_first_derives_its_parents_new_rows_in_one_tick() {
+    let host = host_binary();
+    let dir = host_project(&chain_manifest());
+    let p = dir.path();
+    ok(&run_bin(&host, p, &["pipeline", "import", "--project", "research"], &[]));
+    let cycle = run_bin(&host, p, &["pipeline", "serve", "--cycle", "--project", "research", "--now", "2030-01-01T01:00:00Z"], &[]);
+    ok(&cycle);
+    assert_eq!(select(p, "SELECT copy FROM \"echo_copies\" WHERE kind = 'passage' ORDER BY copy"), [["alpha"], ["beta"], ["gamma"]]);
+}
+
+// spec: run.select.derive-failed-parent@219b4497
+#[test]
+fn a_child_reads_committed_parent_rows_after_its_parent_fails() {
+    let host = host_binary();
+    let dir = host_project(&chain_manifest());
+    let p = dir.path();
+    ok(&fire(&host, p, "seed", "2030-01-01T00:00:00Z", &[]));
+    ok(&run_bin(&host, p, &["pipeline", "import", "--project", "research"], &[]));
+    let cycle = run_bin(&host, p, &["pipeline", "serve", "--cycle", "--project", "research", "--now", "2030-01-01T01:00:00Z"], &[("WORD_SPLIT_VERSION", "2"), ("WORD_SPLIT_FAIL", "1")]);
+    assert!(!cycle.status.success(), "a failed parent makes the cycle red: {}", String::from_utf8_lossy(&cycle.stdout));
+    assert_eq!(select(p, "SELECT copy FROM \"echo_copies\" WHERE kind = 'passage' ORDER BY copy"), [["alpha"], ["beta"], ["gamma"]]);
+}
+
 /// A pipeline naming a registered host task builds; an unregistered name raises `DeriveUnknownTask`, listing the
 /// built-in and registered names.
 #[test]

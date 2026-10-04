@@ -9609,12 +9609,12 @@
       "operation": "select",
       "subject": "derive-order",
       "kind": "behavior",
-      "statement": "In one tick, a derive pipeline reading another derive pipeline's output table runs after that parent, regardless of declaration order.",
+      "statement": "A derive pipeline reading another derive pipeline's output table runs after that parent on the parent's tick, regardless of declaration order or its own schedule.",
       "why": "A-run",
       "file": "spec/32-derive.md",
       "line": 76,
       "scenarios": [
-        "WHEN a child is declared before its parent and reads the parent's output, THEN one tick lands the parent's new row before the child reads it."
+        "WHEN a scheduled child is declared before its parent and reads the parent's output, THEN the parent's tick lands its new row before the child reads it."
       ]
     },
     {
@@ -9646,6 +9646,20 @@
       ]
     },
     {
+      "id": "run.select.derive-after-conflict",
+      "contract": "run",
+      "operation": "select",
+      "subject": "derive-after-conflict",
+      "kind": "refusal",
+      "statement": "A derive child whose `after` names a pipeline other than its source-table parent raises `DeriveAfterConflict` and arms none.",
+      "why": "A-run",
+      "file": "spec/32-derive.md",
+      "line": 82,
+      "scenarios": [
+        "WHEN a derive child names another pipeline in `after`, THEN the build raises `DeriveAfterConflict` naming the child and both parents."
+      ]
+    },
+    {
       "id": "run.bind.unbound-engine",
       "contract": "run",
       "operation": "bind",
@@ -9654,7 +9668,7 @@
       "statement": "An engine with no `[derive.<name>]` block raises `DeriveEngineUnbound`, naming the pipeline, the engine, the file to edit and every bound engine.",
       "why": "A-run",
       "file": "spec/32-derive.md",
-      "line": 98
+      "line": 101
     },
     {
       "id": "run.bind.command-in-manifest",
@@ -9665,7 +9679,7 @@
       "statement": "`command`, `preprocess`, `env` or `allow_hosts` inside `[pipeline.source.config]` raises `DeriveCommandInManifest`.",
       "why": "A-run",
       "file": "spec/32-derive.md",
-      "line": 100
+      "line": 103
     },
     {
       "id": "run.bind.unknown-task",
@@ -9676,7 +9690,7 @@
       "statement": "`task` names `transcribe`, the default, `link_preview`, or a task the embedding binary registered; any other value raises `DeriveUnknownTask`, listing the built-in and registered names.",
       "why": "A-run",
       "file": "spec/32-derive.md",
-      "line": 102
+      "line": 105
     },
     {
       "id": "run.bind.host-task",
@@ -9687,7 +9701,7 @@
       "statement": "An embedding binary registers each compiled derive task under a name before build, and configuration names that symbol, never a command; a name repeating a built-in or registered task raises `DeriveTaskNameTaken`.",
       "why": "A-run",
       "file": "spec/32-derive.md",
-      "line": 104
+      "line": 107
     },
     {
       "id": "run.bind.driver-mismatch",
@@ -9698,7 +9712,7 @@
       "statement": "`driver` is `exec` or `\"none\"` behind `transcribe` and `fetch` behind `link_preview`, and a host task names no `engine`; any other pairing raises `DeriveDriverMismatch`.",
       "why": "A-run",
       "file": "spec/32-derive.md",
-      "line": 106
+      "line": 109
     },
     {
       "id": "run.bind.endpoint-host-bare",
@@ -9709,7 +9723,7 @@
       "statement": "An `endpoint_host` carrying a path, query, port or scheme raises `DeriveEndpointHostNotBare`.",
       "why": "A-run",
       "file": "spec/32-derive.md",
-      "line": 108
+      "line": 111
     },
     {
       "id": "run.bind.remote-url-unsupported",
@@ -9720,7 +9734,7 @@
       "statement": "An `http` or `https` media value for an engine declining remote addresses raises `DeriveRemoteUrlUnsupported`, naming the `when = \"media_is_url\"` preprocess step.",
       "why": "A-run",
       "file": "spec/32-derive.md",
-      "line": 110
+      "line": 113
     },
     {
       "id": "run.bind.media-unreadable",
@@ -9731,7 +9745,7 @@
       "statement": "A media value that is neither an address nor a readable local file raises `DeriveMediaUnreadable`, failing that unit alone.",
       "why": "A-run",
       "file": "spec/32-derive.md",
-      "line": 112
+      "line": 115
     },
     {
       "id": "run.bind.media-root",
@@ -9742,7 +9756,7 @@
       "statement": "A local media value resolves, canonicalized, under the binding's `media_root` ({{store.init.declaration-base}}), that base itself by default; a path escaping it raises `DeriveMediaOutsideRoot`, failing that unit alone.",
       "why": "because a parent row is third-party data, and an unconfined path reads any file the machine's user can",
       "file": "spec/32-derive.md",
-      "line": 114
+      "line": 117
     },
     {
       "id": "run.bind.confidence-range",
@@ -9753,7 +9767,7 @@
       "statement": "A `confidence` outside `0.0..=1.0` after adapter normalization raises `DeriveConfidenceOutOfRange` and lands null.",
       "why": "A-run",
       "file": "spec/32-derive.md",
-      "line": 116
+      "line": 119
     },
     {
       "id": "run.bind.upstream-excerpt",
@@ -9764,7 +9778,7 @@
       "statement": "An `Upstream` excerpt holds at most 4 KiB and no request body.",
       "why": "",
       "file": "spec/32-derive.md",
-      "line": 118
+      "line": 121
     },
     {
       "id": "run.bind.engine-unavailable",
@@ -9775,7 +9789,7 @@
       "statement": "`EngineUnavailable` from a transcriber ends the run; from a `LinkReader` it raises `DeriveLinkEngineUnavailable` and costs that one unit.",
       "why": "P6",
       "file": "spec/32-derive.md",
-      "line": 119
+      "line": 122
     },
     {
       "id": "run.bind.advisory-zone",
@@ -9786,7 +9800,7 @@
       "statement": "A row zone taken from the binding's advisory `zone` key raises `DeriveAdvisoryZone`.",
       "why": "A-run",
       "file": "spec/32-derive.md",
-      "line": 121
+      "line": 124
     },
     {
       "id": "run.exec.shell-command",
@@ -9797,7 +9811,7 @@
       "statement": "`command` is an argument array run with no shell; a `command` given as one string raises `DeriveShellCommand`.",
       "why": "A-run",
       "file": "spec/32-derive.md",
-      "line": 132
+      "line": 135
     },
     {
       "id": "run.exec.env-name",
@@ -9808,7 +9822,7 @@
       "statement": "An allowlist name that is not ASCII alphanumeric or underscore, or that leads with a digit, raises `DeriveEnvNameInvalid`.",
       "why": "A-run",
       "file": "spec/32-derive.md",
-      "line": 134
+      "line": 137
     },
     {
       "id": "run.exec.chain-deadline",
@@ -9819,7 +9833,7 @@
       "statement": "`timeout_secs` bounds one unit's whole chain at 1800 s by default.",
       "why": "",
       "file": "spec/32-derive.md",
-      "line": 136
+      "line": 139
     },
     {
       "id": "run.exec.captured-output",
@@ -9830,7 +9844,7 @@
       "statement": "`max_output_bytes` bounds each step's captured standard output and error at 8 MiB by default.",
       "why": "",
       "file": "spec/32-derive.md",
-      "line": 137
+      "line": 140
     },
     {
       "id": "run.exec.audit-entries",
@@ -9841,7 +9855,7 @@
       "statement": "A chain contributes at most 64 entries of captured output to the run record.",
       "why": "",
       "file": "spec/32-derive.md",
-      "line": 138
+      "line": 141
     },
     {
       "id": "run.exec.step-error-excerpt",
@@ -9852,7 +9866,7 @@
       "statement": "A failing step's error text carries at most 4 KiB of its standard error.",
       "why": "",
       "file": "spec/32-derive.md",
-      "line": 139
+      "line": 142
     },
     {
       "id": "run.exec.non-zero-exit",
@@ -9863,7 +9877,7 @@
       "statement": "A step exiting non-zero raises `DeriveStepExit` carrying its bounded error text into the run audit.",
       "why": "A-run",
       "file": "spec/32-derive.md",
-      "line": 140
+      "line": 143
     },
     {
       "id": "run.exec.deadline-elapsed",
@@ -9874,7 +9888,7 @@
       "statement": "A chain outrunning its deadline raises `DeriveStepTimeout`, naming the running step.",
       "why": "A-run",
       "file": "spec/32-derive.md",
-      "line": 142
+      "line": 145
     },
     {
       "id": "run.exec.output-cap",
@@ -9885,7 +9899,7 @@
       "statement": "Output past the bound is counted and discarded, never buffered; crossing it kills the step and raises `DeriveOutputCap` with the byte count, draining continuing so the child never blocks.",
       "why": "A-run",
       "file": "spec/32-derive.md",
-      "line": 144
+      "line": 147
     },
     {
       "id": "run.exec.silent-step",
@@ -9896,7 +9910,7 @@
       "statement": "A preprocess step exiting zero without writing its output file raises `DeriveStepProducedNothing`.",
       "why": "A-run",
       "file": "spec/32-derive.md",
-      "line": 146
+      "line": 149
     },
     {
       "id": "run.exec.missing-binary",
@@ -9907,7 +9921,7 @@
       "statement": "A `command[0]` that is not an executable file on this machine raises `DeriveBinaryMissing`, naming the binary and the step.",
       "why": "A-connector",
       "file": "spec/32-derive.md",
-      "line": 148
+      "line": 151
     },
     {
       "id": "run.exec.unpinned-path",
@@ -9918,7 +9932,7 @@
       "statement": "A path-form `command[0]` without `sha256` raises `DeriveUnpinnedPath`, quoting the digest just computed; a bare search-path name carries none.",
       "why": "A-connector",
       "file": "spec/32-derive.md",
-      "line": 150
+      "line": 153
     },
     {
       "id": "run.exec.digest-mismatch",
@@ -9929,7 +9943,7 @@
       "statement": "A pinned file whose bytes differ from its recorded digest raises `DeriveDigestMismatch`.",
       "why": "A-connector",
       "file": "spec/32-derive.md",
-      "line": 152
+      "line": 155
     },
     {
       "id": "run.exec.no-shell",
@@ -9940,7 +9954,7 @@
       "statement": "A step runs as its argument array with no shell, in a process group of its own, under a cleared environment holding only the binding's `env` table.",
       "why": "A-run",
       "file": "spec/32-derive.md",
-      "line": 154
+      "line": 157
     },
     {
       "id": "run.exec.step-condition",
@@ -9951,7 +9965,7 @@
       "statement": "A preprocess step runs only while its `when` holds: `media_is_url` for an `http` or `https` input, `engine_requires_pcm16_wav` for an input other than 16-bit PCM WAV; another name raises `DeriveStepConditionUnknown`.",
       "why": "because a misspelled condition otherwise skips or runs its step silently",
       "file": "spec/32-derive.md",
-      "line": 156
+      "line": 159
     },
     {
       "id": "run.exec.verified-spawn",
@@ -9962,7 +9976,7 @@
       "statement": "Each spawn re-reads its step's binary and runs it only while those bytes match the digest resolved at run start, else {{run.exec.digest-mismatch}}.",
       "why": "",
       "file": "spec/32-derive.md",
-      "line": 158
+      "line": 161
     },
     {
       "id": "run.exec.engine-id",
@@ -9973,7 +9987,7 @@
       "statement": "An `exec` engine id reads `exec:<name>@<prefix>`, the prefix being 12 chars of lowercase hex over every step's binary digest and arguments.",
       "why": "",
       "file": "spec/32-derive.md",
-      "line": 159
+      "line": 162
     },
     {
       "id": "run.fetch.scheme",
@@ -9984,7 +9998,7 @@
       "statement": "An address whose scheme is neither `http` nor `https` raises `DeriveSchemeUnsupported` before any socket opens.",
       "why": "A-connector",
       "file": "spec/32-derive.md",
-      "line": 187
+      "line": 190
     },
     {
       "id": "run.fetch.address-literal",
@@ -9995,7 +10009,7 @@
       "statement": "A host written as an address literal raises `DeriveAddressLiteral`.",
       "why": "A-connector",
       "file": "spec/32-derive.md",
-      "line": 189
+      "line": 192
     },
     {
       "id": "run.fetch.redirect-chain",
@@ -10006,7 +10020,7 @@
       "statement": "A redirect chain runs to at most 5 hops.",
       "why": "",
       "file": "spec/32-derive.md",
-      "line": 191
+      "line": 194
     },
     {
       "id": "run.fetch.binding-key",
@@ -10017,7 +10031,7 @@
       "statement": "`env`, `preprocess`, `engine` or `max_output_bytes` on a fetch binding raises `DeriveFetchBindingKey`, naming the key.",
       "why": "because a silently ignored key leaves an operator believing a fetch carries a credential or runs a process",
       "file": "spec/32-derive.md",
-      "line": 192
+      "line": 195
     },
     {
       "id": "run.fetch.document-prefix",
@@ -10028,7 +10042,7 @@
       "statement": "`max_document_bytes` bounds the scanned document prefix at 1 MiB by default, dropping the remainder.",
       "why": "",
       "file": "spec/32-derive.md",
-      "line": 194
+      "line": 197
     },
     {
       "id": "run.fetch.probe-prefix",
@@ -10039,7 +10053,7 @@
       "statement": "`max_probe_bytes` bounds one picture range request at 64 KiB by default.",
       "why": "",
       "file": "spec/32-derive.md",
-      "line": 195
+      "line": 198
     },
     {
       "id": "run.fetch.hop-timeout",
@@ -10050,7 +10064,7 @@
       "statement": "`request_timeout_secs` bounds one hop at 20 s by default.",
       "why": "",
       "file": "spec/32-derive.md",
-      "line": 196
+      "line": 199
     },
     {
       "id": "run.fetch.retry-after-default",
@@ -10061,7 +10075,7 @@
       "statement": "A `429` without a usable `Retry-After` maps to `RateLimited` carrying 60 s.",
       "why": "",
       "file": "spec/32-derive.md",
-      "line": 197
+      "line": 200
     },
     {
       "id": "run.fetch.charset",
@@ -10072,7 +10086,7 @@
       "statement": "A declared character set other than UTF-8 raises `DeriveCharsetUnsupported`, naming the value.",
       "why": "A-connector",
       "file": "spec/32-derive.md",
-      "line": 198
+      "line": 201
     },
     {
       "id": "run.fetch.not-utf8",
@@ -10083,7 +10097,7 @@
       "statement": "A document declaring no character set and failing UTF-8 validation raises `DeriveBytesNotUtf8`; a character split at the byte bound is tolerated.",
       "why": "A-connector",
       "file": "spec/32-derive.md",
-      "line": 200
+      "line": 203
     },
     {
       "id": "run.emit.failure-off-table",
@@ -10094,7 +10108,7 @@
       "statement": "Per-unit failure state recorded outside the output table raises `DeriveFailureOffTable`.",
       "why": "A-run",
       "file": "spec/32-derive.md",
-      "line": 225
+      "line": 228
     },
     {
       "id": "run.emit.unit-status",
@@ -10105,7 +10119,7 @@
       "statement": "`unit_status` is `ok`, `empty` where the engine established nothing to derive, `unavailable` where it returned nothing and stated no reason, or `failed` on a typed error; any other value raises `DeriveUnitStatusUnknown`.",
       "why": "A-run",
       "file": "spec/32-derive.md",
-      "line": 227
+      "line": 230
     },
     {
       "id": "run.emit.reserved-discriminator",
@@ -10116,7 +10130,7 @@
       "statement": "A derive table declaring a column named `kind` raises `DeriveReservedDiscriminator`.",
       "why": "A-run",
       "file": "spec/32-derive.md",
-      "line": 229
+      "line": 232
     },
     {
       "id": "run.emit.settled-revived",
@@ -10127,7 +10141,7 @@
       "statement": "A unit that settles under its current key while a tick derives it raises `DeriveSettledUnitRevived`, and that tick lands none of its rows; a changed key revives nothing.",
       "why": "A-run",
       "file": "spec/32-derive.md",
-      "line": 231
+      "line": 234
     },
     {
       "id": "run.emit.attempts",
@@ -10138,7 +10152,7 @@
       "statement": "`attempts` is the prior count under the row's key plus one; `unavailable` and `failed` stop at {{run.select.attempts-per-unit}}, and `empty` receives 1 attempts in total.",
       "why": "",
       "file": "spec/32-derive.md",
-      "line": 233
+      "line": 236
     },
     {
       "id": "run.emit.unredacted-error",
@@ -10149,7 +10163,7 @@
       "statement": "A non-null `last_error` write that has not passed address redaction raises `DeriveUnredactedError`.",
       "why": "A-authority",
       "file": "spec/32-derive.md",
-      "line": 234
+      "line": 237
     },
     {
       "id": "run.emit.primary-key",
@@ -10160,7 +10174,7 @@
       "statement": "A derive output table or host marker table without `primary_key` `[\"unit_ref\", \"derivation_key\", \"cue_seq\"]`, or a host content table whose key does not open with `unit_ref` and `derivation_key`, raises `DerivePrimaryKeyMissing`.",
       "why": "because a re-derived unit otherwise lands its new passages over the originals, or beside them with no key telling them apart",
       "file": "spec/32-derive.md",
-      "line": 236
+      "line": 239
     },
     {
       "id": "run.emit.derivation-key",
@@ -10171,7 +10185,7 @@
       "statement": "Every passage and marker row carries `derivation_key`: lowercase hex SHA-256 over the engine id, the binding less its bounds and `zone`, the output table's declared columns, and the parent row's id, media value and `derivation_key`.",
       "why": "A-run",
       "file": "spec/32-derive.md",
-      "line": 238
+      "line": 241
     },
     {
       "id": "run.emit.stale-supersedes",
@@ -10182,7 +10196,7 @@
       "statement": "A unit's rows landed under another key before its latest `ok` or `empty` landing are superseded: each answers until that landing, and the next fold drops it and rebuilds the table's sidecars without it.",
       "why": "A-run",
       "file": "spec/32-derive.md",
-      "line": 240
+      "line": 243
     },
     {
       "id": "run.emit.task-version",
@@ -10193,7 +10207,7 @@
       "statement": "A host task's `derivation_key` hashes its registered name, its `task_version` and the parent row's id, declared columns and `derivation_key`, so raising the version re-selects every settled unit.",
       "why": "A-run",
       "file": "spec/32-derive.md",
-      "line": 242
+      "line": 245
     },
     {
       "id": "run.emit.host-rows",
@@ -10204,7 +10218,7 @@
       "statement": "A host task's content row carries its unit's `unit_ref`, `derivation_key` and `task_version`, `kind` `passage` and `unit_status` `ok`; every unit lands one marker, `ok` over content rows, `empty` over none.",
       "why": "A-run",
       "file": "spec/32-derive.md",
-      "line": 244
+      "line": 247
     },
     {
       "id": "run.emit.content-empty",
@@ -10215,7 +10229,7 @@
       "statement": "A host unit landing no row in a content table lands one `kind` `marker`, `unit_status` `empty` row there under its key, so {{run.emit.stale-supersedes}} holds in every content table.",
       "why": "because a read and a fold supersede from one table's rows alone, so a content table never seeing the unit's newest key keeps its stale rows answering",
       "file": "spec/32-derive.md",
-      "line": 246
+      "line": 249
     },
     {
       "id": "run.emit.output-tables",
@@ -10226,7 +10240,7 @@
       "statement": "A host-task pipeline declares exactly its task's marker and content tables, and a unit returns rows for its content tables alone; either breach raises `DeriveOutputTablesMismatch`, the second failing that unit alone.",
       "why": "A-run",
       "file": "spec/32-derive.md",
-      "line": 248
+      "line": 251
     },
     {
       "id": "run.emit.marker-last",
@@ -10237,7 +10251,7 @@
       "statement": "A host-task run commits each content table under its own commit, then the marker table, and a content table failing stops the fire before its marker lands, so the unit re-runs and its rows collapse by key.",
       "why": "A-run",
       "file": "spec/32-derive.md",
-      "line": 250
+      "line": 253
     },
     {
       "id": "run.emit.version-retained",
@@ -10248,7 +10262,7 @@
       "statement": "On an output table declaring `retain_versions`, {{run.emit.stale-supersedes}} holds per unit and `task_version`, so rows under an earlier task version stay current under that version beside the newer version's rows.",
       "why": "A-run",
       "file": "spec/32-derive.md",
-      "line": 252
+      "line": 255
     },
     {
       "id": "run.emit.marker-row",
@@ -10259,7 +10273,7 @@
       "statement": "A unit yielding no passage lands one marker row, `cue_seq` -1 and `kind` `marker`, carrying its status, attempts, last error and whether it retries.",
       "why": "A-run",
       "file": "spec/32-derive.md",
-      "line": 254
+      "line": 257
     },
     {
       "id": "run.emit.empty-document",
@@ -10270,7 +10284,7 @@
       "statement": "Only a WebVTT document whose blocks are its header, notes and styles establishes nothing to derive; empty output, or blocks none of which parse, lands `unavailable`.",
       "why": "",
       "file": "spec/32-derive.md",
-      "line": 256
+      "line": 259
     },
     {
       "id": "run.emit.canceled-unit",
@@ -10281,7 +10295,7 @@
       "statement": "A unit whose chain a run stop interrupts lands no row and charges no attempt; the pull ends `Canceled` once {{run.cancel.child-reaped}}.",
       "why": "",
       "file": "spec/32-derive.md",
-      "line": 257
+      "line": 260
     },
     {
       "id": "run.parse-cues.backward-cue",
@@ -10292,7 +10306,7 @@
       "statement": "A block starting before the last accepted block raises `DeriveCueOutOfOrder` and is dropped.",
       "why": "P4",
       "file": "spec/32-derive.md",
-      "line": 271
+      "line": 274
     },
     {
       "id": "run.parse-cues.passage-chars",
@@ -10303,7 +10317,7 @@
       "statement": "A passage stays open while it holds fewer than 600 chars.",
       "why": "",
       "file": "spec/32-derive.md",
-      "line": 273
+      "line": 276
     },
     {
       "id": "run.parse-cues.passage-span",
@@ -10314,7 +10328,7 @@
       "statement": "A passage stays open while it spans less than 60 s.",
       "why": "",
       "file": "spec/32-derive.md",
-      "line": 274
+      "line": 277
     },
     {
       "id": "run.parse-cues.passage-bytes",
@@ -10325,7 +10339,7 @@
       "statement": "One passage's text holds at most 8 KiB.",
       "why": "",
       "file": "spec/32-derive.md",
-      "line": 275
+      "line": 278
     },
     {
       "id": "run.parse-cues.passages-per-document",
@@ -10336,7 +10350,7 @@
       "statement": "One document yields at most 2000 rows of passages.",
       "why": "",
       "file": "spec/32-derive.md",
-      "line": 276
+      "line": 279
     },
     {
       "id": "run.parse-cues.grammar",
@@ -10347,7 +10361,7 @@
       "statement": "SubRip and WebVTT read through one grammar: a block's timing line, then its text lines joined by a space.",
       "why": "",
       "file": "spec/32-derive.md",
-      "line": 277
+      "line": 280
     },
     {
       "id": "run.test-engine.unsupported-driver",
@@ -10358,7 +10372,7 @@
       "statement": "A `fetch` engine named to the verb raises `DeriveTestEngineUnsupported`.",
       "why": "because the verb drives a transcriber over media, and a link engine takes no media",
       "file": "spec/32-derive.md",
-      "line": 283
+      "line": 286
     },
     {
       "id": "connector.export.authoring-path",
@@ -26439,6 +26453,10 @@
           "DeriveAdvisoryZone": {
             "clause": "run.bind.advisory-zone",
             "gloss": "A row zone taken from the operator's advisory key."
+          },
+          "DeriveAfterConflict": {
+            "clause": "run.select.derive-after-conflict",
+            "gloss": "A derive child whose explicit predecessor differs from its source-table parent."
           },
           "DeriveBinaryMissing": {
             "clause": "run.exec.missing-binary",

@@ -519,10 +519,14 @@ fn drain_pipe(pipe: Option<impl Read + Send + 'static>) -> std::thread::JoinHand
 impl Dispatch for ChildDispatch {
     fn fire(&self, id: &str, steps: &[String], version: u64) -> Result<String, String> {
         let mut lines = Vec::new();
+        let mut failures = Vec::new();
         for step in std::iter::once(id).chain(steps.iter().map(String::as_str)) {
-            lines.push(self.step(step, version)?);
+            match self.step(step, version) {
+                Ok(line) => lines.push(line),
+                Err(error) => failures.push(error),
+            }
         }
-        Ok(lines.join("; "))
+        if failures.is_empty() { Ok(lines.join("; ")) } else { Err(failures.join("; ")) }
     }
 }
 
@@ -605,6 +609,13 @@ fn arm(scheduler: &mut Scheduler, snaps: &Source, project: &Project) -> Result<O
     let mut entries = Vec::new();
     let mut unarmed = Vec::new();
     for spec in specs.values() {
+        if runs.derived_children.contains(&spec.id) {
+            let head = runs.head_of.get(&spec.id).expect("a derived child has a head");
+            let reason = format!("it lands after its derive parent in the run headed by `{head}`");
+            eprintln!("pipeline `{}` stays unarmed: {reason}", spec.id);
+            unarmed.push(Unarmed { id: spec.id.clone(), reason });
+            continue;
+        }
         let reason = match spec.schedule.as_deref().map(Schedule::parse) {
             Some(Ok(schedule)) => {
                 entries.push(Entry { id: spec.id.clone(), schedule });
