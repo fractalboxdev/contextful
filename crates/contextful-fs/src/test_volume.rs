@@ -19,7 +19,8 @@ fn hdiutil(args: &[&str]) {
 impl ExfatVolume {
     /// Create and mount a 32 MiB exFAT image under the system temporary directory.
     pub fn mount() -> ExfatVolume {
-        let dir = std::env::temp_dir().join(format!("contextful-exfat-{}", super::nonce()));
+        // hdiutil mounts the image under the startup volume even when TMPDIR points to an external build disk.
+        let dir = Path::new("/private/tmp").join(format!("contextful-exfat-{}", super::nonce()));
         std::fs::create_dir_all(&dir).expect("temporary directory is writable");
         let image = dir.join("volume.dmg");
         let mount = dir.join("mnt");
