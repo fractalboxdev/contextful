@@ -2826,7 +2826,7 @@
       "operation": "fold",
       "subject": "row-retention",
       "kind": "behavior",
-      "statement": "A fold removes rows older than {{store.declare.retain-rows}} from its snapshot and sidecars; a partition whose footer maximum precedes the cutoff is skipped without reading its rows, and an idle pass publishes when rows expire.",
+      "statement": "A fold removes rows older than {{store.declare.retain-rows}} from its snapshot and sidecars after keyed winner selection; an unkeyed partition whose footer maximum precedes the cutoff skips row reads, and an idle pass publishes when rows expire.",
       "why": "because a time partition follows the sender's clock while the retention clock follows arrival",
       "file": "spec/10-store.md",
       "line": 295
