@@ -277,6 +277,24 @@ fn the_schema_stage_regenerates_into_scratch_and_refuses_a_stale_committed_copy(
     assert_eq!(bin.calls().last().map(String::as_str), Some("run --locked -q -p contextful-spec -- lint"));
 }
 
+#[test]
+fn declared_derived_artifact_is_checked_by_schema_stage() {
+    let bin = Bin::new();
+    bin.fake(
+        "cargo",
+        "prev=\nfor a in \"$@\"; do\n  if [ \"$prev\" = \"--root\" ]; then root=\"$a\"; fi\n  prev=\"$a\"\ndone\ncase \"$*\" in *state*) printf 'fresh\\n' > \"$root/spec/custom.md\";; esac\n",
+    );
+    let r = Repo::init();
+    r.write("spec/derived.toml", "[[artifact]]\npath = \"spec/custom.md\"\ncheck = \"contextful-spec state\"\n");
+    r.write("spec/custom.md", "stale\n");
+    r.commit("a stale declared artifact");
+
+    let o = gate(&r, Some(&bin), &["--stage", "schema"]);
+    let err = stderr(&o);
+    assert!(!o.status.success(), "{err}");
+    assert!(err.contains("schema: spec/custom.md differs from its regeneration"), "{err}");
+}
+
 /// The evaluate stage runs every gate-tier ledger entry and the native case set in the deterministic tier, and reports the floor and baseline verdicts.
 // spec: assurance.gate.evaluate-stage@316d20b1
 #[test]
