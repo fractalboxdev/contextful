@@ -120,3 +120,23 @@ fn an_exfat_volume_creates_through_the_fallback() {
     std::fs::create_dir(&dir).unwrap();
     one_of_sixteen_racers_wins(create_exclusive, &dir);
 }
+
+#[cfg(target_os = "macos")]
+#[test]
+fn exfat_mount_uses_system_disk_with_custom_tmpdir() {
+    const CHILD: &str = "CONTEXTFUL_EXFAT_TEMP_CHILD";
+    if std::env::var_os(CHILD).is_some() {
+        let volume = contextful_fs::test_volume::ExfatVolume::mount();
+        assert!(volume.path().starts_with("/private/tmp"), "mount: {}", volume.path().display());
+        return;
+    }
+
+    let custom_tmp = tempfile::tempdir().unwrap();
+    let output = std::process::Command::new(std::env::current_exe().unwrap())
+        .args(["--exact", "create::exfat_mount_uses_system_disk_with_custom_tmpdir", "--nocapture"])
+        .env(CHILD, "1")
+        .env("TMPDIR", custom_tmp.path())
+        .output()
+        .unwrap();
+    assert!(output.status.success(), "{}", String::from_utf8_lossy(&output.stdout));
+}
