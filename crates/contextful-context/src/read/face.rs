@@ -649,7 +649,7 @@ pub(crate) fn admit_in(session: &Session, tree: &Value) -> Result<Admitted, Read
 /// distinguishes the caller query's positional form from its supported numbered form.
 fn positional_marker(sql: &str) -> bool {
     let bytes = sql.as_bytes();
-    let (mut i, mut mode, mut block_depth) = (0, 0u8, 0usize);
+    let (mut i, mut mode, mut block_depth, mut dollar_delimiter) = (0, 0u8, 0usize, 0..0);
     while i < bytes.len() {
         let next = bytes.get(i + 1).copied();
         match mode {
@@ -659,6 +659,19 @@ fn positional_marker(sql: &str) -> bool {
                 (b'"', _) => mode = 2,
                 (b'-', Some(b'-')) => { mode = 3; i += 1; }
                 (b'/', Some(b'*')) => { mode = 4; block_depth = 1; i += 1; }
+                (b'$', _) => {
+                    let mut end = i + 1;
+                    if bytes.get(end).is_some_and(|c| c.is_ascii_alphabetic() || *c == b'_') {
+                        while bytes.get(end).is_some_and(|c| c.is_ascii_alphanumeric() || *c == b'_') {
+                            end += 1;
+                        }
+                    }
+                    if bytes.get(end) == Some(&b'$') {
+                        dollar_delimiter = i..end + 1;
+                        mode = 5;
+                        i = end;
+                    }
+                }
                 _ => {}
             },
             1 | 2 => {
@@ -668,10 +681,14 @@ fn positional_marker(sql: &str) -> bool {
                 }
             }
             3 => if bytes[i] == b'\n' { mode = 0; },
-            _ => match (bytes[i], next) {
+            4 => match (bytes[i], next) {
                 (b'/', Some(b'*')) => { block_depth += 1; i += 1; }
                 (b'*', Some(b'/')) => { block_depth -= 1; i += 1; if block_depth == 0 { mode = 0; } }
                 _ => {}
+            },
+            _ => if bytes[i..].starts_with(&bytes[dollar_delimiter.clone()]) {
+                i += dollar_delimiter.len() - 1;
+                mode = 0;
             },
         }
         i += 1;

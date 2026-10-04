@@ -230,6 +230,12 @@ fn query_parameters_bind_by_declared_type() {
     assert_eq!(column(&run("SELECT $1 AS result /* ? is a comment */", json!({
         "1": { "type": "string", "value": "valid" }
     })).unwrap(), "result"), [json!("valid")]);
+    assert_eq!(column(&run("SELECT $1 AS result, $$?$$ AS literal", json!({
+        "1": { "type": "string", "value": "valid" }
+    })).unwrap(), "literal"), [json!("?")]);
+    assert_eq!(column(&run("SELECT $1 AS result, $tag$?$tag$ AS literal", json!({
+        "1": { "type": "string", "value": "valid" }
+    })).unwrap(), "literal"), [json!("?")]);
     assert!(run(r#"SELECT note_id FROM "research/notes" WHERE note_id = $id"#, json!({
         "id": { "type": "string", "value": "' OR 1=1 --" }
     })).unwrap().rows.is_empty());
