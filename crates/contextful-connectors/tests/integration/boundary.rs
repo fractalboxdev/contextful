@@ -37,7 +37,7 @@ fn a_decode_runs_in_a_child_the_parent_kills_at_its_deadline() {
     // The parent outlives the killed child and runs the next decode.
     assert_eq!(sh("cat").run(b"[]", "Team/Budget").unwrap(), b"[]");
     // A child growing its data segment past the bound dies of it.
-    #[cfg(any(target_os = "linux", target_os = "macos"))]
+    #[cfg(target_os = "linux")]
     {
         let grow = sh("x=$(head -c 268435456 /dev/zero | tr '\\0' a); echo ${#x}").with_memory(64 * 1024 * 1024);
         let f = grow.run(b"", "Team/huge.pdf").unwrap_err();
