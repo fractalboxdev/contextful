@@ -474,13 +474,15 @@ pub struct DeriveSource {
     pub resolver: Arc<Resolver>,
     /// Every fetched document, redirect and image probe passes this run's hook and quota.
     pub mediation: Mediation,
+    /// The store that supplies the parent and output tables; absent for an unbound source.
+    pub store_root: Option<PathBuf>,
     /// Where relative media paths and path-form binaries resolve.
     pub cwd: PathBuf,
 }
 
 impl DeriveSource {
     fn validate_identity(&self) -> Result<(), RunError> {
-        if self.cwd.as_os_str().is_empty() {
+        if self.store_root.as_ref().is_none_or(|root| root.as_os_str().is_empty()) {
             return Err(RunError::DeriveNoStoreRoot("store root is absent".into()));
         }
         if self.pipeline_id.trim().is_empty() {

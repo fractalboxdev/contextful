@@ -739,6 +739,7 @@ pub fn run(cmd: PipelineCmd, tasks: &Tasks) -> Result<()> {
                                 reader: Box::new(StoreReader { store: Store::open(&l.project.dir, &l.project.name)?, decls: dest.decls.clone() }),
                                 resolver: resolver.clone(),
                                 mediation,
+                                store_root: Some(dest.store.root().to_path_buf()),
                                 cwd: base.clone(),
                             })
                         }

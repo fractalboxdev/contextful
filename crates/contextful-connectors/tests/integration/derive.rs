@@ -207,6 +207,7 @@ fn source(dir: &Path, parents: Value, engine_toml: &str) -> DeriveSource {
         reader: Box::new(Rows(vec![("documents".into(), parents)])),
         resolver: Arc::new(contextful_outbound::Resolver::new(vec![], false, Arc::new(contextful_core::ports::FixedClock(contextful_core::time::Instant::from_unix_secs(0).unwrap())))),
         mediation: contextful_connectors::http::Mediation { hook: Some(Arc::new(Admitted)), run_id: Some("derive-test".into()), ..Default::default() },
+        store_root: Some(dir.to_path_buf()),
         cwd: dir.to_path_buf(),
     }
 }
@@ -232,7 +233,11 @@ fn a_derive_source_refuses_an_absent_store_root_or_pipeline_id() {
     assert!(failure.message.contains("DeriveNoStoreRoot") && failure.message.contains("pipeline id"), "{failure:?}");
 
     source.pipeline_id = "doc-text".into();
-    source.cwd = Path::new("").to_path_buf();
+    source.store_root = None;
+    let failure = pull(&mut source, &Never).unwrap_err();
+    assert!(failure.message.contains("DeriveNoStoreRoot") && failure.message.contains("store root"), "{failure:?}");
+
+    source.store_root = Some(Path::new("").to_path_buf());
     let failure = pull(&mut source, &Never).unwrap_err();
     assert!(failure.message.contains("DeriveNoStoreRoot") && failure.message.contains("store root"), "{failure:?}");
 }
