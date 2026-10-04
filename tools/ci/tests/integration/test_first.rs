@@ -68,6 +68,42 @@ fn a_test_failing_on_the_base_passes() {
     assert!(o.status.success(), "{}", stderr(&o));
 }
 
+// spec: assurance.gate.test-first-parts@8cdcd3c6
+#[test]
+fn each_changed_test_package_has_its_own_dispatch_part() {
+    let r = Repo::init();
+    r.write("crates/other/Cargo.toml", &manifest("other", ""));
+    r.write("crates/other/src/lib.rs", "pub fn value() -> i32 { 1 }\n");
+    r.write("crates/other/tests/integration/main.rs", "mod value;\n");
+    r.write("crates/other/tests/integration/value.rs", "#[test]\nfn positive() { assert!(other::value() > 0); }\n");
+    r.lock();
+    r.commit("second package and workspace lock");
+    let base = r.head();
+    r.write("crates/demo/src/lib.rs", TRIPLE);
+    r.write("crates/demo/tests/integration/main.rs", "mod double;\nmod triple;\n");
+    r.write("crates/demo/tests/integration/triple.rs", "#[test]\nfn triples() { assert_eq!(demo::triple(2), 6); }\n");
+    r.write("crates/other/src/lib.rs", "pub fn value() -> i32 { 2 }\n");
+    r.write("crates/other/tests/integration/value.rs", "#[test]\nfn positive() { assert!(other::value() >= 1); }\n");
+    r.commit("triple, test first");
+
+    let listed = r.run_ci(&["stages", "--parts", "--base", &base, "--json"]);
+    assert!(listed.status.success(), "{}", stderr(&listed));
+    let stages: Vec<String> = serde_json::from_slice(&listed.stdout).unwrap();
+    assert!(stages.contains(&"test-first.validate".to_string()), "{stages:?}");
+    assert!(stages.contains(&"test-first.demo".to_string()), "{stages:?}");
+    assert!(stages.contains(&"test-first.other".to_string()), "{stages:?}");
+    assert!(!stages.contains(&"test-first".to_string()), "{stages:?}");
+
+    let part = r.gate(&["--stage", "test-first.demo", "--base", &base]);
+    assert!(part.status.success(), "{}", stderr(&part));
+    let part = r.gate(&["--stage", "test-first.other", "--base", &base]);
+    assert!(!part.status.success() && stderr(&part).contains("TestNotFirst"), "{}", stderr(&part));
+    let whole = r.gate(&["--stage", "test-first", "--base", &base]);
+    assert!(!whole.status.success() && stderr(&whole).contains("other"), "{}", stderr(&whole));
+    let validation = r.gate(&["--stage", "test-first.validate", "--base", &base]);
+    assert!(validation.status.success(), "{}", stderr(&validation));
+}
+
 #[test]
 fn a_refactor_trailer_exempts_the_range() {
     let r = Repo::init();
@@ -92,21 +128,22 @@ fn a_refactor_commit_does_not_exempt_the_rest_of_the_range() {
 }
 
 #[test]
-fn a_new_package_counts_red_alone_and_leaves_the_base_workspace_loadable() {
+fn a_new_package_counts_red_and_leaves_the_base_workspace_loadable() {
     let r = Repo::init();
     let base = r.head();
-    // A new package with its own tests, beside a green-on-base test for a source change in `demo`.
+    // Both changed packages provide tests red against their own base source.
     r.write("crates/fresh/Cargo.toml", &crate::manifest("fresh", ""));
     r.write("crates/fresh/src/lib.rs", "pub fn one() -> i32 {\n    1\n}\n");
     r.write("crates/fresh/tests/integration/main.rs", "#[test]\nfn one() {\n    assert_eq!(fresh::one(), 1);\n}\n");
     r.write("crates/demo/src/lib.rs", TRIPLE);
-    r.write("crates/demo/tests/integration/double.rs", "#[test]\nfn doubles() {\n    assert_eq!(demo::double(3), 6);\n}\n");
-    r.commit("a new package, and a demo test that specifies nothing new");
+    r.write("crates/demo/tests/integration/main.rs", "mod double;\nmod triple;\n");
+    r.write("crates/demo/tests/integration/triple.rs", "#[test]\nfn triples() { assert_eq!(demo::triple(2), 6); }\n");
+    r.commit("two packages with red tests");
     let o = r.gate(&["--stage", "test-first", "--base", &base]);
     let err = stderr(&o);
     assert!(o.status.success(), "{err}");
     assert!(err.contains("crates/fresh (absent at base)"), "{err}");
-    assert!(!err.contains("crates/demo"), "demo's test passes at base and counts green: {err}");
+    assert!(err.contains("crates/demo"), "demo's test must count red: {err}");
     assert!(!err.contains("failed to load manifest"), "{err}");
 }
 

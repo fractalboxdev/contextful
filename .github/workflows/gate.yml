@@ -1,10 +1,11 @@
 # The gate, one FlareDispatch `check` per stage.
 #
-# Each matrix entry dispatches `contextful-ci gate --predecessors --stage <stage>` to the
+# The prepare job selects each changed test package against the PR base. Each matrix entry
+# dispatches `contextful-ci gate --predecessors --stage <stage>` to the
 # org's Dispatcher, which clones the PR head into a Rust-equipped sandbox and reports the
 # verdict as the check-run `flare-dispatch/check:<stage>`. `--predecessors` also runs each
 # stage whose output the stage reads, so the formal check runs pins and toolchain first.
-# The workspace, features and budget stages dispatch one part each, `<stage>.<part>`, so each part fits
+# The test-first, workspace, features and budget stages dispatch one part each, `<stage>.<part>`, so each part fits
 # the sandbox's 30 min wall clock; `contextful-ci stages --parts` prints the list.
 # A matrix job holds its slot until its dispatched check finishes, limiting concurrent
 # sandbox builds to two. Each stage or part reports one check-run:
@@ -12,7 +13,8 @@
 #   flare-dispatch/check:pins        every pinned identity resolved before any compilation
 #   flare-dispatch/check:toolchain   the pinned Lean toolchain and the WebAssembly target provisioned
 #   flare-dispatch/check:schema      secrets of record, mirrors: annotations, derived artifacts regenerated, contextful-spec lint
-#   flare-dispatch/check:test-first  a test under tests/ fails against the base source
+#   flare-dispatch/check:test-first.validate  a source change carries a test under tests/
+#   flare-dispatch/check:test-first.<package>  that package's changed tests fail against the base source
 #   flare-dispatch/check:workspace.compile       compile every workspace suite over the union of features, then run the CLI suite
 #   flare-dispatch/check:workspace.<group>       run each other package suite in one of four groups
 #   flare-dispatch/check:acceptance  the milestone acceptance suite
@@ -47,14 +49,32 @@ permissions:
   contents: read
 
 jobs:
+  prepare:
+    if: ${{ vars.FLAREDISPATCH_ENDPOINT != '' && github.event.pull_request.head.repo.full_name == github.repository }}
+    runs-on: ubuntu-latest
+    outputs:
+      stages: ${{ steps.matrix.outputs.stages }}
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          ref: ${{ github.event.pull_request.head.sha }}
+          fetch-depth: 0
+      - id: matrix
+        env:
+          BASE: ${{ github.event.pull_request.base.sha }}
+        run: |
+          stages="$(cargo run --locked -q -p contextful-ci -- stages --parts --base "$BASE" --json)"
+          printf 'stages=%s\n' "$stages" >> "$GITHUB_OUTPUT"
+
   dispatch:
     if: ${{ vars.FLAREDISPATCH_ENDPOINT != '' && github.event.pull_request.head.repo.full_name == github.repository }}
+    needs: prepare
     runs-on: ubuntu-latest
     strategy:
       fail-fast: false
       max-parallel: 2
       matrix:
-        stage: [pins, toolchain, schema, test-first, workspace.compile, workspace.foundation, workspace.runtime, workspace.read, workspace.ci, acceptance, evaluate, features.packages, features.binary-none, features.binary-all, features.binary-data-plane, features.binary-contextful-edge, crate-graph, connectors, surfaces, formal, budget.control, budget.edge, budget.full]
+        stage: ${{ fromJson(needs.prepare.outputs.stages) }}
     steps:
       - id: dispatch
         uses: fractalboxdev/flare-dispatch/actions/flare-dispatch-action@a5118d6594c8f3e4040bb90afcb02898a6e7b7bd

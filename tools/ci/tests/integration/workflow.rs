@@ -18,13 +18,12 @@ fn the_workflow_dispatches_every_gate_stage() {
     }
 
     let yml = std::fs::read_to_string(repo_root().join(".github/workflows/gate.yml")).unwrap();
-    let matrix = yml
-        .lines()
-        .find_map(|l| l.trim().strip_prefix("stage: ["))
-        .and_then(|l| l.strip_suffix(']'))
-        .expect("a `stage: [...]` matrix in gate.yml");
-    let dispatched: Vec<String> = matrix.split(',').map(|s| s.trim().to_string()).collect();
-    assert_eq!(dispatched, stages);
+    assert!(stages.contains(&"test-first.validate".to_string()), "{stages:?}");
+    assert!(yml.contains("stage: ${{ fromJson(needs.prepare.outputs.stages) }}"), "{yml}");
+    assert!(yml.contains("stages --parts --base"), "{yml}");
+    assert!(yml.contains("ref: ${{ github.event.pull_request.head.sha }}"), "{yml}");
+    assert!(yml.contains("BASE: ${{ github.event.pull_request.base.sha }}"), "{yml}");
+    assert!(yml.contains("stages=%s\\n' \"$stages\" >> \"$GITHUB_OUTPUT\""), "{yml}");
     assert!(yml.contains("\"checkLabel\": \"${{ matrix.stage }}\""));
     assert!(yml.contains("\"command\": \"cargo run --locked -q -p contextful-ci -- gate --predecessors --stage ${{ matrix.stage }}"));
 }

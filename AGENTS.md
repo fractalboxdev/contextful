@@ -103,10 +103,10 @@ The gate measures commits, so commit before running it.
 [`.github/workflows/gate.yml`](./.github/workflows/gate.yml) dispatches each stage of
 `contextful-ci gate` to the org's FlareDispatch Dispatcher as a `check` run. Each stage
 reports as its own check-run on the pull request:
-`flare-dispatch/check:<stage>` for each of `pins`, `toolchain`, `schema`, `test-first`,
+`flare-dispatch/check:<stage>` for each of `pins`, `toolchain`, `schema`,
 `workspace`, `acceptance`, `evaluate`, `features`, `crate-graph`, `connectors`,
-`surfaces`, `formal` and `budget`. The features and budget stages dispatch one check per
-part, `flare-dispatch/check:features.<part>` and `flare-dispatch/check:budget.<profile>`, so
+`surfaces`, `formal` and `budget`. The test-first, features and budget stages dispatch one check per
+part, `flare-dispatch/check:test-first.validate` and `flare-dispatch/check:test-first.<package>`, `flare-dispatch/check:features.<part>` and `flare-dispatch/check:budget.<profile>`, so
 each fits the sandbox's wall clock; `contextful-ci stages --parts` prints the list, and
 `--stage <stage>.<part>` runs one part. A selected subset runs in that order and refuses a
 stage whose predecessor's output is absent; `--predecessors` runs those too. A local run and

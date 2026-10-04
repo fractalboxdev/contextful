@@ -155,6 +155,8 @@ Stage order, secrets of record, the crate-graph, row-token, egress and dependenc
   *A-assurance*
 - `remote-check` — The pull-request workflow dispatches every stage the gate subcommand defines to a remote runner, a split stage one part at a time, each as one status check labelled with its name.
   *A-assurance*
+- `test-first-parts` — A remote test-first validation checks for a changed test, and each changed test package checks only its own tests against the base in a separate dispatch.
+  *because one base build per package fits the sandbox's wall clock more reliably*
 - `workspace-parts` — Remote workspace checks compile the feature-unified workspace and run the CLI suite from that build, then run each other non-acceptance package suite in exactly one of four groups.
   *A-assurance*
 - `remote-predecessors` — Each remote check runs its stage together with every predecessor whose output that stage reads, so no check reads another check's sandbox.
