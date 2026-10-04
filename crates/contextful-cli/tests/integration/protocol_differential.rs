@@ -70,3 +70,35 @@ fn a_protocol_difference_prints_the_minimal_sequence_and_both_states() {
     assert!(error.contains("model=lease[none] catalog=999"), "{error}");
     assert!(error.contains("store=lease[none] catalog=0"), "{error}");
 }
+
+#[test]
+fn generated_protocol_cases_cover_the_three_nodes_and_every_step() {
+    let first = Command::new(BIN)
+        .args(["formal", "protocol-differential", "--seed", "76004", "--cases", "64", "--dump-cases"])
+        .output()
+        .unwrap();
+    assert!(first.status.success(), "{}", String::from_utf8_lossy(&first.stderr));
+    let second = Command::new(BIN)
+        .args(["formal", "protocol-differential", "--seed", "76004", "--cases", "64", "--dump-cases"])
+        .output()
+        .unwrap();
+    assert_eq!(first.stdout, second.stdout);
+    let cases: Vec<serde_json::Value> = first.stdout.split(|b| *b == b'\n').filter(|line| !line.is_empty())
+        .map(|line| serde_json::from_slice(line).unwrap()).collect();
+    assert_eq!(cases.len(), 64);
+    let mut nodes = std::collections::BTreeSet::new();
+    let mut operations = std::collections::BTreeSet::new();
+    for case in cases {
+        let steps = case.as_array().unwrap();
+        assert_eq!(steps.len(), 32);
+        for step in steps {
+            if let Some(node) = step["node"].as_u64() {
+                assert!(node < 3);
+                nodes.insert(node);
+            }
+            operations.insert(step["op"].as_str().unwrap().to_string());
+        }
+    }
+    assert_eq!(nodes, [0, 1, 2].into_iter().collect());
+    assert_eq!(operations, ["acquire", "renew", "expire", "release", "send", "deliver", "pause", "resume", "crash"].into_iter().map(str::to_string).collect());
+}
