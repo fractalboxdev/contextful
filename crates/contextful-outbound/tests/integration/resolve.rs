@@ -147,6 +147,23 @@ fn cached_hydrations_share_one_buffer_until_retirement() {
     assert_eq!(p.calls(), 2);
 }
 
+/// An expired credential leaves the resolver even when its provider cannot renew it.
+#[test]
+fn an_expired_cache_buffer_is_released_when_refresh_fails() {
+    let clock = SetClock::new();
+    let provider = Fixed::new("manager", &[("vendor-token", "first")]);
+    let resolver = resolver(vec![provider.clone()], &clock);
+    let held = resolver.hydrate(&name("vendor-token")).unwrap();
+    let retired = Arc::downgrade(&held);
+    drop(held);
+    provider.values.lock().unwrap().clear();
+
+    clock.advance(300);
+    let failure = resolver.hydrate(&name("vendor-token")).unwrap_err();
+    assert!(failure.message.starts_with("SecretUnresolvedReference"), "{failure}");
+    assert!(retired.upgrade().is_none(), "an expired credential survives a failed refresh");
+}
+
 /// A reference no assembled adapter answers raises `SecretUnresolvedReference` naming it, at preflight where the
 /// binding is static and at the call otherwise.
 // spec: connector.resolve.unresolved-name@01714613
