@@ -488,7 +488,13 @@ impl Face {
         let decl = self.decl(table);
         let policy = session.policy(table).expect("a registered table carries its policy");
         let schema = session.columns(table).expect("a registered table carries its columns");
-        let columns: Vec<Value> = schema.iter().map(|c| json!({ "name": c.name, "type": c.ty.name() })).collect();
+        let columns: Vec<Value> = schema.iter().map(|c| {
+            let mut column = json!({ "name": c.name, "type": c.ty.name() });
+            if let Some(hint) = decl.column_hints.as_ref().and_then(|hints| hints.get(&c.name)) {
+                column["hint"] = json!(hint);
+            }
+            column
+        }).collect();
         let fingerprint: String = {
             let text: Vec<String> = schema.iter().map(|c| format!("{}:{}", c.name, c.ty.name())).collect();
             Sha256::digest(text.join("\n").as_bytes()).iter().map(|b| format!("{b:02x}")).collect()
