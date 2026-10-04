@@ -6,11 +6,11 @@ contract: surface
 
 ## What it is for
 
-An operator uses **Contextful** without code. Query answers questions
-with grounded prose, widgets and sources. Admin visualizes deployed workflows, run outcomes
-and learnings, and edits the versioned control document. Hosted deployments gate each page
-and its API with Cloudflare Access by default or Cognito managed password login
-({{surface.open-console.ungated-route}}). The control plane arms only work the engine names;
+Query answers questions with grounded prose, widgets and sources
+({{surface.ground.sources-block}}). Admin visualizes deployed workflows ({{surface.visualize.workflow-canvas}}), run outcomes
+and learnings, and edits the versioned control document ({{surface.open-console.engine-faces}}). Hosted deployments gate each page
+and its API ({{surface.open-console.identity-gate}}, {{surface.open-console.page-grants}}).
+The control plane arms only work the engine names;
 Query reaches rows through governed reads under the operator's own credential
 ({{assurance.structure-tree.one-home}}).
 
@@ -67,18 +67,19 @@ callbacks by attempt ({{surface.dispatch.callback-rejected}}). Reside refuses to
 a region the policy omits ({{surface.reside.region-mismatch}}).
 
 Each page and API route verifies the operator's Access assertion or Cognito session and that page's grant
-({{surface.open-console.wrong-page}}).
+({{surface.open-console.page-routes}}, {{surface.open-console.wrong-page}}).
 Admin edit and apply also require the server's admin capability
 ({{surface.open-console.admin-grant}}). The Admin canvas projects pipelines, schedules,
 steps and run outcomes; its edits reach the same
 control document that the reconciler reads.
 
-Query turns one question into one answer. The server, never the client, chooses
+Query turns one question into one answer ({{surface.plan-turn.turn-flow}}). The server, never the client, chooses
 every capability the turn exercises: tools come from the turn's admitted packs
 ({{surface.ground.unadmitted-tool}}), the query endpoint reaches no write
 ({{surface.ground.mutating-tool}}), and views are built server-side
 ({{surface.render.client-authored-view}}). Prose exists only over a tool result
-({{surface.ground.ungrounded-answer}}).
+({{surface.ground.ungrounded-answer}}), and the stream passes through the redactor
+({{surface.speak.stream-redaction}}).
 
 ## Worked example
 
