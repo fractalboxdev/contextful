@@ -52,3 +52,18 @@ fn an_edge_outside_the_relation_union_is_refused() {
         other => panic!("{other:?}"),
     }
 }
+
+#[test]
+fn reserved_memory_relations_match_the_declared_core() {
+    assert_eq!(
+        RESERVED_RELATIONS.as_slice(),
+        ["supports", "contradicts", "supersedes", "about", "derived_from"].as_slice()
+    );
+    let declarations = MemoryDeclarations::default();
+    for relation in RESERVED_RELATIONS {
+        assert!(declarations.admits_relation(relation));
+    }
+    for relation in ["mentions", "part_of", "located_in", "owns", "works_for"] {
+        assert!(!declarations.admits_relation(relation), "{relation} needs a declaration");
+    }
+}
