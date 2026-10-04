@@ -1,7 +1,9 @@
-//! An issuer-signed receipt binding one applied control snapshot to its project and
-//! predecessor (`surface.apply.receipt-message`).
+//! An issuer-signed, versioned receipt binds an applied control snapshot to its
+//! project and predecessor (`surface.apply.receipt-message`). Its canonical JSON
+//! digest identifies that receipt in the successor (`surface.apply.receipt-digest`).
 
 use crate::issue::{sign_through, SignerKey};
+use contextful_core::issue::SignatureAlgorithm;
 use contextful_core::ports::SigningPort;
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
@@ -66,7 +68,10 @@ impl ControlReceipt {
         if !key.verifies(&self.message(), &signature) {
             return Err("control receipt signature does not verify".into());
         }
-        if !trusted.iter().any(|pin| pin.verifies(&self.message(), &signature)) {
+        let signer_key = normalized_public_key(&key).expect("a parsed receipt signer names a valid key");
+        if !trusted.iter().any(|pin| {
+            pin.algorithm == key.algorithm && normalized_public_key(pin).as_deref() == Some(signer_key.as_slice())
+        }) {
             return Err("control receipt signer is not locally pinned".into());
         }
         Ok(())
@@ -75,6 +80,18 @@ impl ControlReceipt {
     /// The digest a successor names as its parent, over canonical JSON bytes.
     pub fn digest(&self) -> String {
         hex::encode(Sha256::digest(serde_json_canonicalizer::to_vec(self).expect("a control receipt canonicalizes")))
+    }
+}
+
+fn normalized_public_key(key: &SignerKey) -> Option<Vec<u8>> {
+    match key.algorithm {
+        SignatureAlgorithm::Ed25519 => Some(key.public_key.clone()),
+        SignatureAlgorithm::Es256 => {
+            use p256::elliptic_curve::sec1::ToEncodedPoint;
+            p256::PublicKey::from_sec1_bytes(&key.public_key)
+                .ok()
+                .map(|point| point.to_encoded_point(true).as_bytes().to_vec())
+        }
     }
 }
 
