@@ -112,6 +112,34 @@ fn file_listing_covers_the_callers_tables_alone() {
     assert!(paths.iter().all(|p| !p.as_str().unwrap().starts_with("tables/hr/")), "{paths:?}");
 }
 
+#[test]
+fn file_listing_holds_the_face_row_ceiling() {
+    use contextful_policy::enforce::policy::TablePolicy;
+    use contextful_policy::enforce::session::TableSource;
+
+    let r = Reads::new();
+    let authority = r.authority(loop_subject("agent://research-loop"), vec![read(&["research/vendor"], None)]);
+    let decl = TableDecl::named("research/vendor");
+    let files = (0..=contextful_core::read::respond::FACE_ROW_CEILING)
+        .map(|index| format!("{}/tables/research/vendor/data/runs/run-{index:05}/part.parquet", r.store.root().display()))
+        .collect();
+    let source = TableSource {
+        policy: TablePolicy::from_decl(&decl).unwrap(),
+        decl,
+        base: "SELECT 1 AS item_id".into(),
+        files,
+        columns: Vec::new(),
+        landed: false,
+        ledger: Vec::new(),
+        resolved: None,
+    };
+    let session = Session::open(&authority, &Request::default(), vec![source], &pepper()).unwrap();
+    let listing = r.face.files(&session, Bounds::default()).unwrap();
+    assert_eq!(listing.rows.len() as u64, contextful_core::read::respond::FACE_ROW_CEILING);
+    assert!(listing.truncated);
+    assert_eq!(listing.blocks["contextful.truncation"], json!({ "by": "rows", "ceiling": contextful_core::read::respond::FACE_ROW_CEILING, "source": "face" }));
+}
+
 /// `context.file` resolves a path to its `(table, run_id)` and reads it through that table's registered relation. A snapshot part, a traversal, an absolute path or a ledger file raises `FilePreviewNotATable`.
 // spec: read.register.file-preview-target@cbe71acd
 #[test]
