@@ -23,6 +23,9 @@ toml = "0.8"
 url = "2"
 zeroize = { version = "1", features = ["derive"] }
 
+[dev-dependencies]
+trybuild = "1"
+
 [[test]]
 name = "integration"
 path = "tests/integration/main.rs"

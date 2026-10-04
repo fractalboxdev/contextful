@@ -75,7 +75,7 @@ mod hosted {
     impl Hydrate for Rendered {
         fn hydrate(&self) -> Result<HeaderValue, Failure> {
             let v = self.resolver.render(&self.template)?;
-            Ok(if self.template.has_reference() { HeaderValue::Sensitive(v) } else { HeaderValue::Plain(v.reveal().to_string()) })
+            Ok(if self.template.has_reference() { HeaderValue::Sensitive(v.into()) } else { HeaderValue::Plain(v.reveal().to_string()) })
         }
     }
 
@@ -144,7 +144,7 @@ mod hosted {
             bail!("registry authorization uses a secret reference");
         }
         resolver.preflight([&template])?;
-        Ok(vec![("Authorization".to_string(), HeaderValue::Sensitive(resolver.render(&template)?))])
+        Ok(vec![("Authorization".to_string(), HeaderValue::Sensitive(resolver.render(&template)?.into()))])
     }
 
     fn remote(name: &str, decl: &ComponentSource, base: &Path, project: &str, resolver: &Resolver, transport: Option<Arc<dyn Transport>>) -> Result<Vec<u8>> {
@@ -231,7 +231,7 @@ mod hosted {
             ComponentTarget::Pulley => Target::Pulley,
         };
         let wasm = resolve(name, decl, base, project, resolver)?;
-        let host = ComponentHost::with_target(target).map_err(failure)?;
+        let host = ComponentHost::with_cache_dir(target, base.join(".contextful/cache/components")).map_err(failure)?;
         let (connector, digest) = host.load_artifact(&decl.artifact, &wasm, decl.requirement(store_pin)).map_err(failure)?;
         let content_hash = content_hash(&digest, decl.guest.as_ref());
         Ok(Loaded { name: name.to_string(), host, connector, limits, content_hash })
@@ -292,7 +292,9 @@ mod hosted {
         use std::sync::{Arc, Mutex};
         use url::Url;
 
-        struct ArtifactTransport;
+        struct ArtifactTransport {
+            body: Vec<u8>,
+        }
 
         struct OciTransport {
             manifest: Vec<u8>,
@@ -324,15 +326,34 @@ mod hosted {
             fn send(&self, request: &Outbound<'_>) -> Result<Inbound, TransportFault> {
                 assert_eq!(request.method, "GET");
                 assert_eq!(request.url.as_str(), "https://artifacts.example.test/probe.wasm");
-                Ok(Inbound { status: 200, headers: Vec::new(), body: b"component".to_vec() })
+                Ok(Inbound { status: 200, headers: Vec::new(), body: self.body.clone() })
             }
         }
 
         #[test]
         fn artifact_fetch_uses_the_mediated_client() {
             let url = Url::parse("https://artifacts.example.test/probe.wasm").unwrap();
-            let client = Client::new(Allowlist::parse(&["artifacts.example.test"]).unwrap(), url.clone()).with_transport(Arc::new(ArtifactTransport));
+            let client = Client::new(Allowlist::parse(&["artifacts.example.test"]).unwrap(), url.clone()).with_transport(Arc::new(ArtifactTransport { body: b"component".to_vec() }));
             assert_eq!(fetch(&client, &url, &[]).unwrap(), b"component");
+        }
+
+        #[test]
+        fn fetched_https_component_loads_and_serves_the_probe_table() {
+            let dir = tempfile::tempdir().unwrap();
+            let probe = include_bytes!(concat!(env!("CARGO_MANIFEST_DIR"), "/../contextful-wasm/tests/fixtures/probe.wasm"));
+            let pin = Digest::of(probe);
+            let name = "https://artifacts.example.test/probe.wasm";
+            let decl = ComponentSource::parse(name, &serde_json::json!({"sha256": pin.as_str()})).unwrap().unwrap();
+            let clock = Arc::new(FixedClock(Instant::parse("2030-01-01T00:00:00Z").unwrap()));
+            let resolver = assemble(&BTreeMap::new(), clock).unwrap();
+            let bytes = remote(name, &decl, dir.path(), "research", &resolver, Some(Arc::new(ArtifactTransport { body: probe.to_vec() }))).unwrap();
+            let host = contextful_wasm::ComponentHost::with_target(contextful_wasm::Target::Native).unwrap();
+            let (connector, digest) = host.load_artifact(&decl.artifact, &bytes, decl.requirement(false)).unwrap();
+            assert_eq!(digest, pin);
+            let grant = contextful_wasm::Grant { allow: Allowlist::parse(&["127.0.0.1"]).unwrap(), attach: Vec::new(), hydrate: Vec::new(), gate: None, hook: None, class: None, run_id: None, transport: None };
+            let mut session = host.open(&connector, grant, &contextful_wasm::Limits::default(), None).unwrap();
+            session.open("items", None).unwrap();
+            assert!(session.next().unwrap().is_some());
         }
 
         #[test]
@@ -366,7 +387,7 @@ mod hosted {
                 ("REGISTRY_TOKEN".to_string(), "registry-secret".to_string()),
             ]);
             let resolver = assemble(&vars, Arc::new(FixedClock(Instant::parse("2030-01-01T00:00:00Z").unwrap()))).unwrap();
-            let layer = b"component".to_vec();
+            let layer = include_bytes!(concat!(env!("CARGO_MANIFEST_DIR"), "/../contextful-wasm/tests/fixtures/probe.wasm")).to_vec();
             let pin = Digest::of(&layer);
             let name = "oci://registry.example.test/repo:stable";
             let decl = ComponentSource::parse(name, &serde_json::json!({"sha256": pin.as_str()})).unwrap().unwrap();
@@ -374,6 +395,13 @@ mod hosted {
             let transport = Arc::new(OciTransport { manifest, layer: layer.clone(), seen: Mutex::new(Vec::new()) });
             let fetched = remote(name, &decl, dir.path(), "research", &resolver, Some(transport.clone())).unwrap();
             assert_eq!(fetched, layer);
+            let host = contextful_wasm::ComponentHost::with_target(contextful_wasm::Target::Native).unwrap();
+            let (connector, digest) = host.load_artifact(&decl.artifact, &fetched, decl.requirement(false)).unwrap();
+            assert_eq!(digest, pin);
+            let grant = contextful_wasm::Grant { allow: Allowlist::parse(&["127.0.0.1"]).unwrap(), attach: Vec::new(), hydrate: Vec::new(), gate: None, hook: None, class: None, run_id: None, transport: None };
+            let mut session = host.open(&connector, grant, &contextful_wasm::Limits::default(), None).unwrap();
+            session.open("items", None).unwrap();
+            assert!(session.next().unwrap().is_some());
             assert_eq!(transport.seen.lock().unwrap().as_slice(), ["/v2/repo/manifests/stable", &format!("/v2/repo/blobs/sha256:{pin}")]);
             let cached = remote(name, &decl, dir.path(), "research", &resolver, Some(transport.clone())).unwrap();
             assert_eq!(cached, layer);

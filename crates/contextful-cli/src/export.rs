@@ -101,7 +101,7 @@ pub fn run(cmd: ExportCmd) -> Result<()> {
                 let mut headers = vec![("Content-Type".to_string(), HeaderValue::Plain("application/json".to_string()))];
                 for (header, t) in &export.headers {
                     let v = resolver.render(t)?;
-                    headers.push((header.clone(), if t.has_reference() { HeaderValue::Sensitive(v) } else { HeaderValue::Plain(v.reveal().to_string()) }));
+                    headers.push((header.clone(), if t.has_reference() { HeaderValue::Sensitive(v.into()) } else { HeaderValue::Plain(v.reveal().to_string()) }));
                 }
                 let bytes = serde_json::to_vec(&body)?;
                 let refused = |why: String| ExportError::ExportDeliveryRefused(format!("export `{name}`: {why}; the cursor stays at {}.{}", cursor.commit_seq, cursor.row_seq));

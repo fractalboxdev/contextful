@@ -315,6 +315,8 @@ Distribution form, digest pinning, per-connector resource bounds and world versi
   *A-connector*
 - `digest-mismatch` — The host re-hashes the resolved bytes and raises `ConnectorDigestMismatch` on a difference, before the bytes reach the engine.
   *A-connector*
+- `artifact-cache` — On Unix, after {{connector.package.digest-mismatch}} admission, the host caches precompiled components by artifact digest and engine compatibility hash; an intact host-written entry deserializes, while a missing, stale or altered entry recompiles.
+  *A-connector*
 - `pin-requirement` — Two switches require a pin on a local artifact, composed by disjunction: the store-wide key `[connector] require_pin` in the store's `config.toml`, and a per-connector manifest flag.
 - `local-unpinned` — With either switch set, an unpinned local artifact raises `ConnectorLocalUnpinned` at build, carrying the digest of the bytes found.
   *A-connector*
@@ -331,9 +333,9 @@ Distribution form, digest pinning, per-connector resource bounds and world versi
   *because a hardened runtime refusing writable-then-executable pages loads no compiled guest, and interpretation trades throughput for loading there*
 - `interpreted-target-absent` — A host built without the `pulley` feature refuses the interpreted target at construction, naming the feature, before any component compiles.
 - `component-source` — A pipeline source named by an artifact path, HTTPS URL or OCI reference runs as a component, its config reading `sha256`, `allow`, `attach`, `guest`, `memory_bytes` and `require_pin`, the manifest flag of {{connector.package.pin-requirement}}.
-- `component-load` — `pipeline run` resolves a component source, admits it against its pin and compiles it once per fire, before any run row, and records its {{connector.import.config-hashing}} content hash as each run's connector hash.
+- `component-load` — `pipeline run` resolves a component source, admits it against its pin and loads it once per fire, before any run row, and records its {{connector.import.config-hashing}} content hash as each run's connector hash.
   *A-connector*
-- `component-grant` — A component session's grant is its declared `allow` hosts and `attach` headers alone, each header hydrated per request under {{connector.resolve.hydration-is-just-in-time}}; a source declaring no `allow` reaches no host.
+- `component-grant` — A component session's grant is its declared `allow` hosts and `attach` headers alone, with credential attachment governed by {{connector.attach.per-request-hydration}}; a source declaring no `allow` reaches no host.
   *A-connector*
 - `component-validate` — `pipeline validate` loads a local component artifact from the directory `pipeline run` resolves it against and runs discovery, so a missing export or a world mismatch fails before any run; a remote artifact is checked without I/O.
   *P1*
@@ -543,13 +545,30 @@ The declared behavior of each source compiled into the engine.
   *A-read*
 - `drive-walk` — The drive source walks the tree under `folder_id` breadth-first through `files.list`, paging each folder, within `drive_id` when declared. Each folder is listed once, its children sorted by name and id; no shortcut is followed.
   *because the source keeps a per-file position and mints its token host-side, which a guest holding no credential bytes cannot*
+- `drive-root-set` — Exactly one of `folder_id` or `folder_ids` selects roots; `folder_ids` holds 1 to 16 entries, all distinct, under one required `drive_id`. An empty, oversized, repeated or ambiguous selection raises `ConnectorDriveRootsInvalid` before listing.
+  *A-connector*
+- `drive-root-validation` — With `folder_ids`, every selected root names a folder in the declared `drive_id`; any missing or outside-drive root raises `ConnectorDriveRootRejected` before any selected folder is listed.
+  *A-connector*
+- `drive-root-walk` — With `folder_ids`, the drive source applies {{connector.source.drive-walk}} to each root while confining descendants to the declared drive, listing each folder once across overlaps.
+  *A-connector*
 - `drive-root` — A `folder_id` naming no folder, or one outside a declared `drive_id`, fails the read as a configuration fault before any listing.
+- `drive-overlap` — A file reachable through several selected roots lands once by `file_id`; its `resolved_root` is the lexicographically least selected root id reaching it.
+  *A-connector*
 - `drive-tables` — The drive source serves `files`, one row per file keyed by `file_id` with its version, name, path from the root, MIME type, `modifiedTime`, Drive's `md5Checksum` and the SHA-256 of the bytes read, and `pages`.
 - `drive-table-unmatched` — A drive table other than `files` or `pages` refuses as {{connector.source.table-unmatched}}, ahead of any request.
+- `drive-mode` — `mode` selects `bytes-and-pages` by default or `metadata-only`; another spelling raises `ConnectorDriveModeUnknown` before any request.
+  *A-connector*
+- `drive-capture-record` — Every file row carries `resolved_root`, `export_mime_type`, captured `bytes` and `capture_status`: `captured`, `skipped` or `removed`. A removed row or skipped row without captured bytes has null `sha256`.
+- `drive-metadata-only` — In `metadata-only` mode, the source hashes exact downloaded or exported bytes, then discards the bytes after recording the digest.
+  *A-connector*
+- `drive-version-consistency` — After a metadata-only download or export, the source re-reads the file version; a change from the listed version raises `ConnectorDriveVersionMoved` before any row or cursor commits.
+  *because a digest of newer bytes cannot witness the version named by the file row*
+- `drive-named-skip` — A skipped file row names the file and reason; the per-file bound of {{connector.source.drive-file-cap}} applies in both modes.
+  *because a skipped row cannot attest to bytes the source did not read*
 - `drive-export` — A Google Doc, Sheet or Slides deck lands as its `files.export` PDF and any other file as its `alt=media` bytes; another Google-native type lands a `skipped` reason and no bytes.
-- `drive-page-grain` — A PDF body lands one `pages` row per page under {{connector.source.document-grain}}, decoded behind {{run.land.parse-boundary}}; bytes land in no column.
+- `drive-page-grain` — In `bytes-and-pages` mode, each PDF page lands one `pages` row under {{connector.source.document-grain}}, decoded behind {{run.land.parse-boundary}}; bytes land in no column. In `metadata-only` mode, no page content row lands.
   *because a page is what retrieval ranks and a citation names, and a row column holding a whole file inflates every scan of the table*
-- `drive-bytes` — Every body the drive source reads whole, exported or downloaded, lands as {{store.lay-out.landed-blob}}, and its file row's `sha256` names that blob.
+- `drive-bytes` — In `bytes-and-pages` mode, every whole exported or downloaded body lands as {{store.lay-out.landed-blob}}, named by its file row's `sha256`; in `metadata-only` mode, no blob lands.
 - `drive-file-cap` — A file over `max_file_bytes`, 64 MiB by default, lands its file row with a `skipped` reason naming the cap and no pages. No byte past the cap is read, and the read continues.
   *because a row naming the skipped file answers for it, where truncated bytes read as the whole document*
 - `drive-unreadable` — A PDF body failing to decode behind {{run.land.parse-boundary}} lands its file row with a `skipped` reason naming the failure and no pages, and the read continues.
@@ -557,13 +576,38 @@ The declared behavior of each source compiled into the engine.
 - `drive-export-limit` — A Doc, Sheet or Slides deck whose export Drive answers `403 exportSizeLimitExceeded` lands its file row with a `skipped` reason naming Drive's export limit and no pages, and the read continues.
   *because Drive refuses that export on every fire, so failing the read stalls the whole tree behind one file*
 - `drive-skip-count` — Each drive pull reports the files it lands with a `skipped` reason as its {{run.record.skipped-count}}, so a fire's `files` run and `pages` run each carry the tally.
+- `drive-selection-position` — The position binds the declared drive, sorted root set and mode; changing any of them revalidates every root and rewalks the selected trees, rereading files without reusing an earlier frontier.
+  *A-connector*
+- `drive-selection-removals` — A complete selected-root walk lands tombstones for files removed, moved outside the roots or deselected, and for excess prior pages; an incomplete walk commits no removals.
+  *A-connector*
+- `drive-root-reassignment` — For selected roots, the position also holds each file's `version` and `resolved_root`. A complete walk re-reads the file when either changes, even with matching `modifiedTime` and path.
+  *because a changed version needs a fresh byte witness even when the file id stays stable*
 - `drive-incremental` — The drive position holds each file's `modifiedTime`, path and page count. A read re-lands a file whose time or path changed, and lands a tombstone for a file gone from the tree and for each page past its new count.
+- `drive-list-bound` — A selected-root walk shares {{connector.source.page-cap}} across roots; reaching it with a pending folder or page token raises `ConnectorDriveListingExceeded`, naming the folder and committing no selection removals.
+  *because an incomplete listing cannot prove a file left the selected trees*
 - `drive-fire` — One fire shares one minted token, one walk and one read of each file's bytes across the `files` and `pages` tables.
 - `drive-oauth` — The drive source mints its access token from a refresh token and client credentials bound as `secret://` references, once per fire and again on a `401`, holding it in memory and writing it to no store, journal or record.
   *because Google's refresh token does not turn over, so the minted token is the one rotating material, and it lapses within the hour*
 - `drive-oauth-shape` — `oauth.refresh_token`, `oauth.client_id` and `oauth.client_secret` each hold one `${secret://<name>}` reference and nothing else, checked before any request.
 - `drive-origin` — The drive API and token endpoints are `www.googleapis.com` and `oauth2.googleapis.com` over TLS on the default port; another host, port or scheme refuses as {{connector.source.provider-origin}}, loopback excepted.
 - `drive-position-owned` — `incremental` beside the drive source refuses as {{connector.package.component-position}} at validation.
+
+#### Scenarios
+
+- `connector.source.drive-root-set`: WHEN `folder_ids` is empty or accompanies `folder_id`, THEN validation raises `ConnectorDriveRootsInvalid` before listing.
+- `connector.source.drive-root-validation`: WHEN one selected root belongs to another Shared Drive, THEN `ConnectorDriveRootRejected` names it before any selected folder is listed.
+- `connector.source.drive-overlap`: WHEN two selected roots reach one file, THEN one `files` row carries the least root id as `resolved_root`.
+- `connector.source.drive-metadata-only`: WHEN a downloaded version has known bytes, THEN its SHA-256 matches those bytes, which the source discards after capture.
+- `connector.source.drive-bytes`: WHEN mode is `metadata-only`, THEN no landed blob holds the downloaded bytes.
+- `connector.source.drive-page-grain`: WHEN mode is `metadata-only`, THEN no page content row lands.
+- `connector.source.drive-selection-position`: WHEN a configured pipeline changes from `bytes-and-pages` to `metadata-only`, THEN the next read rewalks its roots and rereads retained files.
+- `connector.source.drive-metadata-only`: WHEN the separately retained named version is downloaded, THEN its byte SHA-256 reproduces the `files` row's digest.
+- `connector.source.drive-version-consistency`: WHEN a file changes between listing and download, THEN `ConnectorDriveVersionMoved` refuses the capture without a file row or cursor.
+- `connector.source.drive-named-skip`: WHEN a selected file exceeds the byte cap, THEN its skipped row names the file and cap.
+- `connector.source.drive-selection-removals`: WHEN a complete new selection excludes a formerly captured file, THEN its `file_id` lands a tombstone.
+- `connector.source.drive-selection-removals`: WHEN mode changes from `bytes-and-pages` to `metadata-only`, THEN old pages receive tombstones and no page content row remains.
+- `connector.source.drive-root-reassignment`: WHEN a retained file's version changes with identical `modifiedTime` and path, THEN the read captures its new bytes and digest.
+- `connector.source.drive-list-bound`: WHEN listing reaches the request cap with a next-page token but no queued folders, THEN the read refuses and lands no removal tombstone.
 
 unsettled: Does a next-URL walk resume mid-walk through a position holding the URL with every credential-bearing query parameter removed? owner: connector affects: connector.source
 
@@ -595,6 +639,27 @@ max_file_bytes = 33554432
 [pipeline.source.config.oauth]
 refresh_token = "${secret://drive-refresh}"
 client_id     = "${secret://drive-client-id}"
+client_secret = "${secret://drive-client-secret}"
+```
+
+A metadata-only capture of two folders in one Shared Drive:
+
+```toml
+[[pipeline]]
+id = "team-metadata"
+tables = [{ name = "files", primary_key = ["file_id"] }]
+
+[pipeline.source]
+name = "drive"
+
+[pipeline.source.config]
+drive_id = "0AExampleDrive"
+folder_ids = ["1FirstRoot", "2SecondRoot"]
+mode = "metadata-only"
+
+[pipeline.source.config.oauth]
+refresh_token = "${secret://drive-refresh}"
+client_id = "${secret://drive-client-id}"
 client_secret = "${secret://drive-client-secret}"
 ```
 
