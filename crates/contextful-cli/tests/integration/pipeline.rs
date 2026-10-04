@@ -107,9 +107,13 @@ fn an_image_source_lands_header_metadata_without_decoding_pixels() {
     ok(&fire(dir.path(), "photos", "run-1", "2030-01-01T00:00:00Z"));
     let out: serde_json::Value = serde_json::from_str(&ok(&cf(dir.path(), &[
         "query", "--json", "--project", "research",
-        "SELECT path, width, height, modality, body, capture_at FROM photos_images",
+        "SELECT path, width, height, modality, body, capture_at, sha256, modified_at FROM photos_images",
     ]))).unwrap();
-    assert_eq!(out["rows"], serde_json::json!([["p.png", "2", "3", "image", null, null]]));
+    let row = &out["rows"][0];
+    assert_eq!(&row.as_array().unwrap()[..6], &serde_json::json!(["p.png", "2", "3", "image", null, null]).as_array().unwrap()[..]);
+    use sha2::Digest;
+    assert_eq!(row[6], format!("{:x}", sha2::Sha256::digest(png)));
+    assert!(contextful_core::time::Instant::parse(row[7].as_str().unwrap()).is_ok(), "{row}");
 }
 
 #[test]
