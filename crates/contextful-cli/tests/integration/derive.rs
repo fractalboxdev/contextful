@@ -115,6 +115,25 @@ fn a_child_reads_committed_parent_rows_after_its_parent_fails() {
     assert_eq!(select(p, "SELECT copy FROM \"echo_copies\" WHERE kind = 'passage' ORDER BY copy"), [["alpha"], ["beta"], ["gamma"]]);
 }
 
+#[test]
+fn a_failed_parent_runs_its_derive_child_past_an_explicit_after_sibling() {
+    let host = host_binary();
+    let vendor = crate::pipeline::Vendor::start(|_| (200, "[]".into()));
+    let manifest = format!(
+        "{}\n[[pipeline]]\nid = \"a-after\"\nafter = \"split\"\ntables = [\"items\"]\n[pipeline.source]\nname = \"http\"\nconfig = {{ endpoint = \"{}\" }}\n",
+        chain_manifest(),
+        vendor.url("/after"),
+    );
+    let dir = host_project(&manifest);
+    let p = dir.path();
+    ok(&fire(&host, p, "seed", "2030-01-01T00:00:00Z", &[]));
+    ok(&run_bin(&host, p, &["pipeline", "import", "--project", "research"], &[]));
+    let cycle = run_bin(&host, p, &["pipeline", "serve", "--cycle", "--project", "research", "--now", "2030-01-01T01:00:00Z"], &[("WORD_SPLIT_VERSION", "2"), ("WORD_SPLIT_FAIL", "1")]);
+    assert!(!cycle.status.success());
+    assert_eq!(select(p, "SELECT copy FROM \"echo_copies\" WHERE kind = 'passage' ORDER BY copy"), [["alpha"], ["beta"], ["gamma"]]);
+    assert!(vendor.targets().is_empty(), "an explicit after sibling ran after the parent failed");
+}
+
 // spec: run.select.parent-outcome@418ee978
 #[cfg(unix)]
 #[test]

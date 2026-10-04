@@ -228,6 +228,21 @@ fn a_failed_head_still_submits_its_child_and_reports_the_failure() {
 }
 
 #[test]
+fn a_failed_head_skips_an_explicit_sibling_and_submits_a_later_derive_child() {
+    let rig = rig(&["w1"]);
+    let d = rig.dispatch.clone();
+    let run = std::thread::spawn(move || d.fire("parent", &["a-after".to_string(), "z-derived".to_string()], &BTreeSet::from(["z-derived".to_string()]), 1));
+    let (_, parent) = next(&rig);
+    let h = headers(&parent, 1, rig.clock.now(), KEY);
+    rig.relay.callback(&token(&parent), &|k| h.get(k).cloned(), &StepOutcome::Failed { failed: "parent failed".into() }.encode()).unwrap();
+    let (_, child) = rig.received.recv_timeout(Duration::from_millis(500)).expect("the derived child runs past the explicit sibling");
+    assert_eq!(child.step, "z-derived");
+    let h = headers(&child, 1, rig.clock.now(), KEY);
+    rig.relay.callback(&token(&child), &|k| h.get(k).cloned(), &StepOutcome::Done(StepResult::Pointer("derived".into())).encode()).unwrap();
+    assert!(run.join().unwrap().unwrap_err().contains("parent: parent failed"));
+}
+
+#[test]
 fn an_explicit_after_step_stops_when_its_head_fails() {
     let rig = rig(&["w1"]);
     let d = rig.dispatch.clone();
