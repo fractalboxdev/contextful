@@ -85,6 +85,23 @@ fn a_skipped_local_version_still_uploads_its_signed_predecessor() {
 }
 
 #[test]
+fn a_receipt_under_the_wrong_version_name_is_not_a_predecessor() {
+    let dir = tempfile::tempdir().unwrap();
+    let b = bucket(dir.path());
+    let a = node("ingest-a", b.clone(), "");
+    let first = applied_control(&a, 1, None, "first");
+    let control = a.syncer.control_dir.as_ref().unwrap();
+    std::fs::write(control.join(snapshot_file(2)), "first").unwrap();
+    std::fs::copy(control.join(receipt_file(1)), control.join(receipt_file(2))).unwrap();
+    applied_control(&a, 3, Some(&first.digest()), "third");
+    a.syncer.push(at(NOW)).unwrap();
+    let m = manifest(b.as_ref());
+    assert!(m.entries.contains_key("research/control/receipt@v1.json"));
+    assert!(m.entries.contains_key("research/control/receipt@v3.json"));
+    assert!(!m.entries.contains_key("research/control/receipt@v2.json"));
+}
+
+#[test]
 fn a_corrupted_control_receipt_prevents_manifest_publication() {
     let dir = tempfile::tempdir().unwrap();
     let b = bucket(dir.path());

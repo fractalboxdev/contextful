@@ -501,6 +501,10 @@ impl Syncer {
                 Err(_) if n != version => continue,
                 Err(e) => return Err(SurfaceError::ControlAttestationUnavailable(format!("{}: {e}", receipt_path.display())).into()),
             };
+            if receipt.version != n {
+                if n != version { continue; }
+                return Err(SurfaceError::ControlAttestationUnavailable(format!("{}: receipt version differs from its file", receipt_path.display())).into());
+            }
             let digest = receipt.digest();
             if n != version && parent_needed.as_deref() != Some(digest.as_str()) {
                 continue;
@@ -512,9 +516,6 @@ impl Syncer {
             receipt.verify(&self.project, &snapshot_bytes, &[signer]).map_err(|e| {
                 SurfaceError::ControlAttestationUnavailable(format!("{}: {e}", receipt_path.display()))
             })?;
-            if receipt.version != n {
-                return Err(SurfaceError::ControlAttestationUnavailable(format!("{}: receipt version differs from its file", receipt_path.display())).into());
-            }
             if n == version {
                 head_digest = Some(digest.clone());
             }
