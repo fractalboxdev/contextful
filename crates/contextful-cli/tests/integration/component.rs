@@ -259,13 +259,26 @@ fn a_component_key_outside_its_set_is_refused_before_any_io() {
 }
 
 #[test]
-fn a_remote_artifact_is_refused_at_run_naming_its_form() {
+fn a_pinned_remote_artifact_uses_the_project_cache_before_network() {
     let pin = digest(PROBE);
     for name in ["https://dl.vendor.invalid/probe.wasm", "oci://registry.vendor.invalid/probe:1"] {
         let dir = project(&manifest(name, &["items"], &format!("sha256 = \"{pin}\"")));
-        let stderr = refused(&fire(dir.path(), "run-1", &[], &[]), "resolves local artifacts");
-        assert!(stderr.contains(name), "{stderr}");
+        let cache = dir.path().join(".contextful/artifacts/sha256");
+        std::fs::create_dir_all(&cache).unwrap();
+        std::fs::copy(PROBE, cache.join(&pin)).unwrap();
+        let out = ok(&fire(dir.path(), "run-1", &[], &[]));
+        assert!(out.contains("3 rows in 2 batches"), "{out}");
+
+        std::fs::write(cache.join(&pin), b"damaged component").unwrap();
+        refused(&fire(dir.path(), "run-2", &[], &[]), "ConnectorArtifactCacheCorrupt");
     }
+}
+
+#[test]
+fn malformed_oci_reference_is_refused_without_a_request() {
+    let pin = digest(PROBE);
+    let dir = project(&manifest("oci://registry.vendor.invalid/", &["items"], &format!("sha256 = \"{pin}\"")));
+    refused(&cf(dir.path(), &["pipeline", "validate"], &[]), "ConnectorOciReferenceInvalid");
 }
 
 /// `pipeline run` and `pipeline validate` compile components for the interpreted target when `--component-target
