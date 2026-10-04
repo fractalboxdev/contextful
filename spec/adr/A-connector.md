@@ -16,6 +16,19 @@ A reviewed program is identified by a content digest, and a live run completes a
 Consequences: an unpinned local artifact runs whatever bytes sit on disk unless the store policy key or per-connector flag is set.
 Revisit: production runs unpinned local artifacts, arguing for inverting the default; the toolchain stops embedding the host triple.
 
+## Remote artifacts use one verified component blob
+
+The content pin names component bytes rather than a mutable URL, tag or manifest. HTTPS retrieval uses the mediated client with the artifact host alone admitted. OCI retrieval accepts one component layer from a schema-2 manifest; its descriptor digest and the source pin both check the bytes. A project cache publishes only admitted bytes and refuses a damaged cache entry rather than silently replacing the bytes of a recorded run. The operator binds a registry bearer by exact host through `secret://`; that credential reaches registry requests, not the guest.
+
+| Option | Lost on | Cost |
+| --- | --- | --- |
+| Fetch one pinned blob through mediated HTTP or a one-layer OCI manifest, then cache by digest *(chosen)* | — | Multi-layer packages and registry token exchanges need another contract; each cache hit re-hashes bytes. |
+| Resolve every run from the remote reference | Replay availability | An outage stops replay even when the admitted bytes once existed locally. |
+| Reuse the guest's access grant and headers for artifact retrieval | Credential containment | Registry material reaches guest endpoints and vendor material reaches the registry. |
+| Trust an OCI tag and manifest descriptor alone | Review binding | A moved tag changes executable bytes without changing the declaration's pin. |
+
+Consequences: a registry that only accepts a challenge-based token exchange refuses a fetch until it has a directly bound bearer credential. Revisit: a required registry exposes no directly bound bearer; a package needs several blobs or an OCI index.
+
 ## Precompiled components reuse only compatible host output
 
 A cache key joins the admitted artifact digest with the engine's precompile compatibility hash. The host writes compiled output into a private cache directory and verifies its recorded digest before deserialization. An absent, altered or incompatible entry compiles from the admitted source bytes. Pulley output stays separate from native output through the engine hash.

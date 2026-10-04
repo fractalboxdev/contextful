@@ -36,6 +36,21 @@ pub enum ConnectorError {
     /// A remote artifact reference with no 64-hex content pin. (`connector.package.remote-unpinned`)
     #[error("ConnectorRemoteUnpinned: {0}")]
     ConnectorRemoteUnpinned(String),
+    /// A malformed OCI registry, repository or selector. (`connector.package.oci-reference`)
+    #[error("ConnectorOciReferenceInvalid: {0}")]
+    ConnectorOciReferenceInvalid(String),
+    /// An OCI manifest without one component layer. (`connector.package.oci-component-layer`)
+    #[error("ConnectorOciArtifactUnsupported: {0}")]
+    ConnectorOciArtifactUnsupported(String),
+    /// OCI layer bytes differing from their descriptor digest. (`connector.package.oci-layer-integrity`)
+    #[error("ConnectorOciLayerMismatch: {0}")]
+    ConnectorOciLayerMismatch(String),
+    /// Damaged bytes in the project artifact cache. (`connector.package.remote-cache-corrupt`)
+    #[error("ConnectorArtifactCacheCorrupt: {0}")]
+    ConnectorArtifactCacheCorrupt(String),
+    /// A failed remote artifact request. (`connector.package.remote-fetch-failure`)
+    #[error("ConnectorArtifactFetchFailed: {0}")]
+    ConnectorArtifactFetchFailed(String),
     /// An allowlist that is empty or bare-wildcard, or an entry carrying a scheme, port or path. (`connector.declare-capability.allowlist-shape`)
     #[error("ConnectorAllowlistRejected: {0}")]
     ConnectorAllowlistRejected(String),

@@ -491,7 +491,7 @@ pub fn run(cmd: PipelineCmd, tasks: &Tasks) -> Result<()> {
                 let mut discovered = String::new();
                 if let Checked::Component(decl) = &checked {
                     if component::is_local(decl) {
-                        let loaded = component::load(&d.spec.source.name, decl, &base, component_target, store_pin).with_context(at)?;
+                        let loaded = component::load(&d.spec.source.name, decl, &base, "", None, component_target, store_pin).with_context(at)?;
                         let names = loaded.discover(decl).with_context(at)?;
                         discovered = format!(" · discovers {}", names.join(", "));
                     }
@@ -565,7 +565,7 @@ pub fn run(cmd: PipelineCmd, tasks: &Tasks) -> Result<()> {
             let store = Store::open(&l.project.dir, &l.project.name)?;
             // A component resolves, admits and compiles once per fire, before any run row.
             let loaded = match &checked {
-                Checked::Component(decl) => Some(component::load(&spec.source.name, decl, &base, component_target, store.requires_connector_pin())?),
+                Checked::Component(decl) => Some(component::load(&spec.source.name, decl, &base, &l.project.name, Some(&resolver), component_target, store.requires_connector_pin())?),
                 _ => None,
             };
             // One drive fire mints one token and walks the tree once for every table it lands.

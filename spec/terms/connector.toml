@@ -37,6 +37,11 @@ ConnectorEgressRefused          = { clause = "connector.meter.hook-refusal", glo
 ConnectorGrantMissing           = { clause = "connector.meter.built-in-grant-absent", gloss = "A compiled-in vendor-reaching source built without a limiter grant." }
 ConnectorGrantUnhonorable       = { clause = "connector.meter.grant-unhonorable", gloss = "A limiter grant on a source bypassing the mediated client." }
 ConnectorRemoteUnpinned         = { clause = "connector.package.remote-unpinned", gloss = "A remote artifact reference with no 64-hex content pin." }
+ConnectorOciReferenceInvalid    = { clause = "connector.package.oci-reference", gloss = "An OCI reference with an empty registry, repository or selector." }
+ConnectorOciArtifactUnsupported = { clause = "connector.package.oci-component-layer", gloss = "An OCI manifest that is not schema 2 with exactly one WebAssembly component layer." }
+ConnectorOciLayerMismatch       = { clause = "connector.package.oci-layer-integrity", gloss = "OCI layer bytes differing from their manifest descriptor digest." }
+ConnectorArtifactCacheCorrupt   = { clause = "connector.package.remote-cache-corrupt", gloss = "Project-cached artifact bytes differing from their digest key." }
+ConnectorArtifactFetchFailed    = { clause = "connector.package.remote-fetch-failure", gloss = "A remote artifact manifest or byte fetch that fails." }
 ConnectorInsecureArtifact       = { clause = "connector.package.insecure-artifact", gloss = "A connector artifact referenced over plain HTTP." }
 ConnectorDigestMismatch         = { clause = "connector.package.digest-mismatch", gloss = "Resolved artifact bytes whose re-hash differs from the pin." }
 ConnectorLocalUnpinned          = { clause = "connector.package.local-unpinned", gloss = "An unpinned local artifact under a set pin requirement." }

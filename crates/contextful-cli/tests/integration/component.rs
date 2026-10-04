@@ -270,14 +270,39 @@ fn a_component_key_outside_its_set_is_refused_before_any_io() {
     refused(&cf(dir.path(), &["pipeline", "validate"], &[]), "PipelineUnknownConfigKey");
 }
 
+// spec: connector.package.remote-cache@e1461a98
+// spec: connector.package.remote-cache-corrupt@ab4abc64
 #[test]
-fn a_remote_artifact_is_refused_at_run_naming_its_form() {
+fn a_pinned_remote_artifact_uses_the_project_cache_before_network() {
     let pin = digest(PROBE);
     for name in ["https://dl.vendor.invalid/probe.wasm", "oci://registry.vendor.invalid/probe:1"] {
         let dir = project(&manifest(name, &["items"], &format!("sha256 = \"{pin}\"")));
-        let stderr = refused(&fire(dir.path(), "run-1", &[], &[]), "resolves local artifacts");
-        assert!(stderr.contains(name), "{stderr}");
+        let cache = dir.path().join(".contextful/artifacts/sha256");
+        std::fs::create_dir_all(&cache).unwrap();
+        std::fs::copy(PROBE, cache.join(&pin)).unwrap();
+        let out = ok(&fire(dir.path(), "run-1", &[], &[]));
+        assert!(out.contains("3 rows in 2 batches"), "{out}");
+
+        std::fs::write(cache.join(&pin), b"damaged component").unwrap();
+        refused(&fire(dir.path(), "run-2", &[], &[]), "ConnectorArtifactCacheCorrupt");
     }
+}
+
+// spec: connector.package.oci-reference@4aa4c3c9
+#[test]
+fn malformed_oci_reference_is_refused_without_a_request() {
+    let pin = digest(PROBE);
+    let dir = project(&manifest("oci://registry.vendor.invalid/", &["items"], &format!("sha256 = \"{pin}\"")));
+    refused(&cf(dir.path(), &["pipeline", "validate"], &[]), "ConnectorOciReferenceInvalid");
+}
+
+// spec: connector.package.remote-fetch-failure@d8121ea0
+#[test]
+fn remote_fetch_failure_writes_no_run_row() {
+    let pin = digest(PROBE);
+    let dir = project(&manifest("https://127.0.0.1:1/probe.wasm", &["items"], &format!("sha256 = \"{pin}\"")));
+    refused(&fire(dir.path(), "run-1", &[], &[]), "ConnectorArtifactFetchFailed");
+    assert!(!cf(dir.path(), &["run", "show", "run-1", "--project", "research"], &[]).status.success());
 }
 
 /// `pipeline run` and `pipeline validate` compile components for the interpreted target when `--component-target
