@@ -299,6 +299,8 @@ Distribution form, digest pinning, per-connector resource bounds and world versi
   *A-connector*
 - `digest-mismatch` — The host re-hashes the resolved bytes and raises `ConnectorDigestMismatch` on a difference, before the bytes reach the engine.
   *A-connector*
+- `artifact-cache` — On Unix, after {{connector.package.digest-mismatch}} admission, the host caches precompiled components by artifact digest and engine compatibility hash; an intact host-written entry deserializes, while a missing, stale or altered entry recompiles.
+  *A-connector*
 - `pin-requirement` — Two switches require a pin on a local artifact, composed by disjunction: the store-wide key `[connector] require_pin` in the store's `config.toml`, and a per-connector manifest flag.
 - `local-unpinned` — With either switch set, an unpinned local artifact raises `ConnectorLocalUnpinned` at build, carrying the digest of the bytes found.
   *A-connector*
@@ -315,7 +317,7 @@ Distribution form, digest pinning, per-connector resource bounds and world versi
   *because a hardened runtime refusing writable-then-executable pages loads no compiled guest, and interpretation trades throughput for loading there*
 - `interpreted-target-absent` — A host built without the `pulley` feature refuses the interpreted target at construction, naming the feature, before any component compiles.
 - `component-source` — A pipeline source named by an artifact path, HTTPS URL or OCI reference runs as a component, its config reading `sha256`, `allow`, `attach`, `guest`, `memory_bytes` and `require_pin`, the manifest flag of {{connector.package.pin-requirement}}.
-- `component-load` — `pipeline run` resolves a component source, admits it against its pin and compiles it once per fire, before any run row, and records its {{connector.import.config-hashing}} content hash as each run's connector hash.
+- `component-load` — `pipeline run` resolves a component source, admits it against its pin and loads it once per fire, before any run row, and records its {{connector.import.config-hashing}} content hash as each run's connector hash.
   *A-connector*
 - `component-grant` — A component session's grant is its declared `allow` hosts and `attach` headers alone, with credential attachment governed by {{connector.attach.per-request-hydration}}; a source declaring no `allow` reaches no host.
   *A-connector*

@@ -105,7 +105,7 @@ mod hosted {
             ComponentTarget::Pulley => Target::Pulley,
         };
         let wasm = resolve(name, decl, base)?;
-        let host = ComponentHost::with_target(target).map_err(failure)?;
+        let host = ComponentHost::with_cache_dir(target, base.join(".contextful/cache/components")).map_err(failure)?;
         let (connector, digest) = host.load_artifact(&decl.artifact, &wasm, decl.requirement(store_pin)).map_err(failure)?;
         let content_hash = content_hash(&digest, decl.guest.as_ref());
         Ok(Loaded { name: name.to_string(), host, connector, limits, content_hash })

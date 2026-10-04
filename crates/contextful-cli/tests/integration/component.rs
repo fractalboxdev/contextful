@@ -106,9 +106,9 @@ impl Vendor {
     }
 }
 
-/// `pipeline run` resolves a component source, admits it against its pin and compiles it once per fire, before any
+/// `pipeline run` resolves a component source, admits it against its pin and loads it once per fire, before any
 /// run row, and records its {{connector.import.config-hashing}} content hash as each run's connector hash.
-// spec: connector.package.component-load@a8ef5076
+// spec: connector.package.component-load@43f09e4a
 #[test]
 fn pipeline_run_lands_a_pinned_component_and_records_its_digest() {
     let pin = digest(PROBE);
@@ -129,6 +129,18 @@ fn pipeline_run_lands_a_pinned_component_and_records_its_digest() {
     let hash = run_row(dir.path(), "run-1")["connector_hash"].as_str().unwrap().to_string();
     assert_eq!(hash.len(), 64);
     assert_ne!(hash, pin);
+}
+
+#[cfg(unix)]
+#[test]
+fn a_pipeline_run_writes_a_reusable_component_cache_entry() {
+    let pin = digest(PROBE);
+    let dir = project(&manifest("connectors/probe.wasm", &["items"], &format!("sha256 = \"{pin}\"")));
+    ok(&fire(dir.path(), "cache-run-1", &[], &[]));
+    let cache = dir.path().join(".contextful/cache/components");
+    let entries = std::fs::read_dir(&cache).unwrap().map(|entry| entry.unwrap().path()).collect::<Vec<_>>();
+    assert!(entries.iter().any(|entry| entry.extension().is_some_and(|extension| extension == "cwasm")));
+    ok(&fire(dir.path(), "cache-run-2", &[], &[]));
 }
 
 #[test]

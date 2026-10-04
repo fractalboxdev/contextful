@@ -18,7 +18,13 @@ use contextful_core::connector::ConnectorError;
 use contextful_core::run::{Failure, FailureTag};
 use contextful_outbound::client::HeaderValue;
 use std::future::Future;
-use std::sync::atomic::{AtomicBool, Ordering};
+use std::hash::{Hash, Hasher};
+#[cfg(unix)]
+use std::fs::File;
+#[cfg(unix)]
+use std::io::{Read, Write};
+use std::path::Path;
+use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 use std::sync::Arc;
 use std::time::Duration;
 use wasmtime::component::{Component, HasSelf, Instance, InstancePre, Linker, ResourceAny, ResourceTable, TypedFunc};
@@ -294,6 +300,17 @@ pub struct ComponentHost {
     engine: Engine,
     linker: Linker<Ctx>,
     ticker: Arc<Ticker>,
+    #[cfg(unix)]
+    cache_dir: Option<File>,
+    cache_compilations: AtomicU64,
+    cache_hits: AtomicU64,
+}
+
+/// Compilation and cache-hit counts for artifact loads on one host.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct CacheStats {
+    pub compilations: u64,
+    pub hits: u64,
 }
 
 fn load_failure(e: impl std::fmt::Display) -> Failure {
@@ -352,7 +369,46 @@ impl ComponentHost {
         wasmtime_wasi_http::p2::add_only_http_to_linker_async(&mut linker).map_err(load_failure)?;
         bindings::wasi::logging::logging::add_to_linker::<Ctx, HasSelf<Ctx>>(&mut linker, |c| c).map_err(load_failure)?;
         let ticker = Arc::new(Ticker::spawn(engine.clone())?);
-        Ok(ComponentHost { engine, linker, ticker })
+        Ok(ComponentHost { engine, linker, ticker, #[cfg(unix)] cache_dir: None, cache_compilations: AtomicU64::new(0), cache_hits: AtomicU64::new(0) })
+    }
+
+    /// A host whose admitted artifacts reuse a private precompiled-component cache.
+    pub fn with_cache_dir(target: Target, dir: impl AsRef<Path>) -> Result<ComponentHost, Failure> {
+        #[cfg(not(unix))]
+        {
+            let _ = dir;
+            return Self::with_target(target);
+        }
+        #[cfg(unix)]
+        {
+            let mut host = Self::with_target(target)?;
+            let dir = dir.as_ref();
+            let created = !dir.exists();
+            std::fs::create_dir_all(dir).map_err(load_failure)?;
+            use std::os::unix::fs::{MetadataExt, PermissionsExt};
+            let file = open_directory(dir).map_err(load_failure)?;
+            if created {
+                file.set_permissions(std::fs::Permissions::from_mode(0o700)).map_err(load_failure)?;
+            }
+            let meta = file.metadata().map_err(load_failure)?;
+            if !meta.file_type().is_dir() {
+                return Err(load_failure("the component cache path is not a directory"));
+            }
+            if meta.permissions().mode() & 0o077 != 0 {
+                return Err(load_failure("the component cache directory permits access by another user"));
+            }
+            // SAFETY: `geteuid` reads the process's effective user ID.
+            if meta.uid() != unsafe { libc::geteuid() } {
+                return Err(load_failure("the component cache directory belongs to another user"));
+            }
+            host.cache_dir = Some(file);
+            Ok(host)
+        }
+    }
+
+    /// Counts of cache misses compiled and intact cache entries reused.
+    pub fn cache_stats(&self) -> CacheStats {
+        CacheStats { compilations: self.cache_compilations.load(Ordering::Relaxed), hits: self.cache_hits.load(Ordering::Relaxed) }
     }
 
     /// Compile `wasm` as a component and resolve its imports. Core modules, malformed
@@ -366,7 +422,32 @@ impl ComponentHost {
     /// Bytes that fail the pin never reach the compiler (`connector.package.digest-mismatch`).
     pub fn load_artifact(&self, artifact: &Artifact, wasm: &[u8], requirement: PinRequirement) -> Result<(Connector, Digest), Failure> {
         let digest = artifact.admit(wasm, requirement).map_err(|e| Failure::deterministic(FailureTag::Config, e.to_string()))?;
-        Ok((self.load(wasm)?, digest))
+        #[cfg(not(unix))]
+        {
+            return Ok((self.load(wasm)?, digest));
+        }
+        #[cfg(unix)]
+        {
+            let Some(dir) = &self.cache_dir else {
+                return Ok((self.load(wasm)?, digest));
+            };
+            let mut compatibility = std::collections::hash_map::DefaultHasher::new();
+            self.engine.precompile_compatibility_hash().hash(&mut compatibility);
+            let name = format!("{}-{:016x}.cwasm", digest.as_str(), compatibility.finish());
+            if let Some(component) = read_cached(&self.engine, dir, &name) {
+                let pre = self.linker.instantiate_pre(&component).map_err(load_failure)?;
+                self.cache_hits.fetch_add(1, Ordering::Relaxed);
+                return Ok((Connector { pre }, digest));
+            }
+            let compiled = self.engine.precompile_component(wasm).map_err(load_failure)?;
+            // SAFETY: `compiled` is the unmodified output of this engine's precompiler.
+            let component = unsafe { Component::deserialize(&self.engine, &compiled) }.map_err(load_failure)?;
+            let pre = self.linker.instantiate_pre(&component).map_err(load_failure)?;
+            self.cache_compilations.fetch_add(1, Ordering::Relaxed);
+            // A cache write failure leaves the admitted, linked component usable.
+            let _ = write_cached(dir, &name, &compiled);
+            Ok((Connector { pre }, digest))
+        }
     }
 
     /// Instantiate a session. `config` is the pipeline's guest table: checked ahead of
@@ -395,6 +476,122 @@ impl ComponentHost {
         session.configure()?;
         Ok(session)
     }
+}
+
+#[cfg(unix)]
+fn open_directory(path: &Path) -> std::io::Result<File> {
+    use std::os::fd::FromRawFd;
+    use std::os::unix::ffi::OsStrExt;
+    let path = std::ffi::CString::new(path.as_os_str().as_bytes())
+        .map_err(|_| std::io::Error::from(std::io::ErrorKind::InvalidInput))?;
+    // SAFETY: `path` is a NUL-terminated string and the returned descriptor is owned by `File`.
+    let fd = unsafe { libc::open(path.as_ptr(), libc::O_RDONLY | libc::O_DIRECTORY | libc::O_NOFOLLOW | libc::O_CLOEXEC) };
+    if fd < 0 {
+        return Err(std::io::Error::last_os_error());
+    }
+    // SAFETY: `open` returned a fresh descriptor that no other `File` owns.
+    Ok(unsafe { File::from_raw_fd(fd) })
+}
+
+#[cfg(unix)]
+fn cache_entry_name(name: &str) -> std::io::Result<std::ffi::CString> {
+    std::ffi::CString::new(name).map_err(|_| std::io::Error::from(std::io::ErrorKind::InvalidInput))
+}
+
+#[cfg(unix)]
+fn open_cache_entry(dir: &File, name: &str) -> std::io::Result<File> {
+    use std::os::fd::{AsRawFd, FromRawFd};
+    let name = cache_entry_name(name)?;
+    // SAFETY: the directory descriptor remains open and `name` is NUL-terminated.
+    let fd = unsafe { libc::openat(dir.as_raw_fd(), name.as_ptr(), libc::O_RDONLY | libc::O_NOFOLLOW | libc::O_NONBLOCK | libc::O_CLOEXEC) };
+    if fd < 0 {
+        return Err(std::io::Error::last_os_error());
+    }
+    // SAFETY: `openat` returned a fresh descriptor that no other `File` owns.
+    Ok(unsafe { File::from_raw_fd(fd) })
+}
+
+#[cfg(unix)]
+fn read_cached(engine: &Engine, dir: &File, name: &str) -> Option<Component> {
+    let mut entry = open_cache_entry(dir, name).ok()?;
+    if !entry.metadata().ok()?.file_type().is_file() {
+        return None;
+    }
+    let mut bytes = Vec::new();
+    entry.read_to_end(&mut bytes).ok()?;
+    let mut checksum = open_cache_entry(dir, &format!("{}.sha256", name.strip_suffix(".cwasm")?)).ok()?;
+    if !checksum.metadata().ok()?.file_type().is_file() {
+        return None;
+    }
+    let mut expected = String::new();
+    checksum.read_to_string(&mut expected).ok()?;
+    if expected != Digest::of(&bytes).as_str() {
+        return None;
+    }
+    // SAFETY: the private cache directory is writable only by the host's user and holds
+    // precompiler output. The sidecar detects an altered or partial entry, not a writer
+    // acting with the host user's authority.
+    unsafe { Component::deserialize(engine, &bytes) }.ok()
+}
+
+#[cfg(unix)]
+fn create_cache_entry(dir: &File, name: &str) -> std::io::Result<File> {
+    use std::os::fd::{AsRawFd, FromRawFd};
+    let name = cache_entry_name(name)?;
+    // SAFETY: the directory descriptor remains open and `name` is NUL-terminated.
+    let fd = unsafe { libc::openat(dir.as_raw_fd(), name.as_ptr(), libc::O_WRONLY | libc::O_CREAT | libc::O_EXCL | libc::O_NOFOLLOW | libc::O_CLOEXEC, 0o600) };
+    if fd < 0 {
+        return Err(std::io::Error::last_os_error());
+    }
+    // SAFETY: `openat` returned a fresh descriptor that no other `File` owns.
+    Ok(unsafe { File::from_raw_fd(fd) })
+}
+
+#[cfg(unix)]
+fn rename_cache_entry(dir: &File, from: &str, to: &str) -> std::io::Result<()> {
+    use std::os::fd::AsRawFd;
+    let from = cache_entry_name(from)?;
+    let to = cache_entry_name(to)?;
+    // SAFETY: both names are NUL-terminated and both directory descriptors remain open.
+    if unsafe { libc::renameat(dir.as_raw_fd(), from.as_ptr(), dir.as_raw_fd(), to.as_ptr()) } < 0 {
+        return Err(std::io::Error::last_os_error());
+    }
+    Ok(())
+}
+
+#[cfg(unix)]
+fn remove_cache_entry(dir: &File, name: &str) {
+    use std::os::fd::AsRawFd;
+    if let Ok(name) = cache_entry_name(name) {
+        // SAFETY: the name is NUL-terminated and the directory descriptor remains open.
+        unsafe { libc::unlinkat(dir.as_raw_fd(), name.as_ptr(), 0) };
+    }
+}
+
+#[cfg(unix)]
+fn write_cached(dir: &File, name: &str, bytes: &[u8]) -> std::io::Result<()> {
+    static NEXT: AtomicU64 = AtomicU64::new(0);
+    let nonce = NEXT.fetch_add(1, Ordering::Relaxed);
+    let temporary = format!("{name}.{}.{}.tmp", std::process::id(), nonce);
+    let sidecar = format!("{}.sha256", name.strip_suffix(".cwasm").ok_or(std::io::ErrorKind::InvalidInput)?);
+    let temporary_sidecar = format!("{sidecar}.{}.{}.tmp", std::process::id(), nonce);
+    let write = || -> std::io::Result<()> {
+        let mut file = create_cache_entry(dir, &temporary)?;
+        file.write_all(bytes)?;
+        file.sync_all()?;
+        let mut checksum = create_cache_entry(dir, &temporary_sidecar)?;
+        checksum.write_all(Digest::of(bytes).as_str().as_bytes())?;
+        checksum.sync_all()?;
+        rename_cache_entry(dir, &temporary, name)?;
+        rename_cache_entry(dir, &temporary_sidecar, &sidecar)?;
+        dir.sync_all()?;
+        Ok(())
+    }();
+    if write.is_err() {
+        remove_cache_entry(dir, &temporary);
+        remove_cache_entry(dir, &temporary_sidecar);
+    }
+    write
 }
 
 fn refuse(e: ConnectorError) -> Failure {

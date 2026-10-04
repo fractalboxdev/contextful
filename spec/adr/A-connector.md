@@ -16,6 +16,19 @@ A reviewed program is identified by a content digest, and a live run completes a
 Consequences: an unpinned local artifact runs whatever bytes sit on disk unless the store policy key or per-connector flag is set.
 Revisit: production runs unpinned local artifacts, arguing for inverting the default; the toolchain stops embedding the host triple.
 
+## Precompiled components reuse only compatible host output
+
+A cache key joins the admitted artifact digest with the engine's precompile compatibility hash. The host writes compiled output into a private cache directory and verifies its recorded digest before deserialization. An absent, altered or incompatible entry compiles from the admitted source bytes. Pulley output stays separate from native output through the engine hash.
+
+| Option | Lost on | Cost |
+| --- | --- | --- |
+| Private precompile cache with compatibility key and integrity check *(chosen)* | — | A cache miss compiles the guest; the cache holds another copy of each compiled component. |
+| Recompile on every process start | Startup latency | Every guest pays compilation again. |
+| Deserialize any file named by the artifact digest | Input integrity | A stale engine build or altered file reaches unsafe deserialization. |
+
+Consequences: a hardened host still links a compiler for cache misses; the Pulley target runs without executable mappings. Windows compiles each fire until the host verifies a private cache ACL.
+Revisit: a pinned precompile artifact and a compiler-free host build exist for every deployment target.
+
 ## Untrusted input decodes off-process and fails whole
 
 An input lands whole and faithful or refuses by name, and no input ends the serving process. `run.land` decodes behind a process boundary bounding wall clock and resident memory; a crash is the same named diagnosis as a parse error. A partial parse refuses the whole input, naming path and page, worksheet or entry, and fails one table's pull while siblings keep their tick. `connector.source` reads office parts by exact name and refuses external references; an image lands a null body with no pixel decode; `run.fetch` reads UTF-8 only.
