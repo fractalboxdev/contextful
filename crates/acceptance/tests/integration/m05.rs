@@ -406,9 +406,11 @@ fn m05_http_face() {
         .unwrap();
     let mut err = BufReader::new(child.stderr.take().unwrap());
     let _listener = Listener(child);
+    let mut startup = String::new();
     let addr = loop {
         let mut line = String::new();
-        assert!(err.read_line(&mut line).unwrap() > 0, "the face never listened");
+        assert!(err.read_line(&mut line).unwrap() > 0, "the face never listened: {startup}");
+        startup.push_str(&line);
         if let Some(a) = line.trim().strip_prefix("listening on http://").and_then(|a| a.strip_suffix("/mcp")) {
             break a.to_string();
         }
@@ -479,6 +481,31 @@ fn m05_http_face() {
         assert_eq!(second_slow.join().unwrap(), 200);
     });
 
+    // A deadline interrupts one statement while a second statement keeps running on
+    // the same listener. Distinct SQL texts keep both requests off the result cache.
+    let survivor = call(r#"SELECT count(*) AS n FROM "research/nums" a, "research/nums" b, "research/nums" c WHERE c.x < 50 AND a.x * b.x = c.x - 8"#);
+    let mut timed = call(r#"SELECT count(*) AS n FROM "research/nums" a, "research/nums" b, "research/nums" c WHERE c.x < 50 AND a.x * b.x = c.x - 9"#);
+    timed["params"]["arguments"]["max_duration_ms"] = json!(50);
+    let survivor_done = std::sync::atomic::AtomicBool::new(false);
+    std::thread::scope(|s| {
+        let running = s.spawn(|| {
+            let answer = post_mcp(&addr, &survivor, Some(research));
+            survivor_done.store(true, std::sync::atomic::Ordering::SeqCst);
+            answer
+        });
+        std::thread::sleep(std::time::Duration::from_millis(100));
+        assert!(!survivor_done.load(std::sync::atomic::Ordering::SeqCst), "the survivor finished before the deadline test began");
+        let (status, _, interrupted) = post_mcp(&addr, &timed, Some(research));
+        assert_eq!(status, 200);
+        let interrupted = parse(&interrupted);
+        assert_eq!(interrupted["result"]["isError"], json!(true), "{interrupted}");
+        assert!(interrupted["result"]["structuredContent"].to_string().contains("ReadDurationExceeded"), "{interrupted}");
+        assert!(!survivor_done.load(std::sync::atomic::Ordering::SeqCst), "the other statement finished before the deadline interrupted its peer");
+        let (status, _, survived) = running.join().unwrap();
+        assert_eq!(status, 200);
+        assert!(rows(&survived).is_array(), "{}", String::from_utf8_lossy(&survived));
+    });
+
     // Revoked between requests: refused on the next, with no restart.
     let introspected: Value = serde_json::from_str(&ok(&p.run(&cf, &["token", "introspect", "--token", &research_token]))).unwrap();
     p.write(".contextful/denylist", &format!("{}\n", introspected["rev_id"].as_str().unwrap()));
@@ -487,11 +514,11 @@ fn m05_http_face() {
     assert_eq!(post_mcp(&addr, &call(r#"SELECT employee FROM "hr/salaries""#), Some(hr)).0, 200);
 
     // The listener and the stdio server appended to the project's one chain, each answered
-    // read once, in one unbroken sequence: seven served reads over HTTP, one read
-    // enforcement refused, and one over stdio.
+    // read once, in one unbroken sequence: eight served reads over HTTP, two read
+    // enforcement refusals, and one over stdio.
     let chain = std::fs::read_to_string(p.root.join(".contextful/audit/segments/000001.jsonl")).unwrap();
     let entries: Vec<Value> = chain.lines().map(|l| serde_json::from_str(l).unwrap()).collect();
-    assert_eq!(entries.iter().map(|e| e["seq"].as_u64().unwrap()).collect::<Vec<_>>(), (1..=9).collect::<Vec<_>>());
+    assert_eq!(entries.iter().map(|e| e["seq"].as_u64().unwrap()).collect::<Vec<_>>(), (1..=11).collect::<Vec<_>>());
     assert!(entries.windows(2).all(|w| w[1]["prev_hash"] == w[0]["entry_hash"]), "{chain}");
     assert!(entries.iter().all(|e| e["attributes"]["contextful.tool"] == json!("context.query")), "{chain}");
 }
