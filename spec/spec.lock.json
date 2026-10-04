@@ -5483,6 +5483,17 @@
       "line": 329
     },
     {
+      "id": "read.rank.delivered-counts",
+      "contract": "read",
+      "operation": "rank",
+      "subject": "delivered-counts",
+      "kind": "behavior",
+      "statement": "The retrieval block's returned count equals delivered rows; its in_window count equals delivered rows with a true in-window flag, after byte truncation.",
+      "why": "because aggregate counts describe the rows the caller receives",
+      "file": "spec/20-read.md",
+      "line": 330
+    },
+    {
       "id": "read.rank.internal-score-stays-internal",
       "contract": "read",
       "operation": "rank",
@@ -5491,7 +5502,7 @@
       "statement": "The lexical engine's own float score never crosses to a caller.",
       "why": "because a corpus-relative number drifts under a consumer's threshold as the corpus changes",
       "file": "spec/20-read.md",
-      "line": 330
+      "line": 332
     },
     {
       "id": "read.rank.absent-block",
@@ -5502,7 +5513,7 @@
       "statement": "The retrieval block is omitted from every non-ranked statement and from a build with no ranker, and an absent block differs from one reporting zero matches.",
       "why": "P2",
       "file": "spec/20-read.md",
-      "line": 332
+      "line": 334
     },
     {
       "id": "read.rank.degradation-not-error",
@@ -5513,7 +5524,7 @@
       "statement": "Without the lexical backend linked, ranking substitutes a token fallback scoring each query token over the snippet, recency breaking ties. The result differs in order and still answers.",
       "why": "A-topology",
       "file": "spec/20-read.md",
-      "line": 334
+      "line": 336
     },
     {
       "id": "read.rank.fallback-counts-tokens",
@@ -5524,7 +5535,7 @@
       "statement": "Under the fallback every matching token contributes, ranking hyphenated, spaced and possessive phrasings equivalently.",
       "why": "",
       "file": "spec/20-read.md",
-      "line": 336
+      "line": 338
     },
     {
       "id": "read.rank.caller-embedding",
@@ -5535,7 +5546,7 @@
       "statement": "A supplied `query_embedding` adds per-row cosine fused with the lexical leg; omitting one leaves every projected column as the lexical-only path. Without the vector backend it scores only rows the recency window recalled.",
       "why": "A-topology",
       "file": "spec/20-read.md",
-      "line": 337
+      "line": 339
     },
     {
       "id": "read.rank.lexical-index-cache",
@@ -5546,7 +5557,7 @@
       "statement": "An opened full-text sidecar is cached on a fingerprint of its table, snapshot, path and key version in a FIFO of 64 entries, so a repeated read opens nothing and a new snapshot opens afresh.",
       "why": "",
       "file": "spec/20-read.md",
-      "line": 339
+      "line": 341
     },
     {
       "id": "read.rank.widened-window-statistics",
@@ -5557,7 +5568,7 @@
       "statement": "Lexical term statistics come from the widened candidate window, so an accelerated arm can order rows differently from the exact path.",
       "why": "",
       "file": "spec/20-read.md",
-      "line": 340
+      "line": 342
     },
     {
       "id": "read.cache.hot-local-parquet",
@@ -5568,7 +5579,7 @@
       "statement": "The retrieval container syncs the current snapshot set to local disk and memory-maps it; object storage stays out of the per-query path.",
       "why": "",
       "file": "spec/20-read.md",
-      "line": 362
+      "line": 364
     },
     {
       "id": "read.cache.cold-start",
@@ -5579,7 +5590,7 @@
       "statement": "A cold retrieval container meets {{topology.publish-hostname.container-readiness}}; a container holding no snapshot adds a whole-store pull before its first answer.",
       "why": "",
       "file": "spec/20-read.md",
-      "line": 363
+      "line": 365
     },
     {
       "id": "read.cache.result-key",
@@ -5590,7 +5601,7 @@
       "statement": "A cached result keys on the token's id, revocation epoch, grants and subject, the session zone and incognito state, each touched relation and the files it reads, the bounds, the statement, its parameter values and the applied row ceiling.",
       "why": "A-read",
       "file": "spec/20-read.md",
-      "line": 364
+      "line": 366
     },
     {
       "id": "read.cache.cache-is-opt-in",
@@ -5601,7 +5612,7 @@
       "statement": "A statement's result caches only when every table it touches declares `result_cache`, a time to live, and none declares `private = true`; an entry expires at the least time to live among them.",
       "why": "A-read",
       "file": "spec/20-read.md",
-      "line": 366
+      "line": 368
     },
     {
       "id": "read.cache.volatile-bypasses",
@@ -5612,7 +5623,7 @@
       "statement": "A statement calling a function the engine marks other than consistent across queries, such as `now()`, `current_timestamp` or `random()`, or a macro reaching one, executes uncached.",
       "why": "because such a call answers differently under an unchanged key, and a hit returns its first answer frozen until the entry expires",
       "file": "spec/20-read.md",
-      "line": 368
+      "line": 370
     },
     {
       "id": "read.cache.frontier-invalidates",
@@ -5623,7 +5634,7 @@
       "statement": "A commit, fold or request-ledger append on a touched table moves its read frontier, the snapshot and runs its relation reads, so an entry filled before it stops matching. A statement in flight during a fold reads {{store.fold.non-blocking}}.",
       "why": "P4",
       "file": "spec/20-read.md",
-      "line": 370
+      "line": 372
     },
     {
       "id": "read.cache.budget",
@@ -5634,7 +5645,7 @@
       "statement": "The result cache holds at most the byte budget its process declares, the least recently used entry evicted first; a face declaring no budget caches nothing.",
       "why": "A-read",
       "file": "spec/20-read.md",
-      "line": 372
+      "line": 374
     },
     {
       "id": "read.cache.hit-identical",
@@ -5645,7 +5656,7 @@
       "statement": "A hit returns the response byte-identical to the miss that filled it, restriction block included; under `internals: true` the internals object carries `cache` as `hit` or `miss`.",
       "why": "because a reused answer differing from a computed one is a second projection a caller must reconcile",
       "file": "spec/20-read.md",
-      "line": 374
+      "line": 376
     },
     {
       "id": "read.cache.keep-warm-is-per-deployment",
@@ -5656,7 +5667,7 @@
       "statement": "A deployment with active traffic keeps its retrieval container warm; one declining keep-warm takes a cold first read.",
       "why": "",
       "file": "spec/20-read.md",
-      "line": 376
+      "line": 378
     },
     {
       "id": "read.cache.session-pool",
@@ -5667,7 +5678,7 @@
       "statement": "`Face` reuses a resolved session and its connections while the whole key holds: admitted authority, token id, revocation epoch, request zone, bounds, pin map, table set, and per granted table its schema digest, pointer, run set and ledger files.",
       "why": "A-read",
       "file": "spec/20-read.md",
-      "line": 377
+      "line": 379
     },
     {
       "id": "read.cache.change-misses",
@@ -5678,7 +5689,7 @@
       "statement": "A committed run, snapshot, schema edit, new table, request-ledger file or token under another id or epoch misses the pool, and the next statement reads the new state on a new connection.",
       "why": "A-read",
       "file": "spec/20-read.md",
-      "line": 379
+      "line": 381
     },
     {
       "id": "read.cache.pool-entries",
@@ -5689,7 +5700,7 @@
       "statement": "The pool holds at most 16 entries, oldest evicted first; a miss evicts the same principal's entries under an older store state.",
       "why": "because connections hold memory per authority, and an entry under a superseded store state is never hit again",
       "file": "spec/20-read.md",
-      "line": 381
+      "line": 383
     },
     {
       "id": "read.cache.pool-connections",
@@ -5700,7 +5711,7 @@
       "statement": "One pool entry keeps at most 4 connections idle; a concurrent statement past them opens its own and closes it afterwards.",
       "why": "because concurrency on one session is bursty, and an idle connection holds its footer cache in memory",
       "file": "spec/20-read.md",
-      "line": 383
+      "line": 385
     },
     {
       "id": "read.resolve-pin.pin-parameter",
@@ -5711,7 +5722,7 @@
       "statement": "Every read tool admits `pin`, mapping a table name to a build identifier, and resolves that table to the files its build's committed manifest names. An unnamed table resolves to the latest published state.",
       "why": "",
       "file": "spec/20-read.md",
-      "line": 390
+      "line": 392
     },
     {
       "id": "read.resolve-pin.pinned-schema",
@@ -5722,7 +5733,7 @@
       "statement": "A pinned table registers under the columns its build's parts carry, so a later build's contract neither adds, drops nor retypes a column of the pinned read or its description.",
       "why": "",
       "file": "spec/20-read.md",
-      "line": 391
+      "line": 393
     },
     {
       "id": "read.resolve-pin.null-pin",
@@ -5733,7 +5744,7 @@
       "statement": "A table `pin` maps to `null` resolves as an unnamed table, and a pin map differing from another only by such entries is the same map.",
       "why": "",
       "file": "spec/20-read.md",
-      "line": 392
+      "line": 394
     },
     {
       "id": "read.resolve-pin.unknown-build",
@@ -5744,7 +5755,7 @@
       "statement": "An unknown or collected build identifier raises `PinnedBuildUnavailable`, naming the oldest identifier still pinnable. A pin never widens to the latest state.",
       "why": "because a substituted build applied to every remaining query passes the consumer's cross-query comparison and stitches two states",
       "file": "spec/20-read.md",
-      "line": 393
+      "line": 395
     },
     {
       "id": "read.resolve-pin.unregistered-pin",
@@ -5755,7 +5766,7 @@
       "statement": "A pin on a table the session registers no relation for, absent or outside the grants, refuses as {{read.resolve-pin.unknown-build}} on a table publishing no build, in one text for both.",
       "why": "because an answer differing between an absent and an ungranted table discloses the ungranted table's existence",
       "file": "spec/20-read.md",
-      "line": 395
+      "line": 397
     },
     {
       "id": "read.resolve-pin.earlier-bound-wins",
@@ -5766,7 +5777,7 @@
       "statement": "A pin and the store's transaction-time bound are upper bounds on one clock; a table named by both resolves to the earlier.",
       "why": "",
       "file": "spec/20-read.md",
-      "line": 397
+      "line": 399
     },
     {
       "id": "read.resolve-pin.resolved-echo",
@@ -5777,7 +5788,7 @@
       "statement": "A response touching a published model carries `contextful.resolved`, mapping each such table to `{build_id, watermark}`, pinned or not and zero rows included; the watermark names, per input table, the snapshot id and the committed runs it omits.",
       "why": "",
       "file": "spec/20-read.md",
-      "line": 398
+      "line": 400
     },
     {
       "id": "read.resolve-pin.absent-watermark",
@@ -5788,7 +5799,7 @@
       "statement": "The watermark is null for a materialization carrying none, distinct from a watermark of zero.",
       "why": "P4",
       "file": "spec/20-read.md",
-      "line": 399
+      "line": 401
     },
     {
       "id": "read.resolve-pin.consumer-comparison",
@@ -5799,7 +5810,7 @@
       "statement": "A consumer compares resolved build identifiers across every query of one derivation and fails the derivation where two differ.",
       "why": "P4",
       "file": "spec/20-read.md",
-      "line": 401
+      "line": 403
     },
     {
       "id": "read.embed.default-embedder",
@@ -5810,7 +5821,7 @@
       "statement": "The embedding capability is a port whose default is deterministic and I/O-free: it hashes token term frequencies into an L2-normalized vector, needing no download, key or network call.",
       "why": "",
       "file": "spec/20-read.md",
-      "line": 408
+      "line": 410
     },
     {
       "id": "read.embed.default-embedder-reach",
@@ -5821,7 +5832,7 @@
       "statement": "The default is a lexical-vector baseline: a paraphrase is orthogonal under it and cross-lingual recall is undefined. Semantic reach comes from the learned in-process model or a caller-supplied query embedding.",
       "why": "",
       "file": "spec/20-read.md",
-      "line": 409
+      "line": 411
     },
     {
       "id": "read.embed.model-identifier",
@@ -5832,7 +5843,7 @@
       "statement": "Every stored vector lands in a {{store.reconcile.binary-and-vector}} column beside an `embedding_model` column naming the model that produced it; index identity and provenance resolve from the rows alone.",
       "why": "",
       "file": "spec/20-read.md",
-      "line": 410
+      "line": 412
     },
     {
       "id": "read.embed.build-identity",
@@ -5843,7 +5854,7 @@
       "statement": "The handshake reports the linked retrieval backends (`duckdb`, `fts`, `hnsw`), connector families (`m365`, `s3`, `wasm`) and faces (`http`, `eval`, `otlp`), composed from the same feature declarations the version output reads.",
       "why": "P3",
       "file": "spec/20-read.md",
-      "line": 411
+      "line": 413
     },
     {
       "id": "read.embed.required-face",
@@ -5854,7 +5865,7 @@
       "statement": "A client passing `require: [...]` is refused ahead of its first read with `RequiredFaceAbsent` for any name outside the reported set. An engine reporting no set satisfies no requirement.",
       "why": "A-topology",
       "file": "spec/20-read.md",
-      "line": 413
+      "line": 415
     },
     {
       "id": "read.embed.absent-read-backend",
@@ -5865,7 +5876,7 @@
       "statement": "Without the embedded SQL engine linked, both read tools raise `ReadBackendAbsent` rather than answering from a narrower path.",
       "why": "A-topology",
       "file": "spec/20-read.md",
-      "line": 415
+      "line": 417
     },
     {
       "id": "read.declare.canonical-column",

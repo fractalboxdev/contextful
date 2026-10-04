@@ -188,6 +188,8 @@ fn read_tools_advertise_and_enforce_request_budgets() {
         let no_statement = call(&server, name, json!({ "max_duration_ms": 0 }));
         assert!(no_statement["result"].get("isError").is_none(), "{no_statement}");
     }
+    let counted = call(&server, "context.describe", json!({ "table": "research/notes", "max_duration_ms": 0 }));
+    assert_eq!(counted["result"]["structuredContent"]["error"]["identifier"], json!("ReadDurationExceeded"), "{counted}");
     let invalid = call(&server, "context.query", json!({ "sql": sql, "max_duration_ms": -1 }));
     assert_eq!(invalid["error"]["code"], json!(-32602));
 }

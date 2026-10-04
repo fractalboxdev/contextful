@@ -327,6 +327,8 @@ Ordering of a candidate set: the three legs, their fusion, the question's timefr
 - `ordering-casts-first` — Ordering compares publication values as `TIMESTAMPTZ` instants, casting a text value before any comparison.
   *because a text comparison of two date spellings orders strings, not instants*
 - `retrieval-block` — The `contextful.retrieval` block reports window, candidates_prefloor, candidates, matched, returned, in_window, deduped, padded, floor and since. Each row carries an integer score bounded by the content-token count, the in-window flag and the basis label.
+- `delivered-counts` — The retrieval block's returned count equals delivered rows; its in_window count equals delivered rows with a true in-window flag, after byte truncation.
+  *because aggregate counts describe the rows the caller receives*
 - `internal-score-stays-internal` — The lexical engine's own float score never crosses to a caller.
   *because a corpus-relative number drifts under a consumer's threshold as the corpus changes*
 - `absent-block` — The retrieval block is omitted from every non-ranked statement and from a build with no ranker, and an absent block differs from one reporting zero matches.

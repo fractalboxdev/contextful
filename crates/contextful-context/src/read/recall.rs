@@ -122,7 +122,18 @@ impl Face {
                         Cell::Text(t) => Some(t.as_str()),
                         _ => None,
                     };
-                    if tally.gate(evidence, &memory_tables, session, |r| self.evidence_read(&engine, session, r)) {
+                    let fault = std::cell::RefCell::new(None);
+                    let admitted = tally.gate(evidence, &memory_tables, session, |r| match self.evidence_read(&engine, session, r, &touched, request.max_duration_ms) {
+                        Ok(read) => read,
+                        Err(error) => {
+                            *fault.borrow_mut() = Some(error);
+                            EvidenceRead::Unreadable
+                        }
+                    });
+                    if let Some(error) = fault.into_inner() {
+                        return Err(error);
+                    }
+                    if admitted {
                         kept.push(row.iter().map(Cell::to_json).collect());
                     }
                 }
@@ -136,7 +147,7 @@ impl Face {
         if let Some(b) = request.echo() {
             response = response.with_block("bounds", b);
         }
-        response = self.restrict(&engine, session, [table], response)?;
+        response = self.restrict_timed(&engine, session, [table], response, deadline)?;
         self.finish_budget(session, &touched, ReadOptions { limit: request.limit, max_duration_ms: request.max_duration_ms, max_response_bytes: request.max_response_bytes, ..ReadOptions::default() }, None, ceiling, response.with_block("recall", tally.block()))
     }
 }

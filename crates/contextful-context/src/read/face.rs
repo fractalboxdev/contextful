@@ -212,7 +212,7 @@ impl Face {
     ) -> Result<Response, ReadFault> {
         let deadline = self.duration_budget(session, touched, opts.max_duration_ms);
         let response = respond_with_deadline(engine, sql, parameters, Some(ceiling), ReadOptions { internals: false, ..opts }, deadline)?;
-        self.restrict(engine, session, touched.iter().map(String::as_str), response)
+        self.restrict_timed(engine, session, touched.iter().map(String::as_str), response, deadline)
     }
 
     /// Every table the store holds or the manifest declares, sorted.
@@ -419,6 +419,10 @@ impl Face {
         }
         if let Some(Value::Object(retrieval)) = response.blocks.get_mut("contextful.retrieval") {
             retrieval.insert("returned".into(), json!(response.rows.len()));
+            if let Some(index) = response.columns.iter().position(|column| column == "_in_window") {
+                let in_window = response.rows.iter().filter(|row| row.get(index).and_then(Value::as_bool) == Some(true)).count();
+                retrieval.insert("in_window".into(), json!(in_window));
+            }
         }
         if let Some(Value::Object(internals)) = response.blocks.get_mut("contextful.internals") {
             internals.insert("row_count".into(), json!(response.rows.len()));
@@ -538,6 +542,10 @@ impl Face {
     /// under `bounds`, which a bounded description echoes; a listing reads under `as_of`
     /// alone and echoes only it (`read.register.bound-listing`).
     pub fn describe(&self, session: &Session, table: Option<&str>, bounds: Bounds) -> Result<Value, ReadFault> {
+        self.describe_value(session, table, bounds, None)
+    }
+
+    fn describe_value(&self, session: &Session, table: Option<&str>, bounds: Bounds, deadline: Option<(u64, &'static str)>) -> Result<Value, ReadFault> {
         let echo = |mut v: Value, bounds: Bounds| {
             if let Some(b) = bounds.echo() {
                 v["contextful.bounds"] = b;
@@ -560,7 +568,11 @@ impl Face {
         let r = self.registered(session, table)?;
         self.bind_valid_time(&BTreeSet::from([table.to_string()]), bounds)?;
         let engine = self.pool.engine(session)?;
-        let (_, count) = engine.run(&format!("SELECT count(*) FROM {}", ident(r.name())), &Bindings::default(), None)?;
+        let sql = format!("SELECT count(*) FROM {}", ident(r.name()));
+        let (_, count) = match deadline {
+            Some((ms, source)) => engine.run_timed(&sql, &Bindings::default(), None, ms, source)?,
+            None => engine.run(&sql, &Bindings::default(), None)?,
+        };
         let row_count = count.first().and_then(|r| r.first()).map(Cell::to_json).unwrap_or(Value::Null);
         let decl = self.decl(table);
         let policy = session.policy(table).expect("a registered table carries its policy");
@@ -606,11 +618,12 @@ impl Face {
 
     /// The table description or listing under its selected serialized byte ceiling.
     pub fn describe_with_options(&self, session: &Session, table: Option<&str>, opts: ReadOptions) -> Result<Value, ReadFault> {
-        let value = self.describe(session, table, opts.bounds)?;
         let touched = match table {
             Some(name) => BTreeSet::from([name.to_string()]),
             None => session.relations().map(|r| r.name().to_string()).collect(),
         };
+        let deadline = self.duration_budget(session, &touched, opts.max_duration_ms);
+        let value = self.describe_value(session, table, opts.bounds, deadline)?;
         if let Some((bytes, source)) = self.byte_budget(session, &touched, opts.max_response_bytes) {
             if serde_json::to_vec(&value).expect("the description serializes").len() as u64 > bytes {
                 return Err(ReadError::ReadResponseTooLarge(format!("{bytes} bytes from {source}; the description exceeds the ceiling")).into());
@@ -674,7 +687,7 @@ impl Face {
         let ceiling = self.ceiling(session, &touched, opts.limit, None);
         let deadline = self.duration_budget(session, &touched, opts.max_duration_ms);
         let response = respond_with_deadline(&engine, &format!("SELECT * FROM {}", ident(PREVIEW_RELATION)), &Bindings::default(), Some(ceiling), opts, deadline)?;
-        let response = self.restrict(&engine, session, touched.iter().map(String::as_str), response)?;
+        let response = self.restrict_timed(&engine, session, touched.iter().map(String::as_str), response, deadline)?;
         self.finish_budget(session, &touched, opts, None, ceiling, response)
     }
 
@@ -691,6 +704,17 @@ impl Face {
         touched: impl IntoIterator<Item = &'t str>,
         response: Response,
     ) -> Result<Response, ReadFault> {
+        self.restrict_timed(engine, session, touched, response, None)
+    }
+
+    pub(crate) fn restrict_timed<'t>(
+        &self,
+        engine: &SqlEngine,
+        session: &Session,
+        touched: impl IntoIterator<Item = &'t str>,
+        response: Response,
+        deadline: Option<(u64, &'static str)>,
+    ) -> Result<Response, ReadFault> {
         let touched: BTreeSet<&str> = touched.into_iter().collect();
         let response = match super::pin::resolved(session, touched.iter().copied()) {
             Some(resolved) => response.with_block(RESOLVED_BLOCK, resolved),
@@ -700,7 +724,10 @@ impl Face {
         for withheld in touched.into_iter().filter_map(|t| session.zone_withheld(t)) {
             let rows_dropped = match &withheld.dropped_sql {
                 Some(sql) => {
-                    let (_, count) = engine.run(sql, &Bindings::default(), None)?;
+                    let (_, count) = match deadline {
+                        Some((ms, source)) => engine.run_timed(sql, &Bindings::default(), None, ms, source)?,
+                        None => engine.run(sql, &Bindings::default(), None)?,
+                    };
                     match count.first().and_then(|r| r.first()) {
                         Some(Cell::Integer { value, .. }) => u64::try_from(*value).unwrap_or(0),
                         _ => 0,
