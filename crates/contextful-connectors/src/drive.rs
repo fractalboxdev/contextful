@@ -30,7 +30,9 @@ pub const NAME: &str = crate::DRIVE;
 /// The tables the source serves.
 pub const TABLES: [&str; 2] = ["files", "pages"];
 /// The configuration keys the source reads (`run.declare.config-key`).
-pub const KEYS: [&str; 6] = ["folder_id", "drive_id", "max_file_bytes", "oauth", "api_base", "token_url"];
+pub const KEYS: [&str; 7] = ["folder_id", "folder_ids", "drive_id", "max_file_bytes", "oauth", "api_base", "token_url"];
+/// Selected folder roots in one Shared Drive (`connector.source.drive-root-set`).
+pub const MAX_ROOTS: usize = 16;
 /// The keys of the `oauth` table.
 pub const OAUTH_KEYS: [&str; 3] = ["refresh_token", "client_id", "client_secret"];
 /// Bytes one file's body may carry: 64 MiB unless declared (`connector.source.drive-file-cap`).
@@ -65,7 +67,8 @@ pub struct OAuth {
 /// A parsed drive source configuration.
 #[derive(Debug, Clone)]
 pub struct DriveConfig {
-    pub folder_id: String,
+    pub folder_id: Option<String>,
+    pub folder_ids: Option<Vec<String>>,
     pub drive_id: Option<String>,
     pub max_file_bytes: u64,
     pub oauth: OAuth,
@@ -105,8 +108,27 @@ impl DriveConfig {
         if let Some(k) = cfg.keys().find(|k| !KEYS.contains(&k.as_str())) {
             return Err(RunError::PipelineUnknownConfigKey(format!("the `{NAME}` source reads no key `{k}`; it reads {}", KEYS.join(", "))).into());
         }
-        let folder_id = drive_id("folder_id", cfg.get("folder_id"))?.ok_or_else(|| invalid("names no `folder_id`, the root the walk starts from".into()))?;
+        let folder_id = drive_id("folder_id", cfg.get("folder_id"))?;
+        let folder_ids = match cfg.get("folder_ids") {
+            None => None,
+            Some(Value::Array(ids)) => {
+                let parsed = ids.iter().map(|id| drive_id("folder_ids entry", Some(id))).collect::<Result<Vec<_>, _>>();
+                let parsed = parsed.map_err(|_| ConnectorError::ConnectorDriveRootsInvalid("`folder_ids` holds Drive ids of letters, digits, `-` and `_`".into()))?;
+                let ids = parsed.into_iter().flatten().collect::<Vec<_>>();
+                if ids.is_empty() || ids.len() > MAX_ROOTS || ids.iter().collect::<BTreeSet<_>>().len() != ids.len() {
+                    return Err(ConnectorError::ConnectorDriveRootsInvalid(format!("`folder_ids` holds 1 to {MAX_ROOTS} distinct folder ids")).into());
+                }
+                Some(ids)
+            }
+            Some(_) => return Err(ConnectorError::ConnectorDriveRootsInvalid("`folder_ids` is an array of Drive ids".into()).into()),
+        };
         let drive_id = drive_id("drive_id", cfg.get("drive_id"))?;
+        if folder_ids.is_some() && (folder_id.is_some() || drive_id.is_none()) {
+            return Err(ConnectorError::ConnectorDriveRootsInvalid("`folder_ids` requires `drive_id` and excludes `folder_id`".into()).into());
+        }
+        if folder_id.is_none() && folder_ids.is_none() {
+            return Err(invalid("names no `folder_id`, the root the walk starts from".into()));
+        }
         let max_file_bytes = match cfg.get("max_file_bytes") {
             None => MAX_FILE_BYTES,
             Some(v) => match v.as_u64() {
@@ -137,12 +159,18 @@ impl DriveConfig {
         };
         let api_base = pinned("api_base", &text("api_base", API_BASE)?, API_HOST)?;
         let token_url = pinned("token_url", &text("token_url", TOKEN_URL)?, TOKEN_HOST)?;
-        Ok(DriveConfig { folder_id, drive_id, max_file_bytes, oauth, api_base, token_url })
+        Ok(DriveConfig { folder_id, folder_ids, drive_id, max_file_bytes, oauth, api_base, token_url })
     }
 
     /// The references the source hydrates, for preflight.
     pub fn templates(&self) -> [&Template; 3] {
         [&self.oauth.refresh_token, &self.oauth.client_id, &self.oauth.client_secret]
+    }
+
+    fn roots(&self) -> Vec<String> {
+        let mut roots = self.folder_ids.clone().unwrap_or_else(|| vec![self.folder_id.clone().expect("validated single root")]);
+        roots.sort();
+        roots
     }
 
     /// Refuse a table the source does not serve, ahead of any request
@@ -183,6 +211,7 @@ struct Entry {
     id: String,
     name: String,
     path: String,
+    resolved_root: String,
     mime: String,
     modified: String,
     version: Option<i64>,
@@ -334,22 +363,41 @@ impl Drive {
             return Ok(w);
         }
         let config_fault = |why: String| Failure::deterministic(FailureTag::Config, format!("`{NAME}` source: {why}"));
-        let mut root = self.config.api(&format!("/drive/v3/files/{}", self.config.folder_id));
-        root.query_pairs_mut().append_pair("fields", "id,name,mimeType,driveId").append_pair("supportsAllDrives", "true");
-        let meta = self.get_json(&root).map_err(|f| if f.message.contains("answered 404") { config_fault(format!("`folder_id` `{}` names no folder this credential sees", self.config.folder_id)) } else { f })?;
-        if meta.get("mimeType").and_then(Value::as_str) != Some(FOLDER) {
-            return Err(config_fault(format!("`folder_id` `{}` is not a folder", self.config.folder_id)));
-        }
-        if let Some(d) = &self.config.drive_id {
-            if meta.get("driveId").and_then(Value::as_str) != Some(d.as_str()) {
-                return Err(config_fault(format!("`folder_id` `{}` is not in drive `{d}`", self.config.folder_id)));
+        let roots = self.config.roots();
+        // Validate the full selection before the first files.list request.
+        for id in &roots {
+            let mut root = self.config.api(&format!("/drive/v3/files/{id}"));
+            root.query_pairs_mut().append_pair("fields", "id,name,mimeType,driveId").append_pair("supportsAllDrives", "true");
+            let meta = self.get_json(&root).map_err(|f| {
+                if f.message.contains("answered 404") {
+                    if self.config.folder_ids.is_some() {
+                        Failure::deterministic(FailureTag::Config, ConnectorError::ConnectorDriveRootRejected(format!("root `{id}` names no folder this credential sees")).to_string())
+                    } else {
+                        config_fault(format!("`folder_id` `{id}` names no folder this credential sees"))
+                    }
+                } else {
+                    f
+                }
+            })?;
+            let wrong_kind = meta.get("mimeType").and_then(Value::as_str) != Some(FOLDER);
+            let wrong_drive = self.config.drive_id.as_ref().is_some_and(|d| meta.get("driveId").and_then(Value::as_str) != Some(d));
+            if wrong_kind || wrong_drive {
+                if self.config.folder_ids.is_some() {
+                    return Err(Failure::deterministic(FailureTag::Config, ConnectorError::ConnectorDriveRootRejected(format!("root `{id}` is not a folder in drive `{}`", self.config.drive_id.as_deref().unwrap_or_default())).to_string()));
+                }
+                if wrong_kind {
+                    return Err(config_fault(format!("`folder_id` `{id}` is not a folder")));
+                }
+                return Err(config_fault(format!("`folder_id` `{id}` is not in drive `{}`", self.config.drive_id.as_deref().unwrap_or_default())));
             }
         }
         let mut entries = Vec::new();
-        let mut seen = BTreeSet::from([self.config.folder_id.clone()]);
-        let mut queue = VecDeque::from([(self.config.folder_id.clone(), String::new())]);
+        let selected = roots.iter().cloned().collect::<BTreeSet<_>>();
+        let mut seen = selected.clone();
+        let mut queue = roots.iter().map(|id| (id.clone(), String::new(), id.clone())).collect::<VecDeque<_>>();
+        let mut selected_edges = Vec::new();
         let mut requests = 0usize;
-        while let Some((folder, prefix)) = queue.pop_front() {
+        while let Some((folder, prefix, owner)) = queue.pop_front() {
             let mut children: Vec<Value> = Vec::new();
             let mut token: Option<String> = None;
             loop {
@@ -358,7 +406,7 @@ impl Drive {
                 }
                 requests += 1;
                 if requests > LISTING_CAP {
-                    return Err(Failure::new(FailureTag::Permanent, format!("the walk under `{}` reached {LISTING_CAP} listing requests", self.config.folder_id)));
+                    return Err(Failure::new(FailureTag::Permanent, format!("the walk at `{folder}` reached {LISTING_CAP} listing requests")));
                 }
                 let mut url = self.config.api("/drive/v3/files");
                 {
@@ -388,8 +436,11 @@ impl Drive {
                 let (Some(id), Some(name), Some(mime)) = (text(&c, "id"), text(&c, "name"), text(&c, "mimeType")) else { continue };
                 let path = if prefix.is_empty() { name.clone() } else { format!("{prefix}/{name}") };
                 if mime == FOLDER {
+                    if selected.contains(&id) && id != owner {
+                        selected_edges.push((owner.clone(), id.clone(), path.clone()));
+                    }
                     if seen.insert(id.clone()) {
-                        queue.push_back((id, path));
+                        queue.push_back((id, path, owner.clone()));
                     }
                     continue;
                 }
@@ -401,10 +452,37 @@ impl Drive {
                     id,
                     name,
                     path,
+                    resolved_root: owner.clone(),
                     mime,
                 });
             }
         }
+        // A selected folder can sit inside another selected root. Resolve the least
+        // ancestor root without issuing a second listing of that folder.
+        let mut preferred = roots.iter().map(|id| (id.clone(), (id.clone(), String::new()))).collect::<BTreeMap<_, _>>();
+        for _ in 0..roots.len() {
+            let mut changed = false;
+            for (parent, child, path) in &selected_edges {
+                let Some((winner, prefix)) = preferred.get(parent).cloned() else { continue };
+                let candidate = (winner, if prefix.is_empty() { path.clone() } else { format!("{prefix}/{path}") });
+                if preferred.get(child).is_none_or(|current| candidate < *current) {
+                    preferred.insert(child.clone(), candidate);
+                    changed = true;
+                }
+            }
+            if !changed { break; }
+        }
+        let mut unique = BTreeMap::<String, Entry>::new();
+        for mut entry in entries {
+            if let Some((winner, prefix)) = preferred.get(&entry.resolved_root) {
+                if !prefix.is_empty() { entry.path = format!("{prefix}/{}", entry.path); }
+                entry.resolved_root = winner.clone();
+            }
+            if unique.get(&entry.id).is_none_or(|prior| (&entry.resolved_root, &entry.path) < (&prior.resolved_root, &prior.path)) {
+                unique.insert(entry.id.clone(), entry);
+            }
+        }
+        let mut entries = unique.into_values().collect::<Vec<_>>();
         entries.sort_by(|a, b| (&a.path, &a.id).cmp(&(&b.path, &b.id)));
         let walked = Arc::new(entries);
         if let Ok(mut w) = self.walked.lock() {
@@ -521,6 +599,7 @@ impl DriveSource {
         r.insert("version".into(), json!(e.version));
         r.insert("name".into(), json!(e.name));
         r.insert("path".into(), json!(e.path));
+        r.insert("resolved_root".into(), json!(e.resolved_root));
         r.insert("mime_type".into(), json!(e.mime));
         r.insert("export_mime_type".into(), if e.exported() && f.sha256.is_some() { json!(PDF) } else { Value::Null });
         r.insert("modified_time".into(), json!(e.modified));
@@ -564,6 +643,7 @@ impl DriveSource {
                 ("version", "int64"),
                 ("name", "utf8"),
                 ("path", "utf8"),
+                ("resolved_root", "utf8"),
                 ("mime_type", "utf8"),
                 ("export_mime_type", "utf8"),
                 ("modified_time", "utf8"),

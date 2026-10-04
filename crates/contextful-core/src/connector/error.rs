@@ -3,6 +3,12 @@
 
 #[derive(Debug, Clone, PartialEq, Eq, thiserror::Error)]
 pub enum ConnectorError {
+    /// An empty, oversized, repeated or ambiguous Drive root selection. (`connector.source.drive-root-set`)
+    #[error("ConnectorDriveRootsInvalid: {0}")]
+    ConnectorDriveRootsInvalid(String),
+    /// A selected Drive root that is missing or outside its declared Shared Drive. (`connector.source.drive-root-validation`)
+    #[error("ConnectorDriveRootRejected: {0}")]
+    ConnectorDriveRootRejected(String),
     /// A forwarded guest configuration value that is not a table, over 64 KiB, or carrying a reference. (`connector.import.config-shape`)
     #[error("ConnectorConfigRejected: {0}")]
     ConnectorConfigRejected(String),

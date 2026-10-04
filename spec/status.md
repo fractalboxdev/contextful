@@ -7,15 +7,15 @@ An unpinned clause is `committed`; a pinned one is `performed` when its test res
 | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
 | `assurance` | 2 | 15 | 227 | 59 | 22 | 12 | 135 | 0 | 135 |
 | `authority` | 2 | 16 | 267 | 77 | 27 | 10 | 204 | 0 | 204 |
-| `connector` | 2 | 14 | 333 | 84 | 21 | 16 | 195 | 0 | 195 |
+| `connector` | 2 | 14 | 333 | 84 | 21 | 16 | 199 | 0 | 199 |
 | `corpus` | 1 | 10 | 77 | 37 | 7 | 0 | 38 | 0 | 38 |
 | `disclosure` | 3 | 16 | 122 | 64 | 13 | 7 | 54 | 0 | 54 |
-| `read` | 2 | 15 | 179 | 29 | 22 | 21 | 163 | 0 | 162 |
-| `run` | 3 | 26 | 372 | 98 | 36 | 37 | 259 | 0 | 257 |
-| `store` | 1 | 17 | 235 | 55 | 13 | 20 | 198 | 0 | 194 |
-| `surface` | 2 | 19 | 86 | 46 | 22 | 5 | 51 | 0 | 50 |
+| `read` | 2 | 15 | 179 | 29 | 22 | 21 | 163 | 0 | 163 |
+| `run` | 3 | 26 | 372 | 98 | 36 | 37 | 259 | 0 | 259 |
+| `store` | 1 | 17 | 235 | 55 | 13 | 20 | 198 | 0 | 198 |
+| `surface` | 2 | 19 | 86 | 46 | 22 | 5 | 51 | 0 | 51 |
 | `topology` | 1 | 6 | 70 | 24 | 5 | 5 | 38 | 0 | 38 |
-| **total** | 19 | 154 | 1968 | 573 | 188 | 133 | 1335 | 0 | |
+| **total** | 19 | 154 | 1968 | 573 | 188 | 133 | 1339 | 0 | |
 
 Decision records: 18.
 
@@ -29,7 +29,7 @@ A milestone reads `closed` when its acceptance test computes `passing` and every
 | 1 — The authority core | 14 | 236 | 184 | passing | closed |
 | 2 — The store | 9 | 162 | 130 | passing | closed |
 | 3 — The run path | 11 | 206 | 142 | passing | closed |
-| 4 — Ingest | 25 | 480 | 290 | passing | open |
+| 4 — Ingest | 25 | 480 | 294 | passing | open |
 | 5 — The read face under enforcement | 17 | 252 | 192 | passing | open |
 | 6 — Sync and replicas | 8 | 73 | 68 | passing | closed |
 | 7 — Memory | 6 | 37 | 37 | passing | closed |
@@ -522,9 +522,13 @@ Unscheduled operations: 10.
 | `connector.source.drive-oauth` | `crates/contextful-connectors/tests/integration/drive.rs::the_access_token_is_minted_from_references_and_lands_in_no_row_or_position` | performed |
 | `connector.source.drive-oauth-shape` | `crates/contextful-connectors/tests/integration/drive.rs::each_oauth_value_is_one_reference` | performed |
 | `connector.source.drive-origin` | `crates/contextful-connectors/tests/integration/drive.rs::a_google_credential_goes_to_google_hosts_alone` | performed |
+| `connector.source.drive-overlap` | `crates/contextful-connectors/tests/integration/drive.rs::overlapping_selected_roots_deduplicate_files_and_resolve_paths` | performed |
 | `connector.source.drive-page-grain` | `crates/contextful-connectors/tests/integration/drive.rs::a_doc_a_sheet_and_a_deck_land_as_their_pdf_pages` | performed |
 | `connector.source.drive-position-owned` | `crates/contextful-cli/tests/integration/drive.rs::an_incremental_field_beside_the_drive_source_refuses_at_validation` | performed |
 | `connector.source.drive-root` | `crates/contextful-connectors/tests/integration/drive.rs::a_root_that_is_no_folder_fails_before_any_listing` | performed |
+| `connector.source.drive-root-set` | `crates/contextful-connectors/tests/integration/drive.rs::selected_drive_roots_reject_ambiguous_or_unbounded_configuration` | performed |
+| `connector.source.drive-root-validation` | `crates/contextful-connectors/tests/integration/drive.rs::every_selected_root_is_checked_before_listing` | performed |
+| `connector.source.drive-root-walk` | `crates/contextful-connectors/tests/integration/drive.rs::overlapping_selected_roots_deduplicate_files_and_resolve_paths` | performed |
 | `connector.source.drive-skip-count` | `crates/contextful-connectors/tests/integration/drive.rs::each_pull_counts_the_files_it_skipped` | performed |
 | `connector.source.drive-table-unmatched` | `crates/contextful-connectors/tests/integration/drive.rs::a_table_the_source_does_not_serve_refuses_before_any_request` | performed |
 | `connector.source.drive-tables` | `crates/contextful-connectors/tests/integration/drive.rs::a_file_row_carries_its_metadata_and_names_its_bytes_by_digest` | performed |

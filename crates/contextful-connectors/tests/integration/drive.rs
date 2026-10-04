@@ -188,6 +188,7 @@ fn selected_roots(fake: &Fake, ids: &[&str]) -> Value {
 }
 
 /// A bounded root set is validated before any listing.
+// spec: connector.source.drive-root-set@3c8b13be
 #[test]
 fn selected_drive_roots_reject_ambiguous_or_unbounded_configuration() {
     let fake = Fake::start();
@@ -201,22 +202,31 @@ fn selected_drive_roots_reject_ambiguous_or_unbounded_configuration() {
     let mut no_drive = selected_roots(&fake, &["root-f"]);
     no_drive.as_object_mut().unwrap().remove("drive_id");
     assert!(DriveConfig::parse(&no_drive).unwrap_err().to_string().starts_with("ConnectorDriveRootsInvalid:"));
+    let valid = (0..16).map(|i| format!("root{i}")).collect::<Vec<_>>();
+    let mut upper_bound = selected_roots(&fake, &["root-f"]);
+    upper_bound["folder_ids"] = json!(valid);
+    assert!(DriveConfig::parse(&upper_bound).is_ok());
     assert!(fake.received("/drive/v3/files").is_empty());
 }
 
 /// An outside-drive selected root refuses before any selected folder is listed.
+// spec: connector.source.drive-root-validation@8a0c59bf
 #[test]
 fn every_selected_root_is_checked_before_listing() {
     let fake = Fake::start();
     fake.overlay("shared.json");
-    let d = drive(selected_roots(&fake, &["root-f", "outside-f"]));
-    let failure = d.source("files").unwrap().pull(&request(None), &Never).unwrap_err();
-    assert_eq!(failure.tag, FailureTag::Config, "{failure}");
-    assert!(failure.message.contains("ConnectorDriveRootRejected") && failure.message.contains("outside-f"), "{failure}");
+    for rejected in ["outside-f", "missing-f"] {
+        let d = drive(selected_roots(&fake, &["root-f", rejected]));
+        let failure = d.source("files").unwrap().pull(&request(None), &Never).unwrap_err();
+        assert_eq!(failure.tag, FailureTag::Config, "{failure}");
+        assert!(failure.message.contains("ConnectorDriveRootRejected") && failure.message.contains(rejected), "{failure}");
+    }
     assert!(fake.received("/drive/v3/files").is_empty());
 }
 
 /// Overlapping selected roots land each file once and resolve it to the least selected root id.
+// spec: connector.source.drive-root-walk@a69f82be
+// spec: connector.source.drive-overlap@ec0c9d7d
 #[test]
 fn overlapping_selected_roots_deduplicate_files_and_resolve_paths() {
     let fake = Fake::start();
@@ -231,6 +241,9 @@ fn overlapping_selected_roots_deduplicate_files_and_resolve_paths() {
     let listed = fake.received("/drive/v3/files");
     assert_eq!(listed.len(), 4, "the overlapping Finance folder is listed once");
     assert_eq!(listed.iter().filter(|r| query(r).iter().any(|(k, v)| k == "q" && v.contains("'fin-f'"))).count(), 1);
+    for request in listed {
+        assert!(query(&request).contains(&("driveId".into(), "0AExampleDrive".into())));
+    }
 }
 
 /// The drive source walks the tree under `folder_id` breadth-first through `files.list`, paging each folder,
