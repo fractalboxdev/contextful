@@ -298,7 +298,6 @@ fn metadata_only_records_digests_without_blobs_or_page_content() {
 }
 
 /// A capture mode change rereads retained files and removes prior page content.
-// spec: connector.source.drive-selection-position@00a84230
 // spec: connector.source.drive-selection-removals@d263dd24
 #[test]
 fn metadata_mode_switch_rereads_files_and_tombstones_pages() {
@@ -330,7 +329,6 @@ fn unknown_drive_capture_mode_refuses_before_requests() {
 
 /// A selected-root or drive change binds a new cursor and removes deselected files.
 // spec: connector.source.drive-selection-position@00a84230
-// spec: connector.source.drive-selection-removals@d263dd24
 #[test]
 fn selection_change_replays_retained_files_and_tombstones_deselected_files() {
     let fake = Fake::start();
@@ -498,7 +496,6 @@ fn docs_sheets_and_slides_export_as_pdf_and_other_files_download() {
 /// In the default `bytes-and-pages` mode, each PDF page lands one `pages` row under
 /// {{connector.source.document-grain}}, decoded behind {{run.land.parse-boundary}};
 /// bytes land in no column.
-// spec: connector.source.drive-page-grain@9029df45
 #[test]
 fn a_doc_a_sheet_and_a_deck_land_as_their_pdf_pages() {
     let fake = Fake::start();
@@ -721,7 +718,6 @@ fn each_pull_counts_the_files_it_skipped() {
 
 /// In the default `bytes-and-pages` mode, every whole exported or downloaded body lands
 /// as {{store.lay-out.landed-blob}}, named by its file row's `sha256`.
-// spec: connector.source.drive-bytes@2f79acc3
 #[test]
 fn every_body_read_lands_once_as_the_blob_its_row_names() {
     let fake = Fake::start();
