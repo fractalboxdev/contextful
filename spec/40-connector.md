@@ -299,7 +299,7 @@ Distribution form, digest pinning, per-connector resource bounds and world versi
   *A-connector*
 - `digest-mismatch` — The host re-hashes the resolved bytes and raises `ConnectorDigestMismatch` on a difference, before the bytes reach the engine.
   *A-connector*
-- `artifact-cache` — After {{connector.package.digest-mismatch}} admission, the host caches precompiled components by artifact digest and engine compatibility hash; an intact host-written entry deserializes, while a missing, stale or altered entry recompiles.
+- `artifact-cache` — On Unix, after {{connector.package.digest-mismatch}} admission, the host caches precompiled components by artifact digest and engine compatibility hash; an intact host-written entry deserializes, while a missing, stale or altered entry recompiles.
   *A-connector*
 - `pin-requirement` — Two switches require a pin on a local artifact, composed by disjunction: the store-wide key `[connector] require_pin` in the store's `config.toml`, and a per-connector manifest flag.
 - `local-unpinned` — With either switch set, an unpinned local artifact raises `ConnectorLocalUnpinned` at build, carrying the digest of the bytes found.

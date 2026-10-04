@@ -370,28 +370,31 @@ impl ComponentHost {
 
     /// A host whose admitted artifacts reuse a private precompiled-component cache.
     pub fn with_cache_dir(target: Target, dir: impl AsRef<Path>) -> Result<ComponentHost, Failure> {
-        let mut host = Self::with_target(target)?;
-        let dir = dir.as_ref();
-        let created = !dir.exists();
-        std::fs::create_dir_all(dir).map_err(load_failure)?;
-        #[cfg(unix)]
-        if created {
-            use std::os::unix::fs::PermissionsExt;
-            std::fs::set_permissions(dir, std::fs::Permissions::from_mode(0o700)).map_err(load_failure)?;
-        }
-        let meta = std::fs::symlink_metadata(dir).map_err(load_failure)?;
-        if !meta.file_type().is_dir() {
-            return Err(load_failure("the component cache path is not a directory"));
+        #[cfg(not(unix))]
+        {
+            let _ = dir;
+            return Self::with_target(target);
         }
         #[cfg(unix)]
         {
+            let mut host = Self::with_target(target)?;
+            let dir = dir.as_ref();
+            let created = !dir.exists();
+            std::fs::create_dir_all(dir).map_err(load_failure)?;
             use std::os::unix::fs::PermissionsExt;
+            if created {
+                std::fs::set_permissions(dir, std::fs::Permissions::from_mode(0o700)).map_err(load_failure)?;
+            }
+            let meta = std::fs::symlink_metadata(dir).map_err(load_failure)?;
+            if !meta.file_type().is_dir() {
+                return Err(load_failure("the component cache path is not a directory"));
+            }
             if meta.permissions().mode() & 0o077 != 0 {
                 return Err(load_failure("the component cache directory permits access by another user"));
             }
+            host.cache_dir = Some(dir.to_path_buf());
+            Ok(host)
         }
-        host.cache_dir = Some(dir.to_path_buf());
-        Ok(host)
     }
 
     /// Counts of cache misses compiled and intact cache entries reused.

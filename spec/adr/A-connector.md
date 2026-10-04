@@ -26,7 +26,7 @@ A cache key joins the admitted artifact digest with the engine's precompile comp
 | Recompile on every process start | Startup latency | Every guest pays compilation again. |
 | Deserialize any file named by the artifact digest | Input integrity | A stale engine build or altered file reaches unsafe deserialization. |
 
-Consequences: a hardened host still links a compiler for cache misses; the Pulley target runs without executable mappings.
+Consequences: a hardened host still links a compiler for cache misses; the Pulley target runs without executable mappings. Windows compiles each fire until the host verifies a private cache ACL.
 Revisit: a pinned precompile artifact and a compiler-free host build exist for every deployment target.
 
 ## Untrusted input decodes off-process and fails whole

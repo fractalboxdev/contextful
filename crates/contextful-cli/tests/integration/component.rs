@@ -131,6 +131,7 @@ fn pipeline_run_lands_a_pinned_component_and_records_its_digest() {
     assert_ne!(hash, pin);
 }
 
+#[cfg(unix)]
 #[test]
 fn a_pipeline_run_writes_a_reusable_component_cache_entry() {
     let pin = digest(PROBE);

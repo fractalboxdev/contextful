@@ -11315,7 +11315,7 @@
       "operation": "package",
       "subject": "artifact-cache",
       "kind": "behavior",
-      "statement": "After {{connector.package.digest-mismatch}} admission, the host caches precompiled components by artifact digest and engine compatibility hash; an intact host-written entry deserializes, while a missing, stale or altered entry recompiles.",
+      "statement": "On Unix, after {{connector.package.digest-mismatch}} admission, the host caches precompiled components by artifact digest and engine compatibility hash; an intact host-written entry deserializes, while a missing, stale or altered entry recompiles.",
       "why": "A-connector",
       "file": "spec/40-connector.md",
       "line": 302

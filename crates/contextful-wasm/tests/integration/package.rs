@@ -29,7 +29,8 @@ fn bytes_off_their_pin_never_reach_the_compiler() {
     assert!(garbage.message.starts_with("ConnectorDigestMismatch"), "the pin is judged ahead of compilation: {garbage}");
 }
 
-// spec: connector.package.artifact-cache@192423af
+// spec: connector.package.artifact-cache@a611ccd4
+#[cfg(unix)]
 #[test]
 fn a_cached_artifact_deserializes_then_recompiles_if_altered_or_incompatible() {
     let dir = tempfile::tempdir().unwrap();
@@ -51,6 +52,19 @@ fn a_cached_artifact_deserializes_then_recompiles_if_altered_or_incompatible() {
     std::fs::rename(&entry, cache.join("stale-compatibility-hash.cwasm")).unwrap();
     host.load_artifact(&artifact, PROBE, PinRequirement::default()).unwrap();
     assert_eq!((host.cache_stats().compilations, host.cache_stats().hits), (3, 1));
+}
+
+#[cfg(not(unix))]
+#[test]
+fn a_host_without_private_directory_verification_skips_disk_cache() {
+    let dir = tempfile::tempdir().unwrap();
+    let cache = dir.path().join("cache");
+    let host = ComponentHost::with_cache_dir(Target::Native, &cache).unwrap();
+    let pin = Digest::of(PROBE).to_string();
+    let artifact = Artifact::parse("https://dl.vendor.example/probe.wasm", Some(&pin)).unwrap();
+    host.load_artifact(&artifact, PROBE, PinRequirement::default()).unwrap();
+    assert!(!cache.exists());
+    assert_eq!((host.cache_stats().compilations, host.cache_stats().hits), (0, 0));
 }
 
 /// A connector runs under 256 MiB of linear memory by default, raised per connector to at most 2 GiB.
