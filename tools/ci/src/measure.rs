@@ -285,7 +285,8 @@ struct TrendAnnotation {
     id: String,
     baseline: f64,
     current: f64,
-    worse_percent: f64,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    worse_percent: Option<f64>,
     baseline_commit: String,
     baseline_run_id: u64,
     annotation: String,
@@ -429,7 +430,7 @@ pub fn report(root: &Path, commit: &str, run_id: u64, run_attempt: u64, exit_cod
                 id: current.id.clone(),
                 baseline: old.value,
                 current: current.value,
-                worse_percent,
+                worse_percent: worse_percent.is_finite().then_some(worse_percent),
                 baseline_commit: past.commit.clone(),
                 baseline_run_id: past.run_id,
                 annotation: comparison.annotation().unwrap_or_default(),
