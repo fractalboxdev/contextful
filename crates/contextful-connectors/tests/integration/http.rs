@@ -84,7 +84,7 @@ fn expansion_fails_the_read_on_a_failed_followup() {
 /// Row templates percent-encode scalars, and a template cannot choose its own host.
 #[test]
 fn expansion_template_binds_row_values_under_the_source_host() {
-    for template in ["https://{id}.vendor.example/detail", "https://api.vendor.example/detail"] {
+    for template in ["https://{id}.vendor.example/detail", "https://api.vendor.example/detail", "https://api.vendor.example/detail/{id"] {
         let cfg = json!({"endpoint":"https://api.vendor.example/index", "expansion":{"url_template":template, "target_column":"detail"}});
         assert!(format!("{}", HttpConfig::parse(&cfg).unwrap_err()).contains("ConnectorTemplateRejected"));
     }
