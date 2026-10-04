@@ -79,6 +79,7 @@ fn local_connector_pin_prints_digest_without_rewriting_manifest() {
     assert_eq!(std::fs::read_to_string(path).unwrap(), manifest);
 }
 
+// spec: connector.package.manifest-host-grant@22ec1862
 #[test]
 fn manifest_refuses_pipeline_host_absent_from_declared_capabilities_at_load() {
     let dir = project(&manifest("connectors/probe.wasm", &["items"], "manifest = \"connector.toml\"\nallow = [\"api.other.example\"]"));

@@ -19,9 +19,9 @@ fn an_in_tree_name_is_no_component() {
 }
 
 /// A pipeline source named by an artifact path, HTTPS URL or OCI reference runs as a component, its config reading
-/// `sha256`, `allow`, `attach`, `guest`, `memory_bytes` and `require_pin`, the manifest flag of
+/// `sha256`, `allow`, `attach`, `guest`, `memory_bytes`, `manifest` and `require_pin`, the flag of
 /// {{connector.package.pin-requirement}}.
-// spec: connector.package.component-source@1ce79a60
+// spec: connector.package.component-source@9abeee8a
 #[test]
 fn a_component_source_reads_its_pin_grant_guest_table_and_bounds() {
     let c = parse(
@@ -32,6 +32,7 @@ fn a_component_source_reads_its_pin_grant_guest_table_and_bounds() {
             "attach": { "Authorization": "Bearer ${secret://vendor-token}" },
             "guest": { "region": "eu" },
             "memory_bytes": 536870912u64,
+            "manifest": "connectors/vendor.toml",
             "require_pin": true,
         }),
     )
@@ -45,6 +46,7 @@ fn a_component_source_reads_its_pin_grant_guest_table_and_bounds() {
     assert!(c.attach[0].1.has_reference());
     assert_eq!(c.guest, Some(json!({ "region": "eu" })));
     assert_eq!(c.memory_bytes, Some(536_870_912));
+    assert_eq!(c.manifest.as_deref(), Some("connectors/vendor.toml"));
     assert!(c.requirement(false).manifest);
 
     let https = parse("https://dl.vendor.example/vendor.wasm", json!({ "sha256": PIN })).unwrap().unwrap();
@@ -52,7 +54,7 @@ fn a_component_source_reads_its_pin_grant_guest_table_and_bounds() {
     let bare = parse("vendor.wasm", json!({})).unwrap().unwrap();
     assert!(bare.allow.0.is_empty(), "no `allow` reaches no host");
     assert!(!bare.allow.permits("api.vendor.example"));
-    assert!(bare.attach.is_empty() && bare.guest.is_none() && bare.memory_bytes.is_none());
+    assert!(bare.attach.is_empty() && bare.guest.is_none() && bare.memory_bytes.is_none() && bare.manifest.is_none());
     assert!(!bare.requirement(false).required());
     assert!(bare.requirement(true).required(), "the store-wide key requires a pin without the manifest flag");
 }

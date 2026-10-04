@@ -330,7 +330,9 @@ Distribution form, digest pinning, per-connector resource bounds and world versi
 - `interpreted-target` — A host built with the `pulley` feature runs components on the interpreted target as portable bytecode, mapping no executable memory, under the same deadlines and mediated client; the compiled native target stays the default.
   *because a hardened runtime refusing writable-then-executable pages loads no compiled guest, and interpretation trades throughput for loading there*
 - `interpreted-target-absent` — A host built without the `pulley` feature refuses the interpreted target at construction, naming the feature, before any component compiles.
-- `component-source` — A pipeline source named by an artifact path, HTTPS URL or OCI reference runs as a component, its config reading `sha256`, `allow`, `attach`, `guest`, `memory_bytes` and `require_pin`, the manifest flag of {{connector.package.pin-requirement}}.
+- `component-source` — A pipeline source named by an artifact path, HTTPS URL or OCI reference runs as a component, its config reading `sha256`, `allow`, `attach`, `guest`, `memory_bytes`, `manifest` and `require_pin`, the flag of {{connector.package.pin-requirement}}.
+- `manifest-host-grant` — A component source's `manifest` names a project-relative TOML file; at load, each `allow` host must fit its `[capabilities] allow_hosts` declaration or refuses under {{connector.declare-capability.undeclared-access}}, naming the excess host.
+  *because an operator grant cannot extend past the connector's declared host access*
 - `component-load` — `pipeline run` resolves a component source, admits it against its pin and compiles it once per fire, before any run row, and records its {{connector.import.config-hashing}} content hash as each run's connector hash.
   *A-connector*
 - `component-grant` — A component session's grant is its declared `allow` hosts and `attach` headers alone, each header hydrated per request under {{connector.resolve.hydration-is-just-in-time}}; a source declaring no `allow` reaches no host.
@@ -382,6 +384,8 @@ flowchart LR
 - `connector.package.remote-fetch-failure`: WHEN a remote endpoint refuses a required fetch, THEN the run raises `ConnectorArtifactFetchFailed` and writes no run row.
 
 unsettled: Does `connector pin` record a precompiled artifact per target under its own digest, so a hardened build links no compiler and deserializes only pinned bytes? owner: connector affects: connector.package
+
+unsettled: Which manifest field names the build source, command and toolchain inputs for `connector pin`? owner: connector affects: connector.package
 
 unsettled: Which generation of the sandbox interface does the guest world target, and what does native async change about the per-call deadline and the reservation bridge? owner: connector affects: connector.package
 
