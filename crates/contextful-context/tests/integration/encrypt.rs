@@ -406,6 +406,22 @@ fn a_bound_store_seals_its_request_ledger() {
     assert!(written(&dir.path().join(".contextful/context/research")).iter().all(|p| !std::fs::read(p).unwrap().windows(canary.len()).any(|part| part == canary.as_bytes())));
 }
 
+#[test]
+fn a_bound_store_seals_landed_blob_bytes() {
+    use sha2::Digest;
+    let key_var = "CONTEXTFUL_TEST_KEY_74_BLOB";
+    // This unique variable is read only by this test's store; no other test changes it.
+    unsafe { std::env::set_var(key_var, "0123456789abcdef0123456789abcdef") };
+    let (dir, opened) = store_with(&format!("[encryption]\nkey_source = \"env:{key_var}\"\n"));
+    let store = opened.unwrap();
+    let canary = b"blob-canary-5f1e unique plaintext marker";
+    let digest = format!("{:x}", sha2::Sha256::digest(canary));
+    store.land_blob(&digest, canary).unwrap();
+    assert_eq!(store.blob(&digest).unwrap().as_deref(), Some(canary.as_slice()));
+    let files = written(&dir.path().join(".contextful/context/research"));
+    assert!(files.iter().all(|p| !std::fs::read(p).unwrap().windows(canary.len()).any(|part| part == canary)));
+}
+
 /// A sealed full-text sidecar file larger than 256 MiB stays unopened, and its arm adds no candidates.
 // spec: read.retrieve.fulltext-sealed-cap@5e433a1f
 #[test]
