@@ -43,7 +43,12 @@ pub fn admit_hosts(decl: &ComponentSource, base: &Path) -> Result<()> {
         bail!("component manifest is a project-relative file: `{raw}`");
     }
     let path = base.join(relative);
-    let source = std::fs::read_to_string(&path).with_context(|| format!("reading connector manifest `{raw}`"))?;
+    let root = std::fs::canonicalize(base).context("reading project directory")?;
+    let resolved = std::fs::canonicalize(&path).with_context(|| format!("reading connector manifest `{raw}`"))?;
+    if !resolved.starts_with(&root) {
+        bail!("component manifest is a project-relative file: `{raw}`");
+    }
+    let source = std::fs::read_to_string(&resolved).with_context(|| format!("reading connector manifest `{raw}`"))?;
     let value: toml::Value = toml::from_str(&source).with_context(|| format!("parsing connector manifest `{raw}`"))?;
     let hosts = value.get("capabilities").and_then(|v| v.get("allow_hosts"));
     let declared = match hosts {
