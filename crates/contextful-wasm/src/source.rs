@@ -78,7 +78,7 @@ impl GuestSource {
         let batch = self.session.next()?;
         let position = cursor_value(&self.session.position()?);
         let got = batch.as_deref().map(read).transpose()?.unwrap_or_default();
-        let pull = Pull { rows: got.rows, types: got.types, cursor: Some(position.clone()), more: batch.is_some(), snapshot_complete: Some(false), skipped: 0, declined: Default::default() };
+        let pull = Pull { rows: got.rows, types: got.types, cursor: Some(position.clone()), more: batch.is_some(), snapshot_complete: None, skipped: 0, declined: Default::default() };
         self.at = Some(Some(position));
         serde_json::to_vec(&pull).map_err(|e| Failure::new(FailureTag::Permanent, format!("encoding a pull: {e}")))
     }
