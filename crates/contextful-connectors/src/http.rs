@@ -8,7 +8,7 @@ use contextful_core::connector::probe::ScopeProbe;
 use contextful_core::connector::reference::{check_material, Template};
 use contextful_core::connector::ConnectorError;
 use contextful_core::run::ports::{Cancellation, PullRequest, Row, Source};
-use contextful_core::run::advance::admits;
+use contextful_core::run::advance::{admits, clock};
 use contextful_core::run::{Failure, FailureTag, RunError};
 use contextful_outbound::client::{classify, Client, HeaderValue};
 use contextful_outbound::probe::probe_through;
@@ -79,8 +79,9 @@ fn expansion(value: &Value) -> Result<Expansion, ConfigError> {
         (None, Some(name)) if !name.is_empty() => ExpansionPointer::Column(name),
         (None, Some(_)) => return Err(RunError::Invalid("`expansion.pointer_column` is non-empty".into()).into()),
         (Some(template), None) => {
-            let binds_authority = template.find("://").is_some_and(|s| {
-                let end = template[s + 3..].find(['/', '?', '#']).map_or(template.len(), |e| s + 3 + e);
+            let authority_start = if template.starts_with("//") { Some(2) } else { template.find("://").map(|s| s + 3) };
+            let binds_authority = authority_start.is_some_and(|start| {
+                let end = template[start..].find(['/', '?', '#']).map_or(template.len(), |e| start + e);
                 template[..end].contains('{')
             });
             if !template.contains('{') || binds_authority {
@@ -780,7 +781,7 @@ impl HttpSource {
         let mut digits_width = None;
         let mut instant_seen = false;
         for row in rows {
-            let value = row.get(field).and_then(Value::as_str);
+            let value = clock(row, field).and_then(Value::as_str);
             let valid = match value {
                 Some(s) if contextful_core::time::Instant::parse(s).is_ok() => {
                     instant_seen = true;
@@ -810,7 +811,7 @@ impl HttpSource {
         let at = request.position.as_ref().and_then(|p| p.get("at"));
         for row in rows {
             if let Some(field) = field {
-                let Some(value) = row.get(field) else { continue };
+                let Some(value) = clock(&row, field) else { continue };
                 if !admits(at, value).map_err(|e| Failure::deterministic(FailureTag::SchemaIncompatible, e.to_string()))? {
                     continue;
                 }
@@ -846,7 +847,7 @@ impl HttpSource {
                     fill(template, &values, percent_encode)
                 }
             };
-            let pointer = base.join(&raw).map_err(|e| Failure::deterministic(FailureTag::SchemaIncompatible, ConnectorError::ConnectorPointerColumnMissing(format!("`{raw}` names no URL: {e}")).to_string()))?;
+            let pointer = base.join(&raw).map_err(|e| Failure::deterministic(FailureTag::SchemaIncompatible, ConnectorError::ConnectorPointerColumnMissing(format!("`{}` names no URL: {e}", scrub_text(&raw))).to_string()))?;
             pointers.push(pointer);
         }
         let started = Instant::now();
