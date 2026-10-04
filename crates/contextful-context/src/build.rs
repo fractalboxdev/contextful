@@ -582,6 +582,7 @@ mod materialize {
             staging: staging.clone(),
             etag,
             runs: 0,
+            retention: None,
             _in_flight: Some(Arc::new(in_flight)),
         };
         let restore = |store: &Store| -> Result<()> {

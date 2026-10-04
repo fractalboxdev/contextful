@@ -4,14 +4,14 @@
 use crate::error::{ContextError, IoPath, Result};
 use crate::parquet_io;
 use crate::store::{replace_file, FileLock, Store};
-use arrow_array::{Array, ArrayRef, BooleanArray, RecordBatch, StringArray, UInt32Array};
+use arrow_array::{Array, ArrayRef, BooleanArray, RecordBatch, StringArray, TimestampNanosecondArray, UInt32Array};
 use arrow_ord::sort::{lexsort_to_indices, SortColumn, SortOptions};
 use arrow_row::{RowConverter, SortField};
 use arrow_select::concat::concat_batches;
 use arrow_select::filter::filter_record_batch;
 use arrow_select::take::take_record_batch;
 use contextful_core::store::declare::{TableDecl, WriteMode};
-use contextful_core::store::fold::FoldOutcome;
+use contextful_core::store::fold::{FoldOutcome, RetentionReport};
 use contextful_core::store::index::{IndexEntry, IndexKind};
 pub use contextful_core::store::lay_out::escape;
 use contextful_core::store::lay_out::{
@@ -22,8 +22,11 @@ use contextful_core::run::derive::task::{is_derive_key, TASK_VERSION};
 use contextful_core::store::reserve::TIEBREAK;
 use contextful_core::store::StoreError;
 use contextful_core::time::Instant;
+use parquet::arrow::arrow_reader::ParquetRecordBatchReaderBuilder;
+use parquet::basic::{LogicalType, TimeUnit};
+use parquet::file::statistics::Statistics;
 use std::collections::{BTreeMap, BTreeSet};
-use std::fs;
+use std::fs::{self, File};
 use std::path::PathBuf;
 
 /// The directory name a partition value takes when null.
@@ -43,6 +46,7 @@ pub struct Staged {
     /// The pointer's ETag when the pass started.
     pub etag: String,
     pub runs: usize,
+    pub retention: Option<RetentionReport>,
     /// Held for the pass's life, so a concurrent pass's collection reads this staging
     /// directory as in flight rather than as one an earlier pass abandoned.
     pub(crate) _in_flight: Option<std::sync::Arc<FileLock>>,
@@ -76,18 +80,26 @@ pub fn fold(store: &Store, decl: &TableDecl, now: Instant) -> Result<FoldOutcome
     store.check_writable("compact")?;
     match prepare(store, decl, now)? {
         Prepared::NothingLanded => Ok(match collect(store, decl, now) {
-            Ok(()) => FoldOutcome::NothingLanded,
+            Ok(collected) => match decl.retain_rows_secs().map_err(|e| ContextError::Invalid(e.to_string()))? {
+                Some(age) => FoldOutcome::NothingLandedRetained { cutoff: now.minus_secs(age), collected },
+                None => FoldOutcome::NothingLanded,
+            },
             Err(e) => FoldOutcome::Failed(format!("nothing to fold; collection failed: {e}")),
         }),
         Prepared::Staged(staged) => {
             let runs = staged.runs;
+            let retention = staged.retention.clone();
             match commit(store, *staged)? {
-                Committed::Published(m) => Ok(FoldOutcome::Folded {
+                Committed::Published(m) => {
+                    let collected = collect(store, decl, now);
+                    Ok(FoldOutcome::Folded {
                     snapshot_id: m.snapshot_id.to_string(),
                     runs,
                     rows: m.row_count,
-                    collection: collect(store, decl, now).err().map(|e| e.to_string()),
-                }),
+                    retention,
+                    collected: collected.as_ref().cloned().unwrap_or_default(),
+                    collection: collected.err().map(|e| e.to_string()),
+                })},
                 Committed::Lost => Ok(FoldOutcome::Failed("the pointer moved during the pass; nothing was published".into())),
             }
         }
@@ -111,7 +123,7 @@ pub fn prepare(store: &Store, decl: &TableDecl, now: Instant) -> Result<Prepared
 
     let unfolded_runs = state.unfolded_runs();
     let unfolded: Vec<String> = unfolded_runs.iter().map(|r| r.key()).collect();
-    if unfolded.is_empty() {
+    if unfolded.is_empty() && decl.retain_rows.is_none() {
         return Ok(Prepared::NothingLanded);
     }
     let table_dir = store.table_dir(table)?;
@@ -131,13 +143,46 @@ pub fn prepare(store: &Store, decl: &TableDecl, now: Instant) -> Result<Prepared
 
     let target = parquet_io::arrow_schema(&schema);
     let mut batches = Vec::new();
+    let mut footer_expired = 0;
+    let mut footer_partitions = BTreeSet::new();
+    let cutoff = decl.retain_rows_secs().map_err(|e| ContextError::Invalid(e.to_string()))?.map(|age| now.minus_secs(age));
     for f in &inputs {
-        for b in parquet_io::read(&table_dir.join(f))? {
+        let path = table_dir.join(f);
+        let partition_dir = f.split('/').filter(|part| decl.partition_by().iter().any(|key| part.starts_with(&format!("{key}=")))).collect::<Vec<_>>().join("/");
+        if let (Some(rule), Some(cutoff)) = (&decl.retain_rows, cutoff) {
+            if decl.partition_by().is_empty() || !partition_dir.is_empty() {
+                if let Some(n) = footer_expired_rows(&path, &rule.column, cutoff)? {
+                    footer_expired += n;
+                    if !decl.partition_by().is_empty() { footer_partitions.insert(partition_dir); }
+                    continue;
+                }
+            }
+        }
+        for b in parquet_io::read(&path)? {
             batches.push(parquet_io::conform(&b, &target)?);
         }
     }
     let invalid = |e: arrow_schema::ArrowError| ContextError::Invalid(format!("table `{table}`: {e}"));
     let mut rows = concat_batches(&target, &batches).map_err(invalid)?;
+    let retention = if let Some(rule) = &decl.retain_rows {
+        let cutoff = cutoff.expect("declared retention has a parsed age");
+        let column = column(&rows, &rule.column).map_err(invalid)?;
+        let times = column.as_any().downcast_ref::<TimestampNanosecondArray>().ok_or_else(|| {
+            ContextError::Invalid(format!("table `{table}`: retention column `{}` is not a nanosecond timestamp", rule.column))
+        })?;
+        let keep: BooleanArray = (0..rows.num_rows()).map(|i| Some(!times.is_null(i) && i128::from(times.value(i)) >= cutoff.unix_nanos())).collect();
+        let count = keep.iter().filter(|v| *v == Some(false)).count() as u64;
+        let filtered = filter_record_batch(&rows, &keep).map_err(invalid)?;
+        let mut before: BTreeSet<String> = if decl.partition_by().is_empty() { BTreeSet::new() } else {
+            partition(&rows, decl.partition_by()).map_err(invalid)?.into_iter().map(|(name, _)| name).collect()
+        };
+        before.extend(footer_partitions);
+        let after: BTreeSet<String> = if decl.partition_by().is_empty() { BTreeSet::new() } else {
+            partition(&filtered, decl.partition_by()).map_err(invalid)?.into_iter().map(|(name, _)| name).collect()
+        };
+        rows = filtered;
+        Some(RetentionReport { cutoff, rows_expired: count + footer_expired, partitions_dropped: before.difference(&after).count() as u64 })
+    } else { None };
     if decl.is_keyed() {
         let mut line: Vec<String> = decl.primary_key().to_vec();
         if let Some(vt) = &decl.valid_time {
@@ -147,6 +192,9 @@ pub fn prepare(store: &Store, decl: &TableDecl, now: Instant) -> Result<Prepared
     }
     if is_derive_key(decl.primary_key()) {
         rows = supersede(&rows, decl.retain_versions == Some(true))?;
+    }
+    if unfolded.is_empty() && retention.as_ref().is_none_or(|r| r.rows_expired == 0) {
+        return Ok(Prepared::NothingLanded);
     }
     if !decl.cluster_by().is_empty() {
         rows = sort(&rows, decl.cluster_by()).map_err(invalid)?;
@@ -198,8 +246,32 @@ pub fn prepare(store: &Store, decl: &TableDecl, now: Instant) -> Result<Prepared
         staging,
         etag,
         runs: unfolded.len(),
+        retention,
         _in_flight: Some(std::sync::Arc::new(in_flight)),
     })))
+}
+
+/// A whole part whose exact footer maximum precedes the cutoff needs no row read.
+/// Unknown, coarse or inexact statistics fall back to the ordinary row filter.
+fn footer_expired_rows(path: &std::path::Path, column: &str, cutoff: Instant) -> Result<Option<u64>> {
+    let file = File::open(path).at(path)?;
+    let metadata = ParquetRecordBatchReaderBuilder::try_new(file)
+        .map_err(|e| ContextError::Parquet { path: path.to_path_buf(), message: e.to_string() })?
+        .metadata().clone();
+    let schema = metadata.file_metadata().schema_descr();
+    let Some(index) = schema.columns().iter().position(|c| {
+        c.path().parts().len() == 1 && c.name() == column && matches!(c.logical_type_ref(), Some(LogicalType::Timestamp { unit: TimeUnit::NANOS, .. }))
+    }) else { return Ok(None) };
+    let mut rows = 0_u64;
+    for group in metadata.row_groups() {
+        let Some(Statistics::Int64(stats)) = group.column(index).statistics() else { return Ok(None) };
+        let Some(max) = stats.max_opt() else { return Ok(None) };
+        if !stats.max_is_exact() || i128::from(*max) >= cutoff.unix_nanos() {
+            return Ok(None);
+        }
+        rows += u64::try_from(group.num_rows()).unwrap_or_default();
+    }
+    Ok(Some(rows))
 }
 
 /// Ids a pass tries past its first candidate before refusing.
@@ -297,8 +369,9 @@ pub fn commit(store: &Store, mut staged: Staged) -> Result<Committed> {
 /// reaches whose id precedes the current snapshot's (`store.fold.staging-collected`).
 /// A staging directory whose pass still holds its lock is in flight, whatever id it
 /// carries, and survives until that pass ends.
-fn collect_unreachable(store: &Store, table: &str, chain: &[SnapshotManifest], held: &BTreeSet<String>) -> Result<()> {
-    let Some(current) = chain.first() else { return Ok(()) };
+fn collect_unreachable(store: &Store, table: &str, chain: &[SnapshotManifest], held: &BTreeSet<String>) -> Result<Vec<String>> {
+    let Some(current) = chain.first() else { return Ok(Vec::new()) };
+    let mut removed = Vec::new();
     let reachable: BTreeSet<String> = chain.iter().map(|s| s.snapshot_id.to_string()).collect();
     let snapshots = store.table_dir(table)?.join(contextful_core::store::lay_out::SNAPSHOTS_DIR);
     for dir in crate::store::sorted_dirs(&snapshots)? {
@@ -319,8 +392,9 @@ fn collect_unreachable(store: &Store, table: &str, chain: &[SnapshotManifest], h
             None
         };
         fs::remove_dir_all(&dir).at(&dir)?;
+        removed.push(format!("data/snapshots/{name}"));
     }
-    Ok(())
+    Ok(removed)
 }
 
 /// Collect what the `retain_runs` window allows (`store.fold.retention`): a snapshot
@@ -330,13 +404,13 @@ fn collect_unreachable(store: &Store, table: &str, chain: &[SnapshotManifest], h
 ///
 /// A snapshot an unexpired hold names stays on disk whatever the window and whatever
 /// collection took around it (`run.publish.hold`).
-pub fn collect(store: &Store, decl: &TableDecl, now: Instant) -> Result<()> {
+pub fn collect(store: &Store, decl: &TableDecl, now: Instant) -> Result<Vec<String>> {
     let table = decl.name.as_str();
     let held = &crate::build::held(store, table, now)?;
     let window = decl.retain_runs_secs().map_err(|e| ContextError::Invalid(e.to_string()))?;
     let cutoff = now.minus_secs(window);
     let (chain, _) = store.chain(table)?;
-    collect_unreachable(store, table, &chain, held)?;
+    let mut removed = collect_unreachable(store, table, &chain, held)?;
     let runs: BTreeMap<String, RunManifest> = store.committed_runs(table)?.into_iter().map(|r| (r.key(), r)).collect();
     let runs_dir = store.table_dir(table)?.join(contextful_core::store::lay_out::RUNS_DIR);
     for pair in chain.windows(2) {
@@ -345,6 +419,7 @@ pub fn collect(store: &Store, decl: &TableDecl, now: Instant) -> Result<()> {
             let dir = store.snapshot_dir(table, &superseded.snapshot_id)?;
             if dir.exists() {
                 fs::remove_dir_all(&dir).at(&dir)?;
+                removed.push(format!("data/snapshots/{}", superseded.snapshot_id));
             }
         }
     }
@@ -357,13 +432,15 @@ pub fn collect(store: &Store, decl: &TableDecl, now: Instant) -> Result<()> {
             let node = dir.join(&r.node_id);
             if node.exists() {
                 fs::remove_dir_all(&node).at(&node)?;
+                removed.push(format!("data/runs/{}/{}", r.run_id, r.node_id));
             }
             if fs::read_dir(&dir).is_ok_and(|mut d| d.next().is_none()) {
                 fs::remove_dir(&dir).at(&dir)?;
             }
         }
     }
-    Ok(())
+    removed.sort();
+    Ok(removed)
 }
 
 fn column<'a>(b: &'a RecordBatch, name: &str) -> std::result::Result<&'a ArrayRef, arrow_schema::ArrowError> {

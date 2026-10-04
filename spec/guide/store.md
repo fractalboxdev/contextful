@@ -6,7 +6,7 @@ contract: store
 
 ## What it is for
 
-The store is the canonical corpus of **Contextful**: Parquet any SQL tool opens, JSON manifests naming which files count, and one pointer per table naming the current snapshot ({{store.lay-out.components}}). No reader sees a torn state and no crash loses or duplicates a committed batch, with nothing stronger than a conditional write underneath.
+The store holds Parquet, manifests and one pointer per table ({{store.lay-out.components}}). A conditional write keeps every committed batch whole.
 
 ## How it works
 
@@ -19,6 +19,8 @@ A read resolves an explicit sorted file list from the pointer and the manifests,
 A complete empty replacement marks a frontier with no files ({{store.declare.empty-replacement}}).
 
 Runs accumulate until a fold compacts them. A pass writes Parquet and every sidecar into staging ({{store.fold.pass}}), then publishes by replacing `_pointer.json` conditioned on the ETag it read at the start ({{store.fold.pointer-commit}}). Readers see a snapshot and its sidecars together or not at all ({{store.fold.partial-snapshot}}), and a statement in flight keeps the snapshot it started on ({{store.fold.non-blocking}}).
+
+A table's {{store.declare.retain-rows}} declaration gives rows an age limit. Reads enforce the cutoff at the statement ({{store.bound-time.row-age-cutoff}}), and a fold omits expired rows from the next snapshot ({{store.fold.row-retention}}). The pass reports its cutoff, expired rows, dropped partitions and collected directories ({{store.fold.row-retention-report}}).
 
 Two SQLite catalogs sit beside the files. `derived.sqlite` is a disposable cache rebuilt from the tree ({{store.lay-out.derived-catalog}}); `machine.sqlite` holds one machine's journal, cursor cache and lease rows, and no pull or rebuild touches it ({{store.lay-out.machine-catalog}}). Both sit behind ports ({{store.lay-out.catalog-ports}}).
 

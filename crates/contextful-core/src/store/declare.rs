@@ -40,6 +40,14 @@ pub struct ValidTime {
     pub to: Option<String>,
 }
 
+/// The timestamp and age limiting rows of a table (`store.declare.retain-rows`).
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct RetainRows {
+    pub column: String,
+    pub age: String,
+}
+
 /// One `[[pipeline.tables]]` block (`store.declare.table-block`). An unset key is absent
 /// from the canonical serialization; an unknown key refuses to parse.
 #[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
@@ -70,6 +78,8 @@ pub struct TableDecl {
     pub partition_by: Option<Vec<String>>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub retain_runs: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub retain_rows: Option<RetainRows>,
     /// A derive output table keeping each task version's rows current under that version
     /// (`run.emit.version-retained`).
     #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -170,6 +180,7 @@ impl FoldCoverage {
 fn checked(tables: Vec<TableDecl>) -> Result<Vec<TableDecl>, crate::disclosure::declare::DeclareError> {
     for t in &tables {
         t.retain_runs_secs()?;
+        t.retain_rows_secs()?;
         t.result_cache_secs()?;
         crate::disclosure::declare::Binding::of(t)?;
     }
@@ -286,6 +297,19 @@ impl TableDecl {
             .ok_or_else(|| DeclarationMalformed(format!("table `{}`: retain_runs `{s}` is not <n>d, <n>h, <n>m or <n>s", self.name)))
     }
 
+    /// The declared row-age duration in seconds, if the table retains by row age.
+    pub fn retain_rows_secs(&self) -> Result<Option<u64>, DeclarationMalformed> {
+        let Some(retention) = &self.retain_rows else { return Ok(None) };
+        let age = &retention.age;
+        if !age.ends_with('d') {
+            return Err(DeclarationMalformed(format!("table `{}`: retain_rows age `{age}` is not <n>d", self.name)));
+        }
+        crate::time::duration_secs(age)
+            .filter(|age| *age > 0)
+            .map(Some)
+            .ok_or_else(|| DeclarationMalformed(format!("table `{}`: retain_rows age `{age}` is not a positive <n>d", self.name)))
+    }
+
     /// Refuse a struct, list or map column, as the schema holds it or `columns` declares
     /// it, in a key, ordering, clustering, partition or valid-time role
     /// (`store.declare.nested-key`).
@@ -328,6 +352,17 @@ impl TableDecl {
     /// Hold the declaration to the table's reconciled schema, before any Parquet lands.
     pub fn validate(&self, schema: &Schema) -> Result<(), StoreError> {
         check_table_name(&self.name)?;
+        self.retain_rows_secs().map_err(|e| StoreError::StoreRetentionColumnInvalid(e.to_string()))?;
+        if let Some(retention) = &self.retain_rows {
+            let column = &retention.column;
+            let ty = schema.get(column).map(|c| &c.ty);
+            if ty != Some(&ColumnType::Timestamp) || (column != INGESTED_AT && self.column_types().get(column) != Some(&ColumnType::Timestamp)) {
+                return Err(StoreError::StoreRetentionColumnInvalid(format!(
+                    "table `{}` retains rows by `{column}`, which must be `_ingested_at` or a declared Timestamp column",
+                    self.name
+                )));
+            }
+        }
         self.check_nested_roles(schema)?;
         let order_by = self.order_by();
         if !is_injected(order_by) && schema.get(order_by).is_none() {

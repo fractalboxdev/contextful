@@ -138,6 +138,9 @@ impl Face {
             if decl.is_private() {
                 return None;
             }
+            if decl.retain_rows.is_some() {
+                return None;
+            }
             let secs = decl.result_cache_secs().ok().flatten()?;
             least = Some(least.map_or(secs, |l| l.min(secs)));
         }
