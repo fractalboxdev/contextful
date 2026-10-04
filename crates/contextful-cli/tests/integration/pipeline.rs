@@ -1478,6 +1478,7 @@ fn a_relational_pipeline_shreds_lists_into_indexed_child_rows() {
     assert_eq!(child["rows"][1], serde_json::json!([parent_id, "1", "end", null, "BIGINT"]));
 }
 
+// spec: run.record.schema-diff-home@89362023
 #[test]
 fn a_native_downgrade_is_recorded_on_the_commit_and_in_history() {
     let calls = std::sync::atomic::AtomicUsize::new(0);
