@@ -7,7 +7,7 @@ An unpinned clause is `committed`; a pinned one is `performed` when its test res
 | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
 | `assurance` | 2 | 15 | 227 | 59 | 22 | 12 | 135 | 0 | 135 |
 | `authority` | 2 | 16 | 267 | 77 | 27 | 10 | 204 | 0 | 204 |
-| `connector` | 2 | 14 | 329 | 85 | 21 | 15 | 195 | 0 | 195 |
+| `connector` | 2 | 14 | 329 | 85 | 21 | 15 | 199 | 0 | 199 |
 | `corpus` | 1 | 10 | 77 | 37 | 7 | 0 | 38 | 0 | 38 |
 | `disclosure` | 3 | 16 | 122 | 64 | 13 | 7 | 54 | 0 | 54 |
 | `read` | 2 | 15 | 179 | 29 | 22 | 21 | 163 | 0 | 162 |
@@ -15,7 +15,7 @@ An unpinned clause is `committed`; a pinned one is `performed` when its test res
 | `store` | 1 | 17 | 235 | 55 | 13 | 20 | 198 | 0 | 194 |
 | `surface` | 2 | 19 | 86 | 46 | 22 | 5 | 51 | 0 | 50 |
 | `topology` | 1 | 6 | 70 | 24 | 5 | 5 | 38 | 0 | 38 |
-| **total** | 19 | 154 | 1964 | 574 | 188 | 132 | 1335 | 0 | |
+| **total** | 19 | 154 | 1964 | 574 | 188 | 132 | 1339 | 0 | |
 
 Decision records: 18.
 
@@ -29,7 +29,7 @@ A milestone reads `closed` when its acceptance test computes `passing` and every
 | 1 — The authority core | 14 | 236 | 184 | passing | closed |
 | 2 — The store | 9 | 162 | 130 | passing | closed |
 | 3 — The run path | 11 | 206 | 142 | passing | closed |
-| 4 — Ingest | 25 | 476 | 290 | passing | open |
+| 4 — Ingest | 25 | 476 | 294 | passing | open |
 | 5 — The read face under enforcement | 17 | 252 | 192 | passing | open |
 | 6 — Sync and replicas | 8 | 73 | 68 | passing | closed |
 | 7 — Memory | 6 | 37 | 37 | passing | closed |
@@ -479,7 +479,11 @@ Unscheduled operations: 10.
 | `connector.package.interpreted-target-absent` | `crates/contextful-wasm/tests/integration/target.rs::a_build_without_the_feature_refuses_the_interpreted_target` | performed |
 | `connector.package.linear-memory` | `crates/contextful-wasm/tests/integration/package.rs::linear_memory_defaults_to_256_mib_and_rises_to_at_most_2_gib` | performed |
 | `connector.package.local-unpinned` | `crates/contextful-cli/tests/integration/component.rs::an_unpinned_local_artifact_under_either_switch_is_refused_with_its_digest` | performed |
+| `connector.package.oci-reference` | `crates/contextful-cli/tests/integration/component.rs::malformed_oci_reference_is_refused_without_a_request` | performed |
 | `connector.package.pin-requirement` | `crates/contextful-core/tests/integration/connector/package.rs::either_switch_requires_a_local_pin` | performed |
+| `connector.package.remote-cache` | `crates/contextful-cli/tests/integration/component.rs::a_pinned_remote_artifact_uses_the_project_cache_before_network` | performed |
+| `connector.package.remote-cache-corrupt` | `crates/contextful-cli/tests/integration/component.rs::a_pinned_remote_artifact_uses_the_project_cache_before_network` | performed |
+| `connector.package.remote-fetch-failure` | `crates/contextful-cli/tests/integration/component.rs::remote_fetch_failure_writes_no_run_row` | performed |
 | `connector.package.remote-unpinned` | `crates/contextful-core/tests/integration/connector/package.rs::a_remote_artifact_without_a_64_hex_pin_is_refused_at_parse` | performed |
 | `connector.package.request-body` | `crates/contextful-wasm/tests/integration/package.rs::an_outbound_body_past_8_mib_fails_the_call_before_the_vendor` | performed |
 | `connector.package.session-budget` | `crates/contextful-wasm/tests/integration/package.rs::a_session_logs_within_1_mib_and_holds_8_requests_outbound` | performed |

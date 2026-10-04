@@ -258,6 +258,8 @@ fn a_component_key_outside_its_set_is_refused_before_any_io() {
     refused(&cf(dir.path(), &["pipeline", "validate"], &[]), "PipelineUnknownConfigKey");
 }
 
+// spec: connector.package.remote-cache@e1461a98
+// spec: connector.package.remote-cache-corrupt@ab4abc64
 #[test]
 fn a_pinned_remote_artifact_uses_the_project_cache_before_network() {
     let pin = digest(PROBE);
@@ -274,11 +276,21 @@ fn a_pinned_remote_artifact_uses_the_project_cache_before_network() {
     }
 }
 
+// spec: connector.package.oci-reference@4aa4c3c9
 #[test]
 fn malformed_oci_reference_is_refused_without_a_request() {
     let pin = digest(PROBE);
     let dir = project(&manifest("oci://registry.vendor.invalid/", &["items"], &format!("sha256 = \"{pin}\"")));
     refused(&cf(dir.path(), &["pipeline", "validate"], &[]), "ConnectorOciReferenceInvalid");
+}
+
+// spec: connector.package.remote-fetch-failure@d8121ea0
+#[test]
+fn remote_fetch_failure_writes_no_run_row() {
+    let pin = digest(PROBE);
+    let dir = project(&manifest("https://127.0.0.1:1/probe.wasm", &["items"], &format!("sha256 = \"{pin}\"")));
+    refused(&fire(dir.path(), "run-1", &[], &[]), "ConnectorArtifactFetchFailed");
+    assert!(!cf(dir.path(), &["run", "show", "run-1", "--project", "research"], &[]).status.success());
 }
 
 /// `pipeline run` and `pipeline validate` compile components for the interpreted target when `--component-target
