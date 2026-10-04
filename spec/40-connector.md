@@ -297,7 +297,7 @@ Distribution form, digest pinning, per-connector resource bounds and world versi
   *A-connector*
 - `oci-reference` — An OCI artifact reference is `oci://<registry>/<repository>[:<tag>|@sha256:<digest>]`, with `latest` for an absent selector; an empty registry, repository or selector raises `ConnectorOciReferenceInvalid` before network access.
   *because a malformed reference must not turn a registry name into an unintended request destination*
-- `oci-component-layer` — An OCI reference resolves a schema-2 image manifest with exactly one `application/vnd.wasm.content.layer.v1+wasm` layer; another shape raises `ConnectorOciArtifactUnsupported` before any component compiles.
+- `oci-component-layer` — An OCI reference resolves a schema-2 image manifest with exactly one layer, whose media type is `application/vnd.wasm.content.layer.v1+wasm`; another shape raises `ConnectorOciArtifactUnsupported` before any component compiles.
   *A-connector*
 - `oci-layer-integrity` — The fetched OCI layer matches its manifest descriptor's SHA-256 digest and the source pin under {{connector.package.digest-mismatch}}; a descriptor mismatch raises `ConnectorOciLayerMismatch` before cache publication.
   *A-connector*

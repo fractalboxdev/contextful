@@ -11310,7 +11310,7 @@
       "operation": "package",
       "subject": "oci-component-layer",
       "kind": "refusal",
-      "statement": "An OCI reference resolves a schema-2 image manifest with exactly one `application/vnd.wasm.content.layer.v1+wasm` layer; another shape raises `ConnectorOciArtifactUnsupported` before any component compiles.",
+      "statement": "An OCI reference resolves a schema-2 image manifest with exactly one layer, whose media type is `application/vnd.wasm.content.layer.v1+wasm`; another shape raises `ConnectorOciArtifactUnsupported` before any component compiles.",
       "why": "A-connector",
       "file": "spec/40-connector.md",
       "line": 300,
