@@ -22,3 +22,30 @@ fn source_fields_cannot_replace_relational_identity_columns() {
     assert_eq!(child["source_parent_id"], "source-parent-id");
     assert_eq!(child["source_list_index"], 99);
 }
+
+#[test]
+fn repeated_nested_items_keep_distinct_parent_links_and_stable_ids() {
+    let source: Row = serde_json::from_value(serde_json::json!({
+        "groups": [
+            {"items": ["same"]},
+            {"items": ["same"]}
+        ]
+    })).unwrap();
+    let first = relational_tables(vec![source.clone()], "entries", "run-1", 5);
+    let replay = relational_tables(vec![source], "entries", "run-2", 5);
+    let groups = &first["entries_groups"];
+    let items = &first["entries_groups_items"];
+
+    assert_eq!(groups.len(), 2);
+    assert_ne!(groups[0]["row_id"], groups[1]["row_id"], "each indexed child has its own identity");
+    assert_eq!(groups[0]["list_index"], 0);
+    assert_eq!(groups[1]["list_index"], 1);
+    assert_eq!(items.len(), 2);
+    assert_eq!(items[0]["parent_id"], groups[0]["row_id"]);
+    assert_eq!(items[1]["parent_id"], groups[1]["row_id"]);
+    assert_eq!(items[0]["root_id"], first["entries"][0]["row_id"]);
+    assert_eq!(items[1]["root_id"], first["entries"][0]["row_id"]);
+    assert_eq!(first["entries"][0]["row_id"], replay["entries"][0]["row_id"]);
+    assert_eq!(groups[0]["row_id"], replay["entries_groups"][0]["row_id"]);
+    assert_eq!(groups[1]["row_id"], replay["entries_groups"][1]["row_id"]);
+}
