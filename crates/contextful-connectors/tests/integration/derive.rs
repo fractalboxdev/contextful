@@ -1,6 +1,6 @@
 //! The exec driver and the derive source.
 
-use crate::support::Never;
+use crate::support::{Never, Response, Server};
 use contextful_connectors::derive::{resolve_step, run_chain, Chain, ChainError, DeriveSource};
 use contextful_core::run::derive::config::{bindings, Binding, DeriveConfig};
 use contextful_core::run::journal::sha256_hex;
@@ -208,6 +208,25 @@ fn pull(s: &mut DeriveSource, cancel: &dyn Cancellation) -> Result<Vec<Value>, F
 
 fn pulled(s: &mut DeriveSource) -> Vec<Value> {
     pull(s, &Never).unwrap()
+}
+
+#[test]
+fn a_link_preview_fetches_a_head_document_through_the_mediated_client() {
+    let site = Server::start(|_| Response {
+        status: 200,
+        headers: vec![("Content-Type".into(), "text/html; charset=utf-8".into())],
+        body: b"<html><head><title>Example article</title><meta name=\"description\" content=\"A short summary\"></head><body>ignored</body></html>".to_vec(),
+    });
+    let address = format!("http://localhost:{}/article?private=1", site.port);
+    let dir = tempfile::tempdir().unwrap();
+    let mut s = source(dir.path(), json!([{"doc_id": "article", "path": address}]), "[derive.reader]\ndriver = \"fetch\"\nallow_hosts = [\"localhost\"]\n");
+    s.config.task = contextful_core::run::derive::config::Task::LinkPreview;
+    let rows = pulled(&mut s);
+    assert_eq!(rows.len(), 1, "{rows:?}");
+    assert_eq!(rows[0]["unit_status"], "ok");
+    assert_eq!(rows[0]["title"], "Example article");
+    assert_eq!(rows[0]["description"], "A short summary");
+    assert_eq!(site.received("/article").len(), 1);
 }
 
 fn unit<'a>(rows: &'a [Value], key: &str) -> &'a Value {
