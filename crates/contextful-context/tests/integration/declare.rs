@@ -105,6 +105,16 @@ fn a_zero_row_run_commits_no_parts_and_an_empty_table_registers() {
 }
 
 #[cfg(feature = "read")]
+#[test]
+fn an_empty_keyed_table_registers_its_declared_columns() {
+    let f = Fixture::new();
+    let d = decl("name = \"pages\"\nprimary_key = [\"file_id\", \"page\"]\ncolumns = { file_id = \"utf8\", page = \"int64\" }");
+    let manifest = f.land(&d, "run-0", json!([]), "2030-01-01T00:00:00Z").unwrap();
+    assert!(manifest.parts.is_empty());
+    assert!(f.query(&d, Bounds::default(), "SELECT file_id, page FROM t").is_empty());
+}
+
+#[cfg(feature = "read")]
 /// A declaration key changes what a read returns and rewrites no committed part; a key added after rows land applies from the next read.
 // spec: store.declare.read-side-keys@71b2bfcf
 #[test]
