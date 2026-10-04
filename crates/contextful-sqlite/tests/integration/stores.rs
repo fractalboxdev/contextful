@@ -52,6 +52,47 @@ fn sealed_run_stores_share_catalog_and_keep_journal_bytes_off_disk() {
     assert!(SqliteRunStores::open_sealed(&path, Arc::new(AesGcmFileCipher::new([8; 32], 1))).is_err());
 }
 
+#[test]
+fn sealed_run_stores_keep_nested_updates_atomic_across_connections() {
+    let dir = tempfile::tempdir().unwrap();
+    let path = dir.path().join(MACHINE_CATALOG_FILE);
+    let open = || SqliteRunStores::open_sealed(&path, Arc::new(AesGcmFileCipher::new([7; 32], 1))).unwrap();
+    let first = open();
+    let second = open();
+    first.awakeables.insert(&awakeable("tok-a")).unwrap();
+    let failed = first.awakeables.update("tok-a", &mut |row| {
+        first.journal.record(&key("x-1"), &Stored::place(b"rejected"))?;
+        row.state = AwakeableState::Resolved;
+        Err(Failure::new(FailureTag::Storage, "the update refuses"))
+    });
+    assert!(failed.is_err());
+    assert!(second.journal.read(&key("x-1")).unwrap().is_none());
+    assert_eq!(second.awakeables.get("tok-a").unwrap().unwrap().state, AwakeableState::Pending);
+
+    first.awakeables.update("tok-a", &mut |row| {
+        first.journal.record(&key("x-1"), &Stored::place(b"accepted"))?;
+        row.state = AwakeableState::Resolved;
+        Ok(true)
+    }).unwrap();
+    assert_eq!(second.journal.read(&key("x-1")).unwrap(), Some(Row::Recorded { key: key("x-1"), value: Stored::place(b"accepted") }));
+    assert_eq!(second.awakeables.get("tok-a").unwrap().unwrap().state, AwakeableState::Resolved);
+}
+
+#[test]
+fn sealed_run_stores_serialize_claims_across_connections() {
+    let dir = tempfile::tempdir().unwrap();
+    let path = dir.path().join(MACHINE_CATALOG_FILE);
+    let stores: Vec<_> = (0..4).map(|_| SqliteRunStores::open_sealed(&path, Arc::new(AesGcmFileCipher::new([7; 32], 1))).unwrap()).collect();
+    let claimed: Vec<bool> = std::thread::scope(|scope| {
+        let handles: Vec<_> = stores.iter().enumerate().map(|(i, store)| {
+            scope.spawn(move || store.journal.create_pending(&key("x-1"), &format!("run-{i}")).unwrap())
+        }).collect();
+        handles.into_iter().map(|handle| handle.join().unwrap()).collect()
+    });
+    assert_eq!(claimed.iter().filter(|won| **won).count(), 1);
+    assert!(stores.iter().all(|store| store.journal.read(&key("x-1")).unwrap().is_some()));
+}
+
 fn key(execution_id: &str) -> EntryKey {
     EntryKey::new(execution_id, "pull-0", b"null")
 }
