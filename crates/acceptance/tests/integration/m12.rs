@@ -11,7 +11,9 @@ use std::io::{BufRead, BufReader, Read, Write};
 use std::net::TcpStream;
 use std::process::{Child, Command, Output, Stdio};
 
-const AUDIENCE: &str = "contextful://console-acceptance";
+const STORE_AUDIENCE: &str = "contextful://console-acceptance";
+const QUERY_ACCESS_AUDIENCE: &str = "query-app-acceptance";
+const ADMIN_ACCESS_AUDIENCE: &str = "admin-app-acceptance";
 const ACCESS_ISSUER: &str = "https://access.example.test";
 const ACCESS_KEY: &str = include_str!("../../../contextful-policy/tests/fixtures/exchange/idp.key.pem");
 const ACCESS_JWKS: &str = include_str!("../../../contextful-policy/tests/fixtures/exchange/jwks.json");
@@ -21,15 +23,15 @@ fn ok(output: &Output) -> String {
     String::from_utf8_lossy(&output.stdout).trim().to_owned()
 }
 
-fn access_token(group: &str) -> String {
+fn access_token(audience: &str) -> String {
     let mut header = Header::new(Algorithm::RS256);
     header.kid = Some("idp-2030".into());
     let now = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap().as_secs();
     encode(
         &header,
         &json!({
-            "iss": ACCESS_ISSUER, "aud": [AUDIENCE], "sub": "operator-1",
-            "email": "operator@example.test", "groups": [group], "iat": now, "exp": now + 300,
+            "iss": ACCESS_ISSUER, "aud": [audience], "sub": "operator-1",
+            "email": "operator@example.test", "iat": now, "exp": now + 300,
         }),
         &EncodingKey::from_rsa_pem(ACCESS_KEY.as_bytes()).unwrap(),
     )
@@ -87,14 +89,14 @@ fn m12_console() {
         "source_url": "https://example.test/filing-1"
     }).to_string());
     ok(&repo.run(&cf, &["context", "land", "filings", "--project", "research", "--rows", "filings.jsonl", "--run-id", "load-1", "--site-id", "site-a"]));
-    repo.write(".contextful/issuance.toml", &format!("default_audience = \"{AUDIENCE}\"\nmax_lifetime_secs = 3600\n"));
+    repo.write(".contextful/issuance.toml", &format!("default_audience = \"{STORE_AUDIENCE}\"\nmax_lifetime_secs = 3600\n"));
     let public = ok(&repo.run(&cf, &["token", "keygen", "--out", ".contextful/issuer.seed"]));
     let read_token = ok(&repo.run(&cf, &[
         "token", "mint", "--issuer-key", ".contextful/issuer.seed", "--on-behalf-of", "user://operator@example.test",
         "--zone", "on-prem:hq", "--action", "read", "--table", "filings", "--ttl", "3600",
     ]));
     let read = Command::new(&cf)
-        .args(["serve", "--http", "127.0.0.1:0", "--max-in-flight", "2", "--project", "research", "--public-key", &public, "--audience", AUDIENCE])
+        .args(["serve", "--http", "127.0.0.1:0", "--max-in-flight", "2", "--project", "research", "--public-key", &public, "--audience", STORE_AUDIENCE])
         .current_dir(&repo.root)
         .stderr(Stdio::piped())
         .spawn()
@@ -123,9 +125,8 @@ fn m12_console() {
         .env("FIELD_NOTES_QUERY_TOKEN", &read_token)
         .env("CONTEXTFUL_ACCESS_JWKS_URL", jwks.url("/certs"))
         .env("CONTEXTFUL_ACCESS_ISSUER", ACCESS_ISSUER)
-        .env("CONTEXTFUL_ACCESS_AUDIENCE", AUDIENCE)
-        .env("CONTEXTFUL_QUERY_GROUP", "query")
-        .env("CONTEXTFUL_ADMIN_GROUP", "admin")
+        .env("CONTEXTFUL_QUERY_ACCESS_AUDIENCE", QUERY_ACCESS_AUDIENCE)
+        .env("CONTEXTFUL_ADMIN_ACCESS_AUDIENCE", ADMIN_ACCESS_AUDIENCE)
         .env("CONTEXTFUL_MODEL_ENDPOINT", model.url("/v1"))
         .env("CONTEXTFUL_MODEL_ID", "fixture")
         .stderr(Stdio::piped())
@@ -134,9 +135,9 @@ fn m12_console() {
     let (_console, console_address) = listening(console, "");
 
     assert_eq!(request(&console_address, "GET", "/query", None, None).0, 401);
-    assert_eq!(request(&console_address, "GET", "/admin", Some(&access_token("query")), None).0, 403);
+    assert_eq!(request(&console_address, "GET", "/admin", Some(&access_token(QUERY_ACCESS_AUDIENCE)), None).0, 403);
     let (status, answer) = request(
-        &console_address, "POST", "/query/api/ask", Some(&access_token("query")),
+        &console_address, "POST", "/query/api/ask", Some(&access_token(QUERY_ACCESS_AUDIENCE)),
         Some(&json!({ "store": "field-notes", "question": "Which filing arrived?" })),
     );
     assert_eq!(status, 200, "{}", String::from_utf8_lossy(&answer));
@@ -144,8 +145,8 @@ fn m12_console() {
     assert!(answer["answer"].as_str().unwrap().contains("Northwind filed on Monday"), "{answer}");
     assert!(answer["sources"].as_array().is_some_and(|sources| !sources.is_empty()), "{answer}");
     assert!(!model.received("/v1/chat/completions").is_empty(), "the answer uses the model endpoint");
-    assert_eq!(request(&console_address, "GET", "/admin/api/workflows", Some(&access_token("query")), None).0, 403);
-    let (status, workflows) = request(&console_address, "GET", "/admin/api/workflows", Some(&access_token("admin")), None);
+    assert_eq!(request(&console_address, "GET", "/admin/api/workflows", Some(&access_token(QUERY_ACCESS_AUDIENCE)), None).0, 403);
+    let (status, workflows) = request(&console_address, "GET", "/admin/api/workflows", Some(&access_token(ADMIN_ACCESS_AUDIENCE)), None);
     assert_eq!(status, 200, "{}", String::from_utf8_lossy(&workflows));
     let workflows = String::from_utf8(workflows).unwrap();
     assert!(workflows.contains("filings-flow") && workflows.contains("filings"), "{workflows}");

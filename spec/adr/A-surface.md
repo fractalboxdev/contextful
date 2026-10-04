@@ -46,7 +46,7 @@ Consequences: an injected instruction finds no write tool to reach for.
 
 ## Query and Admin use separate verified page grants
 
-The hosted operator console gives Query and Admin separate page grants and API namespaces. Cloudflare Access is the default gate. Without it, Amazon Cognito manages named operator accounts and password login; the console holds a first-party session and maps Cognito groups to page grants. The console verifies each page and API request. Query admits the read subset; Admin sends edit or apply through a server-held control capability. The deployment probe requests each path anonymously; a hostname-level probe misses an exposed path.
+The hosted operator console gives Query and Admin separate page grants and API namespaces. Cloudflare Access is the default gate, with a distinct application audience per page. Without it, Amazon Cognito manages named operator accounts and password login; the console holds a first-party session and maps Cognito groups to page grants. The console verifies each page and API request. Query admits the read subset; Admin sends edit or apply through a server-held control capability. The deployment probe requests each path anonymously; a hostname-level probe misses an exposed path.
 
 | Option | Lost on | Cost |
 | --- | --- | --- |
