@@ -252,6 +252,24 @@ fn a_commit_names_only_staged_parts() {
     assert_eq!(f.store.committed_runs("filings").unwrap()[0].cursor, Some(json!("p1")));
 }
 
+#[test]
+fn a_relational_group_becomes_visible_only_after_its_marker() {
+    use contextful_context::land::{commit_parts_group, publish_group};
+    let f = Fixture::new();
+    let ctx = staging("run-group", "2030-01-01T00:01:00Z");
+    let root = decl("name = \"filings\"");
+    let child = decl("name = \"filings_events\"");
+    let a = stage(&f, &root, &batch(json!([{"id": "d1"}])), &ctx, 0, 0).unwrap();
+    let b = stage(&f, &child, &batch(json!([{"parent_id": "d1", "list_index": 0}])), &ctx, 0, 0).unwrap();
+    commit_parts_group(&f.store, &child, &[b.name], &ctx, &fed("p1"), "filings", &[], &|| Ok(()), &|_| Ok(())).unwrap();
+    commit_parts_group(&f.store, &root, &[a.name], &ctx, &fed("p1"), "filings", &[], &|| Ok(()), &|_| Ok(())).unwrap();
+    assert!(f.store.committed_runs("filings").unwrap().is_empty());
+    assert!(f.store.committed_runs("filings_events").unwrap().is_empty());
+    publish_group(&f.store, "filings", &ctx).unwrap();
+    assert_eq!(f.store.committed_runs("filings").unwrap().len(), 1);
+    assert_eq!(f.store.committed_runs("filings_events").unwrap().len(), 1);
+}
+
 /// A stage merges its columns into the run's own staged schema and leaves `schema.json` as it stood; the commit
 /// merges them into `schema.json`, so a run that never commits types no column of the table.
 // spec: run.own.stage-schema@f39243cf
