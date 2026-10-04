@@ -88,8 +88,19 @@ pub fn write_observed(
         Some(key) if key.trim().is_empty() => return Err(MemoryFault::Invalid("the dedup key is empty".into())),
         Some(key) => {
             let id = keyed_claim_id(key, &candidate.subject, &candidate.predicate, &candidate.object, candidate.scope.as_deref());
-            if live.iter().any(|c| c.claim_id == id) {
-                return Ok(Written { claim: None, retired: Vec::new() });
+            if let Some(existing) = live.iter().find(|c| c.claim_id == id) {
+                let at = observation.observed_at.unwrap_or(now);
+                let conflict = existing.live_at(at)
+                    && live.iter().any(|prior| {
+                        prior.subject == candidate.subject
+                            && prior.predicate == candidate.predicate
+                            && prior.scope == candidate.scope
+                            && prior.object != candidate.object
+                            && prior.live_at(at)
+                    });
+                if !conflict {
+                    return Ok(Written { claim: None, retired: Vec::new() });
+                }
             }
             id
         }
