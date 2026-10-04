@@ -54,6 +54,15 @@ fn one_variant_column_keeps_each_scalar_kind_through_land_fold_and_read() {
     assert!(matches!(result, Err(ContextError::Store(StoreError::StoreSchemaIncompatible(_)))), "{result:?}");
     assert!(f.store.committed_runs("attributes").unwrap().iter().all(|run| run.run_id != "conflict"));
     assert!(!f.table_dir("attributes").join("data/runs/conflict/ingest-a/part-00000.parquet").exists());
+
+    let unsupported = f.land_typed(
+        &d,
+        "unsigned",
+        json!([{"id": "unsigned", "value": u64::MAX}]),
+        "2030-01-03T00:00:00Z",
+        &[("value", ColumnType::parse("variant").unwrap())],
+    );
+    assert!(matches!(unsupported, Err(ContextError::Store(StoreError::StoreSchemaIncompatible(_)))), "{unsupported:?}");
 }
 
 #[cfg(feature = "read")]
