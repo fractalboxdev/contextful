@@ -67,6 +67,19 @@ fn refused(out: &Output, error: &str) -> String {
     stderr
 }
 
+/// `--local` builds with the host toolchain and prints a host-local digest; writing a pin from a host build raises `ConnectorHostPinRefused`.
+// spec: connector.package.host-built-pin@34b9cb88
+#[test]
+fn local_connector_pin_prints_digest_without_rewriting_manifest() {
+    let dir = project("");
+    let manifest = "name = \"probe\"\nversion = \"1.0.0\"\nworld = \"source-connector@1.2.0\"\nwasm = \"connectors/probe.wasm\"\nrequire_wasm_pin = true\n";
+    let path = dir.path().join("connector.toml");
+    std::fs::write(&path, manifest).unwrap();
+    let output = cf(dir.path(), &["connector", "pin", "connector.toml", "--local"], &[]);
+    assert_eq!(ok(&output), digest(PROBE));
+    assert_eq!(std::fs::read_to_string(path).unwrap(), manifest);
+}
+
 fn run_row(dir: &Path, run: &str) -> serde_json::Value {
     serde_json::from_str(&ok(&cf(dir, &["run", "show", run, "--project", "research"], &[]))).unwrap()
 }
