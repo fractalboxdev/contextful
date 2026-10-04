@@ -46,7 +46,7 @@ fn an_edge_outside_the_relation_union_is_refused() {
     let edge = |rel: &str| CandidateEdge { rel_type: rel.into(), source: "Dana".into(), target: "Lee".into() };
     assert!(d.admits_relation(RESERVED_RELATIONS[0]));
     assert_eq!(check_edge(&edge("reports_to"), &entities, &d).unwrap().source_id, "e-dana");
-    assert_eq!(check_edge(&edge("works_for"), &entities, &d).unwrap().target_id, "e-lee");
+    assert_eq!(check_edge(&edge("about"), &entities, &d).unwrap().target_id, "e-lee");
     match check_edge(&edge("mentors"), &entities, &d) {
         Err(MemoryError::UndeclaredRelation(why)) => assert!(why.contains("mentors"), "{why}"),
         other => panic!("{other:?}"),
