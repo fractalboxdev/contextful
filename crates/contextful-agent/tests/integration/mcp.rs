@@ -165,6 +165,7 @@ fn context_query_binds_typed_parameters() {
 }
 
 // spec: read.register.budget-arguments@7d71066c
+// spec: read.register.duration-no-statement@68942eca
 #[test]
 fn read_tools_advertise_and_enforce_request_budgets() {
     let f = fixture();
@@ -184,6 +185,8 @@ fn read_tools_advertise_and_enforce_request_budgets() {
     for name in ["context.describe", "context.files"] {
         let bounded = call(&server, name, json!({ "max_response_bytes": 10 }));
         assert_eq!(bounded["result"]["structuredContent"]["error"]["identifier"], json!("ReadResponseTooLarge"), "{bounded}");
+        let no_statement = call(&server, name, json!({ "max_duration_ms": 0 }));
+        assert!(no_statement["result"].get("isError").is_none(), "{no_statement}");
     }
     let invalid = call(&server, "context.query", json!({ "sql": sql, "max_duration_ms": -1 }));
     assert_eq!(invalid["error"]["code"], json!(-32602));
