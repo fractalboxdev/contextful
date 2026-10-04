@@ -236,3 +236,29 @@ fn reaffirming_one_conflicting_object_retires_the_other() {
     assert!(resolution.retired.iter().any(|c| c.claim_id == second.claim_id));
     assert_eq!(resolution.claim.unwrap().object, "Dana");
 }
+
+#[test]
+fn reaffirming_the_original_claim_id_resolves_its_conflict() {
+    use contextful_memory::write::write_observed;
+    use contextful_policy::enforce::session::Request;
+
+    let f = Fixture::new();
+    let writer = f.writer();
+    let node = NodeId::parse("memory-a").unwrap();
+    let write = |object, observed, key, committed| {
+        write_observed(
+            &f.face, &writer, "memory/facts", candidate(object),
+            &keyed(observed, Some(key)), &node, at(committed), &super::synthesize::admit,
+        ).unwrap()
+    };
+    let first = write("Dana", "2030-01-01T00:00:00Z", "writer-a", "2030-01-11T00:00:00Z").claim.unwrap();
+    let second = write("Lee", "2030-01-01T00:00:00Z", "writer-b", "2030-01-12T00:00:00Z").claim.unwrap();
+    let resolution = write("Dana", "2030-02-01T00:00:00Z", "writer-a", "2030-01-13T00:00:00Z");
+    assert!(resolution.claim.is_none(), "the original claim keeps its interval");
+    assert_eq!(resolution.retired.len(), 1);
+    assert_eq!(resolution.retired[0].claim_id, second.claim_id);
+    assert_eq!(resolution.retired[0].superseded_by.as_deref(), Some(first.claim_id.as_str()));
+    let session = f.face.session(&writer, &Request::default(), Default::default()).unwrap();
+    let claims = contextful_memory::claims::read_claims(&f.face, &session, "memory/facts").unwrap();
+    assert!(claims.iter().any(|claim| claim.claim_id == first.claim_id && claim.valid_from == first.valid_from && claim.valid_to.is_none()));
+}
