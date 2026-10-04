@@ -436,7 +436,7 @@ impl Drive {
                 {
                     let mut q = url.query_pairs_mut();
                     q.append_pair("q", &format!("'{folder}' in parents and trashed = false"))
-                        .append_pair("fields", &format!("nextPageToken,files({FILE_FIELDS})"))
+                        .append_pair("fields", &format!("nextPageToken,incompleteSearch,files({FILE_FIELDS})"))
                         .append_pair("pageSize", "1000")
                         .append_pair("supportsAllDrives", "true")
                         .append_pair("includeItemsFromAllDrives", "true");
@@ -448,8 +448,27 @@ impl Drive {
                     }
                 }
                 let page = self.get_json(&url)?;
-                children.extend(page.get("files").and_then(Value::as_array).cloned().unwrap_or_default());
-                token = page.get("nextPageToken").and_then(Value::as_str).filter(|t| !t.is_empty()).map(str::to_string);
+                let incomplete = |reason: &str| Failure::new(FailureTag::Permanent, format!("drive listing of folder `{folder}` is incomplete: {reason}"));
+                if page.get("incompleteSearch") == Some(&Value::Bool(true)) {
+                    return Err(incomplete("the provider marked the search incomplete"));
+                }
+                let files = page.get("files").and_then(Value::as_array).ok_or_else(|| incomplete("`files` is not an array"))?;
+                if files.iter().any(|file| ["id", "name", "mimeType"].iter().any(|key| file.get(key).and_then(Value::as_str).is_none_or(str::is_empty))) {
+                    return Err(incomplete("a file lacks `id`, `name` or `mimeType`"));
+                }
+                if files.iter().any(|file| {
+                    file.get("mimeType").and_then(Value::as_str) != Some(FOLDER)
+                        && (file.get("modifiedTime").and_then(Value::as_str).is_none_or(str::is_empty)
+                            || file.get("version").and_then(Value::as_str).and_then(|v| v.parse::<i64>().ok()).is_none())
+                }) {
+                    return Err(incomplete("a file lacks a valid `modifiedTime` or `version`"));
+                }
+                children.extend(files.iter().cloned());
+                token = match page.get("nextPageToken") {
+                    None => None,
+                    Some(Value::String(next)) if !next.is_empty() => Some(next.clone()),
+                    Some(_) => return Err(incomplete("`nextPageToken` is not a nonempty string")),
+                };
                 if token.is_none() {
                     break;
                 }
@@ -457,7 +476,7 @@ impl Drive {
             let text = |v: &Value, k: &str| v.get(k).and_then(Value::as_str).map(str::to_string);
             children.sort_by_key(|c| (text(c, "name").unwrap_or_default(), text(c, "id").unwrap_or_default()));
             for c in children {
-                let (Some(id), Some(name), Some(mime)) = (text(&c, "id"), text(&c, "name"), text(&c, "mimeType")) else { continue };
+                let (id, name, mime) = (text(&c, "id").unwrap(), text(&c, "name").unwrap(), text(&c, "mimeType").unwrap());
                 let path = if prefix.is_empty() { name.clone() } else { format!("{prefix}/{name}") };
                 if mime == FOLDER {
                     if selected.contains(&id) && id != owner {
