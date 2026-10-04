@@ -147,6 +147,7 @@ fn cached_hydrations_share_one_buffer_until_retirement() {
     assert_eq!(p.calls(), 2);
 }
 
+/// An expired credential leaves the resolver even when its provider cannot renew it.
 #[test]
 fn an_expired_buffer_is_released_when_refresh_fails() {
     let clock = SetClock::new();

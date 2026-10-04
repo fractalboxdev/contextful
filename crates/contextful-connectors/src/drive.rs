@@ -286,7 +286,7 @@ pub struct Drive {
     api: Client,
     download: Client,
     token: Client,
-    minted: Mutex<Option<(Hydrated, Instant)>>,
+    minted: Mutex<Option<(Arc<Hydrated>, Instant)>>,
     walked: Mutex<Option<Arc<Vec<Entry>>>>,
     fetched: Mutex<BTreeMap<(String, String), Fetched>>,
 }
@@ -321,7 +321,7 @@ impl Drive {
     }
 
     /// Exchange the refresh token for an access token, held in memory for this fire.
-    fn mint(&self) -> Result<Hydrated, Failure> {
+    fn mint(&self) -> Result<Arc<Hydrated>, Failure> {
         let o = &self.config.oauth;
         let (refresh, id, secret) = (self.resolver.render(&o.refresh_token)?, self.resolver.render(&o.client_id)?, self.resolver.render(&o.client_secret)?);
         let body = Hydrated::new(
@@ -340,7 +340,7 @@ impl Drive {
         let answer: Value = serde_json::from_slice(&resp.body).map_err(|e| Failure::new(FailureTag::Permanent, format!("the token exchange answered no JSON: {e}")))?;
         let token = answer.get("access_token").and_then(Value::as_str).filter(|t| !t.is_empty()).ok_or_else(|| Failure::new(FailureTag::Permanent, "the token exchange answered no `access_token`"))?;
         let lifetime = Duration::from_secs(answer.get("expires_in").and_then(Value::as_u64).unwrap_or(0));
-        let bearer = Hydrated::new(format!("Bearer {token}"));
+        let bearer = Arc::new(Hydrated::new(format!("Bearer {token}")));
         if let Ok(mut m) = self.minted.lock() {
             *m = Some((bearer.clone(), Instant::now() + lifetime));
         }
@@ -348,7 +348,7 @@ impl Drive {
     }
 
     /// The held token, minted again when it is absent or near its expiry.
-    fn bearer(&self) -> Result<Hydrated, Failure> {
+    fn bearer(&self) -> Result<Arc<Hydrated>, Failure> {
         let held = self.minted.lock().ok().and_then(|m| m.clone());
         match held {
             Some((b, until)) if Instant::now() + EXPIRY_MARGIN < until => Ok(b),
