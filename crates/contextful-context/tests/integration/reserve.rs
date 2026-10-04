@@ -78,7 +78,6 @@ fn a_reserved_producer_column_refuses_before_any_parquet() {
 
 #[cfg(feature = "read")]
 /// A producer sets any of `_modality`, `_lang`, `_provenance` and `_prompt_hash`, and each surfaces in the provenance envelope where present.
-// spec: store.reserve.optional@acdb41f5
 #[test]
 fn a_producer_sets_the_optional_columns_and_modality_is_checked() {
     let f = Fixture::new();
