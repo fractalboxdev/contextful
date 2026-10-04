@@ -237,7 +237,10 @@ impl Dispatch for WorkerDispatch {
             match self.step(&run, step, version) {
                 Ok(StepOutcome::Done(result)) => lines.push(format!("{step}: {}", String::from_utf8_lossy(&result.encode()))),
                 Ok(StepOutcome::Failed { failed }) => failures.push(format!("{step}: {failed}")),
-                Err(error) => failures.push(error),
+                Err(error) => {
+                    failures.push(error);
+                    break;
+                }
             }
         }
         if failures.is_empty() { Ok(lines.join("; ")) } else { Err(failures.join("; ")) }

@@ -238,3 +238,13 @@ fn an_explicit_after_step_stops_when_its_head_fails() {
     assert!(rig.received.recv_timeout(Duration::from_millis(100)).is_err(), "an explicit after child started after its head failed");
     assert!(run.join().unwrap().unwrap_err().contains("parent: parent failed"));
 }
+
+#[test]
+fn a_derived_child_stops_when_no_worker_takes_its_parent() {
+    let rig = rig(&["w1"]);
+    rig.fleet.down.lock().unwrap().push("w1".into());
+    let result = rig.dispatch.fire("parent", &["child".to_string()], &BTreeSet::from(["child".to_string()]), 1);
+    assert!(result.unwrap_err().contains("no worker took it"));
+    assert_eq!(*rig.fleet.tried.lock().unwrap(), ["w1"], "a derived child started without a parent outcome");
+    assert!(rig.received.try_recv().is_err());
+}
