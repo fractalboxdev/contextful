@@ -246,6 +246,20 @@ fn overlapping_selected_roots_deduplicate_files_and_resolve_paths() {
     }
 }
 
+/// A pending next-page token at the shared listing cap refuses without committing removals.
+#[test]
+fn a_selected_root_page_token_at_the_listing_cap_refuses_by_name() {
+    let fake = Fake::start();
+    fake.overlay("shared.json");
+    fake.overlay("capped.json");
+    let d = drive(selected_roots(&fake, &["root-f"]));
+    let prior = json!({"files": {"gone": {"modified": "2031-01-01T00:00:00Z", "path": "gone", "name": "gone", "pages": 1}}});
+    let failure = d.source("files").unwrap().pull(&request(Some(prior)), &Never).unwrap_err();
+    assert_eq!(failure.tag, FailureTag::Permanent, "{failure}");
+    assert!(failure.message.contains("ConnectorDriveListingExceeded") && failure.message.contains("root-f"), "{failure}");
+    assert_eq!(fake.received("/drive/v3/files").len(), contextful_connectors::drive::LISTING_CAP);
+}
+
 /// The drive source walks the tree under `folder_id` breadth-first through `files.list`, paging each folder,
 /// within `drive_id` when declared. Each folder is listed once, its children sorted by name and id; no shortcut is
 /// followed.
