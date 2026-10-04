@@ -1,12 +1,13 @@
-//! The Google Drive source: every file under one folder, walked breadth-first through the
-//! Drive v3 API, landed as a `files` row per file and a `pages` row per PDF page.
+//! The Google Drive source walks one folder or up to 16 selected roots through Drive v3.
+//! Each selected file lands one `files` row; `bytes-and-pages` also lands PDF page rows.
 //!
 //! Docs, Sheets and Slides land as their PDF export and other files as their bytes; a PDF
-//! body decodes behind the process boundary (`connector.source.drive-page-grain`). Bytes
-//! land in no column: each body read whole lands as a content-addressed blob that its file
-//! row names by digest (`connector.source.drive-bytes`). The position records each file's
-//! `modifiedTime`, path and page count, so a read re-lands a changed file alone and lands a
-//! tombstone for what left the tree (`connector.source.drive-incremental`). The access
+//! body decodes behind the process boundary (`connector.source.drive-page-grain`). In
+//! `bytes-and-pages`, each body lands as a content-addressed blob named by its file row
+//! (`connector.source.drive-bytes`). In `metadata-only`, its digest lands and its bytes are
+//! discarded (`connector.source.drive-metadata-only`). The position binds the drive, roots,
+//! mode, file version and resolved root, so changed files re-land and deselections produce
+//! tombstones (`connector.source.drive-selection-position`). The access
 //! token is minted from `secret://` references once per fire, held in memory, and written
 //! nowhere (`connector.source.drive-oauth`).
 
@@ -588,6 +589,8 @@ struct Held {
     modified: String,
     path: String,
     name: String,
+    version: Option<i64>,
+    resolved_root: String,
     pages: u64,
 }
 
@@ -597,7 +600,7 @@ fn held(position: Option<&Value>) -> BTreeMap<String, Held> {
         .iter()
         .map(|(id, v)| {
             let text = |k: &str| v.get(k).and_then(Value::as_str).unwrap_or_default().to_string();
-            (id.clone(), Held { modified: text("modified"), path: text("path"), name: text("name"), pages: v.get("pages").and_then(Value::as_u64).unwrap_or(0) })
+            (id.clone(), Held { modified: text("modified"), path: text("path"), name: text("name"), version: v.get("version").and_then(Value::as_i64), resolved_root: text("resolved_root"), pages: v.get("pages").and_then(Value::as_u64).unwrap_or(0) })
         })
         .collect()
 }
@@ -646,6 +649,7 @@ impl DriveSource {
         r.insert("file_id".into(), json!(id));
         r.insert("name".into(), json!(h.name));
         r.insert("path".into(), json!(h.path));
+        r.insert("resolved_root".into(), json!(h.resolved_root));
         r.insert("modified_time".into(), json!(h.modified));
         r.insert("removed".into(), json!(true));
         r.insert("capture_status".into(), json!("removed"));
@@ -691,6 +695,8 @@ impl DriveSource {
     /// land with a `skipped` reason.
     pub fn read(&self, position: Option<&Value>, cancel: &dyn Cancellation) -> Result<Read, Failure> {
         let before = held(position);
+        let roots = self.drive.config.roots();
+        let selection_changed = position.is_some_and(|p| p.get("drive_id") != Some(&json!(self.drive.config.drive_id)) || p.get("roots") != Some(&json!(roots)));
         let previous_mode = position.and_then(|p| p.get("mode")).and_then(Value::as_str).unwrap_or("bytes-and-pages");
         let mode_changed = previous_mode != self.drive.config.mode.as_str();
         let entries = self.drive.walk(cancel)?;
@@ -702,7 +708,7 @@ impl DriveSource {
                 return Err(Failure::canceled("stopped between files"));
             }
             let prior = before.get(&e.id);
-            let unchanged = !mode_changed && prior.is_some_and(|h| h.modified == e.modified && h.path == e.path);
+            let unchanged = !selection_changed && !mode_changed && prior.is_some_and(|h| h.modified == e.modified && h.path == e.path && h.version == e.version && h.resolved_root == e.resolved_root);
             let mut pages = prior.map_or(0, |h| h.pages);
             if !unchanged {
                 let f = self.drive.fetch(e)?;
@@ -721,7 +727,7 @@ impl DriveSource {
                 }
                 pages = landed;
             }
-            after.insert(e.id.clone(), json!({"modified": e.modified, "path": e.path, "name": e.name, "pages": pages}));
+            after.insert(e.id.clone(), json!({"modified": e.modified, "path": e.path, "name": e.name, "version": e.version, "resolved_root": e.resolved_root, "pages": pages}));
         }
         for (id, h) in before.iter().filter(|(id, _)| !after.contains_key(*id)) {
             match self.table {
@@ -729,7 +735,7 @@ impl DriveSource {
                 Table::Pages => rows.extend((1..=h.pages).map(|p| Self::page_row(id, None, &h.path, p, None))),
             }
         }
-        Ok(Read { rows, position: json!({ "files": after, "mode": self.drive.config.mode.as_str() }), skipped })
+        Ok(Read { rows, position: json!({ "files": after, "drive_id": self.drive.config.drive_id, "roots": roots, "mode": self.drive.config.mode.as_str() }), skipped })
     }
 }
 
