@@ -162,6 +162,19 @@ fn an_expired_buffer_is_released_when_refresh_fails() {
     assert!(retired.upgrade().is_none(), "the expired credential stayed in the cache after refresh failed");
 }
 
+#[test]
+fn an_active_resolver_releases_other_expired_credentials() {
+    let clock = SetClock::new();
+    let provider = Fixed::new("manager", &[("first-token", "first"), ("second-token", "second")]);
+    let resolver = resolver(vec![provider], &clock);
+    let first = resolver.hydrate(&name("first-token")).unwrap();
+    let retired = Arc::downgrade(&first);
+    drop(first);
+    clock.advance(300);
+    assert_eq!(resolver.hydrate(&name("second-token")).unwrap().reveal(), "second");
+    assert!(retired.upgrade().is_none(), "an unrelated expired credential remained in the active resolver");
+}
+
 /// A reference no assembled adapter answers raises `SecretUnresolvedReference` naming it, at preflight where the
 /// binding is static and at the call otherwise.
 // spec: connector.resolve.unresolved-name@01714613
