@@ -300,6 +300,28 @@ fn a_driver_the_task_does_not_serve_refuses() {
     assert!(bind("doc-text", &link, &b, "m").is_ok());
 }
 
+#[test]
+fn a_fetch_binding_refuses_process_keys_and_nonbare_endpoint_hosts() {
+    for key in ["env", "preprocess", "engine", "max_output_bytes"] {
+        let setting = match key {
+            "env" => "[derive.reader.env]\nKEY = \"value\"\n".to_string(),
+            "preprocess" => "[[derive.reader.preprocess]]\ncommand = [\"cat\"]\n".to_string(),
+            "engine" => "[derive.reader.engine]\ncommand = [\"cat\"]\n".to_string(),
+            _ => "max_output_bytes = 100\n".to_string(),
+        };
+        let source = format!("[derive.reader]\ndriver = \"fetch\"\n{setting}");
+        let b = bindings(&source).unwrap();
+        let link = DeriveConfig { task: Task::LinkPreview, ..cfg(base()).unwrap() };
+        assert!(matches!(bind("doc-text", &link, &b, "m"), Err(RunError::DeriveFetchBindingKey(message)) if message.contains(key)), "{key}");
+    }
+    for host in ["https://example.com", "example.com/path", "example.com:443", "example.com?q=1"] {
+        let source = format!("[derive.reader]\ndriver = \"fetch\"\nendpoint_host = \"{host}\"\n");
+        let b = bindings(&source).unwrap();
+        let link = DeriveConfig { task: Task::LinkPreview, ..cfg(base()).unwrap() };
+        assert!(matches!(bind("doc-text", &link, &b, "m"), Err(RunError::DeriveEndpointHostNotBare(message)) if message.contains(host)), "{host}");
+    }
+}
+
 /// `command` is an argument array run with no shell; a `command` given as one string raises `DeriveShellCommand`.
 // spec: run.exec.shell-command@6891fe11
 #[test]
