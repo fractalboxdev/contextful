@@ -13,6 +13,7 @@ mod init;
 mod lay_out;
 mod read;
 mod reconcile;
+mod retention;
 mod reserve;
 mod rows;
 mod run_commit;
