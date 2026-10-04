@@ -301,8 +301,8 @@ fn the_recipe_names_every_injected_column_the_semantics_version_counts() {
     }
 }
 
-/// A build entry carries build id, start and completion instants, a status of published, refused or partial, the contract identity, and the partition values it left unfilled.
-// spec: run.publish.build-entry@24519fc2
+/// A build entry carries build id, start and completion instants, a status of published, refused, partial or failed, the contract identity, and the partition values it left unfilled.
+// spec: run.publish.build-entry@a96fa84e
 #[test]
 fn a_build_entry_is_read_off_each_committed_section() {
     let mut first = section("", "1.0.0", "fa", "2030-01-01T00:00:00Z");
@@ -326,10 +326,11 @@ fn a_build_entry_is_read_off_each_committed_section() {
     let v = serde_json::to_value(&entries[1]).unwrap();
     assert_eq!(v["status"], "partial");
     assert_eq!(serde_json::to_value(BuildStatus::Refused).unwrap(), "refused");
+    assert_eq!(serde_json::to_value(BuildStatus::Failed).unwrap(), "failed");
 }
 
-/// `contract-history.jsonl`, `builds.jsonl` and `holds.jsonl` are append-only history derived from committed manifests; a log disagreeing with a manifest is regenerated from it.
-// spec: run.publish.history-logs@f04a2633
+/// `contract-history.jsonl`, `builds.jsonl` and `holds.jsonl` are append-only history derived from committed manifests and build-attempt records; a log disagreeing with a source record is regenerated from it.
+// spec: run.publish.history-logs@11c001f0
 #[test]
 fn a_log_is_regenerated_from_committed_manifests_and_keeps_collected_history() {
     let a = snapshot("2030-01-01T00:00:00Z", None, Some(section("", "1.0.0", "fa", "2030-01-01T00:00:00Z")));

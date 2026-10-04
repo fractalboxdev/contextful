@@ -54,12 +54,18 @@ fn build(p: &Path, now: &str) -> Value {
     serde_json::from_str(&stdout(&run(p, &["build", "daily", "--site-id", "site-a", "--now", now, "--json"]))).unwrap()
 }
 
+// spec: run.publish.failed-attempt@b0b70724
 #[test]
 fn a_killed_build_reports_failed_and_keeps_the_published_build() {
     let dir = project();
     let p = dir.path();
     let published = build(p, "2030-01-01T01:00:00Z");
-    let slow = DECLARATION.replace("FROM events GROUP BY day", "FROM events CROSS JOIN range(1000000000) GROUP BY day");
+    std::fs::write(p.join("more.jsonl"), "{\"day\":\"d1\"}\n".repeat(10_000)).unwrap();
+    stdout(&run(p, &["context", "land", "events", "--rows", "more.jsonl", "--run-id", "r2", "--site-id", "site-a", "--now", "2030-01-01T01:30:00Z"]));
+    let slow = DECLARATION.replace(
+        "SELECT day, CAST(count(*) AS BIGINT) AS n FROM events GROUP BY day",
+        "SELECT events.day, CAST(sum(length(events.day || other.day)) AS BIGINT) AS n FROM events CROSS JOIN events AS other GROUP BY events.day",
+    );
     std::fs::write(p.join("contextful.toml"), slow).unwrap();
     let mut child = Command::new(env!("CARGO_BIN_EXE_contextful"))
         .args(["build", "daily", "--site-id", "site-a", "--now", "2030-01-01T02:00:00Z"])
@@ -67,11 +73,11 @@ fn a_killed_build_reports_failed_and_keeps_the_published_build() {
         .env_remove("CONTEXTFUL_NODE_ID")
         .spawn()
         .unwrap();
-    let snapshots = p.join(".contextful/context/research/tables/daily/data/snapshots");
+    let attempts = p.join(".contextful/context/research/tables/daily/build-attempts");
     let until = Instant::now() + Duration::from_secs(10);
     loop {
-        let staged = std::fs::read_dir(&snapshots).ok().is_some_and(|entries| {
-            entries.filter_map(Result::ok).any(|entry| entry.file_name().to_string_lossy().ends_with(".staging"))
+        let staged = std::fs::read_dir(&attempts).ok().is_some_and(|entries| {
+            entries.filter_map(Result::ok).filter(|entry| entry.file_name().to_string_lossy().ends_with(".json")).count() >= 2
         });
         if staged {
             break;
@@ -80,10 +86,48 @@ fn a_killed_build_reports_failed_and_keeps_the_published_build() {
         assert!(Instant::now() < until, "build did not reach staging");
         std::thread::sleep(Duration::from_millis(10));
     }
+    assert!(child.try_wait().unwrap().is_none(), "the build exited before SIGKILL");
     child.kill().unwrap();
     child.wait().unwrap();
     let status: Value = serde_json::from_str(&stdout(&run(p, &["build", "status", "daily", "--json"]))).unwrap();
-    assert_eq!(status["last_build_status"], "failed");
+    assert_eq!(status["last_build_status"], "failed", "{status}");
+    assert_eq!(status["published_build_id"], published["build_id"]);
+    let log = std::fs::read_to_string(p.join(".contextful/context/research/tables/daily/builds.jsonl")).unwrap();
+    let entries: Vec<Value> = log.lines().map(|line| serde_json::from_str(line).unwrap()).collect();
+    assert_eq!(entries.len(), 2);
+    assert!(entries.iter().any(|entry| entry["status"] == "failed" && entry["build_id"] == status["last_build_id"]));
+    let read: Value = serde_json::from_str(&stdout(&run(p, &["query", "--json", "--project", "research", "SELECT day, n FROM daily ORDER BY day"]))).unwrap();
+    assert_eq!(read["rows"], serde_json::json!([["d1", "2"], ["d2", "1"]]));
+}
+
+// spec: run.model.status-verb@dd4c16d2
+#[test]
+fn model_status_derives_freshness_on_both_sides_of_max_lag() {
+    let dir = project();
+    let p = dir.path();
+    std::fs::write(p.join("contextful.toml"), format!("{DECLARATION}\n[model.freshness]\nmax_lag = \"1h\"\n")).unwrap();
+    let built = build(p, "2030-01-01T00:30:00Z");
+    let status = |at| -> Value {
+        serde_json::from_str(&stdout(&run(p, &["build", "status", "daily", "--now", at, "--json"]))).unwrap()
+    };
+    let fresh = status("2030-01-01T01:00:00Z");
+    assert_eq!(fresh["published_build_id"], built["build_id"]);
+    assert_eq!(fresh["stale"], false);
+    assert_eq!(fresh["freshness"]["max_lag"], "1h");
+    assert_eq!(status("2030-01-01T01:00:01Z")["stale"], true);
+}
+
+#[test]
+fn failing_model_test_reports_refused_and_keeps_prior_publication() {
+    let dir = project();
+    let p = dir.path();
+    let published = build(p, "2030-01-01T01:00:00Z");
+    std::fs::write(p.join("contextful.toml"), format!(
+        "{DECLARATION}\n[[model.test]]\nname = \"single-day\"\nsql = \"SELECT * FROM daily WHERE n > 1\"\n"
+    )).unwrap();
+    refused(&run(p, &["build", "daily", "--site-id", "site-a", "--now", "2030-01-01T02:00:00Z"]), "ModelTestFailed");
+    let status: Value = serde_json::from_str(&stdout(&run(p, &["build", "status", "daily", "--json"]))).unwrap();
+    assert_eq!(status["last_build_status"], "refused");
     assert_eq!(status["published_build_id"], published["build_id"]);
     let read: Value = serde_json::from_str(&stdout(&run(p, &["query", "--json", "--project", "research", "SELECT day, n FROM daily ORDER BY day"]))).unwrap();
     assert_eq!(read["rows"], serde_json::json!([["d1", "2"], ["d2", "1"]]));

@@ -11,11 +11,11 @@ An unpinned clause is `committed`; a pinned one is `performed` when its test res
 | `corpus` | 1 | 10 | 77 | 37 | 7 | 0 | 38 | 0 | 38 |
 | `disclosure` | 3 | 16 | 122 | 64 | 13 | 7 | 54 | 0 | 54 |
 | `read` | 2 | 15 | 179 | 29 | 22 | 21 | 163 | 0 | 162 |
-| `run` | 3 | 26 | 372 | 98 | 36 | 37 | 259 | 0 | 257 |
+| `run` | 3 | 26 | 374 | 98 | 36 | 36 | 261 | 0 | 257 |
 | `store` | 1 | 17 | 235 | 55 | 13 | 20 | 198 | 0 | 194 |
 | `surface` | 2 | 19 | 86 | 46 | 22 | 5 | 51 | 0 | 50 |
 | `topology` | 1 | 6 | 70 | 24 | 5 | 5 | 38 | 0 | 38 |
-| **total** | 19 | 154 | 1956 | 569 | 188 | 133 | 1335 | 0 | |
+| **total** | 19 | 154 | 1958 | 569 | 188 | 132 | 1337 | 0 | |
 
 Decision records: 18.
 
@@ -29,7 +29,7 @@ A milestone reads `closed` when its acceptance test computes `passing` and every
 | 1 — The authority core | 14 | 236 | 184 | passing | closed |
 | 2 — The store | 9 | 162 | 130 | passing | closed |
 | 3 — The run path | 11 | 206 | 142 | passing | closed |
-| 4 — Ingest | 25 | 468 | 290 | passing | open |
+| 4 — Ingest | 25 | 470 | 292 | passing | open |
 | 5 — The read face under enforcement | 17 | 252 | 192 | passing | open |
 | 6 — Sync and replicas | 8 | 73 | 68 | passing | closed |
 | 7 — Memory | 6 | 37 | 37 | passing | closed |
@@ -977,6 +977,7 @@ Unscheduled operations: 10.
 | `run.model.model-id` | `crates/contextful-context/tests/integration/build.rs::a_model_id_naming_a_landed_table_is_refused` | performed |
 | `run.model.restricted-input` | `crates/contextful-context/tests/integration/build.rs::a_build_over_a_restricted_input_is_refused` | performed |
 | `run.model.sql` | `crates/contextful-context/tests/integration/build.rs::model_sql_is_admitted_over_store_tables` | performed |
+| `run.model.status-verb` | `crates/contextful-cli/tests/integration/build.rs::model_status_derives_freshness_on_both_sides_of_max_lag` | performed |
 | `run.model.test-block` | `crates/contextful-context/tests/integration/build.rs::a_test_reads_the_staged_rows_beside_the_store_tables` | performed |
 | `run.model.test-failed` | `crates/contextful-context/tests/integration/build.rs::a_failing_test_refuses_the_build` | performed |
 | `run.model.top-level-block` | `crates/contextful-core/tests/integration/pipeline/model.rs::a_top_level_key_outside_the_manifest_blocks_is_refused` | performed |
@@ -1026,6 +1027,7 @@ Unscheduled operations: 10.
 | `run.publish.contract-identity` | `crates/contextful-core/tests/integration/pipeline/model.rs::the_schema_fingerprint_moves_with_columns_types_and_grain_alone` | performed |
 | `run.publish.contract-mismatch` | `crates/contextful-context/tests/integration/build.rs::rows_missing_the_contract_are_refused_naming_the_column` | performed |
 | `run.publish.disclosure-digest` | `crates/contextful-context/tests/integration/build.rs::the_disclosure_digest_covers_the_policy_the_model_table_reads_under` | performed |
+| `run.publish.failed-attempt` | `crates/contextful-cli/tests/integration/build.rs::a_killed_build_reports_failed_and_keeps_the_published_build` | performed |
 | `run.publish.freshness` | `crates/contextful-core/tests/integration/pipeline/model.rs::staleness_is_derived_from_the_watermark_and_max_lag` | performed |
 | `run.publish.history-logs` | `crates/contextful-core/tests/integration/pipeline/model.rs::a_log_is_regenerated_from_committed_manifests_and_keeps_collected_history` | performed |
 | `run.publish.hold` | `crates/contextful-context/tests/integration/build.rs::collection_skips_a_held_build` | performed |

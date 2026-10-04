@@ -12,7 +12,7 @@ use contextful_core::run::RunError;
 use contextful_core::store::lay_out::{SnapshotManifest, MANIFEST_FILE, STAGING_SUFFIX};
 use contextful_core::time::Instant;
 use serde::de::DeserializeOwned;
-use serde::Serialize;
+use serde::{Deserialize, Serialize};
 use std::collections::BTreeSet;
 use std::fs;
 use std::path::{Path, PathBuf};
@@ -24,6 +24,107 @@ pub use materialize::{admit_statements, build, BuildRequest, Built};
 pub fn current_section(store: &Store, model: &str) -> Result<Option<PublishSection>> {
     let (chain, _) = store.chain(model)?;
     Ok(chain.into_iter().next().and_then(|m| m.publish))
+}
+
+const ATTEMPTS_DIR: &str = "build-attempts";
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+struct BuildAttempt {
+    build_id: String,
+    started_at: Instant,
+    contract_version: String,
+    schema_fingerprint: String,
+    disclosure_digest: String,
+    #[serde(default)]
+    status: Option<contextful_core::pipeline::model::BuildStatus>,
+    #[serde(default)]
+    completed_at: Option<Instant>,
+}
+
+fn attempts(store: &Store, model: &str) -> Result<Vec<BuildAttempt>> {
+    let dir = store.table_dir(model)?.join(ATTEMPTS_DIR);
+    let mut out = Vec::new();
+    let entries = match fs::read_dir(&dir) {
+        Ok(entries) => entries,
+        Err(e) if e.kind() == std::io::ErrorKind::NotFound => return Ok(out),
+        Err(e) => return Err(ContextError::Io { path: dir, source: e }),
+    };
+    for entry in entries {
+        let path = entry.at(&dir)?.path();
+        if path.extension().is_some_and(|ext| ext == "json") {
+            let text = fs::read_to_string(&path).at(&path)?;
+            out.push(serde_json::from_str(&text).map_err(|e| {
+                contextful_core::store::StoreError::StoreManifestUnreadable(format!("file `{}`: {e}", path.display()))
+            })?);
+        }
+    }
+    out.sort_by(|a: &BuildAttempt, b: &BuildAttempt| (a.started_at, &a.build_id).cmp(&(b.started_at, &b.build_id)));
+    Ok(out)
+}
+
+fn record_attempt(store: &Store, model: &str, attempt: &BuildAttempt) -> Result<()> {
+    let dir = store.table_dir(model)?.join(ATTEMPTS_DIR);
+    fs::create_dir_all(&dir).at(&dir)?;
+    let path = dir.join(format!("{}.json", attempt.build_id));
+    replace_file(&path, serde_json::to_vec_pretty(attempt).expect("a build attempt serializes").as_slice())
+}
+
+fn refuse_attempt(store: &Store, model: &str, build_id: &str, completed_at: Instant) -> Result<()> {
+    if let Some(mut attempt) = attempts(store, model)?.into_iter().find(|a| a.build_id == build_id) {
+        attempt.status = Some(contextful_core::pipeline::model::BuildStatus::Refused);
+        attempt.completed_at = Some(completed_at);
+        record_attempt(store, model, &attempt)?;
+    }
+    Ok(())
+}
+
+fn attempt_running(store: &Store, model: &str, attempt: &BuildAttempt) -> Result<bool> {
+    let dir = store.table_dir(model)?.join(contextful_core::store::lay_out::SNAPSHOTS_DIR)
+        .join(format!("{}{}", attempt.build_id, STAGING_SUFFIX));
+    if !dir.exists() {
+        return Ok(false);
+    }
+    let lock = dir.join(crate::fold::STAGING_LOCK);
+    Ok(FileLock::try_acquire(&lock)?.is_none())
+}
+
+/// The latest attempt and the latest committed build are separate so an interrupted
+/// materialization cannot change the build a reader sees.
+pub fn status(store: &Store, model: &str, now: Instant) -> Result<serde_json::Value> {
+    let section = current_section(store, model)?;
+    let mut latest = attempts(store, model)?.into_iter().last();
+    if let Some(ref mut attempt) = latest {
+        if attempt.status.is_none()
+            && section.as_ref().is_none_or(|s| s.build_id != attempt.build_id)
+            && !attempt_running(store, model, attempt)?
+        {
+            attempt.status = Some(contextful_core::pipeline::model::BuildStatus::Failed);
+            attempt.completed_at = Some(now);
+            record_attempt(store, model, attempt)?;
+        }
+    }
+    let (last_build_id, last_build_status) = match latest {
+        Some(ref attempt) if section.as_ref().is_some_and(|s| s.build_id == attempt.build_id) =>
+            (Some(attempt.build_id.clone()), "published"),
+        Some(ref attempt) if section.as_ref().is_some_and(|s| s.build_started_at > attempt.started_at) =>
+            (section.as_ref().map(|s| s.build_id.clone()), "published"),
+        Some(ref attempt) if attempt.status == Some(contextful_core::pipeline::model::BuildStatus::Refused) =>
+            (Some(attempt.build_id.clone()), "refused"),
+        Some(ref attempt) if attempt.status == Some(contextful_core::pipeline::model::BuildStatus::Failed) =>
+            (Some(attempt.build_id.clone()), "failed"),
+        Some(ref attempt) if attempt_running(store, model, attempt)? =>
+            (Some(attempt.build_id.clone()), "building"),
+        Some(attempt) => (Some(attempt.build_id), "failed"),
+        None => (section.as_ref().map(|s| s.build_id.clone()), if section.is_some() { "published" } else { "absent" }),
+    };
+    Ok(serde_json::json!({
+        "model": model,
+        "last_build_id": last_build_id,
+        "last_build_status": last_build_status,
+        "published_build_id": section.as_ref().map(|s| &s.build_id),
+        "freshness": section.as_ref().map(PublishSection::freshness),
+        "stale": section.as_ref().map(|s| s.freshness().stale(now)),
+    }))
 }
 
 /// Every snapshot manifest on disk for the model, staging excluded, oldest first: the
@@ -139,7 +240,24 @@ pub fn write_logs(store: &Store, model: &str) -> Result<()> {
     let committed = manifests(store, model)?;
 
     let path = dir.join(BUILDS_LOG);
-    let builds = regenerate(&read_log::<BuildEntry>(&path)?, &build_entries(&committed), |e| e.build_id.clone(), |e| e.completed_at);
+    let mut derived = build_entries(&committed);
+    for attempt in attempts(store, model)? {
+        if derived.iter().any(|entry| entry.build_id == attempt.build_id)
+            || (attempt.status.is_none() && attempt_running(store, model, &attempt)?) {
+            continue;
+        }
+        derived.push(BuildEntry {
+            build_id: attempt.build_id,
+            started_at: attempt.started_at,
+            completed_at: attempt.completed_at.unwrap_or(attempt.started_at),
+            status: attempt.status.unwrap_or(contextful_core::pipeline::model::BuildStatus::Failed),
+            contract_version: attempt.contract_version,
+            schema_fingerprint: attempt.schema_fingerprint,
+            partitions_unfilled: Vec::new(),
+            disclosure_digest: attempt.disclosure_digest,
+        });
+    }
+    let builds = regenerate(&read_log::<BuildEntry>(&path)?, &derived, |e| e.build_id.clone(), |e| e.completed_at);
     write_log(&path, &builds)?;
 
     let path = dir.join(CONTRACT_HISTORY_LOG);
@@ -471,6 +589,18 @@ mod materialize {
         let commit_seq = store.assign_commit_seq(&spec.id)?;
         let (snapshot_id, staging, in_flight) = claim(store, &spec.id, SnapshotId::next(req.started_at, parent.as_ref()), req.started_at)?;
         let build_id = snapshot_id.to_string();
+        if publishes {
+            let attempt = BuildAttempt {
+                build_id: build_id.clone(),
+                started_at: req.started_at,
+                contract_version: spec.contract.as_ref().expect("a published model declares a contract").version.as_str().to_string(),
+                schema_fingerprint: fingerprint.clone().expect("a published model has a fingerprint"),
+                disclosure_digest: disclosure_digest(&own),
+                status: None,
+                completed_at: None,
+            };
+            record_attempt(store, &spec.id, &attempt)?;
+        }
         let staged = (|| -> std::result::Result<(SnapshotManifest, Schema, u64), ReadFault> {
             let raw = staging.join("__model.parquet");
             let select: Vec<String> = cols.iter().map(|c| ident(&c.name)).collect();
@@ -566,6 +696,10 @@ mod materialize {
             Err(e) => {
                 drop(in_flight);
                 let _ = fs::remove_dir_all(&staging);
+                if publishes {
+                    refuse_attempt(store, &spec.id, &build_id, req.completed_at)?;
+                    write_logs(store, &spec.id)?;
+                }
                 return Err(e);
             }
         };

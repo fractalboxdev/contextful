@@ -7,7 +7,7 @@ use crate::pipeline::manifests;
 use crate::project::open_face;
 use crate::run::{site_id_for, ProjectArgs};
 use anyhow::{Context, Result};
-use contextful_context::build::{build, hold, BuildRequest};
+use contextful_context::build::{build, hold, status, write_logs, BuildRequest};
 use contextful_context::Store;
 use contextful_core::pipeline::declare::collect;
 use contextful_core::pipeline::model::{collect_models, duration_secs, ModelSpec, Receipt};
@@ -43,6 +43,16 @@ pub struct BuildArgs {
 
 #[derive(clap::Subcommand)]
 enum BuildCmd {
+    /// Inspect the last build attempt and the build readers see.
+    Status {
+        model: String,
+        #[command(flatten)]
+        project: ProjectArgs,
+        #[arg(long)]
+        declaration: Option<PathBuf>,
+        #[arg(long)]
+        json: bool,
+    },
     /// Hold a published build against collection for a duration.
     Hold {
         /// How long the hold lasts: an integer followed by `s`, `m`, `h` or `d`.
@@ -93,6 +103,20 @@ fn model(declaration: &Path, id: &str) -> Result<ModelSpec> {
 
 pub fn run(args: BuildArgs) -> Result<()> {
     match args.cmd {
+        Some(BuildCmd::Status { model: id, project, declaration, json }) => {
+            let l = project.locate(declaration)?;
+            model(&l.declaration, &id)?;
+            let store = Store::open(&l.project.dir, &l.project.name)?;
+            let result = status(&store, &id, now(&project.now)?)?;
+            write_logs(&store, &id)?;
+            if json {
+                println!("{result}");
+            } else {
+                println!("{id}: {} · published {}", result["last_build_status"].as_str().unwrap_or("absent"),
+                    result["published_build_id"].as_str().unwrap_or("none"));
+            }
+            Ok(())
+        }
         Some(BuildCmd::Hold { duration, model: id, build: build_id, project, declaration, by, json }) => {
             let l = project.locate(declaration)?;
             model(&l.declaration, &id)?;
