@@ -10,12 +10,12 @@ An unpinned clause is `committed`; a pinned one is `performed` when its test res
 | `connector` | 2 | 14 | 321 | 80 | 21 | 16 | 195 | 0 | 195 |
 | `corpus` | 1 | 10 | 77 | 37 | 7 | 0 | 38 | 0 | 38 |
 | `disclosure` | 3 | 16 | 122 | 64 | 13 | 7 | 54 | 0 | 54 |
-| `read` | 2 | 15 | 179 | 29 | 22 | 21 | 163 | 0 | 162 |
+| `read` | 2 | 15 | 179 | 29 | 22 | 21 | 164 | 0 | 162 |
 | `run` | 3 | 26 | 372 | 98 | 36 | 37 | 259 | 0 | 257 |
 | `store` | 1 | 17 | 235 | 55 | 13 | 20 | 198 | 0 | 194 |
 | `surface` | 2 | 19 | 86 | 46 | 22 | 5 | 51 | 0 | 50 |
 | `topology` | 1 | 6 | 70 | 24 | 5 | 5 | 38 | 0 | 38 |
-| **total** | 19 | 154 | 1956 | 569 | 188 | 133 | 1335 | 0 | |
+| **total** | 19 | 154 | 1956 | 569 | 188 | 133 | 1336 | 0 | |
 
 Decision records: 18.
 
@@ -30,7 +30,7 @@ A milestone reads `closed` when its acceptance test computes `passing` and every
 | 2 — The store | 9 | 162 | 130 | passing | closed |
 | 3 — The run path | 11 | 206 | 142 | passing | closed |
 | 4 — Ingest | 25 | 468 | 290 | passing | open |
-| 5 — The read face under enforcement | 17 | 252 | 192 | passing | open |
+| 5 — The read face under enforcement | 17 | 252 | 193 | passing | open |
 | 6 — Sync and replicas | 8 | 73 | 68 | passing | closed |
 | 7 — Memory | 6 | 37 | 37 | passing | closed |
 | 8 — Accountability | 5 | 60 | 47 | passing | open |
@@ -721,6 +721,7 @@ Unscheduled operations: 10.
 | `read.rank.question-window-is-a-tier` | `crates/contextful-core/tests/integration/read/rank.rs::the_in_window_flag_leads_and_an_out_of_window_row_stays` | performed |
 | `read.rank.retrieval-block` | `crates/contextful-core/tests/integration/read/rank.rs::the_retrieval_block_and_row_fields_carry_their_names` | performed |
 | `read.rank.three-legs` | `crates/contextful-core/tests/integration/read/rank.rs::ranking_fuses_a_cosine_leg_and_a_bm25_leg` | performed |
+| `read.rank.widened-window-statistics` | `crates/contextful-context/tests/integration/read/retrieve.rs::sidecar_widening_changes_the_bm25_order_of_shared_rows` | performed |
 | `read.rank.window-anchor-tolerance` | `crates/contextful-core/tests/integration/read/rank.rs::the_anchor_tolerates_24_hours_and_names_the_basis` | performed |
 | `read.recall.evidence-key` | `crates/contextful-memory/tests/integration/evidence.rs::a_fold_superseding_the_cited_version_keeps_the_claim` | performed |
 | `read.recall.evidence-key-masked` | `crates/contextful-memory/tests/integration/evidence.rs::a_writer_zone_nulling_a_non_key_column_still_stamps_the_key` | performed |
