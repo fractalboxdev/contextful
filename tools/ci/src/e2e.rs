@@ -1,6 +1,7 @@
 //! One release consumer flow, with an optional S3 service outside the test process.
 
 use anyhow::{bail, Context, Result};
+use std::io::Write;
 use std::path::{Path, PathBuf};
 use std::process::{Child, Command, Stdio};
 use std::time::{Duration, Instant};
@@ -96,7 +97,16 @@ pub fn run(root: &Path, minio: bool) -> Result<()> {
     if let Some(endpoint) = &endpoint {
         test.env("CONTEXTFUL_E2E_S3_ENDPOINT", endpoint);
     }
-    let result = checked(test, "release consumer flow");
+    let output = test.output().context("starting release consumer flow")?;
+    std::io::stdout().write_all(&output.stdout).context("reporting release consumer flow")?;
+    std::io::stderr().write_all(&output.stderr).context("reporting release consumer flow errors")?;
+    let result = if !output.status.success() {
+        bail!("release consumer flow exited with {}", output.status);
+    } else if !String::from_utf8_lossy(&output.stdout).lines().any(|line| line.starts_with("test result: ok. 1 passed; 0 failed;")) {
+        bail!("no consumer flow test ran");
+    } else {
+        Ok(())
+    };
     if let Some(endpoint) = &endpoint {
         if result.is_ok() {
             aws(endpoint, &["head-object", "--bucket", "shared", "--key", "team/manifest.json"])?;
