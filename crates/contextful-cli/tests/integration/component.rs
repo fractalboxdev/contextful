@@ -67,8 +67,7 @@ fn refused(out: &Output, error: &str) -> String {
     stderr
 }
 
-/// `--local` builds with the host toolchain and prints a host-local digest; writing a pin from a host build raises `ConnectorHostPinRefused`.
-// spec: connector.package.host-built-pin@34b9cb88
+/// Local pin inspection reports the artifact digest and leaves the manifest unchanged.
 #[test]
 fn local_connector_pin_prints_digest_without_rewriting_manifest() {
     let dir = project("");
@@ -78,6 +77,17 @@ fn local_connector_pin_prints_digest_without_rewriting_manifest() {
     let output = cf(dir.path(), &["connector", "pin", "connector.toml", "--local"], &[]);
     assert_eq!(ok(&output), digest(PROBE));
     assert_eq!(std::fs::read_to_string(path).unwrap(), manifest);
+}
+
+#[test]
+fn manifest_refuses_pipeline_host_absent_from_declared_capabilities_at_load() {
+    let dir = project(&manifest("connectors/probe.wasm", &["items"], "manifest = \"connector.toml\"\nallow = [\"api.other.example\"]"));
+    std::fs::write(dir.path().join("connector.toml"), "name = \"probe\"\nwasm = \"connectors/probe.wasm\"\n[capabilities]\nallow_hosts = [\"api.vendor.example\"]\n").unwrap();
+    let stderr = refused(&cf(dir.path(), &["pipeline", "validate"], &[]), "ConnectorUndeclaredAccess");
+    assert!(stderr.contains("api.other.example"), "{stderr}");
+    let stderr = refused(&fire(dir.path(), "run-1", &[], &[]), "ConnectorUndeclaredAccess");
+    assert!(stderr.contains("api.other.example"), "{stderr}");
+    assert!(!cf(dir.path(), &["run", "show", "run-1", "--project", "research"], &[]).status.success());
 }
 
 fn run_row(dir: &Path, run: &str) -> serde_json::Value {
