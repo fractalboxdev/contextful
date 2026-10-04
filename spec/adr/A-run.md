@@ -77,6 +77,31 @@ Context: `run.exec.engine-id` is written on every row and read by nothing, so a 
 Consequences: a re-derived unit re-indexes its vector and full-text sidecars; ordering between chained derive pipelines is a separate decision.
 Revisit: hashing parent rows dominates tick cost on a real archive.
 
+## A derived unit follows its parent's bytes and lifetime
+
+Context: a parent media path can stay constant while its file bytes change, and a parent can disappear while its derived rows remain in a separate table. Decision: a local media unit includes the canonical file's byte digest in its derivation key. A fold compares derived unit keys with the parent table and drops orphaned rows before rebuilding sidecars. Freshness and absence of orphaned citations decide the choice.
+
+| Option | Lost on | Cost |
+| --- | --- | --- |
+| Byte digest at selection and parent-aware fold *(chosen)* | — | Every local selection reads file bytes; a fold reads the parent key set. |
+| Key on the path alone | Freshness | Changed media under one path keeps its old passages. |
+| Keep rows after parent deletion | Citation integrity | Search returns passages with no surviving parent. |
+| Delete rows as soon as a parent write lands | Commit isolation | A parent commit must edit another table and every sidecar. |
+
+Consequences: an unreadable local file yields no digest and follows {{run.bind.media-unreadable}}; a parent removed before fold can leave old passages visible until that fold.
+
+## A passage's modality names its output
+
+Context: {{store.reserve.modality}} defines the accepted values; a video source can yield text passages and image candidates. Decision: a text passage carries `text`, and an image candidate carries `image`, regardless of its parent's media kind. Output kind decides retrieval and sidecar selection.
+
+| Option | Lost on | Cost |
+| --- | --- | --- |
+| Label the output passage *(chosen)* | — | Readers seeking the source medium follow the parent reference. |
+| Copy the parent's medium | Retrieval type | A transcript would claim to be a video row. |
+| Add a video value to the output domain | Type fidelity | A text-only passage would be routed as video. |
+
+Consequences: a derived passage keeps its source medium through its parent link, not its modality column.
+
 ## A derive engine is a machine-bound argv child with a cleared environment
 
 A manifest requests an engine by name; the machine's configuration defines what that name executes, and row data never becomes syntax. `run.bind` refuses an unbound name or a command key in a manifest; a `[derive.<name>]` block states argv chain or host list, environment allowlist, pins and bounds, and the adapter, not the operator's zone key, declares locality. `run.exec` spawns an argument array with no shell, a cleared environment plus allowlist, and wall-clock and output bounds, killing the process group on deadline.

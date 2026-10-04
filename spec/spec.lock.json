@@ -10256,6 +10256,48 @@
       "line": 252
     },
     {
+      "id": "run.emit.output-modality",
+      "contract": "run",
+      "operation": "emit",
+      "subject": "output-modality",
+      "kind": "behavior",
+      "statement": "A text passage extracted from a video parent carries `_modality` `text`, and an advertised image passage carries `image`, each under {{store.reserve.modality}}.",
+      "why": "A-run",
+      "file": "spec/32-derive.md",
+      "line": 253,
+      "scenarios": [
+        "WHEN a video parent yields a transcript passage and an advertised picture, THEN their output modalities are `text` and `image`."
+      ]
+    },
+    {
+      "id": "run.emit.local-content-key",
+      "contract": "run",
+      "operation": "emit",
+      "subject": "local-content-key",
+      "kind": "behavior",
+      "statement": "A local media unit's {{run.emit.derivation-key}} includes a SHA-256 digest of canonical file bytes, so changed bytes under an unchanged path reselect the unit.",
+      "why": "A-run",
+      "file": "spec/32-derive.md",
+      "line": 255,
+      "scenarios": [
+        "WHEN a local file changes bytes under the same path, THEN the next tick selects its unit under another key."
+      ]
+    },
+    {
+      "id": "run.emit.parent-tombstone",
+      "contract": "run",
+      "operation": "emit",
+      "subject": "parent-tombstone",
+      "kind": "behavior",
+      "statement": "A fold drops derived rows whose parent key is absent or tombstoned in the parent table, then rebuilds their sidecars.",
+      "why": "A-run",
+      "file": "spec/32-derive.md",
+      "line": 257,
+      "scenarios": [
+        "WHEN a parent row is tombstoned, THEN the next fold drops its passages and rebuilds the affected sidecars."
+      ]
+    },
+    {
       "id": "run.parse-cues.backward-cue",
       "contract": "run",
       "operation": "parse-cues",
@@ -10264,7 +10306,7 @@
       "statement": "A block starting before the last accepted block raises `DeriveCueOutOfOrder` and is dropped.",
       "why": "P4",
       "file": "spec/32-derive.md",
-      "line": 266
+      "line": 272
     },
     {
       "id": "run.parse-cues.passage-chars",
@@ -10275,7 +10317,7 @@
       "statement": "A passage stays open while it holds fewer than 600 chars.",
       "why": "",
       "file": "spec/32-derive.md",
-      "line": 268
+      "line": 274
     },
     {
       "id": "run.parse-cues.passage-span",
@@ -10286,7 +10328,7 @@
       "statement": "A passage stays open while it spans less than 60 s.",
       "why": "",
       "file": "spec/32-derive.md",
-      "line": 269
+      "line": 275
     },
     {
       "id": "run.parse-cues.passage-bytes",
@@ -10297,7 +10339,7 @@
       "statement": "One passage's text holds at most 8 KiB.",
       "why": "",
       "file": "spec/32-derive.md",
-      "line": 270
+      "line": 276
     },
     {
       "id": "run.parse-cues.passages-per-document",
@@ -10308,7 +10350,7 @@
       "statement": "One document yields at most 2000 rows of passages.",
       "why": "",
       "file": "spec/32-derive.md",
-      "line": 271
+      "line": 277
     },
     {
       "id": "run.parse-cues.grammar",
@@ -10319,7 +10361,7 @@
       "statement": "SubRip and WebVTT read through one grammar: a block's timing line, then its text lines joined by a space.",
       "why": "",
       "file": "spec/32-derive.md",
-      "line": 272
+      "line": 278
     },
     {
       "id": "run.test-engine.unsupported-driver",
@@ -10330,7 +10372,7 @@
       "statement": "A `fetch` engine named to the verb raises `DeriveTestEngineUnsupported`.",
       "why": "because the verb drives a transcriber over media, and a link engine takes no media",
       "file": "spec/32-derive.md",
-      "line": 278
+      "line": 284
     },
     {
       "id": "connector.export.authoring-path",
@@ -22521,6 +22563,14 @@
     [
       "run.emit.canceled-unit",
       "run.cancel.child-reaped"
+    ],
+    [
+      "run.emit.output-modality",
+      "store.reserve.modality"
+    ],
+    [
+      "run.emit.local-content-key",
+      "run.emit.derivation-key"
     ],
     [
       "connector.export.arrow-types",

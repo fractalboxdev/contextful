@@ -68,10 +68,12 @@ a best-effort projection the runner never reads back ({{run.project.best-effort}
 A backfill splits history into leased chunks whose commits are fenced against a stale holder ({{run.backfill.fenced-commit}}); a seed bulk-loads
 consumer-held history below a ceiling through the same land path ({{run.seed.one-land-path}}).
 A model builds in staging ({{run.publish.staging}}).
-The derive tier anti-joins its own output each tick ({{run.select.rows-per-run}}), runs
-a machine-defined engine ({{run.bind.command-in-manifest}}), and records every unit's fate in its own table
-({{run.emit.unit-status}}) under its derivation ({{run.emit.derivation-key}}); stale
-rows answer until replaced ({{run.emit.stale-supersedes}}).
+Derive anti-joins output ({{run.select.rows-per-run}}), runs a machine-bound engine
+({{run.bind.command-in-manifest}}), records unit fate and key
+({{run.emit.unit-status}}, {{run.emit.derivation-key}}), and keeps rows until replacement
+({{run.emit.stale-supersedes}}). Passage modality names output ({{run.emit.output-modality}});
+bytes refresh units ({{run.emit.local-content-key}}); folds remove orphaned output
+({{run.emit.parent-tombstone}}).
 
 ## Worked example
 
