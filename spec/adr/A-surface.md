@@ -1,4 +1,4 @@
-# A-surface — Operator and visitor surfaces decisions
+# A-surface — Operator surfaces decisions
 
 **Status:** accepted
 
@@ -43,6 +43,19 @@ The server decides every capability a turn exercises. `surface.ground` dispatche
 | Memory exposed to the planner with a documented predicate | The checks | A predicate the model writes is one it can omit. |
 
 Consequences: an injected instruction finds no write tool to reach for.
+
+## Query and Admin use separate verified page grants
+
+The hosted operator console gives Query and Admin separate page grants and API namespaces. Cloudflare Access is the default gate. Without it, Amazon Cognito manages named operator accounts and password login; the console holds a first-party session and maps Cognito groups to page grants. The console verifies each page and API request. Query admits the read subset; Admin sends edit or apply through a server-held control capability. The deployment probe requests each path anonymously; a hostname-level probe misses an exposed path.
+
+| Option | Lost on | Cost |
+| --- | --- | --- |
+| Cloudflare Access or Cognito managed login *(chosen)* | — | Cognito needs a user pool, group mapping and first-party session handling. |
+| One shared password for each page | Individual accountability | Two people become one subject in query grants and audit records. |
+| Self-managed operator passwords | Credential lifecycle | The console must own hashing, resets, lockout and recovery. |
+| Cloudflare Access only | Deployment portability | An organization without Cloudflare cannot host the console. |
+
+Consequences: page admission and engine capability checks both remain necessary; local shells use their own perimeter.
 
 ## A store-driven job runs host-registered code per row over a pinned input
 
