@@ -261,6 +261,64 @@ fn a_selected_root_page_token_at_the_listing_cap_refuses_by_name() {
     assert_eq!(fake.received("/drive/v3/files").len(), contextful_connectors::drive::LISTING_CAP);
 }
 
+/// `metadata-only` records exact bytes without retaining a body or decoding pages.
+#[test]
+fn metadata_only_records_digests_without_blobs_or_page_content() {
+    struct NoDecode;
+    impl PageDecoder for NoDecode {
+        fn pages(&self, _: &[u8], _: &str) -> Result<Vec<String>, Failure> {
+            panic!("metadata-only must not decode")
+        }
+    }
+    let fake = Fake::start();
+    let bodies = Arc::new(Held::default());
+    let d = drive_into(fake.config(json!({"mode": "metadata-only"})), Arc::new(NoDecode), bodies.clone());
+    let (rows, _, _) = pull(&mut d.source("files").unwrap(), None);
+    let report = by_id(&rows, "pdf-report");
+    let report_bytes = std::fs::read(fixtures().join("report.pdf")).unwrap();
+    assert_eq!(report["sha256"], json!(sha256(&report_bytes)));
+    assert_eq!(report["bytes"], json!(report_bytes.len()));
+    assert_eq!(report["capture_status"], "captured");
+    assert_eq!(report["pages"], Value::Null);
+    let plan = by_id(&rows, "doc-plan");
+    let plan_bytes = std::fs::read(fixtures().join("plan.pdf")).unwrap();
+    assert_eq!(plan["sha256"], json!(sha256(&plan_bytes)));
+    assert_eq!(plan["export_mime_type"], "application/pdf");
+    assert_eq!(by_id(&rows, "short-deck")["capture_status"], "skipped");
+    assert_eq!(*bodies.puts.lock().unwrap(), 0);
+    let (pages, _, _) = pull(&mut d.source("pages").unwrap(), None);
+    assert!(pages.is_empty(), "fresh metadata capture has no page rows: {pages:?}");
+    assert_eq!(*bodies.puts.lock().unwrap(), 0);
+}
+
+/// A capture mode change rereads retained files and removes prior page content.
+#[test]
+fn metadata_mode_switch_rereads_files_and_tombstones_pages() {
+    let fake = Fake::start();
+    let full = drive(fake.config(json!({})));
+    let (_, file_position, _) = pull(&mut full.source("files").unwrap(), None);
+    let (old_pages, page_position, _) = pull(&mut full.source("pages").unwrap(), None);
+    assert!(!old_pages.is_empty());
+    let bodies = Arc::new(Held::default());
+    let metadata = drive_into(fake.config(json!({"mode": "metadata-only"})), Arc::new(InProcess), bodies.clone());
+    let (files, new_position, _) = pull(&mut metadata.source("files").unwrap(), Some(file_position));
+    assert_eq!(files.len(), 7, "mode change rereads retained files");
+    assert_eq!(new_position["mode"], "metadata-only");
+    let (pages, _, _) = pull(&mut metadata.source("pages").unwrap(), Some(page_position));
+    assert_eq!(pages.len(), old_pages.len());
+    assert!(pages.iter().all(|r| r["removed"] == true && r["text"].is_null()));
+    assert_eq!(*bodies.puts.lock().unwrap(), 0);
+}
+
+/// An unknown mode refuses before any provider request.
+#[test]
+fn unknown_drive_capture_mode_refuses_before_requests() {
+    let fake = Fake::start();
+    let error = DriveConfig::parse(&fake.config(json!({"mode": "digest-ish"}))).unwrap_err();
+    assert!(error.to_string().contains("ConnectorDriveModeUnknown"), "{error}");
+    assert!(fake.received("/drive/v3/files").is_empty());
+}
+
 /// The drive source walks the tree under `folder_id` breadth-first through `files.list`, paging each folder,
 /// within `drive_id` when declared. Each folder is listed once, its children sorted by name and id; no shortcut is
 /// followed.
