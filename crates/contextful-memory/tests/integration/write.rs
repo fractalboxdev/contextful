@@ -204,4 +204,13 @@ fn unscoped_writers_at_one_instant_record_a_conflict_without_retirement() {
     assert_eq!(letters.rows[0][0], serde_json::json!("unscoped-collision"));
     let detail = letters.rows[0][1].as_str().unwrap();
     assert!(detail.contains(&first.claim_id) && detail.contains(&second.claim_id), "{detail}");
+
+    let resolved = write_observed(
+        &f.face, &writer, "memory/facts", candidate("Kim"),
+        &keyed("2030-02-01T00:00:00Z", Some("writer-c")), &node,
+        at("2030-01-13T00:00:00Z"), &super::synthesize::admit,
+    ).unwrap();
+    assert_eq!(resolved.retired.len(), 2, "a later explicit write resolves both live claims");
+    assert!(resolved.retired.iter().any(|c| c.claim_id == first.claim_id));
+    assert!(resolved.retired.iter().any(|c| c.claim_id == second.claim_id));
 }

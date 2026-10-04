@@ -10,12 +10,12 @@ An unpinned clause is `committed`; a pinned one is `performed` when its test res
 | `connector` | 2 | 14 | 321 | 80 | 21 | 16 | 195 | 0 | 195 |
 | `corpus` | 1 | 10 | 77 | 37 | 7 | 0 | 38 | 0 | 38 |
 | `disclosure` | 3 | 16 | 122 | 64 | 13 | 7 | 54 | 0 | 54 |
-| `read` | 2 | 15 | 189 | 29 | 22 | 10 | 163 | 0 | 162 |
+| `read` | 2 | 15 | 189 | 29 | 22 | 10 | 164 | 0 | 162 |
 | `run` | 3 | 26 | 372 | 98 | 36 | 37 | 259 | 0 | 257 |
 | `store` | 1 | 17 | 235 | 55 | 13 | 20 | 198 | 0 | 194 |
 | `surface` | 2 | 19 | 86 | 46 | 22 | 5 | 51 | 0 | 50 |
 | `topology` | 1 | 6 | 70 | 24 | 5 | 5 | 38 | 0 | 38 |
-| **total** | 19 | 154 | 1966 | 569 | 188 | 122 | 1335 | 0 | |
+| **total** | 19 | 154 | 1966 | 569 | 188 | 122 | 1336 | 0 | |
 
 Decision records: 18.
 
@@ -32,7 +32,7 @@ A milestone reads `closed` when its acceptance test computes `passing` and every
 | 4 — Ingest | 25 | 468 | 290 | passing | open |
 | 5 — The read face under enforcement | 17 | 252 | 192 | passing | open |
 | 6 — Sync and replicas | 8 | 73 | 68 | passing | closed |
-| 7 — Memory | 6 | 47 | 37 | passing | closed |
+| 7 — Memory | 6 | 47 | 38 | passing | closed |
 | 8 — Accountability | 5 | 60 | 47 | passing | open |
 | 9 — Visibility | 6 | 41 | 3 | open | open |
 | 10 — Cadence and the operator plane | 11 | 67 | 56 | passing | open |
@@ -825,6 +825,7 @@ Unscheduled operations: 10.
 | `read.revise.observed-order` | `crates/contextful-memory/tests/integration/write.rs::an_observation_before_a_live_contradicting_prior_refuses` | performed |
 | `read.revise.supersede` | `crates/contextful-core/tests/integration/memory/revise.rs::an_equal_or_higher_claim_retires_its_prior_on_one_line` | performed |
 | `read.revise.tier` | `crates/contextful-core/tests/integration/memory/revise.rs::tier_follows_the_write_path_and_the_lowest_grounding` | performed |
+| `read.revise.unscoped-collision` | `crates/contextful-memory/tests/integration/write.rs::unscoped_writers_at_one_instant_record_a_conflict_without_retirement` | performed |
 | `read.settle.grace-window` | `crates/contextful-core/tests/integration/memory/settle.rs::the_label_window_runs_through_the_deadline_plus_a_day` | performed |
 | `read.settle.registration` | `crates/contextful-core/tests/integration/memory/settle.rs::a_registration_names_one_form_one_source_and_a_metric_comparator` | performed |
 | `read.settle.settling-citation` | `crates/contextful-core/tests/integration/memory/settle.rs::a_judged_verdict_carries_a_web_citation` | performed |
