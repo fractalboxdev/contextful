@@ -3,6 +3,74 @@
 
 use std::process::{Command, Output};
 
+#[test]
+fn a_link_preview_records_each_vendor_request_before_landing() {
+    use std::io::{Read, Write};
+    use std::net::TcpListener;
+
+    let listener = TcpListener::bind("127.0.0.1:0").unwrap();
+    let port = listener.local_addr().unwrap().port();
+    let server = std::thread::spawn(move || {
+        let (mut socket, _) = listener.accept().unwrap();
+        let mut request = [0; 4096];
+        let n = socket.read(&mut request).unwrap();
+        assert!(String::from_utf8_lossy(&request[..n]).starts_with("GET /article HTTP/1.1"));
+        let body = b"<head><title>Article</title></head>";
+        write!(socket, "HTTP/1.1 200 OK\r\nContent-Type: text/html; charset=utf-8\r\nContent-Length: {}\r\nConnection: close\r\n\r\n", body.len()).unwrap();
+        socket.write_all(body).unwrap();
+    });
+    let dir = tempfile::tempdir().unwrap();
+    let root = dir.path().join(".contextful/context/research");
+    std::fs::create_dir_all(&root).unwrap();
+    std::fs::write(root.join("config.toml"), "[node]\nid = \"ingest-a\"\n").unwrap();
+    std::fs::write(
+        dir.path().join("contextful.toml"),
+        "authoring_posture = \"per_request\"\n[[pipeline]]\nid = \"cards\"\ntables = [{ name = \"cards\", primary_key = [\"unit_ref\", \"derivation_key\", \"cue_seq\"] }]\n[pipeline.source]\nname = \"derive\"\nconfig = { task = \"link_preview\", engine = \"reader\", source_table = \"documents\", media_column = \"url\", parent_id_column = \"doc_id\" }\n[derive.reader]\ndriver = \"fetch\"\nallow_hosts = [\"localhost\"]\n",
+    )
+    .unwrap();
+    std::fs::write(dir.path().join("documents.jsonl"), format!("{{\"doc_id\":\"d1\",\"url\":\"http://localhost:{port}/article\"}}\n")).unwrap();
+    ok(&cf(dir.path(), &["context", "land", "documents", "--project", "research", "--rows", "documents.jsonl", "--run-id", "load-1", "--site-id", "site", "--now", "2030-01-01T00:00:00Z"]));
+    ok(&cf(dir.path(), &["pipeline", "run", "cards", "--project", "research", "--run-id", "cards-1", "--site-id", "site", "--now", "2030-01-01T01:00:00Z"]));
+    server.join().unwrap();
+    assert_eq!(select(dir.path(), "SELECT run_id, connector, method, url_host, status_code, batch_seq FROM cards_cards__requests"), [["cards-1", "derive", "GET", "localhost", "200", "0"]]);
+}
+
+#[test]
+fn a_link_preview_reserves_document_and_image_requests_from_one_shared_quota() {
+    let vendor = super::pipeline::Vendor::start(|target| match target {
+        "/article" => (200, "<head><title>Article</title><meta property=\"og:image\" content=\"/cover.jpg\"></head>".into()),
+        "/cover.jpg" => (200, "image".into()),
+        _ => (404, String::new()),
+    });
+    let limiter = super::pipeline::Vendor::start(|target| match target {
+        "/quota/acquire" => (200, "{\"decision\":\"granted\",\"permits\":1,\"ttl_secs\":60}".into()),
+        _ => (204, String::new()),
+    });
+    let dir = tempfile::tempdir().unwrap();
+    let root = dir.path().join(".contextful/context/research");
+    std::fs::create_dir_all(&root).unwrap();
+    std::fs::write(root.join("config.toml"), "[node]\nid = \"ingest-a\"\n").unwrap();
+    let vendor_url = vendor.url("/article").replace("127.0.0.1", "localhost");
+    std::fs::write(
+        dir.path().join("contextful.toml"),
+        format!("authoring_posture = \"per_request\"\n[limiters.preview]\nendpoint = \"{}\"\ntoken = \"secret://limiter-token\"\npermits = 1\n[[pipeline]]\nid = \"cards\"\ntables = [{{ name = \"cards\", primary_key = [\"unit_ref\", \"derivation_key\", \"cue_seq\"] }}]\n[pipeline.source]\nname = \"derive\"\nconfig = {{ task = \"link_preview\", engine = \"reader\", source_table = \"documents\", media_column = \"url\", parent_id_column = \"doc_id\", grant = {{ quota = \"preview\", class = \"batch-read\" }} }}\n[derive.reader]\ndriver = \"fetch\"\nallow_hosts = [\"localhost\"]\nallow_image_hosts = [\"localhost\"]\n", limiter.url("/quota")),
+    )
+    .unwrap();
+    std::fs::write(dir.path().join("documents.jsonl"), format!("{{\"doc_id\":\"d1\",\"url\":\"{vendor_url}\"}}\n")).unwrap();
+    ok(&cf(dir.path(), &["context", "land", "documents", "--project", "research", "--rows", "documents.jsonl", "--run-id", "load-1", "--site-id", "site", "--now", "2030-01-01T00:00:00Z"]));
+    let out = Command::new(env!("CARGO_BIN_EXE_contextful"))
+        .args(["pipeline", "run", "cards", "--project", "research", "--run-id", "cards-2", "--site-id", "site", "--now", "2030-01-01T01:00:00Z"])
+        .current_dir(dir.path())
+        .env("LIMITER_TOKEN", "lim-1")
+        .env("CONTEXTFUL_SECRETS_ALLOW_ENV_TEMPLATES", "1")
+        .output()
+        .unwrap();
+    ok(&out);
+    assert_eq!(vendor.targets(), ["/article", "/cover.jpg"]);
+    assert_eq!(limiter.targets().iter().filter(|target| target.as_str() == "/quota/acquire").count(), 2);
+    assert_eq!(select(dir.path(), "SELECT method, url_host, status_code FROM cards_cards__requests ORDER BY request_id"), [["GET", "localhost", "200"], ["GET", "localhost", "200"]]);
+}
+
 fn cf(dir: &std::path::Path, args: &[&str]) -> Output {
     Command::new(env!("CARGO_BIN_EXE_contextful")).args(args).current_dir(dir).output().unwrap()
 }
