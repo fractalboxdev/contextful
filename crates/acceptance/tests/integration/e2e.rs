@@ -112,11 +112,16 @@ fn column(result: &Value, name: &str) -> Vec<Value> {
 #[test]
 fn e2e_consumer_round_trip() {
     let cf = bin("contextful");
-    let source = S3Server::start("source");
-    source.seed("notes.jsonl", b"{\"note_id\":\"n1\",\"title\":\"Solar battery storage\",\"embedding\":[1.0,0.0,0.0]}\n");
-    let shared = S3Server::start("shared");
+    let real_endpoint = std::env::var("CONTEXTFUL_E2E_S3_ENDPOINT").ok();
+    let source = real_endpoint.is_none().then(|| S3Server::start("source"));
+    let shared = real_endpoint.is_none().then(|| S3Server::start("shared"));
+    if let Some(source) = &source {
+        source.seed("notes.jsonl", b"{\"note_id\":\"n1\",\"title\":\"Solar battery storage\",\"embedding\":[1.0,0.0,0.0]}\n");
+    }
+    let source_endpoint = real_endpoint.as_deref().unwrap_or_else(|| &source.as_ref().unwrap().endpoint);
+    let shared_endpoint = real_endpoint.as_deref().unwrap_or_else(|| &shared.as_ref().unwrap().endpoint);
     let first = GitRepo::init();
-    node(&first, &source.endpoint, &shared.endpoint, "node-a");
+    node(&first, source_endpoint, shared_endpoint, "node-a");
     run(&first, &cf, &["pipeline", "run", "feed", "--project", PROJECT, "--run-id", "run-0001", "--site-id", "site-a"]);
     let built: Value = serde_json::from_str(&run(&first, &cf, &["build", "research/titles", "--project", PROJECT, "--site-id", "site-a", "--json"])).unwrap();
     assert_eq!(built["published"], json!(true), "{built}");
@@ -162,10 +167,14 @@ fn e2e_consumer_round_trip() {
     run(&first, &cf, &["sync", "push", "--project", PROJECT]);
 
     let second = GitRepo::init();
-    node(&second, &source.endpoint, &shared.endpoint, "node-b");
+    node(&second, source_endpoint, shared_endpoint, "node-b");
     run(&second, &cf, &["sync", "pull", "--project", PROJECT]);
     let after = query(&second, &cf);
     assert_eq!(after, before, "the second node reads the published model byte for byte");
-    assert!(source.gets() > 0, "the source bucket was read");
-    assert!(shared.keys().iter().any(|k| k == "team/manifest.json"));
+    if let Some(source) = &source {
+        assert!(source.gets() > 0, "the source bucket was read");
+    }
+    if let Some(shared) = &shared {
+        assert!(shared.keys().iter().any(|k| k == "team/manifest.json"));
+    }
 }
