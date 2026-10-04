@@ -3,9 +3,54 @@
 use contextful_acceptance::s3::{S3Server, ACCESS_KEY, SECRET_KEY};
 use contextful_acceptance::{bin, GitRepo};
 use serde_json::{json, Value};
-use std::process::Output;
+use std::io::{BufRead, BufReader, Read, Write};
+use std::process::{Child, Output, Stdio};
 
 const PROJECT: &str = "research";
+const AUDIENCE: &str = "contextful://consumer-e2e";
+
+struct Listener(Child);
+
+impl Drop for Listener {
+    fn drop(&mut self) {
+        let _ = self.0.kill();
+        let _ = self.0.wait();
+    }
+}
+
+fn serve(cf: &std::path::Path, p: &GitRepo, public: &str) -> (Listener, String) {
+    let mut child = std::process::Command::new(cf)
+        .args(["serve", "--http", "127.0.0.1:0", "--audience", AUDIENCE, "--project", PROJECT, "--public-key", public, "--denylist", ".contextful/denylist"])
+        .current_dir(&p.root)
+        .env_remove("CARGO_TARGET_DIR")
+        .stderr(Stdio::piped())
+        .spawn()
+        .unwrap();
+    let mut err = BufReader::new(child.stderr.take().unwrap());
+    let listener = Listener(child);
+    let address = loop {
+        let mut line = String::new();
+        assert!(err.read_line(&mut line).unwrap() > 0, "the HTTP read face never listened");
+        if let Some(address) = line.trim().strip_prefix("listening on http://").and_then(|s| s.strip_suffix("/mcp")) {
+            break address.to_string();
+        }
+    };
+    (listener, address)
+}
+
+fn bearer_call(address: &str, token: &str, tool: &str, arguments: Value) -> Value {
+    let body = json!({ "jsonrpc": "2.0", "id": 1, "method": "tools/call", "params": { "name": tool, "arguments": arguments } }).to_string();
+    let mut stream = std::net::TcpStream::connect(address).unwrap();
+    write!(stream, "POST /mcp HTTP/1.1\r\nHost: {address}\r\nAuthorization: Bearer {token}\r\nContent-Type: application/json\r\nAccept: application/json, text/event-stream\r\nContent-Length: {}\r\n\r\n{body}", body.len()).unwrap();
+    let mut raw = Vec::new();
+    stream.read_to_end(&mut raw).unwrap();
+    let split = raw.windows(4).position(|part| part == b"\r\n\r\n").unwrap();
+    let head = String::from_utf8_lossy(&raw[..split]);
+    assert!(head.starts_with("HTTP/1.1 200 "), "{head}");
+    let response: Value = serde_json::from_slice(&raw[split + 4..]).unwrap();
+    assert_ne!(response["result"]["isError"], json!(true), "{response}");
+    response["result"]["structuredContent"].clone()
+}
 
 fn ok(out: &Output) -> String {
     assert!(out.status.success(), "{}", String::from_utf8_lossy(&out.stderr));
@@ -67,6 +112,24 @@ fn e2e_consumer_round_trip() {
     assert_eq!(built["published"], json!(true), "{built}");
     let before = query(&first, &cf);
     assert_eq!(before["rows"], json!([["n1", "Solar battery storage"]]));
+
+    first.write(".contextful/issuance.toml", &format!("default_audience = \"{AUDIENCE}\"\nmax_lifetime_secs = 3600\n"));
+    first.write(".contextful/denylist", "");
+    let public = run(&first, &cf, &["token", "keygen", "--out", ".contextful/issuer.seed"]);
+    let token = run(&first, &cf, &[
+        "token", "mint", "--issuer-key", ".contextful/issuer.seed", "--on-behalf-of", "user://ada@acme.example",
+        "--agent", "agent://consumer", "--zone", "on-prem:hq", "--action", "read", "--table", "research/*", "--ttl", "3600",
+    ]);
+    let (_listener, address) = serve(&cf, &first, &public);
+    let build_id = built["build_id"].as_str().unwrap();
+    let pinned = bearer_call(
+        &address,
+        &token,
+        "context.query",
+        json!({ "sql": "SELECT note_id, title FROM \"research/titles\" ORDER BY note_id", "pin": { "research/titles": build_id } }),
+    );
+    assert_eq!(pinned["rows"], before["rows"], "{pinned}");
+    assert_eq!(pinned["contextful.resolved"]["research/titles"]["build_id"], json!(build_id), "{pinned}");
     run(&first, &cf, &["sync", "push", "--project", PROJECT]);
 
     let second = GitRepo::init();
