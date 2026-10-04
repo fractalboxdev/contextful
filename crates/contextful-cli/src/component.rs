@@ -70,7 +70,7 @@ mod hosted {
     impl Hydrate for Rendered {
         fn hydrate(&self) -> Result<HeaderValue, Failure> {
             let v = self.resolver.render(&self.template)?;
-            Ok(if self.template.has_reference() { HeaderValue::Sensitive(v) } else { HeaderValue::Plain(v.reveal().to_string()) })
+            Ok(if self.template.has_reference() { HeaderValue::Sensitive(v.into()) } else { HeaderValue::Plain(v.reveal().to_string()) })
         }
     }
 

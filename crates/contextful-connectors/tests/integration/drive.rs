@@ -681,6 +681,18 @@ fn the_access_token_is_minted_from_references_and_lands_in_no_row_or_position() 
     assert!(!f.message.contains(ACCESS) && !f.message.contains(REFRESH), "{f}");
 }
 
+/// A token minted after a `401` serves both table sources in the same fire.
+#[test]
+fn a_rotated_drive_bearer_serves_the_rest_of_the_fire() {
+    let fake = Fake::start();
+    *fake.reject.lock().unwrap() = 1;
+    let drive = drive(fake.config(json!({})));
+    pull(&mut drive.source("files").unwrap(), None);
+    pull(&mut drive.source("pages").unwrap(), None);
+    assert_eq!(fake.received("/token").len(), 2, "a token refresh occurs once after the 401");
+    assert!(fake.received("/drive/v3/files").iter().any(|request| request.header("authorization") == Some(&format!("Bearer {ACCESS}"))));
+}
+
 /// `oauth.refresh_token`, `oauth.client_id` and `oauth.client_secret` each hold one `${secret://<name>}`
 /// reference and nothing else, checked before any request.
 // spec: connector.source.drive-oauth-shape@a500c256

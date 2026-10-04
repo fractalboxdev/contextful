@@ -11485,7 +11485,7 @@
       "operation": "package",
       "subject": "component-grant",
       "kind": "behavior",
-      "statement": "A component session's grant is its declared `allow` hosts and `attach` headers alone, each header hydrated per request under {{connector.resolve.hydration-is-just-in-time}}; a source declaring no `allow` reaches no host.",
+      "statement": "A component session's grant is its declared `allow` hosts and `attach` headers alone, with credential attachment governed by {{connector.attach.per-request-hydration}}; a source declaring no `allow` reaches no host.",
       "why": "A-connector",
       "file": "spec/40-connector.md",
       "line": 320
@@ -13239,7 +13239,7 @@
       "operation": "resolve",
       "subject": "hydration-is-just-in-time",
       "kind": "behavior",
-      "statement": "Material enters the process per read, while the request is built. No declaration, journal entry, audit record, run record or log line carries a hydrated value.",
+      "statement": "The host asks the resolver for each request while building it; cached material follows {{connector.resolve.cache-ttl}}. No declaration, journal entry, audit record, run record or log line carries a hydrated value.",
       "why": "A-connector",
       "file": "spec/41-secrets.md",
       "line": 88
@@ -13261,7 +13261,7 @@
       "operation": "resolve",
       "subject": "wiped-on-drop",
       "kind": "behavior",
-      "statement": "The wrapper zeroes its bytes when dropped, each duplicate and cache entry included. Bytes copied out of a revealed value, into a request header or a transport buffer, are outside the wrapper.",
+      "statement": "A hydrated wrapper has no `Clone`; shared owners reference one buffer, which zeroes when its last owner drops, including an expired cache entry. Request and transport copies are outside the wrapper.",
       "why": "because a freed credential otherwise stays readable until the allocator reuses its memory",
       "file": "spec/41-secrets.md",
       "line": 91
@@ -13729,6 +13729,17 @@
       "line": 217
     },
     {
+      "id": "connector.attach.per-request-hydration",
+      "contract": "connector",
+      "operation": "attach",
+      "subject": "per-request-hydration",
+      "kind": "behavior",
+      "statement": "A guest session stores hydration handles and plain static headers; the host calls each handle for every permitted request and releases its hydrated header when that request completes.",
+      "why": "because session-held credential material outlives the request and delays rotation",
+      "file": "spec/41-secrets.md",
+      "line": 218
+    },
+    {
       "id": "connector.attach.literal-attach-value",
       "contract": "connector",
       "operation": "attach",
@@ -13737,7 +13748,7 @@
       "statement": "An attach value embedding no reference raises `SecretLiteralAttachValue`.",
       "why": "because a constant header belongs in the guest's request construction",
       "file": "spec/41-secrets.md",
-      "line": 218
+      "line": 220
     },
     {
       "id": "connector.attach.redirect-pinning",
@@ -13748,7 +13759,7 @@
       "statement": "Every source, credential-bearing or not, follows a hop only when it keeps the configured host and port on the same or a stronger transport; cleartext to TLS at that host and port is followed.",
       "why": "A-connector",
       "file": "spec/41-secrets.md",
-      "line": 220
+      "line": 222
     },
     {
       "id": "connector.attach.weakened-hop",
@@ -13759,7 +13770,7 @@
       "statement": "A redirect or vendor-supplied next link moving from TLS to cleartext, or to another host or port, raises `SecretRedirectOffOrigin`, and the read fails.",
       "why": "A-connector",
       "file": "spec/41-secrets.md",
-      "line": 222
+      "line": 224
     },
     {
       "id": "connector.attach.landed-origin",
@@ -13770,7 +13781,7 @@
       "statement": "The origin answering the request whose body lands equals the configured host and port.",
       "why": "A-connector",
       "file": "spec/41-secrets.md",
-      "line": 224
+      "line": 226
     },
     {
       "id": "connector.attach.referer-off",
@@ -13781,7 +13792,7 @@
       "statement": "`Referer` is off on every outbound client.",
       "why": "",
       "file": "spec/41-secrets.md",
-      "line": 226
+      "line": 228
     },
     {
       "id": "connector.attach.header-selects-client",
@@ -13792,7 +13803,7 @@
       "statement": "Declaring any header, literal or hydrated, selects the hardened client, which bypasses the system proxy; a source declaring none keeps the proxy.",
       "why": "",
       "file": "spec/41-secrets.md",
-      "line": 227
+      "line": 229
     },
     {
       "id": "connector.attach.cleartext-endpoint",
@@ -13803,7 +13814,7 @@
       "statement": "A header hydrated from a reference is marked sensitive, and sending it to a cleartext endpoint raises `SecretCleartextEndpoint`, IPv4 and IPv6 loopback exempt.",
       "why": "A-connector",
       "file": "spec/41-secrets.md",
-      "line": 228
+      "line": 230
     },
     {
       "id": "connector.attach.sensitive-header-record",
@@ -13814,7 +13825,7 @@
       "statement": "A run records which header names carried a credential, by name only.",
       "why": "",
       "file": "spec/41-secrets.md",
-      "line": 230
+      "line": 232
     },
     {
       "id": "connector.attach.url-scrubbing",
@@ -13825,7 +13836,7 @@
       "statement": "A URL reaching an error message, a log line or a landed column carries scheme, host, port and path; query, fragment and userinfo are dropped.",
       "why": "A-authority",
       "file": "spec/41-secrets.md",
-      "line": 231
+      "line": 233
     },
     {
       "id": "connector.attach.typed-url-edit",
@@ -13836,7 +13847,7 @@
       "statement": "Metered vendor traffic and control-plane traffic each dispatch through one client whose error mapping clears the URL as a typed edit; a URL arriving otherwise is scrubbed as text.",
       "why": "",
       "file": "spec/41-secrets.md",
-      "line": 233
+      "line": 235
     },
     {
       "id": "connector.attach.credential-in-a-url",
@@ -13847,7 +13858,7 @@
       "statement": "A configured endpoint carrying userinfo raises `SecretCredentialInUrl` at validation, naming the source.",
       "why": "A-authority",
       "file": "spec/41-secrets.md",
-      "line": 234
+      "line": 236
     },
     {
       "id": "connector.attach.mediation-covers-every-egress",
@@ -13858,7 +13869,7 @@
       "statement": "A built-in source, a guest connector, a model call, a limiter call and an exec step all attach through the mediated path. No second attachment point exists.",
       "why": "A-connector",
       "file": "spec/41-secrets.md",
-      "line": 236
+      "line": 238
     },
     {
       "id": "connector.rotate.division-of-labor",
@@ -13869,7 +13880,7 @@
       "statement": "A credential store contributes versioned storage and a trigger. The host drives the OAuth loop from the connector's auth policy and writes the token back as a blind versioned put.",
       "why": "A-connector",
       "file": "spec/41-secrets.md",
-      "line": 243
+      "line": 245
     },
     {
       "id": "connector.rotate.expiry-hint",
@@ -13880,7 +13891,7 @@
       "statement": "The host may store an opaque `expires_at` hint beside the ciphertext for cache invalidation.",
       "why": "",
       "file": "spec/41-secrets.md",
-      "line": 245
+      "line": 247
     },
     {
       "id": "connector.rotate.static-key",
@@ -13891,7 +13902,7 @@
       "statement": "A static key in a customer manager turns over with no engine step: a run hydrates the current version at its next cache miss.",
       "why": "",
       "file": "spec/41-secrets.md",
-      "line": 246
+      "line": 248
     },
     {
       "id": "connector.rotate.oauth-credential",
@@ -13902,7 +13913,7 @@
       "statement": "An OAuth credential refreshes ahead of its declared expiry, writes the new version to the customer's manager, and clears that name's cache entry in the same step.",
       "why": "",
       "file": "spec/41-secrets.md",
-      "line": 247
+      "line": 249
     },
     {
       "id": "connector.rotate.operator-entered",
@@ -13913,7 +13924,7 @@
       "statement": "A development or keychain secret is re-entered by an operator re-pointing the reference.",
       "why": "",
       "file": "spec/41-secrets.md",
-      "line": 248
+      "line": 250
     },
     {
       "id": "connector.rotate.leased-credential",
@@ -13924,7 +13935,7 @@
       "statement": "A leased credential re-mints ahead of its window with no write-back, and a failed re-mint leaves the source with no credential rather than an older one.",
       "why": "P4",
       "file": "spec/41-secrets.md",
-      "line": 249
+      "line": 251
     },
     {
       "id": "connector.rotate.write-back-denied",
@@ -13935,7 +13946,7 @@
       "statement": "A manager refusing the versioned put raises `SecretRotationWriteDenied`, and the run fails closed.",
       "why": "A-connector",
       "file": "spec/41-secrets.md",
-      "line": 251
+      "line": 253
     },
     {
       "id": "connector.rotate.connector-owns-meaning",
@@ -13946,7 +13957,7 @@
       "statement": "Token lifetime, exchange rules, refresh endpoint and scopes, expired-token codes and rate-limit headers live in the connector's `[auth]`, `[rate_limit]` and `[retry]` blocks, pinned by connector id and version.",
       "why": "A-connector",
       "file": "spec/41-secrets.md",
-      "line": 253
+      "line": 255
     },
     {
       "id": "connector.rotate.no-master-key",
@@ -13957,7 +13968,7 @@
       "statement": "The engine holds references, and no single encryption key exists whose theft with a database copy yields every credential.",
       "why": "A-connector",
       "file": "spec/41-secrets.md",
-      "line": 255
+      "line": 257
     },
     {
       "id": "connector.rotate.turnover-preserves-the-name",
@@ -13968,7 +13979,7 @@
       "statement": "Every rotation mechanism keeps the logical name, touching no declaration and no pinned connector artifact.",
       "why": "",
       "file": "spec/41-secrets.md",
-      "line": 257
+      "line": 259
     },
     {
       "id": "connector.record.operator-record",
@@ -13979,7 +13990,7 @@
       "statement": "An operator record is the encrypted entry for one logical name plus a plaintext comment naming its grants in the provider's vocabulary, its account or tenancy, creation date, expiry or `no expiry`, and rotation location.",
       "why": "",
       "file": "spec/41-secrets.md",
-      "line": 265
+      "line": 267
     },
     {
       "id": "connector.record.committed-entry",
@@ -13990,7 +14001,7 @@
       "statement": "The entry file is committed, holds no fragment of any value in plaintext, and its decryption keys live outside the tree.",
       "why": "",
       "file": "spec/41-secrets.md",
-      "line": 266
+      "line": 268
     },
     {
       "id": "connector.record.surface-of-consumption",
@@ -14001,7 +14012,7 @@
       "statement": "An entry names each deployed surface consuming the credential and the secret name the value takes there.",
       "why": "",
       "file": "spec/41-secrets.md",
-      "line": 267
+      "line": 269
     },
     {
       "id": "connector.record.platform-only-credential",
@@ -14012,7 +14023,7 @@
       "statement": "A credential existing only as a deployed platform secret holds no value in the tree, and its record lands in the change setting or rotating it.",
       "why": "",
       "file": "spec/41-secrets.md",
-      "line": 268
+      "line": 270
     },
     {
       "id": "connector.record.undocumented-entry",
@@ -14023,7 +14034,7 @@
       "statement": "An entry holding a value with no record above it raises `SecretUndocumentedEntry`, naming the logical name and the file.",
       "why": "A-connector",
       "file": "spec/41-secrets.md",
-      "line": 269
+      "line": 271
     },
     {
       "id": "connector.record.unverified-scope-is-marked",
@@ -14034,7 +14045,7 @@
       "statement": "Grants an operator has not established are recorded as unknown.",
       "why": "",
       "file": "spec/41-secrets.md",
-      "line": 271
+      "line": 273
     },
     {
       "id": "connector.record.rotation-updates-the-record",
@@ -14045,7 +14056,7 @@
       "statement": "A rotation rewrites the creation date and expiry in the commit landing the new ciphertext.",
       "why": "",
       "file": "spec/41-secrets.md",
-      "line": 272
+      "line": 274
     },
     {
       "id": "connector.record.inventory",
@@ -14056,7 +14067,7 @@
       "statement": "`contextful secrets list` prints, per logical name, the answering adapter, the covered scope, the expiry and the days remaining, reading records and no value.",
       "why": "",
       "file": "spec/41-secrets.md",
-      "line": 273
+      "line": 275
     },
     {
       "id": "connector.record.expiry-warning",
@@ -14067,7 +14078,7 @@
       "statement": "The inventory marks an entry whose expiry falls within 30 d.",
       "why": "",
       "file": "spec/41-secrets.md",
-      "line": 274
+      "line": 276
     },
     {
       "id": "connector.record.provider-attribution",
@@ -14078,7 +14089,7 @@
       "statement": "A run's audit records which adapter answered each reference, by logical name and adapter.",
       "why": "",
       "file": "spec/41-secrets.md",
-      "line": 275
+      "line": 277
     },
     {
       "id": "authority.identify.subject-tuple",
@@ -22816,7 +22827,7 @@
     ],
     [
       "connector.package.component-grant",
-      "connector.resolve.hydration-is-just-in-time"
+      "connector.attach.per-request-hydration"
     ],
     [
       "connector.source.http-headers",
@@ -22941,6 +22952,10 @@
     [
       "connector.reference.whole-value-reference",
       "connector.resolve.shadowed-name"
+    ],
+    [
+      "connector.resolve.hydration-is-just-in-time",
+      "connector.resolve.cache-ttl"
     ],
     [
       "connector.lease.head-of-chain",
