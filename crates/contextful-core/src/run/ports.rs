@@ -43,8 +43,8 @@ pub struct Pull {
     #[serde(default)]
     pub more: bool,
     /// The source examined its whole snapshot; a skipped input does not set this.
-    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
-    pub snapshot_complete: bool,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub snapshot_complete: Option<bool>,
     /// Column types the source declares, spelled as a declaration spells them
     /// (`run.land.typed-pull`).
     #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]

@@ -73,10 +73,15 @@ fn a_complete_empty_snapshot_replaces_but_a_skip_and_failed_pull_do_not() {
     assert_eq!(rows(root)["rows"], json!([["a"]]));
 
     // A partial inventory cannot replace the complete inventory already visible.
-    input(json!({ "rows": [{ "sku": "b" }], "cursor": "v2", "more": false, "skipped": 1, "snapshot_complete": false }));
+    input(json!({ "rows": [{ "sku": "b" }], "cursor": "v2", "more": false, "snapshot_complete": false }));
     ok(&start(root, "incomplete", "2030-01-01T00:00:30Z"));
     assert_eq!(rows(root)["rows"], json!([["a"]]));
-    assert!(!root.join(".contextful/context/research/tables/inventory/data/runs/incomplete").exists());
+    assert!(!root.join(".contextful/context/research/tables/inventory/data/runs/incomplete/ingest-a/_manifest.json").exists());
+
+    input(json!({ "rows": [{ "sku": "c" }], "cursor": "v2", "more": false, "skipped": 1, "snapshot_complete": true }));
+    ok(&start(root, "partially-skipped", "2030-01-01T00:00:40Z"));
+    assert_eq!(rows(root)["rows"], json!([["a"]]));
+    assert!(!root.join(".contextful/context/research/tables/inventory/data/runs/partially-skipped/ingest-a/_manifest.json").exists());
 
     // A skipped input retains rows even if its source incorrectly claims completion.
     input(json!({ "rows": [], "cursor": "v1", "more": false, "skipped": 1, "snapshot_complete": true }));
