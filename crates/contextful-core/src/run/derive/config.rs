@@ -228,6 +228,10 @@ pub struct Binding {
     pub endpoint_host: Option<String>,
     #[serde(default)]
     pub request_timeout_secs: Option<u64>,
+    #[serde(default)]
+    pub max_document_bytes: Option<u64>,
+    #[serde(default)]
+    pub max_probe_bytes: Option<u64>,
 }
 
 fn exec() -> String {

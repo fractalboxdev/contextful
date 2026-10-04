@@ -188,6 +188,12 @@ Following a link a third party wrote: host and address guards, redirects, the he
   *A-connector*
 - `not-utf8` — A document declaring no character set and failing UTF-8 validation raises `DeriveBytesNotUtf8`; a character split at the byte bound is tolerated.
   *A-connector*
+- `head-rows` — A link preview lands one passage for non-empty head title or description and one passage per distinct advertised head image, each carrying the scrubbed page URL and each image its probe status.
+  *because the head and its image claims remain separately citable, including an image whose probe fails*
+
+#### Scenarios
+
+- `run.fetch.head-rows`: WHEN a page head declares a title, description and one image, THEN the output holds one text passage and one image passage with its probe status.
 
 ```mermaid
 flowchart LR

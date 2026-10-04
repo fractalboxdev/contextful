@@ -236,6 +236,8 @@ fn link_source(dir: &Path, address: &str, extra: &str) -> DeriveSource {
     s
 }
 
+// spec: run.fetch.scheme@b63853e1
+// spec: run.fetch.address-literal@9291e664
 #[test]
 fn a_link_preview_refuses_non_http_schemes_and_address_literals_before_a_socket() {
     let site = Server::start(|_| Response::json(200, "{}"));
@@ -252,6 +254,9 @@ fn a_link_preview_refuses_non_http_schemes_and_address_literals_before_a_socket(
     assert!(site.received("/private").is_empty());
 }
 
+// spec: run.fetch.redirect-chain@d274af14
+// spec: run.fetch.charset@71537e22
+// spec: run.fetch.not-utf8@bcfcbecf
 #[test]
 fn a_link_preview_bounds_redirects_and_refuses_non_utf8_documents() {
     let site = Server::start(|r| {
@@ -259,7 +264,7 @@ fn a_link_preview_bounds_redirects_and_refuses_non_utf8_documents() {
         if n < 7 {
             Response { status: 302, headers: vec![("Location".into(), format!("/{}", n + 1))], body: Vec::new() }
         } else {
-            Response { status: 200, headers: vec![("Content-Type".into(), "text/html; charset=iso-8859-1".into())], body: b"<title>old</title>".to_vec() }
+            Response { status: 200, headers: vec![("Content-Type".into(), "text/html; Charset=iso-8859-1".into())], body: b"<title>old</title>".to_vec() }
         }
     });
     let dir = tempfile::tempdir().unwrap();
@@ -277,6 +282,7 @@ fn a_link_preview_bounds_redirects_and_refuses_non_utf8_documents() {
     assert!(rows[0]["last_error"].as_str().unwrap().contains("DeriveBytesNotUtf8"), "{rows:?}");
 }
 
+// spec: run.fetch.retry-after-default@d278358c
 #[test]
 fn a_link_preview_uses_sixty_seconds_for_a_429_without_retry_after() {
     let site = Server::start(|_| Response { status: 429, headers: vec![], body: vec![] });
@@ -287,6 +293,8 @@ fn a_link_preview_uses_sixty_seconds_for_a_429_without_retry_after() {
     assert_eq!(failure.retry_after_secs, Some(60));
 }
 
+// spec: run.fetch.probe-prefix@4b8736f9
+// spec: run.fetch.head-rows@ca1a4fd4
 #[test]
 fn a_link_preview_probes_advertised_images_with_a_bounded_range() {
     let site = Server::start(|r| match r.path() {
@@ -304,6 +312,8 @@ fn a_link_preview_probes_advertised_images_with_a_bounded_range() {
     assert_eq!(rows.len(), 2, "{rows:?}");
     assert_eq!(rows[1]["cue_seq"], 1);
     assert_eq!(rows[1]["image_url"], format!("http://localhost:{}/picture.jpg", site.port));
+    assert_eq!(rows[0]["url"], address);
+    assert_eq!(rows[1]["url"], address);
     assert_eq!(rows[1]["probe_status"], "ok");
     assert_eq!(rows[1]["_modality"], "image");
     let probes = site.received("/picture.jpg");
@@ -311,6 +321,7 @@ fn a_link_preview_probes_advertised_images_with_a_bounded_range() {
     assert_eq!(probes[0].header("range"), Some("bytes=0-65535"));
 }
 
+// spec: run.fetch.document-prefix@1386432c
 #[test]
 fn a_link_preview_scans_a_megabyte_prefix_and_drops_the_remainder() {
     let site = Server::start(|_| {

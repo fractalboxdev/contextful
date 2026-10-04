@@ -69,6 +69,18 @@ pub enum RunError {
     /// A process-spawning key on a fetch binding. (`run.fetch.binding-key`)
     #[error("DeriveFetchBindingKey: {0}")]
     DeriveFetchBindingKey(String),
+    /// A followed address with a scheme other than HTTP or HTTPS. (`run.fetch.scheme`)
+    #[error("DeriveSchemeUnsupported: {0}")]
+    DeriveSchemeUnsupported(String),
+    /// A followed host written as an address literal. (`run.fetch.address-literal`)
+    #[error("DeriveAddressLiteral: {0}")]
+    DeriveAddressLiteral(String),
+    /// A document declaring a character set other than UTF-8. (`run.fetch.charset`)
+    #[error("DeriveCharsetUnsupported: {0}")]
+    DeriveCharsetUnsupported(String),
+    /// An undeclared document failing UTF-8 validation. (`run.fetch.not-utf8`)
+    #[error("DeriveBytesNotUtf8: {0}")]
+    DeriveBytesNotUtf8(String),
     /// A derive pipeline configured to journal its pulls. (`run.select.journaled-pull`)
     #[error("DeriveJournaledPull: {0}")]
     DeriveJournaledPull(String),
