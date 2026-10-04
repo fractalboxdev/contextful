@@ -1,13 +1,14 @@
 //! The generic HTTP source: one endpoint, one decoder, one pagination shape, and headers
 //! whose values are templates hydrated per read (`connector.source.http-headers`).
 
-use crate::decode::{decode, workbook, Format};
+use crate::decode::{decode, decode_with_encoding, workbook, Format};
 use contextful_core::connector::attach::{endpoint, scrub, scrub_text, Allowlist};
 use contextful_core::connector::meter::LimiterDeclaration;
 use contextful_core::connector::probe::ScopeProbe;
 use contextful_core::connector::reference::{check_material, Template};
 use contextful_core::connector::ConnectorError;
 use contextful_core::run::ports::{Cancellation, PullRequest, Row, Source};
+use contextful_core::run::advance::admits;
 use contextful_core::run::{Failure, FailureTag, RunError};
 use contextful_outbound::client::{classify, Client, HeaderValue};
 use contextful_outbound::probe::probe_through;
@@ -15,6 +16,7 @@ use contextful_outbound::{Limiter, Meter, PreSendHook, Resolver, Transport};
 use serde_json::{Map, Value};
 use std::collections::BTreeMap;
 use std::sync::Arc;
+use std::time::{Duration, Instant};
 use url::Url;
 
 /// The source's registered name.
@@ -23,7 +25,7 @@ pub const NAME: &str = "http";
 pub const PAGE_CAP: usize = 1000;
 
 /// The configuration keys the HTTP source reads (`run.declare.config-key`).
-pub const KEYS: [&str; 18] = [
+pub const KEYS: [&str; 20] = [
     "endpoint",
     "table_pattern",
     "format",
@@ -42,7 +44,66 @@ pub const KEYS: [&str; 18] = [
     "scope_probe",
     "bound_columns",
     "conditional",
+    "expansion",
+    "encoding",
 ];
+
+/// A detail document address and the column receiving its decoded JSON value.
+#[derive(Debug, Clone)]
+pub struct Expansion {
+    pointer: ExpansionPointer,
+    target_column: String,
+}
+
+#[derive(Debug, Clone)]
+enum ExpansionPointer {
+    Template(String),
+    Column(String),
+}
+
+const EXPANSION_REQUESTS: usize = 200;
+const EXPANSION_BYTES: usize = 256 * 1024 * 1024;
+const EXPANSION_TIME: Duration = Duration::from_secs(600);
+
+fn expansion(value: &Value) -> Result<Expansion, ConfigError> {
+    let block = value.as_object().ok_or_else(|| RunError::Invalid("`expansion` is a table".into()))?;
+    if let Some(key) = block.keys().find(|key| !["url_template", "pointer_column", "target_column"].contains(&key.as_str())) {
+        return Err(RunError::PipelineUnknownConfigKey(format!("the `expansion` block reads no key `{key}`")).into());
+    }
+    let template = text(block, "url_template")?;
+    let column = text(block, "pointer_column")?;
+    let target_column = text(block, "target_column")?.filter(|s| !s.is_empty()).ok_or_else(|| RunError::Invalid("`expansion.target_column` is a non-empty string".into()))?;
+    let pointer = match (template, column) {
+        (Some(_), Some(_)) => return Err(ConnectorError::ConnectorPointerAmbiguous("`url_template` and `pointer_column` both name the follow-up".into()).into()),
+        (None, None) => return Err(RunError::Invalid("`expansion` names `url_template` or `pointer_column`".into()).into()),
+        (None, Some(name)) if !name.is_empty() => ExpansionPointer::Column(name),
+        (None, Some(_)) => return Err(RunError::Invalid("`expansion.pointer_column` is non-empty".into()).into()),
+        (Some(template), None) => {
+            let authority_end = template.find("://").map_or(template.len(), |s| template[s + 3..].find(['/', '?', '#']).map_or(template.len(), |e| s + 3 + e));
+            if !template.contains('{') || template[..authority_end].contains('{') {
+                return Err(ConnectorError::ConnectorTemplateRejected("`url_template` needs a row placeholder in its path or query, outside the URL authority".into()).into());
+            }
+            let mut rest = template.as_str();
+            while let Some(open) = rest.find('{') {
+                if rest[..open].contains('}') {
+                    return Err(ConnectorError::ConnectorTemplateRejected("`url_template` has an unmatched closing brace".into()).into());
+                }
+                let Some(close) = rest[open + 1..].find('}').map(|i| open + 1 + i) else {
+                    return Err(ConnectorError::ConnectorTemplateRejected("`url_template` has an unclosed placeholder".into()).into());
+                };
+                if close == open + 1 || rest[open + 1..close].contains('{') {
+                    return Err(ConnectorError::ConnectorTemplateRejected("`url_template` has an empty or nested placeholder".into()).into());
+                }
+                rest = &rest[close + 1..];
+            }
+            if rest.contains('}') {
+                return Err(ConnectorError::ConnectorTemplateRejected("`url_template` has an unmatched closing brace".into()).into());
+            }
+            ExpansionPointer::Template(template)
+        }
+    };
+    Ok(Expansion { pointer, target_column })
+}
 
 /// One `/`-separated segment of a table pattern.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -233,6 +294,10 @@ pub struct HttpConfig {
     /// Whether a read sends the stored validators and keeps a `304` as no change
     /// (`connector.source.conditional-get`).
     pub conditional: bool,
+    /// The row pointer followed after the index read and the column receiving its value.
+    pub expansion: Option<Expansion>,
+    /// The character encoding of a CSV body; absent means UTF-8.
+    pub encoding: Option<String>,
 }
 
 fn key_error(k: &str) -> RunError {
@@ -288,6 +353,15 @@ impl HttpConfig {
         }
         let endpoint_raw = text(cfg, "endpoint")?.ok_or_else(|| RunError::Invalid(format!("the `{NAME}` source names no `endpoint`")))?;
         let format = Format::parse(text(cfg, "format")?.as_deref().unwrap_or("json"))?;
+        let encoding = text(cfg, "encoding")?;
+        if encoding.is_some() && format != Format::Csv {
+            return Err(ConnectorError::ConnectorFormatKeyRejected("`encoding` reads delimited text and the source format is not `csv`".into()).into());
+        }
+        if let Some(label) = &encoding {
+            if encoding_rs::Encoding::for_label(label.as_bytes()).is_none() {
+                return Err(ConnectorError::ConnectorEncodingInvalid(format!("unknown encoding `{label}`")).into());
+            }
+        }
         let records = text(cfg, "records")?;
         let next_cursor_path = text(cfg, "next_cursor_path")?;
         let next_url_path = text(cfg, "next_url_path")?;
@@ -360,6 +434,7 @@ impl HttpConfig {
             None => false,
             Some(v) => v.as_bool().ok_or_else(|| RunError::Invalid(format!("`{NAME}` source key `conditional` is a boolean, found {v}")))?,
         };
+        let expansion = cfg.get("expansion").map(expansion).transpose()?;
         if let (true, Some(k)) = (conditional, declared.first()) {
             return Err(ConnectorError::ConnectorConditionalRejected(format!("`conditional` beside `{k}`: a validator names one document, and a page walk reads many")).into());
         }
@@ -394,6 +469,8 @@ impl HttpConfig {
             scope_probe,
             bound_columns,
             conditional,
+            expansion,
+            encoding,
         };
         if c.scope_probe.is_some() && c.probe_credential().is_none() {
             return Err(RunError::Invalid(format!("the `{NAME}` source's `scope_probe` carries a bound credential, and no `headers` template binds one")).into());
@@ -514,6 +591,7 @@ pub struct HttpSource {
     /// Whether a pull walks every page: under a monotonic cursor the position is a
     /// watermark, which carries no page token.
     watermarked: bool,
+    clock_field: Option<String>,
     /// Tokens this walk served, for `ConnectorPageLoop`, and the requests it issued.
     seen: Vec<String>,
     requests: usize,
@@ -538,7 +616,7 @@ impl HttpSource {
             None => None,
         };
         let client = Arc::new(mediation.client(allow.clone(), origin, config.limiter.as_ref()));
-        Ok(HttpSource { config, table: table.to_string(), resolver, client, allow, probe_client, probed: false, watermarked: false, seen: Vec::new(), requests: 0 })
+        Ok(HttpSource { config, table: table.to_string(), resolver, client, allow, probe_client, probed: false, watermarked: false, clock_field: None, seen: Vec::new(), requests: 0 })
     }
 
     /// The source serving a monotonic cursor: one pull walks every page from the watermark.
@@ -547,11 +625,18 @@ impl HttpSource {
         self
     }
 
+    /// A source whose incremental field validates delimited clock spellings from its first read.
+    pub fn watermarked_for(mut self, field: &str) -> HttpSource {
+        self.watermarked = true;
+        self.clock_field = Some(field.to_string());
+        self
+    }
+
     /// Whether one pull walks every page: under a watermark, and under next-URL or
     /// Link-header pagination, whose token is a whole URL whose query may carry a
     /// credential the journal would hold unscrubbed (`connector.source.http-url-walk`).
     fn walks_whole(&self) -> bool {
-        self.watermarked || matches!(self.config.pagination, Pagination::NextUrl { .. } | Pagination::LinkHeader)
+        self.watermarked || self.config.expansion.is_some() || matches!(self.config.pagination, Pagination::NextUrl { .. } | Pagination::LinkHeader)
     }
 
     /// Hydrate every header just in time, a template holding a reference as sensitive material.
@@ -631,7 +716,7 @@ impl HttpSource {
         }
         let (batch, body) = match self.config.format {
             Format::Workbook => (workbook::rows(&resp.body, self.config.sheet.as_deref(), self.config.skip_rows, &scrub(&resp.url))?, None),
-            format => decode(format, &resp.body, self.config.records.as_deref(), &scrub(&resp.url))?,
+            format => decode_with_encoding(format, &resp.body, self.config.records.as_deref(), &scrub(&resp.url), self.config.encoding.as_deref())?,
         };
         let batch = self.stamp(batch, &resp.url)?;
         let next = match &self.config.pagination {
@@ -675,11 +760,124 @@ impl HttpSource {
             }
             let (batch, next) = self.page(&base, token.as_deref(), request)?;
             rows.extend(batch);
-            let Some(next) = next else { return Ok(rows) };
+            let Some(next) = next else {
+                self.validate_clock(&rows, request)?;
+                return self.expand(rows, request, cancel, &base)
+            };
             HttpSource::advance(&mut seen, &next, &base)?;
             token = Some(next);
         }
         Err(HttpSource::capped(&base))
+    }
+
+    fn validate_clock(&self, rows: &[Row], request: &PullRequest) -> Result<(), Failure> {
+        if self.config.format != Format::Csv || !self.watermarked { return Ok(()) }
+        let field = self.clock_field.as_deref().or_else(|| request.position.as_ref()?.get("field")?.as_str());
+        let Some(field) = field else { return Ok(()) };
+        let mut digits_width = None;
+        let mut instant_seen = false;
+        for row in rows {
+            let value = row.get(field).and_then(Value::as_str);
+            let valid = match value {
+                Some(s) if contextful_core::time::Instant::parse(s).is_ok() => {
+                    instant_seen = true;
+                    digits_width.is_none()
+                }
+                Some(s) if !s.is_empty() && s.bytes().all(|b| b.is_ascii_digit()) => {
+                    match digits_width {
+                        Some(width) => width == s.len() && !instant_seen,
+                        None => { digits_width = Some(s.len()); !instant_seen }
+                    }
+                }
+                _ => false,
+            };
+            if !valid {
+                return Err(Failure::deterministic(FailureTag::SchemaIncompatible, ConnectorError::ConnectorClockColumnRejected(format!("CSV column `{field}` contains an invalid or variable-width clock value")).to_string()));
+            }
+        }
+        Ok(())
+    }
+
+    /// Resolve every pointer before the first follow-up so a bad row or an oversized
+    /// index never causes a partial expansion walk.
+    fn expand(&self, rows: Vec<Row>, request: &PullRequest, cancel: &dyn Cancellation, base: &Url) -> Result<Vec<Row>, Failure> {
+        let Some(expansion) = &self.config.expansion else { return Ok(rows) };
+        let mut admitted = Vec::new();
+        let field = request.position.as_ref().and_then(|p| p.get("field")).and_then(Value::as_str);
+        let at = request.position.as_ref().and_then(|p| p.get("at"));
+        for row in rows {
+            if let Some(field) = field {
+                let Some(value) = row.get(field) else { continue };
+                if !admits(at, value).map_err(|e| Failure::deterministic(FailureTag::SchemaIncompatible, e.to_string()))? {
+                    continue;
+                }
+            }
+            admitted.push(row);
+        }
+        if admitted.len() > EXPANSION_REQUESTS {
+            return Err(Failure::deterministic(FailureTag::Permanent, format!("one expanding read admits at most {EXPANSION_REQUESTS} follow-up requests")));
+        }
+        let mut pointers = Vec::with_capacity(admitted.len());
+        for row in &admitted {
+            if row.contains_key(&expansion.target_column) {
+                return Err(Failure::deterministic(FailureTag::Config, ConnectorError::ConnectorTargetColumnOccupied(format!("an index row already carries `{}`", expansion.target_column)).to_string()));
+            }
+            let raw = match &expansion.pointer {
+                ExpansionPointer::Column(name) => row.get(name).and_then(Value::as_str).ok_or_else(|| {
+                    Failure::deterministic(FailureTag::SchemaIncompatible, ConnectorError::ConnectorPointerColumnMissing(format!("`{name}` is absent or not a scalar URL")).to_string())
+                })?.to_string(),
+                ExpansionPointer::Template(template) => {
+                    let mut values = BTreeMap::new();
+                    let mut rest = template.as_str();
+                    while let Some(open) = rest.find('{') {
+                        let Some(close) = rest[open + 1..].find('}').map(|c| open + c + 1) else {
+                            return Err(Failure::deterministic(FailureTag::Config, ConnectorError::ConnectorTemplateRejected("an unclosed placeholder".into()).to_string()));
+                        };
+                        let name = &rest[open + 1..close];
+                        let value = row.get(name).and_then(scalar).ok_or_else(|| {
+                            Failure::deterministic(FailureTag::SchemaIncompatible, ConnectorError::ConnectorPointerColumnMissing(format!("`{name}` is absent or not a scalar value")).to_string())
+                        })?;
+                        values.insert(name.to_string(), value);
+                        rest = &rest[close + 1..];
+                    }
+                    fill(template, &values, percent_encode)
+                }
+            };
+            let pointer = base.join(&raw).map_err(|e| Failure::deterministic(FailureTag::SchemaIncompatible, ConnectorError::ConnectorPointerColumnMissing(format!("`{raw}` names no URL: {e}")).to_string()))?;
+            pointers.push(pointer);
+        }
+        let started = Instant::now();
+        let mut bytes = 0usize;
+        for (row, pointer) in admitted.iter_mut().zip(pointers) {
+            if cancel.requested() {
+                return Err(Failure::canceled("stopped during expansion"));
+            }
+            if started.elapsed() >= EXPANSION_TIME {
+                return Err(Failure::new(FailureTag::Permanent, "the expansion exceeded 600 s"));
+            }
+            let headers = self.headers(&request.idempotency_key)?;
+            let response = self.client.send("GET", &pointer, &headers, None).map_err(|f| Failure {
+                message: ConnectorError::ConnectorExpansionFailed(format!("`{}`: {}", scrub(&pointer), f.message)).to_string(),
+                ..f
+            })?;
+            if !(200..300).contains(&response.status) {
+                let failure = classify(response.status, response.header("retry-after").and_then(|v| v.trim().parse().ok()), &scrub(&response.url));
+                return Err(Failure { message: ConnectorError::ConnectorExpansionFailed(failure.message).to_string(), ..failure });
+            }
+            bytes = bytes.saturating_add(response.body.len());
+            if bytes > EXPANSION_BYTES {
+                return Err(Failure::new(FailureTag::Permanent, "the expansion exceeded 256 MiB"));
+            }
+            let document: Value = serde_json::from_slice(&response.body).map_err(|e| Failure::deterministic(
+                FailureTag::SchemaIncompatible,
+                ConnectorError::ConnectorExpansionFailed(format!("`{}` served no JSON document: {e}", scrub(&response.url))).to_string(),
+            ))?;
+            row.insert(expansion.target_column.clone(), document);
+        }
+        if started.elapsed() >= EXPANSION_TIME {
+            return Err(Failure::new(FailureTag::Permanent, "the expansion exceeded 600 s"));
+        }
+        Ok(admitted)
     }
 
     /// Read the one page `request`'s position names, answering its rows and the page
@@ -853,7 +1051,8 @@ impl HttpSource {
             Format::Workbook => workbook::rows(&resp.body, self.config.sheet.as_deref(), self.config.skip_rows, &scrub(&resp.url))?,
             format => decode(format, &resp.body, self.config.records.as_deref(), &scrub(&resp.url))?.0,
         };
-        Ok(serde_json::json!({ "rows": self.stamp(batch, &resp.url)?, "cursor": served_validators(&resp), "more": false, "snapshot_complete": true }))
+        let rows = self.expand(self.stamp(batch, &resp.url)?, request, cancel, &resp.url)?;
+        Ok(serde_json::json!({ "rows": rows, "cursor": served_validators(&resp), "more": false, "snapshot_complete": true }))
     }
 }
 
