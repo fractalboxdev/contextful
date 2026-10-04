@@ -1,12 +1,21 @@
 //! `run.land` over the decode process boundary.
 #![cfg(unix)]
 
-use contextful_connectors::boundary::{Boundary, REFUSED};
+use contextful_connectors::boundary::{Boundary, DEADLINE, MEMORY_BYTES, REFUSED};
 use contextful_core::run::FailureTag;
 use std::time::{Duration, Instant};
 
 fn sh(script: &str) -> Boundary {
     Boundary::new("/bin/sh", &["-c", script])
+}
+
+#[test]
+fn every_decode_child_receives_the_declared_bounds() {
+    let worker = sh("cat");
+    assert_eq!(worker.deadline, Duration::from_secs(60));
+    assert_eq!(DEADLINE, worker.deadline);
+    assert_eq!(worker.memory_bytes, 512 * 1024 * 1024);
+    assert_eq!(MEMORY_BYTES, worker.memory_bytes);
 }
 
 /// A decode that can die runs outside the serving process, which bounds its wall clock and memory and makes it
@@ -28,7 +37,7 @@ fn a_decode_runs_in_a_child_the_parent_kills_at_its_deadline() {
     // The parent outlives the killed child and runs the next decode.
     assert_eq!(sh("cat").run(b"[]", "Team/Budget").unwrap(), b"[]");
     // A child growing its data segment past the bound dies of it.
-    #[cfg(target_os = "linux")]
+    #[cfg(any(target_os = "linux", target_os = "macos"))]
     {
         let grow = sh("x=$(head -c 268435456 /dev/zero | tr '\\0' a); echo ${#x}").with_memory(64 * 1024 * 1024);
         let f = grow.run(b"", "Team/huge.pdf").unwrap_err();
