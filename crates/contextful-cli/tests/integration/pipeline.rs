@@ -94,7 +94,8 @@ fn serve_staged(dir: &Path, public: &str) -> Output {
 // spec: surface.reconcile.pulled-control@2a93bc23
 #[test]
 fn a_cold_node_adopts_a_pinned_pulled_control_snapshot_after_local_validation() {
-    let document = pipeline("orders", "https://api.vendor.example/v1", "", "tables = [\"orders\"]");
+    let vendor = Vendor::start(|_| (200, "[{\"id\":\"a\"}]".into()));
+    let document = format!("site_id = \"site-a\"\n{}", scheduled("orders", &vendor.url("/v1/orders"), "every 1h"));
     let (dir, signer) = staged_control(&document);
     let pointer = dir.path().join(".contextful/control/research/manifest@current");
     assert!(!pointer.exists());
@@ -102,7 +103,9 @@ fn a_cold_node_adopts_a_pinned_pulled_control_snapshot_after_local_validation() 
     assert!(out.status.success(), "{}", stderr(&out));
     assert_eq!(std::fs::read_to_string(pointer).unwrap(), "1\n");
     let answer: serde_json::Value = serde_json::from_slice(&out.stdout).unwrap();
-    assert_eq!(answer["unarmed"][0]["id"], "orders");
+    assert_eq!(answer["armed"], 1);
+    assert_eq!(answer["fired"], serde_json::json!(["orders"]));
+    assert_eq!(vendor.targets(), ["/v1/orders"]);
     std::fs::write(dir.path().join(".contextful/control/research/manifest@v1.toml"), "tampered").unwrap();
     let tampered = serve_staged(dir.path(), &signer.public_key_text());
     assert!(!tampered.status.success() && stderr(&tampered).contains("ControlSnapshotUntrusted"), "{}", stderr(&tampered));

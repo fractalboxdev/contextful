@@ -31,11 +31,12 @@ fn push_reads_the_declared_control_snapshot_directory() {
 
 #[test]
 fn a_cold_node_pulls_and_adopts_the_admin_attested_control_version() {
+    let vendor = crate::pipeline::Vendor::start(|_| (200, "[{\"id\":\"a\"}]".into()));
     let bucket = tempfile::tempdir().unwrap();
     let sync = file_sync(bucket.path(), "");
     let writer = project("ingest-a", &sync);
-    let document = "authoring_posture = 'per_request'\n[[pipeline]]\nid = 'orders'\ntables = ['orders']\n[pipeline.source]\nname = 'http'\nconfig = { endpoint = 'https://api.vendor.example/v1' }\n";
-    std::fs::write(writer.path().join("contextful.toml"), document).unwrap();
+    let document = format!("authoring_posture = 'per_request'\nsite_id = 'site-a'\n[[pipeline]]\nid = 'orders'\nschedule = 'every 1h'\ntables = ['orders']\n[pipeline.source]\nname = 'http'\nconfig = {{ endpoint = '{}' }}\n", vendor.url("/v1/orders"));
+    std::fs::write(writer.path().join("contextful.toml"), &document).unwrap();
     std::fs::write(writer.path().join(".contextful/issuance.toml"),
         "default_audience = 'contextful://research'\nmax_lifetime_secs = 3600\n").unwrap();
     let public = ok(&cf(writer.path(), &["token", "keygen", "--out", ".contextful/issuer.seed"], &[]));
@@ -50,11 +51,13 @@ fn a_cold_node_pulls_and_adopts_the_admin_attested_control_version() {
     ok(&cf(cold.path(), &["sync", "pull", "--project", "research"], &[]));
     let pointer = cold.path().join(".contextful/control/research/manifest@current");
     assert!(!pointer.exists());
-    let out = cf(cold.path(), &["pipeline", "serve", "--cycle", "--project", "research", "--public-key", &public], &[]);
+    let out = cf(cold.path(), &["pipeline", "serve", "--cycle", "--project", "research", "--now", "2030-01-01T00:00:00Z", "--public-key", &public], &[]);
     assert!(out.status.success(), "{}", String::from_utf8_lossy(&out.stderr));
     assert_eq!(std::fs::read_to_string(pointer).unwrap(), "1\n");
     let answer: Value = serde_json::from_slice(&out.stdout).unwrap();
-    assert_eq!(answer["unarmed"][0]["id"], "orders");
+    assert_eq!(answer["armed"], 1);
+    assert_eq!(answer["fired"], json!(["orders"]));
+    assert_eq!(vendor.targets(), ["/v1/orders"]);
 }
 
 use serde_json::{json, Value};
