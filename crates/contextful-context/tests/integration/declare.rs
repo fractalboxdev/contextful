@@ -10,8 +10,8 @@ use serde_json::json;
 use std::fs;
 
 #[cfg(feature = "read")]
-/// A table declaring no `primary_key` reads as the byte-identical union of its committed runs.
-// spec: store.declare.unkeyed-union@65214f13
+/// An unkeyed append table reads the byte-identical union of its visible committed runs.
+// spec: store.declare.unkeyed-union@f30dc41a
 #[test]
 fn an_unkeyed_table_reads_as_the_union_of_its_runs() {
     let f = Fixture::new();

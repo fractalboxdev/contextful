@@ -173,7 +173,7 @@ A table's declaration block: its key, ordering column and write mode, and what a
 - `column-types` — `columns` maps a column to a type spelled as {{store.reconcile.typed-landing}} reads it; every landing into the table, a pipeline run included, lands that column in the declared type.
   *because a JSON value alone cannot say it carries bytes or a vector*
 - `two-genres` — A table holds items, landed by connectors, or artifacts, synthesized and tagged by an open kind string the engine does not enumerate. Both append, dedupe on content and carry a timestamp.
-- `unkeyed-union` — A table declaring no `primary_key` reads as the byte-identical union of its committed runs.
+- `unkeyed-union` — A table declaring no `primary_key` reads as the byte-identical union of its visible committed runs, selected under {{store.declare.replace-frontier}} when replacing.
 - `dedup-view` — A table declaring `primary_key` reads through `ROW_NUMBER() OVER (PARTITION BY <pk> ORDER BY <order_by> DESC, _ingested_at DESC, _run_id DESC, _row_seq DESC) = 1` over its current snapshot, if any, unioned with the committed runs that snapshot omits.
   *because a keyed table read as a union before its first fold inflates every aggregate silently*
 - `order-by-default` — `order_by` names the column picking the surviving row per key, and defaults to `_ingested_at`.
@@ -187,7 +187,7 @@ A table's declaration block: its key, ordering column and write mode, and what a
 - `replace-frontier` — Under `replace`, a read covers the newest run carrying the source's complete state plus every run committed after it.
 - `replace-retains` — A replacing run leaves the runs it displaced on disk until `retain_runs` passes, writes no erasure receipt and walks no lineage.
 - `empty-run` — A run landing zero rows commits a manifest with no parts; without {{store.declare.empty-replacement}} it replaces nothing. A table with no rows registers as a zero-row relation over its declared and injected columns.
-- `empty-replacement` — A complete zero-row `replace` run marks its manifest as a replacement frontier; current reads cover no earlier files, while bounded reads before its commit retain earlier rows.
+- `empty-replacement` — A complete zero-row `replace` run marks its manifest as a replacement frontier; current reads cover no earlier files, while bounded reads before its commit retain earlier rows within retention.
   *A-store*
 - `empty-frontier-preserved` — Sync push, sync pull and fold preserve an empty replacement frontier without writing a data row.
   *A-store*
