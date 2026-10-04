@@ -51,6 +51,7 @@ path = "tests/integration/main.rs"
 # `contextful-decode` to it.
 [package.metadata.contextful]
 authoring-allowlist = [
+    "encoding_rs",
     "flate2",
     "libc",
     "pdf-extract",
