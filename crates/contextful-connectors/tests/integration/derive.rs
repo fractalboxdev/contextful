@@ -287,6 +287,30 @@ fn a_link_preview_uses_sixty_seconds_for_a_429_without_retry_after() {
     assert_eq!(failure.retry_after_secs, Some(60));
 }
 
+#[test]
+fn a_link_preview_probes_advertised_images_with_a_bounded_range() {
+    let site = Server::start(|r| match r.path() {
+        "/article" => Response {
+            status: 200,
+            headers: vec![("Content-Type".into(), "text/html; charset=utf-8".into())],
+            body: b"<head><title>Illustrated note</title><meta property=\"og:image\" content=\"/picture.jpg\"></head>".to_vec(),
+        },
+        "/picture.jpg" => Response { status: 206, headers: vec![("Content-Type".into(), "image/jpeg".into())], body: b"jpeg".to_vec() },
+        _ => Response::json(404, "{}"),
+    });
+    let dir = tempfile::tempdir().unwrap();
+    let address = format!("http://localhost:{}/article", site.port);
+    let rows = pulled(&mut link_source(dir.path(), &address, "allow_image_hosts = [\"localhost\"]\n"));
+    assert_eq!(rows.len(), 2, "{rows:?}");
+    assert_eq!(rows[1]["cue_seq"], 1);
+    assert_eq!(rows[1]["image_url"], format!("http://localhost:{}/picture.jpg", site.port));
+    assert_eq!(rows[1]["probe_status"], "ok");
+    assert_eq!(rows[1]["_modality"], "image");
+    let probes = site.received("/picture.jpg");
+    assert_eq!(probes.len(), 1);
+    assert_eq!(probes[0].header("range"), Some("bytes=0-65535"));
+}
+
 fn unit<'a>(rows: &'a [Value], key: &str) -> &'a Value {
     rows.iter().find(|r| r["unit_ref"] == key).unwrap_or_else(|| panic!("no row for `{key}` in {rows:?}"))
 }
