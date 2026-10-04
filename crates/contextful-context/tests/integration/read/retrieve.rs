@@ -73,7 +73,7 @@ fn reserved_columns_project_null_for_a_table_lacking_them() {
     let s = r.session(&["research/notes"], Some(("research/notes", "acme")), None);
     let ranked = r.face.retrieve(&s, &ask("research/", "solar battery storage"), Bounds::default()).unwrap();
     assert_eq!(ranked.rows.len(), 2);
-    for c in ["_modality", "_lang", "_prompt_hash", "_kind"] {
+    for c in ["_modality", "_lang", "_provenance", "_prompt_hash", "_kind"] {
         assert!(column(&ranked, c).iter().all(|v| v.is_null()), "{c}");
     }
 }
