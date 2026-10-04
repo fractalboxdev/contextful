@@ -56,6 +56,46 @@ fn an_expired_keyed_winner_does_not_restore_an_older_live_row_after_fold() {
 }
 
 #[cfg(feature = "read")]
+fn land_retained_supersession(f: &Fixture, d: &TableDecl) {
+    let timestamp = &[("base_arrived_at", ColumnType::Timestamp)];
+    f.land_typed(
+        d,
+        "passage",
+        json!([{"unit_ref": "unit", "derivation_key": "old", "cue_seq": 0, "kind": "passage", "unit_status": "ok", "base_arrived_at": "2100-01-01T00:00:00Z"}]),
+        "2020-01-01T00:00:00Z",
+        timestamp,
+    )
+    .unwrap();
+    f.land_typed(
+        d,
+        "empty",
+        json!([{"unit_ref": "unit", "derivation_key": "new", "cue_seq": -1, "kind": "marker", "unit_status": "empty", "base_arrived_at": "2000-01-01T00:00:00Z"}]),
+        "2020-01-02T00:00:00Z",
+        timestamp,
+    )
+    .unwrap();
+}
+
+#[cfg(feature = "read")]
+#[test]
+fn an_expired_empty_marker_keeps_the_older_passage_superseded_on_read() {
+    let f = Fixture::new();
+    let d = decl("name = \"passages\"\nprimary_key = [\"unit_ref\", \"derivation_key\", \"cue_seq\"]\ncolumns = { base_arrived_at = \"timestamp\" }\nretain_rows = { column = \"base_arrived_at\", age = \"30d\" }");
+    land_retained_supersession(&f, &d);
+    assert!(f.query(&d, Bounds::default(), "SELECT kind FROM t WHERE kind = 'passage'").is_empty());
+}
+
+#[cfg(feature = "read")]
+#[test]
+fn an_expired_empty_marker_keeps_the_older_passage_superseded_after_fold() {
+    let f = Fixture::new();
+    let d = decl("name = \"passages\"\nprimary_key = [\"unit_ref\", \"derivation_key\", \"cue_seq\"]\ncolumns = { base_arrived_at = \"timestamp\" }\nretain_rows = { column = \"base_arrived_at\", age = \"30d\" }");
+    land_retained_supersession(&f, &d);
+    fold(&f.store, &d, at("2030-02-02T00:00:00Z")).unwrap();
+    assert!(f.query(&d, Bounds::default(), "SELECT kind FROM t WHERE kind = 'passage'").is_empty());
+}
+
+#[cfg(feature = "read")]
 #[test]
 fn old_rows_are_hidden_before_fold_and_inside_an_older_snapshot() {
     let f = Fixture::new();
