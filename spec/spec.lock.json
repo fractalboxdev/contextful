@@ -4762,7 +4762,7 @@
       "operation": "respond",
       "subject": "truncation-is-exact",
       "kind": "behavior",
-      "statement": "`truncated` is set exactly when the over-fetched probe row is present, never by comparing a returned count against a requested limit.",
+      "statement": "For a row ceiling, `truncated` is set exactly when the over-fetched probe row is present, never by comparing a returned count against a requested limit.",
       "why": "P4",
       "file": "spec/20-read.md",
       "line": 186

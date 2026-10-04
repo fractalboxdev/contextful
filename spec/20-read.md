@@ -183,7 +183,7 @@ The one response projection: cell encoding, the row ceiling, truncation, counts 
 - `row-ceiling` — A per-table row ceiling published as `limits.max_rows` bounds rows delivered, applied at execution with an over-fetch of 1 rows. It bounds no work performed.
 - `face-ceiling` — Every read on every face, `corpus.retrieve` included, delivers at most 10000 rows: the face ceiling is always a component of {{authority.grant.row-ceiling}}, declared or not, and bounds the candidate window.
   *because an undeclared ceiling otherwise streams a whole table into one response, and a caller learns of the cut from `truncated` rather than from memory exhaustion*
-- `truncation-is-exact` — `truncated` is set exactly when the over-fetched probe row is present, never by comparing a returned count against a requested limit.
+- `truncation-is-exact` — For a row ceiling, `truncated` is set exactly when the over-fetched probe row is present, never by comparing a returned count against a requested limit.
   *P4*
 - `cell-encoding` — SQL NULL is JSON `null` and nothing else is. Non-finite floats are `"NaN"`, `"inf"`, `"-inf"`; temporal values are ISO-8601 strings, intervals ISO-8601 durations; an enum is its label; a union is its text form.
 - `bytes-and-vectors` — Binary is padded base64, and a fixed-size float array, a vector column included, is a JSON array holding each element as a float cell.
