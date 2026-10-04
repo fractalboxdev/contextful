@@ -18,11 +18,9 @@ owns:
 
 # The operator console
 
-The operator console has two pages. Query asks a store in the operator's language through
-one composer, one transcript and grounded widgets. Admin shows the store's workflows,
-runs and learnings and reaches the control document through its edit and apply path.
-The same store registry feeds both pages and the client library that embeds search and
-ask in a third-party page.
+The operator console turns governed store reads into answers and store-published state
+into administrative views. Its hosted server and embeddable client library expose those
+paths to operators and third-party pages.
 
 The Query page between an operator and a store, and where it meets the read contract and the model endpoint:
 
@@ -66,7 +64,9 @@ The hosted console's two pages, their API routes, identity gates, page grants an
   *A-surface*
 - `identity-gate` — Cloudflare Access gates hosted pages by default; a deployment without Access uses Cognito managed password login and first-party sessions.
   *A-surface*
-- `page-grants` — The server maps each verified operator to separate Query and Admin page grants and verifies the matching grant on every page and API request.
+- `page-grants` — The server maps each verified Access application audience or Cognito group to Query and Admin grants and verifies the matching grant on every page and API request.
+  *A-surface*
+- `query-surface` — Query presents one composer, one transcript and widgets for returned rows.
   *A-surface*
 - `engine-faces` — Query reaches the governed read face; Admin reaches workflow state and sends edit or apply through a server-held control capability.
   *A-surface*
@@ -83,6 +83,7 @@ The hosted console's two pages, their API routes, identity gates, page grants an
 - `surface.open-console.wrong-page`: WHEN a Query-only operator requests `/admin/api/workflows`, THEN it raises `ConsolePageForbidden` without dispatching.
 - `surface.open-console.admin-grant`: WHEN an Admin operator applies a document without the server-held admin capability, THEN it raises `ConsoleAdminGrantMissing` without a control call.
 - `surface.open-console.page-grants`: WHEN a verified operator holds only a Query grant, THEN Query admits the session and Admin refuses its page and API requests.
+- `surface.open-console.query-surface`: WHEN an operator asks on Query, THEN the question and grounded answer occupy one transcript beside its widgets.
 
 ```mermaid
 flowchart LR
@@ -127,12 +128,16 @@ Which stores a deployment serves, how each store's credential and binding names 
   *because the entry otherwise reads the fixture's rows under its own name*
 - `authored-name` — An entry carrying its own credential or binding name raises `StoreNameAuthored`.
   *A-surface*
+- `shared-registry` — Query, Admin and the embeddable client library resolve store identities from the same deployment registry.
+  *A-surface*
 
 ## visualize
 
-The Admin page's workflow canvas, inspector, pack file surface and learnings view.
+The Admin page's operational views.
 
 - `workflow-canvas` — Admin projects store-published pipelines, schedules, steps, dataflow and run outcomes, and shows store-owned annotations for surrounding work.
+  *A-surface*
+- `operational-record` — Admin's inspector, pack file surface and learnings view present the store-published operational record.
   *A-surface*
 - `listing-page` — One listing call answers at most 1000 entries, flags truncation, and counts the keys the read route declines to serve.
 
