@@ -591,7 +591,7 @@ pub fn run(cmd: PipelineCmd, tasks: &Tasks) -> Result<()> {
                 })
                 .collect();
             let normalize = Some(contextful_core::pipeline::normalize::Normalize::parse(spec.normalize.as_ref())?);
-            let mut dest = StoreDestination { store, decls, node, author, normalize, relational_parts: Default::default() };
+            let mut dest = StoreDestination { store, decls, node, author, normalize, relational_parts: Default::default(), schema_diffs: Vec::new() };
             for reaped in w.engine.reap_orphans()? {
                 eprintln!("{reaped}: reaped as partial_failure, its owner lease lapsed");
             }

@@ -523,7 +523,7 @@ fn commit_run(
         write_batch(&site.node_dir.join(&name), &rb)?;
         parts.push(PartEntry { name, key_version: 0 });
     }
-    match create_manifest(&site, decl, ctx, parts, position, commit_seq, precommit, commit_point)? {
+    match create_manifest(&site, decl, ctx, parts, position, commit_seq, precommit, commit_point, None, &[])? {
         Some(manifest) => Ok(Landing { manifest, replay: false }),
         None => replay(&manifest_path, &types, batches, ctx, position, per_batch),
     }
@@ -737,6 +737,8 @@ fn create_manifest(
     commit_seq: i64,
     precommit: &dyn Fn() -> Result<()>,
     commit_point: &dyn Fn(&RunManifest) -> Result<()>,
+    group_root: Option<&str>,
+    schema_diffs: &[contextful_core::store::lay_out::SchemaDiff],
 ) -> Result<Option<RunManifest>> {
     let manifest = RunManifest {
         run_id: ctx.injection.run_id.clone(),
@@ -749,6 +751,8 @@ fn create_manifest(
         fence: position.fence,
         logged: position.logged,
         commit_seq: Some(commit_seq),
+        group_root: group_root.map(str::to_string),
+        schema_diffs: schema_diffs.to_vec(),
     };
     std::fs::create_dir_all(&site.node_dir).at(&site.node_dir)?;
     let bytes = serde_json::to_vec_pretty(&manifest).expect("a manifest serializes");
@@ -825,6 +829,65 @@ pub fn commit_parts(
     precommit: &dyn Fn() -> Result<()>,
     commit_point: &dyn Fn(&RunManifest) -> Result<()>,
 ) -> Result<RunManifest> {
+    commit_parts_inner(store, decl, parts, ctx, position, precommit, commit_point, None, &[])
+}
+
+#[allow(clippy::too_many_arguments)]
+pub fn commit_parts_group(
+    store: &Store,
+    decl: &TableDecl,
+    parts: &[String],
+    ctx: &RunContext,
+    position: &Position,
+    group_root: &str,
+    schema_diffs: &[contextful_core::store::lay_out::SchemaDiff],
+    precommit: &dyn Fn() -> Result<()>,
+    commit_point: &dyn Fn(&RunManifest) -> Result<()>,
+) -> Result<RunManifest> {
+    commit_parts_inner(store, decl, parts, ctx, position, precommit, commit_point, Some(group_root), schema_diffs)
+}
+
+#[allow(clippy::too_many_arguments)]
+pub fn commit_parts_with_diffs(
+    store: &Store,
+    decl: &TableDecl,
+    parts: &[String],
+    ctx: &RunContext,
+    position: &Position,
+    schema_diffs: &[contextful_core::store::lay_out::SchemaDiff],
+    precommit: &dyn Fn() -> Result<()>,
+    commit_point: &dyn Fn(&RunManifest) -> Result<()>,
+) -> Result<RunManifest> {
+    commit_parts_inner(store, decl, parts, ctx, position, precommit, commit_point, None, schema_diffs)
+}
+
+/// Publish a relational run after every table's manifest exists. Readers use one
+/// create-new marker as the visibility point for the group.
+pub fn publish_group(store: &Store, root: &str, tables: &[String], ctx: &RunContext) -> Result<()> {
+    let (node_dir, _) = run_dir(store, root, &ctx.node, &ctx.injection.run_id)?;
+    for table in tables {
+        let (_, manifest) = run_dir(store, table, &ctx.node, &ctx.injection.run_id)?;
+        if !manifest.is_file() {
+            return Err(ContextError::Invalid(format!("relational run `{}` has no manifest for `{table}`", ctx.injection.run_id)));
+        }
+    }
+    let bytes = serde_json::to_vec(tables).expect("table names serialize");
+    create_new_file(&node_dir.join("_group.json"), &bytes)?;
+    Ok(())
+}
+
+#[allow(clippy::too_many_arguments)]
+fn commit_parts_inner(
+    store: &Store,
+    decl: &TableDecl,
+    parts: &[String],
+    ctx: &RunContext,
+    position: &Position,
+    precommit: &dyn Fn() -> Result<()>,
+    commit_point: &dyn Fn(&RunManifest) -> Result<()>,
+    group_root: Option<&str>,
+    schema_diffs: &[contextful_core::store::lay_out::SchemaDiff],
+) -> Result<RunManifest> {
     store.check_writable("land")?;
     let (node_dir, manifest_path) = run_dir(store, &decl.name, &ctx.node, &ctx.injection.run_id)?;
     let stage_dir = node_dir.join(STAGE_DIR);
@@ -856,7 +919,7 @@ pub fn commit_parts(
             parquet_io::copy_inserting(&stage_dir.join(staged), &to, &inserts)?;
             entries.push(PartEntry { name, key_version: 0 });
         }
-        create_manifest(&landing, decl, ctx, entries, position, commit_seq, precommit, commit_point)?.ok_or_else(|| already_committed(&ctx.node, &ctx.injection.run_id))
+        create_manifest(&landing, decl, ctx, entries, position, commit_seq, precommit, commit_point, group_root, schema_diffs)?.ok_or_else(|| already_committed(&ctx.node, &ctx.injection.run_id))
     })();
     if committed.is_err() && !manifest_path.exists() {
         for path in &written {

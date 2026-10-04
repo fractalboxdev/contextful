@@ -202,6 +202,21 @@ pub struct RunManifest {
     /// The `_commit_seq` value the run's rows carry (`store.reserve.commit-seq-seed`).
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub commit_seq: Option<i64>,
+    /// A relational landing reads only once the root's group marker exists.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub group_root: Option<String>,
+    /// Nested columns downgraded while this run staged its committed parts.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub schema_diffs: Vec<SchemaDiff>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct SchemaDiff {
+    pub table: String,
+    pub column_path: String,
+    pub source_type: String,
+    pub landed_type: String,
+    pub reason: String,
 }
 
 impl RunManifest {

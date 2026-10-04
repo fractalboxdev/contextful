@@ -281,6 +281,16 @@ impl Store {
                     ))
                     .into());
                 }
+                if let Some(root) = &m.group_root {
+                    let marker = self.table_dir(root)?.join(contextful_core::store::lay_out::RUNS_DIR).join(&m.run_id).join(&m.node_id).join("_group.json");
+                    let bytes = match fs::read(&marker) {
+                        Ok(bytes) => bytes,
+                        Err(e) if e.kind() == std::io::ErrorKind::NotFound => continue,
+                        Err(e) => return Err(ContextError::Io { path: marker, source: e }),
+                    };
+                    let tables: Vec<String> = serde_json::from_slice(&bytes).map_err(|e| unreadable(format!("group marker: {e}")))?;
+                    if !tables.iter().any(|name| name == table) { continue; }
+                }
                 // A run written under the commit-log protocol is readable once its node's log
                 // records it under its fence; a manifest without the mark reads as committed.
                 if let (true, Some(fence), Some(pipeline)) = (m.logged, m.fence, m.pipeline_id.as_deref()) {
