@@ -68,7 +68,6 @@ fn a_test_failing_on_the_base_passes() {
     assert!(o.status.success(), "{}", stderr(&o));
 }
 
-// spec: assurance.gate.test-first-parts@8cdcd3c6
 #[test]
 fn each_changed_test_package_has_its_own_dispatch_part() {
     let r = Repo::init();
@@ -102,6 +101,35 @@ fn each_changed_test_package_has_its_own_dispatch_part() {
     assert!(!whole.status.success() && stderr(&whole).contains("other"), "{}", stderr(&whole));
     let validation = r.gate(&["--stage", "test-first.validate", "--base", &base]);
     assert!(validation.status.success(), "{}", stderr(&validation));
+}
+
+// spec: assurance.gate.test-first-parts@0bd45e25
+#[test]
+fn a_source_package_requires_its_own_changed_test_when_another_package_is_red() {
+    let r = Repo::init();
+    r.write("crates/other/Cargo.toml", &manifest("other", ""));
+    r.write("crates/other/src/lib.rs", "pub fn value() -> i32 { 1 }\n");
+    r.write("crates/other/tests/integration/main.rs", "mod value;\n");
+    r.write("crates/other/tests/integration/value.rs", "#[test]\nfn value() { assert_eq!(other::value(), 1); }\n");
+    r.lock();
+    r.commit("second package and workspace lock");
+    let base = r.head();
+    r.write("crates/demo/src/lib.rs", TRIPLE);
+    r.write("crates/other/src/lib.rs", "pub fn value() -> i32 { 2 }\n");
+    r.write("crates/other/tests/integration/value.rs", "#[test]\nfn value() { assert_eq!(other::value(), 2); }\n");
+    r.commit("two source packages, one changed test package");
+
+    let listed = r.run_ci(&["stages", "--parts", "--base", &base, "--json"]);
+    assert!(listed.status.success(), "{}", stderr(&listed));
+    let stages: Vec<String> = serde_json::from_slice(&listed.stdout).unwrap();
+    assert!(stages.contains(&"test-first.demo".to_string()), "{stages:?}");
+    assert!(stages.contains(&"test-first.other".to_string()), "{stages:?}");
+
+    let validation = r.gate(&["--stage", "test-first.validate", "--base", &base]);
+    assert!(!validation.status.success() && stderr(&validation).contains("TestNotFirst"), "{}", stderr(&validation));
+    assert!(stderr(&validation).contains("demo"), "{}", stderr(&validation));
+    let whole = r.gate(&["--stage", "test-first", "--base", &base]);
+    assert!(!whole.status.success() && stderr(&whole).contains("demo"), "{}", stderr(&whole));
 }
 
 #[test]

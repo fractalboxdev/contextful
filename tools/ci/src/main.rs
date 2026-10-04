@@ -907,19 +907,26 @@ fn changed_tests(base: &str) -> Result<Vec<String>> {
     Ok(git(&["diff", "--name-only", "--diff-filter=ACMR", &range])?.lines().filter(|p| is_test(p)).map(str::to_string).collect())
 }
 
-fn test_package(root: &Path, test: &str) -> Result<String> {
-    let package = test.split_once("/tests/").map(|(p, _)| p).context("a test under a package")?;
-    let manifest = root.join(package).join("Cargo.toml");
+fn changed_package(root: &Path, path: &str) -> Result<String> {
+    let manifest = Path::new(path)
+        .ancestors()
+        .skip(1)
+        .map(|dir| root.join(dir).join("Cargo.toml"))
+        .find(|manifest| manifest.is_file())
+        .with_context(|| format!("`{path}` belongs to no Cargo package"))?;
     let contents = std::fs::read_to_string(&manifest).with_context(|| format!("reading {}", manifest.display()))?;
     let value: toml::Value = contents.parse().with_context(|| format!("parsing {}", manifest.display()))?;
-    Ok(value["package"]["name"].as_str().context("the changed test package has a name")?.to_string())
+    Ok(value.get("package").and_then(|p| p.get("name")).and_then(toml::Value::as_str).context("the changed path's package has a name")?.to_string())
 }
 
 fn test_first_parts(root: &Path, base: &str) -> Result<Vec<String>> {
     let mut packages = std::collections::BTreeSet::new();
-    if !sources_outside_refactors(base)?.is_empty() {
+    for source in sources_outside_refactors(base)? {
+        packages.insert(changed_package(root, &source)?);
+    }
+    if !packages.is_empty() {
         for test in changed_tests(base)? {
-            packages.insert(test_package(root, &test)?);
+            packages.insert(changed_package(root, &test)?);
         }
     }
     Ok(std::iter::once("validate".to_string()).chain(packages).collect())
@@ -939,12 +946,19 @@ fn test_first(root: &Path, base: &str, bound: Duration, only: Option<&[String]>)
             format!("{} source file(s) changed and no test under a package's tests/ did: {}", sources.len(), sources.join(", ")),
         ));
     }
+    let source_packages: std::collections::BTreeSet<String> = sources.iter().map(|source| changed_package(root, source)).collect::<Result<_>>()?;
+    let test_packages: std::collections::BTreeSet<String> = tests.iter().map(|test| changed_package(root, test)).collect::<Result<_>>()?;
+    if only.is_none() || only.is_some_and(|parts| parts == ["validate"]) {
+        if let Some(missing) = source_packages.difference(&test_packages).next() {
+            return Err(refuse("TestNotFirst", format!("source package `{missing}` has no changed test under its tests/")));
+        }
+    }
     let selected: Vec<&str> = match only {
         Some(parts) if parts.len() == 1 && parts[0] == "validate" => return Ok(()),
         Some(parts) => {
             let mut selected = Vec::new();
             for test in tests {
-                if parts.contains(&test_package(root, test)?) {
+                if parts.contains(&changed_package(root, test)?) {
                     selected.push(test);
                 }
             }
@@ -954,7 +968,12 @@ fn test_first(root: &Path, base: &str, bound: Duration, only: Option<&[String]>)
     };
     let mut by_package: std::collections::BTreeMap<String, Vec<&str>> = Default::default();
     for test in selected {
-        by_package.entry(test_package(root, test)?).or_default().push(test);
+        by_package.entry(changed_package(root, test)?).or_default().push(test);
+    }
+    if let Some(parts) = only {
+        if let Some(missing) = parts.iter().filter(|part| part.as_str() != "validate").find(|part| !by_package.contains_key(part.as_str())) {
+            return Err(refuse("TestNotFirst", format!("source package `{missing}` has no changed test under its tests/")));
+        }
     }
 
     let scratch = root.join("target/test-first");

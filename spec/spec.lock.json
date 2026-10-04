@@ -20434,7 +20434,7 @@
       "operation": "gate",
       "subject": "test-first-parts",
       "kind": "behavior",
-      "statement": "A remote test-first validation checks for a changed test, and each changed test package checks only its own tests against the base in a separate dispatch.",
+      "statement": "Remote validation requires a changed test in each changed source package under {{assurance.test.test-first}}; each changed source or test package checks only its own tests against the base in a separate dispatch.",
       "why": "because one base build per package fits the sandbox's wall clock more reliably",
       "file": "spec/81-engineering.md",
       "line": 158
@@ -22970,6 +22970,10 @@
     [
       "assurance.build.wasi-probe",
       "assurance.gate.edge-budget"
+    ],
+    [
+      "assurance.gate.test-first-parts",
+      "assurance.test.test-first"
     ],
     [
       "assurance.gate.formal-stage",
