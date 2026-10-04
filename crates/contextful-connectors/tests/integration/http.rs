@@ -1,11 +1,37 @@
 //! `connector.source` over the generic HTTP source.
 
-use crate::support::{request, source, Never, Response, Server};
-use contextful_connectors::http::{ConfigError, HttpConfig, PAGE_CAP};
+use crate::support::{request, resolver, source, Never, Response, Server};
+use contextful_connectors::http::{ConfigError, HttpConfig, HttpSource, Mediation, PAGE_CAP};
 use contextful_core::connector::ConnectorError;
 use contextful_core::run::ports::Source;
 use contextful_core::run::{FailureTag, RunError};
+use contextful_outbound::egress::{Inbound, Outbound, Transport, TransportFault};
 use serde_json::{json, Value};
+use std::net::SocketAddr;
+use std::sync::{Arc, Mutex};
+use std::time::Duration;
+
+#[derive(Default)]
+struct ExpansionTransport {
+    limits: Mutex<Vec<(String, u64, Duration)>>,
+}
+
+impl Transport for ExpansionTransport {
+    fn resolve(&self, _: &str, port: u16) -> Result<Vec<SocketAddr>, String> {
+        Ok(vec![SocketAddr::new("93.184.216.34".parse().unwrap(), port)])
+    }
+
+    fn send(&self, request: &Outbound<'_>) -> Result<Inbound, TransportFault> {
+        self.limits.lock().unwrap().push((request.url.path().to_string(), request.max_body, request.timeout));
+        let body = match request.url.path() {
+            "/index" => b"[{\"id\":1,\"url\":\"/detail/1\"}]".to_vec(),
+            "/detail/1" => b"{\"ok\":true}".to_vec(),
+            _ => return Err(TransportFault::Failed("unexpected request path".into())),
+        };
+        if body.len() as u64 > request.max_body { return Err(TransportFault::BodyOverLimit); }
+        Ok(Inbound { status: 200, headers: vec![], body })
+    }
+}
 
 fn ids(rows: &[serde_json::Map<String, Value>]) -> Vec<String> {
     rows.iter().map(|r| r["id"].as_str().unwrap_or_default().to_string()).collect()
@@ -29,6 +55,22 @@ fn expansion_rejects_201_followups_before_the_first() {
     assert!(failure.message.contains("200"), "{failure}");
     assert_eq!(vendor.received("/index").len(), 1);
     assert_eq!(vendor.requests.lock().unwrap().len(), 1, "no detail request follows an over-budget index");
+}
+
+#[test]
+fn expansion_spends_index_bytes_before_budgeting_detail_io() {
+    let transport = Arc::new(ExpansionTransport::default());
+    let config = HttpConfig::parse(&json!({"endpoint":"https://api.vendor.example/index", "expansion":{"pointer_column":"url", "target_column":"detail"}})).unwrap();
+    let s = HttpSource::mediated(config, "t", resolver(vec![]), Mediation { transport: Some(transport.clone()), ..Mediation::default() }).unwrap();
+    let rows = s.walk(&request(None), &Never).unwrap();
+    assert_eq!(rows[0]["detail"]["ok"], true);
+    let limits = transport.limits.lock().unwrap();
+    assert_eq!(limits.len(), 2);
+    assert_eq!(limits[0].0, "/index");
+    assert_eq!(limits[1].0, "/detail/1");
+    assert_eq!(limits[0].1, 256 * 1024 * 1024);
+    assert_eq!(limits[1].1, limits[0].1 - b"[{\"id\":1,\"url\":\"/detail/1\"}]".len() as u64);
+    assert!(limits.iter().all(|(_, _, time)| *time <= Duration::from_secs(600)));
 }
 
 /// One expansion pointer fetches its document into the declared target column.
