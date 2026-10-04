@@ -560,7 +560,8 @@ fn a_unit_settled_by_a_concurrent_tick_lands_none_of_its_rows() {
     std::fs::write(dir.path().join("brief.txt"), "Filing is due.\n").unwrap();
     let parents = json!([{"doc_id": "memo", "path": "memo.txt"}, {"doc_id": "brief", "path": "brief.txt"}]);
     let mut s = source(dir.path(), parents.clone(), SRT_ENGINE);
-    let d = s.derivation().unwrap();
+    let memo_key = pulled(&mut source(dir.path(), json!([{"doc_id": "memo", "path": "memo.txt"}]), SRT_ENGINE))[0]["derivation_key"].as_str().unwrap().to_string();
+    let brief_key = pulled(&mut source(dir.path(), json!([{"doc_id": "brief", "path": "brief.txt"}]), SRT_ENGINE))[0]["derivation_key"].as_str().unwrap().to_string();
     let settled = |unit: &str, key: String| {
         json!({"unit_ref": unit, "cue_seq": 0, "kind": "passage", "derivation_key": key, "_ingested_at": "2030-01-01T00:00:00.000000000Z", "_run_id": "other", "_row_seq": 0})
             .as_object()
@@ -568,11 +569,11 @@ fn a_unit_settled_by_a_concurrent_tick_lands_none_of_its_rows() {
             .clone()
     };
     let parent_rows: Vec<Row> = parents.as_array().unwrap().iter().map(|r| r.as_object().unwrap().clone()).collect();
-    s.reader = Box::new(Racing { parents: parent_rows.clone(), landed: vec![settled("memo", d.key("memo", "memo.txt", None))], output_reads: Default::default() });
+    s.reader = Box::new(Racing { parents: parent_rows.clone(), landed: vec![settled("memo", memo_key)], output_reads: Default::default() });
     let rows = pulled(&mut s);
     assert!(rows.iter().all(|r| r["unit_ref"] != "memo"), "the revived unit lands nothing: {rows:?}");
     assert_eq!(unit(&rows, "brief")["text"], "Filing is due.");
-    assert_eq!(unit(&rows, "brief")["derivation_key"], d.key("brief", "brief.txt", None).as_str());
+    assert_eq!(unit(&rows, "brief")["derivation_key"], brief_key);
     // A concurrent landing under another key settles nothing under this one.
     s.reader = Box::new(Racing { parents: parent_rows, landed: vec![settled("memo", "0".repeat(64))], output_reads: Default::default() });
     assert_eq!(unit(&pulled(&mut s), "memo")["text"], "Hello there.");

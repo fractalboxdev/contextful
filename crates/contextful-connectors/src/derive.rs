@@ -27,6 +27,7 @@ use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::Arc;
 use std::time::{Duration, Instant};
 use url::{Host, Url};
+use sha2::{Digest, Sha256};
 
 /// The source's registered name.
 pub const NAME: &str = "derive";
@@ -521,6 +522,25 @@ impl DeriveSource {
         Ok(p)
     }
 
+    /// Hash a resolved local file in chunks; a path refusal remains a per-unit marker.
+    fn local_content_digest(&self, media: &str) -> Option<String> {
+        if is_url(media) {
+            return None;
+        }
+        let path = self.media_path(media).ok()?;
+        let mut file = std::fs::File::open(path).ok()?;
+        let mut digest = Sha256::new();
+        let mut block = [0u8; 64 * 1024];
+        loop {
+            let count = file.read(&mut block).ok()?;
+            if count == 0 {
+                break;
+            }
+            digest.update(&block[..count]);
+        }
+        Some(format!("{:x}", digest.finalize()))
+    }
+
     /// Derive one unit into its rows; a run stop yields none.
     fn derive_unit(&self, chain: &Chain, env: &[(String, String)], unit: &Unit, cancel: &dyn Cancellation) -> Result<Vec<Row>, Failure> {
         let outcome = self.media_path(&unit.media).map_err(ChainError::Unit).and_then(|media| {
@@ -607,7 +627,16 @@ impl Source for DeriveSource {
             Some(chain) => self.derivation_of(chain),
             None => self.derivation().map_err(refused)?,
         };
-        let parents = self.reader.rows(&self.config.source_table, &[&self.config.parent_id_column, &self.config.media_column, DERIVATION_KEY])?;
+        let mut parents = self.reader.rows(&self.config.source_table, &[&self.config.parent_id_column, &self.config.media_column, DERIVATION_KEY])?;
+        if matches!(self.config.task, Task::Transcribe) {
+            for parent in &mut parents {
+                let Some(media) = parent.get(&self.config.media_column).and_then(serde_json::Value::as_str) else { continue };
+                if let Some(digest) = self.local_content_digest(media) {
+                    let prior = parent.get(DERIVATION_KEY).cloned();
+                    parent.insert(DERIVATION_KEY.into(), serde_json::json!({"parent": prior, "local_sha256": digest}).to_string().into());
+                }
+            }
+        }
         let derived = self.reader.rows(&self.output_table, &OUTPUT_COLUMNS)?;
         let sel = select(&parents, &derived, &self.config, &derivation);
         for e in &sel.incomplete {

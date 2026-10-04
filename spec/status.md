@@ -11,11 +11,11 @@ An unpinned clause is `committed`; a pinned one is `performed` when its test res
 | `corpus` | 1 | 10 | 77 | 37 | 7 | 0 | 38 | 0 | 38 |
 | `disclosure` | 3 | 16 | 122 | 64 | 13 | 7 | 54 | 0 | 54 |
 | `read` | 2 | 15 | 179 | 29 | 22 | 21 | 163 | 0 | 163 |
-| `run` | 3 | 26 | 376 | 98 | 36 | 34 | 270 | 0 | 270 |
+| `run` | 3 | 26 | 376 | 98 | 36 | 34 | 272 | 0 | 272 |
 | `store` | 1 | 17 | 235 | 55 | 13 | 20 | 198 | 0 | 198 |
 | `surface` | 2 | 19 | 86 | 46 | 22 | 5 | 51 | 0 | 51 |
 | `topology` | 1 | 6 | 70 | 24 | 5 | 5 | 38 | 0 | 38 |
-| **total** | 19 | 154 | 1960 | 569 | 188 | 130 | 1346 | 0 | |
+| **total** | 19 | 154 | 1960 | 569 | 188 | 130 | 1348 | 0 | |
 
 Decision records: 18.
 
@@ -36,7 +36,7 @@ A milestone reads `closed` when its acceptance test computes `passing` and every
 | 8 — Accountability | 5 | 60 | 47 | passing | open |
 | 9 — Visibility | 6 | 41 | 3 | open | open |
 | 10 — Cadence and the operator plane | 11 | 67 | 56 | passing | open |
-| 11 — The derive tier | 7 | 82 | 66 | passing | closed |
+| 11 — The derive tier | 7 | 82 | 68 | passing | closed |
 | 12 — The console | 11 | 30 | 0 | absent | open |
 | 13 — Disclosure | 5 | 21 | 4 | open | open |
 | 14 — Assurance | 7 | 130 | 83 | passing | closed |
@@ -885,8 +885,10 @@ Unscheduled operations: 10.
 | `run.emit.derivation-key` | `crates/contextful-core/tests/integration/run/derive.rs::a_derivation_key_hashes_engine_binding_columns_and_parent` | performed |
 | `run.emit.empty-document` | `crates/contextful-core/tests/integration/run/derive.rs::only_a_well_formed_webvtt_without_cues_is_empty` | performed |
 | `run.emit.host-rows` | `crates/contextful-core/tests/integration/run/host_task.rs::a_unit_lands_stamped_content_rows_and_one_marker` | performed |
+| `run.emit.local-content-key` | `spec/pins.toml` | performed |
 | `run.emit.marker-last` | `crates/contextful-cli/tests/integration/derive.rs::a_failure_before_the_marker_re_runs_the_unit_and_its_rows_collapse_by_key` | performed |
 | `run.emit.marker-row` | `crates/contextful-core/tests/integration/run/derive.rs::a_unit_without_passages_lands_one_marker_row` | performed |
+| `run.emit.output-modality` | `spec/pins.toml` | performed |
 | `run.emit.output-tables` | `crates/contextful-core/tests/integration/run/host_task.rs::tables_outside_the_tasks_set_refuse` | performed |
 | `run.emit.primary-key` | `crates/contextful-core/tests/integration/run/derive.rs::a_derive_table_keys_on_unit_derivation_and_sequence` | performed |
 | `run.emit.reserved-discriminator` | `crates/contextful-core/tests/integration/run/derive.rs::a_derive_table_naming_kind_refuses` | performed |

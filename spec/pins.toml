@@ -27,6 +27,8 @@
 # `contextful-spec state` reads this file and the tags and writes spec/status.md.
 
 [pin]
+"run.emit.output-modality" = { test = "contextful_connectors::derive::a_transcript_passage_carries_text_modality" }
+"run.emit.local-content-key" = { test = "contextful_connectors::derive::changed_local_bytes_reselect_the_same_media_path" }
 "corpus.targets.cap-unrecorded"     = { test = "contextful_spec::targets::a_capped_shape_not_recording_its_exclusions_is_refused" }
 "corpus.targets.function-profile"   = { test = "contextful_spec::targets::a_function_class_shape_hosting_the_full_profile_is_refused" }
 "corpus.targets.incomplete"         = { test = "contextful_spec::targets::a_shape_leaving_a_role_unfilled_is_refused" }
@@ -58,7 +60,7 @@ connector = 195
 corpus = 38
 disclosure = 54
 read = 163
-run = 270
+run = 272
 store = 198
 surface = 51
 topology = 38

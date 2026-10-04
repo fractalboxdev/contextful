@@ -307,7 +307,7 @@ pub fn passage_rows(unit: &Unit, passages: &[Cue], engine_id: &str) -> Vec<Row> 
                 "unit_ref": unit.key, "cue_seq": i as i64, KIND: "passage", "text": p.text,
                 "start_ms": p.start_ms as i64, "end_ms": p.end_ms as i64,
                 "unit_status": UnitStatus::Ok.name(), "attempts": unit.prior_attempts + 1, "engine_id": engine_id,
-                DERIVATION_KEY: unit.derivation_key,
+                DERIVATION_KEY: unit.derivation_key, "_modality": "text",
             });
             v.as_object().cloned().unwrap_or_default()
         })
