@@ -843,7 +843,7 @@ impl HttpSource {
         headers.extend(conditional_headers(request.position.as_ref()));
         let resp = self.client.send("GET", &url, &headers, None)?;
         if resp.status == 304 {
-            return Ok(serde_json::json!({ "rows": [], "cursor": request.position.clone().unwrap_or_else(|| Value::Object(Map::new())), "more": false }));
+            return Ok(serde_json::json!({ "rows": [], "cursor": request.position.clone().unwrap_or_else(|| Value::Object(Map::new())), "more": false, "snapshot_complete": false }));
         }
         if !(200..300).contains(&resp.status) {
             let retry_after = resp.header("retry-after").and_then(|v| v.trim().parse().ok());
@@ -853,7 +853,7 @@ impl HttpSource {
             Format::Workbook => workbook::rows(&resp.body, self.config.sheet.as_deref(), self.config.skip_rows, &scrub(&resp.url))?,
             format => decode(format, &resp.body, self.config.records.as_deref(), &scrub(&resp.url))?.0,
         };
-        Ok(serde_json::json!({ "rows": self.stamp(batch, &resp.url)?, "cursor": served_validators(&resp), "more": false }))
+        Ok(serde_json::json!({ "rows": self.stamp(batch, &resp.url)?, "cursor": served_validators(&resp), "more": false, "snapshot_complete": true }))
     }
 }
 
@@ -869,10 +869,10 @@ impl Source for HttpSource {
         let pulled = if self.config.conditional {
             self.conditional_pull(request, cancel)?
         } else if self.walks_whole() {
-            serde_json::json!({ "rows": self.walk(request, cancel)?, "more": false })
+            serde_json::json!({ "rows": self.walk(request, cancel)?, "more": false, "snapshot_complete": !self.watermarked })
         } else {
             let (rows, next) = self.read_page(request)?;
-            serde_json::json!({ "rows": rows, "cursor": { "next": next }, "more": next.is_some() })
+            serde_json::json!({ "rows": rows, "cursor": { "next": next }, "more": next.is_some(), "snapshot_complete": next.is_none() })
         };
         serde_json::to_vec(&pulled).map_err(|e| Failure::new(FailureTag::Permanent, e.to_string()))
     }
