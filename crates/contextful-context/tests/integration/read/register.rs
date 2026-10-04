@@ -25,6 +25,26 @@ fn tree(root: &std::path::Path) -> Vec<String> {
     out
 }
 
+#[test]
+fn describe_reports_the_store_lexicon_on_each_registered_table() {
+    let manifest = format!(
+        "[lexicon.numeric_identifiers]\n\"42\" = \"customer account\"\n[lexicon.badges]\nreviewed = \"verified by an analyst\"\n{MANIFEST}"
+    );
+    let r = Reads::with_manifest(&manifest);
+    let session = r.session(&["research/notes", "research/vendor"], None, Some("public-cloud:us-east-1"));
+    let expected = json!({
+        "numeric_identifiers": { "42": "customer account" },
+        "badges": { "reviewed": "verified by an analyst" }
+    });
+    for table in ["research/notes", "research/vendor"] {
+        let described = r.face.describe(&session, Some(table), Bounds::default()).unwrap();
+        assert_eq!(described["lexicon"], expected);
+        for serving_field in ["aliases", "time_window_phrases", "distillation_examples"] {
+            assert!(described["lexicon"].get(serving_field).is_none());
+        }
+    }
+}
+
 // spec: read.register.column-hints@ce544829
 #[test]
 fn describe_reports_declared_hints_on_existing_columns_only() {
