@@ -1,7 +1,7 @@
 //! The generic HTTP source: one endpoint, one decoder, one pagination shape, and headers
 //! whose values are templates hydrated per read (`connector.source.http-headers`).
 
-use crate::decode::{decode, decode_with_encoding, workbook, Format};
+use crate::decode::{decode_with_encoding, workbook, Format};
 use contextful_core::connector::attach::{endpoint, scrub, scrub_text, Allowlist};
 use contextful_core::connector::meter::LimiterDeclaration;
 use contextful_core::connector::probe::ScopeProbe;
@@ -1057,7 +1057,7 @@ impl HttpSource {
         }
         let batch = match self.config.format {
             Format::Workbook => workbook::rows(&resp.body, self.config.sheet.as_deref(), self.config.skip_rows, &scrub(&resp.url))?,
-            format => decode(format, &resp.body, self.config.records.as_deref(), &scrub(&resp.url))?.0,
+            format => decode_with_encoding(format, &resp.body, self.config.records.as_deref(), &scrub(&resp.url), self.config.encoding.as_deref())?.0,
         };
         let rows = self.expand(self.stamp(batch, &resp.url)?, request, cancel, &resp.url)?;
         Ok(serde_json::json!({ "rows": rows, "cursor": served_validators(&resp), "more": false, "snapshot_complete": true }))
