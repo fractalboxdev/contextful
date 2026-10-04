@@ -1120,6 +1120,18 @@ dependencies = [
 ]
 
 [[package]]
+name = "contextful-probe"
+version = "0.5.0"
+dependencies = [
+ "contextful-eval",
+ "contextful-policy",
+ "hex",
+ "serde_json",
+ "sha2 0.10.9",
+ "tempfile",
+]
+
+[[package]]
 name = "contextful-spec"
 version = "0.5.0"
 dependencies = [

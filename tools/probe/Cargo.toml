@@ -1,0 +1,25 @@
+[package]
+name = "contextful-probe"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[dependencies]
+contextful-eval = { path = "../eval" }
+contextful-policy = { path = "../../crates/contextful-policy" }
+serde_json = "1"
+sha2 = "0.10"
+hex = "0.4"
+tempfile = "3"
+
+[[bin]]
+name = "audit-open-bounded-heap"
+path = "src/bin/audit_open_bounded_heap.rs"
+
+[[bin]]
+name = "audit-query-digest-keyed"
+path = "src/bin/audit_query_digest_keyed.rs"
+
+[[test]]
+name = "integration"
+path = "tests/integration/main.rs"

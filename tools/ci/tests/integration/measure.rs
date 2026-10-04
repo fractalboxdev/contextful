@@ -129,3 +129,21 @@ fn an_issue_entry_is_listed_open_and_gates_nothing() {
     assert!(!o.status.success());
     assert!(stderr(&o).contains("evals/ledger.md differs"), "{}", stderr(&o));
 }
+
+/// A probe method runs its named binary in a fresh process and reads its record.
+#[test]
+fn a_probe_binary_records_a_gate_figure() {
+    let r = repo(&entry("demo-doubles", "run.journal.entry-key", "{ probe = \"demo-probe\" }", "target = { op = \"==\", value = 4 }"));
+    r.write("Cargo.toml", "[workspace]\nresolver = \"2\"\nmembers = [\"crates/*\", \"tools/*\"]\n");
+    r.write("tools/probe/Cargo.toml", "[package]\nname = \"demo-probes\"\nversion = \"0.1.0\"\nedition = \"2021\"\n\n[[bin]]\nname = \"demo-probe\"\npath = \"src/main.rs\"\n");
+    r.write("tools/probe/src/main.rs", r##"fn main() {
+    let dir = std::path::PathBuf::from(std::env::var_os("CONTEXTFUL_MEASURE_DIR").unwrap());
+    std::fs::write(dir.join("demo-doubles.json"),
+        r#"{"id":"demo-doubles","value":4,"n":1,"seed":7,"run":{"processor":"t","nproc":1,"memory_limit":null}}"#).unwrap();
+}
+"##);
+    r.lock();
+    let o = measure(&r, &[]);
+    assert!(o.status.success(), "{}", stderr(&o));
+    assert!(stderr(&o).contains("demo-doubles = 4"), "{}", stderr(&o));
+}

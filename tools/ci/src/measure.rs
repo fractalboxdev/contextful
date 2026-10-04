@@ -169,7 +169,14 @@ fn measure(root: &Path, tiers: &[Tier]) -> Result<(BTreeSet<String>, Result<()>)
                     }
                 }
                 Some(Method::Cases(c)) => bail!("`{id}`: the case-set method `{c}` has no runner in this tree"),
-                Some(Method::Probe(p)) => bail!("`{id}`: the probe method `{p}` has no runner in this tree"),
+                Some(Method::Probe(p)) => {
+                    if let Err(err) = run_probe(root, p, &records) {
+                        eprintln!("measure: {id} ({tier}) failed: {err}");
+                        failed.insert(id.clone());
+                        exited.get_or_insert(err);
+                        continue;
+                    }
+                }
                 _ => continue,
             }
             let secs = at.elapsed().as_secs_f64();
@@ -239,6 +246,20 @@ fn run_test(root: &Path, path: &str, records: &Path) -> Result<()> {
         .status()?;
     if !status.success() {
         return Err(crate::exited(format!("cargo test -p {package} --test integration -- --exact {name}"), status));
+    }
+    Ok(())
+}
+
+/// Run one probe binary in its own process, collecting records into `records`.
+fn run_probe(root: &Path, name: &str, records: &Path) -> Result<()> {
+    let status = Command::new("cargo")
+        .args(["run", "--locked", "-q", "--manifest-path", PROBE_MANIFEST, "--bin", name])
+        .env("CARGO_TARGET_DIR", root.join(EVALUATE_TARGET))
+        .env(MEASURE_DIR_VAR, records)
+        .current_dir(root)
+        .status()?;
+    if !status.success() {
+        return Err(crate::exited(format!("cargo run --manifest-path {PROBE_MANIFEST} --bin {name}"), status));
     }
     Ok(())
 }

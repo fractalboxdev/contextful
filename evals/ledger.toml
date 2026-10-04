@@ -169,16 +169,18 @@ clause = "disclosure.record.segment"
 metric = "audit.digest.dictionary_matches"
 kind   = "test"
 tier   = "gate"
-method = { issue = 81 }
+method = { probe = "audit-query-digest-keyed" }
 target = { op = "==", value = 0 }
+seed   = 0x5eed_0081
 
 [entry.audit-open-bounded-heap]
 clause = "disclosure.record.single-writer"
 metric = "audit.open.retained_heap_delta_kib"
 kind   = "size"
 tier   = "gate"
-method = { issue = 81 }
+method = { probe = "audit-open-bounded-heap" }
 target = { op = "<", value = 64 }
+seed   = 0x5eed_0081
 
 # ---------------------------------------------------------------- authority
 
