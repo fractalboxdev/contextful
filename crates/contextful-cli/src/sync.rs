@@ -138,11 +138,30 @@ fn open_with(l: &Located, config: SyncConfig) -> Result<(Syncer, Vec<TableDecl>)
     // The declaration set (`store.declare.declaration-set`): `replicate` and `primary_key`
     // read here match those the read face reads.
     let text = std::fs::read_to_string(&l.declaration).unwrap_or_default();
+    let control_dir = control_dir(&text, &l.project.dir, &l.project.name)?;
     let decls = TableDecl::parse_declaration_set(&text, &pipeline_files(&l.declaration)?)?;
     let site_id = crate::project::site_id_for(&text, &l.declaration, None, None).unwrap_or_else(|_| node_id.to_string());
     let residency = Some(SiteResidency { site_id, regions: crate::reside::declared(&text)?.map(|r| r.entries()) });
-    let syncer = Syncer { store, bucket, config, prefix, project: l.project.name.clone(), node: node_id.to_string(), residency };
+    let syncer = Syncer { store, bucket, config, prefix, project: l.project.name.clone(), node: node_id.to_string(), residency, control_dir };
     Ok((syncer, decls))
+}
+
+fn control_dir(text: &str, project_dir: &std::path::Path, project: &str) -> Result<Option<PathBuf>> {
+    let value: toml::Value = toml::from_str(text)?;
+    let Some(block) = value.get("control") else {
+        return Ok(Some(project_dir.join(".contextful/control").join(project)));
+    };
+    let block = block.as_table().context("`[control]` is a table")?;
+    if block.contains_key("url") && block.contains_key("snapshot_dir") {
+        anyhow::bail!("`[control]` names one source: `url` or `snapshot_dir`");
+    }
+    if block.contains_key("url") {
+        return Ok(None);
+    }
+    let path = block.get("snapshot_dir")
+        .map(|v| v.as_str().context("`[control] snapshot_dir` is a path string"))
+        .transpose()?;
+    Ok(Some(path.map_or_else(|| project_dir.join(".contextful/control").join(project), |p| project_dir.join(p))))
 }
 
 /// Open the bucket `[sync] endpoint` names through the adapter its scheme selects

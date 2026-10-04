@@ -6,6 +6,29 @@ mod node_id;
 mod s3;
 mod without_s3;
 
+#[test]
+fn push_reads_the_declared_control_snapshot_directory() {
+    use contextful_core::issue::SignatureAlgorithm;
+    use contextful_policy::control_receipt::ControlReceipt;
+    use contextful_policy::issue::SeedSigner;
+
+    let bucket = tempfile::tempdir().unwrap();
+    let site = project("ingest-a", &file_sync(bucket.path(), ""));
+    std::fs::write(site.path().join("contextful.toml"), "authoring_posture = 'per_request'\n[control]\nsnapshot_dir = 'ops/control'\n").unwrap();
+    let control = site.path().join("ops/control");
+    std::fs::create_dir_all(&control).unwrap();
+    let snapshot = b"authoring_posture = 'per_request'\n";
+    let signer = SeedSigner::generate(SignatureAlgorithm::Ed25519);
+    let receipt = ControlReceipt::sign("research", 1, None, snapshot, &signer).unwrap();
+    std::fs::write(control.join("manifest@v1.toml"), snapshot).unwrap();
+    std::fs::write(control.join("receipt@v1.json"), serde_json::to_vec(&receipt).unwrap()).unwrap();
+    std::fs::write(control.join("manifest@current"), "1\n").unwrap();
+    ok(&cf(site.path(), &["sync", "push", "--project", "research"], &[]));
+    let manifest: Value = serde_json::from_slice(&std::fs::read(bucket.path().join("context-team/team/manifest.json")).unwrap()).unwrap();
+    assert_eq!(manifest["control_heads"]["research"]["receipt_sha256"], receipt.digest());
+    assert!(manifest["entries"]["research/control/receipt@v1.json"].is_object());
+}
+
 use serde_json::{json, Value};
 use std::io::{BufRead, BufReader, Write};
 use std::net::TcpListener;

@@ -7,11 +7,95 @@ use contextful_core::store::StoreError;
 use contextful_sync::{FsBucket, SyncError, VolumeClass};
 use serde_json::json;
 use std::sync::Arc;
+use contextful_core::issue::SignatureAlgorithm;
+use contextful_core::surface::control::{receipt_file, snapshot_file, POINTER_FILE as CONTROL_POINTER};
+use contextful_policy::control_receipt::ControlReceipt;
+use contextful_policy::issue::SeedSigner;
 
 const NOW: &str = "2030-01-01T01:00:00Z";
 
 fn manifest(b: &dyn ObjectStore) -> BucketManifest {
     serde_json::from_slice(&b.get("team/manifest.json").unwrap().unwrap().0).unwrap()
+}
+
+fn applied_control(node: &crate::support::Node, version: u64, parent: Option<&str>, body: &str) -> ControlReceipt {
+    let dir = node.syncer.control_dir.as_ref().unwrap();
+    std::fs::create_dir_all(dir).unwrap();
+    let signer = SeedSigner::generate(SignatureAlgorithm::Ed25519);
+    let receipt = ControlReceipt::sign(&node.syncer.project, version, parent, body.as_bytes(), &signer).unwrap();
+    std::fs::write(dir.join(snapshot_file(version)), body).unwrap();
+    std::fs::write(dir.join(receipt_file(version)), serde_json::to_vec(&receipt).unwrap()).unwrap();
+    std::fs::write(dir.join(CONTROL_POINTER), format!("{version}\n")).unwrap();
+    receipt
+}
+
+#[test]
+fn a_push_commits_the_signed_control_chain_and_project_head() {
+    let dir = tempfile::tempdir().unwrap();
+    let b = bucket(dir.path());
+    let a = node("ingest-a", b.clone(), "");
+    let first = applied_control(&a, 1, None, "[pipeline]\nname = 'one'\n");
+    a.syncer.push(at(NOW)).unwrap();
+    let second = applied_control(&a, 2, Some(&first.digest()), "[pipeline]\nname = 'two'\n");
+    a.syncer.push(at(NOW)).unwrap();
+    let m = manifest(b.as_ref());
+    assert_eq!(m.control_heads["research"].receipt_sha256, second.digest());
+    assert_eq!(m.control_heads["research"].version, 2);
+    for version in [1, 2] {
+        for name in [snapshot_file(version), receipt_file(version)] {
+            let key = format!("research/control/{name}");
+            assert!(m.entries.contains_key(&key), "{key}");
+            assert!(b.get(&format!("team/{key}")).unwrap().is_some(), "{key}");
+        }
+    }
+}
+
+#[test]
+fn a_sibling_control_head_refuses_without_changing_the_bucket_head() {
+    let dir = tempfile::tempdir().unwrap();
+    let b = bucket(dir.path());
+    let a = node("ingest-a", b.clone(), "");
+    let c = node("ingest-b", b.clone(), "");
+    let first = applied_control(&a, 1, None, "first");
+    a.syncer.push(at(NOW)).unwrap();
+    applied_control(&c, 1, None, "sibling");
+    match c.syncer.push(at(NOW)) {
+        Err(SyncError::Store(StoreError::SyncControlDiverged(message))) => {
+            assert!(message.contains(&first.digest()), "{message}");
+        }
+        other => panic!("{other:?}"),
+    }
+    assert_eq!(manifest(b.as_ref()).control_heads["research"].receipt_sha256, first.digest());
+}
+
+#[test]
+fn a_skipped_local_version_still_uploads_its_signed_predecessor() {
+    let dir = tempfile::tempdir().unwrap();
+    let b = bucket(dir.path());
+    let a = node("ingest-a", b.clone(), "");
+    let first = applied_control(&a, 1, None, "first");
+    applied_control(&a, 2, Some(&first.digest()), "orphan");
+    applied_control(&a, 3, Some(&first.digest()), "third");
+    a.syncer.push(at(NOW)).unwrap();
+    let m = manifest(b.as_ref());
+    assert_eq!(m.control_heads["research"].version, 3);
+    assert!(m.entries.contains_key("research/control/receipt@v1.json"));
+    assert!(m.entries.contains_key("research/control/receipt@v3.json"));
+    assert!(!m.entries.contains_key("research/control/receipt@v2.json"));
+}
+
+#[test]
+fn a_corrupted_control_receipt_prevents_manifest_publication() {
+    let dir = tempfile::tempdir().unwrap();
+    let b = bucket(dir.path());
+    let a = node("ingest-a", b.clone(), "");
+    applied_control(&a, 1, None, "first");
+    let receipt = a.syncer.control_dir.as_ref().unwrap().join(receipt_file(1));
+    let mut value: serde_json::Value = serde_json::from_slice(&std::fs::read(&receipt).unwrap()).unwrap();
+    value["signature"] = json!("00");
+    std::fs::write(receipt, serde_json::to_vec(&value).unwrap()).unwrap();
+    assert!(matches!(a.syncer.push(at(NOW)), Err(SyncError::Surface(_))));
+    assert!(b.get("team/manifest.json").unwrap().is_none());
 }
 
 /// A push uploads each file it owns, or no node owns, whose digest the bucket lacks under
