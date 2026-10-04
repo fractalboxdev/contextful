@@ -11,11 +11,11 @@ An unpinned clause is `committed`; a pinned one is `performed` when its test res
 | `corpus` | 1 | 10 | 77 | 37 | 7 | 0 | 38 | 0 | 38 |
 | `disclosure` | 3 | 16 | 122 | 64 | 13 | 7 | 54 | 0 | 54 |
 | `read` | 2 | 15 | 179 | 29 | 22 | 21 | 163 | 0 | 163 |
-| `run` | 3 | 26 | 376 | 100 | 36 | 36 | 263 | 0 | 263 |
+| `run` | 3 | 26 | 377 | 100 | 36 | 36 | 264 | 0 | 264 |
 | `store` | 1 | 17 | 235 | 55 | 13 | 20 | 198 | 0 | 198 |
 | `surface` | 2 | 19 | 86 | 46 | 22 | 5 | 51 | 0 | 51 |
 | `topology` | 1 | 6 | 70 | 24 | 5 | 5 | 38 | 0 | 38 |
-| **total** | 19 | 154 | 1960 | 571 | 188 | 132 | 1339 | 0 | |
+| **total** | 19 | 154 | 1961 | 571 | 188 | 132 | 1340 | 0 | |
 
 Decision records: 18.
 
@@ -36,7 +36,7 @@ A milestone reads `closed` when its acceptance test computes `passing` and every
 | 8 — Accountability | 5 | 60 | 47 | passing | open |
 | 9 — Visibility | 6 | 41 | 3 | open | open |
 | 10 — Cadence and the operator plane | 11 | 67 | 56 | passing | open |
-| 11 — The derive tier | 7 | 82 | 59 | passing | open |
+| 11 — The derive tier | 7 | 83 | 60 | passing | open |
 | 12 — The console | 11 | 30 | 0 | absent | open |
 | 13 — Disclosure | 5 | 21 | 4 | open | open |
 | 14 — Assurance | 7 | 130 | 83 | passing | closed |
@@ -1074,6 +1074,7 @@ Unscheduled operations: 10.
 | `run.select.journaled-pull` | `crates/contextful-core/tests/integration/run/derive.rs::a_derive_pipeline_journaling_its_pulls_refuses` | performed |
 | `run.select.key-change` | `crates/contextful-core/tests/integration/run/derive.rs::a_changed_key_rederives_and_a_key_changed_back_derives_again` | performed |
 | `run.select.latest-marker` | `crates/contextful-core/tests/integration/run/derive.rs::a_units_latest_marker_decides_its_standing` | performed |
+| `run.select.parent-outcome` | `crates/contextful-cli/tests/integration/derive.rs::a_derived_child_stops_when_the_parent_process_cannot_start` | performed |
 | `run.select.required-key` | `crates/contextful-core/tests/integration/run/derive.rs::a_missing_or_blank_required_key_refuses` | performed |
 | `run.select.rows-per-run` | `crates/contextful-core/tests/integration/run/derive.rs::a_run_takes_25_units_by_default_after_the_anti_join` | performed |
 | `run.select.seconds-per-run` | `crates/contextful-core/tests/integration/run/derive.rs::link_preview_holds_300_s_and_transcribe_carries_no_default` | performed |

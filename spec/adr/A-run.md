@@ -83,7 +83,7 @@ Revisit: hashing parent rows dominates tick cost on a real archive.
 
 Context: a derive source can read another derive pipeline's output, but declaration order and independent scheduling provide no landing order. Criteria: one tick carries a new parent row through its children; a cycle cannot repeatedly select itself; a failed parent does not hide rows it committed earlier.
 
-Decision: the build maps output tables to derive pipelines, resolves each derive source table to its parent when one exists, and refuses a cycle naming its members. An explicit `after` naming another parent refuses. A parent's tick runs the acyclic set parent-first, subsuming each child's own schedule. A failed parent leaves its child eligible to run over committed rows, while the tick reports the failure.
+Decision: the build maps output tables to derive pipelines, resolves each derive source table to its parent when one exists, and refuses a cycle naming its members. An explicit `after` naming another parent refuses. A parent's tick runs the acyclic set parent-first, subsuming each child's own schedule. A completed failed run leaves its child eligible to run over committed rows, while the tick reports the failure. A launch, wait, signal or worker dispatch error supplies no completed parent outcome and stops the unit.
 
 | Option | Lost on | Cost |
 | --- | --- | --- |

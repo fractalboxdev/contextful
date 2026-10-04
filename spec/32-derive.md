@@ -77,6 +77,8 @@ The derive source: its configuration, the outstanding set recomputed each tick, 
   *A-run*
 - `derive-failed-parent` — A child derive pipeline runs after its parent fails and reads only the parent's committed rows.
   *A-run*
+- `parent-outcome` — A derived child starts only after its parent produces a completed run outcome; a local launch, wait or signal failure, or a worker dispatch error, stops the unit before that child starts.
+  *A-run*
 - `derive-cycle` — A build whose derive source-table dependencies return to a pipeline raises `DeriveCycle`, names every pipeline on the cycle and arms none.
   *A-run*
 - `derive-after-conflict` — A derive child whose `after` names a pipeline other than its source-table parent raises `DeriveAfterConflict` and arms none.
@@ -92,6 +94,7 @@ unsettled: Does a dry run print eligible, already-derived and outstanding counts
 - `run.select.derive-order`: WHEN a scheduled child is declared before its parent and reads the parent's output, THEN the parent's tick lands its new row before the child reads it.
 - `run.select.derive-cycle`: WHEN two derive pipelines read each other's output tables, THEN the build raises `DeriveCycle` naming both; a self-reference names itself.
 - `run.select.derive-failed-parent`: WHEN a parent fails after earlier rows committed, THEN its child reads those committed rows in the same tick.
+- `run.select.parent-outcome`: WHEN the parent process fails to start, THEN its derived child does not start in that unit.
 - `run.select.derive-after-conflict`: WHEN a derive child names another pipeline in `after`, THEN the build raises `DeriveAfterConflict` naming the child and both parents.
 
 ## bind

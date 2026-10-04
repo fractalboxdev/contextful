@@ -71,7 +71,7 @@ The derive tier anti-joins its own output each tick ({{run.select.rows-per-run}}
 a machine-defined engine ({{run.bind.command-in-manifest}}), and records every unit's fate in its own table
 ({{run.emit.unit-status}}) under its derivation ({{run.emit.derivation-key}}); stale
 rows answer until replaced ({{run.emit.stale-supersedes}}). Chained derives follow
-{{run.select.derive-order}} and {{run.select.derive-failed-parent}}; {{run.select.derive-cycle}}
+{{run.select.derive-order}}, {{run.select.derive-failed-parent}} and {{run.select.parent-outcome}}; {{run.select.derive-cycle}}
 keeps a circular chain from arming.
 
 ## Worked example

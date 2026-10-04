@@ -115,6 +115,25 @@ fn a_child_reads_committed_parent_rows_after_its_parent_fails() {
     assert_eq!(select(p, "SELECT copy FROM \"echo_copies\" WHERE kind = 'passage' ORDER BY copy"), [["alpha"], ["beta"], ["gamma"]]);
 }
 
+// spec: run.select.parent-outcome@418ee978
+#[cfg(unix)]
+#[test]
+fn a_derived_child_stops_when_the_parent_process_cannot_start() {
+    let host = host_binary();
+    let manifest = chain_manifest().replacen("site_id = \"site\"", "site_id = \"site\"\n[control]\ntrigger = \"external\"", 1);
+    let dir = host_project(&manifest);
+    ok(&run_bin(&host, dir.path(), &["pipeline", "import", "--project", "research"], &[]));
+    let copy = dir.path().join("host-copy");
+    std::fs::copy(&host, &copy).unwrap();
+    let (daemon, url) = crate::pipeline::external_from(dir.path(), &copy);
+    std::fs::remove_file(&copy).unwrap();
+    assert_eq!(crate::pipeline::post(&url).0, 200);
+    let index = daemon.wait_for("fire split: failed", 0);
+    let line = &daemon.lines()[index];
+    assert!(line.contains("split: starting"), "{line}");
+    assert!(!line.contains("echo: starting"), "a derived child started without a parent outcome: {line}");
+}
+
 /// A pipeline naming a registered host task builds; an unregistered name raises `DeriveUnknownTask`, listing the
 /// built-in and registered names.
 #[test]

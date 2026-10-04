@@ -505,6 +505,11 @@ struct ChildDispatch {
     children: Arc<Children>,
 }
 
+enum ChildStepError {
+    Run(String),
+    Infrastructure(String),
+}
+
 /// Read `pipe` to its end on a thread of its own.
 fn drain_pipe(pipe: Option<impl Read + Send + 'static>) -> std::thread::JoinHandle<String> {
     std::thread::spawn(move || {
@@ -526,7 +531,11 @@ impl Dispatch for ChildDispatch {
             }
             match self.step(step, version) {
                 Ok(line) => lines.push(line),
-                Err(error) => failures.push(error),
+                Err(ChildStepError::Run(error)) => failures.push(error),
+                Err(ChildStepError::Infrastructure(error)) => {
+                    failures.push(error);
+                    break;
+                }
             }
         }
         if failures.is_empty() { Ok(lines.join("; ")) } else { Err(failures.join("; ")) }
@@ -535,7 +544,7 @@ impl Dispatch for ChildDispatch {
 
 impl ChildDispatch {
     /// Run one landing step as a child `pipeline run --applied <N>`.
-    fn step(&self, id: &str, version: u64) -> Result<String, String> {
+    fn step(&self, id: &str, version: u64) -> Result<String, ChildStepError> {
         let mut cmd = Command::new(&self.exe);
         cmd.args(["pipeline", "run", id, "--applied", &version.to_string(), "--project", &self.project]);
         if let Some(d) = &self.declaration {
@@ -545,9 +554,9 @@ impl ChildDispatch {
             cmd.args(["--now", now]);
         }
         cmd.stdin(Stdio::null()).stdout(Stdio::piped()).stderr(Stdio::piped());
-        let (pid, out, err) = self.children.spawn(&mut cmd).map_err(|e| format!("{id}: starting `{}`: {e}", self.exe.display()))?;
+        let (pid, out, err) = self.children.spawn(&mut cmd).map_err(|e| ChildStepError::Infrastructure(format!("{id}: starting `{}`: {e}", self.exe.display())))?;
         let (out, err) = (drain_pipe(out), drain_pipe(err));
-        let status = self.children.wait(pid).map_err(|e| format!("{id}: waiting on child {pid}: {e}"))?;
+        let status = self.children.wait(pid).map_err(|e| ChildStepError::Infrastructure(format!("{id}: waiting on child {pid}: {e}")))?;
         let (stdout, stderr) = (out.join().unwrap_or_default(), err.join().unwrap_or_default());
         for line in stdout.lines().chain(stderr.lines()) {
             eprintln!("[{id}] {line}");
@@ -555,10 +564,12 @@ impl ChildDispatch {
         let last = |t: &str| t.lines().last().unwrap_or_default().to_string();
         if status.success() {
             Ok(last(&stdout))
+        } else if status.code().is_none() {
+            Err(ChildStepError::Infrastructure(format!("child {pid} ended: {status}")))
         } else if stderr.trim().is_empty() {
-            Err(format!("child {pid} ended: {status}"))
+            Err(ChildStepError::Run(format!("child {pid} ended: {status}")))
         } else {
-            Err(last(&stderr))
+            Err(ChildStepError::Run(last(&stderr)))
         }
     }
 }
