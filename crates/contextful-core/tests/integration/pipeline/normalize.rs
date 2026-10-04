@@ -1,6 +1,7 @@
 use contextful_core::pipeline::normalize::relational_tables;
 use contextful_core::run::ports::Row;
 
+// spec: run.normalize.field-collision@8ba18d89
 #[test]
 fn source_fields_cannot_replace_relational_identity_columns() {
     let source: Row = serde_json::from_value(serde_json::json!({

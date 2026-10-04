@@ -139,6 +139,7 @@ Canonical nested form, late relational shredding, injected identity columns and 
 - `mode-unknown` — A mode outside the two raises `PipelineNormalizeModeUnknown`, printing both spellings.
   *A-run*
 - `identity-columns` — Normalize injects a content-hash row id on every table, a load id on the root, a parent id and list index on each child, and a root id on a child nested deeper than one level.
+- `field-collision` — A relational source field flattening onto an occupied column takes the first free `source_`-prefixed name, preserving injected identity columns and the source value.
 - `row-id` — The row id hashes the row's own content, so a re-run of one input emits byte-identical ids.
 - `list-index-missing` — A relational child table emitted without the list index that makes its projection reversible raises `PipelineListIndexMissing`, naming the parent and the list.
   *A-run*

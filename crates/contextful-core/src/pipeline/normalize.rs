@@ -114,7 +114,7 @@ pub fn relational_tables(rows: Vec<Row>, table: &str, load_id: &str, depth: u32)
 #[allow(clippy::too_many_arguments)]
 fn project(tables: &mut BTreeMap<String, Vec<Row>>, row: &mut Row, table: &str, path: &str, value: Value, parent_id: &str, root_id: &str, level: u32, depth: u32) {
     if level > depth {
-        row.insert(path.into(), Value::String(value.to_string()));
+        insert_projected(row, path, Value::String(value.to_string()));
         return;
     }
     match value {
@@ -145,8 +145,16 @@ fn project(tables: &mut BTreeMap<String, Vec<Row>>, row: &mut Row, table: &str, 
                 tables.entry(child_table.clone()).or_insert_with(Vec::new).push(child);
             }
         }
-        scalar => { row.insert(path.into(), scalar); }
+        scalar => { insert_projected(row, path, scalar); }
     }
+}
+
+fn insert_projected(row: &mut Row, path: &str, value: Value) {
+    let mut name = path.to_string();
+    while row.contains_key(&name) {
+        name = format!("source_{name}");
+    }
+    row.insert(name, value);
 }
 
 /// The struct or list type of each column whose values include an object or an array,
