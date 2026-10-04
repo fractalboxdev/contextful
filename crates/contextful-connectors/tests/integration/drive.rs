@@ -48,6 +48,7 @@ fn query(r: &Request) -> Vec<(String, String)> {
 struct Fake {
     server: Server,
     recordings: Arc<Mutex<Vec<&'static str>>>,
+    incomplete_search_override: Arc<Mutex<Option<Value>>>,
     /// API requests answering `401` before the bearer is honored.
     reject: Arc<Mutex<usize>>,
 }
@@ -55,8 +56,10 @@ struct Fake {
 impl Fake {
     fn start() -> Fake {
         let recordings: Arc<Mutex<Vec<&'static str>>> = Arc::new(Mutex::new(vec!["recording.json"]));
+        let incomplete_search_override = Arc::new(Mutex::new(None));
         let reject = Arc::new(Mutex::new(0usize));
         let (r, j) = (recordings.clone(), reject.clone());
+        let marker = incomplete_search_override.clone();
         let server = Server::start(move |req| {
             if req.path() != "/token" {
                 let mut left = j.lock().unwrap();
@@ -77,7 +80,15 @@ impl Fake {
                     if matches {
                         let body = match x.get("body_file") {
                             Some(f) => std::fs::read(fixtures().join(f.as_str().unwrap())).unwrap(),
-                            None => serde_json::to_vec(&x["body"]).unwrap(),
+                            None => {
+                                let mut body = x["body"].clone();
+                                if body.get("incompleteSearch").is_some() {
+                                    if let Some(value) = marker.lock().unwrap().clone() {
+                                        body["incompleteSearch"] = value;
+                                    }
+                                }
+                                serde_json::to_vec(&body).unwrap()
+                            }
                         };
                         return Response { status: x["status"].as_u64().unwrap() as u16, headers: vec![], body };
                     }
@@ -85,12 +96,16 @@ impl Fake {
             }
             Response::json(404, "{\"error\":{\"code\":404}}")
         });
-        Fake { server, recordings, reject }
+        Fake { server, recordings, incomplete_search_override, reject }
     }
 
     /// Answer from `name` ahead of the recordings loaded before it.
     fn overlay(&self, name: &'static str) {
         self.recordings.lock().unwrap().push(name);
+    }
+
+    fn override_incomplete_search(&self, value: Value) {
+        *self.incomplete_search_override.lock().unwrap() = Some(value);
     }
 
     fn config(&self, extra: Value) -> Value {
@@ -286,9 +301,20 @@ fn a_selected_root_page_token_at_the_listing_cap_refuses_by_name() {
 /// A malformed listing cannot prove that previously captured files left the selection.
 #[test]
 fn malformed_selected_root_listings_refuse_before_removals() {
-    for fixture in ["malformed-files.json", "malformed-token.json", "malformed-child.json", "malformed-version.json", "malformed-modified.json", "incomplete-search.json"] {
+    for (fixture, malformed_marker) in [
+        ("malformed-files.json", false),
+        ("malformed-token.json", false),
+        ("malformed-child.json", false),
+        ("malformed-version.json", false),
+        ("malformed-modified.json", false),
+        ("incomplete-search.json", false),
+        ("incomplete-search.json", true),
+    ] {
         let fake = Fake::start();
         fake.overlay(fixture);
+        if malformed_marker {
+            fake.override_incomplete_search(json!("true"));
+        }
         let d = drive(fake.config(json!({})));
         let prior = json!({"files": {"retained": {"modified": "2031-01-01T00:00:00Z", "path": "retained", "name": "retained", "pages": 1}}});
         let failure = d.source("files").unwrap().pull(&request(Some(prior)), &Never).unwrap_err();
