@@ -15,11 +15,11 @@ fn ok(out: &Output) -> String {
 fn manifest(endpoint: &str) -> String {
     format!(
         "authoring_posture = \"per_request\"\n\
-         [[pipeline.tables]]\nname = \"research/notes\"\n\
-         [[pipeline]]\nid = \"feed\"\ntables = [\"research/notes\"]\n\
+         [[pipeline]]\nid = \"feed\"\n\
          [pipeline.source]\nname = \"s3\"\n\
          config = {{ bucket = \"source\", endpoint = \"{endpoint}\", key = \"notes.jsonl\", format = \"jsonl\", access_key_id = \"secret://source-key-id\", secret_access_key = \"secret://source-secret\" }}\n\
-         [[model]]\nid = \"research/titles\"\nsql = \"SELECT note_id, title FROM \\\"research/notes\\\"\"\nunique_key = [\"note_id\"]\n\
+         [[pipeline.tables]]\nname = \"notes\"\n\
+         [[model]]\nid = \"research/titles\"\nsql = \"SELECT note_id, title FROM feed_notes\"\nunique_key = [\"note_id\"]\n\
          [model.contract]\nversion = \"1.0.0\"\ncolumns = [{{ name = \"note_id\", type = \"utf8\", nullable = false }}, {{ name = \"title\", type = \"utf8\" }}]\n"
     )
 }
@@ -35,7 +35,7 @@ fn node(p: &GitRepo, source: &str, shared: &str, id: &str) {
 }
 
 fn run(p: &GitRepo, cf: &std::path::Path, args: &[&str]) -> String {
-    ok(&p.run_env(
+    let out = p.run_env(
         cf,
         args,
         &[
@@ -45,7 +45,9 @@ fn run(p: &GitRepo, cf: &std::path::Path, args: &[&str]) -> String {
             ("CONTEXTFUL_SYNC_ACCESS_KEY_ID", ACCESS_KEY),
             ("CONTEXTFUL_SYNC_SECRET_ACCESS_KEY", SECRET_KEY),
         ],
-    ))
+    );
+    assert!(out.status.success(), "{args:?}: {}", String::from_utf8_lossy(&out.stderr));
+    ok(&out)
 }
 
 fn query(p: &GitRepo, cf: &std::path::Path) -> Value {
