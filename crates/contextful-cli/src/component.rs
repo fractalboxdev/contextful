@@ -353,7 +353,6 @@ mod hosted {
         }
 
         // spec: connector.package.remote-transport@5044139f
-        // spec: connector.package.oci-component-layer@8b743c72
         // spec: connector.package.oci-layer-integrity@185ef002
         // spec: connector.package.oci-registry-bearer@0cf0801f
         #[test]
@@ -394,6 +393,7 @@ mod hosted {
             assert!(!other.path().join(".contextful/artifacts/sha256").exists());
         }
 
+        // spec: connector.package.oci-component-layer@8b743c72
         #[test]
         fn oci_manifest_requires_one_component_layer_with_a_sha256_descriptor() {
             let digest = "ab".repeat(32);
