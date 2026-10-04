@@ -111,7 +111,7 @@ flowchart LR
 
 ## reconcile
 
-The control source, the snapshot pointer and its versions, the pure schedule diff, and what a failed poll leaves running.
+The control source, snapshot pointer, signed pulled-head validation against local declarations, schedule diff, and what a failed poll leaves running.
 
 - `poll-cadence` — `poll` takes a schedule string, and a `[control]` block declaring none polls every 30 s.
 - `pointer-malformed` — A pointer body that is not wholly a version raises `ControlPointerMalformed`.
@@ -158,6 +158,7 @@ sequenceDiagram
 #### Scenarios
 
 - `surface.reconcile.pulled-control`: WHEN a cold node holds a signed bucket head whose snapshot validates against its declarations, THEN it installs that head and arms its schedules.
+- `surface.reconcile.pulled-control`: WHEN a signed bucket head contains one of two locally declared pipelines, THEN the reconciler adopts that partial apply and leaves the other pipeline unarmed.
 - `surface.reconcile.pulled-control-untrusted`: WHEN a bucket writer replaces the snapshot bytes without a matching signature, THEN the node names the failed verification and arms none of that version.
 
 ## fire

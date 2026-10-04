@@ -108,6 +108,21 @@ fn a_cold_node_adopts_a_pinned_pulled_control_snapshot_after_local_validation() 
     assert!(!tampered.status.success() && stderr(&tampered).contains("ControlSnapshotUntrusted"), "{}", stderr(&tampered));
 }
 
+#[test]
+fn a_pulled_partial_apply_leaves_extra_local_declarations_unarmed() {
+    let document = pipeline("orders", "https://api.vendor.example/v1", "", "tables = [\"orders\"]");
+    let (dir, signer) = staged_control(&document);
+    let extra = pipeline("returns", "https://api.vendor.example/v1", "", "tables = [\"returns\"]");
+    std::fs::write(dir.path().join("contextful.toml"), format!("authoring_posture = \"per_request\"\n{document}\n{extra}")).unwrap();
+
+    let out = serve_staged(dir.path(), &signer.public_key_text());
+    assert!(out.status.success(), "{}", stderr(&out));
+    let answer: serde_json::Value = serde_json::from_slice(&out.stdout).unwrap();
+    assert_eq!(answer["unarmed"].as_array().unwrap().len(), 1);
+    assert_eq!(answer["unarmed"][0]["id"], "orders");
+    assert_eq!(std::fs::read_to_string(dir.path().join(".contextful/control/research/manifest@current")).unwrap(), "1\n");
+}
+
 /// An invalid receipt or local declaration leaves the pulled version unapplied.
 // spec: surface.reconcile.pulled-control-untrusted@f332254b
 #[test]
