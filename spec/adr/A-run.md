@@ -79,7 +79,7 @@ Revisit: hashing parent rows dominates tick cost on a real archive.
 
 ## Chained derive pipelines follow their source tables
 
-**Status:** proposed
+**Status:** accepted
 
 Context: a derive source can read another derive pipeline's output, but declaration order and independent scheduling provide no landing order. Criteria: one tick carries a new parent row through its children; a cycle cannot repeatedly select itself; a failed parent does not hide rows it committed earlier.
 
