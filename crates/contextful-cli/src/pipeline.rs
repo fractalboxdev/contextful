@@ -16,6 +16,7 @@ use clap::Subcommand;
 use contextful_connectors::derive::{DeriveSource, HostDerive, Staged};
 use contextful_connectors::file::{FileConfig, FileSource};
 use contextful_connectors::http::{HttpConfig, HttpSource, Mediation};
+use contextful_connectors::image::{ImageConfig, ImageSource};
 use contextful_core::connector::component::ComponentSource;
 use contextful_core::connector::meter::{manifest_bindings, require_binding, LimiterBinding};
 use contextful_core::connector::ConnectorError;
@@ -158,6 +159,7 @@ pub(crate) enum Checked {
     #[cfg(feature = "s3-sync")]
     Object(ObjectConfig),
     File(FileConfig),
+    Image(ImageConfig),
     Derive(Box<(DeriveConfig, Binding)>),
     Component(Box<ComponentSource>),
     Host(Box<HostChecked>),
@@ -206,6 +208,11 @@ pub(crate) fn check(spec: &PipelineSpec, declaration: &Path, tasks: &Tasks) -> R
             check_object(spec)
         }
         contextful_connectors::file::NAME => check_file(spec),
+        contextful_connectors::image::NAME => {
+            let config = ImageConfig::parse(&spec.source.config)?;
+            for table in &spec.tables { config.table(table.name())?; }
+            Ok(Checked::Image(config))
+        }
         contextful_connectors::derive::NAME => {
             let config = DeriveConfig::parse_with(&spec.id, &spec.source.config, tasks)?;
             if let Some(task) = tasks.get(config.task.name()).filter(|_| config.task.is_host()) {
@@ -555,7 +562,7 @@ pub fn run(cmd: PipelineCmd, tasks: &Tasks) -> Result<()> {
                 Checked::Component(decl) => resolver.preflight(decl.attach.iter().map(|(_, t)| t))?,
                 #[cfg(feature = "drive")]
                 Checked::Drive(config) => resolver.preflight(config.templates())?,
-                Checked::Derive(_) | Checked::Host(_) | Checked::File(_) => {}
+                Checked::Derive(_) | Checked::Host(_) | Checked::File(_) | Checked::Image(_) => {}
                 #[cfg(feature = "s3-sync")]
                 Checked::Object(config) => resolver.preflight(config.credentials())?,
             }
@@ -648,6 +655,7 @@ pub fn run(cmd: PipelineCmd, tasks: &Tasks) -> Result<()> {
                         #[cfg(feature = "s3-sync")]
                         Checked::Object(config) => Box::new(object_source(config.clone(), resolver.clone())),
                         Checked::File(config) => Box::new(FileSource::new(config.clone(), &base, pdf_decoder()?)),
+                        Checked::Image(config) => Box::new(ImageSource::new(config.clone(), &base)),
                         Checked::Derive(pair) => Box::new(DeriveSource {
                             pipeline_id: spec.id.clone(),
                             config: pair.0.clone(),
