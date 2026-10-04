@@ -54,6 +54,19 @@ fn a_not_modified_feed_lands_nothing_and_holds_the_validators() {
 }
 
 #[test]
+fn a_conditional_csv_pull_uses_its_declared_encoding() {
+    let vendor = Server::start(|_| Response {
+        status: 200,
+        headers: vec![("ETag".into(), "csv-v1".into())],
+        body: b"name\ncaf\xe9\n".to_vec(),
+    });
+    let mut s = source(json!({"endpoint": vendor.url("/names.csv"), "format": "csv", "encoding": "windows-1252", "conditional": true}), vec![]);
+    let out = pull(&mut s, None);
+    assert_eq!(out["rows"][0]["name"], "café");
+    assert_eq!(out["cursor"], json!({"etag": "csv-v1"}));
+}
+
+#[test]
 fn an_empty_conditional_success_completes_the_snapshot() {
     let vendor = Server::start(|_| Response { status: 200, headers: vec![("ETag".into(), "empty-v2".into())], body: b"[]".to_vec() });
     let mut s = source(json!({"endpoint": vendor.url("/items"), "conditional": true}), vec![]);
