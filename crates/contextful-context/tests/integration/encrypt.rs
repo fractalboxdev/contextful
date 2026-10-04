@@ -372,6 +372,40 @@ fn a_bound_store_lands_ciphertext_and_reads_its_row() {
     assert_eq!(rows[0]["body"], canary);
 }
 
+#[test]
+fn a_bound_store_seals_its_request_ledger() {
+    use contextful_context::ledger;
+    use contextful_core::store::lay_out::NodeId;
+    use contextful_core::store::ledger::RequestRecord;
+    use contextful_core::time::Instant;
+
+    let key_var = "CONTEXTFUL_TEST_KEY_74_LEDGER";
+    // This unique variable is read only by this test's store; no other test changes it.
+    unsafe { std::env::set_var(key_var, "0123456789abcdef0123456789abcdef") };
+    let (dir, opened) = store_with(&format!("[encryption]\nkey_source = \"env:{key_var}\"\n"));
+    let store = opened.unwrap();
+    let canary = "ledger-canary-5f1e unique plaintext marker";
+    let record = RequestRecord {
+        request_id: canary.into(),
+        vendor_request_id: None,
+        connector: "source".into(),
+        method: "GET".into(),
+        url_host: "example.invalid".into(),
+        status_code: Some(200),
+        started_at: Instant::parse("2030-01-01T00:00:00Z").unwrap(),
+        duration_ms: 1,
+        batch_seq: Some(0),
+    };
+    let node = NodeId::parse("ingest-a").unwrap();
+    ledger::append(&store, "documents", "run-1", &node, &[record.clone()]).unwrap();
+    let path = ledger::files(&store, "documents").unwrap().remove(0);
+    let bytes = std::fs::read(path.clone()).unwrap();
+    assert!(!bytes.windows(canary.len()).any(|part| part == canary.as_bytes()));
+    let rows = ledger::read_for_store(&store, &path).unwrap();
+    assert_eq!(rows, [("run-1".into(), record)]);
+    assert!(written(&dir.path().join(".contextful/context/research")).iter().all(|p| !std::fs::read(p).unwrap().windows(canary.len()).any(|part| part == canary.as_bytes())));
+}
+
 /// A sealed full-text sidecar file larger than 256 MiB stays unopened, and its arm adds no candidates.
 // spec: read.retrieve.fulltext-sealed-cap@5e433a1f
 #[test]
