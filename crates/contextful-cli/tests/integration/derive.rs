@@ -90,6 +90,23 @@ fn chain_manifest() -> String {
     format!("{child}\n{}", host_manifest("word-split").replace("id = \"split\"\n", "id = \"split\"\nschedule = \"every 1h\"\n"))
 }
 
+/// A single-pipeline apply validates the combined applied graph before claiming a version.
+#[test]
+fn applying_one_derive_change_refuses_a_cycle_with_the_applied_sibling() {
+    let host = host_binary();
+    let dir = host_project(&chain_manifest());
+    let path = dir.path();
+    ok(&run_bin(&host, path, &["pipeline", "import", "--project", "research"], &[]));
+    let revised = chain_manifest()
+        .replace("source_table = \"split_words\"", "source_table = \"documents\"")
+        .replace("source_table = \"documents\", parent_id_column = \"doc_id\"", "source_table = \"echo_copies\", parent_id_column = \"doc_id\"");
+    std::fs::write(path.join("contextful.toml"), format!("authoring_posture = \"per_request\"\n{revised}")).unwrap();
+    let result = run_bin(&host, path, &["pipeline", "apply", "split", "--project", "research"], &[]);
+    let error = String::from_utf8_lossy(&result.stderr);
+    assert!(!result.status.success() && error.contains("DeriveCycle") && error.contains("split") && error.contains("echo"), "{error}");
+    assert!(!path.join(".contextful/control/research/manifest@v2.toml").exists(), "cyclic snapshot was claimed");
+}
+
 // spec: run.select.derive-order@1ff2a000
 #[test]
 fn a_child_declared_first_derives_its_parents_new_rows_in_one_tick() {
