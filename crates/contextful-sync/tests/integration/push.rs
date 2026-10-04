@@ -29,6 +29,8 @@ fn applied_control(node: &crate::support::Node, version: u64, parent: Option<&st
     receipt
 }
 
+/// A push commits each signed snapshot, receipt and project head under the bucket prefix.
+// spec: store.push.control-artifact@ee79730f
 #[test]
 fn a_push_commits_the_signed_control_chain_and_project_head() {
     let dir = tempfile::tempdir().unwrap();
@@ -50,6 +52,8 @@ fn a_push_commits_the_signed_control_chain_and_project_head() {
     }
 }
 
+/// A sibling head raises `SyncControlDiverged` and keeps the bucket's signed head.
+// spec: store.push.control-diverged@cbc7c52d
 #[test]
 fn a_sibling_control_head_refuses_without_changing_the_bucket_head() {
     let dir = tempfile::tempdir().unwrap();

@@ -27,8 +27,6 @@
 # `contextful-spec state` reads this file and the tags and writes spec/status.md.
 
 [pin]
-"store.push.control-artifact" = { test = "contextful_sync::push::a_push_commits_the_signed_control_chain_and_project_head" }
-"store.push.control-diverged" = { test = "contextful_sync::push::a_sibling_control_head_refuses_without_changing_the_bucket_head" }
 "corpus.targets.cap-unrecorded"     = { test = "contextful_spec::targets::a_capped_shape_not_recording_its_exclusions_is_refused" }
 "corpus.targets.function-profile"   = { test = "contextful_spec::targets::a_function_class_shape_hosting_the_full_profile_is_refused" }
 "corpus.targets.incomplete"         = { test = "contextful_spec::targets::a_shape_leaving_a_role_unfilled_is_refused" }
