@@ -128,7 +128,10 @@ fn a_send_uses_its_remaining_body_and_time_budget_on_every_mediated_hop() {
     );
     let response = vendor_client(t.clone()).send_bounded("GET", &url("https://api.vendor.example/start"), &plain(), None, 17, Duration::from_secs(9)).unwrap();
     assert_eq!(response.status, 200);
-    assert_eq!(*t.limits.lock().unwrap(), vec![(17, Duration::from_secs(9)); 2]);
+    let limits = t.limits.lock().unwrap();
+    assert_eq!(limits.len(), 2);
+    assert!(limits.iter().all(|(bytes, time)| *bytes == 17 && *time <= Duration::from_secs(9) && *time > Duration::from_secs(8)), "{limits:?}");
+    assert!(limits[1].1 <= limits[0].1, "redirects spend the same call deadline");
 }
 
 /// The mediated client reaches the network only through a transport port. Its send half connects to an address the
