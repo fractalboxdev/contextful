@@ -64,6 +64,129 @@ pub(crate) fn project(manifest: &str) -> tempfile::TempDir {
     dir
 }
 
+fn staged_control(document: &str) -> (tempfile::TempDir, contextful_policy::issue::SeedSigner) {
+    use contextful_core::issue::SignatureAlgorithm;
+    use contextful_core::store::sync::ControlHead;
+    use contextful_policy::control_receipt::ControlReceipt;
+
+    let dir = project(document);
+    let staged = dir.path().join(".contextful/context/research/control");
+    std::fs::create_dir_all(&staged).unwrap();
+    let signer = contextful_policy::issue::SeedSigner::generate(SignatureAlgorithm::Ed25519);
+    let receipt = ControlReceipt::sign("research", 1, None, document.as_bytes(), &signer).unwrap();
+    let head = ControlHead { version: 1, receipt_sha256: receipt.digest() };
+    std::fs::write(staged.join("head.json"), serde_json::to_vec(&head).unwrap()).unwrap();
+    std::fs::write(staged.join("manifest@v1.toml"), document).unwrap();
+    std::fs::write(staged.join("receipt@v1.json"), serde_json::to_vec(&receipt).unwrap()).unwrap();
+    (dir, signer)
+}
+
+fn serve_staged(dir: &Path, public: &str) -> Output {
+    Command::new(env!("CARGO_BIN_EXE_contextful"))
+        .args(["pipeline", "serve", "--cycle", "--project", "research", "--now", "2030-01-01T00:00:00Z"])
+        .current_dir(dir)
+        .env("CONTEXTFUL_ISSUER_PUBKEY", public)
+        .output()
+        .unwrap()
+}
+
+/// A cold reconciler verifies the staged receipt and local declarations before adopting v1.
+// spec: surface.reconcile.pulled-control@2a93bc23
+#[test]
+fn a_cold_node_adopts_a_pinned_pulled_control_snapshot_after_local_validation() {
+    let document = pipeline("orders", "https://api.vendor.example/v1", "", "tables = [\"orders\"]");
+    let (dir, signer) = staged_control(&document);
+    let pointer = dir.path().join(".contextful/control/research/manifest@current");
+    assert!(!pointer.exists());
+    let out = serve_staged(dir.path(), &signer.public_key_text());
+    assert!(out.status.success(), "{}", stderr(&out));
+    assert_eq!(std::fs::read_to_string(pointer).unwrap(), "1\n");
+    let answer: serde_json::Value = serde_json::from_slice(&out.stdout).unwrap();
+    assert_eq!(answer["unarmed"][0]["id"], "orders");
+    std::fs::write(dir.path().join(".contextful/control/research/manifest@v1.toml"), "tampered").unwrap();
+    let tampered = serve_staged(dir.path(), &signer.public_key_text());
+    assert!(!tampered.status.success() && stderr(&tampered).contains("ControlSnapshotUntrusted"), "{}", stderr(&tampered));
+}
+
+/// An invalid receipt or local declaration leaves the pulled version unapplied.
+// spec: surface.reconcile.pulled-control-untrusted@f332254b
+#[test]
+fn a_bad_signature_or_local_declaration_refuses_pulled_control_without_arming() {
+    let document = pipeline("orders", "https://api.vendor.example/v1", "", "tables = [\"orders\"]");
+    for bad_signature in [true, false] {
+        let (dir, signer) = staged_control(&document);
+        if bad_signature {
+            let path = dir.path().join(".contextful/context/research/control/receipt@v1.json");
+            let mut receipt: serde_json::Value = serde_json::from_slice(&std::fs::read(&path).unwrap()).unwrap();
+            receipt["signature"] = serde_json::json!("00");
+            std::fs::write(path, serde_json::to_vec(&receipt).unwrap()).unwrap();
+        } else {
+            std::fs::write(dir.path().join("contextful.toml"), "authoring_posture = 'per_request'\n").unwrap();
+        }
+        let out = serve_staged(dir.path(), &signer.public_key_text());
+        assert!(!out.status.success() && stderr(&out).contains("ControlSnapshotUntrusted"), "{}", stderr(&out));
+        assert!(!dir.path().join(".contextful/control/research/manifest@current").exists());
+    }
+}
+
+/// A receipt's signer grants no trust without a locally supplied issuer pin.
+// spec: surface.reconcile.issuer-pin@21162c50
+#[test]
+fn a_pulled_receipt_cannot_supply_its_own_trust_pin() {
+    use contextful_core::issue::SignatureAlgorithm;
+    use contextful_policy::issue::SeedSigner;
+
+    let document = pipeline("orders", "https://api.vendor.example/v1", "", "tables = [\"orders\"]");
+    let (dir, signer) = staged_control(&document);
+    let absent = Command::new(env!("CARGO_BIN_EXE_contextful"))
+        .args(["pipeline", "serve", "--cycle", "--project", "research"])
+        .current_dir(dir.path()).env_remove("CONTEXTFUL_ISSUER_PUBKEY").output().unwrap();
+    assert!(!absent.status.success() && stderr(&absent).contains("ControlSnapshotUntrusted"), "{}", stderr(&absent));
+    let foreign = SeedSigner::generate(SignatureAlgorithm::Ed25519);
+    let wrong = serve_staged(dir.path(), &foreign.public_key_text());
+    assert!(!wrong.status.success() && stderr(&wrong).contains("not locally pinned"), "{}", stderr(&wrong));
+    assert!(!dir.path().join(".contextful/control/research/manifest@current").exists());
+    let explicit = Command::new(env!("CARGO_BIN_EXE_contextful"))
+        .args(["pipeline", "serve", "--cycle", "--project", "research", "--public-key", &signer.public_key_text()])
+        .current_dir(dir.path()).env("CONTEXTFUL_ISSUER_PUBKEY", foreign.public_key_text()).output().unwrap();
+    assert!(explicit.status.success(), "{}", stderr(&explicit));
+}
+
+#[test]
+fn a_pulled_successor_extends_the_local_head_and_a_broken_parent_keeps_it() {
+    use contextful_core::store::sync::ControlHead;
+    use contextful_policy::control_receipt::ControlReceipt;
+
+    let document = pipeline("orders", "https://api.vendor.example/v1", "", "tables = [\"orders\"]");
+    for broken_parent in [false, true] {
+        let (dir, signer) = staged_control(&document);
+        let staged = dir.path().join(".contextful/context/research/control");
+        let local = dir.path().join(".contextful/control/research");
+        std::fs::create_dir_all(&local).unwrap();
+        std::fs::copy(staged.join("manifest@v1.toml"), local.join("manifest@v1.toml")).unwrap();
+        std::fs::copy(staged.join("receipt@v1.json"), local.join("receipt@v1.json")).unwrap();
+        std::fs::write(local.join("manifest@current"), "1\n").unwrap();
+        let first: ControlReceipt = serde_json::from_slice(&std::fs::read(staged.join("receipt@v1.json")).unwrap()).unwrap();
+        let parent = if broken_parent { "a".repeat(64) } else { first.digest() };
+        let second = ControlReceipt::sign("research", 2, Some(&parent), document.as_bytes(), &signer).unwrap();
+        std::fs::write(staged.join("manifest@v2.toml"), &document).unwrap();
+        std::fs::write(staged.join("receipt@v2.json"), serde_json::to_vec(&second).unwrap()).unwrap();
+        std::fs::write(staged.join("head.json"), serde_json::to_vec(&ControlHead { version: 2, receipt_sha256: second.digest() }).unwrap()).unwrap();
+        let out = serve_staged(dir.path(), &signer.public_key_text());
+        if broken_parent {
+            assert!(!out.status.success() && stderr(&out).contains("ControlSnapshotUntrusted"), "{}", stderr(&out));
+            assert_eq!(std::fs::read_to_string(local.join("manifest@current")).unwrap(), "1\n");
+        } else {
+            assert!(out.status.success(), "{}", stderr(&out));
+            assert_eq!(std::fs::read_to_string(local.join("manifest@current")).unwrap(), "2\n");
+            std::fs::write(staged.join("head.json"), serde_json::to_vec(&ControlHead { version: 1, receipt_sha256: first.digest() }).unwrap()).unwrap();
+            let stale = serve_staged(dir.path(), &signer.public_key_text());
+            assert!(stale.status.success(), "{}", stderr(&stale));
+            assert_eq!(std::fs::read_to_string(local.join("manifest@current")).unwrap(), "2\n");
+        }
+    }
+}
+
 pub(crate) fn cf(dir: &Path, args: &[&str]) -> Output {
     Command::new(env!("CARGO_BIN_EXE_contextful"))
         .args(args)

@@ -13,9 +13,9 @@ An unpinned clause is `committed`; a pinned one is `performed` when its test res
 | `read` | 2 | 15 | 179 | 29 | 22 | 21 | 163 | 0 | 163 |
 | `run` | 3 | 26 | 372 | 98 | 36 | 37 | 259 | 0 | 259 |
 | `store` | 1 | 17 | 238 | 56 | 13 | 19 | 201 | 0 | 201 |
-| `surface` | 2 | 19 | 93 | 48 | 22 | 5 | 56 | 0 | 56 |
+| `surface` | 2 | 19 | 94 | 48 | 22 | 5 | 59 | 0 | 59 |
 | `topology` | 1 | 6 | 70 | 24 | 5 | 5 | 38 | 0 | 38 |
-| **total** | 19 | 154 | 1966 | 572 | 188 | 132 | 1343 | 0 | |
+| **total** | 19 | 154 | 1967 | 572 | 188 | 132 | 1346 | 0 | |
 
 Decision records: 18.
 
@@ -35,7 +35,7 @@ A milestone reads `closed` when its acceptance test computes `passing` and every
 | 7 — Memory | 6 | 37 | 37 | passing | closed |
 | 8 — Accountability | 5 | 60 | 47 | passing | open |
 | 9 — Visibility | 6 | 41 | 3 | open | open |
-| 10 — Cadence and the operator plane | 11 | 74 | 61 | passing | open |
+| 10 — Cadence and the operator plane | 11 | 75 | 64 | passing | open |
 | 11 — The derive tier | 7 | 78 | 55 | passing | open |
 | 12 — The console | 11 | 30 | 0 | absent | open |
 | 13 — Disclosure | 5 | 21 | 4 | open | open |
@@ -1344,10 +1344,13 @@ Unscheduled operations: 10.
 | `surface.fire.store-driven-concurrency` | `crates/contextful-core/tests/integration/job.rs::a_store_driven_block_without_a_positive_max_in_flight_raises_job_concurrency_unset` | performed |
 | `surface.fire.target-unbound` | `crates/contextful-cli/tests/integration/job.rs::a_job_target_naming_nothing_produced_is_refused_at_validation` | performed |
 | `surface.reconcile.fail-static` | `crates/contextful-cli/tests/integration/pipeline.rs::an_unreadable_snapshot_leaves_the_armed_set_running` | performed |
+| `surface.reconcile.issuer-pin` | `crates/contextful-cli/tests/integration/pipeline.rs::a_pulled_receipt_cannot_supply_its_own_trust_pin` | performed |
 | `surface.reconcile.learns-by-reading` | `crates/contextful-cli/tests/integration/pipeline.rs::a_wake_reads_the_applied_version_from_the_control_source` | performed |
 | `surface.reconcile.loopback-only` | `crates/contextful-cli/tests/integration/pipeline.rs::a_control_url_outside_loopback_arms_nothing` | performed |
 | `surface.reconcile.pointer-malformed` | `crates/contextful-core/tests/integration/surface/control.rs::a_pointer_is_wholly_a_version` | performed |
 | `surface.reconcile.poll-cadence` | `crates/contextful-core/tests/integration/surface/control.rs::a_poll_takes_a_schedule_and_defaults_to_thirty_seconds` | performed |
+| `surface.reconcile.pulled-control` | `crates/contextful-cli/tests/integration/pipeline.rs::a_cold_node_adopts_a_pinned_pulled_control_snapshot_after_local_validation` | performed |
+| `surface.reconcile.pulled-control-untrusted` | `crates/contextful-cli/tests/integration/pipeline.rs::a_bad_signature_or_local_declaration_refuses_pulled_control_without_arming` | performed |
 | `surface.reconcile.url-layout` | `crates/contextful-cli/tests/integration/pipeline.rs::a_loopback_control_url_serves_the_applied_snapshot` | performed |
 | `surface.reside.region-entries` | `crates/contextful-core/tests/integration/surface/reside.rs::an_allow_set_holds_sixteen_entries` | performed |
 | `surface.reside.region-mismatch` | `crates/contextful-cli/tests/integration/pipeline.rs::a_resource_outside_the_residency_allow_set_serves_nothing` | performed |

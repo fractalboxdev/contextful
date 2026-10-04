@@ -86,6 +86,29 @@ fn a_head_version_without_its_receipt_never_stages_an_older_receipt_as_head() {
     assert!(!cold.root().join("control/head.json").exists());
 }
 
+#[test]
+fn a_sparse_control_chain_reads_listed_receipts_without_walking_version_numbers() {
+    let dir = tempfile::tempdir().unwrap();
+    let b = bucket(dir.path());
+    let writer = node("ingest-a", b.clone(), "");
+    let control = writer.syncer.control_dir.as_ref().unwrap();
+    std::fs::create_dir_all(control).unwrap();
+    let signer = SeedSigner::generate(SignatureAlgorithm::Ed25519);
+    let first = ControlReceipt::sign("research", 1, None, b"first", &signer).unwrap();
+    let last = ControlReceipt::sign("research", u64::MAX, Some(&first.digest()), b"last", &signer).unwrap();
+    for (version, snapshot, receipt) in [(1, b"first".as_slice(), &first), (u64::MAX, b"last".as_slice(), &last)] {
+        std::fs::write(control.join(snapshot_file(version)), snapshot).unwrap();
+        std::fs::write(control.join(receipt_file(version)), serde_json::to_vec(receipt).unwrap()).unwrap();
+    }
+    std::fs::write(control.join(CONTROL_POINTER), format!("{}\n", u64::MAX)).unwrap();
+    writer.syncer.push(at(NOW)).unwrap();
+    let cold = node("ingest-b", b, "");
+    cold.syncer.pull(&PullScope::default()).unwrap();
+    let head: contextful_core::store::sync::ControlHead = serde_json::from_slice(&std::fs::read(cold.root().join("control/head.json")).unwrap()).unwrap();
+    assert_eq!(head.version, u64::MAX);
+    assert_eq!(head.receipt_sha256, last.digest());
+}
+
 fn files(n: &crate::support::Node) -> Vec<String> {
     let decl = TableDecl::named("filings");
     let s = contextful_context::scan::scan(&n.syncer.store, &decl, Default::default()).unwrap();

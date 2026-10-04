@@ -3,6 +3,19 @@
 use contextful_core::surface::SurfaceError;
 use contextful_engine::control::{ControlError, SnapshotDir};
 
+#[test]
+fn adoption_publishes_a_verified_chain_with_the_pointer_last() {
+    let dir = tempfile::tempdir().unwrap();
+    let snaps = SnapshotDir::open(dir.path());
+    let chain = [(1, b"first".to_vec(), b"receipt one".to_vec()), (3, b"third".to_vec(), b"receipt three".to_vec())];
+    snaps.adopt(None, &chain, 3).unwrap();
+    assert_eq!(snaps.current().unwrap(), Some(3));
+    assert_eq!(snaps.read(1).unwrap(), "first");
+    assert_eq!(snaps.read(3).unwrap(), "third");
+    assert_eq!(std::fs::read(dir.path().join("receipt@v3.json")).unwrap(), b"receipt three");
+    assert!(!dir.path().join("manifest@v2.toml").exists());
+}
+
 /// An apply whose compare-and-swap loses raises `ManifestVersionConflict`, reloads the winning version and
 /// reapplies its pending edits onto it, overwriting no applied version.
 // spec: surface.apply.version-race@30fc0e6c

@@ -134,6 +134,9 @@ pub enum PipelineCmd {
         /// The address the external trigger's `POST /wake` listens on, such as `127.0.0.1:8788`.
         #[arg(long)]
         http: Option<String>,
+        /// Locally pinned issuer keys for pulled control receipts; absent, `CONTEXTFUL_ISSUER_PUBKEY`.
+        #[arg(long)]
+        public_key: Option<String>,
     },
     /// Run steps a `serve` submits: take `POST /submit`, run each step as `run --applied`,
     /// heartbeat and call back through the step's awakeable route under `CONTEXTFUL_WORKER_KEY`.
@@ -538,7 +541,7 @@ pub fn run(cmd: PipelineCmd, tasks: &Tasks) -> Result<()> {
         PipelineCmd::Import { project, declaration, admit, issuer_key } => {
             crate::cadence::import(&project, declaration, tasks, &admit, issuer_key.as_deref())
         }
-        PipelineCmd::Serve { project, declaration, cycle, http } => crate::cadence::serve(&project, declaration, cycle, http.as_deref()),
+        PipelineCmd::Serve { project, declaration, cycle, http, public_key } => crate::cadence::serve(&project, declaration, cycle, http.as_deref(), public_key.as_deref(), tasks),
         PipelineCmd::Worker { project, declaration, listen } => crate::worker::serve_worker(&project, declaration, &listen),
         PipelineCmd::Run { id, project, declaration, run_id, site_id, site_id_env, component_target, admit, applied } => {
             let l = project.locate(declaration)?;

@@ -13,7 +13,7 @@ use contextful_core::store::sync::{
 use contextful_core::store::StoreError;
 use contextful_core::surface::reside::{compare_sites, SiteRegions};
 use contextful_core::surface::SurfaceError;
-use contextful_core::surface::control::{parse_pointer, receipt_file, snapshot_file, POINTER_FILE as CONTROL_POINTER};
+use contextful_core::surface::control::{parse_pointer, receipt_file, receipt_version, snapshot_file, POINTER_FILE as CONTROL_POINTER};
 use contextful_policy::control_receipt::ControlReceipt;
 use contextful_policy::issue::SignerKey;
 use contextful_core::time::Instant;
@@ -483,9 +483,20 @@ impl Syncer {
             Err(e) => return Err(io(&pointer, e)),
         };
         let version = parse_pointer(&body)?;
+        let mut versions = Vec::new();
+        for entry in std::fs::read_dir(dir).map_err(|e| io(dir, e))? {
+            let entry = entry.map_err(|e| io(dir, e))?;
+            if let Some(n) = entry.file_name().to_str().and_then(receipt_version).filter(|n| *n <= version) {
+                versions.push(n);
+            }
+        }
+        versions.sort_unstable_by(|a, b| b.cmp(a));
+        if versions.first() != Some(&version) {
+            return Err(SurfaceError::ControlAttestationUnavailable(format!("{}: applied v{version} has no receipt", pointer.display())).into());
+        }
         let mut parent_needed: Option<String> = None;
         let mut head_digest = None;
-        for n in (1..=version).rev() {
+        for n in versions {
             if n != version && parent_needed.is_none() {
                 break;
             }
@@ -865,8 +876,17 @@ impl Syncer {
     fn control_reachable(&self, manifest: &BucketManifest) -> Result<(BTreeSet<String>, Option<String>)> {
         let mut keys = BTreeSet::new();
         let Some(head) = manifest.control_heads.get(&self.project) else { return Ok((keys, None)) };
+        let control_prefix = format!("{}/control/", self.project);
+        let mut versions: Vec<u64> = manifest.entries.keys()
+            .filter_map(|key| key.strip_prefix(&control_prefix).and_then(receipt_version))
+            .filter(|version| *version <= head.version)
+            .collect();
+        versions.sort_unstable_by(|a, b| b.cmp(a));
+        if versions.first() != Some(&head.version) {
+            return Ok((keys, Some(format!("{control_prefix}{}", receipt_file(head.version)))));
+        }
         let mut wanted = Some(head.receipt_sha256.clone());
-        for version in (1..=head.version).rev() {
+        for version in versions {
             let Some(digest) = wanted.as_deref() else { break };
             let receipt_key = format!("{}/control/{}", self.project, receipt_file(version));
             let Some(entry) = manifest.entries.get(&receipt_key) else {

@@ -63,7 +63,7 @@ fn a_cold_node_resumes_the_cursor_a_push_carried() {
 }
 
 /// `shop` scheduled `every 1h`, with the site id a dispatched run takes from the manifest, applied.
-fn scheduled_shop(id: &str, bucket: &Path, vendor: &Vendor) -> tempfile::TempDir {
+fn scheduled_shop(id: &str, bucket: &Path, vendor: &Vendor, apply: bool) -> tempfile::TempDir {
     let dir = shop(id, bucket, vendor);
     let manifest = dir.path().join("contextful.toml");
     let text = std::fs::read_to_string(&manifest).unwrap();
@@ -71,6 +71,7 @@ fn scheduled_shop(id: &str, bucket: &Path, vendor: &Vendor) -> tempfile::TempDir
     let spec = dir.path().join("pipelines/shop.toml");
     let text = std::fs::read_to_string(&spec).unwrap();
     std::fs::write(&spec, text.replacen("incremental", "schedule = \"every 1h\"\nincremental", 1)).unwrap();
+    if !apply { return dir; }
     std::fs::write(dir.path().join(".contextful/issuance.toml"),
         "default_audience = \"contextful://research\"\nmax_lifetime_secs = 3600\n").unwrap();
     let public = ok(&cf(dir.path(), &["token", "keygen", "--out", ".contextful/issuer.seed"], &[]));
@@ -85,8 +86,12 @@ fn scheduled_shop(id: &str, bucket: &Path, vendor: &Vendor) -> tempfile::TempDir
     dir
 }
 
-fn serve_cycle(dir: &Path, now: &str) -> serde_json::Value {
-    serde_json::from_str(&ok(&cf(dir, &["pipeline", "serve", "--cycle", "--project", "research", "--now", now], &[]))).unwrap()
+fn serve_cycle(dir: &Path, now: &str, public: &str) -> serde_json::Value {
+    serde_json::from_str(&ok(&cf(dir, &["pipeline", "serve", "--cycle", "--project", "research", "--now", now, "--public-key", public], &[]))).unwrap()
+}
+
+fn issuer_public(dir: &Path) -> String {
+    contextful_policy::issue::SeedSigner::from_seed(&std::fs::read_to_string(dir.join(".contextful/issuer.seed")).unwrap()).unwrap().public_key_text()
 }
 
 /// A pipeline's last journaled run start is the latest start across this node's catalog and every run state a
@@ -96,17 +101,18 @@ fn serve_cycle(dir: &Path, now: &str) -> serde_json::Value {
 fn a_cold_node_keeps_the_cadence_another_node_fired() {
     let vendor = Vendor::start(|_| (200, "[{\"id\":\"s1\",\"at\":5}]".into()));
     let bucket = tempfile::tempdir().unwrap();
-    let a = scheduled_shop("ingest-a", bucket.path(), &vendor);
-    assert_eq!(serve_cycle(a.path(), "2030-01-01T00:00:00Z")["fired"], serde_json::json!(["shop"]));
+    let a = scheduled_shop("ingest-a", bucket.path(), &vendor, true);
+    let public = issuer_public(a.path());
+    assert_eq!(serve_cycle(a.path(), "2030-01-01T00:00:00Z", &public)["fired"], serde_json::json!(["shop"]));
     ok(&cf(a.path(), &["sync", "push", "--project", "research"], &[]));
 
     // A cold node arming the same schedule ten minutes on fires nothing until the hour the other node set.
-    let b = scheduled_shop("ingest-b", bucket.path(), &vendor);
+    let b = scheduled_shop("ingest-b", bucket.path(), &vendor, false);
     ok(&cf(b.path(), &["sync", "pull", "--project", "research"], &[]));
-    let cycle = serve_cycle(b.path(), "2030-01-01T00:10:00Z");
+    let cycle = serve_cycle(b.path(), "2030-01-01T00:10:00Z", &public);
     assert_eq!(cycle["fired"], serde_json::json!([]), "{cycle}");
     assert_eq!(cycle["next_due"], "2030-01-01T01:00:00Z", "{cycle}");
-    assert_eq!(serve_cycle(b.path(), "2030-01-01T01:00:00Z")["fired"], serde_json::json!(["shop"]));
+    assert_eq!(serve_cycle(b.path(), "2030-01-01T01:00:00Z", &public)["fired"], serde_json::json!(["shop"]));
     assert_eq!(vendor.targets().len(), 2, "{:?}", vendor.targets());
 }
 
@@ -116,13 +122,14 @@ fn a_cold_node_keeps_the_cadence_another_node_fired() {
 fn a_future_dated_run_state_leaves_a_cold_nodes_cadence_alone() {
     let vendor = Vendor::start(|_| (200, "[{\"id\":\"s1\",\"at\":5}]".into()));
     let bucket = tempfile::tempdir().unwrap();
-    let a = scheduled_shop("ingest-a", bucket.path(), &vendor);
+    let a = scheduled_shop("ingest-a", bucket.path(), &vendor, true);
+    let public = issuer_public(a.path());
     fire(a.path(), "f1", "2031-06-01T00:00:00Z");
     ok(&cf(a.path(), &["sync", "push", "--project", "research"], &[]));
 
-    let b = scheduled_shop("ingest-b", bucket.path(), &vendor);
+    let b = scheduled_shop("ingest-b", bucket.path(), &vendor, false);
     ok(&cf(b.path(), &["sync", "pull", "--project", "research"], &[]));
-    let cycle = serve_cycle(b.path(), "2030-01-02T00:00:00Z");
+    let cycle = serve_cycle(b.path(), "2030-01-02T00:00:00Z", &public);
     assert_eq!(cycle["fired"], serde_json::json!(["shop"]), "{cycle}");
     assert_eq!(cycle["next_due"], "2030-01-02T01:00:00Z", "{cycle}");
 }

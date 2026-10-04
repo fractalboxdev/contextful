@@ -22,6 +22,9 @@ pub enum SurfaceError {
     /// (`surface.reconcile.fail-static`)
     #[error("ControlSnapshotUnreadable: {0}")]
     ControlSnapshotUnreadable(String),
+    /// (`surface.reconcile.pulled-control-untrusted`)
+    #[error("ControlSnapshotUntrusted: {0}")]
+    ControlSnapshotUntrusted(String),
     /// (`surface.reconcile.loopback-only`)
     #[error("ControlSourceNotLoopback: {0}")]
     ControlSourceNotLoopback(String),
@@ -102,6 +105,7 @@ impl SurfaceError {
             SurfaceError::EnforceRegionMismatch(_) | SurfaceError::ResidencySitesDiverge(_) => 503,
             SurfaceError::DispatchSubmitRejected(_) => 401,
             SurfaceError::ScheduleUnreadable(_)
+            | SurfaceError::ControlSnapshotUntrusted(_)
             | SurfaceError::ApplyValidationRefused(_)
             | SurfaceError::TriggerAdapterUnknown(_)
             | SurfaceError::TriggerFaceMissing(_)

@@ -27,6 +27,13 @@ pub fn receipt_file(version: u64) -> String {
     format!("receipt@v{version}.json")
 }
 
+/// The canonical version named by one signed receipt filename.
+pub fn receipt_version(name: &str) -> Option<u64> {
+    let digits = name.strip_prefix("receipt@v")?.strip_suffix(".json")?;
+    let version: u64 = digits.parse().ok()?;
+    (digits == version.to_string()).then_some(version)
+}
+
 /// Read a pointer body: ASCII digits and at most one trailing newline, nothing else
 /// (`surface.reconcile.pointer-malformed`).
 pub fn parse_pointer(body: &str) -> Result<u64, SurfaceError> {

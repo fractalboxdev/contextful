@@ -49,7 +49,7 @@ only the closed kind union ({{surface.fire.job-kind-unknown}}), and dispatch fen
 callbacks by attempt ({{surface.dispatch.callback-rejected}}). Reside refuses to serve from
 a region the policy omits ({{surface.reside.region-mismatch}}).
 
-A synced apply records an admin-attested snapshot ({{surface.apply.synced-attestation}}). A cold reconciler verifies the pulled receipt and validates the document against its own declarations before arming it ({{surface.reconcile.pulled-control}}); an invalid version names its reason ({{surface.reconcile.pulled-control-untrusted}}).
+A synced apply records an admin-attested snapshot ({{surface.apply.synced-attestation}}). A cold reconciler verifies the pulled receipt under locally pinned issuer keys ({{surface.reconcile.issuer-pin}}), validates the document against its own declarations before arming it ({{surface.reconcile.pulled-control}}), and names the reason for an invalid version ({{surface.reconcile.pulled-control-untrusted}}).
 
 The console turns one question into one answer. The server, never the client, chooses
 every capability the turn exercises: tools come from the turn's admitted packs

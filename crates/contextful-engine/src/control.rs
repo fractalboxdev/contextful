@@ -87,6 +87,31 @@ impl SnapshotDir {
         std::fs::read_to_string(&path).map_err(|e| SurfaceError::ControlSnapshotUnreadable(format!("{}: {e}", path.display())).into())
     }
 
+    /// Install a verified receipt chain under the claim lock and publish its head last.
+    pub fn adopt(&self, expected: Option<u64>, chain: &[(u64, Vec<u8>, Vec<u8>)], head: u64) -> Result<(), ControlError> {
+        let storage = |e: contextful_core::run::Failure| ControlError::Storage(e.to_string());
+        let _lock = FileLock::acquire(&self.root.join(LOCK_FILE)).map_err(storage)?;
+        if self.current()? != expected {
+            return Err(SurfaceError::ManifestVersionConflict(format!(
+                "the applied pointer changed while adopting v{head}; reload its head"
+            )).into());
+        }
+        for (version, snapshot, receipt) in chain {
+            for (path, bytes) in [(self.root.join(snapshot_file(*version)), snapshot), (self.root.join(receipt_file(*version)), receipt)] {
+                if !create_new(&path, bytes).map_err(storage)? {
+                    let held = std::fs::read(&path).map_err(|e| ControlError::Storage(format!("{}: {e}", path.display())))?;
+                    if held.as_slice() != bytes.as_slice() {
+                        return Err(ControlError::Storage(format!("{} differs from the verified control chain", path.display())));
+                    }
+                }
+            }
+        }
+        if expected != Some(head) {
+            replace(&self.root.join(POINTER_FILE), format!("{head}\n").as_bytes()).map_err(storage)?;
+        }
+        Ok(())
+    }
+
     /// Claim the version after `expected` holding `text` and advance the pointer to it. A
     /// pointer no longer at `expected` raises `ManifestVersionConflict` and writes nothing;
     /// a version file already present is never overwritten, the claim taking the next free one.
