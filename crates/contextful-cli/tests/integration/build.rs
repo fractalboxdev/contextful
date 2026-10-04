@@ -136,8 +136,16 @@ fn failing_model_test_reports_refused_and_keeps_prior_publication() {
     let status: Value = serde_json::from_str(&stdout(&run(p, &["build", "status", "daily", "--json"]))).unwrap();
     assert_eq!(status["last_build_status"], "refused");
     assert_eq!(status["published_build_id"], published["build_id"]);
+    let refused_id = status["last_build_id"].as_str().unwrap().to_string();
     let read: Value = serde_json::from_str(&stdout(&run(p, &["query", "--json", "--project", "research", "SELECT day, n FROM daily ORDER BY day"]))).unwrap();
     assert_eq!(read["rows"], serde_json::json!([["d1", "2"], ["d2", "1"]]));
+    std::fs::write(p.join("contextful.toml"), DECLARATION).unwrap();
+    let recovered = build(p, "2030-01-01T02:00:00Z");
+    assert_ne!(recovered["build_id"], refused_id, "a retry at the same instant must preserve the refused attempt");
+    let history = std::fs::read_to_string(p.join(".contextful/context/research/tables/daily/builds.jsonl")).unwrap();
+    let entries: Vec<Value> = history.lines().map(|line| serde_json::from_str(line).unwrap()).collect();
+    assert!(entries.iter().any(|entry| entry["build_id"] == refused_id && entry["status"] == "refused"));
+    assert!(entries.iter().any(|entry| entry["build_id"] == recovered["build_id"] && entry["status"] == "published"));
 }
 
 /// `contextful build <model>` materializes the model into staging, checks its contract, runs its tests, then commits; `--json` prints the build id, row count and watermark.
