@@ -25,6 +25,7 @@ fn tree(root: &std::path::Path) -> Vec<String> {
     out
 }
 
+// spec: read.register.column-hints@ce544829
 #[test]
 fn describe_reports_declared_hints_on_existing_columns_only() {
     let manifest = MANIFEST.replace(
