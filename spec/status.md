@@ -10,12 +10,12 @@ An unpinned clause is `committed`; a pinned one is `performed` when its test res
 | `connector` | 2 | 14 | 321 | 80 | 21 | 16 | 195 | 0 | 195 |
 | `corpus` | 1 | 10 | 77 | 37 | 7 | 0 | 38 | 0 | 38 |
 | `disclosure` | 3 | 16 | 122 | 64 | 13 | 7 | 54 | 0 | 54 |
-| `read` | 2 | 15 | 179 | 29 | 22 | 21 | 163 | 0 | 162 |
-| `run` | 3 | 26 | 372 | 98 | 36 | 37 | 259 | 0 | 257 |
-| `store` | 1 | 17 | 235 | 55 | 13 | 20 | 198 | 0 | 194 |
-| `surface` | 2 | 19 | 86 | 46 | 22 | 5 | 51 | 0 | 50 |
+| `read` | 2 | 15 | 179 | 29 | 22 | 21 | 163 | 0 | 163 |
+| `run` | 3 | 26 | 372 | 98 | 36 | 37 | 261 | 0 | 261 |
+| `store` | 1 | 17 | 235 | 55 | 13 | 20 | 198 | 0 | 198 |
+| `surface` | 2 | 19 | 86 | 46 | 22 | 5 | 51 | 0 | 51 |
 | `topology` | 1 | 6 | 70 | 24 | 5 | 5 | 38 | 0 | 38 |
-| **total** | 19 | 154 | 1956 | 569 | 188 | 133 | 1335 | 0 | |
+| **total** | 19 | 154 | 1956 | 569 | 188 | 133 | 1337 | 0 | |
 
 Decision records: 18.
 
@@ -36,7 +36,7 @@ A milestone reads `closed` when its acceptance test computes `passing` and every
 | 8 — Accountability | 5 | 60 | 47 | passing | open |
 | 9 — Visibility | 6 | 41 | 3 | open | open |
 | 10 — Cadence and the operator plane | 11 | 67 | 56 | passing | open |
-| 11 — The derive tier | 7 | 78 | 55 | passing | open |
+| 11 — The derive tier | 7 | 78 | 57 | passing | closed |
 | 12 — The console | 11 | 30 | 0 | absent | open |
 | 13 — Disclosure | 5 | 21 | 4 | open | open |
 | 14 — Assurance | 7 | 130 | 83 | passing | closed |
@@ -846,6 +846,7 @@ Unscheduled operations: 10.
 | `run.advance.watermark-shape` | `crates/contextful-core/tests/integration/run/advance.rs::a_watermark_names_its_field` | performed |
 | `run.bind.command-in-manifest` | `crates/contextful-core/tests/integration/run/derive.rs::an_executable_key_in_the_manifest_refuses` | performed |
 | `run.bind.driver-mismatch` | `crates/contextful-core/tests/integration/run/derive.rs::a_driver_the_task_does_not_serve_refuses` | performed |
+| `run.bind.endpoint-host-bare` | `crates/contextful-core/tests/integration/run/derive.rs::a_fetch_binding_refuses_process_keys_and_nonbare_endpoint_hosts` | performed |
 | `run.bind.host-task` | `crates/contextful-core/tests/integration/run/host_task.rs::a_registered_task_resolves_by_name_and_a_taken_name_refuses` | performed |
 | `run.bind.media-root` | `crates/contextful-connectors/tests/integration/derive.rs::media_outside_the_root_fails_that_unit_alone` | performed |
 | `run.bind.media-unreadable` | `crates/contextful-connectors/tests/integration/derive.rs::unreadable_media_fails_that_unit_alone` | performed |
@@ -921,6 +922,7 @@ Unscheduled operations: 10.
 | `run.export.post-commit-read` | `crates/contextful-cli/tests/integration/export.rs::export_reads_through_the_face_under_the_admitted_credential` | performed |
 | `run.export.secret-preflight` | `crates/contextful-cli/tests/integration/export.rs::an_unresolved_header_reference_refuses_before_any_request` | performed |
 | `run.export.signal-unknown` | `crates/contextful-core/tests/integration/pipeline/export.rs::a_signal_other_than_logs_is_refused` | performed |
+| `run.fetch.binding-key` | `crates/contextful-core/tests/integration/run/derive.rs::a_fetch_binding_refuses_process_keys_and_nonbare_endpoint_hosts` | performed |
 | `run.guard-secrets.assignment-key` | `crates/contextful-core/tests/integration/pipeline/guard.rs::a_compound_key_assignment_is_masked_keeping_its_key` | performed |
 | `run.guard-secrets.coverage` | `crates/contextful-core/tests/integration/pipeline/guard.rs::encoded_or_split_credentials_pass_through` | performed |
 | `run.guard-secrets.mask-only` | `crates/contextful-engine/tests/integration/guard.rs::each_pull_reports_masked_cells_and_the_run_proceeds` | performed |
