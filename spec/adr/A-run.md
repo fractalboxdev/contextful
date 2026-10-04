@@ -77,6 +77,23 @@ Context: `run.exec.engine-id` is written on every row and read by nothing, so a 
 Consequences: a re-derived unit re-indexes its vector and full-text sidecars; ordering between chained derive pipelines is a separate decision.
 Revisit: hashing parent rows dominates tick cost on a real archive.
 
+## Chained derive pipelines follow their source tables
+
+**Status:** proposed
+
+Context: a derive source can read another derive pipeline's output, but declaration order and independent scheduling provide no landing order. Criteria: one tick carries a new parent row through its children; a cycle cannot repeatedly select itself; a failed parent does not hide rows it committed earlier.
+
+Decision: the build maps output tables to derive pipelines, resolves each derive source table to its parent when one exists, and refuses a cycle naming its members. A tick runs the acyclic set parent-first. A failed parent leaves its child eligible to run over committed rows, while the tick reports the failure.
+
+| Option | Lost on | Cost |
+| --- | --- | --- |
+| Infer dependencies from source tables and run parent-first *(chosen)* | — | A build traverses the derive graph; a tick serializes dependent runs and reports a parent failure beside child work. |
+| Require authors to set `after` on each child | Completeness | A missing manual edge leaves a child one tick behind without a build refusal. |
+| Let each derive pipeline run independently | Freshness | Child selection can precede its parent's landing. |
+| Stop descendants after a failed parent | Availability | Committed rows from an earlier fire remain unprocessed until another tick. |
+
+Consequences: the source-table name is a scheduling dependency when it names another derive output; an external source table adds no edge.
+
 ## A derive engine is a machine-bound argv child with a cleared environment
 
 A manifest requests an engine by name; the machine's configuration defines what that name executes, and row data never becomes syntax. `run.bind` refuses an unbound name or a command key in a manifest; a `[derive.<name>]` block states argv chain or host list, environment allowlist, pins and bounds, and the adapter, not the operator's zone key, declares locality. `run.exec` spawns an argument array with no shell, a cleared environment plus allowlist, and wall-clock and output bounds, killing the process group on deadline.

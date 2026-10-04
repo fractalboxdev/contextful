@@ -10,7 +10,6 @@ A run is how data enters **Contextful** and survives interruption. A pipeline de
 to pull and which tables it lands; a run executes it once against a pinned plan, and either
 commits rows with the position behind them or leaves a resume point. The derive tier reuses
 the machinery for per-row work, such as turning a recording into passages.
-Every effect a run makes is recorded, so a replay reads the record, not the outside world.
 
 ## How it works
 
@@ -71,7 +70,9 @@ A model builds in staging ({{run.publish.staging}}).
 The derive tier anti-joins its own output each tick ({{run.select.rows-per-run}}), runs
 a machine-defined engine ({{run.bind.command-in-manifest}}), and records every unit's fate in its own table
 ({{run.emit.unit-status}}) under its derivation ({{run.emit.derivation-key}}); stale
-rows answer until replaced ({{run.emit.stale-supersedes}}).
+rows answer until replaced ({{run.emit.stale-supersedes}}). Chained derives follow
+{{run.select.derive-order}} and {{run.select.derive-failed-parent}}; {{run.select.derive-cycle}}
+keeps a circular chain from arming.
 
 ## Worked example
 

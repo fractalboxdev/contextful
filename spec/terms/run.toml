@@ -85,6 +85,7 @@ ModelTestFailed                = { clause = "run.model.test-failed", gloss = "A 
 ModelUndeclared                = { clause = "run.model.unknown-model", gloss = "A build naming no declared model." }
 ModelBuildUnknown              = { clause = "run.model.hold-unknown-build", gloss = "A hold naming a build no committed manifest records." }
 DeriveConfigKeyMissing         = { clause = "run.select.required-key", gloss = "A required derive config key absent or blank." }
+DeriveCycle                    = { clause = "run.select.derive-cycle", gloss = "Derive source-table dependencies returning to a pipeline." }
 DeriveNoStoreRoot              = { clause = "run.select.no-store-root", gloss = "A derive source built without a store root or pipeline id." }
 DeriveForeignOutputTable       = { clause = "run.select.foreign-output-table", gloss = "Configuration naming another pipeline's output table." }
 DeriveUnitIncomplete           = { clause = "run.select.incomplete-unit", gloss = "A parent row without a key or media value." }
