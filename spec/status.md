@@ -11,11 +11,11 @@ An unpinned clause is `committed`; a pinned one is `performed` when its test res
 | `corpus` | 1 | 10 | 77 | 37 | 7 | 0 | 38 | 0 | 38 |
 | `disclosure` | 3 | 16 | 122 | 64 | 13 | 7 | 54 | 0 | 54 |
 | `read` | 2 | 15 | 179 | 29 | 22 | 21 | 163 | 0 | 163 |
-| `run` | 3 | 26 | 376 | 98 | 36 | 34 | 272 | 0 | 272 |
+| `run` | 3 | 26 | 376 | 98 | 36 | 34 | 273 | 0 | 273 |
 | `store` | 1 | 17 | 235 | 55 | 13 | 20 | 198 | 0 | 198 |
 | `surface` | 2 | 19 | 86 | 46 | 22 | 5 | 51 | 0 | 51 |
 | `topology` | 1 | 6 | 70 | 24 | 5 | 5 | 38 | 0 | 38 |
-| **total** | 19 | 154 | 1960 | 569 | 188 | 130 | 1348 | 0 | |
+| **total** | 19 | 154 | 1960 | 569 | 188 | 130 | 1349 | 0 | |
 
 Decision records: 18.
 
@@ -36,7 +36,7 @@ A milestone reads `closed` when its acceptance test computes `passing` and every
 | 8 — Accountability | 5 | 60 | 47 | passing | open |
 | 9 — Visibility | 6 | 41 | 3 | open | open |
 | 10 — Cadence and the operator plane | 11 | 67 | 56 | passing | open |
-| 11 — The derive tier | 7 | 82 | 68 | passing | closed |
+| 11 — The derive tier | 7 | 82 | 69 | passing | closed |
 | 12 — The console | 11 | 30 | 0 | absent | open |
 | 13 — Disclosure | 5 | 21 | 4 | open | open |
 | 14 — Assurance | 7 | 130 | 83 | passing | closed |
@@ -929,6 +929,7 @@ Unscheduled operations: 10.
 | `run.fetch.charset` | `crates/contextful-connectors/tests/integration/derive.rs::a_link_preview_bounds_redirects_and_refuses_non_utf8_documents` | performed |
 | `run.fetch.document-prefix` | `crates/contextful-connectors/tests/integration/derive.rs::a_link_preview_scans_a_megabyte_prefix_and_drops_the_remainder` | performed |
 | `run.fetch.head-rows` | `crates/contextful-connectors/tests/integration/derive.rs::a_link_preview_probes_advertised_images_with_a_bounded_range` | performed |
+| `run.fetch.hop-timeout` | `spec/pins.toml` | performed |
 | `run.fetch.not-utf8` | `crates/contextful-connectors/tests/integration/derive.rs::a_link_preview_bounds_redirects_and_refuses_non_utf8_documents` | performed |
 | `run.fetch.probe-prefix` | `crates/contextful-connectors/tests/integration/derive.rs::a_link_preview_probes_advertised_images_with_a_bounded_range` | performed |
 | `run.fetch.redirect-chain` | `crates/contextful-connectors/tests/integration/derive.rs::a_link_preview_bounds_redirects_and_refuses_non_utf8_documents` | performed |

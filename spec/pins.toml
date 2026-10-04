@@ -27,6 +27,7 @@
 # `contextful-spec state` reads this file and the tags and writes spec/status.md.
 
 [pin]
+"run.fetch.hop-timeout" = { test = "contextful_connectors::derive::a_link_preview_times_out_one_slow_hop_but_allows_two_short_hops" }
 "run.emit.output-modality" = { test = "contextful_connectors::derive::a_transcript_passage_carries_text_modality" }
 "run.emit.local-content-key" = { test = "contextful_connectors::derive::changed_local_bytes_reselect_the_same_media_path" }
 "corpus.targets.cap-unrecorded"     = { test = "contextful_spec::targets::a_capped_shape_not_recording_its_exclusions_is_refused" }
@@ -60,7 +61,7 @@ connector = 195
 corpus = 38
 disclosure = 54
 read = 163
-run = 272
+run = 273
 store = 198
 surface = 51
 topology = 38

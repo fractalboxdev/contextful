@@ -293,6 +293,36 @@ fn a_link_preview_uses_sixty_seconds_for_a_429_without_retry_after() {
     assert_eq!(failure.retry_after_secs, Some(60));
 }
 
+/// Each fetch hop has its own `request_timeout_secs` wall clock.
+#[test]
+fn a_link_preview_times_out_one_slow_hop_but_allows_two_short_hops() {
+    let site = Server::start(|request| match request.path() {
+        "/slow" => {
+            std::thread::sleep(std::time::Duration::from_secs(2));
+            Response { status: 200, headers: vec![], body: b"<title>Too late</title>".to_vec() }
+        }
+        "/redirect" => {
+            std::thread::sleep(std::time::Duration::from_millis(650));
+            Response { status: 302, headers: vec![("Location".into(), "/fast".into())], body: vec![] }
+        }
+        "/fast" => {
+            std::thread::sleep(std::time::Duration::from_millis(650));
+            Response { status: 200, headers: vec![], body: b"<title>Within each hop</title>".to_vec() }
+        }
+        _ => Response::json(404, "{}"),
+    });
+    let dir = tempfile::tempdir().unwrap();
+    let address = format!("http://localhost:{}/slow", site.port);
+    let started = std::time::Instant::now();
+    let rows = pulled(&mut link_source(dir.path(), &address, "request_timeout_secs = 1\n"));
+    assert_eq!(rows[0]["unit_status"], "failed", "{rows:?}");
+    assert!(started.elapsed() < std::time::Duration::from_secs(2));
+
+    let address = format!("http://localhost:{}/redirect", site.port);
+    let rows = pulled(&mut link_source(dir.path(), &address, "request_timeout_secs = 1\n"));
+    assert_eq!(rows[0]["title"], "Within each hop", "{rows:?}");
+}
+
 // spec: run.fetch.probe-prefix@4b8736f9
 // spec: run.fetch.head-rows@ca1a4fd4
 #[test]
