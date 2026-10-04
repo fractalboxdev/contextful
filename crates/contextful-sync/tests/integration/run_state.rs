@@ -31,6 +31,30 @@ fn a_bound_run_state_stays_sealed_across_record_and_read() {
     assert!(run_state::RunStateFiles::new(n.syncer.store.root(), MetadataFiles::sealed(&wrong)).run_states().is_err());
 }
 
+#[test]
+fn a_sealed_run_state_travels_between_nodes_without_exposing_its_payload() {
+    let dir = tempfile::tempdir().unwrap();
+    let shared = bucket(dir.path());
+    let (source, target) = (node("ingest-a", shared.clone(), ""), node("ingest-b", shared.clone(), ""));
+    let cipher = AesGcmFileCipher::new([7; 32], 1);
+    let canary = "run-state-transfer-canary-74";
+    let expected = state(&source, canary, "2030-01-01T00:00:00Z", Some((9, "2030-01-01T00:01:00Z")));
+    let source_files = run_state::RunStateFiles::new(source.syncer.store.root(), MetadataFiles::sealed(&cipher));
+    let path = source_files.record(&expected).unwrap();
+    let sealed = std::fs::read(&path).unwrap();
+
+    source.syncer.push(at(NOW)).unwrap();
+    let object = shared.get("team/research/nodes/ingest-a/run-state.json").unwrap().unwrap().0;
+    assert_eq!(object, sealed);
+    assert!(!object.windows(canary.len()).any(|part| part == canary.as_bytes()));
+
+    target.syncer.pull(&PullScope::default()).unwrap();
+    let target_files = run_state::RunStateFiles::new(target.syncer.store.root(), MetadataFiles::sealed(&cipher));
+    assert_eq!(target_files.run_states().unwrap()["ingest-a"], expected);
+    let wrong = AesGcmFileCipher::new([8; 32], 1);
+    assert!(run_state::RunStateFiles::new(target.syncer.store.root(), MetadataFiles::sealed(&wrong)).run_states().is_err());
+}
+
 fn manifest(b: &dyn ObjectStore) -> BucketManifest {
     serde_json::from_slice(&b.get("team/manifest.json").unwrap().unwrap().0).unwrap()
 }
