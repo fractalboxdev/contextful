@@ -71,6 +71,31 @@ fn a_link_preview_reserves_document_and_image_requests_from_one_shared_quota() {
     assert_eq!(select(dir.path(), "SELECT method, url_host, status_code FROM cards_cards__requests ORDER BY request_id"), [["GET", "localhost", "200"], ["GET", "localhost", "200"]]);
 }
 
+#[test]
+fn a_link_preview_refuses_to_land_when_its_request_ledger_cannot_settle() {
+    let vendor = super::pipeline::Vendor::start(|_| (200, "<head><title>Article</title></head>".into()));
+    let dir = tempfile::tempdir().unwrap();
+    let root = dir.path().join(".contextful/context/research");
+    std::fs::create_dir_all(&root).unwrap();
+    std::fs::write(root.join("config.toml"), "[node]\nid = \"ingest-a\"\n").unwrap();
+    std::fs::write(
+        dir.path().join("contextful.toml"),
+        "authoring_posture = \"per_request\"\n[[pipeline]]\nid = \"cards\"\ntables = [{ name = \"cards\", primary_key = [\"unit_ref\", \"derivation_key\", \"cue_seq\"] }]\n[pipeline.source]\nname = \"derive\"\nconfig = { task = \"link_preview\", engine = \"reader\", source_table = \"documents\", media_column = \"url\", parent_id_column = \"doc_id\" }\n[derive.reader]\ndriver = \"fetch\"\nallow_hosts = [\"localhost\"]\n",
+    )
+    .unwrap();
+    let address = vendor.url("/article").replace("127.0.0.1", "localhost");
+    std::fs::write(dir.path().join("documents.jsonl"), format!("{{\"doc_id\":\"d1\",\"url\":\"{address}\"}}\n")).unwrap();
+    ok(&cf(dir.path(), &["context", "land", "documents", "--project", "research", "--rows", "documents.jsonl", "--run-id", "load-1", "--site-id", "site", "--now", "2030-01-01T00:00:00Z"]));
+    let blocked = root.join("tables/cards_cards/requests");
+    std::fs::create_dir_all(blocked.parent().unwrap()).unwrap();
+    std::fs::write(&blocked, "a file blocks the request ledger directory").unwrap();
+    let out = cf(dir.path(), &["pipeline", "run", "cards", "--project", "research", "--run-id", "cards-3", "--site-id", "site", "--now", "2030-01-01T01:00:00Z"]);
+    let error = String::from_utf8_lossy(&out.stderr);
+    assert!(!out.status.success() && error.contains("request ledger"), "{error}");
+    assert!(root.join("tables/cards_cards/data/runs/cards-3").read_dir().is_err(), "no derived batch commits without its ledger");
+    assert_eq!(vendor.targets(), ["/article"]);
+}
+
 fn cf(dir: &std::path::Path, args: &[&str]) -> Output {
     Command::new(env!("CARGO_BIN_EXE_contextful")).args(args).current_dir(dir).output().unwrap()
 }
