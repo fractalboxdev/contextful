@@ -121,6 +121,18 @@ fn notes_text_and_pdfs_land_and_every_other_extension_is_declined_by_extension()
     assert_eq!(f.tag, FailureTag::Config, "{f}");
 }
 
+#[test]
+fn an_empty_file_walk_marks_the_snapshot_complete() {
+    let dir = tempfile::tempdir().unwrap();
+    let mut source = source(dir.path(), json!({"root": "."}));
+    let request = PullRequest { step_label: "pull-0".into(), position: None, idempotency_key: "k".into() };
+    let pull: Value = serde_json::from_slice(&source.pull(&request, &Never).unwrap()).unwrap();
+    assert_eq!(pull["rows"], json!([]));
+    assert_eq!(pull["more"], json!(false));
+    assert_eq!(pull["skipped"], json!(0));
+    assert_eq!(pull["snapshot_complete"], json!(true));
+}
+
 /// A root-relative path is read when it matches an `include` glob, or none is declared, and matches no `exclude`
 /// glob. `*` and `?` match within one segment; a `**` segment matches any number.
 // spec: connector.source.file-globs@7c0ba4a7
