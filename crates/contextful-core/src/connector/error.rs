@@ -12,6 +12,9 @@ pub enum ConnectorError {
     /// A Drive listing reaching its request cap before every folder page completes. (`connector.source.drive-list-bound`)
     #[error("ConnectorDriveListingExceeded: {0}")]
     ConnectorDriveListingExceeded(String),
+    /// A Drive capture mode other than `bytes-and-pages` or `metadata-only`. (`connector.source.drive-mode`)
+    #[error("ConnectorDriveModeUnknown: {0}")]
+    ConnectorDriveModeUnknown(String),
     /// A forwarded guest configuration value that is not a table, over 64 KiB, or carrying a reference. (`connector.import.config-shape`)
     #[error("ConnectorConfigRejected: {0}")]
     ConnectorConfigRejected(String),

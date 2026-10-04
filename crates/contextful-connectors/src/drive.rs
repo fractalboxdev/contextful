@@ -30,7 +30,7 @@ pub const NAME: &str = crate::DRIVE;
 /// The tables the source serves.
 pub const TABLES: [&str; 2] = ["files", "pages"];
 /// The configuration keys the source reads (`run.declare.config-key`).
-pub const KEYS: [&str; 7] = ["folder_id", "folder_ids", "drive_id", "max_file_bytes", "oauth", "api_base", "token_url"];
+pub const KEYS: [&str; 8] = ["folder_id", "folder_ids", "drive_id", "max_file_bytes", "mode", "oauth", "api_base", "token_url"];
 /// Selected folder roots in one Shared Drive (`connector.source.drive-root-set`).
 pub const MAX_ROOTS: usize = 16;
 /// The keys of the `oauth` table.
@@ -71,10 +71,27 @@ pub struct DriveConfig {
     pub folder_ids: Option<Vec<String>>,
     pub drive_id: Option<String>,
     pub max_file_bytes: u64,
+    pub mode: CaptureMode,
     pub oauth: OAuth,
     /// The API origin, `https://www.googleapis.com` unless a loopback test origin replaces it.
     pub api_base: Url,
     pub token_url: Url,
+}
+
+/// How a Drive file's captured bytes are retained.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum CaptureMode {
+    BytesAndPages,
+    MetadataOnly,
+}
+
+impl CaptureMode {
+    fn as_str(self) -> &'static str {
+        match self {
+            Self::BytesAndPages => "bytes-and-pages",
+            Self::MetadataOnly => "metadata-only",
+        }
+    }
 }
 
 fn invalid(why: String) -> ConfigError {
@@ -129,6 +146,12 @@ impl DriveConfig {
         if folder_id.is_none() && folder_ids.is_none() {
             return Err(invalid("names no `folder_id`, the root the walk starts from".into()));
         }
+        let mode = match cfg.get("mode") {
+            None => CaptureMode::BytesAndPages,
+            Some(Value::String(s)) if s == "bytes-and-pages" => CaptureMode::BytesAndPages,
+            Some(Value::String(s)) if s == "metadata-only" => CaptureMode::MetadataOnly,
+            Some(other) => return Err(ConnectorError::ConnectorDriveModeUnknown(format!("`mode` is `bytes-and-pages` or `metadata-only`, found {other}")).into()),
+        };
         let max_file_bytes = match cfg.get("max_file_bytes") {
             None => MAX_FILE_BYTES,
             Some(v) => match v.as_u64() {
@@ -159,7 +182,7 @@ impl DriveConfig {
         };
         let api_base = pinned("api_base", &text("api_base", API_BASE)?, API_HOST)?;
         let token_url = pinned("token_url", &text("token_url", TOKEN_URL)?, TOKEN_HOST)?;
-        Ok(DriveConfig { folder_id, folder_ids, drive_id, max_file_bytes, oauth, api_base, token_url })
+        Ok(DriveConfig { folder_id, folder_ids, drive_id, max_file_bytes, mode, oauth, api_base, token_url })
     }
 
     /// The references the source hydrates, for preflight.
@@ -522,12 +545,14 @@ impl Drive {
                     }
                     Ok(resp) => {
                         let digest = hex(&Sha256::digest(&resp.body));
-                        // The blob lands ahead of the row naming it (`connector.source.drive-bytes`).
-                        self.bodies.put(&digest, &resp.body)?;
                         let (sha256, bytes) = (Some(digest), Some(resp.body.len() as u64));
-                        if !(e.exported() || e.mime == PDF) {
+                        if self.config.mode == CaptureMode::MetadataOnly {
+                            Fetched { sha256, bytes, pages: None, skipped: None }
+                        } else if !(e.exported() || e.mime == PDF) {
+                            self.bodies.put(sha256.as_deref().unwrap(), &resp.body)?;
                             Fetched { sha256, bytes, pages: None, skipped: None }
                         } else {
+                            self.bodies.put(sha256.as_deref().unwrap(), &resp.body)?;
                             // One body the decoder refuses or crashes on skips that file alone
                             // (`connector.source.drive-unreadable`); a stop still ends the read.
                             match self.decoder.pages(&resp.body, &e.path) {
@@ -608,6 +633,7 @@ impl DriveSource {
         r.insert("bytes".into(), json!(f.bytes));
         r.insert("pages".into(), json!(f.pages.as_ref().map(Vec::len)));
         r.insert("skipped".into(), json!(f.skipped));
+        r.insert("capture_status".into(), json!(if f.skipped.is_some() { "skipped" } else { "captured" }));
         r.insert("removed".into(), json!(false));
         r
     }
@@ -622,6 +648,7 @@ impl DriveSource {
         r.insert("path".into(), json!(h.path));
         r.insert("modified_time".into(), json!(h.modified));
         r.insert("removed".into(), json!(true));
+        r.insert("capture_status".into(), json!("removed"));
         r
     }
 
@@ -652,6 +679,7 @@ impl DriveSource {
                 ("bytes", "int64"),
                 ("pages", "int64"),
                 ("skipped", "utf8"),
+                ("capture_status", "utf8"),
                 ("removed", "boolean"),
             ],
             Table::Pages => &[("file_id", "utf8"), ("page", "int64"), ("version", "int64"), ("path", "utf8"), ("text", "utf8"), ("removed", "boolean")],
@@ -663,6 +691,8 @@ impl DriveSource {
     /// land with a `skipped` reason.
     pub fn read(&self, position: Option<&Value>, cancel: &dyn Cancellation) -> Result<Read, Failure> {
         let before = held(position);
+        let previous_mode = position.and_then(|p| p.get("mode")).and_then(Value::as_str).unwrap_or("bytes-and-pages");
+        let mode_changed = previous_mode != self.drive.config.mode.as_str();
         let entries = self.drive.walk(cancel)?;
         let mut rows = Vec::new();
         let mut after = Map::new();
@@ -672,7 +702,7 @@ impl DriveSource {
                 return Err(Failure::canceled("stopped between files"));
             }
             let prior = before.get(&e.id);
-            let unchanged = prior.is_some_and(|h| h.modified == e.modified && h.path == e.path);
+            let unchanged = !mode_changed && prior.is_some_and(|h| h.modified == e.modified && h.path == e.path);
             let mut pages = prior.map_or(0, |h| h.pages);
             if !unchanged {
                 let f = self.drive.fetch(e)?;
@@ -699,7 +729,7 @@ impl DriveSource {
                 Table::Pages => rows.extend((1..=h.pages).map(|p| Self::page_row(id, None, &h.path, p, None))),
             }
         }
-        Ok(Read { rows, position: json!({ "files": after }), skipped })
+        Ok(Read { rows, position: json!({ "files": after, "mode": self.drive.config.mode.as_str() }), skipped })
     }
 }
 
