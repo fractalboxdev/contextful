@@ -4,7 +4,7 @@ use crate::support::{host, loopback, open, open_with, text, Response, Server, ME
 use contextful_core::connector::package::{Artifact, Digest, PinRequirement};
 use contextful_core::run::FailureTag;
 use contextful_wasm::limits::{DISCOVERY_DEADLINE, EPOCH_TICK, IN_FLIGHT, READ_DEADLINE, REQUEST_BODY_BYTES, SESSION_LOG_BYTES};
-use contextful_wasm::Limits;
+use contextful_wasm::{ComponentHost, Limits, Target};
 use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::Arc;
 use std::time::{Duration, Instant};
@@ -27,6 +27,30 @@ fn bytes_off_their_pin_never_reach_the_compiler() {
     assert!(f.deterministic);
     let garbage = host.load_artifact(&artifact, b"not a component", PinRequirement::default()).err().expect("refused");
     assert!(garbage.message.starts_with("ConnectorDigestMismatch"), "the pin is judged ahead of compilation: {garbage}");
+}
+
+// spec: connector.package.artifact-cache@192423af
+#[test]
+fn a_cached_artifact_deserializes_then_recompiles_if_altered_or_incompatible() {
+    let dir = tempfile::tempdir().unwrap();
+    let cache = dir.path().join("cache");
+    let host = ComponentHost::with_cache_dir(Target::Native, &cache).unwrap();
+    let pin = Digest::of(PROBE).to_string();
+    let artifact = Artifact::parse("https://dl.vendor.example/probe.wasm", Some(&pin)).unwrap();
+
+    host.load_artifact(&artifact, PROBE, PinRequirement::default()).unwrap();
+    assert_eq!((host.cache_stats().compilations, host.cache_stats().hits), (1, 0));
+    host.load_artifact(&artifact, PROBE, PinRequirement::default()).unwrap();
+    assert_eq!((host.cache_stats().compilations, host.cache_stats().hits), (1, 1));
+
+    let entry = std::fs::read_dir(&cache).unwrap().map(|e| e.unwrap().path()).find(|p| p.extension().is_some_and(|x| x == "cwasm")).unwrap();
+    std::fs::write(&entry, b"altered cache bytes").unwrap();
+    host.load_artifact(&artifact, PROBE, PinRequirement::default()).unwrap();
+    assert_eq!((host.cache_stats().compilations, host.cache_stats().hits), (2, 1));
+
+    std::fs::rename(&entry, cache.join("stale-compatibility-hash.cwasm")).unwrap();
+    host.load_artifact(&artifact, PROBE, PinRequirement::default()).unwrap();
+    assert_eq!((host.cache_stats().compilations, host.cache_stats().hits), (3, 1));
 }
 
 /// A connector runs under 256 MiB of linear memory by default, raised per connector to at most 2 GiB.

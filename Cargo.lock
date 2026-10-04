@@ -1180,6 +1180,7 @@ dependencies = [
  "http",
  "http-body-util",
  "serde_json",
+ "tempfile",
  "tokio",
  "url",
  "wasmtime",

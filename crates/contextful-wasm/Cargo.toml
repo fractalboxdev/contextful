@@ -38,6 +38,7 @@ pulley = ["wasmtime/pulley"]
 [dev-dependencies]
 contextful-outbound = { path = "../contextful-outbound", features = ["transport-ureq"] }
 half = "2"
+tempfile = "3"
 
 [[test]]
 name = "integration"

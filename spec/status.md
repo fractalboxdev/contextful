@@ -7,7 +7,7 @@ An unpinned clause is `committed`; a pinned one is `performed` when its test res
 | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
 | `assurance` | 2 | 15 | 227 | 59 | 22 | 12 | 135 | 0 | 135 |
 | `authority` | 2 | 16 | 267 | 77 | 27 | 10 | 204 | 0 | 204 |
-| `connector` | 2 | 14 | 321 | 80 | 21 | 16 | 195 | 0 | 195 |
+| `connector` | 2 | 14 | 322 | 80 | 21 | 16 | 196 | 0 | 195 |
 | `corpus` | 1 | 10 | 77 | 37 | 7 | 0 | 38 | 0 | 38 |
 | `disclosure` | 3 | 16 | 122 | 64 | 13 | 7 | 54 | 0 | 54 |
 | `read` | 2 | 15 | 179 | 29 | 22 | 21 | 163 | 0 | 162 |
@@ -15,7 +15,7 @@ An unpinned clause is `committed`; a pinned one is `performed` when its test res
 | `store` | 1 | 17 | 235 | 55 | 13 | 20 | 198 | 0 | 194 |
 | `surface` | 2 | 19 | 86 | 46 | 22 | 5 | 51 | 0 | 50 |
 | `topology` | 1 | 6 | 70 | 24 | 5 | 5 | 38 | 0 | 38 |
-| **total** | 19 | 154 | 1956 | 569 | 188 | 133 | 1335 | 0 | |
+| **total** | 19 | 154 | 1957 | 569 | 188 | 133 | 1336 | 0 | |
 
 Decision records: 18.
 
@@ -29,7 +29,7 @@ A milestone reads `closed` when its acceptance test computes `passing` and every
 | 1 — The authority core | 14 | 236 | 184 | passing | closed |
 | 2 — The store | 9 | 162 | 130 | passing | closed |
 | 3 — The run path | 11 | 206 | 142 | passing | closed |
-| 4 — Ingest | 25 | 468 | 290 | passing | open |
+| 4 — Ingest | 25 | 469 | 291 | passing | open |
 | 5 — The read face under enforcement | 17 | 252 | 192 | passing | open |
 | 6 — Sync and replicas | 8 | 73 | 68 | passing | closed |
 | 7 — Memory | 6 | 37 | 37 | passing | closed |
@@ -465,6 +465,7 @@ Unscheduled operations: 10.
 | `connector.meter.synthesized-throttle` | `crates/contextful-wasm/tests/integration/meter.rs::a_denied_reservation_is_a_synthesized_429_and_an_unreachable_limiter_a_transport_failure` | performed |
 | `connector.meter.unmetered-request` | `crates/contextful-outbound/tests/integration/meter.rs::no_granted_reservation_means_no_request` | performed |
 | `connector.meter.unreadable-answer` | `crates/contextful-outbound/tests/integration/meter.rs::an_unreadable_answer_fails_the_request_before_the_vendor` | performed |
+| `connector.package.artifact-cache` | `crates/contextful-wasm/tests/integration/package.rs::a_cached_artifact_deserializes_then_recompiles_if_altered_or_incompatible` | performed |
 | `connector.package.built-in-registry` | `crates/contextful-cli/tests/integration/drive_absent.rs::a_compiled_out_drive_source_answers_with_the_feature_to_rebuild_with` | performed |
 | `connector.package.call-deadline` | `crates/contextful-wasm/tests/integration/package.rs::a_read_call_is_interrupted_at_its_deadline` | performed |
 | `connector.package.component-grant` | `crates/contextful-cli/tests/integration/component.rs::a_guest_reaches_only_its_allowlist_and_the_host_attaches_its_credential` | performed |

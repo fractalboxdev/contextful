@@ -18,7 +18,10 @@ use contextful_core::connector::ConnectorError;
 use contextful_core::run::{Failure, FailureTag};
 use contextful_outbound::client::HeaderValue;
 use std::future::Future;
-use std::sync::atomic::{AtomicBool, Ordering};
+use std::hash::{Hash, Hasher};
+use std::io::Write;
+use std::path::{Path, PathBuf};
+use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 use std::sync::Arc;
 use std::time::Duration;
 use wasmtime::component::{Component, HasSelf, Instance, InstancePre, Linker, ResourceAny, ResourceTable, TypedFunc};
@@ -294,6 +297,16 @@ pub struct ComponentHost {
     engine: Engine,
     linker: Linker<Ctx>,
     ticker: Arc<Ticker>,
+    cache_dir: Option<PathBuf>,
+    cache_compilations: AtomicU64,
+    cache_hits: AtomicU64,
+}
+
+/// Compilation and cache-hit counts for artifact loads on one host.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct CacheStats {
+    pub compilations: u64,
+    pub hits: u64,
 }
 
 fn load_failure(e: impl std::fmt::Display) -> Failure {
@@ -352,7 +365,38 @@ impl ComponentHost {
         wasmtime_wasi_http::p2::add_only_http_to_linker_async(&mut linker).map_err(load_failure)?;
         bindings::wasi::logging::logging::add_to_linker::<Ctx, HasSelf<Ctx>>(&mut linker, |c| c).map_err(load_failure)?;
         let ticker = Arc::new(Ticker::spawn(engine.clone())?);
-        Ok(ComponentHost { engine, linker, ticker })
+        Ok(ComponentHost { engine, linker, ticker, cache_dir: None, cache_compilations: AtomicU64::new(0), cache_hits: AtomicU64::new(0) })
+    }
+
+    /// A host whose admitted artifacts reuse a private precompiled-component cache.
+    pub fn with_cache_dir(target: Target, dir: impl AsRef<Path>) -> Result<ComponentHost, Failure> {
+        let mut host = Self::with_target(target)?;
+        let dir = dir.as_ref();
+        let created = !dir.exists();
+        std::fs::create_dir_all(dir).map_err(load_failure)?;
+        #[cfg(unix)]
+        if created {
+            use std::os::unix::fs::PermissionsExt;
+            std::fs::set_permissions(dir, std::fs::Permissions::from_mode(0o700)).map_err(load_failure)?;
+        }
+        let meta = std::fs::symlink_metadata(dir).map_err(load_failure)?;
+        if !meta.file_type().is_dir() {
+            return Err(load_failure("the component cache path is not a directory"));
+        }
+        #[cfg(unix)]
+        {
+            use std::os::unix::fs::PermissionsExt;
+            if meta.permissions().mode() & 0o077 != 0 {
+                return Err(load_failure("the component cache directory permits access by another user"));
+            }
+        }
+        host.cache_dir = Some(dir.to_path_buf());
+        Ok(host)
+    }
+
+    /// Counts of cache misses compiled and intact cache entries reused.
+    pub fn cache_stats(&self) -> CacheStats {
+        CacheStats { compilations: self.cache_compilations.load(Ordering::Relaxed), hits: self.cache_hits.load(Ordering::Relaxed) }
     }
 
     /// Compile `wasm` as a component and resolve its imports. Core modules, malformed
@@ -366,7 +410,24 @@ impl ComponentHost {
     /// Bytes that fail the pin never reach the compiler (`connector.package.digest-mismatch`).
     pub fn load_artifact(&self, artifact: &Artifact, wasm: &[u8], requirement: PinRequirement) -> Result<(Connector, Digest), Failure> {
         let digest = artifact.admit(wasm, requirement).map_err(|e| Failure::deterministic(FailureTag::Config, e.to_string()))?;
-        Ok((self.load(wasm)?, digest))
+        let Some(dir) = &self.cache_dir else {
+            return Ok((self.load(wasm)?, digest));
+        };
+        let mut compatibility = std::collections::hash_map::DefaultHasher::new();
+        self.engine.precompile_compatibility_hash().hash(&mut compatibility);
+        let path = dir.join(format!("{}-{:016x}.cwasm", digest.as_str(), compatibility.finish()));
+        if let Some(component) = read_cached(&self.engine, &path) {
+            let pre = self.linker.instantiate_pre(&component).map_err(load_failure)?;
+            self.cache_hits.fetch_add(1, Ordering::Relaxed);
+            return Ok((Connector { pre }, digest));
+        }
+        let compiled = self.engine.precompile_component(wasm).map_err(load_failure)?;
+        // SAFETY: `compiled` is the unmodified output of this engine's precompiler.
+        let component = unsafe { Component::deserialize(&self.engine, &compiled) }.map_err(load_failure)?;
+        let pre = self.linker.instantiate_pre(&component).map_err(load_failure)?;
+        self.cache_compilations.fetch_add(1, Ordering::Relaxed);
+        write_cached(&path, &compiled).map_err(load_failure)?;
+        Ok((Connector { pre }, digest))
     }
 
     /// Instantiate a session. `config` is the pipeline's guest table: checked ahead of
@@ -395,6 +456,50 @@ impl ComponentHost {
         session.configure()?;
         Ok(session)
     }
+}
+
+fn read_cached(engine: &Engine, path: &Path) -> Option<Component> {
+    let metadata = std::fs::symlink_metadata(path).ok()?;
+    if !metadata.file_type().is_file() {
+        return None;
+    }
+    let bytes = std::fs::read(path).ok()?;
+    let expected = std::fs::read_to_string(path.with_extension("sha256")).ok()?;
+    if expected != Digest::of(&bytes).as_str() {
+        return None;
+    }
+    // SAFETY: the private cache directory is writable only by the host's user and holds
+    // precompiler output. The sidecar detects an altered or partial entry, not a writer
+    // acting with the host user's authority.
+    unsafe { Component::deserialize(engine, &bytes) }.ok()
+}
+
+fn write_cached(path: &Path, bytes: &[u8]) -> std::io::Result<()> {
+    static NEXT: AtomicU64 = AtomicU64::new(0);
+    let nonce = NEXT.fetch_add(1, Ordering::Relaxed);
+    let temporary = path.with_extension(format!("cwasm.{}.{}.tmp", std::process::id(), nonce));
+    let sidecar = path.with_extension("sha256");
+    let temporary_sidecar = sidecar.with_extension(format!("sha256.{}.{}.tmp", std::process::id(), nonce));
+    let write = || -> std::io::Result<()> {
+        let mut file = std::fs::OpenOptions::new().write(true).create_new(true).open(&temporary)?;
+        file.write_all(bytes)?;
+        file.sync_all()?;
+        let mut checksum = std::fs::OpenOptions::new().write(true).create_new(true).open(&temporary_sidecar)?;
+        checksum.write_all(Digest::of(bytes).as_str().as_bytes())?;
+        checksum.sync_all()?;
+        std::fs::rename(&temporary, path)?;
+        std::fs::rename(&temporary_sidecar, sidecar)?;
+        #[cfg(unix)]
+        if let Some(dir) = path.parent() {
+            std::fs::File::open(dir)?.sync_all()?;
+        }
+        Ok(())
+    }();
+    if write.is_err() {
+        let _ = std::fs::remove_file(&temporary);
+        let _ = std::fs::remove_file(&temporary_sidecar);
+    }
+    write
 }
 
 fn refuse(e: ConnectorError) -> Failure {

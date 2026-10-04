@@ -20,7 +20,7 @@ imports outgoing HTTP, logging and a wall clock and nothing else
 
 A connector resolves from one of four forms ({{connector.package.distribution-form}}). A
 remote artifact carries a content pin ({{connector.package.remote-unpinned}}), the host
-re-hashes the bytes before load ({{connector.package.digest-mismatch}}), and a run keeps the
+re-hashes the bytes ({{connector.package.digest-mismatch}}), reuses compatible host output ({{connector.package.artifact-cache}}), and a run keeps the
 build it was admitted with, so a rebuild reaches only later runs ({{run.own.admission-pin}}).
 
 Host access is declared, not requested. The manifest lists hosts, environment names and the
