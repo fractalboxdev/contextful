@@ -77,6 +77,30 @@ fn a_grant_budget_wins_over_request_and_table_budgets() {
     assert!(serde_json::to_vec(&cut).unwrap().len() as u64 <= bytes);
 }
 
+/// A grant over another table does not constrain a read its own action and pattern cannot authorize.
+#[test]
+fn unrelated_read_grants_do_not_set_row_duration_or_byte_ceilings() {
+    let r = Reads::new();
+    let vendor = read(&["research/vendor"], None);
+    let sql = r#"SELECT item_id FROM "research/vendor""#;
+    let answer = |unrelated| {
+        let session = r.session_for(loop_subject("agent://budget"), vec![unrelated, vendor.clone()], Some("public-cloud:us-east-1"));
+        column(&r.query(&session, sql).unwrap(), "item_id")
+    };
+
+    let mut row_grant = read(&["research/visits"], None);
+    row_grant.max_rows = Some(0);
+    assert_eq!(answer(row_grant), [json!("v1")]);
+
+    let mut duration_grant = read(&["research/visits"], None);
+    duration_grant.max_duration_ms = Some(0);
+    assert_eq!(answer(duration_grant), [json!("v1")]);
+
+    let mut byte_grant = read(&["research/visits"], None);
+    byte_grant.max_response_bytes = Some(1);
+    assert_eq!(answer(byte_grant), [json!("v1")]);
+}
+
 // spec: read.respond.byte-ceiling@72418c75
 // spec: read.respond.truncation-cause@38517ea2
 #[test]
