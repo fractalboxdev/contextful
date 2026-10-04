@@ -140,6 +140,8 @@ retry-single-attempt       = { clause = "run.retry.single-attempt", value = 1, u
 retry-after-ceiling        = { clause = "run.retry.retry-after", value = 300, unit = "s", basis = "chosen", gloss = "Longest server-requested delay a step sleeps before closing." }
 cancel-poll-interval       = { clause = "run.cancel.poll-interval", value = 500, unit = "ms", basis = "chosen", gloss = "Cadence of the catalog read feeding the cancellation token." }
 normalize-nesting-depth    = { clause = "run.normalize.nesting-depth", value = 5, unit = "levels", basis = "chosen", gloss = "Nesting `native` keeps before a subtree lands as `Json`." }
+parse-child-deadline       = { clause = "run.land.parse-deadline", value = 60, unit = "s", basis = "chosen", gloss = "Wall clock one input's decoder child may run." }
+parse-child-memory         = { clause = "run.land.parse-memory", value = 512, unit = "MiB", basis = "chosen", gloss = "Memory one input's decoder child may consume." }
 staged-bytes-per-run       = { clause = "run.own.staged-bytes", value = 1, unit = "GiB", basis = "chosen", gloss = "Bytes one run stages before its commit." }
 owner-lease-renewal        = { clause = "run.record.owner-lease", value = 10, unit = "s", basis = "chosen", gloss = "Renewal cadence of a run row's owner lease." }
 owner-lease-ttl            = { clause = "run.record.owner-lease", value = 30, unit = "s", basis = "chosen", gloss = "Life of an unrenewed run owner lease." }

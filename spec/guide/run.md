@@ -6,11 +6,9 @@ contract: run
 
 ## What it is for
 
-A run is how data enters **Contextful** and survives interruption. A pipeline declares what
-to pull and which tables it lands; a run executes it once against a pinned plan, and either
-commits rows with the position behind them or leaves a resume point. The derive tier reuses
-the machinery for per-row work, such as turning a recording into passages.
-Every effect a run makes is recorded, so a replay reads the record, not the outside world.
+A pipeline declares a source and tables. A run pins its plan, records effects for replay,
+and commits rows with their position ({{run.advance.commit-with-rows}}). The derive tier
+uses runs for per-row work.
 
 ## How it works
 
@@ -37,19 +35,20 @@ carrying no script: branching is declared, never computed from data
 ({{run.compile.control-flow}}), and the plan lowers onto one substrate interface
 ({{run.journal.substrate-port}}).
 
-At run open the engine writes a record row before the first pull ({{run.record.row-at-open}})
-and binds the work to an execution owner that pins the connector build and plan hash while
-work is pending ({{run.own.pinned-plan-changed}}): output replayed into a different build
-describes code that never produced it.
-Host jobs open it under their own scope ({{run.own.host-scope}}).
+The record opens before the first pull ({{run.record.row-at-open}}). An execution owner
+pins the connector and plan ({{run.own.pinned-plan-changed}}); host jobs use their own
+scope ({{run.own.host-scope}}).
 
-Each pull is a journaled step: its value is recorded once while its effect may run more than
-once ({{run.journal.step-output}}), and each outbound request carries an idempotency key
-derived from the entry key ({{run.journal.idempotency-key}}). The journal, its blobs and the
-awakeable registry persist through three store ports; the file tree ({{run.journal.storage-ports}}) and a SQLite file
-({{run.journal.sqlite-stores}}) are adapters. A batch then passes one fixed
-stage order ({{run.land.stage-order}}). Rows and the new cursor commit on one marker
-({{run.advance.commit-with-rows}}), so no crash leaves one moved without the other.
+Each pull records its value once ({{run.journal.step-output}}); outbound requests carry
+idempotency keys ({{run.journal.idempotency-key}}). Journal state persists through store
+ports with file and SQLite adapters ({{run.journal.storage-ports}},
+{{run.journal.sqlite-stores}}). A batch follows {{run.land.stage-order}}.
+The stage types its observed batch ({{run.land.observed-schema}}) and preserves nested
+columns or projects them into parent and child rows ({{run.normalize.mode}}). A downgrade
+travels with its table's commit ({{run.record.schema-diff-home}}). The secret guard's
+catalogue and mask-only posture are fixed by {{run.guard-secrets.matchers}} and
+{{run.guard-secrets.mask-only}}. A decode that can die runs in a bounded child
+({{run.land.parse-child}}, {{run.land.parse-deadline}}, {{run.land.parse-memory}}).
 
 Failures cross every port as one tagged type ({{run.retry.failure-taxonomy}}). Only the
 transient and rate-limited tags retry ({{run.retry.retryable-classes}}), under the step's
