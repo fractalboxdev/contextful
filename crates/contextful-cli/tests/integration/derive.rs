@@ -107,6 +107,42 @@ fn a_link_preview_refuses_to_land_when_its_request_ledger_cannot_settle() {
     assert_eq!(vendor.targets(), ["/article"]);
 }
 
+#[test]
+fn a_rate_limited_link_request_has_no_batch_ordinal_in_its_ledger() {
+    use std::io::{Read, Write};
+    use std::net::TcpListener;
+
+    let listener = TcpListener::bind("127.0.0.1:0").unwrap();
+    let port = listener.local_addr().unwrap().port();
+    let server = std::thread::spawn(move || {
+        let (mut socket, _) = listener.accept().unwrap();
+        let mut request = [0; 4096];
+        socket.read(&mut request).unwrap();
+        socket.write_all(b"HTTP/1.1 429 Too Many Requests\r\nRetry-After: 301\r\nContent-Length: 0\r\nConnection: close\r\n\r\n").unwrap();
+    });
+    let dir = tempfile::tempdir().unwrap();
+    let root = dir.path().join(".contextful/context/research");
+    std::fs::create_dir_all(&root).unwrap();
+    std::fs::write(root.join("config.toml"), "[node]\nid = \"ingest-a\"\n").unwrap();
+    std::fs::write(
+        dir.path().join("contextful.toml"),
+        "authoring_posture = \"per_request\"\n[[pipeline]]\nid = \"cards\"\ntables = [{ name = \"cards\", primary_key = [\"unit_ref\", \"derivation_key\", \"cue_seq\"] }]\n[pipeline.source]\nname = \"derive\"\nconfig = { task = \"link_preview\", engine = \"reader\", source_table = \"documents\", media_column = \"url\", parent_id_column = \"doc_id\" }\n[derive.reader]\ndriver = \"fetch\"\nallow_hosts = [\"localhost\"]\n",
+    )
+    .unwrap();
+    let address = format!("http://localhost:{port}/article");
+    std::fs::write(dir.path().join("documents.jsonl"), format!("{{\"doc_id\":\"d1\",\"url\":\"{address}\"}}\n")).unwrap();
+    ok(&cf(dir.path(), &["context", "land", "documents", "--project", "research", "--rows", "documents.jsonl", "--run-id", "load-1", "--site-id", "site", "--now", "2030-01-01T00:00:00Z"]));
+    let out = cf(dir.path(), &["pipeline", "run", "cards", "--project", "research", "--run-id", "cards-4", "--site-id", "site", "--now", "2030-01-01T01:00:00Z"]);
+    assert!(!out.status.success(), "{}", String::from_utf8_lossy(&out.stdout));
+    server.join().unwrap();
+    let store = contextful_context::Store::open(dir.path(), "research").unwrap();
+    let files = contextful_context::ledger::files(&store, "cards_cards").unwrap();
+    assert_eq!(files.len(), 1);
+    let calls = contextful_context::ledger::read(&files[0]).unwrap();
+    assert_eq!(calls.len(), 1);
+    assert_eq!((calls[0].1.status_code, calls[0].1.batch_seq), (Some(429), None));
+}
+
 fn cf(dir: &std::path::Path, args: &[&str]) -> Output {
     Command::new(env!("CARGO_BIN_EXE_contextful")).args(args).current_dir(dir).output().unwrap()
 }
