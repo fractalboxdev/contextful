@@ -11,6 +11,42 @@ fn ids(rows: &[serde_json::Map<String, Value>]) -> Vec<String> {
     rows.iter().map(|r| r["id"].as_str().unwrap_or_default().to_string()).collect()
 }
 
+/// A read with 201 expansion pointers refuses before its first follow-up request.
+#[test]
+fn expansion_rejects_201_followups_before_the_first() {
+    let vendor = Server::start(|r| match r.path() {
+        "/index" => {
+            let rows: Vec<Value> = (0..201).map(|id| json!({"id": id, "detail_url": format!("/detail/{id}")})).collect();
+            Response::json(200, &serde_json::to_string(&rows).unwrap())
+        }
+        _ => Response::json(200, "{\"description\":\"detail\"}"),
+    });
+    let s = source(
+        json!({"endpoint": vendor.url("/index"), "expansion": {"pointer_column": "detail_url", "target_column": "detail"}}),
+        vec![],
+    );
+    let failure = s.walk(&request(None), &Never).unwrap_err();
+    assert!(failure.message.contains("200"), "{failure}");
+    assert_eq!(vendor.received("/index").len(), 1);
+    assert_eq!(vendor.requests.lock().unwrap().len(), 1, "no detail request follows an over-budget index");
+}
+
+/// One expansion pointer fetches its document into the declared target column.
+#[test]
+fn expansion_follows_a_row_pointer() {
+    let vendor = Server::start(|r| match r.path() {
+        "/index" => Response::json(200, "[{\"id\":1,\"detail_url\":\"/detail/1\"}]"),
+        _ => Response::json(200, "{\"description\":\"detail\"}"),
+    });
+    let s = source(
+        json!({"endpoint": vendor.url("/index"), "expansion": {"pointer_column": "detail_url", "target_column": "detail"}}),
+        vec![],
+    );
+    let rows = s.walk(&request(None), &Never).unwrap();
+    assert_eq!(rows[0]["detail"]["description"], "detail");
+    assert_eq!(vendor.received("/detail/1").len(), 1);
+}
+
 /// The generic HTTP source binds credentials through a `headers` table whose values are templates in the
 /// {{connector.reference.value-template}} grammar, hydrated per read.
 // spec: connector.source.http-headers@7077d7f3
