@@ -187,6 +187,28 @@ fn selected_roots(fake: &Fake, ids: &[&str]) -> Value {
     config
 }
 
+/// A full empty walk announces a replacement-capable snapshot; unchanged input does not.
+#[test]
+fn complete_empty_drive_walk_reports_snapshot_completion_but_unchanged_input_does_not() {
+    let empty = Fake::start();
+    empty.overlay("empty.json");
+    let selected = drive(selected_roots(&empty, &["empty-f"]));
+    for table in ["files", "pages"] {
+        let (rows, _, bytes) = pull(&mut selected.source(table).unwrap(), None);
+        assert!(rows.is_empty());
+        let response: Value = serde_json::from_slice(&bytes).unwrap();
+        assert_eq!(response["snapshot_complete"], true, "{table}: {response}");
+    }
+
+    let populated = Fake::start();
+    let source = drive(populated.config(json!({})));
+    let (_, cursor, _) = pull(&mut source.source("files").unwrap(), None);
+    let (rows, _, bytes) = pull(&mut source.source("files").unwrap(), Some(cursor));
+    assert!(rows.is_empty());
+    let response: Value = serde_json::from_slice(&bytes).unwrap();
+    assert_eq!(response["snapshot_complete"], false, "{response}");
+}
+
 /// A bounded root set is validated before any listing.
 // spec: connector.source.drive-root-set@3c8b13be
 #[test]
