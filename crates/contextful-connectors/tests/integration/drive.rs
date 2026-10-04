@@ -319,6 +319,43 @@ fn unknown_drive_capture_mode_refuses_before_requests() {
     assert!(fake.received("/drive/v3/files").is_empty());
 }
 
+/// A selected-root or drive change binds a new cursor and removes deselected files.
+#[test]
+fn selection_change_replays_retained_files_and_tombstones_deselected_files() {
+    let fake = Fake::start();
+    fake.overlay("shared.json");
+    let first = drive(selected_roots(&fake, &["root-f", "fin-f"]));
+    let (_, before, _) = pull(&mut first.source("files").unwrap(), None);
+    assert_eq!(before["drive_id"], "0AExampleDrive");
+    assert_eq!(before["roots"], json!(["fin-f", "root-f"]));
+    let second = drive(selected_roots(&fake, &["fin-f"]));
+    let (rows, after, _) = pull(&mut second.source("files").unwrap(), Some(before));
+    assert_eq!(after["roots"], json!(["fin-f"]));
+    assert_eq!(by_id(&rows, "doc-plan")["capture_status"], "removed");
+    assert_eq!(by_id(&rows, "doc-plan")["resolved_root"], "root-f");
+    assert_eq!(by_id(&rows, "pdf-report")["capture_status"], "captured");
+    assert_eq!(by_id(&rows, "pdf-report")["resolved_root"], "fin-f");
+}
+
+/// A changed exported version in metadata mode publishes the digest of its new exact bytes.
+#[test]
+fn metadata_only_changed_version_updates_digest_and_removed_file() {
+    let fake = Fake::start();
+    let config = fake.config(json!({"mode": "metadata-only"}));
+    let (first, before, _) = pull(&mut drive(config.clone()).source("files").unwrap(), None);
+    fake.overlay("second.json");
+    let (rows, _, _) = pull(&mut drive(config).source("files").unwrap(), Some(before));
+    assert_eq!(rows.len(), 2);
+    let plan = by_id(&rows, "doc-plan");
+    let bytes = std::fs::read(fixtures().join("plan-v2.pdf")).unwrap();
+    assert_ne!(plan["sha256"], by_id(&first, "doc-plan")["sha256"]);
+    assert_eq!(plan["sha256"], json!(sha256(&bytes)));
+    assert_eq!(plan["version"], 6);
+    let removed = by_id(&rows, "pdf-report");
+    assert_eq!(removed["capture_status"], "removed");
+    assert!(removed["sha256"].is_null());
+}
+
 /// The drive source walks the tree under `folder_id` breadth-first through `files.list`, paging each folder,
 /// within `drive_id` when declared. Each folder is listed once, its children sorted by name and id; no shortcut is
 /// followed.
