@@ -41,6 +41,12 @@ fn a_short_bound_key_source_refuses_rather_than_write_cleartext() {
     assert!(err.store().is_none() && err.to_string().contains("32 key bytes"), "{err}");
 }
 
+#[test]
+fn an_unencrypted_store_exposes_no_catalog_cipher_binding() {
+    let (_dir, opened) = store_with("[node]\nid = \"ingest-a\"\n");
+    assert!(!opened.unwrap().encrypted());
+}
+
 /// A sidecar file carries a fresh wrapped data key and decrypts only under its project key.
 #[test]
 fn an_aes_gcm_file_round_trips_without_plaintext_or_key_reuse() {
