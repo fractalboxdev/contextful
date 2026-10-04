@@ -156,7 +156,7 @@ Committing an incremental read position under its declared kind, and the boundar
   *A-run*
 - `turning-incremental-on` — Enabling `incremental` on a pipeline that holds a position starts from none, re-landing the source's current window once.
 - `skip-unchanged` — A snapshot-shaped source with `skip_unchanged = true` records its input's raw-byte digest as `{ sha256, rows }`; a matching digest returns zero batches, holds the position and closes a zero-row success. Undeclared, it is false.
-- `snapshot-completion` — A snapshot source marks a fully examined inventory complete and an unchanged input skipped; the run carries that outcome to the replacement manifest separately from row count.
+- `snapshot-completion` — A snapshot source reports complete inventory or unchanged skip independently of row count; a replacing run carries only complete inventory into its manifest.
   *A-store*
 - `zero-row-commit` — A complete empty snapshot of a replacing table commits {{store.declare.empty-replacement}}; a skipped unchanged input holds the frontier and position, and a failed pull publishes neither.
   *A-store*

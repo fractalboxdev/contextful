@@ -6698,7 +6698,7 @@
       "operation": "advance",
       "subject": "snapshot-completion",
       "kind": "behavior",
-      "statement": "A snapshot source marks a fully examined inventory complete and an unchanged input skipped; the run carries that outcome to the replacement manifest separately from row count.",
+      "statement": "A snapshot source reports complete inventory or unchanged skip independently of row count; a replacing run carries only complete inventory into its manifest.",
       "why": "A-store",
       "file": "spec/30-run.md",
       "line": 159
