@@ -315,6 +315,7 @@ fn a_link_preview_probes_advertised_images_with_a_bounded_range() {
     assert_eq!(rows[0]["url"], address);
     assert_eq!(rows[1]["url"], address);
     assert_eq!(rows[1]["probe_status"], "ok");
+    assert_eq!(rows[0]["_modality"], "text");
     assert_eq!(rows[1]["_modality"], "image");
     let probes = site.received("/picture.jpg");
     assert_eq!(probes.len(), 1);
@@ -341,6 +342,35 @@ fn unit<'a>(rows: &'a [Value], key: &str) -> &'a Value {
 }
 
 const SRT_ENGINE: &str = "[derive.reader.engine]\ncommand = [\"awk\", \"NF { n++; printf \\\"%d\\\\n00:00:0%d,000 --> 00:00:0%d,500\\\\n%s\\\\n\\\\n\\\", n, n, n, $0 }\", \"{input}\"]\noutput_format = \"srt\"\n";
+
+/// A video transcript passage names its text output modality.
+#[test]
+fn a_transcript_passage_carries_text_modality() {
+    let dir = tempfile::tempdir().unwrap();
+    std::fs::write(dir.path().join("clip.txt"), "Spoken words.\n").unwrap();
+    let rows = pulled(&mut source(dir.path(), json!([{"doc_id": "clip", "path": "clip.txt"}]), SRT_ENGINE));
+    assert_eq!(rows[0]["text"], "Spoken words.");
+    assert_eq!(rows[0]["_modality"], "text");
+}
+
+/// Changing canonical file bytes under one media path selects a new derivation key.
+#[test]
+fn changed_local_bytes_reselect_the_same_media_path() {
+    let dir = tempfile::tempdir().unwrap();
+    let path = dir.path().join("clip.txt");
+    std::fs::write(&path, "First words.\n").unwrap();
+    let parents = json!([{"doc_id": "clip", "path": "clip.txt"}]);
+    let first = pulled(&mut source(dir.path(), parents.clone(), SRT_ENGINE));
+    let first_key = first[0]["derivation_key"].as_str().unwrap().to_string();
+    std::fs::write(&path, "Second words.\n").unwrap();
+    let mut next = source(dir.path(), parents, SRT_ENGINE);
+    let landed: Vec<Row> = first.into_iter().map(|r| r.as_object().unwrap().clone()).collect();
+    next.reader = Box::new(Rows(vec![("documents".into(), vec![json!({"doc_id": "clip", "path": "clip.txt"}).as_object().unwrap().clone()]), ("doc_text_passages".into(), landed)]));
+    let rows = pulled(&mut next);
+    assert_eq!(rows.len(), 1, "{rows:?}");
+    assert_eq!(rows[0]["text"], "Second words.");
+    assert_ne!(rows[0]["derivation_key"], first_key);
+}
 
 /// A media value that is neither an address nor a readable local file raises `DeriveMediaUnreadable`, failing
 /// that unit alone.
