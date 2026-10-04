@@ -20,7 +20,7 @@ impl Drop for Listener {
 
 fn serve(cf: &std::path::Path, p: &GitRepo, public: &str) -> (Listener, String) {
     let mut child = std::process::Command::new(cf)
-        .args(["serve", "--http", "127.0.0.1:0", "--audience", AUDIENCE, "--project", PROJECT, "--public-key", public, "--denylist", ".contextful/denylist"])
+        .args(["serve", "--http", "127.0.0.1:0", "--audience", AUDIENCE, "--max-in-flight", "2", "--project", PROJECT, "--public-key", public, "--denylist", ".contextful/denylist"])
         .current_dir(&p.root)
         .env_remove("CARGO_TARGET_DIR")
         .stderr(Stdio::piped())
@@ -28,12 +28,14 @@ fn serve(cf: &std::path::Path, p: &GitRepo, public: &str) -> (Listener, String) 
         .unwrap();
     let mut err = BufReader::new(child.stderr.take().unwrap());
     let listener = Listener(child);
+    let mut heard = String::new();
     let address = loop {
         let mut line = String::new();
-        assert!(err.read_line(&mut line).unwrap() > 0, "the HTTP read face never listened");
+        assert!(err.read_line(&mut line).unwrap() > 0, "the HTTP read face never listened: {heard}");
         if let Some(address) = line.trim().strip_prefix("listening on http://").and_then(|s| s.strip_suffix("/mcp")) {
             break address.to_string();
         }
+        heard.push_str(&line);
     };
     (listener, address)
 }
