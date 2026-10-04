@@ -315,17 +315,26 @@ fn encrypted_parquet_has_no_plaintext_canary_and_decrypts() {
     let batch = RecordBatch::try_from_iter([("body", Arc::new(StringArray::from(vec![canary])) as ArrayRef)]).unwrap();
     let dir = tempfile::tempdir().unwrap();
     let path = dir.path().join("part.parquet");
-    let key = [0x37; 32];
+    let key = [0x37; 16];
     parquet_io::write_encrypted(&path, &batch, &key).unwrap();
     let bytes = std::fs::read(&path).unwrap();
     assert!(!bytes.windows(canary.len()).any(|part| part == canary.as_bytes()));
     assert!(!bytes.starts_with(b"PAR1"), "the footer is encrypted");
     assert!(parquet_io::read(&path).is_err());
-    assert!(parquet_io::read_encrypted(&path, &[0x42; 32]).is_err());
+    assert!(parquet_io::read_encrypted(&path, &[0x42; 16]).is_err());
     let opened = parquet_io::read_encrypted(&path, &key).unwrap();
     assert_eq!(opened.len(), 1);
     let body = opened[0].column_by_name("body").unwrap().as_any().downcast_ref::<StringArray>().unwrap();
     assert_eq!(body.value(0), canary);
+
+    #[cfg(feature = "read")]
+    {
+        let db = duckdb::Connection::open_in_memory().unwrap();
+        db.execute_batch("PRAGMA add_parquet_key('test', '7777777777777777')").unwrap();
+        let sql = format!("SELECT body FROM read_parquet('{}', encryption_config = {{footer_key: 'test'}})", path.display());
+        let read: String = db.query_row(&sql, [], |row| row.get(0)).unwrap();
+        assert_eq!(read, canary);
+    }
 }
 
 /// A sealed full-text sidecar file larger than 256 MiB stays unopened, and its arm adds no candidates.

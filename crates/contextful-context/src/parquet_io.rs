@@ -10,9 +10,11 @@ use contextful_core::store::reconcile::{
     Column, ColumnType, FloatItem, Schema, StructField, EXTENSION_NAME, JSON_EXTENSION, LIST_ITEM,
     MAP_ENTRIES, MAP_KEY, MAP_VALUE, VECTOR_ITEM,
 };
-use parquet::arrow::arrow_reader::ParquetRecordBatchReaderBuilder;
+use parquet::arrow::arrow_reader::{ArrowReaderOptions, ParquetRecordBatchReaderBuilder};
 use parquet::arrow::ArrowWriter;
 use parquet::basic::{Compression, ZstdLevel};
+use parquet::encryption::decrypt::FileDecryptionProperties;
+use parquet::encryption::encrypt::FileEncryptionProperties;
 use parquet::file::properties::WriterProperties;
 use std::collections::HashMap;
 use std::fs::File;
@@ -109,12 +111,40 @@ pub fn write(path: &Path, batch: &RecordBatch) -> Result<()> {
     Ok(())
 }
 
+/// Write one batch with Parquet modular encryption of every column and the footer.
+pub fn write_encrypted(path: &Path, batch: &RecordBatch, key: &[u8; 16]) -> Result<()> {
+    let pq = |e: parquet::errors::ParquetError| ContextError::Parquet { path: path.to_path_buf(), message: e.to_string() };
+    if let Some(dir) = path.parent() {
+        std::fs::create_dir_all(dir).at(dir)?;
+    }
+    let encryption = FileEncryptionProperties::builder(key.to_vec()).build().map_err(pq)?;
+    let props = WriterProperties::builder()
+        .set_compression(Compression::ZSTD(ZstdLevel::default()))
+        .with_file_encryption_properties(encryption)
+        .build();
+    let file = File::create(path).at(path)?;
+    let mut writer = ArrowWriter::try_new(file, batch.schema(), Some(props)).map_err(pq)?;
+    writer.write(batch).map_err(pq)?;
+    writer.close().map_err(pq)?;
+    Ok(())
+}
+
 /// Read every batch of a Parquet file.
 pub fn read(path: &Path) -> Result<Vec<RecordBatch>> {
     let pq = |m: String| ContextError::Parquet { path: path.to_path_buf(), message: m };
     let file = File::open(path).at(path)?;
     let reader = ParquetRecordBatchReaderBuilder::try_new(file).map_err(|e| pq(e.to_string()))?.build().map_err(|e| pq(e.to_string()))?;
     reader.map(|b| b.map_err(|e| pq(e.to_string()))).collect()
+}
+
+/// Read every batch of a modular-encrypted Parquet file with its footer key.
+pub fn read_encrypted(path: &Path, key: &[u8; 16]) -> Result<Vec<RecordBatch>> {
+    let pq = |e: parquet::errors::ParquetError| ContextError::Parquet { path: path.to_path_buf(), message: e.to_string() };
+    let decryption = FileDecryptionProperties::builder(key.to_vec()).build().map_err(pq)?;
+    let options = ArrowReaderOptions::new().with_file_decryption_properties(decryption);
+    let file = File::open(path).at(path)?;
+    let reader = ParquetRecordBatchReaderBuilder::try_new_with_options(file, options).map_err(pq)?.build().map_err(pq)?;
+    reader.map(|batch| batch.map_err(|e| ContextError::Parquet { path: path.to_path_buf(), message: e.to_string() })).collect()
 }
 
 /// Where [`copy_inserting`] places an inserted column: beside a column the source file
