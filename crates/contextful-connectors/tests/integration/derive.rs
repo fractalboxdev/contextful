@@ -237,6 +237,15 @@ fn a_derive_source_refuses_an_absent_store_root_or_pipeline_id() {
     assert!(failure.message.contains("DeriveNoStoreRoot") && failure.message.contains("store root"), "{failure:?}");
 }
 
+/// A media resolution directory is independent of the source's store root.
+#[test]
+fn a_media_directory_does_not_decide_whether_the_store_root_exists() {
+    let dir = tempfile::tempdir().unwrap();
+    let mut source = source(dir.path(), json!([]), "[derive.reader.engine]\ncommand = [\"cat\", \"{input}\"]\n");
+    source.cwd = Path::new("").to_path_buf();
+    assert!(source.derivation().is_ok(), "the store root exists independently of media resolution");
+}
+
 /// Missing or blank parent keys and media values count as skipped inputs in the pull.
 #[test]
 fn incomplete_parent_rows_enter_the_derive_pull_skipped_count() {
