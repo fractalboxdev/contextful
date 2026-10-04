@@ -16,6 +16,8 @@ mod component;
 #[cfg(feature = "data-plane")]
 mod context;
 #[cfg(feature = "data-plane")]
+pub use context::derived_catalog;
+#[cfg(feature = "data-plane")]
 mod derive;
 mod differential;
 #[cfg(feature = "data-plane")]

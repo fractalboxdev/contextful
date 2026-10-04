@@ -63,6 +63,9 @@ impl Store {
         &self.root
     }
 
+    /// Whether this opened store holds a bound at-rest cipher.
+    pub fn encrypted(&self) -> bool { self.encryption.is_some() }
+
     /// How this store's sidecar files sit on disk.
     pub fn sealing(&self) -> Sealing<'_> {
         match &self.encryption {
