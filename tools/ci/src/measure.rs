@@ -8,8 +8,9 @@ use contextful_eval::record::{self, Record, MEASURE_DIR_VAR};
 use contextful_eval::trend::{self, Figure};
 use serde::{Deserialize, Serialize};
 use std::collections::{BTreeMap, BTreeSet};
+use std::io::BufRead;
 use std::path::{Path, PathBuf};
-use std::process::Command;
+use std::process::{Command, Stdio};
 use std::time::Instant;
 
 use crate::refuse;
@@ -310,28 +311,81 @@ fn git_text(root: &Path, args: &[&str]) -> Result<String> {
     String::from_utf8(output.stdout).context("Git output is UTF-8")
 }
 
-/// Reports on the measured commit and its first-parent ancestors, newest run first.
-fn earlier_reports(root: &Path, commit: &str) -> Result<Vec<RunReport>> {
+struct Baseline {
+    commit: String,
+    run_id: u64,
+    record: Record,
+}
+
+fn nul_field(reader: &mut impl BufRead) -> Result<Option<String>> {
+    let mut bytes = Vec::new();
+    let count = reader.read_until(0, &mut bytes)?;
+    if count == 0 || bytes.iter().all(u8::is_ascii_whitespace) {
+        return Ok(None);
+    }
+    if bytes.pop() != Some(0) {
+        bail!("Git measure history ends inside a field");
+    }
+    Ok(Some(String::from_utf8(bytes).context("Git measure history is UTF-8")?))
+}
+
+/// The newest successful first-parent baseline for each current trend record.
+fn earlier_baselines(root: &Path, commit: &str, current: &[&Record]) -> Result<BTreeMap<String, Baseline>> {
+    let mut remaining: BTreeMap<&str, &Record> = current.iter().map(|r| (r.id.as_str(), *r)).collect();
+    if remaining.is_empty() {
+        return Ok(BTreeMap::new());
+    }
     let exists = Command::new("git").args(["show-ref", "--verify", "--quiet", "refs/notes/measures"]).current_dir(root).status()?;
     if exists.code() == Some(1) {
-        return Ok(Vec::new());
+        return Ok(BTreeMap::new());
     }
     if !exists.success() {
         bail!("reading refs/notes/measures failed: {exists}");
     }
-    let history = git_text(root, &["log", "--first-parent", "--notes=measures", "--format=%H%x00%N%x00", commit])?;
-    let mut reports = Vec::new();
-    let mut fields = history.split('\0');
-    while let (Some(ancestor), Some(note)) = (fields.next(), fields.next()) {
+    let mut child = Command::new("git")
+        .args(["log", "--first-parent", "--notes=measures", "--format=%H%x00%N%x00", commit])
+        .current_dir(root)
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped())
+        .spawn()?;
+    let mut reader = std::io::BufReader::new(child.stdout.take().context("Git history has stdout")?);
+    let mut baselines = BTreeMap::new();
+    while let Some(ancestor) = nul_field(&mut reader)? {
+        let note = nul_field(&mut reader)?.context("Git measure history has a note field")?;
         let ancestor = ancestor.trim();
         if ancestor == commit || note.trim().is_empty() {
             continue;
         }
         for line in note.lines().filter(|line| !line.trim().is_empty()).rev() {
-            reports.push(serde_json::from_str(line).with_context(|| format!("parsing measure note on {ancestor}"))?);
+            let report: RunReport = serde_json::from_str(line).with_context(|| format!("parsing measure note on {ancestor}"))?;
+            if report.exit_code != 0 {
+                continue;
+            }
+            for old in &report.records {
+                if remaining.get(old.id.as_str()).is_some_and(|now| now.seed == old.seed && now.run == old.run) {
+                    remaining.remove(old.id.as_str());
+                    baselines.insert(old.id.clone(), Baseline { commit: report.commit.clone(), run_id: report.run_id, record: old.clone() });
+                }
+            }
+            if remaining.is_empty() {
+                break;
+            }
+        }
+        if remaining.is_empty() {
+            break;
         }
     }
-    Ok(reports)
+    drop(reader);
+    if remaining.is_empty() {
+        let _ = child.kill();
+        let _ = child.wait();
+    } else {
+        let output = child.wait_with_output()?;
+        if !output.status.success() {
+            bail!("reading Git measure history: {}", String::from_utf8_lossy(&output.stderr).trim());
+        }
+    }
+    Ok(baselines)
 }
 
 /// Write one JSON-line run report, annotating a trend only against matching earlier
@@ -353,8 +407,9 @@ pub fn report(root: &Path, commit: &str, run_id: u64, run_attempt: u64, exit_cod
         Err(e) => return Err(e).with_context(|| dir.display().to_string()),
     }
     records.sort_by(|a, b| a.id.cmp(&b.id));
-    let history = earlier_reports(root, commit)?;
     let ledger = load(root)?;
+    let wanted: Vec<&Record> = records.iter().filter(|r| ledger.as_ref().and_then(|l| l.entry.get(&r.id)).is_some_and(|e| e.tier == Tier::Trend)).collect();
+    let history = earlier_baselines(root, commit, &wanted)?;
     let mut annotations = Vec::new();
     for current in &records {
         let Some(entry) = ledger.as_ref().and_then(|l| l.entry.get(&current.id)) else { continue };
@@ -362,10 +417,8 @@ pub fn report(root: &Path, commit: &str, run_id: u64, run_attempt: u64, exit_cod
             continue;
         }
         let direction = entry.direction.context("a trend-tier entry declares a direction")?;
-        let baseline = history.iter().filter(|report| report.exit_code == 0).find_map(|report| {
-            report.records.iter().find(|old| old.id == current.id && old.seed == current.seed && old.run == current.run).map(|old| (report, old))
-        });
-        let Some((past, old)) = baseline else { continue };
+        let Some(past) = history.get(&current.id) else { continue };
+        let old = &past.record;
         let comparison = trend::compare(
             &Figure { value: current.value, runner: current.run.clone() },
             &Figure { value: old.value, runner: old.run.clone() },

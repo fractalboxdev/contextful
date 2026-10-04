@@ -235,6 +235,25 @@ fn a_report_reads_noted_history_with_bounded_git_processes() {
 }
 
 #[test]
+fn a_trend_report_stops_before_older_unneeded_notes() {
+    let r = Repo::init();
+    r.write("evals/ledger.toml", "[entry.latency]\nclause = \"run.journal.entry-key\"\nmetric = \"run.latency_ms\"\nkind = \"bench\"\ntier = \"trend\"\ndirection = \"lower_is_better\"\nmethod = { issue = 81 }\n");
+    let oldest = r.head();
+    r.git(&["notes", "--ref=measures", "add", "-m", "malformed older report", &oldest]);
+    r.write("README", "baseline\n");
+    let baseline = r.commit("baseline");
+    let figure = r#"{"id":"latency","value":40,"n":200,"seed":7,"run":{"processor":"t","nproc":1,"memory_limit":null}}"#;
+    r.git(&["notes", "--ref=measures", "add", "-m", &format!("{{\"commit\":\"{baseline}\",\"run_id\":2,\"run_attempt\":1,\"exit_code\":0,\"records\":[{figure}]}}"), &baseline]);
+    r.write("README", "current\n");
+    let current = r.commit("current");
+    r.write("target/evaluate/records/latency.json", &figure.replace("\"value\":40", "\"value\":52"));
+    let out = r.run_ci(&["measure-report", "--commit", &current, "--run-id", "3", "--run-attempt", "1", "--exit-code", "0", "--out", "target/measure-report.json"]);
+    assert!(out.status.success(), "{}", stderr(&out));
+    let report: serde_json::Value = serde_json::from_str(&std::fs::read_to_string(r.root.join("target/measure-report.json")).unwrap()).unwrap();
+    assert_eq!(report["annotations"][0]["baseline_run_id"], 2);
+}
+
+#[test]
 fn publishing_a_report_keeps_notes_added_by_another_writer() {
     let r = Repo::init();
     let commit = r.head();
