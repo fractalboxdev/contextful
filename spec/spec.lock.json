@@ -12679,6 +12679,45 @@
       "line": 519
     },
     {
+      "id": "connector.source.drive-root-set",
+      "contract": "connector",
+      "operation": "source",
+      "subject": "drive-root-set",
+      "kind": "refusal",
+      "statement": "Exactly one of `folder_id` or `folder_ids` selects roots; `folder_ids` holds 1 to 16 entries, all distinct, under one required `drive_id`. An empty, oversized, repeated or ambiguous selection raises `ConnectorDriveRootsInvalid` before listing.",
+      "why": "A-connector",
+      "file": "spec/40-connector.md",
+      "line": 521,
+      "scenarios": [
+        "WHEN `folder_ids` is empty or accompanies `folder_id`, THEN validation raises `ConnectorDriveRootsInvalid` before listing."
+      ]
+    },
+    {
+      "id": "connector.source.drive-root-validation",
+      "contract": "connector",
+      "operation": "source",
+      "subject": "drive-root-validation",
+      "kind": "refusal",
+      "statement": "With `folder_ids`, every selected root names a folder in the declared `drive_id`; any missing or outside-drive root raises `ConnectorDriveRootRejected` before any selected folder is listed.",
+      "why": "A-connector",
+      "file": "spec/40-connector.md",
+      "line": 523,
+      "scenarios": [
+        "WHEN one selected root belongs to another Shared Drive, THEN `ConnectorDriveRootRejected` names it before any selected folder is listed."
+      ]
+    },
+    {
+      "id": "connector.source.drive-root-walk",
+      "contract": "connector",
+      "operation": "source",
+      "subject": "drive-root-walk",
+      "kind": "behavior",
+      "statement": "With `folder_ids`, the drive source applies {{connector.source.drive-walk}} to each root while confining descendants to the declared drive, listing each folder once across overlaps.",
+      "why": "A-connector",
+      "file": "spec/40-connector.md",
+      "line": 525
+    },
+    {
       "id": "connector.source.drive-root",
       "contract": "connector",
       "operation": "source",
@@ -12687,7 +12726,21 @@
       "statement": "A `folder_id` naming no folder, or one outside a declared `drive_id`, fails the read as a configuration fault before any listing.",
       "why": "",
       "file": "spec/40-connector.md",
-      "line": 521
+      "line": 527
+    },
+    {
+      "id": "connector.source.drive-overlap",
+      "contract": "connector",
+      "operation": "source",
+      "subject": "drive-overlap",
+      "kind": "behavior",
+      "statement": "A file reachable through several selected roots lands once by `file_id`; its `resolved_root` is the lexicographically least selected root id reaching it.",
+      "why": "A-connector",
+      "file": "spec/40-connector.md",
+      "line": 528,
+      "scenarios": [
+        "WHEN two selected roots reach one file, THEN one `files` row carries the least root id as `resolved_root`."
+      ]
     },
     {
       "id": "connector.source.drive-tables",
@@ -12698,7 +12751,7 @@
       "statement": "The drive source serves `files`, one row per file keyed by `file_id` with its version, name, path from the root, MIME type, `modifiedTime`, Drive's `md5Checksum` and the SHA-256 of the bytes read, and `pages`.",
       "why": "",
       "file": "spec/40-connector.md",
-      "line": 522
+      "line": 530
     },
     {
       "id": "connector.source.drive-table-unmatched",
@@ -12709,7 +12762,72 @@
       "statement": "A drive table other than `files` or `pages` refuses as {{connector.source.table-unmatched}}, ahead of any request.",
       "why": "",
       "file": "spec/40-connector.md",
-      "line": 523
+      "line": 531
+    },
+    {
+      "id": "connector.source.drive-mode",
+      "contract": "connector",
+      "operation": "source",
+      "subject": "drive-mode",
+      "kind": "refusal",
+      "statement": "`mode` selects `bytes-and-pages` by default or `metadata-only`; another spelling raises `ConnectorDriveModeUnknown` before any request.",
+      "why": "A-connector",
+      "file": "spec/40-connector.md",
+      "line": 532
+    },
+    {
+      "id": "connector.source.drive-capture-record",
+      "contract": "connector",
+      "operation": "source",
+      "subject": "drive-capture-record",
+      "kind": "behavior",
+      "statement": "Every file row carries `resolved_root`, `export_mime_type`, captured `bytes` and `capture_status`: `captured`, `skipped` or `removed`. A removed row or skipped row without captured bytes has null `sha256`.",
+      "why": "",
+      "file": "spec/40-connector.md",
+      "line": 534
+    },
+    {
+      "id": "connector.source.drive-metadata-only",
+      "contract": "connector",
+      "operation": "source",
+      "subject": "drive-metadata-only",
+      "kind": "behavior",
+      "statement": "In `metadata-only` mode, the source hashes exact downloaded or exported bytes, then discards the bytes after recording the digest.",
+      "why": "A-connector",
+      "file": "spec/40-connector.md",
+      "line": 535,
+      "scenarios": [
+        "WHEN a downloaded version has known bytes, THEN its SHA-256 matches those bytes, which the source discards after capture.",
+        "WHEN the separately retained named version is downloaded, THEN its byte SHA-256 reproduces the `files` row's digest."
+      ]
+    },
+    {
+      "id": "connector.source.drive-version-consistency",
+      "contract": "connector",
+      "operation": "source",
+      "subject": "drive-version-consistency",
+      "kind": "refusal",
+      "statement": "After a metadata-only download or export, the source re-reads the file version; a change from the listed version raises `ConnectorDriveVersionMoved` before any row or cursor commits.",
+      "why": "because a digest of newer bytes cannot witness the version named by the file row",
+      "file": "spec/40-connector.md",
+      "line": 537,
+      "scenarios": [
+        "WHEN a file changes between listing and download, THEN `ConnectorDriveVersionMoved` refuses the capture without a file row or cursor."
+      ]
+    },
+    {
+      "id": "connector.source.drive-named-skip",
+      "contract": "connector",
+      "operation": "source",
+      "subject": "drive-named-skip",
+      "kind": "behavior",
+      "statement": "A skipped file row names the file and reason; the per-file bound of {{connector.source.drive-file-cap}} applies in both modes.",
+      "why": "because a skipped row cannot attest to bytes the source did not read",
+      "file": "spec/40-connector.md",
+      "line": 539,
+      "scenarios": [
+        "WHEN a selected file exceeds the byte cap, THEN its skipped row names the file and cap."
+      ]
     },
     {
       "id": "connector.source.drive-export",
@@ -12720,7 +12838,7 @@
       "statement": "A Google Doc, Sheet or Slides deck lands as its `files.export` PDF and any other file as its `alt=media` bytes; another Google-native type lands a `skipped` reason and no bytes.",
       "why": "",
       "file": "spec/40-connector.md",
-      "line": 524
+      "line": 541
     },
     {
       "id": "connector.source.drive-page-grain",
@@ -12728,10 +12846,13 @@
       "operation": "source",
       "subject": "drive-page-grain",
       "kind": "behavior",
-      "statement": "A PDF body lands one `pages` row per page under {{connector.source.document-grain}}, decoded behind {{run.land.parse-boundary}}; bytes land in no column.",
+      "statement": "In `bytes-and-pages` mode, each PDF page lands one `pages` row under {{connector.source.document-grain}}, decoded behind {{run.land.parse-boundary}}; bytes land in no column. In `metadata-only` mode, no page content row lands.",
       "why": "because a page is what retrieval ranks and a citation names, and a row column holding a whole file inflates every scan of the table",
       "file": "spec/40-connector.md",
-      "line": 525
+      "line": 542,
+      "scenarios": [
+        "WHEN mode is `metadata-only`, THEN no page content row lands."
+      ]
     },
     {
       "id": "connector.source.drive-bytes",
@@ -12739,10 +12860,13 @@
       "operation": "source",
       "subject": "drive-bytes",
       "kind": "behavior",
-      "statement": "Every body the drive source reads whole, exported or downloaded, lands as {{store.lay-out.landed-blob}}, and its file row's `sha256` names that blob.",
+      "statement": "In `bytes-and-pages` mode, every whole exported or downloaded body lands as {{store.lay-out.landed-blob}}, named by its file row's `sha256`; in `metadata-only` mode, no blob lands.",
       "why": "",
       "file": "spec/40-connector.md",
-      "line": 527
+      "line": 544,
+      "scenarios": [
+        "WHEN mode is `metadata-only`, THEN no landed blob holds the downloaded bytes."
+      ]
     },
     {
       "id": "connector.source.drive-file-cap",
@@ -12753,7 +12877,7 @@
       "statement": "A file over `max_file_bytes`, 64 MiB by default, lands its file row with a `skipped` reason naming the cap and no pages. No byte past the cap is read, and the read continues.",
       "why": "because a row naming the skipped file answers for it, where truncated bytes read as the whole document",
       "file": "spec/40-connector.md",
-      "line": 528
+      "line": 545
     },
     {
       "id": "connector.source.drive-unreadable",
@@ -12764,7 +12888,7 @@
       "statement": "A PDF body failing to decode behind {{run.land.parse-boundary}} lands its file row with a `skipped` reason naming the failure and no pages, and the read continues.",
       "why": "because one unreadable file failing the fire holds back every other file's row and the position behind them",
       "file": "spec/40-connector.md",
-      "line": 530
+      "line": 547
     },
     {
       "id": "connector.source.drive-export-limit",
@@ -12775,7 +12899,7 @@
       "statement": "A Doc, Sheet or Slides deck whose export Drive answers `403 exportSizeLimitExceeded` lands its file row with a `skipped` reason naming Drive's export limit and no pages, and the read continues.",
       "why": "because Drive refuses that export on every fire, so failing the read stalls the whole tree behind one file",
       "file": "spec/40-connector.md",
-      "line": 532
+      "line": 549
     },
     {
       "id": "connector.source.drive-skip-count",
@@ -12786,7 +12910,50 @@
       "statement": "Each drive pull reports the files it lands with a `skipped` reason as its {{run.record.skipped-count}}, so a fire's `files` run and `pages` run each carry the tally.",
       "why": "",
       "file": "spec/40-connector.md",
-      "line": 534
+      "line": 551
+    },
+    {
+      "id": "connector.source.drive-selection-position",
+      "contract": "connector",
+      "operation": "source",
+      "subject": "drive-selection-position",
+      "kind": "behavior",
+      "statement": "The position binds the declared drive, sorted root set and mode; changing any of them revalidates every root and rewalks the selected trees, rereading files without reusing an earlier frontier.",
+      "why": "A-connector",
+      "file": "spec/40-connector.md",
+      "line": 552,
+      "scenarios": [
+        "WHEN a configured pipeline changes from `bytes-and-pages` to `metadata-only`, THEN the next read rewalks its roots and rereads retained files."
+      ]
+    },
+    {
+      "id": "connector.source.drive-selection-removals",
+      "contract": "connector",
+      "operation": "source",
+      "subject": "drive-selection-removals",
+      "kind": "behavior",
+      "statement": "A complete selected-root walk lands tombstones for files removed, moved outside the roots or deselected, and for excess prior pages; an incomplete walk commits no removals.",
+      "why": "A-connector",
+      "file": "spec/40-connector.md",
+      "line": 554,
+      "scenarios": [
+        "WHEN a complete new selection excludes a formerly captured file, THEN its `file_id` lands a tombstone.",
+        "WHEN mode changes from `bytes-and-pages` to `metadata-only`, THEN old pages receive tombstones and no page content row remains."
+      ]
+    },
+    {
+      "id": "connector.source.drive-root-reassignment",
+      "contract": "connector",
+      "operation": "source",
+      "subject": "drive-root-reassignment",
+      "kind": "behavior",
+      "statement": "For selected roots, the position also holds each file's `version` and `resolved_root`. A complete walk re-reads the file when either changes, even with matching `modifiedTime` and path.",
+      "why": "because a changed version needs a fresh byte witness even when the file id stays stable",
+      "file": "spec/40-connector.md",
+      "line": 556,
+      "scenarios": [
+        "WHEN a retained file's version changes with identical `modifiedTime` and path, THEN the read captures its new bytes and digest."
+      ]
     },
     {
       "id": "connector.source.drive-incremental",
@@ -12797,7 +12964,21 @@
       "statement": "The drive position holds each file's `modifiedTime`, path and page count. A read re-lands a file whose time or path changed, and lands a tombstone for a file gone from the tree and for each page past its new count.",
       "why": "",
       "file": "spec/40-connector.md",
-      "line": 535
+      "line": 558
+    },
+    {
+      "id": "connector.source.drive-list-bound",
+      "contract": "connector",
+      "operation": "source",
+      "subject": "drive-list-bound",
+      "kind": "refusal",
+      "statement": "A selected-root walk shares {{connector.source.page-cap}} across roots; reaching it with a pending folder or page token raises `ConnectorDriveListingExceeded`, naming the folder and committing no selection removals.",
+      "why": "because an incomplete listing cannot prove a file left the selected trees",
+      "file": "spec/40-connector.md",
+      "line": 559,
+      "scenarios": [
+        "WHEN listing reaches the request cap with a next-page token but no queued folders, THEN the read refuses and lands no removal tombstone."
+      ]
     },
     {
       "id": "connector.source.drive-fire",
@@ -12808,7 +12989,7 @@
       "statement": "One fire shares one minted token, one walk and one read of each file's bytes across the `files` and `pages` tables.",
       "why": "",
       "file": "spec/40-connector.md",
-      "line": 536
+      "line": 561
     },
     {
       "id": "connector.source.drive-oauth",
@@ -12819,7 +13000,7 @@
       "statement": "The drive source mints its access token from a refresh token and client credentials bound as `secret://` references, once per fire and again on a `401`, holding it in memory and writing it to no store, journal or record.",
       "why": "because Google's refresh token does not turn over, so the minted token is the one rotating material, and it lapses within the hour",
       "file": "spec/40-connector.md",
-      "line": 537
+      "line": 562
     },
     {
       "id": "connector.source.drive-oauth-shape",
@@ -12830,7 +13011,7 @@
       "statement": "`oauth.refresh_token`, `oauth.client_id` and `oauth.client_secret` each hold one `${secret://<name>}` reference and nothing else, checked before any request.",
       "why": "",
       "file": "spec/40-connector.md",
-      "line": 539
+      "line": 564
     },
     {
       "id": "connector.source.drive-origin",
@@ -12841,7 +13022,7 @@
       "statement": "The drive API and token endpoints are `www.googleapis.com` and `oauth2.googleapis.com` over TLS on the default port; another host, port or scheme refuses as {{connector.source.provider-origin}}, loopback excepted.",
       "why": "",
       "file": "spec/40-connector.md",
-      "line": 540
+      "line": 565
     },
     {
       "id": "connector.source.drive-position-owned",
@@ -12852,7 +13033,7 @@
       "statement": "`incremental` beside the drive source refuses as {{connector.package.component-position}} at validation.",
       "why": "",
       "file": "spec/40-connector.md",
-      "line": 541
+      "line": 566
     },
     {
       "id": "connector.reference.credential-plane",
@@ -22706,8 +22887,16 @@
       "run.land.parse-boundary"
     ],
     [
+      "connector.source.drive-root-walk",
+      "connector.source.drive-walk"
+    ],
+    [
       "connector.source.drive-table-unmatched",
       "connector.source.table-unmatched"
+    ],
+    [
+      "connector.source.drive-named-skip",
+      "connector.source.drive-file-cap"
     ],
     [
       "connector.source.drive-page-grain",
@@ -22728,6 +22917,10 @@
     [
       "connector.source.drive-skip-count",
       "run.record.skipped-count"
+    ],
+    [
+      "connector.source.drive-list-bound",
+      "connector.source.page-cap"
     ],
     [
       "connector.source.drive-origin",
@@ -24644,6 +24837,26 @@
             "clause": "connector.package.digest-mismatch",
             "gloss": "Resolved artifact bytes whose re-hash differs from the pin."
           },
+          "ConnectorDriveListingExceeded": {
+            "clause": "connector.source.drive-list-bound",
+            "gloss": "A Drive listing reaching its request cap before all selected folders are exhausted."
+          },
+          "ConnectorDriveModeUnknown": {
+            "clause": "connector.source.drive-mode",
+            "gloss": "A Drive capture mode other than bytes-and-pages or metadata-only."
+          },
+          "ConnectorDriveRootRejected": {
+            "clause": "connector.source.drive-root-validation",
+            "gloss": "A selected Drive root that does not exist or lies outside the declared Shared Drive."
+          },
+          "ConnectorDriveRootsInvalid": {
+            "clause": "connector.source.drive-root-set",
+            "gloss": "An empty, oversized, repeated or ambiguous Drive root selection."
+          },
+          "ConnectorDriveVersionMoved": {
+            "clause": "connector.source.drive-version-consistency",
+            "gloss": "A Drive file whose version changes during metadata-only capture."
+          },
           "ConnectorEgressRefused": {
             "clause": "connector.meter.hook-refusal",
             "gloss": "An outbound hop the pre-send hook refused before name resolution."
@@ -24966,6 +25179,13 @@
             "unit": "MiB",
             "basis": "chosen",
             "gloss": "Default body bytes one drive file carries before it is skipped."
+          },
+          "connector-drive-roots": {
+            "clause": "connector.source.drive-root-set",
+            "value": 16,
+            "unit": "entries",
+            "basis": "chosen",
+            "gloss": "Distinct selected folder roots in one Drive source."
           },
           "connector-expansion-buffer": {
             "clause": "connector.source.expansion-budget",

@@ -606,7 +606,13 @@ fn reconcile(
     let types = column_types(store, decl, batches)?;
 
     // Reconcile: the producer's columns, held to the namespace, merged into the stored shape.
-    let arriving = producer_columns(&rows_schema(all_rows(), &types)?)?;
+    let mut source_schema = rows_schema(all_rows(), &types)?;
+    if source_schema.columns.is_empty() {
+        let mut declared = decl.column_types().into_iter().collect::<Vec<_>>();
+        declared.sort_by(|a, b| a.0.cmp(&b.0));
+        source_schema.columns.extend(declared.into_iter().map(|(name, ty)| Column::new(name, ty, true)));
+    }
+    let arriving = producer_columns(&source_schema)?;
     // An optional column's value is held to its vocabulary whatever JSON type it arrives
     // as: a number reads as its text, so `{"_modality": 7}` refuses like `"7"` would.
     for c in arriving.columns.iter().filter(|c| c.name.starts_with('_')) {

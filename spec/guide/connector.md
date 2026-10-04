@@ -71,26 +71,30 @@ the deployment lists as a leased scope ({{connector.lease.scope-declaration}}). 
 binds a credential, its allowlist holds one exact host, `api.vendor.example`
 ({{connector.attach.bound-host}}).
 
-The name is not on the built-in list ({{connector.package.built-in-registry}}), so the host
-fetches the pinned HTTPS artifact, re-hashes it and instantiates it. At load the allowlist
-shape passes ({{connector.declare-capability.allowlist-shape}}) and the declared quota finds
-its operator binding ({{connector.meter.limiter-binding}}). At session open the scope probe
-reports grants within the expectation, and discovery runs.
-
-The first read asks for that host. The host finds it allowlisted, acquires a permit, then resolves it to a public address. It hydrates the `Authorization`
-template: the lease provider heads the chain and answers for the declared name
-({{connector.lease.head-of-chain}}), holding material plus one expiry in memory
-({{connector.lease.lease}}). The request goes out over TLS, and the vendor's quota
-headers ride the next usage report ({{connector.meter.report}}).
-
-A pipeline names it by artifact path ({{connector.package.component-source}}), and each
-run records its hash ({{connector.package.component-load}}).
+The host re-hashes its pinned artifact, checks the allowlist
+({{connector.declare-capability.allowlist-shape}}) and quota binding
+({{connector.meter.limiter-binding}}), and opens the session. The first read gets a permit,
+resolves a public address, and hydrates the `Authorization` template from a lease
+({{connector.lease.head-of-chain}}, {{connector.lease.lease}}). The vendor's quota headers
+ride the next usage report ({{connector.meter.report}}).
 
 Midway through, the limiter denies a permit. The guest sees an ordinary throttle response
 ({{connector.meter.synthesized-throttle}}), which the run retries under its schedule. Later
 the lease lapses while the mint endpoint is down: the run sends the vendor nothing
 ({{connector.lease.vendor-requests-on-failure}}), and the transient failure goes back to the
 step's schedule.
+
+A Drive pipeline selecting two folders in one Shared Drive declares its roots together
+({{connector.source.drive-root-set}}). It checks both before listing
+({{connector.source.drive-root-validation}}), walks their trees within that boundary
+({{connector.source.drive-root-walk}}), and resolves a file found under both to one row
+({{connector.source.drive-overlap}}). The selection lives in the position
+({{connector.source.drive-selection-position}}). A metadata-only pull records the exact
+byte digest and capture outcome ({{connector.source.drive-metadata-only}},
+{{connector.source.drive-capture-record}}), checking the file version after download
+({{connector.source.drive-version-consistency}}); a complete changed selection records removals
+({{connector.source.drive-selection-removals}}), while a capped listing refuses
+({{connector.source.drive-list-bound}}).
 
 ## Where to look
 

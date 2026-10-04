@@ -48,6 +48,7 @@ fn query(r: &Request) -> Vec<(String, String)> {
 struct Fake {
     server: Server,
     recordings: Arc<Mutex<Vec<&'static str>>>,
+    incomplete_search_override: Arc<Mutex<Option<Value>>>,
     /// API requests answering `401` before the bearer is honored.
     reject: Arc<Mutex<usize>>,
 }
@@ -55,8 +56,10 @@ struct Fake {
 impl Fake {
     fn start() -> Fake {
         let recordings: Arc<Mutex<Vec<&'static str>>> = Arc::new(Mutex::new(vec!["recording.json"]));
+        let incomplete_search_override = Arc::new(Mutex::new(None));
         let reject = Arc::new(Mutex::new(0usize));
         let (r, j) = (recordings.clone(), reject.clone());
+        let marker = incomplete_search_override.clone();
         let server = Server::start(move |req| {
             if req.path() != "/token" {
                 let mut left = j.lock().unwrap();
@@ -77,7 +80,15 @@ impl Fake {
                     if matches {
                         let body = match x.get("body_file") {
                             Some(f) => std::fs::read(fixtures().join(f.as_str().unwrap())).unwrap(),
-                            None => serde_json::to_vec(&x["body"]).unwrap(),
+                            None => {
+                                let mut body = x["body"].clone();
+                                if body.get("incompleteSearch").is_some() {
+                                    if let Some(value) = marker.lock().unwrap().clone() {
+                                        body["incompleteSearch"] = value;
+                                    }
+                                }
+                                serde_json::to_vec(&body).unwrap()
+                            }
                         };
                         return Response { status: x["status"].as_u64().unwrap() as u16, headers: vec![], body };
                     }
@@ -85,12 +96,16 @@ impl Fake {
             }
             Response::json(404, "{\"error\":{\"code\":404}}")
         });
-        Fake { server, recordings, reject }
+        Fake { server, recordings, incomplete_search_override, reject }
     }
 
     /// Answer from `name` ahead of the recordings loaded before it.
     fn overlay(&self, name: &'static str) {
         self.recordings.lock().unwrap().push(name);
+    }
+
+    fn override_incomplete_search(&self, value: Value) {
+        *self.incomplete_search_override.lock().unwrap() = Some(value);
     }
 
     fn config(&self, extra: Value) -> Value {
@@ -179,6 +194,271 @@ fn by_id<'a>(rows: &'a [serde_json::Map<String, Value>], id: &str) -> &'a serde_
 
 fn pages_of(rows: &[serde_json::Map<String, Value>], id: &str) -> Vec<(u64, Value)> {
     rows.iter().filter(|r| r["file_id"] == id).map(|r| (r["page"].as_u64().unwrap(), r["text"].clone())).collect()
+}
+
+fn selected_roots(fake: &Fake, ids: &[&str]) -> Value {
+    let mut config = fake.config(json!({"folder_ids": ids, "drive_id": "0AExampleDrive"}));
+    config.as_object_mut().unwrap().remove("folder_id");
+    config
+}
+
+/// A full empty walk announces a replacement-capable snapshot; unchanged input does not.
+#[test]
+fn complete_empty_drive_walk_reports_snapshot_completion_but_unchanged_input_does_not() {
+    let empty = Fake::start();
+    empty.overlay("empty.json");
+    let selected = drive(selected_roots(&empty, &["empty-f"]));
+    for table in ["files", "pages"] {
+        let (rows, _, bytes) = pull(&mut selected.source(table).unwrap(), None);
+        assert!(rows.is_empty());
+        let response: Value = serde_json::from_slice(&bytes).unwrap();
+        assert_eq!(response["snapshot_complete"], true, "{table}: {response}");
+    }
+
+    let populated = Fake::start();
+    let source = drive(populated.config(json!({})));
+    let (_, cursor, _) = pull(&mut source.source("files").unwrap(), None);
+    let (rows, _, bytes) = pull(&mut source.source("files").unwrap(), Some(cursor));
+    assert!(rows.is_empty());
+    let response: Value = serde_json::from_slice(&bytes).unwrap();
+    assert_eq!(response["snapshot_complete"], false, "{response}");
+}
+
+/// A bounded root set is validated before any listing.
+// spec: connector.source.drive-root-set@3c8b13be
+#[test]
+fn selected_drive_roots_reject_ambiguous_or_unbounded_configuration() {
+    let fake = Fake::start();
+    for ids in [Vec::<&str>::new(), vec!["root-f", "root-f"], vec!["root-f"; 17]] {
+        let config = selected_roots(&fake, &ids);
+        assert!(DriveConfig::parse(&config).unwrap_err().to_string().starts_with("ConnectorDriveRootsInvalid:"), "{config:?}");
+    }
+    let mut combined = selected_roots(&fake, &["root-f"]);
+    combined["folder_id"] = json!("root-f");
+    assert!(DriveConfig::parse(&combined).unwrap_err().to_string().starts_with("ConnectorDriveRootsInvalid:"));
+    let mut no_drive = selected_roots(&fake, &["root-f"]);
+    no_drive.as_object_mut().unwrap().remove("drive_id");
+    assert!(DriveConfig::parse(&no_drive).unwrap_err().to_string().starts_with("ConnectorDriveRootsInvalid:"));
+    let valid = (0..16).map(|i| format!("root{i}")).collect::<Vec<_>>();
+    let mut upper_bound = selected_roots(&fake, &["root-f"]);
+    upper_bound["folder_ids"] = json!(valid);
+    assert!(DriveConfig::parse(&upper_bound).is_ok());
+    assert!(fake.received("/drive/v3/files").is_empty());
+}
+
+/// An outside-drive selected root refuses before any selected folder is listed.
+// spec: connector.source.drive-root-validation@8a0c59bf
+#[test]
+fn every_selected_root_is_checked_before_listing() {
+    let fake = Fake::start();
+    fake.overlay("shared.json");
+    for rejected in ["outside-f", "missing-f"] {
+        let d = drive(selected_roots(&fake, &["root-f", rejected]));
+        let failure = d.source("files").unwrap().pull(&request(None), &Never).unwrap_err();
+        assert_eq!(failure.tag, FailureTag::Config, "{failure}");
+        assert!(failure.message.contains("ConnectorDriveRootRejected") && failure.message.contains(rejected), "{failure}");
+    }
+    assert!(fake.received("/drive/v3/files").is_empty());
+}
+
+/// Overlapping selected roots land each file once and resolve it to the least selected root id.
+// spec: connector.source.drive-root-walk@a69f82be
+// spec: connector.source.drive-overlap@ec0c9d7d
+#[test]
+fn overlapping_selected_roots_deduplicate_files_and_resolve_paths() {
+    let fake = Fake::start();
+    fake.overlay("shared.json");
+    let d = drive(selected_roots(&fake, &["root-f", "fin-f"]));
+    let (rows, _, _) = pull(&mut d.source("files").unwrap(), None);
+    assert_eq!(rows.len(), 7);
+    assert_eq!(rows.iter().filter(|r| r["file_id"] == "sheet-budget").count(), 1);
+    assert_eq!((by_id(&rows, "doc-plan")["resolved_root"].clone(), by_id(&rows, "doc-plan")["path"].clone()), (json!("root-f"), json!("Plan")));
+    assert_eq!((by_id(&rows, "sheet-budget")["resolved_root"].clone(), by_id(&rows, "sheet-budget")["path"].clone()), (json!("fin-f"), json!("Budget")));
+    assert_eq!((by_id(&rows, "pdf-report")["resolved_root"].clone(), by_id(&rows, "pdf-report")["path"].clone()), (json!("fin-f"), json!("Board/report.pdf")));
+    let listed = fake.received("/drive/v3/files");
+    assert_eq!(listed.len(), 4, "the overlapping Finance folder is listed once");
+    assert_eq!(listed.iter().filter(|r| query(r).iter().any(|(k, v)| k == "q" && v.contains("'fin-f'"))).count(), 1);
+    for request in listed {
+        assert!(query(&request).contains(&("driveId".into(), "0AExampleDrive".into())));
+    }
+}
+
+/// A pending next-page token at the shared listing cap refuses without committing removals.
+// spec: connector.source.drive-list-bound@48660c8e
+#[test]
+fn a_selected_root_page_token_at_the_listing_cap_refuses_by_name() {
+    let fake = Fake::start();
+    fake.overlay("shared.json");
+    fake.overlay("capped.json");
+    let d = drive(selected_roots(&fake, &["root-f"]));
+    let prior = json!({"files": {"gone": {"modified": "2031-01-01T00:00:00Z", "path": "gone", "name": "gone", "pages": 1}}});
+    let failure = d.source("files").unwrap().pull(&request(Some(prior)), &Never).unwrap_err();
+    assert_eq!(failure.tag, FailureTag::Permanent, "{failure}");
+    assert!(failure.message.contains("ConnectorDriveListingExceeded") && failure.message.contains("root-f"), "{failure}");
+    assert_eq!(fake.received("/drive/v3/files").len(), contextful_connectors::drive::LISTING_CAP);
+}
+
+/// A malformed listing cannot prove that previously captured files left the selection.
+#[test]
+fn malformed_selected_root_listings_refuse_before_removals() {
+    for (fixture, malformed_marker) in [
+        ("malformed-files.json", false),
+        ("malformed-token.json", false),
+        ("malformed-child.json", false),
+        ("malformed-version.json", false),
+        ("malformed-modified.json", false),
+        ("incomplete-search.json", false),
+        ("incomplete-search.json", true),
+    ] {
+        let fake = Fake::start();
+        fake.overlay(fixture);
+        if malformed_marker {
+            fake.override_incomplete_search(json!("true"));
+        }
+        let d = drive(fake.config(json!({})));
+        let prior = json!({"files": {"retained": {"modified": "2031-01-01T00:00:00Z", "path": "retained", "name": "retained", "pages": 1}}});
+        let failure = d.source("files").unwrap().pull(&request(Some(prior)), &Never).unwrap_err();
+        assert_eq!(failure.tag, FailureTag::Permanent, "{fixture}: {failure}");
+        assert!(failure.message.contains("listing") && failure.message.contains("root-f"), "{fixture}: {failure}");
+        assert!(fake.received("/drive/v3/files").iter().all(|request| query(request).iter().any(|(key, value)| key == "fields" && value.contains("incompleteSearch"))));
+    }
+}
+
+/// `metadata-only` records exact bytes without retaining a body or decoding pages.
+// spec: connector.source.drive-capture-record@b9187adf
+// spec: connector.source.drive-metadata-only@6c032057
+// spec: connector.source.drive-page-grain@9029df45
+// spec: connector.source.drive-bytes@2f79acc3
+#[test]
+fn metadata_only_records_digests_without_blobs_or_page_content() {
+    struct NoDecode;
+    impl PageDecoder for NoDecode {
+        fn pages(&self, _: &[u8], _: &str) -> Result<Vec<String>, Failure> {
+            panic!("metadata-only must not decode")
+        }
+    }
+    let fake = Fake::start();
+    let bodies = Arc::new(Held::default());
+    let d = drive_into(fake.config(json!({"mode": "metadata-only"})), Arc::new(NoDecode), bodies.clone());
+    let (rows, _, _) = pull(&mut d.source("files").unwrap(), None);
+    let report = by_id(&rows, "pdf-report");
+    let report_bytes = std::fs::read(fixtures().join("report.pdf")).unwrap();
+    assert_eq!(report["sha256"], json!(sha256(&report_bytes)));
+    assert_eq!(report["bytes"], json!(report_bytes.len()));
+    assert_eq!(report["capture_status"], "captured");
+    assert_eq!(report["pages"], Value::Null);
+    let plan = by_id(&rows, "doc-plan");
+    let plan_bytes = std::fs::read(fixtures().join("plan.pdf")).unwrap();
+    assert_eq!(plan["sha256"], json!(sha256(&plan_bytes)));
+    assert_eq!(plan["export_mime_type"], "application/pdf");
+    assert_eq!(by_id(&rows, "short-deck")["capture_status"], "skipped");
+    assert!(by_id(&rows, "short-deck")["sha256"].is_null());
+    assert_eq!(report["resolved_root"], "root-f");
+    assert_eq!(*bodies.puts.lock().unwrap(), 0);
+    let (pages, _, _) = pull(&mut d.source("pages").unwrap(), None);
+    assert!(pages.is_empty(), "fresh metadata capture has no page rows: {pages:?}");
+    assert_eq!(*bodies.puts.lock().unwrap(), 0);
+}
+
+/// A capture mode change rereads retained files and removes prior page content.
+// spec: connector.source.drive-selection-removals@d263dd24
+#[test]
+fn metadata_mode_switch_rereads_files_and_tombstones_pages() {
+    let fake = Fake::start();
+    let full = drive(fake.config(json!({})));
+    let (_, file_position, _) = pull(&mut full.source("files").unwrap(), None);
+    let (old_pages, page_position, _) = pull(&mut full.source("pages").unwrap(), None);
+    assert!(!old_pages.is_empty());
+    let bodies = Arc::new(Held::default());
+    let metadata = drive_into(fake.config(json!({"mode": "metadata-only"})), Arc::new(InProcess), bodies.clone());
+    let (files, new_position, _) = pull(&mut metadata.source("files").unwrap(), Some(file_position));
+    assert_eq!(files.len(), 7, "mode change rereads retained files");
+    assert_eq!(new_position["mode"], "metadata-only");
+    let (pages, _, _) = pull(&mut metadata.source("pages").unwrap(), Some(page_position));
+    assert_eq!(pages.len(), old_pages.len());
+    assert!(pages.iter().all(|r| r["removed"] == true && r["text"].is_null()));
+    assert_eq!(*bodies.puts.lock().unwrap(), 0);
+}
+
+/// An unknown mode refuses before any provider request.
+// spec: connector.source.drive-mode@f6f7b4a5
+#[test]
+fn unknown_drive_capture_mode_refuses_before_requests() {
+    let fake = Fake::start();
+    let error = DriveConfig::parse(&fake.config(json!({"mode": "digest-ish"}))).unwrap_err();
+    assert!(error.to_string().contains("ConnectorDriveModeUnknown"), "{error}");
+    assert!(fake.received("/drive/v3/files").is_empty());
+}
+
+/// A selected-root or drive change binds a new cursor and removes deselected files.
+// spec: connector.source.drive-selection-position@00a84230
+#[test]
+fn selection_change_replays_retained_files_and_tombstones_deselected_files() {
+    let fake = Fake::start();
+    fake.overlay("shared.json");
+    let first = drive(selected_roots(&fake, &["root-f", "fin-f"]));
+    let (_, before, _) = pull(&mut first.source("files").unwrap(), None);
+    assert_eq!(before["drive_id"], "0AExampleDrive");
+    assert_eq!(before["roots"], json!(["fin-f", "root-f"]));
+    let second = drive(selected_roots(&fake, &["fin-f"]));
+    let (rows, after, _) = pull(&mut second.source("files").unwrap(), Some(before));
+    assert_eq!(after["roots"], json!(["fin-f"]));
+    assert_eq!(by_id(&rows, "doc-plan")["capture_status"], "removed");
+    assert_eq!(by_id(&rows, "doc-plan")["resolved_root"], "root-f");
+    assert_eq!(by_id(&rows, "pdf-report")["capture_status"], "captured");
+    assert_eq!(by_id(&rows, "pdf-report")["resolved_root"], "fin-f");
+}
+
+/// A changed exported version in metadata mode publishes the digest of its new exact bytes.
+#[test]
+fn metadata_only_changed_version_updates_digest_and_removed_file() {
+    let fake = Fake::start();
+    let config = fake.config(json!({"mode": "metadata-only"}));
+    let (first, before, _) = pull(&mut drive(config.clone()).source("files").unwrap(), None);
+    fake.overlay("second.json");
+    let (rows, _, _) = pull(&mut drive(config).source("files").unwrap(), Some(before));
+    assert_eq!(rows.len(), 2);
+    let plan = by_id(&rows, "doc-plan");
+    let bytes = std::fs::read(fixtures().join("plan-v2.pdf")).unwrap();
+    assert_ne!(plan["sha256"], by_id(&first, "doc-plan")["sha256"]);
+    assert_eq!(plan["sha256"], json!(sha256(&bytes)));
+    assert_eq!(plan["version"], 6);
+    let removed = by_id(&rows, "pdf-report");
+    assert_eq!(removed["capture_status"], "removed");
+    assert!(removed["sha256"].is_null());
+}
+
+/// A download crossing a version change refuses the whole metadata capture.
+// spec: connector.source.drive-version-consistency@058faf68
+#[test]
+fn metadata_only_refuses_a_version_moving_during_capture() {
+    let fake = Fake::start();
+    fake.overlay("version-race.json");
+    let bodies = Arc::new(Held::default());
+    let d = drive_into(fake.config(json!({"mode": "metadata-only"})), Arc::new(InProcess), bodies.clone());
+    let failure = d.source("files").unwrap().pull(&request(None), &Never).unwrap_err();
+    assert!(failure.message.contains("ConnectorDriveVersionMoved") && failure.message.contains("doc-plan"), "{failure}");
+    assert_eq!(*bodies.puts.lock().unwrap(), 0);
+}
+
+/// A version or resolved-root change re-reads a file despite an unchanged modification time and path.
+// spec: connector.source.drive-root-reassignment@ab410702
+#[test]
+fn held_version_and_resolved_root_trigger_reread() {
+    let fake = Fake::start();
+    fake.overlay("shared.json");
+    let config = selected_roots(&fake, &["root-f"]);
+    let (_, position, _) = pull(&mut drive(config.clone()).source("files").unwrap(), None);
+    let mut prior_version = position.clone();
+    prior_version["files"]["doc-plan"]["version"] = json!(0);
+    let (rows, _, _) = pull(&mut drive(config.clone()).source("files").unwrap(), Some(prior_version));
+    assert_eq!(rows.len(), 1);
+    assert_eq!(rows[0]["file_id"], "doc-plan");
+    let mut prior_root = position;
+    prior_root["files"]["doc-plan"]["resolved_root"] = json!("fin-f");
+    let (rows, _, _) = pull(&mut drive(config).source("files").unwrap(), Some(prior_root));
+    assert_eq!(rows.len(), 1);
+    assert_eq!(rows[0]["resolved_root"], "root-f");
 }
 
 /// The drive source walks the tree under `folder_id` breadth-first through `files.list`, paging each folder,
@@ -289,9 +569,9 @@ fn docs_sheets_and_slides_export_as_pdf_and_other_files_download() {
     assert!(fake.received("/drive/v3/files/form-intake/export").is_empty());
 }
 
-/// A PDF body lands one `pages` row per page under {{connector.source.document-grain}}, decoded behind
-/// {{run.land.parse-boundary}}; bytes land in no column.
-// spec: connector.source.drive-page-grain@35ff9f32
+/// In the default `bytes-and-pages` mode, each PDF page lands one `pages` row under
+/// {{connector.source.document-grain}}, decoded behind {{run.land.parse-boundary}};
+/// bytes land in no column.
 #[test]
 fn a_doc_a_sheet_and_a_deck_land_as_their_pdf_pages() {
     let fake = Fake::start();
@@ -512,9 +792,8 @@ fn each_pull_counts_the_files_it_skipped() {
     assert_eq!(skipped(&files), 0);
 }
 
-/// Every body the drive source reads whole, exported or downloaded, lands as {{store.lay-out.landed-blob}}, and
-/// its file row's `sha256` names that blob.
-// spec: connector.source.drive-bytes@54a5b707
+/// In the default `bytes-and-pages` mode, every whole exported or downloaded body lands
+/// as {{store.lay-out.landed-blob}}, named by its file row's `sha256`.
 #[test]
 fn every_body_read_lands_once_as_the_blob_its_row_names() {
     let fake = Fake::start();
