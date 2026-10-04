@@ -98,6 +98,30 @@ fn an_image_source_validates_for_an_images_table() {
     assert!(out.status.success(), "{}", stderr(&out));
 }
 
+#[test]
+fn an_image_source_lands_header_metadata_without_decoding_pixels() {
+    let dir = project("[[pipeline]]\nid = \"photos\"\ntables = [{ name = \"images\", primary_key = [\"path\"] }]\n[pipeline.source]\nname = \"image\"\nconfig = { root = \"photos\" }\n");
+    std::fs::create_dir_all(dir.path().join("photos")).unwrap();
+    let png = b"\x89PNG\r\n\x1a\n\x00\x00\x00\x0dIHDR\x00\x00\x00\x02\x00\x00\x00\x03\x08\x02\x00\x00\x00";
+    std::fs::write(dir.path().join("photos/p.png"), png).unwrap();
+    ok(&fire(dir.path(), "photos", "run-1", "2030-01-01T00:00:00Z"));
+    let out: serde_json::Value = serde_json::from_str(&ok(&cf(dir.path(), &[
+        "query", "--json", "--project", "research",
+        "SELECT path, width, height, modality, body, capture_at FROM images",
+    ]))).unwrap();
+    assert_eq!(out["rows"], serde_json::json!([["p.png", "2", "3", "image", null, null]]));
+}
+
+#[test]
+fn an_image_source_refuses_a_bad_header_with_its_path() {
+    let dir = project("[[pipeline]]\nid = \"photos\"\ntables = [\"images\"]\n[pipeline.source]\nname = \"image\"\nconfig = { root = \"photos\" }\n");
+    std::fs::create_dir_all(dir.path().join("photos")).unwrap();
+    std::fs::write(dir.path().join("photos/bad.png"), b"not an image").unwrap();
+    let out = fire(dir.path(), "photos", "run-1", "2030-01-01T00:00:00Z");
+    let error = stderr(&out);
+    assert!(!out.status.success() && error.contains("ConnectorImageHeaderUnreadable") && error.contains("bad.png"), "{error}");
+}
+
 /// Startup reads `contextful.toml` for project config and inline `[[pipeline]]` blocks, then `pipelines/*.toml`
 /// and `pipelines/*.json`; specifications are collected by `id`.
 // spec: run.declare.manifest-file@4779cc3b
