@@ -86,6 +86,27 @@ fn sealed_metadata_files_round_trip_without_plaintext_or_fallback() {
     assert_eq!(files.read(&path).unwrap(), b"{\"marker\":\"next\"}");
 }
 
+#[cfg(feature = "read")]
+#[test]
+fn a_ledger_row_registers_in_duckdb_memory_without_a_plaintext_file() {
+    use contextful_context::ledger::register_memory;
+    use contextful_core::store::ledger::RequestRecord;
+    use contextful_core::time::Instant;
+
+    let dir = tempfile::tempdir().unwrap();
+    let db = duckdb::Connection::open_in_memory().unwrap();
+    let canary = "ledger-sql-canary-5f1e";
+    let record = RequestRecord {
+        request_id: canary.into(), vendor_request_id: None, connector: "remote".into(),
+        method: "POST".into(), url_host: "example.test".into(), status_code: Some(201),
+        started_at: Instant::parse("2030-01-01T00:00:00Z").unwrap(), duration_ms: 7, batch_seq: Some(2),
+    };
+    register_memory(&db, "ledger_rows", &[("run-1".into(), record)]).unwrap();
+    let id: String = db.query_row("SELECT request_id FROM ledger_rows WHERE batch_seq = 2", [], |r| r.get(0)).unwrap();
+    assert_eq!(id, canary);
+    assert_eq!(std::fs::read_dir(dir.path()).unwrap().count(), 0);
+}
+
 /// Files under `dir` other than the store's `config.toml`, at any depth.
 fn written(dir: &std::path::Path) -> Vec<std::path::PathBuf> {
     let mut out = Vec::new();
