@@ -78,6 +78,8 @@ The relations, tools and templates one connection sees, the engine executing aga
   *A-read*
 - `advertised-is-enforced` — A table's published `limits` block lists a bound exactly when the engine applies it.
   *because a published number and a delivered guarantee cannot disagree when one derives from the other*
+- `budget-arguments` — Every read tool accepts optional `max_duration_ms` and `max_response_bytes` request fields, each with no default.
+- `budget-advertisement` — `context.describe` lists a table's `limits.max_duration_ms` and `limits.max_response_bytes` under {{read.register.advertised-is-enforced}} and omits each undeclared limit.
 - `template-projection` — Every manifest template projects into a tool named by its identifier, whose declared positional parameters form a typed schema with every field required.
 - `file-listing` — `context.files` returns store-root-relative paths for the tables the caller reads, and a table outside that set contributes no path.
   *P5*
@@ -198,6 +200,13 @@ The one response projection: cell encoding, the row ceiling, truncation, counts 
   *because min-max normalization pins the best row at 1.0 and IDF lifts one incidental rare-term mention*
 - `internals-opt-in` — Executed SQL, engine name, applied limit, row count and elapsed milliseconds ride a separate object returned only under `internals: true`, on every read tool and the HTTP face.
 - `query-internals-parameters` — Under `internals: true`, {{read.guard.query-binding}} includes the validated typed parameter map beside executed SQL in the internals object.
+- `duration-ceiling` — Under {{authority.grant.duration-ceiling}}, the engine interrupts the statement's connection at its deadline; `ReadDurationExceeded` names the ceiling, source and elapsed milliseconds, delivers no rows, and leaves other statements running.
+  *A-read*
+- `byte-ceiling` — Under {{authority.grant.byte-ceiling}}, the serialized response holds whole rows within the selected byte ceiling; an envelope or first row exceeding it raises `ReadResponseTooLarge` and delivers no rows.
+  *A-read*
+- `truncation-cause` — A truncated response carries `contextful.truncation` with `by` (`rows` or `bytes`), `ceiling`, and `source` (`grant`, `table`, `request`, `template` or `face`).
+- `truncation-tie` — When both ceilings cut the same next row, bytes takes precedence; equal ceilings within one dimension choose grant, table, request, template, then face as source.
+  *because one cut needs one deterministic cause for a client to branch on*
 - `operator-metadata` — Operator-surface table metadata carries column count and backing file list; a row count is an ordinary count query, never a stored field.
   *P3*
 - `restriction-block` — The restriction block carries the session zone, the incognito flag and one entry per touched relation the zone excludes or column-masks: `table`, `excluded`, `rows_dropped` and `columns_masked`. A read withholding no touched relation omits the block.
@@ -206,8 +215,6 @@ The one response projection: cell encoding, the row ceiling, truncation, counts 
   *P2*
 - `paths-stay-inside` — An ordinary read's result carries no store path. Provenance arrives as columns naming table, run, connector version, ingestion instant and authoring subject.
   *A-read*
-
-unsettled: When does a duration ceiling become enforceable, and publishable in the per-table limits block beside the row ceiling? owner: read-path affects: read.respond
 
 unsettled: Does partial-result streaming belong on this surface, or does a full result set stay the one response shape? owner: read-path affects: read.respond
 
