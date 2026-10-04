@@ -20,6 +20,12 @@ fn rows(dir: &Path) -> Value {
     serde_json::from_str(&ok(&cf(dir, &["query", "--json", "--project", "research", "SELECT sku FROM inventory ORDER BY sku"]))).unwrap()
 }
 
+fn earlier_rows(dir: &Path) -> Value {
+    let scan: Value = serde_json::from_str(&ok(&cf(dir, &["context", "scan", "inventory", "--project", "research", "--as-of", "2030-01-01T00:02:30Z"]))).unwrap();
+    let sql = format!("SELECT sku FROM ({}) AS bounded_inventory", scan["relation"].as_str().unwrap());
+    serde_json::from_str(&ok(&cf(dir, &["query", "--json", "--project", "research", &sql]))).unwrap()
+}
+
 fn mcp_rows(dir: &Path) -> Value {
     let public = ok(&cf(dir, &["token", "keygen", "--out", ".contextful/issuer.seed"]));
     let token = ok(&cf(dir, &["token", "mint", "--issuer-key", ".contextful/issuer.seed", "--on-behalf-of", "user://dana@example.test", "--zone", "on-prem:hq", "--table", "inventory", "--ttl", "600"]));
@@ -70,10 +76,12 @@ fn a_complete_empty_snapshot_replaces_but_a_skip_and_failed_pull_do_not() {
     input(json!({ "rows": [], "cursor": "v1", "more": false, "skipped": 1, "snapshot_complete": true }));
     ok(&start(root, "skipped", "2030-01-01T00:01:00Z"));
     assert_eq!(rows(root)["rows"], json!([["a"]]));
+    assert!(!root.join(".contextful/context/research/tables/inventory/data/runs/skipped").exists());
 
     std::fs::write(root.join("source.sh"), "exit 2\n").unwrap();
     assert!(!start(root, "failed", "2030-01-01T00:02:00Z").status.success());
     assert_eq!(rows(root)["rows"], json!([["a"]]));
+    assert!(!root.join(".contextful/context/research/tables/inventory/data/runs/failed").exists());
 
     std::fs::write(root.join("source.sh"), "cat payload.json\n").unwrap();
     input(json!({ "rows": [], "cursor": "v2", "more": false, "snapshot_complete": true }));
@@ -83,13 +91,11 @@ fn a_complete_empty_snapshot_replaces_but_a_skip_and_failed_pull_do_not() {
     let marker: Value = serde_json::from_slice(&std::fs::read(root.join(".contextful/context/research/tables/inventory/data/runs/empty/ingest-a/_manifest.json")).unwrap()).unwrap();
     assert_eq!(marker["replace_frontier"], json!(true), "{marker}");
     assert_eq!(marker["parts"], json!([]));
+    assert_eq!(marker["cursor"], json!("v2"));
 
     let earlier = ok(&cf(root, &["context", "files", "inventory", "--project", "research", "--as-of", "2030-01-01T00:02:30Z"]));
     assert!(earlier.contains("/runs/filled/"), "{earlier}");
-    let scan: Value = serde_json::from_str(&ok(&cf(root, &["context", "scan", "inventory", "--project", "research", "--as-of", "2030-01-01T00:02:30Z"]))).unwrap();
-    let sql = format!("SELECT sku FROM ({}) AS bounded_inventory", scan["relation"].as_str().unwrap());
-    let earlier_rows: Value = serde_json::from_str(&ok(&cf(root, &["query", "--json", "--project", "research", &sql]))).unwrap();
-    assert_eq!(earlier_rows["rows"], json!([["a"]]));
+    assert_eq!(earlier_rows(root)["rows"], json!([["a"]]));
 
     ok(&cf(root, &["sync", "push", "--project", "research"]));
     let replica = tempfile::tempdir().unwrap();
@@ -100,10 +106,13 @@ fn a_complete_empty_snapshot_replaces_but_a_skip_and_failed_pull_do_not() {
     ok(&cf(replica.path(), &["sync", "pull", "--project", "research"]));
     assert_eq!(rows(replica.path())["rows"], json!([]));
     assert_eq!(mcp_rows(replica.path()), json!([]));
+    assert_eq!(earlier_rows(replica.path())["rows"], json!([["a"]]));
 
     ok(&cf(root, &["context", "compact", "inventory", "--project", "research", "--now", "2030-01-01T00:04:00Z"]));
     assert_eq!(rows(root)["rows"], json!([]));
+    assert_eq!(earlier_rows(root)["rows"], json!([["a"]]));
     ok(&cf(root, &["sync", "push", "--project", "research"]));
     ok(&cf(replica.path(), &["sync", "pull", "--project", "research"]));
     assert_eq!(rows(replica.path())["rows"], json!([]));
+    assert_eq!(earlier_rows(replica.path())["rows"], json!([["a"]]));
 }
