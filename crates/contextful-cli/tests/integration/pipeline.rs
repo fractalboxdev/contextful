@@ -91,6 +91,13 @@ fn pipeline(id: &str, endpoint: &str, extra: &str, tables: &str) -> String {
     format!("[[pipeline]]\nid = \"{id}\"\n{extra}\n{tables}\n[pipeline.source]\nname = \"http\"\nconfig = {{ endpoint = \"{endpoint}\" }}\n")
 }
 
+#[test]
+fn an_image_source_validates_for_an_images_table() {
+    let dir = project("[[pipeline]]\nid = \"photos\"\ntables = [\"images\"]\n[pipeline.source]\nname = \"image\"\nconfig = { root = \"photos\" }\n");
+    let out = cf(dir.path(), &["pipeline", "validate"]);
+    assert!(out.status.success(), "{}", stderr(&out));
+}
+
 /// Startup reads `contextful.toml` for project config and inline `[[pipeline]]` blocks, then `pipelines/*.toml`
 /// and `pipelines/*.json`; specifications are collected by `id`.
 // spec: run.declare.manifest-file@4779cc3b
