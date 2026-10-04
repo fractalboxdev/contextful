@@ -55,7 +55,7 @@ pub fn admit_hosts(decl: &ComponentSource, base: &Path) -> Result<()> {
         None => Allowlist(Vec::new()),
         Some(toml::Value::Array(items)) => {
             let entries = items.iter().map(|item| item.as_str().context("manifest `allow_hosts` holds host strings")).collect::<Result<Vec<_>>>()?;
-            Allowlist::parse(&entries)?
+            if entries.is_empty() { Allowlist(Vec::new()) } else { Allowlist::parse(&entries)? }
         }
         Some(_) => bail!("manifest `allow_hosts` is a list of hosts"),
     };

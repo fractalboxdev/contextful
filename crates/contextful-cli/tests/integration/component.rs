@@ -105,6 +105,23 @@ fn component_manifest_symlink_outside_project_refuses_at_load() {
     assert!(stderr.contains("connector.toml"), "{stderr}");
 }
 
+#[test]
+fn remote_component_validate_checks_its_manifest_without_fetching() {
+    let pin = digest(PROBE);
+    let dir = project(&manifest("https://dl.vendor.invalid/probe.wasm", &["items"], &format!("sha256 = \"{pin}\"\nmanifest = \"connector.toml\"\nallow = [\"api.other.example\"]")));
+    std::fs::write(dir.path().join("connector.toml"), "[capabilities]\nallow_hosts = [\"api.vendor.example\"]\n").unwrap();
+    let stderr = refused(&cf(dir.path(), &["pipeline", "validate"], &[]), "ConnectorUndeclaredAccess");
+    assert!(stderr.contains("api.other.example"), "{stderr}");
+}
+
+#[test]
+fn an_empty_manifest_host_set_admits_a_component_with_no_outbound_grant() {
+    let dir = project(&manifest("connectors/probe.wasm", &["items"], "manifest = \"connector.toml\""));
+    std::fs::write(dir.path().join("connector.toml"), "[capabilities]\nallow_hosts = []\n").unwrap();
+    let out = ok(&cf(dir.path(), &["pipeline", "validate"], &[]));
+    assert!(out.contains("probe: valid"), "{out}");
+}
+
 fn run_row(dir: &Path, run: &str) -> serde_json::Value {
     serde_json::from_str(&ok(&cf(dir, &["run", "show", run, "--project", "research"], &[]))).unwrap()
 }
