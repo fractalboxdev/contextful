@@ -111,8 +111,8 @@ pub struct Cursor {
     pub bytes: Vec<u8>,
 }
 
-/// A header value hydrated per request: material exists in the process only while the
-/// request carrying it is built. A failure sends the request nowhere and fails the call.
+/// A header value rendered for one request. A resolver may retain its zeroizing source
+/// material through the cache window. A failure sends the request nowhere and fails the call.
 pub trait Hydrate: Send + Sync {
     fn hydrate(&self) -> Result<HeaderValue, Failure>;
 }
@@ -122,9 +122,9 @@ pub trait Hydrate: Send + Sync {
 pub struct Grant {
     /// The hosts outbound requests may reach.
     pub allow: Allowlist,
-    /// Headers the host attaches to every permitted request, overriding a guest header of
-    /// the same name. A credential rides here and nowhere the guest reads.
-    pub attach: Vec<(String, HeaderValue)>,
+    /// Plain headers the host attaches to every permitted request, overriding a guest
+    /// header of the same name. Credentials use `hydrate`.
+    pub attach: Vec<(String, String)>,
     /// Headers the host hydrates afresh for each permitted request while building it,
     /// attached as `attach` is (`connector.resolve.hydration-is-just-in-time`).
     pub hydrate: Vec<(String, Arc<dyn Hydrate>)>,

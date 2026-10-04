@@ -13,9 +13,9 @@ publish = false
 [dependencies]
 contextful-core = { path = "../contextful-core" }
 contextful-outbound = { path = "../contextful-outbound", default-features = false }
-arrow-array = "57"
-arrow-ipc = { version = "57", default-features = false }
-arrow-schema = "57"
+arrow-array = "58"
+arrow-ipc = { version = "58", default-features = false }
+arrow-schema = "58"
 bytes = "1"
 http = "1"
 http-body-util = "0.1"
