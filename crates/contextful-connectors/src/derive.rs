@@ -4,6 +4,7 @@
 //! markers to the land path.
 
 use contextful_core::connector::attach::{scrub, Allowlist};
+use contextful_core::connector::meter::LimiterDeclaration;
 use contextful_core::connector::reference::Template;
 use contextful_core::run::derive::config::{Binding, DeriveConfig, OutputFormat, StepSpec, Task};
 use contextful_core::run::derive::cues::{parse, passages};
@@ -17,8 +18,9 @@ use contextful_core::run::derive::task::{host_revived, host_rows, landing_order,
 use contextful_core::run::journal::sha256_hex;
 use contextful_core::run::ports::{Cancellation, PullRequest, Row, Source, TableReader};
 use contextful_core::run::{Failure, FailureTag, RunError};
-use contextful_outbound::client::{classify, Client, HeaderValue, MAX_BODY_BYTES};
+use contextful_outbound::client::{classify, HeaderValue, MAX_BODY_BYTES};
 use contextful_outbound::Resolver;
+use crate::http::Mediation;
 use std::collections::BTreeMap;
 use std::io::Read;
 use std::path::{Path, PathBuf};
@@ -397,14 +399,14 @@ fn head_facts(document: &str) -> (Option<String>, Option<String>, Vec<String>) {
     (title, description, images)
 }
 
-fn probe_image(page: &Url, candidate: &str, allow: Option<&Allowlist>, timeout: Duration, prefix: usize) -> (String, String) {
+fn probe_image(page: &Url, candidate: &str, allow: Option<&Allowlist>, mediation: &Mediation, grant: Option<&LimiterDeclaration>, timeout: Duration, prefix: usize) -> (String, String) {
     let address = match page.join(candidate).ok().and_then(|u| fetch_address(u.as_str()).ok()) {
         Some(url) => url,
         None => return (String::new(), "refused".into()),
     };
     let public = scrub(&address);
     let Some(allow) = allow else { return (public, "blocked".into()) };
-    let client = Client::new(allow.clone(), address.clone()).with_timeout(timeout).with_body_limit(prefix as u64);
+    let client = mediation.client(allow.clone(), address.clone(), grant).with_timeout(timeout).with_body_limit(prefix as u64);
     let range = [("Range".to_string(), HeaderValue::Plain(format!("bytes=0-{}", prefix.saturating_sub(1))))];
     match client.send_once("GET", &address, &range, None) {
         Ok(response) if (200..300).contains(&response.status) => (public, "ok".into()),
@@ -413,13 +415,13 @@ fn probe_image(page: &Url, candidate: &str, allow: Option<&Allowlist>, timeout: 
     }
 }
 
-fn fetch_document(raw: &str, allow: &Allowlist, timeout: Duration, prefix: usize, cancel: &dyn Cancellation) -> Result<(Url, String), Failure> {
+fn fetch_document(raw: &str, allow: &Allowlist, mediation: &Mediation, grant: Option<&LimiterDeclaration>, timeout: Duration, prefix: usize, cancel: &dyn Cancellation) -> Result<(Url, String), Failure> {
     let mut url = fetch_address(raw).map_err(refused)?;
     for hop in 0..=FETCH_HOPS {
         if cancel.requested() {
             return Err(Failure::canceled("stopped between link hops"));
         }
-        let client = Client::new(allow.clone(), url.clone()).with_timeout(timeout).with_body_limit(MAX_BODY_BYTES);
+        let client = mediation.client(allow.clone(), url.clone(), grant).with_timeout(timeout).with_body_limit(MAX_BODY_BYTES);
         let range = [("Range".to_string(), HeaderValue::Plain(format!("bytes=0-{}", prefix.saturating_sub(1))))];
         let response = client.send_once("GET", &url, &range, None)?;
         if (300..400).contains(&response.status) {
@@ -470,6 +472,8 @@ pub struct DeriveSource {
     pub output_schema: serde_json::Value,
     pub reader: Box<dyn TableReader>,
     pub resolver: Arc<Resolver>,
+    /// Every fetched document, redirect and image probe passes this run's hook and quota.
+    pub mediation: Mediation,
     /// Where relative media paths and path-form binaries resolve.
     pub cwd: PathBuf,
 }
@@ -569,7 +573,7 @@ impl DeriveSource {
         let timeout = Duration::from_secs(self.binding.request_timeout_secs.unwrap_or(FETCH_HOP_TIMEOUT.as_secs()));
         let document_bytes = self.binding.max_document_bytes.unwrap_or(DOCUMENT_BYTES as u64).clamp(1, MAX_BODY_BYTES) as usize;
         let probe_bytes = self.binding.max_probe_bytes.unwrap_or(PROBE_BYTES as u64).clamp(1, MAX_BODY_BYTES) as usize;
-        match fetch_document(&unit.media, allow, timeout, document_bytes, cancel) {
+        match fetch_document(&unit.media, allow, &self.mediation, self.config.grant.as_ref(), timeout, document_bytes, cancel) {
             Ok((url, document)) => {
                 let (title, description, images) = head_facts(&document);
                 let image_allow = if self.binding.allow_image_hosts.is_empty() {
@@ -592,7 +596,7 @@ impl DeriveSource {
                     if cancel.requested() {
                         return Err(Failure::canceled("stopped between image probes"));
                     }
-                    let (image_url, probe_status) = probe_image(&url, &candidate, image_allow.as_ref(), timeout, probe_bytes);
+                    let (image_url, probe_status) = probe_image(&url, &candidate, image_allow.as_ref(), &self.mediation, self.config.grant.as_ref(), timeout, probe_bytes);
                     let value = serde_json::json!({
                         "unit_ref": unit.key, "cue_seq": rows.len() as i64, "kind": "passage", "unit_status": "ok",
                         "attempts": unit.prior_attempts + 1, "engine_id": engine_id,
@@ -615,6 +619,9 @@ impl DeriveSource {
 
 impl Source for DeriveSource {
     fn pull(&mut self, _request: &PullRequest, cancel: &dyn Cancellation) -> Result<Vec<u8>, Failure> {
+        if self.config.task == Task::LinkPreview && (self.mediation.hook.is_none() || self.mediation.run_id.as_deref().is_none_or(str::is_empty)) {
+            return Err(refused(RunError::DeriveMeteredClient(format!("pipeline `{}` has no run-bound request ledger hook", self.pipeline_id))));
+        }
         let chain = match self.config.task {
             Task::LinkPreview => None,
             Task::Transcribe | Task::Host(_) => Some(Chain::resolve(&self.config.engine, &self.binding, &self.cwd).map_err(refused)?),
@@ -673,6 +680,9 @@ impl Source for DeriveSource {
                 Some(e) => eprintln!("{}: {e}", self.pipeline_id),
                 None => rows.extend(unit_rows),
             }
+        }
+        if let Some(hook) = &self.mediation.hook {
+            hook.finish()?;
         }
         serde_json::to_vec(&serde_json::json!({ "rows": rows, "more": false, "skipped": sel.incomplete.len() }))
             .map_err(|e| Failure::new(FailureTag::Permanent, e.to_string()))

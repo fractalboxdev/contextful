@@ -129,6 +129,9 @@ pub enum RunError {
     /// A transcribe pipeline declaring a shared-quota grant. (`run.select.unmetered-grant`)
     #[error("DeriveUnmeteredGrant: {0}")]
     DeriveUnmeteredGrant(String),
+    /// A link preview without a run-bound mediated client. (`run.select.metered-client`)
+    #[error("DeriveMeteredClient: {0}")]
+    DeriveMeteredClient(String),
     /// A unit status outside the four. (`run.emit.unit-status`)
     #[error("DeriveUnitStatusUnknown: {0}")]
     DeriveUnitStatusUnknown(String),

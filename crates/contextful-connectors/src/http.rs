@@ -482,7 +482,7 @@ pub struct Mediation {
 impl Mediation {
     /// A client reaching `origin` under `allow`, metered against `declared` when the source
     /// declares a quota (`connector.meter.reservation-point`).
-    fn client(&self, allow: Allowlist, origin: Url, declared: Option<&LimiterDeclaration>) -> Client {
+    pub(crate) fn client(&self, allow: Allowlist, origin: Url, declared: Option<&LimiterDeclaration>) -> Client {
         let mut client = Client::new(allow, origin);
         if let Some(t) = &self.transport {
             client = client.with_transport(t.clone());
