@@ -143,7 +143,7 @@ pub fn run(cmd: JobCmd, bodies: &Bodies) -> Result<()> {
                     let plan = output_plan(&name, table, driven).map_err(|e| Failure::deterministic(FailureTag::Permanent, e.to_string()))?;
                     let connector = plan.connector_pin(&plan.content_hash);
                     let spec = RunSpec { plan, connector, run_id: format!("{run_id}.{table}"), site_id: site_id.clone(), pid: std::process::id(), boot_id: boot_id(), trace_id: None };
-                    let mut source: Box<dyn Source> = Box::new(Staged(emitted.get(table).cloned().unwrap_or_default()));
+                    let mut source: Box<dyn Source> = Box::new(Staged(emitted.get(table).cloned().unwrap_or_default(), 0));
                     let row = engine.run_with(&spec, &mut source, &Unshaped, &mut dest).map_err(|e| Failure::new(FailureTag::Storage, e.to_string()))?;
                     if row.status != RunStatus::Success {
                         return Err(Failure::new(

@@ -674,7 +674,8 @@ impl Source for DeriveSource {
                 None => rows.extend(unit_rows),
             }
         }
-        serde_json::to_vec(&serde_json::json!({ "rows": rows, "more": false })).map_err(|e| Failure::new(FailureTag::Permanent, e.to_string()))
+        serde_json::to_vec(&serde_json::json!({ "rows": rows, "more": false, "skipped": sel.incomplete.len() }))
+            .map_err(|e| Failure::new(FailureTag::Permanent, e.to_string()))
     }
 }
 
@@ -696,7 +697,7 @@ impl HostDerive {
 
     /// Derive every outstanding unit and return each store table's rows in landing order:
     /// the content tables, then the marker table.
-    pub fn stage(&self, cancel: &dyn Cancellation) -> Result<Vec<(String, Vec<Row>)>, Failure> {
+    pub fn stage(&self, cancel: &dyn Cancellation) -> Result<(Vec<(String, Vec<Row>)>, u64), Failure> {
         let task = self.task.as_ref();
         let name = self.config.task.name().to_string();
         let marker_table = self.store_table(&task.marker_table());
@@ -733,16 +734,18 @@ impl HostDerive {
                 per_table.entry(table).or_default().extend(rows);
             }
         }
-        Ok(landing_order(task).into_iter().map(|t| (self.store_table(&t), per_table.remove(&t).unwrap_or_default())).collect())
+        let tables = landing_order(task).into_iter().map(|t| (self.store_table(&t), per_table.remove(&t).unwrap_or_default())).collect();
+        Ok((tables, sel.incomplete.len() as u64))
     }
 }
 
 /// A source handing over rows already derived: one table's share of a host task's fire.
 /// Every pull hands over the same rows, so a retried step lands them again.
-pub struct Staged(pub Vec<Row>);
+pub struct Staged(pub Vec<Row>, pub u64);
 
 impl Source for Staged {
     fn pull(&mut self, _request: &PullRequest, _cancel: &dyn Cancellation) -> Result<Vec<u8>, Failure> {
-        serde_json::to_vec(&serde_json::json!({ "rows": self.0, "more": false })).map_err(|e| Failure::new(FailureTag::Permanent, e.to_string()))
+        serde_json::to_vec(&serde_json::json!({ "rows": self.0, "more": false, "skipped": self.1 }))
+            .map_err(|e| Failure::new(FailureTag::Permanent, e.to_string()))
     }
 }

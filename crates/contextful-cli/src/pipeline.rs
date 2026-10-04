@@ -603,6 +603,7 @@ pub fn run(cmd: PipelineCmd, tasks: &Tasks) -> Result<()> {
             // A host task derives each unit once, then lands its content tables and its
             // marker table last, stopping at the first failing table (`run.emit.marker-last`).
             let mut staged: BTreeMap<String, Vec<Row>> = BTreeMap::new();
+            let mut derive_skipped = 0;
             let mut order: Vec<&contextful_core::pipeline::declare::TableEntry> = spec.tables.iter().collect();
             if let Checked::Host(host) = &checked {
                 let derive = HostDerive {
@@ -612,7 +613,8 @@ pub fn run(cmd: PipelineCmd, tasks: &Tasks) -> Result<()> {
                     tables: host.tables.clone(),
                     reader: Box::new(StoreReader { store: Store::open(&l.project.dir, &l.project.name)?, decls: dest.decls.clone() }),
                 };
-                let landing = derive.stage(&Uncanceled).map_err(|f| anyhow::anyhow!("pipeline `{}`: {f}", spec.id))?;
+                let (landing, skipped) = derive.stage(&Uncanceled).map_err(|f| anyhow::anyhow!("pipeline `{}`: {f}", spec.id))?;
+                derive_skipped = skipped;
                 order = landing.iter().filter_map(|(table, _)| spec.tables.iter().find(|t| spec.table_name(t.name()) == *table)).collect();
                 staged = landing.into_iter().collect();
             }
@@ -661,7 +663,7 @@ pub fn run(cmd: PipelineCmd, tasks: &Tasks) -> Result<()> {
                             Some(c) => c.source(decl, t.name(), &resolver, &run_id)?,
                             None => bail!("pipeline `{}`: component source `{}` did not load", spec.id, spec.source.name),
                         },
-                        Checked::Host(_) => Box::new(Staged(staged.get(&table).cloned().unwrap_or_default())),
+                        Checked::Host(_) => Box::new(Staged(staged.get(&table).cloned().unwrap_or_default(), derive_skipped)),
                     };
                     Ok(w.engine.run_with(&run, &mut source, &shape, &mut dest)?)
                 })();
