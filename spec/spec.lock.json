@@ -4905,7 +4905,7 @@
       "operation": "respond",
       "subject": "truncation-cause",
       "kind": "behavior",
-      "statement": "A truncated response carries `contextful.truncation` with `by` (`rows` or `bytes`), `ceiling`, and `source` (`grant`, `table`, `request`, `template` or `face`).",
+      "statement": "A truncated response carries `contextful.truncation` with `by`, `ceiling` and `source`: `rows` admits grant, table, request, template or face; `bytes` admits grant, table or request.",
       "why": "",
       "file": "spec/20-read.md",
       "line": 207
@@ -4916,7 +4916,7 @@
       "operation": "respond",
       "subject": "truncation-tie",
       "kind": "behavior",
-      "statement": "When both ceilings cut the same next row, bytes takes precedence; equal ceilings within one dimension choose grant, table, request, template, then face as source.",
+      "statement": "When both ceilings cut the same next row, bytes takes precedence; equal ceilings within one dimension choose the first eligible source in grant, table, request, template, face order.",
       "why": "because one cut needs one deterministic cause for a client to branch on",
       "file": "spec/20-read.md",
       "line": 208

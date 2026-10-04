@@ -204,8 +204,8 @@ The one response projection: cell encoding, the row ceiling, truncation, counts 
   *A-read*
 - `byte-ceiling` — Under {{authority.grant.byte-ceiling}}, the serialized response holds whole rows within the selected byte ceiling; an envelope or first row exceeding it raises `ReadResponseTooLarge` and delivers no rows.
   *A-read*
-- `truncation-cause` — A truncated response carries `contextful.truncation` with `by` (`rows` or `bytes`), `ceiling`, and `source` (`grant`, `table`, `request`, `template` or `face`).
-- `truncation-tie` — When both ceilings cut the same next row, bytes takes precedence; equal ceilings within one dimension choose grant, table, request, template, then face as source.
+- `truncation-cause` — A truncated response carries `contextful.truncation` with `by`, `ceiling` and `source`: `rows` admits grant, table, request, template or face; `bytes` admits grant, table or request.
+- `truncation-tie` — When both ceilings cut the same next row, bytes takes precedence; equal ceilings within one dimension choose the first eligible source in grant, table, request, template, face order.
   *because one cut needs one deterministic cause for a client to branch on*
 - `operator-metadata` — Operator-surface table metadata carries column count and backing file list; a row count is an ordinary count query, never a stored field.
   *P3*
