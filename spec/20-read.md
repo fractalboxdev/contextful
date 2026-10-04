@@ -145,7 +145,7 @@ Admission of caller-written SQL: what parses, what a base relation names, whose 
   *A-read*
 - `template-binding` — A missing, unknown or type-mismatched argument raises `TemplateArgumentRejected` ahead of execution, with no coercion. Placeholders are `$1`…`$n` or `?` in declaration order, or exactly the declared names.
   *A-read*
-- `query-binding` — `context.query` takes `parameters`, mapping each placeholder name to a `type` among {{read.guard.template-declaration}} types and a `value`. A missing, unused, untyped or mismatched parameter raises `QueryParameterRejected` ahead of execution, with no coercion; bound values reach {{authority.refuse.scope-guard}}.
+- `query-binding` — `context.query` binds `$name` or contiguous `$1`…`$n` placeholders from `parameters` typed by {{read.guard.template-declaration}} without coercion; positional `?`, missing, unused, untyped or mismatched parameters raise `QueryParameterRejected` before execution; bound values reach {{authority.refuse.scope-guard}}.
   *because a value bound to a placeholder reaches no parser, and the tenant guard decides a bound value as it decides a literal*
 - `startup-time-check` — Template checks are caller-independent and run once at startup; a request pays nothing for them.
 
@@ -197,6 +197,7 @@ The one response projection: cell encoding, the row ceiling, truncation, counts 
 - `coverage-is-a-count` — A claim that the corpus lacks coverage of a subject comes from a count over the table with no recency truncation, taken after the full-scan fallback, never from a ranked top score.
   *because min-max normalization pins the best row at 1.0 and IDF lifts one incidental rare-term mention*
 - `internals-opt-in` — Executed SQL, engine name, applied limit, row count and elapsed milliseconds ride a separate object returned only under `internals: true`, on every read tool and the HTTP face.
+- `query-internals-parameters` — Under `internals: true`, {{read.guard.query-binding}} includes the validated typed parameter map beside executed SQL in the internals object.
 - `operator-metadata` — Operator-surface table metadata carries column count and backing file list; a row count is an ordinary count query, never a stored field.
   *P3*
 - `restriction-block` — The restriction block carries the session zone, the incognito flag and one entry per touched relation the zone excludes or column-masks: `table`, `excluded`, `rows_dropped` and `columns_masked`. A read withholding no touched relation omits the block.

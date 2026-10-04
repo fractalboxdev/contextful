@@ -405,12 +405,21 @@ impl Face {
         let engine = self.pool.engine(session)?;
         let tree = engine.serialize(sql)?;
         let admitted = admit_in(session, &tree)?;
+        if admitted.placeholders.iter().any(|p| p.parse::<u64>().is_ok()) && positional_marker(sql) {
+            return Err(ReadError::QueryParameterRejected("positional `?` is not accepted by `context.query`; use `$name` or `$1`".into()).into());
+        }
         let bindings = bind_query(parameters, &admitted.placeholders)?;
         scope::guard(&tree, session, &bindings)?;
         engine.register_ledgers(session, &admitted.relations)?;
         self.bind_valid_time(&admitted.relations, opts.bounds)?;
         let ceiling = self.ceiling(session, &admitted.relations, opts.limit, None);
-        self.answer(&engine, session, &admitted.relations, sql, &bindings, ceiling, opts, &tree)
+        let mut response = self.answer(&engine, session, &admitted.relations, sql, &bindings, ceiling, opts, &tree)?;
+        if opts.internals {
+            if let Some(Value::Object(internals)) = response.blocks.get_mut("contextful.internals") {
+                internals.insert("parameters".into(), Value::Object(parameters.clone()));
+            }
+        }
+        Ok(response)
     }
 
     /// Run a declared template the credential's allowlist covers. Its body is operator
@@ -634,6 +643,40 @@ pub(crate) fn admit_in(session: &Session, tree: &Value) -> Result<Admitted, Read
         .into()),
         (admitted, _) => Ok(admitted?),
     }
+}
+
+/// DuckDB's parse tree gives `?` and `$1` the same identifier. The source spelling
+/// distinguishes the caller query's positional form from its supported numbered form.
+fn positional_marker(sql: &str) -> bool {
+    let bytes = sql.as_bytes();
+    let (mut i, mut mode, mut block_depth) = (0, 0u8, 0usize);
+    while i < bytes.len() {
+        let next = bytes.get(i + 1).copied();
+        match mode {
+            0 => match (bytes[i], next) {
+                (b'?', _) => return true,
+                (b'\'', _) => mode = 1,
+                (b'"', _) => mode = 2,
+                (b'-', Some(b'-')) => { mode = 3; i += 1; }
+                (b'/', Some(b'*')) => { mode = 4; block_depth = 1; i += 1; }
+                _ => {}
+            },
+            1 | 2 => {
+                let quote = if mode == 1 { b'\'' } else { b'"' };
+                if bytes[i] == quote {
+                    if next == Some(quote) { i += 1; } else { mode = 0; }
+                }
+            }
+            3 => if bytes[i] == b'\n' { mode = 0; },
+            _ => match (bytes[i], next) {
+                (b'/', Some(b'*')) => { block_depth += 1; i += 1; }
+                (b'*', Some(b'/')) => { block_depth -= 1; i += 1; if block_depth == 0 { mode = 0; } }
+                _ => {}
+            },
+        }
+        i += 1;
+    }
+    false
 }
 
 /// Run operator text raw over no store: no relation registers, and local files and table
