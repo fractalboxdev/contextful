@@ -143,7 +143,12 @@ fn m12_console() {
     assert_eq!(status, 200, "{}", String::from_utf8_lossy(&answer));
     let answer: Value = serde_json::from_slice(&answer).unwrap();
     assert!(answer["answer"].as_str().unwrap().contains("Northwind filed on Monday"), "{answer}");
-    assert!(answer["sources"].as_array().is_some_and(|sources| !sources.is_empty()), "{answer}");
+    assert!(
+        answer["sources"].as_array().is_some_and(|sources| {
+            sources.iter().any(|source| source.to_string().contains("filing-1"))
+        }),
+        "the sources must identify the filing behind the answer: {answer}"
+    );
     assert!(!model.received("/v1/chat/completions").is_empty(), "the answer uses the model endpoint");
     assert_eq!(request(&console_address, "GET", "/admin/api/workflows", Some(&access_token(QUERY_ACCESS_AUDIENCE)), None).0, 403);
     let (status, workflows) = request(&console_address, "GET", "/admin/api/workflows", Some(&access_token(ADMIN_ACCESS_AUDIENCE)), None);
