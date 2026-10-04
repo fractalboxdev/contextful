@@ -126,7 +126,7 @@ fn project(tables: &mut BTreeMap<String, Vec<Row>>, row: &mut Row, table: &str, 
         Value::Array(items) => {
             let child_table = format!("{table}_{path}");
             for (index, value) in items.into_iter().enumerate() {
-                let child_id = sha256_hex(&serde_json::to_vec(&value).expect("a JSON value serializes"));
+                let child_id = sha256_hex(&serde_json::to_vec(&(parent_id, index, &value)).expect("a JSON child serializes"));
                 let mut child = Row::new();
                 child.insert("row_id".into(), Value::String(child_id.clone()));
                 child.insert("parent_id".into(), Value::String(parent_id.into()));

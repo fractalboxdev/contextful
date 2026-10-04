@@ -23,6 +23,9 @@ fn source_fields_cannot_replace_relational_identity_columns() {
     assert_eq!(child["source_list_index"], 99);
 }
 
+/// Relational identity columns preserve repeated nested values and replay the same ids.
+// spec: run.normalize.identity-columns@303cb038
+// spec: run.normalize.row-id@44330c32
 #[test]
 fn repeated_nested_items_keep_distinct_parent_links_and_stable_ids() {
     let source: Row = serde_json::from_value(serde_json::json!({
@@ -45,6 +48,8 @@ fn repeated_nested_items_keep_distinct_parent_links_and_stable_ids() {
     assert_eq!(items[1]["parent_id"], groups[1]["row_id"]);
     assert_eq!(items[0]["root_id"], first["entries"][0]["row_id"]);
     assert_eq!(items[1]["root_id"], first["entries"][0]["row_id"]);
+    assert_eq!(first["entries"][0]["load_id"], "run-1");
+    assert_eq!(replay["entries"][0]["load_id"], "run-2");
     assert_eq!(first["entries"][0]["row_id"], replay["entries"][0]["row_id"]);
     assert_eq!(groups[0]["row_id"], replay["entries_groups"][0]["row_id"]);
     assert_eq!(groups[1]["row_id"], replay["entries_groups"][1]["row_id"]);
