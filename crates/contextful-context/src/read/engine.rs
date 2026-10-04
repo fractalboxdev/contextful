@@ -279,6 +279,38 @@ impl SqlEngine {
         Ok((columns, rows.into_iter().map(|r| r.into_iter().map(cell).collect()).collect()))
     }
 
+    /// Interrupt only this connection when the statement deadline expires.
+    pub fn run_timed(&self, sql: &str, parameters: &Bindings, fetch: Option<u64>, milliseconds: u64, source: &'static str) -> Result<(Vec<String>, Vec<Vec<Cell>>), ReadFault> {
+        self.with_deadline(milliseconds, source, |engine| engine.run(sql, parameters, fetch))
+    }
+
+    pub(crate) fn run_values_timed(&self, sql: &str, parameters: &Bindings, fetch: Option<u64>, deadline: Option<(u64, &'static str)>) -> Result<(Vec<String>, Vec<Vec<Engine>>), ReadFault> {
+        match deadline {
+            Some((ms, source)) => self.with_deadline(ms, source, |engine| engine.run_values(sql, parameters, fetch)),
+            None => self.run_values(sql, parameters, fetch),
+        }
+    }
+
+    fn with_deadline<T>(&self, milliseconds: u64, source: &'static str, run: impl FnOnce(&Self) -> Result<T, ReadFault>) -> Result<T, ReadFault> {
+        let handle = self.conn.interrupt_handle();
+        let (cancel, receiver) = std::sync::mpsc::channel::<()>();
+        let duration = std::time::Duration::from_millis(milliseconds);
+        let started = std::time::Instant::now();
+        let watcher = std::thread::spawn(move || {
+            if receiver.recv_timeout(duration).is_err_and(|e| e == std::sync::mpsc::RecvTimeoutError::Timeout) {
+                handle.interrupt();
+            }
+        });
+        let result = run(self);
+        let elapsed = started.elapsed().as_millis() as u64;
+        let _ = cancel.send(());
+        watcher.join().expect("the deadline watcher exits");
+        if elapsed >= milliseconds {
+            return Err(ReadError::ReadDurationExceeded(format!("{milliseconds} ms from {source}; elapsed {elapsed} ms")).into());
+        }
+        result
+    }
+
     /// Run `sql`, reading at most `fetch` rows as the engine's own values. Each
     /// placeholder takes the value bound under the identifier the engine names it by.
     pub(crate) fn run_values(&self, sql: &str, parameters: &Bindings, fetch: Option<u64>) -> Result<(Vec<String>, Vec<Vec<Engine>>), ReadFault> {

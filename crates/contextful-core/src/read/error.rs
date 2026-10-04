@@ -9,6 +9,12 @@ use crate::memory::MemoryError;
 
 #[derive(Debug, Clone, PartialEq, Eq, thiserror::Error)]
 pub enum ReadError {
+    /// The statement exceeded its selected execution deadline. (`read.respond.duration-ceiling`)
+    #[error("ReadDurationExceeded: {0}")]
+    ReadDurationExceeded(String),
+    /// The response envelope or first row exceeds the selected byte ceiling. (`read.respond.byte-ceiling`)
+    #[error("ReadResponseTooLarge: {0}")]
+    ReadResponseTooLarge(String),
     /// A previewed path resolved to no table. (`read.register.file-preview-target`)
     #[error("FilePreviewNotATable: {0}")]
     FilePreviewNotATable(String),
@@ -60,6 +66,8 @@ impl ReadError {
     /// The error identifier.
     pub fn identifier(&self) -> &'static str {
         match self {
+            ReadError::ReadDurationExceeded(_) => "ReadDurationExceeded",
+            ReadError::ReadResponseTooLarge(_) => "ReadResponseTooLarge",
             ReadError::FilePreviewNotATable(_) => "FilePreviewNotATable",
             ReadError::FilterBudgetExceeded(_) => "FilterBudgetExceeded",
             ReadError::LedgerNotTenantScoped(_) => "LedgerNotTenantScoped",

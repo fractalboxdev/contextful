@@ -38,6 +38,10 @@ use std::collections::{BTreeMap, BTreeSet};
 pub struct ReadOptions {
     /// The request's row limit.
     pub limit: Option<u64>,
+    /// The request's statement deadline in milliseconds.
+    pub max_duration_ms: Option<u64>,
+    /// The request's serialized response ceiling in bytes.
+    pub max_response_bytes: Option<u64>,
     /// Return the internals block.
     pub internals: bool,
     /// The read's transaction-time and valid-time bounds (`store.bound-time`).
@@ -206,7 +210,8 @@ impl Face {
         ceiling: u64,
         opts: ReadOptions,
     ) -> Result<Response, ReadFault> {
-        let response = respond(engine, sql, parameters, Some(ceiling), ReadOptions { internals: false, ..opts })?;
+        let deadline = self.duration_budget(session, touched, opts.max_duration_ms);
+        let response = respond_with_deadline(engine, sql, parameters, Some(ceiling), ReadOptions { internals: false, ..opts }, deadline)?;
         self.restrict(engine, session, touched.iter().map(String::as_str), response)
     }
 
@@ -361,6 +366,66 @@ impl Face {
         least_row_ceiling([grant, request, template, table])
     }
 
+    fn budget(&self, session: &Session, touched: &BTreeSet<String>, field: fn(&contextful_core::grant::Grant) -> Option<u64>, table_field: fn(&TablePolicy) -> Option<u64>, request: Option<u64>) -> Option<(u64, &'static str)> {
+        let owner = |t: &String| contextful_core::store::ledger::ledger_table(t).map(str::to_string).unwrap_or_else(|| t.clone());
+        let grant = session.grants().iter().filter_map(field).min();
+        let table = touched.iter().filter_map(|t| session.policy(&owner(t)).and_then(table_field)).min();
+        [(grant, "grant"), (table, "table"), (request, "request")]
+            .into_iter().filter_map(|(n, source)| n.map(|n| (n, source))).min_by_key(|(n, _)| *n)
+    }
+
+    pub(crate) fn duration_budget(&self, session: &Session, touched: &BTreeSet<String>, request: Option<u64>) -> Option<(u64, &'static str)> {
+        self.budget(session, touched, |g| g.max_duration_ms, |p| p.max_duration_ms, request)
+    }
+
+    fn byte_budget(&self, session: &Session, touched: &BTreeSet<String>, request: Option<u64>) -> Option<(u64, &'static str)> {
+        self.budget(session, touched, |g| g.max_response_bytes, |p| p.max_response_bytes, request)
+    }
+
+    fn row_source(&self, session: &Session, touched: &BTreeSet<String>, request: Option<u64>, template: Option<u64>, ceiling: u64) -> &'static str {
+        let owner = |t: &String| contextful_core::store::ledger::ledger_table(t).map(str::to_string).unwrap_or_else(|| t.clone());
+        let grant = session.grants().iter().filter_map(|g| g.max_rows).min();
+        let table = touched.iter().filter_map(|t| session.policy(&owner(t)).and_then(|p| p.max_rows)).min();
+        [(grant, "grant"), (table, "table"), (request, "request"), (template, "template")]
+            .into_iter().find_map(|(n, source)| (n == Some(ceiling)).then_some(source)).unwrap_or("face")
+    }
+
+    pub(crate) fn finish_budget(&self, session: &Session, touched: &BTreeSet<String>, request: ReadOptions, template: Option<u64>, ceiling: u64, mut response: Response) -> Result<Response, ReadFault> {
+        if response.truncated {
+            response.blocks.insert("contextful.truncation".into(), json!({ "by": "rows", "ceiling": ceiling, "source": self.row_source(session, touched, request.limit, template, ceiling) }));
+        }
+        if let Some((bytes, source)) = self.byte_budget(session, touched, request.max_response_bytes) {
+            if let Some(probe) = &response.probe_row {
+                let mut next = response.clone();
+                next.rows.push(probe.clone());
+                next.blocks.insert("contextful.truncation".into(), json!({ "by": "bytes", "ceiling": bytes, "source": source }));
+                if serde_json::to_vec(&next).expect("the response serializes").len() as u64 > bytes {
+                    response.blocks.insert("contextful.truncation".into(), json!({ "by": "bytes", "ceiling": bytes, "source": source }));
+                }
+            }
+            let mut cut = false;
+            while serde_json::to_vec(&response).expect("the response serializes").len() as u64 > bytes {
+                if response.rows.is_empty() {
+                    return Err(ReadError::ReadResponseTooLarge(format!("{bytes} bytes from {source}; the response envelope or first row exceeds the ceiling")).into());
+                }
+                response.rows.pop();
+                cut = true;
+                response.truncated = true;
+                response.blocks.insert("contextful.truncation".into(), json!({ "by": "bytes", "ceiling": bytes, "source": source }));
+            }
+            if cut && response.rows.is_empty() {
+                return Err(ReadError::ReadResponseTooLarge(format!("{bytes} bytes from {source}; the first row exceeds the ceiling")).into());
+            }
+        }
+        if let Some(Value::Object(retrieval)) = response.blocks.get_mut("contextful.retrieval") {
+            retrieval.insert("returned".into(), json!(response.rows.len()));
+        }
+        if let Some(Value::Object(internals)) = response.blocks.get_mut("contextful.internals") {
+            internals.insert("row_count".into(), json!(response.rows.len()));
+        }
+        Ok(response)
+    }
+
     /// Run operator text raw over every table the store holds or the manifest declares,
     /// each registered under its bare name as its unrestricted base relation at the
     /// latest committed state (`read.query.project-relations`).
@@ -419,7 +484,7 @@ impl Face {
                 internals.insert("parameters".into(), Value::Object(parameters.clone()));
             }
         }
-        Ok(response)
+        self.finish_budget(session, &admitted.relations, opts, None, ceiling, response)
     }
 
     /// Run a declared template the credential's allowlist covers. Its body is operator
@@ -438,7 +503,8 @@ impl Face {
         engine.register_ledgers(session, &admitted.relations)?;
         self.bind_valid_time(&admitted.relations, opts.bounds)?;
         let ceiling = self.ceiling(session, &admitted.relations, opts.limit, template.max_rows);
-        self.answer(&engine, session, &admitted.relations, &template.sql, &parameters, ceiling, opts, &tree)
+        let response = self.answer(&engine, session, &admitted.relations, &template.sql, &parameters, ceiling, opts, &tree)?;
+        self.finish_budget(session, &admitted.relations, opts, template.max_rows, ceiling, response)
     }
 
     /// The tools this session sees: the closed built-in set and each declared template
@@ -453,6 +519,8 @@ impl Face {
             for (name, schema) in bound_properties() {
                 properties.insert(name, schema);
             }
+            properties.insert("max_duration_ms".into(), json!({ "type": "integer", "minimum": 0 }));
+            properties.insert("max_response_bytes".into(), json!({ "type": "integer", "minimum": 0 }));
             properties.insert(PIN_ARGUMENT.into(), pin_property());
             tool
         }));
@@ -517,8 +585,18 @@ impl Face {
             "lexicon": {},
             "example_queries": decl.example_queries.clone().unwrap_or_default(),
         });
+        let mut limits = Map::new();
         if let Some(max) = policy.max_rows {
-            out["limits"] = json!({ "max_rows": max });
+            limits.insert("max_rows".into(), json!(max));
+        }
+        if let Some(max) = policy.max_duration_ms {
+            limits.insert("max_duration_ms".into(), json!(max));
+        }
+        if let Some(max) = policy.max_response_bytes {
+            limits.insert("max_response_bytes".into(), json!(max));
+        }
+        if !limits.is_empty() {
+            out["limits"] = Value::Object(limits);
         }
         if let Some(resolved) = super::pin::resolved(session, [table]) {
             out[format!("contextful.{RESOLVED_BLOCK}")] = resolved;
@@ -526,12 +604,32 @@ impl Face {
         Ok(echo(out, bounds))
     }
 
+    /// The table description or listing under its selected serialized byte ceiling.
+    pub fn describe_with_options(&self, session: &Session, table: Option<&str>, opts: ReadOptions) -> Result<Value, ReadFault> {
+        let value = self.describe(session, table, opts.bounds)?;
+        let touched = match table {
+            Some(name) => BTreeSet::from([name.to_string()]),
+            None => session.relations().map(|r| r.name().to_string()).collect(),
+        };
+        if let Some((bytes, source)) = self.byte_budget(session, &touched, opts.max_response_bytes) {
+            if serde_json::to_vec(&value).expect("the description serializes").len() as u64 > bytes {
+                return Err(ReadError::ReadResponseTooLarge(format!("{bytes} bytes from {source}; the description exceeds the ceiling")).into());
+            }
+        }
+        Ok(value)
+    }
+
     /// Committed data files of the tables the session reads, store-root-relative: the files
     /// each registered relation reads, a pinned table's build included; a table outside the
     /// session contributes no path (`read.register.file-listing`). Only `as_of` selects
     /// files and only it echoes (`read.register.bound-listing`).
     pub fn files(&self, session: &Session, bounds: Bounds) -> Result<Response, ReadFault> {
-        let transaction = Bounds { valid_as_of: None, ..bounds };
+        self.files_with_options(session, ReadOptions { bounds, ..ReadOptions::default() })
+    }
+
+    /// The committed file listing under the request's serialized response budget.
+    pub fn files_with_options(&self, session: &Session, opts: ReadOptions) -> Result<Response, ReadFault> {
+        let transaction = Bounds { valid_as_of: None, ..opts.bounds };
         let root = format!("{}/", self.store.root().to_string_lossy());
         let mut rows = Vec::new();
         for r in session.relations() {
@@ -544,10 +642,12 @@ impl Face {
             response = response.with_block("bounds", b);
         }
         let names: Vec<String> = session.relations().map(|r| r.name().to_string()).collect();
-        Ok(match super::pin::resolved(session, names.iter().map(String::as_str)) {
+        let response = match super::pin::resolved(session, names.iter().map(String::as_str)) {
             Some(resolved) => response.with_block(RESOLVED_BLOCK, resolved),
             None => response,
-        })
+        };
+        let touched = names.into_iter().collect();
+        self.finish_budget(session, &touched, opts, None, contextful_core::read::respond::FACE_ROW_CEILING, response)
     }
 
     /// Preview one committed run file through its table's registered relation. A snapshot
@@ -572,8 +672,10 @@ impl Face {
         engine.register(PREVIEW_RELATION, preview.sql())?;
         let touched = BTreeSet::from([table]);
         let ceiling = self.ceiling(session, &touched, opts.limit, None);
-        let response = respond(&engine, &format!("SELECT * FROM {}", ident(PREVIEW_RELATION)), &Bindings::default(), Some(ceiling), opts)?;
-        self.restrict(&engine, session, touched.iter().map(String::as_str), response)
+        let deadline = self.duration_budget(session, &touched, opts.max_duration_ms);
+        let response = respond_with_deadline(&engine, &format!("SELECT * FROM {}", ident(PREVIEW_RELATION)), &Bindings::default(), Some(ceiling), opts, deadline)?;
+        let response = self.restrict(&engine, session, touched.iter().map(String::as_str), response)?;
+        self.finish_budget(session, &touched, opts, None, ceiling, response)
     }
 
     /// Attach the restriction block naming each touched relation the session's zone
@@ -720,8 +822,16 @@ pub(crate) fn one_statement(sql: &str) -> Result<(), ReadFault> {
 /// Execute `sql` under `ceiling` and serialize the one response projection
 /// (`read.respond.one-projection`), with the internals block under `opts.internals`.
 pub(crate) fn respond(engine: &SqlEngine, sql: &str, parameters: &Bindings, ceiling: Option<u64>, opts: ReadOptions) -> Result<Response, ReadFault> {
+    respond_with_deadline(engine, sql, parameters, ceiling, opts, opts.max_duration_ms.map(|n| (n, "request")))
+}
+
+fn respond_with_deadline(engine: &SqlEngine, sql: &str, parameters: &Bindings, ceiling: Option<u64>, opts: ReadOptions, deadline: Option<(u64, &'static str)>) -> Result<Response, ReadFault> {
     let started = std::time::Instant::now();
-    let (columns, rows) = engine.run(sql, parameters, Response::fetch_count(ceiling))?;
+    let fetch = Response::fetch_count(ceiling);
+    let (columns, rows) = match deadline {
+        Some((ms, source)) => engine.run_timed(sql, parameters, fetch, ms, source)?,
+        None => engine.run(sql, parameters, fetch)?,
+    };
     let rows: Vec<Vec<Value>> = rows.iter().map(|r| r.iter().map(Cell::to_json).collect()).collect();
     let mut response = Response::cut(columns, rows, ceiling);
     if let Some(b) = opts.bounds.echo() {
@@ -846,6 +956,8 @@ fn builtin_tool(name: &str) -> Value {
             properties[bound.as_str()] = schema;
         }
     }
+    properties["max_duration_ms"] = json!({ "type": "integer", "minimum": 0 });
+    properties["max_response_bytes"] = json!({ "type": "integer", "minimum": 0 });
     properties[PIN_ARGUMENT] = pin_property();
     json!({
         "name": name,
