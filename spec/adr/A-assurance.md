@@ -118,9 +118,8 @@ Revisit: the base-commit build exceeds the stage wall clock; the refactor traile
 | Gate on wall-clock p95 against a committed baseline | Determinism | Shared containers move p95 past any useful band; the check flakes until ignored. |
 | History as a committed JSONL file | Branch policy | A bot commit on the default branch per run and a conflict with every open change. |
 | History in an external artifact store | Offline verdicts and queries | A second store to operate, reachable only with network credentials. |
-| A benchmark framework's saved baselines | One home | Baselines live under `target/`, reclaimed after each stage, with statistics apart from the run report. |
 
-Consequences: a red evaluate stage is a correctness fact; timing movement is visible per commit and argued in review.
+Consequences: a red evaluate stage reports correctness; timing movement remains visible per commit.
 Revisit: a dedicated runner class holds p95 within 5 percent across runs.
 
 ## A version tag names a gated revision and counts closed milestones
