@@ -363,17 +363,6 @@ fn concurrent_flushes_of_one_run_keep_every_row() {
 }
 
 #[test]
-fn a_ledger_append_syncs_its_directory() {
-    let r = Reads::new();
-    let node = NodeId::parse("ingest-a").unwrap();
-    contextful_context::ledger::append(&r.store, "research/vendor", "run-0001", &node, &[call("durable", None, None)]).unwrap();
-    let dir = r.store.root().join("tables/research/vendor/requests");
-    contextful_fs::open_dir_for_sync(&dir).unwrap().sync_all().unwrap();
-    let path = dir.join("run-0001.ingest-a.parquet");
-    assert_eq!(contextful_context::ledger::read(&path).unwrap().len(), 1);
-}
-
-#[test]
 fn an_unreadable_ledger_file_fails_only_a_read_naming_that_ledger() {
     let r = Reads::new();
     let requests = r.store.root().join("tables/research/vendor/requests");

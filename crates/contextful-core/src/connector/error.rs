@@ -3,6 +3,21 @@
 
 #[derive(Debug, Clone, PartialEq, Eq, thiserror::Error)]
 pub enum ConnectorError {
+    /// An empty, oversized, repeated or ambiguous Drive root selection. (`connector.source.drive-root-set`)
+    #[error("ConnectorDriveRootsInvalid: {0}")]
+    ConnectorDriveRootsInvalid(String),
+    /// A selected Drive root that is missing or outside its declared Shared Drive. (`connector.source.drive-root-validation`)
+    #[error("ConnectorDriveRootRejected: {0}")]
+    ConnectorDriveRootRejected(String),
+    /// A Drive listing reaching its request cap before every folder page completes. (`connector.source.drive-list-bound`)
+    #[error("ConnectorDriveListingExceeded: {0}")]
+    ConnectorDriveListingExceeded(String),
+    /// A Drive capture mode other than `bytes-and-pages` or `metadata-only`. (`connector.source.drive-mode`)
+    #[error("ConnectorDriveModeUnknown: {0}")]
+    ConnectorDriveModeUnknown(String),
+    /// A Drive file whose version changes during metadata-only capture. (`connector.source.drive-version-consistency`)
+    #[error("ConnectorDriveVersionMoved: {0}")]
+    ConnectorDriveVersionMoved(String),
     /// A forwarded guest configuration value that is not a table, over 64 KiB, or carrying a reference. (`connector.import.config-shape`)
     #[error("ConnectorConfigRejected: {0}")]
     ConnectorConfigRejected(String),
@@ -21,6 +36,21 @@ pub enum ConnectorError {
     /// A remote artifact reference with no 64-hex content pin. (`connector.package.remote-unpinned`)
     #[error("ConnectorRemoteUnpinned: {0}")]
     ConnectorRemoteUnpinned(String),
+    /// A malformed OCI registry, repository or selector. (`connector.package.oci-reference`)
+    #[error("ConnectorOciReferenceInvalid: {0}")]
+    ConnectorOciReferenceInvalid(String),
+    /// An OCI manifest without one component layer. (`connector.package.oci-component-layer`)
+    #[error("ConnectorOciArtifactUnsupported: {0}")]
+    ConnectorOciArtifactUnsupported(String),
+    /// OCI layer bytes differing from their descriptor digest. (`connector.package.oci-layer-integrity`)
+    #[error("ConnectorOciLayerMismatch: {0}")]
+    ConnectorOciLayerMismatch(String),
+    /// Damaged bytes in the project artifact cache. (`connector.package.remote-cache-corrupt`)
+    #[error("ConnectorArtifactCacheCorrupt: {0}")]
+    ConnectorArtifactCacheCorrupt(String),
+    /// A failed remote artifact request. (`connector.package.remote-fetch-failure`)
+    #[error("ConnectorArtifactFetchFailed: {0}")]
+    ConnectorArtifactFetchFailed(String),
     /// An allowlist that is empty or bare-wildcard, or an entry carrying a scheme, port or path. (`connector.declare-capability.allowlist-shape`)
     #[error("ConnectorAllowlistRejected: {0}")]
     ConnectorAllowlistRejected(String),

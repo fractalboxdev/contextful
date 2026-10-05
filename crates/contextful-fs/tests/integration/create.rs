@@ -119,6 +119,23 @@ fn an_open_directory_handle_syncs_its_entries() {
 }
 
 #[test]
+fn open_handles_keep_their_identity_across_rename_and_path_reuse() {
+    let dir = tempfile::tempdir().unwrap();
+    let path = dir.path().join("held.lock");
+    std::fs::write(&path, b"held").unwrap();
+    let held = std::fs::File::open(&path).unwrap();
+    let identity = contextful_fs::file_identity(&held).unwrap();
+    let again = std::fs::File::open(&path).unwrap();
+    assert_eq!(identity, contextful_fs::file_identity(&again).unwrap());
+    std::fs::rename(&path, dir.path().join("old.lock")).unwrap();
+    std::fs::write(&path, b"replacement").unwrap();
+    let replacement = std::fs::File::open(&path).unwrap();
+    assert_eq!(identity, contextful_fs::file_identity(&held).unwrap());
+    assert_ne!(identity, contextful_fs::file_identity(&replacement).unwrap());
+    assert!(!names_file(&path, &held).unwrap());
+}
+
+#[test]
 fn a_create_into_a_missing_directory_fails_and_leaves_nothing() {
     let dir = tempfile::tempdir().unwrap();
     let path = dir.path().join("absent/_manifest.json");

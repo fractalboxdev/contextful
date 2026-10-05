@@ -104,12 +104,12 @@ impl Template {
     }
 
     /// Fill the template, each name answered by `hydrate`.
-    pub fn render<E>(&self, mut hydrate: impl FnMut(&SecretName) -> Result<Hydrated, E>) -> Result<Hydrated, E> {
+    pub fn render<E, H: std::borrow::Borrow<Hydrated>>(&self, mut hydrate: impl FnMut(&SecretName) -> Result<H, E>) -> Result<Hydrated, E> {
         let mut out = String::new();
         for p in &self.parts {
             match p {
                 Part::Literal(s) => out.push_str(s),
-                Part::Secret(n) => out.push_str(hydrate(n)?.reveal()),
+                Part::Secret(n) => out.push_str(hydrate(n)?.borrow().reveal()),
             }
         }
         Ok(Hydrated::new(out))
@@ -171,7 +171,7 @@ pub const SENTINEL: &str = "[secret]";
 /// A hydrated value. Its debug and display forms print [`SENTINEL`]; the bytes are
 /// reached only through [`Hydrated::reveal`], where the host writes the request, and
 /// are zeroed when the value drops. Copies taken from `reveal` belong to their holder.
-#[derive(Clone, PartialEq, Eq, Zeroize, ZeroizeOnDrop)]
+#[derive(PartialEq, Eq, Zeroize, ZeroizeOnDrop)]
 pub struct Hydrated(String);
 
 impl Hydrated {
