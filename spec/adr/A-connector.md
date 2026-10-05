@@ -16,6 +16,32 @@ A reviewed program is identified by a content digest, and a live run completes a
 Consequences: an unpinned local artifact runs whatever bytes sit on disk unless the store policy key or per-connector flag is set.
 Revisit: production runs unpinned local artifacts, arguing for inverting the default; the toolchain stops embedding the host triple.
 
+## Remote artifacts use one verified component blob
+
+The content pin names component bytes rather than a mutable URL, tag or manifest. HTTPS retrieval uses the mediated client with the artifact host alone admitted. OCI retrieval accepts one component layer from a schema-2 manifest; its descriptor digest and the source pin both check the bytes. A project cache publishes only admitted bytes and refuses a damaged cache entry rather than silently replacing the bytes of a recorded run. The operator binds a registry bearer by exact host through `secret://`; that credential reaches registry requests, not the guest.
+
+| Option | Lost on | Cost |
+| --- | --- | --- |
+| Fetch one pinned blob through mediated HTTP or a one-layer OCI manifest, then cache by digest *(chosen)* | — | Multi-layer packages and registry token exchanges need another contract; each cache hit re-hashes bytes. |
+| Resolve every run from the remote reference | Replay availability | An outage stops replay even when the admitted bytes once existed locally. |
+| Reuse the guest's access grant and headers for artifact retrieval | Credential containment | Registry material reaches guest endpoints and vendor material reaches the registry. |
+| Trust an OCI tag and manifest descriptor alone | Review binding | A moved tag changes executable bytes without changing the declaration's pin. |
+
+Consequences: a registry that only accepts a challenge-based token exchange refuses a fetch until it has a directly bound bearer credential. Revisit: a required registry exposes no directly bound bearer; a package needs several blobs or an OCI index.
+
+## Precompiled components reuse only compatible host output
+
+A cache key joins the admitted artifact digest with the engine's precompile compatibility hash. The host writes compiled output into a private cache directory and verifies its recorded digest before deserialization. An absent, altered or incompatible entry compiles from the admitted source bytes. Pulley output stays separate from native output through the engine hash.
+
+| Option | Lost on | Cost |
+| --- | --- | --- |
+| Private precompile cache with compatibility key and integrity check *(chosen)* | — | A cache miss compiles the guest; the cache holds another copy of each compiled component. |
+| Recompile on every process start | Startup latency | Every guest pays compilation again. |
+| Deserialize any file named by the artifact digest | Input integrity | A stale engine build or altered file reaches unsafe deserialization. |
+
+Consequences: a hardened host still links a compiler for cache misses; the Pulley target runs without executable mappings. Windows compiles each fire until the host verifies a private cache ACL.
+Revisit: a pinned precompile artifact and a compiler-free host build exist for every deployment target.
+
 ## Untrusted input decodes off-process and fails whole
 
 An input lands whole and faithful or refuses by name, and no input ends the serving process. `run.land` decodes behind a process boundary bounding wall clock and resident memory; a crash is the same named diagnosis as a parse error. A partial parse refuses the whole input, naming path and page, worksheet or entry, and fails one table's pull while siblings keep their tick. `connector.source` reads office parts by exact name and refuses external references; an image lands a null body with no pixel decode; `run.fetch` reads UTF-8 only.
@@ -110,3 +136,17 @@ Revisit: a transport that must resolve remotely, such as a proxy-only deployment
 
 Consequences: a concurrent edit invalidates the approval; unresolved comparisons retain the predecessor. A fixed wildcard sample can already belong to an exact predecessor entry, so absence of a replayed witness supplies no inclusion verdict. Approval storage and authorization remain the operation's unsettled boundary.
 Revisit: host grants gain ports, methods, paths or address ranges.
+
+## Drive capture binds bounded roots and mode to the position
+
+One Shared Drive and a bounded selected root set define the capture boundary. Validation precedes listing; file identity deduplicates overlapping trees, and the least selected root id resolves its provenance. The position binds the sorted selection and mode, so either change requires a complete walk and fresh byte reads before removals. Metadata-only capture hashes complete download or export bytes without retaining bodies.
+
+| Option | Lost on | Cost |
+| --- | --- | --- |
+| Bounded roots and explicit capture mode *(chosen)* | — | Every changed selection rewalks its roots; metadata-only still downloads or exports each captured body. |
+| One pipeline per root | Overlap identity | The same file lands in several tables and removal depends on cross-pipeline reconciliation. |
+| Arbitrary roots and shortcuts | Scope review | One declaration reaches unrelated drives or trees outside its selected roots. |
+| Drive's checksum alone | Byte identity | Native exports lack a checksum for the exported representation. |
+
+Consequences: an incomplete walk preserves earlier rows and refuses before inferring removals. A separately retained named version can verify the recorded byte digest.
+Revisit: Drive offers a verifiable export digest without reading bytes, or a tenant needs more roots than the declared ceiling.
