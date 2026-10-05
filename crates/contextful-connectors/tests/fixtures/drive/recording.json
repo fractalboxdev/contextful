@@ -53,6 +53,10 @@
         ]
       }
     },
+    {"method": "GET", "path": "/drive/v3/files/doc-plan", "query": {"fields": "version"}, "status": 200, "body": {"version": "5"}},
+    {"method": "GET", "path": "/drive/v3/files/sheet-budget", "query": {"fields": "version"}, "status": 200, "body": {"version": "7"}},
+    {"method": "GET", "path": "/drive/v3/files/slides-deck", "query": {"fields": "version"}, "status": 200, "body": {"version": "4"}},
+    {"method": "GET", "path": "/drive/v3/files/pdf-report", "query": {"fields": "version"}, "status": 200, "body": {"version": "1"}},
     {"method": "GET", "path": "/drive/v3/files/doc-plan/export", "query": {"mimeType": "application/pdf"}, "status": 200, "body_file": "plan.pdf"},
     {"method": "GET", "path": "/drive/v3/files/sheet-budget/export", "query": {"mimeType": "application/pdf"}, "status": 200, "body_file": "budget.pdf"},
     {"method": "GET", "path": "/drive/v3/files/slides-deck/export", "query": {"mimeType": "application/pdf"}, "status": 200, "body_file": "deck.pdf"},

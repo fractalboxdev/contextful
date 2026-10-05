@@ -168,6 +168,28 @@ fn replace_covers_the_newest_complete_run_and_what_follows() {
     assert!(empty_only.resolve(None).unwrap().snapshot.is_some());
 }
 
+/// A marked no-part replacing run clears current files while an earlier bound still reaches the displaced run.
+// spec: store.declare.empty-replacement@c29e64a1
+#[test]
+fn a_marked_empty_run_is_a_replacement_frontier() {
+    use contextful_core::store::bound_time::Bound;
+
+    let mut empty = run("run-2", "2030-01-01T01:00:00Z", 0);
+    empty.replace_frontier = true;
+    let state = TableState {
+        table: "filings".into(),
+        write_mode: WriteMode::Replace,
+        runs: vec![run("run-1", "2030-01-01T00:00:00Z", 1), empty],
+        chain: vec![],
+        history_collected: false,
+    };
+    assert!(state.resolve(None).unwrap().files().is_empty());
+    let earlier = state.resolve(Some(Bound::parse("2030-01-01T00:30:00Z").unwrap())).unwrap();
+    assert_eq!(earlier.files(), ["data/runs/run-1/ingest-a/part-00000.parquet"]);
+    let append = TableState { write_mode: WriteMode::Append, ..state };
+    assert_eq!(append.resolve(None).unwrap().files().len(), 1, "append ignores a replacement marker");
+}
+
 /// An enabled compaction job covering a table is a `[[job]]` block of kind `fold` carrying a `schedule`, whose
 /// `enabled` is absent or true and whose `target` is absent or names the table's destination name.
 // spec: store.declare.fold-job@0d2cc21d

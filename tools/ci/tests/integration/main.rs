@@ -2,9 +2,10 @@
 //! scratch git repositories holding a small cargo workspace.
 
 mod acceptance_surface;
-mod deny;
 mod allowlist;
 mod artifact;
+mod dependency_versions;
+mod deny;
 mod disk;
 mod domain;
 mod e2e;
