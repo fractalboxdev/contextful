@@ -519,8 +519,10 @@ pub fn run(args: Args) -> Result<()> {
         cases.push(generate(&mut runner)?);
     }
     for (case, steps) in cases.into_iter().enumerate() {
-        if let Some((at, model, store)) = compare(&reference, &steps)? {
+        if compare(&reference, &steps)?.is_some() {
             let reduced = minimize(&reference, steps)?;
+            let (at, model, store) = compare(&reference, &reduced)?
+                .context("the minimized protocol sequence no longer reproduces the drift")?;
             if let Some(parent) = regressions.parent() {
                 std::fs::create_dir_all(parent)?;
             }

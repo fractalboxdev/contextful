@@ -53,10 +53,10 @@ fn fixed_seed_replays_protocol_cases_against_the_store() {
 fn a_protocol_difference_prints_the_minimal_sequence_and_both_states() {
     let dir = tempfile::tempdir().unwrap();
     let reference = dir.path().join("reference.sh");
-    std::fs::write(&reference, "#!/bin/sh\ncat >/dev/null\necho 'lease[none] catalog=999 cursor=0 n0(belief=none paused=false pending=none) n1(belief=none paused=false pending=none) n2(belief=none paused=false pending=none)'\n").unwrap();
+    std::fs::write(&reference, "#!/bin/sh\nwhile IFS= read -r step; do printf 'reference: %s\\n' \"$step\"; done\n").unwrap();
     std::fs::set_permissions(&reference, std::fs::Permissions::from_mode(0o755)).unwrap();
     let regressions = dir.path().join("regressions.jsonl");
-    std::fs::write(&regressions, "[{\"op\":\"expire\"}]\n").unwrap();
+    std::fs::write(&regressions, "[{\"op\":\"acquire\",\"node\":0},{\"op\":\"expire\"}]\n").unwrap();
     let out = Command::new(BIN)
         .args(["formal", "protocol-differential", "--cases", "0", "--reference"])
         .arg(&reference)
@@ -67,7 +67,7 @@ fn a_protocol_difference_prints_the_minimal_sequence_and_both_states() {
     let error = String::from_utf8_lossy(&out.stderr);
     assert!(error.contains("ProtocolConformanceDrift"), "{error}");
     assert!(error.contains("sequence=[{\"op\":\"expire\"}]"), "{error}");
-    assert!(error.contains("model=lease[none] catalog=999"), "{error}");
+    assert!(error.contains("model=reference: expire"), "{error}");
     assert!(error.contains("store=lease[none] catalog=0"), "{error}");
 }
 
