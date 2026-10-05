@@ -2,6 +2,18 @@
 
 **Status:** accepted
 
+## An empty complete snapshot carries a replacement frontier
+
+A zero-row result has two meanings for a replacing table. A source can finish enumerating its inventory and find no rows, or it can skip unchanged input without reading it. The run records a replacement frontier only for the complete result. The marker lives in the run manifest, survives bucket sync as committed data, and remains effective when a fold publishes an empty snapshot. An incomplete or failed pull commits neither rows nor frontier. A bounded read before the marker still reaches earlier runs while retention keeps them.
+
+| Option | Lost on | Cost |
+| --- | --- | --- |
+| Explicit frontier in the run manifest *(chosen)* | — | The source must distinguish completeness from a skip. |
+| Infer replacement from zero parts | Skipped input | An unchanged input clears a table without examining it. |
+| Write a synthetic row | Data shape | A marker appears as source data or needs a hidden-row filter. |
+
+Consequences: a complete empty inventory clears current reads, while a skipped inventory leaves its earlier state readable.
+
 ## The schema lattice has one promotion, and a key never widens
 
 `store.reconcile` models one promotion, `Int64` with `Float64` to `Float64`, the only pairing that produces physically mixed Parquet; the scan's own type resolution widens it, with no per-column cast. Any other pair refuses at the write, naming the column, the stored type and the arriving one. A primary-key column takes no float promotion: reconciliation refuses the widening batch before any Parquet is written, `store.fold` refuses a key already reconciled to `Float64`, and a key value beyond the exact-integer range of `Float64` is emitted as a string.
