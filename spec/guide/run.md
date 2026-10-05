@@ -72,7 +72,7 @@ a machine-defined engine ({{run.bind.command-in-manifest}}), and records every u
 ({{run.emit.unit-status}}) under its derivation ({{run.emit.derivation-key}}); stale
 rows answer until replaced ({{run.emit.stale-supersedes}}). Chained derives follow
 {{run.select.derive-order}}, {{run.select.derive-failed-parent}} and {{run.select.parent-outcome}}; {{run.select.derive-cycle}}
-keeps a circular chain from arming.
+prevents circular chains. A conflicting `after` refuses under {{run.select.derive-after-conflict}}.
 
 ## Worked example
 

@@ -88,7 +88,7 @@ DeriveConfigKeyMissing         = { clause = "run.select.required-key", gloss = "
 DeriveCycle                    = { clause = "run.select.derive-cycle", gloss = "Derive source-table dependencies returning to a pipeline." }
 DeriveAfterConflict            = { clause = "run.select.derive-after-conflict", gloss = "A derive child whose explicit predecessor differs from its source-table parent." }
 DeriveNoStoreRoot              = { clause = "run.select.no-store-root", gloss = "A derive source built without a store root or pipeline id." }
-DeriveForeignOutputTable       = { clause = "run.select.foreign-output-table", gloss = "Configuration naming another pipeline's output table." }
+DeriveForeignOutputTable       = { clause = "run.select.foreign-output-table", gloss = "Configuration overriding the build-owned anti-join output identity." }
 DeriveUnitIncomplete           = { clause = "run.select.incomplete-unit", gloss = "A parent row without a key or media value." }
 DeriveJournaledPull            = { clause = "run.select.journaled-pull", gloss = "A derive pipeline configured to journal its pulls." }
 DeriveUnmeteredGrant           = { clause = "run.select.unmetered-grant", gloss = "A transcribe pipeline declaring a shared-quota grant." }
