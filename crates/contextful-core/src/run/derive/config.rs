@@ -106,9 +106,9 @@ impl DeriveConfig {
                 )));
             }
         };
-        if task == Task::Transcribe && cfg.contains_key("grant") {
+        if task != Task::LinkPreview && cfg.contains_key("grant") {
             return Err(RunError::DeriveUnmeteredGrant(format!(
-                "pipeline `{pipeline_id}` declares `grant` for transcribe, which does not use the shared-quota client"
+                "pipeline `{pipeline_id}` declares `grant` for {}, which does not use the shared-quota client", task.name()
             )));
         }
         let grant = cfg.get("grant").map(|value| {

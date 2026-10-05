@@ -6,11 +6,9 @@ contract: run
 
 ## What it is for
 
-A run is how data enters **Contextful** and survives interruption. A pipeline declares what
-to pull and which tables it lands; a run executes it once against a pinned plan, and either
-commits rows with the position behind them or leaves a resume point. The derive tier reuses
-the machinery for per-row work, such as turning a recording into passages.
-Every effect a run makes is recorded, so a replay reads the record, not the outside world.
+A pipeline declares inputs and destination tables. A run executes its pinned plan,
+committing rows with their position or leaving a resume point. Derive turns individual
+recordings into passages through the same machinery.
 
 ## How it works
 
@@ -76,6 +74,13 @@ bytes refresh units ({{run.emit.local-content-key}}); folds remove orphaned outp
 ({{run.emit.parent-tombstone}}).
 
 ## Worked example
+
+For `link_preview`, `grant = { quota = "preview", class = "batch-read", usage_headers = ["x-ratelimit-remaining"] }`
+in `[pipeline.source.config]` selects `[limiters.preview]`: `endpoint`,
+`token = "secret://limiter-token"` and `permits` ({{connector.meter.limiter-binding}}).
+`class` groups usage; `usage_headers` forwards response headers in usage reports
+({{connector.meter.forward-credential}}). Eligibility: {{run.select.unmetered-grant}}.
+Accounting: {{run.select.metered-client}}.
 
 The `meta-ads` pipeline pulls ad insights incrementally. Its declaration names `updated_time`
 as the stream clock ({{run.declare.incremental-field}}), so the source reports a monotonic

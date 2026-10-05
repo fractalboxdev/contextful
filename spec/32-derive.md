@@ -63,7 +63,7 @@ The derive source: its configuration, the outstanding set recomputed each tick, 
   *P4*
 - `journaled-pull` — A derive pipeline configured to journal its pulls raises `DeriveJournaledPull`.
   *A-authority*
-- `unmetered-grant` — `task` alone decides whether a derive pipeline reaches vendors; a `transcribe` pipeline declaring a shared-quota grant raises `DeriveUnmeteredGrant`.
+- `unmetered-grant` — A derive pipeline declaring a shared-quota grant for any task other than `link_preview` raises `DeriveUnmeteredGrant`.
   *A-connector*
 - `metered-client` — A `link_preview` pipeline opening a socket outside the mediated client raises `DeriveMeteredClient`; every request it makes enters the run's request ledger.
   *A-connector*
