@@ -16,7 +16,8 @@ use serde_json::Value;
 use std::collections::HashMap;
 
 /// Rewrite each live edge using `from` under its existing `edge_id`. The declaration
-/// admits both names during migration; the old name leaves it after the rewrite.
+/// admits both names during migration. The caller removes the old name from the
+/// manifest after the rewrite; this function changes stored edges alone.
 pub fn rename(
     face: &Face,
     authority: &AdmittedAuthority,
