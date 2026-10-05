@@ -156,9 +156,18 @@ Committing an incremental read position under its declared kind, and the boundar
   *A-run*
 - `turning-incremental-on` — Enabling `incremental` on a pipeline that holds a position starts from none, re-landing the source's current window once.
 - `skip-unchanged` — A snapshot-shaped source with `skip_unchanged = true` records its input's raw-byte digest as `{ sha256, rows }`; a matching digest returns zero batches, holds the position and closes a zero-row success. Undeclared, it is false.
-- `zero-row-commit` — A commit landing zero rows adds and replaces nothing, so a replacing table keeps its last non-empty state across a skip or an empty pull.
+- `snapshot-completion` — A snapshot source reports complete inventory or unchanged skip independently of row count; a replacing run carries only complete inventory into its manifest.
+  *A-store*
+- `zero-row-commit` — A complete empty snapshot of a replacing table commits {{store.declare.empty-replacement}}; a skipped unchanged input holds the frontier and position, and a failed pull publishes neither.
+  *A-store*
 
 unsettled: What bounds allowed lateness for an out-of-order source, and does a lateness window hang on the position or on the table? owner: run-path affects: run.advance
+
+#### Scenarios
+
+- `run.advance.zero-row-commit`: WHEN a complete snapshot holds zero rows after a non-empty replacing run, THEN the current read is empty and a bounded read before the commit retains the older rows.
+- `run.advance.zero-row-commit`: WHEN an unchanged input is skipped, THEN the current read and cursor retain their prior values.
+- `run.advance.zero-row-commit`: WHEN a pull fails before completion, THEN no replacement marker becomes readable.
 
 ## suspend
 
