@@ -776,6 +776,7 @@ dependencies = [
  "ed25519-dalek",
  "futures-util",
  "hyper-util",
+ "jsonwebtoken",
  "parquet",
  "s3s",
  "serde_json",
