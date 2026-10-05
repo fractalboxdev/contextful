@@ -251,6 +251,9 @@ impl StoreDestination {
 }
 
 impl Destination for StoreDestination {
+    fn replaces(&self, table: &str) -> bool {
+        self.decl(table).write_mode() == contextful_core::store::declare::WriteMode::Replace
+    }
     fn stage_batch(&mut self, stage: Stage) -> Result<Part, Failure> {
         let decl = self.decl(&stage.table);
         let injection = self.injection(&stage.run_id, &stage.site_id);
@@ -280,7 +283,7 @@ impl Destination for StoreDestination {
     fn commit(&mut self, commit: Commit, precommit: &dyn Fn() -> Result<(), Failure>) -> Result<Landed, Failure> {
         let decl = self.decl(&commit.table);
         let ctx = self.context(&commit.run_id, &commit.site_id, commit.committed_at);
-        let position = Position { pipeline_id: Some(commit.pipeline_id.clone()), cursor: commit.cursor.clone(), fence: commit.fence, logged: commit.fence.is_some() };
+        let position = Position { pipeline_id: Some(commit.pipeline_id.clone()), cursor: commit.cursor.clone(), fence: commit.fence, logged: commit.fence.is_some(), replace_frontier: commit.replace_frontier };
         // A lapse at the commit boundary is the credential's, not the store's: it fails the
         // run deterministically rather than as a retryable storage fault.
         let lapsed: RefCell<Option<Failure>> = RefCell::default();
