@@ -13,6 +13,15 @@ test("an unreadable registry returns StoreRegistryUnreadable", async () => {
   assert.throws(() => registryFromEnv("{"), /StoreRegistryUnreadable/);
 });
 
+test("an invalid optional field is isolated with its entry", () => {
+  const registry = registryFromEnv(JSON.stringify([
+    { id: "bad", endpoint: "https://bad.example", auth: 42 },
+    { id: "good", endpoint: "https://read.example/base" },
+  ]));
+  assert.deepEqual(registry.problems, [{ identifier: "StoreEntryMalformed", entry: 0 }]);
+  assert.equal(registry.entries[0].id, "good");
+});
+
 test("a malformed entry is dropped while a valid sibling routes", async () => {
   const registry = registryFromEnv(JSON.stringify([
     { id: "bad id", endpoint: "https://bad.example" },
@@ -25,6 +34,16 @@ test("a malformed entry is dropped while a valid sibling routes", async () => {
   }), registry, async (_entry, request) => new Response(request.headers.get("authorization")));
   assert.equal(response.status, 200);
   assert.equal(await response.text(), "Bearer opaque-token");
+});
+
+test("routing preserves the configured endpoint path", async () => {
+  const registry = registryFromEnv(JSON.stringify([{ id: "field-notes", endpoint: "https://read.example/base" }]));
+  let target = "";
+  await routeRequest(new Request("https://gateway.example/stores/field-notes/mcp?limit=1"), registry, async (_entry, request) => {
+    target = request.url;
+    return new Response(null, { status: 204 });
+  });
+  assert.equal(target, "https://read.example/base/mcp?limit=1");
 });
 
 test("reserved and authored names refuse their entries", () => {
