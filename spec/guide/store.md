@@ -16,7 +16,9 @@ Files never change once written ({{store.lay-out.immutable-files}}). A write add
 
 A read resolves an explicit sorted file list from the pointer and the manifests, never a glob ({{store.reconcile.explicit-file-list}}). An unkeyed table reads as the union of its committed runs ({{store.declare.unkeyed-union}}); a keyed table reads through a view that keeps one survivor per key ({{store.declare.dedup-view}}), picked by `order_by` ({{store.declare.order-by-default}}). Schemas grow additively: a new column joins and older files read it as null ({{store.reconcile.additive}}). The type lattice admits one promotion ({{store.reconcile.lattice}}), and any other clash refuses at the write ({{store.reconcile.incompatible}}).
 
-Runs accumulate until a fold compacts them. A fold works like closing a ledger's books: the open entries are copied into a new bound volume, and only when that volume is complete does the index page turn to it. A pass writes Parquet and every sidecar into staging ({{store.fold.pass}}), then publishes by replacing `_pointer.json` conditioned on the ETag it read at the start ({{store.fold.pointer-commit}}). Readers see a snapshot and its sidecars together or not at all ({{store.fold.partial-snapshot}}), and a statement in flight keeps the snapshot it started on ({{store.fold.non-blocking}}).
+A complete empty replacement marks a frontier with no files ({{store.declare.empty-replacement}}).
+
+Runs accumulate until a fold compacts them. A pass writes Parquet and every sidecar into staging ({{store.fold.pass}}), then publishes by replacing `_pointer.json` conditioned on the ETag it read at the start ({{store.fold.pointer-commit}}). Readers see a snapshot and its sidecars together or not at all ({{store.fold.partial-snapshot}}), and a statement in flight keeps the snapshot it started on ({{store.fold.non-blocking}}).
 
 The catalogs have distinct lifetimes: `derived.sqlite` rebuilds from the tree ({{store.lay-out.derived-catalog}}); `machine.sqlite` keeps machine-local journal, cursors and leases ({{store.lay-out.machine-catalog}}). Both sit behind ports ({{store.lay-out.catalog-ports}}).
 

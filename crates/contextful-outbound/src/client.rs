@@ -35,7 +35,7 @@ pub fn is_over_limit(f: &Failure) -> bool {
 #[derive(Debug, Clone)]
 pub enum HeaderValue {
     Plain(String),
-    Sensitive(Hydrated),
+    Sensitive(std::sync::Arc<Hydrated>),
 }
 
 impl HeaderValue {
