@@ -98,6 +98,25 @@ cargo run --locked -q -p contextful-ci -- gate --stage test-first --base <rev>
 
 The gate measures commits, so commit before running it.
 
+## Fast Rust feedback
+
+- Run the owning package's `tests/integration/` test while moving from red to green;
+  use `cargo check -p <package>` for compiler feedback between test runs. Run
+  `cargo test --workspace` before pinning a clause, as required above.
+- Select only the features the current task exercises. For CLI work, start with
+  `cargo check -p contextful-cli --no-default-features`, add `--features data-plane`
+  for the data path, and enable `component-host` only for component-host work.
+  For store work that does not serve reads, use
+  `cargo check -p contextful-context --no-default-features` to omit DuckDB.
+- The local Cargo wrapper pools target directories on the preferred mounted
+  volume while it is writable, then falls back to the internal pool. Keep
+  `CARGO_TARGET_DIR` unset; use `CARGO_SLOT_ROOT` only for isolated comparisons.
+  Slot builds default to `CARGO_INCREMENTAL=0`; compare `CARGO_INCREMENTAL=1`
+  for repeated edits to one package.
+- Before changing build profiles, dependencies or gate caches, capture
+  `cargo build --timings` for a representative feature set and compare a warm
+  rebuild. Preserve the gate's separate stage targets and full feature coverage.
+
 ## The gate
 
 [`.github/workflows/gate.yml`](./.github/workflows/gate.yml) dispatches each stage of

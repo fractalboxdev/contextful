@@ -8,6 +8,7 @@ dispatch       = {}
 edit           = {}
 apply          = {}
 reside         = {}
+open-console   = {}
 register-store = {}
 visualize      = {}
 package        = {}
@@ -22,6 +23,9 @@ brief          = {}
 publish-answer = {}
 
 [error]
+ConsoleRouteUngated           = { clause = "surface.open-console.ungated-route", gloss = "An anonymous hosted route serving content instead of its declared identity gate." }
+ConsolePageForbidden          = { clause = "surface.open-console.wrong-page", gloss = "A page or API call lacking verified identity and its page grant." }
+ConsoleAdminGrantMissing      = { clause = "surface.open-console.admin-grant", gloss = "An Admin edit or apply lacking a server-held admin capability." }
 ScheduleUnreadable            = { clause = "surface.arm.unreadable-schedule", gloss = "A schedule string the grammar or cron dialect cannot read." }
 TriggerAdapterUnknown         = { clause = "surface.arm.unknown-trigger", gloss = "A trigger value naming no adapter." }
 TriggerFaceMissing            = { clause = "surface.arm.trigger-face-missing", gloss = "The external trigger on a deployment serving no route for the wake." }

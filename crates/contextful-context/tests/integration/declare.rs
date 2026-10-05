@@ -10,8 +10,8 @@ use serde_json::json;
 use std::fs;
 
 #[cfg(feature = "read")]
-/// A table declaring no `primary_key` reads as the byte-identical union of its committed runs.
-// spec: store.declare.unkeyed-union@65214f13
+/// An unkeyed append table reads the byte-identical union of its visible committed runs.
+// spec: store.declare.unkeyed-union@f30dc41a
 #[test]
 fn an_unkeyed_table_reads_as_the_union_of_its_runs() {
     let f = Fixture::new();
@@ -82,8 +82,8 @@ fn the_last_write_per_key_wins_within_a_run_and_across_runs_at_one_instant() {
 }
 
 #[cfg(feature = "read")]
-/// A run landing zero rows commits a manifest with no parts and replaces nothing; a table with no rows registers as a zero-row relation over its declared and injected columns.
-// spec: store.declare.empty-run@c261166b
+/// A run landing zero rows commits a manifest with no parts; without a complete replacement marker it replaces nothing.
+// spec: store.declare.empty-run@446304e6
 #[test]
 fn a_zero_row_run_commits_no_parts_and_an_empty_table_registers() {
     let f = Fixture::new();
@@ -102,6 +102,16 @@ fn a_zero_row_run_commits_no_parts_and_an_empty_table_registers() {
     f.land(&d, "run-1", json!([{"id": "a"}]), "2030-01-01T00:01:00Z").unwrap();
     f.land(&d, "run-2", json!([]), "2030-01-01T00:02:00Z").unwrap();
     assert_eq!(f.query(&d, Bounds::default(), "SELECT id FROM t"), [[s("a")]]);
+}
+
+#[cfg(feature = "read")]
+#[test]
+fn an_empty_keyed_table_registers_its_declared_columns() {
+    let f = Fixture::new();
+    let d = decl("name = \"pages\"\nprimary_key = [\"file_id\", \"page\"]\ncolumns = { file_id = \"utf8\", page = \"int64\" }");
+    let manifest = f.land(&d, "run-0", json!([]), "2030-01-01T00:00:00Z").unwrap();
+    assert!(manifest.parts.is_empty());
+    assert!(f.query(&d, Bounds::default(), "SELECT file_id, page FROM t").is_empty());
 }
 
 #[cfg(feature = "read")]
