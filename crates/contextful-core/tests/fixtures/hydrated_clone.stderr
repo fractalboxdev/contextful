@@ -1,0 +1,5 @@
+error[E0599]: no method named `clone` found for struct `Hydrated` in the current scope
+ --> tests/fixtures/hydrated_clone.rs:5:28
+  |
+5 |     let _copy = credential.clone();
+  |                            ^^^^^ method not found in `Hydrated`

@@ -22,7 +22,7 @@ fn a_run_lands_each_batch_as_a_part_and_carries_its_position() {
         injection: Injection { run_id: "run-b".into(), site_id: "site-a".into(), batch_seq: None, authored_by: None, taint: None },
         committed_at: at("2030-01-01T00:01:00Z"),
     };
-    let position = Position { pipeline_id: Some("feed".into()), cursor: Some(json!("p3")), fence: Some(4), logged: false };
+    let position = Position { pipeline_id: Some("feed".into()), cursor: Some(json!("p3")), fence: Some(4), logged: false, replace_frontier: false };
     let batches = [batch(json!([{"id": "d1"}, {"id": "d2"}])), batch(json!([])), batch(json!([{"id": "d3"}]))];
     let m = land_batches(&f.store, &d, &batches, &ctx, &position, &|| Ok(())).unwrap();
     assert_eq!((m.fence, m.logged), (Some(4), false));
@@ -44,7 +44,7 @@ fn a_refused_precommit_leaves_the_run_uncommitted() {
         injection: Injection { run_id: "run-f".into(), site_id: "site-a".into(), batch_seq: None, authored_by: None, taint: None },
         committed_at: at("2030-01-01T00:01:00Z"),
     };
-    let position = Position { pipeline_id: Some("feed".into()), cursor: Some(json!("p3")), fence: Some(1), logged: false };
+    let position = Position { pipeline_id: Some("feed".into()), cursor: Some(json!("p3")), fence: Some(1), logged: false, replace_frontier: false };
     let refused = land_batches(&f.store, &d, &[batch(json!([{"id": "d1"}]))], &ctx, &position, &|| {
         Err(contextful_context::ContextError::Invalid("LeaseFenced: a later holder took the lease".into()))
     });
@@ -59,7 +59,7 @@ fn fenced_landing(f: &Fixture, run: &str, fence: u64) -> contextful_core::store:
         injection: Injection { run_id: run.into(), site_id: "site-a".into(), batch_seq: None, authored_by: None, taint: None },
         committed_at: at("2030-01-01T00:01:00Z"),
     };
-    let position = Position { pipeline_id: Some("feed".into()), cursor: Some(json!(run)), fence: Some(fence), logged: true };
+    let position = Position { pipeline_id: Some("feed".into()), cursor: Some(json!(run)), fence: Some(fence), logged: true, replace_frontier: false };
     land_batches(&f.store, &decl("name = \"filings\""), &[batch(json!([{"id": run}]))], &ctx, &position, &|| Ok(())).unwrap()
 }
 
@@ -128,7 +128,7 @@ fn a_fenced_manifest_written_before_the_commit_log_stays_readable() {
         injection: Injection { run_id: "run-upgraded".into(), site_id: "site-a".into(), batch_seq: None, authored_by: None, taint: None },
         committed_at: at("2030-01-01T00:01:00Z"),
     };
-    let position = Position { pipeline_id: Some("feed".into()), cursor: Some(json!("p9")), fence: Some(7), logged: false };
+    let position = Position { pipeline_id: Some("feed".into()), cursor: Some(json!("p9")), fence: Some(7), logged: false, replace_frontier: false };
     land_batches(&f.store, &decl("name = \"filings\""), &[batch(json!([{"id": "u1"}]))], &ctx, &position, &|| Ok(())).unwrap();
     let raw = std::fs::read_to_string(f.table_dir("filings").join("data/runs/run-upgraded/ingest-a/_manifest.json")).unwrap();
     assert!(!raw.contains("logged"), "an unmarked manifest carries no mark: {raw}");
@@ -160,7 +160,7 @@ fn a_store_on_exfat_commits_a_run_and_its_log_entry() {
         injection: Injection { run_id: "run-x".into(), site_id: "site-a".into(), batch_seq: None, authored_by: None, taint: None },
         committed_at: at("2030-01-01T00:01:00Z"),
     };
-    let position = Position { pipeline_id: Some("feed".into()), cursor: Some(json!("p1")), fence: Some(1), logged: true };
+    let position = Position { pipeline_id: Some("feed".into()), cursor: Some(json!("p1")), fence: Some(1), logged: true, replace_frontier: false };
     let d = decl("name = \"filings\"");
     land_batches(&store, &d, &[batch(json!([{"id": "d1"}]))], &ctx, &position, &|| Ok(())).unwrap();
     let again = land_batches(&store, &d, &[batch(json!([{"id": "d2"}]))], &ctx, &position, &|| Ok(()));
@@ -184,7 +184,7 @@ fn stage(f: &Fixture, d: &TableDecl, b: &Batch, ctx: &RunContext, ordinal: u32, 
 }
 
 fn fed(cursor: &str) -> Position {
-    Position { pipeline_id: Some("feed".into()), cursor: Some(json!(cursor)), fence: None, logged: false }
+    Position { pipeline_id: Some("feed".into()), cursor: Some(json!(cursor)), fence: None, logged: false, replace_frontier: false }
 }
 
 /// A staged part joins no file list; the commit naming the parts publishes them together, each row numbered
