@@ -76,7 +76,10 @@ impl MachineCatalog {
             backing: Backing::Sealed(SealedFile::new(path, cipher)),
             clock,
         };
-        catalog.with_sealed(true, true, migrate_scope_keys)?;
+        catalog.with_sealed(true, true, |tx, fail| {
+            tx.execute_batch(SCHEMA).map_err(|e| fail(&e))?;
+            migrate_scope_keys(tx, fail)
+        })?;
         Ok(catalog)
     }
 
