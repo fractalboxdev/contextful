@@ -117,7 +117,13 @@ fn a_rate_limited_link_request_has_no_batch_ordinal_in_its_ledger() {
     let server = std::thread::spawn(move || {
         let (mut socket, _) = listener.accept().unwrap();
         let mut request = [0; 4096];
-        socket.read(&mut request).unwrap();
+        let mut received = 0;
+        while !request[..received].windows(4).any(|bytes| bytes == b"\r\n\r\n") {
+            assert!(received < request.len(), "request header exceeds the fixture buffer");
+            let count = socket.read(&mut request[received..]).unwrap();
+            assert!(count > 0, "connection closes before the request header");
+            received += count;
+        }
         socket.write_all(b"HTTP/1.1 429 Too Many Requests\r\nRetry-After: 301\r\nContent-Length: 0\r\nConnection: close\r\n\r\n").unwrap();
     });
     let dir = tempfile::tempdir().unwrap();
