@@ -170,6 +170,16 @@ fn a_derive_pipeline_journaling_its_pulls_refuses() {
 }
 
 #[test]
+fn a_host_task_declaring_a_shared_quota_grant_refuses() {
+    let config = json!({
+        "task": "split", "source_table": "documents", "parent_id_column": "doc_id",
+        "grant": {"quota": "vendor-quota", "class": "batch-read"}
+    });
+    assert!(matches!(DeriveConfig::parse_with("word-split", &config, &registered()),
+        Err(RunError::DeriveUnmeteredGrant(message)) if message.contains("word-split") && message.contains("split")));
+}
+
+#[test]
 fn a_transcribe_pipeline_declaring_a_shared_quota_grant_refuses() {
     let granted = with("grant", json!("vendor-quota"));
     assert!(matches!(cfg(granted), Err(RunError::DeriveUnmeteredGrant(m)) if m.contains("doc-text") && m.contains("grant")));

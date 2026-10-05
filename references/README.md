@@ -34,7 +34,7 @@ names it by title.
 | `connector` | Component world, packaging, built-in sources; outbound credentials |
 | `authority` | Subject, delegation profile, admission, revocation; enforcement layers |
 | `disclosure` | Mirrored visibility; aggregate release; audit chain, erasure, receipt |
-| `surface` | Cadence, dispatch, control document; the analyst console |
+| `surface` | Cadence, dispatch, control document; the operator console |
 | `assurance` | Formal model, proof gate, differential harness; build gates, evaluation |
 
 ## Areas
@@ -44,7 +44,7 @@ names it by title.
 | [storage-and-table-formats.md](./storage-and-table-formats.md) | ACID tables on object storage, bitemporal time, local-first replication | `store.fold`, `store.push`, `store.merge`, `store.probe`, `store.bound-time`, `surface.edit` |
 | [leases-and-coordination.md](./leases-and-coordination.md) | Leases, fencing tokens, reconciliation loops | `store.lease`, `topology.coordinate`, `surface.dispatch`, `run.backfill`, `surface.reconcile` |
 | [durable-execution.md](./durable-execution.md) | Journaled replay, exactly-once effects, watermarks, retry amplification | `run.journal`, `run.advance`, `run.retry`, `run.declare`, `connector.meter` |
-| [access-control-and-capabilities.md](./access-control-and-capabilities.md) | Query-rewrite access control, ReBAC, attenuable tokens, sandboxed connectors | `authority.compose`, `authority.refuse`, `authority.attenuate`, `authority.verify`, `disclosure.bound-staleness`, `connector.import` |
+| [access-control-and-capabilities.md](./access-control-and-capabilities.md) | Query-rewrite access control, ReBAC, attenuable tokens, hosted page gates, sandboxed connectors | `authority.compose`, `authority.refuse`, `authority.attenuate`, `authority.verify`, `disclosure.bound-staleness`, `connector.import`, `surface.open-console` |
 | [privacy-and-disclosure.md](./privacy-and-disclosure.md) | Differential privacy, reconstruction, declassification, keyed pseudonyms | `disclosure.release`, `disclosure.suppress`, `authority.mask` |
 | [audit-and-erasure.md](./audit-and-erasure.md) | Tamper-evident logs, erasure in append-only stores, provenance | `disclosure.record`, `disclosure.attest`, `disclosure.erase`, `disclosure.erase` |
 | [retrieval-and-memory.md](./retrieval-and-memory.md) | Hybrid rank fusion, filtered ANN, agent memory, memory poisoning | `read.rank`, `read.retrieve`, `read.revise`, `read.recall`, `assurance.evaluate` |
