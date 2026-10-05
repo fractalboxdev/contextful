@@ -38,12 +38,12 @@ fn vendor(granted: Option<&'static str>) -> Server {
 /// The session's first read, sent through the source's client.
 fn first_read(server: &Server) -> Result<u16, Failure> {
     let c = Client::new(allow(), Url::parse(&server.url("/")).unwrap());
-    let headers = [("Authorization".to_string(), HeaderValue::Sensitive(token()))];
+    let headers = [("Authorization".to_string(), HeaderValue::Sensitive(token().into()))];
     c.send("GET", &Url::parse(&server.url("/read")).unwrap(), &headers, None).map(|r| r.status)
 }
 
 fn open(server: &Server, probe: Option<&ScopeProbe>) -> Result<u16, Failure> {
-    open_session(&allow(), probe, ("Authorization", &token()), || first_read(server))
+    open_session(&allow(), probe, ("Authorization", token()), || first_read(server))
 }
 
 fn paths(server: &Server) -> Vec<String> {
@@ -73,17 +73,17 @@ fn the_probe_reaches_only_an_allowlisted_host_over_tls_or_loopback() {
     let server = vendor(Some("reports.read"));
     // An identity endpoint the allowlist does not cover refuses before any socket.
     let elsewhere = Allowlist::parse(&["api.vendor.example"]).unwrap();
-    let f = probe(&elsewhere, &declared(&server), ("Authorization", &token())).unwrap_err();
+    let f = probe(&elsewhere, &declared(&server), ("Authorization", token())).unwrap_err();
     assert!(f.message.starts_with("SecretUnpermittedRequest"), "{f}");
     assert!(f.deterministic);
     assert!(paths(&server).is_empty(), "no request left the process");
     // A cleartext identity endpoint off loopback refuses, the credential unsent.
     let cleartext = ScopeProbe::new("http://api.vendor.example/identity", HEADER, &["reports.read"]).unwrap();
-    let f = probe(&elsewhere, &cleartext, ("Authorization", &token())).unwrap_err();
+    let f = probe(&elsewhere, &cleartext, ("Authorization", token())).unwrap_err();
     assert!(f.message.starts_with("SecretCleartextEndpoint"), "{f}");
     assert!(!f.message.contains(TOKEN), "{f}");
     // Loopback cleartext on the allowlist is admitted.
-    assert_eq!(probe(&allow(), &declared(&server), ("Authorization", &token())).unwrap(), ["reports.read"]);
+    assert_eq!(probe(&allow(), &declared(&server), ("Authorization", token())).unwrap(), ["reports.read"]);
 }
 
 /// A granted scope outside the declared expectation, compared byte for byte, raises `ConnectorScopeExceeded`, and the
