@@ -62,6 +62,53 @@ Pang, R., et al. "Zanzibar: Google's Consistent, Global Authorization System."
   cycles, breadth and cache bounds included — which the depth-bounded reach
   closure also has to state.
 
+## Hosted console access
+
+### Application paths
+
+Cloudflare. "Application paths." *Cloudflare One documentation*.
+<https://developers.cloudflare.com/cloudflare-one/access-controls/policies/app-paths/>
+
+- **Priority:** should-read
+- **Informs:** `surface.open-console`
+- **Question:** How do separate Access applications protect `/query` and `/admin` on one hostname, and how do more specific paths override a parent policy?
+
+### Validate JWTs
+
+Cloudflare. "Validate JWTs." *Cloudflare One documentation*.
+<https://developers.cloudflare.com/cloudflare-one/access-controls/applications/http-apps/authorization-cookie/validating-json/>
+
+- **Priority:** should-read
+- **Informs:** `surface.open-console`
+- **Question:** Which assertion header and audience does each page API verify after the Access edge admits a request?
+
+### OpenID Connect Core
+
+OpenID Foundation. "OpenID Connect Core 1.0." Final specification.
+<https://openid.net/specs/openid-connect-core-1_0-final.html>
+
+- **Priority:** should-read
+- **Informs:** `surface.open-console`
+- **Question:** Which issuer and audience checks bind a signed login assertion to its intended console client?
+
+### Cognito managed login
+
+Amazon Web Services. "How authentication works with Amazon Cognito." *Amazon Cognito Developer Guide*.
+<https://docs.aws.amazon.com/cognito/latest/developerguide/cognito-how-to-authenticate.html>
+
+- **Priority:** should-read
+- **Informs:** `surface.open-console`
+- **Question:** How does managed password login issue a named operator's identity without a console-owned password database?
+
+### Cognito user groups
+
+Amazon Web Services. "Understanding the access token." *Amazon Cognito Developer Guide*.
+<https://docs.aws.amazon.com/cognito/latest/developerguide/amazon-cognito-user-pools-using-the-access-token.html>
+
+- **Priority:** should-read
+- **Informs:** `surface.open-console`
+- **Question:** Which signed claim carries an operator's Query and Admin group membership?
+
 ## Capability tokens
 
 ### Macaroons

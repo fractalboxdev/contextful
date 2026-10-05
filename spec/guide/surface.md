@@ -2,34 +2,51 @@
 contract: surface
 ---
 
-# Operator and visitor surfaces
+# Operator surfaces
 
 ## What it is for
 
-Two kinds of people use a **Contextful** deployment without writing code. The operator
-decides when work runs and where, through one versioned control document. The visitor, a
-reader with no view of the tables, asks the console questions and receives grounded prose,
-a widget and a source list. Neither surface holds data or a privileged path: the control
-plane arms only work the engine names, and the console reaches rows only through governed
-reads under the reader's own credential ({{assurance.structure-tree.one-home}}).
+Query answers questions with grounded prose, widgets and sources
+({{surface.ground.sources-block}}). Admin visualizes deployed workflows ({{surface.visualize.workflow-canvas}}), run outcomes
+and learnings, and edits the versioned control document ({{surface.open-console.engine-faces}}). Hosted deployments gate each page
+and its API ({{surface.open-console.identity-gate}}, {{surface.open-console.page-grants}}).
+The control plane arms only work the engine names;
+Query reaches rows through governed reads under the operator's own credential
+({{assurance.structure-tree.one-home}}).
 
 ```mermaid
 flowchart LR
-  OP(["operator"]) -->|"edits"| DOC[("control document")]
+  OP(["operator"])
+  subgraph access["identity gate"]
+    QG["Query policy"]
+    AG["Admin policy"]
+  end
+  subgraph console["operator console"]
+    QP["Query page"]
+    AP["Admin page"]
+    TURN["turn loop"]
+    CANVAS["workflow canvas"]
+  end
+  OP -->|"query session"| QG
+  OP -->|"admin session"| AG
+  QG -->|"Query grant"| QP
+  AG -->|"Admin grant"| AP
+  QP -->|"question"| TURN
+  AP -->|"edit, apply"| DOC[("control document")]
+  AP -->|"workflow request"| CANVAS
   subgraph plane["control plane"]
     REC["reconciler"]
     ARM["armed set"]
   end
   DOC -->|"apply, reconcile"| REC
+  DOC -->|"pipeline versions"| CANVAS
   REC -->|"arm due work"| ARM
   ARM -->|"fire, dispatch"| STORE[("store engine")]
-  subgraph console["console"]
-    TURN["turn loop"]
-  end
-  RD(["reader"]) -->|"question"| TURN
   TURN -->|"admitted read tools"| STORE
   STORE -->|"governed rows"| TURN
-  TURN -->|"prose, widget, sources"| RD
+  STORE -->|"run outcomes"| CANVAS
+  TURN -->|"prose, widget, sources"| QP
+  CANVAS -->|"workflow view"| AP
 ```
 
 ## How it works
@@ -51,16 +68,26 @@ a region the policy omits ({{surface.reside.region-mismatch}}).
 
 A synced apply records an admin-attested snapshot ({{surface.apply.synced-attestation}}). A cold reconciler verifies the pulled receipt and validates the document against its own declarations before arming it ({{surface.reconcile.pulled-control}}); an invalid version names its reason ({{surface.reconcile.pulled-control-untrusted}}).
 
-The console turns one question into one answer. The server, never the client, chooses
+Each page and API route verifies the operator's Access assertion or Cognito session and that page's grant
+({{surface.open-console.page-routes}}, {{surface.open-console.wrong-page}}).
+Admin edit and apply also require the server's admin capability
+({{surface.open-console.admin-grant}}). The Admin canvas projects pipelines, schedules,
+steps and run outcomes; its edits reach the same
+control document that the reconciler reads.
+
+Query turns one question into one answer ({{surface.plan-turn.turn-flow}}). The server, never the client, chooses
 every capability the turn exercises: tools come from the turn's admitted packs
-({{surface.ground.unadmitted-tool}}), the visitor endpoint reaches no write
+({{surface.ground.unadmitted-tool}}), the query endpoint reaches no write
 ({{surface.ground.mutating-tool}}), and views are built server-side
 ({{surface.render.client-authored-view}}). Prose exists only over a tool result
-({{surface.ground.ungrounded-answer}}).
+({{surface.ground.ungrounded-answer}}), and the stream passes through the redactor
+({{surface.speak.stream-redaction}}).
 
 ## Worked example
 
-The operator adds a nightly `fold` job targeting `meta_ads_insights` and applies. The
+The operator enters Admin and sees the deployed pipeline, its schedule, steps and latest
+run on the workflow canvas. The operator adds a nightly `fold` job targeting
+`meta_ads_insights` and applies. The
 target resolves to a produced table ({{surface.fire.target-unbound}}), so validation
 passes. A second operator applied a minute earlier; the compare-and-swap loses, and the
 operator surface reloads the winner and reapplies the pending edit onto it. The next poll arms the
@@ -69,13 +96,13 @@ silent; after the lapse its work moves to another worker under the next attempt
 ({{surface.dispatch.heartbeat-lapse}}), and the silent worker's late callback changes
 nothing.
 
-Next morning a reader opens the console on the `field-notes` store. Its registry entry
+Next morning the operator opens Query on the `field-notes` store. Its registry entry
 carries no credential name of its own; the name derives from the id
 ({{surface.register-store.authored-name}}). The server re-verifies the perimeter assertion
 and mints a per-reader credential, falling back or refusing as
 {{surface.ground.mint-refused}} states.
 
-The reader asks which filings landed this week. The vantage parses as a calendar day
+The operator asks which filings landed this week. The vantage parses as a calendar day
 ({{surface.set-vantage.unparseable}}); recall reads prior conclusions; the planner picks a
 read tool over data tables, never memory relations
 ({{surface.plan-turn.planner-reached-memory}}). If the first round leaves the question
@@ -91,9 +118,12 @@ conclusions ({{surface.learn.distillation}}) under the reading-session scope
 ({{surface.learn.unscoped}}).
 
 The following day the greeting card appears only because a new row matches one of those
-conclusions within budget ({{surface.brief.absence-is-earned}}). If the reader wants the
+conclusions within budget ({{surface.brief.absence-is-earned}}). If the operator wants the
 answer in a team channel, posting is their own act; a scheduled job posting under a service
 identity refuses ({{surface.publish-answer.askerless-audience}}).
+
+A teammate admitted only to Query sees no Admin workflow or edit API: an Admin request
+with that teammate's Query grant refuses ({{surface.open-console.wrong-page}}).
 
 ## Where to look
 
@@ -102,5 +132,7 @@ identity refuses ({{surface.publish-answer.askerless-audience}}).
 | Why did a schedule not arm? | `surface.arm`, `surface.reconcile` |
 | Which job kinds exist? | `surface.fire` |
 | Who wins two concurrent applies? | `surface.apply` |
+| Which page can the operator enter? | `surface.open-console` |
+| Where does the workflow graph come from? | `surface.visualize` |
 | Where does an answer's material come from? | `surface.ground` |
 | Which widget does a result draw? | `surface.render` |
