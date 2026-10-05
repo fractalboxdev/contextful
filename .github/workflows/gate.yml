@@ -15,12 +15,14 @@
 #   flare-dispatch/check:schema      secrets of record, mirrors: annotations, derived artifacts regenerated, contextful-spec lint
 #   flare-dispatch/check:test-first.validate  a source change carries a test under tests/
 #   flare-dispatch/check:test-first.<package>  that package's changed tests fail against the base source
-#   flare-dispatch/check:workspace.compile       compile every workspace suite over the union of features, then run the CLI suite
+#   flare-dispatch/check:workspace.compile       compile the feature union, then run CLI tests outside the differential module
+#   flare-dispatch/check:workspace.cli-formal    compile the feature union, then run the CLI differential module
 #   flare-dispatch/check:workspace.<group>       run each other package suite in one of four groups
 #   flare-dispatch/check:acceptance  the milestone acceptance suite
 #   flare-dispatch/check:evaluate    every gate-tier entry of evals/ledger.toml, held to its target
 #   flare-dispatch/check:features.packages      each package but the binary declaring a feature, tested with none, with all and with each listed set
 #   flare-dispatch/check:features.binary-<set>  the binary tested under one feature set: none, all, or one its manifest lists
+#   flare-dispatch/check:features.formal-<set>  the differential module under that same feature set
 #   flare-dispatch/check:crate-graph the topology dependency rules over `cargo tree --locked` per package, and cargo-deny bans per profile
 #   flare-dispatch/check:connectors  the connector and guest-host suites with every feature on
 #   flare-dispatch/check:surfaces    each TypeScript surface's typecheck, unit tests and framework build

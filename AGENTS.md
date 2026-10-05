@@ -132,6 +132,9 @@ stage whose predecessor's output is absent; `--predecessors` runs those too. A l
 the remote check invoke the identical command; `contextful-ci`'s suite fails when the
 workflow's matrix and the subcommand's part list differ.
 
+The CLI differential module runs in `workspace.cli-formal` and `features.formal-<set>`;
+the paired `workspace.compile` and `features.binary-<set>` checks run the remaining CLI tests.
+
 The schema stage also holds every key in a tracked `.env*` file to dotenvx ciphertext
 under a comment stating what it grants (`contextful-ci secrets`); `.env.keys` stays
 untracked. A deliberate restatement of an engine rule carries `mirrors: <clause id>` at

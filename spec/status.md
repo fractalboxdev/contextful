@@ -7,7 +7,7 @@ An unpinned clause is `committed`; a pinned one is `performed` when its test res
 | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
 | `assurance` | 2 | 15 | 228 | 59 | 22 | 12 | 136 | 0 | 136 |
 | `authority` | 2 | 16 | 267 | 77 | 27 | 10 | 204 | 0 | 204 |
-| `connector` | 2 | 14 | 345 | 90 | 21 | 15 | 218 | 0 | 207 |
+| `connector` | 2 | 14 | 345 | 90 | 21 | 15 | 218 | 0 | 218 |
 | `corpus` | 1 | 10 | 77 | 37 | 7 | 0 | 38 | 0 | 38 |
 | `disclosure` | 3 | 16 | 122 | 64 | 13 | 7 | 54 | 0 | 54 |
 | `read` | 2 | 15 | 179 | 29 | 22 | 21 | 163 | 0 | 163 |
@@ -73,7 +73,7 @@ Unscheduled operations: 10.
 | `assurance.build.licence-field` | `tools/ci/tests/integration/topology.rs::a_workspace_package_without_the_apache_licence_is_refused` | performed |
 | `assurance.build.linked-query-functions` | `crates/contextful-context/tests/integration/read/extension.rs::columnar_reading_and_statement_serialization_are_statically_linked_and_loaded` | performed |
 | `assurance.build.one-engine-build` | `tools/ci/tests/integration/target_dirs.rs::the_workspace_stage_runs_one_invocation_and_the_store_suites_link_no_engine_without_read` | performed |
-| `assurance.build.profile-build` | `tools/ci/tests/integration/features.rs::the_features_stage_tests_each_listed_run_in_parts_one_per_binary_run` | performed |
+| `assurance.build.profile-build` | `tools/ci/tests/integration/features.rs::the_features_stage_tests_each_listed_run_in_two_binary_parts` | performed |
 | `assurance.build.release-artifact` | `tools/ci/tests/integration/artifact.rs::a_dry_run_release_packages_three_archives_with_checksums_sboms_and_formulae` | performed |
 | `assurance.build.release-profile` | `tools/ci/tests/integration/image.rs::the_release_profile_optimizes_across_crates_strips_and_unwinds` | performed |
 | `assurance.build.runtime-extension-load` | `crates/contextful-context/tests/integration/read/extension.rs::an_explicit_load_or_install_refuses` | performed |

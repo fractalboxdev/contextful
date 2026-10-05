@@ -20912,7 +20912,7 @@
       "operation": "build",
       "subject": "profile-build",
       "kind": "behavior",
-      "statement": "The features stage tests each package under every feature set its manifest lists in `feature-runs`, in parts dispatched as one check each: the other packages, and each binary run — none, all and each listed set.",
+      "statement": "The features stage tests each package under every feature set its manifest lists in `feature-runs`: other packages share one check; each binary feature run has separate checks for differential tests and all remaining tests.",
       "why": "because one cold build of the binary under one feature set fills most of a stage's wall clock, and a listed set reaches what none and all miss",
       "file": "spec/81-engineering.md",
       "line": 135
@@ -21044,7 +21044,7 @@
       "operation": "gate",
       "subject": "workspace-parts",
       "kind": "behavior",
-      "statement": "Remote workspace checks compile the feature-unified workspace and run the CLI suite from that build, then run each other non-acceptance package suite in exactly one of four groups.",
+      "statement": "Remote workspace checks compile the feature-unified workspace before each CLI partition: differential tests and all remaining tests; each other non-acceptance package suite runs in exactly one of four groups.",
       "why": "A-assurance",
       "file": "spec/81-engineering.md",
       "line": 160

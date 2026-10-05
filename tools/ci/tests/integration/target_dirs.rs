@@ -84,8 +84,8 @@ fn the_workspace_stage_runs_one_invocation_and_the_store_suites_link_no_engine_w
     }
 }
 
-/// Remote workspace checks compile the feature-unified workspace, run the CLI suite from that build, then run every other non-acceptance package suite in one of four groups.
-// spec: assurance.gate.workspace-parts@55b557c2
+/// Both CLI partitions compile the feature union; four groups run every other package.
+// spec: assurance.gate.workspace-parts@e828321f
 #[test]
 fn remote_workspace_parts_compile_the_union_and_run_each_package_suite() {
     let r = Repo::init();
@@ -104,6 +104,14 @@ fn remote_workspace_parts_compile_the_union_and_run_each_package_suite() {
     let calls = std::fs::read_to_string(&log).unwrap();
     assert!(calls.contains("test --workspace --exclude contextful-acceptance --no-run"), "{calls}");
     assert!(calls.contains("test --package contextful-cli"), "{calls}");
+    assert!(calls.contains("--skip differential::"), "{calls}");
+
+    std::fs::remove_file(&log).unwrap();
+    let formal = r.gate_with_cargo(&recording(&log, 0), &["--stage", "workspace.cli-formal"]);
+    assert!(formal.status.success(), "{}", stderr(&formal));
+    let calls = std::fs::read_to_string(&log).unwrap();
+    assert!(calls.contains("test --workspace --exclude contextful-acceptance --no-run"), "{calls}");
+    assert!(calls.contains("test --package contextful-cli --test integration differential::"), "{calls}");
 
     std::fs::remove_file(&log).unwrap();
     let tested = r.gate_with_cargo(&recording(&log, 0), &["--stage", "workspace.foundation"]);

@@ -344,16 +344,16 @@ fn repo_root() -> Result<PathBuf> {
 const SPLIT: [&str; 4] = ["test-first", "workspace", "features", "budget"];
 
 /// The parts of a split `stage`: the features stage's `packages`, every featured package but
-/// the binary, then `binary-<run>` per run of the binary package; the budget stage's
+/// the binary, then `binary-<run>` and `formal-<run>` per binary feature run; the budget stage's
 /// `<profile>` per profile the binary declares, its name after `contextful-`.
 fn parts(root: &Path, stage: &str, base: Option<&str>) -> Result<Vec<String>> {
     Ok(match stage {
         "test-first" => match base { Some(base) => test_first_parts(root, base)?, None => vec!["validate".into()] },
-        "workspace" => ["compile", "foundation", "runtime", "read", "ci"].into_iter().map(str::to_string).collect(),
+        "workspace" => ["compile", "cli-formal", "foundation", "runtime", "read", "ci"].into_iter().map(str::to_string).collect(),
         "features" => {
             let featured = featured_packages(root)?;
             let binary = featured.iter().filter(|p| p.name == topology::BINARY).flat_map(Featured::runs);
-            std::iter::once("packages".to_string()).chain(binary.map(|(label, _)| format!("binary-{label}"))).collect()
+            std::iter::once("packages".to_string()).chain(binary.flat_map(|(label, _)| [format!("binary-{label}"), format!("formal-{label}")])).collect()
         }
         "budget" => topology::declared_profiles(root)?.iter().map(|p| p.strip_prefix("contextful-").unwrap_or(p).to_string()).collect(),
         _ => Vec::new(),
@@ -539,7 +539,9 @@ fn workspace_part(package: &str) -> &'static str {
 
 fn workspace(root: &Path, only: Option<&[String]>) -> Result<()> {
     if let Some(only) = only {
-        if only.iter().any(|part| part == "compile") {
+        let ordinary = only.iter().any(|part| part == "compile");
+        let formal = only.iter().any(|part| part == "cli-formal");
+        if ordinary || formal {
             let mut args = vec!["test", "--workspace"];
             if root.join(ACCEPTANCE_DIR).join("Cargo.toml").exists() {
                 args.extend(["--exclude", ACCEPTANCE_PACKAGE]);
@@ -549,13 +551,19 @@ fn workspace(root: &Path, only: Option<&[String]>) -> Result<()> {
         }
         let packages: Vec<String> = workspace_packages(root)?
             .into_iter()
-            .filter(|package| only.iter().any(|part| part == workspace_part(package)))
+            .filter(|package| only.iter().any(|part| part == workspace_part(package)) || (formal && package == topology::BINARY))
             .collect();
-        if !packages.is_empty() {
+        let other: Vec<&String> = packages.iter().filter(|package| package.as_str() != topology::BINARY).collect();
+        if !other.is_empty() {
             let mut args = vec!["test"];
-            for package in &packages {
+            for package in other {
                 args.extend(["--package", package.as_str()]);
             }
+            run_staged(root, "workspace", &args)?;
+        }
+        if packages.iter().any(|package| package == topology::BINARY) {
+            let mut args = vec!["test", "--package", topology::BINARY];
+            cli_partition(&mut args, ordinary, formal);
             run_staged(root, "workspace", &args)?;
         }
         return Ok(());
@@ -567,12 +575,23 @@ fn workspace(root: &Path, only: Option<&[String]>) -> Result<()> {
     run_staged(root, "workspace", &args)
 }
 
+/// The differential module runs separately from the other CLI tests in remote parts;
+/// selecting both partitions retains Cargo's complete suite, including doctests.
+fn cli_partition(args: &mut Vec<&str>, ordinary: bool, formal: bool) {
+    if !ordinary {
+        args.extend(["--test", "integration", "differential::"]);
+    } else if !formal {
+        args.extend(["--", "--skip", "differential::"]);
+    }
+}
+
 /// The feature combinations the workspace stage's unified build does not reach
 /// (`assurance.build.staged-feature-runs`): each workspace package declaring a feature other
 /// than `default` runs its suite alone, once with no features, once with every feature, and
 /// once per feature set its manifest lists under `[package.metadata.contextful]
 /// feature-runs` (`assurance.build.profile-build`). `only` narrows the stage to its named
-/// parts: `packages`, every package but the binary, and `binary-<run>`, one run of the binary.
+/// parts: `packages`, every package but the binary, and `binary-<run>` plus `formal-<run>`
+/// for the binary's ordinary and differential tests under each feature set.
 /// `cargo test -p` resolves the selected package's features without its dependents', so the
 /// store adapter's write suites run with the read face off
 /// (`topology.package.store-write-engine-free`) and the policy package's without `exchange`.
@@ -588,15 +607,18 @@ fn features(root: &Path, only: Option<&[String]>) -> Result<()> {
     for package in &featured {
         let name = &package.name;
         let binary = name == topology::BINARY;
-        let selected = |label: &str| {
-            only.is_none_or(|o| o.iter().any(|p| if binary { p.strip_prefix("binary-") == Some(label) } else { p == "packages" }))
-        };
-        for (_, combination) in package.runs().into_iter().filter(|(label, _)| selected(label)) {
+        for (label, combination) in package.runs() {
+            let ordinary = only.is_none_or(|o| o.iter().any(|p| if binary { p.strip_prefix("binary-") == Some(label.as_str()) } else { p == "packages" }));
+            let formal = binary && only.is_none_or(|o| o.iter().any(|p| p.strip_prefix("formal-") == Some(label.as_str())));
+            if !ordinary && !formal { continue; }
             let shown = combination.join(" ");
             eprintln!("features: {name} {shown}");
+            let mut partition = Vec::new();
+            if binary { cli_partition(&mut partition, ordinary, formal); }
             let status = Command::new("cargo")
                 .args(["test", "-p", name])
                 .args(&combination)
+                .args(&partition)
                 .env("CARGO_TARGET_DIR", &target)
                 .current_dir(root)
                 .status()?;
