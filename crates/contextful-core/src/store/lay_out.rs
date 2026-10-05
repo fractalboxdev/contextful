@@ -189,6 +189,9 @@ pub struct RunManifest {
     #[serde(default)]
     pub parts: Vec<PartEntry>,
     pub committed_at: Instant,
+    /// A complete empty replacement frontier, preserved with a no-part manifest.
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub replace_frontier: bool,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub pipeline_id: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
