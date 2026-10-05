@@ -17,7 +17,7 @@ fn refuse(e: contextful_core::connector::ConnectorError) -> Failure {
 /// so the probe's host and transport meet the rules of every credentialed request
 /// (`connector.declare-capability.probe-transport`); a `401`, `403`, `429` or `5xx`
 /// classifies as any vendor answer does.
-pub fn probe(allow: &Allowlist, probe: &ScopeProbe, credential: (&str, &Hydrated)) -> Result<Vec<String>, Failure> {
+pub fn probe(allow: &Allowlist, probe: &ScopeProbe, credential: (&str, Hydrated)) -> Result<Vec<String>, Failure> {
     // The grant rides a header, so the identity body is never read.
     let client = Client::new(allow.clone(), probe.endpoint.clone()).without_body();
     probe_through(&client, allow, probe, credential)
@@ -26,10 +26,10 @@ pub fn probe(allow: &Allowlist, probe: &ScopeProbe, credential: (&str, &Hydrated
 /// [`probe`] through `client`, the mediated client a source's own requests take, so the
 /// probe passes the same hook and reservation as a page request
 /// (`connector.meter.reservation-point`). `client`'s origin is the probe endpoint.
-pub fn probe_through(client: &Client, allow: &Allowlist, probe: &ScopeProbe, credential: (&str, &Hydrated)) -> Result<Vec<String>, Failure> {
+pub fn probe_through(client: &Client, allow: &Allowlist, probe: &ScopeProbe, credential: (&str, Hydrated)) -> Result<Vec<String>, Failure> {
     let (name, value) = credential;
     probe.check_transport(allow, name).map_err(refuse)?;
-    let headers = [(name.to_string(), HeaderValue::Sensitive(value.clone()))];
+    let headers = [(name.to_string(), HeaderValue::Sensitive(std::sync::Arc::new(value)))];
     let resp = client.send("GET", &probe.endpoint, &headers, None)?;
     if !(200..300).contains(&resp.status) {
         let retry_after = resp.header("retry-after").and_then(|v| v.trim().parse().ok());
@@ -49,7 +49,7 @@ pub fn probe_through(client: &Client, allow: &Allowlist, probe: &ScopeProbe, cre
 pub fn open_session<T>(
     allow: &Allowlist,
     declared: Option<&ScopeProbe>,
-    credential: (&str, &Hydrated),
+    credential: (&str, Hydrated),
     open: impl FnOnce() -> Result<T, Failure>,
 ) -> Result<T, Failure> {
     if let Some(p) = declared {

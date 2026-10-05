@@ -10,7 +10,7 @@ use crate::run::RunError;
 use serde_json::{Map, Value};
 
 /// The configuration keys a component source reads (`run.declare.config-key`).
-pub const KEYS: [&str; 6] = ["sha256", "allow", "attach", "guest", "memory_bytes", "require_pin"];
+pub const KEYS: [&str; 7] = ["sha256", "allow", "attach", "guest", "memory_bytes", "manifest", "require_pin"];
 
 /// Why a component declaration refuses: the pipeline's rules, or the connector's.
 #[derive(Debug, Clone, PartialEq, Eq, thiserror::Error)]
@@ -45,6 +45,8 @@ pub struct ComponentSource {
     pub guest: Option<Value>,
     /// The per-connector linear-memory override, held to its ceiling where the host loads.
     pub memory_bytes: Option<u64>,
+    /// The project-relative capability manifest checked before an artifact loads.
+    pub manifest: Option<String>,
     /// The manifest flag of `connector.package.pin-requirement`.
     pub require_pin: bool,
 }
@@ -112,12 +114,17 @@ impl ComponentSource {
             None => None,
             Some(v) => Some(v.as_u64().ok_or_else(|| invalid("memory_bytes", "a non-negative integer", v))?),
         };
+        let manifest = match cfg.get("manifest") {
+            None => None,
+            Some(Value::String(path)) if !path.is_empty() => Some(path.clone()),
+            Some(other) => return Err(invalid("manifest", "a nonempty path", other)),
+        };
         let require_pin = match cfg.get("require_pin") {
             None => false,
             Some(Value::Bool(b)) => *b,
             Some(other) => return Err(invalid("require_pin", "a boolean", other)),
         };
-        Ok(Some(ComponentSource { artifact, allow, attach, guest, memory_bytes, require_pin }))
+        Ok(Some(ComponentSource { artifact, allow, attach, guest, memory_bytes, manifest, require_pin }))
     }
 
     /// The pin requirement on this artifact under the store-wide policy key `store`, composed

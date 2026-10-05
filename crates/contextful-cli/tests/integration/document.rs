@@ -55,6 +55,22 @@ fn a_document_folder_lands_by_slug_and_a_second_fire_lands_what_changed() {
     assert_eq!(text["rows"], json!([["Keep every receipt."]]));
 }
 
+#[test]
+fn a_complete_empty_file_walk_replaces_seeded_rows() {
+    let dir = project("[[pipeline]]\nid = \"handbook\"\ntables = [{ name = \"documents\", primary_key = [\"slug\", \"ordinal\"], write_mode = \"replace\" }]\n[pipeline.source]\nname = \"file\"\nconfig = { root = \"handbook\" }\n");
+    std::fs::create_dir_all(dir.path().join("handbook")).unwrap();
+    std::fs::write(dir.path().join("seed.toml"), "pipeline = \"seed\"\ntable = \"handbook_documents\"\n[cursor]\nkind = \"snapshot-id\"\n[connector]\nid = \"fixture\"\nversion = \"1\"\ncommand = [\"sh\", \"source.sh\"]\n").unwrap();
+    std::fs::write(dir.path().join("source.sh"), "cat payload.json\n").unwrap();
+    std::fs::write(dir.path().join("payload.json"), json!({ "rows": [{ "slug": "held", "ordinal": 1 }], "cursor": "v1", "more": false }).to_string()).unwrap();
+    ok(&cf(dir.path(), &["run", "start", "--plan", "seed.toml", "--project", "research", "--run-id", "filled", "--site-id", "site-a", "--now", "2031-03-01T00:00:00Z"]));
+    assert_eq!(query(dir.path(), "SELECT slug FROM handbook_documents")["rows"], json!([["held"]]));
+
+    ok(&fire(dir.path(), "empty", "2031-03-01T00:02:00Z"));
+    assert_eq!(query(dir.path(), "SELECT slug FROM handbook_documents")["rows"], json!([]));
+    let marker: Value = serde_json::from_slice(&std::fs::read(dir.path().join(".contextful/context/research/tables/handbook_documents/data/runs/empty/ingest-a/_manifest.json")).unwrap()).unwrap();
+    assert_eq!(marker["replace_frontier"], json!(true));
+}
+
 /// `incremental` beside the `file` source refuses as {{connector.package.component-position}} at validation.
 // spec: connector.source.file-position-owned@0e097207
 #[test]

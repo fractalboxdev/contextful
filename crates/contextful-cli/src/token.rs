@@ -112,8 +112,10 @@ pub enum TokenCmd {
         templates: Vec<String>,
         #[arg(long)]
         max_rows: Option<u64>,
+        /// Optional per-statement duration ceiling in milliseconds for this grant's tables.
         #[arg(long)]
         max_duration_ms: Option<u64>,
+        /// Optional serialized response ceiling in bytes for this grant's tables.
         #[arg(long)]
         max_response_bytes: Option<u64>,
         /// Lifetime in seconds; absent takes the persisted ceiling.

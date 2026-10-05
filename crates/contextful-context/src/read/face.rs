@@ -412,18 +412,24 @@ impl Face {
                     response.blocks.insert("contextful.truncation".into(), json!({ "by": "bytes", "ceiling": bytes, "source": source }));
                 }
             }
-            let mut cut = false;
-            while serde_json::to_vec(&response).expect("the response serializes").len() as u64 > bytes {
-                if response.rows.is_empty() {
+            if serde_json::to_vec(&response).expect("the response serializes").len() as u64 > bytes {
+                if response.rows.pop().is_none() {
                     return Err(ReadError::ReadResponseTooLarge(format!("{bytes} bytes from {source}; the response envelope or first row exceeds the ceiling")).into());
                 }
-                response.rows.pop();
-                cut = true;
                 response.truncated = true;
                 response.blocks.insert("contextful.truncation".into(), json!({ "by": "bytes", "ceiling": bytes, "source": source }));
-            }
-            if cut && response.rows.is_empty() {
-                return Err(ReadError::ReadResponseTooLarge(format!("{bytes} bytes from {source}; the first row exceeds the ceiling")).into());
+                let mut size = serde_json::to_vec(&response).expect("the response serializes").len();
+                while size as u64 > bytes {
+                    let Some(row) = response.rows.pop() else {
+                        return Err(ReadError::ReadResponseTooLarge(format!("{bytes} bytes from {source}; the response envelope or first row exceeds the ceiling")).into());
+                    };
+                    // Compact JSON loses the row's encoded bytes and one separator
+                    // whenever another row remains. The envelope stays unchanged.
+                    size -= serde_json::to_vec(&row).expect("the row serializes").len() + usize::from(!response.rows.is_empty());
+                }
+                if response.rows.is_empty() {
+                    return Err(ReadError::ReadResponseTooLarge(format!("{bytes} bytes from {source}; the first row exceeds the ceiling")).into());
+                }
             }
         }
         if let Some(Value::Object(retrieval)) = response.blocks.get_mut("contextful.retrieval") {
