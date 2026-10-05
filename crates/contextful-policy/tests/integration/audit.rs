@@ -57,6 +57,14 @@ fn log_of(n: u64) -> tempfile::TempDir {
     dir
 }
 
+#[test]
+fn an_audit_append_syncs_its_directories() {
+    let dir = log_of(1);
+    contextful_fs::open_dir_for_sync(dir.path()).unwrap().sync_all().unwrap();
+    contextful_fs::open_dir_for_sync(&dir.path().join("segments")).unwrap().sync_all().unwrap();
+    assert_eq!(verify(dir.path()).unwrap().seq, 1);
+}
+
 fn broken_at(r: Result<impl std::fmt::Debug, AuditError>) -> u64 {
     match r {
         Err(AuditError::AuditChainBroken { index, .. }) => index,

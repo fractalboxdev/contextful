@@ -33,12 +33,33 @@ fn an_absent_malformed_or_foreign_record_is_missing() {
 #[test]
 fn emit_writes_only_under_a_measure_run() {
     let dir = tempfile::tempdir().unwrap();
-    std::env::remove_var(MEASURE_DIR_VAR);
-    assert_eq!(emit("eval-record-probe", 0.0, 1, 0), None, "no measure run collects records");
-    std::env::set_var(MEASURE_DIR_VAR, dir.path());
+    for measure_dir in [None, Some(dir.path())] {
+        let mut child = std::process::Command::new(std::env::current_exe().unwrap());
+        child.args(["--ignored", "--exact", "record::emit_probe_child"]);
+        match measure_dir {
+            Some(path) => {
+                child.env(MEASURE_DIR_VAR, path);
+            }
+            None => {
+                child.env_remove(MEASURE_DIR_VAR);
+            }
+        }
+        let output = child.output().unwrap();
+        let stdout = String::from_utf8_lossy(&output.stdout);
+        assert!(output.status.success() && stdout.contains("1 passed; 0 failed"), "stdout: {stdout}\nstderr: {}", String::from_utf8_lossy(&output.stderr));
+    }
+}
+
+#[test]
+#[ignore = "the parent test runs this case in an isolated process"]
+fn emit_probe_child() {
     let written = emit("eval-record-probe", 3.0, 4, 5);
-    std::env::remove_var(MEASURE_DIR_VAR);
-    assert_eq!(written, Some(path(dir.path(), "eval-record-probe")));
-    let r = read(dir.path(), "eval-record-probe").unwrap();
-    assert_eq!((r.value, r.n, r.seed), (3.0, 4, 5));
+    if let Some(dir) = std::env::var_os(MEASURE_DIR_VAR) {
+        let dir = std::path::PathBuf::from(dir);
+        assert_eq!(written, Some(path(&dir, "eval-record-probe")));
+        let r = read(&dir, "eval-record-probe").unwrap();
+        assert_eq!((r.value, r.n, r.seed), (3.0, 4, 5));
+    } else {
+        assert_eq!(written, None, "no measure run collects records");
+    }
 }

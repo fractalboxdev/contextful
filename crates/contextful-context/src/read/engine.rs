@@ -213,6 +213,7 @@ impl SqlEngine {
         let engine = SqlEngine::connect()?;
         let conn = &engine.conn;
         if let Some(key) = parquet_key {
+            crate::ledger::disable_spilling(conn)?;
             use base64::Engine;
             let value = base64::engine::general_purpose::STANDARD.encode(key);
             conn.execute_batch(&format!(

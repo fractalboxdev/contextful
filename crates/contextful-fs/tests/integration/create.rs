@@ -1,7 +1,7 @@
 //! Exclusive create: one winner, an untouched loser, no staging file left behind, on every
 //! backend the primitive chooses between.
 
-use contextful_fs::{create_exclusive, create_exclusive_locked, create_new, tmp_sibling};
+use contextful_fs::{create_exclusive, create_exclusive_locked, create_new, names_file, open_dir_for_sync, tmp_sibling};
 use std::path::{Path, PathBuf};
 use std::sync::{Arc, Barrier};
 
@@ -94,6 +94,45 @@ fn create_new_stages_and_publishes_bytes() {
     assert!(!create_new(&path, b"node-2\n").unwrap());
     assert_eq!(std::fs::read(&path).unwrap(), b"node-1\n");
     assert_eq!(entries(dir.path()), ["node-id"]);
+}
+
+#[test]
+fn a_renamed_open_file_does_not_identify_its_replacement() {
+    let dir = tempfile::tempdir().unwrap();
+    let path = dir.path().join("commit.lock");
+    let moved = dir.path().join("old.lock");
+    std::fs::write(&path, b"held").unwrap();
+    let held = std::fs::File::open(&path).unwrap();
+    assert!(names_file(&path, &held).unwrap());
+    std::fs::rename(&path, &moved).unwrap();
+    assert!(!names_file(&path, &held).unwrap());
+    std::fs::write(&path, b"replacement").unwrap();
+    assert!(!names_file(&path, &held).unwrap());
+    assert_eq!(std::fs::read(&path).unwrap(), b"replacement");
+}
+
+#[test]
+fn an_open_directory_handle_syncs_its_entries() {
+    let dir = tempfile::tempdir().unwrap();
+    std::fs::write(dir.path().join("entry"), b"durable").unwrap();
+    open_dir_for_sync(dir.path()).unwrap().sync_all().unwrap();
+}
+
+#[test]
+fn open_handles_keep_their_identity_across_rename_and_path_reuse() {
+    let dir = tempfile::tempdir().unwrap();
+    let path = dir.path().join("held.lock");
+    std::fs::write(&path, b"held").unwrap();
+    let held = std::fs::File::open(&path).unwrap();
+    let identity = contextful_fs::file_identity(&held).unwrap();
+    let again = std::fs::File::open(&path).unwrap();
+    assert_eq!(identity, contextful_fs::file_identity(&again).unwrap());
+    std::fs::rename(&path, dir.path().join("old.lock")).unwrap();
+    std::fs::write(&path, b"replacement").unwrap();
+    let replacement = std::fs::File::open(&path).unwrap();
+    assert_eq!(identity, contextful_fs::file_identity(&held).unwrap());
+    assert_ne!(identity, contextful_fs::file_identity(&replacement).unwrap());
+    assert!(!names_file(&path, &held).unwrap());
 }
 
 #[test]

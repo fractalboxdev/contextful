@@ -444,6 +444,11 @@ pub struct FileLock {
 }
 
 impl FileLock {
+    /// Whether the lock path still names this holder's open file.
+    pub fn names_file(&self) -> Result<bool> {
+        names_file(&self.path, &self.file)
+    }
+
     /// Take the lock, or `None` while a live holder has it.
     pub fn try_acquire(path: &Path) -> Result<Option<FileLock>> {
         loop {
@@ -495,25 +500,7 @@ impl Drop for FileLock {
 
 /// Whether `path` still names the file `file` opened.
 fn names_file(path: &Path, file: &fs::File) -> Result<bool> {
-    let at_path = match fs::metadata(path) {
-        Ok(m) => m,
-        Err(e) if e.kind() == std::io::ErrorKind::NotFound => return Ok(false),
-        Err(e) => return Err(ContextError::Io { path: path.to_path_buf(), source: e }),
-    };
-    let held = file.metadata().at(path)?;
-    Ok(same_file(&at_path, &held))
-}
-
-#[cfg(unix)]
-fn same_file(a: &fs::Metadata, b: &fs::Metadata) -> bool {
-    use std::os::unix::fs::MetadataExt;
-    a.dev() == b.dev() && a.ino() == b.ino()
-}
-
-/// A platform without inode identity removes no open file, so the path names the held one.
-#[cfg(not(unix))]
-fn same_file(_: &fs::Metadata, _: &fs::Metadata) -> bool {
-    true
+    contextful_fs::names_file(path, file).at(path)
 }
 
 /// The store-root directory holding landed bodies (`store.lay-out.landed-blob`).

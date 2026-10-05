@@ -67,7 +67,7 @@ fn write_synced(path: &Path, bytes: &[u8]) -> Result<()> {
         f.write_all(bytes)?;
         f.sync_all()?;
         std::fs::rename(&tmp, path)?;
-        std::fs::File::open(path.parent().unwrap_or(Path::new(".")))?.sync_all()
+        contextful_fs::open_dir_for_sync(path.parent().unwrap_or(Path::new(".")))?.sync_all()
     })();
     if written.is_err() {
         let _ = std::fs::remove_file(&tmp);
@@ -112,10 +112,22 @@ pub fn read_for_store(store: &Store, path: &Path) -> Result<Vec<(String, Request
     }
 }
 
+/// Decoded rows stay in RAM; memory exhaustion refuses instead of spilling to disk.
+#[cfg(feature = "read")]
+pub(crate) fn disable_spilling(conn: &duckdb::Connection) -> std::result::Result<(), crate::read::ReadFault> {
+    let fail = |e: duckdb::Error| crate::read::ReadFault::Engine(e.to_string());
+    let directory: String = conn.query_row("SELECT current_setting('temp_directory')", [], |row| row.get(0)).map_err(fail)?;
+    if !directory.is_empty() {
+        conn.execute_batch("SET temp_directory = ''").map_err(fail)?;
+    }
+    Ok(())
+}
+
 /// Materialize decoded ledger rows in a DuckDB temporary table without a plaintext file.
 #[cfg(feature = "read")]
 pub fn register_memory(conn: &duckdb::Connection, name: &str, rows: &[(String, RequestRecord)]) -> std::result::Result<(), crate::read::ReadFault> {
     use contextful_core::store::relation::ident;
+    disable_spilling(conn)?;
     let fail = |e: duckdb::Error| crate::read::ReadFault::Engine(e.to_string());
     conn.execute_batch(&format!(
         "CREATE OR REPLACE TEMP TABLE {} (run_id VARCHAR, batch_seq INTEGER, request_id VARCHAR, vendor_request_id VARCHAR, connector VARCHAR, method VARCHAR, url_host VARCHAR, status_code INTEGER, started_at TIMESTAMP_NS, duration_ms BIGINT)",
