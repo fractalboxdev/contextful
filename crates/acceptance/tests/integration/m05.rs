@@ -501,7 +501,7 @@ fn m05_http_face() {
         }
         assert_eq!(status, 401, "{head}");
         assert!(started.elapsed() < std::time::Duration::from_secs(5), "both parked requests never occupied the listener");
-        std::thread::yield_now();
+        std::thread::sleep(std::time::Duration::from_millis(10));
     }
     let survivor_auth = format!("Authorization: DPoP {}\r\nDPoP: {}\r\n", research.0, research.1.proof(&survivor.to_string()));
     let timed_auth = format!("Authorization: DPoP {}\r\nDPoP: {}\r\n", research.0, research.1.proof(&timed.to_string()));
