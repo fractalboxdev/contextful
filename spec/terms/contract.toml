@@ -52,10 +52,10 @@ titles = ["Source-faithful visibility", "Aggregate disclosure", "Audit, erasure 
 gloss = "Mirrored source permissions and their freshness; aggregate release under a disclosure budget; the audit chain, erasure and the receipt."
 
 [contract.surface]
-title = "Operator and visitor surfaces"
+title = "Operator surfaces"
 files = ["spec/70-control-plane.md", "spec/71-console.md"]
-titles = ["Cadence, dispatch and the operator plane", "The analyst console"]
-gloss = "The schedule grammar, reconciler and bounded dispatch, the control document; the analyst console, grounded answers and published answers."
+titles = ["Cadence, dispatch and the operator plane", "The operator console"]
+gloss = "The schedule grammar, reconciler and bounded dispatch, the control document; the operator console, grounded answers and published answers."
 
 [contract.assurance]
 title = "Assurance"
