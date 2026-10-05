@@ -118,12 +118,44 @@ fn an_image_source_lands_header_metadata_without_decoding_pixels() {
 
 #[test]
 fn an_image_source_refuses_a_bad_header_with_its_path() {
-    let dir = project("[[pipeline]]\nid = \"photos\"\ntables = [\"images\"]\n[pipeline.source]\nname = \"image\"\nconfig = { root = \"photos\" }\n");
-    std::fs::create_dir_all(dir.path().join("photos")).unwrap();
-    std::fs::write(dir.path().join("photos/bad.png"), b"not an image").unwrap();
-    let out = fire(dir.path(), "photos", "run-1", "2030-01-01T00:00:00Z");
-    let error = stderr(&out);
-    assert!(!out.status.success() && error.contains("ConnectorImageHeaderUnreadable") && error.contains("bad.png"), "{error}");
+    let png = b"\x89PNG\r\n\x1a\n\x00\x00\x00\x0dIHDR\x00\x00\x00\x02\x00\x00\x00\x03\x08\x02\x00\x00\x00\x36\x88\x49\xd6";
+    let jpeg = b"\xff\xd8\xff\xe0\x00\x04\x00\x00\xff\xc0\x00\x11\x08\x00\x03\x00\x02\x03\x01\x11\x00\x02\x11\x00\x03\x11\x00\xff\xd9";
+    let mut cases: Vec<(&str, Vec<u8>)> = vec![
+        ("corrupt.png", b"not an image".to_vec()),
+        ("truncated.png", png[..24].to_vec()),
+        ("corrupt.jpg", b"not an image".to_vec()),
+        ("truncated.jpeg", jpeg[..11].to_vec()),
+    ];
+    for (name, index, value) in [
+        ("invalid-depth.png", 24, 3),
+        ("invalid-color.png", 25, 1),
+        ("invalid-compression.png", 26, 1),
+        ("invalid-filter.png", 27, 1),
+        ("invalid-interlace.png", 28, 2),
+    ] {
+        let mut bytes = png.to_vec();
+        bytes[index] = value;
+        let mut crc = !0u32;
+        for byte in &bytes[12..29] {
+            crc ^= u32::from(*byte);
+            for _ in 0..8 {
+                crc = (crc >> 1) ^ if crc & 1 == 1 { 0xedb8_8320 } else { 0 };
+            }
+        }
+        bytes[29..33].copy_from_slice(&(!crc).to_be_bytes());
+        cases.push((name, bytes));
+    }
+    let mut invalid_precision = jpeg.to_vec();
+    invalid_precision[12] = 7;
+    cases.push(("invalid-precision.jpg", invalid_precision));
+    for (name, bytes) in cases {
+        let dir = project("[[pipeline]]\nid = \"photos\"\ntables = [\"images\"]\n[pipeline.source]\nname = \"image\"\nconfig = { root = \"photos\" }\n");
+        std::fs::create_dir_all(dir.path().join("photos")).unwrap();
+        std::fs::write(dir.path().join("photos").join(name), bytes).unwrap();
+        let out = fire(dir.path(), "photos", "run-1", "2030-01-01T00:00:00Z");
+        let error = stderr(&out);
+        assert!(!out.status.success() && error.contains("ConnectorImageHeaderUnreadable") && error.contains(name), "{name}: {error}");
+    }
 }
 
 #[test]
@@ -137,31 +169,6 @@ fn an_image_source_reads_jpeg_dimensions_without_decoding_pixels() {
         "query", "--json", "--project", "research", "SELECT path, width, height FROM photos_images",
     ]))).unwrap();
     assert_eq!(out["rows"], serde_json::json!([["j.jpg", "2", "3"]]));
-}
-
-#[test]
-fn an_image_source_refuses_a_bad_jpeg_header_with_its_path() {
-    let dir = project("[[pipeline]]\nid = \"photos\"\ntables = [\"images\"]\n[pipeline.source]\nname = \"image\"\nconfig = { root = \"photos\" }\n");
-    std::fs::create_dir_all(dir.path().join("photos")).unwrap();
-    std::fs::write(dir.path().join("photos/bad.jpg"), b"\xff\xd8\xff\xc0\x00\x03").unwrap();
-    let out = fire(dir.path(), "photos", "run-1", "2030-01-01T00:00:00Z");
-    let error = stderr(&out);
-    assert!(!out.status.success() && error.contains("ConnectorImageHeaderUnreadable") && error.contains("bad.jpg"), "{error}");
-}
-
-#[test]
-fn an_image_source_refuses_truncated_headers_after_dimensions() {
-    for (name, bytes) in [
-        ("short.png", &b"\x89PNG\r\n\x1a\n\x00\x00\x00\x0dIHDR\x00\x00\x00\x02\x00\x00\x00\x03"[..]),
-        ("short.jpg", &b"\xff\xd8\xff\xc0\x00\x11\x08\x00\x03\x00\x02"[..]),
-    ] {
-        let dir = project("[[pipeline]]\nid = \"photos\"\ntables = [\"images\"]\n[pipeline.source]\nname = \"image\"\nconfig = { root = \"photos\" }\n");
-        std::fs::create_dir_all(dir.path().join("photos")).unwrap();
-        std::fs::write(dir.path().join("photos").join(name), bytes).unwrap();
-        let out = fire(dir.path(), "photos", "run-1", "2030-01-01T00:00:00Z");
-        let error = stderr(&out);
-        assert!(!out.status.success() && error.contains("ConnectorImageHeaderUnreadable") && error.contains(name), "{name}: {error}");
-    }
 }
 
 /// Startup reads `contextful.toml` for project config and inline `[[pipeline]]` blocks, then `pipelines/*.toml`
