@@ -240,9 +240,12 @@ pub fn write_logs(store: &Store, model: &str) -> Result<()> {
     let committed = manifests(store, model)?;
 
     let path = dir.join(BUILDS_LOG);
+    let existing = read_log::<BuildEntry>(&path)?;
     let mut derived = build_entries(&committed);
     for attempt in attempts(store, model)? {
         if derived.iter().any(|entry| entry.build_id == attempt.build_id)
+            || (attempt.status.is_none() && existing.iter().any(|entry| entry.build_id == attempt.build_id && matches!(entry.status,
+                contextful_core::pipeline::model::BuildStatus::Published | contextful_core::pipeline::model::BuildStatus::Partial)))
             || (attempt.status.is_none() && attempt_running(store, model, &attempt)?) {
             continue;
         }
@@ -257,7 +260,7 @@ pub fn write_logs(store: &Store, model: &str) -> Result<()> {
             disclosure_digest: attempt.disclosure_digest,
         });
     }
-    let builds = regenerate(&read_log::<BuildEntry>(&path)?, &derived, |e| e.build_id.clone(), |e| e.completed_at);
+    let builds = regenerate(&existing, &derived, |e| e.build_id.clone(), |e| e.completed_at);
     write_log(&path, &builds)?;
 
     let path = dir.join(CONTRACT_HISTORY_LOG);
@@ -748,10 +751,10 @@ mod materialize {
         }
         drop(_schema_lock);
 
-        crate::fold::collect(store, &own, req.completed_at)?;
         if publishes {
             write_logs(store, &spec.id)?;
         }
+        crate::fold::collect(store, &own, req.completed_at)?;
         Ok(Built { model: spec.id.clone(), build_id, rows, watermark, section })
     }
 }

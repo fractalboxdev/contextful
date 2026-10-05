@@ -85,10 +85,10 @@ The provider port, the chain and its precedence, hydration timing, the redacting
 - `first-hit-wins` — Hydration stops at the earliest adapter answering the name, and later adapters are not consulted for that reference during the run.
 - `shadowed-name` — At first hydration, a name answered by the serving adapter and by any adapter behind it raises `SecretNameShadowed`, naming the logical name and both adapters.
   *because a stray environment variable otherwise shadows the manager unnoticed*
-- `hydration-is-just-in-time` — Material enters the process per read, while the request is built. No declaration, journal entry, audit record, run record or log line carries a hydrated value.
+- `hydration-is-just-in-time` — The host asks the resolver for each request while building it; cached material follows {{connector.resolve.cache-ttl}}. No declaration, journal entry, audit record, run record or log line carries a hydrated value.
   *A-connector*
 - `redacting-wrapper` — Every hydrated value, a pure-literal template included, rides a wrapper whose debug and display forms print a fixed sentinel. The bytes are revealed only where the host writes the request.
-- `wiped-on-drop` — The wrapper zeroes its bytes when dropped, each duplicate and cache entry included. Bytes copied out of a revealed value, into a request header or a transport buffer, are outside the wrapper.
+- `wiped-on-drop` — A hydrated wrapper has no `Clone`; shared owners reference one buffer, which zeroes when its last owner drops, including an expired cache entry. Request and transport copies are outside the wrapper.
   *because a freed credential otherwise stays readable until the allocator reuses its memory*
 - `resolver-per-source` — One resolver with its own cache is built per source, and concurrent first hydrations of one name collapse under a single-flight gate.
 - `cache-ttl` — A cache entry lives at most 300 s.
@@ -215,6 +215,8 @@ Host mediation of an outbound request: the transport port, the bound host, addre
   *A-connector*
 - `default-attachment` — With no further declaration the host writes `Authorization: Bearer <value>` from the single bound credential.
 - `attach-block` — An `[attach]` block maps a header name to a value template. The host hydrates it onto the permitted request, overriding the guest's header of that name.
+- `per-request-hydration` — A guest session stores hydration handles and plain static headers; the host calls each handle for every permitted request and releases its hydrated header when that request completes.
+  *because session-held credential material outlives the request and delays rotation*
 - `literal-attach-value` — An attach value embedding no reference raises `SecretLiteralAttachValue`.
   *because a constant header belongs in the guest's request construction*
 - `redirect-pinning` — Every source, credential-bearing or not, follows a hop only when it keeps the configured host and port on the same or a stronger transport; cleartext to TLS at that host and port is followed.
