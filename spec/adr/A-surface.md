@@ -46,7 +46,7 @@ Consequences: an injected instruction finds no write tool to reach for.
 
 ## Query and Admin use separate verified page grants
 
-The hosted operator console gives Query and Admin separate page grants and API namespaces. Cloudflare Access is the default gate. Without it, Amazon Cognito manages named operator accounts and password login; the console holds a first-party session and maps Cognito groups to page grants. The console verifies each page and API request. Query admits the read subset; Admin sends edit or apply through a server-held control capability. The deployment probe requests each path anonymously; a hostname-level probe misses an exposed path.
+The hosted operator console gives Query and Admin separate page grants and API namespaces. Cloudflare Access is the default gate, with a distinct application audience per page. Without it, Amazon Cognito manages named operator accounts and password login; the console holds a first-party session and maps Cognito groups to page grants. The console verifies each page and API request. Query admits the read subset; Admin sends edit or apply through a server-held control capability. The deployment probe requests each path anonymously; a hostname-level probe misses an exposed path.
 
 | Option | Lost on | Cost |
 | --- | --- | --- |
@@ -56,6 +56,30 @@ The hosted operator console gives Query and Admin separate page grants and API n
 | Cloudflare Access only | Deployment portability | An organization without Cloudflare cannot host the console. |
 
 Consequences: page admission and engine capability checks both remain necessary; local shells use their own perimeter.
+
+## The console lives beside the engine and uses its public read face
+
+`apps/console` contains the TypeScript server and Query and Admin pages; `packages/client` contains the four client shapes. The console calls stores through the public HTTP face and the operator's model endpoint. It owns presentation and turn orchestration; engine enforcement stays in the engine. The TypeScript surfaces gate builds both packages, and milestone acceptance drives the built engine beside the console server.
+
+| Option | Lost on | Cost |
+| --- | --- | --- |
+| Separate TypeScript console and client library *(chosen)* | — | Two runtimes need a shared protocol and coordinated release. |
+| Embed the console in the Rust CLI | Browser delivery | The engine binary takes on page assets and model-facing session code. |
+| Let the browser call the engine directly | Credential custody | A page holds store credentials and bypasses the server's turn choices. |
+
+Consequences: Query and Admin use the same store registry while retaining separate page grants; no console path implements a second read policy.
+
+## Turn compatibility preserves the stored transcript and reader scope
+
+An explicit process owner flag needs the store's owner credential; it does not turn an empty credential into ownership. A store overlay reaches synthesis text alone, so planner tool selection does not inherit a store-authored persona. Distillation records the observed subject and recall resolves it through entity matching. A client with an older component union renders an unknown view as a table. One operator's credential defines an answer; a room-intersection principal is absent.
+
+| Option | Lost on | Cost |
+| --- | --- | --- |
+| Preserve subjects, scope and older views at their respective readers *(chosen)* | — | Recall does entity work, and a newer widget loses fidelity on an older client. |
+| Normalize subjects and components when writing | Reversibility | Old transcripts and learnings cannot recover their original labels or view shapes. |
+| Give the planner the overlay and room audience | Capability scope | Store-authored text and a composite principal can widen the turn without one accountable reader. |
+
+Consequences: a transcript remains readable across client releases; shared posting remains an operator act.
 
 ## A store-driven job runs host-registered code per row over a pinned input
 
