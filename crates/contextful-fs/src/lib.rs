@@ -89,7 +89,7 @@ pub fn names_file(path: &Path, file: &fs::File) -> io::Result<bool> {
             Err(e) if e.kind() == ErrorKind::NotFound => return Ok(false),
             Err(e) => return Err(e),
         };
-        return Ok(unix_identity(&named) == file_identity(file)?);
+        Ok(unix_identity(&named) == file_identity(file)?)
     }
     #[cfg(windows)]
     {
@@ -98,7 +98,7 @@ pub fn names_file(path: &Path, file: &fs::File) -> io::Result<bool> {
             Err(e) if e.kind() == ErrorKind::NotFound => return Ok(false),
             Err(e) => return Err(e),
         };
-        return Ok(file_identity(&named)? == file_identity(file)?);
+        Ok(file_identity(&named)? == file_identity(file)?)
     }
     #[cfg(not(any(unix, windows)))]
     {
