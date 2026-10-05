@@ -6,7 +6,7 @@ contract: read
 
 ## What it is for
 
-This contract covers SQL, templates, ranked retrieval and memory. It fixes named relations, statement admission, candidate ranking and the answer envelope. Reads write no rows. Memory uses the run path and table enforcement.
+SQL, templates, ranked retrieval and memory share named relations, statement admission, ranking and the answer envelope. Reads write no rows. Memory uses the run path and table enforcement.
 
 ## How it works
 
