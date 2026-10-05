@@ -145,16 +145,19 @@ fn freed_zeroed(h: Hydrated) -> bool {
     }
 }
 
-/// The wrapper zeroes its bytes when dropped, each duplicate and cache entry included.
-// spec: connector.resolve.wiped-on-drop@87f553d1
+/// The wrapper zeroes its bytes when dropped.
+// spec: connector.resolve.wiped-on-drop@e8f5671c
 #[test]
 fn a_hydrated_value_zeroes_its_bytes_on_drop() {
+    trait AmbiguousIfClone<A> {}
+    impl<T: ?Sized> AmbiguousIfClone<()> for T {}
+    impl<T: ?Sized + Clone> AmbiguousIfClone<u8> for T {}
+    fn cannot_clone<T: AmbiguousIfClone<A>, A>() {}
+    cannot_clone::<Hydrated, _>();
     // The wipe is the derived one: `Zeroize` exists only through the derive or a full
     // hand-written wipe, never through the `ZeroizeOnDrop` marker alone.
     fn wipes<T: Zeroize + ZeroizeOnDrop>(_: &T) {}
     let h = Hydrated::new("lease-9f8e7d6c5b4a3921");
     wipes(&h);
-    let copy = h.clone();
     assert!(freed_zeroed(h), "the original held its bytes after drop");
-    assert!(freed_zeroed(copy), "the duplicate held its bytes after drop");
 }

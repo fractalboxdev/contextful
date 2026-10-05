@@ -24,6 +24,7 @@ pub fn run(id: &str, committed: &str, parts: usize) -> RunManifest {
         node_id: "ingest-a".into(),
         parts: (0..parts).map(|i| PartEntry { name: format!("part-{i:05}.parquet"), key_version: 0 }).collect(),
         committed_at: at(committed),
+        replace_frontier: false,
         pipeline_id: None,
         cursor: None,
         fence: None,
