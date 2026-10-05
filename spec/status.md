@@ -8,14 +8,14 @@ An unpinned clause is `committed`; a pinned one is `performed` when its test res
 | `assurance` | 2 | 15 | 227 | 59 | 22 | 12 | 135 | 0 | 135 |
 | `authority` | 2 | 16 | 267 | 77 | 27 | 10 | 204 | 0 | 204 |
 | `connector` | 2 | 14 | 345 | 90 | 21 | 15 | 218 | 0 | 207 |
-| `corpus` | 1 | 10 | 77 | 37 | 7 | 0 | 38 | 0 | 38 |
+| `corpus` | 1 | 10 | 77 | 37 | 7 | 0 | 41 | 0 | 38 |
 | `disclosure` | 3 | 16 | 122 | 64 | 13 | 7 | 54 | 0 | 54 |
 | `read` | 2 | 15 | 179 | 29 | 22 | 21 | 163 | 0 | 163 |
 | `run` | 3 | 26 | 373 | 98 | 36 | 37 | 261 | 0 | 261 |
 | `store` | 1 | 17 | 237 | 55 | 13 | 20 | 200 | 0 | 200 |
 | `surface` | 2 | 20 | 106 | 49 | 22 | 0 | 51 | 0 | 51 |
 | `topology` | 1 | 6 | 70 | 24 | 5 | 5 | 38 | 0 | 38 |
-| **total** | 19 | 155 | 2003 | 582 | 188 | 127 | 1362 | 0 | |
+| **total** | 19 | 155 | 2003 | 582 | 188 | 127 | 1365 | 0 | |
 
 Decision records: 18.
 
@@ -624,6 +624,9 @@ Unscheduled operations: 10.
 | `corpus.guide.file` | `tools/spec/tests/integration/readable.rs::a_guide_over_its_length_or_off_its_title_is_a_guide_finding` | performed |
 | `corpus.guide.non-normative` | `tools/spec/tests/integration/readable.rs::a_guide_naming_an_error_or_holding_a_clause_item_is_a_guide_finding` | performed |
 | `corpus.rationale.contract-adr` | `spec/pins.toml` | performed |
+| `corpus.reference.dangling` | `spec/pins.toml`, `tools/spec/tests/integration/readable.rs::a_guide_pointer_naming_no_clause_dangles` | performed |
+| `corpus.reference.no-literature` | `spec/pins.toml`, `tools/spec/tests/integration/readable.rs::an_autolink_to_an_external_document_is_an_external_link_finding` | performed |
+| `corpus.reference.pointer` | `spec/pins.toml`, `tools/spec/tests/integration/readable.rs::a_pointer_is_recorded_as_a_lock_edge` | performed |
 | `corpus.render.card` | `tools/spec/tests/integration/readable.rs::state_writes_a_card_per_contract_and_a_stale_card_is_a_render_finding` | performed |
 | `corpus.state.acceptance` | `spec/pins.toml` | performed |
 | `corpus.state.acceptance-first` | `spec/pins.toml` | performed |

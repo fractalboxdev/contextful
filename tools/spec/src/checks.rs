@@ -38,7 +38,7 @@ static UNSETTLED: LazyLock<Regex> = LazyLock::new(|| {
 static SCENARIO: LazyLock<Regex> = LazyLock::new(|| Regex::new(r"^WHEN .+, THEN .+$").unwrap());
 static ISO_DATE: LazyLock<Regex> = LazyLock::new(|| Regex::new(r"\b[0-9]{4}-[0-9]{2}-[0-9]{2}\b").unwrap());
 static BARE_ISSUE: LazyLock<Regex> = LazyLock::new(|| Regex::new(r"(^|\s)#[0-9]+\b|/pull/[0-9]+").unwrap());
-static EXT_LINK: LazyLock<Regex> = LazyLock::new(|| Regex::new(r"\]\((https?://|[^)]*references/)").unwrap());
+static EXT_LINK: LazyLock<Regex> = LazyLock::new(|| Regex::new(r"\]\((https?://|[^)]*references/)|<https?://[^>]+>").unwrap());
 
 fn f(check: &str, file: &str, line: usize, code: &str, msg: String) -> Finding {
     Finding::new(check, file, line, code, msg)
