@@ -11,7 +11,7 @@ use arrow_array::builder::{
 };
 use arrow_array::{ArrayRef, ListArray, MapArray, NullArray, RecordBatch, StringArray, StructArray};
 use arrow_buffer::{NullBuffer, OffsetBuffer};
-use contextful_core::store::declare::TableDecl;
+use contextful_core::store::declare::{TableDecl, WriteMode};
 use contextful_core::store::lay_out::{is_path_segment, part_name, NodeId, PartEntry, RunManifest, MANIFEST_FILE};
 use contextful_core::store::reconcile::{decode_binary, supertype, Column, ColumnType, FloatItem, Schema, LIST_ITEM, VECTOR_ITEM};
 use contextful_core::store::reserve::{
@@ -51,6 +51,8 @@ pub struct Position {
     pub fence: Option<u64>,
     /// The run commits through its node's commit log, which makes it readable.
     pub logged: bool,
+    /// A complete zero-row `replace` run clears the prior read frontier.
+    pub replace_frontier: bool,
 }
 
 /// The type a JSON value carries on its own.
@@ -395,7 +397,7 @@ fn replay(
     if committed.logged {
         return Err(conflict("as a logged run, which commits through its commit-log entry"));
     }
-    let held = Position { pipeline_id: committed.pipeline_id.clone(), cursor: committed.cursor.clone(), fence: committed.fence, logged: committed.logged };
+    let held = Position { pipeline_id: committed.pipeline_id.clone(), cursor: committed.cursor.clone(), fence: committed.fence, logged: committed.logged, replace_frontier: committed.replace_frontier };
     if &held != position {
         return Err(conflict("at another position"));
     }
@@ -604,7 +606,13 @@ fn reconcile(
     let types = column_types(store, decl, batches)?;
 
     // Reconcile: the producer's columns, held to the namespace, merged into the stored shape.
-    let arriving = producer_columns(&rows_schema(all_rows(), &types)?)?;
+    let mut source_schema = rows_schema(all_rows(), &types)?;
+    if source_schema.columns.is_empty() {
+        let mut declared = decl.column_types().into_iter().collect::<Vec<_>>();
+        declared.sort_by(|a, b| a.0.cmp(&b.0));
+        source_schema.columns.extend(declared.into_iter().map(|(name, ty)| Column::new(name, ty, true)));
+    }
+    let arriving = producer_columns(&source_schema)?;
     // An optional column's value is held to its vocabulary whatever JSON type it arrives
     // as: a number reads as its text, so `{"_modality": 7}` refuses like `"7"` would.
     for c in arriving.columns.iter().filter(|c| c.name.starts_with('_')) {
@@ -738,12 +746,16 @@ fn create_manifest(
     precommit: &dyn Fn() -> Result<()>,
     commit_point: &dyn Fn(&RunManifest) -> Result<()>,
 ) -> Result<Option<RunManifest>> {
+    if position.replace_frontier && (!parts.is_empty() || decl.write_mode() != WriteMode::Replace) {
+        return Err(ContextError::Invalid(format!("table `{}`: an empty replacement frontier requires a no-part replacing run", decl.name)));
+    }
     let manifest = RunManifest {
         run_id: ctx.injection.run_id.clone(),
         table: decl.name.clone(),
         node_id: ctx.node.to_string(),
         parts,
         committed_at: ctx.committed_at,
+        replace_frontier: position.replace_frontier,
         pipeline_id: position.pipeline_id.clone(),
         cursor: position.cursor.clone(),
         fence: position.fence,

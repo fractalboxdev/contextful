@@ -119,7 +119,7 @@ impl Provider for LeaseProvider {
         let client = Client::new(Allowlist::parse(&[host]).map_err(config)?, self.endpoint.clone());
         let body = serde_json::json!({ "scope": scope }).to_string();
         let headers = [
-            ("Authorization".to_string(), HeaderValue::Sensitive(Hydrated::new(format!("Bearer {}", mint.reveal())))),
+            ("Authorization".to_string(), HeaderValue::Sensitive(Hydrated::new(format!("Bearer {}", mint.reveal())).into())),
             ("Content-Type".to_string(), HeaderValue::Plain("application/json".into())),
         ];
         self.mints.fetch_add(1, Ordering::SeqCst);
@@ -134,7 +134,7 @@ impl Provider for LeaseProvider {
 }
 
 struct Cached {
-    value: Hydrated,
+    value: Arc<Hydrated>,
     retires_at: Instant,
 }
 
@@ -168,15 +168,16 @@ impl Resolver {
         gates.entry(name.clone()).or_default().clone()
     }
 
-    fn cached(&self, name: &SecretName, now: Instant) -> Option<Hydrated> {
-        let cache = self.cache.lock().unwrap_or_else(|e| e.into_inner());
-        cache.get(name).filter(|c| now < c.retires_at).map(|c| c.value.clone())
+    fn cached(&self, name: &SecretName, now: Instant) -> Option<Arc<Hydrated>> {
+        let mut cache = self.cache.lock().unwrap_or_else(|e| e.into_inner());
+        cache.retain(|_, cached| now < cached.retires_at);
+        cache.get(name).map(|cached| cached.value.clone())
     }
 
     /// Hydrate `name` for a template. The earliest adapter answering wins and the ones
     /// behind it are not consulted again this run; at first hydration an adapter behind
     /// the answering one that also answers refuses as shadowing.
-    pub fn hydrate(&self, name: &SecretName) -> Result<Hydrated, Failure> {
+    pub fn hydrate(&self, name: &SecretName) -> Result<Arc<Hydrated>, Failure> {
         if let Some(v) = self.cached(name, self.clock.now()) {
             return Ok(v);
         }
@@ -200,8 +201,9 @@ impl Resolver {
             }
             self.answered_by.lock().unwrap_or_else(|e| e.into_inner()).insert(name.to_string(), p.name().to_string());
             let retires = retires_at(now, answer.expires_at);
-            self.cache.lock().unwrap_or_else(|e| e.into_inner()).insert(name.clone(), Cached { value: answer.value.clone(), retires_at: retires });
-            return Ok(answer.value);
+            let value = Arc::new(answer.value);
+            self.cache.lock().unwrap_or_else(|e| e.into_inner()).insert(name.clone(), Cached { value: value.clone(), retires_at: retires });
+            return Ok(value);
         }
         Err(config(ConnectorError::SecretUnresolvedReference(format!("no assembled adapter answers `secret://{name}`"))))
     }

@@ -1,0 +1,6 @@
+{
+  "exchanges": [
+    {"method": "GET", "path": "/drive/v3/files/doc-plan/export", "query": {"mimeType": "application/pdf"}, "status": 200, "body_file": "plan-v2.pdf"},
+    {"method": "GET", "path": "/drive/v3/files/doc-plan", "query": {"fields": "version"}, "status": 200, "body": {"version": "6"}}
+  ]
+}
