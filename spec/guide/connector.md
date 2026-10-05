@@ -20,8 +20,16 @@ imports outgoing HTTP, logging and a wall clock and nothing else
 
 A connector resolves from one of four forms ({{connector.package.distribution-form}}). A
 remote artifact carries a content pin ({{connector.package.remote-unpinned}}), the host
-re-hashes the bytes before load ({{connector.package.digest-mismatch}}), and a run keeps the
+re-hashes the bytes ({{connector.package.digest-mismatch}}), reuses compatible host output ({{connector.package.artifact-cache}}), and a run keeps the
 build it was admitted with, so a rebuild reaches only later runs ({{run.own.admission-pin}}).
+HTTPS and OCI artifact requests use a client restricted to the reference authority
+({{connector.package.remote-transport}}).
+An OCI reference selects one component layer ({{connector.package.oci-component-layer}}),
+checks its descriptor ({{connector.package.oci-layer-integrity}}), and takes an optional
+registry bearer from the project's credential binding ({{connector.package.oci-registry-bearer}}).
+Admitted bytes enter a digest-keyed project cache ({{connector.package.remote-cache}});
+damaged cached bytes refuse instead of reaching the component host
+({{connector.package.remote-cache-corrupt}}).
 
 Host access is declared, not requested. The manifest lists hosts, environment names and the
 clock, and the host decides the grant at load ({{connector.declare-capability.declared-grant}});
@@ -35,29 +43,21 @@ widening review ({{connector.widen.narrowing}}); additional access reaches opera
 ({{connector.widen.approval-binding}}). A host witness is a request both matchers can replay
 ({{connector.widen.host-witness}}).
 
-The host implements outbound HTTP itself ({{connector.attach.host-mediation}}), and a guest,
-a built-in source, a model call, a limiter call and an exec step all pass the same point
-({{connector.attach.mediation-covers-every-egress}}). For each hop it checks the
-allowlist, passes one pre-send hook carrying the hop's intent
-({{connector.meter.pre-send-hook}}), an operator hook in front of the quota reservation
-({{connector.meter.hook-composition}}), and only then resolves the host name through the
-transport port ({{connector.attach.resolve-half}}), once, connecting to the address it vetted
-({{connector.attach.resolve-once}}). It refuses internal ranges
-({{connector.attach.private-address}}), writes the credential header
-({{connector.attach.attach-block}}), and refuses to send it in cleartext
-({{connector.attach.cleartext-endpoint}}). Redirects keep the configured host and port and
-never weaken transport ({{connector.attach.redirect-pinning}}).
+Every outbound request uses the host's mediated client
+({{connector.attach.mediation-covers-every-egress}}). Each hop passes the allowlist and
+one pre-send hook ({{connector.meter.pre-send-hook}}) before host resolution
+({{connector.attach.resolve-half}}). The transport connects to the vetted address
+({{connector.attach.resolve-once}}), refuses internal ranges
+({{connector.attach.private-address}}), and attaches credentials only to the admitted
+destination ({{connector.attach.attach-block}}). Redirects stay on the configured origin
+({{connector.attach.redirect-pinning}}).
 
-Credentials live on their own plane ({{connector.reference.credential-plane}}). A
-declaration names `secret://<name>`, often inside a header template
-({{connector.reference.value-template}}). A provider chain answers the name
-({{connector.resolve.provider-chain}}), the first answering adapter wins
-({{connector.resolve.first-hit-wins}}), and a name answered twice refuses rather than letting
-a stray variable shadow the manager ({{connector.resolve.shadowed-name}}). Material enters
-the process per read, never reaching a journal or log
-({{connector.resolve.hydration-is-just-in-time}}). Rotation changes material and
-keeps the name ({{connector.rotate.turnover-preserves-the-name}}), and each entry carries a
-plaintext record of its grants and expiry ({{connector.record.operator-record}}).
+Credentials use `secret://<name>` references ({{connector.reference.credential-plane}}).
+The provider chain answers a name once ({{connector.resolve.first-hit-wins}}) and refuses
+shadowing ({{connector.resolve.shadowed-name}}). Material hydrates per read
+({{connector.resolve.hydration-is-just-in-time}}); rotation keeps the name
+({{connector.rotate.turnover-preserves-the-name}}), and each entry records its grants
+and expiry ({{connector.record.operator-record}}).
 
 Model calls leave through one configured endpoint ({{connector.infer.model-endpoint}}).
 Ingested values travel fenced; the fence lowers injection odds and bounds nothing
@@ -71,26 +71,30 @@ the deployment lists as a leased scope ({{connector.lease.scope-declaration}}). 
 binds a credential, its allowlist holds one exact host, `api.vendor.example`
 ({{connector.attach.bound-host}}).
 
-The name is not on the built-in list ({{connector.package.built-in-registry}}), so the host
-fetches the pinned HTTPS artifact, re-hashes it and instantiates it. At load the allowlist
-shape passes ({{connector.declare-capability.allowlist-shape}}) and the declared quota finds
-its operator binding ({{connector.meter.limiter-binding}}). At session open the scope probe
-reports grants within the expectation, and discovery runs.
-
-The first read asks for that host. The host finds it allowlisted, acquires a permit, then resolves it to a public address. It hydrates the `Authorization`
-template: the lease provider heads the chain and answers for the declared name
-({{connector.lease.head-of-chain}}), holding material plus one expiry in memory
-({{connector.lease.lease}}). The request goes out over TLS, and the vendor's quota
-headers ride the next usage report ({{connector.meter.report}}).
-
-A pipeline names it by artifact path ({{connector.package.component-source}}), and each
-run records its hash ({{connector.package.component-load}}).
+The host re-hashes its pinned artifact, checks the allowlist
+({{connector.declare-capability.allowlist-shape}}) and quota binding
+({{connector.meter.limiter-binding}}), and opens the session. The first read gets a permit,
+resolves a public address, and hydrates the `Authorization` template from a lease
+({{connector.lease.head-of-chain}}, {{connector.lease.lease}}). The vendor's quota headers
+ride the next usage report ({{connector.meter.report}}).
 
 Midway through, the limiter denies a permit. The guest sees an ordinary throttle response
 ({{connector.meter.synthesized-throttle}}), which the run retries under its schedule. Later
 the lease lapses while the mint endpoint is down: the run sends the vendor nothing
 ({{connector.lease.vendor-requests-on-failure}}), and the transient failure goes back to the
 step's schedule.
+
+A Drive pipeline selecting two folders in one Shared Drive declares its roots together
+({{connector.source.drive-root-set}}). It checks both before listing
+({{connector.source.drive-root-validation}}), walks their trees within that boundary
+({{connector.source.drive-root-walk}}), and resolves a file found under both to one row
+({{connector.source.drive-overlap}}). The selection lives in the position
+({{connector.source.drive-selection-position}}). A metadata-only pull records the exact
+byte digest and capture outcome ({{connector.source.drive-metadata-only}},
+{{connector.source.drive-capture-record}}), checking the file version after download
+({{connector.source.drive-version-consistency}}); a complete changed selection records removals
+({{connector.source.drive-selection-removals}}), while a capped listing refuses
+({{connector.source.drive-list-bound}}).
 
 ## Where to look
 

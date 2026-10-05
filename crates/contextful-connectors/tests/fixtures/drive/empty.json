@@ -1,0 +1,12 @@
+{
+  "exchanges": [
+    {
+      "method": "GET", "path": "/drive/v3/files/empty-f", "status": 200,
+      "body": {"id": "empty-f", "name": "Empty", "mimeType": "application/vnd.google-apps.folder", "driveId": "0AExampleDrive"}
+    },
+    {
+      "method": "GET", "path": "/drive/v3/files", "query": {"q": "'empty-f' in parents and trashed = false"}, "status": 200,
+      "body": {"files": []}
+    }
+  ]
+}
