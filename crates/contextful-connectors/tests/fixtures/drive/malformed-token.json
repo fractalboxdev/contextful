@@ -1,0 +1,8 @@
+{
+  "exchanges": [
+    {
+      "method": "GET", "path": "/drive/v3/files", "query": {"q": "'root-f' in parents and trashed = false"}, "status": 200,
+      "body": {"files": [], "nextPageToken": 7}
+    }
+  ]
+}
