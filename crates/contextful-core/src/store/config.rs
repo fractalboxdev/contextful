@@ -3,6 +3,7 @@
 
 use super::sync::SyncConfig;
 use serde::{Deserialize, Serialize};
+use std::collections::BTreeMap;
 
 /// The store root's `config.toml`. An unknown table or key refuses to parse.
 #[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
@@ -30,6 +31,16 @@ pub struct ConnectorPolicy {
     /// artifact this store lands from carries a pin.
     #[serde(default)]
     pub require_pin: bool,
+    /// OCI registry bearer bindings by exact authority (`connector.package.oci-registry-bearer`).
+    #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
+    pub registry: BTreeMap<String, RegistryAuthorization>,
+}
+
+/// One OCI registry's authorization template.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct RegistryAuthorization {
+    pub authorization: String,
 }
 
 /// `[node]`: this machine's configured node id (`store.lay-out.node-id-order`).
