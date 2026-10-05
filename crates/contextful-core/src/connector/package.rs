@@ -5,6 +5,7 @@
 use super::ConnectorError;
 use serde_json::Value;
 use sha2::{Digest as _, Sha256};
+use url::Url;
 
 /// Largest serialized guest configuration table: 64 KiB (`connector.import.config-shape`).
 pub const GUEST_CONFIG_BYTES: usize = 64 * 1024;
@@ -53,6 +54,45 @@ pub enum Form {
     Oci(String),
 }
 
+/// The registry authority, repository and selector of one OCI image manifest.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct OciReference {
+    pub authority: String,
+    pub repository: String,
+    pub selector: String,
+}
+
+impl OciReference {
+    /// Parse `oci://<registry>/<repository>[:<tag>|@sha256:<digest>]`.
+    pub fn parse(raw: &str) -> Result<OciReference, ConnectorError> {
+        let invalid = || ConnectorError::ConnectorOciReferenceInvalid(format!("`{raw}` has an empty or invalid registry, repository or selector"));
+        let url = Url::parse(raw).map_err(|_| invalid())?;
+        if url.scheme() != "oci" || url.host_str().is_none() || !url.username().is_empty() || url.password().is_some() || url.query().is_some() || url.fragment().is_some() {
+            return Err(invalid());
+        }
+        let authority = raw.strip_prefix("oci://").and_then(|s| s.split_once('/')).map(|(a, _)| a).ok_or_else(invalid)?;
+        if authority.is_empty() || authority.contains('@') {
+            return Err(invalid());
+        }
+        let path = url.path().trim_start_matches('/');
+        if path.is_empty() || path.contains('%') || path.contains('\\') || path.split('/').any(|part| part.is_empty() || part == "." || part == "..") {
+            return Err(invalid());
+        }
+        let (repository, selector) = if let Some((repo, digest)) = path.rsplit_once("@sha256:") {
+            if Digest::parse(digest).is_none() { return Err(invalid()); }
+            (repo, format!("sha256:{digest}"))
+        } else if let Some((repo, tag)) = path.rsplit_once(':') {
+            (repo, tag.to_string())
+        } else {
+            (path, "latest".to_string())
+        };
+        if repository.is_empty() || selector.is_empty() || repository.contains('@') {
+            return Err(invalid());
+        }
+        Ok(OciReference { authority: authority.to_string(), repository: repository.to_string(), selector })
+    }
+}
+
 impl Form {
     pub fn is_remote(&self) -> bool {
         matches!(self, Form::Https(_) | Form::Oci(_))
@@ -95,6 +135,7 @@ impl Artifact {
         let form = if lower.starts_with("https://") {
             Form::Https(r.to_string())
         } else if lower.starts_with("oci://") {
+            OciReference::parse(r)?;
             Form::Oci(r.to_string())
         } else if lower.contains("://") {
             return Err(ConnectorError::ConnectorInsecureArtifact(format!("`{r}` names a scheme other than HTTPS or OCI")));
