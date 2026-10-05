@@ -5,6 +5,16 @@
       "method": "GET", "path": "/drive/v3/files/root-f",
       "status": 200,
       "body": {"id": "root-f", "name": "Team", "mimeType": "application/vnd.google-apps.folder", "driveId": "0AExampleDrive"}
+    },
+    {
+      "method": "GET", "path": "/drive/v3/files/fin-f",
+      "status": 200,
+      "body": {"id": "fin-f", "name": "Finance", "mimeType": "application/vnd.google-apps.folder", "driveId": "0AExampleDrive"}
+    },
+    {
+      "method": "GET", "path": "/drive/v3/files/outside-f",
+      "status": 200,
+      "body": {"id": "outside-f", "name": "Outside", "mimeType": "application/vnd.google-apps.folder", "driveId": "0AAnotherDrive"}
     }
   ]
 }

@@ -10,7 +10,7 @@ pub mod limits;
 mod mediate;
 pub mod source;
 
-pub use host::{ComponentHost, Connector, Cursor, CursorKind, DataType, Field, Grant, Hydrate, LogLine, Schema, Session, Target, WORLD};
+pub use host::{CacheStats, ComponentHost, Connector, Cursor, CursorKind, DataType, Field, Grant, Hydrate, LogLine, Schema, Session, Target, WORLD};
 pub use decision::{DecisionModule, DecisionModuleError};
 pub use limits::Limits;
 pub use mediate::{Reservation, Reserve, Traffic};

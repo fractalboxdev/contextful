@@ -57,6 +57,25 @@ fn the_interpreted_target_runs_the_probe_under_its_deadline_and_mediated_client(
     assert!(started.elapsed() < Duration::from_secs(5), "{:?}", started.elapsed());
 }
 
+#[cfg(feature = "pulley")]
+#[test]
+#[ignore = "manual native-versus-Pulley throughput measurement"]
+fn probe_guest_throughput() {
+    for target in [Target::Native, Target::Pulley] {
+        let host = ComponentHost::with_target(target).unwrap();
+        let probe = host.load(PROBE).unwrap();
+        let started = Instant::now();
+        let iterations = 100;
+        for _ in 0..iterations {
+            let mut session = host.open(&probe, loopback(), &Limits::default(), None).unwrap();
+            session.open("items", None).unwrap();
+            while session.next().unwrap().is_some() {}
+        }
+        let elapsed = started.elapsed();
+        eprintln!("{target:?}: {iterations} probe sessions in {elapsed:?}; {:.1} sessions/s", iterations as f64 / elapsed.as_secs_f64());
+    }
+}
+
 /// A host built without the `pulley` feature refuses the interpreted target at construction, naming the feature,
 /// before any component compiles.
 // spec: connector.package.interpreted-target-absent@ae3dba10

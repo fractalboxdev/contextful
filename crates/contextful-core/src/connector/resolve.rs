@@ -5,7 +5,7 @@ use crate::run::Failure;
 use crate::time::Instant;
 
 /// What a provider answers for a name: the material, and an expiry for a lease.
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, PartialEq, Eq)]
 pub struct Answer {
     pub value: Hydrated,
     pub expires_at: Option<Instant>,

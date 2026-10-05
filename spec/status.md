@@ -7,15 +7,15 @@ An unpinned clause is `committed`; a pinned one is `performed` when its test res
 | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
 | `assurance` | 2 | 15 | 227 | 59 | 22 | 12 | 135 | 0 | 135 |
 | `authority` | 2 | 16 | 267 | 77 | 27 | 10 | 204 | 0 | 204 |
-| `connector` | 2 | 14 | 321 | 80 | 21 | 16 | 195 | 0 | 195 |
+| `connector` | 2 | 14 | 345 | 90 | 21 | 15 | 218 | 0 | 207 |
 | `corpus` | 1 | 10 | 77 | 37 | 7 | 0 | 38 | 0 | 38 |
 | `disclosure` | 3 | 16 | 122 | 64 | 13 | 7 | 54 | 0 | 54 |
-| `read` | 2 | 15 | 179 | 29 | 22 | 21 | 163 | 0 | 162 |
-| `run` | 3 | 26 | 372 | 98 | 36 | 37 | 259 | 0 | 257 |
-| `store` | 1 | 17 | 235 | 55 | 13 | 20 | 199 | 0 | 194 |
-| `surface` | 2 | 19 | 86 | 46 | 22 | 5 | 51 | 0 | 50 |
+| `read` | 2 | 15 | 179 | 29 | 22 | 21 | 163 | 0 | 163 |
+| `run` | 3 | 26 | 373 | 98 | 36 | 37 | 261 | 0 | 261 |
+| `store` | 1 | 17 | 237 | 55 | 13 | 20 | 201 | 0 | 200 |
+| `surface` | 2 | 20 | 106 | 49 | 22 | 0 | 51 | 0 | 51 |
 | `topology` | 1 | 6 | 70 | 24 | 5 | 5 | 38 | 0 | 38 |
-| **total** | 19 | 154 | 1956 | 569 | 188 | 133 | 1336 | 0 | |
+| **total** | 19 | 155 | 2003 | 582 | 188 | 127 | 1363 | 0 | |
 
 Decision records: 18.
 
@@ -27,17 +27,17 @@ A milestone reads `closed` when its acceptance test computes `passing` and every
 | --- | --- | --- | --- | --- | --- |
 | 0 — The test-first gate | 2 | 18 | 6 | passing | open |
 | 1 — The authority core | 14 | 236 | 184 | passing | closed |
-| 2 — The store | 9 | 162 | 131 | passing | closed |
-| 3 — The run path | 11 | 206 | 142 | passing | closed |
-| 4 — Ingest | 25 | 468 | 290 | passing | open |
+| 2 — The store | 9 | 164 | 133 | passing | closed |
+| 3 — The run path | 11 | 207 | 144 | passing | closed |
+| 4 — Ingest | 25 | 492 | 313 | passing | open |
 | 5 — The read face under enforcement | 17 | 252 | 192 | passing | open |
 | 6 — Sync and replicas | 8 | 73 | 68 | passing | closed |
 | 7 — Memory | 6 | 37 | 37 | passing | closed |
 | 8 — Accountability | 5 | 60 | 47 | passing | open |
 | 9 — Visibility | 6 | 41 | 3 | open | open |
-| 10 — Cadence and the operator plane | 11 | 67 | 56 | passing | open |
+| 10 — Cadence and the operator plane | 11 | 68 | 56 | passing | open |
 | 11 — The derive tier | 7 | 78 | 55 | passing | open |
-| 12 — The console | 11 | 30 | 0 | absent | open |
+| 12 — The operator console | 12 | 49 | 0 | open | open |
 | 13 — Disclosure | 5 | 21 | 4 | open | open |
 | 14 — Assurance | 7 | 130 | 83 | passing | closed |
 
@@ -392,6 +392,7 @@ Unscheduled operations: 10.
 | `connector.attach.landed-origin` | `crates/contextful-outbound/tests/integration/attach.rs::the_body_that_lands_comes_from_the_configured_origin` | performed |
 | `connector.attach.literal-attach-value` | `crates/contextful-core/tests/integration/connector/component.rs::an_attach_value_embedding_no_reference_is_refused` | performed |
 | `connector.attach.no-material-to-a-guest` | `crates/contextful-wasm/tests/integration/attach.rs::the_host_attaches_the_credential_and_the_guest_sees_only_the_response` | performed |
+| `connector.attach.per-request-hydration` | `crates/contextful-wasm/tests/integration/attach.rs::a_hydrated_header_renders_afresh_for_each_request` | performed |
 | `connector.attach.private-address` | `crates/contextful-core/tests/integration/connector/attach.rs::a_permitted_name_resolving_inward_is_refused` | performed |
 | `connector.attach.redirect-pinning` | `crates/contextful-outbound/tests/integration/attach.rs::a_hop_is_followed_only_within_the_configured_origin` | performed |
 | `connector.attach.referer-off` | `crates/contextful-outbound/tests/integration/attach.rs::no_request_carries_a_referer` | performed |
@@ -465,6 +466,7 @@ Unscheduled operations: 10.
 | `connector.meter.synthesized-throttle` | `crates/contextful-wasm/tests/integration/meter.rs::a_denied_reservation_is_a_synthesized_429_and_an_unreachable_limiter_a_transport_failure` | performed |
 | `connector.meter.unmetered-request` | `crates/contextful-outbound/tests/integration/meter.rs::no_granted_reservation_means_no_request` | performed |
 | `connector.meter.unreadable-answer` | `crates/contextful-outbound/tests/integration/meter.rs::an_unreadable_answer_fails_the_request_before_the_vendor` | performed |
+| `connector.package.artifact-cache` | `crates/contextful-wasm/tests/integration/package.rs::a_cached_artifact_deserializes_then_recompiles_if_altered_or_incompatible` | performed |
 | `connector.package.built-in-registry` | `crates/contextful-cli/tests/integration/drive_absent.rs::a_compiled_out_drive_source_answers_with_the_feature_to_rebuild_with` | performed |
 | `connector.package.call-deadline` | `crates/contextful-wasm/tests/integration/package.rs::a_read_call_is_interrupted_at_its_deadline` | performed |
 | `connector.package.component-grant` | `crates/contextful-cli/tests/integration/component.rs::a_guest_reaches_only_its_allowlist_and_the_host_attaches_its_credential` | performed |
@@ -479,7 +481,16 @@ Unscheduled operations: 10.
 | `connector.package.interpreted-target-absent` | `crates/contextful-wasm/tests/integration/target.rs::a_build_without_the_feature_refuses_the_interpreted_target` | performed |
 | `connector.package.linear-memory` | `crates/contextful-wasm/tests/integration/package.rs::linear_memory_defaults_to_256_mib_and_rises_to_at_most_2_gib` | performed |
 | `connector.package.local-unpinned` | `crates/contextful-cli/tests/integration/component.rs::an_unpinned_local_artifact_under_either_switch_is_refused_with_its_digest` | performed |
+| `connector.package.manifest-host-grant` | `crates/contextful-cli/tests/integration/component.rs::manifest_refuses_pipeline_host_absent_from_declared_capabilities_at_load` | performed |
+| `connector.package.oci-component-layer` | `crates/contextful-cli/src/component.rs::oci_manifest_requires_one_component_layer_with_a_sha256_descriptor` | performed |
+| `connector.package.oci-layer-integrity` | `crates/contextful-cli/src/component.rs::oci_fetch_checks_the_layer_and_caches_only_admitted_bytes` | performed |
+| `connector.package.oci-reference` | `crates/contextful-cli/tests/integration/component.rs::malformed_oci_reference_is_refused_without_a_request` | performed |
+| `connector.package.oci-registry-bearer` | `crates/contextful-cli/src/component.rs::oci_fetch_checks_the_layer_and_caches_only_admitted_bytes` | performed |
 | `connector.package.pin-requirement` | `crates/contextful-core/tests/integration/connector/package.rs::either_switch_requires_a_local_pin` | performed |
+| `connector.package.remote-cache` | `crates/contextful-cli/tests/integration/component.rs::a_pinned_remote_artifact_uses_the_project_cache_before_network` | performed |
+| `connector.package.remote-cache-corrupt` | `crates/contextful-cli/tests/integration/component.rs::a_pinned_remote_artifact_uses_the_project_cache_before_network` | performed |
+| `connector.package.remote-fetch-failure` | `crates/contextful-cli/tests/integration/component.rs::remote_fetch_failure_writes_no_run_row` | performed |
+| `connector.package.remote-transport` | `crates/contextful-cli/src/component.rs::oci_fetch_checks_the_layer_and_caches_only_admitted_bytes` | performed |
 | `connector.package.remote-unpinned` | `crates/contextful-core/tests/integration/connector/package.rs::a_remote_artifact_without_a_64_hex_pin_is_refused_at_parse` | performed |
 | `connector.package.request-body` | `crates/contextful-wasm/tests/integration/package.rs::an_outbound_body_past_8_mib_fails_the_call_before_the_vendor` | performed |
 | `connector.package.session-budget` | `crates/contextful-wasm/tests/integration/package.rs::a_session_logs_within_1_mib_and_holds_8_requests_outbound` | performed |
@@ -513,22 +524,34 @@ Unscheduled operations: 10.
 | `connector.source.document-identity` | `crates/contextful-connectors/tests/integration/file.rs::a_note_crossing_the_threshold_keeps_its_first_rows_identity` | performed |
 | `connector.source.document-slug` | `crates/contextful-connectors/tests/integration/file.rs::a_slug_folds_the_path_and_a_collision_names_both_files` | performed |
 | `connector.source.document-unreadable` | `crates/contextful-decode/tests/integration/pdf.rs::an_encrypted_or_textless_document_refuses_whole_naming_it` | performed |
-| `connector.source.drive-bytes` | `crates/contextful-connectors/tests/integration/drive.rs::every_body_read_lands_once_as_the_blob_its_row_names` | performed |
+| `connector.source.drive-bytes` | `crates/contextful-connectors/tests/integration/drive.rs::metadata_only_records_digests_without_blobs_or_page_content` | performed |
+| `connector.source.drive-capture-record` | `crates/contextful-connectors/tests/integration/drive.rs::metadata_only_records_digests_without_blobs_or_page_content` | performed |
 | `connector.source.drive-export` | `crates/contextful-connectors/tests/integration/drive.rs::docs_sheets_and_slides_export_as_pdf_and_other_files_download` | performed |
 | `connector.source.drive-export-limit` | `crates/contextful-connectors/tests/integration/drive.rs::an_export_over_drives_limit_is_skipped_by_name_and_the_read_succeeds` | performed |
 | `connector.source.drive-file-cap` | `crates/contextful-connectors/tests/integration/drive.rs::a_file_over_the_cap_is_skipped_by_name_and_the_read_succeeds` | performed |
 | `connector.source.drive-fire` | `crates/contextful-cli/tests/integration/drive.rs::a_drive_fire_lands_files_and_pages_then_only_what_changed` | performed |
 | `connector.source.drive-incremental` | `crates/contextful-connectors/tests/integration/drive.rs::a_second_read_relands_the_changed_file_alone_and_tombstones_what_left` | performed |
+| `connector.source.drive-list-bound` | `crates/contextful-connectors/tests/integration/drive.rs::a_selected_root_page_token_at_the_listing_cap_refuses_by_name` | performed |
+| `connector.source.drive-metadata-only` | `crates/contextful-connectors/tests/integration/drive.rs::metadata_only_records_digests_without_blobs_or_page_content` | performed |
+| `connector.source.drive-mode` | `crates/contextful-connectors/tests/integration/drive.rs::unknown_drive_capture_mode_refuses_before_requests` | performed |
 | `connector.source.drive-oauth` | `crates/contextful-connectors/tests/integration/drive.rs::the_access_token_is_minted_from_references_and_lands_in_no_row_or_position` | performed |
 | `connector.source.drive-oauth-shape` | `crates/contextful-connectors/tests/integration/drive.rs::each_oauth_value_is_one_reference` | performed |
 | `connector.source.drive-origin` | `crates/contextful-connectors/tests/integration/drive.rs::a_google_credential_goes_to_google_hosts_alone` | performed |
-| `connector.source.drive-page-grain` | `crates/contextful-connectors/tests/integration/drive.rs::a_doc_a_sheet_and_a_deck_land_as_their_pdf_pages` | performed |
+| `connector.source.drive-overlap` | `crates/contextful-connectors/tests/integration/drive.rs::overlapping_selected_roots_deduplicate_files_and_resolve_paths` | performed |
+| `connector.source.drive-page-grain` | `crates/contextful-connectors/tests/integration/drive.rs::metadata_only_records_digests_without_blobs_or_page_content` | performed |
 | `connector.source.drive-position-owned` | `crates/contextful-cli/tests/integration/drive.rs::an_incremental_field_beside_the_drive_source_refuses_at_validation` | performed |
 | `connector.source.drive-root` | `crates/contextful-connectors/tests/integration/drive.rs::a_root_that_is_no_folder_fails_before_any_listing` | performed |
+| `connector.source.drive-root-reassignment` | `crates/contextful-connectors/tests/integration/drive.rs::held_version_and_resolved_root_trigger_reread` | performed |
+| `connector.source.drive-root-set` | `crates/contextful-connectors/tests/integration/drive.rs::selected_drive_roots_reject_ambiguous_or_unbounded_configuration` | performed |
+| `connector.source.drive-root-validation` | `crates/contextful-connectors/tests/integration/drive.rs::every_selected_root_is_checked_before_listing` | performed |
+| `connector.source.drive-root-walk` | `crates/contextful-connectors/tests/integration/drive.rs::overlapping_selected_roots_deduplicate_files_and_resolve_paths` | performed |
+| `connector.source.drive-selection-position` | `crates/contextful-connectors/tests/integration/drive.rs::selection_change_replays_retained_files_and_tombstones_deselected_files` | performed |
+| `connector.source.drive-selection-removals` | `crates/contextful-connectors/tests/integration/drive.rs::metadata_mode_switch_rereads_files_and_tombstones_pages` | performed |
 | `connector.source.drive-skip-count` | `crates/contextful-connectors/tests/integration/drive.rs::each_pull_counts_the_files_it_skipped` | performed |
 | `connector.source.drive-table-unmatched` | `crates/contextful-connectors/tests/integration/drive.rs::a_table_the_source_does_not_serve_refuses_before_any_request` | performed |
 | `connector.source.drive-tables` | `crates/contextful-connectors/tests/integration/drive.rs::a_file_row_carries_its_metadata_and_names_its_bytes_by_digest` | performed |
 | `connector.source.drive-unreadable` | `crates/contextful-connectors/tests/integration/drive.rs::an_unreadable_or_crashing_pdf_is_skipped_and_every_other_file_lands` | performed |
+| `connector.source.drive-version-consistency` | `crates/contextful-connectors/tests/integration/drive.rs::metadata_only_refuses_a_version_moving_during_capture` | performed |
 | `connector.source.drive-walk` | `crates/contextful-connectors/tests/integration/drive.rs::a_three_level_tree_lands_one_row_per_file_with_its_path_from_the_root` | performed |
 | `connector.source.etag-skip` | `crates/contextful-connectors/tests/integration/object.rs::an_unchanged_etag_lands_nothing_and_a_new_object_lands_alone` | performed |
 | `connector.source.external-reference` | `crates/contextful-decode/tests/integration/workbook.rs::every_form_of_external_reference_is_refused` | performed |
@@ -842,8 +865,10 @@ Unscheduled operations: 10.
 | `run.advance.field-rename` | `crates/contextful-core/tests/integration/run/advance.rs::a_position_measured_on_another_field_is_refused` | performed |
 | `run.advance.frontier` | `crates/contextful-core/tests/integration/run/advance.rs::the_position_moves_forward_or_holds` | performed |
 | `run.advance.inclusive-boundary` | `crates/contextful-engine/tests/integration/runner.rs::every_poll_re_lands_the_boundary_instant` | performed |
+| `run.advance.snapshot-completion` | `crates/contextful-cli/tests/integration/empty_replace.rs::a_complete_empty_snapshot_replaces_but_a_skip_and_failed_pull_do_not` | performed |
 | `run.advance.unorderable-position` | `crates/contextful-core/tests/integration/run/advance.rs::an_unorderable_clock_value_refuses_the_pull` | performed |
 | `run.advance.watermark-shape` | `crates/contextful-core/tests/integration/run/advance.rs::a_watermark_names_its_field` | performed |
+| `run.advance.zero-row-commit` | `crates/contextful-cli/tests/integration/empty_replace.rs::a_complete_empty_snapshot_replaces_but_a_skip_and_failed_pull_do_not` | performed |
 | `run.bind.command-in-manifest` | `crates/contextful-core/tests/integration/run/derive.rs::an_executable_key_in_the_manifest_refuses` | performed |
 | `run.bind.driver-mismatch` | `crates/contextful-core/tests/integration/run/derive.rs::a_driver_the_task_does_not_serve_refuses` | performed |
 | `run.bind.host-task` | `crates/contextful-core/tests/integration/run/host_task.rs::a_registered_task_resolves_by_name_and_a_taken_name_refuses` | performed |
@@ -1108,6 +1133,8 @@ Unscheduled operations: 10.
 | `store.declare.column-types` | `crates/contextful-context/tests/integration/reconcile.rs::a_declared_column_type_types_a_landing_that_declares_none` | performed |
 | `store.declare.declaration-set` | `crates/contextful-cli/tests/integration/sync/mod.rs::a_pipeline_file_keeps_a_replicate_off_table_off_the_pull` | performed |
 | `store.declare.dedup-view` | `crates/contextful-context/tests/integration/declare.rs::a_keyed_table_reads_one_row_per_key_before_and_after_a_fold` | performed |
+| `store.declare.empty-frontier-preserved` | `crates/contextful-cli/tests/integration/empty_replace.rs::a_complete_empty_snapshot_replaces_but_a_skip_and_failed_pull_do_not` | performed |
+| `store.declare.empty-replacement` | `crates/contextful-core/tests/integration/store/declare.rs::a_marked_empty_run_is_a_replacement_frontier` | performed |
 | `store.declare.empty-run` | `crates/contextful-context/tests/integration/declare.rs::a_zero_row_run_commits_no_parts_and_an_empty_table_registers` | performed |
 | `store.declare.fold-coverage` | `crates/contextful-cli/tests/integration/pipeline.rs::a_keyed_table_no_fold_job_covers_warns_and_validates` | performed |
 | `store.declare.fold-job` | `crates/contextful-core/tests/integration/store/declare.rs::a_scheduled_enabled_fold_job_covers_its_target_or_every_table` | performed |
