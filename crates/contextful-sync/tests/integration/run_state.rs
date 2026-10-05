@@ -74,6 +74,33 @@ fn a_run_state_of_a_newer_format_contributes_nothing() {
     assert!(run_state::newest_cursor(&c.syncer.store, "shop", "shop_orders").unwrap().is_none());
 }
 
+/// A pulled run state exposes the applied control version for a replica to verify before it adopts any snapshot.
+#[test]
+fn a_pulled_run_state_carries_the_applied_control_version() {
+    let dir = tempfile::tempdir().unwrap();
+    let b = bucket(dir.path());
+    let (a, c) = (node("ingest-a", b.clone(), ""), node("ingest-c", b, ""));
+    let path = run_state::state_path(a.syncer.store.root(), "ingest-a");
+    std::fs::create_dir_all(path.parent().unwrap()).unwrap();
+    std::fs::write(
+        &path,
+        serde_json::to_vec(&serde_json::json!({
+            "format": 1,
+            "node_id": "ingest-a",
+            "runs": {},
+            "cursors": [],
+            "control_version": 7
+        }))
+        .unwrap(),
+    )
+    .unwrap();
+    a.syncer.push(at(NOW)).unwrap();
+    c.syncer.pull(&PullScope::default()).unwrap();
+
+    let states = run_state::run_states(&c.syncer.store).unwrap();
+    assert_eq!(states["ingest-a"].control_version, Some(7));
+}
+
 /// A generation pull holds no run state to `store.pull.generation-diverged`: a run state the generation does not
 /// list stays as it is. A project name of several segments reads its run states alike.
 // spec: store.pull.generation-run-state@ba323cb2
