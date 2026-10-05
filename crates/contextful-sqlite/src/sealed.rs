@@ -59,7 +59,9 @@ impl SealedFile {
             staged.sync_all().map_err(|e| storage(&tmp, e))?;
             fs::rename(&tmp, &self.path).map_err(|e| storage(&self.path, e))?;
             if let Some(parent) = self.path.parent() {
-                fs::File::open(parent).and_then(|dir| dir.sync_all()).map_err(|e| storage(parent, e))?;
+                contextful_fs::open_dir_for_sync(parent)
+                    .and_then(|dir| dir.sync_all())
+                    .map_err(|e| storage(parent, e))?;
             }
             Ok(())
         })();

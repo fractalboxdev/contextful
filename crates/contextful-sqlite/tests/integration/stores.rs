@@ -53,6 +53,22 @@ fn sealed_run_stores_share_catalog_and_keep_journal_bytes_off_disk() {
 }
 
 #[test]
+fn sealed_catalog_opens_after_run_stores_without_losing_their_rows() {
+    let dir = tempfile::tempdir().unwrap();
+    let path = dir.path().join(MACHINE_CATALOG_FILE);
+    let cipher = || Arc::new(AesGcmFileCipher::new([7; 32], 1));
+    let stores = SqliteRunStores::open_sealed(&path, cipher()).unwrap();
+    let value = Stored::place(b"journal-before-catalog");
+    stores.journal.record(&key("x-1"), &value).unwrap();
+    let catalog = MachineCatalog::open_sealed(&path, Arc::new(crate::SetClock::new()), cipher()).unwrap();
+    let row = crate::run_row("run-1", "feed", contextful_core::run::record::RunStatus::Running);
+    catalog.put_run(&row).unwrap();
+    assert!(catalog.run("run-1").unwrap().is_some());
+    assert_eq!(stores.journal.read(&key("x-1")).unwrap(), Some(Row::Recorded { key: key("x-1"), value }));
+    assert!(catalog.acquire(&contextful_core::coordinate::LeaseKey::Pipeline("feed".into()), "holder", 30).unwrap().is_some());
+}
+
+#[test]
 fn sealed_run_stores_keep_nested_updates_atomic_across_connections() {
     let dir = tempfile::tempdir().unwrap();
     let path = dir.path().join(MACHINE_CATALOG_FILE);
