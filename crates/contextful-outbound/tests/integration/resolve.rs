@@ -86,7 +86,7 @@ fn a_hydrated_value_prints_as_the_sentinel() {
         let v: Hydrated = r.render(&Template::parse(t).unwrap()).unwrap();
         assert_eq!(format!("{v}"), SENTINEL);
         assert_eq!(format!("{v:?}"), SENTINEL);
-        assert_eq!(format!("{:?}", Some(v.clone())), format!("Some({SENTINEL})"));
+        assert_eq!(format!("{:?}", Some(v)), format!("Some({SENTINEL})"));
     }
     assert_eq!(r.render(&Template::parse("Bearer ${secret://vendor-token}").unwrap()).unwrap().reveal(), "Bearer s3cr3t-value");
 }
@@ -127,6 +127,53 @@ fn a_cached_value_retires_at_300_s() {
     clock.advance(1);
     r.hydrate(&name("vendor-token")).unwrap();
     assert_eq!(p.calls(), 2);
+}
+
+#[test]
+fn cached_hydrations_share_one_buffer_until_retirement() {
+    let clock = SetClock::new();
+    let p = Fixed::new("manager", &[("vendor-token", "first")]);
+    let r = resolver(vec![p.clone()], &clock);
+    let first = r.hydrate(&name("vendor-token")).unwrap();
+    let second = r.hydrate(&name("vendor-token")).unwrap();
+    assert!(Arc::ptr_eq(&first, &second), "a cache hit copied the credential bytes");
+    clock.advance(300);
+    let renewed = r.hydrate(&name("vendor-token")).unwrap();
+    assert!(!Arc::ptr_eq(&first, &renewed), "the expired buffer stayed cached");
+    let retired = Arc::downgrade(&first);
+    drop(first);
+    drop(second);
+    assert!(retired.upgrade().is_none(), "the retired buffer stayed alive");
+    assert_eq!(p.calls(), 2);
+}
+
+/// An expired credential leaves the resolver even when its provider cannot renew it.
+#[test]
+fn an_expired_buffer_is_released_when_refresh_fails() {
+    let clock = SetClock::new();
+    let provider = Fixed::new("manager", &[("vendor-token", "first")]);
+    let resolver = resolver(vec![provider.clone()], &clock);
+    let value = resolver.hydrate(&name("vendor-token")).unwrap();
+    let retired = Arc::downgrade(&value);
+    drop(value);
+    provider.values.lock().unwrap().clear();
+    clock.advance(300);
+    let failure = resolver.hydrate(&name("vendor-token")).unwrap_err();
+    assert!(failure.message.starts_with("SecretUnresolvedReference"), "{failure}");
+    assert!(retired.upgrade().is_none(), "the expired credential stayed in the cache after refresh failed");
+}
+
+#[test]
+fn an_active_resolver_releases_other_expired_credentials() {
+    let clock = SetClock::new();
+    let provider = Fixed::new("manager", &[("first-token", "first"), ("second-token", "second")]);
+    let resolver = resolver(vec![provider], &clock);
+    let first = resolver.hydrate(&name("first-token")).unwrap();
+    let retired = Arc::downgrade(&first);
+    drop(first);
+    clock.advance(300);
+    assert_eq!(resolver.hydrate(&name("second-token")).unwrap().reveal(), "second");
+    assert!(retired.upgrade().is_none(), "an unrelated expired credential remained in the active resolver");
 }
 
 /// A reference no assembled adapter answers raises `SecretUnresolvedReference` naming it, at preflight where the

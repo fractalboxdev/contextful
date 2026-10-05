@@ -1,0 +1,6 @@
+{
+  "name": "contextful-gateway",
+  "main": "src/index.ts",
+  "compatibility_date": "2026-10-06",
+  "compatibility_flags": ["nodejs_compat"]
+}
