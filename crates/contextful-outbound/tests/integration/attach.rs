@@ -21,7 +21,7 @@ fn plain() -> Vec<(String, HeaderValue)> {
 }
 
 fn bearer() -> Vec<(String, HeaderValue)> {
-    vec![("Authorization".to_string(), HeaderValue::Sensitive(Hydrated::new("Bearer vendor-token-value")))]
+    vec![("Authorization".to_string(), HeaderValue::Sensitive(Hydrated::new("Bearer vendor-token-value").into()))]
 }
 
 fn redirecting(to: impl Fn(u16) -> String + Send + Sync + 'static) -> Server {

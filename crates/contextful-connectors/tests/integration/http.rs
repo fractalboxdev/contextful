@@ -416,6 +416,26 @@ fn a_page_number_walk_pulls_page_by_page_and_ends_naming_the_first_page() {
     assert_eq!(asked, [Some("1".into()), Some("2".into()), Some("1".into())]);
 }
 
+#[test]
+fn an_http_page_marks_only_the_terminal_snapshot_complete() {
+    let vendor = Server::start(|r| match r.query("p").as_deref() {
+        Some("1") => Response::json(200, "[{\"id\":\"old\"}]"),
+        _ => Response::json(200, "[]"),
+    });
+    let mut s = source(json!({"endpoint": vendor.url("/items"), "page_param": "p"}), vec![]);
+    let first: Value = serde_json::from_slice(&s.pull(&request(None), &Never).unwrap()).unwrap();
+    assert_eq!(first["more"], json!(true));
+    assert_eq!(first["snapshot_complete"], json!(false));
+    let last: Value = serde_json::from_slice(&s.pull(&request(first.get("cursor").cloned()), &Never).unwrap()).unwrap();
+    assert_eq!(last["rows"], json!([]));
+    assert_eq!(last["more"], json!(false));
+    assert_eq!(last["snapshot_complete"], json!(true));
+
+    let mut unpaged = source(json!({"endpoint": vendor.url("/empty")}), vec![]);
+    let empty: Value = serde_json::from_slice(&unpaged.pull(&request(None), &Never).unwrap()).unwrap();
+    assert_eq!(empty["snapshot_complete"], json!(true));
+}
+
 /// Under next-URL or Link-header pagination, one generic HTTP source pull walks every page, and no position carries
 /// a page URL.
 // spec: connector.source.http-url-walk@ef55a50e
@@ -452,6 +472,16 @@ fn a_next_url_walk_keeps_the_next_urls_query_out_of_every_position() {
     }
 }
 
+#[test]
+fn an_empty_url_walk_marks_the_whole_snapshot_complete() {
+    let vendor = Server::start(|_| Response::json(200, "{\"data\":[],\"next\":null}"));
+    let mut s = source(json!({"endpoint": vendor.url("/items"), "records": "/data", "next_url_path": "/next"}), vec![]);
+    let out: Value = serde_json::from_slice(&s.pull(&request(None), &Never).unwrap()).unwrap();
+    assert_eq!(out["rows"], json!([]));
+    assert_eq!(out["more"], json!(false));
+    assert_eq!(out["snapshot_complete"], json!(true));
+}
+
 /// Under an incremental field, one generic HTTP source pull walks every page from the stored watermark.
 // spec: connector.source.http-watermark-walk@eb93fe37
 #[test]
@@ -465,6 +495,8 @@ fn a_watermarked_read_walks_every_page_in_one_pull() {
     let (rows, cursor, more) = pulled(&mut s, Some(json!({"field": "at", "at": "2030-01-01"}))).unwrap();
     assert_eq!((rows, cursor, more), (vec!["w1".to_string(), "w2".to_string()], None, false));
     assert!(vendor.received("/v1").iter().all(|r| r.query("since").as_deref() == Some("2030-01-01")));
+    let pulled: Value = serde_json::from_slice(&s.pull(&request(Some(json!({"field": "at", "at": "2030-01-01"}))), &Never).unwrap()).unwrap();
+    assert_eq!(pulled["snapshot_complete"], json!(false), "a watermark is a window, not a complete snapshot");
 }
 
 const LIMITER_TOKEN: &str = "lim-7f2a";

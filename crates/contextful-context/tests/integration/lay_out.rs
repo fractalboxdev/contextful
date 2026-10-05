@@ -114,14 +114,14 @@ fn a_relanded_run_with_other_rows_or_a_logged_position_conflicts() {
         injection: Injection { run_id: "run-l".into(), site_id: "site-a".into(), batch_seq: None, authored_by: None, taint: None },
         committed_at: at("2030-01-01T00:02:00Z"),
     };
-    let position = Position { pipeline_id: Some("feed".into()), cursor: Some(json!("p1")), fence: Some(1), logged: true };
+    let position = Position { pipeline_id: Some("feed".into()), cursor: Some(json!("p1")), fence: Some(1), logged: true, replace_frontier: false };
     let batch = Batch { rows: vec![json!({"id": "c"}).as_object().unwrap().clone()], types: Default::default() };
     land_batches(&f.store, &d, std::slice::from_ref(&batch), &ctx, &position, &|| Ok(())).unwrap();
     let e = land_batches(&f.store, &d, std::slice::from_ref(&batch), &ctx, &position, &|| Ok(())).unwrap_err();
     assert!(matches!(store_err(e), StoreError::StoreRunConflict(_)));
 
     // An unlogged run re-landed at another cursor conflicts.
-    let position = Position { pipeline_id: Some("feed".into()), cursor: Some(json!("p1")), fence: None, logged: false };
+    let position = Position { pipeline_id: Some("feed".into()), cursor: Some(json!("p1")), fence: None, logged: false, replace_frontier: false };
     let ctx = RunContext { injection: Injection { run_id: "run-u".into(), ..ctx.injection.clone() }, ..ctx };
     land_batches(&f.store, &d, std::slice::from_ref(&batch), &ctx, &position, &|| Ok(())).unwrap();
     land_batches(&f.store, &d, std::slice::from_ref(&batch), &ctx, &position, &|| Ok(())).unwrap();

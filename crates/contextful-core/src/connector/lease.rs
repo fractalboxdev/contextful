@@ -51,7 +51,7 @@ impl Scopes {
 }
 
 /// A lease: material and one expiry, held together in memory for the run.
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, PartialEq, Eq)]
 pub struct Lease {
     pub value: Hydrated,
     pub expires_at: Instant,
