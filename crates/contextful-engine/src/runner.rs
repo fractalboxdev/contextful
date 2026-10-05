@@ -212,6 +212,8 @@ impl<J: JournalStore, B: BlobStore> Engine<J, B> {
         let (mut staged_rows, mut staged_bytes) = (0u64, 0u64);
         let mut types = Types::new();
         let mut skipped = 0u64;
+        let mut snapshot_complete = false;
+        let mut completion_reported = false;
         let mut declined: std::collections::BTreeMap<String, u64> = std::collections::BTreeMap::new();
         // Columns a staged batch carried with no declared type: their parts hold the
         // inferred type, so a later declaration cannot retype them (`run.land.late-type`).
@@ -225,6 +227,7 @@ impl<J: JournalStore, B: BlobStore> Engine<J, B> {
             let request = PullRequest { step_label: label.clone(), position: position.clone(), idempotency_key: key.idempotency_key() };
             let resolved = self.step(spec, execution, &key, &request, source)?;
             let pull = Pull::decode(resolved.bytes())?;
+            completion_reported |= pull.snapshot_complete.is_some();
             skipped = skipped.saturating_add(pull.skipped);
             for (extension, n) in &pull.declined {
                 let held = declined.entry(extension.clone()).or_default();
@@ -282,6 +285,9 @@ impl<J: JournalStore, B: BlobStore> Engine<J, B> {
                     (pull.rows, !pull.more)
                 }
             };
+            if last {
+                snapshot_complete = !pull.more && pull.snapshot_complete.unwrap_or(false);
+            }
             let rows = shape.shape(rows)?;
             if !rows.is_empty() {
                 let count = rows.len() as u64;
@@ -318,10 +324,18 @@ impl<J: JournalStore, B: BlobStore> Engine<J, B> {
         // The land path carries no stop check. Under a lease, the commit point re-reads the
         // lease: a writer a later acquisition fenced out lands nothing.
         let lease = execution.lease();
+        // A reported partial inventory cannot displace a complete replacement. Sources
+        // predating the completion field retain their existing nonempty-run behavior.
+        if dest.replaces(table) && plan.cursor_kind != CursorKind::Monotonic && (skipped > 0 || (completion_reported && !snapshot_complete)) {
+            dest.discard(table, &spec.run_id)?;
+            parts.clear();
+            position = cached.position.clone();
+        }
         let moved = position != cached.position;
         let batch_count = parts.len() as u64;
+        let replace_frontier = batch_count == 0 && skipped == 0 && snapshot_complete && plan.cursor_kind != CursorKind::Monotonic && dest.replaces(table);
         let committed_at = self.catalog.now()?;
-        let landed = if batch_count > 0 || moved {
+        let landed = if batch_count > 0 || moved || replace_frontier {
             let precommit = || -> Result<(), Failure> {
                 let Some(l) = execution.lease() else { return Ok(()) };
                 if self.catalog.lease_holds(&l)? {
@@ -343,13 +357,14 @@ impl<J: JournalStore, B: BlobStore> Engine<J, B> {
                     cursor: position.clone(),
                     committed_at,
                     fence: lease.as_ref().map(|l| l.fence),
+                    replace_frontier,
                 },
                 &precommit,
             )?
         } else {
             Landed::default()
         };
-        let committed = batch_count > 0 || moved;
+        let committed = batch_count > 0 || moved || replace_frontier;
         let mut next = CursorRow {
             position,
             version: 0,

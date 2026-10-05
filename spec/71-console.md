@@ -1,6 +1,7 @@
 ---
 contract: surface
 owns:
+  - open-console
   - register-store
   - visualize
   - package
@@ -15,23 +16,21 @@ owns:
   - publish-answer
 ---
 
-# The analyst console
+# The operator console
 
-The console is the surface a non-technical reader reaches a store through: one composer, one
-transcript, and the widgets a turn draws beside its prose. It holds no data and no privileged
-path under the tables; everything it shows arrives from a governed read, in the reader's own
-language. The same store registry feeds the operator's views and the client library that
-embeds search and ask in a third-party page.
+The operator console turns governed store reads into answers and store-published state
+into administrative views. Its hosted server and embeddable client library expose those
+paths to operators and third-party pages.
 
-The console between a reader and a store, and where it meets the read contract and the model endpoint:
+The Query page between an operator and a store, and where it meets the read contract and the model endpoint:
 
 ```mermaid
 flowchart LR
-  RD(["reader"]) -->|"request"| PER(["identity perimeter"])
+  OP(["operator"]) -->|"request"| PER(["identity perimeter"])
   PER -->|"authenticated session"| PAGE
-  OPS(["operator"]) -->|"register stores"| CRED
+  OP -->|"register stores"| CRED
   subgraph browser["browser"]
-    PAGE["console page"]
+    PAGE["Query page"]
   end
   subgraph server["console server"]
     CRED["credential resolver"]
@@ -57,6 +56,66 @@ flowchart LR
   PAGE -->|"deliberate share"| AUD(["audience"])
 ```
 
+## open-console
+
+The hosted console's two pages, their API routes, identity gates, page grants and engine capabilities.
+
+- `page-routes` — The console serves Query at `/query` with `/query/api/*` and Admin at `/admin` with `/admin/api/*`.
+  *A-surface*
+- `identity-gate` — Cloudflare Access gates hosted pages by default; a deployment without Access uses Cognito managed password login and first-party sessions.
+  *A-surface*
+- `page-grants` — The server maps each verified Access application audience or Cognito group to Query and Admin grants and verifies the matching grant on every page and API request.
+  *A-surface*
+- `query-surface` — Query presents one composer, one transcript and widgets for returned rows.
+  *A-surface*
+- `engine-faces` — Query reaches the governed read face; Admin reaches workflow state and sends edit or apply through a server-held control capability.
+  *A-surface*
+- `ungated-route` — An anonymous hosted console route serving page or API content instead of the declared identity gate raises `ConsoleRouteUngated` at deploy probe.
+  *A-surface*
+- `wrong-page` — A page or API request without a verified Access assertion or Cognito session granting that page raises `ConsolePageForbidden` and dispatches nothing.
+  *A-surface*
+- `admin-grant` — An Admin edit or apply without a server-held admin capability raises `ConsoleAdminGrantMissing` and reaches no control call.
+  *A-surface*
+
+#### Scenarios
+
+- `surface.open-console.ungated-route`: WHEN an anonymous deploy probe receives `/query` or `/admin/api/workflows` content, THEN it raises `ConsoleRouteUngated`.
+- `surface.open-console.wrong-page`: WHEN a Query-only operator requests `/admin/api/workflows`, THEN it raises `ConsolePageForbidden` without dispatching.
+- `surface.open-console.admin-grant`: WHEN an Admin operator applies a document without the server-held admin capability, THEN it raises `ConsoleAdminGrantMissing` without a control call.
+- `surface.open-console.page-grants`: WHEN a verified operator holds only a Query grant, THEN Query admits the session and Admin refuses its page and API requests.
+- `surface.open-console.query-surface`: WHEN an operator asks on Query, THEN the question and grounded answer occupy one transcript beside its widgets.
+
+```mermaid
+flowchart LR
+  OP(["operator"])
+  subgraph access["identity gate"]
+    QG["Query policy"]
+    AG["Admin policy"]
+  end
+  subgraph browser["browser"]
+    QP["Query page"]
+    AP["Admin page"]
+  end
+  subgraph server["console server"]
+    QA["Query API"]
+    AA["Admin API"]
+  end
+  subgraph engine["engine"]
+    READ["read face"]
+    CTRL["control face"]
+  end
+  OP -->|"query session"| QG
+  OP -->|"admin session"| AG
+  QG -->|"Query grant"| QP
+  AG -->|"Admin grant"| AP
+  QP -->|"question"| QA
+  AP -->|"workflow request"| AA
+  QA -->|"governed read"| READ
+  AA -->|"admin capability"| CTRL
+  READ -->|"rows"| QA
+  CTRL -->|"workflow state"| AA
+```
+
 ## register-store
 
 Which stores a deployment serves, how each store's credential and binding names derive, and how a request reaches a store's origin.
@@ -69,11 +128,17 @@ Which stores a deployment serves, how each store's credential and binding names 
   *because the entry otherwise reads the fixture's rows under its own name*
 - `authored-name` — An entry carrying its own credential or binding name raises `StoreNameAuthored`.
   *A-surface*
+- `shared-registry` — Query, Admin and the embeddable client library resolve store identities from the same deployment registry.
+  *A-surface*
 
 ## visualize
 
-The operations canvas, the pack file surface, and the learnings record a store publishes about itself.
+The Admin page's operational views.
 
+- `workflow-canvas` — Admin projects store-published pipelines, schedules, steps, dataflow and run outcomes, and shows store-owned annotations for surrounding work.
+  *A-surface*
+- `operational-record` — Admin's inspector, pack file surface and learnings view present the store-published operational record.
+  *A-surface*
 - `listing-page` — One listing call answers at most 1000 entries, flags truncation, and counts the keys the read route declines to serve.
 
 ## package
@@ -84,8 +149,8 @@ The client library, its four deployment shapes and transports, and the credentia
   *A-read*
 - `store-selector` — The child's working directory selects the store by walking up to the project manifest; finding none raises `StoreSelectorAbsent` and exits before writing any protocol framing.
   *A-topology*
-
-unsettled: What does an explicit owner flag admit over the process transport, and which credential stands behind it? owner: console affects: surface.package
+- `owner-flag` — An explicit owner flag over the process transport admits the local owner context only with the store's owner credential.
+  *A-surface*
 
 The client library's four shapes, and who holds the credential in each:
 
@@ -122,11 +187,13 @@ flowchart LR
 
 ## speak
 
-The language every visitor-visible string carries, the audience contract, and the deterministic backstops beneath it.
+The language every Query-visible string carries, the audience contract, and the deterministic backstops beneath it.
 
 - `redactor-lookahead` — The streaming redactor buffers 128 chars across each chunk boundary, and no denylist entry is longer than the buffer.
   *because an identifier split between two chunks otherwise passes unredacted*
 - `unanswerable-suggestion` — A suggested prompt whose answer under these rules is a decline raises `ConsoleSuggestionUnanswerable` when the suggestion set is built.
+  *A-surface*
+- `stream-redaction` — The server redacts each streamed model chunk before Query emits prose to the operator.
   *A-surface*
 
 ## ground
@@ -137,7 +204,7 @@ Where an answer's material comes from: the closed tool set, the two trust layers
   *P2*
 - `unadmitted-tool` — A call naming a tool the turn's packs do not admit raises `ConsoleToolNotAdmitted` and dispatches nothing.
   *A-surface*
-- `mutating-tool` — The visitor-facing endpoint admits a read subset: a client-reachable path naming a write raises `ConsoleMutatingToolRequested`. The one write a turn performs is authored on the server.
+- `mutating-tool` — The console's query endpoint admits a read subset: a client-reachable path naming a write raises `ConsoleMutatingToolRequested`. The one write a turn performs is authored on the server.
   *A-surface*
 - `org-face-read-only` — A pack registering a write tool on an organization-wide face raises `ConsoleWriteToolOnOrgFace` at startup, naming the pack and the tool, and the face serves nothing.
   *A-surface*
@@ -146,12 +213,14 @@ Where an answer's material comes from: the closed tool set, the two trust layers
 - `mint-refused` — A refused mint raises `ConsoleTokenExchangeRefused`. A store carrying a shared credential falls back to it; one carrying none surfaces the refusal to the reader.
   *P2*
 - `sources-per-turn` — A source list carries at most 8 entries.
+- `sources-block` — Every grounded answer includes a sources block citing only the governed results its admitted read tools returned.
+  *A-surface*
 
 The two trust layers on one grounded turn, for a store on `exchange` authentication:
 
 ```mermaid
 sequenceDiagram
-  box reader
+  box operator
     participant B as browser
   end
   box perimeter
@@ -166,15 +235,15 @@ sequenceDiagram
   end
   B->>P: same-origin request
   P->>S: request and the perimeter's assertion
-  S->>S: re-verify the assertion, take the reader's address
+  S->>S: re-verify the assertion, take the operator's address
   S->>X: post the verified assertion
   alt mint refused
     X-->>S: ConsoleTokenExchangeRefused, shared credential or refusal shown
   else minted
-    X-->>S: per-reader credential, cached within its lifetime
+    X-->>S: per-operator credential, cached within its lifetime
   end
   S->>S: pick tool and arguments from the admitted packs
-  S->>E: read tool call under the reader's credential
+  S->>E: read tool call under the operator's credential
   E-->>S: rows through enforced relations
   S-->>B: grounded prose and its source list
 ```
@@ -188,8 +257,10 @@ The shape of one turn: planner scaffolding, the replanning round, the answerabil
 - `code-path-bounds` — The code path reads at most 5000 rows per data table and stops after 10 s.
 - `overlay-cache` — The overlay caches for 5 min, a miss included.
 - `overlay-length` — An overlay is truncated at 8000 chars.
-
-unsettled: Does a store's overlay reach the planner's text as well as the analyst's? owner: console affects: surface.plan-turn
+- `turn-flow` — A Query turn plans over admitted read tools, replans once after an unanswered first round, and synthesizes from the resulting governed rows.
+  *A-surface*
+- `overlay-audience` — A store's prompt overlay reaches the operator-facing synthesis text and stays outside the planner's text.
+  *A-surface*
 
 ## set-vantage
 
@@ -212,8 +283,8 @@ The reading loop's memory: recall ahead of planning, the per-turn distillation a
 - `distillation` — After the answer streams, a second pass distils the exchange into at most 3 entries shaped `{subject, key, learning}`, zero included.
 - `unscoped` — A distilled conclusion landing without the reading-session scope raises `ConsoleLearningUnscoped`.
   *A-surface*
-
-unsettled: Does a subject normalize during distillation, or resolve through entity matching at recall? owner: console affects: surface.learn
+- `subject-resolution` — Distillation preserves the subject it observes; recall resolves that subject through entity matching.
+  *A-surface*
 
 ## render
 
@@ -222,6 +293,8 @@ The three channels, the component union, deterministic component choice, view hi
 - `client-authored-view` — A view specification arriving from a client, or composed by the model, raises `ConsoleViewNotServerBuilt`.
   *A-surface*
 - `component-choice` — One row with one measure draws a metric; a date column with a measure over 3 rows on distinct days draws a line; anything else draws a table offering a bar view.
+- `older-transcript` — A client reading a transcript with an unknown component-union member renders its view as a table.
+  *A-surface*
 
 A tool return split into three channels, and the view channel's path to a widget:
 
@@ -252,8 +325,6 @@ flowchart LR
   WALK -->|"one frame per shape"| W
 ```
 
-unsettled: What governs adding a member to the component union once transcripts saved under an older client exist? owner: console affects: surface.render
-
 ## brief
 
 The proactive greeting card: its derivation, payload, matching tiers, client-side clock and the absence it earns.
@@ -264,17 +335,19 @@ The proactive greeting card: its derivation, payload, matching tiers, client-sid
 - `card-subjects` — A card carries at most 3 subjects.
 - `articles-per-subject` — A subject carries at most 3 entries of matched article.
 - `catchup-window` — The backend caps the requested window at 7 d.
+- `greeting` — Query derives a greeting card from arrived rows matching live conclusions in a turnless present-time session.
+  *A-surface*
 
 ## publish-answer
 
-The moment an answer computed for one reader reaches a place other people read.
+The moment an answer computed for one operator reaches a place other people read.
 
 - `share-affordance` — A surface offering a share control on access-explanation output raises `VisibilityShareAffordance`.
   *A-surface*
 - `askerless-audience` — A scheduled job posting to an audience under a service identity raises `VisibilityAskerlessAudience`, naming the destination; a scheduled post's corpus is narrowed in the reviewed manifest to what the destination reaches.
   *A-surface*
-
-unsettled: Is there a principal shape for an answer computed at a room's intersection rather than one reader's scope? owner: console affects: surface.publish-answer
+- `one-operator-principal` — An answer uses one operator's credential; the console offers no room-intersection principal.
+  *A-surface*
 
 ## Shapes
 
@@ -351,7 +424,7 @@ One turn, from question to rendered answer:
 
 ```mermaid
 flowchart LR
-  RDR(["reader"]) -->|"question"| PLAN["planner"]
+  RDR(["operator"]) -->|"question"| PLAN["planner"]
   MEM[("memory tables")] -->|"recall at vantage"| PLAN
   PLAN -->|"plan over time window"| TOOLS["admitted read tools"]
   TOOLS -->|"grounding rows"| A{"answered by the code test?"}
