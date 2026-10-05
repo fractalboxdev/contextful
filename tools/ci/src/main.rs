@@ -2,6 +2,7 @@
 //! pull-request workflow invoke the identical command.
 
 mod deny;
+mod e2e;
 mod allowlist;
 mod measure;
 mod release;
@@ -95,6 +96,12 @@ enum Cmd {
     Mirrors,
     /// Hold the workspace's dependency graph to the topology contract's rules.
     Topology,
+    /// Drive the release consumer flow through the binary, with an optional local MinIO backend.
+    E2e {
+        /// Start MinIO for both source and sync buckets.
+        #[arg(long)]
+        minio: bool,
+    },
     /// Compress one profile's release artifact and hold it to the profile's budget, and its
     /// dynamic dependencies to the platform C library. Reads the budget from the fragment
     /// under the working directory. With `--build`, build each named profile, every profile
@@ -229,6 +236,7 @@ fn main() {
         Cmd::Secrets => repo_root().and_then(|root| secrets(&root)),
         Cmd::Mirrors => repo_root().and_then(|root| mirrors(&root)),
         Cmd::Topology => repo_root().and_then(|root| topology::check(&root)),
+        Cmd::E2e { minio } => repo_root().and_then(|root| e2e::run(&root, minio)),
         Cmd::Footprint { profile, artifact, build, plan } => std::env::current_dir().map_err(Into::into).and_then(|root| match artifact {
             Some(artifact) if profile.len() == 1 => footprint::check(&root, &profile[0], &artifact),
             Some(_) => bail!("an artifact is measured as exactly one `--profile`"),

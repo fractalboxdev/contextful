@@ -8,6 +8,7 @@ mod dependency_versions;
 mod deny;
 mod disk;
 mod domain;
+mod e2e;
 mod features;
 mod image;
 mod lean;
