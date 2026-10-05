@@ -67,7 +67,7 @@ fn write_synced(path: &Path, bytes: &[u8]) -> Result<()> {
         f.write_all(bytes)?;
         f.sync_all()?;
         std::fs::rename(&tmp, path)?;
-        std::fs::File::open(path.parent().unwrap_or(Path::new(".")))?.sync_all()
+        contextful_fs::open_dir_for_sync(path.parent().unwrap_or(Path::new(".")))?.sync_all()
     })();
     if written.is_err() {
         let _ = std::fs::remove_file(&tmp);
