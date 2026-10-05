@@ -148,6 +148,17 @@ fn header(path: &str, bytes: &[u8]) -> Result<(u32, u32), Failure> {
             .to_string(),
         ));
     }
+    let depth = bytes[24];
+    let color = bytes[25];
+    let valid_depth = match color {
+        0 => matches!(depth, 1 | 2 | 4 | 8 | 16),
+        2 | 4 | 6 => matches!(depth, 8 | 16),
+        3 => matches!(depth, 1 | 2 | 4 | 8),
+        _ => false,
+    };
+    if !valid_depth || bytes[26] != 0 || bytes[27] != 0 || !matches!(bytes[28], 0 | 1) {
+        return Err(unreadable(path, "has an invalid PNG header"));
+    }
     Ok((width, height))
 }
 
@@ -213,6 +224,15 @@ fn jpeg_header(path: &str, file: &mut std::fs::File) -> Result<(u32, u32), Failu
                 .map_err(|_| unreadable(path, "has a truncated JPEG frame header"))?;
             if shape[5] == 0 || shape.len() != 6 + 3 * usize::from(shape[5]) {
                 return Err(unreadable(path, "has an invalid JPEG frame header"));
+            }
+            let precision = shape[0];
+            let valid_precision = match marker {
+                0xc0 => precision == 8,
+                0xc3 | 0xc7 | 0xcb | 0xcf => (2..=16).contains(&precision),
+                _ => matches!(precision, 8 | 12),
+            };
+            if !valid_precision {
+                return Err(unreadable(path, "has an invalid JPEG frame precision"));
             }
             let height = u16::from_be_bytes([shape[1], shape[2]]) as u32;
             let width = u16::from_be_bytes([shape[3], shape[4]]) as u32;
