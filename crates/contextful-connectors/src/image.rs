@@ -11,6 +11,10 @@ use std::path::{Path, PathBuf};
 
 pub const NAME: &str = "image";
 pub const TABLE: &str = "images";
+/// Bytes one image may carry before the source refuses it.
+pub const MAX_IMAGE_BYTES: u64 = 64 * 1024 * 1024;
+/// Rows one image pull may accumulate before it refuses the read.
+pub const MAX_IMAGE_ROWS: usize = 1_048_576;
 const PNG_SIGNATURE: &[u8; 8] = b"\x89PNG\r\n\x1a\n";
 
 #[derive(Debug, Clone)]
@@ -180,6 +184,28 @@ fn unreadable(path: &str, why: &str) -> Failure {
     )
 }
 
+fn png_capture_at(bytes: &[u8]) -> Option<String> {
+    let mut offset = 8usize;
+    while offset.checked_add(12)? <= bytes.len() {
+        let len = usize::try_from(u32::from_be_bytes(bytes[offset..offset + 4].try_into().ok()?)).ok()?;
+        let end = offset.checked_add(12)?.checked_add(len)?;
+        if end > bytes.len() { return None; }
+        let kind = &bytes[offset + 4..offset + 8];
+        let data = &bytes[offset + 8..offset + 8 + len];
+        if kind == b"tEXt" {
+            if let Some(at) = data.iter().position(|b| *b == 0) {
+                let (key, value) = (&data[..at], &data[at + 1..]);
+                if matches!(key, b"Creation Time" | b"CreationTime" | b"DateTimeOriginal" | b"capture_at") {
+                    let instant = std::str::from_utf8(value).ok()?;
+                    if Instant::parse(instant).is_ok() { return Some(instant.to_string()); }
+                }
+            }
+        }
+        offset = end;
+    }
+    None
+}
+
 fn jpeg_header(path: &str, file: &mut std::fs::File) -> Result<(u32, u32), Failure> {
     let mut pair = [0u8; 2];
     file.read_exact(&mut pair)
@@ -258,6 +284,12 @@ impl Source for ImageSource {
                 return Err(Failure::canceled("stopped during image read"));
             }
             let mut file = std::fs::File::open(&absolute).map_err(|e| fault(&absolute, e))?;
+            let mut all = Vec::new();
+            (&mut file).take(MAX_IMAGE_BYTES + 1).read_to_end(&mut all).map_err(|e| fault(&absolute, e))?;
+            if all.len() as u64 > MAX_IMAGE_BYTES {
+                return Err(unreadable(&path, "exceeds the 64 MiB image byte ceiling"));
+            }
+            file.seek(SeekFrom::Start(0)).map_err(|e| fault(&absolute, e))?;
             let (width, height) = if path.to_ascii_lowercase().ends_with(".png") {
                 let mut first = [0u8; 33];
                 let mut n = 0;
@@ -277,14 +309,7 @@ impl Source for ImageSource {
             file.seek(SeekFrom::Start(0))
                 .map_err(|e| fault(&absolute, e))?;
             let mut hash = Sha256::new();
-            let mut buffer = [0u8; 8192];
-            loop {
-                let n = file.read(&mut buffer).map_err(|e| fault(&absolute, e))?;
-                if n == 0 {
-                    break;
-                }
-                hash.update(&buffer[..n]);
-            }
+            hash.update(&all);
             let modified = std::fs::metadata(&absolute)
                 .map_err(|e| fault(&absolute, e))?
                 .modified()
@@ -306,8 +331,11 @@ impl Source for ImageSource {
             })?)
             .map_err(|e| Failure::new(FailureTag::Permanent, e.to_string()))?
             .to_rfc3339();
+            if rows.len() == MAX_IMAGE_ROWS {
+                return Err(Failure::deterministic(FailureTag::Permanent, format!("`image` source exceeds the {} row ceiling", MAX_IMAGE_ROWS)));
+            }
             rows.push(json!({"path": path, "sha256": format!("{:x}", hash.finalize()), "width": width,
-                "height": height, "capture_at": null, "modified_at": modified_at, "modality": "image", "body": null, "quotability": null}));
+                "height": height, "capture_at": if path.to_ascii_lowercase().ends_with(".png") { png_capture_at(&all) } else { None::<String> }, "modified_at": modified_at, "modality": "image", "body": null, "quotability": null}));
         }
         serde_json::to_vec(&json!({"rows": rows, "more": false, "types": {
             "path": "utf8", "sha256": "utf8", "width": "int64", "height": "int64",
