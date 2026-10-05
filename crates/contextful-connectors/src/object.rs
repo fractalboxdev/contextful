@@ -413,12 +413,18 @@ impl ObjectSource {
     /// Read every addressed object from `position`: the rows of each object whose ETag moved,
     /// and the position after them. A failure on any object lands none.
     pub fn read(&self, position: Option<&Value>, cancel: &dyn Cancellation) -> Result<(Vec<Row>, Option<Value>), Failure> {
+        self.read_with_completion(position, cancel).map(|(rows, cursor, _)| (rows, cursor))
+    }
+
+    /// The source examined its complete inventory only when no object was skipped.
+    fn read_with_completion(&self, position: Option<&Value>, cancel: &dyn Cancellation) -> Result<(Vec<Row>, Option<Value>, bool), Failure> {
         let skip = self.config.skip_unchanged;
         let held: BTreeMap<String, String> =
             position.filter(|_| skip).and_then(|p| p.get("objects")).and_then(|o| serde_json::from_value(o.clone()).ok()).unwrap_or_default();
         let objects = (self.open)()?;
         let mut etags = BTreeMap::new();
         let mut rows = Vec::new();
+        let mut skipped_input = false;
         for (key, listed) in self.keys(objects.as_ref())? {
             if cancel.requested() {
                 return Err(Failure::canceled("stopped between objects"));
@@ -433,6 +439,7 @@ impl ObjectSource {
                 };
                 if current.as_ref() == Some(tag) {
                     etags.insert(key, tag.clone());
+                    skipped_input = true;
                     continue;
                 }
             }
@@ -440,6 +447,7 @@ impl ObjectSource {
             let unchanged = held.get(&key) == Some(&etag);
             etags.insert(key.clone(), etag);
             if skip && unchanged {
+                skipped_input = true;
                 continue;
             }
             let body = if self.config.gzipped(&key) { gunzip(&bytes, EXPANSION_CEILING, &input)? } else { bytes };
@@ -449,14 +457,15 @@ impl ObjectSource {
             };
             rows.extend(decoded);
         }
-        Ok((rows, skip.then(|| serde_json::json!({ "objects": etags }))))
+        Ok((rows, skip.then(|| serde_json::json!({ "objects": etags })), !skipped_input))
     }
 }
 
 impl Source for ObjectSource {
     /// One pull reads every addressed object; the position rides the pull as its cursor.
     fn pull(&mut self, request: &PullRequest, cancel: &dyn Cancellation) -> Result<Vec<u8>, Failure> {
-        let (rows, cursor) = self.read(request.position.as_ref(), cancel)?;
-        serde_json::to_vec(&serde_json::json!({ "rows": rows, "cursor": cursor, "more": false })).map_err(|e| Failure::new(FailureTag::Permanent, e.to_string()))
+        let (rows, cursor, snapshot_complete) = self.read_with_completion(request.position.as_ref(), cancel)?;
+        serde_json::to_vec(&serde_json::json!({ "rows": rows, "cursor": cursor, "more": false, "snapshot_complete": snapshot_complete }))
+            .map_err(|e| Failure::new(FailureTag::Permanent, e.to_string()))
     }
 }

@@ -1,0 +1,67 @@
+# Every default-branch measure run stores its records on the measured commit
+# (`assurance.measure.history`, `assurance.measure.scheduled`). A red tier still
+# writes its report before the job returns its measured exit status.
+name: measures
+
+on:
+  schedule:
+    - cron: "17 2 * * *"
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: measures-history
+  cancel-in-progress: false
+
+jobs:
+  measure:
+    if: github.ref == 'refs/heads/main'
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          fetch-depth: 0
+          persist-credentials: true
+      - name: Run every tier
+        id: run
+        shell: bash
+        run: |
+          set +e
+          cargo run --locked -q -p contextful-ci -- measure --tier all
+          result=$?
+          echo "exit_code=$result" >> "$GITHUB_OUTPUT"
+          exit 0
+      - name: Attach the run report to the measured commit
+        env:
+          MEASURE_EXIT: ${{ steps.run.outputs.exit_code }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          shopt -s nullglob
+          records=(target/evaluate/records/*.json)
+          if (( ${#records[@]} == 0 )); then
+            records=(/dev/null)
+          fi
+          jq -sc --arg commit "$GITHUB_SHA" --argjson run_id "$GITHUB_RUN_ID" \
+            --argjson run_attempt "$GITHUB_RUN_ATTEMPT" --argjson exit_code "$MEASURE_EXIT" \
+            '{commit: $commit, run_id: $run_id, run_attempt: $run_attempt, exit_code: $exit_code, records: .}' \
+            "${records[@]}" > measure-report.json
+          git config user.name 'contextful measures'
+          git config user.email 'measures@users.noreply.github.com'
+          git config commit.gpgsign false
+          note_ref_status=0
+          git ls-remote --exit-code origin refs/notes/measures >/dev/null || note_ref_status=$?
+          if (( note_ref_status == 0 )); then
+            git fetch origin refs/notes/measures:refs/notes/measures
+          elif (( note_ref_status != 2 )); then
+            exit "$note_ref_status"
+          fi
+          git notes --ref=measures append -F measure-report.json "$GITHUB_SHA"
+          git push origin refs/notes/measures
+      - name: Hold the measured verdict
+        if: steps.run.outputs.exit_code != '0'
+        env:
+          MEASURE_EXIT: ${{ steps.run.outputs.exit_code }}
+        run: exit "$MEASURE_EXIT"
