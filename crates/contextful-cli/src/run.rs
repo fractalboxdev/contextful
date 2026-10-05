@@ -255,6 +255,9 @@ impl StoreDestination {
 }
 
 impl Destination for StoreDestination {
+    fn replaces(&self, table: &str) -> bool {
+        self.decl(table).write_mode() == contextful_core::store::declare::WriteMode::Replace
+    }
     fn stage_batch(&mut self, stage: Stage) -> Result<Part, Failure> {
         let mut stage = stage;
         if let Some(normalize) = self.normalize.filter(|n| n.mode == Mode::Relational) {
@@ -324,7 +327,7 @@ impl Destination for StoreDestination {
     fn commit(&mut self, commit: Commit, precommit: &dyn Fn() -> Result<(), Failure>) -> Result<Landed, Failure> {
         let decl = self.decl(&commit.table);
         let ctx = self.context(&commit.run_id, &commit.site_id, commit.committed_at);
-        let position = Position { pipeline_id: Some(commit.pipeline_id.clone()), cursor: commit.cursor.clone(), fence: commit.fence, logged: commit.fence.is_some() };
+        let position = Position { pipeline_id: Some(commit.pipeline_id.clone()), cursor: commit.cursor.clone(), fence: commit.fence, logged: commit.fence.is_some(), replace_frontier: commit.replace_frontier };
         // A lapse at the commit boundary is the credential's, not the store's: it fails the
         // run deterministically rather than as a retryable storage fault.
         let lapsed: RefCell<Option<Failure>> = RefCell::default();
@@ -355,7 +358,7 @@ impl Destination for StoreDestination {
         for (table, parts) in children {
             let child_decl = self.decl(&table);
             let names: Vec<String> = parts.into_iter().map(|p| p.name).collect();
-            let child_position = Position { pipeline_id: Some(commit.pipeline_id.clone()), cursor: None, fence: None, logged: false };
+            let child_position = Position { pipeline_id: Some(commit.pipeline_id.clone()), cursor: None, fence: None, logged: false, replace_frontier: false };
             commit_parts_group(&self.store, &child_decl, &names, &ctx, &child_position, &commit.table, &[], &|| Ok(()), &|_| Ok(())).map_err(store_failure)?;
             group_tables.push(table);
         }
