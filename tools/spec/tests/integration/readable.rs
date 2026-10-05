@@ -136,3 +136,12 @@ fn an_unbackticked_axiom_is_a_banned_word_and_a_lean_identifier_is_not() {
     s.write(GUIDE, &format!("{text}\nThe audit lists every axiom a constant reaches.\n"));
     assert_eq!(codes(&s.lint("render"), "SpecBannedWord").len(), 1);
 }
+
+#[test]
+fn an_autolink_to_an_external_document_is_an_external_link_finding() {
+    let s = Scratch::copy();
+    let text = s.read(STORE);
+    s.write(STORE, &format!("{text}\nSee <https://example.com/implementation> for background.\n"));
+    let found = codes(&s.lint("reference"), "SpecExternalLink");
+    assert_eq!(found.len(), 1, "{found:?}");
+}
