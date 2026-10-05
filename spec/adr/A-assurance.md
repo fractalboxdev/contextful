@@ -113,7 +113,8 @@ Revisit: the base-commit build exceeds the stage wall clock; the refactor traile
 
 | Option | Lost on | Cost |
 | --- | --- | --- |
-| Count-first gate, trend tier, notes history *(chosen)* | — | GitHub Actions `contents: write` pushes notes; a timing regression surfaces as an annotation, not a red check. |
+| Count-first gate, trend tier, notes history *(chosen)* | — | GitHub Actions `contents: write` pushes notes; a timing regression surfaces as an annotation. A missing baseline scans first-parent history; matching baselines stop the stream. |
+| Separate baseline index | Extra state | An index needs synchronization with notes and reconstruction after missing updates; the stream preserves full-history comparisons across runner changes. |
 | Gate on wall-clock p95 against a committed baseline | Determinism | Shared containers move p95 past any useful band; the check flakes until ignored. |
 | History as a committed JSONL file | Branch policy | A bot commit on the default branch per run and a conflict with every open change. |
 | History in an external artifact store | Offline verdicts and queries | A second store to operate, reachable only with network credentials. |
