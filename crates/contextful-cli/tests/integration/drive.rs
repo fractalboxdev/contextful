@@ -268,3 +268,45 @@ fn each_body_a_drive_fire_reads_lands_under_the_store_blobs_by_its_digest() {
     let held: Vec<String> = std::fs::read_dir(&blobs).unwrap().flatten().map(|e| e.file_name().to_string_lossy().into_owned()).collect();
     assert_eq!(held.len(), 4, "no partial or temporary file survives beside the blobs: {held:?}");
 }
+
+#[test]
+fn metadata_only_drive_fire_captures_selected_roots_without_blobs_or_pages() {
+    use sha2::Digest;
+    let fake = Fake::start();
+    fake.recordings.lock().unwrap().push("shared.json");
+    let dir = project(&fake);
+    let manifest = std::fs::read_to_string(dir.path().join("contextful.toml"))
+        .unwrap()
+        .replace(
+            "name = \"pages\"\nprimary_key = [\"file_id\", \"page\"]",
+            "name = \"pages\"\nprimary_key = [\"file_id\", \"page\"]\ncolumns = { file_id = \"utf8\", page = \"int64\" }",
+        )
+        .replace(
+            "folder_id = \"root-f\"",
+            "folder_ids = [\"fin-f\", \"root-f\"]\ndrive_id = \"0AExampleDrive\"\nmode = \"metadata-only\"",
+        );
+    std::fs::write(dir.path().join("contextful.toml"), &manifest).unwrap();
+
+    fire(dir.path(), "metadata-1", "2031-03-01T00:00:00Z");
+    let files = query(dir.path(), "SELECT file_id, resolved_root, sha256, capture_status FROM team_files ORDER BY file_id");
+    let rows = files["rows"].as_array().unwrap();
+    assert_eq!(rows.len(), 7, "{files}");
+    let ids = rows.iter().map(|row| row[0].as_str().unwrap()).collect::<std::collections::BTreeSet<_>>();
+    assert_eq!(ids.len(), 7, "overlapping roots publish each file once: {files}");
+    let plan = rows.iter().find(|row| row[0] == "doc-plan").unwrap();
+    let plan_bytes = std::fs::read(fixtures().join("plan.pdf")).unwrap();
+    let digest: String = sha2::Sha256::digest(&plan_bytes).iter().map(|b| format!("{b:02x}")).collect();
+    assert_eq!(plan[1], "root-f");
+    assert_eq!(plan[2], digest);
+    assert_eq!(plan[3], "captured");
+    assert_eq!(query(dir.path(), "SELECT file_id FROM team_pages")["rows"], json!([]));
+    let blobs = dir.path().join(".contextful/context/research/blobs");
+    assert!(!blobs.exists() || std::fs::read_dir(blobs).unwrap().next().is_none(), "metadata-only capture retains no document blobs");
+
+    let listed = fake.count("/drive/v3/files");
+    std::fs::write(dir.path().join("contextful.toml"), manifest.replace("\"fin-f\", \"root-f\"", "\"outside-f\", \"root-f\"")).unwrap();
+    let out = cf(dir.path(), &["pipeline", "run", "team", "--project", "research", "--run-id", "metadata-outside", "--site-id", "site-a"]);
+    assert!(!out.status.success());
+    assert!(String::from_utf8_lossy(&out.stderr).contains("ConnectorDriveRootRejected"), "{}", String::from_utf8_lossy(&out.stderr));
+    assert_eq!(fake.count("/drive/v3/files"), listed, "an outside-drive root refuses before listing");
+}
