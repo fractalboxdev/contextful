@@ -166,8 +166,6 @@ Acceptance: `contextful_acceptance::m11::m11_derive`
 
 Reach: An operator asks on Query and receives a sourced answer; Admin visualizes the store's workflows and admits only operators with its page grant.
 
-Depth: operation
-
 Acceptance: `contextful_acceptance::m12::m12_console`
 
 ## 13 — Disclosure
