@@ -7,8 +7,8 @@ use arrow_array::{
 };
 use arrow_schema::{DataType, Field, Fields, Schema as ArrowSchema, TimeUnit};
 use contextful_core::store::reconcile::{
-    Column, ColumnType, FloatItem, Schema, StructField, EXTENSION_NAME, JSON_EXTENSION, LIST_ITEM,
-    MAP_ENTRIES, MAP_KEY, MAP_VALUE, VECTOR_ITEM,
+    variant_fields, Column, ColumnType, FloatItem, Schema, StructField, EXTENSION_NAME, JSON_EXTENSION, LIST_ITEM,
+    MAP_ENTRIES, MAP_KEY, MAP_VALUE, VARIANT_EXTENSION, VECTOR_ITEM,
 };
 use parquet::arrow::arrow_reader::ParquetRecordBatchReaderBuilder;
 use parquet::arrow::ArrowWriter;
@@ -40,6 +40,7 @@ pub fn data_type(ty: &ColumnType) -> DataType {
         ColumnType::Struct(fields) => DataType::Struct(struct_fields(fields)),
         ColumnType::List(item) => DataType::List(Arc::new(field_of(LIST_ITEM, item, true))),
         ColumnType::Map(value) => DataType::Map(Arc::new(map_entries(value)), false),
+        ColumnType::Variant => DataType::Struct(struct_fields(&variant_fields())),
     }
 }
 
@@ -63,10 +64,10 @@ pub fn map_entries(value: &ColumnType) -> Field {
 /// One Arrow field, carrying the JSON extension on a JSON column at any depth.
 pub fn field_of(name: &str, ty: &ColumnType, nullable: bool) -> Field {
     let f = Field::new(name, data_type(ty), nullable);
-    if *ty == ColumnType::Json {
+    if matches!(ty, ColumnType::Json | ColumnType::Variant) {
         f.with_metadata(HashMap::from([(
             EXTENSION_NAME.to_string(),
-            JSON_EXTENSION.to_string(),
+            if *ty == ColumnType::Json { JSON_EXTENSION } else { VARIANT_EXTENSION }.to_string(),
         )]))
     } else {
         f
