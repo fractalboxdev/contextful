@@ -66,7 +66,7 @@ only the closed kind union ({{surface.fire.job-kind-unknown}}), and dispatch fen
 callbacks by attempt ({{surface.dispatch.callback-rejected}}). Reside refuses to serve from
 a region the policy omits ({{surface.reside.region-mismatch}}).
 
-A synced apply records an admin-attested snapshot ({{surface.apply.synced-attestation}}). A cold reconciler verifies the pulled receipt and validates the document against its own declarations before arming it ({{surface.reconcile.pulled-control}}); an invalid version names its reason ({{surface.reconcile.pulled-control-untrusted}}).
+Synced apply records an admin-attested snapshot ({{surface.apply.synced-attestation}}). Cold reconciliation verifies receipts and local declarations ({{surface.reconcile.pulled-control}}); refusals name their reason ({{surface.reconcile.pulled-control-untrusted}}).
 
 Each page and API route verifies the operator's Access assertion or Cognito session and that page's grant
 ({{surface.open-console.page-routes}}, {{surface.open-console.wrong-page}}).
@@ -85,9 +85,7 @@ every capability the turn exercises: tools come from the turn's admitted packs
 
 ## Worked example
 
-The operator enters Admin and sees the deployed pipeline, its schedule, steps and latest
-run on the workflow canvas. The operator adds a nightly `fold` job targeting
-`meta_ads_insights` and applies. The
+Admin displays the pipeline, schedule, steps and latest run. The operator applies a nightly `fold` targeting `meta_ads_insights`. The
 target resolves to a produced table ({{surface.fire.target-unbound}}), so validation
 passes. A second operator applied a minute earlier; the compare-and-swap loses, and the
 operator surface reloads the winner and reapplies the pending edit onto it. The next poll arms the
@@ -117,10 +115,9 @@ column and a measure over distinct days, so component choice draws a line
 conclusions ({{surface.learn.distillation}}) under the reading-session scope
 ({{surface.learn.unscoped}}).
 
-The following day the greeting card appears only because a new row matches one of those
-conclusions within budget ({{surface.brief.absence-is-earned}}). If the operator wants the
-answer in a team channel, posting is their own act; a scheduled job posting under a service
-identity refuses ({{surface.publish-answer.askerless-audience}}).
+A greeting card requires a new row matching a conclusion within budget
+({{surface.brief.absence-is-earned}}). The operator posts answers to team channels;
+scheduled posting under a service identity refuses ({{surface.publish-answer.askerless-audience}}).
 
 A teammate admitted only to Query sees no Admin workflow or edit API: an Admin request
 with that teammate's Query grant refuses ({{surface.open-console.wrong-page}}).
