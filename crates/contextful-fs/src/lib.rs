@@ -73,19 +73,41 @@ pub fn open_dir_for_sync(path: &Path) -> io::Result<fs::File> {
     }
 }
 
+/// The volume and complete file identifier of an open handle. Windows identifiers
+/// retain all 128 bits required by ReFS.
+#[derive(Debug, PartialEq, Eq)]
+pub struct FileIdentity {
+    volume: u64,
+    file: u128,
+}
+
+/// Identity of the file held open by `file`, independent of its path.
+pub fn file_identity(file: &fs::File) -> io::Result<FileIdentity> {
+    #[cfg(unix)]
+    { Ok(unix_identity(&file.metadata()?)) }
+    #[cfg(windows)]
+    { windows_file_id(file) }
+    #[cfg(not(any(unix, windows)))]
+    { let _ = file; Err(io::Error::from(ErrorKind::Unsupported)) }
+}
+
+#[cfg(unix)]
+fn unix_identity(metadata: &fs::Metadata) -> FileIdentity {
+    use std::os::unix::fs::MetadataExt;
+    FileIdentity { volume: metadata.dev(), file: u128::from(metadata.ino()) }
+}
+
 /// Whether `path` still names `file`, including after another process renames an open
 /// file and creates a replacement at its old path.
 pub fn names_file(path: &Path, file: &fs::File) -> io::Result<bool> {
     #[cfg(unix)]
     {
-        use std::os::unix::fs::MetadataExt;
         let named = match fs::metadata(path) {
             Ok(m) => m,
             Err(e) if e.kind() == ErrorKind::NotFound => return Ok(false),
             Err(e) => return Err(e),
         };
-        let held = file.metadata()?;
-        return Ok(named.dev() == held.dev() && named.ino() == held.ino());
+        Ok(unix_identity(&named) == file_identity(file)?)
     }
     #[cfg(windows)]
     {
@@ -94,7 +116,7 @@ pub fn names_file(path: &Path, file: &fs::File) -> io::Result<bool> {
             Err(e) if e.kind() == ErrorKind::NotFound => return Ok(false),
             Err(e) => return Err(e),
         };
-        return Ok(windows_file_id(&named)? == windows_file_id(file)?);
+        Ok(file_identity(&named)? == file_identity(file)?)
     }
     #[cfg(not(any(unix, windows)))]
     {
@@ -104,16 +126,44 @@ pub fn names_file(path: &Path, file: &fs::File) -> io::Result<bool> {
 }
 
 #[cfg(windows)]
-fn windows_file_id(file: &fs::File) -> io::Result<(u32, u32, u32)> {
+fn windows_file_id(file: &fs::File) -> io::Result<FileIdentity> {
     use std::os::windows::io::AsRawHandle;
-    use windows_sys::Win32::Storage::FileSystem::{GetFileInformationByHandle, BY_HANDLE_FILE_INFORMATION};
+    use windows_sys::Win32::Foundation::{ERROR_INVALID_FUNCTION, ERROR_INVALID_PARAMETER, ERROR_NOT_SUPPORTED};
+    use windows_sys::Win32::Storage::FileSystem::{
+        FileIdInfo, GetFileInformationByHandle, GetFileInformationByHandleEx,
+        GetVolumeInformationByHandleW, BY_HANDLE_FILE_INFORMATION, FILE_ID_INFO,
+    };
+    // SAFETY: FILE_ID_INFO is a plain C value filled through a correctly sized buffer.
+    let mut full: FILE_ID_INFO = unsafe { std::mem::zeroed() };
+    // SAFETY: the open handle and writable buffer remain valid throughout the call.
+    if unsafe { GetFileInformationByHandleEx(file.as_raw_handle(), FileIdInfo,
+        (&mut full as *mut FILE_ID_INFO).cast(), std::mem::size_of::<FILE_ID_INFO>() as u32) } != 0 {
+        return Ok(FileIdentity { volume: full.VolumeSerialNumber, file: u128::from_le_bytes(full.FileId.Identifier) });
+    }
+    let error = io::Error::last_os_error();
+    if !error.raw_os_error().is_some_and(|code| [ERROR_INVALID_FUNCTION, ERROR_INVALID_PARAMETER, ERROR_NOT_SUPPORTED].contains(&(code as u32))) {
+        return Err(error);
+    }
+    // FAT-family volumes may expose only legacy IDs. ReFS never falls back to an ID
+    // whose truncated width cannot distinguish every file on the volume.
+    let mut filesystem = [0u16; 32];
+    // SAFETY: optional outputs are null; the filesystem buffer has the stated capacity.
+    if unsafe { GetVolumeInformationByHandleW(file.as_raw_handle(), std::ptr::null_mut(), 0,
+        std::ptr::null_mut(), std::ptr::null_mut(), std::ptr::null_mut(), filesystem.as_mut_ptr(), filesystem.len() as u32) } == 0 {
+        return Err(io::Error::last_os_error());
+    }
+    let end = filesystem.iter().position(|c| *c == 0).unwrap_or(filesystem.len());
+    if !matches!(String::from_utf16_lossy(&filesystem[..end]).to_ascii_uppercase().as_str(), "FAT" | "FAT32" | "EXFAT") {
+        return Err(error);
+    }
     // SAFETY: the information structure is a plain C value that the call fills.
     let mut info: BY_HANDLE_FILE_INFORMATION = unsafe { std::mem::zeroed() };
     // SAFETY: `file` keeps this valid handle open throughout the call, and `info` is writable.
     if unsafe { GetFileInformationByHandle(file.as_raw_handle(), &mut info) } == 0 {
         return Err(io::Error::last_os_error());
     }
-    Ok((info.dwVolumeSerialNumber, info.nFileIndexHigh, info.nFileIndexLow))
+    Ok(FileIdentity { volume: u64::from(info.dwVolumeSerialNumber),
+        file: (u128::from(info.nFileIndexHigh) << 32) | u128::from(info.nFileIndexLow) })
 }
 
 /// The create for a volume refusing both no-replace renames and hard links: under an
