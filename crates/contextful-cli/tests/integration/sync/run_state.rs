@@ -101,6 +101,17 @@ fn a_cold_node_keeps_the_cadence_another_node_fired() {
     assert_eq!(vendor.targets().len(), 2, "{:?}", vendor.targets());
 }
 
+/// `sync push` records the default control pointer's applied version beside run history.
+#[test]
+fn a_push_records_the_default_applied_control_version() {
+    let vendor = Vendor::start(|_| (200, "[{\"id\":\"s1\",\"at\":5}]".into()));
+    let bucket = tempfile::tempdir().unwrap();
+    let a = scheduled_shop("ingest-a", bucket.path(), &vendor);
+    ok(&cf(a.path(), &["sync", "push", "--project", "research"], &[]));
+    let state: serde_json::Value = serde_json::from_slice(&std::fs::read(a.path().join(STORE).join("nodes/ingest-a/run-state.json")).unwrap()).unwrap();
+    assert_eq!(state["control_version"], serde_json::json!(1), "{state}");
+}
+
 /// A pulled run start later than the scheduler's current instant counts as no start.
 // spec: surface.arm.pulled-future@71e2e5b2
 #[test]

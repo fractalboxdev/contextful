@@ -27,6 +27,7 @@
 # `contextful-spec state` reads this file and the tags and writes spec/status.md.
 
 [pin]
+"store.push.control-version"     = { test = "contextful_cli::sync::run_state::a_push_records_the_default_applied_control_version" }
 "corpus.targets.cap-unrecorded"     = { test = "contextful_spec::targets::a_capped_shape_not_recording_its_exclusions_is_refused" }
 "corpus.targets.function-profile"   = { test = "contextful_spec::targets::a_function_class_shape_hosting_the_full_profile_is_refused" }
 "corpus.targets.incomplete"         = { test = "contextful_spec::targets::a_shape_leaving_a_role_unfilled_is_refused" }
@@ -54,11 +55,11 @@
 [floor]
 assurance = 135
 authority = 204
-connector = 207
+connector = 218
 corpus = 38
 disclosure = 54
 read = 163
 run = 261
-store = 200
+store = 201
 surface = 51
 topology = 38

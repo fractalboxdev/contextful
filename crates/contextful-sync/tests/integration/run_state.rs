@@ -33,6 +33,7 @@ fn state(n: &Node, run: &str, started: &str, cursor: Option<(i64, &str)>) -> Run
             })
             .into_iter()
             .collect(),
+        control_version: None,
     }
 }
 

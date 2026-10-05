@@ -490,6 +490,8 @@ Uploading the store to a bucket: the wire format, the bucket manifest, prefix co
   *because the immutable copy keeps the first commit, and a push reporting success names a state `pull --generation` does not restore*
 - `run-state` — `sync push` and `sync manifest --emit` first write the node's run state to `nodes/<node-id>/run-state.json`: each pipeline's newest run and each cursor row with its commit marker.
   *because run history and cursors live outside the store root, and a node starting cold otherwise sees neither*
+- `control-version` — `sync push` and `sync manifest --emit` record the default local applied control version in each node's run state; a replica uses it only as a verification input.
+  *because a cold node needs the version a writer applied, while an unverified snapshot must not arm work*
 - `run-state-format` — A run state carries `format`, `1` for this layout; one whose `format` exceeds 1 contributes no run or cursor to a reader.
 - `pointer-carry` — After its manifest commit, a push publishes each local table pointer whose snapshot is whole and whose {{store.lay-out.ancestors}} name the bucket pointer's, or the bucket pointer names none, by a conditional put keeping the bucket's fence.
   *because a snapshot a local fold or a build publishes reads on no other node until its pointer reaches the bucket*

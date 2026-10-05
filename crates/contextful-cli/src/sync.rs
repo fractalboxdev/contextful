@@ -232,22 +232,23 @@ fn open_local(args: &SyncArgs) -> Result<(Store, String, String)> {
 /// Write this node's run state into the store root from its machine catalog, so the push
 /// carries it (`store.push.run-state`).
 #[cfg(feature = "data-plane")]
-fn record_run_state(store: &Store, node_id: &str) -> Result<()> {
+fn record_run_state(store: &Store, project: &str, node_id: &str) -> Result<()> {
     let catalog = MachineCatalog::open(&store.root().join(MACHINE_CATALOG_FILE), Arc::new(crate::clock::SystemClock))?;
-    let state = RunState::read(&catalog, node_id)?;
+    let mut state = RunState::read(&catalog, node_id)?;
+    state.control_version = run_state::local_control_version(store, project)?;
     run_state::record(store, &state)?;
     Ok(())
 }
 
 /// A read-plane build fires no runs and holds no machine catalog, so it records no run state.
 #[cfg(not(feature = "data-plane"))]
-fn record_run_state(_store: &Store, _node_id: &str) -> Result<()> {
+fn record_run_state(_store: &Store, _project: &str, _node_id: &str) -> Result<()> {
     Ok(())
 }
 
 /// Record the run state, then push.
 fn push(s: &Syncer, at: Instant) -> Result<contextful_sync::sync::PushReport> {
-    record_run_state(&s.store, &s.node)?;
+    record_run_state(&s.store, &s.project, &s.node)?;
     Ok(s.push(at)?)
 }
 
@@ -255,7 +256,7 @@ pub fn run(cmd: SyncCmd) -> Result<()> {
     match cmd {
         SyncCmd::Manifest { args, emit: _ } => {
             let (store, project, node_id) = open_local(&args)?;
-            record_run_state(&store, &node_id)?;
+            record_run_state(&store, &project, &node_id)?;
             let plan = contextful_sync::plan_manifest(&store, &project, &node_id)?;
             println!("{}", serde_json::to_string_pretty(&plan.manifest())?);
             Ok(())
