@@ -22,7 +22,7 @@ const MAX_COMPLETION_BYTES: u64 = 16 * 1024 * 1024;
 pub struct Endpoint {
     completions: Url,
     model: String,
-    key: Option<Hydrated>,
+    key: Option<Arc<Hydrated>>,
     client: Client,
 }
 
@@ -38,7 +38,7 @@ impl Endpoint {
         let host = completions.host_str().unwrap_or_default().to_string();
         let allow = Allowlist::parse(&[host]).map_err(|e| e.to_string())?;
         let client = Client::new(allow, completions.clone()).with_completion_timeout(COMPLETION_TIMEOUT).with_body_limit(MAX_COMPLETION_BYTES).framed("Content-Type", "application/json");
-        let key = key.filter(|k| !k.is_empty()).map(|k| Hydrated::new(format!("Bearer {k}")));
+        let key = key.filter(|k| !k.is_empty()).map(|k| Arc::new(Hydrated::new(format!("Bearer {k}"))));
         Ok(Endpoint { completions, model: model.to_string(), key, client })
     }
 
