@@ -111,7 +111,7 @@ fn a_pointer_is_recorded_as_a_lock_edge() {
     let s = Scratch::copy();
     let lock = lock(&s);
     let pointers = lock["pointers"].as_array().expect("pointer edges");
-    assert!(pointers.iter().any(|p| p == &serde_json::json!(["corpus.reference.pointer", "<clause id>"])), "{pointers:?}");
+    assert!(pointers.iter().any(|p| p == &serde_json::json!(["store.lay-out.catalog-ports", "topology.coordinate.catalog-port"])), "{pointers:?}");
 }
 
 #[test]
