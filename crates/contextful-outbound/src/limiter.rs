@@ -163,7 +163,7 @@ impl Limiter {
             message: unmetered(&self.binding.quota, format!("the limiter token does not resolve ({})", f.message)).to_string(),
             ..f
         })?;
-        Ok(HeaderValue::Sensitive(Hydrated::new(format!("Bearer {}", token.reveal()))))
+        Ok(HeaderValue::Sensitive(Hydrated::new(format!("Bearer {}", token.reveal())).into()))
     }
 
     fn post(&self, call: &str, bearer: HeaderValue, body: &serde_json::Value) -> Result<crate::client::Response, Failure> {
