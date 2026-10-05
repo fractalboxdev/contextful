@@ -21,6 +21,8 @@ mod differential;
 #[cfg(feature = "data-plane")]
 mod document;
 #[cfg(feature = "data-plane")]
+mod empty_replace;
+#[cfg(feature = "data-plane")]
 mod drive;
 #[cfg(feature = "data-plane")]
 mod drive_absent;
