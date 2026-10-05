@@ -85,7 +85,7 @@ type Answer = Result<(http::Response<WasiBody>, Box<dyn Future<Output = Result<(
 /// The session's hooks into `wasi:http`.
 pub(crate) struct Mediator {
     allow: Allowlist,
-    attach: Vec<(String, HeaderValue)>,
+    attach: Vec<(String, String)>,
     hydrate: Vec<(String, Arc<dyn crate::host::Hydrate>)>,
     gate: Option<Arc<dyn Reserve>>,
     hook: Option<Arc<dyn PreSendHook>>,
@@ -207,7 +207,7 @@ impl WasiHttpHooks for Mediator {
             })
             .filter_map(|(k, v)| v.to_str().ok().map(|v| (k.as_str().to_string(), HeaderValue::Plain(v.to_string()))))
             .collect();
-        headers.extend(self.attach.iter().cloned());
+        headers.extend(self.attach.iter().map(|(name, value)| (name.clone(), HeaderValue::Plain(value.clone()))));
         let hydrate = self.hydrate.clone();
         let client = self.client(&url);
         let method = request.method().as_str().to_string();
@@ -225,7 +225,7 @@ impl WasiHttpHooks for Mediator {
             // The slot travels with the exchange, so a call abandoned at its deadline
             // frees it only once the exchange ends.
             // Hydration runs here, on the blocking pool inside the call deadline, so the
-            // material lives only as long as this one request.
+            // the rendered header lives only as long as this one request.
             let answer = tokio::task::spawn_blocking(move || {
                 let _slot = slot;
                 let mut headers = headers;

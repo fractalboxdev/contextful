@@ -75,9 +75,9 @@ impl TableState {
         let mut snapshot = at.map(|i| &self.chain[i]);
 
         // Under `replace`, a read covers the newest run carrying the source's complete
-        // state plus every run after it; a zero-row run replaces nothing.
+        // state plus every run after it; a marked zero-row run replaces it with empty.
         if self.write_mode == WriteMode::Replace {
-            if let Some(frontier) = runs.iter().rposition(|r| !r.parts.is_empty()) {
+            if let Some(frontier) = runs.iter().rposition(|r| !r.parts.is_empty() || r.replace_frontier) {
                 snapshot = None;
                 runs.drain(..frontier);
             }
