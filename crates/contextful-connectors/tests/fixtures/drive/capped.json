@@ -1,0 +1,15 @@
+{
+  "comment": "A single folder keeps a next-page token through the listing request cap.",
+  "exchanges": [
+    {
+      "method": "GET", "path": "/drive/v3/files", "query": {"q": "'root-f' in parents and trashed = false"},
+      "status": 200,
+      "body": {"nextPageToken": "next", "files": []}
+    },
+    {
+      "method": "GET", "path": "/drive/v3/files", "query": {"q": "'root-f' in parents and trashed = false", "pageToken": "next"},
+      "status": 200,
+      "body": {"nextPageToken": "next", "files": []}
+    }
+  ]
+}
