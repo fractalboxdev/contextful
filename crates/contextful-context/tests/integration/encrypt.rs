@@ -94,7 +94,9 @@ fn a_ledger_row_registers_in_duckdb_memory_without_a_plaintext_file() {
     use contextful_core::time::Instant;
 
     let dir = tempfile::tempdir().unwrap();
-    let db = duckdb::Connection::open_in_memory().unwrap();
+    let spill_dir = dir.path().join("spill");
+    let config = duckdb::Config::default().with("temp_directory", spill_dir.to_str().unwrap()).unwrap();
+    let db = duckdb::Connection::open_in_memory_with_flags(config).unwrap();
     let canary = "ledger-sql-canary-5f1e";
     let record = RequestRecord {
         request_id: canary.into(), vendor_request_id: None, connector: "remote".into(),
@@ -102,8 +104,12 @@ fn a_ledger_row_registers_in_duckdb_memory_without_a_plaintext_file() {
         started_at: Instant::parse("2030-01-01T00:00:00Z").unwrap(), duration_ms: 7, batch_seq: Some(2),
     };
     register_memory(&db, "ledger_rows", &[("run-1".into(), record)]).unwrap();
+    let spill: String = db.query_row("SELECT current_setting('temp_directory')", [], |row| row.get(0)).unwrap();
+    assert!(spill.is_empty(), "decoded ledger rows can spill into {spill}");
     let id: String = db.query_row("SELECT request_id FROM ledger_rows WHERE batch_seq = 2", [], |r| r.get(0)).unwrap();
     assert_eq!(id, canary);
+    db.execute_batch("SET lock_configuration = true").unwrap();
+    register_memory(&db, "empty_rows", &[]).unwrap();
     assert_eq!(std::fs::read_dir(dir.path()).unwrap().count(), 0);
 }
 
