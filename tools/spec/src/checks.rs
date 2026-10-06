@@ -760,6 +760,11 @@ static TAG: LazyLock<Regex> = LazyLock::new(|| Regex::new(r"^//\s*spec:\s*(\S+?)
 static FN_LINE: LazyLock<Regex> = LazyLock::new(|| {
     Regex::new(r"^(?:pub(?:\([^)]*\))?\s+)?(?:async\s+)?fn\s+(?:r#)?([A-Za-z_][A-Za-z0-9_]*)").unwrap()
 });
+static TS_ASSERTION: LazyLock<Regex> = LazyLock::new(|| Regex::new(r"\b(?:assert\.[A-Za-z_]+|expect)\s*\(").unwrap());
+static TS_DISABLED_OPTION: LazyLock<Regex> = LazyLock::new(|| Regex::new(r"\b(?:skip|todo)\s*:\s*true\b").unwrap());
+static TS_FALSE_BRANCH: LazyLock<Regex> = LazyLock::new(|| Regex::new(r"\bif\s*\(\s*false\s*\)").unwrap());
+static TS_NODE_TEST_IMPORT: LazyLock<Regex> = LazyLock::new(|| Regex::new(r#"(?m)^\s*import\s+(test|\{[^}]*\})\s+from\s+['"]node:test['"]"#).unwrap());
+static TS_TEST_SHADOW: LazyLock<Regex> = LazyLock::new(|| Regex::new(r"\b(?:const|let|var|function)\s+test\b").unwrap());
 
 /// A tag's view of the function it sits above.
 #[derive(Clone, Debug)]
@@ -822,24 +827,28 @@ pub enum PinState {
     Stale,
 }
 
-/// Every `// spec:` tag under `crates/` and `tools/`, in path and line order.
+/// Every `// spec:` tag under Rust, Lean and TypeScript surface roots, in path and line order.
 pub fn scan_tags(c: &Corpus) -> Vec<Pin> {
     let mut out = Vec::new();
-    for root in PIN_ROOTS {
+    for root in PIN_ROOTS.into_iter().chain(["apps", "packages"]) {
         let walk = walkdir::WalkDir::new(c.root.join(root)).sort_by_file_name().into_iter().filter_entry(|e| {
             let n = e.file_name().to_string_lossy();
-            n != "target" && n != "node_modules"
+            n != "target" && n != "node_modules" && n != "dist"
         });
         for e in walk.flatten() {
             let p = e.path();
             let ext = p.extension().map(|x| x.to_string_lossy().to_string()).unwrap_or_default();
-            if ext != "rs" && ext != "lean" {
+            if ext != "rs" && ext != "lean" && ext != "ts" && ext != "tsx" {
                 continue;
             }
             let Ok(s) = std::fs::read_to_string(p) else { continue };
             let rel = p.strip_prefix(&c.root).unwrap_or(p).to_string_lossy().replace('\\', "/");
             if ext == "lean" {
                 out.extend(lean_tags(&s, &rel));
+                continue;
+            }
+            if ext == "ts" || ext == "tsx" {
+                out.extend(ts_tags(c, &s, &rel));
                 continue;
             }
             let mut offsets = Vec::new();
@@ -877,6 +886,96 @@ pub fn scan_tags(c: &Corpus) -> Vec<Pin> {
         }
     }
     out
+}
+
+fn ts_tags(c: &Corpus, s: &str, rel: &str) -> Vec<Pin> {
+    let lines: Vec<&str> = s.lines().collect();
+    let parts: Vec<&str> = rel.split('/').collect();
+    let package = if parts.len() >= 4 && matches!(parts[0], "apps" | "packages") {
+        c.root.join(parts[0]).join(parts[1]).join("package.json")
+    } else {
+        c.root.join("missing-package.json")
+    };
+    let runnable = std::fs::read_to_string(package).ok().and_then(|text| serde_json::from_str::<serde_json::Value>(&text).ok()).is_some();
+    let test_file = parts.get(2).is_some_and(|part| matches!(*part, "test" | "tests")) && rel.ends_with(".test.ts");
+    let native_test = TS_NODE_TEST_IMPORT.captures_iter(s).any(|found| {
+        &found[1] == "test" || found[1].trim_start_matches('{').trim_end_matches('}').split(',').any(|part| part.trim() == "test")
+    }) && !TS_TEST_SHADOW.is_match(&ts_code(s));
+    let mut out = Vec::new();
+    for (i, line) in lines.iter().enumerate() {
+        let Some((clause, rev)) = crate::native_ts::tag(line) else { continue };
+        let mut tagged = Tagged { rev: rev.to_string(), function: None, ignored: false, unfinished: false };
+        for (j, next) in lines.iter().enumerate().skip(i + 1) {
+            let trimmed = next.trim();
+            if trimmed.is_empty() || trimmed.starts_with("//") { continue }
+            if let Some(test) = crate::native_ts::test_call(trimmed) {
+                tagged.function = Some(format!("{rel}::{}", test.title));
+                tagged.ignored = test.disabled;
+                let unique = lines.iter().filter_map(|line| crate::native_ts::test_call(line)).filter(|found| found.title == test.title).count() == 1;
+                tagged.unfinished = !runnable || !test_file || !native_test || !unique || ts_unfinished(&lines[j..].join("\n"));
+            }
+            break;
+        }
+        out.push(Pin {
+            clause: clause.to_string(), kind: "test".into(),
+            path: tagged.function.clone().unwrap_or_default(),
+            file: rel.to_string(), line: i + 1, tag: Some(tagged),
+        });
+    }
+    out
+}
+
+fn ts_unfinished(test: &str) -> bool {
+    let Some(arrow) = test.find("=>") else { return true };
+    if TS_DISABLED_OPTION.is_match(&test[..arrow]) { return true }
+    let Some(open) = test[arrow..].find('{').map(|n| arrow + n) else { return true };
+    let mut depth = 0usize;
+    let mut close = None;
+    for (offset, ch) in test[open..].char_indices() {
+        match ch {
+            '{' => depth += 1,
+            '}' => {
+                depth -= 1;
+                if depth == 0 { close = Some(open + offset); break; }
+            }
+            _ => {}
+        }
+    }
+    let Some(close) = close else { return true };
+    let body = test[open + 1..close].trim();
+    let code = ts_code(body);
+    let first_assertion = TS_ASSERTION.find(&code).map(|found| found.start());
+    let nested_before_assertion = code.find("=>").is_some_and(|arrow| first_assertion.is_none_or(|assertion| arrow < assertion));
+    body.is_empty() || body.contains("TODO") || body.contains("todo(") || body.contains("not implemented")
+        || code.contains("assert.ok(true)") || TS_FALSE_BRANCH.is_match(&code) || nested_before_assertion || first_assertion.is_none()
+}
+
+fn ts_code(body: &str) -> String {
+    let mut output = String::new();
+    let mut chars = body.chars().peekable();
+    let mut quote = None;
+    while let Some(ch) = chars.next() {
+        if let Some(delimiter) = quote {
+            if ch == '\\' { chars.next(); }
+            else if ch == delimiter { quote = None; }
+            output.push(' ');
+        } else if matches!(ch, '\'' | '"' | '`') {
+            quote = Some(ch);
+            output.push(' ');
+        } else if ch == '/' && chars.peek() == Some(&'/') {
+            chars.by_ref().take_while(|next| *next != '\n').for_each(|_| {});
+            output.push('\n');
+        } else if ch == '/' && chars.peek() == Some(&'*') {
+            chars.next();
+            while let Some(next) = chars.next() {
+                if next == '*' && chars.peek() == Some(&'/') { chars.next(); break; }
+            }
+            output.push(' ');
+        } else {
+            output.push(ch);
+        }
+    }
+    output
 }
 
 /// `-- spec: <id>@<rev>` tags in one Lean file, each attached to the declaration below it
