@@ -67,7 +67,7 @@ export function createLiveTurn({ stores, env, fetcher = fetch }: LiveOptions): (
           throw new ConsoleError("ConsoleTokenExchangeUnavailable", `exchange answered ${response.status}`, 503);
         }
         const value: unknown = await response.json();
-        if (!record(value) || typeof value.token !== "string") throw new ConsoleError("ConsoleTokenExchangeUnavailable", "exchange returned no credential", 503);
+        if (!record(value) || typeof value.token !== "string" || !value.token.trim()) throw new ConsoleError("ConsoleTokenExchangeUnavailable", "exchange returned no credential", 503);
         return value.token;
       },
     }) : shared;
