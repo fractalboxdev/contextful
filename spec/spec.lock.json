@@ -6264,6 +6264,17 @@
       "line": 143
     },
     {
+      "id": "read.recall.cli-verb",
+      "contract": "read",
+      "operation": "recall",
+      "subject": "cli-verb",
+      "kind": "behavior",
+      "statement": "The `contextful memory recall` verb passes its arguments through {{read.recall.keyed}} and prints the same JSON response as the `memory.recall` tool.",
+      "why": "",
+      "file": "spec/21-memory.md",
+      "line": 144
+    },
+    {
       "id": "read.recall.keyed-clocks",
       "contract": "read",
       "operation": "recall",
@@ -6272,7 +6283,7 @@
       "statement": "`as_of_ingest` bounds the read as {{store.bound-time.as-of}} does; absent, the read takes the latest committed state, and an absent `observed_at` the call's instant. `contextful.bounds` echoes each supplied bound under its argument name, with a per-name `inclusive` map.",
       "why": "",
       "file": "spec/21-memory.md",
-      "line": 144
+      "line": 145
     },
     {
       "id": "read.recall.keyed-history",
@@ -6283,7 +6294,7 @@
       "statement": "A claim a successor retired still answers an `observed_at` inside its validity; the keyed read filters on validity alone, never on `superseded_by`.",
       "why": "because the question is what held at that instant, and the retired claim is the answer its interval records",
       "file": "spec/21-memory.md",
-      "line": 145
+      "line": 146
     },
     {
       "id": "read.recall.keyed-gate",
@@ -6294,7 +6305,7 @@
       "statement": "Every keyed claim passes {{read.recall.evidence-unresolved}} and {{read.recall.evidence-references}}, and the response carries {{read.recall.suppression-count}}.",
       "why": "",
       "file": "spec/21-memory.md",
-      "line": 147
+      "line": 148
     },
     {
       "id": "read.recall.keyed-window",
@@ -6305,7 +6316,7 @@
       "statement": "The keyed read gates claims in order and stops once it keeps one claim past the row ceiling, so the suppression count covers the claims gated before that stop.",
       "why": "because a one-row recall over a subject with thousands of claims otherwise resolves every claim's evidence",
       "file": "spec/21-memory.md",
-      "line": 148
+      "line": 149
     },
     {
       "id": "read.recall.keyed-order",
@@ -6316,7 +6327,7 @@
       "statement": "Keyed claims order by tier, `curated` first, then `valid_from`, newest first, then `claim_id`; `limit` and the table's ceilings bound them under {{read.respond.row-ceiling}}.",
       "why": "",
       "file": "spec/21-memory.md",
-      "line": 150
+      "line": 151
     },
     {
       "id": "read.recall.keyed-not-claims",
@@ -6327,7 +6338,7 @@
       "statement": "A granted `table` declaring a shape other than `memory_facts`, or no memory shape, raises `MemoryRecallNotClaims`.",
       "why": "because a keyed read answers with a claim's subject, validity and evidence, which no other table carries",
       "file": "spec/21-memory.md",
-      "line": 151
+      "line": 152
     },
     {
       "id": "read.recall.stale-revision",
@@ -6338,7 +6349,7 @@
       "statement": "A stale citation remains subject to {{read.recall.keyed-gate}}; only a newly committed source row advancing {{read.synthesize.pass-cursor}} starts synthesis against its live key version.",
       "why": "A-read",
       "file": "spec/21-memory.md",
-      "line": 153
+      "line": 154
     },
     {
       "id": "read.recall.usage-ledger",
@@ -6349,7 +6360,7 @@
       "statement": "Each `memory.recall` and ranked memory arm records the ids of claims actually returned in the request ledger, under the caller's admitted authority and the read frontier.",
       "why": "A-read",
       "file": "spec/21-memory.md",
-      "line": 155
+      "line": 156
     },
     {
       "id": "read.resolve-entity.ambiguous-mention",
@@ -6360,7 +6371,7 @@
       "statement": "A mention matching two canonical identities with no deterministic key separating them is recorded as an ambiguous skip, raises `MemoryEntityAmbiguous`, and dead-letters its candidate claim.",
       "why": "A-read",
       "file": "spec/21-memory.md",
-      "line": 173
+      "line": 174
     },
     {
       "id": "read.resolve-entity.edge-endpoint",
@@ -6371,7 +6382,7 @@
       "statement": "A candidate edge whose source or target resolves to no identity is dead-lettered, raising `MemoryEdgeEndpointUnresolved`.",
       "why": "A-read",
       "file": "spec/21-memory.md",
-      "line": 175
+      "line": 176
     },
     {
       "id": "read.resolve-entity.graph-index",
@@ -6382,7 +6393,7 @@
       "statement": "An external graph engine is a derived index of admitted memory edges; an entity or ownership answer resolves through the store's enforced rows at the read frontier.",
       "why": "A-read",
       "file": "spec/21-memory.md",
-      "line": 177
+      "line": 178
     },
     {
       "id": "read.resolve-entity.ownership-answer",
@@ -6393,7 +6404,7 @@
       "statement": "An artifact's ownership answer returns every attached principal visible to the caller, newest attachment first, with principal id breaking equal-instant ties.",
       "why": "A-read",
       "file": "spec/21-memory.md",
-      "line": 179
+      "line": 180
     },
     {
       "id": "read.settle.registration",
@@ -6404,7 +6415,7 @@
       "statement": "A registration names exactly one form (relative horizon, absolute deadline, open watch) and one source (`metric`, `adjudicator`, `manual`), with a comparator exactly when the source is `metric`; otherwise it raises `OutcomeRegistrationInvalid`.",
       "why": "A-read",
       "file": "spec/21-memory.md",
-      "line": 187
+      "line": 188
     },
     {
       "id": "read.settle.source-mismatch",
@@ -6415,7 +6426,7 @@
       "statement": "An observation carrying a verdict whose resolution source is absent or differs from the registration's raises `OutcomeSourceMismatch`.",
       "why": "A-read",
       "file": "spec/21-memory.md",
-      "line": 189
+      "line": 190
     },
     {
       "id": "read.settle.settling-citation",
@@ -6426,7 +6437,7 @@
       "statement": "An `adjudicator` or `manual` verdict without an `http` or `https` settling citation raises `OutcomeCitationMissing`; the citation rides the label view.",
       "why": "A-read",
       "file": "spec/21-memory.md",
-      "line": 191
+      "line": 192
     },
     {
       "id": "read.settle.grace-window",
@@ -6437,7 +6448,7 @@
       "statement": "The label join keeps an observation from the prediction instant through the deadline plus an inclusive grace of 86400 s.",
       "why": "",
       "file": "spec/21-memory.md",
-      "line": 193
+      "line": 194
     },
     {
       "id": "read.settle.calibration-report",
@@ -6448,7 +6459,7 @@
       "statement": "Calibration reports group settled predictions by shape and predicate, and name sample count, Brier score, expected calibration error and the held-out score used by {{read.synthesize.confidence-calibration}}.",
       "why": "A-read",
       "file": "spec/21-memory.md",
-      "line": 194
+      "line": 195
     },
     {
       "id": "run.journal.step-output",
@@ -23520,6 +23531,10 @@
     [
       "read.recall.keyed",
       "store.bound-time.valid-as-of"
+    ],
+    [
+      "read.recall.cli-verb",
+      "read.recall.keyed"
     ],
     [
       "read.recall.keyed-clocks",
