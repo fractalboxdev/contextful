@@ -23,7 +23,7 @@ fn ci(args: &[&str], bin: Option<&Path>) -> Output {
 fn fake_cargo(dir: &Path) {
     let real = std::env::var("CARGO").unwrap_or_else(|_| "cargo".into());
     let script = format!(
-        "#!/bin/sh\nif [ \"$1\" = build ]; then\n  t=''; prev=''\n  for a in \"$@\"; do [ \"$prev\" = --target ] && t=\"$a\"; prev=\"$a\"; done\n  \
+        "#!/bin/sh\nif [ \"$1\" = build ] || [ \"$1\" = zigbuild ]; then\n  t=''; prev=''\n  for a in \"$@\"; do [ \"$prev\" = --target ] && t=\"$a\"; prev=\"$a\"; done\n  \
          mkdir -p \"$CARGO_TARGET_DIR/$t/release\"\n  echo \"$*\" > \"$CARGO_TARGET_DIR/$t/release/contextful\"\n  exit 0\nfi\nexec '{real}' \"$@\"\n"
     );
     let path = dir.join("cargo");
@@ -68,6 +68,54 @@ fn the_release_matrix_is_every_profile_on_musl_and_edge_and_full_on_darwin() {
 
     let wasi = ci(&["release", "--target", "wasm32-wasip2", "--plan"], None);
     assert!(!wasi.status.success(), "a wasm32-wasip2 release target is accepted");
+}
+
+#[test]
+fn zigbuild_packages_a_darwin_cell_and_emits_its_formula_metadata() {
+    let bin = tempfile::tempdir().unwrap();
+    fake_cargo(bin.path());
+    let target = tempfile::tempdir().unwrap();
+    let dist = tempfile::tempdir().unwrap();
+    let triple = "aarch64-apple-darwin";
+    let run = ci(&["release", "--builder", "zigbuild", "--profile", "contextful-edge", "--target", triple, "--target-dir", target.path().to_str().unwrap(), "--out", dist.path().to_str().unwrap()], Some(bin.path()));
+    assert!(run.status.success(), "{}", String::from_utf8_lossy(&run.stderr));
+    let stem = format!("contextful-edge-{}-{triple}", version());
+    let binary = Command::new("tar").args(["-xzOf"]).arg(dist.path().join(format!("{stem}.tar.gz"))).arg(format!("{stem}/contextful")).output().unwrap();
+    assert!(binary.status.success());
+    assert!(String::from_utf8_lossy(&binary.stdout).starts_with("zigbuild --release --locked"));
+    let metadata: serde_json::Value = serde_json::from_str(&std::fs::read_to_string(dist.path().join(format!("{stem}.release.json"))).unwrap()).unwrap();
+    assert_eq!(metadata["profile"], "contextful-edge");
+    assert_eq!(metadata["target"], triple);
+    assert_eq!(metadata["archive"], format!("{stem}.tar.gz"));
+    assert_eq!(metadata["sbom"], format!("{stem}.cdx.json"));
+    assert_eq!(metadata["sha256"].as_str().unwrap().len(), 64);
+}
+
+#[test]
+fn formula_uses_metadata_without_local_release_archives() {
+    let dist = tempfile::tempdir().unwrap();
+    let manifest = dist.path().join("release-manifest.json");
+    let out = ci(&["release", "--plan"], None);
+    assert!(out.status.success());
+    let cells: Vec<serde_json::Value> = String::from_utf8_lossy(&out.stdout).lines().map(|line| {
+        let (profile, target) = line.split_once(' ').unwrap();
+        let short = profile.strip_prefix("contextful-").unwrap();
+        let stem = format!("contextful-{short}-{}-{target}", version());
+        serde_json::json!({"profile": profile, "target": target, "archive": format!("{stem}.tar.gz"), "sha256": "a".repeat(64), "sbom": format!("{stem}.cdx.json")})
+    }).collect();
+    std::fs::write(&manifest, serde_json::to_vec(&cells).unwrap()).unwrap();
+    let run = ci(&["formula", "--manifest", manifest.to_str().unwrap(), "--dist", dist.path().to_str().unwrap(), "--base-url", "https://example.com/v"], None);
+    assert!(run.status.success(), "{}", String::from_utf8_lossy(&run.stderr));
+    let sums = std::fs::read_to_string(dist.path().join("SHA256SUMS")).unwrap();
+    assert_eq!(sums.lines().count(), 10);
+    assert!(sums.lines().all(|line| line.starts_with(&"a".repeat(64))));
+    let formula = std::fs::read_to_string(dist.path().join("Formula/contextful-full.rb")).unwrap();
+    assert!(formula.contains("https://example.com/v/contextful-full-"));
+    assert!(formula.contains(&"a".repeat(64)));
+
+    std::fs::write(&manifest, serde_json::to_vec(&cells[..9]).unwrap()).unwrap();
+    let incomplete = ci(&["formula", "--manifest", manifest.to_str().unwrap(), "--dist", dist.path().to_str().unwrap(), "--base-url", "https://example.com/v"], None);
+    assert!(!incomplete.status.success(), "a missing release cell produced formulae");
 }
 
 /// Each profile ships a release archive with a SHA-256 checksum and an SBOM, a package-manager formula and an independently tagged container image; the bare formula name and the install script resolve to the full profile.
