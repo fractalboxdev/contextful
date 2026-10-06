@@ -78,6 +78,109 @@ import { createServer } from "node:http";
 
 // src/index.ts
 import { createHash, createHmac, createPublicKey, randomBytes, timingSafeEqual, verify } from "node:crypto";
+
+// src/brief.ts
+function tokens(text) {
+  return new Set((text.toLowerCase().match(/[\p{L}\p{N}]+/gu) ?? []).map((word) => word.length > 4 && word.endsWith("s") ? word.slice(0, -1) : word));
+}
+function topicMatch(conclusion, row) {
+  const subject = tokens(conclusion.subject);
+  const left = tokens(`${conclusion.subject} ${conclusion.text}`);
+  const right = tokens(`${row.label} ${row.topics.join(" ")}`);
+  const shared = [...left].filter((word) => right.has(word));
+  return shared.length >= 2 && shared.some((word) => subject.has(word));
+}
+async function deriveBrief(input) {
+  if (input.session.turns !== 0 || input.session.vantage !== "present") return null;
+  const live = input.conclusions.filter((entry) => entry.live);
+  if (live.length === 0) return null;
+  const windowDays = Math.max(0, Math.min(input.windowDays ?? 7, 7));
+  let timer;
+  try {
+    const source = input.loadArrivals ? input.loadArrivals() : Promise.resolve(input.arrivals ?? []);
+    const budgetMs = input.budgetMs;
+    const arrivals = budgetMs === void 0 ? await source : await Promise.race([
+      source,
+      new Promise((_, reject) => {
+        timer = setTimeout(() => reject(new Error("ConsoleBriefUnavailable")), Math.max(0, budgetMs));
+      })
+    ]);
+    const since = input.now - windowDays * 864e5;
+    const recent = arrivals.filter((row) => {
+      const arrived = Date.parse(row.arrivedAt);
+      return Number.isFinite(arrived) && arrived >= since && arrived <= input.now;
+    });
+    const subjects = live.map((entry) => ({ subject: entry.subject, articles: recent.filter((row) => topicMatch(entry, row)).slice(0, 3) })).filter((entry) => entry.articles.length > 0).slice(0, 3);
+    return subjects.length ? { windowDays, subjects } : null;
+  } catch {
+    throw new Error("ConsoleBriefUnavailable");
+  } finally {
+    if (timer !== void 0) clearTimeout(timer);
+  }
+}
+
+// src/publish.ts
+function answerDelivery(input) {
+  if (!input.operator.trim()) throw new Error("VisibilityAskerlessAudience");
+  if (input.accessExplanation && input.share) throw new Error("VisibilityShareAffordance");
+  return { recipient: input.operator, answer: input.answer, share: false };
+}
+
+// src/render.ts
+function numeric(value) {
+  return typeof value === "number" && Number.isFinite(value);
+}
+function day(value) {
+  if (typeof value !== "string" || !/^\d{4}-\d{2}-\d{2}$/.test(value)) return false;
+  const parsed = /* @__PURE__ */ new Date(`${value}T00:00:00Z`);
+  return !Number.isNaN(parsed.getTime()) && parsed.toISOString().slice(0, 10) === value;
+}
+function buildView(result, options = {}) {
+  if (options.origin === "client" || options.origin === "model" || options.view !== void 0) {
+    throw new Error("ConsoleViewNotServerBuilt");
+  }
+  const props = { columns: [...result.columns], rows: result.rows.map((row) => [...row]) };
+  const oneMeasure = props.columns.length === 1 && props.rows.length === 1 && numeric(props.rows[0][0]);
+  const dateIndex = props.columns.findIndex((column) => /^(date|day|.*_date|.*_day)$/i.test(column));
+  const measureIndex = props.columns.findIndex((_, index) => index !== dateIndex && props.rows.every((row) => numeric(row[index])));
+  const dates = dateIndex < 0 ? [] : props.rows.map((row) => row[dateIndex]);
+  const line = dateIndex >= 0 && measureIndex >= 0 && props.rows.length >= 3 && dates.every(day) && new Set(dates).size === dates.length;
+  const chosen = oneMeasure ? "metric.v1" : line ? "line.v1" : "table.v1";
+  const hint = options.hint;
+  const binds = hint && hint.columns.length > 0 && hint.columns.every((column) => props.columns.includes(column));
+  const component = binds && hint.component === "bar.v1" && chosen === "table.v1" ? "bar.v1" : chosen;
+  return component === "table.v1" ? { component, props, alternates: ["bar.v1"] } : { component, props };
+}
+function sanitizeView(view, redact) {
+  const { columns, rows } = view.props;
+  if (!Array.isArray(columns) || !columns.every((column) => typeof column === "string") || !Array.isArray(rows) || !rows.every((row) => Array.isArray(row) && row.length === columns.length)) return null;
+  const seen = /* @__PURE__ */ new WeakSet();
+  const walk = (value) => {
+    if (typeof value === "string") return redact(value);
+    if (Array.isArray(value)) {
+      if (seen.has(value)) throw new TypeError("cyclic view props");
+      seen.add(value);
+      const result = value.map(walk);
+      seen.delete(value);
+      return result;
+    }
+    if (value !== null && typeof value === "object") {
+      if (seen.has(value)) throw new TypeError("cyclic view props");
+      seen.add(value);
+      const result = Object.fromEntries(Object.entries(value).map(([key, item]) => [key, walk(item)]));
+      seen.delete(value);
+      return result;
+    }
+    return value;
+  };
+  try {
+    return { ...view, props: { columns: columns.map(redact), rows: rows.map((row) => row.map(walk)) } };
+  } catch {
+    return null;
+  }
+}
+
+// src/index.ts
 function encoded(value) {
   return Buffer.from(JSON.stringify(value)).toString("base64url");
 }
@@ -199,9 +302,9 @@ async function cognitoCallback(request, identity2) {
     body: new URLSearchParams({ grant_type: "authorization_code", client_id: identity2.clientId, redirect_uri: identity2.redirectUri, code, code_verifier: verifier })
   });
   if (!exchange.ok) return refusal("ConsolePageForbidden");
-  const tokens = await exchange.json();
-  if (!object(tokens) || typeof tokens.id_token !== "string") return refusal("ConsolePageForbidden");
-  const parts = tokens.id_token.split(".");
+  const tokens2 = await exchange.json();
+  if (!object(tokens2) || typeof tokens2.id_token !== "string") return refusal("ConsolePageForbidden");
+  const parts = tokens2.id_token.split(".");
   if (parts.length !== 3) return refusal("ConsolePageForbidden");
   let header;
   let claims;
@@ -293,6 +396,17 @@ function createConsole(adapters) {
       if (request.method === "GET" && path === `/${grant}`) return page(grant);
       if (grant === "query") {
         if (request.method === "GET" && path === "/query/api/stores") return json(await adapters.read.list(operator));
+        if (request.method === "GET" && path === "/query/api/brief") {
+          const store = url.searchParams.get("store");
+          if (!store || !adapters.stores.some((entry) => entry.id === store)) return refusal("ConsoleRequestMalformed", 400);
+          if (!adapters.brief) return refusal("ConsoleAdapterUnavailable", 503);
+          try {
+            const card = await deriveBrief(await adapters.brief(operator, store));
+            return card ? json(card) : new Response(null, { status: 204, headers: { "Cache-Control": "no-store" } });
+          } catch {
+            return new Response(null, { status: 204, headers: { "Cache-Control": "no-store" } });
+          }
+        }
         if (request.method === "POST" && path === "/query/api/ask") {
           let input;
           try {
@@ -301,7 +415,16 @@ function createConsole(adapters) {
             return bodyFailure(error);
           }
           if (!object(input) || typeof input.store !== "string" || typeof input.question !== "string" || !input.question.trim() || !adapters.stores.some((store) => store.id === input.store)) return refusal("ConsoleRequestMalformed", 400);
-          return json(await adapters.turn({ operator, store: input.store, question: input.question }));
+          if ("view" in input || "widgets" in input) return refusal("ConsoleViewNotServerBuilt", 400);
+          const turn = await adapters.turn({ operator, store: input.store, question: input.question });
+          let answer;
+          try {
+            answer = answerDelivery({ operator: operator.subject, answer: turn.answer, accessExplanation: turn.accessExplanation ?? false, share: turn.share });
+          } catch (error) {
+            return refusal(error instanceof Error ? error.message : "VisibilityShareAffordance");
+          }
+          const built = turn.resultRows ? sanitizeView(buildView(turn.resultRows), (value) => adapters.redactView?.(operator, value) ?? value) : null;
+          return json({ answer: answer.answer, sources: turn.sources, widgets: built ? [built] : [] });
         }
       } else {
         const store = url.searchParams.get("store");
@@ -333,11 +456,13 @@ function createConsole(adapters) {
 var sharedStyle = `<style>
 :root{font-family:ui-sans-serif,system-ui,sans-serif;color:#182b39;background:#e7edf0}*{box-sizing:border-box}body{margin:0;min-height:100vh}.shell{display:grid;grid-template-columns:210px minmax(0,1fr);min-height:100vh}nav{background:#173b50;color:#eaf4f5;padding:26px 20px}nav strong{font-size:1.3rem;letter-spacing:-.04em}nav a{display:block;color:#eaf4f5;text-decoration:none;margin-top:24px;padding:9px 11px;border-radius:7px}nav a[aria-current]{background:#31657b}main{padding:30px min(5vw,64px);max-width:1200px;width:100%}h1{font-size:clamp(2rem,4vw,3rem);letter-spacing:-.055em;margin:5px 0 12px}h2{font-size:1.1rem}p{line-height:1.5}section{background:#fff;border:1px solid #c8d5da;border-radius:12px;padding:20px;margin:18px 0}button,select,textarea{font:inherit}button{background:#125a72;color:white;border:0;border-radius:7px;padding:10px 16px;cursor:pointer}button:focus-visible,a:focus-visible,select:focus-visible,textarea:focus-visible{outline:3px solid #efae4c;outline-offset:2px}textarea{width:100%;min-height:100px;padding:12px;border:1px solid #91a8b2;border-radius:7px}select{padding:8px;border:1px solid #91a8b2;border-radius:7px}pre{white-space:pre-wrap;overflow-wrap:anywhere}.muted{color:#536b78}.grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(240px,1fr));gap:14px}.node{border:1px solid #afc5cf;border-left:5px solid #3c7c92;border-radius:7px;padding:13px;background:#f5f9fa}#transcript article{border-left:3px solid #3c7c92;padding:8px 16px;margin:12px 0}#widgets table{border-collapse:collapse;width:100%}#widgets td,#widgets th{border-bottom:1px solid #c8d5da;padding:8px;text-align:left}@media(max-width:650px){.shell{display:block}nav{display:flex;gap:12px;align-items:center;padding:12px 20px}nav a{margin:0}main{padding:20px}}@media(prefers-reduced-motion:reduce){*{scroll-behavior:auto!important}}
 </style>`;
-var queryPage = `<!doctype html><html lang="en"><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Query \xB7 Contextful</title>${sharedStyle}<div class="shell"><nav aria-label="Console"><strong>Contextful</strong><a href="/query" aria-current="page">Query</a><a href="/admin">Admin</a></nav><main><h1>Ask the store</h1><p class="muted">Answers cite the rows your access permits.</p><section><form id="composer"><label for="store">Store</label> <select id="store" required></select><p><label for="question">Question</label></p><textarea id="question" required></textarea><p><button type="submit">Ask question</button></p></form></section><section><h2>Conversation</h2><div id="transcript" role="log" aria-live="polite"><p class="muted">Your answer appears here.</p></div></section><section><h2>Results</h2><div id="widgets"></div></section></main></div><script>
-const form=document.getElementById('composer'),store=document.getElementById('store'),transcript=document.getElementById('transcript'),widgets=document.getElementById('widgets');
-fetch('/query/api/stores').then(r=>r.json()).then(rows=>{for(const row of rows){const option=document.createElement('option');option.value=row.id;option.textContent=row.label;store.append(option)}});
-function draw(widget){const props=widget.props??{};if(widget.component==='table.v1'&&Array.isArray(props.columns)&&Array.isArray(props.rows)){const table=document.createElement('table'),head=document.createElement('thead'),header=document.createElement('tr'),body=document.createElement('tbody');for(const column of props.columns){const cell=document.createElement('th');cell.textContent=String(column);header.append(cell)}head.append(header);for(const row of props.rows){const line=document.createElement('tr');for(const value of row){const cell=document.createElement('td');cell.textContent=String(value??'');line.append(cell)}body.append(line)}table.append(head,body);return table}if(widget.component==='metric.v1'){const metric=document.createElement('p');metric.style.fontSize='2rem';metric.textContent=String(props.value??'');return metric}const fallback=document.createElement('pre');fallback.textContent=JSON.stringify(props,null,2);return fallback}
-form.addEventListener('submit',async event=>{event.preventDefault();const question=document.getElementById('question').value.trim();if(!question)return;const response=await fetch('/query/api/ask',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({store:store.value,question})});const answer=await response.json();transcript.replaceChildren();const item=document.createElement('article');item.textContent=question+'
+var queryPage = `<!doctype html><html lang="en"><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Query \xB7 Contextful</title>${sharedStyle}<div class="shell"><nav aria-label="Console"><strong>Contextful</strong><a href="/query" aria-current="page">Query</a><a href="/admin">Admin</a></nav><main><h1>Ask the store</h1><p class="muted">Answers cite the rows your access permits.</p><section id="brief" hidden><h2>Since last visit</h2><div id="brief-body"></div></section><section><form id="composer"><label for="store">Store</label> <select id="store" required></select><p><label for="question">Question</label></p><textarea id="question" required></textarea><p><button type="submit">Ask question</button></p></form></section><section><h2>Conversation</h2><div id="transcript" role="log" aria-live="polite"><p class="muted">Your answer appears here.</p></div></section><section><h2>Results</h2><div id="widgets"></div></section></main></div><script>
+const form=document.getElementById('composer'),store=document.getElementById('store'),transcript=document.getElementById('transcript'),widgets=document.getElementById('widgets'),brief=document.getElementById('brief');
+async function showBrief(){brief.hidden=true;const response=await fetch('/query/api/brief?store='+encodeURIComponent(store.value));if(!response.ok||response.status===204)return;const card=await response.json(),body=document.getElementById('brief-body');body.replaceChildren();for(const subject of card.subjects??[]){const item=document.createElement('article'),heading=document.createElement('h3'),list=document.createElement('ul');heading.textContent=subject.subject;item.append(heading);for(const article of subject.articles??[]){const entry=document.createElement('li');entry.textContent=article.label;list.append(entry)}item.append(list);body.append(item)}brief.hidden=!body.children.length}
+fetch('/query/api/stores').then(r=>r.json()).then(rows=>{for(const row of rows){const option=document.createElement('option');option.value=row.id;option.textContent=row.label;store.append(option)}if(store.value)showBrief()});store.addEventListener('change',showBrief);
+function tableView(props){const table=document.createElement('table'),head=document.createElement('thead'),header=document.createElement('tr'),body=document.createElement('tbody');for(const column of props.columns){const cell=document.createElement('th');cell.textContent=String(column);header.append(cell)}head.append(header);for(const row of props.rows){const line=document.createElement('tr');for(const value of row){const cell=document.createElement('td');cell.textContent=String(value??'');line.append(cell)}body.append(line)}table.append(head,body);return table}
+function draw(widget){const props=widget.props??{},known=['table.v1','metric.v1','line.v1','bar.v1'];if(!known.includes(widget.component))widget={...widget,component:'table.v1'};if(!Array.isArray(props.columns)||!Array.isArray(props.rows))return document.createElement('span');if(widget.component==='metric.v1'){const metric=document.createElement('p');metric.style.fontSize='2rem';metric.textContent=String(props.rows[0]?.[0]??'');return metric}if(widget.component==='line.v1'){const values=props.rows.map(row=>Number(row[1])),svg=document.createElementNS('http://www.w3.org/2000/svg','svg');svg.setAttribute('viewBox','0 0 300 120');svg.setAttribute('role','img');svg.setAttribute('aria-label','Trend over time');const path=document.createElementNS('http://www.w3.org/2000/svg','polyline'),low=Math.min(...values),span=Math.max(...values)-low||1;path.setAttribute('fill','none');path.setAttribute('stroke','#3c7c92');path.setAttribute('stroke-width','3');path.setAttribute('points',values.map((value,index)=>(20+index*260/(values.length-1))+','+(100-(value-low)*80/span)).join(' '));svg.append(path);return svg}if(widget.component==='bar.v1'){const list=document.createElement('div');for(const row of props.rows){const entry=document.createElement('p');entry.textContent=String(row[0]??'')+' \xB7 '+String(row[1]??row[0]??'');list.append(entry)}return list}const frame=document.createElement('div');frame.append(tableView(props));if(widget.alternates?.includes('bar.v1')){const button=document.createElement('button');button.type='button';button.textContent='Bar view';button.addEventListener('click',()=>frame.replaceChildren(draw({...widget,component:'bar.v1'})));frame.append(button)}return frame}
+form.addEventListener('submit',async event=>{event.preventDefault();const question=document.getElementById('question').value.trim();if(!question)return;brief.hidden=true;const response=await fetch('/query/api/ask',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({store:store.value,question})});const answer=await response.json();transcript.replaceChildren();const item=document.createElement('article');item.textContent=question+'
 '+(answer.answer??answer.error?.identifier??'No answer');transcript.append(item);widgets.replaceChildren();for(const widget of answer.widgets??[])widgets.append(draw(widget));if(answer.sources?.length){const sources=document.createElement('p');sources.textContent='Sources: '+answer.sources.map(x=>x.title??x.url).join(', ');transcript.append(sources)}});
 </script></html>`;
 var adminPage = `<!doctype html><html lang="en"><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Admin \xB7 Contextful</title>${sharedStyle}<div class="shell"><nav aria-label="Console"><strong>Contextful</strong><a href="/query">Query</a><a href="/admin" aria-current="page">Admin</a></nav><main><h1>Store operations</h1><p class="muted">Pipelines, schedules, steps and run outcomes come from the store.</p><section><h2>Workflow canvas</h2><div id="canvas" class="grid"></div></section><section><h2>Operational record</h2><div id="record"></div></section><section><h2>Control document</h2><label for="document">Document</label><textarea id="document"></textarea><p><button id="edit">Edit</button> <button id="apply">Apply</button></p><p id="result" role="status"></p></section></main></div><script>

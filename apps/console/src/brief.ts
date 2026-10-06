@@ -14,7 +14,7 @@ export function topicMatch(conclusion: Conclusion, row: Arrival): boolean {
   return shared.length >= 2 && shared.some((word) => subject.has(word));
 }
 
-export async function deriveBrief(input: {
+export type BriefInput = {
   session: { turns: number; vantage: string };
   conclusions: Conclusion[];
   arrivals?: Arrival[];
@@ -22,7 +22,9 @@ export async function deriveBrief(input: {
   now: number;
   windowDays?: number;
   budgetMs?: number;
-}): Promise<Brief | null> {
+};
+
+export async function deriveBrief(input: BriefInput): Promise<Brief | null> {
   if (input.session.turns !== 0 || input.session.vantage !== "present") return null;
   const live = input.conclusions.filter((entry) => entry.live);
   if (live.length === 0) return null;

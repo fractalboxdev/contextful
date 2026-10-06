@@ -1,4 +1,7 @@
 import { createHash, createHmac, createPublicKey, randomBytes, timingSafeEqual, verify, type KeyObject } from "node:crypto";
+import { deriveBrief, type BriefInput } from "./brief.ts";
+import { answerDelivery } from "./publish.ts";
+import { buildView, sanitizeView, type ResultRows } from "./render.ts";
 
 export type Operator = { subject: string; grants: ReadonlySet<"query" | "admin"> };
 export type Store = { id: string; label: string };
@@ -26,13 +29,15 @@ export type CognitoIdentity = {
 };
 export type Identity = AccessIdentity | CognitoIdentity;
 export type TurnInput = { operator: Operator; store: string; question: string };
-export type TurnResult = { answer: string; sources: unknown[]; widgets: unknown[] };
+export type TurnResult = { answer: string; sources: unknown[]; widgets: unknown[]; resultRows?: ResultRows; accessExplanation?: boolean; share?: boolean };
 export type PackList = { entries: unknown[]; truncated: boolean; declined: number };
 export type ConsoleAdapters = {
   identity: Identity;
   stores: Store[];
   adminCapability?: string;
   turn: (input: TurnInput) => Promise<TurnResult>;
+  brief?: (operator: Operator, store: string) => Promise<BriefInput>;
+  redactView?: (operator: Operator, value: string) => string;
   read: { list: (operator: Operator) => Promise<Store[]> };
   control: {
     workflows: (operator: Operator, store: string | null) => Promise<unknown>;
@@ -259,12 +264,32 @@ export function createConsole(adapters: ConsoleAdapters): { fetch: (request: Req
       if (request.method === "GET" && path === `/${grant}`) return page(grant);
       if (grant === "query") {
         if (request.method === "GET" && path === "/query/api/stores") return json(await adapters.read.list(operator));
+        if (request.method === "GET" && path === "/query/api/brief") {
+          const store = url.searchParams.get("store");
+          if (!store || !adapters.stores.some((entry) => entry.id === store)) return refusal("ConsoleRequestMalformed", 400);
+          if (!adapters.brief) return refusal("ConsoleAdapterUnavailable", 503);
+          try {
+            const card = await deriveBrief(await adapters.brief(operator, store));
+            return card ? json(card) : new Response(null, { status: 204, headers: { "Cache-Control": "no-store" } });
+          } catch {
+            return new Response(null, { status: 204, headers: { "Cache-Control": "no-store" } });
+          }
+        }
         if (request.method === "POST" && path === "/query/api/ask") {
           let input: unknown;
           try { input = await body(request); } catch (error) { return bodyFailure(error); }
           if (!object(input) || typeof input.store !== "string" || typeof input.question !== "string" || !input.question.trim() ||
               !adapters.stores.some((store) => store.id === input.store)) return refusal("ConsoleRequestMalformed", 400);
-          return json(await adapters.turn({ operator, store: input.store, question: input.question }));
+          if ("view" in input || "widgets" in input) return refusal("ConsoleViewNotServerBuilt", 400);
+          const turn = await adapters.turn({ operator, store: input.store, question: input.question });
+          let answer: ReturnType<typeof answerDelivery>;
+          try {
+            answer = answerDelivery({ operator: operator.subject, answer: turn.answer, accessExplanation: turn.accessExplanation ?? false, share: turn.share });
+          } catch (error) {
+            return refusal(error instanceof Error ? error.message : "VisibilityShareAffordance");
+          }
+          const built = turn.resultRows ? sanitizeView(buildView(turn.resultRows), (value) => adapters.redactView?.(operator, value) ?? value) : null;
+          return json({ answer: answer.answer, sources: turn.sources, widgets: built ? [built] : [] });
         }
       } else {
         const store = url.searchParams.get("store");
@@ -296,11 +321,13 @@ const sharedStyle = `<style>
 :root{font-family:ui-sans-serif,system-ui,sans-serif;color:#182b39;background:#e7edf0}*{box-sizing:border-box}body{margin:0;min-height:100vh}.shell{display:grid;grid-template-columns:210px minmax(0,1fr);min-height:100vh}nav{background:#173b50;color:#eaf4f5;padding:26px 20px}nav strong{font-size:1.3rem;letter-spacing:-.04em}nav a{display:block;color:#eaf4f5;text-decoration:none;margin-top:24px;padding:9px 11px;border-radius:7px}nav a[aria-current]{background:#31657b}main{padding:30px min(5vw,64px);max-width:1200px;width:100%}h1{font-size:clamp(2rem,4vw,3rem);letter-spacing:-.055em;margin:5px 0 12px}h2{font-size:1.1rem}p{line-height:1.5}section{background:#fff;border:1px solid #c8d5da;border-radius:12px;padding:20px;margin:18px 0}button,select,textarea{font:inherit}button{background:#125a72;color:white;border:0;border-radius:7px;padding:10px 16px;cursor:pointer}button:focus-visible,a:focus-visible,select:focus-visible,textarea:focus-visible{outline:3px solid #efae4c;outline-offset:2px}textarea{width:100%;min-height:100px;padding:12px;border:1px solid #91a8b2;border-radius:7px}select{padding:8px;border:1px solid #91a8b2;border-radius:7px}pre{white-space:pre-wrap;overflow-wrap:anywhere}.muted{color:#536b78}.grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(240px,1fr));gap:14px}.node{border:1px solid #afc5cf;border-left:5px solid #3c7c92;border-radius:7px;padding:13px;background:#f5f9fa}#transcript article{border-left:3px solid #3c7c92;padding:8px 16px;margin:12px 0}#widgets table{border-collapse:collapse;width:100%}#widgets td,#widgets th{border-bottom:1px solid #c8d5da;padding:8px;text-align:left}@media(max-width:650px){.shell{display:block}nav{display:flex;gap:12px;align-items:center;padding:12px 20px}nav a{margin:0}main{padding:20px}}@media(prefers-reduced-motion:reduce){*{scroll-behavior:auto!important}}
 </style>`;
 
-const queryPage = `<!doctype html><html lang="en"><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Query · Contextful</title>${sharedStyle}<div class="shell"><nav aria-label="Console"><strong>Contextful</strong><a href="/query" aria-current="page">Query</a><a href="/admin">Admin</a></nav><main><h1>Ask the store</h1><p class="muted">Answers cite the rows your access permits.</p><section><form id="composer"><label for="store">Store</label> <select id="store" required></select><p><label for="question">Question</label></p><textarea id="question" required></textarea><p><button type="submit">Ask question</button></p></form></section><section><h2>Conversation</h2><div id="transcript" role="log" aria-live="polite"><p class="muted">Your answer appears here.</p></div></section><section><h2>Results</h2><div id="widgets"></div></section></main></div><script>
-const form=document.getElementById('composer'),store=document.getElementById('store'),transcript=document.getElementById('transcript'),widgets=document.getElementById('widgets');
-fetch('/query/api/stores').then(r=>r.json()).then(rows=>{for(const row of rows){const option=document.createElement('option');option.value=row.id;option.textContent=row.label;store.append(option)}});
-function draw(widget){const props=widget.props??{};if(widget.component==='table.v1'&&Array.isArray(props.columns)&&Array.isArray(props.rows)){const table=document.createElement('table'),head=document.createElement('thead'),header=document.createElement('tr'),body=document.createElement('tbody');for(const column of props.columns){const cell=document.createElement('th');cell.textContent=String(column);header.append(cell)}head.append(header);for(const row of props.rows){const line=document.createElement('tr');for(const value of row){const cell=document.createElement('td');cell.textContent=String(value??'');line.append(cell)}body.append(line)}table.append(head,body);return table}if(widget.component==='metric.v1'){const metric=document.createElement('p');metric.style.fontSize='2rem';metric.textContent=String(props.value??'');return metric}const fallback=document.createElement('pre');fallback.textContent=JSON.stringify(props,null,2);return fallback}
-form.addEventListener('submit',async event=>{event.preventDefault();const question=document.getElementById('question').value.trim();if(!question)return;const response=await fetch('/query/api/ask',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({store:store.value,question})});const answer=await response.json();transcript.replaceChildren();const item=document.createElement('article');item.textContent=question+'\n'+(answer.answer??answer.error?.identifier??'No answer');transcript.append(item);widgets.replaceChildren();for(const widget of answer.widgets??[])widgets.append(draw(widget));if(answer.sources?.length){const sources=document.createElement('p');sources.textContent='Sources: '+answer.sources.map(x=>x.title??x.url).join(', ');transcript.append(sources)}});
+const queryPage = `<!doctype html><html lang="en"><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Query · Contextful</title>${sharedStyle}<div class="shell"><nav aria-label="Console"><strong>Contextful</strong><a href="/query" aria-current="page">Query</a><a href="/admin">Admin</a></nav><main><h1>Ask the store</h1><p class="muted">Answers cite the rows your access permits.</p><section id="brief" hidden><h2>Since last visit</h2><div id="brief-body"></div></section><section><form id="composer"><label for="store">Store</label> <select id="store" required></select><p><label for="question">Question</label></p><textarea id="question" required></textarea><p><button type="submit">Ask question</button></p></form></section><section><h2>Conversation</h2><div id="transcript" role="log" aria-live="polite"><p class="muted">Your answer appears here.</p></div></section><section><h2>Results</h2><div id="widgets"></div></section></main></div><script>
+const form=document.getElementById('composer'),store=document.getElementById('store'),transcript=document.getElementById('transcript'),widgets=document.getElementById('widgets'),brief=document.getElementById('brief');
+async function showBrief(){brief.hidden=true;const response=await fetch('/query/api/brief?store='+encodeURIComponent(store.value));if(!response.ok||response.status===204)return;const card=await response.json(),body=document.getElementById('brief-body');body.replaceChildren();for(const subject of card.subjects??[]){const item=document.createElement('article'),heading=document.createElement('h3'),list=document.createElement('ul');heading.textContent=subject.subject;item.append(heading);for(const article of subject.articles??[]){const entry=document.createElement('li');entry.textContent=article.label;list.append(entry)}item.append(list);body.append(item)}brief.hidden=!body.children.length}
+fetch('/query/api/stores').then(r=>r.json()).then(rows=>{for(const row of rows){const option=document.createElement('option');option.value=row.id;option.textContent=row.label;store.append(option)}if(store.value)showBrief()});store.addEventListener('change',showBrief);
+function tableView(props){const table=document.createElement('table'),head=document.createElement('thead'),header=document.createElement('tr'),body=document.createElement('tbody');for(const column of props.columns){const cell=document.createElement('th');cell.textContent=String(column);header.append(cell)}head.append(header);for(const row of props.rows){const line=document.createElement('tr');for(const value of row){const cell=document.createElement('td');cell.textContent=String(value??'');line.append(cell)}body.append(line)}table.append(head,body);return table}
+function draw(widget){const props=widget.props??{},known=['table.v1','metric.v1','line.v1','bar.v1'];if(!known.includes(widget.component))widget={...widget,component:'table.v1'};if(!Array.isArray(props.columns)||!Array.isArray(props.rows))return document.createElement('span');if(widget.component==='metric.v1'){const metric=document.createElement('p');metric.style.fontSize='2rem';metric.textContent=String(props.rows[0]?.[0]??'');return metric}if(widget.component==='line.v1'){const values=props.rows.map(row=>Number(row[1])),svg=document.createElementNS('http://www.w3.org/2000/svg','svg');svg.setAttribute('viewBox','0 0 300 120');svg.setAttribute('role','img');svg.setAttribute('aria-label','Trend over time');const path=document.createElementNS('http://www.w3.org/2000/svg','polyline'),low=Math.min(...values),span=Math.max(...values)-low||1;path.setAttribute('fill','none');path.setAttribute('stroke','#3c7c92');path.setAttribute('stroke-width','3');path.setAttribute('points',values.map((value,index)=>(20+index*260/(values.length-1))+','+(100-(value-low)*80/span)).join(' '));svg.append(path);return svg}if(widget.component==='bar.v1'){const list=document.createElement('div');for(const row of props.rows){const entry=document.createElement('p');entry.textContent=String(row[0]??'')+' · '+String(row[1]??row[0]??'');list.append(entry)}return list}const frame=document.createElement('div');frame.append(tableView(props));if(widget.alternates?.includes('bar.v1')){const button=document.createElement('button');button.type='button';button.textContent='Bar view';button.addEventListener('click',()=>frame.replaceChildren(draw({...widget,component:'bar.v1'})));frame.append(button)}return frame}
+form.addEventListener('submit',async event=>{event.preventDefault();const question=document.getElementById('question').value.trim();if(!question)return;brief.hidden=true;const response=await fetch('/query/api/ask',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({store:store.value,question})});const answer=await response.json();transcript.replaceChildren();const item=document.createElement('article');item.textContent=question+'\n'+(answer.answer??answer.error?.identifier??'No answer');transcript.append(item);widgets.replaceChildren();for(const widget of answer.widgets??[])widgets.append(draw(widget));if(answer.sources?.length){const sources=document.createElement('p');sources.textContent='Sources: '+answer.sources.map(x=>x.title??x.url).join(', ');transcript.append(sources)}});
 </script></html>`;
 
 const adminPage = `<!doctype html><html lang="en"><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Admin · Contextful</title>${sharedStyle}<div class="shell"><nav aria-label="Console"><strong>Contextful</strong><a href="/query">Query</a><a href="/admin" aria-current="page">Admin</a></nav><main><h1>Store operations</h1><p class="muted">Pipelines, schedules, steps and run outcomes come from the store.</p><section><h2>Workflow canvas</h2><div id="canvas" class="grid"></div></section><section><h2>Operational record</h2><div id="record"></div></section><section><h2>Control document</h2><label for="document">Document</label><textarea id="document"></textarea><p><button id="edit">Edit</button> <button id="apply">Apply</button></p><p id="result" role="status"></p></section></main></div><script>
