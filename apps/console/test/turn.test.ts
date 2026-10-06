@@ -134,8 +134,21 @@ test("refused per-reader mint falls back only to an installed shared credential"
     (error: unknown) => error instanceof ConsoleError && error.code === "ConsoleTokenExchangeRefused");
 });
 
-test("planner scaffolding refuses memory relations", async () => {
-  const { turn, calls } = harness({ tables: [{ name: "memory_entries", kind: "memory" }] });
+test("planner scaffolding lists data tables while memory relations remain outside it", async () => {
+  let plannerTables: unknown[] = [];
+  const { turn } = harness({
+    tables: [{ name: "events", kind: "data" }, { name: "memory_entries", kind: "memory" }],
+    planner: async (input: { tables: unknown[] }) => { plannerTables = input.tables; return [{ tool: "query", arguments: {} }]; },
+  });
+  await turn.ask({ question: "Count", packs: ["data"] });
+  assert.deepEqual(plannerTables, [{ name: "events", kind: "data" }]);
+});
+
+test("a planner call targeting a memory relation dispatches nothing", async () => {
+  const { turn, calls } = harness({
+    tables: [{ name: "memory_entries", kind: "memory" }],
+    tools: [{ ...readTool, table: "memory_entries" }],
+  });
   await assert.rejects(turn.ask({ question: "Recall", packs: ["data"] }),
     (error: unknown) => error instanceof ConsoleError && error.code === "ConsolePlannerReachedMemory");
   assert.deepEqual(calls, []);

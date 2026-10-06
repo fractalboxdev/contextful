@@ -167,17 +167,24 @@ export function createTurn(options: TurnOptions) {
   return {
     async ask(request: TurnRequest): Promise<{ text: string; sources: Source[] }> {
       const vantage = request.vantage === undefined ? undefined : parseVantage(request.vantage);
-      if (options.tables?.some((table) => table.kind === "memory")) throw new ConsoleError("ConsolePlannerReachedMemory");
       const admitted = options.tools.filter((tool) => request.packs.includes(tool.pack));
       const results: ToolResult[] = [];
       const rowsByTable = new Map<string, number>();
       const deadline = Date.now() + Math.min(options.timeoutMs ?? 10_000, 10_000);
       for (let round = 0; round < 2; round++) {
-        const calls = await options.planner({ question: request.question, vantage, tools: admitted.filter((tool) => tool.kind === "read"), tables: options.tables ?? [], previous: results });
+        const memoryTable = (name: string | undefined) => options.tables?.some((table) => table.kind === "memory" && table.name === name);
+        const calls = await options.planner({
+          question: request.question,
+          vantage,
+          tools: admitted.filter((tool) => tool.kind === "read" && !memoryTable(tool.table)),
+          tables: (options.tables ?? []).filter((table) => table.kind === "data"),
+          previous: results,
+        });
         for (const call of calls) {
           const tool = options.tools.find((candidate) => candidate.name === call.tool);
           if (!tool || !request.packs.includes(tool.pack)) throw new ConsoleError("ConsoleToolNotAdmitted", call.tool);
           if (tool.kind !== "read") throw new ConsoleError("ConsoleMutatingToolRequested", call.tool);
+          if (memoryTable(tool.table)) throw new ConsoleError("ConsolePlannerReachedMemory", call.tool);
           if (tool.access === "direct-file") throw new ConsoleError("ConsoleFileAccessDirect", call.tool);
           if (tool.leg === "web" && call.publicationBound !== undefined) parseWebBound(call.publicationBound);
           const table = tool.table ?? tool.name;
