@@ -21,15 +21,15 @@ const MIB: f64 = 1024.0 * 1024.0;
 /// its loader, and musl's single library and loader.
 const PLATFORM_C: [&str; 8] = ["libc.so", "libm.so", "libpthread.so", "libdl.so", "librt.so", "ld-linux", "ld-musl-", "libc.musl-"];
 
-/// The directory the footprint step builds into, apart from every other stage's.
-pub const TARGET_DIR: &str = "target/footprint";
-
 /// The builder a host other than Linux runs the build in: the container recipe's own,
 /// Rust 1.97 on Alpine pinned by digest, whose native C library is musl.
 const BUILDER: &str = "rust:1.97-alpine@sha256:3c38f3f82c2f3d73da3b38e18d279393a04cb43ddded0e35088a8c3324d40900";
 
 /// Where the builder mounts the repository.
 const MOUNT: &str = "/src";
+
+/// The host target directory's mount inside the builder.
+const TARGET_MOUNT: &str = "/contextful-target";
 
 /// The static-linked Linux target of this host's architecture: glibc linked statically on a
 /// Linux host, musl inside [`BUILDER`] elsewhere. Either links the SQL engine's C++ runtime
@@ -73,11 +73,11 @@ fn builder_memory() -> Option<u64> {
     String::from_utf8_lossy(&out.stdout).trim().parse().ok()
 }
 
-/// The environment of that invocation, the target directory under `root`. A glibc target
+/// The environment of that invocation. A glibc target
 /// links statically only under `crt-static`; musl links statically by default.
-fn cargo_env(root: &str) -> Vec<(&'static str, String)> {
+fn cargo_env(target: &Path) -> Vec<(&'static str, String)> {
     let mut env = vec![
-        ("CARGO_TARGET_DIR", format!("{root}/{TARGET_DIR}")),
+        ("CARGO_TARGET_DIR", target.display().to_string()),
         ("CARGO_INCREMENTAL", "0".to_string()),
         ("CARGO_BUILD_JOBS", jobs().to_string()),
     ];
@@ -90,23 +90,25 @@ fn cargo_env(root: &str) -> Vec<(&'static str, String)> {
 /// The command building `profile`: cargo on a Linux host, cargo inside [`BUILDER`] with its
 /// C and C++ toolchain added elsewhere.
 fn build_command(root: &Path, profile: &str) -> Command {
+    let target = crate::build_target(root, "footprint");
     if cfg!(target_os = "linux") {
         let mut c = Command::new("cargo");
-        c.args(cargo_build(profile)).envs(cargo_env(&root.display().to_string())).current_dir(root);
+        c.args(cargo_build(profile)).envs(cargo_env(&target)).current_dir(root);
         return c;
     }
     let mut c = Command::new("docker");
     c.args(["run", "--rm", "-v", &format!("{}:{MOUNT}", root.display()), "-v", "contextful-footprint-registry:/usr/local/cargo/registry", "-w", MOUNT]);
-    for (k, v) in cargo_env(MOUNT) {
+    c.args(["-v", &format!("{}:{TARGET_MOUNT}", target.display())]);
+    for (k, v) in cargo_env(Path::new(TARGET_MOUNT)) {
         c.args(["-e", &format!("{k}={v}")]);
     }
     c.args([BUILDER, "sh", "-c", &format!("apk add --no-cache -q build-base && cargo {}", cargo_build(profile).join(" "))]);
     c
 }
 
-/// The artifact a build of `profile` leaves under `root`.
+/// The artifact a build of `profile` leaves in the footprint target directory.
 pub fn artifact(root: &Path) -> PathBuf {
-    root.join(TARGET_DIR).join(triple()).join("release").join("contextful")
+    crate::build_target(root, "footprint").join(triple()).join("release").join("contextful")
 }
 
 /// Build each of `profiles` as the static-linked Linux target and hold each artifact to its

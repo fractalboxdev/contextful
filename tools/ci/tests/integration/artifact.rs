@@ -31,6 +31,34 @@ fn fake_cargo(dir: &Path) {
     std::fs::set_permissions(&path, std::os::unix::fs::PermissionsExt::from_mode(0o755)).unwrap();
 }
 
+#[test]
+fn default_release_and_footprint_targets_follow_the_inherited_pool() {
+    let bin = tempfile::tempdir().unwrap();
+    fake_cargo(bin.path());
+    let pool = tempfile::tempdir().unwrap();
+    let dist = tempfile::tempdir().unwrap();
+    let path = format!("{}:{}", bin.path().display(), std::env::var("PATH").unwrap_or_default());
+    let o = Command::new(env!("CARGO_BIN_EXE_contextful-ci"))
+        .args(["release", "--profile", "contextful-edge", "--target", "aarch64-apple-darwin", "--out"])
+        .arg(dist.path())
+        .current_dir(repo_root())
+        .env("PATH", &path)
+        .env("CARGO_TARGET_DIR", pool.path())
+        .output().unwrap();
+    assert!(o.status.success(), "{}", String::from_utf8_lossy(&o.stderr));
+    assert!(pool.path().join("contextful-ci/release-artifacts/aarch64-apple-darwin/release/contextful").exists());
+
+    let o = Command::new(env!("CARGO_BIN_EXE_contextful-ci"))
+        .args(["footprint", "--build", "--plan", "--profile", "contextful-edge"])
+        .current_dir(repo_root())
+        .env("PATH", &path)
+        .env("CARGO_TARGET_DIR", pool.path())
+        .output().unwrap();
+    assert!(o.status.success(), "{}", String::from_utf8_lossy(&o.stderr));
+    let plan = String::from_utf8_lossy(&o.stdout);
+    assert!(plan.contains(pool.path().join("contextful-ci/footprint").to_str().unwrap()), "{plan}");
+}
+
 fn version() -> String {
     let text = std::fs::read_to_string(repo_root().join("Cargo.toml")).unwrap();
     let doc: toml::Value = toml::from_str(&text).unwrap();
