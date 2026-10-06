@@ -45,6 +45,12 @@ pub enum RunError {
     /// A required derive config key absent or blank. (`run.select.required-key`)
     #[error("DeriveConfigKeyMissing: {0}")]
     DeriveConfigKeyMissing(String),
+    /// An explicit predecessor differing from the derive source-table parent. (`run.select.derive-after-conflict`)
+    #[error("DeriveAfterConflict: {0}")]
+    DeriveAfterConflict(String),
+    /// A derive source-table graph returning to one of its pipelines. (`run.select.derive-cycle`)
+    #[error("DeriveCycle: {0}")]
+    DeriveCycle(String),
     /// A caption block starting before the one already accepted. (`run.parse-cues.backward-cue`)
     #[error("DeriveCueOutOfOrder: {0}")]
     DeriveCueOutOfOrder(String),

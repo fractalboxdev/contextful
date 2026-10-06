@@ -689,6 +689,21 @@ fn a_cycle_with_a_failed_fire_exits_non_zero() {
     assert_eq!(quiet["failed"], serde_json::json!([]));
 }
 
+#[test]
+fn an_explicit_after_step_waits_for_its_heads_success() {
+    let vendor = Vendor::start(|t| if t.starts_with("/v1/bad") { (404, "{}".into()) } else { (200, "[{\"id\":\"a\"}]".into()) });
+    let dir = project(&format!(
+        "site_id = \"site-a\"\n\n{}\n{}",
+        pipeline("bad", &vendor.url("/v1/bad"), "schedule = \"every 1h\"", "tables = [\"items\"]"),
+        pipeline("after-bad", &vendor.url("/v1/after"), "after = \"bad\"", "tables = [\"items\"]"),
+    ));
+    ok(&cf(dir.path(), &["pipeline", "import", "--project", "research"]));
+    ok(&cf(dir.path(), &["pipeline", "apply", "--project", "research"]));
+    let out = cf(dir.path(), &["pipeline", "serve", "--cycle", "--project", "research", "--now", "2030-01-01T00:00:00Z"]);
+    assert!(!out.status.success());
+    assert_eq!(vendor.targets(), ["/v1/bad"]);
+}
+
 /// A malformed pointer refuses the cycle rather than arming a version nobody applied.
 #[test]
 fn a_malformed_pointer_refuses_the_cycle() {
@@ -701,7 +716,7 @@ fn a_malformed_pointer_refuses_the_cycle() {
 }
 
 /// A running `pipeline serve`, its stderr collected line by line.
-struct Daemon {
+pub(crate) struct Daemon {
     child: std::process::Child,
     lines: Arc<Mutex<Vec<String>>>,
 }
@@ -712,7 +727,11 @@ impl Daemon {
     }
 
     fn start_with(dir: &Path, extra: &[&str]) -> Daemon {
-        let mut child = Command::new(env!("CARGO_BIN_EXE_contextful"))
+        Self::start_from(dir, extra, Path::new(env!("CARGO_BIN_EXE_contextful")))
+    }
+
+    pub(crate) fn start_from(dir: &Path, extra: &[&str], exe: &Path) -> Daemon {
+        let mut child = Command::new(exe)
             .args(["pipeline", "serve", "--project", "research"])
             .args(extra)
             .current_dir(dir)
@@ -736,12 +755,12 @@ impl Daemon {
         self.child.id()
     }
 
-    fn lines(&self) -> Vec<String> {
+    pub(crate) fn lines(&self) -> Vec<String> {
         self.lines.lock().unwrap().clone()
     }
 
     /// Wait up to 60 s for a line after index `from` holding `needle`, answering its index.
-    fn wait_for(&self, needle: &str, from: usize) -> usize {
+    pub(crate) fn wait_for(&self, needle: &str, from: usize) -> usize {
         let deadline = std::time::Instant::now() + std::time::Duration::from_secs(60);
         loop {
             if let Some(i) = self.lines().iter().enumerate().skip(from).find(|(_, l)| l.contains(needle)).map(|(i, _)| i) {
@@ -1115,7 +1134,7 @@ fn a_signalled_cycle_returns_only_after_its_children_exit() {
 }
 
 /// `POST` to `url` on a loopback address, answering the status and the JSON body.
-fn post(url: &str) -> (u16, serde_json::Value) {
+pub(crate) fn post(url: &str) -> (u16, serde_json::Value) {
     let rest = url.strip_prefix("http://").unwrap();
     let (addr, path) = rest.split_once('/').unwrap();
     let mut stream = std::net::TcpStream::connect(addr).unwrap();
@@ -1129,7 +1148,11 @@ fn post(url: &str) -> (u16, serde_json::Value) {
 
 /// A daemon under the external trigger, and the wake URL it printed.
 fn external(dir: &Path) -> (Daemon, String) {
-    let daemon = Daemon::start_with(dir, &["--http", "127.0.0.1:0"]);
+    external_from(dir, Path::new(env!("CARGO_BIN_EXE_contextful")))
+}
+
+pub(crate) fn external_from(dir: &Path, exe: &Path) -> (Daemon, String) {
+    let daemon = Daemon::start_from(dir, &["--http", "127.0.0.1:0"], exe);
     let at = daemon.wait_for("wake on ", 0);
     let url = daemon.lines()[at].split("wake on ").nth(1).unwrap().trim().to_string();
     (daemon, url)

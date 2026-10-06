@@ -364,6 +364,8 @@ pub(crate) fn apply(project: &ProjectArgs, declaration: Option<PathBuf>, id: Opt
         }
         let changes: Vec<Change> = diff(&target, &base).into_iter().filter(|c| c.action != "unchanged").collect();
         let text = render(&target)?;
+        collect(&[ManifestFile { path: "proposed applied snapshot".into(), text: text.clone() }])
+            .map_err(|e| SurfaceError::ApplyValidationRefused(format!("combined snapshot: {e}")))?;
         for c in changes.iter().filter(|c| c.action != "remove") {
             let spec = &target[&c.id];
             check(spec, &l.declaration, tasks)
@@ -505,6 +507,11 @@ struct ChildDispatch {
     children: Arc<Children>,
 }
 
+enum ChildStepError {
+    Run(String),
+    Infrastructure(String),
+}
+
 /// Read `pipe` to its end on a thread of its own.
 fn drain_pipe(pipe: Option<impl Read + Send + 'static>) -> std::thread::JoinHandle<String> {
     std::thread::spawn(move || {
@@ -517,18 +524,18 @@ fn drain_pipe(pipe: Option<impl Read + Send + 'static>) -> std::thread::JoinHand
 }
 
 impl Dispatch for ChildDispatch {
-    fn fire(&self, id: &str, steps: &[String], version: u64) -> Result<String, String> {
-        let mut lines = Vec::new();
-        for step in std::iter::once(id).chain(steps.iter().map(String::as_str)) {
-            lines.push(self.step(step, version)?);
-        }
-        Ok(lines.join("; "))
+    fn fire(&self, id: &str, steps: &[String], derived_parents: &BTreeMap<String, String>, version: u64) -> Result<String, String> {
+        contextful_engine::scheduler::fire_ordered(id, steps, derived_parents, |step| match self.step(step, version) {
+            Ok(line) => Ok(contextful_engine::scheduler::CompletedStep::Succeeded(line)),
+            Err(ChildStepError::Run(error)) => Ok(contextful_engine::scheduler::CompletedStep::Failed(error)),
+            Err(ChildStepError::Infrastructure(error)) => Err(error),
+        })
     }
 }
 
 impl ChildDispatch {
     /// Run one landing step as a child `pipeline run --applied <N>`.
-    fn step(&self, id: &str, version: u64) -> Result<String, String> {
+    fn step(&self, id: &str, version: u64) -> Result<String, ChildStepError> {
         let mut cmd = Command::new(&self.exe);
         cmd.args(["pipeline", "run", id, "--applied", &version.to_string(), "--project", &self.project]);
         if let Some(d) = &self.declaration {
@@ -538,9 +545,9 @@ impl ChildDispatch {
             cmd.args(["--now", now]);
         }
         cmd.stdin(Stdio::null()).stdout(Stdio::piped()).stderr(Stdio::piped());
-        let (pid, out, err) = self.children.spawn(&mut cmd).map_err(|e| format!("{id}: starting `{}`: {e}", self.exe.display()))?;
+        let (pid, out, err) = self.children.spawn(&mut cmd).map_err(|e| ChildStepError::Infrastructure(format!("{id}: starting `{}`: {e}", self.exe.display())))?;
         let (out, err) = (drain_pipe(out), drain_pipe(err));
-        let status = self.children.wait(pid).map_err(|e| format!("{id}: waiting on child {pid}: {e}"))?;
+        let status = self.children.wait(pid).map_err(|e| ChildStepError::Infrastructure(format!("{id}: waiting on child {pid}: {e}")))?;
         let (stdout, stderr) = (out.join().unwrap_or_default(), err.join().unwrap_or_default());
         for line in stdout.lines().chain(stderr.lines()) {
             eprintln!("[{id}] {line}");
@@ -548,10 +555,12 @@ impl ChildDispatch {
         let last = |t: &str| t.lines().last().unwrap_or_default().to_string();
         if status.success() {
             Ok(last(&stdout))
+        } else if status.code().is_none() {
+            Err(ChildStepError::Infrastructure(format!("child {pid} ended: {status}")))
         } else if stderr.trim().is_empty() {
-            Err(format!("child {pid} ended: {status}"))
+            Err(ChildStepError::Run(format!("child {pid} ended: {status}")))
         } else {
-            Err(last(&stderr))
+            Err(ChildStepError::Run(last(&stderr)))
         }
     }
 }
@@ -605,6 +614,13 @@ fn arm(scheduler: &mut Scheduler, snaps: &Source, project: &Project) -> Result<O
     let mut entries = Vec::new();
     let mut unarmed = Vec::new();
     for spec in specs.values() {
+        if runs.derived_parents.contains_key(&spec.id) {
+            let head = runs.head_of.get(&spec.id).expect("a derived child has a head");
+            let reason = format!("it lands after its derive parent in the run headed by `{head}`");
+            eprintln!("pipeline `{}` stays unarmed: {reason}", spec.id);
+            unarmed.push(Unarmed { id: spec.id.clone(), reason });
+            continue;
+        }
         let reason = match spec.schedule.as_deref().map(Schedule::parse) {
             Some(Ok(schedule)) => {
                 entries.push(Entry { id: spec.id.clone(), schedule });
@@ -619,7 +635,7 @@ fn arm(scheduler: &mut Scheduler, snaps: &Source, project: &Project) -> Result<O
         eprintln!("pipeline `{}` stays unarmed: {reason}", spec.id);
         unarmed.push(Unarmed { id: spec.id.clone(), reason });
     }
-    scheduler.arm_runs(version, entries, runs.steps)?;
+    scheduler.arm_runs_with_derived(version, entries, runs.steps, runs.derived_parents)?;
     eprintln!("armed v{version}: {} scheduled pipeline(s), {} unarmed", scheduler.armed().len(), unarmed.len());
     Ok(Some(unarmed))
 }

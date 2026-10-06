@@ -72,6 +72,9 @@ Derive anti-joins output ({{run.select.rows-per-run}}), runs a machine-bound eng
 ({{run.emit.stale-supersedes}}). Passage modality names output ({{run.emit.output-modality}});
 bytes refresh units ({{run.emit.local-content-key}}); folds remove orphaned output
 ({{run.emit.parent-tombstone}}).
+Chained derives follow
+{{run.select.derive-order}}, {{run.select.derive-failed-parent}} and {{run.select.parent-outcome}}; {{run.select.derive-cycle}}
+prevents circular chains. A conflicting `after` refuses under {{run.select.derive-after-conflict}}.
 
 ## Worked example
 
