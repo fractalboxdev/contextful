@@ -10,12 +10,12 @@ An unpinned clause is `committed`; a pinned one is `performed` when its Rust, Le
 | `connector` | 2 | 14 | 349 | 89 | 21 | 15 | 218 | 0 | 218 |
 | `corpus` | 1 | 10 | 79 | 37 | 7 | 0 | 40 | 0 | 40 |
 | `disclosure` | 3 | 16 | 122 | 64 | 13 | 7 | 54 | 0 | 54 |
-| `read` | 2 | 15 | 179 | 29 | 22 | 21 | 163 | 0 | 163 |
+| `read` | 2 | 15 | 185 | 33 | 22 | 21 | 168 | 0 | 168 |
 | `run` | 3 | 26 | 373 | 98 | 36 | 37 | 261 | 0 | 261 |
 | `store` | 1 | 17 | 237 | 55 | 13 | 20 | 200 | 0 | 200 |
-| `surface` | 2 | 20 | 110 | 51 | 22 | 0 | 61 | 0 | 61 |
+| `surface` | 2 | 20 | 111 | 52 | 22 | 0 | 70 | 0 | 66 |
 | `topology` | 1 | 6 | 70 | 24 | 5 | 5 | 38 | 0 | 38 |
-| **total** | 19 | 155 | 2017 | 583 | 188 | 127 | 1375 | 0 | |
+| **total** | 19 | 155 | 2024 | 588 | 188 | 127 | 1389 | 0 | |
 
 Decision records: 18.
 
@@ -32,12 +32,12 @@ A milestone reads `closed` when its acceptance test computes `passing` and every
 | 4 — Ingest | 25 | 496 | 313 | passing | open |
 | 5 — The read face under enforcement | 17 | 252 | 192 | passing | open |
 | 6 — Sync and replicas | 8 | 73 | 68 | passing | closed |
-| 7 — Memory | 6 | 37 | 37 | passing | closed |
+| 7 — Memory | 6 | 43 | 42 | passing | closed |
 | 8 — Accountability | 5 | 60 | 47 | passing | open |
 | 9 — Visibility | 6 | 41 | 3 | open | open |
 | 10 — Cadence and the operator plane | 11 | 72 | 60 | passing | open |
 | 11 — The derive tier | 7 | 78 | 55 | passing | open |
-| 12 — The operator console | 12 | 49 | 6 | passing | open |
+| 12 — The operator console | 12 | 50 | 15 | passing | open |
 | 13 — Disclosure | 5 | 21 | 4 | open | open |
 | 14 — Assurance | 7 | 134 | 84 | passing | closed |
 
@@ -844,11 +844,16 @@ Unscheduled operations: 10.
 | `read.retrieve.token-cap` | `crates/contextful-core/tests/integration/read/retrieve.rs::the_token_set_is_capped_and_an_empty_set_omits_the_floor` | performed |
 | `read.retrieve.token-length-floor` | `crates/contextful-core/tests/integration/read/retrieve.rs::an_ascii_run_below_the_length_floor_leaves` | performed |
 | `read.retrieve.unsatisfiable-arm-drops` | `crates/contextful-context/tests/integration/read/retrieve.rs::a_filter_binds_named_columns_and_a_table_lacking_one_drops_its_arm` | performed |
+| `read.revise.browser-request` | `spec/pins.toml` | performed |
 | `read.revise.citation-live` | `crates/contextful-memory/tests/integration/evidence.rs::a_write_citing_a_superseded_version_refuses` | performed |
 | `read.revise.dedup-key` | `crates/contextful-memory/tests/integration/write.rs::a_dedup_key_seeds_the_claim_id_and_a_retry_lands_nothing` | performed |
 | `read.revise.direct-write` | `crates/contextful-core/tests/integration/memory/revise.rs::the_direct_write_accepts_claims_alone` | performed |
+| `read.revise.malformed-request` | `spec/pins.toml` | performed |
 | `read.revise.observed-at` | `crates/contextful-memory/tests/integration/write.rs::an_observed_write_lands_valid_from_its_observed_instant` | performed |
 | `read.revise.observed-order` | `crates/contextful-memory/tests/integration/write.rs::an_observation_before_a_live_contradicting_prior_refuses` | performed |
+| `read.revise.served-dedup` | `spec/pins.toml` | performed |
+| `read.revise.served-scope` | `spec/pins.toml` | performed |
+| `read.revise.served-write` | `spec/pins.toml` | performed |
 | `read.revise.supersede` | `crates/contextful-core/tests/integration/memory/revise.rs::an_equal_or_higher_claim_retires_its_prior_on_one_line` | performed |
 | `read.revise.tier` | `crates/contextful-core/tests/integration/memory/revise.rs::tier_follows_the_write_path_and_the_lowest_grounding` | performed |
 | `read.settle.grace-window` | `crates/contextful-core/tests/integration/memory/settle.rs::the_label_window_runs_through_the_deadline_plus_a_day` | performed |
@@ -1345,6 +1350,8 @@ Unscheduled operations: 10.
 | `surface.arm.unknown-trigger` | `crates/contextful-cli/tests/integration/pipeline.rs::an_unknown_trigger_arms_nothing` | performed |
 | `surface.arm.unreadable-schedule` | `crates/contextful-core/tests/integration/surface/arm.rs::an_unreadable_schedule_names_its_diagnostic` | performed |
 | `surface.arm.wake-answer` | `crates/contextful-cli/tests/integration/pipeline.rs::a_wake_answers_within_its_bound_naming_what_still_runs` | performed |
+| `surface.brief.greeting` | `apps/console/test/brief.test.ts::apps/console/test/brief.test.ts::brief requires a turnless present-time session and live matched arrivals` | performed |
+| `surface.brief.topic-tier` | `apps/console/test/brief.test.ts::apps/console/test/brief.test.ts::topic tier needs two shared tokens including the subject` | performed |
 | `surface.dispatch.callback-rejected` | `crates/contextful-core/tests/integration/surface/worker.rs::a_superseded_or_skewed_callback_changes_no_step` | performed |
 | `surface.dispatch.callback-skew` | `crates/contextful-core/tests/integration/surface/worker.rs::the_relay_accepts_a_timestamp_within_the_skew` | performed |
 | `surface.dispatch.children-reaped` | `crates/contextful-cli/tests/integration/pipeline.rs::serve_ends_every_child_it_dispatched` | performed |
@@ -1372,13 +1379,20 @@ Unscheduled operations: 10.
 | `surface.ground.direct-file-read` | `apps/console/test/turn.test.ts::apps/console/test/turn.test.ts::direct file table functions refuse before dispatch` | performed |
 | `surface.ground.mint-refused` | `apps/console/test/live.test.ts::apps/console/test/live.test.ts::Query falls back to a configured shared credential only after exchange refusal` | performed |
 | `surface.ground.org-face-read-only` | `apps/console/test/turn.test.ts::apps/console/test/turn.test.ts::organization packs refuse writes at startup` | performed |
+| `surface.learn.unscoped` | `apps/console/test/learn.test.ts::apps/console/test/learn.test.ts::unscoped learning refuses before distillation or landing` | performed |
+| `surface.learn.write-refused` | `apps/console/test/answer_memory.test.ts::apps/console/test/answer_memory.test.ts::hosted Query reports a served learning refusal without exposing its credential` | performed |
 | `surface.plan-turn.planner-reached-memory` | `apps/console/test/turn.test.ts::apps/console/test/turn.test.ts::a planner call targeting a memory relation dispatches nothing` | performed |
+| `surface.publish-answer.askerless-audience` | `apps/console/test/publish.test.ts::apps/console/test/publish.test.ts::a scheduled service post refuses an audience and names its destination` | performed |
+| `surface.publish-answer.share-affordance` | `apps/console/test/publish.test.ts::apps/console/test/publish.test.ts::an access explanation cannot offer a share control` | performed |
 | `surface.reconcile.fail-static` | `crates/contextful-cli/tests/integration/pipeline.rs::an_unreadable_snapshot_leaves_the_armed_set_running` | performed |
 | `surface.reconcile.learns-by-reading` | `crates/contextful-cli/tests/integration/pipeline.rs::a_wake_reads_the_applied_version_from_the_control_source` | performed |
 | `surface.reconcile.loopback-only` | `crates/contextful-cli/tests/integration/pipeline.rs::a_control_url_outside_loopback_arms_nothing` | performed |
 | `surface.reconcile.pointer-malformed` | `crates/contextful-core/tests/integration/surface/control.rs::a_pointer_is_wholly_a_version` | performed |
 | `surface.reconcile.poll-cadence` | `crates/contextful-core/tests/integration/surface/control.rs::a_poll_takes_a_schedule_and_defaults_to_thirty_seconds` | performed |
 | `surface.reconcile.url-layout` | `crates/contextful-cli/tests/integration/pipeline.rs::a_loopback_control_url_serves_the_applied_snapshot` | performed |
+| `surface.render.client-authored-view` | `apps/console/test/render.test.ts::apps/console/test/render.test.ts::client and model view specifications never become widgets` | performed |
+| `surface.render.component-choice` | `apps/console/test/render.test.ts::apps/console/test/render.test.ts::server result shape chooses metric, line, or table with a bar option` | performed |
+| `surface.render.older-transcript` | `apps/console/test/render.test.ts::apps/console/test/render.test.ts::older transcripts render an unknown component as a table` | performed |
 | `surface.reside.region-entries` | `crates/contextful-core/tests/integration/surface/reside.rs::an_allow_set_holds_sixteen_entries` | performed |
 | `surface.reside.region-mismatch` | `crates/contextful-cli/tests/integration/pipeline.rs::a_resource_outside_the_residency_allow_set_serves_nothing` | performed |
 | `surface.reside.site-regions` | `crates/contextful-cli/tests/integration/sync/mod.rs::two_sites_declaring_different_residency_diverge_at_push` | performed |

@@ -14,8 +14,8 @@
 
 use crate::mcp::{build_identity, Caller, ReadRecord, Tools};
 use contextful_context::read::Face;
-use contextful_core::ports::Clock;
 use contextful_core::grant::{Action, TablePattern};
+use contextful_core::ports::Clock;
 use contextful_core::read::{ReadError, Refusal};
 use contextful_core::AuthorityError;
 use contextful_policy::enforce::refuse::payload;
@@ -205,6 +205,7 @@ pub struct HttpFace<'a, C> {
     in_flight: AtomicUsize,
     exchange: Option<&'a (dyn Fn(&HttpRequest) -> HttpResponse + Sync)>,
     exchange_unconfigured: bool,
+    claim_write: Option<&'a (dyn Fn(&HttpRequest, &AdmittedAuthority, &dyn Fn() -> Result<(), AuthorityError>) -> HttpResponse + Sync)>,
 }
 
 /// A request slot held while one request is in flight.
@@ -251,7 +252,7 @@ impl<'a, C: Clock + Sync> HttpFace<'a, C> {
         let ceiling = ceiling(max_in_flight)?;
         audience(Some(admitting.audience))?;
         let tools = Tools::new(face, clock, record)?;
-        Ok(HttpFace { tools, admitting, control: None, ceiling, in_flight: AtomicUsize::new(0), exchange: None, exchange_unconfigured: false })
+        Ok(HttpFace { tools, admitting, control: None, ceiling, in_flight: AtomicUsize::new(0), exchange: None, exchange_unconfigured: false, claim_write: None })
     }
 
     /// Attach the store's control API without adding tools to the closed read face.
@@ -265,6 +266,12 @@ impl<'a, C: Clock + Sync> HttpFace<'a, C> {
     pub fn with_exchange(mut self, exchange: &'a (dyn Fn(&HttpRequest) -> HttpResponse + Sync), unconfigured: bool) -> Self {
         self.exchange = Some(exchange);
         self.exchange_unconfigured = unconfigured;
+        self
+    }
+
+    /// The binary owns the claim writer; this route never joins the read MCP tool set.
+    pub fn with_claim_write(mut self, write: &'a (dyn Fn(&HttpRequest, &AdmittedAuthority, &dyn Fn() -> Result<(), AuthorityError>) -> HttpResponse + Sync)) -> Self {
+        self.claim_write = Some(write);
         self
     }
 
@@ -355,11 +362,13 @@ impl<'a, C: Clock + Sync> HttpFace<'a, C> {
             (MCP_PATH, _) => {
                 HttpResponse::message(405, "`/mcp` answers POST; the face holds no session and opens no server stream").with("Allow", "POST")
             }
-            (WORKFLOWS_PATH, "GET") | (RECORD_PATH, "GET") | (EDIT_PATH, "POST") | (APPLY_PATH, "POST") if self.control.is_some() => self.control(request),
+            (WORKFLOWS_PATH, "GET") | (RECORD_PATH, "GET") | (EDIT_PATH, "POST") | (APPLY_PATH, "POST") if self.control.is_some() => self.control_request(request),
             (WORKFLOWS_PATH, _) if self.control.is_some() => HttpResponse::message(405, "`/control/workflows` answers GET").with("Allow", "GET"),
             (RECORD_PATH, _) if self.control.is_some() => HttpResponse::message(405, "`/control/record` answers GET").with("Allow", "GET"),
             (EDIT_PATH, _) if self.control.is_some() => HttpResponse::message(405, "`/control/edit` answers POST").with("Allow", "POST"),
             (APPLY_PATH, _) if self.control.is_some() => HttpResponse::message(405, "`/control/apply` answers POST").with("Allow", "POST"),
+            ("/memory/claims", "POST") if self.claim_write.is_some() => self.claim_write_request(request),
+            ("/memory/claims", _) if self.claim_write.is_some() => HttpResponse::message(405, "`/memory/claims` answers POST").with("Allow", "POST"),
             ("/auth/exchange", "POST") if self.exchange.is_some() => self.exchange.expect("checked above")(request),
             ("/auth/exchange", _) if self.exchange.is_some() => HttpResponse::message(405, "`/auth/exchange` answers POST").with("Allow", "POST"),
             (other, _) => HttpResponse::message(404, format!("no route `{other}`; the protocol endpoint is `{MCP_PATH}`")),
@@ -368,59 +377,68 @@ impl<'a, C: Clock + Sync> HttpFace<'a, C> {
 
     /// Admit the request's credential, then answer its one message.
     fn message(&self, request: &HttpRequest) -> HttpResponse {
-        let (authority, revocation) = match self.admit(request) {
-            Ok(a) => a,
-            Err(response) => return response,
-        };
-        let message: Value = match serde_json::from_slice(&request.body) {
-            Ok(m @ Value::Object(_)) => m,
-            Ok(_) => return HttpResponse::rpc_error(INVALID_REQUEST, "a request body holds one JSON-RPC message object"),
-            Err(e) => return HttpResponse::rpc_error(PARSE_ERROR, format!("the request body is not JSON: {e}")),
-        };
-        let admission = Admission::new(self.tools.clock().now(), &revocation).expecting(self.admitting.audience);
-        let boundary = |a: &AdmittedAuthority| effect_boundary(a, &admission);
-        match self.tools.handle(Caller { authority: &authority, boundary: &boundary }, &message) {
-            Some(answer) => HttpResponse::json(200, &answer),
-            None => HttpResponse::empty(202),
-        }
+        self.admitted(request, |authority, admission| {
+            let message: Value = match serde_json::from_slice(&request.body) {
+                Ok(m @ Value::Object(_)) => m,
+                Ok(_) => return HttpResponse::rpc_error(INVALID_REQUEST, "a request body holds one JSON-RPC message object"),
+                Err(e) => return HttpResponse::rpc_error(PARSE_ERROR, format!("the request body is not JSON: {e}")),
+            };
+            let boundary = |a: &AdmittedAuthority| effect_boundary(a, admission);
+            match self.tools.handle(Caller { authority, boundary: &boundary }, &message) {
+                Some(answer) => HttpResponse::json(200, &answer),
+                None => HttpResponse::empty(202),
+            }
+        })
     }
 
-    fn control(&self, request: &HttpRequest) -> HttpResponse {
-        let (authority, _) = match self.admit(request) {
-            Ok(a) => a,
-            Err(response) => return response,
-        };
-        if !authority.grants().iter().any(|grant| grant.actions.contains(&Action::Admin) && grant.tables.contains(&TablePattern::All)) {
-            return HttpResponse::json(403, &json!({ "error": { "identifier": "ControlAdminGrantMissing" } }));
+    fn claim_write_request(&self, request: &HttpRequest) -> HttpResponse {
+        if request.header("Origin").is_some() {
+            return HttpResponse::json(403, &json!({ "error": { "http": 403, "identifier": "MemoryClaimBrowserRefused" } }));
         }
-        let revocation = match (self.admitting.revocation)() {
-            Ok(r) => r,
-            Err(why) => return HttpResponse::unavailable(format!("the revocation denylist is unreadable: {why}")),
-        };
-        let boundary = Admission::new(self.tools.clock().now(), &revocation).expecting(self.admitting.audience);
-        if let Err(error) = effect_boundary(&authority, &boundary) {
-            return unadmitted(&error);
-        }
-        self.control.expect("the route is installed only with a control handler")(request, &authority)
+        self.admitted(request, |authority, _| {
+            let boundary = || {
+                let revocation = (self.admitting.revocation)().map_err(AuthorityError::AuthorityRevoked)?;
+                let admission = Admission::new(self.tools.clock().now(), &revocation).expecting(self.admitting.audience);
+                effect_boundary(authority, &admission)
+            };
+            self.claim_write.expect("route exists")(request, authority, &boundary)
+        })
     }
 
-    fn admit(&self, request: &HttpRequest) -> Result<(AdmittedAuthority, RevocationState), HttpResponse> {
+    fn control_request(&self, request: &HttpRequest) -> HttpResponse {
+        self.admitted(request, |authority, _| {
+            if !authority.grants().iter().any(|grant| grant.actions.contains(&Action::Admin) && grant.tables.contains(&TablePattern::All)) {
+                return HttpResponse::json(403, &json!({ "error": { "identifier": "ControlAdminGrantMissing" } }));
+            }
+            let revocation = match (self.admitting.revocation)() {
+                Ok(r) => r,
+                Err(why) => return HttpResponse::unavailable(format!("the revocation denylist is unreadable: {why}")),
+            };
+            let boundary = Admission::new(self.tools.clock().now(), &revocation).expecting(self.admitting.audience);
+            if let Err(error) = effect_boundary(authority, &boundary) {
+                return unadmitted(&error);
+            }
+            self.control.expect("the route is installed only with a control handler")(request, authority)
+        })
+    }
+
+    fn admitted(&self, request: &HttpRequest, answer: impl FnOnce(&AdmittedAuthority, &Admission<'_>) -> HttpResponse) -> HttpResponse {
         let Some(credential) = request.credential() else {
             let missing = ReadError::HttpCredentialMissing(
                 "a request carries `Authorization: Bearer <credential>`, or `Authorization: DPoP <credential>` with a `DPoP` proof from the credential's holder key".into(),
             );
-            return Err(HttpResponse::json(401, &payload(&Refusal::Read(missing))).with("WWW-Authenticate", CHALLENGE));
+            return HttpResponse::json(401, &payload(&Refusal::Read(missing))).with("WWW-Authenticate", CHALLENGE);
         };
         let revocation = match (self.admitting.revocation)() {
             Ok(r) => r,
-            Err(why) => return Err(HttpResponse::unavailable(format!("the revocation denylist is unreadable: {why}"))),
+            Err(why) => return HttpResponse::unavailable(format!("the revocation denylist is unreadable: {why}")),
         };
         let admission = Admission::new(self.tools.clock().now(), &revocation).expecting(self.admitting.audience);
         let covered = ProofRequest { method: &request.method, target: &request.target, body: &request.body };
         let checkpoint = self.admitting.checkpoint;
         let keys = match checkpoint.keys() {
             Ok(k) => k,
-            Err(e) => return Err(HttpResponse::unavailable(e.to_string())),
+            Err(e) => return HttpResponse::unavailable(e.to_string()),
         };
         let authority = verify_network(credential, &keys, &admission, |jkt| match request.header("DPoP") {
             Some(proof) => checkpoint.verify_request(jkt, proof, &covered),
@@ -428,11 +446,12 @@ impl<'a, C: Clock + Sync> HttpFace<'a, C> {
                 "the credential binds a holder key, and the request carries no `DPoP` proof".into(),
             ))),
         });
-        match authority {
-            Ok(a) => Ok((a, revocation)),
-            Err(ProofRefusal::NonceCacheFull) => Err(HttpResponse::unavailable(ProofRefusal::NonceCacheFull.to_string())),
-            Err(ProofRefusal::Refused(e)) => Err(unadmitted(&e)),
-        }
+        let authority = match authority {
+            Ok(a) => a,
+            Err(ProofRefusal::NonceCacheFull) => return HttpResponse::unavailable(ProofRefusal::NonceCacheFull.to_string()),
+            Err(ProofRefusal::Refused(e)) => return unadmitted(&e),
+        };
+        answer(&authority, &admission)
     }
 }
 

@@ -1,8 +1,22 @@
 import type { StoreEntry } from "../../gateway/src/index.ts";
-import type { TurnInput, TurnResult } from "./index.ts";
-import { ConsoleError, createTurn, resolveReaderCredential, type Source, type ToolResult } from "./turn.ts";
+import type { Operator, TurnInput, TurnResult } from "./index.ts";
+import { ConsoleError, createTurn, resolveReaderCredential, StreamingRedactor, type Source, type ToolResult } from "./turn.ts";
 
-type LiveOptions = { stores: StoreEntry[]; env: NodeJS.ProcessEnv; fetcher?: typeof fetch };
+export type LiveOptions = { stores: StoreEntry[]; env: NodeJS.ProcessEnv; fetcher?: typeof fetch };
+
+export function consoleDenylist(env: NodeJS.ProcessEnv): string[] {
+  if (!env.CONTEXTFUL_CONSOLE_DENYLIST) return [];
+  const parsed: unknown = JSON.parse(env.CONTEXTFUL_CONSOLE_DENYLIST);
+  if (!Array.isArray(parsed) || !parsed.every((entry) => typeof entry === "string")) throw new Error("ConsoleDenylistMalformed");
+  return parsed;
+}
+
+export function redactText(value: string, denylist: string[]): string {
+  const long = denylist.filter((entry) => entry.length > 128);
+  const exact = long.reduce((text, entry) => text.replaceAll(entry, "[redacted]"), value);
+  const redactor = new StreamingRedactor(denylist.filter((entry) => entry.length <= 128));
+  return redactor.push(exact) + redactor.finish();
+}
 
 function record(value: unknown): value is Record<string, unknown> {
   return value !== null && typeof value === "object" && !Array.isArray(value);
@@ -17,7 +31,7 @@ function terms(value: string): Set<string> {
     word.endsWith("ies") && word.length > 4 ? `${word.slice(0, -3)}y` : word.endsWith("s") && word.length > 3 ? word.slice(0, -1) : word));
 }
 
-function selectTable(question: string, listing: unknown): string | null {
+export function selectTable(question: string, listing: unknown): string | null {
   const asked = terms(question);
   const entries = Array.isArray(listing) ? listing : [];
   const ranked = entries.flatMap((item) => {
@@ -32,7 +46,7 @@ function selectTable(question: string, listing: unknown): string | null {
 
 function source(columns: string[], row: unknown[], table: string): Source | null {
   const at = (name: string) => row[columns.indexOf(name)];
-  const idColumn = columns.find((name) => name.endsWith("_id") || name === "id");
+  const idColumn = columns.find((name) => !name.startsWith("_") && (name.endsWith("_id") || name === "id"));
   const urlColumn = columns.find((name) => name === "source_url" || name === "url");
   const id = idColumn && at(idColumn);
   const url = urlColumn && at(urlColumn);
@@ -42,21 +56,18 @@ function source(columns: string[], row: unknown[], table: string): Source | null
     ...(typeof url === "string" && /^https?:\/\//.test(url) ? { url } : {}) };
 }
 
-export function createLiveTurn({ stores, env, fetcher = fetch }: LiveOptions): (input: TurnInput) => Promise<TurnResult> {
-  const modelEndpoint = env.CONTEXTFUL_MODEL_ENDPOINT;
-  const modelId = env.CONTEXTFUL_MODEL_ID;
-  if (!modelEndpoint || !modelId) throw new Error("ConsoleModelUnconfigured");
-  return async (input) => {
-    const store = stores.find((entry) => entry.id === input.store);
+export async function openReader({ stores, env, fetcher = fetch }: LiveOptions, operator: Operator, storeId: string) {
+    const store = stores.find((entry) => entry.id === storeId);
     if (!store) throw new ConsoleError("ConsoleRequestMalformed");
     const shared = env[store.credentialName];
+    let exchanged = false;
     const credential = store.auth === "exchange" ? await resolveReaderCredential({
       shared,
       mint: async () => {
-        if (!input.operator.assertion || !store.exchangeRoute) throw new ConsoleError("ConsoleTokenExchangeUnavailable", "reader assertion or exchange route absent", 503);
+        if (!operator.assertion || !store.exchangeRoute) throw new ConsoleError("ConsoleTokenExchangeUnavailable", "reader assertion or exchange route absent", 503);
         const response = await fetcher(new URL(store.exchangeRoute, store.endpoint), {
           method: "POST", headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ jwt: input.operator.assertion }),
+          body: JSON.stringify({ jwt: operator.assertion }),
         });
         if (!response.ok) {
           const refusal: unknown = await response.json();
@@ -68,6 +79,7 @@ export function createLiveTurn({ stores, env, fetcher = fetch }: LiveOptions): (
         }
         const value: unknown = await response.json();
         if (!record(value) || typeof value.token !== "string" || !value.token.trim()) throw new ConsoleError("ConsoleTokenExchangeUnavailable", "exchange returned no credential", 503);
+        exchanged = true;
         return value.token;
       },
     }) : shared;
@@ -88,12 +100,28 @@ export function createLiveTurn({ stores, env, fetcher = fetch }: LiveOptions): (
       return message.result.structuredContent;
     };
 
+    return { store, call, credential, exchanged };
+}
+
+export function createLiveTurn(options: LiveOptions): (input: TurnInput & { recallOverlay?: string }) => Promise<TurnResult> {
+  const { env, fetcher = fetch } = options;
+  const modelEndpoint = env.CONTEXTFUL_MODEL_ENDPOINT;
+  const modelId = env.CONTEXTFUL_MODEL_ID;
+  if (!modelEndpoint || !modelId) throw new Error("ConsoleModelUnconfigured");
+  const configuredDenylist = consoleDenylist(env);
+  return async (input) => {
+    const { store, call, credential } = await openReader(options, input.operator, input.store);
+    const denylist = [...configuredDenylist, credential, ...(input.operator.assertion ? [input.operator.assertion] : [])];
+
     const description = await call("context.describe", {});
     const selected = selectTable(input.question, description.tables);
     if (!selected) throw new ConsoleError("ConsoleUngroundedAnswer", "No data table matches this question.");
     const tables = [selected];
     let remainingSources = 8;
+    let resultRows: TurnResult["resultRows"];
+    const evidence: NonNullable<TurnResult["evidence"]> = [];
     const turn = createTurn({
+      denylist: denylist.filter((entry) => entry.length <= 128),
       tools: tables.map((table) => ({ name: `read:${table}`, pack: "data", kind: "read" as const, table })),
       tables: tables.map((name) => ({ name, kind: "data" as const })),
       planner: async ({ previous }) => previous.length ? [] : tables.map((table) => ({ tool: `read:${table}`, arguments: {} })),
@@ -103,18 +131,34 @@ export function createLiveTurn({ stores, env, fetcher = fetch }: LiveOptions): (
         const columns = strings(result.columns);
         const rawRows = Array.isArray(result.rows) ? result.rows.filter(Array.isArray) : [];
         const sourced = rawRows.flatMap((row) => { const citation = source(columns, row, table); return citation ? [{ row, citation }] : []; }).slice(0, remainingSources);
+        const runIndex = columns.indexOf("_run_id");
+        const seqIndex = columns.indexOf("_row_seq");
+        for (const { row } of sourced) {
+          const run = row[runIndex];
+          const seq = row[seqIndex];
+          if (typeof run === "string" && run && Number.isSafeInteger(seq) && (seq as number) >= 0) {
+            evidence.push({ table, run, seq: seq as number });
+          }
+        }
         remainingSources -= sourced.length;
+        const visible = columns.flatMap((column, index) => column.startsWith("_") ? [] : [{ column, index }]);
+        const cleanRows = sourced.map(({ row }) => visible.map(({ index }) => {
+          const value = row[index];
+          return typeof value === "string" ? redactText(value, denylist) : value;
+        }));
+        resultRows = { columns: visible.map(({ column }) => column), rows: cleanRows };
         return {
-          rows: sourced.map(({ row }) => Object.fromEntries(columns.map((column, index) => [column, row[index]]))),
-          sources: sourced.map(({ citation }) => citation),
+          rows: cleanRows.map((row) => Object.fromEntries(visible.map(({ column }, index) => [column, row[index]]))),
+          sources: sourced.map(({ citation }) => ({ ...citation, label: redactText(citation.label, denylist) })),
         };
       } },
-      synthesize: async function* ({ question, results, sources }) {
+      overlay: async () => input.recallOverlay ?? null,
+      synthesize: async function* ({ question, results, sources, overlay }) {
         const response = await fetcher(new URL("chat/completions", `${modelEndpoint.replace(/\/$/, "")}/`), {
           method: "POST", headers: { "Content-Type": "application/json" },
           body: JSON.stringify({ model: modelId, messages: [
-            { role: "system", content: "Answer only from the supplied governed rows. Cite source IDs in square brackets. Decline unsupported claims." },
-            { role: "user", content: JSON.stringify({ question, rows: results.flatMap((result) => result.rows), sources }) },
+            { role: "system", content: "Answer only from the supplied governed rows. Memory may guide context but never supplies evidence. Cite source IDs in square brackets. Decline unsupported claims." },
+            { role: "user", content: JSON.stringify({ question, rows: results.flatMap((result) => result.rows), sources, memory: overlay }) },
           ] }),
         });
         if (!response.ok) throw new ConsoleError("ConsoleModelUnavailable", `model answered ${response.status}`, 503);
@@ -126,6 +170,6 @@ export function createLiveTurn({ stores, env, fetcher = fetch }: LiveOptions): (
       },
     });
     const answer = await turn.ask({ question: input.question, packs: ["data"], store: store.id });
-    return { answer: answer.text, sources: answer.sources, widgets: [] };
+    return { answer: answer.text, sources: answer.sources, widgets: [], resultRows, evidence };
   };
 }

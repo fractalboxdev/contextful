@@ -111,9 +111,10 @@ The tool return splits into grounding for the model, a view and internals. Synth
 streams through the redactor ({{surface.speak.redactor-lookahead}}). The rows carry a date
 column and a measure over distinct days, so component choice draws a line
 ({{surface.render.component-choice}}), and a source list follows
-({{surface.ground.sources-per-turn}}). After the answer, distillation writes a few
-conclusions ({{surface.learn.distillation}}) under the reading-session scope
-({{surface.learn.unscoped}}).
+({{surface.ground.sources-per-turn}}). After the answer,
+{{surface.learn.distillation}} lands through {{read.revise.served-write}} under
+{{surface.learn.unscoped}} and {{read.revise.served-scope}}. {{read.recall.keyed}}
+precedes planning; {{surface.learn.write-refused}} withholds publication.
 
 The following day the greeting card appears only because a new row matches one of those
 conclusions within budget ({{surface.brief.absence-is-earned}}). If the operator wants the

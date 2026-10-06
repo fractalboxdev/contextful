@@ -31,6 +31,11 @@
 "surface.apply.draft-claim" = { test = "contextful_cli::serve::control_edit_saves_a_validated_draft_and_apply_claims_its_expected_version" }
 "surface.apply.draft-absent" = { test = "contextful_cli::serve::control_edit_saves_a_validated_draft_and_apply_claims_its_expected_version" }
 "surface.apply.operator-attestation" = { test = "contextful_cli::serve::admin_changes_require_fresh_console_attestation_and_record_the_operator" }
+"read.revise.served-write" = { test = "contextful_cli::serve::served_claim_write_is_durable_actor_bound_and_outside_read_mcp" }
+"read.revise.served-scope" = { test = "contextful_cli::serve::served_claim_write_is_durable_actor_bound_and_outside_read_mcp" }
+"read.revise.browser-request" = { test = "contextful_cli::serve::served_claim_write_is_durable_actor_bound_and_outside_read_mcp" }
+"read.revise.malformed-request" = { test = "contextful_cli::serve::served_claim_write_is_durable_actor_bound_and_outside_read_mcp" }
+"read.revise.served-dedup" = { test = "contextful_cli::serve::served_claim_write_is_durable_actor_bound_and_outside_read_mcp" }
 "corpus.state.typescript-tag-pin" = { test = "contextful_spec::ts_pins::a_running_surface_test_tag_performs_its_clause" }
 "corpus.state.typescript-unfinished" = { test = "contextful_spec::ts_pins::a_skipped_or_todo_surface_test_is_broken" }
 "assurance.gate.native-test-files" = { test = "contextful_ci::stages::the_surfaces_stage_runs_each_native_typescript_test_file_even_without_a_test_script" }
@@ -64,8 +69,8 @@ authority = 204
 connector = 218
 corpus = 40
 disclosure = 54
-read = 163
+read = 168
 run = 261
 store = 200
-surface = 61
+surface = 66
 topology = 38

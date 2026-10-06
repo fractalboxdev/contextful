@@ -85,6 +85,23 @@ Criteria: MCP-client compatibility, then one surface per guarantee, then revocat
 Consequences: admission sits on every read, and a possession-proof check sits on every read under a holder-bound credential; an MCP client that signs nothing reads with a short-lived audience-bound bearer and re-exchanges it before expiry.
 Revisit: a caller needs server-initiated messages or resumable streams.
 
+## A served claim write stays outside read MCP
+
+Context: an operator answer distils claims after its read turn, while a hosted console owns no local store root. Criteria: preserve the closed read tool set, the writer's actor and session, and the memory table's commit and evidence gates.
+
+Decision: a separate served route admits the server-held credential, binds the actor and session to its subject tuple, and calls the direct memory write. The credential needs a narrow write grant on the declared claims table. The browser holds no writer credential; an Origin header refuses. The read-only edge profile mounts no write route.
+
+| Option | Lost on | Cost |
+| --- | --- | --- |
+| Separate route and direct memory write *(chosen)* | — | The hosted console needs a writing credential whose task names its reading session. |
+| Add `memory.write` to read MCP | Closed read tool set | A client-reachable tool can mutate a store. |
+| Spawn the CLI from the console | Hosted reach | The console needs the store's local project root and signing configuration. |
+| Keep claims in the console process | Durability | Restart loses conclusions and bypasses memory recall and erasure. |
+
+Consequences: claim writes share memory's evidence, supersession, attribution and commit path. A credential with only read grants cannot land a claim.
+
+Integration: `CONTEXTFUL_CONSOLE_MEMORY_SESSION_CLAIM` names a stable signed claim. Exchange maps `sub` to `on_behalf_of`, that claim to `task`, and grants evidence/claims read plus claims write. Missing mappings, tables or evidence suppress landing. Subject-keyed recall admits broad claims-table readers; the console filters its exact actor/session scope before model input.
+
 ## Memory writes validate or dead-letter, and outcomes settle under their source
 
 `read.synthesize` validates every candidate against the declared output schema, retries with the error up to 3 attempts per batch, then dead-letters the response, template hash and drop reason with the cursor held. The relation vocabulary is a reserved core plus declared types; an undeclared edge dead-letters while the batch lands. `read.resolve-entity` dead-letters ambiguous mentions and dangling endpoints. `read.settle` requires one resolution form and one source — `metric`, `adjudicator` or `manual`; metric comparators evaluate outside the engine, verdicts carry an `http`/`https` citation, self-rated outcomes carry a null verdict, and the scored and unresolved views partition the join.

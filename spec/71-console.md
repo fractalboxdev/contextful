@@ -283,6 +283,8 @@ The reading loop's memory: recall ahead of planning, the per-turn distillation a
 - `distillation` — After the answer streams, a second pass distils the exchange into at most 3 entries shaped `{subject, key, learning}`, zero included.
 - `unscoped` — A distilled conclusion landing without the reading-session scope raises `ConsoleLearningUnscoped`.
   *A-surface*
+- `write-refused` — A served claim write that refuses or returns no scope-bound receipt raises `ConsoleLearningWriteRefused` to Query before answer publication.
+  *because a failed write cannot count as a durable learning*
 - `subject-resolution` — Distillation preserves the subject it observes; recall resolves that subject through entity matching.
   *A-surface*
 

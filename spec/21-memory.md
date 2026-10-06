@@ -113,6 +113,18 @@ Supersession within one validity line, confidence decay, the direct write and it
   *because retiring the later claim at the earlier instant ends it before it starts, and it then answers at no instant*
 - `citation-live` — A direct write citing a keyed table's row that reads through the writer's session as a version its key has since replaced raises `MemoryCitationNotLive`, and nothing lands.
   *because such a claim rests on a replaced version from its first read, while a citation no readable row carries lands undigested and recall withholds it*
+- `served-write` — A writable served face answers `POST /memory/claims` under a per-request network credential, lands a declared claim through the direct write, and keeps the read MCP tool set closed.
+  *A-read*
+- `served-scope` — A claim write whose `actor` or `session` differs from the admitted credential's `on_behalf_of` or `task` raises `MemoryClaimScopeRefused`; accepted claims take scope from those members, never from the payload.
+  *A-read*
+- `browser-request` — An `Origin` header on the served claim-write route raises `MemoryClaimBrowserRefused` before credential admission and commits nothing.
+  *A-read*
+- `malformed-request` — Malformed JSON, unknown fields, a client-selected claim scope, or an empty dedup key on the served claim-write route raises `MemoryClaimMalformed` and commits nothing.
+  *A-read*
+- `served-dedup` — A served claim write passes its `dedup_key` to {{read.revise.dedup-key}}, returns `landed: false` on restatement, and returns the bound scope on both outcomes.
+  *A-read*
+- `served-fault` — A served claim write whose store effect refuses raises `MemoryClaimWriteRefused` and lands nothing.
+  *A-read*
 
 unsettled: Does a claim observed before a live contradicting claim of its line land beneath it with a bounded end, rather than refuse? owner: memory affects: read.revise
 
