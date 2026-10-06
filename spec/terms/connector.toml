@@ -106,7 +106,6 @@ SecretRedirectOffOrigin         = { clause = "connector.attach.weakened-hop", gl
 SecretCleartextEndpoint         = { clause = "connector.attach.cleartext-endpoint", gloss = "A sensitive header bound for a cleartext endpoint outside loopback." }
 SecretCredentialInUrl           = { clause = "connector.attach.credential-in-a-url", gloss = "A configured endpoint carrying userinfo." }
 SecretRotationWriteDenied       = { clause = "connector.rotate.write-back-denied", gloss = "A manager refusing the versioned put of a refreshed token." }
-SecretUndocumentedEntry         = { clause = "connector.record.undocumented-entry", gloss = "An encrypted entry with no operator record above it." }
 
 [limit]
 connector-attribution-entries   = { clause = "connector.export.attribution-budget", value = 512, unit = "entries", basis = "chosen", gloss = "Partition values one failure attribution returns per session." }
