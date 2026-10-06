@@ -144,6 +144,23 @@ fn m12_console() {
 
     assert_eq!(request(&console_address, "GET", "/query", None, None).0, 401);
     assert_eq!(request(&console_address, "GET", "/admin", Some(&access_token(QUERY_ACCESS_AUDIENCE)), None).0, 403);
+    assert_eq!(request(&console_address, "GET", "/admin/api/workflows", Some(&access_token(QUERY_ACCESS_AUDIENCE)), None).0, 403);
+    let (status, workflows) = request(&console_address, "GET", "/admin/api/workflows", Some(&access_token(ADMIN_ACCESS_AUDIENCE)), None);
+    assert_eq!(status, 200, "{}", String::from_utf8_lossy(&workflows));
+    let workflows: Value = serde_json::from_slice(&workflows).unwrap();
+    assert_eq!(workflows["applied"], 1, "{workflows}");
+    assert_eq!(workflows["pipelines"][0]["id"], "filings-flow", "{workflows}");
+    assert_eq!(workflows["pipelines"][0]["tables"], json!(["filings"]), "{workflows}");
+    repo.write("pipelines/filings.toml", "[[pipeline]]\nid = \"filings-flow\"\nschedule = \"every 1d\"\ntables = [\"filings\"]\n[pipeline.source]\nname = \"http\"\nconfig = { endpoint = \"https://example.test/filings\" }\n");
+    let (status, applied) = request(&console_address, "POST", "/admin/api/apply", Some(&access_token(ADMIN_ACCESS_AUDIENCE)),
+        Some(&json!({ "store": "field-notes", "id": "filings-flow" })));
+    assert_eq!(status, 200, "{}", String::from_utf8_lossy(&applied));
+    let applied: Value = serde_json::from_slice(&applied).unwrap();
+    assert_eq!(applied["applied"], 2, "{applied}");
+    let (status, workflows) = request(&console_address, "GET", "/admin/api/workflows", Some(&access_token(ADMIN_ACCESS_AUDIENCE)), None);
+    assert_eq!(status, 200);
+    let workflows: Value = serde_json::from_slice(&workflows).unwrap();
+    assert_eq!(workflows["pipelines"][0]["schedule"], "every 1d", "{workflows}");
     let (status, answer) = request(
         &console_address, "POST", "/query/api/ask", Some(&access_token(QUERY_ACCESS_AUDIENCE)),
         Some(&json!({ "store": "field-notes", "question": "Which filing arrived?" })),
@@ -158,11 +175,4 @@ fn m12_console() {
         "the sources must identify the filing behind the answer: {answer}"
     );
     assert!(!model.received("/v1/chat/completions").is_empty(), "the answer uses the model endpoint");
-    assert_eq!(request(&console_address, "GET", "/admin/api/workflows", Some(&access_token(QUERY_ACCESS_AUDIENCE)), None).0, 403);
-    let (status, workflows) = request(&console_address, "GET", "/admin/api/workflows", Some(&access_token(ADMIN_ACCESS_AUDIENCE)), None);
-    assert_eq!(status, 200, "{}", String::from_utf8_lossy(&workflows));
-    let workflows: Value = serde_json::from_slice(&workflows).unwrap();
-    assert_eq!(workflows["applied"], 1, "{workflows}");
-    assert_eq!(workflows["pipelines"][0]["id"], "filings-flow", "{workflows}");
-    assert_eq!(workflows["pipelines"][0]["tables"], json!(["filings"]), "{workflows}");
 }
