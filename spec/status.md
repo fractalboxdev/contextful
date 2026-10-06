@@ -8,14 +8,14 @@ An unpinned clause is `committed`; a pinned one is `performed` when its Rust, Le
 | `assurance` | 2 | 15 | 235 | 59 | 22 | 14 | 141 | 0 | 138 |
 | `authority` | 2 | 16 | 269 | 77 | 27 | 10 | 206 | 0 | 206 |
 | `connector` | 2 | 14 | 349 | 89 | 21 | 15 | 218 | 0 | 207 |
-| `corpus` | 1 | 10 | 79 | 37 | 7 | 0 | 40 | 0 | 40 |
-| `disclosure` | 3 | 16 | 134 | 66 | 13 | 3 | 63 | 0 | 63 |
-| `read` | 2 | 15 | 199 | 31 | 22 | 9 | 177 | 0 | 172 |
-| `run` | 3 | 26 | 374 | 98 | 36 | 37 | 262 | 0 | 262 |
-| `store` | 1 | 17 | 237 | 55 | 13 | 20 | 200 | 0 | 200 |
-| `surface` | 2 | 20 | 106 | 49 | 22 | 0 | 51 | 0 | 51 |
-| `topology` | 1 | 6 | 70 | 24 | 5 | 5 | 38 | 0 | 38 |
-| **total** | 19 | 155 | 2052 | 585 | 188 | 113 | 1396 | 0 | |
+| `corpus` | 1 | 10 | 79 | 37 | 7 | 0 | 43 | 0 | 43 |
+| `disclosure` | 3 | 16 | 134 | 66 | 13 | 3 | 63 | 0 | 54 |
+| `read` | 2 | 15 | 199 | 31 | 22 | 9 | 177 | 0 | 163 |
+| `run` | 3 | 26 | 374 | 98 | 36 | 37 | 262 | 0 | 261 |
+| `store` | 1 | 17 | 237 | 55 | 13 | 20 | 200 | 0 | 0 |
+| `surface` | 2 | 20 | 106 | 49 | 22 | 0 | 51 | 0 | 0 |
+| `topology` | 1 | 6 | 70 | 24 | 5 | 5 | 38 | 0 | 0 |
+| **total** | 19 | 155 | 2052 | 585 | 188 | 113 | 1399 | 0 | |
 
 Decision records: 18.
 
@@ -632,6 +632,9 @@ Unscheduled operations: 10.
 | `corpus.guide.file` | `tools/spec/tests/integration/readable.rs::a_guide_over_its_length_or_off_its_title_is_a_guide_finding` | performed |
 | `corpus.guide.non-normative` | `tools/spec/tests/integration/readable.rs::a_guide_naming_an_error_or_holding_a_clause_item_is_a_guide_finding` | performed |
 | `corpus.rationale.contract-adr` | `spec/pins.toml` | performed |
+| `corpus.reference.dangling` | `spec/pins.toml`, `tools/spec/tests/integration/readable.rs::a_guide_pointer_naming_no_clause_dangles` | performed |
+| `corpus.reference.no-literature` | `spec/pins.toml`, `tools/spec/tests/integration/readable.rs::an_autolink_to_an_external_document_is_an_external_link_finding` | performed |
+| `corpus.reference.pointer` | `spec/pins.toml`, `tools/spec/tests/integration/readable.rs::a_pointer_is_recorded_as_a_lock_edge` | performed |
 | `corpus.render.card` | `tools/spec/tests/integration/readable.rs::state_writes_a_card_per_contract_and_a_stale_card_is_a_render_finding` | performed |
 | `corpus.state.acceptance` | `spec/pins.toml` | performed |
 | `corpus.state.acceptance-first` | `spec/pins.toml` | performed |
