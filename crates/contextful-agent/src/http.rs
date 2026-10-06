@@ -196,6 +196,7 @@ pub struct HttpFace<'a, C> {
     ceiling: usize,
     in_flight: AtomicUsize,
     exchange: Option<&'a (dyn Fn(&HttpRequest) -> HttpResponse + Sync)>,
+    exchange_unconfigured: bool,
 }
 
 /// A request slot held while one request is in flight.
@@ -242,13 +243,14 @@ impl<'a, C: Clock + Sync> HttpFace<'a, C> {
         let ceiling = ceiling(max_in_flight)?;
         audience(Some(admitting.audience))?;
         let tools = Tools::new(face, clock, record)?;
-        Ok(HttpFace { tools, admitting, ceiling, in_flight: AtomicUsize::new(0), exchange: None })
+        Ok(HttpFace { tools, admitting, ceiling, in_flight: AtomicUsize::new(0), exchange: None, exchange_unconfigured: false })
     }
 
     /// The binary's exchange route mints the reader credential without putting issuer
     /// signing material in the read-transport package.
-    pub fn with_exchange(mut self, exchange: &'a (dyn Fn(&HttpRequest) -> HttpResponse + Sync)) -> Self {
+    pub fn with_exchange(mut self, exchange: &'a (dyn Fn(&HttpRequest) -> HttpResponse + Sync), unconfigured: bool) -> Self {
         self.exchange = Some(exchange);
+        self.exchange_unconfigured = unconfigured;
         self
     }
 
@@ -291,7 +293,9 @@ impl<'a, C: Clock + Sync> HttpFace<'a, C> {
     fn connection(&self, mut stream: TcpStream, slot: Slot<'_>) -> std::io::Result<()> {
         stream.set_read_timeout(Some(REQUEST_READ_TIMEOUT))?;
         stream.set_write_timeout(Some(REQUEST_READ_TIMEOUT))?;
-        let response = match read_request(&mut stream) {
+        let response = match read_request_preflight(&mut stream, |head| {
+            (self.exchange_unconfigured && head.path() == "/auth/exchange").then(|| self.answer(head))
+        }) {
             Ok(request) => self.answer(&request),
             Err(response) => response,
         };
@@ -389,6 +393,10 @@ impl<'a, C: Clock + Sync> HttpFace<'a, C> {
 /// Read one request: the head, then a `Content-Length` body of at most
 /// [`REQUEST_BODY_BYTES`]. A malformed or oversized request is answered, not read on.
 pub fn read_request(stream: &mut impl Read) -> Result<HttpRequest, HttpResponse> {
+    read_request_preflight(stream, |_| None)
+}
+
+fn read_request_preflight(stream: &mut impl Read, preflight: impl Fn(&HttpRequest) -> Option<HttpResponse>) -> Result<HttpRequest, HttpResponse> {
     let mut buf = Vec::with_capacity(1024);
     let mut chunk = [0u8; 4096];
     let (mut request, head_len) = loop {
@@ -424,6 +432,9 @@ pub fn read_request(stream: &mut impl Read) -> Result<HttpRequest, HttpResponse>
             Err(e) => return Err(HttpResponse::message(400, format!("the request head does not parse: {e}"))),
         }
     };
+    if let Some(response) = preflight(&request) {
+        return Err(response);
+    }
     if request.header("Transfer-Encoding").is_some() {
         return Err(HttpResponse::message(411, "the face reads a `Content-Length` body"));
     }

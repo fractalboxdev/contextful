@@ -125,8 +125,8 @@ pub fn run(args: ServeArgs) -> Result<()> {
     let proofs = ProofChecker::new(SystemClock);
     let exchange_route = |request: &contextful_agent::http::HttpRequest| {
         let Some((issuance, signer)) = mint_material.as_ref() else {
-            return contextful_agent::http::HttpResponse::json(503,
-                &serde_json::json!({ "error": { "http": 503, "identifier": "ExchangeUnconfigured" } }));
+            return contextful_agent::http::HttpResponse::json(404,
+                &serde_json::json!({ "error": { "http": 404, "identifier": "ExchangeUnconfigured", "message": ".contextful/exchange/policy.toml is absent" } }));
         };
         let ctx = MintContext { node: NodeRole::Primary, signer: signer as &dyn SigningPort, clock: &clock as &dyn Clock };
         let result = exchange_answer(exchange.as_ref(), &request.body, request.header("DPoP"), &proofs, issuance, &ctx);
@@ -134,7 +134,7 @@ pub fn run(args: ServeArgs) -> Result<()> {
     };
     let http = HttpFace::new(&face, &clock, &audit, admitting, Some(ceiling))
         .map_err(anyhow::Error::msg)?
-        .with_exchange(&exchange_route);
+        .with_exchange(&exchange_route, exchange.is_none());
     let listener = TcpListener::bind(&args.http)?;
     eprintln!("listening on http://{}/mcp", listener.local_addr()?);
     http.serve(listener)?;

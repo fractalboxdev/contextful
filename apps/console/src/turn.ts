@@ -69,8 +69,8 @@ export async function resolveReaderCredential(options: {
   try {
     const credential = await options.mint();
     if (credential) return credential;
-  } catch {
-    // A refused mint reaches the shared credential only when the store has one.
+  } catch (error) {
+    if (!(error instanceof ConsoleError && error.code === "ConsoleTokenExchangeRefused" && error.status === 403)) throw error;
   }
   if (options.shared) return options.shared;
   throw new ConsoleError("ConsoleTokenExchangeRefused", "ConsoleTokenExchangeRefused", 403);

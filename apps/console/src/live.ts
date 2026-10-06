@@ -12,6 +12,24 @@ function strings(value: unknown): string[] {
   return Array.isArray(value) ? value.filter((item): item is string => typeof item === "string") : [];
 }
 
+function terms(value: string): Set<string> {
+  return new Set((value.toLowerCase().match(/[a-z0-9]+/g) ?? []).map((word) =>
+    word.endsWith("ies") && word.length > 4 ? `${word.slice(0, -3)}y` : word.endsWith("s") && word.length > 3 ? word.slice(0, -1) : word));
+}
+
+function selectTable(question: string, listing: unknown): string | null {
+  const asked = terms(question);
+  const entries = Array.isArray(listing) ? listing : [];
+  const ranked = entries.flatMap((item) => {
+    if (!record(item) || typeof item.table !== "string" || item.kind !== "data") return [];
+    const name = terms(item.table.split("/").at(-1) ?? "");
+    const description = terms(typeof item.description === "string" ? item.description : "");
+    const score = [...asked].reduce((sum, word) => sum + (name.has(word) ? 2 : description.has(word) ? 1 : 0), 0);
+    return score > 0 ? [{ table: item.table, score }] : [];
+  }).sort((a, b) => b.score - a.score);
+  return ranked.length > 0 && (ranked.length === 1 || ranked[0].score > ranked[1].score) ? ranked[0].table : null;
+}
+
 function source(columns: string[], row: unknown[], table: string): Source | null {
   const at = (name: string) => row[columns.indexOf(name)];
   const idColumn = columns.find((name) => name.endsWith("_id") || name === "id");
@@ -35,14 +53,21 @@ export function createLiveTurn({ stores, env, fetcher = fetch }: LiveOptions): (
     const credential = store.auth === "exchange" ? await resolveReaderCredential({
       shared,
       mint: async () => {
-        if (!input.operator.assertion || !store.exchangeRoute) throw new ConsoleError("ConsoleTokenExchangeRefused");
+        if (!input.operator.assertion || !store.exchangeRoute) throw new ConsoleError("ConsoleTokenExchangeUnavailable", "reader assertion or exchange route absent", 503);
         const response = await fetcher(new URL(store.exchangeRoute, store.endpoint), {
           method: "POST", headers: { "Content-Type": "application/json" },
           body: JSON.stringify({ jwt: input.operator.assertion }),
         });
-        if (!response.ok) throw new ConsoleError("ConsoleTokenExchangeRefused");
+        if (!response.ok) {
+          const refusal: unknown = await response.json();
+          const error = record(refusal) ? refusal.error : undefined;
+          if ((response.status === 401 || response.status === 403) && record(error) && typeof error.identifier === "string") {
+            throw new ConsoleError("ConsoleTokenExchangeRefused", error.identifier, 403);
+          }
+          throw new ConsoleError("ConsoleTokenExchangeUnavailable", `exchange answered ${response.status}`, 503);
+        }
         const value: unknown = await response.json();
-        if (!record(value) || typeof value.token !== "string") throw new ConsoleError("ConsoleTokenExchangeRefused");
+        if (!record(value) || typeof value.token !== "string") throw new ConsoleError("ConsoleTokenExchangeUnavailable", "exchange returned no credential", 503);
         return value.token;
       },
     }) : shared;
@@ -64,18 +89,21 @@ export function createLiveTurn({ stores, env, fetcher = fetch }: LiveOptions): (
     };
 
     const description = await call("context.describe", {});
-    const tables = Array.isArray(description.tables) ? description.tables.flatMap((item) =>
-      record(item) && typeof item.table === "string" && item.kind === "data" ? [item.table] : []) : [];
+    const selected = selectTable(input.question, description.tables);
+    if (!selected) throw new ConsoleError("ConsoleUngroundedAnswer", "No data table matches this question.");
+    const tables = [selected];
+    let remainingSources = 8;
     const turn = createTurn({
       tools: tables.map((table) => ({ name: `read:${table}`, pack: "data", kind: "read" as const, table })),
       tables: tables.map((name) => ({ name, kind: "data" as const })),
       planner: async ({ previous }) => previous.length ? [] : tables.map((table) => ({ tool: `read:${table}`, arguments: {} })),
       transport: { call: async ({ tool, maxRows, signal }): Promise<ToolResult> => {
         const table = tool.slice("read:".length);
-        const result = await call("context.query", { sql: `SELECT * FROM "${table.replaceAll('"', '""')}"`, limit: maxRows }, signal);
+        const result = await call("context.query", { sql: `SELECT * FROM "${table.replaceAll('"', '""')}"`, limit: Math.min(maxRows, remainingSources) }, signal);
         const columns = strings(result.columns);
         const rawRows = Array.isArray(result.rows) ? result.rows.filter(Array.isArray) : [];
-        const sourced = rawRows.flatMap((row) => { const citation = source(columns, row, table); return citation ? [{ row, citation }] : []; });
+        const sourced = rawRows.flatMap((row) => { const citation = source(columns, row, table); return citation ? [{ row, citation }] : []; }).slice(0, remainingSources);
+        remainingSources -= sourced.length;
         return {
           rows: sourced.map(({ row }) => Object.fromEntries(columns.map((column, index) => [column, row[index]]))),
           sources: sourced.map(({ citation }) => citation),

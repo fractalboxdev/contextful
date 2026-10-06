@@ -87,7 +87,7 @@ test("Query reads only a question-matched data table and refuses an unclear sele
     store: "field-notes", question: "Which filing arrived?" });
   assert.deepEqual(matched.calls.filter((call) => (call.body.params as Record<string, unknown> | undefined)?.name === "context.query")
     .map((call) => (call.body.params as Record<string, unknown>).arguments),
-    [{ sql: 'SELECT * FROM "filings"', limit: 5000 }]);
+    [{ sql: 'SELECT * FROM "filings"', limit: 8 }]);
   const unclear = fixture({ tables });
   await assert.rejects(unclear.turn({ operator: { subject: "operator-1", grants: new Set(["query"]), assertion: "verified-access-jwt" },
     store: "field-notes", question: "What changed?" }),
@@ -128,7 +128,7 @@ test("Query never scaffolds or dispatches a memory relation", async () => {
     store: "field-notes", question: "Which filing arrived?" });
   assert.deepEqual(calls.filter((call) => (call.body.params as Record<string, unknown> | undefined)?.name === "context.query")
     .map((call) => (call.body.params as Record<string, unknown>).arguments),
-    [{ sql: 'SELECT * FROM "filings"', limit: 5000 }]);
+    [{ sql: 'SELECT * FROM "filings"', limit: 8 }]);
 });
 
 test("Query returns a typed exchange refusal through its hosted API", async () => {
@@ -139,7 +139,8 @@ test("Query returns a typed exchange refusal through its hosted API", async () =
     read: { list: async () => [{ id: store.id, label: store.label }] },
     control: { workflows: async () => ({}), record: async () => ({}), edit: async () => ({}), apply: async () => ({}) },
   });
-  const token = issueCognitoSession({ subject: "reader", groups: ["query"], expiresAt: Math.floor(Date.now() / 1000) + 60 }, "session-secret");
+  const token = issueCognitoSession({ subject: "reader", groups: ["query"], assertion: "cognito-id-token",
+    expiresAt: Math.floor(Date.now() / 1000) + 60 }, "session-secret");
   const response = await app.fetch(new Request("https://console.example/query/api/ask", {
     method: "POST", headers: { cookie: `console_session=${token}`, origin: "https://console.example" },
     body: JSON.stringify({ store: store.id, question: "Which filing arrived?" }),
