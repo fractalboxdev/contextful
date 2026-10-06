@@ -13,9 +13,9 @@ An unpinned clause is `committed`; a pinned one is `performed` when its Rust, Le
 | `read` | 2 | 15 | 206 | 35 | 22 | 9 | 183 | 0 | 178 |
 | `run` | 3 | 26 | 406 | 102 | 39 | 28 | 306 | 0 | 306 |
 | `store` | 1 | 17 | 252 | 59 | 13 | 19 | 216 | 0 | 216 |
-| `surface` | 2 | 20 | 119 | 55 | 22 | 0 | 79 | 0 | 66 |
+| `surface` | 2 | 20 | 119 | 55 | 22 | 0 | 81 | 0 | 66 |
 | `topology` | 1 | 6 | 70 | 24 | 5 | 5 | 38 | 0 | 38 |
-| **total** | 19 | 155 | 2120 | 603 | 191 | 103 | 1505 | 0 | |
+| **total** | 19 | 155 | 2120 | 603 | 191 | 103 | 1507 | 0 | |
 
 Decision records: 18.
 
@@ -37,7 +37,7 @@ A milestone reads `closed` when its acceptance test computes `passing` and every
 | 9 — Visibility | 6 | 41 | 3 | open | open |
 | 10 — Cadence and the operator plane | 11 | 80 | 68 | passing | open |
 | 11 — The derive tier | 7 | 88 | 79 | passing | closed |
-| 12 — The operator console | 12 | 50 | 16 | passing | open |
+| 12 — The operator console | 12 | 50 | 18 | passing | open |
 | 13 — Disclosure | 5 | 33 | 13 | open | open |
 | 14 — Assurance | 7 | 138 | 89 | passing | closed |
 
@@ -1494,6 +1494,8 @@ Unscheduled operations: 10.
 | `surface.learn.unscoped` | `apps/console/test/learn.test.ts::apps/console/test/learn.test.ts::unscoped learning refuses before distillation or landing` | performed |
 | `surface.learn.write-refused` | `apps/console/test/answer_memory.test.ts::apps/console/test/answer_memory.test.ts::hosted Query reports a served learning refusal without exposing its credential` | performed |
 | `surface.package.owner-flag` | `crates/contextful-cli/tests/integration/mcp.rs::explicit_owner_requires_a_signed_credential_for_the_selected_store` | performed |
+| `surface.package.stdio-credential` | `crates/contextful-cli/tests/integration/mcp.rs::a_server_with_no_credential_raises_stdio_credential_missing` | performed |
+| `surface.package.store-selector` | `crates/contextful-cli/tests/integration/mcp.rs::a_spawned_server_without_a_project_manifest_refuses_before_framing` | performed |
 | `surface.plan-turn.planner-reached-memory` | `apps/console/test/turn.test.ts::apps/console/test/turn.test.ts::a planner call targeting a memory relation dispatches nothing` | performed |
 | `surface.publish-answer.askerless-audience` | `apps/console/test/publish.test.ts::apps/console/test/publish.test.ts::a scheduled service post refuses an audience and names its destination` | performed |
 | `surface.publish-answer.share-affordance` | `apps/console/test/publish.test.ts::apps/console/test/publish.test.ts::an access explanation cannot offer a share control` | performed |

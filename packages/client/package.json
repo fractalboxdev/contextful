@@ -1,0 +1,27 @@
+{
+  "name": "@contextful/client",
+  "version": "0.5.0",
+  "packageManager": "pnpm@10.14.0",
+  "type": "module",
+  "files": ["dist"],
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "browser": {
+        "types": "./dist/browser.d.ts",
+        "default": "./dist/browser.js"
+      },
+      "types": "./dist/index.d.ts",
+      "default": "./dist/index.js"
+    }
+  },
+  "scripts": {
+    "typecheck": "tsc --noEmit",
+    "test": "node --experimental-strip-types --test test/*.test.ts",
+    "build": "tsc"
+  },
+  "devDependencies": {
+    "@types/node": "22.20.4",
+    "typescript": "6.0.3"
+  }
+}
