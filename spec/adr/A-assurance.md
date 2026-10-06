@@ -228,7 +228,7 @@ Consequences: the accepted cost is that a defect in the relation a scan resolves
 
 Context: the toolchain stage reads the pins stage's record, and the formal stage reads the toolchain stage's environment. Each remote check runs one stage in a fresh sandbox, and a contributor reruns one stage locally. Criteria: a gate fails rather than skips (P7); a remote check and a local run invoke one command; a rerun reuses an output already on disk.
 
-Decision: `assurance.gate.stage-subset` runs a selection in the sequence's order and refuses before any stage starts when a selected stage reads an unselected predecessor's output and that output is absent. `--predecessors` adds those predecessors, and the workflow passes it (`assurance.gate.remote-predecessors`).
+Decision: `assurance.gate.stage-subset` runs a selection in the sequence's order and refuses before any stage starts when a selected stage reads an unselected predecessor's output and that output is absent. `--predecessors` adds those predecessors, and FlareDispatch passes it (`assurance.gate.remote-predecessors`).
 
 | Option | Lost on | Cost |
 | --- | --- | --- |
