@@ -2,6 +2,7 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import { generateKeyPairSync, sign } from "node:crypto";
 import { createConsole, issueCognitoSession } from "../src/index.ts";
+import { serveConsole } from "../src/server.ts";
 
 const { privateKey, publicKey } = generateKeyPairSync("rsa", { modulusLength: 2048 });
 const issuer = "https://access.example";
@@ -43,8 +44,8 @@ function fixture(adminCapability = "server-secret") {
 test("anonymous and forged Access assertions dispatch no page or API", async () => {
   const { request, calls } = fixture();
   for (const path of ["/query", "/query/api/stores", "/admin", "/admin/api/workflows"]) {
-    assert.equal((await request(path)).status, 403);
-    assert.equal((await request(path, { "cf-access-jwt-assertion": "forged" })).status, 403);
+    assert.equal((await request(path)).status, 401);
+    assert.equal((await request(path, { "cf-access-jwt-assertion": "forged" })).status, 401);
   }
   assert.deepEqual(calls, []);
 });
@@ -63,8 +64,8 @@ test("verified Access audiences grant only their page and API", async () => {
 
 test("expired or wrong-issuer assertions cannot open a page", async () => {
   const { request } = fixture();
-  assert.equal((await request("/query", access(queryAudience, { exp: 1 }))).status, 403);
-  assert.equal((await request("/query", access(queryAudience, { iss: "https://other.example" }))).status, 403);
+  assert.equal((await request("/query", access(queryAudience, { exp: 1 }))).status, 401);
+  assert.equal((await request("/query", access(queryAudience, { iss: "https://other.example" }))).status, 401);
 });
 
 test("Query keeps one composer and transcript and delegates a sourced answer", async () => {
@@ -111,6 +112,85 @@ test("Cognito sessions are signed, bounded, and mapped from groups", async () =>
   })();
   assert.equal((await request("/query", `console_session=${session}`)).status, 200);
   assert.equal((await request("/admin/api/workflows", `console_session=${session}`)).status, 403);
-  assert.equal((await request("/query", `console_session=${session}tampered`)).status, 403);
+  assert.equal((await request("/query", `console_session=${session}tampered`)).status, 401);
   assert.deepEqual(calls, []);
+});
+
+test("Cognito hosted login exchanges a code before issuing a first-party session", async () => {
+  const app = createConsole({
+    identity: {
+      kind: "cognito", sessionSecret: "session-secret", queryGroup: "console-query", adminGroup: "console-admin",
+      issuer: "https://cognito.example/pool", clientId: "console-client", publicKey,
+      authorizeUrl: "https://cognito.example/oauth2/authorize", tokenUrl: "https://cognito.example/oauth2/token",
+      redirectUri: "https://console.example/auth/callback",
+      fetcher: async (_url, init) => {
+        assert.equal(init?.method, "POST");
+        assert.match(String(init?.body), /code=accepted/);
+        return Response.json({ id_token: jwt({ iss: "https://cognito.example/pool", aud: "console-client", sub: "operator-3", token_use: "id", "cognito:groups": ["console-admin"], exp: Math.floor(Date.now() / 1000) + 300 }) });
+      },
+    },
+    stores: [], turn: async () => ({ answer: "", sources: [], widgets: [] }), read: { list: async () => [] },
+    control: { workflows: async () => ({}), record: async () => ({}), edit: async () => ({}), apply: async () => ({}) },
+  });
+  const login = await app.fetch(new Request("https://console.example/auth/login"));
+  assert.equal(login.status, 302);
+  const location = new URL(login.headers.get("location")!);
+  const state = location.searchParams.get("state");
+  assert.ok(state);
+  const stateCookie = login.headers.get("set-cookie")!.split(";")[0];
+  const callback = await app.fetch(new Request(`https://console.example/auth/callback?code=accepted&state=${state}`, { headers: { cookie: stateCookie } }));
+  assert.equal(callback.status, 302);
+  assert.equal(callback.headers.get("location"), "/admin");
+  const sessionCookie = callback.headers.get("set-cookie")!.split(";")[0];
+  assert.equal((await app.fetch(new Request("https://console.example/admin", { headers: { cookie: sessionCookie } }))).status, 200);
+  assert.equal((await app.fetch(new Request("https://console.example/query", { headers: { cookie: sessionCookie } }))).status, 403);
+  const badState = await app.fetch(new Request("https://console.example/auth/callback?code=accepted&state=wrong", { headers: { cookie: stateCookie } }));
+  assert.equal(badState.status, 403);
+});
+
+test("the Node HTTP listener verifies a page request before serving content", async () => {
+  const app = createConsole({
+    identity: { kind: "access", issuer, queryAudience, adminAudience, publicKey },
+    stores: [],
+    turn: async () => ({ answer: "", sources: [], widgets: [] }),
+    read: { list: async () => [] },
+    control: { workflows: async () => ({}), record: async () => ({}), edit: async () => ({}), apply: async () => ({}) },
+  });
+  assert.equal((await app.fetch(new Request("https://console.example/query"))).status, 401);
+  const server = serveConsole({
+    identity: { kind: "access", issuer, queryAudience, adminAudience, publicKey },
+    stores: [],
+    turn: async () => ({ answer: "", sources: [], widgets: [] }),
+    read: { list: async () => [] },
+    control: { workflows: async () => ({}), record: async () => ({}), edit: async () => ({}), apply: async () => ({}) },
+  }, "http://127.0.0.1");
+  await new Promise<void>((resolve) => server.listen(0, "127.0.0.1", resolve));
+  try {
+    const address = server.address();
+    assert.ok(address && typeof address !== "string");
+    const url = `http://127.0.0.1:${address.port}`;
+    assert.equal((await fetch(`${url}/query`)).status, 401);
+    assert.equal((await fetch(`${url}/query`, { headers: access(queryAudience) })).status, 200);
+  } finally {
+    server.close();
+  }
+});
+
+test("Admin pack listing reaches only the injected listing adapter", async () => {
+  const calls: string[] = [];
+  const app = createConsole({
+    identity: { kind: "access", issuer, queryAudience, adminAudience, publicKey },
+    stores: [{ id: "field-notes", label: "Field notes" }],
+    turn: async () => ({ answer: "", sources: [], widgets: [] }),
+    read: { list: async () => [] },
+    control: {
+      workflows: async () => ({}), record: async () => ({}), edit: async () => ({}), apply: async () => ({}),
+      listPackFiles: async (_operator, store, prefix) => { calls.push(`${store}:${prefix}`); return { entries: ["packs/a.toml"], truncated: false, declined: 2 }; },
+    },
+  });
+  const url = "https://console.example/admin/api/packs?store=field-notes&prefix=packs/";
+  assert.equal((await app.fetch(new Request(url, { headers: access(queryAudience) }))).status, 403);
+  const response = await app.fetch(new Request(url, { headers: access(adminAudience) }));
+  assert.deepEqual(await response.json(), { entries: ["packs/a.toml"], truncated: false, declined: 2 });
+  assert.deepEqual(calls, ["field-notes:packs/"]);
 });
