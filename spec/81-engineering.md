@@ -139,10 +139,22 @@ Target directories, the engine-linked invocation, linked query functions, build 
 - `wasi-probe` — No profile ships a `wasm32-wasip2` release; a scheduled-tier ledger entry builds the edge profile for it and holds the compressed artifact to {{assurance.gate.edge-budget}}.
   *A-assurance*
 - `release-artifact` — Each profile ships a release archive with a SHA-256 checksum and an SBOM, a package-manager formula and an independently tagged container image; the bare formula name and the install script resolve to the full profile.
+- `release-builder` — The release command uses `cargo build` by default and `cargo zigbuild` under `--builder zigbuild`, forwarding the selected target and profile features.
+  *because Cloudflare Linux builds Darwin targets through Zig while the local release command keeps its native build path*
+- `release-metadata` — Each release cell writes a JSON record naming its profile, target, archive, SHA-256 digest and SBOM.
+  *because distributed release cells need a small authenticated input for formula generation*
+- `formula-manifest` — The formula command accepts a manifest covering every release matrix cell once, with matching asset names and SHA-256 digests, and writes formulas and SHA256SUMS without local archives.
+  *because one aggregation sandbox need not download every archive to produce formulas*
 - `licence-field` — Every workspace package under `crates/` or `tools/` declares `license = "Apache-2.0"`, inherited from `[workspace.package]`; a package declaring another value or none raises `PackageLicenceMissing`, naming its manifest.
   *because cargo-deny, cargo-about and SBOM generators read the manifest field, not the `LICENSE` file, so an unlicensed package fails a consumer's licence check*
 - `dependency-allowlist` — The connector authoring dependency allowlist carries `regex` and `serde_json` at its depth limit; a profile graph reaching `fancy-regex`, `pcre2`, `onig` or `serde_json`'s `unbounded_depth` feature raises `DependencyAllowlistViolation`, naming the profile and path.
   *because a backtracking matcher or a parser without a depth limit lets one hostile record pin a core or exhaust the stack*
+
+#### Scenarios
+
+- `assurance.build.release-builder`: WHEN a Darwin cell selects `--builder zigbuild`, THEN the release command invokes `cargo zigbuild` for that profile and target.
+- `assurance.build.release-metadata`: WHEN a release cell packages an archive, THEN its JSON metadata names the archive, digest and SBOM.
+- `assurance.build.formula-manifest`: WHEN every cell's metadata is present without local archives, THEN formula generation writes the profile formulae and SHA256SUMS.
 
 ## gate
 
@@ -151,14 +163,14 @@ Stage order, secrets of record, the crate-graph, row-token, egress and dependenc
 - `stage-sequence` — The gate runs its stages in order — pins, toolchain, schema, test-first, workspace, acceptance, evaluate, features, crate graph, connectors, TypeScript surfaces, formal, budget — and a subset is selectable by name.
 - `stage-subset` — A selected subset runs in the sequence's order; a stage reading an unselected predecessor's output, with that output absent, raises `StagePredecessorMissing`, naming both stages, before any stage runs.
   *A-assurance*
-- `remote-check` — The pull-request workflow dispatches every stage the gate subcommand defines to a remote runner, a split stage one part at a time, each as one status check labelled with its name.
+- `remote-check` — The FlareDispatch pull-request webhook dispatches every part from `contextful-ci stages --parts`, each as `flare-dispatch/check:<part>` on the head commit.
   *A-assurance*
 - `workspace-parts` — Remote workspace checks compile the feature-unified workspace and run the CLI suite from that build, then run each other non-acceptance package suite in exactly one of four groups.
   *A-assurance*
-- `remote-predecessors` — Each remote check runs its stage together with every predecessor whose output that stage reads, so no check reads another check's sandbox.
+- `remote-predecessors` — Each dispatched part invokes `contextful-ci gate --predecessors --stage <part> --base <base-sha>`, so no check reads another check's sandbox.
   *A-assurance*
-- `fork-dispatch` — The pull-request workflow dispatches only a head commit pushed to the repository itself; a pull request from a fork dispatches no stage and so carries none of the required checks.
-  *because a dispatch carries the org's signing secret and runs the commit on the org's runner, and an absent required check fails closed*
+- `fork-dispatch` — FlareDispatch dispatches only a pull-request head pushed to this repository; a fork receives none of the 23 required stage checks.
+  *because a dispatch runs untrusted code in the organization's compute account, and absent required checks fail closed*
 - `stage-reports` — Each stage prints the environment it leaves and its memory limit, peak and event counts, and a failing stage prints its diagnostics before propagating its exit code.
   *because memory exhaustion is silent, and a kill then reads as a number in the log*
 - `pins-stage` — The pins stage resolves every pinned artifact identity a run depends on before any compilation.
@@ -201,9 +213,13 @@ Stage order, secrets of record, the crate-graph, row-token, egress and dependenc
   *because one link-time-optimized release build of the full profile fills most of one stage's wall clock*
 - `footprint-exceeded` — An artifact over its profile's budget, or carrying a dynamic dependency beyond the platform C library, raises `FootprintBudgetExceeded`, naming the profile.
   *P7*
-- `typescript-surfaces` — The TypeScript surfaces run typecheck, unit tests and framework build in one stage, and a surface declaring no script for a check skips that check.
+- `typescript-surfaces` — The TypeScript surfaces run each declared typecheck, test and build script in one stage; an absent script skips only that script.
+- `native-test-files` — The surfaces stage runs every regular native `.test.ts` file under a direct TypeScript surface's `test/` or `tests/` tree through Node's TypeScript strip runner, and refuses absent passing tests or pinned names.
+  *because a package script can omit a pinned test while reporting success*
 - `surface-check-failed` — A surface whose typecheck, unit tests or framework build fails raises `SurfaceCheckFailed`, naming the surface and the script.
   *P7*
+
+unsettled: How does corpus status attest FlareDispatch's external webhook and check-run behavior? owner: build affects: assurance.gate
 
 The stages, numbered in run order, under the container's ceilings:
 
@@ -212,7 +228,7 @@ flowchart LR
   subgraph contributor["contributor"]
     LOCAL["contextful-ci gate"]
   end
-  subgraph forge["pull-request workflow"]
+  subgraph forge["FlareDispatch"]
     WF["one remote check per stage"]
   end
   LOCAL -->|"local run"| C
@@ -349,7 +365,7 @@ The target ledger: each tracked target, the clause it serves, how it is measured
 - `absolute-threshold` — A threshold is an absolute figure of this system's own measure, and it tightens only through {{assurance.baseline.raise-only}}.
 - `history` — A run on the default branch attaches its run report to the measured commit under `refs/notes/measures`, and no verdict reads a note.
   *A-assurance*
-- `scheduled` — A nightly job runs every tier against the default-branch head and reports one check per run.
+- `scheduled` — The FlareDispatch nightly run executes every tier against the default-branch head and reports one check per run.
 - `measured-basis` — A bound with a measured basis names a trend-tier or scheduled-tier ledger entry id as its benchmark.
 
 A ledger entry's path from the tree to a verdict:
@@ -366,7 +382,8 @@ flowchart LR
   HOLDS -->|"no"| RED["red evaluate stage"]
 ```
 
-unsettled: Which credential pushes `refs/notes/measures` from the scheduled dispatch? owner: build affects: assurance.measure
+unsettled: Which GitHub App credential pushes `refs/notes/measures` from the scheduled dispatch? owner: build affects: assurance.measure
+unsettled: How does corpus status attest FlareDispatch's external schedule and note write? owner: build affects: assurance.measure
 
 #### Scenarios
 
@@ -376,7 +393,7 @@ unsettled: Which credential pushes `refs/notes/measures` from the scheduled disp
 
 ## release
 
-The version a release tag carries, the refusals guarding it, and the signed annotated tag `contextful-ci tag` creates.
+The release tag's version, the refusals guarding it, the signed annotated tag `contextful-ci tag` creates, and the FlareDispatch packaging run.
 
 - `version` — A release tag is `v0.<closed>.<patch>`: `<closed>` counts the milestones computing `closed` in the tagged commit's `spec/status.md`, and `<patch>` counts the existing tags `v0.<closed>.*`.
   *A-assurance*
@@ -392,6 +409,12 @@ The version a release tag carries, the refusals guarding it, and the signed anno
   *A-assurance*
 - `gate-failed` — Once the other refusals clear, every gate stage runs against `HEAD` with `HEAD~1` as base; a failing stage raises `TagGateFailed`, naming the stage's refusal, and no tag is created.
   *A-assurance*
+- `release-run` — A `v*` tag at a default-branch commit starts FlareDispatch `contextful-release`, with one `contextful-release-cell` child per {{assurance.build.targets}} matrix cell and one `contextful-release-formula` child for their metadata.
+  *because distributed builds and formula generation share one tag identity*
+- `release-dry-run` — A manual `contextful-release` dry run builds the release assets and publishes neither a GitHub release nor container images.
+  *because a packaging rehearsal must not claim a released version*
+
+unsettled: How does corpus status attest FlareDispatch's external tag dispatch and publication? owner: build affects: assurance.release
 
 #### Scenarios
 
