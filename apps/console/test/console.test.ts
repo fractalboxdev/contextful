@@ -212,6 +212,28 @@ test("the Node HTTP listener verifies a page request before serving content", as
   }
 });
 
+test("the Node HTTP listener rejects an oversized body before dispatch", async () => {
+  let turns = 0;
+  const server = serveConsole({
+    identity: { kind: "access", issuer, queryAudience, adminAudience, publicKey },
+    stores: [{ id: "field-notes", label: "Field notes" }],
+    turn: async () => { turns++; return { answer: "", sources: [], widgets: [] }; },
+    read: { list: async () => [] },
+    control: { workflows: async () => ({}), record: async () => ({}), edit: async () => ({}), apply: async () => ({}) },
+  }, "http://127.0.0.1");
+  await new Promise<void>((resolve) => server.listen(0, "127.0.0.1", resolve));
+  try {
+    const address = server.address();
+    assert.ok(address && typeof address !== "string");
+    const response = await fetch(`http://127.0.0.1:${address.port}/query/api/ask`, {
+      method: "POST", headers: { "content-type": "application/json" }, body: Buffer.alloc(1_048_577, "x"),
+    });
+    assert.equal(response.status, 413);
+    assert.equal((await response.json() as { error: { identifier: string } }).error.identifier, "ConsoleBodyTooLarge");
+    assert.equal(turns, 0);
+  } finally { server.close(); }
+});
+
 test("Admin pack listing reaches only the injected listing adapter", async () => {
   const calls: string[] = [];
   const app = createConsole({
