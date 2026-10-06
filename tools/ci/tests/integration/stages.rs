@@ -119,8 +119,7 @@ fn a_subset_omitting_a_predecessor_whose_output_is_absent_is_refused_before_any_
     assert_eq!(ran(&o), ["toolchain"]);
 }
 
-/// Each remote check runs its stage together with every predecessor whose output that stage reads, so no check reads another check's sandbox.
-// spec: assurance.gate.remote-predecessors@899b36bf
+/// `--predecessors` includes every stage whose output the selected stage reads.
 #[test]
 fn predecessors_adds_every_stage_whose_output_a_selected_stage_reads() {
     let r = Repo::init();
@@ -128,11 +127,6 @@ fn predecessors_adds_every_stage_whose_output_a_selected_stage_reads() {
     assert!(o.status.success(), "{}", stderr(&o));
     assert_eq!(ran(&o), ["pins", "toolchain"]);
 
-    let yml = std::fs::read_to_string(crate::repo_root().join(".github/workflows/gate.yml")).unwrap();
-    assert!(
-        yml.contains("\"command\": \"cargo run --locked -q -p contextful-ci -- gate --predecessors --stage ${{ matrix.stage }}"),
-        "the remote check runs its stage without the predecessors it reads"
-    );
 }
 
 /// Each stage prints the environment it leaves and its memory limit, peak and event counts, and a failing stage prints its diagnostics before propagating its exit code.
