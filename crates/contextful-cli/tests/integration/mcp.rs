@@ -127,6 +127,8 @@ fn explicit_owner_requires_a_signed_credential_for_the_selected_store() {
     for token in [None, Some(ordinary.as_str())] {
         let refused = serve(root, &args, token, &read);
         assert!(!refused.status.success() && refused.stdout.is_empty(), "ordinary or absent credentials write no framing");
+        let error = String::from_utf8_lossy(&refused.stderr);
+        assert!(error.contains(if token.is_none() { "StdioCredentialMissing" } else { "OwnerCredentialInvalid" }), "{error}");
     }
     let admitted = serve(root, &args, Some(&owner), &read);
     assert!(admitted.status.success(), "{}", String::from_utf8_lossy(&admitted.stderr));
@@ -137,6 +139,7 @@ fn explicit_owner_requires_a_signed_credential_for_the_selected_store() {
     let other = ["mcp", "--owner", "--project", "other", "--public-key", &public, "--audience", AUD];
     let refused = serve(root, &other, Some(&owner), &read);
     assert!(!refused.status.success() && refused.stdout.is_empty(), "an owner credential selects one store");
+    assert!(String::from_utf8_lossy(&refused.stderr).contains("OwnerCredentialInvalid"));
 }
 
 /// The server admits over the stdio pipe it inherited: a credential binding no key admits
