@@ -375,6 +375,14 @@ impl<'a, C: Clock + Sync> HttpFace<'a, C> {
         if !authority.grants().iter().any(|grant| grant.actions.contains(&Action::Admin) && grant.tables.contains(&TablePattern::All)) {
             return HttpResponse::json(403, &json!({ "error": { "identifier": "ControlAdminGrantMissing" } }));
         }
+        let revocation = match (self.admitting.revocation)() {
+            Ok(r) => r,
+            Err(why) => return HttpResponse::unavailable(format!("the revocation denylist is unreadable: {why}")),
+        };
+        let boundary = Admission::new(self.tools.clock().now(), &revocation).expecting(self.admitting.audience);
+        if let Err(error) = effect_boundary(&authority, &boundary) {
+            return unadmitted(&error);
+        }
         self.control.expect("the route is installed only with a control handler")(request)
     }
 

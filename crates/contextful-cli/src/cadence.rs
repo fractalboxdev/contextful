@@ -15,6 +15,7 @@ use crate::run::{boot_id, wire_at, ProjectArgs};
 use anyhow::{bail, Context, Result};
 use contextful_context::project::Project;
 use contextful_core::pipeline::declare::{collect, dependent_runs, ManifestFile, PipelineSpec};
+use contextful_core::pipeline::transform::TransformOp;
 use contextful_core::run::derive::task::Tasks;
 use contextful_core::surface::arm::{Schedule, Trigger, TICK_INTERVAL_MS, WAKE_ANSWER_SECS};
 use contextful_core::surface::control::{admit_loopback, control_url, parse_pointer, poll_schedule, snapshot_file, source_file, POINTER_FILE};
@@ -231,12 +232,27 @@ fn applied(snaps: &Source) -> Result<(Option<u64>, BTreeMap<String, PipelineSpec
 
 /// The applied snapshot and recorded run outcomes the store publishes for Admin.
 pub(crate) fn published(project: &Project, declaration: &Path) -> Result<Value> {
-    let text = std::fs::read_to_string(declaration).unwrap_or_default();
+    let text = std::fs::read_to_string(declaration)?;
     let control = control_config(&text, project)?;
     let (version, pipelines) = applied(&control.source)?;
     let store = contextful_context::Store::open(&project.dir, &project.name)?;
     let runs = contextful_sync::run_state::run_states(&store)?;
-    Ok(json!({ "applied": version, "pipelines": pipelines.into_values().collect::<Vec<_>>(), "runs": runs }))
+    let pipelines: Vec<Value> = pipelines.into_values().map(|spec| json!({
+        "id": spec.id,
+        "schedule": spec.schedule,
+        "tables": spec.tables.iter().map(|table| table.name()).collect::<Vec<_>>(),
+        "source": spec.source.name,
+        "after": spec.after,
+        "steps": spec.transforms.iter().map(|step| match step {
+            TransformOp::Select { .. } => "select",
+            TransformOp::Rename { .. } => "rename",
+            TransformOp::Cast { .. } => "cast",
+            TransformOp::Filter { .. } => "filter",
+            TransformOp::Extract { .. } => "extract",
+        }).collect::<Vec<_>>(),
+    })).collect();
+    let runs: BTreeMap<_, _> = runs.into_iter().map(|(node, state)| (node, state.runs)).collect();
+    Ok(json!({ "applied": version, "pipelines": pipelines, "runs": runs }))
 }
 
 /// The snapshot document: every specification as a `[[pipeline]]` block, sorted by id.
