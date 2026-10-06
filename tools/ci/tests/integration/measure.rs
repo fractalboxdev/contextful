@@ -68,6 +68,21 @@ fn measure(r: &Repo, args: &[&str]) -> Output {
         .unwrap()
 }
 
+#[test]
+fn inherited_targets_hold_measure_builds_and_records_outside_the_checkout() {
+    let r = repo(&entry("demo-doubles", "run.journal.entry-key", "{ test = \"demo::measured::doubles_measured\" }", "target = { op = \">=\", value = 5 }"));
+    let pool = tempfile::tempdir().unwrap();
+    let o = Command::new(env!("CARGO_BIN_EXE_contextful-ci"))
+        .args(["gate", "--stage", "evaluate"])
+        .current_dir(&r.root)
+        .env("CARGO_TARGET_DIR", pool.path())
+        .output().unwrap();
+    assert!(!o.status.success());
+    assert!(stderr(&o).contains("demo-doubles = 4 against >= 5"), "{}", stderr(&o));
+    assert!(pool.path().join("contextful-ci/evaluate/records/demo-doubles.json").exists());
+    assert!(!r.root.join("target").exists());
+}
+
 /// An entry whose owning clause, method or metric path resolves to nothing raises `MeasureEntryUnresolved` before any measure runs.
 // spec: assurance.measure.unresolved-entry@60be6252
 #[test]
