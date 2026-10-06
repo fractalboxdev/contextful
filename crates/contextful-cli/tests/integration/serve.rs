@@ -170,7 +170,7 @@ fn admin_changes_require_fresh_console_attestation_and_record_the_operator() {
     std::fs::write(root.join("pipelines/filings.toml"), original).unwrap();
     stdout(&run(root, &["pipeline", "import", "--project", "research"]));
     let admin = stdout(&run(root, &["token", "mint", "--issuer-key", ".contextful/issuer.seed", "--on-behalf-of", "user://service@acme.example", "--zone", "on-prem:hq", "--action", "admin", "--table", "*", "--ttl", "900"]));
-    let (_listener, addr) = serve(root, &["serve", "--http", "127.0.0.1:0", "--audience", AUD, "--max-in-flight", "2", "--project", "research", "--public-key", &public]);
+    let (listener, addr) = serve(root, &["serve", "--http", "127.0.0.1:0", "--audience", AUD, "--max-in-flight", "2", "--project", "research", "--public-key", &public]);
     assert_eq!(control(&addr, "GET", "/control/record", Some(&admin), "").0, 200);
     let edit = json!({ "expected": 1, "document": original.replace("every 1h", "every 1d") }).to_string();
     assert_eq!(control_headers(&addr, "POST", "/control/edit", Some(&admin), &edit, "").0, 403);
@@ -183,13 +183,16 @@ fn admin_changes_require_fresh_console_attestation_and_record_the_operator() {
     let (status, saved) = control_headers(&addr, "POST", "/control/edit", Some(&admin), &edit, &signed);
     assert_eq!(status, 200, "{saved}");
     assert_eq!(control_headers(&addr, "POST", "/control/edit", Some(&admin), &edit, &signed).0, 403);
+    drop(listener);
+    let (_restart, restarted_addr) = serve(root, &["serve", "--http", "127.0.0.1:0", "--audience", AUD, "--max-in-flight", "2", "--project", "research", "--public-key", &public]);
+    assert_eq!(control_headers(&restarted_addr, "POST", "/control/edit", Some(&admin), &edit, &signed).0, 403);
     let apply = json!({ "expected": 1, "nonce": saved["nonce"] }).to_string();
     let signed = attestation("/control/apply", &apply, "operator-a", now, &"4".repeat(32));
-    let (status, result) = control_headers(&addr, "POST", "/control/apply", Some(&admin), &apply, &signed);
+    let (status, result) = control_headers(&restarted_addr, "POST", "/control/apply", Some(&admin), &apply, &signed);
     assert_eq!(status, 200, "{result}");
     let entries = contextful_policy::audit::entries(&root.join(".contextful/audit")).unwrap();
     assert!(entries.iter().any(|entry| entry.attributes["contextful.operator.subject"] == "operator-a" && entry.attributes["contextful.control.operation"] == "apply"));
-    let (status, record) = control(&addr, "GET", "/control/record", Some(&admin), "");
+    let (status, record) = control(&restarted_addr, "GET", "/control/record", Some(&admin), "");
     assert_eq!(status, 200, "{record}");
     assert!(record["entries"].as_array().unwrap().iter().any(|entry| entry["attributes"]["contextful.operator.subject"] == "operator-a"));
 }
