@@ -29,7 +29,7 @@ fn the_verb_refuses_a_fetch_engine_and_runs_a_transcriber_over_one_file() {
 
 /// The embedding binary under `examples/host_derive.rs`, built on first request: the command
 /// line with the compiled `word-split` task registered.
-fn host_binary() -> std::path::PathBuf {
+pub(crate) fn host_binary() -> std::path::PathBuf {
     static BUILT: std::sync::Once = std::sync::Once::new();
     BUILT.call_once(|| {
         let status = Command::new(env!("CARGO")).args(["build", "-q", "-p", "contextful-cli", "--example", "host_derive"]).status().unwrap();
@@ -49,7 +49,7 @@ fn ok(out: &Output) -> String {
 
 /// A `word-split` pipeline over `documents`: `words` retains versions, `stats` does not, and
 /// `units` holds the markers.
-fn host_manifest(task: &str) -> String {
+pub(crate) fn host_manifest(task: &str) -> String {
     format!(
         "[[pipeline]]\nid = \"split\"\ntables = [\n  \
          {{ name = \"words\", primary_key = [\"unit_ref\", \"derivation_key\", \"word_seq\"], retain_versions = true }},\n  \
