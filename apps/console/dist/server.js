@@ -287,52 +287,57 @@ function source(columns, row, table) {
     ...typeof url === "string" && /^https?:\/\//.test(url) ? { url } : {}
   };
 }
-function createLiveTurn({ stores, env, fetcher = fetch }) {
+async function openReader({ stores, env, fetcher = fetch }, input) {
+  const store = stores.find((entry) => entry.id === input.store);
+  if (!store) throw new ConsoleError("ConsoleRequestMalformed");
+  const shared = env[store.credentialName];
+  const credential = store.auth === "exchange" ? await resolveReaderCredential({
+    shared,
+    mint: async () => {
+      if (!input.operator.assertion || !store.exchangeRoute) throw new ConsoleError("ConsoleTokenExchangeUnavailable", "reader assertion or exchange route absent", 503);
+      const response = await fetcher(new URL(store.exchangeRoute, store.endpoint), {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ jwt: input.operator.assertion })
+      });
+      if (!response.ok) {
+        const refusal2 = await response.json();
+        const error = record(refusal2) ? refusal2.error : void 0;
+        if ((response.status === 401 || response.status === 403) && record(error) && typeof error.identifier === "string") {
+          throw new ConsoleError("ConsoleTokenExchangeRefused", error.identifier, 403);
+        }
+        throw new ConsoleError("ConsoleTokenExchangeUnavailable", `exchange answered ${response.status}`, 503);
+      }
+      const value = await response.json();
+      if (!record(value) || typeof value.token !== "string" || !value.token.trim()) throw new ConsoleError("ConsoleTokenExchangeUnavailable", "exchange returned no credential", 503);
+      return value.token;
+    }
+  }) : shared;
+  if (!credential) throw new ConsoleError("ConsoleTokenExchangeRefused");
+  let id = 0;
+  const call = async (name, args, signal) => {
+    const response = await fetcher(new URL("/mcp", store.endpoint), {
+      method: "POST",
+      signal,
+      headers: { "Authorization": `Bearer ${credential}`, "Content-Type": "application/json" },
+      body: JSON.stringify({ jsonrpc: "2.0", id: ++id, method: "tools/call", params: { name, arguments: args } })
+    });
+    if (!response.ok) throw new ConsoleError("ConsoleStoreReadRefused", `store answered ${response.status}`, response.status);
+    const message = await response.json();
+    if (!record(message) || !record(message.result) || message.result.isError === true || !record(message.result.structuredContent)) {
+      throw new ConsoleError("ConsoleStoreReadRefused");
+    }
+    return message.result.structuredContent;
+  };
+  return { store, call };
+}
+function createLiveTurn(options) {
+  const { env, fetcher = fetch } = options;
   const modelEndpoint = env.CONTEXTFUL_MODEL_ENDPOINT;
   const modelId = env.CONTEXTFUL_MODEL_ID;
   if (!modelEndpoint || !modelId) throw new Error("ConsoleModelUnconfigured");
   return async (input) => {
-    const store = stores.find((entry) => entry.id === input.store);
-    if (!store) throw new ConsoleError("ConsoleRequestMalformed");
-    const shared = env[store.credentialName];
-    const credential = store.auth === "exchange" ? await resolveReaderCredential({
-      shared,
-      mint: async () => {
-        if (!input.operator.assertion || !store.exchangeRoute) throw new ConsoleError("ConsoleTokenExchangeUnavailable", "reader assertion or exchange route absent", 503);
-        const response = await fetcher(new URL(store.exchangeRoute, store.endpoint), {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ jwt: input.operator.assertion })
-        });
-        if (!response.ok) {
-          const refusal2 = await response.json();
-          const error = record(refusal2) ? refusal2.error : void 0;
-          if ((response.status === 401 || response.status === 403) && record(error) && typeof error.identifier === "string") {
-            throw new ConsoleError("ConsoleTokenExchangeRefused", error.identifier, 403);
-          }
-          throw new ConsoleError("ConsoleTokenExchangeUnavailable", `exchange answered ${response.status}`, 503);
-        }
-        const value = await response.json();
-        if (!record(value) || typeof value.token !== "string" || !value.token.trim()) throw new ConsoleError("ConsoleTokenExchangeUnavailable", "exchange returned no credential", 503);
-        return value.token;
-      }
-    }) : shared;
-    if (!credential) throw new ConsoleError("ConsoleTokenExchangeRefused");
-    let id = 0;
-    const call = async (name, args, signal) => {
-      const response = await fetcher(new URL("/mcp", store.endpoint), {
-        method: "POST",
-        signal,
-        headers: { "Authorization": `Bearer ${credential}`, "Content-Type": "application/json" },
-        body: JSON.stringify({ jsonrpc: "2.0", id: ++id, method: "tools/call", params: { name, arguments: args } })
-      });
-      if (!response.ok) throw new ConsoleError("ConsoleStoreReadRefused", `store answered ${response.status}`, response.status);
-      const message = await response.json();
-      if (!record(message) || !record(message.result) || message.result.isError === true || !record(message.result.structuredContent)) {
-        throw new ConsoleError("ConsoleStoreReadRefused");
-      }
-      return message.result.structuredContent;
-    };
+    const { store, call } = await openReader(options, input);
     const description = await call("context.describe", {});
     const selected = selectTable(input.question, description.tables);
     if (!selected) throw new ConsoleError("ConsoleUngroundedAnswer", "No data table matches this question.");
@@ -379,6 +384,89 @@ function createLiveTurn({ stores, env, fetcher = fetch }) {
   };
 }
 
+// src/browse.ts
+var MAX_TABLES = 64;
+var MAX_FILES = 128;
+var MAX_PREVIEW_ROWS = 100;
+var BrowseError = class extends Error {
+  code;
+  constructor(code, message = code) {
+    super(message);
+    this.name = "BrowseError";
+    this.code = code;
+  }
+};
+var abbreviations = /* @__PURE__ */ new Set(["API", "CSV", "PDF", "SEC", "SQL", "URL"]);
+function humanizeLabel(identifier) {
+  const tail = identifier.split("/").at(-1) ?? identifier;
+  return tail.replace(/\.[^.]+$/, "").replace(/([a-z])([A-Z])/g, "$1 $2").split(/[-_\s]+/).filter(Boolean).map((part) => {
+    const upper = part.toUpperCase();
+    return abbreviations.has(upper) || /^[Qq]\d+$/.test(part) ? upper : part[0].toUpperCase() + part.slice(1).toLowerCase();
+  }).join(" ");
+}
+function object(value) {
+  if (!value || typeof value !== "object" || Array.isArray(value)) throw new BrowseError("ConsoleBrowseResponseMalformed");
+  return value;
+}
+function bounds(request) {
+  return request.asOf ? { as_of: request.asOf } : {};
+}
+function createBrowse(transport) {
+  async function read(tool, arguments_) {
+    const result = await transport.call(tool, arguments_);
+    if (result.isError) {
+      const error = object(object(result.structuredContent).error);
+      throw new BrowseError(String(error.identifier ?? "ConsoleBrowseReadRefused"));
+    }
+    return object(result.structuredContent);
+  }
+  async function listed(request) {
+    const listing = await read("context.describe", bounds(request));
+    if (!Array.isArray(listing.tables)) throw new BrowseError("ConsoleBrowseResponseMalformed");
+    const tables = listing.tables.map((item) => object(item)).filter((item) => item.zone_admitted === true && item.kind !== "memory" && typeof item.table === "string").slice(0, MAX_TABLES).map((item) => ({ table: item.table, description: typeof item.description === "string" ? item.description : void 0 }));
+    const names2 = new Set(tables.map((table) => table.table));
+    const fileListing = await read("context.files", bounds(request));
+    if (!Array.isArray(fileListing.rows)) throw new BrowseError("ConsoleBrowseResponseMalformed");
+    const files = fileListing.rows.filter((row) => Array.isArray(row) && typeof row[0] === "string" && typeof row[1] === "string" && names2.has(row[0])).slice(0, MAX_FILES).map(([table, path]) => ({ table, path, label: humanizeLabel(path) }));
+    return { tables, files };
+  }
+  return {
+    async discover(request) {
+      const { tables, files } = await listed(request);
+      const chips = tables.map((table) => ({ table: table.table, label: humanizeLabel(table.table), description: table.description }));
+      const descriptions = await Promise.all(tables.map((table) => read("context.describe", { table: table.table, ...bounds(request) })));
+      const insights = tables.flatMap((table, index) => {
+        const count = descriptions[index].row_count;
+        return typeof count === "number" && Number.isFinite(count) && count >= 0 ? [{ table: table.table, label: humanizeLabel(table.table), rows: count }] : [];
+      });
+      return { chips, insights, files };
+    },
+    async preview(request) {
+      const { files } = await listed(request);
+      if (!files.some((file) => file.path === request.path)) throw new BrowseError("ConsoleGalleryPathUnlisted", request.path);
+      const response = await read("context.file", { path: request.path, limit: MAX_PREVIEW_ROWS, ...bounds(request) });
+      if (!Array.isArray(response.columns) || !Array.isArray(response.rows)) throw new BrowseError("ConsoleBrowseResponseMalformed");
+      return { columns: response.columns.slice(0, 64), rows: response.rows.slice(0, MAX_PREVIEW_ROWS).map((row) => Array.isArray(row) ? row.slice(0, 64) : []) };
+    }
+  };
+}
+
+// src/live_browse.ts
+function createLiveBrowse(options) {
+  async function session(input) {
+    const { call } = await openReader(options, input);
+    return createBrowse({ call: async (name, args) => ({ structuredContent: await call(name, args) }) });
+  }
+  return {
+    async discover(input) {
+      return (await session(input)).discover({ asOf: input.asOf });
+    },
+    async preview(input) {
+      return (await session(input)).preview({ asOf: input.asOf, path: input.path });
+    }
+  };
+}
+
 // src/server.ts
 import { createServer } from "node:http";
 
@@ -390,7 +478,7 @@ function encoded(value) {
 function decode(value) {
   return JSON.parse(Buffer.from(value, "base64url").toString("utf8"));
 }
-function object(value) {
+function object2(value) {
   return value !== null && typeof value === "object" && !Array.isArray(value);
 }
 function secureEqual(left, right) {
@@ -423,7 +511,7 @@ function verifyCognitoSession(cookie, identity2) {
   } catch {
     return null;
   }
-  if (!object(session) || typeof session.subject !== "string" || !session.subject || !Number.isSafeInteger(session.expiresAt) || session.expiresAt <= Math.floor(Date.now() / 1e3) || !Array.isArray(session.groups) || !session.groups.every((group) => typeof group === "string") || session.assertion !== void 0 && typeof session.assertion !== "string") return null;
+  if (!object2(session) || typeof session.subject !== "string" || !session.subject || !Number.isSafeInteger(session.expiresAt) || session.expiresAt <= Math.floor(Date.now() / 1e3) || !Array.isArray(session.groups) || !session.groups.every((group) => typeof group === "string") || session.assertion !== void 0 && typeof session.assertion !== "string") return null;
   const grants = /* @__PURE__ */ new Set();
   if (session.groups.includes(identity2.queryGroup)) grants.add("query");
   if (session.groups.includes(identity2.adminGroup)) grants.add("admin");
@@ -440,7 +528,7 @@ function verifyAccess(assertion, identity2) {
   } catch {
     return null;
   }
-  if (!object(header) || header.alg !== "RS256" || !object(claims)) return null;
+  if (!object2(header) || header.alg !== "RS256" || !object2(claims)) return null;
   if (claims.iss !== identity2.issuer || typeof claims.sub !== "string" || !claims.sub || !Number.isSafeInteger(claims.exp) || claims.exp <= Math.floor(Date.now() / 1e3)) return null;
   if (typeof claims.nbf === "number" && claims.nbf > Math.floor(Date.now() / 1e3)) return null;
   const audience = typeof claims.aud === "string" ? [claims.aud] : Array.isArray(claims.aud) ? claims.aud : [];
@@ -506,7 +594,7 @@ async function cognitoCallback(request, identity2) {
   });
   if (!exchange.ok) return refusal("ConsolePageForbidden");
   const tokens = await exchange.json();
-  if (!object(tokens) || typeof tokens.id_token !== "string") return refusal("ConsolePageForbidden");
+  if (!object2(tokens) || typeof tokens.id_token !== "string") return refusal("ConsolePageForbidden");
   const parts = tokens.id_token.split(".");
   if (parts.length !== 3) return refusal("ConsolePageForbidden");
   let header;
@@ -517,7 +605,7 @@ async function cognitoCallback(request, identity2) {
   } catch {
     return refusal("ConsolePageForbidden");
   }
-  if (!object(header) || header.alg !== "RS256" || !object(claims) || claims.iss !== identity2.issuer || claims.aud !== identity2.clientId || typeof claims.sub !== "string" || !claims.sub || !Number.isSafeInteger(claims.exp) || claims.exp <= Math.floor(Date.now() / 1e3) || claims.token_use !== "id") return refusal("ConsolePageForbidden");
+  if (!object2(header) || header.alg !== "RS256" || !object2(claims) || claims.iss !== identity2.issuer || claims.aud !== identity2.clientId || typeof claims.sub !== "string" || !claims.sub || !Number.isSafeInteger(claims.exp) || claims.exp <= Math.floor(Date.now() / 1e3) || claims.token_use !== "id") return refusal("ConsolePageForbidden");
   const key = identity2.keys ? typeof header.kid === "string" ? identity2.keys.get(header.kid) : void 0 : typeof identity2.publicKey === "string" ? createPublicKey(identity2.publicKey) : identity2.publicKey;
   if (!key) return refusal("ConsolePageForbidden");
   if (!verify("RSA-SHA256", Buffer.from(`${parts[0]}.${parts[1]}`), key, Buffer.from(parts[2], "base64url"))) return refusal("ConsolePageForbidden");
@@ -599,6 +687,31 @@ function createConsole(adapters) {
       if (request.method === "GET" && path === `/${grant}`) return page(grant);
       if (grant === "query") {
         if (request.method === "GET" && path === "/query/api/stores") return json(await adapters.read.list(operator));
+        if (request.method === "POST" && (path === "/query/api/browse" || path === "/query/api/preview")) {
+          let input;
+          try {
+            input = await body(request);
+          } catch (error) {
+            return bodyFailure(error);
+          }
+          if (!object2(input) || typeof input.store !== "string" || !adapters.stores.some((store) => store.id === input.store) || input.asOf !== void 0 && typeof input.asOf !== "string" || path.endsWith("/preview") && (typeof input.path !== "string" || !input.path || input.path.length > 4096)) {
+            return refusal("ConsoleRequestMalformed", 400);
+          }
+          let asOf;
+          try {
+            asOf = input.asOf === void 0 ? void 0 : parseVantage(input.asOf);
+          } catch {
+            return refusal("ConsoleVantageUnparseable", 400);
+          }
+          if (!adapters.browse) return refusal("ConsoleAdapterUnavailable", 503);
+          try {
+            return json(path.endsWith("/preview") ? await adapters.browse.preview({ operator, store: input.store, asOf, path: input.path }) : await adapters.browse.discover({ operator, store: input.store, asOf }));
+          } catch (error) {
+            if (error instanceof BrowseError) return refusal(error.code, error.code === "ConsoleGalleryPathUnlisted" ? 403 : 400);
+            if (error instanceof ConsoleError) return refusal(error.code, error.status);
+            throw error;
+          }
+        }
         if (request.method === "POST" && path === "/query/api/ask") {
           let input;
           try {
@@ -606,7 +719,7 @@ function createConsole(adapters) {
           } catch (error) {
             return bodyFailure(error);
           }
-          if (!object(input) || typeof input.store !== "string" || typeof input.question !== "string" || !input.question.trim() || !adapters.stores.some((store) => store.id === input.store)) return refusal("ConsoleRequestMalformed", 400);
+          if (!object2(input) || typeof input.store !== "string" || typeof input.question !== "string" || !input.question.trim() || !adapters.stores.some((store) => store.id === input.store)) return refusal("ConsoleRequestMalformed", 400);
           try {
             return json(await adapters.turn({ operator, store: input.store, question: input.question }));
           } catch (error) {
@@ -644,12 +757,15 @@ function createConsole(adapters) {
 var sharedStyle = `<style>
 :root{font-family:ui-sans-serif,system-ui,sans-serif;color:#182b39;background:#e7edf0}*{box-sizing:border-box}body{margin:0;min-height:100vh}.shell{display:grid;grid-template-columns:210px minmax(0,1fr);min-height:100vh}nav{background:#173b50;color:#eaf4f5;padding:26px 20px}nav strong{font-size:1.3rem;letter-spacing:-.04em}nav a{display:block;color:#eaf4f5;text-decoration:none;margin-top:24px;padding:9px 11px;border-radius:7px}nav a[aria-current]{background:#31657b}main{padding:30px min(5vw,64px);max-width:1200px;width:100%}h1{font-size:clamp(2rem,4vw,3rem);letter-spacing:-.055em;margin:5px 0 12px}h2{font-size:1.1rem}p{line-height:1.5}section{background:#fff;border:1px solid #c8d5da;border-radius:12px;padding:20px;margin:18px 0}button,select,textarea{font:inherit}button{background:#125a72;color:white;border:0;border-radius:7px;padding:10px 16px;cursor:pointer}button:focus-visible,a:focus-visible,select:focus-visible,textarea:focus-visible{outline:3px solid #efae4c;outline-offset:2px}textarea{width:100%;min-height:100px;padding:12px;border:1px solid #91a8b2;border-radius:7px}select{padding:8px;border:1px solid #91a8b2;border-radius:7px}pre{white-space:pre-wrap;overflow-wrap:anywhere}.muted{color:#536b78}.grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(240px,1fr));gap:14px}.node{border:1px solid #afc5cf;border-left:5px solid #3c7c92;border-radius:7px;padding:13px;background:#f5f9fa}#transcript article{border-left:3px solid #3c7c92;padding:8px 16px;margin:12px 0}#widgets table{border-collapse:collapse;width:100%}#widgets td,#widgets th{border-bottom:1px solid #c8d5da;padding:8px;text-align:left}@media(max-width:650px){.shell{display:block}nav{display:flex;gap:12px;align-items:center;padding:12px 20px}nav a{margin:0}main{padding:20px}}@media(prefers-reduced-motion:reduce){*{scroll-behavior:auto!important}}
 </style>`;
-var queryPage = `<!doctype html><html lang="en"><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Query \xB7 Contextful</title>${sharedStyle}<div class="shell"><nav aria-label="Console"><strong>Contextful</strong><a href="/query" aria-current="page">Query</a><a href="/admin">Admin</a></nav><main><h1>Ask the store</h1><p class="muted">Answers cite the rows your access permits.</p><section><form id="composer"><label for="store">Store</label> <select id="store" required></select><p><label for="question">Question</label></p><textarea id="question" required></textarea><p><button type="submit">Ask question</button></p></form></section><section><h2>Conversation</h2><div id="transcript" role="log" aria-live="polite"><p class="muted">Your answer appears here.</p></div></section><section><h2>Results</h2><div id="widgets"></div></section></main></div><script>
-const form=document.getElementById('composer'),store=document.getElementById('store'),transcript=document.getElementById('transcript'),widgets=document.getElementById('widgets');
-fetch('/query/api/stores').then(r=>r.json()).then(rows=>{for(const row of rows){const option=document.createElement('option');option.value=row.id;option.textContent=row.label;store.append(option)}});
+var queryPage = `<!doctype html><html lang="en"><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Query \xB7 Contextful</title>${sharedStyle}<div class="shell"><nav aria-label="Console"><strong>Contextful</strong><a href="/query" aria-current="page">Query</a><a href="/admin">Admin</a></nav><main><h1>Ask the store</h1><p class="muted">Answers cite the rows your access permits.</p><section><label for="store">Store</label> <select id="store" required></select> <label for="as-of">As of</label> <input id="as-of" type="date"><p id="browse-status" role="status"></p><h2>Explore</h2><div id="chips" class="grid"></div><div id="insights" class="grid"></div><h2>Files</h2><div id="file-gallery" class="grid"></div><div id="file-preview"></div></section><section><form id="composer"><p><label for="question">Question</label></p><textarea id="question" required></textarea><p><button type="submit">Ask question</button></p></form></section><section><h2>Conversation</h2><div id="transcript" role="log" aria-live="polite"><p class="muted">Your answer appears here.</p></div></section><section><h2>Results</h2><div id="widgets"></div></section></main></div><script>
+const form=document.getElementById('composer'),store=document.getElementById('store'),asOf=document.getElementById('as-of'),questionField=document.getElementById('question'),transcript=document.getElementById('transcript'),widgets=document.getElementById('widgets'),chips=document.getElementById('chips'),insights=document.getElementById('insights'),gallery=document.getElementById('file-gallery'),filePreview=document.getElementById('file-preview'),browseStatus=document.getElementById('browse-status');
+async function post(path,payload){const response=await fetch(path,{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify(payload)});const value=await response.json();if(!response.ok)throw new Error(value.error?.identifier??'Request failed');return value}
+function current(){return {store:store.value,...(asOf.value?{asOf:asOf.value}:{})}}
 function draw(widget){const props=widget.props??{};if(widget.component==='table.v1'&&Array.isArray(props.columns)&&Array.isArray(props.rows)){const table=document.createElement('table'),head=document.createElement('thead'),header=document.createElement('tr'),body=document.createElement('tbody');for(const column of props.columns){const cell=document.createElement('th');cell.textContent=String(column);header.append(cell)}head.append(header);for(const row of props.rows){const line=document.createElement('tr');for(const value of row){const cell=document.createElement('td');cell.textContent=String(value??'');line.append(cell)}body.append(line)}table.append(head,body);return table}if(widget.component==='metric.v1'){const metric=document.createElement('p');metric.style.fontSize='2rem';metric.textContent=String(props.value??'');return metric}const fallback=document.createElement('pre');fallback.textContent=JSON.stringify(props,null,2);return fallback}
-form.addEventListener('submit',async event=>{event.preventDefault();const question=document.getElementById('question').value.trim();if(!question)return;const response=await fetch('/query/api/ask',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({store:store.value,question})});const answer=await response.json();transcript.replaceChildren();const item=document.createElement('article');item.textContent=question+'
-'+(answer.answer??answer.error?.identifier??'No answer');transcript.append(item);widgets.replaceChildren();for(const widget of answer.widgets??[])widgets.append(draw(widget));if(answer.sources?.length){const sources=document.createElement('p');sources.textContent='Sources: '+answer.sources.map(x=>x.title??x.url).join(', ');transcript.append(sources)}});
+async function refreshBrowse(){chips.replaceChildren();insights.replaceChildren();gallery.replaceChildren();filePreview.replaceChildren();browseStatus.textContent='';if(!store.value)return;try{const data=await post('/query/api/browse',current());for(const chip of data.chips??[]){const button=document.createElement('button');button.type='button';button.textContent=chip.label;button.title=chip.description??'';button.addEventListener('click',()=>{questionField.value='Tell me about '+chip.label;questionField.focus()});chips.append(button)}for(const insight of data.insights??[]){const card=document.createElement('p');card.textContent=insight.label+': '+insight.rows+' rows';insights.append(card)}for(const file of data.files??[]){const button=document.createElement('button');button.type='button';button.textContent=file.label;button.addEventListener('click',async()=>{filePreview.replaceChildren();try{const preview=await post('/query/api/preview',{...current(),path:file.path});filePreview.append(draw({component:'table.v1',props:preview}))}catch(error){browseStatus.textContent=String(error)}});gallery.append(button)}}catch(error){browseStatus.textContent=String(error)}}
+fetch('/query/api/stores').then(r=>r.json()).then(rows=>{for(const row of rows){const option=document.createElement('option');option.value=row.id;option.textContent=row.label;store.append(option)}void refreshBrowse()});
+store.addEventListener('change',()=>{void refreshBrowse()});asOf.addEventListener('change',()=>{void refreshBrowse()});
+form.addEventListener('submit',async event=>{event.preventDefault();const question=questionField.value.trim();if(!question)return;const response=await fetch('/query/api/ask',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({store:store.value,question})});const answer=await response.json();transcript.replaceChildren();const item=document.createElement('article');item.textContent=question+'\\n'+(answer.answer??answer.error?.identifier??'No answer');transcript.append(item);widgets.replaceChildren();for(const widget of answer.widgets??[])widgets.append(draw(widget));if(answer.sources?.length){const sources=document.createElement('p');sources.textContent='Sources: '+answer.sources.map(x=>x.title??x.url).join(', ');transcript.append(sources)}});
 </script></html>`;
 var adminPage = `<!doctype html><html lang="en"><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Admin \xB7 Contextful</title>${sharedStyle}<div class="shell"><nav aria-label="Console"><strong>Contextful</strong><a href="/query">Query</a><a href="/admin" aria-current="page">Admin</a></nav><main><h1>Store operations</h1><p class="muted">Pipelines, schedules, steps and run outcomes come from the store.</p><section><h2>Workflow canvas</h2><div id="canvas" class="grid"></div></section><section><h2>Operational record</h2><div id="record"></div></section><section><h2>Control document</h2><label for="document">Document</label><textarea id="document"></textarea><p><button id="edit">Edit</button> <button id="apply">Apply</button></p><p id="result" role="status"></p></section></main></div><script>
 const canvas=document.getElementById('canvas'),record=document.getElementById('record');fetch('/admin/api/workflows').then(r=>r.json()).then(data=>{for(const pipeline of data.pipelines??[]){const node=document.createElement('article');node.className='node';node.textContent=[pipeline.id,pipeline.schedule,...(pipeline.steps??[]),...(pipeline.runs??[]).map(run=>run.status)].filter(Boolean).join(' \xB7 ');canvas.append(node)}if(!canvas.children.length)canvas.textContent='No workflows are published.'});fetch('/admin/api/record').then(r=>r.json()).then(data=>{record.textContent=JSON.stringify(data,null,2)});for(const action of ['edit','apply'])document.getElementById(action).addEventListener('click',async()=>{const text=document.getElementById('document').value;let documentValue;try{documentValue=JSON.parse(text)}catch{document.getElementById('result').textContent='Enter a valid JSON document.';return}const response=await fetch('/admin/api/'+action,{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify(documentValue)});document.getElementById('result').textContent=response.ok?action+' complete':(await response.json()).error?.identifier??'Request failed'});
@@ -767,7 +883,8 @@ async function main() {
   const modulePath = process.env.CONTEXTFUL_CONSOLE_ADAPTER_MODULE;
   let adapters = {
     ...unavailableAdapters(),
-    turn: modulePath ? unavailableAdapters().turn : createLiveTurn({ stores: registry.entries, env: process.env })
+    turn: modulePath ? unavailableAdapters().turn : createLiveTurn({ stores: registry.entries, env: process.env }),
+    browse: modulePath ? void 0 : createLiveBrowse({ stores: registry.entries, env: process.env })
   };
   if (modulePath) {
     const absolute = isAbsolute(modulePath) ? modulePath : resolve(modulePath);
@@ -782,6 +899,7 @@ async function main() {
     adminCapability: process.env.CONTEXTFUL_ADMIN_CAPABILITY,
     turn: adapters.turn,
     read: adapters.read ?? { list: async () => stores },
+    browse: adapters.browse,
     control: adapters.control
   }, () => origin);
   await new Promise((resolveListen, rejectListen) => {

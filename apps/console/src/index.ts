@@ -1,5 +1,7 @@
 import { createHash, createHmac, createPublicKey, randomBytes, timingSafeEqual, verify, type KeyObject } from "node:crypto";
 import { ConsoleError } from "./turn.ts";
+import { parseVantage } from "./turn.ts";
+import { BrowseError } from "./browse.ts";
 
 export type Operator = { subject: string; grants: ReadonlySet<"query" | "admin">; assertion?: string };
 export type Store = { id: string; label: string };
@@ -35,6 +37,10 @@ export type ConsoleAdapters = {
   adminCapability?: string;
   turn: (input: TurnInput) => Promise<TurnResult>;
   read: { list: (operator: Operator) => Promise<Store[]> };
+  browse?: {
+    discover: (input: { operator: Operator; store: string; asOf?: string }) => Promise<unknown>;
+    preview: (input: { operator: Operator; store: string; asOf?: string; path: string }) => Promise<unknown>;
+  };
   control: {
     workflows: (operator: Operator, store: string | null) => Promise<unknown>;
     record: (operator: Operator, store: string | null) => Promise<unknown>;
@@ -261,6 +267,28 @@ export function createConsole(adapters: ConsoleAdapters): { fetch: (request: Req
       if (request.method === "GET" && path === `/${grant}`) return page(grant);
       if (grant === "query") {
         if (request.method === "GET" && path === "/query/api/stores") return json(await adapters.read.list(operator));
+        if (request.method === "POST" && (path === "/query/api/browse" || path === "/query/api/preview")) {
+          let input: unknown;
+          try { input = await body(request); } catch (error) { return bodyFailure(error); }
+          if (!object(input) || typeof input.store !== "string" || !adapters.stores.some((store) => store.id === input.store) ||
+              (input.asOf !== undefined && typeof input.asOf !== "string") ||
+              (path.endsWith("/preview") && (typeof input.path !== "string" || !input.path || input.path.length > 4096))) {
+            return refusal("ConsoleRequestMalformed", 400);
+          }
+          let asOf: string | undefined;
+          try { asOf = input.asOf === undefined ? undefined : parseVantage(input.asOf as string); }
+          catch { return refusal("ConsoleVantageUnparseable", 400); }
+          if (!adapters.browse) return refusal("ConsoleAdapterUnavailable", 503);
+          try {
+            return json(path.endsWith("/preview") ?
+              await adapters.browse.preview({ operator, store: input.store, asOf, path: input.path as string }) :
+              await adapters.browse.discover({ operator, store: input.store, asOf }));
+          } catch (error) {
+            if (error instanceof BrowseError) return refusal(error.code, error.code === "ConsoleGalleryPathUnlisted" ? 403 : 400);
+            if (error instanceof ConsoleError) return refusal(error.code, error.status);
+            throw error;
+          }
+        }
         if (request.method === "POST" && path === "/query/api/ask") {
           let input: unknown;
           try { input = await body(request); } catch (error) { return bodyFailure(error); }
@@ -303,11 +331,15 @@ const sharedStyle = `<style>
 :root{font-family:ui-sans-serif,system-ui,sans-serif;color:#182b39;background:#e7edf0}*{box-sizing:border-box}body{margin:0;min-height:100vh}.shell{display:grid;grid-template-columns:210px minmax(0,1fr);min-height:100vh}nav{background:#173b50;color:#eaf4f5;padding:26px 20px}nav strong{font-size:1.3rem;letter-spacing:-.04em}nav a{display:block;color:#eaf4f5;text-decoration:none;margin-top:24px;padding:9px 11px;border-radius:7px}nav a[aria-current]{background:#31657b}main{padding:30px min(5vw,64px);max-width:1200px;width:100%}h1{font-size:clamp(2rem,4vw,3rem);letter-spacing:-.055em;margin:5px 0 12px}h2{font-size:1.1rem}p{line-height:1.5}section{background:#fff;border:1px solid #c8d5da;border-radius:12px;padding:20px;margin:18px 0}button,select,textarea{font:inherit}button{background:#125a72;color:white;border:0;border-radius:7px;padding:10px 16px;cursor:pointer}button:focus-visible,a:focus-visible,select:focus-visible,textarea:focus-visible{outline:3px solid #efae4c;outline-offset:2px}textarea{width:100%;min-height:100px;padding:12px;border:1px solid #91a8b2;border-radius:7px}select{padding:8px;border:1px solid #91a8b2;border-radius:7px}pre{white-space:pre-wrap;overflow-wrap:anywhere}.muted{color:#536b78}.grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(240px,1fr));gap:14px}.node{border:1px solid #afc5cf;border-left:5px solid #3c7c92;border-radius:7px;padding:13px;background:#f5f9fa}#transcript article{border-left:3px solid #3c7c92;padding:8px 16px;margin:12px 0}#widgets table{border-collapse:collapse;width:100%}#widgets td,#widgets th{border-bottom:1px solid #c8d5da;padding:8px;text-align:left}@media(max-width:650px){.shell{display:block}nav{display:flex;gap:12px;align-items:center;padding:12px 20px}nav a{margin:0}main{padding:20px}}@media(prefers-reduced-motion:reduce){*{scroll-behavior:auto!important}}
 </style>`;
 
-const queryPage = `<!doctype html><html lang="en"><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Query · Contextful</title>${sharedStyle}<div class="shell"><nav aria-label="Console"><strong>Contextful</strong><a href="/query" aria-current="page">Query</a><a href="/admin">Admin</a></nav><main><h1>Ask the store</h1><p class="muted">Answers cite the rows your access permits.</p><section><form id="composer"><label for="store">Store</label> <select id="store" required></select><p><label for="question">Question</label></p><textarea id="question" required></textarea><p><button type="submit">Ask question</button></p></form></section><section><h2>Conversation</h2><div id="transcript" role="log" aria-live="polite"><p class="muted">Your answer appears here.</p></div></section><section><h2>Results</h2><div id="widgets"></div></section></main></div><script>
-const form=document.getElementById('composer'),store=document.getElementById('store'),transcript=document.getElementById('transcript'),widgets=document.getElementById('widgets');
-fetch('/query/api/stores').then(r=>r.json()).then(rows=>{for(const row of rows){const option=document.createElement('option');option.value=row.id;option.textContent=row.label;store.append(option)}});
+const queryPage = `<!doctype html><html lang="en"><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Query · Contextful</title>${sharedStyle}<div class="shell"><nav aria-label="Console"><strong>Contextful</strong><a href="/query" aria-current="page">Query</a><a href="/admin">Admin</a></nav><main><h1>Ask the store</h1><p class="muted">Answers cite the rows your access permits.</p><section><label for="store">Store</label> <select id="store" required></select> <label for="as-of">As of</label> <input id="as-of" type="date"><p id="browse-status" role="status"></p><h2>Explore</h2><div id="chips" class="grid"></div><div id="insights" class="grid"></div><h2>Files</h2><div id="file-gallery" class="grid"></div><div id="file-preview"></div></section><section><form id="composer"><p><label for="question">Question</label></p><textarea id="question" required></textarea><p><button type="submit">Ask question</button></p></form></section><section><h2>Conversation</h2><div id="transcript" role="log" aria-live="polite"><p class="muted">Your answer appears here.</p></div></section><section><h2>Results</h2><div id="widgets"></div></section></main></div><script>
+const form=document.getElementById('composer'),store=document.getElementById('store'),asOf=document.getElementById('as-of'),questionField=document.getElementById('question'),transcript=document.getElementById('transcript'),widgets=document.getElementById('widgets'),chips=document.getElementById('chips'),insights=document.getElementById('insights'),gallery=document.getElementById('file-gallery'),filePreview=document.getElementById('file-preview'),browseStatus=document.getElementById('browse-status');
+async function post(path,payload){const response=await fetch(path,{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify(payload)});const value=await response.json();if(!response.ok)throw new Error(value.error?.identifier??'Request failed');return value}
+function current(){return {store:store.value,...(asOf.value?{asOf:asOf.value}:{})}}
 function draw(widget){const props=widget.props??{};if(widget.component==='table.v1'&&Array.isArray(props.columns)&&Array.isArray(props.rows)){const table=document.createElement('table'),head=document.createElement('thead'),header=document.createElement('tr'),body=document.createElement('tbody');for(const column of props.columns){const cell=document.createElement('th');cell.textContent=String(column);header.append(cell)}head.append(header);for(const row of props.rows){const line=document.createElement('tr');for(const value of row){const cell=document.createElement('td');cell.textContent=String(value??'');line.append(cell)}body.append(line)}table.append(head,body);return table}if(widget.component==='metric.v1'){const metric=document.createElement('p');metric.style.fontSize='2rem';metric.textContent=String(props.value??'');return metric}const fallback=document.createElement('pre');fallback.textContent=JSON.stringify(props,null,2);return fallback}
-form.addEventListener('submit',async event=>{event.preventDefault();const question=document.getElementById('question').value.trim();if(!question)return;const response=await fetch('/query/api/ask',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({store:store.value,question})});const answer=await response.json();transcript.replaceChildren();const item=document.createElement('article');item.textContent=question+'\n'+(answer.answer??answer.error?.identifier??'No answer');transcript.append(item);widgets.replaceChildren();for(const widget of answer.widgets??[])widgets.append(draw(widget));if(answer.sources?.length){const sources=document.createElement('p');sources.textContent='Sources: '+answer.sources.map(x=>x.title??x.url).join(', ');transcript.append(sources)}});
+async function refreshBrowse(){chips.replaceChildren();insights.replaceChildren();gallery.replaceChildren();filePreview.replaceChildren();browseStatus.textContent='';if(!store.value)return;try{const data=await post('/query/api/browse',current());for(const chip of data.chips??[]){const button=document.createElement('button');button.type='button';button.textContent=chip.label;button.title=chip.description??'';button.addEventListener('click',()=>{questionField.value='Tell me about '+chip.label;questionField.focus()});chips.append(button)}for(const insight of data.insights??[]){const card=document.createElement('p');card.textContent=insight.label+': '+insight.rows+' rows';insights.append(card)}for(const file of data.files??[]){const button=document.createElement('button');button.type='button';button.textContent=file.label;button.addEventListener('click',async()=>{filePreview.replaceChildren();try{const preview=await post('/query/api/preview',{...current(),path:file.path});filePreview.append(draw({component:'table.v1',props:preview}))}catch(error){browseStatus.textContent=String(error)}});gallery.append(button)}}catch(error){browseStatus.textContent=String(error)}}
+fetch('/query/api/stores').then(r=>r.json()).then(rows=>{for(const row of rows){const option=document.createElement('option');option.value=row.id;option.textContent=row.label;store.append(option)}void refreshBrowse()});
+store.addEventListener('change',()=>{void refreshBrowse()});asOf.addEventListener('change',()=>{void refreshBrowse()});
+form.addEventListener('submit',async event=>{event.preventDefault();const question=questionField.value.trim();if(!question)return;const response=await fetch('/query/api/ask',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({store:store.value,question})});const answer=await response.json();transcript.replaceChildren();const item=document.createElement('article');item.textContent=question+'\\n'+(answer.answer??answer.error?.identifier??'No answer');transcript.append(item);widgets.replaceChildren();for(const widget of answer.widgets??[])widgets.append(draw(widget));if(answer.sources?.length){const sources=document.createElement('p');sources.textContent='Sources: '+answer.sources.map(x=>x.title??x.url).join(', ');transcript.append(sources)}});
 </script></html>`;
 
 const adminPage = `<!doctype html><html lang="en"><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Admin · Contextful</title>${sharedStyle}<div class="shell"><nav aria-label="Console"><strong>Contextful</strong><a href="/query">Query</a><a href="/admin" aria-current="page">Admin</a></nav><main><h1>Store operations</h1><p class="muted">Pipelines, schedules, steps and run outcomes come from the store.</p><section><h2>Workflow canvas</h2><div id="canvas" class="grid"></div></section><section><h2>Operational record</h2><div id="record"></div></section><section><h2>Control document</h2><label for="document">Document</label><textarea id="document"></textarea><p><button id="edit">Edit</button> <button id="apply">Apply</button></p><p id="result" role="status"></p></section></main></div><script>

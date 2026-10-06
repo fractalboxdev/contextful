@@ -10,6 +10,9 @@ type ReadTransport = {
 type TableEntry = { table: string; description?: string; zone_admitted?: boolean };
 type FileEntry = { table: string; path: string; label: string };
 type BrowseRequest = { asOf?: string };
+const MAX_TABLES = 64;
+const MAX_FILES = 128;
+const MAX_PREVIEW_ROWS = 100;
 
 export class BrowseError extends Error {
   readonly code: string;
@@ -56,14 +59,14 @@ export function createBrowse(transport: ReadTransport) {
   async function listed(request: BrowseRequest): Promise<{ tables: TableEntry[]; files: FileEntry[] }> {
     const listing = await read("context.describe", bounds(request));
     if (!Array.isArray(listing.tables)) throw new BrowseError("ConsoleBrowseResponseMalformed");
-    const tables = listing.tables.map((item) => object(item)).filter((item) => item.zone_admitted === true && typeof item.table === "string")
-      .map((item) => ({ table: item.table as string, description: typeof item.description === "string" ? item.description : undefined }));
+    const tables = listing.tables.map((item) => object(item)).filter((item) => item.zone_admitted === true && item.kind !== "memory" && typeof item.table === "string")
+      .slice(0, MAX_TABLES).map((item) => ({ table: item.table as string, description: typeof item.description === "string" ? item.description : undefined }));
     const names = new Set(tables.map((table) => table.table));
     const fileListing = await read("context.files", bounds(request));
     if (!Array.isArray(fileListing.rows)) throw new BrowseError("ConsoleBrowseResponseMalformed");
     const files = fileListing.rows.filter((row): row is [string, string] =>
       Array.isArray(row) && typeof row[0] === "string" && typeof row[1] === "string" && names.has(row[0]))
-      .map(([table, path]) => ({ table, path, label: humanizeLabel(path) }));
+      .slice(0, MAX_FILES).map(([table, path]) => ({ table, path, label: humanizeLabel(path) }));
     return { tables, files };
   }
 
@@ -83,9 +86,10 @@ export function createBrowse(transport: ReadTransport) {
     async preview(request: BrowseRequest & { path: string }) {
       const { files } = await listed(request);
       if (!files.some((file) => file.path === request.path)) throw new BrowseError("ConsoleGalleryPathUnlisted", request.path);
-      const response = await read("context.file", { path: request.path, ...bounds(request) });
+      const response = await read("context.file", { path: request.path, limit: MAX_PREVIEW_ROWS, ...bounds(request) });
       if (!Array.isArray(response.columns) || !Array.isArray(response.rows)) throw new BrowseError("ConsoleBrowseResponseMalformed");
-      return { columns: response.columns, rows: response.rows };
+      return { columns: response.columns.slice(0, 64), rows: response.rows.slice(0, MAX_PREVIEW_ROWS).map((row) =>
+        Array.isArray(row) ? row.slice(0, 64) : []) };
     },
   };
 }
