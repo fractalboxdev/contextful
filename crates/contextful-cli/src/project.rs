@@ -8,7 +8,6 @@ use contextful_context::Store;
 use contextful_core::pipeline::declare::ManifestFile;
 use contextful_policy::enforce::mask::Pepper;
 use std::path::Path;
-use sha2::{Digest, Sha256};
 #[cfg(feature = "data-plane")]
 use anyhow::anyhow;
 #[cfg(feature = "data-plane")]
@@ -41,10 +40,14 @@ pub struct Located {
     pub declaration: PathBuf,
 }
 
-/// The canonical local store root binds an owner credential to one store instance.
+/// The synced UUID binds an owner credential to one store instance and its clones.
 pub(crate) fn owner_identity(project: &Project) -> Result<String> {
-    let root = std::fs::canonicalize(project.store_root())?;
-    Ok(format!("{:x}", Sha256::digest(root.to_string_lossy().as_bytes())))
+    Ok(contextful_context::project::store_id(&project.store_root())?)
+}
+
+/// Legacy stores acquire the synced UUID before minting their first owner claim.
+pub(crate) fn mint_owner_identity(project: &Project) -> Result<String> {
+    Ok(contextful_context::project::ensure_store_id(&project.store_root())?)
 }
 
 /// Resolve the project from `--project` or by discovery, and the declaration from

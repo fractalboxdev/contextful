@@ -5,6 +5,12 @@
 
 #[derive(Debug, Clone, PartialEq, Eq, thiserror::Error)]
 pub enum StoreError {
+    /// A persisted store UUID is malformed or cannot identify a store. (`store.init.identity-invalid`)
+    #[error("StoreIdentityInvalid: {0}")]
+    StoreIdentityInvalid(String),
+    /// A pull would replace one store UUID with another. (`store.pull.identity-conflict`)
+    #[error("StoreIdentityConflict: {0}")]
+    StoreIdentityConflict(String),
     /// An `as_of` precedes the oldest retained snapshot of a table whose history was collected. (`store.bound-time.as-of-unretained`)
     #[error("StoreAsOfUnretained: {0}")]
     StoreAsOfUnretained(String),

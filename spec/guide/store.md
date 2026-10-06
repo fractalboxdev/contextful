@@ -10,7 +10,7 @@ The store is the canonical corpus of **Contextful**: Parquet any SQL tool opens,
 
 ## How it works
 
-`contextful init` names the project ({{store.init.declaration-file}}) and its authoring posture ({{store.init.posture}}); commands below it find it ({{store.init.discovery}}).
+`contextful init` names the project ({{store.init.declaration-file}}), gives its store a synced identity ({{store.init.store-identity}}), and declares its authoring posture ({{store.init.posture}}); commands below it find it ({{store.init.discovery}}).
 
 Files never change once written ({{store.lay-out.immutable-files}}). A write adds a run directory and commits by conditionally creating that run's manifest ({{store.lay-out.run-manifest}}); until the manifest exists, the run's parts join no read ({{store.lay-out.uncommitted-run}}). The pipeline's cursor rides inside the same commit, so rows and position land together ({{store.lay-out.cursor-in-commit}}).
 
@@ -22,7 +22,7 @@ Runs accumulate until a fold compacts them. A pass writes Parquet and every side
 
 Two SQLite catalogs sit beside the files. `derived.sqlite` is a disposable cache rebuilt from the tree ({{store.lay-out.derived-catalog}}); `machine.sqlite` holds one machine's journal, cursor cache and lease rows, and no pull or rebuild touches it ({{store.lay-out.machine-catalog}}). Both sit behind ports ({{store.lay-out.catalog-ports}}).
 
-A bucket mirrors the tree. A push uploads changed files, commits the bucket manifest by compare-and-set, and re-merges a lost race within a bound ({{store.merge.retries}}). A pull checks every digest ({{store.pull.digest-mismatch}}) and writes no pointer unless it converges ({{store.pull.unconverged}}). Leases keep writers on different machines apart, with a fence the storage itself checks on commit ({{store.lease.stale-fence}}). A replica is read-only ({{store.replicate.write-refused}}) and holds a snapshot whole or not at all ({{store.replicate.partial-parquet}}).
+A bucket mirrors the tree. A push uploads changed files, commits the bucket manifest by compare-and-set, and re-merges a lost race within a bound ({{store.merge.retries}}). A pull checks every digest ({{store.pull.digest-mismatch}}), refuses a different store identity ({{store.pull.identity-conflict}}), and writes no pointer unless it converges ({{store.pull.unconverged}}). Leases keep writers on different machines apart, with a fence the storage itself checks on commit ({{store.lease.stale-fence}}). A replica is read-only ({{store.replicate.write-refused}}) and holds a snapshot whole or not at all ({{store.replicate.partial-parquet}}).
 
 ## Worked example
 

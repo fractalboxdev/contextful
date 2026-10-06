@@ -787,7 +787,11 @@ impl Syncer {
                 .into());
             }
         }
+        let identity_key = format!("{}/{}", self.project, contextful_core::store::lay_out::STORE_ID_FILE);
         let reaches = |key: &str| -> bool {
+            if key == identity_key {
+                return true;
+            }
             match table_of(key) {
                 None => scope.tables.is_empty(),
                 Some(t) => (scope.tables.is_empty() || scope.tables.contains(&t)) && !(replica && scope.replicate_off.contains(&t)),
@@ -821,6 +825,20 @@ impl Syncer {
                 Some((listed, _)) => listed.clone(),
                 None => self.manifest()?.0,
             };
+            if let Some(remote) = manifest.entries.get(&identity_key) {
+                let local_path = self.store.root().join(contextful_core::store::lay_out::STORE_ID_FILE);
+                match std::fs::read(&local_path) {
+                    Ok(local) if sha256_hex(&local) != remote.sha256 => {
+                        return Err(StoreError::StoreIdentityConflict(format!(
+                            "`{}` holds a different store UUID from the bucket; clone into an empty store root",
+                            local_path.display()
+                        )).into());
+                    }
+                    Err(error) if error.kind() == std::io::ErrorKind::NotFound => {}
+                    Err(error) => return Err(io(&local_path, error)),
+                    Ok(_) => {}
+                }
+            }
             for (key, entry) in manifest.entries.iter().filter(|(k, _)| in_project(k) && reaches(k)) {
                 // This node's own keys are authoritative here, except in a restore.
                 if generation.is_none() && owner_of(key).as_deref() == Some(self.node.as_str()) {

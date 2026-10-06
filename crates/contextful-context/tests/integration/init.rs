@@ -43,6 +43,22 @@ fn init_persists_a_distinct_store_uuid_across_repetition_and_recreation() {
     assert!(valid(&second) && second != first, "recreating the store changes its UUID");
 }
 
+#[test]
+fn malformed_store_uuid_and_absent_owner_root_refuse_identity() {
+    let dir = tempfile::tempdir().unwrap();
+    let root = dir.path().join(".contextful/context/research");
+    match store_err(contextful_context::project::ensure_store_id(&root).unwrap_err()) {
+        StoreError::StoreIdentityInvalid(message) => assert!(message.contains("research")),
+        other => panic!("{other}"),
+    }
+    init(dir.path(), "research").unwrap();
+    fs::write(root.join("store-id"), "not-a-uuid\n").unwrap();
+    match store_err(contextful_context::project::ensure_store_id(&root).unwrap_err()) {
+        StoreError::StoreIdentityInvalid(message) => assert!(message.contains("store-id")),
+        other => panic!("{other}"),
+    }
+}
+
 /// A project name that is not path-safe segments raises `StoreProjectNameInvalid` before any file is read or written.
 // spec: store.init.name-shape@93c80b33
 #[test]
@@ -60,17 +76,20 @@ fn a_traversing_or_unsafe_name_refuses_before_any_write() {
     assert!(dir.path().join(".contextful/context/team/research").is_dir());
 }
 
-/// An init against a `contextful.toml` already declaring the same name rewrites nothing and succeeds.
-// spec: store.init.repeat@db5b16da
+/// An init against the same declaration preserves its existing store content and UUID.
+// spec: store.init.repeat@6387e88e
 #[test]
 fn a_repeated_init_rewrites_nothing() {
     let dir = tempfile::tempdir().unwrap();
     init(dir.path(), "research").unwrap();
+    let identity_path = dir.path().join(".contextful/context/research/store-id");
+    let identity = fs::read_to_string(&identity_path).unwrap();
     let path = dir.path().join(DECLARATION_FILE);
     let edited = format!("{}\n[[pipeline.tables]]\nname = \"filings\"\n", fs::read_to_string(&path).unwrap());
     fs::write(&path, &edited).unwrap();
     assert_eq!(init(dir.path(), "research").unwrap(), Initialized::Unchanged);
     assert_eq!(fs::read_to_string(&path).unwrap(), edited);
+    assert_eq!(fs::read_to_string(&identity_path).unwrap(), identity);
 }
 
 /// An init against a `contextful.toml` declaring no `project` key appends the `[project]` table and keeps every existing byte.

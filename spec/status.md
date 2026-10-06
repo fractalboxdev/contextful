@@ -12,10 +12,10 @@ An unpinned clause is `committed`; a pinned one is `performed` when its Rust, Le
 | `disclosure` | 3 | 16 | 122 | 64 | 13 | 7 | 54 | 0 | 54 |
 | `read` | 2 | 15 | 179 | 29 | 22 | 21 | 163 | 0 | 163 |
 | `run` | 3 | 26 | 373 | 98 | 36 | 37 | 261 | 0 | 261 |
-| `store` | 1 | 17 | 237 | 55 | 13 | 20 | 200 | 0 | 200 |
+| `store` | 1 | 17 | 240 | 57 | 13 | 20 | 203 | 0 | 203 |
 | `surface` | 2 | 20 | 106 | 50 | 22 | 0 | 52 | 0 | 52 |
 | `topology` | 1 | 6 | 70 | 24 | 5 | 5 | 38 | 0 | 38 |
-| **total** | 19 | 155 | 2014 | 582 | 188 | 127 | 1367 | 0 | |
+| **total** | 19 | 155 | 2017 | 584 | 188 | 127 | 1370 | 0 | |
 
 Decision records: 18.
 
@@ -27,11 +27,11 @@ A milestone reads `closed` when its acceptance test computes `passing` and every
 | --- | --- | --- | --- | --- | --- |
 | 0 — The test-first gate | 2 | 18 | 6 | passing | open |
 | 1 — The authority core | 14 | 237 | 185 | passing | closed |
-| 2 — The store | 9 | 164 | 132 | passing | closed |
+| 2 — The store | 9 | 166 | 134 | passing | closed |
 | 3 — The run path | 11 | 207 | 144 | passing | closed |
 | 4 — Ingest | 25 | 496 | 313 | passing | open |
 | 5 — The read face under enforcement | 17 | 252 | 192 | passing | open |
-| 6 — Sync and replicas | 8 | 73 | 68 | passing | closed |
+| 6 — Sync and replicas | 8 | 74 | 69 | passing | closed |
 | 7 — Memory | 6 | 37 | 37 | passing | closed |
 | 8 — Accountability | 5 | 60 | 47 | passing | open |
 | 9 — Visibility | 6 | 41 | 3 | open | open |
@@ -1202,11 +1202,13 @@ Unscheduled operations: 10.
 | `store.init.default-declaration` | `crates/contextful-cli/tests/integration/init.rs::a_command_without_project_discovers_it_from_a_subdirectory` | performed |
 | `store.init.discovery` | `crates/contextful-context/tests/integration/init.rs::discovery_takes_the_nearest_declaration_upward` | performed |
 | `store.init.explicit-project` | `crates/contextful-cli/tests/integration/init.rs::an_explicit_project_uses_the_working_directory` | performed |
+| `store.init.identity-invalid` | `spec/pins.toml` | performed |
 | `store.init.name-conflict` | `crates/contextful-context/tests/integration/init.rs::an_init_naming_another_project_refuses` | performed |
 | `store.init.name-shape` | `crates/contextful-context/tests/integration/init.rs::a_traversing_or_unsafe_name_refuses_before_any_write` | performed |
 | `store.init.posture` | `crates/contextful-cli/tests/integration/init.rs::an_init_with_a_posture_lands_its_first_write_unedited` | performed |
 | `store.init.project-paths` | `crates/contextful-context/tests/integration/init.rs::every_project_path_is_based_on_the_project_directory` | performed |
 | `store.init.repeat` | `crates/contextful-context/tests/integration/init.rs::a_repeated_init_rewrites_nothing` | performed |
+| `store.init.store-identity` | `spec/pins.toml` | performed |
 | `store.init.undiscovered` | `crates/contextful-context/tests/integration/init.rs::discovery_without_a_named_declaration_refuses` | performed |
 | `store.lay-out.ancestors` | `crates/contextful-core/tests/integration/store/lay_out.rs::a_snapshot_records_its_ancestors_nearest_first_up_to_the_bound` | performed |
 | `store.lay-out.catalog-ports` | `crates/contextful-sqlite/tests/integration/derived.rs::both_catalogs_are_reached_through_the_core_ports` | performed |
@@ -1262,6 +1264,7 @@ Unscheduled operations: 10.
 | `store.pull.generation-diverged` | `crates/contextful-sync/tests/integration/generation.rs::a_generation_pull_into_a_store_holding_unlisted_files_refuses` | performed |
 | `store.pull.generation-run-state` | `crates/contextful-sync/tests/integration/run_state.rs::a_restore_keeps_a_run_state_its_generation_does_not_list` | performed |
 | `store.pull.generation-schema` | `crates/contextful-sync/tests/integration/generation.rs::a_generation_pull_takes_the_current_schema` | performed |
+| `store.pull.identity-conflict` | `spec/pins.toml` | performed |
 | `store.pull.pointer-advance` | `crates/contextful-sync/tests/integration/converge.rs::a_pull_never_regresses_a_pointer_and_writes_none_until_every_table_verifies` | performed |
 | `store.pull.pointer-last` | `crates/contextful-sync/tests/integration/pull.rs::a_pointer_is_written_only_once_its_snapshot_is_home` | performed |
 | `store.pull.run-state-cursor` | `crates/contextful-cli/tests/integration/sync/run_state.rs::a_cold_node_resumes_the_cursor_a_push_carried` | performed |

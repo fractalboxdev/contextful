@@ -25,6 +25,7 @@ pub const SCHEMA_FILE: &str = "schema.json";
 pub const STAGING_SUFFIX: &str = ".staging";
 
 pub const CONFIG_FILE: &str = "config.toml";
+pub const STORE_ID_FILE: &str = "store-id";
 pub const TABLES_DIR: &str = "tables";
 pub const CURSORS_DIR: &str = "cursors";
 pub const RUNS_DIR: &str = "data/runs";

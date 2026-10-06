@@ -139,9 +139,13 @@ unsettled: How does a consumer discover the format version of a run or snapshot 
 A project's declaration file: what `contextful init` writes, what a repeated init does, and how a command given no `--project` finds its project from the working directory.
 
 - `declaration-file` — `contextful init <name>` writes `contextful.toml` in the working directory declaring `[project]` with `name = "<name>"`, and creates the store root {{store.lay-out.store-root}} beside it.
+- `store-identity` — An initialized store holds one synced, canonical version-4 UUID in `store-id`; repeated init and clones keep it, while a recreated root receives a new UUID.
+  *A-store*
+- `identity-invalid` — A malformed `store-id`, or an owner mint naming no initialized store root, raises `StoreIdentityInvalid`.
+  *because an ambiguous or absent UUID cannot bind an owner credential*
 - `name-shape` — A project name that is not `/`-separated segments of `[A-Za-z0-9._-]`, or that holds a `.` or `..` segment, raises `StoreProjectNameInvalid` before any file is read or written.
   *because the name is interpolated into every project path, and a traversing segment places a store outside its project*
-- `repeat` — An init against a `contextful.toml` already declaring the same `[project] name` rewrites nothing but a posture {{store.init.posture}}, leaves the store root as it stands, and succeeds.
+- `repeat` — An init against a `contextful.toml` already declaring the same `[project] name` rewrites nothing but a posture {{store.init.posture}} and a missing {{store.init.store-identity}}, preserves existing store content, and succeeds.
   *because a repeated init converges on the state the first one wrote, so scripts and onboarding run it unconditionally*
 - `adopt` — An init against a `contextful.toml` declaring no `project` key appends the `[project]` table and keeps every existing byte of the file.
 - `posture` — `contextful init <name> --authoring-posture <posture>` prepends a top-level `authoring_posture = "<posture>"` {{authority.issue.posture-key}} to a `contextful.toml` declaring none, keeping every other byte; a declared posture stands, and an init without the flag writes none.
@@ -539,6 +543,8 @@ Fetching a bucket into a store: the digest diff, the parallel download, and the 
 
 - `digest-mismatch` — A downloaded object whose digest differs from its entry raises `SyncObjectDigestMismatch` and is discarded.
   *P4*
+- `identity-conflict` — A pull into a store holding a different {{store.init.store-identity}} raises `StoreIdentityConflict` before downloading files.
+  *because importing another UUID lets that store's owner credential read local rows*
 - `convergence` — When a named key disappears mid-download, the pull re-fetches the manifest and retries the shortfall, up to 3 attempts.
 - `unconverged` — Exhausting those retries raises `SyncPullDidNotConverge`, naming the key that kept moving, and writes no pointer.
   *P4*

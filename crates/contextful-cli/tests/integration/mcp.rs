@@ -203,10 +203,33 @@ fn owner_credential_does_not_follow_a_recreated_store_at_the_same_path() {
     let identity_path = root.join(".contextful/context/research/store-id");
     let first_identity = std::fs::read_to_string(&identity_path).unwrap_or_default();
     std::fs::remove_dir_all(root.join(".contextful/context/research")).unwrap();
+    stdout(&run(root, &["init", "research"]));
     stdout(&run(root, &["context", "land", "research/notes", "--project", "research", "--rows", "notes.jsonl", "--run-id", "run-0002", "--site-id", "site-a"]));
     let second_identity = std::fs::read_to_string(&identity_path).unwrap_or_default();
     assert!(!first_identity.is_empty() && !second_identity.is_empty() && first_identity != second_identity,
         "a recreated store receives a new persistent identity");
+    let args = ["mcp", "--owner", "--project", "research", "--public-key", &public, "--audience", AUD];
+    let read = [json!({ "jsonrpc": "2.0", "id": 1, "method": "tools/call", "params": { "name": "context.query", "arguments": { "sql": "SELECT note_id FROM \"research/notes\"" } } })];
+    let refused = serve(root, &args, Some(&owner), &read);
+    assert!(!refused.status.success() && refused.stdout.is_empty());
+    assert!(String::from_utf8_lossy(&refused.stderr).contains("OwnerCredentialInvalid"));
+}
+
+#[test]
+fn owner_credential_does_not_cross_independent_stores_with_one_issuer() {
+    let (first, public, _) = project();
+    let owner = stdout(&run(first.path(), &[
+        "token", "mint", "--issuer-key", ".contextful/issuer.seed", "--on-behalf-of", "user://dana@acme.example",
+        "--zone", "on-prem:hq", "--action", "read", "--table", "*", "--ttl", "600", "--owner",
+    ]));
+    let second = tempfile::tempdir().unwrap();
+    let root = second.path();
+    std::fs::create_dir_all(root.join(".contextful")).unwrap();
+    for path in ["contextful.toml", "notes.jsonl", ".contextful/issuance.toml", ".contextful/issuer.seed"] {
+        std::fs::copy(first.path().join(path), root.join(path)).unwrap();
+    }
+    stdout(&run(root, &["init", "research"]));
+    stdout(&run(root, &["context", "land", "research/notes", "--project", "research", "--rows", "notes.jsonl", "--run-id", "run-0001", "--site-id", "site-a"]));
     let args = ["mcp", "--owner", "--project", "research", "--public-key", &public, "--audience", AUD];
     let read = [json!({ "jsonrpc": "2.0", "id": 1, "method": "tools/call", "params": { "name": "context.query", "arguments": { "sql": "SELECT note_id FROM \"research/notes\"" } } })];
     let refused = serve(root, &args, Some(&owner), &read);

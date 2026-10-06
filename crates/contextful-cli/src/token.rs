@@ -594,7 +594,7 @@ fn mint_one(
         #[cfg(feature = "read-plane")]
         {
             let project = crate::project::locate(None, None)?.project;
-            let identity = crate::project::owner_identity(&project)?;
+            let identity = crate::project::mint_owner_identity(&project)?;
             if !contextful_policy::verify::owner_grant(&plan.grants) {
                 bail!("an owner credential requires an unrestricted read grant over `*`");
             }

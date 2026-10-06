@@ -27,6 +27,9 @@
 # `contextful-spec state` reads this file and the tags and writes spec/status.md.
 
 [pin]
+"store.init.store-identity" = { test = "contextful_context::init::init_persists_a_distinct_store_uuid_across_repetition_and_recreation" }
+"store.init.identity-invalid" = { test = "contextful_context::init::malformed_store_uuid_and_absent_owner_root_refuse_identity" }
+"store.pull.identity-conflict" = { test = "contextful_sync::pull::a_clone_keeps_the_store_uuid_and_an_independent_store_refuses_it" }
 "corpus.state.typescript-tag-pin" = { test = "contextful_spec::ts_pins::a_running_surface_test_tag_performs_its_clause" }
 "corpus.state.typescript-unfinished" = { test = "contextful_spec::ts_pins::a_skipped_or_todo_surface_test_is_broken" }
 "assurance.gate.native-test-files" = { test = "contextful_ci::stages::the_surfaces_stage_runs_each_native_typescript_test_file_even_without_a_test_script" }
@@ -62,6 +65,6 @@ corpus = 40
 disclosure = 54
 read = 163
 run = 261
-store = 200
+store = 203
 surface = 52
 topology = 38

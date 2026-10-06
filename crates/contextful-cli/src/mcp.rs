@@ -37,7 +37,9 @@ pub fn run(args: McpArgs) -> Result<()> {
     let (authority, revocation) = args.admit.admit(args.project.as_deref(), "the tool server")?;
     let located = locate(args.project.as_deref(), args.declaration)?;
     let authority = if args.owner {
-        authority.activate_owner(&crate::project::owner_identity(&located.project)?)
+        let identity = crate::project::owner_identity(&located.project)
+            .map_err(|_| AdmitError::OwnerCredentialInvalid("the selected local store has no readable UUID".into()))?;
+        authority.activate_owner(&identity)
             .ok_or_else(|| AdmitError::OwnerCredentialInvalid("the verified credential does not own the selected local store".into()))?
     } else {
         authority
