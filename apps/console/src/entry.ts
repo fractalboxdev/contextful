@@ -2,6 +2,7 @@ import { createPublicKey } from "node:crypto";
 import { pathToFileURL } from "node:url";
 import { isAbsolute, resolve } from "node:path";
 import { registryFromEnv } from "../../gateway/src/index.ts";
+import { createLiveTurn } from "./live.ts";
 import type { ConsoleAdapters, Identity } from "./index.ts";
 import { createLiveControl } from "./control.ts";
 import { serveConsole } from "./server.ts";
@@ -81,9 +82,12 @@ async function main(): Promise<void> {
   if (!host || !Number.isInteger(port) || port < 0 || port > 65535) throw new Error("invalid --http address");
   const registry = registryFromEnv(process.env.CONTEXTFUL_STORES_JSON);
   const stores = registry.entries.map(({ id, label }) => ({ id, label }));
-  let adapters: Pick<ConsoleAdapters, "turn" | "control"> & { read?: ConsoleAdapters["read"] } = unavailableAdapters();
-  adapters.control = createLiveControl({ stores: registry.entries, capability: process.env.CONTEXTFUL_ADMIN_CAPABILITY });
   const modulePath = process.env.CONTEXTFUL_CONSOLE_ADAPTER_MODULE;
+  let adapters: Pick<ConsoleAdapters, "turn" | "control"> & { read?: ConsoleAdapters["read"] } = {
+    ...unavailableAdapters(),
+    turn: modulePath ? unavailableAdapters().turn : createLiveTurn({ stores: registry.entries, env: process.env }),
+    control: createLiveControl({ stores: registry.entries, capability: process.env.CONTEXTFUL_ADMIN_CAPABILITY }),
+  };
   if (modulePath) {
     const absolute = isAbsolute(modulePath) ? modulePath : resolve(modulePath);
     const module: { createAdapters?: AdapterFactory } = await import(pathToFileURL(absolute).href);
