@@ -412,7 +412,7 @@ fn surfaces(root: &Path) -> Vec<String> {
     for parent in ["apps", "packages"] {
         let Ok(dir) = std::fs::read_dir(root.join(parent)) else { continue };
         for e in dir.flatten() {
-            if e.path().join("package.json").is_file() {
+            if e.file_type().is_ok_and(|kind| kind.is_dir()) && e.path().join("package.json").is_file() {
                 out.push(format!("{parent}/{}", e.file_name().to_string_lossy()));
             }
         }
@@ -429,9 +429,10 @@ fn native_surface_tests(dir: &Path) -> Vec<std::path::PathBuf> {
             let Ok(entries) = std::fs::read_dir(path) else { continue };
             for entry in entries.flatten() {
                 let path = entry.path();
-                if path.is_dir() {
+                let Ok(kind) = entry.file_type() else { continue };
+                if kind.is_dir() {
                     pending.push(path);
-                } else if path.file_name().and_then(|name| name.to_str()).is_some_and(|name| name.ends_with(".test.ts")) {
+                } else if kind.is_file() && path.file_name().and_then(|name| name.to_str()).is_some_and(|name| name.ends_with(".test.ts")) {
                     out.push(path);
                 }
             }
@@ -439,6 +440,25 @@ fn native_surface_tests(dir: &Path) -> Vec<std::path::PathBuf> {
     }
     out.sort();
     out
+}
+
+#[path = "../../spec/src/native_ts.rs"]
+mod native_ts;
+
+fn pinned_native_names(source: &str) -> Vec<(String, bool)> {
+    let mut names = Vec::new();
+    let mut tagged = false;
+    for line in source.lines() {
+        let line = line.trim();
+        if native_ts::tag(line).is_some() {
+            tagged = true;
+            continue;
+        }
+        if !tagged || line.is_empty() || line.starts_with("//") { continue }
+        if let Some(call) = native_ts::test_call(line) { names.push((call.title.to_string(), call.disabled)); }
+        tagged = false;
+    }
+    names
 }
 
 /// The TypeScript surfaces stage (`assurance.gate.typescript-surfaces`): install each
@@ -482,11 +502,18 @@ pub fn typescript(root: &Path) -> Result<()> {
         }
         for test in native_surface_tests(&dir) {
             let relative = test.strip_prefix(&dir).unwrap();
-            let status = Command::new("node").args(["--experimental-strip-types", "--test"]).arg(relative)
-                .current_dir(&dir).status().with_context(|| format!("running node test in {surface}"))?;
-            if !status.success() {
+            let output = Command::new("node").args(["--experimental-strip-types", "--test", "--test-reporter=tap"]).arg(relative)
+                .current_dir(&dir).output().with_context(|| format!("running node test in {surface}"))?;
+            let tap = String::from_utf8_lossy(&output.stdout);
+            let passed = tap.lines().find_map(|line| line.strip_prefix("# pass ")?.parse::<usize>().ok()).is_some_and(|n| n > 0);
+            let source = std::fs::read_to_string(&test)?;
+            let pinned_passed = pinned_native_names(&source).iter().all(|(name, disabled)| !disabled && tap.lines().any(|line| {
+                let line = line.trim_start();
+                line.starts_with("ok ") && line.split_once(" - ").is_some_and(|(_, reported)| reported == name)
+            }));
+            if !output.status.success() || !passed || !pinned_passed {
                 return Err(refuse("SurfaceCheckFailed", format!(
-                    "surface {surface}: test `{}` exited {}", relative.display(), status.code().map_or("by signal".into(), |c| c.to_string())
+                    "surface {surface}: test `{}` exited {}, ran no passing tests, or omitted a pinned test", relative.display(), output.status.code().map_or("by signal".into(), |c| c.to_string())
                 )));
             }
         }

@@ -760,10 +760,11 @@ static TAG: LazyLock<Regex> = LazyLock::new(|| Regex::new(r"^//\s*spec:\s*(\S+?)
 static FN_LINE: LazyLock<Regex> = LazyLock::new(|| {
     Regex::new(r"^(?:pub(?:\([^)]*\))?\s+)?(?:async\s+)?fn\s+(?:r#)?([A-Za-z_][A-Za-z0-9_]*)").unwrap()
 });
-static TS_TEST: LazyLock<Regex> = LazyLock::new(|| {
-    Regex::new(r#"^(test|it)(\.(skip|todo|only))?\(\s*['\"`]([^'\"`]+)['\"`]"#).unwrap()
-});
 static TS_ASSERTION: LazyLock<Regex> = LazyLock::new(|| Regex::new(r"\b(?:assert\.[A-Za-z_]+|expect)\s*\(").unwrap());
+static TS_DISABLED_OPTION: LazyLock<Regex> = LazyLock::new(|| Regex::new(r"\b(?:skip|todo)\s*:\s*true\b").unwrap());
+static TS_FALSE_BRANCH: LazyLock<Regex> = LazyLock::new(|| Regex::new(r"\bif\s*\(\s*false\s*\)").unwrap());
+static TS_NODE_TEST_IMPORT: LazyLock<Regex> = LazyLock::new(|| Regex::new(r#"(?m)^\s*import\s+(test|\{[^}]*\})\s+from\s+['"]node:test['"]"#).unwrap());
+static TS_TEST_SHADOW: LazyLock<Regex> = LazyLock::new(|| Regex::new(r"\b(?:const|let|var|function)\s+test\b").unwrap());
 
 /// A tag's view of the function it sits above.
 #[derive(Clone, Debug)]
@@ -897,22 +898,26 @@ fn ts_tags(c: &Corpus, s: &str, rel: &str) -> Vec<Pin> {
     };
     let runnable = std::fs::read_to_string(package).ok().and_then(|text| serde_json::from_str::<serde_json::Value>(&text).ok()).is_some();
     let test_file = parts.get(2).is_some_and(|part| matches!(*part, "test" | "tests")) && rel.ends_with(".test.ts");
+    let native_test = TS_NODE_TEST_IMPORT.captures_iter(s).any(|found| {
+        &found[1] == "test" || found[1].trim_start_matches('{').trim_end_matches('}').split(',').any(|part| part.trim() == "test")
+    }) && !TS_TEST_SHADOW.is_match(&ts_code(s));
     let mut out = Vec::new();
     for (i, line) in lines.iter().enumerate() {
-        let Some(cap) = TAG.captures(line.trim()) else { continue };
-        let mut tagged = Tagged { rev: cap[2].to_string(), function: None, ignored: false, unfinished: false };
+        let Some((clause, rev)) = crate::native_ts::tag(line) else { continue };
+        let mut tagged = Tagged { rev: rev.to_string(), function: None, ignored: false, unfinished: false };
         for (j, next) in lines.iter().enumerate().skip(i + 1) {
             let trimmed = next.trim();
             if trimmed.is_empty() || trimmed.starts_with("//") { continue }
-            if let Some(test) = TS_TEST.captures(trimmed) {
-                tagged.function = Some(format!("{rel}::{}", &test[4]));
-                tagged.ignored = test.get(3).is_some();
-                tagged.unfinished = !runnable || !test_file || ts_unfinished(&lines[j..].join("\n"));
+            if let Some(test) = crate::native_ts::test_call(trimmed) {
+                tagged.function = Some(format!("{rel}::{}", test.title));
+                tagged.ignored = test.disabled;
+                let unique = lines.iter().filter_map(|line| crate::native_ts::test_call(line)).filter(|found| found.title == test.title).count() == 1;
+                tagged.unfinished = !runnable || !test_file || !native_test || !unique || ts_unfinished(&lines[j..].join("\n"));
             }
             break;
         }
         out.push(Pin {
-            clause: cap[1].to_string(), kind: "test".into(),
+            clause: clause.to_string(), kind: "test".into(),
             path: tagged.function.clone().unwrap_or_default(),
             file: rel.to_string(), line: i + 1, tag: Some(tagged),
         });
@@ -922,6 +927,7 @@ fn ts_tags(c: &Corpus, s: &str, rel: &str) -> Vec<Pin> {
 
 fn ts_unfinished(test: &str) -> bool {
     let Some(arrow) = test.find("=>") else { return true };
+    if TS_DISABLED_OPTION.is_match(&test[..arrow]) { return true }
     let Some(open) = test[arrow..].find('{').map(|n| arrow + n) else { return true };
     let mut depth = 0usize;
     let mut close = None;
@@ -939,7 +945,7 @@ fn ts_unfinished(test: &str) -> bool {
     let body = test[open + 1..close].trim();
     let code = ts_code(body);
     body.is_empty() || body.contains("TODO") || body.contains("todo(") || body.contains("not implemented")
-        || code.contains("assert.ok(true)") || !TS_ASSERTION.is_match(&code)
+        || code.contains("assert.ok(true)") || TS_FALSE_BRANCH.is_match(&code) || !TS_ASSERTION.is_match(&code)
 }
 
 fn ts_code(body: &str) -> String {

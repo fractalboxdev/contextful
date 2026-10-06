@@ -5,6 +5,7 @@ mod cards;
 mod checks;
 mod corpus;
 mod diagram;
+mod native_ts;
 mod slice;
 mod targets;
 mod scaffold;

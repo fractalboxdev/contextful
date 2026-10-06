@@ -391,7 +391,7 @@
       "operation": "state",
       "subject": "typescript-tag-pin",
       "kind": "behavior",
-      "statement": "A `// spec: <id>@<rev>` line above a native test call under a direct TypeScript surface pins its clause when {{assurance.gate.native-test-files}} runs that file and the callback asserts.",
+      "statement": "A `// spec: <id>@<rev>` line above a uniquely named `node:test` call under a direct TypeScript surface pins its clause when the callback contains a recognizable assertion call.",
       "why": "P8",
       "file": "spec/00-corpus.md",
       "line": 154
@@ -402,8 +402,8 @@
       "operation": "state",
       "subject": "typescript-unfinished",
       "kind": "behavior",
-      "statement": "A pinned TypeScript test using `skip` or `todo`, lacking a callback assertion, or holding a placeholder computes `broken`.",
-      "why": "because a test that never asserts demonstrates no clause",
+      "statement": "A pinned TypeScript test using `skip`, `todo` or `only`, lacking a recognizable assertion call, holding an `if (false)` branch or placeholder, or shadowing its `node:test` import computes `broken`.",
+      "why": "because a test that cannot demonstrate an assertion demonstrates no clause",
       "file": "spec/00-corpus.md",
       "line": 156
     },
@@ -21439,7 +21439,7 @@
       "operation": "gate",
       "subject": "native-test-files",
       "kind": "behavior",
-      "statement": "The surfaces stage runs every native `.test.ts` file under a direct TypeScript surface's `test/` or `tests/` tree through Node's TypeScript strip runner, even without a package test script.",
+      "statement": "The surfaces stage runs every regular native `.test.ts` file under a direct TypeScript surface's `test/` or `tests/` tree through Node's TypeScript strip runner, and refuses absent passing tests or pinned names.",
       "why": "because a package script can omit a pinned test while reporting success",
       "file": "spec/81-engineering.md",
       "line": 207
@@ -22674,10 +22674,6 @@
     [
       "corpus.state.verdict",
       "corpus.state.typescript-tag-pin"
-    ],
-    [
-      "corpus.state.typescript-tag-pin",
-      "assurance.gate.native-test-files"
     ],
     [
       "corpus.state.lean-tag",
