@@ -14,6 +14,7 @@ use crate::clock::SystemClock;
 use anyhow::Result;
 use contextful_agent::http::{audience, ceiling, Admitting, HttpFace, HttpRequest, HttpResponse, APPLY_PATH, WORKFLOWS_PATH};
 use contextful_core::surface::SurfaceError;
+use contextful_core::run::derive::task::Tasks;
 use contextful_policy::audit::AuditLog;
 use contextful_policy::keyset::{KeyCheckpoint, StaticPins};
 use contextful_policy::revoke::RevocationState;
@@ -75,7 +76,7 @@ fn issuer_pins(flag: Option<&str>) -> Result<StaticPins, ServeError> {
     StaticPins::parse(text).map_err(|e| ServeError::IssuerKeyUnusable(format!("--public-key / {PUBKEY_VAR}: {e}")))
 }
 
-pub fn run(args: ServeArgs) -> Result<()> {
+pub fn run(args: ServeArgs, tasks: &Tasks) -> Result<()> {
     let clock = SystemClock;
     // The declarations are checked before anything opens (`read.register.serve-declaration`).
     let audience = audience(args.audience.as_deref()).map_err(anyhow::Error::msg)?;
@@ -123,7 +124,7 @@ pub fn run(args: ServeArgs) -> Result<()> {
                     return HttpResponse::json(400, &json!({ "error": { "identifier": "ControlRequestMalformed" } }));
                 }
                 let project = crate::run::ProjectArgs { project: Some(located.project.name.clone()), now: None };
-                crate::cadence::apply(&project, Some(located.declaration.clone()), body["id"].as_str(), &Default::default())
+                crate::cadence::apply(&project, Some(located.declaration.clone()), body["id"].as_str(), tasks)
                     .and_then(|()| crate::cadence::published(&located.project, &located.declaration))
             }
             _ => unreachable!(),

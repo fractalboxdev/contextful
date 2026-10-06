@@ -248,6 +248,18 @@ pub(crate) fn published(project: &Project, declaration: &Path) -> Result<Value> 
             }
         }
     }
+    let wired = wire_at(project, &None)?;
+    for row in wired.engine.catalog.runs(None)? {
+        if selected.contains(row.pipeline_id.as_str()) && runs.get(&row.pipeline_id).is_none_or(|earlier| row.started_at > earlier.started_at) {
+            runs.insert(row.pipeline_id.clone(), contextful_sync::RunMark {
+                run_id: row.run_id,
+                table: row.table,
+                status: row.status,
+                started_at: row.started_at,
+                ended_at: row.ended_at,
+            });
+        }
+    }
     let pipelines: Vec<Value> = pipelines.into_iter().map(|spec| json!({
         "id": spec.id,
         "schedule": spec.schedule,
