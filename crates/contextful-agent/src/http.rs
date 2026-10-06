@@ -197,6 +197,7 @@ pub struct HttpFace<'a, C> {
     in_flight: AtomicUsize,
     exchange: Option<&'a (dyn Fn(&HttpRequest) -> HttpResponse + Sync)>,
     exchange_unconfigured: bool,
+    claim_write: Option<&'a (dyn Fn(&HttpRequest, &AdmittedAuthority, &dyn Fn() -> Result<(), AuthorityError>) -> HttpResponse + Sync)>,
 }
 
 /// A request slot held while one request is in flight.
@@ -243,7 +244,7 @@ impl<'a, C: Clock + Sync> HttpFace<'a, C> {
         let ceiling = ceiling(max_in_flight)?;
         audience(Some(admitting.audience))?;
         let tools = Tools::new(face, clock, record)?;
-        Ok(HttpFace { tools, admitting, ceiling, in_flight: AtomicUsize::new(0), exchange: None, exchange_unconfigured: false })
+        Ok(HttpFace { tools, admitting, ceiling, in_flight: AtomicUsize::new(0), exchange: None, exchange_unconfigured: false, claim_write: None })
     }
 
     /// The binary's exchange route mints the reader credential without putting issuer
@@ -251,6 +252,12 @@ impl<'a, C: Clock + Sync> HttpFace<'a, C> {
     pub fn with_exchange(mut self, exchange: &'a (dyn Fn(&HttpRequest) -> HttpResponse + Sync), unconfigured: bool) -> Self {
         self.exchange = Some(exchange);
         self.exchange_unconfigured = unconfigured;
+        self
+    }
+
+    /// The binary owns the claim writer; this route never joins the read MCP tool set.
+    pub fn with_claim_write(mut self, write: &'a (dyn Fn(&HttpRequest, &AdmittedAuthority, &dyn Fn() -> Result<(), AuthorityError>) -> HttpResponse + Sync)) -> Self {
+        self.claim_write = Some(write);
         self
     }
 
@@ -341,6 +348,8 @@ impl<'a, C: Clock + Sync> HttpFace<'a, C> {
             (MCP_PATH, _) => {
                 HttpResponse::message(405, "`/mcp` answers POST; the face holds no session and opens no server stream").with("Allow", "POST")
             }
+            ("/memory/claims", "POST") if self.claim_write.is_some() => self.claim_write_request(request),
+            ("/memory/claims", _) if self.claim_write.is_some() => HttpResponse::message(405, "`/memory/claims` answers POST").with("Allow", "POST"),
             ("/auth/exchange", "POST") if self.exchange.is_some() => self.exchange.expect("checked above")(request),
             ("/auth/exchange", _) if self.exchange.is_some() => HttpResponse::message(405, "`/auth/exchange` answers POST").with("Allow", "POST"),
             (other, _) => HttpResponse::message(404, format!("no route `{other}`; the protocol endpoint is `{MCP_PATH}`")),
@@ -349,6 +358,35 @@ impl<'a, C: Clock + Sync> HttpFace<'a, C> {
 
     /// Admit the request's credential, then answer its one message.
     fn message(&self, request: &HttpRequest) -> HttpResponse {
+        self.admitted(request, |authority, admission| {
+            let message: Value = match serde_json::from_slice(&request.body) {
+                Ok(m @ Value::Object(_)) => m,
+                Ok(_) => return HttpResponse::rpc_error(INVALID_REQUEST, "a request body holds one JSON-RPC message object"),
+                Err(e) => return HttpResponse::rpc_error(PARSE_ERROR, format!("the request body is not JSON: {e}")),
+            };
+            let boundary = |a: &AdmittedAuthority| effect_boundary(a, admission);
+            match self.tools.handle(Caller { authority, boundary: &boundary }, &message) {
+                Some(answer) => HttpResponse::json(200, &answer),
+                None => HttpResponse::empty(202),
+            }
+        })
+    }
+
+    fn claim_write_request(&self, request: &HttpRequest) -> HttpResponse {
+        if request.header("Origin").is_some() {
+            return HttpResponse::json(403, &json!({ "error": { "http": 403, "identifier": "MemoryClaimBrowserRefused" } }));
+        }
+        self.admitted(request, |authority, _| {
+            let boundary = || {
+                let revocation = (self.admitting.revocation)().map_err(AuthorityError::AuthorityRevoked)?;
+                let admission = Admission::new(self.tools.clock().now(), &revocation).expecting(self.admitting.audience);
+                effect_boundary(authority, &admission)
+            };
+            self.claim_write.expect("route exists")(request, authority, &boundary)
+        })
+    }
+
+    fn admitted(&self, request: &HttpRequest, answer: impl FnOnce(&AdmittedAuthority, &Admission<'_>) -> HttpResponse) -> HttpResponse {
         let Some(credential) = request.credential() else {
             let missing = ReadError::HttpCredentialMissing(
                 "a request carries `Authorization: Bearer <credential>`, or `Authorization: DPoP <credential>` with a `DPoP` proof from the credential's holder key".into(),
@@ -377,16 +415,7 @@ impl<'a, C: Clock + Sync> HttpFace<'a, C> {
             Err(ProofRefusal::NonceCacheFull) => return HttpResponse::unavailable(ProofRefusal::NonceCacheFull.to_string()),
             Err(ProofRefusal::Refused(e)) => return unadmitted(&e),
         };
-        let message: Value = match serde_json::from_slice(&request.body) {
-            Ok(m @ Value::Object(_)) => m,
-            Ok(_) => return HttpResponse::rpc_error(INVALID_REQUEST, "a request body holds one JSON-RPC message object"),
-            Err(e) => return HttpResponse::rpc_error(PARSE_ERROR, format!("the request body is not JSON: {e}")),
-        };
-        let boundary = |a: &AdmittedAuthority| effect_boundary(a, &admission);
-        match self.tools.handle(Caller { authority: &authority, boundary: &boundary }, &message) {
-            Some(answer) => HttpResponse::json(200, &answer),
-            None => HttpResponse::empty(202),
-        }
+        answer(&authority, &admission)
     }
 }
 

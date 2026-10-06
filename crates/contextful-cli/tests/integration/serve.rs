@@ -106,6 +106,78 @@ fn query() -> Value {
     json!({ "jsonrpc": "2.0", "id": 1, "method": "tools/call", "params": { "name": "context.query", "arguments": { "sql": "SELECT note_id FROM \"research/notes\"" } } })
 }
 
+fn post_claim(addr: &str, token: &str, body: &Value, browser_origin: bool) -> (u16, Value) {
+    let body = body.to_string();
+    let origin = if browser_origin { "Origin: https://console.example\r\n" } else { "" };
+    let mut stream = TcpStream::connect(addr).unwrap();
+    write!(stream, "POST /memory/claims HTTP/1.1\r\nAuthorization: Bearer {token}\r\n{origin}Content-Type: application/json\r\nContent-Length: {}\r\n\r\n{body}", body.len()).unwrap();
+    let mut raw = String::new();
+    stream.read_to_string(&mut raw).unwrap();
+    let (head, data) = raw.split_once("\r\n\r\n").unwrap();
+    (head.split(' ').nth(1).unwrap().parse().unwrap(), serde_json::from_str(data).unwrap_or(Value::Null))
+}
+
+#[test]
+fn served_claim_write_is_durable_actor_bound_and_outside_read_mcp() {
+    let memory = "\n[[table]]\nname = \"memory/facts\"\nshape = \"memory_facts\"\ncolumns = [\"claim_id\", \"subject\", \"predicate\", \"object\", \"scope\", \"tier\", \"confidence\", \"valid_from\", \"valid_to\", \"evidence\", \"superseded_by\", \"grant_id\", \"agent\"]\n";
+    let (dir, public) = project_declaring(memory);
+    let p = dir.path();
+    let mint = |who: &str, task: &str, actions: &[&str]| {
+        let mut args = vec!["token", "mint", "--issuer-key", ".contextful/issuer.seed", "--on-behalf-of", who,
+            "--task", task, "--zone", "on-prem:hq", "--table", "memory/facts", "--table", "research/notes", "--ttl", "900"];
+        for action in actions { args.extend(["--action", action]); }
+        stdout(&run(p, &args))
+    };
+    let alice = mint("user://alice", "session-1", &["read", "write"]);
+    let bob = mint("user://bob", "session-2", &["read", "write"]);
+    let reader = mint("user://alice", "session-1", &["read"]);
+    let wrong_table = stdout(&run(p, &["token", "mint", "--issuer-key", ".contextful/issuer.seed", "--on-behalf-of", "user://alice",
+        "--task", "session-1", "--zone", "on-prem:hq", "--action", "write", "--table", "research/notes", "--ttl", "900"]));
+    let expired = stdout(&run(p, &["token", "mint", "--issuer-key", ".contextful/issuer.seed", "--on-behalf-of", "user://alice",
+        "--task", "session-1", "--zone", "on-prem:hq", "--action", "read", "--action", "write",
+        "--table", "memory/facts", "--table", "research/notes", "--ttl", "900", "--now", "2020-01-01T00:00:00Z"]));
+    let claim = json!({ "into": "memory/facts", "actor": "user://alice", "session": "session-1", "dedup_key": "turn-1",
+        "claim": { "subject": "Northwind", "predicate": "filings", "object": "arrived", "confidence": 0.9,
+            "evidence": [{ "table": "research/notes", "run": "run-0001", "seq": 0 }] } });
+    let (listener, addr) = serve(p, &["serve", "--http", "127.0.0.1:0", "--audience", AUD,
+        "--max-in-flight", "2", "--project", "research", "--public-key", &public]);
+    assert_eq!(post_claim(&addr, &reader, &claim, false).0, 403, "read grant cannot write");
+    assert_eq!(post_claim(&addr, &wrong_table, &claim, false).0, 403, "a write grant on another table cannot land memory");
+    assert_eq!(post_claim(&addr, &expired, &claim, false).0, 401, "expired authority cannot write");
+    let mut client_scope = claim.clone();
+    client_scope["claim"]["scope"] = json!("shared");
+    assert_eq!(post_claim(&addr, &alice, &client_scope, false).0, 400, "the caller cannot set claim scope");
+    assert_eq!(post_claim(&addr, &alice, &claim, true).0, 403, "a browser origin cannot reach the write");
+    let (status, first) = post_claim(&addr, &alice, &claim, false);
+    assert_eq!(status, 200, "{first}");
+    assert_eq!(first["landed"], true);
+    assert!(first["scope"].as_str().is_some_and(|scope| scope.contains("alice") && scope.contains("session-1")), "{first}");
+    let (status, duplicate) = post_claim(&addr, &alice, &claim, false);
+    assert_eq!(status, 200, "{duplicate}");
+    assert_eq!(duplicate["landed"], false);
+    let mut borrowed = claim.clone();
+    borrowed["actor"] = json!("user://bob");
+    assert_eq!(post_claim(&addr, &alice, &borrowed, false).0, 403, "a writer cannot author for another operator");
+    borrowed["actor"] = json!("user://alice");
+    borrowed["session"] = json!("session-2");
+    assert_eq!(post_claim(&addr, &alice, &borrowed, false).0, 403, "a writer cannot pick another session");
+    assert_eq!(post_claim(&addr, &bob, &claim, false).0, 403, "the second operator cannot author Alice's claim");
+    let write_tool = json!({ "jsonrpc": "2.0", "id": 7, "method": "tools/call",
+        "params": { "name": "memory.write", "arguments": claim } });
+    let (_, mcp) = post(&addr, &write_tool, &alice, None);
+    assert!(mcp.to_string().contains("no tool"), "{mcp}");
+    drop(listener);
+    let (_restarted, addr) = serve(p, &["serve", "--http", "127.0.0.1:0", "--audience", AUD,
+        "--max-in-flight", "2", "--project", "research", "--public-key", &public]);
+    let recall = json!({ "jsonrpc": "2.0", "id": 8, "method": "tools/call",
+        "params": { "name": "memory.recall", "arguments": { "table": "memory/facts", "subject": "Northwind" } } });
+    let (status, memory) = post(&addr, &recall, &reader, None);
+    assert_eq!(status, 200, "{memory}");
+    assert_eq!(memory["result"]["structuredContent"]["rows"].as_array().map(Vec::len), Some(1), "{memory}");
+    stdout(&run(p, &["token", "revoke", "--principal-class", "delegated"]));
+    assert_eq!(post_claim(&addr, &alice, &claim, false).0, 401, "revoked authority commits nothing");
+}
+
 #[test]
 fn served_exchange_without_policy_returns_the_unconfigured_refusal() {
     let (dir, public) = project();
