@@ -106,6 +106,45 @@ fn query() -> Value {
     json!({ "jsonrpc": "2.0", "id": 1, "method": "tools/call", "params": { "name": "context.query", "arguments": { "sql": "SELECT note_id FROM \"research/notes\"" } } })
 }
 
+fn control(addr: &str, method: &str, path: &str, token: Option<&str>, body: &str) -> (u16, Value) {
+    let mut stream = TcpStream::connect(addr).unwrap();
+    let auth = token.map(|token| format!("Authorization: Bearer {token}\r\n")).unwrap_or_default();
+    write!(stream, "{method} {path} HTTP/1.1\r\n{auth}Content-Type: application/json\r\nContent-Length: {}\r\n\r\n{body}", body.len()).unwrap();
+    let mut raw = String::new();
+    stream.read_to_string(&mut raw).unwrap();
+    let (head, answer) = raw.split_once("\r\n\r\n").unwrap();
+    (head.split(' ').nth(1).unwrap().parse().unwrap(), serde_json::from_str(answer).unwrap())
+}
+
+#[test]
+fn control_routes_require_admin_and_project_applied_workflows() {
+    let (dir, public) = project();
+    let root = dir.path();
+    let pipeline = "[[pipeline]]\nid = \"filings-flow\"\nschedule = \"every 1h\"\ntables = [\"research/notes\"]\n[pipeline.source]\nname = \"http\"\nconfig = { endpoint = \"https://example.test/filings\" }\n";
+    std::fs::create_dir_all(root.join("pipelines")).unwrap();
+    std::fs::write(root.join("pipelines/filings.toml"), pipeline).unwrap();
+    stdout(&run(root, &["pipeline", "import", "--project", "research"]));
+    let read = stdout(&run(root, &["token", "mint", "--issuer-key", ".contextful/issuer.seed", "--action", "read", "--table", "*", "--ttl", "900"]));
+    let admin = stdout(&run(root, &["token", "mint", "--issuer-key", ".contextful/issuer.seed", "--action", "admin", "--table", "*", "--ttl", "900"]));
+    let (_listener, addr) = serve(root, &["serve", "--http", "127.0.0.1:0", "--audience", AUD, "--max-in-flight", "2", "--project", "research", "--public-key", &public]);
+
+    assert_eq!(control(&addr, "GET", "/control/workflows", None, "").0, 401);
+    assert_eq!(control(&addr, "GET", "/control/workflows", Some(&read), "").0, 403);
+    assert_eq!(control(&addr, "POST", "/control/apply", Some(&read), "{}").0, 403);
+    let (status, view) = control(&addr, "GET", "/control/workflows", Some(&admin), "");
+    assert_eq!(status, 200, "{view}");
+    assert_eq!(view["applied"], json!(1));
+    assert_eq!(view["pipelines"][0]["id"], "filings-flow");
+    assert_eq!(view["pipelines"][0]["tables"], json!(["research/notes"]));
+
+    std::fs::write(root.join("pipelines/filings.toml"), pipeline.replace("every 1h", "every 1d")).unwrap();
+    let (status, applied) = control(&addr, "POST", "/control/apply", Some(&admin), "{\"id\":\"filings-flow\"}");
+    assert_eq!(status, 200, "{applied}");
+    assert_eq!(applied["applied"], json!(2));
+    let (_, view) = control(&addr, "GET", "/control/workflows", Some(&admin), "");
+    assert_eq!(view["pipelines"][0]["schedule"], "every 1d");
+}
+
 /// The network transport refuses to start without its audience, its ceiling, or an issuer key that resolves and parses.
 // spec: topology.publish-hostname.issuer-key@a7736a7f
 #[test]
