@@ -80,8 +80,13 @@ fn request(address: &str, method: &str, path: &str, token: Option<&str>, body: O
 }
 
 #[test]
-#[ignore = "milestone 12 is open: Query live turn integration remains separate"]
 fn m12_console() {
+    let console_package = workspace_root().join("apps/console");
+    let bundle = console_package.join("dist/server.js");
+    let _ = std::fs::remove_file(&bundle);
+    ok(&Command::new("pnpm").arg("--dir").arg(&console_package).args(["install", "--frozen-lockfile"]).output().unwrap());
+    ok(&Command::new("pnpm").arg("--dir").arg(&console_package).arg("build").output().unwrap());
+    assert!(bundle.is_file(), "the console build writes its runnable server");
     let cf = bin("contextful");
     let repo = GitRepo::init();
     repo.write("contextful.toml", "authoring_posture = \"per_request\"\n");
@@ -126,7 +131,7 @@ fn m12_console() {
     });
     let stores = json!([{ "id": "field-notes", "label": "Field notes", "endpoint": format!("http://{read_address}"), "auth": "shared" }]);
     let console = Command::new("node")
-        .arg(workspace_root().join("apps/console/dist/server.js"))
+        .arg(&bundle)
         .args(["--http", "127.0.0.1:0"])
         .env("CONTEXTFUL_STORES_JSON", stores.to_string())
         .env("FIELD_NOTES_QUERY_TOKEN", &read_token)
@@ -144,6 +149,9 @@ fn m12_console() {
 
     assert_eq!(request(&console_address, "GET", "/query", None, None).0, 401);
     assert_eq!(request(&console_address, "GET", "/admin", Some(&access_token(QUERY_ACCESS_AUDIENCE)), None).0, 403);
+    let (status, admin_page) = request(&console_address, "GET", "/admin", Some(&access_token(ADMIN_ACCESS_AUDIENCE)), None);
+    assert_eq!(status, 200);
+    assert!(String::from_utf8_lossy(&admin_page).contains("id=\"canvas\""));
     assert_eq!(request(&console_address, "GET", "/admin/api/workflows", Some(&access_token(QUERY_ACCESS_AUDIENCE)), None).0, 403);
     let (status, workflows) = request(&console_address, "GET", "/admin/api/workflows", Some(&access_token(ADMIN_ACCESS_AUDIENCE)), None);
     assert_eq!(status, 200, "{}", String::from_utf8_lossy(&workflows));

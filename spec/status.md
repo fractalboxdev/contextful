@@ -13,9 +13,9 @@ An unpinned clause is `committed`; a pinned one is `performed` when its Rust, Le
 | `read` | 2 | 15 | 179 | 29 | 22 | 21 | 163 | 0 | 163 |
 | `run` | 3 | 26 | 373 | 98 | 36 | 37 | 261 | 0 | 261 |
 | `store` | 1 | 17 | 237 | 55 | 13 | 20 | 200 | 0 | 200 |
-| `surface` | 2 | 20 | 109 | 50 | 22 | 0 | 57 | 0 | 57 |
+| `surface` | 2 | 20 | 109 | 50 | 22 | 0 | 60 | 0 | 60 |
 | `topology` | 1 | 6 | 70 | 24 | 5 | 5 | 38 | 0 | 38 |
-| **total** | 19 | 155 | 2016 | 582 | 188 | 127 | 1371 | 0 | |
+| **total** | 19 | 155 | 2016 | 582 | 188 | 127 | 1374 | 0 | |
 
 Decision records: 18.
 
@@ -35,9 +35,9 @@ A milestone reads `closed` when its acceptance test computes `passing` and every
 | 7 — Memory | 6 | 37 | 37 | passing | closed |
 | 8 — Accountability | 5 | 60 | 47 | passing | open |
 | 9 — Visibility | 6 | 41 | 3 | open | open |
-| 10 — Cadence and the operator plane | 11 | 71 | 56 | passing | open |
+| 10 — Cadence and the operator plane | 11 | 71 | 59 | passing | open |
 | 11 — The derive tier | 7 | 78 | 55 | passing | open |
-| 12 — The operator console | 12 | 49 | 6 | open | open |
+| 12 — The operator console | 12 | 49 | 6 | passing | open |
 | 13 — Disclosure | 5 | 21 | 4 | open | open |
 | 14 — Assurance | 7 | 134 | 84 | passing | closed |
 
@@ -1323,6 +1323,8 @@ Unscheduled operations: 10.
 | `store.reserve.table-namespaces` | `crates/contextful-core/tests/integration/store/reserve.rs::the_visibility_namespace_holds_each_sources_access_tables` | performed |
 | `store.reserve.taint` | `crates/contextful-context/tests/integration/reserve.rs::a_model_output_row_carries_the_engine_taint_and_no_other_row_does` | performed |
 | `store.reserve.underscore-namespace` | `crates/contextful-core/tests/integration/store/reserve.rs::the_underscore_namespace_is_the_injected_and_optional_sets` | performed |
+| `surface.apply.draft-absent` | `spec/pins.toml` | performed |
+| `surface.apply.draft-claim` | `spec/pins.toml` | performed |
 | `surface.apply.guarded-import` | `crates/contextful-cli/tests/integration/pipeline.rs::the_import_claims_the_first_version_once` | performed |
 | `surface.apply.local-claim` | `crates/contextful-cli/tests/integration/pipeline.rs::apply_claims_a_version_in_the_local_snapshot_directory` | performed |
 | `surface.apply.owner-unconfigured` | `crates/contextful-cli/tests/integration/pipeline.rs::an_owner_with_nothing_behind_it_is_refused` | performed |
@@ -1358,6 +1360,7 @@ Unscheduled operations: 10.
 | `surface.dispatch.worker-target` | `crates/contextful-cli/tests/integration/worker.rs::a_killed_worker_s_step_moves_once_and_its_late_callback_is_rejected` | performed |
 | `surface.edit.connector-upload` | `crates/contextful-cli/tests/integration/pipeline.rs::an_artifact_in_the_document_is_refused` | performed |
 | `surface.edit.secret-in-document` | `crates/contextful-cli/tests/integration/pipeline.rs::a_credential_in_the_document_is_refused` | performed |
+| `surface.edit.store-draft` | `spec/pins.toml` | performed |
 | `surface.fire.cycle` | `crates/contextful-cli/tests/integration/pipeline.rs::a_cycle_fires_what_is_due_once_and_reports_the_next_instant` | performed |
 | `surface.fire.cycle-control-source` | `crates/contextful-cli/tests/integration/pipeline.rs::a_cycle_with_no_applied_snapshot_is_refused` | performed |
 | `surface.fire.cycle-exit` | `crates/contextful-cli/tests/integration/pipeline.rs::a_cycle_with_a_failed_fire_exits_non_zero` | performed |

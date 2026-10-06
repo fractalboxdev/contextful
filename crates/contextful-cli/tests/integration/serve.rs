@@ -92,10 +92,14 @@ fn control_apply_uses_the_host_registered_task_set() {
     std::fs::write(root.join("contextful.toml"), format!("authoring_posture = \"per_request\"\n{}", super::derive::host_manifest("word-split"))).unwrap();
     let imported = Command::new(&binary).args(["pipeline", "import", "--project", "research"]).current_dir(root).output().unwrap();
     stdout(&imported);
-    std::fs::write(root.join("contextful.toml"), format!("authoring_posture = \"per_request\"\n{}", super::derive::host_manifest("word-split").replace("[pipeline.source]", "schedule = \"every 1h\"\n[pipeline.source]"))).unwrap();
+    let draft = super::derive::host_manifest("word-split").replace("[pipeline.source]", "schedule = \"every 1h\"\n[pipeline.source]");
+    std::fs::write(root.join("contextful.toml"), format!("authoring_posture = \"per_request\"\n{draft}")).unwrap();
     let admin = stdout(&run(root, &["token", "mint", "--issuer-key", ".contextful/issuer.seed", "--on-behalf-of", "user://dana@acme.example", "--zone", "on-prem:hq", "--action", "admin", "--table", "*", "--ttl", "900"]));
     let (_listener, addr) = serve_binary(&binary, root, &["serve", "--http", "127.0.0.1:0", "--audience", AUD, "--max-in-flight", "2", "--project", "research", "--public-key", &public]);
-    let (status, state) = control(&addr, "POST", "/control/apply", Some(&admin), "{}");
+    let edit = json!({ "expected": 1, "document": draft }).to_string();
+    let (status, edited) = control(&addr, "POST", "/control/edit", Some(&admin), &edit);
+    assert_eq!(status, 200, "{edited}");
+    let (status, state) = control(&addr, "POST", "/control/apply", Some(&admin), "{\"expected\":1}");
     assert_eq!(status, 200, "{state}");
     assert_eq!(state["applied"], json!(2));
 }
