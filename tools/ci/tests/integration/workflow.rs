@@ -17,9 +17,10 @@ fn every_gate_stage_has_a_dispatchable_part() {
         .collect();
     assert_eq!(
         parts.len(),
-        23,
+        24,
         "the remote gate expects one check per part: {parts:?}"
     );
+    assert!(parts.iter().any(|part| part == "workspace.cli"), "the CLI suite has no separate remote check: {parts:?}");
     let whole = Command::new(env!("CARGO_BIN_EXE_contextful-ci"))
         .arg("stages")
         .output()
@@ -40,7 +41,28 @@ fn every_gate_stage_has_a_dispatchable_part() {
 }
 
 #[test]
-#[ignore = "enable after the FlareDispatch gate, measures, and release paths pass on a live commit"]
+fn proposed_required_checks_match_every_gate_part() {
+    let out = Command::new(env!("CARGO_BIN_EXE_contextful-ci"))
+        .args(["stages", "--parts"])
+        .current_dir(repo_root())
+        .output()
+        .unwrap();
+    assert!(out.status.success());
+    let mut expected = vec!["flare-dispatch/contextful-gate".to_string()];
+    expected.extend(String::from_utf8_lossy(&out.stdout).lines().map(|part| format!("flare-dispatch/check:{part}")));
+
+    let proposal: serde_json::Value = serde_json::from_str(&std::fs::read_to_string(repo_root().join(".github/rulesets/contextful-gate.proposed.json")).unwrap()).unwrap();
+    assert_eq!(proposal["enforcement"], "disabled");
+    let actual: Vec<String> = proposal["rules"][0]["parameters"]["required_status_checks"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .map(|check| check["context"].as_str().unwrap().to_string())
+        .collect();
+    assert_eq!(actual, expected);
+}
+
+#[test]
 fn no_github_actions_workflows_remain() {
     let workflows = repo_root().join(".github/workflows");
     let entries = std::fs::read_dir(&workflows)

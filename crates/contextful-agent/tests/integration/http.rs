@@ -110,6 +110,8 @@ fn credential(signer: &SeedSigner, tables: &str, ttl: u64, holder: Option<&Signi
         aggregate: None,
         templates: Some(vec!["*".into()]),
         max_rows: None,
+        max_duration_ms: None,
+        max_response_bytes: None,
     };
     let mut req = MintRequest::custody(subject, vec![grant]);
     req.lifetime = Lifetime::Requested(ttl);

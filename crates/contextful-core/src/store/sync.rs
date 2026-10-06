@@ -272,9 +272,19 @@ pub struct BucketManifest {
     /// Pointer key to the pointer the bucket held as the commit was made.
     #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
     pub pointers: BTreeMap<String, BucketPointer>,
+    /// Project to the signed applied control head committed with its artifacts.
+    #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
+    pub control_heads: BTreeMap<String, ControlHead>,
     /// The residency allow-set the pushing sites declare (`surface.reside.site-regions`).
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub residency: Option<crate::surface::reside::SiteRegions>,
+}
+
+/// The immutable receipt identifying a project's applied control version.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct ControlHead {
+    pub version: u64,
+    pub receipt_sha256: String,
 }
 
 fn format_one() -> u32 {
@@ -287,7 +297,7 @@ fn is_zero(n: &u64) -> bool {
 
 impl Default for BucketManifest {
     fn default() -> BucketManifest {
-        BucketManifest { format: MANIFEST_FORMAT, generation: 0, entries: BTreeMap::new(), tombstones: BTreeMap::new(), pointers: BTreeMap::new(), residency: None }
+        BucketManifest { format: MANIFEST_FORMAT, generation: 0, entries: BTreeMap::new(), tombstones: BTreeMap::new(), pointers: BTreeMap::new(), control_heads: BTreeMap::new(), residency: None }
     }
 }
 
@@ -351,7 +361,7 @@ pub struct Merged {
 /// commit-log entry whose copies differ refuses outright: a cursor resolves through its
 /// commit, never through whichever copy was written last.
 pub fn merge(remote: &BucketManifest, local: &BTreeMap<String, Entry>, me: &str, now: Instant) -> Result<Merged, StoreError> {
-    let mut out = BucketManifest { residency: remote.residency.clone(), ..BucketManifest::default() };
+    let mut out = BucketManifest { residency: remote.residency.clone(), control_heads: remote.control_heads.clone(), ..BucketManifest::default() };
     let mut refused = Vec::new();
     for (key, entry) in local {
         // A key another node owns lists the owner's entry, never a local copy of it.

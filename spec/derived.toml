@@ -1,0 +1,19 @@
+[[artifact]]
+path = "spec/spec.lock.json"
+check = "contextful-spec extract"
+
+[[artifact]]
+path = "spec/status.md"
+check = "contextful-spec state"
+
+[[artifact]]
+path = "spec/targets.md"
+check = "contextful-spec state"
+
+[[artifact]]
+path = "spec/cards/"
+check = "contextful-spec state"
+
+[[artifact]]
+path = "evals/ledger.md"
+check = "contextful-ci measure --status"

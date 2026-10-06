@@ -138,11 +138,30 @@ fn open_with(l: &Located, config: SyncConfig) -> Result<(Syncer, Vec<TableDecl>)
     // The declaration set (`store.declare.declaration-set`): `replicate` and `primary_key`
     // read here match those the read face reads.
     let text = std::fs::read_to_string(&l.declaration).unwrap_or_default();
+    let control_dir = control_dir(&text, &l.project.dir, &l.project.name)?;
     let decls = TableDecl::parse_declaration_set(&text, &pipeline_files(&l.declaration)?)?;
     let site_id = crate::project::site_id_for(&text, &l.declaration, None, None).unwrap_or_else(|_| node_id.to_string());
     let residency = Some(SiteResidency { site_id, regions: crate::reside::declared(&text)?.map(|r| r.entries()) });
-    let syncer = Syncer { store, bucket, config, prefix, project: l.project.name.clone(), node: node_id.to_string(), residency };
+    let syncer = Syncer { store, bucket, config, prefix, project: l.project.name.clone(), node: node_id.to_string(), residency, control_dir };
     Ok((syncer, decls))
+}
+
+fn control_dir(text: &str, project_dir: &std::path::Path, project: &str) -> Result<Option<PathBuf>> {
+    let value: toml::Value = toml::from_str(text)?;
+    let Some(block) = value.get("control") else {
+        return Ok(Some(project_dir.join(".contextful/control").join(project)));
+    };
+    let block = block.as_table().context("`[control]` is a table")?;
+    if block.contains_key("url") && block.contains_key("snapshot_dir") {
+        anyhow::bail!("`[control]` names one source: `url` or `snapshot_dir`");
+    }
+    if block.contains_key("url") {
+        return Ok(None);
+    }
+    let path = block.get("snapshot_dir")
+        .map(|v| v.as_str().context("`[control] snapshot_dir` is a path string"))
+        .transpose()?;
+    Ok(Some(path.map_or_else(|| project_dir.join(".contextful/control").join(project), |p| project_dir.join(p))))
 }
 
 /// Open the bucket `[sync] endpoint` names through the adapter its scheme selects
@@ -232,22 +251,23 @@ fn open_local(args: &SyncArgs) -> Result<(Store, String, String)> {
 /// Write this node's run state into the store root from its machine catalog, so the push
 /// carries it (`store.push.run-state`).
 #[cfg(feature = "data-plane")]
-fn record_run_state(store: &Store, node_id: &str) -> Result<()> {
+fn record_run_state(store: &Store, project: &str, node_id: &str) -> Result<()> {
     let catalog = MachineCatalog::open(&store.root().join(MACHINE_CATALOG_FILE), Arc::new(crate::clock::SystemClock))?;
-    let state = RunState::read(&catalog, node_id)?;
+    let mut state = RunState::read(&catalog, node_id)?;
+    state.control_version = run_state::local_control_version(store, project)?;
     run_state::record(store, &state)?;
     Ok(())
 }
 
 /// A read-plane build fires no runs and holds no machine catalog, so it records no run state.
 #[cfg(not(feature = "data-plane"))]
-fn record_run_state(_store: &Store, _node_id: &str) -> Result<()> {
+fn record_run_state(_store: &Store, _project: &str, _node_id: &str) -> Result<()> {
     Ok(())
 }
 
 /// Record the run state, then push.
 fn push(s: &Syncer, at: Instant) -> Result<contextful_sync::sync::PushReport> {
-    record_run_state(&s.store, &s.node)?;
+    record_run_state(&s.store, &s.project, &s.node)?;
     Ok(s.push(at)?)
 }
 
@@ -255,7 +275,7 @@ pub fn run(cmd: SyncCmd) -> Result<()> {
     match cmd {
         SyncCmd::Manifest { args, emit: _ } => {
             let (store, project, node_id) = open_local(&args)?;
-            record_run_state(&store, &node_id)?;
+            record_run_state(&store, &project, &node_id)?;
             let plan = contextful_sync::plan_manifest(&store, &project, &node_id)?;
             println!("{}", serde_json::to_string_pretty(&plan.manifest())?);
             Ok(())

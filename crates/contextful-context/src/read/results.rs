@@ -118,7 +118,9 @@ impl ResultCache {
     /// Keep `response` under `key` for `ttl`, evicting least recently used entries until
     /// it fits. A response larger than the whole budget is not kept.
     pub(crate) fn put(&self, key: Digest32, response: &Response, ttl: Duration) {
-        let bytes = serde_json::to_vec(response).expect("a response serializes").len() as u64 + key.len() as u64;
+        let bytes = serde_json::to_vec(response).expect("a response serializes").len() as u64
+            + response.probe_row.as_ref().map_or(0, |row| serde_json::to_vec(row).expect("a probe row serializes").len() as u64)
+            + key.len() as u64;
         if bytes > self.budget {
             return;
         }
