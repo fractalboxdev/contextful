@@ -223,18 +223,29 @@ fn served_claim_write_is_durable_actor_bound_and_outside_read_mcp() {
     let p = dir.path();
     let mint = |who: &str, task: &str, actions: &[&str]| {
         let mut args = vec!["token", "mint", "--issuer-key", ".contextful/issuer.seed", "--on-behalf-of", who,
-            "--task", task, "--zone", "on-prem:hq", "--table", "memory/facts", "--ttl", "900"];
+            "--task", task, "--zone", "on-prem:hq", "--table", "memory/facts", "--table", "research/notes", "--ttl", "900"];
         for action in actions { args.extend(["--action", action]); }
         stdout(&run(p, &args))
     };
     let alice = mint("user://alice", "session-1", &["read", "write"]);
     let bob = mint("user://bob", "session-2", &["read", "write"]);
     let reader = mint("user://alice", "session-1", &["read"]);
+    let wrong_table = stdout(&run(p, &["token", "mint", "--issuer-key", ".contextful/issuer.seed", "--on-behalf-of", "user://alice",
+        "--task", "session-1", "--zone", "on-prem:hq", "--action", "write", "--table", "research/notes", "--ttl", "900"]));
+    let expired = stdout(&run(p, &["token", "mint", "--issuer-key", ".contextful/issuer.seed", "--on-behalf-of", "user://alice",
+        "--task", "session-1", "--zone", "on-prem:hq", "--action", "read", "--action", "write",
+        "--table", "memory/facts", "--table", "research/notes", "--ttl", "900", "--now", "2020-01-01T00:00:00Z"]));
     let claim = json!({ "into": "memory/facts", "actor": "user://alice", "session": "session-1", "dedup_key": "turn-1",
-        "claim": { "subject": "Northwind", "predicate": "filings", "object": "arrived", "confidence": 0.9, "evidence": [] } });
+        "claim": { "subject": "Northwind", "predicate": "filings", "object": "arrived", "confidence": 0.9,
+            "evidence": [{ "table": "research/notes", "run": "run-0001", "seq": 0 }] } });
     let (listener, addr) = serve(p, &["serve", "--http", "127.0.0.1:0", "--audience", AUD,
         "--max-in-flight", "2", "--project", "research", "--public-key", &public]);
     assert_eq!(post_claim(&addr, &reader, &claim, false).0, 403, "read grant cannot write");
+    assert_eq!(post_claim(&addr, &wrong_table, &claim, false).0, 403, "a write grant on another table cannot land memory");
+    assert_eq!(post_claim(&addr, &expired, &claim, false).0, 401, "expired authority cannot write");
+    let mut client_scope = claim.clone();
+    client_scope["claim"]["scope"] = json!("shared");
+    assert_eq!(post_claim(&addr, &alice, &client_scope, false).0, 400, "the caller cannot set claim scope");
     assert_eq!(post_claim(&addr, &alice, &claim, true).0, 403, "a browser origin cannot reach the write");
     let (status, first) = post_claim(&addr, &alice, &claim, false);
     assert_eq!(status, 200, "{first}");
