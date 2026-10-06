@@ -486,3 +486,14 @@ fn a_pinned_native_test_must_appear_in_the_runner_report() {
     assert!(!o.status.success(), "{}", stderr(&o));
     assert!(stderr(&o).contains("SurfaceCheckFailed"), "{}", stderr(&o));
 }
+
+#[test]
+fn compact_tags_and_only_calls_require_tap_evidence() {
+    let r = surface_repo();
+    r.write("apps/web/test/compact.test.ts", "import { test } from 'node:test';\nimport assert from 'node:assert/strict';\ntest('unrelated', () => assert.equal(1, 1));\nfunction never() {\n  //spec:corpus.anatomy.statement-words@11227773\n  test.only('pinned claim', () => assert.equal(2, 2));\n}\n");
+    let bin = Bin::new();
+    pnpm(&bin, "none");
+    let o = gate(&r, Some(&bin), &["--stage", "surfaces"]);
+    assert!(!o.status.success(), "{}", stderr(&o));
+    assert!(stderr(&o).contains("SurfaceCheckFailed"), "{}", stderr(&o));
+}
