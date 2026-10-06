@@ -2,7 +2,7 @@ import type { StoreEntry } from "../../gateway/src/index.ts";
 import type { TurnInput, TurnResult } from "./index.ts";
 import { ConsoleError, createTurn, resolveReaderCredential, type Source, type ToolResult } from "./turn.ts";
 
-type LiveOptions = { stores: StoreEntry[]; env: NodeJS.ProcessEnv; fetcher?: typeof fetch };
+export type LiveOptions = { stores: StoreEntry[]; env: NodeJS.ProcessEnv; fetcher?: typeof fetch };
 
 function record(value: unknown): value is Record<string, unknown> {
   return value !== null && typeof value === "object" && !Array.isArray(value);
@@ -42,11 +42,7 @@ function source(columns: string[], row: unknown[], table: string): Source | null
     ...(typeof url === "string" && /^https?:\/\//.test(url) ? { url } : {}) };
 }
 
-export function createLiveTurn({ stores, env, fetcher = fetch }: LiveOptions): (input: TurnInput) => Promise<TurnResult> {
-  const modelEndpoint = env.CONTEXTFUL_MODEL_ENDPOINT;
-  const modelId = env.CONTEXTFUL_MODEL_ID;
-  if (!modelEndpoint || !modelId) throw new Error("ConsoleModelUnconfigured");
-  return async (input) => {
+export async function openReader({ stores, env, fetcher = fetch }: LiveOptions, input: Pick<TurnInput, "operator" | "store">) {
     const store = stores.find((entry) => entry.id === input.store);
     if (!store) throw new ConsoleError("ConsoleRequestMalformed");
     const shared = env[store.credentialName];
@@ -88,6 +84,16 @@ export function createLiveTurn({ stores, env, fetcher = fetch }: LiveOptions): (
       return message.result.structuredContent;
     };
 
+    return { store, call };
+}
+
+export function createLiveTurn(options: LiveOptions): (input: TurnInput) => Promise<TurnResult> {
+  const { env, fetcher = fetch } = options;
+  const modelEndpoint = env.CONTEXTFUL_MODEL_ENDPOINT;
+  const modelId = env.CONTEXTFUL_MODEL_ID;
+  if (!modelEndpoint || !modelId) throw new Error("ConsoleModelUnconfigured");
+  return async (input) => {
+    const { store, call } = await openReader(options, input);
     const description = await call("context.describe", {});
     const selected = selectTable(input.question, description.tables);
     if (!selected) throw new ConsoleError("ConsoleUngroundedAnswer", "No data table matches this question.");

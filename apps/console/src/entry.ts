@@ -3,10 +3,11 @@ import { pathToFileURL } from "node:url";
 import { isAbsolute, resolve } from "node:path";
 import { registryFromEnv } from "../../gateway/src/index.ts";
 import { createLiveTurn } from "./live.ts";
+import { createLiveBrowse } from "./live_browse.ts";
 import type { ConsoleAdapters, Identity } from "./index.ts";
 import { serveConsole } from "./server.ts";
 
-type AdapterFactory = (input: { stores: ConsoleAdapters["stores"]; env: NodeJS.ProcessEnv }) => Promise<Pick<ConsoleAdapters, "turn" | "control"> & { read?: ConsoleAdapters["read"] }>;
+type AdapterFactory = (input: { stores: ConsoleAdapters["stores"]; env: NodeJS.ProcessEnv }) => Promise<Pick<ConsoleAdapters, "turn" | "control"> & { read?: ConsoleAdapters["read"]; browse?: ConsoleAdapters["browse"] }>;
 
 function required(name: string): string {
   const value = process.env[name];
@@ -82,9 +83,10 @@ async function main(): Promise<void> {
   const registry = registryFromEnv(process.env.CONTEXTFUL_STORES_JSON);
   const stores = registry.entries.map(({ id, label }) => ({ id, label }));
   const modulePath = process.env.CONTEXTFUL_CONSOLE_ADAPTER_MODULE;
-  let adapters: Pick<ConsoleAdapters, "turn" | "control"> & { read?: ConsoleAdapters["read"] } = {
+  let adapters: Pick<ConsoleAdapters, "turn" | "control"> & { read?: ConsoleAdapters["read"]; browse?: ConsoleAdapters["browse"] } = {
     ...unavailableAdapters(),
     turn: modulePath ? unavailableAdapters().turn : createLiveTurn({ stores: registry.entries, env: process.env }),
+    browse: modulePath ? undefined : createLiveBrowse({ stores: registry.entries, env: process.env }),
   };
   if (modulePath) {
     const absolute = isAbsolute(modulePath) ? modulePath : resolve(modulePath);
@@ -99,6 +101,7 @@ async function main(): Promise<void> {
     adminCapability: process.env.CONTEXTFUL_ADMIN_CAPABILITY,
     turn: adapters.turn,
     read: adapters.read ?? { list: async () => stores },
+    browse: adapters.browse,
     control: adapters.control,
   }, () => origin);
   await new Promise<void>((resolveListen, rejectListen) => {

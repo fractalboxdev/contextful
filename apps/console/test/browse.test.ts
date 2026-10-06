@@ -60,7 +60,7 @@ test("a gallery preview uses context.file with the listing's snapshot bound", as
   const { browse, calls } = fixture();
   const preview = await browse.preview({ path: "research/vendor_filings/runs/run-1/report.parquet", asOf: "2030-01-01T00:00:00Z" });
   assert.deepEqual(preview, { columns: ["title"], rows: [["Q1 report"]] });
-  assert.deepEqual(calls.at(-1), { tool: "context.file", arguments: { path: "research/vendor_filings/runs/run-1/report.parquet", as_of: "2030-01-01T00:00:00Z" } });
+  assert.deepEqual(calls.at(-1), { tool: "context.file", arguments: { path: "research/vendor_filings/runs/run-1/report.parquet", limit: 100, as_of: "2030-01-01T00:00:00Z" } });
 });
 
 test("in-band read refusals remain errors", async () => {

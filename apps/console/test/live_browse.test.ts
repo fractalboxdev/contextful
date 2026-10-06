@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 import { createLiveBrowse } from "../src/live_browse.ts";
+import { BrowseError } from "../src/browse.ts";
 import type { StoreEntry } from "../../gateway/src/index.ts";
 
 const store: StoreEntry = {
@@ -42,7 +43,8 @@ test("live browse uses one exchanged reader credential for governed discovery an
   assert.equal(exchanges, 2);
   assert.equal(calls.at(-1)?.name, "context.file");
   const before = calls.length;
-  await assert.rejects(browse.preview({ ...input, path: "filings/runs/run-1/other.parquet" }), /ConsoleGalleryPathUnlisted/);
+  await assert.rejects(browse.preview({ ...input, path: "filings/runs/run-1/other.parquet" }),
+    (error: unknown) => error instanceof BrowseError && error.code === "ConsoleGalleryPathUnlisted");
   assert.equal(calls.filter((call) => call.name === "context.file").length, 1);
   assert(calls.length > before, "the refusal rechecks the governed file list");
 });
