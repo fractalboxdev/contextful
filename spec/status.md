@@ -12,10 +12,10 @@ An unpinned clause is `committed`; a pinned one is `performed` when its Rust, Le
 | `disclosure` | 3 | 16 | 134 | 66 | 13 | 3 | 63 | 0 | 63 |
 | `read` | 2 | 15 | 200 | 31 | 22 | 9 | 178 | 0 | 172 |
 | `run` | 3 | 26 | 375 | 98 | 36 | 37 | 263 | 0 | 262 |
-| `store` | 1 | 17 | 244 | 56 | 13 | 20 | 208 | 0 | 204 |
+| `store` | 1 | 17 | 245 | 56 | 13 | 20 | 209 | 0 | 204 |
 | `surface` | 2 | 20 | 106 | 49 | 22 | 0 | 51 | 0 | 51 |
 | `topology` | 1 | 6 | 70 | 24 | 5 | 5 | 38 | 0 | 38 |
-| **total** | 19 | 155 | 2061 | 586 | 188 | 113 | 1406 | 0 | |
+| **total** | 19 | 155 | 2062 | 586 | 188 | 113 | 1407 | 0 | |
 
 Decision records: 18.
 
@@ -27,7 +27,7 @@ A milestone reads `closed` when its acceptance test computes `passing` and every
 | --- | --- | --- | --- | --- | --- |
 | 0 — The test-first gate | 2 | 18 | 6 | passing | open |
 | 1 — The authority core | 14 | 238 | 186 | passing | closed |
-| 2 — The store | 9 | 171 | 140 | passing | closed |
+| 2 — The store | 9 | 172 | 141 | passing | closed |
 | 3 — The run path | 11 | 207 | 144 | passing | closed |
 | 4 — Ingest | 25 | 497 | 314 | passing | open |
 | 5 — The read face under enforcement | 17 | 262 | 204 | passing | open |
@@ -1345,6 +1345,7 @@ Unscheduled operations: 10.
 | `store.reconcile.stored-type` | `crates/contextful-context/tests/integration/reconcile.rs::a_stored_binary_or_vector_column_types_a_later_undeclared_batch` | performed |
 | `store.reconcile.typed-landing` | `crates/contextful-context/tests/integration/reconcile.rs::a_typed_batch_lands_bytes_from_base64_and_vectors_from_arrays` | performed |
 | `store.reconcile.union-by-name` | `crates/contextful-context/tests/integration/reconcile.rs::a_column_resolves_to_the_supertype_of_its_files_with_no_cast` | performed |
+| `store.reconcile.variant` | `spec/pins.toml` | performed |
 | `store.replicate.partial-parquet` | `crates/contextful-sync/tests/integration/pull.rs::a_replica_missing_a_snapshot_part_refuses_and_leaves_it_unpublished` | performed |
 | `store.replicate.sensitive-refused` | `crates/contextful-sync/tests/integration/pull.rs::a_refresh_requesting_a_replicate_off_table_refuses` | performed |
 | `store.replicate.write-refused` | `crates/contextful-sync/tests/integration/pull.rs::a_replica_refuses_a_write_verb_naming_the_canonical_store` | performed |
