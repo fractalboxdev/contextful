@@ -1,0 +1,45 @@
+import { createServer, type IncomingMessage, type Server, type ServerResponse } from "node:http";
+import type { ConsoleAdapters } from "./index.ts";
+import { createConsole } from "./index.ts";
+
+const maxBodyBytes = 1_048_576;
+
+async function receive(message: IncomingMessage, origin: string): Promise<Request> {
+  const method = message.method ?? "GET";
+  const chunks: Buffer[] = [];
+  let size = 0;
+  for await (const chunk of message) {
+    size += chunk.length;
+    if (size > maxBodyBytes) throw new Error("ConsoleBodyTooLarge");
+    chunks.push(Buffer.from(chunk));
+  }
+  const body = method === "GET" || method === "HEAD" ? undefined : Buffer.concat(chunks);
+  const headers = new Headers();
+  for (const [key, value] of Object.entries(message.headers)) {
+    if (typeof value === "string") headers.set(key, value);
+    else if (Array.isArray(value)) headers.set(key, value.join(", "));
+  }
+  return new Request(new URL(message.url ?? "/", origin), { method, headers, body });
+}
+
+async function send(reply: ServerResponse, response: Response): Promise<void> {
+  reply.statusCode = response.status;
+  response.headers.forEach((value, key) => reply.setHeader(key, value));
+  reply.end(Buffer.from(await response.arrayBuffer()));
+}
+
+export function serveConsole(adapters: ConsoleAdapters, origin: string | (() => string)): Server {
+  const app = createConsole(adapters);
+  return createServer(async (message, reply) => {
+    try {
+      await send(reply, await app.fetch(await receive(message, typeof origin === "string" ? origin : origin())));
+    } catch (error) {
+      if (error instanceof Error && error.message === "ConsoleBodyTooLarge") {
+        await send(reply, Response.json({ error: { identifier: "ConsoleBodyTooLarge" } }, { status: 413 }));
+        return;
+      }
+      const unavailable = error instanceof Error && error.message === "ConsoleAdapterUnavailable";
+      await send(reply, Response.json({ error: { identifier: unavailable ? "ConsoleAdapterUnavailable" : "ConsoleServerFailure" } }, { status: unavailable ? 503 : 500 }));
+    }
+  });
+}
