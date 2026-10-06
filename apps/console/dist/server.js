@@ -73,6 +73,48 @@ function registryFromEnv(raw) {
   return { entries, problems };
 }
 
+// src/control.ts
+function unavailable() {
+  throw new Error("ConsoleAdapterUnavailable");
+}
+function selected(stores, id) {
+  if (id !== null) {
+    const store = stores.find((candidate) => candidate.id === id);
+    if (store) return store;
+    throw new Error("ConsoleStoreUnknown");
+  }
+  if (stores.length === 1) return stores[0];
+  throw new Error("ConsoleStoreSelectionRequired");
+}
+function applyDocument(document) {
+  if (document === null || typeof document !== "object" || Array.isArray(document)) throw new Error("ConsoleRequestMalformed");
+  const value = document;
+  if (value.store !== void 0 && typeof value.store !== "string") throw new Error("ConsoleRequestMalformed");
+  if (value.id !== void 0 && typeof value.id !== "string") throw new Error("ConsoleRequestMalformed");
+  return { store: typeof value.store === "string" ? value.store : null, body: typeof value.id === "string" ? { id: value.id } : {} };
+}
+function createLiveControl({ stores, capability, fetcher = fetch }) {
+  async function call(store, path, token, body2) {
+    const response = await fetcher(new URL(path, store.endpoint), {
+      method: body2 ? "POST" : "GET",
+      headers: { Authorization: `Bearer ${token}`, ...body2 ? { "Content-Type": "application/json" } : {} },
+      ...body2 ? { body: JSON.stringify(body2) } : {}
+    });
+    if (!response.ok) throw new Error(`ConsoleControlRefused:${response.status}`);
+    return response.json();
+  }
+  return {
+    workflows: async (_operator, id) => capability ? call(selected(stores, id), "/control/workflows", capability) : unavailable(),
+    record: async () => unavailable(),
+    edit: async () => unavailable(),
+    apply: async (document, token) => {
+      if (!capability || token !== capability) return unavailable();
+      const input = applyDocument(document);
+      return call(selected(stores, input.store), "/control/apply", token, input.body);
+    }
+  };
+}
+
 // src/server.ts
 import { createServer } from "node:http";
 
@@ -378,8 +420,8 @@ function serveConsole(adapters, origin) {
         await send(reply, Response.json({ error: { identifier: "ConsoleBodyTooLarge" } }, { status: 413 }));
         return;
       }
-      const unavailable2 = error instanceof Error && error.message === "ConsoleAdapterUnavailable";
-      await send(reply, Response.json({ error: { identifier: unavailable2 ? "ConsoleAdapterUnavailable" : "ConsoleServerFailure" } }, { status: unavailable2 ? 503 : 500 }));
+      const unavailable3 = error instanceof Error && error.message === "ConsoleAdapterUnavailable";
+      await send(reply, Response.json({ error: { identifier: unavailable3 ? "ConsoleAdapterUnavailable" : "ConsoleServerFailure" } }, { status: unavailable3 ? 503 : 500 }));
     }
   });
 }
@@ -429,17 +471,17 @@ async function identity() {
     keys: await keysAt(required("CONTEXTFUL_ACCESS_JWKS_URL"))
   };
 }
-function unavailable() {
+function unavailable2() {
   throw new Error("ConsoleAdapterUnavailable");
 }
 function unavailableAdapters() {
   return {
-    turn: async () => unavailable(),
+    turn: async () => unavailable2(),
     control: {
-      workflows: async () => unavailable(),
-      record: async () => unavailable(),
-      edit: async () => unavailable(),
-      apply: async () => unavailable()
+      workflows: async () => unavailable2(),
+      record: async () => unavailable2(),
+      edit: async () => unavailable2(),
+      apply: async () => unavailable2()
     }
   };
 }
@@ -454,6 +496,7 @@ async function main() {
   const registry = registryFromEnv(process.env.CONTEXTFUL_STORES_JSON);
   const stores = registry.entries.map(({ id, label }) => ({ id, label }));
   let adapters = unavailableAdapters();
+  adapters.control = createLiveControl({ stores: registry.entries, capability: process.env.CONTEXTFUL_ADMIN_CAPABILITY });
   const modulePath = process.env.CONTEXTFUL_CONSOLE_ADAPTER_MODULE;
   if (modulePath) {
     const absolute = isAbsolute(modulePath) ? modulePath : resolve(modulePath);
