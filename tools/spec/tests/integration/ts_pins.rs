@@ -42,8 +42,19 @@ fn a_skipped_or_todo_surface_test_is_broken() {
 }
 
 #[test]
+fn a_surface_test_with_skip_or_todo_options_is_broken() {
+    for option in ["skip", "todo"] {
+        let s = fixture();
+        s.write(FILE, &format!(
+            "import {{ test }} from 'node:test';\nimport assert from 'node:assert/strict';\n// spec: {CLAUSE}@{REV}\ntest('words over forty refused', {{ {option}: true }}, () => {{ assert.equal(1 + 1, 2); }});\n"
+        ));
+        assert_eq!(codes(&s.lint("state"), "SpecBrokenPin").len(), 1, "{option}");
+    }
+}
+
+#[test]
 fn an_empty_or_placeholder_surface_test_is_broken() {
-    for body in ["", "// TODO\n", "return;", "throw new Error('not implemented');"] {
+    for body in ["", "// TODO\n", "return;", "throw new Error('not implemented');", "assert.ok(true);"] {
         let s = fixture();
         s.write(FILE, &test_source(REV, "test", body));
         assert_eq!(codes(&s.lint("state"), "SpecBrokenPin").len(), 1, "{body}");
