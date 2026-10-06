@@ -25,8 +25,6 @@ use contextful_policy::audit::AuditLog;
 use contextful_policy::verify::AdmittedAuthority;
 use hmac::{Hmac, Mac};
 use sha2::{Digest, Sha256};
-use std::collections::HashMap;
-use std::sync::Mutex;
 use std::time::{SystemTime, UNIX_EPOCH};
 use contextful_policy::keyset::{KeyCheckpoint, StaticPins};
 use contextful_policy::revoke::RevocationState;
@@ -79,7 +77,7 @@ pub struct ServeArgs {
     keyset: Option<PathBuf>,
 }
 
-fn operator_attestation(request: &HttpRequest, secret: &str, used: &Mutex<HashMap<String, i64>>) -> Option<String> {
+fn operator_attestation(request: &HttpRequest, secret: &str) -> Option<(String, String, i64, i64)> {
     let subject = request.header("X-Contextful-Operator")?;
     let at: i64 = request.header("X-Contextful-Operator-Time")?.parse().ok()?;
     let nonce = request.header("X-Contextful-Operator-Nonce")?;
@@ -98,10 +96,20 @@ fn operator_attestation(request: &HttpRequest, secret: &str, used: &Mutex<HashMa
         signature_bytes[index] = u8::from_str_radix(std::str::from_utf8(chunk).ok()?, 16).ok()?;
     }
     mac.verify_slice(&signature_bytes).ok()?;
-    let mut seen = used.lock().ok()?;
-    seen.retain(|_, expires| *expires >= now);
-    if seen.len() >= 10_000 || seen.insert(format!("{subject}:{nonce}"), at + 60).is_some() { return None; }
-    Some(subject.to_owned())
+    Some((subject.to_owned(), nonce.to_owned(), at, now))
+}
+
+fn control_failure(error: anyhow::Error) -> HttpResponse {
+    let surface = error.chain().find_map(|part| part.downcast_ref::<SurfaceError>().or_else(|| {
+        match part.downcast_ref::<ControlError>() {
+            Some(ControlError::Surface(refusal)) => Some(refusal),
+            _ => None,
+        }
+    }));
+    let status = surface.map_or(503, SurfaceError::status);
+    let identifier = surface.map(|refusal| refusal.to_string().split(':').next().unwrap_or("ControlUnavailable").to_string())
+        .unwrap_or_else(|| "ControlUnavailable".into());
+    HttpResponse::json(status, &json!({ "error": { "identifier": identifier } }))
 }
 
 /// The issuer key pins, resolved and parsed before the listener binds; no generated key
@@ -149,14 +157,20 @@ pub fn run(args: ServeArgs, tasks: &Tasks) -> Result<()> {
     };
     let audit = AuditLog::unanchored(located.project.audit_dir())?;
     let control_attestation_secret = std::env::var("CONTEXTFUL_CONTROL_ATTESTATION_SECRET").ok().filter(|secret| !secret.is_empty());
-    let attestations = Mutex::new(HashMap::new());
     let control = |request: &HttpRequest, authority: &AdmittedAuthority| -> HttpResponse {
         let malformed = || HttpResponse::json(400, &json!({ "error": { "identifier": "ControlRequestMalformed" } }));
         let path = request.target.split('?').next().unwrap_or_default();
+        let project = crate::run::ProjectArgs { project: Some(located.project.name.clone()), now: None };
         let operator = if path == EDIT_PATH || path == APPLY_PATH {
             match control_attestation_secret.as_deref() {
-                Some(secret) => match operator_attestation(request, secret, &attestations) {
-                    Some(subject) => subject,
+                Some(secret) => match operator_attestation(request, secret) {
+                    Some((subject, nonce, signed_at, now)) => {
+                        match crate::cadence::claim_operator_nonce(&project, Some(located.declaration.clone()), &nonce, signed_at, now) {
+                            Ok(true) => subject,
+                            Ok(false) => return HttpResponse::json(403, &json!({ "error": { "identifier": "ControlOperatorAttestationInvalid" } })),
+                            Err(error) => return control_failure(error),
+                        }
+                    }
                     None => return HttpResponse::json(403, &json!({ "error": { "identifier": "ControlOperatorAttestationInvalid" } })),
                 },
                 None => return HttpResponse::json(403, &json!({ "error": { "identifier": "ControlOperatorAttestationInvalid" } })),
@@ -176,7 +190,6 @@ pub fn run(args: ServeArgs, tasks: &Tasks) -> Result<()> {
                 };
                 let Some(fields) = body.as_object() else { unreachable!() };
                 let Some(expected) = fields.get("expected").and_then(Value::as_u64) else { return malformed() };
-                let project = crate::run::ProjectArgs { project: Some(located.project.name.clone()), now: None };
                 if path == EDIT_PATH {
                     if fields.len() != 2 || fields.keys().any(|field| field != "expected" && field != "document") {
                         return malformed();
@@ -205,18 +218,7 @@ pub fn run(args: ServeArgs, tasks: &Tasks) -> Result<()> {
         };
         match answer {
             Ok(state) => HttpResponse::json(200, &state),
-            Err(error) => {
-                let surface = error.chain().find_map(|part| part.downcast_ref::<SurfaceError>().or_else(|| {
-                    match part.downcast_ref::<ControlError>() {
-                        Some(ControlError::Surface(refusal)) => Some(refusal),
-                        _ => None,
-                    }
-                }));
-                let status = surface.map_or(503, SurfaceError::status);
-                let identifier = surface.map(|refusal| refusal.to_string().split(':').next().unwrap_or("ControlUnavailable").to_string())
-                    .unwrap_or_else(|| "ControlUnavailable".into());
-                HttpResponse::json(status, &json!({ "error": { "identifier": identifier } }))
-            }
+            Err(error) => control_failure(error),
         }
     };
     let exchange = crate::token::configured_exchange(&root)?;

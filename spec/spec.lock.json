@@ -19158,7 +19158,7 @@
       "operation": "apply",
       "subject": "operator-attestation",
       "kind": "refusal",
-      "statement": "An Admin mutation lacking a fresh, single-use console signature over its verified operator, route and body raises `ControlOperatorAttestationInvalid` before changing the control document.",
+      "statement": "An Admin mutation lacking a fresh console signature over its verified operator, route and body, or reusing a nonce held in store control state across restarts, raises `ControlOperatorAttestationInvalid` before changing the document.",
       "why": "because a shared store capability cannot identify the person who used the console",
       "file": "spec/70-control-plane.md",
       "line": 261

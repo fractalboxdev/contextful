@@ -258,7 +258,7 @@ Validation, the immutable version claim, the pointer advance, the owner's storag
 - `guarded-import` — `contextful pipeline import` claims v1 from the declared pipelines while the snapshot directory holds no version; a second import claims nothing.
 - `draft-claim` — An Admin apply rechecks the configured store owner, validates its saved draft again, and claims that draft through the owner's version compare-and-swap.
   *A-surface*
-- `operator-attestation` — An Admin mutation lacking a fresh, single-use console signature over its verified operator, route and body raises `ControlOperatorAttestationInvalid` before changing the control document.
+- `operator-attestation` — An Admin mutation lacking a fresh console signature over its verified operator, route and body, or reusing a nonce held in store control state across restarts, raises `ControlOperatorAttestationInvalid` before changing the document.
   *because a shared store capability cannot identify the person who used the console*
 - `draft-absent` — An Admin apply finding no validated store draft raises `ControlDraftAbsent` and changes no applied version.
   *because an absent draft supplies no document for the version claim*

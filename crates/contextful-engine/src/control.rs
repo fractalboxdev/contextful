@@ -15,6 +15,7 @@ use serde::{Deserialize, Serialize};
 /// The lock file serializing claims.
 const LOCK_FILE: &str = "manifest.lock";
 const DRAFT_FILE: &str = "manifest@draft.json";
+const ATTESTATION_NONCES: &str = "attestation-nonces";
 
 /// A validated store draft bound to the applied version it read.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -103,6 +104,43 @@ impl SnapshotDir {
     pub fn read(&self, version: u64) -> Result<String, ControlError> {
         let path = self.root.join(snapshot_file(version));
         std::fs::read_to_string(&path).map_err(|e| SurfaceError::ControlSnapshotUnreadable(format!("{}: {e}", path.display())).into())
+    }
+
+    /// Claim one signed control request under the same lock that serializes draft and
+    /// applied-pointer mutations. A claim stays until its signed time is no longer
+    /// admissible, including across a listener restart.
+    pub fn claim_attestation_nonce(&self, nonce: &str, signed_at: i64, now: i64) -> Result<bool, ControlError> {
+        if nonce.len() != 32 || !nonce.bytes().all(|byte| byte.is_ascii_hexdigit()) {
+            return Err(ControlError::Storage("an attestation nonce is 32 hexadecimal bytes".into()));
+        }
+        let storage = |e: contextful_core::run::Failure| ControlError::Storage(e.to_string());
+        let _lock = FileLock::acquire(&self.root.join(LOCK_FILE)).map_err(storage)?;
+        let directory = self.root.join(ATTESTATION_NONCES);
+        std::fs::create_dir_all(&directory).map_err(|e| ControlError::Storage(format!("{}: {e}", directory.display())))?;
+        let first_live = now.saturating_sub(60);
+        for entry in std::fs::read_dir(&directory).map_err(|e| ControlError::Storage(format!("{}: {e}", directory.display())))? {
+            let entry = entry.map_err(|e| ControlError::Storage(format!("{}: {e}", directory.display())))?;
+            if !entry.file_type().map_err(|e| ControlError::Storage(format!("{}: {e}", entry.path().display())))?.is_dir() {
+                return Err(ControlError::Storage(format!("{}: an attestation bucket is a directory", entry.path().display())));
+            }
+            let signed_second = entry.file_name().to_str().and_then(|name| name.parse::<i64>().ok())
+                .ok_or_else(|| ControlError::Storage(format!("{}: malformed attestation bucket", entry.path().display())))?;
+            if signed_second < first_live {
+                std::fs::remove_dir_all(entry.path()).map_err(|e| ControlError::Storage(format!("{}: {e}", entry.path().display())))?;
+            }
+        }
+        let marker = directory.join(signed_at.to_string()).join(nonce);
+        let claimed = create_new(&marker, b"").map_err(storage)?;
+        if claimed {
+            std::fs::File::open(&marker).and_then(|file| file.sync_all())
+                .map_err(|e| ControlError::Storage(format!("{}: {e}", marker.display())))?;
+            #[cfg(unix)]
+            for path in [marker.parent().expect("nonce marker has a bucket"), directory.as_path(), self.root.as_path()] {
+                std::fs::File::open(path).and_then(|dir| dir.sync_all())
+                    .map_err(|e| ControlError::Storage(format!("{}: {e}", path.display())))?;
+            }
+        }
+        Ok(claimed)
     }
 
     /// Save one store draft only while the applied version still matches its base.

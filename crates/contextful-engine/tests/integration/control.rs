@@ -18,6 +18,17 @@ fn a_saved_draft_is_bound_to_its_editor_and_exact_nonce() {
     assert_eq!(snaps.read(2).unwrap(), "# bob\n");
 }
 
+#[test]
+fn an_attestation_nonce_survives_reopen_and_expires_after_its_signed_window() {
+    let dir = tempfile::tempdir().unwrap();
+    let first = SnapshotDir::open(dir.path());
+    assert!(first.claim_attestation_nonce(&"a".repeat(32), 100, 100).unwrap());
+    let reopened = SnapshotDir::open(dir.path());
+    assert!(!reopened.claim_attestation_nonce(&"a".repeat(32), 100, 160).unwrap());
+    assert!(reopened.claim_attestation_nonce(&"b".repeat(32), 161, 161).unwrap());
+    assert!(!dir.path().join("attestation-nonces/100").exists());
+}
+
 /// An apply whose compare-and-swap loses raises `ManifestVersionConflict`, reloads the winning version and
 /// reapplies its pending edits onto it, overwriting no applied version.
 // spec: surface.apply.version-race@30fc0e6c

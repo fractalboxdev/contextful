@@ -317,6 +317,12 @@ pub(crate) fn edit(project: &ProjectArgs, declaration: Option<PathBuf>, expected
     Ok(json!({ "expected": expected, "nonce": draft.nonce }))
 }
 
+/// Claim a verified control request's nonce in the selected store owner's snapshot state.
+pub(crate) fn claim_operator_nonce(project: &ProjectArgs, declaration: Option<PathBuf>, nonce: &str, signed_at: i64, now: i64) -> Result<bool> {
+    let (_, _, control) = located(project, declaration)?;
+    owner(&control)?.claim_attestation_nonce(nonce, signed_at, now).map_err(Into::into)
+}
+
 /// Revalidate the saved draft and claim it only at the version the editor read.
 pub(crate) fn apply_draft(project: &ProjectArgs, declaration: Option<PathBuf>, expected: u64, nonce: &str, operator: &str, tasks: &Tasks) -> Result<()> {
     let (initial, _, control) = located(project, declaration.clone())?;
