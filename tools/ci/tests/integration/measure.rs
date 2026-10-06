@@ -69,7 +69,7 @@ fn measure(r: &Repo, args: &[&str]) -> Output {
 }
 
 #[test]
-fn inherited_targets_hold_measure_builds_and_records_outside_the_checkout() {
+fn inherited_targets_hold_measure_builds_outside_the_checkout_and_records_at_a_stable_address() {
     let r = repo(&entry("demo-doubles", "run.journal.entry-key", "{ test = \"demo::measured::doubles_measured\" }", "target = { op = \">=\", value = 5 }"));
     let pool = tempfile::tempdir().unwrap();
     let o = Command::new(env!("CARGO_BIN_EXE_contextful-ci"))
@@ -79,8 +79,9 @@ fn inherited_targets_hold_measure_builds_and_records_outside_the_checkout() {
         .output().unwrap();
     assert!(!o.status.success());
     assert!(stderr(&o).contains("demo-doubles = 4 against >= 5"), "{}", stderr(&o));
-    assert!(pool.path().join("contextful-ci/evaluate/records/demo-doubles.json").exists());
-    assert!(!r.root.join("target").exists());
+    assert!(pool.path().join("contextful-ci/evaluate/debug").exists());
+    assert!(r.root.join("target/evaluate/records/demo-doubles.json").exists());
+    assert!(!r.root.join("target/evaluate/debug").exists());
 }
 
 /// An entry whose owning clause, method or metric path resolves to nothing raises `MeasureEntryUnresolved` before any measure runs.
