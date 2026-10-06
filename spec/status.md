@@ -13,9 +13,9 @@ An unpinned clause is `committed`; a pinned one is `performed` when its Rust, Le
 | `read` | 2 | 15 | 179 | 29 | 22 | 21 | 163 | 0 | 163 |
 | `run` | 3 | 26 | 373 | 98 | 36 | 37 | 261 | 0 | 261 |
 | `store` | 1 | 17 | 237 | 55 | 13 | 20 | 200 | 0 | 200 |
-| `surface` | 2 | 20 | 110 | 50 | 22 | 0 | 55 | 0 | 55 |
+| `surface` | 2 | 20 | 110 | 50 | 22 | 0 | 61 | 0 | 57 |
 | `topology` | 1 | 6 | 70 | 24 | 5 | 5 | 38 | 0 | 38 |
-| **total** | 19 | 155 | 2017 | 582 | 188 | 127 | 1369 | 0 | |
+| **total** | 19 | 155 | 2017 | 582 | 188 | 127 | 1375 | 0 | |
 
 Decision records: 18.
 
@@ -37,7 +37,7 @@ A milestone reads `closed` when its acceptance test computes `passing` and every
 | 9 — Visibility | 6 | 41 | 3 | open | open |
 | 10 — Cadence and the operator plane | 11 | 68 | 56 | passing | open |
 | 11 — The derive tier | 7 | 78 | 55 | passing | open |
-| 12 — The operator console | 12 | 53 | 4 | open | open |
+| 12 — The operator console | 12 | 53 | 10 | open | open |
 | 13 — Disclosure | 5 | 21 | 4 | open | open |
 | 14 — Assurance | 7 | 134 | 84 | passing | closed |
 
@@ -1369,6 +1369,10 @@ Unscheduled operations: 10.
 | `surface.fire.store-driven-body` | `crates/contextful-core/tests/integration/job.rs::a_store_driven_block_naming_an_unregistered_body_raises_job_body_unregistered` | performed |
 | `surface.fire.store-driven-concurrency` | `crates/contextful-core/tests/integration/job.rs::a_store_driven_block_without_a_positive_max_in_flight_raises_job_concurrency_unset` | performed |
 | `surface.fire.target-unbound` | `crates/contextful-cli/tests/integration/job.rs::a_job_target_naming_nothing_produced_is_refused_at_validation` | performed |
+| `surface.ground.direct-file-read` | `apps/console/test/turn.test.ts::apps/console/test/turn.test.ts::direct file table functions refuse before dispatch` | performed |
+| `surface.ground.mint-refused` | `apps/console/test/live.test.ts::apps/console/test/live.test.ts::Query falls back to a configured shared credential only after exchange refusal` | performed |
+| `surface.ground.org-face-read-only` | `apps/console/test/turn.test.ts::apps/console/test/turn.test.ts::organization packs refuse writes at startup` | performed |
+| `surface.plan-turn.planner-reached-memory` | `apps/console/test/turn.test.ts::apps/console/test/turn.test.ts::a planner call targeting a memory relation dispatches nothing` | performed |
 | `surface.reconcile.fail-static` | `crates/contextful-cli/tests/integration/pipeline.rs::an_unreadable_snapshot_leaves_the_armed_set_running` | performed |
 | `surface.reconcile.learns-by-reading` | `crates/contextful-cli/tests/integration/pipeline.rs::a_wake_reads_the_applied_version_from_the_control_source` | performed |
 | `surface.reconcile.loopback-only` | `crates/contextful-cli/tests/integration/pipeline.rs::a_control_url_outside_loopback_arms_nothing` | performed |
@@ -1378,6 +1382,8 @@ Unscheduled operations: 10.
 | `surface.reside.region-entries` | `crates/contextful-core/tests/integration/surface/reside.rs::an_allow_set_holds_sixteen_entries` | performed |
 | `surface.reside.region-mismatch` | `crates/contextful-cli/tests/integration/pipeline.rs::a_resource_outside_the_residency_allow_set_serves_nothing` | performed |
 | `surface.reside.site-regions` | `crates/contextful-cli/tests/integration/sync/mod.rs::two_sites_declaring_different_residency_diverge_at_push` | performed |
+| `surface.set-vantage.sample-labels` | `apps/console/test/turn.test.ts::apps/console/test/turn.test.ts::a table contributes at most three sampled arrival labels` | performed |
+| `surface.speak.redactor-lookahead` | `apps/console/test/turn.test.ts::apps/console/test/turn.test.ts::streaming redactor masks identifiers split across chunks` | performed |
 | `topology.compose.script-runtime` | `tools/ci/tests/integration/topology.rs::a_crate_linking_a_javascript_runtime_is_refused` | performed |
 | `topology.compose.undeclared-crossing` | `tools/ci/tests/integration/topology.rs::a_run_path_crate_reaching_a_read_path_crate_is_refused` | performed |
 | `topology.compose.vendor-sdk` | `tools/ci/tests/integration/topology.rs::a_crate_declaring_a_model_vendor_sdk_is_refused` | performed |

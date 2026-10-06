@@ -106,6 +106,65 @@ fn query() -> Value {
     json!({ "jsonrpc": "2.0", "id": 1, "method": "tools/call", "params": { "name": "context.query", "arguments": { "sql": "SELECT note_id FROM \"research/notes\"" } } })
 }
 
+#[test]
+fn served_exchange_without_policy_returns_the_unconfigured_refusal() {
+    let (dir, public) = project();
+    let (_listener, addr) = serve(dir.path(), &["serve", "--http", "127.0.0.1:0", "--audience", AUD,
+        "--max-in-flight", "2", "--project", "research", "--public-key", &public]);
+    let body = "not-json";
+    let mut stream = TcpStream::connect(&addr).unwrap();
+    write!(stream, "POST /auth/exchange HTTP/1.1\r\nContent-Type: application/json\r\nContent-Length: {}\r\n\r\n{body}", body.len()).unwrap();
+    let mut raw = String::new();
+    stream.read_to_string(&mut raw).unwrap();
+    let (head, data) = raw.split_once("\r\n\r\n").unwrap();
+    assert_eq!(head.split(' ').nth(1), Some("404"));
+    let answer: Value = serde_json::from_str(data).unwrap();
+    assert_eq!(answer["error"]["identifier"], "ExchangeUnconfigured");
+    let mut stream = TcpStream::connect(&addr).unwrap();
+    stream.set_read_timeout(Some(std::time::Duration::from_secs(2))).unwrap();
+    write!(stream, "POST /auth/exchange HTTP/1.1\r\nContent-Type: application/json\r\nContent-Length: 100\r\n\r\n").unwrap();
+    let mut raw = String::new();
+    stream.read_to_string(&mut raw).expect("unconfigured exchange answers before waiting for its body");
+    assert!(raw.starts_with("HTTP/1.1 404"), "{raw}");
+}
+
+#[test]
+fn served_exchange_mints_a_reader_credential_for_the_read_face() {
+    let (dir, public) = project();
+    let p = dir.path();
+    std::fs::create_dir_all(p.join(".contextful/exchange")).unwrap();
+    std::fs::write(p.join(".contextful/exchange/policy.toml"),
+        "expected_iss = \"https://login.example.test/\"\nexpected_aud = \"console\"\nrole_claim = \"roles\"\n\
+         [subject_map]\non_behalf_of = { claim = \"sub\", template = \"user://{}\" }\nzone = { claim = \"zone\" }\n\
+         [[role_grants.reader]]\nactions = [\"read\"]\ntables = [\"research/*\"]\n").unwrap();
+    std::fs::write(p.join(".contextful/exchange/verify.key"), "exchange-secret").unwrap();
+    let now = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap().as_secs();
+    let jwt = jsonwebtoken::encode(&jsonwebtoken::Header::new(jsonwebtoken::Algorithm::HS256),
+        &json!({ "iss": "https://login.example.test/", "aud": "console", "exp": now + 300,
+            "sub": "reader@example.test", "zone": "on-prem:hq", "roles": ["reader"] }),
+        &jsonwebtoken::EncodingKey::from_secret(b"exchange-secret")).unwrap();
+    let (_listener, addr) = serve(p, &["serve", "--http", "127.0.0.1:0", "--audience", AUD,
+        "--max-in-flight", "2", "--project", "research", "--public-key", &public]);
+    let exchange = |jwt: &str| {
+        let body = json!({ "jwt": jwt }).to_string();
+        let mut stream = TcpStream::connect(&addr).unwrap();
+        write!(stream, "POST /auth/exchange HTTP/1.1\r\nContent-Type: application/json\r\nContent-Length: {}\r\n\r\n{body}", body.len()).unwrap();
+        let mut raw = String::new();
+        stream.read_to_string(&mut raw).unwrap();
+        let (head, data) = raw.split_once("\r\n\r\n").unwrap();
+        (head.split(' ').nth(1).unwrap().parse::<u16>().unwrap(), serde_json::from_str::<Value>(data).unwrap())
+    };
+    let (status, minted) = exchange(&jwt);
+    assert_eq!(status, 200, "{minted}");
+    let token = minted["token"].as_str().expect("the exchange returns a credential");
+    let (status, answer) = post(&addr, &query(), token, None);
+    assert_eq!(status, 200, "{answer}");
+    assert_eq!(answer["result"]["structuredContent"]["rows"], json!([["n1"]]));
+    let (status, refused) = exchange("invalid");
+    assert_ne!(status, 200);
+    assert_eq!(refused["error"]["identifier"], "ExchangeAssertionInvalid");
+}
+
 /// The network transport refuses to start without its audience, its ceiling, or an issuer key that resolves and parses.
 // spec: topology.publish-hostname.issuer-key@a7736a7f
 #[test]
