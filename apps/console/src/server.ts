@@ -2,10 +2,17 @@ import { createServer, type IncomingMessage, type Server, type ServerResponse } 
 import type { ConsoleAdapters } from "./index.ts";
 import { createConsole } from "./index.ts";
 
+const maxBodyBytes = 1_048_576;
+
 async function receive(message: IncomingMessage, origin: string): Promise<Request> {
   const method = message.method ?? "GET";
   const chunks: Buffer[] = [];
-  for await (const chunk of message) chunks.push(Buffer.from(chunk));
+  let size = 0;
+  for await (const chunk of message) {
+    size += chunk.length;
+    if (size > maxBodyBytes) throw new Error("ConsoleBodyTooLarge");
+    chunks.push(Buffer.from(chunk));
+  }
   const body = method === "GET" || method === "HEAD" ? undefined : Buffer.concat(chunks);
   const headers = new Headers();
   for (const [key, value] of Object.entries(message.headers)) {
@@ -27,6 +34,10 @@ export function serveConsole(adapters: ConsoleAdapters, origin: string | (() => 
     try {
       await send(reply, await app.fetch(await receive(message, typeof origin === "string" ? origin : origin())));
     } catch (error) {
+      if (error instanceof Error && error.message === "ConsoleBodyTooLarge") {
+        await send(reply, Response.json({ error: { identifier: "ConsoleBodyTooLarge" } }, { status: 413 }));
+        return;
+      }
       const unavailable = error instanceof Error && error.message === "ConsoleAdapterUnavailable";
       await send(reply, Response.json({ error: { identifier: unavailable ? "ConsoleAdapterUnavailable" : "ConsoleServerFailure" } }, { status: unavailable ? 503 : 500 }));
     }
