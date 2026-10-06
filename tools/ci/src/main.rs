@@ -1,5 +1,5 @@
 //! `contextful-ci` — the gate's stages as typed subcommands. A contributor and the
-//! pull-request workflow invoke the identical command.
+//! FlareDispatch gate invoke the identical command.
 
 mod deny;
 mod allowlist;
@@ -84,7 +84,7 @@ enum Cmd {
     },
     /// Print the stage names, one per line, in run order.
     Stages {
-        /// Print what the pull-request workflow dispatches instead: each stage, a split stage
+        /// Print what FlareDispatch dispatches: each stage, a split stage
         /// as its parts.
         #[arg(long)]
         parts: bool,
@@ -336,7 +336,7 @@ fn repo_root() -> Result<PathBuf> {
     Ok(PathBuf::from(git(&["rev-parse", "--show-toplevel"])?))
 }
 
-/// The stages whose work splits into parts the pull-request workflow dispatches one check
+/// The stages whose work splits into parts FlareDispatch dispatches one check
 /// each, so each part fits one stage's wall clock (`assurance.build.profile-build`,
 /// `assurance.gate.budget-stage`).
 const SPLIT: [&str; 3] = ["workspace", "features", "budget"];
@@ -357,7 +357,7 @@ fn parts(root: &Path, stage: &str) -> Result<Vec<String>> {
     })
 }
 
-/// What the pull-request workflow dispatches, in run order: each stage, a split stage as
+/// What FlareDispatch dispatches, in run order: each stage, a split stage as
 /// `<stage>.<part>` per part.
 fn dispatched(root: &Path) -> Result<Vec<String>> {
     let mut out = Vec::new();
