@@ -8,6 +8,7 @@ use contextful_core::run::ports::{AwakeableStore, BlobStore, JournalStore};
 use contextful_core::run::suspend::{Awakeable, AwakeableState};
 use contextful_core::run::{Failure, FailureTag};
 use contextful_core::store::catalog::MACHINE_CATALOG_FILE;
+use contextful_context::encrypt::AesGcmFileCipher;
 use contextful_engine::conformance;
 use contextful_sqlite::{MachineCatalog, SqliteRunStores};
 use std::path::PathBuf;
@@ -20,6 +21,92 @@ fn fresh(dirs: &mut Vec<TempDir>) -> SqliteRunStores {
     let path = dir.path().join(MACHINE_CATALOG_FILE);
     dirs.push(dir);
     SqliteRunStores::open(&path).unwrap()
+}
+
+#[test]
+fn sealed_run_stores_share_catalog_and_keep_journal_bytes_off_disk() {
+    let dir = tempfile::tempdir().unwrap();
+    let path = dir.path().join(MACHINE_CATALOG_FILE);
+    let cipher = || Arc::new(AesGcmFileCipher::new([7; 32], 1));
+    let clock = Arc::new(crate::SetClock::new());
+    let catalog = MachineCatalog::open_sealed(&path, clock.clone(), cipher()).unwrap();
+    catalog.put_run(&crate::run_row("run-1", "feed", contextful_core::run::record::RunStatus::Running)).unwrap();
+    let canary = "sealed-journal-secret-canary-4041";
+    {
+        let stores = SqliteRunStores::open_sealed(&path, cipher()).unwrap();
+        stores.journal.record(&key("x-1"), &Stored::place(canary.as_bytes())).unwrap();
+        stores.blobs.put("blob-1", canary.as_bytes()).unwrap();
+        stores.awakeables.insert(&awakeable("tok-1")).unwrap();
+    }
+    let reopened = SqliteRunStores::open_sealed(&path, cipher()).unwrap();
+    assert_eq!(reopened.journal.read(&key("x-1")).unwrap(), Some(Row::Recorded { key: key("x-1"), value: Stored::place(canary.as_bytes()) }));
+    assert_eq!(reopened.blobs.get("blob-1").unwrap().as_deref(), Some(canary.as_bytes()));
+    assert!(reopened.awakeables.get("tok-1").unwrap().is_some());
+    assert!(catalog.run("run-1").unwrap().is_some());
+    for entry in std::fs::read_dir(dir.path()).unwrap() {
+        let path = entry.unwrap().path();
+        let bytes = std::fs::read(&path).unwrap();
+        assert!(!bytes.windows(canary.len()).any(|part| part == canary.as_bytes()), "{} contains journal plaintext", path.display());
+        assert!(!bytes.starts_with(b"SQLite format 3"), "{} contains a SQLite page", path.display());
+    }
+    assert!(SqliteRunStores::open_sealed(&path, Arc::new(AesGcmFileCipher::new([8; 32], 1))).is_err());
+}
+
+#[test]
+fn sealed_catalog_opens_after_run_stores_without_losing_their_rows() {
+    let dir = tempfile::tempdir().unwrap();
+    let path = dir.path().join(MACHINE_CATALOG_FILE);
+    let cipher = || Arc::new(AesGcmFileCipher::new([7; 32], 1));
+    let stores = SqliteRunStores::open_sealed(&path, cipher()).unwrap();
+    let value = Stored::place(b"journal-before-catalog");
+    stores.journal.record(&key("x-1"), &value).unwrap();
+    let catalog = MachineCatalog::open_sealed(&path, Arc::new(crate::SetClock::new()), cipher()).unwrap();
+    let row = crate::run_row("run-1", "feed", contextful_core::run::record::RunStatus::Running);
+    catalog.put_run(&row).unwrap();
+    assert!(catalog.run("run-1").unwrap().is_some());
+    assert_eq!(stores.journal.read(&key("x-1")).unwrap(), Some(Row::Recorded { key: key("x-1"), value }));
+    assert!(catalog.acquire(&contextful_core::coordinate::LeaseKey::Pipeline("feed".into()), "holder", 30).unwrap().is_some());
+}
+
+#[test]
+fn sealed_run_stores_keep_nested_updates_atomic_across_connections() {
+    let dir = tempfile::tempdir().unwrap();
+    let path = dir.path().join(MACHINE_CATALOG_FILE);
+    let open = || SqliteRunStores::open_sealed(&path, Arc::new(AesGcmFileCipher::new([7; 32], 1))).unwrap();
+    let first = open();
+    let second = open();
+    first.awakeables.insert(&awakeable("tok-a")).unwrap();
+    let failed = first.awakeables.update("tok-a", &mut |row| {
+        first.journal.record(&key("x-1"), &Stored::place(b"rejected"))?;
+        row.state = AwakeableState::Resolved;
+        Err(Failure::new(FailureTag::Storage, "the update refuses"))
+    });
+    assert!(failed.is_err());
+    assert!(second.journal.read(&key("x-1")).unwrap().is_none());
+    assert_eq!(second.awakeables.get("tok-a").unwrap().unwrap().state, AwakeableState::Pending);
+
+    first.awakeables.update("tok-a", &mut |row| {
+        first.journal.record(&key("x-1"), &Stored::place(b"accepted"))?;
+        row.state = AwakeableState::Resolved;
+        Ok(true)
+    }).unwrap();
+    assert_eq!(second.journal.read(&key("x-1")).unwrap(), Some(Row::Recorded { key: key("x-1"), value: Stored::place(b"accepted") }));
+    assert_eq!(second.awakeables.get("tok-a").unwrap().unwrap().state, AwakeableState::Resolved);
+}
+
+#[test]
+fn sealed_run_stores_serialize_claims_across_connections() {
+    let dir = tempfile::tempdir().unwrap();
+    let path = dir.path().join(MACHINE_CATALOG_FILE);
+    let stores: Vec<_> = (0..4).map(|_| SqliteRunStores::open_sealed(&path, Arc::new(AesGcmFileCipher::new([7; 32], 1))).unwrap()).collect();
+    let claimed: Vec<bool> = std::thread::scope(|scope| {
+        let handles: Vec<_> = stores.iter().enumerate().map(|(i, store)| {
+            scope.spawn(move || store.journal.create_pending(&key("x-1"), &format!("run-{i}")).unwrap())
+        }).collect();
+        handles.into_iter().map(|handle| handle.join().unwrap()).collect()
+    });
+    assert_eq!(claimed.iter().filter(|won| **won).count(), 1);
+    assert!(stores.iter().all(|store| store.journal.read(&key("x-1")).unwrap().is_some()));
 }
 
 fn key(execution_id: &str) -> EntryKey {

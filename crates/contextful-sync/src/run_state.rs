@@ -4,6 +4,7 @@
 
 use crate::sync::{Result, SyncError};
 use contextful_context::{ContextError, Store};
+use contextful_context::encrypt::MetadataFiles;
 use contextful_core::coordinate::Catalog;
 use contextful_core::run::record::{RunRow, RunStatus};
 use contextful_core::time::Instant;
@@ -99,45 +100,62 @@ pub fn state_path(root: &Path, node: &str) -> PathBuf {
     root.join(NODES_DIR).join(node).join(RUN_STATE_FILE)
 }
 
-/// Write `state` as its node's run state under the store root (`store.push.run-state`).
-pub fn record(store: &Store, state: &RunState) -> Result<PathBuf> {
-    let path = state_path(store.root(), &state.node_id);
-    let bytes = serde_json::to_vec_pretty(state).map_err(invalid)?;
-    if let Some(dir) = path.parent() {
-        std::fs::create_dir_all(dir).map_err(|e| io(dir, e))?;
-    }
-    contextful_context::store::replace_file(&path, &bytes)?;
-    Ok(path)
+/// Run-state files under a store root, using that store's metadata envelope.
+pub struct RunStateFiles<'a> {
+    root: &'a Path,
+    metadata: MetadataFiles<'a>,
 }
 
-/// Every node's run state the store holds, keyed by node id. A state this build cannot
-/// parse, or one whose `format` exceeds [`RUN_STATE_FORMAT`], contributes nothing
-/// (`store.push.run-state-format`).
-pub fn run_states(store: &Store) -> Result<BTreeMap<String, RunState>> {
-    let dir = store.root().join(NODES_DIR);
-    let entries = match std::fs::read_dir(&dir) {
-        Ok(e) => e,
-        Err(e) if e.kind() == std::io::ErrorKind::NotFound => return Ok(BTreeMap::new()),
-        Err(e) => return Err(io(&dir, e)),
-    };
-    let mut out = BTreeMap::new();
-    for entry in entries {
-        let node = entry.map_err(|e| io(&dir, e))?.file_name().to_string_lossy().into_owned();
-        let path = state_path(store.root(), &node);
-        let bytes = match std::fs::read(&path) {
-            Ok(b) => b,
-            Err(e) if e.kind() == std::io::ErrorKind::NotFound => continue,
-            Err(e) => return Err(io(&path, e)),
-        };
-        let Ok(value) = serde_json::from_slice::<Value>(&bytes) else { continue };
-        if value.get("format").and_then(Value::as_u64).unwrap_or(1) > u64::from(RUN_STATE_FORMAT) {
-            continue;
-        }
-        if let Ok(state) = serde_json::from_value::<RunState>(value) {
-            out.insert(node, state);
-        }
+impl<'a> RunStateFiles<'a> {
+    pub fn new(root: &'a Path, metadata: MetadataFiles<'a>) -> Self {
+        Self { root, metadata }
     }
-    Ok(out)
+
+    /// Write `state` as its node's run state under the store root (`store.push.run-state`).
+    pub fn record(&self, state: &RunState) -> Result<PathBuf> {
+        let path = state_path(self.root, &state.node_id);
+        let bytes = serde_json::to_vec_pretty(state).map_err(invalid)?;
+        if let Some(dir) = path.parent() {
+            std::fs::create_dir_all(dir).map_err(|e| io(dir, e))?;
+        }
+        self.metadata.replace(&path, &bytes)?;
+        Ok(path)
+    }
+
+    /// Every node's state, keyed by node id. Unsupported or malformed canonical
+    /// JSON contributes nothing; an unreadable encrypted envelope refuses.
+    pub fn run_states(&self) -> Result<BTreeMap<String, RunState>> {
+        let dir = self.root.join(NODES_DIR);
+        let entries = match std::fs::read_dir(&dir) {
+            Ok(e) => e,
+            Err(e) if e.kind() == std::io::ErrorKind::NotFound => return Ok(BTreeMap::new()),
+            Err(e) => return Err(io(&dir, e)),
+        };
+        let mut out = BTreeMap::new();
+        for entry in entries {
+            let node = entry.map_err(|e| io(&dir, e))?.file_name().to_string_lossy().into_owned();
+            let path = state_path(self.root, &node);
+            let Some(bytes) = self.metadata.read_optional(&path)? else { continue };
+            let Ok(value) = serde_json::from_slice::<Value>(&bytes) else { continue };
+            if value.get("format").and_then(Value::as_u64).unwrap_or(1) > u64::from(RUN_STATE_FORMAT) {
+                continue;
+            }
+            if let Ok(state) = serde_json::from_value::<RunState>(value) {
+                out.insert(node, state);
+            }
+        }
+        Ok(out)
+    }
+}
+
+/// Write `state` under the store root using its metadata envelope.
+pub fn record(store: &Store, state: &RunState) -> Result<PathBuf> {
+    RunStateFiles::new(store.root(), store.metadata_files()).record(state)
+}
+
+/// Every node's run state the store holds, keyed by node id (`store.push.run-state-format`).
+pub fn run_states(store: &Store) -> Result<BTreeMap<String, RunState>> {
+    RunStateFiles::new(store.root(), store.metadata_files()).run_states()
 }
 
 /// Each pipeline's latest run start across every node's run state, the history a schedule

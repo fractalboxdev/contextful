@@ -45,6 +45,25 @@ fn history(dir: &Path, extra: &[&str]) -> Output {
     cf(dir, &args)
 }
 
+#[test]
+fn encrypted_run_history_refuses_before_creating_a_machine_catalog() {
+    let dir = project();
+    let store = dir.path().join(".contextful/context/research");
+    std::fs::write(
+        store.join("config.toml"),
+        "[node]\nid = \"ingest-a\"\n[encryption]\nkey_source = \"env:CONTEXTFUL_TEST_RUN_KEY\"\n",
+    )
+    .unwrap();
+    let output = Command::new(env!("CARGO_BIN_EXE_contextful"))
+        .args(["run", "history", "--project", "research"])
+        .current_dir(dir.path())
+        .env("CONTEXTFUL_TEST_RUN_KEY", "0123456789abcdef0123456789abcdef")
+        .output()
+        .unwrap();
+    assert!(!output.status.success(), "encrypted run history must refuse until the machine catalog is sealed");
+    assert!(!store.join("machine.sqlite").exists(), "refusal must not create a plaintext machine catalog");
+}
+
 /// History leaves the machine as a process listing and an NDJSON export over one run projection; the export's
 /// first line carries store, window, count and truncation flag, then one run per line. It resolves no bucket.
 // spec: run.record.history-export@f66be52e

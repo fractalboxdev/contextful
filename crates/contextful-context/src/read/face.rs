@@ -23,7 +23,7 @@ use contextful_core::store::bound_time::Bounds;
 use contextful_core::store::StoreError;
 use contextful_core::store::declare::{DeclarationMalformed, TableDecl};
 use contextful_core::store::reconcile::{Column, ColumnType};
-use contextful_core::store::relation::{ident, relation};
+use contextful_core::store::relation::{ident, relation, relation_with_encryption};
 use contextful_core::store::reserve::{COMMIT_SEQ, INGESTED_AT, ROW_SEQ, RUN_ID, SITE_ID};
 use contextful_policy::enforce::mask::Pepper;
 use contextful_policy::enforce::policy::TablePolicy;
@@ -266,7 +266,7 @@ impl Face {
     /// the table's registered relation; an engine-composed read with no row ceiling.
     pub fn rows(&self, session: &Session, table: &str, run: Option<&str>) -> Result<Response, ReadFault> {
         let r = self.registered(session, table)?;
-        let engine = self.pool.engine(session)?;
+        let engine = self.pool.engine(session, self.store.parquet_key())?;
         let (sql, parameters) = match run {
             Some(run) => {
                 (format!("SELECT * FROM {} WHERE {} = ?", ident(r.name()), ident(RUN_ID)), Bindings::positional([Bound::Text(run.to_string())]))
@@ -512,7 +512,7 @@ impl Face {
     /// (`read.guard.query-binding`), the scope guard over its tenant literals and bound
     /// values, then execution under the least row ceiling.
     pub fn query_with(&self, session: &Session, sql: &str, parameters: &Map<String, Value>, opts: ReadOptions) -> Result<Response, ReadFault> {
-        let engine = self.pool.engine(session)?;
+        let engine = self.pool.engine(session, self.store.parquet_key())?;
         let tree = engine.serialize(sql)?;
         let admitted = admit_in(session, &tree)?;
         if admitted.placeholders.iter().any(|p| p.parse::<u64>().is_ok()) && positional_marker(sql) {
@@ -520,7 +520,7 @@ impl Face {
         }
         let bindings = bind_query(parameters, &admitted.placeholders)?;
         scope::guard(&tree, session, &bindings)?;
-        engine.register_ledgers(session, &admitted.relations)?;
+        engine.register_ledgers(&self.store, session, &admitted.relations)?;
         self.bind_valid_time(&admitted.relations, opts.bounds)?;
         let ceiling = self.ceiling(session, &admitted.relations, opts.limit, None);
         let mut response = self.answer(&engine, session, &admitted.relations, sql, &bindings, ceiling, opts, &tree)?;
@@ -540,12 +540,12 @@ impl Face {
         authorize_template(session.grants(), id, &declared)?;
         let template = self.templates.iter().find(|t| t.id == id).expect("an authorized template is declared");
         let values = template.bind(arguments)?;
-        let engine = self.pool.engine(session)?;
+        let engine = self.pool.engine(session, self.store.parquet_key())?;
         let tree = engine.serialize(&template.sql)?;
         let admitted = admit_in(session, &tree)?;
         let parameters = template.bindings(values, &admitted.placeholders);
         scope::guard(&tree, session, &parameters)?;
-        engine.register_ledgers(session, &admitted.relations)?;
+        engine.register_ledgers(&self.store, session, &admitted.relations)?;
         self.bind_valid_time(&admitted.relations, opts.bounds)?;
         let ceiling = self.ceiling(session, &admitted.relations, opts.limit, template.max_rows);
         let response = self.answer(&engine, session, &admitted.relations, &template.sql, &parameters, ceiling, opts, &tree)?;
@@ -608,7 +608,7 @@ impl Face {
         };
         let r = self.registered(session, table)?;
         self.bind_valid_time(&BTreeSet::from([table.to_string()]), bounds)?;
-        let engine = self.pool.engine(session)?;
+        let engine = self.pool.engine(session, self.store.parquet_key())?;
         let sql = format!("SELECT count(*) FROM {}", ident(r.name()));
         let (_, count) = match deadline {
             Some((ms, source)) => engine.run_timed(&sql, &Bindings::default(), None, ms, source)?,
@@ -730,11 +730,12 @@ impl Face {
         }
         let file = self.absolute(path);
         let schema = self.store.schema(&table)?;
-        let carried = crate::parquet_io::columns(std::path::Path::new(&file))?;
+        let carried = self.store.parquet_columns(std::path::Path::new(&file))?;
         let absent: Vec<Column> = schema.columns.iter().filter(|c| !carried.contains(&c.name)).cloned().collect();
-        let base = relation(&decl, std::slice::from_ref(&file), &schema.columns, &absent, opts.bounds.valid_as_of)?;
+        let key_name = self.store.parquet_key().map(|_| crate::encrypt::PARQUET_KEY_NAME);
+        let base = relation_with_encryption(&decl, std::slice::from_ref(&file), &schema.columns, &absent, opts.bounds.valid_as_of, key_name)?;
         let preview = session.relation_over(&table, &base, vec![file]).expect("a registered table carries its source");
-        let engine = SqlEngine::open(session)?;
+        let engine = SqlEngine::open(session, self.store.parquet_key())?;
         engine.register(PREVIEW_RELATION, preview.sql())?;
         let touched = BTreeSet::from([table]);
         let ceiling = self.ceiling(session, &touched, opts.limit, None);

@@ -9,6 +9,7 @@
 
 mod derived;
 mod machine;
+mod sealed;
 mod stores;
 
 pub use derived::DerivedSqlite;

@@ -36,6 +36,18 @@ pub fn relation(
     absent: &[Column],
     valid_as_of: Option<Bound>,
 ) -> Result<String, StoreError> {
+    relation_with_encryption(decl, files, schema_columns, absent, valid_as_of, None)
+}
+
+/// The relation with a named in-memory Parquet footer key when its files are encrypted.
+pub fn relation_with_encryption(
+    decl: &TableDecl,
+    files: &[String],
+    schema_columns: &[Column],
+    absent: &[Column],
+    valid_as_of: Option<Bound>,
+    encryption_key: Option<&str>,
+) -> Result<String, StoreError> {
     let mut base = if files.is_empty() {
         zero_row(schema_columns)
     } else {
@@ -48,7 +60,8 @@ pub fn relation(
             .map(|c| format!("CAST({} AS {}) AS {}", ident(&c.name), c.ty.sql(), ident(&c.name)))
             .collect();
         let replace = if vectors.is_empty() { String::new() } else { format!(" REPLACE ({})", vectors.join(", ")) };
-        format!("SELECT *{replace} FROM read_parquet([{}], union_by_name = true, hive_partitioning = false)", list.join(", "))
+        let encrypted = encryption_key.map(|key| format!(", encryption_config = {{footer_key: {}}}", literal(key))).unwrap_or_default();
+        format!("SELECT *{replace} FROM read_parquet([{}], union_by_name = true, hive_partitioning = false{encrypted})", list.join(", "))
     };
     if !files.is_empty() && !absent.is_empty() {
         base = format!("{base} UNION ALL BY NAME {}", zero_row(absent));

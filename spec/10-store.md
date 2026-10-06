@@ -414,13 +414,19 @@ unsettled: How is a set of validity intervals for one key modelled, given one pa
 
 ## encrypt
 
-At-rest encryption of Parquet, sidecars and ledgers, the key derivation, and forward key rotation.
+At-rest encryption of Parquet, sidecars, ledgers, metadata, machine catalogs and node run-state files, with key derivation and forward key rotation.
 
 - `key-binding` — At-rest encryption is per project, off unless `[encryption] key_source` names `env:<NAME>` or a key-management service.
 - `key-unbound` — A `key_source` naming a binding the process lacks raises `StoreEncryptionKeyUnbound` at startup, with no cleartext fallback.
   *P3*
 - `cipher` — Parquet, footers included, encrypts through Parquet modular encryption; every sidecar and ledger file encrypts with AES-256-GCM under a per-file data key wrapped by the project key.
   *because a cleartext vector graph admits nearest-neighbour search over the embedding space*
+- `metadata-envelope` — With a bound key, schema, manifest, pointer, counter and commit-log files hold their canonical JSON or text inside an authenticated versioned envelope; without encryption they retain their canonical bytes.
+  *A-store*
+- `run-state-envelope` — With a bound key, a node's synced run-state JSON holds its canonical bytes inside an authenticated envelope, and a reader refuses a file sealed under another key.
+  *A-store*
+- `machine-catalog-sealing` — A bound `machine.sqlite` holds an authenticated SQLite snapshot; each catalog transaction reads it into process memory under a file lock and seals committed bytes before releasing the lock.
+  *A-store*
 - `password-kdf` — A password-derived project key uses Argon2id with 64 MiB memory, 3 iterations and 4 lanes.
 - `transport-separate` — At-rest encryption covers files and TLS covers bucket transport; a cleartext endpoint carries no encrypted-at-rest claim.
 - `redacted-index` — An index declared over a column redacted at write time raises `StoreIndexOverRedactedColumn` at manifest validation.

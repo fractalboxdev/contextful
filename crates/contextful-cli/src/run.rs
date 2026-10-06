@@ -166,6 +166,8 @@ pub(crate) fn wire(args: &ProjectArgs) -> Result<Wired> {
 
 /// Wire the engine to a located project's run state and machine catalog.
 pub(crate) fn wire_at(project: &Project, now: &Option<String>) -> Result<Wired> {
+    // Store::open refuses declared encryption until every run-state path is sealed.
+    let _store = Store::open(&project.dir, &project.name)?;
     let root = project.run_dir();
     let clock = clock(now)?;
     let journal = Journal::open(&root);

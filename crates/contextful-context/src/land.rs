@@ -4,7 +4,7 @@
 
 use crate::error::{ContextError, IoPath, Result};
 use crate::parquet_io;
-use crate::store::{create_new_file, replace_file, FileLock, Store, LOCK_WAIT_SECS};
+use crate::store::{FileLock, Store, LOCK_WAIT_SECS};
 use arrow_array::builder::{
     BinaryBuilder, BooleanBuilder, FixedSizeBinaryBuilder, FixedSizeListBuilder, Float16Builder, Float32Builder, Float64Builder,
     Int32Builder, Int64Builder, StringBuilder, TimestampNanosecondBuilder,
@@ -380,6 +380,7 @@ fn run_parts(arriving: &Schema, batches: &[Batch], ctx: &RunContext, per_batch: 
 /// column for column (`store.lay-out.run-replay`), `StoreRunConflict` otherwise
 /// (`store.lay-out.run-conflict`).
 fn replay(
+    store: &Store,
     manifest_path: &std::path::Path,
     types: &HashMap<String, ColumnType>,
     batches: &[Batch],
@@ -391,7 +392,7 @@ fn replay(
     let conflict = |why: &str| -> ContextError {
         StoreError::StoreRunConflict(format!("run `{run_id}` is already committed on node `{}` {why}", ctx.node)).into()
     };
-    let bytes = std::fs::read(manifest_path).at(manifest_path)?;
+    let bytes = store.metadata().read(manifest_path)?;
     let committed: RunManifest = serde_json::from_slice(&bytes)
         .map_err(|e| StoreError::StoreManifestUnreadable(format!("{}: {e}", manifest_path.display())))?;
     if committed.logged {
@@ -412,7 +413,7 @@ fn replay(
     }
     let dir = manifest_path.parent().expect("a manifest sits in its node directory");
     for (part, entry) in rebuilt.iter().zip(&committed.parts) {
-        if !same_columns(part, &parquet_io::read(&dir.join(&entry.name))?) {
+        if !same_columns(part, &store.read_parquet(&dir.join(&entry.name))?) {
             return Err(other_rows());
         }
     }
@@ -504,7 +505,7 @@ fn commit_run(
     let (node_dir, manifest_path) = run_dir(store, &decl.name, &ctx.node, &ctx.injection.run_id)?;
     let types = column_types(store, decl, batches)?;
     if manifest_path.exists() {
-        return replay(&manifest_path, &types, batches, ctx, position, per_batch);
+        return replay(store, &manifest_path, &types, batches, ctx, position, per_batch);
     }
     let site = reconcile(store, decl, batches, &ctx.node, &ctx.injection, per_batch, None, true)?;
 
@@ -515,19 +516,19 @@ fn commit_run(
     let _commit_lock = store.lock_commit(&decl.name)?;
     let _run_lock = take_run_lock(&node_dir)?;
     if manifest_path.exists() {
-        return replay(&manifest_path, &types, batches, ctx, position, per_batch);
+        return replay(store, &manifest_path, &types, batches, ctx, position, per_batch);
     }
     let commit_seq = store.assign_commit_seq(&decl.name)?;
 
     let mut parts = Vec::new();
     for (ordinal, rb) in run_parts(&site.arriving, batches, ctx, per_batch, commit_seq, ctx.committed_at)?.into_iter().enumerate() {
         let name = part_name(part_ordinal(ordinal)?);
-        write_batch(&site.node_dir.join(&name), &rb)?;
-        parts.push(PartEntry { name, key_version: 0 });
+        write_batch(store, &site.node_dir.join(&name), &rb)?;
+        parts.push(PartEntry { name, key_version: store.sealing().key_version() });
     }
-    match create_manifest(&site, decl, ctx, parts, position, commit_seq, precommit, commit_point)? {
+    match create_manifest(store, &site, decl, ctx, parts, position, commit_seq, precommit, commit_point)? {
         Some(manifest) => Ok(Landing { manifest, replay: false }),
-        None => replay(&manifest_path, &types, batches, ctx, position, per_batch),
+        None => replay(store, &manifest_path, &types, batches, ctx, position, per_batch),
     }
 }
 
@@ -561,13 +562,9 @@ fn already_committed(node: &NodeId, run_id: &str) -> ContextError {
 }
 
 /// The producer columns the run's earlier stages merged, if any stage wrote them.
-fn read_staged_schema(stage_dir: &Path) -> Result<Option<Schema>> {
+fn read_staged_schema(store: &Store, stage_dir: &Path) -> Result<Option<Schema>> {
     let path = stage_dir.join(STAGED_SCHEMA_FILE);
-    match std::fs::read(&path) {
-        Ok(bytes) => serde_json::from_slice(&bytes).map(Some).map_err(|e| ContextError::Invalid(format!("{}: {e}", path.display()))),
-        Err(e) if e.kind() == std::io::ErrorKind::NotFound => Ok(None),
-        Err(e) => Err(ContextError::Io { path, source: e }),
-    }
+    store.metadata().read_optional(&path)?.map(|bytes| serde_json::from_slice(&bytes).map_err(|e| ContextError::Invalid(format!("{}: {e}", path.display())))).transpose()
 }
 
 /// A column's type comes from the producer, then the declaration
@@ -721,11 +718,11 @@ fn part_batch(arriving: &Schema, rows: &[Map<String, Value>], injection: &Inject
 }
 
 /// Write `rb` as the Parquet file `path`, replacing a file a lost landing left there.
-fn write_batch(path: &Path, rb: &RecordBatch) -> Result<()> {
+fn write_batch(store: &Store, path: &Path, rb: &RecordBatch) -> Result<()> {
     if path.exists() {
         std::fs::remove_file(path).at(path)?;
     }
-    parquet_io::write(path, rb)
+    store.write_parquet(path, rb)
 }
 
 /// An instant as the nanoseconds `_ingested_at` stores.
@@ -737,6 +734,7 @@ fn nanos(at: Instant) -> Result<i64> {
 /// `precommit`; then run `commit_point`. `None` when a manifest stood already.
 #[allow(clippy::too_many_arguments)]
 fn create_manifest(
+    store: &Store,
     site: &RunSite,
     decl: &TableDecl,
     ctx: &RunContext,
@@ -765,7 +763,7 @@ fn create_manifest(
     std::fs::create_dir_all(&site.node_dir).at(&site.node_dir)?;
     let bytes = serde_json::to_vec_pretty(&manifest).expect("a manifest serializes");
     precommit()?;
-    if !create_new_file(&site.node_dir.join(MANIFEST_FILE), &bytes)? {
+    if !store.metadata().create_new(&site.node_dir.join(MANIFEST_FILE), &bytes)? {
         return Ok(None);
     }
     commit_point(&manifest)?;
@@ -799,19 +797,19 @@ pub fn stage_part(store: &Store, decl: &TableDecl, batch: &Batch, node: &NodeId,
     let (node_dir, manifest_path) = run_dir(store, &decl.name, node, &injection.run_id)?;
     let stage_dir = node_dir.join(STAGE_DIR);
     let _run_lock = lock_run(&node_dir, &manifest_path, node, &injection.run_id)?;
-    let earlier = read_staged_schema(&stage_dir)?;
+    let earlier = read_staged_schema(store, &stage_dir)?;
     let landing = reconcile(store, decl, std::slice::from_ref(batch), node, injection, true, earlier.as_ref(), false)?;
     // The staged schema lands before the part, so every part a commit names has its
     // columns in the schema that commit merges.
     std::fs::create_dir_all(&stage_dir).at(&stage_dir)?;
     let text = serde_json::to_vec_pretty(&landing.run_columns).expect("a schema serializes");
-    replace_file(&stage_dir.join(STAGED_SCHEMA_FILE), &text)?;
+    store.metadata().replace(&stage_dir.join(STAGED_SCHEMA_FILE), &text)?;
     let mut injection = injection.clone();
     injection.batch_seq = Some(batch_seq(ordinal as usize)?);
     let offset = i64::try_from(row_offset).map_err(|_| ContextError::Invalid(format!("row offset {row_offset} exceeds the `_row_seq` range")))?;
     let name = stage_name(ordinal);
     let path = stage_dir.join(&name);
-    write_batch(&path, &part_batch(&landing.arriving, &batch.rows, &injection, offset, None)?)?;
+    write_batch(store, &path, &part_batch(&landing.arriving, &batch.rows, &injection, offset, None)?)?;
     let bytes = std::fs::metadata(&path).at(&path)?.len();
     Ok(StagedPart { name, rows: batch.rows.len() as u64, bytes })
 }
@@ -849,7 +847,7 @@ pub fn commit_parts(
                 return Err(ContextError::Invalid(format!("run `{}` commits part `{name}`, which no stage wrote on node `{}`", ctx.injection.run_id, ctx.node)));
             }
         }
-        let earlier = read_staged_schema(&stage_dir)?;
+        let earlier = read_staged_schema(store, &stage_dir)?;
         let landing = reconcile(store, decl, &[], &ctx.node, &ctx.injection, true, earlier.as_ref(), true)?;
         let commit_seq = store.assign_commit_seq(&decl.name)?;
         let inserts = [
@@ -865,10 +863,10 @@ pub fn commit_parts(
             let name = part_name(part_ordinal(i)?);
             let to = landing.node_dir.join(&name);
             written.push(to.clone());
-            parquet_io::copy_inserting(&stage_dir.join(staged), &to, &inserts)?;
-            entries.push(PartEntry { name, key_version: 0 });
+            parquet_io::copy_inserting_with_key(&stage_dir.join(staged), &to, &inserts, store.parquet_key())?;
+            entries.push(PartEntry { name, key_version: store.sealing().key_version() });
         }
-        create_manifest(&landing, decl, ctx, entries, position, commit_seq, precommit, commit_point)?.ok_or_else(|| already_committed(&ctx.node, &ctx.injection.run_id))
+        create_manifest(store, &landing, decl, ctx, entries, position, commit_seq, precommit, commit_point)?.ok_or_else(|| already_committed(&ctx.node, &ctx.injection.run_id))
     })();
     if committed.is_err() && !manifest_path.exists() {
         for path in &written {

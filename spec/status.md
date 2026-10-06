@@ -9,13 +9,13 @@ An unpinned clause is `committed`; a pinned one is `performed` when its Rust, Le
 | `authority` | 2 | 16 | 269 | 77 | 27 | 10 | 206 | 0 | 206 |
 | `connector` | 2 | 14 | 349 | 89 | 21 | 15 | 218 | 0 | 207 |
 | `corpus` | 1 | 10 | 79 | 37 | 7 | 0 | 40 | 0 | 40 |
-| `disclosure` | 3 | 16 | 134 | 66 | 13 | 3 | 63 | 0 | 54 |
-| `read` | 2 | 15 | 200 | 31 | 22 | 9 | 178 | 0 | 164 |
-| `run` | 3 | 26 | 374 | 98 | 36 | 37 | 262 | 0 | 261 |
-| `store` | 1 | 17 | 237 | 55 | 13 | 20 | 201 | 0 | 0 |
-| `surface` | 2 | 20 | 106 | 49 | 22 | 0 | 51 | 0 | 0 |
-| `topology` | 1 | 6 | 70 | 24 | 5 | 5 | 38 | 0 | 0 |
-| **total** | 19 | 155 | 2053 | 585 | 188 | 113 | 1398 | 0 | |
+| `disclosure` | 3 | 16 | 134 | 66 | 13 | 3 | 63 | 0 | 63 |
+| `read` | 2 | 15 | 200 | 31 | 22 | 9 | 178 | 0 | 172 |
+| `run` | 3 | 26 | 374 | 98 | 36 | 37 | 262 | 0 | 262 |
+| `store` | 1 | 17 | 240 | 55 | 13 | 20 | 203 | 0 | 202 |
+| `surface` | 2 | 20 | 106 | 49 | 22 | 0 | 51 | 0 | 51 |
+| `topology` | 1 | 6 | 70 | 24 | 5 | 5 | 38 | 0 | 38 |
+| **total** | 19 | 155 | 2056 | 585 | 188 | 113 | 1400 | 0 | |
 
 Decision records: 18.
 
@@ -27,7 +27,7 @@ A milestone reads `closed` when its acceptance test computes `passing` and every
 | --- | --- | --- | --- | --- | --- |
 | 0 — The test-first gate | 2 | 18 | 6 | passing | open |
 | 1 — The authority core | 14 | 238 | 186 | passing | closed |
-| 2 — The store | 9 | 164 | 133 | passing | closed |
+| 2 — The store | 9 | 167 | 135 | passing | closed |
 | 3 — The run path | 11 | 207 | 144 | passing | closed |
 | 4 — Ingest | 25 | 497 | 314 | passing | open |
 | 5 — The read face under enforcement | 17 | 262 | 204 | passing | open |
@@ -1187,6 +1187,8 @@ Unscheduled operations: 10.
 | `store.emit.plan` | `crates/contextful-sync/tests/integration/generation.rs::an_emitted_plan_lists_what_the_push_commits_and_touches_no_bucket` | performed |
 | `store.emit.plan-scope` | `crates/contextful-sync/tests/integration/generation.rs::a_plan_leaves_out_keys_another_node_owns` | performed |
 | `store.encrypt.key-unbound` | `crates/contextful-context/tests/integration/encrypt.rs::an_unbound_key_source_refuses_to_open_the_store` | performed |
+| `store.encrypt.machine-catalog-sealing` | `crates/contextful-sqlite/tests/integration/machine.rs::sealed_machine_catalog_persists_lease_cursor_and_run_without_plaintext` | performed |
+| `store.encrypt.run-state-envelope` | `crates/contextful-sync/tests/integration/run_state.rs::a_bound_run_state_stays_sealed_across_record_and_read` | performed |
 | `store.encrypt.sidecar-reader` | `crates/contextful-context/tests/integration/encrypt.rs::a_plaintext_sidecar_is_mapped_and_a_sealed_one_opens_into_memory_alone` | performed |
 | `store.endpoint.addressing` | `crates/contextful-sync/tests/integration/s3.rs::an_s3_bucket_signs_and_addresses_every_request` | performed |
 | `store.endpoint.conditional-answers` | `crates/contextful-sync/tests/integration/s3.rs::backend_answers_map_to_failed_conditions_and_refusals` | performed |

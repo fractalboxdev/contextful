@@ -217,9 +217,20 @@ impl SqlEngine {
     /// registered relation. No view directory exists on disk
     /// (`read.register.connection-views`). Every file a view names is immutable under the
     /// pool key the connection serves, so the connection keeps Parquet footers it read.
-    pub fn open(session: &Session) -> Result<SqlEngine, ReadFault> {
+    pub fn open(session: &Session, parquet_key: Option<&[u8; 16]>) -> Result<SqlEngine, ReadFault> {
         let engine = SqlEngine::connect()?;
         let conn = &engine.conn;
+        if let Some(key) = parquet_key {
+            crate::ledger::disable_spilling(conn)?;
+            use base64::Engine;
+            let value = base64::engine::general_purpose::STANDARD.encode(key);
+            conn.execute_batch(&format!(
+                "PRAGMA add_parquet_key({}, {})",
+                literal(crate::encrypt::PARQUET_KEY_NAME),
+                literal(&value)
+            ))
+            .map_err(fault)?;
+        }
         conn.execute_batch("SET parquet_metadata_cache = true").map_err(fault)?;
         conn.register_scalar_function_with_state::<MaskHash>(HASH_FUNCTION, session.pepper()).map_err(fault)?;
         conn.register_scalar_function_with_state::<MaskHashBytes>(HASH_BYTES_FUNCTION, session.pepper()).map_err(fault)?;
@@ -254,9 +265,24 @@ impl SqlEngine {
 
     /// Register the request ledgers among `names`, the relations an admitted statement
     /// names; the connection already admits their files.
-    pub fn register_ledgers(&self, session: &Session, names: &std::collections::BTreeSet<String>) -> Result<(), ReadFault> {
+    pub fn register_ledgers(&self, store: &crate::store::Store, session: &Session, names: &std::collections::BTreeSet<String>) -> Result<(), ReadFault> {
         for l in session.ledgers_named(names)? {
-            self.register(l.name(), l.sql())?;
+            if matches!(store.sealing(), crate::vector::Sealing::Sealed(_)) && !l.files().is_empty() {
+                let decoded = format!("__contextful_decoded_{}", l.name());
+                let mut rows = Vec::new();
+                for file in l.files() {
+                    rows.extend(crate::ledger::read_for_store(store, std::path::Path::new(file))?);
+                }
+                crate::ledger::register_memory(&self.conn, &decoded, &rows)?;
+                let source = contextful_core::store::ledger::ledger_sql(l.files());
+                let sql = l.sql().replace(&source, &format!("SELECT * FROM {}", ident(&decoded)));
+                if sql == l.sql() {
+                    return Err(ReadFault::Engine(format!("ledger `{}` has no registered source", l.name())));
+                }
+                self.register(l.name(), &sql)?;
+            } else {
+                self.register(l.name(), l.sql())?;
+            }
         }
         Ok(())
     }

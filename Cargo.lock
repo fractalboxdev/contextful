@@ -877,6 +877,8 @@ dependencies = [
  "arrow-row",
  "arrow-schema",
  "arrow-select",
+ "base64 0.22.1",
+ "bytes",
  "contextful-core",
  "contextful-eval",
  "contextful-fs",
@@ -886,6 +888,7 @@ dependencies = [
  "half",
  "memmap2",
  "parquet",
+ "ring",
  "serde",
  "serde_json",
  "sha2 0.10.9",
@@ -957,6 +960,7 @@ dependencies = [
  "getrandom 0.3.4",
  "libc",
  "tempfile",
+ "windows-sys 0.61.2",
 ]
 
 [[package]]
@@ -996,6 +1000,7 @@ dependencies = [
  "blake3",
  "contextful-core",
  "contextful-eval",
+ "contextful-fs",
  "ed25519-dalek",
  "getrandom 0.2.17",
  "hex",
@@ -1044,9 +1049,11 @@ dependencies = [
 name = "contextful-sqlite"
 version = "0.5.0"
 dependencies = [
+ "contextful-context",
  "contextful-core",
  "contextful-engine",
  "contextful-eval",
+ "contextful-fs",
  "parking_lot",
  "rusqlite",
  "serde",
@@ -1847,8 +1854,10 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "ff2abc00be7fca6ebc474524697ae276ad847ad0a6b3faa4bcb027e9a4614ad0"
 dependencies = [
  "cfg-if",
+ "js-sys",
  "libc",
  "wasi",
+ "wasm-bindgen",
 ]
 
 [[package]]
@@ -2954,6 +2963,7 @@ dependencies = [
  "num-integer",
  "num-traits",
  "paste",
+ "ring",
  "seq-macro",
  "thrift",
  "twox-hash",

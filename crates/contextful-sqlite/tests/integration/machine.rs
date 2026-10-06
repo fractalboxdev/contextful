@@ -8,12 +8,86 @@ use contextful_core::run::record::RunStatus;
 use contextful_core::run::RunError;
 use contextful_core::store::catalog::MACHINE_CATALOG_FILE;
 use contextful_core::store::StoreError;
+use contextful_context::encrypt::AesGcmFileCipher;
 use contextful_sqlite::MachineCatalog;
 use serde_json::json;
 use std::sync::Arc;
 
 fn catalog(dir: &tempfile::TempDir, clock: &SetClock) -> MachineCatalog {
     MachineCatalog::open(&dir.path().join(MACHINE_CATALOG_FILE), Arc::new(clock.clone())).unwrap()
+}
+
+fn sealed_catalog(dir: &tempfile::TempDir, clock: &SetClock, key: u8) -> MachineCatalog {
+    MachineCatalog::open_sealed(
+        &dir.path().join(MACHINE_CATALOG_FILE),
+        Arc::new(clock.clone()),
+        Arc::new(AesGcmFileCipher::new([key; 32], 1)),
+    )
+    .unwrap()
+}
+
+// spec: store.encrypt.machine-catalog-sealing@9040e746
+#[test]
+fn sealed_machine_catalog_persists_lease_cursor_and_run_without_plaintext() {
+    let dir = tempfile::tempdir().unwrap();
+    let clock = SetClock::new();
+    let canary = "machine-catalog-secret-canary-4017";
+    {
+        let c = sealed_catalog(&dir, &clock, 7);
+        c.acquire(&LeaseKey::Pipeline(canary.into()), canary, 30).unwrap().unwrap();
+        c.cursor_cas("feed", "filings", 0, cursor(canary), None).unwrap();
+        c.put_run(&run_row(canary, canary, RunStatus::Success)).unwrap();
+    }
+    let c = sealed_catalog(&dir, &clock, 7);
+    assert_eq!(c.lease_row(&LeaseKey::Pipeline(canary.into())).unwrap().fence, 1);
+    assert_eq!(c.cursor("feed", "filings").unwrap().position, Some(json!(canary)));
+    assert_eq!(c.run(canary).unwrap().unwrap().pipeline_id, canary);
+    for entry in std::fs::read_dir(dir.path()).unwrap() {
+        let path = entry.unwrap().path();
+        let bytes = std::fs::read(&path).unwrap();
+        assert!(!bytes.windows(canary.len()).any(|window| window == canary.as_bytes()), "{} exposes the canary", path.display());
+        assert!(!bytes.starts_with(b"SQLite format 3"), "{} exposes a SQLite page", path.display());
+    }
+}
+
+#[test]
+fn sealed_machine_catalog_refuses_plaintext_and_an_unbound_key() {
+    let dir = tempfile::tempdir().unwrap();
+    let clock = SetClock::new();
+    let path = dir.path().join(MACHINE_CATALOG_FILE);
+    catalog(&dir, &clock).put_run(&run_row("plain", "feed", RunStatus::Success)).unwrap();
+    let before = std::fs::read(&path).unwrap();
+    assert!(MachineCatalog::open_sealed(&path, Arc::new(clock.clone()), Arc::new(AesGcmFileCipher::new([7; 32], 1))).is_err());
+    assert_eq!(std::fs::read(&path).unwrap(), before);
+
+    std::fs::remove_file(&path).unwrap();
+    sealed_catalog(&dir, &clock, 7).put_run(&run_row("sealed", "feed", RunStatus::Success)).unwrap();
+    assert!(MachineCatalog::open_sealed(&path, Arc::new(clock), Arc::new(AesGcmFileCipher::new([8; 32], 1))).is_err());
+}
+
+#[test]
+fn sealed_machine_catalog_serializes_cross_connection_cursor_cas() {
+    let dir = tempfile::tempdir().unwrap();
+    let clock = SetClock::new();
+    sealed_catalog(&dir, &clock, 7);
+    const WRITERS: u64 = 4;
+    const EACH: u64 = 10;
+    std::thread::scope(|scope| {
+        for writer in 0..WRITERS {
+            let (dir, clock) = (&dir, &clock);
+            scope.spawn(move || {
+                let c = sealed_catalog(dir, clock, 7);
+                let mut applied = 0;
+                while applied < EACH {
+                    let seen = c.cursor("feed", "filings").unwrap().version;
+                    if c.cursor_cas("feed", "filings", seen, cursor(&format!("writer-{writer}")), None).unwrap() == Cas::Applied {
+                        applied += 1;
+                    }
+                }
+            });
+        }
+    });
+    assert_eq!(sealed_catalog(&dir, &clock, 7).cursor("feed", "filings").unwrap().version, WRITERS * EACH);
 }
 
 fn pipeline() -> LeaseKey {

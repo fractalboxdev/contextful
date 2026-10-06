@@ -81,7 +81,7 @@ impl Face {
     /// `session`'s dedup view, replacing any digest the citation carried
     /// (`read.recall.evidence-key`). Returns how each citation stamped, in order.
     pub fn stamp_evidence(&self, session: &Session, evidence: &mut [EvidenceRef]) -> Result<Vec<Stamped>, ReadFault> {
-        let engine = self.pool.engine(session)?;
+        let engine = self.pool.engine(session, self.store.parquet_key())?;
         evidence.iter_mut().map(|r| self.stamp(&engine, session, r)).collect()
     }
 
@@ -127,7 +127,7 @@ impl Face {
         let schema = self.store.schema(table)?;
         let mut carried = BTreeSet::new();
         for f in &files {
-            carried.extend(crate::parquet_io::columns(std::path::Path::new(f))?);
+            carried.extend(self.store.parquet_columns(std::path::Path::new(f))?);
         }
         let absent: Vec<_> = schema.columns.iter().filter(|c| !carried.contains(&c.name)).cloned().collect();
         let base = relation(&TableDecl::named(table), &files, &schema.columns, &absent, None)?;

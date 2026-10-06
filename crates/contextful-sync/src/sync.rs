@@ -1,6 +1,7 @@
 //! The push plan, push, pull, the probe, bucket leases and fenced pointer publication for one store.
 
 use contextful_context::{ContextError, Store};
+use contextful_context::encrypt::MetadataFiles;
 use contextful_core::run::journal::sha256_hex;
 use contextful_core::store::catalog::{DERIVED_CATALOG_FILE, MACHINE_CATALOG_FILE};
 use contextful_core::store::lease::{compaction_key, BucketLease, BucketPointer, CLOCK_SKEW_SECS};
@@ -235,7 +236,9 @@ fn local_pointers(store: &Store, project: &str) -> Result<Vec<LocalPointer>> {
                 continue;
             }
             let table = dir.strip_prefix(&tables).map(|r| r.to_string_lossy().replace('\\', "/")).unwrap_or_default();
-            let pointer = std::fs::read(&path).map_err(|e| e.to_string()).and_then(|b| serde_json::from_slice::<Pointer>(&b).map_err(|e| e.to_string()));
+            let pointer = std::fs::read(&path).map_err(|e| e.to_string())
+                .and_then(|b| store.open_metadata_bytes(&path, &b).map_err(|e| e.to_string()))
+                .and_then(|b| serde_json::from_slice::<Pointer>(&b).map_err(|e| e.to_string()));
             out.push(LocalPointer { key: format!("{project}/tables/{table}/{POINTER_FILE}"), table, table_dir: dir.clone(), pointer });
         }
     }
@@ -266,7 +269,7 @@ enum Ancestry {
 /// Whether `local` advances the bucket's pointer `remote` (`store.push.pointer-carry`):
 /// its snapshot is whole here and the bucket's names none or an ancestor of it. The
 /// bucket's fence carries over; a local fence below it keeps the pointer local.
-fn carry(local: &LocalPointer, remote: Option<&BucketPointer>) -> Result<Carry> {
+fn carry(store: &Store, local: &LocalPointer, remote: Option<&BucketPointer>) -> Result<Carry> {
     let pointer = match &local.pointer {
         Ok(p) => p,
         Err(e) => return Ok(Carry::Warn(format!("`{}` does not parse ({e}); the pointer stays local", local.key))),
@@ -280,11 +283,11 @@ fn carry(local: &LocalPointer, remote: Option<&BucketPointer>) -> Result<Carry> 
     if let Some(f) = pointer.fence.filter(|f| *f < fence) {
         return Ok(Carry::Warn(format!("`{}` carries fence {f} and the bucket's pointer fence {fence}; the pointer stays local", local.key)));
     }
-    if let Some(missing) = missing_parts(&local.table_dir, &snapshot)? {
+    if let Some(missing) = missing_parts(store, &local.table_dir, &snapshot)? {
         return Ok(Carry::Warn(format!("snapshot `{snapshot}` lacks `{missing}`; `{}` stays local", local.key)));
     }
     if let Some(ancestor) = published {
-        match ancestry(&local.table_dir, &snapshot, ancestor) {
+        match ancestry(store, &local.table_dir, &snapshot, ancestor) {
             Ancestry::Descends => {}
             Ancestry::Diverges => return Ok(Carry::Keep),
             Ancestry::Unknown => {
@@ -301,12 +304,12 @@ fn carry(local: &LocalPointer, remote: Option<&BucketPointer>) -> Result<Carry> 
 /// Whether `ancestor` precedes `snapshot` under `table_dir`, read from each manifest's
 /// `ancestors` (`store.lay-out.ancestors`), else its `parent`, so retention collecting
 /// the snapshots between them leaves the answer intact.
-fn ancestry(table_dir: &Path, snapshot: &str, ancestor: &str) -> Ancestry {
+fn ancestry(store: &Store, table_dir: &Path, snapshot: &str, ancestor: &str) -> Ancestry {
     let mut seen = BTreeSet::new();
     let mut at = snapshot.to_string();
     while seen.insert(at.clone()) {
         let path = table_dir.join("data").join("snapshots").join(&at).join(MANIFEST_FILE);
-        let Some(manifest) = std::fs::read(&path).ok().and_then(|b| serde_json::from_slice::<SnapshotManifest>(&b).ok()) else {
+        let Some(manifest) = std::fs::read(&path).ok().and_then(|b| store.open_metadata_bytes(&path, &b).ok()).and_then(|b| serde_json::from_slice::<SnapshotManifest>(&b).ok()) else {
             return Ancestry::Unknown;
         };
         let next = match (&manifest.ancestors, &manifest.parent) {
@@ -508,7 +511,8 @@ impl Syncer {
         for bucket_key in self.bucket.list(&self.key(&format!("{}/tables/", self.project))?)?.into_iter().filter(|k| is_pointer(k)) {
             let rel_key = bucket_key.strip_prefix(&format!("{}/", self.prefix)).unwrap_or(&bucket_key).to_string();
             let Some((bytes, _)) = self.bucket.get(&bucket_key)? else { continue };
-            let pointer: BucketPointer = serde_json::from_slice(&bytes).map_err(|e| SyncError::Context(ContextError::Invalid(format!("`{rel_key}`: {e}"))))?;
+            let clear = self.store.open_metadata_bytes(Path::new(&bucket_key), &bytes)?;
+            let pointer: BucketPointer = serde_json::from_slice(&clear).map_err(|e| SyncError::Context(ContextError::Invalid(format!("`{rel_key}`: {e}"))))?;
             out.insert(rel_key, pointer);
         }
         Ok(out)
@@ -706,9 +710,10 @@ impl Syncer {
         let key = self.pointer_key(&local.table)?;
         for _ in 0..PUT_ROUNDS {
             let (remote, etag) = self.read_pointer(&local.table)?;
-            let decision = carry(local, etag.is_some().then_some(&remote))?;
+            let decision = carry(&self.store, local, etag.is_some().then_some(&remote))?;
             let Carry::Publish(next) = &decision else { return Ok(decision) };
             let bytes = serde_json::to_vec_pretty(next).map_err(|e| SyncError::Context(ContextError::Invalid(e.to_string())))?;
+            let bytes = self.store.seal_metadata_bytes(Path::new(&key), &bytes)?;
             let condition = etag.map_or(Condition::IfNoneMatch, Condition::IfMatch);
             if let Put::Applied(_) = self.bucket.put(&key, &bytes, condition)? {
                 return Ok(decision);
@@ -752,7 +757,8 @@ impl Syncer {
         for _ in 0..PUT_ROUNDS {
             let (merged, condition) = match self.bucket.get(&k)? {
                 Some((remote, etag)) => {
-                    let merged = merge_schema(&remote, local)?;
+                    let path = self.local_path(key).ok_or_else(|| SyncError::Context(ContextError::Invalid(format!("`{key}` has no local path"))))?;
+                    let merged = merge_schema_bytes(&self.store.metadata_files(), &path, &remote, local)?;
                     if sha256_hex(&merged) == sha256_hex(&remote) {
                         return Ok(false);
                     }
@@ -848,7 +854,7 @@ impl Syncer {
                     return Err(StoreError::SyncObjectDigestMismatch(format!("`{key}` arrived with a digest other than its entry's; the object is discarded")).into());
                 }
                 let merged = match (&local, schema) {
-                    (Some(mine), true) => merge_schema(mine, &bytes)?,
+                    (Some(mine), true) => merge_schema_bytes(&self.store.metadata_files(), &path, mine, &bytes)?,
                     _ => bytes,
                 };
                 if local.as_deref() == Some(merged.as_slice()) {
@@ -889,7 +895,9 @@ impl Syncer {
             let Some(snapshot) = pointer.snapshot_id else { continue };
             let Some(pointer_path) = self.local_path(&rel_key) else { continue };
             let snapshot_id: SnapshotId = serde_json::from_value(serde_json::Value::String(snapshot.clone())).map_err(|e| SyncError::Context(ContextError::Invalid(format!("`{rel_key}`: {e}"))))?;
-            let held: Option<Pointer> = std::fs::read(&pointer_path).ok().and_then(|b| serde_json::from_slice(&b).ok());
+            let held: Option<Pointer> = std::fs::read(&pointer_path).ok()
+                .and_then(|b| self.store.open_metadata_bytes(&pointer_path, &b).ok())
+                .and_then(|b| serde_json::from_slice(&b).ok());
             // The bucket's pointer advances a local one only when its fence, then its snapshot,
             // is newer; a restore writes the generation's pointer whatever its fence.
             if let Some(h) = &held {
@@ -899,7 +907,7 @@ impl Syncer {
                 }
             }
             let table_dir = pointer_path.parent().map(Path::to_path_buf).unwrap_or_default();
-            if let Some(missing) = missing_parts(&table_dir, &snapshot)? {
+            if let Some(missing) = missing_parts(&self.store, &table_dir, &snapshot)? {
                 if replica {
                     return Err(StoreError::ReplicaPartialParquet(format!(
                         "snapshot `{snapshot}` lacks `{missing}` on this replica; the snapshot stays unpublished here"
@@ -926,7 +934,8 @@ impl Syncer {
             }
         }
         for (rel_key, path, pointer) in advancing {
-            write(&path, &serde_json::to_vec_pretty(&pointer).map_err(|e| SyncError::Context(ContextError::Invalid(e.to_string())))?)?;
+            let bytes = serde_json::to_vec_pretty(&pointer).map_err(|e| SyncError::Context(ContextError::Invalid(e.to_string())))?;
+            write(&path, &self.store.seal_metadata_bytes(&path, &bytes)?)?;
             report.pointers.push(rel_key);
         }
         Ok(report)
@@ -954,8 +963,12 @@ impl Syncer {
     }
 
     fn read_pointer(&self, table: &str) -> Result<(BucketPointer, Option<String>)> {
-        match self.bucket.get(&self.pointer_key(table)?)? {
-            Some((b, etag)) => Ok((serde_json::from_slice(&b).map_err(|e| SyncError::Context(ContextError::Invalid(e.to_string())))?, Some(etag))),
+        let key = self.pointer_key(table)?;
+        match self.bucket.get(&key)? {
+            Some((b, etag)) => {
+                let clear = self.store.open_metadata_bytes(Path::new(&key), &b)?;
+                Ok((serde_json::from_slice(&clear).map_err(|e| SyncError::Context(ContextError::Invalid(e.to_string())))?, Some(etag)))
+            }
             None => Ok((BucketPointer::default(), None)),
         }
     }
@@ -997,6 +1010,7 @@ impl Syncer {
             }
             let raised = BucketPointer { fence, ..pointer };
             let bytes = serde_json::to_vec_pretty(&raised).map_err(|e| SyncError::Context(ContextError::Invalid(e.to_string())))?;
+            let bytes = self.store.seal_metadata_bytes(Path::new(&key), &bytes)?;
             let condition = etag.map_or(Condition::IfNoneMatch, Condition::IfMatch);
             if let Put::Applied(_) = self.bucket.put(&key, &bytes, condition)? {
                 return Ok(());
@@ -1036,6 +1050,7 @@ impl Syncer {
             pointer.admit(held.lease.fence)?;
             let next = BucketPointer { snapshot_id: Some(snapshot_id.to_string()), fence: held.lease.fence };
             let bytes = serde_json::to_vec_pretty(&next).map_err(|e| SyncError::Context(ContextError::Invalid(e.to_string())))?;
+            let bytes = self.store.seal_metadata_bytes(Path::new(&key), &bytes)?;
             let condition = etag.map_or(Condition::IfNoneMatch, Condition::IfMatch);
             if let Put::Applied(_) = self.bucket.put(&key, &bytes, condition)? {
                 return Ok(());
@@ -1045,24 +1060,30 @@ impl Syncer {
 }
 
 /// The first part of `snapshot` absent under `table_dir`, or `None` when it is whole.
-fn missing_parts(table_dir: &Path, snapshot: &str) -> Result<Option<String>> {
+fn missing_parts(store: &Store, table_dir: &Path, snapshot: &str) -> Result<Option<String>> {
     let dir = table_dir.join(contextful_core::store::lay_out::SNAPSHOTS_DIR).join(snapshot);
     let manifest_path = dir.join(MANIFEST_FILE);
-    let Ok(text) = std::fs::read_to_string(&manifest_path) else { return Ok(Some(MANIFEST_FILE.to_string())) };
-    let m: SnapshotManifest = serde_json::from_str(&text).map_err(|e| SyncError::Context(ContextError::Invalid(format!("{}: {e}", manifest_path.display()))))?;
+    let Ok(bytes) = std::fs::read(&manifest_path) else { return Ok(Some(MANIFEST_FILE.to_string())) };
+    let bytes = store.open_metadata_bytes(&manifest_path, &bytes)?;
+    let m: SnapshotManifest = serde_json::from_slice(&bytes).map_err(|e| SyncError::Context(ContextError::Invalid(format!("{}: {e}", manifest_path.display()))))?;
     let present: BTreeSet<String> = std::fs::read_dir(&dir).map_err(|e| io(&dir, e))?.flatten().map(|e| e.file_name().to_string_lossy().into_owned()).collect();
     Ok(m.parts.iter().map(|p| p.name.clone()).find(|n| !present.contains(n)))
 }
 
 /// Two copies of a table's `schema.json` merged column by column.
-fn merge_schema(mine: &[u8], theirs: &[u8]) -> Result<Vec<u8>> {
+pub fn merge_schema_bytes(codec: &MetadataFiles<'_>, path: &Path, mine: &[u8], theirs: &[u8]) -> Result<Vec<u8>> {
     use contextful_core::store::reconcile::Schema;
-    match (serde_json::from_slice::<Schema>(mine), serde_json::from_slice::<Schema>(theirs)) {
+    let mine_plain = codec.open_bytes(path, mine)?;
+    let theirs_plain = codec.open_bytes(path, theirs)?;
+    match (serde_json::from_slice::<Schema>(&mine_plain), serde_json::from_slice::<Schema>(&theirs_plain)) {
         (Ok(a), Ok(b)) => {
             let merged = a.merge(&b, &[])?;
-            serde_json::to_vec_pretty(&merged).map_err(|e| SyncError::Context(ContextError::Invalid(e.to_string())))
+            if merged == a { return Ok(mine.to_vec()) }
+            let bytes = serde_json::to_vec_pretty(&merged).map_err(|e| SyncError::Context(ContextError::Invalid(e.to_string())))?;
+            Ok(codec.seal_bytes(path, &bytes)?)
         }
-        _ => Ok(theirs.to_vec()),
+        _ if matches!(codec, MetadataFiles::Plaintext) => Ok(theirs.to_vec()),
+        _ => Err(SyncError::Context(ContextError::Invalid(format!("{}: sealed schema has invalid canonical JSON", path.display())))),
     }
 }
 

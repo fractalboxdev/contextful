@@ -61,6 +61,17 @@ fn a_replace_swaps_the_whole_row_set_and_reads_back_in_order() {
     assert_eq!(reopened.rows().unwrap(), second.sorted(), "the instants keep their nanoseconds across a reopen");
 }
 
+#[test]
+fn an_ephemeral_derived_catalog_keeps_schema_canaries_off_disk() {
+    let dir = tempfile::tempdir().unwrap();
+    let catalog = DerivedSqlite::open_ephemeral(&dir.path().join(DERIVED_CATALOG_FILE)).unwrap();
+    let mut source = rows(&["filings"]);
+    source.tables[0].schema = "schema-canary-5f1e".into();
+    catalog.replace(&source).unwrap();
+    assert_eq!(catalog.rows().unwrap(), source.sorted());
+    assert_eq!(std::fs::read_dir(dir.path()).unwrap().count(), 0);
+}
+
 /// The store reaches `machine.sqlite` through {{topology.coordinate.catalog-port}} and `derived.sqlite` through the `DerivedCatalog` port, both traits in `contextful-core`; `contextful-sqlite` implements both, and a host implements either over its own connection.
 // spec: store.lay-out.catalog-ports@99e29e98
 #[test]
