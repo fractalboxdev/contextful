@@ -1,7 +1,22 @@
 //! `surface.apply` and `surface.reconcile` over the local snapshot directory.
 
 use contextful_core::surface::SurfaceError;
-use contextful_engine::control::{ControlError, SnapshotDir};
+use contextful_engine::control::{ControlError, Draft, SnapshotDir};
+
+#[test]
+fn a_saved_draft_is_bound_to_its_editor_and_exact_nonce() {
+    let dir = tempfile::tempdir().unwrap();
+    let snaps = SnapshotDir::open(dir.path());
+    snaps.import("# original\n").unwrap();
+    let alice = Draft::new(1, "# alice\n".into(), "alice".into()).unwrap();
+    snaps.save_draft(&alice).unwrap();
+    let bob = Draft::new(1, "# bob\n".into(), "bob".into()).unwrap();
+    snaps.save_draft(&bob).unwrap();
+    assert!(matches!(snaps.claim_draft(&alice), Err(ControlError::Surface(SurfaceError::ManifestVersionConflict(_)))));
+    assert_eq!(snaps.current().unwrap(), Some(1));
+    assert_eq!(snaps.claim_draft(&bob).unwrap(), 2);
+    assert_eq!(snaps.read(2).unwrap(), "# bob\n");
+}
 
 /// An apply whose compare-and-swap loses raises `ManifestVersionConflict`, reloads the winning version and
 /// reapplies its pending edits onto it, overwriting no applied version.

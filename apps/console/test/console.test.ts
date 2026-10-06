@@ -297,3 +297,19 @@ test("Admin pack listing reaches only the injected listing adapter", async () =>
   assert.deepEqual(await response.json(), { entries: ["packs/a.toml"], truncated: false, declined: 2 });
   assert.deepEqual(calls, ["field-notes:packs/"]);
 });
+
+test("Admin names the selected store on every operational request and shows run outcomes", async () => {
+  const app = createConsole({
+    identity: { kind: "access", issuer, queryAudience, adminAudience, publicKey },
+    stores: [{ id: "one", label: "Store one" }, { id: "two", label: "Store two" }],
+    adminCapability: "server-secret", turn: async () => ({ answer: "", sources: [], widgets: [] }),
+    read: { list: async () => [] },
+    control: { workflows: async () => ({}), record: async () => ({}), edit: async () => ({}), apply: async () => ({}) },
+  });
+  const page = await (await app.fetch(new Request("https://console.example/admin", { headers: access(adminAudience) }))).text();
+  assert.match(page, /<select id="admin-store"/);
+  assert.match(page, /\/admin\/api\/workflows\?store=/);
+  assert.match(page, /\/admin\/api\/record\?store=/);
+  assert.match(page, /store:store\.value/);
+  assert.match(page, /data\.runs/);
+});
