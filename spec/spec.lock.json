@@ -19696,6 +19696,17 @@
       "line": 284
     },
     {
+      "id": "surface.learn.write-refused",
+      "contract": "surface",
+      "operation": "learn",
+      "subject": "write-refused",
+      "kind": "refusal",
+      "statement": "A served claim write that refuses or returns no scope-bound receipt raises `ConsoleLearningWriteRefused` to Query before answer publication.",
+      "why": "because a failed write cannot count as a durable learning",
+      "file": "spec/71-console.md",
+      "line": 286
+    },
+    {
       "id": "surface.learn.subject-resolution",
       "contract": "surface",
       "operation": "learn",
@@ -19704,7 +19715,7 @@
       "statement": "Distillation preserves the subject it observes; recall resolves that subject through entity matching.",
       "why": "A-surface",
       "file": "spec/71-console.md",
-      "line": 286
+      "line": 288
     },
     {
       "id": "surface.render.client-authored-view",
@@ -19715,7 +19726,7 @@
       "statement": "A view specification arriving from a client, or composed by the model, raises `ConsoleViewNotServerBuilt`.",
       "why": "A-surface",
       "file": "spec/71-console.md",
-      "line": 293
+      "line": 295
     },
     {
       "id": "surface.render.component-choice",
@@ -19726,7 +19737,7 @@
       "statement": "One row with one measure draws a metric; a date column with a measure over 3 rows on distinct days draws a line; anything else draws a table offering a bar view.",
       "why": "",
       "file": "spec/71-console.md",
-      "line": 295
+      "line": 297
     },
     {
       "id": "surface.render.older-transcript",
@@ -19737,7 +19748,7 @@
       "statement": "A client reading a transcript with an unknown component-union member renders its view as a table.",
       "why": "A-surface",
       "file": "spec/71-console.md",
-      "line": 296
+      "line": 298
     },
     {
       "id": "surface.brief.absence-is-earned",
@@ -19748,7 +19759,7 @@
       "statement": "The card needs a session with no turns, at present time, a live conclusion, an arrived row matching an interest, and a derivation inside its budget. An error or timeout raises `ConsoleBriefUnavailable`, and no card renders.",
       "why": "A-surface",
       "file": "spec/71-console.md",
-      "line": 332
+      "line": 334
     },
     {
       "id": "surface.brief.topic-tier",
@@ -19759,7 +19770,7 @@
       "statement": "The topic tier needs at least 2 tokens shared between the conclusion's subject and text and the row's label and topics, one of them naming the subject.",
       "why": "",
       "file": "spec/71-console.md",
-      "line": 334
+      "line": 336
     },
     {
       "id": "surface.brief.card-subjects",
@@ -19770,7 +19781,7 @@
       "statement": "A card carries at most 3 subjects.",
       "why": "",
       "file": "spec/71-console.md",
-      "line": 335
+      "line": 337
     },
     {
       "id": "surface.brief.articles-per-subject",
@@ -19781,7 +19792,7 @@
       "statement": "A subject carries at most 3 entries of matched article.",
       "why": "",
       "file": "spec/71-console.md",
-      "line": 336
+      "line": 338
     },
     {
       "id": "surface.brief.catchup-window",
@@ -19792,7 +19803,7 @@
       "statement": "The backend caps the requested window at 7 d.",
       "why": "",
       "file": "spec/71-console.md",
-      "line": 337
+      "line": 339
     },
     {
       "id": "surface.brief.greeting",
@@ -19803,7 +19814,7 @@
       "statement": "Query derives a greeting card from arrived rows matching live conclusions in a turnless present-time session.",
       "why": "A-surface",
       "file": "spec/71-console.md",
-      "line": 338
+      "line": 340
     },
     {
       "id": "surface.publish-answer.share-affordance",
@@ -19814,7 +19825,7 @@
       "statement": "A surface offering a share control on access-explanation output raises `VisibilityShareAffordance`.",
       "why": "A-surface",
       "file": "spec/71-console.md",
-      "line": 345
+      "line": 347
     },
     {
       "id": "surface.publish-answer.askerless-audience",
@@ -19825,7 +19836,7 @@
       "statement": "A scheduled job posting to an audience under a service identity raises `VisibilityAskerlessAudience`, naming the destination; a scheduled post's corpus is narrowed in the reviewed manifest to what the destination reaches.",
       "why": "A-surface",
       "file": "spec/71-console.md",
-      "line": 347
+      "line": 349
     },
     {
       "id": "surface.publish-answer.one-operator-principal",
@@ -19836,7 +19847,7 @@
       "statement": "An answer uses one operator's credential; the console offers no room-intersection principal.",
       "why": "A-surface",
       "file": "spec/71-console.md",
-      "line": 349
+      "line": 351
     },
     {
       "id": "assurance.model.package",
@@ -28551,6 +28562,10 @@
           "ConsoleLearningUnscoped": {
             "clause": "surface.learn.unscoped",
             "gloss": "A distilled conclusion landing without the reading-session scope."
+          },
+          "ConsoleLearningWriteRefused": {
+            "clause": "surface.learn.write-refused",
+            "gloss": "A served claim write that refuses or returns no scope-bound receipt."
           },
           "ConsoleMutatingToolRequested": {
             "clause": "surface.ground.mutating-tool",

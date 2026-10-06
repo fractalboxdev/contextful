@@ -10,12 +10,12 @@ An unpinned clause is `committed`; a pinned one is `performed` when its Rust, Le
 | `connector` | 2 | 14 | 349 | 89 | 21 | 15 | 218 | 0 | 218 |
 | `corpus` | 1 | 10 | 79 | 37 | 7 | 0 | 40 | 0 | 40 |
 | `disclosure` | 3 | 16 | 122 | 64 | 13 | 7 | 54 | 0 | 54 |
-| `read` | 2 | 15 | 179 | 29 | 22 | 21 | 163 | 0 | 163 |
+| `read` | 2 | 15 | 185 | 33 | 22 | 21 | 168 | 0 | 168 |
 | `run` | 3 | 26 | 373 | 98 | 36 | 37 | 261 | 0 | 261 |
 | `store` | 1 | 17 | 237 | 55 | 13 | 20 | 200 | 0 | 200 |
-| `surface` | 2 | 20 | 106 | 49 | 22 | 0 | 65 | 0 | 65 |
+| `surface` | 2 | 20 | 107 | 50 | 22 | 0 | 65 | 0 | 65 |
 | `topology` | 1 | 6 | 70 | 24 | 5 | 5 | 38 | 0 | 38 |
-| **total** | 19 | 155 | 2013 | 581 | 188 | 127 | 1379 | 0 | |
+| **total** | 19 | 155 | 2020 | 586 | 188 | 127 | 1384 | 0 | |
 
 Decision records: 18.
 
@@ -32,12 +32,12 @@ A milestone reads `closed` when its acceptance test computes `passing` and every
 | 4 — Ingest | 25 | 496 | 313 | passing | open |
 | 5 — The read face under enforcement | 17 | 252 | 192 | passing | open |
 | 6 — Sync and replicas | 8 | 73 | 68 | passing | closed |
-| 7 — Memory | 6 | 37 | 37 | passing | closed |
+| 7 — Memory | 6 | 43 | 42 | passing | closed |
 | 8 — Accountability | 5 | 60 | 47 | passing | open |
 | 9 — Visibility | 6 | 41 | 3 | open | open |
 | 10 — Cadence and the operator plane | 11 | 68 | 56 | passing | open |
 | 11 — The derive tier | 7 | 78 | 55 | passing | open |
-| 12 — The operator console | 12 | 49 | 14 | open | open |
+| 12 — The operator console | 12 | 50 | 14 | open | open |
 | 13 — Disclosure | 5 | 21 | 4 | open | open |
 | 14 — Assurance | 7 | 134 | 84 | passing | closed |
 
@@ -844,11 +844,16 @@ Unscheduled operations: 10.
 | `read.retrieve.token-cap` | `crates/contextful-core/tests/integration/read/retrieve.rs::the_token_set_is_capped_and_an_empty_set_omits_the_floor` | performed |
 | `read.retrieve.token-length-floor` | `crates/contextful-core/tests/integration/read/retrieve.rs::an_ascii_run_below_the_length_floor_leaves` | performed |
 | `read.retrieve.unsatisfiable-arm-drops` | `crates/contextful-context/tests/integration/read/retrieve.rs::a_filter_binds_named_columns_and_a_table_lacking_one_drops_its_arm` | performed |
+| `read.revise.browser-request` | `spec/pins.toml` | performed |
 | `read.revise.citation-live` | `crates/contextful-memory/tests/integration/evidence.rs::a_write_citing_a_superseded_version_refuses` | performed |
 | `read.revise.dedup-key` | `crates/contextful-memory/tests/integration/write.rs::a_dedup_key_seeds_the_claim_id_and_a_retry_lands_nothing` | performed |
 | `read.revise.direct-write` | `crates/contextful-core/tests/integration/memory/revise.rs::the_direct_write_accepts_claims_alone` | performed |
+| `read.revise.malformed-request` | `spec/pins.toml` | performed |
 | `read.revise.observed-at` | `crates/contextful-memory/tests/integration/write.rs::an_observed_write_lands_valid_from_its_observed_instant` | performed |
 | `read.revise.observed-order` | `crates/contextful-memory/tests/integration/write.rs::an_observation_before_a_live_contradicting_prior_refuses` | performed |
+| `read.revise.served-dedup` | `spec/pins.toml` | performed |
+| `read.revise.served-scope` | `spec/pins.toml` | performed |
+| `read.revise.served-write` | `spec/pins.toml` | performed |
 | `read.revise.supersede` | `crates/contextful-core/tests/integration/memory/revise.rs::an_equal_or_higher_claim_retires_its_prior_on_one_line` | performed |
 | `read.revise.tier` | `crates/contextful-core/tests/integration/memory/revise.rs::tier_follows_the_write_path_and_the_lowest_grounding` | performed |
 | `read.settle.grace-window` | `crates/contextful-core/tests/integration/memory/settle.rs::the_label_window_runs_through_the_deadline_plus_a_day` | performed |

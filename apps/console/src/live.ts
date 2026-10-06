@@ -46,7 +46,7 @@ export function selectTable(question: string, listing: unknown): string | null {
 
 function source(columns: string[], row: unknown[], table: string): Source | null {
   const at = (name: string) => row[columns.indexOf(name)];
-  const idColumn = columns.find((name) => name.endsWith("_id") || name === "id");
+  const idColumn = columns.find((name) => !name.startsWith("_") && (name.endsWith("_id") || name === "id"));
   const urlColumn = columns.find((name) => name === "source_url" || name === "url");
   const id = idColumn && at(idColumn);
   const url = urlColumn && at(urlColumn);
@@ -60,6 +60,7 @@ export async function openReader({ stores, env, fetcher = fetch }: LiveOptions, 
     const store = stores.find((entry) => entry.id === storeId);
     if (!store) throw new ConsoleError("ConsoleRequestMalformed");
     const shared = env[store.credentialName];
+    let exchanged = false;
     const credential = store.auth === "exchange" ? await resolveReaderCredential({
       shared,
       mint: async () => {
@@ -78,6 +79,7 @@ export async function openReader({ stores, env, fetcher = fetch }: LiveOptions, 
         }
         const value: unknown = await response.json();
         if (!record(value) || typeof value.token !== "string" || !value.token.trim()) throw new ConsoleError("ConsoleTokenExchangeUnavailable", "exchange returned no credential", 503);
+        exchanged = true;
         return value.token;
       },
     }) : shared;
@@ -98,10 +100,10 @@ export async function openReader({ stores, env, fetcher = fetch }: LiveOptions, 
       return message.result.structuredContent;
     };
 
-    return { store, call, credential };
+    return { store, call, credential, exchanged };
 }
 
-export function createLiveTurn(options: LiveOptions): (input: TurnInput) => Promise<TurnResult> {
+export function createLiveTurn(options: LiveOptions): (input: TurnInput & { recallOverlay?: string }) => Promise<TurnResult> {
   const { env, fetcher = fetch } = options;
   const modelEndpoint = env.CONTEXTFUL_MODEL_ENDPOINT;
   const modelId = env.CONTEXTFUL_MODEL_ID;
@@ -117,6 +119,7 @@ export function createLiveTurn(options: LiveOptions): (input: TurnInput) => Prom
     const tables = [selected];
     let remainingSources = 8;
     let resultRows: TurnResult["resultRows"];
+    const evidence: NonNullable<TurnResult["evidence"]> = [];
     const turn = createTurn({
       denylist: denylist.filter((entry) => entry.length <= 128),
       tools: tables.map((table) => ({ name: `read:${table}`, pack: "data", kind: "read" as const, table })),
@@ -128,20 +131,34 @@ export function createLiveTurn(options: LiveOptions): (input: TurnInput) => Prom
         const columns = strings(result.columns);
         const rawRows = Array.isArray(result.rows) ? result.rows.filter(Array.isArray) : [];
         const sourced = rawRows.flatMap((row) => { const citation = source(columns, row, table); return citation ? [{ row, citation }] : []; }).slice(0, remainingSources);
+        const runIndex = columns.indexOf("_run_id");
+        const seqIndex = columns.indexOf("_row_seq");
+        for (const { row } of sourced) {
+          const run = row[runIndex];
+          const seq = row[seqIndex];
+          if (typeof run === "string" && run && Number.isSafeInteger(seq) && (seq as number) >= 0) {
+            evidence.push({ table, run, seq: seq as number });
+          }
+        }
         remainingSources -= sourced.length;
-        const cleanRows = sourced.map(({ row }) => row.map((value) => typeof value === "string" ? redactText(value, denylist) : value));
-        resultRows = { columns, rows: cleanRows };
+        const visible = columns.flatMap((column, index) => column.startsWith("_") ? [] : [{ column, index }]);
+        const cleanRows = sourced.map(({ row }) => visible.map(({ index }) => {
+          const value = row[index];
+          return typeof value === "string" ? redactText(value, denylist) : value;
+        }));
+        resultRows = { columns: visible.map(({ column }) => column), rows: cleanRows };
         return {
-          rows: cleanRows.map((row) => Object.fromEntries(columns.map((column, index) => [column, row[index]]))),
+          rows: cleanRows.map((row) => Object.fromEntries(visible.map(({ column }, index) => [column, row[index]]))),
           sources: sourced.map(({ citation }) => ({ ...citation, label: redactText(citation.label, denylist) })),
         };
       } },
-      synthesize: async function* ({ question, results, sources }) {
+      overlay: async () => input.recallOverlay ?? null,
+      synthesize: async function* ({ question, results, sources, overlay }) {
         const response = await fetcher(new URL("chat/completions", `${modelEndpoint.replace(/\/$/, "")}/`), {
           method: "POST", headers: { "Content-Type": "application/json" },
           body: JSON.stringify({ model: modelId, messages: [
-            { role: "system", content: "Answer only from the supplied governed rows. Cite source IDs in square brackets. Decline unsupported claims." },
-            { role: "user", content: JSON.stringify({ question, rows: results.flatMap((result) => result.rows), sources }) },
+            { role: "system", content: "Answer only from the supplied governed rows. Memory may guide context but never supplies evidence. Cite source IDs in square brackets. Decline unsupported claims." },
+            { role: "user", content: JSON.stringify({ question, rows: results.flatMap((result) => result.rows), sources, memory: overlay }) },
           ] }),
         });
         if (!response.ok) throw new ConsoleError("ConsoleModelUnavailable", `model answered ${response.status}`, 503);
@@ -153,6 +170,6 @@ export function createLiveTurn(options: LiveOptions): (input: TurnInput) => Prom
       },
     });
     const answer = await turn.ask({ question: input.question, packs: ["data"], store: store.id });
-    return { answer: answer.text, sources: answer.sources, widgets: [], resultRows };
+    return { answer: answer.text, sources: answer.sources, widgets: [], resultRows, evidence };
   };
 }

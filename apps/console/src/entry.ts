@@ -40,6 +40,7 @@ async function identity(): Promise<Identity> {
       sessionSecret: required("CONTEXTFUL_COGNITO_SESSION_SECRET"),
       queryGroup: required("CONTEXTFUL_COGNITO_QUERY_GROUP"),
       adminGroup: required("CONTEXTFUL_COGNITO_ADMIN_GROUP"),
+      memorySessionClaim: process.env.CONTEXTFUL_CONSOLE_MEMORY_SESSION_CLAIM,
       issuer: required("CONTEXTFUL_COGNITO_ISSUER"),
       clientId: required("CONTEXTFUL_COGNITO_CLIENT_ID"),
       authorizeUrl: required("CONTEXTFUL_COGNITO_AUTHORIZE_URL"),
@@ -53,6 +54,7 @@ async function identity(): Promise<Identity> {
     issuer: required("CONTEXTFUL_ACCESS_ISSUER"),
     queryAudience: required("CONTEXTFUL_QUERY_ACCESS_AUDIENCE"),
     adminAudience: required("CONTEXTFUL_ADMIN_ACCESS_AUDIENCE"),
+    memorySessionClaim: process.env.CONTEXTFUL_CONSOLE_MEMORY_SESSION_CLAIM,
     keys: await keysAt(required("CONTEXTFUL_ACCESS_JWKS_URL")),
   };
 }
