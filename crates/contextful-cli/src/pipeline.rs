@@ -175,6 +175,11 @@ pub enum PipelineCmd {
         project: ProjectArgs,
         #[arg(long)]
         declaration: Option<PathBuf>,
+        #[command(flatten)]
+        admit: Box<AdmitArgs>,
+        /// Issuer seed used to sign a synced control receipt; absent, the project's default seed.
+        #[arg(long)]
+        issuer_key: Option<PathBuf>,
     },
     /// Take the snapshot directory's guarded import: claim v1 from the declared pipelines while
     /// no version exists. Apply refuses until a directory has taken it.
@@ -183,6 +188,11 @@ pub enum PipelineCmd {
         project: ProjectArgs,
         #[arg(long)]
         declaration: Option<PathBuf>,
+        #[command(flatten)]
+        admit: Box<AdmitArgs>,
+        /// Issuer seed used to sign a synced control receipt; absent, the project's default seed.
+        #[arg(long)]
+        issuer_key: Option<PathBuf>,
     },
     /// Arm the applied snapshot's schedules and dispatch each due pipeline under the cadence lease.
     Serve {
@@ -196,6 +206,9 @@ pub enum PipelineCmd {
         /// The address the external trigger's `POST /wake` listens on, such as `127.0.0.1:8788`.
         #[arg(long)]
         http: Option<String>,
+        /// Locally pinned issuer keys for pulled control receipts; absent, `CONTEXTFUL_ISSUER_PUBKEY`.
+        #[arg(long)]
+        public_key: Option<String>,
     },
     /// Run steps a `serve` submits: take `POST /submit`, run each step as `run --applied`,
     /// heartbeat and call back through the step's awakeable route under `CONTEXTFUL_WORKER_KEY`.
@@ -604,9 +617,13 @@ pub fn run(cmd: PipelineCmd, tasks: &Tasks) -> Result<()> {
             Ok(())
         }
         PipelineCmd::Plan { project, declaration, json } => crate::cadence::plan(&project, declaration, json),
-        PipelineCmd::Apply { id, project, declaration } => crate::cadence::apply(&project, declaration, id.as_deref(), tasks),
-        PipelineCmd::Import { project, declaration } => crate::cadence::import(&project, declaration, tasks),
-        PipelineCmd::Serve { project, declaration, cycle, http } => crate::cadence::serve(&project, declaration, cycle, http.as_deref()),
+        PipelineCmd::Apply { id, project, declaration, admit, issuer_key } => {
+            crate::cadence::apply(&project, declaration, id.as_deref(), tasks, &admit, issuer_key.as_deref())
+        }
+        PipelineCmd::Import { project, declaration, admit, issuer_key } => {
+            crate::cadence::import(&project, declaration, tasks, &admit, issuer_key.as_deref())
+        }
+        PipelineCmd::Serve { project, declaration, cycle, http, public_key } => crate::cadence::serve(&project, declaration, cycle, http.as_deref(), public_key.as_deref(), tasks),
         PipelineCmd::Worker { project, declaration, listen } => crate::worker::serve_worker(&project, declaration, &listen),
         PipelineCmd::Run { id, project, declaration, run_id, site_id, site_id_env, component_target, admit, applied } => {
             let l = project.locate(declaration)?;

@@ -12,10 +12,10 @@ An unpinned clause is `committed`; a pinned one is `performed` when its Rust, Le
 | `disclosure` | 3 | 16 | 134 | 66 | 13 | 3 | 63 | 0 | 63 |
 | `read` | 2 | 15 | 199 | 31 | 22 | 9 | 177 | 0 | 172 |
 | `run` | 3 | 26 | 392 | 100 | 38 | 28 | 291 | 0 | 279 |
-| `store` | 1 | 17 | 237 | 55 | 13 | 20 | 200 | 0 | 200 |
-| `surface` | 2 | 20 | 106 | 49 | 22 | 0 | 51 | 0 | 51 |
+| `store` | 1 | 17 | 240 | 56 | 13 | 19 | 203 | 0 | 203 |
+| `surface` | 2 | 20 | 114 | 51 | 22 | 0 | 59 | 0 | 59 |
 | `topology` | 1 | 6 | 70 | 24 | 5 | 5 | 38 | 0 | 38 |
-| **total** | 19 | 155 | 2070 | 587 | 190 | 104 | 1436 | 0 | |
+| **total** | 19 | 155 | 2081 | 590 | 190 | 103 | 1447 | 0 | |
 
 Decision records: 18.
 
@@ -31,11 +31,11 @@ A milestone reads `closed` when its acceptance test computes `passing` and every
 | 3 — The run path | 11 | 209 | 145 | passing | closed |
 | 4 — Ingest | 25 | 504 | 330 | passing | open |
 | 5 — The read face under enforcement | 17 | 262 | 204 | passing | open |
-| 6 — Sync and replicas | 8 | 73 | 68 | passing | closed |
+| 6 — Sync and replicas | 8 | 76 | 71 | passing | closed |
 | 7 — Memory | 6 | 47 | 39 | passing | closed |
 | 8 — Accountability | 5 | 60 | 47 | passing | open |
 | 9 — Visibility | 6 | 41 | 3 | open | open |
-| 10 — Cadence and the operator plane | 11 | 68 | 56 | passing | open |
+| 10 — Cadence and the operator plane | 11 | 76 | 64 | passing | open |
 | 11 — The derive tier | 7 | 87 | 78 | passing | closed |
 | 12 — The operator console | 12 | 49 | 0 | open | open |
 | 13 — Disclosure | 5 | 33 | 13 | open | open |
@@ -1325,6 +1325,7 @@ Unscheduled operations: 10.
 | `store.probe.sentinel` | `crates/contextful-sync/tests/integration/push.rs::the_probe_demonstrates_cas_and_leaves_no_sentinel` | performed |
 | `store.probe.unproven` | `crates/contextful-sync/tests/integration/push.rs::a_declared_cas_against_an_undemonstrated_backend_stops_the_push` | performed |
 | `store.pull.before-run` | `crates/contextful-cli/tests/integration/sync/mod.rs::a_cold_node_pulls_the_bucket_before_its_run_reads` | performed |
+| `store.pull.control-head` | `crates/contextful-sync/tests/integration/pull.rs::a_cold_pull_stages_only_the_reachable_control_head_without_applying_it` | performed |
 | `store.pull.convergence` | `crates/contextful-sync/tests/integration/pull.rs::a_key_moving_mid_download_refetches_the_manifest_and_retries_the_shortfall` | performed |
 | `store.pull.digest-mismatch` | `crates/contextful-sync/tests/integration/pull.rs::an_object_whose_digest_differs_from_its_entry_is_refused_and_discarded` | performed |
 | `store.pull.generation` | `crates/contextful-sync/tests/integration/generation.rs::a_generation_pull_restores_exactly_that_generation` | performed |
@@ -1338,6 +1339,8 @@ Unscheduled operations: 10.
 | `store.pull.schema-merge` | `crates/contextful-sync/tests/integration/pull.rs::a_pulled_schema_merges_into_the_local_one` | performed |
 | `store.pull.tombstone-applied` | `crates/contextful-sync/tests/integration/converge.rs::a_pull_deletes_the_copy_a_tombstone_names` | performed |
 | `store.pull.unconverged` | `crates/contextful-sync/tests/integration/pull.rs::a_key_that_keeps_moving_refuses_and_writes_no_pointer` | performed |
+| `store.push.control-artifact` | `crates/contextful-sync/tests/integration/push.rs::a_push_commits_the_signed_control_chain_and_project_head` | performed |
+| `store.push.control-diverged` | `crates/contextful-sync/tests/integration/push.rs::a_sibling_control_head_refuses_without_changing_the_bucket_head` | performed |
 | `store.push.format-unsupported` | `crates/contextful-sync/tests/integration/generation.rs::a_manifest_of_a_newer_format_refuses_push_and_pull` | performed |
 | `store.push.generation` | `crates/contextful-sync/tests/integration/generation.rs::each_push_commits_the_next_generation_and_writes_it_immutably` | performed |
 | `store.push.generation-conflict` | `crates/contextful-sync/tests/integration/generation.rs::a_generation_file_holding_another_commit_refuses_and_the_next_push_numbers_past_it` | performed |
@@ -1394,9 +1397,14 @@ Unscheduled operations: 10.
 | `store.reserve.table-namespaces` | `crates/contextful-core/tests/integration/store/reserve.rs::the_visibility_namespace_holds_each_sources_access_tables` | performed |
 | `store.reserve.taint` | `crates/contextful-context/tests/integration/reserve.rs::a_model_output_row_carries_the_engine_taint_and_no_other_row_does` | performed |
 | `store.reserve.underscore-namespace` | `crates/contextful-core/tests/integration/store/reserve.rs::the_underscore_namespace_is_the_injected_and_optional_sets` | performed |
+| `surface.apply.attestation-unavailable` | `crates/contextful-cli/tests/integration/pipeline.rs::a_synced_import_requires_admin_and_writes_a_verifiable_receipt` | performed |
 | `surface.apply.guarded-import` | `crates/contextful-cli/tests/integration/pipeline.rs::the_import_claims_the_first_version_once` | performed |
 | `surface.apply.local-claim` | `crates/contextful-cli/tests/integration/pipeline.rs::apply_claims_a_version_in_the_local_snapshot_directory` | performed |
 | `surface.apply.owner-unconfigured` | `crates/contextful-cli/tests/integration/pipeline.rs::an_owner_with_nothing_behind_it_is_refused` | performed |
+| `surface.apply.receipt-digest` | `crates/contextful-policy/tests/integration/control_receipt.rs::a_receipt_digest_uses_canonical_json_for_its_successor` | performed |
+| `surface.apply.receipt-file` | `crates/contextful-engine/tests/integration/control.rs::an_attested_claim_commits_the_snapshot_and_receipt_together` | performed |
+| `surface.apply.receipt-message` | `crates/contextful-policy/tests/integration/control_receipt.rs::a_control_receipt_binds_every_signed_field_and_the_snapshot_bytes` | performed |
+| `surface.apply.synced-attestation` | `crates/contextful-cli/tests/integration/pipeline.rs::a_synced_import_requires_admin_and_writes_a_verifiable_receipt` | performed |
 | `surface.apply.uninitialized-store` | `crates/contextful-cli/tests/integration/pipeline.rs::an_apply_before_the_import_is_refused` | performed |
 | `surface.apply.validation` | `crates/contextful-cli/tests/integration/pipeline.rs::an_invalid_document_claims_no_version` | performed |
 | `surface.apply.version-race` | `crates/contextful-engine/tests/integration/control.rs::a_lost_claim_conflicts_and_overwrites_nothing` | performed |
@@ -1437,10 +1445,13 @@ Unscheduled operations: 10.
 | `surface.fire.store-driven-concurrency` | `crates/contextful-core/tests/integration/job.rs::a_store_driven_block_without_a_positive_max_in_flight_raises_job_concurrency_unset` | performed |
 | `surface.fire.target-unbound` | `crates/contextful-cli/tests/integration/job.rs::a_job_target_naming_nothing_produced_is_refused_at_validation` | performed |
 | `surface.reconcile.fail-static` | `crates/contextful-cli/tests/integration/pipeline.rs::an_unreadable_snapshot_leaves_the_armed_set_running` | performed |
+| `surface.reconcile.issuer-pin` | `crates/contextful-cli/tests/integration/pipeline.rs::a_pulled_receipt_cannot_supply_its_own_trust_pin` | performed |
 | `surface.reconcile.learns-by-reading` | `crates/contextful-cli/tests/integration/pipeline.rs::a_wake_reads_the_applied_version_from_the_control_source` | performed |
 | `surface.reconcile.loopback-only` | `crates/contextful-cli/tests/integration/pipeline.rs::a_control_url_outside_loopback_arms_nothing` | performed |
 | `surface.reconcile.pointer-malformed` | `crates/contextful-core/tests/integration/surface/control.rs::a_pointer_is_wholly_a_version` | performed |
 | `surface.reconcile.poll-cadence` | `crates/contextful-core/tests/integration/surface/control.rs::a_poll_takes_a_schedule_and_defaults_to_thirty_seconds` | performed |
+| `surface.reconcile.pulled-control` | `crates/contextful-cli/tests/integration/pipeline.rs::a_cold_node_adopts_a_pinned_pulled_control_snapshot_after_local_validation` | performed |
+| `surface.reconcile.pulled-control-untrusted` | `crates/contextful-cli/tests/integration/pipeline.rs::a_bad_signature_or_local_declaration_refuses_pulled_control_without_arming` | performed |
 | `surface.reconcile.url-layout` | `crates/contextful-cli/tests/integration/pipeline.rs::a_loopback_control_url_serves_the_applied_snapshot` | performed |
 | `surface.reside.region-entries` | `crates/contextful-core/tests/integration/surface/reside.rs::an_allow_set_holds_sixteen_entries` | performed |
 | `surface.reside.region-mismatch` | `crates/contextful-cli/tests/integration/pipeline.rs::a_resource_outside_the_residency_allow_set_serves_nothing` | performed |

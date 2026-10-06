@@ -9,21 +9,30 @@
 //! The control source is the snapshot directory, or a loopback `[control] url` serving
 //! `manifest@current` and each `manifest@v<N>.toml` beneath it (`surface.reconcile.loopback-only`).
 
+use crate::admit::{revocation_state, AdmitArgs, LedgerFile};
+use crate::clock::SystemClock;
 use crate::pipeline::{check, manifests};
 use crate::project::Located;
 use crate::run::{boot_id, wire_at, ProjectArgs};
 use anyhow::{bail, Context, Result};
 use contextful_context::project::Project;
 use contextful_core::pipeline::declare::{collect, dependent_runs, ManifestFile, PipelineSpec};
+use contextful_core::grant::Action;
+use contextful_core::ports::Clock;
 use contextful_core::run::derive::task::Tasks;
 use contextful_core::surface::arm::{Schedule, Trigger, TICK_INTERVAL_MS, WAKE_ANSWER_SECS};
-use contextful_core::surface::control::{admit_loopback, control_url, parse_pointer, poll_schedule, snapshot_file, source_file, POINTER_FILE};
+use contextful_core::surface::control::{admit_loopback, control_url, parse_pointer, poll_schedule, receipt_file, receipt_version, snapshot_file, source_file, POINTER_FILE};
+use contextful_core::store::sync::ControlHead;
 use contextful_core::surface::edit::check_document;
 use contextful_core::surface::dispatch::{CHILD_GRACE_SECS, DEFAULT_POOL};
 use contextful_core::surface::SurfaceError;
 use contextful_engine::control::{ControlError, SnapshotDir};
 use contextful_engine::scheduler::{Beat, Dispatch, Entry, Fired, LeaseState, Scheduler};
 use contextful_engine::worker::{Relay, WorkerDispatch};
+use contextful_policy::control_receipt::ControlReceipt;
+use contextful_policy::issue::{SeedSigner, SignerKey, DEFAULT_SEED_PATH};
+use contextful_policy::keyset::KeySource;
+use contextful_policy::verify::{effect_boundary, Admission, AdmittedAuthority};
 use contextful_outbound::egress::{system, Outbound, Transport};
 use serde::Serialize;
 use serde_json::json;
@@ -136,6 +145,7 @@ struct ControlConfig {
     workers: Vec<String>,
     /// The URL whose `/awake/:token` route `serve` binds for its workers.
     relay: Option<Url>,
+    issuer_pin: Option<String>,
 }
 
 /// Read `[control] workers` and `[control] relay`: a relay is required once a worker is listed.
@@ -203,7 +213,7 @@ fn control_config(text: &str, project: &Project) -> Result<ControlConfig> {
     let poll = block.get("poll").map(|v| v.as_str().context("`[control] poll` is a schedule string")).transpose()?;
     let (workers, relay) = worker_config(block)?;
     let trigger = block.get("trigger").map(|v| v.as_str().context("`[control] trigger` is a string")).transpose()?;
-    Ok(ControlConfig { source, pool, poll: poll_schedule(poll)?, trigger: Trigger::parse(trigger)?, workers, relay })
+    Ok(ControlConfig { source, pool, poll: poll_schedule(poll)?, trigger: Trigger::parse(trigger)?, workers, relay, issuer_pin: None })
 }
 
 fn located(project: &ProjectArgs, declaration: Option<PathBuf>) -> Result<(Located, String, ControlConfig)> {
@@ -226,6 +236,139 @@ fn applied(snaps: &Source) -> Result<(Option<u64>, BTreeMap<String, PipelineSpec
     let specs = collect(&[ManifestFile { path: snapshot_file(version), text }])
         .map_err(|e| SurfaceError::ControlSnapshotUnreadable(format!("{}: {e}", snapshot_file(version))))?;
     Ok((Some(version), specs.into_iter().map(|d| (d.spec.id.clone(), d.spec)).collect()))
+}
+
+/// A locally applied descendant keeps precedence over an older bucket head after every
+/// receipt on the local path verifies under the same pinned issuer keys.
+fn local_descends(snaps: &SnapshotDir, current: u64, bucket: &ControlHead, project: &str, trusted: &[SignerKey]) -> Result<bool, SurfaceError> {
+    let untrusted = |why: String| SurfaceError::ControlSnapshotUntrusted(why);
+    let mut versions = Vec::new();
+    for entry in std::fs::read_dir(snaps.root()).map_err(|e| untrusted(format!("{}: {e}", snaps.root().display())))? {
+        let entry = entry.map_err(|e| untrusted(format!("{}: {e}", snaps.root().display())))?;
+        if let Some(version) = entry.file_name().to_str().and_then(receipt_version).filter(|n| *n <= current) {
+            versions.push(version);
+        }
+    }
+    versions.sort_unstable_by(|a, b| b.cmp(a));
+    if versions.first() != Some(&current) {
+        return Err(untrusted(format!("local applied v{current} has no receipt")));
+    }
+    let mut parent_needed: Option<String> = None;
+    for version in versions {
+        if version != current && parent_needed.is_none() { break; }
+        let receipt_path = snaps.root().join(receipt_file(version));
+        let bytes = std::fs::read(&receipt_path).map_err(|e| untrusted(format!("{}: {e}", receipt_path.display())))?;
+        let receipt: ControlReceipt = match serde_json::from_slice(&bytes) {
+            Ok(receipt) => receipt,
+            Err(_) if version != current => continue,
+            Err(e) => return Err(untrusted(format!("{}: {e}", receipt_path.display()))),
+        };
+        if receipt.version != version { continue; }
+        let digest = receipt.digest();
+        if version != current && parent_needed.as_deref() != Some(digest.as_str()) { continue; }
+        let snapshot_path = snaps.root().join(snapshot_file(version));
+        let snapshot = std::fs::read(&snapshot_path).map_err(|e| untrusted(format!("{}: {e}", snapshot_path.display())))?;
+        receipt.verify(project, &snapshot, trusted).map_err(|e| untrusted(format!("{}: {e}", receipt_path.display())))?;
+        if version == bucket.version && digest == bucket.receipt_sha256 {
+            return Ok(true);
+        }
+        parent_needed = receipt.parent;
+    }
+    Ok(false)
+}
+
+/// Adopt only a complete staged chain signed by a locally pinned issuer and matching
+/// this node's declarations. The snapshot directory publishes its pointer last.
+fn adopt_pulled(snaps: &SnapshotDir, project: &Project, declaration: &Path, tasks: &Tasks, issuer_pin: Option<&str>) -> Result<()> {
+    let staged = project.store_root().join("control");
+    let head_path = staged.join("head.json");
+    let head_bytes = match std::fs::read(&head_path) {
+        Ok(bytes) => bytes,
+        Err(e) if e.kind() == std::io::ErrorKind::NotFound => return Ok(()),
+        Err(e) => return Err(SurfaceError::ControlSnapshotUntrusted(format!("{}: {e}", head_path.display())).into()),
+    };
+    let untrusted = |why: String| SurfaceError::ControlSnapshotUntrusted(why);
+    let head: ControlHead = serde_json::from_slice(&head_bytes).map_err(|e| untrusted(format!("{}: {e}", head_path.display())))?;
+    if head.version == 0 {
+        return Err(untrusted("the pulled control head names version 0".into()).into());
+    }
+    let current = snaps.current().map_err(|e| untrusted(format!("local applied pointer: {e}")))?;
+    let pin_text = issuer_pin.filter(|s| !s.trim().is_empty())
+        .ok_or_else(|| untrusted(format!("no locally pinned issuer key; set {}", crate::admit::PUBKEY_VAR)))?;
+    let pins = crate::admit::static_pins(Some(pin_text)).map_err(|e| untrusted(format!("issuer pins: {e}")))?;
+    let keys = pins.keys().map_err(|e| untrusted(format!("issuer pins: {e}")))?;
+    let trusted: Vec<SignerKey> = keys.keys().map(|key| SignerKey { algorithm: key.algorithm(), public_key: key.public_key.to_bytes() }).collect();
+    let mut versions = Vec::new();
+    for entry in std::fs::read_dir(&staged).map_err(|e| untrusted(format!("{}: {e}", staged.display())))? {
+        let entry = entry.map_err(|e| untrusted(format!("{}: {e}", staged.display())))?;
+        if let Some(version) = entry.file_name().to_str().and_then(receipt_version).filter(|n| *n <= head.version) {
+            versions.push(version);
+        }
+    }
+    versions.sort_unstable_by(|a, b| b.cmp(a));
+    if versions.first() != Some(&head.version) {
+        return Err(untrusted(format!("pulled head v{} has no receipt", head.version)).into());
+    }
+    let mut wanted = Some(head.receipt_sha256.clone());
+    let mut chain = Vec::new();
+    for version in versions {
+        let Some(digest) = wanted.clone() else { break };
+        let receipt_path = staged.join(receipt_file(version));
+        let receipt_bytes = match std::fs::read(&receipt_path) {
+            Ok(bytes) => bytes,
+            Err(e) if e.kind() == std::io::ErrorKind::NotFound && version != head.version => continue,
+            Err(e) => return Err(untrusted(format!("{}: {e}", receipt_path.display())).into()),
+        };
+        let receipt: ControlReceipt = match serde_json::from_slice(&receipt_bytes) {
+            Ok(receipt) => receipt,
+            Err(_) if version != head.version => continue,
+            Err(e) => return Err(untrusted(format!("{}: {e}", receipt_path.display())).into()),
+        };
+        if receipt.version != version || receipt.digest() != digest {
+            if version != head.version { continue; }
+            return Err(untrusted(format!("{} differs from the pulled head version or digest", receipt_path.display())).into());
+        }
+        let snapshot_path = staged.join(snapshot_file(version));
+        let snapshot = std::fs::read(&snapshot_path).map_err(|e| untrusted(format!("{}: {e}", snapshot_path.display())))?;
+        receipt.verify(&project.name, &snapshot, &trusted).map_err(|e| untrusted(format!("{}: {e}", receipt_path.display())))?;
+        wanted = receipt.parent;
+        chain.push((version, snapshot, receipt_bytes, digest));
+    }
+    if let Some(missing) = wanted {
+        return Err(untrusted(format!("pulled control chain lacks predecessor {missing}")).into());
+    }
+    if let Some(version) = current {
+        if version > head.version {
+            if local_descends(snaps, version, &head, &project.name, &trusted)? {
+                return Ok(());
+            }
+            return Err(untrusted(format!("local applied v{version} does not descend from bucket head {}", head.receipt_sha256)).into());
+        }
+        let path = snaps.root().join(receipt_file(version));
+        let bytes = std::fs::read(&path).map_err(|e| untrusted(format!("{}: {e}", path.display())))?;
+        let receipt: ControlReceipt = serde_json::from_slice(&bytes).map_err(|e| untrusted(format!("{}: {e}", path.display())))?;
+        if !chain.iter().any(|(n, _, _, digest)| *n == version && *digest == receipt.digest()) {
+            return Err(untrusted(format!("pulled head {} does not descend from local head {}", head.receipt_sha256, receipt.digest())).into());
+        }
+    }
+    let latest = &chain[0].1;
+    let text = std::str::from_utf8(latest).map_err(|e| untrusted(format!("pulled snapshot is not UTF-8: {e}")))?;
+    let document: toml::Value = toml::from_str(text).map_err(|e| untrusted(format!("pulled snapshot: {e}")))?;
+    check_document(&document).map_err(|e| untrusted(format!("pulled snapshot: {e}")))?;
+    let pulled = collect(&[ManifestFile { path: snapshot_file(head.version), text: text.to_string() }])
+        .map_err(|e| untrusted(format!("pulled snapshot: {e}")))?;
+    let local = declared(declaration).map_err(|e| untrusted(format!("local declarations: {e:#}")))?;
+    if pulled.iter().any(|p| local.get(&p.spec.id).is_none_or(|d| d.content_hash() != p.spec.content_hash())) {
+        return Err(untrusted("pulled snapshot differs from this node's pipeline declarations".into()).into());
+    }
+    for pipeline in &pulled {
+        check(&pipeline.spec, declaration, tasks).map_err(|e| untrusted(format!("pipeline `{}`: {e:#}", pipeline.spec.id)))?;
+    }
+    chain.reverse();
+    let files: Vec<(u64, Vec<u8>, Vec<u8>)> = chain.into_iter().map(|(n, snapshot, receipt, _)| (n, snapshot, receipt)).collect();
+    snaps.adopt(current, &files, head.version).map_err(|e| untrusted(format!("local control adoption: {e}")))?;
+    eprintln!("adopted pulled control v{}", head.version);
+    Ok(())
 }
 
 /// The snapshot document: every specification as a `[[pipeline]]` block, sorted by id.
@@ -316,17 +459,93 @@ fn owner(control: &ControlConfig) -> Result<&SnapshotDir> {
     }
 }
 
+/// The admitted admin capability and issuer port a synced control claim needs.
+struct SyncAttestation {
+    authority: AdmittedAuthority,
+    signer: SeedSigner,
+    ledger: LedgerFile,
+    denylist: Option<PathBuf>,
+}
+
+impl SyncAttestation {
+    fn for_project(l: &Located, project: &ProjectArgs, admit: &AdmitArgs, issuer_key: Option<&Path>) -> Result<Option<Self>> {
+        if crate::sync::sync_config(l)?.0.is_none() {
+            return Ok(None);
+        }
+        let unavailable = |why: String| SurfaceError::ControlAttestationUnavailable(why);
+        let (authority, _) = admit.admit(project.project.as_deref(), "a synced control claim")
+            .map_err(|e| unavailable(format!("admin capability: {e:#}")))?;
+        if !authority.permits(Action::Admin, &[]) {
+            return Err(unavailable("the credential carries no admin grant".into()).into());
+        }
+        let seed = issuer_key.map(Path::to_path_buf).unwrap_or_else(|| l.project.dir.join(DEFAULT_SEED_PATH));
+        let signer = SeedSigner::resolve(Some(&seed)).map_err(|e| unavailable(format!("issuer signing port: {e}")))?;
+        Ok(Some(SyncAttestation {
+            authority,
+            signer,
+            ledger: LedgerFile::at(&l.project.dir, admit.keyset.as_deref()),
+            denylist: admit.denylist.clone(),
+        }))
+    }
+
+    fn receipt(
+        &self,
+        project: &str,
+        version: u64,
+        previous: Option<(&str, u64, &str)>,
+        snapshot: &str,
+    ) -> Result<String, ControlError> {
+        let unavailable = |why: String| ControlError::Surface(SurfaceError::ControlAttestationUnavailable(why));
+        let ledger = self.ledger.read().map_err(|e| unavailable(format!("key-set ledger: {e}")))?;
+        let revocation = revocation_state(self.denylist.as_deref(), &ledger)
+            .map_err(|e| unavailable(format!("revocation state: {e:#}")))?;
+        effect_boundary(&self.authority, &Admission::new(SystemClock.now(), &revocation))
+            .map_err(|e| unavailable(format!("admin capability: {e}")))?;
+        let parent = previous.map(|(text, expected, prior_snapshot)| {
+            let receipt: ControlReceipt = serde_json::from_str(text)
+                .map_err(|e| unavailable(format!("previous receipt: {e}")))?;
+            if receipt.version != expected {
+                return Err(unavailable(format!("previous receipt names v{} instead of v{expected}", receipt.version)));
+            }
+            let signer: SignerKey = receipt.signer.parse()
+                .map_err(|e| unavailable(format!("previous receipt signer: {e}")))?;
+            receipt.verify(project, prior_snapshot.as_bytes(), &[signer])
+                .map_err(|e| unavailable(format!("previous receipt: {e}")))?;
+            Ok(receipt.digest())
+        }).transpose()?;
+        let receipt = ControlReceipt::sign(project, version, parent.as_deref(), snapshot.as_bytes(), &self.signer)
+            .map_err(|e| unavailable(format!("issuer signing port: {e}")))?;
+        serde_json::to_string(&receipt).map_err(|e| unavailable(format!("receipt encoding: {e}")))
+    }
+}
+
 /// `pipeline import`: the guarded import, claiming v1 from every declared pipeline while the
 /// directory holds no version (`surface.apply.uninitialized-store`).
-pub(crate) fn import(project: &ProjectArgs, declaration: Option<PathBuf>, tasks: &Tasks) -> Result<()> {
+pub(crate) fn import(project: &ProjectArgs, declaration: Option<PathBuf>, tasks: &Tasks, admit: &AdmitArgs, issuer_key: Option<&Path>) -> Result<()> {
     let (l, _, control) = located(project, declaration)?;
     let snapshots = owner(&control)?;
+    let attestation = SyncAttestation::for_project(&l, project, admit, issuer_key)?;
     let declared = declared(&l.declaration)?;
     let text = render(&declared)?;
     for spec in declared.values() {
         check(spec, &l.declaration, tasks).map_err(|e| SurfaceError::ApplyValidationRefused(format!("pipeline `{}`: {e:#}", spec.id)))?;
     }
-    let v = snapshots.import(&text)?;
+    let v = match &attestation {
+        Some(attestation) => snapshots.import_attested(&text,
+            |version, _| attestation.receipt(&l.project.name, version, None, &text),
+            |existing| {
+                let unavailable = |why: String| ControlError::Surface(SurfaceError::ControlAttestationUnavailable(why));
+                let receipt: ControlReceipt = serde_json::from_str(existing)
+                    .map_err(|error| unavailable(format!("unpublished receipt: {error}")))?;
+                if receipt.version != 1 || receipt.parent.is_some() {
+                    return Err(unavailable("unpublished receipt is not the first version".into()));
+                }
+                receipt.verify(&l.project.name, text.as_bytes(), &[SignerKey::of(&attestation.signer)])
+                    .map_err(|error| unavailable(format!("unpublished receipt: {error}")))
+            },
+        )?,
+        None => snapshots.import(&text)?,
+    };
     for id in declared.keys() {
         println!("+ {id}");
     }
@@ -337,9 +556,10 @@ pub(crate) fn import(project: &ProjectArgs, declaration: Option<PathBuf>, tasks:
 /// `pipeline apply [id]`: validate what converges, then claim the next version. Losing the
 /// pointer's compare-and-swap reloads the winner and reapplies onto it
 /// (`surface.apply.version-race`).
-pub(crate) fn apply(project: &ProjectArgs, declaration: Option<PathBuf>, id: Option<&str>, tasks: &Tasks) -> Result<()> {
+pub(crate) fn apply(project: &ProjectArgs, declaration: Option<PathBuf>, id: Option<&str>, tasks: &Tasks, admit: &AdmitArgs, issuer_key: Option<&Path>) -> Result<()> {
     let (l, _, control) = located(project, declaration)?;
     let snapshots = owner(&control)?;
+    let attestation = SyncAttestation::for_project(&l, project, admit, issuer_key)?;
     snapshots.initialized()?;
     let source = &control.source;
     let declared = declared(&l.declaration)?;
@@ -378,7 +598,16 @@ pub(crate) fn apply(project: &ProjectArgs, declaration: Option<PathBuf>, id: Opt
             }
             return Ok(());
         }
-        match snapshots.claim(version, &text) {
+        let claim = match &attestation {
+            Some(attestation) => snapshots.claim_attested(version, &text, |next, previous| {
+                let prior_snapshot = version.map(|old| snapshots.read(old)).transpose()?;
+                let parent = previous.zip(version).zip(prior_snapshot.as_deref())
+                    .map(|((receipt, old), snapshot)| (receipt, old, snapshot));
+                attestation.receipt(&l.project.name, next, parent, &text)
+            }),
+            None => snapshots.claim(version, &text),
+        };
+        match claim {
             Ok(v) => {
                 for c in &changes {
                     println!("{} {}", sigil(c.action), c.id);
@@ -602,10 +831,13 @@ struct Unarmed {
 /// (`surface.arm.pulled-history`). Each pipeline left out is named on stderr with its reason
 /// and returned, once per applied version; a version already armed returns none. `None`
 /// when no version is applied.
-fn arm(scheduler: &mut Scheduler, snaps: &Source, project: &Project) -> Result<Option<Vec<Unarmed>>> {
+fn arm(scheduler: &mut Scheduler, control: &ControlConfig, project: &Project, declaration: &Path, tasks: &Tasks) -> Result<Option<Vec<Unarmed>>> {
     let store = contextful_context::Store::open(&project.dir, &project.name)?;
     scheduler.observe_runs(contextful_sync::run_state::newest_starts(&store)?);
-    let (version, specs) = applied(snaps)?;
+    if let Source::Dir(directory) = &control.source {
+        adopt_pulled(directory, project, declaration, tasks, control.issuer_pin.as_deref())?;
+    }
+    let (version, specs) = applied(&control.source)?;
     let Some(version) = version else { return Ok(None) };
     if version == scheduler.version() {
         return Ok(Some(Vec::new()));
@@ -641,9 +873,10 @@ fn arm(scheduler: &mut Scheduler, snaps: &Source, project: &Project) -> Result<O
 }
 
 /// `pipeline serve [--cycle]`.
-pub(crate) fn serve(project: &ProjectArgs, declaration: Option<PathBuf>, cycle: bool, http: Option<&str>) -> Result<()> {
+pub(crate) fn serve(project: &ProjectArgs, declaration: Option<PathBuf>, cycle: bool, http: Option<&str>, public_key: Option<&str>, tasks: &Tasks) -> Result<()> {
     let explicit = declaration.clone();
-    let (l, text, control) = located(project, declaration)?;
+    let (l, text, mut control) = located(project, declaration)?;
+    control.issuer_pin = public_key.map(str::to_string).or_else(|| std::env::var(crate::admit::PUBKEY_VAR).ok());
     if !cycle {
         control.trigger.require_face(http.is_some())?;
         if http.is_some() && control.trigger == Trigger::InProcess {
@@ -678,7 +911,7 @@ pub(crate) fn serve(project: &ProjectArgs, declaration: Option<PathBuf>, cycle: 
             }
             watched.end_all(Duration::from_secs(CHILD_GRACE_SECS));
         });
-        let answered = serve_cycle(&mut scheduler, &control, &l.project);
+        let answered = serve_cycle(&mut scheduler, &control, &l.project, &l.declaration, tasks);
         drop(reaper);
         answered?;
         if contextful_engine::stop::requested() {
@@ -687,7 +920,7 @@ pub(crate) fn serve(project: &ProjectArgs, declaration: Option<PathBuf>, cycle: 
         return Ok(());
     }
     if let Some(addr) = http {
-        return serve_wakes(&mut scheduler, &control, addr, &l.project, reaper);
+        return serve_wakes(&mut scheduler, &control, addr, &l.project, &l.declaration, tasks, reaper);
     }
     eprintln!("serving `{}` from {} as `{holder}`", l.project.name, control.source.describe());
     let tick = Duration::from_millis(TICK_INTERVAL_MS);
@@ -710,7 +943,7 @@ pub(crate) fn serve(project: &ProjectArgs, declaration: Option<PathBuf>, cycle: 
                 let now = w.clock.now();
                 if now >= next_poll {
                     // A failed poll leaves the armed set running (`surface.reconcile.fail-static`).
-                    if let Err(e) = arm(&mut scheduler, &control.source, &l.project) {
+                    if let Err(e) = arm(&mut scheduler, &control, &l.project, &l.declaration, tasks) {
                         eprintln!("{e:#}; the armed set stays in place");
                     }
                     next_poll = control.poll.next_after(now);
@@ -755,11 +988,11 @@ fn held_answer(holder: &str) -> Result<()> {
 
 /// One-shot evaluation (`surface.fire.cycle`). The lease comes first: finding it held,
 /// the cycle arms nothing and answers the holder (`surface.dispatch.lease-gated`).
-fn serve_cycle(scheduler: &mut Scheduler, control: &ControlConfig, project: &Project) -> Result<()> {
+fn serve_cycle(scheduler: &mut Scheduler, control: &ControlConfig, project: &Project, declaration: &Path, tasks: &Tasks) -> Result<()> {
     if let LeaseState::HeldBy(holder) = scheduler.hold()? {
         return held_answer(&holder);
     }
-    let armed = match arm(scheduler, &control.source, project) {
+    let armed = match arm(scheduler, control, project, declaration, tasks) {
         Ok(Some(unarmed)) => Ok(unarmed),
         Ok(None) => Err(SurfaceError::CycleControlSourceUnresolved(format!(
             "{} holds no applied version; run `contextful pipeline apply` first",
@@ -810,7 +1043,7 @@ fn serve_cycle(scheduler: &mut Scheduler, control: &ControlConfig, project: &Pro
 
 /// `pipeline serve --http` under the external trigger: no tick runs, and each `POST /wake`
 /// evaluates the armed set once and answers (`surface.arm.wake-answer`).
-fn serve_wakes(scheduler: &mut Scheduler, control: &ControlConfig, addr: &str, project: &Project, reaper: Reaper) -> Result<()> {
+fn serve_wakes(scheduler: &mut Scheduler, control: &ControlConfig, addr: &str, project: &Project, declaration: &Path, tasks: &Tasks, reaper: Reaper) -> Result<()> {
     let listener = std::net::TcpListener::bind(addr)?;
     listener.set_nonblocking(true)?;
     eprintln!("wake on http://{}/wake", listener.local_addr()?);
@@ -824,7 +1057,7 @@ fn serve_wakes(scheduler: &mut Scheduler, control: &ControlConfig, addr: &str, p
     while !contextful_engine::stop::requested() {
         match listener.accept() {
             Ok((stream, _)) => {
-                if let Err(e) = answer_wake(scheduler, control, project, stream) {
+                if let Err(e) = answer_wake(scheduler, control, project, declaration, tasks, stream) {
                     eprintln!("wake: {e:#}");
                 }
             }
@@ -882,7 +1115,7 @@ fn respond(stream: &mut std::net::TcpStream, status: u16, body: &serde_json::Val
     Ok(())
 }
 
-fn answer_wake(scheduler: &mut Scheduler, control: &ControlConfig, project: &Project, mut stream: std::net::TcpStream) -> Result<()> {
+fn answer_wake(scheduler: &mut Scheduler, control: &ControlConfig, project: &Project, declaration: &Path, tasks: &Tasks, mut stream: std::net::TcpStream) -> Result<()> {
     let (method, path) = request_line(&mut stream)?;
     if path != "/wake" {
         return respond(&mut stream, 404, &json!({ "error": format!("no route `{path}`; the wake is `POST /wake`") }));
@@ -890,7 +1123,7 @@ fn answer_wake(scheduler: &mut Scheduler, control: &ControlConfig, project: &Pro
     if method != "POST" {
         return respond(&mut stream, 405, &json!({ "error": "the wake is `POST /wake`" }));
     }
-    match wake(scheduler, control, project, std::time::Instant::now() + Duration::from_secs(WAKE_ANSWER_SECS)) {
+    match wake(scheduler, control, project, declaration, tasks, std::time::Instant::now() + Duration::from_secs(WAKE_ANSWER_SECS)) {
         Ok(answer) => respond(&mut stream, 200, &answer),
         Err(e) => {
             let status = e.downcast_ref::<SurfaceError>().map_or(500, SurfaceError::status);
@@ -903,12 +1136,12 @@ fn answer_wake(scheduler: &mut Scheduler, control: &ControlConfig, project: &Pro
 /// and wait for the units it dispatched until `deadline`. A unit still running at the deadline
 /// reports pending; a failed reconcile leaves the armed set running and reports its
 /// diagnostic (`surface.reconcile.fail-static`).
-fn wake(scheduler: &mut Scheduler, control: &ControlConfig, project: &Project, deadline: std::time::Instant) -> Result<serde_json::Value> {
+fn wake(scheduler: &mut Scheduler, control: &ControlConfig, project: &Project, declaration: &Path, tasks: &Tasks, deadline: std::time::Instant) -> Result<serde_json::Value> {
     if let LeaseState::HeldBy(holder) = scheduler.hold()? {
         return Ok(json!({ "fired": [], "failed": [], "pending": [], "held_by": holder }));
     }
     let mut diagnostics = Vec::new();
-    if let Err(e) = arm(scheduler, &control.source, project) {
+    if let Err(e) = arm(scheduler, control, project, declaration, tasks) {
         eprintln!("{}; the armed set stays in place", one_line(&e));
         diagnostics.push(one_line(&e));
     }

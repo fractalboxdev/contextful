@@ -491,6 +491,10 @@ Uploading the store to a bucket: the wire format, the bucket manifest, prefix co
 - `run-state` — `sync push` and `sync manifest --emit` first write the node's run state to `nodes/<node-id>/run-state.json`: each pipeline's newest run and each cursor row with its commit marker.
   *because run history and cursors live outside the store root, and a node starting cold otherwise sees neither*
 - `run-state-format` — A run state carries `format`, `1` for this layout; one whose `format` exceeds 1 contributes no run or cursor to a reader.
+- `control-artifact` — A push uploads each immutable applied control snapshot and its {{surface.apply.synced-attestation}} receipt under `<project>/control/`, then commits their digests and the project-scoped head in the bucket manifest.
+  *A-surface*
+- `control-diverged` — A push whose signed control head does not descend from the bucket head raises `SyncControlDiverged`, names both heads and leaves the bucket head unchanged.
+  *A-surface*
 - `pointer-carry` — After its manifest commit, a push publishes each local table pointer whose snapshot is whole and whose {{store.lay-out.ancestors}} name the bucket pointer's, or the bucket pointer names none, by a conditional put keeping the bucket's fence.
   *because a snapshot a local fold or a build publishes reads on no other node until its pointer reaches the bucket*
 - `pointer-leased` — A push publishes no pointer for a table whose compaction lease a holder keeps unexpired; that holder publishes under its fence.
@@ -533,6 +537,10 @@ sequenceDiagram
 
 unsettled: Which pointer does the bucket keep when a local fold's snapshot descends from none the bucket pointer names? owner: store affects: store.push
 
+#### Scenarios
+
+- `store.push.control-diverged`: WHEN two signed control heads name the same predecessor, THEN the second push refuses and keeps the first head.
+
 ## pull
 
 Fetching a bucket into a store: the digest diff, the parallel download, and the pointer written last.
@@ -563,6 +571,8 @@ Fetching a bucket into a store: the digest diff, the parallel download, and the 
   *because a run state summarizes history outside the store root, and a restore predating it otherwise refuses every node that pushed since*
 - `run-state-cursor` — A run opening where a pulled run state records a commit marker for its pipeline and table newer than every local one resumes from that marker's cursor.
   *because a collected run takes its manifest's cursor out of the bucket, and a cold node otherwise re-reads the source from its start*
+- `control-head` — A pull downloads the bucket manifest's project-scoped control head, its snapshot and receipt ancestry under their listed digests, leaving the local applied pointer untouched for {{surface.reconcile.pulled-control}}.
+  *A-surface*
 
 A pull converges on the bucket manifest and writes each table pointer last.
 
@@ -592,7 +602,9 @@ sequenceDiagram
 
 unsettled: What recovers a pull whose retries are exhausted by pushes arriving faster than the re-fetch shrinks the shortfall? owner: store affects: store.pull
 
-unsettled: Does a run state carry the applied control version, and what does a replica verify of a pulled version — apply validation, the admin capability's attestation — before adopting it? owner: control affects: store.pull
+#### Scenarios
+
+- `store.pull.control-head`: WHEN a cold node pulls a signed control head, THEN its local applied pointer stays absent until reconciliation verifies the head.
 
 ## probe
 

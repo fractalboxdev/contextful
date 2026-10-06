@@ -64,6 +64,147 @@ pub(crate) fn project(manifest: &str) -> tempfile::TempDir {
     dir
 }
 
+fn staged_control(document: &str) -> (tempfile::TempDir, contextful_policy::issue::SeedSigner) {
+    use contextful_core::issue::SignatureAlgorithm;
+    use contextful_core::store::sync::ControlHead;
+    use contextful_policy::control_receipt::ControlReceipt;
+
+    let dir = project(document);
+    let staged = dir.path().join(".contextful/context/research/control");
+    std::fs::create_dir_all(&staged).unwrap();
+    let signer = contextful_policy::issue::SeedSigner::generate(SignatureAlgorithm::Ed25519);
+    let receipt = ControlReceipt::sign("research", 1, None, document.as_bytes(), &signer).unwrap();
+    let head = ControlHead { version: 1, receipt_sha256: receipt.digest() };
+    std::fs::write(staged.join("head.json"), serde_json::to_vec(&head).unwrap()).unwrap();
+    std::fs::write(staged.join("manifest@v1.toml"), document).unwrap();
+    std::fs::write(staged.join("receipt@v1.json"), serde_json::to_vec(&receipt).unwrap()).unwrap();
+    (dir, signer)
+}
+
+fn serve_staged(dir: &Path, public: &str) -> Output {
+    Command::new(env!("CARGO_BIN_EXE_contextful"))
+        .args(["pipeline", "serve", "--cycle", "--project", "research", "--now", "2030-01-01T00:00:00Z"])
+        .current_dir(dir)
+        .env("CONTEXTFUL_ISSUER_PUBKEY", public)
+        .output()
+        .unwrap()
+}
+
+/// A cold reconciler verifies the staged receipt and local declarations before adopting v1.
+// spec: surface.reconcile.pulled-control@2a93bc23
+#[test]
+fn a_cold_node_adopts_a_pinned_pulled_control_snapshot_after_local_validation() {
+    let vendor = Vendor::start(|_| (200, "[{\"id\":\"a\"}]".into()));
+    let document = format!("site_id = \"site-a\"\n{}", scheduled("orders", &vendor.url("/v1/orders"), "every 1h"));
+    let (dir, signer) = staged_control(&document);
+    let pointer = dir.path().join(".contextful/control/research/manifest@current");
+    assert!(!pointer.exists());
+    let out = serve_staged(dir.path(), &signer.public_key_text());
+    assert!(out.status.success(), "{}", stderr(&out));
+    assert_eq!(std::fs::read_to_string(pointer).unwrap(), "1\n");
+    let answer: serde_json::Value = serde_json::from_slice(&out.stdout).unwrap();
+    assert_eq!(answer["armed"], 1);
+    assert_eq!(answer["fired"], serde_json::json!(["orders"]));
+    assert_eq!(vendor.targets(), ["/v1/orders"]);
+    std::fs::write(dir.path().join(".contextful/control/research/manifest@v1.toml"), "tampered").unwrap();
+    let tampered = serve_staged(dir.path(), &signer.public_key_text());
+    assert!(!tampered.status.success() && stderr(&tampered).contains("ControlSnapshotUntrusted"), "{}", stderr(&tampered));
+}
+
+#[test]
+fn a_pulled_partial_apply_leaves_extra_local_declarations_unarmed() {
+    let document = pipeline("orders", "https://api.vendor.example/v1", "", "tables = [\"orders\"]");
+    let (dir, signer) = staged_control(&document);
+    let extra = pipeline("returns", "https://api.vendor.example/v1", "", "tables = [\"returns\"]");
+    std::fs::write(dir.path().join("contextful.toml"), format!("authoring_posture = \"per_request\"\n{document}\n{extra}")).unwrap();
+
+    let out = serve_staged(dir.path(), &signer.public_key_text());
+    assert!(out.status.success(), "{}", stderr(&out));
+    let answer: serde_json::Value = serde_json::from_slice(&out.stdout).unwrap();
+    assert_eq!(answer["unarmed"].as_array().unwrap().len(), 1);
+    assert_eq!(answer["unarmed"][0]["id"], "orders");
+    assert_eq!(std::fs::read_to_string(dir.path().join(".contextful/control/research/manifest@current")).unwrap(), "1\n");
+}
+
+/// An invalid receipt or local declaration leaves the pulled version unapplied.
+// spec: surface.reconcile.pulled-control-untrusted@f332254b
+#[test]
+fn a_bad_signature_or_local_declaration_refuses_pulled_control_without_arming() {
+    let document = pipeline("orders", "https://api.vendor.example/v1", "", "tables = [\"orders\"]");
+    for bad_signature in [true, false] {
+        let (dir, signer) = staged_control(&document);
+        if bad_signature {
+            let path = dir.path().join(".contextful/context/research/control/receipt@v1.json");
+            let mut receipt: serde_json::Value = serde_json::from_slice(&std::fs::read(&path).unwrap()).unwrap();
+            receipt["signature"] = serde_json::json!("00");
+            std::fs::write(path, serde_json::to_vec(&receipt).unwrap()).unwrap();
+        } else {
+            std::fs::write(dir.path().join("contextful.toml"), "authoring_posture = 'per_request'\n").unwrap();
+        }
+        let out = serve_staged(dir.path(), &signer.public_key_text());
+        assert!(!out.status.success() && stderr(&out).contains("ControlSnapshotUntrusted"), "{}", stderr(&out));
+        assert!(!dir.path().join(".contextful/control/research/manifest@current").exists());
+    }
+}
+
+/// A receipt's signer grants no trust without a locally supplied issuer pin.
+// spec: surface.reconcile.issuer-pin@21162c50
+#[test]
+fn a_pulled_receipt_cannot_supply_its_own_trust_pin() {
+    use contextful_core::issue::SignatureAlgorithm;
+    use contextful_policy::issue::SeedSigner;
+
+    let document = pipeline("orders", "https://api.vendor.example/v1", "", "tables = [\"orders\"]");
+    let (dir, signer) = staged_control(&document);
+    let absent = Command::new(env!("CARGO_BIN_EXE_contextful"))
+        .args(["pipeline", "serve", "--cycle", "--project", "research"])
+        .current_dir(dir.path()).env_remove("CONTEXTFUL_ISSUER_PUBKEY").output().unwrap();
+    assert!(!absent.status.success() && stderr(&absent).contains("ControlSnapshotUntrusted"), "{}", stderr(&absent));
+    let foreign = SeedSigner::generate(SignatureAlgorithm::Ed25519);
+    let wrong = serve_staged(dir.path(), &foreign.public_key_text());
+    assert!(!wrong.status.success() && stderr(&wrong).contains("not locally pinned"), "{}", stderr(&wrong));
+    assert!(!dir.path().join(".contextful/control/research/manifest@current").exists());
+    let explicit = Command::new(env!("CARGO_BIN_EXE_contextful"))
+        .args(["pipeline", "serve", "--cycle", "--project", "research", "--public-key", &signer.public_key_text()])
+        .current_dir(dir.path()).env("CONTEXTFUL_ISSUER_PUBKEY", foreign.public_key_text()).output().unwrap();
+    assert!(explicit.status.success(), "{}", stderr(&explicit));
+}
+
+#[test]
+fn a_pulled_successor_extends_the_local_head_and_a_broken_parent_keeps_it() {
+    use contextful_core::store::sync::ControlHead;
+    use contextful_policy::control_receipt::ControlReceipt;
+
+    let document = pipeline("orders", "https://api.vendor.example/v1", "", "tables = [\"orders\"]");
+    for broken_parent in [false, true] {
+        let (dir, signer) = staged_control(&document);
+        let staged = dir.path().join(".contextful/context/research/control");
+        let local = dir.path().join(".contextful/control/research");
+        std::fs::create_dir_all(&local).unwrap();
+        std::fs::copy(staged.join("manifest@v1.toml"), local.join("manifest@v1.toml")).unwrap();
+        std::fs::copy(staged.join("receipt@v1.json"), local.join("receipt@v1.json")).unwrap();
+        std::fs::write(local.join("manifest@current"), "1\n").unwrap();
+        let first: ControlReceipt = serde_json::from_slice(&std::fs::read(staged.join("receipt@v1.json")).unwrap()).unwrap();
+        let parent = if broken_parent { "a".repeat(64) } else { first.digest() };
+        let second = ControlReceipt::sign("research", 2, Some(&parent), document.as_bytes(), &signer).unwrap();
+        std::fs::write(staged.join("manifest@v2.toml"), &document).unwrap();
+        std::fs::write(staged.join("receipt@v2.json"), serde_json::to_vec(&second).unwrap()).unwrap();
+        std::fs::write(staged.join("head.json"), serde_json::to_vec(&ControlHead { version: 2, receipt_sha256: second.digest() }).unwrap()).unwrap();
+        let out = serve_staged(dir.path(), &signer.public_key_text());
+        if broken_parent {
+            assert!(!out.status.success() && stderr(&out).contains("ControlSnapshotUntrusted"), "{}", stderr(&out));
+            assert_eq!(std::fs::read_to_string(local.join("manifest@current")).unwrap(), "1\n");
+        } else {
+            assert!(out.status.success(), "{}", stderr(&out));
+            assert_eq!(std::fs::read_to_string(local.join("manifest@current")).unwrap(), "2\n");
+            std::fs::write(staged.join("head.json"), serde_json::to_vec(&ControlHead { version: 1, receipt_sha256: first.digest() }).unwrap()).unwrap();
+            let stale = serve_staged(dir.path(), &signer.public_key_text());
+            assert!(stale.status.success(), "{}", stderr(&stale));
+            assert_eq!(std::fs::read_to_string(local.join("manifest@current")).unwrap(), "2\n");
+        }
+    }
+}
+
 pub(crate) fn cf(dir: &Path, args: &[&str]) -> Output {
     Command::new(env!("CARGO_BIN_EXE_contextful"))
         .args(args)
@@ -1423,6 +1564,165 @@ fn the_import_claims_the_first_version_once() {
     let empty = project("site_id = \"site-a\"\n");
     assert!(ok(&cf(empty.path(), &["pipeline", "import", "--project", "research"])).contains("imported v1"));
     assert!(ok(&cf(empty.path(), &["pipeline", "apply", "--project", "research"])).contains("unchanged at v1"));
+}
+
+/// A synced import admits an admin capability and signs the snapshot before it claims v1.
+// spec: surface.apply.synced-attestation@34c2d5b6
+// spec: surface.apply.attestation-unavailable@6e7f76ad
+#[test]
+fn a_synced_import_requires_admin_and_writes_a_verifiable_receipt() {
+    use contextful_policy::control_receipt::ControlReceipt;
+    use contextful_policy::issue::SignerKey;
+
+    let dir = project("site_id = \"site-a\"\n");
+    let bucket = tempfile::tempdir().unwrap();
+    let store = dir.path().join(".contextful/context/research");
+    std::fs::write(store.join("config.toml"), format!(
+        "[node]\nid = \"ingest-a\"\n\n[sync]\nendpoint = \"file://{}\"\nbucket = \"control-test\"\nprefix = \"team\"\ncoordination = \"single-writer\"\n",
+        bucket.path().display()
+    )).unwrap();
+    std::fs::write(dir.path().join(".contextful/issuance.toml"),
+        "default_audience = \"contextful://research\"\nmax_lifetime_secs = 3600\n").unwrap();
+    let public = ok(&cf(dir.path(), &["token", "keygen", "--out", ".contextful/issuer.seed"]));
+    let import = || {
+        let mut command = Command::new(env!("CARGO_BIN_EXE_contextful"));
+        command.args(["pipeline", "import", "--project", "research", "--issuer-key", ".contextful/issuer.seed",
+            "--public-key", &public, "--audience", "contextful://research"])
+            .current_dir(dir.path()).env_remove("CONTEXTFUL_TOKEN");
+        command
+    };
+    let missing = import().output().unwrap();
+    assert!(!missing.status.success() && stderr(&missing).contains("ControlAttestationUnavailable"), "{}", stderr(&missing));
+    assert!(!dir.path().join(CONTROL).join("manifest@current").exists());
+    assert!(!dir.path().join(CONTROL).join("receipt@v1.json").exists());
+
+    let token = ok(&cf(dir.path(), &["token", "mint", "--issuer-key", ".contextful/issuer.seed",
+        "--on-behalf-of", "user://dana@example.test", "--ttl", "600", "--action", "admin", "--table", "*"]));
+    let read_only = ok(&cf(dir.path(), &["token", "mint", "--issuer-key", ".contextful/issuer.seed",
+        "--on-behalf-of", "user://dana@example.test", "--ttl", "600", "--action", "read", "--table", "*"]));
+    let denied = import().env("CONTEXTFUL_TOKEN", read_only).output().unwrap();
+    assert!(!denied.status.success() && stderr(&denied).contains("ControlAttestationUnavailable"), "{}", stderr(&denied));
+    let missing_signer = Command::new(env!("CARGO_BIN_EXE_contextful"))
+        .args(["pipeline", "import", "--project", "research", "--issuer-key", "missing.seed",
+            "--public-key", &public, "--audience", "contextful://research"])
+        .current_dir(dir.path()).env("CONTEXTFUL_TOKEN", &token).output().unwrap();
+    assert!(!missing_signer.status.success() && stderr(&missing_signer).contains("ControlAttestationUnavailable"),
+        "{}", stderr(&missing_signer));
+    assert!(!dir.path().join(CONTROL).join("manifest@current").exists());
+    let imported = import().env("CONTEXTFUL_TOKEN", &token).output().unwrap();
+    assert!(imported.status.success(), "{}", stderr(&imported));
+    let snapshot = std::fs::read(dir.path().join(CONTROL).join("manifest@v1.toml")).unwrap();
+    let receipt: ControlReceipt = serde_json::from_slice(&std::fs::read(dir.path().join(CONTROL).join("receipt@v1.json")).unwrap()).unwrap();
+    let pin: SignerKey = receipt.signer.parse().unwrap();
+    assert!(receipt.verify("research", &snapshot, &[pin]).is_ok());
+    assert_eq!(receipt.version, 1);
+    assert_eq!(receipt.parent, None);
+
+    std::fs::write(dir.path().join("contextful.toml"),
+        format!("authoring_posture = \"per_request\"\nsite_id = \"site-a\"\n\n{}",
+            scheduled("orders", "https://api.vendor.example/v1", "every 1h"))).unwrap();
+    let apply = || {
+        let mut command = Command::new(env!("CARGO_BIN_EXE_contextful"));
+        command.args(["pipeline", "apply", "--project", "research", "--issuer-key", ".contextful/issuer.seed",
+            "--public-key", &public, "--audience", "contextful://research"])
+            .current_dir(dir.path()).env("CONTEXTFUL_TOKEN", &token);
+        command
+    };
+    let receipt_path = dir.path().join(CONTROL).join("receipt@v1.json");
+    let original_receipt = std::fs::read(&receipt_path).unwrap();
+    let mut corrupted: ControlReceipt = serde_json::from_slice(&original_receipt).unwrap();
+    corrupted.signature = "00".into();
+    std::fs::write(&receipt_path, serde_json::to_vec(&corrupted).unwrap()).unwrap();
+    let refused = apply().output().unwrap();
+    assert!(!refused.status.success() && stderr(&refused).contains("ControlAttestationUnavailable"), "{}", stderr(&refused));
+    assert_eq!(std::fs::read_to_string(dir.path().join(CONTROL).join("manifest@current")).unwrap(), "1\n");
+    assert!(!dir.path().join(CONTROL).join("receipt@v2.json").exists());
+    std::fs::write(&receipt_path, original_receipt).unwrap();
+    let applied = apply().output().unwrap();
+    assert!(applied.status.success(), "{}", stderr(&applied));
+    let second_snapshot = std::fs::read(dir.path().join(CONTROL).join("manifest@v2.toml")).unwrap();
+    let second: ControlReceipt = serde_json::from_slice(&std::fs::read(dir.path().join(CONTROL).join("receipt@v2.json")).unwrap()).unwrap();
+    assert_eq!(second.version, 2);
+    assert_eq!(second.parent.as_deref(), Some(receipt.digest().as_str()));
+    assert!(second.verify("research", &second_snapshot, &[second.signer.parse().unwrap()]).is_ok());
+}
+
+/// A signed import resumes matching unpublished v1 files and refuses altered bytes.
+#[test]
+fn a_synced_import_recovers_only_matching_unpublished_v1_files() {
+    use contextful_policy::control_receipt::ControlReceipt;
+    use contextful_policy::issue::SignerKey;
+
+    let dir = project("site_id = \"site-a\"\n");
+    let bucket = tempfile::tempdir().unwrap();
+    std::fs::write(dir.path().join(".contextful/context/research/config.toml"), format!(
+        "[node]\nid = \"ingest-a\"\n[sync]\nendpoint = \"file://{}\"\nbucket = \"control-test\"\nprefix = \"team\"\ncoordination = \"single-writer\"\n",
+        bucket.path().display()
+    )).unwrap();
+    std::fs::write(dir.path().join(".contextful/issuance.toml"),
+        "default_audience = \"contextful://research\"\nmax_lifetime_secs = 3600\n").unwrap();
+    let public = ok(&cf(dir.path(), &["token", "keygen", "--out", ".contextful/issuer.seed"]));
+    let token = ok(&cf(dir.path(), &["token", "mint", "--issuer-key", ".contextful/issuer.seed",
+        "--on-behalf-of", "user://dana@example.test", "--ttl", "600", "--action", "admin", "--table", "*"]));
+    let import = || Command::new(env!("CARGO_BIN_EXE_contextful"))
+        .args(["pipeline", "import", "--project", "research", "--issuer-key", ".contextful/issuer.seed",
+            "--public-key", &public, "--audience", "contextful://research"])
+        .current_dir(dir.path()).env("CONTEXTFUL_TOKEN", &token).output().unwrap();
+    assert!(ok(&import()).contains("imported v1"));
+    let root = dir.path().join(CONTROL);
+    let pointer = root.join("manifest@current");
+    let snapshot_path = root.join("manifest@v1.toml");
+    let receipt_path = root.join("receipt@v1.json");
+    let snapshot = std::fs::read(&snapshot_path).unwrap();
+    let receipt = std::fs::read(&receipt_path).unwrap();
+    let parsed: ControlReceipt = serde_json::from_slice(&receipt).unwrap();
+    let pin: SignerKey = public.trim().replace('/', ":").parse().unwrap();
+    parsed.verify("research", &snapshot, std::slice::from_ref(&pin)).unwrap();
+
+    // An interrupted first import owns neither a pointer nor a completed version.
+    std::fs::remove_file(&pointer).unwrap();
+    std::fs::remove_file(&receipt_path).unwrap();
+    std::fs::write(&snapshot_path, b"different snapshot").unwrap();
+    assert!(!import().status.success());
+    assert!(!pointer.exists() && !receipt_path.exists());
+    assert_eq!(std::fs::read(&snapshot_path).unwrap(), b"different snapshot");
+    std::fs::write(&snapshot_path, &snapshot).unwrap();
+    assert!(ok(&import()).contains("imported v1"));
+    let recovered: ControlReceipt = serde_json::from_slice(&std::fs::read(&receipt_path).unwrap()).unwrap();
+    recovered.verify("research", &snapshot, &[pin]).unwrap();
+    assert_eq!(recovered.version, 1);
+    assert!(recovered.parent.is_none());
+    assert_eq!(std::fs::read(&snapshot_path).unwrap(), snapshot);
+
+    // A crash after receipt publication preserves the exact immutable pair.
+    std::fs::remove_file(&pointer).unwrap();
+    std::fs::write(&receipt_path, &receipt).unwrap();
+    assert!(ok(&import()).contains("imported v1"));
+    assert_eq!(std::fs::read(&receipt_path).unwrap(), receipt);
+    std::fs::remove_file(&pointer).unwrap();
+    let mut forged = parsed.clone();
+    forged.signature = "00".into();
+    let forged = serde_json::to_vec(&forged).unwrap();
+    std::fs::write(&receipt_path, &forged).unwrap();
+    assert!(!import().status.success());
+    assert!(!pointer.exists());
+    assert_eq!(std::fs::read(&receipt_path).unwrap(), forged);
+    assert_eq!(std::fs::read(&snapshot_path).unwrap(), snapshot);
+    let stranger = contextful_policy::issue::SeedSigner::generate(contextful_core::issue::SignatureAlgorithm::Ed25519);
+    let foreign = ControlReceipt::sign("research", 1, None, &snapshot, &stranger).unwrap();
+    let foreign = serde_json::to_vec(&foreign).unwrap();
+    std::fs::write(&receipt_path, &foreign).unwrap();
+    assert!(!import().status.success());
+    assert!(!pointer.exists());
+    assert_eq!(std::fs::read(&receipt_path).unwrap(), foreign);
+    std::fs::write(&receipt_path, &receipt).unwrap();
+    std::fs::write(&snapshot_path, b"different snapshot").unwrap();
+    assert!(!import().status.success());
+    assert!(!pointer.exists());
+    assert_eq!(std::fs::read(&snapshot_path).unwrap(), b"different snapshot");
+    assert_eq!(std::fs::read(&receipt_path).unwrap(), receipt);
+    assert!(!root.join("manifest@v2.toml").exists());
+    assert!(!root.join("receipt@v2.json").exists());
 }
 
 /// An edit or apply against a store that has taken no explicit guarded import, an empty store included, raises

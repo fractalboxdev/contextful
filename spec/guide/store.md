@@ -20,9 +20,11 @@ A complete empty replacement marks a frontier with no files ({{store.declare.emp
 
 Runs accumulate until a fold compacts them. A pass writes Parquet and every sidecar into staging ({{store.fold.pass}}), then publishes by replacing `_pointer.json` conditioned on the ETag it read at the start ({{store.fold.pointer-commit}}). Readers see a snapshot and its sidecars together or not at all ({{store.fold.partial-snapshot}}), and a statement in flight keeps the snapshot it started on ({{store.fold.non-blocking}}).
 
-Two SQLite catalogs sit beside the files. `derived.sqlite` is a disposable cache rebuilt from the tree ({{store.lay-out.derived-catalog}}); `machine.sqlite` holds one machine's journal, cursor cache and lease rows, and no pull or rebuild touches it ({{store.lay-out.machine-catalog}}). Both sit behind ports ({{store.lay-out.catalog-ports}}).
+The catalogs have distinct lifetimes: `derived.sqlite` rebuilds from the tree ({{store.lay-out.derived-catalog}}); `machine.sqlite` keeps machine-local journal, cursors and leases ({{store.lay-out.machine-catalog}}). Both sit behind ports ({{store.lay-out.catalog-ports}}).
 
-A bucket mirrors the tree. A push uploads changed files, commits the bucket manifest by compare-and-set, and re-merges a lost race within a bound ({{store.merge.retries}}). A pull checks every digest ({{store.pull.digest-mismatch}}) and writes no pointer unless it converges ({{store.pull.unconverged}}). Leases keep writers on different machines apart, with a fence the storage itself checks on commit ({{store.lease.stale-fence}}). A replica is read-only ({{store.replicate.write-refused}}) and holds a snapshot whole or not at all ({{store.replicate.partial-parquet}}).
+A bucket mirrors the tree. A push uploads changed files, commits the bucket manifest by compare-and-set, and re-merges a lost race within a bound ({{store.merge.retries}}). A pull checks every digest ({{store.pull.digest-mismatch}}) and writes no pointer unless it converges ({{store.pull.unconverged}}). Leases keep writers apart, with a fence storage checks on commit ({{store.lease.stale-fence}}). A replica is read-only ({{store.replicate.write-refused}}) and holds a snapshot whole or not at all ({{store.replicate.partial-parquet}}).
+
+A pull carries the signed control head ({{store.pull.control-head}}) without changing the applied pointer. The control reconciler verifies it before arming.
 
 ## Worked example
 
