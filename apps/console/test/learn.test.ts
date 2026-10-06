@@ -14,6 +14,7 @@ test("distillation runs after streaming and lands at most three scoped conclusio
   assert.deepEqual(events, ["stream", "distill:One answer", "land:session-1:Acme 0", "land:session-1:Acme 1", "land:session-1:Acme 2"]);
 });
 
+// spec: surface.learn.unscoped@1334c866
 test("unscoped learning refuses before distillation or landing", async () => {
   let called = false;
   await assert.rejects(learnAfterAnswer({ scope: "", question: "q", stream: (async function* () { yield "a"; })(),

@@ -2,6 +2,7 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import { buildView, readView, sanitizeView, splitResult } from "../src/render.ts";
 
+// spec: surface.render.component-choice@aba19242
 test("server result shape chooses metric, line, or table with a bar option", () => {
   assert.equal(buildView({ columns: ["revenue"], rows: [[42]] }).component, "metric.v1");
   assert.equal(buildView({ columns: ["day", "revenue"], rows: [["2026-01-01", 1], ["2026-01-02", 2], ["2026-01-03", 3]] }).component, "line.v1");
@@ -9,6 +10,7 @@ test("server result shape chooses metric, line, or table with a bar option", () 
   assert.equal(buildView({ columns: ["name", "value"], rows: [["A", 1]] }).component, "table.v1");
 });
 
+// spec: surface.render.client-authored-view@25b34ad1
 test("client and model view specifications never become widgets", () => {
   const result = { columns: ["amount"], rows: [[7]] };
   for (const origin of ["client", "model"] as const) {
@@ -17,6 +19,7 @@ test("client and model view specifications never become widgets", () => {
   assert.equal(buildView(result, { origin: "server", hint: { component: "bar.v1", columns: ["missing"] } }).component, "metric.v1");
 });
 
+// spec: surface.render.older-transcript@860e6ab9
 test("older transcripts render an unknown component as a table", () => {
   assert.equal(readView({ component: "map.v3", props: { columns: ["x"], rows: [[1]] } }).component, "table.v1");
 });

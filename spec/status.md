@@ -13,9 +13,9 @@ An unpinned clause is `committed`; a pinned one is `performed` when its Rust, Le
 | `read` | 2 | 15 | 179 | 29 | 22 | 21 | 163 | 0 | 163 |
 | `run` | 3 | 26 | 373 | 98 | 36 | 37 | 261 | 0 | 261 |
 | `store` | 1 | 17 | 237 | 55 | 13 | 20 | 200 | 0 | 200 |
-| `surface` | 2 | 20 | 106 | 49 | 22 | 0 | 51 | 0 | 51 |
+| `surface` | 2 | 20 | 106 | 49 | 22 | 0 | 59 | 0 | 59 |
 | `topology` | 1 | 6 | 70 | 24 | 5 | 5 | 38 | 0 | 38 |
-| **total** | 19 | 155 | 2013 | 581 | 188 | 127 | 1365 | 0 | |
+| **total** | 19 | 155 | 2013 | 581 | 188 | 127 | 1373 | 0 | |
 
 Decision records: 18.
 
@@ -37,7 +37,7 @@ A milestone reads `closed` when its acceptance test computes `passing` and every
 | 9 — Visibility | 6 | 41 | 3 | open | open |
 | 10 — Cadence and the operator plane | 11 | 68 | 56 | passing | open |
 | 11 — The derive tier | 7 | 78 | 55 | passing | open |
-| 12 — The operator console | 12 | 49 | 0 | open | open |
+| 12 — The operator console | 12 | 49 | 8 | open | open |
 | 13 — Disclosure | 5 | 21 | 4 | open | open |
 | 14 — Assurance | 7 | 134 | 84 | passing | closed |
 
@@ -1342,6 +1342,8 @@ Unscheduled operations: 10.
 | `surface.arm.unknown-trigger` | `crates/contextful-cli/tests/integration/pipeline.rs::an_unknown_trigger_arms_nothing` | performed |
 | `surface.arm.unreadable-schedule` | `crates/contextful-core/tests/integration/surface/arm.rs::an_unreadable_schedule_names_its_diagnostic` | performed |
 | `surface.arm.wake-answer` | `crates/contextful-cli/tests/integration/pipeline.rs::a_wake_answers_within_its_bound_naming_what_still_runs` | performed |
+| `surface.brief.greeting` | `apps/console/test/brief.test.ts::apps/console/test/brief.test.ts::brief requires a turnless present-time session and live matched arrivals` | performed |
+| `surface.brief.topic-tier` | `apps/console/test/brief.test.ts::apps/console/test/brief.test.ts::topic tier needs two shared tokens including the subject` | performed |
 | `surface.dispatch.callback-rejected` | `crates/contextful-core/tests/integration/surface/worker.rs::a_superseded_or_skewed_callback_changes_no_step` | performed |
 | `surface.dispatch.callback-skew` | `crates/contextful-core/tests/integration/surface/worker.rs::the_relay_accepts_a_timestamp_within_the_skew` | performed |
 | `surface.dispatch.children-reaped` | `crates/contextful-cli/tests/integration/pipeline.rs::serve_ends_every_child_it_dispatched` | performed |
@@ -1365,12 +1367,18 @@ Unscheduled operations: 10.
 | `surface.fire.store-driven-body` | `crates/contextful-core/tests/integration/job.rs::a_store_driven_block_naming_an_unregistered_body_raises_job_body_unregistered` | performed |
 | `surface.fire.store-driven-concurrency` | `crates/contextful-core/tests/integration/job.rs::a_store_driven_block_without_a_positive_max_in_flight_raises_job_concurrency_unset` | performed |
 | `surface.fire.target-unbound` | `crates/contextful-cli/tests/integration/job.rs::a_job_target_naming_nothing_produced_is_refused_at_validation` | performed |
+| `surface.learn.unscoped` | `apps/console/test/learn.test.ts::apps/console/test/learn.test.ts::unscoped learning refuses before distillation or landing` | performed |
+| `surface.publish-answer.askerless-audience` | `apps/console/test/publish.test.ts::apps/console/test/publish.test.ts::a scheduled service post refuses an audience and names its destination` | performed |
+| `surface.publish-answer.share-affordance` | `apps/console/test/publish.test.ts::apps/console/test/publish.test.ts::an access explanation cannot offer a share control` | performed |
 | `surface.reconcile.fail-static` | `crates/contextful-cli/tests/integration/pipeline.rs::an_unreadable_snapshot_leaves_the_armed_set_running` | performed |
 | `surface.reconcile.learns-by-reading` | `crates/contextful-cli/tests/integration/pipeline.rs::a_wake_reads_the_applied_version_from_the_control_source` | performed |
 | `surface.reconcile.loopback-only` | `crates/contextful-cli/tests/integration/pipeline.rs::a_control_url_outside_loopback_arms_nothing` | performed |
 | `surface.reconcile.pointer-malformed` | `crates/contextful-core/tests/integration/surface/control.rs::a_pointer_is_wholly_a_version` | performed |
 | `surface.reconcile.poll-cadence` | `crates/contextful-core/tests/integration/surface/control.rs::a_poll_takes_a_schedule_and_defaults_to_thirty_seconds` | performed |
 | `surface.reconcile.url-layout` | `crates/contextful-cli/tests/integration/pipeline.rs::a_loopback_control_url_serves_the_applied_snapshot` | performed |
+| `surface.render.client-authored-view` | `apps/console/test/render.test.ts::apps/console/test/render.test.ts::client and model view specifications never become widgets` | performed |
+| `surface.render.component-choice` | `apps/console/test/render.test.ts::apps/console/test/render.test.ts::server result shape chooses metric, line, or table with a bar option` | performed |
+| `surface.render.older-transcript` | `apps/console/test/render.test.ts::apps/console/test/render.test.ts::older transcripts render an unknown component as a table` | performed |
 | `surface.reside.region-entries` | `crates/contextful-core/tests/integration/surface/reside.rs::an_allow_set_holds_sixteen_entries` | performed |
 | `surface.reside.region-mismatch` | `crates/contextful-cli/tests/integration/pipeline.rs::a_resource_outside_the_residency_allow_set_serves_nothing` | performed |
 | `surface.reside.site-regions` | `crates/contextful-cli/tests/integration/sync/mod.rs::two_sites_declaring_different_residency_diverge_at_push` | performed |

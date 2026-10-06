@@ -6,12 +6,14 @@ const now = Date.parse("2026-01-08T12:00:00Z");
 const conclusion = { subject: "Acme", text: "Acme filings need review", live: true };
 const row = { id: "a", label: "Acme filing", topics: ["filings"], arrivedAt: "2026-01-08T11:00:00Z" };
 
+// spec: surface.brief.topic-tier@cd81b55a
 test("topic tier needs two shared tokens including the subject", () => {
   assert.equal(topicMatch(conclusion, row), true);
   assert.equal(topicMatch(conclusion, { ...row, label: "filings review", topics: [] }), false);
   assert.equal(topicMatch(conclusion, { ...row, label: "Acme", topics: [] }), false);
 });
 
+// spec: surface.brief.greeting@945ee5ee
 test("brief requires a turnless present-time session and live matched arrivals", async () => {
   const input = { session: { turns: 0, vantage: "present" }, conclusions: [conclusion], arrivals: [row], now };
   assert.equal((await deriveBrief(input))?.subjects[0].subject, "Acme");
