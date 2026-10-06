@@ -68,7 +68,8 @@ export async function resolveReaderCredential(options: {
 }): Promise<string> {
   try {
     const credential = await options.mint();
-    if (credential) return credential;
+    if (credential.trim()) return credential;
+    throw new ConsoleError("ConsoleTokenExchangeUnavailable", "exchange returned an empty credential", 503);
   } catch (error) {
     if (!(error instanceof ConsoleError && error.code === "ConsoleTokenExchangeRefused" && error.status === 403)) throw error;
   }

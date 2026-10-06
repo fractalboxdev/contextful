@@ -114,7 +114,8 @@ function parseWebBound(value) {
 async function resolveReaderCredential(options) {
   try {
     const credential = await options.mint();
-    if (credential) return credential;
+    if (credential.trim()) return credential;
+    throw new ConsoleError("ConsoleTokenExchangeUnavailable", "exchange returned an empty credential", 503);
   } catch (error) {
     if (!(error instanceof ConsoleError && error.code === "ConsoleTokenExchangeRefused" && error.status === 403)) throw error;
   }
@@ -312,7 +313,7 @@ function createLiveTurn({ stores, env, fetcher = fetch }) {
           throw new ConsoleError("ConsoleTokenExchangeUnavailable", `exchange answered ${response.status}`, 503);
         }
         const value = await response.json();
-        if (!record(value) || typeof value.token !== "string") throw new ConsoleError("ConsoleTokenExchangeUnavailable", "exchange returned no credential", 503);
+        if (!record(value) || typeof value.token !== "string" || !value.token.trim()) throw new ConsoleError("ConsoleTokenExchangeUnavailable", "exchange returned no credential", 503);
         return value.token;
       }
     }) : shared;
