@@ -59,7 +59,11 @@ impl Drop for Listener {
 
 /// Start the face; its address, reported on standard error.
 fn serve(dir: &Path, args: &[&str]) -> (Listener, String) {
-    let mut child = Command::new(env!("CARGO_BIN_EXE_contextful"))
+    serve_binary(Path::new(env!("CARGO_BIN_EXE_contextful")), dir, args)
+}
+
+fn serve_binary(binary: &Path, dir: &Path, args: &[&str]) -> (Listener, String) {
+    let mut child = Command::new(binary)
         .args(args)
         .current_dir(dir)
         .env_remove("CONTEXTFUL_ISSUER_PUBKEY")
@@ -78,6 +82,22 @@ fn serve(dir: &Path, args: &[&str]) -> (Listener, String) {
         line.clear();
     }
     panic!("the face never listened")
+}
+
+#[test]
+fn control_apply_uses_the_host_registered_task_set() {
+    let binary = super::derive::host_binary();
+    let (dir, public) = project();
+    let root = dir.path();
+    std::fs::write(root.join("contextful.toml"), format!("authoring_posture = \"per_request\"\n{}", super::derive::host_manifest("word-split"))).unwrap();
+    let imported = Command::new(&binary).args(["pipeline", "import", "--project", "research"]).current_dir(root).output().unwrap();
+    stdout(&imported);
+    std::fs::write(root.join("contextful.toml"), format!("authoring_posture = \"per_request\"\n{}", super::derive::host_manifest("word-split").replace("[pipeline.source]", "schedule = \"every 1h\"\n[pipeline.source]"))).unwrap();
+    let admin = stdout(&run(root, &["token", "mint", "--issuer-key", ".contextful/issuer.seed", "--on-behalf-of", "user://dana@acme.example", "--zone", "on-prem:hq", "--action", "admin", "--table", "*", "--ttl", "900"]));
+    let (_listener, addr) = serve_binary(&binary, root, &["serve", "--http", "127.0.0.1:0", "--audience", AUD, "--max-in-flight", "2", "--project", "research", "--public-key", &public]);
+    let (status, state) = control(&addr, "POST", "/control/apply", Some(&admin), "{}");
+    assert_eq!(status, 200, "{state}");
+    assert_eq!(state["applied"], json!(2));
 }
 
 static NONCE: AtomicU64 = AtomicU64::new(0);
