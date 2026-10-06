@@ -1,46 +1,79 @@
-//! `assurance.gate.remote-check`: the pull-request workflow dispatches every stage.
+//! The gate exposes one local command per remote check, and the repository holds no Actions workflows after cutover.
 
 use crate::repo_root;
 use std::process::Command;
 
-/// The pull-request workflow dispatches every stage the gate subcommand defines to a remote runner, a split stage one part at a time, each as one status check labelled with its name.
-// spec: assurance.gate.remote-check@1a47dbaa
 #[test]
-fn the_workflow_dispatches_every_gate_stage() {
-    let out = Command::new(env!("CARGO_BIN_EXE_contextful-ci")).args(["stages", "--parts"]).current_dir(repo_root()).output().unwrap();
+fn every_gate_stage_has_a_dispatchable_part() {
+    let out = Command::new(env!("CARGO_BIN_EXE_contextful-ci"))
+        .args(["stages", "--parts"])
+        .current_dir(repo_root())
+        .output()
+        .unwrap();
     assert!(out.status.success());
-    let stages: Vec<String> = String::from_utf8_lossy(&out.stdout).lines().map(str::to_string).collect();
-    assert!(!stages.is_empty());
-    let whole = Command::new(env!("CARGO_BIN_EXE_contextful-ci")).arg("stages").output().unwrap();
-    for stage in String::from_utf8_lossy(&whole.stdout).lines() {
-        let dispatched = stages.iter().any(|s| s == stage || s.strip_prefix(stage).is_some_and(|p| p.starts_with('.')));
-        assert!(dispatched, "stage `{stage}` is not dispatched: {stages:?}");
-    }
-
-    let yml = std::fs::read_to_string(repo_root().join(".github/workflows/gate.yml")).unwrap();
-    let matrix = yml
+    let parts: Vec<String> = String::from_utf8_lossy(&out.stdout)
         .lines()
-        .find_map(|l| l.trim().strip_prefix("stage: ["))
-        .and_then(|l| l.strip_suffix(']'))
-        .expect("a `stage: [...]` matrix in gate.yml");
-    let dispatched: Vec<String> = matrix.split(',').map(|s| s.trim().to_string()).collect();
-    assert_eq!(dispatched, stages);
-    assert!(yml.contains("\"checkLabel\": \"${{ matrix.stage }}\""));
-    assert!(yml.contains("\"command\": \"cargo run --locked -q -p contextful-ci -- gate --predecessors --stage ${{ matrix.stage }}"));
+        .map(str::to_string)
+        .collect();
+    assert_eq!(
+        parts.len(),
+        23,
+        "the remote gate expects one check per part: {parts:?}"
+    );
+    let whole = Command::new(env!("CARGO_BIN_EXE_contextful-ci"))
+        .arg("stages")
+        .output()
+        .unwrap();
+    assert!(whole.status.success());
+    for stage in String::from_utf8_lossy(&whole.stdout).lines() {
+        let covered = parts.iter().any(|part| {
+            part == stage
+                || part
+                    .strip_prefix(stage)
+                    .is_some_and(|suffix| suffix.starts_with('.'))
+        });
+        assert!(
+            covered,
+            "stage `{stage}` has no dispatchable part: {parts:?}"
+        );
+    }
 }
 
-/// The pull-request workflow dispatches only a head commit pushed to the repository itself; a pull request from a fork dispatches no stage and so carries none of the required checks.
-// spec: assurance.gate.fork-dispatch@e05736d5
 #[test]
-fn a_fork_pull_request_dispatches_no_stage() {
-    let yml = std::fs::read_to_string(repo_root().join(".github/workflows/gate.yml")).unwrap();
-    let guard = yml
-        .lines()
-        .map(str::trim)
-        .find_map(|l| l.strip_prefix("if: "))
-        .expect("an `if:` guard on the dispatch job");
+fn proposed_required_checks_match_every_gate_part() {
+    let out = Command::new(env!("CARGO_BIN_EXE_contextful-ci"))
+        .args(["stages", "--parts"])
+        .current_dir(repo_root())
+        .output()
+        .unwrap();
+    assert!(out.status.success());
+    let mut expected = vec!["flare-dispatch/contextful-gate".to_string()];
+    expected.extend(String::from_utf8_lossy(&out.stdout).lines().map(|part| format!("flare-dispatch/check:{part}")));
+
+    let proposal: serde_json::Value = serde_json::from_str(&std::fs::read_to_string(repo_root().join(".github/rulesets/contextful-gate.proposed.json")).unwrap()).unwrap();
+    assert_eq!(proposal["enforcement"], "disabled");
+    let actual: Vec<String> = proposal["rules"][0]["parameters"]["required_status_checks"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .map(|check| check["context"].as_str().unwrap().to_string())
+        .collect();
+    assert_eq!(actual, expected);
+}
+
+#[test]
+fn no_github_actions_workflows_remain() {
+    let workflows = repo_root().join(".github/workflows");
+    let entries = std::fs::read_dir(&workflows)
+        .map(|paths| {
+            paths
+                .filter_map(Result::ok)
+                .map(|path| path.path())
+                .collect::<Vec<_>>()
+        })
+        .unwrap_or_default();
     assert!(
-        guard.contains("github.event.pull_request.head.repo.full_name == github.repository"),
-        "the dispatch job runs for a fork's head commit: {guard}"
+        entries.is_empty(),
+        "GitHub Actions workflows remain: {entries:?}"
     );
 }
