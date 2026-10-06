@@ -18,7 +18,7 @@ test("Admin route retrieves applied workflow state and applies through the serve
     calls.push({ path: url.pathname, authorization: new Headers(init?.headers).get("authorization"), body: String(init?.body ?? "") });
     return Response.json(url.pathname === "/control/workflows" ?
       { applied: 1, pipelines: [{ id: "filings-flow", tables: ["filings"], schedule: "every 1h" }], runs: {} } :
-      { applied: 2 });
+      url.pathname === "/control/edit" ? { expected: 1 } : { applied: 2 });
   };
   const control = createLiveControl({ stores: [{ id: "field-notes", endpoint: "http://127.0.0.1:9999" }], capability: "engine-admin-secret", fetcher });
   const app = createConsole({
@@ -30,22 +30,28 @@ test("Admin route retrieves applied workflow state and applies through the serve
   const listing = await app.fetch(new Request("https://console.example/admin/api/workflows", { headers }));
   assert.equal(listing.status, 200);
   assert.equal((await listing.json() as { pipelines: { id: string }[] }).pipelines[0].id, "filings-flow");
+  const edit = await app.fetch(new Request("https://console.example/admin/api/edit", {
+    method: "POST", headers: { ...headers, origin: "https://console.example" },
+    body: JSON.stringify({ store: "field-notes", expected: 1, document: "[[pipeline]]\nid = \"filings-flow\"" }),
+  }));
+  assert.equal(edit.status, 200);
   const apply = await app.fetch(new Request("https://console.example/admin/api/apply", {
-    method: "POST", headers: { ...headers, origin: "https://console.example" }, body: JSON.stringify({ store: "field-notes", id: "filings-flow" }),
+    method: "POST", headers: { ...headers, origin: "https://console.example" }, body: JSON.stringify({ store: "field-notes", expected: 1 }),
   }));
   assert.equal(apply.status, 200);
   assert.deepEqual(calls, [
     { path: "/control/workflows", authorization: "Bearer engine-admin-secret", body: "" },
-    { path: "/control/apply", authorization: "Bearer engine-admin-secret", body: '{"id":"filings-flow"}' },
+    { path: "/control/edit", authorization: "Bearer engine-admin-secret", body: '{"expected":1,"document":"[[pipeline]]\\nid = \\"filings-flow\\""}' },
+    { path: "/control/apply", authorization: "Bearer engine-admin-secret", body: '{"expected":1}' },
   ]);
   assert.doesNotMatch(JSON.stringify(await apply.json()), /engine-admin-secret/);
 });
 
-test("Admin control refuses ambiguous stores and keeps edit unavailable", async () => {
+test("Admin control refuses ambiguous stores", async () => {
   const control = createLiveControl({
     stores: [{ id: "one", endpoint: "http://127.0.0.1:1" }, { id: "two", endpoint: "http://127.0.0.1:2" }],
     capability: "secret", fetcher: async () => { throw new Error("network must not be called"); },
   });
   await assert.rejects(control.workflows({ subject: "operator", grants: new Set(["admin"]) }, null), /ConsoleStoreSelectionRequired/);
-  await assert.rejects(control.edit({}, "secret", { subject: "operator", grants: new Set(["admin"]) }), /ConsoleAdapterUnavailable/);
+  await assert.rejects(control.edit({ expected: 1, document: "" }, "secret", { subject: "operator", grants: new Set(["admin"]) }), /ConsoleStoreSelectionRequired/);
 });

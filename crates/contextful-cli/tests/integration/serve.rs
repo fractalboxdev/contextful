@@ -171,6 +171,36 @@ fn control_routes_require_admin_and_project_applied_workflows() {
 }
 
 #[test]
+fn control_edit_saves_a_validated_draft_and_apply_claims_its_expected_version() {
+    let (dir, public) = project();
+    let root = dir.path();
+    let original = "[[pipeline]]\nid = \"filings-flow\"\nschedule = \"every 1h\"\ntables = [\"research/notes\"]\n[pipeline.source]\nname = \"http\"\nconfig = { endpoint = \"https://example.test/filings\" }\n";
+    std::fs::create_dir_all(root.join("pipelines")).unwrap();
+    std::fs::write(root.join("pipelines/filings.toml"), original).unwrap();
+    stdout(&run(root, &["pipeline", "import", "--project", "research"]));
+    let admin = stdout(&run(root, &["token", "mint", "--issuer-key", ".contextful/issuer.seed", "--on-behalf-of", "user://dana@acme.example", "--zone", "on-prem:hq", "--action", "admin", "--table", "*", "--ttl", "900"]));
+    let read = stdout(&run(root, &["token", "mint", "--issuer-key", ".contextful/issuer.seed", "--on-behalf-of", "user://dana@acme.example", "--zone", "on-prem:hq", "--action", "read", "--table", "*", "--ttl", "900"]));
+    let (_listener, addr) = serve(root, &["serve", "--http", "127.0.0.1:0", "--audience", AUD, "--max-in-flight", "2", "--project", "research", "--public-key", &public]);
+    let changed = original.replace("every 1h", "every 1d");
+    let edit = json!({ "expected": 1, "document": changed }).to_string();
+    assert_eq!(control(&addr, "POST", "/control/edit", None, &edit).0, 401);
+    assert_eq!(control(&addr, "POST", "/control/edit", Some(&read), &edit).0, 403);
+    let invalid = json!({ "expected": 1, "document": changed.replace("every 1d", "invalid schedule") }).to_string();
+    assert_eq!(control(&addr, "POST", "/control/edit", Some(&admin), &invalid).0, 422);
+    let (status, draft) = control(&addr, "POST", "/control/edit", Some(&admin), &edit);
+    assert_eq!(status, 200, "{draft}");
+    assert_eq!(draft["expected"], 1);
+    let (_, before) = control(&addr, "GET", "/control/workflows", Some(&admin), "");
+    assert_eq!(before["applied"], 1);
+    assert_eq!(before["pipelines"][0]["schedule"], "every 1h");
+    let (status, applied) = control(&addr, "POST", "/control/apply", Some(&admin), "{\"expected\":1}");
+    assert_eq!(status, 200, "{applied}");
+    assert_eq!(applied["applied"], 2);
+    assert_eq!(applied["pipelines"][0]["schedule"], "every 1d");
+    assert_eq!(control(&addr, "POST", "/control/apply", Some(&admin), "{\"expected\":1}").0, 409);
+}
+
+#[test]
 fn published_workflow_listing_caps_entries_and_flags_truncation() {
     let (dir, public) = project();
     let root = dir.path();
