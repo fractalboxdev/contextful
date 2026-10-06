@@ -67,6 +67,8 @@ Memory uses ordinary store tables ({{topology.compose.memory-substrate}}). Synth
 
 Memory's relation vocabulary, cadence and confidence follow {{read.declare.reserved-relations}}, {{read.synthesize.cadence}} and {{read.synthesize.confidence-calibration}}. Recall usage follows {{read.recall.usage-ledger}}.
 
+Operator claims land through {{read.revise.served-write}} under credential-bound scope ({{read.revise.served-scope}}); browser requests refuse ({{read.revise.browser-request}}).
+
 ```mermaid
 sequenceDiagram
   box run

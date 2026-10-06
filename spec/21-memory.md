@@ -119,7 +119,18 @@ Supersession within one validity line, confidence decay, the direct write and it
   *A-read*
 - `retention-default` — Claims retain their recorded validity until explicit expiry or erasure; ranking decay is opt-in per shape with a declared half-life, and never deletes a claim or changes its validity interval.
   *A-read*
-
+- `served-write` — A writable served face answers `POST /memory/claims` under a per-request network credential, lands a declared claim through the direct write, and keeps the read MCP tool set closed.
+  *A-read*
+- `served-scope` — A claim write whose `actor` or `session` differs from the admitted credential's `on_behalf_of` or `task` raises `MemoryClaimScopeRefused`; accepted claims take scope from those members, never from the payload.
+  *A-read*
+- `browser-request` — An `Origin` header on the served claim-write route raises `MemoryClaimBrowserRefused` before credential admission and commits nothing.
+  *A-read*
+- `malformed-request` — Malformed JSON, unknown fields, a client-selected claim scope, or an empty dedup key on the served claim-write route raises `MemoryClaimMalformed` and commits nothing.
+  *A-read*
+- `served-dedup` — A served claim write passes its `dedup_key` to {{read.revise.dedup-key}}, returns `landed: false` on restatement, and returns the bound scope on both outcomes.
+  *A-read*
+- `served-fault` — A served claim write whose store effect refuses raises `MemoryClaimWriteRefused` and lands nothing.
+  *A-read*
 
 ## recall
 

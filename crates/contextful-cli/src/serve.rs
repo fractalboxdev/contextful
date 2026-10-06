@@ -17,6 +17,12 @@ use anyhow::Result;
 use contextful_agent::http::{audience, ceiling, Admitting, HttpFace};
 use contextful_core::issue::{IssuancePolicy, MintContext, NodeRole};
 use contextful_core::ports::{Clock, SigningPort};
+#[cfg(feature = "data-plane")]
+use contextful_core::memory::synthesize::CandidateClaim;
+#[cfg(feature = "data-plane")]
+use contextful_memory::write::{write_observed, Observation};
+#[cfg(feature = "data-plane")]
+use contextful_memory::MemoryFault;
 use contextful_policy::exchange::answer as exchange_answer;
 use contextful_policy::issue::{SeedSigner, DEFAULT_SEED_PATH};
 use contextful_policy::possession::ProofChecker;
@@ -33,6 +39,31 @@ use std::path::PathBuf;
 use std::sync::Arc;
 #[cfg(feature = "data-plane")]
 use serde_json::{json, Value};
+
+#[cfg(feature = "data-plane")]
+#[derive(serde::Deserialize)]
+#[serde(deny_unknown_fields)]
+struct ClaimWriteRequest {
+    into: String,
+    actor: String,
+    session: String,
+    dedup_key: String,
+    claim: CandidateClaim,
+}
+
+#[cfg(feature = "data-plane")]
+fn claim_write_error(error: MemoryFault) -> contextful_agent::http::HttpResponse {
+    let (status, identifier): (u16, String) = match &error {
+        MemoryFault::Denied(_) => (403, "GrantWriteNotCovered".into()),
+        MemoryFault::Authority(why) => (401, why.to_string().split(':').next().unwrap_or("AuthorityRevoked").to_owned()),
+        MemoryFault::Invalid(_) => (400, "MemoryClaimMalformed".into()),
+        MemoryFault::Memory(why) => (400, why.identifier().into()),
+        _ => (503, "MemoryClaimWriteRefused".into()),
+    };
+    contextful_agent::http::HttpResponse::json(status, &serde_json::json!({
+        "error": { "http": status, "identifier": identifier, "message": error.to_string() }
+    }))
+}
 
 /// The refusals of starting the network transport. `Display` begins with the identifier.
 #[derive(Debug, Clone, PartialEq, Eq, thiserror::Error)]
@@ -134,6 +165,42 @@ pub fn run(args: ServeArgs, tasks: &Tasks) -> Result<()> {
         None
     };
     let proofs = ProofChecker::new(SystemClock);
+    #[cfg(feature = "data-plane")]
+    let (node, _) = contextful_context::node::resolve(face.store(), |k| std::env::var(k).ok())?;
+    #[cfg(feature = "data-plane")]
+    let claim_write = |request: &contextful_agent::http::HttpRequest,
+                       authority: &contextful_policy::verify::AdmittedAuthority,
+                       boundary: &dyn Fn() -> Result<(), contextful_core::AuthorityError>| {
+        let body: ClaimWriteRequest = match serde_json::from_slice(&request.body) {
+            Ok(body) => body,
+            Err(_) => return contextful_agent::http::HttpResponse::json(400, &serde_json::json!({
+                "error": { "http": 400, "identifier": "MemoryClaimMalformed" }
+            })),
+        };
+        if body.actor.is_empty() || body.session.is_empty() ||
+            authority.subject().on_behalf_of() != Some(body.actor.as_str()) ||
+            authority.subject().task() != Some(body.session.as_str()) {
+            return contextful_agent::http::HttpResponse::json(403, &serde_json::json!({
+                "error": { "http": 403, "identifier": "MemoryClaimScopeRefused" }
+            }));
+        }
+        let mut claim = body.claim;
+        if claim.scope.is_some() || body.dedup_key.trim().is_empty() {
+            return contextful_agent::http::HttpResponse::json(400, &serde_json::json!({
+                "error": { "http": 400, "identifier": "MemoryClaimMalformed" }
+            }));
+        }
+        claim.scope = Some(format!("console:{}:{}", body.actor, body.session));
+        let scope = claim.scope.clone().expect("assigned");
+        match write_observed(&face, authority, &body.into, claim,
+            &Observation { observed_at: None, dedup_key: Some(body.dedup_key) }, &node, clock.now(), boundary) {
+            Ok(written) => contextful_agent::http::HttpResponse::json(200, &serde_json::json!({
+                "landed": written.claim.is_some(), "scope": scope,
+                "claim_id": written.claim.map(|claim| claim.claim_id)
+            })),
+            Err(error) => claim_write_error(error),
+        }
+    };
     let exchange_route = |request: &contextful_agent::http::HttpRequest| {
         let Some((issuance, signer)) = mint_material.as_ref() else {
             return contextful_agent::http::HttpResponse::json(404,
@@ -180,6 +247,8 @@ pub fn run(args: ServeArgs, tasks: &Tasks) -> Result<()> {
         .with_exchange(&exchange_route, exchange.is_none());
     #[cfg(feature = "data-plane")]
     let http = http.with_control(&control);
+    #[cfg(feature = "data-plane")]
+    let http = http.with_claim_write(&claim_write);
     let listener = TcpListener::bind(&args.http)?;
     eprintln!("listening on http://{}/mcp", listener.local_addr()?);
     http.serve(listener)?;

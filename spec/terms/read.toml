@@ -40,6 +40,10 @@ MemoryUndeclaredRelation      = { clause = "read.declare.undeclared-relation", g
 MemoryExtractExhausted        = { clause = "read.synthesize.dead-letter", gloss = "An extract batch exhausted its attempts and was dead-lettered." }
 MemoryDirectWriteShapeRefused = { clause = "read.revise.direct-write", gloss = "A direct write targeted a memory shape other than claims." }
 MemoryCitationNotLive         = { clause = "read.revise.citation-live", gloss = "A direct write cites a keyed row that is not its key's live version." }
+MemoryClaimScopeRefused        = { clause = "read.revise.served-scope", gloss = "A served claim write names another actor or reading session." }
+MemoryClaimBrowserRefused      = { clause = "read.revise.browser-request", gloss = "A browser-origin request reached the served claim-write route." }
+MemoryClaimMalformed           = { clause = "read.revise.malformed-request", gloss = "A served claim write holds a malformed or client-scoped body." }
+MemoryClaimWriteRefused        = { clause = "read.revise.served-fault", gloss = "A served claim write's store effect refused." }
 MemoryEvidenceUnresolved      = { clause = "read.recall.evidence-unresolved", gloss = "A claim's evidence does not resolve through the caller's session." }
 MemoryEvidenceOverflow        = { clause = "read.recall.evidence-references", gloss = "A claim names more evidence references than the bound." }
 MemoryObservationOutOfOrder   = { clause = "read.revise.observed-order", gloss = "A claim was observed before a live contradicting claim of its line." }
