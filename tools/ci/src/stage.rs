@@ -11,7 +11,7 @@ use std::time::Instant;
 
 use crate::{refuse, run, tracked, Exited};
 
-/// Gate stages in run order. The pull-request workflow dispatches each as its own check.
+/// Gate stages in run order. FlareDispatch dispatches each as its own check.
 pub const STAGES: [&str; 13] = [
     "pins",
     "toolchain",
@@ -208,8 +208,8 @@ fn memory_events() -> Option<Vec<(String, u64)>> {
 // ---------------------------------------------------------------- pins
 
 /// The pins stage (`assurance.gate.pins-stage`): before any compilation, read every pinned
-/// identity a run depends on — each Lean package's toolchain, each workflow action, each
-/// Lean dependency revision and every crate the lock file names — refuse one that floats,
+/// identity a run depends on — each Lean package's toolchain, each Lean dependency
+/// revision and every crate the lock file names — refuse one that floats,
 /// fetch the locked crates, and record them all for the toolchain stage.
 pub fn pins(root: &Path) -> Result<()> {
     let files = tracked(root)?;
@@ -230,24 +230,6 @@ pub fn pins(root: &Path) -> Result<()> {
     if let Some(pin) = distinct.first() {
         record.insert("lean".into(), serde_json::Value::String((*pin).clone()));
     }
-
-    let mut actions = Vec::new();
-    for f in files.iter().filter(|f| f.starts_with(".github/workflows/") && (f.ends_with(".yml") || f.ends_with(".yaml"))) {
-        let text = std::fs::read_to_string(root.join(f)).with_context(|| format!("reading {f}"))?;
-        for (n, line) in text.lines().enumerate() {
-            let Some(uses) = line.trim().trim_start_matches("- ").strip_prefix("uses:") else { continue };
-            let uses = uses.trim().trim_matches(['"', '\'']);
-            if uses.starts_with("./") || uses.starts_with("docker://") {
-                continue;
-            }
-            let reference = uses.rsplit_once('@').map(|(_, r)| r).unwrap_or("");
-            if reference.len() != 40 || !reference.chars().all(|c| c.is_ascii_hexdigit()) {
-                bail!("{f}:{} uses `{uses}`, which names no commit; pin the action to a 40-hex commit", n + 1);
-            }
-            actions.push(serde_json::Value::String(uses.to_string()));
-        }
-    }
-    record.insert("actions".into(), serde_json::Value::Array(actions));
 
     let mut lake = Vec::new();
     for f in files.iter().filter(|f| f.starts_with("formal/") && f.ends_with("lake-manifest.json")) {

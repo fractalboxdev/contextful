@@ -221,6 +221,8 @@ Stage order, secrets of record, the crate-graph, row-token, egress and dependenc
 - `surface-check-failed` — A surface whose typecheck, unit tests or framework build fails raises `SurfaceCheckFailed`, naming the surface and the script.
   *P7*
 
+unsettled: How does corpus status attest FlareDispatch's external webhook and check-run behavior? owner: build affects: assurance.gate
+
 The stages, numbered in run order, under the container's ceilings:
 
 ```mermaid
@@ -383,6 +385,7 @@ flowchart LR
 ```
 
 unsettled: Which GitHub App credential pushes `refs/notes/measures` from the scheduled dispatch? owner: build affects: assurance.measure
+unsettled: How does corpus status attest FlareDispatch's external schedule and note write? owner: build affects: assurance.measure
 
 #### Scenarios
 
@@ -392,7 +395,7 @@ unsettled: Which GitHub App credential pushes `refs/notes/measures` from the sch
 
 ## release
 
-The version a release tag carries, the refusals guarding it, and the signed annotated tag `contextful-ci tag` creates.
+The release tag's version, the refusals guarding it, the signed annotated tag `contextful-ci tag` creates, and the FlareDispatch packaging run.
 
 - `version` — A release tag is `v0.<closed>.<patch>`: `<closed>` counts the milestones computing `closed` in the tagged commit's `spec/status.md`, and `<patch>` counts the existing tags `v0.<closed>.*`.
   *A-assurance*
@@ -408,6 +411,12 @@ The version a release tag carries, the refusals guarding it, and the signed anno
   *A-assurance*
 - `gate-failed` — Once the other refusals clear, every gate stage runs against `HEAD` with `HEAD~1` as base; a failing stage raises `TagGateFailed`, naming the stage's refusal, and no tag is created.
   *A-assurance*
+- `release-run` — A `v*` tag at a default-branch commit starts FlareDispatch `contextful-release`, with one `contextful-release-cell` child per {{assurance.build.targets}} matrix cell and one `contextful-release-formula` child for their metadata.
+  *because distributed builds and formula generation share one tag identity*
+- `release-dry-run` — A manual `contextful-release` dry run builds the release assets and publishes neither a GitHub release nor container images.
+  *because a packaging rehearsal must not claim a released version*
+
+unsettled: How does corpus status attest FlareDispatch's external tag dispatch and publication? owner: build affects: assurance.release
 
 #### Scenarios
 

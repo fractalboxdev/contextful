@@ -208,7 +208,6 @@ fn the_pins_stage_records_every_pin_fetches_the_locked_crates_and_refuses_a_floa
     let r = Repo::init();
     r.write("formal/lean-toolchain", "leanprover/lean4:v4.29.1\n");
     r.write("formal/protocol/lean-toolchain", "leanprover/lean4:v4.29.1\n");
-    r.write(".github/workflows/gate.yml", &format!("jobs:\n  a:\n    steps:\n      - uses: owner/action@{}\n", "a".repeat(40)));
     r.write("Cargo.lock", "# a lock\n");
     r.commit("pins");
     let bin = Bin::new();
@@ -219,14 +218,13 @@ fn the_pins_stage_records_every_pin_fetches_the_locked_crates_and_refuses_a_floa
     assert_eq!(bin.calls(), ["fetch --locked"]);
     let record: serde_json::Value = serde_json::from_str(&std::fs::read_to_string(r.root.join("target/gate/pins.json")).unwrap()).unwrap();
     assert_eq!(record["lean"], "leanprover/lean4:v4.29.1");
-    assert_eq!(record["actions"][0], format!("owner/action@{}", "a".repeat(40)));
+    assert!(record.get("actions").is_none());
     assert!(record["cargo-lock"].as_str().unwrap().starts_with("sha256:"));
 
-    // A floating Lean pin, two Lean pins apart, and an action on a tag each fail the stage.
+    // A floating Lean pin and two Lean pins apart each fail the stage.
     for (file, text, said) in [
         ("formal/protocol/lean-toolchain", "leanprover/lean4:stable\n", "names no exact release"),
         ("formal/protocol/lean-toolchain", "leanprover/lean4:v4.28.0\n", "pin 2 toolchains"),
-        (".github/workflows/gate.yml", "jobs:\n  a:\n    steps:\n      - uses: owner/action@v4\n", "names no commit"),
     ] {
         let r = Repo::init();
         r.write("formal/lean-toolchain", "leanprover/lean4:v4.29.1\n");
