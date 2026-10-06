@@ -497,3 +497,17 @@ fn compact_tags_and_only_calls_require_tap_evidence() {
     assert!(!o.status.success(), "{}", stderr(&o));
     assert!(stderr(&o).contains("SurfaceCheckFailed"), "{}", stderr(&o));
 }
+
+#[test]
+fn a_symlinked_surface_outside_the_workspace_is_not_discovered() {
+    let r = Repo::init();
+    let external = tempfile::tempdir().unwrap();
+    std::fs::write(external.path().join("package.json"), r#"{"name":"external","scripts":{"test":"node --test"}}"#).unwrap();
+    std::fs::create_dir_all(r.root.join("apps")).unwrap();
+    std::os::unix::fs::symlink(external.path(), r.root.join("apps/external")).unwrap();
+    let bin = Bin::new();
+    pnpm(&bin, "none");
+    let o = gate(&r, Some(&bin), &["--stage", "surfaces"]);
+    assert!(o.status.success(), "{}", stderr(&o));
+    assert!(bin.calls().is_empty(), "{:?}", bin.calls());
+}
