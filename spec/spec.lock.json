@@ -9617,7 +9617,7 @@
       "subject": "test-block",
       "kind": "behavior",
       "statement": "A `[[model.test]]` carries a `name` and one `SELECT` over the staged rows, registered under the model's id, and the store's tables; a test returning any row fails.",
-      "why": "",
+      "why": "because a test must inspect the candidate build before its rows become visible to readers",
       "file": "spec/31-pipeline.md",
       "line": 351
     },
@@ -9630,7 +9630,7 @@
       "statement": "A failing test raises `ModelTestFailed`, naming the test and its row count; the build publishes nothing.",
       "why": "because a test exists to stop a build before readers trust it",
       "file": "spec/31-pipeline.md",
-      "line": 352,
+      "line": 353,
       "scenarios": [
         "WHEN a test `SELECT * FROM daily WHERE n < 0` returns 2 rows, THEN the build raises `ModelTestFailed` naming the test and 2, and `daily` reads its prior build."
       ]
@@ -9644,7 +9644,7 @@
       "statement": "`contextful build <model>` materializes the model into staging, checks its contract, runs its tests, then commits; `--json` prints the build id, row count and watermark.",
       "why": "",
       "file": "spec/31-pipeline.md",
-      "line": 354
+      "line": 355
     },
     {
       "id": "run.model.unknown-model",
@@ -9655,7 +9655,7 @@
       "statement": "`build` naming no declared model raises `ModelUndeclared`, naming the declared models.",
       "why": "because a build of a misspelled id otherwise reports nothing to do",
       "file": "spec/31-pipeline.md",
-      "line": 355
+      "line": 356
     },
     {
       "id": "run.model.build-id",
@@ -9666,7 +9666,7 @@
       "statement": "A build's id is the snapshot id it publishes.",
       "why": "A-run",
       "file": "spec/31-pipeline.md",
-      "line": 357
+      "line": 358
     },
     {
       "id": "run.model.watermark",
@@ -9677,7 +9677,7 @@
       "statement": "A build's watermark is `{at, inputs}`: per input table the snapshot id and the committed runs it omits, and `at` the newest commit instant among them.",
       "why": "",
       "file": "spec/31-pipeline.md",
-      "line": 359
+      "line": 360
     },
     {
       "id": "run.model.hold-verb",
@@ -9688,10 +9688,21 @@
       "statement": "`build hold --for <n>[smhd] <model> <build>` commits a hold until now plus the duration and prints `Held`, or `Renewed` over an unexpired hold; `--json` prints the receipt as an object.",
       "why": "",
       "file": "spec/31-pipeline.md",
-      "line": 360,
+      "line": 361,
       "scenarios": [
         "WHEN `build hold --for 7d daily <build>` runs twice, THEN the first prints `Held` and the second `Renewed`, each with the new expiry."
       ]
+    },
+    {
+      "id": "run.model.status-verb",
+      "contract": "run",
+      "operation": "model",
+      "subject": "status-verb",
+      "kind": "behavior",
+      "statement": "`build status <model>` reports the last attempt separately from the published build; `--json` carries their ids, status, freshness and staleness computed at the requested instant.",
+      "why": "",
+      "file": "spec/31-pipeline.md",
+      "line": 362
     },
     {
       "id": "run.model.hold-unknown-build",
@@ -9702,7 +9713,7 @@
       "statement": "A hold naming a build no committed manifest of the model records raises `ModelBuildUnknown`.",
       "why": "because a hold on a build that does not exist protects nothing and reads as protection",
       "file": "spec/31-pipeline.md",
-      "line": 361
+      "line": 363
     },
     {
       "id": "run.model.hold-manifest",
@@ -9713,7 +9724,7 @@
       "statement": "A hold commits as the hold manifest `holds/<build id>.json` in the model's table directory, replacing any earlier hold on that build.",
       "why": "A-run",
       "file": "spec/31-pipeline.md",
-      "line": 363
+      "line": 365
     },
     {
       "id": "run.model.log-regeneration",
@@ -9724,7 +9735,7 @@
       "statement": "The history logs sit in the model's table directory; each build and hold rewrites them, replacing an entry a manifest disagrees with and keeping entries of collected builds.",
       "why": "",
       "file": "spec/31-pipeline.md",
-      "line": 365
+      "line": 367
     },
     {
       "id": "run.publish.manifest-commit",
@@ -9735,7 +9746,7 @@
       "statement": "A published table's contract identity, freshness and current build ride the snapshot manifest commit that publishes its data; no separate file is authoritative for any of them.",
       "why": "because separately written artifacts make a torn publication representable",
       "file": "spec/31-pipeline.md",
-      "line": 386
+      "line": 388
     },
     {
       "id": "run.publish.contract-identity",
@@ -9746,7 +9757,7 @@
       "statement": "A published table's identity is `contract_version` beside `schema_fingerprint`, taken over the declared columns, their types and the grain.",
       "why": "",
       "file": "spec/31-pipeline.md",
-      "line": 388
+      "line": 390
     },
     {
       "id": "run.publish.contract-mismatch",
@@ -9757,7 +9768,7 @@
       "statement": "A materialization whose columns, types or grain miss the declared contract raises `PipelineContractMismatch`, naming the column and the expectation.",
       "why": "P4",
       "file": "spec/31-pipeline.md",
-      "line": 389
+      "line": 391
     },
     {
       "id": "run.publish.staging",
@@ -9768,7 +9779,7 @@
       "statement": "A build materializes into staging and publishes through {{run.publish.manifest-commit}}; a refused build leaves the last published state serving.",
       "why": "P4",
       "file": "spec/31-pipeline.md",
-      "line": 391
+      "line": 393
     },
     {
       "id": "run.publish.history-logs",
@@ -9776,10 +9787,10 @@
       "operation": "publish",
       "subject": "history-logs",
       "kind": "behavior",
-      "statement": "`contract-history.jsonl`, `builds.jsonl` and `holds.jsonl` are append-only history derived from committed manifests; a log disagreeing with a manifest is regenerated from it.",
+      "statement": "`contract-history.jsonl`, `builds.jsonl` and `holds.jsonl` are append-only history derived from committed manifests and build-attempt records; a log disagreeing with a source record is regenerated from it.",
       "why": "",
       "file": "spec/31-pipeline.md",
-      "line": 393
+      "line": 395
     },
     {
       "id": "run.publish.build-entry",
@@ -9787,10 +9798,21 @@
       "operation": "publish",
       "subject": "build-entry",
       "kind": "behavior",
-      "statement": "A build entry carries build id, start and completion instants, a status of published, refused or partial, the contract identity, and the partition values it left unfilled.",
+      "statement": "A build entry carries build id, start and completion instants, a status of published, refused, partial or failed, the contract identity, and the partition values it left unfilled.",
       "why": "",
       "file": "spec/31-pipeline.md",
-      "line": 394
+      "line": 396
+    },
+    {
+      "id": "run.publish.failed-attempt",
+      "contract": "run",
+      "operation": "publish",
+      "subject": "failed-attempt",
+      "kind": "behavior",
+      "statement": "A published model records an attempt before materialization; a dead attempt without a committed manifest reports `failed`, keeps the prior published build serving, and contributes a failed build entry.",
+      "why": "because a process killed before publication cannot write its own failure, while its attempt record and released lock survive",
+      "file": "spec/31-pipeline.md",
+      "line": 397
     },
     {
       "id": "run.publish.freshness",
@@ -9801,7 +9823,7 @@
       "statement": "Freshness carries the newest publishing build id, its watermark, `max_lag`, the last build status and a withheld-cells flag; staleness is derived from watermark against `max_lag` and never stored.",
       "why": "",
       "file": "spec/31-pipeline.md",
-      "line": 395
+      "line": 399
     },
     {
       "id": "run.publish.hold",
@@ -9812,7 +9834,7 @@
       "statement": "A hold records build id, placing principal and expiry; collection skips a held build, and a hold confers no other authority.",
       "why": "",
       "file": "spec/31-pipeline.md",
-      "line": 396
+      "line": 400
     },
     {
       "id": "run.publish.manifest-section",
@@ -9823,7 +9845,7 @@
       "statement": "The manifest section carries `{contract_version, schema_fingerprint, build_id, build_started_at, last_built_at, watermark, max_lag, last_build_status, withheld_cells, disclosure_digest, partitions_failed?, semantics_version?, fingerprint_recipe?}` of the newest publishing build; `watermark` maps each input table to its snapshot and omitted runs.",
       "why": "",
       "file": "spec/31-pipeline.md",
-      "line": 397
+      "line": 401
     },
     {
       "id": "run.publish.semantics-version",
@@ -9834,7 +9856,7 @@
       "statement": "`semantics_version` advances when the engine adds an injected column, and `fingerprint_recipe` names the fingerprint's inputs, that column included.",
       "why": "",
       "file": "spec/31-pipeline.md",
-      "line": 398
+      "line": 402
     },
     {
       "id": "run.publish.disclosure-digest",
@@ -9845,7 +9867,7 @@
       "statement": "A build records a digest over the `class`, `policy` and `visibility` its table declares, set-valued fields sorted, in the manifest and the build log, and sets `withheld_cells` when any is declared.",
       "why": "",
       "file": "spec/31-pipeline.md",
-      "line": 399
+      "line": 403
     },
     {
       "id": "run.select.required-key",
