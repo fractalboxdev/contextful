@@ -108,7 +108,7 @@ pub struct HttpResponse {
 }
 
 impl HttpResponse {
-    fn json(status: u16, body: &Value) -> HttpResponse {
+    pub fn json(status: u16, body: &Value) -> HttpResponse {
         HttpResponse { status, headers: vec![("Content-Type".into(), "application/json".into())], body: body.to_string().into_bytes() }
     }
 
@@ -195,6 +195,7 @@ pub struct HttpFace<'a, C> {
     admitting: Admitting<'a, C>,
     ceiling: usize,
     in_flight: AtomicUsize,
+    exchange: Option<&'a (dyn Fn(&HttpRequest) -> HttpResponse + Sync)>,
 }
 
 /// A request slot held while one request is in flight.
@@ -241,7 +242,14 @@ impl<'a, C: Clock + Sync> HttpFace<'a, C> {
         let ceiling = ceiling(max_in_flight)?;
         audience(Some(admitting.audience))?;
         let tools = Tools::new(face, clock, record)?;
-        Ok(HttpFace { tools, admitting, ceiling, in_flight: AtomicUsize::new(0) })
+        Ok(HttpFace { tools, admitting, ceiling, in_flight: AtomicUsize::new(0), exchange: None })
+    }
+
+    /// The binary's exchange route mints the reader credential without putting issuer
+    /// signing material in the read-transport package.
+    pub fn with_exchange(mut self, exchange: &'a (dyn Fn(&HttpRequest) -> HttpResponse + Sync)) -> Self {
+        self.exchange = Some(exchange);
+        self
     }
 
     /// Accept connections on `listener` until it fails. Each accepted connection takes a
@@ -329,6 +337,8 @@ impl<'a, C: Clock + Sync> HttpFace<'a, C> {
             (MCP_PATH, _) => {
                 HttpResponse::message(405, "`/mcp` answers POST; the face holds no session and opens no server stream").with("Allow", "POST")
             }
+            ("/auth/exchange", "POST") if self.exchange.is_some() => self.exchange.expect("checked above")(request),
+            ("/auth/exchange", _) if self.exchange.is_some() => HttpResponse::message(405, "`/auth/exchange` answers POST").with("Allow", "POST"),
             (other, _) => HttpResponse::message(404, format!("no route `{other}`; the protocol endpoint is `{MCP_PATH}`")),
         }
     }

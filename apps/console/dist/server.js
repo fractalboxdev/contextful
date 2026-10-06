@@ -73,6 +73,284 @@ function registryFromEnv(raw) {
   return { entries, problems };
 }
 
+// src/turn.ts
+var ConsoleError = class extends Error {
+  code;
+  status;
+  constructor(code, message = code, status = 400) {
+    super(message);
+    this.name = "ConsoleError";
+    this.code = code;
+    this.status = status;
+  }
+};
+function validatePack(pack) {
+  if (pack.face === "organization") {
+    const write = pack.tools.find((tool) => tool.kind === "write");
+    if (write) throw new ConsoleError("ConsoleWriteToolOnOrgFace", `${pack.name}: ${write.name}`);
+  }
+}
+function parseVantage(value) {
+  const year = Number(value.slice(0, 4));
+  const month = Number(value.slice(5, 7));
+  const day = Number(value.slice(8, 10));
+  const validDay = Number.isInteger(year) && Number.isInteger(month) && Number.isInteger(day) && new Date(Date.UTC(year, month - 1, day)).toISOString().slice(0, 10) === value.slice(0, 10);
+  if (/^\d{4}-\d{2}-\d{2}$/.test(value)) {
+    const date = /* @__PURE__ */ new Date(`${value}T00:00:00Z`);
+    if (validDay && !Number.isNaN(date.getTime()) && date.toISOString().slice(0, 10) === value) return value;
+  } else if (/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d+)?(?:Z|[+-]\d{2}:\d{2})$/.test(value)) {
+    const date = new Date(value);
+    if (validDay && !Number.isNaN(date.getTime())) return value;
+  }
+  throw new ConsoleError("ConsoleVantageUnparseable", value, 400);
+}
+function parseWebBound(value) {
+  try {
+    return parseVantage(value);
+  } catch {
+    throw new ConsoleError("ConsoleWebBoundUnparseable", value);
+  }
+}
+async function resolveReaderCredential(options) {
+  try {
+    const credential = await options.mint();
+    if (credential) return credential;
+  } catch {
+  }
+  if (options.shared) return options.shared;
+  throw new ConsoleError("ConsoleTokenExchangeRefused", "ConsoleTokenExchangeRefused", 403);
+}
+var OverlayCache = class {
+  entries = /* @__PURE__ */ new Map();
+  read;
+  clock;
+  constructor(read, clock = Date.now) {
+    this.read = read;
+    this.clock = clock;
+  }
+  async get(store) {
+    const cached = this.entries.get(store);
+    if (cached && this.clock() < cached.until) return cached.value ?? "";
+    const value = (await this.read(store))?.slice(0, 8e3) ?? null;
+    this.entries.set(store, { until: this.clock() + 3e5, value });
+    return value ?? "";
+  }
+};
+var StreamingRedactor = class {
+  pending = "";
+  denylist;
+  constructor(denylist) {
+    if (denylist.some((entry) => entry.length > 128)) throw new RangeError("denylist entry exceeds 128 chars");
+    this.denylist = [...new Set(denylist.filter(Boolean))].sort((a, b) => b.length - a.length);
+  }
+  push(chunk) {
+    this.pending += chunk;
+    return this.release(Math.max(0, this.pending.length - 128));
+  }
+  finish() {
+    return this.release(this.pending.length);
+  }
+  release(until) {
+    let output = "";
+    let index = 0;
+    while (index < until) {
+      const denied = this.denylist.find((entry) => this.pending.startsWith(entry, index));
+      if (denied) {
+        output += "[redacted]";
+        index += denied.length;
+      } else {
+        output += this.pending[index];
+        index++;
+      }
+    }
+    this.pending = this.pending.slice(index);
+    return output;
+  }
+};
+function createTurn(options) {
+  options.packs?.forEach(validatePack);
+  const overlay = new OverlayCache(options.overlay ?? (async () => null), options.clock);
+  return {
+    async ask(request) {
+      const vantage = request.vantage === void 0 ? void 0 : parseVantage(request.vantage);
+      const admitted = options.tools.filter((tool) => request.packs.includes(tool.pack));
+      const results = [];
+      const rowsByTable = /* @__PURE__ */ new Map();
+      const deadline = Date.now() + Math.min(options.timeoutMs ?? 1e4, 1e4);
+      for (let round = 0; round < 2; round++) {
+        const memoryTable = (name) => options.tables?.some((table) => table.kind === "memory" && table.name === name);
+        const calls = await options.planner({
+          question: request.question,
+          vantage,
+          tools: admitted.filter((tool) => tool.kind === "read" && !memoryTable(tool.table)),
+          tables: (options.tables ?? []).filter((table) => table.kind === "data"),
+          previous: results
+        });
+        for (const call of calls) {
+          const tool = options.tools.find((candidate) => candidate.name === call.tool);
+          if (!tool || !request.packs.includes(tool.pack)) throw new ConsoleError("ConsoleToolNotAdmitted", call.tool);
+          if (tool.kind !== "read") throw new ConsoleError("ConsoleMutatingToolRequested", call.tool);
+          if (memoryTable(tool.table)) throw new ConsoleError("ConsolePlannerReachedMemory", call.tool);
+          if (tool.access === "direct-file") throw new ConsoleError("ConsoleFileAccessDirect", call.tool);
+          if (tool.leg === "web" && call.publicationBound !== void 0) parseWebBound(call.publicationBound);
+          const table = tool.leg === "web" ? void 0 : tool.table;
+          if (tool.leg !== "web" && (!table || !options.tables?.some((entry) => entry.kind === "data" && entry.name === table))) {
+            throw new RangeError(`tool ${call.tool} has no registered data table`);
+          }
+          const consumed = table === void 0 ? 0 : rowsByTable.get(table) ?? 0;
+          const remaining = 5e3 - consumed;
+          if (remaining <= 0) throw new RangeError("tool exceeded 5000 rows per data table");
+          const controller = new AbortController();
+          const milliseconds = Math.max(0, deadline - Date.now());
+          let timeout;
+          try {
+            const result = await Promise.race([
+              options.transport.call({ ...call, vantage, maxRows: remaining, signal: controller.signal }),
+              new Promise((_, reject) => {
+                timeout = setTimeout(() => {
+                  controller.abort();
+                  reject(new Error("code path exceeded 10 s"));
+                }, milliseconds);
+              })
+            ]);
+            if (result.rows.length > remaining) throw new RangeError("tool returned more than 5000 rows per data table");
+            if (table !== void 0) rowsByTable.set(table, consumed + result.rows.length);
+            results.push(result);
+          } finally {
+            if (timeout) clearTimeout(timeout);
+          }
+        }
+        if (results.some((result) => result.rows.length > 0)) break;
+      }
+      if (!results.some((result) => result.rows.length > 0)) throw new ConsoleError("ConsoleUngroundedAnswer", "The store holds no matching information.");
+      const sources = [...new Map(results.flatMap((result) => result.sources).map((source2) => [source2.id, source2])).values()].slice(0, 8);
+      if (sources.length === 0) throw new ConsoleError("ConsoleUngroundedAnswer", "The store holds no sourced information.");
+      const redactor = new StreamingRedactor(options.denylist ?? []);
+      let answer = "";
+      for await (const chunk of options.synthesize({ question: request.question, vantage, results, overlay: await overlay.get(request.store ?? "default"), sources })) {
+        answer += redactor.push(chunk);
+      }
+      answer += redactor.finish();
+      const citations = new Map(sources.map((source2, index) => [source2.id, `source-${index + 1}`]));
+      answer = answer.replace(/\[([^\]\n]+)\]/g, (match, id) => id === "redacted" ? match : citations.has(id) ? `[${citations.get(id)}]` : "");
+      const safeSources = sources.map((source2, index) => {
+        const labelRedactor = new StreamingRedactor(options.denylist ?? []);
+        const label = labelRedactor.push(source2.label) + labelRedactor.finish();
+        const safeLabel = label.replace(/[\r\n]/g, " ");
+        const url = source2.url && /^https?:\/\//.test(source2.url) && !(options.denylist ?? []).some((entry) => entry && source2.url?.includes(entry)) ? source2.url : void 0;
+        return { id: `source-${index + 1}`, label: safeLabel, url };
+      });
+      const sourceLines = safeSources.map((source2) => `- ${source2.label}${source2.url ? ` (${source2.url})` : ""}`);
+      return { text: `${answer.trim()}
+
+Sources
+${sourceLines.join("\n")}`, sources: safeSources };
+    }
+  };
+}
+
+// src/live.ts
+function record(value) {
+  return value !== null && typeof value === "object" && !Array.isArray(value);
+}
+function strings(value) {
+  return Array.isArray(value) ? value.filter((item) => typeof item === "string") : [];
+}
+function source(columns, row, table) {
+  const at = (name) => row[columns.indexOf(name)];
+  const idColumn = columns.find((name) => name.endsWith("_id") || name === "id");
+  const urlColumn = columns.find((name) => name === "source_url" || name === "url");
+  const id = idColumn && at(idColumn);
+  const url = urlColumn && at(urlColumn);
+  if (typeof id !== "string" || !id) return null;
+  const label = columns.includes("title") ? at("title") : columns.includes("summary") ? at("summary") : id;
+  return {
+    id,
+    label: typeof label === "string" && label ? label : `${table}: ${id}`,
+    ...typeof url === "string" && /^https?:\/\//.test(url) ? { url } : {}
+  };
+}
+function createLiveTurn({ stores, env, fetcher = fetch }) {
+  const modelEndpoint = env.CONTEXTFUL_MODEL_ENDPOINT;
+  const modelId = env.CONTEXTFUL_MODEL_ID;
+  if (!modelEndpoint || !modelId) throw new Error("ConsoleModelUnconfigured");
+  return async (input) => {
+    const store = stores.find((entry) => entry.id === input.store);
+    if (!store) throw new ConsoleError("ConsoleRequestMalformed");
+    const shared = env[store.credentialName];
+    const credential = store.auth === "exchange" ? await resolveReaderCredential({
+      shared,
+      mint: async () => {
+        if (!input.operator.assertion || !store.exchangeRoute) throw new ConsoleError("ConsoleTokenExchangeRefused");
+        const response = await fetcher(new URL(store.exchangeRoute, store.endpoint), {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ jwt: input.operator.assertion })
+        });
+        if (!response.ok) throw new ConsoleError("ConsoleTokenExchangeRefused");
+        const value = await response.json();
+        if (!record(value) || typeof value.token !== "string") throw new ConsoleError("ConsoleTokenExchangeRefused");
+        return value.token;
+      }
+    }) : shared;
+    if (!credential) throw new ConsoleError("ConsoleTokenExchangeRefused");
+    let id = 0;
+    const call = async (name, args, signal) => {
+      const response = await fetcher(new URL("/mcp", store.endpoint), {
+        method: "POST",
+        signal,
+        headers: { "Authorization": `Bearer ${credential}`, "Content-Type": "application/json" },
+        body: JSON.stringify({ jsonrpc: "2.0", id: ++id, method: "tools/call", params: { name, arguments: args } })
+      });
+      if (!response.ok) throw new ConsoleError("ConsoleStoreReadRefused", `store answered ${response.status}`, response.status);
+      const message = await response.json();
+      if (!record(message) || !record(message.result) || message.result.isError === true || !record(message.result.structuredContent)) {
+        throw new ConsoleError("ConsoleStoreReadRefused");
+      }
+      return message.result.structuredContent;
+    };
+    const description = await call("context.describe", {});
+    const tables = Array.isArray(description.tables) ? description.tables.flatMap((item) => record(item) && typeof item.table === "string" && item.kind === "data" ? [item.table] : []) : [];
+    const turn = createTurn({
+      tools: tables.map((table) => ({ name: `read:${table}`, pack: "data", kind: "read", table })),
+      tables: tables.map((name) => ({ name, kind: "data" })),
+      planner: async ({ previous }) => previous.length ? [] : tables.map((table) => ({ tool: `read:${table}`, arguments: {} })),
+      transport: { call: async ({ tool, maxRows, signal }) => {
+        const table = tool.slice("read:".length);
+        const result = await call("context.query", { sql: `SELECT * FROM "${table.replaceAll('"', '""')}"`, limit: maxRows }, signal);
+        const columns = strings(result.columns);
+        const rawRows = Array.isArray(result.rows) ? result.rows.filter(Array.isArray) : [];
+        const sourced = rawRows.flatMap((row) => {
+          const citation = source(columns, row, table);
+          return citation ? [{ row, citation }] : [];
+        });
+        return {
+          rows: sourced.map(({ row }) => Object.fromEntries(columns.map((column, index) => [column, row[index]]))),
+          sources: sourced.map(({ citation }) => citation)
+        };
+      } },
+      synthesize: async function* ({ question, results, sources }) {
+        const response = await fetcher(new URL("chat/completions", `${modelEndpoint.replace(/\/$/, "")}/`), {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ model: modelId, messages: [
+            { role: "system", content: "Answer only from the supplied governed rows. Cite source IDs in square brackets. Decline unsupported claims." },
+            { role: "user", content: JSON.stringify({ question, rows: results.flatMap((result) => result.rows), sources }) }
+          ] })
+        });
+        if (!response.ok) throw new ConsoleError("ConsoleModelUnavailable", `model answered ${response.status}`, 503);
+        const body2 = await response.json();
+        const choices = record(body2) && Array.isArray(body2.choices) ? body2.choices : [];
+        const message = choices.length && record(choices[0]) ? choices[0].message : void 0;
+        if (!record(message) || typeof message.content !== "string") throw new ConsoleError("ConsoleModelUnavailable", "model answer absent", 503);
+        yield message.content;
+      }
+    });
+    const answer = await turn.ask({ question: input.question, packs: ["data"], store: store.id });
+    return { answer: answer.text, sources: answer.sources, widgets: [] };
+  };
+}
+
 // src/server.ts
 import { createServer } from "node:http";
 
@@ -117,11 +395,11 @@ function verifyCognitoSession(cookie, identity2) {
   } catch {
     return null;
   }
-  if (!object(session) || typeof session.subject !== "string" || !session.subject || !Number.isSafeInteger(session.expiresAt) || session.expiresAt <= Math.floor(Date.now() / 1e3) || !Array.isArray(session.groups) || !session.groups.every((group) => typeof group === "string")) return null;
+  if (!object(session) || typeof session.subject !== "string" || !session.subject || !Number.isSafeInteger(session.expiresAt) || session.expiresAt <= Math.floor(Date.now() / 1e3) || !Array.isArray(session.groups) || !session.groups.every((group) => typeof group === "string") || session.assertion !== void 0 && typeof session.assertion !== "string") return null;
   const grants = /* @__PURE__ */ new Set();
   if (session.groups.includes(identity2.queryGroup)) grants.add("query");
   if (session.groups.includes(identity2.adminGroup)) grants.add("admin");
-  return { subject: session.subject, grants };
+  return { subject: session.subject, grants, assertion: typeof session.assertion === "string" ? session.assertion : void 0 };
 }
 function verifyAccess(assertion, identity2) {
   const parts = assertion.split(".");
@@ -151,7 +429,7 @@ function verifyAccess(assertion, identity2) {
   const key = identity2.keys ? typeof header.kid === "string" ? identity2.keys.get(header.kid) : void 0 : typeof identity2.publicKey === "string" ? createPublicKey(identity2.publicKey) : identity2.publicKey;
   if (!key) return null;
   if (!verify("RSA-SHA256", Buffer.from(`${parts[0]}.${parts[1]}`), key, signature)) return null;
-  return { subject: claims.sub, grants };
+  return { subject: claims.sub, grants, assertion };
 }
 function operatorFor(request, identity2) {
   if (identity2.kind === "access") {
@@ -217,7 +495,7 @@ async function cognitoCallback(request, identity2) {
   if (!verify("RSA-SHA256", Buffer.from(`${parts[0]}.${parts[1]}`), key, Buffer.from(parts[2], "base64url"))) return refusal("ConsolePageForbidden");
   const groups = Array.isArray(claims["cognito:groups"]) ? claims["cognito:groups"].filter((group) => typeof group === "string") : [];
   const lifetime = Math.min(claims.exp, Math.floor(Date.now() / 1e3) + 3600);
-  const session = issueCognitoSession({ subject: claims.sub, groups, expiresAt: lifetime }, identity2.sessionSecret);
+  const session = issueCognitoSession({ subject: claims.sub, groups, expiresAt: lifetime, assertion: tokens.id_token }, identity2.sessionSecret);
   const destination = groups.includes(identity2.adminGroup) ? "/admin" : "/query";
   return new Response(null, { status: 302, headers: {
     Location: destination,
@@ -301,7 +579,12 @@ function createConsole(adapters) {
             return bodyFailure(error);
           }
           if (!object(input) || typeof input.store !== "string" || typeof input.question !== "string" || !input.question.trim() || !adapters.stores.some((store) => store.id === input.store)) return refusal("ConsoleRequestMalformed", 400);
-          return json(await adapters.turn({ operator, store: input.store, question: input.question }));
+          try {
+            return json(await adapters.turn({ operator, store: input.store, question: input.question }));
+          } catch (error) {
+            if (error instanceof ConsoleError) return refusal(error.code, error.status);
+            throw error;
+          }
         }
       } else {
         const store = url.searchParams.get("store");
@@ -453,8 +736,11 @@ async function main() {
   if (!host || !Number.isInteger(port) || port < 0 || port > 65535) throw new Error("invalid --http address");
   const registry = registryFromEnv(process.env.CONTEXTFUL_STORES_JSON);
   const stores = registry.entries.map(({ id, label }) => ({ id, label }));
-  let adapters = unavailableAdapters();
   const modulePath = process.env.CONTEXTFUL_CONSOLE_ADAPTER_MODULE;
+  let adapters = {
+    ...unavailableAdapters(),
+    turn: modulePath ? unavailableAdapters().turn : createLiveTurn({ stores: registry.entries, env: process.env })
+  };
   if (modulePath) {
     const absolute = isAbsolute(modulePath) ? modulePath : resolve(modulePath);
     const module = await import(pathToFileURL(absolute).href);

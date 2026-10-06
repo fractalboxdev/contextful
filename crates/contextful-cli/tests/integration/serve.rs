@@ -113,13 +113,13 @@ fn served_exchange_mints_a_reader_credential_for_the_read_face() {
     std::fs::create_dir_all(p.join(".contextful/exchange")).unwrap();
     std::fs::write(p.join(".contextful/exchange/policy.toml"),
         "expected_iss = \"https://login.example.test/\"\nexpected_aud = \"console\"\nrole_claim = \"roles\"\n\
-         [subject_map]\non_behalf_of = { claim = \"sub\", template = \"user://{}\" }\n\
+         [subject_map]\non_behalf_of = { claim = \"sub\", template = \"user://{}\" }\nzone = { claim = \"zone\" }\n\
          [[role_grants.reader]]\nactions = [\"read\"]\ntables = [\"research/*\"]\n").unwrap();
     std::fs::write(p.join(".contextful/exchange/verify.key"), "exchange-secret").unwrap();
     let now = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap().as_secs();
     let jwt = jsonwebtoken::encode(&jsonwebtoken::Header::new(jsonwebtoken::Algorithm::HS256),
         &json!({ "iss": "https://login.example.test/", "aud": "console", "exp": now + 300,
-            "sub": "reader@example.test", "roles": ["reader"] }),
+            "sub": "reader@example.test", "zone": "on-prem:hq", "roles": ["reader"] }),
         &jsonwebtoken::EncodingKey::from_secret(b"exchange-secret")).unwrap();
     let (_listener, addr) = serve(p, &["serve", "--http", "127.0.0.1:0", "--audience", AUD,
         "--max-in-flight", "2", "--project", "research", "--public-key", &public]);

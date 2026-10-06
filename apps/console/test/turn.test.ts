@@ -63,11 +63,13 @@ test("unadmitted and mutating calls dispatch nothing", async () => {
   assert.deepEqual(write.calls, []);
 });
 
+// spec: surface.ground.org-face-read-only@030074cb
 test("organization packs refuse writes at startup", () => {
   assert.throws(() => validatePack({ name: "shared", face: "organization", tools: [{ name: "erase", kind: "write" }] }),
     (error: unknown) => error instanceof ConsoleError && error.code === "ConsoleWriteToolOnOrgFace");
 });
 
+// spec: surface.ground.direct-file-read@4edf9c49
 test("direct file table functions refuse before dispatch", async () => {
   const { turn, calls } = harness({ tools: [{ name: "query", pack: "data", kind: "read", access: "direct-file" }] });
   await assert.rejects(turn.ask({ question: "Read", packs: ["data"] }),
@@ -157,6 +159,7 @@ test("planner scaffolding lists data tables while memory relations remain outsid
   assert.deepEqual(plannerTables, [{ name: "events", kind: "data" }]);
 });
 
+// spec: surface.plan-turn.planner-reached-memory@a6f057a5
 test("a planner call targeting a memory relation dispatches nothing", async () => {
   const { turn, calls } = harness({
     tables: [{ name: "memory_entries", kind: "memory" }],
@@ -234,6 +237,7 @@ test("distinct registered tools share one data table's row budget", async () => 
   assert.deepEqual(limits, [5000, 2000]);
 });
 
+// spec: surface.set-vantage.sample-labels@95b1fd75
 test("a table contributes at most three sampled arrival labels", () => {
   assert.deepEqual(sampleArrivals([{ table: "events", labels: ["a", "b", "c", "d"] }]),
     [{ table: "events", labels: ["a", "b", "c"] }]);
@@ -252,6 +256,7 @@ test("overlay cache includes misses, expires after five minutes and truncates at
   assert.equal(reads, 2);
 });
 
+// spec: surface.speak.redactor-lookahead@2d3a1762
 test("streaming redactor masks identifiers split across chunks", () => {
   const redactor = new StreamingRedactor(["SECRET-ID"]);
   const output = redactor.push("before SEC") + redactor.push("RET-ID after") + redactor.finish();
