@@ -70,6 +70,10 @@ fn the_release_matrix_is_every_profile_on_musl_and_edge_and_full_on_darwin() {
     assert!(!wasi.status.success(), "a wasm32-wasip2 release target is accepted");
 }
 
+/// The release command uses `cargo build` by default and `cargo zigbuild` under `--builder zigbuild`, forwarding the selected target and profile features.
+// spec: assurance.build.release-builder@8af6b703
+/// Each release cell writes a JSON record naming its profile, target, archive, SHA-256 digest and SBOM.
+// spec: assurance.build.release-metadata@6d2d917d
 #[test]
 fn zigbuild_packages_a_darwin_cell_and_emits_its_formula_metadata() {
     let bin = tempfile::tempdir().unwrap();
@@ -91,6 +95,8 @@ fn zigbuild_packages_a_darwin_cell_and_emits_its_formula_metadata() {
     assert_eq!(metadata["sha256"].as_str().unwrap().len(), 64);
 }
 
+/// The formula command accepts a manifest covering every release matrix cell once, with matching asset names and SHA-256 digests, and writes formulas and SHA256SUMS without local archives.
+// spec: assurance.build.formula-manifest@8b3c9e8b
 #[test]
 fn formula_uses_metadata_without_local_release_archives() {
     let dist = tempfile::tempdir().unwrap();
