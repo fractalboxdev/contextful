@@ -307,6 +307,8 @@ test("Admin names the selected store on every operational request and shows run 
     control: { workflows: async () => ({}), record: async () => ({}), edit: async () => ({}), apply: async () => ({}) },
   });
   const page = await (await app.fetch(new Request("https://console.example/admin", { headers: access(adminAudience) }))).text();
+  const stores = await app.fetch(new Request("https://console.example/admin/api/stores", { headers: access(adminAudience) }));
+  assert.deepEqual(await stores.json(), [{ id: "one", label: "Store one" }, { id: "two", label: "Store two" }]);
   assert.match(page, /<select id="admin-store"/);
   assert.match(page, /\/admin\/api\/workflows\?store=/);
   assert.match(page, /\/admin\/api\/record\?store=/);
