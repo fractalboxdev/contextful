@@ -14,9 +14,10 @@ publish = false
 
 [dependencies]
 contextful-core = { path = "../contextful-core" }
+contextful-fs = { path = "../contextful-fs" }
 # The run stores' one connection admits a nested write from the thread already holding it.
 parking_lot = "0.12"
-rusqlite = { version = "0.40", default-features = false }
+rusqlite = { version = "0.40", default-features = false, features = ["serialize"] }
 serde = "1"
 serde_json = "1"
 
@@ -26,6 +27,7 @@ bundled = ["rusqlite/bundled"]
 
 [dev-dependencies]
 # The journal, blob and awakeable conformance suites every run store adapter passes.
+contextful-context = { path = "../contextful-context" }
 contextful-engine = { path = "../contextful-engine" }
 # Ledger measures record their figures (`assurance.measure.record`).
 contextful-eval = { path = "../../tools/eval" }

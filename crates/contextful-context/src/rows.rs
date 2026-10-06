@@ -4,7 +4,6 @@
 //! struct or a map as an object (`read.respond.nested-values`).
 
 use crate::error::{ContextError, Result};
-use crate::parquet_io;
 use crate::scan::scan;
 use crate::store::Store;
 use arrow_array::cast::AsArray;
@@ -134,7 +133,7 @@ pub fn table_rows(store: &Store, decl: &TableDecl, columns: &[&str]) -> Result<V
     let s = scan(store, decl, Bounds::default())?;
     let mut out = Vec::new();
     for f in &s.files {
-        for batch in parquet_io::read(&store.root().join(f))? {
+        for batch in store.read_parquet(&store.root().join(f))? {
             out.extend(batch_rows(&batch, columns)?);
         }
     }

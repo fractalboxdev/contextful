@@ -129,6 +129,286 @@ fn block(endpoint: &str, extra: &str) -> String {
     format!("[[export]]\nname = \"spans-mirror\"\ntable = \"spans\"\nendpoint = \"{endpoint}\"\nsignal = \"logs\"\n{extra}")
 }
 
+fn typed_block(endpoint: &str) -> String {
+    format!("[[export]]\nname = \"spans-mirror\"\ntable = \"spans\"\nendpoint = \"{endpoint}\"\nformat = \"changes-v1\"\nkey = [\"span_id\"]\nschedule = \"every 30s\"\n")
+}
+
+fn typed_events(request: &Received) -> Vec<serde_json::Value> {
+    request.body["events"].as_array().cloned().unwrap_or_default()
+}
+
+#[test]
+fn typed_export_refuses_a_truncated_initial_state() {
+    for table_cap in [false, true] {
+        let collector = Collector::start();
+        let limited = "[[pipeline.tables]]\nname = \"spans\"\n[pipeline.tables.policy.limits]\nmax_rows = 2\n\n";
+        let declaration = format!("{}{}", if table_cap { limited } else { "" }, typed_block(&collector.endpoint()));
+        let (dir, public, token) = project(&declaration, "spans");
+        let p = dir.path();
+        let token = if table_cap { token } else {
+            ok(&cf(p, &["token", "mint", "--issuer-key", ".contextful/issuer.seed", "--on-behalf-of", "svc://mirror", "--zone", "on-prem:hq", "--table", "spans", "--max-rows", "2", "--ttl", "600"], &[]))
+        };
+        land(p, "load-1", "2030-01-01T00:00:00Z", &ids("a", 3));
+        let refused = err(&export(p, &public, &token, &[]));
+        assert!(refused.contains("truncated"), "{refused}");
+        assert!(collector.received().is_empty());
+        let machine = p.join(".contextful/context/research/machine.sqlite");
+        let ledger = contextful_sqlite::ExportLedger::open(&machine).unwrap();
+        let position = ledger.position("spans-mirror").unwrap();
+        assert!(position.pending_publication.is_none());
+        assert!(position.ack_sequence.is_none());
+        assert!(ledger.state("spans-mirror").unwrap().is_empty());
+    }
+}
+
+#[test]
+fn typed_export_refuses_a_truncated_refresh_without_false_deletions() {
+    let collector = Collector::start();
+    let (dir, public, token) = project(&typed_block(&collector.endpoint()), "spans");
+    let p = dir.path();
+    land(p, "load-1", "2030-01-01T00:00:00Z", &ids("a", 3));
+    ok(&export(p, &public, &token, &[]));
+    let machine = p.join(".contextful/context/research/machine.sqlite");
+    let ledger = contextful_sqlite::ExportLedger::open(&machine).unwrap();
+    let before = ledger.position("spans-mirror").unwrap();
+    let state = ledger.state("spans-mirror").unwrap();
+    drop(ledger);
+    let limited = format!("authoring_posture = \"per_request\"\n[[pipeline.tables]]\nname = \"spans\"\n[pipeline.tables.policy.limits]\nmax_rows = 2\n\n{}", typed_block(&collector.endpoint()));
+    std::fs::write(p.join("contextful.toml"), limited).unwrap();
+    let refused = err(&export(p, &public, &token, &[]));
+    assert!(refused.contains("truncated"), "{refused}");
+    assert_eq!(collector.received().len(), 1, "a partial state emits no false deletions or completion marker");
+    let ledger = contextful_sqlite::ExportLedger::open(&machine).unwrap();
+    assert_eq!(ledger.position("spans-mirror").unwrap(), before);
+    assert_eq!(ledger.state("spans-mirror").unwrap(), state);
+}
+
+#[test]
+fn typed_export_delivers_versioned_changes_and_retries_from_machine_cursor() {
+    let collector = Collector::start();
+    let (dir, public, token) = project(&typed_block(&collector.endpoint()), "spans");
+    let p = dir.path();
+    land(p, "load-1", "2030-01-01T00:00:00Z", &ids("a", 2));
+    ok(&export(p, &public, &token, &[]));
+    let first = typed_events(&collector.received()[0]);
+    assert_eq!(first.len(), 3);
+    assert_eq!(first[0]["version"], 1);
+    assert_eq!(first[0]["kind"], "upsert");
+    assert_eq!(first[0]["key"], serde_json::json!({"span_id":"a000"}));
+    assert_eq!(first[0]["row"]["duration_ms"], 10);
+    assert_eq!(first[2]["kind"], "publication_complete");
+    assert_eq!(first[2]["changes"], 2);
+    let machine = p.join(".contextful/context/research/machine.sqlite");
+    let position = contextful_sqlite::ExportLedger::open(&machine).unwrap().position("spans-mirror").unwrap();
+    assert_eq!(position.ack_sequence, Some(2));
+    assert!(position.pending_publication.is_none());
+    ok(&export(p, &public, &token, &[]));
+    assert_eq!(collector.received().len(), 1);
+
+    land(p, "load-2", "2030-01-01T00:01:00Z", &ids("b", 1));
+    collector.answer(503);
+    let refused = err(&export(p, &public, &token, &[]));
+    assert!(refused.contains("ExportDeliveryRefused") && refused.contains("503"), "{refused}");
+    let failed = typed_events(&collector.received()[1]);
+    let mut pending = contextful_sqlite::ExportLedger::open(&machine).unwrap();
+    assert_eq!(pending.position("spans-mirror").unwrap().ack_sequence, Some(2));
+    assert_eq!(pending.pending("spans-mirror", 500).unwrap().len(), failed.len());
+    drop(pending);
+    collector.answer(200);
+    ok(&export(p, &public, &token, &[]));
+    assert_eq!(typed_events(&collector.received()[2]), failed);
+    assert_eq!(contextful_sqlite::ExportLedger::open(&machine).unwrap().position("spans-mirror").unwrap().ack_sequence, Some(4));
+}
+
+#[test]
+fn typed_export_sends_deletion_after_a_replace_publication() {
+    let collector = Collector::start();
+    let declaration = format!("[[pipeline.tables]]\nname = \"spans\"\nprimary_key = [\"span_id\"]\nwrite_mode = \"replace\"\n\n{}", typed_block(&collector.endpoint()));
+    let (dir, public, token) = project(&declaration, "spans");
+    let p = dir.path();
+    land(p, "load-1", "2030-01-01T00:00:00Z", &ids("a", 2));
+    ok(&export(p, &public, &token, &[]));
+    land(p, "load-2", "2030-01-01T00:01:00Z", &ids("b", 1));
+    land(p, "load-3", "2030-01-01T00:02:00Z", &ids("c", 1));
+    ok(&export(p, &public, &token, &[]));
+    let second = typed_events(&collector.received()[1]);
+    assert_eq!(second.iter().filter(|e| e["kind"] == "delete").count(), 2, "{second:?}");
+    assert_eq!(second.iter().find(|e| e["kind"] == "upsert").unwrap()["key"], serde_json::json!({"span_id":"c000"}));
+    assert!(!second.iter().any(|e| e["key"]["span_id"] == "b000"));
+    assert_eq!(second.last().unwrap()["kind"], "publication_complete");
+}
+
+#[test]
+fn typed_export_republishes_a_changed_read_policy_without_a_new_commit() {
+    let collector = Collector::start();
+    let (dir, public, token) = project(&typed_block(&collector.endpoint()), "spans");
+    let p = dir.path();
+    land(p, "load-1", "2030-01-01T00:00:00Z", &ids("a", 1));
+    ok(&export(p, &public, &token, &[]));
+    let machine = p.join(".contextful/context/research/machine.sqlite");
+    let before = contextful_sqlite::ExportLedger::open(&machine).unwrap().position("spans-mirror").unwrap();
+
+    let declaration = format!("[[pipeline.tables]]\nname = \"spans\"\n[pipeline.tables.policy.columns]\nduration_ms = {{ strategy = \"drop\" }}\n\n{}", typed_block(&collector.endpoint()));
+    std::fs::write(p.join("contextful.toml"), format!("authoring_posture = \"per_request\"\n{declaration}")).unwrap();
+    ok(&export(p, &public, &token, &[]));
+
+    let received = collector.received();
+    assert_eq!(received.len(), 2, "a policy change must produce a new publication");
+    let changed = typed_events(&received[1]);
+    assert_eq!(changed[0]["kind"], "upsert");
+    assert_ne!(changed[0]["publication"], typed_events(&received[0])[0]["publication"]);
+    assert!(changed[0]["row"]["duration_ms"].is_null());
+    assert_eq!(changed[1]["kind"], "publication_complete");
+    assert_eq!(contextful_sqlite::ExportLedger::open(&machine).unwrap().position("spans-mirror").unwrap().source_publication, before.source_publication);
+}
+
+#[test]
+fn typed_export_rekeys_without_a_new_commit() {
+    let collector = Collector::start();
+    let (dir, public, token) = project(&typed_block(&collector.endpoint()), "spans");
+    let p = dir.path();
+    land(p, "load-1", "2030-01-01T00:00:00Z", &ids("a", 1));
+    ok(&export(p, &public, &token, &[]));
+    let changed = typed_block(&collector.endpoint()).replace("key = [\"span_id\"]", "key = [\"duration_ms\"]");
+    std::fs::write(p.join("contextful.toml"), format!("authoring_posture = \"per_request\"\n{changed}")).unwrap();
+    ok(&export(p, &public, &token, &[]));
+
+    let received = collector.received();
+    assert_eq!(received.len(), 2, "a key change must produce a new publication");
+    let events = typed_events(&received[1]);
+    assert_eq!(events.iter().filter(|e| e["kind"] == "delete").count(), 1);
+    assert_ne!(events[0]["publication"], typed_events(&received[0])[0]["publication"]);
+    assert_eq!(events.iter().filter(|e| e["kind"] == "upsert").count(), 1);
+    assert_eq!(events.last().unwrap()["kind"], "publication_complete");
+}
+
+#[test]
+fn typed_export_marks_a_schema_change_without_a_new_commit() {
+    let collector = Collector::start();
+    let (dir, public, token) = project(&typed_block(&collector.endpoint()), "spans");
+    let p = dir.path();
+    land(p, "load-1", "2030-01-01T00:00:00Z", &ids("a", 1));
+    ok(&export(p, &public, &token, &[]));
+
+    let schema_path = p.join(".contextful/context/research/tables/spans/schema.json");
+    let mut schema: serde_json::Value = serde_json::from_slice(&std::fs::read(&schema_path).unwrap()).unwrap();
+    let fields = schema["fields"].as_array_mut().unwrap();
+    let field = fields.iter_mut().find(|f| f["name"] == "duration_ms").unwrap();
+    field["nullable"] = serde_json::json!(!field["nullable"].as_bool().unwrap());
+    std::fs::write(&schema_path, serde_json::to_vec(&schema).unwrap()).unwrap();
+
+    ok(&export(p, &public, &token, &[]));
+    let received = collector.received();
+    assert_eq!(received.len(), 2);
+    let events = typed_events(&received[1]);
+    assert_eq!(events.len(), 1);
+    assert_ne!(events[0]["publication"], typed_events(&received[0])[0]["publication"]);
+    assert_eq!(events[0]["kind"], "publication_complete");
+    assert_eq!(events[0]["changes"], 0);
+}
+
+#[test]
+fn typed_export_refuses_a_changed_target_under_the_same_name() {
+    let first = Collector::start();
+    let second = Collector::start();
+    let (dir, public, token) = project(&typed_block(&first.endpoint()), "spans");
+    let p = dir.path();
+    land(p, "load-1", "2030-01-01T00:00:00Z", &ids("a", 1));
+    ok(&export(p, &public, &token, &[]));
+    std::fs::write(p.join("contextful.toml"), format!("authoring_posture = \"per_request\"\n{}", typed_block(&second.endpoint()))).unwrap();
+    let refused = err(&export(p, &public, &token, &[]));
+    assert!(refused.contains("ExportIdentityChanged"), "{refused}");
+    assert!(second.received().is_empty());
+}
+
+#[test]
+fn typed_export_refuses_pending_replay_under_an_ungranted_credential() {
+    let collector = Collector::start();
+    collector.answer(503);
+    let (dir, public, token) = project(&typed_block(&collector.endpoint()), "spans");
+    let p = dir.path();
+    land(p, "load-1", "2030-01-01T00:00:00Z", &ids("a", 1));
+    assert!(err(&export(p, &public, &token, &[])).contains("ExportDeliveryRefused"));
+    let other = ok(&cf(p, &["token", "mint", "--issuer-key", ".contextful/issuer.seed", "--on-behalf-of", "svc://mirror", "--zone", "on-prem:hq", "--table", "documents", "--ttl", "600"], &[]));
+    collector.answer(200);
+    let refused = err(&export(p, &public, &other, &[]));
+    assert!(refused.contains("ExportIdentityChanged") || refused.contains("EnforceUnknownRelation"), "{refused}");
+    assert_eq!(collector.received().len(), 1, "a pending row must not leave under another read grant");
+    ok(&export(p, &public, &token, &[]));
+    assert_eq!(collector.received().len(), 2, "the original credential can replay the outbox");
+    assert!(err(&export(p, &public, &other, &[])).contains("EnforceUnknownRelation"));
+    assert_eq!(collector.received().len(), 2, "an ungranted credential cannot silently reuse the acknowledged view");
+}
+
+#[test]
+fn typed_export_watch_retries_a_refused_publication() {
+    let collector = Collector::start();
+    collector.answer(503);
+    let (dir, public, token) = project(&typed_block(&collector.endpoint()).replace("every 30s", "every 1s"), "spans");
+    let p = dir.path();
+    land(p, "load-1", "2030-01-01T00:00:00Z", &ids("a", 1));
+    let mut watcher = Command::new(env!("CARGO_BIN_EXE_contextful"))
+        .args(["export", "watch", "spans-mirror", "--project", "research", "--public-key", &public, "--audience", AUD])
+        .env("CONTEXTFUL_TOKEN", &token).current_dir(p).stdout(std::process::Stdio::null()).stderr(std::process::Stdio::null()).spawn().unwrap();
+    collector.await_requests(1);
+    let machine = p.join(".contextful/context/research/machine.sqlite");
+    assert_eq!(contextful_sqlite::ExportLedger::open(&machine).unwrap().position("spans-mirror").unwrap().ack_sequence, None);
+    collector.answer(200);
+    collector.await_requests(2);
+    let deadline = Instant::now() + Duration::from_secs(10);
+    loop {
+        if contextful_sqlite::ExportLedger::open(&machine).unwrap().position("spans-mirror").unwrap().ack_sequence == Some(1) { break; }
+        assert!(Instant::now() < deadline, "watch did not acknowledge the retry");
+        std::thread::sleep(Duration::from_millis(10));
+    }
+    assert_eq!(typed_events(&collector.received()[0]), typed_events(&collector.received()[1]));
+    watcher.kill().unwrap();
+    watcher.wait().unwrap();
+}
+
+#[test]
+fn typed_export_splits_requests_by_bytes_and_refuses_an_oversized_event() {
+    let collector = Collector::start();
+    let (dir, public, token) = project(&typed_block(&collector.endpoint()), "spans");
+    let p = dir.path();
+    let lines = ["a", "b"].iter().map(|id| serde_json::json!({"span_id":id,"body":"x".repeat(40_000)}).to_string()).collect::<Vec<_>>().join("\n");
+    std::fs::write(p.join("rows.jsonl"), lines).unwrap();
+    ok(&cf(p, &["context", "land", "spans", "--project", "research", "--rows", "rows.jsonl", "--run-id", "load-1", "--site-id", "site"], &[]));
+    ok(&export(p, &public, &token, &[]));
+    let received = collector.received();
+    assert_eq!(received.len(), 2);
+    for request in &received {
+        assert!(serde_json::to_vec(&request.body).unwrap().len() <= 64 * 1024);
+    }
+    assert_eq!(typed_events(&received[0]).len(), 1);
+    assert_eq!(typed_events(&received[1]).len(), 2);
+
+    let (too_large, large_public, large_token) = project(&typed_block(&collector.endpoint()), "spans");
+    let p = too_large.path();
+    std::fs::write(p.join("rows.jsonl"), serde_json::json!({"span_id":"huge","body":"x".repeat(70_000)}).to_string()).unwrap();
+    ok(&cf(p, &["context", "land", "spans", "--project", "research", "--rows", "rows.jsonl", "--run-id", "load-1", "--site-id", "site"], &[]));
+    let refused = err(&export(p, &large_public, &large_token, &[]));
+    assert!(refused.contains("ExportEventTooLarge"), "{refused}");
+    assert_eq!(collector.received().len(), 2);
+    let mut watcher = Command::new(env!("CARGO_BIN_EXE_contextful"))
+        .args(["export", "watch", "spans-mirror", "--project", "research", "--public-key", &large_public, "--audience", AUD])
+        .env("CONTEXTFUL_TOKEN", &large_token).current_dir(p).stdout(std::process::Stdio::null()).stderr(std::process::Stdio::null()).spawn().unwrap();
+    let deadline = Instant::now() + Duration::from_secs(10);
+    loop {
+        if let Some(status) = watcher.try_wait().unwrap() {
+            assert!(!status.success());
+            break;
+        }
+        if Instant::now() >= deadline {
+            watcher.kill().unwrap();
+            watcher.wait().unwrap();
+            panic!("watch retried an event that cannot fit a request");
+        }
+        std::thread::sleep(Duration::from_millis(10));
+    }
+    assert_eq!(collector.received().len(), 2);
+}
+
 const BEARER: &str = "headers = { Authorization = \"Bearer ${secret://otel-token}\" }\n";
 
 /// A project with an issuer key and a credential reading `table`.
@@ -175,7 +455,7 @@ fn cursor(dir: &Path) -> serde_json::Value {
 
 /// A manifest `[[export]]` block declares `name`, one landed `table`, an OTLP/HTTP `endpoint`, `signal` and optional
 /// `headers`; `contextful export run <name>` delivers every row its cursor has not passed.
-// spec: run.export.export-block@65ad2e02
+// spec: run.export.export-block@011fb3be
 #[test]
 fn an_export_run_delivers_the_rows_its_cursor_has_not_passed() {
     let collector = Collector::start();

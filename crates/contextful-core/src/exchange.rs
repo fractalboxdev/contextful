@@ -242,6 +242,10 @@ struct RawGrant {
     templates: Option<Vec<String>>,
     #[serde(default)]
     max_rows: Option<u64>,
+    #[serde(default)]
+    max_duration_ms: Option<u64>,
+    #[serde(default)]
+    max_response_bytes: Option<u64>,
 }
 
 impl RawGrant {
@@ -253,6 +257,8 @@ impl RawGrant {
             aggregate: self.aggregate,
             templates: self.templates,
             max_rows: self.max_rows,
+            max_duration_ms: self.max_duration_ms,
+            max_response_bytes: self.max_response_bytes,
         })
     }
 }

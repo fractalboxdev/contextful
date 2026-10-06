@@ -203,8 +203,8 @@ fn a_test_reads_the_staged_rows_beside_the_store_tables() {
     assert!(e.contains("TableFunctionRefused"), "{e}");
 }
 
-/// `sql` is one read-only `SELECT` over store tables, admitted as {{read.guard.whole-tree-walk}} before any row is read; a model reads another model through the table its last build published.
-// spec: run.model.sql@2e944e49
+/// The selected statement is one read-only SELECT over store tables.
+// spec: run.model.sql@4c7d6e3d
 #[test]
 fn model_sql_is_admitted_over_store_tables() {
     let p = Project::new();
@@ -369,9 +369,25 @@ fn a_tampered_log_is_rewritten_and_collected_history_kept() {
     p.build(MODEL, "2030-01-01T00:00:02Z").unwrap();
     let c = p.build(MODEL, "2030-01-09T00:00:00Z").unwrap();
     assert!(!p.dir().join("data/snapshots").join(&a.build_id).exists());
+    assert!(p.log::<BuildEntry>(BUILDS_LOG).iter().all(|e| e.status == contextful_core::pipeline::model::BuildStatus::Published),
+        "retention preserves successful build outcomes");
     let ids: Vec<String> = p.log::<BuildEntry>(BUILDS_LOG).into_iter().map(|e| e.build_id).collect();
     assert_eq!(ids.len(), 4);
     assert_eq!((ids[0].as_str(), ids[1].as_str(), ids[3].as_str()), (a.build_id.as_str(), b.build_id.as_str(), c.build_id.as_str()));
+}
+
+#[test]
+fn a_missing_build_log_is_recovered_before_retention_collects_its_manifests() {
+    let p = Project::new();
+    let first = p.build(MODEL, "2030-01-01T00:00:00Z").unwrap();
+    p.build(MODEL, "2030-01-01T00:00:01Z").unwrap();
+    std::fs::remove_file(p.dir().join(BUILDS_LOG)).unwrap();
+    p.build(MODEL, "2030-01-09T00:00:00Z").unwrap();
+    assert!(!p.dir().join("data/snapshots").join(&first.build_id).exists());
+    let builds = p.log::<BuildEntry>(BUILDS_LOG);
+    assert_eq!(builds.len(), 3);
+    assert!(builds.iter().all(|e| e.status == contextful_core::pipeline::model::BuildStatus::Published),
+        "committed manifests establish success before collection");
 }
 
 /// A build records a digest over the `class`, `policy` and `visibility` its table declares, set-valued fields sorted, in the manifest and the build log, and sets `withheld_cells` when any is declared.

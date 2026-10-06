@@ -2,3 +2,4 @@
 
 mod declare;
 mod suppress;
+mod template;
