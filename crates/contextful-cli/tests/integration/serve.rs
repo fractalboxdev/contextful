@@ -168,6 +168,24 @@ fn published_workflow_listing_caps_entries_and_flags_truncation() {
     assert_eq!(view["declined"], 0);
 }
 
+#[test]
+fn published_workflows_include_completed_local_runs_before_sync_push() {
+    let vendor = super::pipeline::Vendor::start(|_| (200, "[{\"note_id\":\"filed\"}]".into()));
+    let (dir, public) = project();
+    let root = dir.path();
+    let pipeline = format!("[[pipeline]]\nid = \"filings-flow\"\ntables = [\"research/filings\"]\n[pipeline.source]\nname = \"http\"\nconfig = {{ endpoint = \"{}\" }}\n", vendor.url("/filings"));
+    std::fs::create_dir_all(root.join("pipelines")).unwrap();
+    std::fs::write(root.join("pipelines/filings.toml"), pipeline).unwrap();
+    stdout(&run(root, &["pipeline", "import", "--project", "research"]));
+    stdout(&run(root, &["pipeline", "run", "filings-flow", "--project", "research", "--run-id", "run-flow", "--site-id", "site-a"]));
+    let admin = stdout(&run(root, &["token", "mint", "--issuer-key", ".contextful/issuer.seed", "--on-behalf-of", "user://dana@acme.example", "--zone", "on-prem:hq", "--action", "admin", "--table", "*", "--ttl", "900"]));
+    let (_listener, addr) = serve(root, &["serve", "--http", "127.0.0.1:0", "--audience", AUD, "--max-in-flight", "2", "--project", "research", "--public-key", &public]);
+    let (status, view) = control(&addr, "GET", "/control/workflows", Some(&admin), "");
+    assert_eq!(status, 200, "{view}");
+    assert_eq!(view["runs"]["filings-flow"]["run_id"], "run-flow");
+    assert_eq!(view["runs"]["filings-flow"]["status"], "success");
+}
+
 /// The network transport refuses to start without its audience, its ceiling, or an issuer key that resolves and parses.
 // spec: topology.publish-hostname.issuer-key@a7736a7f
 #[test]
