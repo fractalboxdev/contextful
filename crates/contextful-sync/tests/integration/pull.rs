@@ -86,6 +86,42 @@ fn a_head_version_without_its_receipt_never_stages_an_older_receipt_as_head() {
     assert!(!cold.root().join("control/head.json").exists());
 }
 
+#[test]
+fn a_sparse_control_ancestry_uses_listed_receipts_instead_of_the_version_range() {
+    let (completed, result) = std::sync::mpsc::channel();
+    std::thread::spawn(move || {
+        let dir = tempfile::tempdir().unwrap();
+        let b = bucket(dir.path());
+        let writer = node("ingest-a", b.clone(), "");
+        let control = writer.syncer.control_dir.as_ref().unwrap();
+        std::fs::create_dir_all(control).unwrap();
+        let signer = SeedSigner::generate(SignatureAlgorithm::Ed25519);
+        let first = ControlReceipt::sign("research", 1, None, b"first", &signer).unwrap();
+        std::fs::write(control.join(snapshot_file(1)), b"first").unwrap();
+        std::fs::write(control.join(receipt_file(1)), serde_json::to_vec(&first).unwrap()).unwrap();
+        std::fs::write(control.join(CONTROL_POINTER), "1\n").unwrap();
+        writer.syncer.push(at(NOW)).unwrap();
+        let mut manifest: BucketManifest = serde_json::from_slice(&b.get("team/manifest.json").unwrap().unwrap().0).unwrap();
+        let version = u64::MAX;
+        let head = ControlReceipt::sign("research", version, Some(&first.digest()), b"head", &signer).unwrap();
+        for (name, bytes) in [(snapshot_file(version), b"head".to_vec()), (receipt_file(version), serde_json::to_vec(&head).unwrap())] {
+            let key = format!("research/control/{name}");
+            b.put(&format!("team/{key}"), &bytes, Condition::None).unwrap();
+            manifest.entries.insert(key, Entry { sha256: sha256_hex(&bytes), size: bytes.len() as u64, owner: String::new() });
+        }
+        manifest.control_heads.insert("research".into(), contextful_core::store::sync::ControlHead { version, receipt_sha256: head.digest() });
+        b.put("team/manifest.json", &serde_json::to_vec(&manifest).unwrap(), Condition::None).unwrap();
+        let cold = node("ingest-b", b, "");
+        cold.syncer.pull(&PullScope::default()).unwrap();
+        let staged = cold.root().join("control");
+        assert!(staged.join(receipt_file(1)).exists());
+        assert!(staged.join(receipt_file(version)).exists());
+        assert!(!cold.syncer.control_dir.as_ref().unwrap().join(CONTROL_POINTER).exists());
+        completed.send(()).unwrap();
+    });
+    result.recv_timeout(std::time::Duration::from_secs(5)).expect("two listed receipts finish without traversing the numeric version gap");
+}
+
 fn files(n: &crate::support::Node) -> Vec<String> {
     let decl = TableDecl::named("filings");
     let s = contextful_context::scan::scan(&n.syncer.store, &decl, Default::default()).unwrap();

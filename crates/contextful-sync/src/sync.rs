@@ -866,7 +866,13 @@ impl Syncer {
         let mut keys = BTreeSet::new();
         let Some(head) = manifest.control_heads.get(&self.project) else { return Ok((keys, None)) };
         let mut wanted = Some(head.receipt_sha256.clone());
-        for version in (1..=head.version).rev() {
+        let prefix = format!("{}/control/receipt@v", self.project);
+        let mut versions: BTreeSet<u64> = manifest.entries.keys().filter_map(|key| {
+            key.strip_prefix(&prefix)?.strip_suffix(".json")?.parse().ok()
+        }).filter(|version| *version > 0 && *version <= head.version).collect();
+        // The head is checked even when its receipt is absent from the manifest.
+        versions.insert(head.version);
+        for version in versions.into_iter().rev() {
             let Some(digest) = wanted.as_deref() else { break };
             let receipt_key = format!("{}/control/{}", self.project, receipt_file(version));
             let Some(entry) = manifest.entries.get(&receipt_key) else {
