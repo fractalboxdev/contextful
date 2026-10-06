@@ -25,6 +25,43 @@ fn tree(root: &std::path::Path) -> Vec<String> {
     out
 }
 
+// spec: read.register.lexicon-surface@350071e8
+#[test]
+fn describe_reports_the_store_lexicon_on_each_registered_table() {
+    let manifest = format!(
+        "[lexicon.numeric_identifiers]\n\"42\" = \"customer account\"\n[lexicon.badges]\nreviewed = \"verified by an analyst\"\n{MANIFEST}"
+    );
+    let r = Reads::with_manifest(&manifest);
+    let session = r.session(&["research/notes", "research/vendor"], None, Some("public-cloud:us-east-1"));
+    let expected = json!({
+        "numeric_identifiers": { "42": "customer account" },
+        "badges": { "reviewed": "verified by an analyst" }
+    });
+    for table in ["research/notes", "research/vendor"] {
+        let described = r.face.describe(&session, Some(table), Bounds::default()).unwrap();
+        assert_eq!(described["lexicon"], expected);
+        for serving_field in ["aliases", "time_window_phrases", "distillation_examples"] {
+            assert!(described["lexicon"].get(serving_field).is_none());
+        }
+    }
+}
+
+// spec: read.register.column-hints@ce544829
+#[test]
+fn describe_reports_declared_hints_on_existing_columns_only() {
+    let manifest = MANIFEST.replace(
+        "agent_description = \"Research notes, one partition per tenant.\"",
+        "agent_description = \"Research notes, one partition per tenant.\"\n[pipeline.tables.column_hints]\nnote_id = \"Stable note identifier\"\nabsent_column = \"Never landed\"",
+    );
+    let r = Reads::with_manifest(&manifest);
+    let session = r.session(&["research/notes"], None, None);
+    let described = r.face.describe(&session, Some("research/notes"), Bounds::default()).unwrap();
+    let columns = described["columns"].as_array().unwrap();
+    assert_eq!(columns.iter().find(|c| c["name"] == "note_id").unwrap()["hint"], json!("Stable note identifier"));
+    assert!(columns.iter().all(|c| c["name"] != "absent_column"));
+    assert!(columns.iter().find(|c| c["name"] == "title").unwrap().get("hint").is_none());
+}
+
 /// A session's connection issues one create-or-replace view per table the manifests name, each scanning {{store.reconcile.explicit-file-list}}, once per connection; statements reuse it under {{read.cache.session-pool}}. No view directory exists on disk.
 // spec: read.register.connection-views@502d9fca
 #[test]
@@ -98,6 +135,24 @@ fn every_bare_name_resolves_to_the_callers_relation() {
     assert_eq!(previewed, acme);
 }
 
+// spec: store.bound-time.beneath-enforcement@7d056563
+#[test]
+fn historical_retrieval_keeps_row_and_column_enforcement() {
+    let r = Reads::new();
+    let grant = read(&["research/contacts"], Some(("research/contacts", "acme")));
+    let authority = r.authority(loop_subject("agent://research-loop"), vec![grant]);
+    let bounds = Bounds { as_of: Some(contextful_core::store::bound_time::Bound::parse("2030-01-11T00:00:00Z").unwrap()), valid_as_of: None };
+    let session = r.face.session(&authority, &contextful_policy::enforce::session::Request::default(), bounds).unwrap();
+    let request = contextful_context::read::RetrieveRequest::new("research/contacts", "", at("2030-02-01T00:00:00Z"));
+    let response = r.face.retrieve(&session, &request, bounds).unwrap();
+    let rows = column(&response, "_row");
+    assert_eq!(rows.len(), 2);
+    assert!(rows.iter().all(|row| row["tenant"] == json!("acme") && row["owner"] == json!("agent://research-loop")));
+    assert!(rows.iter().all(|row| row["phone"] == json!("")));
+    assert!(rows.iter().all(|row| row["email"] != json!("dana@acme.example") && row["email"] != json!("lee@acme.example")));
+    assert_eq!(response.to_json()["contextful.bounds"]["as_of"], json!("2030-01-11T00:00:00.000000000Z"));
+}
+
 /// `context.files` returns store-root-relative paths for the tables the caller reads, and a table outside that set contributes no path.
 // spec: read.register.file-listing@14f34390
 #[test]
@@ -110,6 +165,34 @@ fn file_listing_covers_the_callers_tables_alone() {
     assert!(paths.iter().all(|p| !p.as_str().unwrap().starts_with('/')));
     assert!(r.store.root().join("tables/hr/salaries").is_dir(), "the ungranted table holds files");
     assert!(paths.iter().all(|p| !p.as_str().unwrap().starts_with("tables/hr/")), "{paths:?}");
+}
+
+#[test]
+fn file_listing_holds_the_face_row_ceiling() {
+    use contextful_policy::enforce::policy::TablePolicy;
+    use contextful_policy::enforce::session::TableSource;
+
+    let r = Reads::new();
+    let authority = r.authority(loop_subject("agent://research-loop"), vec![read(&["research/vendor"], None)]);
+    let decl = TableDecl::named("research/vendor");
+    let files = (0..=contextful_core::read::respond::FACE_ROW_CEILING)
+        .map(|index| format!("{}/tables/research/vendor/data/runs/run-{index:05}/part.parquet", r.store.root().display()))
+        .collect();
+    let source = TableSource {
+        policy: TablePolicy::from_decl(&decl).unwrap(),
+        decl,
+        base: "SELECT 1 AS item_id".into(),
+        files,
+        columns: Vec::new(),
+        landed: false,
+        ledger: Vec::new(),
+        resolved: None,
+    };
+    let session = Session::open(&authority, &Request::default(), vec![source], &pepper()).unwrap();
+    let listing = r.face.files(&session, Bounds::default()).unwrap();
+    assert_eq!(listing.rows.len() as u64, contextful_core::read::respond::FACE_ROW_CEILING);
+    assert!(listing.truncated);
+    assert_eq!(listing.blocks["contextful.truncation"], json!({ "by": "rows", "ceiling": contextful_core::read::respond::FACE_ROW_CEILING, "source": "face" }));
 }
 
 /// `context.file` resolves a path to its `(table, run_id)` and reads it through that table's registered relation. A snapshot part, a traversal, an absolute path or a ledger file raises `FilePreviewNotATable`.
@@ -208,6 +291,21 @@ fn the_row_ceiling_bounds_delivery_with_one_probe_row() {
     let asked = r.face.query(&s, r#"SELECT note_id FROM "research/notes""#, ReadOptions { limit: Some(2), internals: true, ..ReadOptions::default() }).unwrap();
     assert_eq!((asked.rows.len(), asked.truncated), (2, true));
     assert_eq!(asked.blocks["contextful.internals"]["limit"], json!(2));
+}
+
+// spec: disclosure.template.overfetch@bb459353
+#[test]
+fn a_capped_template_reads_one_probe_row_for_truncation() {
+    let r = Reads::new();
+    let mut grant = read(&["research/*"], Some(("research/notes", "acme")));
+    grant.templates = Some(vec!["notes_for".into()]);
+    let s = r.session_for(loop_subject("agent://research-loop"), vec![grant], None);
+    let args: Map<String, Value> = [("tenant".to_string(), json!("acme"))].into_iter().collect();
+    assert_eq!(contextful_core::read::respond::Response::fetch_count(Some(2)), Some(3));
+    let capped = r.face.execute_template(&s, "notes_for", &args, ReadOptions { limit: Some(2), ..ReadOptions::default() }).unwrap();
+    assert_eq!((capped.rows.len(), capped.truncated), (2, true));
+    let exact = r.face.execute_template(&s, "notes_for", &args, ReadOptions { limit: Some(3), ..ReadOptions::default() }).unwrap();
+    assert_eq!((exact.rows.len(), exact.truncated), (3, false));
 }
 
 /// Every read on every face, `corpus.retrieve` included, delivers at most 10000 rows: the face ceiling is always a component of {{authority.grant.row-ceiling}}, declared or not, and bounds the candidate window.

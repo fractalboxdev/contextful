@@ -36,6 +36,18 @@ pub fn relation(
     absent: &[Column],
     valid_as_of: Option<Bound>,
 ) -> Result<String, StoreError> {
+    relation_with_encryption(decl, files, schema_columns, absent, valid_as_of, None)
+}
+
+/// The relation with a named in-memory Parquet footer key when its files are encrypted.
+pub fn relation_with_encryption(
+    decl: &TableDecl,
+    files: &[String],
+    schema_columns: &[Column],
+    absent: &[Column],
+    valid_as_of: Option<Bound>,
+    encryption_key: Option<&str>,
+) -> Result<String, StoreError> {
     let mut base = if files.is_empty() {
         zero_row(schema_columns)
     } else {
@@ -48,12 +60,12 @@ pub fn relation(
             .map(|c| format!("CAST({} AS {}) AS {}", ident(&c.name), c.ty.sql(), ident(&c.name)))
             .collect();
         let replace = if vectors.is_empty() { String::new() } else { format!(" REPLACE ({})", vectors.join(", ")) };
-        format!("SELECT *{replace} FROM read_parquet([{}], union_by_name = true, hive_partitioning = false)", list.join(", "))
+        let encrypted = encryption_key.map(|key| format!(", encryption_config = {{footer_key: {}}}", literal(key))).unwrap_or_default();
+        format!("SELECT *{replace} FROM read_parquet([{}], union_by_name = true, hive_partitioning = false{encrypted})", list.join(", "))
     };
     if !files.is_empty() && !absent.is_empty() {
         base = format!("{base} UNION ALL BY NAME {}", zero_row(absent));
     }
-
     let mut rel = if decl.is_keyed() {
         // A table declaring valid time keeps one row per key and valid-time line, as the fold does.
         let mut pk: Vec<String> = decl.primary_key().iter().map(|k| ident(k)).collect();
@@ -75,6 +87,14 @@ pub fn relation(
     if is_derive_key(decl.primary_key()) && SUPERSEDE_COLUMNS.iter().all(|n| schema_columns.iter().any(|c| c.name == *n)) {
         let by_version = decl.retain_versions == Some(true) && schema_columns.iter().any(|c| c.name == TASK_VERSION);
         rel = unsuperseded(&rel, by_version);
+    }
+    if let Some(retention) = &decl.retain_rows {
+        let seconds = decl.retain_rows_secs().map_err(|e| StoreError::StoreRetentionColumnInvalid(e.to_string()))?.unwrap_or_default();
+        let nanos = u128::from(seconds) * 1_000_000_000;
+        rel = format!(
+            "SELECT * FROM ({rel}) WHERE epoch_ns({}) >= CAST(epoch_ns(CURRENT_TIMESTAMP) AS HUGEINT) - CAST({nanos} AS HUGEINT)",
+            ident(&retention.column)
+        );
     }
 
     if let Some(b) = valid_as_of {

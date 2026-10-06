@@ -14,6 +14,7 @@ use crate::time::Instant;
 use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
 use std::collections::BTreeMap;
+use std::path::Path;
 
 /// The engine's injected-column semantics a published build carries; it advances when
 /// the engine adds an injected column (`run.publish.semantics-version`).
@@ -142,7 +143,14 @@ pub struct ModelTest {
 #[serde(deny_unknown_fields)]
 pub struct ModelSpec {
     pub id: String,
+    #[serde(default)]
     pub sql: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub sql_file: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub disclosure_opt_out: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub disclosure: Option<DisclosureDecl>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub materialized: Option<Materialized>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -157,7 +165,54 @@ pub struct ModelSpec {
     pub tests: Vec<ModelTest>,
 }
 
+/// The local policy declaration a published model carries (`disclosure.release.model-policy`).
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct DisclosureDecl {
+    #[serde(default)]
+    pub grouping_allowlist: Vec<String>,
+    pub contributor_key: String,
+    #[serde(default)]
+    pub min_group_size: Option<u64>,
+    #[serde(default)]
+    pub max_contributor_share: Option<f64>,
+    #[serde(default)]
+    pub emit_sentinel: bool,
+    #[serde(default)]
+    pub figures: Option<String>,
+    #[serde(default)]
+    pub forbidden_columns: Vec<String>,
+    #[serde(default)]
+    pub metric_bounds: BTreeMap<String, MetricBounds>,
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct MetricBounds {
+    pub lower: f64,
+    pub upper: f64,
+    pub quantum: f64,
+}
+
 impl ModelSpec {
+    pub fn validate_statement_source(&self) -> Result<(), RunError> {
+        let inline = !self.sql.trim().is_empty();
+        let file = self.sql_file.as_deref().is_some_and(|path| !path.trim().is_empty());
+        if inline == file || self.sql_file.as_deref().is_some_and(|path| path.trim().is_empty()) {
+            return Err(RunError::PipelineSpecInvalid(format!("model `{}` declares exactly one of `sql` and `sql_file`", self.id)));
+        }
+        if self.sql_file.as_deref().is_some_and(|path| Path::new(path).is_absolute()) {
+            return Err(RunError::PipelineSpecInvalid(format!("model `{}` declares an absolute `sql_file` path", self.id)));
+        }
+        if self.disclosure_opt_out.as_ref().is_some_and(|reason| reason.trim().is_empty()) {
+            return Err(RunError::PipelineSpecInvalid(format!("model `{}` has an empty `disclosure_opt_out` reason", self.id)));
+        }
+        if self.disclosure.is_some() && self.disclosure_opt_out.is_some() {
+            return Err(RunError::PipelineSpecInvalid(format!("model `{}` declares both `[model.disclosure]` and `disclosure_opt_out`", self.id)));
+        }
+        Ok(())
+    }
+
     pub fn publishes(&self) -> bool {
         self.publish.unwrap_or(true)
     }
@@ -173,6 +228,7 @@ impl ModelSpec {
     /// Hold the block to the rules checked before any row is read.
     pub fn validate(&self) -> Result<(), RunError> {
         check_table_name(&self.id)?;
+        self.validate_statement_source()?;
         if self.publishes() && self.contract.is_none() {
             return Err(RunError::ModelContractUndeclared(format!(
                 "model `{}` publishes and declares no `[model.contract]`; declare one, or `publish = false`",
@@ -314,6 +370,7 @@ pub enum BuildStatus {
     Published,
     Refused,
     Partial,
+    Failed,
 }
 
 /// One input table's frontier: its current snapshot and the committed runs that snapshot

@@ -30,8 +30,6 @@ those promises without taking the librarian's word.
   ({{assurance.gate.stage-sequence}}), and search results are scored against rows that
   must never appear ({{assurance.evaluate.forbidden-row-rate}}).
 
-The promise on the box never exceeds what these checks show.
-
 ## How it works
 
 ```mermaid
@@ -90,7 +88,9 @@ Beneath the proofs sit the engineering rules: one implementation per capability
 
 One ledger keys each tracked target to its clause ({{assurance.measure.ledger}}): a
 gate-tier count reds the evaluate stage ({{assurance.measure.count-first}}), and timings
-only annotate ({{assurance.measure.trend-band}}).
+only annotate ({{assurance.measure.trend-band}}) against earlier matching reports
+({{assurance.measure.trend-baseline}}) in their declared direction
+({{assurance.measure.trend-direction}}).
 
 ## Worked example
 

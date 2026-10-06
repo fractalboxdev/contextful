@@ -195,7 +195,7 @@ fn instant(args: &Map<String, Value>, name: &str) -> Result<Option<Instant>, Pro
 }
 
 fn options(args: &Map<String, Value>) -> Result<ReadOptions, Protocol> {
-    Ok(ReadOptions { limit: integer(args, "limit")?, internals: boolean(args, "internals")?, bounds: bounds(args)? })
+    Ok(ReadOptions { limit: integer(args, "limit")?, max_duration_ms: integer(args, "max_duration_ms")?, max_response_bytes: integer(args, "max_response_bytes")?, internals: boolean(args, "internals")?, bounds: bounds(args)? })
 }
 
 /// A row-bearing response and the count of rows it returns.
@@ -384,11 +384,11 @@ impl<'a> Tools<'a> {
             "context.describe" => {
                 only(args, name, &["table"])?;
                 let table = string(args, "table")?;
-                let b = bounds(args)?;
-                self.session(caller, zone, b, pins).and_then(|s| self.face.describe(&s, table.as_deref(), b)).map(|v| (v, 0))
+                let opts = options(args)?;
+                self.session(caller, zone, opts.bounds, pins).and_then(|s| self.face.describe_with_options(&s, table.as_deref(), opts)).map(|v| (v, 0))
             }
             "context.query" => {
-                only(args, name, &["sql", "parameters", "limit", "internals"])?;
+                only(args, name, &["sql", "parameters", "limit", "max_duration_ms", "max_response_bytes", "internals"])?;
                 let sql = required(args, "sql")?;
                 let parameters = match arg(args, "parameters") {
                     None => Map::new(),
@@ -401,7 +401,7 @@ impl<'a> Tools<'a> {
                     .map(answered)
             }
             "context.execute_query" => {
-                only(args, name, &["id", "arguments", "limit", "internals"])?;
+                only(args, name, &["id", "arguments", "limit", "max_duration_ms", "max_response_bytes", "internals"])?;
                 let id = required(args, "id")?;
                 let arguments = match arg(args, "arguments") {
                     None => Map::new(),
@@ -415,11 +415,11 @@ impl<'a> Tools<'a> {
             }
             "context.files" => {
                 only(args, name, &[])?;
-                let b = bounds(args)?;
-                self.session(caller, zone, b, pins).and_then(|s| self.face.files(&s, b)).map(answered)
+                let opts = options(args)?;
+                self.session(caller, zone, opts.bounds, pins).and_then(|s| self.face.files_with_options(&s, opts)).map(answered)
             }
             "context.file" => {
-                only(args, name, &["path", "limit", "internals"])?;
+                only(args, name, &["path", "limit", "max_duration_ms", "max_response_bytes", "internals"])?;
                 let path = required(args, "path")?;
                 let opts = options(args)?;
                 self.session(caller, zone, opts.bounds, pins).and_then(|s| self.face.file(&s, &path, opts)).map(answered)
@@ -452,6 +452,8 @@ impl<'a> Tools<'a> {
                     filter: arg(args, "filter").cloned(),
                     kinds,
                     limit: integer(args, "limit")?,
+                    max_duration_ms: integer(args, "max_duration_ms")?,
+                    max_response_bytes: integer(args, "max_response_bytes")?,
                     since: instant(args, "since")?,
                     min_score: integer(args, "min_score")?.map(|m| u32::try_from(m).unwrap_or(u32::MAX)),
                     internals: boolean(args, "internals")?,
@@ -473,6 +475,8 @@ impl<'a> Tools<'a> {
                     observed_at: bound(args, "observed_at")?,
                     as_of_ingest: bound(args, "as_of_ingest")?,
                     limit: integer(args, "limit")?,
+                    max_duration_ms: integer(args, "max_duration_ms")?,
+                    max_response_bytes: integer(args, "max_response_bytes")?,
                     ..RecallRequest::new(required(args, "table")?, required(args, "subject")?, self.clock.now())
                 };
                 self.session(caller, zone, request.bounds(), pins).and_then(|s| self.face.recall(&s, &request)).map(answered)
@@ -483,7 +487,7 @@ impl<'a> Tools<'a> {
                 for key in READ_ARGUMENTS {
                     arguments.remove(key);
                 }
-                let opts = ReadOptions { bounds: bounds(args)?, ..ReadOptions::default() };
+                let opts = options(args)?;
                 self.session(caller, zone, opts.bounds, pins)
                     .and_then(|s| self.face.execute_template(&s, template, &arguments, opts))
                     .map(answered)

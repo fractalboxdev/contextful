@@ -1,14 +1,265 @@
 //! `connector.source` over the generic HTTP source.
 
-use crate::support::{request, source, Never, Response, Server};
-use contextful_connectors::http::{ConfigError, HttpConfig, PAGE_CAP};
+use crate::support::{request, resolver, source, Never, Response, Server};
+use contextful_connectors::http::{ConfigError, HttpConfig, HttpSource, Mediation, PAGE_CAP};
 use contextful_core::connector::ConnectorError;
 use contextful_core::run::ports::Source;
 use contextful_core::run::{FailureTag, RunError};
+use contextful_outbound::egress::{Inbound, Outbound, Transport, TransportFault};
 use serde_json::{json, Value};
+use std::net::SocketAddr;
+use std::sync::{Arc, Mutex};
+use std::time::Duration;
+
+#[derive(Default)]
+struct ExpansionTransport {
+    limits: Mutex<Vec<(String, u64, Duration)>>,
+}
+
+impl Transport for ExpansionTransport {
+    fn resolve(&self, _: &str, port: u16) -> Result<Vec<SocketAddr>, String> {
+        Ok(vec![SocketAddr::new("93.184.216.34".parse().unwrap(), port)])
+    }
+
+    fn send(&self, request: &Outbound<'_>) -> Result<Inbound, TransportFault> {
+        self.limits.lock().unwrap().push((request.url.path().to_string(), request.max_body, request.timeout));
+        let body = match request.url.path() {
+            "/index" => b"[{\"id\":1,\"url\":\"/detail/1\"}]".to_vec(),
+            "/detail/1" => b"{\"ok\":true}".to_vec(),
+            _ => return Err(TransportFault::Failed("unexpected request path".into())),
+        };
+        if body.len() as u64 > request.max_body { return Err(TransportFault::BodyOverLimit); }
+        Ok(Inbound { status: 200, headers: vec![], body })
+    }
+}
 
 fn ids(rows: &[serde_json::Map<String, Value>]) -> Vec<String> {
     rows.iter().map(|r| r["id"].as_str().unwrap_or_default().to_string()).collect()
+}
+
+/// A read with 201 expansion pointers refuses before its first follow-up request.
+#[test]
+fn expansion_rejects_201_followups_before_the_first() {
+    let vendor = Server::start(|r| match r.path() {
+        "/index" => {
+            let rows: Vec<Value> = (0..201).map(|id| json!({"id": id, "detail_url": format!("/detail/{id}")})).collect();
+            Response::json(200, &serde_json::to_string(&rows).unwrap())
+        }
+        _ => Response::json(200, "{\"description\":\"detail\"}"),
+    });
+    let s = source(
+        json!({"endpoint": vendor.url("/index"), "expansion": {"pointer_column": "detail_url", "target_column": "detail"}}),
+        vec![],
+    );
+    let failure = s.walk(&request(None), &Never).unwrap_err();
+    assert!(failure.message.contains("200"), "{failure}");
+    assert_eq!(vendor.received("/index").len(), 1);
+    assert_eq!(vendor.requests.lock().unwrap().len(), 1, "no detail request follows an over-budget index");
+}
+
+#[test]
+fn expansion_spends_index_bytes_before_budgeting_detail_io() {
+    let transport = Arc::new(ExpansionTransport::default());
+    let config = HttpConfig::parse(&json!({"endpoint":"https://api.vendor.example/index", "expansion":{"pointer_column":"url", "target_column":"detail"}})).unwrap();
+    let s = HttpSource::mediated(config, "t", resolver(vec![]), Mediation { transport: Some(transport.clone()), ..Mediation::default() }).unwrap();
+    let rows = s.walk(&request(None), &Never).unwrap();
+    assert_eq!(rows[0]["detail"]["ok"], true);
+    let limits = transport.limits.lock().unwrap();
+    assert_eq!(limits.len(), 2);
+    assert_eq!(limits[0].0, "/index");
+    assert_eq!(limits[1].0, "/detail/1");
+    assert_eq!(limits[0].1, 256 * 1024 * 1024);
+    assert_eq!(limits[1].1, limits[0].1 - b"[{\"id\":1,\"url\":\"/detail/1\"}]".len() as u64);
+    assert!(limits.iter().all(|(_, _, time)| *time <= Duration::from_secs(600)));
+}
+
+/// One expansion pointer fetches its document into the declared target column.
+#[test]
+fn expansion_follows_a_row_pointer() {
+    let vendor = Server::start(|r| match r.path() {
+        "/index" => Response::json(200, "[{\"id\":1,\"detail_url\":\"/detail/1\"}]"),
+        _ => Response::json(200, "{\"description\":\"detail\"}"),
+    });
+    let s = source(
+        json!({"endpoint": vendor.url("/index"), "expansion": {"pointer_column": "detail_url", "target_column": "detail"}}),
+        vec![],
+    );
+    let rows = s.walk(&request(None), &Never).unwrap();
+    assert_eq!(rows[0]["detail"]["description"], "detail");
+    assert_eq!(vendor.received("/detail/1").len(), 1);
+}
+
+/// A normal source pull lands the expanded document in its emitted row.
+// spec: connector.source.expansion@0e1fe94a
+#[test]
+fn expansion_lands_detail_on_the_source_pull() {
+    let vendor = Server::start(|r| match r.path() {
+        "/index" => Response::json(200, "[{\"id\":1,\"detail_url\":\"/detail/1\"}]"),
+        _ => Response::json(200, "{\"description\":\"detail\"}"),
+    });
+    let mut s = source(json!({"endpoint": vendor.url("/index"), "expansion": {"pointer_column": "detail_url", "target_column": "detail"}}), vec![]);
+    let body: Value = serde_json::from_slice(&s.pull(&request(None), &Never).unwrap()).unwrap();
+    assert_eq!(body["rows"][0]["detail"]["description"], "detail");
+    assert_eq!(vendor.received("/detail/1").len(), 1);
+}
+
+/// Both expansion pointer forms refuse at build without issuing a request.
+// spec: connector.source.pointer-ambiguity@d4d52bad
+#[test]
+fn expansion_rejects_two_pointer_forms() {
+    let cfg = json!({"endpoint":"https://api.vendor.example/index", "expansion":{"pointer_column":"url", "url_template":"https://api.vendor.example/{id}", "target_column":"detail"}});
+    assert!(format!("{}", HttpConfig::parse(&cfg).unwrap_err()).contains("ConnectorPointerAmbiguous"));
+}
+
+fn expansion_preflight_failure(row: Value, error: &str) {
+    let vendor = Server::start(move |r| match r.path() {
+        "/index" => Response::json(200, &json!([{"id": 0, "url": "/detail/0"}, row]).to_string()),
+        _ => Response::json(200, "{\"ok\":true}"),
+    });
+    let s = source(json!({"endpoint": vendor.url("/index"), "expansion": {"pointer_column":"url", "target_column":"detail"}}), vec![]);
+    let failure = s.walk(&request(None), &Never).unwrap_err();
+    assert!(failure.message.contains(error), "{failure}");
+    assert_eq!(vendor.requests.lock().unwrap().len(), 1);
+}
+
+/// A missing pointer in a later index row refuses before detail I/O.
+// spec: connector.source.pointer-column-missing@1185d985
+#[test]
+fn expansion_refuses_a_missing_row_pointer_before_detail_io() {
+    expansion_preflight_failure(json!({"id": 1}), "ConnectorPointerColumnMissing");
+    expansion_preflight_failure(json!({"id": 1, "url": ["/detail/1"]}), "ConnectorPointerColumnMissing");
+}
+
+/// An occupied target in a later index row refuses before detail I/O.
+// spec: connector.source.target-column-occupied@d8d38b57
+#[test]
+fn expansion_refuses_an_occupied_target_before_detail_io() {
+    expansion_preflight_failure(json!({"id": 1, "url": "/detail/1", "detail": "occupied"}), "ConnectorTargetColumnOccupied");
+}
+
+/// A follow-up failure refuses the complete index read.
+// spec: connector.source.follow-up-failure@89b8e559
+#[test]
+fn expansion_fails_the_read_on_a_failed_followup() {
+    let vendor = Server::start(|r| match r.path() {
+        "/index" => Response::json(200, "[{\"id\":1,\"url\":\"/detail/1\"}]"),
+        _ => Response::json(503, "{}"),
+    });
+    let s = source(json!({"endpoint": vendor.url("/index"), "expansion": {"pointer_column":"url", "target_column":"detail"}}), vec![]);
+    let failure = s.walk(&request(None), &Never).unwrap_err();
+    assert!(failure.message.contains("ConnectorExpansionFailed"), "{failure}");
+}
+
+/// Row templates percent-encode scalars, and a template cannot choose its own host.
+// spec: connector.source.template-shape@1a90cc68
+#[test]
+fn expansion_template_binds_row_values_under_the_source_host() {
+    for template in ["https://{id}.vendor.example/detail", "//{id}/detail", "https://api.vendor.example/detail", "https://api.vendor.example/detail/{id"] {
+        let cfg = json!({"endpoint":"https://api.vendor.example/index", "expansion":{"url_template":template, "target_column":"detail"}});
+        assert!(format!("{}", HttpConfig::parse(&cfg).unwrap_err()).contains("ConnectorTemplateRejected"));
+    }
+    let vendor = Server::start(|r| match r.path() {
+        "/index" => Response::json(200, "[{\"id\":\"a/b\"}]"),
+        _ => Response::json(200, "{\"ok\":true}"),
+    });
+    let s = source(json!({"endpoint": vendor.url("/index"), "expansion": {"url_template": vendor.url("/detail/{id}"), "target_column":"detail"}}), vec![]);
+    assert_eq!(s.walk(&request(None), &Never).unwrap()[0]["detail"]["ok"], true);
+    assert_eq!(vendor.received("/detail/a%2Fb").len(), 1);
+
+    let relative = source(json!({"endpoint": vendor.url("/index"), "expansion": {"url_template": "/detail/{id}", "target_column":"detail"}}), vec![]);
+    assert_eq!(relative.walk(&request(None), &Never).unwrap()[0]["detail"]["ok"], true);
+    assert_eq!(vendor.received("/detail/a%2Fb").len(), 2);
+}
+
+#[test]
+fn expansion_template_accepts_boolean_scalar_columns() {
+    let vendor = Server::start(|r| match r.path() {
+        "/index" => Response::json(200, "[{\"published\":true}]"),
+        _ => Response::json(200, "{\"ok\":true}"),
+    });
+    let s = source(json!({"endpoint": vendor.url("/index"), "expansion": {"url_template": "/detail/{published}", "target_column":"detail"}}), vec![]);
+    assert_eq!(s.walk(&request(None), &Never).unwrap()[0]["detail"]["ok"], true);
+    assert_eq!(vendor.received("/detail/true").len(), 1);
+}
+
+/// A row below the watermark costs no follow-up request.
+// spec: connector.source.expansion-order@7ae580fa
+#[test]
+fn expansion_runs_after_the_watermark_filter() {
+    let vendor = Server::start(|r| match r.path() {
+        "/index" => Response::json(200, "[{\"id\":1,\"at\":\"2024-01-01T00:00:00Z\",\"url\":\"/detail/old\"},{\"id\":2,\"at\":\"2026-01-01T00:00:00Z\",\"url\":\"/detail/new\"}]"),
+        _ => Response::json(200, "{\"ok\":true}"),
+    });
+    let s = source(json!({"endpoint": vendor.url("/index"), "expansion": {"pointer_column":"url", "target_column":"detail"}}), vec![]).watermarked();
+    let rows = s.walk(&request(Some(json!({"field":"at", "at":"2025-01-01T00:00:00Z"}))), &Never).unwrap();
+    assert_eq!(rows.len(), 1);
+    assert_eq!(rows[0]["id"], 2);
+    assert!(vendor.received("/detail/old").is_empty());
+    assert_eq!(vendor.received("/detail/new").len(), 1);
+}
+
+/// A pointer outside the configured host cannot receive source headers.
+#[test]
+fn expansion_keeps_the_existing_outbound_host_policy() {
+    let outside = Server::start(|_| Response::json(200, "{\"ok\":true}"));
+    let pointer = outside.url("/detail");
+    let vendor = Server::start(move |_| Response::json(200, &json!([{"id":1,"url":pointer}]).to_string()));
+    let s = source(json!({"endpoint": vendor.url("/index"), "expansion": {"pointer_column":"url", "target_column":"detail"}}), vec![]);
+    assert!(s.walk(&request(None), &Never).unwrap_err().message.contains("ConnectorExpansionFailed"));
+    assert!(outside.received("/detail").is_empty());
+}
+
+#[test]
+fn malformed_expansion_pointer_does_not_expose_its_query() {
+    let vendor = Server::start(|_| Response::json(200, "[{\"url\":\"http://[bad]?token=secret-sentinel\"}]"));
+    let s = source(json!({"endpoint": vendor.url("/index"), "expansion": {"pointer_column":"url", "target_column":"detail"}}), vec![]);
+    let failure = s.walk(&request(None), &Never).unwrap_err();
+    assert!(failure.message.contains("ConnectorPointerColumnMissing"), "{failure}");
+    assert!(!failure.message.contains("secret-sentinel"), "{failure}");
+}
+
+#[test]
+fn expansion_filters_rfc_6901_clock_fields() {
+    let vendor = Server::start(|r| match r.path() {
+        "/index" => Response::json(200, "[{\"meta\":{\"at\":\"2024-01-01T00:00:00Z\"},\"url\":\"/old\"},{\"meta\":{\"at\":\"2026-01-01T00:00:00Z\"},\"url\":\"/new\"}]"),
+        _ => Response::json(200, "{\"ok\":true}"),
+    });
+    let s = source(json!({"endpoint": vendor.url("/index"), "expansion": {"pointer_column":"url", "target_column":"detail"}}), vec![]).watermarked_for("/meta/at");
+    let rows = s.walk(&request(Some(json!({"field":"/meta/at", "at":"2025-01-01T00:00:00Z"}))), &Never).unwrap();
+    assert_eq!(rows.len(), 1);
+    assert_eq!(vendor.received("/new").len(), 1);
+    assert!(vendor.received("/old").is_empty());
+}
+
+/// A declared non-UTF-8 label decodes CSV and rejects invalid bytes for that label.
+// spec: connector.source.declared-encoding@0914dae0
+#[test]
+fn csv_declared_encoding_decodes_and_refuses_invalid_bytes() {
+    let vendor = Server::start(|_| Response { status: 200, headers: vec![], body: b"name\ncaf\xe9\n".to_vec() });
+    let s = source(json!({"endpoint": vendor.url("/rows"), "format":"csv", "encoding":"windows-1252"}), vec![]);
+    assert_eq!(s.walk(&request(None), &Never).unwrap()[0]["name"], "café");
+
+    let invalid = Server::start(|_| Response { status: 200, headers: vec![], body: b"name\n\x81\n".to_vec() });
+    let s = source(json!({"endpoint": invalid.url("/rows"), "format":"csv", "encoding":"shift_jis"}), vec![]);
+    assert!(s.walk(&request(None), &Never).unwrap_err().message.contains("ConnectorEncodingInvalid"));
+}
+
+/// A CSV watermark compares either an RFC 3339 instant or fixed-width decimal digits.
+// spec: connector.source.clock-column-spelling@fdc28551
+#[test]
+fn csv_watermark_rejects_variable_width_clocks() {
+    let vendor = Server::start(|_| Response::json(200, "id,at\n1,12\n2,123\n"));
+    let s = source(json!({"endpoint": vendor.url("/rows"), "format":"csv"}), vec![]).watermarked();
+    let failure = s.walk(&request(Some(json!({"field":"at", "at":"00"}))), &Never).unwrap_err();
+    assert!(failure.message.contains("ConnectorClockColumnRejected"), "{failure}");
+}
+
+#[test]
+fn csv_clock_accepts_an_rfc_6901_root_field() {
+    let vendor = Server::start(|_| Response::json(200, "at,id\n12,1\n13,2\n"));
+    let s = source(json!({"endpoint": vendor.url("/rows"), "format":"csv"}), vec![]).watermarked_for("/at");
+    let rows = s.walk(&request(None), &Never).unwrap();
+    assert_eq!(rows.len(), 2);
 }
 
 /// The generic HTTP source binds credentials through a `headers` table whose values are templates in the

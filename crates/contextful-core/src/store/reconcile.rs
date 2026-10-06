@@ -78,6 +78,8 @@ pub enum ColumnType {
     List(Box<ColumnType>),
     /// A map from `Utf8` keys to one nullable value type.
     Map(Box<ColumnType>),
+    /// One scalar kind per row in a tagged struct.
+    Variant,
 }
 
 /// The name of a list's item field and of a map's entries, keys and values in the Arrow
@@ -86,6 +88,21 @@ pub const LIST_ITEM: &str = "item";
 pub const MAP_ENTRIES: &str = "entries";
 pub const MAP_KEY: &str = "key";
 pub const MAP_VALUE: &str = "value";
+pub const VARIANT_EXTENSION: &str = "contextful.variant";
+
+pub fn variant_fields() -> Vec<StructField> {
+    [
+        ("kind", ColumnType::Utf8),
+        ("str", ColumnType::Utf8),
+        ("int", ColumnType::Int64),
+        ("double", ColumnType::Float64),
+        ("bool", ColumnType::Boolean),
+        ("bytes", ColumnType::Binary),
+    ]
+    .into_iter()
+    .map(|(name, ty)| StructField::new(name, ty))
+    .collect()
+}
 
 impl ColumnType {
     /// A list of `item`.
@@ -136,6 +153,7 @@ impl ColumnType {
             }
             ColumnType::List(item) => format!("List<{}>", item.name()),
             ColumnType::Map(value) => format!("Map<Utf8, {}>", value.name()),
+            ColumnType::Variant => "Variant".into(),
         }
     }
 
@@ -166,6 +184,7 @@ impl ColumnType {
             }
             ColumnType::List(item) => format!("list<{}>", item.spell()),
             ColumnType::Map(value) => format!("map<utf8, {}>", value.spell()),
+            ColumnType::Variant => "variant".into(),
         }
     }
 
@@ -183,7 +202,7 @@ impl ColumnType {
     pub fn is_nested(&self) -> bool {
         matches!(
             self,
-            ColumnType::Struct(_) | ColumnType::List(_) | ColumnType::Map(_)
+            ColumnType::Struct(_) | ColumnType::List(_) | ColumnType::Map(_) | ColumnType::Variant
         )
     }
 
@@ -255,6 +274,7 @@ impl ColumnType {
             "json" => ColumnType::Json,
             "timestamp" => ColumnType::Timestamp,
             "binary" | "bytes" => ColumnType::Binary,
+            "variant" => ColumnType::Variant,
             _ => return None,
         })
     }
@@ -285,6 +305,7 @@ impl ColumnType {
             ),
             ColumnType::List(item) => format!("{}[]", item.sql()),
             ColumnType::Map(value) => format!("MAP(VARCHAR, {})", value.sql()),
+            ColumnType::Variant => ColumnType::Struct(variant_fields()).sql(),
         }
     }
 
@@ -303,6 +324,7 @@ impl ColumnType {
             ColumnType::Struct(_) => json!({"name": "struct"}),
             ColumnType::List(_) => json!({"name": "list"}),
             ColumnType::Map(_) => json!({"name": "map", "keysSorted": false}),
+            ColumnType::Variant => json!({"name": "struct"}),
         }
     }
 
@@ -329,11 +351,12 @@ impl ColumnType {
                 "type": {"name": "struct"},
                 "children": [field_json(MAP_KEY, &ColumnType::Utf8, false), field_json(MAP_VALUE, value, true)]
             }]),
+            ColumnType::Variant => Value::Array(variant_fields().iter().map(|f| field_json(&f.name, &f.ty, true)).collect()),
             _ => json!([]),
         }
     }
 
-    fn from_arrow_json(ty: &Value, children: Option<&Value>, json_extension: bool) -> Option<ColumnType> {
+    fn from_arrow_json(ty: &Value, children: Option<&Value>, extension: Option<&str>) -> Option<ColumnType> {
         let name = ty.get("name")?.as_str()?;
         let width = |key: &str| {
             ty.get(key)?
@@ -356,7 +379,7 @@ impl ColumnType {
                 _ => return None,
             },
             "floatingpoint" if ty.get("precision")?.as_str()? == "DOUBLE" => ColumnType::Float64,
-            "utf8" if json_extension => ColumnType::Json,
+            "utf8" if extension == Some(JSON_EXTENSION) => ColumnType::Json,
             "utf8" => ColumnType::Utf8,
             "timestamp" if ty.get("unit")?.as_str()? == "NANOSECOND" => ColumnType::Timestamp,
             "binary" => ColumnType::Binary,
@@ -375,7 +398,11 @@ impl ColumnType {
                     .iter()
                     .map(|c| field_from_json(c).map(|(n, t, _)| StructField::new(n, t)))
                     .collect::<Option<Vec<_>>>()?;
-                (!fields.is_empty()).then_some(ColumnType::Struct(fields))?
+                if extension == Some(VARIANT_EXTENSION) {
+                    (fields == variant_fields()).then_some(ColumnType::Variant)?
+                } else {
+                    (!fields.is_empty()).then_some(ColumnType::Struct(fields))?
+                }
             }
             "list" => {
                 let [child] = children() else { return None };
@@ -427,24 +454,27 @@ fn is_field_name(name: &str) -> bool {
 /// One field in Arrow JSON form, carrying the JSON extension on a JSON column at any depth.
 fn field_json(name: &str, ty: &ColumnType, nullable: bool) -> Value {
     let mut f = json!({"name": name, "nullable": nullable, "type": ty.arrow_json(), "children": ty.arrow_children()});
-    if *ty == ColumnType::Json {
-        f["metadata"] = json!([{"key": EXTENSION_NAME, "value": JSON_EXTENSION}]);
+    if let Some(extension) = match ty {
+        ColumnType::Json => Some(JSON_EXTENSION),
+        ColumnType::Variant => Some(VARIANT_EXTENSION),
+        _ => None,
+    } {
+        f["metadata"] = json!([{"key": EXTENSION_NAME, "value": extension}]);
     }
     f
 }
 
 /// The name, type and nullability one Arrow JSON field carries.
 fn field_from_json(f: &Value) -> Option<(String, ColumnType, bool)> {
-    let json_ext = f
+    let extension = f
         .get("metadata")
         .and_then(Value::as_array)
-        .is_some_and(|m| {
-            m.iter()
-                .any(|kv| kv.get("value").and_then(Value::as_str) == Some(JSON_EXTENSION))
-        });
+        .and_then(|m| m.iter().find(|kv| kv.get("key").and_then(Value::as_str) == Some(EXTENSION_NAME)))
+        .and_then(|kv| kv.get("value"))
+        .and_then(Value::as_str);
     Some((
         f.get("name")?.as_str()?.to_string(),
-        ColumnType::from_arrow_json(f.get("type")?, f.get("children"), json_ext)?,
+        ColumnType::from_arrow_json(f.get("type")?, f.get("children"), extension)?,
         f.get("nullable")?.as_bool()?,
     ))
 }

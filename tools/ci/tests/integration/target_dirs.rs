@@ -84,8 +84,8 @@ fn the_workspace_stage_runs_one_invocation_and_the_store_suites_link_no_engine_w
     }
 }
 
-/// Remote workspace checks compile the feature-unified workspace, run the CLI suite from that build, then run every other non-acceptance package suite in one of four groups.
-// spec: assurance.gate.workspace-parts@55b557c2
+/// Remote workspace checks compile the feature-unified workspace separately from the CLI suite and run every other non-acceptance package suite in one of four groups.
+// spec: assurance.gate.workspace-parts@2b8d0b2a
 #[test]
 fn remote_workspace_parts_compile_the_union_and_run_each_package_suite() {
     let r = Repo::init();
@@ -103,7 +103,14 @@ fn remote_workspace_parts_compile_the_union_and_run_each_package_suite() {
     assert!(compiled.status.success(), "{}", stderr(&compiled));
     let calls = std::fs::read_to_string(&log).unwrap();
     assert!(calls.contains("test --workspace --exclude contextful-acceptance --no-run"), "{calls}");
+    assert_eq!(calls.lines().count(), 1, "compile runs no package suite: {calls}");
+
+    std::fs::remove_file(&log).unwrap();
+    let tested = r.gate_with_cargo(&recording(&log, 0), &["--stage", "workspace.cli"]);
+    assert!(tested.status.success(), "{}", stderr(&tested));
+    let calls = std::fs::read_to_string(&log).unwrap();
     assert!(calls.contains("test --package contextful-cli"), "{calls}");
+    assert_eq!(calls.lines().count(), 1, "CLI runs no workspace compile: {calls}");
 
     std::fs::remove_file(&log).unwrap();
     let tested = r.gate_with_cargo(&recording(&log, 0), &["--stage", "workspace.foundation"]);

@@ -59,7 +59,7 @@ pub const RESERVED_PREDICATES: &[&str] = &["time", "audience", "resource", "requ
 pub const BLOCK_VERSIONS: &[u32] = &[3];
 
 /// Grant fields profile 1 names.
-const GRANT_FIELDS: &[&str] = &["actions", "tables", "tenant", "aggregate", "templates", "max_rows"];
+const GRANT_FIELDS: &[&str] = &["actions", "tables", "tenant", "aggregate", "templates", "max_rows", "max_duration_ms", "max_response_bytes"];
 
 /// Restriction fields profile 1 declares and parses, and this engine refuses: no read
 /// evaluator exists for a row restriction or an aggregate bound
