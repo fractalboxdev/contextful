@@ -12,9 +12,10 @@ use crate::project::locate;
 use crate::root::root as project_root;
 use crate::clock::SystemClock;
 use anyhow::Result;
-use contextful_agent::http::{audience, ceiling, Admitting, HttpFace, HttpRequest, HttpResponse, APPLY_PATH, WORKFLOWS_PATH};
+use contextful_agent::http::{audience, ceiling, Admitting, HttpFace, HttpRequest, HttpResponse, APPLY_PATH, EDIT_PATH, WORKFLOWS_PATH};
 use contextful_core::surface::SurfaceError;
 use contextful_core::run::derive::task::Tasks;
+use contextful_engine::control::ControlError;
 use contextful_core::issue::{IssuancePolicy, MintContext, NodeRole};
 use contextful_core::ports::{Clock, SigningPort};
 use contextful_policy::exchange::answer as exchange_answer;
@@ -117,27 +118,40 @@ pub fn run(args: ServeArgs, tasks: &Tasks) -> Result<()> {
     };
     let audit = AuditLog::unanchored(located.project.audit_dir())?;
     let control = |request: &HttpRequest| -> HttpResponse {
+        let malformed = || HttpResponse::json(400, &json!({ "error": { "identifier": "ControlRequestMalformed" } }));
         let answer = match request.target.split('?').next().unwrap_or_default() {
             WORKFLOWS_PATH => crate::cadence::published(&located.project, &located.declaration),
-            APPLY_PATH => {
+            EDIT_PATH | APPLY_PATH => {
                 let body: Value = match serde_json::from_slice(&request.body) {
                     Ok(Value::Object(body)) => Value::Object(body),
-                    _ => return HttpResponse::json(400, &json!({ "error": { "identifier": "ControlRequestMalformed" } })),
+                    _ => return malformed(),
                 };
                 let Some(fields) = body.as_object() else { unreachable!() };
-                if fields.len() > 1 || fields.keys().any(|field| field != "id") || fields.get("id").is_some_and(|id| !id.is_string()) {
-                    return HttpResponse::json(400, &json!({ "error": { "identifier": "ControlRequestMalformed" } }));
-                }
+                let Some(expected) = fields.get("expected").and_then(Value::as_u64) else { return malformed() };
                 let project = crate::run::ProjectArgs { project: Some(located.project.name.clone()), now: None };
-                crate::cadence::apply(&project, Some(located.declaration.clone()), body["id"].as_str(), tasks)
-                    .and_then(|()| crate::cadence::published(&located.project, &located.declaration))
+                if request.target.split('?').next() == Some(EDIT_PATH) {
+                    if fields.len() != 2 || fields.keys().any(|field| field != "expected" && field != "document") {
+                        return malformed();
+                    }
+                    let Some(document) = fields.get("document").and_then(Value::as_str) else { return malformed() };
+                    crate::cadence::edit(&project, Some(located.declaration.clone()), expected, document, tasks)
+                } else {
+                    if fields.len() != 1 { return malformed(); }
+                    crate::cadence::apply_draft(&project, Some(located.declaration.clone()), expected, tasks)
+                        .and_then(|()| crate::cadence::published(&located.project, &located.declaration))
+                }
             }
             _ => unreachable!(),
         };
         match answer {
             Ok(state) => HttpResponse::json(200, &state),
             Err(error) => {
-                let surface = error.chain().find_map(|part| part.downcast_ref::<SurfaceError>());
+                let surface = error.chain().find_map(|part| part.downcast_ref::<SurfaceError>().or_else(|| {
+                    match part.downcast_ref::<ControlError>() {
+                        Some(ControlError::Surface(refusal)) => Some(refusal),
+                        _ => None,
+                    }
+                }));
                 let status = surface.map_or(503, SurfaceError::status);
                 let identifier = surface.map(|refusal| refusal.to_string().split(':').next().unwrap_or("ControlUnavailable").to_string())
                     .unwrap_or_else(|| "ControlUnavailable".into());

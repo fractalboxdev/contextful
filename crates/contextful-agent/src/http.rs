@@ -44,6 +44,7 @@ pub const HEALTH_PATH: &str = "/health";
 
 /// The store-published workflow state and validated control claim routes.
 pub const WORKFLOWS_PATH: &str = "/control/workflows";
+pub const EDIT_PATH: &str = "/control/edit";
 pub const APPLY_PATH: &str = "/control/apply";
 
 /// Largest request head the face reads; a head past it answers `431`.
@@ -353,8 +354,9 @@ impl<'a, C: Clock + Sync> HttpFace<'a, C> {
             (MCP_PATH, _) => {
                 HttpResponse::message(405, "`/mcp` answers POST; the face holds no session and opens no server stream").with("Allow", "POST")
             }
-            (WORKFLOWS_PATH, "GET") | (APPLY_PATH, "POST") if self.control.is_some() => self.control(request),
+            (WORKFLOWS_PATH, "GET") | (EDIT_PATH, "POST") | (APPLY_PATH, "POST") if self.control.is_some() => self.control(request),
             (WORKFLOWS_PATH, _) if self.control.is_some() => HttpResponse::message(405, "`/control/workflows` answers GET").with("Allow", "GET"),
+            (EDIT_PATH, _) if self.control.is_some() => HttpResponse::message(405, "`/control/edit` answers POST").with("Allow", "POST"),
             (APPLY_PATH, _) if self.control.is_some() => HttpResponse::message(405, "`/control/apply` answers POST").with("Allow", "POST"),
             ("/auth/exchange", "POST") if self.exchange.is_some() => self.exchange.expect("checked above")(request),
             ("/auth/exchange", _) if self.exchange.is_some() => HttpResponse::message(405, "`/auth/exchange` answers POST").with("Allow", "POST"),

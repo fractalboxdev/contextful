@@ -19054,6 +19054,17 @@
       "line": 237
     },
     {
+      "id": "surface.edit.store-draft",
+      "contract": "surface",
+      "operation": "edit",
+      "subject": "store-draft",
+      "kind": "behavior",
+      "statement": "An Admin edit validates a complete control document and saves one store-scoped draft bound to the applied version it read, leaving the applied pointer unchanged.",
+      "why": "A-surface",
+      "file": "spec/70-control-plane.md",
+      "line": 239
+    },
+    {
       "id": "surface.apply.version-race",
       "contract": "surface",
       "operation": "apply",
@@ -19062,7 +19073,7 @@
       "statement": "An apply whose compare-and-swap loses raises `ManifestVersionConflict`, reloads the winning version and reapplies its pending edits onto it, overwriting no applied version.",
       "why": "A-surface",
       "file": "spec/70-control-plane.md",
-      "line": 244
+      "line": 246
     },
     {
       "id": "surface.apply.validation",
@@ -19073,7 +19084,7 @@
       "statement": "A document failing engine validation raises `ApplyValidationRefused` and claims no version.",
       "why": "because a snapshot store holding a version daemons refuse to arm stalls every daemon reading it",
       "file": "spec/70-control-plane.md",
-      "line": 246
+      "line": 248
     },
     {
       "id": "surface.apply.owner-unconfigured",
@@ -19084,7 +19095,7 @@
       "statement": "An owner with no storage configured or no credential raises `ConfigOwnerUnconfigured`, answered `503`; no local writer substitutes for the store-scoped API.",
       "why": "P3",
       "file": "spec/70-control-plane.md",
-      "line": 248
+      "line": 250
     },
     {
       "id": "surface.apply.weak-conditional-backend",
@@ -19095,7 +19106,7 @@
       "statement": "A configuration owner or catalog backend whose conditional replacement is not linearizable raises `ConditionalWriteUnsupported` at startup or open.",
       "why": "A-surface",
       "file": "spec/70-control-plane.md",
-      "line": 250
+      "line": 252
     },
     {
       "id": "surface.apply.uninitialized-store",
@@ -19106,7 +19117,7 @@
       "statement": "An edit or apply against a store that has taken no explicit guarded import, an empty store included, raises `StoreNotInitialized`, answered `409`.",
       "why": "P3",
       "file": "spec/70-control-plane.md",
-      "line": 252
+      "line": 254
     },
     {
       "id": "surface.apply.local-claim",
@@ -19117,7 +19128,7 @@
       "statement": "A local control plane validates and claims `manifest@v<N>.toml` in its snapshot directory, `.contextful/control/<project>/` unless `[control] snapshot_dir` names one, on its own; `contextful pipeline apply` is that apply, and no hosted plane sits on its path.",
       "why": "because {{topology.coordinate.air-gap}} holds a single-node deployment to reach no process outside itself",
       "file": "spec/70-control-plane.md",
-      "line": 254
+      "line": 256
     },
     {
       "id": "surface.apply.guarded-import",
@@ -19128,7 +19139,29 @@
       "statement": "`contextful pipeline import` claims v1 from the declared pipelines while the snapshot directory holds no version; a second import claims nothing.",
       "why": "",
       "file": "spec/70-control-plane.md",
-      "line": 256
+      "line": 258
+    },
+    {
+      "id": "surface.apply.draft-claim",
+      "contract": "surface",
+      "operation": "apply",
+      "subject": "draft-claim",
+      "kind": "behavior",
+      "statement": "An Admin apply rechecks the configured store owner, validates its saved draft again, and claims that draft through the owner's version compare-and-swap.",
+      "why": "A-surface",
+      "file": "spec/70-control-plane.md",
+      "line": 259
+    },
+    {
+      "id": "surface.apply.draft-absent",
+      "contract": "surface",
+      "operation": "apply",
+      "subject": "draft-absent",
+      "kind": "refusal",
+      "statement": "An Admin apply finding no validated store draft raises `ControlDraftAbsent` and changes no applied version.",
+      "why": "because an absent draft supplies no document for the version claim",
+      "file": "spec/70-control-plane.md",
+      "line": 261
     },
     {
       "id": "surface.reside.region-entries",
@@ -19139,7 +19172,7 @@
       "statement": "A residency allow-set holds at most 16 entries.",
       "why": "",
       "file": "spec/70-control-plane.md",
-      "line": 292
+      "line": 298
     },
     {
       "id": "surface.reside.region-mismatch",
@@ -19150,7 +19183,7 @@
       "statement": "A configured resource resolving to a region the policy omits raises `EnforceRegionMismatch` at startup, and the runtime serves nothing.",
       "why": "P3",
       "file": "spec/70-control-plane.md",
-      "line": 293
+      "line": 299
     },
     {
       "id": "surface.reside.site-regions",
@@ -19161,7 +19194,7 @@
       "statement": "A push records the pushing site's residency allow-set in the bucket manifest; a push finding a differing set another site recorded, an absent one included, raises `ResidencySitesDiverge` and commits nothing.",
       "why": "A-surface",
       "file": "spec/70-control-plane.md",
-      "line": 295
+      "line": 301
     },
     {
       "id": "surface.open-console.page-routes",
@@ -28513,6 +28546,10 @@
           "ConsoleWriteToolOnOrgFace": {
             "clause": "surface.ground.org-face-read-only",
             "gloss": "A write tool registered on an organization-wide face."
+          },
+          "ControlDraftAbsent": {
+            "clause": "surface.apply.draft-absent",
+            "gloss": "An Admin apply with no validated store draft."
           },
           "ControlPointerMalformed": {
             "clause": "surface.reconcile.pointer-malformed",

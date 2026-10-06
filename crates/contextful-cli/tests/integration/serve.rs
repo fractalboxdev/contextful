@@ -162,8 +162,9 @@ fn control_routes_require_admin_and_project_applied_workflows() {
 
     assert_eq!(control(&addr, "POST", "/control/apply", Some(&admin), "{\"id\":1}").0, 400);
 
-    std::fs::write(root.join("pipelines/filings.toml"), pipeline.replace("every 1h", "every 1d")).unwrap();
-    let (status, applied) = control(&addr, "POST", "/control/apply", Some(&admin), "{\"id\":\"filings-flow\"}");
+    let edited = json!({ "expected": 1, "document": pipeline.replace("every 1h", "every 1d") }).to_string();
+    assert_eq!(control(&addr, "POST", "/control/edit", Some(&admin), &edited).0, 200);
+    let (status, applied) = control(&addr, "POST", "/control/apply", Some(&admin), "{\"expected\":1}");
     assert_eq!(status, 200, "{applied}");
     assert_eq!(applied["applied"], json!(2));
     let (_, view) = control(&addr, "GET", "/control/workflows", Some(&admin), "");
@@ -183,6 +184,9 @@ fn control_edit_saves_a_validated_draft_and_apply_claims_its_expected_version() 
     let (_listener, addr) = serve(root, &["serve", "--http", "127.0.0.1:0", "--audience", AUD, "--max-in-flight", "2", "--project", "research", "--public-key", &public]);
     let changed = original.replace("every 1h", "every 1d");
     let edit = json!({ "expected": 1, "document": changed }).to_string();
+    let (status, absent) = control(&addr, "POST", "/control/apply", Some(&admin), "{\"expected\":1}");
+    assert_eq!(status, 409, "{absent}");
+    assert_eq!(absent["error"]["identifier"], "ControlDraftAbsent");
     assert_eq!(control(&addr, "POST", "/control/edit", None, &edit).0, 401);
     assert_eq!(control(&addr, "POST", "/control/edit", Some(&read), &edit).0, 403);
     let invalid = json!({ "expected": 1, "document": changed.replace("every 1d", "invalid schedule") }).to_string();
@@ -190,6 +194,13 @@ fn control_edit_saves_a_validated_draft_and_apply_claims_its_expected_version() 
     let (status, draft) = control(&addr, "POST", "/control/edit", Some(&admin), &edit);
     assert_eq!(status, 200, "{draft}");
     assert_eq!(draft["expected"], 1);
+    let declaration = root.join("contextful.toml");
+    let owner_text = std::fs::read_to_string(&declaration).unwrap();
+    std::fs::write(&declaration, format!("{owner_text}\n[control]\nurl = \"http://127.0.0.1:12345/\"\n")).unwrap();
+    let (status, refused) = control(&addr, "POST", "/control/apply", Some(&admin), "{\"expected\":1}");
+    assert_eq!(status, 503, "{refused}");
+    assert_eq!(refused["error"]["identifier"], "ConfigOwnerUnconfigured");
+    std::fs::write(&declaration, owner_text).unwrap();
     let (_, before) = control(&addr, "GET", "/control/workflows", Some(&admin), "");
     assert_eq!(before["applied"], 1);
     assert_eq!(before["pipelines"][0]["schedule"], "every 1h");
@@ -197,7 +208,17 @@ fn control_edit_saves_a_validated_draft_and_apply_claims_its_expected_version() 
     assert_eq!(status, 200, "{applied}");
     assert_eq!(applied["applied"], 2);
     assert_eq!(applied["pipelines"][0]["schedule"], "every 1d");
-    assert_eq!(control(&addr, "POST", "/control/apply", Some(&admin), "{\"expected\":1}").0, 409);
+    let (status, refused) = control(&addr, "POST", "/control/apply", Some(&admin), "{\"expected\":1}");
+    assert_eq!(status, 409, "{refused}");
+    assert_eq!(refused["error"]["identifier"], "ControlDraftAbsent");
+    let later = original.replace("every 1h", "every 2d");
+    let edit = json!({ "expected": 2, "document": later }).to_string();
+    assert_eq!(control(&addr, "POST", "/control/edit", Some(&admin), &edit).0, 200);
+    std::fs::write(root.join("pipelines/filings.toml"), original.replace("every 1h", "every 3d")).unwrap();
+    stdout(&run(root, &["pipeline", "apply", "filings-flow", "--project", "research"]));
+    let (status, refused) = control(&addr, "POST", "/control/apply", Some(&admin), "{\"expected\":2}");
+    assert_eq!(status, 409, "{refused}");
+    assert_eq!(refused["error"]["identifier"], "ManifestVersionConflict");
 }
 
 #[test]

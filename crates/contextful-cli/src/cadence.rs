@@ -22,7 +22,7 @@ use contextful_core::surface::control::{admit_loopback, control_url, parse_point
 use contextful_core::surface::edit::check_document;
 use contextful_core::surface::dispatch::{CHILD_GRACE_SECS, DEFAULT_POOL};
 use contextful_core::surface::SurfaceError;
-use contextful_engine::control::{ControlError, SnapshotDir};
+use contextful_engine::control::{ControlError, Draft, SnapshotDir};
 use contextful_engine::scheduler::{Beat, Dispatch, Entry, Fired, LeaseState, Scheduler};
 use contextful_engine::worker::{Relay, WorkerDispatch};
 use contextful_outbound::egress::{system, Outbound, Transport};
@@ -290,6 +290,51 @@ fn render(specs: &BTreeMap<String, PipelineSpec>) -> Result<String> {
     let value: toml::Value = toml::from_str(&body).map_err(|e| SurfaceError::ApplyValidationRefused(format!("the rendered snapshot does not read back: {e}")))?;
     check_document(&value)?;
     Ok(format!("# An applied snapshot, claimed by `contextful pipeline apply`; immutable once claimed.\n\n{body}"))
+}
+
+fn validated_draft(document: &str, declaration: &Path, tasks: &Tasks) -> Result<String> {
+    let specs = collect(&[ManifestFile { path: "manifest@draft.toml".into(), text: document.to_owned() }])
+        .map_err(|e| SurfaceError::ApplyValidationRefused(e.to_string()))?;
+    let specs: BTreeMap<String, PipelineSpec> = specs.into_iter().map(|entry| (entry.spec.id.clone(), entry.spec)).collect();
+    let rendered = render(&specs)?;
+    for spec in specs.values() {
+        if let Some(schedule) = spec.schedule.as_deref() {
+            Schedule::parse(schedule).map_err(|e| SurfaceError::ApplyValidationRefused(format!("pipeline `{}`: {e}", spec.id)))?;
+        }
+        check(spec, declaration, tasks).map_err(|e| SurfaceError::ApplyValidationRefused(format!("pipeline `{}`: {e:#}", spec.id)))?;
+    }
+    Ok(rendered)
+}
+
+/// Store one validated, version-bound control draft without changing the applied pointer.
+pub(crate) fn edit(project: &ProjectArgs, declaration: Option<PathBuf>, expected: u64, document: &str, tasks: &Tasks) -> Result<Value> {
+    let (located, _, control) = located(project, declaration)?;
+    let snapshots = owner(&control)?;
+    snapshots.initialized()?;
+    let text = validated_draft(document, &located.declaration, tasks)?;
+    snapshots.save_draft(&Draft { expected, document: text })?;
+    Ok(json!({ "expected": expected }))
+}
+
+/// Revalidate the saved draft and claim it only at the version the editor read.
+pub(crate) fn apply_draft(project: &ProjectArgs, declaration: Option<PathBuf>, expected: u64, tasks: &Tasks) -> Result<()> {
+    let (initial, _, control) = located(project, declaration.clone())?;
+    let snapshots = owner(&control)?;
+    snapshots.initialized()?;
+    let draft = snapshots.read_draft()?;
+    if draft.expected != expected {
+        return Err(SurfaceError::ManifestVersionConflict(format!("the draft read v{} and apply named v{expected}", draft.expected)).into());
+    }
+    if validated_draft(&draft.document, &initial.declaration, tasks)? != draft.document {
+        return Err(SurfaceError::ApplyValidationRefused("the saved draft is not the validated snapshot".into()).into());
+    }
+    let (fresh, _, control) = located(project, declaration)?;
+    let owner = owner(&control)?;
+    if owner.root() != snapshots.root() || fresh.declaration != initial.declaration {
+        return Err(SurfaceError::ConfigOwnerUnconfigured("the store's control owner changed during validation".into()).into());
+    }
+    owner.claim_draft(&draft)?;
+    Ok(())
 }
 
 #[derive(Serialize)]

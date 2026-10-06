@@ -151,9 +151,14 @@ fn m12_console() {
     assert_eq!(workflows["applied"], 1, "{workflows}");
     assert_eq!(workflows["pipelines"][0]["id"], "filings-flow", "{workflows}");
     assert_eq!(workflows["pipelines"][0]["tables"], json!(["filings"]), "{workflows}");
-    repo.write("pipelines/filings.toml", "[[pipeline]]\nid = \"filings-flow\"\nschedule = \"every 1d\"\ntables = [\"filings\"]\n[pipeline.source]\nname = \"http\"\nconfig = { endpoint = \"https://example.test/filings\" }\n");
+    let draft = "[[pipeline]]\nid = \"filings-flow\"\nschedule = \"every 1d\"\ntables = [\"filings\"]\n[pipeline.source]\nname = \"http\"\nconfig = { endpoint = \"https://example.test/filings\" }\n";
+    let (status, edited) = request(&console_address, "POST", "/admin/api/edit", Some(&access_token(ADMIN_ACCESS_AUDIENCE)),
+        Some(&json!({ "store": "field-notes", "expected": 1, "document": draft })));
+    assert_eq!(status, 200, "{}", String::from_utf8_lossy(&edited));
+    let edited: Value = serde_json::from_slice(&edited).unwrap();
+    assert_eq!(edited["expected"], 1, "{edited}");
     let (status, applied) = request(&console_address, "POST", "/admin/api/apply", Some(&access_token(ADMIN_ACCESS_AUDIENCE)),
-        Some(&json!({ "store": "field-notes", "id": "filings-flow" })));
+        Some(&json!({ "store": "field-notes", "expected": 1 })));
     assert_eq!(status, 200, "{}", String::from_utf8_lossy(&applied));
     let applied: Value = serde_json::from_slice(&applied).unwrap();
     assert_eq!(applied["applied"], 2, "{applied}");

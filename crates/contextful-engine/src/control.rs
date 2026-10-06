@@ -10,9 +10,18 @@ use contextful_core::surface::control::{admit_conditional, parse_pointer, snapsh
 use contextful_core::surface::SurfaceError;
 use std::io::ErrorKind;
 use std::path::{Path, PathBuf};
+use serde::{Deserialize, Serialize};
 
 /// The lock file serializing claims.
 const LOCK_FILE: &str = "manifest.lock";
+const DRAFT_FILE: &str = "manifest@draft.json";
+
+/// A validated store draft bound to the applied version it read.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct Draft {
+    pub expected: u64,
+    pub document: String,
+}
 
 /// A snapshot-directory refusal or a storage failure beneath it.
 #[derive(Debug, Clone, PartialEq, Eq, thiserror::Error)]
@@ -85,12 +94,58 @@ impl SnapshotDir {
         std::fs::read_to_string(&path).map_err(|e| SurfaceError::ControlSnapshotUnreadable(format!("{}: {e}", path.display())).into())
     }
 
+    /// Save one store draft only while the applied version still matches its base.
+    pub fn save_draft(&self, draft: &Draft) -> Result<(), ControlError> {
+        let storage = |e: contextful_core::run::Failure| ControlError::Storage(e.to_string());
+        let _lock = FileLock::acquire(&self.root.join(LOCK_FILE)).map_err(storage)?;
+        self.expect_version(draft.expected)?;
+        let body = serde_json::to_vec(draft).map_err(|e| ControlError::Storage(e.to_string()))?;
+        replace(&self.root.join(DRAFT_FILE), &body).map_err(storage)?;
+        Ok(())
+    }
+
+    /// Read the saved draft without changing the applied pointer.
+    pub fn read_draft(&self) -> Result<Draft, ControlError> {
+        let path = self.root.join(DRAFT_FILE);
+        let body = std::fs::read(&path).map_err(|e| match e.kind() {
+            ErrorKind::NotFound => ControlError::Surface(SurfaceError::ControlDraftAbsent(format!("`{}` holds no validated draft", self.root.display()))),
+            _ => ControlError::Storage(format!("{}: {e}", path.display())),
+        })?;
+        serde_json::from_slice(&body).map_err(|e| ControlError::Storage(format!("{}: {e}", path.display())))
+    }
+
+    /// Claim the exact draft revalidated by the caller under the existing pointer lock.
+    pub fn claim_draft(&self, draft: &Draft) -> Result<u64, ControlError> {
+        let storage = |e: contextful_core::run::Failure| ControlError::Storage(e.to_string());
+        let _lock = FileLock::acquire(&self.root.join(LOCK_FILE)).map_err(storage)?;
+        self.expect_version(draft.expected)?;
+        if self.read_draft()? != *draft {
+            return Err(SurfaceError::ManifestVersionConflict("the validated draft changed before apply; reload and reapply".into()).into());
+        }
+        let version = self.claim_locked(Some(draft.expected), &draft.document)?;
+        let _ = std::fs::remove_file(self.root.join(DRAFT_FILE));
+        Ok(version)
+    }
+
+    fn expect_version(&self, expected: u64) -> Result<(), ControlError> {
+        let current = self.initialized()?;
+        if current != expected {
+            return Err(SurfaceError::ManifestVersionConflict(format!("the pointer names v{current} and the draft read v{expected}; reload v{current} and reapply")).into());
+        }
+        Ok(())
+    }
+
     /// Claim the version after `expected` holding `text` and advance the pointer to it. A
     /// pointer no longer at `expected` raises `ManifestVersionConflict` and writes nothing;
     /// a version file already present is never overwritten, the claim taking the next free one.
     pub fn claim(&self, expected: Option<u64>, text: &str) -> Result<u64, ControlError> {
         let storage = |e: contextful_core::run::Failure| ControlError::Storage(e.to_string());
         let _lock = FileLock::acquire(&self.root.join(LOCK_FILE)).map_err(storage)?;
+        self.claim_locked(expected, text)
+    }
+
+    fn claim_locked(&self, expected: Option<u64>, text: &str) -> Result<u64, ControlError> {
+        let storage = |e: contextful_core::run::Failure| ControlError::Storage(e.to_string());
         let current = self.current()?;
         if current != expected {
             let name = |v: Option<u64>| v.map(|v| format!("v{v}")).unwrap_or_else(|| "no version".into());
