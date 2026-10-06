@@ -118,3 +118,10 @@ fn an_obviously_unreachable_assertion_does_not_perform() {
     s.write(FILE, &test_source(REV, "test", "if (false) assert.equal(1, 1);"));
     assert_eq!(codes(&s.lint("state"), "SpecBrokenPin").len(), 1);
 }
+
+#[test]
+fn duplicate_test_titles_do_not_pin_a_specific_callback() {
+    let s = fixture();
+    s.write(FILE, &format!("import {{ test }} from 'node:test';\nimport assert from 'node:assert/strict';\ntest('words over forty refused', () => {{ assert.equal(1, 1); }});\n// spec: {CLAUSE}@{REV}\ntest('words over forty refused', () => {{ assert.equal(2, 2); }});\n"));
+    assert_eq!(codes(&s.lint("state"), "SpecBrokenPin").len(), 1);
+}
