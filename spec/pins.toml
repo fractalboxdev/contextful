@@ -17,8 +17,8 @@
 # tests, one per refusal and limit clause, each holding a `todo!` until it is written.
 #
 # An unpinned clause computes `committed`. A pinned clause computes `performed` when the
-# artifact's final path segment is defined under `crates/` or `tools/`, is no ignored
-# test, holds no `todo!` body line and, for a tag, matches the statement's current rev;
+# artifact is a defined Rust, Lean or gate-run native TypeScript test, is no ignored
+# or placeholder test and, for a tag, matches the statement's current rev;
 # `broken` otherwise, which reds the gate: a rename or a reworded clause is what fails,
 # where a forgotten prose edit is silent. A stale rev raises SpecStalePin; two different
 # tests pinning one clause raise SpecBrokenPin.
@@ -27,6 +27,9 @@
 # `contextful-spec state` reads this file and the tags and writes spec/status.md.
 
 [pin]
+"corpus.state.typescript-tag-pin" = { test = "contextful_spec::ts_pins::a_running_surface_test_tag_performs_its_clause" }
+"corpus.state.typescript-unfinished" = { test = "contextful_spec::ts_pins::a_skipped_or_todo_surface_test_is_broken" }
+"assurance.gate.native-test-files" = { test = "contextful_ci::stages::the_surfaces_stage_runs_each_native_typescript_test_file_even_without_a_test_script" }
 "corpus.targets.cap-unrecorded"     = { test = "contextful_spec::targets::a_capped_shape_not_recording_its_exclusions_is_refused" }
 "corpus.targets.function-profile"   = { test = "contextful_spec::targets::a_function_class_shape_hosting_the_full_profile_is_refused" }
 "corpus.targets.incomplete"         = { test = "contextful_spec::targets::a_shape_leaving_a_role_unfilled_is_refused" }
@@ -52,10 +55,10 @@
 # its live performed count, and a live count below its floor raises SpecCoverageRegression.
 
 [floor]
-assurance = 135
+assurance = 136
 authority = 204
-connector = 207
-corpus = 38
+connector = 218
+corpus = 40
 disclosure = 54
 read = 163
 run = 261

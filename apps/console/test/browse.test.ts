@@ -28,16 +28,21 @@ function fixture() {
   return { browse: createBrowse(transport), calls };
 }
 
-test("browse advertises admitted tables as humanized chips and governed insights", async () => {
+test("browse advertises admitted tables as humanized chips", async () => {
   const { browse, calls } = fixture();
   const result = await browse.discover({ asOf: "2030-01-01T00:00:00Z" });
   assert.deepEqual(result.chips, [{ table: "research/vendor_filings", label: "Vendor Filings", description: "Filed reports" }]);
-  assert.deepEqual(result.insights, [{ table: "research/vendor_filings", label: "Vendor Filings", rows: 3 }]);
   assert.deepEqual(result.files, [{ table: "research/vendor_filings", path: "research/vendor_filings/runs/run-1/report.parquet", label: "Report" }]);
   assert.equal(calls[0].tool, "context.describe");
   assert.equal(calls[0].arguments.as_of, "2030-01-01T00:00:00Z");
   assert(calls.every((call) => call.tool.startsWith("context.")));
   assert(!calls.some((call) => call.arguments.table === "research/private_payroll"));
+});
+
+test("insights show governed table row counts", async () => {
+  const { browse } = fixture();
+  const result = await browse.discover({});
+  assert.deepEqual(result.insights, [{ table: "research/vendor_filings", label: "Vendor Filings", rows: 3 }]);
 });
 
 test("a gallery preview refuses paths absent from the governed listing", async () => {
