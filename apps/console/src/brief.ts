@@ -21,22 +21,32 @@ export type BriefInput = {
   loadArrivals?: () => Promise<Arrival[]>;
   now: number;
   windowDays?: number;
-  budgetMs?: number;
+  budgetMs: number;
 };
 
+export async function withinBriefBudget<T>(budgetMs: number, action: () => Promise<T>): Promise<T> {
+  if (!Number.isFinite(budgetMs) || budgetMs <= 0) throw new Error("ConsoleBriefUnavailable");
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  try {
+    return await Promise.race([
+      Promise.resolve().then(action),
+      new Promise<never>((_, reject) => {
+        timer = setTimeout(() => reject(new Error("ConsoleBriefUnavailable")), budgetMs);
+      }),
+    ]);
+  } finally {
+    if (timer !== undefined) clearTimeout(timer);
+  }
+}
+
 export async function deriveBrief(input: BriefInput): Promise<Brief | null> {
+  if (!Number.isFinite(input.budgetMs) || input.budgetMs <= 0) throw new Error("ConsoleBriefUnavailable");
   if (input.session.turns !== 0 || input.session.vantage !== "present") return null;
   const live = input.conclusions.filter((entry) => entry.live);
   if (live.length === 0) return null;
   const windowDays = Math.max(0, Math.min(input.windowDays ?? 7, 7));
-  let timer: ReturnType<typeof setTimeout> | undefined;
   try {
-    const source = input.loadArrivals ? input.loadArrivals() : Promise.resolve(input.arrivals ?? []);
-    const budgetMs = input.budgetMs;
-    const arrivals = budgetMs === undefined ? await source : await Promise.race([
-      source,
-      new Promise<never>((_, reject) => { timer = setTimeout(() => reject(new Error("ConsoleBriefUnavailable")), Math.max(0, budgetMs)); }),
-    ]);
+    const arrivals = await withinBriefBudget(input.budgetMs, () => input.loadArrivals ? input.loadArrivals() : Promise.resolve(input.arrivals ?? []));
     const since = input.now - windowDays * 86_400_000;
     const recent = arrivals.filter((row) => {
       const arrived = Date.parse(row.arrivedAt);
@@ -47,7 +57,5 @@ export async function deriveBrief(input: BriefInput): Promise<Brief | null> {
     return subjects.length ? { windowDays, subjects } : null;
   } catch {
     throw new Error("ConsoleBriefUnavailable");
-  } finally {
-    if (timer !== undefined) clearTimeout(timer);
   }
 }

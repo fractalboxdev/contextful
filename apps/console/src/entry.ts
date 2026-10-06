@@ -5,7 +5,9 @@ import { registryFromEnv } from "../../gateway/src/index.ts";
 import type { ConsoleAdapters, Identity } from "./index.ts";
 import { serveConsole } from "./server.ts";
 
-type AdapterFactory = (input: { stores: ConsoleAdapters["stores"]; env: NodeJS.ProcessEnv }) => Promise<Pick<ConsoleAdapters, "turn" | "control"> & { read?: ConsoleAdapters["read"] }>;
+type HostedAdapters = Pick<ConsoleAdapters, "turn" | "control"> &
+  Partial<Pick<ConsoleAdapters, "read" | "brief" | "briefBudgetMs" | "redactView">>;
+type AdapterFactory = (input: { stores: ConsoleAdapters["stores"]; env: NodeJS.ProcessEnv }) => Promise<HostedAdapters>;
 
 function required(name: string): string {
   const value = process.env[name];
@@ -80,7 +82,7 @@ async function main(): Promise<void> {
   if (!host || !Number.isInteger(port) || port < 0 || port > 65535) throw new Error("invalid --http address");
   const registry = registryFromEnv(process.env.CONTEXTFUL_STORES_JSON);
   const stores = registry.entries.map(({ id, label }) => ({ id, label }));
-  let adapters: Pick<ConsoleAdapters, "turn" | "control"> & { read?: ConsoleAdapters["read"] } = unavailableAdapters();
+  let adapters: HostedAdapters = unavailableAdapters();
   const modulePath = process.env.CONTEXTFUL_CONSOLE_ADAPTER_MODULE;
   if (modulePath) {
     const absolute = isAbsolute(modulePath) ? modulePath : resolve(modulePath);
@@ -94,6 +96,9 @@ async function main(): Promise<void> {
     stores,
     adminCapability: process.env.CONTEXTFUL_ADMIN_CAPABILITY,
     turn: adapters.turn,
+    brief: adapters.brief,
+    briefBudgetMs: adapters.briefBudgetMs,
+    redactView: adapters.redactView,
     read: adapters.read ?? { list: async () => stores },
     control: adapters.control,
   }, () => origin);

@@ -1,5 +1,5 @@
 import { createHash, createHmac, createPublicKey, randomBytes, timingSafeEqual, verify, type KeyObject } from "node:crypto";
-import { deriveBrief, type BriefInput } from "./brief.ts";
+import { deriveBrief, withinBriefBudget, type BriefInput } from "./brief.ts";
 import { answerDelivery } from "./publish.ts";
 import { buildView, sanitizeView, type ResultRows } from "./render.ts";
 
@@ -36,7 +36,8 @@ export type ConsoleAdapters = {
   stores: Store[];
   adminCapability?: string;
   turn: (input: TurnInput) => Promise<TurnResult>;
-  brief?: (operator: Operator, store: string) => Promise<BriefInput>;
+  brief?: (operator: Operator, store: string) => Promise<Omit<BriefInput, "budgetMs">>;
+  briefBudgetMs?: number;
   redactView?: (operator: Operator, value: string) => string;
   read: { list: (operator: Operator) => Promise<Store[]> };
   control: {
@@ -267,9 +268,14 @@ export function createConsole(adapters: ConsoleAdapters): { fetch: (request: Req
         if (request.method === "GET" && path === "/query/api/brief") {
           const store = url.searchParams.get("store");
           if (!store || !adapters.stores.some((entry) => entry.id === store)) return refusal("ConsoleRequestMalformed", 400);
-          if (!adapters.brief) return refusal("ConsoleAdapterUnavailable", 503);
+          const brief = adapters.brief;
+          if (!brief) return refusal("ConsoleAdapterUnavailable", 503);
+          const budgetMs = adapters.briefBudgetMs ?? NaN;
           try {
-            const card = await deriveBrief(await adapters.brief(operator, store));
+            const card = await withinBriefBudget(budgetMs, async () => {
+              const input = await brief(operator, store);
+              return deriveBrief({ ...input, budgetMs });
+            });
             return card ? json(card) : new Response(null, { status: 204, headers: { "Cache-Control": "no-store" } });
           } catch {
             return new Response(null, { status: 204, headers: { "Cache-Control": "no-store" } });
@@ -288,7 +294,10 @@ export function createConsole(adapters: ConsoleAdapters): { fetch: (request: Req
           } catch (error) {
             return refusal(error instanceof Error ? error.message : "VisibilityShareAffordance");
           }
-          const built = turn.resultRows ? sanitizeView(buildView(turn.resultRows), (value) => adapters.redactView?.(operator, value) ?? value) : null;
+          const redactView = adapters.redactView;
+          const clean = turn.resultRows && redactView ?
+            sanitizeView({ component: "table.v1", props: turn.resultRows }, (value) => redactView(operator, value)) : null;
+          const built = clean ? buildView(clean.props) : null;
           return json({ answer: answer.answer, sources: turn.sources, widgets: built ? [built] : [] });
         }
       } else {

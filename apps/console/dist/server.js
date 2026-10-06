@@ -90,21 +90,28 @@ function topicMatch(conclusion, row) {
   const shared = [...left].filter((word) => right.has(word));
   return shared.length >= 2 && shared.some((word) => subject.has(word));
 }
+async function withinBriefBudget(budgetMs, action) {
+  if (!Number.isFinite(budgetMs) || budgetMs <= 0) throw new Error("ConsoleBriefUnavailable");
+  let timer;
+  try {
+    return await Promise.race([
+      Promise.resolve().then(action),
+      new Promise((_, reject) => {
+        timer = setTimeout(() => reject(new Error("ConsoleBriefUnavailable")), budgetMs);
+      })
+    ]);
+  } finally {
+    if (timer !== void 0) clearTimeout(timer);
+  }
+}
 async function deriveBrief(input) {
+  if (!Number.isFinite(input.budgetMs) || input.budgetMs <= 0) throw new Error("ConsoleBriefUnavailable");
   if (input.session.turns !== 0 || input.session.vantage !== "present") return null;
   const live = input.conclusions.filter((entry) => entry.live);
   if (live.length === 0) return null;
   const windowDays = Math.max(0, Math.min(input.windowDays ?? 7, 7));
-  let timer;
   try {
-    const source = input.loadArrivals ? input.loadArrivals() : Promise.resolve(input.arrivals ?? []);
-    const budgetMs = input.budgetMs;
-    const arrivals = budgetMs === void 0 ? await source : await Promise.race([
-      source,
-      new Promise((_, reject) => {
-        timer = setTimeout(() => reject(new Error("ConsoleBriefUnavailable")), Math.max(0, budgetMs));
-      })
-    ]);
+    const arrivals = await withinBriefBudget(input.budgetMs, () => input.loadArrivals ? input.loadArrivals() : Promise.resolve(input.arrivals ?? []));
     const since = input.now - windowDays * 864e5;
     const recent = arrivals.filter((row) => {
       const arrived = Date.parse(row.arrivedAt);
@@ -114,8 +121,6 @@ async function deriveBrief(input) {
     return subjects.length ? { windowDays, subjects } : null;
   } catch {
     throw new Error("ConsoleBriefUnavailable");
-  } finally {
-    if (timer !== void 0) clearTimeout(timer);
   }
 }
 
@@ -399,9 +404,14 @@ function createConsole(adapters) {
         if (request.method === "GET" && path === "/query/api/brief") {
           const store = url.searchParams.get("store");
           if (!store || !adapters.stores.some((entry) => entry.id === store)) return refusal("ConsoleRequestMalformed", 400);
-          if (!adapters.brief) return refusal("ConsoleAdapterUnavailable", 503);
+          const brief = adapters.brief;
+          if (!brief) return refusal("ConsoleAdapterUnavailable", 503);
+          const budgetMs = adapters.briefBudgetMs ?? NaN;
           try {
-            const card = await deriveBrief(await adapters.brief(operator, store));
+            const card = await withinBriefBudget(budgetMs, async () => {
+              const input = await brief(operator, store);
+              return deriveBrief({ ...input, budgetMs });
+            });
             return card ? json(card) : new Response(null, { status: 204, headers: { "Cache-Control": "no-store" } });
           } catch {
             return new Response(null, { status: 204, headers: { "Cache-Control": "no-store" } });
@@ -423,7 +433,9 @@ function createConsole(adapters) {
           } catch (error) {
             return refusal(error instanceof Error ? error.message : "VisibilityShareAffordance");
           }
-          const built = turn.resultRows ? sanitizeView(buildView(turn.resultRows), (value) => adapters.redactView?.(operator, value) ?? value) : null;
+          const redactView = adapters.redactView;
+          const clean = turn.resultRows && redactView ? sanitizeView({ component: "table.v1", props: turn.resultRows }, (value) => redactView(operator, value)) : null;
+          const built = clean ? buildView(clean.props) : null;
           return json({ answer: answer.answer, sources: turn.sources, widgets: built ? [built] : [] });
         }
       } else {
@@ -592,6 +604,9 @@ async function main() {
     stores,
     adminCapability: process.env.CONTEXTFUL_ADMIN_CAPABILITY,
     turn: adapters.turn,
+    brief: adapters.brief,
+    briefBudgetMs: adapters.briefBudgetMs,
+    redactView: adapters.redactView,
     read: adapters.read ?? { list: async () => stores },
     control: adapters.control
   }, () => origin);
