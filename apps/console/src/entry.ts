@@ -3,12 +3,13 @@ import { pathToFileURL } from "node:url";
 import { isAbsolute, resolve } from "node:path";
 import { registryFromEnv } from "../../gateway/src/index.ts";
 import { createLiveAnswer } from "./answer_live.ts";
+import { createLiveBrowse } from "./live_browse.ts";
 import type { ConsoleAdapters, Identity } from "./index.ts";
 import { createLiveControl } from "./control.ts";
 import { serveConsole } from "./server.ts";
 
 type HostedAdapters = Pick<ConsoleAdapters, "turn" | "control"> &
-  Partial<Pick<ConsoleAdapters, "read" | "brief" | "briefBudgetMs" | "redactView">>;
+  Partial<Pick<ConsoleAdapters, "read" | "browse" | "brief" | "briefBudgetMs" | "redactView">>;
 type AdapterFactory = (input: { stores: ConsoleAdapters["stores"]; env: NodeJS.ProcessEnv }) => Promise<HostedAdapters>;
 
 function required(name: string): string {
@@ -91,6 +92,7 @@ async function main(): Promise<void> {
   let adapters: HostedAdapters = {
     ...unavailableAdapters(),
     turn: live?.turn ?? unavailableAdapters().turn,
+    browse: modulePath ? undefined : createLiveBrowse({ stores: registry.entries, env: process.env }),
     brief: live?.brief,
     briefBudgetMs: live?.briefBudgetMs,
     redactView: live?.redactView,
@@ -113,6 +115,7 @@ async function main(): Promise<void> {
     briefBudgetMs: adapters.briefBudgetMs,
     redactView: adapters.redactView,
     read: adapters.read ?? { list: async () => stores },
+    browse: adapters.browse,
     control: adapters.control,
   }, () => origin);
   await new Promise<void>((resolveListen, rejectListen) => {
