@@ -28,6 +28,13 @@ fn a_figure_past_the_band_is_annotated_and_fails_nothing() {
     assert!(matches!(compare(&figure(0.70), &figure(1.0), Direction::HigherIsBetter), Comparison::Annotated { .. }));
 }
 
+#[test]
+fn a_zero_baseline_has_a_named_worsening_without_a_percentage() {
+    let comparison = compare(&figure(1.0), &figure(0.0), Direction::LowerIsBetter);
+    assert!(matches!(comparison, Comparison::Annotated { .. }), "{comparison:?}");
+    assert_eq!(comparison.annotation().as_deref(), Some("worse than the zero baseline"));
+}
+
 /// The run block carries the runner's processor model, processor count and memory limit, and a trend figure compares only against a baseline with the same stamp.
 // spec: assurance.measure.runner-stamp@3f6f6e09
 #[test]

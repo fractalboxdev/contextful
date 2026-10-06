@@ -30,6 +30,8 @@ pub fn run(id: &str, committed: &str, parts: usize) -> RunManifest {
         fence: None,
         logged: false,
         commit_seq: None,
+        group_root: None,
+        schema_diffs: Vec::new(),
     }
 }
 

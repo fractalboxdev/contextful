@@ -18,9 +18,13 @@ mod connector;
 #[cfg(feature = "data-plane")]
 mod context;
 #[cfg(feature = "data-plane")]
+pub use context::derived_catalog;
+#[cfg(feature = "data-plane")]
 mod derive;
 mod differential;
 mod protocol_differential;
+#[cfg(feature = "data-plane")]
+mod disclosure;
 #[cfg(feature = "data-plane")]
 mod eval;
 #[cfg(feature = "data-plane")]
@@ -28,6 +32,8 @@ mod export;
 mod formal;
 #[cfg(feature = "data-plane")]
 mod job;
+#[cfg(feature = "data-plane")]
+mod model_source;
 #[cfg(feature = "read-plane")]
 mod mcp;
 #[cfg(feature = "data-plane")]
@@ -137,6 +143,10 @@ enum Cmd {
     /// Build a declared model into a published table, or hold one of its builds.
     #[cfg(feature = "data-plane")]
     Build(build::BuildArgs),
+    /// Diagnose local model disclosure declarations.
+    #[cfg(feature = "data-plane")]
+    #[command(subcommand)]
+    Disclosure(disclosure::DisclosureCmd),
     /// Validate and fire declared pipelines.
     #[cfg(feature = "data-plane")]
     #[command(subcommand)]
@@ -238,6 +248,8 @@ pub fn main_host(host: Host) {
         Cmd::Connector(c) => connector::run(c),
         #[cfg(feature = "data-plane")]
         Cmd::Build(c) => build::run(c),
+        #[cfg(feature = "data-plane")]
+        Cmd::Disclosure(c) => disclosure::run(c),
         #[cfg(feature = "read-plane")]
         Cmd::Query(c) => query::run(c),
         #[cfg(feature = "read-plane")]

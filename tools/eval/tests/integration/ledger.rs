@@ -1,4 +1,5 @@
 use contextful_eval::ledger::*;
+use contextful_eval::baseline::Direction;
 
 /// A tree holding one clause, one integration test, one case set and no probe.
 struct Tree;
@@ -33,6 +34,7 @@ clause = "run.journal.entry-key"
 metric = "retrieval.lexical.hit_rate_at_k"
 kind   = "eval"
 tier   = "trend"
+direction = "lower_is_better"
 method = { issue = 44 }
 "#;
 
@@ -108,4 +110,17 @@ fn the_status_view_lists_every_entry_and_an_issue_entry_as_open() {
     assert!(md.contains("| `deep-recall` | `run.journal.entry-key` | `retrieval.lexical.hit_rate_at_k` | trend | issue 44 | — | open (issue 44) |"), "{md}");
     assert!(md.contains("| `journal-effect-once` |"), "{md}");
     assert_eq!(md, l.render(), "the view is a pure function of the ledger");
+}
+
+// spec: assurance.measure.trend-direction@4e4e0f8c
+#[test]
+fn every_trend_entry_declares_its_comparison_direction() {
+    let l = ledger(ENTRY);
+    assert_eq!(l.entry["deep-recall"].direction, Some(Direction::LowerIsBetter));
+    let higher = ledger(&ENTRY.replace("lower_is_better", "higher_is_better"));
+    assert_eq!(higher.entry["deep-recall"].direction, Some(Direction::HigherIsBetter));
+    let without = ENTRY.replace("direction = \"lower_is_better\"\n", "");
+    let findings = reasons(&ledger(&without));
+    assert_eq!(findings.len(), 1, "{findings:?}");
+    assert!(findings[0].contains("trend-tier entry declares a direction"), "{findings:?}");
 }

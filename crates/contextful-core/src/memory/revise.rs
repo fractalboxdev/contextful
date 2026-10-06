@@ -166,8 +166,20 @@ pub struct Revision {
 pub fn revise(new: Claim, live: &[Claim]) -> Revision {
     let line: Vec<&Claim> = live.iter().filter(|p| p.live_at(new.valid_from) && p.same_line(&new)).collect();
     if let Some(same) = line.iter().find(|p| p.object == new.object) {
-        let promoted = (new.tier > same.tier).then_some(new);
-        return Revision { landed: promoted, retired: Vec::new() };
+        if line.iter().all(|p| p.object == new.object) {
+            let promoted = (new.tier > same.tier).then_some(new);
+            return Revision { landed: promoted, retired: Vec::new() };
+        }
+        if new.claim_id == same.claim_id {
+            // A reaffirmation of the existing claim can end competing objects without
+            // replacing that claim's earlier validity interval.
+            let retired = line
+                .iter()
+                .filter(|prior| prior.object != new.object && new.tier >= prior.tier && (prior.valid_to.is_none() || prior.valid_from == new.valid_from))
+                .map(|prior| Claim { valid_to: Some(new.valid_from), superseded_by: Some(new.claim_id.clone()), ..(*prior).clone() })
+                .collect();
+            return Revision { landed: None, retired };
+        }
     }
     let mut new = new;
     let mut retired = Vec::new();

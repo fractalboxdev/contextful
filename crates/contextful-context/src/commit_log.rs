@@ -3,7 +3,7 @@
 //! own: its fences come from the node's machine lease and compare within that node alone.
 
 use crate::error::{IoPath, Result};
-use crate::store::{create_new_file, Store};
+use crate::store::Store;
 use contextful_core::store::commit_log::{admit, file_name, parse_seq, CommitEntry, Kind};
 use std::path::PathBuf;
 
@@ -26,8 +26,8 @@ pub fn read_numbered(store: &Store, pipeline_id: &str, node_id: &str) -> Result<
     for entry in entries {
         let path = entry.at(&d)?.path();
         let Some(seq) = path.file_name().and_then(|n| parse_seq(&n.to_string_lossy())) else { continue };
-        let text = std::fs::read_to_string(&path).at(&path)?;
-        let e: CommitEntry = serde_json::from_str(&text).map_err(|e| crate::ContextError::Invalid(format!("{}: {e}", path.display())))?;
+        let bytes = store.metadata().read(&path)?;
+        let e: CommitEntry = serde_json::from_slice(&bytes).map_err(|e| crate::ContextError::Invalid(format!("{}: {e}", path.display())))?;
         out.push((seq, e));
     }
     out.sort_by_key(|(s, _)| *s);
@@ -51,7 +51,7 @@ pub fn append(store: &Store, pipeline_id: &str, node_id: &str, entry: &CommitEnt
         admit(&entries, &entry.table, entry.fence)?;
         let seq = log.last().map_or(1, |(s, _)| s + 1);
         let bytes = serde_json::to_vec_pretty(entry).map_err(|e| crate::ContextError::Invalid(e.to_string()))?;
-        if create_new_file(&d.join(file_name(seq)), &bytes)? {
+        if store.metadata().create_new(&d.join(file_name(seq)), &bytes)? {
             return Ok(seq);
         }
     }

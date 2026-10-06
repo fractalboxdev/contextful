@@ -77,6 +77,47 @@ Context: `run.exec.engine-id` is written on every row and read by nothing, so a 
 Consequences: a re-derived unit re-indexes its vector and full-text sidecars; ordering between chained derive pipelines is a separate decision.
 Revisit: hashing parent rows dominates tick cost on a real archive.
 
+## A derived unit follows its parent's bytes and lifetime
+
+Context: a parent media path can stay constant while its file bytes change, and a parent can disappear while its derived rows remain in a separate table. Decision: a local media unit includes the canonical file's byte digest in its derivation key. A fold compares derived unit keys with the parent table and drops orphaned rows before rebuilding sidecars. Freshness and absence of orphaned citations decide the choice.
+
+| Option | Lost on | Cost |
+| --- | --- | --- |
+| Byte digest at selection and parent-aware fold *(chosen)* | — | Every local selection reads file bytes; a fold reads the parent key set. |
+| Key on the path alone | Freshness | Changed media under one path keeps its old passages. |
+| Keep rows after parent deletion | Citation integrity | Search returns passages with no surviving parent. |
+| Delete rows as soon as a parent write lands | Commit isolation | A parent commit must edit another table and every sidecar. |
+
+Consequences: an unreadable local file yields no digest and follows {{run.bind.media-unreadable}}; a parent removed before fold can leave old passages visible until that fold.
+
+## A passage's modality names its output
+
+Context: {{store.reserve.modality}} defines the accepted values; a video source can yield text passages and image candidates. Decision: a text passage carries `text`, and an image candidate carries `image`, regardless of its parent's media kind. Output kind decides retrieval and sidecar selection.
+
+| Option | Lost on | Cost |
+| --- | --- | --- |
+| Label the output passage *(chosen)* | — | Readers seeking the source medium follow the parent reference. |
+| Copy the parent's medium | Retrieval type | A transcript would claim to be a video row. |
+| Add a video value to the output domain | Type fidelity | A text-only passage would be routed as video. |
+
+Consequences: a derived passage keeps its source medium through its parent link, not its modality column.
+## Chained derive pipelines follow their source tables
+
+**Status:** accepted
+
+Context: a derive source can read another derive pipeline's output, but declaration order and independent scheduling provide no landing order. Criteria: one tick carries a new parent row through its children; a cycle cannot repeatedly select itself; a failed parent does not hide rows it committed earlier.
+
+Decision: the build maps output tables to derive pipelines, resolves each derive source table to its parent when one exists, and refuses a cycle naming its members. An explicit `after` naming another parent refuses. A parent's tick runs the acyclic set parent-first, subsuming each child's own schedule. A completed failed run leaves its child eligible to run over committed rows, while the tick reports the failure. A launch, wait, signal or worker dispatch error supplies no completed parent outcome and stops the unit.
+
+| Option | Lost on | Cost |
+| --- | --- | --- |
+| Infer dependencies from source tables and run parent-first *(chosen)* | — | A build traverses the derive graph; a tick serializes dependent runs and reports a parent failure beside child work. |
+| Require authors to set `after` on each child | Completeness | A missing manual edge leaves a child one tick behind without a build refusal. |
+| Let each derive pipeline run independently | Freshness | Child selection can precede its parent's landing. |
+| Stop descendants after a failed parent | Availability | Committed rows from an earlier fire remain unprocessed until another tick. |
+
+Consequences: the source-table name is a scheduling dependency when it names another derive output; an external source table adds no edge.
+
 ## A derive engine is a machine-bound argv child with a cleared environment
 
 A manifest requests an engine by name; the machine's configuration defines what that name executes, and row data never becomes syntax. `run.bind` refuses an unbound name or a command key in a manifest; a `[derive.<name>]` block states argv chain or host list, environment allowlist, pins and bounds, and the adapter, not the operator's zone key, declares locality. `run.exec` spawns an argument array with no shell, a cleared environment plus allowlist, and wall-clock and output bounds, killing the process group on deadline.
@@ -105,6 +146,54 @@ Revisit: operators routinely wrap steps in pinned scripts to recover shell featu
 
 Consequences: `native` keeps nesting up to the sink's declared capability and emits a downgrade schema-diff event past it.
 Revisit: orphaned children from root-level filtering become a reported data-quality problem; a deployment is relational at every sink.
+
+## A table commit owns its schema-diff evidence
+
+The reconciled schema describes only the latest shape, and a live run projection can drop events. A table's run manifest records each downgrade beside its parts and cursor; run history projects those entries by run id. The commit marker publishes rows, cursor and schema evidence together. An uncommitted stage leaves no event. This keeps the run record's plan and terminal rows fixed while preserving the reason an older column landed in a narrower type.
+
+| Option | Lost on | Cost |
+| --- | --- | --- |
+| Events in each table's run manifest *(chosen)* | — | Run history reads table manifests to answer schema changes. |
+| Events in the terminal run row | Commit coupling | A table can commit before the terminal row exists. |
+| Events in the live projection | Durability | A full observer channel drops the explanation. |
+
+Consequences: a table's manifest grows with its downgraded columns, and run-history readers correlate entries across tables.
+
+## The secret guard has one host-owned catalogue
+
+The credential catalogue lives in host code and answers to its precision and recall fixture. Pipelines and deployments add no matcher, and the guard has one mask-only posture. An unrecognized shape can pass through, but a manifest edit cannot silently change what the host considers a secret; a catalogue change carries code and a fixture review.
+
+| Option | Lost on | Cost |
+| --- | --- | --- |
+| Host-owned catalogue and mask-only posture *(chosen)* | — | A new vendor prefix requires a host release. |
+| Deployment extensions | Testable coverage | A local prefix can mask ordinary data without the catalogue fixture. |
+| Strict pull refusal | Ingest continuity | One matched cell strands an entire source batch. |
+
+Consequences: operators see masked-cell counts but cannot turn a match into a pull failure by configuration.
+
+## A decoder child owns one input and two bounds
+
+An input whose decoder can die runs in a fresh child. Its process group ends at a 60 s wall-clock deadline measured from spawn, and its memory cap is 512 MiB. These bounds protect the serving process while letting one input fail by name; a child never carries parser state into another input.
+
+| Option | Lost on | Cost |
+| --- | --- | --- |
+| Fresh bounded child per input *(chosen)* | — | Process startup is paid for each input; an unusually large input fails. |
+| Long-lived extractor | Failure isolation | A crash loses the extractor's other in-flight inputs. |
+| In-process decoder | Serving isolation | A fatal parser fault ends the serving process. |
+
+Consequences: target adapters enforce the memory cap and reap the whole process group after a deadline.
+
+## An observed batch fixes its landing types
+
+Pipeline planning reads the declared table schema but makes no source schema request. A staged batch contributes its observed values and pull-declared types to reconciliation; a mismatch fails at staging before a commit. A source that reports no rows offers no guessed columns.
+
+| Option | Lost on | Cost |
+| --- | --- | --- |
+| Type each batch at staging *(chosen)* | — | A late schema mismatch spends the pull before refusal. |
+| Require source schema during planning | Connector breadth | A source without discovery cannot run. |
+| Fix types from the first batch alone | Compatibility | A later type change lands under a stale guess. |
+
+Consequences: validation cannot promise every source column's eventual type before the first pull.
 
 ## The run substrate is three storage ports, and the file tree is one adapter
 

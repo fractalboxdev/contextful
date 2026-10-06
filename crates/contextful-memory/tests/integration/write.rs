@@ -169,3 +169,96 @@ fn an_observation_before_a_live_contradicting_prior_refuses() {
     assert!(write("Dana", "2030-03-15T00:00:00Z", "evt-4", "2030-01-14T00:00:00Z").is_err());
     assert!(write("Dana", "2030-05-01T00:00:00Z", "evt-5", "2030-01-15T00:00:00Z").is_ok());
 }
+
+/// Equal-instant, unscoped direct contradictions keep both claims live and record their ids.
+// spec: read.revise.unscoped-collision@e2109b5f
+#[test]
+fn unscoped_writers_at_one_instant_record_a_conflict_without_retirement() {
+    use contextful_context::read::ReadOptions;
+    use contextful_memory::write::write_observed;
+    use contextful_policy::enforce::session::Request;
+
+    let f = Fixture::new();
+    let writer = f.writer();
+    let node = NodeId::parse("memory-a").unwrap();
+    let first = write_observed(
+        &f.face, &writer, "memory/facts", candidate("Dana"),
+        &keyed("2030-01-01T00:00:00Z", Some("writer-a")), &node,
+        at("2030-01-11T00:00:00Z"), &super::synthesize::admit,
+    ).unwrap().claim.unwrap();
+    let second = write_observed(
+        &f.face, &writer, "memory/facts", candidate("Lee"),
+        &keyed("2030-01-01T00:00:00Z", Some("writer-b")), &node,
+        at("2030-01-12T00:00:00Z"), &super::synthesize::admit,
+    ).unwrap();
+    assert!(second.retired.is_empty());
+    let second = second.claim.unwrap();
+    let session = f.face.session(&writer, &Request::default(), Default::default()).unwrap();
+    let claims = contextful_memory::claims::read_claims(&f.face, &session, "memory/facts").unwrap();
+    assert!(claims.iter().any(|c| c.claim_id == first.claim_id && c.valid_to.is_none() && c.superseded_by.is_none()));
+    assert!(claims.iter().any(|c| c.claim_id == second.claim_id && c.valid_to.is_none() && c.superseded_by.is_none()));
+    let letters = f.face.query(
+        &session, r#"SELECT reason, detail FROM "memory/facts_dead_letter""#, ReadOptions::default(),
+    ).unwrap();
+    assert_eq!(letters.rows.len(), 1);
+    assert_eq!(letters.rows[0][0], serde_json::json!("unscoped-collision"));
+    let detail = letters.rows[0][1].as_str().unwrap();
+    assert!(detail.contains(&first.claim_id) && detail.contains(&second.claim_id), "{detail}");
+
+    let resolved = write_observed(
+        &f.face, &writer, "memory/facts", candidate("Kim"),
+        &keyed("2030-02-01T00:00:00Z", Some("writer-c")), &node,
+        at("2030-01-13T00:00:00Z"), &super::synthesize::admit,
+    ).unwrap();
+    assert_eq!(resolved.retired.len(), 2, "a later explicit write resolves both live claims");
+    assert!(resolved.retired.iter().any(|c| c.claim_id == first.claim_id));
+    assert!(resolved.retired.iter().any(|c| c.claim_id == second.claim_id));
+}
+
+#[test]
+fn reaffirming_one_conflicting_object_retires_the_other() {
+    use contextful_memory::write::write_observed;
+
+    let f = Fixture::new();
+    let writer = f.writer();
+    let node = NodeId::parse("memory-a").unwrap();
+    let write = |object, observed, key, committed| {
+        write_observed(
+            &f.face, &writer, "memory/facts", candidate(object),
+            &keyed(observed, Some(key)), &node, at(committed), &super::synthesize::admit,
+        ).unwrap()
+    };
+    let first = write("Dana", "2030-01-01T00:00:00Z", "writer-a", "2030-01-11T00:00:00Z").claim.unwrap();
+    let second = write("Lee", "2030-01-01T00:00:00Z", "writer-b", "2030-01-12T00:00:00Z").claim.unwrap();
+    let resolution = write("Dana", "2030-02-01T00:00:00Z", "writer-c", "2030-01-13T00:00:00Z");
+    assert_eq!(resolution.retired.len(), 2, "the later explicit write resolves both earlier claims");
+    assert!(resolution.retired.iter().any(|c| c.claim_id == first.claim_id));
+    assert!(resolution.retired.iter().any(|c| c.claim_id == second.claim_id));
+    assert_eq!(resolution.claim.unwrap().object, "Dana");
+}
+
+#[test]
+fn reaffirming_the_original_claim_id_resolves_its_conflict() {
+    use contextful_memory::write::write_observed;
+    use contextful_policy::enforce::session::Request;
+
+    let f = Fixture::new();
+    let writer = f.writer();
+    let node = NodeId::parse("memory-a").unwrap();
+    let write = |object, observed, key, committed| {
+        write_observed(
+            &f.face, &writer, "memory/facts", candidate(object),
+            &keyed(observed, Some(key)), &node, at(committed), &super::synthesize::admit,
+        ).unwrap()
+    };
+    let first = write("Dana", "2030-01-01T00:00:00Z", "writer-a", "2030-01-11T00:00:00Z").claim.unwrap();
+    let second = write("Lee", "2030-01-01T00:00:00Z", "writer-b", "2030-01-12T00:00:00Z").claim.unwrap();
+    let resolution = write("Dana", "2030-02-01T00:00:00Z", "writer-a", "2030-01-13T00:00:00Z");
+    assert!(resolution.claim.is_none(), "the original claim keeps its interval");
+    assert_eq!(resolution.retired.len(), 1);
+    assert_eq!(resolution.retired[0].claim_id, second.claim_id);
+    assert_eq!(resolution.retired[0].superseded_by.as_deref(), Some(first.claim_id.as_str()));
+    let session = f.face.session(&writer, &Request::default(), Default::default()).unwrap();
+    let claims = contextful_memory::claims::read_claims(&f.face, &session, "memory/facts").unwrap();
+    assert!(claims.iter().any(|claim| claim.claim_id == first.claim_id && claim.valid_from == first.valid_from && claim.valid_to.is_none()));
+}

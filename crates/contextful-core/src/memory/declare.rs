@@ -52,7 +52,7 @@ impl Shape {
 }
 
 /// Relation types every deployment admits; a declaration adds its own to the union.
-pub const RESERVED_RELATIONS: [&str; 6] = ["about", "mentions", "part_of", "located_in", "owns", "works_for"];
+pub const RESERVED_RELATIONS: [&str; 5] = ["supports", "contradicts", "supersedes", "about", "derived_from"];
 
 /// One memory table a manifest declares.
 #[derive(Debug, Clone, PartialEq, Eq)]
