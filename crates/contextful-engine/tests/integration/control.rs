@@ -80,3 +80,27 @@ fn a_failed_receipt_write_removes_its_unpublished_snapshot() {
     assert_eq!(snaps.current().unwrap(), None);
     assert!(!dir.path().join("manifest@v1.toml").exists());
 }
+
+#[test]
+fn an_attested_import_resumes_v1_only_after_receipt_validation() {
+    let dir = tempfile::tempdir().unwrap();
+    let snaps = SnapshotDir::open(dir.path());
+    std::fs::write(dir.path().join("manifest@v1.toml"), "first").unwrap();
+    let sign = |version, parent: Option<&str>| {
+        assert_eq!((version, parent), (1, None));
+        Ok("valid receipt".to_string())
+    };
+    let verify = |receipt: &str| {
+        if receipt == "valid receipt" { Ok(()) } else { Err(ControlError::Storage("invalid receipt".into())) }
+    };
+    assert_eq!(snaps.import_attested("first", sign, verify).unwrap(), 1);
+    std::fs::remove_file(dir.path().join("manifest@current")).unwrap();
+    std::fs::write(dir.path().join("receipt@v1.json"), "forged receipt").unwrap();
+    assert!(snaps.import_attested("first", sign, verify).is_err());
+    assert_eq!(snaps.current().unwrap(), None);
+    assert_eq!(std::fs::read_to_string(dir.path().join("receipt@v1.json")).unwrap(), "forged receipt");
+    std::fs::write(dir.path().join("receipt@v1.json"), "valid receipt").unwrap();
+    assert_eq!(snaps.import_attested("first", sign, verify).unwrap(), 1);
+    assert!(snaps.import_attested("first", sign, verify).is_err());
+    assert!(!dir.path().join("manifest@v2.toml").exists());
+}
