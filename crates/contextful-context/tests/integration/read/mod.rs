@@ -273,6 +273,8 @@ pub fn read(tables: &[&str], tenant: Option<(&str, &str)>) -> Grant {
         aggregate: None,
         templates: None,
         max_rows: None,
+        max_duration_ms: None,
+        max_response_bytes: None,
     }
 }
 

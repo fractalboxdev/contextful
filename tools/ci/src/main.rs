@@ -1,10 +1,12 @@
 //! `contextful-ci` — the gate's stages as typed subcommands. A contributor and the
-//! pull-request workflow invoke the identical command.
+//! FlareDispatch gate invoke the identical command.
 
 mod deny;
+mod e2e;
 mod allowlist;
 mod measure;
 mod release;
+mod source_lint;
 mod probe;
 mod stage;
 mod tag;
@@ -84,7 +86,7 @@ enum Cmd {
     },
     /// Print the stage names, one per line, in run order.
     Stages {
-        /// Print what the pull-request workflow dispatches instead: each stage, a split stage
+        /// Print what FlareDispatch dispatches: each stage, a split stage
         /// as its parts.
         #[arg(long)]
         parts: bool,
@@ -93,8 +95,16 @@ enum Cmd {
     Secrets,
     /// Resolve every `mirrors:` comment under crates/, tools/ and apps/ to a clause id.
     Mirrors,
+    /// Refuse subject claims formatted into SQL text in runtime crates.
+    SourceLint,
     /// Hold the workspace's dependency graph to the topology contract's rules.
     Topology,
+    /// Drive the release consumer flow through the binary, with an optional local MinIO backend.
+    E2e {
+        /// Start MinIO for both source and sync buckets.
+        #[arg(long)]
+        minio: bool,
+    },
     /// Compress one profile's release artifact and hold it to the profile's budget, and its
     /// dynamic dependencies to the platform C library. Reads the budget from the fragment
     /// under the working directory. With `--build`, build each named profile, every profile
@@ -171,6 +181,28 @@ enum Cmd {
         #[arg(long, requires = "status")]
         check: bool,
     },
+    /// Build one measure report from collected records and earlier Git-note history.
+    MeasureReport {
+        #[arg(long)]
+        commit: String,
+        #[arg(long)]
+        run_id: u64,
+        #[arg(long)]
+        run_attempt: u64,
+        #[arg(long)]
+        exit_code: i32,
+        #[arg(long)]
+        out: PathBuf,
+    },
+    /// Append a measure report to the shared Git notes ref and retry a competing push.
+    MeasurePublish {
+        #[arg(long)]
+        commit: String,
+        #[arg(long)]
+        report: PathBuf,
+        #[arg(long, default_value = "origin")]
+        remote: String,
+    },
     /// Deploy-time checks.
     Deploy {
         #[command(subcommand)]
@@ -234,7 +266,9 @@ fn main() {
         Cmd::Gate { stages, predecessors, base, base_bound_secs } => gate(&stages, predecessors, &base, Duration::from_secs(base_bound_secs)),
         Cmd::Secrets => repo_root().and_then(|root| secrets(&root)),
         Cmd::Mirrors => repo_root().and_then(|root| mirrors(&root)),
+        Cmd::SourceLint => repo_root().and_then(|root| source_lint::check(&root)),
         Cmd::Topology => repo_root().and_then(|root| topology::check(&root)),
+        Cmd::E2e { minio } => repo_root().and_then(|root| e2e::run(&root, minio)),
         Cmd::Footprint { profile, artifact, build, plan } => std::env::current_dir().map_err(Into::into).and_then(|root| match artifact {
             Some(artifact) if profile.len() == 1 => footprint::check(&root, &profile[0], &artifact),
             Some(_) => bail!("an artifact is measured as exactly one `--profile`"),
@@ -279,6 +313,9 @@ fn main() {
             selected.dedup();
             measure::run(&root, &selected)
         }),
+        Cmd::MeasureReport { commit, run_id, run_attempt, exit_code, out } =>
+            repo_root().and_then(|root| measure::report(&root, &commit, run_id, run_attempt, exit_code, &out)),
+        Cmd::MeasurePublish { commit, report, remote } => repo_root().and_then(|root| measure::publish(&root, &commit, &report, &remote)),
     };
     if let Err(e) = result {
         eprintln!("{e:#}");
@@ -336,7 +373,7 @@ fn repo_root() -> Result<PathBuf> {
     Ok(PathBuf::from(git(&["rev-parse", "--show-toplevel"])?))
 }
 
-/// The stages whose work splits into parts the pull-request workflow dispatches one check
+/// The stages whose work splits into parts FlareDispatch dispatches one check
 /// each, so each part fits one stage's wall clock (`assurance.build.profile-build`,
 /// `assurance.gate.budget-stage`).
 const SPLIT: [&str; 3] = ["workspace", "features", "budget"];
@@ -346,7 +383,7 @@ const SPLIT: [&str; 3] = ["workspace", "features", "budget"];
 /// `<profile>` per profile the binary declares, its name after `contextful-`.
 fn parts(root: &Path, stage: &str) -> Result<Vec<String>> {
     Ok(match stage {
-        "workspace" => ["compile", "foundation", "runtime", "read", "ci"].into_iter().map(str::to_string).collect(),
+        "workspace" => ["compile", "cli", "foundation", "runtime", "read", "ci"].into_iter().map(str::to_string).collect(),
         "features" => {
             let featured = featured_packages(root)?;
             let binary = featured.iter().filter(|p| p.name == topology::BINARY).flat_map(Featured::runs);
@@ -357,7 +394,7 @@ fn parts(root: &Path, stage: &str) -> Result<Vec<String>> {
     })
 }
 
-/// What the pull-request workflow dispatches, in run order: each stage, a split stage as
+/// What FlareDispatch dispatches, in run order: each stage, a split stage as
 /// `<stage>.<part>` per part.
 fn dispatched(root: &Path) -> Result<Vec<String>> {
     let mut out = Vec::new();
@@ -434,6 +471,7 @@ fn run_stage(root: &Path, stage: &str, only: Option<&[String]>, base: &str, boun
         "features" => features(root, only)?,
         "crate-graph" => {
             committed_lock(root)?;
+            source_lint::check(root)?;
             topology::check(root)?;
             deny::check(root)?;
             allowlist::check(root)?
@@ -528,7 +566,7 @@ fn workspace_part(package: &str) -> &'static str {
     match package {
         "contextful-engine" | "contextful-connectors" | "contextful-memory" | "contextful-sync" | "contextful-wasm" => "runtime",
         "contextful-context" | "contextful-agent" => "read",
-        "contextful-cli" => "compile",
+        "contextful-cli" => "cli",
         "contextful-ci" => "ci",
         _ => "foundation",
     }

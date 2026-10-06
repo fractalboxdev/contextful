@@ -80,6 +80,11 @@ pub fn gunzip(body: &[u8], ceiling: u64, input: &str) -> Result<Vec<u8>, Failure
 /// Decode `body` into records, and the parsed JSON body a pagination pointer reads. A
 /// workbook lands its first sheet; [`workbook::rows`] selects another.
 pub fn decode(format: Format, body: &[u8], records: Option<&str>, input: &str) -> Result<(Vec<Row>, Option<Value>), Failure> {
+    decode_with_encoding(format, body, records, input, None)
+}
+
+/// Decode a body with the declared character encoding of delimited text.
+pub fn decode_with_encoding(format: Format, body: &[u8], records: Option<&str>, input: &str, encoding: Option<&str>) -> Result<(Vec<Row>, Option<Value>), Failure> {
     match format {
         Format::Json => {
             let v: Value = serde_json::from_slice(body).map_err(|e| unreadable(input, format!("line {} column {}", e.line(), e.column()), e))?;
@@ -104,8 +109,15 @@ pub fn decode(format: Format, body: &[u8], records: Option<&str>, input: &str) -
             Ok((rows, None))
         }
         Format::Csv => {
-            let text = std::str::from_utf8(body).map_err(|e| unreadable(input, format!("byte {}", e.valid_up_to()), "the body is not UTF-8"))?;
-            Ok((csv(text, input)?, None))
+            let label = encoding.unwrap_or("utf-8");
+            let decoder = encoding_rs::Encoding::for_label(label.as_bytes()).ok_or_else(|| Failure::deterministic(
+                FailureTag::Config, ConnectorError::ConnectorEncodingInvalid(format!("`{input}` declares unknown encoding `{label}`")).to_string(),
+            ))?;
+            let (text, _, invalid) = decoder.decode(body);
+            if invalid {
+                return Err(Failure::deterministic(FailureTag::Permanent, ConnectorError::ConnectorEncodingInvalid(format!("`{input}` contains bytes invalid under `{label}`")).to_string()));
+            }
+            Ok((csv(&text, input)?, None))
         }
         Format::Feed => Ok((feed::rows(body, input)?, None)),
         Format::Workbook => Ok((workbook::rows(body, None, 0, input)?, None)),

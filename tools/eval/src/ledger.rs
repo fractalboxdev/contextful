@@ -10,7 +10,7 @@ use std::fmt;
 
 use serde::{Deserialize, Serialize};
 
-use crate::baseline::MetricPath;
+use crate::baseline::{Direction, MetricPath};
 use crate::error::EvalError;
 
 /// The ledger, under the workspace root.
@@ -147,6 +147,8 @@ pub struct Entry {
     pub metric: String,
     pub kind: Kind,
     pub tier: Tier,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub direction: Option<Direction>,
     pub method: MethodSpec,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub target: Option<Target>,
@@ -307,6 +309,9 @@ fn resolve(id: &str, e: &Entry, world: &dyn World) -> Result<(), String> {
     let method = e.method().ok_or("a method names exactly one of `test`, `cases`, `probe` or `issue`")?;
     if !matches!(method, Method::Issue(_)) && e.tier == Tier::Gate && e.target.is_none() {
         return Err("a gate-tier entry carries a target".into());
+    }
+    if e.tier == Tier::Trend && e.direction.is_none() {
+        return Err("a trend-tier entry declares a direction".into());
     }
     match method {
         Method::Test(t) => world.test(t).map_err(|r| format!("test `{t}`: {r}")),

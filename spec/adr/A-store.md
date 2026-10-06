@@ -73,6 +73,38 @@ Consequences: a replica's answer is complete for the snapshot it names, or a ref
 Consequences: a contended bucket can leave a writer's objects durable and unlisted, visible in the refusal.
 Revisit: a key shape whose ownership is not derivable from the key; retries exhausting under ordinary concurrency; the index outgrowing a single-object commit.
 
+## Canonical metadata sits inside an authenticated envelope
+
+**Status:** accepted
+
+Context: schema, manifest, pointer, counter, commit-log and node run-state files carry names and values from rows, and the at-rest cipher covers the store target. Criteria: zero plaintext canary bytes in a bound store; canonical values survive merge and replay; unencrypted stores keep their wire format.
+
+Decision: a bound store seals each metadata file under a fresh wrapped data key and reads it into memory before parsing. Schema merge operates on decrypted canonical structures and seals the merged result. A store without encryption retains canonical JSON or text on disk and in the bucket. A bound store refuses plaintext metadata rather than migrating it implicitly.
+
+| Option | Lost on | Cost |
+| --- | --- | --- |
+| Versioned file envelope over canonical bytes *(chosen)* | — | Raw JSON readers need the project key and file codec. |
+| Cleartext metadata beside encrypted data | At-rest scope | Schema and manifest names expose row structure and canary values. |
+| Encrypt individual JSON fields | Zero plaintext | Keys and unselected values remain visible and each parser needs field rules. |
+
+Consequences: sync authenticates metadata before merge; a key-bound store starts from an empty tree or an explicit migration.
+
+## The machine catalog seals a SQLite snapshot
+
+**Status:** accepted
+
+Context: `machine.sqlite` holds machine-local leases, cursors and run rows; a bound store protects row values on disk while keeping the catalog's conditional updates across processes. Criteria: zero plaintext canary bytes, durable updates and one linearizable compare-and-swap.
+
+Decision: each operation locks a stable sibling file, decrypts the authenticated snapshot into an in-memory SQLite connection and runs one transaction. A committed write serializes the database, seals it under a fresh wrapped data key and replaces the snapshot through a synced temporary file. A bound catalog refuses plaintext or a foreign key. An unencrypted catalog keeps SQLite's file-backed transactions.
+
+| Option | Lost on | Cost |
+| --- | --- | --- |
+| Sealed SQLite snapshot under a file lock *(chosen)* | — | Each write copies the catalog in memory and rewrites its full encrypted file. |
+| Plain SQLite file with encrypted row values | Zero plaintext | Index keys and SQLite pages still expose catalog structure and old values. |
+| A plaintext temporary database | At-rest scope | A crash leaves readable pages beside the sealed file. |
+
+Consequences: catalog size sets memory and write cost; a missing or invalid sealed snapshot refuses rather than rebuilding machine state.
+
 ## A sidecar is memory-mapped only over plaintext
 
 **Status:** accepted

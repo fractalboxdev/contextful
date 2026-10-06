@@ -5,6 +5,7 @@
 pub mod build;
 pub mod catalog;
 pub mod commit_log;
+pub mod encrypt;
 pub mod error;
 pub mod fold;
 pub mod fulltext;

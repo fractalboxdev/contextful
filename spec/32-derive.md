@@ -63,7 +63,7 @@ The derive source: its configuration, the outstanding set recomputed each tick, 
   *P4*
 - `journaled-pull` — A derive pipeline configured to journal its pulls raises `DeriveJournaledPull`.
   *A-authority*
-- `unmetered-grant` — `task` alone decides whether a derive pipeline reaches vendors; a `transcribe` pipeline declaring a shared-quota grant raises `DeriveUnmeteredGrant`.
+- `unmetered-grant` — A derive pipeline declaring a shared-quota grant for any task other than `link_preview` raises `DeriveUnmeteredGrant`.
   *A-connector*
 - `metered-client` — A `link_preview` pipeline opening a socket outside the mediated client raises `DeriveMeteredClient`; every request it makes enters the run's request ledger.
   *A-connector*
@@ -73,12 +73,29 @@ The derive source: its configuration, the outstanding set recomputed each tick, 
   *because an `empty` marker records 1 attempt, so ranking by count lets an older retry revive a settled unit*
 - `key-change` — Rows under the current key landed before the unit's latest `ok` or `empty` landing under another key count for nothing, so a key changed and changed back derives the unit again.
   *A-run*
+- `derive-order` — A derive pipeline reading another derive pipeline's output table runs after that parent on the parent's tick, regardless of declaration order or its own schedule.
+  *A-run*
+- `derive-failed-parent` — A child derive pipeline runs after its parent fails and reads only the parent's committed rows.
+  *A-run*
+- `parent-outcome` — A derived child starts only after its parent produces a completed run outcome; a local launch, wait or signal failure, or a worker dispatch error, stops the unit before that child starts.
+  *A-run*
+- `derive-cycle` — A build whose derive source-table dependencies return to a pipeline raises `DeriveCycle`, names every pipeline on the cycle and arms none.
+  *A-run*
+- `derive-after-conflict` — A derive child whose `after` names a pipeline other than its source-table parent raises `DeriveAfterConflict` and arms none.
+  *A-run*
 
 unsettled: At what parent-table size does the in-memory scan stop fitting, and what replaces it? owner: derive affects: run.select
 
 unsettled: Does a dry run print eligible, already-derived and outstanding counts before a scheduled tick pays for them? owner: derive affects: run.select
 
-unsettled: In what order does one tick run derive pipelines whose source table is another derive pipeline's output, and what refuses a cycle? owner: derive affects: run.select
+
+#### Scenarios
+
+- `run.select.derive-order`: WHEN a scheduled child is declared before its parent and reads the parent's output, THEN the parent's tick lands its new row before the child reads it.
+- `run.select.derive-cycle`: WHEN two derive pipelines read each other's output tables, THEN the build raises `DeriveCycle` naming both; a self-reference names itself.
+- `run.select.derive-failed-parent`: WHEN a parent fails after earlier rows committed, THEN its child reads those committed rows in the same tick.
+- `run.select.parent-outcome`: WHEN the parent process fails to start, THEN its derived child does not start in that unit.
+- `run.select.derive-after-conflict`: WHEN a derive child names another pipeline in `after`, THEN the build raises `DeriveAfterConflict` naming the child and both parents.
 
 ## bind
 
@@ -188,6 +205,12 @@ Following a link a third party wrote: host and address guards, redirects, the he
   *A-connector*
 - `not-utf8` — A document declaring no character set and failing UTF-8 validation raises `DeriveBytesNotUtf8`; a character split at the byte bound is tolerated.
   *A-connector*
+- `head-rows` — A link preview lands one passage for non-empty head title or description and one passage per distinct advertised head image, each carrying the scrubbed page URL and each image its probe status.
+  *because the head and its image claims remain separately citable, including an image whose probe fails*
+
+#### Scenarios
+
+- `run.fetch.head-rows`: WHEN a page head declares a title, description and one image, THEN the output holds one text passage and one image passage with its probe status.
 
 ```mermaid
 flowchart LR
@@ -234,6 +257,8 @@ The derived row and marker, the unit status, attempt accounting, citation keys a
   *A-run*
 - `content-empty` — A host unit landing no row in a content table lands one `kind` `marker`, `unit_status` `empty` row there under its key, so {{run.emit.stale-supersedes}} holds in every content table.
   *because a read and a fold supersede from one table's rows alone, so a content table never seeing the unit's newest key keeps its stale rows answering*
+- `content-marker-retention-clock` — A generated host marker copies a custom {{store.declare.retain-rows}} timestamp from the parent row when the parent carries a same-named column.
+  *because a generated empty marker must carry the declared clock before the content table accepts its landing*
 - `output-tables` — A host-task pipeline declares exactly its task's marker and content tables, and a unit returns rows for its content tables alone; either breach raises `DeriveOutputTablesMismatch`, the second failing that unit alone.
   *A-run*
 - `marker-last` — A host-task run commits each content table under its own commit, then the marker table, and a content table failing stops the fire before its marker lands, so the unit re-runs and its rows collapse by key.
@@ -244,12 +269,18 @@ The derived row and marker, the unit status, attempt accounting, citation keys a
   *A-run*
 - `empty-document` — Only a WebVTT document whose blocks are its header, notes and styles establishes nothing to derive; empty output, or blocks none of which parse, lands `unavailable`.
 - `canceled-unit` — A unit whose chain a run stop interrupts lands no row and charges no attempt; the pull ends `Canceled` once {{run.cancel.child-reaped}}.
+- `output-modality` — A text passage extracted from a video parent carries `_modality` `text`, and an advertised image passage carries `image`, each under {{store.reserve.modality}}.
+  *A-run*
+- `local-content-key` — A local media unit's {{run.emit.derivation-key}} includes a SHA-256 digest of canonical file bytes, so changed bytes under an unchanged path reselect the unit.
+  *A-run*
+- `parent-tombstone` — A fold drops derived rows whose parent key is absent or tombstoned in the parent table, then rebuilds their sidecars.
+  *A-run*
 
-unsettled: What validated domain does `_modality` carry, and which value does a passage derived from a video row take? owner: derive affects: run.emit
+#### Scenarios
 
-unsettled: What reaps derived rows whose parent row is deleted upstream? owner: derive affects: run.emit
-
-unsettled: Does a local media file whose bytes change under an unchanged path derive its unit again? owner: derive affects: run.emit
+- `run.emit.output-modality`: WHEN a video parent yields a transcript passage and an advertised picture, THEN their output modalities are `text` and `image`.
+- `run.emit.local-content-key`: WHEN a local file changes bytes under the same path, THEN the next tick selects its unit under another key.
+- `run.emit.parent-tombstone`: WHEN a parent row is tombstoned, THEN the next fold drops its passages and rebuilds the affected sidecars.
 
 unsettled: Which single column identifies a derived row for a sidecar's `id_column`, given a derive table keys on three? owner: derive affects: run.emit
 

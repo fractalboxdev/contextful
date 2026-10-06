@@ -22,6 +22,28 @@ fn schema_columns(bytes: &[u8]) -> Vec<String> {
 }
 
 #[test]
+fn encrypted_schema_merge_keeps_both_columns_without_plaintext() {
+    use contextful_context::encrypt::{AesGcmFileCipher, MetadataFiles};
+    use contextful_core::store::reconcile::{Column, ColumnType, Schema};
+    use contextful_sync::sync::merge_schema_bytes;
+
+    let key = AesGcmFileCipher::new([0x37; 32], 1);
+    let codec = MetadataFiles::sealed(&key);
+    let path = std::path::Path::new("schema.json");
+    let first = serde_json::to_vec(&Schema { columns: vec![Column::new("metadata-canary-5f1e", ColumnType::Utf8, true)] }).unwrap();
+    let second = serde_json::to_vec(&Schema { columns: vec![Column::new("pages", ColumnType::Int64, true)] }).unwrap();
+    let mine = codec.seal_bytes(path, &first).unwrap();
+    let theirs = codec.seal_bytes(path, &second).unwrap();
+    let merged = merge_schema_bytes(&codec, path, &mine, &theirs).unwrap();
+    assert!(!merged.windows(b"metadata-canary-5f1e".len()).any(|w| w == b"metadata-canary-5f1e"));
+    let clear = codec.open_bytes(path, &merged).unwrap();
+    let columns = schema_columns(&clear);
+    assert!(columns.contains(&"metadata-canary-5f1e".to_string()) && columns.contains(&"pages".to_string()));
+    assert_eq!(merge_schema_bytes(&codec, path, &merged, &theirs).unwrap(), merged);
+    assert!(merge_schema_bytes(&MetadataFiles::sealed(&AesGcmFileCipher::new([0x42; 32], 1)), path, &mine, &theirs).is_err());
+}
+
+#[test]
 fn a_push_never_uploads_a_copy_of_another_nodes_key() {
     let dir = tempfile::tempdir().unwrap();
     let b = bucket(dir.path());

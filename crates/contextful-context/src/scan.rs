@@ -2,14 +2,13 @@
 //! the table registers as under the read's bounds.
 
 use crate::error::Result;
-use crate::parquet_io;
 use crate::store::Store;
 use contextful_core::pipeline::model::PublishSection;
 use contextful_core::store::bound_time::Bounds;
 use contextful_core::store::declare::TableDecl;
 use contextful_core::store::lay_out::SnapshotManifest;
 use contextful_core::store::reconcile::{Column, Schema};
-use contextful_core::store::relation::relation;
+use contextful_core::store::relation::relation_with_encryption;
 use contextful_core::store::resolve::Resolution;
 use serde_json::Value;
 use std::collections::BTreeSet;
@@ -62,7 +61,7 @@ pub fn scan_at(store: &Store, decl: &TableDecl, bounds: Bounds, snapshot: Option
             // the schema the build published, whatever a later build moved it to.
             let mut columns: Vec<Column> = Vec::new();
             for f in &absolute {
-                for c in parquet_io::schema(std::path::Path::new(f))? {
+                for c in store.parquet_schema(std::path::Path::new(f))? {
                     if !columns.iter().any(|k| k.name == c.name) {
                         columns.push(c);
                     }
@@ -76,9 +75,10 @@ pub fn scan_at(store: &Store, decl: &TableDecl, bounds: Bounds, snapshot: Option
 
     let mut carried = BTreeSet::new();
     for f in &absolute {
-        carried.extend(parquet_io::columns(std::path::Path::new(f))?);
+        carried.extend(store.parquet_columns(std::path::Path::new(f))?);
     }
     let absent: Vec<Column> = schema.columns.iter().filter(|c| !carried.contains(&c.name)).cloned().collect();
-    let relation = relation(decl, &absolute, &schema.columns, &absent, bounds.valid_as_of)?;
+    let key_name = store.parquet_key().map(|_| crate::encrypt::PARQUET_KEY_NAME);
+    let relation = relation_with_encryption(decl, &absolute, &schema.columns, &absent, bounds.valid_as_of, key_name)?;
     Ok(Scan { files, relation, columns: schema.columns, bounds: bounds.echo(), publish })
 }

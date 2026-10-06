@@ -159,6 +159,9 @@ pub struct Response {
     pub columns: Vec<String>,
     pub rows: Vec<Vec<Value>>,
     pub truncated: bool,
+    /// The over-fetched row used to resolve a simultaneous row and byte cut.
+    #[serde(skip)]
+    pub probe_row: Option<Vec<Value>>,
     #[serde(flatten)]
     pub blocks: Map<String, Value>,
 }
@@ -169,16 +172,17 @@ impl Response {
     /// delivered (`read.respond.truncation-is-exact`). Fewer rows, zero included, is an
     /// ordinary success (`read.respond.zero-rows-is-success`).
     pub fn cut(columns: Vec<String>, mut fetched: Vec<Vec<Value>>, ceiling: Option<u64>) -> Response {
-        let truncated = match ceiling {
+        let (truncated, probe_row) = match ceiling {
             Some(c) => {
                 let c = usize::try_from(c).unwrap_or(usize::MAX);
                 let probe = fetched.len() > c;
+                let probe_row = fetched.get(c).cloned();
                 fetched.truncate(c);
-                probe
+                (probe, probe_row)
             }
-            None => false,
+            None => (false, None),
         };
-        Response { columns, rows: fetched, truncated, blocks: Map::new() }
+        Response { columns, rows: fetched, truncated, probe_row, blocks: Map::new() }
     }
 
     /// How many rows to read for `ceiling`: the ceiling plus the probe row.

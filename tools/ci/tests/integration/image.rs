@@ -180,11 +180,39 @@ fn an_artifact_over_budget_or_linking_beyond_the_c_library_is_refused() {
     assert!(!o.status.success() && stderr(&o).contains("is no ELF64 file"), "{}", stderr(&o));
 }
 
+#[test]
+fn footprint_records_exact_compressed_bytes_and_needed_entries_for_each_profile() {
+    let r = budgeted();
+    r.write(
+        "spec/terms/assurance.toml",
+        "[limit]\nassurance-control-compressed = { clause = \"assurance.gate.control-budget\", value = 1, unit = \"MiB\", basis = \"chosen\", gloss = \"Compressed control-profile artifact.\" }\nassurance-edge-compressed = { clause = \"assurance.gate.edge-budget\", value = 1, unit = \"MiB\", basis = \"chosen\", gloss = \"Compressed edge-profile artifact.\" }\nassurance-full-compressed = { clause = \"assurance.gate.full-budget\", value = 1, unit = \"MiB\", basis = \"chosen\", gloss = \"Compressed full-profile artifact.\" }\n",
+    );
+    let records = tempfile::tempdir().unwrap();
+    let bytes = elf(&["libc.so.6", "ld-linux-x86-64.so.2"], b"sample payload");
+    let artifact = r.root.join("contextful");
+    std::fs::write(&artifact, &bytes).unwrap();
+    for profile in ["control", "edge", "full"] {
+        let o = Command::new(env!("CARGO_BIN_EXE_contextful-ci"))
+            .args(["footprint", "--profile", &format!("contextful-{profile}")])
+            .arg(&artifact)
+            .current_dir(&r.root)
+            .env(contextful_eval::record::MEASURE_DIR_VAR, records.path())
+            .output()
+            .unwrap();
+        assert!(o.status.success(), "{}", stderr(&o));
+        let compressed = contextful_eval::record::read(records.path(), &format!("profile-{profile}-compressed-bytes")).unwrap();
+        assert_eq!(compressed.value, zstd::bulk::compress(&bytes, 19).unwrap().len() as f64);
+        let needed = contextful_eval::record::read(records.path(), &format!("profile-{profile}-needed-entries")).unwrap();
+        assert_eq!(needed.value, 2.0);
+    }
+}
+
 /// Per change and per profile, the footprint step builds the static-linked Linux target, compresses it, and holds its size to the profile's budget and its dynamic dependencies to the platform C library.
 ///
-/// Under `contextful-ci measure --tier trend` the step builds and measures all three
-/// profiles and the ledger records how many exceed their budgets; elsewhere, the workspace
-/// stage among them, it prints the three builds it runs. The budget stage gates them.
+/// Under `contextful-ci measure --tier trend` the step builds all three profiles once,
+/// recording each compressed byte count and NEEDED entry count alongside the number over
+/// budget. Elsewhere, the workspace stage prints the planned builds and the budget stage
+/// gates each artifact.
 // spec: assurance.gate.footprint@32cd798c
 #[test]
 fn this_repository_profiles_hold_to_their_footprint_budgets() {
