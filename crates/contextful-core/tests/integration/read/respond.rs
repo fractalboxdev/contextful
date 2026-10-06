@@ -69,7 +69,7 @@ fn the_envelope_carries_no_type_list() {
 }
 
 /// `truncated` is set exactly when the over-fetched probe row is present, never by comparing a returned count against a requested limit.
-// spec: read.respond.truncation-is-exact@9acbbafe
+// spec: read.respond.truncation-is-exact@3ebf2e57
 #[test]
 fn truncation_follows_the_probe_row() {
     assert_eq!(ROW_CEILING_OVERFETCH, 1);

@@ -10,20 +10,20 @@
 //! awakeable      one registry row per token
 //! ```
 //!
-//! The file runs in write-ahead-log mode, so a reader never waits on a writer. Every write
-//! runs in an immediate transaction, which takes SQLite's one write lock up front and so
-//! serializes it against every other connection to the file, in this process or another:
-//! a blob put waits behind another connection's write transaction, and fails once that
-//! transaction holds the lock past the busy wait (`run.journal.blob-write`, `A-run`).
+//! A plain file runs in write-ahead-log mode, so a reader never waits on a writer.
+//! Its immediate transactions take SQLite's write lock up front and serialize writes
+//! across connections. A sealed file reloads under a machine-local file lock and
+//! replaces only authenticated snapshot bytes after a committed write.
 //! The three stores of one [`SqliteRunStores`] share one connection: an awakeable update
 //! records its resume payload through the journal from inside its own transaction, and a
 //! second connection would wait on the write lock that transaction holds.
 
-use crate::storage;
+use crate::{sealed::SealedFile, storage};
 use contextful_core::run::journal::{sweepable, EntryKey, Row, Stored};
 use contextful_core::run::ports::{AwakeableStore, BlobStore, JournalStore};
 use contextful_core::run::suspend::Awakeable;
 use contextful_core::run::Failure;
+use contextful_core::store::encrypt::FileCipher;
 use parking_lot::ReentrantMutex;
 use rusqlite::{params, Connection, OptionalExtension};
 use std::cell::RefCell;
@@ -74,6 +74,7 @@ struct Held {
 struct Db {
     path: PathBuf,
     held: ReentrantMutex<RefCell<Held>>,
+    sealed: Option<SealedFile>,
 }
 
 /// A transaction or savepoint open on a [`Db`], rolled back unless committed, so a panic
@@ -127,7 +128,18 @@ impl Db {
             return Err(storage(path, format!("the file refuses write-ahead-log mode and stays in `{mode}`")));
         }
         conn.execute_batch(SCHEMA).map_err(|e| storage(path, e))?;
-        Ok(Db { path: path.to_path_buf(), held: ReentrantMutex::new(RefCell::new(Held { conn, depth: 0 })) })
+        Ok(Db { path: path.to_path_buf(), held: ReentrantMutex::new(RefCell::new(Held { conn, depth: 0 })), sealed: None })
+    }
+
+    fn open_sealed(path: &Path, cipher: Arc<dyn FileCipher>) -> Result<Db, Failure> {
+        let conn = Connection::open_in_memory().map_err(|e| storage(path, e))?;
+        let db = Db {
+            path: path.to_path_buf(),
+            held: ReentrantMutex::new(RefCell::new(Held { conn, depth: 0 })),
+            sealed: Some(SealedFile::new(path, cipher)),
+        };
+        db.with_inner(true, true, |tx| tx.run(|c| c.execute_batch(SCHEMA)))?;
+        Ok(db)
     }
 
     fn fail(&self, e: impl std::fmt::Display) -> Failure {
@@ -137,8 +149,20 @@ impl Db {
     /// Run `f` in one transaction, immediate when `write`, or in a savepoint when this
     /// thread is already inside one.
     fn with<T>(&self, write: bool, f: impl FnOnce(&Open) -> Result<T, Failure>) -> Result<T, Failure> {
+        self.with_inner(write, false, f)
+    }
+
+    fn with_inner<T>(&self, write: bool, allow_create: bool, f: impl FnOnce(&Open) -> Result<T, Failure>) -> Result<T, Failure> {
         let guard = self.held.lock();
         let depth = guard.borrow().depth;
+        let _file_lock = if depth == 0 {
+            self.sealed.as_ref().map(SealedFile::lock).transpose()?
+        } else {
+            None
+        };
+        if let Some(file) = self.sealed.as_ref().filter(|_| depth == 0) {
+            guard.borrow_mut().conn = file.load(allow_create, SCHEMA)?;
+        }
         let begin = match (depth, write) {
             (0, true) => "BEGIN IMMEDIATE".to_string(),
             (0, false) => "BEGIN DEFERRED".to_string(),
@@ -149,6 +173,9 @@ impl Db {
         let open = Open { db: self, held: &guard, depth, done: false };
         let out = f(&open)?;
         open.finish()?;
+        if let Some(file) = self.sealed.as_ref().filter(|_| depth == 0 && write) {
+            file.save(&guard.borrow().conn)?;
+        }
         Ok(out)
     }
 }
@@ -165,11 +192,21 @@ impl SqliteRunStores {
     /// Open or create the stores at `path`, switching the file to write-ahead-log mode.
     pub fn open(path: &Path) -> Result<SqliteRunStores, Failure> {
         let db = Arc::new(Db::open(path)?);
-        Ok(SqliteRunStores {
+        Ok(Self::from_db(db))
+    }
+
+    /// Open the run stores over the authenticated snapshot shared with the machine catalog.
+    pub fn open_sealed(path: &Path, cipher: Arc<dyn FileCipher>) -> Result<SqliteRunStores, Failure> {
+        let db = Arc::new(Db::open_sealed(path, cipher)?);
+        Ok(Self::from_db(db))
+    }
+
+    fn from_db(db: Arc<Db>) -> SqliteRunStores {
+        SqliteRunStores {
             journal: SqliteJournalStore { db: db.clone() },
             blobs: SqliteBlobStore { db: db.clone() },
             awakeables: SqliteAwakeableStore { db },
-        })
+        }
     }
 
     /// The file the stores live in.

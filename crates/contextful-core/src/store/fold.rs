@@ -3,6 +3,14 @@
 use super::resolve::TableState;
 use crate::time::Instant;
 
+/// Row-age work completed by one table's pass.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct RetentionReport {
+    pub cutoff: Instant,
+    pub rows_expired: u64,
+    pub partitions_dropped: u64,
+}
+
 /// Runs committed on a table since its previous pass that fire the next: 50
 /// (`store.fold.triggers`).
 pub const COMPACTION_RUN_COUNT: usize = 50;
@@ -37,9 +45,11 @@ pub fn scheduled(state: &TableState, now: Instant) -> bool {
 pub enum FoldOutcome {
     /// A snapshot was published; `collection` carries why the collection after it failed,
     /// which leaves the snapshot published (`store.fold.collection-failed`).
-    Folded { snapshot_id: String, runs: usize, rows: u64, collection: Option<String> },
+    Folded { snapshot_id: String, runs: usize, rows: u64, retention: Option<RetentionReport>, collected: Vec<String>, collection: Option<String> },
     /// No committed run was left to fold.
     NothingLanded,
+    /// No snapshot changed, while row-age retention and collection were checked.
+    NothingLandedRetained { cutoff: Instant, collected: Vec<String> },
     /// The pass failed for this table; the others continue.
     Failed(String),
 }
@@ -55,14 +65,27 @@ impl FoldOutcome {
 impl std::fmt::Display for FoldOutcome {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
-            FoldOutcome::Folded { snapshot_id, runs, rows, collection } => {
+            FoldOutcome::Folded { snapshot_id, runs, rows, retention, collected, collection } => {
                 write!(f, "folded {snapshot_id} ({runs} runs, {rows} rows)")?;
+                if let Some(report) = retention {
+                    write!(f, "; cutoff {}, {} rows expired, {} partitions dropped", report.cutoff, report.rows_expired, report.partitions_dropped)?;
+                }
+                if !collected.is_empty() {
+                    write!(f, "; collected {} directories: {}", collected.len(), collected.join(", "))?;
+                }
                 match collection {
                     Some(e) => write!(f, "; collection failed: {e}"),
                     None => Ok(()),
                 }
             }
             FoldOutcome::NothingLanded => f.write_str("nothing-landed"),
+            FoldOutcome::NothingLandedRetained { cutoff, collected } => {
+                write!(f, "nothing-landed; cutoff {cutoff}, 0 rows expired, 0 partitions dropped")?;
+                if !collected.is_empty() {
+                    write!(f, "; collected {} directories: {}", collected.len(), collected.join(", "))?;
+                }
+                Ok(())
+            }
             FoldOutcome::Failed(e) => write!(f, "failed: {e}"),
         }
     }

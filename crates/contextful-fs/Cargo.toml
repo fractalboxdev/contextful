@@ -10,11 +10,14 @@ publish = false
 # exclusive create that publishes a staged file without hard links. It depends on no other
 # workspace package, so both halves link it without crossing between them.
 
-[dependencies]
+[target.'cfg(not(all(target_arch = "wasm32", target_os = "unknown")))'.dependencies]
 getrandom = "0.3"
 
 [target.'cfg(unix)'.dependencies]
 libc = "0.2"
+
+[target.'cfg(windows)'.dependencies]
+windows-sys = { version = "0.61", features = ["Win32_Foundation", "Win32_Storage_FileSystem"] }
 
 [dev-dependencies]
 # Ledger measures record their figures (`assurance.measure.record`).

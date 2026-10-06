@@ -131,3 +131,20 @@ Decision: `surface.dispatch` submits each step to a worker's `POST /submit`, key
 | A pool bound per exclusion key | Concurrency cap | Adding pipelines raises concurrent pulls unseen. |
 
 Consequences: a silent worker costs one lapse before its step moves. The accepted cost: a worker that cannot reach the relay runs steps it cannot report.
+
+## A synced control head carries an issuer-signed apply receipt
+
+**Status:** accepted
+
+Context: node-owned run states and local version numbers prove no admin apply. Criteria: authenticated content, air-gapped local use and ordered claims.
+
+Decision: a synced import or apply admits an admin capability and signs a receipt binding project, version, predecessor and snapshot digests before advancing its pointer. Push conditionally commits the receipt chain and one project-scoped head in the bucket manifest, refusing divergent heads. Pull leaves the local pointer untouched. The reconciler verifies the issuer signature against local key pins and validates the snapshot against local declarations before adoption. An installation without sync keeps unsigned applies local.
+
+| Option | Lost on | Cost |
+| --- | --- | --- |
+| Signed receipt and project-scoped manifest head *(chosen)* | — | A synced apply needs an admin credential and signing port; replicas verify a chain before arming. |
+| Version in node run state | Authorship | Any node writer can claim a version, and two nodes can use the same number for different documents. |
+| Trust the bucket manifest's control entry | Content authenticity | A data writer can publish schedules without an admin apply. |
+| Replicate the local snapshot directory directly | Claim ordering | Independent local version counters collide, and a copied pointer carries no authorization proof. |
+
+Consequences: a cold node authenticates the bucket head. A bucket writer can replay an earlier signed head to a never-synced node; freshness needs an independent monotonic witness.

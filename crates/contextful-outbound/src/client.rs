@@ -12,7 +12,7 @@ use contextful_core::connector::ConnectorError;
 use contextful_core::run::{Failure, FailureTag};
 use std::net::SocketAddr;
 use std::sync::{Arc, Mutex};
-use std::time::Duration;
+use std::time::{Duration, Instant};
 use url::Url;
 
 /// Hops one request follows before it fails.
@@ -274,12 +274,18 @@ impl Client {
 
     /// Send one request, following same-origin hops.
     pub fn send(&self, method: &str, url: &Url, headers: &[(String, HeaderValue)], body: Option<&[u8]>) -> Result<Response, Failure> {
-        self.exchange(method, url, headers, body, true)
+        self.exchange(method, url, headers, body, true, self.max_body, self.timeout)
+    }
+
+    /// Send through the same host, hook and limiter checks with a smaller body and wall-clock
+    /// budget. Redirects consume the same call's remaining time.
+    pub fn send_bounded(&self, method: &str, url: &Url, headers: &[(String, HeaderValue)], body: Option<&[u8]>, max_body: u64, timeout: Duration) -> Result<Response, Failure> {
+        self.exchange(method, url, headers, body, true, max_body.min(self.max_body), timeout.min(self.timeout))
     }
 
     /// Send one request and answer whatever comes back, a redirect included, following nothing.
     pub fn send_once(&self, method: &str, url: &Url, headers: &[(String, HeaderValue)], body: Option<&[u8]>) -> Result<Response, Failure> {
-        self.exchange(method, url, headers, body, false)
+        self.exchange(method, url, headers, body, false, self.max_body, self.timeout)
     }
 
     fn intent(&self, method: &str, url: &Url, body: &[u8]) -> Intent {
@@ -295,7 +301,7 @@ impl Client {
     }
 
     /// One hop the hook admitted: resolve, vet, send.
-    fn hop(&self, method: &str, url: &Url, headers: &[(String, HeaderValue)], body: &[u8]) -> Hop {
+    fn hop(&self, method: &str, url: &Url, headers: &[(String, HeaderValue)], body: &[u8], max_body: u64, timeout: Duration) -> Hop {
         let addrs = match self.resolve(url) {
             Ok(a) => a,
             Err(f) => return Hop::Failed(f),
@@ -325,15 +331,15 @@ impl Client {
             body,
             // A request carrying a declared header takes the hardened client, which bypasses the system proxy.
             direct: !headers.is_empty(),
-            timeout: self.timeout,
-            max_body: self.max_body,
+            timeout,
+            max_body,
             read_body: self.read_body,
         };
         match self.transport.send(&outbound) {
             Ok(inbound) => Hop::Answered(inbound),
             // A body past the ceiling is past it on every retry.
             Err(TransportFault::BodyOverLimit) => {
-                Hop::Failed(Failure::deterministic(FailureTag::Permanent, format!("`{}` {OVER_LIMIT} {} bytes", scrub(url), self.max_body)))
+                Hop::Failed(Failure::deterministic(FailureTag::Permanent, format!("`{}` {OVER_LIMIT} {} bytes", scrub(url), max_body)))
             }
             Err(TransportFault::Failed(why)) => Hop::Failed(Failure::new(FailureTag::Transient, format!("request to `{}` failed: {why}", scrub(url)))),
         }
@@ -345,11 +351,16 @@ impl Client {
         }
     }
 
-    fn exchange(&self, method: &str, url: &Url, headers: &[(String, HeaderValue)], body: Option<&[u8]>, follow: bool) -> Result<Response, Failure> {
+    fn exchange(&self, method: &str, url: &Url, headers: &[(String, HeaderValue)], body: Option<&[u8]>, follow: bool, max_body: u64, timeout: Duration) -> Result<Response, Failure> {
         let mut current = url.clone();
+        let started = Instant::now();
         let body = body.unwrap_or_default();
         check_hop(&self.origin, &current).map_err(deny)?;
         for _ in 0..=MAX_HOPS {
+            let remaining = timeout.saturating_sub(started.elapsed());
+            if remaining.is_zero() {
+                return Err(Failure::new(FailureTag::Transient, format!("`{}` exceeded the outbound call's wall-clock budget", scrub(url))));
+            }
             // A request the allowlist refuses never reaches the hook or the limiter
             // (`connector.meter.allowlist-precedence`).
             self.permit(&current, headers)?;
@@ -360,7 +371,7 @@ impl Client {
                 }
                 return Err(f);
             }
-            let inbound = match self.hop(method, &current, headers, body) {
+            let inbound = match self.hop(method, &current, headers, body, max_body, remaining) {
                 Hop::Answered(inbound) => inbound,
                 Hop::Failed(f) => {
                     self.settle(&intent, &Outcome { failure: Some(f.message.clone()), sent: 0, ..Outcome::default() });

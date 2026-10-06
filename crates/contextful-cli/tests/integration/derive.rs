@@ -3,6 +3,152 @@
 
 use std::process::{Command, Output};
 
+#[test]
+fn a_link_preview_records_each_vendor_request_before_landing() {
+    use std::io::{Read, Write};
+    use std::net::TcpListener;
+
+    let listener = TcpListener::bind("127.0.0.1:0").unwrap();
+    let port = listener.local_addr().unwrap().port();
+    let server = std::thread::spawn(move || {
+        let (mut socket, _) = listener.accept().unwrap();
+        let mut request = [0; 4096];
+        let n = socket.read(&mut request).unwrap();
+        assert!(String::from_utf8_lossy(&request[..n]).starts_with("GET /article HTTP/1.1"));
+        let body = b"<head><title>Article</title></head>";
+        write!(socket, "HTTP/1.1 200 OK\r\nContent-Type: text/html; charset=utf-8\r\nContent-Length: {}\r\nConnection: close\r\n\r\n", body.len()).unwrap();
+        socket.write_all(body).unwrap();
+    });
+    let dir = tempfile::tempdir().unwrap();
+    let root = dir.path().join(".contextful/context/research");
+    std::fs::create_dir_all(&root).unwrap();
+    std::fs::write(root.join("config.toml"), "[node]\nid = \"ingest-a\"\n").unwrap();
+    std::fs::write(
+        dir.path().join("contextful.toml"),
+        "authoring_posture = \"per_request\"\n[[pipeline]]\nid = \"cards\"\ntables = [{ name = \"cards\", primary_key = [\"unit_ref\", \"derivation_key\", \"cue_seq\"] }]\n[pipeline.source]\nname = \"derive\"\nconfig = { task = \"link_preview\", engine = \"reader\", source_table = \"documents\", media_column = \"url\", parent_id_column = \"doc_id\" }\n[derive.reader]\ndriver = \"fetch\"\nallow_hosts = [\"localhost\"]\n",
+    )
+    .unwrap();
+    std::fs::write(dir.path().join("documents.jsonl"), format!("{{\"doc_id\":\"d1\",\"url\":\"http://localhost:{port}/article\"}}\n")).unwrap();
+    ok(&cf(dir.path(), &["context", "land", "documents", "--project", "research", "--rows", "documents.jsonl", "--run-id", "load-1", "--site-id", "site", "--now", "2030-01-01T00:00:00Z"]));
+    ok(&cf(dir.path(), &["pipeline", "run", "cards", "--project", "research", "--run-id", "cards-1", "--site-id", "site", "--now", "2030-01-01T01:00:00Z"]));
+    server.join().unwrap();
+    let store = contextful_context::Store::open(dir.path(), "research").unwrap();
+    let files = contextful_context::ledger::files(&store, "cards_cards").unwrap();
+    assert_eq!(files.len(), 1);
+    let calls = contextful_context::ledger::read(&files[0]).unwrap();
+    assert_eq!(calls.len(), 1);
+    assert_eq!(calls[0].0, "cards-1");
+    assert_eq!((calls[0].1.connector.as_str(), calls[0].1.method.as_str(), calls[0].1.url_host.as_str(), calls[0].1.status_code, calls[0].1.batch_seq), ("derive", "GET", "localhost", Some(200), Some(0)));
+}
+
+#[test]
+fn a_link_preview_reserves_document_and_image_requests_from_one_shared_quota() {
+    let vendor = super::pipeline::Vendor::start(|target| match target {
+        "/article" => (200, "<head><title>Article</title><meta property=\"og:image\" content=\"/cover.jpg\"></head>".into()),
+        "/cover.jpg" => (200, "image".into()),
+        _ => (404, String::new()),
+    });
+    let limiter = super::pipeline::Vendor::start(|target| match target {
+        "/quota/acquire" => (200, "{\"decision\":\"granted\",\"permits\":1,\"ttl_secs\":60}".into()),
+        _ => (204, String::new()),
+    });
+    let dir = tempfile::tempdir().unwrap();
+    let root = dir.path().join(".contextful/context/research");
+    std::fs::create_dir_all(&root).unwrap();
+    std::fs::write(root.join("config.toml"), "[node]\nid = \"ingest-a\"\n").unwrap();
+    let vendor_url = vendor.url("/article").replace("127.0.0.1", "localhost");
+    std::fs::write(
+        dir.path().join("contextful.toml"),
+        format!("authoring_posture = \"per_request\"\n[limiters.preview]\nendpoint = \"{}\"\ntoken = \"secret://limiter-token\"\npermits = 1\n[[pipeline]]\nid = \"cards\"\ntables = [{{ name = \"cards\", primary_key = [\"unit_ref\", \"derivation_key\", \"cue_seq\"] }}]\n[pipeline.source]\nname = \"derive\"\nconfig = {{ task = \"link_preview\", engine = \"reader\", source_table = \"documents\", media_column = \"url\", parent_id_column = \"doc_id\", grant = {{ quota = \"preview\", class = \"batch-read\" }} }}\n[derive.reader]\ndriver = \"fetch\"\nallow_hosts = [\"localhost\"]\nallow_image_hosts = [\"localhost\"]\n", limiter.url("/quota")),
+    )
+    .unwrap();
+    std::fs::write(dir.path().join("documents.jsonl"), format!("{{\"doc_id\":\"d1\",\"url\":\"{vendor_url}\"}}\n")).unwrap();
+    ok(&cf(dir.path(), &["context", "land", "documents", "--project", "research", "--rows", "documents.jsonl", "--run-id", "load-1", "--site-id", "site", "--now", "2030-01-01T00:00:00Z"]));
+    let out = Command::new(env!("CARGO_BIN_EXE_contextful"))
+        .args(["pipeline", "run", "cards", "--project", "research", "--run-id", "cards-2", "--site-id", "site", "--now", "2030-01-01T01:00:00Z"])
+        .current_dir(dir.path())
+        .env("LIMITER_TOKEN", "lim-1")
+        .env("CONTEXTFUL_SECRETS_ALLOW_ENV_TEMPLATES", "1")
+        .output()
+        .unwrap();
+    ok(&out);
+    assert_eq!(vendor.targets(), ["/article", "/cover.jpg"]);
+    assert_eq!(limiter.targets().iter().filter(|target| target.as_str() == "/quota/acquire").count(), 2);
+    let store = contextful_context::Store::open(dir.path(), "research").unwrap();
+    let files = contextful_context::ledger::files(&store, "cards_cards").unwrap();
+    assert_eq!(files.len(), 1);
+    let calls = contextful_context::ledger::read(&files[0]).unwrap();
+    assert_eq!(calls.len(), 2);
+    assert!(calls.iter().all(|(run, call)| run == "cards-2" && call.method == "GET" && call.url_host == "localhost" && call.status_code == Some(200) && call.batch_seq == Some(0)));
+}
+
+#[test]
+fn a_link_preview_refuses_to_land_when_its_request_ledger_cannot_settle() {
+    let vendor = super::pipeline::Vendor::start(|_| (200, "<head><title>Article</title></head>".into()));
+    let dir = tempfile::tempdir().unwrap();
+    let root = dir.path().join(".contextful/context/research");
+    std::fs::create_dir_all(&root).unwrap();
+    std::fs::write(root.join("config.toml"), "[node]\nid = \"ingest-a\"\n").unwrap();
+    std::fs::write(
+        dir.path().join("contextful.toml"),
+        "authoring_posture = \"per_request\"\n[[pipeline]]\nid = \"cards\"\ntables = [{ name = \"cards\", primary_key = [\"unit_ref\", \"derivation_key\", \"cue_seq\"] }]\n[pipeline.source]\nname = \"derive\"\nconfig = { task = \"link_preview\", engine = \"reader\", source_table = \"documents\", media_column = \"url\", parent_id_column = \"doc_id\" }\n[derive.reader]\ndriver = \"fetch\"\nallow_hosts = [\"localhost\"]\n",
+    )
+    .unwrap();
+    let address = vendor.url("/article").replace("127.0.0.1", "localhost");
+    std::fs::write(dir.path().join("documents.jsonl"), format!("{{\"doc_id\":\"d1\",\"url\":\"{address}\"}}\n")).unwrap();
+    ok(&cf(dir.path(), &["context", "land", "documents", "--project", "research", "--rows", "documents.jsonl", "--run-id", "load-1", "--site-id", "site", "--now", "2030-01-01T00:00:00Z"]));
+    let blocked = root.join("tables/cards_cards/requests");
+    std::fs::create_dir_all(blocked.parent().unwrap()).unwrap();
+    std::fs::write(&blocked, "a file blocks the request ledger directory").unwrap();
+    let out = cf(dir.path(), &["pipeline", "run", "cards", "--project", "research", "--run-id", "cards-3", "--site-id", "site", "--now", "2030-01-01T01:00:00Z"]);
+    let error = String::from_utf8_lossy(&out.stderr);
+    assert!(!out.status.success() && error.contains("request ledger"), "{error}");
+    assert!(root.join("tables/cards_cards/data/runs/cards-3").read_dir().is_err(), "no derived batch commits without its ledger");
+    assert_eq!(vendor.targets(), ["/article"]);
+}
+
+#[test]
+fn a_rate_limited_link_request_has_no_batch_ordinal_in_its_ledger() {
+    use std::io::{Read, Write};
+    use std::net::TcpListener;
+
+    let listener = TcpListener::bind("127.0.0.1:0").unwrap();
+    let port = listener.local_addr().unwrap().port();
+    let server = std::thread::spawn(move || {
+        let (mut socket, _) = listener.accept().unwrap();
+        let mut request = [0; 4096];
+        let mut received = 0;
+        while !request[..received].windows(4).any(|bytes| bytes == b"\r\n\r\n") {
+            assert!(received < request.len(), "request header exceeds the fixture buffer");
+            let count = socket.read(&mut request[received..]).unwrap();
+            assert!(count > 0, "connection closes before the request header");
+            received += count;
+        }
+        socket.write_all(b"HTTP/1.1 429 Too Many Requests\r\nRetry-After: 301\r\nContent-Length: 0\r\nConnection: close\r\n\r\n").unwrap();
+    });
+    let dir = tempfile::tempdir().unwrap();
+    let root = dir.path().join(".contextful/context/research");
+    std::fs::create_dir_all(&root).unwrap();
+    std::fs::write(root.join("config.toml"), "[node]\nid = \"ingest-a\"\n").unwrap();
+    std::fs::write(
+        dir.path().join("contextful.toml"),
+        "authoring_posture = \"per_request\"\n[[pipeline]]\nid = \"cards\"\ntables = [{ name = \"cards\", primary_key = [\"unit_ref\", \"derivation_key\", \"cue_seq\"] }]\n[pipeline.source]\nname = \"derive\"\nconfig = { task = \"link_preview\", engine = \"reader\", source_table = \"documents\", media_column = \"url\", parent_id_column = \"doc_id\" }\n[derive.reader]\ndriver = \"fetch\"\nallow_hosts = [\"localhost\"]\n",
+    )
+    .unwrap();
+    let address = format!("http://localhost:{port}/article");
+    std::fs::write(dir.path().join("documents.jsonl"), format!("{{\"doc_id\":\"d1\",\"url\":\"{address}\"}}\n")).unwrap();
+    ok(&cf(dir.path(), &["context", "land", "documents", "--project", "research", "--rows", "documents.jsonl", "--run-id", "load-1", "--site-id", "site", "--now", "2030-01-01T00:00:00Z"]));
+    let out = cf(dir.path(), &["pipeline", "run", "cards", "--project", "research", "--run-id", "cards-4", "--site-id", "site", "--now", "2030-01-01T01:00:00Z"]);
+    assert!(!out.status.success(), "{}", String::from_utf8_lossy(&out.stdout));
+    server.join().unwrap();
+    let store = contextful_context::Store::open(dir.path(), "research").unwrap();
+    let files = contextful_context::ledger::files(&store, "cards_cards").unwrap();
+    assert_eq!(files.len(), 1);
+    let calls = contextful_context::ledger::read(&files[0]).unwrap();
+    assert_eq!(calls.len(), 1);
+    assert_eq!((calls[0].1.status_code, calls[0].1.batch_seq), (Some(429), None));
+}
+
 fn cf(dir: &std::path::Path, args: &[&str]) -> Output {
     Command::new(env!("CARGO_BIN_EXE_contextful")).args(args).current_dir(dir).output().unwrap()
 }
@@ -61,18 +207,42 @@ pub(crate) fn host_manifest(task: &str) -> String {
 }
 
 fn host_project(manifest: &str) -> tempfile::TempDir {
+    host_project_with_rows(
+        manifest,
+        "{\"doc_id\":\"d1\",\"body\":\"alpha beta\"}\n{\"doc_id\":\"d2\",\"body\":\"gamma\"}\n{\"doc_id\":\"d3\",\"body\":\"   \"}\n",
+    )
+}
+
+fn host_project_with_rows(manifest: &str, documents: &str) -> tempfile::TempDir {
     let dir = tempfile::tempdir().unwrap();
     let store = dir.path().join(".contextful/context/research");
     std::fs::create_dir_all(&store).unwrap();
     std::fs::write(store.join("config.toml"), "[node]\nid = \"ingest-a\"\n").unwrap();
     std::fs::write(dir.path().join("contextful.toml"), format!("authoring_posture = \"per_request\"\n{}", manifest)).unwrap();
-    std::fs::write(
-        dir.path().join("documents.jsonl"),
-        "{\"doc_id\":\"d1\",\"body\":\"alpha beta\"}\n{\"doc_id\":\"d2\",\"body\":\"gamma\"}\n{\"doc_id\":\"d3\",\"body\":\"   \"}\n",
-    )
-    .unwrap();
+    std::fs::write(dir.path().join("documents.jsonl"), documents).unwrap();
     ok(&cf(dir.path(), &["context", "land", "documents", "--project", "research", "--rows", "documents.jsonl", "--run-id", "load-1", "--site-id", "site", "--now", "2030-01-01T00:00:00Z"]));
     dir
+}
+
+#[test]
+fn an_empty_host_content_marker_carries_the_declared_parent_retention_clock() {
+    let host = host_binary();
+    let manifest = host_manifest("word-split").replace(
+        "retain_versions = true",
+        "columns = { base_arrived_at = \"timestamp\" }, retain_rows = { column = \"base_arrived_at\", age = \"30d\" }",
+    ).replace(
+        "primary_key = [\"unit_ref\", \"derivation_key\", \"word_seq\"]",
+        "primary_key = [\"unit_ref\", \"derivation_key\"]",
+    );
+    let dir = host_project_with_rows(
+        &manifest,
+        "{\"doc_id\":\"d1\",\"body\":\"   \",\"base_arrived_at\":\"2100-01-01T00:00:00Z\"}\n",
+    );
+    ok(&fire(&host, dir.path(), "split-1", "2030-01-01T01:00:00Z", &[]));
+    assert_eq!(
+        select(dir.path(), "SELECT unit_ref, kind, base_arrived_at FROM split_words"),
+        [["d1", "marker", "2100-01-01T00:00:00Z"]]
+    );
 }
 
 /// The rows `sql` answers over the project, each as its cells' text.
@@ -83,6 +253,107 @@ fn select(dir: &std::path::Path, sql: &str) -> Vec<Vec<String>> {
 
 fn fire(bin: &std::path::Path, dir: &std::path::Path, run: &str, now: &str, env: &[(&str, &str)]) -> Output {
     run_bin(bin, dir, &["pipeline", "run", "split", "--project", "research", "--run-id", run, "--site-id", "site", "--now", now], env)
+}
+
+/// A host task records an incomplete parent in each table run's skipped count.
+#[test]
+fn a_host_task_counts_an_incomplete_parent_on_its_run_records() {
+    let host = host_binary();
+    let dir = host_project(&host_manifest("word-split"));
+    std::fs::write(dir.path().join("missing.jsonl"), "{\"body\":\"orphan\"}\n").unwrap();
+    ok(&cf(dir.path(), &["context", "land", "documents", "--project", "research", "--rows", "missing.jsonl", "--run-id", "load-2", "--site-id", "site", "--now", "2030-01-01T00:30:00Z"]));
+    ok(&fire(&host, dir.path(), "split-1", "2030-01-01T01:00:00Z", &[]));
+    let history = ok(&cf(dir.path(), &["run", "history", "--project", "research", "--export"]));
+    let runs: Vec<serde_json::Value> = history.lines().skip(1).map(|line| serde_json::from_str(line).unwrap()).collect();
+    for table in ["split_words", "split_stats", "split_units"] {
+        let run_id = format!("split-1.{table}");
+        assert_eq!(runs.iter().find(|run| run["run_id"] == run_id).map(|run| &run["skipped"]), Some(&serde_json::json!(1)), "{history}");
+    }
+}
+
+fn chain_manifest() -> String {
+    let child = "site_id = \"site\"\n[[pipeline]]\nid = \"echo\"\nschedule = \"every 1h\"\ntables = [\n  { name = \"copies\", primary_key = [\"unit_ref\", \"derivation_key\", \"cue_seq\"] },\n  { name = \"units\", primary_key = [\"unit_ref\", \"derivation_key\", \"cue_seq\"] },\n]\n[pipeline.source]\nname = \"derive\"\nconfig = { task = \"word-copy\", source_table = \"split_words\", parent_id_column = \"word\" }\n";
+    format!("{child}\n{}", host_manifest("word-split").replace("id = \"split\"\n", "id = \"split\"\nschedule = \"every 1h\"\n"))
+}
+
+/// A single-pipeline apply validates the combined applied graph before claiming a version.
+#[test]
+fn applying_one_derive_change_refuses_a_cycle_with_the_applied_sibling() {
+    let host = host_binary();
+    let dir = host_project(&chain_manifest());
+    let path = dir.path();
+    ok(&run_bin(&host, path, &["pipeline", "import", "--project", "research"], &[]));
+    let revised = chain_manifest()
+        .replace("source_table = \"split_words\"", "source_table = \"documents\"")
+        .replace("source_table = \"documents\", parent_id_column = \"doc_id\"", "source_table = \"echo_copies\", parent_id_column = \"doc_id\"");
+    std::fs::write(path.join("contextful.toml"), format!("authoring_posture = \"per_request\"\n{revised}")).unwrap();
+    let result = run_bin(&host, path, &["pipeline", "apply", "split", "--project", "research"], &[]);
+    let error = String::from_utf8_lossy(&result.stderr);
+    assert!(!result.status.success() && error.contains("DeriveCycle") && error.contains("split") && error.contains("echo"), "{error}");
+    assert!(!path.join(".contextful/control/research/manifest@v2.toml").exists(), "cyclic snapshot was claimed");
+}
+
+// spec: run.select.derive-order@1ff2a000
+#[test]
+fn a_child_declared_first_derives_its_parents_new_rows_in_one_tick() {
+    let host = host_binary();
+    let dir = host_project(&chain_manifest());
+    let p = dir.path();
+    ok(&run_bin(&host, p, &["pipeline", "import", "--project", "research"], &[]));
+    let cycle = run_bin(&host, p, &["pipeline", "serve", "--cycle", "--project", "research", "--now", "2030-01-01T01:00:00Z"], &[]);
+    ok(&cycle);
+    assert_eq!(select(p, "SELECT copy FROM \"echo_copies\" WHERE kind = 'passage' ORDER BY copy"), [["alpha"], ["beta"], ["gamma"]]);
+}
+
+// spec: run.select.derive-failed-parent@219b4497
+#[test]
+fn a_child_reads_committed_parent_rows_after_its_parent_fails() {
+    let host = host_binary();
+    let dir = host_project(&chain_manifest());
+    let p = dir.path();
+    ok(&fire(&host, p, "seed", "2030-01-01T00:00:00Z", &[]));
+    ok(&run_bin(&host, p, &["pipeline", "import", "--project", "research"], &[]));
+    let cycle = run_bin(&host, p, &["pipeline", "serve", "--cycle", "--project", "research", "--now", "2030-01-01T01:00:00Z"], &[("WORD_SPLIT_VERSION", "2"), ("WORD_SPLIT_FAIL", "1")]);
+    assert!(!cycle.status.success(), "a failed parent makes the cycle red: {}", String::from_utf8_lossy(&cycle.stdout));
+    assert_eq!(select(p, "SELECT copy FROM \"echo_copies\" WHERE kind = 'passage' ORDER BY copy"), [["alpha"], ["beta"], ["gamma"]]);
+}
+
+#[test]
+fn a_failed_parent_runs_its_derive_child_past_an_explicit_after_sibling() {
+    let host = host_binary();
+    let vendor = crate::pipeline::Vendor::start(|_| (200, "[]".into()));
+    let manifest = format!(
+        "{}\n[[pipeline]]\nid = \"a-after\"\nafter = \"split\"\ntables = [\"items\"]\n[pipeline.source]\nname = \"http\"\nconfig = {{ endpoint = \"{}\" }}\n",
+        chain_manifest(),
+        vendor.url("/after"),
+    );
+    let dir = host_project(&manifest);
+    let p = dir.path();
+    ok(&fire(&host, p, "seed", "2030-01-01T00:00:00Z", &[]));
+    ok(&run_bin(&host, p, &["pipeline", "import", "--project", "research"], &[]));
+    let cycle = run_bin(&host, p, &["pipeline", "serve", "--cycle", "--project", "research", "--now", "2030-01-01T01:00:00Z"], &[("WORD_SPLIT_VERSION", "2"), ("WORD_SPLIT_FAIL", "1")]);
+    assert!(!cycle.status.success());
+    assert_eq!(select(p, "SELECT copy FROM \"echo_copies\" WHERE kind = 'passage' ORDER BY copy"), [["alpha"], ["beta"], ["gamma"]]);
+    assert!(vendor.targets().is_empty(), "an explicit after sibling ran after the parent failed");
+}
+
+// spec: run.select.parent-outcome@418ee978
+#[cfg(unix)]
+#[test]
+fn a_derived_child_stops_when_the_parent_process_cannot_start() {
+    let host = host_binary();
+    let manifest = chain_manifest().replacen("site_id = \"site\"", "site_id = \"site\"\n[control]\ntrigger = \"external\"", 1);
+    let dir = host_project(&manifest);
+    ok(&run_bin(&host, dir.path(), &["pipeline", "import", "--project", "research"], &[]));
+    let copy = dir.path().join("host-copy");
+    std::fs::copy(&host, &copy).unwrap();
+    let (daemon, url) = crate::pipeline::external_from(dir.path(), &copy);
+    std::fs::remove_file(&copy).unwrap();
+    assert_eq!(crate::pipeline::post(&url).0, 200);
+    let index = daemon.wait_for("fire split: failed", 0);
+    let line = &daemon.lines()[index];
+    assert!(line.contains("split: starting"), "{line}");
+    assert!(!line.contains("echo: starting"), "a derived child started without a parent outcome: {line}");
 }
 
 /// A pipeline naming a registered host task builds; an unregistered name raises `DeriveUnknownTask`, listing the

@@ -1,0 +1,46 @@
+{
+  "name": "Contextful FlareDispatch gate",
+  "target": "branch",
+  "enforcement": "disabled",
+  "conditions": {
+    "ref_name": {
+      "include": ["refs/heads/main"],
+      "exclude": []
+    }
+  },
+  "rules": [
+    {
+      "type": "required_status_checks",
+      "parameters": {
+        "strict_required_status_checks_policy": false,
+        "required_status_checks": [
+          { "context": "flare-dispatch/contextful-gate" },
+          { "context": "flare-dispatch/check:pins" },
+          { "context": "flare-dispatch/check:toolchain" },
+          { "context": "flare-dispatch/check:schema" },
+          { "context": "flare-dispatch/check:test-first" },
+          { "context": "flare-dispatch/check:workspace.compile" },
+          { "context": "flare-dispatch/check:workspace.cli" },
+          { "context": "flare-dispatch/check:workspace.foundation" },
+          { "context": "flare-dispatch/check:workspace.runtime" },
+          { "context": "flare-dispatch/check:workspace.read" },
+          { "context": "flare-dispatch/check:workspace.ci" },
+          { "context": "flare-dispatch/check:acceptance" },
+          { "context": "flare-dispatch/check:evaluate" },
+          { "context": "flare-dispatch/check:features.packages" },
+          { "context": "flare-dispatch/check:features.binary-none" },
+          { "context": "flare-dispatch/check:features.binary-all" },
+          { "context": "flare-dispatch/check:features.binary-data-plane" },
+          { "context": "flare-dispatch/check:features.binary-contextful-edge" },
+          { "context": "flare-dispatch/check:crate-graph" },
+          { "context": "flare-dispatch/check:connectors" },
+          { "context": "flare-dispatch/check:surfaces" },
+          { "context": "flare-dispatch/check:formal" },
+          { "context": "flare-dispatch/check:budget.control" },
+          { "context": "flare-dispatch/check:budget.edge" },
+          { "context": "flare-dispatch/check:budget.full" }
+        ]
+      }
+    }
+  ]
+}

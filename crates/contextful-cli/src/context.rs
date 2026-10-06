@@ -23,6 +23,15 @@ use contextful_sqlite::DerivedSqlite;
 use std::collections::HashMap;
 use std::path::{Path, PathBuf};
 
+/// Choose a rebuildable catalog without a plaintext file for a bound encrypted store.
+pub fn derived_catalog(path: &Path, encrypted: bool) -> Result<DerivedSqlite> {
+    if encrypted {
+        Ok(DerivedSqlite::open_ephemeral(path)?)
+    } else {
+        Ok(DerivedSqlite::open(path)?)
+    }
+}
+
 #[derive(clap::Args)]
 pub struct StoreArgs {
     /// The project whose store root is `.contextful/context/<project>/` under the working
@@ -225,7 +234,7 @@ pub fn run(cmd: ContextCmd) -> Result<()> {
         ContextCmd::RebuildCatalog { project } => {
             let l = locate(project.as_deref(), None)?;
             let store = Store::open(&l.project.dir, &l.project.name)?;
-            let catalog = DerivedSqlite::open(&store.root().join(DERIVED_CATALOG_FILE))?;
+            let catalog = derived_catalog(&store.root().join(DERIVED_CATALOG_FILE), store.encrypted())?;
             let rows = rebuild(&store, &catalog)?;
             println!("{}", serde_json::to_string_pretty(&rows)?);
             Ok(())

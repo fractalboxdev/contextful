@@ -114,6 +114,8 @@ fn credential_with_action(signer: &SeedSigner, action: Action, tables: &str, ttl
         aggregate: None,
         templates: Some(vec!["*".into()]),
         max_rows: None,
+        max_duration_ms: None,
+        max_response_bytes: None,
     };
     let mut req = MintRequest::custody(subject, vec![grant]);
     req.lifetime = Lifetime::Requested(ttl);

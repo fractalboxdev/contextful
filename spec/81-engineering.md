@@ -53,13 +53,11 @@ One home per capability, the one enforcement decision module, adapters, mirror a
 - `adapter` — A surface with no engine process on its request path implements an adapter against the engine's ports.
   *P5*
 - `derivation-check` — A generated artifact declares the check that fails once its source moves, and the gate's schema stage runs that check.
-  *P5*
+  *P5, A-assurance*
 - `mirror-exemption` — A review-time restatement of a build-time rule is admitted where its site carries a `mirrors: <clause id>` comment naming the clause it restates; an unannotated restatement stays {{assurance.structure-tree.duplicated-capability}}.
   *because a reviewer-facing check sometimes restates a rule, and the annotation keeps the engine its one home and the copy traceable to it*
 - `mirror-unresolved` — A `mirrors:` comment in a tracked file under `crates/`, `tools/` or `apps/` naming no clause of `spec/spec.lock.json` raises `MirrorUnresolved` in the schema stage, naming the file and line.
   *because an annotation naming nothing exempts a copy while tying it to no rule it could drift from*
-
-unsettled: Does a derived artifact prove currency by a schema-hash comparison, by regeneration and diff, or by a build-time export? owner: build affects: assurance.structure-tree
 
 ## automate
 
@@ -167,11 +165,11 @@ Stage order, secrets of record, the crate-graph, row-token, egress and dependenc
   *A-assurance*
 - `remote-check` — The FlareDispatch pull-request webhook dispatches every part from `contextful-ci stages --parts`, each as `flare-dispatch/check:<part>` on the head commit.
   *A-assurance*
-- `workspace-parts` — Remote workspace checks compile the feature-unified workspace and run the CLI suite from that build, then run each other non-acceptance package suite in exactly one of four groups.
+- `workspace-parts` — Remote workspace checks compile the feature-unified workspace without running tests, run the CLI suite in its own check, and run each other non-acceptance package suite in exactly one of four groups.
   *A-assurance*
 - `remote-predecessors` — Each dispatched part invokes `contextful-ci gate --predecessors --stage <part> --base <base-sha>`, so no check reads another check's sandbox.
   *A-assurance*
-- `fork-dispatch` — FlareDispatch dispatches only a pull-request head pushed to this repository; a fork receives none of the 23 required stage checks.
+- `fork-dispatch` — FlareDispatch dispatches only a pull-request head pushed to this repository; a fork receives none of the 24 required stage checks.
   *because a dispatch runs untrusted code in the organization's compute account, and absent required checks fail closed*
 - `stage-reports` — Each stage prints the environment it leaves and its memory limit, peak and event counts, and a failing stage prints its diagnostics before propagating its exit code.
   *because memory exhaustion is silent, and a kill then reads as a number in the log*
@@ -220,6 +218,8 @@ Stage order, secrets of record, the crate-graph, row-token, egress and dependenc
   *because a package script can omit a pinned test while reporting success*
 - `surface-check-failed` — A surface whose typecheck, unit tests or framework build fails raises `SurfaceCheckFailed`, naming the surface and the script.
   *P7*
+
+unsettled: How does corpus status attest FlareDispatch's external webhook and check-run behavior? owner: build affects: assurance.gate
 
 The stages, numbered in run order, under the container's ceilings:
 
@@ -349,17 +349,21 @@ The target ledger: each tracked target, the clause it serves, how it is measured
 - `unresolved-entry` — An entry whose owning clause, method or metric path resolves to nothing raises `MeasureEntryUnresolved` before any measure runs.
   *P7*
 - `open-entry` — An entry naming an issue in place of a method reports open and gates nothing, and `evals/ledger.md` carries every entry's computed status.
-- `tier` — A gate-tier entry decides the evaluate stage, a trend-tier entry records on every run and decides nothing, and a scheduled-tier entry runs on the scheduled job alone.
+- `tier` — A gate-tier entry decides the evaluate stage, a trend-tier entry is measured on the default-branch run and decides nothing, and a scheduled-tier entry runs on the scheduled job alone.
 - `count-first` — A gate-tier entry measures a count, a ratio within one run or a size under a locked resolve; a wall-clock or resident-memory figure is trend-tier.
   *because a shared container moves wall-clock figures past any band narrow enough to catch a regression*
 - `record` — A measure writes one JSON record carrying its entry id, value, sample count, seed and run stamp; a gate-tier method finishing without one raises `MeasureRecordMissing`.
   *P7*
 - `seeded` — Every generated fixture and randomized schedule derives from the record's seed, and replaying that seed reproduces a count-valued entry's value.
   *because a failure that cannot replay cannot be fixed*
-- `seed-mismatch` — A record whose seed differs from its entry's declared seed raises `MeasureSeedMismatch`, and the entry counts as red.
+- `seed-mismatch` — A gate or scheduled record whose seed differs from its entry's declared seed raises `MeasureSeedMismatch` and counts as red; a trend mismatch leaves no comparable record.
   *because a figure measured under another seed replays nothing the ledger names*
 - `timing-iterations` — A timed batch reports p50 and p95 over 200 repeats of its operation, each after warm-up.
 - `timing-batches` — A timed figure is the median of 5 repeats of its timed batch.
+- `trend-direction` — Each trend-tier ledger entry declares `higher_is_better` or `lower_is_better` for its metric.
+  *A-assurance*
+- `trend-baseline` — A trend figure compares with the newest earlier successful default-branch report for the same entry and seed under {{assurance.measure.runner-stamp}}; absent matching history yields no annotation.
+  *A-assurance*
 - `trend-band` — A trend figure more than 25 percent worse than its baseline annotates the run report and fails no stage.
 - `runner-stamp` — The run block carries the runner's processor model, processor count and memory limit, and a trend figure compares only against a baseline with the same stamp.
 - `absolute-threshold` — A threshold is an absolute figure of this system's own measure, and it tightens only through {{assurance.baseline.raise-only}}.
@@ -383,16 +387,18 @@ flowchart LR
 ```
 
 unsettled: Which GitHub App credential pushes `refs/notes/measures` from the scheduled dispatch? owner: build affects: assurance.measure
+unsettled: How does corpus status attest FlareDispatch's external schedule and note write? owner: build affects: assurance.measure
 
 #### Scenarios
 
 - `assurance.measure.unresolved-entry`: WHEN an entry names `run.journal.entry-keys`, THEN the run raises `MeasureEntryUnresolved` and no test runs.
 - `assurance.measure.trend-band`: WHEN a trend p95 moves from 40 ms to 52 ms on a matching runner stamp, THEN the report carries a +30 percent annotation and the stage passes.
+- `assurance.measure.trend-baseline`: WHEN a newer failed report follows two successful matches, THEN the trend compares with the newer successful match and the stage passes.
 - `assurance.measure.open-entry`: WHEN an entry's method is `{ issue = 43 }`, THEN `evals/ledger.md` lists it open and the evaluate stage ignores it.
 
 ## release
 
-The version a release tag carries, the refusals guarding it, and the signed annotated tag `contextful-ci tag` creates.
+The release tag's version, the refusals guarding it, the signed annotated tag `contextful-ci tag` creates, and the FlareDispatch packaging run.
 
 - `version` — A release tag is `v0.<closed>.<patch>`: `<closed>` counts the milestones computing `closed` in the tagged commit's `spec/status.md`, and `<patch>` counts the existing tags `v0.<closed>.*`.
   *A-assurance*
@@ -408,6 +414,12 @@ The version a release tag carries, the refusals guarding it, and the signed anno
   *A-assurance*
 - `gate-failed` — Once the other refusals clear, every gate stage runs against `HEAD` with `HEAD~1` as base; a failing stage raises `TagGateFailed`, naming the stage's refusal, and no tag is created.
   *A-assurance*
+- `release-run` — A `v*` tag at a default-branch commit starts FlareDispatch `contextful-release`, with one `contextful-release-cell` child per {{assurance.build.targets}} matrix cell and one `contextful-release-formula` child for their metadata.
+  *because distributed builds and formula generation share one tag identity*
+- `release-dry-run` — A manual `contextful-release` dry run builds the release assets and publishes neither a GitHub release nor container images.
+  *because a packaging rehearsal must not claim a released version*
+
+unsettled: How does corpus status attest FlareDispatch's external tag dispatch and publication? owner: build affects: assurance.release
 
 #### Scenarios
 

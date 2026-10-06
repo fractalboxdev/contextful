@@ -173,3 +173,18 @@ fn an_exclusive_valid_bound_admits_rows_ending_at_it() {
     let rel = relation(&t, &["/s/a.parquet".into()], &[], &[], Some(Bound::parse("2030-01-15").unwrap())).unwrap();
     assert!(rel.contains("\"f\" < TIMESTAMPTZ '2030-01-16T00:00:00.000000000Z' AND (\"u\" IS NULL OR \"u\" >= TIMESTAMPTZ '2030-01-16T00:00:00.000000000Z')"), "{rel}");
 }
+
+#[test]
+fn a_parquet_relation_names_its_in_memory_encryption_key() {
+    let decl = TableDecl::named("documents");
+    let sql = contextful_core::store::relation::relation_with_encryption(
+        &decl,
+        &["/s/part.parquet".into()],
+        &[],
+        &[],
+        None,
+        Some("contextful_project"),
+    )
+    .unwrap();
+    assert!(sql.contains("encryption_config = {footer_key: 'contextful_project'}"), "{sql}");
+}

@@ -183,14 +183,14 @@ impl SessionPool {
     /// A connection for `session`: an idle one of the pooled entry building the same
     /// connection, or a new one, returned to that entry after the statement. A session no
     /// entry holds gets a connection of its own.
-    pub(crate) fn engine(&self, session: &Session) -> Result<Lease, ReadFault> {
+    pub(crate) fn engine(&self, session: &Session, parquet_key: Option<&[u8; 16]>) -> Result<Lease, ReadFault> {
         let home = self.lock().iter().rev().find(|e| same_setup(&e.session, session)).cloned();
         let idle = home.as_ref().and_then(|e| e.idle.lock().expect("the idle lock").pop());
         let engine = match idle {
             Some(engine) => engine,
             None => {
                 self.opens.fetch_add(1, Ordering::Relaxed);
-                SqlEngine::open(session)?
+                SqlEngine::open(session, parquet_key)?
             }
         };
         Ok(Lease { engine: Some(engine), home })

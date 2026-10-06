@@ -33,12 +33,90 @@ fn an_unbound_key_source_refuses_to_open_the_store() {
     assert!(opened.is_err());
 }
 
-/// A bound key source refuses too: this build links no at-rest cipher and writes no cleartext in its place.
+/// A key source holding fewer than 32 key bytes refuses before any store write.
 #[test]
-fn a_bound_key_source_refuses_rather_than_write_cleartext() {
+fn a_short_bound_key_source_refuses_rather_than_write_cleartext() {
     let (_d, opened) = store_with("[encryption]\nkey_source = \"env:PATH\"\n");
     let err = opened.unwrap_err();
-    assert!(err.store().is_none() && err.to_string().contains("no at-rest cipher"), "{err}");
+    assert!(err.store().is_none() && err.to_string().contains("32 key bytes"), "{err}");
+}
+
+#[test]
+fn an_unencrypted_store_exposes_no_catalog_cipher_binding() {
+    let (_dir, opened) = store_with("[node]\nid = \"ingest-a\"\n");
+    assert!(!opened.unwrap().encrypted());
+}
+
+/// A sidecar file carries a fresh wrapped data key and decrypts only under its project key.
+#[test]
+fn an_aes_gcm_file_round_trips_without_plaintext_or_key_reuse() {
+    use contextful_context::encrypt::AesGcmFileCipher;
+    use contextful_core::store::encrypt::FileCipher;
+
+    let cipher = AesGcmFileCipher::new([0x37; 32], 3);
+    let canary = b"ledger-canary-5f1e unique plaintext marker";
+    let first = cipher.seal(canary).unwrap();
+    let second = cipher.seal(canary).unwrap();
+    assert_ne!(first, second);
+    assert!(!first.windows(canary.len()).any(|part| part == canary));
+    assert_eq!(cipher.key_version(), 3);
+    assert_eq!(cipher.open(&first).unwrap(), canary);
+    assert_eq!(cipher.open(&second).unwrap(), canary);
+    assert!(AesGcmFileCipher::new([0x42; 32], 3).open(&first).is_err());
+    let mut tampered = first;
+    *tampered.last_mut().unwrap() ^= 1;
+    assert!(cipher.open(&tampered).is_err());
+}
+
+#[test]
+fn sealed_metadata_files_round_trip_without_plaintext_or_fallback() {
+    use contextful_context::encrypt::{AesGcmFileCipher, MetadataFiles};
+
+    let dir = tempfile::tempdir().unwrap();
+    let path = dir.path().join("_manifest.json");
+    let canary = b"metadata-canary-5f1e";
+    let value = format!("{{\"marker\":\"{}\"}}", std::str::from_utf8(canary).unwrap());
+    let key = AesGcmFileCipher::new([0x37; 32], 1);
+    let files = MetadataFiles::sealed(&key);
+    assert!(files.create_new(&path, value.as_bytes()).unwrap());
+    assert!(!files.create_new(&path, b"other").unwrap());
+    assert_eq!(files.read(&path).unwrap(), value.as_bytes());
+    let disk = std::fs::read(&path).unwrap();
+    assert!(!disk.windows(canary.len()).any(|part| part == canary));
+    assert!(MetadataFiles::sealed(&AesGcmFileCipher::new([0x42; 32], 1)).read(&path).is_err());
+    std::fs::write(&path, b"CFSEAL01").unwrap();
+    assert!(files.read(&path).is_err());
+    std::fs::write(&path, &disk).unwrap();
+    assert!(MetadataFiles::plaintext().read(&path).is_ok_and(|bytes| bytes == disk));
+    files.replace(&path, b"{\"marker\":\"next\"}").unwrap();
+    assert_eq!(files.read(&path).unwrap(), b"{\"marker\":\"next\"}");
+}
+
+#[cfg(feature = "read")]
+#[test]
+fn a_ledger_row_registers_in_duckdb_memory_without_a_plaintext_file() {
+    use contextful_context::ledger::register_memory;
+    use contextful_core::store::ledger::RequestRecord;
+    use contextful_core::time::Instant;
+
+    let dir = tempfile::tempdir().unwrap();
+    let spill_dir = dir.path().join("spill");
+    let config = duckdb::Config::default().with("temp_directory", spill_dir.to_str().unwrap()).unwrap();
+    let db = duckdb::Connection::open_in_memory_with_flags(config).unwrap();
+    let canary = "ledger-sql-canary-5f1e";
+    let record = RequestRecord {
+        request_id: canary.into(), vendor_request_id: None, connector: "remote".into(),
+        method: "POST".into(), url_host: "example.test".into(), status_code: Some(201),
+        started_at: Instant::parse("2030-01-01T00:00:00Z").unwrap(), duration_ms: 7, batch_seq: Some(2),
+    };
+    register_memory(&db, "ledger_rows", &[("run-1".into(), record)]).unwrap();
+    let spill: String = db.query_row("SELECT current_setting('temp_directory')", [], |row| row.get(0)).unwrap();
+    assert!(spill.is_empty(), "decoded ledger rows can spill into {spill}");
+    let id: String = db.query_row("SELECT request_id FROM ledger_rows WHERE batch_seq = 2", [], |r| r.get(0)).unwrap();
+    assert_eq!(id, canary);
+    db.execute_batch("SET lock_configuration = true").unwrap();
+    register_memory(&db, "empty_rows", &[]).unwrap();
+    assert_eq!(std::fs::read_dir(dir.path()).unwrap().count(), 0);
 }
 
 /// Files under `dir` other than the store's `config.toml`, at any depth.
@@ -252,6 +330,205 @@ fn a_sealed_full_text_sidecar_opens_into_memory_alone() {
     assert_eq!(tree(sealed.path()), files, "opening wrote to disk");
     assert_eq!(FulltextSidecar::open(sealed.path(), "passages", &entry, &Sealing::Plaintext).err(), Some(Fallback::Unreadable));
     assert_eq!(FulltextSidecar::open(sealed.path(), "passages", &entry, &Sealing::Sealed(&TestCipher { key: 0x11 })).err(), Some(Fallback::Unreadable));
+}
+
+/// A real file cipher seals each full-text sidecar file and opens its postings in memory.
+#[test]
+fn an_aes_gcm_sidecar_has_zero_plaintext_canary_hits() {
+    use contextful_context::encrypt::AesGcmFileCipher;
+    use contextful_context::fulltext::{build, FulltextSidecar};
+    use contextful_context::vector::Sealing;
+    use contextful_core::store::lay_out::SnapshotId;
+    use contextful_core::time::Instant;
+
+    let canary = "passage-canary-5f1e";
+    let (rows, decl) = fulltext_rows(canary);
+    let id = SnapshotId::next(Instant::parse("2030-01-01T00:00:00Z").unwrap(), None);
+    let cipher = AesGcmFileCipher::new([0x37; 32], 3);
+    let store = tempfile::tempdir().unwrap();
+    let entry = build(store.path(), &id, &rows, &decl, &decl.indexes()[0], &Sealing::Sealed(&cipher)).unwrap();
+    assert_eq!(entry.key_version, 3);
+    let files = tree(store.path());
+    assert_eq!(files.len(), 2);
+    let hits: usize = files
+        .iter()
+        .map(|(_, bytes)| bytes.windows(canary.len()).filter(|part| *part == canary.as_bytes()).count())
+        .sum();
+    assert_eq!(hits, 0);
+    let entry = contextful_core::store::index::IndexEntry::from(entry);
+    let opened = FulltextSidecar::open(store.path(), "passages", &entry, &Sealing::Sealed(&cipher)).unwrap();
+    assert_eq!(opened.probe(&["zephyrine".into()], 1).unwrap().candidates[0].id, canary);
+    assert_eq!(tree(store.path()), files);
+}
+
+/// Parquet modular encryption covers its columns and footer, and Arrow reads only with the key.
+#[test]
+fn encrypted_parquet_has_no_plaintext_canary_and_decrypts() {
+    use arrow_array::{ArrayRef, RecordBatch, StringArray};
+    use contextful_context::parquet_io;
+    use std::sync::Arc;
+
+    let canary = "parquet-canary-5f1e unique plaintext marker";
+    let batch = RecordBatch::try_from_iter([("body", Arc::new(StringArray::from(vec![canary])) as ArrayRef)]).unwrap();
+    let dir = tempfile::tempdir().unwrap();
+    let path = dir.path().join("part.parquet");
+    let key = [0x37; 16];
+    parquet_io::write_encrypted(&path, &batch, &key).unwrap();
+    let bytes = std::fs::read(&path).unwrap();
+    assert!(!bytes.windows(canary.len()).any(|part| part == canary.as_bytes()));
+    assert!(!bytes.starts_with(b"PAR1"), "the footer is encrypted");
+    assert!(parquet_io::read(&path).is_err());
+    assert!(parquet_io::read_encrypted(&path, &[0x42; 16]).is_err());
+    let opened = parquet_io::read_encrypted(&path, &key).unwrap();
+    assert_eq!(opened.len(), 1);
+    let body = opened[0].column_by_name("body").unwrap().as_any().downcast_ref::<StringArray>().unwrap();
+    assert_eq!(body.value(0), canary);
+
+    #[cfg(feature = "read")]
+    {
+        let db = duckdb::Connection::open_in_memory().unwrap();
+        db.execute_batch("PRAGMA add_parquet_key('test', '7777777777777777')").unwrap();
+        let sql = format!("SELECT body FROM read_parquet('{}', encryption_config = {{footer_key: 'test'}})", path.display());
+        let read: String = db.query_row(&sql, [], |row| row.get(0)).unwrap();
+        assert_eq!(read, canary);
+    }
+}
+
+/// A bound project key opens a store, and a landed row stays encrypted through a store read.
+#[test]
+#[ignore = "the metadata and remaining read paths must seal before bound stores open"]
+fn a_bound_store_lands_ciphertext_and_reads_its_row() {
+    use contextful_context::land::{land, Batch, RunContext};
+    use contextful_context::rows::table_rows;
+    use contextful_core::store::declare::TableDecl;
+    use contextful_core::store::lay_out::NodeId;
+    use contextful_core::store::reserve::Injection;
+    use contextful_core::time::Instant;
+    use serde_json::json;
+
+    let key_var = "CONTEXTFUL_TEST_KEY_74_BOUND";
+    // This unique variable is read only by this test's store; no other test changes it.
+    unsafe { std::env::set_var(key_var, "0123456789abcdef0123456789abcdef") };
+    let (dir, opened) = store_with(&format!("[encryption]\nkey_source = \"env:{key_var}\"\n"));
+    let store = opened.unwrap();
+    let decl = TableDecl::parse_pipeline("[[pipeline.tables]]\nname = \"documents\"\n").unwrap().remove(0);
+    let canary = "row-canary-5f1e unique plaintext marker";
+    let batch = Batch { rows: vec![json!({"doc_id": "d1", "body": canary}).as_object().unwrap().clone()], types: Default::default() };
+    let ctx = RunContext {
+        node: NodeId::parse("ingest-a").unwrap(),
+        injection: Injection { run_id: "run-1".into(), site_id: "site-a".into(), batch_seq: Some(0), authored_by: None, taint: None },
+        committed_at: Instant::parse("2030-01-01T00:00:00Z").unwrap(),
+    };
+    land(&store, &decl, &batch, &ctx).unwrap();
+    let files = written(&dir.path().join(".contextful/context/research"));
+    assert!(!files.is_empty());
+    for path in &files {
+        let bytes = std::fs::read(path).unwrap();
+        assert!(!bytes.windows(canary.len()).any(|part| part == canary.as_bytes()), "{} holds plaintext", path.display());
+    }
+    let rows = table_rows(&store, &decl, &["doc_id", "body"]).unwrap();
+    assert_eq!(rows[0]["body"], canary);
+}
+
+#[test]
+#[ignore = "bound Store::open remains fail-closed until every persistent path seals"]
+fn a_fixed_seed_store_has_zero_plaintext_hits_and_decrypts_every_payload() {
+    use contextful_context::land::{land, Batch, RunContext};
+    use contextful_context::ledger;
+    use contextful_context::rows::table_rows;
+    use contextful_core::store::declare::TableDecl;
+    use contextful_core::store::lay_out::NodeId;
+    use contextful_core::store::ledger::RequestRecord;
+    use contextful_core::store::reserve::Injection;
+    use contextful_core::time::Instant;
+    use serde_json::json;
+    use sha2::{Digest, Sha256};
+
+    const CANARY: &str = "encrypt-fixed-seed-74-5f1e";
+    let key_var = "CONTEXTFUL_TEST_KEY_74_WHOLE_STORE";
+    unsafe { std::env::set_var(key_var, "0123456789abcdef0123456789abcdef") };
+    let (dir, opened) = store_with(&format!("[encryption]\nkey_source = \"env:{key_var}\"\n"));
+    let store = opened.unwrap();
+    let root = dir.path().join(".contextful/context/research");
+    let decl = TableDecl::parse_pipeline("[[pipeline.tables]]\nname = \"documents\"\n").unwrap().remove(0);
+    let node = NodeId::parse("ingest-a").unwrap();
+    let at = Instant::parse("2030-01-01T00:00:00Z").unwrap();
+    let batch = Batch { rows: vec![json!({"doc_id": "d1", "body": CANARY}).as_object().unwrap().clone()], types: Default::default() };
+    let ctx = RunContext {
+        node: node.clone(),
+        injection: Injection { run_id: CANARY.into(), site_id: "site-a".into(), batch_seq: Some(0), authored_by: None, taint: None },
+        committed_at: at,
+    };
+    land(&store, &decl, &batch, &ctx).unwrap();
+    let record = RequestRecord {
+        request_id: CANARY.into(), vendor_request_id: None, connector: "remote".into(),
+        method: "POST".into(), url_host: "example.test".into(), status_code: Some(201),
+        started_at: at, duration_ms: 7, batch_seq: Some(0),
+    };
+    ledger::append(&store, "documents", CANARY, &node, &[record]).unwrap();
+    let digest = format!("{:x}", Sha256::digest(CANARY.as_bytes()));
+    store.land_blob(&digest, CANARY.as_bytes()).unwrap();
+
+    let files = tree(&root);
+    let hits: usize = files.iter().map(|(_, bytes)| bytes.windows(CANARY.len()).filter(|window| *window == CANARY.as_bytes()).count()).sum();
+    contextful_eval::record::emit("encrypt-no-plaintext", hits as f64, files.len() as u64, 0);
+    assert_eq!(hits, 0, "{files:?}");
+    assert_eq!(table_rows(&store, &decl, &["body"]).unwrap()[0]["body"], CANARY);
+    let ledger_path = ledger::files(&store, "documents").unwrap().pop().unwrap();
+    assert_eq!(ledger::read_for_store(&store, &ledger_path).unwrap()[0].1.request_id, CANARY);
+    assert_eq!(store.blob(&digest).unwrap().unwrap(), CANARY.as_bytes());
+}
+
+#[test]
+#[ignore = "the metadata and remaining read paths must seal before bound stores open"]
+fn a_bound_store_seals_its_request_ledger() {
+    use contextful_context::ledger;
+    use contextful_core::store::lay_out::NodeId;
+    use contextful_core::store::ledger::RequestRecord;
+    use contextful_core::time::Instant;
+
+    let key_var = "CONTEXTFUL_TEST_KEY_74_LEDGER";
+    // This unique variable is read only by this test's store; no other test changes it.
+    unsafe { std::env::set_var(key_var, "0123456789abcdef0123456789abcdef") };
+    let (dir, opened) = store_with(&format!("[encryption]\nkey_source = \"env:{key_var}\"\n"));
+    let store = opened.unwrap();
+    let canary = "ledger-canary-5f1e unique plaintext marker";
+    let record = RequestRecord {
+        request_id: canary.into(),
+        vendor_request_id: None,
+        connector: "source".into(),
+        method: "GET".into(),
+        url_host: "example.invalid".into(),
+        status_code: Some(200),
+        started_at: Instant::parse("2030-01-01T00:00:00Z").unwrap(),
+        duration_ms: 1,
+        batch_seq: Some(0),
+    };
+    let node = NodeId::parse("ingest-a").unwrap();
+    ledger::append(&store, "documents", "run-1", &node, &[record.clone()]).unwrap();
+    let path = ledger::files(&store, "documents").unwrap().remove(0);
+    let bytes = std::fs::read(path.clone()).unwrap();
+    assert!(!bytes.windows(canary.len()).any(|part| part == canary.as_bytes()));
+    let rows = ledger::read_for_store(&store, &path).unwrap();
+    assert_eq!(rows, [("run-1".into(), record)]);
+    assert!(written(&dir.path().join(".contextful/context/research")).iter().all(|p| !std::fs::read(p).unwrap().windows(canary.len()).any(|part| part == canary.as_bytes())));
+}
+
+#[test]
+#[ignore = "the metadata and remaining read paths must seal before bound stores open"]
+fn a_bound_store_seals_landed_blob_bytes() {
+    use sha2::Digest;
+    let key_var = "CONTEXTFUL_TEST_KEY_74_BLOB";
+    // This unique variable is read only by this test's store; no other test changes it.
+    unsafe { std::env::set_var(key_var, "0123456789abcdef0123456789abcdef") };
+    let (dir, opened) = store_with(&format!("[encryption]\nkey_source = \"env:{key_var}\"\n"));
+    let store = opened.unwrap();
+    let canary = b"blob-canary-5f1e unique plaintext marker";
+    let digest = format!("{:x}", sha2::Sha256::digest(canary));
+    store.land_blob(&digest, canary).unwrap();
+    assert_eq!(store.blob(&digest).unwrap().as_deref(), Some(canary.as_slice()));
+    let files = written(&dir.path().join(".contextful/context/research"));
+    assert!(files.iter().all(|p| !std::fs::read(p).unwrap().windows(canary.len()).any(|part| part == canary)));
 }
 
 /// A sealed full-text sidecar file larger than 256 MiB stays unopened, and its arm adds no candidates.

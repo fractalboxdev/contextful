@@ -46,9 +46,24 @@ fn an_edge_outside_the_relation_union_is_refused() {
     let edge = |rel: &str| CandidateEdge { rel_type: rel.into(), source: "Dana".into(), target: "Lee".into() };
     assert!(d.admits_relation(RESERVED_RELATIONS[0]));
     assert_eq!(check_edge(&edge("reports_to"), &entities, &d).unwrap().source_id, "e-dana");
-    assert_eq!(check_edge(&edge("works_for"), &entities, &d).unwrap().target_id, "e-lee");
+    assert_eq!(check_edge(&edge("about"), &entities, &d).unwrap().target_id, "e-lee");
     match check_edge(&edge("mentors"), &entities, &d) {
         Err(MemoryError::UndeclaredRelation(why)) => assert!(why.contains("mentors"), "{why}"),
         other => panic!("{other:?}"),
+    }
+}
+
+#[test]
+fn reserved_memory_relations_match_the_declared_core() {
+    assert_eq!(
+        RESERVED_RELATIONS.as_slice(),
+        ["supports", "contradicts", "supersedes", "about", "derived_from"].as_slice()
+    );
+    let declarations = MemoryDeclarations::default();
+    for relation in RESERVED_RELATIONS {
+        assert!(declarations.admits_relation(relation));
+    }
+    for relation in ["mentions", "part_of", "located_in", "owns", "works_for"] {
+        assert!(!declarations.admits_relation(relation), "{relation} needs a declaration");
     }
 }
