@@ -1,5 +1,6 @@
 import assert from "node:assert/strict";
 import { chmodSync, mkdtempSync, mkdirSync, writeFileSync } from "node:fs";
+import { createServer } from "node:http";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { test } from "node:test";
@@ -21,6 +22,29 @@ test("four client shapes carry credentials in their assigned transport", async (
   assert.equal(calls[1].headers.get("authorization"), "Bearer viewer-token");
   assert.equal(calls[2].headers.get("authorization"), null);
   assert.equal(calls[0].url, "https://console.example.test/query/stores/field-notes/mcp");
+});
+
+test("engine-direct sends JSON-RPC to a real HTTP transport with its viewer credential", async () => {
+  const server = createServer(async (request, response) => {
+    assert.equal(request.url, "/mcp");
+    assert.equal(request.method, "POST");
+    assert.equal(request.headers.authorization, "Bearer viewer-token");
+    assert.equal(request.headers.accept, "application/json");
+    const chunks: Buffer[] = [];
+    for await (const chunk of request) chunks.push(chunk);
+    assert.equal(JSON.parse(Buffer.concat(chunks).toString())["method"], "tools/list");
+    response.setHeader("Content-Type", "application/json");
+    response.end(JSON.stringify({ jsonrpc: "2.0", id: 1, result: { tools: [] } }));
+  });
+  await new Promise<void>((resolve) => server.listen(0, "127.0.0.1", resolve));
+  try {
+    const address = server.address();
+    assert(address && typeof address !== "string");
+    const client = createClient({ shape: "engine-direct", baseUrl: `http://127.0.0.1:${address.port}/mcp`, token: "viewer-token" });
+    assert.deepEqual(await client.call("tools/list"), { tools: [] });
+  } finally {
+    server.close();
+  }
 });
 
 test("spawned child refuses absent credential and absent ancestor manifest before framing", async () => {

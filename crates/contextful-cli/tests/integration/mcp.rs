@@ -93,6 +93,7 @@ fn a_server_with_no_admissible_credential_writes_no_framing() {
 }
 
 /// The process transport requires a verified capability token; `--owner` selects its signed owner claim. An absent token raises `StdioCredentialMissing` before protocol framing and never resolves to owner context.
+// spec: surface.package.stdio-credential@c6b49c5d
 #[test]
 fn a_server_with_no_credential_raises_stdio_credential_missing() {
     let (dir, public, _token) = project();
@@ -238,6 +239,7 @@ fn owner_credential_does_not_cross_independent_stores_with_one_issuer() {
 }
 
 /// The child's working directory selects the store by walking up to the project manifest; finding none raises `StoreSelectorAbsent` and exits before writing any protocol framing.
+// spec: surface.package.store-selector@79c745d0
 #[test]
 fn a_spawned_server_without_a_project_manifest_refuses_before_framing() {
     let (dir, public, token) = project();

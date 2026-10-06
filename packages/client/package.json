@@ -3,9 +3,15 @@
   "version": "0.5.0",
   "packageManager": "pnpm@10.14.0",
   "type": "module",
+  "files": ["dist"],
+  "types": "./dist/index.d.ts",
   "exports": {
     ".": {
-      "browser": "./dist/browser.js",
+      "browser": {
+        "types": "./dist/browser.d.ts",
+        "default": "./dist/browser.js"
+      },
+      "types": "./dist/index.d.ts",
       "default": "./dist/index.js"
     }
   },
