@@ -1,12 +1,56 @@
 //! `run.export`: the `[[export]]` block, the batch statement over the commit sequence, and
 //! the OTLP log record each landed row becomes.
 
-use contextful_core::export::{log_records, parse_exports, ExportCursor, ExportError, Signal, EXPORT_BATCH_ROWS};
+use contextful_core::export::{change_events, change_state, log_records, parse_exports, typed_batch_len, Change, ChangeEvent, ExportCursor, ExportError, Signal, EXPORT_BATCH_ROWS, TYPED_REQUEST_BYTES};
 use contextful_core::store::reconcile::ColumnType;
 use serde_json::{json, Value};
 use std::collections::BTreeMap;
 
 const BLOCK: &str = "[[export]]\nname = \"spans-mirror\"\ntable = \"spans\"\nendpoint = \"https://otel.example.com/v1/logs\"\nsignal = \"logs\"\nheaders = { Authorization = \"Bearer ${secret://otel-token}\" }\n";
+
+#[test]
+fn a_typed_export_declares_a_key_and_schedule() {
+    let block = "[[export]]\nname = \"state-copy\"\ntable = \"items\"\nendpoint = \"https://receiver.example.com/events\"\nformat = \"changes-v1\"\nkey = [\"id\"]\nschedule = \"every 30s\"\n";
+    let exports = parse_exports(block).unwrap();
+    assert_eq!(exports.len(), 1);
+    assert_eq!(exports[0].name, "state-copy");
+    assert_eq!(exports[0].signal, Signal::ChangesV1);
+    assert_eq!(exports[0].key, ["id"]);
+    assert!(exports[0].schedule.is_some());
+    assert!(parse_exports(&block.replace("key = [\"id\"]", "key = []")).is_err());
+    assert!(parse_exports(&block.replace("schedule = \"every 30s\"", "schedule = \"every 0s\"")).is_err());
+}
+
+#[test]
+fn typed_changes_include_deletions_and_a_final_publication_marker() {
+    let export = parse_exports("[[export]]\nname = \"copy\"\ntable = \"items\"\nendpoint = \"https://receiver.example.com/events\"\nformat = \"changes-v1\"\nkey = [\"id\"]\nschedule = \"every 30s\"\n").unwrap().remove(0);
+    let before = change_state(&export, &[json!({"id":"b","title":"old"}), json!({"id":"a","title":"gone"})]).unwrap();
+    let after = change_state(&export, &[json!({"id":"b","title":"new"}), json!({"id":"c","title":"added"})]).unwrap();
+    let events = change_events(&export, "pub-2", 7, &before, &after).unwrap();
+    assert_eq!(events.iter().map(|e| e.sequence).collect::<Vec<_>>(), [7, 8, 9, 10]);
+    assert_eq!(events.iter().map(|e| e.id.as_str()).collect::<Vec<_>>(), ["copy:pub-2:7", "copy:pub-2:8", "copy:pub-2:9", "copy:pub-2:10"]);
+    assert_eq!(events[0].change, Change::Delete { key: json!({"id":"a"}) });
+    assert_eq!(events[1].change, Change::Upsert { key: json!({"id":"b"}), row: json!({"id":"b","title":"new"}) });
+    assert_eq!(events[2].change, Change::Upsert { key: json!({"id":"c"}), row: json!({"id":"c","title":"added"}) });
+    assert_eq!(events[3].change, Change::PublicationComplete { changes: 3 });
+    assert_eq!(serde_json::to_value(&events[3]).unwrap()["version"], 1);
+    assert!(change_state(&export, &[json!({"id":"a"}), json!({"id":"a"})]).is_err());
+    assert!(change_state(&export, &[json!({"title":"missing"})]).is_err());
+}
+
+#[test]
+fn typed_request_respects_its_byte_limit_and_refuses_a_single_oversized_event() {
+    let event = |sequence, size| ChangeEvent {
+        version: 1, id: format!("copy:pub:{sequence}"), publication: "pub".into(), sequence,
+        table: "items".into(), change: Change::Upsert { key: json!({"id":sequence}), row: json!({"id":sequence,"body":"x".repeat(size)}) },
+    };
+    let events = vec![event(0, 40_000), event(1, 40_000)];
+    assert_eq!(typed_batch_len(&events).unwrap(), 1);
+    let bytes = serde_json::to_vec(&json!({"version":1,"events":&events[..1]})).unwrap();
+    assert!(bytes.len() <= TYPED_REQUEST_BYTES);
+    assert!(serde_json::to_vec(&json!({"version":1,"events":events})).unwrap().len() > TYPED_REQUEST_BYTES);
+    assert!(matches!(typed_batch_len(&[event(2, TYPED_REQUEST_BYTES)]), Err(ExportError::ExportEventTooLarge(_))));
+}
 
 /// A manifest `[[export]]` block declares `name`, one landed `table`, an OTLP/HTTP `endpoint`, `signal` and optional
 /// `headers`; `contextful export run <name>` delivers every row its cursor has not passed.

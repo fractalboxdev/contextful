@@ -166,6 +166,10 @@ What a credential says a holder does: actions, table patterns, tenant scope, the
   *because a write grant names the tables a principal authors, and a row landed outside them carries a principal who never authorized it*
 - `row-ceiling` — A read's row ceiling is the least of the grant's, the request's, the template's, each touched table's published ceiling and {{read.respond.face-ceiling}}; an undeclared component imposes none, and the face ceiling is always declared.
   *A-authority*
+- `duration-ceiling` — A statement's `max_duration_ms` is the least of its grant, touched-table and request limits; an undeclared component imposes none, and no component declares a default.
+  *A-read*
+- `byte-ceiling` — A response's `max_response_bytes` is the least of its grant, touched-table and request limits; an undeclared component imposes none, and no component declares a default.
+  *A-read*
 - `aggregate` — An aggregate grant carries a minimum group size, a maximum single-contributor share, permitted functions, a groups-per-query ceiling and a row ceiling. A write-only or aggregate-only grant contributes no table to a raw read.
   *A-authority*
 - `group-ceiling` — An aggregate grant's groups-per-query ceiling is at least 1 entries; a query producing more groups than the ceiling is cut at it.
@@ -535,6 +539,9 @@ tables         refused    admitted   admitted   admitted
 tenant         refused    admitted   admitted   refused
 templates      refused    admitted   admitted   admitted
 aggregate      refused    admitted   admitted   inherits parent
+max_rows              refused    admitted   admitted   inherits parent
+max_duration_ms       refused    admitted   admitted   inherits parent
+max_response_bytes    refused    admitted   admitted   inherits parent
 expiry         refused    admitted   admitted   inherits parent
 on_behalf_of   refused    admitted   refused    inherits parent
 incognito      refused    admitted   admitted   inherits parent

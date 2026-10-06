@@ -8,9 +8,52 @@ use contextful_core::store::object::ObjectStore;
 use contextful_core::store::sync::BucketManifest;
 use contextful_sync::run_state;
 use contextful_sync::{CursorMark, PullScope, RunMark, RunState};
+use contextful_context::encrypt::{AesGcmFileCipher, MetadataFiles};
 use serde_json::json;
 
 const NOW: &str = "2030-01-01T01:00:00Z";
+
+// spec: store.encrypt.run-state-envelope@75ca0ba5
+#[test]
+fn a_bound_run_state_stays_sealed_across_record_and_read() {
+    let dir = tempfile::tempdir().unwrap();
+    let n = node("ingest-a", bucket(dir.path()), "");
+    let cipher = AesGcmFileCipher::new([7; 32], 1);
+    let files = run_state::RunStateFiles::new(n.syncer.store.root(), MetadataFiles::sealed(&cipher));
+    let canary = "run-state-secret-canary-74";
+    let expected = state(&n, canary, "2030-01-01T00:00:00Z", Some((9, "2030-01-01T00:01:00Z")));
+    let path = files.record(&expected).unwrap();
+    let bytes = std::fs::read(&path).unwrap();
+    assert!(!bytes.windows(canary.len()).any(|part| part == canary.as_bytes()));
+    assert_eq!(files.run_states().unwrap()["ingest-a"], expected);
+    assert!(run_state::RunStateFiles::new(n.syncer.store.root(), MetadataFiles::plaintext()).run_states().unwrap().is_empty());
+    let wrong = AesGcmFileCipher::new([8; 32], 1);
+    assert!(run_state::RunStateFiles::new(n.syncer.store.root(), MetadataFiles::sealed(&wrong)).run_states().is_err());
+}
+
+#[test]
+fn a_sealed_run_state_travels_between_nodes_without_exposing_its_payload() {
+    let dir = tempfile::tempdir().unwrap();
+    let shared = bucket(dir.path());
+    let (source, target) = (node("ingest-a", shared.clone(), ""), node("ingest-b", shared.clone(), ""));
+    let cipher = AesGcmFileCipher::new([7; 32], 1);
+    let canary = "run-state-transfer-canary-74";
+    let expected = state(&source, canary, "2030-01-01T00:00:00Z", Some((9, "2030-01-01T00:01:00Z")));
+    let source_files = run_state::RunStateFiles::new(source.syncer.store.root(), MetadataFiles::sealed(&cipher));
+    let path = source_files.record(&expected).unwrap();
+    let sealed = std::fs::read(&path).unwrap();
+
+    source.syncer.push(at(NOW)).unwrap();
+    let object = shared.get("team/research/nodes/ingest-a/run-state.json").unwrap().unwrap().0;
+    assert_eq!(object, sealed);
+    assert!(!object.windows(canary.len()).any(|part| part == canary.as_bytes()));
+
+    target.syncer.pull(&PullScope::default()).unwrap();
+    let target_files = run_state::RunStateFiles::new(target.syncer.store.root(), MetadataFiles::sealed(&cipher));
+    assert_eq!(target_files.run_states().unwrap()["ingest-a"], expected);
+    let wrong = AesGcmFileCipher::new([8; 32], 1);
+    assert!(run_state::RunStateFiles::new(target.syncer.store.root(), MetadataFiles::sealed(&wrong)).run_states().is_err());
+}
 
 fn manifest(b: &dyn ObjectStore) -> BucketManifest {
     serde_json::from_slice(&b.get("team/manifest.json").unwrap().unwrap().0).unwrap()
@@ -33,6 +76,7 @@ fn state(n: &Node, run: &str, started: &str, cursor: Option<(i64, &str)>) -> Run
             })
             .into_iter()
             .collect(),
+        control_version: None,
     }
 }
 
@@ -72,6 +116,33 @@ fn a_run_state_of_a_newer_format_contributes_nothing() {
     assert!(c.root().join("nodes/ingest-a/run-state.json").exists(), "the file travels");
     assert!(run_state::run_states(&c.syncer.store).unwrap().is_empty());
     assert!(run_state::newest_cursor(&c.syncer.store, "shop", "shop_orders").unwrap().is_none());
+}
+
+/// A pulled run state exposes the applied control version for a replica to verify before it adopts any snapshot.
+#[test]
+fn a_pulled_run_state_carries_the_applied_control_version() {
+    let dir = tempfile::tempdir().unwrap();
+    let b = bucket(dir.path());
+    let (a, c) = (node("ingest-a", b.clone(), ""), node("ingest-c", b, ""));
+    let path = run_state::state_path(a.syncer.store.root(), "ingest-a");
+    std::fs::create_dir_all(path.parent().unwrap()).unwrap();
+    std::fs::write(
+        &path,
+        serde_json::to_vec(&serde_json::json!({
+            "format": 1,
+            "node_id": "ingest-a",
+            "runs": {},
+            "cursors": [],
+            "control_version": 7
+        }))
+        .unwrap(),
+    )
+    .unwrap();
+    a.syncer.push(at(NOW)).unwrap();
+    c.syncer.pull(&PullScope::default()).unwrap();
+
+    let states = run_state::run_states(&c.syncer.store).unwrap();
+    assert_eq!(states["ingest-a"].control_version, Some(7));
 }
 
 /// A generation pull holds no run state to `store.pull.generation-diverged`: a run state the generation does not

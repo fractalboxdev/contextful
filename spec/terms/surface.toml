@@ -32,6 +32,7 @@ TriggerFaceMissing            = { clause = "surface.arm.trigger-face-missing", g
 ControlPointerMalformed       = { clause = "surface.reconcile.pointer-malformed", gloss = "A snapshot pointer body that is not wholly a version." }
 ControlSnapshotUnreadable     = { clause = "surface.reconcile.fail-static", gloss = "A poll that could not read its pointer or parse the named document." }
 ControlSourceNotLoopback      = { clause = "surface.reconcile.loopback-only", gloss = "A control URL whose host is not a loopback address." }
+ControlSnapshotUntrusted      = { clause = "surface.reconcile.pulled-control-untrusted", gloss = "A pulled control head fails attestation, ancestry or local validation." }
 JobKindUnknown                = { clause = "surface.fire.job-kind-unknown", gloss = "A job block naming a kind outside the union, or carrying a command." }
 JobConcurrencyUnset           = { clause = "surface.fire.store-driven-concurrency", gloss = "A store-driven job block declaring no positive `max_in_flight`." }
 JobBodyUnregistered           = { clause = "surface.fire.store-driven-body", gloss = "A store-driven job block naming a body the binary does not register." }
@@ -49,6 +50,7 @@ ApplyValidationRefused        = { clause = "surface.apply.validation", gloss = "
 ConfigOwnerUnconfigured       = { clause = "surface.apply.owner-unconfigured", gloss = "A configuration owner with no storage or no credential behind it." }
 ConditionalWriteUnsupported   = { clause = "surface.apply.weak-conditional-backend", gloss = "A configuration owner or catalog backend lacking linearizable conditional replacement." }
 StoreNotInitialized           = { clause = "surface.apply.uninitialized-store", gloss = "An edit or apply against a store that has taken no guarded import." }
+ControlAttestationUnavailable = { clause = "surface.apply.attestation-unavailable", gloss = "A synced control claim lacks an admitted admin capability or signing port." }
 EnforceRegionMismatch         = { clause = "surface.reside.region-mismatch", gloss = "A configured resource resolving outside the residency allow-set." }
 ResidencySitesDiverge         = { clause = "surface.reside.site-regions", gloss = "A push whose residency allow-set differs from the one another site recorded in the bucket manifest." }
 StoreRegistryUnreadable       = { clause = "surface.register-store.registry-unreadable", gloss = "A store registry payload that does not parse." }

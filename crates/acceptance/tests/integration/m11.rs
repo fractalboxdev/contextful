@@ -115,3 +115,37 @@ fn m11_derive() {
     assert_eq!(retried.len(), 1, "the failing unit restarts its attempts under the new key: {retried:?}");
     assert_eq!(retried[0]["attempts"], "1");
 }
+
+#[test]
+fn m11_link_preview_fetches_once_and_lands_head_facts() {
+    use std::io::{Read, Write};
+    use std::net::TcpListener;
+
+    let listener = TcpListener::bind("127.0.0.1:0").unwrap();
+    let port = listener.local_addr().unwrap().port();
+    let server = std::thread::spawn(move || {
+        let (mut socket, _) = listener.accept().unwrap();
+        let mut request = [0; 4096];
+        let n = socket.read(&mut request).unwrap();
+        assert!(String::from_utf8_lossy(&request[..n]).starts_with("GET /article?token=secret HTTP/1.1"));
+        let body = b"<html><head><title>Research memo</title><meta name=\"description\" content=\"Findings and evidence\"></head></html>";
+        write!(socket, "HTTP/1.1 200 OK\r\nContent-Type: text/html; charset=utf-8\r\nContent-Length: {}\r\nConnection: close\r\n\r\n", body.len()).unwrap();
+        socket.write_all(body).unwrap();
+    });
+    let cf = bin("contextful");
+    let p = GitRepo::init();
+    p.write(&format!("{STORE}/config.toml"), "[node]\nid = \"ingest-a\"\n");
+    p.write("contextful.toml", "authoring_posture = \"per_request\"\n[[pipeline]]\nid = \"cards\"\ntables = [{ name = \"cards\", primary_key = [\"unit_ref\", \"derivation_key\", \"cue_seq\"] }]\n[pipeline.source]\nname = \"derive\"\nconfig = { task = \"link_preview\", engine = \"reader\", source_table = \"documents\", media_column = \"url\", parent_id_column = \"doc_id\" }\n[derive.reader]\ndriver = \"fetch\"\nallow_hosts = [\"localhost\"]\n");
+    p.write("documents.jsonl", &format!("{{\"doc_id\":\"d1\",\"url\":\"http://localhost:{port}/article?token=secret\"}}\n"));
+    ok(&p.run(&cf, &["context", "land", "documents", "--project", "research", "--rows", "documents.jsonl", "--run-id", "load-1", "--site-id", "site", "--now", "2030-01-01T00:00:00Z"]));
+    let fire = |id: &str| p.run(&cf, &["pipeline", "run", "cards", "--project", "research", "--run-id", id, "--site-id", "site", "--now", "2030-01-01T01:00:00Z"]);
+    ok(&fire("cards-1"));
+    server.join().unwrap();
+    let landed = rows(&p, &cf, "cards_cards");
+    assert_eq!(landed.len(), 1, "{landed:?}");
+    assert_eq!(landed[0]["title"], "Research memo");
+    assert_eq!(landed[0]["description"], "Findings and evidence");
+    assert_eq!(landed[0]["url"], format!("http://localhost:{port}/article"));
+    ok(&fire("cards-2"));
+    assert_eq!(rows(&p, &cf, "cards_cards").len(), 1);
+}

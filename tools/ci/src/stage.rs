@@ -4,7 +4,7 @@
 
 use anyhow::{bail, Context, Result};
 use sha2::{Digest, Sha256};
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, BTreeSet};
 use std::path::{Path, PathBuf};
 use std::process::Command;
 use std::time::Instant;
@@ -299,18 +299,74 @@ pub fn apply_toolchain(root: &Path) -> Result<()> {
 
 // ---------------------------------------------------------------- schema
 
-/// Each derived artifact's path under the root: the corpus renders and the ledger status.
-fn derived(root: &Path) -> Vec<String> {
-    let mut out: Vec<String> = ["spec/spec.lock.json", "spec/status.md", "spec/targets.md", "evals/ledger.md"].iter().map(|s| s.to_string()).collect();
-    if let Ok(dir) = std::fs::read_dir(root.join("spec/cards")) {
-        for e in dir.flatten() {
-            out.push(format!("spec/cards/{}", e.file_name().to_string_lossy()));
+struct DerivedArtifact {
+    path: String,
+    check: String,
+}
+
+/// A declaration names the output and the command that proves its currency.
+fn declarations(root: &Path) -> Result<Option<Vec<DerivedArtifact>>> {
+    let manifest = root.join("spec/derived.toml");
+    if !manifest.is_file() {
+        if root.join("spec/81-engineering.md").is_file() {
+            bail!("schema: spec/derived.toml is absent");
+        }
+        return Ok(None);
+    }
+    let contents = std::fs::read_to_string(&manifest)?;
+    let parsed: toml::Value = contents.parse().context("parse spec/derived.toml")?;
+    let entries = parsed.get("artifact").and_then(toml::Value::as_array).context("spec/derived.toml needs [[artifact]] entries")?;
+    let mut out = Vec::new();
+    let mut declared_paths = BTreeSet::new();
+    for entry in entries {
+        let path = entry.get("path").and_then(toml::Value::as_str).context("derived artifact needs path")?;
+        let check = entry.get("check").and_then(toml::Value::as_str).context("derived artifact needs check")?;
+        let normalized = Path::new(path);
+        if normalized.is_absolute() || normalized.components().any(|part| !matches!(part, std::path::Component::Normal(_))) {
+            bail!("spec/derived.toml: artifact path `{path}` must stay below the repository root");
+        }
+        if !["contextful-spec extract", "contextful-spec state", "contextful-ci measure --status"].contains(&check) {
+            bail!("spec/derived.toml: unknown check `{check}` for `{path}`");
+        }
+        if !declared_paths.insert(path) {
+            bail!("spec/derived.toml: artifact `{path}` is declared twice");
+        }
+        out.push(DerivedArtifact { path: path.to_string(), check: check.to_string() });
+    }
+    Ok(Some(out))
+}
+
+fn derived(root: &Path, declared: Option<&[DerivedArtifact]>) -> Result<Vec<String>> {
+    let fallback = ["spec/spec.lock.json", "spec/status.md", "spec/targets.md", "spec/cards/", "evals/ledger.md"];
+    let paths: Vec<&str> = match declared {
+        Some(entries) => entries.iter().map(|item| item.path.as_str()).collect(),
+        None => fallback.to_vec(),
+    };
+    let mut out = Vec::new();
+    for path in paths {
+        if path.ends_with('/') {
+            let dir = root.join(path);
+            if !dir.is_dir() {
+                if declared.is_some() {
+                    bail!("schema: declared artifact directory `{path}` is absent");
+                }
+                continue;
+            }
+            for entry in std::fs::read_dir(dir)? {
+                let entry = entry?;
+                if entry.file_type()?.is_file() {
+                    out.push(format!("{path}{}", entry.file_name().to_string_lossy()));
+                }
+            }
+        } else {
+            if declared.is_some() || root.join(path).is_file() {
+                out.push(path.to_string());
+            }
         }
     }
-    out.retain(|p| root.join(p).is_file());
     out.sort();
     out.dedup();
-    out
+    Ok(out)
 }
 
 /// The schema stage's regeneration (`assurance.gate.schema-stage`): export the measured
@@ -334,19 +390,24 @@ pub fn regenerate(root: &Path) -> Result<()> {
     if !unpacked.success() {
         return Err(crate::exited("tar -x".into(), unpacked).context("tar could not unpack the exported tree"));
     }
-    let committed: BTreeMap<String, Vec<u8>> = derived(&scratch).into_iter().filter_map(|p| std::fs::read(scratch.join(&p)).ok().map(|b| (p, b))).collect();
+    let declared = declarations(&scratch)?;
+    let committed: BTreeMap<String, Option<Vec<u8>>> = derived(&scratch, declared.as_deref())?.into_iter().map(|p| { let bytes = std::fs::read(scratch.join(&p)).ok(); (p, bytes) }).collect();
     let scratch_arg = scratch.to_string_lossy().to_string();
-    for verb in ["extract", "state"] {
-        run(root, "cargo", &["run", "--locked", "-q", "-p", "contextful-spec", "--", "--root", &scratch_arg, verb])?;
+    let checks: BTreeSet<&str> = declared.as_ref().map(|entries| entries.iter().map(|item| item.check.as_str()).collect()).unwrap_or_else(|| ["contextful-spec extract", "contextful-spec state", "contextful-ci measure --status"].into_iter().collect());
+    for (check, verb) in [("contextful-spec extract", "extract"), ("contextful-spec state", "state")] {
+        if checks.contains(check) {
+            run(root, "cargo", &["run", "--locked", "-q", "-p", "contextful-spec", "--", "--root", &scratch_arg, verb])?;
+        }
     }
-    if scratch.join(contextful_eval::ledger::LEDGER_FILE).is_file() {
+    if checks.contains("contextful-ci measure --status") && scratch.join(contextful_eval::ledger::LEDGER_FILE).is_file() {
         crate::measure::status(&scratch, false)?;
     }
-    let regenerated: BTreeMap<String, Vec<u8>> = derived(&scratch).into_iter().filter_map(|p| std::fs::read(scratch.join(&p)).ok().map(|b| (p, b))).collect();
+    let regenerated: BTreeMap<String, Option<Vec<u8>>> = derived(&scratch, declared.as_deref())?.into_iter().map(|p| { let bytes = std::fs::read(scratch.join(&p)).ok(); (p, bytes) }).collect();
     let mut stale: Vec<String> = Vec::new();
     for path in committed.keys().chain(regenerated.keys()).collect::<std::collections::BTreeSet<_>>() {
         match (committed.get(path), regenerated.get(path)) {
-            (Some(a), Some(b)) if a == b => {}
+            (Some(Some(a)), Some(Some(b))) if a == b => {}
+            (Some(None), Some(None)) => stale.push(format!("{path} is declared but absent")),
             (Some(_), Some(_)) => stale.push(format!("{path} differs from its regeneration")),
             (None, Some(_)) => stale.push(format!("{path} is regenerated but not committed")),
             (Some(_), None) => stale.push(format!("{path} is committed but no longer regenerated")),

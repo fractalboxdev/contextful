@@ -5,11 +5,91 @@ use crate::support::{at, decl, s, Fixture};
 use crate::support::query;
 use contextful_context::fold::fold;
 use contextful_context::parquet_io;
+use contextful_context::ContextError;
 use contextful_core::store::bound_time::Bounds;
 use contextful_core::store::reconcile::{ColumnType, FloatItem};
 use contextful_core::store::StoreError;
 use serde_json::json;
 use std::fs;
+
+#[cfg(feature = "read")]
+#[test]
+fn one_variant_column_keeps_each_scalar_kind_through_land_fold_and_read() {
+    let f = Fixture::new();
+    let d = decl("name = \"attributes\"\ncolumns = { value = \"variant\" }");
+    let variant = ColumnType::parse("variant").expect("variant is a declared column type");
+    f.land_typed(
+        &d,
+        "mixed",
+        json!([
+            {"id": "text", "value": "violet"},
+            {"id": "integer", "value": 9007199254740993_i64},
+            {"id": "float", "value": 1.25},
+            {"id": "boolean", "value": true},
+            {"id": "bytes", "value": {"kind": "bytes", "str": null, "int": null, "double": null, "bool": null, "bytes": "/wA="}}
+        ]),
+        "2030-01-01T00:00:00Z",
+        &[("value", variant.clone())],
+    )
+    .unwrap();
+    let select = "SELECT id, value.kind, value.str, value.int, value.double, value.bool, value.bytes FROM t ORDER BY id";
+    let expected = vec![
+        vec![s("boolean"), s("bool"), None, None, None, s("true"), None],
+        vec![s("bytes"), s("bytes"), None, None, None, None, s("/wA=")],
+        vec![s("float"), s("double"), None, None, s("1.25"), None, None],
+        vec![s("integer"), s("int"), None, s("9007199254740993"), None, None, None],
+        vec![s("text"), s("str"), s("violet"), None, None, None, None],
+    ];
+    assert_eq!(f.query(&d, Bounds::default(), select), expected);
+    fold(&f.store, &d, at("2030-01-02T00:00:00Z")).unwrap();
+    assert_eq!(f.query(&d, Bounds::default(), select), expected);
+
+    let result = f.land_typed(
+        &d,
+        "conflict",
+        json!([{"id": "conflict", "value": {"kind": "str", "str": "violet", "int": 3}}]),
+        "2030-01-01T00:00:00Z",
+        &[("value", variant)],
+    );
+    assert!(matches!(result, Err(ContextError::Store(StoreError::StoreSchemaIncompatible(_)))), "{result:?}");
+    assert!(f.store.committed_runs("attributes").unwrap().iter().all(|run| run.run_id != "conflict"));
+    assert!(!f.table_dir("attributes").join("data/runs/conflict/ingest-a/part-00000.parquet").exists());
+
+    let unsupported = f.land_typed(
+        &d,
+        "unsigned",
+        json!([{"id": "unsigned", "value": u64::MAX}]),
+        "2030-01-03T00:00:00Z",
+        &[("value", ColumnType::parse("variant").unwrap())],
+    );
+    assert!(matches!(unsupported, Err(ContextError::Store(StoreError::StoreSchemaIncompatible(_)))), "{unsupported:?}");
+}
+
+#[cfg(feature = "read")]
+#[test]
+fn pinned_snapshot_footer_keeps_variant_type_at_every_depth() {
+    let f = Fixture::new();
+    let d = decl("name = \"attributes\"\ncolumns = { value = \"variant\", values = \"list<variant>\" }");
+    let variant = ColumnType::parse("variant").expect("variant is a declared column type");
+    f.land_typed(
+        &d,
+        "mixed",
+        json!([{"id": "one", "value": 9007199254740993_i64, "values": ["violet", {"kind": "bytes", "bytes": "/wA="}]}]),
+        "2030-01-01T00:00:00Z",
+        &[("value", variant.clone()), ("values", ColumnType::list(variant.clone()))],
+    )
+    .unwrap();
+    fold(&f.store, &d, at("2030-01-02T00:00:00Z")).unwrap();
+    let (chain, _) = f.store.chain("attributes").unwrap();
+    let snapshot = &chain[0];
+    let part = f.store.snapshot_dir("attributes", &snapshot.snapshot_id).unwrap().join(&snapshot.parts[0].name);
+    let footer = parquet_io::schema(&part).unwrap();
+    assert_eq!(footer.iter().find(|c| c.name == "value").unwrap().ty, variant);
+    assert_eq!(footer.iter().find(|c| c.name == "values").unwrap().ty, ColumnType::list(variant.clone()));
+    let pinned = contextful_context::scan::scan_at(&f.store, &d, Bounds::default(), Some(snapshot)).unwrap();
+    assert_eq!(pinned.columns.iter().find(|c| c.name == "value").unwrap().ty, variant);
+    assert_eq!(pinned.columns.iter().find(|c| c.name == "values").unwrap().ty, ColumnType::list(variant));
+}
 
 #[cfg(feature = "read")]
 /// Every read hands `read_parquet` an explicit sorted file list resolved from the pointer and the manifests, never a glob; a stray file joins nothing.

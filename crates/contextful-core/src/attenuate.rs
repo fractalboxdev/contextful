@@ -96,6 +96,8 @@ fn effective(child: &Grant, parent: &Grant) -> Grant {
         c.max_rows = [c.max_rows, p.max_rows].into_iter().flatten().min();
     }
     g.max_rows = [child.max_rows, parent.max_rows].into_iter().flatten().min();
+    g.max_duration_ms = [child.max_duration_ms, parent.max_duration_ms].into_iter().flatten().min();
+    g.max_response_bytes = [child.max_response_bytes, parent.max_response_bytes].into_iter().flatten().min();
     g
 }
 

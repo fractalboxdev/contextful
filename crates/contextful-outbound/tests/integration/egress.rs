@@ -13,6 +13,7 @@ use contextful_outbound::egress::{Inbound, Intent, Outbound, Outcome, PreSendHoo
 use contextful_outbound::{Limiter, Meter, Resolver};
 use std::net::SocketAddr;
 use std::sync::{Arc, Mutex};
+use std::time::Duration;
 use url::Url;
 
 fn url(s: &str) -> Url {
@@ -41,12 +42,13 @@ pub(crate) struct Recording {
     sent_addrs: Mutex<Vec<Vec<SocketAddr>>>,
     /// Each send's proxy choice: `true` when it bypassed the system proxy.
     pub(crate) directs: Mutex<Vec<bool>>,
+    pub(crate) limits: Mutex<Vec<(u64, Duration)>>,
 }
 
 impl Recording {
     pub(crate) fn new(answers: &[(&str, &str)], script: Vec<Scripted>, events: Arc<Mutex<Vec<String>>>) -> Arc<Recording> {
         let answers = answers.iter().map(|(h, a)| (h.to_string(), vec![a.parse().unwrap()])).collect();
-        Arc::new(Recording { answers, script: Mutex::new(script), events, sent_addrs: Mutex::default(), directs: Mutex::default() })
+        Arc::new(Recording { answers, script: Mutex::new(script), events, sent_addrs: Mutex::default(), directs: Mutex::default(), limits: Mutex::default() })
     }
 
     pub(crate) fn lookups(&self) -> usize {
@@ -69,6 +71,7 @@ impl Transport for Recording {
         self.events.lock().unwrap().push(format!("send {} {}", request.method, request.url));
         self.sent_addrs.lock().unwrap().push(request.addrs.to_vec());
         self.directs.lock().unwrap().push(request.direct);
+        self.limits.lock().unwrap().push((request.max_body, request.timeout));
         let mut script = self.script.lock().unwrap();
         let next = if script.len() > 1 { script.remove(0) } else { script[0].clone() };
         match next {
@@ -114,6 +117,21 @@ impl PreSendHook for Ledger {
 
 fn vendor_client(transport: Arc<Recording>) -> Client {
     Client::new(Allowlist::parse(&["api.vendor.example"]).unwrap(), url("https://api.vendor.example/v1")).with_transport(transport)
+}
+
+#[test]
+fn a_send_uses_its_remaining_body_and_time_budget_on_every_mediated_hop() {
+    let t = Recording::new(
+        &[("api.vendor.example", "93.184.216.34:0")],
+        vec![Scripted::Answer { status: 302, headers: vec![("Location".into(), "/next".into())], body: Vec::new() }, ok("{}")],
+        Arc::default(),
+    );
+    let response = vendor_client(t.clone()).send_bounded("GET", &url("https://api.vendor.example/start"), &plain(), None, 17, Duration::from_secs(9)).unwrap();
+    assert_eq!(response.status, 200);
+    let limits = t.limits.lock().unwrap();
+    assert_eq!(limits.len(), 2);
+    assert!(limits.iter().all(|(bytes, time)| *bytes == 17 && *time <= Duration::from_secs(9) && *time > Duration::from_secs(8)), "{limits:?}");
+    assert!(limits[1].1 <= limits[0].1, "redirects spend the same call deadline");
 }
 
 /// The mediated client reaches the network only through a transport port. Its send half connects to an address the
