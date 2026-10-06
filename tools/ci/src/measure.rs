@@ -15,9 +15,9 @@ use std::time::Instant;
 
 use crate::refuse;
 
-/// The evaluate stage's own target directory, under the workspace root, reclaimed once
-/// the stage passes (`assurance.build.target-dir-per-stage`).
-pub const EVALUATE_TARGET: &str = "target/evaluate";
+/// Records retain a workspace address across separate measure and report invocations,
+/// whose enclosing Cargo builds may acquire different pooled slots.
+const RECORDS_DIR: &str = "target/evaluate/records";
 const LOCK_FILE: &str = "spec/spec.lock.json";
 const PROBE_MANIFEST: &str = "tools/probe/Cargo.toml";
 
@@ -139,7 +139,7 @@ pub fn status(root: &Path, check: bool) -> Result<()> {
 }
 
 /// Run every entry of `tiers` whose method is known, each test in its package's
-/// integration binary built under `target/evaluate`, and hold each record to its target.
+/// integration binary built in the evaluate directory, and hold each record to its target.
 pub fn run(root: &Path, tiers: &[Tier]) -> Result<()> {
     measure(root, tiers)?.1
 }
@@ -148,7 +148,7 @@ pub fn run(root: &Path, tiers: &[Tier]) -> Result<()> {
 /// failed — a test that failed, a gate-tier record missing, reseeded or red — and the
 /// outcome, which carries the first failed test's exit ahead of the refusals.
 fn measure(root: &Path, tiers: &[Tier]) -> Result<(BTreeSet<String>, Result<()>)> {
-    let records = root.join(EVALUATE_TARGET).join("records");
+    let records = root.join(RECORDS_DIR);
     let _ = std::fs::remove_dir_all(&records);
     let Some(l) = resolved(root)? else {
         eprintln!("measure: no {}; nothing to measure", ledger::LEDGER_FILE);
@@ -259,7 +259,7 @@ fn run_test(root: &Path, path: &str, records: &Path) -> Result<()> {
     let (package, name) = ledger::test_target(path).context("an unresolvable test path")?;
     let status = Command::new("cargo")
         .args(["test", "-q", "-p", &package, "--test", "integration", "--", "--exact", &name])
-        .env("CARGO_TARGET_DIR", root.join(EVALUATE_TARGET))
+        .env("CARGO_TARGET_DIR", crate::build_target(root, "evaluate"))
         .env(MEASURE_DIR_VAR, records)
         .current_dir(root)
         .status()?;
@@ -273,7 +273,7 @@ fn run_test(root: &Path, path: &str, records: &Path) -> Result<()> {
 fn run_probe(root: &Path, name: &str, records: &Path) -> Result<()> {
     let status = Command::new("cargo")
         .args(["run", "--locked", "-q", "--manifest-path", PROBE_MANIFEST, "--bin", name])
-        .env("CARGO_TARGET_DIR", root.join(EVALUATE_TARGET))
+        .env("CARGO_TARGET_DIR", crate::build_target(root, "evaluate"))
         .env(MEASURE_DIR_VAR, records)
         .current_dir(root)
         .status()?;
@@ -396,7 +396,7 @@ fn earlier_baselines(root: &Path, commit: &str, current: &[&Record]) -> Result<B
 /// Write one JSON-line run report, annotating a trend only against matching earlier
 /// successful history. The measure's exit status remains a separate workflow verdict.
 pub fn report(root: &Path, commit: &str, run_id: u64, run_attempt: u64, exit_code: i32, out: &Path) -> Result<()> {
-    let dir = root.join(EVALUATE_TARGET).join("records");
+    let dir = root.join(RECORDS_DIR);
     let mut records = Vec::new();
     match std::fs::read_dir(&dir) {
         Ok(entries) => {
@@ -513,6 +513,7 @@ pub fn evaluate(root: &Path) -> Result<()> {
         eprintln!("evaluate: baseline verdict {} for {NATIVE_CASES} ({})", if baseline_red { "red" } else { "held" }, native.join(", "));
     }
     outcome?;
-    let _ = std::fs::remove_dir_all(root.join(EVALUATE_TARGET));
+    let _ = std::fs::remove_dir_all(crate::build_target(root, "evaluate"));
+    let _ = std::fs::remove_dir_all(root.join("target/evaluate"));
     Ok(())
 }
