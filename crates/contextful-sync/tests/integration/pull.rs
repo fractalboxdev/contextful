@@ -43,11 +43,15 @@ fn a_clone_keeps_the_store_uuid_and_an_independent_store_refuses_it() {
     clone.syncer.pull(&PullScope::default()).unwrap();
     assert_eq!(std::fs::read_to_string(clone.root().join("store-id")).unwrap(), identity);
 
+    let scoped = node("ingest-d", b.clone(), "");
+    scoped.syncer.pull(&PullScope { tables: ["filings".to_string()].into(), ..PullScope::default() }).unwrap();
+    assert_eq!(std::fs::read_to_string(scoped.root().join("store-id")).unwrap(), identity);
+
     let independent = node("ingest-c", b, "");
     let other = "22222222-2222-4222-8222-222222222222\n";
     std::fs::write(independent.root().join("store-id"), other).unwrap();
     let refused = independent.syncer.pull(&PullScope::default()).unwrap_err();
-    assert!(refused.to_string().contains("StoreIdentityConflict"), "{refused}");
+    assert!(matches!(refused, SyncError::Store(StoreError::StoreIdentityConflict(_))), "{refused}");
     assert_eq!(std::fs::read_to_string(independent.root().join("store-id")).unwrap(), other);
 }
 
