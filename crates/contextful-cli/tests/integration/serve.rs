@@ -691,3 +691,47 @@ fn serve_caches_a_repeated_statement_under_its_declared_budget() {
     assert_eq!(states(&["--result-cache-bytes", "65536"]), [json!("miss"), json!("hit")]);
     assert_eq!(states(&[]), [Value::Null, Value::Null], "no declared budget caches nothing");
 }
+
+#[test]
+fn synced_admin_draft_apply_keeps_a_signed_receipt_under_network_authority() {
+    let (dir, public) = project();
+    let root = dir.path();
+    let original = "[[pipeline]]\nid = \"filings-flow\"\nschedule = \"every 1h\"\ntables = [\"research/notes\"]\n[pipeline.source]\nname = \"http\"\nconfig = { endpoint = \"https://example.test/filings\" }\n";
+    std::fs::create_dir_all(root.join("pipelines")).unwrap();
+    std::fs::write(root.join("pipelines/filings.toml"), original).unwrap();
+    let admin = stdout(&run(root, &["token", "mint", "--issuer-key", ".contextful/issuer.seed", "--on-behalf-of", "user://service@acme.example", "--zone", "on-prem:hq", "--action", "admin", "--table", "*", "--ttl", "900"]));
+    let bucket = tempfile::tempdir().unwrap();
+    std::fs::write(root.join(".contextful/context/research/config.toml"), format!("[node]\nid = \"site-a\"\n[sync]\nendpoint = \"file://{}\"\nbucket = \"control-test\"\nprefix = \"team\"\ncoordination = \"single-writer\"\n", bucket.path().display())).unwrap();
+    let imported = Command::new(env!("CARGO_BIN_EXE_contextful")).args(["pipeline", "import", "--project", "research", "--public-key", &public, "--audience", AUD]).env("CONTEXTFUL_TOKEN", &admin).current_dir(root).output().unwrap();
+    stdout(&imported);
+    let (listener, addr) = serve(root, &["serve", "--http", "127.0.0.1:0", "--audience", AUD, "--max-in-flight", "2", "--project", "research", "--public-key", &public]);
+    assert_eq!(control(&addr, "GET", "/control/record", Some(&admin), "").0, 200);
+    let edit = json!({ "expected": 1, "document": original.replace("every 1h", "every 1d") }).to_string();
+    assert_eq!(control_headers(&addr, "POST", "/control/edit", Some(&admin), &edit, "").0, 403);
+    let now = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap().as_secs() as i64;
+    let stale = attestation("/control/edit", &edit, "operator-a", now - 120, &"1".repeat(32));
+    assert_eq!(control_headers(&addr, "POST", "/control/edit", Some(&admin), &edit, &stale).0, 403);
+    let forged = attestation("/control/edit", &edit, "operator-a", now, &"2".repeat(32)).replace("Operator: operator-a", "Operator: operator-b");
+    assert_eq!(control_headers(&addr, "POST", "/control/edit", Some(&admin), &edit, &forged).0, 403);
+    let signed = attestation("/control/edit", &edit, "operator-a", now, &"3".repeat(32));
+    let (status, saved) = control_headers(&addr, "POST", "/control/edit", Some(&admin), &edit, &signed);
+    assert_eq!(status, 200, "{saved}");
+    assert_eq!(control_headers(&addr, "POST", "/control/edit", Some(&admin), &edit, &signed).0, 403);
+    drop(listener);
+    let (_restart, restarted_addr) = serve(root, &["serve", "--http", "127.0.0.1:0", "--audience", AUD, "--max-in-flight", "2", "--project", "research", "--public-key", &public]);
+    assert_eq!(control_headers(&restarted_addr, "POST", "/control/edit", Some(&admin), &edit, &signed).0, 403);
+    let apply = json!({ "expected": 1, "nonce": saved["nonce"] }).to_string();
+    let signed = attestation("/control/apply", &apply, "operator-a", now, &"4".repeat(32));
+    let (status, result) = control_headers(&restarted_addr, "POST", "/control/apply", Some(&admin), &apply, &signed);
+    assert_eq!(status, 200, "{result}");
+    let receipts = root.join(".contextful/control/research");
+    let receipt: contextful_policy::control_receipt::ControlReceipt = serde_json::from_str(&std::fs::read_to_string(receipts.join("receipt@v2.json")).unwrap()).unwrap();
+    let snapshot = std::fs::read(receipts.join("manifest@v2.toml")).unwrap();
+    receipt.verify("research", &snapshot, &[public.parse().unwrap()]).unwrap();
+    assert!(receipt.parent.is_some());
+    let entries = contextful_policy::audit::entries(&root.join(".contextful/audit")).unwrap();
+    assert!(entries.iter().any(|entry| entry.attributes["contextful.operator.subject"] == "operator-a" && entry.attributes["contextful.control.operation"] == "apply"));
+    let (status, record) = control(&restarted_addr, "GET", "/control/record", Some(&admin), "");
+    assert_eq!(status, 200, "{record}");
+    assert!(record["entries"].as_array().unwrap().iter().any(|entry| entry["attributes"]["contextful.operator.subject"] == "operator-a"));
+}

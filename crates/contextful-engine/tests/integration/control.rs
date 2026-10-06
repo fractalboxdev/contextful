@@ -143,3 +143,21 @@ fn an_attested_import_resumes_v1_only_after_receipt_validation() {
     assert!(snaps.import_attested("first", sign, verify).is_err());
     assert!(!dir.path().join("manifest@v2.toml").exists());
 }
+
+#[test]
+fn an_attested_draft_keeps_its_receipt_chain_and_refuses_failed_signing() {
+    let dir = tempfile::tempdir().unwrap();
+    let snaps = SnapshotDir::open(dir.path());
+    snaps.import_attested("first", |_, _| Ok("receipt one".into()), |_| Ok(())).unwrap();
+    let draft = Draft::new(1, "second".into(), "alice".into()).unwrap();
+    snaps.save_draft(&draft).unwrap();
+    assert!(snaps.claim_draft_attested(&draft, |_, _| Err(ControlError::Storage("signer absent".into()))).is_err());
+    assert_eq!(snaps.current().unwrap(), Some(1));
+    assert_eq!(snaps.read_draft().unwrap(), draft);
+    assert_eq!(snaps.claim_draft_attested(&draft, |version, prior| {
+        assert_eq!((version, prior), (2, Some("receipt one")));
+        Ok("receipt two".into())
+    }).unwrap(), 2);
+    assert_eq!(std::fs::read_to_string(dir.path().join("receipt@v2.json")).unwrap(), "receipt two");
+    assert_eq!(snaps.current().unwrap(), Some(2));
+}
