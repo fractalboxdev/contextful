@@ -167,11 +167,11 @@ Stage order, secrets of record, the crate-graph, row-token, egress and dependenc
   *A-assurance*
 - `remote-check` — The FlareDispatch pull-request webhook dispatches every part from `contextful-ci stages --parts`, each as `flare-dispatch/check:<part>` on the head commit.
   *A-assurance*
-- `workspace-parts` — Remote workspace checks compile the feature-unified workspace and run the CLI suite from that build, then run each other non-acceptance package suite in exactly one of four groups.
+- `workspace-parts` — Remote workspace checks compile the feature-unified workspace without running tests, run the CLI suite in its own check, and run each other non-acceptance package suite in exactly one of four groups.
   *A-assurance*
 - `remote-predecessors` — Each dispatched part invokes `contextful-ci gate --predecessors --stage <part> --base <base-sha>`, so no check reads another check's sandbox.
   *A-assurance*
-- `fork-dispatch` — FlareDispatch dispatches only a pull-request head pushed to this repository; a fork receives none of the 23 required stage checks.
+- `fork-dispatch` — FlareDispatch dispatches only a pull-request head pushed to this repository; a fork receives none of the 24 required stage checks.
   *because a dispatch runs untrusted code in the organization's compute account, and absent required checks fail closed*
 - `stage-reports` — Each stage prints the environment it leaves and its memory limit, peak and event counts, and a failing stage prints its diagnostics before propagating its exit code.
   *because memory exhaustion is silent, and a kill then reads as a number in the log*

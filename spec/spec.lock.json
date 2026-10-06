@@ -21162,7 +21162,7 @@
       "operation": "gate",
       "subject": "workspace-parts",
       "kind": "behavior",
-      "statement": "Remote workspace checks compile the feature-unified workspace and run the CLI suite from that build, then run each other non-acceptance package suite in exactly one of four groups.",
+      "statement": "Remote workspace checks compile the feature-unified workspace without running tests, run the CLI suite in its own check, and run each other non-acceptance package suite in exactly one of four groups.",
       "why": "A-assurance",
       "file": "spec/81-engineering.md",
       "line": 170
@@ -21184,7 +21184,7 @@
       "operation": "gate",
       "subject": "fork-dispatch",
       "kind": "behavior",
-      "statement": "FlareDispatch dispatches only a pull-request head pushed to this repository; a fork receives none of the 23 required stage checks.",
+      "statement": "FlareDispatch dispatches only a pull-request head pushed to this repository; a fork receives none of the 24 required stage checks.",
       "why": "because a dispatch runs untrusted code in the organization's compute account, and absent required checks fail closed",
       "file": "spec/81-engineering.md",
       "line": 174

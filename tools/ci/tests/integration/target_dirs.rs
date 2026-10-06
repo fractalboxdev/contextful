@@ -85,7 +85,7 @@ fn the_workspace_stage_runs_one_invocation_and_the_store_suites_link_no_engine_w
 }
 
 /// Remote workspace checks compile the feature-unified workspace separately from the CLI suite and run every other non-acceptance package suite in one of four groups.
-// spec: assurance.gate.workspace-parts@55b557c2
+// spec: assurance.gate.workspace-parts@2b8d0b2a
 #[test]
 fn remote_workspace_parts_compile_the_union_and_run_each_package_suite() {
     let r = Repo::init();

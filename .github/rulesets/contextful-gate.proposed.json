@@ -20,6 +20,7 @@
           { "context": "flare-dispatch/check:schema" },
           { "context": "flare-dispatch/check:test-first" },
           { "context": "flare-dispatch/check:workspace.compile" },
+          { "context": "flare-dispatch/check:workspace.cli" },
           { "context": "flare-dispatch/check:workspace.foundation" },
           { "context": "flare-dispatch/check:workspace.runtime" },
           { "context": "flare-dispatch/check:workspace.read" },
