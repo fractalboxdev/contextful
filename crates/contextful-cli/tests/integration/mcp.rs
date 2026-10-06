@@ -144,6 +144,54 @@ fn explicit_owner_requires_a_signed_credential_for_the_selected_store() {
     assert!(String::from_utf8_lossy(&refused.stderr).contains("OwnerCredentialInvalid"));
 }
 
+#[test]
+fn owner_credential_still_applies_row_zone_and_column_policies() {
+    let dir = tempfile::tempdir().unwrap();
+    let root = dir.path();
+    std::fs::create_dir_all(root.join(".contextful")).unwrap();
+    std::fs::write(root.join(".contextful/issuance.toml"), format!("default_audience = \"{AUD}\"\nmax_lifetime_secs = 3600\n")).unwrap();
+    std::fs::write(root.join("contextful.toml"), r#"authoring_posture = "per_request"
+[project]
+name = "research"
+
+[[pipeline.tables]]
+name = "research/notes"
+[pipeline.tables.policy.rows]
+predicate = "owner = subject.on_behalf_of"
+[pipeline.tables.policy.columns]
+title = { strategy = "drop" }
+
+[[pipeline.tables]]
+name = "research/vendor"
+[pipeline.tables.policy.zone]
+allow = ["public-cloud:*"]
+"#).unwrap();
+    std::fs::write(root.join("notes.jsonl"), concat!(
+        "{\"note_id\":\"n1\",\"owner\":\"user://dana@acme.example\",\"title\":\"private one\"}\n",
+        "{\"note_id\":\"n2\",\"owner\":\"user://other@acme.example\",\"title\":\"private two\"}\n",
+    )).unwrap();
+    std::fs::write(root.join("vendor.jsonl"), "{\"vendor_id\":\"v1\"}\n").unwrap();
+    for (table, rows, run_id) in [("research/notes", "notes.jsonl", "run-notes"), ("research/vendor", "vendor.jsonl", "run-vendor")] {
+        stdout(&run(root, &["context", "land", table, "--project", "research", "--rows", rows, "--run-id", run_id, "--site-id", "site-a"]));
+    }
+    let public = stdout(&run(root, &["token", "keygen", "--out", ".contextful/issuer.seed"]));
+    let owner = stdout(&run(root, &[
+        "token", "mint", "--issuer-key", ".contextful/issuer.seed", "--on-behalf-of", "user://dana@acme.example",
+        "--zone", "on-prem:hq", "--action", "read", "--table", "*", "--ttl", "600", "--owner",
+    ]));
+    let args = ["mcp", "--owner", "--project", "research", "--public-key", &public, "--audience", AUD];
+    let query = |id, sql| json!({ "jsonrpc": "2.0", "id": id, "method": "tools/call", "params": { "name": "context.query", "arguments": { "sql": sql } } });
+    let out = serve(root, &args, Some(&owner), &[
+        query(1, "SELECT note_id, title FROM \"research/notes\" ORDER BY note_id"),
+        query(2, "SELECT vendor_id FROM \"research/vendor\""),
+    ]);
+    assert!(out.status.success(), "{}", String::from_utf8_lossy(&out.stderr));
+    let answers: Vec<Value> = String::from_utf8_lossy(&out.stdout).lines().map(|line| serde_json::from_str(line).unwrap()).collect();
+    assert_eq!(answers.len(), 2, "{answers:?}");
+    assert_eq!(answers[0]["result"]["structuredContent"]["rows"], json!([["n1", ""]]), "row predicate and column mask hold under owner");
+    assert_eq!(answers[1]["result"]["structuredContent"]["rows"], json!([]), "zone exclusion holds under owner");
+}
+
 /// The server admits over the stdio pipe it inherited: a credential binding no key admits
 /// through that pipe, and one binding a holder key and presenting no holder proof refuses.
 #[test]
