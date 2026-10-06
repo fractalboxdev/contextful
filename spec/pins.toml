@@ -34,6 +34,7 @@
 "run.emit.output-modality" = { test = "contextful_connectors::derive::a_transcript_passage_carries_text_modality" }
 "run.emit.local-content-key" = { test = "contextful_connectors::derive::changed_local_bytes_reselect_the_same_media_path" }
 "connector.source.image-header" = { test = "contextful_cli::pipeline::an_image_source_refuses_a_bad_header_with_its_path" }
+"store.push.control-version"     = { test = "contextful_cli::sync::run_state::a_push_records_the_default_applied_control_version" }
 "corpus.state.typescript-tag-pin" = { test = "contextful_spec::ts_pins::a_running_surface_test_tag_performs_its_clause" }
 "corpus.state.typescript-unfinished" = { test = "contextful_spec::ts_pins::a_skipped_or_todo_surface_test_is_broken" }
 "assurance.gate.native-test-files" = { test = "contextful_ci::stages::the_surfaces_stage_runs_each_native_typescript_test_file_even_without_a_test_script" }

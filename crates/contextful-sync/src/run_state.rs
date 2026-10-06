@@ -6,6 +6,7 @@ use crate::sync::{Result, SyncError};
 use contextful_context::{ContextError, Store};
 use contextful_core::coordinate::Catalog;
 use contextful_core::run::record::{RunRow, RunStatus};
+use contextful_core::surface::control::parse_pointer;
 use contextful_core::time::Instant;
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
@@ -52,6 +53,9 @@ pub struct RunState {
     pub runs: BTreeMap<String, RunMark>,
     #[serde(default)]
     pub cursors: Vec<CursorMark>,
+    /// The version named by the local default control pointer, when one is applied.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub control_version: Option<u64>,
 }
 
 fn first_format() -> u32 {
@@ -90,7 +94,23 @@ impl RunState {
                 cursors.push(CursorMark { pipeline_id, table, position: row.position, run_id, committed_at });
             }
         }
-        Ok(RunState { format: RUN_STATE_FORMAT, node_id: node.to_string(), runs, cursors })
+        Ok(RunState { format: RUN_STATE_FORMAT, node_id: node.to_string(), runs, cursors, control_version: None })
+    }
+}
+
+/// The default local control directory beside a store root: `.contextful/control/<project>/`.
+pub fn control_dir(store: &Store, project: &str) -> PathBuf {
+    let depth = project.split('/').count() + 1;
+    store.root().ancestors().nth(depth).map_or_else(|| store.root().join("control"), |dotdir| dotdir.join("control")).join(project)
+}
+
+/// The version named by the default local control pointer, when the pointer exists.
+pub fn local_control_version(store: &Store, project: &str) -> Result<Option<u64>> {
+    let path = control_dir(store, project).join("manifest@current");
+    match std::fs::read_to_string(&path) {
+        Ok(body) => parse_pointer(&body).map(Some).map_err(|e| invalid(e.to_string())),
+        Err(e) if e.kind() == std::io::ErrorKind::NotFound => Ok(None),
+        Err(e) => Err(io(&path, e)),
     }
 }
 

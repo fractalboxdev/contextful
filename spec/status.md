@@ -12,10 +12,10 @@ An unpinned clause is `committed`; a pinned one is `performed` when its Rust, Le
 | `disclosure` | 3 | 16 | 134 | 66 | 13 | 3 | 63 | 0 | 63 |
 | `read` | 2 | 15 | 199 | 31 | 22 | 9 | 177 | 0 | 172 |
 | `run` | 3 | 26 | 392 | 100 | 38 | 28 | 291 | 0 | 279 |
-| `store` | 1 | 17 | 240 | 56 | 13 | 19 | 203 | 0 | 203 |
+| `store` | 1 | 17 | 241 | 56 | 13 | 19 | 204 | 0 | 203 |
 | `surface` | 2 | 20 | 114 | 51 | 22 | 0 | 59 | 0 | 59 |
 | `topology` | 1 | 6 | 70 | 24 | 5 | 5 | 38 | 0 | 38 |
-| **total** | 19 | 155 | 2081 | 590 | 190 | 103 | 1447 | 0 | |
+| **total** | 19 | 155 | 2082 | 590 | 190 | 103 | 1448 | 0 | |
 
 Decision records: 18.
 
@@ -31,7 +31,7 @@ A milestone reads `closed` when its acceptance test computes `passing` and every
 | 3 — The run path | 11 | 209 | 145 | passing | closed |
 | 4 — Ingest | 25 | 504 | 330 | passing | open |
 | 5 — The read face under enforcement | 17 | 262 | 204 | passing | open |
-| 6 — Sync and replicas | 8 | 76 | 71 | passing | closed |
+| 6 — Sync and replicas | 8 | 77 | 72 | passing | closed |
 | 7 — Memory | 6 | 47 | 39 | passing | closed |
 | 8 — Accountability | 5 | 60 | 47 | passing | open |
 | 9 — Visibility | 6 | 41 | 3 | open | open |
@@ -1341,6 +1341,7 @@ Unscheduled operations: 10.
 | `store.pull.unconverged` | `crates/contextful-sync/tests/integration/pull.rs::a_key_that_keeps_moving_refuses_and_writes_no_pointer` | performed |
 | `store.push.control-artifact` | `crates/contextful-sync/tests/integration/push.rs::a_push_commits_the_signed_control_chain_and_project_head` | performed |
 | `store.push.control-diverged` | `crates/contextful-sync/tests/integration/push.rs::a_sibling_control_head_refuses_without_changing_the_bucket_head` | performed |
+| `store.push.control-version` | `spec/pins.toml` | performed |
 | `store.push.format-unsupported` | `crates/contextful-sync/tests/integration/generation.rs::a_manifest_of_a_newer_format_refuses_push_and_pull` | performed |
 | `store.push.generation` | `crates/contextful-sync/tests/integration/generation.rs::each_push_commits_the_next_generation_and_writes_it_immutably` | performed |
 | `store.push.generation-conflict` | `crates/contextful-sync/tests/integration/generation.rs::a_generation_file_holding_another_commit_refuses_and_the_next_push_numbers_past_it` | performed |
