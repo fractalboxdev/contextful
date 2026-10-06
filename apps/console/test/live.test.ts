@@ -1,6 +1,8 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 import { createLiveTurn } from "../src/live.ts";
+import { ConsoleError } from "../src/turn.ts";
+import { createConsole, issueCognitoSession } from "../src/index.ts";
 import type { StoreEntry } from "../../gateway/src/index.ts";
 
 const store: StoreEntry = {
@@ -9,9 +11,10 @@ const store: StoreEntry = {
   bindingName: "FIELD_NOTES",
 };
 
-function fixture(options: { exchange?: boolean; shared?: string; rows?: unknown[][] } = {}) {
+function fixture(options: { exchange?: boolean; shared?: string; rows?: unknown[][]; tables?: Array<{ table: string; kind: string }> } = {}) {
   const calls: Array<{ url: string; authorization: string | null; body: Record<string, unknown> }> = [];
   let modelCalls = 0;
+  let modelBody: Record<string, unknown> | null = null;
   const fetcher: typeof fetch = async (input, init) => {
     const url = String(input);
     const body = JSON.parse(String(init?.body ?? "{}")) as Record<string, unknown>;
@@ -19,7 +22,9 @@ function fixture(options: { exchange?: boolean; shared?: string; rows?: unknown[
     if (url.endsWith("/auth/exchange")) return Response.json(options.exchange === false ? { error: { identifier: "ExchangeAssertionInvalid" } } : { token: "reader-token" }, { status: options.exchange === false ? 403 : 200 });
     if (url.endsWith("/mcp")) {
       const params = body.params as Record<string, unknown>;
-      if (params.name === "context.describe") return Response.json({ jsonrpc: "2.0", id: body.id, result: { structuredContent: { tables: [{ table: "filings" }] } } });
+      if (params.name === "context.describe") return Response.json({ jsonrpc: "2.0", id: body.id, result: { structuredContent: {
+        tables: options.tables ?? [{ table: "filings", kind: "data" }],
+      } } });
       assert.equal(params.name, "context.query");
       return Response.json({ jsonrpc: "2.0", id: body.id, result: { structuredContent: {
         columns: ["filing_id", "summary", "source_url"],
@@ -28,6 +33,7 @@ function fixture(options: { exchange?: boolean; shared?: string; rows?: unknown[
     }
     if (url.endsWith("/chat/completions")) {
       modelCalls++;
+      modelBody = body;
       return Response.json({ choices: [{ message: { content: "Northwind filed on Monday [filing-1]." } }] });
     }
     throw new Error(`unexpected request ${url}`);
@@ -36,7 +42,7 @@ function fixture(options: { exchange?: boolean; shared?: string; rows?: unknown[
     CONTEXTFUL_MODEL_ENDPOINT: "https://model.example/v1", CONTEXTFUL_MODEL_ID: "fixture",
     ...(options.shared ? { FIELD_NOTES_QUERY_TOKEN: options.shared } : {}),
   }, fetcher });
-  return { turn, calls, modelCalls: () => modelCalls };
+  return { turn, calls, modelCalls: () => modelCalls, modelBody: () => modelBody };
 }
 
 test("Query reads governed rows under the exchanged reader credential and cites their provenance", async () => {
@@ -46,11 +52,12 @@ test("Query reads governed rows under the exchanged reader credential and cites 
   assert.match(answer.answer, /Northwind filed on Monday/);
   assert.match(JSON.stringify(answer.sources), /filing-1/);
   assert.equal(modelCalls(), 1);
-  assert.equal(calls.find((call) => call.url.endsWith("/auth/exchange"))?.body.assertion, "verified-access-jwt");
+  assert.equal(calls.find((call) => call.url.endsWith("/auth/exchange"))?.body.jwt, "verified-access-jwt");
   assert.equal(calls.find((call) => (call.body.params as Record<string, unknown> | undefined)?.name === "context.query")?.authorization, "Bearer reader-token");
   assert.deepEqual(calls.filter((call) => call.url.endsWith("/mcp")).map((call) => (call.body.params as Record<string, unknown>).name), ["context.describe", "context.query"]);
 });
 
+// spec: surface.ground.mint-refused@1ca62976
 test("Query falls back to a configured shared credential only after exchange refusal", async () => {
   const fallback = fixture({ exchange: false, shared: "shared-token" });
   await fallback.turn({ operator: { subject: "operator-1", grants: new Set(["query"]), assertion: "verified-access-jwt" },
@@ -66,6 +73,62 @@ test("Query falls back to a configured shared credential only after exchange ref
 test("Query never sends rows without provenance to the model", async () => {
   const { turn, modelCalls } = fixture({ rows: [["", "Northwind filed on Monday", ""]] });
   await assert.rejects(turn({ operator: { subject: "operator-1", grants: new Set(["query"]), assertion: "verified-access-jwt" },
-    store: "field-notes", question: "Which filing arrived?" }), /ConsoleUngroundedAnswer/);
+    store: "field-notes", question: "Which filing arrived?" }),
+    (error: unknown) => error instanceof ConsoleError && error.code === "ConsoleUngroundedAnswer");
   assert.equal(modelCalls(), 0);
+});
+
+test("Query excludes an unsourced sibling row from model context", async () => {
+  const { turn, modelBody } = fixture({ rows: [
+    ["filing-1", "Northwind filed on Monday", "https://example.test/filing-1"],
+    ["", "PRIVATE UNSOURCED ROW", ""],
+  ] });
+  await turn({ operator: { subject: "operator-1", grants: new Set(["query"]), assertion: "verified-access-jwt" },
+    store: "field-notes", question: "Which filing arrived?" });
+  assert.doesNotMatch(JSON.stringify(modelBody()), /PRIVATE UNSOURCED ROW/);
+});
+
+test("Query never scaffolds or dispatches a memory relation", async () => {
+  const { turn, calls } = fixture({ tables: [{ table: "research/insights", kind: "memory" }, { table: "filings", kind: "data" }] });
+  await turn({ operator: { subject: "operator-1", grants: new Set(["query"]), assertion: "verified-access-jwt" },
+    store: "field-notes", question: "Which filing arrived?" });
+  assert.deepEqual(calls.filter((call) => (call.body.params as Record<string, unknown> | undefined)?.name === "context.query")
+    .map((call) => (call.body.params as Record<string, unknown>).arguments),
+    [{ sql: 'SELECT * FROM "filings"', limit: 5000 }]);
+});
+
+test("Query returns a typed exchange refusal through its hosted API", async () => {
+  const { turn, calls } = fixture({ exchange: false });
+  const app = createConsole({
+    identity: { kind: "cognito", sessionSecret: "session-secret", queryGroup: "query", adminGroup: "admin" },
+    stores: [{ id: store.id, label: store.label }], turn,
+    read: { list: async () => [{ id: store.id, label: store.label }] },
+    control: { workflows: async () => ({}), record: async () => ({}), edit: async () => ({}), apply: async () => ({}) },
+  });
+  const token = issueCognitoSession({ subject: "reader", groups: ["query"], expiresAt: Math.floor(Date.now() / 1000) + 60 }, "session-secret");
+  const response = await app.fetch(new Request("https://console.example/query/api/ask", {
+    method: "POST", headers: { cookie: `console_session=${token}`, origin: "https://console.example" },
+    body: JSON.stringify({ store: store.id, question: "Which filing arrived?" }),
+  }));
+  assert.equal(response.status, 403);
+  assert.deepEqual(await response.json(), { error: { identifier: "ConsoleTokenExchangeRefused" } });
+  assert.equal(calls.filter((call) => call.url.endsWith("/mcp")).length, 0);
+});
+
+test("Cognito Query exchanges the signed-in reader's assertion", async () => {
+  const { turn, calls } = fixture();
+  const app = createConsole({
+    identity: { kind: "cognito", sessionSecret: "session-secret", queryGroup: "query", adminGroup: "admin" },
+    stores: [{ id: store.id, label: store.label }], turn,
+    read: { list: async () => [{ id: store.id, label: store.label }] },
+    control: { workflows: async () => ({}), record: async () => ({}), edit: async () => ({}), apply: async () => ({}) },
+  });
+  const token = issueCognitoSession({ subject: "reader", groups: ["query"], assertion: "cognito-id-token",
+    expiresAt: Math.floor(Date.now() / 1000) + 60 }, "session-secret");
+  const response = await app.fetch(new Request("https://console.example/query/api/ask", {
+    method: "POST", headers: { cookie: `console_session=${token}`, origin: "https://console.example" },
+    body: JSON.stringify({ store: store.id, question: "Which filing arrived?" }),
+  }));
+  assert.equal(response.status, 200);
+  assert.equal(calls.find((call) => call.url.endsWith("/auth/exchange"))?.body.jwt, "cognito-id-token");
 });
