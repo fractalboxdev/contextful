@@ -41,6 +41,10 @@ type ReceiptVerifier<'a> = dyn Fn(&str) -> Result<(), ControlError> + 'a;
 /// A snapshot-directory refusal or a storage failure beneath it.
 #[derive(Debug, Clone, PartialEq, Eq, thiserror::Error)]
 pub enum ControlError {
+    #[error("ControlOperatorAttestationInvalid: {0}")]
+    OperatorAttestationInvalid(String),
+    #[error(transparent)]
+    Authority(#[from] contextful_core::AuthorityError),
     #[error(transparent)]
     Surface(#[from] SurfaceError),
     #[error("{0}")]
@@ -113,11 +117,17 @@ impl SnapshotDir {
     /// applied-pointer mutations. A claim stays until its signed time is no longer
     /// admissible, including across a listener restart.
     pub fn claim_attestation_nonce(&self, nonce: &str, signed_at: i64, now: i64) -> Result<bool, ControlError> {
+        self.claim_attestation_nonce_guarded(nonce, signed_at, now, &|| Ok(()))
+    }
+
+    /// Recheck authority under the nonce lock before changing replay state.
+    pub fn claim_attestation_nonce_guarded(&self, nonce: &str, signed_at: i64, now: i64, boundary: &dyn Fn() -> Result<(), ControlError>) -> Result<bool, ControlError> {
         if nonce.len() != 32 || !nonce.bytes().all(|byte| byte.is_ascii_hexdigit()) {
             return Err(ControlError::Storage("an attestation nonce is 32 hexadecimal bytes".into()));
         }
         let storage = |e: contextful_core::run::Failure| ControlError::Storage(e.to_string());
         let _lock = FileLock::acquire(&self.root.join(LOCK_FILE)).map_err(storage)?;
+        boundary()?;
         let directory = self.root.join(ATTESTATION_NONCES);
         std::fs::create_dir_all(&directory).map_err(|e| ControlError::Storage(format!("{}: {e}", directory.display())))?;
         let first_live = now.saturating_sub(60);
@@ -148,10 +158,16 @@ impl SnapshotDir {
 
     /// Save one store draft only while the applied version still matches its base.
     pub fn save_draft(&self, draft: &Draft) -> Result<(), ControlError> {
+        self.save_draft_guarded(draft, &|| Ok(()))
+    }
+
+    /// Recheck authority under the draft lock immediately before publication.
+    pub fn save_draft_guarded(&self, draft: &Draft, boundary: &dyn Fn() -> Result<(), ControlError>) -> Result<(), ControlError> {
         let storage = |e: contextful_core::run::Failure| ControlError::Storage(e.to_string());
         let _lock = FileLock::acquire(&self.root.join(LOCK_FILE)).map_err(storage)?;
         self.expect_version(draft.expected)?;
         let body = serde_json::to_vec(draft).map_err(|e| ControlError::Storage(e.to_string()))?;
+        boundary()?;
         replace(&self.root.join(DRAFT_FILE), &body).map_err(storage)?;
         Ok(())
     }
@@ -168,22 +184,32 @@ impl SnapshotDir {
 
     /// Claim the exact draft revalidated by the caller under the existing pointer lock.
     pub fn claim_draft(&self, draft: &Draft) -> Result<u64, ControlError> {
-        self.claim_draft_inner(draft, None)
+        self.claim_draft_guarded(draft, &|| Ok(()))
+    }
+
+    /// Recheck authority under the claim lock before an unsigned draft commit.
+    pub fn claim_draft_guarded(&self, draft: &Draft, boundary: &dyn Fn() -> Result<(), ControlError>) -> Result<u64, ControlError> {
+        self.claim_draft_inner(draft, None, boundary)
     }
 
     /// Claim a validated draft with its signed receipt before publishing the pointer.
     pub fn claim_draft_attested(&self, draft: &Draft, receipt: impl Fn(u64, Option<&str>) -> Result<String, ControlError>) -> Result<u64, ControlError> {
-        self.claim_draft_inner(draft, Some(&receipt))
+        self.claim_draft_attested_guarded(draft, receipt, &|| Ok(()))
     }
 
-    fn claim_draft_inner(&self, draft: &Draft, receipt: Option<&ReceiptBuilder<'_>>) -> Result<u64, ControlError> {
+    /// Recheck the control boundary after signing and before publishing an attested draft.
+    pub fn claim_draft_attested_guarded(&self, draft: &Draft, receipt: impl Fn(u64, Option<&str>) -> Result<String, ControlError>, boundary: &dyn Fn() -> Result<(), ControlError>) -> Result<u64, ControlError> {
+        self.claim_draft_inner(draft, Some(&receipt), boundary)
+    }
+
+    fn claim_draft_inner(&self, draft: &Draft, receipt: Option<&ReceiptBuilder<'_>>, boundary: &dyn Fn() -> Result<(), ControlError>) -> Result<u64, ControlError> {
         let storage = |e: contextful_core::run::Failure| ControlError::Storage(e.to_string());
         let _lock = FileLock::acquire(&self.root.join(LOCK_FILE)).map_err(storage)?;
         self.expect_version(draft.expected)?;
         if self.read_draft()? != *draft {
             return Err(SurfaceError::ManifestVersionConflict("the validated draft changed before apply; reload and reapply".into()).into());
         }
-        let version = self.claim_locked(Some(draft.expected), &draft.document, receipt, None)?;
+        let version = self.claim_locked_guarded(Some(draft.expected), &draft.document, receipt, None, boundary)?;
         let _ = std::fs::remove_file(self.root.join(DRAFT_FILE));
         Ok(version)
     }
@@ -263,6 +289,10 @@ impl SnapshotDir {
     }
 
     fn claim_locked(&self, expected: Option<u64>, text: &str, receipt: Option<&ReceiptBuilder<'_>>, recover: Option<&ReceiptVerifier<'_>>) -> Result<u64, ControlError> {
+        self.claim_locked_guarded(expected, text, receipt, recover, &|| Ok(()))
+    }
+
+    fn claim_locked_guarded(&self, expected: Option<u64>, text: &str, receipt: Option<&ReceiptBuilder<'_>>, recover: Option<&ReceiptVerifier<'_>>, boundary: &dyn Fn() -> Result<(), ControlError>) -> Result<u64, ControlError> {
         let storage = |e: contextful_core::run::Failure| ControlError::Storage(e.to_string());
         let current = self.current()?;
         if current != expected {
@@ -324,6 +354,7 @@ impl SnapshotDir {
             }
             let signed = receipt.map(|sign| sign(version, parent.as_deref())).transpose()?;
             let snapshot = self.root.join(snapshot_file(version));
+            boundary()?;
             if create_new(&snapshot, text.as_bytes()).map_err(storage)? {
                 if let Some(signed) = signed {
                     let receipt_error = match create_new(&self.root.join(receipt_file(version)), signed.as_bytes()) {

@@ -162,6 +162,56 @@ fn attestation(path: &str, body: &str, operator: &str, at: i64, nonce: &str) -> 
 }
 
 #[test]
+fn pending_control_edit_refuses_revoked_authority_before_nonce_or_draft_commit() {
+    pending_control_mutation(false, false);
+}
+
+#[test]
+fn pending_control_apply_refuses_revoked_authority_before_nonce_or_pointer_commit() {
+    pending_control_mutation(true, false);
+}
+
+#[test]
+fn pending_control_edit_refuses_expired_authority_before_nonce_or_draft_commit() {
+    pending_control_mutation(false, true);
+}
+
+fn pending_control_mutation(apply: bool, expired: bool) {
+    let (dir, public) = project();
+    let root = dir.path();
+    let original = "[[pipeline]]\nid = \"filings-flow\"\ntables = [\"research/notes\"]\n[pipeline.source]\nname = \"http\"\nconfig = { endpoint = \"https://example.test/filings\" }\n";
+    std::fs::create_dir_all(root.join("pipelines")).unwrap();
+    std::fs::write(root.join("pipelines/filings.toml"), original).unwrap();
+    stdout(&run(root, &["pipeline", "import", "--project", "research"]));
+    let (_listener, addr) = serve(root, &["serve", "--http", "127.0.0.1:0", "--audience", AUD, "--max-in-flight", "2", "--project", "research", "--public-key", &public]);
+    let admin = stdout(&run(root, &["token", "mint", "--on-behalf-of", "user://dana@acme.example", "--zone", "on-prem:hq", "--action", "admin", "--table", "*", "--ttl", if expired { "2" } else { "900" }]));
+    let edit = json!({ "expected": 1, "document": original }).to_string();
+    let (path, body) = if apply {
+        let (status, saved) = control(&addr, "POST", "/control/edit", Some(&admin), &edit);
+        assert_eq!(status, 200, "{saved}");
+        ("/control/apply", json!({ "expected": 1, "nonce": saved["nonce"] }).to_string())
+    } else { ("/control/edit", edit) };
+    let snapshots = root.join(".contextful/control/research");
+    let lock = std::fs::OpenOptions::new().read(true).write(true).open(snapshots.join("manifest.lock")).unwrap();
+    lock.lock().unwrap();
+    let at = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap().as_secs() as i64;
+    let nonce = "f".repeat(32);
+    let headers = attestation(path, &body, "user://dana@acme.example", at, &nonce);
+    std::thread::scope(|scope| {
+        let pending = scope.spawn(|| control_headers(&addr, "POST", path, Some(&admin), &body, &headers));
+        std::thread::sleep(std::time::Duration::from_millis(if expired { 3100 } else { 200 }));
+        if !expired { stdout(&run(root, &["token", "revoke", "--principal-class", "delegated"])); }
+        drop(lock);
+        let (status, response) = pending.join().unwrap();
+        assert_eq!(status, 401, "{response}");
+        assert_eq!(response["error"]["identifier"], if expired { "AuthorityExpired" } else { "AuthorityRevoked" });
+    });
+    assert!(!snapshots.join(format!("attestation-nonces/{at}/{nonce}")).exists());
+    assert_eq!(std::fs::read_to_string(snapshots.join("manifest@current")).unwrap().trim(), "1");
+    assert_eq!(snapshots.join("manifest@draft.json").exists(), apply);
+}
+
+#[test]
 fn admin_changes_require_fresh_console_attestation_and_record_the_operator() {
     let (dir, public) = project();
     let root = dir.path();

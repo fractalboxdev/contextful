@@ -450,24 +450,24 @@ fn validated_draft(document: &str, declaration: &Path, tasks: &Tasks) -> Result<
 }
 
 /// Store one validated, version-bound control draft without changing the applied pointer.
-pub(crate) fn edit(project: &ProjectArgs, declaration: Option<PathBuf>, expected: u64, document: &str, operator: &str, tasks: &Tasks) -> Result<Value> {
+pub(crate) fn edit(project: &ProjectArgs, declaration: Option<PathBuf>, expected: u64, document: &str, operator: &str, tasks: &Tasks, boundary: &dyn Fn() -> Result<(), ControlError>) -> Result<Value> {
     let (located, _, control) = located(project, declaration)?;
     let snapshots = owner(&control)?;
     snapshots.initialized()?;
     let text = validated_draft(document, &located.declaration, tasks)?;
     let draft = Draft::new(expected, text, operator.to_owned())?;
-    snapshots.save_draft(&draft)?;
+    snapshots.save_draft_guarded(&draft, boundary)?;
     Ok(json!({ "expected": expected, "nonce": draft.nonce }))
 }
 
 /// Claim a verified control request's nonce in the selected store owner's snapshot state.
-pub(crate) fn claim_operator_nonce(project: &ProjectArgs, declaration: Option<PathBuf>, nonce: &str, signed_at: i64, now: i64) -> Result<bool> {
+pub(crate) fn claim_operator_nonce(project: &ProjectArgs, declaration: Option<PathBuf>, nonce: &str, signed_at: i64, now: i64, boundary: &dyn Fn() -> Result<(), ControlError>) -> Result<bool> {
     let (_, _, control) = located(project, declaration)?;
-    owner(&control)?.claim_attestation_nonce(nonce, signed_at, now).map_err(Into::into)
+    owner(&control)?.claim_attestation_nonce_guarded(nonce, signed_at, now, boundary).map_err(Into::into)
 }
 
 /// Revalidate the saved draft and claim it only at the version the editor read.
-pub(crate) fn apply_draft(project: &ProjectArgs, declaration: Option<PathBuf>, expected: u64, nonce: &str, operator: &str, tasks: &Tasks, authority: &AdmittedAuthority, admit: &AdmitArgs) -> Result<()> {
+pub(crate) fn apply_draft(project: &ProjectArgs, declaration: Option<PathBuf>, expected: u64, nonce: &str, operator: &str, tasks: &Tasks, authority: &AdmittedAuthority, admit: &AdmitArgs, boundary: &dyn Fn() -> Result<(), ControlError>) -> Result<()> {
     let (initial, _, control) = located(project, declaration.clone())?;
     let snapshots = owner(&control)?;
     snapshots.initialized()?;
@@ -485,13 +485,13 @@ pub(crate) fn apply_draft(project: &ProjectArgs, declaration: Option<PathBuf>, e
     }
     match SyncAttestation::for_authority(&fresh, authority.clone(), admit, None)? {
         Some(attestation) => {
-            owner.claim_draft_attested(&draft, |next, previous| {
+            owner.claim_draft_attested_guarded(&draft, |next, previous| {
                 let prior_snapshot = owner.read(expected)?;
                 let parent = previous.map(|receipt| (receipt, expected, prior_snapshot.as_str()));
                 attestation.receipt(&fresh.project.name, next, parent, &draft.document)
-            })?;
+            }, boundary)?;
         }
-        None => { owner.claim_draft(&draft)?; }
+        None => { owner.claim_draft_guarded(&draft, boundary)?; }
     }
     Ok(())
 }

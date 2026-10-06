@@ -4,6 +4,31 @@ use contextful_core::surface::SurfaceError;
 use contextful_engine::control::{ControlError, Draft, SnapshotDir};
 
 #[test]
+fn control_mutations_check_authority_under_the_lock_and_refuse_without_writes() {
+    let dir = tempfile::tempdir().unwrap();
+    let snaps = SnapshotDir::open(dir.path());
+    snaps.claim_attested(None, "original", |_, _| Ok("first receipt".into())).unwrap();
+    let draft = Draft::new(1, "edited".into(), "alice".into()).unwrap();
+    let refuse = || {
+        let lock = std::fs::OpenOptions::new().read(true).write(true).open(dir.path().join("manifest.lock")).unwrap();
+        assert!(lock.try_lock().is_err(), "the effect boundary holds the mutation lock");
+        Err(ControlError::Storage("authority revoked at commit".into()))
+    };
+    assert!(snaps.claim_attestation_nonce_guarded(&"a".repeat(32), 100, 100, &refuse).is_err());
+    assert!(!dir.path().join("attestation-nonces").exists());
+    assert!(snaps.save_draft_guarded(&draft, &refuse).is_err());
+    assert!(!dir.path().join("manifest@draft.json").exists());
+    snaps.save_draft(&draft).unwrap();
+    assert!(snaps.claim_draft_guarded(&draft, &refuse).is_err());
+    assert_eq!(snaps.current().unwrap(), Some(1));
+    assert!(!dir.path().join("manifest@v2.toml").exists());
+    assert_eq!(snaps.read_draft().unwrap(), draft);
+    assert!(snaps.claim_draft_attested_guarded(&draft, |_, _| Ok("receipt".into()), &refuse).is_err());
+    assert!(!dir.path().join("receipt@v2.json").exists());
+    assert_eq!(snaps.current().unwrap(), Some(1));
+}
+
+#[test]
 fn a_saved_draft_is_bound_to_its_editor_and_exact_nonce() {
     let dir = tempfile::tempdir().unwrap();
     let snaps = SnapshotDir::open(dir.path());

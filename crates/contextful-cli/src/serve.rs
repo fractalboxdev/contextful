@@ -144,6 +144,17 @@ fn operator_attestation(request: &HttpRequest, secret: &str) -> Option<(String, 
 
 #[cfg(feature = "data-plane")]
 fn control_failure(error: anyhow::Error) -> HttpResponse {
+    if error.chain().any(|part| matches!(part.downcast_ref::<ControlError>(), Some(ControlError::OperatorAttestationInvalid(_)))) {
+        return HttpResponse::json(403, &json!({ "error": { "identifier": "ControlOperatorAttestationInvalid" } }));
+    }
+    if let Some(authority) = error.chain().find_map(|part| {
+        part.downcast_ref::<contextful_core::AuthorityError>().or_else(|| match part.downcast_ref::<ControlError>() {
+            Some(ControlError::Authority(authority)) => Some(authority),
+            _ => None,
+        })
+    }) {
+        return HttpResponse::json(401, &json!({ "error": { "identifier": authority.to_string().split(':').next().unwrap_or("AuthorityRevoked") } }));
+    }
     let surface = error.chain().find_map(|part| part.downcast_ref::<SurfaceError>().or_else(|| {
         match part.downcast_ref::<ControlError>() {
             Some(ControlError::Surface(refusal)) => Some(refusal),
@@ -208,14 +219,25 @@ pub fn run(args: ServeArgs, tasks: &Tasks) -> Result<()> {
     let control_admit = AdmitArgs { public_key: args.public_key.clone(), audience: args.audience.clone(), denylist: args.denylist.clone(), keyset: args.keyset.clone(), holder_key: None };
     #[cfg(feature = "data-plane")]
     let control = |request: &HttpRequest, authority: &AdmittedAuthority| -> HttpResponse {
-        let malformed = || HttpResponse::json(400, &json!({ "error": { "identifier": "ControlRequestMalformed" } }));
         let path = request.target.split('?').next().unwrap_or_default();
+        let boundary = || {
+            let state = revocation().map_err(ControlError::Storage)?;
+            contextful_policy::verify::effect_boundary(authority,
+                &contextful_policy::verify::Admission::new(clock.now(), &state).expecting(audience))
+                .map_err(ControlError::from)?;
+            if (path == EDIT_PATH || path == APPLY_PATH) &&
+                control_attestation_secret.as_deref().and_then(|secret| operator_attestation(request, secret)).is_none() {
+                return Err(ControlError::OperatorAttestationInvalid("the operator signature expired before the control mutation".into()));
+            }
+            Ok(())
+        };
+        let malformed = || HttpResponse::json(400, &json!({ "error": { "identifier": "ControlRequestMalformed" } }));
         let project = crate::run::ProjectArgs { project: Some(located.project.name.clone()), now: None };
         let operator = if path == EDIT_PATH || path == APPLY_PATH {
             match control_attestation_secret.as_deref() {
                 Some(secret) => match operator_attestation(request, secret) {
                     Some((subject, nonce, signed_at, now)) => {
-                        match crate::cadence::claim_operator_nonce(&project, Some(located.declaration.clone()), &nonce, signed_at, now) {
+                        match crate::cadence::claim_operator_nonce(&project, Some(located.declaration.clone()), &nonce, signed_at, now, &boundary) {
                             Ok(true) => subject,
                             Ok(false) => return HttpResponse::json(403, &json!({ "error": { "identifier": "ControlOperatorAttestationInvalid" } })),
                             Err(error) => return control_failure(error),
@@ -250,7 +272,7 @@ pub fn run(args: ServeArgs, tasks: &Tasks) -> Result<()> {
                         "contextful.credential": authority.credential_id(), "contextful.control.expected": expected })).is_err() {
                         return HttpResponse::json(503, &json!({ "error": { "identifier": "AuditEntryUnpersisted" } }));
                     }
-                    crate::cadence::edit(&project, Some(located.declaration.clone()), expected, document, &operator, tasks)
+                    crate::cadence::edit(&project, Some(located.declaration.clone()), expected, document, &operator, tasks, &boundary)
                 } else {
                     if fields.len() != 2 { return malformed(); }
                     let Some(nonce) = fields.get("nonce").and_then(Value::as_str) else { return malformed() };
@@ -260,7 +282,7 @@ pub fn run(args: ServeArgs, tasks: &Tasks) -> Result<()> {
                         "contextful.control.draft_nonce": nonce })).is_err() {
                         return HttpResponse::json(503, &json!({ "error": { "identifier": "AuditEntryUnpersisted" } }));
                     }
-                    crate::cadence::apply_draft(&project, Some(located.declaration.clone()), expected, nonce, &operator, tasks, authority, &control_admit)
+                    crate::cadence::apply_draft(&project, Some(located.declaration.clone()), expected, nonce, &operator, tasks, authority, &control_admit, &boundary)
                         .and_then(|()| crate::cadence::published(&located.project, &located.declaration))
                 }
             }
