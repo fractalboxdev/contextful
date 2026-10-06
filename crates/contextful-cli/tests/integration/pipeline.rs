@@ -1507,6 +1507,84 @@ fn a_synced_import_requires_admin_and_writes_a_verifiable_receipt() {
     assert!(second.verify("research", &second_snapshot, &[second.signer.parse().unwrap()]).is_ok());
 }
 
+/// A signed import resumes matching unpublished v1 files and refuses altered bytes.
+#[test]
+fn a_synced_import_recovers_only_matching_unpublished_v1_files() {
+    use contextful_policy::control_receipt::ControlReceipt;
+    use contextful_policy::issue::SignerKey;
+
+    let dir = project("site_id = \"site-a\"\n");
+    let bucket = tempfile::tempdir().unwrap();
+    std::fs::write(dir.path().join(".contextful/context/research/config.toml"), format!(
+        "[node]\nid = \"ingest-a\"\n[sync]\nendpoint = \"file://{}\"\nbucket = \"control-test\"\nprefix = \"team\"\ncoordination = \"single-writer\"\n",
+        bucket.path().display()
+    )).unwrap();
+    std::fs::write(dir.path().join(".contextful/issuance.toml"),
+        "default_audience = \"contextful://research\"\nmax_lifetime_secs = 3600\n").unwrap();
+    let public = ok(&cf(dir.path(), &["token", "keygen", "--out", ".contextful/issuer.seed"]));
+    let token = ok(&cf(dir.path(), &["token", "mint", "--issuer-key", ".contextful/issuer.seed",
+        "--on-behalf-of", "user://dana@example.test", "--ttl", "600", "--action", "admin", "--table", "*"]));
+    let import = || Command::new(env!("CARGO_BIN_EXE_contextful"))
+        .args(["pipeline", "import", "--project", "research", "--issuer-key", ".contextful/issuer.seed",
+            "--public-key", &public, "--audience", "contextful://research"])
+        .current_dir(dir.path()).env("CONTEXTFUL_TOKEN", &token).output().unwrap();
+    assert!(ok(&import()).contains("imported v1"));
+    let root = dir.path().join(CONTROL);
+    let pointer = root.join("manifest@current");
+    let snapshot_path = root.join("manifest@v1.toml");
+    let receipt_path = root.join("receipt@v1.json");
+    let snapshot = std::fs::read(&snapshot_path).unwrap();
+    let receipt = std::fs::read(&receipt_path).unwrap();
+    let parsed: ControlReceipt = serde_json::from_slice(&receipt).unwrap();
+    let pin: SignerKey = public.trim().replace('/', ":").parse().unwrap();
+    parsed.verify("research", &snapshot, std::slice::from_ref(&pin)).unwrap();
+
+    // An interrupted first import owns neither a pointer nor a completed version.
+    std::fs::remove_file(&pointer).unwrap();
+    std::fs::remove_file(&receipt_path).unwrap();
+    std::fs::write(&snapshot_path, b"different snapshot").unwrap();
+    assert!(!import().status.success());
+    assert!(!pointer.exists() && !receipt_path.exists());
+    assert_eq!(std::fs::read(&snapshot_path).unwrap(), b"different snapshot");
+    std::fs::write(&snapshot_path, &snapshot).unwrap();
+    assert!(ok(&import()).contains("imported v1"));
+    let recovered: ControlReceipt = serde_json::from_slice(&std::fs::read(&receipt_path).unwrap()).unwrap();
+    recovered.verify("research", &snapshot, &[pin]).unwrap();
+    assert_eq!(recovered.version, 1);
+    assert!(recovered.parent.is_none());
+    assert_eq!(std::fs::read(&snapshot_path).unwrap(), snapshot);
+
+    // A crash after receipt publication preserves the exact immutable pair.
+    std::fs::remove_file(&pointer).unwrap();
+    std::fs::write(&receipt_path, &receipt).unwrap();
+    assert!(ok(&import()).contains("imported v1"));
+    assert_eq!(std::fs::read(&receipt_path).unwrap(), receipt);
+    std::fs::remove_file(&pointer).unwrap();
+    let mut forged = parsed.clone();
+    forged.signature = "00".into();
+    let forged = serde_json::to_vec(&forged).unwrap();
+    std::fs::write(&receipt_path, &forged).unwrap();
+    assert!(!import().status.success());
+    assert!(!pointer.exists());
+    assert_eq!(std::fs::read(&receipt_path).unwrap(), forged);
+    assert_eq!(std::fs::read(&snapshot_path).unwrap(), snapshot);
+    let stranger = contextful_policy::issue::SeedSigner::generate(contextful_core::issue::SignatureAlgorithm::Ed25519);
+    let foreign = ControlReceipt::sign("research", 1, None, &snapshot, &stranger).unwrap();
+    let foreign = serde_json::to_vec(&foreign).unwrap();
+    std::fs::write(&receipt_path, &foreign).unwrap();
+    assert!(!import().status.success());
+    assert!(!pointer.exists());
+    assert_eq!(std::fs::read(&receipt_path).unwrap(), foreign);
+    std::fs::write(&receipt_path, &receipt).unwrap();
+    std::fs::write(&snapshot_path, b"different snapshot").unwrap();
+    assert!(!import().status.success());
+    assert!(!pointer.exists());
+    assert_eq!(std::fs::read(&snapshot_path).unwrap(), b"different snapshot");
+    assert_eq!(std::fs::read(&receipt_path).unwrap(), receipt);
+    assert!(!root.join("manifest@v2.toml").exists());
+    assert!(!root.join("receipt@v2.json").exists());
+}
+
 /// An edit or apply against a store that has taken no explicit guarded import, an empty store included, raises
 /// `StoreNotInitialized`, answered `409`.
 // spec: surface.apply.uninitialized-store@d6d5c26a

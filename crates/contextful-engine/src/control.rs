@@ -15,6 +15,7 @@ use std::path::{Path, PathBuf};
 const LOCK_FILE: &str = "manifest.lock";
 
 type ReceiptBuilder<'a> = dyn Fn(u64, Option<&str>) -> Result<String, ControlError> + 'a;
+type ReceiptVerifier<'a> = dyn Fn(&str) -> Result<(), ControlError> + 'a;
 
 /// A snapshot-directory refusal or a storage failure beneath it.
 #[derive(Debug, Clone, PartialEq, Eq, thiserror::Error)]
@@ -116,7 +117,7 @@ impl SnapshotDir {
     /// pointer no longer at `expected` raises `ManifestVersionConflict` and writes nothing;
     /// a version file already present is never overwritten, the claim taking the next free one.
     pub fn claim(&self, expected: Option<u64>, text: &str) -> Result<u64, ControlError> {
-        self.claim_inner(expected, text, None)
+        self.claim_inner(expected, text, None, None)
     }
 
     /// Claim a synced version with a receipt written beside its immutable snapshot before
@@ -127,7 +128,18 @@ impl SnapshotDir {
         text: &str,
         receipt: impl Fn(u64, Option<&str>) -> Result<String, ControlError>,
     ) -> Result<u64, ControlError> {
-        self.claim_inner(expected, text, Some(&receipt))
+        self.claim_inner(expected, text, Some(&receipt), None)
+    }
+
+    /// Import v1, resuming an identical unpublished snapshot and a verified receipt.
+    /// The verifier binds an existing receipt to this snapshot and the admitted signer.
+    pub fn import_attested(
+        &self,
+        text: &str,
+        receipt: impl Fn(u64, Option<&str>) -> Result<String, ControlError>,
+        verify: impl Fn(&str) -> Result<(), ControlError>,
+    ) -> Result<u64, ControlError> {
+        self.claim_inner(None, text, Some(&receipt), Some(&verify))
     }
 
     fn claim_inner(
@@ -135,6 +147,7 @@ impl SnapshotDir {
         expected: Option<u64>,
         text: &str,
         receipt: Option<&ReceiptBuilder<'_>>,
+        recover: Option<&ReceiptVerifier<'_>>,
     ) -> Result<u64, ControlError> {
         let storage = |e: contextful_core::run::Failure| ControlError::Storage(e.to_string());
         let _lock = FileLock::acquire(&self.root.join(LOCK_FILE)).map_err(storage)?;
@@ -148,6 +161,38 @@ impl SnapshotDir {
                 name(current)
             ))
             .into());
+        }
+        if let (Some(sign), Some(verify)) = (receipt, recover) {
+            let snapshot = self.root.join(snapshot_file(1));
+            let receipt_path = self.root.join(receipt_file(1));
+            let read = |path: &Path| match std::fs::read(path) {
+                Ok(bytes) => Ok(Some(bytes)),
+                Err(error) if error.kind() == ErrorKind::NotFound => Ok(None),
+                Err(error) => Err(ControlError::Storage(format!("{}: {error}", path.display()))),
+            };
+            let prior_snapshot = read(&snapshot)?;
+            if prior_snapshot.as_deref().is_some_and(|bytes| bytes != text.as_bytes()) {
+                return Err(SurfaceError::ControlAttestationUnavailable("unpublished v1 snapshot differs from this import".into()).into());
+            }
+            // Signing rechecks the admitted authority even when the receipt already exists.
+            let signed = sign(1, None)?;
+            let prior_receipt = read(&receipt_path)?;
+            if let Some(bytes) = &prior_receipt {
+                if prior_snapshot.is_none() {
+                    return Err(SurfaceError::ControlAttestationUnavailable("unpublished v1 receipt has no snapshot".into()).into());
+                }
+                let existing = std::str::from_utf8(bytes)
+                    .map_err(|error| ControlError::Storage(format!("{}: {error}", receipt_path.display())))?;
+                verify(existing)?;
+            }
+            if prior_snapshot.is_none() && !create_new(&snapshot, text.as_bytes()).map_err(storage)? {
+                return Err(ControlError::Storage("unpublished v1 snapshot appeared during import".into()));
+            }
+            if prior_receipt.is_none() && !create_new(&receipt_path, signed.as_bytes()).map_err(storage)? {
+                return Err(ControlError::Storage("unpublished v1 receipt appeared during import".into()));
+            }
+            replace(&self.root.join(POINTER_FILE), b"1\n").map_err(storage)?;
+            return Ok(1);
         }
         let parent = match (receipt, current) {
             (Some(_), Some(version)) => {

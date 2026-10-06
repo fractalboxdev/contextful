@@ -531,9 +531,19 @@ pub(crate) fn import(project: &ProjectArgs, declaration: Option<PathBuf>, tasks:
         check(spec, &l.declaration, tasks).map_err(|e| SurfaceError::ApplyValidationRefused(format!("pipeline `{}`: {e:#}", spec.id)))?;
     }
     let v = match &attestation {
-        Some(attestation) => snapshots.claim_attested(None, &text, |version, _| {
-            attestation.receipt(&l.project.name, version, None, &text)
-        })?,
+        Some(attestation) => snapshots.import_attested(&text,
+            |version, _| attestation.receipt(&l.project.name, version, None, &text),
+            |existing| {
+                let unavailable = |why: String| ControlError::Surface(SurfaceError::ControlAttestationUnavailable(why));
+                let receipt: ControlReceipt = serde_json::from_str(existing)
+                    .map_err(|error| unavailable(format!("unpublished receipt: {error}")))?;
+                if receipt.version != 1 || receipt.parent.is_some() {
+                    return Err(unavailable("unpublished receipt is not the first version".into()));
+                }
+                receipt.verify(&l.project.name, text.as_bytes(), &[SignerKey::of(&attestation.signer)])
+                    .map_err(|error| unavailable(format!("unpublished receipt: {error}")))
+            },
+        )?,
         None => snapshots.import(&text)?,
     };
     for id in declared.keys() {
