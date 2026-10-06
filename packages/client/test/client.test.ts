@@ -47,6 +47,24 @@ test("engine-direct sends JSON-RPC to a real HTTP transport with its viewer cred
   }
 });
 
+test("HTTP client rejects an in-band MCP tool refusal", async () => {
+  const client = createClient({
+    shape: "engine-direct",
+    baseUrl: "https://engine.example.test/mcp",
+    token: "viewer-token",
+    fetch: async () => Response.json({
+      jsonrpc: "2.0",
+      id: 1,
+      result: {
+        isError: true,
+        content: [{ type: "text", text: "scope denied" }],
+        structuredContent: { error: { identifier: "ScopeDenied", message: "scope denied" } },
+      },
+    }),
+  });
+  await assert.rejects(client.call("tools/call"), { name: "ScopeDenied", message: /scope denied/ });
+});
+
 test("spawned child refuses absent credential and absent ancestor manifest before framing", async () => {
   const root = mkdtempSync(join(tmpdir(), "contextful-client-"));
   const nested = join(root, "a", "b");
@@ -62,6 +80,16 @@ test("spawned child refuses absent credential and absent ancestor manifest befor
   chmodSync(fixture, 0o700);
   const spawned = new SpawnedClient({ cwd: nested, command: fixture, token: "reader-token" });
   assert.deepEqual(await spawned.call("tools/list"), { ok: true });
+});
+
+test("spawned client rejects an in-band MCP tool refusal", async () => {
+  const root = mkdtempSync(join(tmpdir(), "contextful-client-"));
+  writeFileSync(join(root, "contextful.toml"), "");
+  const fixture = join(root, "refused-mcp");
+  writeFileSync(fixture, "#!/bin/sh\nread line\nprintf '%s\\n' '{\"jsonrpc\":\"2.0\",\"id\":1,\"result\":{\"isError\":true,\"content\":[{\"type\":\"text\",\"text\":\"scope denied\"}],\"structuredContent\":{\"error\":{\"identifier\":\"ScopeDenied\",\"message\":\"scope denied\"}}}}'\n");
+  chmodSync(fixture, 0o700);
+  const client = new SpawnedClient({ cwd: root, command: fixture, token: "reader-token" });
+  await assert.rejects(client.call("tools/call"), { name: "ScopeDenied", message: /scope denied/ });
 });
 
 test("listing counts declined keys and flags the first omitted entry", () => {
