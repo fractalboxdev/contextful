@@ -237,6 +237,19 @@ fn owner_credential_does_not_cross_independent_stores_with_one_issuer() {
     assert!(String::from_utf8_lossy(&refused.stderr).contains("OwnerCredentialInvalid"));
 }
 
+/// The child's working directory selects the store by walking up to the project manifest; finding none raises `StoreSelectorAbsent` and exits before writing any protocol framing.
+#[test]
+fn a_spawned_server_without_a_project_manifest_refuses_before_framing() {
+    let (dir, public, token) = project();
+    std::fs::remove_file(dir.path().join("contextful.toml")).unwrap();
+    let nested = dir.path().join("nested/child");
+    std::fs::create_dir_all(&nested).unwrap();
+    let hello = [json!({ "jsonrpc": "2.0", "id": 1, "method": "initialize", "params": {} })];
+    let out = serve(&nested, &["mcp", "--public-key", &public, "--audience", AUD], Some(&token), &hello);
+    assert!(!out.status.success() && out.stdout.is_empty());
+    assert!(String::from_utf8_lossy(&out.stderr).starts_with("StoreSelectorAbsent"), "{}", String::from_utf8_lossy(&out.stderr));
+}
+
 /// The server admits over the stdio pipe it inherited: a credential binding no key admits
 /// through that pipe, and one binding a holder key and presenting no holder proof refuses.
 #[test]
