@@ -1290,7 +1290,11 @@ fn red_against_base(root: &Path, tree: &Path, target: &Path, tests: &[&str], bou
             if !matches!(listed, BaseRun::Passed) {
                 eprint!("{}{}", printed.stdout, printed.stderr);
                 unrunnable(&printed)?;
-                red.push(format!("{label}, whose tests do not list at base"));
+                red.push(match listed {
+                    BaseRun::Killed => format!("{label}, listing killed at the {} s bound", bound.as_secs()),
+                    BaseRun::Failed => format!("{label}, whose tests do not list at base"),
+                    BaseRun::Passed => unreachable!("a passing listing has no red verdict"),
+                });
                 continue;
             }
             let names: Vec<String> = printed

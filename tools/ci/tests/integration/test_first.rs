@@ -273,6 +273,20 @@ fn a_test_quoting_an_infrastructure_fault_still_reads_as_red() {
 }
 
 #[test]
+fn a_base_listing_past_its_bound_reports_the_package_and_bound() {
+    let r = Repo::init();
+    let base = r.head();
+    r.write("crates/demo/src/lib.rs", TRIPLE);
+    r.write("crates/demo/tests/integration/double.rs", "#[test]\nfn doubles() {\n    assert_eq!(demo::double(4), 8);\n}\n");
+    r.commit("triple, with a changed double test");
+    let cargo = "case \" $* \" in\n  *\" --list \"*) sleep 30 ;;\nesac\n";
+    let o = r.gate_with_cargo(cargo, &["--stage", "test-first", "--base", &base, "--base-bound-secs", "20"]);
+    let err = stderr(&o);
+    assert!(o.status.success(), "{err}");
+    assert!(err.contains("crates/demo") && err.contains("listing killed at the 20 s bound"), "{err}");
+}
+
+#[test]
 fn a_slow_base_build_is_not_charged_to_the_bound() {
     let r = Repo::init();
     let base = r.head();
