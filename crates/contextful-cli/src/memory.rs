@@ -13,6 +13,7 @@ use contextful_core::memory::synthesize::CandidateClaim;
 use contextful_core::ports::Clock;
 use contextful_policy::verify::{effect_boundary, Admission};
 use contextful_memory::synthesize::Pass;
+use contextful_memory::relations;
 use contextful_core::time::Instant;
 use contextful_memory::write::{write_observed, Observation};
 use contextful_outbound::infer::Endpoint;
@@ -37,6 +38,11 @@ pub struct Project {
 
 #[derive(Subcommand)]
 pub enum MemoryCmd {
+    /// Migrate stored edges between declared relation names.
+    Relations {
+        #[command(subcommand)]
+        command: RelationsCmd,
+    },
     /// Run one synthesis pass from a source table into a claims table.
     Synthesize {
         #[command(flatten)]
@@ -69,8 +75,28 @@ pub enum MemoryCmd {
     },
 }
 
+#[derive(Subcommand)]
+pub enum RelationsCmd {
+    /// Rewrite stored edges before removing the old name from the manifest.
+    Rename {
+        from: String,
+        to: String,
+        #[command(flatten)]
+        project: Project,
+    },
+}
+
 pub fn run(cmd: MemoryCmd) -> Result<()> {
     match cmd {
+        MemoryCmd::Relations { command: RelationsCmd::Rename { from, to, project } } => {
+            let (authority, revocation) = project.admit.admit(project.project.as_deref(), "a relation rename")?;
+            let boundary = || effect_boundary(&authority, &Admission::new(SystemClock.now(), &revocation));
+            let face = face(&locate(project.project.as_deref(), project.declaration.clone())?)?;
+            let (node, _) = node::resolve(face.store(), |k| std::env::var(k).ok())?;
+            let (table, count) = relations::rename(&face, &authority, &from, &to, &node, SystemClock.now(), &boundary)?;
+            println!("{table}: {count} edges renamed from {from} to {to}");
+            Ok(())
+        }
         MemoryCmd::Synthesize { project, source, into, endpoint, model } => {
             let (authority, revocation) = project.admit.admit(project.project.as_deref(), "a synthesis pass")?;
             let boundary = || effect_boundary(&authority, &Admission::new(SystemClock.now(), &revocation));

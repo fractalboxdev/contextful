@@ -56,8 +56,9 @@ The five memory table shapes, their canonical columns, tier and scope, and the r
   *P1*
 - `undeclared-relation` — A candidate edge whose `rel_type` falls outside the union lands in the dead-letter table and raises `MemoryUndeclaredRelation`; no row is written under the unknown type.
   *A-read*
+- `reserved-relations` — The reserved relation core contains `supports`, `contradicts`, `supersedes`, `about` and `derived_from`; a deployment extends it through `[relation].declared`, and `contextful memory relations rename` rewrites stored edges before removing an old name.
+  *A-read*
 
-unsettled: Which relation types belong in the reserved core, and what declared path adds or renames one without stranding rows? owner: memory affects: read.declare
 
 ## synthesize
 
@@ -75,6 +76,10 @@ Extract, Resolve and Consolidate; the dedup key, evidence support, the audit rec
   *because a reader weighs a conclusion by which grant could have produced it*
 - `claim-taint` — A source row carries its own `_taint`, else `ingested:third-party`. Every row a batch commits lands under {{store.reserve.taint}} with the least-trusted label among the batch's rows.
   *because a row no label vouches for is trusted least, and a claim re-synthesized from claims stays as low as its origin*
+- `cadence` — Each memory shape defaults to an operator-triggered synthesis pass; a deployment schedule for that shape replaces the default, and a pass still advances only through {{read.synthesize.pass-cursor}}.
+  *A-read*
+- `confidence-calibration` — A model-emitted confidence is labelled `uncalibrated` until a shape-and-predicate isotonic map trained on settled outcomes lowers held-out Brier score; a validated map supplies the reported calibrated confidence.
+  *A-read*
 
 One synthesis batch, from landed rows to a committed claim or the dead-letter table:
 
@@ -92,9 +97,6 @@ flowchart LR
   REL -->|"yes, consolidate and commit"| FACTS[("memory_facts")]
 ```
 
-unsettled: What sets the synthesis cadence per shape, and does a shape default give way to a deployment override? owner: memory affects: read.synthesize
-
-unsettled: How is a model-emitted confidence rescaled into a comparable number, and what held-out set validates the rescaling? owner: memory affects: read.synthesize
 
 ## revise
 
@@ -102,7 +104,7 @@ Supersession within one validity line, confidence decay, the direct write and it
 
 - `tier` — `tier` is stamped from the write path and grounding, never the payload: a synthesis pass stamps `derived`, a direct write `curated`, a fetched result `researched`, and mixed grounding takes the lowest.
   *A-read*
-- `supersede` — A claim of equal or higher tier retires a live prior of its subject, predicate and scope when both are open-ended or share a valid-from instant: the prior's `valid_to` becomes the claim's `valid_from`, and `superseded_by` names it.
+- `supersede` — A claim of equal or higher tier retires a live prior on its subject, predicate and scope when both are open-ended or share a valid-from instant, except {{read.revise.unscoped-collision}}; the prior ends at the successor's start and names it.
   *A-read*
 - `direct-write` — The direct write accepts claims alone. Naming `memory_episodes`, `memory_entities`, `memory_edges` or `memory_preferences` raises `MemoryDirectWriteShapeRefused`; an entity row enters through the entity upsert.
   *A-read*
@@ -113,12 +115,11 @@ Supersession within one validity line, confidence decay, the direct write and it
   *because retiring the later claim at the earlier instant ends it before it starts, and it then answers at no instant*
 - `citation-live` — A direct write citing a keyed table's row that reads through the writer's session as a version its key has since replaced raises `MemoryCitationNotLive`, and nothing lands.
   *because such a claim rests on a replaced version from its first read, while a citation no readable row carries lands undigested and recall withholds it*
+- `unscoped-collision` — Direct writes with no scope, equal subject, predicate and valid-from, and different objects record both claim ids in the dead-letter table; neither claim retires the other until an explicit revision resolves the conflict.
+  *A-read*
+- `retention-default` — Claims retain their recorded validity until explicit expiry or erasure; ranking decay is opt-in per shape with a declared half-life, and never deletes a claim or changes its validity interval.
+  *A-read*
 
-unsettled: Does a claim observed before a live contradicting claim of its line land beneath it with a bounded end, rather than refuse? owner: memory affects: read.revise
-
-unsettled: How are two unscoped writers colliding on one subject, predicate and scope surfaced to a human, rather than the later one landing not live? owner: memory affects: read.revise
-
-unsettled: What decay half-life applies to a claim nothing reinforces, and is fading or hard retention the default? owner: memory affects: read.revise
 
 ## recall
 
@@ -149,6 +150,10 @@ Serving memory: the ranked arm at the read's anchor, the keyed read at an observ
 - `keyed-order` — Keyed claims order by tier, `curated` first, then `valid_from`, newest first, then `claim_id`; `limit` and the table's ceilings bound them under {{read.respond.row-ceiling}}.
 - `keyed-not-claims` — A granted `table` declaring a shape other than `memory_facts`, or no memory shape, raises `MemoryRecallNotClaims`.
   *because a keyed read answers with a claim's subject, validity and evidence, which no other table carries*
+- `stale-revision` — A stale citation remains subject to {{read.recall.keyed-gate}}; only a newly committed source row advancing {{read.synthesize.pass-cursor}} starts synthesis against its live key version.
+  *A-read*
+- `usage-ledger` — Each `memory.recall` and ranked memory arm records the ids of claims actually returned in the request ledger, under the caller's admitted authority and the read frontier.
+  *A-read*
 
 The evidence check a claim passes on its way to a grounded turn:
 
@@ -160,9 +165,6 @@ flowchart LR
   EV -->|"unreadable: MemoryEvidenceUnresolved"| HELD
 ```
 
-unsettled: Does a claim counted stale re-enter synthesis against its key's live version, rather than serve until a writer retires it? owner: memory affects: read.recall
-
-unsettled: What supplies a read-side usage ledger, so retention can ask whether a claim was ever recalled rather than whether something cited it? owner: memory affects: read.recall
 
 ## resolve-entity
 
@@ -172,10 +174,11 @@ Mention-to-entity matching, aliases, the knowledge card, place identity and near
   *A-read*
 - `edge-endpoint` — A candidate edge whose source or target resolves to no identity is dead-lettered, raising `MemoryEdgeEndpointUnresolved`.
   *A-read*
+- `graph-index` — An external graph engine is a derived index of admitted memory edges; an entity or ownership answer resolves through the store's enforced rows at the read frontier.
+  *A-read*
+- `ownership-answer` — An artifact's ownership answer returns every attached principal visible to the caller, newest attachment first, with principal id breaking equal-instant ties.
+  *A-read*
 
-unsettled: At what hop depth or edge count does an external graph engine become a served backend rather than a derived index? owner: memory affects: read.resolve-entity
-
-unsettled: Does an ownership answer over an artifact with several attached principals return all of them, or the most recent attachment? owner: memory affects: read.resolve-entity
 
 ## settle
 
@@ -188,6 +191,8 @@ Predictions, observations, the registration, the citation a verdict owes, and th
 - `settling-citation` — An `adjudicator` or `manual` verdict without an `http` or `https` settling citation raises `OutcomeCitationMissing`; the citation rides the label view.
   *A-read*
 - `grace-window` — The label join keeps an observation from the prediction instant through the deadline plus an inclusive grace of 86400 s.
+- `calibration-report` — Calibration reports group settled predictions by shape and predicate, and name sample count, Brier score, expected calibration error and the held-out score used by {{read.synthesize.confidence-calibration}}.
+  *A-read*
 
 Registration, observation and the label view:
 
@@ -204,7 +209,6 @@ flowchart LR
   OUT -->|"joined within grace"| LAB
 ```
 
-unsettled: At what grain are calibration and confidence reported to a consumer, and which figures derive from the scored view? owner: memory affects: read.settle
 
 ## Shapes
 
