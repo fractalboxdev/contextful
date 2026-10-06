@@ -297,3 +297,70 @@ test("Admin pack listing reaches only the injected listing adapter", async () =>
   assert.deepEqual(await response.json(), { entries: ["packs/a.toml"], truncated: false, declined: 2 });
   assert.deepEqual(calls, ["field-notes:packs/"]);
 });
+
+test("Query builds its widget from rows and sanitizes view props before delivery", async () => {
+  const app = createConsole({
+    identity: { kind: "access", issuer, queryAudience, adminAudience, publicKey },
+    stores: [{ id: "field-notes", label: "Field notes" }],
+    turn: async () => ({
+      answer: "One account arrived.", sources: [],
+      widgets: [{ component: "injected.v1", props: { value: "secret@example.test" } }],
+      resultRows: { columns: ["account"], rows: [["secret@example.test"]] },
+    }),
+    redactView: (_operator, value) => value.replace("secret@example.test", "[redacted]"),
+    read: { list: async () => [] },
+    control: { workflows: async () => ({}), record: async () => ({}), edit: async () => ({}), apply: async () => ({}) },
+  });
+  const response = await app.fetch(new Request("https://console.example/query/api/ask", {
+    method: "POST", headers: { ...access(queryAudience), origin: "https://console.example" },
+    body: JSON.stringify({ store: "field-notes", question: "What arrived?" }),
+  }));
+  assert.equal(response.status, 200);
+  const answer = await response.json() as { widgets: Array<{ component: string; props: { rows: unknown[][] } }> };
+  assert.equal(answer.widgets.length, 1);
+  assert.equal(answer.widgets[0].component, "table.v1");
+  assert.deepEqual(answer.widgets[0].props.rows, [["[redacted]"]]);
+});
+
+test("Query refuses a client view and an access-explanation share control", async () => {
+  let turns = 0;
+  const app = createConsole({
+    identity: { kind: "access", issuer, queryAudience, adminAudience, publicKey },
+    stores: [{ id: "field-notes", label: "Field notes" }],
+    turn: async () => { turns++; return { answer: "Private rationale", sources: [], widgets: [], accessExplanation: true, share: true }; },
+    read: { list: async () => [] },
+    control: { workflows: async () => ({}), record: async () => ({}), edit: async () => ({}), apply: async () => ({}) },
+  });
+  const ask = (extra: Record<string, unknown> = {}) => app.fetch(new Request("https://console.example/query/api/ask", {
+    method: "POST", headers: { ...access(queryAudience), origin: "https://console.example" },
+    body: JSON.stringify({ store: "field-notes", question: "Why?", ...extra }),
+  }));
+  const authored = await ask({ view: { component: "metric.v1" } });
+  assert.equal(authored.status, 400);
+  assert.equal((await authored.json() as { error: { identifier: string } }).error.identifier, "ConsoleViewNotServerBuilt");
+  assert.equal(turns, 0);
+  const shared = await ask();
+  assert.equal(shared.status, 403);
+  assert.equal((await shared.json() as { error: { identifier: string } }).error.identifier, "VisibilityShareAffordance");
+});
+
+test("Query brief derives a private card only from a turnless present-time session", async () => {
+  const now = Date.parse("2026-01-08T12:00:00Z");
+  const app = createConsole({
+    identity: { kind: "access", issuer, queryAudience, adminAudience, publicKey },
+    stores: [{ id: "field-notes", label: "Field notes" }],
+    turn: async () => ({ answer: "", sources: [], widgets: [] }),
+    brief: async () => ({ session: { turns: 0, vantage: "present" }, now,
+      conclusions: [{ subject: "Acme", text: "Acme filings need review", live: true }],
+      arrivals: [{ id: "a", label: "Acme filing", topics: ["filings"], arrivedAt: "2026-01-08T11:00:00Z" }],
+    }),
+    read: { list: async () => [] },
+    control: { workflows: async () => ({}), record: async () => ({}), edit: async () => ({}), apply: async () => ({}) },
+  });
+  const url = "https://console.example/query/api/brief?store=field-notes";
+  assert.equal((await app.fetch(new Request(url))).status, 401);
+  const response = await app.fetch(new Request(url, { headers: access(queryAudience) }));
+  assert.equal(response.status, 200);
+  assert.equal((await response.json() as { subjects: Array<{ subject: string }> }).subjects[0].subject, "Acme");
+  assert.equal((await app.fetch(new Request("https://console.example/query/api/brief?store=missing", { headers: access(queryAudience) }))).status, 400);
+});
