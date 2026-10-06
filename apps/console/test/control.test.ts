@@ -60,6 +60,28 @@ test("Admin control refuses ambiguous stores", async () => {
   await assert.rejects(control.edit({ expected: 1, document: "" }, "secret", { subject: "operator", grants: new Set(["admin"]) }), /ConsoleStoreSelectionRequired/);
 });
 
+test("registered stores share one Admin capability and console attestation domain", async () => {
+  const seen: string[] = [];
+  const control = createLiveControl({
+    stores: [{ id: "one", endpoint: "https://one.example" }, { id: "two", endpoint: "https://two.example" }],
+    capability: "deployment-admin", attestationSecret: "deployment-attestation",
+    fetcher: async (input, init) => {
+      const url = new URL(String(input));
+      const headers = new Headers(init?.headers);
+      assert.equal(headers.get("authorization"), "Bearer deployment-admin");
+      const body = String(init?.body);
+      const canonical = `POST\n${url.pathname}\n${createHash("sha256").update(body).digest("hex")}\noperator\n${headers.get("x-contextful-operator-time")}\n${headers.get("x-contextful-operator-nonce")}`;
+      assert.equal(headers.get("x-contextful-operator-signature"), createHmac("sha256", "deployment-attestation").update(canonical).digest("hex"));
+      seen.push(url.hostname);
+      return Response.json({ expected: 1, nonce: "a".repeat(48) });
+    },
+  });
+  const operator = { subject: "operator", grants: new Set<"admin">(["admin"]) };
+  await control.edit({ store: "one", expected: 1, document: "" }, "deployment-admin", operator);
+  await control.edit({ store: "two", expected: 1, document: "" }, "deployment-admin", operator);
+  assert.deepEqual(seen, ["one.example", "two.example"]);
+});
+
 test("the live control adapter signs the verified subject and exact request body", async () => {
   let signed = false;
   const control = createLiveControl({ stores: [{ id: "one", endpoint: "http://127.0.0.1:1" }],
