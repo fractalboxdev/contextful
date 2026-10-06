@@ -16,6 +16,7 @@ mod mirrors;
 mod probe;
 mod release;
 mod secrets;
+mod source_lint;
 mod target_dirs;
 mod stages;
 mod test_first;

@@ -5,7 +5,7 @@ An unpinned clause is `committed`; a pinned one is `performed` when its Rust, Le
 
 | Contract | Files | Operations | Clauses | Refusals | Limits | Unsettled | Performed | Broken | Floor |
 | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
-| `assurance` | 2 | 15 | 233 | 59 | 22 | 15 | 136 | 0 | 136 |
+| `assurance` | 2 | 15 | 233 | 59 | 22 | 14 | 138 | 0 | 137 |
 | `authority` | 2 | 16 | 267 | 77 | 27 | 10 | 204 | 0 | 204 |
 | `connector` | 2 | 14 | 349 | 89 | 21 | 15 | 218 | 0 | 207 |
 | `corpus` | 1 | 10 | 79 | 37 | 7 | 0 | 40 | 0 | 40 |
@@ -15,7 +15,7 @@ An unpinned clause is `committed`; a pinned one is `performed` when its Rust, Le
 | `store` | 1 | 17 | 237 | 55 | 13 | 20 | 200 | 0 | 200 |
 | `surface` | 2 | 20 | 106 | 49 | 22 | 0 | 51 | 0 | 51 |
 | `topology` | 1 | 6 | 70 | 24 | 5 | 5 | 38 | 0 | 38 |
-| **total** | 19 | 155 | 2015 | 581 | 188 | 130 | 1365 | 0 | |
+| **total** | 19 | 155 | 2015 | 581 | 188 | 129 | 1367 | 0 | |
 
 Decision records: 18.
 
@@ -39,7 +39,7 @@ A milestone reads `closed` when its acceptance test computes `passing` and every
 | 11 — The derive tier | 7 | 78 | 55 | passing | open |
 | 12 — The operator console | 12 | 49 | 0 | open | open |
 | 13 — Disclosure | 5 | 21 | 4 | open | open |
-| 14 — Assurance | 7 | 136 | 84 | passing | closed |
+| 14 — Assurance | 7 | 136 | 86 | passing | closed |
 
 Unscheduled operations: 10.
 
@@ -128,6 +128,7 @@ Unscheduled operations: 10.
 | `assurance.gate.footprint-exceeded` | `tools/ci/tests/integration/image.rs::an_artifact_over_budget_or_linking_beyond_the_c_library_is_refused` | performed |
 | `assurance.gate.formal-stage` | `tools/ci/tests/integration/stages.rs::the_formal_stage_runs_the_audit_the_differential_and_the_protocol_check` | performed |
 | `assurance.gate.free-disk` | `tools/ci/tests/integration/disk.rs::a_stage_starting_under_two_gib_free_refuses_with_exit_28_before_work` | performed |
+| `assurance.gate.interpolated-claim` | `tools/ci/tests/integration/source_lint.rs::interpolated_subject_claim_names_the_source_line` | performed |
 | `assurance.gate.locked-resolve` | `tools/ci/tests/integration/topology.rs::a_lock_file_behind_its_manifests_stops_the_crate_graph` | performed |
 | `assurance.gate.native-test-files` | `spec/pins.toml` | performed |
 | `assurance.gate.pins-stage` | `tools/ci/tests/integration/stages.rs::the_pins_stage_records_every_pin_fetches_the_locked_crates_and_refuses_a_floating_one` | performed |
@@ -176,6 +177,7 @@ Unscheduled operations: 10.
 | `assurance.release.workspace-version` | `tools/ci/tests/integration/release.rs::a_workspace_version_other_than_the_computed_one_is_refused` | performed |
 | `assurance.scope-claim.unnamed-dependency` | `crates/contextful-cli/tests/integration/formal.rs::a_claim_resting_on_an_unnamed_component_is_refused` | performed |
 | `assurance.structure-tree.decision-module` | `crates/contextful-cli/tests/integration/differential.rs::the_native_and_webassembly_builds_agree_with_the_reference_over_the_seeded_budget` | performed |
+| `assurance.structure-tree.derivation-check` | `tools/ci/tests/integration/stages.rs::declared_derived_artifact_is_checked_by_schema_stage` | performed |
 | `assurance.structure-tree.mirror-unresolved` | `spec/pins.toml` | performed |
 | `assurance.test.acceptance-surface` | `spec/pins.toml` | performed |
 | `assurance.test.base-run-bound` | `tools/ci/tests/integration/test_first.rs::a_base_run_past_its_bound_is_killed_and_counts_red` | performed |

@@ -238,3 +238,19 @@ Decision: `assurance.gate.stage-subset` runs a selection in the sequence's order
 | Run in the order named | One command | Two contributors naming one subset differently run different gates. |
 
 Consequences: a predecessor's output on disk satisfies its reader, so a stale record from an earlier run reaches the stage. The accepted cost: the remote formal check pays the pins and toolchain stages on every run.
+
+## Generated artifacts prove currency by regeneration and diff
+
+**Status:** accepted
+
+Context: a generated file can retain a plausible header after its source changes. `spec/derived.toml` names each output and its generator. Criteria: the schema stage catches a stale committed byte without trusting a hand-maintained hash or a generator's success status alone.
+
+Decision: `assurance.structure-tree.derivation-check` exports the committed tree, runs each declared check in that scratch tree, and compares each regenerated output byte for byte with its committed copy.
+
+| Option | Lost on | Cost |
+| --- | --- | --- |
+| Regenerate and diff *(chosen)* | — | The schema stage pays for the generators and keeps a declaration for each output. |
+| Compare a recorded source hash | Coverage | A new generator input can be omitted from the hash. |
+| Trust a build-time export | Committed artifact currency | The build can succeed while the committed output remains stale. |
+
+Consequences: a generator must produce stable bytes; nondeterministic output reds the schema stage.
