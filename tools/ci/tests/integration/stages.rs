@@ -399,7 +399,7 @@ fn pnpm(bin: &Bin, failing: &str) {
 }
 
 /// The TypeScript surfaces run typecheck, unit tests and framework build in one stage, and a surface declaring no script for a check skips that check.
-// spec: assurance.gate.typescript-surfaces@4d9c3bb2
+// spec: assurance.gate.typescript-surfaces@ed0c8468
 #[test]
 fn the_surfaces_stage_installs_then_runs_each_declared_check() {
     let r = surface_repo();
@@ -425,4 +425,83 @@ fn a_failing_surface_check_is_refused_naming_the_surface_and_the_script() {
         assert!(stderr(&o).contains(&format!("SurfaceCheckFailed: surface apps/web: script `{script}` exited 2")), "{}", stderr(&o));
         assert_eq!(bin.calls().last().map(String::as_str), Some(format!("pnpm run {script} in web").as_str()));
     }
+}
+
+#[test]
+fn the_surfaces_stage_runs_each_native_typescript_test_file_even_without_a_test_script() {
+    let r = surface_repo();
+    r.write("apps/web/test/pin.test.ts", "import { test } from 'node:test';\ntest('pinned refusal', () => { throw new Error('red'); });\n");
+    r.commit("a native surface test");
+    let bin = Bin::new();
+    pnpm(&bin, "none");
+    bin.fake("node", "echo \"node $* in $(basename \"$PWD\")\" >> \"$CALLS\"\nexit 5\n");
+    let o = gate(&r, Some(&bin), &["--stage", "surfaces"]);
+    assert!(!o.status.success());
+    assert!(stderr(&o).contains("SurfaceCheckFailed: surface apps/web: test `test/pin.test.ts` exited 5"), "{}", stderr(&o));
+    assert!(bin.calls().iter().any(|call| call == "node --experimental-strip-types --test --test-reporter=tap test/pin.test.ts in web"), "{:?}", bin.calls());
+}
+
+#[test]
+fn a_native_file_with_zero_registered_tests_fails_the_surface_stage() {
+    let r = surface_repo();
+    r.write("apps/web/test/empty.test.ts", "const test = (_name, _callback) => {};\ntest('noop', () => {});\n");
+    let bin = Bin::new();
+    pnpm(&bin, "none");
+    bin.fake("node", "echo '# tests 0'\necho '# pass 0'\nexit 0\n");
+    let o = gate(&r, Some(&bin), &["--stage", "surfaces"]);
+    assert!(!o.status.success(), "{}", stderr(&o));
+    assert!(stderr(&o).contains("SurfaceCheckFailed"), "{}", stderr(&o));
+}
+
+#[test]
+fn a_symlinked_native_test_outside_the_surface_is_not_discovered() {
+    let r = surface_repo();
+    let external = tempfile::tempdir().unwrap();
+    let target = external.path().join("outside.test.ts");
+    std::fs::write(&target, "throw new Error('outside');\n").unwrap();
+    let test_dir = r.root.join("apps/web/test");
+    std::fs::create_dir_all(&test_dir).unwrap();
+    std::os::unix::fs::symlink(&target, test_dir.join("outside.test.ts")).unwrap();
+    std::os::unix::fs::symlink(external.path(), test_dir.join("external")).unwrap();
+    let bin = Bin::new();
+    pnpm(&bin, "none");
+    bin.fake("node", "exit 5\n");
+    let o = gate(&r, Some(&bin), &["--stage", "surfaces"]);
+    assert!(o.status.success(), "{}", stderr(&o));
+}
+
+#[test]
+fn a_pinned_native_test_must_appear_in_the_runner_report() {
+    let r = surface_repo();
+    r.write("apps/web/test/nested.test.ts", "import { test } from 'node:test';\nimport assert from 'node:assert/strict';\ntest('unrelated', () => assert.equal(1, 1));\nfunction never() {\n  // spec: corpus.anatomy.statement-words@11227773\n  test('pinned claim', () => assert.equal(2, 2));\n}\n");
+    let bin = Bin::new();
+    pnpm(&bin, "none");
+    let o = gate(&r, Some(&bin), &["--stage", "surfaces"]);
+    assert!(!o.status.success(), "{}", stderr(&o));
+    assert!(stderr(&o).contains("SurfaceCheckFailed"), "{}", stderr(&o));
+}
+
+#[test]
+fn compact_tags_and_only_calls_require_tap_evidence() {
+    let r = surface_repo();
+    r.write("apps/web/test/compact.test.ts", "import { test } from 'node:test';\nimport assert from 'node:assert/strict';\ntest('unrelated', () => assert.equal(1, 1));\nfunction never() {\n  //spec:corpus.anatomy.statement-words@11227773\n  test.only('pinned claim', () => assert.equal(2, 2));\n}\n");
+    let bin = Bin::new();
+    pnpm(&bin, "none");
+    let o = gate(&r, Some(&bin), &["--stage", "surfaces"]);
+    assert!(!o.status.success(), "{}", stderr(&o));
+    assert!(stderr(&o).contains("SurfaceCheckFailed"), "{}", stderr(&o));
+}
+
+#[test]
+fn a_symlinked_surface_outside_the_workspace_is_not_discovered() {
+    let r = Repo::init();
+    let external = tempfile::tempdir().unwrap();
+    std::fs::write(external.path().join("package.json"), r#"{"name":"external","scripts":{"test":"node --test"}}"#).unwrap();
+    std::fs::create_dir_all(r.root.join("apps")).unwrap();
+    std::os::unix::fs::symlink(external.path(), r.root.join("apps/external")).unwrap();
+    let bin = Bin::new();
+    pnpm(&bin, "none");
+    let o = gate(&r, Some(&bin), &["--stage", "surfaces"]);
+    assert!(o.status.success(), "{}", stderr(&o));
+    assert!(bin.calls().is_empty(), "{:?}", bin.calls());
 }
