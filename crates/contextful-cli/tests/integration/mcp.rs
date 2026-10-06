@@ -92,7 +92,7 @@ fn a_server_with_no_admissible_credential_writes_no_framing() {
     assert!(!unmanifested.status.success() && unmanifested.stdout.is_empty());
 }
 
-/// Over the process transport a credential is mandatory, a capability token or an explicit owner flag; an unset one raises `StdioCredentialMissing` and does not resolve to the owner context.
+/// The process transport requires a verified capability token; `--owner` selects its signed owner claim. An absent token raises `StdioCredentialMissing` before protocol framing and never resolves to owner context.
 #[test]
 fn a_server_with_no_credential_raises_stdio_credential_missing() {
     let (dir, public, _token) = project();

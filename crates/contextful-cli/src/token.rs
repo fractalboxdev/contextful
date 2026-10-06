@@ -591,12 +591,17 @@ fn mint_one(
     let ctx = MintContext { node: NodeRole::Primary, signer: &signer as &dyn SigningPort, clock: &clock as &dyn Clock };
     let plan = policy.check(&request, &ctx)?;
     let owner_project = if owner {
-        let project = crate::project::locate(None, None)?.project;
-        let identity = crate::project::owner_identity(&project)?;
-        if !contextful_policy::verify::owner_grant(&plan.grants) {
-            bail!("an owner credential requires an unrestricted read grant over `*`");
+        #[cfg(feature = "read-plane")]
+        {
+            let project = crate::project::locate(None, None)?.project;
+            let identity = crate::project::owner_identity(&project)?;
+            if !contextful_policy::verify::owner_grant(&plan.grants) {
+                bail!("an owner credential requires an unrestricted read grant over `*`");
+            }
+            Some(identity)
         }
-        Some(identity)
+        #[cfg(not(feature = "read-plane"))]
+        bail!("an owner credential requires the read-plane build profile");
     } else { None };
     if let Some(jkt) = holder.as_deref() {
         let alphabet = |c: char| c.is_ascii_alphanumeric() || c == '-' || c == '_';

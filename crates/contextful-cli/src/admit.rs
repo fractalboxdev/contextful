@@ -67,6 +67,7 @@ pub enum AdmitError {
     #[error("StdioCredentialMissing: {0}")]
     StdioCredentialMissing(String),
     /// (`surface.package.owner-flag`)
+    #[cfg(feature = "read-plane")]
     #[error("OwnerCredentialInvalid: {0}")]
     OwnerCredentialInvalid(String),
     /// (`authority.revoke.ledger-unavailable`)
