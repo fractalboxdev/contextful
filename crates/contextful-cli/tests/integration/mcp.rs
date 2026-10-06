@@ -114,6 +114,30 @@ fn a_server_with_no_credential_raises_stdio_credential_missing() {
     }
 }
 
+#[test]
+fn explicit_owner_requires_a_signed_credential_for_the_selected_store() {
+    let (dir, public, ordinary) = project();
+    let root = dir.path();
+    let owner = stdout(&run(root, &[
+        "token", "mint", "--issuer-key", ".contextful/issuer.seed", "--on-behalf-of", "user://dana@acme.example",
+        "--zone", "on-prem:hq", "--action", "read", "--table", "*", "--ttl", "600", "--owner-project", "research",
+    ]));
+    let args = ["mcp", "--owner", "--project", "research", "--public-key", &public, "--audience", AUD];
+    let read = [json!({ "jsonrpc": "2.0", "id": 1, "method": "tools/call", "params": { "name": "context.query", "arguments": { "sql": "SELECT note_id FROM \"research/notes\"" } } })];
+    for token in [None, Some(ordinary.as_str())] {
+        let refused = serve(root, &args, token, &read);
+        assert!(!refused.status.success() && refused.stdout.is_empty(), "ordinary or absent credentials write no framing");
+    }
+    let admitted = serve(root, &args, Some(&owner), &read);
+    assert!(admitted.status.success(), "{}", String::from_utf8_lossy(&admitted.stderr));
+    let answer: Value = serde_json::from_str(String::from_utf8_lossy(&admitted.stdout).trim()).unwrap();
+    assert_eq!(answer["result"]["structuredContent"]["rows"], json!([["n1"]]));
+
+    let other = ["mcp", "--owner", "--project", "other", "--public-key", &public, "--audience", AUD];
+    let refused = serve(root, &other, Some(&owner), &read);
+    assert!(!refused.status.success() && refused.stdout.is_empty(), "an owner credential selects one store");
+}
+
 /// The server admits over the stdio pipe it inherited: a credential binding no key admits
 /// through that pipe, and one binding a holder key and presenting no holder proof refuses.
 #[test]
