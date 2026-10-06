@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { learnAfterAnswer } from "../src/learn.ts";
+import { learnAfterAnswer, recallSubjects } from "../src/learn.ts";
 
 test("distillation runs after streaming and lands at most three scoped conclusions", async () => {
   const events: string[] = [];
@@ -29,4 +29,15 @@ test("distillation preserves observed subject and permits zero entries", async (
   assert.deepEqual(landed, [{ subject: "Acme Incorporated", key: "priority", learning: "raised" }]);
   await learnAfterAnswer({ ...base, stream: (async function* () { yield "b"; })(), distill: async () => [] });
   assert.equal(landed.length, 1);
+});
+
+test("recall resolves preserved subjects through entity matching", () => {
+  const entries = [{ subject: "Acme Incorporated", key: "priority", learning: "raised" }, { subject: "Beta", key: "priority", learning: "steady" }];
+  const matches: string[] = [];
+  const recalled = recallSubjects(entries, "Acme's priorities", (question, subject) => {
+    matches.push(`${question}:${subject}`);
+    return subject === "Acme Incorporated";
+  });
+  assert.deepEqual(recalled, [entries[0]]);
+  assert.deepEqual(matches, ["Acme's priorities:Acme Incorporated", "Acme's priorities:Beta"]);
 });
