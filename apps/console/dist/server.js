@@ -323,10 +323,16 @@ const canvas=document.getElementById('canvas'),record=document.getElementById('r
 </script></html>`;
 
 // src/server.ts
+var maxBodyBytes = 1048576;
 async function receive(message, origin) {
   const method = message.method ?? "GET";
   const chunks = [];
-  for await (const chunk of message) chunks.push(Buffer.from(chunk));
+  let size = 0;
+  for await (const chunk of message) {
+    size += chunk.length;
+    if (size > maxBodyBytes) throw new Error("ConsoleBodyTooLarge");
+    chunks.push(Buffer.from(chunk));
+  }
   const body2 = method === "GET" || method === "HEAD" ? void 0 : Buffer.concat(chunks);
   const headers = new Headers();
   for (const [key, value] of Object.entries(message.headers)) {
@@ -346,6 +352,10 @@ function serveConsole(adapters, origin) {
     try {
       await send(reply, await app.fetch(await receive(message, typeof origin === "string" ? origin : origin())));
     } catch (error) {
+      if (error instanceof Error && error.message === "ConsoleBodyTooLarge") {
+        await send(reply, Response.json({ error: { identifier: "ConsoleBodyTooLarge" } }, { status: 413 }));
+        return;
+      }
       const unavailable2 = error instanceof Error && error.message === "ConsoleAdapterUnavailable";
       await send(reply, Response.json({ error: { identifier: unavailable2 ? "ConsoleAdapterUnavailable" : "ConsoleServerFailure" } }, { status: unavailable2 ? 503 : 500 }));
     }
