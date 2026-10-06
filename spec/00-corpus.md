@@ -147,10 +147,14 @@ Pins, verdicts, the coverage floor, the roadmap's operation claims and each mile
   *P8*
 - `pin` — `spec/pins.toml` maps a clause id to one artifact: a `test` function path, a `theorem` constant under `formal/` or an `item` path. A refusal or a limit takes a test or a theorem.
   *P8*
-- `verdict` — An unpinned clause computes `committed`; a pinned clause computes `performed` when its artifact's final path segment is defined under `crates/`, `tools/` or `formal/`, and `broken` otherwise. A test carrying an `#[ignore]` attribute computes `broken`.
+- `verdict` — An unpinned clause computes `committed`; a pinned clause computes `performed` when its Rust, Lean or {{corpus.state.typescript-tag-pin}} artifact qualifies, and `broken` otherwise. A test carrying an `#[ignore]` attribute computes `broken`.
   *P8*
 - `tag-pin` — A line `// spec: <id>@<rev>` among the comments and attributes above a test function under `crates/` or `tools/` pins clause `<id>` to that test; `<rev>` is the first 8 hex digits of the statement's SHA-256.
   *because a pin written beside its test travels with every move and rename, and the digest records which wording the test demonstrates*
+- `typescript-tag-pin` — A `// spec: <id>@<rev>` line above a uniquely named `node:test` call under a direct TypeScript surface pins its clause when the callback contains a recognizable assertion call.
+  *P8*
+- `typescript-unfinished` — A pinned TypeScript test using `skip`, `todo` or `only`, lacking an assertion, placing its first assertion after a nested arrow, holding `if (false)` or a placeholder, or shadowing `node:test` computes `broken`.
+  *because a test that cannot demonstrate an assertion demonstrates no clause*
 - `lean-tag` — A line `-- spec: <id>@<rev>` above a Lean `theorem` or `lemma` under `formal/`, past comments, docstrings and attributes, pins clause `<id>` to that theorem, with `<rev>` as in {{corpus.state.tag-pin}}.
   *because a theorem's pin then moves with the proof, and a reworded clause marks the proof stale*
 - `theorem-beside-test` — A clause carries at most one theorem pin and one test pin, and computes `performed` when both perform: the theorem proves the model, the test ties the model to the code.
