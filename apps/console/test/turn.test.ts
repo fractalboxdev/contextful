@@ -158,6 +158,11 @@ test("reader credential resolution preserves transport and service failures", as
     (error: unknown) => error === network);
 });
 
+test("an empty minted credential never activates a shared fallback", async () => {
+  await assert.rejects(resolveReaderCredential({ mint: async () => "", shared: "shared-token" }),
+    (error: unknown) => error instanceof ConsoleError && error.code === "ConsoleTokenExchangeUnavailable");
+});
+
 test("planner scaffolding lists data tables while memory relations remain outside it", async () => {
   let plannerTables: unknown[] = [];
   const { turn } = harness({

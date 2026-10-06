@@ -11,7 +11,7 @@ const store: StoreEntry = {
   bindingName: "FIELD_NOTES",
 };
 
-function fixture(options: { exchange?: boolean; exchangeStatus?: number; shared?: string; rows?: unknown[][]; tables?: Array<{ table: string; kind: string }> } = {}) {
+function fixture(options: { exchange?: boolean; exchangeStatus?: number; emptyToken?: boolean; shared?: string; rows?: unknown[][]; tables?: Array<{ table: string; kind: string }> } = {}) {
   const calls: Array<{ url: string; authorization: string | null; body: Record<string, unknown> }> = [];
   let modelCalls = 0;
   let modelBody: Record<string, unknown> | null = null;
@@ -21,7 +21,7 @@ function fixture(options: { exchange?: boolean; exchangeStatus?: number; shared?
     calls.push({ url, authorization: new Headers(init?.headers).get("authorization"), body });
     if (url.endsWith("/auth/exchange")) {
       const status = options.exchangeStatus ?? (options.exchange === false ? 403 : 200);
-      return Response.json(status === 200 ? { token: "reader-token" } : { error: { identifier: status === 503 ? "ExchangeMaterialMissing" : "ExchangeAssertionInvalid" } }, { status });
+      return Response.json(status === 200 ? { token: options.emptyToken ? "" : "reader-token" } : { error: { identifier: status === 503 ? "ExchangeMaterialMissing" : "ExchangeAssertionInvalid" } }, { status });
     }
     if (url.endsWith("/mcp")) {
       const params = body.params as Record<string, unknown>;
@@ -77,6 +77,14 @@ test("Query does not use a shared credential after exchange service failure", as
   const { turn, calls } = fixture({ exchangeStatus: 503, shared: "shared-token" });
   await assert.rejects(turn({ operator: { subject: "operator-1", grants: new Set(["query"]), assertion: "verified-access-jwt" },
     store: "field-notes", question: "Which filing arrived?" }));
+  assert.equal(calls.filter((call) => call.url.endsWith("/mcp")).length, 0);
+});
+
+test("Query refuses an empty minted credential without using a shared credential", async () => {
+  const { turn, calls } = fixture({ emptyToken: true, shared: "shared-token" });
+  await assert.rejects(turn({ operator: { subject: "operator-1", grants: new Set(["query"]), assertion: "verified-access-jwt" },
+    store: "field-notes", question: "Which filing arrived?" }),
+    (error: unknown) => error instanceof ConsoleError && error.code === "ConsoleTokenExchangeUnavailable");
   assert.equal(calls.filter((call) => call.url.endsWith("/mcp")).length, 0);
 });
 
