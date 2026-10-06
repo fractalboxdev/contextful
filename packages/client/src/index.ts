@@ -1,7 +1,7 @@
 import { spawn } from "node:child_process";
 import { existsSync } from "node:fs";
 import { dirname, join, resolve } from "node:path";
-import { ClientError } from "./browser.ts";
+import { ClientError, toolResult } from "./browser.ts";
 import type { Client } from "./browser.ts";
 
 export { ClientError, createClient, listPackKeys } from "./browser.ts";
@@ -54,6 +54,6 @@ export class SpawnedClient implements Client {
     const message = JSON.parse(line) as { result?: unknown; error?: { message?: string } };
     if (message.error) throw new ClientError("EngineProtocolRefused", message.error.message ?? "JSON-RPC error");
     if (!("result" in message)) throw new ClientError("EngineProtocolRefused", "missing JSON-RPC result");
-    return message.result;
+    return toolResult(message.result);
   }
 }

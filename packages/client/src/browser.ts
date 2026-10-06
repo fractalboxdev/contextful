@@ -17,6 +17,18 @@ export class ClientError extends Error {
 
 export interface Client { call(method: string, params?: unknown): Promise<unknown> }
 
+export function toolResult(result: unknown): unknown {
+  if (typeof result !== "object" || result === null || !("isError" in result) || result.isError !== true) return result;
+  const structured = "structuredContent" in result ? result.structuredContent : undefined;
+  const error = typeof structured === "object" && structured !== null && "error" in structured ? structured.error : undefined;
+  const detail = typeof error === "object" && error !== null ? error : undefined;
+  const identifier = detail && "identifier" in detail && typeof detail.identifier === "string" ? detail.identifier : "EngineToolRefused";
+  const content = "content" in result && Array.isArray(result.content) ? result.content : [];
+  const text = content.find((item: unknown) => typeof item === "object" && item !== null && "type" in item && item.type === "text" && "text" in item && typeof item.text === "string") as { text: string } | undefined;
+  const message = detail && "message" in detail && typeof detail.message === "string" ? detail.message : text?.text ?? "MCP tool refused";
+  throw new ClientError(identifier, message);
+}
+
 function endpoint(shape: ClientShape): string {
   const url = new URL(shape.baseUrl);
   if (shape.shape === "same-origin-proxy") url.pathname = `${url.pathname.replace(/\/$/, "")}/mcp`;
@@ -37,7 +49,7 @@ export function createClient(shape: ClientShape): Client {
       const message = await response.json() as { result?: unknown; error?: { code?: number; message?: string } };
       if (message.error) throw new ClientError("EngineProtocolRefused", message.error.message ?? String(message.error.code));
       if (!("result" in message)) throw new ClientError("EngineProtocolRefused", "missing JSON-RPC result");
-      return message.result;
+      return toolResult(message.result);
     },
   };
 }
