@@ -7,14 +7,20 @@
 //! network transport, which admits each one on its own credential. Every value is
 //! resolved before the listener binds, so a process that cannot serve binds nothing.
 
-use crate::admit::{AdmitArgs, face, revocation_state, LedgerFile, LivePins, AUDIENCE_VAR, PUBKEY_VAR};
+#[cfg(feature = "data-plane")]
+use crate::admit::AdmitArgs;
+use crate::admit::{face, revocation_state, LedgerFile, LivePins, AUDIENCE_VAR, PUBKEY_VAR};
 use crate::project::locate;
 use crate::root::root as project_root;
 use crate::clock::SystemClock;
 use anyhow::Result;
-use contextful_agent::http::{audience, ceiling, Admitting, HttpFace, HttpRequest, HttpResponse, APPLY_PATH, EDIT_PATH, RECORD_PATH, WORKFLOWS_PATH};
+use contextful_agent::http::{audience, ceiling, Admitting, HttpFace};
+#[cfg(feature = "data-plane")]
+use contextful_agent::http::{HttpRequest, HttpResponse, APPLY_PATH, EDIT_PATH, RECORD_PATH, WORKFLOWS_PATH};
+#[cfg(feature = "data-plane")]
 use contextful_core::surface::SurfaceError;
 use contextful_core::run::derive::task::Tasks;
+#[cfg(feature = "data-plane")]
 use contextful_engine::control::ControlError;
 use contextful_core::issue::{IssuancePolicy, MintContext, NodeRole};
 use contextful_core::ports::{Clock, SigningPort};
@@ -28,15 +34,20 @@ use contextful_policy::exchange::answer as exchange_answer;
 use contextful_policy::issue::{SeedSigner, DEFAULT_SEED_PATH};
 use contextful_policy::possession::ProofChecker;
 use contextful_policy::audit::AuditLog;
+#[cfg(feature = "data-plane")]
 use contextful_policy::verify::AdmittedAuthority;
+#[cfg(feature = "data-plane")]
 use hmac::{Hmac, Mac};
+#[cfg(feature = "data-plane")]
 use sha2::{Digest, Sha256};
+#[cfg(feature = "data-plane")]
 use std::time::{SystemTime, UNIX_EPOCH};
 use contextful_policy::keyset::{KeyCheckpoint, StaticPins};
 use contextful_policy::revoke::RevocationState;
 use std::net::TcpListener;
 use std::path::PathBuf;
 use std::sync::Arc;
+#[cfg(feature = "data-plane")]
 use serde_json::{json, Value};
 
 #[cfg(feature = "data-plane")]
@@ -108,6 +119,7 @@ pub struct ServeArgs {
     keyset: Option<PathBuf>,
 }
 
+#[cfg(feature = "data-plane")]
 fn operator_attestation(request: &HttpRequest, secret: &str) -> Option<(String, String, i64, i64)> {
     let subject = request.header("X-Contextful-Operator")?;
     let at: i64 = request.header("X-Contextful-Operator-Time")?.parse().ok()?;
@@ -130,6 +142,7 @@ fn operator_attestation(request: &HttpRequest, secret: &str) -> Option<(String, 
     Some((subject.to_owned(), nonce.to_owned(), at, now))
 }
 
+#[cfg(feature = "data-plane")]
 fn control_failure(error: anyhow::Error) -> HttpResponse {
     let surface = error.chain().find_map(|part| part.downcast_ref::<SurfaceError>().or_else(|| {
         match part.downcast_ref::<ControlError>() {
@@ -153,6 +166,8 @@ fn issuer_pins(flag: Option<&str>) -> Result<StaticPins, ServeError> {
 }
 
 pub fn run(args: ServeArgs, tasks: &Tasks) -> Result<()> {
+    #[cfg(not(feature = "data-plane"))]
+    let _ = tasks;
     let clock = SystemClock;
     // The declarations are checked before anything opens (`read.register.serve-declaration`).
     let audience = audience(args.audience.as_deref()).map_err(anyhow::Error::msg)?;
@@ -187,8 +202,11 @@ pub fn run(args: ServeArgs, tasks: &Tasks) -> Result<()> {
         None => face,
     };
     let audit = AuditLog::unanchored(located.project.audit_dir())?;
+    #[cfg(feature = "data-plane")]
     let control_attestation_secret = std::env::var("CONTEXTFUL_CONTROL_ATTESTATION_SECRET").ok().filter(|secret| !secret.is_empty());
+    #[cfg(feature = "data-plane")]
     let control_admit = AdmitArgs { public_key: args.public_key.clone(), audience: args.audience.clone(), denylist: args.denylist.clone(), keyset: args.keyset.clone(), holder_key: None };
+    #[cfg(feature = "data-plane")]
     let control = |request: &HttpRequest, authority: &AdmittedAuthority| -> HttpResponse {
         let malformed = || HttpResponse::json(400, &json!({ "error": { "identifier": "ControlRequestMalformed" } }));
         let path = request.target.split('?').next().unwrap_or_default();
@@ -310,8 +328,9 @@ pub fn run(args: ServeArgs, tasks: &Tasks) -> Result<()> {
     };
     let http = HttpFace::new(&face, &clock, &audit, admitting, Some(ceiling))
         .map_err(anyhow::Error::msg)?
-        .with_control(&control)
         .with_exchange(&exchange_route, exchange.is_none());
+    #[cfg(feature = "data-plane")]
+    let http = http.with_control(&control);
     #[cfg(feature = "data-plane")]
     let http = http.with_claim_write(&claim_write);
     let listener = TcpListener::bind(&args.http)?;
