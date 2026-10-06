@@ -40,7 +40,6 @@ fn every_gate_stage_has_a_dispatchable_part() {
 }
 
 #[test]
-#[ignore = "enable after the FlareDispatch gate, measures, and release paths pass on a live commit"]
 fn no_github_actions_workflows_remain() {
     let workflows = repo_root().join(".github/workflows");
     let entries = std::fs::read_dir(&workflows)
