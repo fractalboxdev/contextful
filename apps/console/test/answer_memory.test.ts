@@ -44,6 +44,7 @@ test("verified reading session lands evidence-backed claims and recalls them bef
     assert.equal(url, "https://model.example/v1/chat/completions");
     events.push("model");
     const prompt = String(init?.body);
+    assert.doesNotMatch(prompt, /run-1/, "reserved provenance stays out of model input");
     const content = prompt.includes("Distil") ? JSON.stringify({ entries: [
       { subject: "Northwind", key: "filings", learning: "Northwind filings need review" },
     ] }) : "Northwind filings need review [filing-1].";
@@ -54,6 +55,7 @@ test("verified reading session lands evidence-backed claims and recalls them bef
   const operator = { subject: "alice", session: "reading-1", grants: new Set(["query" as const]), assertion: "verified-assertion" };
   const first = await createLiveAnswer(options).turn({ operator, store: store.id, question: "Which Northwind filing arrived?" });
   assert.match(first.answer, /\[source-1\]/);
+  assert.deepEqual(first.resultRows?.columns, ["filing_id", "title", "summary"]);
   assert.equal(writes.length, 1);
   assert.equal(writes[0].authorization, "Bearer reader-writer-alice");
   assert.equal(writes[0].body.actor, "alice");
