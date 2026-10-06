@@ -11,11 +11,11 @@ An unpinned clause is `committed`; a pinned one is `performed` when its Rust, Le
 | `corpus` | 1 | 10 | 79 | 37 | 7 | 0 | 40 | 0 | 40 |
 | `disclosure` | 3 | 16 | 134 | 66 | 13 | 3 | 63 | 0 | 63 |
 | `read` | 2 | 15 | 199 | 31 | 22 | 9 | 177 | 0 | 172 |
-| `run` | 3 | 26 | 392 | 100 | 38 | 28 | 291 | 0 | 279 |
+| `run` | 3 | 26 | 405 | 102 | 39 | 28 | 304 | 0 | 279 |
 | `store` | 1 | 17 | 241 | 56 | 13 | 19 | 204 | 0 | 203 |
 | `surface` | 2 | 20 | 114 | 51 | 22 | 0 | 59 | 0 | 59 |
 | `topology` | 1 | 6 | 70 | 24 | 5 | 5 | 38 | 0 | 38 |
-| **total** | 19 | 155 | 2082 | 590 | 190 | 103 | 1448 | 0 | |
+| **total** | 19 | 155 | 2095 | 592 | 191 | 103 | 1461 | 0 | |
 
 Decision records: 18.
 
@@ -29,7 +29,7 @@ A milestone reads `closed` when its acceptance test computes `passing` and every
 | 1 — The authority core | 14 | 238 | 186 | passing | closed |
 | 2 — The store | 9 | 164 | 132 | passing | closed |
 | 3 — The run path | 11 | 209 | 145 | passing | closed |
-| 4 — Ingest | 25 | 504 | 330 | passing | open |
+| 4 — Ingest | 25 | 517 | 343 | passing | open |
 | 5 — The read face under enforcement | 17 | 262 | 204 | passing | open |
 | 6 — Sync and replicas | 8 | 77 | 72 | passing | closed |
 | 7 — Memory | 6 | 47 | 39 | passing | closed |
@@ -993,6 +993,19 @@ Unscheduled operations: 10.
 | `run.export.post-commit-read` | `crates/contextful-cli/tests/integration/export.rs::export_reads_through_the_face_under_the_admitted_credential` | performed |
 | `run.export.secret-preflight` | `crates/contextful-cli/tests/integration/export.rs::an_unresolved_header_reference_refuses_before_any_request` | performed |
 | `run.export.signal-unknown` | `crates/contextful-core/tests/integration/pipeline/export.rs::a_signal_other_than_logs_is_refused` | performed |
+| `run.export.typed-ack` | `spec/pins.toml` | performed |
+| `run.export.typed-block` | `spec/pins.toml` | performed |
+| `run.export.typed-byte-limit` | `spec/pins.toml` | performed |
+| `run.export.typed-complete` | `spec/pins.toml` | performed |
+| `run.export.typed-event-too-large` | `spec/pins.toml` | performed |
+| `run.export.typed-events` | `spec/pins.toml` | performed |
+| `run.export.typed-identity-changed` | `spec/pins.toml` | performed |
+| `run.export.typed-order` | `spec/pins.toml` | performed |
+| `run.export.typed-outbox` | `spec/pins.toml` | performed |
+| `run.export.typed-publication-id` | `spec/pins.toml` | performed |
+| `run.export.typed-state` | `spec/pins.toml` | performed |
+| `run.export.typed-view-recheck` | `spec/pins.toml` | performed |
+| `run.export.typed-watch` | `spec/pins.toml` | performed |
 | `run.fetch.address-literal` | `crates/contextful-connectors/tests/integration/derive.rs::a_link_preview_refuses_non_http_schemes_and_address_literals_before_a_socket` | performed |
 | `run.fetch.binding-key` | `crates/contextful-core/tests/integration/run/derive.rs::a_fetch_binding_refuses_process_keys_and_nonbare_endpoint_hosts` | performed |
 | `run.fetch.charset` | `crates/contextful-connectors/tests/integration/derive.rs::a_link_preview_bounds_redirects_and_refuses_non_utf8_documents` | performed |
