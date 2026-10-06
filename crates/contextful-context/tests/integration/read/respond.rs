@@ -102,6 +102,19 @@ fn describe_reports_the_session_zone_and_each_tables_admission() {
     assert_eq!((vendor["session_zone"].clone(), vendor["zone_admitted"].clone()), (json!("public-cloud:us-east-1"), json!(true)));
 }
 
+#[test]
+fn describe_marks_declared_memory_tables_regardless_of_name() {
+    let manifest = format!("{MANIFEST}\n[[table]]\nname = \"research/insights\"\nshape = \"memory_facts\"\ncolumns = [\"claim_id\", \"subject\", \"predicate\", \"object\", \"scope\", \"tier\", \"confidence\", \"valid_from\", \"valid_to\", \"evidence\", \"superseded_by\", \"grant_id\", \"agent\"]\n");
+    let r = Reads::with_manifest(&manifest);
+    let s = r.session(&["research/*"], None, None);
+    let listing = r.face.describe(&s, None, Bounds::default()).unwrap();
+    let tables = listing["tables"].as_array().unwrap();
+    let insights = tables.iter().find(|item| item["table"] == "research/insights").unwrap();
+    assert_eq!(insights["kind"], json!("memory"));
+    let notes = tables.iter().find(|item| item["table"] == "research/notes").unwrap();
+    assert_eq!(notes["kind"], json!("data"));
+}
+
 /// An arm whose table the session's zone excludes contributes no candidate, and the ranked response names that table in {{read.respond.restriction-block}}.
 // spec: read.retrieve.excluded-arm@12f1c8ad
 #[test]

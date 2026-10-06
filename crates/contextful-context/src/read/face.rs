@@ -473,6 +473,7 @@ impl Face {
                 .map(|r| {
                     json!({
                         "table": r.name(),
+                        "kind": if self.memory.table(r.name()).is_some() { "memory" } else { "data" },
                         "description": self.decl(r.name()).agent_description,
                         "zone_admitted": session.zone_admitted(r.name()),
                     })

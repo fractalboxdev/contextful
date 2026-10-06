@@ -108,7 +108,7 @@ pub struct HttpResponse {
 }
 
 impl HttpResponse {
-    fn json(status: u16, body: &Value) -> HttpResponse {
+    pub fn json(status: u16, body: &Value) -> HttpResponse {
         HttpResponse { status, headers: vec![("Content-Type".into(), "application/json".into())], body: body.to_string().into_bytes() }
     }
 
@@ -195,6 +195,8 @@ pub struct HttpFace<'a, C> {
     admitting: Admitting<'a, C>,
     ceiling: usize,
     in_flight: AtomicUsize,
+    exchange: Option<&'a (dyn Fn(&HttpRequest) -> HttpResponse + Sync)>,
+    exchange_unconfigured: bool,
 }
 
 /// A request slot held while one request is in flight.
@@ -241,7 +243,15 @@ impl<'a, C: Clock + Sync> HttpFace<'a, C> {
         let ceiling = ceiling(max_in_flight)?;
         audience(Some(admitting.audience))?;
         let tools = Tools::new(face, clock, record)?;
-        Ok(HttpFace { tools, admitting, ceiling, in_flight: AtomicUsize::new(0) })
+        Ok(HttpFace { tools, admitting, ceiling, in_flight: AtomicUsize::new(0), exchange: None, exchange_unconfigured: false })
+    }
+
+    /// The binary's exchange route mints the reader credential without putting issuer
+    /// signing material in the read-transport package.
+    pub fn with_exchange(mut self, exchange: &'a (dyn Fn(&HttpRequest) -> HttpResponse + Sync), unconfigured: bool) -> Self {
+        self.exchange = Some(exchange);
+        self.exchange_unconfigured = unconfigured;
+        self
     }
 
     /// Accept connections on `listener` until it fails. Each accepted connection takes a
@@ -283,7 +293,9 @@ impl<'a, C: Clock + Sync> HttpFace<'a, C> {
     fn connection(&self, mut stream: TcpStream, slot: Slot<'_>) -> std::io::Result<()> {
         stream.set_read_timeout(Some(REQUEST_READ_TIMEOUT))?;
         stream.set_write_timeout(Some(REQUEST_READ_TIMEOUT))?;
-        let response = match read_request(&mut stream) {
+        let response = match read_request_preflight(&mut stream, |head| {
+            (self.exchange_unconfigured && head.path() == "/auth/exchange").then(|| self.answer(head))
+        }) {
             Ok(request) => self.answer(&request),
             Err(response) => response,
         };
@@ -329,6 +341,8 @@ impl<'a, C: Clock + Sync> HttpFace<'a, C> {
             (MCP_PATH, _) => {
                 HttpResponse::message(405, "`/mcp` answers POST; the face holds no session and opens no server stream").with("Allow", "POST")
             }
+            ("/auth/exchange", "POST") if self.exchange.is_some() => self.exchange.expect("checked above")(request),
+            ("/auth/exchange", _) if self.exchange.is_some() => HttpResponse::message(405, "`/auth/exchange` answers POST").with("Allow", "POST"),
             (other, _) => HttpResponse::message(404, format!("no route `{other}`; the protocol endpoint is `{MCP_PATH}`")),
         }
     }
@@ -379,6 +393,10 @@ impl<'a, C: Clock + Sync> HttpFace<'a, C> {
 /// Read one request: the head, then a `Content-Length` body of at most
 /// [`REQUEST_BODY_BYTES`]. A malformed or oversized request is answered, not read on.
 pub fn read_request(stream: &mut impl Read) -> Result<HttpRequest, HttpResponse> {
+    read_request_preflight(stream, |_| None)
+}
+
+fn read_request_preflight(stream: &mut impl Read, preflight: impl Fn(&HttpRequest) -> Option<HttpResponse>) -> Result<HttpRequest, HttpResponse> {
     let mut buf = Vec::with_capacity(1024);
     let mut chunk = [0u8; 4096];
     let (mut request, head_len) = loop {
@@ -414,6 +432,9 @@ pub fn read_request(stream: &mut impl Read) -> Result<HttpRequest, HttpResponse>
             Err(e) => return Err(HttpResponse::message(400, format!("the request head does not parse: {e}"))),
         }
     };
+    if let Some(response) = preflight(&request) {
+        return Err(response);
+    }
     if request.header("Transfer-Encoding").is_some() {
         return Err(HttpResponse::message(411, "the face reads a `Content-Length` body"));
     }

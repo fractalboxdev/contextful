@@ -13,6 +13,11 @@ use crate::root::root as project_root;
 use crate::clock::SystemClock;
 use anyhow::Result;
 use contextful_agent::http::{audience, ceiling, Admitting, HttpFace};
+use contextful_core::issue::{IssuancePolicy, MintContext, NodeRole};
+use contextful_core::ports::{Clock, SigningPort};
+use contextful_policy::exchange::answer as exchange_answer;
+use contextful_policy::issue::{SeedSigner, DEFAULT_SEED_PATH};
+use contextful_policy::possession::ProofChecker;
 use contextful_policy::audit::AuditLog;
 use contextful_policy::keyset::{KeyCheckpoint, StaticPins};
 use contextful_policy::revoke::RevocationState;
@@ -108,7 +113,28 @@ pub fn run(args: ServeArgs) -> Result<()> {
         None => face,
     };
     let audit = AuditLog::unanchored(located.project.audit_dir())?;
-    let http = HttpFace::new(&face, &clock, &audit, admitting, Some(ceiling)).map_err(anyhow::Error::msg)?;
+    let exchange = crate::token::configured_exchange(&root)?;
+    let mint_material = if exchange.is_some() {
+        let policy = std::fs::read_to_string(root.join(IssuancePolicy::PATH))?;
+        let issuance = IssuancePolicy::parse(&policy).map_err(|e| anyhow::anyhow!("{e:?}"))?;
+        let signer = SeedSigner::resolve(Some(&root.join(DEFAULT_SEED_PATH)))?;
+        Some((issuance, signer))
+    } else {
+        None
+    };
+    let proofs = ProofChecker::new(SystemClock);
+    let exchange_route = |request: &contextful_agent::http::HttpRequest| {
+        let Some((issuance, signer)) = mint_material.as_ref() else {
+            return contextful_agent::http::HttpResponse::json(404,
+                &serde_json::json!({ "error": { "http": 404, "identifier": "ExchangeUnconfigured", "message": ".contextful/exchange/policy.toml is absent" } }));
+        };
+        let ctx = MintContext { node: NodeRole::Primary, signer: signer as &dyn SigningPort, clock: &clock as &dyn Clock };
+        let result = exchange_answer(exchange.as_ref(), &request.body, request.header("DPoP"), &proofs, issuance, &ctx);
+        contextful_agent::http::HttpResponse::json(result.status, &result.body)
+    };
+    let http = HttpFace::new(&face, &clock, &audit, admitting, Some(ceiling))
+        .map_err(anyhow::Error::msg)?
+        .with_exchange(&exchange_route, exchange.is_none());
     let listener = TcpListener::bind(&args.http)?;
     eprintln!("listening on http://{}/mcp", listener.local_addr()?);
     http.serve(listener)?;
