@@ -421,6 +421,26 @@ fn surfaces(root: &Path) -> Vec<String> {
     out
 }
 
+fn native_surface_tests(dir: &Path) -> Vec<std::path::PathBuf> {
+    let mut out = Vec::new();
+    for folder in ["test", "tests"] {
+        let mut pending = vec![dir.join(folder)];
+        while let Some(path) = pending.pop() {
+            let Ok(entries) = std::fs::read_dir(path) else { continue };
+            for entry in entries.flatten() {
+                let path = entry.path();
+                if path.is_dir() {
+                    pending.push(path);
+                } else if path.file_name().and_then(|name| name.to_str()).is_some_and(|name| name.ends_with(".test.ts")) {
+                    out.push(path);
+                }
+            }
+        }
+    }
+    out.sort();
+    out
+}
+
 /// The TypeScript surfaces stage (`assurance.gate.typescript-surfaces`): install each
 /// surface from its lock file, then run each check it declares a script for; a failing
 /// check raises `SurfaceCheckFailed` (`assurance.gate.surface-check-failed`).
@@ -439,26 +459,35 @@ pub fn typescript(root: &Path) -> Result<()> {
         if !skipped.is_empty() {
             eprintln!("surfaces: {surface} declares no {} script", skipped.join(" or "));
         }
-        if declared.is_empty() {
-            continue;
-        }
-        let pm = manager(&dir);
-        let install: &[&str] = match pm {
-            "npm" => &["ci"],
-            _ => &["install", "--frozen-lockfile"],
-        };
-        let status = Command::new(pm).args(install).current_dir(&dir).status().with_context(|| format!("running {pm} in {surface}"))?;
-        if !status.success() {
-            return Err(crate::exited(format!("{pm} {} in {surface}", install.join(" ")), status));
-        }
-        for script in declared {
-            eprintln!("surfaces: {surface} {script}");
-            let status = Command::new(pm).args(["run", script]).current_dir(&dir).status().with_context(|| format!("running {pm} in {surface}"))?;
+        if !declared.is_empty() {
+            let pm = manager(&dir);
+            let install: &[&str] = match pm {
+                "npm" => &["ci"],
+                _ => &["install", "--frozen-lockfile"],
+            };
+            let status = Command::new(pm).args(install).current_dir(&dir).status().with_context(|| format!("running {pm} in {surface}"))?;
             if !status.success() {
-                return Err(refuse(
-                    "SurfaceCheckFailed",
-                    format!("surface {surface}: script `{script}` exited {}", status.code().map_or("by signal".into(), |c| c.to_string())),
-                ));
+                return Err(crate::exited(format!("{pm} {} in {surface}", install.join(" ")), status));
+            }
+            for script in declared {
+                eprintln!("surfaces: {surface} {script}");
+                let status = Command::new(pm).args(["run", script]).current_dir(&dir).status().with_context(|| format!("running {pm} in {surface}"))?;
+                if !status.success() {
+                    return Err(refuse(
+                        "SurfaceCheckFailed",
+                        format!("surface {surface}: script `{script}` exited {}", status.code().map_or("by signal".into(), |c| c.to_string())),
+                    ));
+                }
+            }
+        }
+        for test in native_surface_tests(&dir) {
+            let relative = test.strip_prefix(&dir).unwrap();
+            let status = Command::new("node").args(["--experimental-strip-types", "--test"]).arg(relative)
+                .current_dir(&dir).status().with_context(|| format!("running node test in {surface}"))?;
+            if !status.success() {
+                return Err(refuse("SurfaceCheckFailed", format!(
+                    "surface {surface}: test `{}` exited {}", relative.display(), status.code().map_or("by signal".into(), |c| c.to_string())
+                )));
             }
         }
     }

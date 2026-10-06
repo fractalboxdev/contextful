@@ -405,7 +405,7 @@ fn pnpm(bin: &Bin, failing: &str) {
 }
 
 /// The TypeScript surfaces run typecheck, unit tests and framework build in one stage, and a surface declaring no script for a check skips that check.
-// spec: assurance.gate.typescript-surfaces@4d9c3bb2
+// spec: assurance.gate.typescript-surfaces@ed0c8468
 #[test]
 fn the_surfaces_stage_installs_then_runs_each_declared_check() {
     let r = surface_repo();

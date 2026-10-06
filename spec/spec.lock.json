@@ -369,7 +369,7 @@
       "operation": "state",
       "subject": "verdict",
       "kind": "behavior",
-      "statement": "An unpinned clause computes `committed`; a pinned clause computes `performed` when its artifact's final path segment is defined under `crates/`, `tools/` or `formal/`, and `broken` otherwise. A test carrying an `#[ignore]` attribute computes `broken`.",
+      "statement": "An unpinned clause computes `committed`; a pinned clause computes `performed` when its Rust, Lean or {{corpus.state.typescript-tag-pin}} artifact qualifies, and `broken` otherwise. A test carrying an `#[ignore]` attribute computes `broken`.",
       "why": "P8",
       "file": "spec/00-corpus.md",
       "line": 150
@@ -386,6 +386,28 @@
       "line": 152
     },
     {
+      "id": "corpus.state.typescript-tag-pin",
+      "contract": "corpus",
+      "operation": "state",
+      "subject": "typescript-tag-pin",
+      "kind": "behavior",
+      "statement": "A `// spec: <id>@<rev>` line above a native test call under a direct TypeScript surface pins its clause when {{assurance.gate.native-test-files}} runs that file and the callback asserts.",
+      "why": "P8",
+      "file": "spec/00-corpus.md",
+      "line": 154
+    },
+    {
+      "id": "corpus.state.typescript-unfinished",
+      "contract": "corpus",
+      "operation": "state",
+      "subject": "typescript-unfinished",
+      "kind": "behavior",
+      "statement": "A pinned TypeScript test using `skip` or `todo`, lacking a callback assertion, or holding a placeholder computes `broken`.",
+      "why": "because a test that never asserts demonstrates no clause",
+      "file": "spec/00-corpus.md",
+      "line": 156
+    },
+    {
       "id": "corpus.state.lean-tag",
       "contract": "corpus",
       "operation": "state",
@@ -394,7 +416,7 @@
       "statement": "A line `-- spec: <id>@<rev>` above a Lean `theorem` or `lemma` under `formal/`, past comments, docstrings and attributes, pins clause `<id>` to that theorem, with `<rev>` as in {{corpus.state.tag-pin}}.",
       "why": "because a theorem's pin then moves with the proof, and a reworded clause marks the proof stale",
       "file": "spec/00-corpus.md",
-      "line": 154
+      "line": 158
     },
     {
       "id": "corpus.state.theorem-beside-test",
@@ -405,7 +427,7 @@
       "statement": "A clause carries at most one theorem pin and one test pin, and computes `performed` when both perform: the theorem proves the model, the test ties the model to the code.",
       "why": "A-assurance",
       "file": "spec/00-corpus.md",
-      "line": 156
+      "line": 160
     },
     {
       "id": "corpus.state.stale-pin",
@@ -416,7 +438,7 @@
       "statement": "A tag whose `<rev>` differs from the digest of its clause's current statement raises `SpecStalePin`, and its clause computes `broken`.",
       "why": "because a reworded clause no longer says what its test was written to demonstrate",
       "file": "spec/00-corpus.md",
-      "line": 158
+      "line": 162
     },
     {
       "id": "corpus.state.unfinished-test",
@@ -427,7 +449,7 @@
       "statement": "A pinned test holding a body line that opens with `todo!`, and a pinned Lean declaration holding `sorry` or `admit`, compute `broken`.",
       "why": "because a placeholder demonstrates nothing, whether it panics at run time or proves by assumption",
       "file": "spec/00-corpus.md",
-      "line": 160
+      "line": 164
     },
     {
       "id": "corpus.state.scaffold",
@@ -438,7 +460,7 @@
       "statement": "`contextful-spec scaffold <contract>.<operation> --package <path>` writes one tagged test per refusal and limit clause of the operation into `<path>/tests/integration/`, its body a `todo!` naming the error or bound, and rewrites no existing function.",
       "why": "",
       "file": "spec/00-corpus.md",
-      "line": 162
+      "line": 166
     },
     {
       "id": "corpus.state.scaffold-lean",
@@ -449,7 +471,7 @@
       "statement": "`contextful-spec scaffold <contract>.<operation> --lean <file>` appends one tagged theorem per clause of the operation, its statement the docstring and its proposition and proof `sorry`, and rewrites no existing theorem.",
       "why": "",
       "file": "spec/00-corpus.md",
-      "line": 163
+      "line": 167
     },
     {
       "id": "corpus.state.coverage-floor",
@@ -460,7 +482,7 @@
       "statement": "`spec/pins.toml` carries a per-contract floor of pinned clauses. A live count below its floor raises `SpecCoverageRegression`.",
       "why": "because deleting a failing pin must not read as progress",
       "file": "spec/00-corpus.md",
-      "line": 164
+      "line": 168
     },
     {
       "id": "corpus.state.bad-pin",
@@ -471,7 +493,7 @@
       "statement": "A pin naming no clause, a tag above no declaration, an item pin on a refusal or limit, a broken pin, and one clause pinned to two tests or two theorems raise `SpecBrokenPin`.",
       "why": "P8",
       "file": "spec/00-corpus.md",
-      "line": 166
+      "line": 170
     },
     {
       "id": "corpus.state.roadmap",
@@ -482,7 +504,7 @@
       "statement": "`spec/roadmap.md` names operations as `<contract>.<operation>` or `<contract>.*`. A name resolving to no operation, an operation claimed by two milestones, or a milestone lacking its `Reach:` or `Acceptance:` line raises `SpecRoadmap`.",
       "why": "P8",
       "file": "spec/00-corpus.md",
-      "line": 168
+      "line": 172
     },
     {
       "id": "corpus.state.acceptance",
@@ -493,7 +515,7 @@
       "statement": "A milestone's `Acceptance:` line names one test under `crates/acceptance/`; that test computes `absent` when undefined, `open` when ignored or holding a body line that opens with `todo!`, and `passing` otherwise.",
       "why": "A-assurance",
       "file": "spec/00-corpus.md",
-      "line": 170
+      "line": 174
     },
     {
       "id": "corpus.state.closed",
@@ -504,7 +526,7 @@
       "statement": "A milestone computes `closed` when its acceptance test computes `passing` and every operation it names holds a `performed` clause, and `open` otherwise.",
       "why": "because one passing acceptance test drives one path through a milestone, and an operation without a performed clause demonstrates nothing",
       "file": "spec/00-corpus.md",
-      "line": 172
+      "line": 176
     },
     {
       "id": "corpus.state.acceptance-first",
@@ -515,7 +537,7 @@
       "statement": "A milestone holding a pinned clause while its acceptance test computes `absent` raises `SpecAcceptanceMissing`.",
       "why": "A-assurance",
       "file": "spec/00-corpus.md",
-      "line": 174
+      "line": 178
     },
     {
       "id": "corpus.state.deferred-depth",
@@ -526,7 +548,7 @@
       "statement": "A milestone carrying a `Depth: operation` line admits only refusal and limit clauses; a behavior clause of an operation it schedules raises `SpecDeferredBehavior`.",
       "why": "because an unopened milestone fixes what it refuses and bounds, and its behavior is written against the code that opens it",
       "file": "spec/00-corpus.md",
-      "line": 176
+      "line": 180
     },
     {
       "id": "corpus.render.generated",
@@ -537,7 +559,7 @@
       "statement": "`spec/status.md`, `spec/targets.md`, `spec/cards/` and `spec/spec.lock.json` are regenerated by `contextful-spec state` and `contextful-spec extract`. A committed copy differing from regeneration raises `SpecStaleRender`.",
       "why": "P8",
       "file": "spec/00-corpus.md",
-      "line": 183
+      "line": 187
     },
     {
       "id": "corpus.render.lock-file",
@@ -548,7 +570,7 @@
       "statement": "The lock file carries every clause with its segments, computed kind, statement, Why and location, each operation's lede, the per-file `owns` map, the registry and the pointer graph.",
       "why": "P8",
       "file": "spec/00-corpus.md",
-      "line": 185
+      "line": 189
     },
     {
       "id": "corpus.render.card",
@@ -559,7 +581,7 @@
       "statement": "`contextful-spec state` renders `spec/cards/<contract>.md` per contract: each operation with its lede and clause count, each refusal as error and gloss, each bound as value, unit and basis, all naming their clause.",
       "why": "A-corpus",
       "file": "spec/00-corpus.md",
-      "line": 187
+      "line": 191
     },
     {
       "id": "corpus.render.dated-prose",
@@ -570,7 +592,7 @@
       "statement": "The words `planned`, `not yet`, `currently`, `today`, `shipped`, `implemented`, `previously`, `used to`, `legacy`, `TODO`, `FIXME` and `WIP`, and an ISO date, raise `SpecDatedProse` in any authored file.",
       "why": "because build state is computed, and a dated sentence is stale the day it lands",
       "file": "spec/00-corpus.md",
-      "line": 189
+      "line": 193
     },
     {
       "id": "corpus.render.counterfactual",
@@ -581,7 +603,7 @@
       "statement": "The words `will`, `would` and `shall` raise `SpecCounterfactual` in a contract file or a guide.",
       "why": "because a contract states present behavior, and a record's Options is where a path not taken is described",
       "file": "spec/00-corpus.md",
-      "line": 191
+      "line": 195
     },
     {
       "id": "corpus.render.banned-vocabulary",
@@ -592,7 +614,7 @@
       "statement": "The nouns `seam`, `load-bearing`, `wedge`, `rung`, `land-grab` and an unbackticked `axiom`, a word whose digest `spec/terms/refused-names.toml` lists, a bare `#<digits>` and a pull-request link raise `SpecBannedWord`.",
       "why": "P8",
       "file": "spec/00-corpus.md",
-      "line": 193
+      "line": 197
     },
     {
       "id": "corpus.render.local-path",
@@ -603,7 +625,7 @@
       "statement": "A path beginning `/Users/`, `/home/`, `$HOME/` or `~/` raises `SpecLocalPath`.",
       "why": "P8",
       "file": "spec/00-corpus.md",
-      "line": 195
+      "line": 199
     },
     {
       "id": "corpus.diagram.fence",
@@ -614,7 +636,7 @@
       "statement": "A diagram is a fenced `mermaid` block; box-drawing characters outside a fence raise `SpecAsciiDiagram`.",
       "why": "P8",
       "file": "spec/00-corpus.md",
-      "line": 201
+      "line": 205
     },
     {
       "id": "corpus.diagram.boundary",
@@ -625,7 +647,7 @@
       "statement": "A diagram draws a contract, party, process or trust zone as a container — a flowchart `subgraph` or a sequence `box` — holding its components. A flowchart node naming a contract or a boundary raises `SpecDiagramBoundary`.",
       "why": "P8",
       "file": "spec/00-corpus.md",
-      "line": 203
+      "line": 207
     },
     {
       "id": "corpus.diagram.node",
@@ -636,7 +658,7 @@
       "statement": "A flowchart node names one thing in at most 5 words: its label holds no `·`, `<br/>`, `,`, `;`, `: ` or error identifier, is no operation name, and sets no article second. A breach raises `SpecDiagramNode`.",
       "why": "because a box of bundled attributes or a verb hides the things and what flows between them; operations, limits and errors ride the edges",
       "file": "spec/00-corpus.md",
-      "line": 205
+      "line": 209
     },
     {
       "id": "corpus.diagram.shape",
@@ -647,7 +669,7 @@
       "statement": "A node labelled with a snake_case identifier or a phrase ending `table`, `store`, `log` or `queue` is a cylinder `[( )]`, and a label ending `?` is a decision `{ }`. A breach raises `SpecDiagramShape`.",
       "why": "because one shape meaning one kind lets a reader tell data from the parts acting on it at a glance",
       "file": "spec/00-corpus.md",
-      "line": 207
+      "line": 211
     },
     {
       "id": "corpus.diagram.edge",
@@ -658,7 +680,7 @@
       "statement": "A flowchart edge points one way; its label holds at most 5 words and no `·`, and an edge touching no decision node carries one. A breach raises `SpecDiagramEdge`.",
       "why": "because an unlabelled line says two things relate without saying how, and a two-way line hides which side acts",
       "file": "spec/00-corpus.md",
-      "line": 209
+      "line": 213
     },
     {
       "id": "corpus.diagram.decision",
@@ -669,7 +691,7 @@
       "statement": "A decision node asks a question or names a condition in at most 8 words and no error identifier, has an incoming edge, and has two or more outgoing edges each labelled with a distinct outcome. A breach raises `SpecDiagramDecision`.",
       "why": "because a branch without a guard on each exit leaves the reader to guess which path a case takes",
       "file": "spec/00-corpus.md",
-      "line": 211
+      "line": 215
     },
     {
       "id": "corpus.diagram.branch",
@@ -680,7 +702,7 @@
       "statement": "A non-decision node with an outgoing edge labelled `yes` or `no`, an outgoing error identifier beside another exit, or two exits opening `if`, `when`, `over`, `under` or `else` raises `SpecDiagramBranch`; a branch is a decision node.",
       "why": "because a condition hidden in edge labels off a box reads as parallel flow",
       "file": "spec/00-corpus.md",
-      "line": 213
+      "line": 217
     },
     {
       "id": "corpus.diagram.connected",
@@ -691,7 +713,7 @@
       "statement": "Every flowchart node, or a subgraph enclosing it, is an edge endpoint. A breach raises `SpecDiagramOrphan`.",
       "why": "because an unconnected element asserts nothing about the system",
       "file": "spec/00-corpus.md",
-      "line": 215
+      "line": 219
     },
     {
       "id": "corpus.diagram.unique-label",
@@ -702,7 +724,7 @@
       "statement": "No two nodes of one flowchart carry the same label; a second mention reuses the node id. A breach raises `SpecDiagramDuplicate`.",
       "why": "because one label naming two nodes leaves the reader to decide whether they are one thing",
       "file": "spec/00-corpus.md",
-      "line": 217
+      "line": 221
     },
     {
       "id": "corpus.diagram.layout",
@@ -713,7 +735,7 @@
       "statement": "A flowchart header declares `LR`, `TB` or `TD`, no subgraph declares `direction`, subgraphs nest at most 2 levels, and the chart holds at most 20 nodes and 25 edges. A breach raises `SpecDiagramLayout`.",
       "why": "because one reading direction keeps the flow followable, and a chart past that size or depth is two diagrams",
       "file": "spec/00-corpus.md",
-      "line": 219
+      "line": 223
     },
     {
       "id": "corpus.diagram.sequence",
@@ -724,7 +746,7 @@
       "statement": "A sequence diagram declares each participant it messages and messages each it declares, and holds at most 6 participants, 15 messages, 2 messages from a participant to itself and fragments nested 2 levels. A breach raises `SpecDiagramSequence`.",
       "why": "because a sequence diagram shows one scenario's interactions, and branching logic past that belongs in a flowchart",
       "file": "spec/00-corpus.md",
-      "line": 221
+      "line": 225
     },
     {
       "id": "corpus.diagram.message",
@@ -735,7 +757,7 @@
       "statement": "A sequence message label holds at most 8 words and a note at most 12 words. A breach raises `SpecDiagramMessage`.",
       "why": "because a message names one call; its parameters and bounds belong in clauses",
       "file": "spec/00-corpus.md",
-      "line": 223
+      "line": 227
     },
     {
       "id": "corpus.diagram.state",
@@ -746,7 +768,7 @@
       "statement": "A state diagram has one top-level `[*]` start reaching every state, every state has an outgoing transition, `[*]` counting as a target, and a transition label holds at most 6 words. A breach raises `SpecDiagramState`.",
       "why": "because an unreachable or dead-end state is a lifecycle the system cannot run",
       "file": "spec/00-corpus.md",
-      "line": 225
+      "line": 229
     },
     {
       "id": "corpus.targets.file",
@@ -757,7 +779,7 @@
       "statement": "Each deployment provider's target profile is `spec/targets/<provider>.toml`: named shapes, exactly one marked default, each with a kind, the profiles it hosts, an optional per-invocation wall-clock cap, its exclusions and the primitive filling each role.",
       "why": "A-topology",
       "file": "spec/00-corpus.md",
-      "line": 232
+      "line": 236
     },
     {
       "id": "corpus.targets.roles",
@@ -768,7 +790,7 @@
       "statement": "A shape fills eight roles — cron tick, reconciler, durable orchestrator, single-writer catalog, object store, hot-path query face, heavy compute and secrets — and may fill a realtime run projection.",
       "why": "",
       "file": "spec/00-corpus.md",
-      "line": 234
+      "line": 238
     },
     {
       "id": "corpus.targets.incomplete",
@@ -779,7 +801,7 @@
       "statement": "A shape leaving a role unfilled, or a target file marking other than one default shape, raises `SpecTargetIncomplete`, naming the provider, the shape and the role.",
       "why": "because an unfilled role surfaces only when a deploy reaches it, on someone else's account",
       "file": "spec/00-corpus.md",
-      "line": 235
+      "line": 239
     },
     {
       "id": "corpus.targets.cap-unrecorded",
@@ -790,7 +812,7 @@
       "statement": "A shape whose cap sits at or below the {{topology.deploy.wall-clock-cap}} bound and whose exclusions omit `first-time-backfill` or `component-connector` raises `SpecTargetCapUnrecorded`.",
       "why": "because the exclusion is the difference between a refused dispatch and a job killed mid-run",
       "file": "spec/00-corpus.md",
-      "line": 237
+      "line": 241
     },
     {
       "id": "corpus.targets.function-profile",
@@ -801,7 +823,7 @@
       "statement": "A function-class shape listing a profile other than `edge` raises `SpecTargetFunctionProfile`, naming the provider and the shape.",
       "why": "because {{topology.package.edge-eligibility}} admits the edge profile alone on a function-class target",
       "file": "spec/00-corpus.md",
-      "line": 239
+      "line": 243
     },
     {
       "id": "corpus.targets.page",
@@ -812,7 +834,7 @@
       "statement": "`contextful-spec state` renders `spec/targets.md` from the target files: per provider, a role table across its shapes and a diagram of its default shape.",
       "why": "because a diagram drawn by hand beside the data it shows drifts from it",
       "file": "spec/00-corpus.md",
-      "line": 241
+      "line": 245
     },
     {
       "id": "corpus.guide.file",
@@ -823,7 +845,7 @@
       "statement": "Each contract has one guide, `spec/guide/<contract>.md`: front matter `contract`, one `# ` title equal to the contract's registry title, then prose of at most 700 words outside diagrams.",
       "why": "A-corpus",
       "file": "spec/00-corpus.md",
-      "line": 248
+      "line": 252
     },
     {
       "id": "corpus.guide.non-normative",
@@ -834,7 +856,7 @@
       "statement": "A guide holds no clause item and names no registered error; it reaches a rule by `{{id}}`. No contract file links a guide.",
       "why": "because a rule restated in teaching prose is a second home that drifts from the first",
       "file": "spec/00-corpus.md",
-      "line": 250
+      "line": 254
     },
     {
       "id": "corpus.guide.bad-guide",
@@ -845,7 +867,7 @@
       "statement": "A contract without a guide, a guide breaking its shape or length, a guide holding a clause item or an error name, and a contract file linking a guide raise `SpecGuide`.",
       "why": "P8",
       "file": "spec/00-corpus.md",
-      "line": 252
+      "line": 256
     },
     {
       "id": "topology.compose.workspace",
@@ -21406,10 +21428,21 @@
       "operation": "gate",
       "subject": "typescript-surfaces",
       "kind": "behavior",
-      "statement": "The TypeScript surfaces run typecheck, unit tests and framework build in one stage, and a surface declaring no script for a check skips that check.",
+      "statement": "The TypeScript surfaces run each declared typecheck, test and build script in one stage; an absent script skips only that script.",
       "why": "",
       "file": "spec/81-engineering.md",
       "line": 206
+    },
+    {
+      "id": "assurance.gate.native-test-files",
+      "contract": "assurance",
+      "operation": "gate",
+      "subject": "native-test-files",
+      "kind": "behavior",
+      "statement": "The surfaces stage runs every native `.test.ts` file under a direct TypeScript surface's `test/` or `tests/` tree through Node's TypeScript strip runner, even without a package test script.",
+      "why": "because a package script can omit a pinned test while reporting success",
+      "file": "spec/81-engineering.md",
+      "line": 207
     },
     {
       "id": "assurance.gate.surface-check-failed",
@@ -21420,7 +21453,7 @@
       "statement": "A surface whose typecheck, unit tests or framework build fails raises `SurfaceCheckFailed`, naming the surface and the script.",
       "why": "P7",
       "file": "spec/81-engineering.md",
-      "line": 207
+      "line": 209
     },
     {
       "id": "assurance.evaluate.real-read-path",
@@ -21431,7 +21464,7 @@
       "statement": "An evaluation run ingests, indexes, retrieves, reads, judges and scores through the surfaces a caller uses, and the harness adds no storage or runtime primitive.",
       "why": "",
       "file": "spec/81-engineering.md",
-      "line": 252
+      "line": 254
     },
     {
       "id": "assurance.evaluate.through-the-store",
@@ -21442,7 +21475,7 @@
       "statement": "The corpus loads through the real store, and the retriever under test calls {{read.retrieve.ranked-call}} with the options a caller passes.",
       "why": "because an unordered full-scan retriever cannot go red when ranking breaks",
       "file": "spec/81-engineering.md",
-      "line": 253
+      "line": 255
     },
     {
       "id": "assurance.evaluate.policy-labels",
@@ -21453,7 +21486,7 @@
       "statement": "An evaluation corpus carries zone and row-policy labels in its table declarations, and a run reads it through the access-control path under one admitted credential.",
       "why": "A-assurance",
       "file": "spec/81-engineering.md",
-      "line": 255,
+      "line": 257,
       "scenarios": [
         "WHEN a regression case names a row another agent owns under `owner = subject.agent`, THEN no leg returns it and the hybrid forbidden-row rate reads 0."
       ]
@@ -21467,7 +21500,7 @@
       "statement": "A run over a corpus whose tables declare no zone or row policy, with no `local:` zone passed as `--zone`, raises `EvalCorpusUnlabeled` before any row lands.",
       "why": "A-assurance",
       "file": "spec/81-engineering.md",
-      "line": 257,
+      "line": 259,
       "scenarios": [
         "WHEN a corpus's tables declare no policy and the run passes no `--zone`, THEN the run raises `EvalCorpusUnlabeled` and lands no row."
       ]
@@ -21481,7 +21514,7 @@
       "statement": "A case carries an id, a corpus path relative to its case file, a question, tags, and an expected block of answer, artifacts, edges, entities, must-cite, must-abstain, must-not-retrieve, time anchor and recency bound.",
       "why": "",
       "file": "spec/81-engineering.md",
-      "line": 259
+      "line": 261
     },
     {
       "id": "assurance.evaluate.row-reference",
@@ -21492,7 +21525,7 @@
       "statement": "A case names a row as `<table>#<key>`, the key joining the row's declared primary-key values with commas, and the runner keys each returned row the same way.",
       "why": "",
       "file": "spec/81-engineering.md",
-      "line": 260
+      "line": 262
     },
     {
       "id": "assurance.evaluate.regression-case",
@@ -21503,7 +21536,7 @@
       "statement": "A case tagged `regression` is a regression case, and its must-not-retrieve set scores {{assurance.evaluate.forbidden-row-rate}}.",
       "why": "",
       "file": "spec/81-engineering.md",
-      "line": 261
+      "line": 263
     },
     {
       "id": "assurance.evaluate.corpus-layout",
@@ -21514,7 +21547,7 @@
       "statement": "A corpus is a directory holding `contextful.toml`, its table declarations and policy labels, and one `rows/<table>.jsonl` per table.",
       "why": "",
       "file": "spec/81-engineering.md",
-      "line": 262
+      "line": 264
     },
     {
       "id": "assurance.evaluate.run-command",
@@ -21525,7 +21558,7 @@
       "statement": "`contextful eval run --goldens <file>` loads the case file, lands and folds each referenced corpus into a scratch store at `--landed-at`, the Unix epoch by default, reads every case, and writes the run report.",
       "why": "because an undated row landed at the epoch predates every question's window, so a replay scores alike on any day",
       "file": "spec/81-engineering.md",
-      "line": 263
+      "line": 265
     },
     {
       "id": "assurance.evaluate.legs",
@@ -21536,7 +21569,7 @@
       "statement": "Each case calls {{read.retrieve.ranked-call}} three times at limit k: the lexical leg with the question alone, the vector leg with an embedding and an empty query, the hybrid leg with both.",
       "why": "",
       "file": "spec/81-engineering.md",
-      "line": 265
+      "line": 267
     },
     {
       "id": "assurance.evaluate.stub-embedder",
@@ -21547,7 +21580,7 @@
       "statement": "The deterministic tier embeds every row and question with a seeded feature-hashing stub embedder; a corpus row or a case carrying its own embedding keeps it.",
       "why": "",
       "file": "spec/81-engineering.md",
-      "line": 266
+      "line": 268
     },
     {
       "id": "assurance.evaluate.run-verdict",
@@ -21558,7 +21591,7 @@
       "statement": "A run holds its report to the floors and, given `--baseline`, to that file; either red verdict exits non-zero, and `--update-baseline` applies {{assurance.baseline.raise-only}} on green alone.",
       "why": "",
       "file": "spec/81-engineering.md",
-      "line": 267
+      "line": 269
     },
     {
       "id": "assurance.evaluate.converter",
@@ -21569,7 +21602,7 @@
       "statement": "Each benchmark and application ground truth converts once into the case format through its own converter, and the runner reads nothing else.",
       "why": "",
       "file": "spec/81-engineering.md",
-      "line": 268
+      "line": 270
     },
     {
       "id": "assurance.evaluate.deterministic-tier",
@@ -21580,7 +21613,7 @@
       "statement": "Recall@k, R-precision, hit-rate@k, reciprocal rank and nDCG@k run with no model call, reported per leg — lexical, vector, hybrid — and per slice.",
       "why": "",
       "file": "spec/81-engineering.md",
-      "line": 269
+      "line": 271
     },
     {
       "id": "assurance.evaluate.distinct-top-k",
@@ -21591,7 +21624,7 @@
       "statement": "Membership in the top k is distinct, and a repeated id counts once.",
       "why": "",
       "file": "spec/81-engineering.md",
-      "line": 270
+      "line": 272
     },
     {
       "id": "assurance.evaluate.absent-truth",
@@ -21602,7 +21635,7 @@
       "statement": "A ranked metric over a case with no relevant set is NaN and drops out of every aggregate; an empty ranking against a non-empty relevant set scores zero.",
       "why": "",
       "file": "spec/81-engineering.md",
-      "line": 271
+      "line": 273
     },
     {
       "id": "assurance.evaluate.precision-floor",
@@ -21613,7 +21646,7 @@
       "statement": "Precision at rank min(k, R), R being the relevant-set size, holds at or above 60 percent.",
       "why": "because precision@k caps at R/k, below the floor whenever R is small",
       "file": "spec/81-engineering.md",
-      "line": 272
+      "line": 274
     },
     {
       "id": "assurance.evaluate.forbidden-row-rate",
@@ -21624,7 +21657,7 @@
       "statement": "A row named in a must-not-retrieve set holds at 0 percent of a regression case's returned rows.",
       "why": "",
       "file": "spec/81-engineering.md",
-      "line": 274
+      "line": 276
     },
     {
       "id": "assurance.evaluate.duplicate-row-rate",
@@ -21635,7 +21668,7 @@
       "statement": "A repeated table-and-row-key pair holds at 0 percent of the ranking.",
       "why": "",
       "file": "spec/81-engineering.md",
-      "line": 275
+      "line": 277
     },
     {
       "id": "assurance.evaluate.in-window-rate",
@@ -21646,7 +21679,7 @@
       "statement": "A case declaring a recency bound holds its in-window rate at or above 95 percent.",
       "why": "",
       "file": "spec/81-engineering.md",
-      "line": 276
+      "line": 278
     },
     {
       "id": "assurance.evaluate.abstention",
@@ -21657,7 +21690,7 @@
       "statement": "A must-abstain case returns zero rows.",
       "why": "",
       "file": "spec/81-engineering.md",
-      "line": 277
+      "line": 279
     },
     {
       "id": "assurance.evaluate.truth-per-surface",
@@ -21668,7 +21701,7 @@
       "statement": "Expected artifacts score the artifact retriever and expected edges score the edge retriever, reported apart; edge truth with no edge surface configured counts in an unscored tally.",
       "why": "",
       "file": "spec/81-engineering.md",
-      "line": 278
+      "line": 280
     },
     {
       "id": "assurance.evaluate.judged-dimensions",
@@ -21679,7 +21712,7 @@
       "statement": "The reading stage adds four judged dimensions: answer accuracy; abstention, as correct-refusal and hallucination-on-unknown rates; citation faithfulness; and temporal correctness against the bitemporal columns.",
       "why": "",
       "file": "spec/81-engineering.md",
-      "line": 279
+      "line": 281
     },
     {
       "id": "assurance.evaluate.grounded-reader",
@@ -21690,7 +21723,7 @@
       "statement": "The harness reader answers from retrieved rows alone, and the deterministic tier substitutes a stub reader.",
       "why": "",
       "file": "spec/81-engineering.md",
-      "line": 280
+      "line": 282
     },
     {
       "id": "assurance.evaluate.model-endpoint",
@@ -21701,7 +21734,7 @@
       "statement": "The judge and the reader reach a model through {{connector.infer.model-endpoint}}, and the harness holds no credential.",
       "why": "",
       "file": "spec/81-engineering.md",
-      "line": 281
+      "line": 283
     },
     {
       "id": "assurance.evaluate.judge",
@@ -21712,7 +21745,7 @@
       "statement": "The judge is one pinned open-weights instruct model, called once per judged item at temperature zero; a judge swap is a full re-baseline.",
       "why": "because a majority vote at temperature zero samples one mode and adds cost without reducing variance",
       "file": "spec/81-engineering.md",
-      "line": 282
+      "line": 284
     },
     {
       "id": "assurance.evaluate.systems-metrics",
@@ -21723,7 +21756,7 @@
       "statement": "Tokens per query, latency and cost report beside the quality figures, bucketed by corpus size in tokens relative to the reader's context window.",
       "why": "",
       "file": "spec/81-engineering.md",
-      "line": 284
+      "line": 286
     },
     {
       "id": "assurance.evaluate.checkpoint",
@@ -21734,7 +21767,7 @@
       "statement": "A run appends each case's result as JSONL, and a crash re-runs the in-flight case.",
       "why": "",
       "file": "spec/81-engineering.md",
-      "line": 285
+      "line": 287
     },
     {
       "id": "assurance.evaluate.run-report",
@@ -21745,7 +21778,7 @@
       "statement": "A run report carries one field per gated metric, the sample count behind each mean, the run block, the per-slice breakdown, and the tally of cases sampled, dropped and unscored.",
       "why": "",
       "file": "spec/81-engineering.md",
-      "line": 286
+      "line": 288
     },
     {
       "id": "assurance.baseline.file",
@@ -21756,7 +21789,7 @@
       "statement": "A baseline file carries a reserved run block `{k, tier, model, samples}` and one entry per gated metric: a bare number at the run's dead band, or an object overriding the band.",
       "why": "",
       "file": "spec/81-engineering.md",
-      "line": 297
+      "line": 299
     },
     {
       "id": "assurance.baseline.default-dead-band",
@@ -21767,7 +21800,7 @@
       "statement": "A rate-valued entry with no override gates at a 2 percent dead band.",
       "why": "",
       "file": "spec/81-engineering.md",
-      "line": 298
+      "line": 300
     },
     {
       "id": "assurance.baseline.rank-quality-dead-band",
@@ -21778,7 +21811,7 @@
       "statement": "The ranked-quality entry gates at a 3 percent dead band.",
       "why": "",
       "file": "spec/81-engineering.md",
-      "line": 299
+      "line": 301
     },
     {
       "id": "assurance.baseline.band-units",
@@ -21789,7 +21822,7 @@
       "statement": "A band carries its metric's own units, and a count entry is pinned at zero with no band.",
       "why": "",
       "file": "spec/81-engineering.md",
-      "line": 300
+      "line": 302
     },
     {
       "id": "assurance.baseline.metric-path",
@@ -21800,7 +21833,7 @@
       "statement": "An entry names a metric by the report's field path: `retrieval.<modality>.<metric>`, `edge_retrieval.<modality>.<metric>`, `judge.<dimension>`, `latency_ms`, `n_cases`, or `slices.<tag>.` before a bare `<metric>` or any of these but `latency_ms`.",
       "why": "",
       "file": "spec/81-engineering.md",
-      "line": 301
+      "line": 303
     },
     {
       "id": "assurance.baseline.sample-count",
@@ -21811,7 +21844,7 @@
       "statement": "Every mean-valued path takes a `.n` suffix naming its sample count.",
       "why": "because blanking one case's truth lifts a NaN-filtered mean without moving the case count",
       "file": "spec/81-engineering.md",
-      "line": 302
+      "line": 304
     },
     {
       "id": "assurance.baseline.unresolvable-path",
@@ -21822,7 +21855,7 @@
       "statement": "A path resolving to nothing, a mean over fewer than 30 cases, a malformed entry or a non-finite band raises `BaselinePathUnresolved` before the suite runs.",
       "why": "P7",
       "file": "spec/81-engineering.md",
-      "line": 304
+      "line": 306
     },
     {
       "id": "assurance.baseline.run-stamp-drift",
@@ -21833,7 +21866,7 @@
       "statement": "A run block differing from the run's own configuration raises `BaselineRunStampMismatch` before the suite runs.",
       "why": "P7",
       "file": "spec/81-engineering.md",
-      "line": 306
+      "line": 308
     },
     {
       "id": "assurance.baseline.interval",
@@ -21844,7 +21877,7 @@
       "statement": "Each judged figure reports a 95 percent percentile-bootstrap interval over cases from 1000 resamples.",
       "why": "",
       "file": "spec/81-engineering.md",
-      "line": 308
+      "line": 310
     },
     {
       "id": "assurance.baseline.raise-only",
@@ -21855,7 +21888,7 @@
       "statement": "A baseline update runs after every gate and floor passes, moves each improved entry to its measured value, moves none in the worse direction, and adds no path.",
       "why": "",
       "file": "spec/81-engineering.md",
-      "line": 309
+      "line": 311
     },
     {
       "id": "assurance.baseline.floors-are-absolute",
@@ -21866,7 +21899,7 @@
       "statement": "An absolute floor gates independently of every committed value.",
       "why": "",
       "file": "spec/81-engineering.md",
-      "line": 310
+      "line": 312
     },
     {
       "id": "assurance.baseline.floor-coverage",
@@ -21877,7 +21910,7 @@
       "statement": "A report lacking a floor's figure on any leg of its `retrieval` surface breaches that floor; only a forbidden-row or in-window rate over no case holds.",
       "why": "",
       "file": "spec/81-engineering.md",
-      "line": 311
+      "line": 313
     },
     {
       "id": "assurance.baseline.offline",
@@ -21888,7 +21921,7 @@
       "statement": "The gate is a local command comparing the report against in-tree baselines and floors, reporting both verdicts, with or without a trace store reachable.",
       "why": "",
       "file": "spec/81-engineering.md",
-      "line": 312
+      "line": 314
     },
     {
       "id": "assurance.baseline.trace-store",
@@ -21899,7 +21932,7 @@
       "statement": "A trace store records run history and curation staging, and decides no verdict.",
       "why": "",
       "file": "spec/81-engineering.md",
-      "line": 313
+      "line": 315
     },
     {
       "id": "assurance.baseline.golden-custody",
@@ -21910,7 +21943,7 @@
       "statement": "Version-controlled JSONL under `evals/cases/` is the canonical golden set, one loader is its only ingestion door, and a reviewer's edit reaches the gate as a change to the tree.",
       "why": "A-assurance",
       "file": "spec/81-engineering.md",
-      "line": 314
+      "line": 316
     },
     {
       "id": "assurance.baseline.answer-key-in-the-store",
@@ -21921,7 +21954,7 @@
       "statement": "An artifact path normalizing under the evaluation directory, reached by a manifest lint or a connector, raises `GoldenSetIngested`.",
       "why": "A-assurance",
       "file": "spec/81-engineering.md",
-      "line": 316
+      "line": 318
     },
     {
       "id": "assurance.baseline.generated-redaction",
@@ -21932,7 +21965,7 @@
       "statement": "A golden mined from a live query or promoted from a labeled outcome passes {{authority.redact.write-time}} before commit; a case it cannot redact raises `GoldenRedactionFailed`.",
       "why": "A-assurance",
       "file": "spec/81-engineering.md",
-      "line": 318
+      "line": 320
     },
     {
       "id": "assurance.baseline.promotion-source",
@@ -21943,7 +21976,7 @@
       "statement": "Only an adjudicated outcome label promotes into a golden set; a self-rated row does not.",
       "why": "",
       "file": "spec/81-engineering.md",
-      "line": 320
+      "line": 322
     },
     {
       "id": "assurance.baseline.generators",
@@ -21954,7 +21987,7 @@
       "statement": "Three generators draft candidate cases from the deployment's store — entity-to-fact-to-edge walks, composed edge chains, and questions about absent entities — and a human approves each before commit.",
       "why": "",
       "file": "spec/81-engineering.md",
-      "line": 321
+      "line": 323
     },
     {
       "id": "assurance.baseline.held-out",
@@ -21965,7 +21998,7 @@
       "statement": "Retrieval and synthesis are tuned on no gate input.",
       "why": "",
       "file": "spec/81-engineering.md",
-      "line": 322
+      "line": 324
     },
     {
       "id": "assurance.baseline.rotation",
@@ -21976,7 +22009,7 @@
       "statement": "The native set rotates on a cadence, a sample of its truth is reviewed on each rotation, and a comparison across generations resolves through the pinned run stamp.",
       "why": "",
       "file": "spec/81-engineering.md",
-      "line": 323
+      "line": 325
     },
     {
       "id": "assurance.baseline.native-gate",
@@ -21987,7 +22020,7 @@
       "statement": "A native benchmark generated from a real corpus is the red or green gate; public benchmark sets run beside it as held-out comparison and decide nothing.",
       "why": "",
       "file": "spec/81-engineering.md",
-      "line": 324
+      "line": 326
     },
     {
       "id": "assurance.baseline.trace-export",
@@ -21998,7 +22031,7 @@
       "statement": "A run touching a deployed store with a hosted trace endpoint configured raises `TraceExportOutOfPerimeter`; hosted collection serves runs over public or synthetic fixtures alone.",
       "why": "A-assurance",
       "file": "spec/81-engineering.md",
-      "line": 325
+      "line": 327
     },
     {
       "id": "assurance.measure.ledger",
@@ -22009,7 +22042,7 @@
       "statement": "`evals/ledger.toml` holds one entry per tracked target: an id, an owning clause id, a run-report metric path, a tier, a method naming one integration test, case set or probe, and a threshold.",
       "why": "",
       "file": "spec/81-engineering.md",
-      "line": 334
+      "line": 336
     },
     {
       "id": "assurance.measure.unresolved-entry",
@@ -22020,7 +22053,7 @@
       "statement": "An entry whose owning clause, method or metric path resolves to nothing raises `MeasureEntryUnresolved` before any measure runs.",
       "why": "P7",
       "file": "spec/81-engineering.md",
-      "line": 335,
+      "line": 337,
       "scenarios": [
         "WHEN an entry names `run.journal.entry-keys`, THEN the run raises `MeasureEntryUnresolved` and no test runs."
       ]
@@ -22034,7 +22067,7 @@
       "statement": "An entry naming an issue in place of a method reports open and gates nothing, and `evals/ledger.md` carries every entry's computed status.",
       "why": "",
       "file": "spec/81-engineering.md",
-      "line": 337,
+      "line": 339,
       "scenarios": [
         "WHEN an entry's method is `{ issue = 43 }`, THEN `evals/ledger.md` lists it open and the evaluate stage ignores it."
       ]
@@ -22048,7 +22081,7 @@
       "statement": "A gate-tier entry decides the evaluate stage, a trend-tier entry records on every run and decides nothing, and a scheduled-tier entry runs on the scheduled job alone.",
       "why": "",
       "file": "spec/81-engineering.md",
-      "line": 338
+      "line": 340
     },
     {
       "id": "assurance.measure.count-first",
@@ -22059,7 +22092,7 @@
       "statement": "A gate-tier entry measures a count, a ratio within one run or a size under a locked resolve; a wall-clock or resident-memory figure is trend-tier.",
       "why": "because a shared container moves wall-clock figures past any band narrow enough to catch a regression",
       "file": "spec/81-engineering.md",
-      "line": 339
+      "line": 341
     },
     {
       "id": "assurance.measure.record",
@@ -22070,7 +22103,7 @@
       "statement": "A measure writes one JSON record carrying its entry id, value, sample count, seed and run stamp; a gate-tier method finishing without one raises `MeasureRecordMissing`.",
       "why": "P7",
       "file": "spec/81-engineering.md",
-      "line": 341
+      "line": 343
     },
     {
       "id": "assurance.measure.seeded",
@@ -22081,7 +22114,7 @@
       "statement": "Every generated fixture and randomized schedule derives from the record's seed, and replaying that seed reproduces a count-valued entry's value.",
       "why": "because a failure that cannot replay cannot be fixed",
       "file": "spec/81-engineering.md",
-      "line": 343
+      "line": 345
     },
     {
       "id": "assurance.measure.seed-mismatch",
@@ -22092,7 +22125,7 @@
       "statement": "A record whose seed differs from its entry's declared seed raises `MeasureSeedMismatch`, and the entry counts as red.",
       "why": "because a figure measured under another seed replays nothing the ledger names",
       "file": "spec/81-engineering.md",
-      "line": 345
+      "line": 347
     },
     {
       "id": "assurance.measure.timing-iterations",
@@ -22103,7 +22136,7 @@
       "statement": "A timed batch reports p50 and p95 over 200 repeats of its operation, each after warm-up.",
       "why": "",
       "file": "spec/81-engineering.md",
-      "line": 347
+      "line": 349
     },
     {
       "id": "assurance.measure.timing-batches",
@@ -22114,7 +22147,7 @@
       "statement": "A timed figure is the median of 5 repeats of its timed batch.",
       "why": "",
       "file": "spec/81-engineering.md",
-      "line": 348
+      "line": 350
     },
     {
       "id": "assurance.measure.trend-band",
@@ -22125,7 +22158,7 @@
       "statement": "A trend figure more than 25 percent worse than its baseline annotates the run report and fails no stage.",
       "why": "",
       "file": "spec/81-engineering.md",
-      "line": 349,
+      "line": 351,
       "scenarios": [
         "WHEN a trend p95 moves from 40 ms to 52 ms on a matching runner stamp, THEN the report carries a +30 percent annotation and the stage passes."
       ]
@@ -22139,7 +22172,7 @@
       "statement": "The run block carries the runner's processor model, processor count and memory limit, and a trend figure compares only against a baseline with the same stamp.",
       "why": "",
       "file": "spec/81-engineering.md",
-      "line": 350
+      "line": 352
     },
     {
       "id": "assurance.measure.absolute-threshold",
@@ -22150,7 +22183,7 @@
       "statement": "A threshold is an absolute figure of this system's own measure, and it tightens only through {{assurance.baseline.raise-only}}.",
       "why": "",
       "file": "spec/81-engineering.md",
-      "line": 351
+      "line": 353
     },
     {
       "id": "assurance.measure.history",
@@ -22161,7 +22194,7 @@
       "statement": "A run on the default branch attaches its run report to the measured commit under `refs/notes/measures`, and no verdict reads a note.",
       "why": "A-assurance",
       "file": "spec/81-engineering.md",
-      "line": 352
+      "line": 354
     },
     {
       "id": "assurance.measure.scheduled",
@@ -22172,7 +22205,7 @@
       "statement": "A nightly job runs every tier against the default-branch head and reports one check per run.",
       "why": "",
       "file": "spec/81-engineering.md",
-      "line": 354
+      "line": 356
     },
     {
       "id": "assurance.measure.measured-basis",
@@ -22183,7 +22216,7 @@
       "statement": "A bound with a measured basis names a trend-tier or scheduled-tier ledger entry id as its benchmark.",
       "why": "",
       "file": "spec/81-engineering.md",
-      "line": 355
+      "line": 357
     },
     {
       "id": "assurance.release.version",
@@ -22194,7 +22227,7 @@
       "statement": "A release tag is `v0.<closed>.<patch>`: `<closed>` counts the milestones computing `closed` in the tagged commit's `spec/status.md`, and `<patch>` counts the existing tags `v0.<closed>.*`.",
       "why": "A-assurance",
       "file": "spec/81-engineering.md",
-      "line": 383,
+      "line": 385,
       "scenarios": [
         "WHEN milestones 0 to 7 and 11 compute `closed` and `v0.9.0` exists, THEN the computed version is `v0.9.1`."
       ]
@@ -22208,7 +22241,7 @@
       "statement": "`contextful-ci tag` creates a signed annotated tag on `HEAD` naming the closed milestones once every refusal of this operation clears, and never moves or replaces an existing tag.",
       "why": "A-assurance",
       "file": "spec/81-engineering.md",
-      "line": 385
+      "line": 387
     },
     {
       "id": "assurance.release.dirty-tree",
@@ -22219,7 +22252,7 @@
       "statement": "A working tree or index differing from `HEAD` raises `TagTreeDirty`.",
       "why": "because the gate then judges files the tagged commit does not hold",
       "file": "spec/81-engineering.md",
-      "line": 387
+      "line": 389
     },
     {
       "id": "assurance.release.off-branch",
@@ -22230,7 +22263,7 @@
       "statement": "A `HEAD` unreachable from the default branch, `origin/HEAD` unless `--branch` names another, raises `TagOffDefaultBranch`.",
       "why": "A-assurance",
       "file": "spec/81-engineering.md",
-      "line": 389
+      "line": 391
     },
     {
       "id": "assurance.release.version-regressed",
@@ -22241,7 +22274,7 @@
       "statement": "A computed version below the highest existing `v<major>.<minor>.<patch>` tag raises `TagVersionRegressed`, naming both.",
       "why": "A-assurance",
       "file": "spec/81-engineering.md",
-      "line": 391,
+      "line": 393,
       "scenarios": [
         "WHEN milestone 11 reopens after `v0.9.0`, THEN the computed `v0.8.0` raises `TagVersionRegressed`."
       ]
@@ -22255,7 +22288,7 @@
       "statement": "A `[workspace.package]` version in `HEAD`'s `Cargo.toml` that is absent or differs from the computed version raises `TagWorkspaceVersionMismatch`, naming both.",
       "why": "A-assurance",
       "file": "spec/81-engineering.md",
-      "line": 393
+      "line": 395
     },
     {
       "id": "assurance.release.gate-failed",
@@ -22266,7 +22299,7 @@
       "statement": "Once the other refusals clear, every gate stage runs against `HEAD` with `HEAD~1` as base; a failing stage raises `TagGateFailed`, naming the stage's refusal, and no tag is created.",
       "why": "A-assurance",
       "file": "spec/81-engineering.md",
-      "line": 395
+      "line": 397
     }
   ],
   "owns": {
@@ -22637,6 +22670,14 @@
     [
       "corpus.reference.dangling",
       "id"
+    ],
+    [
+      "corpus.state.verdict",
+      "corpus.state.typescript-tag-pin"
+    ],
+    [
+      "corpus.state.typescript-tag-pin",
+      "assurance.gate.native-test-files"
     ],
     [
       "corpus.state.lean-tag",

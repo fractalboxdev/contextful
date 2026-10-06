@@ -71,3 +71,25 @@ fn a_surface_tag_outside_a_runnable_package_is_broken() {
     s.write(FILE, &test_source(REV, "test", "assert.ok(true);"));
     assert_eq!(codes(&s.lint("state"), "SpecBrokenPin").len(), 1);
 }
+
+#[test]
+fn a_surface_test_in_source_is_not_run_by_the_gate() {
+    let s = fixture();
+    s.write("apps/console/src/pin.test.ts", &test_source(REV, "test", "assert.equal(1, 1);"));
+    assert_eq!(codes(&s.lint("state"), "SpecBrokenPin").len(), 1);
+}
+
+#[test]
+fn a_native_surface_test_needs_no_package_test_script() {
+    let s = Scratch::copy();
+    s.write("apps/console/package.json", r#"{"name":"@contextful/console","type":"module"}"#);
+    s.write(FILE, &test_source(REV, "test", "assert.equal(1 + 1, 2);"));
+    assert_eq!(verdict(&s), "performed");
+}
+
+#[test]
+fn an_assertion_spelled_only_inside_a_string_does_not_perform() {
+    let s = fixture();
+    s.write(FILE, &test_source(REV, "test", "const note = 'assert.equal(1, 1)';"));
+    assert_eq!(codes(&s.lint("state"), "SpecBrokenPin").len(), 1);
+}
