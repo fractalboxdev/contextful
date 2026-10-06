@@ -232,10 +232,31 @@ function json(value) {
   return Response.json(value, { headers: { "Cache-Control": "no-store" } });
 }
 async function body(request) {
-  if (Number(request.headers.get("content-length") ?? 0) > 1048576) throw new Error("body too large");
-  const text = await request.text();
-  if (text.length > 1048576) throw new Error("body too large");
-  return JSON.parse(text);
+  const limit = 1048576;
+  if (Number(request.headers.get("content-length") ?? 0) > limit) throw new Error("ConsoleBodyTooLarge");
+  const chunks = [];
+  let size = 0;
+  const reader = request.body?.getReader();
+  if (!reader) return JSON.parse("");
+  try {
+    for (; ; ) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      size += value.byteLength;
+      if (size > limit) {
+        void reader.cancel().catch(() => {
+        });
+        throw new Error("ConsoleBodyTooLarge");
+      }
+      chunks.push(Buffer.from(value));
+    }
+  } finally {
+    reader.releaseLock();
+  }
+  return JSON.parse(Buffer.concat(chunks, size).toString("utf8"));
+}
+function bodyFailure(error) {
+  return error instanceof Error && error.message === "ConsoleBodyTooLarge" ? refusal("ConsoleBodyTooLarge", 413) : refusal("ConsoleRequestMalformed", 400);
 }
 function page(name) {
   return new Response(name === "query" ? queryPage : adminPage, {
@@ -276,14 +297,15 @@ function createConsole(adapters) {
           let input;
           try {
             input = await body(request);
-          } catch {
-            return refusal("ConsoleRequestMalformed", 400);
+          } catch (error) {
+            return bodyFailure(error);
           }
           if (!object(input) || typeof input.store !== "string" || typeof input.question !== "string" || !input.question.trim() || !adapters.stores.some((store) => store.id === input.store)) return refusal("ConsoleRequestMalformed", 400);
           return json(await adapters.turn({ operator, store: input.store, question: input.question }));
         }
       } else {
         const store = url.searchParams.get("store");
+        if (store !== null && !adapters.stores.some((entry) => entry.id === store)) return refusal("ConsoleRequestMalformed", 400);
         if (request.method === "GET" && path === "/admin/api/workflows") return json(await adapters.control.workflows(operator, store));
         if (request.method === "GET" && path === "/admin/api/record") return json(await adapters.control.record(operator, store));
         if (request.method === "GET" && path === "/admin/api/packs") {
@@ -298,8 +320,8 @@ function createConsole(adapters) {
           let document;
           try {
             document = await body(request);
-          } catch {
-            return refusal("ConsoleRequestMalformed", 400);
+          } catch (error) {
+            return bodyFailure(error);
           }
           return json(path.endsWith("/edit") ? await adapters.control.edit(document, adapters.adminCapability, operator) : await adapters.control.apply(document, adapters.adminCapability, operator));
         }
