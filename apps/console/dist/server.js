@@ -92,10 +92,17 @@ function topicMatch(conclusion, row) {
 }
 async function withinBriefBudget(budgetMs, action) {
   if (!Number.isFinite(budgetMs) || budgetMs <= 0) throw new Error("ConsoleBriefUnavailable");
+  const deadline = performance.now() + budgetMs;
+  const checkDeadline = () => {
+    if (performance.now() >= deadline) throw new Error("ConsoleBriefUnavailable");
+  };
   let timer;
   try {
     return await Promise.race([
-      Promise.resolve().then(action),
+      Promise.resolve().then(() => action(checkDeadline)).then((value) => {
+        checkDeadline();
+        return value;
+      }),
       new Promise((_, reject) => {
         timer = setTimeout(() => reject(new Error("ConsoleBriefUnavailable")), budgetMs);
       })
@@ -106,19 +113,28 @@ async function withinBriefBudget(budgetMs, action) {
 }
 async function deriveBrief(input) {
   if (!Number.isFinite(input.budgetMs) || input.budgetMs <= 0) throw new Error("ConsoleBriefUnavailable");
-  if (input.session.turns !== 0 || input.session.vantage !== "present") return null;
-  const live = input.conclusions.filter((entry) => entry.live);
-  if (live.length === 0) return null;
-  const windowDays = Math.max(0, Math.min(input.windowDays ?? 7, 7));
   try {
-    const arrivals = await withinBriefBudget(input.budgetMs, () => input.loadArrivals ? input.loadArrivals() : Promise.resolve(input.arrivals ?? []));
-    const since = input.now - windowDays * 864e5;
-    const recent = arrivals.filter((row) => {
-      const arrived = Date.parse(row.arrivedAt);
-      return Number.isFinite(arrived) && arrived >= since && arrived <= input.now;
+    return await withinBriefBudget(input.budgetMs, async (checkDeadline) => {
+      if (input.session.turns !== 0 || input.session.vantage !== "present") return null;
+      const live = input.conclusions.filter((entry) => {
+        checkDeadline();
+        return entry.live;
+      });
+      if (live.length === 0) return null;
+      const windowDays = Math.max(0, Math.min(input.windowDays ?? 7, 7));
+      const arrivals = input.loadArrivals ? await input.loadArrivals() : input.arrivals ?? [];
+      const since = input.now - windowDays * 864e5;
+      const recent = arrivals.filter((row) => {
+        checkDeadline();
+        const arrived = Date.parse(row.arrivedAt);
+        return Number.isFinite(arrived) && arrived >= since && arrived <= input.now;
+      });
+      const subjects = live.map((entry) => ({ subject: entry.subject, articles: recent.filter((row) => {
+        checkDeadline();
+        return topicMatch(entry, row);
+      }).slice(0, 3) })).filter((entry) => entry.articles.length > 0).slice(0, 3);
+      return subjects.length ? { windowDays, subjects } : null;
     });
-    const subjects = live.map((entry) => ({ subject: entry.subject, articles: recent.filter((row) => topicMatch(entry, row)).slice(0, 3) })).filter((entry) => entry.articles.length > 0).slice(0, 3);
-    return subjects.length ? { windowDays, subjects } : null;
   } catch {
     throw new Error("ConsoleBriefUnavailable");
   }
