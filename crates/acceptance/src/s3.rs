@@ -191,6 +191,14 @@ impl S3Server {
         S3Server { endpoint, bucket: bucket.to_string(), state, stop: Some(stop), thread: Some(thread) }
     }
 
+    /// Seed a source object before a consumer reads it.
+    pub fn seed(&self, key: &str, bytes: &[u8]) {
+        let mut state = self.state.lock().unwrap();
+        state.version += 1;
+        let etag = format!("{:032x}", state.version);
+        state.objects.insert(key.to_string(), (bytes.to_vec(), etag));
+    }
+
     /// Answer each of the next puts with one of `codes`, in order, before judging its condition.
     pub fn fail_puts(&self, codes: &[&str]) {
         let mut state = self.state.lock().unwrap();

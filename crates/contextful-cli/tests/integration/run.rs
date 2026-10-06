@@ -192,6 +192,26 @@ fn a_pulled_type_lands_its_column_in_that_type() {
     assert_eq!(schema(dir.path()), s, "the failed pull lands nothing");
 }
 
+/// An arriving schema the store cannot reconcile fails the batch as {{store.reconcile.incompatible}}.
+// spec: run.land.irreconcilable-schema@04ddeb28
+#[test]
+fn an_irreconcilable_pulled_schema_fails_the_batch() {
+    let dir = project();
+    std::fs::write(dir.path().join("number.sh"), "printf '{\"rows\":[{\"id\":\"a\",\"rev\":1}],\"more\":false}'\n").unwrap();
+    std::fs::write(dir.path().join("number.toml"), "pipeline = \"number\"\ntable = \"filings\"\n[connector]\nid = \"vendor\"\nversion = \"1\"\ncommand = [\"sh\", \"number.sh\"]\n").unwrap();
+    ok(&start(dir.path(), "number.toml", "n1", "2030-01-01T00:00:00Z"));
+
+    std::fs::write(dir.path().join("text.sh"), "printf '{\"rows\":[{\"id\":\"b\",\"rev\":\"later\"}],\"more\":false}'\n").unwrap();
+    std::fs::write(dir.path().join("text.toml"), "pipeline = \"text\"\ntable = \"filings\"\n[connector]\nid = \"vendor\"\nversion = \"1\"\ncommand = [\"sh\", \"text.sh\"]\n").unwrap();
+    let out = start(dir.path(), "text.toml", "t1", "2030-01-01T00:01:00Z");
+    refused(&out, "StoreSchemaIncompatible");
+    let store = contextful_context::Store::open(dir.path(), "research").unwrap();
+    let decl = contextful_core::store::declare::TableDecl::named("filings");
+    let rows = contextful_context::rows::table_rows(&store, &decl, &["id", "rev"]).unwrap();
+    assert_eq!(rows.len(), 1, "the incompatible batch leaves no visible row");
+    assert_eq!(rows[0]["id"], "a");
+}
+
 const AWS_KEY: &str = "AKIAIOSFODNN7EXAMPLE";
 const GITHUB_TOKEN: &str = "ghp_0123456789abcdefghijABCDEFGHIJ012345";
 const MARKER: &str = "[REDACTED:secret]";
