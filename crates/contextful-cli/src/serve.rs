@@ -7,12 +7,17 @@
 //! network transport, which admits each one on its own credential. Every value is
 //! resolved before the listener binds, so a process that cannot serve binds nothing.
 
-use crate::admit::{AdmitArgs, face, revocation_state, LedgerFile, LivePins, AUDIENCE_VAR, PUBKEY_VAR};
+#[cfg(feature = "data-plane")]
+use crate::admit::AdmitArgs;
+use crate::admit::{face, revocation_state, LedgerFile, LivePins, AUDIENCE_VAR, PUBKEY_VAR};
 use crate::project::locate;
 use crate::root::root as project_root;
 use crate::clock::SystemClock;
 use anyhow::Result;
-use contextful_agent::http::{audience, ceiling, Admitting, HttpFace, HttpRequest, HttpResponse, APPLY_PATH, WORKFLOWS_PATH};
+use contextful_agent::http::{audience, ceiling, Admitting, HttpFace};
+#[cfg(feature = "data-plane")]
+use contextful_agent::http::{HttpRequest, HttpResponse, APPLY_PATH, WORKFLOWS_PATH};
+#[cfg(feature = "data-plane")]
 use contextful_core::surface::SurfaceError;
 use contextful_core::run::derive::task::Tasks;
 use contextful_policy::audit::AuditLog;
@@ -21,6 +26,7 @@ use contextful_policy::revoke::RevocationState;
 use std::net::TcpListener;
 use std::path::PathBuf;
 use std::sync::Arc;
+#[cfg(feature = "data-plane")]
 use serde_json::{json, Value};
 
 /// The refusals of starting the network transport. `Display` begins with the identifier.
@@ -77,6 +83,8 @@ fn issuer_pins(flag: Option<&str>) -> Result<StaticPins, ServeError> {
 }
 
 pub fn run(args: ServeArgs, tasks: &Tasks) -> Result<()> {
+    #[cfg(not(feature = "data-plane"))]
+    let _ = tasks;
     let clock = SystemClock;
     // The declarations are checked before anything opens (`read.register.serve-declaration`).
     let audience = audience(args.audience.as_deref()).map_err(anyhow::Error::msg)?;
@@ -111,7 +119,9 @@ pub fn run(args: ServeArgs, tasks: &Tasks) -> Result<()> {
         None => face,
     };
     let audit = AuditLog::unanchored(located.project.audit_dir())?;
+    #[cfg(feature = "data-plane")]
     let control_admit = AdmitArgs { public_key: args.public_key.clone(), audience: args.audience.clone(), denylist: args.denylist.clone(), keyset: args.keyset.clone(), holder_key: None };
+    #[cfg(feature = "data-plane")]
     let control = |request: &HttpRequest| -> HttpResponse {
         let answer = match request.target.split('?').next().unwrap_or_default() {
             WORKFLOWS_PATH => crate::cadence::published(&located.project, &located.declaration),
@@ -141,7 +151,9 @@ pub fn run(args: ServeArgs, tasks: &Tasks) -> Result<()> {
             }
         }
     };
-    let http = HttpFace::new(&face, &clock, &audit, admitting, Some(ceiling)).map_err(anyhow::Error::msg)?.with_control(&control);
+    let http = HttpFace::new(&face, &clock, &audit, admitting, Some(ceiling)).map_err(anyhow::Error::msg)?;
+    #[cfg(feature = "data-plane")]
+    let http = http.with_control(&control);
     let listener = TcpListener::bind(&args.http)?;
     eprintln!("listening on http://{}/mcp", listener.local_addr()?);
     http.serve(listener)?;
