@@ -10,12 +10,12 @@ An unpinned clause is `committed`; a pinned one is `performed` when its Rust, Le
 | `connector` | 2 | 14 | 349 | 89 | 21 | 15 | 218 | 0 | 207 |
 | `corpus` | 1 | 10 | 79 | 37 | 7 | 0 | 40 | 0 | 40 |
 | `disclosure` | 3 | 16 | 122 | 64 | 13 | 7 | 54 | 0 | 54 |
-| `read` | 2 | 15 | 179 | 29 | 22 | 21 | 163 | 0 | 163 |
+| `read` | 2 | 15 | 180 | 29 | 22 | 21 | 166 | 0 | 166 |
 | `run` | 3 | 26 | 373 | 98 | 36 | 37 | 261 | 0 | 261 |
 | `store` | 1 | 17 | 237 | 55 | 13 | 20 | 200 | 0 | 200 |
 | `surface` | 2 | 20 | 106 | 49 | 22 | 0 | 51 | 0 | 51 |
 | `topology` | 1 | 6 | 70 | 24 | 5 | 5 | 38 | 0 | 38 |
-| **total** | 19 | 155 | 2015 | 581 | 188 | 129 | 1367 | 0 | |
+| **total** | 19 | 155 | 2016 | 581 | 188 | 129 | 1370 | 0 | |
 
 Decision records: 18.
 
@@ -30,7 +30,7 @@ A milestone reads `closed` when its acceptance test computes `passing` and every
 | 2 — The store | 9 | 164 | 132 | passing | closed |
 | 3 — The run path | 11 | 207 | 144 | passing | closed |
 | 4 — Ingest | 25 | 496 | 313 | passing | open |
-| 5 — The read face under enforcement | 17 | 252 | 192 | passing | open |
+| 5 — The read face under enforcement | 17 | 253 | 195 | passing | open |
 | 6 — Sync and replicas | 8 | 73 | 68 | passing | closed |
 | 7 — Memory | 6 | 37 | 37 | passing | closed |
 | 8 — Accountability | 5 | 60 | 47 | passing | open |
@@ -749,6 +749,7 @@ Unscheduled operations: 10.
 | `read.rank.question-window-is-a-tier` | `crates/contextful-core/tests/integration/read/rank.rs::the_in_window_flag_leads_and_an_out_of_window_row_stays` | performed |
 | `read.rank.retrieval-block` | `crates/contextful-core/tests/integration/read/rank.rs::the_retrieval_block_and_row_fields_carry_their_names` | performed |
 | `read.rank.three-legs` | `crates/contextful-core/tests/integration/read/rank.rs::ranking_fuses_a_cosine_leg_and_a_bm25_leg` | performed |
+| `read.rank.widened-window-statistics` | `crates/contextful-context/tests/integration/read/retrieve.rs::sidecar_widening_changes_the_bm25_order_of_shared_rows` | performed |
 | `read.rank.window-anchor-tolerance` | `crates/contextful-core/tests/integration/read/rank.rs::the_anchor_tolerates_24_hours_and_names_the_basis` | performed |
 | `read.recall.evidence-key` | `crates/contextful-memory/tests/integration/evidence.rs::a_fold_superseding_the_cited_version_keeps_the_claim` | performed |
 | `read.recall.evidence-key-masked` | `crates/contextful-memory/tests/integration/evidence.rs::a_writer_zone_nulling_a_non_key_column_still_stamps_the_key` | performed |
@@ -770,6 +771,7 @@ Unscheduled operations: 10.
 | `read.register.bare-name` | `crates/contextful-context/tests/integration/read/register.rs::every_bare_name_resolves_to_the_callers_relation` | performed |
 | `read.register.bound-arguments` | `crates/contextful-agent/tests/integration/mcp.rs::valid_as_of_wraps_only_the_tables_a_read_touches` | performed |
 | `read.register.bound-listing` | `crates/contextful-agent/tests/integration/mcp.rs::a_listing_ignores_valid_as_of_and_echoes_only_as_of` | performed |
+| `read.register.column-hints` | `crates/contextful-context/tests/integration/read/register.rs::describe_reports_declared_hints_on_existing_columns_only` | performed |
 | `read.register.concurrent-statements` | `crates/contextful-agent/tests/integration/http.rs::a_fast_statement_answers_while_a_slow_one_runs` | performed |
 | `read.register.connection-ceiling` | `crates/contextful-agent/tests/integration/http.rs::a_stalled_request_head_holds_a_slot_and_a_connection_past_the_ceiling_is_shed` | performed |
 | `read.register.connection-views` | `crates/contextful-context/tests/integration/read/register.rs::a_session_connection_registers_views_over_the_current_file_lists` | performed |
@@ -781,6 +783,7 @@ Unscheduled operations: 10.
 | `read.register.file-preview-target` | `crates/contextful-context/tests/integration/read/register.rs::a_preview_reads_a_run_file_through_its_relation` | performed |
 | `read.register.health` | `crates/contextful-agent/tests/integration/http.rs::health_answers_the_build_identity_without_a_credential` | performed |
 | `read.register.ledger-relation` | `crates/contextful-context/tests/integration/read/register.rs::a_tables_request_ledger_reads_as_its_child_relation` | performed |
+| `read.register.lexicon-surface` | `crates/contextful-context/tests/integration/read/register.rs::describe_reports_the_store_lexicon_on_each_registered_table` | performed |
 | `read.register.network-transport` | `crates/contextful-agent/tests/integration/http.rs::post_mcp_answers_each_message_as_the_stdio_tool_server_does` | performed |
 | `read.register.past-ceiling` | `crates/contextful-agent/tests/integration/http.rs::past_the_ceiling_a_request_answers_503_with_retry_after` | performed |
 | `read.register.per-request-admission` | `crates/contextful-agent/tests/integration/http.rs::one_listener_admits_bearers_and_holder_bound_credentials_each_on_its_own_grants` | performed |

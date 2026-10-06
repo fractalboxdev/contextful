@@ -73,7 +73,9 @@ The relations, tools and templates one connection sees, the engine executing aga
   *because a session registers every granted table, and wrapping one declaring no pair refuses reads that never name it*
 - `bound-listing` — `context.files` and a `context.describe` naming no table select under `as_of` alone; each ignores `valid_as_of` and echoes only its `as_of` part.
   *because valid time narrows rows, and a listing returns files and table names, never rows*
-- `describe-payload` — `context.describe` returns row count, schema fingerprint, description, per-column hints, declared indexes, partition scheme, `limits.max_rows`, zone label, lexicon and example queries.
+- `describe-payload` — `context.describe` returns row count, schema fingerprint, description, {{read.register.column-hints}}, declared indexes, partition scheme, `limits.max_rows`, zone label, lexicon and example queries.
+- `column-hints` — A table's `column_hints` map supplies optional per-column hints; `context.describe` includes each hint only with a column the session registers.
+  *because a hint for an absent column describes a relation the registered schema cannot query*
 - `describe-zone` — `context.describe` reports the session zone as `session_zone`, and per table, listed or described, `zone_admitted`: whether the table's effective allow-set admits that zone.
   *A-read*
 - `advertised-is-enforced` — A table's published `limits` block lists a bound exactly when the engine applies it.

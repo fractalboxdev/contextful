@@ -85,6 +85,9 @@ pub struct TableDecl {
     pub agent_description: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub agent_hint: Option<String>,
+    /// Hints for named columns in a table description (`read.register.describe-payload`).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub column_hints: Option<BTreeMap<String, String>>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub example_queries: Option<Vec<String>>,
     /// The column carrying each row's content hash, the row key a ranked read keeps one

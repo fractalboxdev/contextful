@@ -202,17 +202,22 @@ dim = 3
 /// 300 passages folded into each table. `p000`, the oldest, points where the question
 /// points and sits outside a limit-10 recency window; the five newest mention "battery".
 fn sidecar_reads(extra: &str) -> Reads {
+    sidecar_reads_with_rows(extra, |i| match i {
+        0 => ("passage zero".to_string(), json!([0.0, 0.0, 1.0])),
+        295.. => (format!("battery cell {i}"), json!([1.0, (i % 10) as f64 / 10.0, 0.0])),
+        _ => (format!("passage {i}"), json!([1.0, (i % 10) as f64 / 10.0, 0.0])),
+    })
+}
+
+fn sidecar_reads_with_rows(extra: &str, row_for: impl Fn(usize) -> (String, Value)) -> Reads {
     use contextful_context::fold::fold;
     use contextful_core::store::reconcile::{ColumnType, FloatItem};
     let manifest = format!("{MANIFEST}{SIDECAR}{extra}");
     let mut r = Reads::with_manifest(&format!("{MANIFEST}{SIDECAR}"));
     let rows: Vec<serde_json::Map<String, Value>> = (0..300)
         .map(|i| {
-            let (title, owner, embedding) = match i {
-                0 => ("passage zero".to_string(), "agent://other", json!([0.0, 0.0, 1.0])),
-                295.. => (format!("battery cell {i}"), "agent://research-loop", json!([1.0, (i % 10) as f64 / 10.0, 0.0])),
-                _ => (format!("passage {i}"), "agent://research-loop", json!([1.0, (i % 10) as f64 / 10.0, 0.0])),
-            };
+            let (title, embedding) = row_for(i);
+            let owner = if i == 0 { "agent://other" } else { "agent://research-loop" };
             json!({"passage_id": format!("p{i:03}"), "title": title, "owner": owner, "embedding": embedding}).as_object().unwrap().clone()
         })
         .collect();
@@ -267,6 +272,29 @@ fn the_sidecar_adds_a_row_the_recency_window_misses_with_its_exact_scores() {
     };
     let shared: Vec<_> = scored(&accelerated).into_iter().filter(|(id, _, _)| id != "p000").collect();
     assert_eq!(shared, scored(&exact));
+    assert!(accelerated.blocks["contextful.retrieval"]["candidates_prefloor"].as_u64().unwrap() > 200);
+}
+
+/// Lexical term statistics come from the widened candidate window, so an accelerated arm can order rows differently from the exact path.
+// spec: read.rank.widened-window-statistics@3374cd12
+#[test]
+fn sidecar_widening_changes_the_bm25_order_of_shared_rows() {
+    let r = sidecar_reads_with_rows("", |i| match i {
+        299 => ("battery".into(), json!([0.0, 0.0, 1.0])),
+        298 => ("solar solar solar".into(), json!([0.0, 0.0, 1.0])),
+        0..100 => ("solar".into(), json!([0.0, 0.0, 1.0])),
+        _ => ("passage".into(), json!([1.0, 0.0, 0.0])),
+    });
+    let s = r.session(&["lab/*"], None, None);
+    let request = |table| RetrieveRequest {
+        query_embedding: Some(vec![0.0, 0.0, 1.0]),
+        ..ask(table, "solar battery")
+    };
+    let exact = r.face.retrieve(&s, &request("lab/plain"), Bounds::default()).unwrap();
+    let accelerated = r.face.retrieve(&s, &request("lab/indexed"), Bounds::default()).unwrap();
+    assert_eq!(ids(&exact, "passage_id")[..2], ["p298", "p299"]);
+    assert_eq!(ids(&accelerated, "passage_id")[..2], ["p299", "p298"]);
+    assert_eq!(exact.blocks["contextful.retrieval"]["candidates_prefloor"], json!(200));
     assert!(accelerated.blocks["contextful.retrieval"]["candidates_prefloor"].as_u64().unwrap() > 200);
 }
 

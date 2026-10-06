@@ -25,6 +25,43 @@ fn tree(root: &std::path::Path) -> Vec<String> {
     out
 }
 
+// spec: read.register.lexicon-surface@350071e8
+#[test]
+fn describe_reports_the_store_lexicon_on_each_registered_table() {
+    let manifest = format!(
+        "[lexicon.numeric_identifiers]\n\"42\" = \"customer account\"\n[lexicon.badges]\nreviewed = \"verified by an analyst\"\n{MANIFEST}"
+    );
+    let r = Reads::with_manifest(&manifest);
+    let session = r.session(&["research/notes", "research/vendor"], None, Some("public-cloud:us-east-1"));
+    let expected = json!({
+        "numeric_identifiers": { "42": "customer account" },
+        "badges": { "reviewed": "verified by an analyst" }
+    });
+    for table in ["research/notes", "research/vendor"] {
+        let described = r.face.describe(&session, Some(table), Bounds::default()).unwrap();
+        assert_eq!(described["lexicon"], expected);
+        for serving_field in ["aliases", "time_window_phrases", "distillation_examples"] {
+            assert!(described["lexicon"].get(serving_field).is_none());
+        }
+    }
+}
+
+// spec: read.register.column-hints@ce544829
+#[test]
+fn describe_reports_declared_hints_on_existing_columns_only() {
+    let manifest = MANIFEST.replace(
+        "agent_description = \"Research notes, one partition per tenant.\"",
+        "agent_description = \"Research notes, one partition per tenant.\"\n[pipeline.tables.column_hints]\nnote_id = \"Stable note identifier\"\nabsent_column = \"Never landed\"",
+    );
+    let r = Reads::with_manifest(&manifest);
+    let session = r.session(&["research/notes"], None, None);
+    let described = r.face.describe(&session, Some("research/notes"), Bounds::default()).unwrap();
+    let columns = described["columns"].as_array().unwrap();
+    assert_eq!(columns.iter().find(|c| c["name"] == "note_id").unwrap()["hint"], json!("Stable note identifier"));
+    assert!(columns.iter().all(|c| c["name"] != "absent_column"));
+    assert!(columns.iter().find(|c| c["name"] == "title").unwrap().get("hint").is_none());
+}
+
 /// A session's connection issues one create-or-replace view per table the manifests name, each scanning {{store.reconcile.explicit-file-list}}, once per connection; statements reuse it under {{read.cache.session-pool}}. No view directory exists on disk.
 // spec: read.register.connection-views@502d9fca
 #[test]
