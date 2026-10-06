@@ -3,7 +3,7 @@
 use crate::{codes, Scratch};
 
 const CLAUSE: &str = "corpus.anatomy.statement-words";
-const REV: &str = "60ce64cb";
+const REV: &str = "11227773";
 const FILE: &str = "apps/console/test/pin.test.ts";
 
 fn fixture() -> Scratch {

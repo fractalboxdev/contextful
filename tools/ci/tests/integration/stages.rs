@@ -432,3 +432,17 @@ fn a_failing_surface_check_is_refused_naming_the_surface_and_the_script() {
         assert_eq!(bin.calls().last().map(String::as_str), Some(format!("pnpm run {script} in web").as_str()));
     }
 }
+
+#[test]
+fn the_surfaces_stage_runs_each_native_typescript_test_file_even_without_a_test_script() {
+    let r = surface_repo();
+    r.write("apps/web/test/pin.test.ts", "import { test } from 'node:test';\ntest('pinned refusal', () => { throw new Error('red'); });\n");
+    r.commit("a native surface test");
+    let bin = Bin::new();
+    pnpm(&bin, "none");
+    bin.fake("node", "echo \"node $* in $(basename \"$PWD\")\" >> \"$CALLS\"\nexit 5\n");
+    let o = gate(&r, Some(&bin), &["--stage", "surfaces"]);
+    assert!(!o.status.success());
+    assert!(stderr(&o).contains("SurfaceCheckFailed: surface apps/web: test `test/pin.test.ts` exited 5"), "{}", stderr(&o));
+    assert!(bin.calls().iter().any(|call| call == "node --experimental-strip-types --test test/pin.test.ts in web"), "{:?}", bin.calls());
+}
