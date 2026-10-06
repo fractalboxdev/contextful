@@ -80,21 +80,27 @@ fn request(address: &str, method: &str, path: &str, token: Option<&str>, body: O
 }
 
 #[test]
-#[ignore = "milestone 12 is open: the console server and client library are absent"]
+#[ignore = "milestone 12 is open: Query live turn integration remains separate"]
 fn m12_console() {
     let cf = bin("contextful");
     let repo = GitRepo::init();
-    repo.write("contextful.toml", "authoring_posture = \"per_request\"\n[[pipeline]]\nid = \"filings-flow\"\n[[pipeline.tables]]\nname = \"filings\"\n");
+    repo.write("contextful.toml", "authoring_posture = \"per_request\"\n");
+    repo.write("pipelines/filings.toml", "[[pipeline]]\nid = \"filings-flow\"\nschedule = \"every 1h\"\ntables = [\"filings\"]\n[pipeline.source]\nname = \"http\"\nconfig = { endpoint = \"https://example.test/filings\" }\n");
     repo.write("filings.jsonl", &json!({
         "filing_id": "filing-1", "publisher": "Northwind", "summary": "Northwind filed on Monday",
         "source_url": "https://example.test/filing-1"
     }).to_string());
     ok(&repo.run(&cf, &["context", "land", "filings", "--project", "research", "--rows", "filings.jsonl", "--run-id", "load-1", "--site-id", "site-a"]));
+    ok(&repo.run(&cf, &["pipeline", "import", "--project", "research"]));
     repo.write(".contextful/issuance.toml", &format!("default_audience = \"{STORE_AUDIENCE}\"\nmax_lifetime_secs = 3600\n"));
     let public = ok(&repo.run(&cf, &["token", "keygen", "--out", ".contextful/issuer.seed"]));
     let read_token = ok(&repo.run(&cf, &[
         "token", "mint", "--issuer-key", ".contextful/issuer.seed", "--on-behalf-of", "user://operator@example.test",
         "--zone", "on-prem:hq", "--action", "read", "--table", "filings", "--ttl", "3600",
+    ]));
+    let admin_capability = ok(&repo.run(&cf, &[
+        "token", "mint", "--issuer-key", ".contextful/issuer.seed", "--on-behalf-of", "user://operator@example.test",
+        "--zone", "on-prem:hq", "--action", "admin", "--table", "*", "--ttl", "3600",
     ]));
     let read = Command::new(&cf)
         .args(["serve", "--http", "127.0.0.1:0", "--max-in-flight", "2", "--project", "research", "--public-key", &public, "--audience", STORE_AUDIENCE])
@@ -124,6 +130,7 @@ fn m12_console() {
         .args(["--http", "127.0.0.1:0"])
         .env("CONTEXTFUL_STORES_JSON", stores.to_string())
         .env("FIELD_NOTES_QUERY_TOKEN", &read_token)
+        .env("CONTEXTFUL_ADMIN_CAPABILITY", &admin_capability)
         .env("CONTEXTFUL_ACCESS_JWKS_URL", jwks.url("/certs"))
         .env("CONTEXTFUL_ACCESS_ISSUER", ACCESS_ISSUER)
         .env("CONTEXTFUL_QUERY_ACCESS_AUDIENCE", QUERY_ACCESS_AUDIENCE)
@@ -154,6 +161,8 @@ fn m12_console() {
     assert_eq!(request(&console_address, "GET", "/admin/api/workflows", Some(&access_token(QUERY_ACCESS_AUDIENCE)), None).0, 403);
     let (status, workflows) = request(&console_address, "GET", "/admin/api/workflows", Some(&access_token(ADMIN_ACCESS_AUDIENCE)), None);
     assert_eq!(status, 200, "{}", String::from_utf8_lossy(&workflows));
-    let workflows = String::from_utf8(workflows).unwrap();
-    assert!(workflows.contains("filings-flow") && workflows.contains("filings"), "{workflows}");
+    let workflows: Value = serde_json::from_slice(&workflows).unwrap();
+    assert_eq!(workflows["applied"], 1, "{workflows}");
+    assert_eq!(workflows["pipelines"][0]["id"], "filings-flow", "{workflows}");
+    assert_eq!(workflows["pipelines"][0]["tables"], json!(["filings"]), "{workflows}");
 }
