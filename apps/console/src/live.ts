@@ -149,7 +149,8 @@ export function createLiveTurn(options: LiveOptions): (input: TurnInput & { reca
         resultRows = { columns: visible.map(({ column }) => column), rows: cleanRows };
         return {
           rows: cleanRows.map((row) => Object.fromEntries(visible.map(({ column }, index) => [column, row[index]]))),
-          sources: sourced.map(({ citation }) => ({ ...citation, label: redactText(citation.label, denylist) })),
+          sources: sourced.map(({ citation }) => ({ ...citation, label: redactText(citation.label, denylist),
+            url: citation.url && !denylist.some((entry) => entry && citation.url!.includes(entry)) ? citation.url : undefined })),
         };
       } },
       overlay: async () => input.recallOverlay ?? null,
@@ -166,7 +167,7 @@ export function createLiveTurn(options: LiveOptions): (input: TurnInput & { reca
         const choices = record(body) && Array.isArray(body.choices) ? body.choices : [];
         const message = choices.length && record(choices[0]) ? choices[0].message : undefined;
         if (!record(message) || typeof message.content !== "string") throw new ConsoleError("ConsoleModelUnavailable", "model answer absent", 503);
-        yield message.content;
+        yield redactText(message.content, denylist);
       },
     });
     const answer = await turn.ask({ question: input.question, packs: ["data"], store: store.id });
