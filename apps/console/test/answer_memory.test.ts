@@ -51,6 +51,7 @@ test("verified reading session lands evidence-backed claims and recalls them bef
     assert.doesNotMatch(prompt, /run-1/, "reserved provenance stays out of model input");
     const content = prompt.includes("Distil") ? JSON.stringify({ entries: [
       { subject: "Northwind", key: "filings", learning: "Northwind filings need review" },
+      { subject: "Northwind", key: "invented", learning: "Northwind has a secret unreported acquisition" },
     ] }) : "Northwind filings need review [filing-1].";
     if (claims.length > 0 && !prompt.includes("Distil")) {
       assert.match(prompt, /Northwind filings need review/);
