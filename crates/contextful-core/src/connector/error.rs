@@ -3,6 +3,9 @@
 
 #[derive(Debug, Clone, PartialEq, Eq, thiserror::Error)]
 pub enum ConnectorError {
+    /// An image file header that does not parse. (`connector.source.image-header`)
+    #[error("ConnectorImageHeaderUnreadable: {0}")]
+    ConnectorImageHeaderUnreadable(String),
     /// An empty, oversized, repeated or ambiguous Drive root selection. (`connector.source.drive-root-set`)
     #[error("ConnectorDriveRootsInvalid: {0}")]
     ConnectorDriveRootsInvalid(String),

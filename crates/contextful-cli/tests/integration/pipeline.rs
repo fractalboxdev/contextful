@@ -91,6 +91,110 @@ fn pipeline(id: &str, endpoint: &str, extra: &str, tables: &str) -> String {
     format!("[[pipeline]]\nid = \"{id}\"\n{extra}\n{tables}\n[pipeline.source]\nname = \"http\"\nconfig = {{ endpoint = \"{endpoint}\" }}\n")
 }
 
+#[test]
+fn an_image_source_validates_for_an_images_table() {
+    let dir = project("[[pipeline]]\nid = \"photos\"\ntables = [\"images\"]\n[pipeline.source]\nname = \"image\"\nconfig = { root = \"photos\" }\n");
+    let out = cf(dir.path(), &["pipeline", "validate"]);
+    assert!(out.status.success(), "{}", stderr(&out));
+}
+
+#[test]
+fn an_image_source_lands_header_metadata_without_decoding_pixels() {
+    let dir = project("[[pipeline]]\nid = \"photos\"\ntables = [{ name = \"images\", primary_key = [\"path\"] }]\n[pipeline.source]\nname = \"image\"\nconfig = { root = \"photos\" }\n");
+    std::fs::create_dir_all(dir.path().join("photos")).unwrap();
+    let png = b"\x89PNG\r\n\x1a\n\x00\x00\x00\x0dIHDR\x00\x00\x00\x02\x00\x00\x00\x03\x08\x02\x00\x00\x00\x36\x88\x49\xd6";
+    std::fs::write(dir.path().join("photos/p.png"), png).unwrap();
+    ok(&fire(dir.path(), "photos", "run-1", "2030-01-01T00:00:00Z"));
+    let out: serde_json::Value = serde_json::from_str(&ok(&cf(dir.path(), &[
+        "query", "--json", "--project", "research",
+        "SELECT path, width, height, modality, body, capture_at, sha256, modified_at FROM photos_images",
+    ]))).unwrap();
+    let row = &out["rows"][0];
+    assert_eq!(&row.as_array().unwrap()[..6], &serde_json::json!(["p.png", "2", "3", "image", null, null]).as_array().unwrap()[..]);
+    use sha2::Digest;
+    assert_eq!(row[6], format!("{:x}", sha2::Sha256::digest(png)));
+    assert!(contextful_core::time::Instant::parse(row[7].as_str().unwrap()).is_ok(), "{row}");
+}
+
+#[test]
+fn an_image_source_lands_a_png_embedded_capture_instant() {
+    let dir = project("[[pipeline]]\nid = \"photos\"\ntables = [{ name = \"images\", primary_key = [\"path\"] }]\n[pipeline.source]\nname = \"image\"\nconfig = { root = \"photos\" }\n");
+    std::fs::create_dir_all(dir.path().join("photos")).unwrap();
+    let mut png = b"\x89PNG\r\n\x1a\n\x00\x00\x00\x0dIHDR\x00\x00\x00\x02\x00\x00\x00\x03\x08\x02\x00\x00\x00\x36\x88\x49\xd6".to_vec();
+    let mut text = b"Creation Time\0".to_vec();
+    text.extend_from_slice(b"2030-01-02T03:04:05Z");
+    png.extend_from_slice(&(text.len() as u32).to_be_bytes());
+    png.extend_from_slice(b"tEXt");
+    png.extend_from_slice(&text);
+    let mut crc = !0u32;
+    for byte in b"tEXt".iter().chain(text.iter()) {
+        crc ^= u32::from(*byte);
+        for _ in 0..8 { crc = (crc >> 1) ^ if crc & 1 == 1 { 0xedb8_8320 } else { 0 }; }
+    }
+    png.extend_from_slice(&(!crc).to_be_bytes());
+    std::fs::write(dir.path().join("photos/p.png"), png).unwrap();
+    ok(&fire(dir.path(), "photos", "run-1", "2030-01-01T00:00:00Z"));
+    let out: serde_json::Value = serde_json::from_str(&ok(&cf(dir.path(), &[
+        "query", "--json", "--project", "research", "SELECT capture_at FROM photos_images",
+    ]))).unwrap();
+    assert_eq!(out["rows"], serde_json::json!([["2030-01-02T03:04:05Z"]]));
+}
+
+#[test]
+fn an_image_source_refuses_a_bad_header_with_its_path() {
+    let png = b"\x89PNG\r\n\x1a\n\x00\x00\x00\x0dIHDR\x00\x00\x00\x02\x00\x00\x00\x03\x08\x02\x00\x00\x00\x36\x88\x49\xd6";
+    let jpeg = b"\xff\xd8\xff\xe0\x00\x04\x00\x00\xff\xc0\x00\x11\x08\x00\x03\x00\x02\x03\x01\x11\x00\x02\x11\x00\x03\x11\x00\xff\xd9";
+    let mut cases: Vec<(&str, Vec<u8>)> = vec![
+        ("corrupt.png", b"not an image".to_vec()),
+        ("truncated.png", png[..24].to_vec()),
+        ("corrupt.jpg", b"not an image".to_vec()),
+        ("truncated.jpeg", jpeg[..11].to_vec()),
+    ];
+    for (name, index, value) in [
+        ("invalid-depth.png", 24, 3),
+        ("invalid-color.png", 25, 1),
+        ("invalid-compression.png", 26, 1),
+        ("invalid-filter.png", 27, 1),
+        ("invalid-interlace.png", 28, 2),
+    ] {
+        let mut bytes = png.to_vec();
+        bytes[index] = value;
+        let mut crc = !0u32;
+        for byte in &bytes[12..29] {
+            crc ^= u32::from(*byte);
+            for _ in 0..8 {
+                crc = (crc >> 1) ^ if crc & 1 == 1 { 0xedb8_8320 } else { 0 };
+            }
+        }
+        bytes[29..33].copy_from_slice(&(!crc).to_be_bytes());
+        cases.push((name, bytes));
+    }
+    let mut invalid_precision = jpeg.to_vec();
+    invalid_precision[12] = 7;
+    cases.push(("invalid-precision.jpg", invalid_precision));
+    for (name, bytes) in cases {
+        let dir = project("[[pipeline]]\nid = \"photos\"\ntables = [\"images\"]\n[pipeline.source]\nname = \"image\"\nconfig = { root = \"photos\" }\n");
+        std::fs::create_dir_all(dir.path().join("photos")).unwrap();
+        std::fs::write(dir.path().join("photos").join(name), bytes).unwrap();
+        let out = fire(dir.path(), "photos", "run-1", "2030-01-01T00:00:00Z");
+        let error = stderr(&out);
+        assert!(!out.status.success() && error.contains("ConnectorImageHeaderUnreadable") && error.contains(name), "{name}: {error}");
+    }
+}
+
+#[test]
+fn an_image_source_reads_jpeg_dimensions_without_decoding_pixels() {
+    let dir = project("[[pipeline]]\nid = \"photos\"\ntables = [{ name = \"images\", primary_key = [\"path\"] }]\n[pipeline.source]\nname = \"image\"\nconfig = { root = \"photos\" }\n");
+    std::fs::create_dir_all(dir.path().join("photos")).unwrap();
+    let jpeg = b"\xff\xd8\xff\xe0\x00\x04\x00\x00\xff\xc0\x00\x11\x08\x00\x03\x00\x02\x03\x01\x11\x00\x02\x11\x00\x03\x11\x00\xff\xd9";
+    std::fs::write(dir.path().join("photos/j.jpg"), jpeg).unwrap();
+    ok(&fire(dir.path(), "photos", "run-1", "2030-01-01T00:00:00Z"));
+    let out: serde_json::Value = serde_json::from_str(&ok(&cf(dir.path(), &[
+        "query", "--json", "--project", "research", "SELECT path, width, height FROM photos_images",
+    ]))).unwrap();
+    assert_eq!(out["rows"], serde_json::json!([["j.jpg", "2", "3"]]));
+}
+
 /// Startup reads `contextful.toml` for project config and inline `[[pipeline]]` blocks, then `pipelines/*.toml`
 /// and `pipelines/*.json`; specifications are collected by `id`.
 // spec: run.declare.manifest-file@4779cc3b

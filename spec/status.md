@@ -7,7 +7,7 @@ An unpinned clause is `committed`; a pinned one is `performed` when its Rust, Le
 | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
 | `assurance` | 2 | 15 | 235 | 59 | 22 | 14 | 141 | 0 | 138 |
 | `authority` | 2 | 16 | 269 | 77 | 27 | 10 | 206 | 0 | 206 |
-| `connector` | 2 | 14 | 349 | 89 | 21 | 15 | 218 | 0 | 207 |
+| `connector` | 2 | 14 | 349 | 89 | 21 | 15 | 219 | 0 | 219 |
 | `corpus` | 1 | 10 | 79 | 37 | 7 | 0 | 40 | 0 | 40 |
 | `disclosure` | 3 | 16 | 134 | 66 | 13 | 3 | 63 | 0 | 63 |
 | `read` | 2 | 15 | 199 | 31 | 22 | 9 | 177 | 0 | 172 |
@@ -15,7 +15,7 @@ An unpinned clause is `committed`; a pinned one is `performed` when its Rust, Le
 | `store` | 1 | 17 | 237 | 55 | 13 | 20 | 200 | 0 | 200 |
 | `surface` | 2 | 20 | 106 | 49 | 22 | 0 | 51 | 0 | 51 |
 | `topology` | 1 | 6 | 70 | 24 | 5 | 5 | 38 | 0 | 38 |
-| **total** | 19 | 155 | 2070 | 587 | 190 | 104 | 1425 | 0 | |
+| **total** | 19 | 155 | 2070 | 587 | 190 | 104 | 1426 | 0 | |
 
 Decision records: 18.
 
@@ -29,7 +29,7 @@ A milestone reads `closed` when its acceptance test computes `passing` and every
 | 1 — The authority core | 14 | 238 | 186 | passing | closed |
 | 2 — The store | 9 | 164 | 132 | passing | closed |
 | 3 — The run path | 11 | 209 | 145 | passing | closed |
-| 4 — Ingest | 25 | 504 | 319 | passing | open |
+| 4 — Ingest | 25 | 504 | 320 | passing | open |
 | 5 — The read face under enforcement | 17 | 262 | 204 | passing | open |
 | 6 — Sync and replicas | 8 | 73 | 68 | passing | closed |
 | 7 — Memory | 6 | 47 | 39 | passing | closed |
@@ -587,6 +587,7 @@ Unscheduled operations: 10.
 | `connector.source.http-scope-probe` | `crates/contextful-connectors/tests/integration/http.rs::the_scope_probe_runs_before_the_first_page` | performed |
 | `connector.source.http-url-walk` | `crates/contextful-connectors/tests/integration/http.rs::a_next_url_walk_keeps_the_next_urls_query_out_of_every_position` | performed |
 | `connector.source.http-watermark-walk` | `crates/contextful-connectors/tests/integration/http.rs::a_watermarked_read_walks_every_page_in_one_pull` | performed |
+| `connector.source.image-header` | `spec/pins.toml` | performed |
 | `connector.source.next-link-origin` | `crates/contextful-connectors/tests/integration/http.rs::a_next_link_off_the_configured_origin_fails_the_read` | performed |
 | `connector.source.object-address` | `crates/contextful-connectors/tests/integration/object.rs::a_key_and_a_prefix_together_or_neither_are_refused_at_build` | performed |
 | `connector.source.object-cleartext` | `crates/contextful-connectors/tests/integration/object.rs::a_signing_source_refuses_a_cleartext_endpoint_off_loopback` | performed |
