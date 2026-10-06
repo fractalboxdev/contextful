@@ -88,3 +88,11 @@ test("hosted Query publishes only to the verified operator and sanitizes its ser
   assert.equal(body.widgets[0].component, "table.v1");
   assert.doesNotMatch(JSON.stringify(body.widgets), /secret@example.test/);
 });
+
+test("long reader assertions and minted credentials preserve governed Query", async () => {
+  const { live } = fixture();
+  const assertion = "a".repeat(512);
+  const answer = await live.turn({ operator: { subject: "alice", grants: new Set(["query"]), assertion },
+    store: store.id, question: "Which Northwind filing arrived?" });
+  assert.match(answer.answer, /filing-1/);
+});

@@ -2,7 +2,7 @@ import { createPublicKey } from "node:crypto";
 import { pathToFileURL } from "node:url";
 import { isAbsolute, resolve } from "node:path";
 import { registryFromEnv } from "../../gateway/src/index.ts";
-import { createLiveTurn } from "./live.ts";
+import { createLiveAnswer } from "./answer_live.ts";
 import type { ConsoleAdapters, Identity } from "./index.ts";
 import { serveConsole } from "./server.ts";
 
@@ -84,9 +84,13 @@ async function main(): Promise<void> {
   const registry = registryFromEnv(process.env.CONTEXTFUL_STORES_JSON);
   const stores = registry.entries.map(({ id, label }) => ({ id, label }));
   const modulePath = process.env.CONTEXTFUL_CONSOLE_ADAPTER_MODULE;
+  const live = modulePath ? null : createLiveAnswer({ stores: registry.entries, env: process.env });
   let adapters: HostedAdapters = {
     ...unavailableAdapters(),
-    turn: modulePath ? unavailableAdapters().turn : createLiveTurn({ stores: registry.entries, env: process.env }),
+    turn: live?.turn ?? unavailableAdapters().turn,
+    brief: live?.brief,
+    briefBudgetMs: live?.briefBudgetMs,
+    redactView: live?.redactView,
   };
   if (modulePath) {
     const absolute = isAbsolute(modulePath) ? modulePath : resolve(modulePath);
