@@ -143,10 +143,19 @@ test("vantage accepts calendar days and instants, and rejects invalid dates", ()
 });
 
 test("refused per-reader mint falls back only to an installed shared credential", async () => {
-  const mint = async () => { throw new Error("denied"); };
+  const mint = async () => { throw new ConsoleError("ConsoleTokenExchangeRefused", "denied", 403); };
   assert.equal(await resolveReaderCredential({ mint, shared: "shared-token" }), "shared-token");
   await assert.rejects(resolveReaderCredential({ mint }),
     (error: unknown) => error instanceof ConsoleError && error.code === "ConsoleTokenExchangeRefused");
+});
+
+test("reader credential resolution preserves transport and service failures", async () => {
+  const outage = new ConsoleError("ConsoleTokenExchangeUnavailable", "outage", 503);
+  await assert.rejects(resolveReaderCredential({ mint: async () => { throw outage; }, shared: "shared-token" }),
+    (error: unknown) => error === outage);
+  const network = new TypeError("network offline");
+  await assert.rejects(resolveReaderCredential({ mint: async () => { throw network; }, shared: "shared-token" }),
+    (error: unknown) => error === network);
 });
 
 test("planner scaffolding lists data tables while memory relations remain outside it", async () => {

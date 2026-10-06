@@ -11,7 +11,7 @@ const store: StoreEntry = {
   bindingName: "FIELD_NOTES",
 };
 
-function fixture(options: { exchange?: boolean; shared?: string; rows?: unknown[][]; tables?: Array<{ table: string; kind: string }> } = {}) {
+function fixture(options: { exchange?: boolean; exchangeStatus?: number; shared?: string; rows?: unknown[][]; tables?: Array<{ table: string; kind: string }> } = {}) {
   const calls: Array<{ url: string; authorization: string | null; body: Record<string, unknown> }> = [];
   let modelCalls = 0;
   let modelBody: Record<string, unknown> | null = null;
@@ -19,7 +19,10 @@ function fixture(options: { exchange?: boolean; shared?: string; rows?: unknown[
     const url = String(input);
     const body = JSON.parse(String(init?.body ?? "{}")) as Record<string, unknown>;
     calls.push({ url, authorization: new Headers(init?.headers).get("authorization"), body });
-    if (url.endsWith("/auth/exchange")) return Response.json(options.exchange === false ? { error: { identifier: "ExchangeAssertionInvalid" } } : { token: "reader-token" }, { status: options.exchange === false ? 403 : 200 });
+    if (url.endsWith("/auth/exchange")) {
+      const status = options.exchangeStatus ?? (options.exchange === false ? 403 : 200);
+      return Response.json(status === 200 ? { token: "reader-token" } : { error: { identifier: status === 503 ? "ExchangeMaterialMissing" : "ExchangeAssertionInvalid" } }, { status });
+    }
     if (url.endsWith("/mcp")) {
       const params = body.params as Record<string, unknown>;
       if (params.name === "context.describe") return Response.json({ jsonrpc: "2.0", id: body.id, result: { structuredContent: {
@@ -68,6 +71,37 @@ test("Query falls back to a configured shared credential only after exchange ref
     store: "field-notes", question: "Which filing arrived?" }), /ConsoleTokenExchangeRefused/);
   assert.equal(refused.modelCalls(), 0);
   assert.equal(refused.calls.filter((call) => call.url.endsWith("/mcp")).length, 0);
+});
+
+test("Query does not use a shared credential after exchange service failure", async () => {
+  const { turn, calls } = fixture({ exchangeStatus: 503, shared: "shared-token" });
+  await assert.rejects(turn({ operator: { subject: "operator-1", grants: new Set(["query"]), assertion: "verified-access-jwt" },
+    store: "field-notes", question: "Which filing arrived?" }));
+  assert.equal(calls.filter((call) => call.url.endsWith("/mcp")).length, 0);
+});
+
+test("Query reads only a question-matched data table and refuses an unclear selection", async () => {
+  const tables = [{ table: "filings", kind: "data" }, { table: "salaries", kind: "data" }];
+  const matched = fixture({ tables });
+  await matched.turn({ operator: { subject: "operator-1", grants: new Set(["query"]), assertion: "verified-access-jwt" },
+    store: "field-notes", question: "Which filing arrived?" });
+  assert.deepEqual(matched.calls.filter((call) => (call.body.params as Record<string, unknown> | undefined)?.name === "context.query")
+    .map((call) => (call.body.params as Record<string, unknown>).arguments),
+    [{ sql: 'SELECT * FROM "filings"', limit: 5000 }]);
+  const unclear = fixture({ tables });
+  await assert.rejects(unclear.turn({ operator: { subject: "operator-1", grants: new Set(["query"]), assertion: "verified-access-jwt" },
+    store: "field-notes", question: "What changed?" }),
+    (error: unknown) => error instanceof ConsoleError && error.code === "ConsoleUngroundedAnswer");
+  assert.equal(unclear.calls.filter((call) => call.url.endsWith("/mcp") && (call.body.params as Record<string, unknown>).name === "context.query").length, 0);
+});
+
+test("Query sends the model only rows represented by its eight visible sources", async () => {
+  const rows = Array.from({ length: 9 }, (_, index) => [`filing-${index + 1}`, `Filing ${index + 1}`, `https://example.test/filing-${index + 1}`]);
+  const { turn, modelBody } = fixture({ rows });
+  const result = await turn({ operator: { subject: "operator-1", grants: new Set(["query"]), assertion: "verified-access-jwt" },
+    store: "field-notes", question: "Which filing arrived?" });
+  assert.equal(result.sources.length, 8);
+  assert.doesNotMatch(JSON.stringify(modelBody()), /filing-9/);
 });
 
 test("Query never sends rows without provenance to the model", async () => {
