@@ -9845,7 +9845,7 @@
       "operation": "select",
       "subject": "unmetered-grant",
       "kind": "refusal",
-      "statement": "`task` alone decides whether a derive pipeline reaches vendors; a `transcribe` pipeline declaring a shared-quota grant raises `DeriveUnmeteredGrant`.",
+      "statement": "A derive pipeline declaring a shared-quota grant for any task other than `link_preview` raises `DeriveUnmeteredGrant`.",
       "why": "A-connector",
       "file": "spec/32-derive.md",
       "line": 66
@@ -10335,6 +10335,20 @@
       "line": 189
     },
     {
+      "id": "run.fetch.head-rows",
+      "contract": "run",
+      "operation": "fetch",
+      "subject": "head-rows",
+      "kind": "behavior",
+      "statement": "A link preview lands one passage for non-empty head title or description and one passage per distinct advertised head image, each carrying the scrubbed page URL and each image its probe status.",
+      "why": "because the head and its image claims remain separately citable, including an image whose probe fails",
+      "file": "spec/32-derive.md",
+      "line": 191,
+      "scenarios": [
+        "WHEN a page head declares a title, description and one image, THEN the output holds one text passage and one image passage with its probe status."
+      ]
+    },
+    {
       "id": "run.emit.failure-off-table",
       "contract": "run",
       "operation": "emit",
@@ -10343,7 +10357,7 @@
       "statement": "Per-unit failure state recorded outside the output table raises `DeriveFailureOffTable`.",
       "why": "A-run",
       "file": "spec/32-derive.md",
-      "line": 214
+      "line": 220
     },
     {
       "id": "run.emit.unit-status",
@@ -10354,7 +10368,7 @@
       "statement": "`unit_status` is `ok`, `empty` where the engine established nothing to derive, `unavailable` where it returned nothing and stated no reason, or `failed` on a typed error; any other value raises `DeriveUnitStatusUnknown`.",
       "why": "A-run",
       "file": "spec/32-derive.md",
-      "line": 216
+      "line": 222
     },
     {
       "id": "run.emit.reserved-discriminator",
@@ -10365,7 +10379,7 @@
       "statement": "A derive table declaring a column named `kind` raises `DeriveReservedDiscriminator`.",
       "why": "A-run",
       "file": "spec/32-derive.md",
-      "line": 218
+      "line": 224
     },
     {
       "id": "run.emit.settled-revived",
@@ -10376,7 +10390,7 @@
       "statement": "A unit that settles under its current key while a tick derives it raises `DeriveSettledUnitRevived`, and that tick lands none of its rows; a changed key revives nothing.",
       "why": "A-run",
       "file": "spec/32-derive.md",
-      "line": 220
+      "line": 226
     },
     {
       "id": "run.emit.attempts",
@@ -10387,7 +10401,7 @@
       "statement": "`attempts` is the prior count under the row's key plus one; `unavailable` and `failed` stop at {{run.select.attempts-per-unit}}, and `empty` receives 1 attempts in total.",
       "why": "",
       "file": "spec/32-derive.md",
-      "line": 222
+      "line": 228
     },
     {
       "id": "run.emit.unredacted-error",
@@ -10398,7 +10412,7 @@
       "statement": "A non-null `last_error` write that has not passed address redaction raises `DeriveUnredactedError`.",
       "why": "A-authority",
       "file": "spec/32-derive.md",
-      "line": 223
+      "line": 229
     },
     {
       "id": "run.emit.primary-key",
@@ -10409,7 +10423,7 @@
       "statement": "A derive output table or host marker table without `primary_key` `[\"unit_ref\", \"derivation_key\", \"cue_seq\"]`, or a host content table whose key does not open with `unit_ref` and `derivation_key`, raises `DerivePrimaryKeyMissing`.",
       "why": "because a re-derived unit otherwise lands its new passages over the originals, or beside them with no key telling them apart",
       "file": "spec/32-derive.md",
-      "line": 225
+      "line": 231
     },
     {
       "id": "run.emit.derivation-key",
@@ -10420,7 +10434,7 @@
       "statement": "Every passage and marker row carries `derivation_key`: lowercase hex SHA-256 over the engine id, the binding less its bounds and `zone`, the output table's declared columns, and the parent row's id, media value and `derivation_key`.",
       "why": "A-run",
       "file": "spec/32-derive.md",
-      "line": 227
+      "line": 233
     },
     {
       "id": "run.emit.stale-supersedes",
@@ -10431,7 +10445,7 @@
       "statement": "A unit's rows landed under another key before its latest `ok` or `empty` landing are superseded: each answers until that landing, and the next fold drops it and rebuilds the table's sidecars without it.",
       "why": "A-run",
       "file": "spec/32-derive.md",
-      "line": 229
+      "line": 235
     },
     {
       "id": "run.emit.task-version",
@@ -10442,7 +10456,7 @@
       "statement": "A host task's `derivation_key` hashes its registered name, its `task_version` and the parent row's id, declared columns and `derivation_key`, so raising the version re-selects every settled unit.",
       "why": "A-run",
       "file": "spec/32-derive.md",
-      "line": 231
+      "line": 237
     },
     {
       "id": "run.emit.host-rows",
@@ -10453,7 +10467,7 @@
       "statement": "A host task's content row carries its unit's `unit_ref`, `derivation_key` and `task_version`, `kind` `passage` and `unit_status` `ok`; every unit lands one marker, `ok` over content rows, `empty` over none.",
       "why": "A-run",
       "file": "spec/32-derive.md",
-      "line": 233
+      "line": 239
     },
     {
       "id": "run.emit.content-empty",
@@ -10464,7 +10478,7 @@
       "statement": "A host unit landing no row in a content table lands one `kind` `marker`, `unit_status` `empty` row there under its key, so {{run.emit.stale-supersedes}} holds in every content table.",
       "why": "because a read and a fold supersede from one table's rows alone, so a content table never seeing the unit's newest key keeps its stale rows answering",
       "file": "spec/32-derive.md",
-      "line": 235
+      "line": 241
     },
     {
       "id": "run.emit.output-tables",
@@ -10475,7 +10489,7 @@
       "statement": "A host-task pipeline declares exactly its task's marker and content tables, and a unit returns rows for its content tables alone; either breach raises `DeriveOutputTablesMismatch`, the second failing that unit alone.",
       "why": "A-run",
       "file": "spec/32-derive.md",
-      "line": 237
+      "line": 243
     },
     {
       "id": "run.emit.marker-last",
@@ -10486,7 +10500,7 @@
       "statement": "A host-task run commits each content table under its own commit, then the marker table, and a content table failing stops the fire before its marker lands, so the unit re-runs and its rows collapse by key.",
       "why": "A-run",
       "file": "spec/32-derive.md",
-      "line": 239
+      "line": 245
     },
     {
       "id": "run.emit.version-retained",
@@ -10497,7 +10511,7 @@
       "statement": "On an output table declaring `retain_versions`, {{run.emit.stale-supersedes}} holds per unit and `task_version`, so rows under an earlier task version stay current under that version beside the newer version's rows.",
       "why": "A-run",
       "file": "spec/32-derive.md",
-      "line": 241
+      "line": 247
     },
     {
       "id": "run.emit.marker-row",
@@ -10508,7 +10522,7 @@
       "statement": "A unit yielding no passage lands one marker row, `cue_seq` -1 and `kind` `marker`, carrying its status, attempts, last error and whether it retries.",
       "why": "A-run",
       "file": "spec/32-derive.md",
-      "line": 243
+      "line": 249
     },
     {
       "id": "run.emit.empty-document",
@@ -10519,7 +10533,7 @@
       "statement": "Only a WebVTT document whose blocks are its header, notes and styles establishes nothing to derive; empty output, or blocks none of which parse, lands `unavailable`.",
       "why": "",
       "file": "spec/32-derive.md",
-      "line": 245
+      "line": 251
     },
     {
       "id": "run.emit.canceled-unit",
@@ -10530,7 +10544,49 @@
       "statement": "A unit whose chain a run stop interrupts lands no row and charges no attempt; the pull ends `Canceled` once {{run.cancel.child-reaped}}.",
       "why": "",
       "file": "spec/32-derive.md",
-      "line": 246
+      "line": 252
+    },
+    {
+      "id": "run.emit.output-modality",
+      "contract": "run",
+      "operation": "emit",
+      "subject": "output-modality",
+      "kind": "behavior",
+      "statement": "A text passage extracted from a video parent carries `_modality` `text`, and an advertised image passage carries `image`, each under {{store.reserve.modality}}.",
+      "why": "A-run",
+      "file": "spec/32-derive.md",
+      "line": 253,
+      "scenarios": [
+        "WHEN a video parent yields a transcript passage and an advertised picture, THEN their output modalities are `text` and `image`."
+      ]
+    },
+    {
+      "id": "run.emit.local-content-key",
+      "contract": "run",
+      "operation": "emit",
+      "subject": "local-content-key",
+      "kind": "behavior",
+      "statement": "A local media unit's {{run.emit.derivation-key}} includes a SHA-256 digest of canonical file bytes, so changed bytes under an unchanged path reselect the unit.",
+      "why": "A-run",
+      "file": "spec/32-derive.md",
+      "line": 255,
+      "scenarios": [
+        "WHEN a local file changes bytes under the same path, THEN the next tick selects its unit under another key."
+      ]
+    },
+    {
+      "id": "run.emit.parent-tombstone",
+      "contract": "run",
+      "operation": "emit",
+      "subject": "parent-tombstone",
+      "kind": "behavior",
+      "statement": "A fold drops derived rows whose parent key is absent or tombstoned in the parent table, then rebuilds their sidecars.",
+      "why": "A-run",
+      "file": "spec/32-derive.md",
+      "line": 257,
+      "scenarios": [
+        "WHEN a parent row is tombstoned, THEN the next fold drops its passages and rebuilds the affected sidecars."
+      ]
     },
     {
       "id": "run.parse-cues.backward-cue",
@@ -10541,7 +10597,7 @@
       "statement": "A block starting before the last accepted block raises `DeriveCueOutOfOrder` and is dropped.",
       "why": "P4",
       "file": "spec/32-derive.md",
-      "line": 260
+      "line": 272
     },
     {
       "id": "run.parse-cues.passage-chars",
@@ -10552,7 +10608,7 @@
       "statement": "A passage stays open while it holds fewer than 600 chars.",
       "why": "",
       "file": "spec/32-derive.md",
-      "line": 262
+      "line": 274
     },
     {
       "id": "run.parse-cues.passage-span",
@@ -10563,7 +10619,7 @@
       "statement": "A passage stays open while it spans less than 60 s.",
       "why": "",
       "file": "spec/32-derive.md",
-      "line": 263
+      "line": 275
     },
     {
       "id": "run.parse-cues.passage-bytes",
@@ -10574,7 +10630,7 @@
       "statement": "One passage's text holds at most 8 KiB.",
       "why": "",
       "file": "spec/32-derive.md",
-      "line": 264
+      "line": 276
     },
     {
       "id": "run.parse-cues.passages-per-document",
@@ -10585,7 +10641,7 @@
       "statement": "One document yields at most 2000 rows of passages.",
       "why": "",
       "file": "spec/32-derive.md",
-      "line": 265
+      "line": 277
     },
     {
       "id": "run.parse-cues.grammar",
@@ -10596,7 +10652,7 @@
       "statement": "SubRip and WebVTT read through one grammar: a block's timing line, then its text lines joined by a space.",
       "why": "",
       "file": "spec/32-derive.md",
-      "line": 266
+      "line": 278
     },
     {
       "id": "run.test-engine.unsupported-driver",
@@ -10607,7 +10663,7 @@
       "statement": "A `fetch` engine named to the verb raises `DeriveTestEngineUnsupported`.",
       "why": "because the verb drives a transcriber over media, and a link engine takes no media",
       "file": "spec/32-derive.md",
-      "line": 272
+      "line": 284
     },
     {
       "id": "connector.export.authoring-path",
@@ -23752,6 +23808,14 @@
     [
       "run.emit.canceled-unit",
       "run.cancel.child-reaped"
+    ],
+    [
+      "run.emit.output-modality",
+      "store.reserve.modality"
+    ],
+    [
+      "run.emit.local-content-key",
+      "run.emit.derivation-key"
     ],
     [
       "connector.export.arrow-types",

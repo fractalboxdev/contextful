@@ -27,6 +27,12 @@
 # `contextful-spec state` reads this file and the tags and writes spec/status.md.
 
 [pin]
+"run.select.unmetered-grant" = { test = "contextful_core::run::derive::a_transcribe_pipeline_declaring_a_shared_quota_grant_refuses" }
+"run.select.metered-client" = { test = "contextful_connectors::derive::a_link_preview_refuses_a_missing_mediation_hook_before_a_socket" }
+"run.select.incomplete-unit" = { test = "contextful_cli::derive::a_host_task_counts_an_incomplete_parent_on_its_run_records" }
+"run.fetch.hop-timeout" = { test = "contextful_connectors::derive::a_link_preview_times_out_one_slow_hop_but_allows_two_short_hops" }
+"run.emit.output-modality" = { test = "contextful_connectors::derive::a_transcript_passage_carries_text_modality" }
+"run.emit.local-content-key" = { test = "contextful_connectors::derive::changed_local_bytes_reselect_the_same_media_path" }
 "corpus.state.typescript-tag-pin" = { test = "contextful_spec::ts_pins::a_running_surface_test_tag_performs_its_clause" }
 "corpus.state.typescript-unfinished" = { test = "contextful_spec::ts_pins::a_skipped_or_todo_surface_test_is_broken" }
 "assurance.gate.native-test-files" = { test = "contextful_ci::stages::the_surfaces_stage_runs_each_native_typescript_test_file_even_without_a_test_script" }
@@ -61,7 +67,7 @@ connector = 207
 corpus = 40
 disclosure = 63
 read = 172
-run = 262
+run = 279
 store = 200
 surface = 51
 topology = 38

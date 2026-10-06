@@ -11,11 +11,11 @@ An unpinned clause is `committed`; a pinned one is `performed` when its Rust, Le
 | `corpus` | 1 | 10 | 79 | 37 | 7 | 0 | 40 | 0 | 40 |
 | `disclosure` | 3 | 16 | 134 | 66 | 13 | 3 | 63 | 0 | 63 |
 | `read` | 2 | 15 | 199 | 31 | 22 | 9 | 177 | 0 | 172 |
-| `run` | 3 | 26 | 374 | 98 | 36 | 37 | 262 | 0 | 262 |
+| `run` | 3 | 26 | 378 | 98 | 36 | 34 | 280 | 0 | 279 |
 | `store` | 1 | 17 | 237 | 55 | 13 | 20 | 200 | 0 | 200 |
 | `surface` | 2 | 20 | 106 | 49 | 22 | 0 | 51 | 0 | 51 |
 | `topology` | 1 | 6 | 70 | 24 | 5 | 5 | 38 | 0 | 38 |
-| **total** | 19 | 155 | 2052 | 585 | 188 | 113 | 1396 | 0 | |
+| **total** | 19 | 155 | 2056 | 585 | 188 | 110 | 1414 | 0 | |
 
 Decision records: 18.
 
@@ -36,7 +36,7 @@ A milestone reads `closed` when its acceptance test computes `passing` and every
 | 8 — Accountability | 5 | 60 | 47 | passing | open |
 | 9 — Visibility | 6 | 41 | 3 | open | open |
 | 10 — Cadence and the operator plane | 11 | 68 | 56 | passing | open |
-| 11 — The derive tier | 7 | 78 | 55 | passing | open |
+| 11 — The derive tier | 7 | 82 | 73 | passing | closed |
 | 12 — The operator console | 12 | 49 | 0 | open | open |
 | 13 — Disclosure | 5 | 33 | 13 | open | open |
 | 14 — Assurance | 7 | 138 | 89 | passing | closed |
@@ -904,6 +904,7 @@ Unscheduled operations: 10.
 | `run.advance.zero-row-commit` | `crates/contextful-cli/tests/integration/empty_replace.rs::a_complete_empty_snapshot_replaces_but_a_skip_and_failed_pull_do_not` | performed |
 | `run.bind.command-in-manifest` | `crates/contextful-core/tests/integration/run/derive.rs::an_executable_key_in_the_manifest_refuses` | performed |
 | `run.bind.driver-mismatch` | `crates/contextful-core/tests/integration/run/derive.rs::a_driver_the_task_does_not_serve_refuses` | performed |
+| `run.bind.endpoint-host-bare` | `crates/contextful-core/tests/integration/run/derive.rs::a_fetch_binding_refuses_process_keys_and_nonbare_endpoint_hosts` | performed |
 | `run.bind.host-task` | `crates/contextful-core/tests/integration/run/host_task.rs::a_registered_task_resolves_by_name_and_a_taken_name_refuses` | performed |
 | `run.bind.media-root` | `crates/contextful-connectors/tests/integration/derive.rs::media_outside_the_root_fails_that_unit_alone` | performed |
 | `run.bind.media-unreadable` | `crates/contextful-connectors/tests/integration/derive.rs::unreadable_media_fails_that_unit_alone` | performed |
@@ -942,8 +943,10 @@ Unscheduled operations: 10.
 | `run.emit.derivation-key` | `crates/contextful-core/tests/integration/run/derive.rs::a_derivation_key_hashes_engine_binding_columns_and_parent` | performed |
 | `run.emit.empty-document` | `crates/contextful-core/tests/integration/run/derive.rs::only_a_well_formed_webvtt_without_cues_is_empty` | performed |
 | `run.emit.host-rows` | `crates/contextful-core/tests/integration/run/host_task.rs::a_unit_lands_stamped_content_rows_and_one_marker` | performed |
+| `run.emit.local-content-key` | `spec/pins.toml` | performed |
 | `run.emit.marker-last` | `crates/contextful-cli/tests/integration/derive.rs::a_failure_before_the_marker_re_runs_the_unit_and_its_rows_collapse_by_key` | performed |
 | `run.emit.marker-row` | `crates/contextful-core/tests/integration/run/derive.rs::a_unit_without_passages_lands_one_marker_row` | performed |
+| `run.emit.output-modality` | `spec/pins.toml` | performed |
 | `run.emit.output-tables` | `crates/contextful-core/tests/integration/run/host_task.rs::tables_outside_the_tasks_set_refuse` | performed |
 | `run.emit.primary-key` | `crates/contextful-core/tests/integration/run/derive.rs::a_derive_table_keys_on_unit_derivation_and_sequence` | performed |
 | `run.emit.reserved-discriminator` | `crates/contextful-core/tests/integration/run/derive.rs::a_derive_table_naming_kind_refuses` | performed |
@@ -979,6 +982,17 @@ Unscheduled operations: 10.
 | `run.export.post-commit-read` | `crates/contextful-cli/tests/integration/export.rs::export_reads_through_the_face_under_the_admitted_credential` | performed |
 | `run.export.secret-preflight` | `crates/contextful-cli/tests/integration/export.rs::an_unresolved_header_reference_refuses_before_any_request` | performed |
 | `run.export.signal-unknown` | `crates/contextful-core/tests/integration/pipeline/export.rs::a_signal_other_than_logs_is_refused` | performed |
+| `run.fetch.address-literal` | `crates/contextful-connectors/tests/integration/derive.rs::a_link_preview_refuses_non_http_schemes_and_address_literals_before_a_socket` | performed |
+| `run.fetch.binding-key` | `crates/contextful-core/tests/integration/run/derive.rs::a_fetch_binding_refuses_process_keys_and_nonbare_endpoint_hosts` | performed |
+| `run.fetch.charset` | `crates/contextful-connectors/tests/integration/derive.rs::a_link_preview_bounds_redirects_and_refuses_non_utf8_documents` | performed |
+| `run.fetch.document-prefix` | `crates/contextful-connectors/tests/integration/derive.rs::a_link_preview_scans_a_megabyte_prefix_and_drops_the_remainder` | performed |
+| `run.fetch.head-rows` | `crates/contextful-connectors/tests/integration/derive.rs::a_link_preview_probes_advertised_images_with_a_bounded_range` | performed |
+| `run.fetch.hop-timeout` | `spec/pins.toml` | performed |
+| `run.fetch.not-utf8` | `crates/contextful-connectors/tests/integration/derive.rs::a_link_preview_bounds_redirects_and_refuses_non_utf8_documents` | performed |
+| `run.fetch.probe-prefix` | `crates/contextful-connectors/tests/integration/derive.rs::a_link_preview_probes_advertised_images_with_a_bounded_range` | performed |
+| `run.fetch.redirect-chain` | `crates/contextful-connectors/tests/integration/derive.rs::a_link_preview_bounds_redirects_and_refuses_non_utf8_documents` | performed |
+| `run.fetch.retry-after-default` | `crates/contextful-connectors/tests/integration/derive.rs::a_link_preview_uses_sixty_seconds_for_a_429_without_retry_after` | performed |
+| `run.fetch.scheme` | `crates/contextful-connectors/tests/integration/derive.rs::a_link_preview_refuses_non_http_schemes_and_address_literals_before_a_socket` | performed |
 | `run.guard-secrets.assignment-key` | `crates/contextful-core/tests/integration/pipeline/guard.rs::a_compound_key_assignment_is_masked_keeping_its_key` | performed |
 | `run.guard-secrets.coverage` | `crates/contextful-core/tests/integration/pipeline/guard.rs::encoded_or_split_credentials_pass_through` | performed |
 | `run.guard-secrets.mask-only` | `crates/contextful-engine/tests/integration/guard.rs::each_pull_reports_masked_cells_and_the_run_proceeds` | performed |
@@ -1126,12 +1140,16 @@ Unscheduled operations: 10.
 | `run.select.anti-join` | `crates/contextful-core/tests/integration/run/derive.rs::the_outstanding_set_is_every_parent_without_passages_or_a_settled_marker` | performed |
 | `run.select.attempts-per-unit` | `crates/contextful-core/tests/integration/run/derive.rs::a_unit_receives_3_attempts_by_default` | performed |
 | `run.select.foreign-output-table` | `crates/contextful-core/tests/integration/run/derive.rs::a_key_naming_another_pipelines_output_refuses` | performed |
+| `run.select.incomplete-unit` | `spec/pins.toml` | performed |
 | `run.select.journaled-pull` | `crates/contextful-core/tests/integration/run/derive.rs::a_derive_pipeline_journaling_its_pulls_refuses` | performed |
 | `run.select.key-change` | `crates/contextful-core/tests/integration/run/derive.rs::a_changed_key_rederives_and_a_key_changed_back_derives_again` | performed |
 | `run.select.latest-marker` | `crates/contextful-core/tests/integration/run/derive.rs::a_units_latest_marker_decides_its_standing` | performed |
+| `run.select.metered-client` | `spec/pins.toml` | performed |
+| `run.select.no-store-root` | `crates/contextful-connectors/tests/integration/derive.rs::a_derive_source_refuses_an_absent_store_root_or_pipeline_id` | performed |
 | `run.select.required-key` | `crates/contextful-core/tests/integration/run/derive.rs::a_missing_or_blank_required_key_refuses` | performed |
 | `run.select.rows-per-run` | `crates/contextful-core/tests/integration/run/derive.rs::a_run_takes_25_units_by_default_after_the_anti_join` | performed |
 | `run.select.seconds-per-run` | `crates/contextful-core/tests/integration/run/derive.rs::link_preview_holds_300_s_and_transcribe_carries_no_default` | performed |
+| `run.select.unmetered-grant` | `spec/pins.toml` | performed |
 | `run.suspend.awakeable` | `crates/contextful-engine/tests/integration/suspend.rs::a_minted_token_persists_a_pending_row_and_resumes_on_post` | performed |
 | `run.suspend.conflicting-resolution` | `crates/contextful-core/tests/integration/run/suspend.rs::a_different_second_payload_is_refused_and_the_first_stands` | performed |
 | `run.suspend.deadline` | `crates/contextful-core/tests/integration/run/suspend.rs::the_deadline_is_creation_plus_ttl_from_caller_instants` | performed |

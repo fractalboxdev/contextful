@@ -18,6 +18,9 @@ use contextful_connectors::file::{FileConfig, FileSource};
 use contextful_connectors::http::{HttpConfig, HttpSource, Mediation};
 use contextful_core::connector::component::ComponentSource;
 use contextful_core::connector::meter::{manifest_bindings, require_binding, LimiterBinding};
+use contextful_core::ports::Clock;
+use contextful_core::store::lay_out::NodeId;
+use contextful_core::store::ledger::RequestRecord;
 use contextful_core::connector::ConnectorError;
 #[cfg(feature = "s3-sync")]
 use contextful_connectors::object::ObjectConfig;
@@ -42,6 +45,74 @@ use contextful_engine::RunSpec;
 use std::collections::BTreeMap;
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
+use std::sync::Mutex;
+use std::time::Instant as MonotonicInstant;
+use contextful_outbound::{Intent, Outcome, PreSendHook};
+
+struct LedgerState {
+    next: u64,
+    started: Option<(u64, contextful_core::time::Instant, MonotonicInstant)>,
+    records: Vec<RequestRecord>,
+}
+
+/// One link-preview run's requests settle into its output table before a pull returns.
+struct DeriveLedger {
+    store: Store,
+    table: String,
+    node: NodeId,
+    run_id: String,
+    clock: Arc<dyn Clock + Send + Sync>,
+    nonce: u128,
+    state: Mutex<LedgerState>,
+}
+
+impl DeriveLedger {
+    fn new(store: Store, table: String, node: NodeId, run_id: String, clock: Arc<dyn Clock + Send + Sync>) -> DeriveLedger {
+        let nonce = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).map(|elapsed| elapsed.as_nanos()).unwrap_or_default();
+        DeriveLedger { store, table, node, run_id, clock, nonce, state: Mutex::new(LedgerState { next: 0, started: None, records: Vec::new() }) }
+    }
+}
+
+impl PreSendHook for DeriveLedger {
+    fn admit(&self, intent: &Intent) -> Result<(), String> {
+        let mut state = self.state.lock().unwrap_or_else(|poison| poison.into_inner());
+        if intent.run_id.as_deref() != Some(self.run_id.as_str()) {
+            return Err("request carries no matching run id".into());
+        }
+        let next = state.next;
+        state.next += 1;
+        state.started = Some((next, self.clock.now(), MonotonicInstant::now()));
+        Ok(())
+    }
+
+    fn settle(&self, intent: &Intent, outcome: &Outcome) {
+        let mut state = self.state.lock().unwrap_or_else(|poison| poison.into_inner());
+        let Some((number, started_at, started)) = state.started.take() else { return };
+        let record = RequestRecord {
+            request_id: format!("{}-{}-{number}", self.run_id, self.nonce),
+            vendor_request_id: None,
+            connector: "derive".into(),
+            method: intent.method.clone(),
+            url_host: intent.host.clone(),
+            status_code: outcome.status,
+            started_at,
+            duration_ms: started.elapsed().as_millis().try_into().unwrap_or(u64::MAX),
+            batch_seq: None,
+        };
+        state.records.push(record);
+    }
+
+    fn finish(&self, batch_seq: Option<i32>) -> Result<(), Failure> {
+        let mut state = self.state.lock().unwrap_or_else(|poison| poison.into_inner());
+        for record in &mut state.records {
+            record.batch_seq = batch_seq;
+        }
+        contextful_context::ledger::append(&self.store, &self.table, &self.run_id, &self.node, &state.records)
+            .map_err(|error| Failure::new(FailureTag::Storage, format!("request ledger: {error}")))?;
+        state.records.clear();
+        Ok(())
+    }
+}
 
 #[derive(Subcommand)]
 pub enum PipelineCmd {
@@ -158,7 +229,7 @@ pub(crate) enum Checked {
     #[cfg(feature = "s3-sync")]
     Object(ObjectConfig),
     File(FileConfig),
-    Derive(Box<(DeriveConfig, Binding)>),
+    Derive(Box<(DeriveConfig, Binding, Option<LimiterBinding>)>),
     Component(Box<ComponentSource>),
     Host(Box<HostChecked>),
 }
@@ -221,7 +292,8 @@ pub(crate) fn check(spec: &PipelineSpec, declaration: &Path, tasks: &Tasks) -> R
             let text = std::fs::read_to_string(declaration).unwrap_or_default();
             let bindings = bindings(&text)?;
             let binding = bind(&spec.id, &config, &bindings, &declaration.display().to_string())?.clone();
-            Ok(Checked::Derive(Box::new((config, binding))))
+            let limiter = config.grant.as_ref().map(|grant| require_binding(grant, &manifest_bindings(&text)?).cloned()).transpose()?;
+            Ok(Checked::Derive(Box::new((config, binding, limiter))))
         }
         other => {
             let Some(decl) = ComponentSource::parse(other, &spec.source.config).with_context(|| format!("pipeline `{}` source", spec.id))? else {
@@ -606,6 +678,7 @@ pub fn run(cmd: PipelineCmd, tasks: &Tasks) -> Result<()> {
             // A host task derives each unit once, then lands its content tables and its
             // marker table last, stopping at the first failing table (`run.emit.marker-last`).
             let mut staged: BTreeMap<String, Vec<Row>> = BTreeMap::new();
+            let mut derive_skipped = 0;
             let mut order: Vec<&contextful_core::pipeline::declare::TableEntry> = spec.tables.iter().collect();
             if let Checked::Host(host) = &checked {
                 let derive = HostDerive {
@@ -615,7 +688,8 @@ pub fn run(cmd: PipelineCmd, tasks: &Tasks) -> Result<()> {
                     tables: host.tables.clone(),
                     reader: Box::new(StoreReader { store: Store::open(&l.project.dir, &l.project.name)?, decls: dest.decls.clone() }),
                 };
-                let landing = derive.stage(&Uncanceled).map_err(|f| anyhow::anyhow!("pipeline `{}`: {f}", spec.id))?;
+                let (landing, skipped) = derive.stage(&Uncanceled).map_err(|f| anyhow::anyhow!("pipeline `{}`: {f}", spec.id))?;
+                derive_skipped = skipped;
                 order = landing.iter().filter_map(|(table, _)| spec.tables.iter().find(|t| spec.table_name(t.name()) == *table)).collect();
                 staged = landing.into_iter().collect();
             }
@@ -650,21 +724,33 @@ pub fn run(cmd: PipelineCmd, tasks: &Tasks) -> Result<()> {
                         #[cfg(feature = "s3-sync")]
                         Checked::Object(config) => Box::new(object_source(config.clone(), resolver.clone())),
                         Checked::File(config) => Box::new(FileSource::new(config.clone(), &base, pdf_decoder()?)),
-                        Checked::Derive(pair) => Box::new(DeriveSource {
-                            pipeline_id: spec.id.clone(),
-                            config: pair.0.clone(),
-                            binding: pair.1.clone(),
-                            output_table: table.clone(),
-                            output_schema: serde_json::to_value(dest.decls.iter().find(|d| d.name == table).and_then(|d| d.columns.clone()))?,
-                            reader: Box::new(StoreReader { store: Store::open(&l.project.dir, &l.project.name)?, decls: dest.decls.clone() }),
-                            resolver: resolver.clone(),
-                            cwd: base.clone(),
-                        }),
+                        Checked::Derive(pair) => {
+                            let limiter = pair.2.clone().map(|binding| contextful_outbound::Limiter::new(binding, resolver.clone(), &run_id, w.clock.clone()).map(Arc::new)).transpose()?;
+                            limiters.extend(limiter.clone());
+                            let hook = if pair.0.task == contextful_core::run::derive::config::Task::LinkPreview {
+                                Some(Arc::new(DeriveLedger::new(dest.store.clone(), table.clone(), dest.node.clone(), run_id.clone(), w.clock.clone())) as Arc<dyn PreSendHook>)
+                            } else {
+                                None
+                            };
+                            let mediation = Mediation { limiter, hook, run_id: Some(run_id.clone()), ..Mediation::default() };
+                            Box::new(DeriveSource {
+                                pipeline_id: spec.id.clone(),
+                                config: pair.0.clone(),
+                                binding: pair.1.clone(),
+                                output_table: table.clone(),
+                                output_schema: serde_json::to_value(dest.decls.iter().find(|d| d.name == table).and_then(|d| d.columns.clone()))?,
+                                reader: Box::new(StoreReader { store: Store::open(&l.project.dir, &l.project.name)?, decls: dest.decls.clone() }),
+                                resolver: resolver.clone(),
+                                mediation,
+                                store_root: Some(dest.store.root().to_path_buf()),
+                                cwd: base.clone(),
+                            })
+                        }
                         Checked::Component(decl) => match &loaded {
                             Some(c) => c.source(decl, t.name(), &resolver, &run_id)?,
                             None => bail!("pipeline `{}`: component source `{}` did not load", spec.id, spec.source.name),
                         },
-                        Checked::Host(_) => Box::new(Staged(staged.get(&table).cloned().unwrap_or_default())),
+                        Checked::Host(_) => Box::new(Staged(staged.get(&table).cloned().unwrap_or_default(), derive_skipped)),
                     };
                     Ok(w.engine.run_with(&run, &mut source, &shape, &mut dest)?)
                 })();

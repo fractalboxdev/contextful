@@ -63,7 +63,7 @@ The derive source: its configuration, the outstanding set recomputed each tick, 
   *P4*
 - `journaled-pull` — A derive pipeline configured to journal its pulls raises `DeriveJournaledPull`.
   *A-authority*
-- `unmetered-grant` — `task` alone decides whether a derive pipeline reaches vendors; a `transcribe` pipeline declaring a shared-quota grant raises `DeriveUnmeteredGrant`.
+- `unmetered-grant` — A derive pipeline declaring a shared-quota grant for any task other than `link_preview` raises `DeriveUnmeteredGrant`.
   *A-connector*
 - `metered-client` — A `link_preview` pipeline opening a socket outside the mediated client raises `DeriveMeteredClient`; every request it makes enters the run's request ledger.
   *A-connector*
@@ -188,6 +188,12 @@ Following a link a third party wrote: host and address guards, redirects, the he
   *A-connector*
 - `not-utf8` — A document declaring no character set and failing UTF-8 validation raises `DeriveBytesNotUtf8`; a character split at the byte bound is tolerated.
   *A-connector*
+- `head-rows` — A link preview lands one passage for non-empty head title or description and one passage per distinct advertised head image, each carrying the scrubbed page URL and each image its probe status.
+  *because the head and its image claims remain separately citable, including an image whose probe fails*
+
+#### Scenarios
+
+- `run.fetch.head-rows`: WHEN a page head declares a title, description and one image, THEN the output holds one text passage and one image passage with its probe status.
 
 ```mermaid
 flowchart LR
@@ -244,12 +250,18 @@ The derived row and marker, the unit status, attempt accounting, citation keys a
   *A-run*
 - `empty-document` — Only a WebVTT document whose blocks are its header, notes and styles establishes nothing to derive; empty output, or blocks none of which parse, lands `unavailable`.
 - `canceled-unit` — A unit whose chain a run stop interrupts lands no row and charges no attempt; the pull ends `Canceled` once {{run.cancel.child-reaped}}.
+- `output-modality` — A text passage extracted from a video parent carries `_modality` `text`, and an advertised image passage carries `image`, each under {{store.reserve.modality}}.
+  *A-run*
+- `local-content-key` — A local media unit's {{run.emit.derivation-key}} includes a SHA-256 digest of canonical file bytes, so changed bytes under an unchanged path reselect the unit.
+  *A-run*
+- `parent-tombstone` — A fold drops derived rows whose parent key is absent or tombstoned in the parent table, then rebuilds their sidecars.
+  *A-run*
 
-unsettled: What validated domain does `_modality` carry, and which value does a passage derived from a video row take? owner: derive affects: run.emit
+#### Scenarios
 
-unsettled: What reaps derived rows whose parent row is deleted upstream? owner: derive affects: run.emit
-
-unsettled: Does a local media file whose bytes change under an unchanged path derive its unit again? owner: derive affects: run.emit
+- `run.emit.output-modality`: WHEN a video parent yields a transcript passage and an advertised picture, THEN their output modalities are `text` and `image`.
+- `run.emit.local-content-key`: WHEN a local file changes bytes under the same path, THEN the next tick selects its unit under another key.
+- `run.emit.parent-tombstone`: WHEN a parent row is tombstoned, THEN the next fold drops its passages and rebuilds the affected sidecars.
 
 unsettled: Which single column identifies a derived row for a sidecar's `id_column`, given a derive table keys on three? owner: derive affects: run.emit
 
