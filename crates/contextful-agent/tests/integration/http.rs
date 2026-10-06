@@ -4,7 +4,7 @@
 //! per-request admission of short-lived bearers and of holder-bound credentials, each
 //! request under its own proof, the in-flight ceiling and concurrency.
 
-use contextful_agent::http::{audience, ceiling, read_request, Admitting, HttpFace, HttpRequest, Revocation};
+use contextful_agent::http::{audience, ceiling, read_request, Admitting, HttpFace, HttpRequest, HttpResponse, Revocation};
 use contextful_agent::mcp::Server;
 use contextful_context::land::{land, Batch, RunContext};
 use contextful_context::read::Face;
@@ -218,6 +218,37 @@ fn stdio_answer(f: &Fixture, token: &str, message: &Value) -> Value {
     let clock = FixedClock(at(NOW));
     let server = Server::new(&f.face, authority, &current, &clock, &f.audit).unwrap();
     server.handle(&message.to_string()).unwrap()
+}
+
+#[test]
+fn server_held_claim_route_admits_each_request_and_keeps_browser_and_mcp_writes_out() {
+    let f: &'static Fixture = Box::leak(Box::new(fixture()));
+    let clock: &'static FixedClock = Box::leak(Box::new(FixedClock(at(NOW))));
+    let admitting = Admitting { checkpoint: &f.checkpoint, audience: AUD, revocation: &no_revocation };
+    let write = |_: &HttpRequest, authority: &AdmittedAuthority, boundary: &dyn Fn() -> Result<(), AuthorityError>| {
+        boundary().unwrap();
+        HttpResponse::json(200, &json!({ "actor": authority.subject().on_behalf_of() }))
+    };
+    let write: &'static _ = Box::leak(Box::new(write));
+    let face = Box::leak(Box::new(HttpFace::new(&f.face, clock, &f.audit, admitting, Some(4)).unwrap().with_claim_write(write)));
+    let listener = TcpListener::bind("127.0.0.1:0").unwrap();
+    let addr = listener.local_addr().unwrap();
+    std::thread::spawn(move || face.serve(listener));
+    let token = credential(&f.signer, "research/*", 900, None);
+    let mut request = HttpRequest { method: "POST".into(), target: "/memory/claims".into(),
+        headers: vec![("Authorization".into(), format!("Bearer {token}"))], body: b"{}".to_vec() };
+    let (status, _, response) = send(addr, &request);
+    assert_eq!(status, 200);
+    assert_eq!(body(&response)["actor"], "user://dana@acme.example");
+    request.headers.push(("Origin".into(), "https://console.example".into()));
+    let (status, _, _) = send(addr, &request);
+    assert_eq!(status, 403);
+    request.headers.clear();
+    let (status, _, _) = send(addr, &request);
+    assert_eq!(status, 401);
+    let (status, _, response) = send(addr, &unproven(&call("memory.write", json!({})), "Bearer", &token));
+    assert_eq!(status, 200);
+    assert!(body(&response).to_string().contains("no tool"));
 }
 
 /// `contextful serve --http <addr> --audience <aud> --max-in-flight <n>` answers MCP Streamable HTTP at `POST /mcp`: one JSON-RPC message per request, answered as `application/json` by the tool server the stdio transport runs.
