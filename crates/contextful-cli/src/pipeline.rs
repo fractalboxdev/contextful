@@ -506,8 +506,10 @@ pub fn run(cmd: PipelineCmd, tasks: &Tasks) -> Result<()> {
             let models = contextful_core::pipeline::model::collect_models(&files, &declared)?;
             let model_ids: std::collections::BTreeSet<&str> = models.iter().map(|m| m.spec.id.as_str()).collect();
             for m in &models {
-                m.spec.validate().with_context(|| format!("{}:{}", m.file, m.line))?;
-                let reads = contextful_context::build::admit_statements(&m.spec, |t| tables.get(t).cloned())
+                let mut spec = m.spec.clone();
+                crate::model_source::resolve(&mut spec, &m.file).with_context(|| format!("{}:{}", m.file, m.line))?;
+                spec.validate().with_context(|| format!("{}:{}", m.file, m.line))?;
+                let reads = contextful_context::build::admit_statements(&spec, |t| tables.get(t).cloned())
                     .map_err(|(what, e)| anyhow::Error::from(e).context(format!("{}:{} {what}", m.file, m.line)))?;
                 for relation in reads.iter().filter(|name| !tables.contains_key(*name) && !model_ids.contains(name.as_str())) {
                     eprintln!("model `{}` reads `{relation}`, which no manifest declares; `build` resolves it against the store", m.spec.id);

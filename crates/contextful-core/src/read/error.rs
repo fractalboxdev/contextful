@@ -5,6 +5,7 @@
 //! names the refusal a caller greps for.
 
 use crate::enforce::EnforceError;
+use crate::disclosure::DisclosureError;
 use crate::memory::MemoryError;
 
 #[derive(Debug, Clone, PartialEq, Eq, thiserror::Error)]
@@ -91,6 +92,8 @@ impl ReadError {
 #[derive(Debug, Clone, PartialEq, Eq, thiserror::Error)]
 pub enum Refusal {
     #[error(transparent)]
+    Disclosure(#[from] DisclosureError),
+    #[error(transparent)]
     Read(#[from] ReadError),
     #[error(transparent)]
     Enforce(#[from] EnforceError),
@@ -102,6 +105,7 @@ impl Refusal {
     /// The error identifier.
     pub fn identifier(&self) -> &'static str {
         match self {
+            Refusal::Disclosure(e) => e.identifier(),
             Refusal::Read(e) => e.identifier(),
             Refusal::Enforce(e) => e.identifier(),
             Refusal::Memory(e) => e.identifier(),

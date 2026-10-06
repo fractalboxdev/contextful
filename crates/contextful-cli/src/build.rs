@@ -83,7 +83,11 @@ fn model(declaration: &Path, id: &str) -> Result<ModelSpec> {
     let pipelines = collect(&files)?;
     let models = collect_models(&files, &pipelines)?;
     match models.iter().find(|m| m.spec.id == id) {
-        Some(m) => Ok(m.spec.clone()),
+        Some(m) => {
+            let mut spec = m.spec.clone();
+            crate::model_source::resolve(&mut spec, &m.file)?;
+            Ok(spec)
+        },
         None => {
             let ids: Vec<&str> = models.iter().map(|m| m.spec.id.as_str()).collect();
             Err(RunError::ModelUndeclared(format!("no model `{id}` is declared; the declared models are [{}]", ids.join(", "))).into())

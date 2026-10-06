@@ -9,13 +9,13 @@ An unpinned clause is `committed`; a pinned one is `performed` when its Rust, Le
 | `authority` | 2 | 16 | 269 | 77 | 27 | 10 | 206 | 0 | 206 |
 | `connector` | 2 | 14 | 349 | 89 | 21 | 15 | 218 | 0 | 207 |
 | `corpus` | 1 | 10 | 79 | 37 | 7 | 0 | 40 | 0 | 40 |
-| `disclosure` | 3 | 16 | 122 | 64 | 13 | 7 | 54 | 0 | 54 |
+| `disclosure` | 3 | 16 | 134 | 66 | 13 | 3 | 63 | 0 | 63 |
 | `read` | 2 | 15 | 189 | 31 | 22 | 20 | 175 | 0 | 172 |
-| `run` | 3 | 26 | 373 | 98 | 36 | 37 | 261 | 0 | 261 |
+| `run` | 3 | 26 | 374 | 98 | 36 | 37 | 262 | 0 | 262 |
 | `store` | 1 | 17 | 237 | 55 | 13 | 20 | 200 | 0 | 200 |
 | `surface` | 2 | 20 | 106 | 49 | 22 | 0 | 51 | 0 | 51 |
 | `topology` | 1 | 6 | 70 | 24 | 5 | 5 | 38 | 0 | 38 |
-| **total** | 19 | 155 | 2027 | 583 | 188 | 128 | 1381 | 0 | |
+| **total** | 19 | 155 | 2040 | 585 | 188 | 124 | 1391 | 0 | |
 
 Decision records: 18.
 
@@ -29,7 +29,7 @@ A milestone reads `closed` when its acceptance test computes `passing` and every
 | 1 — The authority core | 14 | 238 | 186 | passing | closed |
 | 2 — The store | 9 | 164 | 132 | passing | closed |
 | 3 — The run path | 11 | 207 | 144 | passing | closed |
-| 4 — Ingest | 25 | 496 | 313 | passing | open |
+| 4 — Ingest | 25 | 497 | 314 | passing | open |
 | 5 — The read face under enforcement | 17 | 262 | 204 | passing | open |
 | 6 — Sync and replicas | 8 | 73 | 68 | passing | closed |
 | 7 — Memory | 6 | 37 | 37 | passing | closed |
@@ -38,7 +38,7 @@ A milestone reads `closed` when its acceptance test computes `passing` and every
 | 10 — Cadence and the operator plane | 11 | 68 | 56 | passing | open |
 | 11 — The derive tier | 7 | 78 | 55 | passing | open |
 | 12 — The operator console | 12 | 49 | 0 | open | open |
-| 13 — Disclosure | 5 | 21 | 4 | open | open |
+| 13 — Disclosure | 5 | 33 | 13 | open | open |
 | 14 — Assurance | 7 | 136 | 86 | passing | closed |
 
 Unscheduled operations: 10.
@@ -699,10 +699,19 @@ Unscheduled operations: 10.
 | `disclosure.record.unpersisted-wire` | `crates/contextful-agent/tests/integration/audit.rs::a_read_whose_entry_does_not_sync_releases_no_rows` | performed |
 | `disclosure.record.unsigned-tip` | `crates/contextful-policy/tests/integration/audit.rs::a_held_open_over_an_unsigned_tip_refuses_until_the_key_holder_anchors_it` | performed |
 | `disclosure.record.v0-chain` | `crates/contextful-policy/tests/integration/audit.rs::a_v0_chain_verifies_and_appends_under_v0_rules` | performed |
+| `disclosure.set-mode.aggregate-shape` | `crates/contextful-context/tests/integration/read/guard.rs::aggregate_shape_follows_the_engine_parse` | performed |
+| `disclosure.set-mode.check-verb` | `crates/contextful-cli/tests/integration/disclosure.rs::check_reports_each_published_model_refusal_by_name` | performed |
+| `disclosure.set-mode.model-unreadable` | `crates/contextful-cli/tests/integration/disclosure.rs::check_reads_sql_file_relative_to_its_manifest` | performed |
+| `disclosure.set-mode.offline-diagnostic` | `crates/contextful-cli/tests/integration/disclosure.rs::check_issues_no_object_store_request` | performed |
+| `disclosure.set-mode.opt-out-record` | `crates/contextful-core/tests/integration/pipeline/model.rs::a_disclosure_opt_out_requires_a_reason_and_no_policy` | performed |
+| `disclosure.set-mode.policy-absent` | `crates/contextful-cli/tests/integration/disclosure.rs::check_requires_policy_or_recorded_opt_out_for_aggregate_sql` | performed |
 | `disclosure.suppress.contributor-share` | `crates/contextful-core/tests/integration/disclosure/suppress.rs::contributor_share` | performed |
 | `disclosure.suppress.dominance-unverifiable` | `crates/contextful-core/tests/integration/disclosure/suppress.rs::dominance_unverifiable` | performed |
 | `disclosure.suppress.empty-policy` | `crates/contextful-core/tests/integration/disclosure/suppress.rs::empty_policy` | performed |
+| `disclosure.suppress.grouping-allowlist` | `crates/contextful-cli/tests/integration/disclosure.rs::check_rejects_empty_grouping_allowlist` | performed |
 | `disclosure.suppress.min-group-size` | `crates/contextful-core/tests/integration/disclosure/suppress.rs::min_group_size` | performed |
+| `disclosure.template.overfetch` | `crates/contextful-context/tests/integration/read/register.rs::a_capped_template_reads_one_probe_row_for_truncation` | performed |
+| `disclosure.template.single-statement` | `crates/contextful-context/tests/integration/read/guard.rs::a_template_with_two_statements_refuses_at_startup` | performed |
 | `read.cache.budget` | `crates/contextful-context/tests/integration/read/result_cache.rs::filling_past_the_budget_evicts_the_least_recently_used` | performed |
 | `read.cache.cache-is-opt-in` | `crates/contextful-context/tests/integration/read/result_cache.rs::only_opted_in_tables_that_are_not_private_cache_and_entries_expire` | performed |
 | `read.cache.change-misses` | `crates/contextful-context/tests/integration/read/pool.rs::every_change_to_the_whole_key_misses_and_reads_the_new_state` | performed |
@@ -1021,6 +1030,7 @@ Unscheduled operations: 10.
 | `run.model.model-id` | `crates/contextful-context/tests/integration/build.rs::a_model_id_naming_a_landed_table_is_refused` | performed |
 | `run.model.restricted-input` | `crates/contextful-context/tests/integration/build.rs::a_build_over_a_restricted_input_is_refused` | performed |
 | `run.model.sql` | `crates/contextful-context/tests/integration/build.rs::model_sql_is_admitted_over_store_tables` | performed |
+| `run.model.statement-source` | `crates/contextful-cli/tests/integration/build.rs::build_and_validate_read_a_local_model_statement_file` | performed |
 | `run.model.test-block` | `crates/contextful-context/tests/integration/build.rs::a_test_reads_the_staged_rows_beside_the_store_tables` | performed |
 | `run.model.test-failed` | `crates/contextful-context/tests/integration/build.rs::a_failing_test_refuses_the_build` | performed |
 | `run.model.top-level-block` | `crates/contextful-core/tests/integration/pipeline/model.rs::a_top_level_key_outside_the_manifest_blocks_is_refused` | performed |

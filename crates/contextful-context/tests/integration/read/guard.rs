@@ -211,6 +211,29 @@ fn template_checks_run_once_when_the_face_opens() {
     assert_eq!(r.face.templates().len(), 1);
 }
 
+// spec: disclosure.template.single-statement@383da38c
+#[test]
+fn a_template_with_two_statements_refuses_at_startup() {
+    for sql in ["SELECT 1; SELECT 2", "SELECT 1; DELETE FROM research_notes"] {
+        let tail = format!("[[query_templates]]\nid = \"two\"\nsql = \"{sql}\"\n");
+        let refused = refused_template(&tail);
+        assert!(refused.starts_with("DisclosureTemplateMultiStatement"), "{sql}: {refused}");
+    }
+}
+
+// spec: disclosure.set-mode.aggregate-shape@416f20f7
+#[test]
+fn aggregate_shape_follows_the_engine_parse() {
+    let shape = contextful_context::read::aggregate_shape;
+    assert!(shape("SELECT industry, count(*) FROM revenue GROUP BY industry").unwrap());
+    assert!(shape("SELECT sum(revenue) FROM revenue").unwrap());
+    assert!(shape("SELECT DISTINCT industry FROM revenue").unwrap());
+    assert!(!shape("SELECT lower(industry) FROM revenue").unwrap());
+    assert!(!shape("SELECT sum(revenue) OVER () FROM revenue").unwrap());
+    assert!(shape("DELETE FROM revenue").is_err());
+    assert!(shape("SELECT 1; SELECT 2").is_err());
+}
+
 /// Caller queries bind typed named or numbered placeholders; positional `?` refuses, and
 /// opt-in internals echo the validated bindings.
 // spec: read.guard.query-binding@06a8da63

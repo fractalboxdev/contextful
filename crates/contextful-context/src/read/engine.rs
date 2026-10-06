@@ -17,6 +17,7 @@ use duckdb::vscalar::{ScalarFunctionSignature, VScalar};
 use duckdb::vtab::arrow::WritableVector;
 use duckdb::{params_from_iter, Config, Connection};
 use serde_json::Value;
+use std::collections::BTreeSet;
 
 /// The engine's name, as the internals block reports it.
 pub const ENGINE: &str = "duckdb";
@@ -103,6 +104,13 @@ fn fault(e: duckdb::Error) -> ReadFault {
 }
 
 impl SqlEngine {
+    /// Aggregate function spellings in the engine's local catalog.
+    pub(crate) fn aggregate_functions(&self) -> Result<BTreeSet<String>, ReadFault> {
+        let mut statement = self.conn.prepare("SELECT DISTINCT lower(function_name) FROM duckdb_functions() WHERE function_type = 'aggregate'").map_err(fault)?;
+        let rows = statement.query_map([], |row| row.get(0)).map_err(fault)?;
+        rows.collect::<Result<_, _>>().map_err(fault)
+    }
+
     /// A connection loading no extension, installing none, with no relation registered.
     fn connect() -> Result<SqlEngine, ReadFault> {
         let config = Config::default()

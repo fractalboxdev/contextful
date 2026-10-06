@@ -311,12 +311,14 @@ The bulk-load source mode, its ceiling, its scope and the parity it guarantees.
 
 The `[[model]]` block: a table defined by SQL over store tables, its contract, freshness and tests, and the `build` verbs that materialize, publish and hold it.
 
-- `model-block` — A `[[model]]` block carries `id` and `sql`, plus the optional `materialized`, `unique_key`, `publish`, `[model.contract]`, `[model.freshness]` and `[[model.test]]`; an unknown key refuses as {{run.declare.spec-invalid}}.
+- `model-block` — A `[[model]]` block carries `id`, {{run.model.statement-source}}, optional `materialized`, `unique_key`, `publish`, `[model.contract]`, `[model.freshness]`, `[[model.test]]`, {{disclosure.release.model-policy}} and {{disclosure.set-mode.opt-out-record}}; an unknown key refuses as {{run.declare.spec-invalid}}.
   *A-run*
+- `statement-source` — A model declares exactly one of inline `sql` and `sql_file`; the latter reads UTF-8 text relative to the manifest containing the model.
+  *because a manifest-relative statement file keeps a model portable across project roots*
 - `top-level-block` — A manifest's top-level key outside the set the engine enumerates raises `PipelineUnknownBlock`, naming the key, the file and the accepted set.
   *because a misspelled block parses as nothing, and its declaration silently never runs*
 - `model-id` — A model's `id` names the store table it builds; an id declared twice, equal to a pipeline destination table, or naming a table a landing wrote refuses as {{run.declare.table-name-collision}}.
-- `sql` — `sql` is one read-only `SELECT` over store tables, admitted as {{read.guard.whole-tree-walk}} before any row is read; a model reads another model through the table its last build published.
+- `sql` — The selected model statement is one read-only `SELECT` over store tables, admitted as {{read.guard.whole-tree-walk}} before any row is read; a model reads another model through its last published table.
 - `validate-statements` — `pipeline validate` admits each model's `sql` and every test's statement as a build does, counting every relation but the model's own id in `sql` as registered, holds each declared input to {{run.model.restricted-input}}, and raises the error the build raises.
 - `validate-undeclared` — `pipeline validate` names on stderr each relation a model's `sql` or test reads that no manifest table, pipeline destination or model declares, and still validates the model; `build` resolves that relation against the store.
   *because a table landed without a manifest declaration is a legal input, while a misspelled name otherwise surfaces only at `build`*

@@ -9234,10 +9234,21 @@
       "operation": "model",
       "subject": "model-block",
       "kind": "behavior",
-      "statement": "A `[[model]]` block carries `id` and `sql`, plus the optional `materialized`, `unique_key`, `publish`, `[model.contract]`, `[model.freshness]` and `[[model.test]]`; an unknown key refuses as {{run.declare.spec-invalid}}.",
+      "statement": "A `[[model]]` block carries `id`, {{run.model.statement-source}}, optional `materialized`, `unique_key`, `publish`, `[model.contract]`, `[model.freshness]`, `[[model.test]]`, {{disclosure.release.model-policy}} and {{disclosure.set-mode.opt-out-record}}; an unknown key refuses as {{run.declare.spec-invalid}}.",
       "why": "A-run",
       "file": "spec/31-pipeline.md",
       "line": 314
+    },
+    {
+      "id": "run.model.statement-source",
+      "contract": "run",
+      "operation": "model",
+      "subject": "statement-source",
+      "kind": "behavior",
+      "statement": "A model declares exactly one of inline `sql` and `sql_file`; the latter reads UTF-8 text relative to the manifest containing the model.",
+      "why": "because a manifest-relative statement file keeps a model portable across project roots",
+      "file": "spec/31-pipeline.md",
+      "line": 316
     },
     {
       "id": "run.model.top-level-block",
@@ -9248,7 +9259,7 @@
       "statement": "A manifest's top-level key outside the set the engine enumerates raises `PipelineUnknownBlock`, naming the key, the file and the accepted set.",
       "why": "because a misspelled block parses as nothing, and its declaration silently never runs",
       "file": "spec/31-pipeline.md",
-      "line": 316
+      "line": 318
     },
     {
       "id": "run.model.model-id",
@@ -9259,7 +9270,7 @@
       "statement": "A model's `id` names the store table it builds; an id declared twice, equal to a pipeline destination table, or naming a table a landing wrote refuses as {{run.declare.table-name-collision}}.",
       "why": "",
       "file": "spec/31-pipeline.md",
-      "line": 318
+      "line": 320
     },
     {
       "id": "run.model.sql",
@@ -9267,10 +9278,10 @@
       "operation": "model",
       "subject": "sql",
       "kind": "behavior",
-      "statement": "`sql` is one read-only `SELECT` over store tables, admitted as {{read.guard.whole-tree-walk}} before any row is read; a model reads another model through the table its last build published.",
+      "statement": "The selected model statement is one read-only `SELECT` over store tables, admitted as {{read.guard.whole-tree-walk}} before any row is read; a model reads another model through its last published table.",
       "why": "",
       "file": "spec/31-pipeline.md",
-      "line": 319
+      "line": 321
     },
     {
       "id": "run.model.validate-statements",
@@ -9281,7 +9292,7 @@
       "statement": "`pipeline validate` admits each model's `sql` and every test's statement as a build does, counting every relation but the model's own id in `sql` as registered, holds each declared input to {{run.model.restricted-input}}, and raises the error the build raises.",
       "why": "",
       "file": "spec/31-pipeline.md",
-      "line": 320
+      "line": 322
     },
     {
       "id": "run.model.validate-undeclared",
@@ -9292,7 +9303,7 @@
       "statement": "`pipeline validate` names on stderr each relation a model's `sql` or test reads that no manifest table, pipeline destination or model declares, and still validates the model; `build` resolves that relation against the store.",
       "why": "because a table landed without a manifest declaration is a legal input, while a misspelled name otherwise surfaces only at `build`",
       "file": "spec/31-pipeline.md",
-      "line": 321
+      "line": 323
     },
     {
       "id": "run.model.restricted-input",
@@ -9303,7 +9314,7 @@
       "statement": "A build reading a table that declares `class`, `policy` or `visibility` raises `ModelInputRestricted`, naming the table and the declared keys.",
       "why": "because a build reads its inputs unmasked, so the model's table serves their withheld cells to every reader",
       "file": "spec/31-pipeline.md",
-      "line": 323
+      "line": 325
     },
     {
       "id": "run.model.materialized",
@@ -9314,7 +9325,7 @@
       "statement": "`materialized` is `table`, the default: each build replaces the model's rows whole.",
       "why": "",
       "file": "spec/31-pipeline.md",
-      "line": 325
+      "line": 327
     },
     {
       "id": "run.model.unique-key",
@@ -9325,7 +9336,7 @@
       "statement": "`unique_key` is the model's grain; a build whose rows repeat one grain value, or hold a null in a grain column, refuses as {{run.publish.contract-mismatch}}.",
       "why": "",
       "file": "spec/31-pipeline.md",
-      "line": 326
+      "line": 328
     },
     {
       "id": "run.model.contract-block",
@@ -9336,7 +9347,7 @@
       "statement": "`[model.contract]` declares `version`, a `<major>.<minor>.<patch>` string, and `columns`, each a `name`, a `type` spelled as {{store.reconcile.typed-landing}} reads it, and `nullable`, default true.",
       "why": "",
       "file": "spec/31-pipeline.md",
-      "line": 327
+      "line": 329
     },
     {
       "id": "run.model.contract-required",
@@ -9347,7 +9358,7 @@
       "statement": "A model whose `publish` is true, the default, and which declares no `[model.contract]` raises `ModelContractUndeclared` at validation.",
       "why": "because a published table without a declared contract has no identity a reader can pin against",
       "file": "spec/31-pipeline.md",
-      "line": 328
+      "line": 330
     },
     {
       "id": "run.model.unpublished",
@@ -9358,7 +9369,7 @@
       "statement": "A model declaring `publish = false` commits its rows with no manifest section, so no build entry, hold or contract history names it.",
       "why": "",
       "file": "spec/31-pipeline.md",
-      "line": 330
+      "line": 332
     },
     {
       "id": "run.model.contract-major",
@@ -9369,7 +9380,7 @@
       "statement": "A build whose schema fingerprint differs from the last published build's under an unchanged major version refuses as {{run.publish.contract-mismatch}}, naming the version to bump.",
       "why": "",
       "file": "spec/31-pipeline.md",
-      "line": 331
+      "line": 333
     },
     {
       "id": "run.model.injected-columns",
@@ -9380,7 +9391,7 @@
       "statement": "A build lands `_ingested_at` as its start instant, `_run_id` as its build id, `_row_seq` as the row's position, `_commit_seq` as its commit's value and `_site_id`, replacing any injected column the SQL selects; `semantics_version` is 2.",
       "why": "",
       "file": "spec/31-pipeline.md",
-      "line": 332
+      "line": 334
     },
     {
       "id": "run.model.freshness-block",
@@ -9391,7 +9402,7 @@
       "statement": "`[model.freshness]` declares `max_lag` as an integer followed by `s`, `m`, `h` or `d`; a model declaring none publishes a null `max_lag` and never computes stale.",
       "why": "",
       "file": "spec/31-pipeline.md",
-      "line": 333
+      "line": 335
     },
     {
       "id": "run.model.test-block",
@@ -9402,7 +9413,7 @@
       "statement": "A `[[model.test]]` carries a `name` and one `SELECT` over the staged rows, registered under the model's id, and the store's tables; a test returning any row fails.",
       "why": "",
       "file": "spec/31-pipeline.md",
-      "line": 334
+      "line": 336
     },
     {
       "id": "run.model.test-failed",
@@ -9413,7 +9424,7 @@
       "statement": "A failing test raises `ModelTestFailed`, naming the test and its row count; the build publishes nothing.",
       "why": "because a test exists to stop a build before readers trust it",
       "file": "spec/31-pipeline.md",
-      "line": 335,
+      "line": 337,
       "scenarios": [
         "WHEN a test `SELECT * FROM daily WHERE n < 0` returns 2 rows, THEN the build raises `ModelTestFailed` naming the test and 2, and `daily` reads its prior build."
       ]
@@ -9427,7 +9438,7 @@
       "statement": "`contextful build <model>` materializes the model into staging, checks its contract, runs its tests, then commits; `--json` prints the build id, row count and watermark.",
       "why": "",
       "file": "spec/31-pipeline.md",
-      "line": 337
+      "line": 339
     },
     {
       "id": "run.model.unknown-model",
@@ -9438,7 +9449,7 @@
       "statement": "`build` naming no declared model raises `ModelUndeclared`, naming the declared models.",
       "why": "because a build of a misspelled id otherwise reports nothing to do",
       "file": "spec/31-pipeline.md",
-      "line": 338
+      "line": 340
     },
     {
       "id": "run.model.build-id",
@@ -9449,7 +9460,7 @@
       "statement": "A build's id is the snapshot id it publishes.",
       "why": "A-run",
       "file": "spec/31-pipeline.md",
-      "line": 340
+      "line": 342
     },
     {
       "id": "run.model.watermark",
@@ -9460,7 +9471,7 @@
       "statement": "A build's watermark is `{at, inputs}`: per input table the snapshot id and the committed runs it omits, and `at` the newest commit instant among them.",
       "why": "",
       "file": "spec/31-pipeline.md",
-      "line": 342
+      "line": 344
     },
     {
       "id": "run.model.hold-verb",
@@ -9471,7 +9482,7 @@
       "statement": "`build hold --for <n>[smhd] <model> <build>` commits a hold until now plus the duration and prints `Held`, or `Renewed` over an unexpired hold; `--json` prints the receipt as an object.",
       "why": "",
       "file": "spec/31-pipeline.md",
-      "line": 343,
+      "line": 345,
       "scenarios": [
         "WHEN `build hold --for 7d daily <build>` runs twice, THEN the first prints `Held` and the second `Renewed`, each with the new expiry."
       ]
@@ -9485,7 +9496,7 @@
       "statement": "A hold naming a build no committed manifest of the model records raises `ModelBuildUnknown`.",
       "why": "because a hold on a build that does not exist protects nothing and reads as protection",
       "file": "spec/31-pipeline.md",
-      "line": 344
+      "line": 346
     },
     {
       "id": "run.model.hold-manifest",
@@ -9496,7 +9507,7 @@
       "statement": "A hold commits as the hold manifest `holds/<build id>.json` in the model's table directory, replacing any earlier hold on that build.",
       "why": "A-run",
       "file": "spec/31-pipeline.md",
-      "line": 346
+      "line": 348
     },
     {
       "id": "run.model.log-regeneration",
@@ -9507,7 +9518,7 @@
       "statement": "The history logs sit in the model's table directory; each build and hold rewrites them, replacing an entry a manifest disagrees with and keeping entries of collected builds.",
       "why": "",
       "file": "spec/31-pipeline.md",
-      "line": 348
+      "line": 350
     },
     {
       "id": "run.publish.manifest-commit",
@@ -9518,7 +9529,7 @@
       "statement": "A published table's contract identity, freshness and current build ride the snapshot manifest commit that publishes its data; no separate file is authoritative for any of them.",
       "why": "because separately written artifacts make a torn publication representable",
       "file": "spec/31-pipeline.md",
-      "line": 369
+      "line": 371
     },
     {
       "id": "run.publish.contract-identity",
@@ -9529,7 +9540,7 @@
       "statement": "A published table's identity is `contract_version` beside `schema_fingerprint`, taken over the declared columns, their types and the grain.",
       "why": "",
       "file": "spec/31-pipeline.md",
-      "line": 371
+      "line": 373
     },
     {
       "id": "run.publish.contract-mismatch",
@@ -9540,7 +9551,7 @@
       "statement": "A materialization whose columns, types or grain miss the declared contract raises `PipelineContractMismatch`, naming the column and the expectation.",
       "why": "P4",
       "file": "spec/31-pipeline.md",
-      "line": 372
+      "line": 374
     },
     {
       "id": "run.publish.staging",
@@ -9551,7 +9562,7 @@
       "statement": "A build materializes into staging and publishes through {{run.publish.manifest-commit}}; a refused build leaves the last published state serving.",
       "why": "P4",
       "file": "spec/31-pipeline.md",
-      "line": 374
+      "line": 376
     },
     {
       "id": "run.publish.history-logs",
@@ -9562,7 +9573,7 @@
       "statement": "`contract-history.jsonl`, `builds.jsonl` and `holds.jsonl` are append-only history derived from committed manifests; a log disagreeing with a manifest is regenerated from it.",
       "why": "",
       "file": "spec/31-pipeline.md",
-      "line": 376
+      "line": 378
     },
     {
       "id": "run.publish.build-entry",
@@ -9573,7 +9584,7 @@
       "statement": "A build entry carries build id, start and completion instants, a status of published, refused or partial, the contract identity, and the partition values it left unfilled.",
       "why": "",
       "file": "spec/31-pipeline.md",
-      "line": 377
+      "line": 379
     },
     {
       "id": "run.publish.freshness",
@@ -9584,7 +9595,7 @@
       "statement": "Freshness carries the newest publishing build id, its watermark, `max_lag`, the last build status and a withheld-cells flag; staleness is derived from watermark against `max_lag` and never stored.",
       "why": "",
       "file": "spec/31-pipeline.md",
-      "line": 378
+      "line": 380
     },
     {
       "id": "run.publish.hold",
@@ -9595,7 +9606,7 @@
       "statement": "A hold records build id, placing principal and expiry; collection skips a held build, and a hold confers no other authority.",
       "why": "",
       "file": "spec/31-pipeline.md",
-      "line": 379
+      "line": 381
     },
     {
       "id": "run.publish.manifest-section",
@@ -9606,7 +9617,7 @@
       "statement": "The manifest section carries `{contract_version, schema_fingerprint, build_id, build_started_at, last_built_at, watermark, max_lag, last_build_status, withheld_cells, disclosure_digest, partitions_failed?, semantics_version?, fingerprint_recipe?}` of the newest publishing build; `watermark` maps each input table to its snapshot and omitted runs.",
       "why": "",
       "file": "spec/31-pipeline.md",
-      "line": 380
+      "line": 382
     },
     {
       "id": "run.publish.semantics-version",
@@ -9617,7 +9628,7 @@
       "statement": "`semantics_version` advances when the engine adds an injected column, and `fingerprint_recipe` names the fingerprint's inputs, that column included.",
       "why": "",
       "file": "spec/31-pipeline.md",
-      "line": 381
+      "line": 383
     },
     {
       "id": "run.publish.disclosure-digest",
@@ -9628,7 +9639,7 @@
       "statement": "A build records a digest over the `class`, `policy` and `visibility` its table declares, set-valued fields sorted, in the manifest and the build log, and sets `withheld_cells` when any is declared.",
       "why": "",
       "file": "spec/31-pipeline.md",
-      "line": 382
+      "line": 384
     },
     {
       "id": "run.select.required-key",
@@ -17833,6 +17844,17 @@
       "line": 164
     },
     {
+      "id": "disclosure.set-mode.check-verb",
+      "contract": "disclosure",
+      "operation": "set-mode",
+      "subject": "check-verb",
+      "kind": "behavior",
+      "statement": "`contextful disclosure check --config <path>` diagnoses each published model's disclosure policy and statement from local files and reports every refusal by model name.",
+      "why": "A-disclosure",
+      "file": "spec/61-disclosure.md",
+      "line": 39
+    },
+    {
       "id": "disclosure.set-mode.offline-diagnostic",
       "contract": "disclosure",
       "operation": "set-mode",
@@ -17841,7 +17863,18 @@
       "statement": "The single-operator diagnostic reads the manifest and each published model's statement text from local disk and issues 0 requests to the object store.",
       "why": "",
       "file": "spec/61-disclosure.md",
-      "line": 39
+      "line": 41
+    },
+    {
+      "id": "disclosure.set-mode.aggregate-shape",
+      "contract": "disclosure",
+      "operation": "set-mode",
+      "subject": "aggregate-shape",
+      "kind": "behavior",
+      "statement": "A statement is aggregate-shaped when its parsed SELECT groups rows, has DISTINCT or HAVING, or calls an aggregate catalog function outside a window expression.",
+      "why": "A-disclosure",
+      "file": "spec/61-disclosure.md",
+      "line": 42
     },
     {
       "id": "disclosure.set-mode.policy-absent",
@@ -17849,10 +17882,21 @@
       "operation": "set-mode",
       "subject": "policy-absent",
       "kind": "refusal",
-      "statement": "A published aggregate-shaped model carrying neither a disclosure policy nor a recorded opt-out fails the diagnostic with `DisclosurePolicyAbsent`.",
+      "statement": "A published model matching {{disclosure.set-mode.aggregate-shape}} and carrying neither a disclosure policy nor a recorded opt-out fails the diagnostic with `DisclosurePolicyAbsent`.",
       "why": "A-disclosure",
       "file": "spec/61-disclosure.md",
-      "line": 40
+      "line": 44
+    },
+    {
+      "id": "disclosure.set-mode.opt-out-record",
+      "contract": "disclosure",
+      "operation": "set-mode",
+      "subject": "opt-out-record",
+      "kind": "behavior",
+      "statement": "A model records an opt-out as a nonempty `disclosure_opt_out` reason; combining it with `[model.disclosure]` raises {{run.declare.spec-invalid}}.",
+      "why": "A-disclosure",
+      "file": "spec/61-disclosure.md",
+      "line": 46
     },
     {
       "id": "disclosure.set-mode.model-unreadable",
@@ -17860,10 +17904,10 @@
       "operation": "set-mode",
       "subject": "model-unreadable",
       "kind": "refusal",
-      "statement": "A published model whose referenced statement text does not read raises `DisclosureModelUnreadable`.",
+      "statement": "A published model whose `sql_file` under {{run.model.statement-source}} does not read raises `DisclosureModelUnreadable`.",
       "why": "A-disclosure",
       "file": "spec/61-disclosure.md",
-      "line": 42
+      "line": 48
     },
     {
       "id": "disclosure.set-mode.clean-room-preconditions",
@@ -17874,7 +17918,7 @@
       "statement": "A cross-owner store carries per-owner signed manifest subtrees, per-owner write prefixes enforced by the object store's access policy, and per-owner signing keys; one missing, checked before any cross-prefix write, raises `DisclosureCleanRoomPreconditionUnmet`.",
       "why": "A-disclosure",
       "file": "spec/61-disclosure.md",
-      "line": 44
+      "line": 50
     },
     {
       "id": "disclosure.set-mode.hashed-join",
@@ -17885,7 +17929,40 @@
       "statement": "Two owners match on a key each hashes at write time under a per-pair pepper re-randomized per join; matched rows leave as an aggregate under a group-size floor. A static pepper raises `DisclosureStaticPepper`.",
       "why": "A-disclosure",
       "file": "spec/61-disclosure.md",
-      "line": 46
+      "line": 52
+    },
+    {
+      "id": "disclosure.set-mode.pepper-version",
+      "contract": "disclosure",
+      "operation": "set-mode",
+      "subject": "pepper-version",
+      "kind": "behavior",
+      "statement": "A cross-owner join accepts only rows carrying its pair's current pepper version; rotation re-lands both owners' join keys before the next release.",
+      "why": "A-disclosure",
+      "file": "spec/61-disclosure.md",
+      "line": 54
+    },
+    {
+      "id": "disclosure.release.model-policy",
+      "contract": "disclosure",
+      "operation": "release",
+      "subject": "model-policy",
+      "kind": "behavior",
+      "statement": "A published {{run.model.model-block}} governed by aggregate disclosure declares `[model.disclosure]`; `metric_bounds` names each noised sum's lower bound, upper bound and quantum.",
+      "why": "A-disclosure",
+      "file": "spec/61-disclosure.md",
+      "line": 61
+    },
+    {
+      "id": "disclosure.release.release-verb",
+      "contract": "disclosure",
+      "operation": "release",
+      "subject": "release-verb",
+      "kind": "behavior",
+      "statement": "`contextful disclosure release <model> --project <project>` builds the named model from its declared statement, applies its disclosure policy, and publishes one derived table.",
+      "why": "A-disclosure",
+      "file": "spec/61-disclosure.md",
+      "line": 63
     },
     {
       "id": "disclosure.release.budget-reservation",
@@ -17896,7 +17973,51 @@
       "statement": "Before computing, a release reserves each contributing unit's declared per-run spend against its lifetime cap in one catalog transaction. A failed reservation raises `DisclosureUnitBudgetExhausted`, and the release publishes nothing.",
       "why": "A-disclosure",
       "file": "spec/61-disclosure.md",
-      "line": 55
+      "line": 65
+    },
+    {
+      "id": "disclosure.release.noise-mechanism",
+      "contract": "disclosure",
+      "operation": "release",
+      "subject": "noise-mechanism",
+      "kind": "behavior",
+      "statement": "A noised release draws exact two-sided geometric noise scaled to each statistic's sensitivity for distinct-contributor counts and fixed-point sums; the per-run epsilon is divided among released statistics.",
+      "why": "A-disclosure",
+      "file": "spec/61-disclosure.md",
+      "line": 67
+    },
+    {
+      "id": "disclosure.release.metric-bounds",
+      "contract": "disclosure",
+      "operation": "release",
+      "subject": "metric-bounds",
+      "kind": "refusal",
+      "statement": "A noised sum folds each contributor to one value, clips that total to declared finite bounds and rounds it to a positive quantum; absent bounds or quantum raise `DisclosureMetricBoundsAbsent`.",
+      "why": "A-disclosure",
+      "file": "spec/61-disclosure.md",
+      "line": 69
+    },
+    {
+      "id": "disclosure.release.release-envelope",
+      "contract": "disclosure",
+      "operation": "release",
+      "subject": "release-envelope",
+      "kind": "behavior",
+      "statement": "A release reports its published table, policy hash, reserved per-run spend, suppressed-group presence and row count without carrying a contributor key.",
+      "why": "A-disclosure",
+      "file": "spec/61-disclosure.md",
+      "line": 71
+    },
+    {
+      "id": "disclosure.release.lookalike-refusal",
+      "contract": "disclosure",
+      "operation": "release",
+      "subject": "lookalike-refusal",
+      "kind": "refusal",
+      "statement": "A release requesting an activation handle or lookalike segment raises `DisclosureLookalikeUnsupported` and publishes nothing.",
+      "why": "A-disclosure",
+      "file": "spec/61-disclosure.md",
+      "line": 73
     },
     {
       "id": "disclosure.release.duplicate-grain",
@@ -17907,7 +18028,7 @@
       "statement": "A non-numeric, non-grain column rides the grouping, and one not constant within its group raises `DisclosureDuplicateGrain`.",
       "why": "A-disclosure",
       "file": "spec/61-disclosure.md",
-      "line": 57
+      "line": 75
     },
     {
       "id": "disclosure.release.group-key",
@@ -17918,7 +18039,7 @@
       "statement": "A group key not a subset of the permitted grouping columns raises `DisclosureGroupKeyNotPermitted`.",
       "why": "A-disclosure",
       "file": "spec/61-disclosure.md",
-      "line": 59
+      "line": 77
     },
     {
       "id": "disclosure.release.contributor-key",
@@ -17929,7 +18050,7 @@
       "statement": "A governed statement omitting the contributor key raises `DisclosureContributorKeyAbsent`.",
       "why": "A-disclosure",
       "file": "spec/61-disclosure.md",
-      "line": 61
+      "line": 79
     },
     {
       "id": "disclosure.release.forbidden-column",
@@ -17940,7 +18061,7 @@
       "statement": "A contract declaring a forbidden column, or a materialization producing one, raises `DisclosureForbiddenColumnPublished`. The check runs after the contributor key leaves the published columns.",
       "why": "A-disclosure",
       "file": "spec/61-disclosure.md",
-      "line": 63
+      "line": 81
     },
     {
       "id": "disclosure.suppress.min-group-size",
@@ -17951,7 +18072,7 @@
       "statement": "`min_group_size` counts distinct contributors and is at least 2 subjects. A group whose noised distinct-contributor count falls under it is suppressed, and a smaller declared value raises `DisclosureMinGroupSizeBelowFloor`.",
       "why": "A-disclosure",
       "file": "spec/61-disclosure.md",
-      "line": 76
+      "line": 88
     },
     {
       "id": "disclosure.suppress.contributor-share",
@@ -17962,7 +18083,7 @@
       "statement": "`max_contributor_share` lies above 0 percent and at most 100 percent of a group's sign-insensitive metric mass; a value outside raises `DisclosureShareOutOfRange`.",
       "why": "A-disclosure",
       "file": "spec/61-disclosure.md",
-      "line": 78
+      "line": 90
     },
     {
       "id": "disclosure.suppress.dominance-unverifiable",
@@ -17973,7 +18094,7 @@
       "statement": "A group under a share constraint whose per-contributor masses are unavailable raises `DisclosureDominanceUnverifiable` and is suppressed.",
       "why": "A-disclosure",
       "file": "spec/61-disclosure.md",
-      "line": 80
+      "line": 92
     },
     {
       "id": "disclosure.suppress.empty-policy",
@@ -17984,7 +18105,7 @@
       "statement": "A policy setting neither threshold, or only a share ceiling at a whole group's mass, raises `DisclosurePolicySuppressesNothing`.",
       "why": "A-disclosure",
       "file": "spec/61-disclosure.md",
-      "line": 82
+      "line": 94
     },
     {
       "id": "disclosure.suppress.grouping-allowlist",
@@ -17995,7 +18116,18 @@
       "statement": "An empty permitted-grouping list, or a permitted name that is not column-shaped, raises `DisclosureGroupingAllowlistEmpty`.",
       "why": "A-disclosure",
       "file": "spec/61-disclosure.md",
-      "line": 84
+      "line": 96
+    },
+    {
+      "id": "disclosure.suppress.sentinel-row",
+      "contract": "disclosure",
+      "operation": "suppress",
+      "subject": "sentinel-row",
+      "kind": "behavior",
+      "statement": "A release with `emit_sentinel = true` represents every suppressed group together as one `__suppressed__` row carrying no group key or exact figure.",
+      "why": "A-disclosure",
+      "file": "spec/61-disclosure.md",
+      "line": 98
     },
     {
       "id": "disclosure.template.single-statement",
@@ -18006,7 +18138,7 @@
       "statement": "A declaration holding more than one statement raises `DisclosureTemplateMultiStatement`.",
       "why": "A-authority",
       "file": "spec/61-disclosure.md",
-      "line": 106
+      "line": 120
     },
     {
       "id": "disclosure.template.overfetch",
@@ -18017,7 +18149,18 @@
       "statement": "A capped result sets the envelope's truncation flag by reading exactly 1 rows past the effective ceiling.",
       "why": "",
       "file": "spec/61-disclosure.md",
-      "line": 108
+      "line": 122
+    },
+    {
+      "id": "disclosure.template.read-envelope",
+      "contract": "disclosure",
+      "operation": "template",
+      "subject": "read-envelope",
+      "kind": "behavior",
+      "statement": "A template read returns rows, truncation, row ceiling, suppression presence and the disclosure policy hash; set-valued policy fields follow {{run.publish.disclosure-digest}} at every nesting depth.",
+      "why": "A-disclosure",
+      "file": "spec/61-disclosure.md",
+      "line": 123
     },
     {
       "id": "disclosure.bound-cohort.cohort-widening",
@@ -18028,7 +18171,7 @@
       "statement": "A read recovering an under-floor group by merging it into a coarser key raises `DisclosureCohortWidening`.",
       "why": "A-disclosure",
       "file": "spec/61-disclosure.md",
-      "line": 114
+      "line": 130
     },
     {
       "id": "disclosure.bound-cohort.per-individual-row",
@@ -18039,7 +18182,7 @@
       "statement": "Reading a per-individual row from a cohort table without an explicit grant on the reader's token raises `DisclosurePerIndividualUngranted`.",
       "why": "A-disclosure",
       "file": "spec/61-disclosure.md",
-      "line": 116
+      "line": 132
     },
     {
       "id": "disclosure.bound-cohort.singleton-cohort",
@@ -18050,7 +18193,7 @@
       "statement": "A cohort key whose grain resolves to one person raises `DisclosureSingletonCohort` at declaration, before any row lands under it.",
       "why": "A-disclosure",
       "file": "spec/61-disclosure.md",
-      "line": 118
+      "line": 134
     },
     {
       "id": "disclosure.bound-cohort.exact-figures",
@@ -18061,7 +18204,7 @@
       "statement": "A policy declaring `figures = \"exact\"` on a `per-person` table raises `DisclosureExactPerPerson`. `figures` defaults to `\"noised\"`, and exact figures publish only from a `cohort` table.",
       "why": "A-disclosure",
       "file": "spec/61-disclosure.md",
-      "line": 120
+      "line": 136
     },
     {
       "id": "disclosure.record.segment",
@@ -23385,6 +23528,18 @@
     ],
     [
       "run.model.model-block",
+      "run.model.statement-source"
+    ],
+    [
+      "run.model.model-block",
+      "disclosure.release.model-policy"
+    ],
+    [
+      "run.model.model-block",
+      "disclosure.set-mode.opt-out-record"
+    ],
+    [
+      "run.model.model-block",
       "run.declare.spec-invalid"
     ],
     [
@@ -23834,6 +23989,26 @@
     [
       "disclosure.reach.semi-join",
       "authority.compose.relation-order"
+    ],
+    [
+      "disclosure.set-mode.policy-absent",
+      "disclosure.set-mode.aggregate-shape"
+    ],
+    [
+      "disclosure.set-mode.opt-out-record",
+      "run.declare.spec-invalid"
+    ],
+    [
+      "disclosure.set-mode.model-unreadable",
+      "run.model.statement-source"
+    ],
+    [
+      "disclosure.release.model-policy",
+      "run.model.model-block"
+    ],
+    [
+      "disclosure.template.read-envelope",
+      "run.publish.disclosure-digest"
     ],
     [
       "disclosure.record.header-unsupported",
@@ -26572,6 +26747,14 @@
           "DisclosureGroupingAllowlistEmpty": {
             "clause": "disclosure.suppress.grouping-allowlist",
             "gloss": "A grouping allowlist is empty or names a non-column."
+          },
+          "DisclosureLookalikeUnsupported": {
+            "clause": "disclosure.release.lookalike-refusal",
+            "gloss": "A release requests an activation handle or lookalike segment."
+          },
+          "DisclosureMetricBoundsAbsent": {
+            "clause": "disclosure.release.metric-bounds",
+            "gloss": "A noised sum has no finite contributor bounds or positive quantum."
           },
           "DisclosureMinGroupSizeBelowFloor": {
             "clause": "disclosure.suppress.min-group-size",

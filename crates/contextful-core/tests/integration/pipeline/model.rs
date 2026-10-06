@@ -35,6 +35,39 @@ fn model(text: &str) -> ModelSpec {
     models(text).unwrap().remove(0)
 }
 
+#[test]
+fn a_model_reads_its_disclosure_declaration() {
+    let m = model(&model_doc("[model.disclosure]\ngrouping_allowlist = [\"industry\"]\ncontributor_key = \"tenant_id\"\nmin_group_size = 3\n[model.disclosure.metric_bounds]\nrevenue = { lower = 0, upper = 100, quantum = 1 }\n"));
+    let policy = m.disclosure.unwrap();
+    assert_eq!(policy.grouping_allowlist, ["industry"]);
+    assert_eq!(policy.min_group_size, Some(3));
+    assert_eq!(policy.metric_bounds["revenue"].quantum, 1.0);
+}
+
+#[test]
+fn a_model_declares_a_local_statement_file_or_inline_sql() {
+    let m = model("[[model]]\nid = \"daily\"\nsql_file = \"daily.sql\"\ndisclosure_opt_out = \"internal rollup\"\n[model.contract]\nversion = \"1.0.0\"\ncolumns = [{ name = \"day\", type = \"utf8\" }, { name = \"n\", type = \"int64\" }]\n");
+    assert_eq!(m.sql_file.as_deref(), Some("daily.sql"));
+    assert_eq!(m.disclosure_opt_out.as_deref(), Some("internal rollup"));
+    assert!(m.validate().is_ok());
+    assert!(models(&model_doc("sql_file = \"daily.sql\"\n")).unwrap().remove(0).validate().is_err());
+    assert!(models(&model_doc("sql_file = \"  \"\n")).unwrap().remove(0).validate().is_err());
+}
+
+#[test]
+fn a_model_refuses_an_absolute_statement_file() {
+    let m = model("[[model]]\nid = \"daily\"\nsql_file = \"/tmp/daily.sql\"\n");
+    assert!(m.validate_statement_source().is_err());
+}
+
+// spec: disclosure.set-mode.opt-out-record@ccf54f2d
+#[test]
+fn a_disclosure_opt_out_requires_a_reason_and_no_policy() {
+    assert!(model(&model_doc("disclosure_opt_out = \"internal rollup\"\n")).validate().is_ok());
+    assert!(model(&model_doc("disclosure_opt_out = \"  \"\n")).validate().is_err());
+    assert!(model(&model_doc("disclosure_opt_out = \"internal rollup\"\n[model.disclosure]\ngrouping_allowlist = [\"day\"]\ncontributor_key = \"tenant\"\nmin_group_size = 3\n")).validate().is_err());
+}
+
 fn section(build: &str, version: &str, fingerprint: &str, built: &str) -> PublishSection {
     PublishSection {
         contract_version: version.into(),
@@ -77,8 +110,8 @@ fn snapshot(created: &str, parent: Option<&SnapshotId>, publish: Option<PublishS
     }
 }
 
-/// A `[[model]]` block carries `id` and `sql`, plus the optional `materialized`, `unique_key`, `publish`, `[model.contract]`, `[model.freshness]` and `[[model.test]]`; an unknown key refuses as {{run.declare.spec-invalid}}.
-// spec: run.model.model-block@30c2268e
+/// A model block carries its required identity and declared source, with no unknown key.
+// spec: run.model.model-block@aeb44362
 #[test]
 fn a_model_block_carries_its_keys_and_refuses_an_unknown_one() {
     let m = model(&model_doc(

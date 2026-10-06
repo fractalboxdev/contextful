@@ -176,8 +176,6 @@ Acceptance: `contextful_acceptance::m12::m12_console`
 
 Reach: Two parties compare against a benchmark neither can invert.
 
-Depth: operation
-
 Acceptance: `contextful_acceptance::m13::m13_disclosure`
 
 ## 14 — Assurance
