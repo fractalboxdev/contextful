@@ -16,13 +16,13 @@ Files never change once written ({{store.lay-out.immutable-files}}). A write add
 
 A read resolves an explicit sorted file list from the pointer and the manifests, never a glob ({{store.reconcile.explicit-file-list}}). An unkeyed table reads as the union of its committed runs ({{store.declare.unkeyed-union}}); a keyed table reads through a view that keeps one survivor per key ({{store.declare.dedup-view}}), picked by `order_by` ({{store.declare.order-by-default}}). Schemas grow additively: a new column joins and older files read it as null ({{store.reconcile.additive}}). The type lattice admits one promotion ({{store.reconcile.lattice}}), and any other clash refuses at the write ({{store.reconcile.incompatible}}). A source with mixed scalar kinds uses {{store.reconcile.variant}}.
 
-A complete empty replacement marks a frontier with no files ({{store.declare.empty-replacement}}).
+An empty replacement marks a fileless frontier ({{store.declare.empty-replacement}}).
 
 Runs accumulate until a fold compacts them. A pass writes Parquet and every sidecar into staging ({{store.fold.pass}}), then publishes by replacing `_pointer.json` conditioned on the ETag it read at the start ({{store.fold.pointer-commit}}). Readers see a snapshot and its sidecars together or not at all ({{store.fold.partial-snapshot}}), and a statement in flight keeps the snapshot it started on ({{store.fold.non-blocking}}).
 
 A table's {{store.declare.retain-rows}} declaration gives rows an age limit. Reads enforce the cutoff at the statement ({{store.bound-time.row-age-cutoff}}), and a fold omits expired rows from the next snapshot ({{store.fold.row-retention}}). The pass reports its cutoff, expired rows, dropped partitions and collected directories ({{store.fold.row-retention-report}}).
 
-The catalogs have distinct lifetimes: `derived.sqlite` rebuilds from the tree ({{store.lay-out.derived-catalog}}); `machine.sqlite` keeps machine-local journal, cursors and leases ({{store.lay-out.machine-catalog}}). Both sit behind ports ({{store.lay-out.catalog-ports}}).
+Catalog lifetimes differ: `derived.sqlite` rebuilds from the tree ({{store.lay-out.derived-catalog}}); `machine.sqlite` keeps machine-local journal, cursors and leases ({{store.lay-out.machine-catalog}}). Both use ports ({{store.lay-out.catalog-ports}}).
 
 A bucket mirrors the tree. A push uploads changed files, commits the bucket manifest by compare-and-set, and re-merges a lost race within a bound ({{store.merge.retries}}). A pull checks every digest ({{store.pull.digest-mismatch}}), refuses a different store identity ({{store.pull.identity-conflict}}), and writes no pointer unless it converges ({{store.pull.unconverged}}). Leases keep writers apart, with a fence storage checks on commit ({{store.lease.stale-fence}}). A replica is read-only ({{store.replicate.write-refused}}) and holds a snapshot whole or not at all ({{store.replicate.partial-parquet}}).
 
