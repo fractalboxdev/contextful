@@ -89,11 +89,11 @@ Revisit: the declaration grammar gains a per-vendor allowed-origin set; proxy-on
 
 ## Credentials are references, workload identity is the default, and leases lead
 
-Declarations carry names, stores carry opaque bytes, connectors carry provider know-how, and the engine holds the shortest-lived material the deployment mints. A `connector.reference` template accepts only `${secret://<name>}` placeholders; `connector.record` puts grants, account or tenancy, creation, expiry and rotation location above every encrypted entry. `connector.resolve` defaults to an external manager through workload identity, refuses inline material outside development, and raises `SecretNameShadowed` when two adapters answer a name. `connector.lease` leads the chain with no fall-through and retries nothing; `connector.rotate` fails the run closed on a refused write-back.
+Declarations carry names, stores carry opaque bytes, connectors carry provider know-how, and the engine holds the shortest-lived material the deployment mints. A `connector.reference` template accepts only `${secret://<name>}` placeholders. `connector.resolve` defaults to an external manager through workload identity, refuses inline material outside development, and raises `SecretNameShadowed` when two adapters answer a name. `connector.lease` leads the chain with no fall-through and retries nothing; `connector.rotate` fails the run closed on a refused write-back.
 
 | Option | Lost on | Cost |
 | --- | --- | --- |
-| Reference-only declarations, workload identity default, lease at the head *(chosen)* | — | Material sits in engine memory for a request; a credential needs a five-field operator record; a read-only manager cannot run the OAuth refresh loop. |
+| Reference-only declarations, workload identity default, lease at the head *(chosen)* | — | Material sits in engine memory for a request; a read-only manager cannot run the OAuth refresh loop. |
 | Inline material or environment templates | Plaintext at rest | The committed file or environment becomes the secret. |
 | A broker sidecar as the default | Operability | Every deployment runs a second failure domain. |
 | Lease provider last, first hit wins | Posture | A leftover environment variable wins unnoticed. |
@@ -101,6 +101,20 @@ Declarations carry names, stores carry opaque bytes, connectors carry provider k
 
 Consequences: local development pastes a token only behind an explicit opt-in flag; a bootstrap backend is a second backend to operate.
 Revisit: workload identity becomes unattestable on a needed runtime; a broker becomes near-free to operate; a runtime identity authenticates to the mint directly.
+
+## Credential custody stays with the provider and inventory labels its evidence
+
+The selected provider owns values, versions and rotation state. `connector.record` inventories configured bindings with optional operator descriptions and separately attributed provider observations. A manager-backed credential needs no encrypted repository copy, and rotation needs no commit. Missing expiry remains unknown; configured adapters and observed runtime attribution answer different questions.
+
+| Option | Lost on | Cost |
+| --- | --- | --- |
+| Provider custody and optional descriptive records *(chosen)* | — | Metadata completeness varies by adapter; inventory exposes unavailable observations and conflicting assertions. |
+| Mandatory encrypted entries and comments in Git | Backend independence | External managers need duplicate ciphertext; automated rotation needs commits; comments cannot establish runtime state. |
+| Provider enumeration as the entire inventory | Binding coverage | Listing permissions and metadata differ by provider; unresolvable configured names disappear. |
+
+Consequences: repository policy in `assurance.gate` checks dotenv files when tracked. That policy governs the repository's chosen file workflow, while runtime credentials use any configured provider. Inventory never obtains metadata by reading credential values. Record serialization and adapter metadata capabilities remain explicit questions in the operation.
+
+Revisit: a shared provider metadata protocol supplies complete observations without value access or broader listing permissions.
 
 ## Egress passes one transport port and one pre-send hook ahead of resolution
 
