@@ -11,6 +11,7 @@ mod scaffold;
 mod state;
 mod tags;
 mod targets;
+mod ts_pins;
 
 use std::path::{Path, PathBuf};
 use std::process::Command;
