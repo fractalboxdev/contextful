@@ -36,7 +36,7 @@ fn a_mention_two_identities_share_is_ambiguous() {
 #[test]
 fn an_edge_with_an_unresolved_endpoint_is_refused() {
     let d = MemoryDeclarations::default();
-    let edge = |s: &str, t: &str| CandidateEdge { rel_type: "owns".into(), source: s.into(), target: t.into() };
+    let edge = |s: &str, t: &str| CandidateEdge { rel_type: "about".into(), source: s.into(), target: t.into() };
     assert!(check_edge(&edge("Acme", "Globex"), &entities(), &d).is_ok());
     for (s, t, end) in [("Umbrella", "Globex", "source"), ("Acme", "Umbrella", "target")] {
         match check_edge(&edge(s, t), &entities(), &d) {

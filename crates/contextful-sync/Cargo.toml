@@ -12,6 +12,7 @@ publish = false
 [dependencies]
 contextful-context = { path = "../contextful-context", default-features = false }
 contextful-core = { path = "../contextful-core" }
+contextful-policy = { path = "../contextful-policy" }
 getrandom = "0.3"
 rustix = { version = "1", features = ["fs"] }
 serde = { version = "1", features = ["derive"] }

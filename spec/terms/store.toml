@@ -21,6 +21,7 @@ replicate  = {}
 
 
 [error]
+StoreRetentionColumnInvalid  = { clause = "store.declare.retain-rows", gloss = "A row-retention column or age is invalid, or a landed value is null." }
 StoreManifestUnreadable      = { clause = "store.lay-out.manifest-unreadable", gloss = "A run manifest or reachable snapshot manifest fails to parse." }
 StoreUnknownTable            = { clause = "store.lay-out.unknown-table", gloss = "A table name resolves to no `schema.json` in the tree." }
 StoreNodeIdInvalid           = { clause = "store.lay-out.node-id-shape", gloss = "A resolved node id is too long or outside the path-safe pattern." }
@@ -64,6 +65,7 @@ SyncGenerationAbsent         = { clause = "store.pull.generation-absent", gloss 
 SyncGenerationDiverged       = { clause = "store.pull.generation-diverged", gloss = "A generation pull meets a local file the generation does not list." }
 SyncObjectDigestMismatch     = { clause = "store.pull.digest-mismatch", gloss = "A downloaded object's digest differs from its entry." }
 SyncPullDidNotConverge       = { clause = "store.pull.unconverged", gloss = "A pull exhausted its retries against keys moving beneath it." }
+SyncControlDiverged          = { clause = "store.push.control-diverged", gloss = "A signed control head does not descend from the bucket's head." }
 SyncProbeInconclusive        = { clause = "store.probe.inconclusive", gloss = "The conditional-write probe met an unsupported method, a forbidden response or a transport error." }
 SyncCoordinationUnproven     = { clause = "store.probe.unproven", gloss = "`cas` is declared against a backend the probe did not demonstrate." }
 SyncTombstoneForeign         = { clause = "store.merge.tombstone-owner", gloss = "A tombstone names an entry another node owns." }

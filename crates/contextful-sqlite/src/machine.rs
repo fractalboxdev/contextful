@@ -1,15 +1,16 @@
 //! `machine.sqlite` behind the `Catalog` port: lease rows, each scope's cursor row and
-//! pending owner, and run rows. Every write runs in an immediate transaction, so SQLite's
-//! one write lock serializes it against every other connection to the file and each
-//! conditional update is linearizable on the machine (`topology.coordinate.backends`).
+//! pending owner, and run rows. Plain catalogs use SQLite's write lock; sealed catalogs
+//! lock the snapshot across in-memory transactions. Either lock serializes conditional
+//! updates across connections on the machine (`topology.coordinate.backends`).
 
-use crate::{open, storage};
+use crate::{open, sealed::SealedFile, storage};
 use contextful_core::coordinate::{Cas, Catalog, CursorRow, Lease, LeaseKey, LeaseRow};
 use contextful_core::ports::Clock;
 use contextful_core::run::own::{ExecutionOwner, OwnerScope};
 use contextful_core::run::record::RunRow;
 use contextful_core::run::{Failure, RunError};
 use contextful_core::store::StoreError;
+use contextful_core::store::encrypt::FileCipher;
 use contextful_core::time::Instant;
 use rusqlite::{params, Connection, OptionalExtension, Transaction, TransactionBehavior};
 use std::path::{Path, PathBuf};
@@ -48,8 +49,13 @@ CREATE INDEX IF NOT EXISTS run_by_pipeline ON run (pipeline_id);
 /// The machine-local catalog in one SQLite file.
 pub struct MachineCatalog {
     path: PathBuf,
-    conn: Mutex<Connection>,
+    backing: Backing,
     clock: Arc<dyn Clock + Send + Sync>,
+}
+
+enum Backing {
+    Plain(Mutex<Connection>),
+    Sealed(SealedFile),
 }
 
 impl MachineCatalog {
@@ -57,8 +63,23 @@ impl MachineCatalog {
     /// (`topology.coordinate.catalog-clock`).
     pub fn open(path: &Path, clock: Arc<dyn Clock + Send + Sync>) -> Result<MachineCatalog, Failure> {
         let conn = open(path, SCHEMA)?;
-        let catalog = MachineCatalog { path: path.to_path_buf(), conn: Mutex::new(conn), clock };
+        let catalog = MachineCatalog { path: path.to_path_buf(), backing: Backing::Plain(Mutex::new(conn)), clock };
         catalog.with(true, migrate_scope_keys)?;
+        Ok(catalog)
+    }
+
+    /// Open an authenticated SQLite snapshot. Every transaction reloads under a
+    /// machine-local file lock and writes only sealed bytes to `path`.
+    pub fn open_sealed(path: &Path, clock: Arc<dyn Clock + Send + Sync>, cipher: Arc<dyn FileCipher>) -> Result<MachineCatalog, Failure> {
+        let catalog = MachineCatalog {
+            path: path.to_path_buf(),
+            backing: Backing::Sealed(SealedFile::new(path, cipher)),
+            clock,
+        };
+        catalog.with_sealed(true, true, |tx, fail| {
+            tx.execute_batch(SCHEMA).map_err(|e| fail(&e))?;
+            migrate_scope_keys(tx, fail)
+        })?;
         Ok(catalog)
     }
 
@@ -70,14 +91,36 @@ impl MachineCatalog {
         storage(&self.path, e)
     }
 
-    /// Run `f` in one transaction; `write` takes the database's write lock at the start,
-    /// so the read and the conditional update inside `f` see no interleaved writer.
+    /// Run `f` in one transaction under the backing's machine-local write lock, so
+    /// the read and conditional update see no interleaved writer.
     fn with<T>(&self, write: bool, f: impl FnOnce(&Transaction, &dyn Fn(&dyn std::fmt::Display) -> Failure) -> Result<T, Failure>) -> Result<T, Failure> {
-        let mut conn = self.conn.lock().unwrap_or_else(|p| p.into_inner());
+        match &self.backing {
+            Backing::Plain(conn) => {
+                let mut conn = conn.lock().unwrap_or_else(|p| p.into_inner());
+                let behavior = if write { TransactionBehavior::Immediate } else { TransactionBehavior::Deferred };
+                let tx = conn.transaction_with_behavior(behavior).map_err(|e| self.fail(e))?;
+                let out = f(&tx, &|e| self.fail(e))?;
+                tx.commit().map_err(|e| self.fail(e))?;
+                Ok(out)
+            }
+            Backing::Sealed(_) => self.with_sealed(write, false, f),
+        }
+    }
+
+    fn with_sealed<T>(
+        &self,
+        write: bool,
+        allow_create: bool,
+        f: impl FnOnce(&Transaction, &dyn Fn(&dyn std::fmt::Display) -> Failure) -> Result<T, Failure>,
+    ) -> Result<T, Failure> {
+        let Backing::Sealed(file) = &self.backing else { unreachable!("sealed catalog has sealed backing") };
+        let _lock = file.lock()?;
+        let mut conn = file.load(allow_create, SCHEMA)?;
         let behavior = if write { TransactionBehavior::Immediate } else { TransactionBehavior::Deferred };
         let tx = conn.transaction_with_behavior(behavior).map_err(|e| self.fail(e))?;
         let out = f(&tx, &|e| self.fail(e))?;
         tx.commit().map_err(|e| self.fail(e))?;
+        if write { file.save(&conn)?; }
         Ok(out)
     }
 }

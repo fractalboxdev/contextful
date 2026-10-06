@@ -3,6 +3,7 @@
 mod attenuate;
 mod decide;
 mod audit;
+mod control_receipt;
 mod enforce;
 #[cfg(feature = "exchange")]
 mod exchange;

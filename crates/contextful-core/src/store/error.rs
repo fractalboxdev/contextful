@@ -11,6 +11,9 @@ pub enum StoreError {
     /// A pull would replace one store UUID with another. (`store.pull.identity-conflict`)
     #[error("StoreIdentityConflict: {0}")]
     StoreIdentityConflict(String),
+    /// A row-retention column is absent or not declared Timestamp (`store.declare.retain-rows`).
+    #[error("StoreRetentionColumnInvalid: {0}")]
+    StoreRetentionColumnInvalid(String),
     /// An `as_of` precedes the oldest retained snapshot of a table whose history was collected. (`store.bound-time.as-of-unretained`)
     #[error("StoreAsOfUnretained: {0}")]
     StoreAsOfUnretained(String),
@@ -129,6 +132,9 @@ pub enum StoreError {
     /// A cursor was resolved by recency instead of through its commit. (`store.merge.cursor-recency`)
     #[error("SyncCursorConflict: {0}")]
     SyncCursorConflict(String),
+    /// A signed control head does not descend from the bucket's head. (`store.push.control-diverged`)
+    #[error("SyncControlDiverged: {0}")]
+    SyncControlDiverged(String),
     /// A plain `http://` endpoint names a host off loopback. (`store.endpoint.plaintext`)
     #[error("SyncEndpointInsecure: {0}")]
     SyncEndpointInsecure(String),

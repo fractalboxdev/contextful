@@ -8,7 +8,7 @@
 //! `(run, step, attempt, timestamp)`, fences the attempt and the skew, and wakes the step's
 //! dispatcher. A rejected message changes no step (`surface.dispatch.callback-rejected`).
 
-use crate::scheduler::Dispatch;
+use crate::scheduler::{fire_ordered, CompletedStep, Dispatch};
 use contextful_core::ports::Clock;
 use contextful_core::surface::worker::{Assignment, Ledger, Signed, StepOutcome};
 use contextful_core::surface::SurfaceError;
@@ -225,16 +225,13 @@ impl WorkerDispatch {
 }
 
 impl Dispatch for WorkerDispatch {
-    fn fire(&self, id: &str, steps: &[String], version: u64) -> Result<String, String> {
+    fn fire(&self, id: &str, steps: &[String], derived_parents: &BTreeMap<String, String>, version: u64) -> Result<String, String> {
         let nanos = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).map(|d| d.as_nanos()).unwrap_or_default();
         let run = format!("{id}-{nanos}");
-        let mut lines = Vec::new();
-        for step in std::iter::once(id).chain(steps.iter().map(String::as_str)) {
-            match self.step(&run, step, version)? {
-                StepOutcome::Done(result) => lines.push(format!("{step}: {}", String::from_utf8_lossy(&result.encode()))),
-                StepOutcome::Failed { failed } => return Err(format!("{step}: {failed}")),
-            }
-        }
-        Ok(lines.join("; "))
+        fire_ordered(id, steps, derived_parents, |step| match self.step(&run, step, version) {
+            Ok(StepOutcome::Done(result)) => Ok(CompletedStep::Succeeded(format!("{step}: {}", String::from_utf8_lossy(&result.encode())))),
+            Ok(StepOutcome::Failed { failed }) => Ok(CompletedStep::Failed(format!("{step}: {failed}"))),
+            Err(error) => Err(error),
+        })
     }
 }

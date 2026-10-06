@@ -90,7 +90,7 @@ struct ManifestTemplates {
 
 /// The read arguments every template tool admits beside its own parameters, so no
 /// parameter takes their names (`read.guard.template-reserved-parameter`).
-pub const READ_ARGUMENTS: [&str; 4] = ["as_of", "valid_as_of", "zone", "pin"];
+pub const READ_ARGUMENTS: [&str; 6] = ["as_of", "valid_as_of", "zone", "pin", "max_duration_ms", "max_response_bytes"];
 
 /// Every template a manifest declares. A parameter is `name:type` over integer, float,
 /// string, timestamp and boolean (`read.guard.template-declaration`); any other spelling
