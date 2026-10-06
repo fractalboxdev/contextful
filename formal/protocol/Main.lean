@@ -127,23 +127,32 @@ def parseStep (line : String) : Option Step :=
   | ["crash", n] => (parseNode n).map .crash
   | _ => none
 
-partial def runLoop (stdin : IO.FS.Stream) (s : State) : IO UInt32 := do
+partial def runLoop (stdin : IO.FS.Stream) (s : State) (catalogEtag cursorEtag : Nat) : IO UInt32 := do
   let line ← stdin.getLine
   if line.isEmpty then return 0
   let text := line.trimAscii.toString
-  if text.isEmpty then return (← runLoop stdin s)
+  if text.isEmpty then return (← runLoop stdin s catalogEtag cursorEtag)
   match parseStep text with
   | none =>
     IO.eprintln s!"unrecognised step: {text}"
     return 2
   | some st =>
     let s' := step s st
-    IO.println (showState s')
-    runLoop stdin s'
+    let grant := if s'.granted > s.granted then 1 else 0
+    let catalogWrite := match landed s st with
+      | some (.catalog, _) => 1
+      | _ => 0
+    let cursorWrite := match landed s st with
+      | some (.cursor, _) => 1
+      | _ => 0
+    let catalogEtag' := catalogEtag + grant + catalogWrite
+    let cursorEtag' := cursorEtag + grant + cursorWrite
+    IO.println s!"{showState s'} catalog-etag={catalogEtag'} cursor-etag={cursorEtag'}"
+    runLoop stdin s' catalogEtag' cursorEtag'
 
 def main (args : List String) : IO UInt32 := do
   match args with
-  | ["run"] => runLoop (← IO.getStdin) State.init
+  | ["run"] => runLoop (← IO.getStdin) State.init 0 0
   | [] | ["check"] | ["check", "--unfenced"] =>
     let stepFn := if args.contains "--unfenced" then stepWith false else step
     match search stepFn with

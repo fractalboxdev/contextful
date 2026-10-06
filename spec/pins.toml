@@ -39,6 +39,9 @@
 "store.init.store-identity" = { test = "contextful_context::init::init_persists_a_distinct_store_uuid_across_repetition_and_recreation" }
 "store.init.identity-invalid" = { test = "contextful_context::init::malformed_store_uuid_and_absent_owner_root_refuse_identity" }
 "store.pull.identity-conflict" = { test = "contextful_sync::pull::a_clone_keeps_the_store_uuid_and_an_independent_store_refuses_it" }
+"assurance.differential-test.protocol-cases" = { test = "contextful_cli::protocol_differential::generated_protocol_cases_cover_the_three_nodes_and_every_step" }
+"assurance.differential-test.protocol-harness" = { test = "contextful_cli::protocol_differential::fixed_seed_replays_protocol_cases_against_the_store" }
+"assurance.differential-test.protocol-drift" = { test = "contextful_cli::protocol_differential::a_protocol_difference_prints_the_minimal_sequence_and_both_states" }
 "store.declare.retain-rows" = { test = "contextful_context::retention::retention_refuses_an_undeclared_or_non_timestamp_column" }
 "store.bound-time.row-age-cutoff" = { test = "contextful_context::retention::a_superseded_snapshot_does_not_restore_a_now_expired_row" }
 "store.fold.row-retention" = { test = "contextful_context::retention::an_idle_fold_removes_an_expired_snapshot_partition" }
