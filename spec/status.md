@@ -13,9 +13,9 @@ An unpinned clause is `committed`; a pinned one is `performed` when its Rust, Le
 | `read` | 2 | 15 | 179 | 29 | 22 | 21 | 163 | 0 | 163 |
 | `run` | 3 | 26 | 373 | 98 | 36 | 37 | 261 | 0 | 261 |
 | `store` | 1 | 17 | 237 | 55 | 13 | 20 | 200 | 0 | 200 |
-| `surface` | 2 | 20 | 110 | 50 | 22 | 0 | 51 | 0 | 51 |
+| `surface` | 2 | 20 | 110 | 50 | 22 | 0 | 55 | 0 | 55 |
 | `topology` | 1 | 6 | 70 | 24 | 5 | 5 | 38 | 0 | 38 |
-| **total** | 19 | 155 | 2017 | 582 | 188 | 127 | 1365 | 0 | |
+| **total** | 19 | 155 | 2017 | 582 | 188 | 127 | 1369 | 0 | |
 
 Decision records: 18.
 
@@ -37,7 +37,7 @@ A milestone reads `closed` when its acceptance test computes `passing` and every
 | 9 — Visibility | 6 | 41 | 3 | open | open |
 | 10 — Cadence and the operator plane | 11 | 68 | 56 | passing | open |
 | 11 — The derive tier | 7 | 78 | 55 | passing | open |
-| 12 — The operator console | 12 | 53 | 0 | open | open |
+| 12 — The operator console | 12 | 53 | 4 | open | open |
 | 13 — Disclosure | 5 | 21 | 4 | open | open |
 | 14 — Assurance | 7 | 134 | 84 | passing | closed |
 
@@ -1342,6 +1342,10 @@ Unscheduled operations: 10.
 | `surface.arm.unknown-trigger` | `crates/contextful-cli/tests/integration/pipeline.rs::an_unknown_trigger_arms_nothing` | performed |
 | `surface.arm.unreadable-schedule` | `crates/contextful-core/tests/integration/surface/arm.rs::an_unreadable_schedule_names_its_diagnostic` | performed |
 | `surface.arm.wake-answer` | `crates/contextful-cli/tests/integration/pipeline.rs::a_wake_answers_within_its_bound_naming_what_still_runs` | performed |
+| `surface.browse.discovered-chips` | `apps/console/test/browse.test.ts::apps/console/test/browse.test.ts::browse advertises admitted tables as humanized chips` | performed |
+| `surface.browse.file-gallery` | `apps/console/test/browse.test.ts::apps/console/test/browse.test.ts::a gallery preview uses context.file with the listing's snapshot bound` | performed |
+| `surface.browse.gallery-path-unlisted` | `apps/console/test/browse.test.ts::apps/console/test/browse.test.ts::a gallery preview refuses paths absent from the governed listing` | performed |
+| `surface.browse.insights-panel` | `apps/console/test/browse.test.ts::apps/console/test/browse.test.ts::insights show governed table row counts` | performed |
 | `surface.dispatch.callback-rejected` | `crates/contextful-core/tests/integration/surface/worker.rs::a_superseded_or_skewed_callback_changes_no_step` | performed |
 | `surface.dispatch.callback-skew` | `crates/contextful-core/tests/integration/surface/worker.rs::the_relay_accepts_a_timestamp_within_the_skew` | performed |
 | `surface.dispatch.children-reaped` | `crates/contextful-cli/tests/integration/pipeline.rs::serve_ends_every_child_it_dispatched` | performed |
