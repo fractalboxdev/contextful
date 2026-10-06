@@ -73,7 +73,7 @@ export async function resolveReaderCredential(options: {
     // A refused mint reaches the shared credential only when the store has one.
   }
   if (options.shared) return options.shared;
-  throw new ConsoleError("ConsoleTokenExchangeRefused");
+  throw new ConsoleError("ConsoleTokenExchangeRefused", "ConsoleTokenExchangeRefused", 403);
 }
 
 export class OverlayCache {

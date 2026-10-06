@@ -1,6 +1,7 @@
 import { createHash, createHmac, createPublicKey, randomBytes, timingSafeEqual, verify, type KeyObject } from "node:crypto";
+import { ConsoleError } from "./turn.ts";
 
-export type Operator = { subject: string; grants: ReadonlySet<"query" | "admin"> };
+export type Operator = { subject: string; grants: ReadonlySet<"query" | "admin">; assertion?: string };
 export type Store = { id: string; label: string };
 export type AccessIdentity = {
   kind: "access";
@@ -43,7 +44,7 @@ export type ConsoleAdapters = {
   };
 };
 
-type Session = { subject: string; groups: string[]; expiresAt: number };
+type Session = { subject: string; groups: string[]; expiresAt: number; assertion?: string };
 
 function encoded(value: unknown): string {
   return Buffer.from(JSON.stringify(value)).toString("base64url");
@@ -83,11 +84,12 @@ function verifyCognitoSession(cookie: string, identity: CognitoIdentity): Operat
   try { session = decode(parts[0]); } catch { return null; }
   if (!object(session) || typeof session.subject !== "string" || !session.subject ||
       !Number.isSafeInteger(session.expiresAt) || (session.expiresAt as number) <= Math.floor(Date.now() / 1000) ||
-      !Array.isArray(session.groups) || !session.groups.every((group) => typeof group === "string")) return null;
+      !Array.isArray(session.groups) || !session.groups.every((group) => typeof group === "string") ||
+      (session.assertion !== undefined && typeof session.assertion !== "string")) return null;
   const grants = new Set<"query" | "admin">();
   if (session.groups.includes(identity.queryGroup)) grants.add("query");
   if (session.groups.includes(identity.adminGroup)) grants.add("admin");
-  return { subject: session.subject, grants };
+  return { subject: session.subject, grants, assertion: typeof session.assertion === "string" ? session.assertion : undefined };
 }
 
 function verifyAccess(assertion: string, identity: AccessIdentity): Operator | null {
@@ -111,7 +113,7 @@ function verifyAccess(assertion: string, identity: AccessIdentity): Operator | n
     typeof identity.publicKey === "string" ? createPublicKey(identity.publicKey) : identity.publicKey;
   if (!key) return null;
   if (!verify("RSA-SHA256", Buffer.from(`${parts[0]}.${parts[1]}`), key, signature)) return null;
-  return { subject: claims.sub, grants };
+  return { subject: claims.sub, grants, assertion };
 }
 
 function operatorFor(request: Request, identity: Identity): Operator | null {
@@ -180,7 +182,7 @@ async function cognitoCallback(request: Request, identity: CognitoIdentity): Pro
   if (!verify("RSA-SHA256", Buffer.from(`${parts[0]}.${parts[1]}`), key, Buffer.from(parts[2], "base64url"))) return refusal("ConsolePageForbidden");
   const groups = Array.isArray(claims["cognito:groups"]) ? claims["cognito:groups"].filter((group): group is string => typeof group === "string") : [];
   const lifetime = Math.min(claims.exp as number, Math.floor(Date.now() / 1000) + 3600);
-  const session = issueCognitoSession({ subject: claims.sub, groups, expiresAt: lifetime }, identity.sessionSecret);
+  const session = issueCognitoSession({ subject: claims.sub, groups, expiresAt: lifetime, assertion: tokens.id_token }, identity.sessionSecret);
   const destination = groups.includes(identity.adminGroup) ? "/admin" : "/query";
   return new Response(null, { status: 302, headers: {
     Location: destination,
@@ -264,7 +266,12 @@ export function createConsole(adapters: ConsoleAdapters): { fetch: (request: Req
           try { input = await body(request); } catch (error) { return bodyFailure(error); }
           if (!object(input) || typeof input.store !== "string" || typeof input.question !== "string" || !input.question.trim() ||
               !adapters.stores.some((store) => store.id === input.store)) return refusal("ConsoleRequestMalformed", 400);
-          return json(await adapters.turn({ operator, store: input.store, question: input.question }));
+          try {
+            return json(await adapters.turn({ operator, store: input.store, question: input.question }));
+          } catch (error) {
+            if (error instanceof ConsoleError) return refusal(error.code, error.status);
+            throw error;
+          }
         }
       } else {
         const store = url.searchParams.get("store");
