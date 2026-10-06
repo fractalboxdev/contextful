@@ -16,6 +16,25 @@ fn subject(on_behalf_of: Option<&str>, agent: Option<&str>) -> Subject {
     }
 }
 
+#[test]
+fn an_owner_project_survives_authority_block_round_trips() {
+    let mut document = serde_json::json!({
+        "iss": "issuer", "aud": "contextful://stdio", "jti": "owner",
+        "iat": 1, "exp": 2, "alg": "Ed25519", "sub": { "on_behalf_of": "operator" },
+        "att": {}, "grants": [], "owner_project": "research",
+        "rev": { "id": "owner", "epoch": 0 }
+    });
+    let block: AuthorityBlock = serde_json::from_value(document.clone()).unwrap();
+    let serialized = serde_json::to_value(block).unwrap();
+    assert_eq!(serialized["owner_project"], "research");
+    let restored: AuthorityBlock = serde_json::from_value(serialized).unwrap();
+    assert_eq!(serde_json::to_value(restored).unwrap()["owner_project"], "research");
+
+    document.as_object_mut().unwrap().remove("owner_project");
+    let bearer: AuthorityBlock = serde_json::from_value(document).unwrap();
+    assert!(serde_json::to_value(bearer).unwrap().get("owner_project").is_none());
+}
+
 fn link(method: LinkMethod, confidence: f64) -> IdentityLink {
     IdentityLink {
         source: "drive".to_string(),

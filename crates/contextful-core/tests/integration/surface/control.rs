@@ -4,6 +4,13 @@ use contextful_core::surface::control::{parse_pointer, receipt_file, receipt_ver
 use contextful_core::surface::SurfaceError;
 
 #[test]
+fn an_absent_draft_preserves_its_identifier_and_conflict_status() {
+    let error = SurfaceError::ControlDraftAbsent("draft nonce is absent".into());
+    assert_eq!(error.status(), 409);
+    assert_eq!(error.to_string(), "ControlDraftAbsent: draft nonce is absent");
+}
+
+#[test]
 fn an_untrusted_pulled_control_head_names_its_reason() {
     let error = SurfaceError::ControlSnapshotUntrusted("receipt signature does not verify".into());
     assert!(error.to_string().contains("ControlSnapshotUntrusted: receipt signature does not verify"));
