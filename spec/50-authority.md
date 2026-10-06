@@ -97,6 +97,8 @@ The versioned delegation profile over the attenuable-credential library: admitte
 
 - `delegation-profile` — Delegated authority travels in one attenuable, chain-signed library format. The library owns serialization, signatures, block chaining and evaluation; a versioned profile names every fact, check and restriction the engine admits.
   *A-authority*
+- `owner-claim` — Profile 2 permits a signed owner store identity only in the root authority block; profile 1 and attenuation blocks reject it, and activation requires an unrestricted read grant over the selected store.
+  *A-authority*
 - `unrecognized-element` — A credential carrying a block version, predicate, rule or restriction the profile does not name raises `ProfileElementUnrecognized`.
   *P1*
 - `reserved-fact` — Current time, audience, resolved resources and authenticated request identity are reserved facts the engine supplies. A token block introducing one raises `ProfileReservedFact`.

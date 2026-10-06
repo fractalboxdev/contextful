@@ -5,17 +5,17 @@ An unpinned clause is `committed`; a pinned one is `performed` when its Rust, Le
 
 | Contract | Files | Operations | Clauses | Refusals | Limits | Unsettled | Performed | Broken | Floor |
 | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
-| `assurance` | 2 | 15 | 235 | 59 | 22 | 14 | 141 | 0 | 138 |
-| `authority` | 2 | 16 | 269 | 77 | 27 | 10 | 206 | 0 | 206 |
-| `connector` | 2 | 14 | 349 | 89 | 21 | 15 | 229 | 0 | 228 |
+| `assurance` | 2 | 15 | 235 | 59 | 22 | 14 | 141 | 0 | 141 |
+| `authority` | 2 | 16 | 270 | 77 | 27 | 10 | 207 | 0 | 207 |
+| `connector` | 2 | 14 | 349 | 89 | 21 | 15 | 229 | 0 | 229 |
 | `corpus` | 1 | 10 | 79 | 37 | 7 | 0 | 43 | 0 | 43 |
 | `disclosure` | 3 | 16 | 134 | 66 | 13 | 3 | 63 | 0 | 63 |
-| `read` | 2 | 15 | 206 | 35 | 22 | 9 | 183 | 0 | 172 |
-| `run` | 3 | 26 | 406 | 102 | 39 | 28 | 306 | 0 | 279 |
-| `store` | 1 | 17 | 249 | 57 | 13 | 19 | 213 | 0 | 204 |
-| `surface` | 2 | 20 | 119 | 54 | 22 | 0 | 78 | 0 | 66 |
+| `read` | 2 | 15 | 206 | 35 | 22 | 9 | 183 | 0 | 178 |
+| `run` | 3 | 26 | 406 | 102 | 39 | 28 | 306 | 0 | 306 |
+| `store` | 1 | 17 | 252 | 59 | 13 | 19 | 216 | 0 | 216 |
+| `surface` | 2 | 20 | 119 | 55 | 22 | 0 | 79 | 0 | 66 |
 | `topology` | 1 | 6 | 70 | 24 | 5 | 5 | 38 | 0 | 38 |
-| **total** | 19 | 155 | 2116 | 600 | 191 | 103 | 1500 | 0 | |
+| **total** | 19 | 155 | 2120 | 603 | 191 | 103 | 1505 | 0 | |
 
 Decision records: 18.
 
@@ -26,18 +26,18 @@ A milestone reads `closed` when its acceptance test computes `passing` and every
 | Milestone | Operations | Clauses | Performed | Acceptance | Closed |
 | --- | --- | --- | --- | --- | --- |
 | 0 — The test-first gate | 2 | 18 | 6 | passing | open |
-| 1 — The authority core | 14 | 238 | 186 | passing | closed |
-| 2 — The store | 9 | 172 | 141 | passing | closed |
+| 1 — The authority core | 14 | 239 | 187 | passing | closed |
+| 2 — The store | 9 | 174 | 143 | passing | closed |
 | 3 — The run path | 11 | 209 | 145 | passing | closed |
 | 4 — Ingest | 25 | 517 | 344 | passing | open |
 | 5 — The read face under enforcement | 17 | 262 | 204 | passing | open |
-| 6 — Sync and replicas | 8 | 77 | 72 | passing | closed |
+| 6 — Sync and replicas | 8 | 78 | 73 | passing | closed |
 | 7 — Memory | 6 | 54 | 45 | passing | closed |
 | 8 — Accountability | 5 | 60 | 47 | passing | open |
 | 9 — Visibility | 6 | 41 | 3 | open | open |
 | 10 — Cadence and the operator plane | 11 | 80 | 68 | passing | open |
 | 11 — The derive tier | 7 | 88 | 79 | passing | closed |
-| 12 — The operator console | 12 | 50 | 15 | passing | open |
+| 12 — The operator console | 12 | 50 | 16 | passing | open |
 | 13 — Disclosure | 5 | 33 | 13 | open | open |
 | 14 — Assurance | 7 | 138 | 89 | passing | closed |
 
@@ -332,6 +332,7 @@ Unscheduled operations: 10.
 | `authority.profile.delegation-profile` | `crates/contextful-policy/tests/integration/profile.rs::a_credential_is_one_library_chain_whose_every_block_the_profile_reads` | performed |
 | `authority.profile.evaluator-bound` | `crates/contextful-policy/tests/integration/profile.rs::the_evaluator_admits_no_third_party_block_rule_or_regex_and_refuses_input_past_its_ceiling` | performed |
 | `authority.profile.fact-ceiling` | `crates/contextful-policy/tests/integration/profile.rs::one_authorization_holds_at_most_1000_facts` | performed |
+| `authority.profile.owner-claim` | `crates/contextful-policy/tests/integration/profile.rs::a_signed_owner_claim_uses_profile_two_and_cannot_be_promoted_from_profile_one_or_a_child` | performed |
 | `authority.profile.reserved-fact` | `crates/contextful-policy/tests/integration/profile.rs::a_token_block_introducing_a_reserved_fact_is_refused` | performed |
 | `authority.profile.scoped-session` | `crates/contextful-policy/tests/integration/profile.rs::a_statement_over_two_tables_needs_one_grant_covering_both` | performed |
 | `authority.profile.unevaluated-restriction` | `crates/contextful-policy/tests/integration/profile.rs::a_restriction_with_no_read_evaluator_is_refused_at_mint_derivation_and_admission` | performed |
@@ -1303,11 +1304,13 @@ Unscheduled operations: 10.
 | `store.init.default-declaration` | `crates/contextful-cli/tests/integration/init.rs::a_command_without_project_discovers_it_from_a_subdirectory` | performed |
 | `store.init.discovery` | `crates/contextful-context/tests/integration/init.rs::discovery_takes_the_nearest_declaration_upward` | performed |
 | `store.init.explicit-project` | `crates/contextful-cli/tests/integration/init.rs::an_explicit_project_uses_the_working_directory` | performed |
+| `store.init.identity-invalid` | `spec/pins.toml` | performed |
 | `store.init.name-conflict` | `crates/contextful-context/tests/integration/init.rs::an_init_naming_another_project_refuses` | performed |
 | `store.init.name-shape` | `crates/contextful-context/tests/integration/init.rs::a_traversing_or_unsafe_name_refuses_before_any_write` | performed |
 | `store.init.posture` | `crates/contextful-cli/tests/integration/init.rs::an_init_with_a_posture_lands_its_first_write_unedited` | performed |
 | `store.init.project-paths` | `crates/contextful-context/tests/integration/init.rs::every_project_path_is_based_on_the_project_directory` | performed |
 | `store.init.repeat` | `crates/contextful-context/tests/integration/init.rs::a_repeated_init_rewrites_nothing` | performed |
+| `store.init.store-identity` | `spec/pins.toml` | performed |
 | `store.init.undiscovered` | `crates/contextful-context/tests/integration/init.rs::discovery_without_a_named_declaration_refuses` | performed |
 | `store.lay-out.ancestors` | `crates/contextful-core/tests/integration/store/lay_out.rs::a_snapshot_records_its_ancestors_nearest_first_up_to_the_bound` | performed |
 | `store.lay-out.catalog-ports` | `crates/contextful-sqlite/tests/integration/derived.rs::both_catalogs_are_reached_through_the_core_ports` | performed |
@@ -1364,6 +1367,7 @@ Unscheduled operations: 10.
 | `store.pull.generation-diverged` | `crates/contextful-sync/tests/integration/generation.rs::a_generation_pull_into_a_store_holding_unlisted_files_refuses` | performed |
 | `store.pull.generation-run-state` | `crates/contextful-sync/tests/integration/run_state.rs::a_restore_keeps_a_run_state_its_generation_does_not_list` | performed |
 | `store.pull.generation-schema` | `crates/contextful-sync/tests/integration/generation.rs::a_generation_pull_takes_the_current_schema` | performed |
+| `store.pull.identity-conflict` | `spec/pins.toml` | performed |
 | `store.pull.pointer-advance` | `crates/contextful-sync/tests/integration/converge.rs::a_pull_never_regresses_a_pointer_and_writes_none_until_every_table_verifies` | performed |
 | `store.pull.pointer-last` | `crates/contextful-sync/tests/integration/pull.rs::a_pointer_is_written_only_once_its_snapshot_is_home` | performed |
 | `store.pull.run-state-cursor` | `crates/contextful-cli/tests/integration/sync/run_state.rs::a_cold_node_resumes_the_cursor_a_push_carried` | performed |
@@ -1489,6 +1493,7 @@ Unscheduled operations: 10.
 | `surface.ground.org-face-read-only` | `apps/console/test/turn.test.ts::apps/console/test/turn.test.ts::organization packs refuse writes at startup` | performed |
 | `surface.learn.unscoped` | `apps/console/test/learn.test.ts::apps/console/test/learn.test.ts::unscoped learning refuses before distillation or landing` | performed |
 | `surface.learn.write-refused` | `apps/console/test/answer_memory.test.ts::apps/console/test/answer_memory.test.ts::hosted Query reports a served learning refusal without exposing its credential` | performed |
+| `surface.package.owner-flag` | `crates/contextful-cli/tests/integration/mcp.rs::explicit_owner_requires_a_signed_credential_for_the_selected_store` | performed |
 | `surface.plan-turn.planner-reached-memory` | `apps/console/test/turn.test.ts::apps/console/test/turn.test.ts::a planner call targeting a memory relation dispatches nothing` | performed |
 | `surface.publish-answer.askerless-audience` | `apps/console/test/publish.test.ts::apps/console/test/publish.test.ts::a scheduled service post refuses an audience and names its destination` | performed |
 | `surface.publish-answer.share-affordance` | `apps/console/test/publish.test.ts::apps/console/test/publish.test.ts::an access explanation cannot offer a share control` | performed |

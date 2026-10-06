@@ -70,7 +70,7 @@ fn each_sub_agent_child_binds_that_sub_agents_own_key() {
     let signer = issuer();
     let agent = ed25519_dalek::SigningKey::from_bytes(&[1; 32]);
     let agent_jkt = jwk_thumbprint(agent.verifying_key().as_bytes());
-    let parent = mint(&plan(&signer), &MintClaims { confirmation: Some(agent_jkt.clone()), epoch: 0 }, &signer).unwrap();
+    let parent = mint(&plan(&signer), &MintClaims { confirmation: Some(agent_jkt.clone()), epoch: 0, ..MintClaims::default() }, &signer).unwrap();
     let sub_agents = [ed25519_dalek::SigningKey::from_bytes(&[2; 32]), ed25519_dalek::SigningKey::from_bytes(&[3; 32])];
     let request = ProofRequest { method: "POST", target: "https://store.example/v1/query", body: b"{}" };
     let clock = contextful_core::ports::FixedClock(at(DURING));

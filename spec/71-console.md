@@ -145,11 +145,11 @@ The Admin page's operational views.
 
 The client library, its four deployment shapes and transports, and the credential each shape carries.
 
-- `stdio-credential` — Over the process transport a credential is mandatory, a capability token or an explicit owner flag; an unset one raises `StdioCredentialMissing` and does not resolve to the owner context.
+- `stdio-credential` — The process transport requires a verified capability token; `--owner` selects its signed owner claim. An absent token raises `StdioCredentialMissing` before protocol framing and never resolves to owner context.
   *A-read*
 - `store-selector` — The child's working directory selects the store by walking up to the project manifest; finding none raises `StoreSelectorAbsent` and exits before writing any protocol framing.
   *A-topology*
-- `owner-flag` — An explicit owner flag over the process transport admits the local owner context only with the store's owner credential.
+- `owner-flag` — A process `--owner` admits the local owner context only with a verified signed claim bound to the selected store and an unrestricted read grant; any other credential raises `OwnerCredentialInvalid` before protocol framing.
   *A-surface*
 
 The client library's four shapes, and who holds the credential in each:

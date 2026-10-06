@@ -112,7 +112,7 @@ fn a_verification_case_refuses_as_the_checkpoint_does() {
     assert_eq!(decided(&case(&lasting(&signer, 7200), &signer)), refused("BearerLifetimeExceeded"));
     assert_eq!(decided(&case(&lasting(&signer, 3600), &signer)), verdict("admitted"));
 
-    let bound = mint(&plan(&signer), &MintClaims { confirmation: Some("thumbprint".into()), epoch: 0 }, &signer).unwrap();
+    let bound = mint(&plan(&signer), &MintClaims { confirmation: Some("thumbprint".into()), epoch: 0, ..MintClaims::default() }, &signer).unwrap();
     assert_eq!(decided(&case(&bound, &signer)), refused("PossessionProofInvalid"), "the case carries no proof");
 
     let mut unpinned = case(&credential, &signer);

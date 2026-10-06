@@ -4,7 +4,7 @@
 
 ## The read surface admits one read-only statement over registered relations
 
-`read.guard` walks the syntax tree the executor itself serializes and admits exactly one read-only `SELECT` whose base relations are views registered for the caller or declared common table expressions; table functions and catalog reaches refuse, and a refusal never echoes another caller's relation. `read.register` lists only granted templates and binds arguments strictly. A filter's budget applies to the whole filter. `read.respond` reads a preview through its table's relation. The process transport requires a token or an explicit owner flag; the run-stream socket authenticates before upgrade and carries snapshots only.
+`read.guard` walks the syntax tree the executor itself serializes and admits exactly one read-only `SELECT` whose base relations are views registered for the caller or declared common table expressions; table functions and catalog reaches refuse, and a refusal never echoes another caller's relation. `read.register` lists only granted templates and binds arguments strictly. A filter's budget applies to the whole filter. `read.respond` reads a preview through its table's relation. The process transport requires a token, with an explicit owner flag for its signed store claim; the run-stream socket authenticates before upgrade and carries snapshots only.
 
 | Option | Lost on | Cost |
 | --- | --- | --- |

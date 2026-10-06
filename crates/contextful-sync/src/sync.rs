@@ -949,8 +949,10 @@ impl Syncer {
                 .into());
             }
         }
+        let identity_key = format!("{}/{}", self.project, contextful_core::store::lay_out::STORE_ID_FILE);
         let control_prefix = format!("{}/control/", self.project);
         let reaches = |key: &str| -> bool {
+            if key == identity_key { return true; }
             if key.starts_with(&control_prefix) { return true; }
             match table_of(key) {
                 None => scope.tables.is_empty(),
@@ -985,6 +987,20 @@ impl Syncer {
                 Some((listed, _)) => listed.clone(),
                 None => self.manifest()?.0,
             };
+            if let Some(remote) = manifest.entries.get(&identity_key) {
+                let local_path = self.store.root().join(contextful_core::store::lay_out::STORE_ID_FILE);
+                match std::fs::read(&local_path) {
+                    Ok(local) if sha256_hex(&local) != remote.sha256 => {
+                        return Err(StoreError::StoreIdentityConflict(format!(
+                            "`{}` holds a different store UUID from the bucket; clone into an empty store root",
+                            local_path.display()
+                        )).into());
+                    }
+                    Err(error) if error.kind() == std::io::ErrorKind::NotFound => {}
+                    Err(error) => return Err(io(&local_path, error)),
+                    Ok(_) => {}
+                }
+            }
             let (control_keys, missing_control) = self.control_reachable(&manifest)?;
             if let Some(missing) = missing_control {
                 shortfall = Some(missing);
