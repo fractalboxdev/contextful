@@ -45,6 +45,12 @@ pub enum RunError {
     /// A required derive config key absent or blank. (`run.select.required-key`)
     #[error("DeriveConfigKeyMissing: {0}")]
     DeriveConfigKeyMissing(String),
+    /// An explicit predecessor differing from the derive source-table parent. (`run.select.derive-after-conflict`)
+    #[error("DeriveAfterConflict: {0}")]
+    DeriveAfterConflict(String),
+    /// A derive source-table graph returning to one of its pipelines. (`run.select.derive-cycle`)
+    #[error("DeriveCycle: {0}")]
+    DeriveCycle(String),
     /// A caption block starting before the one already accepted. (`run.parse-cues.backward-cue`)
     #[error("DeriveCueOutOfOrder: {0}")]
     DeriveCueOutOfOrder(String),
@@ -54,6 +60,9 @@ pub enum RunError {
     /// A driver and task pairing the tier does not serve. (`run.bind.driver-mismatch`)
     #[error("DeriveDriverMismatch: {0}")]
     DeriveDriverMismatch(String),
+    /// An engine host carrying a path, query, port or scheme. (`run.bind.endpoint-host-bare`)
+    #[error("DeriveEndpointHostNotBare: {0}")]
+    DeriveEndpointHostNotBare(String),
     /// A pipeline naming an engine the machine has not defined. (`run.bind.unbound-engine`)
     #[error("DeriveEngineUnbound: {0}")]
     DeriveEngineUnbound(String),
@@ -63,6 +72,21 @@ pub enum RunError {
     /// Configuration naming another pipeline's output table. (`run.select.foreign-output-table`)
     #[error("DeriveForeignOutputTable: {0}")]
     DeriveForeignOutputTable(String),
+    /// A process-spawning key on a fetch binding. (`run.fetch.binding-key`)
+    #[error("DeriveFetchBindingKey: {0}")]
+    DeriveFetchBindingKey(String),
+    /// A followed address with a scheme other than HTTP or HTTPS. (`run.fetch.scheme`)
+    #[error("DeriveSchemeUnsupported: {0}")]
+    DeriveSchemeUnsupported(String),
+    /// A followed host written as an address literal. (`run.fetch.address-literal`)
+    #[error("DeriveAddressLiteral: {0}")]
+    DeriveAddressLiteral(String),
+    /// A document declaring a character set other than UTF-8. (`run.fetch.charset`)
+    #[error("DeriveCharsetUnsupported: {0}")]
+    DeriveCharsetUnsupported(String),
+    /// An undeclared document failing UTF-8 validation. (`run.fetch.not-utf8`)
+    #[error("DeriveBytesNotUtf8: {0}")]
+    DeriveBytesNotUtf8(String),
     /// A derive pipeline configured to journal its pulls. (`run.select.journaled-pull`)
     #[error("DeriveJournaledPull: {0}")]
     DeriveJournaledPull(String),
@@ -108,6 +132,12 @@ pub enum RunError {
     /// A parent row without a key or media value. (`run.select.incomplete-unit`)
     #[error("DeriveUnitIncomplete: {0}")]
     DeriveUnitIncomplete(String),
+    /// A transcribe pipeline declaring a shared-quota grant. (`run.select.unmetered-grant`)
+    #[error("DeriveUnmeteredGrant: {0}")]
+    DeriveUnmeteredGrant(String),
+    /// A link preview without a run-bound mediated client. (`run.select.metered-client`)
+    #[error("DeriveMeteredClient: {0}")]
+    DeriveMeteredClient(String),
     /// A unit status outside the four. (`run.emit.unit-status`)
     #[error("DeriveUnitStatusUnknown: {0}")]
     DeriveUnitStatusUnknown(String),

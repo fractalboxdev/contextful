@@ -70,6 +70,8 @@ PipelineTableFailed            = { clause = "run.land.table-failed", gloss = "On
 ExportSignalUnknown            = { clause = "run.export.signal-unknown", gloss = "An export block naming a signal the built-in arm does not map." }
 ExportCommitSeqMissing         = { clause = "run.export.commit-seq-missing", gloss = "A table holding rows no cursor passes, their `_commit_seq` null." }
 ExportDeliveryRefused          = { clause = "run.export.delivery-refused", gloss = "An OTLP target answering other than 2xx, or unreachable." }
+ExportEventTooLarge            = { clause = "run.export.typed-event-too-large", gloss = "One typed event exceeding the delivery request ceiling." }
+ExportIdentityChanged          = { clause = "run.export.typed-identity-changed", gloss = "A pending typed export under another read identity, or its target redirected under the same name." }
 PipelineChunkParallelism       = { clause = "run.backfill.chunk-parallelism", gloss = "A sequential chunk plan beside a parallelism above one." }
 PipelineRewindWindowInvalid    = { clause = "run.backfill.rewind-invalid", gloss = "An inverted, empty or scale-incomparable rewind window." }
 PipelineSeedDeclarationMissing = { clause = "run.seed.declaration-missing", gloss = "A seeded table lacking a key or an event-time ordering." }
@@ -85,8 +87,10 @@ ModelTestFailed                = { clause = "run.model.test-failed", gloss = "A 
 ModelUndeclared                = { clause = "run.model.unknown-model", gloss = "A build naming no declared model." }
 ModelBuildUnknown              = { clause = "run.model.hold-unknown-build", gloss = "A hold naming a build no committed manifest records." }
 DeriveConfigKeyMissing         = { clause = "run.select.required-key", gloss = "A required derive config key absent or blank." }
+DeriveCycle                    = { clause = "run.select.derive-cycle", gloss = "Derive source-table dependencies returning to a pipeline." }
+DeriveAfterConflict            = { clause = "run.select.derive-after-conflict", gloss = "A derive child whose explicit predecessor differs from its source-table parent." }
 DeriveNoStoreRoot              = { clause = "run.select.no-store-root", gloss = "A derive source built without a store root or pipeline id." }
-DeriveForeignOutputTable       = { clause = "run.select.foreign-output-table", gloss = "Configuration naming another pipeline's output table." }
+DeriveForeignOutputTable       = { clause = "run.select.foreign-output-table", gloss = "Configuration overriding the build-owned anti-join output identity." }
 DeriveUnitIncomplete           = { clause = "run.select.incomplete-unit", gloss = "A parent row without a key or media value." }
 DeriveJournaledPull            = { clause = "run.select.journaled-pull", gloss = "A derive pipeline configured to journal its pulls." }
 DeriveUnmeteredGrant           = { clause = "run.select.unmetered-grant", gloss = "A transcribe pipeline declaring a shared-quota grant." }
@@ -140,6 +144,8 @@ retry-single-attempt       = { clause = "run.retry.single-attempt", value = 1, u
 retry-after-ceiling        = { clause = "run.retry.retry-after", value = 300, unit = "s", basis = "chosen", gloss = "Longest server-requested delay a step sleeps before closing." }
 cancel-poll-interval       = { clause = "run.cancel.poll-interval", value = 500, unit = "ms", basis = "chosen", gloss = "Cadence of the catalog read feeding the cancellation token." }
 normalize-nesting-depth    = { clause = "run.normalize.nesting-depth", value = 5, unit = "levels", basis = "chosen", gloss = "Nesting `native` keeps before a subtree lands as `Json`." }
+parse-child-deadline       = { clause = "run.land.parse-deadline", value = 60, unit = "s", basis = "chosen", gloss = "Wall clock one input's decoder child may run." }
+parse-child-memory         = { clause = "run.land.parse-memory", value = 512, unit = "MiB", basis = "chosen", gloss = "Memory one input's decoder child may consume." }
 staged-bytes-per-run       = { clause = "run.own.staged-bytes", value = 1, unit = "GiB", basis = "chosen", gloss = "Bytes one run stages before its commit." }
 owner-lease-renewal        = { clause = "run.record.owner-lease", value = 10, unit = "s", basis = "chosen", gloss = "Renewal cadence of a run row's owner lease." }
 owner-lease-ttl            = { clause = "run.record.owner-lease", value = 30, unit = "s", basis = "chosen", gloss = "Life of an unrenewed run owner lease." }
@@ -150,6 +156,7 @@ describe-history-ceiling   = { clause = "run.record.describe-window", value = 50
 export-history-default     = { clause = "run.record.export-ceiling", value = 500, unit = "rows", basis = "chosen", gloss = "Runs the export returns unasked." }
 export-history-ceiling     = { clause = "run.record.export-ceiling", value = 5000, unit = "rows", basis = "chosen", gloss = "Highest ceiling the export honors, per pipeline." }
 export-batch-rows          = { clause = "run.export.batch-rows", value = 500, unit = "rows", basis = "chosen", gloss = "Rows one OTLP delivery batch holds." }
+typed-export-request-bytes = { clause = "run.export.typed-byte-limit", value = 65536, unit = "B", basis = "chosen", gloss = "Largest typed export request body." }
 run-error-cap              = { clause = "run.record.error-cap", value = 2, unit = "KiB", basis = "chosen", gloss = "Size a recorded run error is clipped to." }
 projection-coalesce-window = { clause = "run.project.coalescing", value = 100, unit = "ms", basis = "chosen", gloss = "Window snapshot broadcasts collapse into." }
 run-metadata-bytes         = { clause = "run.project.metadata-too-large", value = 16384, unit = "B", basis = "chosen", gloss = "Serialized bound on snapshot application metadata." }

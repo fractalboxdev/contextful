@@ -15,7 +15,7 @@ pub const REFUSED: i32 = 2;
 /// Wall clock one decode may take.
 pub const DEADLINE: Duration = Duration::from_secs(60);
 /// Data segment one decode process may map, where the operating system enforces it.
-pub const MEMORY_BYTES: u64 = 1024 * 1024 * 1024;
+pub const MEMORY_BYTES: u64 = 512 * 1024 * 1024;
 
 /// Decodes a PDF body into its pages' text.
 pub trait PageDecoder: Send + Sync {
@@ -63,6 +63,7 @@ impl Boundary {
         cmd.args(&self.args).arg("--input").arg(label).stdin(Stdio::piped()).stdout(Stdio::piped()).stderr(Stdio::piped());
         limit_memory(&mut cmd, self.memory_bytes);
         own_group(&mut cmd);
+        let started = Instant::now();
         let mut child = cmd.spawn().map_err(|e| crashed(format!("the decode process did not start: {e}")))?;
         let mut stdin = child.stdin.take().ok_or_else(|| crashed("no standard input".into()))?;
         let body = input.to_vec();
@@ -72,7 +73,6 @@ impl Boundary {
         });
         let out = drain(child.stdout.take());
         let err = drain(child.stderr.take());
-        let started = Instant::now();
         let status = loop {
             if let Some(status) = child.try_wait().map_err(|e| crashed(e.to_string()))? {
                 break status;

@@ -63,6 +63,10 @@ struct RawRedistribution {
 struct RawLimits {
     #[serde(default)]
     max_rows: Option<u64>,
+    #[serde(default)]
+    max_duration_ms: Option<u64>,
+    #[serde(default)]
+    max_response_bytes: Option<u64>,
 }
 
 /// The table policy's row predicate and the exceptions overriding it for matching
@@ -96,6 +100,10 @@ pub struct TablePolicy {
     pub replicate: Option<bool>,
     /// The per-table row ceiling published as `limits.max_rows`.
     pub max_rows: Option<u64>,
+    /// The per-table statement deadline published as `limits.max_duration_ms`.
+    pub max_duration_ms: Option<u64>,
+    /// The per-table response byte ceiling published as `limits.max_response_bytes`.
+    pub max_response_bytes: Option<u64>,
 }
 
 impl TablePolicy {
@@ -159,7 +167,9 @@ impl TablePolicy {
             overrides,
             rows,
             replicate: raw.redistribution.map(|r| r.replicate),
-            max_rows: raw.limits.and_then(|l| l.max_rows),
+            max_rows: raw.limits.as_ref().and_then(|l| l.max_rows),
+            max_duration_ms: raw.limits.as_ref().and_then(|l| l.max_duration_ms),
+            max_response_bytes: raw.limits.as_ref().and_then(|l| l.max_response_bytes),
         })
     }
 

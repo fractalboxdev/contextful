@@ -307,20 +307,54 @@ pub struct DependentRuns {
     pub head_of: BTreeMap<String, String>,
     /// Each head's landing steps in run order: by distance from the head, then by id.
     pub steps: BTreeMap<String, Vec<String>>,
+    /// Each derive child's direct parent; the child fires after that parent's outcome.
+    pub derived_parents: BTreeMap<String, String>,
 }
 
-/// Resolve every `after` to its chain's head. An `after` naming no declared entry, or a
-/// chain that returns to itself, raises `PipelineSpecInvalid`.
+/// Resolve explicit `after` links and derive source-table parents to each chain's head.
+/// A derive cycle raises `DeriveCycle`; an explicit predecessor conflicting with its
+/// source-table parent raises `DeriveAfterConflict`.
 pub fn dependent_runs<'a>(specs: impl IntoIterator<Item = &'a PipelineSpec>) -> Result<DependentRuns, RunError> {
-    let after: BTreeMap<&str, Option<&str>> = specs.into_iter().map(|s| (s.id.as_str(), s.after.as_deref())).collect();
+    let specs: Vec<&PipelineSpec> = specs.into_iter().collect();
+    let outputs: BTreeMap<String, &str> = specs
+        .iter()
+        .filter(|s| s.source.name == "derive")
+        .flat_map(|s| s.tables.iter().map(move |t| (s.table_name(t.name()), s.id.as_str())))
+        .collect();
+    let mut inferred: BTreeMap<&str, Option<&str>> = BTreeMap::new();
+    let mut after: BTreeMap<&str, Option<&str>> = BTreeMap::new();
     let mut runs = DependentRuns::default();
+    for spec in &specs {
+        let parent = (spec.source.name == "derive")
+            .then(|| spec.source.config.get("source_table").and_then(Value::as_str).and_then(|name| outputs.get(name).copied()))
+            .flatten();
+        if let (Some(explicit), Some(parent)) = (spec.after.as_deref(), parent) {
+            if explicit != parent {
+                return Err(RunError::DeriveAfterConflict(format!(
+                    "pipeline `{}` declares `after = \"{explicit}\"` but its derive source table belongs to `{parent}`",
+                    spec.id
+                )));
+            }
+        }
+        inferred.insert(&spec.id, parent);
+        if let Some(parent) = parent {
+            runs.derived_parents.insert(spec.id.clone(), parent.to_string());
+        }
+        after.insert(&spec.id, spec.after.as_deref().or(parent));
+    }
     let mut placed: Vec<(usize, String, String)> = Vec::new();
     for (&id, &prev) in &after {
         let Some(mut prev) = prev else { continue };
         let mut depth = 1;
         let mut seen = vec![id];
         loop {
-            if seen.contains(&prev) {
+            if let Some(start) = seen.iter().position(|node| *node == prev) {
+                let cycle = &seen[start..];
+                if cycle.iter().any(|node| inferred.get(node).copied().flatten().is_some()) {
+                    let mut members = cycle.to_vec();
+                    members.sort_unstable();
+                    return Err(RunError::DeriveCycle(format!("derive source tables return through {}", members.iter().map(|n| format!("`{n}`")).collect::<Vec<_>>().join(", "))));
+                }
                 return Err(RunError::PipelineSpecInvalid(format!("pipeline `{id}`: `after` returns to `{prev}`; a dependent run has one head")));
             }
             seen.push(prev);

@@ -73,11 +73,17 @@ The relations, tools and templates one connection sees, the engine executing aga
   *because a session registers every granted table, and wrapping one declaring no pair refuses reads that never name it*
 - `bound-listing` — `context.files` and a `context.describe` naming no table select under `as_of` alone; each ignores `valid_as_of` and echoes only its `as_of` part.
   *because valid time narrows rows, and a listing returns files and table names, never rows*
-- `describe-payload` — `context.describe` returns row count, schema fingerprint, description, per-column hints, declared indexes, partition scheme, `limits.max_rows`, zone label, lexicon and example queries.
+- `describe-payload` — `context.describe` returns row count, schema fingerprint, description, {{read.register.column-hints}}, declared indexes, partition scheme, `limits.max_rows`, zone label, lexicon and example queries.
+- `column-hints` — A table's `column_hints` map supplies optional per-column hints; `context.describe` includes each hint only with a column the session registers.
+  *because a hint for an absent column describes a relation the registered schema cannot query*
 - `describe-zone` — `context.describe` reports the session zone as `session_zone`, and per table, listed or described, `zone_admitted`: whether the table's effective allow-set admits that zone.
   *A-read*
 - `advertised-is-enforced` — A table's published `limits` block lists a bound exactly when the engine applies it.
   *because a published number and a delivered guarantee cannot disagree when one derives from the other*
+- `budget-arguments` — Every read tool accepts optional `max_duration_ms` and `max_response_bytes` request fields, each with no default.
+- `duration-no-statement` — A read tool running no SQL statement accepts `max_duration_ms` without triggering {{read.respond.duration-ceiling}}.
+  *because no connection executes a statement for its deadline to interrupt*
+- `budget-advertisement` — `context.describe` lists a table's `limits.max_duration_ms` and `limits.max_response_bytes` under {{read.register.advertised-is-enforced}} and omits each undeclared limit.
 - `template-projection` — Every manifest template projects into a tool named by its identifier, whose declared positional parameters form a typed schema with every field required.
 - `file-listing` — `context.files` returns store-root-relative paths for the tables the caller reads, and a table outside that set contributes no path.
   *P5*
@@ -145,7 +151,7 @@ Admission of caller-written SQL: what parses, what a base relation names, whose 
   *A-read*
 - `template-binding` — A missing, unknown or type-mismatched argument raises `TemplateArgumentRejected` ahead of execution, with no coercion. Placeholders are `$1`…`$n` or `?` in declaration order, or exactly the declared names.
   *A-read*
-- `query-binding` — `context.query` takes `parameters`, mapping each placeholder name to a `type` among {{read.guard.template-declaration}} types and a `value`. A missing, unused, untyped or mismatched parameter raises `QueryParameterRejected` ahead of execution, with no coercion; bound values reach {{authority.refuse.scope-guard}}.
+- `query-binding` — `context.query` binds `$name` or contiguous `$1`…`$n` placeholders from `parameters` typed by {{read.guard.template-declaration}} without coercion; positional `?`, missing, unused, untyped or mismatched parameters raise `QueryParameterRejected` before execution; bound values reach {{authority.refuse.scope-guard}}.
   *because a value bound to a placeholder reaches no parser, and the tenant guard decides a bound value as it decides a literal*
 - `startup-time-check` — Template checks are caller-independent and run once at startup; a request pays nothing for them.
 
@@ -181,7 +187,7 @@ The one response projection: cell encoding, the row ceiling, truncation, counts 
 - `row-ceiling` — A per-table row ceiling published as `limits.max_rows` bounds rows delivered, applied at execution with an over-fetch of 1 rows. It bounds no work performed.
 - `face-ceiling` — Every read on every face, `corpus.retrieve` included, delivers at most 10000 rows: the face ceiling is always a component of {{authority.grant.row-ceiling}}, declared or not, and bounds the candidate window.
   *because an undeclared ceiling otherwise streams a whole table into one response, and a caller learns of the cut from `truncated` rather than from memory exhaustion*
-- `truncation-is-exact` — `truncated` is set exactly when the over-fetched probe row is present, never by comparing a returned count against a requested limit.
+- `truncation-is-exact` — For a row ceiling, `truncated` is set exactly when the over-fetched probe row is present, never by comparing a returned count against a requested limit.
   *P4*
 - `cell-encoding` — SQL NULL is JSON `null` and nothing else is. Non-finite floats are `"NaN"`, `"inf"`, `"-inf"`; temporal values are ISO-8601 strings, intervals ISO-8601 durations; an enum is its label; a union is its text form.
 - `bytes-and-vectors` — Binary is padded base64, and a fixed-size float array, a vector column included, is a JSON array holding each element as a float cell.
@@ -197,6 +203,14 @@ The one response projection: cell encoding, the row ceiling, truncation, counts 
 - `coverage-is-a-count` — A claim that the corpus lacks coverage of a subject comes from a count over the table with no recency truncation, taken after the full-scan fallback, never from a ranked top score.
   *because min-max normalization pins the best row at 1.0 and IDF lifts one incidental rare-term mention*
 - `internals-opt-in` — Executed SQL, engine name, applied limit, row count and elapsed milliseconds ride a separate object returned only under `internals: true`, on every read tool and the HTTP face.
+- `query-internals-parameters` — Under `internals: true`, {{read.guard.query-binding}} includes the validated typed parameter map beside executed SQL in the internals object.
+- `duration-ceiling` — Under {{authority.grant.duration-ceiling}}, the engine interrupts the statement's connection at its deadline; `ReadDurationExceeded` names the ceiling, source and elapsed milliseconds, delivers no rows, and leaves other statements running.
+  *A-read*
+- `byte-ceiling` — Under {{authority.grant.byte-ceiling}}, the serialized response holds whole rows within the selected byte ceiling; an envelope or first row exceeding it raises `ReadResponseTooLarge` and delivers no rows.
+  *A-read*
+- `truncation-cause` — A truncated response carries `contextful.truncation` with `by`, `ceiling` and `source`: `rows` admits grant, table, request, template or face; `bytes` admits grant, table or request.
+- `truncation-tie` — When both ceilings cut the same next row, bytes takes precedence; equal ceilings within one dimension choose the first eligible source in grant, table, request, template, face order.
+  *because one cut needs one deterministic cause for a client to branch on*
 - `operator-metadata` — Operator-surface table metadata carries column count and backing file list; a row count is an ordinary count query, never a stored field.
   *P3*
 - `restriction-block` — The restriction block carries the session zone, the incognito flag and one entry per touched relation the zone excludes or column-masks: `table`, `excluded`, `rows_dropped` and `columns_masked`. A read withholding no touched relation omits the block.
@@ -205,8 +219,6 @@ The one response projection: cell encoding, the row ceiling, truncation, counts 
   *P2*
 - `paths-stay-inside` — An ordinary read's result carries no store path. Provenance arrives as columns naming table, run, connector version, ingestion instant and authoring subject.
   *A-read*
-
-unsettled: When does a duration ceiling become enforceable, and publishable in the per-table limits block beside the row ceiling? owner: read-path affects: read.respond
 
 unsettled: Does partial-result streaming belong on this surface, or does a full result set stay the one response shape? owner: read-path affects: read.respond
 
@@ -317,6 +329,8 @@ Ordering of a candidate set: the three legs, their fusion, the question's timefr
 - `ordering-casts-first` — Ordering compares publication values as `TIMESTAMPTZ` instants, casting a text value before any comparison.
   *because a text comparison of two date spellings orders strings, not instants*
 - `retrieval-block` — The `contextful.retrieval` block reports window, candidates_prefloor, candidates, matched, returned, in_window, deduped, padded, floor and since. Each row carries an integer score bounded by the content-token count, the in-window flag and the basis label.
+- `delivered-counts` — The retrieval block's returned count equals delivered rows; its in_window count equals delivered rows with a true in-window flag, after byte truncation.
+  *because aggregate counts describe the rows the caller receives*
 - `internal-score-stays-internal` — The lexical engine's own float score never crosses to a caller.
   *because a corpus-relative number drifts under a consumer's threshold as the corpus changes*
 - `absent-block` — The retrieval block is omitted from every non-ranked statement and from a build with no ranker, and an absent block differs from one reporting zero matches.

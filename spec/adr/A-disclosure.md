@@ -64,9 +64,25 @@ Consequences: an opening ages out with no revocation step and leaves a run recor
 Consequences: every read path inherits the guarantee from the staged bytes; raising a unit's lifetime cap is an explicit grant edit.
 Revisit: lookalike segment release settles its audience floor, readback rule and cross-party consent.
 
+## Exact integer noise spends the declared budget across released statistics
+
+**Status:** accepted
+
+Context: noisy partition selection and numeric sums require a sampler with an auditable spend and a finite sensitivity. Floating-point tails and unbounded values make that claim unverifiable.
+Decision: `disclosure.release.noise-mechanism` draws two-sided geometric noise with an exact integer sampler, scaled to each statistic's sensitivity. The declared per-run epsilon is divided across the published count and metrics. `disclosure.release.metric-bounds` folds, clips and quantizes each contributor's total. `disclosure.release.lookalike-refusal` withholds activation handles until an audience and consent contract exists.
+
+| Option | Lost on | Cost |
+| --- | --- | --- |
+| Exact geometric noise, bounded metrics and no lookalike release *(chosen)* | — | Every noised sum needs bounds; an activation product has no release path. |
+| Floating-point Laplace noise over raw sums | Auditable sensitivity | Unbounded contributions and floating-point tails make the privacy spend unverifiable. |
+| Exact grouped figures with a noisy threshold alone | Figure privacy | A published sum reveals contributors even where the group key stays hidden. |
+| Lookalike release beside aggregate figures | Consent | An activation handle reaches a party under no settled readback or cross-party consent rule. |
+
+Consequences: a release with no metric bounds refuses before publication; a budget accounts for every published statistic. Revisit: a consent and readback contract admits activation handles.
+
 ## A cross-owner release runs only when the boundary is enforced below the engine
 
-`disclosure.set-mode` requires of a cross-owner store per-owner signed manifest subtrees, per-owner write prefixes enforced by the object store's access policy, and per-owner signing keys, else `DisclosureCleanRoomPreconditionUnmet`. A hashed join keys on a per-pair escrowed pepper rotated per join; a static pepper raises `DisclosureStaticPepper`.
+`disclosure.set-mode` requires of a cross-owner store per-owner signed manifest subtrees, per-owner write prefixes enforced by the object store's access policy, and per-owner signing keys, else `DisclosureCleanRoomPreconditionUnmet`. A hashed join keys on a per-pair escrowed pepper rotated per join; a static pepper raises `DisclosureStaticPepper`. `disclosure.set-mode.pepper-version` admits matching current-version rows after both owners re-land their keys.
 
 | Option | Lost on | Cost |
 | --- | --- | --- |
@@ -75,7 +91,7 @@ Revisit: lookalike segment release settles its audience floor, readback rule and
 | Accept two of three preconditions | Coverage | The third path stands fully open. |
 | A static pepper shared across joins | Pepper compromise | One recovered pepper reverses every join, both directions. |
 
-Consequences: a cross-owner join never reuses a pepper; whether segments release, and under which consent, stays open under `disclosure.release`.
+Consequences: a cross-owner join never reuses a pepper; rotation requires both owners to re-land join keys.
 Revisit: private set intersection replaces the pepper; an attested enclave join serves very-high-risk pairings.
 
 ## The hash chain is the attestable record

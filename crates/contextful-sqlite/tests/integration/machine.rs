@@ -8,12 +8,87 @@ use contextful_core::run::record::RunStatus;
 use contextful_core::run::RunError;
 use contextful_core::store::catalog::MACHINE_CATALOG_FILE;
 use contextful_core::store::StoreError;
-use contextful_sqlite::MachineCatalog;
+use contextful_context::encrypt::AesGcmFileCipher;
+use contextful_sqlite::{ExportLedger, ExportPublication, MachineCatalog};
+use contextful_core::export::{change_events, change_state, parse_exports, Change};
 use serde_json::json;
 use std::sync::Arc;
 
 fn catalog(dir: &tempfile::TempDir, clock: &SetClock) -> MachineCatalog {
     MachineCatalog::open(&dir.path().join(MACHINE_CATALOG_FILE), Arc::new(clock.clone())).unwrap()
+}
+
+fn sealed_catalog(dir: &tempfile::TempDir, clock: &SetClock, key: u8) -> MachineCatalog {
+    MachineCatalog::open_sealed(
+        &dir.path().join(MACHINE_CATALOG_FILE),
+        Arc::new(clock.clone()),
+        Arc::new(AesGcmFileCipher::new([key; 32], 1)),
+    )
+    .unwrap()
+}
+
+// spec: store.encrypt.machine-catalog-sealing@9040e746
+#[test]
+fn sealed_machine_catalog_persists_lease_cursor_and_run_without_plaintext() {
+    let dir = tempfile::tempdir().unwrap();
+    let clock = SetClock::new();
+    let canary = "machine-catalog-secret-canary-4017";
+    {
+        let c = sealed_catalog(&dir, &clock, 7);
+        c.acquire(&LeaseKey::Pipeline(canary.into()), canary, 30).unwrap().unwrap();
+        c.cursor_cas("feed", "filings", 0, cursor(canary), None).unwrap();
+        c.put_run(&run_row(canary, canary, RunStatus::Success)).unwrap();
+    }
+    let c = sealed_catalog(&dir, &clock, 7);
+    assert_eq!(c.lease_row(&LeaseKey::Pipeline(canary.into())).unwrap().fence, 1);
+    assert_eq!(c.cursor("feed", "filings").unwrap().position, Some(json!(canary)));
+    assert_eq!(c.run(canary).unwrap().unwrap().pipeline_id, canary);
+    for entry in std::fs::read_dir(dir.path()).unwrap() {
+        let path = entry.unwrap().path();
+        let bytes = std::fs::read(&path).unwrap();
+        assert!(!bytes.windows(canary.len()).any(|window| window == canary.as_bytes()), "{} exposes the canary", path.display());
+        assert!(!bytes.starts_with(b"SQLite format 3"), "{} exposes a SQLite page", path.display());
+    }
+}
+
+#[test]
+fn sealed_machine_catalog_refuses_plaintext_and_an_unbound_key() {
+    let dir = tempfile::tempdir().unwrap();
+    let clock = SetClock::new();
+    let path = dir.path().join(MACHINE_CATALOG_FILE);
+    catalog(&dir, &clock).put_run(&run_row("plain", "feed", RunStatus::Success)).unwrap();
+    let before = std::fs::read(&path).unwrap();
+    assert!(MachineCatalog::open_sealed(&path, Arc::new(clock.clone()), Arc::new(AesGcmFileCipher::new([7; 32], 1))).is_err());
+    assert_eq!(std::fs::read(&path).unwrap(), before);
+
+    std::fs::remove_file(&path).unwrap();
+    sealed_catalog(&dir, &clock, 7).put_run(&run_row("sealed", "feed", RunStatus::Success)).unwrap();
+    assert!(MachineCatalog::open_sealed(&path, Arc::new(clock), Arc::new(AesGcmFileCipher::new([8; 32], 1))).is_err());
+}
+
+#[test]
+fn sealed_machine_catalog_serializes_cross_connection_cursor_cas() {
+    let dir = tempfile::tempdir().unwrap();
+    let clock = SetClock::new();
+    sealed_catalog(&dir, &clock, 7);
+    const WRITERS: u64 = 4;
+    const EACH: u64 = 10;
+    std::thread::scope(|scope| {
+        for writer in 0..WRITERS {
+            let (dir, clock) = (&dir, &clock);
+            scope.spawn(move || {
+                let c = sealed_catalog(dir, clock, 7);
+                let mut applied = 0;
+                while applied < EACH {
+                    let seen = c.cursor("feed", "filings").unwrap().version;
+                    if c.cursor_cas("feed", "filings", seen, cursor(&format!("writer-{writer}")), None).unwrap() == Cas::Applied {
+                        applied += 1;
+                    }
+                }
+            });
+        }
+    });
+    assert_eq!(sealed_catalog(&dir, &clock, 7).cursor("feed", "filings").unwrap().version, WRITERS * EACH);
 }
 
 fn pipeline() -> LeaseKey {
@@ -22,6 +97,107 @@ fn pipeline() -> LeaseKey {
 
 fn cursor(p: &str) -> CursorRow {
     CursorRow { position: Some(json!(p)), marker_run_id: Some("run-1".into()), marker_committed_at: Some(at(T0)), ..CursorRow::default() }
+}
+
+fn publication<'a>(source: &'a str, id: &'a str) -> ExportPublication<'a> {
+    ExportPublication { source, id, identity: "view-1", destination: "target-1" }
+}
+
+#[test]
+fn typed_export_replays_unacknowledged_events_and_commits_state_with_its_marker() {
+    let dir = tempfile::tempdir().unwrap();
+    let path = dir.path().join(MACHINE_CATALOG_FILE);
+    let export = parse_exports("[[export]]\nname = \"copy\"\ntable = \"items\"\nendpoint = \"https://receiver.example.com/events\"\nformat = \"changes-v1\"\nkey = [\"id\"]\nschedule = \"every 30s\"\n").unwrap().remove(0);
+    let state = change_state(&export, &[json!({"id":"a","value":1}), json!({"id":"b","value":2})]).unwrap();
+    let events = change_events(&export, "publication-1", 0, &Default::default(), &state).unwrap();
+    let mut ledger = ExportLedger::open(&path).unwrap();
+    assert!(ledger.stage("copy", publication("source-1", "publication-1"), &events, &state).unwrap());
+    assert!(!ledger.stage("copy", publication("source-2", "publication-2"), &events, &state).unwrap());
+    assert_eq!(ledger.pending("copy", 2).unwrap(), events[..2]);
+    assert!(ledger.state("copy").unwrap().is_empty());
+    drop(ledger);
+
+    let mut reopened = ExportLedger::open(&path).unwrap();
+    assert_eq!(reopened.pending("copy", 2).unwrap(), events[..2]);
+    assert!(reopened.acknowledge("copy", 9).is_err());
+    // A completion marker cannot pass changes outside the offered prefix.
+    assert!(reopened.acknowledge("copy", 2).is_err(), "the completion marker cannot skip unacknowledged changes");
+    assert_eq!(reopened.position("copy").unwrap().ack_sequence, None);
+    reopened.acknowledge("copy", 1).unwrap();
+    assert_eq!(reopened.position("copy").unwrap().ack_sequence, Some(1));
+    assert!(reopened.state("copy").unwrap().is_empty());
+    assert_eq!(reopened.pending("copy", 2).unwrap(), events[2..]);
+    assert_eq!(events[2].change, Change::PublicationComplete { changes: 2 });
+    reopened.acknowledge("copy", 2).unwrap();
+    assert_eq!(reopened.state("copy").unwrap(), state);
+    assert_eq!(reopened.position("copy").unwrap().source_publication.as_deref(), Some("source-1"));
+    assert_eq!(reopened.position("copy").unwrap().identity.as_deref(), Some("view-1"));
+    assert!(reopened.pending("copy", 2).unwrap().is_empty());
+    let repeated = change_events(&export, "publication-1", 3, &state, &state).unwrap();
+    assert!(!reopened.stage("copy", publication("source-1", "publication-1"), &repeated, &state).unwrap());
+}
+
+#[test]
+fn typed_export_acknowledges_only_the_offered_name_after_restart() {
+    let dir = tempfile::tempdir().unwrap();
+    let path = dir.path().join(MACHINE_CATALOG_FILE);
+    let export = parse_exports("[[export]]\nname = \"copy\"\ntable = \"items\"\nendpoint = \"https://receiver.example.com/events\"\nformat = \"changes-v1\"\nkey = [\"id\"]\nschedule = \"every 30s\"\n").unwrap().remove(0);
+    let state = change_state(&export, &[json!({"id":"a","value":1})]).unwrap();
+    let events = change_events(&export, "publication-1", 0, &Default::default(), &state).unwrap();
+    let mut ledger = ExportLedger::open(&path).unwrap();
+    ledger.stage("copy", publication("source-1", "publication-1"), &events, &state).unwrap();
+    ledger.stage("other", publication("source-1", "publication-1"), &events, &state).unwrap();
+    assert_eq!(ledger.pending("copy", 2).unwrap(), events);
+    // Offers are scoped to one export name.
+    assert!(ledger.acknowledge("other", 1).is_err());
+    drop(ledger);
+
+    let mut reopened = ExportLedger::open(&path).unwrap();
+    // The durable outbox must be offered again after restart.
+    assert!(reopened.acknowledge("copy", 1).is_err());
+    assert_eq!(reopened.position("copy").unwrap().ack_sequence, None);
+    assert_eq!(reopened.pending("copy", 2).unwrap(), events);
+    reopened.acknowledge("copy", 1).unwrap();
+    assert_eq!(reopened.position("copy").unwrap().ack_sequence, Some(1));
+    assert!(reopened.acknowledge("copy", 1).is_err());
+    assert_eq!(reopened.position("other").unwrap().ack_sequence, None);
+}
+
+#[test]
+fn typed_export_acknowledgement_stops_at_the_narrowed_offer() {
+    let dir = tempfile::tempdir().unwrap();
+    let path = dir.path().join(MACHINE_CATALOG_FILE);
+    let export = parse_exports("[[export]]\nname = \"copy\"\ntable = \"items\"\nendpoint = \"https://receiver.example.com/events\"\nformat = \"changes-v1\"\nkey = [\"id\"]\nschedule = \"every 30s\"\n").unwrap().remove(0);
+    let state = change_state(&export, &[json!({"id":"a","value":"x".repeat(40000)}), json!({"id":"b","value":"y".repeat(40000)})]).unwrap();
+    let events = change_events(&export, "publication-1", 0, &Default::default(), &state).unwrap();
+    let mut ledger = ExportLedger::open(&path).unwrap();
+    ledger.stage("copy", publication("source-1", "publication-1"), &events, &state).unwrap();
+    // The outbound byte bound narrows the offered row-count batch.
+    assert_eq!(ledger.pending("copy", 3).unwrap().len(), 3);
+    ledger.offer("copy", 0).unwrap();
+    assert!(ledger.acknowledge("copy", 1).is_err());
+    ledger.acknowledge("copy", 0).unwrap();
+    assert_eq!(ledger.pending("copy", 3).unwrap().len(), 2);
+}
+
+#[test]
+fn typed_export_refuses_corrupt_counters_and_sequence_exhaustion() {
+    let dir = tempfile::tempdir().unwrap();
+    let path = dir.path().join(MACHINE_CATALOG_FILE);
+    let mut ledger = ExportLedger::open(&path).unwrap();
+    let db = rusqlite::Connection::open(&path).unwrap();
+    db.execute("INSERT INTO typed_export (name, ack_sequence, next_sequence) VALUES ('copy', -2, 0)", []).unwrap();
+    assert!(ledger.position("copy").unwrap_err().to_string().contains("corrupt sequence counters"));
+    db.execute("UPDATE typed_export SET ack_sequence = -1, next_sequence = -1 WHERE name = 'copy'", []).unwrap();
+    assert!(ledger.position("copy").is_err());
+    db.execute("UPDATE typed_export SET ack_sequence = -1, next_sequence = 9223372036854775807 WHERE name = 'copy'", []).unwrap();
+    assert_eq!(ledger.position("copy").unwrap().next_sequence, i64::MAX as u64);
+    let marker = contextful_core::export::ChangeEvent {
+        version: 1, id: "copy:final".into(), publication: "final".into(), sequence: i64::MAX as u64,
+        table: "items".into(), change: Change::PublicationComplete { changes: 0 },
+    };
+    assert!(ledger.stage("copy", publication("source-1", "final"), &[marker], &Default::default()).unwrap_err().to_string().contains("cursor range"));
+    assert!(ledger.position("copy").unwrap().pending_publication.is_none());
 }
 
 #[test]

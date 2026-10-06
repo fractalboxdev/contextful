@@ -1221,7 +1221,7 @@ fn write_durable(path: &Path, bytes: &[u8], fsync: &dyn FsyncPort, what: Fsync) 
         f.write_all(bytes)?;
         fsync.sync(what, &f)?;
         fs::rename(&tmp, path)?;
-        fsync.sync(what, &File::open(path.parent().unwrap_or(Path::new(".")))?)
+        fsync.sync(what, &contextful_fs::open_dir_for_sync(path.parent().unwrap_or(Path::new(".")))?)
     })();
     if attempt.is_err() {
         let _ = fs::remove_file(&tmp);
@@ -1756,7 +1756,7 @@ impl<S: SigningPort> Inner<S> {
             }
             file.write_all(&buf).and_then(|_| self.fsync.sync(Fsync::Segment(n), &file)).map_err(fail(&path))?;
             if !existed {
-                File::open(&seg_dir).and_then(|d| self.fsync.sync(Fsync::SegmentOpen(n), &d)).map_err(fail(&seg_dir))?;
+                contextful_fs::open_dir_for_sync(&seg_dir).and_then(|d| self.fsync.sync(Fsync::SegmentOpen(n), &d)).map_err(fail(&seg_dir))?;
             }
             if tip.seq == n * size {
                 if let Custody::Held(_) = self.custody {
