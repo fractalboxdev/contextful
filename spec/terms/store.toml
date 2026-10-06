@@ -21,6 +21,7 @@ replicate  = {}
 
 
 [error]
+StoreRetentionColumnInvalid  = { clause = "store.declare.retain-rows", gloss = "A row-retention column or age is invalid, or a landed value is null." }
 StoreManifestUnreadable      = { clause = "store.lay-out.manifest-unreadable", gloss = "A run manifest or reachable snapshot manifest fails to parse." }
 StoreUnknownTable            = { clause = "store.lay-out.unknown-table", gloss = "A table name resolves to no `schema.json` in the tree." }
 StoreNodeIdInvalid           = { clause = "store.lay-out.node-id-shape", gloss = "A resolved node id is too long or outside the path-safe pattern." }

@@ -652,6 +652,14 @@ fn reconcile(
         c.nullable = false;
     }
     decl.validate(&merged)?;
+    if let Some(retention) = &decl.retain_rows {
+        if retention.column != INGESTED_AT && all_rows().any(|row| row.get(&retention.column).is_none_or(Value::is_null)) {
+            return Err(StoreError::StoreRetentionColumnInvalid(format!(
+                "table `{table}` retains rows by `{}`, which each landed row must carry as non-null",
+                retention.column
+            )).into());
+        }
+    }
     decl.validate_index_types(&merged)?;
     // Every refusal of the batch has fired. The schema commits before the manifest, so
     // a fold reading a run finds its columns in the schema it reads after.

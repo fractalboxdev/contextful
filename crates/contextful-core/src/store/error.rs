@@ -5,6 +5,9 @@
 
 #[derive(Debug, Clone, PartialEq, Eq, thiserror::Error)]
 pub enum StoreError {
+    /// A row-retention column is absent or not declared Timestamp (`store.declare.retain-rows`).
+    #[error("StoreRetentionColumnInvalid: {0}")]
+    StoreRetentionColumnInvalid(String),
     /// An `as_of` precedes the oldest retained snapshot of a table whose history was collected. (`store.bound-time.as-of-unretained`)
     #[error("StoreAsOfUnretained: {0}")]
     StoreAsOfUnretained(String),

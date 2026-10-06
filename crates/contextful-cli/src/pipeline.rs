@@ -613,6 +613,9 @@ pub fn run(cmd: PipelineCmd, tasks: &Tasks) -> Result<()> {
                     config: host.config.clone(),
                     task: host.task.clone(),
                     tables: host.tables.clone(),
+                    retention_columns: spec.tables.iter().filter_map(|t| {
+                        t.decl().retain_rows.map(|r| (t.name().to_string(), r.column))
+                    }).collect(),
                     reader: Box::new(StoreReader { store: Store::open(&l.project.dir, &l.project.name)?, decls: dest.decls.clone() }),
                 };
                 let landing = derive.stage(&Uncanceled).map_err(|f| anyhow::anyhow!("pipeline `{}`: {f}", spec.id))?;

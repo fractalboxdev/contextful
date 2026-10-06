@@ -14,6 +14,7 @@ mod lay_out;
 mod ledger;
 mod read;
 mod reconcile;
+mod retention;
 mod reserve;
 mod rows;
 mod run_commit;

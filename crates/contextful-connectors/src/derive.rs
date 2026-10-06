@@ -7,7 +7,7 @@ use contextful_core::connector::reference::Template;
 use contextful_core::run::derive::config::{Binding, DeriveConfig, OutputFormat, StepSpec};
 use contextful_core::run::derive::cues::{parse, passages};
 use contextful_core::run::derive::emit::{
-    document_status, marker_row, passage_rows, revived, select, Derivation, Unit, UnitStatus, DERIVATION_KEY, OUTPUT_COLUMNS,
+    document_status, marker_row, passage_rows, revived, select, Derivation, Unit, UnitStatus, DERIVATION_KEY, KIND, OUTPUT_COLUMNS,
 };
 use contextful_core::run::derive::exec::{
     engine_id, excerpt, expand, is_url, Condition, StepFiles, CAPTURED_OUTPUT_BYTES, CHAIN_DEADLINE_SECS,
@@ -430,6 +430,8 @@ pub struct HostDerive {
     pub task: Arc<dyn DeriveTask>,
     /// The store table each of the task's tables lands in, keyed by the task's name for it.
     pub tables: BTreeMap<String, String>,
+    /// A content or marker table's custom retention column, named in its parent row.
+    pub retention_columns: BTreeMap<String, String>,
     pub reader: Box<dyn TableReader>,
 }
 
@@ -446,6 +448,11 @@ impl HostDerive {
         let marker_table = self.store_table(&task.marker_table());
         let mut columns: Vec<String> = vec![self.config.parent_id_column.clone(), DERIVATION_KEY.to_string()];
         columns.extend(task.columns());
+        for column in self.retention_columns.values().filter(|c| c.as_str() != "_ingested_at") {
+            if !columns.contains(column) {
+                columns.push(column.clone());
+            }
+        }
         let wanted: Vec<&str> = columns.iter().map(String::as_str).collect();
         let parents = self.reader.rows(&self.config.source_table, &wanted)?;
         let markers = self.reader.rows(&marker_table, &OUTPUT_COLUMNS)?;
@@ -463,7 +470,17 @@ impl HostDerive {
             if budget.is_some_and(|b| started.elapsed() >= b) {
                 break;
             }
-            derived.push((unit, host_rows(unit, &name, task, task.derive(unit))));
+            let mut rows = host_rows(unit, &name, task, task.derive(unit));
+            for (table, output) in &mut rows {
+                if let Some(column) = self.retention_columns.get(table).filter(|c| c.as_str() != "_ingested_at") {
+                    if let Some(clock) = unit.row.get(column) {
+                        for row in output.iter_mut().filter(|r| r.get(KIND).and_then(serde_json::Value::as_str) == Some("marker")) {
+                            row.entry(column.clone()).or_insert_with(|| clock.clone());
+                        }
+                    }
+                }
+            }
+            derived.push((unit, rows));
         }
         // A concurrent tick may have settled a unit under its key while this one derived it.
         let landed = if derived.is_empty() { Vec::new() } else { self.reader.rows(&marker_table, &OUTPUT_COLUMNS)? };

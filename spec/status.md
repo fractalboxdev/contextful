@@ -11,11 +11,11 @@ An unpinned clause is `committed`; a pinned one is `performed` when its Rust, Le
 | `corpus` | 1 | 10 | 79 | 37 | 7 | 0 | 40 | 0 | 40 |
 | `disclosure` | 3 | 16 | 134 | 66 | 13 | 3 | 63 | 0 | 63 |
 | `read` | 2 | 15 | 200 | 31 | 22 | 9 | 178 | 0 | 172 |
-| `run` | 3 | 26 | 374 | 98 | 36 | 37 | 262 | 0 | 262 |
-| `store` | 1 | 17 | 240 | 55 | 13 | 20 | 204 | 0 | 202 |
+| `run` | 3 | 26 | 375 | 98 | 36 | 37 | 263 | 0 | 262 |
+| `store` | 1 | 17 | 244 | 56 | 13 | 20 | 208 | 0 | 204 |
 | `surface` | 2 | 20 | 106 | 49 | 22 | 0 | 51 | 0 | 51 |
 | `topology` | 1 | 6 | 70 | 24 | 5 | 5 | 38 | 0 | 38 |
-| **total** | 19 | 155 | 2056 | 585 | 188 | 113 | 1401 | 0 | |
+| **total** | 19 | 155 | 2061 | 586 | 188 | 113 | 1406 | 0 | |
 
 Decision records: 18.
 
@@ -27,7 +27,7 @@ A milestone reads `closed` when its acceptance test computes `passing` and every
 | --- | --- | --- | --- | --- | --- |
 | 0 — The test-first gate | 2 | 18 | 6 | passing | open |
 | 1 — The authority core | 14 | 238 | 186 | passing | closed |
-| 2 — The store | 9 | 167 | 136 | passing | closed |
+| 2 — The store | 9 | 171 | 140 | passing | closed |
 | 3 — The run path | 11 | 207 | 144 | passing | closed |
 | 4 — Ingest | 25 | 497 | 314 | passing | open |
 | 5 — The read face under enforcement | 17 | 262 | 204 | passing | open |
@@ -36,7 +36,7 @@ A milestone reads `closed` when its acceptance test computes `passing` and every
 | 8 — Accountability | 5 | 60 | 47 | passing | open |
 | 9 — Visibility | 6 | 41 | 3 | open | open |
 | 10 — Cadence and the operator plane | 11 | 68 | 56 | passing | open |
-| 11 — The derive tier | 7 | 78 | 55 | passing | open |
+| 11 — The derive tier | 7 | 79 | 56 | passing | open |
 | 12 — The operator console | 12 | 49 | 0 | open | open |
 | 13 — Disclosure | 5 | 33 | 13 | open | open |
 | 14 — Assurance | 7 | 138 | 89 | passing | closed |
@@ -940,6 +940,7 @@ Unscheduled operations: 10.
 | `run.emit.attempts` | `crates/contextful-core/tests/integration/run/derive.rs::attempts_count_up_from_the_prior_and_an_empty_unit_takes_one` | performed |
 | `run.emit.canceled-unit` | `crates/contextful-connectors/tests/integration/derive.rs::a_stopped_chain_lands_no_row_and_the_pull_ends_canceled` | performed |
 | `run.emit.content-empty` | `crates/contextful-cli/tests/integration/derive.rs::a_content_table_left_without_rows_stops_answering_the_earlier_key` | performed |
+| `run.emit.content-marker-retention-clock` | `spec/pins.toml` | performed |
 | `run.emit.derivation-key` | `crates/contextful-core/tests/integration/run/derive.rs::a_derivation_key_hashes_engine_binding_columns_and_parent` | performed |
 | `run.emit.empty-document` | `crates/contextful-core/tests/integration/run/derive.rs::only_a_well_formed_webvtt_without_cues_is_empty` | performed |
 | `run.emit.host-rows` | `crates/contextful-core/tests/integration/run/host_task.rs::a_unit_lands_stamped_content_rows_and_one_marker` | performed |
@@ -1161,6 +1162,7 @@ Unscheduled operations: 10.
 | `store.bound-time.covering-versions` | `crates/contextful-context/tests/integration/bound_time.rs::an_unkeyed_table_returns_every_covering_version` | performed |
 | `store.bound-time.echo` | `crates/contextful-core/tests/integration/store/bound_time.rs::a_bounded_read_echoes_its_bounds` | performed |
 | `store.bound-time.instant-comparison` | `crates/contextful-core/tests/integration/store/bound_time.rs::bounds_compare_instants_and_a_date_resolves_to_the_next_day_exclusive` | performed |
+| `store.bound-time.row-age-cutoff` | `spec/pins.toml` | performed |
 | `store.bound-time.two-clocks` | `crates/contextful-core/tests/integration/store/bound_time.rs::transaction_time_is_ingested_at_and_valid_time_is_declared` | performed |
 | `store.bound-time.unbounded-latest` | `crates/contextful-core/tests/integration/store/bound_time.rs::an_unbounded_read_is_the_current_snapshot_plus_omitted_runs` | performed |
 | `store.bound-time.valid-as-of` | `crates/contextful-context/tests/integration/bound_time.rs::valid_as_of_selects_the_rows_valid_at_the_instant` | performed |
@@ -1181,6 +1183,7 @@ Unscheduled operations: 10.
 | `store.declare.read-side-keys` | `crates/contextful-context/tests/integration/declare.rs::a_key_added_after_rows_land_applies_at_the_next_read` | performed |
 | `store.declare.replace-frontier` | `crates/contextful-core/tests/integration/store/declare.rs::replace_covers_the_newest_complete_run_and_what_follows` | performed |
 | `store.declare.replace-retains` | `crates/contextful-context/tests/integration/declare.rs::a_replacing_run_leaves_displaced_runs_until_retention` | performed |
+| `store.declare.retain-rows` | `spec/pins.toml` | performed |
 | `store.declare.table-block` | `crates/contextful-core/tests/integration/store/declare.rs::a_table_block_parses_its_keys_and_omits_unset_ones` | performed |
 | `store.declare.unkeyed-union` | `crates/contextful-context/tests/integration/declare.rs::an_unkeyed_table_reads_as_the_union_of_its_runs` | performed |
 | `store.declare.write-mode` | `crates/contextful-core/tests/integration/store/declare.rs::write_mode_is_append_by_default_or_replace` | performed |
@@ -1207,6 +1210,8 @@ Unscheduled operations: 10.
 | `store.fold.pointer-commit` | `crates/contextful-context/tests/integration/fold.rs::the_pointer_replace_is_conditioned_on_the_etag_read_at_pass_start` | performed |
 | `store.fold.result` | `crates/contextful-cli/tests/integration/context.rs::a_scheduled_pass_reports_every_table_and_continues_past_nothing_landed` | performed |
 | `store.fold.retention` | `crates/contextful-context/tests/integration/fold.rs::folded_runs_and_superseded_snapshots_are_collected_after_seven_days` | performed |
+| `store.fold.row-retention` | `spec/pins.toml` | performed |
+| `store.fold.row-retention-report` | `spec/pins.toml` | performed |
 | `store.fold.staging-collected` | `crates/contextful-context/tests/integration/fold.rs::the_next_pass_collects_staging_and_unreachable_snapshots` | performed |
 | `store.fold.supersedes` | `crates/contextful-context/tests/integration/fold.rs::a_new_snapshot_supersedes_without_deleting` | performed |
 | `store.fold.triggers` | `crates/contextful-core/tests/integration/store/fold.rs::a_pass_fires_at_fifty_runs_or_six_hours` | performed |
