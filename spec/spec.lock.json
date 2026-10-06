@@ -402,7 +402,7 @@
       "operation": "state",
       "subject": "typescript-unfinished",
       "kind": "behavior",
-      "statement": "A pinned TypeScript test using `skip`, `todo` or `only`, lacking a recognizable assertion call, holding an `if (false)` branch or placeholder, or shadowing its `node:test` import computes `broken`.",
+      "statement": "A pinned TypeScript test using `skip`, `todo` or `only`, lacking an assertion, placing its first assertion after a nested arrow, holding `if (false)` or a placeholder, or shadowing `node:test` computes `broken`.",
       "why": "because a test that cannot demonstrate an assertion demonstrates no clause",
       "file": "spec/00-corpus.md",
       "line": 156

@@ -153,7 +153,7 @@ Pins, verdicts, the coverage floor, the roadmap's operation claims and each mile
   *because a pin written beside its test travels with every move and rename, and the digest records which wording the test demonstrates*
 - `typescript-tag-pin` — A `// spec: <id>@<rev>` line above a uniquely named `node:test` call under a direct TypeScript surface pins its clause when the callback contains a recognizable assertion call.
   *P8*
-- `typescript-unfinished` — A pinned TypeScript test using `skip`, `todo` or `only`, lacking a recognizable assertion call, holding an `if (false)` branch or placeholder, or shadowing its `node:test` import computes `broken`.
+- `typescript-unfinished` — A pinned TypeScript test using `skip`, `todo` or `only`, lacking an assertion, placing its first assertion after a nested arrow, holding `if (false)` or a placeholder, or shadowing `node:test` computes `broken`.
   *because a test that cannot demonstrate an assertion demonstrates no clause*
 - `lean-tag` — A line `-- spec: <id>@<rev>` above a Lean `theorem` or `lemma` under `formal/`, past comments, docstrings and attributes, pins clause `<id>` to that theorem, with `<rev>` as in {{corpus.state.tag-pin}}.
   *because a theorem's pin then moves with the proof, and a reworded clause marks the proof stale*

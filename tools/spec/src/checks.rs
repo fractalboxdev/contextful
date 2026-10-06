@@ -944,8 +944,10 @@ fn ts_unfinished(test: &str) -> bool {
     let Some(close) = close else { return true };
     let body = test[open + 1..close].trim();
     let code = ts_code(body);
+    let first_assertion = TS_ASSERTION.find(&code).map(|found| found.start());
+    let nested_before_assertion = code.find("=>").is_some_and(|arrow| first_assertion.is_none_or(|assertion| arrow < assertion));
     body.is_empty() || body.contains("TODO") || body.contains("todo(") || body.contains("not implemented")
-        || code.contains("assert.ok(true)") || TS_FALSE_BRANCH.is_match(&code) || !TS_ASSERTION.is_match(&code)
+        || code.contains("assert.ok(true)") || TS_FALSE_BRANCH.is_match(&code) || nested_before_assertion || first_assertion.is_none()
 }
 
 fn ts_code(body: &str) -> String {
