@@ -220,9 +220,9 @@ unsettled: Does the engine read a source's declared schema at planning time, or 
 
 ## export
 
-The outbound copy of a landed table to an operator-declared OTLP target: the export block, the post-commit read, the delivery batch, the cursor and at-least-once delivery.
+The outbound copy of a landed table to an operator-declared target: the export block, the post-commit read, the delivery batch, the cursor and at-least-once delivery.
 
-- `export-block` — A manifest `[[export]]` block declares `name`, one landed `table`, an OTLP/HTTP `endpoint`, `signal` and optional `headers`; `contextful export run <name>` delivers every row its cursor has not passed.
+- `export-block` — An OTLP `[[export]]` block declares `name`, one landed `table`, an HTTP `endpoint`, `signal = "logs"` and optional `headers`; `contextful export run <name>` delivers every row its cursor has not passed.
   *A-topology*
 - `signal-unknown` — A `signal` other than `logs` raises `ExportSignalUnknown` before any row is read.
   *because the one built-in arm maps a row onto a log record, and a span or metric needs a column mapping no block declares*
@@ -246,6 +246,26 @@ The outbound copy of a landed table to an operator-declared OTLP target: the exp
   *A-topology*
 - `delivery-refused` — A target answering other than 2xx, or unreachable, raises `ExportDeliveryRefused` naming the export and the answer, and the cursor stays where it stood.
   *because an unacknowledged batch is resent from the cursor, never skipped*
+- `typed-block` — A typed `[[export]]` block declares `format = "changes-v1"`, nonempty `key` columns and `schedule`, beside `name`, `table`, `endpoint` and optional `headers`.
+  *because a consumer needs stable row identity and a delivery cadence*
+- `typed-state` — A typed export compares the latest stable committed table read through {{run.export.post-commit-read}} with its last acknowledged state; commits between reads coalesce into one publication.
+  *because a scheduled state export promises the observed frontier rather than every intermediate write*
+- `typed-events` — Each changed key yields a versioned upsert with its visible row or a deletion with its key; unchanged keys yield no event.
+  *because a generic consumer applies the same keyed operations regardless of table shape*
+- `typed-order` — Typed events order by encoded key and carry consecutive sequences and stable ids; a repeat delivery carries the same bytes and ids.
+  *because acknowledgement can fail after the target applies a batch*
+- `typed-complete` — A publication-complete event follows every change, including an empty set, and states that publication's change count.
+  *because a consumer needs a boundary after which its keyed state represents one observed frontier*
+- `typed-outbox` — Events and their next keyed state stage together in machine-local `machine.sqlite`; a pending publication blocks staging a later frontier.
+  *because a failed send must retain its exact payload and order across restarts*
+- `typed-ack` — A typed export advances its machine-local acknowledgement sequence only after HTTP 2xx; acknowledging the completion event promotes its staged state in the same transaction.
+  *because a receiver acknowledgement and local state promotion have one durable order*
+- `typed-watch` — `contextful export watch <name>` fires the typed export on its schedule and retries a refused send with capped exponential delay from the pending outbox.
+  *because delivery resumes without another operator invocation*
+- `typed-byte-limit` — One typed JSON request holds at most 65536 B.
+  *because a row-count bound alone admits an unbounded request body*
+- `typed-event-too-large` — A typed event unable to fit one request raises `ExportEventTooLarge`; watch stops rather than retrying that event.
+  *because an unchanged oversized event cannot make progress on retry*
 
 unsettled: Does the arm map a table onto the OTLP span or metric signal, and through which column declaration? owner: pipeline affects: run.export
 

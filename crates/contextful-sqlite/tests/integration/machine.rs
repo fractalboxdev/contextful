@@ -8,7 +8,8 @@ use contextful_core::run::record::RunStatus;
 use contextful_core::run::RunError;
 use contextful_core::store::catalog::MACHINE_CATALOG_FILE;
 use contextful_core::store::StoreError;
-use contextful_sqlite::MachineCatalog;
+use contextful_sqlite::{ExportLedger, MachineCatalog};
+use contextful_core::export::{change_events, change_state, parse_exports, Change};
 use serde_json::json;
 use std::sync::Arc;
 
@@ -22,6 +23,55 @@ fn pipeline() -> LeaseKey {
 
 fn cursor(p: &str) -> CursorRow {
     CursorRow { position: Some(json!(p)), marker_run_id: Some("run-1".into()), marker_committed_at: Some(at(T0)), ..CursorRow::default() }
+}
+
+#[test]
+fn typed_export_replays_unacknowledged_events_and_commits_state_with_its_marker() {
+    let dir = tempfile::tempdir().unwrap();
+    let path = dir.path().join(MACHINE_CATALOG_FILE);
+    let export = parse_exports("[[export]]\nname = \"copy\"\ntable = \"items\"\nendpoint = \"https://receiver.example.com/events\"\nformat = \"changes-v1\"\nkey = [\"id\"]\nschedule = \"every 30s\"\n").unwrap().remove(0);
+    let state = change_state(&export, &[json!({"id":"a","value":1}), json!({"id":"b","value":2})]).unwrap();
+    let events = change_events(&export, "publication-1", 0, &Default::default(), &state).unwrap();
+    let mut ledger = ExportLedger::open(&path).unwrap();
+    assert!(ledger.stage("copy", "publication-1", &events, &state).unwrap());
+    assert!(!ledger.stage("copy", "publication-2", &events, &state).unwrap());
+    assert_eq!(ledger.pending("copy", 2).unwrap(), events[..2]);
+    assert!(ledger.state("copy").unwrap().is_empty());
+    drop(ledger);
+
+    let mut reopened = ExportLedger::open(&path).unwrap();
+    assert_eq!(reopened.pending("copy", 2).unwrap(), events[..2]);
+    assert!(reopened.acknowledge("copy", 9).is_err());
+    assert_eq!(reopened.position("copy").unwrap().ack_sequence, None);
+    reopened.acknowledge("copy", 1).unwrap();
+    assert_eq!(reopened.position("copy").unwrap().ack_sequence, Some(1));
+    assert!(reopened.state("copy").unwrap().is_empty());
+    assert_eq!(reopened.pending("copy", 2).unwrap(), events[2..]);
+    assert_eq!(events[2].change, Change::PublicationComplete { changes: 2 });
+    reopened.acknowledge("copy", 2).unwrap();
+    assert_eq!(reopened.state("copy").unwrap(), state);
+    assert_eq!(reopened.position("copy").unwrap().source_publication.as_deref(), Some("publication-1"));
+    assert!(reopened.pending("copy", 2).unwrap().is_empty());
+}
+
+#[test]
+fn typed_export_refuses_corrupt_counters_and_sequence_exhaustion() {
+    let dir = tempfile::tempdir().unwrap();
+    let path = dir.path().join(MACHINE_CATALOG_FILE);
+    let mut ledger = ExportLedger::open(&path).unwrap();
+    let db = rusqlite::Connection::open(&path).unwrap();
+    db.execute("INSERT INTO typed_export (name, ack_sequence, next_sequence) VALUES ('copy', -2, 0)", []).unwrap();
+    assert!(ledger.position("copy").unwrap_err().to_string().contains("corrupt sequence counters"));
+    db.execute("UPDATE typed_export SET ack_sequence = -1, next_sequence = -1 WHERE name = 'copy'", []).unwrap();
+    assert!(ledger.position("copy").is_err());
+    db.execute("UPDATE typed_export SET ack_sequence = -1, next_sequence = 9223372036854775807 WHERE name = 'copy'", []).unwrap();
+    assert_eq!(ledger.position("copy").unwrap().next_sequence, i64::MAX as u64);
+    let marker = contextful_core::export::ChangeEvent {
+        version: 1, id: "copy:final".into(), publication: "final".into(), sequence: i64::MAX as u64,
+        table: "items".into(), change: Change::PublicationComplete { changes: 0 },
+    };
+    assert!(ledger.stage("copy", "final", &[marker], &Default::default()).unwrap_err().to_string().contains("cursor range"));
+    assert!(ledger.position("copy").unwrap().pending_publication.is_none());
 }
 
 #[test]

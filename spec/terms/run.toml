@@ -70,6 +70,7 @@ PipelineTableFailed            = { clause = "run.land.table-failed", gloss = "On
 ExportSignalUnknown            = { clause = "run.export.signal-unknown", gloss = "An export block naming a signal the built-in arm does not map." }
 ExportCommitSeqMissing         = { clause = "run.export.commit-seq-missing", gloss = "A table holding rows no cursor passes, their `_commit_seq` null." }
 ExportDeliveryRefused          = { clause = "run.export.delivery-refused", gloss = "An OTLP target answering other than 2xx, or unreachable." }
+ExportEventTooLarge            = { clause = "run.export.typed-event-too-large", gloss = "One typed event exceeding the delivery request ceiling." }
 PipelineChunkParallelism       = { clause = "run.backfill.chunk-parallelism", gloss = "A sequential chunk plan beside a parallelism above one." }
 PipelineRewindWindowInvalid    = { clause = "run.backfill.rewind-invalid", gloss = "An inverted, empty or scale-incomparable rewind window." }
 PipelineSeedDeclarationMissing = { clause = "run.seed.declaration-missing", gloss = "A seeded table lacking a key or an event-time ordering." }
@@ -150,6 +151,7 @@ describe-history-ceiling   = { clause = "run.record.describe-window", value = 50
 export-history-default     = { clause = "run.record.export-ceiling", value = 500, unit = "rows", basis = "chosen", gloss = "Runs the export returns unasked." }
 export-history-ceiling     = { clause = "run.record.export-ceiling", value = 5000, unit = "rows", basis = "chosen", gloss = "Highest ceiling the export honors, per pipeline." }
 export-batch-rows          = { clause = "run.export.batch-rows", value = 500, unit = "rows", basis = "chosen", gloss = "Rows one OTLP delivery batch holds." }
+typed-export-request-bytes = { clause = "run.export.typed-byte-limit", value = 65536, unit = "B", basis = "chosen", gloss = "Largest typed export request body." }
 run-error-cap              = { clause = "run.record.error-cap", value = 2, unit = "KiB", basis = "chosen", gloss = "Size a recorded run error is clipped to." }
 projection-coalesce-window = { clause = "run.project.coalescing", value = 100, unit = "ms", basis = "chosen", gloss = "Window snapshot broadcasts collapse into." }
 run-metadata-bytes         = { clause = "run.project.metadata-too-large", value = 16384, unit = "B", basis = "chosen", gloss = "Serialized bound on snapshot application metadata." }
