@@ -82,6 +82,17 @@ test("spawned child refuses absent credential and absent ancestor manifest befor
   assert.deepEqual(await spawned.call("tools/list"), { ok: true });
 });
 
+test("spawned owner sends an explicit flag with its credential", async () => {
+  const root = mkdtempSync(join(tmpdir(), "contextful-client-owner-"));
+  writeFileSync(join(root, "contextful.toml"), "");
+  assert.throws(() => new SpawnedClient({ cwd: root, command: "contextful", owner: true }), /StdioCredentialMissing/);
+  const fixture = join(root, "owner-mcp");
+  writeFileSync(fixture, `#!/usr/bin/env node\nprocess.stdin.resume();\nprocess.stdin.once("data", () => process.stdout.write(JSON.stringify({ jsonrpc: "2.0", id: 1, result: { owner: process.argv.includes("--owner"), token: process.env.CONTEXTFUL_TOKEN } }) + "\\n"));\n`);
+  chmodSync(fixture, 0o700);
+  const client = new SpawnedClient({ cwd: root, command: fixture, token: "signed-owner-claim", owner: true });
+  assert.deepEqual(await client.call("tools/list"), { owner: true, token: "signed-owner-claim" });
+});
+
 test("spawned client rejects an in-band MCP tool refusal", async () => {
   const root = mkdtempSync(join(tmpdir(), "contextful-client-"));
   writeFileSync(join(root, "contextful.toml"), "");
