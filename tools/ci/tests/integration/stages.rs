@@ -444,7 +444,7 @@ fn the_surfaces_stage_runs_each_native_typescript_test_file_even_without_a_test_
     let o = gate(&r, Some(&bin), &["--stage", "surfaces"]);
     assert!(!o.status.success());
     assert!(stderr(&o).contains("SurfaceCheckFailed: surface apps/web: test `test/pin.test.ts` exited 5"), "{}", stderr(&o));
-    assert!(bin.calls().iter().any(|call| call == "node --experimental-strip-types --test test/pin.test.ts in web"), "{:?}", bin.calls());
+    assert!(bin.calls().iter().any(|call| call == "node --experimental-strip-types --test --test-reporter=tap test/pin.test.ts in web"), "{:?}", bin.calls());
 }
 
 #[test]
@@ -474,4 +474,15 @@ fn a_symlinked_native_test_outside_the_surface_is_not_discovered() {
     bin.fake("node", "exit 5\n");
     let o = gate(&r, Some(&bin), &["--stage", "surfaces"]);
     assert!(o.status.success(), "{}", stderr(&o));
+}
+
+#[test]
+fn a_pinned_native_test_must_appear_in_the_runner_report() {
+    let r = surface_repo();
+    r.write("apps/web/test/nested.test.ts", "import { test } from 'node:test';\nimport assert from 'node:assert/strict';\ntest('unrelated', () => assert.equal(1, 1));\nfunction never() {\n  // spec: corpus.anatomy.statement-words@11227773\n  test('pinned claim', () => assert.equal(2, 2));\n}\n");
+    let bin = Bin::new();
+    pnpm(&bin, "none");
+    let o = gate(&r, Some(&bin), &["--stage", "surfaces"]);
+    assert!(!o.status.success(), "{}", stderr(&o));
+    assert!(stderr(&o).contains("SurfaceCheckFailed"), "{}", stderr(&o));
 }
