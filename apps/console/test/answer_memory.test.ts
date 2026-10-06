@@ -85,7 +85,7 @@ test("verified reading session lands evidence-backed claims and recalls them bef
   assert(!events.includes("memory.write"), "read MCP remains closed to mutation");
 });
 
-test("hosted Query reports a served learning refusal without exposing its credential", async () => {
+function servedLearningRefusalFixture() {
   const store: StoreEntry = { id: "field-notes", label: "Field notes", endpoint: "https://store.example", auth: "exchange",
     exchangeRoute: "/auth/exchange", credentialName: "FIELD_NOTES_QUERY_TOKEN", bindingName: "FIELD_NOTES" };
   const fetcher: typeof fetch = async (input, init) => {
@@ -113,6 +113,12 @@ test("hosted Query reports a served learning refusal without exposing its creden
     control: { workflows: async () => ({}), record: async () => ({}), edit: async () => ({}), apply: async () => ({}) } });
   const cookie = issueCognitoSession({ subject: "alice", groups: ["query"], session: "stable-reading-session",
     assertion: "verified-assertion", expiresAt: Math.floor(Date.now() / 1000) + 60 }, "secret");
+  return { app, cookie, store };
+}
+
+// spec: surface.learn.write-refused@32cba5ac
+test("hosted Query reports a served learning refusal without exposing its credential", async () => {
+  const { app, cookie, store } = servedLearningRefusalFixture();
   const response = await app.fetch(new Request("https://console.example/query/api/ask", { method: "POST",
     headers: { cookie: `console_session=${cookie}`, origin: "https://console.example" },
     body: JSON.stringify({ store: store.id, question: "Which Northwind filing arrived?" }),
