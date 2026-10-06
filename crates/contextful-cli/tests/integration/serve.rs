@@ -150,6 +150,24 @@ fn control_routes_require_admin_and_project_applied_workflows() {
     assert_eq!(view["pipelines"][0]["schedule"], "every 1d");
 }
 
+#[test]
+fn published_workflow_listing_caps_entries_and_flags_truncation() {
+    let (dir, public) = project();
+    let root = dir.path();
+    let snapshot = contextful_engine::control::SnapshotDir::open(&root.join(".contextful/control/research"));
+    let document = (0..1001).map(|index| format!(
+        "[[pipeline]]\nid = \"flow-{index:04}\"\ntables = [\"research/notes\"]\n[pipeline.source]\nname = \"http\"\nconfig = {{ endpoint = \"https://example.test/filings\" }}\n"
+    )).collect::<Vec<_>>().join("\n");
+    snapshot.import(&document).unwrap();
+    let admin = stdout(&run(root, &["token", "mint", "--issuer-key", ".contextful/issuer.seed", "--on-behalf-of", "user://dana@acme.example", "--zone", "on-prem:hq", "--action", "admin", "--table", "*", "--ttl", "900"]));
+    let (_listener, addr) = serve(root, &["serve", "--http", "127.0.0.1:0", "--audience", AUD, "--max-in-flight", "2", "--project", "research", "--public-key", &public]);
+    let (status, view) = control(&addr, "GET", "/control/workflows", Some(&admin), "");
+    assert_eq!(status, 200, "{view}");
+    assert_eq!(view["pipelines"].as_array().unwrap().len(), 1000);
+    assert_eq!(view["truncated"], true);
+    assert_eq!(view["declined"], 0);
+}
+
 /// The network transport refuses to start without its audience, its ceiling, or an issuer key that resolves and parses.
 // spec: topology.publish-hostname.issuer-key@a7736a7f
 #[test]
