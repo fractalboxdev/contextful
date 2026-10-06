@@ -29,7 +29,7 @@ use contextful_outbound::egress::{system, Outbound, Transport};
 use serde::Serialize;
 use serde_json::json;
 use serde_json::Value;
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, BTreeSet};
 use std::net::SocketAddr;
 use std::path::{Path, PathBuf};
 use std::io::Read;
@@ -235,9 +235,20 @@ pub(crate) fn published(project: &Project, declaration: &Path) -> Result<Value> 
     let text = std::fs::read_to_string(declaration)?;
     let control = control_config(&text, project)?;
     let (version, pipelines) = applied(&control.source)?;
+    let truncated = pipelines.len() > 1000;
+    let pipelines: Vec<PipelineSpec> = pipelines.into_values().take(1000).collect();
+    let selected: BTreeSet<&str> = pipelines.iter().map(|spec| spec.id.as_str()).collect();
     let store = contextful_context::Store::open(&project.dir, &project.name)?;
-    let runs = contextful_sync::run_state::run_states(&store)?;
-    let pipelines: Vec<Value> = pipelines.into_values().map(|spec| json!({
+    let states = contextful_sync::run_state::run_states(&store)?;
+    let mut runs: BTreeMap<String, contextful_sync::RunMark> = BTreeMap::new();
+    for state in states.into_values() {
+        for (id, mark) in state.runs {
+            if selected.contains(id.as_str()) && runs.get(&id).is_none_or(|earlier| mark.started_at > earlier.started_at) {
+                runs.insert(id, mark);
+            }
+        }
+    }
+    let pipelines: Vec<Value> = pipelines.into_iter().map(|spec| json!({
         "id": spec.id,
         "schedule": spec.schedule,
         "tables": spec.tables.iter().map(|table| table.name()).collect::<Vec<_>>(),
@@ -251,8 +262,7 @@ pub(crate) fn published(project: &Project, declaration: &Path) -> Result<Value> 
             TransformOp::Extract { .. } => "extract",
         }).collect::<Vec<_>>(),
     })).collect();
-    let runs: BTreeMap<_, _> = runs.into_iter().map(|(node, state)| (node, state.runs)).collect();
-    Ok(json!({ "applied": version, "pipelines": pipelines, "runs": runs }))
+    Ok(json!({ "applied": version, "pipelines": pipelines, "runs": runs, "truncated": truncated, "declined": 0 }))
 }
 
 /// The snapshot document: every specification as a `[[pipeline]]` block, sorted by id.
