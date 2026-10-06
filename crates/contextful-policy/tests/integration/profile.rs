@@ -19,6 +19,9 @@ fn a_signed_owner_claim_uses_profile_two_and_cannot_be_promoted_from_profile_one
     assert!(admit(&token, &signer, DURING).unwrap().activate_owner("second-store").is_none());
     let child = attenuate(&token, &Derivation::default()).unwrap();
     assert!(admit(&child, &signer, DURING).unwrap().activate_owner(claim).is_none());
+    let restricted = mint(&plan_for(&signer, dana(), vec![grant(&[Action::Read], &["research/*"])]),
+        &MintClaims { owner_project: Some(claim.into()), ..MintClaims::default() }, &signer).unwrap();
+    assert!(admit(&restricted, &signer, DURING).unwrap().activate_owner(claim).is_none());
     let first_profile = craft(&signer, &block(&signer), &[], "owner_project(\"one-local-store\");");
     refused(admit(&first_profile, &signer, DURING), "ProfileElementUnrecognized");
 }
