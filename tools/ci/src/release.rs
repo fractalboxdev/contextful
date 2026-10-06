@@ -12,8 +12,6 @@ use std::process::Command;
 /// The binary every profile builds.
 const BINARY: &str = "contextful";
 const PACKAGE: &str = "contextful-cli";
-/// The directory release builds compile into, apart from every gate stage's.
-pub const TARGET_DIR: &str = "target/release-artifacts";
 
 const LINUX: [&str; 2] = ["x86_64-unknown-linux-musl", "aarch64-unknown-linux-musl"];
 const DARWIN: [&str; 2] = ["aarch64-apple-darwin", "x86_64-apple-darwin"];
@@ -410,8 +408,6 @@ const WASI: &str = "wasm32-wasip2";
 const WASI_PROFILE: &str = "contextful-edge";
 /// The ledger entry the probe records under.
 const WASI_ENTRY: &str = "edge-wasip2-footprint";
-/// The directory the probe builds into, apart from every other stage's.
-pub const WASI_TARGET_DIR: &str = "target/wasi-probe";
 /// The zstd level the release archive compresses with.
 const WASI_LEVEL: i32 = 19;
 

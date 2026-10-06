@@ -50,3 +50,25 @@ fn a_stage_starting_under_two_gib_free_refuses_with_exit_28_before_work() {
     let o = gate_with_df(&r, bin.path(), "evaluate");
     assert!(o.status.success(), "{}", stderr(&o));
 }
+
+#[test]
+fn free_disk_checks_the_inherited_target_filesystem_before_creating_a_stage() {
+    let r = Repo::init();
+    r.write("evals/ledger.toml", "");
+    r.commit("an empty ledger");
+    let bin = tempfile::tempdir().unwrap();
+    let pool = tempfile::tempdir().unwrap();
+    let log = bin.path().join("df.log");
+    fake_df(bin.path(), 2 * 1024 * 1024);
+    let script = std::fs::read_to_string(bin.path().join("df")).unwrap();
+    std::fs::write(bin.path().join("df"), script + &format!("printf '%s\\n' \"$2\" > '{}'\n", log.display())).unwrap();
+    let o = Command::new(env!("CARGO_BIN_EXE_contextful-ci"))
+        .args(["gate", "--stage", "evaluate"])
+        .current_dir(&r.root)
+        .env("CARGO_TARGET_DIR", pool.path().join("not-created"))
+        .env("PATH", format!("{}:{}", bin.path().display(), std::env::var("PATH").unwrap_or_default()))
+        .output().unwrap();
+    assert!(o.status.success(), "{}", stderr(&o));
+    assert_eq!(std::fs::read_to_string(log).unwrap().trim(), pool.path().to_str().unwrap());
+    assert!(!r.root.join("target/evaluate").exists());
+}
