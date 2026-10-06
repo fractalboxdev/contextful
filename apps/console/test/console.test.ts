@@ -84,13 +84,17 @@ test("Admin exposes workflows and requires a server-held capability for edit and
   const { request, calls } = fixture();
   const workflows = await request("/admin/api/workflows", access(adminAudience));
   assert.equal((await workflows.json() as { pipelines: unknown[] }).pipelines.length, 1);
-  const edit = await request("/admin/api/edit", access(adminAudience), { method: "POST", body: "{}" });
+  const origin = "https://console.example";
+  const edit = await request("/admin/api/edit", { ...access(adminAudience), origin }, { method: "POST", body: "{}" });
   assert.equal(edit.status, 200);
-  const apply = await request("/admin/api/apply", access(adminAudience), { method: "POST", body: "{}" });
+  const apply = await request("/admin/api/apply", { ...access(adminAudience), origin }, { method: "POST", body: "{}" });
   assert.equal(apply.status, 200);
   assert.deepEqual(calls, ["workflows", "edit:server-secret", "apply:server-secret"]);
+  assert.equal((await request("/admin/api/edit", access(adminAudience), { method: "POST", body: "{}" })).status, 403);
+  assert.equal((await request("/admin/api/edit", { ...access(adminAudience), origin: "https://other.example" }, { method: "POST", body: "{}" })).status, 403);
+  assert.deepEqual(calls, ["workflows", "edit:server-secret", "apply:server-secret"]);
   const withoutCapability = fixture("");
-  const refused = await withoutCapability.request("/admin/api/apply", access(adminAudience), { method: "POST", body: "{}" });
+  const refused = await withoutCapability.request("/admin/api/apply", { ...access(adminAudience), origin }, { method: "POST", body: "{}" });
   assert.equal(refused.status, 403);
   assert.match(await refused.text(), /ConsoleAdminGrantMissing/);
   assert.deepEqual(withoutCapability.calls, []);
@@ -126,6 +130,7 @@ test("Cognito hosted login exchanges a code before issuing a first-party session
       fetcher: async (_url, init) => {
         assert.equal(init?.method, "POST");
         assert.match(String(init?.body), /code=accepted/);
+        assert.match(String(init?.body), /code_verifier=/);
         return Response.json({ id_token: jwt({ iss: "https://cognito.example/pool", aud: "console-client", sub: "operator-3", token_use: "id", "cognito:groups": ["console-admin"], exp: Math.floor(Date.now() / 1000) + 300 }) });
       },
     },
@@ -137,6 +142,8 @@ test("Cognito hosted login exchanges a code before issuing a first-party session
   const location = new URL(login.headers.get("location")!);
   const state = location.searchParams.get("state");
   assert.ok(state);
+  assert.equal(location.searchParams.get("code_challenge_method"), "S256");
+  assert.match(location.searchParams.get("code_challenge") ?? "", /^[A-Za-z0-9_-]{43}$/);
   const stateCookie = login.headers.get("set-cookie")!.split(";")[0];
   const callback = await app.fetch(new Request(`https://console.example/auth/callback?code=accepted&state=${state}`, { headers: { cookie: stateCookie } }));
   assert.equal(callback.status, 302);
@@ -146,6 +153,35 @@ test("Cognito hosted login exchanges a code before issuing a first-party session
   assert.equal((await app.fetch(new Request("https://console.example/query", { headers: { cookie: sessionCookie } }))).status, 403);
   const badState = await app.fetch(new Request("https://console.example/auth/callback?code=accepted&state=wrong", { headers: { cookie: stateCookie } }));
   assert.equal(badState.status, 403);
+  const missingVerifier = await app.fetch(new Request(`https://console.example/auth/callback?code=accepted&state=${state}`, { headers: { cookie: `console_login_state=${state}` } }));
+  assert.equal(missingVerifier.status, 403);
+  const [cookieName, cookieValue] = stateCookie.split("=");
+  const tampered = cookieValue.split(".");
+  tampered[1] = `${tampered[1].slice(0, -1)}${tampered[1].endsWith("A") ? "B" : "A"}`;
+  const wrongVerifier = await app.fetch(new Request(`https://console.example/auth/callback?code=accepted&state=${state}`, { headers: { cookie: `${cookieName}=${tampered.join(".")}` } }));
+  assert.equal(wrongVerifier.status, 403);
+});
+
+test("Cognito Admin POST uses the listener's bound port for its Origin", async () => {
+  let edits = 0;
+  const app = serveConsole({
+    identity: { kind: "cognito", sessionSecret: "session-secret", queryGroup: "query", adminGroup: "admin" },
+    adminCapability: "server-secret",
+    stores: [], turn: async () => ({ answer: "", sources: [], widgets: [] }), read: { list: async () => [] },
+    control: { workflows: async () => ({}), record: async () => ({}), edit: async () => { edits++; return { version: 1 }; }, apply: async () => ({}) },
+  }, () => origin);
+  await new Promise<void>((resolve) => app.listen(0, "127.0.0.1", resolve));
+  const address = app.address();
+  assert.ok(address && typeof address !== "string");
+  const origin = `http://127.0.0.1:${address.port}`;
+  const session = issueCognitoSession({ subject: "operator", groups: ["admin"], expiresAt: Math.floor(Date.now() / 1000) + 60 }, "session-secret");
+  try {
+    const response = await fetch(`${origin}/admin/api/edit`, {
+      method: "POST", headers: { cookie: `console_session=${session}`, origin, "content-type": "application/json" }, body: "{}",
+    });
+    assert.equal(response.status, 200);
+    assert.equal(edits, 1);
+  } finally { app.close(); }
 });
 
 test("the Node HTTP listener verifies a page request before serving content", async () => {

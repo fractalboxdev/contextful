@@ -77,7 +77,7 @@ function registryFromEnv(raw) {
 import { createServer } from "node:http";
 
 // src/index.ts
-import { createHmac, createPublicKey, randomBytes, timingSafeEqual, verify } from "node:crypto";
+import { createHash, createHmac, createPublicKey, randomBytes, timingSafeEqual, verify } from "node:crypto";
 function encoded(value) {
   return Buffer.from(JSON.stringify(value)).toString("base64url");
 }
@@ -163,29 +163,40 @@ function operatorFor(request, identity2) {
 function cognitoLogin(identity2) {
   if (!identity2.authorizeUrl || !identity2.clientId || !identity2.redirectUri) return refusal("ConsoleLoginUnconfigured", 503);
   const state = randomBytes(24).toString("base64url");
+  const verifier = randomBytes(32).toString("base64url");
+  const issued = Math.floor(Date.now() / 1e3).toString();
+  const loginData = `${state}.${verifier}.${issued}`;
+  const signature = createHmac("sha256", identity2.sessionSecret).update(loginData).digest("base64url");
   const location = new URL(identity2.authorizeUrl);
   location.searchParams.set("response_type", "code");
   location.searchParams.set("client_id", identity2.clientId);
   location.searchParams.set("redirect_uri", identity2.redirectUri);
   location.searchParams.set("scope", "openid email profile");
   location.searchParams.set("state", state);
+  location.searchParams.set("code_challenge", createHash("sha256").update(verifier).digest("base64url"));
+  location.searchParams.set("code_challenge_method", "S256");
   return new Response(null, { status: 302, headers: {
     Location: location.toString(),
-    "Set-Cookie": `console_login_state=${state}; HttpOnly; Secure; SameSite=Lax; Path=/auth/callback; Max-Age=300`,
+    "Set-Cookie": `console_login_state=${loginData}.${signature}; HttpOnly; Secure; SameSite=Lax; Path=/auth/callback; Max-Age=300`,
     "Cache-Control": "no-store"
   } });
 }
 async function cognitoCallback(request, identity2) {
-  if (!identity2.tokenUrl || !identity2.clientId || !identity2.redirectUri || !identity2.issuer || !identity2.publicKey) return refusal("ConsoleLoginUnconfigured", 503);
+  if (!identity2.tokenUrl || !identity2.clientId || !identity2.redirectUri || !identity2.issuer || !identity2.publicKey && !identity2.keys) return refusal("ConsoleLoginUnconfigured", 503);
   const url = new URL(request.url);
   const code = url.searchParams.get("code");
   const state = url.searchParams.get("state");
-  const cookieState = request.headers.get("cookie")?.split(/;\s*/).find((part) => part.startsWith("console_login_state="))?.slice("console_login_state=".length);
-  if (!code || !state || !cookieState || !secureEqual(Buffer.from(state), Buffer.from(cookieState))) return refusal("ConsolePageForbidden");
+  const loginCookie = request.headers.get("cookie")?.split(/;\s*/).find((part) => part.startsWith("console_login_state="))?.slice("console_login_state=".length);
+  const loginParts = loginCookie?.split(".");
+  if (!code || !state || !loginParts || loginParts.length !== 4) return refusal("ConsolePageForbidden");
+  const [cookieState, verifier, issued, signature] = loginParts;
+  const expected = createHmac("sha256", identity2.sessionSecret).update(`${cookieState}.${verifier}.${issued}`).digest("base64url");
+  const age = Math.floor(Date.now() / 1e3) - Number(issued);
+  if (!secureEqual(Buffer.from(state), Buffer.from(cookieState)) || !secureEqual(Buffer.from(signature), Buffer.from(expected)) || !Number.isInteger(age) || age < 0 || age > 300 || !/^[A-Za-z0-9_-]{43}$/.test(verifier)) return refusal("ConsolePageForbidden");
   const exchange = await (identity2.fetcher ?? fetch)(identity2.tokenUrl, {
     method: "POST",
     headers: { "Content-Type": "application/x-www-form-urlencoded" },
-    body: new URLSearchParams({ grant_type: "authorization_code", client_id: identity2.clientId, redirect_uri: identity2.redirectUri, code })
+    body: new URLSearchParams({ grant_type: "authorization_code", client_id: identity2.clientId, redirect_uri: identity2.redirectUri, code, code_verifier: verifier })
   });
   if (!exchange.ok) return refusal("ConsolePageForbidden");
   const tokens = await exchange.json();
@@ -201,7 +212,8 @@ async function cognitoCallback(request, identity2) {
     return refusal("ConsolePageForbidden");
   }
   if (!object(header) || header.alg !== "RS256" || !object(claims) || claims.iss !== identity2.issuer || claims.aud !== identity2.clientId || typeof claims.sub !== "string" || !claims.sub || !Number.isSafeInteger(claims.exp) || claims.exp <= Math.floor(Date.now() / 1e3) || claims.token_use !== "id") return refusal("ConsolePageForbidden");
-  const key = typeof identity2.publicKey === "string" ? createPublicKey(identity2.publicKey) : identity2.publicKey;
+  const key = identity2.keys ? typeof header.kid === "string" ? identity2.keys.get(header.kid) : void 0 : typeof identity2.publicKey === "string" ? createPublicKey(identity2.publicKey) : identity2.publicKey;
+  if (!key) return refusal("ConsolePageForbidden");
   if (!verify("RSA-SHA256", Buffer.from(`${parts[0]}.${parts[1]}`), key, Buffer.from(parts[2], "base64url"))) return refusal("ConsolePageForbidden");
   const groups = Array.isArray(claims["cognito:groups"]) ? claims["cognito:groups"].filter((group) => typeof group === "string") : [];
   const lifetime = Math.min(claims.exp, Math.floor(Date.now() / 1e3) + 3600);
@@ -254,7 +266,7 @@ function createConsole(adapters) {
       }
       if (!operator) return refusal("ConsolePageForbidden", 401);
       if (!operator.grants.has(grant)) return refusal("ConsolePageForbidden");
-      if (adapters.identity.kind === "cognito" && request.method === "POST" && request.headers.get("origin") !== url.origin) {
+      if (request.method === "POST" && (grant === "admin" || adapters.identity.kind === "cognito") && request.headers.get("origin") !== url.origin) {
         return refusal("ConsolePageForbidden");
       }
       if (request.method === "GET" && path === `/${grant}`) return page(grant);
@@ -332,7 +344,7 @@ function serveConsole(adapters, origin) {
   const app = createConsole(adapters);
   return createServer(async (message, reply) => {
     try {
-      await send(reply, await app.fetch(await receive(message, origin)));
+      await send(reply, await app.fetch(await receive(message, typeof origin === "string" ? origin : origin())));
     } catch (error) {
       const unavailable2 = error instanceof Error && error.message === "ConsoleAdapterUnavailable";
       await send(reply, Response.json({ error: { identifier: unavailable2 ? "ConsoleAdapterUnavailable" : "ConsoleServerFailure" } }, { status: unavailable2 ? 503 : 500 }));
@@ -364,7 +376,6 @@ async function keysAt(url) {
 async function identity() {
   if (process.env.CONTEXTFUL_IDENTITY === "cognito") {
     const keys = await keysAt(required("CONTEXTFUL_COGNITO_JWKS_URL"));
-    if (keys.size !== 1) throw new Error("Cognito key route needs one pinned key");
     return {
       kind: "cognito",
       sessionSecret: required("CONTEXTFUL_COGNITO_SESSION_SECRET"),
@@ -375,7 +386,7 @@ async function identity() {
       authorizeUrl: required("CONTEXTFUL_COGNITO_AUTHORIZE_URL"),
       tokenUrl: required("CONTEXTFUL_COGNITO_TOKEN_URL"),
       redirectUri: required("CONTEXTFUL_COGNITO_REDIRECT_URI"),
-      publicKey: [...keys.values()][0]
+      keys
     };
   }
   return {
@@ -418,6 +429,7 @@ async function main() {
     if (!module.createAdapters) throw new Error("console adapter module exports no createAdapters");
     adapters = await module.createAdapters({ stores, env: process.env });
   }
+  let origin = process.env.CONTEXTFUL_CONSOLE_ORIGIN ?? `http://${host}:${port}`;
   const app = serveConsole({
     identity: await identity(),
     stores,
@@ -425,13 +437,14 @@ async function main() {
     turn: adapters.turn,
     read: adapters.read ?? { list: async () => stores },
     control: adapters.control
-  }, process.env.CONTEXTFUL_CONSOLE_ORIGIN ?? `http://${host}:${port}`);
+  }, () => origin);
   await new Promise((resolveListen, rejectListen) => {
     app.once("error", rejectListen);
     app.listen(port, host, resolveListen);
   });
   const bound = app.address();
   if (!bound || typeof bound === "string") throw new Error("console listener has no address");
+  if (!process.env.CONTEXTFUL_CONSOLE_ORIGIN) origin = `http://${host}:${bound.port}`;
   process.stderr.write(`listening on http://${host}:${bound.port}
 `);
 }

@@ -21,11 +21,11 @@ async function send(reply: ServerResponse, response: Response): Promise<void> {
   reply.end(Buffer.from(await response.arrayBuffer()));
 }
 
-export function serveConsole(adapters: ConsoleAdapters, origin: string): Server {
+export function serveConsole(adapters: ConsoleAdapters, origin: string | (() => string)): Server {
   const app = createConsole(adapters);
   return createServer(async (message, reply) => {
     try {
-      await send(reply, await app.fetch(await receive(message, origin)));
+      await send(reply, await app.fetch(await receive(message, typeof origin === "string" ? origin : origin())));
     } catch (error) {
       const unavailable = error instanceof Error && error.message === "ConsoleAdapterUnavailable";
       await send(reply, Response.json({ error: { identifier: unavailable ? "ConsoleAdapterUnavailable" : "ConsoleServerFailure" } }, { status: unavailable ? 503 : 500 }));
