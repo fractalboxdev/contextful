@@ -147,6 +147,54 @@ Revisit: operators routinely wrap steps in pinned scripts to recover shell featu
 Consequences: `native` keeps nesting up to the sink's declared capability and emits a downgrade schema-diff event past it.
 Revisit: orphaned children from root-level filtering become a reported data-quality problem; a deployment is relational at every sink.
 
+## A table commit owns its schema-diff evidence
+
+The reconciled schema describes only the latest shape, and a live run projection can drop events. A table's run manifest records each downgrade beside its parts and cursor; run history projects those entries by run id. The commit marker publishes rows, cursor and schema evidence together. An uncommitted stage leaves no event. This keeps the run record's plan and terminal rows fixed while preserving the reason an older column landed in a narrower type.
+
+| Option | Lost on | Cost |
+| --- | --- | --- |
+| Events in each table's run manifest *(chosen)* | — | Run history reads table manifests to answer schema changes. |
+| Events in the terminal run row | Commit coupling | A table can commit before the terminal row exists. |
+| Events in the live projection | Durability | A full observer channel drops the explanation. |
+
+Consequences: a table's manifest grows with its downgraded columns, and run-history readers correlate entries across tables.
+
+## The secret guard has one host-owned catalogue
+
+The credential catalogue lives in host code and answers to its precision and recall fixture. Pipelines and deployments add no matcher, and the guard has one mask-only posture. An unrecognized shape can pass through, but a manifest edit cannot silently change what the host considers a secret; a catalogue change carries code and a fixture review.
+
+| Option | Lost on | Cost |
+| --- | --- | --- |
+| Host-owned catalogue and mask-only posture *(chosen)* | — | A new vendor prefix requires a host release. |
+| Deployment extensions | Testable coverage | A local prefix can mask ordinary data without the catalogue fixture. |
+| Strict pull refusal | Ingest continuity | One matched cell strands an entire source batch. |
+
+Consequences: operators see masked-cell counts but cannot turn a match into a pull failure by configuration.
+
+## A decoder child owns one input and two bounds
+
+An input whose decoder can die runs in a fresh child. Its process group ends at a 60 s wall-clock deadline measured from spawn, and its memory cap is 512 MiB. These bounds protect the serving process while letting one input fail by name; a child never carries parser state into another input.
+
+| Option | Lost on | Cost |
+| --- | --- | --- |
+| Fresh bounded child per input *(chosen)* | — | Process startup is paid for each input; an unusually large input fails. |
+| Long-lived extractor | Failure isolation | A crash loses the extractor's other in-flight inputs. |
+| In-process decoder | Serving isolation | A fatal parser fault ends the serving process. |
+
+Consequences: target adapters enforce the memory cap and reap the whole process group after a deadline.
+
+## An observed batch fixes its landing types
+
+Pipeline planning reads the declared table schema but makes no source schema request. A staged batch contributes its observed values and pull-declared types to reconciliation; a mismatch fails at staging before a commit. A source that reports no rows offers no guessed columns.
+
+| Option | Lost on | Cost |
+| --- | --- | --- |
+| Type each batch at staging *(chosen)* | — | A late schema mismatch spends the pull before refusal. |
+| Require source schema during planning | Connector breadth | A source without discovery cannot run. |
+| Fix types from the first batch alone | Compatibility | A later type change lands under a stale guess. |
+
+Consequences: validation cannot promise every source column's eventual type before the first pull.
+
 ## The run substrate is three storage ports, and the file tree is one adapter
 
 Status: accepted. The journal, its blobs and the awakeable registry write the file tree directly, so a host keeping its own transactional store holds replay state twice, the second copy outside its retention and export. Three ports in the domain package carry the substrate: a journal store (create pending, read, replace if pending, record, release, rows and retire per execution), a blob store (put by sha256, get, sweep over a reference set and a grace) and an awakeable store. The file tree is the default adapter. Every `run.journal` and `run.suspend` clause holds per adapter, so `blob-write` states converging writers, and a staged rename is the file adapter's means.

@@ -1472,7 +1472,11 @@ fn a_native_pipeline_lands_nested_json_as_one_table_of_nested_columns() {
         serde_json::json!({"service": "db", "pod": null})
     );
 
-    // `relational` infers nothing on the store sink, so the same objects land as JSON text.
+}
+
+/// Relational normalization flattens objects and preserves list order in child tables.
+#[test]
+fn a_relational_pipeline_shreds_lists_into_indexed_child_rows() {
     let vendor = Vendor::start(|_| (200, SPANS.to_string()));
     let dir = project(&pipeline(
         "otel",
@@ -1481,16 +1485,49 @@ fn a_native_pipeline_lands_nested_json_as_one_table_of_nested_columns() {
         "tables = [\"spans\"]",
     ));
     ok(&fire(dir.path(), "otel", "r1", "2030-01-01T00:00:00Z"));
-    let read = nested_read(dir.path(), "otel_spans");
-    assert_eq!(
-        read["rows"][0].as_array().unwrap()[..4],
-        ["VARCHAR", "VARCHAR", "VARCHAR", "VARCHAR"],
-        "{read}"
-    );
-    assert_eq!(
-        read["rows"][0][4],
-        serde_json::json!("{\"pod\":{\"name\":\"p-1\"},\"service\":\"api\"}")
-    );
+    let parent: serde_json::Value = serde_json::from_str(&ok(&cf(dir.path(), &[
+        "query", "--json", "--project", "research",
+        "SELECT id, resource_service, resource_pod_name, row_id FROM otel_spans ORDER BY id",
+    ]))).unwrap();
+    assert_eq!(&parent["rows"][0].as_array().unwrap()[..3], serde_json::json!(["s1", "api", "p-1"]).as_array().unwrap());
+    assert_eq!(&parent["rows"][1].as_array().unwrap()[..3], serde_json::json!(["s2", "db", null]).as_array().unwrap());
+    let parent_id = parent["rows"][0][3].as_str().unwrap();
+    let child: serde_json::Value = serde_json::from_str(&ok(&cf(dir.path(), &[
+        "query", "--json", "--project", "research",
+        "SELECT parent_id, list_index, name, attrs_k, typeof(list_index) FROM otel_spans_events ORDER BY list_index",
+    ]))).unwrap();
+    assert_eq!(child["rows"].as_array().unwrap().len(), 2);
+    assert_eq!(child["rows"][0], serde_json::json!([parent_id, "0", "start", "v", "BIGINT"]));
+    assert_eq!(child["rows"][1], serde_json::json!([parent_id, "1", "end", null, "BIGINT"]));
+}
+
+// spec: run.record.schema-diff-home@89362023
+#[test]
+fn a_native_downgrade_is_recorded_on_the_commit_and_in_history() {
+    let calls = std::sync::atomic::AtomicUsize::new(0);
+    let vendor = Vendor::start(move |_| {
+        let body = if calls.fetch_add(1, std::sync::atomic::Ordering::SeqCst) == 0 {
+            r#"[{"resource":"old"}]"#
+        } else {
+            r#"[{"resource":{"service":"api"}}]"#
+        };
+        (200, body.into())
+    });
+    let dir = project(&pipeline("otel", &vendor.url("/v1/{table}"), "normalize = \"native\"", "tables = [\"spans\"]"));
+    ok(&fire(dir.path(), "otel", "r1", "2030-01-01T00:00:00Z"));
+    ok(&fire(dir.path(), "otel", "r2", "2030-01-01T00:01:00Z"));
+    let manifest: serde_json::Value = serde_json::from_slice(&std::fs::read(
+        dir.path().join(".contextful/context/research/tables/otel_spans/data/runs/r2/ingest-a/_manifest.json"),
+    ).unwrap()).unwrap();
+    let event = &manifest["schema_diffs"][0];
+    assert_eq!(event["table"], "otel_spans");
+    assert_eq!(event["column_path"], "resource");
+    assert_eq!(event["landed_type"], "Utf8");
+    let history: serde_json::Value = serde_json::from_str(&ok(&cf(dir.path(), &[
+        "run", "history", "--project", "research", "--pipeline", "otel",
+    ]))).unwrap();
+    let run = history["runs"].as_array().unwrap().iter().find(|r| r["run_id"] == "r2").unwrap();
+    assert_eq!(run["schema_diffs"][0], *event);
 }
 
 /// Recursion stops at the declared `depth`, default 5 levels, landing a deeper subtree as one `Json` value.

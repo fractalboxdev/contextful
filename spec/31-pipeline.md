@@ -134,11 +134,12 @@ Canonical nested form, late relational shredding, injected identity columns and 
 
 - `host-stage` — Type inference over deferred-typing JSON, struct flattening, list-to-child extraction and id assignment run in engine code; no connector reimplements them and no dataframe library participates.
 - `normalized-form` — The canonical form is nested Arrow structs and lists; relational shredding is a late projection at the sink, so a source landing in two sinks normalizes once.
-- `mode` — `native` keeps nesting up to the sink's capability and explodes the rest with a downgrade schema-diff event; `relational` flattens structs into parent-child column names and shreds lists into child tables joined by a foreign key.
+- `mode` — `native` keeps nesting up to the sink's capability and explodes the rest with {{run.record.schema-diff-home}}; `relational` flattens structs into parent-child column names and shreds lists into child tables joined by a foreign key.
 - `mode-resolution` — Mode resolves per stream per sink: explicit declaration, then sink capability, then `native`.
 - `mode-unknown` — A mode outside the two raises `PipelineNormalizeModeUnknown`, printing both spellings.
   *A-run*
 - `identity-columns` — Normalize injects a content-hash row id on every table, a load id on the root, a parent id and list index on each child, and a root id on a child nested deeper than one level.
+- `field-collision` — A relational source field flattening onto an occupied column takes the first free `source_`-prefixed name, preserving injected identity columns and the source value.
 - `row-id` — The row id hashes the row's own content, so a re-run of one input emits byte-identical ids.
 - `list-index-missing` — A relational child table emitted without the list index that makes its projection reversible raises `PipelineListIndexMissing`, naming the parent and the list.
   *A-run*
@@ -146,7 +147,10 @@ Canonical nested form, late relational shredding, injected identity columns and 
   *A-store*
 - `nesting-depth` — Recursion stops at the declared `depth`, default 5 levels, landing a deeper subtree as one `Json` value.
 
-unsettled: Where does a schema-diff event land, given that the store keeps only the reconciled schema? owner: pipeline affects: run.normalize
+#### Scenarios
+
+- `run.normalize.mode`: WHEN a relational stream holds a struct and a two-item list, THEN the store holds flattened parent columns and two indexed child rows joined to that parent.
+- `run.normalize.mode`: WHEN a native sink cannot retain a nested column, THEN the committed table's run manifest carries that column's downgrade event.
 
 ## guard-secrets
 
@@ -154,13 +158,13 @@ The write-time mask over credential-shaped spans in a pulled batch.
 
 - `placement` — The secret guard runs at the one pull path streaming and backfill share, ahead of the recorded pull and the land path, so a replay reintroduces no credential.
 - `matchers` — Matchers are linear-time, regex-free forward scans, each anchored on a literal prefix; the credential catalogue lives in code under a precision and recall fixture test.
+  *A-run*
 - `assignment-key` — An assignment key qualifies when it is a keyword or ends in one after `_`, `-` or `.`, reading `-` as `_`, so `client_secret`, `x-api-key` and `db.password` qualify and `clientsecret` does not.
 - `mask-span` — The replacement covers only the matched byte ranges, widened to character boundaries; overlapping spans merge under the higher-priority pattern.
 - `mask-replacement` — The replacement is the fixed `[REDACTED:secret]` marker, never a shape-preserving transform; an assignment keeps its `key=` prefix.
 - `mask-only` — The guard is on by default and blocks no run; each pull logs the count of masked cells per column.
+  *A-run*
 - `coverage` — The guard reads pre-normalize string cells for plaintext shapes; encoded material and a credential split across two cells pass through.
-
-unsettled: Is the credential pattern set host-owned, or extensible per deployment, and does a strict mode fail the pull? owner: pipeline affects: run.guard-secrets
 
 #### Scenarios
 
@@ -189,10 +193,18 @@ The stage order from pull to commit, the one destination, the ingest tally and c
   *A-connector*
 - `parse-boundary` — A decode that can die runs outside the serving process, which bounds its wall clock and memory and makes it killable.
   *A-connector*
+- `parse-child` — Each input whose decoder can die runs in its own child process; that process decodes no second input.
+  *A-run*
+- `parse-deadline` — A decode runs for at most 60 s from child spawn; expiry kills its process group and raises {{run.land.parse-crashed}}.
+  *A-run*
+- `parse-memory` — A decoder child receives at most 512 MiB of memory; exceeding the bound fails that input under {{run.land.parse-crashed}}.
+  *A-run*
 - `parse-crashed` — A non-zero exit or fatal signal from the decode process raises `PipelineParseCrashed` naming the input; no input ends the serving process.
   *A-connector*
 - `table-failed` — A table whose pull fails raises `PipelineTableFailed` carrying the table, the error kind and the run id; the fire then follows `on_table_error`.
   *because a failure is answerable by name only when it carries its table and run*
+- `observed-schema` — Planning fetches no source schema; each observed batch is typed when staged under {{run.own.stage-schema}}, including validation against declared columns.
+  *A-run*
 
 ```mermaid
 flowchart LR
@@ -214,9 +226,12 @@ flowchart LR
   C -->|"cached position"| K
 ```
 
-unsettled: Which process carries the parse boundary, a child per input or one long-lived extractor, and what wall-clock and memory budget does one input receive? owner: pipeline affects: run.land
+#### Scenarios
 
-unsettled: Does the engine read a source's declared schema at planning time, or only the observed batch at write time? owner: pipeline affects: run.land
+- `run.land.parse-child`: WHEN two PDF inputs decode in one fire, THEN each input starts a separate child process.
+- `run.land.parse-deadline`: WHEN a decoder holds its output pipe past 60 s, THEN its process group dies and that input fails by name.
+- `run.land.parse-memory`: WHEN a decoder exceeds 512 MiB, THEN that input fails and the serving process continues.
+- `run.land.observed-schema`: WHEN a source exposes no schema before its first batch, THEN planning succeeds and staging checks that batch against the declared table columns.
 
 ## export
 
