@@ -262,21 +262,38 @@ unsettled: How does a resolver learn of a rotation performed outside the engine,
 
 ## record
 
-The operator record of a credential, the inventory, and the provider attribution a run emits.
+Optional operator metadata, provider observations, the inventory of configured bindings, and the provider attribution a run emits.
 
-- `operator-record` — An operator record is the encrypted entry for one logical name plus a plaintext comment naming its grants in the provider's vocabulary, its account or tenancy, creation date, expiry or `no expiry`, and rotation location.
-- `committed-entry` — The entry file is committed, holds no fragment of any value in plaintext, and its decryption keys live outside the tree.
-- `surface-of-consumption` — An entry names each deployed surface consuming the credential and the secret name the value takes there.
-- `platform-only-credential` — A credential existing only as a deployed platform secret holds no value in the tree, and its record lands in the change setting or rotating it.
-- `undocumented-entry` — An entry holding a value with no record above it raises `SecretUndocumentedEntry`, naming the logical name and the file.
+- `operator-record` — An optional operator record describes one logical name's intended grants, account or tenancy, consuming surfaces and rotation location; supplied creation and expiry assertions remain operator metadata.
   *A-connector*
+- `metadata-storage` — A committed operator record contains descriptive metadata only; neither a credential value nor a decryption key is required to record a binding.
+  *A-connector*
+- `provider-custody` — The selected provider owns credential values, versions and rotation state; an external-manager binding requires no ciphertext copy in the repository.
+  *A-connector*
+- `surface-of-consumption` — An operator record identifies each documented consuming surface and its credential binding name.
+- `optional-record` — A binding without an operator record remains resolvable and appears in inventory with unknown descriptive fields.
 - `unverified-scope-is-marked` — Grants an operator has not established are recorded as unknown.
-- `rotation-updates-the-record` — A rotation rewrites the creation date and expiry in the commit landing the new ciphertext.
-- `inventory` — `contextful secrets list` prints, per logical name, the answering adapter, the covered scope, the expiry and the days remaining, reading records and no value.
-- `expiry-warning` — The inventory marks an entry whose expiry falls within 30 d.
+- `rotation-record` — A rotation follows {{connector.rotate.turnover-preserves-the-name}} without requiring a repository commit; operator metadata changes only when its assertions change.
+  *A-connector*
+- `inventory` — `contextful secrets list` enumerates configured logical bindings and displays their configured adapters, operator metadata and available provider observations; it reads no credential values and claims no complete inventory of a provider's secrets.
+- `observation-provenance` — Each provider-observed field names its adapter and observation time; operator assertions remain separately labelled, including when they disagree with provider observations.
+- `observation-unavailable` — Unsupported, denied or failed metadata reads appear as unavailable with their reason; inventory never substitutes an operator assertion for a provider observation or hydrates a value to obtain metadata.
+- `expiry-unknown` — An absent expiry is unknown; `no expiry` requires an explicit assertion or observation, and days remaining is computed only for a dated expiry, retaining its provenance.
+- `expiry-warning` — The inventory marks each dated expiry falling within 30 d and each elapsed expiry, retaining the expiry's provenance.
+- `configured-is-not-observed` — A configured adapter identifies a binding's configuration; only {{connector.record.provider-attribution}} identifies the adapter that answered a run's reference.
 - `provider-attribution` — A run's audit records which adapter answered each reference, by logical name and adapter.
 
-unsettled: Is the record's grant vocabulary free text or a per-adapter enumeration the inventory validates? owner: connector affects: connector.record
+#### Scenarios
+
+- `connector.record.provider-custody`: WHEN a binding selects an external manager with no encrypted repository entry, THEN the manager remains the sole owner of its value and versions.
+- `connector.record.optional-record`: WHEN a configured binding has no operator record, THEN inventory includes the binding with unknown descriptive fields.
+- `connector.record.rotation-record`: WHEN a manager rotates a credential, THEN no repository commit is required.
+- `connector.record.observation-provenance`: WHEN an operator expiry differs from an observed expiry, THEN inventory shows both with their distinct provenance.
+- `connector.record.observation-unavailable`: WHEN a provider denies metadata access, THEN inventory reports the reason without reading a credential value.
+- `connector.record.expiry-unknown`: WHEN neither operator nor provider supplies an expiry, THEN inventory reports unknown expiry and no days remaining.
+- `connector.record.configured-is-not-observed`: WHEN a binding configures several adapters and has no run attribution, THEN inventory reports configuration without asserting an answering adapter.
+
+unsettled: Which operator-record serialization and metadata-only adapter interface supply the inventory fields? owner: connector affects: connector.record
 
 ## Shapes
 
