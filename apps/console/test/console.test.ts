@@ -415,3 +415,25 @@ test("Query brief expires while its adapter is still pending", async () => {
   const response = await Promise.race([request, new Promise<never>((_, reject) => setTimeout(() => reject(new Error("brief hung")), 50))]);
   assert.equal(response.status, 204);
 });
+
+test("Query brief discards a card after synchronous adapter work exceeds its budget", async () => {
+  const now = Date.parse("2026-01-08T12:00:00Z");
+  const app = createConsole({
+    identity: { kind: "access", issuer, queryAudience, adminAudience, publicKey },
+    stores: [{ id: "field-notes", label: "Field notes" }],
+    turn: async () => ({ answer: "", sources: [], widgets: [] }),
+    briefBudgetMs: 1,
+    brief: async () => {
+      const until = performance.now() + 25;
+      while (performance.now() < until) { /* synchronous adapter work */ }
+      return { session: { turns: 0, vantage: "present" }, now,
+        conclusions: [{ subject: "Acme", text: "Acme filings need review", live: true }],
+        arrivals: [{ id: "a", label: "Acme filing", topics: ["filings"], arrivedAt: "2026-01-08T11:00:00Z" }],
+      };
+    },
+    read: { list: async () => [] },
+    control: { workflows: async () => ({}), record: async () => ({}), edit: async () => ({}), apply: async () => ({}) },
+  });
+  const response = await app.fetch(new Request("https://console.example/query/api/brief?store=field-notes", { headers: access(queryAudience) }));
+  assert.equal(response.status, 204);
+});
