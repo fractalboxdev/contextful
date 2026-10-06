@@ -24,10 +24,8 @@ use std::time::{Duration, Instant};
 use stage::STAGES;
 const ACCEPTANCE_PACKAGE: &str = "contextful-acceptance";
 const ACCEPTANCE_DIR: &str = "crates/acceptance";
-/// The features stage's own target directory, under the workspace root.
-const FEATURES_TARGET: &str = "target/features";
 const REFACTOR_TRAILER: &str = "refactor";
-/// Free disk a stage needs under the workspace before it begins work: 2 GiB
+/// Free disk a stage needs on its build filesystem before it begins work: 2 GiB
 /// (`assurance.gate.free-disk`).
 const STAGE_FREE_DISK_KIB: u64 = 2 * 1024 * 1024;
 /// The exit code of a stage refused for disk (`assurance.gate.free-disk`), `ENOSPC`'s number.
@@ -146,9 +144,9 @@ enum Cmd {
         /// A release target; repeatable. Defaults to the one this host builds natively.
         #[arg(long = "target")]
         targets: Vec<String>,
-        /// The directory the builds compile into.
-        #[arg(long, default_value = release::TARGET_DIR)]
-        target_dir: PathBuf,
+        /// The directory the builds compile into; defaults beneath the inherited Cargo target.
+        #[arg(long)]
+        target_dir: Option<PathBuf>,
         /// The directory receiving archives, checksums and SBOMs.
         #[arg(long, default_value = "dist")]
         out: PathBuf,
@@ -159,9 +157,9 @@ enum Cmd {
     /// Build the edge profile for `wasm32-wasip2` and record its compressed size under the
     /// scheduled ledger entry; a failed build records nothing and exits 0.
     WasiProbe {
-        /// The directory the build compiles into, removed afterwards.
-        #[arg(long, default_value = release::WASI_TARGET_DIR)]
-        target_dir: PathBuf,
+        /// The build directory, removed afterwards; defaults beneath the inherited Cargo target.
+        #[arg(long)]
+        target_dir: Option<PathBuf>,
     },
     /// Write the package-manager formulae and `SHA256SUMS` over a directory of release archives.
     Formula {
@@ -292,9 +290,13 @@ fn main() {
             if plan {
                 return release::plan(&profiles, &targets);
             }
-            release::release(&root, builder, &profiles, &targets, &root.join(target_dir), &out)
+            let target = target_dir.map_or_else(|| build_target(&root, "release-artifacts"), |p| root.join(p));
+            release::release(&root, builder, &profiles, &targets, &target, &out)
         }),
-        Cmd::WasiProbe { target_dir } => repo_root().and_then(|root| release::wasi_probe(&root, &root.join(target_dir))),
+        Cmd::WasiProbe { target_dir } => repo_root().and_then(|root| {
+            let target = target_dir.map_or_else(|| build_target(&root, "wasi-probe"), |p| root.join(p));
+            release::wasi_probe(&root, &target)
+        }),
         Cmd::Formula { dist, manifest, base_url } => repo_root().and_then(|root| {
             release::formulae(&root, &dist, manifest.as_deref(), &base_url).map(|written| written.iter().for_each(|p| println!("formula: {}", p.display())))
         }),
@@ -495,7 +497,7 @@ fn run_stage(root: &Path, stage: &str, only: Option<&[String]>, base: &str, boun
                 println!("budget: no package declares a profile");
             } else {
                 footprint::build(root, &profiles, false)?;
-                let _ = std::fs::remove_dir_all(root.join(footprint::TARGET_DIR));
+                let _ = std::fs::remove_dir_all(build_target(root, "footprint"));
             }
         }
         "connectors" => stage::connectors(root)?,
@@ -506,11 +508,21 @@ fn run_stage(root: &Path, stage: &str, only: Option<&[String]>, base: &str, boun
     Ok(())
 }
 
-/// The target directory `stage` builds into, under the workspace root and apart from every
+/// The target directory `stage` builds into, apart from every
 /// other stage's (`assurance.build.target-dir-per-stage`): stages under different feature
 /// unification share no artifacts, so peak disk is one stage's.
 fn stage_target(root: &Path, stage: &str) -> PathBuf {
-    root.join("target").join(stage)
+    build_target(root, stage)
+}
+
+/// CI builds live beneath the inherited Cargo target, retaining its pool and slot routing.
+/// The CI namespace keeps stage cleanup apart from the enclosing cargo build.
+fn build_target(root: &Path, name: &str) -> PathBuf {
+    let base = std::env::var_os("CARGO_TARGET_DIR").filter(|p| !p.is_empty());
+    match base {
+        Some(base) => root.join(base).join("contextful-ci").join(name),
+        None => root.join("target").join(name),
+    }
 }
 
 /// Run `cargo args` in `stage`'s own target directory.
@@ -545,11 +557,13 @@ fn committed_lock(root: &Path) -> Result<()> {
 }
 
 /// Refuse a stage starting with less than [`STAGE_FREE_DISK_KIB`] free on the filesystem
-/// holding the workspace, read through POSIX `df -Pk`.
+/// holding the stage's build directory, read through POSIX `df -Pk`.
 fn free_disk(root: &Path, stage: &str) -> Result<()> {
-    let out = Command::new("df").arg("-Pk").arg(root).output().context("running df")?;
+    let target = stage_target(root, if stage == "budget" { "footprint" } else { stage });
+    let dir = target.ancestors().find(|p| p.exists()).context("the build directory has no existing ancestor")?;
+    let out = Command::new("df").arg("-Pk").arg(dir).output().context("running df")?;
     if !out.status.success() {
-        return Err(exited_output(&format!("df -Pk {}", root.display()), &out));
+        return Err(exited_output(&format!("df -Pk {}", dir.display()), &out));
     }
     let text = String::from_utf8_lossy(&out.stdout);
     // The fourth field of the data line is the available space in KiB.
@@ -562,7 +576,7 @@ fn free_disk(root: &Path, stage: &str) -> Result<()> {
     if available < STAGE_FREE_DISK_KIB {
         return Err(refuse(
             "BuildDiskPrecondition",
-            format!("stage `{stage}` starts with {} MiB free under {}, below the 2048 MiB floor", available / 1024, root.display()),
+            format!("stage `{stage}` starts with {} MiB free under {}, below the 2048 MiB floor", available / 1024, dir.display()),
         ));
     }
     Ok(())
@@ -639,7 +653,7 @@ fn cli_partition(args: &mut Vec<&str>, ordinary: bool, formal: bool) {
 /// `cargo test -p` resolves the selected package's features without its dependents', so the
 /// store adapter's write suites run with the read face off
 /// (`topology.package.store-write-engine-free`) and the policy package's without `exchange`.
-/// The stage builds into `target/features`, reclaimed once it passes, because a
+/// The stage builds into its own feature directory, reclaimed once it passes, because a
 /// different feature unification shares no artifacts with the workspace build
 /// (`assurance.build.target-dir-per-stage`).
 fn features(root: &Path, only: Option<&[String]>) -> Result<()> {
@@ -647,7 +661,7 @@ fn features(root: &Path, only: Option<&[String]>) -> Result<()> {
     if featured.is_empty() {
         eprintln!("features: no workspace package declares a feature");
     }
-    let target = root.join(FEATURES_TARGET);
+    let target = stage_target(root, "features");
     for package in &featured {
         let name = &package.name;
         let binary = name == topology::BINARY;
@@ -1042,7 +1056,7 @@ fn test_first(root: &Path, base: &str, bound: Duration, only: Option<&[String]>)
         }
     }
 
-    let scratch = root.join("target/test-first");
+    let scratch = stage_target(root, "test-first");
     let tree = scratch.join("tree");
     let _ = git(&["worktree", "remove", "--force", &tree.to_string_lossy()]);
     let _ = std::fs::remove_dir_all(&scratch);
