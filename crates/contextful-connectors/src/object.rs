@@ -7,7 +7,7 @@
 //! signs every bucket request and the bucket is one more allowlisted vendor host
 //! (`connector.source.object-transport`). This package links no S3 client.
 
-use crate::decode::{decode, gunzip, workbook, Format};
+use crate::decode::{decode_with_encoding, gunzip, workbook, Format};
 use crate::http::ConfigError;
 use contextful_core::connector::attach::{endpoint, is_loopback_host, scrub, Allowlist};
 use contextful_core::connector::reference::{check_material, Hydrated, Part, SecretName, Template};
@@ -32,7 +32,7 @@ pub const DEFAULT_ENDPOINT: &str = "https://s3.amazonaws.com";
 pub const DEFAULT_REGION: &str = "us-east-1";
 
 /// The configuration keys the object source reads (`run.declare.config-key`).
-pub const KEYS: [&str; 13] = [
+pub const KEYS: [&str; 14] = [
     "bucket",
     "key",
     "prefix",
@@ -41,6 +41,7 @@ pub const KEYS: [&str; 13] = [
     "endpoint",
     "region",
     "format",
+    "encoding",
     "records",
     "compression",
     "skip_unchanged",
@@ -76,6 +77,8 @@ pub struct ObjectConfig {
     pub endpoint: Url,
     pub region: String,
     pub format: Format,
+    /// The character encoding of a CSV object; absent means UTF-8.
+    pub encoding: Option<String>,
     pub records: Option<String>,
     pub compression: Compression,
     pub skip_unchanged: bool,
@@ -177,6 +180,15 @@ impl ObjectConfig {
             Some(f) => Format::parse(&f)?,
             None => named.and_then(format_of).unwrap_or(Format::Json),
         };
+        let encoding = text(cfg, "encoding")?;
+        if encoding.is_some() && format != Format::Csv {
+            return Err(ConnectorError::ConnectorFormatKeyRejected("`encoding` reads delimited text and the source format is not `csv`".into()).into());
+        }
+        if let Some(label) = &encoding {
+            if encoding_rs::Encoding::for_label(label.as_bytes()).is_none() {
+                return Err(ConnectorError::ConnectorEncodingInvalid(format!("unknown encoding `{label}`")).into());
+            }
+        }
         let records = text(cfg, "records")?;
         if records.is_some() && format != Format::Json {
             return Err(ConnectorError::ConnectorFormatKeyRejected(format!("`records` reads a JSON body and the source's format is `{}`", format.name())).into());
@@ -207,6 +219,7 @@ impl ObjectConfig {
             endpoint,
             region: text(cfg, "region")?.unwrap_or_else(|| DEFAULT_REGION.to_string()),
             format,
+            encoding,
             records,
             compression,
             skip_unchanged: flag(cfg, "skip_unchanged")?,
@@ -453,7 +466,7 @@ impl ObjectSource {
             let body = if self.config.gzipped(&key) { gunzip(&bytes, EXPANSION_CEILING, &input)? } else { bytes };
             let decoded = match self.config.format {
                 Format::Workbook => workbook::rows(&body, None, 0, &input)?,
-                format => decode(format, &body, self.config.records.as_deref(), &input)?.0,
+                format => decode_with_encoding(format, &body, self.config.records.as_deref(), &input, self.config.encoding.as_deref())?.0,
             };
             rows.extend(decoded);
         }

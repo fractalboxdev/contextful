@@ -4,6 +4,7 @@
 use serde_json::Value;
 use std::path::Path;
 use std::process::{Command, Output};
+use std::time::{Duration, Instant};
 
 const DECLARATION: &str = r#"authoring_posture = "per_request"
 
@@ -53,6 +54,100 @@ fn build(p: &Path, now: &str) -> Value {
     serde_json::from_str(&stdout(&run(p, &["build", "daily", "--site-id", "site-a", "--now", now, "--json"]))).unwrap()
 }
 
+// spec: run.publish.failed-attempt@b0b70724
+#[test]
+fn a_killed_build_reports_failed_and_keeps_the_published_build() {
+    let dir = project();
+    let p = dir.path();
+    let published = build(p, "2030-01-01T01:00:00Z");
+    std::fs::write(p.join("more.jsonl"), "{\"day\":\"d1\"}\n".repeat(10_000)).unwrap();
+    stdout(&run(p, &["context", "land", "events", "--rows", "more.jsonl", "--run-id", "r2", "--site-id", "site-a", "--now", "2030-01-01T01:30:00Z"]));
+    let slow = DECLARATION.replace(
+        "SELECT day, CAST(count(*) AS BIGINT) AS n FROM events GROUP BY day",
+        "SELECT events.day, CAST(sum(length(events.day || other.day)) AS BIGINT) AS n FROM events CROSS JOIN events AS other GROUP BY events.day",
+    );
+    std::fs::write(p.join("contextful.toml"), slow).unwrap();
+    let mut child = Command::new(env!("CARGO_BIN_EXE_contextful"))
+        .args(["build", "daily", "--site-id", "site-a", "--now", "2030-01-01T02:00:00Z"])
+        .current_dir(p)
+        .env_remove("CONTEXTFUL_NODE_ID")
+        .spawn()
+        .unwrap();
+    let attempts = p.join(".contextful/context/research/tables/daily/build-attempts");
+    let until = Instant::now() + Duration::from_secs(10);
+    loop {
+        let staged = std::fs::read_dir(&attempts).ok().is_some_and(|entries| {
+            entries.filter_map(Result::ok).filter(|entry| entry.file_name().to_string_lossy().ends_with(".json")).count() >= 2
+        });
+        if staged {
+            break;
+        }
+        assert!(child.try_wait().unwrap().is_none(), "build exited before staging");
+        assert!(Instant::now() < until, "build did not reach staging");
+        std::thread::sleep(Duration::from_millis(10));
+    }
+    assert!(child.try_wait().unwrap().is_none(), "the build exited before SIGKILL");
+    child.kill().unwrap();
+    child.wait().unwrap();
+    let status: Value = serde_json::from_str(&stdout(&run(p, &["build", "status", "daily", "--json"]))).unwrap();
+    assert_eq!(status["last_build_status"], "failed", "{status}");
+    assert_eq!(status["published_build_id"], published["build_id"]);
+    let log = std::fs::read_to_string(p.join(".contextful/context/research/tables/daily/builds.jsonl")).unwrap();
+    let entries: Vec<Value> = log.lines().map(|line| serde_json::from_str(line).unwrap()).collect();
+    assert_eq!(entries.len(), 2);
+    assert!(entries.iter().any(|entry| entry["status"] == "failed" && entry["build_id"] == status["last_build_id"]));
+    let read: Value = serde_json::from_str(&stdout(&run(p, &["query", "--json", "--project", "research", "SELECT day, n FROM daily ORDER BY day"]))).unwrap();
+    assert_eq!(read["rows"], serde_json::json!([["d1", "2"], ["d2", "1"]]));
+    std::fs::write(p.join("contextful.toml"), DECLARATION).unwrap();
+    let recovered = build(p, "2030-01-01T03:00:00Z");
+    let status: Value = serde_json::from_str(&stdout(&run(p, &["build", "status", "daily", "--json"]))).unwrap();
+    assert_eq!(status["last_build_status"], "published");
+    assert_eq!(status["published_build_id"], recovered["build_id"]);
+    let history = std::fs::read_to_string(p.join(".contextful/context/research/tables/daily/builds.jsonl")).unwrap();
+    assert!(history.lines().any(|line| line.contains("\"failed\"")), "the failed attempt remains in history");
+}
+
+// spec: run.model.status-verb@dd4c16d2
+#[test]
+fn model_status_derives_freshness_on_both_sides_of_max_lag() {
+    let dir = project();
+    let p = dir.path();
+    std::fs::write(p.join("contextful.toml"), format!("{DECLARATION}\n[model.freshness]\nmax_lag = \"1h\"\n")).unwrap();
+    let built = build(p, "2030-01-01T00:30:00Z");
+    let status = |at| -> Value {
+        serde_json::from_str(&stdout(&run(p, &["build", "status", "daily", "--now", at, "--json"]))).unwrap()
+    };
+    let fresh = status("2030-01-01T01:00:00Z");
+    assert_eq!(fresh["published_build_id"], built["build_id"]);
+    assert_eq!(fresh["stale"], false);
+    assert_eq!(fresh["freshness"]["max_lag"], "1h");
+    assert_eq!(status("2030-01-01T01:00:01Z")["stale"], true);
+}
+
+#[test]
+fn failing_model_test_reports_refused_and_keeps_prior_publication() {
+    let dir = project();
+    let p = dir.path();
+    let published = build(p, "2030-01-01T01:00:00Z");
+    std::fs::write(p.join("contextful.toml"), format!(
+        "{DECLARATION}\n[[model.test]]\nname = \"single-day\"\nsql = \"SELECT * FROM daily WHERE n > 1\"\n"
+    )).unwrap();
+    refused(&run(p, &["build", "daily", "--site-id", "site-a", "--now", "2030-01-01T02:00:00Z"]), "ModelTestFailed");
+    let status: Value = serde_json::from_str(&stdout(&run(p, &["build", "status", "daily", "--json"]))).unwrap();
+    assert_eq!(status["last_build_status"], "refused");
+    assert_eq!(status["published_build_id"], published["build_id"]);
+    let refused_id = status["last_build_id"].as_str().unwrap().to_string();
+    let read: Value = serde_json::from_str(&stdout(&run(p, &["query", "--json", "--project", "research", "SELECT day, n FROM daily ORDER BY day"]))).unwrap();
+    assert_eq!(read["rows"], serde_json::json!([["d1", "2"], ["d2", "1"]]));
+    std::fs::write(p.join("contextful.toml"), DECLARATION).unwrap();
+    let recovered = build(p, "2030-01-01T02:00:00Z");
+    assert_ne!(recovered["build_id"], refused_id, "a retry at the same instant must preserve the refused attempt");
+    let history = std::fs::read_to_string(p.join(".contextful/context/research/tables/daily/builds.jsonl")).unwrap();
+    let entries: Vec<Value> = history.lines().map(|line| serde_json::from_str(line).unwrap()).collect();
+    assert!(entries.iter().any(|entry| entry["build_id"] == refused_id && entry["status"] == "refused"));
+    assert!(entries.iter().any(|entry| entry["build_id"] == recovered["build_id"] && entry["status"] == "published"));
+}
+
 /// `contextful build <model>` materializes the model into staging, checks its contract, runs its tests, then commits; `--json` prints the build id, row count and watermark.
 // spec: run.model.build-verb@20011366
 #[test]
@@ -73,6 +168,22 @@ fn build_publishes_a_model_and_prints_its_receipt() {
     // The validation verb reads the model block.
     let valid = stdout(&run(p, &["pipeline", "validate"]));
     assert!(valid.contains("daily: valid model (0 tests)"), "{valid}");
+}
+
+// spec: run.model.statement-source@e0da375b
+#[test]
+fn build_and_validate_read_a_local_model_statement_file() {
+    let dir = project();
+    let p = dir.path();
+    let statement = "SELECT day, CAST(count(*) AS BIGINT) AS n FROM events GROUP BY day";
+    std::fs::write(p.join("daily.sql"), statement).unwrap();
+    std::fs::write(p.join("contextful.toml"), DECLARATION.replace(&format!("sql = \"{statement}\""), "sql_file = \"daily.sql\"")).unwrap();
+    assert!(stdout(&run(p, &["pipeline", "validate"])).contains("daily: valid model"));
+    assert_eq!(build(p, "2030-01-01T01:00:00Z")["rows"], 2);
+    std::fs::write(p.join("contextful.toml"), DECLARATION.replace(&format!("sql = \"{statement}\""), "sql_file = \"daily.sql\"\nsql = \"SELECT 1\"")).unwrap();
+    let invalid = run(p, &["pipeline", "validate"]);
+    assert!(!invalid.status.success());
+    assert!(String::from_utf8_lossy(&invalid.stderr).contains("PipelineSpecInvalid: model `daily` declares exactly one"));
 }
 
 /// `pipeline validate` names undeclared relations on stderr while allowing the store to resolve them at build.

@@ -1,6 +1,6 @@
 //! The exec driver and the derive source.
 
-use crate::support::Never;
+use crate::support::{Never, Response, Server};
 use contextful_connectors::derive::{resolve_step, run_chain, Chain, ChainError, DeriveSource};
 use contextful_core::run::derive::config::{bindings, Binding, DeriveConfig};
 use contextful_core::run::journal::sha256_hex;
@@ -9,6 +9,16 @@ use contextful_core::run::{Failure, FailureTag, RunError};
 use serde_json::{json, Value};
 use std::path::Path;
 use std::sync::Arc;
+
+struct Admitted;
+
+impl contextful_outbound::PreSendHook for Admitted {
+    fn admit(&self, _: &contextful_outbound::Intent) -> Result<(), String> {
+        Ok(())
+    }
+
+    fn settle(&self, _: &contextful_outbound::Intent, _: &contextful_outbound::Outcome) {}
+}
 
 fn binding(toml: &str) -> Binding {
     bindings(toml).unwrap().remove("reader").unwrap()
@@ -196,6 +206,8 @@ fn source(dir: &Path, parents: Value, engine_toml: &str) -> DeriveSource {
         output_schema: json!({}),
         reader: Box::new(Rows(vec![("documents".into(), parents)])),
         resolver: Arc::new(contextful_outbound::Resolver::new(vec![], false, Arc::new(contextful_core::ports::FixedClock(contextful_core::time::Instant::from_unix_secs(0).unwrap())))),
+        mediation: contextful_connectors::http::Mediation { hook: Some(Arc::new(Admitted)), run_id: Some("derive-test".into()), ..Default::default() },
+        store_root: Some(dir.to_path_buf()),
         cwd: dir.to_path_buf(),
     }
 }
@@ -210,11 +222,257 @@ fn pulled(s: &mut DeriveSource) -> Vec<Value> {
     pull(s, &Never).unwrap()
 }
 
+/// A derive source needs its store root and pipeline id before it reads a table.
+// spec: run.select.no-store-root@1100fcff
+#[test]
+fn a_derive_source_refuses_an_absent_store_root_or_pipeline_id() {
+    let dir = tempfile::tempdir().unwrap();
+    let mut source = source(dir.path(), json!([]), "[derive.reader.engine]\ncommand = [\"cat\", \"{input}\"]\n");
+    source.pipeline_id.clear();
+    let failure = pull(&mut source, &Never).unwrap_err();
+    assert!(failure.message.contains("DeriveNoStoreRoot") && failure.message.contains("pipeline id"), "{failure:?}");
+
+    source.pipeline_id = "doc-text".into();
+    source.store_root = None;
+    let failure = pull(&mut source, &Never).unwrap_err();
+    assert!(failure.message.contains("DeriveNoStoreRoot") && failure.message.contains("store root"), "{failure:?}");
+
+    source.store_root = Some(Path::new("").to_path_buf());
+    let failure = pull(&mut source, &Never).unwrap_err();
+    assert!(failure.message.contains("DeriveNoStoreRoot") && failure.message.contains("store root"), "{failure:?}");
+}
+
+/// A media resolution directory is independent of the source's store root.
+#[test]
+fn a_media_directory_does_not_decide_whether_the_store_root_exists() {
+    let dir = tempfile::tempdir().unwrap();
+    let mut source = source(dir.path(), json!([]), "[derive.reader.engine]\ncommand = [\"cat\", \"{input}\"]\n");
+    source.cwd = Path::new("").to_path_buf();
+    assert!(source.derivation().is_ok(), "the store root exists independently of media resolution");
+}
+
+/// Missing or blank parent keys and media values count as skipped inputs in the pull.
+#[test]
+fn incomplete_parent_rows_enter_the_derive_pull_skipped_count() {
+    let dir = tempfile::tempdir().unwrap();
+    std::fs::write(dir.path().join("memo.txt"), "Hello.\n").unwrap();
+    let parents = json!([
+        {"doc_id": null, "path": "memo.txt"},
+        {"doc_id": "blank", "path": ""},
+        {"doc_id": "space", "path": "  "},
+        {"doc_id": "memo", "path": "memo.txt"}
+    ]);
+    let mut s = source(dir.path(), parents, SRT_ENGINE);
+    let request = PullRequest { step_label: "pull-0".into(), position: None, idempotency_key: "k".into() };
+    let pull = contextful_core::run::ports::Pull::decode(&s.pull(&request, &Never).unwrap()).unwrap();
+    assert_eq!(pull.skipped, 3);
+    assert_eq!(pull.rows.len(), 1);
+    assert_eq!(pull.rows[0]["unit_ref"], "memo");
+}
+
+#[test]
+fn a_link_preview_fetches_a_head_document_through_the_mediated_client() {
+    let site = Server::start(|_| Response {
+        status: 200,
+        headers: vec![("Content-Type".into(), "text/html; charset=utf-8".into())],
+        body: b"<html><head><title>Example article</title><meta name=\"description\" content=\"A short summary\"></head><body>ignored</body></html>".to_vec(),
+    });
+    let address = format!("http://localhost:{}/article?private=1", site.port);
+    let dir = tempfile::tempdir().unwrap();
+    let mut s = source(dir.path(), json!([{"doc_id": "article", "path": address}]), "[derive.reader]\ndriver = \"fetch\"\nallow_hosts = [\"localhost\"]\n");
+    s.config.task = contextful_core::run::derive::config::Task::LinkPreview;
+    let rows = pulled(&mut s);
+    assert_eq!(rows.len(), 1, "{rows:?}");
+    assert_eq!(rows[0]["unit_status"], "ok");
+    assert_eq!(rows[0]["title"], "Example article");
+    assert_eq!(rows[0]["description"], "A short summary");
+    assert_eq!(site.received("/article").len(), 1);
+}
+
+#[test]
+fn a_link_preview_refuses_a_missing_mediation_hook_before_a_socket() {
+    let site = Server::start(|_| Response::json(200, "{}"));
+    let dir = tempfile::tempdir().unwrap();
+    let address = format!("http://localhost:{}/article", site.port);
+    let mut source = link_source(dir.path(), &address, "");
+    source.mediation.hook = None;
+    let failure = pull(&mut source, &Never).unwrap_err();
+    assert!(failure.message.contains("DeriveMeteredClient"), "{failure:?}");
+    assert!(site.received("/article").is_empty());
+}
+
+fn link_source(dir: &Path, address: &str, extra: &str) -> DeriveSource {
+    let binding = format!("[derive.reader]\ndriver = \"fetch\"\nallow_hosts = [\"localhost\"]\n{extra}");
+    let mut s = source(dir, json!([{"doc_id": "article", "path": address}]), &binding);
+    s.config.task = contextful_core::run::derive::config::Task::LinkPreview;
+    s
+}
+
+// spec: run.fetch.scheme@b63853e1
+// spec: run.fetch.address-literal@9291e664
+#[test]
+fn a_link_preview_refuses_non_http_schemes_and_address_literals_before_a_socket() {
+    let site = Server::start(|_| Response::json(200, "{}"));
+    let dir = tempfile::tempdir().unwrap();
+    for (address, error) in [
+        ("file:///etc/passwd".to_string(), "DeriveSchemeUnsupported"),
+        (site.url("/private"), "DeriveAddressLiteral"),
+    ] {
+        let rows = pulled(&mut link_source(dir.path(), &address, ""));
+        assert_eq!(rows.len(), 1);
+        assert_eq!(rows[0]["unit_status"], "failed");
+        assert!(rows[0]["last_error"].as_str().unwrap().contains(error), "{rows:?}");
+    }
+    assert!(site.received("/private").is_empty());
+}
+
+// spec: run.fetch.redirect-chain@d274af14
+// spec: run.fetch.charset@71537e22
+// spec: run.fetch.not-utf8@bcfcbecf
+#[test]
+fn a_link_preview_bounds_redirects_and_refuses_non_utf8_documents() {
+    let site = Server::start(|r| {
+        let n: usize = r.path().trim_start_matches('/').parse().unwrap_or(0);
+        if n < 7 {
+            Response { status: 302, headers: vec![("Location".into(), format!("/{}", n + 1))], body: Vec::new() }
+        } else {
+            Response { status: 200, headers: vec![("Content-Type".into(), "text/html; Charset=iso-8859-1".into())], body: b"<title>old</title>".to_vec() }
+        }
+    });
+    let dir = tempfile::tempdir().unwrap();
+    let first = format!("http://localhost:{}/0", site.port);
+    let rows = pulled(&mut link_source(dir.path(), &first, ""));
+    assert!(rows[0]["last_error"].as_str().unwrap().contains("5 hops"), "{rows:?}");
+    assert_eq!(site.requests.lock().unwrap().len(), 6, "initial request plus five hops");
+
+    let charset = format!("http://localhost:{}/7", site.port);
+    let rows = pulled(&mut link_source(dir.path(), &charset, ""));
+    assert!(rows[0]["last_error"].as_str().unwrap().contains("DeriveCharsetUnsupported"), "{rows:?}");
+    let invalid = Server::start(|_| Response { status: 200, headers: vec![], body: vec![0xff, 0xfe] });
+    let address = format!("http://localhost:{}/invalid", invalid.port);
+    let rows = pulled(&mut link_source(dir.path(), &address, ""));
+    assert!(rows[0]["last_error"].as_str().unwrap().contains("DeriveBytesNotUtf8"), "{rows:?}");
+}
+
+// spec: run.fetch.retry-after-default@d278358c
+#[test]
+fn a_link_preview_uses_sixty_seconds_for_a_429_without_retry_after() {
+    let site = Server::start(|_| Response { status: 429, headers: vec![], body: vec![] });
+    let dir = tempfile::tempdir().unwrap();
+    let address = format!("http://localhost:{}/limited", site.port);
+    let failure = pull(&mut link_source(dir.path(), &address, ""), &Never).unwrap_err();
+    assert_eq!(failure.tag, FailureTag::RateLimited);
+    assert_eq!(failure.retry_after_secs, Some(60));
+}
+
+/// Each fetch hop has its own `request_timeout_secs` wall clock.
+#[test]
+fn a_link_preview_times_out_one_slow_hop_but_allows_two_short_hops() {
+    let site = Server::start(|request| match request.path() {
+        "/slow" => {
+            std::thread::sleep(std::time::Duration::from_secs(2));
+            Response { status: 200, headers: vec![], body: b"<title>Too late</title>".to_vec() }
+        }
+        "/redirect" => {
+            std::thread::sleep(std::time::Duration::from_millis(650));
+            Response { status: 302, headers: vec![("Location".into(), "/fast".into())], body: vec![] }
+        }
+        "/fast" => {
+            std::thread::sleep(std::time::Duration::from_millis(650));
+            Response { status: 200, headers: vec![], body: b"<title>Within each hop</title>".to_vec() }
+        }
+        _ => Response::json(404, "{}"),
+    });
+    let dir = tempfile::tempdir().unwrap();
+    let address = format!("http://localhost:{}/slow", site.port);
+    let started = std::time::Instant::now();
+    let rows = pulled(&mut link_source(dir.path(), &address, "request_timeout_secs = 1\n"));
+    assert_eq!(rows[0]["unit_status"], "failed", "{rows:?}");
+    assert!(started.elapsed() < std::time::Duration::from_secs(2));
+
+    let address = format!("http://localhost:{}/redirect", site.port);
+    let rows = pulled(&mut link_source(dir.path(), &address, "request_timeout_secs = 1\n"));
+    assert_eq!(rows[0]["title"], "Within each hop", "{rows:?}");
+}
+
+// spec: run.fetch.probe-prefix@4b8736f9
+// spec: run.fetch.head-rows@ca1a4fd4
+#[test]
+fn a_link_preview_probes_advertised_images_with_a_bounded_range() {
+    let site = Server::start(|r| match r.path() {
+        "/article" => Response {
+            status: 200,
+            headers: vec![("Content-Type".into(), "text/html; charset=utf-8".into())],
+            body: b"<head><title>Illustrated note</title><meta property=\"og:image\" content=\"/picture.jpg\"></head>".to_vec(),
+        },
+        "/picture.jpg" => Response { status: 206, headers: vec![("Content-Type".into(), "image/jpeg".into())], body: b"jpeg".to_vec() },
+        _ => Response::json(404, "{}"),
+    });
+    let dir = tempfile::tempdir().unwrap();
+    let address = format!("http://localhost:{}/article", site.port);
+    let rows = pulled(&mut link_source(dir.path(), &address, "allow_image_hosts = [\"localhost\"]\n"));
+    assert_eq!(rows.len(), 2, "{rows:?}");
+    assert_eq!(rows[1]["cue_seq"], 1);
+    assert_eq!(rows[1]["image_url"], format!("http://localhost:{}/picture.jpg", site.port));
+    assert_eq!(rows[0]["url"], address);
+    assert_eq!(rows[1]["url"], address);
+    assert_eq!(rows[1]["probe_status"], "ok");
+    assert_eq!(rows[0]["_modality"], "text");
+    assert_eq!(rows[1]["_modality"], "image");
+    let probes = site.received("/picture.jpg");
+    assert_eq!(probes.len(), 1);
+    assert_eq!(probes[0].header("range"), Some("bytes=0-65535"));
+}
+
+// spec: run.fetch.document-prefix@1386432c
+#[test]
+fn a_link_preview_scans_a_megabyte_prefix_and_drops_the_remainder() {
+    let site = Server::start(|_| {
+        let mut body = b"<head><title>Within prefix</title></head>".to_vec();
+        body.extend(vec![b'x'; 1024 * 1024 + 10]);
+        Response { status: 200, headers: vec![("Content-Type".into(), "text/html".into())], body }
+    });
+    let dir = tempfile::tempdir().unwrap();
+    let address = format!("http://localhost:{}/large", site.port);
+    let rows = pulled(&mut link_source(dir.path(), &address, ""));
+    assert_eq!(rows[0]["title"], "Within prefix", "{rows:?}");
+    assert_eq!(rows[0]["unit_status"], "ok");
+}
+
 fn unit<'a>(rows: &'a [Value], key: &str) -> &'a Value {
     rows.iter().find(|r| r["unit_ref"] == key).unwrap_or_else(|| panic!("no row for `{key}` in {rows:?}"))
 }
 
 const SRT_ENGINE: &str = "[derive.reader.engine]\ncommand = [\"awk\", \"NF { n++; printf \\\"%d\\\\n00:00:0%d,000 --> 00:00:0%d,500\\\\n%s\\\\n\\\\n\\\", n, n, n, $0 }\", \"{input}\"]\noutput_format = \"srt\"\n";
+
+/// A video transcript passage names its text output modality.
+#[test]
+fn a_transcript_passage_carries_text_modality() {
+    let dir = tempfile::tempdir().unwrap();
+    std::fs::write(dir.path().join("clip.txt"), "Spoken words.\n").unwrap();
+    let rows = pulled(&mut source(dir.path(), json!([{"doc_id": "clip", "path": "clip.txt"}]), SRT_ENGINE));
+    assert_eq!(rows[0]["text"], "Spoken words.");
+    assert_eq!(rows[0]["_modality"], "text");
+}
+
+/// Changing canonical file bytes under one media path selects a new derivation key.
+#[test]
+fn changed_local_bytes_reselect_the_same_media_path() {
+    let dir = tempfile::tempdir().unwrap();
+    let path = dir.path().join("clip.txt");
+    std::fs::write(&path, "First words.\n").unwrap();
+    let parents = json!([{"doc_id": "clip", "path": "clip.txt"}]);
+    let first = pulled(&mut source(dir.path(), parents.clone(), SRT_ENGINE));
+    let first_key = first[0]["derivation_key"].as_str().unwrap().to_string();
+    std::fs::write(&path, "Second words.\n").unwrap();
+    let mut next = source(dir.path(), parents, SRT_ENGINE);
+    let landed: Vec<Row> = first.into_iter().map(|r| r.as_object().unwrap().clone()).collect();
+    next.reader = Box::new(Rows(vec![("documents".into(), vec![json!({"doc_id": "clip", "path": "clip.txt"}).as_object().unwrap().clone()]), ("doc_text_passages".into(), landed)]));
+    let rows = pulled(&mut next);
+    assert_eq!(rows.len(), 1, "{rows:?}");
+    assert_eq!(rows[0]["text"], "Second words.");
+    assert_ne!(rows[0]["derivation_key"], first_key);
+}
 
 /// A media value that is neither an address nor a readable local file raises `DeriveMediaUnreadable`, failing
 /// that unit alone.
@@ -404,7 +662,8 @@ fn a_unit_settled_by_a_concurrent_tick_lands_none_of_its_rows() {
     std::fs::write(dir.path().join("brief.txt"), "Filing is due.\n").unwrap();
     let parents = json!([{"doc_id": "memo", "path": "memo.txt"}, {"doc_id": "brief", "path": "brief.txt"}]);
     let mut s = source(dir.path(), parents.clone(), SRT_ENGINE);
-    let d = s.derivation().unwrap();
+    let memo_key = pulled(&mut source(dir.path(), json!([{"doc_id": "memo", "path": "memo.txt"}]), SRT_ENGINE))[0]["derivation_key"].as_str().unwrap().to_string();
+    let brief_key = pulled(&mut source(dir.path(), json!([{"doc_id": "brief", "path": "brief.txt"}]), SRT_ENGINE))[0]["derivation_key"].as_str().unwrap().to_string();
     let settled = |unit: &str, key: String| {
         json!({"unit_ref": unit, "cue_seq": 0, "kind": "passage", "derivation_key": key, "_ingested_at": "2030-01-01T00:00:00.000000000Z", "_run_id": "other", "_row_seq": 0})
             .as_object()
@@ -412,11 +671,11 @@ fn a_unit_settled_by_a_concurrent_tick_lands_none_of_its_rows() {
             .clone()
     };
     let parent_rows: Vec<Row> = parents.as_array().unwrap().iter().map(|r| r.as_object().unwrap().clone()).collect();
-    s.reader = Box::new(Racing { parents: parent_rows.clone(), landed: vec![settled("memo", d.key("memo", "memo.txt", None))], output_reads: Default::default() });
+    s.reader = Box::new(Racing { parents: parent_rows.clone(), landed: vec![settled("memo", memo_key)], output_reads: Default::default() });
     let rows = pulled(&mut s);
     assert!(rows.iter().all(|r| r["unit_ref"] != "memo"), "the revived unit lands nothing: {rows:?}");
     assert_eq!(unit(&rows, "brief")["text"], "Filing is due.");
-    assert_eq!(unit(&rows, "brief")["derivation_key"], d.key("brief", "brief.txt", None).as_str());
+    assert_eq!(unit(&rows, "brief")["derivation_key"], brief_key);
     // A concurrent landing under another key settles nothing under this one.
     s.reader = Box::new(Racing { parents: parent_rows, landed: vec![settled("memo", "0".repeat(64))], output_reads: Default::default() });
     assert_eq!(unit(&pulled(&mut s), "memo")["text"], "Hello there.");

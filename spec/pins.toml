@@ -32,6 +32,36 @@
 "read.revise.browser-request" = { test = "contextful_cli::serve::served_claim_write_is_durable_actor_bound_and_outside_read_mcp" }
 "read.revise.malformed-request" = { test = "contextful_cli::serve::served_claim_write_is_durable_actor_bound_and_outside_read_mcp" }
 "read.revise.served-dedup" = { test = "contextful_cli::serve::served_claim_write_is_durable_actor_bound_and_outside_read_mcp" }
+"store.declare.retain-rows" = { test = "contextful_context::retention::retention_refuses_an_undeclared_or_non_timestamp_column" }
+"store.bound-time.row-age-cutoff" = { test = "contextful_context::retention::a_superseded_snapshot_does_not_restore_a_now_expired_row" }
+"store.fold.row-retention" = { test = "contextful_context::retention::an_idle_fold_removes_an_expired_snapshot_partition" }
+"store.fold.row-retention-report" = { test = "contextful_context::retention::collection_names_each_removed_directory" }
+"run.emit.content-marker-retention-clock" = { test = "contextful_cli::derive::an_empty_host_content_marker_carries_the_declared_parent_retention_clock" }
+"store.reconcile.variant" = { test = "contextful_context::reconcile::one_variant_column_keeps_each_scalar_kind_through_land_fold_and_read" }
+"corpus.reference.dangling"      = { test = "contextful_spec::readable::a_guide_pointer_naming_no_clause_dangles" }
+"corpus.reference.no-literature" = { test = "contextful_spec::readable::an_autolink_to_an_external_document_is_an_external_link_finding" }
+"corpus.reference.pointer"       = { test = "contextful_spec::readable::a_pointer_is_recorded_as_a_lock_edge" }
+"run.select.unmetered-grant" = { test = "contextful_core::run::derive::a_transcribe_pipeline_declaring_a_shared_quota_grant_refuses" }
+"run.select.metered-client" = { test = "contextful_connectors::derive::a_link_preview_refuses_a_missing_mediation_hook_before_a_socket" }
+"run.select.incomplete-unit" = { test = "contextful_cli::derive::a_host_task_counts_an_incomplete_parent_on_its_run_records" }
+"run.fetch.hop-timeout" = { test = "contextful_connectors::derive::a_link_preview_times_out_one_slow_hop_but_allows_two_short_hops" }
+"run.emit.output-modality" = { test = "contextful_connectors::derive::a_transcript_passage_carries_text_modality" }
+"run.emit.local-content-key" = { test = "contextful_connectors::derive::changed_local_bytes_reselect_the_same_media_path" }
+"connector.source.image-header" = { test = "contextful_cli::pipeline::an_image_source_refuses_a_bad_header_with_its_path" }
+"store.push.control-version"     = { test = "contextful_cli::sync::run_state::a_push_records_the_default_applied_control_version" }
+"run.export.typed-block" = { test = "crates/contextful-core/tests/integration/pipeline/export.rs::a_typed_export_declares_a_key_and_schedule" }
+"run.export.typed-state" = { test = "crates/contextful-cli/tests/integration/export.rs::typed_export_sends_deletion_after_a_replace_publication" }
+"run.export.typed-view-recheck" = { test = "crates/contextful-cli/tests/integration/export.rs::typed_export_republishes_a_changed_read_policy_without_a_new_commit" }
+"run.export.typed-publication-id" = { test = "crates/contextful-cli/tests/integration/export.rs::typed_export_marks_a_schema_change_without_a_new_commit" }
+"run.export.typed-events" = { test = "crates/contextful-core/tests/integration/pipeline/export.rs::typed_changes_include_deletions_and_a_final_publication_marker" }
+"run.export.typed-order" = { test = "crates/contextful-core/tests/integration/pipeline/export.rs::typed_changes_include_deletions_and_a_final_publication_marker" }
+"run.export.typed-complete" = { test = "crates/contextful-core/tests/integration/pipeline/export.rs::typed_changes_include_deletions_and_a_final_publication_marker" }
+"run.export.typed-outbox" = { test = "crates/contextful-sqlite/tests/integration/machine.rs::typed_export_replays_unacknowledged_events_and_commits_state_with_its_marker" }
+"run.export.typed-identity-changed" = { test = "crates/contextful-cli/tests/integration/export.rs::typed_export_refuses_pending_replay_under_an_ungranted_credential" }
+"run.export.typed-ack" = { test = "crates/contextful-sqlite/tests/integration/machine.rs::typed_export_replays_unacknowledged_events_and_commits_state_with_its_marker" }
+"run.export.typed-watch" = { test = "crates/contextful-cli/tests/integration/export.rs::typed_export_watch_retries_a_refused_publication" }
+"run.export.typed-byte-limit" = { test = "crates/contextful-cli/tests/integration/export.rs::typed_export_splits_requests_by_bytes_and_refuses_an_oversized_event" }
+"run.export.typed-event-too-large" = { test = "crates/contextful-cli/tests/integration/export.rs::typed_export_splits_requests_by_bytes_and_refuses_an_oversized_event" }
 "corpus.state.typescript-tag-pin" = { test = "contextful_spec::ts_pins::a_running_surface_test_tag_performs_its_clause" }
 "corpus.state.typescript-unfinished" = { test = "contextful_spec::ts_pins::a_skipped_or_todo_surface_test_is_broken" }
 "assurance.gate.native-test-files" = { test = "contextful_ci::stages::the_surfaces_stage_runs_each_native_typescript_test_file_even_without_a_test_script" }
@@ -60,13 +90,13 @@
 # its live performed count, and a live count below its floor raises SpecCoverageRegression.
 
 [floor]
-assurance = 136
-authority = 204
-connector = 218
-corpus = 40
-disclosure = 54
-read = 168
-run = 261
-store = 200
+assurance = 138
+authority = 206
+connector = 228
+corpus = 43
+disclosure = 63
+read = 172
+run = 279
+store = 204
 surface = 66
 topology = 38

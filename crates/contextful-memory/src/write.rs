@@ -6,13 +6,14 @@ use contextful_context::read::evidence::Stamped;
 use contextful_context::read::Face;
 use contextful_core::grant::Action;
 use contextful_core::memory::MemoryError;
-use contextful_core::memory::revise::{claim_id, direct_write, keyed_claim_id, observed_order, revise, tier, Claim, WritePath};
+use contextful_core::memory::revise::{claim_id, direct_write, keyed_claim_id, observed_order, revise, tier, Claim, Tier, WritePath};
 use contextful_core::memory::synthesize::{validate_claim, CandidateClaim};
 use contextful_core::store::bound_time::Bounds;
 use contextful_core::store::lay_out::NodeId;
 use contextful_core::time::Instant;
 use contextful_policy::enforce::session::Request;
 use contextful_policy::verify::AdmittedAuthority;
+use serde_json::json;
 
 /// What a direct write landed.
 #[derive(Debug, Clone, PartialEq)]
@@ -87,8 +88,19 @@ pub fn write_observed(
         Some(key) if key.trim().is_empty() => return Err(MemoryFault::Invalid("the dedup key is empty".into())),
         Some(key) => {
             let id = keyed_claim_id(key, &candidate.subject, &candidate.predicate, &candidate.object, candidate.scope.as_deref());
-            if live.iter().any(|c| c.claim_id == id) {
-                return Ok(Written { claim: None, retired: Vec::new() });
+            if let Some(existing) = live.iter().find(|c| c.claim_id == id) {
+                let at = observation.observed_at.unwrap_or(now);
+                let conflict = existing.live_at(at)
+                    && live.iter().any(|prior| {
+                        prior.subject == candidate.subject
+                            && prior.predicate == candidate.predicate
+                            && prior.scope == candidate.scope
+                            && prior.object != candidate.object
+                            && prior.live_at(at)
+                    });
+                if !conflict {
+                    return Ok(Written { claim: None, retired: Vec::new() });
+                }
             }
             id
         }
@@ -110,10 +122,40 @@ pub fn write_observed(
         agent: writer.agent.clone(),
     };
     observed_order(&claim, &live)?;
-    let revision = revise(claim, &live);
+    // Equal-instant direct writes without a scope are conflicts for a later explicit
+    // revision, not an ordinary successor (`read.revise.unscoped-collision`).
+    let collisions: Vec<&Claim> = live
+        .iter()
+        .filter(|prior| {
+            prior.scope.is_none()
+                && claim.scope.is_none()
+                && prior.tier == Tier::Curated
+                && prior.subject == claim.subject
+                && prior.predicate == claim.predicate
+                && prior.valid_from == claim.valid_from
+                && prior.object != claim.object
+                && prior.live_at(claim.valid_from)
+        })
+        .collect();
+    let comparable: Vec<Claim> = live.iter().filter(|prior| !collisions.iter().any(|conflict| conflict.claim_id == prior.claim_id)).cloned().collect();
+    let new_id = claim.claim_id.clone();
+    let revision = revise(claim, &comparable);
+    let dead: Vec<_> = collisions
+        .iter()
+        .filter(|_| revision.landed.is_some())
+        .map(|prior| {
+            json!({
+                "stage": "revise",
+                "reason": "unscoped-collision",
+                "detail": format!("claim ids `{}` and `{}`", prior.claim_id, new_id),
+                "response": "",
+                "template_hash": "",
+            })
+        })
+        .collect();
     let mut writes = revision.retired.clone();
     writes.extend(revision.landed.iter().cloned());
     let run_id = format!("memory-write-{}", now.unix_nanos());
-    Landing { node, at: now, writer: &writer, run_id, boundary, taint: None }.commit(face, into, &writes, &[])?;
+    Landing { node, at: now, writer: &writer, run_id, boundary, taint: None }.commit(face, into, &writes, &dead)?;
     Ok(Written { claim: revision.landed, retired: revision.retired })
 }
