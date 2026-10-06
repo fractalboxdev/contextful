@@ -65,9 +65,10 @@ fn request(address: &str, method: &str, path: &str, token: Option<&str>, body: O
     let mut stream = TcpStream::connect(address).unwrap();
     let data = body.map(Value::to_string).unwrap_or_default();
     let auth = token.map(|t| format!("Cf-Access-Jwt-Assertion: {t}\r\n")).unwrap_or_default();
+    let origin = if method == "POST" { format!("Origin: http://{address}\r\n") } else { String::new() };
     write!(
         stream,
-        "{method} {path} HTTP/1.1\r\nHost: {address}\r\n{auth}Content-Type: application/json\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{data}",
+        "{method} {path} HTTP/1.1\r\nHost: {address}\r\n{auth}{origin}Content-Type: application/json\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{data}",
         data.len()
     )
     .unwrap();

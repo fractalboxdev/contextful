@@ -266,7 +266,7 @@ function createConsole(adapters) {
       }
       if (!operator) return refusal("ConsolePageForbidden", 401);
       if (!operator.grants.has(grant)) return refusal("ConsolePageForbidden");
-      if (request.method === "POST" && (grant === "admin" || adapters.identity.kind === "cognito") && request.headers.get("origin") !== url.origin) {
+      if (request.method === "POST" && request.headers.get("origin") !== url.origin) {
         return refusal("ConsolePageForbidden");
       }
       if (request.method === "GET" && path === `/${grant}`) return page(grant);
