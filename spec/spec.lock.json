@@ -19586,6 +19586,53 @@
       "line": 273
     },
     {
+      "id": "surface.browse.discovered-chips",
+      "contract": "surface",
+      "operation": "browse",
+      "subject": "discovered-chips",
+      "kind": "behavior",
+      "statement": "Query builds pre-question chips from described tables admitted to the reader's zone and humanizes their table labels.",
+      "why": "A-surface",
+      "file": "spec/71-console.md",
+      "line": 279
+    },
+    {
+      "id": "surface.browse.insights-panel",
+      "contract": "surface",
+      "operation": "browse",
+      "subject": "insights-panel",
+      "kind": "behavior",
+      "statement": "The insights panel presents row counts returned by the reader's table descriptions.",
+      "why": "because a row count from the read face already reflects the reader's relation",
+      "file": "spec/71-console.md",
+      "line": 281
+    },
+    {
+      "id": "surface.browse.file-gallery",
+      "contract": "surface",
+      "operation": "browse",
+      "subject": "file-gallery",
+      "kind": "behavior",
+      "statement": "The file gallery presents only paths returned by the reader's governed file listing and previews them through the read face.",
+      "why": "P5",
+      "file": "spec/71-console.md",
+      "line": 283
+    },
+    {
+      "id": "surface.browse.gallery-path-unlisted",
+      "contract": "surface",
+      "operation": "browse",
+      "subject": "gallery-path-unlisted",
+      "kind": "refusal",
+      "statement": "A gallery preview naming a path absent from the governed file listing under the request's `as_of` raises `ConsoleGalleryPathUnlisted` before preview dispatch.",
+      "why": "because the browser must not turn an arbitrary path into a store read",
+      "file": "spec/71-console.md",
+      "line": 285,
+      "scenarios": [
+        "WHEN a Query client requests a path absent from the reader's bound file listing, THEN it raises `ConsoleGalleryPathUnlisted` without a preview call."
+      ]
+    },
+    {
       "id": "surface.learn.distillation",
       "contract": "surface",
       "operation": "learn",
@@ -19594,7 +19641,7 @@
       "statement": "After the answer streams, a second pass distils the exchange into at most 3 entries shaped `{subject, key, learning}`, zero included.",
       "why": "",
       "file": "spec/71-console.md",
-      "line": 283
+      "line": 296
     },
     {
       "id": "surface.learn.unscoped",
@@ -19605,7 +19652,7 @@
       "statement": "A distilled conclusion landing without the reading-session scope raises `ConsoleLearningUnscoped`.",
       "why": "A-surface",
       "file": "spec/71-console.md",
-      "line": 284
+      "line": 297
     },
     {
       "id": "surface.learn.subject-resolution",
@@ -19616,7 +19663,7 @@
       "statement": "Distillation preserves the subject it observes; recall resolves that subject through entity matching.",
       "why": "A-surface",
       "file": "spec/71-console.md",
-      "line": 286
+      "line": 299
     },
     {
       "id": "surface.render.client-authored-view",
@@ -19627,7 +19674,7 @@
       "statement": "A view specification arriving from a client, or composed by the model, raises `ConsoleViewNotServerBuilt`.",
       "why": "A-surface",
       "file": "spec/71-console.md",
-      "line": 293
+      "line": 306
     },
     {
       "id": "surface.render.component-choice",
@@ -19638,7 +19685,7 @@
       "statement": "One row with one measure draws a metric; a date column with a measure over 3 rows on distinct days draws a line; anything else draws a table offering a bar view.",
       "why": "",
       "file": "spec/71-console.md",
-      "line": 295
+      "line": 308
     },
     {
       "id": "surface.render.older-transcript",
@@ -19649,7 +19696,7 @@
       "statement": "A client reading a transcript with an unknown component-union member renders its view as a table.",
       "why": "A-surface",
       "file": "spec/71-console.md",
-      "line": 296
+      "line": 309
     },
     {
       "id": "surface.brief.absence-is-earned",
@@ -19660,7 +19707,7 @@
       "statement": "The card needs a session with no turns, at present time, a live conclusion, an arrived row matching an interest, and a derivation inside its budget. An error or timeout raises `ConsoleBriefUnavailable`, and no card renders.",
       "why": "A-surface",
       "file": "spec/71-console.md",
-      "line": 332
+      "line": 345
     },
     {
       "id": "surface.brief.topic-tier",
@@ -19671,7 +19718,7 @@
       "statement": "The topic tier needs at least 2 tokens shared between the conclusion's subject and text and the row's label and topics, one of them naming the subject.",
       "why": "",
       "file": "spec/71-console.md",
-      "line": 334
+      "line": 347
     },
     {
       "id": "surface.brief.card-subjects",
@@ -19682,7 +19729,7 @@
       "statement": "A card carries at most 3 subjects.",
       "why": "",
       "file": "spec/71-console.md",
-      "line": 335
+      "line": 348
     },
     {
       "id": "surface.brief.articles-per-subject",
@@ -19693,7 +19740,7 @@
       "statement": "A subject carries at most 3 entries of matched article.",
       "why": "",
       "file": "spec/71-console.md",
-      "line": 336
+      "line": 349
     },
     {
       "id": "surface.brief.catchup-window",
@@ -19704,7 +19751,7 @@
       "statement": "The backend caps the requested window at 7 d.",
       "why": "",
       "file": "spec/71-console.md",
-      "line": 337
+      "line": 350
     },
     {
       "id": "surface.brief.greeting",
@@ -19715,7 +19762,7 @@
       "statement": "Query derives a greeting card from arrived rows matching live conclusions in a turnless present-time session.",
       "why": "A-surface",
       "file": "spec/71-console.md",
-      "line": 338
+      "line": 351
     },
     {
       "id": "surface.publish-answer.share-affordance",
@@ -19726,7 +19773,7 @@
       "statement": "A surface offering a share control on access-explanation output raises `VisibilityShareAffordance`.",
       "why": "A-surface",
       "file": "spec/71-console.md",
-      "line": 345
+      "line": 358
     },
     {
       "id": "surface.publish-answer.askerless-audience",
@@ -19737,7 +19784,7 @@
       "statement": "A scheduled job posting to an audience under a service identity raises `VisibilityAskerlessAudience`, naming the destination; a scheduled post's corpus is narrowed in the reviewed manifest to what the destination reaches.",
       "why": "A-surface",
       "file": "spec/71-console.md",
-      "line": 347
+      "line": 360
     },
     {
       "id": "surface.publish-answer.one-operator-principal",
@@ -19748,7 +19795,7 @@
       "statement": "An answer uses one operator's credential; the console offers no room-intersection principal.",
       "why": "A-surface",
       "file": "spec/71-console.md",
-      "line": 349
+      "line": 362
     },
     {
       "id": "assurance.model.package",
@@ -28382,6 +28429,10 @@
           "ConsoleFileAccessDirect": {
             "clause": "surface.ground.direct-file-read",
             "gloss": "A table function reading stored bytes by path on the caller surface."
+          },
+          "ConsoleGalleryPathUnlisted": {
+            "clause": "surface.browse.gallery-path-unlisted",
+            "gloss": "A gallery preview path absent from the reader's governed file listing."
           },
           "ConsoleLearningUnscoped": {
             "clause": "surface.learn.unscoped",

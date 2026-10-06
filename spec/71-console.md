@@ -276,6 +276,19 @@ A session's time basis: its vantage, the bound each leg carries, the snapshot ti
 
 What a store advertises before a question: discovered chips, humanized labels, the insights panel and the file gallery.
 
+- `discovered-chips` — Query builds pre-question chips from described tables admitted to the reader's zone and humanizes their table labels.
+  *A-surface*
+- `insights-panel` — The insights panel presents row counts returned by the reader's table descriptions.
+  *because a row count from the read face already reflects the reader's relation*
+- `file-gallery` — The file gallery presents only paths returned by the reader's governed file listing and previews them through the read face.
+  *P5*
+- `gallery-path-unlisted` — A gallery preview naming a path absent from the governed file listing under the request's `as_of` raises `ConsoleGalleryPathUnlisted` before preview dispatch.
+  *because the browser must not turn an arbitrary path into a store read*
+
+#### Scenarios
+
+- `surface.browse.gallery-path-unlisted`: WHEN a Query client requests a path absent from the reader's bound file listing, THEN it raises `ConsoleGalleryPathUnlisted` without a preview call.
+
 ## learn
 
 The reading loop's memory: recall ahead of planning, the per-turn distillation and the labels its conclusions inherit.
