@@ -467,7 +467,7 @@ pub(crate) fn claim_operator_nonce(project: &ProjectArgs, declaration: Option<Pa
 }
 
 /// Revalidate the saved draft and claim it only at the version the editor read.
-pub(crate) fn apply_draft(project: &ProjectArgs, declaration: Option<PathBuf>, expected: u64, nonce: &str, operator: &str, tasks: &Tasks) -> Result<()> {
+pub(crate) fn apply_draft(project: &ProjectArgs, declaration: Option<PathBuf>, expected: u64, nonce: &str, operator: &str, tasks: &Tasks, authority: &AdmittedAuthority, admit: &AdmitArgs) -> Result<()> {
     let (initial, _, control) = located(project, declaration.clone())?;
     let snapshots = owner(&control)?;
     snapshots.initialized()?;
@@ -483,7 +483,16 @@ pub(crate) fn apply_draft(project: &ProjectArgs, declaration: Option<PathBuf>, e
     if owner.root() != snapshots.root() || fresh.declaration != initial.declaration {
         return Err(SurfaceError::ConfigOwnerUnconfigured("the store's control owner changed during validation".into()).into());
     }
-    owner.claim_draft(&draft)?;
+    match SyncAttestation::for_authority(&fresh, authority.clone(), admit, None)? {
+        Some(attestation) => {
+            owner.claim_draft_attested(&draft, |next, previous| {
+                let prior_snapshot = owner.read(expected)?;
+                let parent = previous.map(|receipt| (receipt, expected, prior_snapshot.as_str()));
+                attestation.receipt(&fresh.project.name, next, parent, &draft.document)
+            })?;
+        }
+        None => { owner.claim_draft(&draft)?; }
+    }
     Ok(())
 }
 
@@ -576,6 +585,14 @@ impl SyncAttestation {
         let unavailable = |why: String| SurfaceError::ControlAttestationUnavailable(why);
         let (authority, _) = admit.admit(project.project.as_deref(), "a synced control claim")
             .map_err(|e| unavailable(format!("admin capability: {e:#}")))?;
+        Self::for_authority(l, authority, admit, issuer_key)
+    }
+
+    fn for_authority(l: &Located, authority: AdmittedAuthority, admit: &AdmitArgs, issuer_key: Option<&Path>) -> Result<Option<Self>> {
+        if crate::sync::sync_config(l)?.0.is_none() {
+            return Ok(None);
+        }
+        let unavailable = |why: String| SurfaceError::ControlAttestationUnavailable(why);
         if !authority.permits(Action::Admin, &[]) {
             return Err(unavailable("the credential carries no admin grant".into()).into());
         }

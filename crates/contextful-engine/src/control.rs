@@ -168,13 +168,22 @@ impl SnapshotDir {
 
     /// Claim the exact draft revalidated by the caller under the existing pointer lock.
     pub fn claim_draft(&self, draft: &Draft) -> Result<u64, ControlError> {
+        self.claim_draft_inner(draft, None)
+    }
+
+    /// Claim a validated draft with its signed receipt before publishing the pointer.
+    pub fn claim_draft_attested(&self, draft: &Draft, receipt: impl Fn(u64, Option<&str>) -> Result<String, ControlError>) -> Result<u64, ControlError> {
+        self.claim_draft_inner(draft, Some(&receipt))
+    }
+
+    fn claim_draft_inner(&self, draft: &Draft, receipt: Option<&ReceiptBuilder<'_>>) -> Result<u64, ControlError> {
         let storage = |e: contextful_core::run::Failure| ControlError::Storage(e.to_string());
         let _lock = FileLock::acquire(&self.root.join(LOCK_FILE)).map_err(storage)?;
         self.expect_version(draft.expected)?;
         if self.read_draft()? != *draft {
             return Err(SurfaceError::ManifestVersionConflict("the validated draft changed before apply; reload and reapply".into()).into());
         }
-        let version = self.claim_locked(Some(draft.expected), &draft.document, None, None)?;
+        let version = self.claim_locked(Some(draft.expected), &draft.document, receipt, None)?;
         let _ = std::fs::remove_file(self.root.join(DRAFT_FILE));
         Ok(version)
     }

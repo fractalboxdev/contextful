@@ -727,7 +727,8 @@ fn synced_admin_draft_apply_keeps_a_signed_receipt_under_network_authority() {
     let receipts = root.join(".contextful/control/research");
     let receipt: contextful_policy::control_receipt::ControlReceipt = serde_json::from_str(&std::fs::read_to_string(receipts.join("receipt@v2.json")).unwrap()).unwrap();
     let snapshot = std::fs::read(receipts.join("manifest@v2.toml")).unwrap();
-    receipt.verify("research", &snapshot, &[public.parse().unwrap()]).unwrap();
+    let signer = contextful_policy::issue::SeedSigner::resolve(Some(&root.join(".contextful/issuer.seed"))).unwrap();
+    receipt.verify("research", &snapshot, &[contextful_policy::issue::SignerKey::of(&signer)]).unwrap();
     assert!(receipt.parent.is_some());
     let entries = contextful_policy::audit::entries(&root.join(".contextful/audit")).unwrap();
     assert!(entries.iter().any(|entry| entry.attributes["contextful.operator.subject"] == "operator-a" && entry.attributes["contextful.control.operation"] == "apply"));

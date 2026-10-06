@@ -7,7 +7,7 @@
 //! network transport, which admits each one on its own credential. Every value is
 //! resolved before the listener binds, so a process that cannot serve binds nothing.
 
-use crate::admit::{face, revocation_state, LedgerFile, LivePins, AUDIENCE_VAR, PUBKEY_VAR};
+use crate::admit::{AdmitArgs, face, revocation_state, LedgerFile, LivePins, AUDIENCE_VAR, PUBKEY_VAR};
 use crate::project::locate;
 use crate::root::root as project_root;
 use crate::clock::SystemClock;
@@ -188,6 +188,7 @@ pub fn run(args: ServeArgs, tasks: &Tasks) -> Result<()> {
     };
     let audit = AuditLog::unanchored(located.project.audit_dir())?;
     let control_attestation_secret = std::env::var("CONTEXTFUL_CONTROL_ATTESTATION_SECRET").ok().filter(|secret| !secret.is_empty());
+    let control_admit = AdmitArgs { public_key: args.public_key.clone(), audience: args.audience.clone(), denylist: args.denylist.clone(), keyset: args.keyset.clone(), holder_key: None };
     let control = |request: &HttpRequest, authority: &AdmittedAuthority| -> HttpResponse {
         let malformed = || HttpResponse::json(400, &json!({ "error": { "identifier": "ControlRequestMalformed" } }));
         let path = request.target.split('?').next().unwrap_or_default();
@@ -241,7 +242,7 @@ pub fn run(args: ServeArgs, tasks: &Tasks) -> Result<()> {
                         "contextful.control.draft_nonce": nonce })).is_err() {
                         return HttpResponse::json(503, &json!({ "error": { "identifier": "AuditEntryUnpersisted" } }));
                     }
-                    crate::cadence::apply_draft(&project, Some(located.declaration.clone()), expected, nonce, &operator, tasks)
+                    crate::cadence::apply_draft(&project, Some(located.declaration.clone()), expected, nonce, &operator, tasks, authority, &control_admit)
                         .and_then(|()| crate::cadence::published(&located.project, &located.declaration))
                 }
             }
