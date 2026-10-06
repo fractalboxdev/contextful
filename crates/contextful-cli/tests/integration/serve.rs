@@ -16,6 +16,85 @@ use std::sync::atomic::{AtomicU64, Ordering};
 
 const AUD: &str = "contextful://acme-research";
 
+/// One bounded Content-Length response ends at its body, so a later TCP reset has
+/// no bearing on the HTTP answer; a reset or EOF inside the frame remains an error.
+fn exchange_response(stream: &mut impl Read) -> std::io::Result<String> {
+    let invalid = |message| std::io::Error::new(std::io::ErrorKind::InvalidData, message);
+    let mut raw = Vec::new();
+    while !raw.ends_with(b"\r\n\r\n") {
+        if raw.len() == 8192 { return Err(invalid("the test response head exceeds 8 KiB")); }
+        let mut byte = [0];
+        stream.read_exact(&mut byte)?;
+        raw.push(byte[0]);
+    }
+    let head = std::str::from_utf8(&raw).map_err(|_| invalid("the response head is not UTF-8"))?;
+    let mut lines = head.split("\r\n");
+    let mut status = lines.next().unwrap_or_default().split_whitespace();
+    if status.next() != Some("HTTP/1.1") ||
+        !status.next().is_some_and(|code| code.len() == 3 && code.bytes().all(|b| b.is_ascii_digit())) {
+        return Err(invalid("the response status does not parse"));
+    }
+    let mut length = None;
+    for line in lines.filter(|line| !line.is_empty()) {
+        let (name, value) = line.split_once(':').ok_or_else(|| invalid("the response header does not parse"))?;
+        if name.eq_ignore_ascii_case("Transfer-Encoding") {
+            return Err(invalid("the test response requires Content-Length framing"));
+        }
+        if name.eq_ignore_ascii_case("Content-Length") {
+            let value = value.trim();
+            if length.is_some() || value.is_empty() || !value.bytes().all(|b| b.is_ascii_digit()) {
+                return Err(invalid("the response length is ambiguous or malformed"));
+            }
+            length = Some(value.parse::<usize>().map_err(|_| invalid("the response length exceeds usize"))?);
+        }
+    }
+    let length = length.ok_or_else(|| invalid("the response has no Content-Length"))?;
+    if length > 1024 * 1024 { return Err(invalid("the test response body exceeds 1 MiB")); }
+    let start = raw.len();
+    raw.resize(start + length, 0);
+    stream.read_exact(&mut raw[start..])?;
+    String::from_utf8(raw).map_err(|_| invalid("the response is not UTF-8"))
+}
+
+struct ResetAfter(std::io::Cursor<Vec<u8>>);
+
+impl Read for ResetAfter {
+    fn read(&mut self, out: &mut [u8]) -> std::io::Result<usize> {
+        match self.0.read(out)? {
+            0 => Err(std::io::ErrorKind::ConnectionReset.into()),
+            n => Ok(n),
+        }
+    }
+}
+
+#[test]
+fn exchange_response_reads_one_complete_frame_before_a_later_reset() {
+    let wire = b"HTTP/1.1 404 Not Found\r\nContent-Length: 2\r\n\r\n{}";
+    assert_eq!(exchange_response(&mut &wire[..]).unwrap(), std::str::from_utf8(wire).unwrap());
+    assert_eq!(exchange_response(&mut ResetAfter(std::io::Cursor::new(wire.to_vec()))).unwrap(), std::str::from_utf8(wire).unwrap());
+}
+
+#[test]
+fn exchange_response_refuses_truncated_headers_and_bodies() {
+    for wire in [b"HTTP/1.1 404 Not Found\r\nContent-Length: 2\r\n".as_slice(),
+        b"HTTP/1.1 404 Not Found\r\nContent-Length: 2\r\n\r\n{".as_slice()] {
+        assert!(exchange_response(&mut &wire[..]).is_err(), "EOF inside a frame refuses");
+        assert!(exchange_response(&mut ResetAfter(std::io::Cursor::new(wire.to_vec()))).is_err(), "a reset inside a frame refuses");
+    }
+}
+
+#[test]
+fn exchange_response_refuses_ambiguous_or_unbounded_framing() {
+    for head in ["not-http\r\nContent-Length: 0", "HTTP/1.1 404 Not Found",
+        "HTTP/1.1 404 Not Found\r\nContent-Length: 0\r\nContent-Length: 0",
+        "HTTP/1.1 404 Not Found\r\nContent-Length: -1",
+        "HTTP/1.1 404 Not Found\r\nContent-Length: 1048577",
+        "HTTP/1.1 404 Not Found\r\nContent-Length: 0\r\nTransfer-Encoding: chunked"] {
+        assert!(exchange_response(&mut format!("{head}\r\n\r\n").as_bytes()).is_err(), "{head}");
+    }
+    assert!(exchange_response(&mut vec![b'x'; 8193].as_slice()).is_err());
+}
+
 fn run(dir: &Path, args: &[&str]) -> Output {
     Command::new(env!("CARGO_BIN_EXE_contextful"))
         .args(args)
@@ -452,8 +531,7 @@ fn served_exchange_without_policy_returns_the_unconfigured_refusal() {
     let body = "not-json";
     let mut stream = TcpStream::connect(&addr).unwrap();
     write!(stream, "POST /auth/exchange HTTP/1.1\r\nContent-Type: application/json\r\nContent-Length: {}\r\n\r\n{body}", body.len()).unwrap();
-    let mut raw = String::new();
-    stream.read_to_string(&mut raw).unwrap();
+    let raw = exchange_response(&mut stream).unwrap();
     let (head, data) = raw.split_once("\r\n\r\n").unwrap();
     assert_eq!(head.split(' ').nth(1), Some("404"));
     let answer: Value = serde_json::from_str(data).unwrap();
@@ -461,8 +539,7 @@ fn served_exchange_without_policy_returns_the_unconfigured_refusal() {
     let mut stream = TcpStream::connect(&addr).unwrap();
     stream.set_read_timeout(Some(std::time::Duration::from_secs(2))).unwrap();
     write!(stream, "POST /auth/exchange HTTP/1.1\r\nContent-Type: application/json\r\nContent-Length: 100\r\n\r\n").unwrap();
-    let mut raw = String::new();
-    stream.read_to_string(&mut raw).expect("unconfigured exchange answers before waiting for its body");
+    let raw = exchange_response(&mut stream).expect("unconfigured exchange answers before waiting for its body");
     assert!(raw.starts_with("HTTP/1.1 404"), "{raw}");
 }
 
@@ -487,8 +564,7 @@ fn served_exchange_mints_a_reader_credential_for_the_read_face() {
         let body = json!({ "jwt": jwt }).to_string();
         let mut stream = TcpStream::connect(&addr).unwrap();
         write!(stream, "POST /auth/exchange HTTP/1.1\r\nContent-Type: application/json\r\nContent-Length: {}\r\n\r\n{body}", body.len()).unwrap();
-        let mut raw = String::new();
-        stream.read_to_string(&mut raw).unwrap();
+        let raw = exchange_response(&mut stream).unwrap();
         let (head, data) = raw.split_once("\r\n\r\n").unwrap();
         (head.split(' ').nth(1).unwrap().parse::<u16>().unwrap(), serde_json::from_str::<Value>(data).unwrap())
     };
