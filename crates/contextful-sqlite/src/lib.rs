@@ -8,11 +8,13 @@
 //! `bundled` feature, off by default, compiles one in (`topology.package.sqlite-adapter`).
 
 mod derived;
+mod export;
 mod machine;
 mod sealed;
 mod stores;
 
 pub use derived::DerivedSqlite;
+pub use export::{ExportLedger, ExportPosition, ExportPublication};
 pub use machine::MachineCatalog;
 pub use stores::{SqliteAwakeableStore, SqliteBlobStore, SqliteJournalStore, SqliteRunStores};
 

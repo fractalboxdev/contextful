@@ -8,12 +8,15 @@ use contextful_core::store::lease::{compaction_key, BucketLease, BucketPointer, 
 use contextful_core::store::lay_out::{Pointer, SnapshotId, SnapshotManifest, MANIFEST_FILE, POINTER_FILE, SNAPSHOT_ANCESTORS_MAX};
 use contextful_core::store::object::{CasScope, Condition, ObjectError, ObjectStore, Put};
 use contextful_core::store::sync::{
-    admit_format, confine, generation_key, generation_of, is_commit_log, is_pointer, merge, owner_of, run_state_node, BucketManifest, Coordination, Entry, SyncConfig,
+    admit_format, confine, generation_key, generation_of, is_commit_log, is_pointer, merge, owner_of, run_state_node, BucketManifest, ControlHead, Coordination, Entry, SyncConfig,
     GENERATION_PREFIX, MANIFEST_KEY, PROBE_PREFIX, PULL_CONVERGENCE,
 };
 use contextful_core::store::StoreError;
 use contextful_core::surface::reside::{compare_sites, SiteRegions};
 use contextful_core::surface::SurfaceError;
+use contextful_core::surface::control::{parse_pointer, receipt_file, receipt_version, snapshot_file, POINTER_FILE as CONTROL_POINTER};
+use contextful_policy::control_receipt::ControlReceipt;
+use contextful_policy::issue::SignerKey;
 use contextful_core::time::Instant;
 use std::collections::{BTreeMap, BTreeSet};
 use std::path::{Path, PathBuf};
@@ -82,6 +85,7 @@ fn syncable(rel: &str) -> bool {
     let name = rel.rsplit('/').next().unwrap_or(rel);
     let catalog = |file: &str| rel == file || rel.strip_prefix(file).is_some_and(|rest| ["-journal", "-wal", "-shm"].contains(&rest));
     !(rel == "config.toml"
+        || rel.starts_with("control/")
         || catalog(DERIVED_CATALOG_FILE)
         || catalog(MACHINE_CATALOG_FILE)
         || name.starts_with('.')
@@ -168,6 +172,9 @@ pub struct ManifestPlan {
     /// Keys another node owns, held locally and never pushed from here.
     pub foreign: BTreeMap<String, Entry>,
     paths: BTreeMap<String, PathBuf>,
+    control_head: Option<ControlHead>,
+    control_project: Option<String>,
+    control_ancestry: BTreeSet<String>,
 }
 
 impl ManifestPlan {
@@ -176,7 +183,11 @@ impl ManifestPlan {
     pub fn manifest(&self) -> BucketManifest {
         let mut entries = self.mine.clone();
         entries.extend(self.shared.iter().map(|(k, e)| (k.clone(), e.clone())));
-        BucketManifest { entries, ..BucketManifest::default() }
+        let mut manifest = BucketManifest { entries, ..BucketManifest::default() };
+        if let (Some(head), Some(project)) = (&self.control_head, &self.control_project) {
+            manifest.control_heads.insert(project.clone(), head.clone());
+        }
+        manifest
     }
 
     fn read(&self, key: &str) -> Result<Vec<u8>> {
@@ -415,6 +426,8 @@ pub struct Syncer {
     pub node: String,
     /// The pushing site and its residency allow-set; `None` skips the cross-site check.
     pub residency: Option<SiteResidency>,
+    /// Local applied snapshots, absent for a URL-backed control source.
+    pub control_dir: Option<PathBuf>,
 }
 
 /// A site's id and the allow-set it declares, `None` when it declares no `[residency]`.
@@ -441,6 +454,18 @@ impl SiteResidency {
 }
 
 impl Syncer {
+    fn admit_control_head(&self, plan: &ManifestPlan, remote: &BucketManifest) -> Result<()> {
+        let Some(bucket) = remote.control_heads.get(&self.project) else { return Ok(()) };
+        let Some(local) = &plan.control_head else { return Ok(()) };
+        if !plan.control_ancestry.contains(&bucket.receipt_sha256) || local.version < bucket.version {
+            return Err(StoreError::SyncControlDiverged(format!(
+                "project `{}` local head {} does not descend from bucket head {}",
+                self.project, local.receipt_sha256, bucket.receipt_sha256
+            )).into());
+        }
+        Ok(())
+    }
+
     fn key(&self, rel: &str) -> Result<String> {
         Ok(confine(&self.prefix, rel)?)
     }
@@ -452,7 +477,77 @@ impl Syncer {
 
     /// What a push of this store commits, reading no bucket object (`store.emit`).
     pub fn plan_manifest(&self) -> Result<ManifestPlan> {
-        plan_manifest(&self.store, &self.project, &self.node)
+        let mut plan = plan_manifest(&self.store, &self.project, &self.node)?;
+        let Some(dir) = &self.control_dir else { return Ok(plan) };
+        let pointer = dir.join(CONTROL_POINTER);
+        let body = match std::fs::read_to_string(&pointer) {
+            Ok(body) => body,
+            Err(e) if e.kind() == std::io::ErrorKind::NotFound => return Ok(plan),
+            Err(e) => return Err(io(&pointer, e)),
+        };
+        let version = parse_pointer(&body)?;
+        let mut versions = Vec::new();
+        for entry in std::fs::read_dir(dir).map_err(|e| io(dir, e))? {
+            let entry = entry.map_err(|e| io(dir, e))?;
+            if let Some(n) = entry.file_name().to_str().and_then(receipt_version).filter(|n| *n <= version) {
+                versions.push(n);
+            }
+        }
+        versions.sort_unstable_by(|a, b| b.cmp(a));
+        if versions.first() != Some(&version) {
+            return Err(SurfaceError::ControlAttestationUnavailable(format!("{}: applied v{version} has no receipt", pointer.display())).into());
+        }
+        let mut parent_needed: Option<String> = None;
+        let mut head_digest = None;
+        for n in versions {
+            if n != version && parent_needed.is_none() {
+                break;
+            }
+            let snapshot = dir.join(snapshot_file(n));
+            let receipt_path = dir.join(receipt_file(n));
+            let receipt_bytes = match std::fs::read(&receipt_path) {
+                Ok(bytes) => bytes,
+                Err(e) if e.kind() == std::io::ErrorKind::NotFound && n != version => continue,
+                Err(e) => return Err(io(&receipt_path, e)),
+            };
+            let receipt: ControlReceipt = match serde_json::from_slice(&receipt_bytes) {
+                Ok(receipt) => receipt,
+                Err(_) if n != version => continue,
+                Err(e) => return Err(SurfaceError::ControlAttestationUnavailable(format!("{}: {e}", receipt_path.display())).into()),
+            };
+            if receipt.version != n {
+                if n != version { continue; }
+                return Err(SurfaceError::ControlAttestationUnavailable(format!("{}: receipt version differs from its file", receipt_path.display())).into());
+            }
+            let digest = receipt.digest();
+            if n != version && parent_needed.as_deref() != Some(digest.as_str()) {
+                continue;
+            }
+            let snapshot_bytes = std::fs::read(&snapshot).map_err(|e| io(&snapshot, e))?;
+            let signer: SignerKey = receipt.signer.parse().map_err(|e| {
+                SurfaceError::ControlAttestationUnavailable(format!("{}: {e}", receipt_path.display()))
+            })?;
+            receipt.verify(&self.project, &snapshot_bytes, &[signer]).map_err(|e| {
+                SurfaceError::ControlAttestationUnavailable(format!("{}: {e}", receipt_path.display()))
+            })?;
+            if n == version {
+                head_digest = Some(digest.clone());
+            }
+            plan.control_ancestry.insert(digest.clone());
+            parent_needed = receipt.parent.clone();
+            for (path, bytes) in [(snapshot, snapshot_bytes), (receipt_path, receipt_bytes)] {
+                let name = path.file_name().expect("a version file has a name").to_string_lossy();
+                let key = format!("{}/control/{name}", self.project);
+                plan.mine.insert(key.clone(), Entry { sha256: sha256_hex(&bytes), size: bytes.len() as u64, owner: String::new() });
+                plan.paths.insert(key, path);
+            }
+        }
+        if let Some(missing) = parent_needed {
+            return Err(SurfaceError::ControlAttestationUnavailable(format!("{}: applied receipt chain lacks predecessor {missing}", pointer.display())).into());
+        }
+        plan.control_head = head_digest.map(|receipt_sha256| ControlHead { version, receipt_sha256 });
+        plan.control_project = plan.control_head.as_ref().map(|_| self.project.clone());
+        Ok(plan)
     }
 
     fn manifest(&self) -> Result<(BucketManifest, Option<String>)> {
@@ -570,6 +665,7 @@ impl Syncer {
         })?;
         let plan = self.plan_manifest()?;
         let remote = self.manifest()?.0;
+        self.admit_control_head(&plan, &remote)?;
         if let Some(r) = &self.residency {
             r.check(&remote)?;
         }
@@ -648,6 +744,7 @@ impl Syncer {
                 }
             }
             let remote = remote.map(|(m, _)| m).unwrap_or_default();
+            self.admit_control_head(plan, &remote)?;
             // Pointers read before the commit name snapshots whose files earlier commits listed.
             let pointers = self.project_pointers()?;
             let mut entries = plan.mine.clone();
@@ -665,6 +762,9 @@ impl Syncer {
             }
             let merged = merge(&remote, &entries, &self.node, now)?;
             let mut committed = merged.manifest;
+            if let Some(head) = &plan.control_head {
+                committed.control_heads.insert(self.project.clone(), head.clone());
+            }
             // A manifest rewritten by a writer predating `generation` reads 0; the files keep the count (`store.push.generation-floor`).
             committed.generation = remote.generation.max(newest) + 1;
             committed.pointers = remote.pointers.iter().filter(|(k, _)| !in_project(k)).map(|(k, p)| (k.clone(), p.clone())).collect();
@@ -777,6 +877,62 @@ impl Syncer {
         key.strip_prefix(&format!("{}/", self.project)).map(|rel| self.store.root().join(rel))
     }
 
+    /// Resolve only the receipt ancestry of the committed head; unrelated control files
+    /// in the manifest do not enter a cold node's staging directory.
+    fn control_reachable(&self, manifest: &BucketManifest) -> Result<(BTreeSet<String>, Option<String>)> {
+        let mut keys = BTreeSet::new();
+        let Some(head) = manifest.control_heads.get(&self.project) else { return Ok((keys, None)) };
+        let control_prefix = format!("{}/control/", self.project);
+        let mut versions: Vec<u64> = manifest.entries.keys()
+            .filter_map(|key| key.strip_prefix(&control_prefix).and_then(receipt_version))
+            .filter(|version| *version <= head.version)
+            .collect();
+        versions.sort_unstable_by(|a, b| b.cmp(a));
+        if versions.first() != Some(&head.version) {
+            return Ok((keys, Some(format!("{control_prefix}{}", receipt_file(head.version)))));
+        }
+        let mut wanted = Some(head.receipt_sha256.clone());
+        for version in versions {
+            let Some(digest) = wanted.as_deref() else { break };
+            let receipt_key = format!("{}/control/{}", self.project, receipt_file(version));
+            let Some(entry) = manifest.entries.get(&receipt_key) else {
+                if version == head.version { return Ok((keys, Some(receipt_key))); }
+                continue;
+            };
+            let Some((bytes, _)) = self.bucket.get(&self.key(&receipt_key)?)? else {
+                return Ok((keys, Some(receipt_key)));
+            };
+            let receipt: ControlReceipt = match serde_json::from_slice(&bytes) {
+                Ok(receipt) => receipt,
+                Err(_) if version != head.version => continue,
+                Err(e) => return Err(StoreError::SyncObjectDigestMismatch(format!("`{receipt_key}` holds an unreadable control receipt: {e}")).into()),
+            };
+            if receipt.digest() != digest {
+                if version == head.version {
+                    return Err(StoreError::SyncObjectDigestMismatch(format!("`{receipt_key}` differs from the committed control head digest")).into());
+                }
+                continue;
+            }
+            if sha256_hex(&bytes) != entry.sha256 {
+                return Err(StoreError::SyncObjectDigestMismatch(format!("`{receipt_key}` arrived with a digest other than its entry's; the object is discarded")).into());
+            }
+            let snapshot_key = format!("{}/control/{}", self.project, snapshot_file(version));
+            let Some(snapshot_entry) = manifest.entries.get(&snapshot_key) else {
+                return Ok((keys, Some(snapshot_key)));
+            };
+            if receipt.project != self.project || receipt.version != version || receipt.snapshot_sha256 != snapshot_entry.sha256 {
+                return Err(StoreError::SyncObjectDigestMismatch(format!("`{receipt_key}` differs from the project, version or listed snapshot digest")).into());
+            }
+            keys.insert(receipt_key);
+            keys.insert(snapshot_key);
+            wanted = receipt.parent;
+        }
+        if let Some(digest) = wanted {
+            return Ok((keys, Some(format!("control predecessor {digest}"))));
+        }
+        Ok((keys, None))
+    }
+
     /// Pull the bucket into the store: download each entry whose digest differs, re-fetching
     /// the manifest when a key moves beneath the download, apply each tombstone, then write
     /// every table pointer the bucket advances, all after every object they reach has landed.
@@ -793,7 +949,9 @@ impl Syncer {
                 .into());
             }
         }
+        let control_prefix = format!("{}/control/", self.project);
         let reaches = |key: &str| -> bool {
+            if key.starts_with(&control_prefix) { return true; }
             match table_of(key) {
                 None => scope.tables.is_empty(),
                 Some(t) => (scope.tables.is_empty() || scope.tables.contains(&t)) && !(replica && scope.replicate_off.contains(&t)),
@@ -827,7 +985,12 @@ impl Syncer {
                 Some((listed, _)) => listed.clone(),
                 None => self.manifest()?.0,
             };
-            for (key, entry) in manifest.entries.iter().filter(|(k, _)| in_project(k) && reaches(k)) {
+            let (control_keys, missing_control) = self.control_reachable(&manifest)?;
+            if let Some(missing) = missing_control {
+                shortfall = Some(missing);
+                continue;
+            }
+            for (key, entry) in manifest.entries.iter().filter(|(k, _)| in_project(k) && reaches(k) && (!k.starts_with(&control_prefix) || control_keys.contains(*k))) {
                 // This node's own keys are authoritative here, except in a restore.
                 if generation.is_none() && owner_of(key).as_deref() == Some(self.node.as_str()) {
                     continue;
@@ -869,6 +1032,17 @@ impl Syncer {
         }
         if let Some(key) = shortfall {
             return Err(StoreError::SyncPullDidNotConverge(format!("`{key}` kept moving across {PULL_CONVERGENCE} attempts; no pointer is written")).into());
+        }
+        let staged_head = self.store.root().join("control/head.json");
+        if let Some(head) = manifest.control_heads.get(&self.project) {
+            let bytes = serde_json::to_vec_pretty(head).map_err(|e| SyncError::Context(ContextError::Invalid(e.to_string())))?;
+            write(&staged_head, &bytes)?;
+        } else {
+            match std::fs::remove_file(&staged_head) {
+                Ok(()) => {},
+                Err(e) if e.kind() == std::io::ErrorKind::NotFound => {},
+                Err(e) => return Err(io(&staged_head, e)),
+            }
         }
         // A tombstone deletes the local copy of the key it names; a restore lists its set whole.
         if generation.is_none() {

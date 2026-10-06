@@ -126,6 +126,9 @@ pub enum StoreError {
     /// A cursor was resolved by recency instead of through its commit. (`store.merge.cursor-recency`)
     #[error("SyncCursorConflict: {0}")]
     SyncCursorConflict(String),
+    /// A signed control head does not descend from the bucket's head. (`store.push.control-diverged`)
+    #[error("SyncControlDiverged: {0}")]
+    SyncControlDiverged(String),
     /// A plain `http://` endpoint names a host off loopback. (`store.endpoint.plaintext`)
     #[error("SyncEndpointInsecure: {0}")]
     SyncEndpointInsecure(String),

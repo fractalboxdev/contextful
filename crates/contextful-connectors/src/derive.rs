@@ -3,8 +3,10 @@
 //! each unit's media with no shell and a cleared environment, and hands the passages and
 //! markers to the land path.
 
+use contextful_core::connector::attach::{scrub, Allowlist};
+use contextful_core::connector::meter::LimiterDeclaration;
 use contextful_core::connector::reference::Template;
-use contextful_core::run::derive::config::{Binding, DeriveConfig, OutputFormat, StepSpec};
+use contextful_core::run::derive::config::{Binding, DeriveConfig, OutputFormat, StepSpec, Task};
 use contextful_core::run::derive::cues::{parse, passages};
 use contextful_core::run::derive::emit::{
     document_status, marker_row, passage_rows, revived, select, Derivation, Unit, UnitStatus, DERIVATION_KEY, KIND, OUTPUT_COLUMNS,
@@ -16,7 +18,9 @@ use contextful_core::run::derive::task::{host_revived, host_rows, landing_order,
 use contextful_core::run::journal::sha256_hex;
 use contextful_core::run::ports::{Cancellation, PullRequest, Row, Source, TableReader};
 use contextful_core::run::{Failure, FailureTag, RunError};
+use contextful_outbound::client::{classify, HeaderValue, MAX_BODY_BYTES};
 use contextful_outbound::Resolver;
+use crate::http::Mediation;
 use std::collections::BTreeMap;
 use std::io::Read;
 use std::path::{Path, PathBuf};
@@ -24,10 +28,16 @@ use std::process::{Command, Stdio};
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::Arc;
 use std::time::{Duration, Instant};
+use url::{Host, Url};
+use sha2::{Digest, Sha256};
 
 /// The source's registered name.
 pub const NAME: &str = "derive";
 const WAIT_TICK: Duration = Duration::from_millis(10);
+const FETCH_HOPS: usize = 5;
+const DOCUMENT_BYTES: usize = 1024 * 1024;
+const PROBE_BYTES: usize = 64 * 1024;
+const FETCH_HOP_TIMEOUT: Duration = Duration::from_secs(20);
 
 fn refused(e: RunError) -> Failure {
     Failure::deterministic(FailureTag::Config, e.to_string())
@@ -305,6 +315,152 @@ pub fn run_chain(chain: &Chain, media: &Path, env: &[(String, String)], scratch:
     Ok(String::from_utf8(bytes).map_err(|_| RunError::Invalid("the engine's cue document is not UTF-8".into()))?)
 }
 
+fn fetch_address(raw: &str) -> Result<Url, RunError> {
+    let url = Url::parse(raw).map_err(|_| RunError::DeriveSchemeUnsupported(format!("`{raw}` is not an http or https address")))?;
+    if !matches!(url.scheme(), "http" | "https") {
+        return Err(RunError::DeriveSchemeUnsupported(format!("`{}` uses scheme `{}`", scrub(&url), url.scheme())));
+    }
+    if matches!(url.host(), Some(Host::Ipv4(_) | Host::Ipv6(_))) {
+        return Err(RunError::DeriveAddressLiteral(format!("`{}` writes its host as an address literal", scrub(&url))));
+    }
+    if url.host_str().is_none() || !url.username().is_empty() || url.password().is_some() {
+        return Err(RunError::DeriveSchemeUnsupported(format!("`{}` is not an http or https address with a bare host", scrub(&url))));
+    }
+    Ok(url)
+}
+
+fn find_ascii(haystack: &str, needle: &str) -> Option<usize> {
+    haystack.to_ascii_lowercase().find(&needle.to_ascii_lowercase())
+}
+
+fn attribute(tag: &str, name: &str) -> Option<String> {
+    let lower = tag.to_ascii_lowercase();
+    let bytes = tag.as_bytes();
+    let mut offset = 0;
+    while let Some(found) = lower[offset..].find(name) {
+        let start = offset + found;
+        let before = start.checked_sub(1).and_then(|i| bytes.get(i)).copied().unwrap_or(b' ');
+        let mut at = start + name.len();
+        if !before.is_ascii_whitespace() {
+            offset = at;
+            continue;
+        }
+        while bytes.get(at).is_some_and(u8::is_ascii_whitespace) {
+            at += 1;
+        }
+        if bytes.get(at) != Some(&b'=') {
+            offset = at;
+            continue;
+        }
+        at += 1;
+        while bytes.get(at).is_some_and(u8::is_ascii_whitespace) {
+            at += 1;
+        }
+        let quote = bytes.get(at).copied().filter(|b| *b == b'\'' || *b == b'"');
+        if quote.is_some() {
+            at += 1;
+        }
+        let end = (at..bytes.len()).find(|&i| match quote {
+            Some(q) => bytes[i] == q,
+            None => bytes[i].is_ascii_whitespace() || bytes[i] == b'>',
+        })?;
+        return Some(tag[at..end].to_string());
+    }
+    None
+}
+
+fn head_facts(document: &str) -> (Option<String>, Option<String>, Vec<String>) {
+    let end = find_ascii(document, "</head>").unwrap_or(document.len());
+    let head = &document[..end];
+    let title = find_ascii(head, "<title").and_then(|start| {
+        let open = head[start..].find('>')? + start + 1;
+        let close = find_ascii(&head[open..], "</title>")? + open;
+        Some(head[open..close].trim().to_string())
+    }).filter(|s| !s.is_empty());
+    let mut description = None;
+    let mut images = Vec::new();
+    let mut rest = head;
+    while let Some(start) = find_ascii(rest, "<meta") {
+        let Some(end) = rest[start..].find('>') else { break };
+        let tag = &rest[start..start + end + 1];
+        if attribute(tag, "name").is_some_and(|n| n.eq_ignore_ascii_case("description")) {
+            description = attribute(tag, "content").filter(|s| !s.is_empty());
+        } else if attribute(tag, "property").is_some_and(|n| n.eq_ignore_ascii_case("og:image"))
+            || attribute(tag, "name").is_some_and(|n| n.eq_ignore_ascii_case("twitter:image"))
+        {
+            if let Some(image) = attribute(tag, "content").filter(|s| !s.is_empty()) {
+                if !images.contains(&image) {
+                    images.push(image);
+                }
+            }
+        }
+        rest = &rest[start + end + 1..];
+    }
+    (title, description, images)
+}
+
+fn probe_image(page: &Url, candidate: &str, allow: Option<&Allowlist>, mediation: &Mediation, grant: Option<&LimiterDeclaration>, timeout: Duration, prefix: usize) -> (String, String) {
+    let address = match page.join(candidate).ok().and_then(|u| fetch_address(u.as_str()).ok()) {
+        Some(url) => url,
+        None => return (String::new(), "refused".into()),
+    };
+    let public = scrub(&address);
+    let Some(allow) = allow else { return (public, "blocked".into()) };
+    let client = mediation.client(allow.clone(), address.clone(), grant).with_timeout(timeout).with_body_limit(prefix as u64);
+    let range = [("Range".to_string(), HeaderValue::Plain(format!("bytes=0-{}", prefix.saturating_sub(1))))];
+    match client.send_once("GET", &address, &range, None) {
+        Ok(response) if (200..300).contains(&response.status) => (public, "ok".into()),
+        Ok(response) => (public, format!("http_{}", response.status)),
+        Err(_) => (public, "failed".into()),
+    }
+}
+
+fn fetch_document(raw: &str, allow: &Allowlist, mediation: &Mediation, grant: Option<&LimiterDeclaration>, timeout: Duration, prefix: usize, cancel: &dyn Cancellation) -> Result<(Url, String), Failure> {
+    let mut url = fetch_address(raw).map_err(refused)?;
+    for hop in 0..=FETCH_HOPS {
+        if cancel.requested() {
+            return Err(Failure::canceled("stopped between link hops"));
+        }
+        let client = mediation.client(allow.clone(), url.clone(), grant).with_timeout(timeout).with_body_limit(MAX_BODY_BYTES);
+        let range = [("Range".to_string(), HeaderValue::Plain(format!("bytes=0-{}", prefix.saturating_sub(1))))];
+        let response = client.send_once("GET", &url, &range, None)?;
+        if (300..400).contains(&response.status) {
+            let location = response.header("location").ok_or_else(|| Failure::new(FailureTag::Permanent, format!("`{}` redirected without a location", scrub(&url))))?;
+            if hop == FETCH_HOPS {
+                return Err(Failure::new(FailureTag::Permanent, format!("`{}` redirected past {FETCH_HOPS} hops", scrub(&url))));
+            }
+            url = fetch_address(&url.join(location).map_err(|e| Failure::new(FailureTag::Permanent, format!("`{}` redirected to an invalid address: {e}", scrub(&url))))?.to_string()).map_err(refused)?;
+            continue;
+        }
+        if response.status == 429 {
+            let retry = response.header("retry-after").and_then(|s| s.parse::<u64>().ok()).unwrap_or(60);
+            return Err(classify(429, Some(retry), &scrub(&url)));
+        }
+        if !(200..300).contains(&response.status) {
+            return Err(classify(response.status, None, &scrub(&url)));
+        }
+        if let Some(charset) = response.header("content-type").and_then(|s| {
+            s.split(';').skip(1).find_map(|part| {
+                let (name, value) = part.trim().split_once('=')?;
+                name.trim().eq_ignore_ascii_case("charset").then_some(value.trim())
+            })
+        }) {
+            let named = charset.trim_matches('"');
+            if !named.eq_ignore_ascii_case("utf-8") {
+                return Err(refused(RunError::DeriveCharsetUnsupported(format!("`{}` declares charset `{named}`", scrub(&url)))));
+            }
+        }
+        let bytes = &response.body[..response.body.len().min(prefix)];
+        let document = match std::str::from_utf8(bytes) {
+            Ok(s) => s.to_string(),
+            Err(e) if e.error_len().is_none() && bytes.len() == prefix => String::from_utf8_lossy(&bytes[..e.valid_up_to()]).into_owned(),
+            Err(_) => return Err(refused(RunError::DeriveBytesNotUtf8(format!("`{}` answered bytes that are not UTF-8", scrub(&url))))),
+        };
+        return Ok((url, document));
+    }
+    unreachable!("each redirect either advances or returns")
+}
+
 /// The derive source of one pipeline.
 pub struct DeriveSource {
     pub pipeline_id: String,
@@ -316,16 +472,40 @@ pub struct DeriveSource {
     pub output_schema: serde_json::Value,
     pub reader: Box<dyn TableReader>,
     pub resolver: Arc<Resolver>,
+    /// Every fetched document, redirect and image probe passes this run's hook and quota.
+    pub mediation: Mediation,
+    /// The store that supplies the parent and output tables; absent for an unbound source.
+    pub store_root: Option<PathBuf>,
     /// Where relative media paths and path-form binaries resolve.
     pub cwd: PathBuf,
 }
 
 impl DeriveSource {
+    fn validate_identity(&self) -> Result<(), RunError> {
+        if self.store_root.as_ref().is_none_or(|root| root.as_os_str().is_empty()) {
+            return Err(RunError::DeriveNoStoreRoot("store root is absent".into()));
+        }
+        if self.pipeline_id.trim().is_empty() {
+            return Err(RunError::DeriveNoStoreRoot("pipeline id is absent".into()));
+        }
+        Ok(())
+    }
+
     /// What this pipeline's rows derive under on this machine: the resolved chain's id, the
     /// binding's parameters and the output table's declared columns.
     pub fn derivation(&self) -> Result<Derivation, RunError> {
-        let chain = Chain::resolve(&self.config.engine, &self.binding, &self.cwd)?;
-        Ok(self.derivation_of(&chain))
+        self.validate_identity()?;
+        match self.config.task {
+            Task::LinkPreview => Ok(Derivation {
+                engine_id: format!("fetch:{}", self.config.engine),
+                binding: self.binding.derivation_params(),
+                output_schema: self.output_schema.clone(),
+            }),
+            Task::Transcribe | Task::Host(_) => {
+                let chain = Chain::resolve(&self.config.engine, &self.binding, &self.cwd)?;
+                Ok(self.derivation_of(&chain))
+            }
+        }
     }
 
     fn derivation_of(&self, chain: &Chain) -> Derivation {
@@ -359,6 +539,25 @@ impl DeriveSource {
         Ok(p)
     }
 
+    /// Hash a resolved local file in chunks; a path refusal remains a per-unit marker.
+    fn local_content_digest(&self, media: &str) -> Option<String> {
+        if is_url(media) {
+            return None;
+        }
+        let path = self.media_path(media).ok()?;
+        let mut file = std::fs::File::open(path).ok()?;
+        let mut digest = Sha256::new();
+        let mut block = [0u8; 64 * 1024];
+        loop {
+            let count = file.read(&mut block).ok()?;
+            if count == 0 {
+                break;
+            }
+            digest.update(&block[..count]);
+        }
+        Some(format!("{:x}", digest.finalize()))
+    }
+
     /// Derive one unit into its rows; a run stop yields none.
     fn derive_unit(&self, chain: &Chain, env: &[(String, String)], unit: &Unit, cancel: &dyn Cancellation) -> Result<Vec<Row>, Failure> {
         let outcome = self.media_path(&unit.media).map_err(ChainError::Unit).and_then(|media| {
@@ -381,21 +580,94 @@ impl DeriveSource {
             Err(ChainError::Unit(e)) => vec![marker_row(unit, UnitStatus::Failed, Some(&e.to_string()), true, &chain.id)],
         })
     }
+
+    fn fetch_unit(&self, allow: &Allowlist, unit: &Unit, cancel: &dyn Cancellation) -> Result<Vec<Row>, Failure> {
+        let engine_id = format!("fetch:{}", self.config.engine);
+        let timeout = Duration::from_secs(self.binding.request_timeout_secs.unwrap_or(FETCH_HOP_TIMEOUT.as_secs()));
+        let document_bytes = self.binding.max_document_bytes.unwrap_or(DOCUMENT_BYTES as u64).clamp(1, MAX_BODY_BYTES) as usize;
+        let probe_bytes = self.binding.max_probe_bytes.unwrap_or(PROBE_BYTES as u64).clamp(1, MAX_BODY_BYTES) as usize;
+        match fetch_document(&unit.media, allow, &self.mediation, self.config.grant.as_ref(), timeout, document_bytes, cancel) {
+            Ok((url, document)) => {
+                let (title, description, images) = head_facts(&document);
+                let image_allow = if self.binding.allow_image_hosts.is_empty() {
+                    None
+                } else {
+                    Some(Allowlist::parse(&self.binding.allow_image_hosts).map_err(|e| Failure::deterministic(FailureTag::Config, e.to_string()))?)
+                };
+                let mut rows = Vec::new();
+                if title.is_some() || description.is_some() {
+                    let text = [title.as_deref(), description.as_deref()].into_iter().flatten().collect::<Vec<_>>().join(". ");
+                    let value = serde_json::json!({
+                        "unit_ref": unit.key, "cue_seq": 0, "kind": "passage", "unit_status": "ok",
+                        "attempts": unit.prior_attempts + 1, "engine_id": engine_id,
+                        DERIVATION_KEY: unit.derivation_key, "url": scrub(&url),
+                        "title": title, "description": description, "text": text, "_modality": "text",
+                    });
+                    rows.push(value.as_object().cloned().unwrap_or_default());
+                }
+                for candidate in images {
+                    if cancel.requested() {
+                        return Err(Failure::canceled("stopped between image probes"));
+                    }
+                    let (image_url, probe_status) = probe_image(&url, &candidate, image_allow.as_ref(), &self.mediation, self.config.grant.as_ref(), timeout, probe_bytes);
+                    let value = serde_json::json!({
+                        "unit_ref": unit.key, "cue_seq": rows.len() as i64, "kind": "passage", "unit_status": "ok",
+                        "attempts": unit.prior_attempts + 1, "engine_id": engine_id,
+                        DERIVATION_KEY: unit.derivation_key, "url": scrub(&url),
+                        "image_url": image_url, "probe_status": probe_status, "_modality": "image",
+                    });
+                    rows.push(value.as_object().cloned().unwrap_or_default());
+                }
+                if rows.is_empty() {
+                    Ok(vec![marker_row(unit, UnitStatus::Unavailable, None, true, &engine_id)])
+                } else {
+                    Ok(rows)
+                }
+            }
+            Err(f) if f.tag == FailureTag::Canceled || f.tag == FailureTag::RateLimited => Err(f),
+            Err(f) => Ok(vec![marker_row(unit, UnitStatus::Failed, Some(&f.message), !f.deterministic, &engine_id)]),
+        }
+    }
 }
 
-impl Source for DeriveSource {
-    fn pull(&mut self, _request: &PullRequest, cancel: &dyn Cancellation) -> Result<Vec<u8>, Failure> {
-        let chain = Chain::resolve(&self.config.engine, &self.binding, &self.cwd).map_err(refused)?;
-        let derivation = self.derivation_of(&chain);
-        let parents = self.reader.rows(&self.config.source_table, &[&self.config.parent_id_column, &self.config.media_column, DERIVATION_KEY])?;
+impl DeriveSource {
+    fn pull_once(&self, cancel: &dyn Cancellation) -> Result<(Vec<u8>, bool), Failure> {
+        self.validate_identity().map_err(refused)?;
+        if self.config.task == Task::LinkPreview && (self.mediation.hook.is_none() || self.mediation.run_id.as_deref().is_none_or(str::is_empty)) {
+            return Err(refused(RunError::DeriveMeteredClient(format!("pipeline `{}` has no run-bound request ledger hook", self.pipeline_id))));
+        }
+        let chain = match self.config.task {
+            Task::LinkPreview => None,
+            Task::Transcribe | Task::Host(_) => Some(Chain::resolve(&self.config.engine, &self.binding, &self.cwd).map_err(refused)?),
+        };
+        let allow = match self.config.task {
+            Task::LinkPreview => Some(Allowlist::parse(&self.binding.allow_hosts).map_err(|e| Failure::deterministic(FailureTag::Config, e.to_string()))?),
+            Task::Transcribe | Task::Host(_) => None,
+        };
+        let derivation = match &chain {
+            Some(chain) => self.derivation_of(chain),
+            None => self.derivation().map_err(refused)?,
+        };
+        let mut parents = self.reader.rows(&self.config.source_table, &[&self.config.parent_id_column, &self.config.media_column, DERIVATION_KEY])?;
+        if matches!(self.config.task, Task::Transcribe) {
+            for parent in &mut parents {
+                let Some(media) = parent.get(&self.config.media_column).and_then(serde_json::Value::as_str) else { continue };
+                if let Some(digest) = self.local_content_digest(media) {
+                    let prior = parent.get(DERIVATION_KEY).cloned();
+                    parent.insert(DERIVATION_KEY.into(), serde_json::json!({"parent": prior, "local_sha256": digest}).to_string().into());
+                }
+            }
+        }
         let derived = self.reader.rows(&self.output_table, &OUTPUT_COLUMNS)?;
         let sel = select(&parents, &derived, &self.config, &derivation);
         for e in &sel.incomplete {
             eprintln!("{}: {e}", self.pipeline_id);
         }
         let mut env = Vec::new();
-        for (k, t) in &chain.env {
-            env.push((k.clone(), self.resolver.render(t)?.reveal().to_string()));
+        if let Some(chain) = &chain {
+            for (k, t) in &chain.env {
+                env.push((k.clone(), self.resolver.render(t)?.reveal().to_string()));
+            }
         }
         let started = Instant::now();
         let budget = self.config.max_seconds_per_run.map(Duration::from_secs);
@@ -407,7 +679,12 @@ impl Source for DeriveSource {
             if budget.is_some_and(|b| started.elapsed() >= b) {
                 break;
             }
-            derived_units.push((unit, self.derive_unit(&chain, &env, unit, cancel)?));
+            let rows = match (&chain, &allow) {
+                (Some(chain), _) => self.derive_unit(chain, &env, unit, cancel)?,
+                (_, Some(allow)) => self.fetch_unit(allow, unit, cancel)?,
+                _ => unreachable!("a derive source names one built-in driver"),
+            };
+            derived_units.push((unit, rows));
         }
         // A concurrent tick may have settled a unit under its key while this one derived it.
         let landed = if derived_units.is_empty() { Vec::new() } else { self.reader.rows(&self.output_table, &OUTPUT_COLUMNS)? };
@@ -418,7 +695,20 @@ impl Source for DeriveSource {
                 None => rows.extend(unit_rows),
             }
         }
-        serde_json::to_vec(&serde_json::json!({ "rows": rows, "more": false })).map_err(|e| Failure::new(FailureTag::Permanent, e.to_string()))
+        let produced = !rows.is_empty();
+        serde_json::to_vec(&serde_json::json!({ "rows": rows, "more": false, "skipped": sel.incomplete.len() }))
+            .map(|bytes| (bytes, produced))
+            .map_err(|e| Failure::new(FailureTag::Permanent, e.to_string()))
+    }
+}
+
+impl Source for DeriveSource {
+    fn pull(&mut self, _request: &PullRequest, cancel: &dyn Cancellation) -> Result<Vec<u8>, Failure> {
+        let result = self.pull_once(cancel);
+        if let Some(hook) = &self.mediation.hook {
+            hook.finish(result.as_ref().ok().and_then(|(_, produced)| produced.then_some(0)))?;
+        }
+        result.map(|(bytes, _)| bytes)
     }
 }
 
@@ -442,7 +732,7 @@ impl HostDerive {
 
     /// Derive every outstanding unit and return each store table's rows in landing order:
     /// the content tables, then the marker table.
-    pub fn stage(&self, cancel: &dyn Cancellation) -> Result<Vec<(String, Vec<Row>)>, Failure> {
+    pub fn stage(&self, cancel: &dyn Cancellation) -> Result<(Vec<(String, Vec<Row>)>, u64), Failure> {
         let task = self.task.as_ref();
         let name = self.config.task.name().to_string();
         let marker_table = self.store_table(&task.marker_table());
@@ -494,16 +784,18 @@ impl HostDerive {
                 per_table.entry(table).or_default().extend(rows);
             }
         }
-        Ok(landing_order(task).into_iter().map(|t| (self.store_table(&t), per_table.remove(&t).unwrap_or_default())).collect())
+        let tables = landing_order(task).into_iter().map(|t| (self.store_table(&t), per_table.remove(&t).unwrap_or_default())).collect();
+        Ok((tables, sel.incomplete.len() as u64))
     }
 }
 
 /// A source handing over rows already derived: one table's share of a host task's fire.
 /// Every pull hands over the same rows, so a retried step lands them again.
-pub struct Staged(pub Vec<Row>);
+pub struct Staged(pub Vec<Row>, pub u64);
 
 impl Source for Staged {
     fn pull(&mut self, _request: &PullRequest, _cancel: &dyn Cancellation) -> Result<Vec<u8>, Failure> {
-        serde_json::to_vec(&serde_json::json!({ "rows": self.0, "more": false })).map_err(|e| Failure::new(FailureTag::Permanent, e.to_string()))
+        serde_json::to_vec(&serde_json::json!({ "rows": self.0, "more": false, "skipped": self.1 }))
+            .map_err(|e| Failure::new(FailureTag::Permanent, e.to_string()))
     }
 }

@@ -11,7 +11,7 @@ use contextful_core::grant::{describe_pipeline, list_pipelines, trace_run, Grant
 use anyhow::{bail, Context, Result};
 use contextful_context::project::Project;
 use clap::Subcommand;
-use contextful_context::land::{commit_parts, discard_staged, stage_part, Batch, Position, RunContext};
+use contextful_context::land::{commit_parts, commit_parts_group, commit_parts_with_diffs, discard_staged, publish_group, stage_part, Batch, Position, RunContext};
 use contextful_context::{commit_log, node, ContextError, Store};
 use contextful_core::store::commit_log::{CommitEntry, Kind};
 use contextful_core::ports::{Clock, FixedClock};
@@ -21,9 +21,10 @@ use contextful_core::run::plan::Plan;
 use contextful_core::run::ports::{AwakeableStore, Commit, Destination, Landed, Marker, Part, Stage};
 use contextful_core::run::record::{describe_ceiling, export_ceiling, parse_bound, select_history, RunStatus, Window};
 use contextful_core::run::{Failure, FailureTag};
-use contextful_core::pipeline::normalize::Normalize;
+use contextful_core::pipeline::normalize::{relational_tables, Mode, Normalize};
 use contextful_core::store::declare::TableDecl;
 use contextful_core::store::reconcile::ColumnType;
+use contextful_core::store::lay_out::SchemaDiff;
 use contextful_core::store::reserve::Injection;
 use contextful_core::store::StoreError;
 use contextful_core::time::Instant;
@@ -35,6 +36,7 @@ use contextful_engine::{Engine, Journal, RunSpec};
 use contextful_sqlite::MachineCatalog;
 use contextful_engine::stores::FileAwakeableStore;
 use std::cell::RefCell;
+use std::collections::BTreeMap;
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
 
@@ -222,6 +224,8 @@ pub(crate) struct StoreDestination {
     pub(crate) author: Option<Author>,
     /// The pipeline's normalize declaration; `None` lands every object and array as `Json`.
     pub(crate) normalize: Option<Normalize>,
+    pub(crate) relational_parts: BTreeMap<String, Vec<Part>>,
+    pub(crate) schema_diffs: Vec<SchemaDiff>,
 }
 
 fn store_failure(e: ContextError) -> Failure {
@@ -257,6 +261,21 @@ impl Destination for StoreDestination {
         self.decl(table).write_mode() == contextful_core::store::declare::WriteMode::Replace
     }
     fn stage_batch(&mut self, stage: Stage) -> Result<Part, Failure> {
+        let mut stage = stage;
+        if let Some(normalize) = self.normalize.filter(|n| n.mode == Mode::Relational) {
+            let tables = relational_tables(stage.rows, &stage.table, &stage.run_id, normalize.depth);
+            stage.rows = tables.get(&stage.table).cloned().unwrap_or_default();
+            for (table, rows) in tables {
+                if table == stage.table || rows.is_empty() { continue; }
+                let child_decl = self.decl(&table);
+                let injection = self.injection(&stage.run_id, &stage.site_id);
+                let parts = self.relational_parts.entry(table).or_default();
+                let offset = parts.iter().map(|p| p.rows).sum();
+                let batch = Batch { rows, types: [("list_index".to_string(), ColumnType::Int64)].into() };
+                let part = stage_part(&self.store, &child_decl, &batch, &self.node, &injection, stage.ordinal, offset).map_err(store_failure)?;
+                parts.push(Part { name: part.name, rows: part.rows, bytes: part.bytes });
+            }
+        }
         let decl = self.decl(&stage.table);
         let injection = self.injection(&stage.run_id, &stage.site_id);
         // The pulls' declared types type the batch (`run.land.typed-pull`).
@@ -266,7 +285,27 @@ impl Destination for StoreDestination {
             // already holds it as a scalar (`run.normalize.native-store`).
             let stored = self.store.try_schema(&stage.table).map_err(store_failure)?.unwrap_or_default();
             let declared = decl.column_types();
-            for (column, ty) in normalize.store_types(&stage.rows) {
+            let inferred = normalize.store_types(&stage.rows);
+            if normalize.mode == Mode::Native {
+                for row in &stage.rows {
+                    for (column, value) in row {
+                        if !value.is_array() && !value.is_object() { continue; }
+                        let held = declared.get(column).cloned().or_else(|| stored.get(column).map(|c| c.ty.clone()));
+                        let downgrade = held.as_ref().filter(|ty| !ty.is_nested() && *ty != &ColumnType::Null)
+                            .map(|ty| (ty.name(), "stored scalar column"))
+                            .or_else(|| (!inferred.contains_key(column)).then_some(("Json".into(), "mixed value kinds")));
+                        if let Some((landed_type, reason)) = downgrade {
+                            let event = SchemaDiff {
+                                table: stage.table.clone(), column_path: column.clone(),
+                                source_type: if value.is_array() { "List" } else { "Struct" }.into(),
+                                landed_type, reason: reason.into(),
+                            };
+                            if !self.schema_diffs.contains(&event) { self.schema_diffs.push(event); }
+                        }
+                    }
+                }
+            }
+            for (column, ty) in inferred {
                 let scalar = stored.get(&column).is_some_and(|c| !c.ty.is_nested() && c.ty != ColumnType::Null);
                 if !scalar && !declared.contains_key(&column) {
                     types.entry(column).or_insert(ty);
@@ -279,6 +318,11 @@ impl Destination for StoreDestination {
     }
 
     fn discard(&mut self, table: &str, run_id: &str) -> Result<(), Failure> {
+        for child in self.relational_parts.keys() {
+            discard_staged(&self.store, child, &self.node, run_id).map_err(store_failure)?;
+        }
+        self.relational_parts.clear();
+        self.schema_diffs.clear();
         discard_staged(&self.store, table, &self.node, run_id).map_err(store_failure)
     }
 
@@ -310,7 +354,25 @@ impl Destination for StoreDestination {
             None => Ok(()),
         };
         let names: Vec<String> = commit.parts.iter().map(|p| p.name.clone()).collect();
-        let manifest = commit_parts(&self.store, &decl, &names, &ctx, &position, &precommit, &commit_point).map_err(|e| lapsed.take().unwrap_or_else(|| store_failure(e)))?;
+        let children = std::mem::take(&mut self.relational_parts);
+        let grouped = !children.is_empty();
+        let mut group_tables = vec![commit.table.clone()];
+        for (table, parts) in children {
+            let child_decl = self.decl(&table);
+            let names: Vec<String> = parts.into_iter().map(|p| p.name).collect();
+            let child_position = Position { pipeline_id: Some(commit.pipeline_id.clone()), cursor: None, fence: None, logged: false, replace_frontier: false };
+            commit_parts_group(&self.store, &child_decl, &names, &ctx, &child_position, &commit.table, &[], &|| Ok(()), &|_| Ok(())).map_err(store_failure)?;
+            group_tables.push(table);
+        }
+        let manifest = if grouped {
+            commit_parts_group(&self.store, &decl, &names, &ctx, &position, &commit.table, &self.schema_diffs, &precommit, &commit_point)
+        } else if !self.schema_diffs.is_empty() {
+            commit_parts_with_diffs(&self.store, &decl, &names, &ctx, &position, &self.schema_diffs, &precommit, &commit_point)
+        } else {
+            commit_parts(&self.store, &decl, &names, &ctx, &position, &precommit, &commit_point)
+        }.map_err(|e| lapsed.take().unwrap_or_else(|| store_failure(e)))?;
+        self.schema_diffs.clear();
+        if grouped { publish_group(&self.store, &commit.table, &group_tables, &ctx).map_err(store_failure)?; }
         // The committed parts carry `_commit_seq`, so their bytes are measured after the commit.
         let dir = self.store.table_dir(&commit.table).map_err(store_failure)?.join(contextful_core::store::lay_out::RUNS_DIR).join(&commit.run_id).join(&manifest.node_id);
         let mut bytes = 0;
@@ -389,7 +451,7 @@ pub fn run(cmd: RunCmd) -> Result<()> {
             let connector = plan.connector_pin(&artifact_hash(&plan.spec.connector.command, &cwd));
             let spec = RunSpec { connector, plan: plan.clone(), run_id, site_id, pid: std::process::id(), boot_id: boot_id(), trace_id: None };
             let mut source = CommandSource { argv: plan.spec.connector.command.clone(), cwd };
-            let mut dest = StoreDestination { store, decls, node, author, normalize: None };
+            let mut dest = StoreDestination { store, decls, node, author, normalize: None, relational_parts: BTreeMap::new(), schema_diffs: Vec::new() };
             let row = w.engine.run(&spec, &mut source, &mut dest)?;
             if row.status == RunStatus::Success {
                 println!("{}: success · {} rows in {} batches", row.run_id, row.rows, row.batches);
@@ -460,14 +522,23 @@ pub fn run(cmd: RunCmd) -> Result<()> {
             }
             let page = select_history(merged, &window);
             let truncated = truncated || page.truncated;
+            let store = Store::open(&located.dir, &located.name)?;
+            let runs: Vec<serde_json::Value> = page.runs.iter().map(|r| -> Result<serde_json::Value> {
+                let mut value = serde_json::to_value(r)?;
+                let diffs: Vec<SchemaDiff> = store.committed_runs(&r.table)?
+                    .into_iter().filter(|m| m.run_id == r.run_id)
+                    .flat_map(|m| m.schema_diffs).collect();
+                value["schema_diffs"] = serde_json::to_value(diffs)?;
+                Ok(value)
+            }).collect::<Result<_>>()?;
             if export {
-                let header = serde_json::json!({ "store": located.name, "window": window, "count": page.runs.len(), "truncated": truncated });
+                let header = serde_json::json!({ "store": located.name, "window": window, "count": runs.len(), "truncated": truncated });
                 println!("{header}");
-                for r in &page.runs {
+                for r in &runs {
                     println!("{}", serde_json::to_string(r)?);
                 }
             } else {
-                println!("{}", serde_json::to_string_pretty(&serde_json::json!({ "window": window, "runs": page.runs, "truncated": truncated }))?);
+                println!("{}", serde_json::to_string_pretty(&serde_json::json!({ "window": window, "runs": runs, "truncated": truncated }))?);
             }
             Ok(())
         }

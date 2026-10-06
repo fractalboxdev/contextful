@@ -24,7 +24,43 @@ use std::thread::JoinHandle;
 /// landing `steps` in order, and blocks until the unit ends, answering its report line or
 /// its failure line.
 pub trait Dispatch: Send + Sync {
-    fn fire(&self, id: &str, steps: &[String], version: u64) -> Result<String, String>;
+    fn fire(&self, id: &str, steps: &[String], derived_parents: &BTreeMap<String, String>, version: u64) -> Result<String, String>;
+}
+
+/// A landing step with a completed run outcome.
+pub enum CompletedStep {
+    Succeeded(String),
+    Failed(String),
+}
+
+/// Fire a dependent run in order. A derive child reads its direct parent's committed
+/// rows after either completed outcome; an explicit `after` step requires a clean unit.
+pub fn fire_ordered(
+    id: &str,
+    steps: &[String],
+    derived_parents: &BTreeMap<String, String>,
+    mut fire: impl FnMut(&str) -> Result<CompletedStep, String>,
+) -> Result<String, String> {
+    let mut lines = Vec::new();
+    let mut failures = Vec::new();
+    let mut completed = BTreeSet::new();
+    for step in std::iter::once(id).chain(steps.iter().map(String::as_str)) {
+        match derived_parents.get(step) {
+            Some(parent) if !completed.contains(parent) => continue,
+            None if !failures.is_empty() => continue,
+            _ => {}
+        }
+        match fire(step) {
+            Ok(CompletedStep::Succeeded(line)) => lines.push(line),
+            Ok(CompletedStep::Failed(error)) => failures.push(error),
+            Err(error) => {
+                failures.push(error);
+                break;
+            }
+        }
+        completed.insert(step.to_string());
+    }
+    if failures.is_empty() { Ok(lines.join("; ")) } else { Err(failures.join("; ")) }
 }
 
 /// One armed entry: a pipeline id and its schedule.
@@ -71,6 +107,8 @@ pub struct Scheduler {
     armed: Vec<Entry>,
     /// Each head entry's landing steps, in run order.
     steps: BTreeMap<String, Vec<String>>,
+    /// Landing steps whose derive source table belongs to an earlier step.
+    derived_parents: BTreeMap<String, String>,
     /// Each landing step's head entry.
     head_of: BTreeMap<String, String>,
     armed_at: BTreeMap<String, Instant>,
@@ -96,6 +134,7 @@ impl Scheduler {
             version: 0,
             armed: Vec::new(),
             steps: BTreeMap::new(),
+            derived_parents: BTreeMap::new(),
             head_of: BTreeMap::new(),
             armed_at: BTreeMap::new(),
             last_dispatch: BTreeMap::new(),
@@ -114,8 +153,20 @@ impl Scheduler {
 
     /// [`Scheduler::arm`] with each head entry's dependent-run landing steps, in run order.
     pub fn arm_runs(&mut self, version: u64, entries: Vec<Entry>, steps: BTreeMap<String, Vec<String>>) -> Result<(), Failure> {
+        self.arm_runs_with_derived(version, entries, steps, BTreeMap::new())
+    }
+
+    /// [`Scheduler::arm_runs`] with inferred derive children that continue after a failed parent.
+    pub fn arm_runs_with_derived(
+        &mut self,
+        version: u64,
+        entries: Vec<Entry>,
+        steps: BTreeMap<String, Vec<String>>,
+        derived_parents: BTreeMap<String, String>,
+    ) -> Result<(), Failure> {
         self.head_of = steps.iter().flat_map(|(head, steps)| steps.iter().map(move |s| (s.clone(), head.clone()))).collect();
         self.steps = steps;
+        self.derived_parents = derived_parents;
         let now = self.catalog.now()?;
         let ids: BTreeSet<&str> = entries.iter().map(|e| e.id.as_str()).collect();
         self.armed_at.retain(|id, _| ids.contains(id.as_str()));
@@ -235,9 +286,10 @@ impl Scheduler {
         }
         self.last_dispatch.insert(id.clone(), now);
         let steps = self.steps.get(&id).cloned().unwrap_or_default();
+        let derived_parents = self.derived_parents.clone();
         let (dispatch, in_flight, ended, version) = (self.dispatch.clone(), self.in_flight.clone(), self.ended.clone(), self.version);
         self.handles.push(std::thread::spawn(move || {
-            let result = dispatch.fire(&id, &steps, version);
+            let result = dispatch.fire(&id, &steps, &derived_parents, version);
             if let Ok(mut e) = ended.lock() {
                 e.push(Fired { id: id.clone(), result });
             }

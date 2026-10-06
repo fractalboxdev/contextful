@@ -370,6 +370,7 @@ pub enum BuildStatus {
     Published,
     Refused,
     Partial,
+    Failed,
 }
 
 /// One input table's frontier: its current snapshot and the committed runs that snapshot

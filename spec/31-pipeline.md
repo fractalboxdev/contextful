@@ -134,11 +134,12 @@ Canonical nested form, late relational shredding, injected identity columns and 
 
 - `host-stage` — Type inference over deferred-typing JSON, struct flattening, list-to-child extraction and id assignment run in engine code; no connector reimplements them and no dataframe library participates.
 - `normalized-form` — The canonical form is nested Arrow structs and lists; relational shredding is a late projection at the sink, so a source landing in two sinks normalizes once.
-- `mode` — `native` keeps nesting up to the sink's capability and explodes the rest with a downgrade schema-diff event; `relational` flattens structs into parent-child column names and shreds lists into child tables joined by a foreign key.
+- `mode` — `native` keeps nesting up to the sink's capability and explodes the rest with {{run.record.schema-diff-home}}; `relational` flattens structs into parent-child column names and shreds lists into child tables joined by a foreign key.
 - `mode-resolution` — Mode resolves per stream per sink: explicit declaration, then sink capability, then `native`.
 - `mode-unknown` — A mode outside the two raises `PipelineNormalizeModeUnknown`, printing both spellings.
   *A-run*
 - `identity-columns` — Normalize injects a content-hash row id on every table, a load id on the root, a parent id and list index on each child, and a root id on a child nested deeper than one level.
+- `field-collision` — A relational source field flattening onto an occupied column takes the first free `source_`-prefixed name, preserving injected identity columns and the source value.
 - `row-id` — The row id hashes the row's own content, so a re-run of one input emits byte-identical ids.
 - `list-index-missing` — A relational child table emitted without the list index that makes its projection reversible raises `PipelineListIndexMissing`, naming the parent and the list.
   *A-run*
@@ -146,7 +147,10 @@ Canonical nested form, late relational shredding, injected identity columns and 
   *A-store*
 - `nesting-depth` — Recursion stops at the declared `depth`, default 5 levels, landing a deeper subtree as one `Json` value.
 
-unsettled: Where does a schema-diff event land, given that the store keeps only the reconciled schema? owner: pipeline affects: run.normalize
+#### Scenarios
+
+- `run.normalize.mode`: WHEN a relational stream holds a struct and a two-item list, THEN the store holds flattened parent columns and two indexed child rows joined to that parent.
+- `run.normalize.mode`: WHEN a native sink cannot retain a nested column, THEN the committed table's run manifest carries that column's downgrade event.
 
 ## guard-secrets
 
@@ -154,13 +158,13 @@ The write-time mask over credential-shaped spans in a pulled batch.
 
 - `placement` — The secret guard runs at the one pull path streaming and backfill share, ahead of the recorded pull and the land path, so a replay reintroduces no credential.
 - `matchers` — Matchers are linear-time, regex-free forward scans, each anchored on a literal prefix; the credential catalogue lives in code under a precision and recall fixture test.
+  *A-run*
 - `assignment-key` — An assignment key qualifies when it is a keyword or ends in one after `_`, `-` or `.`, reading `-` as `_`, so `client_secret`, `x-api-key` and `db.password` qualify and `clientsecret` does not.
 - `mask-span` — The replacement covers only the matched byte ranges, widened to character boundaries; overlapping spans merge under the higher-priority pattern.
 - `mask-replacement` — The replacement is the fixed `[REDACTED:secret]` marker, never a shape-preserving transform; an assignment keeps its `key=` prefix.
 - `mask-only` — The guard is on by default and blocks no run; each pull logs the count of masked cells per column.
+  *A-run*
 - `coverage` — The guard reads pre-normalize string cells for plaintext shapes; encoded material and a credential split across two cells pass through.
-
-unsettled: Is the credential pattern set host-owned, or extensible per deployment, and does a strict mode fail the pull? owner: pipeline affects: run.guard-secrets
 
 #### Scenarios
 
@@ -189,10 +193,18 @@ The stage order from pull to commit, the one destination, the ingest tally and c
   *A-connector*
 - `parse-boundary` — A decode that can die runs outside the serving process, which bounds its wall clock and memory and makes it killable.
   *A-connector*
+- `parse-child` — Each input whose decoder can die runs in its own child process; that process decodes no second input.
+  *A-run*
+- `parse-deadline` — A decode runs for at most 60 s from child spawn; expiry kills its process group and raises {{run.land.parse-crashed}}.
+  *A-run*
+- `parse-memory` — A decoder child receives at most 512 MiB of memory; exceeding the bound fails that input under {{run.land.parse-crashed}}.
+  *A-run*
 - `parse-crashed` — A non-zero exit or fatal signal from the decode process raises `PipelineParseCrashed` naming the input; no input ends the serving process.
   *A-connector*
 - `table-failed` — A table whose pull fails raises `PipelineTableFailed` carrying the table, the error kind and the run id; the fire then follows `on_table_error`.
   *because a failure is answerable by name only when it carries its table and run*
+- `observed-schema` — Planning fetches no source schema; each observed batch is typed when staged under {{run.own.stage-schema}}, including validation against declared columns.
+  *A-run*
 
 ```mermaid
 flowchart LR
@@ -214,15 +226,18 @@ flowchart LR
   C -->|"cached position"| K
 ```
 
-unsettled: Which process carries the parse boundary, a child per input or one long-lived extractor, and what wall-clock and memory budget does one input receive? owner: pipeline affects: run.land
+#### Scenarios
 
-unsettled: Does the engine read a source's declared schema at planning time, or only the observed batch at write time? owner: pipeline affects: run.land
+- `run.land.parse-child`: WHEN two PDF inputs decode in one fire, THEN each input starts a separate child process.
+- `run.land.parse-deadline`: WHEN a decoder holds its output pipe past 60 s, THEN its process group dies and that input fails by name.
+- `run.land.parse-memory`: WHEN a decoder exceeds 512 MiB, THEN that input fails and the serving process continues.
+- `run.land.observed-schema`: WHEN a source exposes no schema before its first batch, THEN planning succeeds and staging checks that batch against the declared table columns.
 
 ## export
 
-The outbound copy of a landed table to an operator-declared OTLP target: the export block, the post-commit read, the delivery batch, the cursor and at-least-once delivery.
+The outbound copy of a landed table to an operator-declared target: the export block, the post-commit read, the delivery batch, the cursor and at-least-once delivery.
 
-- `export-block` — A manifest `[[export]]` block declares `name`, one landed `table`, an OTLP/HTTP `endpoint`, `signal` and optional `headers`; `contextful export run <name>` delivers every row its cursor has not passed.
+- `export-block` — An OTLP `[[export]]` block declares `name`, one landed `table`, an HTTP `endpoint`, `signal = "logs"` and optional `headers`; `contextful export run <name>` delivers every row its cursor has not passed.
   *A-topology*
 - `signal-unknown` — A `signal` other than `logs` raises `ExportSignalUnknown` before any row is read.
   *because the one built-in arm maps a row onto a log record, and a span or metric needs a column mapping no block declares*
@@ -246,6 +261,32 @@ The outbound copy of a landed table to an operator-declared OTLP target: the exp
   *A-topology*
 - `delivery-refused` — A target answering other than 2xx, or unreachable, raises `ExportDeliveryRefused` naming the export and the answer, and the cursor stays where it stood.
   *because an unacknowledged batch is resent from the cursor, never skipped*
+- `typed-block` — A typed `[[export]]` block declares `format = "changes-v1"`, nonempty `key` columns and `schedule`, beside `name`, `table`, `endpoint` and optional `headers`.
+  *because a consumer needs stable row identity and a delivery cadence*
+- `typed-state` — A typed export compares the latest stable committed table read through {{run.export.post-commit-read}} with its last acknowledged state; commits between reads coalesce into one publication.
+  *because a scheduled state export promises the observed frontier rather than every intermediate write*
+- `typed-view-recheck` — A typed export re-reads its admitted table even when the source commit frontier is unchanged, and stages a publication when its key, schema, policy or visible state changes.
+  *because a commit hash alone cannot identify the view delivered to a consumer*
+- `typed-publication-id` — A typed publication identifier covers the source frontier, read identity and visible keyed state, so distinct delivered views carry distinct identifiers without requiring another source commit.
+  *because a receiver must not mistake a changed view for a retry of the prior publication*
+- `typed-events` — Each changed key yields a versioned upsert with its visible row or a deletion with its key; unchanged keys yield no event.
+  *because a generic consumer applies the same keyed operations regardless of table shape*
+- `typed-order` — Typed events order by encoded key and carry consecutive sequences and stable ids; a repeat delivery carries the same bytes and ids.
+  *because acknowledgement can fail after the target applies a batch*
+- `typed-complete` — A publication-complete event follows every change, including an empty set, and states that publication's change count.
+  *because a consumer needs a boundary after which its keyed state represents one observed frontier*
+- `typed-outbox` — Events and their next keyed state stage together in machine-local `machine.sqlite`; a pending publication blocks staging a later frontier.
+  *because a failed send must retain its exact payload and order across restarts*
+- `typed-identity-changed` — Pending events under a changed read identity, or an export redirected to another target under the same name, raise `ExportIdentityChanged` without delivery; watch exits.
+  *because an old outbox cannot prove authorization under a changed view or establish a new target's baseline*
+- `typed-ack` — A typed export advances its machine-local acknowledgement sequence only after HTTP 2xx; acknowledging the completion event promotes its staged state in the same transaction.
+  *because a receiver acknowledgement and local state promotion have one durable order*
+- `typed-watch` — `contextful export watch <name>` fires the typed export on its schedule and retries a refused send with capped exponential delay from the pending outbox.
+  *because delivery resumes without another operator invocation*
+- `typed-byte-limit` — One typed JSON request holds at most 65536 B.
+  *because a row-count bound alone admits an unbounded request body*
+- `typed-event-too-large` — A typed event unable to fit one request raises `ExportEventTooLarge`; watch stops rather than retrying that event.
+  *because an unchanged oversized event cannot make progress on retry*
 
 unsettled: Does the arm map a table onto the OTLP span or metric signal, and through which column declaration? owner: pipeline affects: run.export
 
@@ -334,6 +375,7 @@ The `[[model]]` block: a table defined by SQL over store tables, its contract, f
 - `injected-columns` — A build lands `_ingested_at` as its start instant, `_run_id` as its build id, `_row_seq` as the row's position, `_commit_seq` as its commit's value and `_site_id`, replacing any injected column the SQL selects; `semantics_version` is 2.
 - `freshness-block` — `[model.freshness]` declares `max_lag` as an integer followed by `s`, `m`, `h` or `d`; a model declaring none publishes a null `max_lag` and never computes stale.
 - `test-block` — A `[[model.test]]` carries a `name` and one `SELECT` over the staged rows, registered under the model's id, and the store's tables; a test returning any row fails.
+  *because a test must inspect the candidate build before its rows become visible to readers*
 - `test-failed` — A failing test raises `ModelTestFailed`, naming the test and its row count; the build publishes nothing.
   *because a test exists to stop a build before readers trust it*
 - `build-verb` — `contextful build <model>` materializes the model into staging, checks its contract, runs its tests, then commits; `--json` prints the build id, row count and watermark.
@@ -343,6 +385,7 @@ The `[[model]]` block: a table defined by SQL over store tables, its contract, f
   *A-run*
 - `watermark` — A build's watermark is `{at, inputs}`: per input table the snapshot id and the committed runs it omits, and `at` the newest commit instant among them.
 - `hold-verb` — `build hold --for <n>[smhd] <model> <build>` commits a hold until now plus the duration and prints `Held`, or `Renewed` over an unexpired hold; `--json` prints the receipt as an object.
+- `status-verb` — `build status <model>` reports the last attempt separately from the published build; `--json` carries their ids, status, freshness and staleness computed at the requested instant.
 - `hold-unknown-build` — A hold naming a build no committed manifest of the model records raises `ModelBuildUnknown`.
   *because a hold on a build that does not exist protects nothing and reads as protection*
 - `hold-manifest` — A hold commits as the hold manifest `holds/<build id>.json` in the model's table directory, replacing any earlier hold on that build.
@@ -375,15 +418,15 @@ A published table's contract identity, build, freshness and holds, committed wit
   *P4*
 - `staging` — A build materializes into staging and publishes through {{run.publish.manifest-commit}}; a refused build leaves the last published state serving.
   *P4*
-- `history-logs` — `contract-history.jsonl`, `builds.jsonl` and `holds.jsonl` are append-only history derived from committed manifests; a log disagreeing with a manifest is regenerated from it.
-- `build-entry` — A build entry carries build id, start and completion instants, a status of published, refused or partial, the contract identity, and the partition values it left unfilled.
+- `history-logs` — `contract-history.jsonl`, `builds.jsonl` and `holds.jsonl` are append-only history derived from committed manifests and build-attempt records; a log disagreeing with a source record is regenerated from it.
+- `build-entry` — A build entry carries build id, start and completion instants, a status of published, refused, partial or failed, the contract identity, and the partition values it left unfilled.
+- `failed-attempt` — A published model records an attempt before materialization; a dead attempt without a committed manifest reports `failed`, keeps the prior published build serving, and contributes a failed build entry.
+  *because a process killed before publication cannot write its own failure, while its attempt record and released lock survive*
 - `freshness` — Freshness carries the newest publishing build id, its watermark, `max_lag`, the last build status and a withheld-cells flag; staleness is derived from watermark against `max_lag` and never stored.
 - `hold` — A hold records build id, placing principal and expiry; collection skips a held build, and a hold confers no other authority.
 - `manifest-section` — The manifest section carries `{contract_version, schema_fingerprint, build_id, build_started_at, last_built_at, watermark, max_lag, last_build_status, withheld_cells, disclosure_digest, partitions_failed?, semantics_version?, fingerprint_recipe?}` of the newest publishing build; `watermark` maps each input table to its snapshot and omitted runs.
 - `semantics-version` — `semantics_version` advances when the engine adds an injected column, and `fingerprint_recipe` names the fingerprint's inputs, that column included.
 - `disclosure-digest` — A build records a digest over the `class`, `policy` and `visibility` its table declares, set-valued fields sorted, in the manifest and the build log, and sets `withheld_cells` when any is declared.
-
-unsettled: Where does a refused or partial build's entry land, given the history logs derive from committed manifests and a refused build commits none? owner: pipeline affects: run.publish
 
 ```mermaid
 flowchart LR

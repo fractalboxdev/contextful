@@ -856,6 +856,7 @@ dependencies = [
  "contextful-core",
  "contextful-decode",
  "contextful-outbound",
+ "encoding_rs",
  "flate2",
  "libc",
  "serde",
@@ -919,6 +920,7 @@ name = "contextful-decode"
 version = "0.5.0"
 dependencies = [
  "contextful-core",
+ "encoding_rs",
  "flate2",
  "pdf-extract",
  "quick-xml 0.37.5",
@@ -1069,6 +1071,7 @@ dependencies = [
  "contextful-context",
  "contextful-core",
  "contextful-eval",
+ "contextful-policy",
  "getrandom 0.3.4",
  "rustix 1.1.5",
  "rusty-s3",
