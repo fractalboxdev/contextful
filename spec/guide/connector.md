@@ -56,8 +56,13 @@ Credentials use `secret://<name>` references ({{connector.reference.credential-p
 The provider chain answers a name once ({{connector.resolve.first-hit-wins}}) and refuses
 shadowing ({{connector.resolve.shadowed-name}}). Material hydrates per read
 ({{connector.resolve.hydration-is-just-in-time}}); rotation keeps the name
-({{connector.rotate.turnover-preserves-the-name}}), and each entry records its grants
-and expiry ({{connector.record.operator-record}}).
+({{connector.rotate.turnover-preserves-the-name}}). Optional operator descriptions follow
+{{connector.record.operator-record}}; provider custody follows
+{{connector.record.provider-custody}}. The inventory starts from configured bindings
+({{connector.record.inventory}}), distinguishes assertions from observations
+({{connector.record.observation-provenance}}), and exposes missing expiry through
+{{connector.record.expiry-unknown}}. Runtime attribution follows
+{{connector.record.provider-attribution}}.
 
 Model calls leave through one configured endpoint ({{connector.infer.model-endpoint}}).
 Ingested values travel fenced; the fence lowers injection odds and bounds nothing
