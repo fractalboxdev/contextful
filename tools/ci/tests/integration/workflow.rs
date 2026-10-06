@@ -17,7 +17,7 @@ fn every_gate_stage_has_a_dispatchable_part() {
         .collect();
     assert_eq!(
         parts.len(),
-        24,
+        29,
         "the remote gate expects one check per part: {parts:?}"
     );
     assert!(parts.iter().any(|part| part == "workspace.cli"), "the CLI suite has no separate remote check: {parts:?}");

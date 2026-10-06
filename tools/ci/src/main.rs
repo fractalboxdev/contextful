@@ -88,6 +88,12 @@ enum Cmd {
         /// as its parts.
         #[arg(long)]
         parts: bool,
+        /// Include one test-first part per changed test package against this revision.
+        #[arg(long, requires = "parts")]
+        base: Option<String>,
+        /// Print the selected stage names as a JSON array for a workflow matrix.
+        #[arg(long)]
+        json: bool,
     },
     /// Hold every key in a git-tracked `.env*` file to ciphertext under a scope comment.
     Secrets,
@@ -256,11 +262,13 @@ fn refuse(code: &'static str, message: String) -> anyhow::Error {
 fn main() {
     let cli = Cli::parse();
     let result = match cli.cmd {
-        Cmd::Stages { parts: false } => {
-            STAGES.iter().for_each(|s| println!("{s}"));
-            Ok(())
+        Cmd::Stages { parts, base, json } => {
+            let listed = if parts { repo_root().and_then(|root| dispatched(&root, base.as_deref())) } else { Ok(STAGES.iter().map(|s| s.to_string()).collect()) };
+            listed.and_then(|stages| {
+                if json { println!("{}", serde_json::to_string(&stages)?); } else { stages.iter().for_each(|s| println!("{s}")); }
+                Ok(())
+            })
         }
-        Cmd::Stages { parts: true } => repo_root().and_then(|root| dispatched(&root)).map(|all| all.iter().for_each(|s| println!("{s}"))),
         Cmd::Gate { stages, predecessors, base, base_bound_secs } => gate(&stages, predecessors, &base, Duration::from_secs(base_bound_secs)),
         Cmd::Secrets => repo_root().and_then(|root| secrets(&root)),
         Cmd::Mirrors => repo_root().and_then(|root| mirrors(&root)),
@@ -378,18 +386,19 @@ fn repo_root() -> Result<PathBuf> {
 /// The stages whose work splits into parts FlareDispatch dispatches one check
 /// each, so each part fits one stage's wall clock (`assurance.build.profile-build`,
 /// `assurance.gate.budget-stage`).
-const SPLIT: [&str; 3] = ["workspace", "features", "budget"];
+const SPLIT: [&str; 4] = ["test-first", "workspace", "features", "budget"];
 
 /// The parts of a split `stage`: the features stage's `packages`, every featured package but
-/// the binary, then `binary-<run>` per run of the binary package; the budget stage's
+/// the binary, then `binary-<run>` and `formal-<run>` per binary feature run; the budget stage's
 /// `<profile>` per profile the binary declares, its name after `contextful-`.
-fn parts(root: &Path, stage: &str) -> Result<Vec<String>> {
+fn parts(root: &Path, stage: &str, base: Option<&str>) -> Result<Vec<String>> {
     Ok(match stage {
-        "workspace" => ["compile", "cli", "foundation", "runtime", "read", "ci"].into_iter().map(str::to_string).collect(),
+        "test-first" => match base { Some(base) => test_first_parts(root, base)?, None => vec!["validate".into()] },
+        "workspace" => ["compile", "cli", "cli-formal", "foundation", "runtime", "read", "ci"].into_iter().map(str::to_string).collect(),
         "features" => {
             let featured = featured_packages(root)?;
             let binary = featured.iter().filter(|p| p.name == topology::BINARY).flat_map(Featured::runs);
-            std::iter::once("packages".to_string()).chain(binary.map(|(label, _)| format!("binary-{label}"))).collect()
+            std::iter::once("packages".to_string()).chain(binary.flat_map(|(label, _)| [format!("binary-{label}"), format!("formal-{label}")])).collect()
         }
         "budget" => topology::declared_profiles(root)?.iter().map(|p| p.strip_prefix("contextful-").unwrap_or(p).to_string()).collect(),
         _ => Vec::new(),
@@ -398,11 +407,11 @@ fn parts(root: &Path, stage: &str) -> Result<Vec<String>> {
 
 /// What FlareDispatch dispatches, in run order: each stage, a split stage as
 /// `<stage>.<part>` per part.
-fn dispatched(root: &Path) -> Result<Vec<String>> {
+fn dispatched(root: &Path, base: Option<&str>) -> Result<Vec<String>> {
     let mut out = Vec::new();
     for stage in STAGES {
         if SPLIT.contains(&stage) {
-            out.extend(parts(root, stage)?.into_iter().map(|p| format!("{stage}.{p}")));
+            out.extend(parts(root, stage, base)?.into_iter().map(|p| format!("{stage}.{p}")));
         } else {
             out.push(stage.to_string());
         }
@@ -425,10 +434,10 @@ fn gate(named: &[String], predecessors: bool, base: &str, bound: Duration) -> Re
         stages.push(stage.to_string());
         match part {
             None => whole.push(stage),
-            Some(part) if SPLIT.contains(&stage) && parts(&root, stage)?.iter().any(|p| p == part) => {
+            Some(part) if SPLIT.contains(&stage) && parts(&root, stage, Some(base))?.iter().any(|p| p == part) => {
                 narrowed.entry(stage).or_default().push(part.to_string())
             }
-            Some(_) => bail!("no part `{name}`; the parts are {}", dispatched(&root)?.join(", ")),
+            Some(_) => bail!("no part `{name}`; the parts are {}", dispatched(&root, None)?.join(", ")),
         }
     }
     narrowed.retain(|stage, _| !whole.contains(stage));
@@ -461,7 +470,7 @@ fn run_stage(root: &Path, stage: &str, only: Option<&[String]>, base: &str, boun
         "test-first" => {
             provision_lean(root)?;
             provision_wasm(root)?;
-            test_first(root, base, bound)?
+            test_first(root, base, bound, only)?
         }
         "workspace" => {
             provision_lean(root)?;
@@ -588,6 +597,8 @@ fn workspace_part(package: &str) -> &'static str {
 
 fn workspace(root: &Path, only: Option<&[String]>) -> Result<()> {
     if let Some(only) = only {
+        let ordinary = only.iter().any(|part| part == "cli");
+        let formal = only.iter().any(|part| part == "cli-formal");
         if only.iter().any(|part| part == "compile") {
             let mut args = vec!["test", "--workspace"];
             if root.join(ACCEPTANCE_DIR).join("Cargo.toml").exists() {
@@ -598,13 +609,19 @@ fn workspace(root: &Path, only: Option<&[String]>) -> Result<()> {
         }
         let packages: Vec<String> = workspace_packages(root)?
             .into_iter()
-            .filter(|package| only.iter().any(|part| part == workspace_part(package)))
+            .filter(|package| only.iter().any(|part| part == workspace_part(package)) || (formal && package == topology::BINARY))
             .collect();
-        if !packages.is_empty() {
+        let other: Vec<&String> = packages.iter().filter(|package| package.as_str() != topology::BINARY).collect();
+        if !other.is_empty() {
             let mut args = vec!["test"];
-            for package in &packages {
+            for package in other {
                 args.extend(["--package", package.as_str()]);
             }
+            run_staged(root, "workspace", &args)?;
+        }
+        if packages.iter().any(|package| package == topology::BINARY) {
+            let mut args = vec!["test", "--package", topology::BINARY];
+            cli_partition(&mut args, ordinary, formal);
             run_staged(root, "workspace", &args)?;
         }
         return Ok(());
@@ -616,12 +633,23 @@ fn workspace(root: &Path, only: Option<&[String]>) -> Result<()> {
     run_staged(root, "workspace", &args)
 }
 
+/// The differential module runs separately from the other CLI tests in remote parts;
+/// selecting both partitions retains Cargo's complete suite, including doctests.
+fn cli_partition(args: &mut Vec<&str>, ordinary: bool, formal: bool) {
+    if !ordinary {
+        args.extend(["--test", "integration", "differential::"]);
+    } else if !formal {
+        args.extend(["--", "--skip", "differential::"]);
+    }
+}
+
 /// The feature combinations the workspace stage's unified build does not reach
 /// (`assurance.build.staged-feature-runs`): each workspace package declaring a feature other
 /// than `default` runs its suite alone, once with no features, once with every feature, and
 /// once per feature set its manifest lists under `[package.metadata.contextful]
 /// feature-runs` (`assurance.build.profile-build`). `only` narrows the stage to its named
-/// parts: `packages`, every package but the binary, and `binary-<run>`, one run of the binary.
+/// parts: `packages`, every package but the binary, and `binary-<run>` plus `formal-<run>`
+/// for the binary's ordinary and differential tests under each feature set.
 /// `cargo test -p` resolves the selected package's features without its dependents', so the
 /// store adapter's write suites run with the read face off
 /// (`topology.package.store-write-engine-free`) and the policy package's without `exchange`.
@@ -637,15 +665,18 @@ fn features(root: &Path, only: Option<&[String]>) -> Result<()> {
     for package in &featured {
         let name = &package.name;
         let binary = name == topology::BINARY;
-        let selected = |label: &str| {
-            only.is_none_or(|o| o.iter().any(|p| if binary { p.strip_prefix("binary-") == Some(label) } else { p == "packages" }))
-        };
-        for (_, combination) in package.runs().into_iter().filter(|(label, _)| selected(label)) {
+        for (label, combination) in package.runs() {
+            let ordinary = only.is_none_or(|o| o.iter().any(|p| if binary { p.strip_prefix("binary-") == Some(label.as_str()) } else { p == "packages" }));
+            let formal = binary && only.is_none_or(|o| o.iter().any(|p| p.strip_prefix("formal-") == Some(label.as_str())));
+            if !ordinary && !formal { continue; }
             let shown = combination.join(" ");
             eprintln!("features: {name} {shown}");
+            let mut partition = Vec::new();
+            if binary { cli_partition(&mut partition, ordinary, formal); }
             let status = Command::new("cargo")
                 .args(["test", "-p", name])
                 .args(&combination)
+                .args(&partition)
                 .env("CARGO_TARGET_DIR", &target)
                 .current_dir(root)
                 .status()?;
@@ -951,20 +982,78 @@ fn workspace_packages(root: &Path) -> Result<Vec<String>> {
 
 // ---------------------------------------------------------------- test-first
 
-fn test_first(root: &Path, base: &str, bound: Duration) -> Result<()> {
+fn changed_tests(base: &str) -> Result<Vec<String>> {
     let range = format!("{base}...HEAD");
+    Ok(git(&["diff", "--name-only", "--diff-filter=ACMR", &range])?.lines().filter(|p| is_test(p)).map(str::to_string).collect())
+}
+
+fn changed_package(root: &Path, path: &str) -> Result<String> {
+    let manifest = Path::new(path)
+        .ancestors()
+        .skip(1)
+        .map(|dir| root.join(dir).join("Cargo.toml"))
+        .find(|manifest| manifest.is_file())
+        .with_context(|| format!("`{path}` belongs to no Cargo package"))?;
+    let contents = std::fs::read_to_string(&manifest).with_context(|| format!("reading {}", manifest.display()))?;
+    let value: toml::Value = contents.parse().with_context(|| format!("parsing {}", manifest.display()))?;
+    Ok(value.get("package").and_then(|p| p.get("name")).and_then(toml::Value::as_str).context("the changed path's package has a name")?.to_string())
+}
+
+fn test_first_parts(root: &Path, base: &str) -> Result<Vec<String>> {
+    let mut packages = std::collections::BTreeSet::new();
+    for source in sources_outside_refactors(base)? {
+        packages.insert(changed_package(root, &source)?);
+    }
+    if !packages.is_empty() {
+        for test in changed_tests(base)? {
+            packages.insert(changed_package(root, &test)?);
+        }
+    }
+    Ok(std::iter::once("validate".to_string()).chain(packages).collect())
+}
+
+fn test_first(root: &Path, base: &str, bound: Duration, only: Option<&[String]>) -> Result<()> {
     let sources = sources_outside_refactors(base)?;
     if sources.is_empty() {
         eprintln!("test-first: no Rust source under crates/ or tools/ changed outside `Test-First: {REFACTOR_TRAILER}` commits");
         return Ok(());
     }
-    let added = git(&["diff", "--name-only", "--diff-filter=ACMR", &range])?;
-    let tests: Vec<&str> = added.lines().filter(|p| is_test(p)).collect();
+    let changed = changed_tests(base)?;
+    let tests: Vec<&str> = changed.iter().map(String::as_str).collect();
     if tests.is_empty() {
         return Err(refuse(
             "TestNotFirst",
             format!("{} source file(s) changed and no test under a package's tests/ did: {}", sources.len(), sources.join(", ")),
         ));
+    }
+    let source_packages: std::collections::BTreeSet<String> = sources.iter().map(|source| changed_package(root, source)).collect::<Result<_>>()?;
+    let test_packages: std::collections::BTreeSet<String> = tests.iter().map(|test| changed_package(root, test)).collect::<Result<_>>()?;
+    if only.is_none() || only.is_some_and(|parts| parts == ["validate"]) {
+        if let Some(missing) = source_packages.difference(&test_packages).next() {
+            return Err(refuse("TestNotFirst", format!("source package `{missing}` has no changed test under its tests/")));
+        }
+    }
+    let selected: Vec<&str> = match only {
+        Some(parts) if parts.len() == 1 && parts[0] == "validate" => return Ok(()),
+        Some(parts) => {
+            let mut selected = Vec::new();
+            for test in tests {
+                if parts.contains(&changed_package(root, test)?) {
+                    selected.push(test);
+                }
+            }
+            selected
+        }
+        None => tests,
+    };
+    let mut by_package: std::collections::BTreeMap<String, Vec<&str>> = Default::default();
+    for test in selected {
+        by_package.entry(changed_package(root, test)?).or_default().push(test);
+    }
+    if let Some(parts) = only {
+        if let Some(missing) = parts.iter().filter(|part| part.as_str() != "validate").find(|part| !by_package.contains_key(part.as_str())) {
+            return Err(refuse("TestNotFirst", format!("source package `{missing}` has no changed test under its tests/")));
+        }
     }
 
     let scratch = stage_target(root, "test-first");
@@ -973,16 +1062,20 @@ fn test_first(root: &Path, base: &str, bound: Duration) -> Result<()> {
     let _ = std::fs::remove_dir_all(&scratch);
     std::fs::create_dir_all(&scratch)?;
     git(&["worktree", "add", "--detach", "-q", &tree.to_string_lossy(), &merge_base(base)?])?;
-    let verdict = red_against_base(root, &tree, &scratch.join("target"), &tests, bound);
+    let verdict = (|| -> Result<Vec<String>> {
+        let mut all_red = Vec::new();
+        for (package, tests) in by_package {
+            let red = red_against_base(root, &tree, &scratch.join("target"), &tests, bound)?;
+            if red.is_empty() {
+                return Err(refuse("TestNotFirst", format!("the change's `{package}` tests pass against the base source, so they specify nothing it adds: {}", tests.join(", "))));
+            }
+            all_red.extend(red);
+        }
+        Ok(all_red)
+    })();
     let _ = git(&["worktree", "remove", "--force", &tree.to_string_lossy()]);
     let _ = std::fs::remove_dir_all(&scratch);
     let red = verdict?;
-    if red.is_empty() {
-        return Err(refuse(
-            "TestNotFirst",
-            format!("the change's tests pass against the base source, so they specify nothing it adds: {}", tests.join(", ")),
-        ));
-    }
     eprintln!("test-first: red against the base in {}", red.join(", "));
     Ok(())
 }
@@ -1211,7 +1304,11 @@ fn red_against_base(root: &Path, tree: &Path, target: &Path, tests: &[&str], bou
             if !matches!(listed, BaseRun::Passed) {
                 eprint!("{}{}", printed.stdout, printed.stderr);
                 unrunnable(&printed)?;
-                red.push(format!("{label}, whose tests do not list at base"));
+                red.push(match listed {
+                    BaseRun::Killed => format!("{label}, listing killed at the {} s bound", bound.as_secs()),
+                    BaseRun::Failed => format!("{label}, whose tests do not list at base"),
+                    BaseRun::Passed => unreachable!("a passing listing has no red verdict"),
+                });
                 continue;
             }
             let names: Vec<String> = printed

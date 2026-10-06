@@ -119,10 +119,10 @@ fn bundled(r: &Repo, lib_edge: &str, runs: &str) {
     r.write("crates/gated/tests/integration/main.rs", "#[test]\nfn builds() {}\n");
 }
 
-/// The features stage tests each package under every feature set its manifest lists in `feature-runs`, in parts dispatched as one check each: the other packages, and each binary run — none, all and each listed set.
-// spec: assurance.build.profile-build@5854cf3a
+/// Each binary feature run partitions differential tests from its remaining suite.
+// spec: assurance.build.profile-build@0250142c
 #[test]
-fn the_features_stage_tests_each_listed_run_in_parts_one_per_binary_run() {
+fn the_features_stage_tests_each_listed_run_in_two_binary_parts() {
     let r = Repo::init();
     bundled(&r, "pub fn edge() {}", "\"edge\"");
     r.write(
@@ -140,6 +140,9 @@ fn the_features_stage_tests_each_listed_run_in_parts_one_per_binary_run() {
     assert!(at("evaluate") < at("features.packages") && at("features.packages") < at("features.binary-none"), "{listed}");
     assert!(at("features.binary-none") < at("features.binary-all") && at("features.binary-all") < at("features.binary-extra"), "{listed}");
     assert!(at("features.binary-extra") < at("crate-graph") && !parts.contains(&"features"), "{listed}");
+    for label in ["none", "all", "extra"] {
+        assert!(at(&format!("features.binary-{label}")) < at(&format!("features.formal-{label}")), "{listed}");
+    }
 
     // The whole stage runs every part.
     let o = features(&r);

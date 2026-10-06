@@ -5,7 +5,7 @@ An unpinned clause is `committed`; a pinned one is `performed` when its Rust, Le
 
 | Contract | Files | Operations | Clauses | Refusals | Limits | Unsettled | Performed | Broken | Floor |
 | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
-| `assurance` | 2 | 15 | 235 | 59 | 22 | 14 | 141 | 0 | 141 |
+| `assurance` | 2 | 15 | 236 | 59 | 22 | 14 | 142 | 0 | 141 |
 | `authority` | 2 | 16 | 270 | 77 | 27 | 10 | 207 | 0 | 207 |
 | `connector` | 2 | 14 | 349 | 89 | 21 | 15 | 229 | 0 | 229 |
 | `corpus` | 1 | 10 | 79 | 37 | 7 | 0 | 43 | 0 | 43 |
@@ -15,7 +15,7 @@ An unpinned clause is `committed`; a pinned one is `performed` when its Rust, Le
 | `store` | 1 | 17 | 252 | 59 | 13 | 19 | 216 | 0 | 216 |
 | `surface` | 2 | 20 | 123 | 56 | 22 | 0 | 85 | 0 | 66 |
 | `topology` | 1 | 6 | 70 | 24 | 5 | 5 | 38 | 0 | 38 |
-| **total** | 19 | 155 | 2124 | 604 | 191 | 103 | 1511 | 0 | |
+| **total** | 19 | 155 | 2125 | 604 | 191 | 103 | 1512 | 0 | |
 
 Decision records: 18.
 
@@ -39,7 +39,7 @@ A milestone reads `closed` when its acceptance test computes `passing` and every
 | 11 — The derive tier | 7 | 88 | 79 | passing | closed |
 | 12 — The operator console | 12 | 54 | 22 | passing | open |
 | 13 — Disclosure | 5 | 33 | 13 | open | open |
-| 14 — Assurance | 7 | 138 | 89 | passing | closed |
+| 14 — Assurance | 7 | 139 | 90 | passing | closed |
 
 Unscheduled operations: 10.
 
@@ -74,7 +74,7 @@ Unscheduled operations: 10.
 | `assurance.build.licence-field` | `tools/ci/tests/integration/topology.rs::a_workspace_package_without_the_apache_licence_is_refused` | performed |
 | `assurance.build.linked-query-functions` | `crates/contextful-context/tests/integration/read/extension.rs::columnar_reading_and_statement_serialization_are_statically_linked_and_loaded` | performed |
 | `assurance.build.one-engine-build` | `tools/ci/tests/integration/target_dirs.rs::the_workspace_stage_runs_one_invocation_and_the_store_suites_link_no_engine_without_read` | performed |
-| `assurance.build.profile-build` | `tools/ci/tests/integration/features.rs::the_features_stage_tests_each_listed_run_in_parts_one_per_binary_run` | performed |
+| `assurance.build.profile-build` | `tools/ci/tests/integration/features.rs::the_features_stage_tests_each_listed_run_in_two_binary_parts` | performed |
 | `assurance.build.release-artifact` | `tools/ci/tests/integration/artifact.rs::a_dry_run_release_packages_three_archives_with_checksums_sboms_and_formulae` | performed |
 | `assurance.build.release-builder` | `tools/ci/tests/integration/artifact.rs::zigbuild_packages_a_darwin_cell_and_emits_its_formula_metadata` | performed |
 | `assurance.build.release-metadata` | `tools/ci/tests/integration/artifact.rs::zigbuild_packages_a_darwin_cell_and_emits_its_formula_metadata` | performed |
@@ -139,6 +139,7 @@ Unscheduled operations: 10.
 | `assurance.gate.stage-sequence` | `tools/ci/tests/integration/stages.rs::the_gate_defines_the_thirteen_stages_in_run_order_and_runs_a_named_subset` | performed |
 | `assurance.gate.stage-subset` | `tools/ci/tests/integration/stages.rs::a_subset_omitting_a_predecessor_whose_output_is_absent_is_refused_before_any_stage` | performed |
 | `assurance.gate.surface-check-failed` | `tools/ci/tests/integration/stages.rs::a_failing_surface_check_is_refused_naming_the_surface_and_the_script` | performed |
+| `assurance.gate.test-first-parts` | `tools/ci/tests/integration/test_first.rs::a_source_package_requires_its_own_changed_test_when_another_package_is_red` | performed |
 | `assurance.gate.typescript-surfaces` | `tools/ci/tests/integration/stages.rs::the_surfaces_stage_installs_then_runs_each_declared_check` | performed |
 | `assurance.gate.workspace-parts` | `tools/ci/tests/integration/target_dirs.rs::remote_workspace_parts_compile_the_union_and_run_each_package_suite` | performed |
 | `assurance.measure.ledger` | `tools/eval/tests/integration/ledger.rs::an_entry_carries_its_clause_metric_tier_method_and_threshold` | performed |
