@@ -6,6 +6,9 @@ import {
   StreamingRedactor,
   createTurn,
   parseVantage,
+  parseWebBound,
+  resolveReaderCredential,
+  sampleArrivals,
   validatePack,
 } from "../src/turn.ts";
 
@@ -80,6 +83,22 @@ test("source list caps at eight and excludes synthetic citations", async () => {
   assert.doesNotMatch(answer.text, /invented/);
 });
 
+test("rows without governed provenance cannot become answer prose", async () => {
+  const { turn } = harness({ transport: { call: async () => ({ rows: [{ value: 1 }], sources: [] }) } });
+  await assert.rejects(turn.ask({ question: "Explain", packs: ["data"] }),
+    (error: unknown) => error instanceof ConsoleError && error.code === "ConsoleUngroundedAnswer");
+});
+
+test("a web leg with an invalid publication bound fails before dispatch", async () => {
+  const { turn, calls } = harness({
+    tools: [{ name: "web", pack: "web", kind: "read", leg: "web" }],
+    planner: async () => [{ tool: "web", arguments: {}, publicationBound: "no-date" }],
+  });
+  await assert.rejects(turn.ask({ question: "Search", packs: ["web"] }),
+    (error: unknown) => error instanceof ConsoleError && error.code === "ConsoleWebBoundUnparseable");
+  assert.deepEqual(calls, []);
+});
+
 test("a failed first round replans once and the overlay reaches synthesis alone", async () => {
   const plannerInputs: unknown[] = [];
   const synthesisInputs: unknown[] = [];
@@ -102,6 +121,62 @@ test("vantage accepts calendar days and instants, and rejects invalid dates", ()
   assert.equal(parseVantage("2026-10-06T12:30:00Z"), "2026-10-06T12:30:00Z");
   assert.throws(() => parseVantage("2026-02-30"),
     (error: unknown) => error instanceof ConsoleError && error.code === "ConsoleVantageUnparseable" && error.status === 400);
+  assert.throws(() => parseVantage("2026-02-30T12:30:00Z"),
+    (error: unknown) => error instanceof ConsoleError && error.code === "ConsoleVantageUnparseable");
+  assert.throws(() => parseWebBound("unknown"),
+    (error: unknown) => error instanceof ConsoleError && error.code === "ConsoleWebBoundUnparseable");
+});
+
+test("refused per-reader mint falls back only to an installed shared credential", async () => {
+  const mint = async () => { throw new Error("denied"); };
+  assert.equal(await resolveReaderCredential({ mint, shared: "shared-token" }), "shared-token");
+  await assert.rejects(resolveReaderCredential({ mint }),
+    (error: unknown) => error instanceof ConsoleError && error.code === "ConsoleTokenExchangeRefused");
+});
+
+test("planner scaffolding refuses memory relations", async () => {
+  const { turn, calls } = harness({ tables: [{ name: "memory_entries", kind: "memory" }] });
+  await assert.rejects(turn.ask({ question: "Recall", packs: ["data"] }),
+    (error: unknown) => error instanceof ConsoleError && error.code === "ConsolePlannerReachedMemory");
+  assert.deepEqual(calls, []);
+});
+
+test("the code path refuses an unresponsive transport within ten seconds", async () => {
+  const { turn } = harness({
+    transport: { call: async () => new Promise(() => {}) },
+    timeoutMs: 5,
+  });
+  await assert.rejects(turn.ask({ question: "Slow", packs: ["data"] }),
+    /code path exceeded 10 s/);
+});
+
+test("the transport receives a bounded read and cannot return more than 5000 rows", async () => {
+  let maxRows = 0;
+  const { turn } = harness({ transport: { call: async (call: { maxRows: number }) => {
+    maxRows = call.maxRows;
+    return { rows: Array.from({ length: 5001 }, () => ({})), sources: [] };
+  } } });
+  await assert.rejects(turn.ask({ question: "Many", packs: ["data"] }), RangeError);
+  assert.equal(maxRows, 5000);
+});
+
+test("one table cannot exceed the row budget through repeated calls", async () => {
+  const limits: number[] = [];
+  const { turn } = harness({
+    tools: [{ ...readTool, table: "events" }],
+    planner: async () => [{ tool: "query", arguments: {} }, { tool: "query", arguments: {} }],
+    transport: { call: async (call: { maxRows: number }) => {
+      limits.push(call.maxRows);
+      return { rows: Array.from({ length: 3000 }, () => ({})), sources: [{ id: "events", label: "Events" }] };
+    } },
+  });
+  await assert.rejects(turn.ask({ question: "Many", packs: ["data"] }), RangeError);
+  assert.deepEqual(limits, [5000, 2000]);
+});
+
+test("a table contributes at most three sampled arrival labels", () => {
+  assert.deepEqual(sampleArrivals([{ table: "events", labels: ["a", "b", "c", "d"] }]),
+    [{ table: "events", labels: ["a", "b", "c"] }]);
 });
 
 test("overlay cache includes misses, expires after five minutes and truncates at 8000 chars", async () => {
