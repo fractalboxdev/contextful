@@ -109,6 +109,7 @@ fn m12_console() {
     ]));
     let read = Command::new(&cf)
         .args(["serve", "--http", "127.0.0.1:0", "--max-in-flight", "2", "--project", "research", "--public-key", &public, "--audience", STORE_AUDIENCE])
+        .env("CONTEXTFUL_CONTROL_ATTESTATION_SECRET", "separate-attestation-secret")
         .current_dir(&repo.root)
         .stderr(Stdio::piped())
         .spawn()
@@ -136,6 +137,7 @@ fn m12_console() {
         .env("CONTEXTFUL_STORES_JSON", stores.to_string())
         .env("FIELD_NOTES_QUERY_TOKEN", &read_token)
         .env("CONTEXTFUL_ADMIN_CAPABILITY", &admin_capability)
+        .env("CONTEXTFUL_CONTROL_ATTESTATION_SECRET", "separate-attestation-secret")
         .env("CONTEXTFUL_ACCESS_JWKS_URL", jwks.url("/certs"))
         .env("CONTEXTFUL_ACCESS_ISSUER", ACCESS_ISSUER)
         .env("CONTEXTFUL_QUERY_ACCESS_AUDIENCE", QUERY_ACCESS_AUDIENCE)
@@ -166,7 +168,7 @@ fn m12_console() {
     let edited: Value = serde_json::from_slice(&edited).unwrap();
     assert_eq!(edited["expected"], 1, "{edited}");
     let (status, applied) = request(&console_address, "POST", "/admin/api/apply", Some(&access_token(ADMIN_ACCESS_AUDIENCE)),
-        Some(&json!({ "store": "field-notes", "expected": 1 })));
+        Some(&json!({ "store": "field-notes", "expected": 1, "nonce": edited["nonce"] })));
     assert_eq!(status, 200, "{}", String::from_utf8_lossy(&applied));
     let applied: Value = serde_json::from_slice(&applied).unwrap();
     assert_eq!(applied["applied"], 2, "{applied}");

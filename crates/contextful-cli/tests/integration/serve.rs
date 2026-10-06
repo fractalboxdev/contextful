@@ -67,6 +67,7 @@ fn serve(dir: &Path, args: &[&str]) -> (Listener, String) {
 fn serve_binary(binary: &Path, dir: &Path, args: &[&str]) -> (Listener, String) {
     let mut child = Command::new(binary)
         .args(args)
+        .env("CONTEXTFUL_CONTROL_ATTESTATION_SECRET", "separate-attestation-secret")
         .current_dir(dir)
         .env_remove("CONTEXTFUL_ISSUER_PUBKEY")
         .env_remove("CONTEXTFUL_AUDIENCE")
@@ -101,7 +102,8 @@ fn control_apply_uses_the_host_registered_task_set() {
     let edit = json!({ "expected": 1, "document": draft }).to_string();
     let (status, edited) = control(&addr, "POST", "/control/edit", Some(&admin), &edit);
     assert_eq!(status, 200, "{edited}");
-    let (status, state) = control(&addr, "POST", "/control/apply", Some(&admin), "{\"expected\":1}");
+    let apply = json!({ "expected": 1, "nonce": edited["nonce"] }).to_string();
+    let (status, state) = control(&addr, "POST", "/control/apply", Some(&admin), &apply);
     assert_eq!(status, 200, "{state}");
     assert_eq!(state["applied"], json!(2));
 }
@@ -133,7 +135,12 @@ fn query() -> Value {
 }
 
 fn control(addr: &str, method: &str, path: &str, token: Option<&str>, body: &str) -> (u16, Value) {
-    control_headers(addr, method, path, token, body, "")
+    let headers = if method == "POST" && (path == "/control/edit" || path == "/control/apply") {
+        let at = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap().as_secs() as i64;
+        let nonce = NONCE.fetch_add(1, Ordering::SeqCst);
+        attestation(path, body, "user://dana@acme.example", at, &format!("{nonce:032x}"))
+    } else { String::new() };
+    control_headers(addr, method, path, token, body, &headers)
 }
 
 fn control_headers(addr: &str, method: &str, path: &str, token: Option<&str>, body: &str, headers: &str) -> (u16, Value) {
@@ -163,21 +170,21 @@ fn admin_changes_require_fresh_console_attestation_and_record_the_operator() {
     std::fs::write(root.join("pipelines/filings.toml"), original).unwrap();
     stdout(&run(root, &["pipeline", "import", "--project", "research"]));
     let admin = stdout(&run(root, &["token", "mint", "--issuer-key", ".contextful/issuer.seed", "--on-behalf-of", "user://service@acme.example", "--zone", "on-prem:hq", "--action", "admin", "--table", "*", "--ttl", "900"]));
-    let (_listener, addr) = serve(root, &["serve", "--http", "127.0.0.1:0", "--audience", AUD, "--max-in-flight", "2", "--project", "research", "--public-key", &public, "--control-attestation-secret", "separate-attestation-secret"]);
+    let (_listener, addr) = serve(root, &["serve", "--http", "127.0.0.1:0", "--audience", AUD, "--max-in-flight", "2", "--project", "research", "--public-key", &public]);
     assert_eq!(control(&addr, "GET", "/control/record", Some(&admin), "").0, 200);
     let edit = json!({ "expected": 1, "document": original.replace("every 1h", "every 1d") }).to_string();
-    assert_eq!(control(&addr, "POST", "/control/edit", Some(&admin), &edit).0, 403);
+    assert_eq!(control_headers(&addr, "POST", "/control/edit", Some(&admin), &edit, "").0, 403);
     let now = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap().as_secs() as i64;
-    let stale = attestation("/control/edit", &edit, "operator-a", now - 120, "stale");
+    let stale = attestation("/control/edit", &edit, "operator-a", now - 120, &"1".repeat(32));
     assert_eq!(control_headers(&addr, "POST", "/control/edit", Some(&admin), &edit, &stale).0, 403);
-    let forged = attestation("/control/edit", &edit, "operator-a", now, "forged").replace("Operator: operator-a", "Operator: operator-b");
+    let forged = attestation("/control/edit", &edit, "operator-a", now, &"2".repeat(32)).replace("Operator: operator-a", "Operator: operator-b");
     assert_eq!(control_headers(&addr, "POST", "/control/edit", Some(&admin), &edit, &forged).0, 403);
-    let signed = attestation("/control/edit", &edit, "operator-a", now, "edit-once");
+    let signed = attestation("/control/edit", &edit, "operator-a", now, &"3".repeat(32));
     let (status, saved) = control_headers(&addr, "POST", "/control/edit", Some(&admin), &edit, &signed);
     assert_eq!(status, 200, "{saved}");
     assert_eq!(control_headers(&addr, "POST", "/control/edit", Some(&admin), &edit, &signed).0, 403);
     let apply = json!({ "expected": 1, "nonce": saved["nonce"] }).to_string();
-    let signed = attestation("/control/apply", &apply, "operator-a", now, "apply-once");
+    let signed = attestation("/control/apply", &apply, "operator-a", now, &"4".repeat(32));
     let (status, result) = control_headers(&addr, "POST", "/control/apply", Some(&admin), &apply, &signed);
     assert_eq!(status, 200, "{result}");
     let entries = contextful_policy::audit::entries(&root.join(".contextful/audit")).unwrap();
@@ -201,8 +208,10 @@ fn control_routes_require_admin_and_project_applied_workflows() {
     let (_listener, addr) = serve(root, &["serve", "--http", "127.0.0.1:0", "--audience", AUD, "--max-in-flight", "2", "--project", "research", "--public-key", &public]);
 
     assert_eq!(control(&addr, "GET", "/control/workflows", None, "").0, 401);
+    assert_eq!(control(&addr, "GET", "/control/record", None, "").0, 401);
     let (status, answer) = control(&addr, "GET", "/control/workflows", Some(&read), "");
     assert_eq!(status, 403, "{answer}");
+    assert_eq!(control(&addr, "GET", "/control/record", Some(&read), "").0, 403);
     assert_eq!(control(&addr, "POST", "/control/apply", Some(&read), "{}").0, 403);
     assert_eq!(control(&addr, "GET", "/control/workflows", Some(&narrow_admin), "").0, 403);
     let (status, view) = control(&addr, "GET", "/control/workflows", Some(&admin), "");
@@ -214,8 +223,9 @@ fn control_routes_require_admin_and_project_applied_workflows() {
     assert_eq!(control(&addr, "POST", "/control/apply", Some(&admin), "{\"id\":1}").0, 400);
 
     let edited = json!({ "expected": 1, "document": pipeline.replace("every 1h", "every 1d") }).to_string();
-    assert_eq!(control(&addr, "POST", "/control/edit", Some(&admin), &edited).0, 200);
-    let (status, applied) = control(&addr, "POST", "/control/apply", Some(&admin), "{\"expected\":1}");
+    let (_, saved) = control(&addr, "POST", "/control/edit", Some(&admin), &edited);
+    let apply = json!({ "expected": 1, "nonce": saved["nonce"] }).to_string();
+    let (status, applied) = control(&addr, "POST", "/control/apply", Some(&admin), &apply);
     assert_eq!(status, 200, "{applied}");
     assert_eq!(applied["applied"], json!(2));
     let (_, view) = control(&addr, "GET", "/control/workflows", Some(&admin), "");
@@ -235,7 +245,7 @@ fn control_edit_saves_a_validated_draft_and_apply_claims_its_expected_version() 
     let (_listener, addr) = serve(root, &["serve", "--http", "127.0.0.1:0", "--audience", AUD, "--max-in-flight", "2", "--project", "research", "--public-key", &public]);
     let changed = original.replace("every 1h", "every 1d");
     let edit = json!({ "expected": 1, "document": changed }).to_string();
-    let (status, absent) = control(&addr, "POST", "/control/apply", Some(&admin), "{\"expected\":1}");
+    let (status, absent) = control(&addr, "POST", "/control/apply", Some(&admin), &json!({ "expected": 1, "nonce": "000000000000000000000000000000000000000000000000" }).to_string());
     assert_eq!(status, 409, "{absent}");
     assert_eq!(absent["error"]["identifier"], "ControlDraftAbsent");
     assert_eq!(control(&addr, "POST", "/control/edit", None, &edit).0, 401);
@@ -248,26 +258,27 @@ fn control_edit_saves_a_validated_draft_and_apply_claims_its_expected_version() 
     let declaration = root.join("contextful.toml");
     let owner_text = std::fs::read_to_string(&declaration).unwrap();
     std::fs::write(&declaration, format!("{owner_text}\n[control]\nurl = \"http://127.0.0.1:12345/\"\n")).unwrap();
-    let (status, refused) = control(&addr, "POST", "/control/apply", Some(&admin), "{\"expected\":1}");
+    let apply = json!({ "expected": 1, "nonce": draft["nonce"] }).to_string();
+    let (status, refused) = control(&addr, "POST", "/control/apply", Some(&admin), &apply);
     assert_eq!(status, 503, "{refused}");
     assert_eq!(refused["error"]["identifier"], "ConfigOwnerUnconfigured");
     std::fs::write(&declaration, owner_text).unwrap();
     let (_, before) = control(&addr, "GET", "/control/workflows", Some(&admin), "");
     assert_eq!(before["applied"], 1);
     assert_eq!(before["pipelines"][0]["schedule"], "every 1h");
-    let (status, applied) = control(&addr, "POST", "/control/apply", Some(&admin), "{\"expected\":1}");
+    let (status, applied) = control(&addr, "POST", "/control/apply", Some(&admin), &apply);
     assert_eq!(status, 200, "{applied}");
     assert_eq!(applied["applied"], 2);
     assert_eq!(applied["pipelines"][0]["schedule"], "every 1d");
-    let (status, refused) = control(&addr, "POST", "/control/apply", Some(&admin), "{\"expected\":1}");
+    let (status, refused) = control(&addr, "POST", "/control/apply", Some(&admin), &apply);
     assert_eq!(status, 409, "{refused}");
     assert_eq!(refused["error"]["identifier"], "ControlDraftAbsent");
     let later = original.replace("every 1h", "every 2d");
     let edit = json!({ "expected": 2, "document": later }).to_string();
-    assert_eq!(control(&addr, "POST", "/control/edit", Some(&admin), &edit).0, 200);
+    let (_, later_draft) = control(&addr, "POST", "/control/edit", Some(&admin), &edit);
     std::fs::write(root.join("pipelines/filings.toml"), original.replace("every 1h", "every 3d")).unwrap();
     stdout(&run(root, &["pipeline", "apply", "filings-flow", "--project", "research"]));
-    let (status, refused) = control(&addr, "POST", "/control/apply", Some(&admin), "{\"expected\":2}");
+    let (status, refused) = control(&addr, "POST", "/control/apply", Some(&admin), &json!({ "expected": 2, "nonce": later_draft["nonce"] }).to_string());
     assert_eq!(status, 409, "{refused}");
     assert_eq!(refused["error"]["identifier"], "ManifestVersionConflict");
 }

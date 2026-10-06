@@ -307,22 +307,23 @@ fn validated_draft(document: &str, declaration: &Path, tasks: &Tasks) -> Result<
 }
 
 /// Store one validated, version-bound control draft without changing the applied pointer.
-pub(crate) fn edit(project: &ProjectArgs, declaration: Option<PathBuf>, expected: u64, document: &str, tasks: &Tasks) -> Result<Value> {
+pub(crate) fn edit(project: &ProjectArgs, declaration: Option<PathBuf>, expected: u64, document: &str, operator: &str, tasks: &Tasks) -> Result<Value> {
     let (located, _, control) = located(project, declaration)?;
     let snapshots = owner(&control)?;
     snapshots.initialized()?;
     let text = validated_draft(document, &located.declaration, tasks)?;
-    snapshots.save_draft(&Draft { expected, document: text })?;
-    Ok(json!({ "expected": expected }))
+    let draft = Draft::new(expected, text, operator.to_owned())?;
+    snapshots.save_draft(&draft)?;
+    Ok(json!({ "expected": expected, "nonce": draft.nonce }))
 }
 
 /// Revalidate the saved draft and claim it only at the version the editor read.
-pub(crate) fn apply_draft(project: &ProjectArgs, declaration: Option<PathBuf>, expected: u64, tasks: &Tasks) -> Result<()> {
+pub(crate) fn apply_draft(project: &ProjectArgs, declaration: Option<PathBuf>, expected: u64, nonce: &str, operator: &str, tasks: &Tasks) -> Result<()> {
     let (initial, _, control) = located(project, declaration.clone())?;
     let snapshots = owner(&control)?;
     snapshots.initialized()?;
     let draft = snapshots.read_draft()?;
-    if draft.expected != expected {
+    if draft.expected != expected || draft.nonce != nonce || draft.operator != operator {
         return Err(SurfaceError::ManifestVersionConflict(format!("the draft read v{} and apply named v{expected}", draft.expected)).into());
     }
     if validated_draft(&draft.document, &initial.declaration, tasks)? != draft.document {

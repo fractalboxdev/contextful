@@ -236,7 +236,7 @@ The configuration document, the records it presents read-only, the structured sc
   *because a value in the document reaches every daemon and replica that reads a snapshot*
 - `connector-upload` — An artifact uploaded through the operator surface raises `ConnectorUploadRefused`; the surface references registered connectors by id and version.
   *because publishing into the registry runs a separate signed path*
-- `store-draft` — An Admin edit validates a complete control document and saves one store-scoped draft bound to the applied version it read, leaving the applied pointer unchanged.
+- `store-draft` — An Admin edit validates a complete control document and saves one store-scoped draft bound to its applied version, verified operator and random nonce, leaving the applied pointer unchanged.
   *A-surface*
 
 ## apply
@@ -258,6 +258,8 @@ Validation, the immutable version claim, the pointer advance, the owner's storag
 - `guarded-import` — `contextful pipeline import` claims v1 from the declared pipelines while the snapshot directory holds no version; a second import claims nothing.
 - `draft-claim` — An Admin apply rechecks the configured store owner, validates its saved draft again, and claims that draft through the owner's version compare-and-swap.
   *A-surface*
+- `operator-attestation` — An Admin mutation lacking a fresh, single-use console signature over its verified operator, route and body raises `ControlOperatorAttestationInvalid` before changing the control document.
+  *because a shared store capability cannot identify the person who used the console*
 - `draft-absent` — An Admin apply finding no validated store draft raises `ControlDraftAbsent` and changes no applied version.
   *because an absent draft supplies no document for the version claim*
 

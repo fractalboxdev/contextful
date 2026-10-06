@@ -135,7 +135,7 @@ fn control_apply_rechecks_revocation_before_dispatch() {
     };
     let admitting = Admitting { checkpoint: &f.checkpoint, audience: AUD, revocation: &revocation };
     let dispatched = AtomicBool::new(false);
-    let handler = |_: &HttpRequest| {
+    let handler = |_: &HttpRequest, _: &contextful_policy::verify::AdmittedAuthority| {
         dispatched.store(true, Ordering::SeqCst);
         contextful_agent::http::HttpResponse::json(200, &json!({ "applied": 2 }))
     };

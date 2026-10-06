@@ -86,7 +86,8 @@ async function main(): Promise<void> {
   let adapters: Pick<ConsoleAdapters, "turn" | "control"> & { read?: ConsoleAdapters["read"] } = {
     ...unavailableAdapters(),
     turn: modulePath ? unavailableAdapters().turn : createLiveTurn({ stores: registry.entries, env: process.env }),
-    control: createLiveControl({ stores: registry.entries, capability: process.env.CONTEXTFUL_ADMIN_CAPABILITY }),
+    control: createLiveControl({ stores: registry.entries, capability: process.env.CONTEXTFUL_ADMIN_CAPABILITY,
+      attestationSecret: process.env.CONTEXTFUL_ADMIN_CAPABILITY ? required("CONTEXTFUL_CONTROL_ATTESTATION_SECRET") : undefined }),
   };
   if (modulePath) {
     const absolute = isAbsolute(modulePath) ? modulePath : resolve(modulePath);

@@ -19059,7 +19059,7 @@
       "operation": "edit",
       "subject": "store-draft",
       "kind": "behavior",
-      "statement": "An Admin edit validates a complete control document and saves one store-scoped draft bound to the applied version it read, leaving the applied pointer unchanged.",
+      "statement": "An Admin edit validates a complete control document and saves one store-scoped draft bound to its applied version, verified operator and random nonce, leaving the applied pointer unchanged.",
       "why": "A-surface",
       "file": "spec/70-control-plane.md",
       "line": 239
@@ -19153,6 +19153,17 @@
       "line": 259
     },
     {
+      "id": "surface.apply.operator-attestation",
+      "contract": "surface",
+      "operation": "apply",
+      "subject": "operator-attestation",
+      "kind": "refusal",
+      "statement": "An Admin mutation lacking a fresh, single-use console signature over its verified operator, route and body raises `ControlOperatorAttestationInvalid` before changing the control document.",
+      "why": "because a shared store capability cannot identify the person who used the console",
+      "file": "spec/70-control-plane.md",
+      "line": 261
+    },
+    {
       "id": "surface.apply.draft-absent",
       "contract": "surface",
       "operation": "apply",
@@ -19161,7 +19172,7 @@
       "statement": "An Admin apply finding no validated store draft raises `ControlDraftAbsent` and changes no applied version.",
       "why": "because an absent draft supplies no document for the version claim",
       "file": "spec/70-control-plane.md",
-      "line": 261
+      "line": 263
     },
     {
       "id": "surface.reside.region-entries",
@@ -19172,7 +19183,7 @@
       "statement": "A residency allow-set holds at most 16 entries.",
       "why": "",
       "file": "spec/70-control-plane.md",
-      "line": 298
+      "line": 300
     },
     {
       "id": "surface.reside.region-mismatch",
@@ -19183,7 +19194,7 @@
       "statement": "A configured resource resolving to a region the policy omits raises `EnforceRegionMismatch` at startup, and the runtime serves nothing.",
       "why": "P3",
       "file": "spec/70-control-plane.md",
-      "line": 299
+      "line": 301
     },
     {
       "id": "surface.reside.site-regions",
@@ -19194,7 +19205,7 @@
       "statement": "A push records the pushing site's residency allow-set in the bucket manifest; a push finding a differing set another site recorded, an absent one included, raises `ResidencySitesDiverge` and commits nothing.",
       "why": "A-surface",
       "file": "spec/70-control-plane.md",
-      "line": 301
+      "line": 303
     },
     {
       "id": "surface.open-console.page-routes",
@@ -28550,6 +28561,10 @@
           "ControlDraftAbsent": {
             "clause": "surface.apply.draft-absent",
             "gloss": "An Admin apply with no validated store draft."
+          },
+          "ControlOperatorAttestationInvalid": {
+            "clause": "surface.apply.operator-attestation",
+            "gloss": "An Admin mutation without a fresh single-use console signature for its verified operator and request."
           },
           "ControlPointerMalformed": {
             "clause": "surface.reconcile.pointer-malformed",

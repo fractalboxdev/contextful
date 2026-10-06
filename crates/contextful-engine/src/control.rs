@@ -21,6 +21,17 @@ const DRAFT_FILE: &str = "manifest@draft.json";
 pub struct Draft {
     pub expected: u64,
     pub document: String,
+    pub operator: String,
+    pub nonce: String,
+}
+
+impl Draft {
+    pub fn new(expected: u64, document: String, operator: String) -> Result<Self, ControlError> {
+        let mut nonce = [0u8; 24];
+        getrandom::fill(&mut nonce).map_err(|e| ControlError::Storage(e.to_string()))?;
+        let nonce = nonce.iter().map(|byte| format!("{byte:02x}")).collect();
+        Ok(Self { expected, document, operator, nonce })
+    }
 }
 
 /// A snapshot-directory refusal or a storage failure beneath it.
