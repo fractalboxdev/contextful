@@ -238,6 +238,7 @@ fn run_changes(l: &crate::project::Located, export: &Export, project: &ProjectAr
         let batch = &available[..count];
         let Some(last) = batch.last() else { break };
         let through = last.sequence;
+        ledger.offer(&export.name, through)?;
         let mut headers = vec![("Content-Type".to_string(), HeaderValue::Plain("application/json".to_string()))];
         for (header, template) in &export.headers {
             let value = resolver.render(template)?;

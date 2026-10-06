@@ -42,6 +42,8 @@ fn typed_export_replays_unacknowledged_events_and_commits_state_with_its_marker(
     let mut reopened = ExportLedger::open(&path).unwrap();
     assert_eq!(reopened.pending("copy", 2).unwrap(), events[..2]);
     assert!(reopened.acknowledge("copy", 9).is_err());
+    // A completion marker cannot pass changes outside the offered prefix.
+    assert!(reopened.acknowledge("copy", 2).is_err(), "the completion marker cannot skip unacknowledged changes");
     assert_eq!(reopened.position("copy").unwrap().ack_sequence, None);
     reopened.acknowledge("copy", 1).unwrap();
     assert_eq!(reopened.position("copy").unwrap().ack_sequence, Some(1));
@@ -52,6 +54,49 @@ fn typed_export_replays_unacknowledged_events_and_commits_state_with_its_marker(
     assert_eq!(reopened.state("copy").unwrap(), state);
     assert_eq!(reopened.position("copy").unwrap().source_publication.as_deref(), Some("publication-1"));
     assert!(reopened.pending("copy", 2).unwrap().is_empty());
+}
+
+#[test]
+fn typed_export_acknowledges_only_the_offered_name_after_restart() {
+    let dir = tempfile::tempdir().unwrap();
+    let path = dir.path().join(MACHINE_CATALOG_FILE);
+    let export = parse_exports("[[export]]\nname = \"copy\"\ntable = \"items\"\nendpoint = \"https://receiver.example.com/events\"\nformat = \"changes-v1\"\nkey = [\"id\"]\nschedule = \"every 30s\"\n").unwrap().remove(0);
+    let state = change_state(&export, &[json!({"id":"a","value":1})]).unwrap();
+    let events = change_events(&export, "publication-1", 0, &Default::default(), &state).unwrap();
+    let mut ledger = ExportLedger::open(&path).unwrap();
+    ledger.stage("copy", "publication-1", &events, &state).unwrap();
+    ledger.stage("other", "publication-1", &events, &state).unwrap();
+    assert_eq!(ledger.pending("copy", 2).unwrap(), events);
+    // Offers are scoped to one export name.
+    assert!(ledger.acknowledge("other", 1).is_err());
+    drop(ledger);
+
+    let mut reopened = ExportLedger::open(&path).unwrap();
+    // The durable outbox must be offered again after restart.
+    assert!(reopened.acknowledge("copy", 1).is_err());
+    assert_eq!(reopened.position("copy").unwrap().ack_sequence, None);
+    assert_eq!(reopened.pending("copy", 2).unwrap(), events);
+    reopened.acknowledge("copy", 1).unwrap();
+    assert_eq!(reopened.position("copy").unwrap().ack_sequence, Some(1));
+    assert!(reopened.acknowledge("copy", 1).is_err());
+    assert_eq!(reopened.position("other").unwrap().ack_sequence, None);
+}
+
+#[test]
+fn typed_export_acknowledgement_stops_at_the_narrowed_offer() {
+    let dir = tempfile::tempdir().unwrap();
+    let path = dir.path().join(MACHINE_CATALOG_FILE);
+    let export = parse_exports("[[export]]\nname = \"copy\"\ntable = \"items\"\nendpoint = \"https://receiver.example.com/events\"\nformat = \"changes-v1\"\nkey = [\"id\"]\nschedule = \"every 30s\"\n").unwrap().remove(0);
+    let state = change_state(&export, &[json!({"id":"a","value":"x".repeat(40000)}), json!({"id":"b","value":"y".repeat(40000)})]).unwrap();
+    let events = change_events(&export, "publication-1", 0, &Default::default(), &state).unwrap();
+    let mut ledger = ExportLedger::open(&path).unwrap();
+    ledger.stage("copy", "publication-1", &events, &state).unwrap();
+    // The outbound byte bound narrows the offered row-count batch.
+    assert_eq!(ledger.pending("copy", 3).unwrap().len(), 3);
+    ledger.offer("copy", 0).unwrap();
+    assert!(ledger.acknowledge("copy", 1).is_err());
+    ledger.acknowledge("copy", 0).unwrap();
+    assert_eq!(ledger.pending("copy", 3).unwrap().len(), 2);
 }
 
 #[test]

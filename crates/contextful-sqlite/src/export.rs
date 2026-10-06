@@ -4,6 +4,7 @@ use crate::{connect, storage};
 use contextful_core::export::{ChangeEvent, ChangeState};
 use contextful_core::run::Failure;
 use rusqlite::{params, Connection, OptionalExtension, TransactionBehavior};
+use std::collections::BTreeMap;
 use std::path::{Path, PathBuf};
 
 const SCHEMA: &str = "
@@ -46,13 +47,14 @@ pub struct ExportPosition {
 pub struct ExportLedger {
     path: PathBuf,
     conn: Connection,
+    offered: BTreeMap<String, (u64, u64)>,
 }
 
 impl ExportLedger {
     pub fn open(path: &Path) -> Result<Self, Failure> {
         let conn = connect(path)?;
         conn.execute_batch(SCHEMA).map_err(|e| storage(path, e))?;
-        Ok(Self { path: path.to_path_buf(), conn })
+        Ok(Self { path: path.to_path_buf(), conn, offered: BTreeMap::new() })
     }
 
     pub fn position(&self, name: &str) -> Result<ExportPosition, Failure> {
@@ -118,10 +120,14 @@ impl ExportLedger {
             .ok_or_else(|| storage(path, "event sequence exceeds machine cursor range"))?;
         tx.execute("UPDATE typed_export SET pending_publication = ?2, next_sequence = ?3 WHERE name = ?1", params![name, publication, next_sequence]).map_err(|e| storage(path, e))?;
         tx.commit().map_err(|e| storage(path, e))?;
+        self.offered.remove(name);
         Ok(true)
     }
 
-    pub fn pending(&self, name: &str, limit: usize) -> Result<Vec<ChangeEvent>, Failure> {
+    /// Return a consecutive prefix and remember its frontier for this process. A restart
+    /// must read the outbox again before acknowledging a delivery.
+    pub fn pending(&mut self, name: &str, limit: usize) -> Result<Vec<ChangeEvent>, Failure> {
+        self.offered.remove(name);
         let mut stmt = self.conn.prepare(
             "SELECT body FROM typed_export_event WHERE name = ?1 AND sequence > COALESCE((SELECT ack_sequence FROM typed_export WHERE name = ?1), -1) ORDER BY sequence LIMIT ?2"
         ).map_err(|e| storage(&self.path, e))?;
@@ -134,13 +140,34 @@ impl ExportLedger {
         if events.iter().enumerate().any(|(i, e)| expected.checked_add(i as u64) != Some(e.sequence)) {
             return Err(storage(&self.path, format!("export `{name}` has a gap in its pending events")));
         }
+        if let (Some(first), Some(last)) = (events.first(), events.last()) {
+            self.offered.insert(name.to_owned(), (first.sequence, last.sequence));
+        }
         Ok(events)
+    }
+
+    /// Narrow an offered row-count batch to the byte-bounded prefix actually sent.
+    pub fn offer(&mut self, name: &str, through: u64) -> Result<(), Failure> {
+        let Some((first, last)) = self.offered.get_mut(name) else {
+            return Err(storage(&self.path, format!("export `{name}` has no offered batch")));
+        };
+        if through < *first || through > *last {
+            return Err(storage(&self.path, format!("export `{name}` cannot offer an event outside its pending batch")));
+        }
+        *last = through;
+        Ok(())
     }
 
     /// Advance only over the exact prefix a consumer acknowledged. The staged state
     /// becomes current in the same transaction that acknowledges its marker.
     pub fn acknowledge(&mut self, name: &str, through: u64) -> Result<(), Failure> {
         let path = &self.path;
+        let Some(&(offered_first, offered_last)) = self.offered.get(name) else {
+            return Err(storage(path, format!("export `{name}` has no offered batch")));
+        };
+        if through != offered_last {
+            return Err(storage(path, format!("export `{name}` acknowledgement is not the offered frontier")));
+        }
         let through = i64::try_from(through).map_err(|e| storage(path, e))?;
         let tx = self.conn.transaction_with_behavior(TransactionBehavior::Immediate).map_err(|e| storage(path, e))?;
         let (ack, pending): (i64, Option<String>) = tx.query_row("SELECT ack_sequence, pending_publication FROM typed_export WHERE name = ?1", [name], |r| Ok((r.get(0)?, r.get(1)?)))
@@ -148,8 +175,12 @@ impl ExportLedger {
         let Some(publication) = pending else { return Err(storage(path, "no pending publication to acknowledge")) };
         let first: Option<i64> = tx.query_row("SELECT MIN(sequence) FROM typed_export_event WHERE name = ?1 AND sequence > ?2", params![name, ack], |r| r.get(0)).map_err(|e| storage(path, e))?;
         let Some(first) = first else { return Err(storage(path, "no pending events to acknowledge")) };
-        if through < first || through - first >= contextful_core::export::EXPORT_BATCH_ROWS as i64 {
+        if first != ack + 1 || u64::try_from(first).ok() != Some(offered_first) || through < first || through - first >= contextful_core::export::EXPORT_BATCH_ROWS as i64 {
             return Err(storage(path, "acknowledgement is outside the next batch"));
+        }
+        let count: i64 = tx.query_row("SELECT COUNT(*) FROM typed_export_event WHERE name = ?1 AND sequence BETWEEN ?2 AND ?3", params![name, first, through], |r| r.get(0)).map_err(|e| storage(path, e))?;
+        if count != through - first + 1 {
+            return Err(storage(path, "acknowledgement skips an event"));
         }
         let body: Option<String> = tx.query_row("SELECT body FROM typed_export_event WHERE name = ?1 AND sequence = ?2", params![name, through], |r| r.get(0)).optional().map_err(|e| storage(path, e))?;
         let Some(body) = body else { return Err(storage(path, "acknowledgement skips an event")) };
@@ -163,6 +194,7 @@ impl ExportLedger {
             tx.execute("UPDATE typed_export SET source_publication = ?2, pending_publication = NULL WHERE name = ?1", params![name, publication]).map_err(|e| storage(path, e))?;
         }
         tx.commit().map_err(|e| storage(path, e))?;
+        self.offered.remove(name);
         Ok(())
     }
 }

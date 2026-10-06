@@ -164,7 +164,7 @@ fn typed_export_delivers_versioned_changes_and_retries_from_machine_cursor() {
     let refused = err(&export(p, &public, &token, &[]));
     assert!(refused.contains("ExportDeliveryRefused") && refused.contains("503"), "{refused}");
     let failed = typed_events(&collector.received()[1]);
-    let pending = contextful_sqlite::ExportLedger::open(&machine).unwrap();
+    let mut pending = contextful_sqlite::ExportLedger::open(&machine).unwrap();
     assert_eq!(pending.position("spans-mirror").unwrap().ack_sequence, Some(2));
     assert_eq!(pending.pending("spans-mirror", 500).unwrap().len(), failed.len());
     drop(pending);
