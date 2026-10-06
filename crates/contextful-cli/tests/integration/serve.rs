@@ -120,6 +120,12 @@ fn served_exchange_without_policy_returns_the_unconfigured_refusal() {
     assert_eq!(head.split(' ').nth(1), Some("404"));
     let answer: Value = serde_json::from_str(data).unwrap();
     assert_eq!(answer["error"]["identifier"], "ExchangeUnconfigured");
+    let mut stream = TcpStream::connect(&addr).unwrap();
+    stream.set_read_timeout(Some(std::time::Duration::from_secs(2))).unwrap();
+    write!(stream, "POST /auth/exchange HTTP/1.1\r\nContent-Type: application/json\r\nContent-Length: 100\r\n\r\n").unwrap();
+    let mut raw = String::new();
+    stream.read_to_string(&mut raw).expect("unconfigured exchange answers before waiting for its body");
+    assert!(raw.starts_with("HTTP/1.1 404"), "{raw}");
 }
 
 #[test]
