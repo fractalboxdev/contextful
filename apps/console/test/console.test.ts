@@ -243,6 +243,42 @@ test("the Node HTTP listener rejects an oversized body before dispatch", async (
   } finally { server.close(); }
 });
 
+test("Query counts UTF-8 bytes without Content-Length before parsing", async () => {
+  const { request, calls } = fixture();
+  const body = JSON.stringify({ store: "field-notes", question: "é".repeat(524_289) });
+  const response = await request("/query/api/ask", { ...access(queryAudience), origin: "https://console.example" }, { method: "POST", body });
+  assert.equal(response.status, 413);
+  assert.equal((await response.json() as { error: { identifier: string } }).error.identifier, "ConsoleBodyTooLarge");
+  assert.deepEqual(calls, []);
+});
+
+test("Query stops reading a chunked body when its byte cap is crossed", async () => {
+  const { request, calls } = fixture();
+  let pulls = 0;
+  const stream = new ReadableStream<Uint8Array>({
+    pull(controller) {
+      pulls++;
+      controller.enqueue(Buffer.alloc(524_289, 120));
+      if (pulls === 4) controller.close();
+    },
+  }, { highWaterMark: 0 });
+  const response = await request("/query/api/ask", { ...access(queryAudience), origin: "https://console.example" },
+    { method: "POST", body: stream, duplex: "half" } as RequestInit);
+  assert.equal(response.status, 413);
+  assert.ok(pulls < 4, `read ${pulls} chunks past the cap`);
+  assert.deepEqual(calls, []);
+});
+
+test("Admin rejects an unknown store before workflow and record adapters", async () => {
+  const { request, calls } = fixture();
+  for (const path of ["/admin/api/workflows", "/admin/api/record"]) {
+    const response = await request(`${path}?store=missing`, access(adminAudience));
+    assert.equal(response.status, 400);
+    assert.equal((await response.json() as { error: { identifier: string } }).error.identifier, "ConsoleRequestMalformed");
+  }
+  assert.deepEqual(calls, []);
+});
+
 test("Admin pack listing reaches only the injected listing adapter", async () => {
   const calls: string[] = [];
   const app = createConsole({
