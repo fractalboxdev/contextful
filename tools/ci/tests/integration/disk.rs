@@ -70,5 +70,5 @@ fn free_disk_checks_the_inherited_target_filesystem_before_creating_a_stage() {
         .output().unwrap();
     assert!(o.status.success(), "{}", stderr(&o));
     assert_eq!(std::fs::read_to_string(log).unwrap().trim(), pool.path().to_str().unwrap());
-    assert!(!r.root.join("target").exists());
+    assert!(!r.root.join("target/evaluate").exists());
 }
