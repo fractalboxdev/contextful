@@ -6,16 +6,16 @@ An unpinned clause is `committed`; a pinned one is `performed` when its test res
 | Contract | Files | Operations | Clauses | Refusals | Limits | Unsettled | Performed | Broken | Floor |
 | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
 | `assurance` | 2 | 15 | 227 | 59 | 22 | 12 | 135 | 0 | 135 |
-| `authority` | 2 | 16 | 268 | 77 | 27 | 10 | 204 | 0 | 204 |
-| `connector` | 2 | 14 | 349 | 89 | 21 | 15 | 218 | 0 | 207 |
+| `authority` | 2 | 16 | 268 | 77 | 27 | 10 | 205 | 0 | 205 |
+| `connector` | 2 | 14 | 349 | 89 | 21 | 15 | 218 | 0 | 218 |
 | `corpus` | 1 | 10 | 77 | 37 | 7 | 0 | 38 | 0 | 38 |
 | `disclosure` | 3 | 16 | 122 | 64 | 13 | 7 | 54 | 0 | 54 |
 | `read` | 2 | 15 | 179 | 29 | 22 | 21 | 163 | 0 | 163 |
 | `run` | 3 | 26 | 373 | 98 | 36 | 37 | 261 | 0 | 261 |
 | `store` | 1 | 17 | 237 | 55 | 13 | 20 | 200 | 0 | 200 |
-| `surface` | 2 | 20 | 106 | 50 | 22 | 0 | 51 | 0 | 51 |
+| `surface` | 2 | 20 | 106 | 50 | 22 | 0 | 52 | 0 | 52 |
 | `topology` | 1 | 6 | 70 | 24 | 5 | 5 | 38 | 0 | 38 |
-| **total** | 19 | 155 | 2008 | 582 | 188 | 127 | 1362 | 0 | |
+| **total** | 19 | 155 | 2008 | 582 | 188 | 127 | 1364 | 0 | |
 
 Decision records: 18.
 
@@ -26,7 +26,7 @@ A milestone reads `closed` when its acceptance test computes `passing` and every
 | Milestone | Operations | Clauses | Performed | Acceptance | Closed |
 | --- | --- | --- | --- | --- | --- |
 | 0 — The test-first gate | 2 | 18 | 6 | passing | open |
-| 1 — The authority core | 14 | 237 | 184 | passing | closed |
+| 1 — The authority core | 14 | 237 | 185 | passing | closed |
 | 2 — The store | 9 | 164 | 132 | passing | closed |
 | 3 — The run path | 11 | 207 | 144 | passing | closed |
 | 4 — Ingest | 25 | 496 | 313 | passing | open |
@@ -37,7 +37,7 @@ A milestone reads `closed` when its acceptance test computes `passing` and every
 | 9 — Visibility | 6 | 41 | 3 | open | open |
 | 10 — Cadence and the operator plane | 11 | 68 | 56 | passing | open |
 | 11 — The derive tier | 7 | 78 | 55 | passing | open |
-| 12 — The operator console | 12 | 49 | 0 | open | open |
+| 12 — The operator console | 12 | 49 | 1 | open | open |
 | 13 — Disclosure | 5 | 21 | 4 | open | open |
 | 14 — Assurance | 7 | 130 | 83 | passing | closed |
 
@@ -324,6 +324,7 @@ Unscheduled operations: 10.
 | `authority.profile.delegation-profile` | `crates/contextful-policy/tests/integration/profile.rs::a_credential_is_one_library_chain_whose_every_block_the_profile_reads` | performed |
 | `authority.profile.evaluator-bound` | `crates/contextful-policy/tests/integration/profile.rs::the_evaluator_admits_no_third_party_block_rule_or_regex_and_refuses_input_past_its_ceiling` | performed |
 | `authority.profile.fact-ceiling` | `crates/contextful-policy/tests/integration/profile.rs::one_authorization_holds_at_most_1000_facts` | performed |
+| `authority.profile.owner-claim` | `crates/contextful-policy/tests/integration/profile.rs::a_signed_owner_claim_uses_profile_two_and_cannot_be_promoted_from_profile_one_or_a_child` | performed |
 | `authority.profile.reserved-fact` | `crates/contextful-policy/tests/integration/profile.rs::a_token_block_introducing_a_reserved_fact_is_refused` | performed |
 | `authority.profile.scoped-session` | `crates/contextful-policy/tests/integration/profile.rs::a_statement_over_two_tables_needs_one_grant_covering_both` | performed |
 | `authority.profile.unevaluated-restriction` | `crates/contextful-policy/tests/integration/profile.rs::a_restriction_with_no_read_evaluator_is_refused_at_mint_derivation_and_admission` | performed |
@@ -1362,6 +1363,7 @@ Unscheduled operations: 10.
 | `surface.fire.store-driven-body` | `crates/contextful-core/tests/integration/job.rs::a_store_driven_block_naming_an_unregistered_body_raises_job_body_unregistered` | performed |
 | `surface.fire.store-driven-concurrency` | `crates/contextful-core/tests/integration/job.rs::a_store_driven_block_without_a_positive_max_in_flight_raises_job_concurrency_unset` | performed |
 | `surface.fire.target-unbound` | `crates/contextful-cli/tests/integration/job.rs::a_job_target_naming_nothing_produced_is_refused_at_validation` | performed |
+| `surface.package.owner-flag` | `crates/contextful-cli/tests/integration/mcp.rs::explicit_owner_requires_a_signed_credential_for_the_selected_store` | performed |
 | `surface.reconcile.fail-static` | `crates/contextful-cli/tests/integration/pipeline.rs::an_unreadable_snapshot_leaves_the_armed_set_running` | performed |
 | `surface.reconcile.learns-by-reading` | `crates/contextful-cli/tests/integration/pipeline.rs::a_wake_reads_the_applied_version_from_the_control_source` | performed |
 | `surface.reconcile.loopback-only` | `crates/contextful-cli/tests/integration/pipeline.rs::a_control_url_outside_loopback_arms_nothing` | performed |

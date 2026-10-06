@@ -8,6 +8,8 @@ use contextful_policy::attenuate::{attenuate, Derivation};
 use contextful_policy::issue::{mint, MintClaims};
 use contextful_policy::profile::{authority_facts, ENGINE_FACTS, EVALUATOR_FACT_CEILING, OWNER_PROFILE_VERSION, PROFILE_VERSION, SUPPORTED_PROFILE_VERSIONS};
 
+/// Profile 2 permits a signed owner store identity only in the root authority block; profile 1 and attenuation blocks reject it, and activation requires an unrestricted read grant over the selected store.
+// spec: authority.profile.owner-claim@0b9f49b2
 #[test]
 fn a_signed_owner_claim_uses_profile_two_and_cannot_be_promoted_from_profile_one_or_a_child() {
     let signer = issuer();

@@ -114,6 +114,8 @@ fn a_server_with_no_credential_raises_stdio_credential_missing() {
     }
 }
 
+/// A process `--owner` admits the local owner context only with a verified signed claim bound to the selected store and an unrestricted read grant; any other credential raises `OwnerCredentialInvalid` before protocol framing.
+// spec: surface.package.owner-flag@2d754480
 #[test]
 fn explicit_owner_requires_a_signed_credential_for_the_selected_store() {
     let (dir, public, ordinary) = project();
