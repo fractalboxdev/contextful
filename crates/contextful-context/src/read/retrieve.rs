@@ -39,8 +39,13 @@ const PUBLICATION_COLUMNS: [&str; 6] = ["published_at", "publication_date", "pub
 
 /// Reserved columns every ranked row projects, null where its table lacks them
 /// (`read.retrieve.reserved-columns-project-null`).
-const RESERVED_PROJECTED: [(&str, &str); 4] =
-    [("_modality", "_modality"), ("_lang", "_lang"), ("_prompt_hash", "_prompt_hash"), ("_kind", "kind")];
+const RESERVED_PROJECTED: [(&str, &str); 5] = [
+    ("_modality", "_modality"),
+    ("_lang", "_lang"),
+    ("_provenance", "_provenance"),
+    ("_prompt_hash", "_prompt_hash"),
+    ("_kind", "kind"),
+];
 
 /// The column carrying a row's stored vector.
 const EMBEDDING_COLUMN: &str = "embedding";

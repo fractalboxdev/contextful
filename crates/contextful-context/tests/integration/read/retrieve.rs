@@ -73,8 +73,34 @@ fn reserved_columns_project_null_for_a_table_lacking_them() {
     let s = r.session(&["research/notes"], Some(("research/notes", "acme")), None);
     let ranked = r.face.retrieve(&s, &ask("research/", "solar battery storage"), Bounds::default()).unwrap();
     assert_eq!(ranked.rows.len(), 2);
-    for c in ["_modality", "_lang", "_prompt_hash", "_kind"] {
+    for c in ["_modality", "_lang", "_provenance", "_prompt_hash", "_kind"] {
         assert!(column(&ranked, c).iter().all(|v| v.is_null()), "{c}");
+    }
+}
+
+/// A producer sets any of `_modality`, `_lang`, `_provenance` and `_prompt_hash`, and each surfaces in the provenance envelope where present.
+// spec: store.reserve.optional@acdb41f5
+#[test]
+fn optional_provenance_columns_surface_in_ranked_rows() {
+    let r = Reads::new();
+    let hash = format!("sha256:{}", "0".repeat(64));
+    let provenance = r#"[{"table":"research/notes","key":{"note_id":"n1"}}]"#;
+    land_rows(
+        &r.store,
+        "research/notes",
+        "run-0002",
+        json!([{"note_id": "n5", "tenant": "acme", "title": "Provenance specimen", "_modality": "text", "_lang": "en-GB", "_provenance": provenance, "_prompt_hash": hash}]),
+    );
+    let s = r.session(&["research/notes"], Some(("research/notes", "acme")), None);
+    let ranked = r.face.retrieve(&s, &ask("research/notes", "specimen"), Bounds::default()).unwrap();
+    assert_eq!(ids(&ranked, "note_id"), ["n5"]);
+    for (name, expected) in [
+        ("_modality", json!("text")),
+        ("_lang", json!("en-GB")),
+        ("_provenance", json!(provenance)),
+        ("_prompt_hash", json!(hash)),
+    ] {
+        assert_eq!(column(&ranked, name), [expected], "{name}");
     }
 }
 
