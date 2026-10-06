@@ -63,6 +63,8 @@ fn a_grant_budget_wins_over_request_and_table_budgets() {
     let err = r.face.query(&s, &expensive_statement(), ReadOptions { max_duration_ms: Some(200), ..ReadOptions::default() }).unwrap_err();
     let message = err.to_string();
     assert!(message.contains("ReadDurationExceeded") && message.contains("25") && message.contains("grant"), "{message}");
+    let byte_manifest = MANIFEST.replace("max_rows = 3", "max_rows = 3\nmax_response_bytes = 8192");
+    let r = Reads::with_manifest(&byte_manifest);
     let sql = "SELECT repeat(title, 20) FROM \"research/notes\" ORDER BY note_id";
     let unbounded = r.session(&["research/notes"], None, None);
     let mut one = r.query(&unbounded, sql).unwrap();
