@@ -121,6 +121,9 @@ enum Cmd {
     Allowlist,
     /// Build each profile for a release target and package its archive, checksum and SBOM.
     Release {
+        /// Cargo build backend; zigbuild cross-compiles release targets with Zig.
+        #[arg(long, value_enum, default_value_t = release::Builder::Cargo)]
+        builder: release::Builder,
         /// A profile to build; repeatable. Defaults to every profile shipping for the target.
         #[arg(long = "profile")]
         profiles: Vec<String>,
@@ -149,6 +152,9 @@ enum Cmd {
         /// The directory `contextful-ci release` packaged every target into.
         #[arg(long, default_value = "dist")]
         dist: PathBuf,
+        /// JSON array of every release cell's metadata; archives need not be local.
+        #[arg(long)]
+        manifest: Option<PathBuf>,
         /// The URL the archives download from.
         #[arg(long)]
         base_url: String,
@@ -240,15 +246,15 @@ fn main() {
         }),
         Cmd::Deny => repo_root().and_then(|root| deny::check(&root)),
         Cmd::Allowlist => repo_root().and_then(|root| allowlist::check(&root)),
-        Cmd::Release { profiles, targets, target_dir, out, plan } => repo_root().and_then(|root| {
+        Cmd::Release { builder, profiles, targets, target_dir, out, plan } => repo_root().and_then(|root| {
             if plan {
                 return release::plan(&profiles, &targets);
             }
-            release::release(&root, &profiles, &targets, &root.join(target_dir), &out)
+            release::release(&root, builder, &profiles, &targets, &root.join(target_dir), &out)
         }),
         Cmd::WasiProbe { target_dir } => repo_root().and_then(|root| release::wasi_probe(&root, &root.join(target_dir))),
-        Cmd::Formula { dist, base_url } => repo_root().and_then(|root| {
-            release::formulae(&root, &dist, &base_url).map(|written| written.iter().for_each(|p| println!("formula: {}", p.display())))
+        Cmd::Formula { dist, manifest, base_url } => repo_root().and_then(|root| {
+            release::formulae(&root, &dist, manifest.as_deref(), &base_url).map(|written| written.iter().for_each(|p| println!("formula: {}", p.display())))
         }),
         Cmd::Tag { branch, base } => tag::tag(&branch, &base),
         Cmd::Deploy { cmd: DeployCmd::Probe { dir, resolve } } => repo_root().and_then(|root| probe::run(&root.join(dir), &resolve)),
