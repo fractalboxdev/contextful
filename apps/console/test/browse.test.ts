@@ -28,11 +28,11 @@ function fixture() {
   return { browse: createBrowse(transport), calls };
 }
 
-test("browse advertises admitted tables as humanized chips and governed insights", async () => {
+// spec: surface.browse.discovered-chips@def23028
+test("browse advertises admitted tables as humanized chips", async () => {
   const { browse, calls } = fixture();
   const result = await browse.discover({ asOf: "2030-01-01T00:00:00Z" });
   assert.deepEqual(result.chips, [{ table: "research/vendor_filings", label: "Vendor Filings", description: "Filed reports" }]);
-  assert.deepEqual(result.insights, [{ table: "research/vendor_filings", label: "Vendor Filings", rows: 3 }]);
   assert.deepEqual(result.files, [{ table: "research/vendor_filings", path: "research/vendor_filings/runs/run-1/report.parquet", label: "Report" }]);
   assert.equal(calls[0].tool, "context.describe");
   assert.equal(calls[0].arguments.as_of, "2030-01-01T00:00:00Z");
@@ -40,6 +40,14 @@ test("browse advertises admitted tables as humanized chips and governed insights
   assert(!calls.some((call) => call.arguments.table === "research/private_payroll"));
 });
 
+// spec: surface.browse.insights-panel@b1d70f29
+test("insights show governed table row counts", async () => {
+  const { browse } = fixture();
+  const result = await browse.discover({});
+  assert.deepEqual(result.insights, [{ table: "research/vendor_filings", label: "Vendor Filings", rows: 3 }]);
+});
+
+// spec: surface.browse.gallery-path-unlisted@d8eb9504
 test("a gallery preview refuses paths absent from the governed listing", async () => {
   const { browse, calls } = fixture();
   await assert.rejects(browse.preview({ path: "research/vendor_filings/runs/run-1/other.parquet" }),
@@ -47,6 +55,7 @@ test("a gallery preview refuses paths absent from the governed listing", async (
   assert(!calls.some((call) => call.tool === "context.file"));
 });
 
+// spec: surface.browse.file-gallery@4cfe68e1
 test("a gallery preview uses context.file with the listing's snapshot bound", async () => {
   const { browse, calls } = fixture();
   const preview = await browse.preview({ path: "research/vendor_filings/runs/run-1/report.parquet", asOf: "2030-01-01T00:00:00Z" });
