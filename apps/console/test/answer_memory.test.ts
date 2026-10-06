@@ -35,8 +35,8 @@ test("verified reading session lands evidence-backed claims and recalls them bef
         assert.equal(message.params.name, "context.query");
         const sql = String(message.params.arguments.sql);
         result = sql.includes("DISTINCT subject") ? { columns: ["subject"], rows: [["Northwind"]] } : {
-          columns: ["filing_id", "title", "summary", "_run_id", "_row_seq"],
-          rows: [["filing-1", "Northwind filing", "Northwind filings need review", "run-1", 0]],
+          columns: ["_run_id", "_row_seq", "filing_id", "title", "summary"],
+          rows: [["run-1", 0, "filing-1", "Northwind filing", "Northwind filings need review"]],
         };
       }
       return Response.json({ jsonrpc: "2.0", id: message.id, result: { structuredContent: result } });
@@ -52,7 +52,8 @@ test("verified reading session lands evidence-backed claims and recalls them bef
   };
   const options = { stores: [store], env: { CONTEXTFUL_MODEL_ENDPOINT: "https://model.example/v1", CONTEXTFUL_MODEL_ID: "fixture" }, fetcher };
   const operator = { subject: "alice", session: "reading-1", grants: new Set(["query" as const]), assertion: "verified-assertion" };
-  await createLiveAnswer(options).turn({ operator, store: store.id, question: "Which Northwind filing arrived?" });
+  const first = await createLiveAnswer(options).turn({ operator, store: store.id, question: "Which Northwind filing arrived?" });
+  assert.match(first.answer, /\[source-1\]/);
   assert.equal(writes.length, 1);
   assert.equal(writes[0].authorization, "Bearer reader-writer-alice");
   assert.equal(writes[0].body.actor, "alice");
