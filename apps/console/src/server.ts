@@ -26,8 +26,9 @@ export function serveConsole(adapters: ConsoleAdapters, origin: string): Server 
   return createServer(async (message, reply) => {
     try {
       await send(reply, await app.fetch(await receive(message, origin)));
-    } catch {
-      await send(reply, Response.json({ error: { identifier: "ConsoleServerFailure" } }, { status: 500 }));
+    } catch (error) {
+      const unavailable = error instanceof Error && error.message === "ConsoleAdapterUnavailable";
+      await send(reply, Response.json({ error: { identifier: unavailable ? "ConsoleAdapterUnavailable" : "ConsoleServerFailure" } }, { status: unavailable ? 503 : 500 }));
     }
   });
 }
