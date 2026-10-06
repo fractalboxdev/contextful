@@ -120,7 +120,7 @@ fn explicit_owner_requires_a_signed_credential_for_the_selected_store() {
     let root = dir.path();
     let owner = stdout(&run(root, &[
         "token", "mint", "--issuer-key", ".contextful/issuer.seed", "--on-behalf-of", "user://dana@acme.example",
-        "--zone", "on-prem:hq", "--action", "read", "--table", "*", "--ttl", "600", "--owner-project", "research",
+        "--zone", "on-prem:hq", "--action", "read", "--table", "*", "--ttl", "600", "--owner",
     ]));
     let args = ["mcp", "--owner", "--project", "research", "--public-key", &public, "--audience", AUD];
     let read = [json!({ "jsonrpc": "2.0", "id": 1, "method": "tools/call", "params": { "name": "context.query", "arguments": { "sql": "SELECT note_id FROM \"research/notes\"" } } })];
