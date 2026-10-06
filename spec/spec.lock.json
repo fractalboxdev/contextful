@@ -14121,21 +14121,35 @@
       "operation": "record",
       "subject": "operator-record",
       "kind": "behavior",
-      "statement": "An operator record is the encrypted entry for one logical name plus a plaintext comment naming its grants in the provider's vocabulary, its account or tenancy, creation date, expiry or `no expiry`, and rotation location.",
-      "why": "",
+      "statement": "An optional operator record describes one logical name's intended grants, account or tenancy, consuming surfaces and rotation location; supplied creation and expiry assertions remain operator metadata.",
+      "why": "A-connector",
       "file": "spec/41-secrets.md",
       "line": 267
     },
     {
-      "id": "connector.record.committed-entry",
+      "id": "connector.record.metadata-storage",
       "contract": "connector",
       "operation": "record",
-      "subject": "committed-entry",
+      "subject": "metadata-storage",
       "kind": "behavior",
-      "statement": "The entry file is committed, holds no fragment of any value in plaintext, and its decryption keys live outside the tree.",
-      "why": "",
+      "statement": "A committed operator record contains descriptive metadata only; neither a credential value nor a decryption key is required to record a binding.",
+      "why": "A-connector",
       "file": "spec/41-secrets.md",
-      "line": 268
+      "line": 269
+    },
+    {
+      "id": "connector.record.provider-custody",
+      "contract": "connector",
+      "operation": "record",
+      "subject": "provider-custody",
+      "kind": "behavior",
+      "statement": "The selected provider owns credential values, versions and rotation state; an external-manager binding requires no ciphertext copy in the repository.",
+      "why": "A-connector",
+      "file": "spec/41-secrets.md",
+      "line": 271,
+      "scenarios": [
+        "WHEN a binding selects an external manager with no encrypted repository entry, THEN the manager remains the sole owner of its value and versions."
+      ]
     },
     {
       "id": "connector.record.surface-of-consumption",
@@ -14143,32 +14157,24 @@
       "operation": "record",
       "subject": "surface-of-consumption",
       "kind": "behavior",
-      "statement": "An entry names each deployed surface consuming the credential and the secret name the value takes there.",
+      "statement": "An operator record identifies each documented consuming surface and its credential binding name.",
       "why": "",
       "file": "spec/41-secrets.md",
-      "line": 269
+      "line": 273
     },
     {
-      "id": "connector.record.platform-only-credential",
+      "id": "connector.record.optional-record",
       "contract": "connector",
       "operation": "record",
-      "subject": "platform-only-credential",
+      "subject": "optional-record",
       "kind": "behavior",
-      "statement": "A credential existing only as a deployed platform secret holds no value in the tree, and its record lands in the change setting or rotating it.",
+      "statement": "A binding without an operator record remains resolvable and appears in inventory with unknown descriptive fields.",
       "why": "",
       "file": "spec/41-secrets.md",
-      "line": 270
-    },
-    {
-      "id": "connector.record.undocumented-entry",
-      "contract": "connector",
-      "operation": "record",
-      "subject": "undocumented-entry",
-      "kind": "refusal",
-      "statement": "An entry holding a value with no record above it raises `SecretUndocumentedEntry`, naming the logical name and the file.",
-      "why": "A-connector",
-      "file": "spec/41-secrets.md",
-      "line": 271
+      "line": 274,
+      "scenarios": [
+        "WHEN a configured binding has no operator record, THEN inventory includes the binding with unknown descriptive fields."
+      ]
     },
     {
       "id": "connector.record.unverified-scope-is-marked",
@@ -14179,18 +14185,21 @@
       "statement": "Grants an operator has not established are recorded as unknown.",
       "why": "",
       "file": "spec/41-secrets.md",
-      "line": 273
+      "line": 275
     },
     {
-      "id": "connector.record.rotation-updates-the-record",
+      "id": "connector.record.rotation-record",
       "contract": "connector",
       "operation": "record",
-      "subject": "rotation-updates-the-record",
+      "subject": "rotation-record",
       "kind": "behavior",
-      "statement": "A rotation rewrites the creation date and expiry in the commit landing the new ciphertext.",
-      "why": "",
+      "statement": "A rotation follows {{connector.rotate.turnover-preserves-the-name}} without requiring a repository commit; operator metadata changes only when its assertions change.",
+      "why": "A-connector",
       "file": "spec/41-secrets.md",
-      "line": 274
+      "line": 276,
+      "scenarios": [
+        "WHEN a manager rotates a credential, THEN no repository commit is required."
+      ]
     },
     {
       "id": "connector.record.inventory",
@@ -14198,10 +14207,52 @@
       "operation": "record",
       "subject": "inventory",
       "kind": "behavior",
-      "statement": "`contextful secrets list` prints, per logical name, the answering adapter, the covered scope, the expiry and the days remaining, reading records and no value.",
+      "statement": "`contextful secrets list` enumerates configured logical bindings and displays their configured adapters, operator metadata and available provider observations; it reads no credential values and claims no complete inventory of a provider's secrets.",
       "why": "",
       "file": "spec/41-secrets.md",
-      "line": 275
+      "line": 278
+    },
+    {
+      "id": "connector.record.observation-provenance",
+      "contract": "connector",
+      "operation": "record",
+      "subject": "observation-provenance",
+      "kind": "behavior",
+      "statement": "Each provider-observed field names its adapter and observation time; operator assertions remain separately labelled, including when they disagree with provider observations.",
+      "why": "",
+      "file": "spec/41-secrets.md",
+      "line": 279,
+      "scenarios": [
+        "WHEN an operator expiry differs from an observed expiry, THEN inventory shows both with their distinct provenance."
+      ]
+    },
+    {
+      "id": "connector.record.observation-unavailable",
+      "contract": "connector",
+      "operation": "record",
+      "subject": "observation-unavailable",
+      "kind": "behavior",
+      "statement": "Unsupported, denied or failed metadata reads appear as unavailable with their reason; inventory never substitutes an operator assertion for a provider observation or hydrates a value to obtain metadata.",
+      "why": "",
+      "file": "spec/41-secrets.md",
+      "line": 280,
+      "scenarios": [
+        "WHEN a provider denies metadata access, THEN inventory reports the reason without reading a credential value."
+      ]
+    },
+    {
+      "id": "connector.record.expiry-unknown",
+      "contract": "connector",
+      "operation": "record",
+      "subject": "expiry-unknown",
+      "kind": "behavior",
+      "statement": "An absent expiry is unknown; `no expiry` requires an explicit assertion or observation, and days remaining is computed only for a dated expiry, retaining its provenance.",
+      "why": "",
+      "file": "spec/41-secrets.md",
+      "line": 281,
+      "scenarios": [
+        "WHEN neither operator nor provider supplies an expiry, THEN inventory reports unknown expiry and no days remaining."
+      ]
     },
     {
       "id": "connector.record.expiry-warning",
@@ -14209,10 +14260,24 @@
       "operation": "record",
       "subject": "expiry-warning",
       "kind": "limit",
-      "statement": "The inventory marks an entry whose expiry falls within 30 d.",
+      "statement": "The inventory marks each dated expiry falling within 30 d and each elapsed expiry, retaining the expiry's provenance.",
       "why": "",
       "file": "spec/41-secrets.md",
-      "line": 276
+      "line": 282
+    },
+    {
+      "id": "connector.record.configured-is-not-observed",
+      "contract": "connector",
+      "operation": "record",
+      "subject": "configured-is-not-observed",
+      "kind": "behavior",
+      "statement": "A configured adapter identifies a binding's configuration; only {{connector.record.provider-attribution}} identifies the adapter that answered a run's reference.",
+      "why": "",
+      "file": "spec/41-secrets.md",
+      "line": 283,
+      "scenarios": [
+        "WHEN a binding configures several adapters and has no run attribution, THEN inventory reports configuration without asserting an answering adapter."
+      ]
     },
     {
       "id": "connector.record.provider-attribution",
@@ -14223,7 +14288,7 @@
       "statement": "A run's audit records which adapter answered each reference, by logical name and adapter.",
       "why": "",
       "file": "spec/41-secrets.md",
-      "line": 277
+      "line": 284
     },
     {
       "id": "authority.identify.subject-tuple",
@@ -22439,7 +22504,7 @@
     "connector.lease": "The declaration-scoped lease provider at the head of the chain: endpoint, expiry, failure classes and bootstrap.",
     "connector.meter": "Reservation against a shared vendor quota and the one pre-send hook it implements: declaration, binding, the hook's position and intent, permits, denial and the usage report.",
     "connector.package": "Distribution form, digest pinning, per-connector resource bounds and world versioning.",
-    "connector.record": "The operator record of a credential, the inventory, and the provider attribution a run emits.",
+    "connector.record": "Optional operator metadata, provider observations, the inventory of configured bindings, and the provider attribution a run emits.",
     "connector.reference": "The credential plane, the `secret://` scheme and the template grammar.",
     "connector.resolve": "The provider port, the chain and its precedence, hydration timing, the redacting wrapper and the postures.",
     "connector.rotate": "The division of labor on credential turnover and the rotation mechanisms.",
@@ -23336,6 +23401,14 @@
     [
       "connector.attach.resolve-half",
       "connector.attach.private-address"
+    ],
+    [
+      "connector.record.rotation-record",
+      "connector.rotate.turnover-preserves-the-name"
+    ],
+    [
+      "connector.record.configured-is-not-observed",
+      "connector.record.provider-attribution"
     ],
     [
       "authority.identify.malformed-value",
@@ -25511,10 +25584,6 @@
           "SecretRotationWriteDenied": {
             "clause": "connector.rotate.write-back-denied",
             "gloss": "A manager refusing the versioned put of a refreshed token."
-          },
-          "SecretUndocumentedEntry": {
-            "clause": "connector.record.undocumented-entry",
-            "gloss": "An encrypted entry with no operator record above it."
           },
           "SecretUnpermittedRequest": {
             "clause": "connector.attach.unpermitted-request",
