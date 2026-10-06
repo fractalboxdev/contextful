@@ -75,6 +75,14 @@ fn text_reads(extra: &str) -> Reads {
     r
 }
 
+#[test]
+fn describe_reports_the_declared_fulltext_index() {
+    let r = text_reads("");
+    let session = r.session(&["lab/*"], None, None);
+    let described = r.face.describe(&session, Some("lab/text"), Bounds::default()).unwrap();
+    assert_eq!(described["indexes"], json!([{"kind": "fulltext", "column": "body", "tokenizer": "cjk"}]));
+}
+
 /// A full-text probe ranks the whole snapshot by BM25 over one should-clause per content token; a token the sidecar's tokenizer splits into several terms matches them at consecutive positions, and an ASCII word token matches its plural as {{read.retrieve.script-split-matching}} does.
 // spec: read.retrieve.fulltext-probe@c8bb146b
 #[test]

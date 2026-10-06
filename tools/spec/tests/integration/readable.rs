@@ -96,12 +96,22 @@ fn a_guide_over_its_length_or_off_its_title_is_a_guide_finding() {
     assert!(found.iter().any(|m| m.contains("differs from registry")), "{found:?}");
 }
 
+// spec: corpus.reference.dangling@0045ae53
 #[test]
 fn a_guide_pointer_naming_no_clause_dangles() {
     let s = Scratch::copy();
     let text = s.read(GUIDE);
     s.write(GUIDE, &format!("{text}\nSee {{{{store.fold.no-such-clause}}}}.\n"));
     assert_eq!(codes(&s.lint("reference"), "SpecDanglingReference").len(), 1);
+}
+
+// spec: corpus.reference.pointer@2aa013bc
+#[test]
+fn a_pointer_is_recorded_as_a_lock_edge() {
+    let s = Scratch::copy();
+    let lock = lock(&s);
+    let pointers = lock["pointers"].as_array().expect("pointer edges");
+    assert!(pointers.iter().any(|p| p == &serde_json::json!(["store.lay-out.catalog-ports", "topology.coordinate.catalog-port"])), "{pointers:?}");
 }
 
 #[test]
@@ -135,4 +145,14 @@ fn an_unbackticked_axiom_is_a_banned_word_and_a_lean_identifier_is_not() {
     assert!(codes(&s.lint("render"), "SpecBannedWord").is_empty());
     s.write(GUIDE, &format!("{text}\nThe audit lists every axiom a constant reaches.\n"));
     assert_eq!(codes(&s.lint("render"), "SpecBannedWord").len(), 1);
+}
+
+// spec: corpus.reference.no-literature@02ac69b5
+#[test]
+fn an_autolink_to_an_external_document_is_an_external_link_finding() {
+    let s = Scratch::copy();
+    let text = s.read(STORE);
+    s.write(STORE, &format!("{text}\nSee <https://example.com/implementation> for background.\n"));
+    let found = codes(&s.lint("reference"), "SpecExternalLink");
+    assert_eq!(found.len(), 1, "{found:?}");
 }

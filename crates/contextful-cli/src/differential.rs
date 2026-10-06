@@ -510,7 +510,7 @@ fn gen_verify(rng: &mut Rng, pools: &Pools) -> Value {
             if tables.is_empty() {
                 tables.push(TablePattern::parse("research/*").expect("a fixed pattern parses"));
             }
-            Grant { actions, tables, tenant: None, aggregate: None, templates: None, max_rows: None }
+            Grant { actions, tables, tenant: None, aggregate: None, templates: None, max_rows: None, max_duration_ms: None, max_response_bytes: None }
         })
         .collect();
     let lifetime = *rng.pick(pools.lifetimes);

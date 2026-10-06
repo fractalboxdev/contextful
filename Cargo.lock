@@ -807,8 +807,11 @@ dependencies = [
  "clap",
  "contextful-eval",
  "libc",
+ "proc-macro2",
+ "serde",
  "serde_json",
  "sha2 0.10.9",
+ "syn 2.0.119",
  "tempfile",
  "toml 0.8.23",
  "ureq",
@@ -853,6 +856,7 @@ dependencies = [
  "contextful-core",
  "contextful-decode",
  "contextful-outbound",
+ "encoding_rs",
  "flate2",
  "libc",
  "serde",
@@ -874,6 +878,8 @@ dependencies = [
  "arrow-row",
  "arrow-schema",
  "arrow-select",
+ "base64 0.22.1",
+ "bytes",
  "contextful-core",
  "contextful-eval",
  "contextful-fs",
@@ -883,6 +889,7 @@ dependencies = [
  "half",
  "memmap2",
  "parquet",
+ "ring",
  "serde",
  "serde_json",
  "sha2 0.10.9",
@@ -913,6 +920,7 @@ name = "contextful-decode"
 version = "0.5.0"
 dependencies = [
  "contextful-core",
+ "encoding_rs",
  "flate2",
  "pdf-extract",
  "quick-xml 0.37.5",
@@ -954,6 +962,7 @@ dependencies = [
  "getrandom 0.3.4",
  "libc",
  "tempfile",
+ "windows-sys 0.61.2",
 ]
 
 [[package]]
@@ -993,6 +1002,7 @@ dependencies = [
  "blake3",
  "contextful-core",
  "contextful-eval",
+ "contextful-fs",
  "ed25519-dalek",
  "getrandom 0.2.17",
  "hex",
@@ -1009,6 +1019,18 @@ dependencies = [
  "tempfile",
  "thiserror 2.0.20",
  "time",
+]
+
+[[package]]
+name = "contextful-probe"
+version = "0.5.0"
+dependencies = [
+ "contextful-eval",
+ "contextful-policy",
+ "hex",
+ "serde_json",
+ "sha2 0.10.9",
+ "tempfile",
 ]
 
 [[package]]
@@ -1029,9 +1051,11 @@ dependencies = [
 name = "contextful-sqlite"
 version = "0.5.0"
 dependencies = [
+ "contextful-context",
  "contextful-core",
  "contextful-engine",
  "contextful-eval",
+ "contextful-fs",
  "parking_lot",
  "rusqlite",
  "serde",
@@ -1047,6 +1071,7 @@ dependencies = [
  "contextful-context",
  "contextful-core",
  "contextful-eval",
+ "contextful-policy",
  "getrandom 0.3.4",
  "rustix 1.1.5",
  "rusty-s3",
@@ -1832,8 +1857,10 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "ff2abc00be7fca6ebc474524697ae276ad847ad0a6b3faa4bcb027e9a4614ad0"
 dependencies = [
  "cfg-if",
+ "js-sys",
  "libc",
  "wasi",
+ "wasm-bindgen",
 ]
 
 [[package]]
@@ -2939,6 +2966,7 @@ dependencies = [
  "num-integer",
  "num-traits",
  "paste",
+ "ring",
  "seq-macro",
  "thrift",
  "twox-hash",

@@ -132,7 +132,7 @@ pub fn run(cmd: JobCmd, bodies: &Bodies) -> Result<()> {
             let decls = TableDecl::parse_pipeline(&text).with_context(|| l.declaration.display().to_string())?;
             let store = Store::open(&l.project.dir, &l.project.name)?;
             let (node, _) = node::resolve(&store, |k| std::env::var(k).ok())?;
-            let mut dest = StoreDestination { store, decls, node, author: None, normalize: None };
+            let mut dest = StoreDestination { store, decls, node, author: None, normalize: None, relational_parts: Default::default(), schema_diffs: Vec::new() };
             let engine = &w.engine;
             let mut land = |emitted: &Emitted| -> Result<Landed, Failure> {
                 if let Some(table) = emitted.keys().find(|t| !driven.tables.contains(t)) {
@@ -143,7 +143,7 @@ pub fn run(cmd: JobCmd, bodies: &Bodies) -> Result<()> {
                     let plan = output_plan(&name, table, driven).map_err(|e| Failure::deterministic(FailureTag::Permanent, e.to_string()))?;
                     let connector = plan.connector_pin(&plan.content_hash);
                     let spec = RunSpec { plan, connector, run_id: format!("{run_id}.{table}"), site_id: site_id.clone(), pid: std::process::id(), boot_id: boot_id(), trace_id: None };
-                    let mut source: Box<dyn Source> = Box::new(Staged(emitted.get(table).cloned().unwrap_or_default()));
+                    let mut source: Box<dyn Source> = Box::new(Staged(emitted.get(table).cloned().unwrap_or_default(), 0));
                     let row = engine.run_with(&spec, &mut source, &Unshaped, &mut dest).map_err(|e| Failure::new(FailureTag::Storage, e.to_string()))?;
                     if row.status != RunStatus::Success {
                         return Err(Failure::new(

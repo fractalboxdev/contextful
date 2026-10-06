@@ -63,6 +63,16 @@ fn source(config: Value, bucket: Arc<MemBucket>) -> ObjectSource {
     ObjectSource::new(ObjectConfig::parse(&config).unwrap(), bucket)
 }
 
+/// Object CSV reads share the declared character decoder used by HTTP CSV reads.
+#[test]
+fn an_object_csv_decodes_its_declared_encoding_and_refuses_invalid_bytes() {
+    let bucket = MemBucket::with(&[("names.csv", b"name\ncaf\xe9\n"), ("bad.csv", b"name\n\x81\n")]);
+    let mut good = source(json!({"bucket":"b", "key":"names.csv", "encoding":"windows-1252"}), bucket.clone());
+    assert_eq!(read(&mut good, None).0, vec![json!({"name":"café"})]);
+    let mut bad = source(json!({"bucket":"b", "key":"bad.csv", "encoding":"shift_jis"}), bucket);
+    assert!(bad.pull(&request(None), &Never).unwrap_err().message.contains("ConnectorEncodingInvalid"));
+}
+
 /// One read from `position`: its rows and the position after it.
 fn read(s: &mut ObjectSource, position: Option<Value>) -> (Vec<Value>, Option<Value>) {
     let pulled: Value = serde_json::from_slice(&s.pull(&request(position), &Never).unwrap()).unwrap();

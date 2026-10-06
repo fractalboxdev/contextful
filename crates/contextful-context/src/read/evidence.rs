@@ -81,7 +81,7 @@ impl Face {
     /// `session`'s dedup view, replacing any digest the citation carried
     /// (`read.recall.evidence-key`). Returns how each citation stamped, in order.
     pub fn stamp_evidence(&self, session: &Session, evidence: &mut [EvidenceRef]) -> Result<Vec<Stamped>, ReadFault> {
-        let engine = self.pool.engine(session)?;
+        let engine = self.pool.engine(session, self.store.parquet_key())?;
         evidence.iter_mut().map(|r| self.stamp(&engine, session, r)).collect()
     }
 
@@ -127,7 +127,7 @@ impl Face {
         let schema = self.store.schema(table)?;
         let mut carried = BTreeSet::new();
         for f in &files {
-            carried.extend(crate::parquet_io::columns(std::path::Path::new(f))?);
+            carried.extend(self.store.parquet_columns(std::path::Path::new(f))?);
         }
         let absent: Vec<_> = schema.columns.iter().filter(|c| !carried.contains(&c.name)).cloned().collect();
         let base = relation(&TableDecl::named(table), &files, &schema.columns, &absent, None)?;
@@ -140,43 +140,54 @@ impl Face {
     /// Whether a live row of the citation's key reads through `relation`, matched by its
     /// digest; false where the citation carries no digest. A statement fault reads as no
     /// row, so the claim is withheld rather than served.
-    pub(crate) fn key_reads(&self, engine: &SqlEngine, session: &Session, relation: &str, r: &EvidenceRef) -> bool {
-        let Some(digest) = r.key_digest.as_ref() else { return false };
+    pub(crate) fn key_reads(&self, engine: &SqlEngine, session: &Session, relation: &str, r: &EvidenceRef, deadline: Option<(u64, &'static str)>) -> Result<bool, ReadFault> {
+        let Some(digest) = r.key_digest.as_ref() else { return Ok(false) };
         let cols = self.key_columns(&r.table);
         if cols.is_empty() {
-            return false;
+            return Ok(false);
         }
         let secret = session.pepper().evidence_secret(&r.table, &cols);
         let sql = format!("SELECT count(*) FROM {} WHERE {} = ?", ident(relation), digest_sql(&cols));
-        engine
-            .run(&sql, &Bindings::positional([Bound::Text(secret), Bound::Text(digest.clone())]), None)
-            .is_ok_and(|(_, rows)| counted(&rows))
+        evidence_count(engine, &sql, &Bindings::positional([Bound::Text(secret), Bound::Text(digest.clone())]), deadline)
     }
 
     /// How one evidence row reads through the caller's session: its table registered, the
     /// cited row visible through the relation or, failing that, a live row of its key
     /// (`read.recall.evidence-key`), and no cell of the table masked or nulled by zone.
-    pub(crate) fn evidence_read(&self, engine: &SqlEngine, session: &Session, r: &EvidenceRef) -> EvidenceRead {
-        let Some(relation) = session.relation(&r.table) else { return EvidenceRead::UnknownTable };
-        let read = if self.row_reads(engine, relation.name(), r) {
+    pub(crate) fn evidence_read(&self, engine: &SqlEngine, session: &Session, r: &EvidenceRef, outer: &BTreeSet<String>, request: Option<u64>) -> Result<EvidenceRead, ReadFault> {
+        let Some(relation) = session.relation(&r.table) else { return Ok(EvidenceRead::UnknownTable) };
+        let mut touched = outer.clone();
+        touched.insert(r.table.clone());
+        let deadline = self.duration_budget(session, &touched, request);
+        let read = if self.row_reads(engine, relation.name(), r, deadline)? {
             EvidenceRead::Readable
-        } else if self.key_reads(engine, session, relation.name(), r) {
+        } else if self.key_reads(engine, session, relation.name(), r, deadline)? {
             EvidenceRead::Stale
         } else {
-            return EvidenceRead::Unreadable;
+            return Ok(EvidenceRead::Unreadable);
         };
-        if Face::masked(session, &r.table) {
+        Ok(if Face::masked(session, &r.table) {
             EvidenceRead::Masked
         } else {
             read
-        }
+        })
     }
 
     /// Whether the row a citation's run and sequence name reads through `relation`.
-    fn row_reads(&self, engine: &SqlEngine, relation: &str, r: &EvidenceRef) -> bool {
+    fn row_reads(&self, engine: &SqlEngine, relation: &str, r: &EvidenceRef, deadline: Option<(u64, &'static str)>) -> Result<bool, ReadFault> {
         let sql = format!("SELECT count(*) FROM {} WHERE {} = ? AND {} = ?", ident(relation), ident(RUN_ID), ident(ROW_SEQ));
-        engine
-            .run(&sql, &Bindings::positional([Bound::Text(r.run.clone()), Bound::Integer(r.seq)]), None)
-            .is_ok_and(|(_, rows)| counted(&rows))
+        evidence_count(engine, &sql, &Bindings::positional([Bound::Text(r.run.clone()), Bound::Integer(r.seq)]), deadline)
+    }
+}
+
+fn evidence_count(engine: &SqlEngine, sql: &str, parameters: &Bindings, deadline: Option<(u64, &'static str)>) -> Result<bool, ReadFault> {
+    let result = match deadline {
+        Some((ms, source)) => engine.run_timed(sql, parameters, None, ms, source),
+        None => engine.run(sql, parameters, None),
+    };
+    match result {
+        Ok((_, rows)) => Ok(counted(&rows)),
+        Err(error) if error.refusal().is_some_and(|r| r.identifier() == "ReadDurationExceeded") => Err(error),
+        Err(_) => Ok(false),
     }
 }

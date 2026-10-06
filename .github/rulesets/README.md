@@ -1,6 +1,6 @@
 # FlareDispatch required checks
 
-`contextful-gate.proposed.json` is a disabled repository ruleset for `main`. It requires the `flare-dispatch/contextful-gate` parent and the 23 child contexts returned by `contextful-ci stages --parts`; the parent covers fanout and join failures, and a missing child blocks merge.
+`contextful-gate.proposed.json` is a disabled repository ruleset for `main`. It requires the `flare-dispatch/contextful-gate` parent and the 24 child contexts returned by `contextful-ci stages --parts`; the parent covers fanout and join failures, and a missing child blocks merge.
 
 The list is static while the CLI stage list is derived from the repository. A change to `contextful-ci stages --parts` requires the same change to the proposed ruleset before enforcement. The corpus states the remote obligation in `assurance.gate.remote-check`; local pins prove only CLI behavior, while FlareDispatch owns the webhook and check-run implementation.
 

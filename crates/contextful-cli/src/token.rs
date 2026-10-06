@@ -112,6 +112,12 @@ pub enum TokenCmd {
         templates: Vec<String>,
         #[arg(long)]
         max_rows: Option<u64>,
+        /// Optional per-statement duration ceiling in milliseconds for this grant's tables.
+        #[arg(long)]
+        max_duration_ms: Option<u64>,
+        /// Optional serialized response ceiling in bytes for this grant's tables.
+        #[arg(long)]
+        max_response_bytes: Option<u64>,
         /// Lifetime in seconds; absent takes the persisted ceiling.
         #[arg(long)]
         ttl: Option<u64>,
@@ -264,6 +270,8 @@ pub fn run(cmd: TokenCmd) -> Result<()> {
             tenant,
             templates,
             max_rows,
+            max_duration_ms,
+            max_response_bytes,
             ttl,
             audience,
             holder,
@@ -277,6 +285,8 @@ pub fn run(cmd: TokenCmd) -> Result<()> {
                 aggregate: None,
                 templates: (!templates.is_empty()).then_some(templates),
                 max_rows,
+                max_duration_ms,
+                max_response_bytes,
             };
             let lifetime = ttl.map_or(Lifetime::Default, Lifetime::Requested);
             let token = mint_one(issuer_key.as_deref(), subject, grant, lifetime, audience, holder, now.as_deref())?;

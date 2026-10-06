@@ -10,6 +10,7 @@
 use crate::error::{ContextError, IoPath, Result};
 use crate::parquet_io;
 use crate::store::{FileLock, Store};
+use crate::vector::Sealing;
 use arrow_array::cast::AsArray;
 use arrow_array::types::{Int32Type, Int64Type, TimestampNanosecondType};
 use arrow_array::{Array, ArrayRef, Int32Array, Int64Array, RecordBatch, StringArray, TimestampNanosecondArray};
@@ -46,9 +47,14 @@ pub fn append(store: &Store, table: &str, run_id: &str, node: &NodeId, rows: &[R
     let _lock = FileLock::acquire_within(&lock_path, LOCK_WAIT)?.ok_or_else(|| {
         ContextError::Invalid(format!("`{}` stayed held {} s by another flush of run `{run_id}`", lock_path.display(), LOCK_WAIT.as_secs()))
     })?;
-    let mut all = if path.is_file() { read(&path)? } else { Vec::new() };
+    let mut all = if path.is_file() { read_for_store(store, &path)? } else { Vec::new() };
     all.extend(rows.iter().map(|r| (run_id.to_string(), r.clone())));
-    write_synced(&path, &encode(&path, &all)?)
+    let plain = encode(&path, &all)?;
+    let bytes = match store.sealing() {
+        Sealing::Plaintext => plain,
+        Sealing::Sealed(cipher) => cipher.seal(&plain).map_err(|e| ContextError::Invalid(format!("{}: sealing: {e}", path.display())))?,
+    };
+    write_synced(&path, &bytes)
 }
 
 /// Replace `path` with `bytes`: a synced sibling temporary file renamed into place, then
@@ -61,7 +67,7 @@ fn write_synced(path: &Path, bytes: &[u8]) -> Result<()> {
         f.write_all(bytes)?;
         f.sync_all()?;
         std::fs::rename(&tmp, path)?;
-        std::fs::File::open(path.parent().unwrap_or(Path::new(".")))?.sync_all()
+        contextful_fs::open_dir_for_sync(path.parent().unwrap_or(Path::new(".")))?.sync_all()
     })();
     if written.is_err() {
         let _ = std::fs::remove_file(&tmp);
@@ -91,9 +97,60 @@ pub fn files(store: &Store, table: &str) -> Result<Vec<PathBuf>> {
 /// Every `(run_id, record)` a ledger file holds. A file that does not parse refuses
 /// rather than restarting empty, since committed rows may join onto it.
 pub fn read(path: &Path) -> Result<Vec<(String, RequestRecord)>> {
+    decode(path, parquet_io::read(path)?)
+}
+
+/// Read a ledger with the project key; sealed bytes never touch a temporary file.
+pub fn read_for_store(store: &Store, path: &Path) -> Result<Vec<(String, RequestRecord)>> {
+    match store.sealing() {
+        Sealing::Plaintext => read(path),
+        Sealing::Sealed(cipher) => {
+            let sealed = std::fs::read(path).at(path)?;
+            let plain = cipher.open(&sealed).map_err(|e| ContextError::Invalid(format!("{}: opening: {e}", path.display())))?;
+            decode(path, parquet_io::read_bytes(plain)?)
+        }
+    }
+}
+
+/// Decoded rows stay in RAM; memory exhaustion refuses instead of spilling to disk.
+#[cfg(feature = "read")]
+pub(crate) fn disable_spilling(conn: &duckdb::Connection) -> std::result::Result<(), crate::read::ReadFault> {
+    let fail = |e: duckdb::Error| crate::read::ReadFault::Engine(e.to_string());
+    let directory: String = conn.query_row("SELECT current_setting('temp_directory')", [], |row| row.get(0)).map_err(fail)?;
+    if !directory.is_empty() {
+        conn.execute_batch("SET temp_directory = ''").map_err(fail)?;
+    }
+    Ok(())
+}
+
+/// Materialize decoded ledger rows in a DuckDB temporary table without a plaintext file.
+#[cfg(feature = "read")]
+pub fn register_memory(conn: &duckdb::Connection, name: &str, rows: &[(String, RequestRecord)]) -> std::result::Result<(), crate::read::ReadFault> {
+    use contextful_core::store::relation::ident;
+    disable_spilling(conn)?;
+    let fail = |e: duckdb::Error| crate::read::ReadFault::Engine(e.to_string());
+    conn.execute_batch(&format!(
+        "CREATE OR REPLACE TEMP TABLE {} (run_id VARCHAR, batch_seq INTEGER, request_id VARCHAR, vendor_request_id VARCHAR, connector VARCHAR, method VARCHAR, url_host VARCHAR, status_code INTEGER, started_at TIMESTAMP_NS, duration_ms BIGINT)",
+        ident(name)
+    )).map_err(fail)?;
+    let mut insert = conn.prepare(&format!(
+        "INSERT INTO {} VALUES (?, ?, ?, ?, ?, ?, ?, ?, make_timestamp_ns(?), ?)", ident(name)
+    )).map_err(fail)?;
+    for (run_id, row) in rows {
+        let nanos = i64::try_from(row.started_at.unix_nanos()).map_err(|_| crate::read::ReadFault::Engine("ledger timestamp exceeds TIMESTAMP_NS".into()))?;
+        let duration = i64::try_from(row.duration_ms).map_err(|_| crate::read::ReadFault::Engine("ledger duration exceeds BIGINT".into()))?;
+        insert.execute(duckdb::params![
+            run_id, row.batch_seq, row.request_id, row.vendor_request_id, row.connector,
+            row.method, row.url_host, row.status_code.map(i32::from), nanos, duration,
+        ]).map_err(fail)?;
+    }
+    Ok(())
+}
+
+fn decode(path: &Path, batches: Vec<RecordBatch>) -> Result<Vec<(String, RequestRecord)>> {
     let invalid = |what: &str| ContextError::Parquet { path: path.to_path_buf(), message: format!("the ledger column `{what}` is missing or mistyped") };
     let mut out = Vec::new();
-    for batch in parquet_io::read(path)? {
+    for batch in batches {
         let text = |name: &str| batch.column_by_name(name).and_then(|c| c.as_string_opt::<i32>()).ok_or_else(|| invalid(name));
         let int = |name: &str| batch.column_by_name(name).and_then(|c| c.as_primitive_opt::<Int32Type>()).ok_or_else(|| invalid(name));
         let (run, seq, id, vendor, connector, method, host, status) = (

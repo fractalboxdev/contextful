@@ -150,6 +150,9 @@ pub fn check(root: &Path, profile: &str, artifact: &Path) -> Result<()> {
     let bytes = std::fs::read(artifact).with_context(|| format!("reading {}", artifact.display()))?;
     let needed = needed(&bytes).with_context(|| format!("{} is no ELF64 file", artifact.display()))?;
     let compressed = zstd::bulk::compress(&bytes, LEVEL).context("compressing the artifact")?.len() as f64;
+    let short = profile.strip_prefix("contextful-").unwrap_or(profile);
+    contextful_eval::record::emit(&format!("profile-{short}-compressed-bytes"), compressed, 1, 0);
+    contextful_eval::record::emit(&format!("profile-{short}-needed-entries"), needed.len() as f64, 1, 0);
     let listed = if needed.is_empty() { "none".to_string() } else { needed.join(", ") };
     println!(
         "footprint: `{profile}` {:.1} MiB, {:.1} MiB compressed of {budget} MiB, NEEDED {listed}",

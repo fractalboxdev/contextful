@@ -1,7 +1,7 @@
 //! `run.declare`: the specification, manifest reading, the content hash and table names.
 
 use contextful_core::pipeline::canonical::canonical_json;
-use contextful_core::pipeline::declare::{collect, read_manifest, table_name, ManifestFile, OnTableError, PipelineSpec, TableEntry};
+use contextful_core::pipeline::declare::{collect, dependent_runs, read_manifest, table_name, ManifestFile, OnTableError, PipelineSpec, TableEntry};
 use contextful_core::run::RunError;
 use contextful_core::store::declare::{TableDecl, WriteMode};
 use serde_json::json;
@@ -12,6 +12,52 @@ fn manifest(path: &str, text: &str) -> ManifestFile {
 
 fn spec(text: &str) -> PipelineSpec {
     read_manifest(&manifest("contextful.toml", text)).unwrap().remove(0).spec
+}
+
+fn derive(id: &str, output: &str, source_table: &str) -> PipelineSpec {
+    serde_json::from_value(json!({
+        "id": id, "tables": [output],
+        "source": { "name": "derive", "config": { "task": "transcribe", "source_table": source_table, "parent_id_column": "id", "engine": "reader", "media_column": "body" } }
+    })).unwrap()
+}
+
+#[test]
+fn a_derived_source_table_orders_its_parent_before_the_child() {
+    let child = derive("child", "passages", "parent_words");
+    let parent = derive("parent", "words", "documents");
+    let unrelated = derive("other", "facts", "external");
+    let runs = dependent_runs([&child, &unrelated, &parent]).unwrap();
+    assert_eq!(runs.head_of.get("child").map(String::as_str), Some("parent"));
+    assert_eq!(runs.steps.get("parent"), Some(&vec!["child".to_string()]));
+    assert_eq!(runs.derived_parents.get("child").map(String::as_str), Some("parent"));
+    assert!(!runs.head_of.contains_key("other"));
+}
+
+// spec: run.select.derive-cycle@945ba718
+#[test]
+fn a_derived_source_cycle_names_every_member_at_build() {
+    let a = derive("alpha", "left", "beta_right");
+    let b = derive("beta", "right", "alpha_left");
+    let files = [manifest("pipelines/alpha.json", &serde_json::to_string(&a).unwrap()), manifest("pipelines/beta.json", &serde_json::to_string(&b).unwrap())];
+    let err = collect(&files).unwrap_err().to_string();
+    assert!(err.contains("DeriveCycle") && err.contains("alpha") && err.contains("beta"), "{err}");
+
+    let one = derive("self", "rows", "self_rows");
+    let err = collect(&[manifest("pipelines/self.json", &serde_json::to_string(&one).unwrap())]).unwrap_err().to_string();
+    assert!(err.contains("DeriveCycle") && err.contains("self"), "{err}");
+}
+
+// spec: run.select.derive-after-conflict@0f730e0b
+#[test]
+fn a_derive_child_cannot_name_another_predecessor() {
+    let mut child = derive("child", "passages", "parent_words");
+    child.after = Some("other".into());
+    let parent = derive("parent", "words", "documents");
+    let other = derive("other", "facts", "external");
+    let err = dependent_runs([&child, &parent, &other]).unwrap_err().to_string();
+    for part in ["DeriveAfterConflict", "child", "parent", "other"] {
+        assert!(err.contains(part), "{part}: {err}");
+    }
 }
 
 const BASE: &str = "[[pipeline]]\nid = \"orders\"\n[pipeline.source]\nname = \"http\"\nconfig = { endpoint = \"https://api.example.test/v1\" }\n[[pipeline.tables]]\nname = \"items\"\n";
