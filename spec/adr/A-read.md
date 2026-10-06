@@ -165,3 +165,15 @@ Consequences: removing a credential never needs a rewrite across replicas, becau
 
 Consequences: the place dimension replicates, reads at a vantage and falls under enforcement like any row; metric answers land as rows computed outside.
 Revisit: a deployment declares artificial parent levels to approximate a radius; closure materialization dominates the dimension's build.
+
+## Each statement owns its deadline and serialized response budget
+
+Caller, grant and table limits select the least duration and byte ceilings. An absent limit imposes none. The read face interrupts the timed-out statement's own engine connection; another statement in the process keeps running. Byte accounting includes the response envelope and cut metadata, and admits only whole rows. A response whose first row cannot fit refuses rather than looking empty.
+
+| Option | Lost on | Cost |
+| --- | --- | --- |
+| Per-connection interrupt and serialized row probes *(chosen)* | — | Each bounded statement needs a deadline watcher; byte-bounded reads serialize candidate rows before delivery. |
+| Kill the serving process at a deadline | Isolation | Other statements and pooled sessions die with the timed-out one. |
+| Measure elapsed time and response bytes after execution | Resource ceiling | Expensive work and oversized responses complete before a refusal. |
+
+Consequences: a caller distinguishes a deadline refusal from a whole-row byte cut; neither returns a partial row or reports success for an oversized first row.

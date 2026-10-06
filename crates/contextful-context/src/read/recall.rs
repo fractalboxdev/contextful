@@ -10,6 +10,7 @@ use contextful_core::memory::synthesize::EvidenceRef;
 use contextful_core::memory::revise::Tier;
 use contextful_core::memory::MemoryError;
 use contextful_core::read::respond::{Cell, Response};
+use super::face::ReadOptions;
 use contextful_core::read::Refusal;
 use contextful_core::read::template::{Bindings, Bound as Param};
 use contextful_core::store::bound_time::{Bound, Bounds};
@@ -34,6 +35,8 @@ pub struct RecallRequest {
     /// The transaction-time bound; `None` reads the latest committed state.
     pub as_of_ingest: Option<Bound>,
     pub limit: Option<u64>,
+    pub max_duration_ms: Option<u64>,
+    pub max_response_bytes: Option<u64>,
     /// The instant the call is made at.
     pub anchor: Instant,
 }
@@ -41,7 +44,7 @@ pub struct RecallRequest {
 impl RecallRequest {
     /// A keyed recall of `subject` in `table`, asked at `anchor`, with every option unset.
     pub fn new(table: impl Into<String>, subject: impl Into<String>, anchor: Instant) -> RecallRequest {
-        RecallRequest { table: table.into(), subject: subject.into(), observed_at: None, as_of_ingest: None, limit: None, anchor }
+        RecallRequest { table: table.into(), subject: subject.into(), observed_at: None, as_of_ingest: None, limit: None, max_duration_ms: None, max_response_bytes: None, anchor }
     }
 
     /// The bounds the session serving this recall opens under: `as_of_ingest` as its
@@ -91,6 +94,7 @@ impl Face {
         let engine = self.pool.engine(session)?;
         let touched = BTreeSet::from([table.to_string()]);
         let ceiling = self.ceiling(session, &touched, request.limit, None);
+        let deadline = self.duration_budget(session, &touched, request.max_duration_ms);
         // One claim past the ceiling marks the response truncated; gating stops there
         // (`read.recall.keyed-window`).
         let wanted = Response::fetch_count(Some(ceiling));
@@ -105,7 +109,10 @@ impl Face {
             let mut offset = 0u64;
             loop {
                 let (sql, parameters) = keyed_sql(relation.name(), &columns, &request.subject, observed, page, offset);
-                let (_, rows) = engine.run(&sql, &parameters, None)?;
+                let (_, rows) = match deadline {
+                    Some((ms, source)) => engine.run_timed(&sql, &parameters, None, ms, source)?,
+                    None => engine.run(&sql, &parameters, None)?,
+                };
                 let read = rows.len() as u64;
                 for row in rows {
                     if full(&kept) {
@@ -115,7 +122,18 @@ impl Face {
                         Cell::Text(t) => Some(t.as_str()),
                         _ => None,
                     };
-                    if tally.gate(evidence, &memory_tables, session, |r| self.evidence_read(&engine, session, r)) {
+                    let fault = std::cell::RefCell::new(None);
+                    let admitted = tally.gate(evidence, &memory_tables, session, |r| match self.evidence_read(&engine, session, r, &touched, request.max_duration_ms) {
+                        Ok(read) => read,
+                        Err(error) => {
+                            *fault.borrow_mut() = Some(error);
+                            EvidenceRead::Unreadable
+                        }
+                    });
+                    if let Some(error) = fault.into_inner() {
+                        return Err(error);
+                    }
+                    if admitted {
                         kept.push(row.iter().map(Cell::to_json).collect());
                     }
                 }
@@ -129,8 +147,8 @@ impl Face {
         if let Some(b) = request.echo() {
             response = response.with_block("bounds", b);
         }
-        response = self.restrict(&engine, session, [table], response)?;
-        Ok(response.with_block("recall", tally.block()))
+        response = self.restrict_timed(&engine, session, [table], response, deadline)?;
+        self.finish_budget(session, &touched, ReadOptions { limit: request.limit, max_duration_ms: request.max_duration_ms, max_response_bytes: request.max_response_bytes, ..ReadOptions::default() }, None, ceiling, response.with_block("recall", tally.block()))
     }
 }
 
@@ -210,4 +228,3 @@ fn keyed_sql(relation: &str, columns: &[String], subject: &str, observed: Bound,
     ]);
     (sql, parameters)
 }
-

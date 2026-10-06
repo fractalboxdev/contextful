@@ -79,6 +79,27 @@ fn a_fold_superseding_the_cited_version_keeps_the_claim() {
     assert_eq!(served(&recall(&f, &outsider)), (0, json!(1)));
 }
 
+#[test]
+fn recall_applies_a_cited_tables_duration_limit_to_its_evidence_probe() {
+    let mut f = Fixture::new();
+    version(&f, "run-a1", "Dana");
+    write(&f, &f.writer(), cites("run-a1")).unwrap();
+    let manifest = MANIFEST.replace(
+        "primary_key = [\"account_id\"]",
+        "primary_key = [\"account_id\"]\n[pipeline.tables.policy.limits]\nmax_duration_ms = 0",
+    );
+    f.face = contextful_context::read::Face::open(
+        contextful_context::Store::open(f.dir.path(), "research").unwrap(),
+        &manifest,
+        contextful_policy::enforce::mask::Pepper::resolve(|_| None),
+    ).unwrap();
+    let request = RecallRequest::new("memory/facts", "acme", at("2030-06-01T00:00:00Z"));
+    let s = f.face.session(&reader(&f), &Request::default(), request.bounds()).unwrap();
+    let error = f.face.recall(&s, &request).unwrap_err();
+    assert_eq!(error.refusal().unwrap().identifier(), "ReadDurationExceeded");
+    assert!(error.to_string().contains("table"));
+}
+
 /// A reader outside the cited table's authority is told how many citations were withheld
 /// and never which table holds them; a reader inside it is told none were.
 // spec: disclosure.attest.lineage-elision@3ebee870

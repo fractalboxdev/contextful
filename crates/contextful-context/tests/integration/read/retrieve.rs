@@ -92,6 +92,30 @@ fn the_block_reports_how_many_rows_matched() {
     assert!(!ranked.blocks.contains_key("contextful.internals"));
 }
 
+/// Byte truncation leaves the retrieval counts equal to the rows actually delivered.
+// spec: read.rank.delivered-counts@61945ab5
+#[test]
+fn a_byte_cut_updates_the_retrieval_counts() {
+    let r = Reads::new();
+    let s = r.session(&["research/notes"], Some(("research/notes", "acme")), None);
+    let request = ask("research/", "solar battery storage");
+    let full = r.face.retrieve(&s, &request, Bounds::default()).unwrap();
+    assert_eq!(full.rows.len(), 2);
+    let mut one = full.clone();
+    one.rows.truncate(1);
+    one.truncated = true;
+    one.blocks["contextful.retrieval"]["returned"] = json!(1);
+    one.blocks["contextful.retrieval"]["in_window"] = one.rows[0][one.columns.iter().position(|c| c == "_in_window").unwrap()].clone();
+    one.blocks.insert("contextful.truncation".into(), json!({ "by": "bytes", "ceiling": 999999, "source": "request" }));
+    let ceiling = serde_json::to_vec(&one).unwrap().len() as u64;
+    let cut = r.face.retrieve(&s, &RetrieveRequest { max_response_bytes: Some(ceiling), ..request }, Bounds::default()).unwrap();
+    assert_eq!(cut.rows.len(), 1);
+    let block = &cut.blocks["contextful.retrieval"];
+    assert_eq!(block["returned"], json!(1));
+    let flags = column(&cut, "_in_window").into_iter().filter(|v| v == &json!(true)).count();
+    assert_eq!(block["in_window"], json!(flags));
+}
+
 /// The lexical engine's own float score never crosses to a caller.
 // spec: read.rank.internal-score-stays-internal@8a3741ac
 #[test]

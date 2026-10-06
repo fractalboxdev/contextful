@@ -80,6 +80,8 @@ pub(crate) fn fixture_over(manifest: &str, seed: impl FnOnce(&Store)) -> Fixture
         aggregate: None,
         templates: Some(vec!["*".into()]),
         max_rows: None,
+        max_duration_ms: None,
+        max_response_bytes: None,
     };
     let mut req = MintRequest::custody(subject, vec![grant]);
     req.lifetime = Lifetime::Requested(900);
@@ -160,6 +162,36 @@ fn context_query_binds_typed_parameters() {
     assert_eq!(mistyped["result"]["structuredContent"]["error"]["identifier"], json!("QueryParameterRejected"));
     let malformed = call(&server, "context.query", json!({ "sql": sql, "parameters": ["n2"] }));
     assert_eq!(malformed["error"]["code"], json!(-32602), "{malformed}");
+}
+
+// spec: read.register.budget-arguments@7d71066c
+// spec: read.register.duration-no-statement@68942eca
+#[test]
+fn read_tools_advertise_and_enforce_request_budgets() {
+    let f = fixture();
+    let clock = FixedClock(at("2030-01-01T00:06:00Z"));
+    let server = Server::new(&f.face, f.authority.clone(), &current, &clock, &f.audit).unwrap();
+    let tools = ask(&server, 1, "tools/list", json!({}));
+    for tool in tools["result"]["tools"].as_array().unwrap() {
+        let properties = &tool["inputSchema"]["properties"];
+        assert_eq!(properties["max_duration_ms"]["type"], json!("integer"), "{tool}");
+        assert_eq!(properties["max_response_bytes"]["type"], json!("integer"), "{tool}");
+    }
+    let sql = "SELECT note_id FROM \"research/notes\"";
+    let duration = call(&server, "context.query", json!({ "sql": sql, "max_duration_ms": 0 }));
+    assert_eq!(duration["result"]["structuredContent"]["error"]["identifier"], json!("ReadDurationExceeded"), "{duration}");
+    let bytes = call(&server, "context.query", json!({ "sql": sql, "max_response_bytes": 10 }));
+    assert_eq!(bytes["result"]["structuredContent"]["error"]["identifier"], json!("ReadResponseTooLarge"), "{bytes}");
+    for name in ["context.describe", "context.files"] {
+        let bounded = call(&server, name, json!({ "max_response_bytes": 10 }));
+        assert_eq!(bounded["result"]["structuredContent"]["error"]["identifier"], json!("ReadResponseTooLarge"), "{bounded}");
+        let no_statement = call(&server, name, json!({ "max_duration_ms": 0 }));
+        assert!(no_statement["result"].get("isError").is_none(), "{no_statement}");
+    }
+    let counted = call(&server, "context.describe", json!({ "table": "research/notes", "max_duration_ms": 0 }));
+    assert_eq!(counted["result"]["structuredContent"]["error"]["identifier"], json!("ReadDurationExceeded"), "{counted}");
+    let invalid = call(&server, "context.query", json!({ "sql": sql, "max_duration_ms": -1 }));
+    assert_eq!(invalid["error"]["code"], json!(-32602));
 }
 
 #[test]

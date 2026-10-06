@@ -3,7 +3,7 @@
 //! retrieval block.
 
 use super::engine::{cell, SqlEngine};
-use super::face::Face;
+use super::face::{Face, ReadOptions};
 use super::fault::ReadFault;
 use contextful_core::memory::declare::Shape;
 use contextful_core::read::embed::cosine;
@@ -92,6 +92,8 @@ pub struct RetrieveRequest {
     /// Artifact kinds the read keeps.
     pub kinds: Option<Vec<String>>,
     pub limit: Option<u64>,
+    pub max_duration_ms: Option<u64>,
+    pub max_response_bytes: Option<u64>,
     /// The question's lower bound on publication.
     pub since: Option<Instant>,
     /// The instant the question is asked at; the timeframe's anchor.
@@ -111,6 +113,8 @@ impl RetrieveRequest {
             filter: None,
             kinds: None,
             limit: None,
+            max_duration_ms: None,
+            max_response_bytes: None,
             since: None,
             anchor,
             min_score: None,
@@ -243,6 +247,7 @@ impl Face {
         let asked = request.limit.unwrap_or(DEFAULT_LIMIT);
         let touched: std::collections::BTreeSet<String> = arms.iter().cloned().collect();
         let limit = self.ceiling(session, &touched, Some(asked), None);
+        let deadline = self.duration_budget(session, &touched, request.max_duration_ms);
         let tokens = content_tokens(&request.query);
         let floor = relevance_floor(&tokens, request.min_score);
         let window = candidate_window(limit);
@@ -260,7 +265,7 @@ impl Face {
             // An arm whose relation lacks a filter column drops rather than run unfiltered
             // (`read.retrieve.unsatisfiable-arm-drops`).
             if predicate.is_some() {
-                let (columns, _) = engine.run_values(&format!("SELECT * FROM {} LIMIT 0", ident(table)), &Bindings::default(), None)?;
+                let (columns, _) = engine.run_values_timed(&format!("SELECT * FROM {} LIMIT 0", ident(table)), &Bindings::default(), None, deadline)?;
                 if filter.columns().any(|c| !columns.iter().any(|have| have == c)) {
                     continue;
                 }
@@ -316,7 +321,7 @@ impl Face {
                     ident(RUN_ID),
                     ident(ROW_SEQ)
                 );
-                let (columns, values) = engine.run_values(&sql, &parameters, None)?;
+                let (columns, values) = engine.run_values_timed(&sql, &parameters, None, deadline)?;
                 let page = values.len() as u64;
                 let cx = ArmContext {
                     engine: &engine,
@@ -330,8 +335,9 @@ impl Face {
                     tokens: &tokens,
                     request,
                     memory_tables: &memory_tables,
+                    touched: &touched,
                 };
-                self.arm_rows(&cx, &columns, values, &mut kept, &mut rows, &mut tally);
+                self.arm_rows(&cx, &columns, values, &mut kept, &mut rows, &mut tally)?;
                 offset += window;
                 if !claims || page < window || kept >= window {
                     break;
@@ -364,6 +370,7 @@ impl Face {
                     tokens: &tokens,
                     request,
                     memory_tables: &memory_tables,
+                    touched: &touched,
                 };
                 let present: std::collections::HashSet<String> = rows.iter().map(|r| r.id.clone()).collect();
                 let mut recalled_rows = Vec::new();
@@ -380,8 +387,8 @@ impl Face {
                         ident(&id_column)
                     );
                     let parameters = Bindings::positional(chunk.iter().map(|id| Bound::Text(id.clone())).chain(values));
-                    let (columns, values) = engine.run_values(&sql, &parameters, None)?;
-                    self.arm_rows(&cx, &columns, values, &mut added, &mut recalled_rows, &mut tally);
+                    let (columns, values) = engine.run_values_timed(&sql, &parameters, None, deadline)?;
+                    self.arm_rows(&cx, &columns, values, &mut added, &mut recalled_rows, &mut tally)?;
                 }
                 rows.extend(recalled_rows.into_iter().filter(|r| !present.contains(&r.id)));
             }
@@ -475,11 +482,11 @@ impl Face {
             response = response.with_block("bounds", b);
         }
         // An excluded arm read no candidate; the block names it (`read.retrieve.excluded-arm`).
-        response = self.restrict(&engine, session, arms.iter().map(String::as_str), response)?;
+        response = self.restrict_timed(&engine, session, arms.iter().map(String::as_str), response, deadline)?;
         if recalled {
             response = response.with_block("recall", tally.block());
         }
-        Ok(response)
+        self.finish_budget(session, &touched, ReadOptions { limit: Some(asked), max_response_bytes: request.max_response_bytes, max_duration_ms: request.max_duration_ms, ..ReadOptions::default() }, None, limit, response)
     }
 
     /// The `id_column` and the candidate identifiers the table's current vector sidecar
@@ -569,6 +576,7 @@ struct ArmContext<'a> {
     tokens: &'a [String],
     request: &'a RetrieveRequest,
     memory_tables: &'a [String],
+    touched: &'a std::collections::BTreeSet<String>,
 }
 
 impl Face {
@@ -581,7 +589,7 @@ impl Face {
         kept: &mut u64,
         rows: &mut Vec<Row>,
         tally: &mut super::recall::RecallTally,
-    ) {
+    ) -> Result<(), ReadFault> {
         let at = |name: &str| columns.iter().position(|c| c == name);
         for v in values {
             if *kept == cx.window {
@@ -607,7 +615,18 @@ impl Face {
                     continue;
                 }
                 let evidence = get("evidence").and_then(text_of);
-                if !tally.gate(evidence.as_deref(), cx.memory_tables, cx.session, |r| self.evidence_read(cx.engine, cx.session, r)) {
+                let fault = std::cell::RefCell::new(None);
+                let admitted = tally.gate(evidence.as_deref(), cx.memory_tables, cx.session, |r| match self.evidence_read(cx.engine, cx.session, r, cx.touched, cx.request.max_duration_ms) {
+                    Ok(read) => read,
+                    Err(error) => {
+                        *fault.borrow_mut() = Some(error);
+                        contextful_core::memory::recall::EvidenceRead::Unreadable
+                    }
+                });
+                if let Some(error) = fault.into_inner() {
+                    return Err(error);
+                }
+                if !admitted {
                     continue;
                 }
             }
@@ -655,5 +674,6 @@ impl Face {
                 row_rank,
             });
         }
+        Ok(())
     }
 }
