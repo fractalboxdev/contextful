@@ -11,11 +11,11 @@ An unpinned clause is `committed`; a pinned one is `performed` when its Rust, Le
 | `corpus` | 1 | 10 | 79 | 37 | 7 | 0 | 40 | 0 | 40 |
 | `disclosure` | 3 | 16 | 122 | 64 | 13 | 7 | 54 | 0 | 54 |
 | `read` | 2 | 15 | 179 | 29 | 22 | 21 | 163 | 0 | 163 |
-| `run` | 3 | 26 | 383 | 99 | 37 | 37 | 271 | 0 | 261 |
+| `run` | 3 | 26 | 386 | 100 | 37 | 37 | 274 | 0 | 261 |
 | `store` | 1 | 17 | 237 | 55 | 13 | 20 | 200 | 0 | 200 |
 | `surface` | 2 | 20 | 106 | 49 | 22 | 0 | 51 | 0 | 51 |
 | `topology` | 1 | 6 | 70 | 24 | 5 | 5 | 38 | 0 | 38 |
-| **total** | 19 | 155 | 2023 | 582 | 189 | 127 | 1375 | 0 | |
+| **total** | 19 | 155 | 2028 | 583 | 189 | 130 | 1378 | 0 | |
 
 Decision records: 18.
 
@@ -29,7 +29,7 @@ A milestone reads `closed` when its acceptance test computes `passing` and every
 | 1 — The authority core | 14 | 236 | 184 | passing | closed |
 | 2 — The store | 9 | 164 | 132 | passing | closed |
 | 3 — The run path | 11 | 207 | 144 | passing | closed |
-| 4 — Ingest | 25 | 506 | 323 | passing | open |
+| 4 — Ingest | 25 | 509 | 326 | passing | open |
 | 5 — The read face under enforcement | 17 | 252 | 192 | passing | open |
 | 6 — Sync and replicas | 8 | 73 | 68 | passing | closed |
 | 7 — Memory | 6 | 37 | 37 | passing | closed |
@@ -955,9 +955,12 @@ Unscheduled operations: 10.
 | `run.export.typed-complete` | `spec/pins.toml` | performed |
 | `run.export.typed-event-too-large` | `spec/pins.toml` | performed |
 | `run.export.typed-events` | `spec/pins.toml` | performed |
+| `run.export.typed-identity-changed` | `spec/pins.toml` | performed |
 | `run.export.typed-order` | `spec/pins.toml` | performed |
 | `run.export.typed-outbox` | `spec/pins.toml` | performed |
+| `run.export.typed-publication-id` | `spec/pins.toml` | performed |
 | `run.export.typed-state` | `spec/pins.toml` | performed |
+| `run.export.typed-view-recheck` | `spec/pins.toml` | performed |
 | `run.export.typed-watch` | `spec/pins.toml` | performed |
 | `run.guard-secrets.assignment-key` | `crates/contextful-core/tests/integration/pipeline/guard.rs::a_compound_key_assignment_is_masked_keeping_its_key` | performed |
 | `run.guard-secrets.coverage` | `crates/contextful-core/tests/integration/pipeline/guard.rs::encoded_or_split_credentials_pass_through` | performed |

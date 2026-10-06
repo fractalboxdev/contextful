@@ -13,7 +13,7 @@ mod machine;
 mod stores;
 
 pub use derived::DerivedSqlite;
-pub use export::{ExportLedger, ExportPosition};
+pub use export::{ExportLedger, ExportPosition, ExportPublication};
 pub use machine::MachineCatalog;
 pub use stores::{SqliteAwakeableStore, SqliteBlobStore, SqliteJournalStore, SqliteRunStores};
 

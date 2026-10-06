@@ -193,6 +193,108 @@ fn typed_export_sends_deletion_after_a_replace_publication() {
 }
 
 #[test]
+fn typed_export_republishes_a_changed_read_policy_without_a_new_commit() {
+    let collector = Collector::start();
+    let (dir, public, token) = project(&typed_block(&collector.endpoint()), "spans");
+    let p = dir.path();
+    land(p, "load-1", "2030-01-01T00:00:00Z", &ids("a", 1));
+    ok(&export(p, &public, &token, &[]));
+    let machine = p.join(".contextful/context/research/machine.sqlite");
+    let before = contextful_sqlite::ExportLedger::open(&machine).unwrap().position("spans-mirror").unwrap();
+
+    let declaration = format!("[[pipeline.tables]]\nname = \"spans\"\n[pipeline.tables.policy.columns]\nduration_ms = {{ strategy = \"drop\" }}\n\n{}", typed_block(&collector.endpoint()));
+    std::fs::write(p.join("contextful.toml"), format!("authoring_posture = \"per_request\"\n{declaration}")).unwrap();
+    ok(&export(p, &public, &token, &[]));
+
+    let received = collector.received();
+    assert_eq!(received.len(), 2, "a policy change must produce a new publication");
+    let changed = typed_events(&received[1]);
+    assert_eq!(changed[0]["kind"], "upsert");
+    assert_ne!(changed[0]["publication"], typed_events(&received[0])[0]["publication"]);
+    assert!(changed[0]["row"]["duration_ms"].is_null());
+    assert_eq!(changed[1]["kind"], "publication_complete");
+    assert_eq!(contextful_sqlite::ExportLedger::open(&machine).unwrap().position("spans-mirror").unwrap().source_publication, before.source_publication);
+}
+
+#[test]
+fn typed_export_rekeys_without_a_new_commit() {
+    let collector = Collector::start();
+    let (dir, public, token) = project(&typed_block(&collector.endpoint()), "spans");
+    let p = dir.path();
+    land(p, "load-1", "2030-01-01T00:00:00Z", &ids("a", 1));
+    ok(&export(p, &public, &token, &[]));
+    let changed = typed_block(&collector.endpoint()).replace("key = [\"span_id\"]", "key = [\"duration_ms\"]");
+    std::fs::write(p.join("contextful.toml"), format!("authoring_posture = \"per_request\"\n{changed}")).unwrap();
+    ok(&export(p, &public, &token, &[]));
+
+    let received = collector.received();
+    assert_eq!(received.len(), 2, "a key change must produce a new publication");
+    let events = typed_events(&received[1]);
+    assert_eq!(events.iter().filter(|e| e["kind"] == "delete").count(), 1);
+    assert_ne!(events[0]["publication"], typed_events(&received[0])[0]["publication"]);
+    assert_eq!(events.iter().filter(|e| e["kind"] == "upsert").count(), 1);
+    assert_eq!(events.last().unwrap()["kind"], "publication_complete");
+}
+
+#[test]
+fn typed_export_marks_a_schema_change_without_a_new_commit() {
+    let collector = Collector::start();
+    let (dir, public, token) = project(&typed_block(&collector.endpoint()), "spans");
+    let p = dir.path();
+    land(p, "load-1", "2030-01-01T00:00:00Z", &ids("a", 1));
+    ok(&export(p, &public, &token, &[]));
+
+    let schema_path = p.join(".contextful/context/research/tables/spans/schema.json");
+    let mut schema: serde_json::Value = serde_json::from_slice(&std::fs::read(&schema_path).unwrap()).unwrap();
+    let fields = schema["fields"].as_array_mut().unwrap();
+    let field = fields.iter_mut().find(|f| f["name"] == "duration_ms").unwrap();
+    field["nullable"] = serde_json::json!(!field["nullable"].as_bool().unwrap());
+    std::fs::write(&schema_path, serde_json::to_vec(&schema).unwrap()).unwrap();
+
+    ok(&export(p, &public, &token, &[]));
+    let received = collector.received();
+    assert_eq!(received.len(), 2);
+    let events = typed_events(&received[1]);
+    assert_eq!(events.len(), 1);
+    assert_ne!(events[0]["publication"], typed_events(&received[0])[0]["publication"]);
+    assert_eq!(events[0]["kind"], "publication_complete");
+    assert_eq!(events[0]["changes"], 0);
+}
+
+#[test]
+fn typed_export_refuses_a_changed_target_under_the_same_name() {
+    let first = Collector::start();
+    let second = Collector::start();
+    let (dir, public, token) = project(&typed_block(&first.endpoint()), "spans");
+    let p = dir.path();
+    land(p, "load-1", "2030-01-01T00:00:00Z", &ids("a", 1));
+    ok(&export(p, &public, &token, &[]));
+    std::fs::write(p.join("contextful.toml"), format!("authoring_posture = \"per_request\"\n{}", typed_block(&second.endpoint()))).unwrap();
+    let refused = err(&export(p, &public, &token, &[]));
+    assert!(refused.contains("ExportIdentityChanged"), "{refused}");
+    assert!(second.received().is_empty());
+}
+
+#[test]
+fn typed_export_refuses_pending_replay_under_an_ungranted_credential() {
+    let collector = Collector::start();
+    collector.answer(503);
+    let (dir, public, token) = project(&typed_block(&collector.endpoint()), "spans");
+    let p = dir.path();
+    land(p, "load-1", "2030-01-01T00:00:00Z", &ids("a", 1));
+    assert!(err(&export(p, &public, &token, &[])).contains("ExportDeliveryRefused"));
+    let other = ok(&cf(p, &["token", "mint", "--issuer-key", ".contextful/issuer.seed", "--on-behalf-of", "svc://mirror", "--zone", "on-prem:hq", "--table", "documents", "--ttl", "600"], &[]));
+    collector.answer(200);
+    let refused = err(&export(p, &public, &other, &[]));
+    assert!(refused.contains("ExportIdentityChanged") || refused.contains("EnforceUnknownRelation"), "{refused}");
+    assert_eq!(collector.received().len(), 1, "a pending row must not leave under another read grant");
+    ok(&export(p, &public, &token, &[]));
+    assert_eq!(collector.received().len(), 2, "the original credential can replay the outbox");
+    assert!(err(&export(p, &public, &other, &[])).contains("EnforceUnknownRelation"));
+    assert_eq!(collector.received().len(), 2, "an ungranted credential cannot silently reuse the acknowledged view");
+}
+
+#[test]
 fn typed_export_watch_retries_a_refused_publication() {
     let collector = Collector::start();
     collector.answer(503);

@@ -250,6 +250,10 @@ The outbound copy of a landed table to an operator-declared target: the export b
   *because a consumer needs stable row identity and a delivery cadence*
 - `typed-state` — A typed export compares the latest stable committed table read through {{run.export.post-commit-read}} with its last acknowledged state; commits between reads coalesce into one publication.
   *because a scheduled state export promises the observed frontier rather than every intermediate write*
+- `typed-view-recheck` — A typed export re-reads its admitted table even when the source commit frontier is unchanged, and stages a publication when its key, schema, policy or visible state changes.
+  *because a commit hash alone cannot identify the view delivered to a consumer*
+- `typed-publication-id` — A typed publication identifier covers the source frontier, read identity and visible keyed state, so distinct delivered views carry distinct identifiers without requiring another source commit.
+  *because a receiver must not mistake a changed view for a retry of the prior publication*
 - `typed-events` — Each changed key yields a versioned upsert with its visible row or a deletion with its key; unchanged keys yield no event.
   *because a generic consumer applies the same keyed operations regardless of table shape*
 - `typed-order` — Typed events order by encoded key and carry consecutive sequences and stable ids; a repeat delivery carries the same bytes and ids.
@@ -258,6 +262,8 @@ The outbound copy of a landed table to an operator-declared target: the export b
   *because a consumer needs a boundary after which its keyed state represents one observed frontier*
 - `typed-outbox` — Events and their next keyed state stage together in machine-local `machine.sqlite`; a pending publication blocks staging a later frontier.
   *because a failed send must retain its exact payload and order across restarts*
+- `typed-identity-changed` — Pending events under a changed read identity, or an export redirected to another target under the same name, raise `ExportIdentityChanged` without delivery; watch exits.
+  *because an old outbox cannot prove authorization under a changed view or establish a new target's baseline*
 - `typed-ack` — A typed export advances its machine-local acknowledgement sequence only after HTTP 2xx; acknowledging the completion event promotes its staged state in the same transaction.
   *because a receiver acknowledgement and local state promotion have one durable order*
 - `typed-watch` — `contextful export watch <name>` fires the typed export on its schedule and retries a refused send with capped exponential delay from the pending outbox.

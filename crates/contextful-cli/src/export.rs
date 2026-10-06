@@ -18,7 +18,7 @@ use contextful_core::store::bound_time::Bounds;
 use contextful_core::store::relation::ident;
 use contextful_outbound::{Client, HeaderValue};
 use contextful_policy::enforce::session::{Request, Session};
-use contextful_sqlite::ExportLedger;
+use contextful_sqlite::{ExportLedger, ExportPublication};
 use sha2::{Digest, Sha256};
 use std::collections::BTreeMap;
 use std::path::{Path, PathBuf};
@@ -85,7 +85,7 @@ pub fn run(cmd: ExportCmd) -> Result<()> {
                         std::thread::sleep(std::time::Duration::from_secs(wait));
                     }
                     Err(e) => {
-                        if matches!(e.downcast_ref::<ExportError>(), Some(ExportError::ExportEventTooLarge(_))) {
+                        if matches!(e.downcast_ref::<ExportError>(), Some(ExportError::ExportEventTooLarge(_) | ExportError::ExportIdentityChanged(_))) {
                             return Err(e);
                         }
                         eprintln!("export `{name}`: {e:#}; retrying in {retry}s");
@@ -185,6 +185,22 @@ fn source_publication(face: &contextful_context::read::face::Face, table: &str) 
     Ok(format!("{:x}", Sha256::digest(material)))
 }
 
+fn read_identity(face: &contextful_context::read::face::Face, session: &Session, authority: &contextful_policy::verify::AdmittedAuthority, export: &Export) -> Result<String> {
+    let declaration = face.decl(&export.table);
+    let schema = face.store().try_schema(&export.table)?;
+    let material = serde_json::to_vec(&(
+        &export.table,
+        &export.key,
+        declaration,
+        schema,
+        authority.subject().to_subject(),
+        authority.grants(),
+        session.zone().label(),
+        session.tenant_scopes(),
+    ))?;
+    Ok(format!("{:x}", Sha256::digest(material)))
+}
+
 fn read_state(face: &contextful_context::read::face::Face, session: &Session, export: &Export) -> Result<contextful_core::export::ChangeState> {
     let order = export.key.iter().map(|k| ident(k)).collect::<Vec<_>>().join(", ");
     let types: BTreeMap<_, _> = face.store().try_schema(&export.table)?.map(|s| s.columns.into_iter().map(|c| (c.name, c.ty)).collect()).unwrap_or_default();
@@ -218,17 +234,29 @@ fn run_changes(l: &crate::project::Located, export: &Export, project: &ProjectAr
     std::fs::create_dir_all(&dir)?;
     let _held = FileLock::acquire(&dir.join(format!("{}.lock", export.name)), std::time::Duration::from_secs(LOCK_WAIT_SECS))?;
     let mut ledger = ExportLedger::open(&l.project.store_root().join(MACHINE_CATALOG_FILE))?;
-    if ledger.position(&export.name)?.pending_publication.is_none() {
+    let session = face.session(&authority, &Request { zone: None }, Bounds::default())?;
+    let identity = read_identity(&face, &session, &authority, export)?;
+    let destination = format!("{:x}", Sha256::digest(export.endpoint.as_str().as_bytes()));
+    let position = ledger.position(&export.name)?;
+    if position.destination.as_deref().is_some_and(|old| old != destination) {
+        return Err(ExportError::ExportIdentityChanged(format!("export `{}`: its target changed; use a distinct export name for a distinct target", export.name)).into());
+    }
+    if position.pending_publication.is_some() {
+        if position.identity.as_deref() != Some(&identity) {
+            return Err(ExportError::ExportIdentityChanged(format!("export `{}`: the pending publication's read identity changed; its outbox remains unacknowledged", export.name)).into());
+        }
+    } else {
         let before = source_publication(&face, &export.table)?;
-        if ledger.position(&export.name)?.source_publication.as_deref() != Some(&before) {
-            let session = face.session(&authority, &Request { zone: None }, Bounds::default())?;
-            let state = read_state(&face, &session, export)?;
-            let after = source_publication(&face, &export.table)?;
-            if before != after { anyhow::bail!("export `{}`: source publication moved during the read", export.name); }
-            let position = ledger.position(&export.name)?;
-            let prior = ledger.state(&export.name)?;
-            let events = change_events(export, &before, position.next_sequence, &prior, &state)?;
-            ledger.stage(&export.name, &before, &events, &state)?;
+        let state = read_state(&face, &session, export)?;
+        let after = source_publication(&face, &export.table)?;
+        if before != after || identity != read_identity(&face, &session, &authority, export)? {
+            anyhow::bail!("export `{}`: source or read identity moved during the read", export.name);
+        }
+        let prior = ledger.state(&export.name)?;
+        if position.source_publication.as_deref() != Some(&before) || position.identity.as_deref() != Some(&identity) || prior != state {
+            let publication = format!("{:x}", Sha256::digest(serde_json::to_vec(&(&before, &identity, &state))?));
+            let events = change_events(export, &publication, position.next_sequence, &prior, &state)?;
+            ledger.stage(&export.name, ExportPublication { source: &before, id: &publication, identity: &identity, destination: &destination }, &events, &state)?;
         }
     }
     let mut delivered = 0usize;

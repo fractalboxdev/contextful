@@ -8,7 +8,7 @@ use contextful_core::run::record::RunStatus;
 use contextful_core::run::RunError;
 use contextful_core::store::catalog::MACHINE_CATALOG_FILE;
 use contextful_core::store::StoreError;
-use contextful_sqlite::{ExportLedger, MachineCatalog};
+use contextful_sqlite::{ExportLedger, ExportPublication, MachineCatalog};
 use contextful_core::export::{change_events, change_state, parse_exports, Change};
 use serde_json::json;
 use std::sync::Arc;
@@ -25,6 +25,10 @@ fn cursor(p: &str) -> CursorRow {
     CursorRow { position: Some(json!(p)), marker_run_id: Some("run-1".into()), marker_committed_at: Some(at(T0)), ..CursorRow::default() }
 }
 
+fn publication<'a>(source: &'a str, id: &'a str) -> ExportPublication<'a> {
+    ExportPublication { source, id, identity: "view-1", destination: "target-1" }
+}
+
 #[test]
 fn typed_export_replays_unacknowledged_events_and_commits_state_with_its_marker() {
     let dir = tempfile::tempdir().unwrap();
@@ -33,8 +37,8 @@ fn typed_export_replays_unacknowledged_events_and_commits_state_with_its_marker(
     let state = change_state(&export, &[json!({"id":"a","value":1}), json!({"id":"b","value":2})]).unwrap();
     let events = change_events(&export, "publication-1", 0, &Default::default(), &state).unwrap();
     let mut ledger = ExportLedger::open(&path).unwrap();
-    assert!(ledger.stage("copy", "publication-1", &events, &state).unwrap());
-    assert!(!ledger.stage("copy", "publication-2", &events, &state).unwrap());
+    assert!(ledger.stage("copy", publication("source-1", "publication-1"), &events, &state).unwrap());
+    assert!(!ledger.stage("copy", publication("source-2", "publication-2"), &events, &state).unwrap());
     assert_eq!(ledger.pending("copy", 2).unwrap(), events[..2]);
     assert!(ledger.state("copy").unwrap().is_empty());
     drop(ledger);
@@ -52,8 +56,11 @@ fn typed_export_replays_unacknowledged_events_and_commits_state_with_its_marker(
     assert_eq!(events[2].change, Change::PublicationComplete { changes: 2 });
     reopened.acknowledge("copy", 2).unwrap();
     assert_eq!(reopened.state("copy").unwrap(), state);
-    assert_eq!(reopened.position("copy").unwrap().source_publication.as_deref(), Some("publication-1"));
+    assert_eq!(reopened.position("copy").unwrap().source_publication.as_deref(), Some("source-1"));
+    assert_eq!(reopened.position("copy").unwrap().identity.as_deref(), Some("view-1"));
     assert!(reopened.pending("copy", 2).unwrap().is_empty());
+    let repeated = change_events(&export, "publication-1", 3, &state, &state).unwrap();
+    assert!(!reopened.stage("copy", publication("source-1", "publication-1"), &repeated, &state).unwrap());
 }
 
 #[test]
@@ -64,8 +71,8 @@ fn typed_export_acknowledges_only_the_offered_name_after_restart() {
     let state = change_state(&export, &[json!({"id":"a","value":1})]).unwrap();
     let events = change_events(&export, "publication-1", 0, &Default::default(), &state).unwrap();
     let mut ledger = ExportLedger::open(&path).unwrap();
-    ledger.stage("copy", "publication-1", &events, &state).unwrap();
-    ledger.stage("other", "publication-1", &events, &state).unwrap();
+    ledger.stage("copy", publication("source-1", "publication-1"), &events, &state).unwrap();
+    ledger.stage("other", publication("source-1", "publication-1"), &events, &state).unwrap();
     assert_eq!(ledger.pending("copy", 2).unwrap(), events);
     // Offers are scoped to one export name.
     assert!(ledger.acknowledge("other", 1).is_err());
@@ -90,7 +97,7 @@ fn typed_export_acknowledgement_stops_at_the_narrowed_offer() {
     let state = change_state(&export, &[json!({"id":"a","value":"x".repeat(40000)}), json!({"id":"b","value":"y".repeat(40000)})]).unwrap();
     let events = change_events(&export, "publication-1", 0, &Default::default(), &state).unwrap();
     let mut ledger = ExportLedger::open(&path).unwrap();
-    ledger.stage("copy", "publication-1", &events, &state).unwrap();
+    ledger.stage("copy", publication("source-1", "publication-1"), &events, &state).unwrap();
     // The outbound byte bound narrows the offered row-count batch.
     assert_eq!(ledger.pending("copy", 3).unwrap().len(), 3);
     ledger.offer("copy", 0).unwrap();
@@ -115,7 +122,7 @@ fn typed_export_refuses_corrupt_counters_and_sequence_exhaustion() {
         version: 1, id: "copy:final".into(), publication: "final".into(), sequence: i64::MAX as u64,
         table: "items".into(), change: Change::PublicationComplete { changes: 0 },
     };
-    assert!(ledger.stage("copy", "final", &[marker], &Default::default()).unwrap_err().to_string().contains("cursor range"));
+    assert!(ledger.stage("copy", publication("source-1", "final"), &[marker], &Default::default()).unwrap_err().to_string().contains("cursor range"));
     assert!(ledger.position("copy").unwrap().pending_publication.is_none());
 }
 

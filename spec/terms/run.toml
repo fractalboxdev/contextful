@@ -71,6 +71,7 @@ ExportSignalUnknown            = { clause = "run.export.signal-unknown", gloss =
 ExportCommitSeqMissing         = { clause = "run.export.commit-seq-missing", gloss = "A table holding rows no cursor passes, their `_commit_seq` null." }
 ExportDeliveryRefused          = { clause = "run.export.delivery-refused", gloss = "An OTLP target answering other than 2xx, or unreachable." }
 ExportEventTooLarge            = { clause = "run.export.typed-event-too-large", gloss = "One typed event exceeding the delivery request ceiling." }
+ExportIdentityChanged          = { clause = "run.export.typed-identity-changed", gloss = "A pending typed export under another read identity, or its target redirected under the same name." }
 PipelineChunkParallelism       = { clause = "run.backfill.chunk-parallelism", gloss = "A sequential chunk plan beside a parallelism above one." }
 PipelineRewindWindowInvalid    = { clause = "run.backfill.rewind-invalid", gloss = "An inverted, empty or scale-incomparable rewind window." }
 PipelineSeedDeclarationMissing = { clause = "run.seed.declaration-missing", gloss = "A seeded table lacking a key or an event-time ordering." }

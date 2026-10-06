@@ -40,6 +40,9 @@ pub enum ExportError {
     /// One typed event cannot fit a request by itself.
     #[error("ExportEventTooLarge: {0}")]
     ExportEventTooLarge(String),
+    /// A pending publication cannot be delivered under a changed read identity or target.
+    #[error("ExportIdentityChanged: {0}")]
+    ExportIdentityChanged(String),
     /// A block that does not parse, or a row export cannot place past a cursor.
     #[error("{0}")]
     Invalid(String),

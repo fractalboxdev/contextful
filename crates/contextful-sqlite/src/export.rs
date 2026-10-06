@@ -33,6 +33,13 @@ CREATE TABLE IF NOT EXISTS typed_export_next_state (
   row TEXT NOT NULL,
   PRIMARY KEY (name, key)
 );
+CREATE TABLE IF NOT EXISTS typed_export_binding (
+  name TEXT PRIMARY KEY,
+  identity TEXT NOT NULL,
+  destination TEXT NOT NULL,
+  pending_source TEXT NOT NULL,
+  acknowledged_publication TEXT
+);
 ";
 
 /// The delivered frontier and the current or staged publication of one export.
@@ -40,8 +47,19 @@ CREATE TABLE IF NOT EXISTS typed_export_next_state (
 pub struct ExportPosition {
     pub source_publication: Option<String>,
     pub pending_publication: Option<String>,
+    pub identity: Option<String>,
+    pub destination: Option<String>,
     pub ack_sequence: Option<u64>,
     pub next_sequence: u64,
+}
+
+/// The source frontier and read/delivery identity of one staged publication.
+#[derive(Debug, Clone, Copy)]
+pub struct ExportPublication<'a> {
+    pub source: &'a str,
+    pub id: &'a str,
+    pub identity: &'a str,
+    pub destination: &'a str,
 }
 
 pub struct ExportLedger {
@@ -64,14 +82,17 @@ impl ExportLedger {
             |r| Ok((r.get::<_, Option<String>>(0)?, r.get::<_, Option<String>>(1)?, r.get::<_, i64>(2)?, r.get::<_, i64>(3)?)),
         ).optional().map_err(|e| storage(&self.path, e))?;
         let Some((source_publication, pending_publication, ack, next)) = row else {
-            return Ok(ExportPosition { source_publication: None, pending_publication: None, ack_sequence: None, next_sequence: 0 });
+            return Ok(ExportPosition { source_publication: None, pending_publication: None, identity: None, destination: None, ack_sequence: None, next_sequence: 0 });
         };
+        let binding = self.conn.query_row("SELECT identity, destination FROM typed_export_binding WHERE name = ?1", [name], |r| Ok((r.get::<_, String>(0)?, r.get::<_, String>(1)?)))
+            .optional().map_err(|e| storage(&self.path, e))?;
         if ack < -1 || next < 0 || ack >= next {
             return Err(storage(&self.path, format!("export `{name}` has corrupt sequence counters: ack {ack}, next {next}")));
         }
         let next_sequence = u64::try_from(next).map_err(|e| storage(&self.path, e))?;
         let ack_sequence = (ack >= 0).then(|| u64::try_from(ack)).transpose().map_err(|e| storage(&self.path, e))?;
-        Ok(ExportPosition { source_publication, pending_publication, ack_sequence, next_sequence })
+        let (identity, destination) = binding.map_or((None, None), |(i, d)| (Some(i), Some(d)));
+        Ok(ExportPosition { source_publication, pending_publication, identity, destination, ack_sequence, next_sequence })
     }
 
     pub fn state(&self, name: &str) -> Result<ChangeState, Failure> {
@@ -87,21 +108,27 @@ impl ExportLedger {
 
     /// Stage a complete publication and its next state in one transaction. A pending
     /// publication remains byte-identical until its completion marker is acknowledged.
-    pub fn stage(&mut self, name: &str, publication: &str, events: &[ChangeEvent], state: &ChangeState) -> Result<bool, Failure> {
+    pub fn stage(&mut self, name: &str, publication: ExportPublication<'_>, events: &[ChangeEvent], state: &ChangeState) -> Result<bool, Failure> {
         let path = &self.path;
         let tx = self.conn.transaction_with_behavior(TransactionBehavior::Immediate).map_err(|e| storage(path, e))?;
         tx.execute("INSERT OR IGNORE INTO typed_export (name) VALUES (?1)", [name]).map_err(|e| storage(path, e))?;
-        let (source, pending, next): (Option<String>, Option<String>, i64) = tx.query_row(
-            "SELECT source_publication, pending_publication, next_sequence FROM typed_export WHERE name = ?1", [name],
-            |r| Ok((r.get(0)?, r.get(1)?, r.get(2)?)),
+        let (pending, next): (Option<String>, i64) = tx.query_row(
+            "SELECT pending_publication, next_sequence FROM typed_export WHERE name = ?1", [name],
+            |r| Ok((r.get(0)?, r.get(1)?)),
         ).map_err(|e| storage(path, e))?;
-        if pending.is_some() || source.as_deref() == Some(publication) {
+        if pending.is_some() {
+            tx.commit().map_err(|e| storage(path, e))?;
+            return Ok(false);
+        }
+        let acknowledged: Option<String> = tx.query_row("SELECT acknowledged_publication FROM typed_export_binding WHERE name = ?1", [name], |r| r.get(0))
+            .optional().map_err(|e| storage(path, e))?.flatten();
+        if acknowledged.as_deref() == Some(publication.id) {
             tx.commit().map_err(|e| storage(path, e))?;
             return Ok(false);
         }
         if next < 0 || events.is_empty() || events.first().is_none_or(|e| e.sequence != next as u64) ||
             events.last().is_none_or(|e| !matches!(e.change, contextful_core::export::Change::PublicationComplete { .. })) ||
-            events.iter().enumerate().any(|(i, e)| e.publication != publication || (next as u64).checked_add(i as u64) != Some(e.sequence))
+            events.iter().enumerate().any(|(i, e)| e.publication != publication.id || (next as u64).checked_add(i as u64) != Some(e.sequence))
         {
             return Err(storage(path, "a staged publication has consecutive events ending in a completion marker"));
         }
@@ -118,7 +145,8 @@ impl ExportLedger {
         let next_sequence = events.last().expect("checked nonempty").sequence.checked_add(1)
             .and_then(|n| i64::try_from(n).ok())
             .ok_or_else(|| storage(path, "event sequence exceeds machine cursor range"))?;
-        tx.execute("UPDATE typed_export SET pending_publication = ?2, next_sequence = ?3 WHERE name = ?1", params![name, publication, next_sequence]).map_err(|e| storage(path, e))?;
+        tx.execute("UPDATE typed_export SET pending_publication = ?2, next_sequence = ?3 WHERE name = ?1", params![name, publication.id, next_sequence]).map_err(|e| storage(path, e))?;
+        tx.execute("INSERT INTO typed_export_binding (name, identity, destination, pending_source) VALUES (?1, ?2, ?3, ?4) ON CONFLICT(name) DO UPDATE SET identity = excluded.identity, destination = excluded.destination, pending_source = excluded.pending_source", params![name, publication.identity, publication.destination, publication.source]).map_err(|e| storage(path, e))?;
         tx.commit().map_err(|e| storage(path, e))?;
         self.offered.remove(name);
         Ok(true)
@@ -187,11 +215,13 @@ impl ExportLedger {
         let event: ChangeEvent = serde_json::from_str(&body).map_err(|e| storage(path, e))?;
         tx.execute("UPDATE typed_export SET ack_sequence = ?2 WHERE name = ?1", params![name, through]).map_err(|e| storage(path, e))?;
         if matches!(event.change, contextful_core::export::Change::PublicationComplete { .. }) {
+            let source: String = tx.query_row("SELECT pending_source FROM typed_export_binding WHERE name = ?1", [name], |r| r.get(0)).map_err(|e| storage(path, e))?;
             tx.execute("DELETE FROM typed_export_state WHERE name = ?1", [name]).map_err(|e| storage(path, e))?;
             tx.execute("INSERT INTO typed_export_state SELECT name, key, row FROM typed_export_next_state WHERE name = ?1", [name]).map_err(|e| storage(path, e))?;
             tx.execute("DELETE FROM typed_export_next_state WHERE name = ?1", [name]).map_err(|e| storage(path, e))?;
             tx.execute("DELETE FROM typed_export_event WHERE name = ?1", [name]).map_err(|e| storage(path, e))?;
-            tx.execute("UPDATE typed_export SET source_publication = ?2, pending_publication = NULL WHERE name = ?1", params![name, publication]).map_err(|e| storage(path, e))?;
+            tx.execute("UPDATE typed_export_binding SET acknowledged_publication = ?2 WHERE name = ?1", params![name, publication]).map_err(|e| storage(path, e))?;
+            tx.execute("UPDATE typed_export SET source_publication = ?2, pending_publication = NULL WHERE name = ?1", params![name, source]).map_err(|e| storage(path, e))?;
         }
         tx.commit().map_err(|e| storage(path, e))?;
         self.offered.remove(name);
