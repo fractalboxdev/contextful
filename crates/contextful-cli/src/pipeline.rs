@@ -721,7 +721,7 @@ pub fn run(cmd: PipelineCmd, tasks: &Tasks) -> Result<()> {
                             limiters.extend(limiter.clone());
                             let mediation = Mediation { limiter, run_id: Some(run_id.clone()), ..Mediation::default() };
                             let source = HttpSource::mediated(config.clone(), t.name(), resolver.clone(), mediation)?;
-                            Box::new(if spec.incremental.is_some() { source.watermarked() } else { source })
+                            Box::new(if let Some(field) = spec.incremental.as_deref() { source.watermarked_for(field) } else { source })
                         }
                         #[cfg(feature = "drive")]
                         Checked::Drive(_) => match &drive {

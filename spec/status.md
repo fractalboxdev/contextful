@@ -7,7 +7,7 @@ An unpinned clause is `committed`; a pinned one is `performed` when its Rust, Le
 | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
 | `assurance` | 2 | 15 | 235 | 59 | 22 | 14 | 141 | 0 | 138 |
 | `authority` | 2 | 16 | 269 | 77 | 27 | 10 | 206 | 0 | 206 |
-| `connector` | 2 | 14 | 349 | 89 | 21 | 15 | 219 | 0 | 219 |
+| `connector` | 2 | 14 | 349 | 89 | 21 | 15 | 229 | 0 | 228 |
 | `corpus` | 1 | 10 | 79 | 37 | 7 | 0 | 40 | 0 | 40 |
 | `disclosure` | 3 | 16 | 134 | 66 | 13 | 3 | 63 | 0 | 63 |
 | `read` | 2 | 15 | 199 | 31 | 22 | 9 | 177 | 0 | 172 |
@@ -15,7 +15,7 @@ An unpinned clause is `committed`; a pinned one is `performed` when its Rust, Le
 | `store` | 1 | 17 | 237 | 55 | 13 | 20 | 200 | 0 | 200 |
 | `surface` | 2 | 20 | 106 | 49 | 22 | 0 | 51 | 0 | 51 |
 | `topology` | 1 | 6 | 70 | 24 | 5 | 5 | 38 | 0 | 38 |
-| **total** | 19 | 155 | 2070 | 587 | 190 | 104 | 1426 | 0 | |
+| **total** | 19 | 155 | 2070 | 587 | 190 | 104 | 1436 | 0 | |
 
 Decision records: 18.
 
@@ -29,7 +29,7 @@ A milestone reads `closed` when its acceptance test computes `passing` and every
 | 1 — The authority core | 14 | 238 | 186 | passing | closed |
 | 2 — The store | 9 | 164 | 132 | passing | closed |
 | 3 — The run path | 11 | 209 | 145 | passing | closed |
-| 4 — Ingest | 25 | 504 | 320 | passing | open |
+| 4 — Ingest | 25 | 504 | 330 | passing | open |
 | 5 — The read face under enforcement | 17 | 262 | 204 | passing | open |
 | 6 — Sync and replicas | 8 | 73 | 68 | passing | closed |
 | 7 — Memory | 6 | 47 | 39 | passing | closed |
@@ -520,10 +520,12 @@ Unscheduled operations: 10.
 | `connector.source.bound-column-occupied` | `crates/contextful-connectors/tests/integration/bound.rs::a_fetched_row_already_carrying_a_bound_column_refuses_the_read` | performed |
 | `connector.source.bound-columns` | `crates/contextful-connectors/tests/integration/bound.rs::every_fetched_row_carries_its_bound_columns` | performed |
 | `connector.source.cell-out-of-range` | `crates/contextful-decode/tests/integration/workbook.rs::a_cell_past_the_header_width_is_refused_rather_than_dropped` | performed |
+| `connector.source.clock-column-spelling` | `crates/contextful-connectors/tests/integration/http.rs::csv_watermark_rejects_variable_width_clocks` | performed |
 | `connector.source.conditional-get` | `crates/contextful-connectors/tests/integration/conditional.rs::a_not_modified_feed_lands_nothing_and_holds_the_validators` | performed |
 | `connector.source.conditional-position` | `crates/contextful-connectors/tests/integration/conditional.rs::a_conditional_pull_commits_the_validators_alone` | performed |
 | `connector.source.conditional-rejected` | `crates/contextful-connectors/tests/integration/conditional.rs::conditional_beside_a_page_walk_or_an_incremental_field_is_refused` | performed |
 | `connector.source.conversion-required` | `crates/contextful-connectors/tests/integration/file.rs::a_compound_binary_container_refuses_by_extension_or_magic_naming_the_command` | performed |
+| `connector.source.declared-encoding` | `crates/contextful-connectors/tests/integration/http.rs::csv_declared_encoding_decodes_and_refuses_invalid_bytes` | performed |
 | `connector.source.declined-tally` | `crates/contextful-engine/tests/integration/runner.rs::the_run_row_holds_every_pulls_declined_tally_by_extension` | performed |
 | `connector.source.decompression-budget` | `crates/contextful-decode/tests/integration/workbook.rs::an_office_read_decompresses_at_most_64_mib_by_claim_and_by_arrival` | performed |
 | `connector.source.delimited-cell` | `crates/contextful-decode/tests/integration/decode.rs::delimited_cells_land_as_strings_and_empty_unquoted_fields_as_null` | performed |
@@ -562,6 +564,9 @@ Unscheduled operations: 10.
 | `connector.source.drive-version-consistency` | `crates/contextful-connectors/tests/integration/drive.rs::metadata_only_refuses_a_version_moving_during_capture` | performed |
 | `connector.source.drive-walk` | `crates/contextful-connectors/tests/integration/drive.rs::a_three_level_tree_lands_one_row_per_file_with_its_path_from_the_root` | performed |
 | `connector.source.etag-skip` | `crates/contextful-connectors/tests/integration/object.rs::an_unchanged_etag_lands_nothing_and_a_new_object_lands_alone` | performed |
+| `connector.source.expansion` | `crates/contextful-connectors/tests/integration/http.rs::expansion_lands_detail_on_the_source_pull` | performed |
+| `connector.source.expansion-budget` | `crates/contextful-connectors/src/http.rs::an_expanding_read_counts_index_detail_and_elapsed_budgets` | performed |
+| `connector.source.expansion-order` | `crates/contextful-connectors/tests/integration/http.rs::expansion_runs_after_the_watermark_filter` | performed |
 | `connector.source.external-reference` | `crates/contextful-decode/tests/integration/workbook.rs::every_form_of_external_reference_is_refused` | performed |
 | `connector.source.feed-entry-id` | `crates/contextful-decode/tests/integration/feed.rs::an_entry_id_falls_back_to_the_link_and_an_entry_with_neither_refuses` | performed |
 | `connector.source.feed-format` | `crates/contextful-decode/tests/integration/feed.rs::an_atom_and_an_rss_document_land_one_row_per_entry` | performed |
@@ -575,6 +580,7 @@ Unscheduled operations: 10.
 | `connector.source.file-rename` | `crates/contextful-connectors/tests/integration/file.rs::a_rename_onto_the_same_slug_keeps_the_renamed_rows` | performed |
 | `connector.source.file-source` | `crates/contextful-connectors/tests/integration/file.rs::notes_text_and_pdfs_land_and_every_other_extension_is_declined_by_extension` | performed |
 | `connector.source.file-table-unmatched` | `crates/contextful-connectors/tests/integration/file.rs::a_table_other_than_documents_refuses` | performed |
+| `connector.source.follow-up-failure` | `crates/contextful-connectors/tests/integration/http.rs::expansion_fails_the_read_on_a_failed_followup` | performed |
 | `connector.source.format-key-mismatch` | `crates/contextful-connectors/tests/integration/http.rs::a_json_key_on_another_format_is_refused_at_build` | performed |
 | `connector.source.frontmatter-columns` | `crates/contextful-connectors/tests/integration/file.rs::frontmatter_keys_land_as_string_columns_on_every_row` | performed |
 | `connector.source.frontmatter-shape` | `crates/contextful-connectors/tests/integration/file.rs::a_nested_map_block_scalar_or_reserved_key_in_frontmatter_refuses` | performed |
@@ -604,9 +610,13 @@ Unscheduled operations: 10.
 | `connector.source.pagination-ambiguity` | `crates/contextful-connectors/tests/integration/http.rs::two_pagination_shapes_are_refused` | performed |
 | `connector.source.parse-containment` | `crates/contextful-connectors/tests/integration/file.rs::a_pdf_decodes_in_a_child_process_and_its_crash_fails_the_read_alone` | performed |
 | `connector.source.placeholder-unbound` | `crates/contextful-connectors/tests/integration/http.rs::a_placeholder_other_than_the_table_is_refused_at_build` | performed |
+| `connector.source.pointer-ambiguity` | `crates/contextful-connectors/tests/integration/http.rs::expansion_rejects_two_pointer_forms` | performed |
+| `connector.source.pointer-column-missing` | `crates/contextful-connectors/tests/integration/http.rs::expansion_refuses_a_missing_row_pointer_before_detail_io` | performed |
 | `connector.source.prefix-listing` | `crates/contextful-connectors/tests/integration/object.rs::a_prefix_lands_each_listed_object_in_key_order_and_latest_lands_one` | performed |
 | `connector.source.table-pattern` | `crates/contextful-cli/tests/integration/pipeline.rs::each_table_binds_its_segment_and_keeps_its_own_position` | performed |
 | `connector.source.table-unmatched` | `crates/contextful-connectors/tests/integration/http.rs::a_table_off_the_pattern_is_refused_before_any_request` | performed |
+| `connector.source.target-column-occupied` | `crates/contextful-connectors/tests/integration/http.rs::expansion_refuses_an_occupied_target_before_detail_io` | performed |
+| `connector.source.template-shape` | `crates/contextful-connectors/tests/integration/http.rs::expansion_template_binds_row_values_under_the_source_host` | performed |
 | `connector.source.walk-boundary` | `crates/contextful-connectors/tests/integration/file.rs::the_walk_stays_under_the_root_skips_dot_entries_and_visits_in_sorted_order` | performed |
 | `connector.source.workbook-cell-typing` | `crates/contextful-decode/tests/integration/workbook.rs::cells_land_as_strings_a_date_as_its_serial_and_a_formula_as_its_cached_value` | performed |
 | `connector.source.workbook-incremental` | `crates/contextful-connectors/tests/integration/workbook.rs::an_incremental_position_against_a_workbook_is_refused` | performed |

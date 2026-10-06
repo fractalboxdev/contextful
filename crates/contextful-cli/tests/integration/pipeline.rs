@@ -195,6 +195,19 @@ fn an_image_source_reads_jpeg_dimensions_without_decoding_pixels() {
     assert_eq!(out["rows"], serde_json::json!([["j.jpg", "2", "3"]]));
 }
 
+/// A CSV incremental clock is validated on the first pipeline fire, before a cursor exists.
+#[test]
+fn csv_incremental_clock_rejects_variable_width_on_first_fire() {
+    let vendor = Vendor::start(|_| (200, "id,at\n1,12\n2,123\n".to_string()));
+    let dir = project(&format!(
+        "[[pipeline]]\nid = \"clock\"\nincremental = \"at\"\ntables = [\"rows\"]\n[pipeline.source]\nname = \"http\"\nconfig = {{ endpoint = \"{}\", format = \"csv\" }}\n",
+        vendor.url("/rows")
+    ));
+    let out = fire(dir.path(), "clock", "clock-1", "2030-01-01T00:00:00Z");
+    assert!(!out.status.success(), "{}", String::from_utf8_lossy(&out.stdout));
+    assert!(stderr(&out).contains("ConnectorClockColumnRejected"), "{}", stderr(&out));
+}
+
 /// Startup reads `contextful.toml` for project config and inline `[[pipeline]]` blocks, then `pipelines/*.toml`
 /// and `pipelines/*.json`; specifications are collected by `id`.
 // spec: run.declare.manifest-file@4779cc3b
