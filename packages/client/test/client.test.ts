@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { mkdtempSync, mkdirSync, writeFileSync } from "node:fs";
+import { chmodSync, mkdtempSync, mkdirSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { test } from "node:test";
@@ -33,6 +33,11 @@ test("spawned child refuses absent credential and absent ancestor manifest befor
   const client = new SpawnedClient({ cwd: nested, command: "contextful", token: "reader-token" });
   assert.equal(client.projectRoot, root);
   assert.equal(client.command, "contextful");
+  const fixture = join(root, "echo-mcp");
+  writeFileSync(fixture, "#!/bin/sh\nread line\nprintf '%s\\n' '{\"jsonrpc\":\"2.0\",\"id\":1,\"result\":{\"ok\":true}}'\n");
+  chmodSync(fixture, 0o700);
+  const spawned = new SpawnedClient({ cwd: nested, command: fixture, token: "reader-token" });
+  assert.deepEqual(await spawned.call("tools/list"), { ok: true });
 });
 
 test("listing counts declined keys and flags the first omitted entry", () => {
