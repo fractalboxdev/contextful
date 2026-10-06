@@ -8,6 +8,7 @@ use contextful_context::Store;
 use contextful_core::pipeline::declare::ManifestFile;
 use contextful_policy::enforce::mask::Pepper;
 use std::path::Path;
+use sha2::{Digest, Sha256};
 #[cfg(feature = "data-plane")]
 use anyhow::anyhow;
 #[cfg(feature = "data-plane")]
@@ -38,6 +39,12 @@ fn posture(value: &str) -> Result<AuthoringPosture> {
 pub struct Located {
     pub project: Project,
     pub declaration: PathBuf,
+}
+
+/// The canonical local store root binds an owner credential to one store instance.
+pub(crate) fn owner_identity(project: &Project) -> Result<String> {
+    let root = std::fs::canonicalize(project.store_root())?;
+    Ok(format!("{:x}", Sha256::digest(root.to_string_lossy().as_bytes())))
 }
 
 /// Resolve the project from `--project` or by discovery, and the declaration from

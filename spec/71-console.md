@@ -149,7 +149,7 @@ The client library, its four deployment shapes and transports, and the credentia
   *A-read*
 - `store-selector` — The child's working directory selects the store by walking up to the project manifest; finding none raises `StoreSelectorAbsent` and exits before writing any protocol framing.
   *A-topology*
-- `owner-flag` — An explicit owner flag over the process transport admits the local owner context only with the store's owner credential.
+- `owner-flag` — A process `--owner` admits the local owner context only with a verified signed claim bound to the selected store; an ordinary or different-store credential raises `OwnerCredentialInvalid` before protocol framing.
   *A-surface*
 
 The client library's four shapes, and who holds the credential in each:

@@ -33,7 +33,7 @@ Revisit: a directory's identifiers exceed 256 B; provisioning latency dominates 
 
 ## Delegation is a versioned profile over an attenuable-credential library
 
-The library is Biscuit, and its own format is the one wire format; the engine owns a versioned profile and no envelope. `authority.profile` names the admitted facts, checks and restriction tuples, and refuses any other element; the library owns serialization, signatures, chaining and evaluation. A credential is an authority block plus N attenuation blocks; the supported chain depth is unsettled under `authority.attenuate`. Time, audience, resolved resources and request identity are reserved engine-supplied facts. Evaluation admits no third-party block, external function, recursion or regular expression, under fact and iteration ceilings that refuse past their bound.
+The library is Biscuit, and its own format is the one wire format; the engine owns a versioned profile and no envelope. `authority.profile` names the admitted facts, checks and restriction tuples, and refuses any other element; the library owns serialization, signatures, chaining and evaluation. Profile 2 adds the signed local owner store identity to the root block; profile 1 stays readable, and attenuation cannot acquire ownership. A credential is an authority block plus N attenuation blocks; the supported chain depth is unsettled under `authority.attenuate`. Time, audience, resolved resources and request identity are reserved engine-supplied facts. Evaluation admits no third-party block, external function, recursion or regular expression, under fact and iteration ceilings that refuse past their bound.
 
 | Option | Lost on | Cost |
 | --- | --- | --- |

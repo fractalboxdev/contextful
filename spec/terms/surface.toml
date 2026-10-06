@@ -56,6 +56,7 @@ StoreEntryMalformed           = { clause = "surface.register-store.malformed-ent
 StoreIdReserved               = { clause = "surface.register-store.reserved-id", gloss = "A configured store claiming a built-in id." }
 StoreNameAuthored             = { clause = "surface.register-store.authored-name", gloss = "A store entry carrying its own credential or binding name." }
 StdioCredentialMissing        = { clause = "surface.package.stdio-credential", gloss = "A process-transport client with no credential." }
+OwnerCredentialInvalid        = { clause = "surface.package.owner-flag", gloss = "A process owner flag with no signed claim for the selected local store." }
 StoreSelectorAbsent           = { clause = "surface.package.store-selector", gloss = "A spawned engine finding no project manifest above its working directory." }
 ConsoleSuggestionUnanswerable = { clause = "surface.speak.unanswerable-suggestion", gloss = "A suggested prompt whose answer is a decline." }
 ConsoleUngroundedAnswer       = { clause = "surface.ground.ungrounded-answer", gloss = "Answer prose composed in a turn holding no tool result." }

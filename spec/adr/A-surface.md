@@ -71,7 +71,7 @@ Consequences: Query and Admin use the same store registry while retaining separa
 
 ## Turn compatibility preserves the stored transcript and reader scope
 
-An explicit process owner flag needs the store's owner credential; it does not turn an empty credential into ownership. A store overlay reaches synthesis text alone, so planner tool selection does not inherit a store-authored persona. Distillation records the observed subject and recall resolves it through entity matching. A client with an older component union renders an unknown view as a table. One operator's credential defines an answer; a room-intersection principal is absent.
+An explicit process owner flag needs a signed owner claim bound to the selected local store; it does not turn an ordinary or empty credential into ownership. A store overlay reaches synthesis text alone, so planner tool selection does not inherit a store-authored persona. Distillation records the observed subject and recall resolves it through entity matching. A client with an older component union renders an unknown view as a table. One operator's credential defines an answer; a room-intersection principal is absent.
 
 | Option | Lost on | Cost |
 | --- | --- | --- |
