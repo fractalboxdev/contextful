@@ -22,6 +22,9 @@ pub enum SurfaceError {
     /// (`surface.reconcile.fail-static`)
     #[error("ControlSnapshotUnreadable: {0}")]
     ControlSnapshotUnreadable(String),
+    /// (`surface.reconcile.pulled-control-untrusted`)
+    #[error("ControlSnapshotUntrusted: {0}")]
+    ControlSnapshotUntrusted(String),
     /// (`surface.reconcile.loopback-only`)
     #[error("ControlSourceNotLoopback: {0}")]
     ControlSourceNotLoopback(String),
@@ -37,6 +40,9 @@ pub enum SurfaceError {
     /// (`surface.apply.validation`)
     #[error("ApplyValidationRefused: {0}")]
     ApplyValidationRefused(String),
+    /// (`surface.apply.attestation-unavailable`)
+    #[error("ControlAttestationUnavailable: {0}")]
+    ControlAttestationUnavailable(String),
     /// (`surface.arm.unknown-trigger`)
     #[error("TriggerAdapterUnknown: {0}")]
     TriggerAdapterUnknown(String),
@@ -93,11 +99,13 @@ impl SurfaceError {
             | SurfaceError::ControlPointerMalformed(_)
             | SurfaceError::ControlSourceNotLoopback(_)
             | SurfaceError::CycleControlSourceUnresolved(_)
-            | SurfaceError::ConditionalWriteUnsupported(_) => 503,
+            | SurfaceError::ConditionalWriteUnsupported(_)
+            | SurfaceError::ControlAttestationUnavailable(_) => 503,
             SurfaceError::StoreNotInitialized(_) | SurfaceError::ManifestVersionConflict(_) | SurfaceError::DispatchCallbackRejected(_) => 409,
             SurfaceError::EnforceRegionMismatch(_) | SurfaceError::ResidencySitesDiverge(_) => 503,
             SurfaceError::DispatchSubmitRejected(_) => 401,
             SurfaceError::ScheduleUnreadable(_)
+            | SurfaceError::ControlSnapshotUntrusted(_)
             | SurfaceError::ApplyValidationRefused(_)
             | SurfaceError::TriggerAdapterUnknown(_)
             | SurfaceError::TriggerFaceMissing(_)

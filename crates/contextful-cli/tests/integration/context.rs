@@ -144,3 +144,26 @@ fn rebuild_catalog_reconstructs_the_derived_catalog_from_the_tree() {
     assert_eq!(next.runs.len(), 3);
     assert_eq!(std::fs::read(root.join("tables/filings/_pointer.json")).unwrap(), pointer);
 }
+
+#[test]
+fn an_encrypted_catalog_selection_keeps_derived_rows_in_memory() {
+    use contextful_core::store::catalog::{DerivedCatalog, DerivedRows, DerivedTable};
+
+    let p = project();
+    let path = p.path().join(".contextful/context/research/derived.sqlite");
+    let rows = DerivedRows {
+        tables: vec![DerivedTable {
+            table: "filings".into(), schema: "schema-canary-5f1e".into(),
+            snapshot_id: None, fence: None,
+        }],
+        ..Default::default()
+    };
+    let catalog = contextful_cli::derived_catalog(&path, true).unwrap();
+    catalog.replace(&rows).unwrap();
+    assert_eq!(catalog.rows().unwrap(), rows);
+    assert!(!path.exists());
+
+    let plain = contextful_cli::derived_catalog(&path, false).unwrap();
+    plain.replace(&rows).unwrap();
+    assert!(path.exists());
+}

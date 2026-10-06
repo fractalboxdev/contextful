@@ -7,12 +7,14 @@ use arrow_array::{
 };
 use arrow_schema::{DataType, Field, Fields, Schema as ArrowSchema, TimeUnit};
 use contextful_core::store::reconcile::{
-    Column, ColumnType, FloatItem, Schema, StructField, EXTENSION_NAME, JSON_EXTENSION, LIST_ITEM,
-    MAP_ENTRIES, MAP_KEY, MAP_VALUE, VECTOR_ITEM,
+    variant_fields, Column, ColumnType, FloatItem, Schema, StructField, EXTENSION_NAME, JSON_EXTENSION, LIST_ITEM,
+    MAP_ENTRIES, MAP_KEY, MAP_VALUE, VARIANT_EXTENSION, VECTOR_ITEM,
 };
-use parquet::arrow::arrow_reader::ParquetRecordBatchReaderBuilder;
+use parquet::arrow::arrow_reader::{ArrowReaderOptions, ParquetRecordBatchReaderBuilder};
 use parquet::arrow::ArrowWriter;
 use parquet::basic::{Compression, ZstdLevel};
+use parquet::encryption::decrypt::FileDecryptionProperties;
+use parquet::encryption::encrypt::FileEncryptionProperties;
 use parquet::file::properties::WriterProperties;
 use std::collections::HashMap;
 use std::fs::File;
@@ -40,6 +42,7 @@ pub fn data_type(ty: &ColumnType) -> DataType {
         ColumnType::Struct(fields) => DataType::Struct(struct_fields(fields)),
         ColumnType::List(item) => DataType::List(Arc::new(field_of(LIST_ITEM, item, true))),
         ColumnType::Map(value) => DataType::Map(Arc::new(map_entries(value)), false),
+        ColumnType::Variant => DataType::Struct(struct_fields(&variant_fields())),
     }
 }
 
@@ -63,10 +66,10 @@ pub fn map_entries(value: &ColumnType) -> Field {
 /// One Arrow field, carrying the JSON extension on a JSON column at any depth.
 pub fn field_of(name: &str, ty: &ColumnType, nullable: bool) -> Field {
     let f = Field::new(name, data_type(ty), nullable);
-    if *ty == ColumnType::Json {
+    if matches!(ty, ColumnType::Json | ColumnType::Variant) {
         f.with_metadata(HashMap::from([(
             EXTENSION_NAME.to_string(),
-            JSON_EXTENSION.to_string(),
+            if *ty == ColumnType::Json { JSON_EXTENSION } else { VARIANT_EXTENSION }.to_string(),
         )]))
     } else {
         f
@@ -109,12 +112,80 @@ pub fn write(path: &Path, batch: &RecordBatch) -> Result<()> {
     Ok(())
 }
 
+/// Write one batch with Parquet modular encryption of every column and the footer.
+pub fn write_encrypted(path: &Path, batch: &RecordBatch, key: &[u8; 16]) -> Result<()> {
+    let pq = |e: parquet::errors::ParquetError| ContextError::Parquet { path: path.to_path_buf(), message: e.to_string() };
+    if let Some(dir) = path.parent() {
+        std::fs::create_dir_all(dir).at(dir)?;
+    }
+    let encryption = FileEncryptionProperties::builder(key.to_vec()).build().map_err(pq)?;
+    let props = WriterProperties::builder()
+        .set_compression(Compression::ZSTD(ZstdLevel::default()))
+        .with_file_encryption_properties(encryption)
+        .build();
+    let file = File::create(path).at(path)?;
+    let mut writer = ArrowWriter::try_new(file, batch.schema(), Some(props)).map_err(pq)?;
+    writer.write(batch).map_err(pq)?;
+    writer.close().map_err(pq)?;
+    Ok(())
+}
+
+/// A store part uses modular encryption exactly when its project binds a key.
+pub fn write_with_key(path: &Path, batch: &RecordBatch, key: Option<&[u8; 16]>) -> Result<()> {
+    match key {
+        Some(key) => write_encrypted(path, batch, key),
+        None => write(path, batch),
+    }
+}
+
 /// Read every batch of a Parquet file.
 pub fn read(path: &Path) -> Result<Vec<RecordBatch>> {
     let pq = |m: String| ContextError::Parquet { path: path.to_path_buf(), message: m };
     let file = File::open(path).at(path)?;
     let reader = ParquetRecordBatchReaderBuilder::try_new(file).map_err(|e| pq(e.to_string()))?.build().map_err(|e| pq(e.to_string()))?;
     reader.map(|b| b.map_err(|e| pq(e.to_string()))).collect()
+}
+
+/// Read every batch of a modular-encrypted Parquet file with its footer key.
+pub fn read_encrypted(path: &Path, key: &[u8; 16]) -> Result<Vec<RecordBatch>> {
+    let pq = |e: parquet::errors::ParquetError| ContextError::Parquet { path: path.to_path_buf(), message: e.to_string() };
+    let decryption = FileDecryptionProperties::builder(key.to_vec()).build().map_err(pq)?;
+    let options = ArrowReaderOptions::new().with_file_decryption_properties(decryption);
+    let file = File::open(path).at(path)?;
+    let reader = ParquetRecordBatchReaderBuilder::try_new_with_options(file, options).map_err(pq)?.build().map_err(pq)?;
+    reader.map(|batch| batch.map_err(|e| ContextError::Parquet { path: path.to_path_buf(), message: e.to_string() })).collect()
+}
+
+/// A store part reads with its project's modular encryption setting.
+pub fn read_with_key(path: &Path, key: Option<&[u8; 16]>) -> Result<Vec<RecordBatch>> {
+    match key {
+        Some(key) => read_encrypted(path, key),
+        None => read(path),
+    }
+}
+
+/// Decode a complete Parquet file already held in anonymous process memory.
+pub fn read_bytes(bytes: Vec<u8>) -> Result<Vec<RecordBatch>> {
+    let path = Path::new("<in-memory parquet>");
+    let pq = |e: String| ContextError::Parquet { path: path.to_path_buf(), message: e };
+    let reader = ParquetRecordBatchReaderBuilder::try_new(bytes::Bytes::from(bytes))
+        .map_err(|e| pq(e.to_string()))?
+        .build()
+        .map_err(|e| pq(e.to_string()))?;
+    reader.map(|batch| batch.map_err(|e| pq(e.to_string()))).collect()
+}
+
+fn builder_with_key(path: &Path, key: Option<&[u8; 16]>) -> Result<ParquetRecordBatchReaderBuilder<File>> {
+    let file = File::open(path).at(path)?;
+    let pq = |e: parquet::errors::ParquetError| ContextError::Parquet { path: path.to_path_buf(), message: e.to_string() };
+    match key {
+        Some(key) => {
+            let decryption = FileDecryptionProperties::builder(key.to_vec()).build().map_err(pq)?;
+            let options = ArrowReaderOptions::new().with_file_decryption_properties(decryption);
+            ParquetRecordBatchReaderBuilder::try_new_with_options(file, options).map_err(pq)
+        }
+        None => ParquetRecordBatchReaderBuilder::try_new(file).map_err(pq),
+    }
 }
 
 /// Where [`copy_inserting`] places an inserted column: beside a column the source file
@@ -145,9 +216,13 @@ pub struct Insert<'a> {
 /// fill on every row. One record batch of `from` is in memory at a time; an existing `to`
 /// is replaced.
 pub fn copy_inserting(from: &Path, to: &Path, inserts: &[Insert<'_>]) -> Result<()> {
+    copy_inserting_with_key(from, to, inserts, None)
+}
+
+/// Copy one store part while retaining its project's modular encryption.
+pub fn copy_inserting_with_key(from: &Path, to: &Path, inserts: &[Insert<'_>], key: Option<&[u8; 16]>) -> Result<()> {
     let pq = |path: &Path, m: String| ContextError::Parquet { path: path.to_path_buf(), message: m };
-    let file = File::open(from).at(from)?;
-    let builder = ParquetRecordBatchReaderBuilder::try_new(file).map_err(|e| pq(from, e.to_string()))?;
+    let builder = builder_with_key(from, key)?;
     let source = builder.schema().clone();
     // Each target column is a source column or an insert, by index.
     enum Src {
@@ -172,7 +247,12 @@ pub fn copy_inserting(from: &Path, to: &Path, inserts: &[Insert<'_>]) -> Result<
         std::fs::remove_file(to).at(to)?;
     }
     let out = File::create(to).at(to)?;
-    let props = WriterProperties::builder().set_compression(Compression::ZSTD(ZstdLevel::default())).build();
+    let mut props = WriterProperties::builder().set_compression(Compression::ZSTD(ZstdLevel::default()));
+    if let Some(key) = key {
+        let encryption = FileEncryptionProperties::builder(key.to_vec()).build().map_err(|e| pq(to, e.to_string()))?;
+        props = props.with_file_encryption_properties(encryption);
+    }
+    let props = props.build();
     let mut w = ArrowWriter::try_new(out, target.clone(), Some(props)).map_err(|e| pq(to, e.to_string()))?;
     for batch in reader {
         let batch = batch.map_err(|e| pq(from, e.to_string()))?;
@@ -196,18 +276,23 @@ pub fn copy_inserting(from: &Path, to: &Path, inserts: &[Insert<'_>]) -> Result<
 
 /// The column names a Parquet file carries, read from its footer.
 pub fn columns(path: &Path) -> Result<Vec<String>> {
-    let file = File::open(path).at(path)?;
-    let b = ParquetRecordBatchReaderBuilder::try_new(file)
-        .map_err(|e| ContextError::Parquet { path: path.to_path_buf(), message: e.to_string() })?;
+    columns_with_key(path, None)
+}
+
+pub fn columns_with_key(path: &Path, key: Option<&[u8; 16]>) -> Result<Vec<String>> {
+    let b = builder_with_key(path, key)?;
     Ok(b.schema().fields().iter().map(|f| f.name().clone()).collect())
 }
 
 /// The store columns a Parquet file carries, read from the Arrow schema in its footer:
 /// the inverse of [`field`] over every type a store column lands as.
 pub fn schema(path: &Path) -> Result<Vec<Column>> {
+    schema_with_key(path, None)
+}
+
+pub fn schema_with_key(path: &Path, key: Option<&[u8; 16]>) -> Result<Vec<Column>> {
     let unreadable = |m: String| ContextError::Parquet { path: path.to_path_buf(), message: m };
-    let file = File::open(path).at(path)?;
-    let b = ParquetRecordBatchReaderBuilder::try_new(file).map_err(|e| unreadable(e.to_string()))?;
+    let b = builder_with_key(path, key)?;
     b.schema()
         .fields()
         .iter()
@@ -239,12 +324,17 @@ fn column_type(f: &Field) -> Option<ColumnType> {
             };
             ColumnType::FixedSizeList(item, u32::try_from(*n).ok()?)
         }
-        DataType::Struct(fields) if !fields.is_empty() => ColumnType::Struct(
-            fields
+        DataType::Struct(fields) if !fields.is_empty() => {
+            let decoded = fields
                 .iter()
                 .map(|f| Some(StructField::new(f.name(), column_type(f)?)))
-                .collect::<Option<_>>()?,
-        ),
+                .collect::<Option<Vec<_>>>()?;
+            if f.metadata().get(EXTENSION_NAME).is_some_and(|v| v == VARIANT_EXTENSION) {
+                (decoded == variant_fields()).then_some(ColumnType::Variant)?
+            } else {
+                ColumnType::Struct(decoded)
+            }
+        }
         DataType::List(item) | DataType::LargeList(item) => ColumnType::list(column_type(item)?),
         DataType::Map(entries, _) => {
             let DataType::Struct(kv) = entries.data_type() else {

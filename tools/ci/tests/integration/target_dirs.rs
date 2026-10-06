@@ -84,8 +84,8 @@ fn the_workspace_stage_runs_one_invocation_and_the_store_suites_link_no_engine_w
     }
 }
 
-/// Both CLI partitions compile the feature union; four groups run every other package.
-// spec: assurance.gate.workspace-parts@e828321f
+/// Workspace compilation and both CLI partitions run separately; four groups run every other package.
+// spec: assurance.gate.workspace-parts@4ac089c3
 #[test]
 fn remote_workspace_parts_compile_the_union_and_run_each_package_suite() {
     let r = Repo::init();
@@ -103,6 +103,18 @@ fn remote_workspace_parts_compile_the_union_and_run_each_package_suite() {
     assert!(compiled.status.success(), "{}", stderr(&compiled));
     let calls = std::fs::read_to_string(&log).unwrap();
     assert!(calls.contains("test --workspace --exclude contextful-acceptance --no-run"), "{calls}");
+    assert_eq!(calls.lines().count(), 1, "compile runs no package suite: {calls}");
+
+    std::fs::remove_file(&log).unwrap();
+    let tested = r.gate_with_cargo(&recording(&log, 0), &["--stage", "workspace.cli"]);
+    assert!(tested.status.success(), "{}", stderr(&tested));
+    let calls = std::fs::read_to_string(&log).unwrap();
+    assert_eq!(calls.lines().count(), 1, "compile runs no package suite: {calls}");
+
+    std::fs::remove_file(&log).unwrap();
+    let tested = r.gate_with_cargo(&recording(&log, 0), &["--stage", "workspace.cli"]);
+    assert!(tested.status.success(), "{}", stderr(&tested));
+    let calls = std::fs::read_to_string(&log).unwrap();
     assert!(calls.contains("test --package contextful-cli"), "{calls}");
     assert!(calls.contains("--skip differential::"), "{calls}");
 
@@ -110,8 +122,8 @@ fn remote_workspace_parts_compile_the_union_and_run_each_package_suite() {
     let formal = r.gate_with_cargo(&recording(&log, 0), &["--stage", "workspace.cli-formal"]);
     assert!(formal.status.success(), "{}", stderr(&formal));
     let calls = std::fs::read_to_string(&log).unwrap();
-    assert!(calls.contains("test --workspace --exclude contextful-acceptance --no-run"), "{calls}");
     assert!(calls.contains("test --package contextful-cli --test integration differential::"), "{calls}");
+    assert_eq!(calls.lines().count(), 1, "formal runs no workspace compile: {calls}");
 
     std::fs::remove_file(&log).unwrap();
     let tested = r.gate_with_cargo(&recording(&log, 0), &["--stage", "workspace.foundation"]);

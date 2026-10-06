@@ -6,6 +6,60 @@ mod node_id;
 mod s3;
 mod without_s3;
 
+#[test]
+fn push_reads_the_declared_control_snapshot_directory() {
+    use contextful_core::issue::SignatureAlgorithm;
+    use contextful_policy::control_receipt::ControlReceipt;
+    use contextful_policy::issue::SeedSigner;
+
+    let bucket = tempfile::tempdir().unwrap();
+    let site = project("ingest-a", &file_sync(bucket.path(), ""));
+    std::fs::write(site.path().join("contextful.toml"), "authoring_posture = 'per_request'\n[control]\nsnapshot_dir = 'ops/control'\n").unwrap();
+    let control = site.path().join("ops/control");
+    std::fs::create_dir_all(&control).unwrap();
+    let snapshot = b"authoring_posture = 'per_request'\n";
+    let signer = SeedSigner::generate(SignatureAlgorithm::Ed25519);
+    let receipt = ControlReceipt::sign("research", 1, None, snapshot, &signer).unwrap();
+    std::fs::write(control.join("manifest@v1.toml"), snapshot).unwrap();
+    std::fs::write(control.join("receipt@v1.json"), serde_json::to_vec(&receipt).unwrap()).unwrap();
+    std::fs::write(control.join("manifest@current"), "1\n").unwrap();
+    ok(&cf(site.path(), &["sync", "push", "--project", "research"], &[]));
+    let manifest: Value = serde_json::from_slice(&std::fs::read(bucket.path().join("context-team/team/manifest.json")).unwrap()).unwrap();
+    assert_eq!(manifest["control_heads"]["research"]["receipt_sha256"], receipt.digest());
+    assert!(manifest["entries"]["research/control/receipt@v1.json"].is_object());
+}
+
+#[test]
+fn a_cold_node_pulls_and_adopts_the_admin_attested_control_version() {
+    let vendor = crate::pipeline::Vendor::start(|_| (200, "[{\"id\":\"a\"}]".into()));
+    let bucket = tempfile::tempdir().unwrap();
+    let sync = file_sync(bucket.path(), "");
+    let writer = project("ingest-a", &sync);
+    let document = format!("authoring_posture = 'per_request'\nsite_id = 'site-a'\n[[pipeline]]\nid = 'orders'\nschedule = 'every 1h'\ntables = ['orders']\n[pipeline.source]\nname = 'http'\nconfig = {{ endpoint = '{}' }}\n", vendor.url("/v1/orders"));
+    std::fs::write(writer.path().join("contextful.toml"), &document).unwrap();
+    std::fs::write(writer.path().join(".contextful/issuance.toml"),
+        "default_audience = 'contextful://research'\nmax_lifetime_secs = 3600\n").unwrap();
+    let public = ok(&cf(writer.path(), &["token", "keygen", "--out", ".contextful/issuer.seed"], &[]));
+    let admin = ok(&cf(writer.path(), &["token", "mint", "--issuer-key", ".contextful/issuer.seed",
+        "--on-behalf-of", "user://dana@example.test", "--ttl", "600", "--action", "admin", "--table", "*"], &[]));
+    ok(&cf(writer.path(), &["pipeline", "import", "--project", "research", "--issuer-key", ".contextful/issuer.seed",
+        "--public-key", &public, "--audience", "contextful://research"], &[("CONTEXTFUL_TOKEN", &admin)]));
+    ok(&cf(writer.path(), &["sync", "push", "--project", "research"], &[]));
+
+    let cold = project("ingest-b", &sync);
+    std::fs::write(cold.path().join("contextful.toml"), document).unwrap();
+    ok(&cf(cold.path(), &["sync", "pull", "--project", "research"], &[]));
+    let pointer = cold.path().join(".contextful/control/research/manifest@current");
+    assert!(!pointer.exists());
+    let out = cf(cold.path(), &["pipeline", "serve", "--cycle", "--project", "research", "--now", "2030-01-01T00:00:00Z", "--public-key", &public], &[]);
+    assert!(out.status.success(), "{}", String::from_utf8_lossy(&out.stderr));
+    assert_eq!(std::fs::read_to_string(pointer).unwrap(), "1\n");
+    let answer: Value = serde_json::from_slice(&out.stdout).unwrap();
+    assert_eq!(answer["armed"], 1);
+    assert_eq!(answer["fired"], json!(["orders"]));
+    assert_eq!(vendor.targets(), ["/v1/orders"]);
+}
+
 use serde_json::{json, Value};
 use std::io::{BufRead, BufReader, Write};
 use std::net::TcpListener;

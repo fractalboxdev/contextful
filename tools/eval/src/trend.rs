@@ -39,6 +39,7 @@ impl Comparison {
     /// The run report's annotation, when the figure moved past the band.
     pub fn annotation(&self) -> Option<String> {
         match self {
+            Comparison::Annotated { worse_percent } if !worse_percent.is_finite() => Some("worse than the zero baseline".into()),
             Comparison::Annotated { worse_percent } => Some(format!("{worse_percent:+.0} percent against the baseline")),
             _ => None,
         }

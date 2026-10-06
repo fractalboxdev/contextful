@@ -3,6 +3,30 @@
 
 #[derive(Debug, Clone, PartialEq, Eq, thiserror::Error)]
 pub enum ConnectorError {
+    /// An image file header that does not parse. (`connector.source.image-header`)
+    #[error("ConnectorImageHeaderUnreadable: {0}")]
+    ConnectorImageHeaderUnreadable(String),
+    /// A delimited body invalid under its declared encoding. (`connector.source.declared-encoding`)
+    #[error("ConnectorEncodingInvalid: {0}")]
+    ConnectorEncodingInvalid(String),
+    /// A delimited clock column neither RFC 3339 nor a fixed-width digit stamp. (`connector.source.clock-column-spelling`)
+    #[error("ConnectorClockColumnRejected: {0}")]
+    ConnectorClockColumnRejected(String),
+    /// Both expansion pointer forms on one block. (`connector.source.pointer-ambiguity`)
+    #[error("ConnectorPointerAmbiguous: {0}")]
+    ConnectorPointerAmbiguous(String),
+    /// A failed expansion follow-up, failing the whole read. (`connector.source.follow-up-failure`)
+    #[error("ConnectorExpansionFailed: {0}")]
+    ConnectorExpansionFailed(String),
+    /// A pointer template with no placeholder, or one binding into the URL authority. (`connector.source.template-shape`)
+    #[error("ConnectorTemplateRejected: {0}")]
+    ConnectorTemplateRejected(String),
+    /// An expansion placeholder naming a column the rows lack as a scalar. (`connector.source.pointer-column-missing`)
+    #[error("ConnectorPointerColumnMissing: {0}")]
+    ConnectorPointerColumnMissing(String),
+    /// An expansion target column the index rows already carry. (`connector.source.target-column-occupied`)
+    #[error("ConnectorTargetColumnOccupied: {0}")]
+    ConnectorTargetColumnOccupied(String),
     /// An empty, oversized, repeated or ambiguous Drive root selection. (`connector.source.drive-root-set`)
     #[error("ConnectorDriveRootsInvalid: {0}")]
     ConnectorDriveRootsInvalid(String),

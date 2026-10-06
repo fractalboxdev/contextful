@@ -73,8 +73,34 @@ fn reserved_columns_project_null_for_a_table_lacking_them() {
     let s = r.session(&["research/notes"], Some(("research/notes", "acme")), None);
     let ranked = r.face.retrieve(&s, &ask("research/", "solar battery storage"), Bounds::default()).unwrap();
     assert_eq!(ranked.rows.len(), 2);
-    for c in ["_modality", "_lang", "_prompt_hash", "_kind"] {
+    for c in ["_modality", "_lang", "_provenance", "_prompt_hash", "_kind"] {
         assert!(column(&ranked, c).iter().all(|v| v.is_null()), "{c}");
+    }
+}
+
+/// A producer sets any of `_modality`, `_lang`, `_provenance` and `_prompt_hash`, and each surfaces in the provenance envelope where present.
+// spec: store.reserve.optional@acdb41f5
+#[test]
+fn optional_provenance_columns_surface_in_ranked_rows() {
+    let r = Reads::new();
+    let hash = format!("sha256:{}", "0".repeat(64));
+    let provenance = r#"[{"table":"research/notes","key":{"note_id":"n1"}}]"#;
+    land_rows(
+        &r.store,
+        "research/notes",
+        "run-0002",
+        json!([{"note_id": "n5", "tenant": "acme", "title": "Provenance specimen", "_modality": "text", "_lang": "en-GB", "_provenance": provenance, "_prompt_hash": hash}]),
+    );
+    let s = r.session(&["research/notes"], Some(("research/notes", "acme")), None);
+    let ranked = r.face.retrieve(&s, &ask("research/notes", "specimen"), Bounds::default()).unwrap();
+    assert_eq!(ids(&ranked, "note_id"), ["n5"]);
+    for (name, expected) in [
+        ("_modality", json!("text")),
+        ("_lang", json!("en-GB")),
+        ("_provenance", json!(provenance)),
+        ("_prompt_hash", json!(hash)),
+    ] {
+        assert_eq!(column(&ranked, name), [expected], "{name}");
     }
 }
 
@@ -90,6 +116,30 @@ fn the_block_reports_how_many_rows_matched() {
     assert_eq!(block["candidates_prefloor"], json!(3));
     assert_eq!(block["floor"], json!(2));
     assert!(!ranked.blocks.contains_key("contextful.internals"));
+}
+
+/// Byte truncation leaves the retrieval counts equal to the rows actually delivered.
+// spec: read.rank.delivered-counts@61945ab5
+#[test]
+fn a_byte_cut_updates_the_retrieval_counts() {
+    let r = Reads::new();
+    let s = r.session(&["research/notes"], Some(("research/notes", "acme")), None);
+    let request = ask("research/", "solar battery storage");
+    let full = r.face.retrieve(&s, &request, Bounds::default()).unwrap();
+    assert_eq!(full.rows.len(), 2);
+    let mut one = full.clone();
+    one.rows.truncate(1);
+    one.truncated = true;
+    one.blocks["contextful.retrieval"]["returned"] = json!(1);
+    one.blocks["contextful.retrieval"]["in_window"] = one.rows[0][one.columns.iter().position(|c| c == "_in_window").unwrap()].clone();
+    one.blocks.insert("contextful.truncation".into(), json!({ "by": "bytes", "ceiling": 999999, "source": "request" }));
+    let ceiling = serde_json::to_vec(&one).unwrap().len() as u64;
+    let cut = r.face.retrieve(&s, &RetrieveRequest { max_response_bytes: Some(ceiling), ..request }, Bounds::default()).unwrap();
+    assert_eq!(cut.rows.len(), 1);
+    let block = &cut.blocks["contextful.retrieval"];
+    assert_eq!(block["returned"], json!(1));
+    let flags = column(&cut, "_in_window").into_iter().filter(|v| v == &json!(true)).count();
+    assert_eq!(block["in_window"], json!(flags));
 }
 
 /// The lexical engine's own float score never crosses to a caller.
@@ -202,17 +252,22 @@ dim = 3
 /// 300 passages folded into each table. `p000`, the oldest, points where the question
 /// points and sits outside a limit-10 recency window; the five newest mention "battery".
 fn sidecar_reads(extra: &str) -> Reads {
+    sidecar_reads_with_rows(extra, |i| match i {
+        0 => ("passage zero".to_string(), json!([0.0, 0.0, 1.0])),
+        295.. => (format!("battery cell {i}"), json!([1.0, (i % 10) as f64 / 10.0, 0.0])),
+        _ => (format!("passage {i}"), json!([1.0, (i % 10) as f64 / 10.0, 0.0])),
+    })
+}
+
+fn sidecar_reads_with_rows(extra: &str, row_for: impl Fn(usize) -> (String, Value)) -> Reads {
     use contextful_context::fold::fold;
     use contextful_core::store::reconcile::{ColumnType, FloatItem};
     let manifest = format!("{MANIFEST}{SIDECAR}{extra}");
     let mut r = Reads::with_manifest(&format!("{MANIFEST}{SIDECAR}"));
     let rows: Vec<serde_json::Map<String, Value>> = (0..300)
         .map(|i| {
-            let (title, owner, embedding) = match i {
-                0 => ("passage zero".to_string(), "agent://other", json!([0.0, 0.0, 1.0])),
-                295.. => (format!("battery cell {i}"), "agent://research-loop", json!([1.0, (i % 10) as f64 / 10.0, 0.0])),
-                _ => (format!("passage {i}"), "agent://research-loop", json!([1.0, (i % 10) as f64 / 10.0, 0.0])),
-            };
+            let (title, embedding) = row_for(i);
+            let owner = if i == 0 { "agent://other" } else { "agent://research-loop" };
             json!({"passage_id": format!("p{i:03}"), "title": title, "owner": owner, "embedding": embedding}).as_object().unwrap().clone()
         })
         .collect();
@@ -267,6 +322,29 @@ fn the_sidecar_adds_a_row_the_recency_window_misses_with_its_exact_scores() {
     };
     let shared: Vec<_> = scored(&accelerated).into_iter().filter(|(id, _, _)| id != "p000").collect();
     assert_eq!(shared, scored(&exact));
+    assert!(accelerated.blocks["contextful.retrieval"]["candidates_prefloor"].as_u64().unwrap() > 200);
+}
+
+/// Lexical term statistics come from the widened candidate window, so an accelerated arm can order rows differently from the exact path.
+// spec: read.rank.widened-window-statistics@3374cd12
+#[test]
+fn sidecar_widening_changes_the_bm25_order_of_shared_rows() {
+    let r = sidecar_reads_with_rows("", |i| match i {
+        299 => ("battery".into(), json!([0.0, 0.0, 1.0])),
+        298 => ("solar solar solar".into(), json!([0.0, 0.0, 1.0])),
+        0..100 => ("solar".into(), json!([0.0, 0.0, 1.0])),
+        _ => ("passage".into(), json!([1.0, 0.0, 0.0])),
+    });
+    let s = r.session(&["lab/*"], None, None);
+    let request = |table| RetrieveRequest {
+        query_embedding: Some(vec![0.0, 0.0, 1.0]),
+        ..ask(table, "solar battery")
+    };
+    let exact = r.face.retrieve(&s, &request("lab/plain"), Bounds::default()).unwrap();
+    let accelerated = r.face.retrieve(&s, &request("lab/indexed"), Bounds::default()).unwrap();
+    assert_eq!(ids(&exact, "passage_id")[..2], ["p298", "p299"]);
+    assert_eq!(ids(&accelerated, "passage_id")[..2], ["p299", "p298"]);
+    assert_eq!(exact.blocks["contextful.retrieval"]["candidates_prefloor"], json!(200));
     assert!(accelerated.blocks["contextful.retrieval"]["candidates_prefloor"].as_u64().unwrap() > 200);
 }
 

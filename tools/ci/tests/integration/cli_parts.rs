@@ -9,7 +9,7 @@ fn remote_cli_parts_run_every_test_once_and_propagate_differential_failures() {
     r.lock();
     r.commit("CLI ordinary and differential suites");
     let package = r.root.join("crates/contextful-cli");
-    for (ordinary, differential) in [("workspace.compile", "workspace.cli-formal"), ("features.binary-all", "features.formal-all")] {
+    for (ordinary, differential) in [("workspace.cli", "workspace.cli-formal"), ("features.binary-all", "features.formal-all")] {
         let out = r.gate(&["--stage", ordinary]);
         assert!(out.status.success(), "{ordinary}: {}", stderr(&out));
         assert!(package.join("ordinary.ran").exists(), "{ordinary} missed ordinary tests");

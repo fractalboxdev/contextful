@@ -473,3 +473,17 @@ fn a_lock_stays_held_while_its_holder_lives_however_old_its_file() {
     drop(next);
     assert!(!path.exists(), "the last holder leaves no lock file");
 }
+
+#[test]
+fn a_renamed_lock_does_not_remove_the_file_that_replaces_it() {
+    let dir = tempfile::tempdir().unwrap();
+    let path = dir.path().join("schema.json.lock");
+    let moved = dir.path().join("old.lock");
+    let held = FileLock::try_acquire(&path).unwrap().expect("a free lock");
+    assert!(held.names_file().unwrap());
+    fs::rename(&path, &moved).unwrap();
+    fs::write(&path, b"another holder").unwrap();
+    assert!(!held.names_file().unwrap());
+    drop(held);
+    assert_eq!(fs::read(&path).unwrap(), b"another holder");
+}

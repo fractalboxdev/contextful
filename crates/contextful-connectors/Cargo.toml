@@ -12,6 +12,7 @@ publish = false
 [dependencies]
 contextful-core = { path = "../contextful-core" }
 contextful-decode = { path = "../contextful-decode" }
+encoding_rs = "0.8"
 contextful-outbound = { path = "../contextful-outbound", default-features = false }
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
@@ -50,6 +51,7 @@ path = "tests/integration/main.rs"
 # `contextful-decode` to it.
 [package.metadata.contextful]
 authoring-allowlist = [
+    "encoding_rs",
     "flate2",
     "libc",
     "pdf-extract",

@@ -45,6 +45,8 @@ DisclosurePolicyAbsent               = { clause = "disclosure.set-mode.policy-ab
 DisclosureModelUnreadable            = { clause = "disclosure.set-mode.model-unreadable", gloss = "A published model's statement text does not read." }
 DisclosureCleanRoomPreconditionUnmet = { clause = "disclosure.set-mode.clean-room-preconditions", gloss = "A shared store lacks a clean-room requirement." }
 DisclosureStaticPepper               = { clause = "disclosure.set-mode.hashed-join", gloss = "A cross-owner hashed join is keyed on a static pepper." }
+DisclosureMetricBoundsAbsent         = { clause = "disclosure.release.metric-bounds", gloss = "A noised sum has no finite contributor bounds or positive quantum." }
+DisclosureLookalikeUnsupported       = { clause = "disclosure.release.lookalike-refusal", gloss = "A release requests an activation handle or lookalike segment." }
 DisclosureUnitBudgetExhausted        = { clause = "disclosure.release.budget-reservation", gloss = "A contributing unit's budget reservation failed; nothing is published." }
 DisclosureDuplicateGrain             = { clause = "disclosure.release.duplicate-grain", gloss = "A carried non-grain column is not constant within its group." }
 DisclosureGroupKeyNotPermitted       = { clause = "disclosure.release.group-key", gloss = "A group key is not a subset of the permitted grouping columns." }

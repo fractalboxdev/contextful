@@ -49,6 +49,14 @@ impl DerivedSqlite {
         Ok(DerivedSqlite { path: path.to_path_buf(), conn: Mutex::new(open(path, SCHEMA)?) })
     }
 
+    /// Open a rebuildable catalog in process memory; `path` names failures but creates no file.
+    pub fn open_ephemeral(path: &Path) -> Result<DerivedSqlite, Failure> {
+        let conn = Connection::open_in_memory().map_err(|e| storage(path, e))?;
+        conn.execute_batch("PRAGMA temp_store = MEMORY;").map_err(|e| storage(path, e))?;
+        conn.execute_batch(SCHEMA).map_err(|e| storage(path, e))?;
+        Ok(DerivedSqlite { path: path.to_path_buf(), conn: Mutex::new(conn) })
+    }
+
     pub fn path(&self) -> &Path {
         &self.path
     }

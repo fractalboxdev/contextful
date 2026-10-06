@@ -13,7 +13,7 @@ publish = false
 [dependencies]
 contextful-core = { path = "../contextful-core" }
 contextful-fs = { path = "../contextful-fs" }
-contextful-policy = { path = "../contextful-policy" }
+contextful-policy = { path = "../contextful-policy", optional = true }
 arrow-array = "58"
 arrow-buffer = "58"
 arrow-cast = "58"
@@ -21,6 +21,8 @@ arrow-ord = "58"
 arrow-row = "58"
 arrow-schema = "58"
 arrow-select = "58"
+base64 = "0.22"
+bytes = "1"
 # The read face's embedded SQL engine: Parquet reading and statement serialization link
 # statically, so the read path loads no extension while serving; the scalar-function
 # interface carries the pepper-holding mask functions. Only the `read` feature links it.
@@ -29,7 +31,8 @@ getrandom = "0.3"
 half = "2"
 # Read-only mapping of a plaintext vector sidecar (`store.encrypt.sidecar-reader`).
 memmap2 = "0.9"
-parquet = { version = "58", default-features = false, features = ["arrow", "zstd"] }
+parquet = { version = "58", default-features = false, features = ["arrow", "zstd", "encryption"] }
+ring = "0.17"
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 sha2 = "0.10"
@@ -40,7 +43,7 @@ toml = "0.8"
 default = ["read"]
 # The read face: the embedded SQL engine and the query face over it. A host that lands,
 # folds or scans a store without serving reads builds with `default-features = false`.
-read = ["dep:duckdb"]
+read = ["dep:duckdb", "dep:contextful-policy"]
 
 [dev-dependencies]
 # Ledger measures record their figures (`assurance.measure.record`).
@@ -50,3 +53,8 @@ tempfile = "3"
 [[test]]
 name = "integration"
 path = "tests/integration/main.rs"
+
+[[test]]
+name = "issue88_bench"
+path = "tests/integration/issue88_bench.rs"
+required-features = ["read"]

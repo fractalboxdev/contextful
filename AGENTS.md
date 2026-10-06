@@ -119,9 +119,9 @@ The gate measures commits, so commit before running it.
 
 ## The gate
 
-[`.github/workflows/gate.yml`](./.github/workflows/gate.yml) dispatches each stage of
-`contextful-ci gate` to the org's FlareDispatch Dispatcher as a `check` run. Each stage
-reports as its own check-run on the pull request:
+The FlareDispatch GitHub App dispatches `contextful-ci gate` from same-repository
+pull-request heads. Its `contextful-gate` run publishes the
+`flare-dispatch/contextful-gate` parent and 29 child check-runs:
 `flare-dispatch/check:<stage>` for each of `pins`, `toolchain`, `schema`,
 `workspace`, `acceptance`, `evaluate`, `features`, `crate-graph`, `connectors`,
 `surfaces`, `formal` and `budget`. The test-first, features and budget stages dispatch one check per
@@ -129,11 +129,16 @@ part, `flare-dispatch/check:test-first.validate` and `flare-dispatch/check:test-
 each fits the sandbox's wall clock; `contextful-ci stages --parts` prints the list, and
 `--stage <stage>.<part>` runs one part. A selected subset runs in that order and refuses a
 stage whose predecessor's output is absent; `--predecessors` runs those too. A local run and
-the remote check invoke the identical command; `contextful-ci`'s suite fails when the
-workflow's matrix and the subcommand's part list differ.
+the remote check invoke the identical command. `contextful-ci`'s suite asserts 29
+dispatchable parts. FlareDispatch runs `contextful-measures` nightly against the default
+branch and attaches its report to `refs/notes/measures`. A `v*` tag starts
+`contextful-release`, with `contextful-release-cell` for the ten cells in
+`contextful-ci release --plan`, `contextful-release-formula` for formulae and
+SHA256SUMS, and three independently tagged container images. The disabled
+ruleset proposal under `.github/rulesets/` lists the parent and all 29 children.
 
 The CLI differential module runs in `workspace.cli-formal` and `features.formal-<set>`;
-the paired `workspace.compile` and `features.binary-<set>` checks run the remaining CLI tests.
+`workspace.cli` and `features.binary-<set>` run the remaining CLI tests.
 
 The schema stage also holds every key in a tracked `.env*` file to dotenvx ciphertext
 under a comment stating what it grants (`contextful-ci secrets`); `.env.keys` stays

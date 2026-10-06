@@ -2,6 +2,7 @@
 //! of an engine name, and the checks each is held to before any unit runs.
 
 use super::task::{Tasks, BUILT_IN_TASKS};
+use crate::connector::meter::LimiterDeclaration;
 use crate::run::RunError;
 use serde::Deserialize;
 use serde_json::{json, Map, Value};
@@ -51,6 +52,8 @@ pub struct DeriveConfig {
     pub media_column: String,
     pub parent_id_column: String,
     pub task: Task,
+    /// The shared quota a link preview declares, when it has one.
+    pub grant: Option<LimiterDeclaration>,
     pub max_rows_per_run: i64,
     pub max_attempts: i64,
     pub max_seconds_per_run: Option<u64>,
@@ -103,6 +106,29 @@ impl DeriveConfig {
                 )));
             }
         };
+        if task != Task::LinkPreview && cfg.contains_key("grant") {
+            return Err(RunError::DeriveUnmeteredGrant(format!(
+                "pipeline `{pipeline_id}` declares `grant` for {}, which does not use the shared-quota client", task.name()
+            )));
+        }
+        let grant = cfg.get("grant").map(|value| {
+            let block = value.as_object().ok_or_else(|| RunError::Invalid(format!("pipeline `{pipeline_id}` grant is a table")))?;
+            if let Some(key) = block.keys().find(|key| !["quota", "class", "usage_headers"].contains(&key.as_str())) {
+                return Err(RunError::PipelineUnknownConfigKey(format!("pipeline `{pipeline_id}` grant reads no key `{key}`")));
+            }
+            let text = |key: &str| {
+                block.get(key).and_then(Value::as_str).filter(|value| !value.is_empty()).ok_or_else(|| RunError::Invalid(format!("pipeline `{pipeline_id}` grant names no string `{key}`")))
+            };
+            let headers = match block.get("usage_headers") {
+                None => Vec::new(),
+                Some(Value::Array(values)) => values
+                    .iter()
+                    .map(|value| value.as_str().map(str::to_string).ok_or_else(|| RunError::Invalid(format!("pipeline `{pipeline_id}` grant usage_headers is a list of strings"))))
+                    .collect::<Result<Vec<_>, _>>()?,
+                Some(_) => return Err(RunError::Invalid(format!("pipeline `{pipeline_id}` grant usage_headers is a list of strings"))),
+            };
+            LimiterDeclaration::new(text("quota")?, text("class")?, &headers).map_err(|error| RunError::Invalid(error.to_string()))
+        }).transpose()?;
         let source_table = required("source_table")?;
         let parent_id_column = required("parent_id_column")?;
         // A host task reads the parent columns it declares and binds no engine (`run.bind.driver-mismatch`).
@@ -131,6 +157,7 @@ impl DeriveConfig {
             media_column,
             parent_id_column,
             task: task.clone(),
+            grant,
             max_rows_per_run: positive_or(int(cfg, "max_rows_per_run"), ROWS_PER_RUN),
             max_attempts: positive_or(int(cfg, "max_attempts"), ATTEMPTS_PER_UNIT),
             max_seconds_per_run: seconds.or(match &task {
@@ -225,7 +252,13 @@ pub struct Binding {
     #[serde(default)]
     pub allow_image_hosts: Vec<String>,
     #[serde(default)]
+    pub endpoint_host: Option<String>,
+    #[serde(default)]
     pub request_timeout_secs: Option<u64>,
+    #[serde(default)]
+    pub max_document_bytes: Option<u64>,
+    #[serde(default)]
+    pub max_probe_bytes: Option<u64>,
 }
 
 fn exec() -> String {
@@ -244,6 +277,7 @@ impl Binding {
             "env": self.env,
             "allow_hosts": self.allow_hosts,
             "allow_image_hosts": self.allow_image_hosts,
+            "endpoint_host": self.endpoint_host,
         })
     }
 }
@@ -285,6 +319,26 @@ pub fn bind<'a>(pipeline_id: &str, config: &DeriveConfig, bindings: &'a BTreeMap
             b.driver,
             config.task.name()
         )));
+    }
+    if b.driver == "fetch" {
+        let forbidden = [
+            ("env", !b.env.is_empty()),
+            ("preprocess", !b.preprocess.is_empty()),
+            ("engine", b.engine.is_some()),
+            ("max_output_bytes", b.max_output_bytes.is_some()),
+        ];
+        if let Some((key, _)) = forbidden.into_iter().find(|(_, present)| *present) {
+            return Err(RunError::DeriveFetchBindingKey(format!("fetch engine `{}` declares `{key}`", config.engine)));
+        }
+    }
+    if let Some(host) = &b.endpoint_host {
+        let bare = !host.is_empty()
+            && !host.contains(['/', '?', '#', ':', '@'])
+            && !host.chars().any(char::is_whitespace)
+            && url::Host::parse(host).is_ok();
+        if !bare {
+            return Err(RunError::DeriveEndpointHostNotBare(format!("engine `{}` declares endpoint_host `{host}` with a path, query, port, scheme or invalid host", config.engine)));
+        }
     }
     Ok(b)
 }

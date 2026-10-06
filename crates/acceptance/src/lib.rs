@@ -19,18 +19,22 @@ pub fn workspace_root() -> PathBuf {
 /// Path to the named workspace binary, built on first request.
 pub fn bin(name: &str) -> PathBuf {
     let root = workspace_root();
+    let profile = std::env::var("CONTEXTFUL_ACCEPTANCE_PROFILE").unwrap_or_else(|_| "debug".to_string());
+    assert!(matches!(profile.as_str(), "debug" | "release"), "unsupported acceptance profile `{profile}`");
+    let key = format!("{profile}/{name}");
     let mut built = BUILT.lock().unwrap();
-    if !built.iter().any(|b| b == name) {
-        let status = Command::new(env!("CARGO"))
-            .args(["build", "-q", "--bin", name])
-            .current_dir(&root)
-            .status()
-            .unwrap();
+    if !built.iter().any(|b| b == &key) {
+        let mut command = Command::new(env!("CARGO"));
+        command.args(["build", "-q", "--bin", name]);
+        if profile == "release" {
+            command.arg("--release");
+        }
+        let status = command.current_dir(&root).status().unwrap();
         assert!(status.success(), "building `{name}`");
-        built.push(name.to_string());
+        built.push(key);
     }
     let target = std::env::var_os("CARGO_TARGET_DIR").map(PathBuf::from).unwrap_or_else(|| root.join("target"));
-    target.join("debug").join(name)
+    target.join(profile).join(name)
 }
 
 /// A scratch git repository with deterministic identity and no signing.
