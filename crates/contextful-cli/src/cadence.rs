@@ -27,6 +27,7 @@ use contextful_engine::worker::{Relay, WorkerDispatch};
 use contextful_outbound::egress::{system, Outbound, Transport};
 use serde::Serialize;
 use serde_json::json;
+use serde_json::Value;
 use std::collections::BTreeMap;
 use std::net::SocketAddr;
 use std::path::{Path, PathBuf};
@@ -226,6 +227,16 @@ fn applied(snaps: &Source) -> Result<(Option<u64>, BTreeMap<String, PipelineSpec
     let specs = collect(&[ManifestFile { path: snapshot_file(version), text }])
         .map_err(|e| SurfaceError::ControlSnapshotUnreadable(format!("{}: {e}", snapshot_file(version))))?;
     Ok((Some(version), specs.into_iter().map(|d| (d.spec.id.clone(), d.spec)).collect()))
+}
+
+/// The applied snapshot and recorded run outcomes the store publishes for Admin.
+pub(crate) fn published(project: &Project, declaration: &Path) -> Result<Value> {
+    let text = std::fs::read_to_string(declaration).unwrap_or_default();
+    let control = control_config(&text, project)?;
+    let (version, pipelines) = applied(&control.source)?;
+    let store = contextful_context::Store::open(&project.dir, &project.name)?;
+    let runs = contextful_sync::run_state::run_states(&store)?;
+    Ok(json!({ "applied": version, "pipelines": pipelines.into_values().collect::<Vec<_>>(), "runs": runs }))
 }
 
 /// The snapshot document: every specification as a `[[pipeline]]` block, sorted by id.

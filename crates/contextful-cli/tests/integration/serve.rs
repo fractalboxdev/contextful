@@ -124,18 +124,23 @@ fn control_routes_require_admin_and_project_applied_workflows() {
     std::fs::create_dir_all(root.join("pipelines")).unwrap();
     std::fs::write(root.join("pipelines/filings.toml"), pipeline).unwrap();
     stdout(&run(root, &["pipeline", "import", "--project", "research"]));
-    let read = stdout(&run(root, &["token", "mint", "--issuer-key", ".contextful/issuer.seed", "--action", "read", "--table", "*", "--ttl", "900"]));
-    let admin = stdout(&run(root, &["token", "mint", "--issuer-key", ".contextful/issuer.seed", "--action", "admin", "--table", "*", "--ttl", "900"]));
+    let read = stdout(&run(root, &["token", "mint", "--issuer-key", ".contextful/issuer.seed", "--on-behalf-of", "user://dana@acme.example", "--zone", "on-prem:hq", "--action", "read", "--table", "*", "--ttl", "900"]));
+    let admin = stdout(&run(root, &["token", "mint", "--issuer-key", ".contextful/issuer.seed", "--on-behalf-of", "user://dana@acme.example", "--zone", "on-prem:hq", "--action", "admin", "--table", "*", "--ttl", "900"]));
+    let narrow_admin = stdout(&run(root, &["token", "mint", "--issuer-key", ".contextful/issuer.seed", "--on-behalf-of", "user://dana@acme.example", "--zone", "on-prem:hq", "--action", "admin", "--table", "unrelated/*", "--ttl", "900"]));
     let (_listener, addr) = serve(root, &["serve", "--http", "127.0.0.1:0", "--audience", AUD, "--max-in-flight", "2", "--project", "research", "--public-key", &public]);
 
     assert_eq!(control(&addr, "GET", "/control/workflows", None, "").0, 401);
-    assert_eq!(control(&addr, "GET", "/control/workflows", Some(&read), "").0, 403);
+    let (status, answer) = control(&addr, "GET", "/control/workflows", Some(&read), "");
+    assert_eq!(status, 403, "{answer}");
     assert_eq!(control(&addr, "POST", "/control/apply", Some(&read), "{}").0, 403);
+    assert_eq!(control(&addr, "GET", "/control/workflows", Some(&narrow_admin), "").0, 403);
     let (status, view) = control(&addr, "GET", "/control/workflows", Some(&admin), "");
     assert_eq!(status, 200, "{view}");
     assert_eq!(view["applied"], json!(1));
     assert_eq!(view["pipelines"][0]["id"], "filings-flow");
     assert_eq!(view["pipelines"][0]["tables"], json!(["research/notes"]));
+
+    assert_eq!(control(&addr, "POST", "/control/apply", Some(&admin), "{\"id\":1}").0, 400);
 
     std::fs::write(root.join("pipelines/filings.toml"), pipeline.replace("every 1h", "every 1d")).unwrap();
     let (status, applied) = control(&addr, "POST", "/control/apply", Some(&admin), "{\"id\":\"filings-flow\"}");
