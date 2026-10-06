@@ -17,6 +17,7 @@ contextful-eval = { path = "../eval" }
 serde_json = "1"
 proc-macro2 = { version = "1", features = ["span-locations"] }
 syn = { version = "2", features = ["full", "visit"] }
+serde = { version = "1", features = ["derive"] }
 # The release step digests each archive (`assurance.build.release-artifact`).
 sha2 = "0.10"
 toml = "0.8"

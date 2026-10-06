@@ -174,6 +174,28 @@ enum Cmd {
         #[arg(long, requires = "status")]
         check: bool,
     },
+    /// Build one measure report from collected records and earlier Git-note history.
+    MeasureReport {
+        #[arg(long)]
+        commit: String,
+        #[arg(long)]
+        run_id: u64,
+        #[arg(long)]
+        run_attempt: u64,
+        #[arg(long)]
+        exit_code: i32,
+        #[arg(long)]
+        out: PathBuf,
+    },
+    /// Append a measure report to the shared Git notes ref and retry a competing push.
+    MeasurePublish {
+        #[arg(long)]
+        commit: String,
+        #[arg(long)]
+        report: PathBuf,
+        #[arg(long, default_value = "origin")]
+        remote: String,
+    },
     /// Deploy-time checks.
     Deploy {
         #[command(subcommand)]
@@ -283,6 +305,9 @@ fn main() {
             selected.dedup();
             measure::run(&root, &selected)
         }),
+        Cmd::MeasureReport { commit, run_id, run_attempt, exit_code, out } =>
+            repo_root().and_then(|root| measure::report(&root, &commit, run_id, run_attempt, exit_code, &out)),
+        Cmd::MeasurePublish { commit, report, remote } => repo_root().and_then(|root| measure::publish(&root, &commit, &report, &remote)),
     };
     if let Err(e) = result {
         eprintln!("{e:#}");

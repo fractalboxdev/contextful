@@ -5,7 +5,7 @@ An unpinned clause is `committed`; a pinned one is `performed` when its Rust, Le
 
 | Contract | Files | Operations | Clauses | Refusals | Limits | Unsettled | Performed | Broken | Floor |
 | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
-| `assurance` | 2 | 15 | 233 | 59 | 22 | 14 | 138 | 0 | 137 |
+| `assurance` | 2 | 15 | 235 | 59 | 22 | 14 | 141 | 0 | 138 |
 | `authority` | 2 | 16 | 269 | 77 | 27 | 10 | 206 | 0 | 206 |
 | `connector` | 2 | 14 | 349 | 89 | 21 | 15 | 218 | 0 | 207 |
 | `corpus` | 1 | 10 | 79 | 37 | 7 | 0 | 40 | 0 | 40 |
@@ -15,7 +15,7 @@ An unpinned clause is `committed`; a pinned one is `performed` when its Rust, Le
 | `store` | 1 | 17 | 237 | 55 | 13 | 20 | 200 | 0 | 200 |
 | `surface` | 2 | 20 | 106 | 49 | 22 | 0 | 51 | 0 | 51 |
 | `topology` | 1 | 6 | 70 | 24 | 5 | 5 | 38 | 0 | 38 |
-| **total** | 19 | 155 | 2040 | 585 | 188 | 124 | 1391 | 0 | |
+| **total** | 19 | 155 | 2042 | 585 | 188 | 124 | 1394 | 0 | |
 
 Decision records: 18.
 
@@ -39,7 +39,7 @@ A milestone reads `closed` when its acceptance test computes `passing` and every
 | 11 — The derive tier | 7 | 78 | 55 | passing | open |
 | 12 — The operator console | 12 | 49 | 0 | open | open |
 | 13 — Disclosure | 5 | 33 | 13 | open | open |
-| 14 — Assurance | 7 | 136 | 86 | passing | closed |
+| 14 — Assurance | 7 | 138 | 89 | passing | closed |
 
 Unscheduled operations: 10.
 
@@ -146,7 +146,10 @@ Unscheduled operations: 10.
 | `assurance.measure.record` | `tools/ci/tests/integration/measure.rs::a_gate_method_writing_no_record_is_refused` | performed |
 | `assurance.measure.runner-stamp` | `tools/eval/tests/integration/trend.rs::a_figure_compares_only_on_a_matching_runner` | performed |
 | `assurance.measure.seed-mismatch` | `tools/ci/tests/integration/measure.rs::a_record_under_another_seed_than_its_entry_declares_is_refused` | performed |
+| `assurance.measure.tier` | `tools/ci/tests/integration/measure.rs::a_failed_or_reseeded_trend_method_does_not_fail_the_measure_run` | performed |
 | `assurance.measure.trend-band` | `tools/eval/tests/integration/trend.rs::a_figure_past_the_band_is_annotated_and_fails_nothing` | performed |
+| `assurance.measure.trend-baseline` | `tools/ci/tests/integration/measure.rs::a_trend_report_uses_the_latest_successful_matching_history_without_failing_the_run` | performed |
+| `assurance.measure.trend-direction` | `tools/eval/tests/integration/ledger.rs::every_trend_entry_declares_its_comparison_direction` | performed |
 | `assurance.measure.unresolved-entry` | `tools/ci/tests/integration/measure.rs::an_entry_naming_no_clause_refuses_before_any_test_runs` | performed |
 | `assurance.model.declared-dependency` | `crates/contextful-cli/tests/integration/formal.rs::a_require_stanza_is_refused` | performed |
 | `assurance.model.floor` | `formal/Contextful/Placement.lean::floor` | performed |

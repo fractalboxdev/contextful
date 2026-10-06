@@ -22395,7 +22395,7 @@
       "operation": "measure",
       "subject": "tier",
       "kind": "behavior",
-      "statement": "A gate-tier entry decides the evaluate stage, a trend-tier entry records on every run and decides nothing, and a scheduled-tier entry runs on the scheduled job alone.",
+      "statement": "A gate-tier entry decides the evaluate stage, a trend-tier entry is measured on the default-branch run and decides nothing, and a scheduled-tier entry runs on the scheduled job alone.",
       "why": "",
       "file": "spec/81-engineering.md",
       "line": 352
@@ -22439,7 +22439,7 @@
       "operation": "measure",
       "subject": "seed-mismatch",
       "kind": "refusal",
-      "statement": "A record whose seed differs from its entry's declared seed raises `MeasureSeedMismatch`, and the entry counts as red.",
+      "statement": "A gate or scheduled record whose seed differs from its entry's declared seed raises `MeasureSeedMismatch` and counts as red; a trend mismatch leaves no comparable record.",
       "why": "because a figure measured under another seed replays nothing the ledger names",
       "file": "spec/81-engineering.md",
       "line": 359
@@ -22467,6 +22467,31 @@
       "line": 362
     },
     {
+      "id": "assurance.measure.trend-direction",
+      "contract": "assurance",
+      "operation": "measure",
+      "subject": "trend-direction",
+      "kind": "behavior",
+      "statement": "Each trend-tier ledger entry declares `higher_is_better` or `lower_is_better` for its metric.",
+      "why": "A-assurance",
+      "file": "spec/81-engineering.md",
+      "line": 363
+    },
+    {
+      "id": "assurance.measure.trend-baseline",
+      "contract": "assurance",
+      "operation": "measure",
+      "subject": "trend-baseline",
+      "kind": "behavior",
+      "statement": "A trend figure compares with the newest earlier successful default-branch report for the same entry and seed under {{assurance.measure.runner-stamp}}; absent matching history yields no annotation.",
+      "why": "A-assurance",
+      "file": "spec/81-engineering.md",
+      "line": 365,
+      "scenarios": [
+        "WHEN a newer failed report follows two successful matches, THEN the trend compares with the newer successful match and the stage passes."
+      ]
+    },
+    {
       "id": "assurance.measure.trend-band",
       "contract": "assurance",
       "operation": "measure",
@@ -22475,7 +22500,7 @@
       "statement": "A trend figure more than 25 percent worse than its baseline annotates the run report and fails no stage.",
       "why": "",
       "file": "spec/81-engineering.md",
-      "line": 363,
+      "line": 367,
       "scenarios": [
         "WHEN a trend p95 moves from 40 ms to 52 ms on a matching runner stamp, THEN the report carries a +30 percent annotation and the stage passes."
       ]
@@ -22489,7 +22514,7 @@
       "statement": "The run block carries the runner's processor model, processor count and memory limit, and a trend figure compares only against a baseline with the same stamp.",
       "why": "",
       "file": "spec/81-engineering.md",
-      "line": 364
+      "line": 368
     },
     {
       "id": "assurance.measure.absolute-threshold",
@@ -22500,7 +22525,7 @@
       "statement": "A threshold is an absolute figure of this system's own measure, and it tightens only through {{assurance.baseline.raise-only}}.",
       "why": "",
       "file": "spec/81-engineering.md",
-      "line": 365
+      "line": 369
     },
     {
       "id": "assurance.measure.history",
@@ -22511,7 +22536,7 @@
       "statement": "A run on the default branch attaches its run report to the measured commit under `refs/notes/measures`, and no verdict reads a note.",
       "why": "A-assurance",
       "file": "spec/81-engineering.md",
-      "line": 366
+      "line": 370
     },
     {
       "id": "assurance.measure.scheduled",
@@ -22522,7 +22547,7 @@
       "statement": "The FlareDispatch nightly run executes every tier against the default-branch head and reports one check per run.",
       "why": "",
       "file": "spec/81-engineering.md",
-      "line": 368
+      "line": 372
     },
     {
       "id": "assurance.measure.measured-basis",
@@ -22533,7 +22558,7 @@
       "statement": "A bound with a measured basis names a trend-tier or scheduled-tier ledger entry id as its benchmark.",
       "why": "",
       "file": "spec/81-engineering.md",
-      "line": 369
+      "line": 373
     },
     {
       "id": "assurance.release.version",
@@ -22544,7 +22569,7 @@
       "statement": "A release tag is `v0.<closed>.<patch>`: `<closed>` counts the milestones computing `closed` in the tagged commit's `spec/status.md`, and `<patch>` counts the existing tags `v0.<closed>.*`.",
       "why": "A-assurance",
       "file": "spec/81-engineering.md",
-      "line": 398,
+      "line": 403,
       "scenarios": [
         "WHEN milestones 0 to 7 and 11 compute `closed` and `v0.9.0` exists, THEN the computed version is `v0.9.1`."
       ]
@@ -22558,7 +22583,7 @@
       "statement": "`contextful-ci tag` creates a signed annotated tag on `HEAD` naming the closed milestones once every refusal of this operation clears, and never moves or replaces an existing tag.",
       "why": "A-assurance",
       "file": "spec/81-engineering.md",
-      "line": 400
+      "line": 405
     },
     {
       "id": "assurance.release.dirty-tree",
@@ -22569,7 +22594,7 @@
       "statement": "A working tree or index differing from `HEAD` raises `TagTreeDirty`.",
       "why": "because the gate then judges files the tagged commit does not hold",
       "file": "spec/81-engineering.md",
-      "line": 402
+      "line": 407
     },
     {
       "id": "assurance.release.off-branch",
@@ -22580,7 +22605,7 @@
       "statement": "A `HEAD` unreachable from the default branch, `origin/HEAD` unless `--branch` names another, raises `TagOffDefaultBranch`.",
       "why": "A-assurance",
       "file": "spec/81-engineering.md",
-      "line": 404
+      "line": 409
     },
     {
       "id": "assurance.release.version-regressed",
@@ -22591,7 +22616,7 @@
       "statement": "A computed version below the highest existing `v<major>.<minor>.<patch>` tag raises `TagVersionRegressed`, naming both.",
       "why": "A-assurance",
       "file": "spec/81-engineering.md",
-      "line": 406,
+      "line": 411,
       "scenarios": [
         "WHEN milestone 11 reopens after `v0.9.0`, THEN the computed `v0.8.0` raises `TagVersionRegressed`."
       ]
@@ -22605,7 +22630,7 @@
       "statement": "A `[workspace.package]` version in `HEAD`'s `Cargo.toml` that is absent or differs from the computed version raises `TagWorkspaceVersionMismatch`, naming both.",
       "why": "A-assurance",
       "file": "spec/81-engineering.md",
-      "line": 408
+      "line": 413
     },
     {
       "id": "assurance.release.gate-failed",
@@ -22616,7 +22641,7 @@
       "statement": "Once the other refusals clear, every gate stage runs against `HEAD` with `HEAD~1` as base; a failing stage raises `TagGateFailed`, naming the stage's refusal, and no tag is created.",
       "why": "A-assurance",
       "file": "spec/81-engineering.md",
-      "line": 410
+      "line": 415
     },
     {
       "id": "assurance.release.release-run",
@@ -22627,7 +22652,7 @@
       "statement": "A `v*` tag at a default-branch commit starts FlareDispatch `contextful-release`, with one `contextful-release-cell` child per {{assurance.build.targets}} matrix cell and one `contextful-release-formula` child for their metadata.",
       "why": "because distributed builds and formula generation share one tag identity",
       "file": "spec/81-engineering.md",
-      "line": 412
+      "line": 417
     },
     {
       "id": "assurance.release.release-dry-run",
@@ -22638,7 +22663,7 @@
       "statement": "A manual `contextful-release` dry run builds the release assets and publishes neither a GitHub release nor container images.",
       "why": "because a packaging rehearsal must not claim a released version",
       "file": "spec/81-engineering.md",
-      "line": 414
+      "line": 419
     }
   ],
   "owns": {
@@ -24161,6 +24186,10 @@
     [
       "assurance.baseline.generated-redaction",
       "authority.redact.write-time"
+    ],
+    [
+      "assurance.measure.trend-baseline",
+      "assurance.measure.runner-stamp"
     ],
     [
       "assurance.measure.absolute-threshold",
