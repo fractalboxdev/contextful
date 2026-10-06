@@ -22,6 +22,27 @@ fn an_init_writes_the_declaration_and_the_store_root() {
     assert!(dir.path().join(".contextful/context/research").is_dir());
 }
 
+#[test]
+fn init_persists_a_distinct_store_uuid_across_repetition_and_recreation() {
+    let dir = tempfile::tempdir().unwrap();
+    let root = dir.path().join(".contextful/context/research");
+    init(dir.path(), "research").unwrap();
+    let first = fs::read_to_string(root.join("store-id")).unwrap();
+    let valid = |value: &str| {
+        let text = value.trim();
+        text.len() == 36 && text.chars().enumerate().all(|(i, c)|
+            if [8, 13, 18, 23].contains(&i) { c == '-' } else { c.is_ascii_hexdigit() }) &&
+            text.as_bytes()[14] == b'4'
+    };
+    assert!(valid(&first), "{first}");
+    init(dir.path(), "research").unwrap();
+    assert_eq!(fs::read_to_string(root.join("store-id")).unwrap(), first);
+    fs::remove_dir_all(&root).unwrap();
+    init(dir.path(), "research").unwrap();
+    let second = fs::read_to_string(root.join("store-id")).unwrap();
+    assert!(valid(&second) && second != first, "recreating the store changes its UUID");
+}
+
 /// A project name that is not path-safe segments raises `StoreProjectNameInvalid` before any file is read or written.
 // spec: store.init.name-shape@93c80b33
 #[test]

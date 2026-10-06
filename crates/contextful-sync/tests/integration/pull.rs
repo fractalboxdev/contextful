@@ -30,6 +30,27 @@ fn pushed() -> (tempfile::TempDir, Arc<dyn ObjectStore>, crate::support::Node) {
     (dir, b, a)
 }
 
+#[test]
+fn a_clone_keeps_the_store_uuid_and_an_independent_store_refuses_it() {
+    let dir = tempfile::tempdir().unwrap();
+    let b = bucket(dir.path());
+    let original = node("ingest-a", b.clone(), "");
+    let identity = "11111111-1111-4111-8111-111111111111\n";
+    std::fs::write(original.root().join("store-id"), identity).unwrap();
+    original.syncer.push(at(NOW)).unwrap();
+
+    let clone = node("ingest-b", b.clone(), "");
+    clone.syncer.pull(&PullScope::default()).unwrap();
+    assert_eq!(std::fs::read_to_string(clone.root().join("store-id")).unwrap(), identity);
+
+    let independent = node("ingest-c", b, "");
+    let other = "22222222-2222-4222-8222-222222222222\n";
+    std::fs::write(independent.root().join("store-id"), other).unwrap();
+    let refused = independent.syncer.pull(&PullScope::default()).unwrap_err();
+    assert!(refused.to_string().contains("StoreIdentityConflict"), "{refused}");
+    assert_eq!(std::fs::read_to_string(independent.root().join("store-id")).unwrap(), other);
+}
+
 /// A downloaded object whose digest differs from its entry raises `SyncObjectDigestMismatch` and is discarded.
 // spec: store.pull.digest-mismatch@5acf85aa
 #[test]
