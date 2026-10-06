@@ -17,13 +17,14 @@ function findProjectRoot(cwd: string): string {
   }
 }
 
-export type SpawnedOptions = { cwd: string; command: string; args?: string[]; token?: string };
+export type SpawnedOptions = { cwd: string; command: string; args?: string[]; token?: string; owner?: boolean };
 
 export class SpawnedClient implements Client {
   readonly projectRoot: string;
   readonly command: string;
   private readonly args: string[];
   private readonly token: string;
+  private readonly owner: boolean;
 
   constructor(options: SpawnedOptions) {
     if (!options.token?.trim()) throw new ClientError("StdioCredentialMissing", "spawned engine requires a capability token");
@@ -31,10 +32,11 @@ export class SpawnedClient implements Client {
     this.command = options.command;
     this.args = options.args ?? [];
     this.token = options.token;
+    this.owner = options.owner ?? false;
   }
 
   async call(method: string, params: unknown = {}): Promise<unknown> {
-    const child = spawn(this.command, ["mcp", ...this.args], {
+    const child = spawn(this.command, ["mcp", ...(this.owner ? ["--owner"] : []), ...this.args], {
       cwd: this.projectRoot,
       env: { ...process.env, CONTEXTFUL_TOKEN: this.token },
       stdio: ["pipe", "pipe", "pipe"],
