@@ -48,7 +48,10 @@ test("verified reading session lands evidence-backed claims and recalls them bef
     const content = prompt.includes("Distil") ? JSON.stringify({ entries: [
       { subject: "Northwind", key: "filings", learning: "Northwind filings need review" },
     ] }) : "Northwind filings need review [filing-1].";
-    if (claims.length > 0 && !prompt.includes("Distil")) assert.match(prompt, /Northwind filings need review/);
+    if (claims.length > 0 && !prompt.includes("Distil")) {
+      assert.match(prompt, /Northwind filings need review/);
+      assert.doesNotMatch(prompt, /Bob only/);
+    }
     return Response.json({ choices: [{ message: { content } }] });
   };
   const options = { stores: [store], env: { CONTEXTFUL_MODEL_ENDPOINT: "https://model.example/v1", CONTEXTFUL_MODEL_ID: "fixture" }, fetcher };
@@ -66,8 +69,13 @@ test("verified reading session lands evidence-backed claims and recalls them bef
     [{ table: "filings", run: "run-1", seq: 0 }]);
   assert.equal((writes[0].body.claim as { scope?: string }).scope, undefined);
 
+  claims.push({ subject: "Northwind", predicate: "private", object: "Bob only", scope: "console:bob:another-session" });
+  const restarted = createLiveAnswer(options);
+  const brief = await restarted.brief(operator, store.id);
+  assert.deepEqual(brief.conclusions.map((entry) => entry.subject), ["Northwind"]);
+  assert.deepEqual(brief.conclusions.map((entry) => entry.text), ["Northwind filings need review"]);
   events.length = 0;
-  await createLiveAnswer(options).turn({ operator, store: store.id, question: "What changed for Northwind?" });
+  await restarted.turn({ operator, store: store.id, question: "What changed for Northwind?" });
   assert(events.indexOf("memory.recall") >= 0 && events.indexOf("memory.recall") < events.lastIndexOf("context.query"));
   assert(!events.includes("memory.write"), "read MCP remains closed to mutation");
 });
