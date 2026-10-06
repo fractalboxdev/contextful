@@ -21087,7 +21087,7 @@
       "operation": "gate",
       "subject": "remote-check",
       "kind": "behavior",
-      "statement": "The pull-request workflow dispatches every stage the gate subcommand defines to a remote runner, a split stage one part at a time, each as one status check labelled with its name.",
+      "statement": "The FlareDispatch pull-request webhook dispatches every part from `contextful-ci stages --parts`, each as `flare-dispatch/check:<part>` on the head commit.",
       "why": "A-assurance",
       "file": "spec/81-engineering.md",
       "line": 156
@@ -21109,7 +21109,7 @@
       "operation": "gate",
       "subject": "remote-predecessors",
       "kind": "behavior",
-      "statement": "Each remote check runs its stage together with every predecessor whose output that stage reads, so no check reads another check's sandbox.",
+      "statement": "Each dispatched part invokes `contextful-ci gate --predecessors --stage <part> --base <base-sha>`, so no check reads another check's sandbox.",
       "why": "A-assurance",
       "file": "spec/81-engineering.md",
       "line": 160
@@ -21120,8 +21120,8 @@
       "operation": "gate",
       "subject": "fork-dispatch",
       "kind": "behavior",
-      "statement": "The pull-request workflow dispatches only a head commit pushed to the repository itself; a pull request from a fork dispatches no stage and so carries none of the required checks.",
-      "why": "because a dispatch carries the org's signing secret and runs the commit on the org's runner, and an absent required check fails closed",
+      "statement": "FlareDispatch dispatches only a pull-request head pushed to this repository; a fork receives none of the 23 required stage checks.",
+      "why": "because a dispatch runs untrusted code in the organization's compute account, and absent required checks fail closed",
       "file": "spec/81-engineering.md",
       "line": 162
     },
@@ -22169,7 +22169,7 @@
       "operation": "measure",
       "subject": "scheduled",
       "kind": "behavior",
-      "statement": "A nightly job runs every tier against the default-branch head and reports one check per run.",
+      "statement": "The FlareDispatch nightly run executes every tier against the default-branch head and reports one check per run.",
       "why": "",
       "file": "spec/81-engineering.md",
       "line": 354

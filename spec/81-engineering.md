@@ -153,14 +153,14 @@ Stage order, secrets of record, the crate-graph, row-token, egress and dependenc
 - `stage-sequence` — The gate runs its stages in order — pins, toolchain, schema, test-first, workspace, acceptance, evaluate, features, crate graph, connectors, TypeScript surfaces, formal, budget — and a subset is selectable by name.
 - `stage-subset` — A selected subset runs in the sequence's order; a stage reading an unselected predecessor's output, with that output absent, raises `StagePredecessorMissing`, naming both stages, before any stage runs.
   *A-assurance*
-- `remote-check` — The pull-request workflow dispatches every stage the gate subcommand defines to a remote runner, a split stage one part at a time, each as one status check labelled with its name.
+- `remote-check` — The FlareDispatch pull-request webhook dispatches every part from `contextful-ci stages --parts`, each as `flare-dispatch/check:<part>` on the head commit.
   *A-assurance*
 - `workspace-parts` — Remote workspace checks compile the feature-unified workspace and run the CLI suite from that build, then run each other non-acceptance package suite in exactly one of four groups.
   *A-assurance*
-- `remote-predecessors` — Each remote check runs its stage together with every predecessor whose output that stage reads, so no check reads another check's sandbox.
+- `remote-predecessors` — Each dispatched part invokes `contextful-ci gate --predecessors --stage <part> --base <base-sha>`, so no check reads another check's sandbox.
   *A-assurance*
-- `fork-dispatch` — The pull-request workflow dispatches only a head commit pushed to the repository itself; a pull request from a fork dispatches no stage and so carries none of the required checks.
-  *because a dispatch carries the org's signing secret and runs the commit on the org's runner, and an absent required check fails closed*
+- `fork-dispatch` — FlareDispatch dispatches only a pull-request head pushed to this repository; a fork receives none of the 23 required stage checks.
+  *because a dispatch runs untrusted code in the organization's compute account, and absent required checks fail closed*
 - `stage-reports` — Each stage prints the environment it leaves and its memory limit, peak and event counts, and a failing stage prints its diagnostics before propagating its exit code.
   *because memory exhaustion is silent, and a kill then reads as a number in the log*
 - `pins-stage` — The pins stage resolves every pinned artifact identity a run depends on before any compilation.
@@ -214,7 +214,7 @@ flowchart LR
   subgraph contributor["contributor"]
     LOCAL["contextful-ci gate"]
   end
-  subgraph forge["pull-request workflow"]
+  subgraph forge["FlareDispatch"]
     WF["one remote check per stage"]
   end
   LOCAL -->|"local run"| C
@@ -351,7 +351,7 @@ The target ledger: each tracked target, the clause it serves, how it is measured
 - `absolute-threshold` — A threshold is an absolute figure of this system's own measure, and it tightens only through {{assurance.baseline.raise-only}}.
 - `history` — A run on the default branch attaches its run report to the measured commit under `refs/notes/measures`, and no verdict reads a note.
   *A-assurance*
-- `scheduled` — A nightly job runs every tier against the default-branch head and reports one check per run.
+- `scheduled` — The FlareDispatch nightly run executes every tier against the default-branch head and reports one check per run.
 - `measured-basis` — A bound with a measured basis names a trend-tier or scheduled-tier ledger entry id as its benchmark.
 
 A ledger entry's path from the tree to a verdict:
@@ -368,7 +368,7 @@ flowchart LR
   HOLDS -->|"no"| RED["red evaluate stage"]
 ```
 
-unsettled: Which credential pushes `refs/notes/measures` from the scheduled dispatch? owner: build affects: assurance.measure
+unsettled: Which GitHub App credential pushes `refs/notes/measures` from the scheduled dispatch? owner: build affects: assurance.measure
 
 #### Scenarios
 
