@@ -1,13 +1,15 @@
 export type ToolKind = "read" | "write";
 
-export type Tool = {
+type ToolBase = {
   name: string;
   pack: string;
-  kind: ToolKind;
   access?: "governed" | "direct-file";
-  table?: string;
-  leg?: "store" | "web";
 };
+export type Tool = ToolBase & (
+  | { kind: "read"; leg?: "store"; table: string }
+  | { kind: "read"; leg: "web"; table?: never }
+  | { kind: "write"; leg?: "store" | "web"; table?: string }
+);
 
 export type ToolCall = { tool: string; arguments: Record<string, unknown>; publicationBound?: string };
 export type Source = { id: string; label: string; url?: string };
@@ -187,8 +189,11 @@ export function createTurn(options: TurnOptions) {
           if (memoryTable(tool.table)) throw new ConsoleError("ConsolePlannerReachedMemory", call.tool);
           if (tool.access === "direct-file") throw new ConsoleError("ConsoleFileAccessDirect", call.tool);
           if (tool.leg === "web" && call.publicationBound !== undefined) parseWebBound(call.publicationBound);
-          const table = tool.table ?? tool.name;
-          const consumed = rowsByTable.get(table) ?? 0;
+          const table = tool.leg === "web" ? undefined : tool.table;
+          if (tool.leg !== "web" && (!table || !options.tables?.some((entry) => entry.kind === "data" && entry.name === table))) {
+            throw new RangeError(`tool ${call.tool} has no registered data table`);
+          }
+          const consumed = table === undefined ? 0 : rowsByTable.get(table) ?? 0;
           const remaining = 5000 - consumed;
           if (remaining <= 0) throw new RangeError("tool exceeded 5000 rows per data table");
           const controller = new AbortController();
@@ -203,7 +208,7 @@ export function createTurn(options: TurnOptions) {
               }, milliseconds); }),
             ]);
             if (result.rows.length > remaining) throw new RangeError("tool returned more than 5000 rows per data table");
-            rowsByTable.set(table, consumed + result.rows.length);
+            if (table !== undefined) rowsByTable.set(table, consumed + result.rows.length);
             results.push(result);
           } finally {
             if (timeout) clearTimeout(timeout);
@@ -221,15 +226,15 @@ export function createTurn(options: TurnOptions) {
         answer += redactor.push(chunk);
       }
       answer += redactor.finish();
-      const admittedIds = new Set(sources.map((source) => source.id));
-      answer = answer.replace(/\[([^\]\n]+)\]/g, (match, id: string) => id === "redacted" || admittedIds.has(id) ? match : "");
-      const safeSources = sources.map((source) => {
+      const citations = new Map(sources.map((source, index) => [source.id, `source-${index + 1}`]));
+      answer = answer.replace(/\[([^\]\n]+)\]/g, (match, id: string) => id === "redacted" ? match : citations.has(id) ? `[${citations.get(id)}]` : "");
+      const safeSources = sources.map((source, index) => {
         const labelRedactor = new StreamingRedactor(options.denylist ?? []);
         const label = labelRedactor.push(source.label) + labelRedactor.finish();
         const safeLabel = label.replace(/[\r\n]/g, " ");
         const url = source.url && /^https?:\/\//.test(source.url)
           && !(options.denylist ?? []).some((entry) => entry && source.url?.includes(entry)) ? source.url : undefined;
-        return { id: source.id, label: safeLabel, url };
+        return { id: `source-${index + 1}`, label: safeLabel, url };
       });
       const sourceLines = safeSources.map((source) => `- ${source.label}${source.url ? ` (${source.url})` : ""}`);
       return { text: `${answer.trim()}\n\nSources\n${sourceLines.join("\n")}`, sources: safeSources };

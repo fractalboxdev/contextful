@@ -18,6 +18,7 @@ function harness(overrides: Record<string, unknown> = {}) {
   const calls: string[] = [];
   const turn = createTurn({
     tools: [readTool],
+    tables: [{ name: "events", kind: "data" }],
     planner: async () => [{ tool: "query", arguments: { question: "count" } }],
     transport: {
       call: async (call: { tool: string }) => {
@@ -32,12 +33,13 @@ function harness(overrides: Record<string, unknown> = {}) {
 }
 
 test("a grounded turn cites only governed tool results", async () => {
-  const { turn, calls } = harness();
+  const { turn, calls } = harness({ synthesize: async function* () { yield "Three rows [row-1]."; } });
   const answer = await turn.ask({ question: "How many?", packs: ["data"] });
   assert.deepEqual(calls, ["query"]);
-  assert.match(answer.text, /Three rows\./);
+  assert.match(answer.text, /Three rows/);
+  assert.match(answer.text, /\[source-1\]/);
   assert.match(answer.text, /Sources\n- Count/);
-  assert.deepEqual(answer.sources.map((source: { id: string }) => source.id), ["row-1"]);
+  assert.deepEqual(answer.sources.map((source: { id: string }) => source.id), ["source-1"]);
 });
 
 test("a turn with no tool result refuses model prose", async () => {
@@ -213,6 +215,23 @@ test("unbound store tools cannot claim a per-table row budget", async () => {
   });
   await assert.rejects(turn.ask({ question: "Many", packs: ["data"] }), /registered data table/);
   assert.deepEqual(dispatched, []);
+});
+
+test("distinct registered tools share one data table's row budget", async () => {
+  const limits: number[] = [];
+  const { turn } = harness({
+    tools: [
+      { name: "query-a", pack: "data", kind: "read", table: "events" },
+      { name: "query-b", pack: "data", kind: "read", table: "events" },
+    ],
+    planner: async () => [{ tool: "query-a", arguments: {} }, { tool: "query-b", arguments: {} }],
+    transport: { call: async (call: { maxRows: number }) => {
+      limits.push(call.maxRows);
+      return { rows: Array.from({ length: 3000 }, () => ({})), sources: [{ id: "events", label: "Events" }] };
+    } },
+  });
+  await assert.rejects(turn.ask({ question: "Many", packs: ["data"] }), RangeError);
+  assert.deepEqual(limits, [5000, 2000]);
 });
 
 test("a table contributes at most three sampled arrival labels", () => {
