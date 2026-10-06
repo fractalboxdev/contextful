@@ -107,6 +107,22 @@ fn query() -> Value {
 }
 
 #[test]
+fn served_exchange_without_policy_returns_the_unconfigured_refusal() {
+    let (dir, public) = project();
+    let (_listener, addr) = serve(dir.path(), &["serve", "--http", "127.0.0.1:0", "--audience", AUD,
+        "--max-in-flight", "2", "--project", "research", "--public-key", &public]);
+    let body = "not-json";
+    let mut stream = TcpStream::connect(&addr).unwrap();
+    write!(stream, "POST /auth/exchange HTTP/1.1\r\nContent-Type: application/json\r\nContent-Length: {}\r\n\r\n{body}", body.len()).unwrap();
+    let mut raw = String::new();
+    stream.read_to_string(&mut raw).unwrap();
+    let (head, data) = raw.split_once("\r\n\r\n").unwrap();
+    assert_eq!(head.split(' ').nth(1), Some("404"));
+    let answer: Value = serde_json::from_str(data).unwrap();
+    assert_eq!(answer["error"]["identifier"], "ExchangeUnconfigured");
+}
+
+#[test]
 fn served_exchange_mints_a_reader_credential_for_the_read_face() {
     let (dir, public) = project();
     let p = dir.path();
