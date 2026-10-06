@@ -133,6 +133,7 @@ fn explicit_owner_requires_a_signed_credential_for_the_selected_store() {
     let answer: Value = serde_json::from_str(String::from_utf8_lossy(&admitted.stdout).trim()).unwrap();
     assert_eq!(answer["result"]["structuredContent"]["rows"], json!([["n1"]]));
 
+    stdout(&run(root, &["context", "land", "research/notes", "--project", "other", "--rows", "notes.jsonl", "--run-id", "run-other", "--site-id", "site-a"]));
     let other = ["mcp", "--owner", "--project", "other", "--public-key", &public, "--audience", AUD];
     let refused = serve(root, &other, Some(&owner), &read);
     assert!(!refused.status.success() && refused.stdout.is_empty(), "an owner credential selects one store");
