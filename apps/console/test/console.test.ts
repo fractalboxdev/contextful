@@ -62,6 +62,26 @@ test("verified Access audiences grant only their page and API", async () => {
   assert.deepEqual(calls, ["workflows"]);
 });
 
+test("Access passes only its configured signed reading-session claim to Query", async () => {
+  const sessions: Array<string | undefined> = [];
+  const app = createConsole({
+    identity: { kind: "access", issuer, queryAudience, adminAudience, publicKey, memorySessionClaim: "sid" },
+    stores: [{ id: "field-notes", label: "Field notes" }],
+    turn: async ({ operator }) => { sessions.push(operator.session); return { answer: "Grounded.", sources: [], widgets: [] }; },
+    read: { list: async () => [] },
+    control: { workflows: async () => ({}), record: async () => ({}), edit: async () => ({}), apply: async () => ({}) },
+  });
+  const ask = (headers: HeadersInit) => app.fetch(new Request("https://console.example/query/api/ask", {
+    method: "POST", headers: { ...headers, origin: "https://console.example" },
+    body: JSON.stringify({ store: "field-notes", question: "What changed?" }),
+  }));
+  assert.equal((await ask(access(queryAudience, { sid: "stable-reading-session", jti: "rotating-token-id" }))).status, 200);
+  assert.equal((await ask(access(queryAudience, { jti: "another-token-id" }))).status, 200);
+  assert.deepEqual(sessions, ["stable-reading-session", undefined]);
+  assert.equal((await ask({ "cf-access-jwt-assertion": "forged" })).status, 401);
+  assert.equal(sessions.length, 2);
+});
+
 test("expired or wrong-issuer assertions cannot open a page", async () => {
   const { request } = fixture();
   assert.equal((await request("/query", access(queryAudience, { exp: 1 }))).status, 401);
