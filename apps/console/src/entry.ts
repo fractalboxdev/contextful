@@ -32,7 +32,6 @@ async function keysAt(url: string): Promise<ReadonlyMap<string, ReturnType<typeo
 async function identity(): Promise<Identity> {
   if (process.env.CONTEXTFUL_IDENTITY === "cognito") {
     const keys = await keysAt(required("CONTEXTFUL_COGNITO_JWKS_URL"));
-    if (keys.size !== 1) throw new Error("Cognito key route needs one pinned key");
     return {
       kind: "cognito",
       sessionSecret: required("CONTEXTFUL_COGNITO_SESSION_SECRET"),
@@ -43,7 +42,7 @@ async function identity(): Promise<Identity> {
       authorizeUrl: required("CONTEXTFUL_COGNITO_AUTHORIZE_URL"),
       tokenUrl: required("CONTEXTFUL_COGNITO_TOKEN_URL"),
       redirectUri: required("CONTEXTFUL_COGNITO_REDIRECT_URI"),
-      publicKey: [...keys.values()][0],
+      keys,
     };
   }
   return {
@@ -89,6 +88,7 @@ async function main(): Promise<void> {
     if (!module.createAdapters) throw new Error("console adapter module exports no createAdapters");
     adapters = await module.createAdapters({ stores, env: process.env });
   }
+  let origin = process.env.CONTEXTFUL_CONSOLE_ORIGIN ?? `http://${host}:${port}`;
   const app = serveConsole({
     identity: await identity(),
     stores,
@@ -96,13 +96,14 @@ async function main(): Promise<void> {
     turn: adapters.turn,
     read: adapters.read ?? { list: async () => stores },
     control: adapters.control,
-  }, process.env.CONTEXTFUL_CONSOLE_ORIGIN ?? `http://${host}:${port}`);
+  }, () => origin);
   await new Promise<void>((resolveListen, rejectListen) => {
     app.once("error", rejectListen);
     app.listen(port, host, resolveListen);
   });
   const bound = app.address();
   if (!bound || typeof bound === "string") throw new Error("console listener has no address");
+  if (!process.env.CONTEXTFUL_CONSOLE_ORIGIN) origin = `http://${host}:${bound.port}`;
   process.stderr.write(`listening on http://${host}:${bound.port}\n`);
 }
 

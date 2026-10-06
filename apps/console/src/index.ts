@@ -1,4 +1,4 @@
-import { createHmac, createPublicKey, randomBytes, timingSafeEqual, verify, type KeyObject } from "node:crypto";
+import { createHash, createHmac, createPublicKey, randomBytes, timingSafeEqual, verify, type KeyObject } from "node:crypto";
 
 export type Operator = { subject: string; grants: ReadonlySet<"query" | "admin"> };
 export type Store = { id: string; label: string };
@@ -21,6 +21,7 @@ export type CognitoIdentity = {
   tokenUrl?: string;
   redirectUri?: string;
   publicKey?: KeyObject | string;
+  keys?: ReadonlyMap<string, KeyObject>;
   fetcher?: typeof fetch;
 };
 export type Identity = AccessIdentity | CognitoIdentity;
@@ -124,30 +125,43 @@ function operatorFor(request: Request, identity: Identity): Operator | null {
 function cognitoLogin(identity: CognitoIdentity): Response {
   if (!identity.authorizeUrl || !identity.clientId || !identity.redirectUri) return refusal("ConsoleLoginUnconfigured", 503);
   const state = randomBytes(24).toString("base64url");
+  const verifier = randomBytes(32).toString("base64url");
+  const issued = Math.floor(Date.now() / 1000).toString();
+  const loginData = `${state}.${verifier}.${issued}`;
+  const signature = createHmac("sha256", identity.sessionSecret).update(loginData).digest("base64url");
   const location = new URL(identity.authorizeUrl);
   location.searchParams.set("response_type", "code");
   location.searchParams.set("client_id", identity.clientId);
   location.searchParams.set("redirect_uri", identity.redirectUri);
   location.searchParams.set("scope", "openid email profile");
   location.searchParams.set("state", state);
+  location.searchParams.set("code_challenge", createHash("sha256").update(verifier).digest("base64url"));
+  location.searchParams.set("code_challenge_method", "S256");
   return new Response(null, { status: 302, headers: {
     Location: location.toString(),
-    "Set-Cookie": `console_login_state=${state}; HttpOnly; Secure; SameSite=Lax; Path=/auth/callback; Max-Age=300`,
+    "Set-Cookie": `console_login_state=${loginData}.${signature}; HttpOnly; Secure; SameSite=Lax; Path=/auth/callback; Max-Age=300`,
     "Cache-Control": "no-store",
   } });
 }
 
 async function cognitoCallback(request: Request, identity: CognitoIdentity): Promise<Response> {
-  if (!identity.tokenUrl || !identity.clientId || !identity.redirectUri || !identity.issuer || !identity.publicKey) return refusal("ConsoleLoginUnconfigured", 503);
+  if (!identity.tokenUrl || !identity.clientId || !identity.redirectUri || !identity.issuer || (!identity.publicKey && !identity.keys)) return refusal("ConsoleLoginUnconfigured", 503);
   const url = new URL(request.url);
   const code = url.searchParams.get("code");
   const state = url.searchParams.get("state");
-  const cookieState = request.headers.get("cookie")?.split(/;\s*/).find((part) => part.startsWith("console_login_state="))?.slice("console_login_state=".length);
-  if (!code || !state || !cookieState || !secureEqual(Buffer.from(state), Buffer.from(cookieState))) return refusal("ConsolePageForbidden");
+  const loginCookie = request.headers.get("cookie")?.split(/;\s*/).find((part) => part.startsWith("console_login_state="))?.slice("console_login_state=".length);
+  const loginParts = loginCookie?.split(".");
+  if (!code || !state || !loginParts || loginParts.length !== 4) return refusal("ConsolePageForbidden");
+  const [cookieState, verifier, issued, signature] = loginParts;
+  const expected = createHmac("sha256", identity.sessionSecret).update(`${cookieState}.${verifier}.${issued}`).digest("base64url");
+  const age = Math.floor(Date.now() / 1000) - Number(issued);
+  if (!secureEqual(Buffer.from(state), Buffer.from(cookieState)) ||
+      !secureEqual(Buffer.from(signature), Buffer.from(expected)) || !Number.isInteger(age) || age < 0 || age > 300 ||
+      !/^[A-Za-z0-9_-]{43}$/.test(verifier)) return refusal("ConsolePageForbidden");
   const exchange = await (identity.fetcher ?? fetch)(identity.tokenUrl, {
     method: "POST",
     headers: { "Content-Type": "application/x-www-form-urlencoded" },
-    body: new URLSearchParams({ grant_type: "authorization_code", client_id: identity.clientId, redirect_uri: identity.redirectUri, code }),
+    body: new URLSearchParams({ grant_type: "authorization_code", client_id: identity.clientId, redirect_uri: identity.redirectUri, code, code_verifier: verifier }),
   });
   if (!exchange.ok) return refusal("ConsolePageForbidden");
   const tokens: unknown = await exchange.json();
@@ -160,7 +174,9 @@ async function cognitoCallback(request: Request, identity: CognitoIdentity): Pro
   if (!object(header) || header.alg !== "RS256" || !object(claims) || claims.iss !== identity.issuer || claims.aud !== identity.clientId ||
       typeof claims.sub !== "string" || !claims.sub || !Number.isSafeInteger(claims.exp) || (claims.exp as number) <= Math.floor(Date.now() / 1000) ||
       claims.token_use !== "id") return refusal("ConsolePageForbidden");
-  const key = typeof identity.publicKey === "string" ? createPublicKey(identity.publicKey) : identity.publicKey;
+  const key = identity.keys ? (typeof header.kid === "string" ? identity.keys.get(header.kid) : undefined) :
+    typeof identity.publicKey === "string" ? createPublicKey(identity.publicKey) : identity.publicKey;
+  if (!key) return refusal("ConsolePageForbidden");
   if (!verify("RSA-SHA256", Buffer.from(`${parts[0]}.${parts[1]}`), key, Buffer.from(parts[2], "base64url"))) return refusal("ConsolePageForbidden");
   const groups = Array.isArray(claims["cognito:groups"]) ? claims["cognito:groups"].filter((group): group is string => typeof group === "string") : [];
   const lifetime = Math.min(claims.exp as number, Math.floor(Date.now() / 1000) + 3600);
@@ -215,7 +231,7 @@ export function createConsole(adapters: ConsoleAdapters): { fetch: (request: Req
       try { operator = operatorFor(request, adapters.identity); } catch { operator = null; }
       if (!operator) return refusal("ConsolePageForbidden", 401);
       if (!operator.grants.has(grant)) return refusal("ConsolePageForbidden");
-      if (adapters.identity.kind === "cognito" && request.method === "POST" && request.headers.get("origin") !== url.origin) {
+      if (request.method === "POST" && (grant === "admin" || adapters.identity.kind === "cognito") && request.headers.get("origin") !== url.origin) {
         return refusal("ConsolePageForbidden");
       }
       if (request.method === "GET" && path === `/${grant}`) return page(grant);
