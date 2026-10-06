@@ -104,3 +104,17 @@ fn an_assertion_spelled_only_inside_a_string_does_not_perform() {
     s.write(FILE, &test_source(REV, "test", "const note = 'assert.equal(1, 1)';"));
     assert_eq!(codes(&s.lint("state"), "SpecBrokenPin").len(), 1);
 }
+
+#[test]
+fn a_local_noop_test_function_does_not_perform() {
+    let s = fixture();
+    s.write(FILE, &format!("import assert from 'node:assert/strict';\nconst test = (_name: string, _callback: () => void) => {{}};\n// spec: {CLAUSE}@{REV}\ntest('words over forty refused', () => {{ assert.equal(1, 1); }});\n"));
+    assert_eq!(codes(&s.lint("state"), "SpecBrokenPin").len(), 1);
+}
+
+#[test]
+fn an_obviously_unreachable_assertion_does_not_perform() {
+    let s = fixture();
+    s.write(FILE, &test_source(REV, "test", "if (false) assert.equal(1, 1);"));
+    assert_eq!(codes(&s.lint("state"), "SpecBrokenPin").len(), 1);
+}

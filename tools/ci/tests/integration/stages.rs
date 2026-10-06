@@ -446,3 +446,32 @@ fn the_surfaces_stage_runs_each_native_typescript_test_file_even_without_a_test_
     assert!(stderr(&o).contains("SurfaceCheckFailed: surface apps/web: test `test/pin.test.ts` exited 5"), "{}", stderr(&o));
     assert!(bin.calls().iter().any(|call| call == "node --experimental-strip-types --test test/pin.test.ts in web"), "{:?}", bin.calls());
 }
+
+#[test]
+fn a_native_file_with_zero_registered_tests_fails_the_surface_stage() {
+    let r = surface_repo();
+    r.write("apps/web/test/empty.test.ts", "const test = (_name, _callback) => {};\ntest('noop', () => {});\n");
+    let bin = Bin::new();
+    pnpm(&bin, "none");
+    bin.fake("node", "echo '# tests 0'\necho '# pass 0'\nexit 0\n");
+    let o = gate(&r, Some(&bin), &["--stage", "surfaces"]);
+    assert!(!o.status.success(), "{}", stderr(&o));
+    assert!(stderr(&o).contains("SurfaceCheckFailed"), "{}", stderr(&o));
+}
+
+#[test]
+fn a_symlinked_native_test_outside_the_surface_is_not_discovered() {
+    let r = surface_repo();
+    let external = tempfile::tempdir().unwrap();
+    let target = external.path().join("outside.test.ts");
+    std::fs::write(&target, "throw new Error('outside');\n").unwrap();
+    let test_dir = r.root.join("apps/web/test");
+    std::fs::create_dir_all(&test_dir).unwrap();
+    std::os::unix::fs::symlink(&target, test_dir.join("outside.test.ts")).unwrap();
+    std::os::unix::fs::symlink(external.path(), test_dir.join("external")).unwrap();
+    let bin = Bin::new();
+    pnpm(&bin, "none");
+    bin.fake("node", "exit 5\n");
+    let o = gate(&r, Some(&bin), &["--stage", "surfaces"]);
+    assert!(o.status.success(), "{}", stderr(&o));
+}
