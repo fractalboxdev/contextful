@@ -40,6 +40,9 @@ impl Repo {
         let root = dir.path().to_path_buf();
         let r = Repo { _dir: dir, root };
         r.git(&["init", "-q", "-b", "main"]);
+        r.git(&["config", "--local", "user.name", "t"]);
+        r.git(&["config", "--local", "user.email", "t@example.com"]);
+        r.git(&["config", "--local", "commit.gpgsign", "false"]);
         r.write("Cargo.toml", "[workspace]\nresolver = \"2\"\nmembers = [\"crates/*\"]\n");
         r.write("crates/demo/Cargo.toml", &manifest("demo", ""));
         r.write("crates/demo/src/lib.rs", "pub fn double(x: i32) -> i32 {\n    x * 2\n}\n");
@@ -64,7 +67,6 @@ impl Repo {
 
     pub fn git(&self, args: &[&str]) -> String {
         let out = Command::new("git")
-            .args(["-c", "commit.gpgsign=false", "-c", "user.name=t", "-c", "user.email=t@example.com"])
             .args(args)
             .current_dir(&self.root)
             .output()
