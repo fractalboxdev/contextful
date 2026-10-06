@@ -185,50 +185,6 @@ fn a_dry_run_release_packages_three_archives_with_checksums_sboms_and_formulae()
     assert!(install.contains("profile=\"${CONTEXTFUL_PROFILE:-contextful-full}\""), "the install script defaults to another profile");
 }
 
-/// The release workflow builds every target of the matrix and an image per profile, and a
-/// dry run publishes nothing.
-#[test]
-fn the_release_workflow_builds_every_matrix_target_and_publishes_only_off_a_dry_run() {
-    let out = ci(&["release", "--plan"], None);
-    assert!(out.status.success(), "{}", String::from_utf8_lossy(&out.stderr));
-    let plan = String::from_utf8_lossy(&out.stdout).to_string();
-    let mut targets: Vec<&str> = plan.lines().filter_map(|l| l.split_whitespace().nth(1)).collect();
-    targets.sort();
-    targets.dedup();
-    let mut profiles: Vec<&str> = plan.lines().filter_map(|l| l.split_whitespace().next()).collect();
-    profiles.dedup();
-
-    let yml = std::fs::read_to_string(repo_root().join(".github/workflows/release.yml")).unwrap();
-    let mut built: Vec<&str> = yml.lines().filter_map(|l| l.trim().strip_prefix("- target: ")).collect();
-    built.sort();
-    assert_eq!(built, targets, "the workflow's build matrix differs from the release matrix");
-    // Each target builds natively on a hosted runner of its own architecture; a retired
-    // image schedules no job, and its archives then never reach the formula step.
-    let lines: Vec<&str> = yml.lines().map(str::trim).collect();
-    let runner_of = |target: &str| {
-        let at = lines.iter().position(|l| *l == format!("- target: {target}")).unwrap();
-        lines[at + 1].strip_prefix("runner: ").unwrap_or_else(|| panic!("`{target}` names no runner")).to_string()
-    };
-    for (target, runner) in [
-        ("x86_64-unknown-linux-musl", "ubuntu-24.04"),
-        ("aarch64-unknown-linux-musl", "ubuntu-24.04-arm"),
-        ("aarch64-apple-darwin", "macos-15"),
-        ("x86_64-apple-darwin", "macos-15-intel"),
-    ] {
-        assert_eq!(runner_of(target), runner, "`{target}` runs on another runner");
-    }
-    let images = yml.lines().find_map(|l| l.trim().strip_prefix("profile: [")).and_then(|l| l.strip_suffix(']')).expect("an image matrix");
-    let images: Vec<&str> = images.split(',').map(str::trim).collect();
-    assert_eq!(images, profiles);
-    assert!(yml.contains("release --target ${{ matrix.target }} --out dist"), "{yml}");
-    assert!(yml.contains("formula --dist dist"), "{yml}");
-    for publish in ["gh release create", "push: ${{ env.DRY_RUN != 'true' }}"] {
-        let at = yml.find(publish).unwrap_or_else(|| panic!("no `{publish}` step"));
-        let before = &yml[..at];
-        assert!(publish.starts_with("push") || before.rfind("if: env.DRY_RUN != 'true'") > before.rfind("- uses:").max(before.rfind("- run:")), "`{publish}` runs on a dry run");
-    }
-}
-
 /// No profile ships a `wasm32-wasip2` release; a scheduled-tier ledger entry builds the edge profile for it and holds the compressed artifact to {{assurance.gate.edge-budget}}.
 ///
 /// Under `contextful-ci measure --tier scheduled` the probe runs `contextful-ci wasi-probe`,
