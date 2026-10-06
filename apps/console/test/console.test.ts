@@ -74,10 +74,19 @@ test("Query keeps one composer and transcript and delegates a sourced answer", a
   assert.match(page, /id="composer"/);
   assert.match(page, /id="transcript"/);
   assert.match(page, /id="widgets"/);
-  const answer = await request("/query/api/ask", access(queryAudience), { method: "POST", body: JSON.stringify({ store: "field-notes", question: "What arrived?" }) });
+  const answer = await request("/query/api/ask", { ...access(queryAudience), origin: "https://console.example" }, { method: "POST", body: JSON.stringify({ store: "field-notes", question: "What arrived?" }) });
   assert.equal(answer.status, 200);
   assert.equal((await answer.json() as { sources: unknown[] }).sources.length, 1);
   assert.deepEqual(calls, ["turn:operator-1:field-notes:What arrived?"]);
+});
+
+test("Access Query rejects cross-origin and originless POST before a turn", async () => {
+  const { request, calls } = fixture();
+  const body = JSON.stringify({ store: "field-notes", question: "What arrived?" });
+  for (const headers of [access(queryAudience), { ...access(queryAudience), origin: "https://other.example" }]) {
+    assert.equal((await request("/query/api/ask", headers, { method: "POST", body })).status, 403);
+  }
+  assert.deepEqual(calls, []);
 });
 
 test("Admin exposes workflows and requires a server-held capability for edit and apply", async () => {
