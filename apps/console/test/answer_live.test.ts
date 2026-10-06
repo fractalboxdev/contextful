@@ -42,14 +42,14 @@ function fixture() {
   return { live, calls, modelPrompts };
 }
 
-test("live answer renders redacted governed rows and distils only observed scoped learning", async () => {
+test("live answer with no verified memory session leaves no transient learning", async () => {
   const { live, calls, modelPrompts } = fixture();
   const alice = { subject: "alice", grants: new Set(["query" as const]), assertion: "alice-session-1" };
   const answer = await live.turn({ operator: alice, store: store.id, question: "Which Northwind filing arrived?" });
   assert.match(answer.answer, /Northwind filings need review/);
   assert.deepEqual(answer.resultRows?.columns, ["filing_id", "title", "summary", "published_at", "source_url", "owner_email"]);
   assert.doesNotMatch(JSON.stringify(answer.resultRows), /secret@example.test/);
-  assert.equal(modelPrompts.length, 2, "the second model pass distils the completed answer");
+  assert.equal(modelPrompts.length, 1, "no signed memory session means no learning pass");
   assert.doesNotMatch(modelPrompts[0], /secret@example.test/);
   assert(calls.every((call) => call.authorization === "Bearer reader-alice-session-1"));
 
@@ -58,10 +58,9 @@ test("live answer renders redacted governed rows and distils only observed scope
   assert.equal(await deriveBrief({ ...sameSession, budgetMs: 100 }), null);
   const nextSession = await live.brief({ ...alice, assertion: "alice-session-2" }, store.id);
   assert.equal(nextSession.session.turns, 0);
-  assert.deepEqual(nextSession.conclusions.map((entry) => entry.subject), ["Northwind"]);
+  assert.deepEqual(nextSession.conclusions, []);
   const card = await deriveBrief({ ...nextSession, budgetMs: 100 });
-  assert.equal(card?.subjects[0].subject, "Northwind");
-  assert(calls.some((call) => call.name === "context.query" && call.authorization === "Bearer reader-alice-session-2"));
+  assert.equal(card, null);
   const bob = await live.brief({ subject: "bob", grants: new Set(["query"]), assertion: "bob-session" }, store.id);
   assert.deepEqual(bob.conclusions, []);
 });
