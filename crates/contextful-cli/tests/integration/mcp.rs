@@ -192,6 +192,28 @@ allow = ["public-cloud:*"]
     assert_eq!(answers[1]["result"]["structuredContent"]["rows"], json!([]), "zone exclusion holds under owner");
 }
 
+#[test]
+fn owner_credential_does_not_follow_a_recreated_store_at_the_same_path() {
+    let (dir, public, _) = project();
+    let root = dir.path();
+    let owner = stdout(&run(root, &[
+        "token", "mint", "--issuer-key", ".contextful/issuer.seed", "--on-behalf-of", "user://dana@acme.example",
+        "--zone", "on-prem:hq", "--action", "read", "--table", "*", "--ttl", "600", "--owner",
+    ]));
+    let identity_path = root.join(".contextful/context/research/store-id");
+    let first_identity = std::fs::read_to_string(&identity_path).unwrap_or_default();
+    std::fs::remove_dir_all(root.join(".contextful/context/research")).unwrap();
+    stdout(&run(root, &["context", "land", "research/notes", "--project", "research", "--rows", "notes.jsonl", "--run-id", "run-0002", "--site-id", "site-a"]));
+    let second_identity = std::fs::read_to_string(&identity_path).unwrap_or_default();
+    assert!(!first_identity.is_empty() && !second_identity.is_empty() && first_identity != second_identity,
+        "a recreated store receives a new persistent identity");
+    let args = ["mcp", "--owner", "--project", "research", "--public-key", &public, "--audience", AUD];
+    let read = [json!({ "jsonrpc": "2.0", "id": 1, "method": "tools/call", "params": { "name": "context.query", "arguments": { "sql": "SELECT note_id FROM \"research/notes\"" } } })];
+    let refused = serve(root, &args, Some(&owner), &read);
+    assert!(!refused.status.success() && refused.stdout.is_empty());
+    assert!(String::from_utf8_lossy(&refused.stderr).contains("OwnerCredentialInvalid"));
+}
+
 /// The server admits over the stdio pipe it inherited: a credential binding no key admits
 /// through that pipe, and one binding a holder key and presenting no holder proof refuses.
 #[test]
