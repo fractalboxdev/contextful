@@ -7,7 +7,7 @@
 //! network transport, which admits each one on its own credential. Every value is
 //! resolved before the listener binds, so a process that cannot serve binds nothing.
 
-use crate::admit::{face, revocation_state, LedgerFile, LivePins, AUDIENCE_VAR, PUBKEY_VAR};
+use crate::admit::{AdmitArgs, face, revocation_state, LedgerFile, LivePins, AUDIENCE_VAR, PUBKEY_VAR};
 use crate::project::locate;
 use crate::root::root as project_root;
 use crate::clock::SystemClock;
@@ -111,6 +111,7 @@ pub fn run(args: ServeArgs, tasks: &Tasks) -> Result<()> {
         None => face,
     };
     let audit = AuditLog::unanchored(located.project.audit_dir())?;
+    let control_admit = AdmitArgs { public_key: args.public_key.clone(), audience: args.audience.clone(), denylist: args.denylist.clone(), keyset: args.keyset.clone(), holder_key: None };
     let control = |request: &HttpRequest| -> HttpResponse {
         let answer = match request.target.split('?').next().unwrap_or_default() {
             WORKFLOWS_PATH => crate::cadence::published(&located.project, &located.declaration),
@@ -124,7 +125,7 @@ pub fn run(args: ServeArgs, tasks: &Tasks) -> Result<()> {
                     return HttpResponse::json(400, &json!({ "error": { "identifier": "ControlRequestMalformed" } }));
                 }
                 let project = crate::run::ProjectArgs { project: Some(located.project.name.clone()), now: None };
-                crate::cadence::apply(&project, Some(located.declaration.clone()), body["id"].as_str(), tasks)
+                crate::cadence::apply(&project, Some(located.declaration.clone()), body["id"].as_str(), tasks, &control_admit, None)
                     .and_then(|()| crate::cadence::published(&located.project, &located.declaration))
             }
             _ => unreachable!(),
