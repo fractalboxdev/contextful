@@ -139,3 +139,10 @@ fn duplicate_test_titles_do_not_pin_a_specific_callback() {
     s.write(FILE, &format!("import {{ test }} from 'node:test';\nimport assert from 'node:assert/strict';\ntest('words over forty refused', () => {{ assert.equal(1, 1); }});\n// spec: {CLAUSE}@{REV}\ntest('words over forty refused', () => {{ assert.equal(2, 2); }});\n"));
     assert_eq!(codes(&s.lint("state"), "SpecBrokenPin").len(), 1);
 }
+
+#[test]
+fn an_assertion_only_inside_an_uninvoked_callback_is_broken() {
+    let s = fixture();
+    s.write(FILE, &test_source(REV, "test", "const never = () => assert.equal(1, 2);"));
+    assert_eq!(codes(&s.lint("state"), "SpecBrokenPin").len(), 1);
+}
