@@ -22187,7 +22187,7 @@
       "operation": "gate",
       "subject": "remote-check",
       "kind": "behavior",
-      "statement": "The FlareDispatch pull-request webhook dispatches every part from `contextful-ci stages --parts`, each as `flare-dispatch/check:<part>` on the head commit.",
+      "statement": "The FlareDispatch pull-request webhook dispatches every part from `contextful-ci stages --parts --base <base-sha>`, each as `flare-dispatch/check:<part>` on the head commit.",
       "why": "A-assurance",
       "file": "spec/81-engineering.md",
       "line": 166

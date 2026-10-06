@@ -109,14 +109,9 @@ fn remote_workspace_parts_compile_the_union_and_run_each_package_suite() {
     let tested = r.gate_with_cargo(&recording(&log, 0), &["--stage", "workspace.cli"]);
     assert!(tested.status.success(), "{}", stderr(&tested));
     let calls = std::fs::read_to_string(&log).unwrap();
-    assert_eq!(calls.lines().count(), 1, "compile runs no package suite: {calls}");
-
-    std::fs::remove_file(&log).unwrap();
-    let tested = r.gate_with_cargo(&recording(&log, 0), &["--stage", "workspace.cli"]);
-    assert!(tested.status.success(), "{}", stderr(&tested));
-    let calls = std::fs::read_to_string(&log).unwrap();
     assert!(calls.contains("test --package contextful-cli"), "{calls}");
     assert!(calls.contains("--skip differential::"), "{calls}");
+    assert_eq!(calls.lines().count(), 1, "CLI runs no workspace compile: {calls}");
 
     std::fs::remove_file(&log).unwrap();
     let formal = r.gate_with_cargo(&recording(&log, 0), &["--stage", "workspace.cli-formal"]);
