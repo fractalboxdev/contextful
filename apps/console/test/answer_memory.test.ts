@@ -34,6 +34,9 @@ test("verified reading session lands evidence-backed claims and recalls them bef
       else {
         assert.equal(message.params.name, "context.query");
         const sql = String(message.params.arguments.sql);
+        if (sql.includes("DISTINCT subject") && claims.length === 0) {
+          return Response.json({ error: { identifier: "EmptyMemoryRelation" } }, { status: 400 });
+        }
         result = sql.includes("DISTINCT subject") ? { columns: ["subject"], rows: [["Northwind"]] } : {
           columns: ["_run_id", "_row_seq", "filing_id", "title", "summary"],
           rows: [["run-1", 0, "filing-1", "Northwind filing", "Northwind filings need review"]],
