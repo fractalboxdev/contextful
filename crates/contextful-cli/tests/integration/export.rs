@@ -138,6 +138,52 @@ fn typed_events(request: &Received) -> Vec<serde_json::Value> {
 }
 
 #[test]
+fn typed_export_refuses_a_truncated_initial_state() {
+    for table_cap in [false, true] {
+        let collector = Collector::start();
+        let limited = "[[pipeline.tables]]\nname = \"spans\"\n[pipeline.tables.policy.limits]\nmax_rows = 2\n\n";
+        let declaration = format!("{}{}", if table_cap { limited } else { "" }, typed_block(&collector.endpoint()));
+        let (dir, public, token) = project(&declaration, "spans");
+        let p = dir.path();
+        let token = if table_cap { token } else {
+            ok(&cf(p, &["token", "mint", "--issuer-key", ".contextful/issuer.seed", "--on-behalf-of", "svc://mirror", "--zone", "on-prem:hq", "--table", "spans", "--max-rows", "2", "--ttl", "600"], &[]))
+        };
+        land(p, "load-1", "2030-01-01T00:00:00Z", &ids("a", 3));
+        let refused = err(&export(p, &public, &token, &[]));
+        assert!(refused.contains("truncated"), "{refused}");
+        assert!(collector.received().is_empty());
+        let machine = p.join(".contextful/context/research/machine.sqlite");
+        let ledger = contextful_sqlite::ExportLedger::open(&machine).unwrap();
+        let position = ledger.position("spans-mirror").unwrap();
+        assert!(position.pending_publication.is_none());
+        assert!(position.ack_sequence.is_none());
+        assert!(ledger.state("spans-mirror").unwrap().is_empty());
+    }
+}
+
+#[test]
+fn typed_export_refuses_a_truncated_refresh_without_false_deletions() {
+    let collector = Collector::start();
+    let (dir, public, token) = project(&typed_block(&collector.endpoint()), "spans");
+    let p = dir.path();
+    land(p, "load-1", "2030-01-01T00:00:00Z", &ids("a", 3));
+    ok(&export(p, &public, &token, &[]));
+    let machine = p.join(".contextful/context/research/machine.sqlite");
+    let ledger = contextful_sqlite::ExportLedger::open(&machine).unwrap();
+    let before = ledger.position("spans-mirror").unwrap();
+    let state = ledger.state("spans-mirror").unwrap();
+    drop(ledger);
+    let limited = format!("authoring_posture = \"per_request\"\n[[pipeline.tables]]\nname = \"spans\"\n[pipeline.tables.policy.limits]\nmax_rows = 2\n\n{}", typed_block(&collector.endpoint()));
+    std::fs::write(p.join("contextful.toml"), limited).unwrap();
+    let refused = err(&export(p, &public, &token, &[]));
+    assert!(refused.contains("truncated"), "{refused}");
+    assert_eq!(collector.received().len(), 1, "a partial state emits no false deletions or completion marker");
+    let ledger = contextful_sqlite::ExportLedger::open(&machine).unwrap();
+    assert_eq!(ledger.position("spans-mirror").unwrap(), before);
+    assert_eq!(ledger.state("spans-mirror").unwrap(), state);
+}
+
+#[test]
 fn typed_export_delivers_versioned_changes_and_retries_from_machine_cursor() {
     let collector = Collector::start();
     let (dir, public, token) = project(&typed_block(&collector.endpoint()), "spans");

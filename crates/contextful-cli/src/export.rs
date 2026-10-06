@@ -208,6 +208,9 @@ fn read_state(face: &contextful_context::read::face::Face, session: &Session, ex
     loop {
         let statement = format!("SELECT * FROM {} ORDER BY {order} LIMIT {EXPORT_BATCH_ROWS} OFFSET {}", ident(&export.table), rows.len());
         let response = face.query(session, &statement, ReadOptions { limit: Some(EXPORT_BATCH_ROWS as u64), ..ReadOptions::default() })?;
+        if response.truncated {
+            anyhow::bail!("export `{}`: its admitted table read is truncated; no publication is staged", export.name);
+        }
         let count = response.rows.len();
         for values in response.rows {
             let row: serde_json::Map<String, serde_json::Value> = response.columns.iter().cloned().zip(values).map(|(name, value)| {
