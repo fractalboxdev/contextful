@@ -15,6 +15,7 @@ mod image;
 mod lean;
 mod measure;
 mod mirrors;
+mod mandatory_toolchains;
 mod probe;
 mod release;
 mod secrets;
