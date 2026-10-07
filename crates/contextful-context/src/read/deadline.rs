@@ -3,8 +3,21 @@
 use std::sync::mpsc::{Receiver, RecvTimeoutError};
 use std::time::{Duration, Instant};
 
-pub(crate) fn watch(_started: Instant, duration: Duration, receiver: Receiver<()>, mut interrupt: impl FnMut()) {
-    if receiver.recv_timeout(duration).is_err_and(|e| e == RecvTimeoutError::Timeout) {
-        interrupt();
+// DuckDB preparation resets its interrupt flag; cancellation persists until completion.
+const INTERRUPT_RETRY: Duration = Duration::from_millis(1);
+
+pub(crate) fn watch(
+    started: Instant,
+    duration: Duration,
+    receiver: Receiver<()>,
+    mut interrupt: impl FnMut(),
+) {
+    let mut wait = duration.saturating_sub(started.elapsed());
+    loop {
+        match receiver.recv_timeout(wait) {
+            Ok(()) | Err(RecvTimeoutError::Disconnected) => return,
+            Err(RecvTimeoutError::Timeout) => interrupt(),
+        }
+        wait = INTERRUPT_RETRY;
     }
 }
