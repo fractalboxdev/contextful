@@ -1,18 +1,22 @@
 //! The push plan, push, pull, the probe, bucket leases and fenced pointer publication for one store.
 
 use contextful_context::{ContextError, Store};
+use contextful_context::encrypt::MetadataFiles;
 use contextful_core::run::journal::sha256_hex;
 use contextful_core::store::catalog::{DERIVED_CATALOG_FILE, MACHINE_CATALOG_FILE};
 use contextful_core::store::lease::{compaction_key, BucketLease, BucketPointer, CLOCK_SKEW_SECS};
 use contextful_core::store::lay_out::{Pointer, SnapshotId, SnapshotManifest, MANIFEST_FILE, POINTER_FILE, SNAPSHOT_ANCESTORS_MAX};
 use contextful_core::store::object::{CasScope, Condition, ObjectError, ObjectStore, Put};
 use contextful_core::store::sync::{
-    admit_format, confine, generation_key, generation_of, is_commit_log, is_pointer, merge, owner_of, run_state_node, BucketManifest, Coordination, Entry, SyncConfig,
+    admit_format, confine, generation_key, generation_of, is_commit_log, is_pointer, merge, owner_of, run_state_node, BucketManifest, ControlHead, Coordination, Entry, SyncConfig,
     GENERATION_PREFIX, MANIFEST_KEY, PROBE_PREFIX, PULL_CONVERGENCE,
 };
 use contextful_core::store::StoreError;
 use contextful_core::surface::reside::{compare_sites, SiteRegions};
 use contextful_core::surface::SurfaceError;
+use contextful_core::surface::control::{parse_pointer, receipt_file, receipt_version, snapshot_file, POINTER_FILE as CONTROL_POINTER};
+use contextful_policy::control_receipt::ControlReceipt;
+use contextful_policy::issue::SignerKey;
 use contextful_core::time::Instant;
 use std::collections::{BTreeMap, BTreeSet};
 use std::path::{Path, PathBuf};
@@ -81,6 +85,7 @@ fn syncable(rel: &str) -> bool {
     let name = rel.rsplit('/').next().unwrap_or(rel);
     let catalog = |file: &str| rel == file || rel.strip_prefix(file).is_some_and(|rest| ["-journal", "-wal", "-shm"].contains(&rest));
     !(rel == "config.toml"
+        || rel.starts_with("control/")
         || catalog(DERIVED_CATALOG_FILE)
         || catalog(MACHINE_CATALOG_FILE)
         || name.starts_with('.')
@@ -167,6 +172,9 @@ pub struct ManifestPlan {
     /// Keys another node owns, held locally and never pushed from here.
     pub foreign: BTreeMap<String, Entry>,
     paths: BTreeMap<String, PathBuf>,
+    control_head: Option<ControlHead>,
+    control_project: Option<String>,
+    control_ancestry: BTreeSet<String>,
 }
 
 impl ManifestPlan {
@@ -175,7 +183,11 @@ impl ManifestPlan {
     pub fn manifest(&self) -> BucketManifest {
         let mut entries = self.mine.clone();
         entries.extend(self.shared.iter().map(|(k, e)| (k.clone(), e.clone())));
-        BucketManifest { entries, ..BucketManifest::default() }
+        let mut manifest = BucketManifest { entries, ..BucketManifest::default() };
+        if let (Some(head), Some(project)) = (&self.control_head, &self.control_project) {
+            manifest.control_heads.insert(project.clone(), head.clone());
+        }
+        manifest
     }
 
     fn read(&self, key: &str) -> Result<Vec<u8>> {
@@ -235,7 +247,9 @@ fn local_pointers(store: &Store, project: &str) -> Result<Vec<LocalPointer>> {
                 continue;
             }
             let table = dir.strip_prefix(&tables).map(|r| r.to_string_lossy().replace('\\', "/")).unwrap_or_default();
-            let pointer = std::fs::read(&path).map_err(|e| e.to_string()).and_then(|b| serde_json::from_slice::<Pointer>(&b).map_err(|e| e.to_string()));
+            let pointer = std::fs::read(&path).map_err(|e| e.to_string())
+                .and_then(|b| store.open_metadata_bytes(&path, &b).map_err(|e| e.to_string()))
+                .and_then(|b| serde_json::from_slice::<Pointer>(&b).map_err(|e| e.to_string()));
             out.push(LocalPointer { key: format!("{project}/tables/{table}/{POINTER_FILE}"), table, table_dir: dir.clone(), pointer });
         }
     }
@@ -266,7 +280,7 @@ enum Ancestry {
 /// Whether `local` advances the bucket's pointer `remote` (`store.push.pointer-carry`):
 /// its snapshot is whole here and the bucket's names none or an ancestor of it. The
 /// bucket's fence carries over; a local fence below it keeps the pointer local.
-fn carry(local: &LocalPointer, remote: Option<&BucketPointer>) -> Result<Carry> {
+fn carry(store: &Store, local: &LocalPointer, remote: Option<&BucketPointer>) -> Result<Carry> {
     let pointer = match &local.pointer {
         Ok(p) => p,
         Err(e) => return Ok(Carry::Warn(format!("`{}` does not parse ({e}); the pointer stays local", local.key))),
@@ -280,11 +294,11 @@ fn carry(local: &LocalPointer, remote: Option<&BucketPointer>) -> Result<Carry> 
     if let Some(f) = pointer.fence.filter(|f| *f < fence) {
         return Ok(Carry::Warn(format!("`{}` carries fence {f} and the bucket's pointer fence {fence}; the pointer stays local", local.key)));
     }
-    if let Some(missing) = missing_parts(&local.table_dir, &snapshot)? {
+    if let Some(missing) = missing_parts(store, &local.table_dir, &snapshot)? {
         return Ok(Carry::Warn(format!("snapshot `{snapshot}` lacks `{missing}`; `{}` stays local", local.key)));
     }
     if let Some(ancestor) = published {
-        match ancestry(&local.table_dir, &snapshot, ancestor) {
+        match ancestry(store, &local.table_dir, &snapshot, ancestor) {
             Ancestry::Descends => {}
             Ancestry::Diverges => return Ok(Carry::Keep),
             Ancestry::Unknown => {
@@ -301,12 +315,12 @@ fn carry(local: &LocalPointer, remote: Option<&BucketPointer>) -> Result<Carry> 
 /// Whether `ancestor` precedes `snapshot` under `table_dir`, read from each manifest's
 /// `ancestors` (`store.lay-out.ancestors`), else its `parent`, so retention collecting
 /// the snapshots between them leaves the answer intact.
-fn ancestry(table_dir: &Path, snapshot: &str, ancestor: &str) -> Ancestry {
+fn ancestry(store: &Store, table_dir: &Path, snapshot: &str, ancestor: &str) -> Ancestry {
     let mut seen = BTreeSet::new();
     let mut at = snapshot.to_string();
     while seen.insert(at.clone()) {
         let path = table_dir.join("data").join("snapshots").join(&at).join(MANIFEST_FILE);
-        let Some(manifest) = std::fs::read(&path).ok().and_then(|b| serde_json::from_slice::<SnapshotManifest>(&b).ok()) else {
+        let Some(manifest) = std::fs::read(&path).ok().and_then(|b| store.open_metadata_bytes(&path, &b).ok()).and_then(|b| serde_json::from_slice::<SnapshotManifest>(&b).ok()) else {
             return Ancestry::Unknown;
         };
         let next = match (&manifest.ancestors, &manifest.parent) {
@@ -412,6 +426,8 @@ pub struct Syncer {
     pub node: String,
     /// The pushing site and its residency allow-set; `None` skips the cross-site check.
     pub residency: Option<SiteResidency>,
+    /// Local applied snapshots, absent for a URL-backed control source.
+    pub control_dir: Option<PathBuf>,
 }
 
 /// A site's id and the allow-set it declares, `None` when it declares no `[residency]`.
@@ -438,6 +454,18 @@ impl SiteResidency {
 }
 
 impl Syncer {
+    fn admit_control_head(&self, plan: &ManifestPlan, remote: &BucketManifest) -> Result<()> {
+        let Some(bucket) = remote.control_heads.get(&self.project) else { return Ok(()) };
+        let Some(local) = &plan.control_head else { return Ok(()) };
+        if !plan.control_ancestry.contains(&bucket.receipt_sha256) || local.version < bucket.version {
+            return Err(StoreError::SyncControlDiverged(format!(
+                "project `{}` local head {} does not descend from bucket head {}",
+                self.project, local.receipt_sha256, bucket.receipt_sha256
+            )).into());
+        }
+        Ok(())
+    }
+
     fn key(&self, rel: &str) -> Result<String> {
         Ok(confine(&self.prefix, rel)?)
     }
@@ -449,7 +477,77 @@ impl Syncer {
 
     /// What a push of this store commits, reading no bucket object (`store.emit`).
     pub fn plan_manifest(&self) -> Result<ManifestPlan> {
-        plan_manifest(&self.store, &self.project, &self.node)
+        let mut plan = plan_manifest(&self.store, &self.project, &self.node)?;
+        let Some(dir) = &self.control_dir else { return Ok(plan) };
+        let pointer = dir.join(CONTROL_POINTER);
+        let body = match std::fs::read_to_string(&pointer) {
+            Ok(body) => body,
+            Err(e) if e.kind() == std::io::ErrorKind::NotFound => return Ok(plan),
+            Err(e) => return Err(io(&pointer, e)),
+        };
+        let version = parse_pointer(&body)?;
+        let mut versions = Vec::new();
+        for entry in std::fs::read_dir(dir).map_err(|e| io(dir, e))? {
+            let entry = entry.map_err(|e| io(dir, e))?;
+            if let Some(n) = entry.file_name().to_str().and_then(receipt_version).filter(|n| *n <= version) {
+                versions.push(n);
+            }
+        }
+        versions.sort_unstable_by(|a, b| b.cmp(a));
+        if versions.first() != Some(&version) {
+            return Err(SurfaceError::ControlAttestationUnavailable(format!("{}: applied v{version} has no receipt", pointer.display())).into());
+        }
+        let mut parent_needed: Option<String> = None;
+        let mut head_digest = None;
+        for n in versions {
+            if n != version && parent_needed.is_none() {
+                break;
+            }
+            let snapshot = dir.join(snapshot_file(n));
+            let receipt_path = dir.join(receipt_file(n));
+            let receipt_bytes = match std::fs::read(&receipt_path) {
+                Ok(bytes) => bytes,
+                Err(e) if e.kind() == std::io::ErrorKind::NotFound && n != version => continue,
+                Err(e) => return Err(io(&receipt_path, e)),
+            };
+            let receipt: ControlReceipt = match serde_json::from_slice(&receipt_bytes) {
+                Ok(receipt) => receipt,
+                Err(_) if n != version => continue,
+                Err(e) => return Err(SurfaceError::ControlAttestationUnavailable(format!("{}: {e}", receipt_path.display())).into()),
+            };
+            if receipt.version != n {
+                if n != version { continue; }
+                return Err(SurfaceError::ControlAttestationUnavailable(format!("{}: receipt version differs from its file", receipt_path.display())).into());
+            }
+            let digest = receipt.digest();
+            if n != version && parent_needed.as_deref() != Some(digest.as_str()) {
+                continue;
+            }
+            let snapshot_bytes = std::fs::read(&snapshot).map_err(|e| io(&snapshot, e))?;
+            let signer: SignerKey = receipt.signer.parse().map_err(|e| {
+                SurfaceError::ControlAttestationUnavailable(format!("{}: {e}", receipt_path.display()))
+            })?;
+            receipt.verify(&self.project, &snapshot_bytes, &[signer]).map_err(|e| {
+                SurfaceError::ControlAttestationUnavailable(format!("{}: {e}", receipt_path.display()))
+            })?;
+            if n == version {
+                head_digest = Some(digest.clone());
+            }
+            plan.control_ancestry.insert(digest.clone());
+            parent_needed = receipt.parent.clone();
+            for (path, bytes) in [(snapshot, snapshot_bytes), (receipt_path, receipt_bytes)] {
+                let name = path.file_name().expect("a version file has a name").to_string_lossy();
+                let key = format!("{}/control/{name}", self.project);
+                plan.mine.insert(key.clone(), Entry { sha256: sha256_hex(&bytes), size: bytes.len() as u64, owner: String::new() });
+                plan.paths.insert(key, path);
+            }
+        }
+        if let Some(missing) = parent_needed {
+            return Err(SurfaceError::ControlAttestationUnavailable(format!("{}: applied receipt chain lacks predecessor {missing}", pointer.display())).into());
+        }
+        plan.control_head = head_digest.map(|receipt_sha256| ControlHead { version, receipt_sha256 });
+        plan.control_project = plan.control_head.as_ref().map(|_| self.project.clone());
+        Ok(plan)
     }
 
     fn manifest(&self) -> Result<(BucketManifest, Option<String>)> {
@@ -508,7 +606,8 @@ impl Syncer {
         for bucket_key in self.bucket.list(&self.key(&format!("{}/tables/", self.project))?)?.into_iter().filter(|k| is_pointer(k)) {
             let rel_key = bucket_key.strip_prefix(&format!("{}/", self.prefix)).unwrap_or(&bucket_key).to_string();
             let Some((bytes, _)) = self.bucket.get(&bucket_key)? else { continue };
-            let pointer: BucketPointer = serde_json::from_slice(&bytes).map_err(|e| SyncError::Context(ContextError::Invalid(format!("`{rel_key}`: {e}"))))?;
+            let clear = self.store.open_metadata_bytes(Path::new(&bucket_key), &bytes)?;
+            let pointer: BucketPointer = serde_json::from_slice(&clear).map_err(|e| SyncError::Context(ContextError::Invalid(format!("`{rel_key}`: {e}"))))?;
             out.insert(rel_key, pointer);
         }
         Ok(out)
@@ -566,6 +665,7 @@ impl Syncer {
         })?;
         let plan = self.plan_manifest()?;
         let remote = self.manifest()?.0;
+        self.admit_control_head(&plan, &remote)?;
         if let Some(r) = &self.residency {
             r.check(&remote)?;
         }
@@ -644,6 +744,7 @@ impl Syncer {
                 }
             }
             let remote = remote.map(|(m, _)| m).unwrap_or_default();
+            self.admit_control_head(plan, &remote)?;
             // Pointers read before the commit name snapshots whose files earlier commits listed.
             let pointers = self.project_pointers()?;
             let mut entries = plan.mine.clone();
@@ -661,6 +762,9 @@ impl Syncer {
             }
             let merged = merge(&remote, &entries, &self.node, now)?;
             let mut committed = merged.manifest;
+            if let Some(head) = &plan.control_head {
+                committed.control_heads.insert(self.project.clone(), head.clone());
+            }
             // A manifest rewritten by a writer predating `generation` reads 0; the files keep the count (`store.push.generation-floor`).
             committed.generation = remote.generation.max(newest) + 1;
             committed.pointers = remote.pointers.iter().filter(|(k, _)| !in_project(k)).map(|(k, p)| (k.clone(), p.clone())).collect();
@@ -706,9 +810,10 @@ impl Syncer {
         let key = self.pointer_key(&local.table)?;
         for _ in 0..PUT_ROUNDS {
             let (remote, etag) = self.read_pointer(&local.table)?;
-            let decision = carry(local, etag.is_some().then_some(&remote))?;
+            let decision = carry(&self.store, local, etag.is_some().then_some(&remote))?;
             let Carry::Publish(next) = &decision else { return Ok(decision) };
             let bytes = serde_json::to_vec_pretty(next).map_err(|e| SyncError::Context(ContextError::Invalid(e.to_string())))?;
+            let bytes = self.store.seal_metadata_bytes(Path::new(&key), &bytes)?;
             let condition = etag.map_or(Condition::IfNoneMatch, Condition::IfMatch);
             if let Put::Applied(_) = self.bucket.put(&key, &bytes, condition)? {
                 return Ok(decision);
@@ -752,7 +857,8 @@ impl Syncer {
         for _ in 0..PUT_ROUNDS {
             let (merged, condition) = match self.bucket.get(&k)? {
                 Some((remote, etag)) => {
-                    let merged = merge_schema(&remote, local)?;
+                    let path = self.local_path(key).ok_or_else(|| SyncError::Context(ContextError::Invalid(format!("`{key}` has no local path"))))?;
+                    let merged = merge_schema_bytes(&self.store.metadata_files(), &path, &remote, local)?;
                     if sha256_hex(&merged) == sha256_hex(&remote) {
                         return Ok(false);
                     }
@@ -771,6 +877,62 @@ impl Syncer {
         key.strip_prefix(&format!("{}/", self.project)).map(|rel| self.store.root().join(rel))
     }
 
+    /// Resolve only the receipt ancestry of the committed head; unrelated control files
+    /// in the manifest do not enter a cold node's staging directory.
+    fn control_reachable(&self, manifest: &BucketManifest) -> Result<(BTreeSet<String>, Option<String>)> {
+        let mut keys = BTreeSet::new();
+        let Some(head) = manifest.control_heads.get(&self.project) else { return Ok((keys, None)) };
+        let control_prefix = format!("{}/control/", self.project);
+        let mut versions: Vec<u64> = manifest.entries.keys()
+            .filter_map(|key| key.strip_prefix(&control_prefix).and_then(receipt_version))
+            .filter(|version| *version <= head.version)
+            .collect();
+        versions.sort_unstable_by(|a, b| b.cmp(a));
+        if versions.first() != Some(&head.version) {
+            return Ok((keys, Some(format!("{control_prefix}{}", receipt_file(head.version)))));
+        }
+        let mut wanted = Some(head.receipt_sha256.clone());
+        for version in versions {
+            let Some(digest) = wanted.as_deref() else { break };
+            let receipt_key = format!("{}/control/{}", self.project, receipt_file(version));
+            let Some(entry) = manifest.entries.get(&receipt_key) else {
+                if version == head.version { return Ok((keys, Some(receipt_key))); }
+                continue;
+            };
+            let Some((bytes, _)) = self.bucket.get(&self.key(&receipt_key)?)? else {
+                return Ok((keys, Some(receipt_key)));
+            };
+            let receipt: ControlReceipt = match serde_json::from_slice(&bytes) {
+                Ok(receipt) => receipt,
+                Err(_) if version != head.version => continue,
+                Err(e) => return Err(StoreError::SyncObjectDigestMismatch(format!("`{receipt_key}` holds an unreadable control receipt: {e}")).into()),
+            };
+            if receipt.digest() != digest {
+                if version == head.version {
+                    return Err(StoreError::SyncObjectDigestMismatch(format!("`{receipt_key}` differs from the committed control head digest")).into());
+                }
+                continue;
+            }
+            if sha256_hex(&bytes) != entry.sha256 {
+                return Err(StoreError::SyncObjectDigestMismatch(format!("`{receipt_key}` arrived with a digest other than its entry's; the object is discarded")).into());
+            }
+            let snapshot_key = format!("{}/control/{}", self.project, snapshot_file(version));
+            let Some(snapshot_entry) = manifest.entries.get(&snapshot_key) else {
+                return Ok((keys, Some(snapshot_key)));
+            };
+            if receipt.project != self.project || receipt.version != version || receipt.snapshot_sha256 != snapshot_entry.sha256 {
+                return Err(StoreError::SyncObjectDigestMismatch(format!("`{receipt_key}` differs from the project, version or listed snapshot digest")).into());
+            }
+            keys.insert(receipt_key);
+            keys.insert(snapshot_key);
+            wanted = receipt.parent;
+        }
+        if let Some(digest) = wanted {
+            return Ok((keys, Some(format!("control predecessor {digest}"))));
+        }
+        Ok((keys, None))
+    }
+
     /// Pull the bucket into the store: download each entry whose digest differs, re-fetching
     /// the manifest when a key moves beneath the download, apply each tombstone, then write
     /// every table pointer the bucket advances, all after every object they reach has landed.
@@ -787,7 +949,11 @@ impl Syncer {
                 .into());
             }
         }
+        let identity_key = format!("{}/{}", self.project, contextful_core::store::lay_out::STORE_ID_FILE);
+        let control_prefix = format!("{}/control/", self.project);
         let reaches = |key: &str| -> bool {
+            if key == identity_key { return true; }
+            if key.starts_with(&control_prefix) { return true; }
             match table_of(key) {
                 None => scope.tables.is_empty(),
                 Some(t) => (scope.tables.is_empty() || scope.tables.contains(&t)) && !(replica && scope.replicate_off.contains(&t)),
@@ -821,7 +987,26 @@ impl Syncer {
                 Some((listed, _)) => listed.clone(),
                 None => self.manifest()?.0,
             };
-            for (key, entry) in manifest.entries.iter().filter(|(k, _)| in_project(k) && reaches(k)) {
+            if let Some(remote) = manifest.entries.get(&identity_key) {
+                let local_path = self.store.root().join(contextful_core::store::lay_out::STORE_ID_FILE);
+                match std::fs::read(&local_path) {
+                    Ok(local) if sha256_hex(&local) != remote.sha256 => {
+                        return Err(StoreError::StoreIdentityConflict(format!(
+                            "`{}` holds a different store UUID from the bucket; clone into an empty store root",
+                            local_path.display()
+                        )).into());
+                    }
+                    Err(error) if error.kind() == std::io::ErrorKind::NotFound => {}
+                    Err(error) => return Err(io(&local_path, error)),
+                    Ok(_) => {}
+                }
+            }
+            let (control_keys, missing_control) = self.control_reachable(&manifest)?;
+            if let Some(missing) = missing_control {
+                shortfall = Some(missing);
+                continue;
+            }
+            for (key, entry) in manifest.entries.iter().filter(|(k, _)| in_project(k) && reaches(k) && (!k.starts_with(&control_prefix) || control_keys.contains(*k))) {
                 // This node's own keys are authoritative here, except in a restore.
                 if generation.is_none() && owner_of(key).as_deref() == Some(self.node.as_str()) {
                     continue;
@@ -848,7 +1033,7 @@ impl Syncer {
                     return Err(StoreError::SyncObjectDigestMismatch(format!("`{key}` arrived with a digest other than its entry's; the object is discarded")).into());
                 }
                 let merged = match (&local, schema) {
-                    (Some(mine), true) => merge_schema(mine, &bytes)?,
+                    (Some(mine), true) => merge_schema_bytes(&self.store.metadata_files(), &path, mine, &bytes)?,
                     _ => bytes,
                 };
                 if local.as_deref() == Some(merged.as_slice()) {
@@ -863,6 +1048,17 @@ impl Syncer {
         }
         if let Some(key) = shortfall {
             return Err(StoreError::SyncPullDidNotConverge(format!("`{key}` kept moving across {PULL_CONVERGENCE} attempts; no pointer is written")).into());
+        }
+        let staged_head = self.store.root().join("control/head.json");
+        if let Some(head) = manifest.control_heads.get(&self.project) {
+            let bytes = serde_json::to_vec_pretty(head).map_err(|e| SyncError::Context(ContextError::Invalid(e.to_string())))?;
+            write(&staged_head, &bytes)?;
+        } else {
+            match std::fs::remove_file(&staged_head) {
+                Ok(()) => {},
+                Err(e) if e.kind() == std::io::ErrorKind::NotFound => {},
+                Err(e) => return Err(io(&staged_head, e)),
+            }
         }
         // A tombstone deletes the local copy of the key it names; a restore lists its set whole.
         if generation.is_none() {
@@ -889,7 +1085,9 @@ impl Syncer {
             let Some(snapshot) = pointer.snapshot_id else { continue };
             let Some(pointer_path) = self.local_path(&rel_key) else { continue };
             let snapshot_id: SnapshotId = serde_json::from_value(serde_json::Value::String(snapshot.clone())).map_err(|e| SyncError::Context(ContextError::Invalid(format!("`{rel_key}`: {e}"))))?;
-            let held: Option<Pointer> = std::fs::read(&pointer_path).ok().and_then(|b| serde_json::from_slice(&b).ok());
+            let held: Option<Pointer> = std::fs::read(&pointer_path).ok()
+                .and_then(|b| self.store.open_metadata_bytes(&pointer_path, &b).ok())
+                .and_then(|b| serde_json::from_slice(&b).ok());
             // The bucket's pointer advances a local one only when its fence, then its snapshot,
             // is newer; a restore writes the generation's pointer whatever its fence.
             if let Some(h) = &held {
@@ -899,7 +1097,7 @@ impl Syncer {
                 }
             }
             let table_dir = pointer_path.parent().map(Path::to_path_buf).unwrap_or_default();
-            if let Some(missing) = missing_parts(&table_dir, &snapshot)? {
+            if let Some(missing) = missing_parts(&self.store, &table_dir, &snapshot)? {
                 if replica {
                     return Err(StoreError::ReplicaPartialParquet(format!(
                         "snapshot `{snapshot}` lacks `{missing}` on this replica; the snapshot stays unpublished here"
@@ -926,7 +1124,8 @@ impl Syncer {
             }
         }
         for (rel_key, path, pointer) in advancing {
-            write(&path, &serde_json::to_vec_pretty(&pointer).map_err(|e| SyncError::Context(ContextError::Invalid(e.to_string())))?)?;
+            let bytes = serde_json::to_vec_pretty(&pointer).map_err(|e| SyncError::Context(ContextError::Invalid(e.to_string())))?;
+            write(&path, &self.store.seal_metadata_bytes(&path, &bytes)?)?;
             report.pointers.push(rel_key);
         }
         Ok(report)
@@ -954,8 +1153,12 @@ impl Syncer {
     }
 
     fn read_pointer(&self, table: &str) -> Result<(BucketPointer, Option<String>)> {
-        match self.bucket.get(&self.pointer_key(table)?)? {
-            Some((b, etag)) => Ok((serde_json::from_slice(&b).map_err(|e| SyncError::Context(ContextError::Invalid(e.to_string())))?, Some(etag))),
+        let key = self.pointer_key(table)?;
+        match self.bucket.get(&key)? {
+            Some((b, etag)) => {
+                let clear = self.store.open_metadata_bytes(Path::new(&key), &b)?;
+                Ok((serde_json::from_slice(&clear).map_err(|e| SyncError::Context(ContextError::Invalid(e.to_string())))?, Some(etag)))
+            }
             None => Ok((BucketPointer::default(), None)),
         }
     }
@@ -997,6 +1200,7 @@ impl Syncer {
             }
             let raised = BucketPointer { fence, ..pointer };
             let bytes = serde_json::to_vec_pretty(&raised).map_err(|e| SyncError::Context(ContextError::Invalid(e.to_string())))?;
+            let bytes = self.store.seal_metadata_bytes(Path::new(&key), &bytes)?;
             let condition = etag.map_or(Condition::IfNoneMatch, Condition::IfMatch);
             if let Put::Applied(_) = self.bucket.put(&key, &bytes, condition)? {
                 return Ok(());
@@ -1036,6 +1240,7 @@ impl Syncer {
             pointer.admit(held.lease.fence)?;
             let next = BucketPointer { snapshot_id: Some(snapshot_id.to_string()), fence: held.lease.fence };
             let bytes = serde_json::to_vec_pretty(&next).map_err(|e| SyncError::Context(ContextError::Invalid(e.to_string())))?;
+            let bytes = self.store.seal_metadata_bytes(Path::new(&key), &bytes)?;
             let condition = etag.map_or(Condition::IfNoneMatch, Condition::IfMatch);
             if let Put::Applied(_) = self.bucket.put(&key, &bytes, condition)? {
                 return Ok(());
@@ -1045,24 +1250,30 @@ impl Syncer {
 }
 
 /// The first part of `snapshot` absent under `table_dir`, or `None` when it is whole.
-fn missing_parts(table_dir: &Path, snapshot: &str) -> Result<Option<String>> {
+fn missing_parts(store: &Store, table_dir: &Path, snapshot: &str) -> Result<Option<String>> {
     let dir = table_dir.join(contextful_core::store::lay_out::SNAPSHOTS_DIR).join(snapshot);
     let manifest_path = dir.join(MANIFEST_FILE);
-    let Ok(text) = std::fs::read_to_string(&manifest_path) else { return Ok(Some(MANIFEST_FILE.to_string())) };
-    let m: SnapshotManifest = serde_json::from_str(&text).map_err(|e| SyncError::Context(ContextError::Invalid(format!("{}: {e}", manifest_path.display()))))?;
+    let Ok(bytes) = std::fs::read(&manifest_path) else { return Ok(Some(MANIFEST_FILE.to_string())) };
+    let bytes = store.open_metadata_bytes(&manifest_path, &bytes)?;
+    let m: SnapshotManifest = serde_json::from_slice(&bytes).map_err(|e| SyncError::Context(ContextError::Invalid(format!("{}: {e}", manifest_path.display()))))?;
     let present: BTreeSet<String> = std::fs::read_dir(&dir).map_err(|e| io(&dir, e))?.flatten().map(|e| e.file_name().to_string_lossy().into_owned()).collect();
     Ok(m.parts.iter().map(|p| p.name.clone()).find(|n| !present.contains(n)))
 }
 
 /// Two copies of a table's `schema.json` merged column by column.
-fn merge_schema(mine: &[u8], theirs: &[u8]) -> Result<Vec<u8>> {
+pub fn merge_schema_bytes(codec: &MetadataFiles<'_>, path: &Path, mine: &[u8], theirs: &[u8]) -> Result<Vec<u8>> {
     use contextful_core::store::reconcile::Schema;
-    match (serde_json::from_slice::<Schema>(mine), serde_json::from_slice::<Schema>(theirs)) {
+    let mine_plain = codec.open_bytes(path, mine)?;
+    let theirs_plain = codec.open_bytes(path, theirs)?;
+    match (serde_json::from_slice::<Schema>(&mine_plain), serde_json::from_slice::<Schema>(&theirs_plain)) {
         (Ok(a), Ok(b)) => {
             let merged = a.merge(&b, &[])?;
-            serde_json::to_vec_pretty(&merged).map_err(|e| SyncError::Context(ContextError::Invalid(e.to_string())))
+            if merged == a { return Ok(mine.to_vec()) }
+            let bytes = serde_json::to_vec_pretty(&merged).map_err(|e| SyncError::Context(ContextError::Invalid(e.to_string())))?;
+            Ok(codec.seal_bytes(path, &bytes)?)
         }
-        _ => Ok(theirs.to_vec()),
+        _ if matches!(codec, MetadataFiles::Plaintext) => Ok(theirs.to_vec()),
+        _ => Err(SyncError::Context(ContextError::Invalid(format!("{}: sealed schema has invalid canonical JSON", path.display())))),
     }
 }
 

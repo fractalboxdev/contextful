@@ -4,7 +4,7 @@
 
 ## The control document is CAS-versioned, validated per entry, and fails static
 
-One hand-edited control document arms every scheduled entry unattended. `surface.apply` claims a version by compare-and-swap on an engine-assigned version; a loser raises `ManifestVersionConflict`, reloads and reapplies. The engine owns the control-state model and raises `ConfigOwnerUnconfigured`, `StoreNotInitialized` or `ConditionalWriteUnsupported` rather than substitute a local writer. `surface.arm` holds back an invalid entry alone, by name. `surface.reconcile` keeps the armed set unchanged on a failed poll. `surface.dispatch` starts one instance per due unit; a dependent run's step refuses as a unit.
+One hand-edited control document arms every scheduled entry unattended. Admin edit validates and saves one store draft at the version it read; Admin apply rechecks ownership and validates before claiming that draft by compare-and-swap. A loser raises `ManifestVersionConflict`, reloads and reapplies. The engine owns the control-state model and raises `ConfigOwnerUnconfigured`, `StoreNotInitialized` or `ConditionalWriteUnsupported` rather than substitute a local writer. `surface.arm` holds back an invalid entry alone, by name. `surface.reconcile` keeps the armed set unchanged on a failed poll. `surface.dispatch` starts one instance per due unit; a dependent run's step refuses as a unit.
 
 | Option | Lost on | Cost |
 | --- | --- | --- |
@@ -71,7 +71,7 @@ Consequences: Query and Admin use the same store registry while retaining separa
 
 ## Turn compatibility preserves the stored transcript and reader scope
 
-An explicit process owner flag needs the store's owner credential; it does not turn an empty credential into ownership. A store overlay reaches synthesis text alone, so planner tool selection does not inherit a store-authored persona. Distillation records the observed subject and recall resolves it through entity matching. A client with an older component union renders an unknown view as a table. One operator's credential defines an answer; a room-intersection principal is absent.
+An explicit process owner flag needs a signed owner claim bound to the selected local store; it does not turn an ordinary or empty credential into ownership. A store overlay reaches synthesis text alone, so planner tool selection does not inherit a store-authored persona. Distillation records the observed subject and recall resolves it through entity matching. A client with an older component union renders an unknown view as a table. One operator's credential defines an answer; a room-intersection principal is absent.
 
 | Option | Lost on | Cost |
 | --- | --- | --- |
@@ -131,3 +131,20 @@ Decision: `surface.dispatch` submits each step to a worker's `POST /submit`, key
 | A pool bound per exclusion key | Concurrency cap | Adding pipelines raises concurrent pulls unseen. |
 
 Consequences: a silent worker costs one lapse before its step moves. The accepted cost: a worker that cannot reach the relay runs steps it cannot report.
+
+## A synced control head carries an issuer-signed apply receipt
+
+**Status:** accepted
+
+Context: node-owned run states and local version numbers prove no admin apply. Criteria: authenticated content, air-gapped local use and ordered claims.
+
+Decision: a synced import or apply admits an admin capability and signs a receipt binding project, version, predecessor and snapshot digests before advancing its pointer. Push conditionally commits the receipt chain and one project-scoped head in the bucket manifest, refusing divergent heads. Pull leaves the local pointer untouched. The reconciler verifies the issuer signature against local key pins and validates the snapshot against local declarations before adoption. An installation without sync keeps unsigned applies local.
+
+| Option | Lost on | Cost |
+| --- | --- | --- |
+| Signed receipt and project-scoped manifest head *(chosen)* | — | A synced apply needs an admin credential and signing port; replicas verify a chain before arming. |
+| Version in node run state | Authorship | Any node writer can claim a version, and two nodes can use the same number for different documents. |
+| Trust the bucket manifest's control entry | Content authenticity | A data writer can publish schedules without an admin apply. |
+| Replicate the local snapshot directory directly | Claim ordering | Independent local version counters collide, and a copied pointer carries no authorization proof. |
+
+Consequences: a cold node authenticates the bucket head. A bucket writer can replay an earlier signed head to a never-synced node; freshness needs an independent monotonic witness.

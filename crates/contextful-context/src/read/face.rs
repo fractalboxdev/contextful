@@ -8,7 +8,7 @@ use super::pool::{self, SessionPool};
 use super::results::{self, ResultCache};
 use crate::scan::{scan, scan_at};
 use crate::store::Store;
-use contextful_core::grant::{authorize_template, least_row_ceiling, list_templates, raw_read_covers};
+use contextful_core::grant::{authorize_template, least_row_ceiling, list_templates, raw_read_covers, Grant};
 use contextful_core::read::face::TOOLS;
 use contextful_core::read::guard::{admit, Admitted};
 use contextful_core::read::pin::{Pins, Resolved, PIN_ARGUMENT, RESOLVED_BLOCK};
@@ -16,19 +16,21 @@ use contextful_core::read::respond::{Cell, Internals, Response};
 use contextful_core::read::template::{bind_query, parse_templates, Bindings, Bound, ParamType, QueryTemplate};
 use contextful_core::read::ReadError;
 use contextful_core::enforce::EnforceError;
+use contextful_core::disclosure::DisclosureError;
 use contextful_core::memory::declare::{DeclareError, MemoryDeclarations};
 use contextful_core::pipeline::declare::ManifestFile;
 use contextful_core::store::bound_time::Bounds;
 use contextful_core::store::StoreError;
 use contextful_core::store::declare::{DeclarationMalformed, TableDecl};
 use contextful_core::store::reconcile::{Column, ColumnType};
-use contextful_core::store::relation::{ident, relation};
+use contextful_core::store::relation::{ident, relation, relation_with_encryption};
 use contextful_core::store::reserve::{COMMIT_SEQ, INGESTED_AT, ROW_SEQ, RUN_ID, SITE_ID};
 use contextful_policy::enforce::mask::Pepper;
 use contextful_policy::enforce::policy::TablePolicy;
 use contextful_policy::enforce::scope;
 use contextful_policy::enforce::session::{Request, Session, TableSource};
 use contextful_policy::verify::AdmittedAuthority;
+use serde::{Deserialize, Serialize};
 use serde_json::{json, Map, Value};
 use sha2::{Digest, Sha256};
 use std::collections::{BTreeMap, BTreeSet};
@@ -38,6 +40,10 @@ use std::collections::{BTreeMap, BTreeSet};
 pub struct ReadOptions {
     /// The request's row limit.
     pub limit: Option<u64>,
+    /// The request's statement deadline in milliseconds.
+    pub max_duration_ms: Option<u64>,
+    /// The request's serialized response ceiling in bytes.
+    pub max_response_bytes: Option<u64>,
     /// Return the internals block.
     pub internals: bool,
     /// The read's transaction-time and valid-time bounds (`store.bound-time`).
@@ -47,6 +53,7 @@ pub struct ReadOptions {
 /// The read face over one store and its manifest.
 pub struct Face {
     pub(crate) store: Store,
+    lexicon: Lexicon,
     decls: BTreeMap<String, TableDecl>,
     policies: BTreeMap<String, TablePolicy>,
     templates: Vec<QueryTemplate>,
@@ -59,6 +66,22 @@ pub struct Face {
     /// Statement results reused under their whole key (`read.cache.result-key`); absent
     /// where the process declares no budget (`read.cache.budget`).
     results: Option<ResultCache>,
+}
+
+/// The store's vocabulary carried by table descriptions (`read.register.lexicon-surface`).
+#[derive(Debug, Default, Deserialize, Serialize)]
+#[serde(deny_unknown_fields)]
+struct Lexicon {
+    #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
+    numeric_identifiers: BTreeMap<String, String>,
+    #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
+    badges: BTreeMap<String, String>,
+}
+
+#[derive(Deserialize)]
+struct ManifestLexicon {
+    #[serde(default)]
+    lexicon: Lexicon,
 }
 
 /// The columns a table with no landed batch registers over: the injected columns every
@@ -85,6 +108,9 @@ impl Face {
     /// manifest's tables, then those the `pipelines/` files declare. Memory declarations
     /// and templates come from the manifest alone.
     pub fn open_declared(store: Store, manifest: &str, pipelines: &[ManifestFile], pepper: Pepper) -> Result<Face, ReadFault> {
+        let lexicon = toml::from_str::<ManifestLexicon>(manifest)
+            .map_err(|e| ReadFault::Policy(DeclarationMalformed(e.to_string()).into()))?
+            .lexicon;
         let mut parsed = TableDecl::parse_declaration_set(manifest, pipelines).map_err(|e| ReadFault::Policy(e.into()))?;
         let memory = MemoryDeclarations::parse(manifest).map_err(|e| match e {
             DeclareError::Memory(m) => ReadFault::Refused(m.into()),
@@ -109,10 +135,14 @@ impl Face {
         }
         let templates = parse_templates(manifest).map_err(|e| ReadFault::Policy(e.into()))?;
         let fulltext = crate::fulltext::SidecarCache::new(contextful_core::read::rank::LEXICAL_INDEX_CACHE_ENTRIES);
-        let face = Face { store, decls, policies, templates, memory, pepper, fulltext, pool: SessionPool::default(), results: None };
+        let face = Face { store, lexicon, decls, policies, templates, memory, pepper, fulltext, pool: SessionPool::default(), results: None };
         let tables = face.tables()?;
         let engine = SqlEngine::bare()?;
         for t in &face.templates {
+            let statements = SqlEngine::statement_count(&t.sql)?;
+            if statements > 1 {
+                return Err(ReadFault::Refused(DisclosureError::TemplateMultiStatement(format!("template `{}` holds {statements} statements", t.id)).into()));
+            }
             t.check(&engine.serialize(&t.sql)?, &tables)?;
         }
         Ok(face)
@@ -136,6 +166,9 @@ impl Face {
         for t in touched {
             let decl = self.decl(contextful_core::store::ledger::ledger_table(t).unwrap_or(t));
             if decl.is_private() {
+                return None;
+            }
+            if decl.retain_rows.is_some() {
                 return None;
             }
             let secs = decl.result_cache_secs().ok().flatten()?;
@@ -206,8 +239,9 @@ impl Face {
         ceiling: u64,
         opts: ReadOptions,
     ) -> Result<Response, ReadFault> {
-        let response = respond(engine, sql, parameters, Some(ceiling), ReadOptions { internals: false, ..opts })?;
-        self.restrict(engine, session, touched.iter().map(String::as_str), response)
+        let deadline = self.duration_budget(session, touched, opts.max_duration_ms);
+        let response = respond_with_deadline(engine, sql, parameters, Some(ceiling), ReadOptions { internals: false, ..opts }, deadline)?;
+        self.restrict_timed(engine, session, touched.iter().map(String::as_str), response, deadline)
     }
 
     /// Every table the store holds or the manifest declares, sorted.
@@ -235,7 +269,7 @@ impl Face {
     /// the table's registered relation; an engine-composed read with no row ceiling.
     pub fn rows(&self, session: &Session, table: &str, run: Option<&str>) -> Result<Response, ReadFault> {
         let r = self.registered(session, table)?;
-        let engine = self.pool.engine(session)?;
+        let engine = self.pool.engine(session, self.store.parquet_key())?;
         let (sql, parameters) = match run {
             Some(run) => {
                 (format!("SELECT * FROM {} WHERE {} = ?", ident(r.name()), ident(RUN_ID)), Bindings::positional([Bound::Text(run.to_string())]))
@@ -355,10 +389,89 @@ impl Face {
     /// table's published `limits.max_rows` (`read.respond.row-ceiling`) and the face
     /// ceiling (`read.respond.face-ceiling`). A request ledger answers to its table's ceiling.
     pub(crate) fn ceiling(&self, session: &Session, touched: &BTreeSet<String>, request: Option<u64>, template: Option<u64>) -> u64 {
-        let grant = session.grants().iter().filter_map(|g| g.max_rows).min();
+        let grant = Self::grant_limit(session, touched, |g| g.max_rows);
         let owner = |t: &String| contextful_core::store::ledger::ledger_table(t).map(str::to_string).unwrap_or_else(|| t.clone());
         let table = touched.iter().filter_map(|t| session.policy(&owner(t)).and_then(|p| p.max_rows)).min();
         least_row_ceiling([grant, request, template, table])
+    }
+
+    fn grant_limit(session: &Session, touched: &BTreeSet<String>, field: fn(&Grant) -> Option<u64>) -> Option<u64> {
+        session.grants().iter().filter(|grant| {
+            touched.iter().any(|table| {
+                let owner = contextful_core::store::ledger::ledger_table(table).unwrap_or(table);
+                raw_read_covers(std::slice::from_ref(*grant), owner)
+            })
+        }).filter_map(field).min()
+    }
+
+    fn budget(&self, session: &Session, touched: &BTreeSet<String>, field: fn(&Grant) -> Option<u64>, table_field: fn(&TablePolicy) -> Option<u64>, request: Option<u64>) -> Option<(u64, &'static str)> {
+        let owner = |t: &String| contextful_core::store::ledger::ledger_table(t).map(str::to_string).unwrap_or_else(|| t.clone());
+        let grant = Self::grant_limit(session, touched, field);
+        let table = touched.iter().filter_map(|t| session.policy(&owner(t)).and_then(table_field)).min();
+        [(grant, "grant"), (table, "table"), (request, "request")]
+            .into_iter().filter_map(|(n, source)| n.map(|n| (n, source))).min_by_key(|(n, _)| *n)
+    }
+
+    pub(crate) fn duration_budget(&self, session: &Session, touched: &BTreeSet<String>, request: Option<u64>) -> Option<(u64, &'static str)> {
+        self.budget(session, touched, |g| g.max_duration_ms, |p| p.max_duration_ms, request)
+    }
+
+    fn byte_budget(&self, session: &Session, touched: &BTreeSet<String>, request: Option<u64>) -> Option<(u64, &'static str)> {
+        self.budget(session, touched, |g| g.max_response_bytes, |p| p.max_response_bytes, request)
+    }
+
+    fn row_source(&self, session: &Session, touched: &BTreeSet<String>, request: Option<u64>, template: Option<u64>, ceiling: u64) -> &'static str {
+        let owner = |t: &String| contextful_core::store::ledger::ledger_table(t).map(str::to_string).unwrap_or_else(|| t.clone());
+        let grant = Self::grant_limit(session, touched, |g| g.max_rows);
+        let table = touched.iter().filter_map(|t| session.policy(&owner(t)).and_then(|p| p.max_rows)).min();
+        [(grant, "grant"), (table, "table"), (request, "request"), (template, "template")]
+            .into_iter().find_map(|(n, source)| (n == Some(ceiling)).then_some(source)).unwrap_or("face")
+    }
+
+    pub(crate) fn finish_budget(&self, session: &Session, touched: &BTreeSet<String>, request: ReadOptions, template: Option<u64>, ceiling: u64, mut response: Response) -> Result<Response, ReadFault> {
+        if response.truncated {
+            response.blocks.insert("contextful.truncation".into(), json!({ "by": "rows", "ceiling": ceiling, "source": self.row_source(session, touched, request.limit, template, ceiling) }));
+        }
+        if let Some((bytes, source)) = self.byte_budget(session, touched, request.max_response_bytes) {
+            if let Some(probe) = &response.probe_row {
+                let mut next = response.clone();
+                next.rows.push(probe.clone());
+                next.blocks.insert("contextful.truncation".into(), json!({ "by": "bytes", "ceiling": bytes, "source": source }));
+                if serde_json::to_vec(&next).expect("the response serializes").len() as u64 > bytes {
+                    response.blocks.insert("contextful.truncation".into(), json!({ "by": "bytes", "ceiling": bytes, "source": source }));
+                }
+            }
+            if serde_json::to_vec(&response).expect("the response serializes").len() as u64 > bytes {
+                if response.rows.pop().is_none() {
+                    return Err(ReadError::ReadResponseTooLarge(format!("{bytes} bytes from {source}; the response envelope or first row exceeds the ceiling")).into());
+                }
+                response.truncated = true;
+                response.blocks.insert("contextful.truncation".into(), json!({ "by": "bytes", "ceiling": bytes, "source": source }));
+                let mut size = serde_json::to_vec(&response).expect("the response serializes").len();
+                while size as u64 > bytes {
+                    let Some(row) = response.rows.pop() else {
+                        return Err(ReadError::ReadResponseTooLarge(format!("{bytes} bytes from {source}; the response envelope or first row exceeds the ceiling")).into());
+                    };
+                    // Compact JSON loses the row's encoded bytes and one separator
+                    // whenever another row remains. The envelope stays unchanged.
+                    size -= serde_json::to_vec(&row).expect("the row serializes").len() + usize::from(!response.rows.is_empty());
+                }
+                if response.rows.is_empty() {
+                    return Err(ReadError::ReadResponseTooLarge(format!("{bytes} bytes from {source}; the first row exceeds the ceiling")).into());
+                }
+            }
+        }
+        if let Some(Value::Object(retrieval)) = response.blocks.get_mut("contextful.retrieval") {
+            retrieval.insert("returned".into(), json!(response.rows.len()));
+            if let Some(index) = response.columns.iter().position(|column| column == "_in_window") {
+                let in_window = response.rows.iter().filter(|row| row.get(index).and_then(Value::as_bool) == Some(true)).count();
+                retrieval.insert("in_window".into(), json!(in_window));
+            }
+        }
+        if let Some(Value::Object(internals)) = response.blocks.get_mut("contextful.internals") {
+            internals.insert("row_count".into(), json!(response.rows.len()));
+        }
+        Ok(response)
     }
 
     /// Run operator text raw over every table the store holds or the manifest declares,
@@ -402,15 +515,24 @@ impl Face {
     /// (`read.guard.query-binding`), the scope guard over its tenant literals and bound
     /// values, then execution under the least row ceiling.
     pub fn query_with(&self, session: &Session, sql: &str, parameters: &Map<String, Value>, opts: ReadOptions) -> Result<Response, ReadFault> {
-        let engine = self.pool.engine(session)?;
+        let engine = self.pool.engine(session, self.store.parquet_key())?;
         let tree = engine.serialize(sql)?;
         let admitted = admit_in(session, &tree)?;
+        if admitted.placeholders.iter().any(|p| p.parse::<u64>().is_ok()) && positional_marker(sql) {
+            return Err(ReadError::QueryParameterRejected("positional `?` is not accepted by `context.query`; use `$name` or `$1`".into()).into());
+        }
         let bindings = bind_query(parameters, &admitted.placeholders)?;
         scope::guard(&tree, session, &bindings)?;
-        engine.register_ledgers(session, &admitted.relations)?;
+        engine.register_ledgers(&self.store, session, &admitted.relations)?;
         self.bind_valid_time(&admitted.relations, opts.bounds)?;
         let ceiling = self.ceiling(session, &admitted.relations, opts.limit, None);
-        self.answer(&engine, session, &admitted.relations, sql, &bindings, ceiling, opts, &tree)
+        let mut response = self.answer(&engine, session, &admitted.relations, sql, &bindings, ceiling, opts, &tree)?;
+        if opts.internals {
+            if let Some(Value::Object(internals)) = response.blocks.get_mut("contextful.internals") {
+                internals.insert("parameters".into(), Value::Object(parameters.clone()));
+            }
+        }
+        self.finish_budget(session, &admitted.relations, opts, None, ceiling, response)
     }
 
     /// Run a declared template the credential's allowlist covers. Its body is operator
@@ -421,15 +543,16 @@ impl Face {
         authorize_template(session.grants(), id, &declared)?;
         let template = self.templates.iter().find(|t| t.id == id).expect("an authorized template is declared");
         let values = template.bind(arguments)?;
-        let engine = self.pool.engine(session)?;
+        let engine = self.pool.engine(session, self.store.parquet_key())?;
         let tree = engine.serialize(&template.sql)?;
         let admitted = admit_in(session, &tree)?;
         let parameters = template.bindings(values, &admitted.placeholders);
         scope::guard(&tree, session, &parameters)?;
-        engine.register_ledgers(session, &admitted.relations)?;
+        engine.register_ledgers(&self.store, session, &admitted.relations)?;
         self.bind_valid_time(&admitted.relations, opts.bounds)?;
         let ceiling = self.ceiling(session, &admitted.relations, opts.limit, template.max_rows);
-        self.answer(&engine, session, &admitted.relations, &template.sql, &parameters, ceiling, opts, &tree)
+        let response = self.answer(&engine, session, &admitted.relations, &template.sql, &parameters, ceiling, opts, &tree)?;
+        self.finish_budget(session, &admitted.relations, opts, template.max_rows, ceiling, response)
     }
 
     /// The tools this session sees: the closed built-in set and each declared template
@@ -444,6 +567,8 @@ impl Face {
             for (name, schema) in bound_properties() {
                 properties.insert(name, schema);
             }
+            properties.insert("max_duration_ms".into(), json!({ "type": "integer", "minimum": 0 }));
+            properties.insert("max_response_bytes".into(), json!({ "type": "integer", "minimum": 0 }));
             properties.insert(PIN_ARGUMENT.into(), pin_property());
             tool
         }));
@@ -461,6 +586,10 @@ impl Face {
     /// under `bounds`, which a bounded description echoes; a listing reads under `as_of`
     /// alone and echoes only it (`read.register.bound-listing`).
     pub fn describe(&self, session: &Session, table: Option<&str>, bounds: Bounds) -> Result<Value, ReadFault> {
+        self.describe_value(session, table, bounds, None)
+    }
+
+    fn describe_value(&self, session: &Session, table: Option<&str>, bounds: Bounds, deadline: Option<(u64, &'static str)>) -> Result<Value, ReadFault> {
         let echo = |mut v: Value, bounds: Bounds| {
             if let Some(b) = bounds.echo() {
                 v["contextful.bounds"] = b;
@@ -473,6 +602,7 @@ impl Face {
                 .map(|r| {
                     json!({
                         "table": r.name(),
+                        "kind": if self.memory.table(r.name()).is_some() { "memory" } else { "data" },
                         "description": self.decl(r.name()).agent_description,
                         "zone_admitted": session.zone_admitted(r.name()),
                     })
@@ -482,13 +612,23 @@ impl Face {
         };
         let r = self.registered(session, table)?;
         self.bind_valid_time(&BTreeSet::from([table.to_string()]), bounds)?;
-        let engine = self.pool.engine(session)?;
-        let (_, count) = engine.run(&format!("SELECT count(*) FROM {}", ident(r.name())), &Bindings::default(), None)?;
+        let engine = self.pool.engine(session, self.store.parquet_key())?;
+        let sql = format!("SELECT count(*) FROM {}", ident(r.name()));
+        let (_, count) = match deadline {
+            Some((ms, source)) => engine.run_timed(&sql, &Bindings::default(), None, ms, source)?,
+            None => engine.run(&sql, &Bindings::default(), None)?,
+        };
         let row_count = count.first().and_then(|r| r.first()).map(Cell::to_json).unwrap_or(Value::Null);
         let decl = self.decl(table);
         let policy = session.policy(table).expect("a registered table carries its policy");
         let schema = session.columns(table).expect("a registered table carries its columns");
-        let columns: Vec<Value> = schema.iter().map(|c| json!({ "name": c.name, "type": c.ty.name() })).collect();
+        let columns: Vec<Value> = schema.iter().map(|c| {
+            let mut column = json!({ "name": c.name, "type": c.ty.name() });
+            if let Some(hint) = decl.column_hints.as_ref().and_then(|hints| hints.get(&c.name)) {
+                column["hint"] = json!(hint);
+            }
+            column
+        }).collect();
         let fingerprint: String = {
             let text: Vec<String> = schema.iter().map(|c| format!("{}:{}", c.name, c.ty.name())).collect();
             Sha256::digest(text.join("\n").as_bytes()).iter().map(|b| format!("{b:02x}")).collect()
@@ -500,16 +640,26 @@ impl Face {
             "description": decl.agent_description,
             "hint": decl.agent_hint,
             "columns": columns,
-            "indexes": [],
+            "indexes": decl.indexes.clone().unwrap_or_default(),
             "partition_by": decl.partition_by(),
             "zone": policy.placement.effective().labels(),
             "session_zone": session.zone().label(),
             "zone_admitted": session.zone_admitted(table),
-            "lexicon": {},
+            "lexicon": self.lexicon,
             "example_queries": decl.example_queries.clone().unwrap_or_default(),
         });
+        let mut limits = Map::new();
         if let Some(max) = policy.max_rows {
-            out["limits"] = json!({ "max_rows": max });
+            limits.insert("max_rows".into(), json!(max));
+        }
+        if let Some(max) = policy.max_duration_ms {
+            limits.insert("max_duration_ms".into(), json!(max));
+        }
+        if let Some(max) = policy.max_response_bytes {
+            limits.insert("max_response_bytes".into(), json!(max));
+        }
+        if !limits.is_empty() {
+            out["limits"] = Value::Object(limits);
         }
         if let Some(resolved) = super::pin::resolved(session, [table]) {
             out[format!("contextful.{RESOLVED_BLOCK}")] = resolved;
@@ -517,28 +667,57 @@ impl Face {
         Ok(echo(out, bounds))
     }
 
+    /// The table description or listing under its selected serialized byte ceiling.
+    pub fn describe_with_options(&self, session: &Session, table: Option<&str>, opts: ReadOptions) -> Result<Value, ReadFault> {
+        let touched = match table {
+            Some(name) => BTreeSet::from([name.to_string()]),
+            None => session.relations().map(|r| r.name().to_string()).collect(),
+        };
+        let deadline = self.duration_budget(session, &touched, opts.max_duration_ms);
+        let value = self.describe_value(session, table, opts.bounds, deadline)?;
+        if let Some((bytes, source)) = self.byte_budget(session, &touched, opts.max_response_bytes) {
+            if serde_json::to_vec(&value).expect("the description serializes").len() as u64 > bytes {
+                return Err(ReadError::ReadResponseTooLarge(format!("{bytes} bytes from {source}; the description exceeds the ceiling")).into());
+            }
+        }
+        Ok(value)
+    }
+
     /// Committed data files of the tables the session reads, store-root-relative: the files
     /// each registered relation reads, a pinned table's build included; a table outside the
     /// session contributes no path (`read.register.file-listing`). Only `as_of` selects
     /// files and only it echoes (`read.register.bound-listing`).
     pub fn files(&self, session: &Session, bounds: Bounds) -> Result<Response, ReadFault> {
-        let transaction = Bounds { valid_as_of: None, ..bounds };
+        self.files_with_options(session, ReadOptions { bounds, ..ReadOptions::default() })
+    }
+
+    /// The committed file listing under the request's serialized response budget.
+    pub fn files_with_options(&self, session: &Session, opts: ReadOptions) -> Result<Response, ReadFault> {
+        let transaction = Bounds { valid_as_of: None, ..opts.bounds };
         let root = format!("{}/", self.store.root().to_string_lossy());
+        let touched: BTreeSet<String> = session.relations().map(|r| r.name().to_string()).collect();
+        let ceiling = contextful_core::read::respond::FACE_ROW_CEILING;
         let mut rows = Vec::new();
         for r in session.relations() {
             for f in r.files() {
                 rows.push(vec![json!(r.name()), json!(f.strip_prefix(&root).unwrap_or(f))]);
+                if rows.len() as u64 > ceiling {
+                    break;
+                }
+            }
+            if rows.len() as u64 > ceiling {
+                break;
             }
         }
-        let mut response = Response::cut(vec!["table".into(), "path".into()], rows, None);
+        let mut response = Response::cut(vec!["table".into(), "path".into()], rows, Some(ceiling));
         if let Some(b) = transaction.echo() {
             response = response.with_block("bounds", b);
         }
-        let names: Vec<String> = session.relations().map(|r| r.name().to_string()).collect();
-        Ok(match super::pin::resolved(session, names.iter().map(String::as_str)) {
+        let response = match super::pin::resolved(session, touched.iter().map(String::as_str)) {
             Some(resolved) => response.with_block(RESOLVED_BLOCK, resolved),
             None => response,
-        })
+        };
+        self.finish_budget(session, &touched, opts, None, ceiling, response)
     }
 
     /// Preview one committed run file through its table's registered relation. A snapshot
@@ -555,16 +734,19 @@ impl Face {
         }
         let file = self.absolute(path);
         let schema = self.store.schema(&table)?;
-        let carried = crate::parquet_io::columns(std::path::Path::new(&file))?;
+        let carried = self.store.parquet_columns(std::path::Path::new(&file))?;
         let absent: Vec<Column> = schema.columns.iter().filter(|c| !carried.contains(&c.name)).cloned().collect();
-        let base = relation(&decl, std::slice::from_ref(&file), &schema.columns, &absent, opts.bounds.valid_as_of)?;
+        let key_name = self.store.parquet_key().map(|_| crate::encrypt::PARQUET_KEY_NAME);
+        let base = relation_with_encryption(&decl, std::slice::from_ref(&file), &schema.columns, &absent, opts.bounds.valid_as_of, key_name)?;
         let preview = session.relation_over(&table, &base, vec![file]).expect("a registered table carries its source");
-        let engine = SqlEngine::open(session)?;
+        let engine = SqlEngine::open(session, self.store.parquet_key())?;
         engine.register(PREVIEW_RELATION, preview.sql())?;
         let touched = BTreeSet::from([table]);
         let ceiling = self.ceiling(session, &touched, opts.limit, None);
-        let response = respond(&engine, &format!("SELECT * FROM {}", ident(PREVIEW_RELATION)), &Bindings::default(), Some(ceiling), opts)?;
-        self.restrict(&engine, session, touched.iter().map(String::as_str), response)
+        let deadline = self.duration_budget(session, &touched, opts.max_duration_ms);
+        let response = respond_with_deadline(&engine, &format!("SELECT * FROM {}", ident(PREVIEW_RELATION)), &Bindings::default(), Some(ceiling), opts, deadline)?;
+        let response = self.restrict_timed(&engine, session, touched.iter().map(String::as_str), response, deadline)?;
+        self.finish_budget(session, &touched, opts, None, ceiling, response)
     }
 
     /// Attach the restriction block naming each touched relation the session's zone
@@ -580,6 +762,17 @@ impl Face {
         touched: impl IntoIterator<Item = &'t str>,
         response: Response,
     ) -> Result<Response, ReadFault> {
+        self.restrict_timed(engine, session, touched, response, None)
+    }
+
+    pub(crate) fn restrict_timed<'t>(
+        &self,
+        engine: &SqlEngine,
+        session: &Session,
+        touched: impl IntoIterator<Item = &'t str>,
+        response: Response,
+        deadline: Option<(u64, &'static str)>,
+    ) -> Result<Response, ReadFault> {
         let touched: BTreeSet<&str> = touched.into_iter().collect();
         let response = match super::pin::resolved(session, touched.iter().copied()) {
             Some(resolved) => response.with_block(RESOLVED_BLOCK, resolved),
@@ -589,7 +782,10 @@ impl Face {
         for withheld in touched.into_iter().filter_map(|t| session.zone_withheld(t)) {
             let rows_dropped = match &withheld.dropped_sql {
                 Some(sql) => {
-                    let (_, count) = engine.run(sql, &Bindings::default(), None)?;
+                    let (_, count) = match deadline {
+                        Some((ms, source)) => engine.run_timed(sql, &Bindings::default(), None, ms, source)?,
+                        None => engine.run(sql, &Bindings::default(), None)?,
+                    };
                     match count.first().and_then(|r| r.first()) {
                         Some(Cell::Integer { value, .. }) => u64::try_from(*value).unwrap_or(0),
                         _ => 0,
@@ -636,6 +832,62 @@ pub(crate) fn admit_in(session: &Session, tree: &Value) -> Result<Admitted, Read
     }
 }
 
+/// DuckDB's parse tree gives `?` and `$1` the same identifier. The source spelling
+/// distinguishes the caller query's positional form from its supported numbered form.
+fn positional_marker(sql: &str) -> bool {
+    let bytes = sql.as_bytes();
+    let (mut i, mut mode, mut block_depth, mut dollar_delimiter, mut escape_quote) = (0, 0u8, 0usize, 0..0, false);
+    while i < bytes.len() {
+        let next = bytes.get(i + 1).copied();
+        match mode {
+            0 => match (bytes[i], next) {
+                (b'?', _) => return true,
+                (b'\'', _) => {
+                    escape_quote = i > 0 && matches!(bytes[i - 1], b'e' | b'E');
+                    mode = 1;
+                }
+                (b'"', _) => mode = 2,
+                (b'-', Some(b'-')) => { mode = 3; i += 1; }
+                (b'/', Some(b'*')) => { mode = 4; block_depth = 1; i += 1; }
+                (b'$', _) => {
+                    let mut end = i + 1;
+                    if bytes.get(end).is_some_and(|c| c.is_ascii_alphabetic() || *c == b'_') {
+                        while bytes.get(end).is_some_and(|c| c.is_ascii_alphanumeric() || *c == b'_') {
+                            end += 1;
+                        }
+                    }
+                    if bytes.get(end) == Some(&b'$') {
+                        dollar_delimiter = i..end + 1;
+                        mode = 5;
+                        i = end;
+                    }
+                }
+                _ => {}
+            },
+            1 | 2 => {
+                let quote = if mode == 1 { b'\'' } else { b'"' };
+                if mode == 1 && escape_quote && bytes[i] == b'\\' {
+                    i += 1;
+                } else if bytes[i] == quote {
+                    if next == Some(quote) { i += 1; } else { mode = 0; }
+                }
+            }
+            3 => if matches!(bytes[i], b'\n' | b'\r') { mode = 0; },
+            4 => match (bytes[i], next) {
+                (b'/', Some(b'*')) => { block_depth += 1; i += 1; }
+                (b'*', Some(b'/')) => { block_depth -= 1; i += 1; if block_depth == 0 { mode = 0; } }
+                _ => {}
+            },
+            _ => if bytes[i..].starts_with(&bytes[dollar_delimiter.clone()]) {
+                i += dollar_delimiter.len() - 1;
+                mode = 0;
+            },
+        }
+        i += 1;
+    }
+    false
+}
+
 /// Run operator text raw over no store: no relation registers, and local files and table
 /// functions stay reachable (`read.guard.statement-provenance`).
 pub fn operator_query(sql: &str, opts: ReadOptions) -> Result<Response, ReadFault> {
@@ -655,8 +907,16 @@ pub(crate) fn one_statement(sql: &str) -> Result<(), ReadFault> {
 /// Execute `sql` under `ceiling` and serialize the one response projection
 /// (`read.respond.one-projection`), with the internals block under `opts.internals`.
 pub(crate) fn respond(engine: &SqlEngine, sql: &str, parameters: &Bindings, ceiling: Option<u64>, opts: ReadOptions) -> Result<Response, ReadFault> {
+    respond_with_deadline(engine, sql, parameters, ceiling, opts, opts.max_duration_ms.map(|n| (n, "request")))
+}
+
+fn respond_with_deadline(engine: &SqlEngine, sql: &str, parameters: &Bindings, ceiling: Option<u64>, opts: ReadOptions, deadline: Option<(u64, &'static str)>) -> Result<Response, ReadFault> {
     let started = std::time::Instant::now();
-    let (columns, rows) = engine.run(sql, parameters, Response::fetch_count(ceiling))?;
+    let fetch = Response::fetch_count(ceiling);
+    let (columns, rows) = match deadline {
+        Some((ms, source)) => engine.run_timed(sql, parameters, fetch, ms, source)?,
+        None => engine.run(sql, parameters, fetch)?,
+    };
     let rows: Vec<Vec<Value>> = rows.iter().map(|r| r.iter().map(Cell::to_json).collect()).collect();
     let mut response = Response::cut(columns, rows, ceiling);
     if let Some(b) = opts.bounds.echo() {
@@ -781,6 +1041,8 @@ fn builtin_tool(name: &str) -> Value {
             properties[bound.as_str()] = schema;
         }
     }
+    properties["max_duration_ms"] = json!({ "type": "integer", "minimum": 0 });
+    properties["max_response_bytes"] = json!({ "type": "integer", "minimum": 0 });
     properties[PIN_ARGUMENT] = pin_property();
     json!({
         "name": name,

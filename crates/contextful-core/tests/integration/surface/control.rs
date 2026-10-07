@@ -1,6 +1,20 @@
 //! `surface.reconcile`: the snapshot pointer's grammar and the version file it names.
 
-use contextful_core::surface::control::{parse_pointer, snapshot_file, POINTER_FILE};
+use contextful_core::surface::control::{parse_pointer, receipt_file, receipt_version, snapshot_file, POINTER_FILE};
+use contextful_core::surface::SurfaceError;
+
+#[test]
+fn an_absent_draft_preserves_its_identifier_and_conflict_status() {
+    let error = SurfaceError::ControlDraftAbsent("draft nonce is absent".into());
+    assert_eq!(error.status(), 409);
+    assert_eq!(error.to_string(), "ControlDraftAbsent: draft nonce is absent");
+}
+
+#[test]
+fn an_untrusted_pulled_control_head_names_its_reason() {
+    let error = SurfaceError::ControlSnapshotUntrusted("receipt signature does not verify".into());
+    assert!(error.to_string().contains("ControlSnapshotUntrusted: receipt signature does not verify"));
+}
 
 /// A pointer body that is not wholly a version raises `ControlPointerMalformed`.
 // spec: surface.reconcile.pointer-malformed@1d4c5ae5
@@ -14,6 +28,9 @@ fn a_pointer_is_wholly_a_version() {
     }
     assert_eq!(POINTER_FILE, "manifest@current");
     assert_eq!(snapshot_file(3), "manifest@v3.toml");
+    assert_eq!(receipt_file(3), "receipt@v3.json");
+    assert_eq!(receipt_version("receipt@v3.json"), Some(3));
+    assert_eq!(receipt_version("receipt@v03.json"), None);
 }
 
 /// A control host is admitted only when every address it resolves to is loopback, and a
@@ -70,4 +87,12 @@ fn a_conditional_write_owner_refuses_a_network_filesystem() {
         let e = e.to_string();
         assert!(e.starts_with("ConditionalWriteUnsupported") && e.contains(kind) && e.contains("the catalog"), "{e}");
     }
+}
+
+/// A synced claim without an admitted admin or signing port has one typed refusal.
+#[test]
+fn a_synced_claim_names_unavailable_attestation() {
+    let error = contextful_core::surface::SurfaceError::ControlAttestationUnavailable("no admin credential".into());
+    assert!(error.to_string().starts_with("ControlAttestationUnavailable"));
+    assert_eq!(error.status(), 503);
 }

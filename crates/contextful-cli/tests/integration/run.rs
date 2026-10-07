@@ -45,6 +45,25 @@ fn history(dir: &Path, extra: &[&str]) -> Output {
     cf(dir, &args)
 }
 
+#[test]
+fn encrypted_run_history_refuses_before_creating_a_machine_catalog() {
+    let dir = project();
+    let store = dir.path().join(".contextful/context/research");
+    std::fs::write(
+        store.join("config.toml"),
+        "[node]\nid = \"ingest-a\"\n[encryption]\nkey_source = \"env:CONTEXTFUL_TEST_RUN_KEY\"\n",
+    )
+    .unwrap();
+    let output = Command::new(env!("CARGO_BIN_EXE_contextful"))
+        .args(["run", "history", "--project", "research"])
+        .current_dir(dir.path())
+        .env("CONTEXTFUL_TEST_RUN_KEY", "0123456789abcdef0123456789abcdef")
+        .output()
+        .unwrap();
+    assert!(!output.status.success(), "encrypted run history must refuse until the machine catalog is sealed");
+    assert!(!store.join("machine.sqlite").exists(), "refusal must not create a plaintext machine catalog");
+}
+
 /// History leaves the machine as a process listing and an NDJSON export over one run projection; the export's
 /// first line carries store, window, count and truncation flag, then one run per line. It resolves no bucket.
 // spec: run.record.history-export@f66be52e
@@ -171,6 +190,26 @@ fn a_pulled_type_lands_its_column_in_that_type() {
     std::fs::write(dir.path().join("bad.toml"), "pipeline = \"bad\"\ntable = \"filings\"\n[connector]\nid = \"vendor\"\nversion = \"1\"\ncommand = [\"sh\", \"bad.sh\"]\n").unwrap();
     refused(&start(dir.path(), "bad.toml", "b1", "2030-01-01T00:02:00Z"), "StoreSchemaIncompatible");
     assert_eq!(schema(dir.path()), s, "the failed pull lands nothing");
+}
+
+/// An arriving schema the store cannot reconcile fails the batch as {{store.reconcile.incompatible}}.
+// spec: run.land.irreconcilable-schema@04ddeb28
+#[test]
+fn an_irreconcilable_pulled_schema_fails_the_batch() {
+    let dir = project();
+    std::fs::write(dir.path().join("number.sh"), "printf '{\"rows\":[{\"id\":\"a\",\"rev\":1}],\"more\":false}'\n").unwrap();
+    std::fs::write(dir.path().join("number.toml"), "pipeline = \"number\"\ntable = \"filings\"\n[connector]\nid = \"vendor\"\nversion = \"1\"\ncommand = [\"sh\", \"number.sh\"]\n").unwrap();
+    ok(&start(dir.path(), "number.toml", "n1", "2030-01-01T00:00:00Z"));
+
+    std::fs::write(dir.path().join("text.sh"), "printf '{\"rows\":[{\"id\":\"b\",\"rev\":\"later\"}],\"more\":false}'\n").unwrap();
+    std::fs::write(dir.path().join("text.toml"), "pipeline = \"text\"\ntable = \"filings\"\n[connector]\nid = \"vendor\"\nversion = \"1\"\ncommand = [\"sh\", \"text.sh\"]\n").unwrap();
+    let out = start(dir.path(), "text.toml", "t1", "2030-01-01T00:01:00Z");
+    refused(&out, "StoreSchemaIncompatible");
+    let store = contextful_context::Store::open(dir.path(), "research").unwrap();
+    let decl = contextful_core::store::declare::TableDecl::named("filings");
+    let rows = contextful_context::rows::table_rows(&store, &decl, &["id", "rev"]).unwrap();
+    assert_eq!(rows.len(), 1, "the incompatible batch leaves no visible row");
+    assert_eq!(rows[0]["id"], "a");
 }
 
 const AWS_KEY: &str = "AKIAIOSFODNN7EXAMPLE";

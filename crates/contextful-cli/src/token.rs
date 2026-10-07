@@ -112,6 +112,12 @@ pub enum TokenCmd {
         templates: Vec<String>,
         #[arg(long)]
         max_rows: Option<u64>,
+        /// Optional per-statement duration ceiling in milliseconds for this grant's tables.
+        #[arg(long)]
+        max_duration_ms: Option<u64>,
+        /// Optional serialized response ceiling in bytes for this grant's tables.
+        #[arg(long)]
+        max_response_bytes: Option<u64>,
         /// Lifetime in seconds; absent takes the persisted ceiling.
         #[arg(long)]
         ttl: Option<u64>,
@@ -121,6 +127,9 @@ pub enum TokenCmd {
         /// credential's confirmation claim (`authority.verify.possession-binding`).
         #[arg(long)]
         holder: Option<String>,
+        /// Sign a credential for explicit local owner admission of the discovered project.
+        #[arg(long)]
+        owner: bool,
         /// Issue instant (RFC 3339); absent reads the system clock.
         #[arg(long)]
         now: Option<String>,
@@ -264,9 +273,12 @@ pub fn run(cmd: TokenCmd) -> Result<()> {
             tenant,
             templates,
             max_rows,
+            max_duration_ms,
+            max_response_bytes,
             ttl,
             audience,
             holder,
+            owner,
             now,
         } => {
             let subject = Subject { on_behalf_of, agent, host, task, zone, incognito };
@@ -277,9 +289,11 @@ pub fn run(cmd: TokenCmd) -> Result<()> {
                 aggregate: None,
                 templates: (!templates.is_empty()).then_some(templates),
                 max_rows,
+                max_duration_ms,
+                max_response_bytes,
             };
             let lifetime = ttl.map_or(Lifetime::Default, Lifetime::Requested);
-            let token = mint_one(issuer_key.as_deref(), subject, grant, lifetime, audience, holder, now.as_deref())?;
+            let token = mint_one(issuer_key.as_deref(), subject, grant, lifetime, audience, holder, owner, now.as_deref())?;
             println!("{token}");
             Ok(())
         }
@@ -572,6 +586,7 @@ fn mint_one(
     lifetime: Lifetime,
     audience: Option<String>,
     holder: Option<String>,
+    owner: bool,
     now: Option<&str>,
 ) -> Result<String> {
     let root = Root::find()?;
@@ -585,6 +600,19 @@ fn mint_one(
     let clock = FixedClock(instant_or_now(now)?);
     let ctx = MintContext { node: NodeRole::Primary, signer: &signer as &dyn SigningPort, clock: &clock as &dyn Clock };
     let plan = policy.check(&request, &ctx)?;
+    let owner_project = if owner {
+        #[cfg(feature = "read-plane")]
+        {
+            let project = crate::project::locate(None, None)?.project;
+            let identity = crate::project::mint_owner_identity(&project)?;
+            if !contextful_policy::verify::owner_grant(&plan.grants) {
+                bail!("an owner credential requires an unrestricted read grant over `*`");
+            }
+            Some(identity)
+        }
+        #[cfg(not(feature = "read-plane"))]
+        bail!("an owner credential requires the read-plane build profile");
+    } else { None };
     if let Some(jkt) = holder.as_deref() {
         let alphabet = |c: char| c.is_ascii_alphanumeric() || c == '-' || c == '_';
         if jkt.len() != 43 || !jkt.chars().all(alphabet) {
@@ -592,7 +620,7 @@ fn mint_one(
         }
     }
     let epoch = mint_epoch(&plan, &root.ledger().read()?.current_epochs());
-    Ok(mint(&plan, &MintClaims { confirmation: holder, epoch }, &signer)?)
+    Ok(mint(&plan, &MintClaims { confirmation: holder, epoch, owner_project }, &signer)?)
 }
 
 fn instant_or_now(text: Option<&str>) -> Result<Instant> {

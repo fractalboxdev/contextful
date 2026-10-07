@@ -5,7 +5,7 @@
 //! unanchored (`disclosure.record.read-chain`), and hands them to the tool server. Every value is resolved before the first protocol line is written, so a
 //! process that cannot serve exits with nothing on standard output.
 
-use crate::admit::{face, AdmitArgs};
+use crate::admit::{face, AdmitArgs, AdmitError};
 use crate::project::locate;
 use crate::clock::SystemClock;
 use anyhow::Result;
@@ -18,6 +18,9 @@ use std::path::PathBuf;
 
 #[derive(clap::Args)]
 pub struct McpArgs {
+    /// Admit the selected local project under a verified signed owner claim.
+    #[arg(long)]
+    owner: bool,
     /// The project whose store root is `.contextful/context/<project>/` under the working
     /// directory; absent, the nearest `contextful.toml` upward names it.
     #[arg(long)]
@@ -32,7 +35,21 @@ pub struct McpArgs {
 
 pub fn run(args: McpArgs) -> Result<()> {
     let (authority, revocation) = args.admit.admit(args.project.as_deref(), "the tool server")?;
+    if args.project.is_none() {
+        let cwd = std::env::current_dir()?;
+        if !cwd.ancestors().any(|dir| dir.join("contextful.toml").is_file()) {
+            anyhow::bail!("StoreSelectorAbsent: no contextful.toml in {} or any ancestor", cwd.display());
+        }
+    }
     let located = locate(args.project.as_deref(), args.declaration)?;
+    let authority = if args.owner {
+        let identity = crate::project::owner_identity(&located.project)
+            .map_err(|_| AdmitError::OwnerCredentialInvalid("the selected local store has no readable UUID".into()))?;
+        authority.activate_owner(&identity)
+            .ok_or_else(|| AdmitError::OwnerCredentialInvalid("the verified credential does not own the selected local store".into()))?
+    } else {
+        authority
+    };
     crate::sync::pull_before_run(&located)?;
     let face = face(&located)?;
     let audit = AuditLog::unanchored(located.project.audit_dir())?;

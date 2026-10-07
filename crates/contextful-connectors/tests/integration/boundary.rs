@@ -1,12 +1,21 @@
 //! `run.land` over the decode process boundary.
 #![cfg(unix)]
 
-use contextful_connectors::boundary::{Boundary, REFUSED};
+use contextful_connectors::boundary::{Boundary, DEADLINE, MEMORY_BYTES, REFUSED};
 use contextful_core::run::FailureTag;
 use std::time::{Duration, Instant};
 
 fn sh(script: &str) -> Boundary {
     Boundary::new("/bin/sh", &["-c", script])
+}
+
+#[test]
+fn every_decode_child_receives_the_declared_bounds() {
+    let worker = sh("cat");
+    assert_eq!(worker.deadline, Duration::from_secs(60));
+    assert_eq!(DEADLINE, worker.deadline);
+    assert_eq!(worker.memory_bytes, 512 * 1024 * 1024);
+    assert_eq!(MEMORY_BYTES, worker.memory_bytes);
 }
 
 /// A decode that can die runs outside the serving process, which bounds its wall clock and memory and makes it

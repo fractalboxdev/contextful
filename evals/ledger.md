@@ -2,7 +2,7 @@
 
 # Target ledger
 
-65 entries: 46 gated, 6 recorded, 2 scheduled, 11 open.
+71 entries: 49 gated, 12 recorded, 2 scheduled, 8 open.
 
 | Entry | Clause | Metric | Tier | Method | Target | Status |
 | --- | --- | --- | --- | --- | --- | --- |
@@ -11,9 +11,9 @@
 | `audit-append-latency-lone` | `disclosure.record.group-commit` | `audit.append.lone_p99_us` | trend | test `contextful_policy::audit::append_latency_under_group_commit_at_one_and_sixteen_writers` | — | recorded |
 | `audit-append-throughput` | `disclosure.record.group-commit` | `audit.append.per_s` | trend | test `contextful_policy::audit::append_latency_under_group_commit_at_one_and_sixteen_writers` | — | recorded |
 | `audit-inclusion-proof` | `disclosure.attest.inclusion-proof` | `audit.proof.hashes` | gate | test `contextful_policy::audit::an_inclusion_proof_verifies_offline_with_at_most_12_hashes_in_a_4096_entry_segment` | `<= 12` | gated |
-| `audit-open-bounded-heap` | `disclosure.record.single-writer` | `audit.open.retained_heap_delta_kib` | gate | issue 81 | `< 64` | open (issue 81) |
+| `audit-open-bounded-heap` | `disclosure.record.single-writer` | `audit.open.retained_heap_delta_kib` | gate | probe `audit-open-bounded-heap` | `< 64` | gated |
 | `audit-projection-latency` | `disclosure.record.projection` | `audit.projection.window_24h_ms` | trend | test `contextful_context::read::audit::a_lookup_over_a_24_hour_window_answers_within_one_second` | — | recorded |
-| `audit-query-digest-keyed` | `disclosure.record.segment` | `audit.digest.dictionary_matches` | gate | issue 81 | `== 0` | open (issue 81) |
+| `audit-query-digest-keyed` | `disclosure.record.segment` | `audit.digest.dictionary_matches` | gate | probe `audit-query-digest-keyed` | `== 0` | gated |
 | `audit-read-waits-on-entry` | `disclosure.record.unpersisted-entry` | `audit.read.rows_before_sync` | gate | test `contextful_agent::audit::a_read_whose_entry_does_not_sync_releases_no_rows` | `== 0` | gated |
 | `audit-sync-per-group` | `disclosure.record.group-commit` | `audit.syncs_per_group.max` | gate | test `contextful_policy::audit::an_append_group_shares_one_segment_sync_and_releases_or_refuses_together` | `<= 1` | gated |
 | `audit-truncation-detected` | `disclosure.attest.broken-chain` | `audit.truncation.undetected` | gate | test `contextful_policy::audit::every_trailing_truncation_under_a_rewritten_tip_is_detected` | `== 0` | gated |
@@ -57,13 +57,19 @@
 | `output-taint` | `connector.infer.output-taint` | `infer.over_trusted_rows` | gate | test `contextful_memory::synthesize::a_synthesized_claim_lands_under_the_label_of_its_inputs` | `== 0` | gated |
 | `policy-no-jwt` | `topology.package.exchange-optional` | `topology.exchange_stack_leaks` | gate | test `contextful_ci::topology::only_the_binary_of_this_workspace_reaches_the_exchange_stack` | `== 0` | gated |
 | `possession-replay` | `authority.verify.replayed-nonce` | `possession.adversarial.admitted` | gate | test `contextful_policy::possession::replayed_foreign_or_mutated_proofs_admit_nothing_over_a_seeded_loop` | `== 0` | gated |
+| `profile-control-compressed-bytes` | `assurance.gate.footprint` | `footprint.control_compressed_bytes` | trend | test `contextful_ci::image::this_repository_profiles_hold_to_their_footprint_budgets` | — | recorded |
+| `profile-control-needed-entries` | `assurance.gate.footprint` | `footprint.control_needed_entries` | trend | test `contextful_ci::image::this_repository_profiles_hold_to_their_footprint_budgets` | — | recorded |
+| `profile-edge-compressed-bytes` | `assurance.gate.footprint` | `footprint.edge_compressed_bytes` | trend | test `contextful_ci::image::this_repository_profiles_hold_to_their_footprint_budgets` | — | recorded |
+| `profile-edge-needed-entries` | `assurance.gate.footprint` | `footprint.edge_needed_entries` | trend | test `contextful_ci::image::this_repository_profiles_hold_to_their_footprint_budgets` | — | recorded |
 | `profile-footprint` | `assurance.gate.footprint` | `footprint.profiles_over_budget` | trend | test `contextful_ci::image::this_repository_profiles_hold_to_their_footprint_budgets` | `== 0` | recorded |
+| `profile-full-compressed-bytes` | `assurance.gate.footprint` | `footprint.full_compressed_bytes` | trend | test `contextful_ci::image::this_repository_profiles_hold_to_their_footprint_budgets` | — | recorded |
+| `profile-full-needed-entries` | `assurance.gate.footprint` | `footprint.full_needed_entries` | trend | test `contextful_ci::image::this_repository_profiles_hold_to_their_footprint_budgets` | — | recorded |
 | `pull-no-torn-snapshot` | `store.pull.pointer-last` | `pull.torn_reads` | gate | test `contextful_sync::pull::a_seeded_sample_of_interrupted_pulls_never_exposes_a_torn_snapshot` | `== 0` | gated |
 | `read-session-latency` | `read.cache.session-pool` | `session.warm_p95_ms` | trend | test `contextful_context::read::latency::session_and_statement_latency_at_one_fifty_and_five_hundred_runs` | — | recorded |
 | `read-session-one-engine` | `read.cache.session-pool` | `session.engine_opens` | gate | test `contextful_context::read::pool::statements_under_one_key_share_one_resolved_session_and_one_engine` | `== 1` | gated |
 | `row-key-dedup` | `read.retrieve.row-key-dedup` | `retrieval.hybrid.duplicate_row_rate` | gate | test `contextful_context::read::retrieve::a_ranked_read_keeps_the_newest_row_per_content_hash` | `== 0` | gated |
 | `sqlite-journal-conformance` | `run.journal.sqlite-stores` | `journal.sqlite_conformance.failed_cases` | gate | test `contextful_sqlite::stores::the_sqlite_stores_pass_every_conformance_suite_and_commit_updates_atomically` | `== 0` | gated |
-| `stale-fence-differential` | `assurance.differential-test.protocol-harness` | `protocol.drift_cases` | gate | issue 76 | `== 0` | open (issue 76) |
+| `stale-fence-differential` | `assurance.differential-test.protocol-harness` | `protocol.drift_cases` | gate | test `contextful_cli::protocol_differential::fixed_seed_replays_protocol_cases_against_the_store` | `== 0` | gated |
 | `stale-fence-never-lands` | `store.lease.stale-fence` | `lease.stale_commits_landed` | gate | test `contextful_context::run_commit::a_commit_under_a_superseded_fence_loses_and_its_run_stays_unreadable` | `== 0` | gated |
 | `store-write-deny-set` | `topology.package.store-write-engine-free` | `topology.store_write.forbidden_packages` | gate | test `contextful_ci::topology::this_repository_store_write_half_links_no_forbidden_package` | `== 0` | gated |
 | `store-write-package-count` | `topology.package.store-write-engine-free` | `topology.store_write.unique_packages` | gate | test `contextful_ci::topology::this_repository_store_write_half_links_no_forbidden_package` | `<= 200` | gated |

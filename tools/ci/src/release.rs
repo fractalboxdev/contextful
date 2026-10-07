@@ -5,21 +5,34 @@
 
 use anyhow::{bail, Context, Result};
 use sha2::{Digest, Sha256};
-use std::collections::BTreeSet;
+use std::collections::{BTreeMap, BTreeSet};
 use std::path::{Path, PathBuf};
 use std::process::Command;
 
 /// The binary every profile builds.
 const BINARY: &str = "contextful";
 const PACKAGE: &str = "contextful-cli";
-/// The directory release builds compile into, apart from every gate stage's.
-pub const TARGET_DIR: &str = "target/release-artifacts";
 
 const LINUX: [&str; 2] = ["x86_64-unknown-linux-musl", "aarch64-unknown-linux-musl"];
 const DARWIN: [&str; 2] = ["aarch64-apple-darwin", "x86_64-apple-darwin"];
 
 /// The profile the bare formula name and the install script resolve to.
 pub const DEFAULT_PROFILE: &str = "contextful-full";
+
+#[derive(Clone, Copy, clap::ValueEnum)]
+pub enum Builder {
+    Cargo,
+    Zigbuild,
+}
+
+impl Builder {
+    fn subcommand(self) -> &'static str {
+        match self {
+            Self::Cargo => "build",
+            Self::Zigbuild => "zigbuild",
+        }
+    }
+}
 
 /// Every profile with the targets it ships for: all three cross-compile to Linux on musl,
 /// and edge and full also build for macOS.
@@ -52,8 +65,8 @@ pub fn stem(profile: &str, version: &str, target: &str) -> String {
 }
 
 /// The cargo invocation building `profile` alone for `target`.
-fn cargo_build(profile: &str, target: &str) -> Vec<String> {
-    ["build", "--release", "--locked", "-p", PACKAGE, "--bin", BINARY, "--no-default-features", "--features", profile, "--target", target]
+fn cargo_build(profile: &str, target: &str, builder: Builder) -> Vec<String> {
+    [builder.subcommand(), "--release", "--locked", "-p", PACKAGE, "--bin", BINARY, "--no-default-features", "--features", profile, "--target", target]
         .iter()
         .map(|a| a.to_string())
         .collect()
@@ -117,7 +130,7 @@ pub fn plan(profiles: &[String], targets: &[String]) -> Result<()> {
 
 /// Build each selected profile for each selected target, `targets` defaulting to this host's,
 /// into `target_dir`, and package each artifact into `out`.
-pub fn release(root: &Path, profiles: &[String], targets: &[String], target_dir: &Path, out: &Path) -> Result<()> {
+pub fn release(root: &Path, builder: Builder, profiles: &[String], targets: &[String], target_dir: &Path, out: &Path) -> Result<()> {
     let targets = if targets.is_empty() { vec![host_target()?] } else { targets.to_vec() };
     let selected = cells(profiles, &targets)?;
     if selected.is_empty() {
@@ -126,7 +139,7 @@ pub fn release(root: &Path, profiles: &[String], targets: &[String], target_dir:
     let version = version(root)?;
     std::fs::create_dir_all(out).with_context(|| format!("creating {}", out.display()))?;
     for (profile, target) in selected {
-        let args = cargo_build(profile, target);
+        let args = cargo_build(profile, target, builder);
         eprintln!("release: cargo {}", args.join(" "));
         let status = Command::new("cargo")
             .args(&args)
@@ -166,6 +179,14 @@ fn package(root: &Path, profile: &str, version: &str, target: &str, binary: &Pat
     std::fs::write(out.join(format!("{archive}.sha256")), format!("{digest}  {archive}\n"))?;
     let sbom = sbom(root, profile, version, target)?;
     std::fs::write(out.join(format!("{stem}.cdx.json")), serde_json::to_string_pretty(&sbom)? + "\n")?;
+    let metadata = serde_json::json!({
+        "profile": profile,
+        "target": target,
+        "archive": archive,
+        "sha256": digest,
+        "sbom": format!("{stem}.cdx.json"),
+    });
+    std::fs::write(out.join(format!("{stem}.release.json")), serde_json::to_string_pretty(&metadata)? + "\n")?;
     println!("release: {archive} {digest}");
     Ok(())
 }
@@ -279,15 +300,13 @@ fn platform(target: &str) -> (&'static str, &'static str) {
     (os, arch)
 }
 
-/// A formula named `formula` installing `profile` from the archives under `dist`, whose
-/// checksum files supply each target's digest, fetched from `base_url`.
-fn formula(dist: &Path, formula: &str, profile: &str, version: &str, targets: &[&str], base_url: &str) -> Result<String> {
+/// A formula named `formula` installing `profile` from the archives at `base_url`,
+/// with each target's digest supplied by the release matrix.
+fn formula(formula: &str, profile: &str, version: &str, targets: &[&str], base_url: &str, digests: &BTreeMap<(String, String), String>) -> Result<String> {
     let mut blocks: Vec<(&str, Vec<String>)> = Vec::new();
     for target in targets {
         let archive = format!("{}.tar.gz", stem(profile, version, target));
-        let sum = dist.join(format!("{archive}.sha256"));
-        let text = std::fs::read_to_string(&sum).with_context(|| format!("reading {}", sum.display()))?;
-        let digest = text.split_whitespace().next().context("an empty checksum file")?.to_string();
+        let digest = digests.get(&(profile.to_string(), target.to_string())).context("release matrix digest missing")?;
         let (os, arch) = platform(target);
         let block = format!(
             "    {arch} do\n      url \"{}/{archive}\"\n      sha256 \"{digest}\"\n    end\n",
@@ -309,29 +328,75 @@ fn formula(dist: &Path, formula: &str, profile: &str, version: &str, targets: &[
     ))
 }
 
-/// Write `Formula/<profile>.rb` for every profile with an archive for each of its targets
-/// under `dist`, and `Formula/contextful.rb`, the bare name, resolving to the full profile.
-pub fn formulae(root: &Path, dist: &Path, base_url: &str) -> Result<Vec<PathBuf>> {
+/// The complete release matrix, loaded from local checksum files or a metadata manifest.
+fn digests(dist: &Path, manifest: Option<&Path>, version: &str) -> Result<BTreeMap<(String, String), String>> {
+    let expected: Vec<_> = matrix().into_iter().flat_map(|(profile, targets)| targets.into_iter().map(move |target| (profile.to_string(), target.to_string()))).collect();
+    let mut found = BTreeMap::new();
+    if let Some(path) = manifest {
+        let text = std::fs::read_to_string(path).with_context(|| format!("reading {}", path.display()))?;
+        let value: serde_json::Value = serde_json::from_str(&text).context("parsing release manifest")?;
+        let cells = value.as_array().context("release manifest is not a JSON array")?;
+        for cell in cells {
+            let string = |key| cell.get(key).and_then(serde_json::Value::as_str).with_context(|| format!("release cell has no `{key}` string"));
+            let profile = string("profile")?;
+            let target = string("target")?;
+            let key = (profile.to_string(), target.to_string());
+            if !expected.contains(&key) {
+                bail!("release manifest names an unknown cell: {profile} {target}");
+            }
+            let stem = stem(profile, version, target);
+            if string("archive")? != format!("{stem}.tar.gz") || string("sbom")? != format!("{stem}.cdx.json") {
+                bail!("release manifest names wrong assets for {profile} {target}");
+            }
+            let digest = string("sha256")?;
+            if digest.len() != 64 || !digest.bytes().all(|b| b.is_ascii_digit() || (b'a'..=b'f').contains(&b)) {
+                bail!("release manifest has an invalid SHA-256 for {profile} {target}");
+            }
+            if found.insert(key, digest.to_string()).is_some() {
+                bail!("release manifest repeats {profile} {target}");
+            }
+        }
+    } else {
+        for (profile, target) in &expected {
+            let archive = format!("{}.tar.gz", stem(profile, version, target));
+            let sum = dist.join(format!("{archive}.sha256"));
+            let text = std::fs::read_to_string(&sum).with_context(|| format!("reading {}", sum.display()))?;
+            let digest = text.split_whitespace().next().context("an empty checksum file")?;
+            found.insert((profile.clone(), target.clone()), digest.to_string());
+        }
+    }
+    for (profile, target) in expected {
+        if !found.contains_key(&(profile.clone(), target.clone())) {
+            bail!("release manifest omits {profile} {target}");
+        }
+    }
+    Ok(found)
+}
+
+/// Write `Formula/<profile>.rb`, the bare full-profile formula, and `SHA256SUMS`.
+/// A manifest supplies the ten cell digests without downloading release archives.
+pub fn formulae(root: &Path, dist: &Path, manifest: Option<&Path>, base_url: &str) -> Result<Vec<PathBuf>> {
     let version = version(root)?;
+    let digests = digests(dist, manifest, &version)?;
     let dir = dist.join("Formula");
     std::fs::create_dir_all(&dir)?;
     let mut written = Vec::new();
     for (profile, targets) in matrix() {
-        let text = formula(dist, profile, profile, &version, &targets, base_url)?;
+        let text = formula(profile, profile, &version, &targets, base_url, &digests)?;
         let path = dir.join(format!("{profile}.rb"));
         std::fs::write(&path, text)?;
         written.push(path);
         if profile == DEFAULT_PROFILE {
             let path = dir.join(format!("{BINARY}.rb"));
-            std::fs::write(&path, formula(dist, BINARY, profile, &version, &targets, base_url)?)?;
+            std::fs::write(&path, formula(BINARY, profile, &version, &targets, base_url, &digests)?)?;
             written.push(path);
         }
     }
     let mut sums = String::new();
-    let mut names: Vec<_> = std::fs::read_dir(dist)?.filter_map(|e| e.ok()).map(|e| e.file_name().to_string_lossy().into_owned()).collect();
-    names.sort();
-    for n in names.iter().filter(|n| n.ends_with(".tar.gz.sha256")) {
-        sums.push_str(&std::fs::read_to_string(dist.join(n))?);
+    let mut archives: Vec<_> = digests.iter().map(|((profile, target), digest)| (format!("{}.tar.gz", stem(profile, &version, target)), digest)).collect();
+    archives.sort_by(|a, b| a.0.cmp(&b.0));
+    for (archive, digest) in archives {
+        sums.push_str(&format!("{digest}  {archive}\n"));
     }
     std::fs::write(dist.join("SHA256SUMS"), sums)?;
     Ok(written)
@@ -343,8 +408,6 @@ const WASI: &str = "wasm32-wasip2";
 const WASI_PROFILE: &str = "contextful-edge";
 /// The ledger entry the probe records under.
 const WASI_ENTRY: &str = "edge-wasip2-footprint";
-/// The directory the probe builds into, apart from every other stage's.
-pub const WASI_TARGET_DIR: &str = "target/wasi-probe";
 /// The zstd level the release archive compresses with.
 const WASI_LEVEL: i32 = 19;
 
@@ -353,7 +416,7 @@ const WASI_LEVEL: i32 = 19;
 /// scheduled tier reads an absent figure and runs its next entry. The build directory is
 /// reclaimed either way.
 pub fn wasi_probe(root: &Path, target_dir: &Path) -> Result<()> {
-    let args = cargo_build(WASI_PROFILE, WASI);
+    let args = cargo_build(WASI_PROFILE, WASI, Builder::Cargo);
     eprintln!("wasi-probe: cargo {}", args.join(" "));
     let built = Command::new("cargo").args(&args).env("CARGO_TARGET_DIR", target_dir).current_dir(root).output().context("running cargo")?;
     let result = if built.status.success() {

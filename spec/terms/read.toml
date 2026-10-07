@@ -27,6 +27,8 @@ TableFunctionRefused          = { clause = "read.guard.table-function", gloss = 
 TemplateNamesForeignRelation  = { clause = "read.guard.template-relation-shape", gloss = "A template named a non-store relation or collided with a built-in tool prefix." }
 TemplateArgumentRejected      = { clause = "read.guard.template-binding", gloss = "A template argument was missing, unknown or mistyped." }
 QueryParameterRejected        = { clause = "read.guard.query-binding", gloss = "A query parameter was missing, unused, untyped or mistyped." }
+ReadDurationExceeded          = { clause = "read.respond.duration-ceiling", gloss = "A statement reached its selected duration ceiling." }
+ReadResponseTooLarge          = { clause = "read.respond.byte-ceiling", gloss = "A response envelope or first row exceeds its selected byte ceiling." }
 FilterBudgetExceeded          = { clause = "read.retrieve.filter-budget-refusal", gloss = "A ranked read's filter exceeded its value, condition or byte budget." }
 PinnedBuildUnavailable        = { clause = "read.resolve-pin.unknown-build", gloss = "A pinned build identifier is unknown or collected." }
 RequiredFaceAbsent            = { clause = "read.embed.required-face", gloss = "A client required a face this binary did not link." }
@@ -38,6 +40,10 @@ MemoryUndeclaredRelation      = { clause = "read.declare.undeclared-relation", g
 MemoryExtractExhausted        = { clause = "read.synthesize.dead-letter", gloss = "An extract batch exhausted its attempts and was dead-lettered." }
 MemoryDirectWriteShapeRefused = { clause = "read.revise.direct-write", gloss = "A direct write targeted a memory shape other than claims." }
 MemoryCitationNotLive         = { clause = "read.revise.citation-live", gloss = "A direct write cites a keyed row that is not its key's live version." }
+MemoryClaimScopeRefused        = { clause = "read.revise.served-scope", gloss = "A served claim write names another actor or reading session." }
+MemoryClaimBrowserRefused      = { clause = "read.revise.browser-request", gloss = "A browser-origin request reached the served claim-write route." }
+MemoryClaimMalformed           = { clause = "read.revise.malformed-request", gloss = "A served claim write holds a malformed or client-scoped body." }
+MemoryClaimWriteRefused        = { clause = "read.revise.served-fault", gloss = "A served claim write's store effect refused." }
 MemoryEvidenceUnresolved      = { clause = "read.recall.evidence-unresolved", gloss = "A claim's evidence does not resolve through the caller's session." }
 MemoryEvidenceOverflow        = { clause = "read.recall.evidence-references", gloss = "A claim names more evidence references than the bound." }
 MemoryObservationOutOfOrder   = { clause = "read.revise.observed-order", gloss = "A claim was observed before a live contradicting claim of its line." }

@@ -95,6 +95,10 @@ pub trait PreSendHook: Send + Sync {
     fn admit(&self, intent: &Intent) -> Result<(), String>;
     /// The outcome of a hop [`PreSendHook::admit`] admitted.
     fn settle(&self, intent: &Intent, outcome: &Outcome);
+    /// A source settles the scope with its batch ordinal, or none when no batch follows.
+    fn finish(&self, _batch_seq: Option<i32>) -> Result<(), Failure> {
+        Ok(())
+    }
 }
 
 /// The innermost stage of the pre-send hook: a reservation against a shared quota. A hop

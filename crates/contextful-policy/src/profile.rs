@@ -10,6 +10,8 @@
 //! profile(1); iss(s); aud(s)?; jti(s); iat(n); exp(n); alg(s); cnf(s)?;
 //! sub(member, value)*; incognito(b)?; att(member, attestation)*; grant(i, json)*; rev(id, epoch);
 //! ```
+//! Profile 2 adds `owner_project(s)?` to the root authority block; profile 1 remains
+//! readable without that fact.
 //!
 //! An attenuation block carries only `grant(i, json)*`, `exp(n)`, `sub(member, value)*`,
 //! `incognito(b)` and `cnf(s)`; each proposes a narrowing its parent is checked against,
@@ -33,9 +35,11 @@ use std::time::{Duration, UNIX_EPOCH};
 
 /// The profile version this engine mints.
 pub const PROFILE_VERSION: i64 = 1;
+/// Profile 2 adds the authority-only signed local owner claim.
+pub const OWNER_PROFILE_VERSION: i64 = 2;
 
 /// The profile versions a checkpoint admits by default (`authority.profile.version-unsupported`).
-pub const SUPPORTED_PROFILE_VERSIONS: &[i64] = &[PROFILE_VERSION];
+pub const SUPPORTED_PROFILE_VERSIONS: &[i64] = &[PROFILE_VERSION, OWNER_PROFILE_VERSION];
 
 /// Facts one authorization holds, token and engine facts together (`authority.profile.fact-ceiling`).
 pub const EVALUATOR_FACT_CEILING: u64 = 1000;
@@ -55,7 +59,7 @@ pub const RESERVED_PREDICATES: &[&str] = &["time", "audience", "resource", "requ
 pub const BLOCK_VERSIONS: &[u32] = &[3];
 
 /// Grant fields profile 1 names.
-const GRANT_FIELDS: &[&str] = &["actions", "tables", "tenant", "aggregate", "templates", "max_rows"];
+const GRANT_FIELDS: &[&str] = &["actions", "tables", "tenant", "aggregate", "templates", "max_rows", "max_duration_ms", "max_response_bytes"];
 
 /// Restriction fields profile 1 declares and parses, and this engine refuses: no read
 /// evaluator exists for a row restriction or an aggregate bound
@@ -170,7 +174,7 @@ pub fn read_chain(bytes: &[u8], supported: &[i64]) -> Result<Chain, AuthorityErr
     let mut blocks = blocks.into_iter();
     let authority = blocks.next().unwrap_or_default();
     let version = read_version(&authority, supported)?;
-    let authority = read_authority(&authority)?;
+    let authority = read_authority(&authority, version)?;
     let hops = blocks.enumerate().map(|(i, b)| read_hop(i + 1, &b)).collect::<Result<_, _>>()?;
     Ok(Chain { version, authority, hops, fact_count })
 }
@@ -303,7 +307,7 @@ fn slots(i: usize, facts: &[RawFact], allowed: &[&'static str]) -> Result<Slots,
                     return Err(twice());
                 }
             }
-            ("iss" | "aud" | "jti" | "alg" | "cnf", [t @ Term::Str(_)]) => {
+            ("iss" | "aud" | "jti" | "alg" | "cnf" | "owner_project", [t @ Term::Str(_)]) => {
                 if out.scalars.insert(name, t.clone()).is_some() {
                     return Err(twice());
                 }
@@ -346,11 +350,14 @@ impl Slots {
 }
 
 const AUTHORITY_FACTS: &[&str] =
+    &["profile", "iss", "aud", "jti", "iat", "exp", "alg", "cnf", "owner_project", "sub", "incognito", "att", "grant", "rev"];
+const PROFILE_ONE_AUTHORITY_FACTS: &[&str] =
     &["profile", "iss", "aud", "jti", "iat", "exp", "alg", "cnf", "sub", "incognito", "att", "grant", "rev"];
 const HOP_FACTS: &[&str] = &["grant", "exp", "sub", "incognito", "cnf"];
 
-fn read_authority(facts: &[RawFact]) -> Result<AuthorityBlock, AuthorityError> {
-    let s = slots(0, facts, AUTHORITY_FACTS)?;
+fn read_authority(facts: &[RawFact], version: i64) -> Result<AuthorityBlock, AuthorityError> {
+    let allowed = if version == OWNER_PROFILE_VERSION { AUTHORITY_FACTS } else { PROFILE_ONE_AUTHORITY_FACTS };
+    let s = slots(0, facts, allowed)?;
     let missing = |name: &str| unrecognized(format!("the authority block names no `{name}`"));
     let timestamp = |name: &str| -> Result<i64, AuthorityError> {
         let secs = s.int(name).ok_or_else(|| missing(name))?;
@@ -379,6 +386,7 @@ fn read_authority(facts: &[RawFact]) -> Result<AuthorityBlock, AuthorityError> {
         sub,
         att: s.att.clone(),
         grants: s.grants(),
+        owner_project: s.str("owner_project"),
         rev: Revocation { id: rev_id, epoch },
     })
 }
@@ -470,8 +478,9 @@ fn grant_facts(out: &mut Vec<Fact>, grants: &[Grant]) -> Result<(), AuthorityErr
 
 /// The authority block's facts.
 pub fn authority_facts(block: &AuthorityBlock) -> Result<Vec<Fact>, AuthorityError> {
+    let version = if block.owner_project.is_some() { OWNER_PROFILE_VERSION } else { PROFILE_VERSION };
     let mut out = vec![
-        fact("profile", &[int(PROFILE_VERSION)]),
+        fact("profile", &[int(version)]),
         fact("iss", &[string(&block.iss)]),
         fact("aud", &[string(&block.aud)]),
         fact("jti", &[string(&block.jti)]),
@@ -481,6 +490,9 @@ pub fn authority_facts(block: &AuthorityBlock) -> Result<Vec<Fact>, AuthorityErr
     ];
     if let Some(cnf) = &block.cnf {
         out.push(fact("cnf", &[string(&cnf.jkt)]));
+    }
+    if let Some(project) = &block.owner_project {
+        out.push(fact("owner_project", &[string(project)]));
     }
     let subject = block.subject();
     sub_facts(&mut out, Member::ALL.map(|m| (m, subject.get(m).map(str::to_string))));

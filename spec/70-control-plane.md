@@ -111,7 +111,7 @@ flowchart LR
 
 ## reconcile
 
-The control source, the snapshot pointer and its versions, the pure schedule diff, and what a failed poll leaves running.
+The control source, snapshot pointer, signed pulled-head validation against local declarations, schedule diff, and what a failed poll leaves running.
 
 - `poll-cadence` — `poll` takes a schedule string, and a `[control]` block declaring none polls every 30 s.
 - `pointer-malformed` — A pointer body that is not wholly a version raises `ControlPointerMalformed`.
@@ -119,6 +119,12 @@ The control source, the snapshot pointer and its versions, the pure schedule dif
 - `fail-static` — An unreadable pointer, an unparseable snapshot or a control plane answering `5xx` raises `ControlSnapshotUnreadable`, logs a diagnostic, and leaves the armed set in place running.
   *A-surface*
 - `loopback-only` — A control URL whose host is not a loopback address raises `ControlSourceNotLoopback` and arms nothing; a poll follows no redirect and routes through no proxy.
+  *A-surface*
+- `pulled-control` — A reconciler adopts the project-scoped head {{store.pull.control-head}} carries, descending from its local head, only after verifying the receipt under a locally pinned issuer key and validating the snapshot against this node's declarations.
+  *A-surface*
+- `issuer-pin` — A reconciler reads pulled-control issuer pins through {{authority.verify.pin-source}} and refuses a receipt whose signer is absent from those pins.
+  *because a bucket writer can sign its own unauthorized snapshot*
+- `pulled-control-untrusted` — A pulled control head with an invalid signature, project, digest, predecessor chain or local validation raises `ControlSnapshotUntrusted`, names the reason and arms none of that version.
   *A-surface*
 - `url-layout` — A control URL serves `manifest@current` and each `manifest@v<N>.toml` directly beneath its path; a pointer answered `404` reads as no applied version, and any other status besides `200` is unreadable.
   *because one layout serves a snapshot directory unchanged over loopback HTTP*
@@ -148,6 +154,12 @@ sequenceDiagram
     R->>D: dispatch due units
   end
 ```
+
+#### Scenarios
+
+- `surface.reconcile.pulled-control`: WHEN a cold node holds a signed bucket head whose snapshot validates against its declarations, THEN it installs that head and arms its schedules.
+- `surface.reconcile.pulled-control`: WHEN a signed bucket head contains one of two locally declared pipelines, THEN the reconciler adopts that partial apply and leaves the other pipeline unarmed.
+- `surface.reconcile.pulled-control-untrusted`: WHEN a bucket writer replaces the snapshot bytes without a matching signature, THEN the node names the failed verification and arms none of that version.
 
 ## fire
 
@@ -236,6 +248,8 @@ The configuration document, the records it presents read-only, the structured sc
   *because a value in the document reaches every daemon and replica that reads a snapshot*
 - `connector-upload` — An artifact uploaded through the operator surface raises `ConnectorUploadRefused`; the surface references registered connectors by id and version.
   *because publishing into the registry runs a separate signed path*
+- `store-draft` — An Admin edit validates a complete control document and saves one store-scoped draft bound to its applied version, verified operator and random nonce, leaving the applied pointer unchanged.
+  *A-surface*
 
 ## apply
 
@@ -253,7 +267,23 @@ Validation, the immutable version claim, the pointer advance, the owner's storag
   *P3*
 - `local-claim` — A local control plane validates and claims `manifest@v<N>.toml` in its snapshot directory, `.contextful/control/<project>/` unless `[control] snapshot_dir` names one, on its own; `contextful pipeline apply` is that apply, and no hosted plane sits on its path.
   *because {{topology.coordinate.air-gap}} holds a single-node deployment to reach no process outside itself*
+- `synced-attestation` — In a project with `[sync]`, import and apply admit an admin capability, then sign a receipt over the project, version, predecessor receipt digest and snapshot digest through {{authority.issue.signing-port}}.
+  *A-surface*
+- `receipt-message` — A JSON control receipt carries `format: 1`, signer public key and signature over UTF-8 `contextful-control-v1\n<project>\n<version>\n<parent-or-minus>\n<snapshot-sha256>\n<signer>\n`; its parent is `-` only for the first version.
+  *A-surface*
+- `receipt-digest` — A predecessor and the bucket head name the lowercase SHA-256 hex digest of a receipt's RFC 8785 canonical JSON bytes.
+  *A-surface*
+- `receipt-file` — A synced claim writes immutable `receipt@v<N>.json` beside its snapshot before advancing the applied pointer.
+  *A-surface*
+- `attestation-unavailable` — A synced import or apply lacking an admitted admin capability or issuer signing port raises `ControlAttestationUnavailable` and claims no version.
+  *A-surface*
 - `guarded-import` — `contextful pipeline import` claims v1 from the declared pipelines while the snapshot directory holds no version; a second import claims nothing.
+- `draft-claim` — An Admin apply rechecks the configured store owner, validates its saved draft again, and claims that draft through the owner's version compare-and-swap.
+  *A-surface*
+- `operator-attestation` — An Admin mutation lacking a fresh console signature over its verified operator, route and body, or reusing a nonce held in store control state across restarts, raises `ControlOperatorAttestationInvalid` before changing the document.
+  *because a shared store capability cannot identify the person who used the console*
+- `draft-absent` — An Admin apply finding no validated store draft raises `ControlDraftAbsent` and changes no applied version.
+  *because an absent draft supplies no document for the version claim*
 
 One apply through the engine's store-scoped API:
 
@@ -284,6 +314,12 @@ sequenceDiagram
     end
   end
 ```
+
+#### Scenarios
+
+- `surface.apply.attestation-unavailable`: WHEN a synced apply presents no admin capability, THEN no version or receipt is claimed.
+- `surface.apply.receipt-message`: WHEN a receipt's parent or snapshot digest changes after signing, THEN its signature does not verify.
+- `surface.apply.receipt-file`: WHEN signing fails during a synced import, THEN neither the snapshot nor the pointer names the version.
 
 ## reside
 

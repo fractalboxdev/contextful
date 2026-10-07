@@ -4,7 +4,7 @@
 //! per-request admission of short-lived bearers and of holder-bound credentials, each
 //! request under its own proof, the in-flight ceiling and concurrency.
 
-use contextful_agent::http::{audience, ceiling, read_request, Admitting, HttpFace, HttpRequest, Revocation};
+use contextful_agent::http::{audience, ceiling, read_request, Admitting, HttpFace, HttpRequest, HttpResponse, Revocation};
 use contextful_agent::mcp::Server;
 use contextful_context::land::{land, Batch, RunContext};
 use contextful_context::read::Face;
@@ -101,15 +101,21 @@ fn holder(n: u8) -> SigningKey {
 
 /// A credential reading `tables` for `ttl` seconds, bound to `holder` when one is given.
 fn credential(signer: &SeedSigner, tables: &str, ttl: u64, holder: Option<&SigningKey>) -> String {
+    credential_with_action(signer, Action::Read, tables, ttl, holder)
+}
+
+fn credential_with_action(signer: &SeedSigner, action: Action, tables: &str, ttl: u64, holder: Option<&SigningKey>) -> String {
     let policy = IssuancePolicy::parse(&format!("default_audience = \"{AUD}\"\nmax_lifetime_secs = 86400\n")).unwrap();
     let subject = Subject { on_behalf_of: Some("user://dana@acme.example".into()), zone: Some("on-prem:hq".into()), ..Subject::default() };
     let grant = Grant {
-        actions: vec![Action::Read],
+        actions: vec![action],
         tables: vec![TablePattern::parse(tables).unwrap()],
         tenant: None,
         aggregate: None,
         templates: Some(vec!["*".into()]),
         max_rows: None,
+        max_duration_ms: None,
+        max_response_bytes: None,
     };
     let mut req = MintRequest::custody(subject, vec![grant]);
     req.lifetime = Lifetime::Requested(ttl);
@@ -117,6 +123,33 @@ fn credential(signer: &SeedSigner, tables: &str, ttl: u64, holder: Option<&Signi
     let plan = policy.check(&req, &MintContext { node: NodeRole::Primary, signer, clock: &clock }).unwrap();
     let confirmation = holder.map(|k| jwk_thumbprint(k.verifying_key().as_bytes()));
     mint(&plan, &MintClaims { confirmation, ..MintClaims::default() }, signer).unwrap()
+}
+
+#[test]
+fn control_apply_rechecks_revocation_before_dispatch() {
+    let f = fixture();
+    let token = credential_with_action(&f.signer, Action::Admin, "*", 900, None);
+    let clock = FixedClock(at(NOW));
+    let checks = std::sync::atomic::AtomicUsize::new(0);
+    let revocation = || {
+        if checks.fetch_add(1, Ordering::SeqCst) == 0 { Ok(RevocationState::default()) }
+        else { Err("revocation source changed".into()) }
+    };
+    let admitting = Admitting { checkpoint: &f.checkpoint, audience: AUD, revocation: &revocation };
+    let dispatched = AtomicBool::new(false);
+    let handler = |_: &HttpRequest, _: &contextful_policy::verify::AdmittedAuthority| {
+        dispatched.store(true, Ordering::SeqCst);
+        contextful_agent::http::HttpResponse::json(200, &json!({ "applied": 2 }))
+    };
+    let face = HttpFace::new(&f.face, &clock, &f.audit, admitting, Some(2)).unwrap().with_control(&handler);
+    let request = HttpRequest {
+        method: "POST".into(), target: "/control/apply".into(),
+        headers: vec![("Authorization".into(), format!("Bearer {token}"))], body: b"{}".to_vec(),
+    };
+    let answer = face.answer(&request);
+    assert_eq!(answer.status, 503);
+    assert!(!dispatched.load(Ordering::SeqCst));
+    assert_eq!(checks.load(Ordering::SeqCst), 2);
 }
 
 fn call(tool: &str, arguments: Value) -> Value {
@@ -218,6 +251,37 @@ fn stdio_answer(f: &Fixture, token: &str, message: &Value) -> Value {
     let clock = FixedClock(at(NOW));
     let server = Server::new(&f.face, authority, &current, &clock, &f.audit).unwrap();
     server.handle(&message.to_string()).unwrap()
+}
+
+#[test]
+fn server_held_claim_route_admits_each_request_and_keeps_browser_and_mcp_writes_out() {
+    let f: &'static Fixture = Box::leak(Box::new(fixture()));
+    let clock: &'static FixedClock = Box::leak(Box::new(FixedClock(at(NOW))));
+    let admitting = Admitting { checkpoint: &f.checkpoint, audience: AUD, revocation: &no_revocation };
+    let write = |_: &HttpRequest, authority: &AdmittedAuthority, boundary: &dyn Fn() -> Result<(), AuthorityError>| {
+        boundary().unwrap();
+        HttpResponse::json(200, &json!({ "actor": authority.subject().on_behalf_of() }))
+    };
+    let write: &'static _ = Box::leak(Box::new(write));
+    let face = Box::leak(Box::new(HttpFace::new(&f.face, clock, &f.audit, admitting, Some(4)).unwrap().with_claim_write(write)));
+    let listener = TcpListener::bind("127.0.0.1:0").unwrap();
+    let addr = listener.local_addr().unwrap();
+    std::thread::spawn(move || face.serve(listener));
+    let token = credential(&f.signer, "research/*", 900, None);
+    let mut request = HttpRequest { method: "POST".into(), target: "/memory/claims".into(),
+        headers: vec![("Authorization".into(), format!("Bearer {token}"))], body: b"{}".to_vec() };
+    let (status, _, response) = send(addr, &request);
+    assert_eq!(status, 200);
+    assert_eq!(body(&response)["actor"], "user://dana@acme.example");
+    request.headers.push(("Origin".into(), "https://console.example".into()));
+    let (status, _, _) = send(addr, &request);
+    assert_eq!(status, 403);
+    request.headers.clear();
+    let (status, _, _) = send(addr, &request);
+    assert_eq!(status, 401);
+    let (status, _, response) = send(addr, &unproven(&call("memory.write", json!({})), "Bearer", &token));
+    assert_eq!(status, 200);
+    assert!(body(&response).to_string().contains("no tool"));
 }
 
 /// `contextful serve --http <addr> --audience <aud> --max-in-flight <n>` answers MCP Streamable HTTP at `POST /mcp`: one JSON-RPC message per request, answered as `application/json` by the tool server the stdio transport runs.

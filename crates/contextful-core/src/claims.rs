@@ -22,6 +22,9 @@ pub struct AuthorityBlock {
     pub sub: Subject,
     pub att: BTreeMap<Member, Attestation>,
     pub grants: Vec<Grant>,
+    /// The one local project this signed authority block may open as owner.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub owner_project: Option<String>,
     pub rev: Revocation,
 }
 

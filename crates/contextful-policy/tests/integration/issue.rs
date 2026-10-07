@@ -63,7 +63,7 @@ fn a_seed_file_round_trips_and_its_public_key_is_a_static_pin() {
 fn a_mint_carries_the_plan_the_policy_checked() {
     let signer = issuer();
     let p = plan(&signer);
-    let credential = mint(&p, &MintClaims { confirmation: Some("jkt-1".into()), epoch: 7 }, &signer).unwrap();
+    let credential = mint(&p, &MintClaims { confirmation: Some("jkt-1".into()), epoch: 7, ..MintClaims::default() }, &signer).unwrap();
     let block = introspect(&credential).unwrap().authority;
     assert_eq!(block.aud, AUD);
     assert_eq!(block.iss, AUD);

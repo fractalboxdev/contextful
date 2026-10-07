@@ -4,7 +4,7 @@
 
 ## The read surface admits one read-only statement over registered relations
 
-`read.guard` walks the syntax tree the executor itself serializes and admits exactly one read-only `SELECT` whose base relations are views registered for the caller or declared common table expressions; table functions and catalog reaches refuse, and a refusal never echoes another caller's relation. `read.register` lists only granted templates and binds arguments strictly. A filter's budget applies to the whole filter. `read.respond` reads a preview through its table's relation. The process transport requires a token or an explicit owner flag; the run-stream socket authenticates before upgrade and carries snapshots only.
+`read.guard` walks the syntax tree the executor itself serializes and admits exactly one read-only `SELECT` whose base relations are views registered for the caller or declared common table expressions; table functions and catalog reaches refuse, and a refusal never echoes another caller's relation. `read.register` lists only granted templates and binds arguments strictly. A filter's budget applies to the whole filter. `read.respond` reads a preview through its table's relation. The process transport requires a token, with an explicit owner flag for its signed store claim; the run-stream socket authenticates before upgrade and carries snapshots only.
 
 | Option | Lost on | Cost |
 | --- | --- | --- |
@@ -84,6 +84,23 @@ Criteria: MCP-client compatibility, then one surface per guarantee, then revocat
 
 Consequences: admission sits on every read, and a possession-proof check sits on every read under a holder-bound credential; an MCP client that signs nothing reads with a short-lived audience-bound bearer and re-exchanges it before expiry.
 Revisit: a caller needs server-initiated messages or resumable streams.
+
+## A served claim write stays outside read MCP
+
+Context: an operator answer distils claims after its read turn, while a hosted console owns no local store root. Criteria: preserve the closed read tool set, the writer's actor and session, and the memory table's commit and evidence gates.
+
+Decision: a separate served route admits the server-held credential, binds the actor and session to its subject tuple, and calls the direct memory write. The credential needs a narrow write grant on the declared claims table. The browser holds no writer credential; an Origin header refuses. The read-only edge profile mounts no write route.
+
+| Option | Lost on | Cost |
+| --- | --- | --- |
+| Separate route and direct memory write *(chosen)* | — | The hosted console needs a writing credential whose task names its reading session. |
+| Add `memory.write` to read MCP | Closed read tool set | A client-reachable tool can mutate a store. |
+| Spawn the CLI from the console | Hosted reach | The console needs the store's local project root and signing configuration. |
+| Keep claims in the console process | Durability | Restart loses conclusions and bypasses memory recall and erasure. |
+
+Consequences: claim writes share memory's evidence, supersession, attribution and commit path. A credential with only read grants cannot land a claim.
+
+Integration: `CONTEXTFUL_CONSOLE_MEMORY_SESSION_CLAIM` names a stable signed claim. Exchange maps `sub` to `on_behalf_of`, that claim to `task`, and grants evidence/claims read plus claims write. Missing mappings, tables or evidence suppress landing. Subject-keyed recall admits broad claims-table readers; the console filters its exact actor/session scope before model input.
 
 ## Memory writes validate or dead-letter, and outcomes settle under their source
 
@@ -165,3 +182,48 @@ Consequences: removing a credential never needs a rewrite across replicas, becau
 
 Consequences: the place dimension replicates, reads at a vantage and falls under enforcement like any row; metric answers land as rows computed outside.
 Revisit: a deployment declares artificial parent levels to approximate a radius; closure materialization dominates the dimension's build.
+
+## Each statement owns its deadline and serialized response budget
+
+Caller, grant and table limits select the least duration and byte ceilings. An absent limit imposes none. The read face interrupts the timed-out statement's own engine connection; another statement in the process keeps running. Byte accounting includes the response envelope and cut metadata, and admits only whole rows. A response whose first row cannot fit refuses rather than looking empty.
+
+| Option | Lost on | Cost |
+| --- | --- | --- |
+| Per-connection interrupt and serialized row probes *(chosen)* | — | Each bounded statement needs a deadline watcher; byte-bounded reads serialize candidate rows before delivery. |
+| Kill the serving process at a deadline | Isolation | Other statements and pooled sessions die with the timed-out one. |
+| Measure elapsed time and response bytes after execution | Resource ceiling | Expensive work and oversized responses complete before a refusal. |
+
+Consequences: a caller distinguishes a deadline refusal from a whole-row byte cut; neither returns a partial row or reports success for an oversized first row.
+
+## Memory vocabulary and schedules are explicit
+
+The five reserved relations cover evidence, contradiction, succession, subject and origin without assigning deployment-specific meanings. A declaration extends the vocabulary; the rename verb rewrites stored edges before the old name leaves the manifest. Synthesis runs when invoked unless the deployment supplies a schedule for that shape. A schedule does not alter the pass cursor.
+
+| Option | Lost on | Cost |
+| --- | --- | --- |
+| Small core, declared extensions and operator-triggered default *(chosen)* | — | A deployment maintains migrations and schedules for its own relation types. |
+| Open-ended relation strings | Validation | A typo becomes an edge type that no other consumer recognizes. |
+| One global schedule | Workload fit | Shapes with different source rates either lag or spend idle model calls. |
+| Automatic pass on every commit | Cost | A bulk landing launches repeated extraction before its source is complete. |
+
+## Memory confidence and retention separate history from ranking
+
+The source's emitted confidence is uncalibrated until a per-shape-and-predicate isotonic map improves held-out Brier score on settled outcomes. Reports expose sample count, Brier score, expected calibration error and that held-out score. A shape may opt into ranking decay with a declared half-life; recorded claims keep their validity until expiry or erasure. A stale citation stays gated, and a newly committed source row is the only automatic synthesis trigger. Equal-instant unscoped contradictions enter the dead-letter table without silently retiring either claim. An earlier direct observation keeps the existing out-of-order refusal.
+
+| Option | Lost on | Cost |
+| --- | --- | --- |
+| Validated calibration, hard history and explicit decay *(chosen)* | — | Sparse shape-and-predicate groups remain uncalibrated; conflicts need resolution. |
+| Treat model confidence as comparable | Calibration | Two model outputs with the same number can have different outcome frequencies. |
+| Decay validity intervals by default | History | A later rank policy erases what the workspace once concluded. |
+| Resynthesize each stale read | Read latency | A query can launch an unbounded model job and change the source cursor. |
+
+## Memory reads expose use and resolve ownership from enforced rows
+
+The request ledger records returned claim ids under the caller and frontier. Ownership answers include every visible attached principal, ordered by attachment time and id. An external graph engine is a derived index; the store's enforced rows remain the answer source.
+
+| Option | Lost on | Cost |
+| --- | --- | --- |
+| Ledger use, complete ownership and store-backed answers *(chosen)* | — | Claim-id logs consume storage; ownership answers can grow with attachments. |
+| Infer usage from citations | Observation | A claim can be read many times without another claim citing it. |
+| Return the newest owner only | Completeness | Joint ownership silently loses every older live attachment. |
+| Serve directly from a graph backend | Enforcement | Its grant, mask, zone and frontier rules become a second implementation. |

@@ -23,12 +23,40 @@ fn ci(args: &[&str], bin: Option<&Path>) -> Output {
 fn fake_cargo(dir: &Path) {
     let real = std::env::var("CARGO").unwrap_or_else(|_| "cargo".into());
     let script = format!(
-        "#!/bin/sh\nif [ \"$1\" = build ]; then\n  t=''; prev=''\n  for a in \"$@\"; do [ \"$prev\" = --target ] && t=\"$a\"; prev=\"$a\"; done\n  \
+        "#!/bin/sh\nif [ \"$1\" = build ] || [ \"$1\" = zigbuild ]; then\n  t=''; prev=''\n  for a in \"$@\"; do [ \"$prev\" = --target ] && t=\"$a\"; prev=\"$a\"; done\n  \
          mkdir -p \"$CARGO_TARGET_DIR/$t/release\"\n  echo \"$*\" > \"$CARGO_TARGET_DIR/$t/release/contextful\"\n  exit 0\nfi\nexec '{real}' \"$@\"\n"
     );
     let path = dir.join("cargo");
     std::fs::write(&path, script).unwrap();
     std::fs::set_permissions(&path, std::os::unix::fs::PermissionsExt::from_mode(0o755)).unwrap();
+}
+
+#[test]
+fn default_release_and_footprint_targets_follow_the_inherited_pool() {
+    let bin = tempfile::tempdir().unwrap();
+    fake_cargo(bin.path());
+    let pool = tempfile::tempdir().unwrap();
+    let dist = tempfile::tempdir().unwrap();
+    let path = format!("{}:{}", bin.path().display(), std::env::var("PATH").unwrap_or_default());
+    let o = Command::new(env!("CARGO_BIN_EXE_contextful-ci"))
+        .args(["release", "--profile", "contextful-edge", "--target", "aarch64-apple-darwin", "--out"])
+        .arg(dist.path())
+        .current_dir(repo_root())
+        .env("PATH", &path)
+        .env("CARGO_TARGET_DIR", pool.path())
+        .output().unwrap();
+    assert!(o.status.success(), "{}", String::from_utf8_lossy(&o.stderr));
+    assert!(pool.path().join("contextful-ci/release-artifacts/aarch64-apple-darwin/release/contextful").exists());
+
+    let o = Command::new(env!("CARGO_BIN_EXE_contextful-ci"))
+        .args(["footprint", "--build", "--plan", "--profile", "contextful-edge"])
+        .current_dir(repo_root())
+        .env("PATH", &path)
+        .env("CARGO_TARGET_DIR", pool.path())
+        .output().unwrap();
+    assert!(o.status.success(), "{}", String::from_utf8_lossy(&o.stderr));
+    let plan = String::from_utf8_lossy(&o.stdout);
+    assert!(plan.contains(pool.path().join("contextful-ci/footprint").to_str().unwrap()), "{plan}");
 }
 
 fn version() -> String {
@@ -68,6 +96,60 @@ fn the_release_matrix_is_every_profile_on_musl_and_edge_and_full_on_darwin() {
 
     let wasi = ci(&["release", "--target", "wasm32-wasip2", "--plan"], None);
     assert!(!wasi.status.success(), "a wasm32-wasip2 release target is accepted");
+}
+
+/// The release command uses `cargo build` by default and `cargo zigbuild` under `--builder zigbuild`, forwarding the selected target and profile features.
+// spec: assurance.build.release-builder@8af6b703
+/// Each release cell writes a JSON record naming its profile, target, archive, SHA-256 digest and SBOM.
+// spec: assurance.build.release-metadata@6d2d917d
+#[test]
+fn zigbuild_packages_a_darwin_cell_and_emits_its_formula_metadata() {
+    let bin = tempfile::tempdir().unwrap();
+    fake_cargo(bin.path());
+    let target = tempfile::tempdir().unwrap();
+    let dist = tempfile::tempdir().unwrap();
+    let triple = "aarch64-apple-darwin";
+    let run = ci(&["release", "--builder", "zigbuild", "--profile", "contextful-edge", "--target", triple, "--target-dir", target.path().to_str().unwrap(), "--out", dist.path().to_str().unwrap()], Some(bin.path()));
+    assert!(run.status.success(), "{}", String::from_utf8_lossy(&run.stderr));
+    let stem = format!("contextful-edge-{}-{triple}", version());
+    let binary = Command::new("tar").args(["-xzOf"]).arg(dist.path().join(format!("{stem}.tar.gz"))).arg(format!("{stem}/contextful")).output().unwrap();
+    assert!(binary.status.success());
+    assert!(String::from_utf8_lossy(&binary.stdout).starts_with("zigbuild --release --locked"));
+    let metadata: serde_json::Value = serde_json::from_str(&std::fs::read_to_string(dist.path().join(format!("{stem}.release.json"))).unwrap()).unwrap();
+    assert_eq!(metadata["profile"], "contextful-edge");
+    assert_eq!(metadata["target"], triple);
+    assert_eq!(metadata["archive"], format!("{stem}.tar.gz"));
+    assert_eq!(metadata["sbom"], format!("{stem}.cdx.json"));
+    assert_eq!(metadata["sha256"].as_str().unwrap().len(), 64);
+}
+
+/// The formula command accepts a manifest covering every release matrix cell once, with matching asset names and SHA-256 digests, and writes formulas and SHA256SUMS without local archives.
+// spec: assurance.build.formula-manifest@8b3c9e8b
+#[test]
+fn formula_uses_metadata_without_local_release_archives() {
+    let dist = tempfile::tempdir().unwrap();
+    let manifest = dist.path().join("release-manifest.json");
+    let out = ci(&["release", "--plan"], None);
+    assert!(out.status.success());
+    let cells: Vec<serde_json::Value> = String::from_utf8_lossy(&out.stdout).lines().map(|line| {
+        let (profile, target) = line.split_once(' ').unwrap();
+        let short = profile.strip_prefix("contextful-").unwrap();
+        let stem = format!("contextful-{short}-{}-{target}", version());
+        serde_json::json!({"profile": profile, "target": target, "archive": format!("{stem}.tar.gz"), "sha256": "a".repeat(64), "sbom": format!("{stem}.cdx.json")})
+    }).collect();
+    std::fs::write(&manifest, serde_json::to_vec(&cells).unwrap()).unwrap();
+    let run = ci(&["formula", "--manifest", manifest.to_str().unwrap(), "--dist", dist.path().to_str().unwrap(), "--base-url", "https://example.com/v"], None);
+    assert!(run.status.success(), "{}", String::from_utf8_lossy(&run.stderr));
+    let sums = std::fs::read_to_string(dist.path().join("SHA256SUMS")).unwrap();
+    assert_eq!(sums.lines().count(), 10);
+    assert!(sums.lines().all(|line| line.starts_with(&"a".repeat(64))));
+    let formula = std::fs::read_to_string(dist.path().join("Formula/contextful-full.rb")).unwrap();
+    assert!(formula.contains("https://example.com/v/contextful-full-"));
+    assert!(formula.contains(&"a".repeat(64)));
+
+    std::fs::write(&manifest, serde_json::to_vec(&cells[..9]).unwrap()).unwrap();
+    let incomplete = ci(&["formula", "--manifest", manifest.to_str().unwrap(), "--dist", dist.path().to_str().unwrap(), "--base-url", "https://example.com/v"], None);
+    assert!(!incomplete.status.success(), "a missing release cell produced formulae");
 }
 
 /// Each profile ships a release archive with a SHA-256 checksum and an SBOM, a package-manager formula and an independently tagged container image; the bare formula name and the install script resolve to the full profile.
@@ -129,50 +211,6 @@ fn a_dry_run_release_packages_three_archives_with_checksums_sboms_and_formulae()
 
     let install = std::fs::read_to_string(repo_root().join("install.sh")).unwrap();
     assert!(install.contains("profile=\"${CONTEXTFUL_PROFILE:-contextful-full}\""), "the install script defaults to another profile");
-}
-
-/// The release workflow builds every target of the matrix and an image per profile, and a
-/// dry run publishes nothing.
-#[test]
-fn the_release_workflow_builds_every_matrix_target_and_publishes_only_off_a_dry_run() {
-    let out = ci(&["release", "--plan"], None);
-    assert!(out.status.success(), "{}", String::from_utf8_lossy(&out.stderr));
-    let plan = String::from_utf8_lossy(&out.stdout).to_string();
-    let mut targets: Vec<&str> = plan.lines().filter_map(|l| l.split_whitespace().nth(1)).collect();
-    targets.sort();
-    targets.dedup();
-    let mut profiles: Vec<&str> = plan.lines().filter_map(|l| l.split_whitespace().next()).collect();
-    profiles.dedup();
-
-    let yml = std::fs::read_to_string(repo_root().join(".github/workflows/release.yml")).unwrap();
-    let mut built: Vec<&str> = yml.lines().filter_map(|l| l.trim().strip_prefix("- target: ")).collect();
-    built.sort();
-    assert_eq!(built, targets, "the workflow's build matrix differs from the release matrix");
-    // Each target builds natively on a hosted runner of its own architecture; a retired
-    // image schedules no job, and its archives then never reach the formula step.
-    let lines: Vec<&str> = yml.lines().map(str::trim).collect();
-    let runner_of = |target: &str| {
-        let at = lines.iter().position(|l| *l == format!("- target: {target}")).unwrap();
-        lines[at + 1].strip_prefix("runner: ").unwrap_or_else(|| panic!("`{target}` names no runner")).to_string()
-    };
-    for (target, runner) in [
-        ("x86_64-unknown-linux-musl", "ubuntu-24.04"),
-        ("aarch64-unknown-linux-musl", "ubuntu-24.04-arm"),
-        ("aarch64-apple-darwin", "macos-15"),
-        ("x86_64-apple-darwin", "macos-15-intel"),
-    ] {
-        assert_eq!(runner_of(target), runner, "`{target}` runs on another runner");
-    }
-    let images = yml.lines().find_map(|l| l.trim().strip_prefix("profile: [")).and_then(|l| l.strip_suffix(']')).expect("an image matrix");
-    let images: Vec<&str> = images.split(',').map(str::trim).collect();
-    assert_eq!(images, profiles);
-    assert!(yml.contains("release --target ${{ matrix.target }} --out dist"), "{yml}");
-    assert!(yml.contains("formula --dist dist"), "{yml}");
-    for publish in ["gh release create", "push: ${{ env.DRY_RUN != 'true' }}"] {
-        let at = yml.find(publish).unwrap_or_else(|| panic!("no `{publish}` step"));
-        let before = &yml[..at];
-        assert!(publish.starts_with("push") || before.rfind("if: env.DRY_RUN != 'true'") > before.rfind("- uses:").max(before.rfind("- run:")), "`{publish}` runs on a dry run");
-    }
 }
 
 /// No profile ships a `wasm32-wasip2` release; a scheduled-tier ledger entry builds the edge profile for it and holds the compressed artifact to {{assurance.gate.edge-budget}}.

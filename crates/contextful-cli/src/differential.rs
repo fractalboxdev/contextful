@@ -510,7 +510,7 @@ fn gen_verify(rng: &mut Rng, pools: &Pools) -> Value {
             if tables.is_empty() {
                 tables.push(TablePattern::parse("research/*").expect("a fixed pattern parses"));
             }
-            Grant { actions, tables, tenant: None, aggregate: None, templates: None, max_rows: None }
+            Grant { actions, tables, tenant: None, aggregate: None, templates: None, max_rows: None, max_duration_ms: None, max_response_bytes: None }
         })
         .collect();
     let lifetime = *rng.pick(pools.lifetimes);
@@ -529,7 +529,7 @@ fn gen_verify(rng: &mut Rng, pools: &Pools) -> Value {
         expires_at: At::from_unix_secs(expires).expect("a fixed instant"),
         lifetime_secs: lifetime,
     };
-    let claims = MintClaims { confirmation: rng.chance(10).then(|| "holder-thumbprint".to_string()), epoch: 0 };
+    let claims = MintClaims { confirmation: rng.chance(10).then(|| "holder-thumbprint".to_string()), epoch: 0, ..MintClaims::default() };
     let mut seed = [0u8; 32];
     for chunk in seed.chunks_mut(8) {
         chunk.copy_from_slice(&rng.next().to_le_bytes());

@@ -13,6 +13,165 @@ fn restriction(r: &Response) -> &Value {
     r.blocks.get("contextful.restriction").unwrap_or_else(|| panic!("no restriction block in {:?}", r.blocks))
 }
 
+fn expensive_statement() -> String {
+    let tables = (0..14).map(|i| format!("\"research/notes\" t{i}")).collect::<Vec<_>>().join(", ");
+    format!("SELECT sum(random()) FROM {tables}")
+}
+
+// spec: read.respond.duration-ceiling@cfa152d7
+// spec: authority.grant.duration-ceiling@e1d352e3
+#[test]
+fn a_duration_ceiling_interrupts_one_statement_and_the_next_read_answers() {
+    let r = Reads::new();
+    let s = r.session(&["research/notes"], None, None);
+    let started = std::time::Instant::now();
+    let err = r.face.query(&s, &expensive_statement(), ReadOptions { max_duration_ms: Some(50), ..ReadOptions::default() }).unwrap_err();
+    // The 30-second guard catches stalled cancellation while shared test workers may delay a 50 ms deadline.
+    assert!(started.elapsed() < std::time::Duration::from_secs(30), "{err}");
+    let message = err.to_string();
+    assert!(message.contains("ReadDurationExceeded") && message.contains("50") && message.contains("request"), "{message}");
+    let next = r.query(&s, "SELECT note_id FROM \"research/notes\" ORDER BY note_id").unwrap();
+    assert_eq!(next.rows.len(), 3);
+}
+
+// spec: read.register.budget-advertisement@1f7e2056
+#[test]
+fn a_table_deadline_wins_and_describe_advertises_only_declared_budgets() {
+    let manifest = MANIFEST.replace("max_rows = 3", "max_rows = 3\nmax_duration_ms = 25\nmax_response_bytes = 8192");
+    let r = Reads::with_manifest(&manifest);
+    let s = r.session(&["research/*"], None, None);
+    let notes = r.face.describe(&s, Some("research/notes"), Bounds::default()).unwrap();
+    assert_eq!(notes["limits"]["max_duration_ms"], json!(25));
+    assert_eq!(notes["limits"]["max_response_bytes"], json!(8192));
+    let vendor = r.face.describe(&s, Some("research/vendor"), Bounds::default()).unwrap();
+    assert!(vendor.get("limits").is_none_or(|limits| limits.get("max_duration_ms").is_none()));
+    assert!(vendor.get("limits").is_none_or(|limits| limits.get("max_response_bytes").is_none()));
+    let err = r.face.query(&s, &expensive_statement(), ReadOptions { max_duration_ms: Some(200), ..ReadOptions::default() }).unwrap_err();
+    let message = err.to_string();
+    assert!(message.contains("ReadDurationExceeded") && message.contains("25") && message.contains("table"), "{message}");
+}
+
+// spec: authority.grant.byte-ceiling@af2c0696
+#[test]
+fn a_grant_budget_wins_over_request_and_table_budgets() {
+    let manifest = MANIFEST.replace("max_rows = 3", "max_rows = 3\nmax_duration_ms = 100\nmax_response_bytes = 8192");
+    let r = Reads::with_manifest(&manifest);
+    let mut grant = read(&["research/notes"], None);
+    grant.max_duration_ms = Some(25);
+    grant.max_response_bytes = Some(500);
+    let s = r.session_for(loop_subject("agent://budget"), vec![grant], None);
+    let err = r.face.query(&s, &expensive_statement(), ReadOptions { max_duration_ms: Some(200), ..ReadOptions::default() }).unwrap_err();
+    let message = err.to_string();
+    assert!(message.contains("ReadDurationExceeded") && message.contains("25") && message.contains("grant"), "{message}");
+    let byte_manifest = MANIFEST.replace("max_rows = 3", "max_rows = 3\nmax_response_bytes = 8192");
+    let r = Reads::with_manifest(&byte_manifest);
+    let sql = "SELECT repeat(title, 20) FROM \"research/notes\" ORDER BY note_id";
+    let unbounded = r.session(&["research/notes"], None, None);
+    let mut one = r.query(&unbounded, sql).unwrap();
+    one.rows.truncate(1);
+    one.truncated = true;
+    one.blocks.insert("contextful.truncation".into(), json!({ "by": "bytes", "ceiling": 999999, "source": "grant" }));
+    let bytes = serde_json::to_vec(&one).unwrap().len() as u64;
+    let mut byte_grant = read(&["research/notes"], None);
+    byte_grant.max_response_bytes = Some(bytes);
+    let byte_session = r.session_for(loop_subject("agent://budget"), vec![byte_grant], None);
+    let cut = r.face.query(&byte_session, sql, ReadOptions { max_response_bytes: Some(bytes), ..ReadOptions::default() }).unwrap();
+    assert_eq!(cut.to_json()["contextful.truncation"], json!({ "by": "bytes", "ceiling": bytes, "source": "grant" }));
+    assert!(serde_json::to_vec(&cut).unwrap().len() as u64 <= bytes);
+}
+
+/// A grant over another table does not constrain a read its own action and pattern cannot authorize.
+#[test]
+fn unrelated_read_grants_do_not_set_row_duration_or_byte_ceilings() {
+    let r = Reads::new();
+    let vendor = read(&["research/vendor"], None);
+    let sql = r#"SELECT item_id FROM "research/vendor""#;
+    let answer = |unrelated| {
+        let session = r.session_for(loop_subject("agent://budget"), vec![unrelated, vendor.clone()], Some("public-cloud:us-east-1"));
+        column(&r.query(&session, sql).unwrap(), "item_id")
+    };
+
+    let mut row_grant = read(&["research/visits"], None);
+    row_grant.max_rows = Some(0);
+    assert_eq!(answer(row_grant), [json!("v1")]);
+
+    let mut duration_grant = read(&["research/visits"], None);
+    duration_grant.max_duration_ms = Some(0);
+    assert_eq!(answer(duration_grant), [json!("v1")]);
+
+    let mut byte_grant = read(&["research/visits"], None);
+    byte_grant.max_response_bytes = Some(1);
+    assert_eq!(answer(byte_grant), [json!("v1")]);
+}
+
+// spec: read.respond.byte-ceiling@72418c75
+// spec: read.respond.truncation-cause@38517ea2
+#[test]
+fn a_byte_ceiling_preserves_whole_rows_and_names_the_cut() {
+    let r = Reads::new();
+    let s = r.session(&["research/notes"], None, None);
+    let sql = "SELECT repeat(title, 20) AS body FROM \"research/notes\" ORDER BY note_id";
+    let full = r.query(&s, sql).unwrap();
+    let mut one = full.clone();
+    one.rows.truncate(1);
+    one.truncated = true;
+    one.blocks.insert("contextful.truncation".into(), json!({ "by": "bytes", "ceiling": 999999, "source": "request" }));
+    let ceiling = serde_json::to_vec(&one).unwrap().len() as u64;
+    let cut = r.face.query(&s, sql, ReadOptions { max_response_bytes: Some(ceiling), ..ReadOptions::default() }).unwrap();
+    assert_eq!(cut.rows.len(), 1);
+    assert!(cut.truncated);
+    assert_eq!(cut.to_json()["contextful.truncation"], json!({ "by": "bytes", "ceiling": ceiling, "source": "request" }));
+    assert!(serde_json::to_vec(&cut).unwrap().len() as u64 <= ceiling);
+
+    let mut zero = one;
+    zero.rows.clear();
+    let too_small = serde_json::to_vec(&zero).unwrap().len() as u64 + 1;
+    let err = r.face.query(&s, sql, ReadOptions { max_response_bytes: Some(too_small), ..ReadOptions::default() }).unwrap_err();
+    assert!(err.to_string().contains("ReadResponseTooLarge"), "{err}");
+
+    let row_cut = r.face.query(&s, sql, ReadOptions { limit: Some(1), ..ReadOptions::default() }).unwrap();
+    assert_eq!(row_cut.to_json()["contextful.truncation"], json!({ "by": "rows", "ceiling": 1, "source": "request" }));
+}
+
+// spec: read.respond.truncation-tie@9027666a
+#[test]
+fn a_byte_cut_wins_when_a_row_ceiling_cuts_the_same_next_row() {
+    let r = Reads::new();
+    let s = r.session(&["research/notes"], None, None);
+    let sql = "SELECT repeat(title, 20) FROM \"research/notes\" ORDER BY note_id";
+    let mut one = r.query(&s, sql).unwrap();
+    one.rows.truncate(1);
+    one.truncated = true;
+    one.probe_row = None;
+    one.blocks.insert("contextful.truncation".into(), json!({ "by": "bytes", "ceiling": 999999, "source": "request" }));
+    let ceiling = serde_json::to_vec(&one).unwrap().len() as u64;
+    let cut = r.face.query(&s, sql, ReadOptions { limit: Some(1), max_response_bytes: Some(ceiling), ..ReadOptions::default() }).unwrap();
+    assert_eq!(cut.rows.len(), 1);
+    assert_eq!(cut.to_json()["contextful.truncation"], json!({ "by": "bytes", "ceiling": ceiling, "source": "request" }));
+    let mut grant = read(&["research/notes"], None);
+    grant.max_rows = Some(1);
+    let grant_session = r.session_for(loop_subject("agent://row-tie"), vec![grant], None);
+    let row_cut = r.face.query(&grant_session, sql, ReadOptions { limit: Some(1), ..ReadOptions::default() }).unwrap();
+    assert_eq!(row_cut.to_json()["contextful.truncation"], json!({ "by": "rows", "ceiling": 1, "source": "grant" }));
+}
+
+#[test]
+fn a_byte_cut_reports_the_delivered_row_count_in_internals() {
+    let r = Reads::new();
+    let s = r.session(&["research/notes"], None, None);
+    let sql = "SELECT repeat(title, 20) FROM \"research/notes\" ORDER BY note_id";
+    let mut one = r.face.query(&s, sql, ReadOptions { internals: true, ..ReadOptions::default() }).unwrap();
+    one.rows.truncate(1);
+    one.truncated = true;
+    one.blocks["contextful.internals"]["row_count"] = json!(1);
+    one.blocks["contextful.internals"]["elapsed_ms"] = json!(999999999);
+    one.blocks.insert("contextful.truncation".into(), json!({ "by": "bytes", "ceiling": 999999, "source": "request" }));
+    let ceiling = serde_json::to_vec(&one).unwrap().len() as u64;
+    let cut = r.face.query(&s, sql, ReadOptions { max_response_bytes: Some(ceiling), internals: true, ..ReadOptions::default() }).unwrap();
+    assert_eq!(cut.rows.len(), 1);
+    assert_eq!(cut.to_json()["contextful.internals"]["row_count"], json!(1));
+}
+
 /// The restriction block carries the session zone, the incognito flag and one entry per touched relation the zone excludes or column-masks: `table`, `excluded`, `rows_dropped` and `columns_masked`. A read withholding no touched relation omits the block.
 // spec: read.respond.restriction-block@ccb9c983
 #[test]
@@ -100,6 +259,19 @@ fn describe_reports_the_session_zone_and_each_tables_admission() {
     let public = r.session(&["research/*"], None, Some("public-cloud:us-east-1"));
     let vendor = r.face.describe(&public, Some("research/vendor"), Bounds::default()).unwrap();
     assert_eq!((vendor["session_zone"].clone(), vendor["zone_admitted"].clone()), (json!("public-cloud:us-east-1"), json!(true)));
+}
+
+#[test]
+fn describe_marks_declared_memory_tables_regardless_of_name() {
+    let manifest = format!("{MANIFEST}\n[[table]]\nname = \"research/insights\"\nshape = \"memory_facts\"\ncolumns = [\"claim_id\", \"subject\", \"predicate\", \"object\", \"scope\", \"tier\", \"confidence\", \"valid_from\", \"valid_to\", \"evidence\", \"superseded_by\", \"grant_id\", \"agent\"]\n");
+    let r = Reads::with_manifest(&manifest);
+    let s = r.session(&["research/*"], None, None);
+    let listing = r.face.describe(&s, None, Bounds::default()).unwrap();
+    let tables = listing["tables"].as_array().unwrap();
+    let insights = tables.iter().find(|item| item["table"] == "research/insights").unwrap();
+    assert_eq!(insights["kind"], json!("memory"));
+    let notes = tables.iter().find(|item| item["table"] == "research/notes").unwrap();
+    assert_eq!(notes["kind"], json!("data"));
 }
 
 /// An arm whose table the session's zone excludes contributes no candidate, and the ranked response names that table in {{read.respond.restriction-block}}.

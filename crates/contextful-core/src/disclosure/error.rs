@@ -53,6 +53,18 @@ impl VisibilityError {
 
 #[derive(Debug, Clone, PartialEq, Eq, thiserror::Error)]
 pub enum DisclosureError {
+    /// A published aggregate-shaped model has no policy or opt-out. (`disclosure.set-mode.policy-absent`)
+    #[error("DisclosurePolicyAbsent: {0}")]
+    PolicyAbsent(String),
+    /// A published model's local statement file does not read. (`disclosure.set-mode.model-unreadable`)
+    #[error("DisclosureModelUnreadable: {0}")]
+    ModelUnreadable(String),
+    /// A template declaration holds more than one statement. (`disclosure.template.single-statement`)
+    #[error("DisclosureTemplateMultiStatement: {0}")]
+    TemplateMultiStatement(String),
+    /// A grouping allowlist is empty or contains a non-column name. (`disclosure.suppress.grouping-allowlist`)
+    #[error("DisclosureGroupingAllowlistEmpty: {0}")]
+    GroupingAllowlistEmpty(String),
     /// A group under a share constraint arrived without per-contributor masses. (`disclosure.suppress.dominance-unverifiable`)
     #[error("DisclosureDominanceUnverifiable: {0}")]
     DominanceUnverifiable(String),
@@ -71,6 +83,10 @@ impl DisclosureError {
     /// The error identifier.
     pub fn identifier(&self) -> &'static str {
         match self {
+            DisclosureError::PolicyAbsent(_) => "DisclosurePolicyAbsent",
+            DisclosureError::ModelUnreadable(_) => "DisclosureModelUnreadable",
+            DisclosureError::TemplateMultiStatement(_) => "DisclosureTemplateMultiStatement",
+            DisclosureError::GroupingAllowlistEmpty(_) => "DisclosureGroupingAllowlistEmpty",
             DisclosureError::DominanceUnverifiable(_) => "DisclosureDominanceUnverifiable",
             DisclosureError::MinGroupSizeBelowFloor(_) => "DisclosureMinGroupSizeBelowFloor",
             DisclosureError::PolicySuppressesNothing(_) => "DisclosurePolicySuppressesNothing",

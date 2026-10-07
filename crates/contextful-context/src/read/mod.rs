@@ -2,6 +2,7 @@
 //! and templates, descriptions and file previews, and ranked retrieval.
 
 pub mod audit;
+mod deadline;
 pub(crate) mod engine;
 pub mod evidence;
 pub mod face;
@@ -12,6 +13,7 @@ pub mod pool;
 pub mod recall;
 pub mod results;
 pub mod retrieve;
+mod shape;
 
 pub use audit::{audit_reads, AUDIT_READS};
 pub use engine::ENGINE;
@@ -21,3 +23,4 @@ pub use pool::{PoolCounts, SessionPool};
 pub use recall::RecallRequest;
 pub use results::{ResultCache, ResultCounts};
 pub use retrieve::RetrieveRequest;
+pub use shape::aggregate_shape;

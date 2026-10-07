@@ -4,15 +4,146 @@ use crate::support::{at, bucket, node, Script, Scripted};
 use contextful_context::fold::fold;
 use contextful_core::store::declare::TableDecl;
 use contextful_core::store::fold::FoldOutcome;
-use contextful_core::store::object::ObjectStore;
+use contextful_core::store::object::{Condition, ObjectStore};
+use contextful_core::store::sync::{BucketManifest, Entry};
+use contextful_core::run::journal::sha256_hex;
 use contextful_core::store::StoreError;
 use contextful_sync::{PullScope, SyncError};
 use serde_json::json;
 use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::Arc;
+use contextful_core::issue::SignatureAlgorithm;
+use contextful_core::surface::control::{receipt_file, snapshot_file, POINTER_FILE as CONTROL_POINTER};
+use contextful_policy::control_receipt::ControlReceipt;
+use contextful_policy::issue::SeedSigner;
 
 const NOW: &str = "2030-01-01T01:00:00Z";
 const PART_A: &str = "team/research/tables/filings/data/runs/run-1/ingest-a/part-00000.parquet";
+
+/// A cold pull stages the listed control ancestry and leaves the local applied pointer absent.
+// spec: store.pull.control-head@26468ef2
+#[test]
+fn a_cold_pull_stages_only_the_reachable_control_head_without_applying_it() {
+    let dir = tempfile::tempdir().unwrap();
+    let b = bucket(dir.path());
+    let writer = node("ingest-a", b.clone(), "");
+    let control = writer.syncer.control_dir.as_ref().unwrap();
+    std::fs::create_dir_all(control).unwrap();
+    let signer = SeedSigner::generate(SignatureAlgorithm::Ed25519);
+    let first = ControlReceipt::sign("research", 1, None, b"first", &signer).unwrap();
+    let orphan = ControlReceipt::sign("research", 2, Some(&first.digest()), b"orphan", &signer).unwrap();
+    let head = ControlReceipt::sign("research", 3, Some(&first.digest()), b"head", &signer).unwrap();
+    for (version, snapshot, receipt) in [(1, b"first".as_slice(), &first), (2, b"orphan".as_slice(), &orphan), (3, b"head".as_slice(), &head)] {
+        std::fs::write(control.join(snapshot_file(version)), snapshot).unwrap();
+        std::fs::write(control.join(receipt_file(version)), serde_json::to_vec(receipt).unwrap()).unwrap();
+    }
+    std::fs::write(control.join(CONTROL_POINTER), "3\n").unwrap();
+    writer.syncer.push(at(NOW)).unwrap();
+    let mut manifest: BucketManifest = serde_json::from_slice(&b.get("team/manifest.json").unwrap().unwrap().0).unwrap();
+    for (name, bytes) in [(snapshot_file(2), b"orphan".to_vec()), (receipt_file(2), serde_json::to_vec(&orphan).unwrap())] {
+        let key = format!("research/control/{name}");
+        b.put(&format!("team/{key}"), &bytes, Condition::None).unwrap();
+        manifest.entries.insert(key, Entry { sha256: sha256_hex(&bytes), size: bytes.len() as u64, owner: String::new() });
+    }
+    b.put("team/manifest.json", &serde_json::to_vec(&manifest).unwrap(), Condition::None).unwrap();
+
+    let cold = node("ingest-b", b, "");
+    cold.syncer.pull(&PullScope::default()).unwrap();
+    let staged = cold.root().join("control");
+    let pulled: contextful_core::store::sync::ControlHead = serde_json::from_slice(&std::fs::read(staged.join("head.json")).unwrap()).unwrap();
+    assert_eq!(pulled.receipt_sha256, head.digest());
+    for version in [1, 3] {
+        assert!(staged.join(snapshot_file(version)).exists());
+        assert!(staged.join(receipt_file(version)).exists());
+    }
+    assert!(!staged.join(snapshot_file(2)).exists());
+    assert!(!staged.join(receipt_file(2)).exists());
+    assert!(!cold.syncer.control_dir.as_ref().unwrap().join(CONTROL_POINTER).exists());
+}
+
+#[test]
+fn a_head_version_without_its_receipt_never_stages_an_older_receipt_as_head() {
+    let dir = tempfile::tempdir().unwrap();
+    let b = bucket(dir.path());
+    let writer = node("ingest-a", b.clone(), "");
+    let control = writer.syncer.control_dir.as_ref().unwrap();
+    std::fs::create_dir_all(control).unwrap();
+    let signer = SeedSigner::generate(SignatureAlgorithm::Ed25519);
+    let first = ControlReceipt::sign("research", 1, None, b"first", &signer).unwrap();
+    let second = ControlReceipt::sign("research", 2, Some(&first.digest()), b"second", &signer).unwrap();
+    for (version, snapshot, receipt) in [(1, b"first".as_slice(), &first), (2, b"second".as_slice(), &second)] {
+        std::fs::write(control.join(snapshot_file(version)), snapshot).unwrap();
+        std::fs::write(control.join(receipt_file(version)), serde_json::to_vec(receipt).unwrap()).unwrap();
+    }
+    std::fs::write(control.join(CONTROL_POINTER), "2\n").unwrap();
+    writer.syncer.push(at(NOW)).unwrap();
+    let mut manifest: BucketManifest = serde_json::from_slice(&b.get("team/manifest.json").unwrap().unwrap().0).unwrap();
+    manifest.control_heads.get_mut("research").unwrap().version = 3;
+    b.put("team/manifest.json", &serde_json::to_vec(&manifest).unwrap(), Condition::None).unwrap();
+
+    let cold = node("ingest-b", b, "");
+    assert!(matches!(cold.syncer.pull(&PullScope::default()), Err(SyncError::Store(StoreError::SyncPullDidNotConverge(_)))));
+    assert!(!cold.root().join("control/head.json").exists());
+}
+
+#[test]
+fn a_sparse_control_chain_reads_listed_receipts_without_walking_version_numbers() {
+    let dir = tempfile::tempdir().unwrap();
+    let b = bucket(dir.path());
+    let writer = node("ingest-a", b.clone(), "");
+    let control = writer.syncer.control_dir.as_ref().unwrap();
+    std::fs::create_dir_all(control).unwrap();
+    let signer = SeedSigner::generate(SignatureAlgorithm::Ed25519);
+    let first = ControlReceipt::sign("research", 1, None, b"first", &signer).unwrap();
+    let last = ControlReceipt::sign("research", u64::MAX, Some(&first.digest()), b"last", &signer).unwrap();
+    for (version, snapshot, receipt) in [(1, b"first".as_slice(), &first), (u64::MAX, b"last".as_slice(), &last)] {
+        std::fs::write(control.join(snapshot_file(version)), snapshot).unwrap();
+        std::fs::write(control.join(receipt_file(version)), serde_json::to_vec(receipt).unwrap()).unwrap();
+    }
+    std::fs::write(control.join(CONTROL_POINTER), format!("{}\n", u64::MAX)).unwrap();
+    writer.syncer.push(at(NOW)).unwrap();
+    let cold = node("ingest-b", b, "");
+    cold.syncer.pull(&PullScope::default()).unwrap();
+    let head: contextful_core::store::sync::ControlHead = serde_json::from_slice(&std::fs::read(cold.root().join("control/head.json")).unwrap()).unwrap();
+    assert_eq!(head.version, u64::MAX);
+    assert_eq!(head.receipt_sha256, last.digest());
+}
+
+#[test]
+fn a_sparse_control_ancestry_uses_listed_receipts_instead_of_the_version_range() {
+    let (completed, result) = std::sync::mpsc::channel();
+    std::thread::spawn(move || {
+        let dir = tempfile::tempdir().unwrap();
+        let b = bucket(dir.path());
+        let writer = node("ingest-a", b.clone(), "");
+        let control = writer.syncer.control_dir.as_ref().unwrap();
+        std::fs::create_dir_all(control).unwrap();
+        let signer = SeedSigner::generate(SignatureAlgorithm::Ed25519);
+        let first = ControlReceipt::sign("research", 1, None, b"first", &signer).unwrap();
+        std::fs::write(control.join(snapshot_file(1)), b"first").unwrap();
+        std::fs::write(control.join(receipt_file(1)), serde_json::to_vec(&first).unwrap()).unwrap();
+        std::fs::write(control.join(CONTROL_POINTER), "1\n").unwrap();
+        writer.syncer.push(at(NOW)).unwrap();
+        let mut manifest: BucketManifest = serde_json::from_slice(&b.get("team/manifest.json").unwrap().unwrap().0).unwrap();
+        let version = u64::MAX;
+        let head = ControlReceipt::sign("research", version, Some(&first.digest()), b"head", &signer).unwrap();
+        for (name, bytes) in [(snapshot_file(version), b"head".to_vec()), (receipt_file(version), serde_json::to_vec(&head).unwrap())] {
+            let key = format!("research/control/{name}");
+            b.put(&format!("team/{key}"), &bytes, Condition::None).unwrap();
+            manifest.entries.insert(key, Entry { sha256: sha256_hex(&bytes), size: bytes.len() as u64, owner: String::new() });
+        }
+        manifest.control_heads.insert("research".into(), contextful_core::store::sync::ControlHead { version, receipt_sha256: head.digest() });
+        b.put("team/manifest.json", &serde_json::to_vec(&manifest).unwrap(), Condition::None).unwrap();
+        let cold = node("ingest-b", b, "");
+        cold.syncer.pull(&PullScope::default()).unwrap();
+        let staged = cold.root().join("control");
+        assert!(staged.join(receipt_file(1)).exists());
+        assert!(staged.join(receipt_file(version)).exists());
+        assert!(!cold.syncer.control_dir.as_ref().unwrap().join(CONTROL_POINTER).exists());
+        completed.send(()).unwrap();
+    });
+    result.recv_timeout(std::time::Duration::from_secs(5)).expect("two listed receipts finish without traversing the numeric version gap");
+}
 
 fn files(n: &crate::support::Node) -> Vec<String> {
     let decl = TableDecl::named("filings");
@@ -28,6 +159,31 @@ fn pushed() -> (tempfile::TempDir, Arc<dyn ObjectStore>, crate::support::Node) {
     a.land("run-1", json!([{"id": 1, "title": "a"}]), "2030-01-01T00:00:00Z");
     a.syncer.push(at(NOW)).unwrap();
     (dir, b, a)
+}
+
+#[test]
+fn a_clone_keeps_the_store_uuid_and_an_independent_store_refuses_it() {
+    let dir = tempfile::tempdir().unwrap();
+    let b = bucket(dir.path());
+    let original = node("ingest-a", b.clone(), "");
+    let identity = "11111111-1111-4111-8111-111111111111\n";
+    std::fs::write(original.root().join("store-id"), identity).unwrap();
+    original.syncer.push(at(NOW)).unwrap();
+
+    let clone = node("ingest-b", b.clone(), "");
+    clone.syncer.pull(&PullScope::default()).unwrap();
+    assert_eq!(std::fs::read_to_string(clone.root().join("store-id")).unwrap(), identity);
+
+    let scoped = node("ingest-d", b.clone(), "");
+    scoped.syncer.pull(&PullScope { tables: ["filings".to_string()].into(), ..PullScope::default() }).unwrap();
+    assert_eq!(std::fs::read_to_string(scoped.root().join("store-id")).unwrap(), identity);
+
+    let independent = node("ingest-c", b, "");
+    let other = "22222222-2222-4222-8222-222222222222\n";
+    std::fs::write(independent.root().join("store-id"), other).unwrap();
+    let refused = independent.syncer.pull(&PullScope::default()).unwrap_err();
+    assert!(matches!(refused, SyncError::Store(StoreError::StoreIdentityConflict(_))), "{refused}");
+    assert_eq!(std::fs::read_to_string(independent.root().join("store-id")).unwrap(), other);
 }
 
 /// A downloaded object whose digest differs from its entry raises `SyncObjectDigestMismatch` and is discarded.

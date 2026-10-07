@@ -4,17 +4,20 @@
 
 use anyhow::{bail, Context, Result};
 use contextful_eval::ledger::{self, Ledger, Method, Tier, World};
-use contextful_eval::record::{self, MEASURE_DIR_VAR};
+use contextful_eval::record::{self, Record, MEASURE_DIR_VAR};
+use contextful_eval::trend::{self, Figure};
+use serde::{Deserialize, Serialize};
 use std::collections::{BTreeMap, BTreeSet};
+use std::io::BufRead;
 use std::path::{Path, PathBuf};
-use std::process::Command;
+use std::process::{Command, Stdio};
 use std::time::Instant;
 
 use crate::refuse;
 
-/// The evaluate stage's own target directory, under the workspace root, reclaimed once
-/// the stage passes (`assurance.build.target-dir-per-stage`).
-pub const EVALUATE_TARGET: &str = "target/evaluate";
+/// Records retain a workspace address across separate measure and report invocations,
+/// whose enclosing Cargo builds may acquire different pooled slots.
+const RECORDS_DIR: &str = "target/evaluate/records";
 const LOCK_FILE: &str = "spec/spec.lock.json";
 const PROBE_MANIFEST: &str = "tools/probe/Cargo.toml";
 
@@ -136,7 +139,7 @@ pub fn status(root: &Path, check: bool) -> Result<()> {
 }
 
 /// Run every entry of `tiers` whose method is known, each test in its package's
-/// integration binary built under `target/evaluate`, and hold each record to its target.
+/// integration binary built in the evaluate directory, and hold each record to its target.
 pub fn run(root: &Path, tiers: &[Tier]) -> Result<()> {
     measure(root, tiers)?.1
 }
@@ -145,31 +148,50 @@ pub fn run(root: &Path, tiers: &[Tier]) -> Result<()> {
 /// failed — a test that failed, a gate-tier record missing, reseeded or red — and the
 /// outcome, which carries the first failed test's exit ahead of the refusals.
 fn measure(root: &Path, tiers: &[Tier]) -> Result<(BTreeSet<String>, Result<()>)> {
+    let records = root.join(RECORDS_DIR);
+    let _ = std::fs::remove_dir_all(&records);
     let Some(l) = resolved(root)? else {
         eprintln!("measure: no {}; nothing to measure", ledger::LEDGER_FILE);
         return Ok((BTreeSet::new(), Ok(())));
     };
     let open = l.entry.values().filter(|e| matches!(e.method(), Some(Method::Issue(_)))).count();
-    let records = root.join(EVALUATE_TARGET).join("records");
-    let _ = std::fs::remove_dir_all(&records);
     std::fs::create_dir_all(&records)?;
     let (mut held, mut red, mut missing, mut reseeded) = (0usize, Vec::new(), Vec::new(), Vec::new());
     let (mut failed, mut exited) = (BTreeSet::new(), None);
+    let mut ran_tests = BTreeSet::new();
     let started = Instant::now();
     for tier in tiers {
         for (id, e) in l.runnable(*tier) {
             let at = Instant::now();
             match e.method() {
                 Some(Method::Test(t)) => {
-                    if let Err(err) = run_test(root, t, &records) {
-                        eprintln!("measure: {id} ({tier}) failed: {err}");
-                        failed.insert(id.clone());
-                        exited.get_or_insert(err);
-                        continue;
+                    if !ran_tests.contains(t) {
+                        if let Err(err) = run_test(root, t, &records) {
+                            eprintln!("measure: {id} ({tier}) failed: {err}");
+                            if *tier == Tier::Trend {
+                                let _ = std::fs::remove_file(record::path(&records, id));
+                            } else {
+                                failed.insert(id.clone());
+                                exited.get_or_insert(err);
+                            }
+                            continue;
+                        }
+                        ran_tests.insert(t.to_string());
                     }
                 }
                 Some(Method::Cases(c)) => bail!("`{id}`: the case-set method `{c}` has no runner in this tree"),
-                Some(Method::Probe(p)) => bail!("`{id}`: the probe method `{p}` has no runner in this tree"),
+                Some(Method::Probe(p)) => {
+                    if let Err(err) = run_probe(root, p, &records) {
+                        eprintln!("measure: {id} ({tier}) failed: {err}");
+                        if *tier == Tier::Trend {
+                            let _ = std::fs::remove_file(record::path(&records, id));
+                        } else {
+                            failed.insert(id.clone());
+                            exited.get_or_insert(err);
+                        }
+                        continue;
+                    }
+                }
                 _ => continue,
             }
             let secs = at.elapsed().as_secs_f64();
@@ -185,8 +207,12 @@ fn measure(root: &Path, tiers: &[Tier]) -> Result<(BTreeSet<String>, Result<()>)
                 Ok(r) if e.seed.is_some_and(|s| s != r.seed) => {
                     let declared = e.seed.unwrap_or_default();
                     eprintln!("MeasureSeedMismatch: `{id}` recorded seed {}, the ledger declares {declared} [{secs:.1} s]", r.seed);
-                    reseeded.push(id.clone());
-                    failed.insert(id.clone());
+                    if *tier == Tier::Trend {
+                        let _ = std::fs::remove_file(record::path(&records, id));
+                    } else {
+                        reseeded.push(id.clone());
+                        failed.insert(id.clone());
+                    }
                 }
                 Ok(r) => match e.target {
                     Some(t) if t.holds(r.value) => {
@@ -233,7 +259,7 @@ fn run_test(root: &Path, path: &str, records: &Path) -> Result<()> {
     let (package, name) = ledger::test_target(path).context("an unresolvable test path")?;
     let status = Command::new("cargo")
         .args(["test", "-q", "-p", &package, "--test", "integration", "--", "--exact", &name])
-        .env("CARGO_TARGET_DIR", root.join(EVALUATE_TARGET))
+        .env("CARGO_TARGET_DIR", crate::build_target(root, "evaluate"))
         .env(MEASURE_DIR_VAR, records)
         .current_dir(root)
         .status()?;
@@ -241,6 +267,221 @@ fn run_test(root: &Path, path: &str, records: &Path) -> Result<()> {
         return Err(crate::exited(format!("cargo test -p {package} --test integration -- --exact {name}"), status));
     }
     Ok(())
+}
+
+/// Run one probe binary in its own process, collecting records into `records`.
+fn run_probe(root: &Path, name: &str, records: &Path) -> Result<()> {
+    let status = Command::new("cargo")
+        .args(["run", "--locked", "-q", "--manifest-path", PROBE_MANIFEST, "--bin", name])
+        .env("CARGO_TARGET_DIR", crate::build_target(root, "evaluate"))
+        .env(MEASURE_DIR_VAR, records)
+        .current_dir(root)
+        .status()?;
+    if !status.success() {
+        return Err(crate::exited(format!("cargo run --manifest-path {PROBE_MANIFEST} --bin {name}"), status));
+    }
+    Ok(())
+}
+
+/// One annotation in a default-branch report; the baseline names its earlier run.
+#[derive(Debug, Serialize, Deserialize)]
+struct TrendAnnotation {
+    id: String,
+    baseline: f64,
+    current: f64,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    worse_percent: Option<f64>,
+    baseline_commit: String,
+    baseline_run_id: u64,
+    annotation: String,
+}
+
+/// One JSON line of `refs/notes/measures`; earlier reports lack `annotations`.
+#[derive(Debug, Serialize, Deserialize)]
+struct RunReport {
+    commit: String,
+    run_id: u64,
+    run_attempt: u64,
+    exit_code: i32,
+    records: Vec<Record>,
+    #[serde(default)]
+    annotations: Vec<TrendAnnotation>,
+}
+
+fn git_text(root: &Path, args: &[&str]) -> Result<String> {
+    let output = Command::new("git").args(args).current_dir(root).output()?;
+    if !output.status.success() {
+        bail!("git {}: {}", args.join(" "), String::from_utf8_lossy(&output.stderr).trim());
+    }
+    String::from_utf8(output.stdout).context("Git output is UTF-8")
+}
+
+struct Baseline {
+    commit: String,
+    run_id: u64,
+    record: Record,
+}
+
+fn nul_field(reader: &mut impl BufRead) -> Result<Option<String>> {
+    let mut bytes = Vec::new();
+    let count = reader.read_until(0, &mut bytes)?;
+    if count == 0 || bytes.iter().all(u8::is_ascii_whitespace) {
+        return Ok(None);
+    }
+    if bytes.pop() != Some(0) {
+        bail!("Git measure history ends inside a field");
+    }
+    Ok(Some(String::from_utf8(bytes).context("Git measure history is UTF-8")?))
+}
+
+/// The newest successful first-parent baseline for each current trend record.
+fn earlier_baselines(root: &Path, commit: &str, current: &[&Record]) -> Result<BTreeMap<String, Baseline>> {
+    let mut remaining: BTreeMap<&str, &Record> = current.iter().map(|r| (r.id.as_str(), *r)).collect();
+    if remaining.is_empty() {
+        return Ok(BTreeMap::new());
+    }
+    let exists = Command::new("git").args(["show-ref", "--verify", "--quiet", "refs/notes/measures"]).current_dir(root).status()?;
+    if exists.code() == Some(1) {
+        return Ok(BTreeMap::new());
+    }
+    if !exists.success() {
+        bail!("reading refs/notes/measures failed: {exists}");
+    }
+    let mut child = Command::new("git")
+        .args(["log", "--first-parent", "--notes=measures", "--format=%H%x00%N%x00", commit])
+        .current_dir(root)
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped())
+        .spawn()?;
+    let mut reader = std::io::BufReader::new(child.stdout.take().context("Git history has stdout")?);
+    let mut baselines = BTreeMap::new();
+    while let Some(ancestor) = nul_field(&mut reader)? {
+        let note = nul_field(&mut reader)?.context("Git measure history has a note field")?;
+        let ancestor = ancestor.trim();
+        if ancestor == commit || note.trim().is_empty() {
+            continue;
+        }
+        for line in note.lines().filter(|line| !line.trim().is_empty()).rev() {
+            let report: RunReport = serde_json::from_str(line).with_context(|| format!("parsing measure note on {ancestor}"))?;
+            if report.exit_code != 0 {
+                continue;
+            }
+            for old in &report.records {
+                if remaining.get(old.id.as_str()).is_some_and(|now| now.seed == old.seed && now.run == old.run) {
+                    remaining.remove(old.id.as_str());
+                    baselines.insert(old.id.clone(), Baseline { commit: report.commit.clone(), run_id: report.run_id, record: old.clone() });
+                }
+            }
+            if remaining.is_empty() {
+                break;
+            }
+        }
+        if remaining.is_empty() {
+            break;
+        }
+    }
+    drop(reader);
+    if remaining.is_empty() {
+        let _ = child.kill();
+        let _ = child.wait();
+    } else {
+        let output = child.wait_with_output()?;
+        if !output.status.success() {
+            bail!("reading Git measure history: {}", String::from_utf8_lossy(&output.stderr).trim());
+        }
+    }
+    Ok(baselines)
+}
+
+/// Write one JSON-line run report, annotating a trend only against matching earlier
+/// successful history. The measure's exit status remains a separate workflow verdict.
+pub fn report(root: &Path, commit: &str, run_id: u64, run_attempt: u64, exit_code: i32, out: &Path) -> Result<()> {
+    let dir = root.join(RECORDS_DIR);
+    let mut records = Vec::new();
+    match std::fs::read_dir(&dir) {
+        Ok(entries) => {
+            for entry in entries {
+                let path = entry?.path();
+                if path.extension().is_some_and(|ext| ext == "json") {
+                    let id = path.file_stem().and_then(|s| s.to_str()).context("a measure record filename is UTF-8")?;
+                    records.push(record::read(&dir, id)?);
+                }
+            }
+        }
+        Err(e) if e.kind() == std::io::ErrorKind::NotFound => {}
+        Err(e) => return Err(e).with_context(|| dir.display().to_string()),
+    }
+    records.sort_by(|a, b| a.id.cmp(&b.id));
+    let ledger = load(root)?;
+    let wanted: Vec<&Record> = records.iter().filter(|r| ledger.as_ref().and_then(|l| l.entry.get(&r.id)).is_some_and(|e| e.tier == Tier::Trend)).collect();
+    let history = earlier_baselines(root, commit, &wanted)?;
+    let mut annotations = Vec::new();
+    for current in &records {
+        let Some(entry) = ledger.as_ref().and_then(|l| l.entry.get(&current.id)) else { continue };
+        if entry.tier != Tier::Trend {
+            continue;
+        }
+        let direction = entry.direction.context("a trend-tier entry declares a direction")?;
+        let Some(past) = history.get(&current.id) else { continue };
+        let old = &past.record;
+        let comparison = trend::compare(
+            &Figure { value: current.value, runner: current.run.clone() },
+            &Figure { value: old.value, runner: old.run.clone() },
+            direction,
+        );
+        if let trend::Comparison::Annotated { worse_percent } = comparison {
+            annotations.push(TrendAnnotation {
+                id: current.id.clone(),
+                baseline: old.value,
+                current: current.value,
+                worse_percent: worse_percent.is_finite().then_some(worse_percent),
+                baseline_commit: past.commit.clone(),
+                baseline_run_id: past.run_id,
+                annotation: comparison.annotation().unwrap_or_default(),
+            });
+        }
+    }
+    let report = RunReport { commit: commit.to_string(), run_id, run_attempt, exit_code, records, annotations };
+    let path = root.join(out);
+    if let Some(parent) = path.parent() {
+        std::fs::create_dir_all(parent)?;
+    }
+    std::fs::write(&path, format!("{}\n", serde_json::to_string(&report)?)).with_context(|| path.display().to_string())?;
+    Ok(())
+}
+
+/// Append one report to the remote notes ref. Each attempt starts from the remote ref,
+/// so a competing writer's accepted note remains in the next push.
+pub fn publish(root: &Path, commit: &str, report: &Path, remote: &str) -> Result<()> {
+    let body = std::fs::read_to_string(root.join(report)).with_context(|| report.display().to_string())?;
+    let parsed: RunReport = serde_json::from_str(body.trim()).context("measure report is one JSON object")?;
+    if parsed.commit != commit {
+        bail!("measure report names commit {}, not {commit}", parsed.commit);
+    }
+    for attempt in 1..=3 {
+        let listed = git_text(root, &["ls-remote", "--refs", remote, "refs/notes/measures"])?;
+        if listed.trim().is_empty() {
+            let deletion = Command::new("git").args(["update-ref", "-d", "refs/notes/measures"]).current_dir(root).output()?;
+            if !deletion.status.success() && deletion.status.code() != Some(1) {
+                bail!("clearing local measures notes: {}", String::from_utf8_lossy(&deletion.stderr).trim());
+            }
+        } else {
+            git_text(root, &["fetch", remote, "+refs/notes/measures:refs/notes/measures"])?;
+        }
+        let existing = Command::new("git").args(["notes", "--ref=measures", "show", commit]).current_dir(root).output()?;
+        if existing.status.success() && String::from_utf8_lossy(&existing.stdout).lines().any(|line| line == body.trim()) {
+            return Ok(());
+        }
+        git_text(root, &["notes", "--ref=measures", "append", "-F", report.to_str().context("report path is UTF-8")?, commit])?;
+        let push = Command::new("git").args(["push", remote, "refs/notes/measures"]).current_dir(root).output()?;
+        if push.status.success() {
+            return Ok(());
+        }
+        if attempt == 3 {
+            bail!("pushing refs/notes/measures after {attempt} attempts: {}", String::from_utf8_lossy(&push.stderr).trim());
+        }
+    }
+    unreachable!()
 }
 
 /// The native case set, scored in the deterministic tier against its floors and baseline.
@@ -272,6 +513,7 @@ pub fn evaluate(root: &Path) -> Result<()> {
         eprintln!("evaluate: baseline verdict {} for {NATIVE_CASES} ({})", if baseline_red { "red" } else { "held" }, native.join(", "));
     }
     outcome?;
-    let _ = std::fs::remove_dir_all(root.join(EVALUATE_TARGET));
+    let _ = std::fs::remove_dir_all(crate::build_target(root, "evaluate"));
+    let _ = std::fs::remove_dir_all(root.join("target/evaluate"));
     Ok(())
 }

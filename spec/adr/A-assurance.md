@@ -109,17 +109,17 @@ Revisit: the base-commit build exceeds the stage wall clock; the refactor traile
 
 **Status:** proposed
 
-`assurance.measure` keeps one ledger of tracked targets, each owned by a clause. A gate-tier target measures a count, a within-run ratio or a locked-resolve size and decides the evaluate stage. Wall-clock and resident-memory figures are trend-tier: p50 and p95 over repeated batches on a stamped runner, annotated past a band, gating nothing. Each default-branch run attaches its report to the measured commit under `refs/notes/measures`; verdicts read in-tree baselines and floors alone.
+`assurance.measure` keeps one ledger of tracked targets, each owned by a clause. A gate-tier target measures a count, a within-run ratio or a locked-resolve size and decides the evaluate stage. Wall-clock and resident-memory figures are trend-tier: p50 and p95 over repeated batches on a stamped runner, annotated past a band, gating nothing. A trend entry declares its direction and compares with the newest earlier successful report for the same entry, seed and runner stamp. Missing history yields no annotation. Each default-branch run attaches its report under `refs/notes/measures`; gate verdicts read in-tree baselines and floors alone.
 
 | Option | Lost on | Cost |
 | --- | --- | --- |
-| Count-first gate, trend tier, notes history *(chosen)* | — | Notes need a fetch refspec and one push credential; a timing regression surfaces as an annotation, not a red check. |
+| Count-first gate, trend tier, notes history *(chosen)* | — | GitHub Actions `contents: write` pushes notes; a timing regression surfaces as an annotation. A missing baseline scans first-parent history; matching baselines stop the stream. |
+| Separate baseline index | Extra state | An index needs synchronization with notes and reconstruction after missing updates; the stream preserves full-history comparisons across runner changes. |
 | Gate on wall-clock p95 against a committed baseline | Determinism | Shared containers move p95 past any useful band; the check flakes until ignored. |
 | History as a committed JSONL file | Branch policy | A bot commit on the default branch per run and a conflict with every open change. |
 | History in an external artifact store | Offline verdicts and queries | A second store to operate, reachable only with network credentials. |
-| A benchmark framework's saved baselines | One home | Baselines live under `target/`, reclaimed after each stage, with statistics apart from the run report. |
 
-Consequences: a red evaluate stage is a correctness fact; timing movement is visible per commit and argued in review.
+Consequences: a red evaluate stage reports correctness; timing movement remains visible per commit.
 Revisit: a dedicated runner class holds p95 within 5 percent across runs.
 
 ## A version tag names a gated revision and counts closed milestones
@@ -144,16 +144,16 @@ Revisit: an external consumer needs a compatibility promise on a public surface,
 
 Context: the feature-unified workspace suite exceeds the 1800 s sandbox cap on a cold remote build. Criteria: every package suite runs, the feature union compiles, and each dispatched command runs locally too.
 
-Decision: `assurance.gate.workspace-parts` dispatches one compile part over the full union and runs the CLI suite from its compiled artifacts. Four other parts partition the remaining non-acceptance package suites. The unsplit local workspace stage retains its one cargo invocation under `assurance.build.one-engine-build`.
+Decision: `assurance.gate.workspace-parts` compiles the full union without execution and runs differential and remaining CLI tests in separate checks. Four other parts partition the remaining non-acceptance package suites. Binary feature checks use the same test partition. The unsplit local workspace stage retains its one cargo invocation under `assurance.build.one-engine-build`.
 
 | Option | Lost on | Cost |
 | --- | --- | --- |
-| One union compile with CLI suite and four other suite groups *(chosen)* | — | Remote sandboxes rebuild shared dependencies; five checks replace one. |
+| One union compile, two CLI partitions and four other suite groups *(chosen)* | — | Remote sandboxes rebuild shared dependencies; seven workspace checks replace one. |
 | A lock-keyed shared build cache | Operability | A cache bucket and credential become part of the gate; a cold lock still exceeds the cap. |
 | One check for the full workspace | Stage wall clock | A cold sandbox times out before it reports a verdict. |
 | A higher step timeout | Platform limit | Workflow steps admit at most 30 minutes. |
 
-Consequences: the five remote checks cover the same package set as the unsplit local stage. The compile part reuses CLI artifacts before its sandbox exits; other parts compile their dependencies independently.
+Consequences: seven remote workspace checks cover the same package set as the unsplit local stage. Every binary feature set retains all tests across its two checks. Each CLI partition compiles independently; reference-program builds occupy only the differential partition.
 
 ## One decision module compiles native and to WebAssembly
 
@@ -228,7 +228,7 @@ Consequences: the accepted cost is that a defect in the relation a scan resolves
 
 Context: the toolchain stage reads the pins stage's record, and the formal stage reads the toolchain stage's environment. Each remote check runs one stage in a fresh sandbox, and a contributor reruns one stage locally. Criteria: a gate fails rather than skips (P7); a remote check and a local run invoke one command; a rerun reuses an output already on disk.
 
-Decision: `assurance.gate.stage-subset` runs a selection in the sequence's order and refuses before any stage starts when a selected stage reads an unselected predecessor's output and that output is absent. `--predecessors` adds those predecessors, and the workflow passes it (`assurance.gate.remote-predecessors`).
+Decision: `assurance.gate.stage-subset` runs a selection in the sequence's order and refuses before any stage starts when a selected stage reads an unselected predecessor's output and that output is absent. `--predecessors` adds those predecessors, and FlareDispatch passes it (`assurance.gate.remote-predecessors`).
 
 | Option | Lost on | Cost |
 | --- | --- | --- |
@@ -238,3 +238,19 @@ Decision: `assurance.gate.stage-subset` runs a selection in the sequence's order
 | Run in the order named | One command | Two contributors naming one subset differently run different gates. |
 
 Consequences: a predecessor's output on disk satisfies its reader, so a stale record from an earlier run reaches the stage. The accepted cost: the remote formal check pays the pins and toolchain stages on every run.
+
+## Generated artifacts prove currency by regeneration and diff
+
+**Status:** accepted
+
+Context: a generated file can retain a plausible header after its source changes. `spec/derived.toml` names each output and its generator. Criteria: the schema stage catches a stale committed byte without trusting a hand-maintained hash or a generator's success status alone.
+
+Decision: `assurance.structure-tree.derivation-check` exports the committed tree, runs each declared check in that scratch tree, and compares each regenerated output byte for byte with its committed copy.
+
+| Option | Lost on | Cost |
+| --- | --- | --- |
+| Regenerate and diff *(chosen)* | — | The schema stage pays for the generators and keeps a declaration for each output. |
+| Compare a recorded source hash | Coverage | A new generator input can be omitted from the hash. |
+| Trust a build-time export | Committed artifact currency | The build can succeed while the committed output remains stale. |
+
+Consequences: a generator must produce stable bytes; nondeterministic output reds the schema stage.

@@ -5,7 +5,7 @@ use contextful_core::store::lease::{BucketLease, TTL_SECS};
 use contextful_core::store::object::Condition;
 use contextful_core::connector::reference::SecretName;
 use contextful_core::store::sync::{
-    confine, merge, owner_of, BucketManifest, CredentialRef, Endpoint, Entry, SyncConfig, Tombstone, DEFAULT_REGION, TOMBSTONE_TTL_SECS,
+    confine, merge, owner_of, BucketManifest, ControlHead, CredentialRef, Endpoint, Entry, SyncConfig, Tombstone, DEFAULT_REGION, TOMBSTONE_TTL_SECS,
 };
 use contextful_core::store::StoreError;
 use std::collections::BTreeMap;
@@ -17,6 +17,18 @@ fn entry(sha: &str, owner: &str) -> Entry {
 const RUN_A: &str = "research/tables/filings/data/runs/run-1/ingest-a/part-00000.parquet";
 const RUN_B: &str = "research/tables/filings/data/runs/run-1/ingest-b/part-00000.parquet";
 const SCHEMA: &str = "research/tables/filings/schema.json";
+
+#[test]
+fn merge_keeps_each_projects_control_head_and_legacy_manifests_read_empty() {
+    let old: BucketManifest = serde_json::from_str(r#"{"entries":{}}"#).unwrap();
+    assert!(old.control_heads.is_empty());
+    let head = ControlHead { version: 2, receipt_sha256: "a".repeat(64) };
+    let remote = BucketManifest { control_heads: [("research".into(), head.clone())].into(), ..Default::default() };
+    let merged = merge(&remote, &BTreeMap::new(), "ingest-a", at("2030-01-01T00:00:00Z")).unwrap();
+    assert_eq!(merged.manifest.control_heads["research"], head);
+    let round_trip: BucketManifest = serde_json::from_slice(&serde_json::to_vec(&merged.manifest).unwrap()).unwrap();
+    assert_eq!(round_trip.control_heads, remote.control_heads);
+}
 
 /// A key resolving outside the prefix raises `SyncPrefixEscape`, naming the key and the prefix.
 // spec: store.push.prefix-escape@df83abd3

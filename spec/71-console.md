@@ -145,11 +145,11 @@ The Admin page's operational views.
 
 The client library, its four deployment shapes and transports, and the credential each shape carries.
 
-- `stdio-credential` — Over the process transport a credential is mandatory, a capability token or an explicit owner flag; an unset one raises `StdioCredentialMissing` and does not resolve to the owner context.
+- `stdio-credential` — The process transport requires a verified capability token; `--owner` selects its signed owner claim. An absent token raises `StdioCredentialMissing` before protocol framing and never resolves to owner context.
   *A-read*
 - `store-selector` — The child's working directory selects the store by walking up to the project manifest; finding none raises `StoreSelectorAbsent` and exits before writing any protocol framing.
   *A-topology*
-- `owner-flag` — An explicit owner flag over the process transport admits the local owner context only with the store's owner credential.
+- `owner-flag` — A process `--owner` admits the local owner context only with a verified signed claim bound to the selected store and an unrestricted read grant; any other credential raises `OwnerCredentialInvalid` before protocol framing.
   *A-surface*
 
 The client library's four shapes, and who holds the credential in each:
@@ -276,6 +276,19 @@ A session's time basis: its vantage, the bound each leg carries, the snapshot ti
 
 What a store advertises before a question: discovered chips, humanized labels, the insights panel and the file gallery.
 
+- `discovered-chips` — Query builds pre-question chips from described tables admitted to the reader's zone and humanizes their table labels.
+  *A-surface*
+- `insights-panel` — The insights panel presents row counts returned by the reader's table descriptions.
+  *because a row count from the read face already reflects the reader's relation*
+- `file-gallery` — The file gallery presents only paths returned by the reader's governed file listing and previews them through the read face.
+  *P5*
+- `gallery-path-unlisted` — A gallery preview naming a path absent from the governed file listing under the request's `as_of` raises `ConsoleGalleryPathUnlisted` before preview dispatch.
+  *because the browser must not turn an arbitrary path into a store read*
+
+#### Scenarios
+
+- `surface.browse.gallery-path-unlisted`: WHEN a Query client requests a path absent from the reader's bound file listing, THEN it raises `ConsoleGalleryPathUnlisted` without a preview call.
+
 ## learn
 
 The reading loop's memory: recall ahead of planning, the per-turn distillation and the labels its conclusions inherit.
@@ -283,6 +296,8 @@ The reading loop's memory: recall ahead of planning, the per-turn distillation a
 - `distillation` — After the answer streams, a second pass distils the exchange into at most 3 entries shaped `{subject, key, learning}`, zero included.
 - `unscoped` — A distilled conclusion landing without the reading-session scope raises `ConsoleLearningUnscoped`.
   *A-surface*
+- `write-refused` — A served claim write that refuses or returns no scope-bound receipt raises `ConsoleLearningWriteRefused` to Query before answer publication.
+  *because a failed write cannot count as a durable learning*
 - `subject-resolution` — Distillation preserves the subject it observes; recall resolves that subject through entity matching.
   *A-surface*
 

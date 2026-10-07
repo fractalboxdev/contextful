@@ -6,16 +6,24 @@ use contextful_acceptance::{bin, GitRepo};
 use serde_json::json;
 use std::process::Output;
 
-const POLICY: &str = "authoring_posture = \"per_request\"\n[pipeline.models.revenue_by_industry]\n\
-statement = \"SELECT industry, tenant_id, SUM(revenue) AS revenue FROM revenue GROUP BY industry, tenant_id\"\n\
-\n\
-[pipeline.models.revenue_by_industry.disclosure]\n\
-grouping_allowlist    = [\"industry\", \"region\", \"quarter\"]\n\
-contributor_key       = \"tenant_id\"\n\
-min_group_size        = 3\n\
-max_contributor_share = 0.4\n\
-emit_sentinel         = true\n\
-forbidden_columns     = [\"tenant_id\"]\n";
+const POLICY: &str = r#"authoring_posture = "per_request"
+[[model]]
+id = "revenue_by_industry"
+sql = "SELECT industry, tenant_id, SUM(revenue) AS revenue FROM revenue GROUP BY industry, tenant_id"
+unique_key = ["industry", "tenant_id"]
+[model.contract]
+version = "1.0.0"
+columns = [{ name = "industry", type = "utf8", nullable = false }, { name = "tenant_id", type = "utf8", nullable = false }, { name = "revenue", type = "float64", nullable = false }]
+[model.disclosure]
+grouping_allowlist = ["industry"]
+contributor_key = "tenant_id"
+min_group_size = 3
+max_contributor_share = 0.4
+emit_sentinel = true
+forbidden_columns = ["tenant_id"]
+[model.disclosure.metric_bounds]
+revenue = { lower = 0, upper = 10000, quantum = 1 }
+"#;
 
 fn ok(out: &Output) -> String {
     assert!(out.status.success(), "{}", String::from_utf8_lossy(&out.stderr));
@@ -33,7 +41,7 @@ fn m13_disclosure() {
     // valid, so the empty-policy refusal is the only one that applies.
     r.write(
         "empty.toml",
-        "[pipeline.models.revenue_by_industry.disclosure]\ngrouping_allowlist = [\"industry\"]\ncontributor_key = \"tenant_id\"\n",
+        "[[model]]\nid = \"revenue_by_industry\"\nsql = \"SELECT industry, tenant_id, SUM(revenue) AS revenue FROM revenue GROUP BY industry, tenant_id\"\n[model.disclosure]\ngrouping_allowlist = [\"industry\"]\ncontributor_key = \"tenant_id\"\n",
     );
     let empty = r.run(&cf, &["disclosure", "check", "--config", "empty.toml"]);
     assert!(!empty.status.success());

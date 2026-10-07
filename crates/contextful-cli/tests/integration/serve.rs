@@ -5,6 +5,8 @@
 use contextful_core::time::Instant;
 use contextful_policy::possession::{jwk_thumbprint, sign_proof, ProofRequest};
 use ed25519_dalek::SigningKey;
+use hmac::{Hmac, Mac};
+use sha2::{Digest, Sha256};
 use serde_json::{json, Value};
 use std::io::{BufRead, BufReader, Read, Write};
 use std::net::TcpStream;
@@ -13,6 +15,85 @@ use std::process::{Child, Command, Output, Stdio};
 use std::sync::atomic::{AtomicU64, Ordering};
 
 const AUD: &str = "contextful://acme-research";
+
+/// One bounded Content-Length response ends at its body, so a later TCP reset has
+/// no bearing on the HTTP answer; a reset or EOF inside the frame remains an error.
+fn exchange_response(stream: &mut impl Read) -> std::io::Result<String> {
+    let invalid = |message| std::io::Error::new(std::io::ErrorKind::InvalidData, message);
+    let mut raw = Vec::new();
+    while !raw.ends_with(b"\r\n\r\n") {
+        if raw.len() == 8192 { return Err(invalid("the test response head exceeds 8 KiB")); }
+        let mut byte = [0];
+        stream.read_exact(&mut byte)?;
+        raw.push(byte[0]);
+    }
+    let head = std::str::from_utf8(&raw).map_err(|_| invalid("the response head is not UTF-8"))?;
+    let mut lines = head.split("\r\n");
+    let mut status = lines.next().unwrap_or_default().split_whitespace();
+    if status.next() != Some("HTTP/1.1") ||
+        !status.next().is_some_and(|code| code.len() == 3 && code.bytes().all(|b| b.is_ascii_digit())) {
+        return Err(invalid("the response status does not parse"));
+    }
+    let mut length = None;
+    for line in lines.filter(|line| !line.is_empty()) {
+        let (name, value) = line.split_once(':').ok_or_else(|| invalid("the response header does not parse"))?;
+        if name.eq_ignore_ascii_case("Transfer-Encoding") {
+            return Err(invalid("the test response requires Content-Length framing"));
+        }
+        if name.eq_ignore_ascii_case("Content-Length") {
+            let value = value.trim();
+            if length.is_some() || value.is_empty() || !value.bytes().all(|b| b.is_ascii_digit()) {
+                return Err(invalid("the response length is ambiguous or malformed"));
+            }
+            length = Some(value.parse::<usize>().map_err(|_| invalid("the response length exceeds usize"))?);
+        }
+    }
+    let length = length.ok_or_else(|| invalid("the response has no Content-Length"))?;
+    if length > 1024 * 1024 { return Err(invalid("the test response body exceeds 1 MiB")); }
+    let start = raw.len();
+    raw.resize(start + length, 0);
+    stream.read_exact(&mut raw[start..])?;
+    String::from_utf8(raw).map_err(|_| invalid("the response is not UTF-8"))
+}
+
+struct ResetAfter(std::io::Cursor<Vec<u8>>);
+
+impl Read for ResetAfter {
+    fn read(&mut self, out: &mut [u8]) -> std::io::Result<usize> {
+        match self.0.read(out)? {
+            0 => Err(std::io::ErrorKind::ConnectionReset.into()),
+            n => Ok(n),
+        }
+    }
+}
+
+#[test]
+fn exchange_response_reads_one_complete_frame_before_a_later_reset() {
+    let wire = b"HTTP/1.1 404 Not Found\r\nContent-Length: 2\r\n\r\n{}";
+    assert_eq!(exchange_response(&mut &wire[..]).unwrap(), std::str::from_utf8(wire).unwrap());
+    assert_eq!(exchange_response(&mut ResetAfter(std::io::Cursor::new(wire.to_vec()))).unwrap(), std::str::from_utf8(wire).unwrap());
+}
+
+#[test]
+fn exchange_response_refuses_truncated_headers_and_bodies() {
+    for wire in [b"HTTP/1.1 404 Not Found\r\nContent-Length: 2\r\n".as_slice(),
+        b"HTTP/1.1 404 Not Found\r\nContent-Length: 2\r\n\r\n{".as_slice()] {
+        assert!(exchange_response(&mut &wire[..]).is_err(), "EOF inside a frame refuses");
+        assert!(exchange_response(&mut ResetAfter(std::io::Cursor::new(wire.to_vec()))).is_err(), "a reset inside a frame refuses");
+    }
+}
+
+#[test]
+fn exchange_response_refuses_ambiguous_or_unbounded_framing() {
+    for head in ["not-http\r\nContent-Length: 0", "HTTP/1.1 404 Not Found",
+        "HTTP/1.1 404 Not Found\r\nContent-Length: 0\r\nContent-Length: 0",
+        "HTTP/1.1 404 Not Found\r\nContent-Length: -1",
+        "HTTP/1.1 404 Not Found\r\nContent-Length: 1048577",
+        "HTTP/1.1 404 Not Found\r\nContent-Length: 0\r\nTransfer-Encoding: chunked"] {
+        assert!(exchange_response(&mut format!("{head}\r\n\r\n").as_bytes()).is_err(), "{head}");
+    }
+    assert!(exchange_response(&mut vec![b'x'; 8193].as_slice()).is_err());
+}
 
 fn run(dir: &Path, args: &[&str]) -> Output {
     Command::new(env!("CARGO_BIN_EXE_contextful"))
@@ -59,8 +140,13 @@ impl Drop for Listener {
 
 /// Start the face; its address, reported on standard error.
 fn serve(dir: &Path, args: &[&str]) -> (Listener, String) {
-    let mut child = Command::new(env!("CARGO_BIN_EXE_contextful"))
+    serve_binary(Path::new(env!("CARGO_BIN_EXE_contextful")), dir, args)
+}
+
+fn serve_binary(binary: &Path, dir: &Path, args: &[&str]) -> (Listener, String) {
+    let mut child = Command::new(binary)
         .args(args)
+        .env("CONTEXTFUL_CONTROL_ATTESTATION_SECRET", "separate-attestation-secret")
         .current_dir(dir)
         .env_remove("CONTEXTFUL_ISSUER_PUBKEY")
         .env_remove("CONTEXTFUL_AUDIENCE")
@@ -78,6 +164,27 @@ fn serve(dir: &Path, args: &[&str]) -> (Listener, String) {
         line.clear();
     }
     panic!("the face never listened")
+}
+
+#[test]
+fn control_apply_uses_the_host_registered_task_set() {
+    let binary = super::derive::host_binary();
+    let (dir, public) = project();
+    let root = dir.path();
+    std::fs::write(root.join("contextful.toml"), format!("authoring_posture = \"per_request\"\n{}", super::derive::host_manifest("word-split"))).unwrap();
+    let imported = Command::new(&binary).args(["pipeline", "import", "--project", "research"]).current_dir(root).output().unwrap();
+    stdout(&imported);
+    let draft = super::derive::host_manifest("word-split").replace("[pipeline.source]", "schedule = \"every 1h\"\n[pipeline.source]");
+    std::fs::write(root.join("contextful.toml"), format!("authoring_posture = \"per_request\"\n{draft}")).unwrap();
+    let admin = stdout(&run(root, &["token", "mint", "--issuer-key", ".contextful/issuer.seed", "--on-behalf-of", "user://dana@acme.example", "--zone", "on-prem:hq", "--action", "admin", "--table", "*", "--ttl", "900"]));
+    let (_listener, addr) = serve_binary(&binary, root, &["serve", "--http", "127.0.0.1:0", "--audience", AUD, "--max-in-flight", "2", "--project", "research", "--public-key", &public]);
+    let edit = json!({ "expected": 1, "document": draft }).to_string();
+    let (status, edited) = control(&addr, "POST", "/control/edit", Some(&admin), &edit);
+    assert_eq!(status, 200, "{edited}");
+    let apply = json!({ "expected": 1, "nonce": edited["nonce"] }).to_string();
+    let (status, state) = control(&addr, "POST", "/control/apply", Some(&admin), &apply);
+    assert_eq!(status, 200, "{state}");
+    assert_eq!(state["applied"], json!(2));
 }
 
 static NONCE: AtomicU64 = AtomicU64::new(0);
@@ -104,6 +211,372 @@ fn post(addr: &str, message: &Value, token: &str, key: Option<&SigningKey>) -> (
 
 fn query() -> Value {
     json!({ "jsonrpc": "2.0", "id": 1, "method": "tools/call", "params": { "name": "context.query", "arguments": { "sql": "SELECT note_id FROM \"research/notes\"" } } })
+}
+
+fn control(addr: &str, method: &str, path: &str, token: Option<&str>, body: &str) -> (u16, Value) {
+    let headers = if method == "POST" && (path == "/control/edit" || path == "/control/apply") {
+        let at = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap().as_secs() as i64;
+        let nonce = NONCE.fetch_add(1, Ordering::SeqCst);
+        attestation(path, body, "user://dana@acme.example", at, &format!("{nonce:032x}"))
+    } else { String::new() };
+    control_headers(addr, method, path, token, body, &headers)
+}
+
+fn control_headers(addr: &str, method: &str, path: &str, token: Option<&str>, body: &str, headers: &str) -> (u16, Value) {
+    let mut stream = TcpStream::connect(addr).unwrap();
+    let auth = token.map(|token| format!("Authorization: Bearer {token}\r\n")).unwrap_or_default();
+    write!(stream, "{method} {path} HTTP/1.1\r\n{auth}{headers}Content-Type: application/json\r\nContent-Length: {}\r\n\r\n{body}", body.len()).unwrap();
+    let mut raw = String::new();
+    stream.read_to_string(&mut raw).unwrap();
+    let (head, answer) = raw.split_once("\r\n\r\n").unwrap();
+    (head.split(' ').nth(1).unwrap().parse().unwrap(), serde_json::from_str(answer).unwrap())
+}
+
+fn attestation(path: &str, body: &str, operator: &str, at: i64, nonce: &str) -> String {
+    let digest = format!("{:x}", Sha256::digest(body.as_bytes()));
+    let mut mac = Hmac::<Sha256>::new_from_slice(b"separate-attestation-secret").unwrap();
+    mac.update(format!("POST\n{path}\n{digest}\n{operator}\n{at}\n{nonce}").as_bytes());
+    let signature = mac.finalize().into_bytes().iter().map(|byte| format!("{byte:02x}")).collect::<String>();
+    format!("X-Contextful-Operator: {operator}\r\nX-Contextful-Operator-Time: {at}\r\nX-Contextful-Operator-Nonce: {nonce}\r\nX-Contextful-Operator-Signature: {signature}\r\n")
+}
+
+#[test]
+fn pending_control_edit_refuses_revoked_authority_before_nonce_or_draft_commit() {
+    pending_control_mutation(false, false);
+}
+
+#[test]
+fn pending_control_apply_refuses_revoked_authority_before_nonce_or_pointer_commit() {
+    pending_control_mutation(true, false);
+}
+
+#[test]
+fn pending_control_edit_refuses_expired_authority_before_nonce_or_draft_commit() {
+    pending_control_mutation(false, true);
+}
+
+fn pending_control_mutation(apply: bool, expired: bool) {
+    let (dir, public) = project();
+    let root = dir.path();
+    let original = "[[pipeline]]\nid = \"filings-flow\"\ntables = [\"research/notes\"]\n[pipeline.source]\nname = \"http\"\nconfig = { endpoint = \"https://example.test/filings\" }\n";
+    std::fs::create_dir_all(root.join("pipelines")).unwrap();
+    std::fs::write(root.join("pipelines/filings.toml"), original).unwrap();
+    stdout(&run(root, &["pipeline", "import", "--project", "research"]));
+    let (_listener, addr) = serve(root, &["serve", "--http", "127.0.0.1:0", "--audience", AUD, "--max-in-flight", "2", "--project", "research", "--public-key", &public]);
+    let admin = stdout(&run(root, &["token", "mint", "--on-behalf-of", "user://dana@acme.example", "--zone", "on-prem:hq", "--action", "admin", "--table", "*", "--ttl", if expired { "2" } else { "900" }]));
+    let edit = json!({ "expected": 1, "document": original }).to_string();
+    let (path, body) = if apply {
+        let (status, saved) = control(&addr, "POST", "/control/edit", Some(&admin), &edit);
+        assert_eq!(status, 200, "{saved}");
+        ("/control/apply", json!({ "expected": 1, "nonce": saved["nonce"] }).to_string())
+    } else { ("/control/edit", edit) };
+    let snapshots = root.join(".contextful/control/research");
+    let lock = std::fs::OpenOptions::new().read(true).write(true).open(snapshots.join("manifest.lock")).unwrap();
+    lock.lock().unwrap();
+    let at = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap().as_secs() as i64;
+    let nonce = "f".repeat(32);
+    let headers = attestation(path, &body, "user://dana@acme.example", at, &nonce);
+    std::thread::scope(|scope| {
+        let pending = scope.spawn(|| control_headers(&addr, "POST", path, Some(&admin), &body, &headers));
+        std::thread::sleep(std::time::Duration::from_millis(if expired { 3100 } else { 200 }));
+        if !expired { stdout(&run(root, &["token", "revoke", "--principal-class", "delegated"])); }
+        drop(lock);
+        let (status, response) = pending.join().unwrap();
+        assert_eq!(status, 401, "{response}");
+        assert_eq!(response["error"]["identifier"], if expired { "AuthorityExpired" } else { "AuthorityRevoked" });
+    });
+    assert!(!snapshots.join(format!("attestation-nonces/{at}/{nonce}")).exists());
+    assert_eq!(std::fs::read_to_string(snapshots.join("manifest@current")).unwrap().trim(), "1");
+    assert_eq!(snapshots.join("manifest@draft.json").exists(), apply);
+}
+
+#[test]
+fn admin_changes_require_fresh_console_attestation_and_record_the_operator() {
+    let (dir, public) = project();
+    let root = dir.path();
+    let original = "[[pipeline]]\nid = \"filings-flow\"\nschedule = \"every 1h\"\ntables = [\"research/notes\"]\n[pipeline.source]\nname = \"http\"\nconfig = { endpoint = \"https://example.test/filings\" }\n";
+    std::fs::create_dir_all(root.join("pipelines")).unwrap();
+    std::fs::write(root.join("pipelines/filings.toml"), original).unwrap();
+    stdout(&run(root, &["pipeline", "import", "--project", "research"]));
+    let admin = stdout(&run(root, &["token", "mint", "--issuer-key", ".contextful/issuer.seed", "--on-behalf-of", "user://service@acme.example", "--zone", "on-prem:hq", "--action", "admin", "--table", "*", "--ttl", "900"]));
+    let (listener, addr) = serve(root, &["serve", "--http", "127.0.0.1:0", "--audience", AUD, "--max-in-flight", "2", "--project", "research", "--public-key", &public]);
+    assert_eq!(control(&addr, "GET", "/control/record", Some(&admin), "").0, 200);
+    let edit = json!({ "expected": 1, "document": original.replace("every 1h", "every 1d") }).to_string();
+    assert_eq!(control_headers(&addr, "POST", "/control/edit", Some(&admin), &edit, "").0, 403);
+    let now = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap().as_secs() as i64;
+    let stale = attestation("/control/edit", &edit, "operator-a", now - 120, &"1".repeat(32));
+    assert_eq!(control_headers(&addr, "POST", "/control/edit", Some(&admin), &edit, &stale).0, 403);
+    let forged = attestation("/control/edit", &edit, "operator-a", now, &"2".repeat(32)).replace("Operator: operator-a", "Operator: operator-b");
+    assert_eq!(control_headers(&addr, "POST", "/control/edit", Some(&admin), &edit, &forged).0, 403);
+    let signed = attestation("/control/edit", &edit, "operator-a", now, &"3".repeat(32));
+    let (status, saved) = control_headers(&addr, "POST", "/control/edit", Some(&admin), &edit, &signed);
+    assert_eq!(status, 200, "{saved}");
+    assert_eq!(control_headers(&addr, "POST", "/control/edit", Some(&admin), &edit, &signed).0, 403);
+    drop(listener);
+    let (_restart, restarted_addr) = serve(root, &["serve", "--http", "127.0.0.1:0", "--audience", AUD, "--max-in-flight", "2", "--project", "research", "--public-key", &public]);
+    assert_eq!(control_headers(&restarted_addr, "POST", "/control/edit", Some(&admin), &edit, &signed).0, 403);
+    let apply = json!({ "expected": 1, "nonce": saved["nonce"] }).to_string();
+    let signed = attestation("/control/apply", &apply, "operator-a", now, &"4".repeat(32));
+    let (status, result) = control_headers(&restarted_addr, "POST", "/control/apply", Some(&admin), &apply, &signed);
+    assert_eq!(status, 200, "{result}");
+    let entries = contextful_policy::audit::entries(&root.join(".contextful/audit")).unwrap();
+    assert!(entries.iter().any(|entry| entry.attributes["contextful.operator.subject"] == "operator-a" && entry.attributes["contextful.control.operation"] == "apply"));
+    let (status, record) = control(&restarted_addr, "GET", "/control/record", Some(&admin), "");
+    assert_eq!(status, 200, "{record}");
+    assert!(record["entries"].as_array().unwrap().iter().any(|entry| entry["attributes"]["contextful.operator.subject"] == "operator-a"));
+}
+
+#[test]
+fn control_routes_require_admin_and_project_applied_workflows() {
+    let (dir, public) = project();
+    let root = dir.path();
+    let pipeline = "[[pipeline]]\nid = \"filings-flow\"\nschedule = \"every 1h\"\ntables = [\"research/notes\"]\n[pipeline.source]\nname = \"http\"\nconfig = { endpoint = \"https://example.test/filings\" }\n";
+    std::fs::create_dir_all(root.join("pipelines")).unwrap();
+    std::fs::write(root.join("pipelines/filings.toml"), pipeline).unwrap();
+    stdout(&run(root, &["pipeline", "import", "--project", "research"]));
+    let read = stdout(&run(root, &["token", "mint", "--issuer-key", ".contextful/issuer.seed", "--on-behalf-of", "user://dana@acme.example", "--zone", "on-prem:hq", "--action", "read", "--table", "*", "--ttl", "900"]));
+    let admin = stdout(&run(root, &["token", "mint", "--issuer-key", ".contextful/issuer.seed", "--on-behalf-of", "user://dana@acme.example", "--zone", "on-prem:hq", "--action", "admin", "--table", "*", "--ttl", "900"]));
+    let narrow_admin = stdout(&run(root, &["token", "mint", "--issuer-key", ".contextful/issuer.seed", "--on-behalf-of", "user://dana@acme.example", "--zone", "on-prem:hq", "--action", "admin", "--table", "unrelated/*", "--ttl", "900"]));
+    let (_listener, addr) = serve(root, &["serve", "--http", "127.0.0.1:0", "--audience", AUD, "--max-in-flight", "2", "--project", "research", "--public-key", &public]);
+
+    assert_eq!(control(&addr, "GET", "/control/workflows", None, "").0, 401);
+    assert_eq!(control(&addr, "GET", "/control/record", None, "").0, 401);
+    let (status, answer) = control(&addr, "GET", "/control/workflows", Some(&read), "");
+    assert_eq!(status, 403, "{answer}");
+    assert_eq!(control(&addr, "GET", "/control/record", Some(&read), "").0, 403);
+    assert_eq!(control(&addr, "POST", "/control/apply", Some(&read), "{}").0, 403);
+    assert_eq!(control(&addr, "GET", "/control/workflows", Some(&narrow_admin), "").0, 403);
+    let (status, view) = control(&addr, "GET", "/control/workflows", Some(&admin), "");
+    assert_eq!(status, 200, "{view}");
+    assert_eq!(view["applied"], json!(1));
+    assert_eq!(view["pipelines"][0]["id"], "filings-flow");
+    assert_eq!(view["pipelines"][0]["tables"], json!(["research/notes"]));
+
+    assert_eq!(control(&addr, "POST", "/control/apply", Some(&admin), "{\"id\":1}").0, 400);
+
+    let edited = json!({ "expected": 1, "document": pipeline.replace("every 1h", "every 1d") }).to_string();
+    let (_, saved) = control(&addr, "POST", "/control/edit", Some(&admin), &edited);
+    let apply = json!({ "expected": 1, "nonce": saved["nonce"] }).to_string();
+    let (status, applied) = control(&addr, "POST", "/control/apply", Some(&admin), &apply);
+    assert_eq!(status, 200, "{applied}");
+    assert_eq!(applied["applied"], json!(2));
+    let (_, view) = control(&addr, "GET", "/control/workflows", Some(&admin), "");
+    assert_eq!(view["pipelines"][0]["schedule"], "every 1d");
+}
+
+#[test]
+fn control_edit_saves_a_validated_draft_and_apply_claims_its_expected_version() {
+    let (dir, public) = project();
+    let root = dir.path();
+    let original = "[[pipeline]]\nid = \"filings-flow\"\nschedule = \"every 1h\"\ntables = [\"research/notes\"]\n[pipeline.source]\nname = \"http\"\nconfig = { endpoint = \"https://example.test/filings\" }\n";
+    std::fs::create_dir_all(root.join("pipelines")).unwrap();
+    std::fs::write(root.join("pipelines/filings.toml"), original).unwrap();
+    stdout(&run(root, &["pipeline", "import", "--project", "research"]));
+    let admin = stdout(&run(root, &["token", "mint", "--issuer-key", ".contextful/issuer.seed", "--on-behalf-of", "user://dana@acme.example", "--zone", "on-prem:hq", "--action", "admin", "--table", "*", "--ttl", "900"]));
+    let read = stdout(&run(root, &["token", "mint", "--issuer-key", ".contextful/issuer.seed", "--on-behalf-of", "user://dana@acme.example", "--zone", "on-prem:hq", "--action", "read", "--table", "*", "--ttl", "900"]));
+    let (_listener, addr) = serve(root, &["serve", "--http", "127.0.0.1:0", "--audience", AUD, "--max-in-flight", "2", "--project", "research", "--public-key", &public]);
+    let changed = original.replace("every 1h", "every 1d");
+    let edit = json!({ "expected": 1, "document": changed }).to_string();
+    let (status, absent) = control(&addr, "POST", "/control/apply", Some(&admin), &json!({ "expected": 1, "nonce": "000000000000000000000000000000000000000000000000" }).to_string());
+    assert_eq!(status, 409, "{absent}");
+    assert_eq!(absent["error"]["identifier"], "ControlDraftAbsent");
+    assert_eq!(control(&addr, "POST", "/control/edit", None, &edit).0, 401);
+    assert_eq!(control(&addr, "POST", "/control/edit", Some(&read), &edit).0, 403);
+    let invalid = json!({ "expected": 1, "document": changed.replace("every 1d", "invalid schedule") }).to_string();
+    assert_eq!(control(&addr, "POST", "/control/edit", Some(&admin), &invalid).0, 422);
+    let (status, draft) = control(&addr, "POST", "/control/edit", Some(&admin), &edit);
+    assert_eq!(status, 200, "{draft}");
+    assert_eq!(draft["expected"], 1);
+    let declaration = root.join("contextful.toml");
+    let owner_text = std::fs::read_to_string(&declaration).unwrap();
+    std::fs::write(&declaration, format!("{owner_text}\n[control]\nurl = \"http://127.0.0.1:12345/\"\n")).unwrap();
+    let apply = json!({ "expected": 1, "nonce": draft["nonce"] }).to_string();
+    let (status, refused) = control(&addr, "POST", "/control/apply", Some(&admin), &apply);
+    assert_eq!(status, 503, "{refused}");
+    assert_eq!(refused["error"]["identifier"], "ConfigOwnerUnconfigured");
+    std::fs::write(&declaration, owner_text).unwrap();
+    let (_, before) = control(&addr, "GET", "/control/workflows", Some(&admin), "");
+    assert_eq!(before["applied"], 1);
+    assert_eq!(before["pipelines"][0]["schedule"], "every 1h");
+    let (status, applied) = control(&addr, "POST", "/control/apply", Some(&admin), &apply);
+    assert_eq!(status, 200, "{applied}");
+    assert_eq!(applied["applied"], 2);
+    assert_eq!(applied["pipelines"][0]["schedule"], "every 1d");
+    let (status, refused) = control(&addr, "POST", "/control/apply", Some(&admin), &apply);
+    assert_eq!(status, 409, "{refused}");
+    assert_eq!(refused["error"]["identifier"], "ControlDraftAbsent");
+    let later = original.replace("every 1h", "every 2d");
+    let edit = json!({ "expected": 2, "document": later }).to_string();
+    let (_, later_draft) = control(&addr, "POST", "/control/edit", Some(&admin), &edit);
+    std::fs::write(root.join("pipelines/filings.toml"), original.replace("every 1h", "every 3d")).unwrap();
+    stdout(&run(root, &["pipeline", "apply", "filings-flow", "--project", "research"]));
+    let (status, refused) = control(&addr, "POST", "/control/apply", Some(&admin), &json!({ "expected": 2, "nonce": later_draft["nonce"] }).to_string());
+    assert_eq!(status, 409, "{refused}");
+    assert_eq!(refused["error"]["identifier"], "ManifestVersionConflict");
+}
+
+#[test]
+fn published_workflow_listing_caps_entries_and_flags_truncation() {
+    let (dir, public) = project();
+    let root = dir.path();
+    let snapshot = contextful_engine::control::SnapshotDir::open(&root.join(".contextful/control/research"));
+    let document = (0..1001).map(|index| format!(
+        "[[pipeline]]\nid = \"flow-{index:04}\"\ntables = [\"research/notes\"]\n[pipeline.source]\nname = \"http\"\nconfig = {{ endpoint = \"https://example.test/filings\" }}\n"
+    )).collect::<Vec<_>>().join("\n");
+    snapshot.import(&document).unwrap();
+    let admin = stdout(&run(root, &["token", "mint", "--issuer-key", ".contextful/issuer.seed", "--on-behalf-of", "user://dana@acme.example", "--zone", "on-prem:hq", "--action", "admin", "--table", "*", "--ttl", "900"]));
+    let (_listener, addr) = serve(root, &["serve", "--http", "127.0.0.1:0", "--audience", AUD, "--max-in-flight", "2", "--project", "research", "--public-key", &public]);
+    let (status, view) = control(&addr, "GET", "/control/workflows", Some(&admin), "");
+    assert_eq!(status, 200, "{view}");
+    assert_eq!(view["pipelines"].as_array().unwrap().len(), 1000);
+    assert_eq!(view["truncated"], true);
+    assert_eq!(view["declined"], 0);
+}
+
+#[test]
+fn published_workflows_include_completed_local_runs_before_sync_push() {
+    let vendor = super::pipeline::Vendor::start(|_| (200, "[{\"note_id\":\"filed\"}]".into()));
+    let (dir, public) = project();
+    let root = dir.path();
+    let pipeline = format!("[[pipeline]]\nid = \"filings-flow\"\ntables = [\"research/filings\"]\n[pipeline.source]\nname = \"http\"\nconfig = {{ endpoint = \"{}\" }}\n", vendor.url("/filings"));
+    std::fs::create_dir_all(root.join("pipelines")).unwrap();
+    std::fs::write(root.join("pipelines/filings.toml"), pipeline).unwrap();
+    stdout(&run(root, &["pipeline", "import", "--project", "research"]));
+    stdout(&run(root, &["pipeline", "run", "filings-flow", "--project", "research", "--run-id", "run-flow", "--site-id", "site-a"]));
+    let admin = stdout(&run(root, &["token", "mint", "--issuer-key", ".contextful/issuer.seed", "--on-behalf-of", "user://dana@acme.example", "--zone", "on-prem:hq", "--action", "admin", "--table", "*", "--ttl", "900"]));
+    let (_listener, addr) = serve(root, &["serve", "--http", "127.0.0.1:0", "--audience", AUD, "--max-in-flight", "2", "--project", "research", "--public-key", &public]);
+    let (status, view) = control(&addr, "GET", "/control/workflows", Some(&admin), "");
+    assert_eq!(status, 200, "{view}");
+    assert_eq!(view["runs"]["filings-flow"]["run_id"], "run-flow");
+    assert_eq!(view["runs"]["filings-flow"]["status"], "success");
+}
+
+fn post_claim(addr: &str, token: &str, body: &Value, browser_origin: bool) -> (u16, Value) {
+    let body = body.to_string();
+    let origin = if browser_origin { "Origin: https://console.example\r\n" } else { "" };
+    let mut stream = TcpStream::connect(addr).unwrap();
+    write!(stream, "POST /memory/claims HTTP/1.1\r\nAuthorization: Bearer {token}\r\n{origin}Content-Type: application/json\r\nContent-Length: {}\r\n\r\n{body}", body.len()).unwrap();
+    let mut raw = String::new();
+    stream.read_to_string(&mut raw).unwrap();
+    let (head, data) = raw.split_once("\r\n\r\n").unwrap();
+    (head.split(' ').nth(1).unwrap().parse().unwrap(), serde_json::from_str(data).unwrap_or(Value::Null))
+}
+
+#[test]
+fn served_claim_write_is_durable_actor_bound_and_outside_read_mcp() {
+    let memory = "\n[[table]]\nname = \"memory/facts\"\nshape = \"memory_facts\"\ncolumns = [\"claim_id\", \"subject\", \"predicate\", \"object\", \"scope\", \"tier\", \"confidence\", \"valid_from\", \"valid_to\", \"evidence\", \"superseded_by\", \"grant_id\", \"agent\"]\n";
+    let (dir, public) = project_declaring(memory);
+    let p = dir.path();
+    let mint = |who: &str, task: &str, actions: &[&str]| {
+        let mut args = vec!["token", "mint", "--issuer-key", ".contextful/issuer.seed", "--on-behalf-of", who,
+            "--task", task, "--zone", "on-prem:hq", "--table", "memory/facts", "--table", "research/notes", "--ttl", "900"];
+        for action in actions { args.extend(["--action", action]); }
+        stdout(&run(p, &args))
+    };
+    let alice = mint("user://alice", "session-1", &["read", "write"]);
+    let bob = mint("user://bob", "session-2", &["read", "write"]);
+    let reader = mint("user://alice", "session-1", &["read"]);
+    let wrong_table = stdout(&run(p, &["token", "mint", "--issuer-key", ".contextful/issuer.seed", "--on-behalf-of", "user://alice",
+        "--task", "session-1", "--zone", "on-prem:hq", "--action", "write", "--table", "research/notes", "--ttl", "900"]));
+    let expired = stdout(&run(p, &["token", "mint", "--issuer-key", ".contextful/issuer.seed", "--on-behalf-of", "user://alice",
+        "--task", "session-1", "--zone", "on-prem:hq", "--action", "read", "--action", "write",
+        "--table", "memory/facts", "--table", "research/notes", "--ttl", "900", "--now", "2020-01-01T00:00:00Z"]));
+    let claim = json!({ "into": "memory/facts", "actor": "user://alice", "session": "session-1", "dedup_key": "turn-1",
+        "claim": { "subject": "Northwind", "predicate": "filings", "object": "arrived", "confidence": 0.9,
+            "evidence": [{ "table": "research/notes", "run": "run-0001", "seq": 0 }] } });
+    let (listener, addr) = serve(p, &["serve", "--http", "127.0.0.1:0", "--audience", AUD,
+        "--max-in-flight", "2", "--project", "research", "--public-key", &public]);
+    assert_eq!(post_claim(&addr, &reader, &claim, false).0, 403, "read grant cannot write");
+    assert_eq!(post_claim(&addr, &wrong_table, &claim, false).0, 403, "a write grant on another table cannot land memory");
+    assert_eq!(post_claim(&addr, &expired, &claim, false).0, 401, "expired authority cannot write");
+    let mut client_scope = claim.clone();
+    client_scope["claim"]["scope"] = json!("shared");
+    assert_eq!(post_claim(&addr, &alice, &client_scope, false).0, 400, "the caller cannot set claim scope");
+    assert_eq!(post_claim(&addr, &alice, &claim, true).0, 403, "a browser origin cannot reach the write");
+    let (status, first) = post_claim(&addr, &alice, &claim, false);
+    assert_eq!(status, 200, "{first}");
+    assert_eq!(first["landed"], true);
+    assert!(first["scope"].as_str().is_some_and(|scope| scope.contains("alice") && scope.contains("session-1")), "{first}");
+    let (status, duplicate) = post_claim(&addr, &alice, &claim, false);
+    assert_eq!(status, 200, "{duplicate}");
+    assert_eq!(duplicate["landed"], false);
+    let mut borrowed = claim.clone();
+    borrowed["actor"] = json!("user://bob");
+    assert_eq!(post_claim(&addr, &alice, &borrowed, false).0, 403, "a writer cannot author for another operator");
+    borrowed["actor"] = json!("user://alice");
+    borrowed["session"] = json!("session-2");
+    assert_eq!(post_claim(&addr, &alice, &borrowed, false).0, 403, "a writer cannot pick another session");
+    assert_eq!(post_claim(&addr, &bob, &claim, false).0, 403, "the second operator cannot author Alice's claim");
+    let write_tool = json!({ "jsonrpc": "2.0", "id": 7, "method": "tools/call",
+        "params": { "name": "memory.write", "arguments": claim } });
+    let (_, mcp) = post(&addr, &write_tool, &alice, None);
+    assert!(mcp.to_string().contains("no tool"), "{mcp}");
+    drop(listener);
+    let (_restarted, addr) = serve(p, &["serve", "--http", "127.0.0.1:0", "--audience", AUD,
+        "--max-in-flight", "2", "--project", "research", "--public-key", &public]);
+    let recall = json!({ "jsonrpc": "2.0", "id": 8, "method": "tools/call",
+        "params": { "name": "memory.recall", "arguments": { "table": "memory/facts", "subject": "Northwind" } } });
+    let (status, memory) = post(&addr, &recall, &reader, None);
+    assert_eq!(status, 200, "{memory}");
+    assert_eq!(memory["result"]["structuredContent"]["rows"].as_array().map(Vec::len), Some(1), "{memory}");
+    stdout(&run(p, &["token", "revoke", "--principal-class", "delegated"]));
+    assert_eq!(post_claim(&addr, &alice, &claim, false).0, 401, "revoked authority commits nothing");
+}
+
+#[test]
+fn served_exchange_without_policy_returns_the_unconfigured_refusal() {
+    let (dir, public) = project();
+    let (_listener, addr) = serve(dir.path(), &["serve", "--http", "127.0.0.1:0", "--audience", AUD,
+        "--max-in-flight", "2", "--project", "research", "--public-key", &public]);
+    let body = "not-json";
+    let mut stream = TcpStream::connect(&addr).unwrap();
+    write!(stream, "POST /auth/exchange HTTP/1.1\r\nContent-Type: application/json\r\nContent-Length: {}\r\n\r\n{body}", body.len()).unwrap();
+    let raw = exchange_response(&mut stream).unwrap();
+    let (head, data) = raw.split_once("\r\n\r\n").unwrap();
+    assert_eq!(head.split(' ').nth(1), Some("404"));
+    let answer: Value = serde_json::from_str(data).unwrap();
+    assert_eq!(answer["error"]["identifier"], "ExchangeUnconfigured");
+    let mut stream = TcpStream::connect(&addr).unwrap();
+    stream.set_read_timeout(Some(std::time::Duration::from_secs(2))).unwrap();
+    write!(stream, "POST /auth/exchange HTTP/1.1\r\nContent-Type: application/json\r\nContent-Length: 100\r\n\r\n").unwrap();
+    let raw = exchange_response(&mut stream).expect("unconfigured exchange answers before waiting for its body");
+    assert!(raw.starts_with("HTTP/1.1 404"), "{raw}");
+}
+
+#[test]
+fn served_exchange_mints_a_reader_credential_for_the_read_face() {
+    let (dir, public) = project();
+    let p = dir.path();
+    std::fs::create_dir_all(p.join(".contextful/exchange")).unwrap();
+    std::fs::write(p.join(".contextful/exchange/policy.toml"),
+        "expected_iss = \"https://login.example.test/\"\nexpected_aud = \"console\"\nrole_claim = \"roles\"\n\
+         [subject_map]\non_behalf_of = { claim = \"sub\", template = \"user://{}\" }\nzone = { claim = \"zone\" }\n\
+         [[role_grants.reader]]\nactions = [\"read\"]\ntables = [\"research/*\"]\n").unwrap();
+    std::fs::write(p.join(".contextful/exchange/verify.key"), "exchange-secret").unwrap();
+    let now = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap().as_secs();
+    let jwt = jsonwebtoken::encode(&jsonwebtoken::Header::new(jsonwebtoken::Algorithm::HS256),
+        &json!({ "iss": "https://login.example.test/", "aud": "console", "exp": now + 300,
+            "sub": "reader@example.test", "zone": "on-prem:hq", "roles": ["reader"] }),
+        &jsonwebtoken::EncodingKey::from_secret(b"exchange-secret")).unwrap();
+    let (_listener, addr) = serve(p, &["serve", "--http", "127.0.0.1:0", "--audience", AUD,
+        "--max-in-flight", "2", "--project", "research", "--public-key", &public]);
+    let exchange = |jwt: &str| {
+        let body = json!({ "jwt": jwt }).to_string();
+        let mut stream = TcpStream::connect(&addr).unwrap();
+        write!(stream, "POST /auth/exchange HTTP/1.1\r\nContent-Type: application/json\r\nContent-Length: {}\r\n\r\n{body}", body.len()).unwrap();
+        let raw = exchange_response(&mut stream).unwrap();
+        let (head, data) = raw.split_once("\r\n\r\n").unwrap();
+        (head.split(' ').nth(1).unwrap().parse::<u16>().unwrap(), serde_json::from_str::<Value>(data).unwrap())
+    };
+    let (status, minted) = exchange(&jwt);
+    assert_eq!(status, 200, "{minted}");
+    let token = minted["token"].as_str().expect("the exchange returns a credential");
+    let (status, answer) = post(&addr, &query(), token, None);
+    assert_eq!(status, 200, "{answer}");
+    assert_eq!(answer["result"]["structuredContent"]["rows"], json!([["n1"]]));
+    let (status, refused) = exchange("invalid");
+    assert_ne!(status, 200);
+    assert_eq!(refused["error"]["identifier"], "ExchangeAssertionInvalid");
 }
 
 /// The network transport refuses to start without its audience, its ceiling, or an issuer key that resolves and parses.
@@ -343,4 +816,49 @@ fn serve_caches_a_repeated_statement_under_its_declared_budget() {
     };
     assert_eq!(states(&["--result-cache-bytes", "65536"]), [json!("miss"), json!("hit")]);
     assert_eq!(states(&[]), [Value::Null, Value::Null], "no declared budget caches nothing");
+}
+
+#[test]
+fn synced_admin_draft_apply_keeps_a_signed_receipt_under_network_authority() {
+    let (dir, public) = project();
+    let root = dir.path();
+    let original = "[[pipeline]]\nid = \"filings-flow\"\nschedule = \"every 1h\"\ntables = [\"research/notes\"]\n[pipeline.source]\nname = \"http\"\nconfig = { endpoint = \"https://example.test/filings\" }\n";
+    std::fs::create_dir_all(root.join("pipelines")).unwrap();
+    std::fs::write(root.join("pipelines/filings.toml"), original).unwrap();
+    let admin = stdout(&run(root, &["token", "mint", "--issuer-key", ".contextful/issuer.seed", "--on-behalf-of", "user://service@acme.example", "--zone", "on-prem:hq", "--action", "admin", "--table", "*", "--ttl", "900"]));
+    let bucket = tempfile::tempdir().unwrap();
+    std::fs::write(root.join(".contextful/context/research/config.toml"), format!("[node]\nid = \"site-a\"\n[sync]\nendpoint = \"file://{}\"\nbucket = \"control-test\"\nprefix = \"team\"\ncoordination = \"single-writer\"\n", bucket.path().display())).unwrap();
+    let imported = Command::new(env!("CARGO_BIN_EXE_contextful")).args(["pipeline", "import", "--project", "research", "--public-key", &public, "--audience", AUD]).env("CONTEXTFUL_TOKEN", &admin).current_dir(root).output().unwrap();
+    stdout(&imported);
+    let (listener, addr) = serve(root, &["serve", "--http", "127.0.0.1:0", "--audience", AUD, "--max-in-flight", "2", "--project", "research", "--public-key", &public]);
+    assert_eq!(control(&addr, "GET", "/control/record", Some(&admin), "").0, 200);
+    let edit = json!({ "expected": 1, "document": original.replace("every 1h", "every 1d") }).to_string();
+    assert_eq!(control_headers(&addr, "POST", "/control/edit", Some(&admin), &edit, "").0, 403);
+    let now = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap().as_secs() as i64;
+    let stale = attestation("/control/edit", &edit, "operator-a", now - 120, &"1".repeat(32));
+    assert_eq!(control_headers(&addr, "POST", "/control/edit", Some(&admin), &edit, &stale).0, 403);
+    let forged = attestation("/control/edit", &edit, "operator-a", now, &"2".repeat(32)).replace("Operator: operator-a", "Operator: operator-b");
+    assert_eq!(control_headers(&addr, "POST", "/control/edit", Some(&admin), &edit, &forged).0, 403);
+    let signed = attestation("/control/edit", &edit, "operator-a", now, &"3".repeat(32));
+    let (status, saved) = control_headers(&addr, "POST", "/control/edit", Some(&admin), &edit, &signed);
+    assert_eq!(status, 200, "{saved}");
+    assert_eq!(control_headers(&addr, "POST", "/control/edit", Some(&admin), &edit, &signed).0, 403);
+    drop(listener);
+    let (_restart, restarted_addr) = serve(root, &["serve", "--http", "127.0.0.1:0", "--audience", AUD, "--max-in-flight", "2", "--project", "research", "--public-key", &public]);
+    assert_eq!(control_headers(&restarted_addr, "POST", "/control/edit", Some(&admin), &edit, &signed).0, 403);
+    let apply = json!({ "expected": 1, "nonce": saved["nonce"] }).to_string();
+    let signed = attestation("/control/apply", &apply, "operator-a", now, &"4".repeat(32));
+    let (status, result) = control_headers(&restarted_addr, "POST", "/control/apply", Some(&admin), &apply, &signed);
+    assert_eq!(status, 200, "{result}");
+    let receipts = root.join(".contextful/control/research");
+    let receipt: contextful_policy::control_receipt::ControlReceipt = serde_json::from_str(&std::fs::read_to_string(receipts.join("receipt@v2.json")).unwrap()).unwrap();
+    let snapshot = std::fs::read(receipts.join("manifest@v2.toml")).unwrap();
+    let signer = contextful_policy::issue::SeedSigner::resolve(Some(&root.join(".contextful/issuer.seed"))).unwrap();
+    receipt.verify("research", &snapshot, &[contextful_policy::issue::SignerKey::of(&signer)]).unwrap();
+    assert!(receipt.parent.is_some());
+    let entries = contextful_policy::audit::entries(&root.join(".contextful/audit")).unwrap();
+    assert!(entries.iter().any(|entry| entry.attributes["contextful.operator.subject"] == "operator-a" && entry.attributes["contextful.control.operation"] == "apply"));
+    let (status, record) = control(&restarted_addr, "GET", "/control/record", Some(&admin), "");
+    assert_eq!(status, 200, "{record}");
+    assert!(record["entries"].as_array().unwrap().iter().any(|entry| entry["attributes"]["contextful.operator.subject"] == "operator-a"));
 }
