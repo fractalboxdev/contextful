@@ -2,6 +2,7 @@
 use contextful_core::run::ports::{PullRequest, Source};
 use contextful_core::run::FailureTag;
 use contextful_engine::{cancel::CancelToken, command::CommandSource};
+use std::os::windows::ffi::OsStringExt;
 use std::os::windows::io::{AsRawHandle, FromRawHandle, OwnedHandle};
 use std::path::{Path, PathBuf};
 use std::sync::OnceLock;
@@ -12,21 +13,90 @@ unsafe extern "system" {
     fn OpenProcess(access: u32, inherit: i32, pid: u32) -> *mut std::ffi::c_void;
     fn WaitForSingleObject(handle: *mut std::ffi::c_void, millis: u32) -> u32;
     fn TerminateProcess(handle: *mut std::ffi::c_void, code: u32) -> i32;
+    fn QueryFullProcessImageNameW(
+        handle: *mut std::ffi::c_void,
+        flags: u32,
+        buffer: *mut u16,
+        size: *mut u32,
+    ) -> i32;
+    fn GetProcessTimes(
+        process: *mut std::ffi::c_void,
+        creation: *mut FileTime,
+        exit: *mut FileTime,
+        kernel: *mut FileTime,
+        user: *mut FileTime,
+    ) -> i32;
+}
+
+#[repr(C)]
+#[derive(Default)]
+struct FileTime {
+    low: u32,
+    high: u32,
 }
 
 struct Descendant(OwnedHandle);
 impl Descendant {
-    fn open(pid: u32) -> Self {
+    fn open(pid: u32, creation_identity: u64) -> Self {
         // SAFETY: OpenProcess receives plain integers and returns a newly owned
         // handle. The fixture remains alive until this test terminates it.
-        let raw = unsafe { OpenProcess(0x0010_0000 | 0x0001, 0, pid) };
+        let raw = unsafe { OpenProcess(0x0010_0000 | 0x1000 | 0x0001, 0, pid) };
         assert!(
             !raw.is_null(),
             "open descendant: {}",
             std::io::Error::last_os_error()
         );
         // SAFETY: successful OpenProcess returns an exclusively owned live handle.
-        Self(unsafe { OwnedHandle::from_raw_handle(raw) })
+        let handle = unsafe { OwnedHandle::from_raw_handle(raw) };
+        let (mut creation, mut exit, mut kernel, mut user) = (
+            FileTime::default(),
+            FileTime::default(),
+            FileTime::default(),
+            FileTime::default(),
+        );
+        // SAFETY: handle stays owned and each FILETIME-layout output is initialized.
+        assert_ne!(
+            unsafe {
+                GetProcessTimes(
+                    handle.as_raw_handle(),
+                    &mut creation,
+                    &mut exit,
+                    &mut kernel,
+                    &mut user,
+                )
+            },
+            0,
+            "fixture creation identity query"
+        );
+        assert_eq!(
+            (u64::from(creation.high) << 32) | u64::from(creation.low),
+            creation_identity,
+            "PID reuse differs from fixture creation identity"
+        );
+        let mut image = vec![0u16; 32_768];
+        let mut length = image.len() as u32;
+        // SAFETY: image holds length writable UTF-16 code units and handle stays owned.
+        assert_ne!(
+            unsafe {
+                QueryFullProcessImageNameW(
+                    handle.as_raw_handle(),
+                    0,
+                    image.as_mut_ptr(),
+                    &mut length,
+                )
+            },
+            0,
+            "fixture image identity query"
+        );
+        assert!(length as usize <= image.len());
+        let image = PathBuf::from(std::ffi::OsString::from_wide(&image[..length as usize]));
+        assert_eq!(
+            std::fs::canonicalize(image).unwrap(),
+            std::fs::canonicalize(fixture()).unwrap(),
+            "descendant uses the unique owned fixture executable"
+        );
+        // Cleanup-capable ownership starts only after both identity checks pass.
+        Self(handle)
     }
     fn exited(&self) -> bool {
         // SAFETY: the borrowed handle remains owned throughout the wait.
@@ -93,11 +163,12 @@ fn ready(dir: &Path) -> Descendant {
         assert!(Instant::now() < deadline, "parent and descendant readiness");
         std::thread::sleep(Duration::from_millis(5));
     }
-    let pid = std::fs::read_to_string(dir.join("grandchild.pid"))
-        .unwrap()
-        .parse()
-        .unwrap();
-    Descendant::open(pid)
+    let identity = std::fs::read_to_string(dir.join("grandchild.pid")).unwrap();
+    let mut fields = identity.split_whitespace();
+    let pid = fields.next().unwrap().parse().unwrap();
+    let creation = fields.next().unwrap().parse().unwrap();
+    assert!(fields.next().is_none());
+    Descendant::open(pid, creation)
 }
 fn request() -> PullRequest {
     PullRequest {
@@ -107,7 +178,6 @@ fn request() -> PullRequest {
     }
 }
 
-// spec: run.cancel.child-reaped@8c92882f
 #[test]
 fn cancellation_returns_only_after_the_descendant_handle_is_signalled() {
     let dir = tempfile::tempdir().unwrap();

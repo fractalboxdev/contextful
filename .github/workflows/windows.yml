@@ -9,6 +9,9 @@ permissions:
 
 jobs:
   windows:
+    timeout-minutes: 30
+    env:
+      RUSTUP_TOOLCHAIN: 1.97.0
     if: ${{ github.event.pull_request.head.repo.full_name == github.repository }}
     strategy:
       fail-fast: false
@@ -21,7 +24,7 @@ jobs:
     runs-on: ${{ matrix.runner }}
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
-      - run: rustup target add ${{ matrix.target }}
+      - run: rustup toolchain install 1.97.0 --profile minimal --target ${{ matrix.target }}
       - run: cargo check --locked --target ${{ matrix.target }} --no-default-features -p contextful-core -p contextful-fs -p contextful-policy -p contextful-context
       - run: cargo test --locked --target ${{ matrix.target }} -p contextful-fs --test integration an_open_directory_handle_syncs_its_entries
       - run: cargo test --locked --target ${{ matrix.target }} -p contextful-fs --test integration a_renamed_open_file_does_not_identify_its_replacement
@@ -32,6 +35,9 @@ jobs:
       - run: cargo test --locked --target ${{ matrix.target }} --no-default-features -p contextful-context --test integration a_renamed_lock_does_not_remove_the_file_that_replaces_it
 
   command-tree-red:
+    timeout-minutes: 30
+    env:
+      RUSTUP_TOOLCHAIN: 1.97.0
     if: ${{ github.event.pull_request.head.repo.full_name == github.repository }}
     strategy:
       fail-fast: false
@@ -47,7 +53,7 @@ jobs:
         with:
           ref: e6c777fd07f74b85ec20f4a2247c8dc58192a580
           fetch-depth: 0
-      - run: rustup target add ${{ matrix.target }}
+      - run: rustup toolchain install 1.97.0 --profile minimal --target ${{ matrix.target }}
       - run: git fetch --no-tags origin ${{ github.event.pull_request.head.sha }}
       - run: git restore --source=${{ github.event.pull_request.head.sha }} -- crates/contextful-engine/tests/integration/main.rs crates/contextful-engine/tests/integration/command_windows.rs crates/contextful-engine/tests/fixtures/command_tree.rs
       - run: git diff --exit-code e6c777fd07f74b85ec20f4a2247c8dc58192a580 -- crates/contextful-engine/src
