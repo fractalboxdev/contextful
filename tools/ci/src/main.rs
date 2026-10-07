@@ -478,7 +478,11 @@ fn run_stage(root: &Path, stage: &str, only: Option<&[String]>, base: &str, boun
             workspace(root, only)?
         }
         "acceptance" => acceptance(root)?,
-        "evaluate" => measure::evaluate(root)?,
+        "evaluate" => {
+            provision_lean(root)?;
+            provision_wasm(root)?;
+            measure::evaluate(root)?
+        }
         "features" => features(root, only)?,
         "crate-graph" => {
             committed_lock(root)?;
