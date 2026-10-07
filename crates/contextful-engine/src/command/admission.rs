@@ -2,6 +2,14 @@
 
 use std::io;
 
+pub(super) fn reaped_members(
+    active: u32,
+    child_reaped: bool,
+    members: impl IntoIterator<Item = bool>,
+) -> bool {
+    active == 0 && child_reaped && members.into_iter().all(|signalled| signalled)
+}
+
 pub(super) fn sole_thread(
     process: u32,
     threads: impl IntoIterator<Item = (u32, u32)>,
