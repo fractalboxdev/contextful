@@ -15503,7 +15503,7 @@
       "operation": "grant",
       "subject": "actions",
       "kind": "behavior",
-      "statement": "The action vocabulary is `read` for every row-returning surface, `write` to land rows, `execute` to fire a run, and `admin` to mint.",
+      "statement": "The action vocabulary is `read` for every row-returning surface, `write` to land rows, `execute` to fire a run, `admin` to mint, and `forget` to erase subject data.",
       "why": "A-authority",
       "file": "spec/50-authority.md",
       "line": 133
@@ -15910,7 +15910,7 @@
       "operation": "issue",
       "subject": "principal-required",
       "kind": "refusal",
-      "statement": "A mint granting `write` or `execute` whose subject names no `on_behalf_of` raises `IssuancePrincipalRequired`.",
+      "statement": "A mint granting `write`, `execute` or `forget` whose subject names no `on_behalf_of` raises `IssuancePrincipalRequired`.",
       "why": "A-authority",
       "file": "spec/50-authority.md",
       "line": 245
@@ -26382,7 +26382,7 @@
           },
           "GrantActionUnknown": {
             "clause": "authority.grant.unknown-action",
-            "gloss": "An action outside the four-verb vocabulary."
+            "gloss": "An action outside the registered vocabulary."
           },
           "GrantPatternMalformed": {
             "clause": "authority.grant.malformed-pattern",
@@ -26422,7 +26422,7 @@
           },
           "IssuancePrincipalRequired": {
             "clause": "authority.issue.principal-required",
-            "gloss": "A write or execute grant naming no on-behalf-of principal."
+            "gloss": "An attributed-effect grant naming no on-behalf-of principal."
           },
           "IssuanceUnauthorized": {
             "clause": "authority.issue.unauthorized-mint",

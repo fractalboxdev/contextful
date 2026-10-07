@@ -145,7 +145,7 @@ fn lowering_the_ceiling_records_the_previous_value_until_its_credentials_lapse()
 }
 
 /// A mint granting `write`, `execute` or `forget` whose subject names no `on_behalf_of` raises `IssuancePrincipalRequired`.
-// spec: authority.issue.principal-required@23221e9a
+// spec: authority.issue.principal-required@62f5864e
 #[test]
 fn a_write_execute_or_forget_mint_without_a_principal_refuses() {
     let p = policy(3600);
