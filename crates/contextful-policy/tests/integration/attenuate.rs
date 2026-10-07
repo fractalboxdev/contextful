@@ -17,6 +17,29 @@ fn narrowed(parent: &str, to: &[&str]) -> Result<String, contextful_core::Author
     attenuate(parent, &Derivation::narrowing(&grants, None, Some(&tables(to))))
 }
 
+#[test]
+fn signed_forget_is_scoped_and_attenuation_never_inherits_it_from_other_actions() {
+    let forget = Action::parse("forget").expect("the signed profile admits explicit forget grants");
+    let signer = issuer();
+    let parent = mint(&plan_for(&signer, dana(), vec![grant(&[forget], &["research/*"])]), &MintClaims::default(), &signer).unwrap();
+    let admitted = admit(&parent, &signer, DURING).unwrap();
+    assert!(admitted.permits(forget, &["research/filings"]));
+    assert!(!admitted.permits(forget, &["sales/invoices"]));
+    for action in [Action::Read, Action::Write, Action::Execute, Action::Admin] {
+        assert!(!admitted.permits(action, &["research/filings"]));
+        let other = mint(&plan_for(&signer, dana(), vec![grant(&[action], &["research/*"])]), &MintClaims::default(), &signer).unwrap();
+        assert!(!admit(&other, &signer, DURING).unwrap().permits(forget, &["research/filings"]));
+        let grants = introspect(&other).unwrap().authority.grants;
+        refused(attenuate(&other, &Derivation::narrowing(&grants, Some(&[forget]), None)), "AttenuationWidens");
+    }
+    let child = narrowed(&parent, &["research/filings"]).unwrap();
+    let child = admit(&child, &signer, DURING).unwrap();
+    assert!(child.permits(forget, &["research/filings"]));
+    assert!(!child.permits(forget, &["research/other"]));
+    assert!(!child.permits(Action::Read, &["research/filings"]));
+    assert_eq!(admit(&minted(&signer), &signer, DURING).unwrap().grants()[0].actions, vec![Action::Read]);
+}
+
 /// A holder derives a narrower child with no issuer round trip by appending a signed block. The parent's bytes stay unchanged, independently verifiable and independently withdrawable.
 // spec: authority.attenuate.offline@7aa68118
 #[test]

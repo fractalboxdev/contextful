@@ -259,6 +259,7 @@ fn grant_name(g: &Grant) -> String {
             Action::Write => "write",
             Action::Execute => "execute",
             Action::Admin => "admin",
+            Action::Forget => "forget",
         })
         .collect();
     let tables: Vec<String> = g.tables.iter().cloned().map(String::from).collect();

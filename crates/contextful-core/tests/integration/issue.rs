@@ -144,14 +144,14 @@ fn lowering_the_ceiling_records_the_previous_value_until_its_credentials_lapse()
     assert_eq!(raised.lower_ceiling(90_000, lowered_at), Err(PolicyError::CeilingAboveBound(90_000)));
 }
 
-/// A mint granting `write` or `execute` whose subject names no `on_behalf_of` raises `IssuancePrincipalRequired`.
+/// A mint granting `write`, `execute` or `forget` whose subject names no `on_behalf_of` raises `IssuancePrincipalRequired`.
 // spec: authority.issue.principal-required@23221e9a
 #[test]
-fn a_write_or_execute_mint_without_a_principal_refuses() {
+fn a_write_execute_or_forget_mint_without_a_principal_refuses() {
     let p = policy(3600);
     let agent_only = Subject { agent: Some("agent://loader".into()), ..Subject::default() };
 
-    for action in [Action::Write, Action::Execute] {
+    for action in [Action::Write, Action::Execute, Action::Forget] {
         let req = MintRequest::custody(agent_only.clone(), vec![grant(&[Action::Read]), grant(&[action])]);
         let err = check(&p, &req).unwrap_err();
         assert!(matches!(err, AuthorityError::IssuancePrincipalRequired(_)), "{action:?}: {err}");
@@ -161,6 +161,17 @@ fn a_write_or_execute_mint_without_a_principal_refuses() {
     }
     let read_only = MintRequest::custody(agent_only, vec![grant(&[Action::Read])]);
     assert!(check(&p, &read_only).is_ok());
+}
+
+#[test]
+fn a_forget_mint_requires_an_acting_principal_while_subjectless_read_remains_valid() {
+    let forget = Action::parse("forget").expect("forget is an attributed effect action");
+    let p = policy(3600);
+    let agent_only = Subject { agent: Some("agent://eraser".into()), ..Subject::default() };
+    let request = MintRequest::custody(agent_only.clone(), vec![grant(&[forget])]);
+    assert!(matches!(check(&p, &request), Err(AuthorityError::IssuancePrincipalRequired(_))));
+    assert!(check(&p, &MintRequest::custody(dana(), vec![grant(&[forget])])).is_ok());
+    assert!(check(&p, &MintRequest::custody(agent_only, vec![grant(&[Action::Read])])).is_ok());
 }
 
 /// A mint's default action set is `read` alone.
