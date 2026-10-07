@@ -215,7 +215,7 @@ impl Source for CommandSource {
         let status = loop {
             if cancel.requested() {
                 reap_group(&mut child, &tree, &request.step_label)?;
-                return Err(Failure::canceled(format!("stopped during `{}`; its process group is reaped", request.step_label)));
+                return Err(Failure::canceled(format!("stopped during `{}`; its command tree is reaped", request.step_label)));
             }
             match child.try_wait() {
                 Ok(Some(status)) => break status,
