@@ -377,7 +377,7 @@ struct Pools {
     damage_percent: u64,
 }
 
-const ACTIONS: [&str; 4] = ["read", "write", "execute", "admin"];
+const ACTIONS: [&str; 5] = ["read", "write", "execute", "admin", "forget"];
 
 const WELL_FORMED: Pools = Pools {
     names: &["research", "research/filings", "research/filings/eu", "sales/invoices", "sales", "res"],
@@ -501,7 +501,7 @@ fn gen_verify(rng: &mut Rng, pools: &Pools) -> Value {
     let signer = issuer(ISSUERS[issuer_at]);
     let grants: Vec<Grant> = (0..rng.below(3) + 1)
         .map(|_| {
-            let mut actions = rng.subset(&[Action::Read, Action::Write, Action::Execute], 50);
+            let mut actions = rng.subset(&[Action::Read, Action::Write, Action::Execute, Action::Forget], 50);
             if actions.is_empty() {
                 actions.push(Action::Read);
             }

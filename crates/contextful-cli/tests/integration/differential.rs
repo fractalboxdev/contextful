@@ -838,6 +838,23 @@ fn forget_narrowing_agrees_in_native_webassembly_and_the_independent_reference()
     }
 }
 
+#[test]
+fn seeded_generated_narrowing_cases_include_explicit_forget_actions() {
+    let s = Scratch::new(wasm_args_or_skip!());
+    let log = s.path("generated.jsonl");
+    let report = passed(&s.run(&s.logging(&log), &["--seed", "3", "--cases", "200"]));
+    assert_eq!(line_value(&report, "generated"), "200");
+    assert_eq!(line_value(&report, "disagreements"), "0");
+    let cases = read_jsonl(&log);
+    let holds_forget = |grants: &Value| {
+        grants.as_array().is_some_and(|grants| {
+            grants.iter().any(|grant| grant["actions"].as_array().is_some_and(|actions| actions.iter().any(|action| action == "forget")))
+        })
+    };
+    assert!(cases.iter().any(|case| case["op"] == "narrow" && holds_forget(&case["parent"])), "the fixed seed generates no forget parent");
+    assert!(cases.iter().any(|case| case["op"] == "narrow" && holds_forget(&case["child"])), "the fixed seed generates no forget child");
+}
+
 /// A `verify` case admits one credential against pinned keys as a network checkpoint does; both builds decide it and are compared, the reference model decides none, and the report counts each credential verdict.
 // spec: assurance.differential-test.credential-cases@ca93477e
 #[test]
