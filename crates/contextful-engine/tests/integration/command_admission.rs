@@ -1,7 +1,7 @@
 #[path = "../../src/command/admission.rs"]
 mod admission;
 
-use admission::{resume_count, sole_thread, thread_owner};
+use admission::{reaped_members, resume_count, sole_thread, thread_owner};
 
 #[test]
 fn suspended_launch_selects_only_its_single_owned_thread() {
@@ -27,4 +27,12 @@ fn launch_resume_requires_exactly_one_suspend_count() {
     for count in [0, 2, u32::MAX] {
         assert!(resume_count(count).is_err());
     }
+}
+
+#[test]
+fn zero_job_accounting_waits_for_retained_member_handles() {
+    assert!(!reaped_members(0, true, [true, false]));
+    assert!(!reaped_members(1, true, [true, true]));
+    assert!(!reaped_members(0, false, [true, true]));
+    assert!(reaped_members(0, true, [true, true]));
 }
