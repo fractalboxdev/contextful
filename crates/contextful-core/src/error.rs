@@ -62,7 +62,7 @@ pub enum AuthorityError {
     /// An exchange requested of a project declaring no exchange policy. (`authority.exchange.unconfigured`)
     #[error("ExchangeUnconfigured: {0}")]
     ExchangeUnconfigured(String),
-    /// An action outside the four-verb vocabulary. (`authority.grant.unknown-action`)
+    /// An action outside the registered vocabulary. (`authority.grant.unknown-action`)
     #[error("GrantActionUnknown: {0}")]
     GrantActionUnknown(String),
     /// A table pattern with a star before its final position. (`authority.grant.malformed-pattern`)
