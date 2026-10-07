@@ -14,8 +14,9 @@ fn restriction(r: &Response) -> &Value {
 }
 
 fn expensive_statement() -> String {
-    let tables = (0..14).map(|i| format!("\"research/notes\" t{i}")).collect::<Vec<_>>().join(", ");
-    format!("SELECT sum(random()) FROM {tables}")
+    // Four materialized arms execute 96^4 random evaluations under the statement deadline.
+    let rows = (0..32).map(|_| "SELECT note_id FROM \"research/notes\"").collect::<Vec<_>>().join(" UNION ALL ");
+    format!("WITH work AS MATERIALIZED ({rows}) SELECT sum(random()) FROM work t0, work t1, work t2, work t3")
 }
 
 // spec: read.respond.duration-ceiling@cfa152d7
