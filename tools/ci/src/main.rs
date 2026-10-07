@@ -1015,11 +1015,6 @@ fn test_first_parts(root: &Path, base: &str) -> Result<Vec<String>> {
     for source in sources_outside_refactors(base)? {
         packages.insert(changed_package(root, &source)?);
     }
-    if !packages.is_empty() {
-        for test in changed_tests(base)? {
-            packages.insert(changed_package(root, &test)?);
-        }
-    }
     Ok(std::iter::once("validate".to_string()).chain(packages).collect())
 }
 
@@ -1030,14 +1025,19 @@ fn test_first(root: &Path, base: &str, bound: Duration, only: Option<&[String]>)
         return Ok(());
     }
     let changed = changed_tests(base)?;
-    let tests: Vec<&str> = changed.iter().map(String::as_str).collect();
+    let source_packages: std::collections::BTreeSet<String> = sources.iter().map(|source| changed_package(root, source)).collect::<Result<_>>()?;
+    let mut tests = Vec::new();
+    for test in &changed {
+        if source_packages.contains(&changed_package(root, test)?) {
+            tests.push(test.as_str());
+        }
+    }
     if tests.is_empty() {
         return Err(refuse(
             "TestNotFirst",
             format!("{} source file(s) changed and no test under a package's tests/ did: {}", sources.len(), sources.join(", ")),
         ));
     }
-    let source_packages: std::collections::BTreeSet<String> = sources.iter().map(|source| changed_package(root, source)).collect::<Result<_>>()?;
     let test_packages: std::collections::BTreeSet<String> = tests.iter().map(|test| changed_package(root, test)).collect::<Result<_>>()?;
     if only.is_none() || only.is_some_and(|parts| parts == ["validate"]) {
         if let Some(missing) = source_packages.difference(&test_packages).next() {
