@@ -88,7 +88,8 @@ Assertion construction, guard validation, suite placement, test-first and accept
 - `connector-kit` — The connector authoring toolkit ships a conformance suite — discovery returns valid schemas, an opened table yields a finite stream, a position round-trips — plus recorded-HTTP fixture replay and property tests over position monotonicity.
 - `test-first` — A change altering Rust source under `crates/` or `tools/` adds or alters a test under a package's `tests/` that fails against the base commit's source; a change without one raises `TestNotFirst`.
   *A-assurance*
-- `test-first-scope` — The test-first stage builds each changed test file's target against the base source with every feature enabled, then runs exactly the tests under that file's top-level module; a target failing to compile there counts as failing.
+- `test-first-scope` — For each package held by {{assurance.gate.test-first-parts}}, the test-first stage builds each changed test file's target against the base source with every feature enabled, then runs its top-level module; a target failing to compile there counts as failing.
+  *A-assurance*
 - `base-run-bound` — One test-first execution against the base, its build excluded, runs for at most 300 s; a run past the bound is killed with its process group and counts as failing.
 - `base-unrunnable` — A base invocation whose output reports a full disk, an unloadable manifest or an unfetchable dependency raises `TestFirstBaseUnrunnable` instead of a verdict.
   *because such a fault fails at base whatever the tests assert, and reading it as red admits an untested change*
@@ -167,8 +168,8 @@ Stage order, secrets of record, the crate-graph, row-token, egress and dependenc
   *A-assurance*
 - `windows-native` — The pull-request workflow checks core, filesystem, policy and store-write packages and exercises directory sync on native x86 and ARM Windows runners.
   *because native runners provide the target C toolchain and execute directory flushes that cross-compilation cannot verify*
-- `test-first-parts` — Remote validation requires a changed test in each changed source package under {{assurance.test.test-first}}; each changed source or test package checks only its own tests against the base in a separate dispatch.
-  *because one base build per package fits the sandbox's wall clock more reliably*
+- `test-first-parts` — Remote validation requires a changed test in each changed source package under {{assurance.test.test-first}}; each such package checks only its changed tests against the base in a separate dispatch.
+  *A-assurance*
 - `workspace-parts` — Remote workspace checks compile the feature-unified workspace without running tests, run differential and remaining CLI tests separately, and run each other non-acceptance package suite in exactly one of four groups.
   *A-assurance*
 - `remote-predecessors` — Each dispatched part invokes `contextful-ci gate --predecessors --stage <part> --base <base-sha>`, so no check reads another check's sandbox.

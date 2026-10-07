@@ -69,6 +69,41 @@ fn a_test_failing_on_the_base_passes() {
 }
 
 #[test]
+fn test_only_portability_changes_stay_workspace_checked_without_a_red_obligation() {
+    let r = Repo::init();
+    r.write("crates/other/Cargo.toml", &manifest("other", ""));
+    r.write("crates/other/src/lib.rs", "pub fn value() -> i32 { 1 }\n");
+    r.write("crates/other/tests/integration/main.rs", "mod value;\n");
+    r.write("crates/other/tests/integration/value.rs", "#[test]\nfn positive() { assert!(other::value() > 0); }\n");
+    r.lock();
+    r.commit("second package and workspace lock");
+    let base = r.head();
+    r.write("crates/demo/src/lib.rs", TRIPLE);
+    r.write("crates/demo/tests/integration/main.rs", "mod double;\nmod triple;\n");
+    r.write("crates/demo/tests/integration/triple.rs", "#[test]\nfn triples() { assert_eq!(demo::triple(2), 6); }\n");
+    r.write("crates/other/tests/integration/value.rs", "#[cfg(unix)]\n#[test]\nfn positive() { assert!(other::value() >= 1); }\n");
+    r.commit("new source behavior and an unrelated portable test");
+
+    let listed = r.run_ci(&["stages", "--parts", "--base", &base, "--json"]);
+    assert!(listed.status.success(), "{}", stderr(&listed));
+    let stages: Vec<String> = serde_json::from_slice(&listed.stdout).unwrap();
+    assert!(stages.contains(&"test-first.demo".to_string()), "{stages:?}");
+    assert!(!stages.contains(&"test-first.other".to_string()), "test-only package has no source behavior to specify: {stages:?}");
+    let whole = r.gate(&["--stage", "test-first", "--base", &base]);
+    assert!(whole.status.success(), "{}", stderr(&whole));
+    let workspace = r.gate(&["--stage", "workspace"]);
+    assert!(workspace.status.success(), "{}", stderr(&workspace));
+
+    r.write("crates/other/tests/integration/value.rs", "#[test]\nfn positive() { assert_eq!(other::value(), 2); }\n");
+    r.commit("a failing test-only change");
+    let whole = r.gate(&["--stage", "test-first", "--base", &base]);
+    assert!(whole.status.success(), "{}", stderr(&whole));
+    let workspace = r.gate(&["--stage", "workspace"]);
+    assert!(!workspace.status.success(), "the workspace skipped the unrelated test-only failure");
+    assert!(String::from_utf8_lossy(&workspace.stdout).contains("positive"), "{}", stderr(&workspace));
+}
+
+#[test]
 fn each_changed_test_package_has_its_own_dispatch_part() {
     let r = Repo::init();
     r.write("crates/other/Cargo.toml", &manifest("other", ""));
