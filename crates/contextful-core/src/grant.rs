@@ -18,6 +18,7 @@ pub enum Action {
     Write,
     Execute,
     Admin,
+    Forget,
 }
 
 impl Action {
@@ -28,8 +29,9 @@ impl Action {
             "write" => Ok(Action::Write),
             "execute" => Ok(Action::Execute),
             "admin" => Ok(Action::Admin),
+            "forget" => Ok(Action::Forget),
             other => Err(AuthorityError::GrantActionUnknown(format!(
-                "`{other}` is not one of read, write, execute, admin"
+                "`{other}` is not one of read, write, execute, admin, forget"
             ))),
         }
     }

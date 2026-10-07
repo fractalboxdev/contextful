@@ -58,7 +58,7 @@ Consequences: prompt and completion permit keyed digests without an exhaustion c
 
 ## The acting principal is provider-verified, normalized once, fixed per chain
 
-Only an identity provider makes a principal. `authority.identify` checks every subject at the mint: non-empty, at most 256 B, no control character, no surrounding whitespace; the command line trims a padded value and the automated exchange refuses it. A link authorizes only with method `scim_email` or `oidc_sub`; `operator_asserted` stages and confers nothing, and `disclosure.reach` consumes verified links alone. A derivation naming a different `on_behalf_of` refuses, and `authority.issue` refuses a write or execute grant naming none.
+Only an identity provider makes a principal. `authority.identify` checks every subject at the mint: non-empty, at most 256 B, no control character, no surrounding whitespace; the command line trims a padded value and the automated exchange refuses it. A link authorizes only with method `scim_email` or `oidc_sub`; `operator_asserted` stages and confers nothing, and `disclosure.reach` consumes verified links alone. A derivation naming a different `on_behalf_of` refuses, and `authority.issue` refuses a write, execute or forget grant naming none.
 
 | Option | Lost on | Cost |
 | --- | --- | --- |

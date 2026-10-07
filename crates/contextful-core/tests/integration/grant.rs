@@ -55,6 +55,20 @@ fn unknown_action() {
     assert!(e.to_string().contains("GrantActionUnknown"), "{e}");
 }
 
+#[test]
+fn forget_round_trips_as_a_separate_action_and_confers_no_read() {
+    let forget = Action::parse("forget").expect("the explicit erasure action belongs to the vocabulary");
+    assert_ne!(forget, Action::Read);
+    assert_ne!(forget, Action::Write);
+    assert_ne!(forget, Action::Execute);
+    assert_ne!(forget, Action::Admin);
+    let g = grant(&[forget], &["research/*"]);
+    let json = serde_json::to_string(&g).unwrap();
+    assert!(json.contains("\"forget\""));
+    assert_eq!(serde_json::from_str::<Grant>(&json).unwrap(), g);
+    assert!(!raw_read_covers(&[g], "research/filings"));
+}
+
 /// A table pattern is `*`, covering every table; a prefix ending in `*`, covering every name beginning with that prefix; or any other string, matched exactly. A concrete pattern never covers `*`.
 // spec: authority.grant.pattern-forms@8bb6d690
 #[test]
