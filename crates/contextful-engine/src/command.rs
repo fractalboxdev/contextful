@@ -1,5 +1,5 @@
 //! A source whose pulls a command serves: one child process per pull, in a process
-//! group of its own, waited on under the run's cancellation token.
+//! group on Unix or a private job on Windows, waited on under the run's cancellation token.
 //!
 //! The child reads its request from the environment — `CONTEXTFUL_CURSOR` holds the
 //! position as JSON, empty from the start; `CONTEXTFUL_IDEMPOTENCY_KEY` and
@@ -19,6 +19,7 @@ use std::time::{Duration, Instant};
 /// Interval at which a running child is checked for exit and for a stop.
 const WAIT_TICK: Duration = Duration::from_millis(10);
 /// How long a signalled group has to exit on `SIGTERM` before it is killed.
+#[cfg(not(windows))]
 const TERM_GRACE: Duration = Duration::from_millis(500);
 /// How long a killed group has to disappear before the pull fails instead of waiting on.
 const KILL_CEILING: Duration = Duration::from_secs(5);
@@ -29,6 +30,15 @@ pub struct CommandSource {
     pub argv: Vec<String>,
     pub cwd: PathBuf,
 }
+
+#[cfg(windows)]
+mod admission;
+#[cfg(windows)]
+mod windows;
+#[cfg(windows)]
+type ProcessTree = windows::Job;
+#[cfg(not(windows))]
+type ProcessTree = u32;
 
 #[derive(Deserialize)]
 struct Reported {
@@ -90,7 +100,7 @@ mod group {
 }
 
 /// Where no process groups exist, the child alone is signalled, through its handle.
-#[cfg(not(unix))]
+#[cfg(not(any(unix, windows)))]
 mod group {
     pub const TERM: i32 = 15;
     pub const KILL: i32 = 9;
@@ -105,7 +115,9 @@ mod group {
 /// Signal the group to terminate, escalate to a kill past the grace period, and return
 /// once the child is reaped and no process of the group runs. A group still running
 /// `KILL_CEILING` after the kill fails the pull.
-fn reap_group(child: &mut std::process::Child, pgid: u32, step: &str) -> Result<(), Failure> {
+#[cfg(not(windows))]
+fn reap_group(child: &mut std::process::Child, tree: &ProcessTree, step: &str) -> Result<(), Failure> {
+    let pgid = *tree;
     group::signal(pgid, group::TERM);
     let started = Instant::now();
     let mut reaped = false;
@@ -130,6 +142,11 @@ fn reap_group(child: &mut std::process::Child, pgid: u32, step: &str) -> Result<
         }
         std::thread::sleep(WAIT_TICK);
     }
+}
+
+#[cfg(windows)]
+fn reap_group(child: &mut std::process::Child, job: &ProcessTree, step: &str) -> Result<(), Failure> {
+    job.reap(child).map_err(|error| Failure::new(FailureTag::Transient, format!("reaping the job of `{step}`: {error}")))
 }
 
 /// Read a pipe on a thread of its own, delivering each chunk over a channel; the channel
@@ -187,24 +204,32 @@ impl Source for CommandSource {
             .stderr(Stdio::piped());
         #[cfg(unix)]
         std::os::unix::process::CommandExt::process_group(&mut cmd, 0);
+        #[cfg(windows)]
+        let (mut child, tree) = windows::Job::launch(&mut cmd).map_err(|e| Failure::new(FailureTag::Config, format!("spawning `{program}` in its job: {e}")))?;
+        #[cfg(not(windows))]
         let mut child = cmd.spawn().map_err(|e| Failure::new(FailureTag::Config, format!("spawning `{program}`: {e}")))?;
-        let pgid = child.id();
+        #[cfg(not(windows))]
+        let tree = child.id();
         let out = drain(child.stdout.take());
         let err = drain(child.stderr.take());
         let status = loop {
             if cancel.requested() {
-                reap_group(&mut child, pgid, &request.step_label)?;
+                reap_group(&mut child, &tree, &request.step_label)?;
                 return Err(Failure::canceled(format!("stopped during `{}`; its process group is reaped", request.step_label)));
             }
             match child.try_wait() {
                 Ok(Some(status)) => break status,
                 Ok(None) => std::thread::sleep(WAIT_TICK),
-                Err(e) => return Err(Failure::new(FailureTag::Transient, format!("waiting on `{program}`: {e}"))),
+                Err(e) => {
+                    #[cfg(windows)]
+                    reap_group(&mut child, &tree, &request.step_label)?;
+                    return Err(Failure::new(FailureTag::Transient, format!("waiting on `{program}`: {e}")));
+                }
             }
         };
         // A process the child left behind in its group is signalled and reaped too, which
         // also closes any pipe it held open.
-        reap_group(&mut child, pgid, &request.step_label)?;
+        reap_group(&mut child, &tree, &request.step_label)?;
         let stdout = collect(&out, cancel, &request.step_label, "stdout")?;
         let stderr = collect(&err, cancel, &request.step_label, "stderr")?;
         if status.success() {
