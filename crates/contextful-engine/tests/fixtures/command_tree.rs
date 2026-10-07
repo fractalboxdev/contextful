@@ -60,6 +60,9 @@ fn main() {
         return;
     }
     assert!(matches!(mode.as_str(), "cancel" | "finished"));
+    // The finished-parent case deliberately leaves the descendant alive; the
+    // command source and retained-handle test own its bounded cleanup.
+    #[allow(clippy::zombie_processes)]
     let _child = std::process::Command::new(std::env::current_exe().unwrap())
         .arg("grandchild")
         .stdin(std::process::Stdio::null())
