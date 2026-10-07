@@ -56,8 +56,15 @@ fn fixture() -> &'static Path {
     EXE.get_or_init(|| {
         let dir = tempfile::tempdir().unwrap();
         let executable = dir.path().join("command-tree-fixture.exe");
+        let abi = if cfg!(target_env = "gnu") {
+            "gnu"
+        } else {
+            "msvc"
+        };
+        let target = format!("{}-pc-windows-{abi}", std::env::consts::ARCH);
         let out = std::process::Command::new("rustc")
             .arg("--edition=2021")
+            .args(["--target", &target])
             .arg(Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/fixtures/command_tree.rs"))
             .arg("-o")
             .arg(&executable)

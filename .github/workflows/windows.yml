@@ -30,3 +30,27 @@ jobs:
       - run: cargo test --locked --target ${{ matrix.target }} -p contextful-policy --test integration an_audit_append_syncs_its_directories
       - run: cargo test --locked --target ${{ matrix.target }} --no-default-features -p contextful-context --test integration a_ledger_append_syncs_its_directory
       - run: cargo test --locked --target ${{ matrix.target }} --no-default-features -p contextful-context --test integration a_renamed_lock_does_not_remove_the_file_that_replaces_it
+
+  command-tree-red:
+    if: ${{ github.event.pull_request.head.repo.full_name == github.repository }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - runner: windows-2025
+            target: x86_64-pc-windows-msvc
+          - runner: windows-11-arm
+            target: aarch64-pc-windows-msvc
+    runs-on: ${{ matrix.runner }}
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          ref: e6c777fd07f74b85ec20f4a2247c8dc58192a580
+          fetch-depth: 0
+      - run: rustup target add ${{ matrix.target }}
+      - run: git fetch --no-tags origin ${{ github.event.pull_request.head.sha }}
+      - run: git restore --source=${{ github.event.pull_request.head.sha }} -- crates/contextful-engine/tests/integration/main.rs crates/contextful-engine/tests/integration/command_windows.rs crates/contextful-engine/tests/fixtures/command_tree.rs
+      - run: git diff --exit-code e6c777fd07f74b85ec20f4a2247c8dc58192a580 -- crates/contextful-engine/src
+      - run: cargo test --locked --target ${{ matrix.target }} -p contextful-engine --test integration --no-run
+      - run: cargo test --locked --target ${{ matrix.target }} -p contextful-engine --test integration command_windows:: -- --list
+      - run: cargo test --locked --target ${{ matrix.target }} -p contextful-engine --test integration command_windows:: -- --test-threads=2
