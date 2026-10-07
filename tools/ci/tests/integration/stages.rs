@@ -311,6 +311,41 @@ fn declared_derived_artifact_is_checked_by_schema_stage() {
     assert!(err.contains("schema: spec/custom.md differs from its regeneration"), "{err}");
 }
 
+#[test]
+fn the_evaluate_stage_provisions_required_lean_and_wasm_before_measuring() {
+    const PIN: &str = "leanprover/lean4:fixture";
+    const MEASURED: &str = r###"
+#[test]
+fn required_tools() {
+    assert_eq!(std::env::var("CONTEXTFUL_REQUIRE_LEAN").as_deref(), Ok("1"));
+    assert_eq!(std::env::var("CONTEXTFUL_REQUIRE_WASM").as_deref(), Ok("1"));
+    assert_eq!(std::env::var("ELAN_TOOLCHAIN").as_deref(), Ok("leanprover/lean4:fixture"));
+    let lean = std::process::Command::new("lean").arg("--version").output().unwrap();
+    assert!(lean.status.success());
+    assert_eq!(String::from_utf8(lean.stdout).unwrap().trim(), "fixture Lean");
+    let dir = std::path::PathBuf::from(std::env::var_os("CONTEXTFUL_MEASURE_DIR").unwrap());
+    std::fs::write(dir.join("required-tools.json"), r##"{"id":"required-tools","value":1,"n":1,"seed":7,"run":{"processor":"t","nproc":1,"memory_limit":null}}"##).unwrap();
+}
+"###;
+    let r = Repo::init();
+    r.write("formal/lean-toolchain", &format!("{PIN}\n"));
+    r.write("spec/spec.lock.json", "{\"clauses\":[{\"id\":\"run.journal.entry-key\"}]}\n");
+    r.write("evals/ledger.toml", "[entry.required-tools]\nclause = \"run.journal.entry-key\"\nmetric = \"tools.ready\"\nkind = \"test\"\ntier = \"gate\"\nmethod = { test = \"demo::measured::required_tools\" }\ntarget = { op = \">=\", value = 1 }\nseed = 7\n");
+    r.write("crates/demo/tests/integration/main.rs", "mod double;\nmod measured;\n");
+    r.write("crates/demo/tests/integration/measured.rs", MEASURED);
+    r.commit("a measurement requiring Lean and WebAssembly");
+    let bin = Bin::new();
+    bin.fake("elan", "echo \"elan $*\" >> \"$CALLS\"\n[ \"$*\" = 'toolchain list' ] || exit 1\necho leanprover/lean4:fixture\n");
+    bin.fake("lean", "[ \"$ELAN_TOOLCHAIN\" = leanprover/lean4:fixture ] || exit 1\necho 'fixture Lean'\n");
+    let elan = tempfile::tempdir().unwrap();
+    std::os::unix::fs::symlink(bin.dir.path(), elan.path().join("bin")).unwrap();
+    let o = gate_env(&r, Some(&bin), &[("ELAN_HOME", elan.path().to_str().unwrap())], &["--stage", "evaluate"]);
+    let err = stderr(&o);
+    assert!(o.status.success(), "{err}");
+    assert!(err.contains("measure: required-tools = 1"), "{err}");
+    assert_eq!(bin.calls(), ["elan toolchain list"]);
+}
+
 /// The evaluate stage runs every gate-tier ledger entry and the native case set in the deterministic tier, and reports the floor and baseline verdicts.
 // spec: assurance.gate.evaluate-stage@316d20b1
 #[test]
