@@ -239,8 +239,11 @@ impl DeclarationSet {
         }
         let mut names = tables.iter().map(|table| table.name.as_str()).collect::<BTreeSet<_>>();
         for table in &memory.tables {
-            if !table.name.split('/').all(super::lay_out::is_path_segment) || !names.insert(&table.name) {
+            if !table.name.split('/').all(super::lay_out::is_path_segment) {
                 return Err(DeclarationSetError::Pipeline(DeclarationMalformed(format!("memory table `{}` requires one normalized declaration identity", table.name)).into()));
+            }
+            if !names.insert(&table.name) {
+                return Err(DeclarationSetError::Pipeline(DeclarationMalformed(format!("table `{}` is declared more than once", table.name)).into()));
             }
         }
         tables.extend(memory.tables.iter().map(|table| table.table_decl()));
