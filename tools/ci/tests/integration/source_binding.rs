@@ -79,6 +79,7 @@ fn cargo_output(root: &Path, shared: &Path, command: &str) -> std::process::Outp
         .unwrap()
 }
 
+// spec: assurance.build.checkout-artifacts@408c94d6
 #[test]
 fn shared_artifacts_execute_the_selected_checkout_source() {
     let temp = tempfile::tempdir().unwrap();

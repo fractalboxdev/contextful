@@ -22181,12 +22181,12 @@
       "operation": "build",
       "subject": "checkout-artifacts",
       "kind": "behavior",
-      "statement": "The Cargo wrapper isolates workspace artifacts by canonical checkout identity while retaining {{assurance.build.target-dir-per-stage}}; dependency reuse through a compiler cache preserves checkout identity.",
+      "statement": "`.cargo/config.toml` names the checkout root, and every workspace package's build script folds its canonical path into the package fingerprint, so a shared target directory recompiles workspace packages per checkout while unchanged dependencies stay fresh.",
       "why": "A-assurance",
       "file": "spec/81-engineering.md",
       "line": 136,
       "scenarios": [
-        "WHEN checkout A and checkout B build different source through the Cargo wrapper, THEN B's integration tests and doctests execute B's behavior on cold and warm builds."
+        "WHEN checkout A and checkout B build different source into one target directory, THEN B's integration tests, doctests and binary execute B's behavior on cold and warm builds, and their shared dependency stays fresh."
       ]
     },
     {
@@ -25325,10 +25325,6 @@
     [
       "assurance.test.refactor-trailer",
       "assurance.test.test-first"
-    ],
-    [
-      "assurance.build.checkout-artifacts",
-      "assurance.build.target-dir-per-stage"
     ],
     [
       "assurance.build.wasi-probe",
