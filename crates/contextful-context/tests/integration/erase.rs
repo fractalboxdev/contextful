@@ -5,10 +5,21 @@ use serde_json::json;
 #[test]
 #[cfg(feature = "read")]
 fn partitioned_erasure_removes_designated_values_from_signed_paths_and_survivor_names() {
+    partitioned_erasure_paths(false);
+}
+
+#[test]
+#[cfg(feature = "read")]
+fn partitioned_key_set_erasure_removes_designated_values_from_signed_paths_and_survivor_names() {
+    partitioned_erasure_paths(true);
+}
+
+#[cfg(feature = "read")]
+fn partitioned_erasure_paths(key_set: bool) {
     use contextful_context::erase::{erase, EraseRequest, EraseSelector};
     use contextful_core::{grant::Action, issue::SignatureAlgorithm, ports::FixedClock};
     use contextful_policy::{enforce::erase::ForgetAdmission, issue::SeedSigner, revoke::RevocationState, verify::{effect_boundary, Admission}};
-    for key_set in [false, true] {
+    {
         let canary = "erased-partition-canary";
         let fixture = Fixture::new();
         let table = decl("name = \"notes\"\nprimary_key = [\"id\"]\nsubject_id = \"subject\"\nerasure_key = \"id\"\npartition_by = [\"subject\"]\nretain_runs = \"90d\"\n[[pipeline.tables.indexes]]\nkind = \"fulltext\"\ncolumn = \"text\"");
@@ -28,11 +39,11 @@ fn partitioned_erasure_removes_designated_values_from_signed_paths_and_survivor_
         let audit_dir = project.audit_dir();
         let signer = std::sync::Arc::new(SeedSigner::generate(SignatureAlgorithm::Ed25519));
         let store = fixture.store.with_erasure_verifier(audit_dir.clone(), vec![contextful_policy::issue::SignerKey::of(signer.as_ref())]).unwrap();
-        let keys = std::collections::BTreeMap::from([("notes".to_string(), vec![json!({"id":"removed"})])]);
+        let keys = std::collections::BTreeMap::from([("notes".to_string(), vec![json!({"id":"removed"}).as_object().unwrap().clone()])]);
         let subject_hash = contextful_policy::audit::query_digest(&audit_key, "fixture opaque subject");
         let selector = if key_set { EraseSelector::KeySet { subject_hash:&subject_hash, keys:&keys } } else { EraseSelector::Subject(canary) };
         let result = erase(&store, EraseRequest { declarations:&declarations, tables:&tables, selector, admission:&admission, signer:Some(signer), audit_dir:&audit_dir, audit_key:&audit_key, boundary:&boundary, clock:&FixedClock(now) }).unwrap();
-        assert_eq!(contextful_context::rows::table_rows(&result.store, &table, &["id", "subject", "text"]).unwrap(), vec![json!({"id":"kept", "subject":"survivor", "text":"retained text"})]);
+        assert_eq!(serde_json::to_value(contextful_context::rows::table_rows(&result.store, &table, &["id", "subject", "text"]).unwrap()).unwrap(), json!([{ "id":"kept", "subject":"survivor", "text":"retained text" }]));
         let audit = serde_json::to_string(&contextful_policy::audit::entries(&audit_dir).unwrap()).unwrap();
         assert!(!audit.contains(canary), "signed retirement paths disclose the erased partition: {key_set}");
         fn check(directory: &std::path::Path, canary: &str) {
@@ -57,10 +68,21 @@ fn partitioned_erasure_removes_designated_values_from_signed_paths_and_survivor_
 #[test]
 #[cfg(feature = "read")]
 fn erasure_refuses_missing_or_foreign_canonical_audit_keys_before_signed_intent() {
+    canonical_audit_key_refusal(false);
+}
+
+#[test]
+#[cfg(feature = "read")]
+fn erasure_refuses_a_missing_canonical_audit_key_before_signed_intent() {
+    canonical_audit_key_refusal(true);
+}
+
+#[cfg(feature = "read")]
+fn canonical_audit_key_refusal(missing: bool) {
     use contextful_context::erase::{erase_subject, EraseRequest, EraseSelector};
     use contextful_core::{grant::Action, issue::SignatureAlgorithm, ports::FixedClock};
     use contextful_policy::{enforce::erase::ForgetAdmission, issue::SeedSigner, revoke::RevocationState, verify::{effect_boundary, Admission}};
-    for missing in [false, true] {
+    {
         let fixture = Fixture::new();
         let table = decl("name = \"notes\"\nprimary_key = [\"id\"]\nsubject_id = \"subject\"");
         fixture.land(&table, "run-0001", json!([{ "id":"removed", "subject":"victim" }]), "2030-01-01T00:00:00Z").unwrap();
