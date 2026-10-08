@@ -132,7 +132,7 @@ stage whose predecessor's output is absent; `--predecessors` runs those too. A l
 the remote check invoke the identical command. `contextful-ci`'s suite asserts 24
 dispatchable parts. FlareDispatch runs `contextful-measures` nightly against the default
 branch and attaches its report to `refs/notes/measures`. A `v*` tag starts
-`contextful-release`, with `contextful-release-cell` for the ten cells in
+`contextful-release`, with `contextful-release-cell` for the cells printed by
 `contextful-ci release --plan`, `contextful-release-formula` for formulae and
 SHA256SUMS, and three independently tagged container images. The disabled
 ruleset proposal under `.github/rulesets/` lists the parent and all 24 children.

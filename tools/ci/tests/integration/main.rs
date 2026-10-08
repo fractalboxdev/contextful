@@ -41,6 +41,8 @@ impl Repo {
         let root = dir.path().to_path_buf();
         let r = Repo { _dir: dir, root };
         r.git(&["init", "-q", "-b", "main"]);
+        r.git(&["config", "user.name", "t"]);
+        r.git(&["config", "user.email", "t@example.com"]);
         r.write("Cargo.toml", "[workspace]\nresolver = \"2\"\nmembers = [\"crates/*\"]\n");
         r.write("crates/demo/Cargo.toml", &manifest("demo", ""));
         r.write("crates/demo/src/lib.rs", "pub fn double(x: i32) -> i32 {\n    x * 2\n}\n");

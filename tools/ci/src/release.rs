@@ -15,6 +15,7 @@ const PACKAGE: &str = "contextful-cli";
 
 const LINUX: [&str; 2] = ["x86_64-unknown-linux-musl", "aarch64-unknown-linux-musl"];
 const DARWIN: [&str; 2] = ["aarch64-apple-darwin", "x86_64-apple-darwin"];
+const WINDOWS: [&str; 2] = ["x86_64-pc-windows-msvc", "aarch64-pc-windows-msvc"];
 
 /// The profile the bare formula name and the install script resolve to.
 pub const DEFAULT_PROFILE: &str = "contextful-full";
@@ -35,21 +36,22 @@ impl Builder {
 }
 
 /// Every profile with the targets it ships for: all three cross-compile to Linux on musl,
-/// and edge and full also build for macOS.
+/// and edge and full also build for macOS and Windows on MSVC.
 pub fn matrix() -> Vec<(&'static str, Vec<&'static str>)> {
     vec![
         ("contextful-control", LINUX.to_vec()),
-        ("contextful-edge", LINUX.iter().chain(DARWIN.iter()).copied().collect()),
-        ("contextful-full", LINUX.iter().chain(DARWIN.iter()).copied().collect()),
+        ("contextful-edge", LINUX.iter().chain(DARWIN.iter()).chain(WINDOWS.iter()).copied().collect()),
+        ("contextful-full", LINUX.iter().chain(DARWIN.iter()).chain(WINDOWS.iter()).copied().collect()),
     ]
 }
 
-/// The release target this host builds natively: musl on Linux, the Apple target on macOS.
+/// The release target this host builds natively: musl, Apple or MSVC.
 pub fn host_target() -> Result<String> {
     let arch = std::env::consts::ARCH;
     match std::env::consts::OS {
         "linux" => Ok(format!("{arch}-unknown-linux-musl")),
         "macos" => Ok(format!("{arch}-apple-darwin")),
+        "windows" => Ok(format!("{arch}-pc-windows-msvc")),
         other => bail!("no release target builds on `{other}`; name one with `--target`"),
     }
 }
@@ -150,20 +152,24 @@ pub fn release(root: &Path, builder: Builder, profiles: &[String], targets: &[St
         if !status.success() {
             bail!("`cargo {}` exited {}", args.join(" "), status.code().unwrap_or(-1));
         }
-        let binary = target_dir.join(target).join("release").join(BINARY);
+        let binary = target_dir.join(target).join("release").join(binary_name(target));
         package(root, profile, &version, target, &binary, out)?;
     }
     Ok(())
 }
 
-/// Write `<stem>.tar.gz` holding `binary` as `contextful` and the licence, `<stem>.tar.gz.sha256`
+fn binary_name(target: &str) -> &'static str {
+    if WINDOWS.contains(&target) { "contextful.exe" } else { BINARY }
+}
+
+/// Write `<stem>.tar.gz` holding the target's binary name and licence, `<stem>.tar.gz.sha256`
 /// in `sha256sum` form, and `<stem>.cdx.json`, the SBOM of the profile's resolved graph.
 fn package(root: &Path, profile: &str, version: &str, target: &str, binary: &Path, out: &Path) -> Result<()> {
     let stem = stem(profile, version, target);
     let staging = out.join(&stem);
     let _ = std::fs::remove_dir_all(&staging);
     std::fs::create_dir_all(&staging)?;
-    std::fs::copy(binary, staging.join(BINARY)).with_context(|| format!("copying {}", binary.display()))?;
+    std::fs::copy(binary, staging.join(binary_name(target))).with_context(|| format!("copying {}", binary.display()))?;
     std::fs::copy(root.join("LICENSE"), staging.join("LICENSE")).context("copying LICENSE")?;
     let archive = format!("{stem}.tar.gz");
     let status = Command::new("tar")
@@ -294,10 +300,10 @@ fn class_name(formula: &str) -> String {
 }
 
 /// The Homebrew platform block a target selects.
-fn platform(target: &str) -> (&'static str, &'static str) {
-    let os = if target.ends_with("apple-darwin") { "on_macos" } else { "on_linux" };
+fn platform(target: &str) -> Option<(&'static str, &'static str)> {
+    let os = if DARWIN.contains(&target) { "on_macos" } else if LINUX.contains(&target) { "on_linux" } else { return None };
     let arch = if target.starts_with("aarch64") { "on_arm" } else { "on_intel" };
-    (os, arch)
+    Some((os, arch))
 }
 
 /// A formula named `formula` installing `profile` from the archives at `base_url`,
@@ -305,9 +311,9 @@ fn platform(target: &str) -> (&'static str, &'static str) {
 fn formula(formula: &str, profile: &str, version: &str, targets: &[&str], base_url: &str, digests: &BTreeMap<(String, String), String>) -> Result<String> {
     let mut blocks: Vec<(&str, Vec<String>)> = Vec::new();
     for target in targets {
+        let Some((os, arch)) = platform(target) else { continue };
         let archive = format!("{}.tar.gz", stem(profile, version, target));
         let digest = digests.get(&(profile.to_string(), target.to_string())).context("release matrix digest missing")?;
-        let (os, arch) = platform(target);
         let block = format!(
             "    {arch} do\n      url \"{}/{archive}\"\n      sha256 \"{digest}\"\n    end\n",
             base_url.trim_end_matches('/')
@@ -374,7 +380,7 @@ fn digests(dist: &Path, manifest: Option<&Path>, version: &str) -> Result<BTreeM
 }
 
 /// Write `Formula/<profile>.rb`, the bare full-profile formula, and `SHA256SUMS`.
-/// A manifest supplies the ten cell digests without downloading release archives.
+/// A manifest supplies every cell digest without downloading release archives.
 pub fn formulae(root: &Path, dist: &Path, manifest: Option<&Path>, base_url: &str) -> Result<Vec<PathBuf>> {
     let version = version(root)?;
     let digests = digests(dist, manifest, &version)?;
