@@ -4,6 +4,28 @@ use serde_json::json;
 use std::collections::BTreeMap;
 
 #[test]
+fn keyset_accepts_an_explicitly_declared_column_without_subject_or_erasure_metadata() {
+    use contextful_core::disclosure::erase::select_keys;
+    let declarations = TableDecl::parse_pipeline(r#"
+[[pipeline.tables]]
+name = "events"
+primary_key = ["id"]
+columns = { id = "utf8", trace_id = "utf8" }
+"#).unwrap();
+    let objects = |value: serde_json::Value| value.as_array().unwrap().iter().map(|row| row.as_object().unwrap().clone()).collect();
+    let rows = BTreeMap::from([("events".into(), objects(json!([
+        {"id":"a","trace_id":"erase-trace"}, {"id":"b","trace_id":"keep-trace"}
+    ])))]);
+    let keys = BTreeMap::from([("events".into(), objects(json!([{"trace_id":"erase-trace"}])))]);
+    let selected = select_keys(&declarations, &rows, &keys).unwrap();
+    assert_eq!(selected.removes("events"), &[true, false]);
+    for selector in [json!({"unknown":"erase-trace"}), json!({"trace_id":null})] {
+        let keys = BTreeMap::from([("events".into(), vec![selector.as_object().unwrap().clone()])]);
+        assert!(select_keys(&declarations, &rows, &keys).unwrap_err().to_string().starts_with("ErasureScopeUnsupported"));
+    }
+}
+
+#[test]
 fn subject_erasure_keeps_shared_references_and_surviving_citations() {
     let declarations = TableDecl::parse_pipeline(r#"
 [[pipeline.tables]]
