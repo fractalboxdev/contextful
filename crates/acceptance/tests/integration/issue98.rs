@@ -64,7 +64,6 @@ fn pull(project: &GitRepo, binary: &Path, id: &str, run: &str) {
 }
 
 #[test]
-#[ignore = "issue98 acceptance remains open until all six public-surface cases pass"]
 fn declared_removal_and_requested_row_classes_cover_the_six_consumer_cases() {
     let binary = bin("contextful");
     let rows = json!([{"body":"call 415-555-0100 now","public":"keep"}]);
