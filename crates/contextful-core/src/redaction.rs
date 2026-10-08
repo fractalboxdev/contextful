@@ -1,6 +1,7 @@
 //! Typed removal rules and pure bounded value rewriting (`authority.redact`).
 use crate::enforce::EnforceError;
-use regex_automata::{hybrid, nfa::thompson, Anchored, Input};
+use regex_automata::nfa::thompson::{self, State, WhichCaptures, NFA};
+use regex_automata::util::primitives::StateID;
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 
@@ -10,8 +11,6 @@ pub const PATTERN_BYTES: usize = 4 * 1024;
 pub const COMPILED_PATTERN_SIZE: usize = 1024 * 1024;
 /// `authority.redact.rules-per-pipeline`.
 pub const RULES_PER_PIPELINE: usize = 256;
-/// `authority.redact.match-work`.
-pub const MATCH_STEPS_PER_BYTE: usize = 16;
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "lowercase")]
@@ -114,7 +113,7 @@ fn path(text: &str) -> Result<Vec<PathStep>, EnforceError> {
 #[derive(Debug, Clone)]
 pub struct CompiledRule {
     pub rule: Rule,
-    regex: Option<std::sync::Arc<hybrid::regex::Regex>>,
+    regex: Option<std::sync::Arc<NFA>>,
     path: Option<Vec<PathStep>>,
 }
 
@@ -168,8 +167,8 @@ impl CompiledRule {
                     return Err(invalid("a removal pattern uses ASCII word boundaries alone"));
                 }
                 Some(std::sync::Arc::new(
-                    hybrid::regex::Regex::builder()
-                        .thompson(thompson::Config::new().nfa_size_limit(Some(COMPILED_PATTERN_SIZE)))
+                    thompson::Compiler::new()
+                        .configure(thompson::Config::new().nfa_size_limit(Some(COMPILED_PATTERN_SIZE)).which_captures(WhichCaptures::None))
                         .build(&pattern.pattern)
                         .map_err(|e| invalid(e.to_string()))?,
                 ))
@@ -179,7 +178,7 @@ impl CompiledRule {
         Ok(Self { rule, regex, path: selected })
     }
 
-    /// Rewrite addressed values using a policy-owned substitute over leftmost-first spans.
+    /// Rewrite addressed values using a policy-owned substitute over every matched span.
     pub fn rewrite(&self, value: &mut Value, substitute: &dyn Fn(&Rule, &str) -> Result<Option<String>, EnforceError>) -> Result<(), EnforceError> {
         if value.is_null() {
             return Ok(());
@@ -267,49 +266,69 @@ impl CompiledRule {
     }
 }
 
-/// Leftmost-first non-overlapping spans. Each forward automaton step draws on one budget
-/// of `MATCH_STEPS_PER_BYTE` per byte, so an adversarial value refuses its write instead
-/// of either scanning quadratically or leaving the tail of a match intact.
-fn spans(regex: &hybrid::regex::Regex, text: &str) -> Result<Vec<(usize, usize)>, EnforceError> {
-    let exhausted = || invalid("a removal pattern exceeds its matching work bound on one value");
-    let (forward, reverse) = (regex.forward(), regex.reverse());
-    let mut cache = regex.create_cache();
-    let (forward_cache, reverse_cache) = cache.as_parts_mut();
+/// The union of every match, as non-overlapping spans: overlapping matches merge and
+/// adjacent ones stay separate. One forward pass keeps, per NFA state, the leftmost start
+/// that reaches it, so each end yields the widest match ending there and the work is
+/// linear in the value's length with no restart.
+fn spans(nfa: &NFA, text: &str) -> Result<Vec<(usize, usize)>, EnforceError> {
     let bytes = text.as_bytes();
-    let mut budget = bytes.len().saturating_mul(MATCH_STEPS_PER_BYTE);
-    let mut found = Vec::new();
-    let mut cursor = 0;
-    while cursor < bytes.len() {
-        let input = Input::new(text).span(cursor..bytes.len());
-        let mut state = forward.start_state_forward(forward_cache, &input).map_err(|_| exhausted())?;
-        let mut end = None;
-        let mut at = cursor;
-        loop {
-            if at == bytes.len() {
-                state = forward.next_eoi_state(forward_cache, state).map_err(|_| exhausted())?;
-                if state.is_match() {
-                    end = Some(at);
-                }
-                break;
+    let mut seen = vec![usize::MAX; nfa.states().len()];
+    let (mut current, mut next, mut stack) = (Vec::new(), Vec::new(), Vec::new());
+    let mut found: Vec<(usize, usize)> = Vec::new();
+    for at in 0..=bytes.len() {
+        // Threads arrive in ascending start order, so the first visit to a state holds its leftmost start.
+        next.clear();
+        for &(state, start) in &current {
+            let target = match nfa.state(state) {
+                State::ByteRange { trans } => trans.matches_byte(bytes[at - 1]).then_some(trans.next),
+                State::Sparse(sparse) => sparse.matches_byte(bytes[at - 1]),
+                State::Dense(dense) => dense.matches_byte(bytes[at - 1]),
+                _ => None,
+            };
+            if let Some(target) = target {
+                close(nfa, bytes, at, target, start, &mut seen, &mut stack, &mut next);
             }
-            budget = budget.checked_sub(1).ok_or_else(exhausted)?;
-            state = forward.next_state(forward_cache, state, bytes[at]).map_err(|_| exhausted())?;
-            if state.is_tagged() {
-                if state.is_match() {
-                    end = Some(at);
-                } else if state.is_dead() {
-                    break;
-                } else if state.is_quit() {
-                    return Err(exhausted());
-                }
-            }
-            at += 1;
         }
-        let Some(end) = end else { break };
-        let back = Input::new(text).span(cursor..end).anchored(Anchored::Yes);
-        let start = reverse.try_search_rev(reverse_cache, &back).map_err(|_| exhausted())?.ok_or_else(exhausted)?.offset();
-        found.push((start, end));
-        cursor = end;
+        close(nfa, bytes, at, nfa.start_anchored(), at, &mut seen, &mut stack, &mut next);
+        if let Some(&(_, start)) = next.iter().find(|(state, _)| matches!(nfa.state(*state), State::Match { .. })) {
+            let mut start = start;
+            while let Some(&(previous, end)) = found.last() {
+                if end <= start {
+                    break;
+                }
+                start = start.min(previous);
+                found.pop();
+            }
+            if !text.is_char_boundary(start) || !text.is_char_boundary(at) {
+                return Err(invalid("a removal pattern matched inside a UTF-8 character"));
+            }
+            found.push((start, at));
+        }
+        std::mem::swap(&mut current, &mut next);
     }
     Ok(found)
+}
+
+/// Add the epsilon closure of `state` at `at`, skipping states an earlier start reached.
+#[allow(clippy::too_many_arguments)]
+fn close(nfa: &NFA, bytes: &[u8], at: usize, state: StateID, start: usize, seen: &mut [usize], stack: &mut Vec<StateID>, set: &mut Vec<(StateID, usize)>) {
+    stack.push(state);
+    while let Some(state) = stack.pop() {
+        if seen[state.as_usize()] == at {
+            continue;
+        }
+        seen[state.as_usize()] = at;
+        match nfa.state(state) {
+            State::ByteRange { .. } | State::Sparse(_) | State::Dense(_) | State::Match { .. } => set.push((state, start)),
+            State::Look { look, next } => {
+                if nfa.look_matcher().matches(*look, bytes, at) {
+                    stack.push(*next);
+                }
+            }
+            State::Union { alternates } => stack.extend(alternates.iter().rev()),
+            State::BinaryUnion { alt1, alt2 } => stack.extend([*alt2, *alt1]),
+            State::Capture { next, .. } => stack.push(*next),
+            State::Fail => {}
+        }
+    }
 }

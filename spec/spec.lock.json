@@ -17104,26 +17104,15 @@
       "line": 90
     },
     {
-      "id": "authority.redact.match-work",
-      "contract": "authority",
-      "operation": "redact",
-      "subject": "match-work",
-      "kind": "limit",
-      "statement": "Pattern removal over one value takes forward automaton steps of at most 16 times its byte length.",
-      "why": "because a bounded write refuses an adversarial value rather than leave a matched tail",
-      "file": "spec/51-enforcement.md",
-      "line": 92
-    },
-    {
       "id": "authority.redact.pattern-refusal",
       "contract": "authority",
       "operation": "redact",
       "subject": "pattern-refusal",
       "kind": "refusal",
-      "statement": "Unsupported syntax, Unicode word boundaries, empty matches or a pattern past {{authority.redact.pattern-bytes}} or {{authority.redact.compiled-pattern-size}} raises `EnforceRedactionInvalid` at declaration; a value past {{authority.redact.match-work}} raises it before writing.",
+      "statement": "Unsupported syntax, Unicode word boundaries, empty matches or a pattern past {{authority.redact.pattern-bytes}} or {{authority.redact.compiled-pattern-size}} raises `EnforceRedactionInvalid` at declaration.",
       "why": "because a failed matcher cannot silently leave a declared sensitive value intact",
       "file": "spec/51-enforcement.md",
-      "line": 94
+      "line": 92
     },
     {
       "id": "authority.redact.in-value",
@@ -17131,10 +17120,10 @@
       "operation": "redact",
       "subject": "in-value",
       "kind": "behavior",
-      "statement": "Pattern removal rewrites leftmost-first non-overlapping UTF-8 spans; whole-value removal rewrites one cell. JSON paths select object keys, array indices or every array item; unselected values remain unchanged.",
+      "statement": "Pattern removal rewrites the union of all matches in one linear pass, merging overlapping matches into one span; whole-value removal rewrites one cell. JSON paths select object keys, array indices or every array item; unselected values remain unchanged.",
       "why": "A-authority",
       "file": "spec/51-enforcement.md",
-      "line": 96
+      "line": 94
     },
     {
       "id": "authority.redact.every-land-entry",
@@ -17145,7 +17134,7 @@
       "statement": "A canonical project declaration binds direct and staged writers even when their callers omit its rules.",
       "why": "A-authority",
       "file": "spec/51-enforcement.md",
-      "line": 98
+      "line": 96
     },
     {
       "id": "authority.redact.combined-authority",
@@ -17156,7 +17145,7 @@
       "statement": "A destination's ordered canonical rule union obeys {{authority.redact.rules-per-pipeline}}; conflicting declared types, classes or policies and duplicate rules refuse before writing parts.",
       "why": "because an additional declaration cannot replace an earlier rule or its type and class authority",
       "file": "spec/51-enforcement.md",
-      "line": 100
+      "line": 98
     },
     {
       "id": "authority.redact.normalized-authority",
@@ -17167,7 +17156,7 @@
       "statement": "Projects declaring protected relational normalization require canonical table bindings for ordinary writes; an undeclared destination enters through a declared root's complete normalization lineage or refuses before durable bytes.",
       "why": "because a child name cannot prove which source column its values descend from",
       "file": "spec/51-enforcement.md",
-      "line": 102
+      "line": 100
     },
     {
       "id": "authority.redact.rewritten-identities",
@@ -17178,7 +17167,7 @@
       "statement": "Relational parent and child identities derive from rewritten source values; removed values contribute no retained identity digest.",
       "why": "A-authority",
       "file": "spec/51-enforcement.md",
-      "line": 104
+      "line": 102
     },
     {
       "id": "authority.redact.child-selector-lineage",
@@ -17189,7 +17178,7 @@
       "statement": "A normalized child mask selecting a sibling class requires typed sibling-row lineage; a group lacking that lineage refuses before writing any part.",
       "why": "because a source-row index cannot distinguish sibling values from different child rows",
       "file": "spec/51-enforcement.md",
-      "line": 106
+      "line": 104
     },
     {
       "id": "authority.redact.pinned-plan",
@@ -17200,7 +17189,7 @@
       "statement": "A source plan's explicit removal list equals its complete canonical destination rules; an unbound or mismatched list refuses before source execution. Canonical removal still binds an omitted list.",
       "why": "because a content-hashed plan cannot promise rules that its writer ignores",
       "file": "spec/51-enforcement.md",
-      "line": 108
+      "line": 106
     },
     {
       "id": "authority.redact.canonical-journal",
@@ -17211,7 +17200,7 @@
       "statement": "Canonical writer rules require {{authority.redact.before-the-record}} even when a caller's source plan omits its removal list; {{run.journal.redacting-source}} governs absent admission.",
       "why": "because caller omission cannot weaken a durable declaration's recording boundary",
       "file": "spec/51-enforcement.md",
-      "line": 110
+      "line": 108
     },
     {
       "id": "authority.redact.relational-journal",
@@ -17222,7 +17211,7 @@
       "statement": "A protected relational source records its concrete rewritten root and child group, preserving declared root types, child lineage and {{authority.redact.rewritten-identities}} through {{run.journal.prepared-replay}}.",
       "why": "A-authority",
       "file": "spec/51-enforcement.md",
-      "line": 112
+      "line": 110
     },
     {
       "id": "authority.redact.prepared-payload",
@@ -17233,7 +17222,7 @@
       "statement": "A protected source cannot supply an admitted recording envelope; modified rows, types, destination or normalization fail canonical payload admission before staged parts.",
       "why": "because connector-controlled bytes cannot claim a writer's recording authority",
       "file": "spec/51-enforcement.md",
-      "line": 114
+      "line": 112
     },
     {
       "id": "authority.redact.prepared-continuation",
@@ -17244,7 +17233,7 @@
       "statement": "Protected source continuations refuse before recording unless absent, exact terminal `{ next: null }` without more pages, or text unchanged by every canonical pattern; any canonical whole-value or JSON-path rule refuses text continuations.",
       "why": "because a source-controlled continuation can otherwise retain a removed value beside its rewritten rows",
       "file": "spec/51-enforcement.md",
-      "line": 116
+      "line": 114
     },
     {
       "id": "authority.redact.prepared-clock",
@@ -17255,7 +17244,7 @@
       "statement": "A protected monotonic source proves complete clock-output lineage before execution opens; lineage reaching removed columns, including JSON-path targets, refuses. Protected relational clocks refuse without complete descendant lineage; independent clocks retain {{run.advance.watermark-shape}}.",
       "why": "because progress bytes cannot retain a value that its row removes",
       "file": "spec/51-enforcement.md",
-      "line": 118
+      "line": 116
     },
     {
       "id": "authority.redact.recorded-body",
@@ -17266,7 +17255,7 @@
       "statement": "A store-driven job targeting canonical removal rules refuses before body execution without typed effect-result removal lineage; body calls record results before output landing.",
       "why": "because later row rewriting cannot remove earlier recorded effect results",
       "file": "spec/51-enforcement.md",
-      "line": 120
+      "line": 118
     },
     {
       "id": "authority.compose.three-layers",
@@ -17277,7 +17266,7 @@
       "statement": "The reference monitor is three layers: write-time removal, the redistribution bound at push, and row-and-column restriction at query time. A request is authorized at each.",
       "why": "P5",
       "file": "spec/51-enforcement.md",
-      "line": 127
+      "line": 125
     },
     {
       "id": "authority.compose.complete-mediation",
@@ -17288,7 +17277,7 @@
       "statement": "Every read of stored rows traverses the layers. A path reaching stored rows outside a registered relation is a defect, never a documented limitation.",
       "why": "P5",
       "file": "spec/51-enforcement.md",
-      "line": 129
+      "line": 127
     },
     {
       "id": "authority.compose.protection-is-a-rewrite",
@@ -17299,7 +17288,7 @@
       "statement": "Protection is a rewrite in the data plane: predicates compiled into the statement, rewritten projections, a per-credential filter at the sync edge, zone floors. Admission decides entry alone.",
       "why": "P5",
       "file": "spec/51-enforcement.md",
-      "line": 131
+      "line": 129
     },
     {
       "id": "authority.compose.registered-relation",
@@ -17310,7 +17299,7 @@
       "statement": "The compiler emits one relation per granted table, bound to the table's bare name for the session's lifetime. Every retrieval arm reads through it.",
       "why": "P5",
       "file": "spec/51-enforcement.md",
-      "line": 133
+      "line": 131
     },
     {
       "id": "authority.compose.relation-order",
@@ -17321,7 +17310,7 @@
       "statement": "A registered relation applies, in order: mirrored permission semi-join, tenant equality, credential predicate, table policy, project default, table zone, then the column projection carrying masks and zone nulls.",
       "why": "P5",
       "file": "spec/51-enforcement.md",
-      "line": 135
+      "line": 133
     },
     {
       "id": "authority.compose.conjunctive-narrowing",
@@ -17332,7 +17321,7 @@
       "statement": "Steps conjoin: a surviving row survives each step alone, and appending a step removes rows and adds none.",
       "why": "P5",
       "file": "spec/51-enforcement.md",
-      "line": 137
+      "line": 135
     },
     {
       "id": "authority.compose.before-the-cut",
@@ -17343,7 +17332,7 @@
       "statement": "Every step, zone exclusion included, completes before a ranked result is cut to its requested size; visible positions carry no trace of a withheld row.",
       "why": "P5",
       "file": "spec/51-enforcement.md",
-      "line": 139
+      "line": 137
     },
     {
       "id": "authority.compose.vector-arm",
@@ -17354,7 +17343,7 @@
       "statement": "A sidecar vector index returns candidate identifiers, which re-join through the registered relation before contributing to a result.",
       "why": "P5",
       "file": "spec/51-enforcement.md",
-      "line": 141
+      "line": 139
     },
     {
       "id": "authority.compose.replica-again",
@@ -17365,7 +17354,7 @@
       "statement": "A caller holding a filtered replica is constrained again per query, the replica's bytes unchanged.",
       "why": "P5",
       "file": "spec/51-enforcement.md",
-      "line": 143
+      "line": 141
     },
     {
       "id": "authority.compose.session-build",
@@ -17376,7 +17365,7 @@
       "statement": "A session builds its relations at admission and rebuilds them when a revocation or a manifest change invalidates a grant it holds.",
       "why": "P5",
       "file": "spec/51-enforcement.md",
-      "line": 145
+      "line": 143
     },
     {
       "id": "authority.compose.relations-per-session",
@@ -17387,7 +17376,7 @@
       "statement": "A session carries at most 1024 entries in its relation set.",
       "why": "because a larger grant set is a mis-scoped credential",
       "file": "spec/51-enforcement.md",
-      "line": 147
+      "line": 145
     },
     {
       "id": "authority.filter-rows.grammar",
@@ -17398,7 +17387,7 @@
       "statement": "A row predicate is the typed boolean subset of SQL in Shapes: column references, comparisons, conjunction, disjunction, negation, membership lists, pattern matching, null tests and declared-safe scalar functions.",
       "why": "P1",
       "file": "spec/51-enforcement.md",
-      "line": 154
+      "line": 152
     },
     {
       "id": "authority.filter-rows.outside-grammar",
@@ -17409,7 +17398,7 @@
       "statement": "Predicates parse at manifest load; a node outside the grammar raises `EnforcePredicateOutsideGrammar`, naming the node.",
       "why": "P1",
       "file": "spec/51-enforcement.md",
-      "line": 156
+      "line": 154
     },
     {
       "id": "authority.filter-rows.subject-relation",
@@ -17420,7 +17409,7 @@
       "statement": "Subject claims reach a predicate as prepared-statement parameters through a session-scoped subject relation. A claim value carrying SQL syntax occupies a parameter slot and reaches no parser.",
       "why": "P1",
       "file": "spec/51-enforcement.md",
-      "line": 158
+      "line": 156
     },
     {
       "id": "authority.filter-rows.exception",
@@ -17431,7 +17420,7 @@
       "statement": "An exception condition is a boolean expression over subject fields in the same grammar, bound the same way.",
       "why": "P1",
       "file": "spec/51-enforcement.md",
-      "line": 160
+      "line": 158
     },
     {
       "id": "authority.filter-rows.override",
@@ -17442,7 +17431,7 @@
       "statement": "A table-policy predicate overriding for a matching subject condition replaces that one predicate; it reaches neither the tenant equality, the mirrored join nor the credential predicate.",
       "why": "P5",
       "file": "spec/51-enforcement.md",
-      "line": 162
+      "line": 160
     },
     {
       "id": "authority.filter-rows.default-deny",
@@ -17453,7 +17442,7 @@
       "statement": "A table reached with no matching grant yields no rows.",
       "why": "P5",
       "file": "spec/51-enforcement.md",
-      "line": 164
+      "line": 162
     },
     {
       "id": "authority.filter-rows.tenant-equality",
@@ -17464,7 +17453,7 @@
       "statement": "A tenant-scoped grant compiles a bound-parameter byte equality on the tenant column, conjoined by the engine; no consumer statement carries it.",
       "why": "P5",
       "file": "spec/51-enforcement.md",
-      "line": 166
+      "line": 164
     },
     {
       "id": "authority.filter-rows.predicate-size",
@@ -17475,7 +17464,7 @@
       "statement": "A declared predicate holds at most 4 KiB of source text.",
       "why": "because a longer predicate is unreviewable policy",
       "file": "spec/51-enforcement.md",
-      "line": 168
+      "line": 166
     },
     {
       "id": "authority.filter-rows.membership-list",
@@ -17486,7 +17475,7 @@
       "statement": "A membership list inside a predicate holds at most 512 entries.",
       "why": "because a longer list belongs in a mirrored table",
       "file": "spec/51-enforcement.md",
-      "line": 170
+      "line": 168
     },
     {
       "id": "authority.mask.column-policy",
@@ -17497,7 +17486,7 @@
       "statement": "A column declares `class` and `strategy`, optionally `combine`, `crowd` and `summarize_only`, under `[pipeline.tables.policy.columns]`. An undeclared column carries no class.",
       "why": "A-authority",
       "file": "spec/51-enforcement.md",
-      "line": 177
+      "line": 175
     },
     {
       "id": "authority.mask.class-registry",
@@ -17508,7 +17497,7 @@
       "statement": "`class` takes a value from the class registry in Shapes. `phi` marks protected health data; `ssn`, `phone`, `email` and `mrn` are exhaustible, each carrying a registered domain size.",
       "why": "A-authority",
       "file": "spec/51-enforcement.md",
-      "line": 179
+      "line": 177
     },
     {
       "id": "authority.mask.row-class",
@@ -17519,7 +17508,7 @@
       "statement": "A column declares `class = { from = ... }`, a `strategies` map naming registered classes, and `fallback = \"drop\"`; each row's sibling text selects its strategy, independently of other rows.",
       "why": "A-authority",
       "file": "spec/51-enforcement.md",
-      "line": 181
+      "line": 179
     },
     {
       "id": "authority.mask.row-class-selector",
@@ -17530,7 +17519,7 @@
       "statement": "`from_column` aliases `from` in {{authority.mask.row-class}}; declaring both names or any unknown selector field refuses before reading rows.",
       "why": "because ambiguous selector declarations cannot choose which class controls a row",
       "file": "spec/51-enforcement.md",
-      "line": 183
+      "line": 181
     },
     {
       "id": "authority.mask.row-class-dependency",
@@ -17541,7 +17530,7 @@
       "statement": "A row-class selector names another Utf8 column in the same table; {{authority.mask.absent-column}} checks its presence, and every mapped strategy retains {{authority.mask.typed-strategy}} and {{authority.mask.digest-alone}}.",
       "why": "A-authority",
       "file": "spec/51-enforcement.md",
-      "line": 185
+      "line": 183
     },
     {
       "id": "authority.mask.row-class-fallback",
@@ -17552,7 +17541,7 @@
       "statement": "Unknown and null row-class values receive strict drop; no unspecified branch yields the original column value.",
       "why": "because an unrecognized class cannot grant weaker protection than any declared branch",
       "file": "spec/51-enforcement.md",
-      "line": 187
+      "line": 185
     },
     {
       "id": "authority.mask.unknown-class",
@@ -17563,7 +17552,7 @@
       "statement": "A `class` outside the registry raises `EnforceUnknownClass` at manifest check.",
       "why": "A-authority",
       "file": "spec/51-enforcement.md",
-      "line": 189
+      "line": 187
     },
     {
       "id": "authority.mask.class-reach",
@@ -17574,7 +17563,7 @@
       "statement": "A column's class reaches write-time removal, query-time masking, zone floors and the protections a release applies to a key it joins on.",
       "why": "A-authority",
       "file": "spec/51-enforcement.md",
-      "line": 191
+      "line": 189
     },
     {
       "id": "authority.mask.strategies",
@@ -17585,7 +17574,7 @@
       "statement": "The strategies are `drop`, `hash` (keyed), `tokenize` (format-preserving), `truncate`, `bucket` and `range`.",
       "why": "A-authority",
       "file": "spec/51-enforcement.md",
-      "line": 193
+      "line": 191
     },
     {
       "id": "authority.mask.drop",
@@ -17596,7 +17585,7 @@
       "statement": "`drop` nulls the cell, or yields an empty string for a string column.",
       "why": "A-authority",
       "file": "spec/51-enforcement.md",
-      "line": 195
+      "line": 193
     },
     {
       "id": "authority.mask.one-value",
@@ -17607,7 +17596,7 @@
       "statement": "A column mask is one value whose primary and combine halves are private; it drives both the write-time and query-time layers, and no consumer applies the primary alone.",
       "why": "A-authority",
       "file": "spec/51-enforcement.md",
-      "line": 197
+      "line": 195
     },
     {
       "id": "authority.mask.digest-alone",
@@ -17618,7 +17607,7 @@
       "statement": "`hash` or `tokenize` standing alone over an exhaustible class raises `EnforceDigestAloneOnExhaustibleClass`.",
       "why": "A-authority",
       "file": "spec/51-enforcement.md",
-      "line": 199
+      "line": 197
     },
     {
       "id": "authority.mask.high-entropy",
@@ -17629,7 +17618,7 @@
       "statement": "A column of random identifiers or opaque tokens carries `hash` with no combine.",
       "why": "A-authority",
       "file": "spec/51-enforcement.md",
-      "line": 201
+      "line": 199
     },
     {
       "id": "authority.mask.combine-generalizes",
@@ -17640,7 +17629,7 @@
       "statement": "A `bucket` or `range` combine behind `hash` or `tokenize` raises `EnforceCombineWithoutGeneralization`; `truncate` is the one combine that generalizes a digest.",
       "why": "A-authority",
       "file": "spec/51-enforcement.md",
-      "line": 203
+      "line": 201
     },
     {
       "id": "authority.mask.hash-width",
@@ -17651,7 +17640,7 @@
       "statement": "`hash` emits 32 chars of hexadecimal.",
       "why": "A-authority",
       "file": "spec/51-enforcement.md",
-      "line": 205
+      "line": 203
     },
     {
       "id": "authority.mask.token-width",
@@ -17662,7 +17651,7 @@
       "statement": "`tokenize` emits 20 chars.",
       "why": "A-authority",
       "file": "spec/51-enforcement.md",
-      "line": 207
+      "line": 205
     },
     {
       "id": "authority.mask.cuts-nothing",
@@ -17673,7 +17662,7 @@
       "statement": "A `truncate` combine at or past its primary's output width raises `EnforceTruncationCutsNothing`.",
       "why": "A-authority",
       "file": "spec/51-enforcement.md",
-      "line": 209
+      "line": 207
     },
     {
       "id": "authority.mask.crowd",
@@ -17684,7 +17673,7 @@
       "statement": "A column's `crowd`, the fewest inputs one masked output covers, is at least 1000 values and defaults to that floor.",
       "why": "A-authority",
       "file": "spec/51-enforcement.md",
-      "line": 211
+      "line": 209
     },
     {
       "id": "authority.mask.truncation-ceiling",
@@ -17695,7 +17684,7 @@
       "statement": "Behind a keyed digest over an exhaustible class, a `truncate` width above floor(log_b(domain ÷ `crowd`)), b being 16 for `hash` and 36 for `tokenize`, with domain from the class registry, raises `EnforceTruncationTooWide`.",
       "why": "A-authority",
       "file": "spec/51-enforcement.md",
-      "line": 213
+      "line": 211
     },
     {
       "id": "authority.mask.pepper",
@@ -17706,7 +17695,7 @@
       "statement": "One environment variable supplies the key for `hash` and `tokenize`, read by both layers as one resolved value.",
       "why": "A-authority",
       "file": "spec/51-enforcement.md",
-      "line": 215
+      "line": 213
     },
     {
       "id": "authority.mask.development-pepper",
@@ -17717,7 +17706,7 @@
       "statement": "Left unset, the pepper resolves to a constant in the source tree and the process emits one signal per run.",
       "why": "A-authority",
       "file": "spec/51-enforcement.md",
-      "line": 217
+      "line": 215
     },
     {
       "id": "authority.mask.pseudonymous",
@@ -17728,7 +17717,7 @@
       "statement": "`hash` output is an HMAC-SHA-256 under the pepper and is pseudonymous; no surface labels a masked value anonymous.",
       "why": "A-authority",
       "file": "spec/51-enforcement.md",
-      "line": 219
+      "line": 217
     },
     {
       "id": "authority.mask.native-digest",
@@ -17739,7 +17728,7 @@
       "statement": "Both layers compute the keyed digest natively; the query layer calls a scalar function holding the pepper in process memory, and a value masked at either layer joins the other.",
       "why": "A-authority",
       "file": "spec/51-enforcement.md",
-      "line": 221
+      "line": 219
     },
     {
       "id": "authority.mask.key-material",
@@ -17750,7 +17739,7 @@
       "statement": "A compiled relation, query plan or session catalog entry carrying pepper-derived key state raises `EnforceKeyMaterialInRelation`.",
       "why": "A-authority",
       "file": "spec/51-enforcement.md",
-      "line": 223
+      "line": 221
     },
     {
       "id": "authority.mask.subject-exception",
@@ -17761,7 +17750,7 @@
       "statement": "A mask carries exceptions, each a subject condition in the row-predicate grammar bound through the subject relation.",
       "why": "P1",
       "file": "spec/51-enforcement.md",
-      "line": 225
+      "line": 223
     },
     {
       "id": "authority.mask.in-place",
@@ -17772,7 +17761,7 @@
       "statement": "The masked projection substitutes named columns where they stand; the caller receives the column set and order the unmasked statement produces, and `*` expands to it.",
       "why": "A-authority",
       "file": "spec/51-enforcement.md",
-      "line": 227
+      "line": 225
     },
     {
       "id": "authority.mask.equality",
@@ -17783,7 +17772,7 @@
       "statement": "An equality filter on a `drop` column matches nothing; on a `hash` column it matches equal digests.",
       "why": "A-authority",
       "file": "spec/51-enforcement.md",
-      "line": 229
+      "line": 227
     },
     {
       "id": "authority.mask.aggregates",
@@ -17794,7 +17783,7 @@
       "statement": "Aggregation reads the masked column.",
       "why": "A-authority",
       "file": "spec/51-enforcement.md",
-      "line": 231
+      "line": 229
     },
     {
       "id": "authority.mask.summarize-only",
@@ -17805,7 +17794,7 @@
       "statement": "`summarize_only` is a flag, not a strategy: the value stays legible to grounding and citation.",
       "why": "A-authority",
       "file": "spec/51-enforcement.md",
-      "line": 233
+      "line": 231
     },
     {
       "id": "authority.mask.verbatim-quote",
@@ -17816,7 +17805,7 @@
       "statement": "One citation releases at most 280 chars of a `summarize_only` value verbatim, on every surface.",
       "why": "A-authority",
       "file": "spec/51-enforcement.md",
-      "line": 235
+      "line": 233
     },
     {
       "id": "authority.mask.typed-strategy",
@@ -17827,7 +17816,7 @@
       "statement": "A binary column masks by `drop` or by `hash` over its bytes, a vector or nested column by `drop` alone over the whole column; another strategy on either raises `EnforceStrategyOutsideType` at manifest load.",
       "why": "A-store",
       "file": "spec/51-enforcement.md",
-      "line": 237
+      "line": 235
     },
     {
       "id": "authority.mask.absent-column",
@@ -17838,7 +17827,7 @@
       "statement": "A mask naming a column the table's schema omits raises `EnforceMaskOnAbsentColumn` at manifest load, refusing the whole manifest.",
       "why": "because a skipped declaration serves reads under a policy its author believed covered a column",
       "file": "spec/51-enforcement.md",
-      "line": 239
+      "line": 237
     },
     {
       "id": "authority.mask.masks-per-table",
@@ -17849,7 +17838,7 @@
       "statement": "A table carries at most 128 entries in its column mask set.",
       "why": "because a table beyond it needs a drop, not a mask per column",
       "file": "spec/51-enforcement.md",
-      "line": 241
+      "line": 239
     },
     {
       "id": "authority.refuse.scope-denied",
@@ -17860,7 +17849,7 @@
       "statement": "A tenant-scoped credential reading another tenant's rows on a granted table raises `EnforceScopeDenied`, as wire code `scope_denied`, HTTP `403` or an in-band tool error, naming the table and both scopes.",
       "why": "P2",
       "file": "spec/51-enforcement.md",
-      "line": 248
+      "line": 246
     },
     {
       "id": "authority.refuse.not-empty",
@@ -17871,7 +17860,7 @@
       "statement": "A scope refusal is a typed error, never an empty result.",
       "why": "P2",
       "file": "spec/51-enforcement.md",
-      "line": 250
+      "line": 248
     },
     {
       "id": "authority.refuse.echo",
@@ -17882,7 +17871,7 @@
       "statement": "The requested scope in a refusal echoes the statement's value, never a stored value.",
       "why": "P2",
       "file": "spec/51-enforcement.md",
-      "line": 252
+      "line": 250
     },
     {
       "id": "authority.refuse.ungranted-table",
@@ -17893,7 +17882,7 @@
       "statement": "A relation the caller holds no grant on, whether or not a table of that name exists, raises `EnforceUnknownRelation` and is absent from listings and descriptions.",
       "why": "P2",
       "file": "spec/51-enforcement.md",
-      "line": 254
+      "line": 252
     },
     {
       "id": "authority.refuse.payload",
@@ -17904,7 +17893,7 @@
       "statement": "A refusal payload carries at most 512 B.",
       "why": "P2",
       "file": "spec/51-enforcement.md",
-      "line": 256
+      "line": 254
     },
     {
       "id": "authority.refuse.scope-guard",
@@ -17915,7 +17904,7 @@
       "statement": "The scope guard walks the engine's parse once, deciding literal equalities and membership lists over the tenant column and bound template parameters destined for it.",
       "why": "P2",
       "file": "spec/51-enforcement.md",
-      "line": 258
+      "line": 256
     },
     {
       "id": "authority.refuse.top-level",
@@ -17926,7 +17915,7 @@
       "statement": "The guard reads top-level conjuncts of a statement whose own FROM names a scoped table.",
       "why": "P2",
       "file": "spec/51-enforcement.md",
-      "line": 260
+      "line": 258
     },
     {
       "id": "authority.refuse.guard-walk",
@@ -17937,7 +17926,7 @@
       "statement": "The guard visits at most 4096 entries of one parse tree.",
       "why": "P2",
       "file": "spec/51-enforcement.md",
-      "line": 262
+      "line": 260
     },
     {
       "id": "authority.refuse.undecidable",
@@ -17948,7 +17937,7 @@
       "statement": "A constraint the guard cannot settle composes as an ordinary conjunct; the engine-applied equality isolates.",
       "why": "P5",
       "file": "spec/51-enforcement.md",
-      "line": 264
+      "line": 262
     },
     {
       "id": "authority.refuse.drifted-scope",
@@ -17959,7 +17948,7 @@
       "statement": "A tenant value matching no partition reads empty, like a tenant that wrote nothing; the read path repairs no transformed scope value.",
       "why": "A-authority",
       "file": "spec/51-enforcement.md",
-      "line": 266
+      "line": 264
     },
     {
       "id": "authority.bound-redistribution.withhold",
@@ -17970,7 +17959,7 @@
       "statement": "A cleared redistribution flag withholds every object of the table at push and omits the table's name from the bucket manifest.",
       "why": "A-authority",
       "file": "spec/51-enforcement.md",
-      "line": 273
+      "line": 271
     },
     {
       "id": "authority.bound-redistribution.before-diff",
@@ -17981,7 +17970,7 @@
       "statement": "The exclusion applies before the object diff is computed.",
       "why": "A-authority",
       "file": "spec/51-enforcement.md",
-      "line": 275
+      "line": 273
     },
     {
       "id": "authority.bound-redistribution.outranks-grants",
@@ -17992,7 +17981,7 @@
       "statement": "The bound holds against a credential granted everything.",
       "why": "A-authority",
       "file": "spec/51-enforcement.md",
-      "line": 277
+      "line": 275
     },
     {
       "id": "authority.bound-redistribution.envelopes",
@@ -18003,7 +17992,7 @@
       "statement": "The bound covers the table's columnar files and each pull's verbatim record.",
       "why": "A-authority",
       "file": "spec/51-enforcement.md",
-      "line": 279
+      "line": 277
     },
     {
       "id": "authority.bound-redistribution.root-allowlist",
@@ -18014,7 +18003,7 @@
       "statement": "While any table is withheld, a root-level object ships only when the allowlist in Shapes names it.",
       "why": "A-authority",
       "file": "spec/51-enforcement.md",
-      "line": 281
+      "line": 279
     },
     {
       "id": "authority.bound-redistribution.root-not-allowlisted",
@@ -18025,7 +18014,7 @@
       "statement": "A root-level object absent from the allowlist raises `EnforceRootObjectNotAllowlisted` at push.",
       "why": "A-authority",
       "file": "spec/51-enforcement.md",
-      "line": 283
+      "line": 281
     },
     {
       "id": "authority.bound-redistribution.left-behind",
@@ -18036,7 +18025,7 @@
       "statement": "Clearing the flag over a table an earlier push uploaded raises `EnforceStaleRedistributedObjects`, naming each object and the remedy, deleting none.",
       "why": "A-authority",
       "file": "spec/51-enforcement.md",
-      "line": 285
+      "line": 283
     },
     {
       "id": "authority.bound-redistribution.manifest-is-an-index",
@@ -18047,7 +18036,7 @@
       "statement": "An object stays fetchable by its key after the manifest stops naming it; a manifest authorizes nothing.",
       "why": "A-authority",
       "file": "spec/51-enforcement.md",
-      "line": 287
+      "line": 285
     },
     {
       "id": "authority.bound-redistribution.report",
@@ -18058,7 +18047,7 @@
       "statement": "A left-behind report names at most 100 files and states the total found.",
       "why": "A-authority",
       "file": "spec/51-enforcement.md",
-      "line": 289
+      "line": 287
     },
     {
       "id": "authority.bound-redistribution.two-checks",
@@ -18069,7 +18058,7 @@
       "statement": "The left-behind check runs before and after the upload loop; the guarantee holds for one bucket under one pushing configuration.",
       "why": "A-authority",
       "file": "spec/51-enforcement.md",
-      "line": 291
+      "line": 289
     },
     {
       "id": "authority.bound-redistribution.edge-filter",
@@ -18080,7 +18069,7 @@
       "statement": "A serving edge in front of the bucket filters a materialized replica by the pulling credential's grants.",
       "why": "A-authority",
       "file": "spec/51-enforcement.md",
-      "line": 293
+      "line": 291
     },
     {
       "id": "authority.place.zone-string",
@@ -18091,7 +18080,7 @@
       "statement": "A zone string parses, after trimming, as `local:device`, `on-prem:<id>`, `private-cloud:<id>` or `public-cloud:<id>`; any other text is undeclared. The identifier is part of the value.",
       "why": "A-authority",
       "file": "spec/51-enforcement.md",
-      "line": 315
+      "line": 313
     },
     {
       "id": "authority.place.allow-set-entry",
@@ -18102,7 +18091,7 @@
       "statement": "An allow-set entry is `*`, `local:device`, `on-prem:*`, `private-cloud:*`, `public-cloud:*`, or a category carrying a concrete identifier.",
       "why": "A-authority",
       "file": "spec/51-enforcement.md",
-      "line": 317
+      "line": 315
     },
     {
       "id": "authority.place.unparsed-pattern",
@@ -18113,7 +18102,7 @@
       "statement": "An allow-set entry matching no entry form raises `EnforceZonePatternUnparsed`, naming the entry.",
       "why": "because an unparsed entry matching nothing hides a policy error; a new zone category updates the grammar first",
       "file": "spec/51-enforcement.md",
-      "line": 319
+      "line": 317
     },
     {
       "id": "authority.place.disjunctive",
@@ -18124,7 +18113,7 @@
       "statement": "A zone is admitted when any entry matches. A bare category matches every identifier in it; an entry carrying an identifier matches that identifier alone.",
       "why": "A-authority",
       "file": "spec/51-enforcement.md",
-      "line": 321
+      "line": 319
     },
     {
       "id": "authority.place.undeclared",
@@ -18135,7 +18124,7 @@
       "statement": "Only `*` admits an undeclared zone.",
       "why": "A-authority",
       "file": "spec/51-enforcement.md",
-      "line": 323
+      "line": 321
     },
     {
       "id": "authority.place.caller-zone",
@@ -18146,7 +18135,7 @@
       "statement": "The calling process declares its zone per request; the store carries none.",
       "why": "A-authority",
       "file": "spec/51-enforcement.md",
-      "line": 325
+      "line": 323
     },
     {
       "id": "authority.place.asserted-zone",
@@ -18157,7 +18146,7 @@
       "statement": "A zone a request asserts stands only where it equals the zone its credential signs; any other assertion raises `EnforceZoneAssertionWidens`, naming both.",
       "why": "because an unsigned argument able to widen placement makes the signed zone decorative",
       "file": "spec/51-enforcement.md",
-      "line": 327
+      "line": 325
     },
     {
       "id": "authority.place.picks-no-model",
@@ -18168,7 +18157,7 @@
       "statement": "Placement selects no model and dispatches no inference; the engine's one invocation point is an operator-configured endpoint capability for synthesis.",
       "why": "A-authority",
       "file": "spec/51-enforcement.md",
-      "line": 329
+      "line": 327
     },
     {
       "id": "authority.place.fail-closed",
@@ -18179,7 +18168,7 @@
       "statement": "A table declaring no zone policy resolves to the fail-closed pair `local:device` and `on-prem:*`, declared and discovered tables alike.",
       "why": "A-authority",
       "file": "spec/51-enforcement.md",
-      "line": 331
+      "line": 329
     },
     {
       "id": "authority.place.permissive-default",
@@ -18190,7 +18179,7 @@
       "statement": "A default resolving an unlabeled table to `*` raises `EnforcePermissiveZoneDefault` where more than one principal owns the store.",
       "why": "A-authority",
       "file": "spec/51-enforcement.md",
-      "line": 333
+      "line": 331
     },
     {
       "id": "authority.place.protected-floor",
@@ -18201,7 +18190,7 @@
       "statement": "A `phi` column or table carries a floor at the fail-closed pair; a wider declared set resolves down to it at serve time unless the override names that class or column.",
       "why": "A-authority",
       "file": "spec/51-enforcement.md",
-      "line": 335
+      "line": 333
     },
     {
       "id": "authority.place.floor-widened",
@@ -18212,7 +18201,7 @@
       "statement": "A manifest widening a protected-class surface past its floor without an override naming that class raises `EnforceProtectedFloorWidened`.",
       "why": "A-authority",
       "file": "spec/51-enforcement.md",
-      "line": 337
+      "line": 335
     },
     {
       "id": "authority.place.removal-with-public-cloud",
@@ -18223,7 +18212,7 @@
       "statement": "A surface declaring write-time removal on a column and an allow-set admitting a public cloud raises `EnforceRemovalWithPublicCloud`.",
       "why": "P1",
       "file": "spec/51-enforcement.md",
-      "line": 339
+      "line": 337
     },
     {
       "id": "authority.place.narrowest-grain",
@@ -18234,7 +18223,7 @@
       "statement": "A column's set narrows its table's; a principal's set narrows both.",
       "why": "A-authority",
       "file": "spec/51-enforcement.md",
-      "line": 341
+      "line": 339
     },
     {
       "id": "authority.place.excluded-row",
@@ -18245,7 +18234,7 @@
       "statement": "Where the table's effective set omits the session's zone, the row leaves the result.",
       "why": "A-authority",
       "file": "spec/51-enforcement.md",
-      "line": 343
+      "line": 341
     },
     {
       "id": "authority.place.excluded-cell",
@@ -18256,7 +18245,7 @@
       "statement": "A cell whose effective set omits the session's zone arrives null, a mask exception notwithstanding.",
       "why": "A-authority",
       "file": "spec/51-enforcement.md",
-      "line": 345
+      "line": 343
     },
     {
       "id": "authority.place.per-principal",
@@ -18267,7 +18256,7 @@
       "statement": "A principal's allow-set pins every row it authors wherever the row lands. A row with no verified author resolves as an undeclared zone.",
       "why": "A-authority",
       "file": "spec/51-enforcement.md",
-      "line": 347
+      "line": 345
     },
     {
       "id": "authority.place.evidence-floor",
@@ -18278,7 +18267,7 @@
       "statement": "A synthesized row declaring a set wider than the intersection of its evidence tables' sets raises `EnforceEvidenceFloorExceeded` and resolves to that intersection.",
       "why": "A-authority",
       "file": "spec/51-enforcement.md",
-      "line": 349
+      "line": 347
     },
     {
       "id": "authority.place.incognito",
@@ -18289,7 +18278,7 @@
       "statement": "Incognito pins the session to the fail-closed pair, the uncredentialed local owner's reads included.",
       "why": "A-authority",
       "file": "spec/51-enforcement.md",
-      "line": 351
+      "line": 349
     },
     {
       "id": "authority.place.incognito-widening",
@@ -18300,7 +18289,7 @@
       "statement": "A session asserting a zone wider than the incognito pin raises `EnforceIncognitoWidening`.",
       "why": "A-authority",
       "file": "spec/51-enforcement.md",
-      "line": 353
+      "line": 351
     },
     {
       "id": "authority.place.team-default",
@@ -18311,7 +18300,7 @@
       "statement": "A project declares a default zone, whether users widen it, and whether incognito is on by default.",
       "why": "A-authority",
       "file": "spec/51-enforcement.md",
-      "line": 355
+      "line": 353
     },
     {
       "id": "authority.place.serve-outcome",
@@ -18322,7 +18311,7 @@
       "statement": "Serving one row yields a drop flag and the list of zone-masked columns.",
       "why": "A-authority",
       "file": "spec/51-enforcement.md",
-      "line": 357
+      "line": 355
     },
     {
       "id": "authority.place.envelope",
@@ -18333,7 +18322,7 @@
       "statement": "A response envelope carries the zone's removals, the asserted zone and the incognito flag in {{read.respond.restriction-block}}, and no removed value.",
       "why": "A-authority",
       "file": "spec/51-enforcement.md",
-      "line": 359
+      "line": 357
     },
     {
       "id": "authority.place.excluded-disclosed",
@@ -18344,7 +18333,7 @@
       "statement": "`rows_dropped` counts the rows the zone step removes from the whole relation, every earlier step applied; the caller's statement, filter and requested size never enter it, and no removed value crosses.",
       "why": "A-read",
       "file": "spec/51-enforcement.md",
-      "line": 361
+      "line": 359
     },
     {
       "id": "authority.place.symbolic-inclusion",
@@ -18355,7 +18344,7 @@
       "statement": "Inclusion against a floor is decided over every constructor and identifier, never by probing sample zones.",
       "why": "A-authority",
       "file": "spec/51-enforcement.md",
-      "line": 363
+      "line": 361
     },
     {
       "id": "authority.place.proxy-boundary",
@@ -18366,7 +18355,7 @@
       "statement": "A proxy replica resolves zones at the proxy boundary.",
       "why": "A-authority",
       "file": "spec/51-enforcement.md",
-      "line": 365
+      "line": 363
     },
     {
       "id": "authority.place.allow-set-entries",
@@ -18377,7 +18366,7 @@
       "statement": "An allow-set holds at most 32 entries.",
       "why": "A-authority",
       "file": "spec/51-enforcement.md",
-      "line": 367
+      "line": 365
     },
     {
       "id": "authority.place.identifier-length",
@@ -18388,7 +18377,7 @@
       "statement": "A zone identifier holds at most 128 chars.",
       "why": "A-authority",
       "file": "spec/51-enforcement.md",
-      "line": 369
+      "line": 367
     },
     {
       "id": "authority.resist.credential-shaped-value",
@@ -18399,7 +18388,7 @@
       "statement": "The write path raises `EnforceCredentialShapedValue` on a value matching a credential shape, before it reaches storage.",
       "why": "A-read",
       "file": "spec/51-enforcement.md",
-      "line": 400
+      "line": 398
     },
     {
       "id": "authority.resist.read-only-face",
@@ -18410,7 +18399,7 @@
       "statement": "An organization-wide face serves the read subset of the tool surface; conversational writes are server-authored.",
       "why": "A-surface",
       "file": "spec/51-enforcement.md",
-      "line": 402
+      "line": 400
     },
     {
       "id": "authority.resist.write-tool",
@@ -18421,7 +18410,7 @@
       "statement": "Registering a write tool on an organization-wide face raises `EnforceWriteOnReadOnlyFace`.",
       "why": "A-surface",
       "file": "spec/51-enforcement.md",
-      "line": 404
+      "line": 402
     },
     {
       "id": "disclosure.mirror.unbound-table",
@@ -25520,10 +25509,6 @@
       "authority.redact.compiled-pattern-size"
     ],
     [
-      "authority.redact.pattern-refusal",
-      "authority.redact.match-work"
-    ],
-    [
       "authority.redact.combined-authority",
       "authority.redact.rules-per-pipeline"
     ],
@@ -27158,13 +27143,6 @@
             "unit": "MiB",
             "basis": "chosen",
             "gloss": "Each Thompson NFA of one removal pattern."
-          },
-          "redaction-match-work": {
-            "clause": "authority.redact.match-work",
-            "value": 16,
-            "unit": "times",
-            "basis": "chosen",
-            "gloss": "Forward automaton steps of pattern removal over one value."
           },
           "redaction-pattern-bytes": {
             "clause": "authority.redact.pattern-bytes",

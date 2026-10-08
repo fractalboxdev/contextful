@@ -89,11 +89,9 @@ Removal and transformation inside the writer, ahead of columnar bytes and the ru
   *because pattern compilation cost must remain bounded before a writer starts*
 - `compiled-pattern-size` — Each Thompson NFA compiled for one removal pattern occupies at most 1 MiB.
   *because expanded repetitions must not allocate unbounded matcher state*
-- `match-work` — Pattern removal over one value takes forward automaton steps of at most 16 times its byte length.
-  *because a bounded write refuses an adversarial value rather than leave a matched tail*
-- `pattern-refusal` — Unsupported syntax, Unicode word boundaries, empty matches or a pattern past {{authority.redact.pattern-bytes}} or {{authority.redact.compiled-pattern-size}} raises `EnforceRedactionInvalid` at declaration; a value past {{authority.redact.match-work}} raises it before writing.
+- `pattern-refusal` — Unsupported syntax, Unicode word boundaries, empty matches or a pattern past {{authority.redact.pattern-bytes}} or {{authority.redact.compiled-pattern-size}} raises `EnforceRedactionInvalid` at declaration.
   *because a failed matcher cannot silently leave a declared sensitive value intact*
-- `in-value` — Pattern removal rewrites leftmost-first non-overlapping UTF-8 spans; whole-value removal rewrites one cell. JSON paths select object keys, array indices or every array item; unselected values remain unchanged.
+- `in-value` — Pattern removal rewrites the union of all matches in one linear pass, merging overlapping matches into one span; whole-value removal rewrites one cell. JSON paths select object keys, array indices or every array item; unselected values remain unchanged.
   *A-authority*
 - `every-land-entry` — A canonical project declaration binds direct and staged writers even when their callers omit its rules.
   *A-authority*

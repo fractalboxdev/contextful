@@ -118,7 +118,6 @@ exchange-body-ceiling          = { clause = "authority.exchange.body-ceiling", v
 redaction-rules-per-pipeline   = { clause = "authority.redact.rules-per-pipeline", value = 256, unit = "entries", basis = "chosen", gloss = "Removal rules one pipeline declares." }
 redaction-pattern-bytes        = { clause = "authority.redact.pattern-bytes", value = 4, unit = "KiB", basis = "chosen", gloss = "Source text of one removal pattern." }
 redaction-compiled-size        = { clause = "authority.redact.compiled-pattern-size", value = 1, unit = "MiB", basis = "chosen", gloss = "Each Thompson NFA of one removal pattern." }
-redaction-match-work           = { clause = "authority.redact.match-work", value = 16, unit = "times", basis = "chosen", gloss = "Forward automaton steps of pattern removal over one value." }
 relations-per-session          = { clause = "authority.compose.relations-per-session", value = 1024, unit = "entries", basis = "chosen", gloss = "Registered relations one session holds." }
 row-predicate-size             = { clause = "authority.filter-rows.predicate-size", value = 4, unit = "KiB", basis = "chosen", gloss = "Source text of one row predicate." }
 membership-list-entries        = { clause = "authority.filter-rows.membership-list", value = 512, unit = "entries", basis = "chosen", gloss = "Literals in one membership list." }
