@@ -27,7 +27,11 @@ shape = "memory_preferences"
 columns = ["preference_id","subject","key","value","scope"]
 "#);
     let ordinary = "[[pipeline.tables]]\nname = \"memory/preferences\"\n";
-    for declaration in [format!("{ordinary}{}", memory("memory/preferences")), format!("{}{}", memory("memory/preferences"), memory("memory/preferences")), memory("memory//preferences"), memory("memory/./preferences")] {
+    for declaration in [format!("{ordinary}{}", memory("memory/preferences")), format!("{}{}", memory("memory/preferences"), memory("memory/preferences"))] {
+        let refusal = TableDecl::parse_declaration_set(&declaration, &[]).unwrap_err();
+        assert!(refusal.to_string().contains("declared more than once"), "the established duplicate refusal changes: {refusal}");
+    }
+    for declaration in [memory("memory//preferences"), memory("memory/./preferences")] {
         assert!(TableDecl::parse_declaration_set(&declaration, &[]).is_err(), "an ambiguous memory identity is admitted");
     }
     let tables = TableDecl::parse_declaration_set("[[pipeline.tables]]\nname = \"notes\"\n[[pipeline.tables]]\nname = \"notes\"\n", &[]).unwrap();
