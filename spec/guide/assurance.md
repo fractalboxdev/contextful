@@ -7,10 +7,8 @@ contract: assurance
 ## What it is for
 
 **Contextful** makes claims a buyer acts on: a reader receives only the rows policy
-admits, and a stale lease holder never commits. Assurance decides what evidence stands
-behind each claim and keeps the claim no wider than that evidence: Lean models prove the
-specification, a differential harness ties each model to the running code, and gates turn
-discipline and retrieval quality into a red or green verdict.
+admits, and a stale lease holder never commits. Assurance keeps each claim no wider than
+its evidence: Lean proofs, a differential harness against running code, and gates.
 
 ## In plain words
 
@@ -85,6 +83,15 @@ Beneath the proofs sit the engineering rules: one implementation per capability
 ({{assurance.evaluate.through-the-store}}) under policy labels
 ({{assurance.evaluate.policy-labels}}), and baselines only ever rise
 ({{assurance.baseline.raise-only}}).
+
+Windows ships no release ({{assurance.build.windows-target}},
+{{assurance.gate.windows-checks}}). Builds bind to their checkout
+({{assurance.build.checkout-artifacts}}, {{assurance.build.runtime-checkout}}),
+test-first to one comparison ({{assurance.test.comparison-base}},
+{{assurance.test.merge-source}}, {{assurance.test.base-evidence}}), parts to
+timings and owned processes ({{assurance.gate.stage-timings}},
+{{assurance.gate.part-budget}}, {{assurance.gate.build-admission}},
+{{assurance.gate.timeout-cleanup}}).
 
 One ledger keys each tracked target to its clause ({{assurance.measure.ledger}}): a
 gate-tier count reds the evaluate stage ({{assurance.measure.count-first}}), and timings

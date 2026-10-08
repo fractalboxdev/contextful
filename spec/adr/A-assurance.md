@@ -206,6 +206,41 @@ Decision: releases ship Linux on musl for every profile and macOS for edge and f
 
 Consequences: the accepted cost is that a WASI host stays unserved until the probe records a figure inside the budget and the matrix gains the target.
 
+## Gate repair evidence binds one checkout and one comparison
+
+**Status:** accepted.
+
+Context: workspace artifacts retain checkout paths, merge history changes test selection, and a stage timeout without phase evidence obscures whether compilation or tests exhaust the budget. Criteria: each verdict identifies its source, comparison and failure class.
+
+Decision: `assurance.build.checkout-artifacts` and `assurance.build.runtime-checkout` bind builds and helpers to invocation identity. `assurance.test.comparison-base`, `assurance.test.merge-source` and `assurance.test.base-evidence` bind test-first obligations to one comparison and distinguish infrastructure from regression evidence. `assurance.gate.stage-timings`, `assurance.gate.part-budget`, `assurance.gate.build-admission` and `assurance.gate.timeout-cleanup` bind resource evidence to dispatched parts.
+
+| Option | Lost on | Cost |
+| --- | --- | --- |
+| Checkout isolation, one comparison, measured parts and owned cleanup *(chosen)* | — | Workspace artifacts repeat across checkouts; cold and warm validation consumes runner time; reports require phase boundaries. |
+| Shared workspace artifacts with compile-time checkout paths | Source identity | A cached helper selects another checkout's source or binary. |
+| Independent comparison rules for selection and replay | Regression evidence | A test runs against source outside the comparison that selected it. |
+| Retry full gates or increase their timeout | Diagnosis and platform budget | Repeated cold builds provide no phase evidence and can exceed the sandbox cap. |
+
+Consequences: integration and doctest contrasts, history fixtures, cold/warm part runs and forced descendant hangs provide independent acceptance controls.
+Revisit: representative timings demonstrate checkout isolation or partitioning exceeds the declared resource budget.
+
+## Windows release support is deferred independently of Linux and macOS delivery
+
+**Status:** accepted.
+
+Context: native Windows execution adds MSVC toolchains, executor registration, descendant-lifetime verification and bundled read-engine validation to the release boundary. Criteria: Linux and macOS delivery has a bounded platform scope independent of Windows executor availability.
+
+Decision: `assurance.build.windows-target` and `assurance.gate.windows-checks` define the Windows exclusion. The supported release matrix remains owned by `assurance.build.targets`; Windows diagnostics preserve porting evidence without widening its delivery obligations.
+
+| Option | Lost on | Cost |
+| --- | --- | --- |
+| Defer Windows releases and required native checks together *(chosen)* | — | Windows consumers receive no supported artifact; diagnostic failures carry no delivery verdict. |
+| Require Windows execution before every merge | Platform scope | Linux and macOS delivery depends on Windows executor availability and port completion. |
+| Exclude Windows artifacts but require Windows checks | Independent delivery | The release scope narrows while the same executor dependency remains. |
+
+Consequences: Windows source and regression fixtures remain available for porting; support claims cover the declared release matrix alone.
+Revisit: an explicit Windows support decision carries passing real MSVC lifetime, filesystem and bundled read-engine evidence for each admitted architecture within the gate budget.
+
 ## The store adapter's write suites assert without the SQL engine
 
 **Status:** accepted.
