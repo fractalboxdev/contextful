@@ -310,6 +310,43 @@ fn at_most_max_in_flight_rows_run_and_a_failed_row_admits_no_further_row() {
     assert!(rig.catalog().owner_at(&job_scope(JOB)).unwrap().is_some(), "a failure after recorded calls holds the owner");
 }
 
+#[test]
+fn delayed_failing_row_preserves_the_existing_ordinal_admission_assertion() {
+    use std::sync::Condvar;
+    struct Delayed<'a> {
+        body: Score<'a>,
+        entered: Mutex<usize>,
+        changed: Condvar,
+    }
+    impl RowBody for Delayed<'_> {
+        fn run(&self, row: &InputRow, calls: &dyn RowCalls) -> Result<Emitted, RowStop> {
+            let failing = doc_of(row) == "d010";
+            let mut entered = self.entered.lock().unwrap();
+            *entered += 1;
+            self.changed.notify_all();
+            if failing {
+                while *entered < 20 {
+                    entered = self.changed.wait(entered).unwrap();
+                }
+                eprintln!("drive-diagnostic: failure returns only after {} entries", *entered);
+            }
+            drop(entered);
+            self.body.run(row, calls)
+        }
+    }
+    let rig = Rig::new();
+    let endpoint = Endpoint::default();
+    let mut score = Score::new(&endpoint);
+    score.fails = Some("d010".into());
+    let body = Delayed { body:score, entered:Mutex::new(0), changed:Condvar::new() };
+    let mut read = |as_of: &str| Ok(set(as_of, docs(40)));
+    let row = rig.engine.drive(&fire(input("SELECT doc_id FROM documents", Some(T0)), &body, 4, "fire-1"), &mut read, &mut |_| unreachable!("a failed fire lands nothing")).unwrap();
+    assert_eq!(row.status, RunStatus::Failed);
+    assert!(row.error_message.unwrap().contains("row d010 is malformed"));
+    let entered = *body.entered.lock().unwrap();
+    assert!(entered <= 11 + 3, "{entered} rows entered; a failure admits none past those already in flight");
+}
+
 /// A failed landing holds the owner, and its resume lands every emitted row without paying again.
 #[test]
 fn a_failed_landing_holds_the_owner_and_its_resume_lands_without_paying_again() {
