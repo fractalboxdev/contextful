@@ -13,7 +13,7 @@ fn an_unpublished_process_crash_discards_only_owned_replacements() {
     fixture::unpublished_process_crash_recovery(&executable());
 }
 
-fn executable() -> std::path::PathBuf {
+pub(super) fn executable() -> std::path::PathBuf {
     let manifest = std::path::PathBuf::from(std::env::var_os("CARGO_MANIFEST_DIR").expect("Cargo supplies the owning package directory")).canonicalize().unwrap();
     let workspace = manifest.parent().unwrap().parent().unwrap();
     assert_eq!(workspace.join("crates/contextful-context").canonicalize().unwrap(), manifest);

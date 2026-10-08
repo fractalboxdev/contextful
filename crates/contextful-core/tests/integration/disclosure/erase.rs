@@ -4,6 +4,20 @@ use serde_json::json;
 use std::collections::BTreeMap;
 
 #[test]
+fn column_scope_recognizes_composite_members_without_admitting_legacy_partial_keys() {
+    use contextful_core::disclosure::erase::{declares_erasure_column, select_keys};
+    let declarations = TableDecl::parse_pipeline(r#"
+[[pipeline.tables]]
+name = "events"
+primary_key = ["trace_id", "id"]
+"#).unwrap();
+    assert!(declares_erasure_column(&declarations[0], "trace_id"), "a composite primary member is a declared column");
+    let rows = BTreeMap::from([("events".into(), vec![json!({"trace_id":"trace-a","id":"a"}).as_object().unwrap().clone()])]);
+    let keys = BTreeMap::from([("events".into(), vec![json!({"trace_id":"trace-a"}).as_object().unwrap().clone()])]);
+    assert!(select_keys(&declarations, &rows, &keys).unwrap_err().to_string().starts_with("ErasureScopeUnsupported"), "the table-key format still requires the complete composite key");
+}
+
+#[test]
 fn keyset_accepts_an_explicitly_declared_column_without_subject_or_erasure_metadata() {
     use contextful_core::disclosure::erase::select_keys;
     let declarations = TableDecl::parse_pipeline(r#"
