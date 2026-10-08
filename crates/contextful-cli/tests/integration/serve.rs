@@ -59,7 +59,11 @@ impl Drop for Listener {
 
 /// Start the face; its address, reported on standard error.
 fn serve(dir: &Path, args: &[&str]) -> (Listener, String) {
-    let mut child = Command::new(env!("CARGO_BIN_EXE_contextful"))
+    serve_binary(Path::new(env!("CARGO_BIN_EXE_contextful")), dir, args)
+}
+
+fn serve_binary(binary: &Path, dir: &Path, args: &[&str]) -> (Listener, String) {
+    let mut child = Command::new(binary)
         .args(args)
         .current_dir(dir)
         .env_remove("CONTEXTFUL_ISSUER_PUBKEY")
@@ -78,6 +82,22 @@ fn serve(dir: &Path, args: &[&str]) -> (Listener, String) {
         line.clear();
     }
     panic!("the face never listened")
+}
+
+#[test]
+fn control_apply_uses_the_host_registered_task_set() {
+    let binary = super::derive::host_binary();
+    let (dir, public) = project();
+    let root = dir.path();
+    std::fs::write(root.join("contextful.toml"), format!("authoring_posture = \"per_request\"\n{}", super::derive::host_manifest("word-split"))).unwrap();
+    let imported = Command::new(&binary).args(["pipeline", "import", "--project", "research"]).current_dir(root).output().unwrap();
+    stdout(&imported);
+    std::fs::write(root.join("contextful.toml"), format!("authoring_posture = \"per_request\"\n{}", super::derive::host_manifest("word-split").replace("[pipeline.source]", "schedule = \"every 1h\"\n[pipeline.source]"))).unwrap();
+    let admin = stdout(&run(root, &["token", "mint", "--issuer-key", ".contextful/issuer.seed", "--on-behalf-of", "user://dana@acme.example", "--zone", "on-prem:hq", "--action", "admin", "--table", "*", "--ttl", "900"]));
+    let (_listener, addr) = serve_binary(&binary, root, &["serve", "--http", "127.0.0.1:0", "--audience", AUD, "--max-in-flight", "2", "--project", "research", "--public-key", &public]);
+    let (status, state) = control(&addr, "POST", "/control/apply", Some(&admin), "{}");
+    assert_eq!(status, 200, "{state}");
+    assert_eq!(state["applied"], json!(2));
 }
 
 static NONCE: AtomicU64 = AtomicU64::new(0);
@@ -163,6 +183,86 @@ fn served_exchange_mints_a_reader_credential_for_the_read_face() {
     let (status, refused) = exchange("invalid");
     assert_ne!(status, 200);
     assert_eq!(refused["error"]["identifier"], "ExchangeAssertionInvalid");
+}
+
+fn control(addr: &str, method: &str, path: &str, token: Option<&str>, body: &str) -> (u16, Value) {
+    let mut stream = TcpStream::connect(addr).unwrap();
+    let auth = token.map(|token| format!("Authorization: Bearer {token}\r\n")).unwrap_or_default();
+    write!(stream, "{method} {path} HTTP/1.1\r\n{auth}Content-Type: application/json\r\nContent-Length: {}\r\n\r\n{body}", body.len()).unwrap();
+    let mut raw = String::new();
+    stream.read_to_string(&mut raw).unwrap();
+    let (head, answer) = raw.split_once("\r\n\r\n").unwrap();
+    (head.split(' ').nth(1).unwrap().parse().unwrap(), serde_json::from_str(answer).unwrap())
+}
+
+#[test]
+fn control_routes_require_admin_and_project_applied_workflows() {
+    let (dir, public) = project();
+    let root = dir.path();
+    let pipeline = "[[pipeline]]\nid = \"filings-flow\"\nschedule = \"every 1h\"\ntables = [\"research/notes\"]\n[pipeline.source]\nname = \"http\"\nconfig = { endpoint = \"https://example.test/filings\" }\n";
+    std::fs::create_dir_all(root.join("pipelines")).unwrap();
+    std::fs::write(root.join("pipelines/filings.toml"), pipeline).unwrap();
+    stdout(&run(root, &["pipeline", "import", "--project", "research"]));
+    let read = stdout(&run(root, &["token", "mint", "--issuer-key", ".contextful/issuer.seed", "--on-behalf-of", "user://dana@acme.example", "--zone", "on-prem:hq", "--action", "read", "--table", "*", "--ttl", "900"]));
+    let admin = stdout(&run(root, &["token", "mint", "--issuer-key", ".contextful/issuer.seed", "--on-behalf-of", "user://dana@acme.example", "--zone", "on-prem:hq", "--action", "admin", "--table", "*", "--ttl", "900"]));
+    let narrow_admin = stdout(&run(root, &["token", "mint", "--issuer-key", ".contextful/issuer.seed", "--on-behalf-of", "user://dana@acme.example", "--zone", "on-prem:hq", "--action", "admin", "--table", "unrelated/*", "--ttl", "900"]));
+    let (_listener, addr) = serve(root, &["serve", "--http", "127.0.0.1:0", "--audience", AUD, "--max-in-flight", "2", "--project", "research", "--public-key", &public]);
+
+    assert_eq!(control(&addr, "GET", "/control/workflows", None, "").0, 401);
+    let (status, answer) = control(&addr, "GET", "/control/workflows", Some(&read), "");
+    assert_eq!(status, 403, "{answer}");
+    assert_eq!(control(&addr, "POST", "/control/apply", Some(&read), "{}").0, 403);
+    assert_eq!(control(&addr, "GET", "/control/workflows", Some(&narrow_admin), "").0, 403);
+    let (status, view) = control(&addr, "GET", "/control/workflows", Some(&admin), "");
+    assert_eq!(status, 200, "{view}");
+    assert_eq!(view["applied"], json!(1));
+    assert_eq!(view["pipelines"][0]["id"], "filings-flow");
+    assert_eq!(view["pipelines"][0]["tables"], json!(["research/notes"]));
+
+    assert_eq!(control(&addr, "POST", "/control/apply", Some(&admin), "{\"id\":1}").0, 400);
+
+    std::fs::write(root.join("pipelines/filings.toml"), pipeline.replace("every 1h", "every 1d")).unwrap();
+    let (status, applied) = control(&addr, "POST", "/control/apply", Some(&admin), "{\"id\":\"filings-flow\"}");
+    assert_eq!(status, 200, "{applied}");
+    assert_eq!(applied["applied"], json!(2));
+    let (_, view) = control(&addr, "GET", "/control/workflows", Some(&admin), "");
+    assert_eq!(view["pipelines"][0]["schedule"], "every 1d");
+}
+
+#[test]
+fn published_workflow_listing_caps_entries_and_flags_truncation() {
+    let (dir, public) = project();
+    let root = dir.path();
+    let snapshot = contextful_engine::control::SnapshotDir::open(&root.join(".contextful/control/research"));
+    let document = (0..1001).map(|index| format!(
+        "[[pipeline]]\nid = \"flow-{index:04}\"\ntables = [\"research/notes\"]\n[pipeline.source]\nname = \"http\"\nconfig = {{ endpoint = \"https://example.test/filings\" }}\n"
+    )).collect::<Vec<_>>().join("\n");
+    snapshot.import(&document).unwrap();
+    let admin = stdout(&run(root, &["token", "mint", "--issuer-key", ".contextful/issuer.seed", "--on-behalf-of", "user://dana@acme.example", "--zone", "on-prem:hq", "--action", "admin", "--table", "*", "--ttl", "900"]));
+    let (_listener, addr) = serve(root, &["serve", "--http", "127.0.0.1:0", "--audience", AUD, "--max-in-flight", "2", "--project", "research", "--public-key", &public]);
+    let (status, view) = control(&addr, "GET", "/control/workflows", Some(&admin), "");
+    assert_eq!(status, 200, "{view}");
+    assert_eq!(view["pipelines"].as_array().unwrap().len(), 1000);
+    assert_eq!(view["truncated"], true);
+    assert_eq!(view["declined"], 0);
+}
+
+#[test]
+fn published_workflows_include_completed_local_runs_before_sync_push() {
+    let vendor = super::pipeline::Vendor::start(|_| (200, "[{\"note_id\":\"filed\"}]".into()));
+    let (dir, public) = project();
+    let root = dir.path();
+    let pipeline = format!("[[pipeline]]\nid = \"filings-flow\"\ntables = [\"research/filings\"]\n[pipeline.source]\nname = \"http\"\nconfig = {{ endpoint = \"{}\" }}\n", vendor.url("/filings"));
+    std::fs::create_dir_all(root.join("pipelines")).unwrap();
+    std::fs::write(root.join("pipelines/filings.toml"), pipeline).unwrap();
+    stdout(&run(root, &["pipeline", "import", "--project", "research"]));
+    stdout(&run(root, &["pipeline", "run", "filings-flow", "--project", "research", "--run-id", "run-flow", "--site-id", "site-a"]));
+    let admin = stdout(&run(root, &["token", "mint", "--issuer-key", ".contextful/issuer.seed", "--on-behalf-of", "user://dana@acme.example", "--zone", "on-prem:hq", "--action", "admin", "--table", "*", "--ttl", "900"]));
+    let (_listener, addr) = serve(root, &["serve", "--http", "127.0.0.1:0", "--audience", AUD, "--max-in-flight", "2", "--project", "research", "--public-key", &public]);
+    let (status, view) = control(&addr, "GET", "/control/workflows", Some(&admin), "");
+    assert_eq!(status, 200, "{view}");
+    assert_eq!(view["runs"]["filings-flow"]["run_id"], "run-flow");
+    assert_eq!(view["runs"]["filings-flow"]["status"], "success");
 }
 
 /// The network transport refuses to start without its audience, its ceiling, or an issuer key that resolves and parses.

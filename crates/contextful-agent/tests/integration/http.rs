@@ -101,10 +101,14 @@ fn holder(n: u8) -> SigningKey {
 
 /// A credential reading `tables` for `ttl` seconds, bound to `holder` when one is given.
 fn credential(signer: &SeedSigner, tables: &str, ttl: u64, holder: Option<&SigningKey>) -> String {
+    credential_with_action(signer, Action::Read, tables, ttl, holder)
+}
+
+fn credential_with_action(signer: &SeedSigner, action: Action, tables: &str, ttl: u64, holder: Option<&SigningKey>) -> String {
     let policy = IssuancePolicy::parse(&format!("default_audience = \"{AUD}\"\nmax_lifetime_secs = 86400\n")).unwrap();
     let subject = Subject { on_behalf_of: Some("user://dana@acme.example".into()), zone: Some("on-prem:hq".into()), ..Subject::default() };
     let grant = Grant {
-        actions: vec![Action::Read],
+        actions: vec![action],
         tables: vec![TablePattern::parse(tables).unwrap()],
         tenant: None,
         aggregate: None,
@@ -119,6 +123,33 @@ fn credential(signer: &SeedSigner, tables: &str, ttl: u64, holder: Option<&Signi
     let plan = policy.check(&req, &MintContext { node: NodeRole::Primary, signer, clock: &clock }).unwrap();
     let confirmation = holder.map(|k| jwk_thumbprint(k.verifying_key().as_bytes()));
     mint(&plan, &MintClaims { confirmation, ..MintClaims::default() }, signer).unwrap()
+}
+
+#[test]
+fn control_apply_rechecks_revocation_before_dispatch() {
+    let f = fixture();
+    let token = credential_with_action(&f.signer, Action::Admin, "*", 900, None);
+    let clock = FixedClock(at(NOW));
+    let checks = std::sync::atomic::AtomicUsize::new(0);
+    let revocation = || {
+        if checks.fetch_add(1, Ordering::SeqCst) == 0 { Ok(RevocationState::default()) }
+        else { Err("revocation source changed".into()) }
+    };
+    let admitting = Admitting { checkpoint: &f.checkpoint, audience: AUD, revocation: &revocation };
+    let dispatched = AtomicBool::new(false);
+    let handler = |_: &HttpRequest| {
+        dispatched.store(true, Ordering::SeqCst);
+        contextful_agent::http::HttpResponse::json(200, &json!({ "applied": 2 }))
+    };
+    let face = HttpFace::new(&f.face, &clock, &f.audit, admitting, Some(2)).unwrap().with_control(&handler);
+    let request = HttpRequest {
+        method: "POST".into(), target: "/control/apply".into(),
+        headers: vec![("Authorization".into(), format!("Bearer {token}"))], body: b"{}".to_vec(),
+    };
+    let answer = face.answer(&request);
+    assert_eq!(answer.status, 503);
+    assert!(!dispatched.load(Ordering::SeqCst));
+    assert_eq!(checks.load(Ordering::SeqCst), 2);
 }
 
 fn call(tool: &str, arguments: Value) -> Value {
