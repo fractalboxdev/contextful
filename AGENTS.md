@@ -137,6 +137,13 @@ branch and attaches its report to `refs/notes/measures`. A `v*` tag starts
 SHA256SUMS, and three independently tagged container images. The disabled
 ruleset proposal under `.github/rulesets/` lists the parent and all 24 children.
 
+The sole Actions workflow transports FlareDispatch-admitted native Windows
+execution through `workflow_dispatch` and read-only repository permission.
+`contextful-ci native-transport` checks its fixed runners, immutable executor
+checkout, bound inputs and artifact directory. FlareDispatch verifies authentic
+API job conclusions and receipts before publishing native checks or artifacts.
+The wrapper records subprocess evidence; reviewed workload code shares its user.
+
 The schema stage also holds every key in a tracked `.env*` file to dotenvx ciphertext
 under a comment stating what it grants (`contextful-ci secrets`); `.env.keys` stays
 untracked. A deliberate restatement of an engine rule carries `mirrors: <clause id>` at
