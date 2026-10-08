@@ -234,7 +234,7 @@ The transaction references a row-free audit intent. A committed record selects t
 
 Signed per-file maps admit absent files as completed collection and validate remaining digests. Version three signs canonical-key HMACs over store, transaction, directory and path. Recovery requires the persisted key. Neutral survivor names preserve rows and rebuilt indexes. Version two retains authenticated raw paths without silent rebind; hash-only bindings require complete inventories.
 
-The recovery CLI admits the entire verified frontier under Forget authority, rechecks current effect admission before collection, and uses persisted audit keys and configured verification pins. It selects no new rows and requires no private signing port. The trusted store-owner recovery path retains signed-intent validation.
+The recovery CLI admits signed-only collection over its verified frontier, and unsigned staging over the complete canonical stored-table scope after validating origins. It rechecks effect admission and persisted audit keys before deletion, selects no rows, creates no identity, and requires no signer. Store-owner recovery retains signed-intent validation.
 
 | Option | Lost on | Cost |
 | --- | --- | --- |

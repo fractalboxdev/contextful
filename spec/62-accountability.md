@@ -214,7 +214,9 @@ The one erasure verb: subject tombstones, the bounded provenance cascade, the re
   *A-disclosure*
 - `recovery` — Recovery completes collection for a committed frontier and discards uncommitted replacements; an incomplete or disagreeing transaction record raises `ErasureTransactionIncomplete` before releasing store content.
   *A-disclosure*
-- `recovery-verb` — `context erase --recover --project <project>` resumes {{disclosure.erase.recovery}} for the complete authenticated frontier under {{disclosure.erase.privilege}} and {{authority.verify.effect-boundary}} before collection; selectors and signing ports are absent.
+- `recovery-verb` — `context erase --recover --project <project>` resumes {{disclosure.erase.recovery}} under {{disclosure.erase.privilege}} and {{authority.verify.effect-boundary}} before collection; selectors and signing ports are absent.
+  *A-disclosure*
+- `unsigned-recovery` — Uncommitted staging origins resolve against canonical stored tables and require Forget over the complete store scope; signed-only recovery admits the complete authenticated frontier. Uncommitted recovery returns no transaction identity.
   *A-disclosure*
 - `retirement-inventory` — Signed retirement inventories bind regular paths through domain-separated HMAC under {{disclosure.record.audit-key}} and their file digests; recovery admits missing files as completed collection, validates all remaining files before deletion, and rejects changes through {{disclosure.erase.recovery}}.
   *A-disclosure*
