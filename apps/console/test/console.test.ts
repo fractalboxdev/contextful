@@ -157,6 +157,7 @@ test("Cognito hosted login exchanges a code before issuing a first-party session
   const callback = await app.fetch(new Request(`https://console.example/auth/callback?code=accepted&state=${state}`, { headers: { cookie: stateCookie } }));
   assert.equal(callback.status, 302);
   assert.equal(callback.headers.get("location"), "/admin");
+  assert.match(callback.headers.get("set-cookie")!, /; SameSite=Lax;/, "the session cookie rides the redirect that completes a cross-site login");
   const sessionCookie = callback.headers.get("set-cookie")!.split(";")[0];
   assert.equal((await app.fetch(new Request("https://console.example/admin", { headers: { cookie: sessionCookie } }))).status, 200);
   assert.equal((await app.fetch(new Request("https://console.example/query", { headers: { cookie: sessionCookie } }))).status, 403);
