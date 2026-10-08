@@ -184,3 +184,58 @@ command=["vendor"]
     let mismatched = declaration.replace("table=\"messages\"", "table=\"another\"");
     assert!(matches!(Plan::compile(format!("journal=false\n{mismatched}").as_bytes()), Err(RunError::Invalid(_))));
 }
+
+/// A deterministic xorshift stream, so a failing seed reproduces.
+struct Stream(u64);
+
+impl Stream {
+    fn below(&mut self, n: usize) -> usize {
+        self.0 ^= self.0 << 13;
+        self.0 ^= self.0 >> 7;
+        self.0 ^= self.0 << 17;
+        (self.0 % n as u64) as usize
+    }
+
+    fn pattern(&mut self, depth: u32) -> String {
+        let atom = match self.below(if depth == 0 { 3 } else { 5 }) {
+            0 => ["a", "b", "c", "d"][self.below(4)].to_string(),
+            1 => ["[ab]", "[^a]", "[b-d]"][self.below(3)].to_string(),
+            2 => ".".to_string(),
+            3 => format!("(?:{}|{})", self.pattern(depth - 1), self.pattern(depth - 1)),
+            _ => format!("{}{}", self.pattern(depth - 1), self.pattern(depth - 1)),
+        };
+        atom + ["", "", "*", "+", "?", "{1,3}", "*?"][self.below(7)]
+    }
+}
+
+#[test]
+fn every_byte_of_every_match_is_rewritten_and_no_other_byte_is() {
+    use regex_automata::meta::Regex;
+    let mut stream = Stream(0x9E37_79B9_7F4A_7C15);
+    let mut checked = 0;
+    while checked < 2000 {
+        let pattern = stream.pattern(3);
+        let Ok(rule) = CompiledRule::compile(rule(json!({"pattern":pattern}), None)) else { continue };
+        let text: String = (0..stream.below(24)).map(|_| ['a', 'b', 'c', 'd'][stream.below(4)]).collect();
+        let mut value = json!(text);
+        rule.rewrite(&mut value, &|_, span| Ok(Some(span.to_ascii_uppercase()))).unwrap();
+        let rewritten = value.as_str().unwrap().as_bytes();
+        let unanchored = Regex::new(&pattern).unwrap();
+        let whole = Regex::new(&format!("^(?:{pattern})$")).unwrap();
+        let mut covered = vec![false; text.len()];
+        for start in 0..text.len() {
+            for end in start + 1..=text.len() {
+                if whole.is_match(&text[start..end]) {
+                    covered[start..end].iter_mut().for_each(|byte| *byte = true);
+                }
+            }
+        }
+        for found in unanchored.find_iter(&text) {
+            assert!(covered[found.range()].iter().all(|byte| *byte), "{pattern} over {text}: leftmost-first {:?} escapes the union", found.range());
+        }
+        for (at, byte) in rewritten.iter().enumerate() {
+            assert_eq!(byte.is_ascii_uppercase(), covered[at], "{pattern} over {text}: byte {at} became {}", String::from_utf8_lossy(rewritten));
+        }
+        checked += 1;
+    }
+}
