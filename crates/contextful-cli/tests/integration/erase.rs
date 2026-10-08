@@ -49,7 +49,7 @@ fn ok(output: Output) -> String {
 }
 
 #[test]
-fn first_erasure_bootstraps_its_key_but_published_key_loss_refuses_without_recreation() {
+fn signed_frontier_recovery_replays_without_signer_and_preserves_the_key_lifecycle() {
     let directory = tempfile::tempdir().unwrap(); let root = directory.path();
     ok(run(root, &["init", "research", "--authoring-posture", "per_request"], None, None));
     std::fs::write(root.join("contextful.toml"), "authoring_posture = \"per_request\"\n[[pipeline.tables]]\nname = \"notes\"\nprimary_key = [\"id\"]\nsubject_id = \"subject\"\n").unwrap();
@@ -72,22 +72,28 @@ fn first_erasure_bootstraps_its_key_but_published_key_loss_refuses_without_recre
     assert_eq!(receipt["physical_collection"], "complete", "first-use creation has no prior signed key history");
     assert_eq!(std::fs::read(&key).unwrap().len(), 32);
     let frontier = std::fs::read(store.join("_erasure_frontier.json")).unwrap();
+    let audit_before = serde_json::to_vec(&contextful_policy::audit::entries(&root.join(".contextful/audit")).unwrap()).unwrap();
+    let seed_path = root.join(".contextful/issuer.seed");
+    let private_seed = std::fs::read(&seed_path).unwrap();
+    std::fs::remove_file(&seed_path).unwrap();
+    let recovery = ["context", "erase", "--recover", "--project", "research", "--public-key", &pins, "--audience", "erasure-fixture", "--json"];
+    for _ in 0..2 {
+        let recovered: serde_json::Value = serde_json::from_str(&ok(run(root, &recovery, Some(&forget), Some(&pins)))).unwrap();
+        assert_eq!(recovered["transaction_id"], receipt["transaction_id"]);
+        assert_eq!(recovered["physical_collection"], "complete");
+        assert_eq!(std::fs::read(store.join("_erasure_frontier.json")).unwrap(), frontier);
+        assert_eq!(serde_json::to_vec(&contextful_policy::audit::entries(&root.join(".contextful/audit")).unwrap()).unwrap(), audit_before);
+        assert!(!seed_path.exists(), "recovery recreates a signing key");
+    }
+    let query = ["query", "--json", "--project", "research", "SELECT id FROM notes ORDER BY id"];
+    assert_eq!(serde_json::from_str::<serde_json::Value>(&ok(run(root, &query, None, Some(&pins)))).unwrap()["rows"], serde_json::json!([["b"]]));
+    std::fs::write(&seed_path, private_seed).unwrap();
     std::fs::remove_file(&key).unwrap();
     let refused = run(root, &["context", "erase", "--project", "research", "--subject", "bob", "--tables", "notes", "--issuer-key", ".contextful/issuer.seed", "--public-key", &pins, "--audience", "erasure-fixture", "--json"], Some(&forget), Some(&pins));
     assert!(!refused.status.success(), "published erasure loses its key without refusing");
     assert!(String::from_utf8_lossy(&refused.stderr).contains("ErasureTransactionIncomplete"));
     assert!(!key.exists(), "published history creates a replacement pseudonym key");
     assert_eq!(std::fs::read(store.join("_erasure_frontier.json")).unwrap(), frontier);
-}
-
-#[cfg(unix)]
-#[path = "../../../contextful-context/tests/integration/recovery_fixture.rs"]
-mod recovery_fixture;
-
-#[cfg(unix)]
-#[test]
-fn a_killed_erasure_process_resumes_signed_collection_without_resigning_or_reselecting() {
-    recovery_fixture::process_crash_recovery(std::path::Path::new(env!("CARGO_BIN_EXE_contextful")));
 }
 
 #[test]
