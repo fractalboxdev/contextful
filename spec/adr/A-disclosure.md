@@ -228,11 +228,13 @@ Consequences: role membership stays outside the store, so a decision names the r
 
 ## Erasure is a forced rewrite, a bounded cascade and a measured receipt
 
-Subject and key-set erasure publish one authenticated transaction record selecting every affected table. Readers capture that frontier and validate it before response release; file and cache adapters share the same resolver. Writers fence staged commits against the frontier, preventing erased rows from returning through an older batch.
+Subject and key-set erasure select one authenticated frontier. File and cache readers share response-release validation; writers fence staged commits against that frontier, preventing erased rows returning through older batches.
 
 The transaction references a row-free audit intent. A committed record selects that intent; recovery discards uncommitted replacements and completes committed physical collection. Reference counting uses the surviving view, retaining shared digests and surviving citing rows while refusing access to their erased sources.
 
-Signed per-file maps admit interrupted collection: absent files are completed work; remaining files require admitted digests. Version three signs canonical-key HMACs over an unambiguous store, transaction, retired-directory and physical-path tuple. Erasure and keyed recovery require the persisted key. Neutral survivor part names preserve rows and rebuilt indexes. Version two raw-path maps retain authenticated meaning and disclose partition names; no silent rebind occurs. Hash-only bindings require complete inventories.
+Signed per-file maps admit absent files as completed collection and validate remaining digests. Version three signs canonical-key HMACs over store, transaction, directory and path. Recovery requires the persisted key. Neutral survivor names preserve rows and rebuilt indexes. Version two retains authenticated raw paths without silent rebind; hash-only bindings require complete inventories.
+
+The recovery CLI admits the entire verified frontier under Forget authority, rechecks current effect admission before collection, and uses persisted audit keys and configured verification pins. It selects no new rows and requires no private signing port. The trusted store-owner recovery path retains signed-intent validation.
 
 | Option | Lost on | Cost |
 | --- | --- | --- |
