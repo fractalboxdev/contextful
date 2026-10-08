@@ -35,6 +35,20 @@ use serde_json::{json, Map, Value};
 use sha2::{Digest, Sha256};
 use std::collections::{BTreeMap, BTreeSet};
 
+/// A registered row statement whose scope the face admits. Its fields and constructor
+/// stay in this module; the native execution port accepts no caller-written SQL.
+pub(crate) struct AdmittedRows<'a> {
+    session: &'a Session,
+    sql: String,
+    parameters: Bindings,
+}
+
+impl AdmittedRows<'_> {
+    pub(crate) fn session(&self) -> &Session { self.session }
+    pub(crate) fn sql(&self) -> &str { &self.sql }
+    pub(crate) fn parameters(&self) -> &Bindings { &self.parameters }
+}
+
 /// What a read asks for beside its statement.
 #[derive(Debug, Clone, Copy, Default)]
 pub struct ReadOptions {
@@ -266,8 +280,18 @@ impl Face {
     }
 
     /// Every row of a table the session reads, or of one of its committed runs, through
-    /// the table's registered relation; an engine-composed read with no row ceiling.
+    /// the table's registered relation under its admitted read budgets.
     pub fn rows(&self, session: &Session, table: &str, run: Option<&str>) -> Result<Response, ReadFault> {
+        self.table_rows(session, table, run, None)
+    }
+
+    /// Stored JSON kinds for a native task, under the same admitted relation and
+    /// response budgets as [`Face::rows`]. Text never becomes a number by its spelling.
+    pub fn source_rows(&self, session: &Session, table: &str, run: Option<&str>, columns: &[&str]) -> Result<Response, ReadFault> {
+        self.table_rows(session, table, run, Some(columns))
+    }
+
+    fn table_rows(&self, session: &Session, table: &str, run: Option<&str>, native: Option<&[&str]>) -> Result<Response, ReadFault> {
         let r = self.registered(session, table)?;
         let engine = self.pool.engine(session, self.store.parquet_key())?;
         let (sql, parameters) = match run {
@@ -276,8 +300,22 @@ impl Face {
             }
             None => (format!("SELECT * FROM {}", ident(r.name())), Bindings::default()),
         };
-        let response = respond(&engine, &sql, &parameters, None, ReadOptions::default())?;
-        self.restrict(&engine, session, [table], response)
+        let tree = engine.serialize(&sql)?;
+        let admitted = admit_in(session, &tree)?;
+        scope::guard(&tree, session, &parameters)?;
+        let opts = ReadOptions::default();
+        // Declared ceilings only; the face ceiling bounds caller reads (`read.respond.engine-composed-ceiling`).
+        let ceiling = Self::declared_ceiling(session, &admitted.relations);
+        let deadline = self.duration_budget(session, &admitted.relations, None);
+        let response = if let Some(selected) = native {
+            let read = AdmittedRows { session, sql, parameters };
+            let (columns, rows) = engine.run_native(&read, selected, Response::fetch_count(ceiling), deadline)?;
+            Response::cut(columns, rows, ceiling)
+        } else {
+            respond_with_deadline(&engine, &sql, &parameters, ceiling, opts, deadline)?
+        };
+        let response = self.restrict_timed(&engine, session, [table], response, deadline)?;
+        self.finish_budget(session, &admitted.relations, opts, None, ceiling.unwrap_or(u64::MAX), response)
     }
 
     /// A table's declaration, or an undeclared table's defaults.
@@ -393,6 +431,14 @@ impl Face {
         let owner = |t: &String| contextful_core::store::ledger::ledger_table(t).map(str::to_string).unwrap_or_else(|| t.clone());
         let table = touched.iter().filter_map(|t| session.policy(&owner(t)).and_then(|p| p.max_rows)).min();
         least_row_ceiling([grant, request, template, table])
+    }
+
+    /// The least of the grant's and touched tables' declared row ceilings, if any.
+    fn declared_ceiling(session: &Session, touched: &BTreeSet<String>) -> Option<u64> {
+        let grant = Self::grant_limit(session, touched, |g| g.max_rows);
+        let owner = |t: &String| contextful_core::store::ledger::ledger_table(t).map(str::to_string).unwrap_or_else(|| t.clone());
+        let table = touched.iter().filter_map(|t| session.policy(&owner(t)).and_then(|p| p.max_rows)).min();
+        grant.into_iter().chain(table).min()
     }
 
     fn grant_limit(session: &Session, touched: &BTreeSet<String>, field: fn(&Grant) -> Option<u64>) -> Option<u64> {
@@ -755,16 +801,6 @@ impl Face {
     /// earlier steps, never the caller's statement (`authority.place.excluded-disclosed`).
     /// Every touched published model rides `contextful.resolved`, whatever the row count
     /// (`read.resolve-pin.resolved-echo`).
-    pub(crate) fn restrict<'t>(
-        &self,
-        engine: &SqlEngine,
-        session: &Session,
-        touched: impl IntoIterator<Item = &'t str>,
-        response: Response,
-    ) -> Result<Response, ReadFault> {
-        self.restrict_timed(engine, session, touched, response, None)
-    }
-
     pub(crate) fn restrict_timed<'t>(
         &self,
         engine: &SqlEngine,

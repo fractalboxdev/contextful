@@ -456,10 +456,39 @@ fn object_source(config: ObjectConfig, resolver: Arc<contextful_outbound::Resolv
 struct StoreReader {
     store: Store,
     decls: Vec<TableDecl>,
+    admitted: Option<(contextful_context::read::Face, crate::admit::Author)>,
+}
+
+impl StoreReader {
+    fn open(located: &crate::project::Located, manifest: &str, decls: Vec<TableDecl>, author: Option<&crate::admit::Author>) -> Result<StoreReader> {
+        let admitted = author.map(|author| {
+            let pepper = contextful_policy::enforce::mask::Pepper::resolve(|k| std::env::var(k).ok());
+            crate::project::open_face(&located.project, &located.declaration, manifest, pepper).map(|face| (face, author.clone()))
+        }).transpose()?;
+        Ok(StoreReader { store: Store::open(&located.project.dir, &located.project.name)?, decls, admitted })
+    }
 }
 
 impl TableReader for StoreReader {
     fn rows(&self, table: &str, columns: &[&str]) -> Result<Vec<Row>, Failure> {
+        if let Some((face, author)) = &self.admitted {
+            let fault = |e: contextful_context::read::ReadFault| {
+                let message = format!("source `{table}`: {e}");
+                match e {
+                    contextful_context::read::ReadFault::Store(ContextError::ColumnType { .. }) => Failure::deterministic(FailureTag::SchemaIncompatible, message),
+                    contextful_context::read::ReadFault::Store(_) | contextful_context::read::ReadFault::Engine(_) => Failure::new(FailureTag::Storage, message),
+                    _ => Failure::deterministic(FailureTag::Config, message),
+                }
+            };
+            author.boundary().map_err(|e| Failure::deterministic(FailureTag::Config, format!("source `{table}`: {e:#}")))?;
+            let session = face.session(author.authority(), &contextful_policy::enforce::session::Request::default(), contextful_core::store::bound_time::Bounds::default()).map_err(&fault)?;
+            let response = face.source_rows(&session, table, None, columns).map_err(fault)?;
+            if response.truncated {
+                return Err(Failure::deterministic(FailureTag::Config, format!("source `{table}`: the admitted read is truncated; a derive source requires complete input")));
+            }
+            let selected: Vec<_> = response.columns.iter().enumerate().filter(|(_, name)| columns.contains(&name.as_str())).collect();
+            return Ok(response.rows.into_iter().map(|row| selected.iter().map(|(index, name)| ((*name).clone(), row[*index].clone())).collect()).collect());
+        }
         let decl = self.decls.iter().find(|d| d.name == table).cloned().unwrap_or_else(|| TableDecl::named(table));
         contextful_context::rows::table_rows(&self.store, &decl, columns).map_err(|e| match e {
             ContextError::ColumnType { .. } => Failure::deterministic(FailureTag::SchemaIncompatible, format!("`{table}`: {e}")),
@@ -713,7 +742,7 @@ pub fn run(cmd: PipelineCmd, tasks: &Tasks) -> Result<()> {
                     retention_columns: spec.tables.iter().filter_map(|t| {
                         t.decl().retain_rows.map(|r| (t.name().to_string(), r.column))
                     }).collect(),
-                    reader: Box::new(StoreReader { store: Store::open(&l.project.dir, &l.project.name)?, decls: dest.decls.clone() }),
+                    reader: Box::new(StoreReader::open(&l, &text, dest.decls.clone(), dest.author.as_ref())?),
                 };
                 let (landing, skipped) = derive.stage(&Uncanceled).map_err(|f| anyhow::anyhow!("pipeline `{}`: {f}", spec.id))?;
                 derive_skipped = skipped;
@@ -767,7 +796,7 @@ pub fn run(cmd: PipelineCmd, tasks: &Tasks) -> Result<()> {
                                 binding: pair.1.clone(),
                                 output_table: table.clone(),
                                 output_schema: serde_json::to_value(dest.decls.iter().find(|d| d.name == table).and_then(|d| d.columns.clone()))?,
-                                reader: Box::new(StoreReader { store: Store::open(&l.project.dir, &l.project.name)?, decls: dest.decls.clone() }),
+                                reader: Box::new(StoreReader::open(&l, &text, dest.decls.clone(), dest.author.as_ref())?),
                                 resolver: resolver.clone(),
                                 mediation,
                                 store_root: Some(dest.store.root().to_path_buf()),

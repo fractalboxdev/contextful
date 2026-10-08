@@ -360,7 +360,7 @@ mod wired {
             for table in tables {
                 authority.require_write(table)?;
             }
-            Ok(Some(Author { authority, denylist: self.denylist.clone(), ledger: LedgerFile::at(&crate::root::root(project)?, self.keyset.as_deref()) }))
+            Ok(Some(Author { authority, denylist: self.denylist.clone(), ledger: Arc::new(LedgerFile::at(&crate::root::root(project)?, self.keyset.as_deref())) }))
         }
     }
 
@@ -371,14 +371,20 @@ mod wired {
 
     /// The admitted credential a table write lands under.
     #[cfg(feature = "data-plane")]
+    #[derive(Clone)]
     pub struct Author {
         authority: AdmittedAuthority,
         denylist: Option<PathBuf>,
-        ledger: LedgerFile,
+        ledger: Arc<LedgerFile>,
     }
 
     #[cfg(feature = "data-plane")]
     impl Author {
+        /// The verified authority a derived source reads under.
+        pub(crate) fn authority(&self) -> &AdmittedAuthority {
+            &self.authority
+        }
+
         /// The principal every row the write lands carries as `_authored_by`.
         pub fn on_behalf_of(&self) -> Option<String> {
             self.authority.subject().on_behalf_of().map(str::to_string)

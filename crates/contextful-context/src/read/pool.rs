@@ -100,11 +100,12 @@ pub(crate) fn store_state(store: &Store, tables: &[String], granted: &[String]) 
 /// Whether `a` and `b` build identical connections: [`SqlEngine::open`] writes the subject
 /// and tenant rows and each relation's and ledger's name, statement and files, and nothing
 /// else of a session.
-fn same_setup(a: &Session, b: &Session) -> bool {
+pub(crate) fn same_setup(a: &Session, b: &Session) -> bool {
     a.subject_relation() == b.subject_relation()
         && a.subject_row() == b.subject_row()
         && a.tenant_rows() == b.tenant_rows()
         && a.relations().chain(a.ledgers()).eq(b.relations().chain(b.ledgers()))
+        && a.pepper().digest("connection setup") == b.pepper().digest("connection setup")
 }
 
 /// A length-prefixed field, so adjacent fields never run together.
