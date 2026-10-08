@@ -52,7 +52,7 @@ impl SigningPort for ConfiguredSigner {
 fn unsupported(reason: &str) -> ContextError { ErasureError::ErasureScopeUnsupported(reason.into()).into() }
 fn incomplete(reason: &str) -> ContextError { ErasureError::ErasureTransactionIncomplete(reason.into()).into() }
 
-fn relative_path(value: &str) -> Result<&Path> {
+pub(crate) fn relative_path(value: &str) -> Result<&Path> {
     if value.contains('\\') || value.split('/').any(|part| part.is_empty() || part == "." || part == ".." || part.contains(':')) {
         return Err(unsupported("a retained manifest names an unowned file path"));
     }
@@ -150,11 +150,11 @@ pub fn erase(store: &Store, request: EraseRequest<'_>) -> Result<Erased> {
             let source = &directories[*name];
             let old_inventory = crate::erasure_frontier::inventory(source)?;
             let old_directory = source.strip_prefix(bound.root()).map_err(|_| incomplete("the retired directory escapes its store"))?.to_str().ok_or_else(|| incomplete("the retired path is not text"))?.replace('\\', "/");
-            let mut old = vec![RetiredDirectory { directory:old_directory, inventory_sha256:crate::store::etag(&serde_json::to_vec(&old_inventory).map_err(|_| incomplete("the retired inventory does not encode"))?) }];
+            let mut old = vec![RetiredDirectory { version:2, directory:old_directory, inventory_sha256:crate::store::etag(&serde_json::to_vec(&old_inventory).map_err(|_| incomplete("the retired inventory does not encode"))?), files:Some(old_inventory) }];
             if let Some(previous) = old_frontier.as_ref().and_then(|frontier| frontier.tables.get(*name)) {
                 let baseline = bound.root().join(&previous.baseline_directory);
                 let inventory = crate::erasure_frontier::inventory(&baseline)?;
-                old.push(RetiredDirectory { directory:previous.baseline_directory.clone(), inventory_sha256:crate::store::etag(&serde_json::to_vec(&inventory).map_err(|_| incomplete("the prior baseline inventory does not encode"))?) });
+                old.push(RetiredDirectory { version:2, directory:previous.baseline_directory.clone(), inventory_sha256:crate::store::etag(&serde_json::to_vec(&inventory).map_err(|_| incomplete("the prior baseline inventory does not encode"))?), files:Some(inventory) });
             }
             retired.insert((*name).to_string(), old);
             let destination = staging.join("tables").join(name);
@@ -298,8 +298,11 @@ pub fn recover_committed_erasure(store: &Store) -> Result<()> {
             }
             if absent { continue; }
             let inventory = crate::erasure_frontier::inventory(&path)?;
-            let hash = crate::store::etag(&serde_json::to_vec(&inventory).map_err(|_| incomplete("the retired inventory does not encode"))?);
-            if hash != old.inventory_sha256 { return Err(incomplete("a retired inventory changed after signed admission")); }
+            let admitted = match &old.files {
+                Some(files) => inventory.iter().all(|(path, digest)| files.get(path) == Some(digest)),
+                None => crate::store::etag(&serde_json::to_vec(&inventory).map_err(|_| incomplete("the retired inventory does not encode"))?) == old.inventory_sha256,
+            };
+            if !admitted { return Err(incomplete("a retired inventory changed after signed admission")); }
             present.push(path);
         }
         for path in present {
