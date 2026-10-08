@@ -80,13 +80,38 @@ columns = { id = "utf8" }
     let pins = ok(run(root, &["token", "keygen", "--out", ".contextful/issuer.seed"], None, None));
     let forget = ok(run(root, &["token", "mint", "--issuer-key", ".contextful/issuer.seed", "--on-behalf-of", "user://fixture", "--agent", "agent://fixture", "--zone", "on-prem:fixture", "--action", "forget", "--table", "*", "--ttl", "3600"], None, None));
     let hash = format!("hmac-sha256:{}", "a".repeat(64));
+    let store = root.join(".contextful/context/research");
+    for malformed in [
+        serde_json::json!({"subject_hash":hash,"column":"unknown","keys":["erase-trace"]}),
+        serde_json::json!({"subject_hash":hash,"column":"trace_id","keys":[]}),
+        serde_json::json!({"subject_hash":hash,"column":"trace_id","keys":[null]}),
+        serde_json::json!({"subject_hash":hash,"column":"trace_id","keys":[{"id":"erase-trace"}]}),
+        serde_json::json!({"subject_hash":hash,"column":"trace_id","keys":["erase-trace"],"unexpected":true}),
+    ] {
+        std::fs::write(root.join("keyset.json"), serde_json::to_vec(&malformed).unwrap()).unwrap();
+        assert!(!run(root, &["context", "erase", "--project", "research", "--key-set", "keyset.json", "--issuer-key", ".contextful/issuer.seed", "--public-key", &pins, "--audience", "erasure-fixture", "--json"], Some(&forget), Some(&pins)).status.success());
+        assert!(!store.join("_erasure_frontier.json").exists());
+        assert!(!root.join(".contextful/audit.key").exists(), "invalid column input bootstraps durable erasure state");
+    }
     std::fs::write(root.join("keyset.json"), serde_json::to_vec(&serde_json::json!({"subject_hash":hash,"column":"trace_id","keys":["erase-trace"]})).unwrap()).unwrap();
+    let subset = ok(run(root, &["token", "mint", "--issuer-key", ".contextful/issuer.seed", "--on-behalf-of", "user://fixture", "--agent", "agent://fixture", "--zone", "on-prem:fixture", "--action", "forget", "--table", "notes", "--ttl", "3600"], None, None));
+    let request = ["context", "erase", "--project", "research", "--key-set", "keyset.json", "--issuer-key", ".contextful/issuer.seed", "--public-key", &pins, "--audience", "erasure-fixture", "--json"];
+    assert!(!run(root, &request, Some(&subset), Some(&pins)).status.success());
+    let mut narrowed = request.to_vec(); narrowed.extend(["--tables", "notes"]);
+    assert!(!run(root, &narrowed, Some(&forget), Some(&pins)).status.success());
+    assert!(!root.join(".contextful/audit.key").exists());
+    assert!(!store.join("_erasure_frontier.json").exists());
     let receipt: serde_json::Value = serde_json::from_str(&ok(run(root, &["context", "erase", "--project", "research", "--key-set", "keyset.json", "--issuer-key", ".contextful/issuer.seed", "--public-key", &pins, "--audience", "erasure-fixture", "--json"], Some(&forget), Some(&pins)))).unwrap();
     assert_eq!(receipt["subject_hash"], hash);
     assert_eq!(receipt["affected_counts"]["notes"], 1);
     assert_eq!(receipt["affected_counts"]["events"], 1);
     let query = ["query", "--json", "--project", "research", "SELECT (SELECT count(*) FROM notes), (SELECT count(*) FROM events), (SELECT count(*) FROM unrelated)"];
     assert_eq!(serde_json::from_str::<serde_json::Value>(&ok(run(root, &query, None, Some(&pins)))).unwrap()["rows"], serde_json::json!([["1","1","1"]]));
+    std::fs::write(root.join("keyset.json"), serde_json::to_vec(&serde_json::json!({"subject_hash":hash,"keys":[{"table":"notes","keys":{"id":"b"}}]})).unwrap()).unwrap();
+    let mut explicit = request.to_vec(); explicit.extend(["--tables", "notes"]);
+    let receipt: serde_json::Value = serde_json::from_str(&ok(run(root, &explicit, Some(&forget), Some(&pins)))).unwrap();
+    assert_eq!(receipt["affected_counts"]["notes"], 1);
+    assert_eq!(serde_json::from_str::<serde_json::Value>(&ok(run(root, &query, None, Some(&pins)))).unwrap()["rows"], serde_json::json!([["0","1","1"]]));
 }
 
 #[test]
