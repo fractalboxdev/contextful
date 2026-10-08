@@ -20,6 +20,21 @@ columns = ["claim_id","subject","predicate","object","scope","tier","confidence"
 }
 
 #[test]
+fn memory_declaration_collisions_refuse_and_ordinary_multiplicity_remains() {
+    let memory = |name: &str| format!(r#"[[table]]
+name = "{name}"
+shape = "memory_preferences"
+columns = ["preference_id","subject","key","value","scope"]
+"#);
+    let ordinary = "[[pipeline.tables]]\nname = \"memory/preferences\"\n";
+    for declaration in [format!("{ordinary}{}", memory("memory/preferences")), format!("{}{}", memory("memory/preferences"), memory("memory/preferences")), memory("memory//preferences"), memory("memory/./preferences")] {
+        assert!(TableDecl::parse_declaration_set(&declaration, &[]).is_err(), "an ambiguous memory identity is admitted");
+    }
+    let tables = TableDecl::parse_declaration_set("[[pipeline.tables]]\nname = \"notes\"\n[[pipeline.tables]]\nname = \"notes\"\n", &[]).unwrap();
+    assert_eq!(tables.len(), 2, "the canonical pack replaces existing ordinary multiplicity policy");
+}
+
+#[test]
 fn column_scope_uses_structural_declarations() {
     use contextful_core::disclosure::erase::declares_erasure_column;
     for role in [
