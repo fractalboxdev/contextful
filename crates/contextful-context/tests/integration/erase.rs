@@ -279,6 +279,30 @@ fn committed_erasure_recovery_collects_only_the_signed_retired_inventory() {
 
 #[test]
 #[cfg(feature = "read")]
+fn committed_erasure_recovery_resumes_after_a_partial_retired_directory_unlink() {
+    let fixture = Fixture::new();
+    let table = decl("name = \"notes\"\nprimary_key = [\"id\"]");
+    fixture.land(&table, "run-0001", json!([{ "id":"retired", "text":"remaining-retired-file" }]), "2030-01-01T00:00:00Z").unwrap();
+    let (bound, replacement) = select_signed_store_replacement(&fixture.store, "notes");
+    let original = fixture.store.root().join("tables/notes");
+    let baseline = bound.root().join(format!("_erasure/committed/{}/tables/notes", "a".repeat(64)));
+    let baseline_schema = std::fs::read(baseline.join("schema.json")).unwrap();
+    let remaining = original.join(contextful_core::store::lay_out::RUNS_DIR).join("run-0001");
+    assert!(remaining.is_dir(), "the fixture has no retained run to collect");
+    assert!(original.join("schema.json").is_file());
+    // A terminated recursive collection can remove one admitted file before its
+    // directory disappears. Recovery must validate and collect the remainder.
+    std::fs::remove_file(original.join("schema.json")).unwrap();
+    let result = contextful_context::erase::recover_committed_erasure(&bound);
+    assert!(result.is_ok(), "partial admitted collection cannot resume: {result:?}");
+    assert!(!original.exists());
+    assert!(replacement.is_dir());
+    assert_eq!(std::fs::read(baseline.join("schema.json")).unwrap(), baseline_schema);
+    contextful_context::erase::recover_committed_erasure(&bound).unwrap();
+}
+
+#[test]
+#[cfg(feature = "read")]
 fn recovery_refuses_changed_retired_content_without_deleting_it() {
     let fixture = Fixture::new();
     let table = decl("name = \"notes\"\nprimary_key = [\"id\"]");
