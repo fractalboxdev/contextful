@@ -45,6 +45,11 @@ DispatchCallbackRejected      = { clause = "surface.dispatch.callback-rejected",
 DispatchSubmitRejected        = { clause = "surface.dispatch.submit-signed", gloss = "A worker submission unsigned, skewed, or naming a callback off the worker's relay." }
 SecretMaterialInDocument      = { clause = "surface.edit.secret-in-document", gloss = "A credential value written into the configuration document." }
 ConnectorUploadRefused        = { clause = "surface.edit.connector-upload", gloss = "A connector artifact offered through the operator surface." }
+ControlAdminGrantMissing      = { clause = "surface.apply.served-admin-grant", gloss = "A served control request lacking an untenanted Admin grant over every table." }
+ControlRequestMalformed       = { clause = "surface.apply.served-malformed", gloss = "A served control edit or apply body outside its route's exact fields." }
+ControlUnavailable            = { clause = "surface.apply.served-unavailable", gloss = "A served control request failing without an authority or surface refusal." }
+ControlDraftAbsent            = { clause = "surface.apply.draft-absent", gloss = "An Admin apply with no validated store draft." }
+ControlOperatorAttestationInvalid = { clause = "surface.apply.operator-attestation", gloss = "An Admin mutation without a fresh single-use console signature for its verified operator and request." }
 ManifestVersionConflict       = { clause = "surface.apply.version-race", gloss = "An apply whose pointer compare-and-swap lost to a concurrent apply." }
 ApplyValidationRefused        = { clause = "surface.apply.validation", gloss = "A document engine validation refused; no version was claimed." }
 ConfigOwnerUnconfigured       = { clause = "surface.apply.owner-unconfigured", gloss = "A configuration owner with no storage or no credential behind it." }

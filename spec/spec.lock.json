@@ -20136,6 +20136,17 @@
       "line": 249
     },
     {
+      "id": "surface.edit.store-draft",
+      "contract": "surface",
+      "operation": "edit",
+      "subject": "store-draft",
+      "kind": "behavior",
+      "statement": "An Admin edit validates a complete control document and saves one store-scoped draft bound to its applied version, verified operator and random nonce, leaving the applied pointer unchanged.",
+      "why": "A-surface",
+      "file": "spec/70-control-plane.md",
+      "line": 251
+    },
+    {
       "id": "surface.apply.version-race",
       "contract": "surface",
       "operation": "apply",
@@ -20144,7 +20155,7 @@
       "statement": "An apply whose compare-and-swap loses raises `ManifestVersionConflict`, reloads the winning version and reapplies its pending edits onto it, overwriting no applied version.",
       "why": "A-surface",
       "file": "spec/70-control-plane.md",
-      "line": 256
+      "line": 258
     },
     {
       "id": "surface.apply.validation",
@@ -20155,7 +20166,7 @@
       "statement": "A document failing engine validation raises `ApplyValidationRefused` and claims no version.",
       "why": "because a snapshot store holding a version daemons refuse to arm stalls every daemon reading it",
       "file": "spec/70-control-plane.md",
-      "line": 258
+      "line": 260
     },
     {
       "id": "surface.apply.owner-unconfigured",
@@ -20166,7 +20177,7 @@
       "statement": "An owner with no storage configured or no credential raises `ConfigOwnerUnconfigured`, answered `503`; no local writer substitutes for the store-scoped API.",
       "why": "P3",
       "file": "spec/70-control-plane.md",
-      "line": 260
+      "line": 262
     },
     {
       "id": "surface.apply.weak-conditional-backend",
@@ -20177,7 +20188,7 @@
       "statement": "A configuration owner or catalog backend whose conditional replacement is not linearizable raises `ConditionalWriteUnsupported` at startup or open.",
       "why": "A-surface",
       "file": "spec/70-control-plane.md",
-      "line": 262
+      "line": 264
     },
     {
       "id": "surface.apply.uninitialized-store",
@@ -20188,7 +20199,7 @@
       "statement": "An edit or apply against a store that has taken no explicit guarded import, an empty store included, raises `StoreNotInitialized`, answered `409`.",
       "why": "P3",
       "file": "spec/70-control-plane.md",
-      "line": 264
+      "line": 266
     },
     {
       "id": "surface.apply.local-claim",
@@ -20199,7 +20210,7 @@
       "statement": "A local control plane validates and claims `manifest@v<N>.toml` in its snapshot directory, `.contextful/control/<project>/` unless `[control] snapshot_dir` names one, on its own; `contextful pipeline apply` is that apply, and no hosted plane sits on its path.",
       "why": "because {{topology.coordinate.air-gap}} holds a single-node deployment to reach no process outside itself",
       "file": "spec/70-control-plane.md",
-      "line": 266
+      "line": 268
     },
     {
       "id": "surface.apply.synced-attestation",
@@ -20210,7 +20221,7 @@
       "statement": "In a project with `[sync]`, import and apply admit an admin capability, then sign a receipt over the project, version, predecessor receipt digest and snapshot digest through {{authority.issue.signing-port}}.",
       "why": "A-surface",
       "file": "spec/70-control-plane.md",
-      "line": 268
+      "line": 270
     },
     {
       "id": "surface.apply.receipt-message",
@@ -20221,7 +20232,7 @@
       "statement": "A JSON control receipt carries `format: 1`, signer public key and signature over UTF-8 `contextful-control-v1\\n<project>\\n<version>\\n<parent-or-minus>\\n<snapshot-sha256>\\n<signer>\\n`; its parent is `-` only for the first version.",
       "why": "A-surface",
       "file": "spec/70-control-plane.md",
-      "line": 270,
+      "line": 272,
       "scenarios": [
         "WHEN a receipt's parent or snapshot digest changes after signing, THEN its signature does not verify."
       ]
@@ -20235,7 +20246,7 @@
       "statement": "A predecessor and the bucket head name the lowercase SHA-256 hex digest of a receipt's RFC 8785 canonical JSON bytes.",
       "why": "A-surface",
       "file": "spec/70-control-plane.md",
-      "line": 272
+      "line": 274
     },
     {
       "id": "surface.apply.receipt-file",
@@ -20246,7 +20257,7 @@
       "statement": "A synced claim writes immutable `receipt@v<N>.json` beside its snapshot before advancing the applied pointer.",
       "why": "A-surface",
       "file": "spec/70-control-plane.md",
-      "line": 274,
+      "line": 276,
       "scenarios": [
         "WHEN signing fails during a synced import, THEN neither the snapshot nor the pointer names the version."
       ]
@@ -20260,7 +20271,7 @@
       "statement": "A synced import or apply lacking an admitted admin capability or issuer signing port raises `ControlAttestationUnavailable` and claims no version.",
       "why": "A-surface",
       "file": "spec/70-control-plane.md",
-      "line": 276,
+      "line": 278,
       "scenarios": [
         "WHEN a synced apply presents no admin capability, THEN no version or receipt is claimed."
       ]
@@ -20274,7 +20285,73 @@
       "statement": "`contextful pipeline import` claims v1 from the declared pipelines while the snapshot directory holds no version; a second import claims nothing.",
       "why": "",
       "file": "spec/70-control-plane.md",
-      "line": 278
+      "line": 280
+    },
+    {
+      "id": "surface.apply.draft-claim",
+      "contract": "surface",
+      "operation": "apply",
+      "subject": "draft-claim",
+      "kind": "behavior",
+      "statement": "An Admin apply rechecks the configured store owner, validates its saved draft again, and claims that draft through the owner's version compare-and-swap.",
+      "why": "A-surface",
+      "file": "spec/70-control-plane.md",
+      "line": 281
+    },
+    {
+      "id": "surface.apply.operator-attestation",
+      "contract": "surface",
+      "operation": "apply",
+      "subject": "operator-attestation",
+      "kind": "refusal",
+      "statement": "An Admin mutation lacking a fresh console signature over its verified operator, route and body, or reusing a nonce held in store control state across restarts, raises `ControlOperatorAttestationInvalid` before changing the document.",
+      "why": "because a shared store capability cannot identify the person who used the console",
+      "file": "spec/70-control-plane.md",
+      "line": 283
+    },
+    {
+      "id": "surface.apply.draft-absent",
+      "contract": "surface",
+      "operation": "apply",
+      "subject": "draft-absent",
+      "kind": "refusal",
+      "statement": "An Admin apply finding no validated store draft raises `ControlDraftAbsent` and changes no applied version.",
+      "why": "because an absent draft supplies no document for the version claim",
+      "file": "spec/70-control-plane.md",
+      "line": 285
+    },
+    {
+      "id": "surface.apply.served-admin-grant",
+      "contract": "surface",
+      "operation": "apply",
+      "subject": "served-admin-grant",
+      "kind": "refusal",
+      "statement": "A served `/control/*` request whose admitted credential holds no Admin grant over `*` without a tenant scope raises `ControlAdminGrantMissing`, answered `403`, before its handler runs.",
+      "why": "because the control document arms work over every table and tenant of the store",
+      "file": "spec/70-control-plane.md",
+      "line": 287
+    },
+    {
+      "id": "surface.apply.served-malformed",
+      "contract": "surface",
+      "operation": "apply",
+      "subject": "served-malformed",
+      "kind": "refusal",
+      "statement": "A served Admin edit or apply whose body is not a JSON object holding exactly its route's fields raises `ControlRequestMalformed`, answered `400`, and changes nothing.",
+      "why": "because an absent or extra field leaves the operator's intended version or draft ambiguous",
+      "file": "spec/70-control-plane.md",
+      "line": 289
+    },
+    {
+      "id": "surface.apply.served-unavailable",
+      "contract": "surface",
+      "operation": "apply",
+      "subject": "served-unavailable",
+      "kind": "refusal",
+      "statement": "A served control request failing with no authority or surface refusal raises `ControlUnavailable`, answered `503`, and returns no internal error text.",
+      "why": "because a storage or owner fault message can disclose paths and endpoints to the console",
+      "file": "spec/70-control-plane.md",
+      "line": 291
     },
     {
       "id": "surface.reside.region-entries",
@@ -20285,7 +20362,7 @@
       "statement": "A residency allow-set holds at most 16 entries.",
       "why": "",
       "file": "spec/70-control-plane.md",
-      "line": 320
+      "line": 334
     },
     {
       "id": "surface.reside.region-mismatch",
@@ -20296,7 +20373,7 @@
       "statement": "A configured resource resolving to a region the policy omits raises `EnforceRegionMismatch` at startup, and the runtime serves nothing.",
       "why": "P3",
       "file": "spec/70-control-plane.md",
-      "line": 321
+      "line": 335
     },
     {
       "id": "surface.reside.site-regions",
@@ -20307,7 +20384,7 @@
       "statement": "A push records the pushing site's residency allow-set in the bucket manifest; a push finding a differing set another site recorded, an absent one included, raises `ResidencySitesDiverge` and commits nothing.",
       "why": "A-surface",
       "file": "spec/70-control-plane.md",
-      "line": 323
+      "line": 337
     },
     {
       "id": "surface.open-console.page-routes",
@@ -30188,13 +30265,29 @@
             "clause": "surface.ground.org-face-read-only",
             "gloss": "A write tool registered on an organization-wide face."
           },
+          "ControlAdminGrantMissing": {
+            "clause": "surface.apply.served-admin-grant",
+            "gloss": "A served control request lacking an untenanted Admin grant over every table."
+          },
           "ControlAttestationUnavailable": {
             "clause": "surface.apply.attestation-unavailable",
             "gloss": "A synced control claim lacks an admitted admin capability or signing port."
           },
+          "ControlDraftAbsent": {
+            "clause": "surface.apply.draft-absent",
+            "gloss": "An Admin apply with no validated store draft."
+          },
+          "ControlOperatorAttestationInvalid": {
+            "clause": "surface.apply.operator-attestation",
+            "gloss": "An Admin mutation without a fresh single-use console signature for its verified operator and request."
+          },
           "ControlPointerMalformed": {
             "clause": "surface.reconcile.pointer-malformed",
             "gloss": "A snapshot pointer body that is not wholly a version."
+          },
+          "ControlRequestMalformed": {
+            "clause": "surface.apply.served-malformed",
+            "gloss": "A served control edit or apply body outside its route's exact fields."
           },
           "ControlSnapshotUnreadable": {
             "clause": "surface.reconcile.fail-static",
@@ -30207,6 +30300,10 @@
           "ControlSourceNotLoopback": {
             "clause": "surface.reconcile.loopback-only",
             "gloss": "A control URL whose host is not a loopback address."
+          },
+          "ControlUnavailable": {
+            "clause": "surface.apply.served-unavailable",
+            "gloss": "A served control request failing without an authority or surface refusal."
           },
           "CycleControlSourceUnresolved": {
             "clause": "surface.fire.cycle-control-source",

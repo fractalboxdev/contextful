@@ -13,6 +13,8 @@ mod init;
 mod lay_out;
 mod ledger;
 mod read;
+#[cfg(feature = "read")]
+mod read_deadline;
 mod reconcile;
 mod retention;
 mod reserve;

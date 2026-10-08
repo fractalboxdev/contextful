@@ -27,7 +27,7 @@ use contextful_core::store::sync::ControlHead;
 use contextful_core::surface::edit::check_document;
 use contextful_core::surface::dispatch::{CHILD_GRACE_SECS, DEFAULT_POOL};
 use contextful_core::surface::SurfaceError;
-use contextful_engine::control::{ControlError, SnapshotDir};
+use contextful_engine::control::{ControlError, Draft, SnapshotDir};
 use contextful_engine::scheduler::{Beat, Dispatch, Entry, Fired, LeaseState, Scheduler};
 use contextful_engine::worker::{Relay, WorkerDispatch};
 use contextful_policy::control_receipt::ControlReceipt;
@@ -435,6 +435,67 @@ fn render(specs: &BTreeMap<String, PipelineSpec>) -> Result<String> {
     Ok(format!("# An applied snapshot, claimed by `contextful pipeline apply`; immutable once claimed.\n\n{body}"))
 }
 
+fn validated_draft(document: &str, declaration: &Path, tasks: &Tasks) -> Result<String> {
+    let specs = collect(&[ManifestFile { path: "manifest@draft.toml".into(), text: document.to_owned() }])
+        .map_err(|e| SurfaceError::ApplyValidationRefused(e.to_string()))?;
+    let specs: BTreeMap<String, PipelineSpec> = specs.into_iter().map(|entry| (entry.spec.id.clone(), entry.spec)).collect();
+    let rendered = render(&specs)?;
+    for spec in specs.values() {
+        if let Some(schedule) = spec.schedule.as_deref() {
+            Schedule::parse(schedule).map_err(|e| SurfaceError::ApplyValidationRefused(format!("pipeline `{}`: {e}", spec.id)))?;
+        }
+        check(spec, declaration, tasks).map_err(|e| SurfaceError::ApplyValidationRefused(format!("pipeline `{}`: {e:#}", spec.id)))?;
+    }
+    Ok(rendered)
+}
+
+/// Store one validated, version-bound control draft without changing the applied pointer.
+pub(crate) fn edit(project: &ProjectArgs, declaration: Option<PathBuf>, expected: u64, document: &str, operator: &str, tasks: &Tasks, boundary: &dyn Fn() -> Result<(), ControlError>) -> Result<Value> {
+    let (located, _, control) = located(project, declaration)?;
+    let snapshots = owner(&control)?;
+    snapshots.initialized()?;
+    let text = validated_draft(document, &located.declaration, tasks)?;
+    let draft = Draft::new(expected, text, operator.to_owned())?;
+    snapshots.save_draft_guarded(&draft, boundary)?;
+    Ok(json!({ "expected": expected, "nonce": draft.nonce }))
+}
+
+/// Claim a verified control request's nonce in the selected store owner's snapshot state.
+pub(crate) fn claim_operator_nonce(project: &ProjectArgs, declaration: Option<PathBuf>, nonce: &str, signed_at: i64, now: i64, boundary: &dyn Fn() -> Result<(), ControlError>) -> Result<bool> {
+    let (_, _, control) = located(project, declaration)?;
+    owner(&control)?.claim_attestation_nonce_guarded(nonce, signed_at, now, boundary).map_err(Into::into)
+}
+
+/// Revalidate the saved draft and claim it only at the version the editor read.
+pub(crate) fn apply_draft(project: &ProjectArgs, declaration: Option<PathBuf>, expected: u64, nonce: &str, operator: &str, tasks: &Tasks, authority: &AdmittedAuthority, admit: &AdmitArgs, boundary: &dyn Fn() -> Result<(), ControlError>) -> Result<()> {
+    let (initial, _, control) = located(project, declaration.clone())?;
+    let snapshots = owner(&control)?;
+    snapshots.initialized()?;
+    let draft = snapshots.read_draft()?;
+    if draft.expected != expected || draft.nonce != nonce || draft.operator != operator {
+        return Err(SurfaceError::ManifestVersionConflict(format!("the draft read v{} and apply named v{expected}", draft.expected)).into());
+    }
+    if validated_draft(&draft.document, &initial.declaration, tasks)? != draft.document {
+        return Err(SurfaceError::ApplyValidationRefused("the saved draft is not the validated snapshot".into()).into());
+    }
+    let (fresh, _, control) = located(project, declaration)?;
+    let owner = owner(&control)?;
+    if owner.root() != snapshots.root() || fresh.declaration != initial.declaration {
+        return Err(SurfaceError::ConfigOwnerUnconfigured("the store's control owner changed during validation".into()).into());
+    }
+    match SyncAttestation::for_authority(&fresh, authority.clone(), admit, None)? {
+        Some(attestation) => {
+            owner.claim_draft_attested_guarded(&draft, |next, previous| {
+                let prior_snapshot = owner.read(expected)?;
+                let parent = previous.map(|receipt| (receipt, expected, prior_snapshot.as_str()));
+                attestation.receipt(&fresh.project.name, next, parent, &draft.document)
+            }, boundary)?;
+        }
+        None => { owner.claim_draft_guarded(&draft, boundary)?; }
+    }
+    Ok(())
+}
+
 #[derive(Serialize)]
 struct Change {
     id: String,
@@ -524,6 +585,14 @@ impl SyncAttestation {
         let unavailable = |why: String| SurfaceError::ControlAttestationUnavailable(why);
         let (authority, _) = admit.admit(project.project.as_deref(), "a synced control claim")
             .map_err(|e| unavailable(format!("admin capability: {e:#}")))?;
+        Self::for_authority(l, authority, admit, issuer_key)
+    }
+
+    fn for_authority(l: &Located, authority: AdmittedAuthority, admit: &AdmitArgs, issuer_key: Option<&Path>) -> Result<Option<Self>> {
+        if crate::sync::sync_config(l)?.0.is_none() {
+            return Ok(None);
+        }
+        let unavailable = |why: String| SurfaceError::ControlAttestationUnavailable(why);
         if !authority.permits(Action::Admin, &[]) {
             return Err(unavailable("the credential carries no admin grant".into()).into());
         }

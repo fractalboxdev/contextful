@@ -5,6 +5,7 @@ import { registryFromEnv } from "../../gateway/src/index.ts";
 import { createLiveAnswer } from "./answer_live.ts";
 import { createLiveBrowse } from "./live_browse.ts";
 import type { ConsoleAdapters, Identity } from "./index.ts";
+import { createLiveControl } from "./control.ts";
 import { serveConsole } from "./server.ts";
 
 type HostedAdapters = Pick<ConsoleAdapters, "turn" | "control"> &
@@ -95,6 +96,8 @@ async function main(): Promise<void> {
     brief: live?.brief,
     briefBudgetMs: live?.briefBudgetMs,
     redactView: live?.redactView,
+    control: createLiveControl({ stores: registry.entries, capability: process.env.CONTEXTFUL_ADMIN_CAPABILITY,
+      attestationSecret: process.env.CONTEXTFUL_ADMIN_CAPABILITY ? required("CONTEXTFUL_CONTROL_ATTESTATION_SECRET") : undefined }),
   };
   if (modulePath) {
     const absolute = isAbsolute(modulePath) ? modulePath : resolve(modulePath);

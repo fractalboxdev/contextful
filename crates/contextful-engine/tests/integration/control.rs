@@ -1,7 +1,58 @@
 //! `surface.apply` and `surface.reconcile` over the local snapshot directory.
 
 use contextful_core::surface::SurfaceError;
-use contextful_engine::control::{ControlError, SnapshotDir};
+use contextful_engine::control::{ControlError, Draft, SnapshotDir};
+
+#[test]
+fn control_mutations_check_authority_under_the_lock_and_refuse_without_writes() {
+    let dir = tempfile::tempdir().unwrap();
+    let snaps = SnapshotDir::open(dir.path());
+    snaps.claim_attested(None, "original", |_, _| Ok("first receipt".into())).unwrap();
+    let draft = Draft::new(1, "edited".into(), "alice".into()).unwrap();
+    let refuse = || {
+        let lock = std::fs::OpenOptions::new().read(true).write(true).open(dir.path().join("manifest.lock")).unwrap();
+        assert!(lock.try_lock().is_err(), "the effect boundary holds the mutation lock");
+        Err(ControlError::Storage("authority revoked at commit".into()))
+    };
+    assert!(snaps.claim_attestation_nonce_guarded(&"a".repeat(32), 100, 100, &refuse).is_err());
+    assert!(!dir.path().join("attestation-nonces").exists());
+    assert!(snaps.save_draft_guarded(&draft, &refuse).is_err());
+    assert!(!dir.path().join("manifest@draft.json").exists());
+    snaps.save_draft(&draft).unwrap();
+    assert!(snaps.claim_draft_guarded(&draft, &refuse).is_err());
+    assert_eq!(snaps.current().unwrap(), Some(1));
+    assert!(!dir.path().join("manifest@v2.toml").exists());
+    assert_eq!(snaps.read_draft().unwrap(), draft);
+    assert!(snaps.claim_draft_attested_guarded(&draft, |_, _| Ok("receipt".into()), &refuse).is_err());
+    assert!(!dir.path().join("receipt@v2.json").exists());
+    assert_eq!(snaps.current().unwrap(), Some(1));
+}
+
+#[test]
+fn a_saved_draft_is_bound_to_its_editor_and_exact_nonce() {
+    let dir = tempfile::tempdir().unwrap();
+    let snaps = SnapshotDir::open(dir.path());
+    snaps.import("# original\n").unwrap();
+    let alice = Draft::new(1, "# alice\n".into(), "alice".into()).unwrap();
+    snaps.save_draft(&alice).unwrap();
+    let bob = Draft::new(1, "# bob\n".into(), "bob".into()).unwrap();
+    snaps.save_draft(&bob).unwrap();
+    assert!(matches!(snaps.claim_draft(&alice), Err(ControlError::Surface(SurfaceError::ManifestVersionConflict(_)))));
+    assert_eq!(snaps.current().unwrap(), Some(1));
+    assert_eq!(snaps.claim_draft(&bob).unwrap(), 2);
+    assert_eq!(snaps.read(2).unwrap(), "# bob\n");
+}
+
+#[test]
+fn an_attestation_nonce_survives_reopen_and_expires_after_its_signed_window() {
+    let dir = tempfile::tempdir().unwrap();
+    let first = SnapshotDir::open(dir.path());
+    assert!(first.claim_attestation_nonce(&"a".repeat(32), 100, 100).unwrap());
+    let reopened = SnapshotDir::open(dir.path());
+    assert!(!reopened.claim_attestation_nonce(&"a".repeat(32), 100, 160).unwrap());
+    assert!(reopened.claim_attestation_nonce(&"b".repeat(32), 161, 161).unwrap());
+    assert!(!dir.path().join("attestation-nonces/100").exists());
+}
 
 #[test]
 fn adoption_publishes_a_verified_chain_with_the_pointer_last() {
@@ -116,4 +167,22 @@ fn an_attested_import_resumes_v1_only_after_receipt_validation() {
     assert_eq!(snaps.import_attested("first", sign, verify).unwrap(), 1);
     assert!(snaps.import_attested("first", sign, verify).is_err());
     assert!(!dir.path().join("manifest@v2.toml").exists());
+}
+
+#[test]
+fn an_attested_draft_keeps_its_receipt_chain_and_refuses_failed_signing() {
+    let dir = tempfile::tempdir().unwrap();
+    let snaps = SnapshotDir::open(dir.path());
+    snaps.import_attested("first", |_, _| Ok("receipt one".into()), |_| Ok(())).unwrap();
+    let draft = Draft::new(1, "second".into(), "alice".into()).unwrap();
+    snaps.save_draft(&draft).unwrap();
+    assert!(snaps.claim_draft_attested(&draft, |_, _| Err(ControlError::Storage("signer absent".into()))).is_err());
+    assert_eq!(snaps.current().unwrap(), Some(1));
+    assert_eq!(snaps.read_draft().unwrap(), draft);
+    assert_eq!(snaps.claim_draft_attested(&draft, |version, prior| {
+        assert_eq!((version, prior), (2, Some("receipt one")));
+        Ok("receipt two".into())
+    }).unwrap(), 2);
+    assert_eq!(std::fs::read_to_string(dir.path().join("receipt@v2.json")).unwrap(), "receipt two");
+    assert_eq!(snaps.current().unwrap(), Some(2));
 }

@@ -4,7 +4,7 @@
 
 ## The control document is CAS-versioned, validated per entry, and fails static
 
-One hand-edited control document arms every scheduled entry unattended. `surface.apply` claims a version by compare-and-swap on an engine-assigned version; a loser raises `ManifestVersionConflict`, reloads and reapplies. The engine owns the control-state model and raises `ConfigOwnerUnconfigured`, `StoreNotInitialized` or `ConditionalWriteUnsupported` rather than substitute a local writer. `surface.arm` holds back an invalid entry alone, by name. `surface.reconcile` keeps the armed set unchanged on a failed poll. `surface.dispatch` starts one instance per due unit; a dependent run's step refuses as a unit.
+One hand-edited control document arms every scheduled entry unattended. Admin edit validates and saves one store draft at the version it read; Admin apply rechecks ownership and validates before claiming that draft by compare-and-swap. A loser raises `ManifestVersionConflict`, reloads and reapplies. The engine owns the control-state model and raises `ConfigOwnerUnconfigured`, `StoreNotInitialized` or `ConditionalWriteUnsupported` rather than substitute a local writer. `surface.arm` holds back an invalid entry alone, by name. `surface.reconcile` keeps the armed set unchanged on a failed poll. `surface.dispatch` starts one instance per due unit; a dependent run's step refuses as a unit.
 
 | Option | Lost on | Cost |
 | --- | --- | --- |

@@ -37,6 +37,9 @@ pub enum SurfaceError {
     /// (`surface.apply.version-race`)
     #[error("ManifestVersionConflict: {0}")]
     ManifestVersionConflict(String),
+    /// (`surface.apply.draft-absent`)
+    #[error("ControlDraftAbsent: {0}")]
+    ControlDraftAbsent(String),
     /// (`surface.apply.validation`)
     #[error("ApplyValidationRefused: {0}")]
     ApplyValidationRefused(String),
@@ -101,7 +104,7 @@ impl SurfaceError {
             | SurfaceError::CycleControlSourceUnresolved(_)
             | SurfaceError::ConditionalWriteUnsupported(_)
             | SurfaceError::ControlAttestationUnavailable(_) => 503,
-            SurfaceError::StoreNotInitialized(_) | SurfaceError::ManifestVersionConflict(_) | SurfaceError::DispatchCallbackRejected(_) => 409,
+            SurfaceError::StoreNotInitialized(_) | SurfaceError::ManifestVersionConflict(_) | SurfaceError::ControlDraftAbsent(_) | SurfaceError::DispatchCallbackRejected(_) => 409,
             SurfaceError::EnforceRegionMismatch(_) | SurfaceError::ResidencySitesDiverge(_) => 503,
             SurfaceError::DispatchSubmitRejected(_) => 401,
             SurfaceError::ScheduleUnreadable(_)

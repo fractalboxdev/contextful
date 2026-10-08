@@ -80,24 +80,36 @@ fn request(address: &str, method: &str, path: &str, token: Option<&str>, body: O
 }
 
 #[test]
-#[ignore = "milestone 12 is open: the console server and client library are absent"]
 fn m12_console() {
+    let console_package = workspace_root().join("apps/console");
+    let bundle = console_package.join("dist/server.js");
+    let _ = std::fs::remove_file(&bundle);
+    ok(&Command::new("pnpm").arg("--dir").arg(&console_package).args(["install", "--frozen-lockfile"]).output().unwrap());
+    ok(&Command::new("pnpm").arg("--dir").arg(&console_package).arg("build").output().unwrap());
+    assert!(bundle.is_file(), "the console build writes its runnable server");
     let cf = bin("contextful");
     let repo = GitRepo::init();
-    repo.write("contextful.toml", "authoring_posture = \"per_request\"\n[[pipeline]]\nid = \"filings-flow\"\n[[pipeline.tables]]\nname = \"filings\"\n");
+    repo.write("contextful.toml", "authoring_posture = \"per_request\"\n");
+    repo.write("pipelines/filings.toml", "[[pipeline]]\nid = \"filings-flow\"\nschedule = \"every 1h\"\ntables = [\"filings\"]\n[pipeline.source]\nname = \"http\"\nconfig = { endpoint = \"https://example.test/filings\" }\n");
     repo.write("filings.jsonl", &json!({
         "filing_id": "filing-1", "publisher": "Northwind", "summary": "Northwind filed on Monday",
         "source_url": "https://example.test/filing-1"
     }).to_string());
     ok(&repo.run(&cf, &["context", "land", "filings", "--project", "research", "--rows", "filings.jsonl", "--run-id", "load-1", "--site-id", "site-a"]));
+    ok(&repo.run(&cf, &["pipeline", "import", "--project", "research"]));
     repo.write(".contextful/issuance.toml", &format!("default_audience = \"{STORE_AUDIENCE}\"\nmax_lifetime_secs = 3600\n"));
     let public = ok(&repo.run(&cf, &["token", "keygen", "--out", ".contextful/issuer.seed"]));
     let read_token = ok(&repo.run(&cf, &[
         "token", "mint", "--issuer-key", ".contextful/issuer.seed", "--on-behalf-of", "user://operator@example.test",
         "--zone", "on-prem:hq", "--action", "read", "--table", "filings", "--ttl", "3600",
     ]));
+    let admin_capability = ok(&repo.run(&cf, &[
+        "token", "mint", "--issuer-key", ".contextful/issuer.seed", "--on-behalf-of", "user://operator@example.test",
+        "--zone", "on-prem:hq", "--action", "admin", "--table", "*", "--ttl", "3600",
+    ]));
     let read = Command::new(&cf)
         .args(["serve", "--http", "127.0.0.1:0", "--max-in-flight", "2", "--project", "research", "--public-key", &public, "--audience", STORE_AUDIENCE])
+        .env("CONTEXTFUL_CONTROL_ATTESTATION_SECRET", "separate-attestation-secret")
         .current_dir(&repo.root)
         .stderr(Stdio::piped())
         .spawn()
@@ -120,10 +132,12 @@ fn m12_console() {
     });
     let stores = json!([{ "id": "field-notes", "label": "Field notes", "endpoint": format!("http://{read_address}"), "auth": "shared" }]);
     let console = Command::new("node")
-        .arg(workspace_root().join("apps/console/dist/server.js"))
+        .arg(&bundle)
         .args(["--http", "127.0.0.1:0"])
         .env("CONTEXTFUL_STORES_JSON", stores.to_string())
         .env("FIELD_NOTES_QUERY_TOKEN", &read_token)
+        .env("CONTEXTFUL_ADMIN_CAPABILITY", &admin_capability)
+        .env("CONTEXTFUL_CONTROL_ATTESTATION_SECRET", "separate-attestation-secret")
         .env("CONTEXTFUL_ACCESS_JWKS_URL", jwks.url("/certs"))
         .env("CONTEXTFUL_ACCESS_ISSUER", ACCESS_ISSUER)
         .env("CONTEXTFUL_QUERY_ACCESS_AUDIENCE", QUERY_ACCESS_AUDIENCE)
@@ -137,6 +151,31 @@ fn m12_console() {
 
     assert_eq!(request(&console_address, "GET", "/query", None, None).0, 401);
     assert_eq!(request(&console_address, "GET", "/admin", Some(&access_token(QUERY_ACCESS_AUDIENCE)), None).0, 403);
+    let (status, admin_page) = request(&console_address, "GET", "/admin", Some(&access_token(ADMIN_ACCESS_AUDIENCE)), None);
+    assert_eq!(status, 200);
+    assert!(String::from_utf8_lossy(&admin_page).contains("id=\"canvas\""));
+    assert_eq!(request(&console_address, "GET", "/admin/api/workflows", Some(&access_token(QUERY_ACCESS_AUDIENCE)), None).0, 403);
+    let (status, workflows) = request(&console_address, "GET", "/admin/api/workflows", Some(&access_token(ADMIN_ACCESS_AUDIENCE)), None);
+    assert_eq!(status, 200, "{}", String::from_utf8_lossy(&workflows));
+    let workflows: Value = serde_json::from_slice(&workflows).unwrap();
+    assert_eq!(workflows["applied"], 1, "{workflows}");
+    assert_eq!(workflows["pipelines"][0]["id"], "filings-flow", "{workflows}");
+    assert_eq!(workflows["pipelines"][0]["tables"], json!(["filings"]), "{workflows}");
+    let draft = "[[pipeline]]\nid = \"filings-flow\"\nschedule = \"every 1d\"\ntables = [\"filings\"]\n[pipeline.source]\nname = \"http\"\nconfig = { endpoint = \"https://example.test/filings\" }\n";
+    let (status, edited) = request(&console_address, "POST", "/admin/api/edit", Some(&access_token(ADMIN_ACCESS_AUDIENCE)),
+        Some(&json!({ "store": "field-notes", "expected": 1, "document": draft })));
+    assert_eq!(status, 200, "{}", String::from_utf8_lossy(&edited));
+    let edited: Value = serde_json::from_slice(&edited).unwrap();
+    assert_eq!(edited["expected"], 1, "{edited}");
+    let (status, applied) = request(&console_address, "POST", "/admin/api/apply", Some(&access_token(ADMIN_ACCESS_AUDIENCE)),
+        Some(&json!({ "store": "field-notes", "expected": 1, "nonce": edited["nonce"] })));
+    assert_eq!(status, 200, "{}", String::from_utf8_lossy(&applied));
+    let applied: Value = serde_json::from_slice(&applied).unwrap();
+    assert_eq!(applied["applied"], 2, "{applied}");
+    let (status, workflows) = request(&console_address, "GET", "/admin/api/workflows", Some(&access_token(ADMIN_ACCESS_AUDIENCE)), None);
+    assert_eq!(status, 200);
+    let workflows: Value = serde_json::from_slice(&workflows).unwrap();
+    assert_eq!(workflows["pipelines"][0]["schedule"], "every 1d", "{workflows}");
     let (status, answer) = request(
         &console_address, "POST", "/query/api/ask", Some(&access_token(QUERY_ACCESS_AUDIENCE)),
         Some(&json!({ "store": "field-notes", "question": "Which filing arrived?" })),
@@ -151,9 +190,4 @@ fn m12_console() {
         "the sources must identify the filing behind the answer: {answer}"
     );
     assert!(!model.received("/v1/chat/completions").is_empty(), "the answer uses the model endpoint");
-    assert_eq!(request(&console_address, "GET", "/admin/api/workflows", Some(&access_token(QUERY_ACCESS_AUDIENCE)), None).0, 403);
-    let (status, workflows) = request(&console_address, "GET", "/admin/api/workflows", Some(&access_token(ADMIN_ACCESS_AUDIENCE)), None);
-    assert_eq!(status, 200, "{}", String::from_utf8_lossy(&workflows));
-    let workflows = String::from_utf8(workflows).unwrap();
-    assert!(workflows.contains("filings-flow") && workflows.contains("filings"), "{workflows}");
 }

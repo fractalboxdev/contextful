@@ -13,9 +13,9 @@ An unpinned clause is `committed`; a pinned one is `performed` when its Rust, Le
 | `read` | 2 | 15 | 206 | 35 | 22 | 9 | 183 | 0 | 183 |
 | `run` | 3 | 26 | 406 | 102 | 39 | 28 | 306 | 0 | 306 |
 | `store` | 1 | 17 | 252 | 59 | 13 | 19 | 216 | 0 | 216 |
-| `surface` | 2 | 20 | 119 | 54 | 22 | 0 | 81 | 0 | 81 |
+| `surface` | 2 | 20 | 126 | 59 | 22 | 0 | 86 | 0 | 86 |
 | `topology` | 1 | 6 | 70 | 24 | 5 | 5 | 38 | 0 | 38 |
-| **total** | 19 | 155 | 2131 | 602 | 191 | 103 | 1512 | 0 | |
+| **total** | 19 | 155 | 2138 | 607 | 191 | 103 | 1517 | 0 | |
 
 Decision records: 18.
 
@@ -35,9 +35,9 @@ A milestone reads `closed` when its acceptance test computes `passing` and every
 | 7 — Memory | 6 | 54 | 45 | passing | closed |
 | 8 — Accountability | 5 | 60 | 47 | passing | open |
 | 9 — Visibility | 6 | 41 | 3 | open | open |
-| 10 — Cadence and the operator plane | 11 | 76 | 64 | passing | open |
+| 10 — Cadence and the operator plane | 11 | 83 | 69 | passing | open |
 | 11 — The derive tier | 7 | 88 | 79 | passing | closed |
-| 12 — The operator console | 12 | 54 | 22 | open | open |
+| 12 — The operator console | 12 | 54 | 22 | passing | open |
 | 13 — Disclosure | 5 | 33 | 13 | open | open |
 | 14 — Assurance | 7 | 146 | 91 | passing | closed |
 
@@ -1441,12 +1441,16 @@ Unscheduled operations: 10.
 | `store.reserve.taint` | `crates/contextful-context/tests/integration/reserve.rs::a_model_output_row_carries_the_engine_taint_and_no_other_row_does` | performed |
 | `store.reserve.underscore-namespace` | `crates/contextful-core/tests/integration/store/reserve.rs::the_underscore_namespace_is_the_injected_and_optional_sets` | performed |
 | `surface.apply.attestation-unavailable` | `crates/contextful-cli/tests/integration/pipeline.rs::a_synced_import_requires_admin_and_writes_a_verifiable_receipt` | performed |
+| `surface.apply.draft-absent` | `spec/pins.toml` | performed |
+| `surface.apply.draft-claim` | `spec/pins.toml` | performed |
 | `surface.apply.guarded-import` | `crates/contextful-cli/tests/integration/pipeline.rs::the_import_claims_the_first_version_once` | performed |
 | `surface.apply.local-claim` | `crates/contextful-cli/tests/integration/pipeline.rs::apply_claims_a_version_in_the_local_snapshot_directory` | performed |
+| `surface.apply.operator-attestation` | `spec/pins.toml` | performed |
 | `surface.apply.owner-unconfigured` | `crates/contextful-cli/tests/integration/pipeline.rs::an_owner_with_nothing_behind_it_is_refused` | performed |
 | `surface.apply.receipt-digest` | `crates/contextful-policy/tests/integration/control_receipt.rs::a_receipt_digest_uses_canonical_json_for_its_successor` | performed |
 | `surface.apply.receipt-file` | `crates/contextful-engine/tests/integration/control.rs::an_attested_claim_commits_the_snapshot_and_receipt_together` | performed |
 | `surface.apply.receipt-message` | `crates/contextful-policy/tests/integration/control_receipt.rs::a_control_receipt_binds_every_signed_field_and_the_snapshot_bytes` | performed |
+| `surface.apply.served-admin-grant` | `crates/contextful-agent/tests/integration/http.rs::control_refuses_a_tenant_scoped_admin_grant_over_every_table` | performed |
 | `surface.apply.synced-attestation` | `crates/contextful-cli/tests/integration/pipeline.rs::a_synced_import_requires_admin_and_writes_a_verifiable_receipt` | performed |
 | `surface.apply.uninitialized-store` | `crates/contextful-cli/tests/integration/pipeline.rs::an_apply_before_the_import_is_refused` | performed |
 | `surface.apply.validation` | `crates/contextful-cli/tests/integration/pipeline.rs::an_invalid_document_claims_no_version` | performed |
@@ -1486,6 +1490,7 @@ Unscheduled operations: 10.
 | `surface.dispatch.worker-target` | `crates/contextful-cli/tests/integration/worker.rs::a_killed_worker_s_step_moves_once_and_its_late_callback_is_rejected` | performed |
 | `surface.edit.connector-upload` | `crates/contextful-cli/tests/integration/pipeline.rs::an_artifact_in_the_document_is_refused` | performed |
 | `surface.edit.secret-in-document` | `crates/contextful-cli/tests/integration/pipeline.rs::a_credential_in_the_document_is_refused` | performed |
+| `surface.edit.store-draft` | `spec/pins.toml` | performed |
 | `surface.fire.cycle` | `crates/contextful-cli/tests/integration/pipeline.rs::a_cycle_fires_what_is_due_once_and_reports_the_next_instant` | performed |
 | `surface.fire.cycle-control-source` | `crates/contextful-cli/tests/integration/pipeline.rs::a_cycle_with_no_applied_snapshot_is_refused` | performed |
 | `surface.fire.cycle-exit` | `crates/contextful-cli/tests/integration/pipeline.rs::a_cycle_with_a_failed_fire_exits_non_zero` | performed |
