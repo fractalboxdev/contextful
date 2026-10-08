@@ -133,7 +133,7 @@ Target directories, the engine-linked invocation, linked query functions, build 
 
 - `target-dir-per-stage` — Each cargo stage builds into a target directory of its own, reclaimed once the stage passes.
   *because stages under different feature unification share no artifacts, and peak disk is then one stage*
-- `checkout-artifacts` — The Cargo wrapper isolates workspace artifacts by canonical checkout identity while retaining {{assurance.build.target-dir-per-stage}}; dependency reuse through a compiler cache preserves checkout identity.
+- `checkout-artifacts` — `.cargo/config.toml` names the checkout root, and every workspace package's build script folds its canonical path into the package fingerprint, so a shared target directory recompiles workspace packages per checkout while unchanged dependencies stay fresh.
   *A-assurance*
 - `runtime-checkout` — Reusable test helpers resolve the workspace root and tested binary from explicit runtime inputs bound to the invocation; cached helpers carry no compile-time checkout path deciding which source or binary runs.
   *A-assurance*
@@ -174,7 +174,7 @@ Target directories, the engine-linked invocation, linked query functions, build 
 - `assurance.build.release-builder`: WHEN a Darwin cell selects `--builder zigbuild`, THEN the release command invokes `cargo zigbuild` for that profile and target.
 - `assurance.build.release-metadata`: WHEN a release cell packages an archive, THEN its JSON metadata names the archive, digest and SBOM.
 - `assurance.build.formula-manifest`: WHEN every cell's metadata is present without local archives, THEN formula generation writes the profile formulae and SHA256SUMS.
-- `assurance.build.checkout-artifacts`: WHEN checkout A and checkout B build different source through the Cargo wrapper, THEN B's integration tests and doctests execute B's behavior on cold and warm builds.
+- `assurance.build.checkout-artifacts`: WHEN checkout A and checkout B build different source into one target directory, THEN B's integration tests, doctests and binary execute B's behavior on cold and warm builds, and their shared dependency stays fresh.
 - `assurance.build.runtime-checkout`: WHEN a helper cached from checkout A receives checkout B's runtime inputs, THEN its workspace operations and binary execution reach B alone.
 
 ## gate

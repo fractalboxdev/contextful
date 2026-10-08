@@ -79,6 +79,7 @@ fn cargo_output(root: &Path, shared: &Path, command: &str) -> std::process::Outp
         .unwrap()
 }
 
+// spec: assurance.build.checkout-artifacts@408c94d6
 #[test]
 fn shared_artifacts_execute_the_selected_checkout_source() {
     let temp = tempfile::tempdir().unwrap();
@@ -96,7 +97,7 @@ fn shared_artifacts_execute_the_selected_checkout_source() {
         assert!(
             String::from_utf8_lossy(&tests.stderr)
                 .contains(&format!("{label}_source_build_script")),
-            "the selected checkout's build script did not execute"
+            "the selected build-script identity is absent from Cargo output"
         );
         if label == "bravo" {
             assert!(
@@ -169,4 +170,62 @@ fn a_configured_identity_from_another_checkout_is_refused() {
             .contains("the source-binding configuration belongs to this checkout"),
         "the failure is the build script's identity refusal"
     );
+}
+
+#[cfg(unix)]
+#[test]
+fn distinct_trailing_whitespace_paths_retain_distinct_compiled_identities() {
+    let temp = tempfile::tempdir().unwrap();
+    let dependency = temp.path().join("shared-dep");
+    write(&dependency, "Cargo.toml", "[package]\nname = \"shared-fixture\"\nversion = \"0.0.0\"\nedition = \"2021\"\n[workspace]\n");
+    write(&dependency, "src/lib.rs", "pub fn value() -> u32 { 1 }\n");
+    let mut identities = Vec::new();
+    for suffix in ["", " ", "\t", "\u{2003}"] {
+        let root = temp.path().join(format!("a{suffix}"));
+        fixture(&root, "alpha");
+        write(
+            &root,
+            "crates/demo/src/main.rs",
+            "fn main() { println!(\"{}\", env!(\"CONTEXTFUL_COMPILED_SOURCE_ROOT\")); }\n",
+        );
+        let shared = temp.path().join("shared");
+        cargo(&root, &shared, "build");
+        let out = Command::new(shared.join("debug/source-binding-demo"))
+            .output()
+            .unwrap();
+        assert!(out.status.success());
+        let identity = String::from_utf8(out.stdout).unwrap();
+        assert!(
+            !identities.contains(&identity),
+            "Cargo collapses distinct checkout identities at suffix {suffix:?}: {identity:?}"
+        );
+        identities.push(identity);
+    }
+}
+
+#[cfg(unix)]
+#[test]
+fn checkout_paths_cannot_emit_additional_cargo_directives() {
+    for separator in ["\n", "\r"] {
+        let temp = tempfile::tempdir().unwrap();
+        let root = temp.path().join(format!(
+            "a{separator}cargo:warning=source_binding_injected_directive"
+        ));
+        let dependency = temp.path().join("shared-dep");
+        write(&dependency, "Cargo.toml", "[package]\nname = \"shared-fixture\"\nversion = \"0.0.0\"\nedition = \"2021\"\n[workspace]\n");
+        write(&dependency, "src/lib.rs", "pub fn value() -> u32 { 1 }\n");
+        fixture(&root, "alpha");
+        let out = cargo_output(&root, &temp.path().join("shared"), "build");
+        assert!(
+            !out.status.success(),
+            "a checkout path supplies Cargo directive separators: {}\n{}",
+            String::from_utf8_lossy(&out.stderr),
+            String::from_utf8_lossy(&out.stdout)
+        );
+        assert!(
+            String::from_utf8_lossy(&out.stderr)
+                .contains("the source-binding path contains a Cargo directive separator"),
+            "the failure belongs to the source-binding owner"
+        );
+    }
 }
