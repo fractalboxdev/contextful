@@ -9,6 +9,7 @@ mod fulltext;
 mod guard;
 mod latency;
 mod nested;
+mod native_rows;
 mod pin;
 mod pool;
 mod register;

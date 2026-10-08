@@ -93,6 +93,7 @@ impl VScalar for MaskToken {
 /// One connection of the embedded engine.
 pub struct SqlEngine {
     conn: Connection,
+    admitted: Option<Session>,
 }
 
 /// One catalog entry: its lowercase name, its stability (`None` for a macro) and a
@@ -117,7 +118,7 @@ impl SqlEngine {
             .enable_autoload_extension(false)
             .and_then(|c| c.with("autoinstall_known_extensions", "false"))
             .map_err(fault)?;
-        Ok(SqlEngine { conn: Connection::open_in_memory_with_flags(config).map_err(fault)? })
+        Ok(SqlEngine { conn: Connection::open_in_memory_with_flags(config).map_err(fault)?, admitted: None })
     }
 
     /// Close the connection to everything outside it but `files`: no file, extension or
@@ -218,7 +219,7 @@ impl SqlEngine {
     /// (`read.register.connection-views`). Every file a view names is immutable under the
     /// pool key the connection serves, so the connection keeps Parquet footers it read.
     pub fn open(session: &Session, parquet_key: Option<&[u8; 16]>) -> Result<SqlEngine, ReadFault> {
-        let engine = SqlEngine::connect()?;
+        let mut engine = SqlEngine::connect()?;
         let conn = &engine.conn;
         if let Some(key) = parquet_key {
             crate::ledger::disable_spilling(conn)?;
@@ -260,6 +261,7 @@ impl SqlEngine {
         }
         let files: Vec<String> = session.relations().chain(session.ledgers()).flat_map(|r| r.files().iter().cloned()).collect();
         engine.lock(&files)?;
+        engine.admitted = Some(session.clone());
         Ok(engine)
     }
 
@@ -341,6 +343,41 @@ impl SqlEngine {
             return Err(ReadError::ReadDurationExceeded(format!("{milliseconds} ms from {source}; elapsed {elapsed} ms")).into());
         }
         result
+    }
+
+    /// Native JSON values from the admitted connection's registered relations.
+    pub(crate) fn run_native(&self, read: &super::face::AdmittedRows<'_>, columns: &[&str], fetch: Option<u64>, deadline: Option<(u64, &'static str)>) -> Result<(Vec<String>, Vec<Vec<Value>>), ReadFault> {
+        if !self.admitted.as_ref().is_some_and(|bound| super::pool::same_setup(bound, read.session())) {
+            return Err(contextful_core::enforce::EnforceError::UnknownRelation("the session does not admit this connection".into()).into());
+        }
+        let run = |engine: &Self| engine.native_values(read.sql(), read.parameters(), columns, fetch);
+        match deadline {
+            Some((ms, source)) => self.with_deadline(ms, source, run),
+            None => run(self),
+        }
+    }
+
+    fn native_values(&self, sql: &str, parameters: &Bindings, selected: &[&str], fetch: Option<u64>) -> Result<(Vec<String>, Vec<Vec<Value>>), ReadFault> {
+        SqlEngine::refuse_extension_statement(sql)?;
+        let mut stmt = self.conn.prepare(sql).map_err(engine_fault)?;
+        let values: Vec<Engine> = (1..=stmt.parameter_count()).map(|i| {
+            let name = stmt.parameter_name(i).map_err(fault)?;
+            parameters.get(&name).map(bound).ok_or_else(|| ReadFault::Engine(format!("placeholder `{name}` carries no bound value")))
+        }).collect::<Result<_, _>>()?;
+        let mut stream = stmt.stream_arrow(params_from_iter(values)).map_err(engine_fault)?;
+        let columns: Vec<String> = stream.get_schema().fields().iter().filter(|f| selected.contains(&f.name().as_str())).map(|f| f.name().clone()).collect();
+        let names: Vec<&str> = columns.iter().map(String::as_str).collect();
+        let mut out = Vec::new();
+        while fetch.is_none_or(|n| (out.len() as u64) < n) {
+            let batch = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| stream.next()))
+                .map_err(|_| ReadFault::Engine("the admitted Arrow stream failed while fetching a batch".into()))?;
+            let Some(batch) = batch else { break };
+            let count = fetch.map_or(batch.num_rows(), |n| batch.num_rows().min(n.saturating_sub(out.len() as u64) as usize));
+            for mut row in crate::rows::batch_rows(&batch.slice(0, count), &names)? {
+                out.push(columns.iter().map(|name| row.remove(name).unwrap_or(Value::Null)).collect());
+            }
+        }
+        Ok((columns, out))
     }
 
     /// Run `sql`, reading at most `fetch` rows as the engine's own values. Each

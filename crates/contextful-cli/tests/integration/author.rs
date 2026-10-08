@@ -291,7 +291,7 @@ fn a_credentialed_pipeline_run_authors_the_rows_it_lands() {
     std::fs::write(p.join("documents.jsonl"), "{\"doc_id\":\"d1\",\"path\":\"memo.srt\"}\n").unwrap();
     let (public, _) = credential(p, &["write"]);
     let pins = ["--public-key", public.as_str(), "--audience", AUD];
-    let token = mint(p, &["write"], &["documents", "doc_text_passages"], "600");
+    let token = derive_credential(p, &["read", "write"]);
     let mut land = vec!["context", "land", "documents", "--project", "research", "--rows", "documents.jsonl", "--run-id", "load-1", "--site-id", "s"];
     land.extend_from_slice(&pins);
     ok(&cf(p, &land, Some(&token)));
@@ -306,4 +306,100 @@ fn a_credentialed_pipeline_run_authors_the_rows_it_lands() {
     let fired = ok(&cf(p, &fire, Some(&token)));
     assert!(fired.contains("success"), "{fired}");
     assert_eq!(authors_of(p, "doc_text_passages"), Some(vec![serde_json::json!(DANA)]));
+}
+
+/// A derive source keeps the admitted subject's row restriction before a task reads media.
+#[test]
+fn a_credentialed_derive_reads_only_its_registered_source_rows() {
+    let (dir, public) = restricted_derive();
+    let p = dir.path();
+    let token = derive_credential(p, &["read", "write"]);
+    let out = cf(p, &[
+        "pipeline", "run", "doc-text", "--project", "research", "--run-id", "restricted-derive", "--site-id", "s",
+        "--public-key", &public, "--audience", AUD,
+    ], Some(&token));
+    ok(&out);
+    let query = "SELECT DISTINCT unit_ref FROM doc_text_passages ORDER BY unit_ref";
+    let result: serde_json::Value = serde_json::from_str(&ok(&cf(p, &["query", "--json", "--project", "research", query], None))).unwrap();
+    assert_eq!(result["rows"], serde_json::json!([["allowed"]]), "a source row another principal owns reached the task: {result}");
+}
+
+/// Destination write authority supplies no authority to read a derive source.
+#[test]
+fn a_write_only_derive_credential_releases_no_source_row() {
+    let (dir, public) = restricted_derive();
+    let p = dir.path();
+    let token = derive_credential(p, &["write"]);
+    let out = cf(p, &[
+        "pipeline", "run", "doc-text", "--project", "research", "--run-id", "write-only-derive", "--site-id", "s",
+        "--public-key", &public, "--audience", AUD,
+    ], Some(&token));
+    refused(&out, "EnforceUnknownRelation");
+    assert!(!p.join(".contextful/context/research/tables/doc_text_passages/schema.json").exists(), "a denied source read landed task output");
+}
+
+/// A complete-source port refuses an admitted response that carries a truncation witness.
+#[test]
+fn a_credentialed_derive_refuses_truncated_source_input_without_landing_output() {
+    let (dir, public) = restricted_derive();
+    let p = dir.path();
+    std::fs::write(p.join("media/allowed-two.srt"), "1\n00:00:00,000 --> 00:00:01,000\nSecond allowed content.\n\n").unwrap();
+    std::fs::write(p.join("allowed-two.jsonl"), format!("{{\"doc_id\":\"allowed-two\",\"path\":\"allowed-two.srt\",\"owner\":\"{DANA}\"}}\n")).unwrap();
+    ok(&cf(p, &["context", "land", "documents", "--project", "research", "--rows", "allowed-two.jsonl", "--run-id", "source-second", "--site-id", "s"], None));
+    let token = derive_credential_with_ceiling(p, &["read", "write"], Some("1"));
+    let out = cf(p, &[
+        "pipeline", "run", "doc-text", "--project", "research", "--run-id", "truncated-derive", "--site-id", "s",
+        "--public-key", &public, "--audience", AUD,
+    ], Some(&token));
+    refused(&out, "Config");
+    let message = String::from_utf8_lossy(&out.stderr);
+    assert!(message.contains("truncated"), "the source completeness refusal is explicit: {message}");
+    assert!(!p.join(".contextful/context/research/tables/doc_text_passages/schema.json").exists(), "a partial source read landed task output");
+}
+
+fn restricted_derive() -> (tempfile::TempDir, String) {
+    let dir = project("authoring_posture = \"per_request\"");
+    let p = dir.path();
+    std::fs::remove_dir_all(p.join("pipelines")).unwrap();
+    std::fs::write(p.join("contextful.toml"), concat!(
+        "authoring_posture = \"per_request\"\n",
+        "[[pipeline.tables]]\nname = \"documents\"\n",
+        "[pipeline.tables.policy.rows]\npredicate = \"owner = subject.on_behalf_of\"\n",
+        "[derive.reader]\ndriver = \"exec\"\nmedia_root = \"media\"\n",
+        "[derive.reader.engine]\ncommand = [\"cat\", \"{input}\"]\noutput_format = \"srt\"\n",
+    )).unwrap();
+    std::fs::create_dir_all(p.join("pipelines")).unwrap();
+    std::fs::write(p.join("pipelines/doc-text.toml"), concat!(
+        "id = \"doc-text\"\ntables = [{ name = \"passages\", primary_key = [\"unit_ref\", \"derivation_key\", \"cue_seq\"] }]\n",
+        "[source]\nname = \"derive\"\n",
+        "config = { engine = \"reader\", source_table = \"documents\", media_column = \"path\", parent_id_column = \"doc_id\" }\n",
+    )).unwrap();
+    std::fs::create_dir_all(p.join("media")).unwrap();
+    for (name, text) in [("allowed", "Allowed content."), ("forbidden", "Another principal's content.")] {
+        std::fs::write(p.join(format!("media/{name}.srt")), format!("1\n00:00:00,000 --> 00:00:01,000\n{text}\n\n")).unwrap();
+    }
+    std::fs::write(p.join("documents.jsonl"), format!(
+        "{{\"doc_id\":\"allowed\",\"path\":\"allowed.srt\",\"owner\":\"{DANA}\"}}\n{{\"doc_id\":\"forbidden\",\"path\":\"forbidden.srt\",\"owner\":\"user://other@acme.example\"}}\n",
+    )).unwrap();
+    ok(&cf(p, &["context", "land", "documents", "--project", "research", "--rows", "documents.jsonl", "--run-id", "source-load", "--site-id", "s"], None));
+    let present: serde_json::Value = serde_json::from_str(&ok(&cf(p, &["query", "--json", "--project", "research", "SELECT doc_id FROM documents ORDER BY doc_id"], None))).unwrap();
+    assert_eq!(present["rows"], serde_json::json!([["allowed"], ["forbidden"]]), "both source rows must exist before the exclusion test");
+    let (public, _) = credential(p, &["write"]);
+    (dir, public)
+}
+
+fn derive_credential(dir: &Path, actions: &[&str]) -> String {
+    derive_credential_with_ceiling(dir, actions, None)
+}
+
+fn derive_credential_with_ceiling(dir: &Path, actions: &[&str], ceiling: Option<&str>) -> String {
+    let mut args = vec!["token", "mint", "--issuer-key", ".contextful/issuer.seed", "--on-behalf-of", DANA,
+        "--zone", "on-prem:hq", "--table", "documents", "--table", "doc_text_passages", "--ttl", "600"];
+    for action in actions {
+        args.extend(["--action", action]);
+    }
+    if let Some(ceiling) = ceiling {
+        args.extend(["--max-rows", ceiling]);
+    }
+    ok(&cf(dir, &args, None))
 }
