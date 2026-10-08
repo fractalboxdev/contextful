@@ -128,7 +128,7 @@ fn reference_dispatch_is_read_admitted_bounded_and_audited() {
 }
 
 /// The face exposes a closed tool set: `context.describe`, `context.query`, `context.execute_query` for templates, `context.files` and `context.file` over committed data files, `corpus.retrieve` for ranked reads across a prefix, and `memory.recall` for keyed claim reads.
-// spec: read.register.tool-set@8a963be6
+// spec: read.register.tool-set@3b79e223
 #[test]
 fn the_tool_list_is_the_closed_read_set() {
     let f = fixture();
