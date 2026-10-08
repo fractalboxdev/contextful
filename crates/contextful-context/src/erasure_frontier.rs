@@ -266,6 +266,7 @@ pub(crate) fn retirement_inventory(directory: &std::path::Path) -> Result<BTreeM
 }
 
 /// Version three binds enumerated physical paths without publishing row-derived names.
+#[cfg(feature = "read")]
 pub(crate) fn opaque_retirement_inventory(store: &Store, transaction: &str, directory: &str, files: BTreeMap<String, String>) -> Result<BTreeMap<String, String>> {
     let key = store.canonical_audit_key()?;
     let store_id = crate::project::store_id(store.root())?;
