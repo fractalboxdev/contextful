@@ -17,3 +17,4 @@ mod m13;
 mod m14;
 mod e2e;
 mod issue98;
+mod harness;

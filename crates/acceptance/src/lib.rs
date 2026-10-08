@@ -11,9 +11,32 @@ use std::sync::Mutex;
 
 static BUILT: Mutex<Vec<String>> = Mutex::new(Vec::new());
 
-/// The workspace root, two levels above this package.
+/// The runtime Cargo package belongs to the declared acceptance workspace.
 pub fn workspace_root() -> PathBuf {
-    Path::new(env!("CARGO_MANIFEST_DIR")).join("../..").canonicalize().unwrap()
+    const OUTPUT_LIMIT: usize = 64 * 1024;
+    let package = PathBuf::from(std::env::var_os("CARGO_MANIFEST_DIR").expect("acceptance requires a runtime Cargo manifest directory"))
+        .canonicalize().expect("canonicalizing the runtime acceptance package");
+    assert!(package.is_dir(), "runtime Cargo manifest must name a package directory");
+    let manifest = package.join("Cargo.toml").canonicalize().expect("runtime acceptance package manifest");
+    let query = |args: &[&str]| {
+        let out = Command::new(env!("CARGO")).args(args).args(["--locked", "--offline", "--manifest-path"]).arg(&manifest).current_dir(&package).output().expect("querying runtime Cargo package provenance");
+        assert!(out.status.success(), "Cargo refuses runtime acceptance package provenance");
+        assert!(out.stdout.len() <= OUTPUT_LIMIT && out.stderr.len() <= OUTPUT_LIMIT, "Cargo package provenance output exceeds its bound");
+        std::str::from_utf8(&out.stderr).expect("Cargo package provenance diagnostics are UTF-8");
+        let text = String::from_utf8(out.stdout).expect("Cargo package provenance is UTF-8");
+        let line = text.trim();
+        assert!(!line.is_empty() && !line.contains(['\n', '\r']), "Cargo package provenance is one nonempty line");
+        line.to_owned()
+    };
+    let workspace = PathBuf::from(query(&["locate-project", "--workspace", "--message-format", "plain"])).canonicalize().expect("canonicalizing Cargo workspace manifest");
+    assert_eq!(workspace.file_name(), Some(std::ffi::OsStr::new("Cargo.toml")), "Cargo workspace provenance names its manifest");
+    let root = workspace.parent().expect("Cargo workspace manifest parent");
+    assert_eq!(package, root.join("crates/acceptance").canonicalize().expect("declared acceptance package"), "runtime package belongs to the declared acceptance workspace");
+    let selected = query(&["pkgid"]);
+    let admitted = query(&["pkgid", "-p", "contextful-acceptance"]);
+    assert_eq!(selected, admitted, "runtime manifest selects the acceptance package");
+    assert!(selected.rsplit_once('#').is_some_and(|(_, id)| id.starts_with("contextful-acceptance@") && id.len() > "contextful-acceptance@".len()), "Cargo package identity names acceptance and its version");
+    root.to_owned()
 }
 
 /// Path to the named workspace binary, built on first request.
