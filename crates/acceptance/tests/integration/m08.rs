@@ -27,7 +27,7 @@ shape = "memory_facts"
 columns = ["claim_id","subject","predicate","object","scope","tier","confidence","valid_from","valid_to","evidence","superseded_by","grant_id","agent"]
 "#);
     p.write("notes.jsonl", &format!("{}\n{}\n", json!({"id":"erased","subject":canary}), json!({"id":"kept","subject":"survivor"})));
-    ok(&p.run(&cf, &["context", "land", "notes", "--rows", "notes.jsonl", "--run-id", "r1", "--site-id", "fixture"]));
+    ok(&p.run(&cf, &["context", "land", "notes", "--project", "research", "--rows", "notes.jsonl", "--run-id", "r1", "--site-id", "fixture"]));
     let public = ok(&p.run(&cf, &["token", "keygen", "--out", ".contextful/issuer.seed"]));
     let token = ok(&p.run(&cf, &["token", "mint", "--issuer-key", ".contextful/issuer.seed", "--on-behalf-of", "user://fixture", "--agent", "agent://fixture", "--zone", "on-prem:fixture", "--action", "read", "--action", "write", "--action", "forget", "--table", "*", "--ttl", "3600"]));
     for subject in [canary, "survivor"] {

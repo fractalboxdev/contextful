@@ -17,17 +17,28 @@ columns = ["claim_id","subject","predicate","object","scope","tier","confidence"
 "#).unwrap();
     std::fs::write(root.join(".contextful/issuance.toml"), "default_audience = \"erasure-fixture\"\nmax_lifetime_secs = 3600\n").unwrap();
     std::fs::write(root.join("notes.jsonl"), "{\"id\":\"erased\",\"subject\":\"memory-forget-canary\"}\n").unwrap();
-    ok(run(root, &["context", "land", "notes", "--rows", "notes.jsonl", "--run-id", "r1", "--site-id", "fixture"], None, None));
+    ok(run(root, &["context", "land", "notes", "--project", "research", "--rows", "notes.jsonl", "--run-id", "r1", "--site-id", "fixture"], None, None));
     let pins = ok(run(root, &["token", "keygen", "--out", ".contextful/issuer.seed"], None, None));
     let limited = ok(run(root, &["token", "mint", "--issuer-key", ".contextful/issuer.seed", "--on-behalf-of", "user://fixture", "--agent", "agent://fixture", "--zone", "on-prem:fixture", "--action", "forget", "--table", "notes", "--ttl", "3600"], None, None));
     std::fs::write(root.join("keys.json"), serde_json::json!({"subject_hash":format!("hmac-sha256:{}", "a".repeat(64)),"column":"subject","keys":["memory-forget-canary"]}).to_string()).unwrap();
     let store = root.join(".contextful/context/research");
+    fn files(directory: &std::path::Path) -> std::collections::BTreeMap<std::path::PathBuf, Vec<u8>> {
+        let mut out = std::collections::BTreeMap::new();
+        for entry in std::fs::read_dir(directory).unwrap() {
+            let path = entry.unwrap().path();
+            if path.is_dir() { out.extend(files(&path)); }
+            else { out.insert(path.clone(), std::fs::read(path).unwrap()); }
+        }
+        out
+    }
+    let before = files(&store);
     let request = ["context", "erase", "--project", "research", "--key-set", "keys.json", "--issuer-key", ".contextful/issuer.seed", "--public-key", &pins, "--audience", "erasure-fixture", "--json"];
     let denied = run(root, &request, Some(&limited), Some(&pins));
     assert!(!denied.status.success(), "a notes-only grant admits a canonical universe containing memory/facts");
     assert!(String::from_utf8_lossy(&denied.stderr).contains("ErasureUngranted"));
     assert!(!store.join("_erasure_frontier.json").exists(), "refused admission publishes an erasure");
     assert!(!root.join(".contextful/audit.key").exists(), "refused admission bootstraps an audit key");
+    assert_eq!(files(&store), before, "refused admission changes original store bytes");
     let rows: serde_json::Value = serde_json::from_str(&ok(run(root, &["query", "--json", "--project", "research", "SELECT id FROM notes"], None, None))).unwrap();
     assert_eq!(rows["rows"], serde_json::json!([["erased"]]));
 }
