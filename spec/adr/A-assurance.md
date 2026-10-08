@@ -2,6 +2,18 @@
 
 **Status:** accepted
 
+## Windows archives and Homebrew share a complete release manifest
+
+The release matrix declares edge and full on both MSVC architectures. Archive staging preserves the native executable filename and bytes. Complete metadata and SHA256SUMS cover every declared cell; Homebrew resolves only Linux and Darwin assets. Windows package-manager delivery has no Homebrew platform alias.
+
+| Option | Lost on | Cost |
+| --- | --- | --- |
+| One complete manifest with platform-specific selection *(chosen)* | — | Windows builds require native execution; Homebrew represents a subset of the artifacts. |
+| Treat every non-Darwin cell as Linux | Target identity | A formula downloads a Windows executable on Linux. |
+| Exclude Windows from metadata aggregation | Completeness | A release can publish while a declared Windows artifact is absent. |
+
+Consequences: packaging fixtures establish byte preservation and manifest admission, not native compiler or runtime success.
+
 ## Assurance claims carry their qualifiers, and the proof gate audits assumptions
 
 `assurance.scope-claim` states named authorization decisions, named specifications and stated translation and runtime assumptions; a wider claim raises `ClaimBeyondNamedDecisions`. `assurance.prove` publishes each theorem with the statement it leaves open; the composition theorem covers the one order the engine applies. `assurance.audit-assumptions` matches a hand-maintained inventory against each constant's transitive assumption footprint over a two-entry allowlist. `assurance.recheck` rebuilds from pinned source, credential-free, in a zero-dependency package.
