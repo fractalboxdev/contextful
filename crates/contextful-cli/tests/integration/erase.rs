@@ -49,6 +49,72 @@ fn ok(output: Output) -> String {
 }
 
 #[test]
+fn built_erasure_collects_sixteen_hops_and_refuses_seventeen_without_publication() {
+    fn files(directory: &std::path::Path) -> std::collections::BTreeMap<std::path::PathBuf, Vec<u8>> {
+        let mut collected = std::collections::BTreeMap::new();
+        if !directory.exists() { return collected; }
+        for entry in std::fs::read_dir(directory).unwrap() {
+            let path = entry.unwrap().path();
+            if path.is_dir() { collected.extend(files(&path)); }
+            else { collected.insert(path.clone(), std::fs::read(path).unwrap()); }
+        }
+        collected
+    }
+    for depth in [16, 17] {
+        let directory = tempfile::tempdir().unwrap(); let root = directory.path();
+        ok(run(root, &["init", "research", "--authoring-posture", "per_request"], None, None));
+        let mut manifest = "authoring_posture = \"per_request\"\n[[pipeline.tables]]\nname = \"notes\"\nprimary_key = [\"key\"]\nsubject_id = \"subject\"\nerasure_key = \"key\"\n".to_string();
+        for hop in 1..=depth {
+            let parent = if hop == 1 { "notes".to_string() } else { format!("d{}", hop - 1) };
+            manifest.push_str(&format!("[[pipeline.tables]]\nname = \"d{hop}\"\nprimary_key = [\"key\"]\nerasure_key = \"key\"\nreferenced_by = [{{ table = \"{parent}\", column = \"reference\" }}]\n"));
+        }
+        std::fs::write(root.join("contextful.toml"), manifest).unwrap();
+        std::fs::write(root.join(".contextful/issuance.toml"), "default_audience = \"erasure-fixture\"\nmax_lifetime_secs = 3600\n").unwrap();
+        for hop in 0..=depth {
+            let table = if hop == 0 { "notes".to_string() } else { format!("d{hop}") };
+            let row = if hop == 0 { serde_json::json!({"key":"root","subject":"depth-subject","reference":"k0"}) }
+                else { serde_json::json!({"key":format!("k{}", hop - 1),"reference":format!("k{hop}")}) };
+            std::fs::write(root.join("rows.jsonl"), format!("{row}\n")).unwrap();
+            ok(run(root, &["context", "land", &table, "--project", "research", "--rows", "rows.jsonl", "--run-id", "run-1", "--site-id", "fixture"], None, None));
+        }
+        let pins = ok(run(root, &["token", "keygen", "--out", ".contextful/issuer.seed"], None, None));
+        let mint = |table| ok(run(root, &["token", "mint", "--issuer-key", ".contextful/issuer.seed", "--on-behalf-of", "user://fixture", "--agent", "agent://fixture", "--zone", "on-prem:fixture", "--action", "forget", "--table", table, "--ttl", "3600"], None, None));
+        let complete = mint("*"); let insufficient = mint("notes");
+        let store = root.join(".contextful/context/research");
+        let before = files(&store.join("tables"));
+        assert!(before.keys().any(|path| path.extension().is_some_and(|extension| extension == "parquet")));
+        let request = ["context", "erase", "--project", "research", "--subject", "depth-subject", "--tables", "notes", "--issuer-key", ".contextful/issuer.seed", "--public-key", &pins, "--audience", "erasure-fixture", "--json"];
+        let denied = run(root, &request, Some(&insufficient), Some(&pins));
+        assert!(!denied.status.success());
+        assert!(String::from_utf8_lossy(&denied.stderr).contains("ErasureUngranted"));
+        assert!(!store.join("_erasure_frontier.json").exists());
+        assert_eq!(files(&store.join("tables")), before);
+        let erased = run(root, &request, Some(&complete), Some(&pins));
+        if depth == 16 {
+            let receipt: serde_json::Value = serde_json::from_str(&ok(erased)).unwrap();
+            assert_eq!(receipt["physical_collection"], "complete");
+            for hop in 0..=depth {
+                let table = if hop == 0 { "notes".to_string() } else { format!("d{hop}") };
+                assert_eq!(receipt["affected_counts"][&table], 1, "the admitted cascade omits {table}");
+            }
+            assert!(before.keys().all(|path| !path.exists()), "an original retained file survives physical collection");
+        } else {
+            assert!(!erased.status.success());
+            assert!(String::from_utf8_lossy(&erased.stderr).contains("ErasureCascadeUnbounded"));
+            assert!(!store.join("_erasure_frontier.json").exists());
+            assert!(files(&store).keys().all(|path| path.file_name().unwrap() != "_erasure_certificate.json"));
+            assert_eq!(files(&store.join("tables")), before, "refused cascade changes retained files");
+        }
+        for hop in 0..=depth {
+            let table = if hop == 0 { "notes".to_string() } else { format!("d{hop}") };
+            let query = format!("SELECT count(*) FROM {table}");
+            let response: serde_json::Value = serde_json::from_str(&ok(run(root, &["query", "--json", "--project", "research", &query], None, Some(&pins)))).unwrap();
+            assert_eq!(response["rows"], serde_json::json!([[if depth == 16 { "0" } else { "1" }]]));
+        }
+    }
+}
+
+#[test]
 fn column_keyset_erases_every_declaring_table_without_subject_identity() {
     let directory = tempfile::tempdir().unwrap(); let root = directory.path();
     ok(run(root, &["init", "research", "--authoring-posture", "per_request"], None, None));
