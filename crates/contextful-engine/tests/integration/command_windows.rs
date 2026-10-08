@@ -216,9 +216,9 @@ fn a_finished_parent_reaps_its_pipe_holding_descendant() {
         .recv_timeout(Duration::from_secs(15))
         .expect("bounded finished pull");
     worker.join().unwrap();
-    assert_eq!(result.unwrap(), br#"{"rows":[]}"#);
     assert!(
         descendant.exited(),
         "a finished pull leaves a live descendant"
     );
+    assert_eq!(result.unwrap(), br#"{"rows":[]}"#);
 }

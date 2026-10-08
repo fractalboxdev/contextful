@@ -82,6 +82,9 @@ enum Cmd {
         /// Overrides the wall clock of one test-first execution against the base.
         #[arg(long, hide = true, default_value_t = BASE_RUN_BOUND_SECS)]
         base_bound_secs: u64,
+        /// Require compiled, nonignored runtime failure instead of canonical base red.
+        #[arg(long, hide = true)]
+        runtime_red: bool,
     },
     /// Print the stage names, one per line, in run order.
     Stages {
@@ -272,7 +275,7 @@ fn main() {
                 Ok(())
             })
         }
-        Cmd::Gate { stages, predecessors, base, base_bound_secs } => gate(&stages, predecessors, &base, Duration::from_secs(base_bound_secs)),
+        Cmd::Gate { stages, predecessors, base, base_bound_secs, runtime_red } => gate(&stages, predecessors, &base, Duration::from_secs(base_bound_secs), runtime_red),
         Cmd::Secrets => repo_root().and_then(|root| secrets(&root)),
         Cmd::Mirrors => repo_root().and_then(|root| mirrors(&root)),
         Cmd::SourceLint => repo_root().and_then(|root| source_lint::check(&root)),
@@ -429,7 +432,10 @@ fn dispatched(root: &Path, base: Option<&str>) -> Result<Vec<String>> {
     Ok(out)
 }
 
-fn gate(named: &[String], predecessors: bool, base: &str, bound: Duration) -> Result<()> {
+fn gate(named: &[String], predecessors: bool, base: &str, bound: Duration, runtime_red: bool) -> Result<()> {
+    if runtime_red && (named.is_empty() || predecessors || named.iter().any(|name| name != "test-first" && (!name.starts_with("test-first.") || name == "test-first.validate"))) {
+        bail!("runtime-red requires only executing test-first parts without predecessors");
+    }
     let root = repo_root()?;
     if named.iter().any(|name| name.starts_with("windows.")) {
         if predecessors || named.len() != 1 {
@@ -463,7 +469,7 @@ fn gate(named: &[String], predecessors: bool, base: &str, bound: Duration) -> Re
         eprintln!("--- stage {stage}");
         free_disk(&root, stage)?;
         let mut mark = stage::mark();
-        let outcome = run_stage(&root, stage, narrowed.get(stage).map(Vec::as_slice), base, bound);
+        let outcome = run_stage(&root, stage, narrowed.get(stage).map(Vec::as_slice), base, bound, if runtime_red { RedPolicy::Runtime } else { RedPolicy::Canonical });
         stage::report(stage, &mut mark, &outcome);
         outcome?;
         // A passing stage leaves no build behind (`assurance.build.target-dir-per-stage`); a
@@ -481,15 +487,18 @@ fn native_windows_gate(root: &Path, part: &str, target: &str, base: &str, bound:
     free_disk(root, part)?;
     let mut mark = stage::mark();
     let outcome = (|| {
-        test_first(root, base, bound, None)?;
+        test_first(root, base, bound, None, RedPolicy::Canonical)?;
+        if sources_outside_refactors(base)?.iter().any(|path| matches!(path.as_str(),
+            "crates/contextful-engine/src/command.rs" | "crates/contextful-engine/src/command/windows.rs" | "crates/contextful-engine/src/command/admission.rs")) {
+            native_command_runtime_red(root, base, bound)?;
+        }
         run_staged(root, part, &["check", "--locked", "--target", target, "--no-default-features",
             "-p", "contextful-core", "-p", "contextful-policy", "-p", "contextful-context"])?;
         for package in ["contextful-fs", "contextful-policy", "contextful-context"] {
             run_staged(root, part, &["test", "--locked", "--target", target, "--no-default-features", "-p", package, "--test", "integration"])?;
         }
-        for test in ["command_windows::cancellation_returns_only_after_the_descendant_handle_is_signalled",
-            "command_windows::a_finished_parent_reaps_its_pipe_holding_descendant"] {
-            native_required_test(root, part, target, "contextful-engine", test)?;
+        for case in NATIVE_COMMAND_CASES {
+            native_required_test(root, part, target, "contextful-engine", case.name)?;
         }
         // The default feature set includes bundled DuckDB; its actual native outcome
         // remains part of the terminal command receipt, including on ARM64.
@@ -516,8 +525,7 @@ fn native_required_test(root: &Path, part: &str, target: &str, package: &str, te
     eprint!("{}", String::from_utf8_lossy(&output.stderr));
     print!("{}", String::from_utf8_lossy(&output.stdout));
     if !output.status.success() { return Err(exited_output("required native test", &output)); }
-    if !String::from_utf8_lossy(&output.stdout).lines()
-        .any(|line| line.starts_with("test result: ok. 1 passed; 0 failed; 0 ignored;")) {
+    if harness_counts(&String::from_utf8_lossy(&output.stdout)) != Some(HarnessCounts { passed:1, failed:0, ignored:0 }) {
         bail!("required native test `{package}::{test}` executes no single passing, nonignored case");
     }
     Ok(())
@@ -525,7 +533,7 @@ fn native_required_test(root: &Path, part: &str, target: &str, package: &str, te
 
 /// One stage's work, apart from the disk precondition and its report; `only` the named parts
 /// of a split stage.
-fn run_stage(root: &Path, stage: &str, only: Option<&[String]>, base: &str, bound: Duration) -> Result<()> {
+fn run_stage(root: &Path, stage: &str, only: Option<&[String]>, base: &str, bound: Duration, red_policy: RedPolicy) -> Result<()> {
     match stage {
         "pins" => stage::pins(root)?,
         "toolchain" => stage::toolchain(root)?,
@@ -539,7 +547,7 @@ fn run_stage(root: &Path, stage: &str, only: Option<&[String]>, base: &str, boun
         "test-first" => {
             provision_lean(root)?;
             provision_wasm(root)?;
-            test_first(root, base, bound, only)?
+            test_first(root, base, bound, only, red_policy)?
         }
         "workspace" => {
             provision_lean(root)?;
@@ -1108,9 +1116,13 @@ fn test_first_parts(root: &Path, base: &str) -> Result<Vec<String>> {
     Ok(std::iter::once("validate".to_string()).chain(packages).collect())
 }
 
-fn test_first(root: &Path, base: &str, bound: Duration, only: Option<&[String]>) -> Result<()> {
+#[derive(Clone, Copy, PartialEq, Eq)]
+enum RedPolicy { Canonical, Runtime }
+
+fn test_first(root: &Path, base: &str, bound: Duration, only: Option<&[String]>, policy: RedPolicy) -> Result<()> {
     let sources = sources_outside_refactors(base)?;
     if sources.is_empty() {
+        if policy == RedPolicy::Runtime { return Err(refuse("RuntimeRedUnproved", "runtime-red selects no changed source package".into())); }
         eprintln!("test-first: no Rust source under crates/ or tools/ changed outside `Test-First: {REFACTOR_TRAILER}` commits");
         return Ok(());
     }
@@ -1157,28 +1169,33 @@ fn test_first(root: &Path, base: &str, bound: Duration, only: Option<&[String]>)
         }
     }
 
-    let scratch = stage_target(root, "test-first");
-    let tree = scratch.join("tree");
-    let _ = git(&["worktree", "remove", "--force", &tree.to_string_lossy()]);
-    let _ = std::fs::remove_dir_all(&scratch);
-    std::fs::create_dir_all(&scratch)?;
-    git(&["worktree", "add", "--detach", "-q", &tree.to_string_lossy(), &merge_base(base)?])?;
-    let verdict = (|| -> Result<Vec<String>> {
+    let red = replay_base(root, base, |tree, target| {
         let mut all_red = Vec::new();
         for (package, tests) in by_package {
-            let red = red_against_base(root, &tree, &scratch.join("target"), &tests, bound)?;
+            let red = red_against_base(root, tree, target, &tests, bound, policy)?;
             if red.is_empty() {
                 return Err(refuse("TestNotFirst", format!("the change's `{package}` tests pass against the base source, so they specify nothing it adds: {}", tests.join(", "))));
             }
             all_red.extend(red);
         }
         Ok(all_red)
-    })();
-    let _ = git(&["worktree", "remove", "--force", &tree.to_string_lossy()]);
-    let _ = std::fs::remove_dir_all(&scratch);
-    let red = verdict?;
+    })?;
     eprintln!("test-first: red against the base in {}", red.join(", "));
     Ok(())
+}
+
+/// The sole base worktree and separate target lifecycle for every test-first replay.
+fn replay_base<T>(root: &Path, base: &str, replay: impl FnOnce(&Path, &Path) -> Result<T>) -> Result<T> {
+    let scratch = stage_target(root, "test-first");
+    let tree = scratch.join("tree");
+    let _ = git(&["worktree", "remove", "--force", &tree.to_string_lossy()]);
+    let _ = std::fs::remove_dir_all(&scratch);
+    std::fs::create_dir_all(&scratch)?;
+    git(&["worktree", "add", "--detach", "-q", &tree.to_string_lossy(), &merge_base(base)?])?;
+    let verdict = replay(&tree, &scratch.join("target"));
+    let _ = git(&["worktree", "remove", "--force", &tree.to_string_lossy()]);
+    let _ = std::fs::remove_dir_all(&scratch);
+    verdict
 }
 
 /// The tests one base invocation runs: a package's test target, filtered to the modules the
@@ -1343,12 +1360,13 @@ fn infrastructure_fault(stderr: &str) -> Option<String> {
 /// A package the base lacks counts red by construction and none of its files is copied,
 /// so a test directory with no manifest never stops the base workspace from loading and
 /// every package that exists at base is judged by its own tests alone.
-fn red_against_base(root: &Path, tree: &Path, target: &Path, tests: &[&str], bound: Duration) -> Result<Vec<String>> {
+fn red_against_base(root: &Path, tree: &Path, target: &Path, tests: &[&str], bound: Duration, policy: RedPolicy) -> Result<Vec<String>> {
     let mut present: Vec<&str> = Vec::new();
     let mut red = Vec::new();
     for t in tests {
         let pkg = t.split("/tests/").next().unwrap_or(t);
         if !tree.join(pkg).join("Cargo.toml").exists() {
+            if policy == RedPolicy::Runtime { return Err(refuse("RuntimeRedUnproved", format!("runtime-red package `{pkg}` is absent at base"))); }
             let entry = format!("{pkg} (absent at base)");
             if !red.contains(&entry) {
                 red.push(entry);
@@ -1361,6 +1379,15 @@ fn red_against_base(root: &Path, tree: &Path, target: &Path, tests: &[&str], bou
         present.push(t);
     }
     for sel in selections(tree, &present) {
+        red.extend(selection_red(tree, target, &sel, bound, policy, &[])?);
+    }
+    Ok(red)
+}
+
+struct RuntimeCase { name: &'static str, witness: &'static str }
+
+fn selection_red(tree: &Path, target: &Path, sel: &Selection, bound: Duration, policy: RedPolicy, required: &[RuntimeCase]) -> Result<Vec<String>> {
+    let mut red = Vec::new();
         let label = format!(
             "{} ({}{})",
             sel.pkg,
@@ -1395,49 +1422,132 @@ fn red_against_base(root: &Path, tree: &Path, target: &Path, tests: &[&str], bou
         eprint!("{}{}", printed.stdout, printed.stderr);
         if !matches!(built, BaseRun::Passed) {
             unrunnable(&printed)?;
+            if policy == RedPolicy::Runtime { return Err(refuse("RuntimeRedUnproved", format!("runtime-red `{label}` must compile at base"))); }
             red.push(format!("{label}, which does not compile at base"));
-            continue;
+            return Ok(red);
         }
         // Select: the exact names under each changed top-level module.
         let mut run_args: Vec<String> = Vec::new();
-        if !sel.filters.is_empty() {
+        if !sel.filters.is_empty() || policy == RedPolicy::Runtime {
             let (listed, printed) = run_bounded(cargo(&[], &["--list".into(), "--format".into(), "terse".into()]), Some(bound))?;
             if !matches!(listed, BaseRun::Passed) {
                 eprint!("{}{}", printed.stdout, printed.stderr);
                 unrunnable(&printed)?;
+                if policy == RedPolicy::Runtime { return Err(refuse("RuntimeRedUnproved", format!("runtime-red `{label}` must list at base before its {} s bound", bound.as_secs()))); }
                 red.push(match listed {
                     BaseRun::Killed => format!("{label}, listing killed at the {} s bound", bound.as_secs()),
                     BaseRun::Failed => format!("{label}, whose tests do not list at base"),
                     BaseRun::Passed => unreachable!("a passing listing has no red verdict"),
                 });
-                continue;
+                return Ok(red);
             }
             let names: Vec<String> = printed
                 .stdout
                 .lines()
                 .filter_map(|l| l.strip_suffix(": test"))
-                .filter(|n| sel.filters.iter().any(|f| n.starts_with(f.as_str())))
+                .filter(|n| sel.filters.is_empty() || sel.filters.iter().any(|f| n.starts_with(f.as_str())))
                 .map(str::to_string)
                 .collect();
             if names.is_empty() {
-                continue;
+                if policy == RedPolicy::Runtime { return Err(refuse("RuntimeRedUnproved", format!("runtime-red `{label}` lists no selected runtime cases"))); }
+                return Ok(red);
+            }
+            if !required.is_empty() {
+                let listed: std::collections::BTreeSet<_> = names.iter().map(String::as_str).collect();
+                let expected: std::collections::BTreeSet<_> = required.iter().map(|case| case.name).collect();
+                if listed != expected { return Err(refuse("RuntimeRedUnproved", "runtime-red inventory differs from the required native cases".into())); }
             }
             run_args.push("--exact".into());
             run_args.extend(names);
         }
+        let runs: Vec<(Vec<String>, Option<&RuntimeCase>)> = if required.is_empty() {
+            vec![(run_args, None)]
+        } else {
+            required.iter().map(|case| (vec!["--exact".into(), case.name.into()], Some(case))).collect()
+        };
+        for (run_args, required_case) in runs {
         // Run: bounded, since a test that does not finish at base does not pass there.
         let (run, printed) = run_bounded(cargo(&[], &run_args), Some(bound))?;
         eprint!("{}{}", printed.stdout, printed.stderr);
         if !matches!(run, BaseRun::Passed) {
             unrunnable(&printed)?;
         }
+        if policy == RedPolicy::Runtime {
+            if matches!(run, BaseRun::Killed) { return Err(refuse("RuntimeRedUnproved", format!("runtime-red `{label}` was killed at the {} s bound", bound.as_secs()))); }
+            let counts = harness_counts(&printed.stdout).ok_or_else(|| refuse("RuntimeRedUnproved", "runtime-red has no complete test harness outcome".into()))?;
+            if counts.ignored != 0 || counts.passed.checked_add(counts.failed).is_none_or(|count| count == 0) {
+                return Err(refuse("RuntimeRedUnproved", format!("runtime-red `{label}` executes zero cases or ignored cases")));
+            }
+            if (matches!(run, BaseRun::Failed) && counts.failed == 0) || (matches!(run, BaseRun::Passed) && counts.failed != 0) {
+                return Err(refuse("RuntimeRedUnproved", format!("runtime-red `{label}` has inconsistent process and harness outcomes")));
+            }
+            if required_case.is_some_and(|case| counts.failed != 1 || counts.passed != 0 || !runtime_witness(&printed.stdout, case)) {
+                return Err(refuse("RuntimeRedUnproved", "native runtime-red lacks its required assertion failure".into()));
+            }
+        }
         match run {
             BaseRun::Passed => {}
-            BaseRun::Failed => red.push(label),
+            BaseRun::Failed => red.push(required_case.map_or_else(|| label.clone(), |case| format!("{label}: {}", case.name))),
             BaseRun::Killed => red.push(format!("{label}, killed at the {} s bound", bound.as_secs())),
         }
-    }
+        }
     Ok(red)
+}
+
+#[derive(Default, PartialEq, Eq)]
+struct HarnessCounts { passed: u64, failed: u64, ignored: u64 }
+
+/// Aggregate complete libtest summaries; incomplete or overflowing output has no verdict.
+fn harness_counts(stdout: &str) -> Option<HarnessCounts> {
+    let mut total = HarnessCounts::default();
+    let mut seen = false;
+    for line in stdout.lines() {
+        let Some(summary) = line.strip_prefix("test result: ok. ").or_else(|| line.strip_prefix("test result: FAILED. ")) else { continue };
+        let mut fields = summary.split(';');
+        let mut count = |label| fields.next()?.trim().strip_suffix(label)?.trim().parse::<u64>().ok();
+        total.passed = total.passed.checked_add(count("passed")?)?;
+        total.failed = total.failed.checked_add(count("failed")?)?;
+        total.ignored = total.ignored.checked_add(count("ignored")?)?;
+        count("measured")?;
+        count("filtered out")?;
+        let duration = fields.next()?.trim().strip_prefix("finished in ")?.strip_suffix('s')?.parse::<f64>().ok()?;
+        if !duration.is_finite() || duration < 0.0 || fields.any(|field| !field.trim().is_empty()) { return None; }
+        seen = true;
+    }
+    seen.then_some(total)
+}
+
+const NATIVE_COMMAND_CASES: [RuntimeCase; 2] = [
+    RuntimeCase { name: "command_windows::cancellation_returns_only_after_the_descendant_handle_is_signalled", witness: "a cancelled pull leaves a live descendant" },
+    RuntimeCase { name: "command_windows::a_finished_parent_reaps_its_pipe_holding_descendant", witness: "a finished pull leaves a live descendant" },
+];
+
+fn runtime_witness(stdout: &str, case: &RuntimeCase) -> bool {
+    stdout.split_once(&format!("---- {} stdout ----", case.name)).and_then(|(_, remaining)| remaining.split("\n---- ").next())
+        .is_some_and(|failure| failure.contains("panicked at") && failure.contains(case.witness))
+}
+
+/// Native lifetime replay changes test wiring only; the comparison source remains intact.
+fn native_command_runtime_red(root: &Path, base: &str, bound: Duration) -> Result<()> {
+    replay_base(root, base, |tree, target| {
+        let package = "crates/contextful-engine";
+        for path in ["tests/integration/command_windows.rs", "tests/fixtures/command_tree.rs"] {
+            let destination = tree.join(package).join(path);
+            std::fs::create_dir_all(destination.parent().context("native test overlay parent")?)?;
+            std::fs::copy(root.join(package).join(path), &destination)?;
+        }
+        let main = tree.join(package).join("tests/integration/main.rs");
+        let mut wiring = std::fs::read_to_string(&main)?;
+        if !wiring.contains("mod command_windows;") {
+            wiring.push_str("\n#[cfg(windows)]\nmod command_windows;\n");
+            std::fs::write(&main, wiring)?;
+        }
+        let selection = Selection { pkg:package.into(), target:Some("integration".into()), filters:vec!["command_windows::".into()] };
+        let red = selection_red(tree, target, &selection, bound, RedPolicy::Runtime, &NATIVE_COMMAND_CASES)?;
+        if red.is_empty() { return Err(refuse("TestNotFirst", "native command lifetime cases pass against comparison source".into())); }
+        eprintln!("test-first: native runtime assertions red against the base in {}", red.join(", "));
+        Ok(())
+    })
 }
 
 /// Source files changed by the range's commits that do not carry `Test-First: refactor`.

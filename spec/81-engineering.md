@@ -93,6 +93,10 @@ Assertion construction, guard validation, suite placement, test-first and accept
 - `base-run-bound` — One test-first execution against the base, its build excluded, runs for at most 300 s; a run past the bound is killed with its process group and counts as failing.
 - `base-unrunnable` — A base invocation whose output reports a full disk, an unloadable manifest or an unfetchable dependency raises `TestFirstBaseUnrunnable` instead of a verdict.
   *because such a fault fails at base whatever the tests assert, and reading it as red admits an untested change*
+- `runtime-red` — Runtime-only baseline replay requires compiled, listed, nonignored failing cases; absent packages, compilation or inventory failures, empty or ignored execution, killed runs, and incomplete or inconsistent harness outcomes raise `RuntimeRedUnproved` without a runtime verdict.
+  *A-assurance*
+- `native-command-red` — Changed native command source outside {{assurance.test.refactor-trailer}} additionally follows {{assurance.test.runtime-red}} with source-free Windows lifetime fixtures, preserved base test wiring, and each required descendant assertion witness; unchanged command source retains positive lifetime tests without additional replay.
+  *A-assurance*
 - `refactor-trailer` — A commit carrying the trailer `Test-First: refactor` exempts the source it alters from {{assurance.test.test-first}}; the rest of the range stays held, and the workspace stage alone holds that commit.
   *because a behavior-preserving change has no failing test to write, and the existing suite is its specification*
 - `acceptance-surface` — An acceptance test drives a built binary through its command line, MCP or HTTP surface; a workspace package among the acceptance package's dependencies raises `AcceptanceLinksEngine`.
