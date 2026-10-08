@@ -1,0 +1,28 @@
+{
+  "name": "Native Windows executor",
+  "run-name": "native-${{ fromJSON(inputs.request).nonce }}",
+  "on": {"workflow_dispatch": {"inputs": {"request": {"required": true, "type": "string"}}}},
+  "permissions": {"contents": "read"},
+  "jobs": {
+    "x86_64": {
+      "if": "${{ fromJSON(inputs.request).target == 'x86_64-pc-windows-msvc' }}",
+      "runs-on": "windows-2025", "timeout-minutes": 45,
+      "steps": [
+        {"uses": "actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683", "with": {"ref": "${{ github.sha }}", "path": "executor", "persist-credentials": false}},
+        {"uses": "actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683", "with": {"ref": "${{ fromJSON(inputs.request).head }}", "path": "workload", "persist-credentials": false, "fetch-depth": 0}},
+        {"run": "pwsh -File executor/.github/native-windows.ps1", "env": {"NATIVE_REQUEST": "${{ inputs.request }}", "NATIVE_TARGET": "x86_64-pc-windows-msvc"}},
+        {"uses": "actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02", "if": "${{ always() }}", "with": {"name": "native-${{ fromJSON(inputs.request).nonce }}", "path": "native-output", "if-no-files-found": "error", "retention-days": 7}}
+      ]
+    },
+    "aarch64": {
+      "if": "${{ fromJSON(inputs.request).target == 'aarch64-pc-windows-msvc' }}",
+      "runs-on": "windows-11-arm", "timeout-minutes": 45,
+      "steps": [
+        {"uses": "actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683", "with": {"ref": "${{ github.sha }}", "path": "executor", "persist-credentials": false}},
+        {"uses": "actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683", "with": {"ref": "${{ fromJSON(inputs.request).head }}", "path": "workload", "persist-credentials": false, "fetch-depth": 0}},
+        {"run": "pwsh -File executor/.github/native-windows.ps1", "env": {"NATIVE_REQUEST": "${{ inputs.request }}", "NATIVE_TARGET": "aarch64-pc-windows-msvc"}},
+        {"uses": "actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02", "if": "${{ always() }}", "with": {"name": "native-${{ fromJSON(inputs.request).nonce }}", "path": "native-output", "if-no-files-found": "error", "retention-days": 7}}
+      ]
+    }
+  }
+}
