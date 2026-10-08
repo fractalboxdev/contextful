@@ -69,6 +69,19 @@ Consequences: page admission and engine capability checks both remain necessary;
 
 Consequences: Query and Admin use the same store registry while retaining separate page grants; no console path implements a second read policy.
 
+## Each console page ships as one prerendered, self-contained document
+
+The Query and Admin pages are React components styled with Tailwind and shadcn/ui primitives. A build step renders each page to markup, bundles its hydrating script and compiled stylesheet, embeds the Geist face as a data URI, and writes one HTML document per page under `apps/console/client/dist/`. The server reads that document and serves it under `default-src 'none'`, adding only `font-src data:`; the console exposes no asset route.
+
+| Option | Lost on | Cost |
+| --- | --- | --- |
+| Prerendered self-contained documents *(chosen)* | — | Each page response carries about 750 KiB under `no-store`. |
+| Hashed assets under gated asset routes | Route surface | Every asset route needs the page grant check and its own cache policy. |
+| Hand-written HTML strings in the server | Component reuse | Every widget is rebuilt by string concatenation, with no shared visual system. |
+| A full-stack page framework | Server ownership | The framework's router replaces the server that verifies page grants. |
+
+Consequences: the package's `test` and `build` scripts build the client first; a server started without `client/dist/` fails its first page request.
+
 ## Turn compatibility preserves the stored transcript and reader scope
 
 An explicit process owner flag needs a signed owner claim bound to the selected local store; it does not turn an ordinary or empty credential into ownership. A store overlay reaches synthesis text alone, so planner tool selection does not inherit a store-authored persona. Distillation records the observed subject and recall resolves it through entity matching. A client with an older component union renders an unknown view as a table. One operator's credential defines an answer; a room-intersection principal is absent.

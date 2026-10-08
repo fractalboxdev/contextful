@@ -89,6 +89,17 @@ test("expired or wrong-issuer assertions cannot open a page", async () => {
   assert.equal((await request("/query", access(queryAudience, { iss: "https://other.example" }))).status, 401);
 });
 
+test("each page serves its prerendered document with only an inline-font allowance added", async () => {
+  const { request } = fixture();
+  for (const [path, audience] of [["/query", queryAudience], ["/admin", adminAudience]] as const) {
+    const response = await request(path, access(audience));
+    assert.equal(response.status, 200);
+    assert.match(await response.text(), new RegExp(`<div id="root" data-page="${path.slice(1)}">`));
+    assert.equal(response.headers.get("content-security-policy"),
+      "default-src 'none'; style-src 'unsafe-inline'; script-src 'unsafe-inline'; font-src data:; connect-src 'self'; form-action 'self'; base-uri 'none'; frame-ancestors 'none'");
+  }
+});
+
 test("Query keeps one composer and transcript and delegates a sourced answer", async () => {
   const { request, calls } = fixture();
   const page = await (await request("/query", access(queryAudience))).text();
@@ -340,8 +351,8 @@ test("Admin names the selected store on every operational request and shows run 
   assert.match(page, /<select id="admin-store"/);
   assert.match(page, /\/admin\/api\/workflows\?store=/);
   assert.match(page, /\/admin\/api\/record\?store=/);
-  assert.match(page, /store:store\.value/);
-  assert.match(page, /data\.runs/);
+  assert.match(page, /\{store:\w+,expected:\w+,document:\w+\}:\{store:\w+,expected:\w+,nonce:/);
+  assert.match(page, /\.runs\?\.\[/);
 });
 
 test("Query builds its widget from rows and sanitizes view props before delivery", async () => {
