@@ -232,7 +232,7 @@ Subject and key-set erasure publish one authenticated transaction record selecti
 
 The transaction references a row-free audit intent. A committed record selects that intent; recovery discards uncommitted replacements and completes committed physical collection. Reference counting uses the surviving view, retaining shared digests and surviving citing rows while refusing access to their erased sources.
 
-A signed per-file retirement map admits partial collection after interruption: absent files are completed work, while remaining files require their admitted digests. A hash-only retirement binding requires the complete inventory because missing members cannot be authenticated individually.
+Signed per-file maps admit interrupted collection: absent files are completed work; remaining files require admitted digests. Version three signs canonical-key HMACs over an unambiguous store, transaction, retired-directory and physical-path tuple. Erasure and keyed recovery require the persisted key. Neutral survivor part names preserve rows and rebuilt indexes. Version two raw-path maps retain authenticated meaning and disclose partition names; no silent rebind occurs. Hash-only bindings require complete inventories.
 
 | Option | Lost on | Cost |
 | --- | --- | --- |

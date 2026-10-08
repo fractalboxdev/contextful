@@ -231,6 +231,7 @@ pub(crate) fn retired_directories(store: &Store, frontier: &Frontier) -> Result<
     let retired: BTreeMap<String, Vec<RetiredDirectory>> = serde_json::from_value(attributes.get("retired_directories").cloned().ok_or_else(|| incomplete("the audit entry has no retirement binding"))?)
         .map_err(|_| incomplete("the audit retirement binding does not decode"))?;
     if retired.keys().ne(frontier.tables.keys()) { return Err(incomplete("the retirement set disagrees with the published tables")); }
+    if retired.values().flatten().any(|old| old.version == 3) { store.canonical_audit_key()?; }
     for (table, directories) in &retired {
       if directories.is_empty() { return Err(incomplete("a published table has no signed retirement binding")); }
       for old in directories {
@@ -244,6 +245,9 @@ pub(crate) fn retired_directories(store: &Store, frontier: &Frontier) -> Result<
             (1, None) => (),
             (2, Some(files)) if !files.is_empty()
                 && files.iter().all(|(path, hash)| relative_path(path).is_ok() && digest(hash))
+                && etag(&serde_json::to_vec(files).map_err(|_| incomplete("the retired inventory does not encode"))?) == old.inventory_sha256 => (),
+            (3, Some(files)) if !files.is_empty()
+                && files.iter().all(|(path, hash)| path.strip_prefix("hmac-sha256:").is_some_and(digest) && digest(hash))
                 && etag(&serde_json::to_vec(files).map_err(|_| incomplete("the retired inventory does not encode"))?) == old.inventory_sha256 => (),
             _ => return Err(incomplete("the signed retirement inventory has an invalid version or file binding")),
         }
@@ -259,6 +263,18 @@ pub(crate) fn inventory(directory: &std::path::Path) -> Result<BTreeMap<String, 
 #[cfg(feature = "read")]
 pub(crate) fn retirement_inventory(directory: &std::path::Path) -> Result<BTreeMap<String, String>> {
     collect_inventory(directory, InventoryPurpose::Retirement)
+}
+
+/// Version three binds enumerated physical paths without publishing row-derived names.
+pub(crate) fn opaque_retirement_inventory(store: &Store, transaction: &str, directory: &str, files: BTreeMap<String, String>) -> Result<BTreeMap<String, String>> {
+    let key = store.canonical_audit_key()?;
+    let store_id = crate::project::store_id(store.root())?;
+    files.into_iter().map(|(path, hash)| {
+        relative_path(&path)?;
+        let domain = serde_json::to_string(&("contextful.erasure.retired-path.v3", &store_id, transaction, directory, &path))
+            .map_err(|_| incomplete("the retired path identity does not encode"))?;
+        Ok((contextful_policy::audit::query_digest(&key, &domain), hash))
+    }).collect()
 }
 
 #[derive(Clone, Copy)]

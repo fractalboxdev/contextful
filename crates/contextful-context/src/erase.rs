@@ -89,6 +89,7 @@ pub fn erase(store: &Store, request: EraseRequest<'_>) -> Result<Erased> {
     let configured = store.clone();
     configured.with_frontier(|bound| {
         revalidate(&request)?;
+        if request.audit_key != bound.canonical_audit_key()? { return Err(incomplete("the supplied audit key disagrees with the canonical project key")); }
         let mut batches: BTreeMap<String, Vec<(PathBuf, Vec<RecordBatch>)>> = BTreeMap::new();
         let mut rows = RetainedRows::new();
         let mut directories = BTreeMap::new();
@@ -142,12 +143,14 @@ pub fn erase(store: &Store, request: EraseRequest<'_>) -> Result<Erased> {
             let decl = request.declarations.iter().find(|decl| decl.name == *name).ok_or_else(|| unsupported("a selected frontier table has no declaration"))?;
             let source = &directories[*name];
             let old_inventory = crate::erasure_frontier::retirement_inventory(source)?;
-            let old_directory = source.strip_prefix(bound.root()).map_err(|_| incomplete("the retired directory escapes its store"))?.to_str().ok_or_else(|| incomplete("the retired path is not text"))?.replace('\\', "/");
-            let mut old = vec![RetiredDirectory { version:2, directory:old_directory, inventory_sha256:crate::store::etag(&serde_json::to_vec(&old_inventory).map_err(|_| incomplete("the retired inventory does not encode"))?), files:Some(old_inventory) }];
+            let old_directory = source.strip_prefix(bound.root()).map_err(|_| incomplete("the retired directory escapes its store"))?.components().map(|component| component.as_os_str().to_str().ok_or_else(|| incomplete("the retired path is not text"))).collect::<Result<Vec<_>>>()?.join("/");
+            let old_inventory = crate::erasure_frontier::opaque_retirement_inventory(bound, &transaction_id, &old_directory, old_inventory)?;
+            let mut old = vec![RetiredDirectory { version:3, directory:old_directory, inventory_sha256:crate::store::etag(&serde_json::to_vec(&old_inventory).map_err(|_| incomplete("the retired inventory does not encode"))?), files:Some(old_inventory) }];
             if let Some(previous) = old_frontier.as_ref().and_then(|frontier| frontier.tables.get(*name)) {
                 let baseline = bound.root().join(&previous.baseline_directory);
                 let inventory = crate::erasure_frontier::retirement_inventory(&baseline)?;
-                old.push(RetiredDirectory { version:2, directory:previous.baseline_directory.clone(), inventory_sha256:crate::store::etag(&serde_json::to_vec(&inventory).map_err(|_| incomplete("the prior baseline inventory does not encode"))?), files:Some(inventory) });
+                let inventory = crate::erasure_frontier::opaque_retirement_inventory(bound, &transaction_id, &previous.baseline_directory, inventory)?;
+                old.push(RetiredDirectory { version:3, directory:previous.baseline_directory.clone(), inventory_sha256:crate::store::etag(&serde_json::to_vec(&inventory).map_err(|_| incomplete("the prior baseline inventory does not encode"))?), files:Some(inventory) });
             }
             retired.insert((*name).to_string(), old);
             let destination = staging.join("tables").join(name);
@@ -226,6 +229,7 @@ pub fn erase(store: &Store, request: EraseRequest<'_>) -> Result<Erased> {
         for old in retired.values().flatten() {
             let path = bound.root().join(&old.directory);
             let current = crate::erasure_frontier::retirement_inventory(&path)?;
+            let current = crate::erasure_frontier::opaque_retirement_inventory(bound, &transaction_id, &old.directory, current)?;
             if crate::store::etag(&serde_json::to_vec(&current).map_err(|_| incomplete("the retired inventory does not encode"))?) != old.inventory_sha256 {
                 return Err(incomplete("the retired inventory changed before publication"));
             }
@@ -294,6 +298,9 @@ pub fn recover_committed_erasure(store: &Store) -> Result<()> {
                 return Err(incomplete("a hash-only retirement cannot admit its unbound certificate"));
             }
             let inventory = crate::erasure_frontier::retirement_inventory(&path)?;
+            let inventory = if old.version == 3 {
+                crate::erasure_frontier::opaque_retirement_inventory(bound, &frontier.as_ref().ok_or_else(|| incomplete("retirement has no published frontier"))?.transaction_id, &old.directory, inventory)?
+            } else { inventory };
             let admitted = match &old.files {
                 Some(files) => inventory.iter().all(|(path, digest)| files.get(path) == Some(digest)),
                 None => crate::store::etag(&serde_json::to_vec(&inventory).map_err(|_| incomplete("the retired inventory does not encode"))?) == old.inventory_sha256,
@@ -322,6 +329,24 @@ fn rebuild_snapshots(store: &Store, decl: &TableDecl, directory: &Path) -> Resul
         for part in &manifest.parts { batches.extend(store.read_parquet(&snapshot.join(relative_path(&part.name)?))?); }
         let Some(first) = batches.first() else { continue };
         let rows = concat_batches(&first.schema(), &batches).map_err(|_| incomplete("a retained snapshot has incompatible parts"))?;
+        for part in &manifest.parts {
+            let old = snapshot.join(relative_path(&part.name)?);
+            std::fs::remove_file(&old).at(&old)?;
+        }
+        fn remove_empty_directories(directory: &Path) -> Result<()> {
+            for entry in std::fs::read_dir(directory).at(directory)? {
+                let entry = entry.at(directory)?;
+                if entry.file_type().at(entry.path())?.is_dir() {
+                    remove_empty_directories(&entry.path())?;
+                    if std::fs::read_dir(entry.path()).at(entry.path())?.next().is_none() { std::fs::remove_dir(entry.path()).at(entry.path())?; }
+                }
+            }
+            Ok(())
+        }
+        remove_empty_directories(snapshot)?;
+        let name = contextful_core::store::lay_out::part_name(0);
+        store.write_parquet(&snapshot.join(&name), &rows)?;
+        manifest.parts = vec![contextful_core::store::lay_out::PartEntry { name, key_version:store.sealing().key_version() }];
         for index in &manifest.indexes {
             if matches!(index, IndexEntry::Unrecognized(_)) { return Err(unsupported("an unrecognized sidecar has no erasure rewrite adapter")); }
             let relative = index.path().ok_or_else(|| unsupported("a sidecar names no physical directory"))?;
