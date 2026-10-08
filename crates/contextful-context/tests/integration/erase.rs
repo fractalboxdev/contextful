@@ -5,23 +5,29 @@ use serde_json::json;
 #[test]
 #[cfg(feature = "read")]
 fn partitioned_erasure_removes_designated_values_from_signed_paths_and_survivor_names() {
-    partitioned_erasure_paths(false, false);
+    partitioned_erasure_paths(false, false, false);
 }
 
 #[test]
 #[cfg(feature = "read")]
 fn partitioned_key_set_erasure_removes_designated_values_from_signed_paths_and_survivor_names() {
-    partitioned_erasure_paths(true, false);
+    partitioned_erasure_paths(true, false, false);
 }
 
 #[test]
 #[cfg(feature = "read")]
 fn all_erased_partitioned_snapshots_leave_no_designated_values_or_stale_indexes() {
-    partitioned_erasure_paths(false, true);
+    partitioned_erasure_paths(false, true, false);
+}
+
+#[test]
+#[cfg(feature = "read")]
+fn erasure_preserves_valid_retention_produced_empty_snapshots() {
+    partitioned_erasure_paths(false, false, true);
 }
 
 #[cfg(feature = "read")]
-fn partitioned_erasure_paths(key_set: bool, all_erased: bool) {
+fn partitioned_erasure_paths(key_set: bool, all_erased: bool, initial_empty: bool) {
     use contextful_context::erase::{erase, EraseRequest, EraseSelector};
     use contextful_core::{grant::Action, issue::SignatureAlgorithm, ports::FixedClock};
     use contextful_policy::{enforce::erase::ForgetAdmission, issue::SeedSigner, revoke::RevocationState, verify::{effect_boundary, Admission}};
@@ -29,7 +35,13 @@ fn partitioned_erasure_paths(key_set: bool, all_erased: bool) {
         let canary = "erased-partition-canary";
         let fixture = Fixture::new();
         let partition = if key_set { "id" } else { "subject" };
-        let table = decl(&format!("name = \"notes\"\nprimary_key = [\"id\"]\nsubject_id = \"subject\"\nerasure_key = \"id\"\npartition_by = [\"{partition}\"]\nretain_runs = \"90d\"\n[[pipeline.tables.indexes]]\nkind = \"fulltext\"\ncolumn = \"text\"\n{}", crate::index::INDEX));
+        let retention = if initial_empty { "retain_rows = { column = \"_ingested_at\", age = \"1d\" }\n" } else { "" };
+        let table = decl(&format!("name = \"notes\"\nprimary_key = [\"id\"]\nsubject_id = \"subject\"\nerasure_key = \"id\"\npartition_by = [\"{partition}\"]\nretain_runs = \"90d\"\n{retention}[[pipeline.tables.indexes]]\nkind = \"fulltext\"\ncolumn = \"text\"\n{}", crate::index::INDEX));
+        if initial_empty {
+            fixture.land_typed(&table, "expired", json!([{ "id":"expired", "subject":"expired", "text":"expired", "embedding":[1.0,0.0,0.0] }]), "2029-01-01T00:00:00Z", &crate::index::f32x3()).unwrap();
+            contextful_context::fold::fold(&fixture.store, &table, crate::support::at("2030-01-01T00:00:00Z")).unwrap();
+            assert!(crate::index::current(&fixture, "notes").0.parts.is_empty(), "the fixture has no actual retention-produced empty snapshot");
+        }
         let mut input = vec![json!({ "id":canary, "subject":canary, "text":"removed text", "embedding":[1.0,0.0,0.0] })];
         if !all_erased { input.push(json!({"id":"kept", "subject":"survivor", "text":"retained text", "embedding":[0.0,1.0,0.0]})); }
         fixture.land_typed(&table, "run-0001", json!(input), "2030-01-01T00:00:00Z", &crate::index::f32x3()).unwrap();
@@ -51,7 +63,7 @@ fn partitioned_erasure_paths(key_set: bool, all_erased: bool) {
         let keys = std::collections::BTreeMap::from([("notes".to_string(), vec![json!({"id":canary}).as_object().unwrap().clone()])]);
         let subject_hash = contextful_policy::audit::query_digest(&audit_key, "fixture opaque subject");
         let selector = if key_set { EraseSelector::KeySet { subject_hash:&subject_hash, keys:&keys } } else { EraseSelector::Subject(canary) };
-        let result = erase(&store, EraseRequest { declarations:&declarations, tables:&tables, selector, admission:&admission, signer:Some(signer), audit_dir:&audit_dir, audit_key:&audit_key, boundary:&boundary, clock:&FixedClock(now) }).unwrap();
+        let result = erase(&store, EraseRequest { declarations:&declarations, tables:&tables, selector, admission:&admission, signer:Some(signer.clone()), audit_dir:&audit_dir, audit_key:&audit_key, boundary:&boundary, clock:&FixedClock(now) }).unwrap();
         let expected = if all_erased { json!([]) } else { json!([{ "id":"kept", "subject":"survivor", "text":"retained text" }]) };
         assert_eq!(serde_json::to_value(contextful_context::rows::table_rows(&result.store, &table, &["id", "subject", "text"]).unwrap()).unwrap(), expected);
         let audit = serde_json::to_string(&contextful_policy::audit::entries(&audit_dir).unwrap()).unwrap();
@@ -88,6 +100,11 @@ fn partitioned_erasure_paths(key_set: bool, all_erased: bool) {
         contextful_context::fold::fold(&continued.store, &table, crate::support::at("2030-01-01T00:07:00Z")).unwrap();
         assert_eq!(contextful_context::rows::table_rows(&continued.store, &table, &["id"]).unwrap().len(), if all_erased { 1 } else { 2 });
         check(continued.store.root(), canary);
+        if all_erased {
+            let again = erase(&continued.store, EraseRequest { declarations:&declarations, tables:&tables, selector:EraseSelector::Subject("survivor"), admission:&admission, signer:Some(signer), audit_dir:&audit_dir, audit_key:&audit_key, boundary:&boundary, clock:&FixedClock(now) }).unwrap();
+            assert!(contextful_context::rows::table_rows(&again.store, &table, &["id"]).unwrap().is_empty());
+            check(again.store.root(), canary);
+        }
     }
 }
 
