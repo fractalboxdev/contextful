@@ -1,8 +1,22 @@
 import type { StoreEntry } from "../../gateway/src/index.ts";
 import type { TurnInput, TurnResult } from "./index.ts";
-import { ConsoleError, createTurn, resolveReaderCredential, type Source, type ToolResult } from "./turn.ts";
+import { ConsoleError, createTurn, resolveReaderCredential, StreamingRedactor, type Source, type ToolResult } from "./turn.ts";
 
 export type LiveOptions = { stores: StoreEntry[]; env: NodeJS.ProcessEnv; fetcher?: typeof fetch };
+
+export function consoleDenylist(env: NodeJS.ProcessEnv): string[] {
+  if (!env.CONTEXTFUL_CONSOLE_DENYLIST) return [];
+  const parsed: unknown = JSON.parse(env.CONTEXTFUL_CONSOLE_DENYLIST);
+  if (!Array.isArray(parsed) || !parsed.every((entry) => typeof entry === "string")) throw new Error("ConsoleDenylistMalformed");
+  return parsed;
+}
+
+export function redactText(value: string, denylist: string[]): string {
+  const long = denylist.filter((entry) => entry.length > 128);
+  const exact = long.reduce((text, entry) => text.replaceAll(entry, "[redacted]"), value);
+  const redactor = new StreamingRedactor(denylist.filter((entry) => entry.length <= 128));
+  return redactor.push(exact) + redactor.finish();
+}
 
 function record(value: unknown): value is Record<string, unknown> {
   return value !== null && typeof value === "object" && !Array.isArray(value);
@@ -84,7 +98,7 @@ export async function openReader({ stores, env, fetcher = fetch }: LiveOptions, 
       return message.result.structuredContent;
     };
 
-    return { store, call };
+    return { store, call, credential };
 }
 
 export function createLiveTurn(options: LiveOptions): (input: TurnInput) => Promise<TurnResult> {
@@ -92,14 +106,17 @@ export function createLiveTurn(options: LiveOptions): (input: TurnInput) => Prom
   const modelEndpoint = env.CONTEXTFUL_MODEL_ENDPOINT;
   const modelId = env.CONTEXTFUL_MODEL_ID;
   if (!modelEndpoint || !modelId) throw new Error("ConsoleModelUnconfigured");
+  const configuredDenylist = consoleDenylist(env);
   return async (input) => {
-    const { store, call } = await openReader(options, input);
+    const { store, call, credential } = await openReader(options, input);
+    const denylist = [...configuredDenylist, credential, ...(input.operator.assertion ? [input.operator.assertion] : [])];
     const description = await call("context.describe", {});
     const selected = selectTable(input.question, description.tables);
     if (!selected) throw new ConsoleError("ConsoleUngroundedAnswer", "No data table matches this question.");
     const tables = [selected];
     let remainingSources = 8;
     const turn = createTurn({
+      denylist: denylist.filter((entry) => entry.length <= 128),
       tools: tables.map((table) => ({ name: `read:${table}`, pack: "data", kind: "read" as const, table })),
       tables: tables.map((name) => ({ name, kind: "data" as const })),
       planner: async ({ previous }) => previous.length ? [] : tables.map((table) => ({ tool: `read:${table}`, arguments: {} })),
@@ -112,7 +129,8 @@ export function createLiveTurn(options: LiveOptions): (input: TurnInput) => Prom
         remainingSources -= sourced.length;
         return {
           rows: sourced.map(({ row }) => Object.fromEntries(columns.map((column, index) => [column, row[index]]))),
-          sources: sourced.map(({ citation }) => citation),
+          sources: sourced.map(({ citation }) => ({ ...citation, label: redactText(citation.label, denylist),
+            url: citation.url && !denylist.some((entry) => entry && citation.url!.includes(entry)) ? citation.url : undefined })),
         };
       } },
       synthesize: async function* ({ question, results, sources }) {
@@ -128,7 +146,7 @@ export function createLiveTurn(options: LiveOptions): (input: TurnInput) => Prom
         const choices = record(body) && Array.isArray(body.choices) ? body.choices : [];
         const message = choices.length && record(choices[0]) ? choices[0].message : undefined;
         if (!record(message) || typeof message.content !== "string") throw new ConsoleError("ConsoleModelUnavailable", "model answer absent", 503);
-        yield message.content;
+        yield redactText(message.content, denylist);
       },
     });
     const answer = await turn.ask({ question: input.question, packs: ["data"], store: store.id });

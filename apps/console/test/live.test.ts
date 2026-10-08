@@ -5,6 +5,35 @@ import { ConsoleError } from "../src/turn.ts";
 import { createConsole, issueCognitoSession } from "../src/index.ts";
 import type { StoreEntry } from "../../gateway/src/index.ts";
 
+test("Query redacts long denylisted values and credentials from prose and source URLs", async () => {
+  const assertion = "assertion-" + "a".repeat(512);
+  const credential = "credential-" + "c".repeat(512);
+  const denied = "private-" + "p".repeat(256);
+  const fetcher: typeof fetch = async (input, init) => {
+    const url = String(input);
+    if (url.endsWith("/auth/exchange")) return Response.json({ token: credential });
+    if (url.endsWith("/mcp")) {
+      const body = JSON.parse(String(init?.body));
+      const value = body.params.name === "context.describe" ? { tables: [{ table: "filings", kind: "data" }] } : {
+        columns: ["filing_id", "summary", "source_url"],
+        rows: [["filing-1", "A filing arrived", `https://example.test/${credential}`]],
+      };
+      return Response.json({ result: { structuredContent: value } });
+    }
+    return Response.json({ choices: [{ message: { content: `A filing arrived [filing-1]. ${assertion} ${credential} ${denied}` } }] });
+  };
+  const turn = createLiveTurn({ stores: [store], env: {
+    CONTEXTFUL_MODEL_ENDPOINT: "https://model.example/v1", CONTEXTFUL_MODEL_ID: "fixture",
+    CONTEXTFUL_CONSOLE_DENYLIST: JSON.stringify([denied]),
+  }, fetcher });
+  const result = await turn({ operator: { subject: "reader", grants: new Set(["query"]), assertion },
+    store: store.id, question: "Which filing arrived?" });
+  const visible = JSON.stringify(result);
+  for (const secret of [assertion, credential, denied]) assert.equal(visible.includes(secret), false);
+  assert.match(result.answer, /A filing arrived \[source-1\]/);
+  assert.equal((result.sources[0] as { url?: string }).url, undefined);
+});
+
 const store: StoreEntry = {
   id: "field-notes", label: "Field notes", endpoint: "https://store.example",
   auth: "exchange", exchangeRoute: "/auth/exchange", credentialName: "FIELD_NOTES_QUERY_TOKEN",
