@@ -120,6 +120,16 @@ fn signed_only_scope_cannot_collect_an_unrelated_unsigned_stage() {
     assert_eq!(std::fs::read(&marker).unwrap(), b"unrelated replacement");
     ok(run(root, &recovery, Some(&complete), Some(&pins)));
     assert!(!staged.exists());
+    for relative in ["tables/unknown/partial", "unowned-root-file", "tables/research/partial"] {
+        let marker = staged.join(relative);
+        std::fs::create_dir_all(marker.parent().unwrap()).unwrap();
+        std::fs::write(&marker, b"unadmitted staging origin").unwrap();
+        let refused = run(root, &recovery, Some(&complete), Some(&pins));
+        assert!(!refused.status.success(), "recovery admits an absent or ambiguous table origin: {relative}");
+        assert!(String::from_utf8_lossy(&refused.stderr).contains("ErasureTransactionIncomplete"), "{}", String::from_utf8_lossy(&refused.stderr));
+        assert_eq!(std::fs::read(&marker).unwrap(), b"unadmitted staging origin");
+        std::fs::remove_dir_all(&staged).unwrap();
+    }
 }
 
 #[test]

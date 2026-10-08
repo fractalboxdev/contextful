@@ -211,7 +211,8 @@ fn run_erasure_recovery(args: &StoreArgs, admit: &AdmitArgs, json: bool) -> Resu
     let store = crate::project::open_store(&located.project, admit.public_key.as_deref(), admit.keyset.as_deref())?;
     let transaction = contextful_context::erase::recover_admitted_erasure(&store, &authority, &erasure_boundary(&located.project, admit))?;
     if json { println!("{}", serde_json::json!({"transaction_id":transaction,"physical_collection":"complete"})); }
-    else { println!("erasure {transaction}: physical collection complete"); }
+    else if let Some(transaction) = transaction { println!("erasure {transaction}: physical collection complete"); }
+    else { println!("unpublished erasure replacements: physical collection complete"); }
     Ok(())
 }
 

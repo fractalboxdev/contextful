@@ -254,33 +254,80 @@ pub fn erase(store: &Store, request: EraseRequest<'_>) -> Result<Erased> {
 /// This trusted store-owner API relies on previously authenticated signed intent;
 /// external adapters use `recover_admitted_erasure` for fresh effect admission.
 pub fn recover_committed_erasure(store: &Store) -> Result<()> {
-    recover_collection(store, |_, _| Ok(()))
+    recover_collection(store, |_, _, _| Ok(()))
 }
 
-/// Resumes signed collection under verified Forget authority for its complete frontier.
+/// Resumes collection under verified Forget authority for its complete owned scope.
 /// No selector, signing port or caller-selected table subset enters this adapter.
 pub fn recover_admitted_erasure(
     store: &Store,
     authority: &AdmittedAuthority,
     boundary: &dyn Fn(&AdmittedAuthority) -> std::result::Result<(), AuthorityError>,
-) -> Result<String> {
+) -> Result<Option<String>> {
     let mut transaction = None;
-    recover_collection(store, |bound, frontier| {
-        let frontier = frontier.ok_or_else(|| incomplete("recovery has no committed erasure frontier"))?;
-        let tables: Vec<&str> = frontier.tables.keys().map(String::as_str).collect();
+    recover_collection(store, |bound, frontier, staged| {
+        let names = match (frontier, staged.is_empty()) {
+            (Some(frontier), true) => frontier.tables.keys().cloned().collect(),
+            _ => {
+                let names = bound.tables()?;
+                validate_staged_origins(staged, &names)?;
+                names
+            }
+        };
+        let tables: Vec<&str> = names.iter().map(String::as_str).collect();
         let admitted = ForgetAdmission::admit(authority, &tables)?;
         boundary(admitted.authority()).map_err(|error| ContextError::Invalid(error.to_string()))?;
         bound.canonical_audit_key()?;
-        transaction = Some(frontier.transaction_id.clone());
+        transaction = frontier.map(|frontier| frontier.transaction_id.clone());
         Ok(())
     })?;
-    transaction.ok_or_else(|| incomplete("recovery has no authenticated transaction identity"))
+    Ok(transaction)
 }
 
-fn recover_collection(store: &Store, mut boundary: impl FnMut(&Store, Option<&Frontier>) -> Result<()>) -> Result<()> {
+fn validate_staged_origins(staged: &[PathBuf], tables: &[String]) -> Result<()> {
+    fn visit(directory: &Path, prefix: &str, tables: &[String], origins: &mut std::collections::BTreeSet<String>) -> Result<()> {
+        for entry in std::fs::read_dir(directory).at(directory)? {
+            let entry = entry.at(directory)?;
+            let name = entry.file_name();
+            let name = name.to_str().ok_or_else(|| incomplete("a staged origin is not text"))?;
+            let relative = if prefix.is_empty() { name.to_string() } else { format!("{prefix}/{name}") };
+            relative_path(&relative)?;
+            let kind = entry.file_type().at(entry.path())?;
+            let within = tables.iter().find(|table| relative.strip_prefix(table.as_str()).is_some_and(|tail| tail.starts_with('/')));
+            if kind.is_dir() && !kind.is_symlink() {
+                if tables.iter().any(|table| table == &relative) { origins.insert(relative.clone()); }
+                else if within.is_none() && !tables.iter().any(|table| table.strip_prefix(&relative).is_some_and(|tail| tail.starts_with('/'))) {
+                    return Err(incomplete("a staged directory has no canonical table origin"));
+                }
+                visit(&entry.path(), &relative, tables, origins)?;
+            } else if kind.is_file() && within.is_some() {
+                origins.insert(within.expect("a staged file has a canonical origin").clone());
+            } else {
+                return Err(incomplete("a staged file has no canonical table origin"));
+            }
+        }
+        Ok(())
+    }
+    for stage in staged {
+        match std::fs::symlink_metadata(stage) {
+            Err(error) if error.kind() == std::io::ErrorKind::NotFound => continue,
+            Ok(metadata) if metadata.is_dir() && !metadata.file_type().is_symlink() => (),
+            _ => return Err(incomplete("the staged transaction is not owned store content")),
+        }
+        let entries = std::fs::read_dir(stage).at(stage)?.collect::<std::io::Result<Vec<_>>>().at(stage)?;
+        if entries.len() != 1 || entries[0].file_name() != "tables" || !entries[0].file_type().at(entries[0].path())?.is_dir() {
+            return Err(incomplete("the staged transaction has no unambiguous table namespace"));
+        }
+        let mut origins = std::collections::BTreeSet::new();
+        visit(&entries[0].path(), "", tables, &mut origins)?;
+        if origins.is_empty() { return Err(incomplete("the staged transaction has no canonical table origin")); }
+    }
+    Ok(())
+}
+
+fn recover_collection(store: &Store, mut boundary: impl FnMut(&Store, Option<&Frontier>, &[PathBuf]) -> Result<()>) -> Result<()> {
     store.with_frontier(|bound| {
         let frontier = crate::erasure_frontier::load(bound)?;
-        boundary(bound, frontier.as_ref())?;
         let retired = match &frontier {
             Some(frontier) => crate::erasure_frontier::retired_directories(bound, frontier)?,
             None => BTreeMap::new(),
@@ -312,6 +359,8 @@ fn recover_collection(store: &Store, mut boundary: impl FnMut(&Store, Option<&Fr
             Err(error) if error.kind() == std::io::ErrorKind::NotFound => (),
             Err(_) => return Err(incomplete("the recovery staging namespace is unreadable")),
         }
+        let staged = present.clone();
+        boundary(bound, frontier.as_ref(), &staged)?;
         for old in retired.values().flatten() {
             let path = bound.root().join(&old.directory);
             let mut component = bound.root().to_path_buf();
@@ -342,7 +391,7 @@ fn recover_collection(store: &Store, mut boundary: impl FnMut(&Store, Option<&Fr
         }
         for path in present {
             let current = crate::erasure_frontier::load(bound)?;
-            boundary(bound, current.as_ref())?;
+            boundary(bound, current.as_ref(), &staged)?;
             std::fs::remove_dir_all(&path).at(&path)?;
             let parent = path.parent().ok_or_else(|| incomplete("a retired directory has no parent"))?;
             contextful_fs::open_dir_for_sync(parent).at(parent)?.sync_all().at(parent)?;

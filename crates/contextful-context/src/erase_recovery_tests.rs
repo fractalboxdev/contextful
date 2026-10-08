@@ -75,7 +75,7 @@ fn revocation_between_retirements_stops_later_unlink_and_authorized_replay_compl
     let token = mint(&plan, &MintClaims { epoch:1, ..MintClaims::default() }, &issuer).unwrap();
     let renewed = verify_inherited_pipe(&token, &pins, &Admission::new(now, &revocation.borrow()).expecting("recovery-fixture")).unwrap();
     let current = |authority: &AdmittedAuthority| effect_boundary(authority, &Admission::new(now, &revocation.borrow()));
-    assert_eq!(recover_admitted_erasure(&store, &renewed, &current).unwrap(), transaction);
+    assert_eq!(recover_admitted_erasure(&store, &renewed, &current).unwrap(), Some(transaction.clone()));
     assert!(!store.root().join("tables/second").exists());
-    assert_eq!(recover_admitted_erasure(&store, &renewed, &current).unwrap(), transaction);
+    assert_eq!(recover_admitted_erasure(&store, &renewed, &current).unwrap(), Some(transaction));
 }
