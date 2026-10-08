@@ -12,6 +12,7 @@ mod stage;
 mod tag;
 mod footprint;
 mod topology;
+mod native_transport;
 
 use anyhow::{bail, Context, Result};
 use clap::{Parser, Subcommand};
@@ -101,6 +102,8 @@ enum Cmd {
     Mirrors,
     /// Refuse subject claims formatted into SQL text in runtime crates.
     SourceLint,
+    /// Hold the sole native Actions executor to its dispatch, runner and credential boundary.
+    NativeTransport,
     /// Hold the workspace's dependency graph to the topology contract's rules.
     Topology,
     /// Drive the release consumer flow through the binary, with an optional local MinIO backend.
@@ -273,6 +276,7 @@ fn main() {
         Cmd::Secrets => repo_root().and_then(|root| secrets(&root)),
         Cmd::Mirrors => repo_root().and_then(|root| mirrors(&root)),
         Cmd::SourceLint => repo_root().and_then(|root| source_lint::check(&root)),
+        Cmd::NativeTransport => repo_root().and_then(|root| native_transport::check(&root)),
         Cmd::Topology => repo_root().and_then(|root| topology::check(&root)),
         Cmd::E2e { minio } => repo_root().and_then(|root| e2e::run(&root, minio)),
         Cmd::Footprint { profile, artifact, build, plan } => std::env::current_dir().map_err(Into::into).and_then(|root| match artifact {
@@ -462,6 +466,7 @@ fn run_stage(root: &Path, stage: &str, only: Option<&[String]>, base: &str, boun
         "pins" => stage::pins(root)?,
         "toolchain" => stage::toolchain(root)?,
         "schema" => {
+            if root.join(".github/workflows").is_dir() { native_transport::check(root)?; }
             secrets(root)?;
             mirrors(root)?;
             stage::regenerate(root)?;

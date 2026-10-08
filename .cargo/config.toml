@@ -1,0 +1,2 @@
+[env]
+CONTEXTFUL_SOURCE_ROOT = { value = ".", relative = true, force = true }

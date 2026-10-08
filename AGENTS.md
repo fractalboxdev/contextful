@@ -133,13 +133,20 @@ stage whose predecessor's output is absent; `--predecessors` runs those too. A l
 the remote check invoke the identical command. `contextful-ci`'s suite asserts 29
 static dispatchable parts. FlareDispatch runs `contextful-measures` nightly against the default
 branch and attaches its report to `refs/notes/measures`. A `v*` tag starts
-`contextful-release`, with `contextful-release-cell` for the ten cells in
+`contextful-release`, with `contextful-release-cell` for the cells printed by
 `contextful-ci release --plan`, `contextful-release-formula` for formulae and
 SHA256SUMS, and three independently tagged container images. The disabled
 ruleset proposal under `.github/rulesets/` lists the parent and all 29 static children.
 
 The CLI differential module runs in `workspace.cli-formal` and `features.formal-<set>`;
 `workspace.cli` and `features.binary-<set>` run the remaining CLI tests.
+
+The sole Actions workflow transports FlareDispatch-admitted native Windows
+execution through `workflow_dispatch` and read-only repository permission.
+`contextful-ci native-transport` checks its fixed runners, immutable executor
+checkout, bound inputs and artifact directory. FlareDispatch verifies authentic
+API job conclusions and receipts before publishing native checks or artifacts.
+The wrapper records subprocess evidence; reviewed workload code shares its user.
 
 The schema stage also holds every key in a tracked `.env*` file to dotenvx ciphertext
 under a comment stating what it grants (`contextful-ci secrets`); `.env.keys` stays

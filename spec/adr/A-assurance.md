@@ -2,6 +2,32 @@
 
 **Status:** accepted
 
+## FlareDispatch owns native Windows execution through a dispatch-only transport
+
+Context: Linux containers cannot execute MSVC command-tree or directory durability regressions. Native Windows runners supply both target C toolchains and runtime behavior.
+Decision: one trusted GitHub workflow accepts FlareDispatch dispatch inputs. FlareDispatch binds repository/head/base, nonce and command to its admitted request and verifies API job identity, fixed runner labels, observed native target, terminal exit and artifact digests before publishing its check. The executor holds read-only repository permission and no publication credential. Reviewed same-repository workload code shares the runner user; a wrapper records evidence and supplies no hostile-code isolation.
+
+| Option | Lost on | Cost |
+| --- | --- | --- |
+| Flare-governed dispatch-only native transport *(chosen)* | — | Actions dispatch/read/artifact permissions and an authenticated execution backend. |
+| Cloudflare Linux containers alone | Runtime fidelity | Cross-compilation supplies no native Windows execution or MSVC linker. |
+| Independent PR-triggered Actions orchestration | One admission and publisher | Two trigger and verdict authorities can disagree about the tested head. |
+
+Criteria: native runtime fidelity decides the transport; one admission authority, immutable provenance and finite execution remain constraints.
+Consequences: missing or mismatched native receipts refuse success. The narrow workflow invariant permits this executor alone; broad triggers and a second workflow fail the owning gate. A reviewed executor reaches the default branch before its dispatch is admitted; native gate leaves retain separate Linux predecessors.
+
+## Windows archives and Homebrew share a complete release manifest
+
+The release matrix declares edge and full on both MSVC architectures. Archive staging preserves the native executable filename and bytes. Complete metadata and SHA256SUMS cover every declared cell; Homebrew resolves only Linux and Darwin assets. Windows package-manager delivery has no Homebrew platform alias.
+
+| Option | Lost on | Cost |
+| --- | --- | --- |
+| One complete manifest with platform-specific selection *(chosen)* | — | Windows builds require native execution; Homebrew represents a subset of the artifacts. |
+| Treat every non-Darwin cell as Linux | Target identity | A formula downloads a Windows executable on Linux. |
+| Exclude Windows from metadata aggregation | Completeness | A release can publish while a declared Windows artifact is absent. |
+
+Consequences: packaging fixtures establish byte preservation and manifest admission, not native compiler or runtime success.
+
 ## Assurance claims carry their qualifiers, and the proof gate audits assumptions
 
 `assurance.scope-claim` states named authorization decisions, named specifications and stated translation and runtime assumptions; a wider claim raises `ClaimBeyondNamedDecisions`. `assurance.prove` publishes each theorem with the statement it leaves open; the composition theorem covers the one order the engine applies. `assurance.audit-assumptions` matches a hand-maintained inventory against each constant's transitive assumption footprint over a two-entry allowlist. `assurance.recheck` rebuilds from pinned source, credential-free, in a zero-dependency package.

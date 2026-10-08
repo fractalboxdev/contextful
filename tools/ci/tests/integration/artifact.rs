@@ -8,6 +8,105 @@ use std::path::Path;
 use std::process::{Command, Output};
 
 const LINUX_X86: &str = "x86_64-unknown-linux-musl";
+const WINDOWS: [&str; 2] = ["x86_64-pc-windows-msvc", "aarch64-pc-windows-msvc"];
+
+#[test]
+fn windows_release_plan_contains_both_msvc_targets_for_edge_and_full_only() {
+    let out = ci(&["release", "--plan"], None);
+    assert!(out.status.success(), "{}", String::from_utf8_lossy(&out.stderr));
+    let cells: Vec<_> = String::from_utf8_lossy(&out.stdout).lines().map(str::to_owned).collect();
+    assert_eq!(cells.len(), 14, "release plan omits Windows cells: {cells:?}");
+    for target in WINDOWS {
+        for profile in ["contextful-edge", "contextful-full"] {
+            assert_eq!(cells.iter().filter(|cell| **cell == format!("{profile} {target}")).count(), 1);
+        }
+        assert!(!cells.contains(&format!("contextful-control {target}")));
+    }
+}
+
+#[test]
+fn windows_release_preserves_executable_bytes_license_digest_and_sbom() {
+    let bin = tempfile::tempdir().unwrap();
+    let real = std::env::var("CARGO").unwrap_or_else(|_| "cargo".into());
+    let script = format!("#!/bin/sh\nif [ \"$1\" = build ]; then\n t=''; prev=''; for a in \"$@\"; do [ \"$prev\" = --target ] && t=\"$a\"; prev=\"$a\"; done\n mkdir -p \"$CARGO_TARGET_DIR/$t/release\"\n printf 'MZ\\000fixture\\377' > \"$CARGO_TARGET_DIR/$t/release/contextful.exe\"\n exit 0\nfi\nexec '{real}' \"$@\"\n");
+    let cargo = bin.path().join("cargo");
+    std::fs::write(&cargo, script).unwrap();
+    std::fs::set_permissions(cargo, std::os::unix::fs::PermissionsExt::from_mode(0o755)).unwrap();
+    let target_dir = tempfile::tempdir().unwrap();
+    let dist = tempfile::tempdir().unwrap();
+    for target in WINDOWS {
+        for profile in ["contextful-edge", "contextful-full"] {
+            let out = ci(&["release", "--profile", profile, "--target", target, "--target-dir", target_dir.path().to_str().unwrap(), "--out", dist.path().to_str().unwrap()], Some(bin.path()));
+            assert!(out.status.success(), "{profile} {target}: {}", String::from_utf8_lossy(&out.stderr));
+            let stem = format!("{}-{}-{target}", profile, version());
+            let archive = dist.path().join(format!("{stem}.tar.gz"));
+            let binary = Command::new("tar").args(["-xzOf"]).arg(&archive).arg(format!("{stem}/contextful.exe")).output().unwrap();
+            assert!(binary.status.success());
+            assert_eq!(binary.stdout, b"MZ\0fixture\xff");
+            let license = Command::new("tar").args(["-xzOf"]).arg(&archive).arg(format!("{stem}/LICENSE")).output().unwrap();
+            assert!(license.status.success());
+            assert_eq!(license.stdout, std::fs::read(repo_root().join("LICENSE")).unwrap());
+            let digest = format!("{:x}", Sha256::digest(std::fs::read(&archive).unwrap()));
+            assert_eq!(std::fs::read_to_string(dist.path().join(format!("{stem}.tar.gz.sha256"))).unwrap(), format!("{digest}  {stem}.tar.gz\n"));
+            let metadata: serde_json::Value = serde_json::from_slice(&std::fs::read(dist.path().join(format!("{stem}.release.json"))).unwrap()).unwrap();
+            assert_eq!(metadata["target"], target);
+            assert_eq!(metadata["sha256"], digest);
+            let sbom: serde_json::Value = serde_json::from_slice(&std::fs::read(dist.path().join(format!("{stem}.cdx.json"))).unwrap()).unwrap();
+            assert!(sbom["metadata"]["properties"].as_array().unwrap().iter().any(|property| property["name"] == "contextful:target" && property["value"] == target));
+        }
+    }
+}
+
+fn complete_release_metadata() -> Vec<serde_json::Value> {
+    let mut cells = Vec::new();
+    for profile in ["contextful-control", "contextful-edge", "contextful-full"] {
+        let mut targets = vec![LINUX_X86, "aarch64-unknown-linux-musl"];
+        if profile != "contextful-control" {
+            targets.extend(["aarch64-apple-darwin", "x86_64-apple-darwin"]);
+            targets.extend(WINDOWS);
+        }
+        for target in targets {
+            let stem = format!("{profile}-{}-{target}", version());
+            cells.push(serde_json::json!({"profile":profile,"target":target,"archive":format!("{stem}.tar.gz"),"sbom":format!("{stem}.cdx.json"),"sha256":"a".repeat(64)}));
+        }
+    }
+    cells
+}
+
+#[test]
+fn windows_release_metadata_is_required_once_and_never_becomes_a_homebrew_platform() {
+    let dist = tempfile::tempdir().unwrap();
+    let manifest = dist.path().join("manifest.json");
+    let cells = complete_release_metadata();
+    let formula = |cells: &[serde_json::Value]| {
+        std::fs::write(&manifest, serde_json::to_vec(cells).unwrap()).unwrap();
+        ci(&["formula", "--manifest", manifest.to_str().unwrap(), "--dist", dist.path().to_str().unwrap(), "--base-url", "https://example.com/v"], None)
+    };
+    let out = formula(&cells);
+    assert!(out.status.success(), "complete Windows metadata refuses: {}", String::from_utf8_lossy(&out.stderr));
+    let sums = std::fs::read_to_string(dist.path().join("SHA256SUMS")).unwrap();
+    assert_eq!(sums.lines().count(), 14);
+    assert_eq!(sums.lines().filter(|line| line.contains("windows-msvc")).count(), 4);
+    for name in ["contextful", "contextful-control", "contextful-edge", "contextful-full"] {
+        let text = std::fs::read_to_string(dist.path().join(format!("Formula/{name}.rb"))).unwrap();
+        assert!(!text.contains("windows"), "Homebrew contains a Windows cell: {text}");
+    }
+    let mut invalid = cells.clone();
+    invalid.pop();
+    assert!(!formula(&invalid).status.success(), "missing Windows metadata publishes");
+    let mut invalid = cells.clone();
+    invalid.push(cells.last().unwrap().clone());
+    assert!(!formula(&invalid).status.success(), "duplicate Windows metadata publishes");
+    let mut invalid = cells.clone();
+    invalid.last_mut().unwrap()["archive"] = serde_json::json!("wrong.tar.gz");
+    assert!(!formula(&invalid).status.success(), "wrong Windows archive publishes");
+    let mut invalid = cells.clone();
+    invalid.last_mut().unwrap()["sbom"] = serde_json::json!("wrong.cdx.json");
+    assert!(!formula(&invalid).status.success(), "wrong Windows SBOM publishes");
+    let mut invalid = cells.clone();
+    invalid.last_mut().unwrap()["sha256"] = serde_json::json!("invalid");
+    assert!(!formula(&invalid).status.success(), "invalid Windows digest publishes");
+}
 
 fn ci(args: &[&str], bin: Option<&Path>) -> Output {
     let mut c = Command::new(env!("CARGO_BIN_EXE_contextful-ci"));
@@ -24,7 +123,7 @@ fn fake_cargo(dir: &Path) {
     let real = std::env::var("CARGO").unwrap_or_else(|_| "cargo".into());
     let script = format!(
         "#!/bin/sh\nif [ \"$1\" = build ] || [ \"$1\" = zigbuild ]; then\n  t=''; prev=''\n  for a in \"$@\"; do [ \"$prev\" = --target ] && t=\"$a\"; prev=\"$a\"; done\n  \
-         mkdir -p \"$CARGO_TARGET_DIR/$t/release\"\n  echo \"$*\" > \"$CARGO_TARGET_DIR/$t/release/contextful\"\n  exit 0\nfi\nexec '{real}' \"$@\"\n"
+         mkdir -p \"$CARGO_TARGET_DIR/$t/release\"\n  name=contextful; case \"$t\" in *-windows-msvc) name=contextful.exe;; esac\n  echo \"$*\" > \"$CARGO_TARGET_DIR/$t/release/$name\"\n  exit 0\nfi\nexec '{real}' \"$@\"\n"
     );
     let path = dir.join("cargo");
     std::fs::write(&path, script).unwrap();
@@ -87,7 +186,7 @@ fn the_release_matrix_is_every_profile_on_musl_and_edge_and_full_on_darwin() {
         }
     }
     for p in ["contextful-edge", "contextful-full"] {
-        for t in ["aarch64-apple-darwin", "x86_64-apple-darwin"] {
+        for t in ["aarch64-apple-darwin", "x86_64-apple-darwin", "x86_64-pc-windows-msvc", "aarch64-pc-windows-msvc"] {
             expected.push(format!("{p} {t}"));
         }
     }
@@ -141,13 +240,13 @@ fn formula_uses_metadata_without_local_release_archives() {
     let run = ci(&["formula", "--manifest", manifest.to_str().unwrap(), "--dist", dist.path().to_str().unwrap(), "--base-url", "https://example.com/v"], None);
     assert!(run.status.success(), "{}", String::from_utf8_lossy(&run.stderr));
     let sums = std::fs::read_to_string(dist.path().join("SHA256SUMS")).unwrap();
-    assert_eq!(sums.lines().count(), 10);
+    assert_eq!(sums.lines().count(), 14);
     assert!(sums.lines().all(|line| line.starts_with(&"a".repeat(64))));
     let formula = std::fs::read_to_string(dist.path().join("Formula/contextful-full.rb")).unwrap();
     assert!(formula.contains("https://example.com/v/contextful-full-"));
     assert!(formula.contains(&"a".repeat(64)));
 
-    std::fs::write(&manifest, serde_json::to_vec(&cells[..9]).unwrap()).unwrap();
+    std::fs::write(&manifest, serde_json::to_vec(&cells[..13]).unwrap()).unwrap();
     let incomplete = ci(&["formula", "--manifest", manifest.to_str().unwrap(), "--dist", dist.path().to_str().unwrap(), "--base-url", "https://example.com/v"], None);
     assert!(!incomplete.status.success(), "a missing release cell produced formulae");
 }
@@ -193,7 +292,7 @@ fn a_dry_run_release_packages_three_archives_with_checksums_sboms_and_formulae()
     assert!(full.iter().any(|n| n == "contextful-engine") && full.iter().any(|n| n == "duckdb"), "{full:?}");
 
     // The other targets, so every formula finds each archive it names.
-    for t in ["aarch64-unknown-linux-musl", "aarch64-apple-darwin", "x86_64-apple-darwin"] {
+    for t in ["aarch64-unknown-linux-musl", "aarch64-apple-darwin", "x86_64-apple-darwin", "x86_64-pc-windows-msvc", "aarch64-pc-windows-msvc"] {
         let run = ci(&["release", "--target", t, "--target-dir", td, "--out", out], Some(bin.path()));
         assert!(run.status.success(), "{t}: {}", String::from_utf8_lossy(&run.stderr));
     }
@@ -207,7 +306,7 @@ fn a_dry_run_release_packages_three_archives_with_checksums_sboms_and_formulae()
     let control_rb = std::fs::read_to_string(dist.path().join("Formula/contextful-control.rb")).unwrap();
     assert!(!control_rb.contains("on_macos"), "{control_rb}");
     let sums = std::fs::read_to_string(dist.path().join("SHA256SUMS")).unwrap();
-    assert_eq!(sums.lines().count(), 10, "{sums}");
+    assert_eq!(sums.lines().count(), 14, "{sums}");
 
     let install = std::fs::read_to_string(repo_root().join("install.sh")).unwrap();
     assert!(install.contains("profile=\"${CONTEXTFUL_PROFILE:-contextful-full}\""), "the install script defaults to another profile");

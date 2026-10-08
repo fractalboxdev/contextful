@@ -136,10 +136,15 @@ Target directories, the engine-linked invocation, linked query functions, build 
 - `container-image` — The repository's `Dockerfile` builds one profile, `contextful-full` unless `PROFILE` names another, as a static `linux/amd64` binary, and ships it in a shell-free runtime image as a non-root user over a declared store volume.
 - `targets` — All three profiles cross-compile to `x86_64-unknown-linux-musl` and `aarch64-unknown-linux-musl`; edge and full also build for `aarch64-apple-darwin` and `x86_64-apple-darwin`.
   *A-assurance*
-- `windows-target` — Edge and full also build for `x86_64-pc-windows-msvc`.
+- `windows-target` — Edge and full also build for `x86_64-pc-windows-msvc` and `aarch64-pc-windows-msvc`.
+  *A-assurance*
 - `wasi-probe` — No profile ships a `wasm32-wasip2` release; a scheduled-tier ledger entry builds the edge profile for it and holds the compressed artifact to {{assurance.gate.edge-budget}}.
   *A-assurance*
 - `release-artifact` — Each profile ships a release archive with a SHA-256 checksum and an SBOM, a package-manager formula and an independently tagged container image; the bare formula name and the install script resolve to the full profile.
+- `windows-artifact` — A Windows release archive preserves its built `contextful.exe` bytes and contains the licence.
+  *A-assurance*
+- `formula-platforms` — Homebrew formulas select only the Linux and Darwin cells of {{assurance.build.targets}}.
+  *A-assurance*
 - `release-builder` — The release command uses `cargo build` by default and `cargo zigbuild` under `--builder zigbuild`, forwarding the selected target and profile features.
   *because Cloudflare Linux builds Darwin targets through Zig while the local release command keeps its native build path*
 - `release-metadata` — Each release cell writes a JSON record naming its profile, target, archive, SHA-256 digest and SBOM.
@@ -167,6 +172,10 @@ Stage order, secrets of record, the crate-graph, row-token, egress and dependenc
 - `remote-check` — The FlareDispatch pull-request webhook dispatches every part from `contextful-ci stages --parts --base <base-sha>`, each as `flare-dispatch/check:<part>` on the head commit.
   *A-assurance*
 - `test-first-parts` — Remote validation requires a changed test in each changed source package under {{assurance.test.test-first}}; each such package checks only its changed tests against the base in a separate dispatch.
+  *A-assurance*
+- `native-transport` — The sole GitHub Actions workflow accepts only FlareDispatch `workflow_dispatch` inputs for native Windows execution; FlareDispatch owns admission, immutable head selection, terminal receipt verification, required checks and artifact publication.
+  *A-assurance*
+- `native-receipt` — FlareDispatch accepts native results only when repository, head, base, nonce, command digest, trusted workflow identity, fixed runner label, observed native target, terminal exit and artifact digests match the admitted request.
   *A-assurance*
 - `workspace-parts` — Remote workspace checks compile the feature-unified workspace without running tests, run differential and remaining CLI tests separately, and run each other non-acceptance package suite in exactly one of four groups.
   *A-assurance*
