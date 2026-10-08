@@ -27,8 +27,9 @@ fn main() {
             "the source-binding configuration belongs to this checkout"
         );
     }
-    println!(
-        "cargo:rustc-env=CONTEXTFUL_COMPILED_SOURCE_ROOT={}",
-        identity
-    );
+    let identity = identity
+        .bytes()
+        .map(|byte| format!("{byte:02x}"))
+        .collect::<String>();
+    println!("cargo:rustc-env=CONTEXTFUL_COMPILED_SOURCE_ROOT=hex:{identity}");
 }
