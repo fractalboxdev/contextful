@@ -133,7 +133,17 @@ fn a_consumer_outside_the_checkout_compiles_its_path_dependency() {
         "src/main.rs",
         "fn main() { assert_eq!(source_binding_demo::value(), \"alpha\"); println!(\"alpha\"); }\n",
     );
-    let ran = cargo(&consumer, &temp.path().join("shared"), "run");
+    let shared = temp.path().join("shared");
+    cargo(&consumer, &shared, "build");
+    let executable = if cfg!(windows) {
+        "consumer.exe"
+    } else {
+        "consumer"
+    };
+    let ran = Command::new(shared.join("debug").join(executable))
+        .output()
+        .unwrap();
+    assert!(ran.status.success());
     assert_eq!(String::from_utf8(ran.stdout).unwrap().trim(), "alpha");
 }
 
