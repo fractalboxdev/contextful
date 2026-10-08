@@ -15,6 +15,7 @@ use contextful_context::{node, Store};
 use contextful_core::job::{bind_targets, parse_jobs, Job, JobKind, StoreDriven, Targets};
 use contextful_core::run::advance::CursorKind;
 use contextful_core::run::drive::{Bodies, Emitted, InputSet};
+use contextful_core::run::effect::{EffectAdmission, EffectScope, EmissionSummary, RecordedBodyPlan, RecordedEffect};
 use contextful_core::run::journal::sha256_hex;
 use contextful_core::run::plan::{ConnectorSpec, CursorSpec, Plan, PlanSpec, NATIVE_WORLD};
 use contextful_core::run::ports::{Landed, Source, Unshaped};
@@ -27,6 +28,32 @@ use contextful_engine::drive::{Drive, PARKED_POLL};
 use contextful_engine::RunSpec;
 use contextful_policy::enforce::session::Request;
 use std::path::PathBuf;
+
+/// The canonical writer prepares and admits effects without owning execution or journal state.
+struct StoreEffects(Store);
+
+impl EffectAdmission for StoreEffects {
+    fn identity(&self, effect: &RecordedEffect) -> Result<String, Failure> {
+        self.0.effect_recording_identity(&effect.table, effect.normalize).map_err(store_error)
+    }
+    fn prepare(&self, effect: &RecordedEffect, rows: Vec<contextful_core::run::ports::Row>, types: contextful_core::run::ports::Types, scope: &EffectScope) -> Result<serde_json::Value, Failure> {
+        let batch = contextful_context::land::Batch { rows, types:types.into_iter().collect() };
+        let prepared = self.0.prepare_effect_recording(&effect.table, &batch, effect.normalize, &scope.key().execution_id, scope).map_err(store_error)?;
+        serde_json::from_slice(&prepared.encode().map_err(store_error)?).map_err(|_| Failure::deterministic(FailureTag::SchemaIncompatible, "prepared body result does not encode"))
+    }
+    fn admit(&self, effect: &RecordedEffect, scope: &EffectScope, payload: &serde_json::Value) -> Result<EmissionSummary, Failure> {
+        let bytes = serde_json::to_vec(payload).map_err(|_| Failure::deterministic(FailureTag::SchemaIncompatible, "prepared body result does not encode"))?;
+        self.0.admit_effect_recording(&effect.table, &bytes, effect.normalize, scope).map_err(store_error)?.summary().map_err(store_error)
+    }
+}
+
+fn store_error(error: contextful_context::ContextError) -> Failure { Failure::deterministic(FailureTag::Permanent, error.to_string()) }
+fn engine_error(error: contextful_engine::EngineError) -> Failure {
+    match error {
+        contextful_engine::EngineError::Failure(failure) => failure,
+        other => Failure::new(FailureTag::Storage, other.to_string()),
+    }
+}
 
 #[derive(Subcommand)]
 pub enum JobCmd {
@@ -84,6 +111,23 @@ fn output_plan(job: &str, table: &str, driven: &StoreDriven) -> Result<Plan> {
     Ok(plan)
 }
 
+/// Raw and prepared outputs share each declared table's attempt and status accounting.
+fn land_tables(driven: &StoreDriven, name: &str, run_id: &str, site_id: &str, mut run: impl FnMut(&str, &RunSpec) -> Result<contextful_core::run::record::RunRow, Failure>) -> Result<Landed, Failure> {
+    let mut total = Landed::default();
+    for table in &driven.tables {
+        let plan = output_plan(name, table, driven).map_err(|e| Failure::deterministic(FailureTag::Permanent, e.to_string()))?;
+        let connector = plan.connector_pin(&plan.content_hash);
+        let spec = RunSpec { plan, connector, run_id:format!("{run_id}.{table}"), site_id:site_id.into(), pid:std::process::id(), boot_id:boot_id(), trace_id:None };
+        let row = run(table, &spec)?;
+        if row.status != RunStatus::Success {
+            return Err(Failure::new(row.error_kind.unwrap_or(FailureTag::Storage), format!("table `{table}` closed {} in run `{}`: {}", row.status, row.run_id, row.error_message.unwrap_or_default())));
+        }
+        total.rows += row.rows;
+        total.bytes += row.bytes;
+    }
+    Ok(total)
+}
+
 pub fn run(cmd: JobCmd, bodies: &Bodies) -> Result<()> {
     let registered = |name: &str| bodies.get(name).is_some();
     match cmd {
@@ -114,8 +158,12 @@ pub fn run(cmd: JobCmd, bodies: &Bodies) -> Result<()> {
             let site_id = site_id_for(&text, &l.declaration, site_id, site_id_env)?;
             let (authority, _) = admit.admit(project.project.as_deref(), "a store-driven job")?;
             let store = Store::open_declared(&l.project.dir, &l.project.name, &l.declaration)?;
-            for table in &driven.tables {
-                store.validate_writer_recording(table, None)?;
+            let recorded_plan = body.recorded().map(|body| RecordedBodyPlan::compile(body.effects(), &driven.tables)).transpose()?;
+            let effects = StoreEffects(store.clone());
+            if let Some(plan) = &recorded_plan {
+                for effect in plan.effects() { effects.identity(effect)?; }
+            } else {
+                for table in &driven.tables { store.validate_writer_recording(table, None)?; }
             }
             let face = face(&l)?;
             let w = wire_at(&l.project, &project.now)?;
@@ -138,43 +186,32 @@ pub fn run(cmd: JobCmd, bodies: &Bodies) -> Result<()> {
             let (node, _) = node::resolve(&store, |k| std::env::var(k).ok())?;
             let mut dest = StoreDestination { store, decls, node, author: None, normalize: None, relational_parts: Default::default(), schema_diffs: Vec::new() };
             let engine = &w.engine;
+            let drive = Drive {
+                job: name.clone(), input: driven.input.clone(), body: body.as_ref(), max_in_flight: driven.max_in_flight,
+                run_id: run_id.clone(), site_id: site_id.clone(), pid: std::process::id(), boot_id: boot_id(), schedule: Schedule::default(), poll: PARKED_POLL,
+            };
+            let row = if let Some(plan) = &recorded_plan {
+                let mut land = |emitted: &contextful_core::run::drive::PreparedEmitted, owner: &contextful_engine::drive::BodyOwner| -> Result<Landed, Failure> {
+                    land_tables(driven, &name, &run_id, &site_id, |table, spec| {
+                        dest.normalize = plan.effects().find(|effect| effect.table == table).and_then(|effect| effect.normalize);
+                        engine.run_emissions(spec, owner, emitted.get(table).map(Vec::as_slice).unwrap_or_default(), &mut dest).map_err(engine_error)
+                    })
+                };
+                engine.drive_recorded(&drive, plan, &effects, &mut read, &mut land)?
+            } else {
             let mut land = |emitted: &Emitted| -> Result<Landed, Failure> {
                 if let Some(table) = emitted.keys().find(|t| !driven.tables.contains(t)) {
                     return Err(Failure::deterministic(FailureTag::Permanent, format!("body `{}` emitted rows for `{table}`, which job `{name}` does not declare in `tables`", driven.input.body)));
                 }
-                let mut total = Landed { rows: 0, bytes: 0 };
-                for table in &driven.tables {
-                    let plan = output_plan(&name, table, driven).map_err(|e| Failure::deterministic(FailureTag::Permanent, e.to_string()))?;
-                    dest.store.validate_writer_plan(&plan, dest.normalize).map_err(|e| Failure::deterministic(FailureTag::Permanent, e.to_string()))?;
-                    let connector = plan.connector_pin(&plan.content_hash);
-                    let spec = RunSpec { plan, connector, run_id: format!("{run_id}.{table}"), site_id: site_id.clone(), pid: std::process::id(), boot_id: boot_id(), trace_id: None };
+                land_tables(driven, &name, &run_id, &site_id, |table, spec| {
+                    dest.store.validate_writer_plan(&spec.plan, dest.normalize).map_err(|e| Failure::deterministic(FailureTag::Permanent, e.to_string()))?;
                     let mut source: Box<dyn Source> = Box::new(Staged(emitted.get(table).cloned().unwrap_or_default(), 0));
-                    let row = engine.run_with(&spec, &mut source, &Unshaped, &mut dest).map_err(|e| Failure::new(FailureTag::Storage, e.to_string()))?;
-                    if row.status != RunStatus::Success {
-                        return Err(Failure::new(
-                            row.error_kind.unwrap_or(FailureTag::Storage),
-                            format!("table `{table}` closed {} in run `{}`: {}", row.status, row.run_id, row.error_message.unwrap_or_default()),
-                        ));
-                    }
-                    total.rows += row.rows;
-                    total.bytes += row.bytes;
-                }
-                Ok(total)
+                    engine.run_with(spec, &mut source, &Unshaped, &mut dest).map_err(|e| Failure::new(FailureTag::Storage, e.to_string()))
+                })
             };
 
-            let drive = Drive {
-                job: name.clone(),
-                input: driven.input.clone(),
-                body: body.as_ref(),
-                max_in_flight: driven.max_in_flight,
-                run_id: run_id.clone(),
-                site_id: site_id.clone(),
-                pid: std::process::id(),
-                boot_id: boot_id(),
-                schedule: Schedule::default(),
-                poll: PARKED_POLL,
+            w.engine.drive(&drive, &mut read, &mut land)?
             };
-            let row = w.engine.drive(&drive, &mut read, &mut land)?;
             let input = row.input.clone().map(|i| i.rows).unwrap_or_default();
             if row.status == RunStatus::Success {
                 println!("{name}: {} success · {} rows landed from {input} input rows", row.run_id, row.rows);

@@ -117,6 +117,10 @@ Removal and transformation inside the writer, ahead of columnar bytes and the ru
   *because progress bytes cannot retain a value that its row removes*
 - `recorded-body` — A store-driven job targeting canonical removal rules refuses before body execution without typed effect-result removal lineage; body calls record results before output landing.
   *because later row rewriting cannot remove earlier recorded effect results*
+- `prepared-effects` — Canonical effect preparation produces opaque rewritten root and child groups; the paid record and staged group carry the same rewritten values and {{authority.redact.rewritten-identities}}.
+  *A-authority*
+- `effect-scope` — A prepared effect binds canonical authority to its execution, row and effect entry key and composite projection identity; replay and staging require the independently issued scope, never authority inferred from decoded bytes.
+  *A-authority*
 
 ## compose
 

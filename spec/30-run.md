@@ -107,6 +107,8 @@ Recording a step's value once, resolving it on replay, and collecting what a rep
 - `row-concurrency` — A store-driven run holds at most `max_in_flight` rows inside the body at once; a failing row admits no further row, and the run closes after the rows in flight return.
 - `row-output` — The rows every body emits land after the last input row completes and before the owner retires, one run per declared output table through {{run.land.stage-order}}.
   *because a landing that fails then holds the owner, and its resume replays every paid call instead of paying again*
+- `body-projection` — A registered body's closed effect labels, declared roots, types, transforms and normalization bind its owner before input or effect execution; a caller-supplied projection differing from that registration refuses.
+  *A-authority*
 - `unwired-capability` — Reaching for a capability the running profile does not wire raises `CapabilityUnwired` at the first reach, before any half-finished work.
   *A-topology*
 - `machine-state` — Journal rows, execution owners and awakeables live in the host's own stores, never in the derived catalog; a catalog rebuild leaves them untouched and reconstructs none from the file tree.
@@ -290,6 +292,8 @@ The execution owner a scope holds and the connector build it pins while pending.
   *because a stage-time instant ranks a run by its first pull, so under {{store.declare.dedup-view}} an earlier committer outranks a later one on a shared key*
 - `stage-discard` — A run that fails removes every part it staged, and a commit failing before its manifest exists removes the parts it copied; a run's crash leaves its staged parts.
   *because a run id names one attempt, so no later commit names a failed run's staged parts*
+- `body-parent` — Prepared body outputs require the unchanged parent execution and current in-flight, unstopped attempt at admission, staging and commit; a stopped parent reaches {{run.cancel.abandoned-work}} independently of the output table's stop policy.
+  *A-authority*
 
 ```mermaid
 flowchart LR
@@ -335,7 +339,7 @@ Stopping work in flight at either grain, the one token every await observes, and
   *A-run*
 - `keeper-panic` — A keeper job that panics warns and leaves the keeper running: every other registration keeps its cadence, the panicking one retries at its next deadline, and dropping it returns.
   *because the keeper is shared, so one adapter's panic that ended its thread lapses every open execution's lease under a live run*
-- `land-path-uncut` — The land path carries no stop check; a run whose bytes are home finishes landing and records the stop it did not fulfill.
+- `land-path-uncut` — A table run's own stop does not cut landing; bytes already home finish landing and record the unfulfilled stop. Prepared body outputs additionally require {{run.own.body-parent}}.
 - `abandoned-work` — Abandoned work surfaces as the `Canceled` tag through the ordinary failure path, which settles the request ledger, closes the record and leaves the position alone.
   *A-run*
 - `child-reaped` — A stop signals a running subprocess chain's process group, and the record is written `canceled` only after the group is reaped.

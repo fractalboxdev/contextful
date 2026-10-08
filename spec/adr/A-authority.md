@@ -14,7 +14,20 @@ Redaction holds only when no derived artifact carries the pre-redaction value, s
 | Redact in each adapter, or at read time | Uniformity | The guarantee is as strong as the least careful adapter; stored material outlives every reader that forgets. |
 
 Consequences: two failures at different pages of one walk render identically from a scrubbed URL.
-Revisit: an index structure provably independent of the indexed values; typed body-effect preparation.
+Revisit: an index structure provably independent of the indexed values.
+
+## A closed body projection records canonical opaque groups
+
+A registered effect projection binds labels, roots, types, transforms and normalization before input or paid calls. The existing canonical writer signs concrete rewritten groups under execution, row and effect scope. The existing journal records only their opaque wire; replay and staging independently re-admit that scope. Credential masking precedes shaping, and private counts reach the engine reporter only on fresh preparation.
+
+| Option | Lost on | Cost |
+| --- | --- | --- |
+| Closed projection and canonical opaque groups *(chosen)* | — | Typed body APIs carry projection and issued scope; authority changes refuse pending owners. |
+| Record raw results then rewrite outputs | At-rest completeness | The paid journal retains values removed from landed rows. |
+| Accept caller-labelled prepared bytes | Authority | A caller can claim preparation without canonical admission. |
+| Rewrite recorded values on replay | Idempotence | A keyed digest becomes a digest of its own output. |
+
+Consequences: journal and landing share the existing state machine and discard owner; earlier output tables remain published when a later table fails. Live parent admission is independent of each output table's cancellation policy. Declared ruleless roots support mixed outputs without admitting undeclared destinations. Removal protects designated row values, not arbitrary schema labels. Protected awakeable results require their own typed admission path.
 
 ## A prepared source record binds canonical authority before execution
 

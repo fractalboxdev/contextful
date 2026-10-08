@@ -174,6 +174,14 @@ pub trait Destination {
     fn stage_recorded(&mut self, _stage: Stage, _prepared: &Value) -> Result<Part, Failure> {
         Err(Failure::deterministic(FailureTag::Permanent, "destination admits no prepared staging"))
     }
+    /// Re-admit a body result's canonical MAC and exact owner/effect scope before metadata use.
+    fn admit_effect_recorded(&self, _table: &str, _prepared: &Value, _scope: &super::effect::EffectScope) -> Result<super::effect::EmissionSummary, Failure> {
+        Err(Failure::deterministic(FailureTag::Permanent, "destination admits no body recording"))
+    }
+    /// Stage the same owner-bound prepared result, rechecking canonical authority at persistence.
+    fn stage_effect_recorded(&mut self, _stage: Stage, _prepared: &Value, _scope: &super::effect::EffectScope) -> Result<Part, Failure> {
+        Err(Failure::deterministic(FailureTag::Permanent, "destination admits no body staging"))
+    }
     /// Whether the table replaces its complete source state.
     fn replaces(&self, _table: &str) -> bool {
         false

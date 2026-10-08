@@ -291,6 +291,18 @@ impl StoreDestination {
     fn context(&self, run_id: &str, site_id: &str, at: Instant) -> RunContext {
         RunContext { node: self.node.clone(), injection: self.injection(run_id, site_id), committed_at: at }
     }
+    fn stage_prepared(&mut self, stage: Stage, prepared: &contextful_context::PreparedRecording, scope: Option<&contextful_core::run::effect::EffectScope>) -> Result<Part, Failure> {
+        let mut offsets: BTreeMap<String, u64> = self.relational_parts.iter().map(|(table, parts)| (table.clone(), parts.iter().map(|part| part.rows).sum())).collect();
+        offsets.insert(stage.table.clone(), stage.row_offset);
+        let injection = self.injection(&stage.run_id, &stage.site_id);
+        let mut parts = match scope {
+            Some(scope) => contextful_context::land::stage_effect_recorded_group(&self.store, &self.decl(&stage.table), contextful_context::land::ScopedRecording { prepared, scope }, &self.node, &injection, stage.ordinal, &offsets),
+            None => contextful_context::land::stage_recorded_group(&self.store, &self.decl(&stage.table), prepared, &self.node, &injection, stage.ordinal, &offsets),
+        }.map_err(store_failure)?;
+        let root = parts.remove(&stage.table).ok_or_else(|| Failure::new(FailureTag::Storage, "prepared recording has no root part"))?;
+        for (table, part) in parts { self.relational_parts.entry(table).or_default().push(Part { name:part.name, rows:part.rows, bytes:part.bytes }); }
+        Ok(Part { name:root.name, rows:root.rows, bytes:root.bytes })
+    }
 }
 
 impl Destination for StoreDestination {
@@ -312,13 +324,16 @@ impl Destination for StoreDestination {
     fn stage_recorded(&mut self, stage: Stage, payload: &serde_json::Value) -> Result<Part, Failure> {
         let bytes = serde_json::to_vec(payload).map_err(|e| Failure::deterministic(FailureTag::SchemaIncompatible, e.to_string()))?;
         let prepared = self.store.admit_recording(&stage.table, &bytes, self.normalize).map_err(store_failure)?;
-        let mut offsets: BTreeMap<String, u64> = self.relational_parts.iter().map(|(table, parts)| (table.clone(), parts.iter().map(|part| part.rows).sum())).collect();
-        offsets.insert(stage.table.clone(), stage.row_offset);
-        let injection = self.injection(&stage.run_id, &stage.site_id);
-        let mut parts = contextful_context::land::stage_recorded_group(&self.store, &self.decl(&stage.table), &prepared, &self.node, &injection, stage.ordinal, &offsets).map_err(store_failure)?;
-        let root = parts.remove(&stage.table).ok_or_else(|| Failure::new(FailureTag::Storage, "prepared recording has no root part"))?;
-        for (table, part) in parts { self.relational_parts.entry(table).or_default().push(Part { name:part.name, rows:part.rows, bytes:part.bytes }); }
-        Ok(Part { name:root.name, rows:root.rows, bytes:root.bytes })
+        self.stage_prepared(stage, &prepared, None)
+    }
+    fn admit_effect_recorded(&self, table: &str, payload: &serde_json::Value, scope: &contextful_core::run::effect::EffectScope) -> Result<contextful_core::run::effect::EmissionSummary, Failure> {
+        let bytes = serde_json::to_vec(payload).map_err(|_| Failure::deterministic(FailureTag::SchemaIncompatible, "prepared body payload does not encode"))?;
+        self.store.admit_effect_recording(table, &bytes, self.normalize, scope).map_err(store_failure)?.summary().map_err(store_failure)
+    }
+    fn stage_effect_recorded(&mut self, stage: Stage, payload: &serde_json::Value, scope: &contextful_core::run::effect::EffectScope) -> Result<Part, Failure> {
+        let bytes = serde_json::to_vec(payload).map_err(|_| Failure::deterministic(FailureTag::SchemaIncompatible, "prepared body payload does not encode"))?;
+        let prepared = self.store.admit_effect_recording(&stage.table, &bytes, self.normalize, scope).map_err(store_failure)?;
+        self.stage_prepared(stage, &prepared, Some(scope))
     }
     fn replaces(&self, table: &str) -> bool {
         self.decl(table).write_mode() == contextful_core::store::declare::WriteMode::Replace
@@ -356,11 +371,14 @@ impl Destination for StoreDestination {
         let decl = self.decl(&commit.table);
         let ctx = self.context(&commit.run_id, &commit.site_id, commit.committed_at);
         let position = Position { pipeline_id: Some(commit.pipeline_id.clone()), cursor: commit.cursor.clone(), fence: commit.fence, logged: commit.fence.is_some(), replace_frontier: commit.replace_frontier };
-        // A lapse at the commit boundary is the credential's, not the store's: it fails the
-        // run deterministically rather than as a retryable storage fault.
+        // Engine and credential boundary refusals preserve their original failure tags.
         let lapsed: RefCell<Option<Failure>> = RefCell::default();
         let precommit = || {
-            precommit().map_err(|f| ContextError::Invalid(f.to_string()))?;
+            precommit().map_err(|f| {
+                let message = f.to_string();
+                *lapsed.borrow_mut() = Some(f);
+                ContextError::Invalid(message)
+            })?;
             match &self.author {
                 Some(a) => a.boundary().map_err(|e| {
                     let message = format!("{e:#}");
@@ -380,15 +398,14 @@ impl Destination for StoreDestination {
             None => Ok(()),
         };
         let names: Vec<String> = commit.parts.iter().map(|p| p.name.clone()).collect();
-        let children = std::mem::take(&mut self.relational_parts);
-        let grouped = !children.is_empty();
+        let grouped = !self.relational_parts.is_empty();
         let mut group_tables = vec![commit.table.clone()];
-        for (table, parts) in children {
-            let child_decl = self.decl(&table);
-            let names: Vec<String> = parts.into_iter().map(|p| p.name).collect();
+        for (table, parts) in &self.relational_parts {
+            let child_decl = self.decl(table);
+            let names: Vec<String> = parts.iter().map(|p| p.name.clone()).collect();
             let child_position = Position { pipeline_id: Some(commit.pipeline_id.clone()), cursor: None, fence: None, logged: false, replace_frontier: false };
             commit_parts_group(&self.store, &child_decl, &names, &ctx, &child_position, &commit.table, &[], &|| Ok(()), &|_| Ok(())).map_err(store_failure)?;
-            group_tables.push(table);
+            group_tables.push(table.clone());
         }
         let manifest = if grouped {
             commit_parts_group(&self.store, &decl, &names, &ctx, &position, &commit.table, &self.schema_diffs, &precommit, &commit_point)
@@ -399,6 +416,7 @@ impl Destination for StoreDestination {
         }.map_err(|e| lapsed.take().unwrap_or_else(|| store_failure(e)))?;
         self.schema_diffs.clear();
         if grouped { publish_group(&self.store, &commit.table, &group_tables, &ctx).map_err(store_failure)?; }
+        self.relational_parts.clear();
         // The committed parts carry `_commit_seq`, so their bytes are measured after the commit.
         let dir = self.store.table_dir(&commit.table).map_err(store_failure)?.join(contextful_core::store::lay_out::RUNS_DIR).join(&commit.run_id).join(&manifest.node_id);
         let mut bytes = 0;

@@ -7,9 +7,10 @@
 
 use crate::execution::{Close, Execution, Tally};
 use crate::runner::{Engine, EngineError};
-use contextful_core::run::drive::{row_label, CallEffect, Emitted, InputRow, InputSet, RowBody, RowCalls, RowStop, StoreInput, Woken, INPUT_STEP};
+use contextful_core::run::drive::{row_label, CallEffect, Emitted, InputRow, InputSet, PreparedEmitted, RecordedRowCalls, RowBody, RowCalls, RowStop, StoreInput, Woken, INPUT_STEP};
+use contextful_core::run::effect::{EffectAdmission, EffectScope, PreparedEmission, RecordedBodyPlan};
 use contextful_core::run::journal::EntryKey;
-use contextful_core::run::own::OwnerScope;
+use contextful_core::run::own::{OwnerPins, OwnerScope, PlanPins};
 use contextful_core::run::ports::{BlobStore, Cancellation, JournalStore, Landed, OpenExecution, Wake};
 use contextful_core::run::record::{RunRow, RunStatus};
 use contextful_core::run::retry::Schedule;
@@ -48,6 +49,24 @@ pub fn job_scope(job: &str) -> OwnerScope {
 pub type ReadInput<'a> = dyn FnMut(&str) -> Result<InputSet, Failure> + 'a;
 /// Lands every emitted row, one run per output table.
 pub type LandOutput<'a> = dyn FnMut(&Emitted) -> Result<Landed, Failure> + 'a;
+type Output<T> = BTreeMap<String, Vec<T>>;
+type Land<'a, T> = dyn FnMut(&Output<T>) -> Result<Landed, Failure> + 'a;
+
+/// The live body execution whose row effects the shared runner can land.
+/// Only a recorded Drive callback receives this admission context.
+pub struct BodyOwner {
+    pub(crate) scope: OwnerScope,
+    pub(crate) execution_id: String,
+    pub(crate) run_id: String,
+    pub(crate) identity: String,
+    effects: Vec<EffectScope>,
+}
+
+impl BodyOwner {
+    pub(crate) fn expected(&self, key: &EntryKey) -> Result<&EffectScope, Failure> {
+        self.effects.iter().find(|scope| scope.key() == key).ok_or_else(|| Failure::deterministic(FailureTag::Permanent, "body effect was not issued by this live execution"))
+    }
+}
 
 /// The calls one row makes, through its execution.
 struct Calls<'x, 'e, J: JournalStore, B: BlobStore> {
@@ -69,11 +88,40 @@ impl<J: JournalStore + Clone, B: BlobStore + Clone> Calls<'_, '_, J, B> {
 
     fn record(&self, label: &str, input: &[u8], effect: &mut dyn FnMut(&str) -> Result<Vec<u8>, Failure>) -> Result<Vec<u8>, RowStop> {
         let key = EntryKey::new(self.x.execution_id(), &row_label(&self.key, label), input);
+        self.record_key(&key, effect)
+    }
+
+    fn record_key(&self, key: &EntryKey, effect: &mut dyn FnMut(&str) -> Result<Vec<u8>, Failure>) -> Result<Vec<u8>, RowStop> {
         let idempotency = key.idempotency_key();
-        match self.x.step_keyed(&key, &|_| true, &mut |_| effect(&idempotency)) {
+        match self.x.step_keyed(key, &|_| true, &mut |_| effect(&idempotency)) {
             Ok(r) => Ok(r.bytes().to_vec()),
             Err(c) => Err(self.stop(c)),
         }
+    }
+}
+
+struct PreparedCalls<'a, 'x, 'e, J: JournalStore, B: BlobStore> {
+    calls: &'a Calls<'x, 'e, J, B>,
+    plan: &'a RecordedBodyPlan,
+    admission: &'a dyn EffectAdmission,
+    identity: &'a str,
+    issued: Mutex<Vec<EffectScope>>,
+}
+
+impl<J: JournalStore + Clone, B: BlobStore + Clone> RecordedRowCalls for PreparedCalls<'_, '_, '_, J, B> {
+    fn call(&self, label: &str, input: &[u8], effect: &mut CallEffect<'_>) -> Result<PreparedEmission, RowStop> {
+        self.plan.effect(label).map_err(|e| self.calls.stop(Close::Failed(Failure::deterministic(FailureTag::Permanent, e.to_string()))))?;
+        let key = EntryKey::new(self.calls.x.execution_id(), &row_label(&self.calls.key, label), input);
+        let scope = EffectScope::new(&key, self.identity);
+        let bytes = self.calls.record_key(&key, &mut |idempotency| {
+            let raw = effect(idempotency)?;
+            let prepared = PreparedEmission::prepare(self.plan, label, &scope, &raw, self.admission)?;
+            crate::guard::log_counts(&key.step_label, prepared.masked_cells());
+            prepared.encode()
+        })?;
+        let emission = PreparedEmission::replay(self.plan, label, &scope, &bytes, self.admission).map_err(|f| self.calls.stop(Close::Failed(f)))?;
+        self.issued.lock().unwrap_or_else(|e| e.into_inner()).push(scope);
+        Ok(emission)
     }
 }
 
@@ -116,11 +164,14 @@ impl<J: JournalStore + Clone, B: BlobStore + Clone> RowCalls for Calls<'_, '_, J
 }
 
 /// Where the rows of one pass stand.
-#[derive(Default)]
-struct Pass {
-    emitted: BTreeMap<usize, Emitted>,
+struct Pass<T> {
+    emitted: BTreeMap<usize, Output<T>>,
     parked: BTreeSet<usize>,
     failed: Option<Close>,
+}
+
+impl<T> Default for Pass<T> {
+    fn default() -> Self { Self { emitted:BTreeMap::new(), parked:BTreeSet::new(), failed:None } }
 }
 
 impl<J: JournalStore + Clone + Send + Sync, B: BlobStore + Clone + Send + Sync> Engine<J, B> {
@@ -128,9 +179,48 @@ impl<J: JournalStore + Clone + Send + Sync, B: BlobStore + Clone + Send + Sync> 
     /// execution records none; `land` lands the emitted rows before the owner retires. A fire
     /// that opened closes on a status its row records, returned whatever that status.
     pub fn drive(&self, drive: &Drive<'_>, read: &mut ReadInput<'_>, land: &mut LandOutput<'_>) -> Result<RunRow, EngineError> {
+        self.drive_using(drive, drive.input.pins(), read, land, &|row, calls| drive.body.run(row, calls))
+    }
+
+    /// The same row/owner machine records only canonical prepared effect results.
+    pub fn drive_recorded(&self, drive: &Drive<'_>, plan: &RecordedBodyPlan, admission: &dyn EffectAdmission, read: &mut ReadInput<'_>, land: &mut dyn FnMut(&PreparedEmitted, &BodyOwner) -> Result<Landed, Failure>) -> Result<RunRow, EngineError> {
+        let body = drive.body.recorded().ok_or_else(|| contextful_core::run::RunError::JournalRedactionConflict("body declares no protected result projection".into()))?;
+        let outputs: Vec<_> = plan.effects().map(|effect| effect.table.clone()).collect::<BTreeSet<_>>().into_iter().collect();
+        let registered = RecordedBodyPlan::compile(body.effects(), &outputs)?;
+        if registered.identity() != plan.identity() {
+            return Err(contextful_core::run::RunError::Invalid("caller projection differs from the registered body's declaration".into()).into());
+        }
+        let authorities: Vec<_> = plan.effects().map(|effect| admission.identity(effect).map(|identity| (effect.label.clone(), identity))).collect::<Result<_, _>>()?;
+        let identity = contextful_core::run::journal::sha256_hex(&serde_json::to_vec(&("prepared-body-owner-v1", drive.input.plan_ref(), plan.identity(), authorities)).map_err(|_| contextful_core::run::RunError::Invalid("prepared body identity does not encode".into()))?);
+        let pins = PlanPins { plan_ref:identity.clone(), identities:BTreeMap::from([("input".into(), drive.input.plan_ref()), ("body_projection".into(), plan.identity())]) }.into();
+        let scopes = Mutex::new(Vec::new());
+        let mut admitted_land = |outputs: &PreparedEmitted| {
+            let owner = self.catalog.owner_at(&job_scope(&drive.job))?.ok_or_else(|| Failure::deterministic(FailureTag::Permanent, "prepared body owner is absent"))?;
+            land(outputs, &BodyOwner { scope:job_scope(&drive.job), execution_id:owner.execution_id, run_id:drive.run_id.clone(), identity:identity.clone(), effects:scopes.lock().unwrap_or_else(|e| e.into_inner()).clone() })
+        };
+        self.drive_using(drive, pins, read, &mut admitted_land, &|row, calls| {
+            let prepared = PreparedCalls { calls, plan, admission, identity:&identity, issued:Mutex::new(Vec::new()) };
+            let outputs = body.run_recorded(row, &prepared)?;
+            let issued = prepared.issued.lock().unwrap_or_else(|e| e.into_inner());
+            for (table, emissions) in &outputs {
+                for emission in emissions {
+                    if emission.table() != table || !issued.contains(emission.scope()) {
+                        return Err(calls.stop(Close::Failed(Failure::deterministic(FailureTag::Permanent, "body returned an effect outside this row's admitted calls"))));
+                    }
+                    // Re-admission also binds a returned handle to the current canonical writer.
+                    PreparedEmission::replay(plan, emission.label(), emission.scope(), &emission.encode()?, admission).map_err(|f| calls.stop(Close::Failed(f)))?;
+                }
+            }
+            scopes.lock().unwrap_or_else(|e| e.into_inner()).extend(issued.iter().cloned());
+            Ok(outputs)
+        })
+    }
+
+    fn drive_using<T: Send, F>(&self, drive: &Drive<'_>, pins: OwnerPins, read: &mut ReadInput<'_>, land: &mut Land<'_, T>, run: &F) -> Result<RunRow, EngineError>
+    where F: Fn(&InputRow, &Calls<'_, '_, J, B>) -> Result<Output<T>, RowStop> + Sync {
         let open = OpenExecution {
             scope: job_scope(&drive.job),
-            pins: drive.input.pins(),
+            pins,
             run_id: drive.run_id.clone(),
             site_id: drive.site_id.clone(),
             pid: drive.pid,
@@ -140,11 +230,12 @@ impl<J: JournalStore + Clone + Send + Sync, B: BlobStore + Clone + Send + Sync> 
             schedule: drive.schedule.clone(),
         };
         let x = self.open_execution(&open)?;
-        let outcome = self.drive_open(&x, drive, read, land);
+        let outcome = self.drive_open(&x, drive, read, land, run);
         x.close_with(outcome)
     }
 
-    fn drive_open(&self, x: &Execution<'_, J, B>, drive: &Drive<'_>, read: &mut ReadInput<'_>, land: &mut LandOutput<'_>) -> Result<(Landed, Tally), Close> {
+    fn drive_open<T: Send, F>(&self, x: &Execution<'_, J, B>, drive: &Drive<'_>, read: &mut ReadInput<'_>, land: &mut Land<'_, T>, run: &F) -> Result<(Landed, Tally), Close>
+    where F: Fn(&InputRow, &Calls<'_, '_, J, B>) -> Result<Output<T>, RowStop> + Sync {
         // The owner's open instant, not this attempt's: an attempt that dies before the input
         // step records leaves its resume reading at the same instant (`run.journal.open-as-of`).
         let opened_at = match x.opened_at() {
@@ -166,10 +257,10 @@ impl<J: JournalStore + Clone + Send + Sync, B: BlobStore + Clone + Send + Sync> 
 
         let rows = input.keyed();
         let mut pending: Vec<usize> = (0..rows.len()).collect();
-        let mut emitted: BTreeMap<usize, Emitted> = BTreeMap::new();
+        let mut emitted: BTreeMap<usize, Output<T>> = BTreeMap::new();
         let mut waiting = false;
         loop {
-            let pass = self.pass(x, drive, &rows, &pending);
+            let pass = self.pass(x, drive, &rows, &pending, run);
             if let Some(close) = pass.failed {
                 return Err(close);
             }
@@ -190,7 +281,7 @@ impl<J: JournalStore + Clone + Send + Sync, B: BlobStore + Clone + Send + Sync> 
             x.mark(RunStatus::Running).map_err(close_of)?;
         }
 
-        let mut merged: Emitted = BTreeMap::new();
+        let mut merged: Output<T> = BTreeMap::new();
         for (_, out) in emitted {
             for (table, rows) in out {
                 merged.entry(table).or_default().extend(rows);
@@ -203,7 +294,8 @@ impl<J: JournalStore + Clone + Send + Sync, B: BlobStore + Clone + Send + Sync> 
 
     /// Run the body over `indices`, at most `max_in_flight` rows at once; a failed row
     /// admits no further row.
-    fn pass(&self, x: &Execution<'_, J, B>, drive: &Drive<'_>, rows: &[InputRow], indices: &[usize]) -> Pass {
+    fn pass<T: Send, F>(&self, x: &Execution<'_, J, B>, drive: &Drive<'_>, rows: &[InputRow], indices: &[usize], run: &F) -> Pass<T>
+    where F: Fn(&InputRow, &Calls<'_, '_, J, B>) -> Result<Output<T>, RowStop> + Sync {
         let next = AtomicUsize::new(0);
         let state = Mutex::new(Pass::default());
         let lock = || state.lock().unwrap_or_else(|e| e.into_inner());
@@ -217,7 +309,7 @@ impl<J: JournalStore + Clone + Send + Sync, B: BlobStore + Clone + Send + Sync> 
                     let Some(&i) = indices.get(next.fetch_add(1, Ordering::SeqCst)) else { return };
                     let row = &rows[i];
                     let calls = Calls { x, key: row.key.clone(), close: Mutex::new(None) };
-                    let result = drive.body.run(row, &calls);
+                    let result = run(row, &calls);
                     let mut st = lock();
                     match result {
                         Ok(out) => {

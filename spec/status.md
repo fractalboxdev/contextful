@@ -6,16 +6,16 @@ An unpinned clause is `committed`; a pinned one is `performed` when its Rust, Le
 | Contract | Files | Operations | Clauses | Refusals | Limits | Unsettled | Performed | Broken | Floor |
 | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
 | `assurance` | 2 | 15 | 246 | 59 | 22 | 14 | 146 | 0 | 146 |
-| `authority` | 2 | 16 | 290 | 78 | 29 | 10 | 220 | 0 | 220 |
+| `authority` | 2 | 16 | 292 | 78 | 29 | 10 | 221 | 0 | 221 |
 | `connector` | 2 | 14 | 349 | 89 | 21 | 15 | 229 | 0 | 229 |
 | `corpus` | 1 | 10 | 79 | 37 | 7 | 0 | 43 | 0 | 43 |
 | `disclosure` | 3 | 16 | 134 | 66 | 13 | 3 | 63 | 0 | 63 |
 | `read` | 2 | 15 | 207 | 35 | 22 | 9 | 184 | 0 | 184 |
-| `run` | 3 | 26 | 408 | 102 | 39 | 28 | 306 | 0 | 306 |
+| `run` | 3 | 26 | 411 | 102 | 39 | 28 | 308 | 0 | 308 |
 | `store` | 1 | 17 | 252 | 59 | 13 | 19 | 216 | 0 | 216 |
 | `surface` | 2 | 20 | 126 | 59 | 22 | 0 | 86 | 0 | 86 |
 | `topology` | 1 | 6 | 70 | 24 | 5 | 5 | 38 | 0 | 38 |
-| **total** | 19 | 155 | 2161 | 608 | 193 | 103 | 1531 | 0 | |
+| **total** | 19 | 155 | 2166 | 608 | 193 | 103 | 1534 | 0 | |
 
 Decision records: 18.
 
@@ -28,9 +28,9 @@ A milestone reads `closed` when its acceptance test computes `passing` and every
 | 0 — The test-first gate | 2 | 21 | 6 | passing | open |
 | 1 — The authority core | 14 | 239 | 190 | passing | closed |
 | 2 — The store | 9 | 174 | 143 | passing | closed |
-| 3 — The run path | 11 | 211 | 145 | passing | closed |
-| 4 — Ingest | 25 | 517 | 344 | passing | open |
-| 5 — The read face under enforcement | 17 | 283 | 218 | passing | open |
+| 3 — The run path | 11 | 213 | 147 | passing | closed |
+| 4 — Ingest | 25 | 518 | 344 | passing | open |
+| 5 — The read face under enforcement | 17 | 285 | 219 | passing | open |
 | 6 — Sync and replicas | 8 | 78 | 73 | passing | closed |
 | 7 — Memory | 6 | 54 | 45 | passing | closed |
 | 8 — Accountability | 5 | 60 | 47 | passing | open |
@@ -349,6 +349,7 @@ Unscheduled operations: 10.
 | `authority.redact.canonical-journal` | `spec/pins.toml` | performed |
 | `authority.redact.child-selector-lineage` | `spec/pins.toml` | performed |
 | `authority.redact.compiled-pattern-size` | `spec/pins.toml` | performed |
+| `authority.redact.effect-scope` | `crates/contextful-context/tests/integration/redaction.rs::effect_recordings_require_the_signed_owner_key_and_cannot_upgrade_source_payloads` | performed |
 | `authority.redact.every-land-entry` | `spec/pins.toml` | performed |
 | `authority.redact.in-value` | `spec/pins.toml` | performed |
 | `authority.redact.pattern-bytes` | `spec/pins.toml` | performed |
@@ -1056,6 +1057,7 @@ Unscheduled operations: 10.
 | `run.guard-secrets.placement` | `crates/contextful-engine/tests/integration/guard.rs::the_journal_records_the_masked_pull_and_a_replay_lands_it_masked` | performed |
 | `run.journal.blob-sweep` | `crates/contextful-engine/tests/integration/journal.rs::the_sweep_deletes_unreferenced_blobs_past_the_grace_window_once_a_day` | performed |
 | `run.journal.blob-write` | `crates/contextful-engine/tests/integration/journal.rs::concurrent_blob_writers_converge_on_one_file` | performed |
+| `run.journal.body-projection` | `crates/contextful-engine/tests/integration/drive.rs::protected_body_effects_record_rewritten_results_and_resume_without_another_paid_call` | performed |
 | `run.journal.claim-takeover` | `crates/contextful-engine/tests/integration/journal.rs::a_claim_whose_holder_lapsed_is_taken_over` | performed |
 | `run.journal.collection` | `crates/contextful-engine/tests/integration/runner.rs::retirement_collects_the_executions_journal` | performed |
 | `run.journal.entry-key` | `crates/contextful-engine/tests/integration/journal.rs::a_racing_caller_waits_for_the_first_callers_value` | performed |
@@ -1122,6 +1124,7 @@ Unscheduled operations: 10.
 | `run.normalize.nesting-depth` | `crates/contextful-cli/tests/integration/pipeline.rs::native_nesting_stops_at_the_declared_depth` | performed |
 | `run.normalize.row-id` | `crates/contextful-core/tests/integration/pipeline/normalize.rs::repeated_nested_items_keep_distinct_parent_links_and_stable_ids` | performed |
 | `run.own.backpressure` | `crates/contextful-engine/tests/integration/runner.rs::each_batch_stages_before_the_next_pull` | performed |
+| `run.own.body-parent` | `crates/contextful-engine/tests/integration/drive.rs::protected_body_effects_record_rewritten_results_and_resume_without_another_paid_call` | performed |
 | `run.own.execution-id-keys-the-journal` | `crates/contextful-engine/tests/integration/runner.rs::a_second_attempt_under_one_owner_replays_the_firsts_recorded_pulls` | performed |
 | `run.own.host-scope` | `crates/contextful-engine/tests/integration/execution.rs::every_owner_is_keyed_on_its_scope_and_a_table_owner_keeps_its_stored_row` | performed |
 | `run.own.live-owner` | `crates/contextful-engine/tests/integration/execution.rs::a_host_open_under_a_live_attempt_fails_transient_and_joins_nothing` | performed |

@@ -77,6 +77,8 @@ struct RecordingPayload {
     table: String,
     authority: String,
     normalize: Option<(String, u32)>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    effect_scope: Option<contextful_core::run::effect::EffectScope>,
     tables: BTreeMap<String, RecordedTable>,
     signature: String,
 }
@@ -86,6 +88,14 @@ pub struct PreparedRecording(RecordingPayload);
 
 impl PreparedRecording {
     pub fn encode(&self) -> Result<Vec<u8>> { serde_json::to_vec(&self.0).map_err(invalid) }
+    /// Counts and types belong to the admitted rewritten root; child values remain opaque.
+    pub fn summary(&self) -> Result<contextful_core::run::effect::EmissionSummary> {
+        let root = self.0.tables.get(&self.0.table).ok_or_else(|| invalid("prepared recording has no root"))?;
+        let types = root.types.iter().map(|(column, name)| {
+            ColumnType::parse(name).map(|ty| (column.clone(), ty)).ok_or_else(|| invalid("prepared recording carries an unknown type"))
+        }).collect::<Result<_>>()?;
+        Ok(contextful_core::run::effect::EmissionSummary { rows:root.rows.len() as u64, columns:root.rows.iter().flat_map(|row| row.keys().cloned()).collect(), types })
+    }
     pub(crate) fn tables(&self) -> &BTreeMap<String, RecordedTable> { &self.0.tables }
     pub(crate) fn table(&self) -> &str { &self.0.table }
     pub(crate) fn normalize(&self) -> Result<Option<contextful_core::pipeline::normalize::Normalize>> {
@@ -98,7 +108,7 @@ impl PreparedRecording {
 }
 
 fn normalization(normalize: Option<contextful_core::pipeline::normalize::Normalize>) -> Option<(String, u32)> {
-    normalize.map(|n| (match n.mode { contextful_core::pipeline::normalize::Mode::Native => "native", contextful_core::pipeline::normalize::Mode::Relational => "relational" }.into(), n.depth))
+    normalize.map(|n| { let (mode, depth) = n.recording_projection(); (mode.into(), depth) })
 }
 
 #[derive(Debug, Clone)]
@@ -178,13 +188,28 @@ impl Writer {
         let relational = normalize.is_some_and(|n| n.mode == contextful_core::pipeline::normalize::Mode::Relational);
         let protected = self.tables.get(table).is_some_and(|rules| !rules.is_empty()) || (relational && self.tables.values().any(|rules| !rules.is_empty()));
         if !protected { return Ok(None); }
+        self.effect_recording_identity(table, normalize).map(Some)
+    }
+
+    pub fn effect_recording_identity(&self, table: &str, normalize: Option<contextful_core::pipeline::normalize::Normalize>) -> Result<String> {
         if !self.declared.contains(table) { return Err(invalid("prepared recording requires a declared destination")); }
         let identity = serde_json::to_vec(&("prepared-pull-v1", &self.manifest_identity, table, normalization(normalize), self.pepper.digest("prepared-authority-v1"))).map_err(invalid)?;
-        Ok(Some(contextful_core::run::journal::sha256_hex(&identity)))
+        Ok(contextful_core::run::journal::sha256_hex(&identity))
     }
 
     pub fn prepare_recording(&self, table: &str, batch: &Batch, normalize: Option<contextful_core::pipeline::normalize::Normalize>, load_id: &str) -> Result<PreparedRecording> {
-        let authority = self.recording_identity(table, normalize)?.ok_or_else(|| invalid("prepared recording requires canonical removal authority"))?;
+        self.prepare_scoped(table, batch, normalize, load_id, None)
+    }
+
+    pub fn prepare_effect_recording(&self, table: &str, batch: &Batch, normalize: Option<contextful_core::pipeline::normalize::Normalize>, load_id: &str, scope: &contextful_core::run::effect::EffectScope) -> Result<PreparedRecording> {
+        if scope.key().execution_id != load_id || scope.plan_identity().is_empty() {
+            return Err(invalid("body recording scope differs from its execution or has no owner identity"));
+        }
+        self.prepare_scoped(table, batch, normalize, load_id, Some(scope.clone()))
+    }
+
+    fn prepare_scoped(&self, table: &str, batch: &Batch, normalize: Option<contextful_core::pipeline::normalize::Normalize>, load_id: &str, effect_scope: Option<contextful_core::run::effect::EffectScope>) -> Result<PreparedRecording> {
+        let authority = if effect_scope.is_some() { self.effect_recording_identity(table, normalize)? } else { self.recording_identity(table, normalize)?.ok_or_else(|| invalid("prepared recording requires canonical removal authority"))? };
         let tables = if let Some(n) = normalize.filter(|n| n.mode == contextful_core::pipeline::normalize::Mode::Relational) {
             self.group(contextful_core::pipeline::normalize::NormalizedGroup::new(batch.rows.clone(), table, load_id, n.depth))?.into_iter().map(|(name, rows)| {
                 let types = if name == table { batch.types.iter().map(|(name, ty)| (name.clone(), ty.name())).collect() } else { [("list_index".into(), "Int64".into())].into() };
@@ -194,15 +219,23 @@ impl Writer {
             let rewritten = self.batch(table, batch)?;
             [(table.into(), RecordedTable { rows:rewritten.rows, types:rewritten.types.iter().map(|(name, ty)| (name.clone(), ty.name())).collect() })].into()
         };
-        let mut payload = RecordingPayload { version:1, table:table.into(), authority, normalize:normalization(normalize), tables, signature:String::new() };
+        let mut payload = RecordingPayload { version:1, table:table.into(), authority, normalize:normalization(normalize), effect_scope, tables, signature:String::new() };
         payload.signature = self.pepper.digest_bytes(&serde_json::to_vec(&payload).map_err(invalid)?);
         Ok(PreparedRecording(payload))
     }
 
     pub fn admit_recording(&self, table: &str, bytes: &[u8], normalize: Option<contextful_core::pipeline::normalize::Normalize>) -> Result<PreparedRecording> {
+        self.admit_scoped(table, bytes, normalize, None)
+    }
+
+    pub fn admit_effect_recording(&self, table: &str, bytes: &[u8], normalize: Option<contextful_core::pipeline::normalize::Normalize>, scope: &contextful_core::run::effect::EffectScope) -> Result<PreparedRecording> {
+        self.admit_scoped(table, bytes, normalize, Some(scope))
+    }
+
+    fn admit_scoped(&self, table: &str, bytes: &[u8], normalize: Option<contextful_core::pipeline::normalize::Normalize>, effect_scope: Option<&contextful_core::run::effect::EffectScope>) -> Result<PreparedRecording> {
         let mut payload: RecordingPayload = serde_json::from_slice(bytes).map_err(invalid)?;
-        let identity = self.recording_identity(table, normalize)?.ok_or_else(|| invalid("prepared recording has no canonical authority"))?;
-        if payload.version != 1 || payload.table != table || payload.authority != identity || payload.normalize != normalization(normalize) || !payload.tables.contains_key(table) {
+        let identity = if effect_scope.is_some() { self.effect_recording_identity(table, normalize)? } else { self.recording_identity(table, normalize)?.ok_or_else(|| invalid("prepared recording has no canonical authority"))? };
+        if payload.version != 1 || payload.table != table || payload.authority != identity || payload.normalize != normalization(normalize) || payload.effect_scope.as_ref() != effect_scope || !payload.tables.contains_key(table) {
             return Err(invalid("prepared recording authority or destination changed"));
         }
         let signature = std::mem::take(&mut payload.signature);

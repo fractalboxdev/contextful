@@ -116,6 +116,11 @@ impl Default for Normalize {
 }
 
 impl Normalize {
+    /// Canonical mode and depth bind prepared recording projections.
+    pub fn recording_projection(self) -> (&'static str, u32) {
+        (match self.mode { Mode::Native => Mode::SPELLINGS[0], Mode::Relational => Mode::SPELLINGS[1] }, self.depth)
+    }
+
     pub fn parse(declared: Option<&Value>) -> Result<Normalize, RunError> {
         let malformed = |why: String| RunError::Invalid(format!("normalize: {why}"));
         Ok(match declared {

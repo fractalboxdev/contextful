@@ -19,7 +19,7 @@ use contextful_core::run::ports::{
     AwakeableStore, BlobStore, Cancellation, Commit, Destination, JournalStore, Landed, OpenExecution, Part, Pull, PullRequest, Shape, Source, Stage, Types, Unshaped,
     STAGED_BYTES_PER_RUN,
 };
-use contextful_core::run::record::{select_history, HistoryPage, RunRow, Window, OWNER_LEASE_TTL_SECS};
+use contextful_core::run::record::{select_history, HistoryPage, RunRow, RunStatus, Window, OWNER_LEASE_TTL_SECS};
 use contextful_core::run::{Failure, FailureTag, RunError};
 use contextful_core::store::reconcile::ColumnType;
 use contextful_core::topology::TopologyError;
@@ -126,6 +126,16 @@ struct PullStep<'a> {
     ordinal: usize,
 }
 
+struct EmissionInput<'a> {
+    owner: &'a crate::drive::BodyOwner,
+    frames: &'a [contextful_core::run::effect::PreparedEmission],
+}
+
+enum BodyInput<'a> {
+    Source { authority: Option<&'a str> },
+    Effects(&'a EmissionInput<'a>),
+}
+
 impl<J: JournalStore, B: BlobStore> Engine<J, B> {
     /// Mark `partial_failure` every non-terminal run whose owner lease has expired; a run
     /// a live process holds is left alone. Returns the reaped run ids.
@@ -195,6 +205,51 @@ impl<J: JournalStore, B: BlobStore> Engine<J, B> {
 
     /// Execute one run, passing each recorded batch through `shape` before it lands.
     pub fn run_with(&self, spec: &RunSpec, source: &mut dyn Source, shape: &dyn Shape, dest: &mut dyn Destination) -> Result<RunRow, EngineError> {
+        self.run_input(spec, source, shape, dest, None)
+    }
+
+    /// Land admitted body groups through the ordinary lease/stage/commit/discard machine.
+    /// A live Drive context and the canonical destination both re-admit every handle.
+    pub fn run_emissions(&self, spec: &RunSpec, owner: &crate::drive::BodyOwner, emissions: &[contextful_core::run::effect::PreparedEmission], dest: &mut dyn Destination) -> Result<RunRow, EngineError> {
+        if spec.plan.spec.journal || spec.plan.cursor_kind != CursorKind::OpaqueToken {
+            return Err(RunError::Invalid("body emissions land without a second journal or source cursor".into()).into());
+        }
+        self.validate_body_owner(owner)?;
+        for emission in emissions {
+            if emission.table() != spec.plan.spec.table || emission.scope().key().execution_id != owner.execution_id || emission.scope().plan_identity() != owner.identity {
+                return Err(RunError::Invalid("prepared body result belongs to another output or owner".into()).into());
+            }
+            emission.admit_to(dest, owner.expected(emission.scope().key())?)?;
+        }
+        self.validate_body_owner(owner)?;
+        struct NoSource;
+        impl Source for NoSource {
+            fn pull(&mut self, _: &PullRequest, _: &dyn Cancellation) -> Result<Vec<u8>, Failure> {
+                Err(Failure::deterministic(FailureTag::Permanent, "prepared body landing has no source"))
+            }
+        }
+        self.run_input(spec, &mut NoSource, &Unshaped, dest, Some(&EmissionInput { owner, frames:emissions }))
+    }
+
+    fn validate_body_owner(&self, owner: &crate::drive::BodyOwner) -> Result<(), Failure> {
+        let active = self.catalog.owner_at(&owner.scope)?.ok_or_else(|| Failure::deterministic(FailureTag::Permanent, "prepared body owner is absent"))?;
+        if active.execution_id != owner.execution_id || active.pins.plan_ref() != owner.identity || active.attempts.last() != Some(&owner.run_id) {
+            return Err(Failure::deterministic(FailureTag::Permanent, "prepared body owner or pinned authority changed"));
+        }
+        let run = self.catalog.run(&owner.run_id)?.ok_or_else(|| Failure::deterministic(FailureTag::Permanent, "prepared body attempt is absent"))?;
+        if run.execution_id != owner.execution_id {
+            return Err(Failure::deterministic(FailureTag::Permanent, "prepared body attempt execution changed"));
+        }
+        if run.stop.is_some() || run.status == RunStatus::Canceled {
+            return Err(Failure::canceled("prepared body attempt stopped"));
+        }
+        if !run.status.is_in_flight() {
+            return Err(Failure::deterministic(FailureTag::Permanent, "prepared body attempt stopped or changed"));
+        }
+        Ok(())
+    }
+
+    fn run_input(&self, spec: &RunSpec, source: &mut dyn Source, shape: &dyn Shape, dest: &mut dyn Destination, emissions: Option<&EmissionInput<'_>>) -> Result<RunRow, EngineError> {
         let plan = &spec.plan;
         plan.validate()?;
         if !self.capabilities().hosts(&plan.spec.connector.world) {
@@ -239,7 +294,8 @@ impl<J: JournalStore, B: BlobStore> Engine<J, B> {
         let mut execution = self.begin(&open)?;
         // Every pull passes the secret guard before the journal records it (`run.guard-secrets.placement`).
         let mut source = Guarded { inner: source, report: log_counts };
-        let outcome = self.body(spec, &mut execution, &mut source, shape, dest, authority.as_deref());
+        let input = match emissions { Some(emissions) => BodyInput::Effects(emissions), None => BodyInput::Source { authority:authority.as_deref() } };
+        let outcome = self.body(spec, &mut execution, &mut source, shape, dest, input);
         if outcome.is_err() {
             // A run id names one attempt, so no later commit names a failed run's staged
             // parts (`run.own.stage-discard`). The run closes on its own failure; a part the
@@ -249,7 +305,9 @@ impl<J: JournalStore, B: BlobStore> Engine<J, B> {
         execution.close_with(outcome)
     }
 
-    fn body(&self, spec: &RunSpec, execution: &mut Execution<'_, J, B>, source: &mut dyn Source, shape: &dyn Shape, dest: &mut dyn Destination, authority: Option<&str>) -> Result<(Landed, Tally), Close> {
+    fn body(&self, spec: &RunSpec, execution: &mut Execution<'_, J, B>, source: &mut dyn Source, shape: &dyn Shape, dest: &mut dyn Destination, input: BodyInput<'_>) -> Result<(Landed, Tally), Close> {
+        let (authority, emitted) = match input { BodyInput::Source { authority } => (authority, None), BodyInput::Effects(emitted) => (None, Some(emitted)) };
+        let emissions = emitted.map(|input| input.frames);
         let plan = &spec.plan;
         let (pipeline_id, table) = (plan.spec.pipeline.as_str(), plan.spec.table.as_str());
 
@@ -288,21 +346,27 @@ impl<J: JournalStore, B: BlobStore> Engine<J, B> {
         // inferred type, so a later declaration cannot retype them (`run.land.late-type`).
         let mut undeclared: BTreeSet<String> = BTreeSet::new();
         for ordinal in 0.. {
+            if let Some(input) = emitted { self.validate_body_owner(input.owner)?; }
             if execution.token().requested() {
                 return Err(Close::Failed(Failure::canceled("stopped between pulls")));
             }
             let label = format!("pull-{ordinal}");
             let key = EntryKey::new(&execution_id, &label, &json_bytes(&position));
             let request = PullRequest { step_label: label.clone(), position: position.clone(), idempotency_key: key.idempotency_key() };
-            let resolved = self.step(execution, source, dest, PullStep { spec, key:&key, request:&request, shape, authority, at:at.as_ref(), types:&types, undeclared:&undeclared, ordinal })?;
-            let prepared = authority.map(|authority| {
+            let emission = emissions.and_then(|emissions| emissions.get(ordinal));
+            let effect_scope = emission.zip(emitted).map(|(emission, input)| input.owner.expected(emission.scope().key())).transpose()?;
+            let effect_summary = emission.zip(effect_scope).map(|(emission, scope)| emission.admit_to(dest, scope)).transpose()?;
+            let resolved = if emissions.is_none() { Some(self.step(execution, source, dest, PullStep { spec, key:&key, request:&request, shape, authority, at:at.as_ref(), types:&types, undeclared:&undeclared, ordinal })?) } else { None };
+            let prepared = authority.zip(resolved.as_ref()).map(|(authority, resolved)| {
                 let prepared = recorded(resolved.bytes())?;
                 if prepared.authority != authority { return Err(Failure::deterministic(FailureTag::Permanent, "prepared journal authority changed")); }
                 Ok(prepared)
             }).transpose()?;
-            let pull = match &prepared {
-                Some(prepared) => Pull { rows:Vec::new(), cursor:prepared.next.clone(), more:prepared.more, snapshot_complete:prepared.snapshot_complete, types:prepared.types.clone(), skipped:prepared.skipped, declined:prepared.declined.clone() },
-                None => Pull::decode(resolved.bytes())?,
+            let pull = match (&prepared, &effect_summary) {
+                (_, Some(summary)) => Pull { rows:Vec::new(), cursor:None, more:emissions.is_some_and(|all| ordinal + 1 < all.len()), snapshot_complete:None, types:summary.types.iter().map(|(column, ty)| (column.clone(), ty.name())).collect(), skipped:0, declined:Default::default() },
+                (_, None) if emissions.is_some() => Pull { rows:Vec::new(), cursor:None, more:false, snapshot_complete:None, types:Default::default(), skipped:0, declined:Default::default() },
+                (Some(prepared), _) => Pull { rows:Vec::new(), cursor:prepared.next.clone(), more:prepared.more, snapshot_complete:prepared.snapshot_complete, types:prepared.types.clone(), skipped:prepared.skipped, declined:prepared.declined.clone() },
+                (None, _) => Pull::decode(resolved.as_ref().expect("ordinary input resolves a pull").bytes())?,
             };
             completion_reported |= pull.snapshot_complete.is_some();
             skipped = skipped.saturating_add(pull.skipped);
@@ -310,7 +374,7 @@ impl<J: JournalStore, B: BlobStore> Engine<J, B> {
                 let held = declined.entry(extension.clone()).or_default();
                 *held = held.saturating_add(*n);
             }
-            let shaped_types = if prepared.is_some() { pulled_types(&pull)? } else { shape.shape_types(pulled_types(&pull)?) };
+            let shaped_types = if prepared.is_some() || emissions.is_some() { pulled_types(&pull)? } else { shape.shape_types(pulled_types(&pull)?) };
             if let Err(refusal) = admit_types(&shaped_types, &types, &undeclared, ordinal, &spec.run_id) {
                 if matches!(&refusal, TypeRefusal::Late(_)) { execution.discard(); }
                 return Err(refusal.failure().into());
@@ -348,10 +412,10 @@ impl<J: JournalStore, B: BlobStore> Engine<J, B> {
             if last {
                 snapshot_complete = !pull.more && pull.snapshot_complete.unwrap_or(false);
             }
-            let rows = if prepared.is_some() { rows } else { shape.shape(rows)? };
-            let count = prepared.as_ref().map_or(rows.len() as u64, |prepared| prepared.rows);
+            let rows = if prepared.is_some() || emissions.is_some() { rows } else { shape.shape(rows)? };
+            let count = effect_summary.as_ref().map(|summary| summary.rows).unwrap_or_else(|| prepared.as_ref().map_or(rows.len() as u64, |prepared| prepared.rows));
             if count > 0 {
-                let columns = prepared.as_ref().map(|prepared| prepared.columns.clone()).unwrap_or_else(|| rows.iter().flat_map(|r| r.keys()).cloned().collect());
+                let columns = effect_summary.as_ref().map(|summary| summary.columns.clone()).unwrap_or_else(|| prepared.as_ref().map(|prepared| prepared.columns.clone()).unwrap_or_else(|| rows.iter().flat_map(|r| r.keys()).cloned().collect()));
                 undeclared.extend(columns.into_iter().filter(|c| !types.contains_key(c)));
                 let stage = Stage {
                     pipeline_id: pipeline_id.to_string(),
@@ -363,7 +427,8 @@ impl<J: JournalStore, B: BlobStore> Engine<J, B> {
                     rows,
                     types: types.clone(),
                 };
-                let part = match &prepared { Some(prepared) => dest.stage_recorded(stage, &prepared.prepared)?, None => dest.stage_batch(stage)? };
+                if let Some(input) = emitted { self.validate_body_owner(input.owner)?; }
+                let part = match (emission.zip(effect_scope), &prepared) { (Some((emission, scope)), _) => emission.stage(dest, stage, scope)?, (_, Some(prepared)) => dest.stage_recorded(stage, &prepared.prepared)?, _ => dest.stage_batch(stage)? };
                 staged_rows += count;
                 staged_bytes = staged_bytes.saturating_add(part.bytes);
                 parts.push(part);
@@ -399,6 +464,7 @@ impl<J: JournalStore, B: BlobStore> Engine<J, B> {
         let committed_at = self.catalog.now()?;
         let landed = if batch_count > 0 || moved || replace_frontier {
             let precommit = || -> Result<(), Failure> {
+                if let Some(input) = emitted { self.validate_body_owner(input.owner)?; }
                 let Some(l) = execution.lease() else { return Ok(()) };
                 if self.catalog.lease_holds(&l)? {
                     Ok(())
