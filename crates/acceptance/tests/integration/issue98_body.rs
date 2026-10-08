@@ -13,7 +13,6 @@ fn ok(out: &Output) -> String {
 }
 
 #[test]
-#[ignore = "issue98 typed body-effect recording remains open"]
 fn protected_paid_body_results_record_prepared_inline_and_blob_values_and_resume_once() {
     let cf = bin("contextful");
     let status = Command::new(env!("CARGO")).args(["build", "--locked", "-q", "-p", "contextful-cli", "--example", "store_driven"]).current_dir(workspace_root()).status().unwrap();
