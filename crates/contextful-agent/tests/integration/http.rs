@@ -4,7 +4,7 @@
 //! per-request admission of short-lived bearers and of holder-bound credentials, each
 //! request under its own proof, the in-flight ceiling and concurrency.
 
-use contextful_agent::http::{audience, ceiling, read_request, Admitting, HttpFace, HttpRequest, Revocation};
+use contextful_agent::http::{audience, ceiling, read_request, Admitting, HttpFace, HttpRequest, HttpResponse, Revocation};
 use contextful_agent::mcp::Server;
 use contextful_context::land::{land, Batch, RunContext};
 use contextful_context::read::Face;
@@ -598,4 +598,47 @@ fn post_mcp_reads_a_pinned_build_and_echoes_it() {
     let unpinned = answer(json!({ "sql": sql }));
     assert_eq!(unpinned["rows"], json!([["n1"], ["n2"]]), "{unpinned}");
     assert_eq!(unpinned["contextful.resolved"]["research/titles"]["build_id"], json!(latest), "{unpinned}");
+}
+
+/// A listener whose face routes `/auth/exchange` to `exchange`, marked unconfigured or not.
+fn listen_exchanging(unconfigured: bool) -> SocketAddr {
+    let f: &'static Fixture = Box::leak(Box::new(fixture()));
+    let clock: &'static FixedClock = Box::leak(Box::new(FixedClock(at(NOW))));
+    let admitting = Admitting { checkpoint: &f.checkpoint, audience: AUD, revocation: &no_revocation };
+    let exchange: &'static (dyn Fn(&HttpRequest) -> HttpResponse + Sync) = Box::leak(Box::new(move |request: &HttpRequest| {
+        if unconfigured {
+            HttpResponse::json(404, &json!({ "error": { "identifier": "ExchangeUnconfigured" } }))
+        } else {
+            HttpResponse::json(200, &json!({ "received": request.body.len() }))
+        }
+    }));
+    let face = Box::leak(Box::new(HttpFace::new(&f.face, clock, &f.audit, admitting, Some(4)).unwrap().with_exchange(exchange, unconfigured)));
+    let listener = TcpListener::bind("127.0.0.1:0").unwrap();
+    let addr = listener.local_addr().unwrap();
+    std::thread::spawn(move || face.serve(listener));
+    addr
+}
+
+#[test]
+fn exchange_route_answers_post_and_refuses_other_methods() {
+    let addr = listen_exchanging(false);
+    let post = HttpRequest { method: "POST".into(), target: "/auth/exchange".into(), headers: vec![("Content-Type".into(), "application/json".into())], body: b"{\"jwt\":\"x\"}".to_vec() };
+    let (status, _, answer) = send(addr, &post);
+    assert_eq!((status, body(&answer)), (200, json!({ "received": 11 })));
+    let get = HttpRequest { method: "GET".into(), target: "/auth/exchange".into(), headers: vec![], body: vec![] };
+    let (status, head, _) = send(addr, &get);
+    assert_eq!(status, 405);
+    assert!(head.contains("Allow: POST"), "{head}");
+}
+
+#[test]
+fn unconfigured_exchange_answers_before_reading_its_body() {
+    let addr = listen_exchanging(true);
+    let mut stream = TcpStream::connect(addr).unwrap();
+    stream.set_read_timeout(Some(std::time::Duration::from_secs(2))).unwrap();
+    stream.write_all(b"POST /auth/exchange HTTP/1.1\r\nHost: localhost\r\nContent-Length: 100\r\n\r\n").unwrap();
+    let mut raw = String::new();
+    stream.read_to_string(&mut raw).expect("the unconfigured exchange answers without waiting for its body");
+    assert!(raw.starts_with("HTTP/1.1 404"), "{raw}");
+    assert!(raw.contains("ExchangeUnconfigured"), "{raw}");
 }
