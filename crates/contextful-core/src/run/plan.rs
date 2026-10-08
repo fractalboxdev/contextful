@@ -58,6 +58,9 @@ pub struct PlanSpec {
     /// Columns redacted on the write path.
     #[serde(default)]
     pub redact: Vec<String>,
+    /// Typed writer rules pinned beside the source's journaling decision.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub redaction: Vec<crate::redaction::Rule>,
 }
 
 fn journal_default() -> bool {
@@ -109,6 +112,10 @@ impl Plan {
                 self.spec.pipeline,
                 self.spec.redact.iter().map(|c| format!("`{c}`")).collect::<Vec<_>>().join(", ")
             )));
+        }
+        for rule in &self.spec.redaction {
+            if rule.table != self.spec.table { return Err(RunError::Invalid("a pinned writer rule names another destination table".into())); }
+            crate::redaction::CompiledRule::compile(rule.clone()).map_err(|e| RunError::Invalid(e.to_string()))?;
         }
         Ok(())
     }

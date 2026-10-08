@@ -257,6 +257,29 @@ pub fn carry_types(chain: &[TransformOp], mut types: Types) -> Types {
 }
 
 impl crate::run::ports::Shape for Chain {
+    fn recording_clock_columns(&self, field: &str) -> Result<Option<std::collections::BTreeSet<String>>, RunError> {
+        let mut active = std::collections::BTreeSet::from([field.to_string()]);
+        let mut columns = active.clone();
+        for operation in &self.ops {
+            match operation {
+                TransformOp::Select { columns: selected } => active.retain(|column| selected.contains(column)),
+                TransformOp::Rename { from, to } => { if active.remove(from) { active.insert(to.clone()); } }
+                TransformOp::Extract { pointer, to } => {
+                    if let Some(root) = pointer.strip_prefix('/').and_then(|rest| rest.split('/').next()) {
+                        let root = root.replace("~1", "/").replace("~0", "~");
+                        if active.contains(&root) { active.insert(to.clone()); }
+                    }
+                }
+                TransformOp::Cast { .. } | TransformOp::Filter { .. } => {}
+            }
+            columns.extend(active.iter().cloned());
+        }
+        Ok(Some(columns))
+    }
+    fn recording_identity(&self) -> Result<Option<String>, RunError> {
+        let bytes = serde_json::to_vec(&("transform-chain-v1", &self.table, &self.ops)).map_err(|e| RunError::Invalid(e.to_string()))?;
+        Ok(Some(crate::run::journal::sha256_hex(&bytes)))
+    }
     fn shape(&self, rows: Vec<Row>) -> Result<Vec<Row>, RunError> {
         apply(&self.ops, rows, &self.table)
     }

@@ -1,6 +1,14 @@
 //! The plan a run pins, and the journal declarations it is held to.
 
 use contextful_core::run::plan::Plan;
+
+#[test]
+fn typed_removal_can_reach_destination_recording_admission_but_legacy_redact_still_refuses() {
+    let typed = "pipeline='feed'\ntable='messages'\nredaction=[{table='messages',column='body',match='whole',operation='drop'}]\n[connector]\nid='vendor'\nversion='1'\ncommand=['unused']\n";
+    assert!(Plan::compile(typed.as_bytes()).is_ok());
+    let legacy = typed.replace("redaction=[{table='messages',column='body',match='whole',operation='drop'}]", "redact=['body']");
+    assert!(Plan::compile(legacy.as_bytes()).is_err());
+}
 use contextful_core::run::RunError;
 
 const PLAN: &str = "pipeline = \"feed\"\ntable = \"filings\"\n[connector]\nid = \"vendor\"\nversion = \"1\"\ncommand = [\"sh\", \"vendor.sh\"]\n";
@@ -13,9 +21,8 @@ fn a_plan_is_named_by_the_sha256_of_its_bytes() {
     assert!(p.spec.journal, "pull journaling defaults on");
 }
 
-/// A pipeline declaring write-path redaction over a source that journals its pulls raises
-/// `JournalRedactionConflict` at manifest validation and again at run open, before the first pull.
-// spec: run.journal.redacting-source@377b6627
+/// A boolean removal assertion supplies no canonical prepared-recording admission.
+// spec: run.journal.redacting-source@cbe9a121
 #[test]
 fn redaction_over_a_journaling_source_is_refused_at_validation() {
     let redacting = format!("redact = [\"ssn\"]\n{PLAN}");

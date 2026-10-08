@@ -75,7 +75,7 @@ fn a_specification_carries_three_required_and_eleven_optional_keys() {
     let json = serde_json::json!({
         "id": "orders", "source": {"name": "http", "config": {"endpoint": "https://api.example.test/v1"}}, "tables": ["items"],
         "destination": {"name": "store"}, "schedule": "@hourly", "incremental": "updated_at", "transforms": [{"op": "select", "columns": ["id"]}],
-        "redaction": {}, "normalize": {}, "backfill": {}, "seed": {}, "queries": {}, "on_table_error": "continue"
+        "redaction": [], "normalize": {}, "backfill": {}, "seed": {}, "queries": {}, "on_table_error": "continue"
     });
     let s: PipelineSpec = serde_json::from_value(json).unwrap();
     assert_eq!(s.on_table_error(), OnTableError::Continue);
@@ -236,4 +236,11 @@ fn a_specification_written_as_a_single_pipeline_table_is_refused() {
     }
     // A `[pipeline]` holding store tables alone declares no specification.
     assert!(read_manifest(&manifest("contextful.toml", "[[pipeline.tables]]\nname = \"filings\"\n")).unwrap().is_empty());
+}
+#[test]
+fn typed_pipeline_removal_reaches_prepared_journal_admission_with_all_rules_retained() {
+    let value = serde_json::json!({"id":"feed","tables":["messages"],"journal":true,"source":{"name":"http","config":{"endpoint":"https://example.test/messages"}},"redaction":[{"table":"messages","column":"body","match":"whole","operation":"drop"}]});
+    let spec: contextful_core::pipeline::declare::PipelineSpec = serde_json::from_value(value).unwrap();
+    spec.validate().unwrap();
+    assert_eq!(spec.destination_decl(&spec.tables[0]).redaction.unwrap().len(), 1);
 }

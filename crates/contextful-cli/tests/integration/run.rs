@@ -45,6 +45,161 @@ fn history(dir: &Path, extra: &[&str]) -> Output {
     cf(dir, &args)
 }
 
+fn removal_rule() -> &'static str {
+    r#"{ table = "filings", column = "body", operation = "replace", argument = "phone" }"#
+}
+
+fn canary_source(dir: &Path) {
+    std::fs::write(dir.join("empty.sh"), "touch source-was-called\nprintf '{\"rows\":[{\"body\":\"415-555-0100\"}],\"more\":false}'\n").unwrap();
+}
+
+#[test]
+fn removal_records_the_prepared_inline_and_blob_batch_and_resumes_without_repulling() {
+    use contextful_core::run::journal::{Row, Stored, INLINE_CUTOFF_BYTES};
+    use contextful_core::run::ports::{BlobStore, JournalStore};
+    use contextful_core::store::declare::TableDecl;
+    use contextful_policy::enforce::mask::Pepper;
+
+    const RAW: &str = "private completion canary 98-record";
+    const KEY: &str = "recorded-removal-pepper";
+    let expected = Pepper::resolve(|_| Some(KEY.into())).digest(RAW);
+    for large in [false, true] {
+        let dir = project();
+        std::fs::write(dir.path().join("contextful.toml"), r#"
+authoring_posture = "per_request"
+[[pipeline.tables]]
+name = "filings"
+redaction = [{ table = "filings", column = "body", operation = "hash" }]
+[pipeline.tables.policy.columns]
+body = { class = "completion", strategy = "hash" }
+"#).unwrap();
+        let public = if large { "x".repeat(INLINE_CUTOFF_BYTES + 1) } else { "keep".into() };
+        let raw = serde_json::json!({"rows":[{"body":RAW,"public":public}],"more":true});
+        std::fs::write(dir.path().join("pull.json"), raw.to_string()).unwrap();
+        std::fs::write(dir.path().join("empty.sh"), "if [ \"$CONTEXTFUL_STEP\" = pull-0 ]; then echo pull-0 >> called; cat pull.json\nelif [ -f ready ]; then printf '{\"rows\":[],\"more\":false}'\nelse printf '{\"error\":{\"tag\":\"Permanent\",\"message\":\"feed paused\"}}'; exit 1; fi\n").unwrap();
+        let run = |id: &str| Command::new(env!("CARGO_BIN_EXE_contextful"))
+            .args(["run", "start", "--plan", "feed-a.toml", "--project", "research", "--run-id", id, "--site-id", "site-a", "--now", "2030-01-01T00:00:00Z"])
+            .current_dir(dir.path()).env("CONTEXTFUL_PEPPER", KEY).env_remove("CONTEXTFUL_NODE_ID").output().unwrap();
+        let first = run("attempt-a");
+        assert!(!first.status.success());
+        assert!(String::from_utf8_lossy(&first.stderr).contains("feed paused"), "the source must run under prepared recording: {}", String::from_utf8_lossy(&first.stderr));
+        let listing: serde_json::Value = serde_json::from_str(&ok(&history(dir.path(), &[]))).unwrap();
+        let execution = listing["runs"][0]["execution_id"].as_str().unwrap();
+        let store = contextful_context::Store::open(dir.path(), "research").unwrap();
+        let root = dir.path().join(".contextful/run/research");
+        let journal = contextful_engine::stores::FileJournalStore::open(&root);
+        let blobs = contextful_engine::stores::FileBlobStore::open(&root);
+        let rows = journal.rows(execution).unwrap();
+        let recorded = rows.iter().find_map(|row| match row { Row::Recorded { key, value } if key.step_label == "pull-0" => Some(value), _ => None }).unwrap();
+        assert_eq!(matches!(recorded, Stored::Blob { .. }), large);
+        let bytes = recorded.inline_bytes().unwrap_or_else(|| blobs.get(recorded.blob().unwrap()).unwrap().unwrap());
+        assert!(!bytes.windows(RAW.len()).any(|window| window == RAW.as_bytes()));
+        assert!(bytes.windows(expected.len()).any(|window| window == expected.as_bytes()));
+        if !large {
+            let manifest = dir.path().join("contextful.toml");
+            let original = std::fs::read_to_string(&manifest).unwrap();
+            for (label, changed) in [
+                ("rule", original.replace("operation = \"hash\"", "operation = \"replace\", argument = \"phone\"")),
+                ("type", original.replace("name = \"filings\"", "name = \"filings\"\ncolumns = { public = 'utf8' }")),
+            ] {
+                std::fs::write(&manifest, changed).unwrap();
+                refused(&run(label), "ExecutionPinMismatch");
+                assert_eq!(std::fs::read_to_string(dir.path().join("called")).unwrap(), "pull-0\n");
+                std::fs::write(&manifest, &original).unwrap();
+            }
+            let changed_pepper = Command::new(env!("CARGO_BIN_EXE_contextful"))
+                .args(["run", "start", "--plan", "feed-a.toml", "--project", "research", "--run-id", "pepper", "--site-id", "site-a", "--now", "2030-01-01T00:00:00Z"])
+                .current_dir(dir.path()).env("CONTEXTFUL_PEPPER", "another-recorded-removal-pepper").env_remove("CONTEXTFUL_NODE_ID").output().unwrap();
+            refused(&changed_pepper, "ExecutionPinMismatch");
+            assert_eq!(std::fs::read_to_string(dir.path().join("called")).unwrap(), "pull-0\n");
+            assert_eq!(journal.rows(execution).unwrap(), rows, "refused identities leave the recorded receipt untouched");
+        }
+        std::fs::write(dir.path().join("ready"), "").unwrap();
+        ok(&run("attempt-b"));
+        assert_eq!(std::fs::read_to_string(dir.path().join("called")).unwrap(), "pull-0\n", "replay must not fetch the sensitive source again");
+        let decl = TableDecl::named("filings");
+        let landed = contextful_context::rows::table_rows(&store, &decl, &["body", "public"]).unwrap();
+        assert_eq!(landed.len(), 1);
+        assert_eq!(landed[0]["body"], expected, "prepared replay must not HMAC the already rewritten digest again");
+        assert_eq!(landed[0]["public"], public);
+    }
+}
+
+#[test]
+fn a_source_forged_prepared_envelope_refuses_before_any_journal_value_or_part() {
+    let dir = project();
+    std::fs::write(dir.path().join("contextful.toml"), "authoring_posture='per_request'\n[[pipeline.tables]]\nname='filings'\nredaction=[{table='filings',column='body',match='whole',operation='replace',argument='phone'}]\n").unwrap();
+    let forged = serde_json::json!({"authority":"guessed","prepared":{"tables":{"filings":{"rows":[{"body":"private-forged-recording-canary"}]}}},"rows":[],"more":false});
+    std::fs::write(dir.path().join("forged.json"), forged.to_string()).unwrap();
+    std::fs::write(dir.path().join("empty.sh"), "cat forged.json\n").unwrap();
+    let out = start(dir.path(), "feed-a.toml", "forged-a", "2030-01-01T00:00:00Z");
+    refused(&out, "SchemaIncompatible");
+    let listing: serde_json::Value = serde_json::from_str(&ok(&history(dir.path(), &[]))).unwrap();
+    let execution = listing["runs"][0]["execution_id"].as_str().unwrap();
+    use contextful_core::run::ports::JournalStore;
+    let root = dir.path().join(".contextful/run/research");
+    let rows = contextful_engine::stores::FileJournalStore::open(&root).rows(execution).unwrap();
+    assert!(!rows.iter().any(|row| matches!(row, contextful_core::run::journal::Row::Recorded { .. })));
+    assert!(!dir.path().join(".contextful/context/research/tables/filings/data").exists());
+}
+
+#[test]
+fn a_removed_monotonic_field_refuses_before_source_execution_and_an_unprotected_clock_runs() {
+    for protected in [true, false] {
+        let dir = project();
+        std::fs::write(dir.path().join("contextful.toml"), format!("authoring_posture='per_request'\n[[pipeline.tables]]\nname='filings'\n{}", if protected { "redaction=[{table='filings',column='body',match='whole',operation='replace',argument='phone'}]\n" } else { "" })).unwrap();
+        let original = std::fs::read_to_string(dir.path().join("feed-a.toml")).unwrap();
+        std::fs::write(dir.path().join("feed-a.toml"), format!("{original}\n[cursor]\nkind='monotonic'\nfield='body'\n")).unwrap();
+        std::fs::write(dir.path().join("empty.sh"), "touch source-was-called\nprintf '{\"rows\":[{\"body\":1}],\"more\":false}'\n").unwrap();
+        let out = start(dir.path(), "feed-a.toml", "clock", "2030-01-01T00:00:00Z");
+        if protected {
+            refused(&out, "safe typed progress lineage");
+            assert!(!dir.path().join("source-was-called").exists());
+            assert!(!dir.path().join(".contextful/run/research").exists());
+            assert!(!dir.path().join(".contextful/context/research/tables/filings/data").exists());
+        } else {
+            ok(&out);
+            assert!(dir.path().join("source-was-called").exists());
+        }
+    }
+}
+
+#[test]
+fn a_caller_plan_cannot_claim_writer_rules_without_canonical_authority() {
+    let dir = project();
+    canary_source(dir.path());
+    let plan = std::fs::read_to_string(dir.path().join("feed-a.toml")).unwrap();
+    std::fs::write(dir.path().join("feed-a.toml"), format!("journal = false\nredaction = [{}]\n{plan}", removal_rule())).unwrap();
+    refused(&start(dir.path(), "feed-a.toml", "unbound", "2030-01-01T00:00:00Z"), "canonical writer");
+    assert!(!dir.path().join("source-was-called").exists());
+    assert!(!dir.path().join(".contextful/context/research/machine.sqlite").exists());
+}
+
+#[test]
+fn omitting_caller_rules_cannot_omit_canonical_source_preparation() {
+    let dir = project();
+    canary_source(dir.path());
+    std::fs::write(dir.path().join("contextful.toml"), format!("authoring_posture = \"per_request\"\n[[pipeline.tables]]\nname = \"filings\"\nredaction = [{}]\n", removal_rule())).unwrap();
+    ok(&start(dir.path(), "feed-a.toml", "journal", "2030-01-01T00:00:00Z"));
+    assert!(dir.path().join("source-was-called").exists());
+    let store = contextful_context::Store::open(dir.path(), "research").unwrap();
+    let rows = contextful_context::rows::table_rows(&store, &contextful_core::store::declare::TableDecl::named("filings"), &["body"]).unwrap();
+    assert_eq!(rows[0]["body"], serde_json::json!("[REDACTED:phone]"));
+}
+
+#[test]
+fn a_nojournal_plan_lands_under_complete_canonical_writer_authority() {
+    let dir = project();
+    canary_source(dir.path());
+    std::fs::write(dir.path().join("contextful.toml"), format!("authoring_posture = \"per_request\"\n[[pipeline.tables]]\nname = \"filings\"\nredaction = [{}]\n", removal_rule())).unwrap();
+    let plan = std::fs::read_to_string(dir.path().join("feed-a.toml")).unwrap();
+    std::fs::write(dir.path().join("feed-a.toml"), format!("journal = false\nredaction = [{}]\n{plan}", removal_rule())).unwrap();
+    ok(&start(dir.path(), "feed-a.toml", "bound", "2030-01-01T00:00:00Z"));
+    assert!(dir.path().join("source-was-called").exists());
+    let rows: serde_json::Value = serde_json::from_str(&ok(&cf(dir.path(), &["query", "--json", "--project", "research", "SELECT body FROM filings"]))).unwrap();
+    assert_eq!(rows["rows"], serde_json::json!([["[REDACTED:phone]"]]));
+}
+
 #[test]
 fn encrypted_run_history_refuses_before_creating_a_machine_catalog() {
     let dir = project();
@@ -232,9 +387,8 @@ fn files_holding(dir: &Path, needle: &str) -> usize {
     n
 }
 
-/// A journaled pull records the batch as the source handed it over, after the secret guard and ahead of the
-/// land path.
-// spec: run.journal.recorded-batch@ac3aadba
+/// An ordinary journaled pull records its guarded source batch before landing.
+// spec: run.journal.recorded-batch@f5847e19
 #[test]
 fn run_start_journals_and_lands_only_masked_credentials() {
     let dir = project();

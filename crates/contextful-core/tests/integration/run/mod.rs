@@ -8,6 +8,7 @@ mod host_task;
 mod journal;
 mod own;
 mod plan;
+mod preparation;
 mod project;
 mod record;
 mod retry;

@@ -69,6 +69,8 @@ pub struct TableDecl {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub policy: Option<Value>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub redaction: Option<Vec<crate::redaction::Rule>>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
     pub visibility: Option<Value>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub valid_time: Option<ValidTime>,

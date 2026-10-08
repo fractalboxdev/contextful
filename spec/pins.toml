@@ -27,6 +27,20 @@
 # `contextful-spec state` reads this file and the tags and writes spec/status.md.
 
 [pin]
+"authority.mask.row-class-selector" = { test = "contextful_policy::enforce::mask::the_requested_from_selector_shares_one_policy_and_refuses_ambiguous_fields" }
+"authority.redact.rules-per-pipeline" = { test = "contextful_core::redaction::pipeline_removal_rejects_unknown_tables_and_bounds_all_declared_rules" }
+"authority.redact.pattern-bytes" = { test = "contextful_core::redaction::source_and_expanded_automaton_limits_refuse_before_matching" }
+"authority.redact.compiled-pattern-size" = { test = "contextful_core::redaction::source_and_expanded_automaton_limits_refuse_before_matching" }
+"authority.redact.match-work" = { test = "contextful_core::redaction::adversarial_alternation_refuses_a_mebibyte_past_its_matching_work_bound" }
+"authority.redact.in-value" = { test = "contextful_core::redaction::a_rewritten_span_leaves_no_matched_byte_of_its_leftmost_match" }
+"authority.redact.every-land-entry" = { test = "contextful_context::redaction::a_staged_part_contains_the_same_removed_form_before_commit" }
+"authority.redact.rewritten-identities" = { test = "contextful_context::redaction::independently_declared_child_rules_precede_all_persisted_group_identities" }
+"authority.redact.child-selector-lineage" = { test = "contextful_context::redaction::a_child_row_selector_without_typed_sibling_lineage_refuses_before_files" }
+"authority.redact.canonical-journal" = { test = "contextful_cli::run::omitting_caller_rules_cannot_omit_canonical_source_preparation" }
+"authority.redact.relational-journal" = { test = "contextful_cli::pipeline::canonical_child_rules_bind_prepared_relational_journaling_and_preserve_independent_native_sources" }
+"authority.redact.recorded-body" = { test = "contextful_cli::job::canonical_output_removal_refuses_before_recorded_body_calls_but_unprotected_jobs_run" }
+"authority.mask.row-class" = { test = "contextful_context::read::enforce::one_admitted_read_applies_row_selected_masks_and_strict_unknown_fallback" }
+"authority.mask.row-class-fallback" = { test = "contextful_context::read::enforce::one_admitted_read_applies_row_selected_masks_and_strict_unknown_fallback" }
 "surface.edit.store-draft" = { test = "contextful_cli::serve::control_edit_saves_a_validated_draft_and_apply_claims_its_expected_version" }
 "surface.apply.draft-claim" = { test = "contextful_cli::serve::control_edit_saves_a_validated_draft_and_apply_claims_its_expected_version" }
 "surface.apply.draft-absent" = { test = "contextful_cli::serve::control_edit_saves_a_validated_draft_and_apply_claims_its_expected_version" }
@@ -101,7 +115,7 @@
 
 [floor]
 assurance = 146
-authority = 207
+authority = 221
 connector = 229
 corpus = 43
 disclosure = 63

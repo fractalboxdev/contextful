@@ -19,6 +19,7 @@ pub mod pipeline;
 pub mod place;
 pub mod ports;
 pub mod read;
+pub mod redaction;
 pub mod revoke;
 pub mod run;
 pub mod store;

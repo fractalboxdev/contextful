@@ -6,16 +6,16 @@ An unpinned clause is `committed`; a pinned one is `performed` when its Rust, Le
 | Contract | Files | Operations | Clauses | Refusals | Limits | Unsettled | Performed | Broken | Floor |
 | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
 | `assurance` | 2 | 15 | 246 | 59 | 22 | 14 | 146 | 0 | 146 |
-| `authority` | 2 | 16 | 270 | 77 | 27 | 10 | 207 | 0 | 207 |
+| `authority` | 2 | 16 | 291 | 78 | 30 | 10 | 221 | 0 | 221 |
 | `connector` | 2 | 14 | 349 | 89 | 21 | 15 | 229 | 0 | 229 |
 | `corpus` | 1 | 10 | 79 | 37 | 7 | 0 | 43 | 0 | 43 |
 | `disclosure` | 3 | 16 | 134 | 66 | 13 | 3 | 63 | 0 | 63 |
 | `read` | 2 | 15 | 207 | 35 | 22 | 9 | 184 | 0 | 184 |
-| `run` | 3 | 26 | 406 | 102 | 39 | 28 | 306 | 0 | 306 |
+| `run` | 3 | 26 | 408 | 102 | 39 | 28 | 306 | 0 | 306 |
 | `store` | 1 | 17 | 252 | 59 | 13 | 19 | 216 | 0 | 216 |
 | `surface` | 2 | 20 | 126 | 59 | 22 | 0 | 86 | 0 | 86 |
 | `topology` | 1 | 6 | 70 | 24 | 5 | 5 | 38 | 0 | 38 |
-| **total** | 19 | 155 | 2139 | 607 | 191 | 103 | 1518 | 0 | |
+| **total** | 19 | 155 | 2162 | 608 | 194 | 103 | 1532 | 0 | |
 
 Decision records: 18.
 
@@ -28,9 +28,9 @@ A milestone reads `closed` when its acceptance test computes `passing` and every
 | 0 — The test-first gate | 2 | 21 | 6 | passing | open |
 | 1 — The authority core | 14 | 239 | 190 | passing | closed |
 | 2 — The store | 9 | 174 | 143 | passing | closed |
-| 3 — The run path | 11 | 209 | 145 | passing | closed |
+| 3 — The run path | 11 | 211 | 145 | passing | closed |
 | 4 — Ingest | 25 | 517 | 344 | passing | open |
-| 5 — The read face under enforcement | 17 | 263 | 205 | passing | open |
+| 5 — The read face under enforcement | 17 | 284 | 219 | passing | open |
 | 6 — Sync and replicas | 8 | 78 | 73 | passing | closed |
 | 7 — Memory | 6 | 54 | 45 | passing | closed |
 | 8 — Accountability | 5 | 60 | 47 | passing | open |
@@ -293,7 +293,7 @@ Unscheduled operations: 10.
 | `authority.issue.zone-wildcard` | `crates/contextful-core/tests/integration/issue.rs::a_subject_declaring_a_wildcard_zone_refuses` | performed |
 | `authority.mask.absent-column` | `crates/contextful-policy/tests/integration/enforce/mask.rs::a_mask_on_an_absent_column_is_refused` | performed |
 | `authority.mask.aggregates` | `crates/contextful-context/tests/integration/read/enforce.rs::aggregates_read_the_masked_column` | performed |
-| `authority.mask.class-registry` | `crates/contextful-policy/tests/integration/enforce/mask.rs::the_class_registry_holds_five_classes` | performed |
+| `authority.mask.class-registry` | `crates/contextful-policy/tests/integration/enforce/mask.rs::the_class_registry_holds_registered_classes` | performed |
 | `authority.mask.column-policy` | `crates/contextful-policy/tests/integration/enforce/mask.rs::a_column_declares_its_class_and_strategy` | performed |
 | `authority.mask.combine-generalizes` | `crates/contextful-policy/tests/integration/enforce/mask.rs::only_truncate_combines_behind_a_digest` | performed |
 | `authority.mask.crowd` | `crates/contextful-policy/tests/integration/enforce/mask.rs::the_crowd_is_at_least_1000_and_defaults_to_it` | performed |
@@ -307,6 +307,9 @@ Unscheduled operations: 10.
 | `authority.mask.in-place` | `crates/contextful-context/tests/integration/read/enforce.rs::masks_substitute_columns_where_they_stand` | performed |
 | `authority.mask.masks-per-table` | `crates/contextful-policy/tests/integration/enforce/mask.rs::a_table_carries_at_most_128_masks` | performed |
 | `authority.mask.pseudonymous` | `crates/contextful-policy/tests/integration/enforce/mask.rs::the_digest_is_an_hmac_under_the_pepper` | performed |
+| `authority.mask.row-class` | `spec/pins.toml` | performed |
+| `authority.mask.row-class-fallback` | `spec/pins.toml` | performed |
+| `authority.mask.row-class-selector` | `spec/pins.toml` | performed |
 | `authority.mask.token-width` | `crates/contextful-policy/tests/integration/enforce/mask.rs::a_token_is_20_chars` | performed |
 | `authority.mask.truncation-ceiling` | `crates/contextful-policy/tests/integration/enforce/mask.rs::a_truncation_past_the_class_ceiling_is_refused` | performed |
 | `authority.mask.typed-strategy` | `crates/contextful-policy/tests/integration/enforce/mask.rs::binary_vector_and_nested_columns_admit_their_strategies_alone` | performed |
@@ -343,6 +346,17 @@ Unscheduled operations: 10.
 | `authority.profile.unevaluated-restriction` | `crates/contextful-policy/tests/integration/profile.rs::a_restriction_with_no_read_evaluator_is_refused_at_mint_derivation_and_admission` | performed |
 | `authority.profile.unrecognized-element` | `crates/contextful-policy/tests/integration/profile.rs::an_element_the_profile_does_not_name_is_refused` | performed |
 | `authority.profile.version-unsupported` | `crates/contextful-policy/tests/integration/profile.rs::a_profile_version_outside_the_supported_set_is_refused` | performed |
+| `authority.redact.canonical-journal` | `spec/pins.toml` | performed |
+| `authority.redact.child-selector-lineage` | `spec/pins.toml` | performed |
+| `authority.redact.compiled-pattern-size` | `spec/pins.toml` | performed |
+| `authority.redact.every-land-entry` | `spec/pins.toml` | performed |
+| `authority.redact.in-value` | `spec/pins.toml` | performed |
+| `authority.redact.match-work` | `spec/pins.toml` | performed |
+| `authority.redact.pattern-bytes` | `spec/pins.toml` | performed |
+| `authority.redact.recorded-body` | `spec/pins.toml` | performed |
+| `authority.redact.relational-journal` | `spec/pins.toml` | performed |
+| `authority.redact.rewritten-identities` | `spec/pins.toml` | performed |
+| `authority.redact.rules-per-pipeline` | `spec/pins.toml` | performed |
 | `authority.refuse.drifted-scope` | `crates/contextful-context/tests/integration/read/enforce.rs::a_drifted_scope_reads_empty` | performed |
 | `authority.refuse.echo` | `crates/contextful-context/tests/integration/read/enforce.rs::a_refusal_echoes_the_statements_value` | performed |
 | `authority.refuse.guard-walk` | `crates/contextful-context/tests/integration/read/enforce.rs::a_tree_past_the_walk_bound_composes_as_ordinary_conjuncts` | performed |

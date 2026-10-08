@@ -182,7 +182,13 @@ impl TablePolicy {
             let Some(column) = schema.iter().find(|s| &s.name == name) else {
                 return Err(EnforceError::MaskOnAbsentColumn(format!("table `{table}` masks `{name}`, which its schema omits")));
             };
-            if !mask.admits(&column.ty) {
+            if let Some(selector) = c.selector_column() {
+                let selected = schema.iter().find(|s| s.name == selector).ok_or_else(|| EnforceError::MaskOnAbsentColumn(format!("table `{table}` selects `{name}` masks through absent `{selector}`")))?;
+                if selected.ty != contextful_core::store::reconcile::ColumnType::Utf8 {
+                    return Err(EnforceError::StrategyOutsideType(format!("table `{table}` mask selector `{selector}` is not Utf8")));
+                }
+            }
+            if !c.admits(&column.ty) {
                 return Err(EnforceError::StrategyOutsideType(format!(
                     "table `{table}` masks `{name}`, a {} column, by `{}`; a binary column takes drop or hash, a vector or nested column drop alone",
                     column.ty.name(),
@@ -198,7 +204,7 @@ impl TablePolicy {
     /// at serve time unless the override names its class or the column itself
     /// (`authority.place.protected-floor`).
     pub fn column_set(&self, column: &str) -> AllowSet {
-        let protected = self.columns.get(column).and_then(|c| c.class).is_some_and(|c| c.protected());
+        let protected = self.columns.get(column).is_some_and(|c| c.protected());
         let named = self.overrides.iter().any(|o| o == "phi" || o == column);
         let column = Placement {
             protected: protected || self.placement.protected,

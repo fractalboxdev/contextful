@@ -12,6 +12,7 @@ mod issue;
 mod job;
 mod pipeline;
 mod read;
+mod redaction;
 mod revoke;
 mod run;
 mod store;

@@ -233,6 +233,119 @@ fn pipeline(id: &str, endpoint: &str, extra: &str, tables: &str) -> String {
 }
 
 #[test]
+fn a_journaled_relational_pipeline_records_only_canonical_child_replacements() {
+    let vendor = Vendor::start(|_| (200, r#"[{"body":{"parts":[{"text":"415-555-0100","public":"keep"}]},"public":"root"}]"#.into()));
+    let extra = r#"
+journal = true
+normalize = "relational"
+redaction = [{ table = "messages", column = "body", json_path = "$.parts[*].text", match = "whole", operation = "replace", argument = "phone" }]
+"#;
+    let dir = project(&pipeline("feed", &vendor.url("/messages"), extra, "tables = [\"messages\"]"));
+    ok(&cf(dir.path(), &["pipeline", "validate"]));
+    ok(&fire(dir.path(), "feed", "run-a", "2030-01-01T00:00:00Z"));
+    let out: serde_json::Value = serde_json::from_str(&ok(&cf(dir.path(), &["query", "--json", "--project", "research", "SELECT text, public FROM feed_messages_body_parts"]))).unwrap();
+    assert_eq!(out["rows"], serde_json::json!([["[REDACTED:phone]", "keep"]]));
+    assert_eq!(vendor.targets(), vec!["/messages"]);
+}
+
+#[test]
+fn a_renamed_removed_clock_refuses_before_source_or_durable_watermark_bytes() {
+    const CANARY: &str = "private-string-clock-canary-98";
+    for (protected, drop_clock, journal) in [(true, false, true), (true, true, true), (true, false, false), (true, true, false), (false, true, true), (false, true, false)] {
+        let vendor = Vendor::start(|_| (200, format!("[{{\"raw_clock\":\"{CANARY}\",\"public\":\"keep\"}}]")));
+        let removal = if protected { "redaction=[{table='messages',column='protected_clock',match='whole',operation='replace',argument='phone'}]" } else { "" };
+        let projection = if drop_clock { ",{op='select',columns=['public']}" } else { "" };
+        let extra = format!("journal={journal}\nincremental='raw_clock'\ntransforms=[{{op='rename',from='raw_clock',to='protected_clock'}}{projection}]\n{removal}\n");
+        let dir = project(&pipeline("feed", &vendor.url("/messages"), &extra, "tables=['messages']"));
+        let out = fire(dir.path(), "feed", "clock-a", "2030-01-01T00:00:00Z");
+        if protected {
+            let mut pending = vec![dir.path().join(".contextful")];
+            let mut retained = Vec::new();
+            while let Some(path) = pending.pop() {
+                if path.is_dir() { pending.extend(std::fs::read_dir(&path).unwrap().map(|entry| entry.unwrap().path())); }
+                else if path.exists() && std::fs::read(&path).unwrap().windows(CANARY.len()).any(|bytes| bytes == CANARY.as_bytes()) { retained.push(path.strip_prefix(dir.path()).unwrap().to_owned()); }
+            }
+            assert!(retained.is_empty(), "a removed pre-shape clock survives in durable artifacts: {retained:?}; {}", stderr(&out));
+            assert!(!out.status.success() && stderr(&out).contains("safe typed progress lineage"), "{}", stderr(&out));
+            assert!(vendor.targets().is_empty(), "refusal precedes the sensitive source pull");
+        } else {
+            ok(&out);
+            assert_eq!(vendor.targets(), ["/messages"]);
+        }
+    }
+}
+
+#[test]
+fn typed_removal_admits_nonjournaled_and_prepared_journal_source_pipelines() {
+    let removal = "redaction = [{ table = \"messages\", column = \"body\", match = { pattern = \"[0-9]{3}-[0-9]{3}-[0-9]{4}\" }, operation = \"replace\", argument = \"phone\" }]";
+    for journal in [false, true] {
+        let manifest = pipeline("feed", "https://api.vendor.example/v1", &format!("journal = {journal}\n{removal}"), "tables = [\"messages\"]");
+        let dir = project(&manifest);
+        let out = cf(dir.path(), &["pipeline", "validate"]);
+        assert!(out.status.success(), "{}", stderr(&out));
+    }
+}
+
+#[test]
+fn a_relational_pipeline_removes_parent_selected_text_from_its_child_table() {
+    let vendor = Vendor::start(|_| (200, r#"[{"body":{"parts":[{"text":"415-555-0100","public":"keep"}]},"public":"root"}]"#.into()));
+    let extra = r#"
+journal = false
+normalize = "relational"
+redaction = [{ table = "messages", column = "body", json_path = "$.parts[*].text", match = "whole", operation = "replace", argument = "phone" }]
+"#;
+    let dir = project(&pipeline("feed", &vendor.url("/messages"), extra, "tables = [\"messages\"]"));
+    ok(&fire(dir.path(), "feed", "run-a", "2030-01-01T00:00:00Z"));
+    let out: serde_json::Value = serde_json::from_str(&ok(&cf(dir.path(), &["query", "--json", "--project", "research", "SELECT text, public FROM feed_messages_body_parts"]))).unwrap();
+    assert_eq!(out["rows"], serde_json::json!([["[REDACTED:phone]", "keep"]]));
+}
+
+#[test]
+fn direct_and_pull_landing_rewrite_the_same_span_fixture_identically() {
+    let rows = r#"{"body":"☎call 415-555-0100 now✓","public":"keep"}"#;
+    let vendor_rows = format!("[{rows}]");
+    let vendor = Vendor::start(move |_| (200, vendor_rows.clone()));
+    let rule = r#"{ table = "messages", column = "body", match = { pattern = "[0-9]{3}-[0-9]{3}-[0-9]{4}" }, operation = "replace", argument = "phone" }"#;
+    let direct = project(&format!("[[pipeline.tables]]\nname = \"messages\"\nredaction = [{rule}]\n"));
+    let pull = project(&pipeline("feed", &vendor.url("/messages"), &format!("journal = false\nredaction = [{rule}]"), "tables = [\"messages\"]"));
+    std::fs::write(direct.path().join("rows.jsonl"), format!("{rows}\n")).unwrap();
+    ok(&cf(direct.path(), &["context", "land", "messages", "--project", "research", "--rows", "rows.jsonl", "--run-id", "run-a", "--site-id", "site-a", "--now", "2030-01-01T00:00:00Z"]));
+    ok(&fire(pull.path(), "feed", "run-a", "2030-01-01T00:00:00Z"));
+    let expected = serde_json::json!([["☎call [REDACTED:phone] now✓", "keep"]]);
+    let part = |dir: &Path, table: &str| {
+        let path = dir.join(format!(".contextful/context/research/tables/{table}/data/runs/run-a/ingest-a"));
+        std::fs::read_dir(path).unwrap().map(|e| e.unwrap().path()).find(|p| p.extension().is_some_and(|e| e == "parquet")).unwrap()
+    };
+    for (dir, table) in [(direct.path(), "messages"), (pull.path(), "feed_messages")] {
+        let out: serde_json::Value = serde_json::from_str(&ok(&cf(dir, &["query", "--json", "--project", "research", &format!("SELECT body, public FROM {table}")]))).unwrap();
+        assert_eq!(out["rows"], expected);
+    }
+    assert_eq!(std::fs::read(part(direct.path(), "messages")).unwrap(), std::fs::read(part(pull.path(), "feed_messages")).unwrap());
+}
+
+#[test]
+fn canonical_child_rules_bind_prepared_relational_journaling_and_preserve_independent_native_sources() {
+    for mode in ["relational", "native"] {
+        let vendor = Vendor::start(|_| (200, r#"[{"body":[{"text":"415-555-0100"}]}]"#.into()));
+        let source = pipeline("feed", &vendor.url("/messages"), &format!("normalize = \"{mode}\""), "tables = [\"messages\"]");
+        let child = "[[pipeline.tables]]\nname = \"feed_messages_body\"\nredaction = [{ table = \"feed_messages_body\", column = \"text\", operation = \"replace\", argument = \"phone\" }]\n";
+        let dir = project(child);
+        std::fs::create_dir(dir.path().join("pipelines")).unwrap();
+        std::fs::write(dir.path().join("pipelines/feed.toml"), source).unwrap();
+        let out = fire(dir.path(), "feed", "run-a", "2030-01-01T00:00:00Z");
+        if mode == "relational" {
+            ok(&out);
+            let rows: serde_json::Value = serde_json::from_str(&ok(&cf(dir.path(), &["query", "--json", "--project", "research", "SELECT text FROM feed_messages_body"]))).unwrap();
+            assert_eq!(rows["rows"], serde_json::json!([["[REDACTED:phone]"]]));
+            assert_eq!(vendor.targets(), vec!["/messages"]);
+        } else {
+            ok(&out);
+            assert_eq!(vendor.targets(), vec!["/messages"]);
+        }
+    }
+}
+
+#[test]
 fn an_image_source_validates_for_an_images_table() {
     let dir = project("[[pipeline]]\nid = \"photos\"\ntables = [\"images\"]\n[pipeline.source]\nname = \"image\"\nconfig = { root = \"photos\" }\n");
     let out = cf(dir.path(), &["pipeline", "validate"]);

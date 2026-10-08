@@ -48,9 +48,9 @@ fn a_column_declares_its_class_and_strategy() {
 /// `class` takes a value from the class registry in Shapes. `phi` marks protected health data; `ssn`, `phone`, `email` and `mrn` are exhaustible, each carrying a registered domain size.
 // spec: authority.mask.class-registry@932c61c2
 #[test]
-fn the_class_registry_holds_five_classes() {
+fn the_class_registry_holds_registered_classes() {
     let names: Vec<(&str, Option<f64>)> = CLASSES.iter().map(|c| (c.name, c.domain)).collect();
-    assert_eq!(names, [("phi", None), ("ssn", Some(1e9)), ("phone", Some(1e10)), ("email", Some(1e10)), ("mrn", Some(1e8))]);
+    assert_eq!(names, [("phi", None), ("ssn", Some(1e9)), ("phone", Some(1e10)), ("email", Some(1e10)), ("mrn", Some(1e8)), ("prompt", None), ("completion", None)]);
     assert!(class("phi").unwrap().protected() && !class("phi").unwrap().exhaustible());
     assert!(["ssn", "phone", "email", "mrn"].iter().all(|c| class(c).unwrap().exhaustible()));
 }
@@ -60,6 +60,36 @@ fn the_class_registry_holds_five_classes() {
 #[test]
 fn an_unknown_class_is_refused() {
     assert!(matches!(refused("x = { class = \"emial\", strategy = \"hash\" }"), EnforceError::UnknownClass(w) if w.contains("emial")));
+}
+
+#[test]
+fn prompt_and_completion_are_non_exhaustible_registered_classes() {
+    for name in ["prompt", "completion"] {
+        let registered = class(name).unwrap();
+        assert!(!registered.exhaustible() && !registered.protected());
+    }
+}
+
+#[test]
+fn the_requested_from_selector_shares_one_policy_and_refuses_ambiguous_fields() {
+    let requested = policy("text = { class = { from = \"kind\" }, strategies = { prompt = \"drop\", completion = \"hash\" }, fallback = \"drop\" }").unwrap();
+    let compatible = policy("text = { class = { from_column = \"kind\" }, strategies = { prompt = \"drop\", completion = \"hash\" }, fallback = \"drop\" }").unwrap();
+    assert_eq!(requested.columns["text"], compatible.columns["text"]);
+    let schema = [Column::new("text", ColumnType::Utf8, false), Column::new("kind", ColumnType::Utf8, true)];
+    requested.check_schema("patients", &schema).unwrap();
+    for class in ["{ from = \"kind\", from_column = \"other\" }", "{ from = \"kind\", unknown = \"other\" }"] {
+        assert!(policy(&format!("text = {{ class = {class}, strategies = {{ prompt = \"drop\" }}, fallback = \"drop\" }}")).is_err(), "{class}");
+    }
+}
+
+#[test]
+fn row_selected_classes_admit_registered_masks_and_require_the_selector_column() {
+    let p = policy("text = { class = { from_column = \"kind\" }, strategies = { prompt = \"drop\", completion = \"hash\" }, fallback = \"drop\" }").unwrap();
+    let schema = [Column::new("text", ColumnType::Utf8, false), Column::new("kind", ColumnType::Utf8, true)];
+    p.check_schema("patients", &schema).unwrap();
+    assert!(p.check_schema("patients", &schema[..1]).is_err());
+    assert!(policy("text = { class = { from_column = \"kind\" }, strategies = { completion = \"hash\" }, fallback = \"hash\" }").is_err(), "unknown classes never reach a less restrictive digest fallback");
+    assert!(policy("text = { class = { from_column = \"kind\" }, strategies = { phone = \"hash\" }, fallback = \"drop\" }").is_err(), "dynamic classes retain exhaustion protection");
 }
 
 /// `hash` or `tokenize` standing alone over an exhaustible class raises `EnforceDigestAloneOnExhaustibleClass`.

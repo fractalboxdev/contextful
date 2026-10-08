@@ -236,3 +236,20 @@ fn a_presence_filter_keeps_rows_by_whether_a_column_holds_a_value() {
     assert_eq!(serde_json::to_value(&equals).unwrap(), json!([{"op": "filter", "column": "status", "equals": null}]));
     assert_eq!(apply(&equals, rows(json!([{"status": null}, {"status": "open"}])), "t").unwrap().len(), 1);
 }
+#[test]
+fn recorded_clock_lineage_tracks_every_copy_rename_and_projection_conservatively() {
+    use contextful_core::run::ports::{Shape, Unshaped};
+    use contextful_core::pipeline::transform::{Chain, TransformOp};
+    let fields = |names: &[&str]| names.iter().map(|name| (*name).to_string()).collect::<std::collections::BTreeSet<_>>();
+    assert_eq!(Unshaped.recording_clock_columns("raw_clock").unwrap(), Some(fields(&["raw_clock"])));
+    let chain = Chain { table:"messages".into(), ops:vec![
+        TransformOp::Extract { pointer:"/raw_clock".into(), to:"copied".into() },
+        TransformOp::Rename { from:"raw_clock".into(), to:"protected_clock".into() },
+        TransformOp::Cast { column:"copied".into(), to:"string".into() },
+        TransformOp::Filter { column:None, equals:None, absent:None, present:Some("public".into()) },
+        TransformOp::Select { columns:vec!["copied".into(), "protected_clock".into()] },
+    ] };
+    assert_eq!(chain.recording_clock_columns("raw_clock").unwrap(), Some(fields(&["raw_clock", "copied", "protected_clock"])));
+    let dropped = Chain { table:"messages".into(), ops:vec![TransformOp::Select { columns:vec!["public".into()] }] };
+    assert_eq!(dropped.recording_clock_columns("raw_clock").unwrap(), Some(fields(&["raw_clock"])));
+}

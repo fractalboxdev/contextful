@@ -137,6 +137,30 @@ fn masks_substitute_columns_where_they_stand() {
     assert!(column(&named, "email").iter().all(|e| e.as_str().unwrap().len() == 5));
 }
 
+#[test]
+fn one_admitted_read_applies_row_selected_masks_and_strict_unknown_fallback() {
+    let mut r = Reads::new();
+    land_rows(&r.store, "lab/parts", "run-0001", json!([
+        {"id":"1","kind":"prompt","text":"private prompt"},
+        {"id":"2","kind":"completion","text":"private completion"},
+        {"id":"3","kind":"unregistered","text":"private unknown"},
+        {"id":"4","kind":null,"text":"private null class"},
+    ]));
+    let manifest = format!("{MANIFEST}\n[[pipeline.tables]]\nname = \"lab/parts\"\n[pipeline.tables.policy.columns]\ntext = {{ class = {{ from_column = \"kind\" }}, strategies = {{ prompt = \"drop\", completion = \"hash\" }}, fallback = \"drop\" }}\n");
+    r.face = Face::open(r.store.clone(), &manifest, pepper()).unwrap();
+    let authority = r.authority(loop_subject("agent://research-loop"), vec![read(&["lab/parts"], None)]);
+    let session = r.face.session(&authority, &Request::default(), Bounds::default()).unwrap();
+    let response = r.query(&session, "SELECT id, text FROM \"lab/parts\" ORDER BY id").unwrap();
+    assert_eq!(response.rows, vec![vec![json!("1"), json!("")], vec![json!("2"), json!(pepper().digest("private completion"))], vec![json!("3"), json!("")], vec![json!("4"), json!("")]]);
+    let old_sql = session.relation("lab/parts").unwrap().sql().to_string();
+    let changed = manifest.replace("completion = \"hash\"", "completion = \"tokenize\"");
+    r.face = Face::open(r.store.clone(), &changed, pepper()).unwrap();
+    let changed_session = r.face.session(&authority, &Request::default(), Bounds::default()).unwrap();
+    assert_ne!(old_sql, changed_session.relation("lab/parts").unwrap().sql(), "compiled selection contributes to pool and result cache identity");
+    let changed_result = r.query(&changed_session, "SELECT id, text FROM \"lab/parts\" ORDER BY id").unwrap();
+    assert_eq!(changed_result.rows[1][1], json!(pepper().token("private completion")));
+}
+
 /// An equality filter on a `drop` column matches nothing; on a `hash` column it matches equal digests.
 // spec: authority.mask.equality@d4d69130
 #[test]

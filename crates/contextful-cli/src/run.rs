@@ -11,7 +11,7 @@ use contextful_core::grant::{describe_pipeline, list_pipelines, trace_run, Grant
 use anyhow::{bail, Context, Result};
 use contextful_context::project::Project;
 use clap::Subcommand;
-use contextful_context::land::{commit_parts, commit_parts_group, commit_parts_with_diffs, discard_staged, publish_group, stage_part, Batch, Position, RunContext};
+use contextful_context::land::{commit_parts, commit_parts_group, commit_parts_with_diffs, discard_staged, publish_group, stage_part, stage_normalized_group, NormalizedStage, Batch, Position, RunContext};
 use contextful_context::{commit_log, node, ContextError, Store};
 use contextful_core::store::commit_log::{CommitEntry, Kind};
 use contextful_core::ports::{Clock, FixedClock};
@@ -21,7 +21,7 @@ use contextful_core::run::plan::Plan;
 use contextful_core::run::ports::{AwakeableStore, Commit, Destination, Landed, Marker, Part, Stage};
 use contextful_core::run::record::{describe_ceiling, export_ceiling, parse_bound, select_history, RunStatus, Window};
 use contextful_core::run::{Failure, FailureTag};
-use contextful_core::pipeline::normalize::{relational_tables, Mode, Normalize};
+use contextful_core::pipeline::normalize::{NormalizedGroup, Mode, Normalize};
 use contextful_core::store::declare::TableDecl;
 use contextful_core::store::reconcile::ColumnType;
 use contextful_core::store::lay_out::SchemaDiff;
@@ -237,6 +237,34 @@ fn store_failure(e: ContextError) -> Failure {
 }
 
 impl StoreDestination {
+    fn batch(&mut self, table: &str, rows: Vec<contextful_core::run::ports::Row>, mut types: contextful_core::run::ports::Types) -> Result<Batch, Failure> {
+        let decl = self.decl(table);
+        if let Some(normalize) = &self.normalize {
+            let stored = self.store.try_schema(table).map_err(store_failure)?.unwrap_or_default();
+            let declared = decl.column_types();
+            let inferred = normalize.store_types(&rows);
+            if normalize.mode == Mode::Native {
+                for row in &rows {
+                    for (column, value) in row {
+                        if !value.is_array() && !value.is_object() { continue; }
+                        let held = declared.get(column).cloned().or_else(|| stored.get(column).map(|c| c.ty.clone()));
+                        let downgrade = held.as_ref().filter(|ty| !ty.is_nested() && *ty != &ColumnType::Null)
+                            .map(|ty| (ty.name(), "stored scalar column"))
+                            .or_else(|| (!inferred.contains_key(column)).then_some(("Json".into(), "mixed value kinds")));
+                        if let Some((landed_type, reason)) = downgrade {
+                            let event = SchemaDiff { table:table.into(), column_path:column.clone(), source_type:if value.is_array() { "List" } else { "Struct" }.into(), landed_type, reason:reason.into() };
+                            if !self.schema_diffs.contains(&event) { self.schema_diffs.push(event); }
+                        }
+                    }
+                }
+            }
+            for (column, ty) in inferred {
+                let scalar = stored.get(&column).is_some_and(|c| !c.ty.is_nested() && c.ty != ColumnType::Null);
+                if !scalar && !declared.contains_key(&column) { types.entry(column).or_insert(ty); }
+            }
+        }
+        Ok(Batch { rows, types:types.into_iter().collect() })
+    }
     fn decl(&self, table: &str) -> TableDecl {
         self.decls.iter().find(|d| d.name == table).cloned().unwrap_or_else(|| TableDecl::named(table))
     }
@@ -257,62 +285,51 @@ impl StoreDestination {
 }
 
 impl Destination for StoreDestination {
+    fn recording_identity(&self, plan: &Plan) -> Result<Option<String>, Failure> {
+        self.store.validate_source_plan(plan, self.normalize).map_err(store_failure)?;
+        self.store.recording_identity(&plan.spec.table, self.normalize).map_err(store_failure)
+    }
+    fn validate_recorded_control(&self, plan: &Plan, pull: &contextful_core::run::ports::Pull) -> Result<(), Failure> {
+        self.store.validate_recorded_control(&plan.spec.table, pull).map_err(store_failure)
+    }
+    fn validate_recorded_clock(&self, plan: &Plan, columns: &std::collections::BTreeSet<String>) -> Result<(), Failure> {
+        self.store.validate_recording_clock(&plan.spec.table, columns, self.normalize).map_err(store_failure)
+    }
+    fn prepare_recorded(&mut self, table: &str, rows: Vec<contextful_core::run::ports::Row>, types: contextful_core::run::ports::Types, load_id: &str) -> Result<serde_json::Value, Failure> {
+        let batch = self.batch(table, rows, types)?;
+        let prepared = self.store.prepare_recording(table, &batch, self.normalize, load_id).map_err(store_failure)?;
+        serde_json::from_slice(&prepared.encode().map_err(store_failure)?).map_err(|e| Failure::deterministic(FailureTag::SchemaIncompatible, e.to_string()))
+    }
+    fn stage_recorded(&mut self, stage: Stage, payload: &serde_json::Value) -> Result<Part, Failure> {
+        let bytes = serde_json::to_vec(payload).map_err(|e| Failure::deterministic(FailureTag::SchemaIncompatible, e.to_string()))?;
+        let prepared = self.store.admit_recording(&stage.table, &bytes, self.normalize).map_err(store_failure)?;
+        let mut offsets: BTreeMap<String, u64> = self.relational_parts.iter().map(|(table, parts)| (table.clone(), parts.iter().map(|part| part.rows).sum())).collect();
+        offsets.insert(stage.table.clone(), stage.row_offset);
+        let injection = self.injection(&stage.run_id, &stage.site_id);
+        let mut parts = contextful_context::land::stage_recorded_group(&self.store, &self.decl(&stage.table), &prepared, &self.node, &injection, stage.ordinal, &offsets).map_err(store_failure)?;
+        let root = parts.remove(&stage.table).ok_or_else(|| Failure::new(FailureTag::Storage, "prepared recording has no root part"))?;
+        for (table, part) in parts { self.relational_parts.entry(table).or_default().push(Part { name:part.name, rows:part.rows, bytes:part.bytes }); }
+        Ok(Part { name:root.name, rows:root.rows, bytes:root.bytes })
+    }
     fn replaces(&self, table: &str) -> bool {
         self.decl(table).write_mode() == contextful_core::store::declare::WriteMode::Replace
     }
     fn stage_batch(&mut self, stage: Stage) -> Result<Part, Failure> {
-        let mut stage = stage;
         if let Some(normalize) = self.normalize.filter(|n| n.mode == Mode::Relational) {
-            let tables = relational_tables(stage.rows, &stage.table, &stage.run_id, normalize.depth);
-            stage.rows = tables.get(&stage.table).cloned().unwrap_or_default();
-            for (table, rows) in tables {
-                if table == stage.table || rows.is_empty() { continue; }
-                let child_decl = self.decl(&table);
-                let injection = self.injection(&stage.run_id, &stage.site_id);
-                let parts = self.relational_parts.entry(table).or_default();
-                let offset = parts.iter().map(|p| p.rows).sum();
-                let batch = Batch { rows, types: [("list_index".to_string(), ColumnType::Int64)].into() };
-                let part = stage_part(&self.store, &child_decl, &batch, &self.node, &injection, stage.ordinal, offset).map_err(store_failure)?;
-                parts.push(Part { name: part.name, rows: part.rows, bytes: part.bytes });
+            let mut offsets: BTreeMap<String, u64> = self.relational_parts.iter().map(|(table, parts)| (table.clone(), parts.iter().map(|p| p.rows).sum())).collect();
+            offsets.insert(stage.table.clone(), stage.row_offset);
+            let group = NormalizedGroup::new(stage.rows, &stage.table, &stage.run_id, normalize.depth);
+            let injection = self.injection(&stage.run_id, &stage.site_id);
+            let mut parts = stage_normalized_group(&self.store, &self.decl(&stage.table), NormalizedStage { group, ordinal:stage.ordinal, offsets }, &self.node, &injection).map_err(store_failure)?;
+            let root = parts.remove(&stage.table).ok_or_else(|| Failure::new(FailureTag::Storage, "normalized group has no root part"))?;
+            for (table, part) in parts {
+                self.relational_parts.entry(table).or_default().push(Part { name: part.name, rows: part.rows, bytes: part.bytes });
             }
+            return Ok(Part { name:root.name, rows:root.rows, bytes:root.bytes });
         }
         let decl = self.decl(&stage.table);
         let injection = self.injection(&stage.run_id, &stage.site_id);
-        // The pulls' declared types type the batch (`run.land.typed-pull`).
-        let mut types = stage.types;
-        if let Some(normalize) = &self.normalize {
-            // `native` types each undeclared column of objects and arrays, unless `schema.json`
-            // already holds it as a scalar (`run.normalize.native-store`).
-            let stored = self.store.try_schema(&stage.table).map_err(store_failure)?.unwrap_or_default();
-            let declared = decl.column_types();
-            let inferred = normalize.store_types(&stage.rows);
-            if normalize.mode == Mode::Native {
-                for row in &stage.rows {
-                    for (column, value) in row {
-                        if !value.is_array() && !value.is_object() { continue; }
-                        let held = declared.get(column).cloned().or_else(|| stored.get(column).map(|c| c.ty.clone()));
-                        let downgrade = held.as_ref().filter(|ty| !ty.is_nested() && *ty != &ColumnType::Null)
-                            .map(|ty| (ty.name(), "stored scalar column"))
-                            .or_else(|| (!inferred.contains_key(column)).then_some(("Json".into(), "mixed value kinds")));
-                        if let Some((landed_type, reason)) = downgrade {
-                            let event = SchemaDiff {
-                                table: stage.table.clone(), column_path: column.clone(),
-                                source_type: if value.is_array() { "List" } else { "Struct" }.into(),
-                                landed_type, reason: reason.into(),
-                            };
-                            if !self.schema_diffs.contains(&event) { self.schema_diffs.push(event); }
-                        }
-                    }
-                }
-            }
-            for (column, ty) in inferred {
-                let scalar = stored.get(&column).is_some_and(|c| !c.ty.is_nested() && c.ty != ColumnType::Null);
-                if !scalar && !declared.contains_key(&column) {
-                    types.entry(column).or_insert(ty);
-                }
-            }
-        }
-        let batch = Batch { rows: stage.rows, types: types.into_iter().collect() };
+        let batch = self.batch(&stage.table, stage.rows, stage.types)?;
         let part = stage_part(&self.store, &decl, &batch, &self.node, &injection, stage.ordinal, stage.row_offset).map_err(store_failure)?;
         Ok(Part { name: part.name, rows: part.rows, bytes: part.bytes })
     }
@@ -436,7 +453,8 @@ pub fn run(cmd: RunCmd) -> Result<()> {
             let cwd = std::env::current_dir()?;
             let decls = TableDecl::parse_pipeline(&text).with_context(|| format!("`{}`", declaration.display()))?;
             let author = admit.author(project.project.as_deref(), &text, &[&plan.spec.table])?;
-            let store = Store::open(&l.project.dir, &l.project.name)?;
+            let store = Store::open_declared(&l.project.dir, &l.project.name, declaration)?;
+            store.validate_source_plan(&plan, None)?;
             let (node, _) = node::resolve(&store, |k| std::env::var(k).ok())?;
             let w = wire_at(&l.project, &project.now)?;
             for reaped in w.engine.reap_orphans()? {

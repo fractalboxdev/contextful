@@ -130,6 +130,26 @@ fn a_fire_reads_its_input_at_the_pinned_as_of_and_lands_its_output_table() {
     assert!(refused.contains("fire-2 failed"), "{refused}");
 }
 
+#[test]
+fn canonical_output_removal_refuses_before_recorded_body_calls_but_unprotected_jobs_run() {
+    for protected in [false, true] {
+        let declaration = if protected {
+            "[[pipeline.tables]]\nname = \"scores\"\nredaction = [{ table = \"scores\", column = \"score\", operation = \"drop\" }]\n"
+        } else { "" };
+        let (dir, public, token) = project(&format!("{declaration}\n{}", job("max_in_flight = 1\n")));
+        let ledger = dir.path().join("body-calls.txt");
+        let out = fire(dir.path(), &public, &token, "protected-output", "2030-01-01T00:01:00Z", &[("SCORE_LEDGER", ledger.to_str().unwrap())]);
+        if protected {
+            assert!(err(&out).contains("JournalRedactionConflict"));
+            assert!(!ledger.exists(), "no recorded body effect runs before canonical output admission");
+            assert!(!dir.path().join(".contextful/context/research/machine.sqlite").exists());
+        } else {
+            ok(&out);
+            assert_eq!(std::fs::read_to_string(ledger).unwrap().lines().count(), 3);
+        }
+    }
+}
+
 /// The rows every body emits land after the last input row completes and before the owner retires, one run per
 /// declared output table through {{run.land.stage-order}}.
 // spec: run.journal.row-output@6b72f3ec

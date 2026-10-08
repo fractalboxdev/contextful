@@ -124,7 +124,7 @@ struct Opened {
 impl Opened {
     fn open(args: &StoreArgs) -> Result<Opened> {
         let l = locate(args.project.as_deref(), args.declaration.clone())?;
-        let store = Store::open(&l.project.dir, &l.project.name)?;
+        let store = Store::open_declared(&l.project.dir, &l.project.name, &l.declaration)?;
         let text = std::fs::read_to_string(&l.declaration)
             .with_context(|| format!("reading the declaration `{}`", l.declaration.display()))?;
         let decls = TableDecl::parse_pipeline(&text).with_context(|| format!("`{}`", l.declaration.display()))?;

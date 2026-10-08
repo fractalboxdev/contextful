@@ -30,6 +30,7 @@ pub struct Store {
     replica_of: Option<String>,
     require_connector_pin: bool,
     encryption: Option<Arc<ProjectEncryption>>,
+    writer: crate::redaction::Writer,
 }
 
 impl Store {
@@ -51,6 +52,7 @@ impl Store {
             check_key_source(&enc.key_source)?;
         }
         Ok(Store {
+            writer: crate::redaction::Writer::open(project_dir)?,
             root,
             config_node_id: config.node.and_then(|n| n.id),
             replica_of: config.replica.map(|r| r.of),
@@ -61,6 +63,55 @@ impl Store {
 
     pub fn root(&self) -> &Path {
         &self.root
+    }
+
+    /// Additional writer declarations add authority to the canonical project set.
+    pub fn open_declared(project_dir: &Path, project: &str, declaration: &Path) -> Result<Store> {
+        let mut store = Self::open(project_dir, project)?;
+        store.writer = crate::redaction::Writer::open_declared(project_dir, Some(declaration))?;
+        Ok(store)
+    }
+
+    pub(crate) fn rewrite_batch(&self, table: &str, batch: &crate::land::Batch) -> Result<crate::land::Batch> {
+        self.writer.batch(table, batch)
+    }
+
+    /// Canonical source-plan admission precedes source execution and verbatim recording.
+    pub fn validate_writer_plan(&self, plan: &contextful_core::run::plan::Plan, normalize: Option<contextful_core::pipeline::normalize::Normalize>) -> Result<()> {
+        self.writer.validate_plan(plan, normalize)
+    }
+
+    /// Recorded effects require canonical removal admission before execution.
+    pub fn validate_writer_recording(&self, table: &str, normalize: Option<contextful_core::pipeline::normalize::Normalize>) -> Result<()> {
+        self.writer.validate_recording(table, normalize)
+    }
+
+    pub fn recording_identity(&self, table: &str, normalize: Option<contextful_core::pipeline::normalize::Normalize>) -> Result<Option<String>> {
+        self.writer.recording_identity(table, normalize)
+    }
+
+    /// Source runs admit canonical prepared recording; body-effect recording keeps its refusal.
+    pub fn validate_source_plan(&self, plan: &contextful_core::run::plan::Plan, normalize: Option<contextful_core::pipeline::normalize::Normalize>) -> Result<()> {
+        self.writer.validate_source_plan(plan, normalize)
+    }
+    pub fn validate_recording_clock(&self, table: &str, columns: &std::collections::BTreeSet<String>, normalize: Option<contextful_core::pipeline::normalize::Normalize>) -> Result<()> {
+        self.writer.validate_recording_clock(table, columns, normalize)
+    }
+
+    pub fn validate_recorded_control(&self, table: &str, pull: &contextful_core::run::ports::Pull) -> Result<()> {
+        self.writer.validate_recorded_control(table, pull)
+    }
+
+    pub fn prepare_recording(&self, table: &str, batch: &crate::land::Batch, normalize: Option<contextful_core::pipeline::normalize::Normalize>, load_id: &str) -> Result<crate::PreparedRecording> {
+        self.writer.prepare_recording(table, batch, normalize, load_id)
+    }
+
+    pub fn admit_recording(&self, table: &str, bytes: &[u8], normalize: Option<contextful_core::pipeline::normalize::Normalize>) -> Result<crate::PreparedRecording> {
+        self.writer.admit_recording(table, bytes, normalize)
+    }
+
+    pub(crate) fn rewrite_group(&self, group: contextful_core::pipeline::normalize::NormalizedGroup) -> Result<std::collections::BTreeMap<String, Vec<contextful_core::run::ports::Row>>> {
+        self.writer.group(group)
     }
 
     /// Whether this opened store holds a bound at-rest cipher.

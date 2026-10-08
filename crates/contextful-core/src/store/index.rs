@@ -477,6 +477,11 @@ impl TableDecl {
     /// Hold the sidecar declarations to the manifest alone: one shared identifier, and the
     /// types `columns` declares (`store.index.id-column-unresolved`, `store.index.column-type`).
     pub fn validate_index_declaration(&self) -> Result<(), StoreError> {
+        for index in self.indexes() {
+            if self.redaction.iter().flatten().any(|rule| rule.column == index.column) {
+                return Err(StoreError::StoreIndexOverRedactedColumn(format!("table `{}` indexes removed column `{}`", self.name, index.column)));
+            }
+        }
         let declared = Schema {
             columns: self
                 .column_types()
