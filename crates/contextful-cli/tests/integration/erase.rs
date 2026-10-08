@@ -66,6 +66,30 @@ primary_key = ["trace_id", "id"]
 name = "unrelated"
 primary_key = ["id"]
 columns = { id = "utf8" }
+[[pipeline.tables]]
+name = "subject_only"
+primary_key = ["id"]
+subject_id = "trace_id"
+[[pipeline.tables]]
+name = "partition_only"
+primary_key = ["id"]
+partition_by = ["trace_id"]
+[[pipeline.tables]]
+name = "order_only"
+primary_key = ["id"]
+order_by = "trace_id"
+[[pipeline.tables]]
+name = "cluster_only"
+primary_key = ["id"]
+cluster_by = ["trace_id"]
+[[pipeline.tables]]
+name = "hash_only"
+primary_key = ["id"]
+content_hash_column = "trace_id"
+[[pipeline.tables]]
+name = "index_only"
+primary_key = ["id"]
+indexes = [{kind = "fulltext", column = "trace_id"}]
 "#).unwrap();
     std::fs::write(root.join(".contextful/issuance.toml"), "default_audience = \"erasure-fixture\"\nmax_lifetime_secs = 3600\n").unwrap();
     for (table, rows) in [
@@ -74,6 +98,10 @@ columns = { id = "utf8" }
         ("unrelated", "{\"id\":\"erase-trace\"}\n"),
     ] {
         std::fs::write(root.join("rows.jsonl"), rows).unwrap();
+        ok(run(root, &["context", "land", table, "--project", "research", "--rows", "rows.jsonl", "--run-id", "run-1", "--site-id", "fixture"], None, None));
+    }
+    for table in ["subject_only", "partition_only", "order_only", "cluster_only", "hash_only", "index_only"] {
+        std::fs::write(root.join("rows.jsonl"), "{\"id\":\"a\",\"trace_id\":\"erase-trace\"}\n{\"id\":\"b\",\"trace_id\":\"keep-trace\"}\n").unwrap();
         ok(run(root, &["context", "land", table, "--project", "research", "--rows", "rows.jsonl", "--run-id", "run-1", "--site-id", "fixture"], None, None));
     }
     let pins = ok(run(root, &["token", "keygen", "--out", ".contextful/issuer.seed"], None, None));
@@ -104,6 +132,11 @@ columns = { id = "utf8" }
     assert_eq!(receipt["subject_hash"], hash);
     assert_eq!(receipt["affected_counts"]["notes"], 1);
     assert_eq!(receipt["affected_counts"]["events"], 1);
+    for table in ["subject_only", "partition_only", "order_only", "cluster_only", "hash_only", "index_only"] {
+        assert_eq!(receipt["affected_counts"][table], 1, "structural declaration remains outside column erasure: {table}");
+        let query = format!("SELECT id FROM {table} ORDER BY id");
+        assert_eq!(serde_json::from_str::<serde_json::Value>(&ok(run(root, &["query", "--json", "--project", "research", &query], None, Some(&pins)))).unwrap()["rows"], serde_json::json!([["b"]]));
+    }
     let query = ["query", "--json", "--project", "research", "SELECT (SELECT count(*) FROM notes), (SELECT count(*) FROM events), (SELECT count(*) FROM unrelated)"];
     assert_eq!(serde_json::from_str::<serde_json::Value>(&ok(run(root, &query, None, Some(&pins)))).unwrap()["rows"], serde_json::json!([["1","1","1"]]));
     std::fs::write(root.join("keyset.json"), serde_json::to_vec(&serde_json::json!({"subject_hash":hash,"keys":[{"table":"notes","keys":{"id":"b"}}]})).unwrap()).unwrap();
