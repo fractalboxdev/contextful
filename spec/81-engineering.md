@@ -148,7 +148,7 @@ Target directories, the engine-linked invocation, linked query functions, build 
   *because every engine-linked test binary embeds the bundled engine, and full debug information multiplies each past a sandbox's disk*
 - `release-profile` — Release builds compile with thin link-time optimization, one codegen unit per crate and symbols stripped, and unwind on panic.
   *because the run keeper survives a panicking job only by unwinding to its guard*
-- `profile-build` — The features stage tests each package under every feature set its manifest lists in `feature-runs`, in parts dispatched as one check each: the other packages, and each binary run — none, all and each listed set.
+- `profile-build` — The features stage tests each package under every feature set its manifest lists in `feature-runs`: other packages share one check; each binary feature run has separate checks for differential tests and all remaining tests.
   *because one cold build of the binary under one feature set fills most of a stage's wall clock, and a listed set reaches what none and all miss*
 - `container-image` — The repository's `Dockerfile` builds one profile, `contextful-full` unless `PROFILE` names another, as a static `linux/amd64` binary, and ships it in a shell-free runtime image as a non-root user over a declared store volume.
 - `targets` — All three profiles cross-compile to `x86_64-unknown-linux-musl` and `aarch64-unknown-linux-musl`; edge and full also build for `aarch64-apple-darwin` and `x86_64-apple-darwin`.
@@ -184,15 +184,17 @@ Stage order, secrets of record, the crate-graph, row-token, egress and dependenc
 - `stage-sequence` — The gate runs its stages in order — pins, toolchain, schema, test-first, workspace, acceptance, evaluate, features, crate graph, connectors, TypeScript surfaces, formal, budget — and a subset is selectable by name.
 - `stage-subset` — A selected subset runs in the sequence's order; a stage reading an unselected predecessor's output, with that output absent, raises `StagePredecessorMissing`, naming both stages, before any stage runs.
   *A-assurance*
-- `remote-check` — The FlareDispatch pull-request webhook dispatches every part from `contextful-ci stages --parts`, each as `flare-dispatch/check:<part>` on the head commit.
+- `remote-check` — The FlareDispatch pull-request webhook dispatches every part from `contextful-ci stages --parts --base <base-sha>`, each as `flare-dispatch/check:<part>` on the head commit.
   *A-assurance*
 - `windows-checks` — Windows native checks run only as optional diagnostics and contribute no required merge or release verdict.
   *A-assurance*
-- `workspace-parts` — Remote workspace checks compile the feature-unified workspace without running tests, run the CLI suite in its own check, and run each other non-acceptance package suite in exactly one of four groups.
+- `test-first-parts` — Remote validation requires a changed test in each changed source package under {{assurance.test.test-first}}; each changed source or test package checks only its own tests against the base in a separate dispatch.
+  *because one base build per package fits the sandbox's wall clock more reliably*
+- `workspace-parts` — Remote workspace checks compile the feature-unified workspace without running tests, run differential and remaining CLI tests separately, and run each other non-acceptance package suite in exactly one of four groups.
   *A-assurance*
 - `remote-predecessors` — Each dispatched part invokes `contextful-ci gate --predecessors --stage <part> --base <base-sha>`, so no check reads another check's sandbox.
   *A-assurance*
-- `fork-dispatch` — FlareDispatch dispatches only a pull-request head pushed to this repository; a fork receives none of the 24 required stage checks.
+- `fork-dispatch` — FlareDispatch dispatches only a pull-request head pushed to this repository; a fork receives none of the required stage checks.
   *because a dispatch runs untrusted code in the organization's compute account, and absent required checks fail closed*
 - `stage-reports` — Each stage prints the environment it leaves and its memory limit, peak and event counts, and a failing stage prints its diagnostics before propagating its exit code.
   *because memory exhaustion is silent, and a kill then reads as a number in the log*

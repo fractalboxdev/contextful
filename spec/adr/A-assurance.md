@@ -144,16 +144,16 @@ Revisit: an external consumer needs a compatibility promise on a public surface,
 
 Context: the feature-unified workspace suite exceeds the 1800 s sandbox cap on a cold remote build. Criteria: every package suite runs, the feature union compiles, and each dispatched command runs locally too.
 
-Decision: `assurance.gate.workspace-parts` dispatches one compile part over the full union and runs the CLI suite from its compiled artifacts. Four other parts partition the remaining non-acceptance package suites. The unsplit local workspace stage retains its one cargo invocation under `assurance.build.one-engine-build`.
+Decision: `assurance.gate.workspace-parts` compiles the full union without execution and runs differential and remaining CLI tests in separate checks. Four other parts partition the remaining non-acceptance package suites. Binary feature checks use the same test partition. The unsplit local workspace stage retains its one cargo invocation under `assurance.build.one-engine-build`.
 
 | Option | Lost on | Cost |
 | --- | --- | --- |
-| One union compile with CLI suite and four other suite groups *(chosen)* | — | Remote sandboxes rebuild shared dependencies; five checks replace one. |
+| One union compile, two CLI partitions and four other suite groups *(chosen)* | — | Remote sandboxes rebuild shared dependencies; seven workspace checks replace one. |
 | A lock-keyed shared build cache | Operability | A cache bucket and credential become part of the gate; a cold lock still exceeds the cap. |
 | One check for the full workspace | Stage wall clock | A cold sandbox times out before it reports a verdict. |
 | A higher step timeout | Platform limit | Workflow steps admit at most 30 minutes. |
 
-Consequences: the five remote checks cover the same package set as the unsplit local stage. The compile part reuses CLI artifacts before its sandbox exits; other parts compile their dependencies independently.
+Consequences: seven remote workspace checks cover the same package set as the unsplit local stage. Every binary feature set retains all tests across its two checks. Each CLI partition compiles independently; reference-program builds occupy only the differential partition.
 
 ## One decision module compiles native and to WebAssembly
 
