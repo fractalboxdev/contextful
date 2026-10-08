@@ -254,7 +254,7 @@ pub fn main_host(host: Host) {
         #[cfg(feature = "read-plane")]
         Cmd::Mcp(c) => mcp::run(c),
         #[cfg(feature = "read-plane")]
-        Cmd::Serve(c) => serve::run(c),
+        Cmd::Serve(c) => serve::run(c, &tasks),
         #[cfg(feature = "data-plane")]
         Cmd::Derive(c) => derive::run(c),
         #[cfg(feature = "read-plane")]

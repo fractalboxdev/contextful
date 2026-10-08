@@ -110,3 +110,51 @@ fn the_read_replica_reads_and_syncs_and_refuses_every_write_path() {
     }
     assert!(!dir.path().join(".contextful").join("context").join("research").exists(), "a refused subcommand created a store root");
 }
+
+/// HTTP admission stays available on the read replica; control routes require the run path.
+#[cfg(feature = "read-plane")]
+#[test]
+fn served_http_keeps_read_admission_and_limits_control_to_the_data_plane() {
+    use std::io::{BufRead, BufReader, Read, Write};
+    use std::net::TcpStream;
+    use std::process::Stdio;
+    struct Listener(std::process::Child);
+    impl Drop for Listener {
+        fn drop(&mut self) { let _ = self.0.kill(); let _ = self.0.wait(); }
+    }
+    let dir = tempfile::tempdir().unwrap();
+    std::fs::write(dir.path().join("contextful.toml"), "authoring_posture = \"per_request\"\n").unwrap();
+    let key = cf(dir.path(), &["token", "keygen", "--out", ".contextful/issuer.seed"]);
+    assert!(key.status.success(), "{}", String::from_utf8_lossy(&key.stderr));
+    let public = String::from_utf8_lossy(&key.stdout).trim().to_owned();
+    let mut child = Command::new(env!("CARGO_BIN_EXE_contextful"))
+        .args(["serve", "--http", "127.0.0.1:0", "--project", "research", "--audience", "contextful://profile-test", "--max-in-flight", "2", "--public-key", &public])
+        .current_dir(dir.path()).stdout(Stdio::null()).stderr(Stdio::piped()).spawn().unwrap();
+    let mut stderr = BufReader::new(child.stderr.take().unwrap());
+    let _listener = Listener(child);
+    let address = loop {
+        let mut line = String::new();
+        assert!(stderr.read_line(&mut line).unwrap() > 0, "HTTP profile face exits before binding");
+        if let Some(address) = line.trim().strip_prefix("listening on http://").and_then(|value| value.strip_suffix("/mcp")) {
+            break address.to_owned();
+        }
+    };
+    let request = |method: &str, path: &str| {
+        let mut stream = TcpStream::connect(&address).unwrap();
+        stream.set_read_timeout(Some(std::time::Duration::from_secs(10))).unwrap();
+        write!(stream, "{method} {path} HTTP/1.1\r\nHost: {address}\r\nContent-Length: 0\r\nConnection: close\r\n\r\n").unwrap();
+        let mut answer = String::new();
+        stream.read_to_string(&mut answer).unwrap();
+        answer
+    };
+    assert!(request("GET", "/health").starts_with("HTTP/1.1 200"));
+    let refused = request("POST", "/mcp");
+    assert!(refused.starts_with("HTTP/1.1 401"), "{refused}");
+    assert!(refused.to_ascii_lowercase().contains("www-authenticate:"), "{refused}");
+    for (method, path) in [("GET", "/control/workflows"), ("POST", "/control/apply")] {
+        let answer = request(method, path);
+        let status = if cfg!(feature = "data-plane") { "401" } else { "404" };
+        assert!(answer.starts_with(&format!("HTTP/1.1 {status}")), "{answer}");
+        assert!(!answer.contains("filings-flow"), "{answer}");
+    }
+}

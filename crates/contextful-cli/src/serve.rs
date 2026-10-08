@@ -7,6 +7,8 @@
 //! network transport, which admits each one on its own credential. Every value is
 //! resolved before the listener binds, so a process that cannot serve binds nothing.
 
+#[cfg(feature = "data-plane")]
+use crate::admit::AdmitArgs;
 use crate::admit::{face, revocation_state, LedgerFile, LivePins, AUDIENCE_VAR, PUBKEY_VAR};
 use crate::project::locate;
 use crate::root::root as project_root;
@@ -18,12 +20,19 @@ use contextful_core::ports::{Clock, SigningPort};
 use contextful_policy::exchange::answer as exchange_answer;
 use contextful_policy::issue::{SeedSigner, DEFAULT_SEED_PATH};
 use contextful_policy::possession::ProofChecker;
+#[cfg(feature = "data-plane")]
+use contextful_agent::http::{HttpRequest, HttpResponse, APPLY_PATH, WORKFLOWS_PATH};
+#[cfg(feature = "data-plane")]
+use contextful_core::surface::SurfaceError;
+use contextful_core::run::derive::task::Tasks;
 use contextful_policy::audit::AuditLog;
 use contextful_policy::keyset::{KeyCheckpoint, StaticPins};
 use contextful_policy::revoke::RevocationState;
 use std::net::TcpListener;
 use std::path::PathBuf;
 use std::sync::Arc;
+#[cfg(feature = "data-plane")]
+use serde_json::{json, Value};
 
 /// The refusals of starting the network transport. `Display` begins with the identifier.
 #[derive(Debug, Clone, PartialEq, Eq, thiserror::Error)]
@@ -78,7 +87,9 @@ fn issuer_pins(flag: Option<&str>) -> Result<StaticPins, ServeError> {
     StaticPins::parse(text).map_err(|e| ServeError::IssuerKeyUnusable(format!("--public-key / {PUBKEY_VAR}: {e}")))
 }
 
-pub fn run(args: ServeArgs) -> Result<()> {
+pub fn run(args: ServeArgs, tasks: &Tasks) -> Result<()> {
+    #[cfg(not(feature = "data-plane"))]
+    let _ = tasks;
     let clock = SystemClock;
     // The declarations are checked before anything opens (`read.register.serve-declaration`).
     let audience = audience(args.audience.as_deref()).map_err(anyhow::Error::msg)?;
@@ -132,9 +143,43 @@ pub fn run(args: ServeArgs) -> Result<()> {
         let result = exchange_answer(exchange.as_ref(), &request.body, request.header("DPoP"), &proofs, issuance, &ctx);
         contextful_agent::http::HttpResponse::json(result.status, &result.body)
     };
+    #[cfg(feature = "data-plane")]
+    let control_admit = AdmitArgs { public_key: args.public_key.clone(), audience: args.audience.clone(), denylist: args.denylist.clone(), keyset: args.keyset.clone(), holder_key: None };
+    #[cfg(feature = "data-plane")]
+    let control = |request: &HttpRequest| -> HttpResponse {
+        let answer = match request.target.split('?').next().unwrap_or_default() {
+            WORKFLOWS_PATH => crate::cadence::published(&located.project, &located.declaration),
+            APPLY_PATH => {
+                let body: Value = match serde_json::from_slice(&request.body) {
+                    Ok(Value::Object(body)) => Value::Object(body),
+                    _ => return HttpResponse::json(400, &json!({ "error": { "identifier": "ControlRequestMalformed" } })),
+                };
+                let Some(fields) = body.as_object() else { unreachable!() };
+                if fields.len() > 1 || fields.keys().any(|field| field != "id") || fields.get("id").is_some_and(|id| !id.is_string()) {
+                    return HttpResponse::json(400, &json!({ "error": { "identifier": "ControlRequestMalformed" } }));
+                }
+                let project = crate::run::ProjectArgs { project: Some(located.project.name.clone()), now: None };
+                crate::cadence::apply(&project, Some(located.declaration.clone()), body["id"].as_str(), tasks, &control_admit, None)
+                    .and_then(|()| crate::cadence::published(&located.project, &located.declaration))
+            }
+            _ => unreachable!(),
+        };
+        match answer {
+            Ok(state) => HttpResponse::json(200, &state),
+            Err(error) => {
+                let surface = error.chain().find_map(|part| part.downcast_ref::<SurfaceError>());
+                let status = surface.map_or(503, SurfaceError::status);
+                let identifier = surface.map(|refusal| refusal.to_string().split(':').next().unwrap_or("ControlUnavailable").to_string())
+                    .unwrap_or_else(|| "ControlUnavailable".into());
+                HttpResponse::json(status, &json!({ "error": { "identifier": identifier } }))
+            }
+        }
+    };
     let http = HttpFace::new(&face, &clock, &audit, admitting, Some(ceiling))
         .map_err(anyhow::Error::msg)?
         .with_exchange(&exchange_route, exchange.is_none());
+    #[cfg(feature = "data-plane")]
+    let http = http.with_control(&control);
     let listener = TcpListener::bind(&args.http)?;
     eprintln!("listening on http://{}/mcp", listener.local_addr()?);
     http.serve(listener)?;

@@ -17,6 +17,7 @@ use crate::run::{boot_id, wire_at, ProjectArgs};
 use anyhow::{bail, Context, Result};
 use contextful_context::project::Project;
 use contextful_core::pipeline::declare::{collect, dependent_runs, ManifestFile, PipelineSpec};
+use contextful_core::pipeline::transform::TransformOp;
 use contextful_core::grant::Action;
 use contextful_core::ports::Clock;
 use contextful_core::run::derive::task::Tasks;
@@ -36,7 +37,8 @@ use contextful_policy::verify::{effect_boundary, Admission, AdmittedAuthority};
 use contextful_outbound::egress::{system, Outbound, Transport};
 use serde::Serialize;
 use serde_json::json;
-use std::collections::BTreeMap;
+use serde_json::Value;
+use std::collections::{BTreeMap, BTreeSet};
 use std::net::SocketAddr;
 use std::path::{Path, PathBuf};
 use std::io::Read;
@@ -236,6 +238,53 @@ fn applied(snaps: &Source) -> Result<(Option<u64>, BTreeMap<String, PipelineSpec
     let specs = collect(&[ManifestFile { path: snapshot_file(version), text }])
         .map_err(|e| SurfaceError::ControlSnapshotUnreadable(format!("{}: {e}", snapshot_file(version))))?;
     Ok((Some(version), specs.into_iter().map(|d| (d.spec.id.clone(), d.spec)).collect()))
+}
+
+/// The applied snapshot and recorded run outcomes the store publishes for Admin.
+pub(crate) fn published(project: &Project, declaration: &Path) -> Result<Value> {
+    let text = std::fs::read_to_string(declaration)?;
+    let control = control_config(&text, project)?;
+    let (version, pipelines) = applied(&control.source)?;
+    let truncated = pipelines.len() > 1000;
+    let pipelines: Vec<PipelineSpec> = pipelines.into_values().take(1000).collect();
+    let selected: BTreeSet<&str> = pipelines.iter().map(|spec| spec.id.as_str()).collect();
+    let store = contextful_context::Store::open(&project.dir, &project.name)?;
+    let states = contextful_sync::run_state::run_states(&store)?;
+    let mut runs: BTreeMap<String, contextful_sync::RunMark> = BTreeMap::new();
+    for state in states.into_values() {
+        for (id, mark) in state.runs {
+            if selected.contains(id.as_str()) && runs.get(&id).is_none_or(|earlier| mark.started_at > earlier.started_at) {
+                runs.insert(id, mark);
+            }
+        }
+    }
+    let wired = wire_at(project, &None)?;
+    for row in wired.engine.catalog.runs(None)? {
+        if selected.contains(row.pipeline_id.as_str()) && runs.get(&row.pipeline_id).is_none_or(|earlier| row.started_at > earlier.started_at) {
+            runs.insert(row.pipeline_id.clone(), contextful_sync::RunMark {
+                run_id: row.run_id,
+                table: row.table,
+                status: row.status,
+                started_at: row.started_at,
+                ended_at: row.ended_at,
+            });
+        }
+    }
+    let pipelines: Vec<Value> = pipelines.into_iter().map(|spec| json!({
+        "id": spec.id,
+        "schedule": spec.schedule,
+        "tables": spec.tables.iter().map(|table| table.name()).collect::<Vec<_>>(),
+        "source": spec.source.name,
+        "after": spec.after,
+        "steps": spec.transforms.iter().map(|step| match step {
+            TransformOp::Select { .. } => "select",
+            TransformOp::Rename { .. } => "rename",
+            TransformOp::Cast { .. } => "cast",
+            TransformOp::Filter { .. } => "filter",
+            TransformOp::Extract { .. } => "extract",
+        }).collect::<Vec<_>>(),
+    })).collect();
+    Ok(json!({ "applied": version, "pipelines": pipelines, "runs": runs, "truncated": truncated, "declined": 0 }))
 }
 
 /// A locally applied descendant keeps precedence over an older bucket head after every
