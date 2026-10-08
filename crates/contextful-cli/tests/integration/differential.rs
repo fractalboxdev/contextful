@@ -811,6 +811,50 @@ fn placement_cases_resolve_zones_in_the_reference_and_the_native_build_alike() {
     }
 }
 
+#[test]
+fn forget_narrowing_agrees_in_native_webassembly_and_the_independent_reference() {
+    let legal = json!({"verdict": "admitted", "error": null, "dimension": null});
+    let widened = json!({"verdict": "refused", "error": "AttenuationWidens", "dimension": "actions"});
+    let mut cases = Vec::new();
+    for action in ["read", "write", "execute", "admin", "forget"] {
+        cases.push((json!({"op": "narrow",
+            "parent": [{"actions": [action], "tables": ["research/*"]}],
+            "child": [{"actions": ["forget"], "tables": ["research/filings"]}]}),
+            if action == "forget" { legal.clone() } else { widened.clone() }));
+    }
+    for (case, want) in &cases {
+        assert_eq!(engine(case), *want, "native build on {case}");
+    }
+    let exe = lean_or_skip!();
+    for (case, want) in &cases {
+        assert_eq!(decide(&exe, &[], case), *want, "reference on {case}");
+    }
+    if cfg!(feature = "component-host") {
+        let s = Scratch::new(wasm_args_or_skip!());
+        let corpus: String = cases.iter().map(|(case, want)| format!("{}\n", json!({"case": case, "engine": want, "reference": want}))).collect();
+        std::fs::write(s.corpus(), corpus).unwrap();
+        let report = passed(&s.run(&exe, &["--seed", "17", "--cases", "0"]));
+        assert_eq!(line_value(&report, "disagreements"), "0");
+    }
+}
+
+#[test]
+fn seeded_generated_narrowing_cases_include_explicit_forget_actions() {
+    let s = Scratch::new(wasm_args_or_skip!());
+    let log = s.path("generated.jsonl");
+    let report = passed(&s.run(&s.logging(&log), &["--seed", "3", "--cases", "200"]));
+    assert_eq!(line_value(&report, "generated"), "200");
+    assert_eq!(line_value(&report, "disagreements"), "0");
+    let cases = read_jsonl(&log);
+    let holds_forget = |grants: &Value| {
+        grants.as_array().is_some_and(|grants| {
+            grants.iter().any(|grant| grant["actions"].as_array().is_some_and(|actions| actions.iter().any(|action| action == "forget")))
+        })
+    };
+    assert!(cases.iter().any(|case| case["op"] == "narrow" && holds_forget(&case["parent"])), "the fixed seed generates no forget parent");
+    assert!(cases.iter().any(|case| case["op"] == "narrow" && holds_forget(&case["child"])), "the fixed seed generates no forget child");
+}
+
 /// A `verify` case admits one credential against pinned keys as a network checkpoint does; both builds decide it and are compared, the reference model decides none, and the report counts each credential verdict.
 // spec: assurance.differential-test.credential-cases@ca93477e
 #[test]

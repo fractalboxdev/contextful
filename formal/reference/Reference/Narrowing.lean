@@ -19,9 +19,9 @@ namespace Reference
 
 open Lean (JsonNumber)
 
-/-- The action vocabulary: `read`, `write`, `execute`, `admin`. -/
+/-- The action vocabulary: `read`, `write`, `execute`, `admin`, `forget`. -/
 inductive Action where
-  | read | write | execute | admin
+  | read | write | execute | admin | forget
   deriving Repr, DecidableEq
 
 def Action.parse : String → Option Action
@@ -29,6 +29,7 @@ def Action.parse : String → Option Action
   | "write" => some .write
   | "execute" => some .execute
   | "admin" => some .admin
+  | "forget" => some .forget
   | _ => none
 
 /-- A tenant scope: a table and an opaque byte string, compared byte for byte. -/

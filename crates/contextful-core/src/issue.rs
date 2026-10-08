@@ -240,9 +240,9 @@ impl IssuancePolicy {
                 g
             })
             .collect();
-        let lands = grants.iter().flat_map(|g| &g.actions).find(|a| matches!(a, Action::Write | Action::Execute));
+        let effect = grants.iter().flat_map(|g| &g.actions).find(|a| matches!(a, Action::Write | Action::Execute | Action::Forget));
         let principal = req.subject.on_behalf_of.as_deref().is_some_and(|p| !p.is_empty());
-        if let (Some(action), false) = (lands, principal) {
+        if let (Some(action), false) = (effect, principal) {
             return Err(AuthorityError::IssuancePrincipalRequired(format!(
                 "a grant carrying `{}` needs a subject naming on_behalf_of",
                 action_name(*action)
@@ -355,6 +355,7 @@ fn action_name(action: Action) -> &'static str {
         Action::Write => "write",
         Action::Execute => "execute",
         Action::Admin => "admin",
+        Action::Forget => "forget",
     }
 }
 

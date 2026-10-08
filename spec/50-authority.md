@@ -130,7 +130,7 @@ What a credential says a holder does: actions, table patterns, tenant scope, the
 
 - `fields` — A grant names actions, table patterns, and optionally a tenant scope, aggregate constraints, a template allowlist and a row ceiling. An absent constraint leaves its dimension unconstrained; an absent allowlist confers no template.
   *A-authority*
-- `actions` — The action vocabulary is `read` for every row-returning surface, `write` to land rows, `execute` to fire a run, and `admin` to mint.
+- `actions` — The action vocabulary is `read` for every row-returning surface, `write` to land rows, `execute` to fire a run, `admin` to mint, and `forget` to erase subject data.
   *A-authority*
 - `unknown-action` — An action outside the vocabulary raises `GrantActionUnknown` at the mint and at admission.
   *P1*
@@ -242,7 +242,7 @@ Minting: the persisted lifetime ceiling, the principal a row-landing grant needs
   *because a raised ceiling mints credentials outliving the grace windows validated against the lower one*
 - `out-of-tree-mint` — Ceiling enforcement binds a mint run inside the project tree; a mint run outside it is bounded at the checkpoint by rotation-grace validation.
   *A-authority*
-- `principal-required` — A mint granting `write` or `execute` whose subject names no `on_behalf_of` raises `IssuancePrincipalRequired`.
+- `principal-required` — A mint granting `write`, `execute` or `forget` whose subject names no `on_behalf_of` raises `IssuancePrincipalRequired`.
   *A-authority*
 - `default-read` — A mint's default action set is `read` alone.
   *A-authority*
