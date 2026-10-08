@@ -138,7 +138,7 @@ fn each_changed_test_package_has_its_own_dispatch_part() {
     assert!(validation.status.success(), "{}", stderr(&validation));
 }
 
-// spec: assurance.gate.test-first-parts@0bd45e25
+// spec: assurance.gate.test-first-parts@268f02f4
 #[test]
 fn a_source_package_requires_its_own_changed_test_when_another_package_is_red() {
     let r = Repo::init();
@@ -210,9 +210,9 @@ fn a_new_package_counts_red_and_leaves_the_base_workspace_loadable() {
     assert!(!err.contains("failed to load manifest"), "{err}");
 }
 
-/// The test-first stage builds each changed test file's target against the base source with every feature enabled,
+/// For each changed source package, test-first builds each changed test file's target against the base source with every feature enabled,
 /// then runs exactly the tests under that file's top-level module; a target failing to compile there counts as failing.
-// spec: assurance.test.test-first-scope@38d52656
+// spec: assurance.test.test-first-scope@0ff77a1e
 #[test]
 fn only_the_changes_test_modules_run_against_the_base() {
     let r = Repo::init();
