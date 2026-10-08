@@ -1,5 +1,5 @@
 [package]
-build = "../../build/source.rs"
+build = "../../tools/ci/build_source.rs"
 name = "contextful-engine"
 version.workspace = true
 edition.workspace = true
