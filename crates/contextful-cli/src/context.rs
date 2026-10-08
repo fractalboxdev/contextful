@@ -240,16 +240,8 @@ fn run_erasure(args: &StoreArgs, subject: Option<&str>, keyset_file: Option<&Pat
     let mut keys = RetainedRows::new();
     let mut selected_tables = tables.to_vec();
     if let Some(KeyFile::Column(file)) = &key_file {
-        if !tables.is_empty() || file.column.is_empty() || file.keys.is_empty()
-            || file.keys.iter().any(|value| !matches!(value, serde_json::Value::String(_) | serde_json::Value::Number(_) | serde_json::Value::Bool(_))) {
-            bail!("ErasureScopeUnsupported: a column key set requires scalar keys and declaration-derived scope");
-        }
-        selected_tables = declarations.iter().filter(|decl| contextful_core::disclosure::erase::declares_erasure_column(decl, &file.column))
-            .map(|decl| decl.name.clone()).collect();
-        if selected_tables.is_empty() { bail!("ErasureScopeUnsupported: the key column has no declaring table"); }
-        for table in &selected_tables {
-            keys.insert(table.clone(), file.keys.iter().map(|value| serde_json::Map::from_iter([(file.column.clone(), value.clone())])).collect());
-        }
+        if !tables.is_empty() { bail!("ErasureScopeUnsupported: a column key set requires declaration-derived scope"); }
+        selected_tables = contextful_core::disclosure::erase::column_key_set(&declarations, &file.column, &file.keys)?.into_keys().collect();
     }
     if let Some(KeyFile::Tables(file)) = &key_file {
         for item in &file.keys {
@@ -269,7 +261,7 @@ fn run_erasure(args: &StoreArgs, subject: Option<&str>, keyset_file: Option<&Pat
     let selector = match (subject, &key_file) {
         (Some(subject), None) => EraseSelector::Subject(subject),
         (None, Some(KeyFile::Tables(file))) => EraseSelector::KeySet { subject_hash: &file.subject_hash, keys: &keys },
-        (None, Some(KeyFile::Column(file))) => EraseSelector::KeySet { subject_hash: &file.subject_hash, keys: &keys },
+        (None, Some(KeyFile::Column(file))) => EraseSelector::ColumnKeySet { subject_hash: &file.subject_hash, column: &file.column, keys: &file.keys },
         _ => bail!("ErasureScopeUnsupported: select one subject or key set"),
     };
     let (authority, _) = admit.admit(args.project.as_deref(), "context erase")?;
