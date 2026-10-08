@@ -49,6 +49,69 @@ fn ok(output: Output) -> String {
 }
 
 #[test]
+fn built_erasure_preserves_shared_digests_and_surviving_citations() {
+    let directory = tempfile::tempdir().unwrap(); let root = directory.path();
+    ok(run(root, &["init", "research", "--authoring-posture", "per_request"], None, None));
+    std::fs::write(root.join("contextful.toml"), r#"authoring_posture = "per_request"
+[[pipeline.tables]]
+name = "notes"
+primary_key = ["id"]
+subject_id = "subject"
+erasure_key = "id"
+[[pipeline.tables]]
+name = "content_blobs"
+primary_key = ["digest"]
+erasure_key = "digest"
+referenced_by = [{table = "notes", column = "blob"}]
+[[pipeline.tables]]
+name = "citations_keep"
+primary_key = ["id"]
+erasure_key = "id"
+on_erase = "survive"
+referenced_by = [{table = "notes", column = "citation_key"}]
+[[pipeline.tables]]
+name = "citations_collect"
+primary_key = ["id"]
+erasure_key = "id"
+referenced_by = [{table = "notes", column = "citation_key"}]
+"#).unwrap();
+    std::fs::write(root.join(".contextful/issuance.toml"), "default_audience = \"erasure-fixture\"\nmax_lifetime_secs = 3600\n").unwrap();
+    for (table, rows) in [
+        ("notes", "{\"id\":\"a1\",\"subject\":\"private-subject-canary\",\"blob\":\"shared\",\"citation_key\":\"c1\"}\n{\"id\":\"a2\",\"subject\":\"private-subject-canary\",\"blob\":\"unique\",\"citation_key\":\"c1\"}\n{\"id\":\"b1\",\"subject\":\"bob\",\"blob\":\"shared\",\"citation_key\":\"other\"}\n"),
+        ("content_blobs", "{\"digest\":\"shared\",\"text\":\"shared-content\"}\n{\"digest\":\"unique\",\"text\":\"private-content-canary\"}\n"),
+        ("citations_keep", "{\"id\":\"c1\",\"source_run\":\"run-1\",\"source_row\":1}\n"),
+        ("citations_collect", "{\"id\":\"c1\",\"source_run\":\"run-1\",\"source_row\":1}\n"),
+    ] {
+        std::fs::write(root.join("rows.jsonl"), rows).unwrap();
+        ok(run(root, &["context", "land", table, "--project", "research", "--rows", "rows.jsonl", "--run-id", "run-1", "--site-id", "fixture"], None, None));
+    }
+    let pins = ok(run(root, &["token", "keygen", "--out", ".contextful/issuer.seed"], None, None));
+    let mint = |action| ok(run(root, &["token", "mint", "--issuer-key", ".contextful/issuer.seed", "--on-behalf-of", "user://fixture", "--agent", "agent://fixture", "--zone", "on-prem:fixture", "--action", action, "--table", "*", "--ttl", "3600"], None, None));
+    let forget = mint("forget"); let read = mint("read");
+    let receipt: serde_json::Value = serde_json::from_str(&ok(run(root, &["context", "erase", "--project", "research", "--subject", "private-subject-canary", "--tables", "notes", "--issuer-key", ".contextful/issuer.seed", "--public-key", &pins, "--audience", "erasure-fixture", "--json"], Some(&forget), Some(&pins)))).unwrap();
+    assert_eq!(receipt["physical_collection"], "complete");
+    for (table, count) in [("notes", 2), ("content_blobs", 1), ("citations_collect", 1)] {
+        assert_eq!(receipt["affected_counts"][table], count);
+    }
+    assert!(receipt["affected_counts"].get("citations_keep").is_none());
+    for (query, expected) in [
+        ("SELECT id FROM notes ORDER BY id", serde_json::json!([["b1"]])),
+        ("SELECT digest FROM content_blobs ORDER BY digest", serde_json::json!([["shared"]])),
+        ("SELECT id, source_run, source_row FROM citations_keep", serde_json::json!([["c1", "run-1", "1"]])),
+        ("SELECT count(*) FROM citations_collect", serde_json::json!([["0"]])),
+    ] {
+        let response: serde_json::Value = serde_json::from_str(&ok(run(root, &["query", "--json", "--project", "research", query], None, Some(&pins)))).unwrap();
+        assert_eq!(response["rows"], expected);
+    }
+    let reference = ["context", "reference", "notes", "run-1", "1", "--project", "research", "--public-key", &pins, "--audience", "erasure-fixture", "--issuer-key", ".contextful/issuer.seed", "--json"];
+    assert_eq!(serde_json::from_str::<serde_json::Value>(&ok(run(root, &reference, Some(&read), Some(&pins)))).unwrap()["rows"], serde_json::json!([[false, "erased"]]));
+    let entries = contextful_policy::audit::entries(&root.join(".contextful/audit")).unwrap();
+    assert!(entries.iter().any(|entry| entry.attributes["operation"] == "erasure" && entry.attributes["subject_hash"] == receipt["subject_hash"]));
+    assert!(!serde_json::to_string(&entries).unwrap().contains("private-subject-canary"));
+    assert!(!receipt["subject_hash"].as_str().unwrap().contains("private-subject-canary"));
+}
+
+#[test]
 fn built_erasure_collects_sixteen_hops_and_refuses_seventeen_without_publication() {
     fn files(directory: &std::path::Path) -> std::collections::BTreeMap<std::path::PathBuf, Vec<u8>> {
         let mut collected = std::collections::BTreeMap::new();
