@@ -853,6 +853,7 @@ dependencies = [
  "contextful-sync",
  "contextful-wasm",
  "ed25519-dalek",
+ "hmac 0.12.1",
  "jsonwebtoken",
  "proptest",
  "proptest-state-machine",

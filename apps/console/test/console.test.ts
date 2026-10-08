@@ -1,5 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
+import { Script } from "node:vm";
 import { generateKeyPairSync, sign } from "node:crypto";
 import { createConsole, issueCognitoSession } from "../src/index.ts";
 import { serveConsole } from "../src/server.ts";
@@ -94,6 +95,12 @@ test("Query keeps one composer and transcript and delegates a sourced answer", a
   assert.match(page, /id="composer"/);
   assert.match(page, /id="transcript"/);
   assert.match(page, /id="widgets"/);
+  for (const id of ["brief", "chips", "insights", "file-gallery", "file-preview"]) {
+    assert.match(page, new RegExp(`id="${id}"`));
+  }
+  const script = page.match(/<script>([\s\S]*?)<\/script>/)?.[1];
+  assert.ok(script);
+  assert.doesNotThrow(() => new Script(script));
   const answer = await request("/query/api/ask", { ...access(queryAudience), origin: "https://console.example" }, { method: "POST", body: JSON.stringify({ store: "field-notes", question: "What arrived?" }) });
   assert.equal(answer.status, 200);
   assert.equal((await answer.json() as { sources: unknown[] }).sources.length, 1);
@@ -317,6 +324,24 @@ test("Admin pack listing reaches only the injected listing adapter", async () =>
   const response = await app.fetch(new Request(url, { headers: access(adminAudience) }));
   assert.deepEqual(await response.json(), { entries: ["packs/a.toml"], truncated: false, declined: 2 });
   assert.deepEqual(calls, ["field-notes:packs/"]);
+});
+
+test("Admin names the selected store on every operational request and shows run outcomes", async () => {
+  const app = createConsole({
+    identity: { kind: "access", issuer, queryAudience, adminAudience, publicKey },
+    stores: [{ id: "one", label: "Store one" }, { id: "two", label: "Store two" }],
+    adminCapability: "server-secret", turn: async () => ({ answer: "", sources: [], widgets: [] }),
+    read: { list: async () => [] },
+    control: { workflows: async () => ({}), record: async () => ({}), edit: async () => ({}), apply: async () => ({}) },
+  });
+  const page = await (await app.fetch(new Request("https://console.example/admin", { headers: access(adminAudience) }))).text();
+  const stores = await app.fetch(new Request("https://console.example/admin/api/stores", { headers: access(adminAudience) }));
+  assert.deepEqual(await stores.json(), [{ id: "one", label: "Store one" }, { id: "two", label: "Store two" }]);
+  assert.match(page, /<select id="admin-store"/);
+  assert.match(page, /\/admin\/api\/workflows\?store=/);
+  assert.match(page, /\/admin\/api\/record\?store=/);
+  assert.match(page, /store:store\.value/);
+  assert.match(page, /data\.runs/);
 });
 
 test("Query builds its widget from rows and sanitizes view props before delivery", async () => {

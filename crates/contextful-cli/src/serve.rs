@@ -15,6 +15,13 @@ use crate::root::root as project_root;
 use crate::clock::SystemClock;
 use anyhow::Result;
 use contextful_agent::http::{audience, ceiling, Admitting, HttpFace};
+#[cfg(feature = "data-plane")]
+use contextful_agent::http::{HttpRequest, HttpResponse, APPLY_PATH, EDIT_PATH, RECORD_PATH, WORKFLOWS_PATH};
+#[cfg(feature = "data-plane")]
+use contextful_core::surface::SurfaceError;
+use contextful_core::run::derive::task::Tasks;
+#[cfg(feature = "data-plane")]
+use contextful_engine::control::ControlError;
 use contextful_core::issue::{IssuancePolicy, MintContext, NodeRole};
 use contextful_core::ports::{Clock, SigningPort};
 #[cfg(feature = "data-plane")]
@@ -26,12 +33,15 @@ use contextful_memory::MemoryFault;
 use contextful_policy::exchange::answer as exchange_answer;
 use contextful_policy::issue::{SeedSigner, DEFAULT_SEED_PATH};
 use contextful_policy::possession::ProofChecker;
-#[cfg(feature = "data-plane")]
-use contextful_agent::http::{HttpRequest, HttpResponse, APPLY_PATH, WORKFLOWS_PATH};
-#[cfg(feature = "data-plane")]
-use contextful_core::surface::SurfaceError;
-use contextful_core::run::derive::task::Tasks;
 use contextful_policy::audit::AuditLog;
+#[cfg(feature = "data-plane")]
+use contextful_policy::verify::AdmittedAuthority;
+#[cfg(feature = "data-plane")]
+use hmac::{Hmac, Mac};
+#[cfg(feature = "data-plane")]
+use sha2::{Digest, Sha256};
+#[cfg(feature = "data-plane")]
+use std::time::{SystemTime, UNIX_EPOCH};
 use contextful_policy::keyset::{KeyCheckpoint, StaticPins};
 use contextful_policy::revoke::RevocationState;
 use std::net::TcpListener;
@@ -109,6 +119,54 @@ pub struct ServeArgs {
     keyset: Option<PathBuf>,
 }
 
+#[cfg(feature = "data-plane")]
+fn operator_attestation(request: &HttpRequest, secret: &str) -> Option<(String, String, i64, i64)> {
+    let subject = request.header("X-Contextful-Operator")?;
+    let at: i64 = request.header("X-Contextful-Operator-Time")?.parse().ok()?;
+    let nonce = request.header("X-Contextful-Operator-Nonce")?;
+    let signature = request.header("X-Contextful-Operator-Signature")?;
+    if subject.is_empty() || subject.len() > 256 || nonce.len() != 32 || !nonce.bytes().all(|byte| byte.is_ascii_hexdigit()) || signature.len() != 64 {
+        return None;
+    }
+    let now = SystemTime::now().duration_since(UNIX_EPOCH).ok()?.as_secs() as i64;
+    if now.abs_diff(at) > 60 { return None; }
+    let digest = format!("{:x}", Sha256::digest(&request.body));
+    let message = format!("{}\n{}\n{digest}\n{subject}\n{at}\n{nonce}", request.method, request.target);
+    let mut mac = Hmac::<Sha256>::new_from_slice(secret.as_bytes()).ok()?;
+    mac.update(message.as_bytes());
+    let mut signature_bytes = [0u8; 32];
+    for (index, chunk) in signature.as_bytes().chunks_exact(2).enumerate() {
+        signature_bytes[index] = u8::from_str_radix(std::str::from_utf8(chunk).ok()?, 16).ok()?;
+    }
+    mac.verify_slice(&signature_bytes).ok()?;
+    Some((subject.to_owned(), nonce.to_owned(), at, now))
+}
+
+#[cfg(feature = "data-plane")]
+fn control_failure(error: anyhow::Error) -> HttpResponse {
+    if error.chain().any(|part| matches!(part.downcast_ref::<ControlError>(), Some(ControlError::OperatorAttestationInvalid(_)))) {
+        return HttpResponse::json(403, &json!({ "error": { "identifier": "ControlOperatorAttestationInvalid" } }));
+    }
+    if let Some(authority) = error.chain().find_map(|part| {
+        part.downcast_ref::<contextful_core::AuthorityError>().or_else(|| match part.downcast_ref::<ControlError>() {
+            Some(ControlError::Authority(authority)) => Some(authority),
+            _ => None,
+        })
+    }) {
+        return HttpResponse::json(401, &json!({ "error": { "identifier": authority.to_string().split(':').next().unwrap_or("AuthorityRevoked") } }));
+    }
+    let surface = error.chain().find_map(|part| part.downcast_ref::<SurfaceError>().or_else(|| {
+        match part.downcast_ref::<ControlError>() {
+            Some(ControlError::Surface(refusal)) => Some(refusal),
+            _ => None,
+        }
+    }));
+    let status = surface.map_or(503, SurfaceError::status);
+    let identifier = surface.map(|refusal| refusal.to_string().split(':').next().unwrap_or("ControlUnavailable").to_string())
+        .unwrap_or_else(|| "ControlUnavailable".into());
+    HttpResponse::json(status, &json!({ "error": { "identifier": identifier } }))
+}
+
 /// The issuer key pins, resolved and parsed before the listener binds; no generated key
 /// substitutes (`topology.publish-hostname.issuer-key`).
 fn issuer_pins(flag: Option<&str>) -> Result<StaticPins, ServeError> {
@@ -155,6 +213,86 @@ pub fn run(args: ServeArgs, tasks: &Tasks) -> Result<()> {
         None => face,
     };
     let audit = AuditLog::unanchored(located.project.audit_dir())?;
+    #[cfg(feature = "data-plane")]
+    let control_attestation_secret = std::env::var("CONTEXTFUL_CONTROL_ATTESTATION_SECRET").ok().filter(|secret| !secret.is_empty());
+    #[cfg(feature = "data-plane")]
+    let control_admit = AdmitArgs { public_key: args.public_key.clone(), audience: args.audience.clone(), denylist: args.denylist.clone(), keyset: args.keyset.clone(), holder_key: None };
+    #[cfg(feature = "data-plane")]
+    let control = |request: &HttpRequest, authority: &AdmittedAuthority| -> HttpResponse {
+        let path = request.target.split('?').next().unwrap_or_default();
+        let boundary = || {
+            let state = revocation().map_err(ControlError::Storage)?;
+            contextful_policy::verify::effect_boundary(authority,
+                &contextful_policy::verify::Admission::new(clock.now(), &state).expecting(audience))
+                .map_err(ControlError::from)?;
+            if (path == EDIT_PATH || path == APPLY_PATH) &&
+                control_attestation_secret.as_deref().and_then(|secret| operator_attestation(request, secret)).is_none() {
+                return Err(ControlError::OperatorAttestationInvalid("the operator signature expired before the control mutation".into()));
+            }
+            Ok(())
+        };
+        let malformed = || HttpResponse::json(400, &json!({ "error": { "identifier": "ControlRequestMalformed" } }));
+        let project = crate::run::ProjectArgs { project: Some(located.project.name.clone()), now: None };
+        let operator = if path == EDIT_PATH || path == APPLY_PATH {
+            match control_attestation_secret.as_deref() {
+                Some(secret) => match operator_attestation(request, secret) {
+                    Some((subject, nonce, signed_at, now)) => {
+                        match crate::cadence::claim_operator_nonce(&project, Some(located.declaration.clone()), &nonce, signed_at, now, &boundary) {
+                            Ok(true) => subject,
+                            Ok(false) => return HttpResponse::json(403, &json!({ "error": { "identifier": "ControlOperatorAttestationInvalid" } })),
+                            Err(error) => return control_failure(error),
+                        }
+                    }
+                    None => return HttpResponse::json(403, &json!({ "error": { "identifier": "ControlOperatorAttestationInvalid" } })),
+                },
+                None => return HttpResponse::json(403, &json!({ "error": { "identifier": "ControlOperatorAttestationInvalid" } })),
+            }
+        } else { String::new() };
+        let answer = match path {
+            WORKFLOWS_PATH => crate::cadence::published(&located.project, &located.declaration),
+            RECORD_PATH => contextful_policy::audit::entries(&located.project.audit_dir())
+                .map(|entries| {
+                    let count = entries.len();
+                    json!({ "entries": entries.into_iter().rev().take(1000).collect::<Vec<_>>(), "truncated": count > 1000, "declined": count.saturating_sub(1000) })
+                }).map_err(anyhow::Error::from),
+            EDIT_PATH | APPLY_PATH => {
+                let body: Value = match serde_json::from_slice(&request.body) {
+                    Ok(Value::Object(body)) => Value::Object(body),
+                    _ => return malformed(),
+                };
+                let Some(fields) = body.as_object() else { unreachable!() };
+                let Some(expected) = fields.get("expected").and_then(Value::as_u64) else { return malformed() };
+                if path == EDIT_PATH {
+                    if fields.len() != 2 || fields.keys().any(|field| field != "expected" && field != "document") {
+                        return malformed();
+                    }
+                    let Some(document) = fields.get("document").and_then(Value::as_str) else { return malformed() };
+                    if audit.append(json!({ "contextful.control.operation": "edit", "contextful.operator.subject": operator,
+                        "contextful.operator.attestation": "console-hmac",
+                        "contextful.credential": authority.credential_id(), "contextful.control.expected": expected })).is_err() {
+                        return HttpResponse::json(503, &json!({ "error": { "identifier": "AuditEntryUnpersisted" } }));
+                    }
+                    crate::cadence::edit(&project, Some(located.declaration.clone()), expected, document, &operator, tasks, &boundary)
+                } else {
+                    if fields.len() != 2 { return malformed(); }
+                    let Some(nonce) = fields.get("nonce").and_then(Value::as_str) else { return malformed() };
+                    if audit.append(json!({ "contextful.control.operation": "apply", "contextful.operator.subject": operator,
+                        "contextful.operator.attestation": "console-hmac",
+                        "contextful.credential": authority.credential_id(), "contextful.control.expected": expected,
+                        "contextful.control.draft_nonce": nonce })).is_err() {
+                        return HttpResponse::json(503, &json!({ "error": { "identifier": "AuditEntryUnpersisted" } }));
+                    }
+                    crate::cadence::apply_draft(&project, Some(located.declaration.clone()), expected, nonce, &operator, tasks, authority, &control_admit, &boundary)
+                        .and_then(|()| crate::cadence::published(&located.project, &located.declaration))
+                }
+            }
+            _ => unreachable!(),
+        };
+        match answer {
+            Ok(state) => HttpResponse::json(200, &state),
+            Err(error) => control_failure(error),
+        }
+    };
     let exchange = crate::token::configured_exchange(&root)?;
     let mint_material = if exchange.is_some() {
         let policy = std::fs::read_to_string(root.join(IssuancePolicy::PATH))?;
@@ -209,38 +347,6 @@ pub fn run(args: ServeArgs, tasks: &Tasks) -> Result<()> {
         let ctx = MintContext { node: NodeRole::Primary, signer: signer as &dyn SigningPort, clock: &clock as &dyn Clock };
         let result = exchange_answer(exchange.as_ref(), &request.body, request.header("DPoP"), &proofs, issuance, &ctx);
         contextful_agent::http::HttpResponse::json(result.status, &result.body)
-    };
-    #[cfg(feature = "data-plane")]
-    let control_admit = AdmitArgs { public_key: args.public_key.clone(), audience: args.audience.clone(), denylist: args.denylist.clone(), keyset: args.keyset.clone(), holder_key: None };
-    #[cfg(feature = "data-plane")]
-    let control = |request: &HttpRequest| -> HttpResponse {
-        let answer = match request.target.split('?').next().unwrap_or_default() {
-            WORKFLOWS_PATH => crate::cadence::published(&located.project, &located.declaration),
-            APPLY_PATH => {
-                let body: Value = match serde_json::from_slice(&request.body) {
-                    Ok(Value::Object(body)) => Value::Object(body),
-                    _ => return HttpResponse::json(400, &json!({ "error": { "identifier": "ControlRequestMalformed" } })),
-                };
-                let Some(fields) = body.as_object() else { unreachable!() };
-                if fields.len() > 1 || fields.keys().any(|field| field != "id") || fields.get("id").is_some_and(|id| !id.is_string()) {
-                    return HttpResponse::json(400, &json!({ "error": { "identifier": "ControlRequestMalformed" } }));
-                }
-                let project = crate::run::ProjectArgs { project: Some(located.project.name.clone()), now: None };
-                crate::cadence::apply(&project, Some(located.declaration.clone()), body["id"].as_str(), tasks, &control_admit, None)
-                    .and_then(|()| crate::cadence::published(&located.project, &located.declaration))
-            }
-            _ => unreachable!(),
-        };
-        match answer {
-            Ok(state) => HttpResponse::json(200, &state),
-            Err(error) => {
-                let surface = error.chain().find_map(|part| part.downcast_ref::<SurfaceError>());
-                let status = surface.map_or(503, SurfaceError::status);
-                let identifier = surface.map(|refusal| refusal.to_string().split(':').next().unwrap_or("ControlUnavailable").to_string())
-                    .unwrap_or_else(|| "ControlUnavailable".into());
-                HttpResponse::json(status, &json!({ "error": { "identifier": identifier } }))
-            }
-        }
     };
     let http = HttpFace::new(&face, &clock, &audit, admitting, Some(ceiling))
         .map_err(anyhow::Error::msg)?

@@ -331,9 +331,7 @@ impl SqlEngine {
         let duration = std::time::Duration::from_millis(milliseconds);
         let started = std::time::Instant::now();
         let watcher = std::thread::spawn(move || {
-            if receiver.recv_timeout(duration).is_err_and(|e| e == std::sync::mpsc::RecvTimeoutError::Timeout) {
-                handle.interrupt();
-            }
+            super::deadline::watch(started, duration, receiver, || handle.interrupt());
         });
         let result = run(self);
         let elapsed = started.elapsed().as_millis() as u64;

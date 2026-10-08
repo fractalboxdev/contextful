@@ -27,6 +27,10 @@
 # `contextful-spec state` reads this file and the tags and writes spec/status.md.
 
 [pin]
+"surface.edit.store-draft" = { test = "contextful_cli::serve::control_edit_saves_a_validated_draft_and_apply_claims_its_expected_version" }
+"surface.apply.draft-claim" = { test = "contextful_cli::serve::control_edit_saves_a_validated_draft_and_apply_claims_its_expected_version" }
+"surface.apply.draft-absent" = { test = "contextful_cli::serve::control_edit_saves_a_validated_draft_and_apply_claims_its_expected_version" }
+"surface.apply.operator-attestation" = { test = "contextful_cli::serve::admin_changes_require_fresh_console_attestation_and_record_the_operator" }
 "store.init.store-identity" = { test = "contextful_context::init::init_persists_a_distinct_store_uuid_across_repetition_and_recreation" }
 "store.init.identity-invalid" = { test = "contextful_context::init::malformed_store_uuid_and_absent_owner_root_refuse_identity" }
 "store.pull.identity-conflict" = { test = "contextful_sync::pull::a_clone_keeps_the_store_uuid_and_an_independent_store_refuses_it" }
@@ -104,5 +108,5 @@ disclosure = 63
 read = 183
 run = 306
 store = 216
-surface = 81
+surface = 86
 topology = 38

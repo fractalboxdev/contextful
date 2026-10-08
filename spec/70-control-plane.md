@@ -248,6 +248,8 @@ The configuration document, the records it presents read-only, the structured sc
   *because a value in the document reaches every daemon and replica that reads a snapshot*
 - `connector-upload` — An artifact uploaded through the operator surface raises `ConnectorUploadRefused`; the surface references registered connectors by id and version.
   *because publishing into the registry runs a separate signed path*
+- `store-draft` — An Admin edit validates a complete control document and saves one store-scoped draft bound to its applied version, verified operator and random nonce, leaving the applied pointer unchanged.
+  *A-surface*
 
 ## apply
 
@@ -276,6 +278,18 @@ Validation, the immutable version claim, the pointer advance, the owner's storag
 - `attestation-unavailable` — A synced import or apply lacking an admitted admin capability or issuer signing port raises `ControlAttestationUnavailable` and claims no version.
   *A-surface*
 - `guarded-import` — `contextful pipeline import` claims v1 from the declared pipelines while the snapshot directory holds no version; a second import claims nothing.
+- `draft-claim` — An Admin apply rechecks the configured store owner, validates its saved draft again, and claims that draft through the owner's version compare-and-swap.
+  *A-surface*
+- `operator-attestation` — An Admin mutation lacking a fresh console signature over its verified operator, route and body, or reusing a nonce held in store control state across restarts, raises `ControlOperatorAttestationInvalid` before changing the document.
+  *because a shared store capability cannot identify the person who used the console*
+- `draft-absent` — An Admin apply finding no validated store draft raises `ControlDraftAbsent` and changes no applied version.
+  *because an absent draft supplies no document for the version claim*
+- `served-admin-grant` — A served `/control/*` request whose admitted credential holds no Admin grant over `*` without a tenant scope raises `ControlAdminGrantMissing`, answered `403`, before its handler runs.
+  *because the control document arms work over every table and tenant of the store*
+- `served-malformed` — A served Admin edit or apply whose body is not a JSON object holding exactly its route's fields raises `ControlRequestMalformed`, answered `400`, and changes nothing.
+  *because an absent or extra field leaves the operator's intended version or draft ambiguous*
+- `served-unavailable` — A served control request failing with no authority or surface refusal raises `ControlUnavailable`, answered `503`, and returns no internal error text.
+  *because a storage or owner fault message can disclose paths and endpoints to the console*
 
 One apply through the engine's store-scoped API:
 

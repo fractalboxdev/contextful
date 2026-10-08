@@ -662,6 +662,13 @@ fn cli_partition(args: &mut Vec<&str>, ordinary: bool, formal: bool) {
 /// (`assurance.build.target-dir-per-stage`).
 fn features(root: &Path, only: Option<&[String]>) -> Result<()> {
     let featured = featured_packages(root)?;
+    let formal = featured.iter().filter(|package| package.name == topology::BINARY).any(|package| {
+        package.runs().iter().any(|(label, _)| only.is_none_or(|parts| parts.iter().any(|part| part.strip_prefix("formal-") == Some(label.as_str()))))
+    });
+    if formal {
+        provision_lean(root)?;
+        provision_wasm(root)?;
+    }
     if featured.is_empty() {
         eprintln!("features: no workspace package declares a feature");
     }

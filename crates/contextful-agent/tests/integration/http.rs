@@ -9,7 +9,7 @@ use contextful_agent::mcp::Server;
 use contextful_context::land::{land, Batch, RunContext};
 use contextful_context::read::Face;
 use contextful_context::Store;
-use contextful_core::grant::{Action, Grant, TablePattern};
+use contextful_core::grant::{Action, Grant, TablePattern, TenantScope};
 use contextful_core::identify::Subject;
 use contextful_core::issue::{IssuancePolicy, Lifetime, MintContext, MintRequest, NodeRole, SignatureAlgorithm};
 use contextful_core::ports::FixedClock;
@@ -105,12 +105,16 @@ fn credential(signer: &SeedSigner, tables: &str, ttl: u64, holder: Option<&Signi
 }
 
 fn credential_with_action(signer: &SeedSigner, action: Action, tables: &str, ttl: u64, holder: Option<&SigningKey>) -> String {
+    credential_scoped(signer, action, tables, None, ttl, holder)
+}
+
+fn credential_scoped(signer: &SeedSigner, action: Action, tables: &str, tenant: Option<TenantScope>, ttl: u64, holder: Option<&SigningKey>) -> String {
     let policy = IssuancePolicy::parse(&format!("default_audience = \"{AUD}\"\nmax_lifetime_secs = 86400\n")).unwrap();
     let subject = Subject { on_behalf_of: Some("user://dana@acme.example".into()), zone: Some("on-prem:hq".into()), ..Subject::default() };
     let grant = Grant {
         actions: vec![action],
         tables: vec![TablePattern::parse(tables).unwrap()],
-        tenant: None,
+        tenant,
         aggregate: None,
         templates: Some(vec!["*".into()]),
         max_rows: None,
@@ -137,7 +141,7 @@ fn control_apply_rechecks_revocation_before_dispatch() {
     };
     let admitting = Admitting { checkpoint: &f.checkpoint, audience: AUD, revocation: &revocation };
     let dispatched = AtomicBool::new(false);
-    let handler = |_: &HttpRequest| {
+    let handler = |_: &HttpRequest, _: &contextful_policy::verify::AdmittedAuthority| {
         dispatched.store(true, Ordering::SeqCst);
         contextful_agent::http::HttpResponse::json(200, &json!({ "applied": 2 }))
     };
@@ -150,6 +154,30 @@ fn control_apply_rechecks_revocation_before_dispatch() {
     assert_eq!(answer.status, 503);
     assert!(!dispatched.load(Ordering::SeqCst));
     assert_eq!(checks.load(Ordering::SeqCst), 2);
+}
+
+// spec: surface.apply.served-admin-grant@fc18cabf
+#[test]
+fn control_refuses_a_tenant_scoped_admin_grant_over_every_table() {
+    let f = fixture();
+    let tenant = TenantScope { table: "research/notes".into(), value: "acme-eu".into() };
+    let token = credential_scoped(&f.signer, Action::Admin, "*", Some(tenant), 900, None);
+    let clock = FixedClock(at(NOW));
+    let admitting = Admitting { checkpoint: &f.checkpoint, audience: AUD, revocation: &no_revocation };
+    let dispatched = AtomicBool::new(false);
+    let handler = |_: &HttpRequest, _: &AdmittedAuthority| {
+        dispatched.store(true, Ordering::SeqCst);
+        HttpResponse::json(200, &json!({ "applied": 1 }))
+    };
+    let face = HttpFace::new(&f.face, &clock, &f.audit, admitting, Some(2)).unwrap().with_control(&handler);
+    let request = HttpRequest {
+        method: "GET".into(), target: "/control/workflows".into(),
+        headers: vec![("Authorization".into(), format!("Bearer {token}"))], body: vec![],
+    };
+    let answer = face.answer(&request);
+    assert_eq!(answer.status, 403);
+    assert_eq!(body(&answer.body)["error"]["identifier"], "ControlAdminGrantMissing");
+    assert!(!dispatched.load(Ordering::SeqCst));
 }
 
 fn call(tool: &str, arguments: Value) -> Value {
