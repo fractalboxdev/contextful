@@ -176,15 +176,24 @@ fn a_configured_identity_from_another_checkout_is_refused() {
 fn checkout_paths_cannot_emit_additional_cargo_directives() {
     for separator in ["\n", "\r"] {
         let temp = tempfile::tempdir().unwrap();
-        let root = temp.path().join(format!("a{separator}cargo:warning=source_binding_injected_directive"));
+        let root = temp.path().join(format!(
+            "a{separator}cargo:warning=source_binding_injected_directive"
+        ));
         let dependency = temp.path().join("shared-dep");
         write(&dependency, "Cargo.toml", "[package]\nname = \"shared-fixture\"\nversion = \"0.0.0\"\nedition = \"2021\"\n[workspace]\n");
         write(&dependency, "src/lib.rs", "pub fn value() -> u32 { 1 }\n");
         fixture(&root, "alpha");
         let out = cargo_output(&root, &temp.path().join("shared"), "build");
-        assert!(!out.status.success(), "a checkout path supplies Cargo directive separators: {}\n{}", String::from_utf8_lossy(&out.stderr), String::from_utf8_lossy(&out.stdout));
-        assert!(String::from_utf8_lossy(&out.stderr).contains(
-            "the source-binding path contains a Cargo directive separator"
-        ), "the failure belongs to the source-binding owner");
+        assert!(
+            !out.status.success(),
+            "a checkout path supplies Cargo directive separators: {}\n{}",
+            String::from_utf8_lossy(&out.stderr),
+            String::from_utf8_lossy(&out.stdout)
+        );
+        assert!(
+            String::from_utf8_lossy(&out.stderr)
+                .contains("the source-binding path contains a Cargo directive separator"),
+            "the failure belongs to the source-binding owner"
+        );
     }
 }

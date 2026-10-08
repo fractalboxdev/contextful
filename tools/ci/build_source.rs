@@ -15,6 +15,13 @@ fn main() {
         .join("../..")
         .canonicalize()
         .expect("the workspace source root exists");
+    let identity = expected
+        .to_str()
+        .expect("the source-binding path is Unicode");
+    assert!(
+        !identity.contains(['\n', '\r']),
+        "the source-binding path contains a Cargo directive separator"
+    );
     if let Some(root) = env::var_os("CONTEXTFUL_SOURCE_ROOT") {
         assert_eq!(
             PathBuf::from(root)
@@ -26,6 +33,6 @@ fn main() {
     }
     println!(
         "cargo:rustc-env=CONTEXTFUL_COMPILED_SOURCE_ROOT={}",
-        expected.display()
+        identity
     );
 }
