@@ -5,7 +5,7 @@ An unpinned clause is `committed`; a pinned one is `performed` when its Rust, Le
 
 | Contract | Files | Operations | Clauses | Refusals | Limits | Unsettled | Performed | Broken | Floor |
 | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
-| `assurance` | 2 | 15 | 246 | 59 | 22 | 14 | 142 | 0 | 141 |
+| `assurance` | 2 | 15 | 246 | 59 | 22 | 14 | 142 | 0 | 142 |
 | `authority` | 2 | 16 | 270 | 77 | 27 | 10 | 207 | 0 | 207 |
 | `connector` | 2 | 14 | 349 | 89 | 21 | 15 | 229 | 0 | 229 |
 | `corpus` | 1 | 10 | 79 | 37 | 7 | 0 | 43 | 0 | 43 |
@@ -13,9 +13,9 @@ An unpinned clause is `committed`; a pinned one is `performed` when its Rust, Le
 | `read` | 2 | 15 | 200 | 31 | 22 | 9 | 178 | 0 | 178 |
 | `run` | 3 | 26 | 406 | 102 | 39 | 28 | 306 | 0 | 306 |
 | `store` | 1 | 17 | 252 | 59 | 13 | 19 | 216 | 0 | 216 |
-| `surface` | 2 | 20 | 114 | 52 | 22 | 0 | 68 | 0 | 62 |
+| `surface` | 2 | 20 | 118 | 53 | 22 | 0 | 72 | 0 | 72 |
 | `topology` | 1 | 6 | 70 | 24 | 5 | 5 | 38 | 0 | 38 |
-| **total** | 19 | 155 | 2120 | 596 | 191 | 103 | 1490 | 0 | |
+| **total** | 19 | 155 | 2124 | 597 | 191 | 103 | 1494 | 0 | |
 
 Decision records: 18.
 
@@ -37,7 +37,7 @@ A milestone reads `closed` when its acceptance test computes `passing` and every
 | 9 — Visibility | 6 | 41 | 3 | open | open |
 | 10 — Cadence and the operator plane | 11 | 76 | 64 | passing | open |
 | 11 — The derive tier | 7 | 88 | 79 | passing | closed |
-| 12 — The operator console | 12 | 49 | 9 | open | open |
+| 12 — The operator console | 12 | 53 | 13 | open | open |
 | 13 — Disclosure | 5 | 33 | 13 | open | open |
 | 14 — Assurance | 7 | 146 | 90 | passing | closed |
 
@@ -1455,6 +1455,10 @@ Unscheduled operations: 10.
 | `surface.arm.unknown-trigger` | `crates/contextful-cli/tests/integration/pipeline.rs::an_unknown_trigger_arms_nothing` | performed |
 | `surface.arm.unreadable-schedule` | `crates/contextful-core/tests/integration/surface/arm.rs::an_unreadable_schedule_names_its_diagnostic` | performed |
 | `surface.arm.wake-answer` | `crates/contextful-cli/tests/integration/pipeline.rs::a_wake_answers_within_its_bound_naming_what_still_runs` | performed |
+| `surface.browse.discovered-chips` | `apps/console/test/browse.test.ts::apps/console/test/browse.test.ts::browse advertises admitted tables as humanized chips` | performed |
+| `surface.browse.file-gallery` | `apps/console/test/browse.test.ts::apps/console/test/browse.test.ts::a gallery preview uses context.file with the listing's snapshot bound` | performed |
+| `surface.browse.gallery-path-unlisted` | `apps/console/test/browse.test.ts::apps/console/test/browse.test.ts::a gallery preview refuses paths absent from the governed listing` | performed |
+| `surface.browse.insights-panel` | `apps/console/test/browse.test.ts::apps/console/test/browse.test.ts::insights show governed table row counts` | performed |
 | `surface.dispatch.callback-rejected` | `crates/contextful-core/tests/integration/surface/worker.rs::a_superseded_or_skewed_callback_changes_no_step` | performed |
 | `surface.dispatch.callback-skew` | `crates/contextful-core/tests/integration/surface/worker.rs::the_relay_accepts_a_timestamp_within_the_skew` | performed |
 | `surface.dispatch.children-reaped` | `crates/contextful-cli/tests/integration/pipeline.rs::serve_ends_every_child_it_dispatched` | performed |
