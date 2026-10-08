@@ -4,6 +4,65 @@ use serde_json::json;
 
 #[test]
 #[cfg(feature = "read")]
+fn a_warm_cached_response_cannot_cross_erasure_publication() {
+    use contextful_context::{erase::{erase, EraseRequest, EraseSelector}, read::{Face, ReadOptions}};
+    use contextful_core::{grant::Action, issue::SignatureAlgorithm, ports::FixedClock};
+    use contextful_policy::{enforce::{erase::ForgetAdmission, session::Request}, issue::SeedSigner, revoke::RevocationState, verify::{effect_boundary, Admission}};
+    let fixture = Fixture::new();
+    let manifest = "[[pipeline.tables]]\nname = \"notes\"\nprimary_key = [\"id\"]\nsubject_id = \"subject\"\nresult_cache = \"10m\"";
+    let table = contextful_core::store::declare::TableDecl::parse_pipeline(manifest).unwrap().remove(0);
+    fixture.land(&table, "run-1", json!([{ "id":"a", "subject":"alice" }, { "id":"b", "subject":"bob" }]), "2030-01-01T00:00:00Z").unwrap();
+    contextful_context::project::ensure_store_id(fixture.store.root()).unwrap();
+    let project = contextful_context::project::Project { dir:fixture.store.root().ancestors().nth(3).unwrap().to_path_buf(), name:"research".into() };
+    let audit_key = contextful_context::project::audit_key(&fixture.store, &project).unwrap();
+    let signer = std::sync::Arc::new(SeedSigner::generate(SignatureAlgorithm::Ed25519));
+    let audit_dir = project.audit_dir();
+    let store = fixture.store.with_erasure_verifier(audit_dir.clone(), vec![contextful_policy::issue::SignerKey::of(signer.as_ref())]).unwrap();
+    let reads = crate::read::Reads::new();
+    let reader = reads.authority(crate::read::loop_subject("agent://reader"), vec![crate::read::read(&["notes"], None)]);
+    let mut grant = crate::read::read(&["notes"], None); grant.actions = vec![Action::Forget];
+    let authority = reads.authority(crate::read::loop_subject("agent://eraser"), vec![grant]);
+    let admission = ForgetAdmission::admit(&authority, &["notes"]).unwrap();
+    let now = crate::read::at("2030-01-01T00:05:00Z");
+    let revocation = RevocationState::default();
+    let boundary = |authority: &contextful_policy::verify::AdmittedAuthority| effect_boundary(authority, &Admission::new(now, &revocation));
+    let face = Face::open(store.clone(), manifest, crate::read::pepper()).unwrap().with_result_cache(1 << 20);
+    let session = face.session(&reader, &Request::default(), Bounds::default()).unwrap();
+    let sql = "SELECT id FROM notes ORDER BY id";
+    assert_eq!(serde_json::to_value(face.query(&session, sql, ReadOptions::default()).unwrap().rows).unwrap(), json!([["a"], ["b"]]));
+    face.query(&session, sql, ReadOptions::default()).unwrap();
+    let before = face.results().unwrap().counts();
+    assert_eq!((before.misses, before.hits), (1, 1), "the exact response is warm before the publication fence");
+    let (finished, done) = std::sync::mpsc::channel();
+    std::thread::scope(|scope| {
+        store.with_frontier(|bound| {
+            scope.spawn(|| { finished.send(face.query(&session, sql, ReadOptions::default())).unwrap(); });
+            let deadline = std::time::Instant::now() + std::time::Duration::from_secs(10);
+            while face.results().unwrap().counts().hits == before.hits {
+                assert!(std::time::Instant::now() < deadline, "the waiting request never reaches the actual cache hit");
+                std::thread::yield_now();
+            }
+            assert!(matches!(done.try_recv(), Err(std::sync::mpsc::TryRecvError::Empty)), "a cached response escapes the held publication fence");
+            let declarations = [table.clone()]; let tables = ["notes".to_string()];
+            erase(bound, EraseRequest { declarations:&declarations, tables:&tables, selector:EraseSelector::Subject("alice"), admission:&admission,
+                signer:Some(signer.clone()), audit_dir:&audit_dir, audit_key:&audit_key, boundary:&boundary, clock:&FixedClock(now) })?;
+            Ok(())
+        }).unwrap();
+        assert!(matches!(done.recv_timeout(std::time::Duration::from_secs(10)).unwrap(),
+            Err(contextful_context::read::ReadFault::Store(contextful_context::ContextError::Erasure(
+                contextful_core::disclosure::erase::ErasureError::ErasureTransactionIncomplete(_))))),
+            "the previously cached response does not refuse the changed erasure frontier");
+    });
+    let fresh = Face::open(store, manifest, crate::read::pepper()).unwrap().with_result_cache(1 << 20);
+    let session = fresh.session(&reader, &Request::default(), Bounds::default()).unwrap();
+    for _ in 0..2 {
+        assert_eq!(serde_json::to_value(fresh.query(&session, sql, ReadOptions::default()).unwrap().rows).unwrap(), json!([["b"]]));
+    }
+    assert_eq!((fresh.results().unwrap().counts().misses, fresh.results().unwrap().counts().hits), (1, 1));
+}
+
+#[test]
+#[cfg(feature = "read")]
 fn partitioned_erasure_removes_designated_values_from_signed_paths_and_survivor_names() {
     partitioned_erasure_paths(false, false, false);
 }
