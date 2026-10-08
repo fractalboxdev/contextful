@@ -18,6 +18,7 @@ mod probe;
 mod release;
 mod secrets;
 mod source_lint;
+mod source_binding;
 mod target_dirs;
 mod stages;
 mod test_first;
