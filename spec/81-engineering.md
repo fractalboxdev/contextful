@@ -165,6 +165,10 @@ Stage order, secrets of record, the crate-graph, row-token, egress and dependenc
   *A-assurance*
 - `remote-check` — The FlareDispatch pull-request webhook dispatches every part from `contextful-ci stages --parts`, each as `flare-dispatch/check:<part>` on the head commit.
   *A-assurance*
+- `native-transport` — The sole GitHub Actions workflow accepts only FlareDispatch `workflow_dispatch` inputs for native Windows execution; FlareDispatch owns admission, immutable head selection, terminal receipt verification, required checks and artifact publication.
+  *A-assurance*
+- `native-receipt` — FlareDispatch accepts native results only when repository, head, base, nonce, command digest, trusted workflow identity, fixed runner label, observed native target, terminal exit and artifact digests match the admitted request.
+  *A-assurance*
 - `workspace-parts` — Remote workspace checks compile the feature-unified workspace without running tests, run the CLI suite in its own check, and run each other non-acceptance package suite in exactly one of four groups.
   *A-assurance*
 - `remote-predecessors` — Each dispatched part invokes `contextful-ci gate --predecessors --stage <part> --base <base-sha>`, so no check reads another check's sandbox.
