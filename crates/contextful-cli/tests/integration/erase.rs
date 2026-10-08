@@ -61,8 +61,7 @@ erasure_key = "trace_id"
 columns = { id = "utf8", trace_id = "utf8", subject = "utf8" }
 [[pipeline.tables]]
 name = "events"
-primary_key = ["id"]
-columns = { id = "utf8", trace_id = "utf8" }
+primary_key = ["trace_id", "id"]
 [[pipeline.tables]]
 name = "unrelated"
 primary_key = ["id"]
