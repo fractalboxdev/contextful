@@ -4,6 +4,46 @@ use serde_json::json;
 use std::collections::BTreeMap;
 
 #[test]
+fn column_scope_uses_structural_declarations() {
+    use contextful_core::disclosure::erase::declares_erasure_column;
+    for role in [
+        "subject_id = \"trace_id\"", "partition_by = [\"trace_id\"]", "order_by = \"trace_id\"",
+        "cluster_by = [\"trace_id\"]", "content_hash_column = \"trace_id\"",
+        "valid_time = { from = \"trace_id\", to = \"end\" }", "valid_time = { from = \"start\", to = \"trace_id\" }",
+        "retain_rows = { column = \"trace_id\", age = \"1d\" }",
+        "indexes = [{ kind = \"fulltext\", column = \"trace_id\", id_column = \"id\" }]",
+        "indexes = [{ kind = \"fulltext\", column = \"text\", id_column = \"trace_id\" }]",
+    ] {
+        let declarations = TableDecl::parse_pipeline(&format!("[[pipeline.tables]]\nname = \"events\"\n{role}\n")).unwrap();
+        assert!(declares_erasure_column(&declarations[0], "trace_id"), "structural role omits its declared column: {role}");
+    }
+}
+
+#[test]
+fn column_scope_preserves_source_reference_ownership_and_excludes_descriptive_keys() {
+    use contextful_core::disclosure::erase::column_key_set;
+    let declarations = TableDecl::parse_pipeline(r#"
+[[pipeline.tables]]
+name = "events"
+primary_key = ["id"]
+[[pipeline.tables]]
+name = "blobs"
+erasure_key = "digest"
+referenced_by = [{table = "events", column = "trace_id"}]
+[[pipeline.tables]]
+name = "descriptive"
+primary_key = ["id"]
+column_hints = { trace_id = "a hint, not a schema declaration" }
+policy = { trace_id = "a policy key, not a schema declaration" }
+agent_hint = "trace_id"
+example_queries = ["SELECT trace_id FROM descriptive"]
+"#).unwrap();
+    let roots = column_key_set(&declarations, "trace_id", &[json!("erase-trace")]).unwrap();
+    assert_eq!(roots.keys().map(String::as_str).collect::<Vec<_>>(), vec!["events"], "the reference names a source column, not a target or descriptive column");
+    assert!(column_key_set(&declarations, "_ingested_at", &[json!("erase-trace")]).is_err(), "implicit defaults create no declared column scope");
+}
+
+#[test]
 fn column_scope_recognizes_composite_members_without_admitting_legacy_partial_keys() {
     use contextful_core::disclosure::erase::{declares_erasure_column, select_keys};
     let declarations = TableDecl::parse_pipeline(r#"
