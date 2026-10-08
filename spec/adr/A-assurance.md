@@ -2,6 +2,19 @@
 
 **Status:** accepted
 
+## Native lifetime replay proves a runtime assertion against comparison source
+
+Context: native lifetime fixtures require Windows-only test wiring; copying the head integration entry point imports unrelated APIs absent from the comparison source. Canonical test-first permits compilation failures and bounded execution failures, while descendant ownership requires an observed assertion.
+
+Decision: runtime-only replay shares the canonical scratch owner and evaluator, requires complete compiled nonignored failure evidence, and adds only the Windows lifetime suite and fixture to preserved comparison wiring. Each named lifetime case proves its own assertion. Native command changes outside refactors require this replay; unrelated changes retain positive lifetime tests.
+
+| Option | Lost on | Cost |
+| --- | --- | --- |
+| Shared evaluator with a strict runtime policy *(chosen)* | — | An additional native comparison build when command source changes. |
+| Copy the head integration entry point | Source provenance | Unrelated head APIs can turn an ownership assertion into a compilation failure. |
+| Accept canonical compilation or timeout red | Assertion evidence | A missing helper or stalled pipe does not establish a live descendant. |
+| Replay every future change | Valid comparisons | A comparison already holding the lifetime fix passes its assertions. |
+
 ## FlareDispatch owns native Windows execution through a dispatch-only transport
 
 Context: Linux containers cannot execute MSVC command-tree or directory durability regressions. Native Windows runners supply both target C toolchains and runtime behavior.

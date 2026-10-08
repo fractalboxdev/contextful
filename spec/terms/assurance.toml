@@ -46,6 +46,7 @@ MirrorUnresolved                 = { clause = "assurance.structure-tree.mirror-u
 ShellCheckFailed                 = { clause = "assurance.automate.unchecked-shell", gloss = "A shell file in the tree that the shell linter rejects." }
 VacuousAssertion                 = { clause = "assurance.test.vacuous-exclusion", gloss = "An exclusion assertion evaluated over an empty collection." }
 TestFirstBaseUnrunnable          = { clause = "assurance.test.base-unrunnable", gloss = "A test-first run at base stopped by the machine or the base workspace, not by the tests." }
+RuntimeRedUnproved               = { clause = "assurance.test.runtime-red", gloss = "Runtime-only baseline replay lacks a complete compiled nonignored failure verdict." }
 TestNotFirst                     = { clause = "assurance.test.test-first", gloss = "A source change carrying no test that fails against the base commit's source." }
 AcceptanceLinksEngine            = { clause = "assurance.test.acceptance-surface", gloss = "The acceptance package depending on a workspace package." }
 ExtensionAutoloadRefused         = { clause = "assurance.build.runtime-extension-load", gloss = "A read path loading a query-engine extension into a statically linked binary." }

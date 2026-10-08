@@ -26,7 +26,7 @@ fn runtime_red_refuses_compilation_while_canonical_red_retains_it() {
     assert!(canonical.status.success(), "{}", stderr(&canonical));
     let strict = r.gate(&["--stage", "test-first", "--base", &base, "--runtime-red"]);
     assert!(!strict.status.success());
-    assert!(stderr(&strict).contains("TestFirstBaseUnrunnable") && stderr(&strict).contains("compile"), "{}", stderr(&strict));
+    assert!(stderr(&strict).contains("RuntimeRedUnproved") && stderr(&strict).contains("compile"), "{}", stderr(&strict));
 }
 
 #[test]
@@ -38,7 +38,7 @@ fn runtime_red_refuses_ignored_and_empty_execution() {
         r.commit("no executed failing runtime case");
         let strict = r.gate(&["--stage", "test-first", "--base", &base, "--runtime-red"]);
         assert!(!strict.status.success());
-        assert!(stderr(&strict).contains("TestFirstBaseUnrunnable"), "{}", stderr(&strict));
+        assert!(stderr(&strict).contains("RuntimeRedUnproved"), "{}", stderr(&strict));
     }
 }
 
@@ -53,9 +53,73 @@ fn runtime_red_refuses_a_killed_run_without_changing_canonical_semantics() {
     r.commit("the head becomes ready");
     let strict = r.gate(&["--stage", "test-first", "--base", &base, "--base-bound-secs", "1", "--runtime-red"]);
     assert!(!strict.status.success());
-    assert!(stderr(&strict).contains("TestFirstBaseUnrunnable") && stderr(&strict).contains("bound"), "{}", stderr(&strict));
+    assert!(stderr(&strict).contains("RuntimeRedUnproved") && stderr(&strict).contains("bound"), "{}", stderr(&strict));
     let canonical = r.gate(&["--stage", "test-first", "--base", &base, "--base-bound-secs", "1"]);
     assert!(canonical.status.success(), "{}", stderr(&canonical));
+}
+
+#[test]
+fn runtime_red_refuses_an_absent_package_without_changing_canonical_semantics() {
+    let r = Repo::init(); let base = r.head();
+    r.write("crates/fresh/Cargo.toml", &manifest("fresh", ""));
+    r.write("crates/fresh/src/lib.rs", "pub fn value() -> u8 { 1 }\n");
+    r.write("crates/fresh/tests/integration/main.rs", "#[test]\nfn value() { assert_eq!(fresh::value(), 1); }\n");
+    r.commit("a new package has no runtime baseline");
+    let strict = r.gate(&["--stage", "test-first", "--base", &base, "--runtime-red"]);
+    assert!(!strict.status.success());
+    assert!(stderr(&strict).contains("RuntimeRedUnproved") && stderr(&strict).contains("absent"), "{}", stderr(&strict));
+    let canonical = r.gate(&["--stage", "test-first", "--base", &base]);
+    assert!(canonical.status.success(), "{}", stderr(&canonical));
+}
+
+#[test]
+fn runtime_red_refuses_no_changed_source() {
+    let r = Repo::init(); let base = r.head();
+    r.write("README.md", "no source changes\n"); r.commit("documentation");
+    let strict = r.gate(&["--stage", "test-first", "--base", &base, "--runtime-red"]);
+    assert!(!strict.status.success());
+    assert!(stderr(&strict).contains("RuntimeRedUnproved"), "{}", stderr(&strict));
+}
+
+#[cfg(unix)]
+#[test]
+fn runtime_red_refuses_failed_listing_and_incomplete_or_inconsistent_harness_evidence() {
+    use std::os::unix::fs::PermissionsExt;
+    for (list_status, summary, run_status) in [
+        (1, "", 1),
+        (0, "test result: FAILED. 0 passed; 1 failed; 0 ignored", 1),
+        (0, "test result: FAILED. 0 passed; 1 failed; 0 ignored; 0 measured; 0 filtered out;", 1),
+        (0, "test result: FAILED. 0 passed; 1 failed; 0 ignored; 0 measured; 0 filtered out; finished in NaNs", 1),
+        (0, "test result: FAILED. 0 passed; 1 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.01s", 0),
+        (0, "test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.01s", 1),
+    ] {
+        let r = Repo::init(); let base = r.head();
+        r.write("crates/demo/src/lib.rs", "pub fn double(x: i32) -> i32 { x * 3 }\n");
+        r.write("crates/demo/tests/integration/double.rs", "#[test]\nfn doubles() { assert_eq!(demo::double(2), 6); }\n");
+        r.commit("a changed runtime case");
+        r.write("fake-bin/cargo", &format!("#!/bin/sh\ncase \" $* \" in\n*' --no-run '*) exit 0;;\n*' --list '*) echo 'double::doubles: test'; exit {list_status};;\nesac\nprintf '%s\\n' '{summary}'\nexit {run_status}\n"));
+        std::fs::set_permissions(r.root.join("fake-bin/cargo"), std::fs::Permissions::from_mode(0o755)).unwrap();
+        let path = std::env::join_paths(std::iter::once(r.root.join("fake-bin")).chain(std::env::split_paths(&std::env::var_os("PATH").unwrap()))).unwrap();
+        let strict = std::process::Command::new(env!("CARGO_BIN_EXE_contextful-ci"))
+            .args(["gate", "--stage", "test-first", "--base", &base, "--runtime-red"])
+            .env("PATH", path).env_remove("CARGO_TARGET_DIR").current_dir(&r.root).output().unwrap();
+        assert!(!strict.status.success(), "list={list_status}, run={run_status}, {summary}");
+        assert!(stderr(&strict).contains("RuntimeRedUnproved"), "{}", stderr(&strict));
+    }
+}
+
+#[test]
+fn runtime_red_refuses_a_manifest_fault_without_a_runtime_verdict() {
+    let r = Repo::init();
+    r.write("crates/demo/Cargo.toml", "[package\nname = \"demo\"\n");
+    r.commit("malformed base manifest"); let base = r.head();
+    r.write("crates/demo/Cargo.toml", &manifest("demo", ""));
+    r.write("crates/demo/src/lib.rs", "pub fn double(x: i32) -> i32 { x * 3 }\n");
+    r.write("crates/demo/tests/integration/double.rs", "#[test]\nfn doubles() { assert_eq!(demo::double(2), 6); }\n");
+    r.commit("a corrected head manifest");
+    let strict = r.gate(&["--stage", "test-first", "--base", &base, "--runtime-red"]);
+    assert!(!strict.status.success());
+    assert!(stderr(&strict).contains("TestFirstBaseUnrunnable"), "{}", stderr(&strict));
 }
 
 #[test]
