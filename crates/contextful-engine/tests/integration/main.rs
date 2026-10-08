@@ -1,7 +1,11 @@
 //! The engine's one integration binary, one module per operation.
 
 mod cancel;
+#[cfg(unix)]
 mod command;
+#[cfg(windows)]
+mod command_windows;
+mod command_admission;
 mod control;
 mod coordinate;
 mod drive;
