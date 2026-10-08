@@ -6,7 +6,7 @@ type BrowseInput = { operator: Operator; store: string; asOf?: string };
 
 export function createLiveBrowse(options: LiveOptions) {
   async function session(input: BrowseInput) {
-    const { call } = await openReader(options, input);
+    const { call } = await openReader(options, input.operator, input.store);
     return createBrowse({ call: async (name, args) => ({ structuredContent: await call(name, args) }) });
   }
 

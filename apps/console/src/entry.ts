@@ -2,12 +2,14 @@ import { createPublicKey } from "node:crypto";
 import { pathToFileURL } from "node:url";
 import { isAbsolute, resolve } from "node:path";
 import { registryFromEnv } from "../../gateway/src/index.ts";
-import { createLiveTurn } from "./live.ts";
+import { createLiveAnswer } from "./answer_live.ts";
 import { createLiveBrowse } from "./live_browse.ts";
 import type { ConsoleAdapters, Identity } from "./index.ts";
 import { serveConsole } from "./server.ts";
 
-type AdapterFactory = (input: { stores: ConsoleAdapters["stores"]; env: NodeJS.ProcessEnv }) => Promise<Pick<ConsoleAdapters, "turn" | "control"> & { read?: ConsoleAdapters["read"]; browse?: ConsoleAdapters["browse"] }>;
+type HostedAdapters = Pick<ConsoleAdapters, "turn" | "control"> &
+  Partial<Pick<ConsoleAdapters, "read" | "browse" | "brief" | "briefBudgetMs" | "redactView">>;
+type AdapterFactory = (input: { stores: ConsoleAdapters["stores"]; env: NodeJS.ProcessEnv }) => Promise<HostedAdapters>;
 
 function required(name: string): string {
   const value = process.env[name];
@@ -39,6 +41,7 @@ async function identity(): Promise<Identity> {
       sessionSecret: required("CONTEXTFUL_COGNITO_SESSION_SECRET"),
       queryGroup: required("CONTEXTFUL_COGNITO_QUERY_GROUP"),
       adminGroup: required("CONTEXTFUL_COGNITO_ADMIN_GROUP"),
+      memorySessionClaim: process.env.CONTEXTFUL_CONSOLE_MEMORY_SESSION_CLAIM,
       issuer: required("CONTEXTFUL_COGNITO_ISSUER"),
       clientId: required("CONTEXTFUL_COGNITO_CLIENT_ID"),
       authorizeUrl: required("CONTEXTFUL_COGNITO_AUTHORIZE_URL"),
@@ -52,6 +55,7 @@ async function identity(): Promise<Identity> {
     issuer: required("CONTEXTFUL_ACCESS_ISSUER"),
     queryAudience: required("CONTEXTFUL_QUERY_ACCESS_AUDIENCE"),
     adminAudience: required("CONTEXTFUL_ADMIN_ACCESS_AUDIENCE"),
+    memorySessionClaim: process.env.CONTEXTFUL_CONSOLE_MEMORY_SESSION_CLAIM,
     keys: await keysAt(required("CONTEXTFUL_ACCESS_JWKS_URL")),
   };
 }
@@ -83,10 +87,14 @@ async function main(): Promise<void> {
   const registry = registryFromEnv(process.env.CONTEXTFUL_STORES_JSON);
   const stores = registry.entries.map(({ id, label }) => ({ id, label }));
   const modulePath = process.env.CONTEXTFUL_CONSOLE_ADAPTER_MODULE;
-  let adapters: Pick<ConsoleAdapters, "turn" | "control"> & { read?: ConsoleAdapters["read"]; browse?: ConsoleAdapters["browse"] } = {
+  const live = modulePath ? null : createLiveAnswer({ stores: registry.entries, env: process.env });
+  let adapters: HostedAdapters = {
     ...unavailableAdapters(),
-    turn: modulePath ? unavailableAdapters().turn : createLiveTurn({ stores: registry.entries, env: process.env }),
+    turn: live?.turn ?? unavailableAdapters().turn,
     browse: modulePath ? undefined : createLiveBrowse({ stores: registry.entries, env: process.env }),
+    brief: live?.brief,
+    briefBudgetMs: live?.briefBudgetMs,
+    redactView: live?.redactView,
   };
   if (modulePath) {
     const absolute = isAbsolute(modulePath) ? modulePath : resolve(modulePath);
@@ -100,6 +108,9 @@ async function main(): Promise<void> {
     stores,
     adminCapability: process.env.CONTEXTFUL_ADMIN_CAPABILITY,
     turn: adapters.turn,
+    brief: adapters.brief,
+    briefBudgetMs: adapters.briefBudgetMs,
+    redactView: adapters.redactView,
     read: adapters.read ?? { list: async () => stores },
     browse: adapters.browse,
     control: adapters.control,
