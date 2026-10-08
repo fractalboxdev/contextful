@@ -89,6 +89,12 @@ Assertion construction, guard validation, suite placement, test-first and accept
 - `test-first` — A change altering Rust source under `crates/` or `tools/` adds or alters a test under a package's `tests/` that fails against the base commit's source; a change without one raises `TestNotFirst`.
   *A-assurance*
 - `test-first-scope` — The test-first stage builds each changed test file's target against the base source with every feature enabled, then runs exactly the tests under that file's top-level module; a target failing to compile there counts as failing.
+- `comparison-base` — Test-first resolves the supplied comparison revision to one commit and uses that commit for source selection, changed-test selection and base replay; each report records that commit and the tested head.
+  *A-assurance*
+- `merge-source` — Test-first includes source introduced by merge resolutions; refactor exemptions apply only to source attributable to exempt commits and preserve obligations from behavior changes elsewhere in the comparison.
+  *A-assurance*
+- `base-evidence` — Test-first reports assertion failures, compilation failures and bounded test executions separately; infrastructure faults follow {{assurance.test.base-unrunnable}} and supply no failing-test evidence.
+  *A-assurance*
 - `base-run-bound` — One test-first execution against the base, its build excluded, runs for at most 300 s; a run past the bound is killed with its process group and counts as failing.
 - `base-unrunnable` — A base invocation whose output reports a full disk, an unloadable manifest or an unfetchable dependency raises `TestFirstBaseUnrunnable` instead of a verdict.
   *because such a fault fails at base whatever the tests assert, and reading it as red admits an untested change*
@@ -96,6 +102,14 @@ Assertion construction, guard validation, suite placement, test-first and accept
   *because a behavior-preserving change has no failing test to write, and the existing suite is its specification*
 - `acceptance-surface` — An acceptance test drives a built binary through its command line, MCP or HTTP surface; a workspace package among the acceptance package's dependencies raises `AcceptanceLinksEngine`.
   *A-assurance*
+
+#### Scenarios
+
+- `assurance.test.comparison-base`: WHEN linear or divergent history supplies a comparison revision, THEN source selection, changed-test selection and replay use the same resolved commit.
+- `assurance.test.merge-source`: WHEN a merge resolution introduces source behavior without a changed test, THEN the change fails {{assurance.test.test-first}}.
+- `assurance.test.merge-source`: WHEN a comparison combines refactor and behavior commits, THEN the behavior changes retain their failing-test obligation.
+- `assurance.test.base-evidence`: WHEN a base assertion fails, THEN its diagnostic identifies test failure independently of infrastructure output.
+- `assurance.test.base-evidence`: WHEN base execution fails through infrastructure, THEN the failure supplies no failing-test evidence.
 
 The test-first check over one commit in a change's range:
 
@@ -119,6 +133,10 @@ Target directories, the engine-linked invocation, linked query functions, build 
 
 - `target-dir-per-stage` — Each cargo stage builds into a target directory of its own, reclaimed once the stage passes.
   *because stages under different feature unification share no artifacts, and peak disk is then one stage*
+- `checkout-artifacts` — The Cargo wrapper isolates workspace artifacts by canonical checkout identity while retaining {{assurance.build.target-dir-per-stage}}; dependency reuse through a compiler cache preserves checkout identity.
+  *A-assurance*
+- `runtime-checkout` — Reusable test helpers resolve the workspace root and tested binary from explicit runtime inputs bound to the invocation; cached helpers carry no compile-time checkout path deciding which source or binary runs.
+  *A-assurance*
 - `one-engine-build` — The workspace stage builds every engine-linked package in one cargo invocation over the union of their features, and the store adapter's suites resolved without `read` link no SQL engine, so the features stage compiles one copy.
   *A-assurance*
 - `staged-feature-runs` — A defect appearing under one feature combination alone is reached by a staged run, one command per container.
@@ -135,7 +153,8 @@ Target directories, the engine-linked invocation, linked query functions, build 
 - `container-image` — The repository's `Dockerfile` builds one profile, `contextful-full` unless `PROFILE` names another, as a static `linux/amd64` binary, and ships it in a shell-free runtime image as a non-root user over a declared store volume.
 - `targets` — All three profiles cross-compile to `x86_64-unknown-linux-musl` and `aarch64-unknown-linux-musl`; edge and full also build for `aarch64-apple-darwin` and `x86_64-apple-darwin`.
   *A-assurance*
-- `windows-target` — Edge and full also build for `x86_64-pc-windows-msvc`.
+- `windows-target` — Windows targets are excluded from the release matrix; no profile publishes Windows artifacts.
+  *A-assurance*
 - `wasi-probe` — No profile ships a `wasm32-wasip2` release; a scheduled-tier ledger entry builds the edge profile for it and holds the compressed artifact to {{assurance.gate.edge-budget}}.
   *A-assurance*
 - `release-artifact` — Each profile ships a release archive with a SHA-256 checksum and an SBOM, a package-manager formula and an independently tagged container image; the bare formula name and the install script resolve to the full profile.
@@ -155,6 +174,8 @@ Target directories, the engine-linked invocation, linked query functions, build 
 - `assurance.build.release-builder`: WHEN a Darwin cell selects `--builder zigbuild`, THEN the release command invokes `cargo zigbuild` for that profile and target.
 - `assurance.build.release-metadata`: WHEN a release cell packages an archive, THEN its JSON metadata names the archive, digest and SBOM.
 - `assurance.build.formula-manifest`: WHEN every cell's metadata is present without local archives, THEN formula generation writes the profile formulae and SHA256SUMS.
+- `assurance.build.checkout-artifacts`: WHEN checkout A and checkout B build different source through the Cargo wrapper, THEN B's integration tests and doctests execute B's behavior on cold and warm builds.
+- `assurance.build.runtime-checkout`: WHEN a helper cached from checkout A receives checkout B's runtime inputs, THEN its workspace operations and binary execution reach B alone.
 
 ## gate
 
@@ -165,6 +186,8 @@ Stage order, secrets of record, the crate-graph, row-token, egress and dependenc
   *A-assurance*
 - `remote-check` — The FlareDispatch pull-request webhook dispatches every part from `contextful-ci stages --parts`, each as `flare-dispatch/check:<part>` on the head commit.
   *A-assurance*
+- `windows-checks` — Windows native checks run only as optional diagnostics and contribute no required merge or release verdict.
+  *A-assurance*
 - `workspace-parts` — Remote workspace checks compile the feature-unified workspace without running tests, run the CLI suite in its own check, and run each other non-acceptance package suite in exactly one of four groups.
   *A-assurance*
 - `remote-predecessors` — Each dispatched part invokes `contextful-ci gate --predecessors --stage <part> --base <base-sha>`, so no check reads another check's sandbox.
@@ -173,6 +196,14 @@ Stage order, secrets of record, the crate-graph, row-token, egress and dependenc
   *because a dispatch runs untrusted code in the organization's compute account, and absent required checks fail closed*
 - `stage-reports` — Each stage prints the environment it leaves and its memory limit, peak and event counts, and a failing stage prints its diagnostics before propagating its exit code.
   *because memory exhaustion is silent, and a kill then reads as a number in the log*
+- `stage-timings` — Each dispatched part records queue, setup, compilation and test durations separately, alongside its commit, feature set, runner identity and cold or warm cache state.
+  *A-assurance*
+- `part-budget` — Every dispatched part completes within {{assurance.gate.container}} on cold and warm builds; oversized work splits into locally runnable parts retaining every required suite and predecessor obligation.
+  *A-assurance*
+- `build-admission` — The runner admits concurrent builds only within available build slots and {{assurance.gate.parallel-jobs}}; excess builds queue before setup and compilation.
+  *A-assurance*
+- `timeout-cleanup` — A timed-out part retains phase timings and stdout/stderr diagnostics, terminates its owned process tree, verifies descendant exit and reports a failed verdict before releasing its build slot.
+  *A-assurance*
 - `pins-stage` — The pins stage resolves every pinned artifact identity a run depends on before any compilation.
 - `evaluate-stage` — The evaluate stage runs every gate-tier ledger entry and the native case set in the deterministic tier, and reports the floor and baseline verdicts.
 - `schema-stage` — The schema stage regenerates each derived artifact into a scratch location, compares it byte for byte against the committed copy, and runs `contextful-spec lint`.
@@ -220,6 +251,13 @@ Stage order, secrets of record, the crate-graph, row-token, egress and dependenc
   *P7*
 
 unsettled: How does corpus status attest FlareDispatch's external webhook and check-run behavior? owner: build affects: assurance.gate
+
+#### Scenarios
+
+- `assurance.gate.stage-timings`: WHEN a part queues and then executes, THEN its report distinguishes queue, setup, compilation and test durations.
+- `assurance.gate.part-budget`: WHEN every dispatched part runs with empty caches and then warm caches, THEN each completes within {{assurance.gate.container}} and the union preserves required coverage.
+- `assurance.gate.build-admission`: WHEN occupied build slots reach the admission limit, THEN another build queues without starting setup or compilation.
+- `assurance.gate.timeout-cleanup`: WHEN a forced hang leaves a descendant holding output pipes, THEN timeout diagnostics survive, the descendant exits and the part fails before its slot is released.
 
 The stages, numbered in run order, under the container's ceilings:
 

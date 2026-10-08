@@ -6,17 +6,13 @@ contract: assurance
 
 ## What it is for
 
-**Contextful** makes claims a buyer acts on: a reader receives only the rows policy
-admits, and a stale lease holder never commits. Assurance decides what evidence stands
-behind each claim and keeps the claim no wider than that evidence: Lean models prove the
-specification, a differential harness ties each model to the running code, and gates turn
-discipline and retrieval quality into a red or green verdict.
+**Contextful** keeps policy and lease claims within their evidence: Lean models prove
+specifications, differential checks compare models with running code, and gates enforce
+correctness and retrieval quality.
 
 ## In plain words
 
-Think of **Contextful** as a librarian who makes two promises: you only get the books
-your card allows, and two librarians never stamp the same book at once. Assurance checks
-those promises without taking the librarian's word.
+Assurance checks policy admission and coordinated writes through independent evidence.
 
 - **The math check.** A proof assistant reads the rulebook, not the code, and proves the
   promises follow from it. An auditor confirms no proof hides a skipped step
@@ -85,6 +81,17 @@ Beneath the proofs sit the engineering rules: one implementation per capability
 ({{assurance.evaluate.through-the-store}}) under policy labels
 ({{assurance.evaluate.policy-labels}}), and baselines only ever rise
 ({{assurance.baseline.raise-only}}).
+
+Release scope and Windows deferral are read together through
+{{assurance.build.targets}}, {{assurance.build.windows-target}} and
+{{assurance.gate.windows-checks}}.
+
+For build identity, follow {{assurance.build.checkout-artifacts}} and
+{{assurance.build.runtime-checkout}}. For comparison evidence, follow
+{{assurance.test.comparison-base}}, {{assurance.test.merge-source}} and
+{{assurance.test.base-evidence}}. Part timing, admission and cleanup follow
+{{assurance.gate.stage-timings}}, {{assurance.gate.part-budget}},
+{{assurance.gate.build-admission}} and {{assurance.gate.timeout-cleanup}}.
 
 One ledger keys each tracked target to its clause ({{assurance.measure.ledger}}): a
 gate-tier count reds the evaluate stage ({{assurance.measure.count-first}}), and timings
