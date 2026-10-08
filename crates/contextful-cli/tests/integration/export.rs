@@ -221,6 +221,50 @@ fn typed_export_delivers_versioned_changes_and_retries_from_machine_cursor() {
 }
 
 #[test]
+fn encrypted_typed_exports_replay_pending_events_without_cleartext_rows() {
+    const CANARY: &str = "sealed-export-row-74-631e";
+    let key_var = "CONTEXTFUL_TEST_KEY_74_TYPED_EXPORT";
+    unsafe { std::env::set_var(key_var, "0123456789abcdef0123456789abcdef") };
+    let collector = Collector::start();
+    let (dir, public, token) = project(&typed_block(&collector.endpoint()), "spans");
+    let p = dir.path();
+    let store_root = p.join(".contextful/context/research");
+    std::fs::write(store_root.join("config.toml"), format!("[node]\nid = \"ingest-a\"\n[encryption]\nkey_source = \"env:{key_var}\"\n")).unwrap();
+    land(p, "sealed-export-load", "2030-01-01T00:00:00Z", &[CANARY.to_string()]);
+    let store = contextful_context::Store::open(p, "research").unwrap();
+    let decl = contextful_core::store::declare::TableDecl::named("spans");
+    assert_eq!(contextful_context::rows::table_rows(&store, &decl, &["span_id"]).unwrap()[0]["span_id"], CANARY);
+    collector.answer(503);
+    let refusal = err(&export(p, &public, &token, &[]));
+    assert!(refusal.contains("ExportDeliveryRefused"), "{refusal}");
+    let refused = typed_events(&collector.received()[0]);
+    assert_eq!(refused[0]["row"]["span_id"], CANARY);
+    let store = contextful_context::Store::open(p, "research").unwrap();
+    let machine = store_root.join("machine.sqlite");
+    let mut pending = contextful_sqlite::ExportLedger::open_sealed(&machine, store.file_cipher().unwrap()).unwrap();
+    assert_eq!(pending.pending("spans-mirror", 500).unwrap().len(), refused.len());
+    drop(pending);
+    collector.answer(200);
+    ok(&export(p, &public, &token, &[]));
+    assert_eq!(typed_events(&collector.received()[1]), refused);
+    let position = contextful_sqlite::ExportLedger::open_sealed(&machine, store.file_cipher().unwrap()).unwrap().position("spans-mirror").unwrap();
+    assert!(position.pending_publication.is_none());
+    assert!(contextful_sqlite::ExportLedger::open(&machine).is_err());
+    fn scan(path: &Path) {
+        for entry in std::fs::read_dir(path).unwrap() {
+            let path = entry.unwrap().path();
+            if path.is_dir() {
+                scan(&path);
+            } else {
+                let bytes = std::fs::read(&path).unwrap();
+                assert!(!bytes.windows(CANARY.len()).any(|w| w == CANARY.as_bytes()), "cleartext exported row in {}", path.display());
+            }
+        }
+    }
+    scan(&p.join(".contextful"));
+}
+
+#[test]
 fn typed_export_sends_deletion_after_a_replace_publication() {
     let collector = Collector::start();
     let declaration = format!("[[pipeline.tables]]\nname = \"spans\"\nprimary_key = [\"span_id\"]\nwrite_mode = \"replace\"\n\n{}", typed_block(&collector.endpoint()));

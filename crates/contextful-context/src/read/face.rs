@@ -533,7 +533,7 @@ impl Face {
             .into());
         }
         one_statement(sql)?;
-        let engine = SqlEngine::raw()?;
+        let engine = SqlEngine::raw_with_key(self.store.parquet_key())?;
         for t in self.tables()? {
             engine.register(&t, &self.source(&t, Bounds::default(), None)?.base)?;
         }

@@ -71,8 +71,9 @@ struct Held {
 
 /// One connection to the file. A call from the thread already inside a transaction joins
 /// it as a savepoint; every other thread waits for the outermost transaction to end.
-struct Db {
+pub(crate) struct Db {
     path: PathBuf,
+    schema: &'static str,
     held: ReentrantMutex<RefCell<Held>>,
     sealed: Option<SealedFile>,
 }
@@ -122,23 +123,32 @@ impl Drop for Open<'_> {
 
 impl Db {
     fn open(path: &Path) -> Result<Db, Failure> {
+        Self::open_schema(path, SCHEMA)
+    }
+
+    pub(crate) fn open_schema(path: &Path, schema: &'static str) -> Result<Db, Failure> {
         let conn = crate::connect(path)?;
         let mode: String = conn.query_row("PRAGMA journal_mode = WAL", [], |r| r.get(0)).map_err(|e| storage(path, e))?;
         if !mode.eq_ignore_ascii_case("wal") {
             return Err(storage(path, format!("the file refuses write-ahead-log mode and stays in `{mode}`")));
         }
-        conn.execute_batch(SCHEMA).map_err(|e| storage(path, e))?;
-        Ok(Db { path: path.to_path_buf(), held: ReentrantMutex::new(RefCell::new(Held { conn, depth: 0 })), sealed: None })
+        conn.execute_batch(schema).map_err(|e| storage(path, e))?;
+        Ok(Db { path: path.to_path_buf(), schema, held: ReentrantMutex::new(RefCell::new(Held { conn, depth: 0 })), sealed: None })
     }
 
     fn open_sealed(path: &Path, cipher: Arc<dyn FileCipher>) -> Result<Db, Failure> {
+        Self::open_sealed_schema(path, cipher, SCHEMA)
+    }
+
+    pub(crate) fn open_sealed_schema(path: &Path, cipher: Arc<dyn FileCipher>, schema: &'static str) -> Result<Db, Failure> {
         let conn = Connection::open_in_memory().map_err(|e| storage(path, e))?;
         let db = Db {
             path: path.to_path_buf(),
+            schema,
             held: ReentrantMutex::new(RefCell::new(Held { conn, depth: 0 })),
             sealed: Some(SealedFile::new(path, cipher)),
         };
-        db.with_inner(true, true, |tx| tx.run(|c| c.execute_batch(SCHEMA)))?;
+        db.with_inner(true, true, |tx| tx.run(|c| c.execute_batch(schema)))?;
         Ok(db)
     }
 
@@ -152,6 +162,11 @@ impl Db {
         self.with_inner(write, false, f)
     }
 
+    /// Run a schema adapter's transaction under the same reload and sealing protocol.
+    pub(crate) fn with_connection<T>(&self, write: bool, f: impl FnOnce(&Connection) -> Result<T, Failure>) -> Result<T, Failure> {
+        self.with(write, |tx| f(&tx.held.borrow().conn))
+    }
+
     fn with_inner<T>(&self, write: bool, allow_create: bool, f: impl FnOnce(&Open) -> Result<T, Failure>) -> Result<T, Failure> {
         let guard = self.held.lock();
         let depth = guard.borrow().depth;
@@ -161,7 +176,7 @@ impl Db {
             None
         };
         if let Some(file) = self.sealed.as_ref().filter(|_| depth == 0) {
-            guard.borrow_mut().conn = file.load(allow_create, SCHEMA)?;
+            guard.borrow_mut().conn = file.load(allow_create, self.schema)?;
         }
         let begin = match (depth, write) {
             (0, true) => "BEGIN IMMEDIATE".to_string(),

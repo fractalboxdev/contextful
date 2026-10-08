@@ -18,7 +18,7 @@ use contextful_core::ports::{Clock, FixedClock};
 use contextful_core::run::cancel::Scope;
 use contextful_core::run::journal::sha256_hex;
 use contextful_core::run::plan::Plan;
-use contextful_core::run::ports::{AwakeableStore, Commit, Destination, Landed, Marker, Part, Stage};
+use contextful_core::run::ports::{AwakeableStore, BlobStore, Commit, Destination, JournalStore, Landed, Marker, Part, Stage};
 use contextful_core::run::record::{describe_ceiling, export_ceiling, parse_bound, select_history, RunStatus, Window};
 use contextful_core::run::{Failure, FailureTag};
 use contextful_core::pipeline::normalize::{NormalizedGroup, Mode, Normalize};
@@ -33,8 +33,8 @@ use contextful_engine::cancel::Keeper;
 use contextful_engine::command::CommandSource;
 use contextful_core::store::catalog::MACHINE_CATALOG_FILE;
 use contextful_engine::{Engine, Journal, RunSpec};
-use contextful_sqlite::MachineCatalog;
-use contextful_engine::stores::FileAwakeableStore;
+use contextful_sqlite::{MachineCatalog, SqliteRunStores};
+use contextful_engine::stores::{FileAwakeableStore, FileBlobStore, FileJournalStore};
 use std::cell::RefCell;
 use std::collections::BTreeMap;
 use std::path::{Path, PathBuf};
@@ -148,9 +148,13 @@ pub(crate) fn clock(now: &Option<String>) -> Result<Arc<dyn Clock + Send + Sync>
     })
 }
 
+type SharedJournal = Arc<dyn JournalStore>;
+type SharedBlobs = Arc<dyn BlobStore>;
+type SharedAwakeables = Arc<dyn AwakeableStore>;
+
 pub(crate) struct Wired {
-    pub(crate) engine: Engine,
-    pub(crate) registry: Registry,
+    pub(crate) engine: Engine<SharedJournal, SharedBlobs>,
+    pub(crate) registry: Registry<SharedAwakeables, SharedJournal, SharedBlobs>,
     pub(crate) clock: Arc<dyn Clock + Send + Sync>,
 }
 
@@ -168,11 +172,9 @@ pub(crate) fn wire(args: &ProjectArgs) -> Result<Wired> {
 
 /// Wire the engine to a located project's run state and machine catalog.
 pub(crate) fn wire_at(project: &Project, now: &Option<String>) -> Result<Wired> {
-    // Store::open refuses declared encryption until every run-state path is sealed.
-    let _store = Store::open(&project.dir, &project.name)?;
+    let store = Store::open(&project.dir, &project.name)?;
     let root = project.run_dir();
     let clock = clock(now)?;
-    let journal = Journal::open(&root);
     let catalog_path = project.store_root().join(MACHINE_CATALOG_FILE);
     // The catalog's lease rows need a linearizable conditional write
     // (`surface.apply.weak-conditional-backend`).
@@ -181,10 +183,17 @@ pub(crate) fn wire_at(project: &Project, now: &Option<String>) -> Result<Wired> 
         &catalog_path.display().to_string(),
         contextful_engine::fsutil::filesystem_kind(&catalog_path).as_deref(),
     )?;
-    let catalog = Arc::new(MachineCatalog::open(&catalog_path, clock.clone())?);
-    let registry = Registry::open(&root, journal.clone());
-    let awakeables = Some(Arc::new(FileAwakeableStore::open(&root)) as Arc<dyn AwakeableStore>);
-    Ok(Wired { engine: Engine { catalog, journal, awakeables, keeper: Keeper::default(), emitter: None, worlds: crate::component::worlds() }, registry, clock })
+    let (catalog, rows, blobs, awakeables): (_, SharedJournal, SharedBlobs, SharedAwakeables) = match store.file_cipher() {
+        Some(cipher) => {
+            let catalog = Arc::new(MachineCatalog::open_sealed(&catalog_path, clock.clone(), cipher.clone())?);
+            let stores = SqliteRunStores::open_sealed(&catalog_path, cipher)?;
+            (catalog, Arc::new(stores.journal), Arc::new(stores.blobs), Arc::new(stores.awakeables))
+        }
+        None => (Arc::new(MachineCatalog::open(&catalog_path, clock.clone())?), Arc::new(FileJournalStore::open(&root)), Arc::new(FileBlobStore::open(&root)), Arc::new(FileAwakeableStore::open(&root))),
+    };
+    let journal = Journal::over(rows, blobs);
+    let registry = Registry::over(awakeables.clone(), journal.clone());
+    Ok(Wired { engine: Engine { catalog, journal, awakeables: Some(awakeables), keeper: Keeper::default(), emitter: None, worlds: crate::component::worlds() }, registry, clock })
 }
 
 /// The boot identity of this machine: a process id means nothing across boots.

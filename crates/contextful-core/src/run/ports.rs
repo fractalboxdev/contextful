@@ -276,6 +276,25 @@ pub trait BlobStore: Send + Sync {
     fn mark_swept(&self, at: i64) -> Result<(), Failure>;
 }
 
+impl<T: JournalStore + ?Sized> JournalStore for std::sync::Arc<T> {
+    fn create_pending(&self, key: &EntryKey, run_id: &str) -> Result<bool, Failure> { (**self).create_pending(key, run_id) }
+    fn read(&self, key: &EntryKey) -> Result<Option<JournalRow>, Failure> { (**self).read(key) }
+    fn replace_if_pending(&self, key: &EntryKey, holder: &str, run_id: &str) -> Result<bool, Failure> { (**self).replace_if_pending(key, holder, run_id) }
+    fn record(&self, key: &EntryKey, value: &Stored) -> Result<Option<Stored>, Failure> { (**self).record(key, value) }
+    fn release(&self, key: &EntryKey, run_id: &str) -> Result<(), Failure> { (**self).release(key, run_id) }
+    fn rows(&self, execution_id: &str) -> Result<Vec<JournalRow>, Failure> { (**self).rows(execution_id) }
+    fn retire(&self, execution_id: &str) -> Result<(), Failure> { (**self).retire(execution_id) }
+    fn executions(&self) -> Result<Vec<String>, Failure> { (**self).executions() }
+}
+
+impl<T: BlobStore + ?Sized> BlobStore for std::sync::Arc<T> {
+    fn put(&self, sha256: &str, bytes: &[u8]) -> Result<(), Failure> { (**self).put(sha256, bytes) }
+    fn get(&self, sha256: &str) -> Result<Option<Vec<u8>>, Failure> { (**self).get(sha256) }
+    fn sweep(&self, referenced: &[String], now_unix: i64) -> Result<Vec<String>, Failure> { (**self).sweep(referenced, now_unix) }
+    fn swept_at(&self) -> Result<Option<i64>, Failure> { (**self).swept_at() }
+    fn mark_swept(&self, at: i64) -> Result<(), Failure> { (**self).mark_swept(at) }
+}
+
 /// Where awakeable registry rows persist (`run.journal.storage-ports`).
 pub trait AwakeableStore: Send + Sync {
     /// Persist a freshly minted row under its token.

@@ -201,7 +201,7 @@ fn a_nojournal_plan_lands_under_complete_canonical_writer_authority() {
 }
 
 #[test]
-fn encrypted_run_history_refuses_before_creating_a_machine_catalog() {
+fn encrypted_runs_replay_history_without_cleartext_run_state() {
     let dir = project();
     let store = dir.path().join(".contextful/context/research");
     std::fs::write(
@@ -209,14 +209,115 @@ fn encrypted_run_history_refuses_before_creating_a_machine_catalog() {
         "[node]\nid = \"ingest-a\"\n[encryption]\nkey_source = \"env:CONTEXTFUL_TEST_RUN_KEY\"\n",
     )
     .unwrap();
-    let output = Command::new(env!("CARGO_BIN_EXE_contextful"))
-        .args(["run", "history", "--project", "research"])
-        .current_dir(dir.path())
-        .env("CONTEXTFUL_TEST_RUN_KEY", "0123456789abcdef0123456789abcdef")
-        .output()
-        .unwrap();
-    assert!(!output.status.success(), "encrypted run history must refuse until the machine catalog is sealed");
-    assert!(!store.join("machine.sqlite").exists(), "refusal must not create a plaintext machine catalog");
+    const CANARY: &str = "sealed-run-payload-74-9c87";
+    std::fs::write(dir.path().join("empty.sh"), format!("printf '{{\"rows\":[{{\"body\":\"{CANARY}\"}}],\"more\":false}}'\n")).unwrap();
+    let invoke = |args: &[&str], key: &str| {
+        Command::new(env!("CARGO_BIN_EXE_contextful"))
+            .args(args)
+            .current_dir(dir.path())
+            .env_remove("CONTEXTFUL_NODE_ID")
+            .env("CONTEXTFUL_TEST_RUN_KEY", key)
+            .output()
+            .unwrap()
+    };
+    let key = "0123456789abcdef0123456789abcdef";
+    let started = invoke(&["run", "start", "--plan", "feed-a.toml", "--project", "research", "--run-id", CANARY, "--site-id", "site-a", "--now", "2030-01-01T00:00:00Z"], key);
+    ok(&started);
+    let history_args = ["run", "history", "--project", "research"];
+    let listing: serde_json::Value = serde_json::from_str(&ok(&invoke(&history_args, key))).unwrap();
+    assert_eq!(listing["runs"][0]["run_id"], CANARY);
+    assert!(!invoke(&history_args, "fedcba9876543210fedcba9876543210").status.success());
+    assert_eq!(serde_json::from_str::<serde_json::Value>(&ok(&invoke(&history_args, key))).unwrap(), listing);
+    let machine = std::fs::read(store.join("machine.sqlite")).unwrap();
+    assert!(!machine.starts_with(b"SQLite format 3\0"));
+    fn scan(path: &Path, canary: &[u8]) {
+        for entry in std::fs::read_dir(path).unwrap() {
+            let path = entry.unwrap().path();
+            if path.is_dir() {
+                scan(&path, canary);
+            } else {
+                let bytes = std::fs::read(&path).unwrap();
+                assert!(!bytes.windows(canary.len()).any(|w| w == canary), "cleartext run payload in {}", path.display());
+            }
+        }
+    }
+    scan(&dir.path().join(".contextful"), CANARY.as_bytes());
+}
+
+#[test]
+fn encrypted_retained_pulls_and_cli_awake_payloads_reopen_without_plaintext() {
+    use contextful_core::run::journal::{Row, Stored, INLINE_CUTOFF_BYTES};
+    use contextful_core::run::ports::{BlobStore, JournalStore};
+    use contextful_core::time::Instant;
+    use contextful_engine::awake::{Awaited, Registry};
+    use contextful_engine::Journal;
+
+    let dir = project();
+    let p = dir.path();
+    let key_var = "CONTEXTFUL_TEST_KEY_74_RETAINED_RUN";
+    let key = "0123456789abcdef0123456789abcdef";
+    unsafe { std::env::set_var(key_var, key) };
+    std::fs::write(p.join(".contextful/context/research/config.toml"), format!("[node]\nid = \"ingest-a\"\n[encryption]\nkey_source = \"env:{key_var}\"\n")).unwrap();
+    const SOURCE: &str = "sealed-retained-source-74-821a";
+    const CALLBACK: &str = "sealed-retained-callback-74-4ec2";
+    let body = format!("{SOURCE}{}", "x".repeat(INLINE_CUTOFF_BYTES + 1));
+    let pull = serde_json::to_vec(&serde_json::json!({"rows":[{"body":body}],"more":true})).unwrap();
+    std::fs::write(p.join("pull.json"), &pull).unwrap();
+    std::fs::write(p.join("retained.sh"), "if [ \"$CONTEXTFUL_STEP\" = pull-0 ]; then echo pull-0 >> called; cat pull.json\nelif [ -f ready ]; then printf '{\"rows\":[],\"more\":false}'\nelse printf '{\"error\":{\"tag\":\"Permanent\",\"message\":\"feed paused\"}}'; exit 1; fi\n").unwrap();
+    std::fs::write(p.join("retained.toml"), "pipeline = \"retained\"\ntable = \"filings\"\n[connector]\nid = \"vendor\"\nversion = \"1\"\ncommand = [\"sh\", \"retained.sh\"]\n").unwrap();
+    let invoke = |args: &[&str]| Command::new(env!("CARGO_BIN_EXE_contextful"))
+        .args(args).current_dir(p).env_remove("CONTEXTFUL_NODE_ID").env(key_var, key).output().unwrap();
+    let run = |id: &str| invoke(&["run", "start", "--plan", "retained.toml", "--project", "research", "--run-id", id, "--site-id", "site-a", "--now", "2030-01-01T00:00:00Z"]);
+    refused(&run("retained-1"), "feed paused");
+    let history_args = ["run", "history", "--project", "research"];
+    let history: serde_json::Value = serde_json::from_str(&ok(&invoke(&history_args))).unwrap();
+    let execution = history["runs"][0]["execution_id"].as_str().unwrap();
+    let store = contextful_context::Store::open(p, "research").unwrap();
+    let machine = store.root().join("machine.sqlite");
+    let stores = contextful_sqlite::SqliteRunStores::open_sealed(&machine, store.file_cipher().unwrap()).unwrap();
+    let recorded = stores.journal.rows(execution).unwrap();
+    assert!(recorded.iter().any(|row| matches!(row, Row::Recorded { value: Stored::Blob { bytes, .. }, .. } if *bytes > INLINE_CUTOFF_BYTES as u64)), "the retained source pull uses the blob port");
+    for row in &recorded {
+        if let Row::Recorded { value: Stored::Blob { sha256, .. }, .. } = row {
+            let bytes = stores.blobs.get(sha256).unwrap().unwrap();
+            assert_eq!(serde_json::from_slice::<serde_json::Value>(&bytes).unwrap()["rows"][0]["body"], body);
+        }
+    }
+    let registry = Registry::over(stores.awakeables.clone(), Journal::over(stores.journal.clone(), stores.blobs.clone()));
+    // Command sources do not mint awakeables: the public registry creates one in this
+    // retained execution; callback delivery and subsequent reads use the built CLI.
+    let awakeable = registry.suspend(execution, "approval", "2030-01-01T00:00:00Z", 3600).unwrap();
+    let payload = serde_json::to_vec(&serde_json::json!({"answer":format!("{CALLBACK}{}", "y".repeat(INLINE_CUTOFF_BYTES + 1))})).unwrap();
+    std::fs::write(p.join("callback.json"), &payload).unwrap();
+    let delivered = invoke(&["run", "awake", &awakeable.token, "--project", "research", "--payload", "callback.json", "--now", "2030-01-01T00:00:00Z"]);
+    assert_eq!(ok(&delivered), String::from_utf8(payload.clone()).unwrap());
+    drop(registry);
+    drop(stores);
+    let reopened = contextful_sqlite::SqliteRunStores::open_sealed(&machine, store.file_cipher().unwrap()).unwrap();
+    let resume = contextful_engine::awake::resume_key(execution, &awakeable.token);
+    assert!(matches!(reopened.journal.read(&resume).unwrap(), Some(Row::Recorded { value: Stored::Blob { bytes, .. }, .. }) if bytes > INLINE_CUTOFF_BYTES as u64));
+    let registry = Registry::over(reopened.awakeables.clone(), Journal::over(reopened.journal.clone(), reopened.blobs.clone()));
+    assert_eq!(registry.awaited(execution, &awakeable.token, Instant::parse("2030-01-01T00:01:00Z").unwrap()).unwrap(), Awaited::Resumed(payload));
+    assert_eq!(serde_json::from_str::<serde_json::Value>(&ok(&invoke(&history_args))).unwrap(), history);
+    fn scan(path: &Path) {
+        for entry in std::fs::read_dir(path).unwrap() {
+            let path = entry.unwrap().path();
+            if path.is_dir() { scan(&path); } else {
+                let bytes = std::fs::read(&path).unwrap();
+                for canary in [SOURCE, CALLBACK] {
+                    assert!(!bytes.windows(canary.len()).any(|w| w == canary.as_bytes()), "plaintext retained payload in {}", path.display());
+                }
+            }
+        }
+    }
+    scan(&p.join(".contextful"));
+    std::fs::write(p.join("ready"), "").unwrap();
+    ok(&run("retained-2"));
+    assert_eq!(std::fs::read_to_string(p.join("called")).unwrap(), "pull-0\n", "the successful retry replays the retained source instead of rerunning it");
+    let rows = contextful_context::rows::table_rows(&store, &contextful_core::store::declare::TableDecl::named("filings"), &["body"]).unwrap();
+    assert_eq!(rows.len(), 1);
+    assert_eq!(rows[0]["body"], body);
+    scan(&p.join(".contextful"));
 }
 
 /// History leaves the machine as a process listing and an NDJSON export over one run projection; the export's

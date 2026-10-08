@@ -54,6 +54,15 @@ fn suites() -> Vec<(&'static str, Box<dyn Fn()>)> {
         })),
         ("memory blob", Box::new(|| conformance::blob_store("memory", &mut MemoryBlobStore::new))),
         ("memory journal", Box::new(|| conformance::journal_store("memory", &mut || (MemoryJournalStore::new(), MemoryBlobStore::new())))),
+        ("shared dynamic journal", Box::new(|| conformance::journal_store("shared dynamic", &mut || {
+            let rows: std::sync::Arc<dyn JournalStore> = std::sync::Arc::new(MemoryJournalStore::new());
+            let blobs: std::sync::Arc<dyn BlobStore> = std::sync::Arc::new(MemoryBlobStore::new());
+            (rows, blobs)
+        }))),
+        ("shared dynamic blob", Box::new(|| conformance::blob_store("shared dynamic", &mut || {
+            let blobs: std::sync::Arc<dyn BlobStore> = std::sync::Arc::new(MemoryBlobStore::new());
+            blobs
+        }))),
         ("memory awakeable", Box::new(|| {
             conformance::awakeable_store("memory", &mut || (MemoryAwakeableStore::new(), MemoryJournalStore::new(), MemoryBlobStore::new()))
         })),

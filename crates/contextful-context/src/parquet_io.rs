@@ -113,7 +113,7 @@ pub fn write(path: &Path, batch: &RecordBatch) -> Result<()> {
 }
 
 /// Write one batch with Parquet modular encryption of every column and the footer.
-pub fn write_encrypted(path: &Path, batch: &RecordBatch, key: &[u8; 16]) -> Result<()> {
+pub fn write_encrypted(path: &Path, batch: &RecordBatch, key: &[u8]) -> Result<()> {
     let pq = |e: parquet::errors::ParquetError| ContextError::Parquet { path: path.to_path_buf(), message: e.to_string() };
     if let Some(dir) = path.parent() {
         std::fs::create_dir_all(dir).at(dir)?;
@@ -131,7 +131,7 @@ pub fn write_encrypted(path: &Path, batch: &RecordBatch, key: &[u8; 16]) -> Resu
 }
 
 /// A store part uses modular encryption exactly when its project binds a key.
-pub fn write_with_key(path: &Path, batch: &RecordBatch, key: Option<&[u8; 16]>) -> Result<()> {
+pub fn write_with_key(path: &Path, batch: &RecordBatch, key: Option<&[u8]>) -> Result<()> {
     match key {
         Some(key) => write_encrypted(path, batch, key),
         None => write(path, batch),
@@ -147,7 +147,7 @@ pub fn read(path: &Path) -> Result<Vec<RecordBatch>> {
 }
 
 /// Read every batch of a modular-encrypted Parquet file with its footer key.
-pub fn read_encrypted(path: &Path, key: &[u8; 16]) -> Result<Vec<RecordBatch>> {
+pub fn read_encrypted(path: &Path, key: &[u8]) -> Result<Vec<RecordBatch>> {
     let pq = |e: parquet::errors::ParquetError| ContextError::Parquet { path: path.to_path_buf(), message: e.to_string() };
     let decryption = FileDecryptionProperties::builder(key.to_vec()).build().map_err(pq)?;
     let options = ArrowReaderOptions::new().with_file_decryption_properties(decryption);
@@ -157,7 +157,7 @@ pub fn read_encrypted(path: &Path, key: &[u8; 16]) -> Result<Vec<RecordBatch>> {
 }
 
 /// A store part reads with its project's modular encryption setting.
-pub fn read_with_key(path: &Path, key: Option<&[u8; 16]>) -> Result<Vec<RecordBatch>> {
+pub fn read_with_key(path: &Path, key: Option<&[u8]>) -> Result<Vec<RecordBatch>> {
     match key {
         Some(key) => read_encrypted(path, key),
         None => read(path),
@@ -175,7 +175,7 @@ pub fn read_bytes(bytes: Vec<u8>) -> Result<Vec<RecordBatch>> {
     reader.map(|batch| batch.map_err(|e| pq(e.to_string()))).collect()
 }
 
-fn builder_with_key(path: &Path, key: Option<&[u8; 16]>) -> Result<ParquetRecordBatchReaderBuilder<File>> {
+fn builder_with_key(path: &Path, key: Option<&[u8]>) -> Result<ParquetRecordBatchReaderBuilder<File>> {
     let file = File::open(path).at(path)?;
     let pq = |e: parquet::errors::ParquetError| ContextError::Parquet { path: path.to_path_buf(), message: e.to_string() };
     match key {
@@ -220,7 +220,7 @@ pub fn copy_inserting(from: &Path, to: &Path, inserts: &[Insert<'_>]) -> Result<
 }
 
 /// Copy one store part while retaining its project's modular encryption.
-pub fn copy_inserting_with_key(from: &Path, to: &Path, inserts: &[Insert<'_>], key: Option<&[u8; 16]>) -> Result<()> {
+pub fn copy_inserting_with_key(from: &Path, to: &Path, inserts: &[Insert<'_>], key: Option<&[u8]>) -> Result<()> {
     let pq = |path: &Path, m: String| ContextError::Parquet { path: path.to_path_buf(), message: m };
     let builder = builder_with_key(from, key)?;
     let source = builder.schema().clone();
@@ -279,7 +279,7 @@ pub fn columns(path: &Path) -> Result<Vec<String>> {
     columns_with_key(path, None)
 }
 
-pub fn columns_with_key(path: &Path, key: Option<&[u8; 16]>) -> Result<Vec<String>> {
+pub fn columns_with_key(path: &Path, key: Option<&[u8]>) -> Result<Vec<String>> {
     let b = builder_with_key(path, key)?;
     Ok(b.schema().fields().iter().map(|f| f.name().clone()).collect())
 }
@@ -290,7 +290,7 @@ pub fn schema(path: &Path) -> Result<Vec<Column>> {
     schema_with_key(path, None)
 }
 
-pub fn schema_with_key(path: &Path, key: Option<&[u8; 16]>) -> Result<Vec<Column>> {
+pub fn schema_with_key(path: &Path, key: Option<&[u8]>) -> Result<Vec<Column>> {
     let unreadable = |m: String| ContextError::Parquet { path: path.to_path_buf(), message: m };
     let b = builder_with_key(path, key)?;
     b.schema()

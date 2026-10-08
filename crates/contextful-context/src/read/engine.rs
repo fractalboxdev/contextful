@@ -159,6 +159,22 @@ impl SqlEngine {
         SqlEngine::connect()
     }
 
+    pub(crate) fn raw_with_key(parquet_key: Option<&[u8]>) -> Result<SqlEngine, ReadFault> {
+        let engine = SqlEngine::raw()?;
+        engine.bind_parquet_key(parquet_key)?;
+        Ok(engine)
+    }
+
+    fn bind_parquet_key(&self, parquet_key: Option<&[u8]>) -> Result<(), ReadFault> {
+        let Some(key) = parquet_key else { return Ok(()) };
+        crate::ledger::disable_spilling(&self.conn)?;
+        // DuckDB 1.5.5's TopN pushdown and metadata reuse fail authenticated Parquet reads.
+        self.conn.execute_batch("SET disabled_optimizers = 'top_n'; SET parquet_metadata_cache = false").map_err(fault)?;
+        use base64::Engine;
+        let value = base64::engine::general_purpose::STANDARD.encode(key);
+        self.conn.execute_batch(&format!("PRAGMA add_parquet_key({}, {})", literal(crate::encrypt::PARQUET_KEY_NAME), literal(&value))).map_err(fault)
+    }
+
     /// A locked connection holding one relation computed in memory: `staging` creates
     /// `table` with `N` text columns, `rows` append to it, and `finish` derives the
     /// relation a statement reads. No file is reachable from SQL afterwards.
@@ -218,21 +234,13 @@ impl SqlEngine {
     /// registered relation. No view directory exists on disk
     /// (`read.register.connection-views`). Every file a view names is immutable under the
     /// pool key the connection serves, so the connection keeps Parquet footers it read.
-    pub fn open(session: &Session, parquet_key: Option<&[u8; 16]>) -> Result<SqlEngine, ReadFault> {
+    pub fn open(session: &Session, parquet_key: Option<&[u8]>) -> Result<SqlEngine, ReadFault> {
         let mut engine = SqlEngine::connect()?;
         let conn = &engine.conn;
-        if let Some(key) = parquet_key {
-            crate::ledger::disable_spilling(conn)?;
-            use base64::Engine;
-            let value = base64::engine::general_purpose::STANDARD.encode(key);
-            conn.execute_batch(&format!(
-                "PRAGMA add_parquet_key({}, {})",
-                literal(crate::encrypt::PARQUET_KEY_NAME),
-                literal(&value)
-            ))
-            .map_err(fault)?;
+        engine.bind_parquet_key(parquet_key)?;
+        if parquet_key.is_none() {
+            conn.execute_batch("SET parquet_metadata_cache = true").map_err(fault)?;
         }
-        conn.execute_batch("SET parquet_metadata_cache = true").map_err(fault)?;
         conn.register_scalar_function_with_state::<MaskHash>(HASH_FUNCTION, session.pepper()).map_err(fault)?;
         conn.register_scalar_function_with_state::<MaskHashBytes>(HASH_BYTES_FUNCTION, session.pepper()).map_err(fault)?;
         conn.register_scalar_function_with_state::<MaskToken>(TOKEN_FUNCTION, session.pepper()).map_err(fault)?;
@@ -378,6 +386,22 @@ impl SqlEngine {
             }
         }
         Ok((columns, out))
+    }
+
+    /// Native model batches stay in process memory before the store's authenticated writer.
+    pub(crate) fn batches(&self, sql: &str) -> Result<Vec<arrow_array::RecordBatch>, ReadFault> {
+        SqlEngine::refuse_extension_statement(sql)?;
+        let mut stmt = self.conn.prepare(sql).map_err(engine_fault)?;
+        let mut stream = stmt.stream_arrow([]).map_err(engine_fault)?;
+        let mut batches = Vec::new();
+        loop {
+            let next = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| stream.next()))
+                .map_err(|_| ReadFault::Engine("the model Arrow stream failed while fetching a batch".into()))?;
+            match next {
+                Some(batch) => batches.push(batch),
+                None => return Ok(batches),
+            }
+        }
     }
 
     /// Run `sql`, reading at most `fetch` rows as the engine's own values. Each

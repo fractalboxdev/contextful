@@ -36,8 +36,7 @@ pub struct Store {
 impl Store {
     /// Open the store of `project` under `project_dir`, resolving its configuration at
     /// startup. A declared key source whose binding is absent refuses with no
-    /// cleartext fallback (`store.encrypt.key-unbound`); a bound one refuses too, since
-    /// metadata consumers outside this package still require key-aware reads.
+    /// cleartext fallback (`store.encrypt.key-unbound`).
     pub fn open(project_dir: &Path, project: &str) -> Result<Store> {
         crate::project::check_name(project)?;
         let root = project_dir.join(store_root(project));
@@ -48,16 +47,14 @@ impl Store {
             Err(e) if e.kind() == std::io::ErrorKind::NotFound => StoreConfig::default(),
             Err(e) => return Err(ContextError::Io { path: config_path, source: e }),
         };
-        if let Some(enc) = &config.encryption {
-            check_key_source(&enc.key_source)?;
-        }
+        let encryption = config.encryption.as_ref().map(|enc| bind_key_source(&enc.key_source).map(Arc::new)).transpose()?;
         Ok(Store {
             writer: crate::redaction::Writer::open(project_dir)?,
             root,
             config_node_id: config.node.and_then(|n| n.id),
             replica_of: config.replica.map(|r| r.of),
             require_connector_pin: config.connector.is_some_and(|c| c.require_pin),
-            encryption: None,
+            encryption,
         })
     }
 
@@ -117,6 +114,11 @@ impl Store {
     /// Whether this opened store holds a bound at-rest cipher.
     pub fn encrypted(&self) -> bool { self.encryption.is_some() }
 
+    /// The opened store's opaque cipher binding for persistent adapters.
+    pub fn file_cipher(&self) -> Option<Arc<dyn contextful_core::store::encrypt::FileCipher>> {
+        self.encryption.as_ref().map(|keys| keys.clone() as Arc<dyn contextful_core::store::encrypt::FileCipher>)
+    }
+
     /// How this store's sidecar files sit on disk.
     pub fn sealing(&self) -> Sealing<'_> {
         match &self.encryption {
@@ -144,8 +146,8 @@ impl Store {
         self.metadata_files().seal_bytes(path, bytes)
     }
 
-    pub(crate) fn parquet_key(&self) -> Option<&[u8; 16]> {
-        self.encryption.as_ref().map(|keys| keys.parquet_key())
+    pub(crate) fn parquet_key(&self) -> Option<&[u8]> {
+        self.encryption.as_ref().map(|keys| keys.parquet_key().as_slice())
     }
 
     pub(crate) fn write_parquet(&self, path: &Path, batch: &arrow_array::RecordBatch) -> Result<()> {
@@ -634,11 +636,4 @@ fn check_table_layout(table: &str) -> Result<()> {
         ))),
         None => Ok(()),
     }
-}
-
-fn check_key_source(source: &str) -> Result<()> {
-    let _keys = bind_key_source(source)?;
-    Err(ContextError::Invalid(format!(
-        "`[encryption] key_source = \"{source}\"` is bound, and metadata sealing remains unavailable; the store refuses rather than write cleartext"
-    )))
 }
