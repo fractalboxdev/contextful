@@ -182,10 +182,16 @@ fn distinct_trailing_whitespace_paths_retain_distinct_compiled_identities() {
     for suffix in ["", " ", "\t", "\u{2003}"] {
         let root = temp.path().join(format!("a{suffix}"));
         fixture(&root, "alpha");
-        write(&root, "crates/demo/src/main.rs", "fn main() { println!(\"{}\", env!(\"CONTEXTFUL_COMPILED_SOURCE_ROOT\")); }\n");
+        write(
+            &root,
+            "crates/demo/src/main.rs",
+            "fn main() { println!(\"{}\", env!(\"CONTEXTFUL_COMPILED_SOURCE_ROOT\")); }\n",
+        );
         let shared = temp.path().join("shared");
         cargo(&root, &shared, "build");
-        let out = Command::new(shared.join("debug/source-binding-demo")).output().unwrap();
+        let out = Command::new(shared.join("debug/source-binding-demo"))
+            .output()
+            .unwrap();
         assert!(out.status.success());
         let identity = String::from_utf8(out.stdout).unwrap();
         assert!(
