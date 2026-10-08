@@ -121,21 +121,25 @@ The gate measures commits, so commit before running it.
 
 The FlareDispatch GitHub App dispatches `contextful-ci gate` from same-repository
 pull-request heads. Its `contextful-gate` run publishes the
-`flare-dispatch/contextful-gate` parent and 24 child check-runs:
-`flare-dispatch/check:<stage>` for each of `pins`, `toolchain`, `schema`, `test-first`,
+`flare-dispatch/contextful-gate` parent, 29 static child check-runs, and one
+test-first child per changed source package:
+`flare-dispatch/check:<stage>` for each of `pins`, `toolchain`, `schema`,
 `workspace`, `acceptance`, `evaluate`, `features`, `crate-graph`, `connectors`,
-`surfaces`, `formal` and `budget`. The features and budget stages dispatch one check per
-part, `flare-dispatch/check:features.<part>` and `flare-dispatch/check:budget.<profile>`, so
-each fits the sandbox's wall clock; `contextful-ci stages --parts` prints the list, and
+`surfaces`, `formal` and `budget`. The test-first, features and budget stages dispatch one check per
+part, `flare-dispatch/check:test-first.validate` and `flare-dispatch/check:test-first.<package>`, `flare-dispatch/check:features.<part>` and `flare-dispatch/check:budget.<profile>`, so
+each fits the sandbox's wall clock; `contextful-ci stages --parts --base <rev>` prints the list, and
 `--stage <stage>.<part>` runs one part. A selected subset runs in that order and refuses a
 stage whose predecessor's output is absent; `--predecessors` runs those too. A local run and
-the remote check invoke the identical command. `contextful-ci`'s suite asserts 24
-dispatchable parts. FlareDispatch runs `contextful-measures` nightly against the default
+the remote check invoke the identical command. `contextful-ci`'s suite asserts 29
+static dispatchable parts. FlareDispatch runs `contextful-measures` nightly against the default
 branch and attaches its report to `refs/notes/measures`. A `v*` tag starts
 `contextful-release`, with `contextful-release-cell` for the ten cells in
 `contextful-ci release --plan`, `contextful-release-formula` for formulae and
 SHA256SUMS, and three independently tagged container images. The disabled
-ruleset proposal under `.github/rulesets/` lists the parent and all 24 children.
+ruleset proposal under `.github/rulesets/` lists the parent and all 29 static children.
+
+The CLI differential module runs in `workspace.cli-formal` and `features.formal-<set>`;
+`workspace.cli` and `features.binary-<set>` run the remaining CLI tests.
 
 ### Landing without a remote verdict
 
