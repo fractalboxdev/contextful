@@ -104,6 +104,8 @@ pub enum FormalCmd {
     /// decision functions and the Lean reference model; exits non-zero on the first
     /// disagreement.
     Differential(crate::differential::DifferentialArgs),
+    /// Compare generated lease and fenced write sequences with the executable protocol model.
+    ProtocolDifferential(crate::protocol_differential::Args),
 }
 
 pub fn run(cmd: FormalCmd) -> Result<()> {
@@ -115,6 +117,7 @@ pub fn run(cmd: FormalCmd) -> Result<()> {
         }
         FormalCmd::Recheck { root } => recheck(root),
         FormalCmd::Differential(args) => crate::differential::run(args),
+        FormalCmd::ProtocolDifferential(args) => crate::protocol_differential::run(args),
     }
 }
 
