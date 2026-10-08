@@ -14,6 +14,17 @@ pub const DECLARATION_FILE: &str = "contextful.toml";
 /// The audit pseudonym key has independent entropy and stays outside the synced store.
 /// Unix creation uses owner-only permissions; Windows inherits the configured directory ACL.
 pub fn audit_key(store: &crate::Store, project: &Project) -> Result<[u8; 32]> {
+    load_audit_key(store, project, AuditKeyPurpose::Create)
+}
+
+pub(crate) fn existing_audit_key(store: &crate::Store, project: &Project) -> Result<[u8; 32]> {
+    load_audit_key(store, project, AuditKeyPurpose::Existing)
+}
+
+#[derive(Clone, Copy)]
+enum AuditKeyPurpose { Create, Existing }
+
+fn load_audit_key(store: &crate::Store, project: &Project, purpose: AuditKeyPurpose) -> Result<[u8; 32]> {
     use std::io::{Read, Write};
     let incomplete = |why: &str| crate::ContextError::from(contextful_core::disclosure::erase::ErasureError::ErasureTransactionIncomplete(why.to_string()));
     if store.root() != project.store_root() { return Err(incomplete("the audit key project disagrees with the store")); }
@@ -23,6 +34,7 @@ pub fn audit_key(store: &crate::Store, project: &Project) -> Result<[u8; 32]> {
         if metadata.file_type().is_symlink() || !metadata.is_dir() { return Err(incomplete("the audit key directory is not owned project content")); }
         let path = directory.join("audit.key");
         if !path.try_exists().at(&path)? && fs::symlink_metadata(&path).is_err() {
+            if matches!(purpose, AuditKeyPurpose::Existing) { return Err(incomplete("the canonical project audit key is absent")); }
             if bound.metadata().read_optional(&bound.root().join(crate::erasure_frontier::FRONTIER_FILE))?.is_some() {
                 return Err(incomplete("a published erasure has no persisted project audit key"));
             }

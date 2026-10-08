@@ -26,6 +26,7 @@ pub use contextful_core::store::config::{ConnectorPolicy, EncryptionConfig, Node
 #[derive(Debug, Clone)]
 pub struct Store {
     root: PathBuf,
+    project: crate::project::Project,
     config_node_id: Option<String>,
     replica_of: Option<String>,
     require_connector_pin: bool,
@@ -63,6 +64,7 @@ impl Store {
         }
         Ok(Store {
             root,
+            project: crate::project::Project { dir:project_dir.to_path_buf(), name:project.into() },
             config_node_id: config.node.and_then(|n| n.id),
             replica_of: config.replica.map(|r| r.of),
             require_connector_pin: config.connector.is_some_and(|c| c.require_pin),
@@ -75,6 +77,10 @@ impl Store {
 
     pub fn root(&self) -> &Path {
         &self.root
+    }
+
+    pub(crate) fn canonical_audit_key(&self) -> Result<[u8; 32]> {
+        crate::project::existing_audit_key(self, &self.project)
     }
 
     /// Bind the operator's audit-chain location and trusted issuer/node keys. A
