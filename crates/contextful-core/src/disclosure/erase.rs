@@ -45,7 +45,14 @@ pub fn select_subject(
     })
 }
 
-/// Selects complete declared primary keys or an explicit scalar erasure key.
+/// Identifies a column named by canonical table declarations.
+pub fn declares_erasure_column(declaration: &TableDecl, column: &str) -> bool {
+    declaration.columns.as_ref().is_some_and(|columns| columns.contains_key(column))
+        || declaration.erasure_key.as_deref() == Some(column)
+        || declaration.primary_key.as_ref().is_some_and(|columns| columns.len() == 1 && columns[0] == column)
+}
+
+/// Selects complete declared primary keys or a declared scalar column.
 pub fn select_keys(
     declarations: &[TableDecl],
     rows: &RetainedRows,
@@ -58,7 +65,11 @@ pub fn select_keys(
         for selector in selectors {
             let primary = decl.primary_key.as_ref().is_some_and(|keys| !keys.is_empty() && selector.len() == keys.len() && keys.iter().all(|key| selector.contains_key(key)));
             let erasure = decl.erasure_key.as_ref().is_some_and(|key| selector.len() == 1 && selector.contains_key(key));
-            if !(primary || erasure) || selector.values().any(Value::is_null) { return Err(unsupported()); }
+            let declared = selector.len() == 1 && selector.iter().all(|(column, value)| {
+                declares_erasure_column(decl, column)
+                    && matches!(value, Value::String(_) | Value::Number(_) | Value::Bool(_))
+            });
+            if !(primary || erasure || declared) || selector.values().any(Value::is_null) { return Err(unsupported()); }
         }
     }
     select(declarations, rows, &keys.keys().cloned().collect::<Vec<_>>(), &|decl, row| {
