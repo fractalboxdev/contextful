@@ -6352,7 +6352,7 @@
       "operation": "revise",
       "subject": "served-scope",
       "kind": "refusal",
-      "statement": "A claim write whose `actor` or `session` differs from the admitted credential's `on_behalf_of` or `task` raises `MemoryClaimScopeRefused`; accepted claims take scope from those members, never from the payload.",
+      "statement": "A claim write whose `actor` or `session` differs from the admitted credential's `on_behalf_of` or `task`, or whose `session` holds a colon, raises `MemoryClaimScopeRefused`; accepted claims take scope from those members, never from the payload.",
       "why": "A-read",
       "file": "spec/21-memory.md",
       "line": 124

@@ -121,7 +121,7 @@ Supersession within one validity line, confidence decay, the direct write and it
   *A-read*
 - `served-write` — A writable served face answers `POST /memory/claims` under a per-request network credential, lands a declared claim through the direct write, and keeps the read MCP tool set closed.
   *A-read*
-- `served-scope` — A claim write whose `actor` or `session` differs from the admitted credential's `on_behalf_of` or `task` raises `MemoryClaimScopeRefused`; accepted claims take scope from those members, never from the payload.
+- `served-scope` — A claim write whose `actor` or `session` differs from the admitted credential's `on_behalf_of` or `task`, or whose `session` holds a colon, raises `MemoryClaimScopeRefused`; accepted claims take scope from those members, never from the payload.
   *A-read*
 - `browser-request` — An `Origin` header on the served claim-write route raises `MemoryClaimBrowserRefused` before credential admission and commits nothing.
   *A-read*

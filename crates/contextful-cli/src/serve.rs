@@ -177,7 +177,7 @@ pub fn run(args: ServeArgs, tasks: &Tasks) -> Result<()> {
                 "error": { "http": 400, "identifier": "MemoryClaimMalformed" }
             })),
         };
-        if body.actor.is_empty() || body.session.is_empty() ||
+        if body.actor.is_empty() || body.session.is_empty() || body.session.contains(':') ||
             authority.subject().on_behalf_of() != Some(body.actor.as_str()) ||
             authority.subject().task() != Some(body.session.as_str()) {
             return contextful_agent::http::HttpResponse::json(403, &serde_json::json!({
