@@ -93,7 +93,7 @@ fn every_gate_stage_has_a_dispatchable_part() {
         .collect();
     assert_eq!(
         parts.len(),
-        24,
+        26,
         "the remote gate expects one check per part: {parts:?}"
     );
     assert!(parts.iter().any(|part| part == "workspace.cli"), "the CLI suite has no separate remote check: {parts:?}");
@@ -125,7 +125,10 @@ fn proposed_required_checks_match_every_gate_part() {
         .unwrap();
     assert!(out.status.success());
     let mut expected = vec!["flare-dispatch/contextful-gate".to_string()];
-    expected.extend(String::from_utf8_lossy(&out.stdout).lines().map(|part| format!("flare-dispatch/check:{part}")));
+    expected.extend(String::from_utf8_lossy(&out.stdout).lines().map(|part| {
+        let owner = if part.starts_with("windows.") { "native-gate" } else { "check" };
+        format!("flare-dispatch/{owner}:{part}")
+    }));
 
     let proposal: serde_json::Value = serde_json::from_str(&std::fs::read_to_string(repo_root().join(".github/rulesets/contextful-gate.proposed.json")).unwrap()).unwrap();
     assert_eq!(proposal["enforcement"], "disabled");

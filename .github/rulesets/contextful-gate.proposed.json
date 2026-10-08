@@ -38,7 +38,9 @@
           { "context": "flare-dispatch/check:formal" },
           { "context": "flare-dispatch/check:budget.control" },
           { "context": "flare-dispatch/check:budget.edge" },
-          { "context": "flare-dispatch/check:budget.full" }
+          { "context": "flare-dispatch/check:budget.full" },
+          { "context": "flare-dispatch/native-gate:windows.x86_64-msvc" },
+          { "context": "flare-dispatch/native-gate:windows.aarch64-msvc" }
         ]
       }
     }

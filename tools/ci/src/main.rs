@@ -89,6 +89,9 @@ enum Cmd {
         /// as its parts.
         #[arg(long)]
         parts: bool,
+        /// Print the selected inventory as a JSON array.
+        #[arg(long)]
+        json: bool,
     },
     /// Hold every key in a git-tracked `.env*` file to ciphertext under a scope comment.
     Secrets,
@@ -259,11 +262,12 @@ fn refuse(code: &'static str, message: String) -> anyhow::Error {
 fn main() {
     let cli = Cli::parse();
     let result = match cli.cmd {
-        Cmd::Stages { parts: false } => {
-            STAGES.iter().for_each(|s| println!("{s}"));
-            Ok(())
-        }
-        Cmd::Stages { parts: true } => repo_root().and_then(|root| dispatched(&root)).map(|all| all.iter().for_each(|s| println!("{s}"))),
+        Cmd::Stages { parts, json } => (if parts { repo_root().and_then(|root| dispatched(&root)) }
+            else { Ok(STAGES.iter().map(|stage| stage.to_string()).collect()) }).and_then(|all| {
+                if json { println!("{}", serde_json::to_string(&all)?); }
+                else { all.iter().for_each(|stage| println!("{stage}")); }
+                Ok(())
+            }),
         Cmd::Gate { stages, predecessors, base, base_bound_secs } => gate(&stages, predecessors, &base, Duration::from_secs(base_bound_secs)),
         Cmd::Secrets => repo_root().and_then(|root| secrets(&root)),
         Cmd::Mirrors => repo_root().and_then(|root| mirrors(&root)),
@@ -384,6 +388,11 @@ fn repo_root() -> Result<PathBuf> {
 /// `assurance.gate.budget-stage`).
 const SPLIT: [&str; 3] = ["workspace", "features", "budget"];
 
+const WINDOWS_PARTS: [(&str, &str); 2] = [
+    ("windows.x86_64-msvc", "x86_64-pc-windows-msvc"),
+    ("windows.aarch64-msvc", "aarch64-pc-windows-msvc"),
+];
+
 /// The parts of a split `stage`: the features stage's `packages`, every featured package but
 /// the binary, then `binary-<run>` per run of the binary package; the budget stage's
 /// `<profile>` per profile the binary declares, its name after `contextful-`.
@@ -411,11 +420,20 @@ fn dispatched(root: &Path) -> Result<Vec<String>> {
             out.push(stage.to_string());
         }
     }
+    out.extend(WINDOWS_PARTS.iter().map(|(part, _)| part.to_string()));
     Ok(out)
 }
 
 fn gate(named: &[String], predecessors: bool, base: &str, bound: Duration) -> Result<()> {
     let root = repo_root()?;
+    if named.iter().any(|name| name.starts_with("windows.")) {
+        if predecessors || named.len() != 1 {
+            bail!("native leaves require one selected part; their parent joins the nonnative predecessors");
+        }
+        let target = WINDOWS_PARTS.iter().find(|(part, _)| *part == named[0])
+            .map(|(_, target)| *target).context("unknown native Windows part")?;
+        return native_windows_gate(&root, &named[0], target, base, bound);
+    }
     // A named part selects its stage and narrows it to the named parts; a stage named whole
     // runs whole.
     let mut stages: Vec<String> = Vec::new();
@@ -446,6 +464,56 @@ fn gate(named: &[String], predecessors: bool, base: &str, bound: Duration) -> Re
         // A passing stage leaves no build behind (`assurance.build.target-dir-per-stage`); a
         // failing one keeps its directory for diagnosis.
         let _ = std::fs::remove_dir_all(stage_target(&root, stage));
+    }
+    Ok(())
+}
+
+fn native_windows_gate(root: &Path, part: &str, target: &str, base: &str, bound: Duration) -> Result<()> {
+    let host = format!("{}-pc-windows-msvc", std::env::consts::ARCH);
+    if !cfg!(all(target_os = "windows", target_env = "msvc")) || host != target {
+        return Err(refuse("NativeHostMismatch", format!("part `{part}` requires native `{target}`; this binary runs on {}-{}", std::env::consts::ARCH, std::env::consts::OS)));
+    }
+    free_disk(root, part)?;
+    let mut mark = stage::mark();
+    let outcome = (|| {
+        test_first(root, base, bound)?;
+        run_staged(root, part, &["check", "--locked", "--target", target, "--no-default-features",
+            "-p", "contextful-core", "-p", "contextful-policy", "-p", "contextful-context"])?;
+        for package in ["contextful-fs", "contextful-policy", "contextful-context"] {
+            run_staged(root, part, &["test", "--locked", "--target", target, "--no-default-features", "-p", package, "--test", "integration"])?;
+        }
+        for test in ["command_windows::cancellation_returns_only_after_the_descendant_handle_is_signalled",
+            "command_windows::a_finished_parent_reaps_its_pipe_holding_descendant"] {
+            native_required_test(root, part, target, "contextful-engine", test)?;
+        }
+        // The default feature set includes bundled DuckDB; its actual native outcome
+        // remains part of the terminal command receipt, including on ARM64.
+        run_staged(root, part, &["check", "--locked", "--target", target, "-p", "contextful-context"])
+    })();
+    stage::report(part, &mut mark, &outcome);
+    outcome?;
+    let _ = std::fs::remove_dir_all(stage_target(root, part));
+    Ok(())
+}
+
+fn native_required_test(root: &Path, part: &str, target: &str, package: &str, test: &str) -> Result<()> {
+    let args = ["test", "--locked", "--target", target, "-p", package, "--test", "integration"];
+    let listed = Command::new("cargo").args(args).args(["--", "--list"])
+        .env("CARGO_TARGET_DIR", stage_target(root, part)).current_dir(root).output()?;
+    if !listed.status.success() { return Err(exited_output("native test inventory", &listed)); }
+    if !String::from_utf8_lossy(&listed.stdout).lines().any(|line| line == format!("{test}: test")) {
+        bail!("native test inventory omits required `{package}::{test}`");
+    }
+    let mut run = args.to_vec();
+    run.extend(["--", "--exact", test]);
+    let output = Command::new("cargo").args(&run)
+        .env("CARGO_TARGET_DIR", stage_target(root, part)).current_dir(root).output()?;
+    eprint!("{}", String::from_utf8_lossy(&output.stderr));
+    print!("{}", String::from_utf8_lossy(&output.stdout));
+    if !output.status.success() { return Err(exited_output("required native test", &output)); }
+    if !String::from_utf8_lossy(&output.stdout).lines()
+        .any(|line| line.starts_with("test result: ok. 1 passed; 0 failed; 0 ignored;")) {
+        bail!("required native test `{package}::{test}` executes no single passing, nonignored case");
     }
     Ok(())
 }
@@ -553,10 +621,22 @@ fn committed_lock(root: &Path) -> Result<()> {
 }
 
 /// Refuse a stage starting with less than [`STAGE_FREE_DISK_KIB`] free on the filesystem
-/// holding the stage's build directory, read through POSIX `df -Pk`.
+/// holding the stage's build directory.
 fn free_disk(root: &Path, stage: &str) -> Result<()> {
     let target = stage_target(root, if stage == "budget" { "footprint" } else { stage });
     let dir = target.ancestors().find(|p| p.exists()).context("the build directory has no existing ancestor")?;
+    let available = available_disk_kib(dir)?;
+    if available < STAGE_FREE_DISK_KIB {
+        return Err(refuse(
+            "BuildDiskPrecondition",
+            format!("stage `{stage}` starts with {} MiB free under {}, below the 2048 MiB floor", available / 1024, dir.display()),
+        ));
+    }
+    Ok(())
+}
+
+#[cfg(not(windows))]
+fn available_disk_kib(dir: &Path) -> Result<u64> {
     let out = Command::new("df").arg("-Pk").arg(dir).output().context("running df")?;
     if !out.status.success() {
         return Err(exited_output(&format!("df -Pk {}", dir.display()), &out));
@@ -569,13 +649,22 @@ fn free_disk(root: &Path, stage: &str) -> Result<()> {
         .and_then(|l| l.split_whitespace().nth(3))
         .and_then(|f| f.parse().ok())
         .with_context(|| format!("df -Pk printed no available figure: {text}"))?;
-    if available < STAGE_FREE_DISK_KIB {
-        return Err(refuse(
-            "BuildDiskPrecondition",
-            format!("stage `{stage}` starts with {} MiB free under {}, below the 2048 MiB floor", available / 1024, dir.display()),
-        ));
+    Ok(available)
+}
+
+#[cfg(windows)]
+fn available_disk_kib(dir: &Path) -> Result<u64> {
+    use std::os::windows::ffi::OsStrExt;
+    #[link(name = "kernel32")]
+    unsafe extern "system" {
+        fn GetDiskFreeSpaceExW(path: *const u16, available: *mut u64, total: *mut u64, free: *mut u64) -> i32;
     }
-    Ok(())
+    let path: Vec<u16> = dir.as_os_str().encode_wide().chain(std::iter::once(0)).collect();
+    let mut available = 0;
+    // The nul-terminated path and writable byte counter remain live through this call.
+    let ok = unsafe { GetDiskFreeSpaceExW(path.as_ptr(), &mut available, std::ptr::null_mut(), std::ptr::null_mut()) };
+    if ok == 0 { return Err(std::io::Error::last_os_error().into()); }
+    Ok(available / 1024)
 }
 
 /// Every workspace package's suite in one cargo invocation over the union of their
