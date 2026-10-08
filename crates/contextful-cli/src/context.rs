@@ -68,15 +68,18 @@ pub enum ContextCmd {
     Erase {
         #[command(flatten)]
         store: StoreArgs,
-        #[arg(long, required_unless_present = "keyset_file", conflicts_with = "keyset_file")]
+        /// Resume an authenticated committed frontier without selecting or signing another erasure.
+        #[arg(long)]
+        recover: bool,
+        #[arg(long, required_unless_present_any = ["keyset_file", "recover"], conflicts_with_all = ["keyset_file", "recover"])]
         subject: Option<String>,
-        #[arg(long = "key-set", alias = "keyset-file")]
+        #[arg(long = "key-set", alias = "keyset-file", conflicts_with = "recover")]
         keyset_file: Option<PathBuf>,
-        #[arg(long, value_delimiter = ',', required = true)]
+        #[arg(long, value_delimiter = ',', required_unless_present = "recover", conflicts_with = "recover")]
         tables: Vec<String>,
         /// Explicit configured signing port; verification pins remain independent.
-        #[arg(long)]
-        issuer_key: PathBuf,
+        #[arg(long, required_unless_present = "recover", conflicts_with = "recover")]
+        issuer_key: Option<PathBuf>,
         #[command(flatten)]
         admit: AdmitArgs,
         #[arg(long)]
@@ -190,13 +193,33 @@ fn bound(flag: Option<String>) -> Result<Option<Bound>> {
     Ok(flag.map(|s| Bound::parse(&s)).transpose()?)
 }
 
+fn erasure_boundary<'a>(project: &contextful_context::project::Project, admit: &'a AdmitArgs)
+    -> impl Fn(&contextful_policy::verify::AdmittedAuthority) -> std::result::Result<(), contextful_core::AuthorityError> + 'a {
+    use contextful_core::ports::Clock;
+    let ledger = crate::admit::LedgerFile::at(&project.dir, admit.keyset.as_deref());
+    move |authority| {
+        let state = ledger.read().map_err(|error| contextful_core::AuthorityError::KeySetUnavailable(error.to_string()))?;
+        let revocation = crate::admit::revocation_state(admit.denylist.as_deref(), &state)
+            .map_err(|error| contextful_core::AuthorityError::KeySetUnavailable(error.to_string()))?;
+        contextful_policy::verify::effect_boundary(authority, &contextful_policy::verify::Admission::new(crate::clock::SystemClock.now(), &revocation))
+    }
+}
+
+fn run_erasure_recovery(args: &StoreArgs, admit: &AdmitArgs, json: bool) -> Result<()> {
+    let located = locate(args.project.as_deref(), args.declaration.clone())?;
+    let (authority, _) = admit.admit(args.project.as_deref(), "context erase recovery")?;
+    let store = crate::project::open_store(&located.project, admit.public_key.as_deref(), admit.keyset.as_deref())?;
+    let transaction = contextful_context::erase::recover_admitted_erasure(&store, &authority, &erasure_boundary(&located.project, admit))?;
+    if json { println!("{}", serde_json::json!({"transaction_id":transaction,"physical_collection":"complete"})); }
+    else { println!("erasure {transaction}: physical collection complete"); }
+    Ok(())
+}
+
 fn run_erasure(args: &StoreArgs, subject: Option<&str>, keyset_file: Option<&Path>, tables: &[String], issuer_key: &Path, admit: &AdmitArgs, json: bool) -> Result<()> {
     use contextful_context::erase::{erase, EraseRequest, EraseSelector};
     use contextful_core::disclosure::erase::RetainedRows;
-    use contextful_core::ports::Clock;
     use contextful_policy::enforce::erase::ForgetAdmission;
     use contextful_policy::issue::SeedSigner;
-    use contextful_policy::verify::{effect_boundary, Admission};
     let located = locate(args.project.as_deref(), args.declaration.clone())?;
     let text = std::fs::read_to_string(&located.declaration)?;
     let declarations = TableDecl::parse_declaration_set(&text, &crate::project::pipeline_files(&located.declaration)?)?;
@@ -233,14 +256,8 @@ fn run_erasure(args: &StoreArgs, subject: Option<&str>, keyset_file: Option<&Pat
         (None, Some(file)) => EraseSelector::KeySet { subject_hash: &file.subject_hash, keys: &keys },
         _ => bail!("ErasureScopeUnsupported: select one subject or key set"),
     };
-    let ledger = crate::admit::LedgerFile::at(&located.project.dir, admit.keyset.as_deref());
     let clock = crate::clock::SystemClock;
-    let boundary = |authority: &contextful_policy::verify::AdmittedAuthority| {
-        let state = ledger.read().map_err(|error| contextful_core::AuthorityError::KeySetUnavailable(error.to_string()))?;
-        let revocation = crate::admit::revocation_state(admit.denylist.as_deref(), &state)
-            .map_err(|error| contextful_core::AuthorityError::KeySetUnavailable(error.to_string()))?;
-        effect_boundary(authority, &Admission::new(clock.now(), &revocation))
-    };
+    let boundary = erasure_boundary(&located.project, admit);
     let audit_key = contextful_context::project::audit_key(&store, &located.project)?;
     let audit_dir = located.project.audit_dir();
     let erased = erase(&store, EraseRequest { declarations: &declarations, tables, selector, admission: &admitted,
@@ -274,8 +291,9 @@ pub fn run(cmd: ContextCmd) -> Result<()> {
             println!("{}", serde_json::to_string(value)?);
             Ok(())
         }
-        ContextCmd::Erase { store, subject, keyset_file, tables, issuer_key, admit, json } => {
-            run_erasure(&store, subject.as_deref(), keyset_file.as_deref(), &tables, &issuer_key, &admit, json)
+        ContextCmd::Erase { store, recover, subject, keyset_file, tables, issuer_key, admit, json } => {
+            if recover { run_erasure_recovery(&store, &admit, json) }
+            else { run_erasure(&store, subject.as_deref(), keyset_file.as_deref(), &tables, issuer_key.as_deref().context("erasure has no explicit signing port")?, &admit, json) }
         }
         ContextCmd::Land { table, store, rows, run_id, site_id, types, now: at, admit } => {
             let o = Opened::open(&store)?;

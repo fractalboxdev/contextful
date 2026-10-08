@@ -15,6 +15,6 @@ fn a_committed_process_crash_recovers_through_the_built_adapter() {
     assert!(output.status.success(), "the actual owning CLI fails to build: {}", String::from_utf8_lossy(&output.stderr));
     let executable = String::from_utf8(output.stdout).unwrap().lines().filter_map(|line| serde_json::from_str::<serde_json::Value>(line).ok())
         .filter(|artifact| artifact["reason"] == "compiler-artifact" && artifact["target"]["name"] == "contextful")
-        .filter_map(|artifact| artifact["executable"].as_str().map(std::path::PathBuf::from)).last().expect("Cargo reports the actual built executable");
+        .filter_map(|artifact| artifact["executable"].as_str().map(std::path::PathBuf::from)).next_back().expect("Cargo reports the actual built executable");
     fixture::process_crash_recovery(&executable);
 }

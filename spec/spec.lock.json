@@ -19755,6 +19755,17 @@
       "line": 215
     },
     {
+      "id": "disclosure.erase.recovery-verb",
+      "contract": "disclosure",
+      "operation": "erase",
+      "subject": "recovery-verb",
+      "kind": "behavior",
+      "statement": "`context erase --recover --project <project>` resumes {{disclosure.erase.recovery}} for the complete authenticated frontier under {{disclosure.erase.privilege}} and {{authority.verify.effect-boundary}} before collection; selectors and signing ports are absent.",
+      "why": "A-disclosure",
+      "file": "spec/62-accountability.md",
+      "line": 217
+    },
+    {
       "id": "disclosure.erase.retirement-inventory",
       "contract": "disclosure",
       "operation": "erase",
@@ -19763,7 +19774,7 @@
       "statement": "Signed retirement inventories bind regular paths through domain-separated HMAC under {{disclosure.record.audit-key}} and their file digests; recovery admits missing files as completed collection, validates all remaining files before deletion, and rejects changes through {{disclosure.erase.recovery}}.",
       "why": "A-disclosure",
       "file": "spec/62-accountability.md",
-      "line": 217
+      "line": 219
     },
     {
       "id": "disclosure.erase.canonical-audit-key",
@@ -19774,7 +19785,7 @@
       "statement": "Erasure and keyed retirement recovery require the persisted canonical {{disclosure.record.audit-key}}; caller-supplied keys equal it, and absent or mismatched keys follow {{disclosure.erase.recovery}} before content access, signed intent, staging or collection.",
       "why": "A-disclosure",
       "file": "spec/62-accountability.md",
-      "line": 219
+      "line": 221
     },
     {
       "id": "disclosure.erase.survivor-names",
@@ -19785,7 +19796,7 @@
       "statement": "Erasure survivor snapshots use row-independent part names, preserve admitted surviving rows, record rewritten part key versions, and rebuild declared indexes through {{store.index.vector-by-fold}} and {{store.index.fulltext-by-fold}}.",
       "why": "A-disclosure",
       "file": "spec/62-accountability.md",
-      "line": 221
+      "line": 223
     },
     {
       "id": "disclosure.erase.cascade",
@@ -19796,7 +19807,7 @@
       "statement": "In the same operation the cascade invalidates every derived fact whose provenance reaches the subject key or a tombstoned identifier within 16 hops.",
       "why": "A-disclosure",
       "file": "spec/62-accountability.md",
-      "line": 223
+      "line": 225
     },
     {
       "id": "disclosure.erase.cascade-unbounded",
@@ -19807,7 +19818,7 @@
       "statement": "A provenance chain deeper than the cascade bound raises `ErasureCascadeUnbounded`, and the erasure commits nothing.",
       "why": "A-disclosure",
       "file": "spec/62-accountability.md",
-      "line": 225
+      "line": 227
     },
     {
       "id": "disclosure.erase.physical-removal",
@@ -19818,7 +19829,7 @@
       "statement": "Every file holding an erased row, a superseded snapshot still inside {{store.fold.retention}} included, is rewritten or collected within 24 h of the erasure's commit.",
       "why": "A-disclosure",
       "file": "spec/62-accountability.md",
-      "line": 227
+      "line": 229
     },
     {
       "id": "disclosure.erase.restaging-gate",
@@ -19829,7 +19840,7 @@
       "statement": "`--fail-closed` writes a row-free `{subject_hash, executed_at}` marker at the store root after the cascade. While it stands, every fact read raises `ErasureRestagingRequired`, naming the owed re-synthesis and the clearing verb.",
       "why": "A-disclosure",
       "file": "spec/62-accountability.md",
-      "line": 229
+      "line": 231
     },
     {
       "id": "disclosure.erase.tenant-column-type",
@@ -19840,7 +19851,7 @@
       "statement": "A tenant column of a non-string type raises `PurgeTenantColumnType`.",
       "why": "A-disclosure",
       "file": "spec/62-accountability.md",
-      "line": 231
+      "line": 233
     },
     {
       "id": "disclosure.erase.tenant-undeclared",
@@ -19851,7 +19862,7 @@
       "statement": "A purge finding no model declaring an outermost partition key raises `PurgeTenantUndeclared`.",
       "why": "A-disclosure",
       "file": "spec/62-accountability.md",
-      "line": 233
+      "line": 235
     },
     {
       "id": "disclosure.erase.owner-only",
@@ -19862,7 +19873,7 @@
       "statement": "A purge presented with a capability token raises `PurgeRequiresOwner`, evaluated before anything reveals store contents.",
       "why": "A-disclosure",
       "file": "spec/62-accountability.md",
-      "line": 235
+      "line": 237
     },
     {
       "id": "disclosure.receipt.pseudonym",
@@ -19873,7 +19884,7 @@
       "statement": "`tenant_hash` is SHA-256 over a random per-receipt `salt` and the tenant identifier. A receipt carrying the identifier in cleartext raises `ReceiptIdentifierLeak` before signing.",
       "why": "A-disclosure",
       "file": "spec/62-accountability.md",
-      "line": 264
+      "line": 266
     },
     {
       "id": "disclosure.receipt.widened-claim",
@@ -19884,7 +19895,7 @@
       "statement": "A coverage block naming a scope broader than its `receipt_version` declares raises `ReceiptClaimWidened`.",
       "why": "A-disclosure",
       "file": "spec/62-accountability.md",
-      "line": 266
+      "line": 268
     },
     {
       "id": "disclosure.receipt.replayed",
@@ -19895,7 +19906,7 @@
       "statement": "Returning the byte-identical earlier artifact in place of a freshly signed one raises `ReceiptReplayed`.",
       "why": "A-disclosure",
       "file": "spec/62-accountability.md",
-      "line": 268
+      "line": 270
     },
     {
       "id": "disclosure.receipt.no-rewrite-engine",
@@ -19906,7 +19917,7 @@
       "statement": "A purge where the columnar rewrite engine is unavailable raises `ReceiptWithoutRewrite` and signs nothing.",
       "why": "because a receipt over a rewrite that did not run states a false claim",
       "file": "spec/62-accountability.md",
-      "line": 270
+      "line": 272
     },
     {
       "id": "surface.arm.unreadable-schedule",
@@ -25515,6 +25526,18 @@
     [
       "disclosure.erase.store-binding",
       "disclosure.erase.recovery"
+    ],
+    [
+      "disclosure.erase.recovery-verb",
+      "disclosure.erase.recovery"
+    ],
+    [
+      "disclosure.erase.recovery-verb",
+      "disclosure.erase.privilege"
+    ],
+    [
+      "disclosure.erase.recovery-verb",
+      "authority.verify.effect-boundary"
     ],
     [
       "disclosure.erase.retirement-inventory",
