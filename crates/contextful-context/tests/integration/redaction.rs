@@ -147,6 +147,33 @@ fn input() -> Batch {
 }
 
 #[test]
+fn sparse_removed_cells_retain_nullable_batch_semantics_without_inventing_columns() {
+    let (_dir, store) = declared();
+    let batch = |missing: bool| Batch {
+        rows: vec![
+            json!({"body":"415-555-0100", "public":"first"}).as_object().unwrap().clone(),
+            if missing { json!({"public":"second"}) } else { json!({"body":null,"public":"second"}) }.as_object().unwrap().clone(),
+        ],
+        types: Default::default(),
+    };
+    let encode = |batch: &Batch| {
+        let part = stage_part(&store, &TableDecl::named("messages"), batch, &context().node, &context().injection, 0, 0).unwrap();
+        let path = store.table_dir("messages").unwrap().join("data/runs/run-a/ingest-a/stage.staging").join(part.name);
+        let reader = ParquetRecordBatchReaderBuilder::try_new(std::fs::File::open(&path).unwrap()).unwrap().build().unwrap();
+        let data = reader.map(|batch| batch.unwrap()).collect::<Vec<_>>();
+        let values = data[0].column_by_name("body").unwrap();
+        assert!(values.is_null(1));
+        assert_eq!(values.as_any().downcast_ref::<arrow_array::StringArray>().unwrap().value(0), "[REDACTED:phone]");
+        std::fs::read(path).unwrap()
+    };
+    let explicit = encode(&batch(false));
+    assert_eq!(encode(&batch(true)), explicit, "missing and explicit null cells share the same encoded nullable column");
+    let unknown = Batch { rows: vec![json!({"public":"only"}).as_object().unwrap().clone()], types: Default::default() };
+    let refusal = stage_part(&store, &TableDecl::named("messages"), &unknown, &context().node, &context().injection, 1, 2).unwrap_err().to_string();
+    assert!(refusal.contains("removal column `body` is absent"), "{refusal}");
+}
+
+#[test]
 fn canonical_prepared_recording_admits_only_its_rewritten_payload_and_current_authority() {
     let (_dir, store) = declared();
     let prepared = store.prepare_recording("messages", &input(), None, "execution-a").unwrap();

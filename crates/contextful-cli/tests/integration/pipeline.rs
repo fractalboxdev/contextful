@@ -64,6 +64,27 @@ pub(crate) fn project(manifest: &str) -> tempfile::TempDir {
     dir
 }
 
+#[test]
+fn direct_removal_lands_sparse_cells_as_null_without_retaining_the_sensitive_span() {
+    let manifest = "[[pipeline.tables]]\nname='messages'\nredaction=[{table='messages',column='body',match={pattern='[0-9]{3}-[0-9]{3}-[0-9]{4}'},operation='replace',argument='phone'}]\n";
+    let encode = |sparse: bool| {
+        let dir = project(manifest);
+        let second = if sparse { serde_json::json!({"public":"second"}) } else { serde_json::json!({"body":null,"public":"second"}) };
+        std::fs::write(dir.path().join("rows.jsonl"), format!("{{\"body\":\"call 415-555-0100 now\",\"public\":\"first\"}}\n{second}\n")).unwrap();
+        let out = Command::new(env!("CARGO_BIN_EXE_contextful"))
+            .args(["context", "land", "messages", "--project", "research", "--rows", "rows.jsonl", "--run-id", "run-a", "--site-id", "site-a", "--now", "2030-01-01T00:00:00Z"])
+            .current_dir(dir.path()).env_remove("CONTEXTFUL_NODE_ID").output().unwrap();
+        assert!(out.status.success(), "sparse={sparse}: {}", String::from_utf8_lossy(&out.stderr));
+        let path = dir.path().join(".contextful/context/research/tables/messages/data/runs/run-a/ingest-a");
+        let part = std::fs::read_dir(path).unwrap().map(|entry| entry.unwrap().path()).find(|path| path.extension().is_some_and(|extension| extension == "parquet")).unwrap();
+        let bytes = std::fs::read(part).unwrap();
+        assert!(!bytes.windows(b"415-555-0100".len()).any(|bytes| bytes == b"415-555-0100"));
+        bytes
+    };
+    let explicit = encode(false);
+    assert_eq!(encode(true), explicit, "public landing keeps sparse and explicit-null cells equivalent");
+}
+
 fn staged_control(document: &str) -> (tempfile::TempDir, contextful_policy::issue::SeedSigner) {
     use contextful_core::issue::SignatureAlgorithm;
     use contextful_core::store::sync::ControlHead;

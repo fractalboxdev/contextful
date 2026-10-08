@@ -511,8 +511,8 @@ impl Writer {
                 let column = &rule.rule.rule.column;
                 let whole = rule.whole();
                 let ty = types.get(column).ok_or_else(|| invalid(format!("removal column `{column}` is absent from `{table}`")))?;
-                let value = row.get_mut(column).ok_or_else(|| invalid(format!("removal column `{}` is absent from `{table}`", rule.rule.rule.column)))?;
                 let selected_type = rule.substitution_type(ty).map_err(invalid)?;
+                let Some(value) = row.get_mut(column) else { continue };
                 rule.rule
                     .rewrite(value, &|_, value| rule.substitute.apply(&self.pepper, value, selectors[index].as_deref(), &selected_type))
                     .map_err(invalid)?;
