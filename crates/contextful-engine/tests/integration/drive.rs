@@ -17,7 +17,7 @@ use serde_json::json;
 use std::collections::BTreeMap;
 use std::panic::AssertUnwindSafe;
 use std::sync::atomic::{AtomicUsize, Ordering};
-use std::sync::{Arc, Mutex};
+use std::sync::{Arc, Condvar, Mutex};
 use std::time::Duration;
 
 const JOB: &str = "score";
@@ -287,10 +287,38 @@ fn a_resume_under_a_changed_statement_or_as_of_refuses_before_any_replay() {
 // spec: run.journal.row-concurrency@be5e10f8
 #[test]
 fn at_most_max_in_flight_rows_run_and_a_failed_row_admits_no_further_row() {
+    struct FirstWave<'a> {
+        body: Score<'a>,
+        entered: Mutex<usize>,
+        changed: Condvar,
+        inside: AtomicUsize,
+        most: AtomicUsize,
+        failed: bool,
+        returned: AtomicUsize,
+    }
+    impl RowBody for FirstWave<'_> {
+        fn run(&self, row: &InputRow, calls: &dyn RowCalls) -> Result<Emitted, RowStop> {
+            let inside = self.inside.fetch_add(1, Ordering::SeqCst) + 1;
+            self.most.fetch_max(inside, Ordering::SeqCst);
+            let mut entered = self.entered.lock().unwrap();
+            *entered += 1;
+            self.changed.notify_all();
+            let (entered, timeout) = self.changed.wait_timeout_while(entered, Duration::from_secs(5), |n| *n < 4).unwrap();
+            assert!(!timeout.timed_out(), "four admitted rows reach the first-wave barrier");
+            drop(entered);
+            let result = if self.failed {
+                Err(RowStop::Failed(Failure::deterministic(FailureTag::Permanent, "first-wave row is malformed")))
+            } else {
+                self.body.run(row, calls)
+            };
+            self.inside.fetch_sub(1, Ordering::SeqCst);
+            self.returned.fetch_add(1, Ordering::SeqCst);
+            result
+        }
+    }
     let rig = Rig::new();
     let endpoint = Endpoint::default();
-    let mut body = Score::new(&endpoint);
-    body.hold = Duration::from_millis(5);
+    let body = FirstWave { body: Score::new(&endpoint), entered: Mutex::new(0), changed: Condvar::new(), inside: AtomicUsize::new(0), most: AtomicUsize::new(0), failed: false, returned: AtomicUsize::new(0) };
     let landed = Mutex::new(Vec::new());
     let mut read = |as_of: &str| Ok(set(as_of, docs(40)));
     let row = rig.engine.drive(&fire(input("SELECT doc_id FROM documents", Some(T0)), &body, 4, "fire-1"), &mut read, &mut keep(&landed)).unwrap();
@@ -298,21 +326,29 @@ fn at_most_max_in_flight_rows_run_and_a_failed_row_admits_no_further_row() {
     assert_eq!(body.most.load(Ordering::SeqCst), 4, "four rows share the body at once, never five");
 
     let rig = Rig::new();
+    let body = FirstWave { failed: true, ..body };
+    *body.entered.lock().unwrap() = 0;
+    body.returned.store(0, Ordering::SeqCst);
+    let row = rig.engine.drive(&fire(input("SELECT doc_id FROM documents", Some(T0)), &body, 4, "fire-1"), &mut read, &mut |_| unreachable!("a failed fire lands nothing")).unwrap();
+    assert_eq!(row.status, RunStatus::Failed);
+    assert_eq!(*body.entered.lock().unwrap(), 4, "every worker observes its first-wave failure before admitting another row");
+    assert_eq!(body.returned.load(Ordering::SeqCst), 4, "the run waits for every admitted row to return");
+    assert_eq!(body.inside.load(Ordering::SeqCst), 0);
+
+    let rig = Rig::new();
     let endpoint = Endpoint::default();
     let mut body = Score::new(&endpoint);
-    body.hold = Duration::from_millis(5);
     body.fails = Some("d010".into());
-    let row = rig.engine.drive(&fire(input("SELECT doc_id FROM documents", Some(T0)), &body, 4, "fire-1"), &mut read, &mut |_| unreachable!("a failed fire lands nothing")).unwrap();
+    let row = rig.engine.drive(&fire(input("SELECT doc_id FROM documents", Some(T0)), &body, 1, "fire-1"), &mut read, &mut |_| unreachable!("a failed fire lands nothing")).unwrap();
     assert_eq!(row.status, RunStatus::Failed);
     assert!(row.error_message.unwrap().contains("row d010 is malformed"));
     let entered = body.entered.lock().unwrap().len();
-    assert!(entered <= 11 + 3, "{entered} rows entered; a failure admits none past those already in flight");
+    assert_eq!(entered, 11, "the sole worker admits no row after its failure");
     assert!(rig.catalog().owner_at(&job_scope(JOB)).unwrap().is_some(), "a failure after recorded calls holds the owner");
 }
 
 #[test]
-fn delayed_failing_row_preserves_the_existing_ordinal_admission_assertion() {
-    use std::sync::Condvar;
+fn successful_rows_may_finish_while_an_earlier_row_has_not_failed_yet() {
     struct Delayed<'a> {
         body: Score<'a>,
         entered: Mutex<usize>,
@@ -325,10 +361,9 @@ fn delayed_failing_row_preserves_the_existing_ordinal_admission_assertion() {
             *entered += 1;
             self.changed.notify_all();
             if failing {
-                while *entered < 20 {
-                    entered = self.changed.wait(entered).unwrap();
-                }
-                eprintln!("drive-diagnostic: failure returns only after {} entries", *entered);
+                let (ready, timeout) = self.changed.wait_timeout_while(entered, Duration::from_secs(5), |n| *n < 20).unwrap();
+                assert!(!timeout.timed_out(), "other workers continue before the blocked row fails");
+                entered = ready;
             }
             drop(entered);
             self.body.run(row, calls)
@@ -338,13 +373,13 @@ fn delayed_failing_row_preserves_the_existing_ordinal_admission_assertion() {
     let endpoint = Endpoint::default();
     let mut score = Score::new(&endpoint);
     score.fails = Some("d010".into());
-    let body = Delayed { body:score, entered:Mutex::new(0), changed:Condvar::new() };
+    let body = Delayed { body: score, entered: Mutex::new(0), changed: Condvar::new() };
     let mut read = |as_of: &str| Ok(set(as_of, docs(40)));
     let row = rig.engine.drive(&fire(input("SELECT doc_id FROM documents", Some(T0)), &body, 4, "fire-1"), &mut read, &mut |_| unreachable!("a failed fire lands nothing")).unwrap();
     assert_eq!(row.status, RunStatus::Failed);
     assert!(row.error_message.unwrap().contains("row d010 is malformed"));
     let entered = *body.entered.lock().unwrap();
-    assert!(entered <= 11 + 3, "{entered} rows entered; a failure admits none past those already in flight");
+    assert!(entered >= 20, "the failing row returns only after twenty admissions");
 }
 
 /// A failed landing holds the owner, and its resume lands every emitted row without paying again.
