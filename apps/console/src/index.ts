@@ -184,7 +184,7 @@ async function cognitoCallback(request: Request, identity: CognitoIdentity): Pro
   const destination = groups.includes(identity.adminGroup) ? "/admin" : "/query";
   return new Response(null, { status: 302, headers: {
     Location: destination,
-    "Set-Cookie": `console_session=${session}; HttpOnly; Secure; SameSite=Strict; Path=/; Max-Age=${lifetime - Math.floor(Date.now() / 1000)}`,
+    "Set-Cookie": `console_session=${session}; HttpOnly; Secure; SameSite=Lax; Path=/; Max-Age=${lifetime - Math.floor(Date.now() / 1000)}`,
     "Cache-Control": "no-store",
   } });
 }
