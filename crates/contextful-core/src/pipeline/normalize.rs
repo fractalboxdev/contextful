@@ -7,6 +7,68 @@ use crate::run::RunError;
 use crate::store::reconcile::{supertype, ColumnType, StructField};
 use serde_json::Value;
 use std::collections::BTreeMap;
+use crate::redaction::ValueStep;
+
+/// One projected cell's exact source location and physical destination.
+#[derive(Debug, Clone)]
+pub struct NormalizedCell {
+    pub table: String,
+    pub column: String,
+    pub source_column: String,
+    pub path: Vec<ValueStep>,
+    pub source_row: usize,
+}
+
+/// Logical projection with canonical lineage; materialization derives identities only
+/// after the policy has rewritten its source cells.
+pub struct NormalizedGroup {
+    rows: Vec<Row>,
+    table: String,
+    load_id: String,
+    depth: u32,
+    cells: Vec<NormalizedCell>,
+    destinations: Vec<String>,
+}
+
+impl NormalizedGroup {
+    pub fn new(rows: Vec<Row>, table: &str, load_id: &str, depth: u32) -> Self {
+        let (tables, cells) = relational(rows.clone(), table, load_id, depth, true);
+        Self { rows, table: table.into(), load_id: load_id.into(), depth, cells, destinations: tables.into_keys().collect() }
+    }
+
+    pub fn root(&self) -> &str { &self.table }
+
+    pub fn destinations(&self) -> &[String] { &self.destinations }
+
+    pub fn cells(&self) -> &[NormalizedCell] { &self.cells }
+
+    pub fn has_column(&self, column: &str) -> bool {
+        self.rows.iter().all(|row| row.contains_key(column))
+    }
+
+    pub fn column_values(&self, column: &str) -> Option<Vec<Value>> {
+        self.rows.iter().map(|row| row.get(column).cloned()).collect()
+    }
+
+    pub fn rewrite_cells(&mut self, rewrite: &mut dyn FnMut(&NormalizedCell, &mut Value) -> Result<(), crate::enforce::EnforceError>) -> Result<(), crate::enforce::EnforceError> {
+        for cell in &self.cells {
+            let mut value = self.rows.get_mut(cell.source_row).and_then(|r| r.get_mut(&cell.source_column));
+            for step in &cell.path {
+                value = value.and_then(|v| match step {
+                    ValueStep::Key(key) => v.as_object_mut().and_then(|v| v.get_mut(key)),
+                    ValueStep::Index(index) => v.as_array_mut().and_then(|v| v.get_mut(*index)),
+                });
+            }
+            let value = value.ok_or_else(|| crate::enforce::EnforceError::RedactionInvalid("normalized lineage no longer resolves its source cell".into()))?;
+            rewrite(cell, value)?;
+        }
+        Ok(())
+    }
+
+    pub fn into_tables(self) -> BTreeMap<String, Vec<Row>> {
+        relational_tables(self.rows, &self.table, &self.load_id, self.depth)
+    }
+}
 
 /// Levels of nesting `native` keeps before a deeper subtree lands as one `Json` value
 /// (`run.normalize.nesting-depth`).
@@ -97,35 +159,45 @@ impl Normalize {
 /// A relational batch keyed by destination table. Object fields use their path as a
 /// column name; each list becomes an indexed child table with a parent reference.
 pub fn relational_tables(rows: Vec<Row>, table: &str, load_id: &str, depth: u32) -> BTreeMap<String, Vec<Row>> {
+    relational(rows, table, load_id, depth, false).0
+}
+
+fn relational(rows: Vec<Row>, table: &str, load_id: &str, depth: u32, collect: bool) -> (BTreeMap<String, Vec<Row>>, Vec<NormalizedCell>) {
     let mut tables = BTreeMap::new();
-    for row in rows {
+    let mut cells = Vec::new();
+    for (source_row, row) in rows.into_iter().enumerate() {
         let row_id = sha256_hex(&serde_json::to_vec(&row).expect("a JSON row serializes"));
         let mut flat = Row::new();
         flat.insert("row_id".into(), Value::String(row_id.clone()));
         flat.insert("load_id".into(), Value::String(load_id.into()));
         for (name, value) in row {
-            project(&mut tables, &mut flat, table, &name, value, &row_id, &row_id, 1, depth);
+            project(&mut tables, &mut flat, table, &name, value, &row_id, &row_id, 1, depth, &mut cells, source_row, &name, &[], collect);
         }
-        tables.entry(table.into()).or_insert_with(Vec::new).push(flat);
+        tables.entry(table.into()).or_default().push(flat);
     }
-    tables
+    (tables, cells)
 }
 
 #[allow(clippy::too_many_arguments)]
-fn project(tables: &mut BTreeMap<String, Vec<Row>>, row: &mut Row, table: &str, path: &str, value: Value, parent_id: &str, root_id: &str, level: u32, depth: u32) {
+fn project(tables: &mut BTreeMap<String, Vec<Row>>, row: &mut Row, table: &str, path: &str, value: Value, parent_id: &str, root_id: &str, level: u32, depth: u32, cells: &mut Vec<NormalizedCell>, source_row: usize, source_column: &str, source_path: &[ValueStep], collect: bool) {
     if level > depth {
-        insert_projected(row, path, Value::String(value.to_string()));
+        let column = insert_projected(row, path, Value::String(value.to_string()));
+        if collect { cells.push(NormalizedCell { table: table.into(), column, source_column: source_column.into(), path: source_path.into(), source_row }); }
         return;
     }
     match value {
         Value::Object(fields) => {
             for (name, value) in fields {
-                project(tables, row, table, &format!("{path}_{name}"), value, parent_id, root_id, level + 1, depth);
+                let mut next = source_path.to_vec();
+                next.push(ValueStep::Key(name.clone()));
+                project(tables, row, table, &format!("{path}_{name}"), value, parent_id, root_id, level + 1, depth, cells, source_row, source_column, &next, collect);
             }
         }
         Value::Array(items) => {
             let child_table = format!("{table}_{path}");
             for (index, value) in items.into_iter().enumerate() {
+                let mut next = source_path.to_vec();
+                next.push(ValueStep::Index(index));
                 let child_id = sha256_hex(&serde_json::to_vec(&(parent_id, index, &value)).expect("a JSON child serializes"));
                 let mut child = Row::new();
                 child.insert("row_id".into(), Value::String(child_id.clone()));
@@ -137,24 +209,30 @@ fn project(tables: &mut BTreeMap<String, Vec<Row>>, row: &mut Row, table: &str, 
                 match value {
                     Value::Object(fields) => {
                         for (name, value) in fields {
-                            project(tables, &mut child, &child_table, &name, value, &child_id, root_id, level + 1, depth);
+                            let mut child_path = next.clone();
+                            child_path.push(ValueStep::Key(name.clone()));
+                            project(tables, &mut child, &child_table, &name, value, &child_id, root_id, level + 1, depth, cells, source_row, source_column, &child_path, collect);
                         }
                     }
-                    other => project(tables, &mut child, &child_table, "value", other, &child_id, root_id, level + 1, depth),
+                    other => project(tables, &mut child, &child_table, "value", other, &child_id, root_id, level + 1, depth, cells, source_row, source_column, &next, collect),
                 }
-                tables.entry(child_table.clone()).or_insert_with(Vec::new).push(child);
+                tables.entry(child_table.clone()).or_default().push(child);
             }
         }
-        scalar => { insert_projected(row, path, scalar); }
+        scalar => {
+            let column = insert_projected(row, path, scalar);
+            if collect { cells.push(NormalizedCell { table: table.into(), column, source_column: source_column.into(), path: source_path.into(), source_row }); }
+        }
     }
 }
 
-fn insert_projected(row: &mut Row, path: &str, value: Value) {
+fn insert_projected(row: &mut Row, path: &str, value: Value) -> String {
     let mut name = path.to_string();
     while row.contains_key(&name) {
         name = format!("source_{name}");
     }
-    row.insert(name, value);
+    row.insert(name.clone(), value);
+    name
 }
 
 /// The struct or list type of each column whose values include an object or an array,

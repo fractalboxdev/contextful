@@ -14,7 +14,7 @@ publish = false
 [dependencies]
 contextful-core = { path = "../contextful-core" }
 contextful-fs = { path = "../contextful-fs" }
-contextful-policy = { path = "../contextful-policy", optional = true }
+contextful-policy = { path = "../contextful-policy" }
 arrow-array = "58"
 arrow-buffer = "58"
 arrow-cast = "58"
@@ -44,7 +44,7 @@ toml = "0.8"
 default = ["read"]
 # The read face: the embedded SQL engine and the query face over it. A host that lands,
 # folds or scans a store without serving reads builds with `default-features = false`.
-read = ["dep:duckdb", "dep:contextful-policy"]
+read = ["dep:duckdb"]
 
 [dev-dependencies]
 # Ledger measures record their figures (`assurance.measure.record`).

@@ -100,7 +100,9 @@ pub struct PipelineSpec {
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub transforms: Vec<TransformOp>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub redaction: Option<Value>,
+    pub redaction: Option<Vec<crate::redaction::Rule>>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub journal: Option<bool>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub normalize: Option<Value>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -114,6 +116,10 @@ pub struct PipelineSpec {
 }
 
 impl PipelineSpec {
+    fn default_journal(&self) -> bool { self.source.name != "derive" }
+
+    pub fn journals(&self) -> bool { self.journal.unwrap_or(self.default_journal()) }
+
     pub fn on_table_error(&self) -> OnTableError {
         self.on_table_error.unwrap_or_default()
     }
@@ -122,6 +128,7 @@ impl PipelineSpec {
     /// so an explicit default serializes as its absence.
     pub fn canonical_value(&self) -> Value {
         let mut spec = self.clone();
+        if spec.journal == Some(spec.default_journal()) { spec.journal = None; }
         if spec.on_table_error == Some(OnTableError::Abort) {
             spec.on_table_error = None;
         }
@@ -155,6 +162,22 @@ impl PipelineSpec {
 
     /// Hold the declaration to the rules checked before any I/O.
     pub fn validate(&self) -> Result<(), RunError> {
+        let mut rules = self.redaction.clone().unwrap_or_default();
+        for table in &self.tables {
+            if table.decl().redaction.iter().flatten().any(|rule| rule.table != table.name()) {
+                return Err(RunError::PipelineSpecInvalid(format!("pipeline `{}` table-local removal rule names another table", self.id)));
+            }
+        }
+        rules.extend(self.tables.iter().flat_map(|t| t.decl().redaction.unwrap_or_default()));
+        if rules.len() > crate::redaction::RULES_PER_PIPELINE {
+            return Err(RunError::PipelineSpecInvalid(format!("pipeline `{}` exceeds its removal-rule bound", self.id)));
+        }
+        for rule in &rules {
+            if !self.tables.iter().any(|table| table.name() == rule.table) {
+                return Err(RunError::PipelineSpecInvalid(format!("pipeline `{}` removal rule names undeclared table `{}`", self.id, rule.table)));
+            }
+            crate::redaction::CompiledRule::compile(rule.clone()).map_err(|e| RunError::PipelineSpecInvalid(e.to_string()))?;
+        }
         if let Some(d) = &self.destination {
             if d.name != STORE_DESTINATION {
                 return Err(RunError::PipelineUnknownDestination(format!(
@@ -166,7 +189,7 @@ impl PipelineSpec {
         for t in &self.tables {
             let d = t.decl();
             // A visibility refusal names the destination table.
-            let destination = TableDecl { name: self.table_name(&d.name), ..d.clone() };
+            let destination = self.destination_decl(t);
             crate::disclosure::declare::Binding::of(&destination).map_err(|e| match e {
                 crate::disclosure::declare::DeclareError::Visibility(v) => RunError::Visibility(v),
                 crate::disclosure::declare::DeclareError::Malformed(m) => {
@@ -199,6 +222,17 @@ impl PipelineSpec {
     /// The destination table name of `table` (`run.declare.table-name`).
     pub fn table_name(&self, table: &str) -> String {
         table_name(&self.id, table)
+    }
+
+    /// One canonical destination expansion binds pipeline and table-local writer rules.
+    pub fn destination_decl(&self, table: &TableEntry) -> TableDecl {
+        let mut decl = table.decl();
+        let mut rules = decl.redaction.take().unwrap_or_default();
+        rules.extend(self.redaction.iter().flatten().filter(|rule| rule.table == table.name()).cloned());
+        decl.name = self.table_name(table.name());
+        for rule in &mut rules { rule.table = decl.name.clone(); }
+        decl.redaction = (!rules.is_empty()).then_some(rules);
+        decl
     }
 }
 

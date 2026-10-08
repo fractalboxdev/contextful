@@ -3,7 +3,7 @@
 
 use crate::support::{ids, plan, three_pages, Pages, Rig, Sink};
 use contextful_core::coordinate::Catalog;
-use contextful_core::run::ports::{Cancellation, Landed, PullRequest, Source};
+use contextful_core::run::ports::{Cancellation, Landed, PullRequest, Source, Commit, Destination, Marker, Part, Row, Stage, Types};
 use contextful_core::run::record::RunStatus;
 use contextful_core::run::{Failure, FailureTag};
 use serde_json::{json, Value};
@@ -11,6 +11,167 @@ use std::sync::{Arc, Mutex};
 
 fn opaque() -> contextful_core::run::plan::Plan {
     plan("kind = \"opaque-token\"", "")
+}
+
+struct Protected { sink: Sink, authority: String }
+impl Destination for Protected {
+    fn recording_identity(&self, _: &contextful_core::run::plan::Plan) -> Result<Option<String>, Failure> { Ok(Some(self.authority.clone())) }
+    fn prepare_recorded(&mut self, _: &str, mut rows: Vec<Row>, _: Types, _: &str) -> Result<Value, Failure> {
+        for row in &mut rows { row.insert("body".into(), json!("prepared-once")); }
+        Ok(json!(rows))
+    }
+    fn stage_recorded(&mut self, mut stage: Stage, payload: &Value) -> Result<Part, Failure> {
+        stage.rows = serde_json::from_value(payload.clone()).unwrap();
+        self.sink.stage_batch(stage)
+    }
+    fn stage_batch(&mut self, _: Stage) -> Result<Part, Failure> { panic!("protected recording cannot enter raw staging") }
+    fn commit(&mut self, commit: Commit, before: &dyn Fn() -> Result<(), Failure>) -> Result<Landed, Failure> { self.sink.commit(commit, before) }
+    fn discard(&mut self, table: &str, run: &str) -> Result<(), Failure> { self.sink.discard(table, run) }
+    fn newest_marker(&self, pipeline: &str, table: &str) -> Result<Option<Marker>, Failure> { self.sink.newest_marker(pipeline, table) }
+}
+
+#[test]
+fn prepared_pulls_bind_authority_before_open_and_replay_only_rewritten_bytes() {
+    fn bytes(path: &std::path::Path) -> Vec<u8> {
+        let mut out = Vec::new();
+        for entry in std::fs::read_dir(path).unwrap() {
+            let path = entry.unwrap().path();
+            out.extend(if path.is_dir() { bytes(&path) } else { std::fs::read(path).unwrap() });
+        }
+        out
+    }
+    let rig = Rig::new();
+    let mut source = Pages::new(vec![vec![json!({"id":"one","body":"private-recording-canary"})], Vec::new()]);
+    source.die_after = Some(1);
+    let mut dest = Protected { sink:Sink::default(), authority:"canonical-a".into() };
+    rig.crash(&opaque(), "run-a", &mut source, &mut dest);
+    let execution = rig.row("run-a").execution_id;
+    assert_eq!(rig.engine.journal.recorded(&execution).unwrap(), 1);
+    let held = bytes(&rig.dir.path().join("journal").join(&execution));
+    assert!(!held.windows(b"private-recording-canary".len()).any(|part| part == b"private-recording-canary"));
+    assert!(String::from_utf8_lossy(&held).contains("prepared-once"));
+    rig.clock.advance(60);
+    let calls = source.calls().len();
+    let staged = dest.sink.staged.len();
+    dest.authority = "canonical-b".into();
+    let refused = rig.run(&opaque(), "1.0.0", "run-b", &mut source, &mut dest).unwrap();
+    assert_eq!(refused.status, RunStatus::Failed);
+    let message = refused.error_message.unwrap();
+    assert!(message.contains("ExecutionPinMismatch"), "{message}");
+    assert_eq!(source.calls().len(), calls);
+    assert_eq!(dest.sink.staged.len(), staged);
+    dest.authority = "canonical-a".into();
+    source.die_after = None;
+    assert_eq!(rig.run(&opaque(), "1.0.0", "run-c", &mut source, &mut dest).unwrap().status, RunStatus::Success);
+    assert_eq!(source.calls().iter().filter(|(position, _)| position.is_none()).count(), 1);
+    assert_eq!(dest.sink.commits[0].batches[0][0]["body"], json!("prepared-once"));
+}
+
+#[test]
+fn prepared_recording_refuses_late_and_changed_types_before_preparation_or_recording() {
+    use contextful_core::run::ports::{Commit, Destination, Marker, Part, Row, Stage, Types};
+    struct TypedPages(bool);
+    impl Source for TypedPages {
+        fn pull(&mut self, request: &PullRequest, _: &dyn Cancellation) -> Result<Vec<u8>, Failure> {
+            let first = request.position.is_none();
+            let types = if first { if self.0 { json!({"public":"Utf8"}) } else { json!({}) } } else { json!({"public":"Int64"}) };
+            Ok(serde_json::to_vec(&json!({"rows":[{"public":if first { json!("one") } else { json!(2) }}],"cursor":if first { "p1" } else { "p2" },"more":first,"types":types})).unwrap())
+        }
+    }
+    struct Counting { prepared: usize }
+    impl Destination for Counting {
+        fn recording_identity(&self, _: &contextful_core::run::plan::Plan) -> Result<Option<String>, Failure> { Ok(Some("authority".into())) }
+        fn prepare_recorded(&mut self, _: &str, rows: Vec<Row>, _: Types, _: &str) -> Result<Value, Failure> { self.prepared += 1; Ok(json!(rows)) }
+        fn stage_recorded(&mut self, _: Stage, _: &Value) -> Result<Part, Failure> { Ok(Part { name:"part".into(), rows:1, bytes:0 }) }
+        fn stage_batch(&mut self, _: Stage) -> Result<Part, Failure> { unreachable!() }
+        fn commit(&mut self, _: Commit, _: &dyn Fn() -> Result<(), Failure>) -> Result<Landed, Failure> { unreachable!() }
+        fn discard(&mut self, _: &str, _: &str) -> Result<(), Failure> { Ok(()) }
+        fn newest_marker(&self, _: &str, _: &str) -> Result<Option<Marker>, Failure> { Ok(None) }
+    }
+    for first_declared in [false, true] {
+        let rig = Rig::new();
+        let mut dest = Counting { prepared:0 };
+        let row = rig.run(&opaque(), "1.0.0", "typed-a", &mut TypedPages(first_declared), &mut dest).unwrap();
+        assert_eq!(row.status, RunStatus::Failed);
+        let error = row.error_message.unwrap();
+        assert!(error.contains(if first_declared { "StoreSchemaIncompatible" } else { "PipelineTypeDeclaredLate" }), "{error}");
+        assert_eq!(dest.prepared, 1, "the incompatible second batch never reaches canonical preparation");
+    }
+}
+
+#[test]
+fn a_caller_plan_cannot_record_typed_removal_through_an_unadmitted_destination() {
+    let rig = Rig::new();
+    let declared = plan("kind = \"opaque-token\"", "redaction=[{table='filings',column='body',match='whole',operation='drop'}]");
+    let mut source = Pages::new(three_pages());
+    let error = rig.run(&declared, "1.0.0", "unbound-a", &mut source, &mut Sink::default()).unwrap_err();
+    assert!(error.to_string().contains("JournalRedactionConflict"));
+    assert!(source.calls().is_empty());
+    assert!(rig.catalog().run("unbound-a").unwrap().is_none());
+}
+
+#[test]
+fn prepared_replay_binds_shape_identity_and_never_reapplies_the_shape() {
+    use contextful_core::run::ports::Shape;
+    struct UndeclaredShape;
+    impl Shape for UndeclaredShape {
+        fn shape(&self, rows: Vec<Row>) -> Result<Vec<Row>, contextful_core::run::RunError> { Ok(rows) }
+    }
+    struct Shaped { version: &'static str, calls: std::cell::Cell<usize> }
+    impl Shape for Shaped {
+        fn recording_identity(&self) -> Result<Option<String>, contextful_core::run::RunError> { Ok(Some(self.version.into())) }
+        fn shape(&self, mut rows: Vec<Row>) -> Result<Vec<Row>, contextful_core::run::RunError> {
+            if !rows.is_empty() { self.calls.set(self.calls.get() + 1); }
+            for row in &mut rows { row.insert("body".into(), json!(format!("shaped:{}", self.version))); }
+            Ok(rows)
+        }
+    }
+    let rig = Rig::new();
+    let plan = opaque();
+    let spec = |run: &str| contextful_engine::RunSpec { plan:plan.clone(), connector:plan.connector_pin("artifact-1"), run_id:run.into(), site_id:"site-a".into(), pid:4242, boot_id:"boot-a".into(), trace_id:None };
+    let mut source = Pages::new(vec![vec![json!({"id":"one","body":"raw"})], Vec::new()]);
+    source.die_after = Some(1);
+    let mut dest = Protected { sink:Sink::default(), authority:"canonical".into() };
+    let undeclared = rig.engine.run_with(&spec("shape-unbound"), &mut source, &UndeclaredShape, &mut dest).unwrap_err();
+    assert!(undeclared.to_string().contains("declared shape identity"));
+    assert!(source.calls().is_empty());
+    assert!(rig.catalog().run("shape-unbound").unwrap().is_none());
+    let mut shape = Shaped { version:"shape-a", calls:std::cell::Cell::new(0) };
+    assert!(std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| rig.engine.run_with(&spec("shape-a"), &mut source, &shape, &mut dest))).is_err());
+    rig.clock.advance(60);
+    let calls = source.calls().len();
+    shape.version = "shape-b";
+    let refused = rig.engine.run_with(&spec("shape-b"), &mut source, &shape, &mut dest).unwrap();
+    assert!(refused.error_message.unwrap().contains("ExecutionPinMismatch"));
+    assert_eq!(source.calls().len(), calls);
+    assert_eq!(shape.calls.get(), 1);
+    shape.version = "shape-a";
+    source.die_after = None;
+    assert_eq!(rig.engine.run_with(&spec("shape-c"), &mut source, &shape, &mut dest).unwrap().status, RunStatus::Success);
+    assert_eq!(shape.calls.get(), 1, "recorded prepared rows bypass shape application during replay");
+}
+
+#[test]
+fn unknown_protected_clock_lineage_refuses_before_source_and_owner_admission() {
+    struct UnknownClock;
+    impl contextful_core::run::ports::Shape for UnknownClock {
+        fn recording_identity(&self) -> Result<Option<String>, contextful_core::run::RunError> { Ok(Some("declared-custom-shape".into())) }
+        fn shape(&self, rows: Vec<Row>) -> Result<Vec<Row>, contextful_core::run::RunError> { Ok(rows) }
+    }
+    for journal in [true, false] {
+        let rig = Rig::new();
+        let plan = plan("kind='monotonic'\nfield='at'", if journal { "journal=true" } else { "journal=false" });
+        let spec = |run: &str| contextful_engine::RunSpec { plan:plan.clone(), connector:plan.connector_pin("artifact-1"), run_id:run.into(), site_id:"site-a".into(), pid:4242, boot_id:"boot-a".into(), trace_id:None };
+        let mut source = Pages::new(vec![vec![json!({"at":"private-clock-canary","body":"raw"})]]);
+        let mut destination = Protected { sink:Sink::default(), authority:"canonical".into() };
+        let error = rig.engine.run_with(&spec("unknown-clock"), &mut source, &UnknownClock, &mut destination).unwrap_err();
+        assert!(error.to_string().contains("safe typed progress lineage"));
+        assert!(source.calls().is_empty());
+        assert!(rig.catalog().run("unknown-clock").unwrap().is_none());
+        let unprotected = rig.engine.run_with(&spec("ordinary-clock"), &mut source, &UnknownClock, &mut Sink::default()).unwrap();
+        assert_eq!(unprotected.status, RunStatus::Success);
+        assert!(!source.calls().is_empty());
+    }
 }
 
 /// A journal hit hands the recorded batch to the land path, so a resumed run lands bytes identical to an

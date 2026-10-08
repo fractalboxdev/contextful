@@ -24,7 +24,8 @@ use contextful_core::run::{Failure, FailureTag, RunError};
 use contextful_core::store::reconcile::ColumnType;
 use contextful_core::topology::TopologyError;
 use serde_json::Value;
-use std::collections::BTreeSet;
+use serde::{Deserialize, Serialize};
+use std::collections::{BTreeMap, BTreeSet};
 use std::sync::Arc;
 
 /// Why a run could not open, or a call on the engine refused.
@@ -71,6 +72,58 @@ pub struct Engine<J = FileJournalStore, B = FileBlobStore> {
 
 fn json_bytes(v: &Option<Value>) -> Vec<u8> {
     serde_json::to_vec(v).unwrap_or_default()
+}
+
+/// Internal journal data, never a source Pull wire value.
+#[derive(Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+struct RecordedPull {
+    authority: String,
+    prepared: Value,
+    rows: u64,
+    columns: BTreeSet<String>,
+    types: BTreeMap<String, String>,
+    next: Option<Value>,
+    last: bool,
+    more: bool,
+    snapshot_complete: Option<bool>,
+    skipped: u64,
+    declined: BTreeMap<String, u64>,
+}
+
+fn recorded(bytes: &[u8]) -> Result<RecordedPull, Failure> {
+    serde_json::from_slice(bytes).map_err(|e| Failure::deterministic(FailureTag::SchemaIncompatible, format!("prepared journal pull is malformed: {e}")))
+}
+
+fn preparation_failure(error: RunError) -> Failure { Failure::deterministic(FailureTag::Permanent, error.to_string()) }
+
+enum TypeRefusal { Conflict(Failure), Late(Failure) }
+
+impl TypeRefusal {
+    fn failure(self) -> Failure { match self { Self::Conflict(failure) | Self::Late(failure) => failure } }
+}
+
+fn admit_types(incoming: &Types, held: &Types, undeclared: &BTreeSet<String>, ordinal: usize, run_id: &str) -> Result<(), TypeRefusal> {
+    for (column, ty) in incoming {
+        match held.get(column) {
+            Some(existing) if existing != ty => return Err(TypeRefusal::Conflict(Failure::deterministic(FailureTag::SchemaIncompatible, format!("StoreSchemaIncompatible: column `{column}` is declared {} and {} by two pulls of one run", existing.name(), ty.name())))),
+            None if undeclared.contains(column) => return Err(TypeRefusal::Late(Failure::deterministic(FailureTag::SchemaIncompatible, format!("PipelineTypeDeclaredLate: pull {ordinal} declares column `{column}` as {}, which an earlier staged batch of run `{run_id}` carried undeclared; declare it from the first pull", ty.name())))),
+            _ => {}
+        }
+    }
+    Ok(())
+}
+
+struct PullStep<'a> {
+    spec: &'a RunSpec,
+    key: &'a EntryKey,
+    request: &'a PullRequest,
+    shape: &'a dyn Shape,
+    authority: Option<&'a str>,
+    at: Option<&'a Value>,
+    types: &'a Types,
+    undeclared: &'a BTreeSet<String>,
+    ordinal: usize,
 }
 
 impl<J: JournalStore, B: BlobStore> Engine<J, B> {
@@ -155,10 +208,26 @@ impl<J: JournalStore, B: BlobStore> Engine<J, B> {
             return Err(RunError::Invalid(format!("run `{}` is already recorded; a run id names one attempt", spec.run_id)).into());
         }
         let (pipeline_id, table) = (plan.spec.pipeline.as_str(), plan.spec.table.as_str());
+        let canonical = dest.recording_identity(plan)?;
+        if canonical.is_some() && plan.cursor_kind == CursorKind::Monotonic {
+            let field = plan.spec.cursor.field.as_deref().unwrap_or_default();
+            let columns = shape.recording_clock_columns(field)?.ok_or_else(|| RunError::Invalid("protected clock requires safe typed progress lineage".into()))?;
+            dest.validate_recorded_clock(plan, &columns)?;
+        }
+        let authority = if plan.spec.journal {
+            canonical.map(|canonical| {
+                let shape = shape.recording_identity()?.ok_or_else(|| RunError::Invalid("protected recording requires a declared shape identity".into()))?;
+                let bytes = serde_json::to_vec(&("prepared-pull-owner-v1", &plan.content_hash, canonical, shape)).map_err(|e| RunError::Invalid(e.to_string()))?;
+                Ok::<_, EngineError>(contextful_core::run::journal::sha256_hex(&bytes))
+            }).transpose()?
+        } else { None };
+        if plan.spec.journal && !plan.spec.redaction.is_empty() && authority.is_none() {
+            return Err(RunError::JournalRedactionConflict("typed removal requires canonical prepared destination admission before recording".into()).into());
+        }
         self.reconcile(pipeline_id, table, dest)?;
         let open = OpenExecution {
             scope: OwnerScope::table(pipeline_id, table),
-            pins: Pins { connector: spec.connector.clone(), content_hash: plan.content_hash.clone(), input_hash: String::new() }.into(),
+            pins: Pins { connector: spec.connector.clone(), content_hash: authority.clone().unwrap_or_else(|| plan.content_hash.clone()), input_hash:String::new() }.into(),
             run_id: spec.run_id.clone(),
             site_id: spec.site_id.clone(),
             pid: spec.pid,
@@ -170,7 +239,7 @@ impl<J: JournalStore, B: BlobStore> Engine<J, B> {
         let mut execution = self.begin(&open)?;
         // Every pull passes the secret guard before the journal records it (`run.guard-secrets.placement`).
         let mut source = Guarded { inner: source, report: log_counts };
-        let outcome = self.body(spec, &mut execution, &mut source, shape, dest);
+        let outcome = self.body(spec, &mut execution, &mut source, shape, dest, authority.as_deref());
         if outcome.is_err() {
             // A run id names one attempt, so no later commit names a failed run's staged
             // parts (`run.own.stage-discard`). The run closes on its own failure; a part the
@@ -180,7 +249,7 @@ impl<J: JournalStore, B: BlobStore> Engine<J, B> {
         execution.close_with(outcome)
     }
 
-    fn body(&self, spec: &RunSpec, execution: &mut Execution<'_, J, B>, source: &mut dyn Source, shape: &dyn Shape, dest: &mut dyn Destination) -> Result<(Landed, Tally), Close> {
+    fn body(&self, spec: &RunSpec, execution: &mut Execution<'_, J, B>, source: &mut dyn Source, shape: &dyn Shape, dest: &mut dyn Destination, authority: Option<&str>) -> Result<(Landed, Tally), Close> {
         let plan = &spec.plan;
         let (pipeline_id, table) = (plan.spec.pipeline.as_str(), plan.spec.table.as_str());
 
@@ -225,42 +294,33 @@ impl<J: JournalStore, B: BlobStore> Engine<J, B> {
             let label = format!("pull-{ordinal}");
             let key = EntryKey::new(&execution_id, &label, &json_bytes(&position));
             let request = PullRequest { step_label: label.clone(), position: position.clone(), idempotency_key: key.idempotency_key() };
-            let resolved = self.step(spec, execution, &key, &request, source)?;
-            let pull = Pull::decode(resolved.bytes())?;
+            let resolved = self.step(execution, source, dest, PullStep { spec, key:&key, request:&request, shape, authority, at:at.as_ref(), types:&types, undeclared:&undeclared, ordinal })?;
+            let prepared = authority.map(|authority| {
+                let prepared = recorded(resolved.bytes())?;
+                if prepared.authority != authority { return Err(Failure::deterministic(FailureTag::Permanent, "prepared journal authority changed")); }
+                Ok(prepared)
+            }).transpose()?;
+            let pull = match &prepared {
+                Some(prepared) => Pull { rows:Vec::new(), cursor:prepared.next.clone(), more:prepared.more, snapshot_complete:prepared.snapshot_complete, types:prepared.types.clone(), skipped:prepared.skipped, declined:prepared.declined.clone() },
+                None => Pull::decode(resolved.bytes())?,
+            };
             completion_reported |= pull.snapshot_complete.is_some();
             skipped = skipped.saturating_add(pull.skipped);
             for (extension, n) in &pull.declined {
                 let held = declined.entry(extension.clone()).or_default();
                 *held = held.saturating_add(*n);
             }
-            for (column, ty) in shape.shape_types(pulled_types(&pull)?) {
-                match types.get(&column) {
-                    Some(held) if *held != ty => {
-                        return Err(Failure::deterministic(
-                            FailureTag::SchemaIncompatible,
-                            format!("StoreSchemaIncompatible: column `{column}` is declared {} and {} by two pulls of one run", held.name(), ty.name()),
-                        )
-                        .into())
-                    }
-                    Some(_) => {}
-                    None if undeclared.contains(&column) => {
-                        execution.discard();
-                        return Err(Failure::deterministic(
-                            FailureTag::SchemaIncompatible,
-                            format!(
-                                "PipelineTypeDeclaredLate: pull {ordinal} declares column `{column}` as {}, which an earlier staged batch of run `{}` carried undeclared; declare it from the first pull",
-                                ty.name(),
-                                spec.run_id
-                            ),
-                        )
-                        .into());
-                    }
-                    None => {
-                        types.insert(column, ty);
-                    }
-                }
+            let shaped_types = if prepared.is_some() { pulled_types(&pull)? } else { shape.shape_types(pulled_types(&pull)?) };
+            if let Err(refusal) = admit_types(&shaped_types, &types, &undeclared, ordinal, &spec.run_id) {
+                if matches!(&refusal, TypeRefusal::Late(_)) { execution.discard(); }
+                return Err(refusal.failure().into());
             }
-            let (rows, last) = match plan.cursor_kind {
+            for (column, ty) in shaped_types { types.entry(column).or_insert(ty); }
+            let (rows, last) = if let Some(prepared) = &prepared {
+                position = prepared.next.clone();
+                if plan.cursor_kind == CursorKind::Monotonic { at = open_watermark(position.as_ref(), &field)?.cloned(); }
+                (Vec::new(), prepared.last)
+            } else { match plan.cursor_kind {
                 CursorKind::Monotonic => {
                     // The frontier counts every fetched row; the load admits those at or after the stored position.
                     let f = frontier(&field, &pull.rows)?;
@@ -284,15 +344,16 @@ impl<J: JournalStore, B: BlobStore> Engine<J, B> {
                     }
                     (pull.rows, !pull.more)
                 }
-            };
+            }};
             if last {
                 snapshot_complete = !pull.more && pull.snapshot_complete.unwrap_or(false);
             }
-            let rows = shape.shape(rows)?;
-            if !rows.is_empty() {
-                let count = rows.len() as u64;
-                undeclared.extend(rows.iter().flat_map(|r| r.keys()).filter(|c| !types.contains_key(*c)).cloned());
-                let part = dest.stage_batch(Stage {
+            let rows = if prepared.is_some() { rows } else { shape.shape(rows)? };
+            let count = prepared.as_ref().map_or(rows.len() as u64, |prepared| prepared.rows);
+            if count > 0 {
+                let columns = prepared.as_ref().map(|prepared| prepared.columns.clone()).unwrap_or_else(|| rows.iter().flat_map(|r| r.keys()).cloned().collect());
+                undeclared.extend(columns.into_iter().filter(|c| !types.contains_key(c)));
+                let stage = Stage {
                     pipeline_id: pipeline_id.to_string(),
                     table: table.to_string(),
                     run_id: spec.run_id.clone(),
@@ -301,7 +362,8 @@ impl<J: JournalStore, B: BlobStore> Engine<J, B> {
                     row_offset: staged_rows,
                     rows,
                     types: types.clone(),
-                })?;
+                };
+                let part = match &prepared { Some(prepared) => dest.stage_recorded(stage, &prepared.prepared)?, None => dest.stage_batch(stage)? };
                 staged_rows += count;
                 staged_bytes = staged_bytes.saturating_add(part.bytes);
                 parts.push(part);
@@ -396,8 +458,44 @@ impl<J: JournalStore, B: BlobStore> Engine<J, B> {
     }
 
     /// Resolve one pull through the execution's journal under the plan's retry schedule.
-    fn step(&self, spec: &RunSpec, execution: &Execution<'_, J, B>, key: &EntryKey, request: &PullRequest, source: &mut dyn Source) -> Result<Resolved, Close> {
+    fn step(&self, execution: &mut Execution<'_, J, B>, source: &mut dyn Source, dest: &mut dyn Destination, step: PullStep<'_>) -> Result<Resolved, Close> {
+        let PullStep { spec, key, request, shape, authority, at, types:held, undeclared, ordinal } = step;
         let journaled = spec.plan.spec.journal;
+        if let Some(authority) = authority {
+            let journal_it = |bytes: &[u8]| recorded(bytes).is_ok_and(|pull| pull.rows > 0);
+            let mut late = false;
+            let result = execution.step_keyed(key, &journal_it, &mut |token| {
+                let bytes = source.pull(request, token)?;
+                let pull = Pull::decode(&bytes)?;
+                dest.validate_recorded_control(&spec.plan, &pull)?;
+                let types = shape.shape_types(pulled_types(&pull)?);
+                if let Err(refusal) = admit_types(&types, held, undeclared, ordinal, &spec.run_id) {
+                    late = matches!(&refusal, TypeRefusal::Late(_));
+                    return Err(refusal.failure());
+                }
+                let field = spec.plan.spec.cursor.field.as_deref().unwrap_or_default();
+                let (rows, next, last) = if spec.plan.cursor_kind == CursorKind::Monotonic {
+                    let front = frontier(field, &pull.rows).map_err(preparation_failure)?;
+                    let next = advance(at, front.as_ref()).map_err(preparation_failure)?;
+                    let mut rows = Vec::new();
+                    for row in pull.rows {
+                        if let Some(clock) = clock(&row, field) { if admits(at, clock).map_err(preparation_failure)? { rows.push(row); } }
+                    }
+                    let advanced = next.as_ref() != at;
+                    (rows, next.map(|value| watermark(field, value)), !(pull.more && advanced))
+                } else {
+                    (pull.rows, pull.cursor.or_else(|| request.position.clone()), !pull.more)
+                };
+                let rows = shape.shape(rows).map_err(preparation_failure)?;
+                let count = rows.len() as u64;
+                let columns = rows.iter().flat_map(|row| row.keys()).cloned().collect();
+                let prepared = if rows.is_empty() { Value::Null } else { dest.prepare_recorded(&spec.plan.spec.table, rows, types.clone(), execution.execution_id())? };
+                let recorded = RecordedPull { authority:authority.into(), prepared, rows:count, columns, types:types.iter().map(|(name, ty)| (name.clone(), ty.name())).collect(), next, last, more:pull.more, snapshot_complete:pull.snapshot_complete, skipped:pull.skipped, declined:pull.declined };
+                serde_json::to_vec(&recorded).map_err(|e| Failure::deterministic(FailureTag::SchemaIncompatible, e.to_string()))
+            });
+            if late { execution.discard(); }
+            return result;
+        }
         // An empty pull is never journaled.
         let journal_it = |bytes: &[u8]| journaled && Pull::decode(bytes).is_ok_and(|p| !p.rows.is_empty());
         execution.step_keyed(key, &journal_it, &mut |token| source.pull(request, token))

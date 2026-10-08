@@ -54,6 +54,8 @@ fn column(result: &Value, name: &str) -> Vec<Value> {
 
 #[test]
 fn m05_read_face() {
+    // Write-time removal and row-selected classes have a supplemental built-surface
+    // acceptance in issue98::declared_removal_and_requested_row_classes_cover_the_six_consumer_cases.
     let cf = bin("contextful");
     let p = GitRepo::init();
     p.write(".contextful/issuance.toml", &format!("default_audience = \"{AUD}\"\nmax_lifetime_secs = 3600\n"));

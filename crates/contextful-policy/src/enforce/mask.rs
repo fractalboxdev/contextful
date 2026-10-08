@@ -8,6 +8,7 @@ use contextful_core::store::reconcile::{decode_binary, ColumnType};
 use contextful_core::store::relation::ident;
 use serde::Deserialize;
 use sha2::{Digest, Sha256};
+use std::collections::BTreeMap;
 
 /// Output width of a keyed hash, in chars (`authority.mask.hash-width`).
 pub const HASH_OUTPUT_WIDTH: u32 = 32;
@@ -57,12 +58,14 @@ impl Class {
 }
 
 /// The class registry.
-pub const CLASSES: [Class; 5] = [
+pub const CLASSES: [Class; 7] = [
     Class { name: "phi", domain: None },
     Class { name: "ssn", domain: Some(1e9) },
     Class { name: "phone", domain: Some(1e10) },
     Class { name: "email", domain: Some(1e10) },
     Class { name: "mrn", domain: Some(1e8) },
+    Class { name: "prompt", domain: None },
+    Class { name: "completion", domain: None },
 ];
 
 /// Look up a class; one outside the registry refuses (`authority.mask.unknown-class`).
@@ -135,13 +138,22 @@ pub struct ColumnPolicy {
     pub mask: Option<Mask>,
     pub crowd: u64,
     pub summarize_only: bool,
+    selected: Option<RowSelected>,
 }
+
+#[derive(Debug, Clone, PartialEq)]
+struct RowSelected { column: String, masks: BTreeMap<String, Mask> }
+
+/// A class is fixed in the declaration or selected from a sibling cell.
+#[derive(Debug, Deserialize)]
+#[serde(untagged, deny_unknown_fields)]
+pub enum ClassSelector { Static(String), FromColumn { #[serde(alias = "from")] from_column: String } }
 
 #[derive(Debug, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct RawColumnPolicy {
     #[serde(default)]
-    class: Option<String>,
+    class: Option<ClassSelector>,
     #[serde(default)]
     strategy: Option<String>,
     #[serde(default)]
@@ -150,13 +162,37 @@ pub struct RawColumnPolicy {
     crowd: Option<u64>,
     #[serde(default)]
     summarize_only: Option<bool>,
+    #[serde(default)]
+    strategies: Option<BTreeMap<String, String>>,
+    #[serde(default)]
+    fallback: Option<String>,
 }
 
 impl ColumnPolicy {
     /// Check one column's declaration at manifest load.
     pub fn parse(column: &str, raw: RawColumnPolicy) -> Result<ColumnPolicy, PolicyError> {
         let at = |why: String| format!("column `{column}`: {why}");
-        let class = raw.class.as_deref().map(class).transpose()?;
+        if let Some(ClassSelector::FromColumn { from_column }) = &raw.class {
+            if from_column.is_empty() || from_column == column || raw.strategy.is_some() || raw.fallback.as_deref() != Some("drop") {
+                return Err(DeclarationMalformed(at("a row-selected class names another column, a strategy map, and fallback = drop".into())).into());
+            }
+            let strategies = raw.strategies.as_ref().filter(|s| !s.is_empty()).ok_or_else(|| DeclarationMalformed(at("a row-selected class names a nonempty strategy map".into())))?;
+            let mut masks = BTreeMap::new();
+            for (name, strategy) in strategies {
+                let branch = Self::parse(column, RawColumnPolicy { class:Some(ClassSelector::Static(name.clone())), strategy:Some(strategy.clone()), combine:raw.combine.clone(), crowd:raw.crowd, summarize_only:raw.summarize_only, strategies:None, fallback:None })?;
+                masks.insert(name.clone(), branch.mask.expect("a named strategy compiles its mask"));
+            }
+            let fallback = Self::parse(column, RawColumnPolicy { class:None, strategy:Some("drop".into()), combine:None, crowd:raw.crowd, summarize_only:raw.summarize_only, strategies:None, fallback:None })?;
+            return Ok(Self { selected:Some(RowSelected { column:from_column.clone(), masks }), ..fallback });
+        }
+        if raw.strategies.is_some() || raw.fallback.is_some() {
+            return Err(DeclarationMalformed(at("a strategy map and fallback require a row-selected class".into())).into());
+        }
+        let class = match &raw.class {
+            Some(ClassSelector::Static(name)) => Some(class(name)?),
+            None => None,
+            _ => unreachable!(),
+        };
         let crowd = raw.crowd.unwrap_or(MASK_CROWD_FLOOR);
         if crowd < MASK_CROWD_FLOOR {
             return Err(DeclarationMalformed(at(format!("crowd {crowd} is below the floor of {MASK_CROWD_FLOOR} values"))).into());
@@ -211,7 +247,30 @@ impl ColumnPolicy {
             mask: primary.map(|primary| Mask { primary, combine }),
             crowd,
             summarize_only: raw.summarize_only.unwrap_or(false),
+            selected: None,
         })
+    }
+
+    pub fn selector_column(&self) -> Option<&str> { self.selected.as_ref().map(|s| s.column.as_str()) }
+
+    pub fn protected(&self) -> bool {
+        self.class.is_some_and(|c| c.protected()) || self.selected.as_ref().is_some_and(|s| s.masks.contains_key("phi"))
+    }
+
+    pub fn admits(&self, ty: &ColumnType) -> bool {
+        self.mask.as_ref().is_none_or(|m| m.admits(ty)) && self.selected.as_ref().is_none_or(|s| s.masks.values().all(|m| m.admits(ty)))
+    }
+
+    /// Unknown or null sibling classes resolve to the declared strict drop fallback.
+    pub fn mask_for(&self, selected: Option<&str>) -> Option<&Mask> {
+        self.selected.as_ref().and_then(|s| selected.and_then(|name| s.masks.get(name))).or(self.mask.as_ref())
+    }
+
+    pub fn sql(&self, column: &str, ty: &ColumnType) -> Option<String> {
+        let fallback = self.mask.as_ref()?.sql(column, ty);
+        let Some(selected) = &self.selected else { return Some(fallback) };
+        let cases: String = selected.masks.iter().map(|(name, mask)| format!(" WHEN '{}' THEN {}", name.replace('\'', "''"), mask.sql(column, ty))).collect();
+        Some(format!("CASE {}{cases} ELSE {fallback} END", ident(&selected.column)))
     }
 }
 

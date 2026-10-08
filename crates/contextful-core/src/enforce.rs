@@ -6,6 +6,8 @@
 
 #[derive(Debug, Clone, PartialEq, Eq, thiserror::Error)]
 pub enum EnforceError {
+    #[error("EnforceRedactionInvalid: {0}")]
+    RedactionInvalid(String),
     /// A combine leaving its primary's digest output unchanged. (`authority.mask.combine-generalizes`)
     #[error("EnforceCombineWithoutGeneralization: {0}")]
     CombineWithoutGeneralization(String),
@@ -63,6 +65,7 @@ impl EnforceError {
     /// The error identifier.
     pub fn identifier(&self) -> &'static str {
         match self {
+            EnforceError::RedactionInvalid(_) => "EnforceRedactionInvalid",
             EnforceError::CombineWithoutGeneralization(_) => "EnforceCombineWithoutGeneralization",
             EnforceError::DigestAloneOnExhaustibleClass(_) => "EnforceDigestAloneOnExhaustibleClass",
             EnforceError::EvidenceFloorExceeded(_) => "EnforceEvidenceFloorExceeded",

@@ -4,17 +4,57 @@
 
 ## Redacted material leaves no derived copy
 
-Redaction holds only when no derived artifact carries the pre-redaction value, so each copy path closes at its source. `store.encrypt` refuses an index over a column redacted at write time; `run.journal` refuses write-path redaction paired with a journaling source, at manifest validation and again at run open; the derive tier sits on the journaling opt-out list. `connector.attach` renders a URL as scheme, host, port and path and refuses configured userinfo; `run.emit` refuses a derived error string written without address redaction.
+Redaction holds only when no derived artifact carries the pre-redaction value, so each copy path closes at its source. `store.encrypt` refuses an index over a column redacted at write time. A source journal admits only a canonically prepared replacement under removal authority; body effects lacking that preparation refuse. The derive tier sits on the journaling opt-out list. `connector.attach` renders a URL as scheme, host, port and path and refuses configured userinfo; `run.emit` refuses a derived error string written without address redaction.
 
 | Option | Lost on | Cost |
 | --- | --- | --- |
-| Refuse each copy path at declaration or at the row builder *(chosen)* | — | A redacted column is reachable only by full scan; redacting pipelines lose replay-without-refetch; a derive crash re-pays up to one run of metered inference. |
+| Prepare before recording or refuse the copy path *(chosen)* | — | A redacted column is reachable only by full scan; source replay carries writer-bound prepared payloads; a derive crash re-pays metered inference. |
 | Encrypt the index or journal and permit it | At-rest completeness | The guarantee rests on key custody for content redaction exists to remove. |
 | Build locally, strip at the sync edge | Failure points | The local tree is itself a copy target. |
 | Redact in each adapter, or at read time | Uniformity | The guarantee is as strong as the least careful adapter; stored material outlives every reader that forgets. |
 
 Consequences: two failures at different pages of one walk render identically from a scrubbed URL.
-Revisit: an index structure provably independent of the indexed values; redaction runs ahead of the journal.
+Revisit: an index structure provably independent of the indexed values; typed body-effect preparation.
+
+## A prepared source record binds canonical authority before execution
+
+The canonical writer prepares guarded, shaped source rows once, including concrete relational child lineage, before the journal stores them. The recorded wire differs from the source wire; an opaque payload binds its destination, types and normalization to the canonical rules and pepper. Execution owner pins include that authority and the shape identity. Replay re-admits the payload without repeating transforms or removal, preserving keyed hashes and source resumption.
+
+| Option | Lost on | Cost |
+| --- | --- | --- |
+| Canonical preparation and authority-bound replay *(chosen)* | — | Declaration, shape or pepper changes refuse a pending owner; unsafe continuation bytes refuse. |
+| Repeat removal on replay | Idempotence | Keyed hashes change when applied to their own output. |
+| Accept a source-supplied prepared flag | Authority | A connector can label raw rows as already protected. |
+| Record raw rows then rewrite parts | At-rest completeness | The journal retains the value that its parts remove. |
+
+Consequences: unrelated manifest edits conservatively change recording authority. An absent continuation carries no source bytes; an exact terminal null object carries no private value. A monotonic clock requires complete transform lineage; protected relational clocks refuse without descendant lineage. Protected body effects remain refused without their own typed preparation.
+
+## Span iteration uses bounded leftmost-first matches
+
+Removal patterns use a lazy DFA with leftmost-first, non-overlapping search: a match ends where a greedy quantifier stops, so no matched byte remains beside its substitute. Forward steps over one value draw on one budget proportional to its length; a value that exhausts it refuses the write. Empty matches and Unicode word boundaries refuse at declaration. Each Thompson NFA has a declaration ceiling; source paths retain concrete normalization lineage, and persisted identities derive only after rewritten values.
+
+| Option | Lost on | Cost |
+| --- | --- | --- |
+| Leftmost-first search under a step budget and concrete lineage *(chosen)* | — | An adversarial pattern and value pair refuses its write; ordinary writes to undeclared tables in a protected relational project refuse. |
+| Earliest-ending search | Completeness | `password=\S+` rewrites `password=h` and stores the remaining secret beside the marker. |
+| Unbounded greedy iterator search | Bounding | Repeated suffix searches have quadratic worst-case work. |
+| Infer lineage from child names | Authority | A matching name establishes no source-column relationship. |
+| Rewrite after encoding or hashing identities | At-rest completeness | A derived identity or staged part retains a copy of the removed value. |
+
+Consequences: unmatched UTF-8 bytes remain intact; logical projection precedes removal, and identity materialization follows it. Canonical authority binds explicit source plans before execution; a prepared relational record carries its concrete rewritten group. The step budget, not wall-clock time, supplies the complexity guarantee.
+
+## Per-row classes resolve through registered masks
+
+A sibling text column selects a registered strategy in each row. All branches compile through the same mask checks and pepper functions as static policy; unknown or null selectors receive drop. The compiled projection participates in the existing relation identity.
+
+| Option | Lost on | Cost |
+| --- | --- | --- |
+| Registered strategy map with strict drop fallback *(chosen)* | — | Unknown classes lose their text; the selector column remains a schema dependency. |
+| Partition each class into a separate table | Utility | One heterogeneous value list becomes several reads. |
+| Let the caller choose or rewrite masks | Uniformity | One adapter omission exposes the original value. |
+| Leave unknown classes unmasked | Failure direction | A source-side typo grants weaker protection. |
+
+Consequences: prompt and completion permit keyed digests without an exhaustion combine; finite identity classes retain their existing generalization floor.
 
 ## The acting principal is provider-verified, normalized once, fixed per chain
 

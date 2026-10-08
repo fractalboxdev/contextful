@@ -71,25 +71,12 @@ pub fn locate(project: Option<&str>, declaration: Option<PathBuf>) -> Result<Loc
 /// The manifest files, in reading order: the declaration when it is a file, then
 /// `pipelines/` sorted (`run.declare.manifest-file`).
 pub(crate) fn manifests(declaration: &Path) -> Result<Vec<ManifestFile>> {
-    let mut files = Vec::new();
-    if declaration.is_file() {
-        files.push(ManifestFile { path: declaration.display().to_string(), text: std::fs::read_to_string(declaration)? });
-    }
-    files.extend(pipeline_files(declaration)?);
-    Ok(files)
+    Ok(contextful_context::project::manifests(declaration)?)
 }
 
 /// Every `pipelines/*.toml` and `pipelines/*.json` beside the declaration, in path order.
 pub(crate) fn pipeline_files(declaration: &Path) -> Result<Vec<ManifestFile>> {
-    let dir = declaration.parent().map(|p| p.join("pipelines")).unwrap_or_else(|| PathBuf::from("pipelines"));
-    let Ok(entries) = std::fs::read_dir(&dir) else { return Ok(Vec::new()) };
-    let mut paths: Vec<PathBuf> =
-        entries.flatten().map(|e| e.path()).filter(|p| p.extension().is_some_and(|x| x == "toml" || x == "json")).collect();
-    paths.sort();
-    paths
-        .into_iter()
-        .map(|p| Ok(ManifestFile { path: p.strip_prefix(".").unwrap_or(&p).display().to_string(), text: std::fs::read_to_string(&p)? }))
-        .collect()
+    Ok(contextful_context::project::pipeline_files(declaration)?)
 }
 
 /// Open the read face over the project's store, the declaration's text and the

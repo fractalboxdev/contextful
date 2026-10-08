@@ -11,6 +11,42 @@ use std::path::{Path, PathBuf};
 /// The project's declaration file (`store.init.declaration-file`).
 pub const DECLARATION_FILE: &str = "contextful.toml";
 
+/// Canonical project declaration and sorted pipeline files, shared by every adapter.
+pub fn manifests(declaration: &Path) -> Result<Vec<contextful_core::pipeline::declare::ManifestFile>> {
+    use contextful_core::pipeline::declare::ManifestFile;
+    let mut files = Vec::new();
+    match fs::metadata(declaration) {
+        Ok(metadata) if metadata.is_file() => files.push(ManifestFile { path:declaration.display().to_string(), text:fs::read_to_string(declaration).at(declaration)? }),
+        Ok(_) => {},
+        Err(e) if e.kind() == std::io::ErrorKind::NotFound => {},
+        Err(e) => return Err(e).at(declaration),
+    }
+    files.extend(pipeline_files(declaration)?);
+    Ok(files)
+}
+
+/// Sorted pipeline declarations beside the canonical declaration.
+pub fn pipeline_files(declaration: &Path) -> Result<Vec<contextful_core::pipeline::declare::ManifestFile>> {
+    use contextful_core::pipeline::declare::ManifestFile;
+    let mut files = Vec::new();
+    let dir = declaration.parent().unwrap_or_else(|| Path::new(".")).join("pipelines");
+    let entries = match fs::read_dir(&dir) {
+        Ok(entries) => entries,
+        Err(e) if e.kind() == std::io::ErrorKind::NotFound => return Ok(files),
+        Err(e) => return Err(e).at(&dir),
+    };
+    let mut paths = Vec::new();
+    for entry in entries {
+        let path = entry.at(&dir)?.path();
+        if path.extension().is_some_and(|x| x == "toml" || x == "json") { paths.push(path); }
+    }
+    paths.sort();
+    for path in paths {
+        files.push(ManifestFile { path: path.display().to_string(), text: fs::read_to_string(&path).at(&path)? });
+    }
+    Ok(files)
+}
+
 /// A project and the directory every project path is based on (`store.init.project-paths`).
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Project {

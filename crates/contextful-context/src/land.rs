@@ -540,6 +540,8 @@ fn commit_run(
     commit_point: &dyn Fn(&RunManifest) -> Result<()>,
 ) -> Result<Landing> {
     store.check_writable("land")?;
+    let rewritten = batches.iter().map(|batch| store.rewrite_batch(&decl.name, batch)).collect::<Result<Vec<_>>>()?;
+    let batches = rewritten.as_slice();
     let per_batch = batches.len() > 1 || position.pipeline_id.is_some();
     let (node_dir, manifest_path) = run_dir(store, &decl.name, &ctx.node, &ctx.injection.run_id)?;
     let types = column_types(store, decl, batches)?;
@@ -842,6 +844,103 @@ fn stage_name(ordinal: u32) -> String {
 /// `run.own.stage-instant`), joining no file list until [`commit_parts`] names it. Every
 /// row carries `_batch_seq` `ordinal` and `_row_seq` counting on from `row_offset`.
 pub fn stage_part(store: &Store, decl: &TableDecl, batch: &Batch, node: &NodeId, injection: &Injection, ordinal: u32, row_offset: u64) -> Result<StagedPart> {
+    store.check_writable("stage")?;
+    let rewritten = store.rewrite_batch(&decl.name, batch)?;
+    stage_prepared_part(store, decl, &rewritten, node, injection, ordinal, row_offset)
+}
+
+/// Stage one canonically admitted journal batch without applying removal again.
+pub fn stage_recorded_part(store: &Store, decl: &TableDecl, prepared: &crate::PreparedRecording, node: &NodeId, injection: &Injection, ordinal: u32, row_offset: u64) -> Result<StagedPart> {
+    if prepared.tables().len() != 1 { return Err(ContextError::Invalid("a relational recording stages as one typed group".into())); }
+    let mut parts = stage_recorded_group(store, decl, prepared, node, injection, ordinal, &[(decl.name.clone(), row_offset)].into())?;
+    parts.remove(&decl.name).ok_or_else(|| ContextError::Invalid("recording has no root part".into()))
+}
+
+/// Stage the admitted recorded group; child names and identities come from canonical preparation.
+pub fn stage_recorded_group(store: &Store, decl: &TableDecl, prepared: &crate::PreparedRecording, node: &NodeId, injection: &Injection, ordinal: u32, offsets: &std::collections::BTreeMap<String, u64>) -> Result<std::collections::BTreeMap<String, StagedPart>> {
+    store.check_writable("stage")?;
+    if prepared.table() != decl.name { return Err(ContextError::Invalid("recording names another root declaration".into())); }
+    let admitted = store.admit_recording(&decl.name, &prepared.encode()?, prepared.normalize()?)?;
+    let mut parts = std::collections::BTreeMap::new();
+    for (table, recorded) in admitted.tables() {
+        if recorded.rows.is_empty() { continue; }
+        let child = TableDecl::named(table);
+        let declared = if table == &decl.name { decl } else { &child };
+        let types = recorded.types.iter().map(|(name, ty)| ColumnType::parse(ty).map(|ty| (name.clone(), ty)).ok_or_else(|| ContextError::Invalid("recording type is unknown".into()))).collect::<Result<_>>()?;
+        let batch = Batch { rows:recorded.rows.clone(), types };
+        let part = match stage_prepared_part(store, declared, &batch, node, injection, ordinal, offsets.get(table).copied().unwrap_or_default()) {
+            Ok(part) => part,
+            Err(error) => {
+                for staged in parts.keys().chain(std::iter::once(table)) { let _ = discard_staged(store, staged, node, &injection.run_id); }
+                return Err(error);
+            }
+        };
+        parts.insert(table.clone(), part);
+    }
+    Ok(parts)
+}
+
+/// A logical relational stage carries concrete normalization lineage and table offsets.
+pub struct NormalizedStage {
+    pub group: contextful_core::pipeline::normalize::NormalizedGroup,
+    pub ordinal: u32,
+    pub offsets: std::collections::BTreeMap<String, u64>,
+}
+
+/// Direct normalized landing enters the same canonical group writer as source pulls.
+pub fn land_normalized_batches(store: &Store, decl: &TableDecl, batches: &[Batch], depth: u32, ctx: &RunContext, position: &Position, precommit: &dyn Fn() -> Result<()>) -> Result<RunManifest> {
+    let mut names: std::collections::BTreeMap<String, Vec<String>> = Default::default();
+    let mut offsets = std::collections::BTreeMap::new();
+    for (ordinal, batch) in batches.iter().enumerate() {
+        if batch.rows.is_empty() { continue; }
+        let ordinal = u32::try_from(ordinal).map_err(|_| ContextError::Invalid("normalized batch ordinal exceeds its range".into()))?;
+        let group = contextful_core::pipeline::normalize::NormalizedGroup::new(batch.rows.clone(), &decl.name, &ctx.injection.run_id, depth);
+        let parts = stage_normalized_group(store, decl, NormalizedStage { group, ordinal, offsets:offsets.clone() }, &ctx.node, &ctx.injection)?;
+        for (table, part) in parts {
+            *offsets.entry(table.clone()).or_insert(0) += part.rows;
+            names.entry(table).or_default().push(part.name);
+        }
+    }
+    let root_names = names.remove(&decl.name).unwrap_or_default();
+    if names.is_empty() { return commit_parts(store, decl, &root_names, ctx, position, precommit, &|_| Ok(())); }
+    let mut tables = vec![decl.name.clone()];
+    for (table, parts) in names {
+        let child_position = Position { pipeline_id:position.pipeline_id.clone(), ..Position::default() };
+        commit_parts_group(store, &TableDecl::named(&table), &parts, ctx, &child_position, &decl.name, &[], &|| Ok(()), &|_| Ok(()))?;
+        tables.push(table);
+    }
+    let manifest = commit_parts_group(store, decl, &root_names, ctx, position, &decl.name, &[], precommit, &|_| Ok(()))?;
+    publish_group(store, &decl.name, &tables, ctx)?;
+    Ok(manifest)
+}
+
+/// Apply canonical authority to an entire logical group before any child part is written.
+pub fn stage_normalized_group(store: &Store, decl: &TableDecl, stage: NormalizedStage, node: &NodeId, injection: &Injection) -> Result<std::collections::BTreeMap<String, StagedPart>> {
+    store.check_writable("stage")?;
+    if stage.group.root() != decl.name { return Err(ContextError::Invalid("normalized group names another root declaration".into())); }
+    let tables = store.rewrite_group(stage.group)?;
+    let mut parts = std::collections::BTreeMap::new();
+    for (table, rows) in tables {
+        if rows.is_empty() { continue; }
+        let child = TableDecl::named(&table);
+        let declared = if table == decl.name { decl } else { &child };
+        let types = if table == decl.name { Default::default() } else { [("list_index".into(), ColumnType::Int64)].into() };
+        let batch = Batch { rows, types };
+        let part = match stage_prepared_part(store, declared, &batch, node, injection, stage.ordinal, stage.offsets.get(&table).copied().unwrap_or_default()) {
+            Ok(part) => part,
+            Err(error) => {
+                for staged in parts.keys().chain(std::iter::once(&table)) {
+                    let _ = discard_staged(store, staged, node, &injection.run_id);
+                }
+                return Err(error);
+            }
+        };
+        parts.insert(table, part);
+    }
+    Ok(parts)
+}
+
+fn stage_prepared_part(store: &Store, decl: &TableDecl, batch: &Batch, node: &NodeId, injection: &Injection, ordinal: u32, row_offset: u64) -> Result<StagedPart> {
     if batch.rows.is_empty() {
         return Err(ContextError::Invalid(format!("run `{}` stages an empty batch as part {ordinal}", injection.run_id)));
     }

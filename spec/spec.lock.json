@@ -6825,7 +6825,7 @@
       "operation": "journal",
       "subject": "recorded-batch",
       "kind": "behavior",
-      "statement": "A journaled pull records the batch as the source handed it over, after {{run.guard-secrets.placement}} and ahead of the land path.",
+      "statement": "A journaled pull records its guarded source batch, or its canonically prepared replacement under {{authority.redact.before-the-record}}, ahead of landing.",
       "why": "",
       "file": "spec/30-run.md",
       "line": 77
@@ -6858,10 +6858,32 @@
       "operation": "journal",
       "subject": "redacting-source",
       "kind": "refusal",
-      "statement": "A pipeline declaring write-path redaction over a source that journals its pulls raises `JournalRedactionConflict` at manifest validation and again at run open, before the first pull.",
+      "statement": "A journaled source declaring removal without canonical prepared-recording admission raises `JournalRedactionConflict` before its first pull; a boolean removal assertion supplies no admission.",
       "why": "A-authority",
       "file": "spec/30-run.md",
       "line": 80
+    },
+    {
+      "id": "run.journal.prepared-owner",
+      "contract": "run",
+      "operation": "journal",
+      "subject": "prepared-owner",
+      "kind": "behavior",
+      "statement": "Protected recording binds the plan, shape, canonical declarations, normalization and pepper identities into owner pins before source execution; a changed identity follows {{run.own.pinned-plan-changed}}.",
+      "why": "A-authority",
+      "file": "spec/30-run.md",
+      "line": 82
+    },
+    {
+      "id": "run.journal.prepared-replay",
+      "contract": "run",
+      "operation": "journal",
+      "subject": "prepared-replay",
+      "kind": "behavior",
+      "statement": "A protected journal hit admits the recorded rewritten payload against its canonical writer without repeating shaping, normalization or removal and without fetching the source again.",
+      "why": "A-authority",
+      "file": "spec/30-run.md",
+      "line": 84
     },
     {
       "id": "run.journal.opt-out",
@@ -6872,7 +6894,7 @@
       "statement": "Pull journaling defaults on. A source whose pre-pull cursor cannot name the content it reads opts out through one constant, pinned against each source's declaration by a test. An empty pull is never journaled.",
       "why": "",
       "file": "spec/30-run.md",
-      "line": 82
+      "line": 86
     },
     {
       "id": "run.journal.escape-hatch",
@@ -6883,7 +6905,7 @@
       "statement": "Two escape hatches exist and no third: `journal.unsafe(label, effect)` for an idempotent read, and a source declaring that it journals no pull. Each carries its idempotency argument at a greppable call site.",
       "why": "",
       "file": "spec/30-run.md",
-      "line": 83
+      "line": 87
     },
     {
       "id": "run.journal.substrate-port",
@@ -6894,7 +6916,7 @@
       "statement": "The run-path substrate is one interface: open or resume an execution under a scope for a content-hashed plan reference, record a step output, commit a cursor, suspend on an awakeable with a timeout, attach a retry schedule, describe capabilities.",
       "why": "A-run",
       "file": "spec/30-run.md",
-      "line": 84
+      "line": 88
     },
     {
       "id": "run.journal.storage-ports",
@@ -6905,7 +6927,7 @@
       "statement": "Journal rows, blobs and awakeables persist through a journal store, a blob store and an awakeable store; every `run.journal` and `run.suspend` clause holds for each adapter, the file tree included.",
       "why": "A-run",
       "file": "spec/30-run.md",
-      "line": 86
+      "line": 90
     },
     {
       "id": "run.journal.sqlite-stores",
@@ -6916,7 +6938,7 @@
       "statement": "`contextful-sqlite` serves the journal, blob and awakeable stores from one SQLite file in write-ahead-log mode over one connection, a blob as a row keyed by its sha256; an awakeable update commits with the journal writes inside it.",
       "why": "because a resolution recording its payload through a second connection waits on the write lock its own update holds",
       "file": "spec/30-run.md",
-      "line": 88
+      "line": 92
     },
     {
       "id": "run.journal.sqlite-write-lock",
@@ -6927,7 +6949,7 @@
       "statement": "Every `contextful-sqlite` store write opens an immediate transaction, so concurrent writers of one key across connections to one file serialize: one record lands, and every other returns the standing value instead of a locked-database failure.",
       "why": "because under write-ahead logging a deferred read upgrading to a write fails on the lock at once instead of waiting through the busy timeout",
       "file": "spec/30-run.md",
-      "line": 90
+      "line": 94
     },
     {
       "id": "run.journal.plan-pin",
@@ -6938,7 +6960,7 @@
       "statement": "A run resolves the plan reference it started against for its whole life.",
       "why": "",
       "file": "spec/30-run.md",
-      "line": 92
+      "line": 96
     },
     {
       "id": "run.journal.store-input",
@@ -6949,7 +6971,7 @@
       "statement": "A store-driven run reads its statement once, through the read face under the job's grant at its `as_of`, and records the resolved snapshot id per table and the ordered input rows as its first step.",
       "why": "A-surface",
       "file": "spec/30-run.md",
-      "line": 93
+      "line": 97
     },
     {
       "id": "run.journal.input-replay",
@@ -6960,7 +6982,7 @@
       "statement": "A resume iterates the recorded input and never re-reads the statement, so a row landed after the pinned `as_of`, or folded since, never enters the input set.",
       "why": "",
       "file": "spec/30-run.md",
-      "line": 95
+      "line": 99
     },
     {
       "id": "run.journal.open-as-of",
@@ -6971,7 +6993,7 @@
       "statement": "A store-driven job declaring no `as_of` resolves it to the instant its execution opens, recorded in the input step, so every resume reads that instant.",
       "why": "",
       "file": "spec/30-run.md",
-      "line": 96
+      "line": 100
     },
     {
       "id": "run.journal.input-pin",
@@ -6982,7 +7004,7 @@
       "statement": "A store-driven run's plan reference hashes its body name, statement and declared `as_of`, so a resume under a changed one meets {{run.own.pinned-plan-changed}} before any step replays.",
       "why": "A-surface",
       "file": "spec/30-run.md",
-      "line": 97
+      "line": 101
     },
     {
       "id": "run.journal.input-truncated",
@@ -6993,7 +7015,7 @@
       "statement": "An input statement whose response the face truncates at its row ceiling raises `RunInputTruncated` before any row runs.",
       "why": "because a silently shortened input set closes `success` as though every row ran",
       "file": "spec/30-run.md",
-      "line": 99
+      "line": 103
     },
     {
       "id": "run.journal.row-step",
@@ -7004,7 +7026,7 @@
       "statement": "Each input row runs the registered body under a row key, its ordinal in the recorded input; every step the body records carries a label scoped to that key, and a paid call carries {{run.journal.idempotency-key}}.",
       "why": "because two rows sharing one label under one execution resolve to one recorded value",
       "file": "spec/30-run.md",
-      "line": 101
+      "line": 105
     },
     {
       "id": "run.journal.row-concurrency",
@@ -7015,7 +7037,7 @@
       "statement": "A store-driven run holds at most `max_in_flight` rows inside the body at once; a failing row admits no further row, and the run closes after the rows in flight return.",
       "why": "",
       "file": "spec/30-run.md",
-      "line": 103
+      "line": 107
     },
     {
       "id": "run.journal.row-output",
@@ -7026,7 +7048,7 @@
       "statement": "The rows every body emits land after the last input row completes and before the owner retires, one run per declared output table through {{run.land.stage-order}}.",
       "why": "because a landing that fails then holds the owner, and its resume replays every paid call instead of paying again",
       "file": "spec/30-run.md",
-      "line": 104
+      "line": 108
     },
     {
       "id": "run.journal.unwired-capability",
@@ -7037,7 +7059,7 @@
       "statement": "Reaching for a capability the running profile does not wire raises `CapabilityUnwired` at the first reach, before any half-finished work.",
       "why": "A-topology",
       "file": "spec/30-run.md",
-      "line": 106
+      "line": 110
     },
     {
       "id": "run.journal.machine-state",
@@ -7048,7 +7070,7 @@
       "statement": "Journal rows, execution owners and awakeables live in the host's own stores, never in the derived catalog; a catalog rebuild leaves them untouched and reconstructs none from the file tree.",
       "why": "",
       "file": "spec/30-run.md",
-      "line": 108
+      "line": 112
     },
     {
       "id": "run.advance.cursor-kind",
@@ -7059,7 +7081,7 @@
       "statement": "A cursor declares `monotonic` for a timestamp, autoincrement or watermark, `opaque-token` for a vendor continuation token, or `snapshot-id` for a log sequence number or version id. An undeclared kind resolves to `opaque-token`.",
       "why": "",
       "file": "spec/30-run.md",
-      "line": 141
+      "line": 145
     },
     {
       "id": "run.advance.concurrency-by-kind",
@@ -7070,7 +7092,7 @@
       "statement": "A `monotonic` position is concurrent-safe and commits the highest value observed. An `opaque-token` or `snapshot-id` position moves only under a single-writer lease. Last-write-wins governs no cursor.",
       "why": "because two writers resolving one continuation token by recency skip or duplicate records with no count showing it",
       "file": "spec/30-run.md",
-      "line": 142
+      "line": 146
     },
     {
       "id": "run.advance.engine-owned",
@@ -7081,7 +7103,7 @@
       "statement": "A connector moves its position only by committing through the engine; that commit is a recorded step and replays as a resolved read.",
       "why": "",
       "file": "spec/30-run.md",
-      "line": 144
+      "line": 148
     },
     {
       "id": "run.advance.commit-with-rows",
@@ -7092,7 +7114,7 @@
       "statement": "A table's new position rides the run commit marker, {{store.lay-out.run-manifest}}, that publishes the rows behind it; the catalog cursor is a cache of the newest committed marker.",
       "why": "because rows and position committed in two stores leave a crash window that re-lands a batch",
       "file": "spec/30-run.md",
-      "line": 145
+      "line": 149
     },
     {
       "id": "run.advance.cursor-bytes",
@@ -7103,7 +7125,7 @@
       "statement": "A position is opaque bytes the connector owns, and its kind is a manifest fact the engine reads. Each table carries its own position.",
       "why": "",
       "file": "spec/30-run.md",
-      "line": 147
+      "line": 151
     },
     {
       "id": "run.advance.inclusive-boundary",
@@ -7114,7 +7136,7 @@
       "statement": "A polled load admits a row whose clock value is at or after the stored position, re-landing the boundary instant's rows on every poll.",
       "why": "because a clock coarser than the row grain otherwise drops a sibling sharing the boundary value, permanently and invisibly",
       "file": "spec/30-run.md",
-      "line": 148
+      "line": 152
     },
     {
       "id": "run.advance.declared-key-required",
@@ -7125,7 +7147,7 @@
       "statement": "The boundary re-land is idempotent on a table declaring a key; on a keyless table the repeats accumulate in its union view.",
       "why": "",
       "file": "spec/30-run.md",
-      "line": 150
+      "line": 154
     },
     {
       "id": "run.advance.watermark-shape",
@@ -7136,7 +7158,7 @@
       "statement": "A watermark position serializes as `{\"field\": \"<name>\", \"at\": <value>}`, naming the column it was measured against.",
       "why": "",
       "file": "spec/30-run.md",
-      "line": 151
+      "line": 155
     },
     {
       "id": "run.advance.field-rename",
@@ -7147,7 +7169,7 @@
       "statement": "Opening a position whose stored field differs from the declared `incremental` field raises `CursorFieldMismatch` before any request leaves the host.",
       "why": "A-run",
       "file": "spec/30-run.md",
-      "line": 152
+      "line": 156
     },
     {
       "id": "run.advance.frontier",
@@ -7158,7 +7180,7 @@
       "statement": "The frontier counts every fetched row, landed or not. A committed position moves forward or holds; an empty or older window never rewinds it.",
       "why": "",
       "file": "spec/30-run.md",
-      "line": 154
+      "line": 158
     },
     {
       "id": "run.advance.unorderable-position",
@@ -7169,7 +7191,7 @@
       "statement": "A row with no orderable value in the clock field, or a stream switching between text and numeric positions mid-pass, raises `CursorPositionUnorderable`, terminal for the pull.",
       "why": "A-run",
       "file": "spec/30-run.md",
-      "line": 155
+      "line": 159
     },
     {
       "id": "run.advance.turning-incremental-on",
@@ -7180,7 +7202,7 @@
       "statement": "Enabling `incremental` on a pipeline that holds a position starts from none, re-landing the source's current window once.",
       "why": "",
       "file": "spec/30-run.md",
-      "line": 157
+      "line": 161
     },
     {
       "id": "run.advance.skip-unchanged",
@@ -7191,7 +7213,7 @@
       "statement": "A snapshot-shaped source with `skip_unchanged = true` records its input's raw-byte digest as `{ sha256, rows }`; a matching digest returns zero batches, holds the position and closes a zero-row success. Undeclared, it is false.",
       "why": "",
       "file": "spec/30-run.md",
-      "line": 158
+      "line": 162
     },
     {
       "id": "run.advance.snapshot-completion",
@@ -7202,7 +7224,7 @@
       "statement": "A snapshot source reports complete inventory or unchanged skip independently of row count; a replacing run carries only complete inventory into its manifest.",
       "why": "A-store",
       "file": "spec/30-run.md",
-      "line": 159
+      "line": 163
     },
     {
       "id": "run.advance.zero-row-commit",
@@ -7213,7 +7235,7 @@
       "statement": "A complete empty snapshot of a replacing table commits {{store.declare.empty-replacement}}; a skipped unchanged input holds the frontier and position, and a failed pull publishes neither.",
       "why": "A-store",
       "file": "spec/30-run.md",
-      "line": 161,
+      "line": 165,
       "scenarios": [
         "WHEN a complete snapshot holds zero rows after a non-empty replacing run, THEN the current read is empty and a bounded read before the commit retains the older rows.",
         "WHEN an unchanged input is skipped, THEN the current read and cursor retain their prior values.",
@@ -7229,7 +7251,7 @@
       "statement": "An awakeable suspends a run durably: the engine mints an opaque single-use token and persists a `pending` row through the awakeable store; an external party resumes by posting the token back.",
       "why": "A-run",
       "file": "spec/30-run.md",
-      "line": 176
+      "line": 180
     },
     {
       "id": "run.suspend.resume-is-a-step-output",
@@ -7240,7 +7262,7 @@
       "statement": "A resume payload is recorded as the awaited step's output under key `sha256(\"awakeable:\" + token)`, so a run that resumes and then crashes reads it back without suspending again.",
       "why": "",
       "file": "spec/30-run.md",
-      "line": 178
+      "line": 182
     },
     {
       "id": "run.suspend.deadline",
@@ -7251,7 +7273,7 @@
       "statement": "A deadline is the creation instant plus a time-to-live, both caller-supplied RFC3339 Zulu strings; the core reads no wall clock.",
       "why": "",
       "file": "spec/30-run.md",
-      "line": 179
+      "line": 183
     },
     {
       "id": "run.suspend.timeout-is-sticky",
@@ -7262,7 +7284,7 @@
       "statement": "Expiry is evaluated against an injected instant; a suspension past its deadline becomes `timed_out` and stays so under any later instant.",
       "why": "",
       "file": "spec/30-run.md",
-      "line": 180
+      "line": 184
     },
     {
       "id": "run.suspend.idempotent-resolution",
@@ -7273,7 +7295,7 @@
       "statement": "Resolving a token again with the identical payload returns the recorded value.",
       "why": "",
       "file": "spec/30-run.md",
-      "line": 181
+      "line": 185
     },
     {
       "id": "run.suspend.conflicting-resolution",
@@ -7284,7 +7306,7 @@
       "statement": "A second resolution with a different payload raises `AwakeableAlreadyResolved` and leaves the recorded value untouched.",
       "why": "A-run",
       "file": "spec/30-run.md",
-      "line": 182
+      "line": 186
     },
     {
       "id": "run.suspend.expired-token",
@@ -7295,7 +7317,7 @@
       "statement": "Resolving a token past its deadline raises `AwakeableTimedOut`.",
       "why": "A-run",
       "file": "spec/30-run.md",
-      "line": 184
+      "line": 188
     },
     {
       "id": "run.suspend.unknown-token",
@@ -7306,7 +7328,7 @@
       "statement": "A token with no row raises `AwakeableUnknown` and allocates no state.",
       "why": "P2",
       "file": "spec/30-run.md",
-      "line": 186
+      "line": 190
     },
     {
       "id": "run.suspend.resume-route",
@@ -7317,7 +7339,7 @@
       "statement": "`POST /awake/:token` answers `200` with the recorded payload, `404` for {{run.suspend.unknown-token}}, `409` for {{run.suspend.conflicting-resolution}} and `410` for {{run.suspend.expired-token}}. `GET /awake/:token` reports state without resuming. Both authenticate before touching the registry.",
       "why": "",
       "file": "spec/30-run.md",
-      "line": 188
+      "line": 192
     },
     {
       "id": "run.suspend.payload-offload",
@@ -7328,7 +7350,7 @@
       "statement": "A payload above {{run.journal.inline-cutoff}} lands in the journal's blob store, and the pending row references it.",
       "why": "",
       "file": "spec/30-run.md",
-      "line": 189
+      "line": 193
     },
     {
       "id": "run.suspend.survives-restart",
@@ -7339,7 +7361,7 @@
       "statement": "A durable awakeable store persists every registry row, so a process reopening it over the same location drops no pending callback; an in-process store ends with its process.",
       "why": "",
       "file": "spec/30-run.md",
-      "line": 190
+      "line": 194
     },
     {
       "id": "run.suspend.row-parks",
@@ -7350,7 +7372,7 @@
       "statement": "A store-driven row awaiting an unresolved awakeable parks and frees its slot; the other rows run on, and the parked row re-enters its body once the awakeable resolves or its deadline passes.",
       "why": "",
       "file": "spec/30-run.md",
-      "line": 191
+      "line": 195
     },
     {
       "id": "run.suspend.recorded-timeout",
@@ -7361,7 +7383,7 @@
       "statement": "A row's wait past its deadline records a timeout value as that wait's step output, so every re-entry of the body reads the identical value.",
       "why": "because a body branching on the clock rather than on a recorded value replays differently after a crash",
       "file": "spec/30-run.md",
-      "line": 192
+      "line": 196
     },
     {
       "id": "run.retry.failure-taxonomy",
@@ -7372,7 +7394,7 @@
       "statement": "One tagged failure type crosses every port: `Transient`, `Permanent`, `SchemaIncompatible`, `AuthExpired`, `RateLimited`, `Config`, `Storage`, `UnknownConnector`, `SecretNotFound` and `Canceled`. A caller branches on the tag, never on a message.",
       "why": "P2",
       "file": "spec/30-run.md",
-      "line": 227
+      "line": 231
     },
     {
       "id": "run.retry.schedule",
@@ -7383,7 +7405,7 @@
       "statement": "A schedule attaches to a step and carries a fixed or exponential backoff with base and factor, a total attempt count including the first, a per-delay clamp, a jitter ceiling and `retry_on`.",
       "why": "",
       "file": "spec/30-run.md",
-      "line": 229
+      "line": 233
     },
     {
       "id": "run.retry.default-policy",
@@ -7394,7 +7416,7 @@
       "statement": "The default schedule is exponential from a 100 ms base with factor 2, to 5 attempts in total, each delay clamped at 30 s, plus seeded jitter below 250 ms.",
       "why": "because zero jitter synchronizes every run that hit one shared throttle",
       "file": "spec/30-run.md",
-      "line": 230
+      "line": 234
     },
     {
       "id": "run.retry.single-attempt",
@@ -7405,7 +7427,7 @@
       "statement": "A schedule of 1 attempts is the no-retry schedule.",
       "why": "",
       "file": "spec/30-run.md",
-      "line": 232
+      "line": 236
     },
     {
       "id": "run.retry.retryable-classes",
@@ -7416,7 +7438,7 @@
       "statement": "`Transient` and `RateLimited` retry; every other tag stands as the step's answer whatever budget remains. `retry_on` narrows that pair.",
       "why": "P6",
       "file": "spec/30-run.md",
-      "line": 233
+      "line": 237
     },
     {
       "id": "run.retry.unretryable-tag",
@@ -7427,7 +7449,7 @@
       "statement": "A `retry_on` naming any tag outside `Transient` and `RateLimited` raises `RunRetryTagUnretryable` at plan compile.",
       "why": "P6",
       "file": "spec/30-run.md",
-      "line": 235
+      "line": 239
     },
     {
       "id": "run.retry.step-failed",
@@ -7438,7 +7460,7 @@
       "statement": "A non-retryable failure, or a step exhausting its schedule, raises `StepFailed` carrying the step label and the underlying tag.",
       "why": "P6",
       "file": "spec/30-run.md",
-      "line": 237
+      "line": 241
     },
     {
       "id": "run.retry.deterministic-verdict",
@@ -7449,7 +7471,7 @@
       "statement": "A refusal whose check is pure over static input is terminal and consumes no attempt budget.",
       "why": "P6",
       "file": "spec/30-run.md",
-      "line": 239
+      "line": 243
     },
     {
       "id": "run.retry.retry-after",
@@ -7460,7 +7482,7 @@
       "statement": "A server-supplied `Retry-After` supersedes the computed delay up to 300 s; a longer one closes the step as `RateLimited` and the run is rescheduled instead of sleeping.",
       "why": "because an unclamped upstream delay holds a run slot for as long as the vendor asks",
       "file": "spec/30-run.md",
-      "line": 241
+      "line": 245
     },
     {
       "id": "run.retry.one-layer",
@@ -7471,7 +7493,7 @@
       "statement": "The step's schedule is the only retry layer: an adapter, a credential mint and a meter acquire inside a step return their failure to it.",
       "why": "because nested retry layers multiply attempts and amplify a vendor outage",
       "file": "spec/30-run.md",
-      "line": 243
+      "line": 247
     },
     {
       "id": "run.retry.decision-is-pure",
@@ -7482,7 +7504,7 @@
       "statement": "The retry decision is a pure function of the one-based attempt that just closed and the classified failure, jitter derived from an injected seed. The runner owns the sleep and the attempt counter.",
       "why": "",
       "file": "spec/30-run.md",
-      "line": 245
+      "line": 249
     },
     {
       "id": "run.retry.partial-failure",
@@ -7493,7 +7515,7 @@
       "statement": "A run that landed some batches and then failed closes `partial_failure`, naming how many landed; the journal holds the resume point.",
       "why": "",
       "file": "spec/30-run.md",
-      "line": 246
+      "line": 250
     },
     {
       "id": "run.retry.pressure-is-local",
@@ -7504,7 +7526,7 @@
       "statement": "Rate-limit pressure against one source paces only that source's runs.",
       "why": "",
       "file": "spec/30-run.md",
-      "line": 247
+      "line": 251
     },
     {
       "id": "run.retry.bound-hit-is-transient",
@@ -7515,7 +7537,7 @@
       "statement": "A connector striking one of its declared resource bounds answers `Transient`, and every bound decision is recorded on the run record.",
       "why": "",
       "file": "spec/30-run.md",
-      "line": 248
+      "line": 252
     },
     {
       "id": "run.own.execution-owner",
@@ -7526,7 +7548,7 @@
       "statement": "One durable execution owner exists per scope; a table or chunk owner holds the connector identity with its component world, the pipeline `content_hash` and the input hash.",
       "why": "",
       "file": "spec/30-run.md",
-      "line": 258
+      "line": 262
     },
     {
       "id": "run.own.host-scope",
@@ -7537,7 +7559,7 @@
       "statement": "The catalog keys every owner on its scope — live table, backfill chunk or host-declared id — a table owner keeping its stored key byte for byte, and a host owner pinning the plan reference and identities the host supplies.",
       "why": "A-run",
       "file": "spec/30-run.md",
-      "line": 259
+      "line": 263
     },
     {
       "id": "run.own.execution-id-keys-the-journal",
@@ -7548,7 +7570,7 @@
       "statement": "Recorded work keys on the execution id; a catalog run id is the provenance of one attempt, so attempts under one owner resolve the same recorded values.",
       "why": "",
       "file": "spec/30-run.md",
-      "line": 261
+      "line": 265
     },
     {
       "id": "run.own.retirement",
@@ -7559,7 +7581,7 @@
       "statement": "Retiring an owner and caching its committed position share one catalog transaction; a later fire receives a fresh execution id even at a byte-identical position. A completed backfill chunk retires the same way.",
       "why": "",
       "file": "spec/30-run.md",
-      "line": 262
+      "line": 266
     },
     {
       "id": "run.own.marker-reconciles",
@@ -7570,7 +7592,7 @@
       "statement": "At run open, a commit marker newer than the catalog's cached position retires the pending owner that produced it before any replay.",
       "why": "because a crash between marker and catalog otherwise replays a recorded pull into rows already committed",
       "file": "spec/30-run.md",
-      "line": 263
+      "line": 267
     },
     {
       "id": "run.own.pinned-plan-changed",
@@ -7581,7 +7603,7 @@
       "statement": "While an owner is pending, a changed pin — connector identity, component world, pipeline `content_hash`, or a host's plan reference or identities — raises `ExecutionPinMismatch` before replay, terminal and non-retryable, naming the scope and both pin sets.",
       "why": "A-connector",
       "file": "spec/30-run.md",
-      "line": 265,
+      "line": 269,
       "scenarios": [
         "WHEN a host scope's pending owner pins plan reference `plan-a` and an open asks for `plan-b`, THEN the open refuses with `ExecutionPinMismatch` and its run row closes `failed`."
       ]
@@ -7595,7 +7617,7 @@
       "statement": "Restoring the recorded build and resuming to completion clears a pending owner; an explicit chunk rewind retires the owners its window covers.",
       "why": "",
       "file": "spec/30-run.md",
-      "line": 267
+      "line": 271
     },
     {
       "id": "run.own.scope-independence",
@@ -7606,7 +7628,7 @@
       "statement": "A finishing table releases nothing another table's unfinished execution holds, and a seeding scope carries its own source identity.",
       "why": "",
       "file": "spec/30-run.md",
-      "line": 268
+      "line": 272
     },
     {
       "id": "run.own.unclosed-execution",
@@ -7617,7 +7639,7 @@
       "statement": "An execution handle dropped without close records no status; its owner stays pending, and the next open under its scope resumes it once {{run.record.owner-lease}} lapses.",
       "why": "A-run",
       "file": "spec/30-run.md",
-      "line": 269,
+      "line": 273,
       "scenarios": [
         "WHEN a host execution records two steps and its process dies mid-third, THEN the next open under its scope after the lease lapses replays both steps without running their effects."
       ]
@@ -7631,7 +7653,7 @@
       "statement": "An open under a host scope whose pending owner has an attempt on an unexpired {{run.record.owner-lease}} fails `Transient` naming that attempt, and its run row closes `failed` without joining the owner.",
       "why": "because two live handles on one owner share its journal, and either one retiring it strands the other",
       "file": "spec/30-run.md",
-      "line": 271,
+      "line": 275,
       "scenarios": [
         "WHEN attempt `job-a` holds host scope `index-42` open and `job-b` opens under it, THEN `job-b` fails `Transient` naming `job-a`, and `job-a` alone holds the owner."
       ]
@@ -7645,7 +7667,7 @@
       "statement": "`success`, a failure that wrote no batch, and a failure a replay reproduces, {{run.own.staged-bytes}} or {{run.land.late-type}}, release the owner; every other status holds it.",
       "why": "",
       "file": "spec/30-run.md",
-      "line": 273
+      "line": 277
     },
     {
       "id": "run.own.admission-pin",
@@ -7656,7 +7678,7 @@
       "statement": "A run pins its connector identity at admission and a replay resolves the artifact from that pin; a connector rebuilt later reaches no in-flight or replayed run.",
       "why": "A-connector",
       "file": "spec/30-run.md",
-      "line": 274
+      "line": 278
     },
     {
       "id": "run.own.backpressure",
@@ -7667,7 +7689,7 @@
       "statement": "The runner stages each shaped batch through the destination as one part before its next pull, so a run holds one pulled batch in memory; the commit names the staged parts.",
       "why": "because holding every batch until the commit sizes a run's memory by the sum of its pulls",
       "file": "spec/30-run.md",
-      "line": 276,
+      "line": 280,
       "scenarios": [
         "WHEN a source serves three pages, THEN the destination stages part 0 after the first pull, part 1 after the second and part 2 after the third, and one commit names all three."
       ]
@@ -7681,7 +7703,7 @@
       "statement": "One run produces one atomic commit per table; a crash mid-run leaves parts under that run's own directory, and a resumption continues from the last recorded step.",
       "why": "",
       "file": "spec/30-run.md",
-      "line": 278
+      "line": 282
     },
     {
       "id": "run.own.staged-bytes",
@@ -7692,7 +7714,7 @@
       "statement": "A stage carrying one run's staged parts past 1 GiB raises `RunStagedBytesExceeded`, deterministic; the run commits nothing and retires its owner, so the next fire pulls afresh from the stored cursor.",
       "why": "because a replay of the run's recorded pulls stages the same bytes past the bound and fails identically, holding the table's owner indefinitely",
       "file": "spec/30-run.md",
-      "line": 279,
+      "line": 283,
       "scenarios": [
         "WHEN each of three pulls stages a 400 MiB part, THEN the third stage fails the run `Permanent` with `RunStagedBytesExceeded`, the cursor stays where it stood, and the next fire pulls all three pages under a fresh execution."
       ]
@@ -7706,7 +7728,7 @@
       "statement": "A stage refuses against `schema.json` and the run's earlier stages, then merges its columns into the run's own staged schema; only the commit merges them into `schema.json`.",
       "why": "because otherwise rows no commit publishes fix a column's type in the table's schema",
       "file": "spec/30-run.md",
-      "line": 281,
+      "line": 285,
       "scenarios": [
         "WHEN run `run-s` stages `ts` as text and fails, THEN a later run lands `ts` as a timestamp, and `run-s`'s commit refuses with `StoreSchemaIncompatible`."
       ]
@@ -7720,7 +7742,7 @@
       "statement": "A staged part carries no `_commit_seq`; the commit assigns it under {{store.reserve.commit-order}} and writes it into each part it names, so a run committing between a stage and that commit takes the lower value.",
       "why": "because a value fixed at the stage orders a run by its first pull, and the readable runs then hold no prefix of the sequence",
       "file": "spec/30-run.md",
-      "line": 283,
+      "line": 287,
       "scenarios": [
         "WHEN run `run-s` stages a part, run `run-c` then commits as `_commit_seq` 1, and `run-s` commits after it, THEN every row of `run-s` reads `_commit_seq` 2."
       ]
@@ -7734,7 +7756,7 @@
       "statement": "A staged part carries no `_ingested_at`; the commit writes its commit instant into each part it names, so every row of a run carries the instant its marker carries.",
       "why": "because a stage-time instant ranks a run by its first pull, so under {{store.declare.dedup-view}} an earlier committer outranks a later one on a shared key",
       "file": "spec/30-run.md",
-      "line": 285,
+      "line": 289,
       "scenarios": [
         "WHEN run `run-a` stages key `k` at 00:01, run `run-b` commits `k` at 00:03 and `run-a` commits at 00:05, THEN the keyed read returns `run-a`'s row, `_ingested_at` 00:05."
       ]
@@ -7748,7 +7770,7 @@
       "statement": "A run that fails removes every part it staged, and a commit failing before its manifest exists removes the parts it copied; a run's crash leaves its staged parts.",
       "why": "because a run id names one attempt, so no later commit names a failed run's staged parts",
       "file": "spec/30-run.md",
-      "line": 287,
+      "line": 291,
       "scenarios": [
         "WHEN a run stages its first page and its second pull fails, THEN its run directory holds no staged part."
       ]
@@ -7762,7 +7784,7 @@
       "statement": "A stop is written onto the run row as a requested-at instant, a scope and an optional reason; the catalog is the only channel.",
       "why": "",
       "file": "spec/30-run.md",
-      "line": 324
+      "line": 328
     },
     {
       "id": "run.cancel.two-grains",
@@ -7773,7 +7795,7 @@
       "statement": "A `run`-scoped stop halts one run and the fire continues; a `pipeline`-scoped stop halts every in-flight run of the pipeline and every table or chunk the fire had left. An unrecognized stored scope reads as `run`.",
       "why": "",
       "file": "spec/30-run.md",
-      "line": 325
+      "line": 329
     },
     {
       "id": "run.cancel.host-grain",
@@ -7784,7 +7806,7 @@
       "statement": "A `pipeline`-scoped stop on a host execution's run halts every in-flight run under the same host-declared scope and no run of another scope.",
       "why": "",
       "file": "spec/30-run.md",
-      "line": 326
+      "line": 330
     },
     {
       "id": "run.cancel.one-token",
@@ -7795,7 +7817,7 @@
       "statement": "Each run holds one cancellation token that every await selects on: the pull, a retry sleep, an awakeable wait, a meter acquire and a subprocess wait.",
       "why": "because a stop observed only at the pull leaves sleeps and child processes running after the record reads canceled",
       "file": "spec/30-run.md",
-      "line": 327
+      "line": 331
     },
     {
       "id": "run.cancel.poll-interval",
@@ -7806,7 +7828,7 @@
       "statement": "The token is fed by one catalog read before the run's first await and then one every 500 ms, the cancellation arm evaluated ahead of the work arm.",
       "why": "",
       "file": "spec/30-run.md",
-      "line": 329
+      "line": 333
     },
     {
       "id": "run.cancel.engine-keeper",
@@ -7817,7 +7839,7 @@
       "statement": "One keeper per engine renews every registered execution's owner lease and feeds its token, sleeping until the earliest deadline; opening an execution registers it, and close or drop deregisters it.",
       "why": "A-run",
       "file": "spec/30-run.md",
-      "line": 330,
+      "line": 334,
       "scenarios": [
         "WHEN 20 executions are open on one engine, THEN one keeper thread renews all 20 owner leases, and it exits once the last one closes or drops."
       ]
@@ -7831,7 +7853,7 @@
       "statement": "A keeper job that panics warns and leaves the keeper running: every other registration keeps its cadence, the panicking one retries at its next deadline, and dropping it returns.",
       "why": "because the keeper is shared, so one adapter's panic that ended its thread lapses every open execution's lease under a live run",
       "file": "spec/30-run.md",
-      "line": 332
+      "line": 336
     },
     {
       "id": "run.cancel.land-path-uncut",
@@ -7842,7 +7864,7 @@
       "statement": "The land path carries no stop check; a run whose bytes are home finishes landing and records the stop it did not fulfill.",
       "why": "",
       "file": "spec/30-run.md",
-      "line": 334
+      "line": 338
     },
     {
       "id": "run.cancel.abandoned-work",
@@ -7853,7 +7875,7 @@
       "statement": "Abandoned work surfaces as the `Canceled` tag through the ordinary failure path, which settles the request ledger, closes the record and leaves the position alone.",
       "why": "A-run",
       "file": "spec/30-run.md",
-      "line": 335
+      "line": 339
     },
     {
       "id": "run.cancel.child-reaped",
@@ -7864,7 +7886,7 @@
       "statement": "A stop signals a running subprocess chain's process group, and the record is written `canceled` only after the group is reaped.",
       "why": "because a record reading canceled while a child still runs misstates what the machine is doing",
       "file": "spec/30-run.md",
-      "line": 337
+      "line": 341
     },
     {
       "id": "run.cancel.storage-blip",
@@ -7875,7 +7897,7 @@
       "statement": "A failed poll read warns and keeps polling.",
       "why": "",
       "file": "spec/30-run.md",
-      "line": 339
+      "line": 343
     },
     {
       "id": "run.cancel.not-in-flight",
@@ -7886,7 +7908,7 @@
       "statement": "Only a `pending`, `running` or `waiting` row accepts a mark; a stop matching none raises `CancelTargetNotInFlight`, answering `409` over HTTP and exiting non-zero at the terminal.",
       "why": "A-run",
       "file": "spec/30-run.md",
-      "line": 340
+      "line": 344
     },
     {
       "id": "run.cancel.re-mark",
@@ -7897,7 +7919,7 @@
       "statement": "Marking an already-marked row overwrites it with the newer request.",
       "why": "",
       "file": "spec/30-run.md",
-      "line": 342
+      "line": 346
     },
     {
       "id": "run.cancel.distinct-terminal-status",
@@ -7908,7 +7930,7 @@
       "statement": "`canceled` is a terminal status apart from `failed`, and upstream health observations skip it.",
       "why": "A-run",
       "file": "spec/30-run.md",
-      "line": 343
+      "line": 347
     },
     {
       "id": "run.cancel.resumable-remains",
@@ -7919,7 +7941,7 @@
       "statement": "A stopped run's recorded pull keeps its owner and replays next attempt; a stopped pull that recorded nothing releases it. A stopped chunk returns to pending, its attempt count unchanged. A stop advances no position.",
       "why": "",
       "file": "spec/30-run.md",
-      "line": 345
+      "line": 349
     },
     {
       "id": "run.cancel.authority-from-the-record",
@@ -7930,7 +7952,7 @@
       "statement": "A stop authorizes against the pipeline read off the run record, never off the request.",
       "why": "",
       "file": "spec/30-run.md",
-      "line": 346
+      "line": 350
     },
     {
       "id": "run.record.reserved-table",
@@ -7941,7 +7963,7 @@
       "statement": "The durable run record is a reserved store table holding two append-only rows per run, one at plan and one at commit; the latest row per run and phase wins. The local catalog is a cache in front of it.",
       "why": "",
       "file": "spec/30-run.md",
-      "line": 383
+      "line": 387
     },
     {
       "id": "run.record.columns",
@@ -7952,7 +7974,7 @@
       "statement": "A run row carries run id, pipeline id, site id, status, owner, start and end instants, row and byte counts, error kind and message, connector id, version and hash, trace id and phase.",
       "why": "",
       "file": "spec/30-run.md",
-      "line": 384
+      "line": 388
     },
     {
       "id": "run.record.status-set",
@@ -7963,7 +7985,7 @@
       "statement": "A run status is `pending`, `running`, `waiting`, `success`, `partial_failure`, `failed` or `canceled`, spelled identically on the record and the wire snapshot; every surface classifying a run covers all seven.",
       "why": "because two vocabularies for one lifecycle leave a suspended or partly failed run without a reading",
       "file": "spec/30-run.md",
-      "line": 385
+      "line": 389
     },
     {
       "id": "run.record.row-at-open",
@@ -7974,7 +7996,7 @@
       "statement": "A row is written at run open, before the first pull, so a zero-row `success`, a `failed` row carrying its error kind, and no row at all read apart.",
       "why": "",
       "file": "spec/30-run.md",
-      "line": 387
+      "line": 391
     },
     {
       "id": "run.record.time-travel",
@@ -7985,7 +8007,7 @@
       "statement": "Run history inherits the store's transaction-time bound, so one as-of selector rewinds it with every other table.",
       "why": "",
       "file": "spec/30-run.md",
-      "line": 388
+      "line": 392
     },
     {
       "id": "run.record.owner-lease",
@@ -7996,7 +8018,7 @@
       "statement": "A `running` or `waiting` row carries an owner of process id, boot id and a lease expiry, renewed every 10 s with a 30 s time-to-live.",
       "why": "because a second process sharing the catalog needs a liveness signal to tell a live run from an orphan",
       "file": "spec/30-run.md",
-      "line": 389
+      "line": 393
     },
     {
       "id": "run.record.orphan-reap",
@@ -8007,7 +8029,7 @@
       "statement": "Startup marks `partial_failure` only a non-terminal row whose owner lease has expired; a row held by a live process is left alone.",
       "why": "",
       "file": "spec/30-run.md",
-      "line": 391
+      "line": 395
     },
     {
       "id": "run.record.writing-site",
@@ -8018,7 +8040,7 @@
       "statement": "The writing site is an engine-injected provenance column beside the ingestion stamp and run id; a row written without one reads null and renders unattributed.",
       "why": "",
       "file": "spec/30-run.md",
-      "line": 392
+      "line": 396
     },
     {
       "id": "run.record.site-id-length",
@@ -8029,7 +8051,7 @@
       "statement": "A site id matches letters, digits, dot, underscore and hyphen, from 1 chars to 64 chars.",
       "why": "because it is interpolated into run directories and request-ledger filenames",
       "file": "spec/30-run.md",
-      "line": 393
+      "line": 397
     },
     {
       "id": "run.record.site-id-unresolved",
@@ -8040,7 +8062,7 @@
       "statement": "A site id comes from the manifest's `site_id`, or the variable its `site_id_env` names, and a run's `--site-id` or `--site-id-env` replaces that declaration; no declaration, both keys in one place, or an unset variable raises `SiteIdUnresolved` at startup.",
       "why": "P3",
       "file": "spec/30-run.md",
-      "line": 395
+      "line": 399
     },
     {
       "id": "run.record.history-window",
@@ -8051,7 +8073,7 @@
       "statement": "History is read through a window, an inclusive start-instant lower bound plus a row ceiling, both applied in the storage adapter's `WHERE` clause, newest first.",
       "why": "",
       "file": "spec/30-run.md",
-      "line": 397
+      "line": 401
     },
     {
       "id": "run.record.describe-window",
@@ -8062,7 +8084,7 @@
       "statement": "The describe surface answers with 5 rows by default and clamps a caller's ceiling at 500 rows.",
       "why": "",
       "file": "spec/30-run.md",
-      "line": 398
+      "line": 402
     },
     {
       "id": "run.record.bound-spelling",
@@ -8073,7 +8095,7 @@
       "statement": "A window lower bound is `YYYY-MM-DD` or a UTC RFC3339 instant ending `Z`; any other spelling raises `HistoryBoundSpelling` at every caller-facing surface.",
       "why": "because a bound read under a guessed zone silently moves the window",
       "file": "spec/30-run.md",
-      "line": 399
+      "line": 403
     },
     {
       "id": "run.record.truncation-flag",
@@ -8084,7 +8106,7 @@
       "statement": "A history response echoes its window and flags truncation when the pipeline recorded more runs inside it than the ceiling returned.",
       "why": "",
       "file": "spec/30-run.md",
-      "line": 401
+      "line": 405
     },
     {
       "id": "run.record.empty-window",
@@ -8095,7 +8117,7 @@
       "statement": "An empty window answers `[]` and raises nothing.",
       "why": "",
       "file": "spec/30-run.md",
-      "line": 402
+      "line": 406
     },
     {
       "id": "run.record.history-export",
@@ -8106,7 +8128,7 @@
       "statement": "History leaves the machine as a process listing and an NDJSON export over one run projection; the export's first line carries store, window, count and truncation flag, then one run per line. It resolves no bucket.",
       "why": "",
       "file": "spec/30-run.md",
-      "line": 403
+      "line": 407
     },
     {
       "id": "run.record.export-ceiling",
@@ -8117,7 +8139,7 @@
       "statement": "The export answers with 500 rows by default and clamps at 5000 rows, each pipeline's window taking the full ceiling before the merged result is clipped once.",
       "why": "",
       "file": "spec/30-run.md",
-      "line": 404
+      "line": 408
     },
     {
       "id": "run.record.error-cap",
@@ -8128,7 +8150,7 @@
       "statement": "A recorded error is masked over credential-shaped spans and capped at 2 KiB with an ellipsis marker, on the one projection every surface serves.",
       "why": "",
       "file": "spec/30-run.md",
-      "line": 405
+      "line": 409
     },
     {
       "id": "run.record.failure-publishes",
@@ -8139,7 +8161,7 @@
       "statement": "The bucket push runs on the failure arm as on the success arm, for every failure past run open.",
       "why": "",
       "file": "spec/30-run.md",
-      "line": 406
+      "line": 410
     },
     {
       "id": "run.record.per-table-accounting",
@@ -8150,7 +8172,7 @@
       "statement": "A table failing inside a multi-table fire leaves one row with its error kind, a step-failure and a run-failure event, and a position where the next run resumes, under either `on_table_error` setting.",
       "why": "",
       "file": "spec/30-run.md",
-      "line": 407
+      "line": 411
     },
     {
       "id": "run.record.counts-at-destination",
@@ -8161,7 +8183,7 @@
       "statement": "Row and byte counts are measured at the destination, not at the source.",
       "why": "",
       "file": "spec/30-run.md",
-      "line": 408
+      "line": 412
     },
     {
       "id": "run.record.skipped-count",
@@ -8172,7 +8194,7 @@
       "statement": "A pull's optional `skipped` field counts inputs the source declined to land whole; the run row sums it over the run's pulls, replayed pulls included, beside the destination counts.",
       "why": "because a skipped input raises no error, and a count on the record surfaces it without reading the landed rows",
       "file": "spec/30-run.md",
-      "line": 409
+      "line": 413
     },
     {
       "id": "run.record.input-bounds",
@@ -8183,7 +8205,7 @@
       "statement": "A store-driven run's row carries its input: the resolved `as_of`, the snapshot id per table and the input row count.",
       "why": "",
       "file": "spec/30-run.md",
-      "line": 411
+      "line": 415
     },
     {
       "id": "run.record.schema-diff-home",
@@ -8194,7 +8216,7 @@
       "statement": "A table's run manifest holds its committed downgrade events with its parts and cursor; run history reads them under that run id.",
       "why": "A-run",
       "file": "spec/30-run.md",
-      "line": 412,
+      "line": 416,
       "scenarios": [
         "WHEN a nested column downgrades and its table commits, THEN run history and that table's run manifest carry the same event; a failed stage carries none."
       ]
@@ -8208,7 +8230,7 @@
       "statement": "Each downgrade event names the table, column path, source type, landed type and reason; a stage that does not commit contributes none.",
       "why": "A-run",
       "file": "spec/30-run.md",
-      "line": 414
+      "line": 418
     },
     {
       "id": "run.project.best-effort",
@@ -8219,7 +8241,7 @@
       "statement": "Live run state is a best-effort projection of events the runner emits after durable state changes; execution never reads it.",
       "why": "",
       "file": "spec/30-run.md",
-      "line": 427
+      "line": 431
     },
     {
       "id": "run.project.wire-snapshot",
@@ -8230,7 +8252,7 @@
       "statement": "The wire snapshot carries run id, workflow id, a status from {{run.record.status-set}}, an ordered step list, an application metadata map, optional start and end instants, an optional tagged error and a version. Every deploy target emits it identically.",
       "why": "",
       "file": "spec/30-run.md",
-      "line": 428
+      "line": 432
     },
     {
       "id": "run.project.step-view",
@@ -8241,7 +8263,7 @@
       "statement": "A step view carries its label, a status of `pending`, `running`, `completed`, `failed` or `retrying`, its attempt count, optional instants, an optional output reference with byte count, and an optional tagged failure.",
       "why": "",
       "file": "spec/30-run.md",
-      "line": 429
+      "line": 433
     },
     {
       "id": "run.project.stopped-step",
@@ -8252,7 +8274,7 @@
       "statement": "A stopped run reports its executing step `failed` with the `Canceled` tag and leaves the run-level error unset.",
       "why": "",
       "file": "spec/30-run.md",
-      "line": 430
+      "line": 434
     },
     {
       "id": "run.project.emission-never-blocks",
@@ -8263,7 +8285,7 @@
       "statement": "Progress emission is no journal step: events reach an in-process observer over a bounded channel that drops when full and never blocks the runner.",
       "why": "",
       "file": "spec/30-run.md",
-      "line": 431
+      "line": 435
     },
     {
       "id": "run.project.terminal-slot",
@@ -8274,7 +8296,7 @@
       "statement": "A terminal transition bypasses the lossy channel through a per-run slot that is never dropped; a projection reading non-terminal behind a terminal run record reconciles from the record.",
       "why": "because a dropped terminal event otherwise leaves a finished run reading running forever",
       "file": "spec/30-run.md",
-      "line": 432
+      "line": 436
     },
     {
       "id": "run.project.coalescing",
@@ -8285,7 +8307,7 @@
       "statement": "Snapshot broadcasts coalesce to at most one per 100 ms, keeping only the latest; a terminal transition flushes immediately. The clock is injected.",
       "why": "",
       "file": "spec/30-run.md",
-      "line": 434
+      "line": 438
     },
     {
       "id": "run.project.metadata-too-large",
@@ -8296,7 +8318,7 @@
       "statement": "A metadata write whose serialized size exceeds 16384 B raises `RunMetadataTooLarge` naming size and bound, and the snapshot stands unchanged.",
       "why": "because a silently clipped map reads as the complete metadata",
       "file": "spec/30-run.md",
-      "line": 435
+      "line": 439
     },
     {
       "id": "run.project.version",
@@ -8307,7 +8329,7 @@
       "statement": "The snapshot version is `(epoch, counter)`, the epoch being the hub's start instant, compared lexicographically; a client discards any delta at or below the highest version it holds.",
       "why": "because a bare counter restarts at zero with the process and freezes every client's view",
       "file": "spec/30-run.md",
-      "line": 437
+      "line": 441
     },
     {
       "id": "run.project.reducer-is-total",
@@ -8318,7 +8340,7 @@
       "statement": "The reducer is total: nothing overwrites a terminal step or run status, a new step label appends, an existing one merges field-wise, and a stale delta is a no-op.",
       "why": "",
       "file": "spec/30-run.md",
-      "line": 439
+      "line": 443
     },
     {
       "id": "run.project.outputs-by-reference",
@@ -8329,7 +8351,7 @@
       "statement": "A step output appears as a post-redaction reference and a byte count, never inline; fetching the payload is a separately authorized request.",
       "why": "",
       "file": "spec/30-run.md",
-      "line": 440
+      "line": 444
     },
     {
       "id": "run.project.connect",
@@ -8340,7 +8362,7 @@
       "statement": "A subscriber receives the folded snapshot and its update receiver under one lock, missing and duplicating no update.",
       "why": "",
       "file": "spec/30-run.md",
-      "line": 441
+      "line": 445
     },
     {
       "id": "run.project.broadcast-ring",
@@ -8351,7 +8373,7 @@
       "statement": "The per-run broadcast holds 256 entries; a subscriber that overruns it resynchronizes to the latest snapshot.",
       "why": "",
       "file": "spec/30-run.md",
-      "line": 442
+      "line": 446
     },
     {
       "id": "run.project.unauthenticated-upgrade",
@@ -8362,7 +8384,7 @@
       "statement": "The run-stream socket authenticates on the HTTP request before the upgrade; a missing or invalid credential raises `RunStreamUnauthorized` with `401`, and an unseen run answers `404`.",
       "why": "A-read",
       "file": "spec/30-run.md",
-      "line": 443
+      "line": 447
     },
     {
       "id": "run.project.read-only-socket",
@@ -8373,7 +8395,7 @@
       "statement": "A subscription is read-only; a stop travels as an authenticated route.",
       "why": "",
       "file": "spec/30-run.md",
-      "line": 445
+      "line": 449
     },
     {
       "id": "run.project.restart-discards",
@@ -8384,7 +8406,7 @@
       "statement": "A restart discards in-memory snapshots; a subscriber recovers history from the durable record.",
       "why": "",
       "file": "spec/30-run.md",
-      "line": 446
+      "line": 450
     },
     {
       "id": "run.project.delegated-progress",
@@ -8395,7 +8417,7 @@
       "statement": "A heavy step delegated to another host reports progress by posting to the awakeable callback route, and the orchestrating run folds it into its own snapshot.",
       "why": "",
       "file": "spec/30-run.md",
-      "line": 447
+      "line": 451
     },
     {
       "id": "run.declare.pipeline-spec",
@@ -17010,7 +17032,7 @@
       "operation": "redact",
       "subject": "before-the-record",
       "kind": "behavior",
-      "statement": "A removed value is absent from the run path's durable record of the step; {{run.journal.redacting-source}} governs a source journaled verbatim.",
+      "statement": "A canonical source writer shapes, normalizes and removes values before recording an opaque admitted payload; neither its inline record nor its blob contains the removed source value.",
       "why": "A-authority",
       "file": "spec/51-enforcement.md",
       "line": 78
@@ -17021,7 +17043,7 @@
       "operation": "redact",
       "subject": "refetch",
       "kind": "behavior",
-      "statement": "Re-running a pipeline over a table under removal rules reads the source again.",
+      "statement": "A fresh pipeline execution over a table under removal rules reads the source again.",
       "why": "A-authority",
       "file": "spec/51-enforcement.md",
       "line": 80
@@ -17060,6 +17082,193 @@
       "line": 86
     },
     {
+      "id": "authority.redact.pattern-bytes",
+      "contract": "authority",
+      "operation": "redact",
+      "subject": "pattern-bytes",
+      "kind": "limit",
+      "statement": "One removal pattern carries at most 4 KiB of source text.",
+      "why": "because pattern compilation cost must remain bounded before a writer starts",
+      "file": "spec/51-enforcement.md",
+      "line": 88
+    },
+    {
+      "id": "authority.redact.compiled-pattern-size",
+      "contract": "authority",
+      "operation": "redact",
+      "subject": "compiled-pattern-size",
+      "kind": "limit",
+      "statement": "Each Thompson NFA compiled for one removal pattern occupies at most 1 MiB.",
+      "why": "because expanded repetitions must not allocate unbounded matcher state",
+      "file": "spec/51-enforcement.md",
+      "line": 90
+    },
+    {
+      "id": "authority.redact.match-work",
+      "contract": "authority",
+      "operation": "redact",
+      "subject": "match-work",
+      "kind": "limit",
+      "statement": "Pattern removal over one value takes forward automaton steps of at most 16 times its byte length.",
+      "why": "because a bounded write refuses an adversarial value rather than leave a matched tail",
+      "file": "spec/51-enforcement.md",
+      "line": 92
+    },
+    {
+      "id": "authority.redact.pattern-refusal",
+      "contract": "authority",
+      "operation": "redact",
+      "subject": "pattern-refusal",
+      "kind": "refusal",
+      "statement": "Unsupported syntax, Unicode word boundaries, empty matches or a pattern past {{authority.redact.pattern-bytes}} or {{authority.redact.compiled-pattern-size}} raises `EnforceRedactionInvalid` at declaration; a value past {{authority.redact.match-work}} raises it before writing.",
+      "why": "because a failed matcher cannot silently leave a declared sensitive value intact",
+      "file": "spec/51-enforcement.md",
+      "line": 94
+    },
+    {
+      "id": "authority.redact.in-value",
+      "contract": "authority",
+      "operation": "redact",
+      "subject": "in-value",
+      "kind": "behavior",
+      "statement": "Pattern removal rewrites leftmost-first non-overlapping UTF-8 spans; whole-value removal rewrites one cell. JSON paths select object keys, array indices or every array item; unselected values remain unchanged.",
+      "why": "A-authority",
+      "file": "spec/51-enforcement.md",
+      "line": 96
+    },
+    {
+      "id": "authority.redact.every-land-entry",
+      "contract": "authority",
+      "operation": "redact",
+      "subject": "every-land-entry",
+      "kind": "behavior",
+      "statement": "A canonical project declaration binds direct and staged writers even when their callers omit its rules.",
+      "why": "A-authority",
+      "file": "spec/51-enforcement.md",
+      "line": 98
+    },
+    {
+      "id": "authority.redact.combined-authority",
+      "contract": "authority",
+      "operation": "redact",
+      "subject": "combined-authority",
+      "kind": "behavior",
+      "statement": "A destination's ordered canonical rule union obeys {{authority.redact.rules-per-pipeline}}; conflicting declared types, classes or policies and duplicate rules refuse before writing parts.",
+      "why": "because an additional declaration cannot replace an earlier rule or its type and class authority",
+      "file": "spec/51-enforcement.md",
+      "line": 100
+    },
+    {
+      "id": "authority.redact.normalized-authority",
+      "contract": "authority",
+      "operation": "redact",
+      "subject": "normalized-authority",
+      "kind": "behavior",
+      "statement": "Projects declaring protected relational normalization require canonical table bindings for ordinary writes; an undeclared destination enters through a declared root's complete normalization lineage or refuses before durable bytes.",
+      "why": "because a child name cannot prove which source column its values descend from",
+      "file": "spec/51-enforcement.md",
+      "line": 102
+    },
+    {
+      "id": "authority.redact.rewritten-identities",
+      "contract": "authority",
+      "operation": "redact",
+      "subject": "rewritten-identities",
+      "kind": "behavior",
+      "statement": "Relational parent and child identities derive from rewritten source values; removed values contribute no retained identity digest.",
+      "why": "A-authority",
+      "file": "spec/51-enforcement.md",
+      "line": 104
+    },
+    {
+      "id": "authority.redact.child-selector-lineage",
+      "contract": "authority",
+      "operation": "redact",
+      "subject": "child-selector-lineage",
+      "kind": "behavior",
+      "statement": "A normalized child mask selecting a sibling class requires typed sibling-row lineage; a group lacking that lineage refuses before writing any part.",
+      "why": "because a source-row index cannot distinguish sibling values from different child rows",
+      "file": "spec/51-enforcement.md",
+      "line": 106
+    },
+    {
+      "id": "authority.redact.pinned-plan",
+      "contract": "authority",
+      "operation": "redact",
+      "subject": "pinned-plan",
+      "kind": "behavior",
+      "statement": "A source plan's explicit removal list equals its complete canonical destination rules; an unbound or mismatched list refuses before source execution. Canonical removal still binds an omitted list.",
+      "why": "because a content-hashed plan cannot promise rules that its writer ignores",
+      "file": "spec/51-enforcement.md",
+      "line": 108
+    },
+    {
+      "id": "authority.redact.canonical-journal",
+      "contract": "authority",
+      "operation": "redact",
+      "subject": "canonical-journal",
+      "kind": "behavior",
+      "statement": "Canonical writer rules require {{authority.redact.before-the-record}} even when a caller's source plan omits its removal list; {{run.journal.redacting-source}} governs absent admission.",
+      "why": "because caller omission cannot weaken a durable declaration's recording boundary",
+      "file": "spec/51-enforcement.md",
+      "line": 110
+    },
+    {
+      "id": "authority.redact.relational-journal",
+      "contract": "authority",
+      "operation": "redact",
+      "subject": "relational-journal",
+      "kind": "behavior",
+      "statement": "A protected relational source records its concrete rewritten root and child group, preserving declared root types, child lineage and {{authority.redact.rewritten-identities}} through {{run.journal.prepared-replay}}.",
+      "why": "A-authority",
+      "file": "spec/51-enforcement.md",
+      "line": 112
+    },
+    {
+      "id": "authority.redact.prepared-payload",
+      "contract": "authority",
+      "operation": "redact",
+      "subject": "prepared-payload",
+      "kind": "behavior",
+      "statement": "A protected source cannot supply an admitted recording envelope; modified rows, types, destination or normalization fail canonical payload admission before staged parts.",
+      "why": "because connector-controlled bytes cannot claim a writer's recording authority",
+      "file": "spec/51-enforcement.md",
+      "line": 114
+    },
+    {
+      "id": "authority.redact.prepared-continuation",
+      "contract": "authority",
+      "operation": "redact",
+      "subject": "prepared-continuation",
+      "kind": "behavior",
+      "statement": "Protected source continuations refuse before recording unless absent, exact terminal `{ next: null }` without more pages, or text unchanged by every canonical pattern; any canonical whole-value or JSON-path rule refuses text continuations.",
+      "why": "because a source-controlled continuation can otherwise retain a removed value beside its rewritten rows",
+      "file": "spec/51-enforcement.md",
+      "line": 116
+    },
+    {
+      "id": "authority.redact.prepared-clock",
+      "contract": "authority",
+      "operation": "redact",
+      "subject": "prepared-clock",
+      "kind": "behavior",
+      "statement": "A protected monotonic source proves complete clock-output lineage before execution opens; lineage reaching removed columns, including JSON-path targets, refuses. Protected relational clocks refuse without complete descendant lineage; independent clocks retain {{run.advance.watermark-shape}}.",
+      "why": "because progress bytes cannot retain a value that its row removes",
+      "file": "spec/51-enforcement.md",
+      "line": 118
+    },
+    {
+      "id": "authority.redact.recorded-body",
+      "contract": "authority",
+      "operation": "redact",
+      "subject": "recorded-body",
+      "kind": "behavior",
+      "statement": "A store-driven job targeting canonical removal rules refuses before body execution without typed effect-result removal lineage; body calls record results before output landing.",
+      "why": "because later row rewriting cannot remove earlier recorded effect results",
+      "file": "spec/51-enforcement.md",
+      "line": 120
+    },
+    {
       "id": "authority.compose.three-layers",
       "contract": "authority",
       "operation": "compose",
@@ -17068,7 +17277,7 @@
       "statement": "The reference monitor is three layers: write-time removal, the redistribution bound at push, and row-and-column restriction at query time. A request is authorized at each.",
       "why": "P5",
       "file": "spec/51-enforcement.md",
-      "line": 93
+      "line": 127
     },
     {
       "id": "authority.compose.complete-mediation",
@@ -17079,7 +17288,7 @@
       "statement": "Every read of stored rows traverses the layers. A path reaching stored rows outside a registered relation is a defect, never a documented limitation.",
       "why": "P5",
       "file": "spec/51-enforcement.md",
-      "line": 95
+      "line": 129
     },
     {
       "id": "authority.compose.protection-is-a-rewrite",
@@ -17090,7 +17299,7 @@
       "statement": "Protection is a rewrite in the data plane: predicates compiled into the statement, rewritten projections, a per-credential filter at the sync edge, zone floors. Admission decides entry alone.",
       "why": "P5",
       "file": "spec/51-enforcement.md",
-      "line": 97
+      "line": 131
     },
     {
       "id": "authority.compose.registered-relation",
@@ -17101,7 +17310,7 @@
       "statement": "The compiler emits one relation per granted table, bound to the table's bare name for the session's lifetime. Every retrieval arm reads through it.",
       "why": "P5",
       "file": "spec/51-enforcement.md",
-      "line": 99
+      "line": 133
     },
     {
       "id": "authority.compose.relation-order",
@@ -17112,7 +17321,7 @@
       "statement": "A registered relation applies, in order: mirrored permission semi-join, tenant equality, credential predicate, table policy, project default, table zone, then the column projection carrying masks and zone nulls.",
       "why": "P5",
       "file": "spec/51-enforcement.md",
-      "line": 101
+      "line": 135
     },
     {
       "id": "authority.compose.conjunctive-narrowing",
@@ -17123,7 +17332,7 @@
       "statement": "Steps conjoin: a surviving row survives each step alone, and appending a step removes rows and adds none.",
       "why": "P5",
       "file": "spec/51-enforcement.md",
-      "line": 103
+      "line": 137
     },
     {
       "id": "authority.compose.before-the-cut",
@@ -17134,7 +17343,7 @@
       "statement": "Every step, zone exclusion included, completes before a ranked result is cut to its requested size; visible positions carry no trace of a withheld row.",
       "why": "P5",
       "file": "spec/51-enforcement.md",
-      "line": 105
+      "line": 139
     },
     {
       "id": "authority.compose.vector-arm",
@@ -17145,7 +17354,7 @@
       "statement": "A sidecar vector index returns candidate identifiers, which re-join through the registered relation before contributing to a result.",
       "why": "P5",
       "file": "spec/51-enforcement.md",
-      "line": 107
+      "line": 141
     },
     {
       "id": "authority.compose.replica-again",
@@ -17156,7 +17365,7 @@
       "statement": "A caller holding a filtered replica is constrained again per query, the replica's bytes unchanged.",
       "why": "P5",
       "file": "spec/51-enforcement.md",
-      "line": 109
+      "line": 143
     },
     {
       "id": "authority.compose.session-build",
@@ -17167,7 +17376,7 @@
       "statement": "A session builds its relations at admission and rebuilds them when a revocation or a manifest change invalidates a grant it holds.",
       "why": "P5",
       "file": "spec/51-enforcement.md",
-      "line": 111
+      "line": 145
     },
     {
       "id": "authority.compose.relations-per-session",
@@ -17178,7 +17387,7 @@
       "statement": "A session carries at most 1024 entries in its relation set.",
       "why": "because a larger grant set is a mis-scoped credential",
       "file": "spec/51-enforcement.md",
-      "line": 113
+      "line": 147
     },
     {
       "id": "authority.filter-rows.grammar",
@@ -17189,7 +17398,7 @@
       "statement": "A row predicate is the typed boolean subset of SQL in Shapes: column references, comparisons, conjunction, disjunction, negation, membership lists, pattern matching, null tests and declared-safe scalar functions.",
       "why": "P1",
       "file": "spec/51-enforcement.md",
-      "line": 120
+      "line": 154
     },
     {
       "id": "authority.filter-rows.outside-grammar",
@@ -17200,7 +17409,7 @@
       "statement": "Predicates parse at manifest load; a node outside the grammar raises `EnforcePredicateOutsideGrammar`, naming the node.",
       "why": "P1",
       "file": "spec/51-enforcement.md",
-      "line": 122
+      "line": 156
     },
     {
       "id": "authority.filter-rows.subject-relation",
@@ -17211,7 +17420,7 @@
       "statement": "Subject claims reach a predicate as prepared-statement parameters through a session-scoped subject relation. A claim value carrying SQL syntax occupies a parameter slot and reaches no parser.",
       "why": "P1",
       "file": "spec/51-enforcement.md",
-      "line": 124
+      "line": 158
     },
     {
       "id": "authority.filter-rows.exception",
@@ -17222,7 +17431,7 @@
       "statement": "An exception condition is a boolean expression over subject fields in the same grammar, bound the same way.",
       "why": "P1",
       "file": "spec/51-enforcement.md",
-      "line": 126
+      "line": 160
     },
     {
       "id": "authority.filter-rows.override",
@@ -17233,7 +17442,7 @@
       "statement": "A table-policy predicate overriding for a matching subject condition replaces that one predicate; it reaches neither the tenant equality, the mirrored join nor the credential predicate.",
       "why": "P5",
       "file": "spec/51-enforcement.md",
-      "line": 128
+      "line": 162
     },
     {
       "id": "authority.filter-rows.default-deny",
@@ -17244,7 +17453,7 @@
       "statement": "A table reached with no matching grant yields no rows.",
       "why": "P5",
       "file": "spec/51-enforcement.md",
-      "line": 130
+      "line": 164
     },
     {
       "id": "authority.filter-rows.tenant-equality",
@@ -17255,7 +17464,7 @@
       "statement": "A tenant-scoped grant compiles a bound-parameter byte equality on the tenant column, conjoined by the engine; no consumer statement carries it.",
       "why": "P5",
       "file": "spec/51-enforcement.md",
-      "line": 132
+      "line": 166
     },
     {
       "id": "authority.filter-rows.predicate-size",
@@ -17266,7 +17475,7 @@
       "statement": "A declared predicate holds at most 4 KiB of source text.",
       "why": "because a longer predicate is unreviewable policy",
       "file": "spec/51-enforcement.md",
-      "line": 134
+      "line": 168
     },
     {
       "id": "authority.filter-rows.membership-list",
@@ -17277,7 +17486,7 @@
       "statement": "A membership list inside a predicate holds at most 512 entries.",
       "why": "because a longer list belongs in a mirrored table",
       "file": "spec/51-enforcement.md",
-      "line": 136
+      "line": 170
     },
     {
       "id": "authority.mask.column-policy",
@@ -17288,7 +17497,7 @@
       "statement": "A column declares `class` and `strategy`, optionally `combine`, `crowd` and `summarize_only`, under `[pipeline.tables.policy.columns]`. An undeclared column carries no class.",
       "why": "A-authority",
       "file": "spec/51-enforcement.md",
-      "line": 143
+      "line": 177
     },
     {
       "id": "authority.mask.class-registry",
@@ -17299,7 +17508,51 @@
       "statement": "`class` takes a value from the class registry in Shapes. `phi` marks protected health data; `ssn`, `phone`, `email` and `mrn` are exhaustible, each carrying a registered domain size.",
       "why": "A-authority",
       "file": "spec/51-enforcement.md",
-      "line": 145
+      "line": 179
+    },
+    {
+      "id": "authority.mask.row-class",
+      "contract": "authority",
+      "operation": "mask",
+      "subject": "row-class",
+      "kind": "behavior",
+      "statement": "A column declares `class = { from = ... }`, a `strategies` map naming registered classes, and `fallback = \"drop\"`; each row's sibling text selects its strategy, independently of other rows.",
+      "why": "A-authority",
+      "file": "spec/51-enforcement.md",
+      "line": 181
+    },
+    {
+      "id": "authority.mask.row-class-selector",
+      "contract": "authority",
+      "operation": "mask",
+      "subject": "row-class-selector",
+      "kind": "behavior",
+      "statement": "`from_column` aliases `from` in {{authority.mask.row-class}}; declaring both names or any unknown selector field refuses before reading rows.",
+      "why": "because ambiguous selector declarations cannot choose which class controls a row",
+      "file": "spec/51-enforcement.md",
+      "line": 183
+    },
+    {
+      "id": "authority.mask.row-class-dependency",
+      "contract": "authority",
+      "operation": "mask",
+      "subject": "row-class-dependency",
+      "kind": "behavior",
+      "statement": "A row-class selector names another Utf8 column in the same table; {{authority.mask.absent-column}} checks its presence, and every mapped strategy retains {{authority.mask.typed-strategy}} and {{authority.mask.digest-alone}}.",
+      "why": "A-authority",
+      "file": "spec/51-enforcement.md",
+      "line": 185
+    },
+    {
+      "id": "authority.mask.row-class-fallback",
+      "contract": "authority",
+      "operation": "mask",
+      "subject": "row-class-fallback",
+      "kind": "behavior",
+      "statement": "Unknown and null row-class values receive strict drop; no unspecified branch yields the original column value.",
+      "why": "because an unrecognized class cannot grant weaker protection than any declared branch",
+      "file": "spec/51-enforcement.md",
+      "line": 187
     },
     {
       "id": "authority.mask.unknown-class",
@@ -17310,7 +17563,7 @@
       "statement": "A `class` outside the registry raises `EnforceUnknownClass` at manifest check.",
       "why": "A-authority",
       "file": "spec/51-enforcement.md",
-      "line": 147
+      "line": 189
     },
     {
       "id": "authority.mask.class-reach",
@@ -17321,7 +17574,7 @@
       "statement": "A column's class reaches write-time removal, query-time masking, zone floors and the protections a release applies to a key it joins on.",
       "why": "A-authority",
       "file": "spec/51-enforcement.md",
-      "line": 149
+      "line": 191
     },
     {
       "id": "authority.mask.strategies",
@@ -17332,7 +17585,7 @@
       "statement": "The strategies are `drop`, `hash` (keyed), `tokenize` (format-preserving), `truncate`, `bucket` and `range`.",
       "why": "A-authority",
       "file": "spec/51-enforcement.md",
-      "line": 151
+      "line": 193
     },
     {
       "id": "authority.mask.drop",
@@ -17343,7 +17596,7 @@
       "statement": "`drop` nulls the cell, or yields an empty string for a string column.",
       "why": "A-authority",
       "file": "spec/51-enforcement.md",
-      "line": 153
+      "line": 195
     },
     {
       "id": "authority.mask.one-value",
@@ -17354,7 +17607,7 @@
       "statement": "A column mask is one value whose primary and combine halves are private; it drives both the write-time and query-time layers, and no consumer applies the primary alone.",
       "why": "A-authority",
       "file": "spec/51-enforcement.md",
-      "line": 155
+      "line": 197
     },
     {
       "id": "authority.mask.digest-alone",
@@ -17365,7 +17618,7 @@
       "statement": "`hash` or `tokenize` standing alone over an exhaustible class raises `EnforceDigestAloneOnExhaustibleClass`.",
       "why": "A-authority",
       "file": "spec/51-enforcement.md",
-      "line": 157
+      "line": 199
     },
     {
       "id": "authority.mask.high-entropy",
@@ -17376,7 +17629,7 @@
       "statement": "A column of random identifiers or opaque tokens carries `hash` with no combine.",
       "why": "A-authority",
       "file": "spec/51-enforcement.md",
-      "line": 159
+      "line": 201
     },
     {
       "id": "authority.mask.combine-generalizes",
@@ -17387,7 +17640,7 @@
       "statement": "A `bucket` or `range` combine behind `hash` or `tokenize` raises `EnforceCombineWithoutGeneralization`; `truncate` is the one combine that generalizes a digest.",
       "why": "A-authority",
       "file": "spec/51-enforcement.md",
-      "line": 161
+      "line": 203
     },
     {
       "id": "authority.mask.hash-width",
@@ -17398,7 +17651,7 @@
       "statement": "`hash` emits 32 chars of hexadecimal.",
       "why": "A-authority",
       "file": "spec/51-enforcement.md",
-      "line": 163
+      "line": 205
     },
     {
       "id": "authority.mask.token-width",
@@ -17409,7 +17662,7 @@
       "statement": "`tokenize` emits 20 chars.",
       "why": "A-authority",
       "file": "spec/51-enforcement.md",
-      "line": 165
+      "line": 207
     },
     {
       "id": "authority.mask.cuts-nothing",
@@ -17420,7 +17673,7 @@
       "statement": "A `truncate` combine at or past its primary's output width raises `EnforceTruncationCutsNothing`.",
       "why": "A-authority",
       "file": "spec/51-enforcement.md",
-      "line": 167
+      "line": 209
     },
     {
       "id": "authority.mask.crowd",
@@ -17431,7 +17684,7 @@
       "statement": "A column's `crowd`, the fewest inputs one masked output covers, is at least 1000 values and defaults to that floor.",
       "why": "A-authority",
       "file": "spec/51-enforcement.md",
-      "line": 169
+      "line": 211
     },
     {
       "id": "authority.mask.truncation-ceiling",
@@ -17442,7 +17695,7 @@
       "statement": "Behind a keyed digest over an exhaustible class, a `truncate` width above floor(log_b(domain ÷ `crowd`)), b being 16 for `hash` and 36 for `tokenize`, with domain from the class registry, raises `EnforceTruncationTooWide`.",
       "why": "A-authority",
       "file": "spec/51-enforcement.md",
-      "line": 171
+      "line": 213
     },
     {
       "id": "authority.mask.pepper",
@@ -17453,7 +17706,7 @@
       "statement": "One environment variable supplies the key for `hash` and `tokenize`, read by both layers as one resolved value.",
       "why": "A-authority",
       "file": "spec/51-enforcement.md",
-      "line": 173
+      "line": 215
     },
     {
       "id": "authority.mask.development-pepper",
@@ -17464,7 +17717,7 @@
       "statement": "Left unset, the pepper resolves to a constant in the source tree and the process emits one signal per run.",
       "why": "A-authority",
       "file": "spec/51-enforcement.md",
-      "line": 175
+      "line": 217
     },
     {
       "id": "authority.mask.pseudonymous",
@@ -17475,7 +17728,7 @@
       "statement": "`hash` output is an HMAC-SHA-256 under the pepper and is pseudonymous; no surface labels a masked value anonymous.",
       "why": "A-authority",
       "file": "spec/51-enforcement.md",
-      "line": 177
+      "line": 219
     },
     {
       "id": "authority.mask.native-digest",
@@ -17486,7 +17739,7 @@
       "statement": "Both layers compute the keyed digest natively; the query layer calls a scalar function holding the pepper in process memory, and a value masked at either layer joins the other.",
       "why": "A-authority",
       "file": "spec/51-enforcement.md",
-      "line": 179
+      "line": 221
     },
     {
       "id": "authority.mask.key-material",
@@ -17497,7 +17750,7 @@
       "statement": "A compiled relation, query plan or session catalog entry carrying pepper-derived key state raises `EnforceKeyMaterialInRelation`.",
       "why": "A-authority",
       "file": "spec/51-enforcement.md",
-      "line": 181
+      "line": 223
     },
     {
       "id": "authority.mask.subject-exception",
@@ -17508,7 +17761,7 @@
       "statement": "A mask carries exceptions, each a subject condition in the row-predicate grammar bound through the subject relation.",
       "why": "P1",
       "file": "spec/51-enforcement.md",
-      "line": 183
+      "line": 225
     },
     {
       "id": "authority.mask.in-place",
@@ -17519,7 +17772,7 @@
       "statement": "The masked projection substitutes named columns where they stand; the caller receives the column set and order the unmasked statement produces, and `*` expands to it.",
       "why": "A-authority",
       "file": "spec/51-enforcement.md",
-      "line": 185
+      "line": 227
     },
     {
       "id": "authority.mask.equality",
@@ -17530,7 +17783,7 @@
       "statement": "An equality filter on a `drop` column matches nothing; on a `hash` column it matches equal digests.",
       "why": "A-authority",
       "file": "spec/51-enforcement.md",
-      "line": 187
+      "line": 229
     },
     {
       "id": "authority.mask.aggregates",
@@ -17541,7 +17794,7 @@
       "statement": "Aggregation reads the masked column.",
       "why": "A-authority",
       "file": "spec/51-enforcement.md",
-      "line": 189
+      "line": 231
     },
     {
       "id": "authority.mask.summarize-only",
@@ -17552,7 +17805,7 @@
       "statement": "`summarize_only` is a flag, not a strategy: the value stays legible to grounding and citation.",
       "why": "A-authority",
       "file": "spec/51-enforcement.md",
-      "line": 191
+      "line": 233
     },
     {
       "id": "authority.mask.verbatim-quote",
@@ -17563,7 +17816,7 @@
       "statement": "One citation releases at most 280 chars of a `summarize_only` value verbatim, on every surface.",
       "why": "A-authority",
       "file": "spec/51-enforcement.md",
-      "line": 193
+      "line": 235
     },
     {
       "id": "authority.mask.typed-strategy",
@@ -17574,7 +17827,7 @@
       "statement": "A binary column masks by `drop` or by `hash` over its bytes, a vector or nested column by `drop` alone over the whole column; another strategy on either raises `EnforceStrategyOutsideType` at manifest load.",
       "why": "A-store",
       "file": "spec/51-enforcement.md",
-      "line": 195
+      "line": 237
     },
     {
       "id": "authority.mask.absent-column",
@@ -17585,7 +17838,7 @@
       "statement": "A mask naming a column the table's schema omits raises `EnforceMaskOnAbsentColumn` at manifest load, refusing the whole manifest.",
       "why": "because a skipped declaration serves reads under a policy its author believed covered a column",
       "file": "spec/51-enforcement.md",
-      "line": 197
+      "line": 239
     },
     {
       "id": "authority.mask.masks-per-table",
@@ -17596,7 +17849,7 @@
       "statement": "A table carries at most 128 entries in its column mask set.",
       "why": "because a table beyond it needs a drop, not a mask per column",
       "file": "spec/51-enforcement.md",
-      "line": 199
+      "line": 241
     },
     {
       "id": "authority.refuse.scope-denied",
@@ -17607,7 +17860,7 @@
       "statement": "A tenant-scoped credential reading another tenant's rows on a granted table raises `EnforceScopeDenied`, as wire code `scope_denied`, HTTP `403` or an in-band tool error, naming the table and both scopes.",
       "why": "P2",
       "file": "spec/51-enforcement.md",
-      "line": 206
+      "line": 248
     },
     {
       "id": "authority.refuse.not-empty",
@@ -17618,7 +17871,7 @@
       "statement": "A scope refusal is a typed error, never an empty result.",
       "why": "P2",
       "file": "spec/51-enforcement.md",
-      "line": 208
+      "line": 250
     },
     {
       "id": "authority.refuse.echo",
@@ -17629,7 +17882,7 @@
       "statement": "The requested scope in a refusal echoes the statement's value, never a stored value.",
       "why": "P2",
       "file": "spec/51-enforcement.md",
-      "line": 210
+      "line": 252
     },
     {
       "id": "authority.refuse.ungranted-table",
@@ -17640,7 +17893,7 @@
       "statement": "A relation the caller holds no grant on, whether or not a table of that name exists, raises `EnforceUnknownRelation` and is absent from listings and descriptions.",
       "why": "P2",
       "file": "spec/51-enforcement.md",
-      "line": 212
+      "line": 254
     },
     {
       "id": "authority.refuse.payload",
@@ -17651,7 +17904,7 @@
       "statement": "A refusal payload carries at most 512 B.",
       "why": "P2",
       "file": "spec/51-enforcement.md",
-      "line": 214
+      "line": 256
     },
     {
       "id": "authority.refuse.scope-guard",
@@ -17662,7 +17915,7 @@
       "statement": "The scope guard walks the engine's parse once, deciding literal equalities and membership lists over the tenant column and bound template parameters destined for it.",
       "why": "P2",
       "file": "spec/51-enforcement.md",
-      "line": 216
+      "line": 258
     },
     {
       "id": "authority.refuse.top-level",
@@ -17673,7 +17926,7 @@
       "statement": "The guard reads top-level conjuncts of a statement whose own FROM names a scoped table.",
       "why": "P2",
       "file": "spec/51-enforcement.md",
-      "line": 218
+      "line": 260
     },
     {
       "id": "authority.refuse.guard-walk",
@@ -17684,7 +17937,7 @@
       "statement": "The guard visits at most 4096 entries of one parse tree.",
       "why": "P2",
       "file": "spec/51-enforcement.md",
-      "line": 220
+      "line": 262
     },
     {
       "id": "authority.refuse.undecidable",
@@ -17695,7 +17948,7 @@
       "statement": "A constraint the guard cannot settle composes as an ordinary conjunct; the engine-applied equality isolates.",
       "why": "P5",
       "file": "spec/51-enforcement.md",
-      "line": 222
+      "line": 264
     },
     {
       "id": "authority.refuse.drifted-scope",
@@ -17706,7 +17959,7 @@
       "statement": "A tenant value matching no partition reads empty, like a tenant that wrote nothing; the read path repairs no transformed scope value.",
       "why": "A-authority",
       "file": "spec/51-enforcement.md",
-      "line": 224
+      "line": 266
     },
     {
       "id": "authority.bound-redistribution.withhold",
@@ -17717,7 +17970,7 @@
       "statement": "A cleared redistribution flag withholds every object of the table at push and omits the table's name from the bucket manifest.",
       "why": "A-authority",
       "file": "spec/51-enforcement.md",
-      "line": 231
+      "line": 273
     },
     {
       "id": "authority.bound-redistribution.before-diff",
@@ -17728,7 +17981,7 @@
       "statement": "The exclusion applies before the object diff is computed.",
       "why": "A-authority",
       "file": "spec/51-enforcement.md",
-      "line": 233
+      "line": 275
     },
     {
       "id": "authority.bound-redistribution.outranks-grants",
@@ -17739,7 +17992,7 @@
       "statement": "The bound holds against a credential granted everything.",
       "why": "A-authority",
       "file": "spec/51-enforcement.md",
-      "line": 235
+      "line": 277
     },
     {
       "id": "authority.bound-redistribution.envelopes",
@@ -17750,7 +18003,7 @@
       "statement": "The bound covers the table's columnar files and each pull's verbatim record.",
       "why": "A-authority",
       "file": "spec/51-enforcement.md",
-      "line": 237
+      "line": 279
     },
     {
       "id": "authority.bound-redistribution.root-allowlist",
@@ -17761,7 +18014,7 @@
       "statement": "While any table is withheld, a root-level object ships only when the allowlist in Shapes names it.",
       "why": "A-authority",
       "file": "spec/51-enforcement.md",
-      "line": 239
+      "line": 281
     },
     {
       "id": "authority.bound-redistribution.root-not-allowlisted",
@@ -17772,7 +18025,7 @@
       "statement": "A root-level object absent from the allowlist raises `EnforceRootObjectNotAllowlisted` at push.",
       "why": "A-authority",
       "file": "spec/51-enforcement.md",
-      "line": 241
+      "line": 283
     },
     {
       "id": "authority.bound-redistribution.left-behind",
@@ -17783,7 +18036,7 @@
       "statement": "Clearing the flag over a table an earlier push uploaded raises `EnforceStaleRedistributedObjects`, naming each object and the remedy, deleting none.",
       "why": "A-authority",
       "file": "spec/51-enforcement.md",
-      "line": 243
+      "line": 285
     },
     {
       "id": "authority.bound-redistribution.manifest-is-an-index",
@@ -17794,7 +18047,7 @@
       "statement": "An object stays fetchable by its key after the manifest stops naming it; a manifest authorizes nothing.",
       "why": "A-authority",
       "file": "spec/51-enforcement.md",
-      "line": 245
+      "line": 287
     },
     {
       "id": "authority.bound-redistribution.report",
@@ -17805,7 +18058,7 @@
       "statement": "A left-behind report names at most 100 files and states the total found.",
       "why": "A-authority",
       "file": "spec/51-enforcement.md",
-      "line": 247
+      "line": 289
     },
     {
       "id": "authority.bound-redistribution.two-checks",
@@ -17816,7 +18069,7 @@
       "statement": "The left-behind check runs before and after the upload loop; the guarantee holds for one bucket under one pushing configuration.",
       "why": "A-authority",
       "file": "spec/51-enforcement.md",
-      "line": 249
+      "line": 291
     },
     {
       "id": "authority.bound-redistribution.edge-filter",
@@ -17827,7 +18080,7 @@
       "statement": "A serving edge in front of the bucket filters a materialized replica by the pulling credential's grants.",
       "why": "A-authority",
       "file": "spec/51-enforcement.md",
-      "line": 251
+      "line": 293
     },
     {
       "id": "authority.place.zone-string",
@@ -17838,7 +18091,7 @@
       "statement": "A zone string parses, after trimming, as `local:device`, `on-prem:<id>`, `private-cloud:<id>` or `public-cloud:<id>`; any other text is undeclared. The identifier is part of the value.",
       "why": "A-authority",
       "file": "spec/51-enforcement.md",
-      "line": 273
+      "line": 315
     },
     {
       "id": "authority.place.allow-set-entry",
@@ -17849,7 +18102,7 @@
       "statement": "An allow-set entry is `*`, `local:device`, `on-prem:*`, `private-cloud:*`, `public-cloud:*`, or a category carrying a concrete identifier.",
       "why": "A-authority",
       "file": "spec/51-enforcement.md",
-      "line": 275
+      "line": 317
     },
     {
       "id": "authority.place.unparsed-pattern",
@@ -17860,7 +18113,7 @@
       "statement": "An allow-set entry matching no entry form raises `EnforceZonePatternUnparsed`, naming the entry.",
       "why": "because an unparsed entry matching nothing hides a policy error; a new zone category updates the grammar first",
       "file": "spec/51-enforcement.md",
-      "line": 277
+      "line": 319
     },
     {
       "id": "authority.place.disjunctive",
@@ -17871,7 +18124,7 @@
       "statement": "A zone is admitted when any entry matches. A bare category matches every identifier in it; an entry carrying an identifier matches that identifier alone.",
       "why": "A-authority",
       "file": "spec/51-enforcement.md",
-      "line": 279
+      "line": 321
     },
     {
       "id": "authority.place.undeclared",
@@ -17882,7 +18135,7 @@
       "statement": "Only `*` admits an undeclared zone.",
       "why": "A-authority",
       "file": "spec/51-enforcement.md",
-      "line": 281
+      "line": 323
     },
     {
       "id": "authority.place.caller-zone",
@@ -17893,7 +18146,7 @@
       "statement": "The calling process declares its zone per request; the store carries none.",
       "why": "A-authority",
       "file": "spec/51-enforcement.md",
-      "line": 283
+      "line": 325
     },
     {
       "id": "authority.place.asserted-zone",
@@ -17904,7 +18157,7 @@
       "statement": "A zone a request asserts stands only where it equals the zone its credential signs; any other assertion raises `EnforceZoneAssertionWidens`, naming both.",
       "why": "because an unsigned argument able to widen placement makes the signed zone decorative",
       "file": "spec/51-enforcement.md",
-      "line": 285
+      "line": 327
     },
     {
       "id": "authority.place.picks-no-model",
@@ -17915,7 +18168,7 @@
       "statement": "Placement selects no model and dispatches no inference; the engine's one invocation point is an operator-configured endpoint capability for synthesis.",
       "why": "A-authority",
       "file": "spec/51-enforcement.md",
-      "line": 287
+      "line": 329
     },
     {
       "id": "authority.place.fail-closed",
@@ -17926,7 +18179,7 @@
       "statement": "A table declaring no zone policy resolves to the fail-closed pair `local:device` and `on-prem:*`, declared and discovered tables alike.",
       "why": "A-authority",
       "file": "spec/51-enforcement.md",
-      "line": 289
+      "line": 331
     },
     {
       "id": "authority.place.permissive-default",
@@ -17937,7 +18190,7 @@
       "statement": "A default resolving an unlabeled table to `*` raises `EnforcePermissiveZoneDefault` where more than one principal owns the store.",
       "why": "A-authority",
       "file": "spec/51-enforcement.md",
-      "line": 291
+      "line": 333
     },
     {
       "id": "authority.place.protected-floor",
@@ -17948,7 +18201,7 @@
       "statement": "A `phi` column or table carries a floor at the fail-closed pair; a wider declared set resolves down to it at serve time unless the override names that class or column.",
       "why": "A-authority",
       "file": "spec/51-enforcement.md",
-      "line": 293
+      "line": 335
     },
     {
       "id": "authority.place.floor-widened",
@@ -17959,7 +18212,7 @@
       "statement": "A manifest widening a protected-class surface past its floor without an override naming that class raises `EnforceProtectedFloorWidened`.",
       "why": "A-authority",
       "file": "spec/51-enforcement.md",
-      "line": 295
+      "line": 337
     },
     {
       "id": "authority.place.removal-with-public-cloud",
@@ -17970,7 +18223,7 @@
       "statement": "A surface declaring write-time removal on a column and an allow-set admitting a public cloud raises `EnforceRemovalWithPublicCloud`.",
       "why": "P1",
       "file": "spec/51-enforcement.md",
-      "line": 297
+      "line": 339
     },
     {
       "id": "authority.place.narrowest-grain",
@@ -17981,7 +18234,7 @@
       "statement": "A column's set narrows its table's; a principal's set narrows both.",
       "why": "A-authority",
       "file": "spec/51-enforcement.md",
-      "line": 299
+      "line": 341
     },
     {
       "id": "authority.place.excluded-row",
@@ -17992,7 +18245,7 @@
       "statement": "Where the table's effective set omits the session's zone, the row leaves the result.",
       "why": "A-authority",
       "file": "spec/51-enforcement.md",
-      "line": 301
+      "line": 343
     },
     {
       "id": "authority.place.excluded-cell",
@@ -18003,7 +18256,7 @@
       "statement": "A cell whose effective set omits the session's zone arrives null, a mask exception notwithstanding.",
       "why": "A-authority",
       "file": "spec/51-enforcement.md",
-      "line": 303
+      "line": 345
     },
     {
       "id": "authority.place.per-principal",
@@ -18014,7 +18267,7 @@
       "statement": "A principal's allow-set pins every row it authors wherever the row lands. A row with no verified author resolves as an undeclared zone.",
       "why": "A-authority",
       "file": "spec/51-enforcement.md",
-      "line": 305
+      "line": 347
     },
     {
       "id": "authority.place.evidence-floor",
@@ -18025,7 +18278,7 @@
       "statement": "A synthesized row declaring a set wider than the intersection of its evidence tables' sets raises `EnforceEvidenceFloorExceeded` and resolves to that intersection.",
       "why": "A-authority",
       "file": "spec/51-enforcement.md",
-      "line": 307
+      "line": 349
     },
     {
       "id": "authority.place.incognito",
@@ -18036,7 +18289,7 @@
       "statement": "Incognito pins the session to the fail-closed pair, the uncredentialed local owner's reads included.",
       "why": "A-authority",
       "file": "spec/51-enforcement.md",
-      "line": 309
+      "line": 351
     },
     {
       "id": "authority.place.incognito-widening",
@@ -18047,7 +18300,7 @@
       "statement": "A session asserting a zone wider than the incognito pin raises `EnforceIncognitoWidening`.",
       "why": "A-authority",
       "file": "spec/51-enforcement.md",
-      "line": 311
+      "line": 353
     },
     {
       "id": "authority.place.team-default",
@@ -18058,7 +18311,7 @@
       "statement": "A project declares a default zone, whether users widen it, and whether incognito is on by default.",
       "why": "A-authority",
       "file": "spec/51-enforcement.md",
-      "line": 313
+      "line": 355
     },
     {
       "id": "authority.place.serve-outcome",
@@ -18069,7 +18322,7 @@
       "statement": "Serving one row yields a drop flag and the list of zone-masked columns.",
       "why": "A-authority",
       "file": "spec/51-enforcement.md",
-      "line": 315
+      "line": 357
     },
     {
       "id": "authority.place.envelope",
@@ -18080,7 +18333,7 @@
       "statement": "A response envelope carries the zone's removals, the asserted zone and the incognito flag in {{read.respond.restriction-block}}, and no removed value.",
       "why": "A-authority",
       "file": "spec/51-enforcement.md",
-      "line": 317
+      "line": 359
     },
     {
       "id": "authority.place.excluded-disclosed",
@@ -18091,7 +18344,7 @@
       "statement": "`rows_dropped` counts the rows the zone step removes from the whole relation, every earlier step applied; the caller's statement, filter and requested size never enter it, and no removed value crosses.",
       "why": "A-read",
       "file": "spec/51-enforcement.md",
-      "line": 319
+      "line": 361
     },
     {
       "id": "authority.place.symbolic-inclusion",
@@ -18102,7 +18355,7 @@
       "statement": "Inclusion against a floor is decided over every constructor and identifier, never by probing sample zones.",
       "why": "A-authority",
       "file": "spec/51-enforcement.md",
-      "line": 321
+      "line": 363
     },
     {
       "id": "authority.place.proxy-boundary",
@@ -18113,7 +18366,7 @@
       "statement": "A proxy replica resolves zones at the proxy boundary.",
       "why": "A-authority",
       "file": "spec/51-enforcement.md",
-      "line": 323
+      "line": 365
     },
     {
       "id": "authority.place.allow-set-entries",
@@ -18124,7 +18377,7 @@
       "statement": "An allow-set holds at most 32 entries.",
       "why": "A-authority",
       "file": "spec/51-enforcement.md",
-      "line": 325
+      "line": 367
     },
     {
       "id": "authority.place.identifier-length",
@@ -18135,7 +18388,7 @@
       "statement": "A zone identifier holds at most 128 chars.",
       "why": "A-authority",
       "file": "spec/51-enforcement.md",
-      "line": 327
+      "line": 369
     },
     {
       "id": "authority.resist.credential-shaped-value",
@@ -18146,7 +18399,7 @@
       "statement": "The write path raises `EnforceCredentialShapedValue` on a value matching a credential shape, before it reaches storage.",
       "why": "A-read",
       "file": "spec/51-enforcement.md",
-      "line": 358
+      "line": 400
     },
     {
       "id": "authority.resist.read-only-face",
@@ -18157,7 +18410,7 @@
       "statement": "An organization-wide face serves the read subset of the tool surface; conversational writes are server-authored.",
       "why": "A-surface",
       "file": "spec/51-enforcement.md",
-      "line": 360
+      "line": 402
     },
     {
       "id": "authority.resist.write-tool",
@@ -18168,7 +18421,7 @@
       "statement": "Registering a write tool on an organization-wide face raises `EnforceWriteOnReadOnlyFace`.",
       "why": "A-surface",
       "file": "spec/51-enforcement.md",
-      "line": 362
+      "line": 404
     },
     {
       "id": "disclosure.mirror.unbound-table",
@@ -24652,7 +24905,11 @@
     ],
     [
       "run.journal.recorded-batch",
-      "run.guard-secrets.placement"
+      "authority.redact.before-the-record"
+    ],
+    [
+      "run.journal.prepared-owner",
+      "run.own.pinned-plan-changed"
     ],
     [
       "run.journal.input-pin",
@@ -25251,12 +25508,60 @@
       "authority.attenuate.expiry-extended"
     ],
     [
-      "authority.redact.before-the-record",
+      "authority.redact.summarize-only",
+      "authority.mask.verbatim-quote"
+    ],
+    [
+      "authority.redact.pattern-refusal",
+      "authority.redact.pattern-bytes"
+    ],
+    [
+      "authority.redact.pattern-refusal",
+      "authority.redact.compiled-pattern-size"
+    ],
+    [
+      "authority.redact.pattern-refusal",
+      "authority.redact.match-work"
+    ],
+    [
+      "authority.redact.combined-authority",
+      "authority.redact.rules-per-pipeline"
+    ],
+    [
+      "authority.redact.canonical-journal",
+      "authority.redact.before-the-record"
+    ],
+    [
+      "authority.redact.canonical-journal",
       "run.journal.redacting-source"
     ],
     [
-      "authority.redact.summarize-only",
-      "authority.mask.verbatim-quote"
+      "authority.redact.relational-journal",
+      "authority.redact.rewritten-identities"
+    ],
+    [
+      "authority.redact.relational-journal",
+      "run.journal.prepared-replay"
+    ],
+    [
+      "authority.redact.prepared-clock",
+      "run.advance.watermark-shape"
+    ],
+    [
+      "authority.mask.row-class-selector",
+      "authority.mask.row-class"
+    ],
+    [
+      "authority.mask.row-class-dependency",
+      "authority.mask.absent-column"
+    ],
+    [
+      "authority.mask.row-class-dependency",
+      "authority.mask.typed-strategy"
+    ],
+    [
+      "authority.mask.row-class-dependency",
+      "authority.mask.digest-alone"
     ],
     [
       "authority.place.envelope",
@@ -26503,6 +26808,10 @@
             "clause": "authority.place.floor-widened",
             "gloss": "A protected-class surface widened past its floor with no override."
           },
+          "EnforceRedactionInvalid": {
+            "clause": "authority.redact.pattern-refusal",
+            "gloss": "A removal rule has an unsupported or unbounded pattern."
+          },
           "EnforceRemovalWithPublicCloud": {
             "clause": "authority.place.removal-with-public-cloud",
             "gloss": "Write-time removal and a public-cloud allow-set on one surface."
@@ -26842,6 +27151,27 @@
             "unit": "s",
             "basis": "chosen",
             "gloss": "Oldest proof issue instant a checkpoint admits, and nonce retention."
+          },
+          "redaction-compiled-size": {
+            "clause": "authority.redact.compiled-pattern-size",
+            "value": 1,
+            "unit": "MiB",
+            "basis": "chosen",
+            "gloss": "Each Thompson NFA of one removal pattern."
+          },
+          "redaction-match-work": {
+            "clause": "authority.redact.match-work",
+            "value": 16,
+            "unit": "times",
+            "basis": "chosen",
+            "gloss": "Forward automaton steps of pattern removal over one value."
+          },
+          "redaction-pattern-bytes": {
+            "clause": "authority.redact.pattern-bytes",
+            "value": 4,
+            "unit": "KiB",
+            "basis": "chosen",
+            "gloss": "Source text of one removal pattern."
           },
           "redaction-rules-per-pipeline": {
             "clause": "authority.redact.rules-per-pipeline",

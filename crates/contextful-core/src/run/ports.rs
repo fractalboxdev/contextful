@@ -158,6 +158,22 @@ pub struct Marker {
 /// The land path a run commits through: each batch stages as a part under the run's own
 /// directory, and one commit publishes the staged parts together.
 pub trait Destination {
+    /// Canonical preparation authority bound into owner pins before an execution opens.
+    fn recording_identity(&self, _plan: &super::plan::Plan) -> Result<Option<String>, Failure> { Ok(None) }
+    /// Validate continuation metadata before a protected pull can be recorded.
+    fn validate_recorded_control(&self, _plan: &super::plan::Plan, _pull: &Pull) -> Result<(), Failure> { Ok(()) }
+    /// Admit complete pre-shape clock lineage before an execution can retain progress.
+    fn validate_recorded_clock(&self, _plan: &super::plan::Plan, _columns: &std::collections::BTreeSet<String>) -> Result<(), Failure> {
+        Err(Failure::deterministic(super::FailureTag::Permanent, "protected clock requires safe typed progress lineage"))
+    }
+    /// Rewrite a shaped batch through canonical authority, returning only internal journal data.
+    fn prepare_recorded(&mut self, _table: &str, _rows: Vec<Row>, _types: Types, _load_id: &str) -> Result<Value, Failure> {
+        Err(Failure::deterministic(FailureTag::Permanent, "destination admits no prepared recording"))
+    }
+    /// Stage an internal recorded value admitted by the same canonical preparation authority.
+    fn stage_recorded(&mut self, _stage: Stage, _prepared: &Value) -> Result<Part, Failure> {
+        Err(Failure::deterministic(FailureTag::Permanent, "destination admits no prepared staging"))
+    }
     /// Whether the table replaces its complete source state.
     fn replaces(&self, _table: &str) -> bool {
         false
@@ -183,6 +199,10 @@ pub trait Destination {
 /// The stages a recorded batch passes between the journal and the land path: normalize,
 /// the transform chain and write-path redaction (`run.land.stage-order`).
 pub trait Shape {
+    /// A deterministic shape identity; unknown adapters refuse protected recording.
+    fn recording_identity(&self) -> Result<Option<String>, super::RunError> { Ok(None) }
+    /// Every column reached by this input clock, including projected-away names; unknown lineage refuses.
+    fn recording_clock_columns(&self, _field: &str) -> Result<Option<std::collections::BTreeSet<String>>, super::RunError> { Ok(None) }
     fn shape(&self, rows: Vec<Row>) -> Result<Vec<Row>, super::RunError>;
 
     /// The column types after the stages: a stage renaming, dropping or retyping a
@@ -196,6 +216,8 @@ pub trait Shape {
 pub struct Unshaped;
 
 impl Shape for Unshaped {
+    fn recording_identity(&self) -> Result<Option<String>, super::RunError> { Ok(Some("unshaped-v1".into())) }
+    fn recording_clock_columns(&self, field: &str) -> Result<Option<std::collections::BTreeSet<String>>, super::RunError> { Ok(Some(std::collections::BTreeSet::from([field.into()]))) }
     fn shape(&self, rows: Vec<Row>) -> Result<Vec<Row>, super::RunError> {
         Ok(rows)
     }

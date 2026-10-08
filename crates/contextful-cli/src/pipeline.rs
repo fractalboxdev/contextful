@@ -538,8 +538,9 @@ fn plan(spec: &PipelineSpec, table: &str, connector: ConnectorSpec) -> Result<Pl
             cursor: CursorSpec { kind: Some(cursor_kind.name().to_string()), field: spec.incremental.clone() },
             retry: None,
             // A derive pipeline re-reads the store each tick and records no pull.
-            journal: spec.source.name != contextful_connectors::derive::NAME,
-            redact: spec.redaction.iter().map(|_| "declared".to_string()).collect(),
+            journal: spec.journals(),
+            redact: Vec::new(),
+            redaction: spec.tables.iter().find(|t| t.name() == table).and_then(|t| spec.destination_decl(t).redaction).unwrap_or_default(),
         },
         content_hash: spec.content_hash(),
         cursor_kind,
@@ -621,7 +622,7 @@ pub fn run(cmd: PipelineCmd, tasks: &Tasks) -> Result<()> {
                 println!("{}: valid ({} tables, content hash {}){discovered}", d.spec.id, d.spec.tables.len(), &d.spec.content_hash()[..16]);
                 for t in &d.spec.tables {
                     let name = d.spec.table_name(t.name());
-                    tables.entry(name.clone()).or_insert_with(|| TableDecl { name, ..t.decl() });
+                    tables.entry(name).or_insert_with(|| d.spec.destination_decl(t));
                 }
             }
             let models = contextful_core::pipeline::model::collect_models(&files, &declared)?;
@@ -690,7 +691,7 @@ pub fn run(cmd: PipelineCmd, tasks: &Tasks) -> Result<()> {
             // A declaration's relative paths resolve against the project directory
             // (`store.init.declaration-base`), whichever subdirectory the command runs from.
             let base = l.project.dir.clone();
-            let store = Store::open(&l.project.dir, &l.project.name)?;
+            let store = Store::open_declared(&l.project.dir, &l.project.name, &declaration)?;
             // A component resolves, admits and compiles once per fire, before any run row.
             let loaded = match &checked {
                 Checked::Component(decl) => Some(component::load(&spec.source.name, decl, &base, &l.project.name, Some(&resolver), component_target, store.requires_connector_pin())?),
@@ -712,11 +713,7 @@ pub fn run(cmd: PipelineCmd, tasks: &Tasks) -> Result<()> {
             let decls: Vec<TableDecl> = spec
                 .tables
                 .iter()
-                .map(|t| {
-                    let mut decl = t.decl();
-                    decl.name = spec.table_name(t.name());
-                    decl
-                })
+                .map(|t| spec.destination_decl(t))
                 .collect();
             let normalize = Some(contextful_core::pipeline::normalize::Normalize::parse(spec.normalize.as_ref())?);
             let mut dest = StoreDestination { store, decls, node, author, normalize, relational_parts: Default::default(), schema_diffs: Vec::new() };
@@ -761,6 +758,7 @@ pub fn run(cmd: PipelineCmd, tasks: &Tasks) -> Result<()> {
                 let outcome = (|| -> Result<contextful_core::run::record::RunRow> {
                     let connector = loaded.as_ref().map_or_else(|| built_in(&spec), component::Loaded::connector_spec);
                     let plan = plan(&spec, t.name(), connector)?;
+                    dest.store.validate_source_plan(&plan, dest.normalize)?;
                     let connector: ConnectorPin = plan.connector_pin(&artifact);
                     let run = RunSpec { plan, connector, run_id: run_id.clone(), site_id: site_id.clone(), pid: std::process::id(), boot_id: boot_id(), trace_id: None };
                     let shape = Chain { ops: spec.transforms.clone(), table: table.clone() };

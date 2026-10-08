@@ -19,6 +19,19 @@ fn manifest(text: &str) -> ManifestFile {
     ManifestFile { path: "contextful.toml".into(), text: text.into() }
 }
 
+#[test]
+fn a_registered_export_block_coexists_with_store_tables_and_refuses_a_misspelled_block() {
+    let text = "[[pipeline.tables]]\nname = 'spans'\n[[export]]\nname = 'spans-mirror'\ntable = 'spans'\nendpoint = 'https://example.test/v1/logs'\nformat = 'changes-v1'\nkey = ['span_id']\n";
+    assert!(read_manifest(&manifest(text)).unwrap().is_empty());
+    let tables = contextful_core::store::declare::TableDecl::parse_pipeline(text).unwrap();
+    assert_eq!(tables.len(), 1);
+    assert_eq!(tables[0].name, "spans");
+    assert!(collect(&[manifest(text)]).unwrap().is_empty());
+    let refusal = read_manifest(&manifest(&text.replace("[[export]]", "[[exprot]]"))).unwrap_err();
+    assert!(matches!(refusal, RunError::PipelineUnknownBlock(_)), "{refusal}");
+    assert!(refusal.to_string().contains("exprot"));
+}
+
 const CONTRACT: &str = "\n[model.contract]\nversion = \"1.0.0\"\ncolumns = [{ name = \"day\", type = \"utf8\", nullable = false }, { name = \"n\", type = \"int64\" }]\n";
 
 fn model_doc(extra: &str) -> String {

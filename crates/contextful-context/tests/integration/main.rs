@@ -17,6 +17,7 @@ mod read;
 mod read_deadline;
 mod reconcile;
 mod retention;
+mod redaction;
 mod reserve;
 mod rows;
 mod run_commit;

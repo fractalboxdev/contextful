@@ -75,9 +75,9 @@ Removal and transformation inside the writer, ahead of columnar bytes and the ru
   *A-authority*
 - `after-normalization` — Redaction runs after relational normalization; a rule naming a parent column reaches values shredded into child tables.
   *A-authority*
-- `before-the-record` — A removed value is absent from the run path's durable record of the step; {{run.journal.redacting-source}} governs a source journaled verbatim.
+- `before-the-record` — A canonical source writer shapes, normalizes and removes values before recording an opaque admitted payload; neither its inline record nor its blob contains the removed source value.
   *A-authority*
-- `refetch` — Re-running a pipeline over a table under removal rules reads the source again.
+- `refetch` — A fresh pipeline execution over a table under removal rules reads the source again.
   *A-authority*
 - `at-rest-scope` — Stored bytes lack only write-time-removed values. A column protected at query time alone is cleartext in storage and readable with the object-store credential.
   *A-authority*
@@ -85,6 +85,40 @@ Removal and transformation inside the writer, ahead of columnar bytes and the ru
   *A-authority*
 - `rules-per-pipeline` — A pipeline carries at most 256 entries in its removal rule set.
   *because a longer rule set is a policy the operator cannot review*
+- `pattern-bytes` — One removal pattern carries at most 4 KiB of source text.
+  *because pattern compilation cost must remain bounded before a writer starts*
+- `compiled-pattern-size` — Each Thompson NFA compiled for one removal pattern occupies at most 1 MiB.
+  *because expanded repetitions must not allocate unbounded matcher state*
+- `match-work` — Pattern removal over one value takes forward automaton steps of at most 16 times its byte length.
+  *because a bounded write refuses an adversarial value rather than leave a matched tail*
+- `pattern-refusal` — Unsupported syntax, Unicode word boundaries, empty matches or a pattern past {{authority.redact.pattern-bytes}} or {{authority.redact.compiled-pattern-size}} raises `EnforceRedactionInvalid` at declaration; a value past {{authority.redact.match-work}} raises it before writing.
+  *because a failed matcher cannot silently leave a declared sensitive value intact*
+- `in-value` — Pattern removal rewrites leftmost-first non-overlapping UTF-8 spans; whole-value removal rewrites one cell. JSON paths select object keys, array indices or every array item; unselected values remain unchanged.
+  *A-authority*
+- `every-land-entry` — A canonical project declaration binds direct and staged writers even when their callers omit its rules.
+  *A-authority*
+- `combined-authority` — A destination's ordered canonical rule union obeys {{authority.redact.rules-per-pipeline}}; conflicting declared types, classes or policies and duplicate rules refuse before writing parts.
+  *because an additional declaration cannot replace an earlier rule or its type and class authority*
+- `normalized-authority` — Projects declaring protected relational normalization require canonical table bindings for ordinary writes; an undeclared destination enters through a declared root's complete normalization lineage or refuses before durable bytes.
+  *because a child name cannot prove which source column its values descend from*
+- `rewritten-identities` — Relational parent and child identities derive from rewritten source values; removed values contribute no retained identity digest.
+  *A-authority*
+- `child-selector-lineage` — A normalized child mask selecting a sibling class requires typed sibling-row lineage; a group lacking that lineage refuses before writing any part.
+  *because a source-row index cannot distinguish sibling values from different child rows*
+- `pinned-plan` — A source plan's explicit removal list equals its complete canonical destination rules; an unbound or mismatched list refuses before source execution. Canonical removal still binds an omitted list.
+  *because a content-hashed plan cannot promise rules that its writer ignores*
+- `canonical-journal` — Canonical writer rules require {{authority.redact.before-the-record}} even when a caller's source plan omits its removal list; {{run.journal.redacting-source}} governs absent admission.
+  *because caller omission cannot weaken a durable declaration's recording boundary*
+- `relational-journal` — A protected relational source records its concrete rewritten root and child group, preserving declared root types, child lineage and {{authority.redact.rewritten-identities}} through {{run.journal.prepared-replay}}.
+  *A-authority*
+- `prepared-payload` — A protected source cannot supply an admitted recording envelope; modified rows, types, destination or normalization fail canonical payload admission before staged parts.
+  *because connector-controlled bytes cannot claim a writer's recording authority*
+- `prepared-continuation` — Protected source continuations refuse before recording unless absent, exact terminal `{ next: null }` without more pages, or text unchanged by every canonical pattern; any canonical whole-value or JSON-path rule refuses text continuations.
+  *because a source-controlled continuation can otherwise retain a removed value beside its rewritten rows*
+- `prepared-clock` — A protected monotonic source proves complete clock-output lineage before execution opens; lineage reaching removed columns, including JSON-path targets, refuses. Protected relational clocks refuse without complete descendant lineage; independent clocks retain {{run.advance.watermark-shape}}.
+  *because progress bytes cannot retain a value that its row removes*
+- `recorded-body` — A store-driven job targeting canonical removal rules refuses before body execution without typed effect-result removal lineage; body calls record results before output landing.
+  *because later row rewriting cannot remove earlier recorded effect results*
 
 ## compose
 
@@ -144,6 +178,14 @@ Column classes, strategies and combines, guardrails over an exhaustible value sp
   *A-authority*
 - `class-registry` — `class` takes a value from the class registry in Shapes. `phi` marks protected health data; `ssn`, `phone`, `email` and `mrn` are exhaustible, each carrying a registered domain size.
   *A-authority*
+- `row-class` — A column declares `class = { from = ... }`, a `strategies` map naming registered classes, and `fallback = "drop"`; each row's sibling text selects its strategy, independently of other rows.
+  *A-authority*
+- `row-class-selector` — `from_column` aliases `from` in {{authority.mask.row-class}}; declaring both names or any unknown selector field refuses before reading rows.
+  *because ambiguous selector declarations cannot choose which class controls a row*
+- `row-class-dependency` — A row-class selector names another Utf8 column in the same table; {{authority.mask.absent-column}} checks its presence, and every mapped strategy retains {{authority.mask.typed-strategy}} and {{authority.mask.digest-alone}}.
+  *A-authority*
+- `row-class-fallback` — Unknown and null row-class values receive strict drop; no unspecified branch yields the original column value.
+  *because an unrecognized class cannot grant weaker protection than any declared branch*
 - `unknown-class` — A `class` outside the registry raises `EnforceUnknownClass` at manifest check.
   *A-authority*
 - `class-reach` — A column's class reaches write-time removal, query-time masking, zone floors and the protections a release applies to a key it joins on.
@@ -386,6 +428,8 @@ ssn     yes           1e9      4
 phone   yes           1e10     5
 email   yes           1e10     5
 mrn     yes           1e8      4
+prompt  no            -        -
+completion no         -        -
 ```
 
 A column policy and a zone declaration:

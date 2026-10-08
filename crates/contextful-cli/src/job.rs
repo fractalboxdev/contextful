@@ -74,6 +74,7 @@ fn output_plan(job: &str, table: &str, driven: &StoreDriven) -> Result<Plan> {
             // The rows are the body's recorded output; the land re-derives them on a resume.
             journal: false,
             redact: Vec::new(),
+            redaction: Vec::new(),
         },
         content_hash: driven.input.plan_ref(),
         cursor_kind: CursorKind::OpaqueToken,
@@ -112,6 +113,10 @@ pub fn run(cmd: JobCmd, bodies: &Bodies) -> Result<()> {
             let body = bodies.get(&driven.input.body).context("a validated body is registered")?;
             let site_id = site_id_for(&text, &l.declaration, site_id, site_id_env)?;
             let (authority, _) = admit.admit(project.project.as_deref(), "a store-driven job")?;
+            let store = Store::open_declared(&l.project.dir, &l.project.name, &l.declaration)?;
+            for table in &driven.tables {
+                store.validate_writer_recording(table, None)?;
+            }
             let face = face(&l)?;
             let w = wire_at(&l.project, &project.now)?;
             for reaped in w.engine.reap_orphans()? {
@@ -130,7 +135,6 @@ pub fn run(cmd: JobCmd, bodies: &Bodies) -> Result<()> {
             };
 
             let decls = TableDecl::parse_pipeline(&text).with_context(|| l.declaration.display().to_string())?;
-            let store = Store::open(&l.project.dir, &l.project.name)?;
             let (node, _) = node::resolve(&store, |k| std::env::var(k).ok())?;
             let mut dest = StoreDestination { store, decls, node, author: None, normalize: None, relational_parts: Default::default(), schema_diffs: Vec::new() };
             let engine = &w.engine;
@@ -141,6 +145,7 @@ pub fn run(cmd: JobCmd, bodies: &Bodies) -> Result<()> {
                 let mut total = Landed { rows: 0, bytes: 0 };
                 for table in &driven.tables {
                     let plan = output_plan(&name, table, driven).map_err(|e| Failure::deterministic(FailureTag::Permanent, e.to_string()))?;
+                    dest.store.validate_writer_plan(&plan, dest.normalize).map_err(|e| Failure::deterministic(FailureTag::Permanent, e.to_string()))?;
                     let connector = plan.connector_pin(&plan.content_hash);
                     let spec = RunSpec { plan, connector, run_id: format!("{run_id}.{table}"), site_id: site_id.clone(), pid: std::process::id(), boot_id: boot_id(), trace_id: None };
                     let mut source: Box<dyn Source> = Box::new(Staged(emitted.get(table).cloned().unwrap_or_default(), 0));
