@@ -413,6 +413,16 @@ impl<'a> Tools<'a> {
                     .and_then(|s| self.face.execute_template(&s, &id, &arguments, opts))
                     .map(answered)
             }
+            "context.reference" => {
+                only(args, name, &["table", "run", "seq", "max_duration_ms", "max_response_bytes"])?;
+                let table = required(args, "table")?;
+                let run = required(args, "run")?;
+                let seq = args.get("seq").and_then(Value::as_i64).filter(|seq| *seq >= 0)
+                    .ok_or_else(|| invalid("`seq` is a non-negative integer"))?;
+                let opts = options(args)?;
+                self.session(caller, zone, opts.bounds, pins)
+                    .and_then(|session| self.face.reference(&session, &table, &run, seq, opts)).map(answered)
+            }
             "context.files" => {
                 only(args, name, &[])?;
                 let opts = options(args)?;

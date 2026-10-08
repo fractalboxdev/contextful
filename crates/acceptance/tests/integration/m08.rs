@@ -78,6 +78,7 @@ fn subject_and_keyset_erasure_is_atomic_and_physically_complete() {
     let cf = bin("contextful");
     let p = GitRepo::init();
     let subject = "erasure-fixture-alice-39ac";
+    ok(&p.run(&cf, &["init", "research", "--authoring-posture", "per_request"]));
     p.write(".contextful/issuance.toml", &format!("default_audience = \"{AUD}\"\nmax_lifetime_secs = 3600\n"));
     p.write("contextful.toml", r#"authoring_posture = "per_request"
 [[pipeline.tables]]
@@ -109,17 +110,17 @@ on_erase = "survive"
         ("research/notes", vec![json!({"id":"alice-shared","subject":subject,"blob":"shared","text":subject}), json!({"id":"alice-only","subject":subject,"blob":"unique","text":subject}), json!({"id":"bob","subject":"bob","blob":"shared","text":"remaining"})]),
         ("research/keys", vec![json!({"id":"key-a","value":subject}), json!({"id":"key-b","value":"remaining"})]),
         ("research/blobs", vec![json!({"digest":"shared","value":"remaining"}), json!({"digest":"unique","value":subject})]),
-        ("research/citations", vec![json!({"id":"citation","source_table":"research/notes","source_key":"alice-only"})]),
+        ("research/citations", vec![json!({"id":"citation","source_table":"research/notes","source_key":"alice-only","source_run":"run-0001","source_seq":1})]),
     ] {
         p.write("rows.jsonl", &rows.iter().map(Value::to_string).collect::<Vec<_>>().join("\n"));
         ok(&p.run(&cf, &["context", "land", table, "--project", "research", "--rows", "rows.jsonl", "--run-id", "run-0001", "--site-id", "fixture"]));
         ok(&p.run(&cf, &["context", "compact", table, "--project", "research"]));
     }
     let public = ok(&p.run(&cf, &["token", "keygen", "--out", ".contextful/issuer.seed"]));
-    let mint = |action| ok(&p.run(&cf, &["token", "mint", "--issuer-key", ".contextful/issuer.seed", "--on-behalf-of", "user://erasure-fixture", "--agent", "agent://erasure-fixture", "--zone", "fixture", "--action", action, "--table", "research/*", "--ttl", "3600"]));
+    let mint = |action| ok(&p.run(&cf, &["token", "mint", "--issuer-key", ".contextful/issuer.seed", "--on-behalf-of", "user://erasure-fixture", "--agent", "agent://erasure-fixture", "--zone", "on-prem:fixture", "--action", action, "--table", "research/*", "--ttl", "3600"]));
     let read = mint("read");
     let forget = mint("forget");
-    let args = ["context", "erase", "--project", "research", "--subject", subject, "--tables", "research/notes", "--public-key", &public, "--audience", AUD, "--json"];
+    let args = ["context", "erase", "--project", "research", "--subject", subject, "--tables", "research/notes", "--issuer-key", ".contextful/issuer.seed", "--public-key", &public, "--audience", AUD, "--json"];
     let refused = p.run_env(&cf, &args, &[("CONTEXTFUL_TOKEN", &read)]);
     assert!(!refused.status.success());
     assert!(String::from_utf8_lossy(&refused.stderr).contains("ErasureUngranted"), "{}", String::from_utf8_lossy(&refused.stderr));
@@ -127,16 +128,23 @@ on_erase = "survive"
     assert!(receipt["subject_hash"].as_str().is_some_and(|hash| !hash.contains(subject)));
     assert_eq!(receipt["physical_collection"], json!("complete"));
 
-    let query = |sql: &str| -> Value { serde_json::from_str(&ok(&p.run(&cf, &["query", "--json", "--project", "research", sql]))).unwrap() };
+    let query = |sql: &str| -> Value { serde_json::from_str(&ok(&p.run_env(&cf, &["query", "--json", "--project", "research", sql], &[("CONTEXTFUL_ISSUER_PUBKEY", &public)]))).unwrap() };
     // One statement sees the committed frontier across every affected relation.
     let visible = query(r#"SELECT (SELECT count(*) FROM "research/notes") AS notes, (SELECT count(*) FROM "research/blobs") AS blobs, (SELECT count(*) FROM "research/citations") AS citations"#);
     assert_eq!(visible["rows"], json!([["1", "1", "1"]]), "{visible}");
     assert_eq!(query(r#"SELECT digest FROM "research/blobs""#)["rows"], json!([["shared"]]));
     assert_eq!(query(r#"SELECT id FROM "research/citations""#)["rows"], json!([["citation"]]));
+    let citation = query(r#"SELECT source_table, source_run, source_seq FROM "research/citations""#)["rows"][0].clone();
+    let sequence = citation[2].as_str().map(str::to_string).unwrap_or_else(|| citation[2].to_string());
+    let reference = ["context", "reference", citation[0].as_str().unwrap(), citation[1].as_str().unwrap(), &sequence,
+        "--project", "research", "--public-key", &public, "--audience", AUD, "--issuer-key", ".contextful/issuer.seed", "--json"];
+    let unavailable: Value = serde_json::from_str(&ok(&p.run_env(&cf, &reference, &[("CONTEXTFUL_TOKEN", &read)]))).unwrap();
+    assert_eq!(unavailable["rows"], json!([[false, "erased"]]));
 
     p.write("erase-keys.json", &json!({"subject_hash":receipt["subject_hash"],"keys":[{"table":"research/keys","key":"key-a"}]}).to_string());
-    ok(&p.run_env(&cf, &["context", "erase", "--project", "research", "--key-set", "erase-keys.json", "--public-key", &public, "--audience", AUD, "--json"], &[("CONTEXTFUL_TOKEN", &forget)]));
+    ok(&p.run_env(&cf, &["context", "erase", "--project", "research", "--key-set", "erase-keys.json", "--tables", "research/keys", "--issuer-key", ".contextful/issuer.seed", "--public-key", &public, "--audience", AUD, "--json"], &[("CONTEXTFUL_TOKEN", &forget)]));
     assert_eq!(query(r#"SELECT id FROM "research/keys""#)["rows"], json!([["key-b"]]));
+    assert_eq!(serde_json::from_str::<Value>(&ok(&p.run_env(&cf, &reference, &[("CONTEXTFUL_TOKEN", &read)]))).unwrap()["rows"], json!([[false, "erased"]]));
     let leaked: Vec<_> = p.files_containing(subject.as_bytes()).into_iter().filter(|path| path.starts_with(".contextful/")).collect();
     assert!(leaked.is_empty(), "retained store or sidecar bytes hold the erased subject: {leaked:?}");
     // Compressed Parquet needs decoding; absence from raw bytes alone proves nothing.

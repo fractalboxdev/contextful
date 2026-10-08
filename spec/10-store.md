@@ -174,6 +174,8 @@ A project's declaration file: what `contextful init` writes, what a repeated ini
 A table's declaration block: its key, ordering column and write mode, and what a read returns for a withdrawn row.
 
 - `table-block` — A table block declares any of `primary_key`, `order_by`, `write_mode`, `replicate`, `subject_id`, `class`, `policy`, `visibility`, `valid_time`, `cluster_by`, `partition_by`, `retain_runs`, `retain_rows`, `columns`, `indexes`, `agent_description`, `agent_hint`, `example_queries`, `content_hash_column`, `result_cache` and `private`; an unset key is absent from the canonical serialization.
+- `erasure-metadata` — An erasure declaration names `erasure_key`, incoming `referenced_by` table/column edges, and `on_erase = "survive"` for retained citing rows; absent fields remain absent in canonical serialization.
+  *A-disclosure*
 - `retain-rows` — `retain_rows = { column = "<name>", age = "<n>d" }` accepts `_ingested_at` or a declared Timestamp column; another column or null value raises `StoreRetentionColumnInvalid` before landing, and malformed age refuses the declaration.
   *because a sender's clock cannot control the injected arrival time, and a nullable retention clock leaves a row with no expiry*
 - `column-types` — `columns` maps a column to a type spelled as {{store.reconcile.typed-landing}} reads it; every landing into the table, a pipeline run included, lands that column in the declared type.

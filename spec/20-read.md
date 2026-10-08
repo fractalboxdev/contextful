@@ -5,6 +5,7 @@ owns:
   - guard
   - respond
   - query
+  - reference
   - retrieve
   - rank
   - cache
@@ -67,7 +68,7 @@ The relations, tools and templates one connection sees, the engine executing aga
   *P4*
 - `bare-name` — A bare table name in any read — a caller statement, a template body, a ranking arm, a file preview — resolves to the caller's registered relation, which carries the caller's restriction.
   *P5*
-- `tool-set` — The face exposes a closed tool set: `context.describe`, `context.query`, `context.execute_query` for templates, `context.files` and `context.file` over committed data files, `corpus.retrieve` for ranked reads across a prefix, and `memory.recall` for keyed claim reads.
+- `tool-set` — The face exposes `context.describe`, `context.query`, `context.reference`, `context.execute_query` for templates, `context.files`, `context.file`, `corpus.retrieve` and `memory.recall` as its closed tool set.
   *A-read*
 - `bound-arguments` — Every read tool but `memory.recall`, each template tool included, admits `as_of` and `valid_as_of` and echoes {{store.bound-time.echo}}; {{store.bound-time.valid-as-of}} wraps only the tables the read touches.
   *because a session registers every granted table, and wrapping one declaring no pair refuses reads that never name it*
@@ -245,6 +246,21 @@ The operator's raw statement verb on the command line: its arguments, the relati
 unsettled: Does a table's published `limits.max_rows` bound an operator's raw read, given the verb does not walk the statement for the relations it names? owner: read-path affects: read.query
 
 unsettled: Does the verb carry a text rendering beside `--json`, or does the JSON projection stay its one output? owner: read-path affects: read.query
+
+## reference
+
+Resolution of one stored citation through the caller's registered relation, including the authenticated distinction between an erased source and an absent version.
+
+- `call` — `context.reference` accepts one table, run identifier and row sequence; `contextful context reference` invokes the same resolver under Read admission and returns {{read.respond.one-projection}} without selecting a filesystem path.
+  *A-read*
+- `admission` — Resolution applies {{read.guard.unregistered-relation}}, the caller's registered row and column restrictions, and {{read.respond.duration-ceiling}}, {{read.respond.byte-ceiling}} and {{disclosure.record.read-entry}} before publishing its verdict.
+  *A-read*
+- `erased-verdict` — An admitted reference recorded in the independently verified cumulative erasure index returns `available: false` with `reason: erased`; an absent reference outside that index returns `reason: missing` and exposes no source payload.
+  *A-read*
+- `index-visibility` — A tenant-scoped, row-policy-restricted, zone-excluded or column-masked caller receives an unreadable verdict before erasure-index access; only the owner metadata eligibility of {{read.register.scoped-ledger}} admits an erased verdict.
+  *A-read*
+- `frontier` — The resolver validates the same signed store frontier before resolution and before response publication; its erasure index binds store identity and cumulative reference versions through {{disclosure.erase.store-binding}}.
+  *A-read*
 
 ## retrieve
 

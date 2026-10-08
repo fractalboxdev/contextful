@@ -22,6 +22,35 @@ from = "effective_from"
 to   = "effective_to"
 "#;
 
+#[test]
+fn erasure_declarations_keep_key_reference_and_survival_policy_typed() {
+    let source = r#"
+[[pipeline.tables]]
+name = "documents"
+erasure_key = "digest"
+referenced_by = [{ table = "notes", column = "document_digest" }]
+on_erase = "survive"
+"#;
+    let tables = TableDecl::parse_pipeline(source).expect("declared erasure metadata parses");
+    let canonical: serde_json::Value = serde_json::from_str(&tables[0].canonical()).unwrap();
+    assert_eq!(canonical["erasure_key"], "digest");
+    assert_eq!(canonical["referenced_by"][0]["table"], "notes");
+    assert_eq!(canonical["referenced_by"][0]["column"], "document_digest");
+    assert_eq!(canonical["on_erase"], "survive");
+    let roundtrip: TableDecl = serde_json::from_value(canonical).unwrap();
+    assert_eq!(roundtrip, tables[0]);
+    for field in ["erasure_key", "referenced_by", "on_erase"] {
+        assert!(!TableDecl::named("bare").canonical().contains(field));
+    }
+    for invalid in [
+        source.replace("\"survive\"", "\"delete-everything\""),
+        source.replace("column = \"document_digest\"", "column = \"document_digest\", undocumented = true"),
+        source.replace("erasure_key = \"digest\"", "erasure_key = [\"digest\"]"),
+    ] {
+        assert!(TableDecl::parse_pipeline(&invalid).is_err(), "{invalid}");
+    }
+}
+
 /// A table block declares any of `primary_key`, `order_by`, `write_mode`, `replicate`, `subject_id`, `class`, `policy`, `visibility`, `valid_time`, `cluster_by`, `partition_by`, `retain_runs`, `columns`, `indexes`, `agent_description`, `agent_hint`, `example_queries`, `content_hash_column`, `result_cache` and `private`; an unset key is absent from the canonical serialization.
 // spec: store.declare.table-block@b89faa39
 #[test]

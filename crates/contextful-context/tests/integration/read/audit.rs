@@ -32,6 +32,25 @@ fn signer() -> SeedSigner {
     SeedSigner::from_seed(&format!("ed25519-private/{}", "07".repeat(32))).unwrap()
 }
 
+#[test]
+fn audit_erasures_projects_only_row_free_committed_erasure_attributes() {
+    let dir = tempfile::tempdir().unwrap();
+    let log = AuditLog::open(dir.path(), signer()).unwrap();
+    let hash = contextful_policy::audit::query_digest(b"fixture-key", "contextful.erasure.subject\nalice");
+    log.append_all(vec![read_entry(now_secs(), "user://fixture", "notes", 1), json!({
+        "operation":"erasure", "transaction_id":"fixture-transaction", "subject_hash":hash,
+        "affected_counts":{"notes":2}, "executed_at":rfc3339(now_secs()), "unprojected_selector":"private"
+    })]).unwrap();
+    drop(log);
+    let chain = entries(dir.path()).unwrap();
+    let out = audit_reads(&chain, "SELECT transaction_id, subject_hash, affected_counts FROM audit_erasures", ReadOptions::default()).unwrap().to_json();
+    assert_eq!(out["rows"].as_array().unwrap().len(), 1);
+    assert_eq!(out["rows"][0][0], "fixture-transaction");
+    assert_eq!(out["rows"][0][1], hash);
+    assert!(!out.to_string().contains("private") && !out.to_string().contains("alice"));
+    assert!(audit_reads(&chain, "SELECT unprojected_selector FROM audit_erasures", ReadOptions::default()).is_err());
+}
+
 /// Every entry in the window projects one row per table it names; an entry carrying no
 /// read instant projects none; the relation holds the named columns.
 #[test]

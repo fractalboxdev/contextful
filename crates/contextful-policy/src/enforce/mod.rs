@@ -3,6 +3,7 @@
 //! value every row-returning read takes.
 
 pub mod mask;
+pub mod erase;
 pub mod policy;
 pub mod predicate;
 pub mod refuse;

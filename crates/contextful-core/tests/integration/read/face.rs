@@ -5,6 +5,12 @@ use contextful_core::enforce::EnforceError;
 use contextful_core::read::face::{register_tool, require, BuildIdentity, FaceScope, ToolKind};
 use contextful_core::read::ReadError;
 
+#[test]
+fn citation_resolution_belongs_to_the_closed_read_tool_set() {
+    assert!(contextful_core::read::face::TOOLS.contains(&"context.reference"));
+    assert_eq!(register_tool(FaceScope::Organization, "context.reference", ToolKind::Read), Ok(()));
+}
+
 /// A client passing `require: [...]` is refused ahead of its first read with `RequiredFaceAbsent` for any name outside the reported set. An engine reporting no set satisfies no requirement.
 // spec: read.embed.required-face@2167a7a9
 #[test]

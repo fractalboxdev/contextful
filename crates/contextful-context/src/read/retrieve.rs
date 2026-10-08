@@ -240,6 +240,7 @@ impl Face {
     /// registered relation, so restriction completes before the cut
     /// (`authority.compose.before-the-cut`).
     pub fn retrieve(&self, session: &Session, request: &RetrieveRequest, bounds: Bounds) -> Result<Response, ReadFault> {
+        let frontier = self.read_frontier(session)?;
         // The whole filter meets its budget before any arm is built
         // (`read.retrieve.filter-budget-refusal`).
         let filter = Filter::parse(request.filter.as_ref(), request.kinds.as_deref())?;
@@ -491,7 +492,8 @@ impl Face {
         if recalled {
             response = response.with_block("recall", tally.block());
         }
-        self.finish_budget(session, &touched, ReadOptions { limit: Some(asked), max_response_bytes: request.max_response_bytes, max_duration_ms: request.max_duration_ms, ..ReadOptions::default() }, None, limit, response)
+        let response = self.finish_budget(session, &touched, ReadOptions { limit: Some(asked), max_response_bytes: request.max_response_bytes, max_duration_ms: request.max_duration_ms, ..ReadOptions::default() }, None, limit, response)?;
+        self.publish_read(Some(session), &frontier, response)
     }
 
     /// The `id_column` and the candidate identifiers the table's current vector sidecar
