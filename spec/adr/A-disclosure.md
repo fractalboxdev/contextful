@@ -232,6 +232,8 @@ Subject and key-set erasure publish one authenticated transaction record selecti
 
 The transaction references a row-free audit intent. A committed record selects that intent; recovery discards uncommitted replacements and completes committed physical collection. Reference counting uses the surviving view, retaining shared digests and surviving citing rows while refusing access to their erased sources.
 
+A signed per-file retirement map admits partial collection after interruption: absent files are completed work, while remaining files require their admitted digests. A hash-only retirement binding requires the complete inventory because missing members cannot be authenticated individually.
+
 | Option | Lost on | Cost |
 | --- | --- | --- |
 | One authenticated publication record with response-release fencing *(chosen)* | — | Every store reader and writer validates the frontier; collection rewrites retained artifacts. |

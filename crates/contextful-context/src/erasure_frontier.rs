@@ -87,9 +87,16 @@ pub(crate) struct Certificate {
 #[derive(Debug, Clone, Deserialize, Serialize)]
 #[serde(deny_unknown_fields)]
 pub(crate) struct RetiredDirectory {
+    #[serde(default = "legacy_retirement_version")]
+    pub version: u32,
     pub directory: String,
     pub inventory_sha256: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub files: Option<BTreeMap<String, String>>,
 }
+
+#[cfg(feature = "read")]
+fn legacy_retirement_version() -> u32 { 1 }
 
 fn incomplete(why: &str) -> ContextError {
     ErasureError::ErasureTransactionIncomplete(why.to_string()).into()
@@ -225,6 +232,13 @@ pub(crate) fn retired_directories(store: &Store, frontier: &Frontier) -> Result<
         let valid_older = older.is_some_and(|(transaction, name)| digest(transaction) && transaction != frontier.transaction_id && name == table);
         if (old.directory != original && !valid_older) || !digest(&old.inventory_sha256) {
             return Err(incomplete("a retired directory has an invalid store-local binding"));
+        }
+        match (old.version, &old.files) {
+            (1, None) => (),
+            (2, Some(files)) if !files.is_empty()
+                && files.iter().all(|(path, hash)| crate::erase::relative_path(path).is_ok() && digest(hash))
+                && etag(&serde_json::to_vec(files).map_err(|_| incomplete("the retired inventory does not encode"))?) == old.inventory_sha256 => (),
+            _ => return Err(incomplete("the signed retirement inventory has an invalid version or file binding")),
         }
       }
     }

@@ -214,6 +214,8 @@ The one erasure verb: subject tombstones, the bounded provenance cascade, the re
   *A-disclosure*
 - `recovery` — Recovery completes collection for a committed frontier and discards uncommitted replacements; an incomplete or disagreeing transaction record raises `ErasureTransactionIncomplete` before releasing store content.
   *A-disclosure*
+- `retirement-inventory` — Signed retirement inventories bind every regular path and digest; recovery admits missing files as completed collection, validates all remaining files before deleting any, and rejects added or changed content through {{disclosure.erase.recovery}}.
+  *A-disclosure*
 - `cascade` — In the same operation the cascade invalidates every derived fact whose provenance reaches the subject key or a tombstoned identifier within 16 hops.
   *A-disclosure*
 - `cascade-unbounded` — A provenance chain deeper than the cascade bound raises `ErasureCascadeUnbounded`, and the erasure commits nothing.

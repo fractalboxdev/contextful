@@ -140,6 +140,21 @@ pub(crate) fn select_signed_store_replacement(store: &contextful_context::Store,
 
 #[cfg(feature = "read")]
 fn signed_fixture(store: &contextful_context::Store, table: &str) -> (contextful_context::Store, std::path::PathBuf, contextful_policy::issue::SignerKey) {
+    signed_inventory_fixture(store, table, true)
+}
+
+#[cfg(feature = "read")]
+fn signed_inventory_fixture(store: &contextful_context::Store, table: &str, file_inventory: bool) -> (contextful_context::Store, std::path::PathBuf, contextful_policy::issue::SignerKey) {
+    signed_retirement_fixture(store, table, |retirement| {
+        if !file_inventory {
+            retirement.as_object_mut().unwrap().remove("version");
+            retirement.as_object_mut().unwrap().remove("files");
+        }
+    })
+}
+
+#[cfg(feature = "read")]
+fn signed_retirement_fixture(store: &contextful_context::Store, table: &str, change: impl FnOnce(&mut serde_json::Value)) -> (contextful_context::Store, std::path::PathBuf, contextful_policy::issue::SignerKey) {
     use contextful_policy::audit::AuditLog;
     use contextful_policy::issue::{SeedSigner, SignerKey};
     use contextful_core::issue::SignatureAlgorithm;
@@ -167,10 +182,12 @@ fn signed_fixture(store: &contextful_context::Store, table: &str) -> (contextful
     let audit_dir = store.root().parent().unwrap().join("fixture-audit");
     let log = AuditLog::anchor(&audit_dir, signer).unwrap();
     let transaction = "a".repeat(64);
+    let mut retirement = json!({"version":2,"directory":format!("tables/{table}"),"inventory_sha256":hash(&serde_json::to_vec(&retired_files).unwrap()),"files":retired_files});
+    change(&mut retirement);
     let entry = log.append(json!({"operation":"erasure", "transaction_id":transaction,"store_id":store_id,
         "subject_hash":contextful_policy::audit::query_digest(b"fixture-audit-key", "erasure-subject:alice"),
         "replacement_hashes":{table:hash(&serde_json::to_vec(&files).unwrap())},
-        "retired_directories":{table:[{"directory":format!("tables/{table}"),"inventory_sha256":hash(&serde_json::to_vec(&retired_files).unwrap())}]},
+        "retired_directories":{table:[retirement]},
         "affected_counts":{table:1}})).unwrap();
     log.export().unwrap();
     drop(log);
@@ -299,6 +316,75 @@ fn committed_erasure_recovery_resumes_after_a_partial_retired_directory_unlink()
     assert!(replacement.is_dir());
     assert_eq!(std::fs::read(baseline.join("schema.json")).unwrap(), baseline_schema);
     contextful_context::erase::recover_committed_erasure(&bound).unwrap();
+}
+
+#[test]
+#[cfg(feature = "read")]
+fn legacy_retirement_requires_the_complete_original_inventory() {
+    for partial in [false, true] {
+        let fixture = Fixture::new();
+        let table = decl("name = \"notes\"\nprimary_key = [\"id\"]");
+        fixture.land(&table, "run-0001", json!([{ "id":"retired" }]), "2030-01-01T00:00:00Z").unwrap();
+        let (bound, replacement, _) = signed_inventory_fixture(&fixture.store, "notes", false);
+        let original = bound.root().join("tables/notes");
+        if partial { std::fs::remove_file(original.join("schema.json")).unwrap(); }
+        let result = contextful_context::erase::recover_committed_erasure(&bound);
+        if partial {
+            assert!(result.unwrap_err().to_string().starts_with("ErasureTransactionIncomplete"));
+            assert!(original.is_dir());
+        } else {
+            result.unwrap();
+            assert!(!original.exists());
+        }
+        assert!(replacement.is_dir());
+    }
+}
+
+#[test]
+#[cfg(feature = "read")]
+fn signed_retirement_refuses_malformed_maps_and_changed_remaining_files() {
+    use sha2::{Digest, Sha256};
+    for case in ["aggregate", "traversal", "version", "changed", "added"] {
+        let fixture = Fixture::new();
+        let table = decl("name = \"notes\"\nprimary_key = [\"id\"]");
+        fixture.land(&table, "run-0001", json!([{ "id":"retired" }]), "2030-01-01T00:00:00Z").unwrap();
+        let (bound, replacement, _) = signed_retirement_fixture(&fixture.store, "notes", |retirement| match case {
+            "aggregate" => retirement["inventory_sha256"] = json!("0".repeat(64)),
+            "traversal" => {
+                retirement["files"]["../outside"] = json!("a".repeat(64));
+                let files: std::collections::BTreeMap<String,String> = serde_json::from_value(retirement["files"].clone()).unwrap();
+                let hash = Sha256::digest(serde_json::to_vec(&files).unwrap()).iter().map(|byte| format!("{byte:02x}")).collect::<String>();
+                retirement["inventory_sha256"] = json!(hash);
+            },
+            "version" => retirement["version"] = json!(3),
+            _ => (),
+        });
+        let original = bound.root().join("tables/notes");
+        if case == "changed" { std::fs::write(original.join("schema.json"), b"different admitted file").unwrap(); }
+        if case == "added" { std::fs::write(original.join("new-file"), b"unadmitted bytes").unwrap(); }
+        let result = contextful_context::erase::recover_committed_erasure(&bound);
+        assert!(result.unwrap_err().to_string().starts_with("ErasureTransactionIncomplete"), "{case}");
+        assert!(original.join("schema.json").is_file(), "{case}: recovery deleted before validating");
+        assert!(replacement.is_dir());
+    }
+}
+
+#[test]
+#[cfg(all(feature = "read", unix))]
+fn partial_retirement_refuses_a_substituted_remaining_symlink() {
+    let fixture = Fixture::new();
+    let table = decl("name = \"notes\"\nprimary_key = [\"id\"]");
+    fixture.land(&table, "run-0001", json!([{ "id":"retired" }]), "2030-01-01T00:00:00Z").unwrap();
+    let (bound, replacement) = select_signed_store_replacement(&fixture.store, "notes");
+    let original = bound.root().join("tables/notes");
+    let foreign = fixture.store.root().join("foreign-schema");
+    std::fs::copy(original.join("schema.json"), &foreign).unwrap();
+    std::fs::remove_file(original.join("schema.json")).unwrap();
+    std::os::unix::fs::symlink(&foreign, original.join("schema.json")).unwrap();
+    assert!(contextful_context::erase::recover_committed_erasure(&bound).is_err());
+    assert!(std::fs::symlink_metadata(original.join("schema.json")).unwrap().file_type().is_symlink());
+    assert!(foreign.is_file());
+    assert!(replacement.is_dir());
 }
 
 #[test]
