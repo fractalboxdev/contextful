@@ -7,6 +7,7 @@
 
 pub mod declare;
 pub mod error;
+pub mod erase;
 pub mod suppress;
 
 pub use error::{DisclosureError, VisibilityError};

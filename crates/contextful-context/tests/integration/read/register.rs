@@ -481,3 +481,14 @@ fn a_ledger_answers_to_its_tables_row_ceiling() {
     let seen = r.query(&s, r#"SELECT request_id FROM "research/notes__requests""#).unwrap();
     assert_eq!((seen.rows.len(), seen.truncated), (3, true), "notes publish max_rows = 3");
 }
+#[test]
+fn reference_is_a_bounded_read_tool_over_registered_relations() {
+    let reads = super::Reads::new();
+    let session = reads.session(&["*"], None, None);
+    let tool = reads.face.tools(&session).into_iter().find(|tool| tool["name"] == "context.reference");
+    assert!(tool.is_some(), "the closed tool set has no citation resolver");
+    let tool = tool.unwrap();
+    assert_eq!(tool["inputSchema"]["required"], serde_json::json!(["table", "run", "seq"]));
+    assert!(tool["inputSchema"]["properties"].get("max_duration_ms").is_some());
+    assert!(tool["inputSchema"]["properties"].get("max_response_bytes").is_some());
+}

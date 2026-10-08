@@ -7,6 +7,7 @@ mod build;
 mod catalog;
 mod declare;
 mod encrypt;
+mod erase;
 mod fold;
 mod index;
 mod init;

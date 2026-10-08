@@ -46,6 +46,42 @@ pub struct StoreArgs {
 
 #[derive(Subcommand)]
 pub enum ContextCmd {
+    /// Resolve one citation through Read admission and the canonical tool/audit owner.
+    Reference {
+        table: String,
+        run: String,
+        seq: i64,
+        #[command(flatten)]
+        store: StoreArgs,
+        #[command(flatten)]
+        admit: AdmitArgs,
+        #[arg(long)]
+        issuer_key: Option<PathBuf>,
+        #[arg(long)]
+        max_duration_ms: Option<u64>,
+        #[arg(long)]
+        max_response_bytes: Option<u64>,
+        #[arg(long)]
+        json: bool,
+    },
+    /// Erase an explicitly admitted subject or declared key set through one signed publication.
+    Erase {
+        #[command(flatten)]
+        store: StoreArgs,
+        #[arg(long, required_unless_present = "keyset_file", conflicts_with = "keyset_file")]
+        subject: Option<String>,
+        #[arg(long = "key-set", alias = "keyset-file")]
+        keyset_file: Option<PathBuf>,
+        #[arg(long, value_delimiter = ',', required = true)]
+        tables: Vec<String>,
+        /// Explicit configured signing port; verification pins remain independent.
+        #[arg(long)]
+        issuer_key: PathBuf,
+        #[command(flatten)]
+        admit: AdmitArgs,
+        #[arg(long)]
+        json: bool,
+    },
     /// Land a JSON Lines batch into a table as one committed run.
     Land {
         table: String,
@@ -124,10 +160,10 @@ struct Opened {
 impl Opened {
     fn open(args: &StoreArgs) -> Result<Opened> {
         let l = locate(args.project.as_deref(), args.declaration.clone())?;
-        let store = Store::open(&l.project.dir, &l.project.name)?;
+        let store = crate::project::open_store(&l.project, None, None)?;
         let text = std::fs::read_to_string(&l.declaration)
             .with_context(|| format!("reading the declaration `{}`", l.declaration.display()))?;
-        let decls = TableDecl::parse_pipeline(&text).with_context(|| format!("`{}`", l.declaration.display()))?;
+        let decls = TableDecl::parse_declaration_set(&text, &crate::project::pipeline_files(&l.declaration)?).with_context(|| format!("`{}`", l.declaration.display()))?;
         Ok(Opened { store, decls, manifest: text })
     }
 
@@ -154,8 +190,93 @@ fn bound(flag: Option<String>) -> Result<Option<Bound>> {
     Ok(flag.map(|s| Bound::parse(&s)).transpose()?)
 }
 
+fn run_erasure(args: &StoreArgs, subject: Option<&str>, keyset_file: Option<&Path>, tables: &[String], issuer_key: &Path, admit: &AdmitArgs, json: bool) -> Result<()> {
+    use contextful_context::erase::{erase, EraseRequest, EraseSelector};
+    use contextful_core::disclosure::erase::RetainedRows;
+    use contextful_core::ports::Clock;
+    use contextful_policy::enforce::erase::ForgetAdmission;
+    use contextful_policy::issue::SeedSigner;
+    use contextful_policy::verify::{effect_boundary, Admission};
+    let located = locate(args.project.as_deref(), args.declaration.clone())?;
+    let text = std::fs::read_to_string(&located.declaration)?;
+    let declarations = TableDecl::parse_declaration_set(&text, &crate::project::pipeline_files(&located.declaration)?)?;
+    let (authority, _) = admit.admit(args.project.as_deref(), "context erase")?;
+    let names = tables.iter().map(String::as_str).collect::<Vec<_>>();
+    let admitted = ForgetAdmission::admit(&authority, &names)?;
+    let store = crate::project::open_store(&located.project, admit.public_key.as_deref(), admit.keyset.as_deref())?;
+    let signer = std::sync::Arc::new(SeedSigner::resolve(Some(issuer_key))?);
+    #[derive(serde::Deserialize)]
+    #[serde(deny_unknown_fields)]
+    struct KeyFile { subject_hash: String, keys: Vec<KeyItem> }
+    #[derive(serde::Deserialize)]
+    #[serde(deny_unknown_fields)]
+    struct KeyItem { table: String, key: Option<serde_json::Value>, keys: Option<serde_json::Map<String, serde_json::Value>> }
+    let key_file = keyset_file.map(|path| -> Result<KeyFile> { Ok(serde_json::from_slice(&std::fs::read(path)?)?) }).transpose()?;
+    let mut keys = RetainedRows::new();
+    if let Some(file) = &key_file {
+        for item in &file.keys {
+            let decl = declarations.iter().find(|decl| decl.name == item.table).context("ErasureScopeUnsupported: key selector names an undeclared table")?;
+            let key = match (&item.key, &item.keys) {
+                (Some(value), None) => {
+                    let column = decl.erasure_key.as_ref().or_else(|| decl.primary_key.as_ref().filter(|columns| columns.len() == 1).map(|columns| &columns[0]))
+                        .context("ErasureScopeUnsupported: a composite key needs its complete keys object")?;
+                    serde_json::Map::from_iter([(column.clone(), value.clone())])
+                }
+                (None, Some(values)) => values.clone(),
+                _ => bail!("ErasureScopeUnsupported: select exactly one key or keys object"),
+            };
+            keys.entry(item.table.clone()).or_default().push(key);
+        }
+    }
+    let selector = match (subject, &key_file) {
+        (Some(subject), None) => EraseSelector::Subject(subject),
+        (None, Some(file)) => EraseSelector::KeySet { subject_hash: &file.subject_hash, keys: &keys },
+        _ => bail!("ErasureScopeUnsupported: select one subject or key set"),
+    };
+    let ledger = crate::admit::LedgerFile::at(&located.project.dir, admit.keyset.as_deref());
+    let clock = crate::clock::SystemClock;
+    let boundary = |authority: &contextful_policy::verify::AdmittedAuthority| {
+        let state = ledger.read().map_err(|error| contextful_core::AuthorityError::KeySetUnavailable(error.to_string()))?;
+        let revocation = crate::admit::revocation_state(admit.denylist.as_deref(), &state)
+            .map_err(|error| contextful_core::AuthorityError::KeySetUnavailable(error.to_string()))?;
+        effect_boundary(authority, &Admission::new(clock.now(), &revocation))
+    };
+    let audit_key = contextful_context::project::audit_key(&store, &located.project)?;
+    let audit_dir = located.project.audit_dir();
+    let erased = erase(&store, EraseRequest { declarations: &declarations, tables, selector, admission: &admitted,
+        signer: Some(signer), audit_dir: &audit_dir, audit_key: &audit_key, boundary: &boundary, clock: &clock })?;
+    let receipt = serde_json::json!({ "transaction_id": erased.transaction_id, "subject_hash": erased.subject_hash,
+        "affected_counts": erased.affected_counts, "physical_collection": "complete" });
+    if json { println!("{}", serde_json::to_string(&receipt)?); }
+    else { println!("erasure {}: physical collection complete", erased.transaction_id); }
+    Ok(())
+}
+
 pub fn run(cmd: ContextCmd) -> Result<()> {
     match cmd {
+        ContextCmd::Reference { table, run, seq, store, admit, issuer_key, max_duration_ms, max_response_bytes, json:_ } => {
+            use contextful_core::ports::Clock;
+            use contextful_policy::verify::{effect_boundary, Admission, AdmittedAuthority};
+            let (authority, revocation) = admit.admit(store.project.as_deref(), "context reference")?;
+            let located = locate(store.project.as_deref(), store.declaration)?;
+            let face = crate::admit::face_with_pins(&located, admit.public_key.as_deref(), admit.keyset.as_deref())?;
+            let audit = crate::project::read_audit(&located.project, issuer_key.as_deref(), admit.public_key.as_deref(), admit.keyset.as_deref())?;
+            let clock = crate::clock::SystemClock;
+            let boundary = |authority: &AdmittedAuthority| effect_boundary(authority, &Admission::new(clock.now(), &revocation));
+            let server = contextful_agent::mcp::Server::new(&face, authority, &boundary, &clock, &audit).map_err(anyhow::Error::msg)?;
+            let mut arguments = serde_json::json!({ "table":table, "run":run, "seq":seq });
+            if let Some(value) = max_duration_ms { arguments["max_duration_ms"] = value.into(); }
+            if let Some(value) = max_response_bytes { arguments["max_response_bytes"] = value.into(); }
+            let message = serde_json::json!({ "jsonrpc":"2.0", "id":1, "method":"tools/call", "params": { "name":"context.reference", "arguments":arguments } });
+            let answer = server.handle(&message.to_string()).ok_or_else(|| anyhow::anyhow!("the reference request has no answer"))?;
+            if answer.get("error").is_some() || answer["result"]["isError"] == true { bail!("{}", answer); }
+            let value = &answer["result"]["structuredContent"];
+            println!("{}", serde_json::to_string(value)?);
+            Ok(())
+        }
+        ContextCmd::Erase { store, subject, keyset_file, tables, issuer_key, admit, json } => {
+            run_erasure(&store, subject.as_deref(), keyset_file.as_deref(), &tables, &issuer_key, &admit, json)
+        }
         ContextCmd::Land { table, store, rows, run_id, site_id, types, now: at, admit } => {
             let o = Opened::open(&store)?;
             let author = admit.author(None, &o.manifest, &[&table])?;
@@ -233,7 +354,7 @@ pub fn run(cmd: ContextCmd) -> Result<()> {
         }
         ContextCmd::RebuildCatalog { project } => {
             let l = locate(project.as_deref(), None)?;
-            let store = Store::open(&l.project.dir, &l.project.name)?;
+            let store = crate::project::open_store(&l.project, None, None)?;
             let catalog = derived_catalog(&store.root().join(DERIVED_CATALOG_FILE), store.encrypted())?;
             let rows = rebuild(&store, &catalog)?;
             println!("{}", serde_json::to_string_pretty(&rows)?);

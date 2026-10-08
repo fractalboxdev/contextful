@@ -65,6 +65,12 @@ pub struct TableDecl {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub subject_id: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub erasure_key: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub referenced_by: Option<Vec<ErasureReference>>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub on_erase: Option<ErasureSurvival>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
     pub class: Option<Value>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub policy: Option<Value>,
@@ -111,6 +117,21 @@ pub struct TableDecl {
     /// A table whose rows never enter the result cache (`read.cache.cache-is-opt-in`).
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub private: Option<bool>,
+}
+
+/// A declared incoming reference to the table's erasure key.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct ErasureReference {
+    pub table: String,
+    pub column: String,
+}
+
+/// A citing table retains its rows while its erased source becomes unavailable.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "lowercase")]
+pub enum ErasureSurvival {
+    Survive,
 }
 
 #[derive(Deserialize)]

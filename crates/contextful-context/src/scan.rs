@@ -52,7 +52,7 @@ pub fn scan_at(store: &Store, decl: &TableDecl, bounds: Bounds, snapshot: Option
     };
     let table_rel = format!("tables/{table}");
     let files: Vec<String> = resolution.files().into_iter().map(|f| format!("{table_rel}/{f}")).collect();
-    let absolute: Vec<String> = files.iter().map(|f| store.root().join(f).to_string_lossy().into_owned()).collect();
+    let absolute: Vec<String> = files.iter().map(|f| store.logical_path(f).map(|path| path.to_string_lossy().into_owned())).collect::<Result<_>>()?;
     let publish = resolution.snapshot.filter(|_| resolution.runs.is_empty()).and_then(|s| s.publish.clone());
 
     let schema = match snapshot {

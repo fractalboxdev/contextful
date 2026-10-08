@@ -9,13 +9,13 @@ An unpinned clause is `committed`; a pinned one is `performed` when its Rust, Le
 | `authority` | 2 | 16 | 270 | 77 | 27 | 10 | 207 | 0 | 207 |
 | `connector` | 2 | 14 | 349 | 89 | 21 | 15 | 229 | 0 | 229 |
 | `corpus` | 1 | 10 | 79 | 37 | 7 | 0 | 43 | 0 | 43 |
-| `disclosure` | 3 | 16 | 134 | 66 | 13 | 3 | 63 | 0 | 63 |
-| `read` | 2 | 15 | 206 | 35 | 22 | 9 | 183 | 0 | 178 |
+| `disclosure` | 3 | 16 | 150 | 68 | 13 | 3 | 62 | 1 | 63 |
+| `read` | 2 | 16 | 211 | 35 | 22 | 9 | 182 | 1 | 178 |
 | `run` | 3 | 26 | 406 | 102 | 39 | 28 | 306 | 0 | 306 |
-| `store` | 1 | 17 | 252 | 59 | 13 | 19 | 216 | 0 | 216 |
+| `store` | 1 | 17 | 253 | 59 | 13 | 19 | 216 | 0 | 216 |
 | `surface` | 2 | 20 | 123 | 56 | 22 | 0 | 85 | 0 | 66 |
 | `topology` | 1 | 6 | 70 | 24 | 5 | 5 | 38 | 0 | 38 |
-| **total** | 19 | 155 | 2125 | 604 | 191 | 103 | 1515 | 0 | |
+| **total** | 19 | 156 | 2147 | 606 | 191 | 103 | 1513 | 2 | |
 
 Decision records: 18.
 
@@ -27,13 +27,13 @@ A milestone reads `closed` when its acceptance test computes `passing` and every
 | --- | --- | --- | --- | --- | --- |
 | 0 — The test-first gate | 2 | 18 | 6 | passing | open |
 | 1 — The authority core | 14 | 239 | 190 | passing | closed |
-| 2 — The store | 9 | 174 | 143 | passing | closed |
+| 2 — The store | 9 | 175 | 143 | passing | closed |
 | 3 — The run path | 11 | 209 | 145 | passing | closed |
 | 4 — Ingest | 25 | 517 | 344 | passing | open |
-| 5 — The read face under enforcement | 17 | 262 | 204 | passing | open |
+| 5 — The read face under enforcement | 17 | 262 | 203 | passing | open |
 | 6 — Sync and replicas | 8 | 78 | 73 | passing | closed |
 | 7 — Memory | 6 | 54 | 45 | passing | closed |
-| 8 — Accountability | 5 | 60 | 47 | passing | open |
+| 8 — Accountability | 5 | 76 | 46 | passing | open |
 | 9 — Visibility | 6 | 41 | 3 | open | open |
 | 10 — Cadence and the operator plane | 11 | 80 | 68 | passing | open |
 | 11 — The derive tier | 7 | 88 | 79 | passing | closed |
@@ -41,7 +41,7 @@ A milestone reads `closed` when its acceptance test computes `passing` and every
 | 13 — Disclosure | 5 | 33 | 13 | open | open |
 | 14 — Assurance | 7 | 139 | 90 | passing | closed |
 
-Unscheduled operations: 10.
+Unscheduled operations: 11.
 
 ## Pins
 
@@ -707,7 +707,7 @@ Unscheduled operations: 10.
 | `disclosure.record.inexact-integer` | `crates/contextful-policy/tests/integration/audit.rs::a_v1_attribute_integer_beyond_2_53_raises_audit_attribute_inexact` | performed |
 | `disclosure.record.projection` | `crates/contextful-context/tests/integration/read/audit.rs::a_lookup_over_a_24_hour_window_answers_within_one_second` | performed |
 | `disclosure.record.read-attributes` | `crates/contextful-agent/tests/integration/audit.rs::a_read_entry_names_tool_credential_subject_and_row_count` | performed |
-| `disclosure.record.read-chain` | `crates/contextful-cli/tests/integration/mcp.rs::the_server_appends_to_the_projects_chain_and_stops_on_one_that_does_not_open` | performed |
+| `disclosure.record.read-chain` | `crates/contextful-cli/tests/integration/mcp.rs::the_server_appends_to_the_projects_chain_and_stops_on_one_that_does_not_open` | broken |
 | `disclosure.record.read-entry` | `crates/contextful-agent/tests/integration/audit.rs::each_answered_read_tool_call_appends_one_entry_synced_before_its_result` | performed |
 | `disclosure.record.read-only` | `crates/contextful-policy/tests/integration/audit.rs::a_read_only_handle_verifies_beside_the_writer_and_refuses_appends` | performed |
 | `disclosure.record.reads-view` | `crates/contextful-cli/tests/integration/audit.rs::query_answers_who_read_what_over_a_window` | performed |
@@ -833,7 +833,7 @@ Unscheduled operations: 10.
 | `read.register.serve-declaration` | `crates/contextful-agent/tests/integration/http.rs::a_missing_audience_or_ceiling_refuses_the_face` | performed |
 | `read.register.stateless-session` | `crates/contextful-agent/tests/integration/http.rs::a_notification_answers_202_and_the_face_holds_no_session_or_stream` | performed |
 | `read.register.template-projection` | `crates/contextful-core/tests/integration/read/template.rs::a_template_projects_into_a_tool_with_every_field_required` | performed |
-| `read.register.tool-set` | `crates/contextful-agent/tests/integration/mcp.rs::the_tool_list_is_the_closed_read_set` | performed |
+| `read.register.tool-set` | `crates/contextful-agent/tests/integration/mcp.rs::the_tool_list_is_the_closed_read_set` | broken |
 | `read.resolve-entity.ambiguous-mention` | `crates/contextful-core/tests/integration/memory/resolve.rs::a_mention_two_identities_share_is_ambiguous` | performed |
 | `read.resolve-entity.edge-endpoint` | `crates/contextful-core/tests/integration/memory/resolve.rs::an_edge_with_an_unresolved_endpoint_is_refused` | performed |
 | `read.resolve-pin.absent-watermark` | `crates/contextful-context/tests/integration/read/pin.rs::a_build_over_no_input_echoes_a_null_watermark` | performed |

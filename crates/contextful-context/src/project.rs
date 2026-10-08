@@ -11,6 +11,58 @@ use std::path::{Path, PathBuf};
 /// The project's declaration file (`store.init.declaration-file`).
 pub const DECLARATION_FILE: &str = "contextful.toml";
 
+/// The audit pseudonym key has independent entropy and stays outside the synced store.
+/// Unix creation uses owner-only permissions; Windows inherits the configured directory ACL.
+pub fn audit_key(store: &crate::Store, project: &Project) -> Result<[u8; 32]> {
+    use std::io::{Read, Write};
+    let incomplete = |why: &str| crate::ContextError::from(contextful_core::disclosure::erase::ErasureError::ErasureTransactionIncomplete(why.to_string()));
+    if store.root() != project.store_root() { return Err(incomplete("the audit key project disagrees with the store")); }
+    store.with_frontier(|bound| {
+        let directory = project.dir.join(".contextful");
+        let metadata = fs::symlink_metadata(&directory).at(&directory)?;
+        if metadata.file_type().is_symlink() || !metadata.is_dir() { return Err(incomplete("the audit key directory is not owned project content")); }
+        let path = directory.join("audit.key");
+        if !path.try_exists().at(&path)? && fs::symlink_metadata(&path).is_err() {
+            if bound.metadata().read_optional(&bound.root().join(crate::erasure_frontier::FRONTIER_FILE))?.is_some() {
+                return Err(incomplete("a published erasure has no persisted project audit key"));
+            }
+            let mut bytes = [0; 32];
+            getrandom::fill(&mut bytes).map_err(|_| incomplete("audit key entropy is unavailable"))?;
+            let staged = contextful_fs::tmp_sibling(&path);
+            let mut options = fs::OpenOptions::new();
+            options.write(true).create_new(true);
+            #[cfg(unix)] {
+                use std::os::unix::fs::OpenOptionsExt;
+                options.mode(0o600);
+            }
+            let result = (|| -> Result<()> {
+                let mut file = options.open(&staged).at(&staged)?;
+                file.write_all(&bytes).at(&staged)?;
+                file.sync_all().at(&staged)?;
+                contextful_fs::create_exclusive(&staged, &path).at(&path)?;
+                contextful_fs::open_dir_for_sync(&directory).at(&directory)?.sync_all().at(&directory)
+            })();
+            if result.is_err() { let _ = fs::remove_file(&staged); }
+            result?;
+        }
+        let metadata = fs::symlink_metadata(&path).at(&path)?;
+        if metadata.file_type().is_symlink() || !metadata.is_file() || metadata.len() != 32 { return Err(incomplete("the audit key is not a complete owned key file")); }
+        #[cfg(unix)] {
+            use std::os::unix::fs::PermissionsExt;
+            if metadata.permissions().mode() & 0o077 != 0 { return Err(incomplete("the audit key permissions expose it beyond its owner")); }
+        }
+        let mut file = fs::File::open(&path).at(&path)?;
+        if file.metadata().at(&path)?.len() != 32 || !contextful_fs::names_file(&path, &file).at(&path)? || fs::symlink_metadata(&path).at(&path)?.file_type().is_symlink() {
+            return Err(incomplete("the audit key identity changed while opening it"));
+        }
+        let mut bytes = [0; 32];
+        file.read_exact(&mut bytes).at(&path)?;
+        let mut extra = [0; 1];
+        if file.read(&mut extra).at(&path)? != 0 { return Err(incomplete("the audit key length changed while reading it")); }
+        Ok(bytes)
+    })
+}
+
 /// A project and the directory every project path is based on (`store.init.project-paths`).
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Project {

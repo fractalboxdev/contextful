@@ -9,6 +9,38 @@ use serde_json::json;
 
 const VENDOR_FILE: &str = "tables/research/vendor/data/runs/run-0001/ingest-a/part-00000.parquet";
 
+#[test]
+fn a_live_session_and_cached_response_refuse_an_incomplete_erasure_frontier() {
+    let manifest = MANIFEST.replace("name = \"research/notes\"", "name = \"research/notes\"\nresult_cache = \"1h\"");
+    let mut r = Reads::with_manifest(&manifest);
+    r.face = r.face.with_result_cache(1_000_000);
+    let session = r.session(&["research/notes"], None, None);
+    let sql = "SELECT note_id FROM \"research/notes\" ORDER BY note_id";
+    assert_eq!(r.query(&session, sql).unwrap().rows.len(), 3);
+    assert_eq!(r.query(&session, sql).unwrap().rows.len(), 3);
+    assert_eq!(r.face.results().unwrap().counts().hits, 1, "the retained response is a real cache hit");
+    std::fs::write(r.store.root().join("_erasure_frontier.json"), b"{truncated").unwrap();
+    let answer = r.query(&session, sql);
+    assert!(answer.is_err(), "a pre-erasure session releases rows after a disagreeing publication: {answer:?}");
+    assert!(answer.unwrap_err().to_string().starts_with("ErasureTransactionIncomplete"));
+}
+
+#[test]
+fn file_listing_and_preview_keep_logical_names_at_a_replaced_frontier() {
+    let mut r = Reads::new();
+    r.store = crate::erase::select_signed_store_replacement(&r.store, "research/notes").0;
+    r.face = Face::open(r.store.clone(), MANIFEST, pepper()).unwrap();
+    let session = r.session(&["research/notes"], None, None);
+    let listing = r.face.files(&session, Bounds::default()).unwrap();
+    assert!(!listing.rows.is_empty());
+    for row in listing.rows {
+        let path = row[1].as_str().unwrap();
+        assert!(path.starts_with("tables/research/notes/"), "internal replacement path escapes into the file API: {path}");
+        let preview = r.face.file(&session, path, ReadOptions::default()).unwrap();
+        assert!(!preview.rows.is_empty());
+    }
+}
+
 fn restriction(r: &Response) -> &Value {
     r.blocks.get("contextful.restriction").unwrap_or_else(|| panic!("no restriction block in {:?}", r.blocks))
 }

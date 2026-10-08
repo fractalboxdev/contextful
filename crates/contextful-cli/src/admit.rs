@@ -216,7 +216,7 @@ impl NonceStore {
 mod wired {
     use super::{command_path, env_value, live_pins, revocation_state, AdmitError, LedgerFile, NonceStore, AUDIENCE_VAR, DPOP_VAR, HOLDER_KEY_VAR, PUBKEY_VAR};
     use crate::clock::SystemClock;
-    use crate::project::{open_face, Located};
+    use crate::project::{open_face_with_pins, Located};
     use anyhow::{Context, Result};
     use contextful_context::read::Face;
     #[cfg(feature = "data-plane")]
@@ -396,11 +396,15 @@ mod wired {
     /// Open the read face over the project's store and manifest, signalling a development
     /// pepper once.
     pub fn face(located: &Located) -> Result<Face> {
+        face_with_pins(located, None, None)
+    }
+
+    pub fn face_with_pins(located: &Located, public_key: Option<&str>, keyset: Option<&Path>) -> Result<Face> {
         let pepper = Pepper::resolve(|k| std::env::var(k).ok());
         let declaration = &located.declaration;
         let manifest =
             std::fs::read_to_string(declaration).with_context(|| format!("reading the declaration `{}`", declaration.display()))?;
-        let face = open_face(&located.project, declaration, &manifest, pepper.clone())?;
+        let face = open_face_with_pins(&located.project, declaration, &manifest, pepper.clone(), public_key, keyset)?;
         if let Some(signal) = pepper.signal() {
             eprintln!("{signal}");
         }

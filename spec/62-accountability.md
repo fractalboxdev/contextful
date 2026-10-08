@@ -83,9 +83,15 @@ What a read leaves behind: the span, the hash-linked audit entry, where telemetr
   *A-disclosure*
 - `read-attributes` — A read's entry carries `contextful.tool`, `contextful.credential`, `contextful.subject.<member>` and `contextful.subject.attestation.<member>` per present subject member, `contextful.result.rows`, `contextful.read.at`, `contextful.read.outcome` and `contextful.tables`, the relations the read names.
   *because the chain answers who read how much under which credential, and the attestation keeps an asserted member from reading as identity*
-- `read-chain` — `contextful serve` and `contextful mcp` open the project's chain at `.contextful/audit/` unanchored before answering a message; a chain that does not open stops the process before it reads a row.
+- `read-chain` — `contextful serve`, `contextful mcp` and {{read.reference.call}} open `.contextful/audit/` before answering; without an explicit startup signing port they use unanchored custody. A chain that does not open stops the process before any row reads.
+  *A-disclosure*
+- `read-signer` — An explicit startup read signing port matches independently configured current public pins before opening and before each append; missing, wrong or retired signing authority refuses held-chain reads through {{disclosure.record.unpersisted-entry}} without inferring keys from requests or receipts.
   *A-disclosure*
 - `single-writer` — One append group holds a directory's audit log at a time: it takes `audit.lock`, links after the chain end, syncs, then releases the lock, so several processes append to one linear chain.
+  *A-disclosure*
+- `audit-key` — Explicit erasure resolves one independently random, durable 32-byte project audit key at `.contextful/audit.key`; concurrent creation preserves one key. Malformed, substituted or unreadable key files follow {{disclosure.erase.recovery}}; Unix creation excludes group and other permissions.
+  *A-disclosure*
+- `audit-key-loss` — A published erasure frontier with no persisted project audit key follows {{disclosure.erase.recovery}} before key creation; erasure never regenerates a lost pseudonym key.
   *A-disclosure*
 - `foreign-tail` — An append group finding the last segment file changed since its handle's last write reads that segment's last entry before linking, and issues no sync beyond {{disclosure.record.group-commit}}.
   *A-disclosure*
@@ -98,6 +104,8 @@ What a read leaves behind: the span, the hash-linked audit entry, where telemetr
 - `unsigned-tip` — A held open or signed check over a chain carrying no `chain.held` or signed root, whose tip is unsigned, raises `AuditLogUnanchored`; anchoring through the signing port signs that chain's missing roots and its tip.
   *A-disclosure*
 - `reads-view` — `audit query` runs one statement over `audit_reads`, one row per table a read entry names — `read_at`, `on_behalf_of`, `agent`, `table_name`, `policy`, `outcome`, `row_count` — computed from the chain's segments on each call.
+  *A-disclosure*
+- `erasures-view` — `audit query` exposes `audit_erasures` from canonical erasure entries: `transaction_id`, `subject_hash`, `affected_counts` and `executed_at`; the projection retains no state and exposes no selector or row payload.
   *A-disclosure*
 - `refused-read` — A read enforcement refuses appends one entry with `outcome` `refused`, naming the relations the guard parsed, and releases no rows.
   *A-disclosure*
@@ -180,7 +188,31 @@ The one erasure verb: subject tombstones, the bounded provenance cascade, the re
 
 - `privilege` — Erasure sits outside the default grant set, and a caller without the forget grant raises `ErasureUngranted`.
   *A-read*
+- `unsupported-scope` — An empty target set or erasure admitted only by narrowed grants raises `ErasureScopeUnsupported` before store access; supported erasure admits every requested table explicitly.
+  *because ignoring a grant constraint widens destructive authority*
 - `subject-column` — A table names its subject column as `subject_id = "<column>"` under `[[pipeline.tables]]`. A subject erasure against a table without one raises `ErasureSubjectUndeclared`, naming the table.
+  *A-disclosure*
+- `key-set` — A key-set request binds its selectors to the declared keys of {{store.declare.erasure-metadata}} and carries an opaque subject hash instead of a raw subject identity.
+  *A-disclosure*
+- `atomic-publication` — Subject and key-set erasure select one committed frontier across every affected table; a failed transaction exposes none of its staged replacements.
+  *A-disclosure*
+- `reader-frontier` — Query, file, retrieval and cache responses resolve one erasure frontier and revalidate it before releasing bytes; an obsolete frontier releases no rows or files.
+  *A-disclosure*
+- `shared-references` — A shared digest survives while any surviving declared reference names it; erasure collects a digest only after its last surviving reference disappears.
+  *A-disclosure*
+- `surviving-citations` — A citing table carrying the survival declaration of {{store.declare.erasure-metadata}} retains its rows; its references resolve through {{read.reference.erased-verdict}}.
+  *A-disclosure*
+- `subject-pseudonym` — Subject erasure computes its subject hash as a domain-separated HMAC-SHA-256 under the configured project audit key; no transaction or audit artifact carries raw subject identities or erased key values.
+  *A-disclosure*
+- `signer-binding` — Erasure signs through the configured issuer or node's {{authority.issue.signing-port}}; readers verify the canonical audit chain under configured public-key pins, independently of transaction artifacts. Missing signing or verifier configuration follows {{disclosure.erase.recovery}}.
+  *A-disclosure*
+- `row-free-audit` — The signed audit chain binds the committed transaction, {{disclosure.erase.subject-pseudonym}} and affected counts to the exact replacement-file inventory.
+  *A-disclosure*
+- `store-binding` — The signed erasure entry binds {{store.init.store-identity}}; readers reject a frontier whose signed store identity differs from the receiving store, following {{disclosure.erase.recovery}}.
+  *A-disclosure*
+- `working-publication` — Erasure preserves an immutable signed survivor baseline and selects independent working copies under the ordinary table layout; normal append and fold advance working publication without changing the baseline or requiring another erasure signature.
+  *A-disclosure*
+- `recovery` — Recovery completes collection for a committed frontier and discards uncommitted replacements; an incomplete or disagreeing transaction record raises `ErasureTransactionIncomplete` before releasing store content.
   *A-disclosure*
 - `cascade` — In the same operation the cascade invalidates every derived fact whose provenance reaches the subject key or a tombstoned identifier within 16 hops.
   *A-disclosure*

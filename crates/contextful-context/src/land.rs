@@ -540,6 +540,8 @@ fn commit_run(
     commit_point: &dyn Fn(&RunManifest) -> Result<()>,
 ) -> Result<Landing> {
     store.check_writable("land")?;
+    let bound = store.frontier_store()?;
+    let store = &bound;
     let per_batch = batches.len() > 1 || position.pipeline_id.is_some();
     let (node_dir, manifest_path) = run_dir(store, &decl.name, &ctx.node, &ctx.injection.run_id)?;
     let types = column_types(store, decl, batches)?;
@@ -842,6 +844,9 @@ fn stage_name(ordinal: u32) -> String {
 /// `run.own.stage-instant`), joining no file list until [`commit_parts`] names it. Every
 /// row carries `_batch_seq` `ordinal` and `_row_seq` counting on from `row_offset`.
 pub fn stage_part(store: &Store, decl: &TableDecl, batch: &Batch, node: &NodeId, injection: &Injection, ordinal: u32, row_offset: u64) -> Result<StagedPart> {
+    store.check_writable("land")?;
+    let bound = store.frontier_store()?;
+    let store = &bound;
     if batch.rows.is_empty() {
         return Err(ContextError::Invalid(format!("run `{}` stages an empty batch as part {ordinal}", injection.run_id)));
     }
@@ -921,6 +926,9 @@ pub fn commit_parts_with_diffs(
 /// Publish a relational run after every table's manifest exists. Readers use one
 /// create-new marker as the visibility point for the group.
 pub fn publish_group(store: &Store, root: &str, tables: &[String], ctx: &RunContext) -> Result<()> {
+    store.check_writable("land")?;
+    let bound = store.frontier_store()?;
+    let store = &bound;
     let (node_dir, _) = run_dir(store, root, &ctx.node, &ctx.injection.run_id)?;
     for table in tables {
         let (_, manifest) = run_dir(store, table, &ctx.node, &ctx.injection.run_id)?;
@@ -946,6 +954,8 @@ fn commit_parts_inner(
     schema_diffs: &[contextful_core::store::lay_out::SchemaDiff],
 ) -> Result<RunManifest> {
     store.check_writable("land")?;
+    let bound = store.frontier_store()?;
+    let store = &bound;
     let (node_dir, manifest_path) = run_dir(store, &decl.name, &ctx.node, &ctx.injection.run_id)?;
     let stage_dir = node_dir.join(STAGE_DIR);
     let _commit_lock = store.lock_commit(&decl.name)?;
@@ -992,6 +1002,9 @@ fn commit_parts_inner(
 /// Remove every part run `run_id` staged on `node` in `table` (`run.own.stage-discard`). A
 /// run with nothing staged discards nothing.
 pub fn discard_staged(store: &Store, table: &str, node: &NodeId, run_id: &str) -> Result<()> {
+    store.check_writable("land")?;
+    let bound = store.frontier_store()?;
+    let store = &bound;
     let (node_dir, _) = run_dir(store, table, node, run_id)?;
     let stage_dir = node_dir.join(STAGE_DIR);
     match std::fs::remove_dir_all(&stage_dir) {

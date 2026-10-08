@@ -2,6 +2,7 @@
 //! session's relation set.
 
 mod compose;
+mod erase;
 mod mask;
 mod predicate;
 mod refuse;

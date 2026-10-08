@@ -194,6 +194,8 @@ impl Face {
         tree: &Value,
     ) -> Result<Response, ReadFault> {
         let started = std::time::Instant::now();
+        let frontier = self.store.frontier_stamp()?;
+        self.ensure_session_frontier(session)?;
         let cache = self.results.as_ref().and_then(|c| Some((c, self.cache_ttl(touched)?))).filter(|_| !results::volatile(tree));
         if cache.is_none() {
             if let Some(c) = &self.results {
@@ -212,7 +214,7 @@ impl Face {
             },
             _ => (self.execute(engine, session, touched, sql, parameters, ceiling, opts)?, None),
         };
-        Ok(if opts.internals {
+        let response = if opts.internals {
             let internals = Internals {
                 sql: sql.to_string(),
                 engine: ENGINE,
@@ -224,7 +226,8 @@ impl Face {
             response.with_block("internals", serde_json::to_value(internals).expect("internals serialize"))
         } else {
             response
-        })
+        };
+        self.publish_read(Some(session), &frontier, response)
     }
 
     /// One admitted statement's projection and restriction block, without internals.
@@ -268,6 +271,7 @@ impl Face {
     /// Every row of a table the session reads, or of one of its committed runs, through
     /// the table's registered relation; an engine-composed read with no row ceiling.
     pub fn rows(&self, session: &Session, table: &str, run: Option<&str>) -> Result<Response, ReadFault> {
+        let frontier = self.read_frontier(session)?;
         let r = self.registered(session, table)?;
         let engine = self.pool.engine(session, self.store.parquet_key())?;
         let (sql, parameters) = match run {
@@ -277,12 +281,38 @@ impl Face {
             None => (format!("SELECT * FROM {}", ident(r.name())), Bindings::default()),
         };
         let response = respond(&engine, &sql, &parameters, None, ReadOptions::default())?;
-        self.restrict(&engine, session, [table], response)
+        let response = self.restrict(&engine, session, [table], response)?;
+        self.publish_read(Some(session), &frontier, response)
     }
 
     /// A table's declaration, or an undeclared table's defaults.
     pub fn decl(&self, table: &str) -> TableDecl {
         self.decls.get(table).cloned().unwrap_or_else(|| TableDecl::named(table))
+    }
+
+    /// One citation resolves through the caller's relation and the certified erasure
+    /// index, with no store path or source payload in its verdict.
+    pub fn reference(&self, session: &Session, table: &str, run: &str, seq: i64, opts: ReadOptions) -> Result<Response, ReadFault> {
+        let frontier = self.read_frontier(session)?;
+        self.registered(session, table)?;
+        let touched = BTreeSet::from([table.to_string()]);
+        self.bind_valid_time(&touched, opts.bounds)?;
+        let reference = contextful_core::memory::synthesize::EvidenceRef { table:table.to_string(), run:run.to_string(), seq, key_digest:None };
+        let engine = self.pool.engine(session, self.store.parquet_key())?;
+        let verdict = self.evidence_read(&engine, session, &reference, &touched, opts.max_duration_ms)?;
+        let readable = verdict == contextful_core::memory::recall::EvidenceRead::Readable;
+        let metadata = !session.tenant_scoped() && session.zone_admitted(table) == Some(true)
+            && !Self::masked(session, table)
+            && session.closed_ledger(&format!("{table}__requests")).is_none();
+        let reason = if readable { "available" } else if !metadata { "unreadable" }
+            else if crate::erasure_frontier::erased_references(&self.store, table)?.contains(&(run.to_string(), seq)) { "erased" }
+            else { "missing" };
+        let ceiling = self.ceiling(session, &touched, opts.limit, None);
+        let mut response = Response::cut(vec!["available".into(), "reason".into()], vec![vec![json!(readable), json!(reason)]], Some(ceiling));
+        if let Some(bounds) = opts.bounds.echo() { response = response.with_block("bounds", bounds); }
+        if let Some(resolved) = super::pin::resolved(session, [table]) { response = response.with_block(RESOLVED_BLOCK, resolved); }
+        let response = self.finish_budget(session, &touched, opts, None, ceiling, response)?;
+        self.publish_read(Some(session), &frontier, response)
     }
 
     /// One table under the request's bounds, or under its pinned build where `pin` names
@@ -303,7 +333,7 @@ impl Face {
                     None => None,
                 };
                 let s = scan_at(&self.store, &decl, bounds, pinned.as_ref())?;
-                let files = s.files.iter().map(|f| self.absolute(f)).collect();
+                let files = s.files.iter().map(|f| self.absolute(f)).collect::<Result<Vec<_>, _>>()?;
                 let resolved = s.publish.as_ref().map(Resolved::of);
                 TableSource { decl, policy, base: s.relation, files, columns: s.columns, landed: true, ledger, resolved }
             }
@@ -320,8 +350,37 @@ impl Face {
     }
 
     /// A store-root-relative path as the absolute path a relation reads.
-    fn absolute(&self, rel: &str) -> String {
-        self.store.root().join(rel).to_string_lossy().into_owned()
+    fn absolute(&self, rel: &str) -> Result<String, ReadFault> {
+        Ok(self.store.logical_path(rel)?.to_string_lossy().into_owned())
+    }
+
+    /// A retained session carries physical files of its admitted table frontier.
+    /// Another replacement cannot reuse those files through a connection or cache.
+    fn ensure_session_frontier(&self, session: &Session) -> Result<(), ReadFault> {
+        let _frontier = self.store.frontier_stamp()?;
+        for relation in session.relations() {
+            let current = self.store.table_dir(relation.name())?;
+            if relation.files().iter().any(|file| !std::path::Path::new(file).starts_with(&current)) {
+                return Err(crate::ContextError::from(contextful_core::disclosure::erase::ErasureError::ErasureTransactionIncomplete("the retained session belongs to an obsolete table frontier".into())).into());
+            }
+        }
+        Ok(())
+    }
+
+    pub(crate) fn read_frontier(&self, session: &Session) -> Result<Option<String>, ReadFault> {
+        let frontier = self.store.frontier_stamp()?;
+        self.ensure_session_frontier(session)?;
+        Ok(frontier)
+    }
+
+    /// The shared project fence covers the final validation and value handoff.
+    pub(crate) fn publish_read<T>(&self, session: Option<&Session>, frontier: &Option<String>, value: T) -> Result<T, ReadFault> {
+        let _release = self.store.lock_frontier()?;
+        if self.store.frontier_stamp()? != *frontier {
+            return Err(crate::ContextError::from(contextful_core::disclosure::erase::ErasureError::ErasureTransactionIncomplete("the erasure frontier changed before response publication".into())).into());
+        }
+        if let Some(session) = session { self.ensure_session_frontier(session)?; }
+        Ok(value)
     }
 
     /// Open a session for an admitted authority: one relation per table its read grants
@@ -479,6 +538,7 @@ impl Face {
     /// latest committed state (`read.query.project-relations`).
     /// A store absent from disk raises `QueryProjectAbsent` (`read.query.project-store`).
     pub fn operator_query(&self, sql: &str, opts: ReadOptions) -> Result<Response, ReadFault> {
+        let frontier = self.store.frontier_stamp()?;
         if !self.store.root().is_dir() {
             return Err(ReadError::QueryProjectAbsent(format!(
                 "no store exists at `{}`; a declared table would read as quiet rather than as an answer",
@@ -491,7 +551,8 @@ impl Face {
         for t in self.tables()? {
             engine.register(&t, &self.source(&t, Bounds::default(), None)?.base)?;
         }
-        respond(&engine, sql, &Bindings::default(), opts.limit, opts)
+        let response = respond(&engine, sql, &Bindings::default(), opts.limit, opts)?;
+        self.publish_read(None, &frontier, response)
     }
 
     /// Register every table on `engine` under its bare name as its unrestricted base
@@ -515,6 +576,7 @@ impl Face {
     /// (`read.guard.query-binding`), the scope guard over its tenant literals and bound
     /// values, then execution under the least row ceiling.
     pub fn query_with(&self, session: &Session, sql: &str, parameters: &Map<String, Value>, opts: ReadOptions) -> Result<Response, ReadFault> {
+        let frontier = self.read_frontier(session)?;
         let engine = self.pool.engine(session, self.store.parquet_key())?;
         let tree = engine.serialize(sql)?;
         let admitted = admit_in(session, &tree)?;
@@ -532,13 +594,15 @@ impl Face {
                 internals.insert("parameters".into(), Value::Object(parameters.clone()));
             }
         }
-        self.finish_budget(session, &admitted.relations, opts, None, ceiling, response)
+        let response = self.finish_budget(session, &admitted.relations, opts, None, ceiling, response)?;
+        self.publish_read(Some(session), &frontier, response)
     }
 
     /// Run a declared template the credential's allowlist covers. Its body is operator
     /// text and runs unrewritten; each bare table name in it resolves to the caller's
     /// registered relation (`read.register.bare-name`).
     pub fn execute_template(&self, session: &Session, id: &str, arguments: &Map<String, Value>, opts: ReadOptions) -> Result<Response, ReadFault> {
+        let frontier = self.read_frontier(session)?;
         let declared: Vec<String> = self.templates.iter().map(|t| t.id.clone()).collect();
         authorize_template(session.grants(), id, &declared)?;
         let template = self.templates.iter().find(|t| t.id == id).expect("an authorized template is declared");
@@ -552,7 +616,8 @@ impl Face {
         self.bind_valid_time(&admitted.relations, opts.bounds)?;
         let ceiling = self.ceiling(session, &admitted.relations, opts.limit, template.max_rows);
         let response = self.answer(&engine, session, &admitted.relations, &template.sql, &parameters, ceiling, opts, &tree)?;
-        self.finish_budget(session, &admitted.relations, opts, template.max_rows, ceiling, response)
+        let response = self.finish_budget(session, &admitted.relations, opts, template.max_rows, ceiling, response)?;
+        self.publish_read(Some(session), &frontier, response)
     }
 
     /// The tools this session sees: the closed built-in set and each declared template
@@ -590,6 +655,7 @@ impl Face {
     }
 
     fn describe_value(&self, session: &Session, table: Option<&str>, bounds: Bounds, deadline: Option<(u64, &'static str)>) -> Result<Value, ReadFault> {
+        let frontier = self.read_frontier(session)?;
         let echo = |mut v: Value, bounds: Bounds| {
             if let Some(b) = bounds.echo() {
                 v["contextful.bounds"] = b;
@@ -608,7 +674,7 @@ impl Face {
                     })
                 })
                 .collect();
-            return Ok(echo(json!({ "session_zone": session.zone().label(), "tables": tables }), Bounds { valid_as_of: None, ..bounds }));
+            return self.publish_read(Some(session), &frontier, echo(json!({ "session_zone": session.zone().label(), "tables": tables }), Bounds { valid_as_of: None, ..bounds }));
         };
         let r = self.registered(session, table)?;
         self.bind_valid_time(&BTreeSet::from([table.to_string()]), bounds)?;
@@ -664,11 +730,12 @@ impl Face {
         if let Some(resolved) = super::pin::resolved(session, [table]) {
             out[format!("contextful.{RESOLVED_BLOCK}")] = resolved;
         }
-        Ok(echo(out, bounds))
+        self.publish_read(Some(session), &frontier, echo(out, bounds))
     }
 
     /// The table description or listing under its selected serialized byte ceiling.
     pub fn describe_with_options(&self, session: &Session, table: Option<&str>, opts: ReadOptions) -> Result<Value, ReadFault> {
+        let frontier = self.read_frontier(session)?;
         let touched = match table {
             Some(name) => BTreeSet::from([name.to_string()]),
             None => session.relations().map(|r| r.name().to_string()).collect(),
@@ -680,7 +747,7 @@ impl Face {
                 return Err(ReadError::ReadResponseTooLarge(format!("{bytes} bytes from {source}; the description exceeds the ceiling")).into());
             }
         }
-        Ok(value)
+        self.publish_read(Some(session), &frontier, value)
     }
 
     /// Committed data files of the tables the session reads, store-root-relative: the files
@@ -693,14 +760,17 @@ impl Face {
 
     /// The committed file listing under the request's serialized response budget.
     pub fn files_with_options(&self, session: &Session, opts: ReadOptions) -> Result<Response, ReadFault> {
+        let frontier = self.read_frontier(session)?;
         let transaction = Bounds { valid_as_of: None, ..opts.bounds };
-        let root = format!("{}/", self.store.root().to_string_lossy());
         let touched: BTreeSet<String> = session.relations().map(|r| r.name().to_string()).collect();
         let ceiling = contextful_core::read::respond::FACE_ROW_CEILING;
         let mut rows = Vec::new();
         for r in session.relations() {
+            let directory = self.store.table_dir(r.name())?;
             for f in r.files() {
-                rows.push(vec![json!(r.name()), json!(f.strip_prefix(&root).unwrap_or(f))]);
+                let tail = std::path::Path::new(f).strip_prefix(&directory).map_err(|_| crate::ContextError::from(contextful_core::disclosure::erase::ErasureError::ErasureTransactionIncomplete("a listed file belongs to an obsolete table frontier".into())))?;
+                let logical = format!("tables/{}/{}", r.name(), tail.to_string_lossy().replace('\\', "/"));
+                rows.push(vec![json!(r.name()), json!(logical)]);
                 if rows.len() as u64 > ceiling {
                     break;
                 }
@@ -717,7 +787,8 @@ impl Face {
             Some(resolved) => response.with_block(RESOLVED_BLOCK, resolved),
             None => response,
         };
-        self.finish_budget(session, &touched, opts, None, ceiling, response)
+        let response = self.finish_budget(session, &touched, opts, None, ceiling, response)?;
+        self.publish_read(Some(session), &frontier, response)
     }
 
     /// Preview one committed run file through its table's registered relation. A snapshot
@@ -725,6 +796,7 @@ impl Face {
     /// (`read.register.file-preview-target`). Under `as_of` the file is one the bound
     /// reaches; under `valid_as_of` its rows are those valid at the instant.
     pub fn file(&self, session: &Session, path: &str, opts: ReadOptions) -> Result<Response, ReadFault> {
+        let frontier = self.read_frontier(session)?;
         let table = preview_target(path)?;
         self.registered(session, &table)?;
         let decl = self.decl(&table);
@@ -732,7 +804,7 @@ impl Face {
         if !scan(&self.store, &decl, transaction)?.files.iter().any(|f| f == path) {
             return Err(ReadError::FilePreviewNotATable(format!("`{path}` is no committed data file of `{table}`")).into());
         }
-        let file = self.absolute(path);
+        let file = self.absolute(path)?;
         let schema = self.store.schema(&table)?;
         let carried = self.store.parquet_columns(std::path::Path::new(&file))?;
         let absent: Vec<Column> = schema.columns.iter().filter(|c| !carried.contains(&c.name)).cloned().collect();
@@ -746,7 +818,8 @@ impl Face {
         let deadline = self.duration_budget(session, &touched, opts.max_duration_ms);
         let response = respond_with_deadline(&engine, &format!("SELECT * FROM {}", ident(PREVIEW_RELATION)), &Bindings::default(), Some(ceiling), opts, deadline)?;
         let response = self.restrict_timed(&engine, session, touched.iter().map(String::as_str), response, deadline)?;
-        self.finish_budget(session, &touched, opts, None, ceiling, response)
+        let response = self.finish_budget(session, &touched, opts, None, ceiling, response)?;
+        self.publish_read(Some(session), &frontier, response)
     }
 
     /// Attach the restriction block naming each touched relation the session's zone
@@ -987,6 +1060,11 @@ fn builtin_tool(name: &str) -> Value {
                 },
                 "limit": { "type": "integer" }, "internals": { "type": "boolean" }, "zone": { "type": "string" } }),
             vec!["sql"],
+        ),
+        "context.reference" => (
+            "Resolve one stored citation through this credential's registered relation.",
+            json!({ "table": { "type": "string" }, "run": { "type": "string" }, "seq": { "type": "integer", "minimum": 0 }, "zone": { "type": "string" } }),
+            vec!["table", "run", "seq"],
         ),
         "context.execute_query" => (
             "Run a declared query template by identifier.",

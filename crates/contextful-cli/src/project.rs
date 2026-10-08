@@ -95,7 +95,80 @@ pub(crate) fn pipeline_files(declaration: &Path) -> Result<Vec<ManifestFile>> {
 /// Open the read face over the project's store, the declaration's text and the
 /// `pipelines/` files beside it (`read.register.declaration-set`).
 pub(crate) fn open_face(project: &Project, declaration: &Path, manifest: &str, pepper: Pepper) -> Result<Face> {
+    open_face_with_pins(project, declaration, manifest, pepper, None, None)
+}
+
+pub(crate) fn open_store(project: &Project, public_key: Option<&str>, keyset: Option<&Path>) -> Result<Store> {
     let store = Store::open(&project.dir, &project.name)?;
+    match policy_keys(project, public_key, keyset)? {
+        Some(source) => Ok(store.with_erasure_key_source(project.audit_dir(), source)?),
+        None => Ok(store),
+    }
+}
+
+fn policy_keys(project: &Project, public_key: Option<&str>, keyset: Option<&Path>) -> Result<Option<std::sync::Arc<dyn contextful_policy::keyset::KeySource>>> {
+    let configured = public_key.map(str::to_owned).or_else(|| std::env::var(crate::admit::PUBKEY_VAR).ok().filter(|value| !value.trim().is_empty()));
+    match configured {
+        Some(pins) => {
+            let source = crate::admit::LivePins::new(crate::admit::static_pins(Some(&pins))?,
+                std::sync::Arc::new(crate::admit::LedgerFile::at(&project.dir, keyset)), crate::clock::SystemClock);
+            Ok(Some(std::sync::Arc::new(source)))
+        }
+        None => Ok(None),
+    }
+}
+
+pub(crate) struct ReadSigner {
+    signer: std::sync::Arc<contextful_policy::issue::SeedSigner>,
+    keys: std::sync::Arc<dyn contextful_policy::keyset::KeySource>,
+}
+impl ReadSigner {
+    fn validate(&self) -> Result<(), contextful_core::AuthorityError> {
+        let signer = contextful_policy::issue::SignerKey::of(self.signer.as_ref());
+        if !self.keys.keys()?.keys().any(|key| key.algorithm() == signer.algorithm && key.public_key.to_bytes() == signer.public_key) {
+            return Err(contextful_core::AuthorityError::IssuerKeyUnresolvable("the read signing port is absent from independently configured current pins".into()));
+        }
+        Ok(())
+    }
+}
+impl contextful_core::ports::SigningPort for ReadSigner {
+    fn encoding(&self) -> contextful_core::issue::SignatureEncoding { self.signer.encoding() }
+    fn public_key(&self) -> Vec<u8> { self.signer.public_key() }
+    fn sign(&self, message: &[u8]) -> Result<Vec<u8>, contextful_core::AuthorityError> { self.validate()?; self.signer.sign(message) }
+}
+
+pub(crate) enum ReadAudit {
+    Unanchored(contextful_policy::audit::AuditLog<contextful_policy::audit::NoIssuerKey>),
+    Signed { log:contextful_policy::audit::AuditLog<ReadSigner>, signer:ReadSigner },
+}
+impl ReadAudit {
+    pub(crate) fn append(&self, attributes: serde_json::Value) -> Result<contextful_policy::audit::AuditEntry, contextful_policy::audit::AuditError> {
+        match self {
+            Self::Unanchored(log) => log.append(attributes),
+            Self::Signed { log, signer } => {
+                signer.validate().map_err(|_| contextful_policy::audit::AuditError::AuditEntryUnpersisted("the configured read signing authority is unavailable".into()))?;
+                log.append(attributes)
+            }
+        }
+    }
+}
+impl contextful_agent::mcp::ReadRecord for ReadAudit {
+    fn record(&self, attributes: serde_json::Value) -> Result<(), contextful_policy::audit::AuditError> { self.append(attributes).map(|_| ()) }
+}
+
+pub(crate) fn read_audit(project: &Project, issuer_key: Option<&Path>, public_key: Option<&str>, keyset: Option<&Path>) -> Result<ReadAudit> {
+    let Some(path) = issuer_key else { return Ok(ReadAudit::Unanchored(contextful_policy::audit::AuditLog::unanchored(project.audit_dir())?)) };
+    let keys = policy_keys(project, public_key, keyset)?.ok_or_else(|| anyhow::anyhow!("the read signing port has no independently configured verification pins"))?;
+    let signer = ReadSigner { signer:std::sync::Arc::new(contextful_policy::issue::SeedSigner::resolve(Some(path))?), keys:keys.clone() };
+    signer.validate()?;
+    let custody = ReadSigner { signer:signer.signer.clone(), keys };
+    custody.validate()?;
+    let log = contextful_policy::audit::AuditLog::anchor(project.audit_dir(), custody)?;
+    Ok(ReadAudit::Signed { log, signer })
+}
+
+pub(crate) fn open_face_with_pins(project: &Project, declaration: &Path, manifest: &str, pepper: Pepper, public_key: Option<&str>, keyset: Option<&Path>) -> Result<Face> {
+    let store = open_store(project, public_key, keyset)?;
     Ok(Face::open_declared(store, manifest, &pipeline_files(declaration)?, pepper)?)
 }
 

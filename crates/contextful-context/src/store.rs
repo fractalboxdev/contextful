@@ -6,7 +6,7 @@ use crate::encrypt::{bind_key_source, MetadataFiles, ProjectEncryption};
 use crate::vector::Sealing;
 use contextful_core::store::declare::TableDecl;
 use contextful_core::store::lay_out::{
-    is_path_segment, store_root, Pointer, TableLayout, CONFIG_FILE, RunManifest, SnapshotId, SnapshotManifest, MANIFEST_FILE, POINTER_FILE, SCHEMA_FILE,
+    is_path_segment, store_root, Pointer, CONFIG_FILE, RunManifest, SnapshotId, SnapshotManifest, MANIFEST_FILE, POINTER_FILE, SCHEMA_FILE,
 };
 use contextful_core::store::reconcile::Schema;
 use contextful_core::store::resolve::TableState;
@@ -30,6 +30,17 @@ pub struct Store {
     replica_of: Option<String>,
     require_connector_pin: bool,
     encryption: Option<Arc<ProjectEncryption>>,
+    frontier: Option<FrontierLease>,
+    #[cfg(feature = "read")]
+    pub(crate) erasure_verifier: Option<Arc<crate::erasure_frontier::Verifier>>,
+}
+
+/// One project publication fence, acquired before table/schema/run locks. Clones keep
+/// the same kernel lease; no caller constructs or transfers it to another store.
+#[derive(Debug, Clone)]
+pub struct FrontierLease {
+    root: PathBuf,
+    held: Arc<FileLock>,
 }
 
 impl Store {
@@ -56,12 +67,69 @@ impl Store {
             replica_of: config.replica.map(|r| r.of),
             require_connector_pin: config.connector.is_some_and(|c| c.require_pin),
             encryption: None,
+            frontier: None,
+            #[cfg(feature = "read")]
+            erasure_verifier: None,
         })
     }
 
     pub fn root(&self) -> &Path {
         &self.root
     }
+
+    /// Bind the operator's audit-chain location and trusted issuer/node keys. A
+    /// publication never supplies its own verifier trust.
+    #[cfg(feature = "read")]
+    pub fn with_erasure_verifier(&self, audit_dir: PathBuf, keys: Vec<contextful_policy::issue::SignerKey>) -> Result<Store> {
+        if keys.is_empty() {
+            return Err(contextful_core::disclosure::erase::ErasureError::ErasureTransactionIncomplete("the erasure verifier has no trusted key".into()).into());
+        }
+        Ok(Store { erasure_verifier: Some(Arc::new(crate::erasure_frontier::Verifier { audit_dir, keys, source:None })), ..self.clone() })
+    }
+
+    #[cfg(feature = "read")]
+    pub fn with_erasure_key_source(&self, audit_dir: PathBuf, source: Arc<dyn contextful_policy::keyset::KeySource>) -> Result<Store> {
+        let keys = source.keys().map_err(|error| ContextError::Invalid(error.to_string()))?;
+        if keys.is_empty() { return Err(ContextError::Invalid("the erasure key source has no trusted key".into())); }
+        Ok(Store { erasure_verifier:Some(Arc::new(crate::erasure_frontier::Verifier { audit_dir, keys:Vec::new(), source:Some(source) })), ..self.clone() })
+    }
+
+    /// Serialize source-frontier mutation with admitted source publication.
+    pub fn lock_frontier(&self) -> Result<FrontierLease> {
+        self.lock_frontier_within(std::time::Duration::from_secs(LOCK_WAIT_SECS))
+    }
+
+    pub(crate) fn lock_frontier_within(&self, wait: std::time::Duration) -> Result<FrontierLease> {
+        if let Some(lease) = self.frontier_lease() {
+            if lease.held.names_file()? { return Ok(lease); }
+            return Err(ContextError::Invalid("the source frontier lease no longer names its lock".into()));
+        }
+        fs::create_dir_all(&self.root).at(&self.root)?;
+        let root = fs::canonicalize(&self.root).at(&self.root)?;
+        let held = FileLock::acquire(&root.join(".frontier.lock"), wait)?;
+        Ok(FrontierLease { root, held: Arc::new(held) })
+    }
+
+    /// Run a mutation under the canonical frontier-before-table lock order. Nested
+    /// adapter calls use the same lease rather than acquiring the kernel lock again.
+    pub fn with_frontier<T>(&self, run: impl FnOnce(&Store) -> Result<T>) -> Result<T> {
+        let store = self.frontier_store()?;
+        run(&store)
+    }
+
+    pub(crate) fn frontier_store(&self) -> Result<Store> {
+        let lease = self.lock_frontier()?;
+        self.under_frontier(&lease)
+    }
+
+    pub(crate) fn under_frontier(&self, lease: &FrontierLease) -> Result<Store> {
+        if fs::canonicalize(&self.root).at(&self.root)? != lease.root || !lease.held.names_file()? {
+            return Err(ContextError::Invalid("the source frontier lease belongs to another store".into()));
+        }
+        Ok(Store { frontier: Some(lease.clone()), ..self.clone() })
+    }
+
+    pub(crate) fn frontier_lease(&self) -> Option<FrontierLease> { self.frontier.clone() }
 
     /// Whether this opened store holds a bound at-rest cipher.
     pub fn encrypted(&self) -> bool { self.encryption.is_some() }
@@ -176,9 +244,39 @@ impl Store {
 
     /// `tables/<t>/`, for a table name of path-safe segments.
     pub fn table_dir(&self, table: &str) -> Result<PathBuf> {
-        check_segment_path(table, "table")?;
-        check_table_layout(table)?;
-        Ok(self.root.join(TableLayout::new(table).dir()))
+        check_table_name(table)?;
+        crate::erasure_frontier::table_dir(self, table)
+    }
+
+    /// Resolve a logical store-relative file through the current project frontier.
+    /// Public file names retain the `tables/` layout across physical replacements.
+    pub fn logical_path(&self, relative: &str) -> Result<PathBuf> {
+        if relative.contains('\\') || relative.split('/').any(|p| p.is_empty() || p == "." || p == ".." || p.contains(':')) {
+            return Err(ContextError::Invalid("a store file requires a normalized relative path".into()));
+        }
+        let frontier = crate::erasure_frontier::load(self)?;
+        if let Some(rest) = relative.strip_prefix("tables/") {
+            if let Some((table, replacement)) = frontier.as_ref().and_then(|f| {
+                f.tables.iter().filter(|(name, _)| rest.strip_prefix(name.as_str()).is_some_and(|tail| tail.starts_with('/')))
+                    .max_by_key(|(name, _)| name.len())
+            }) {
+                let tail = &rest[table.len() + 1..];
+                return Ok(self.root.join(&replacement.directory).join(tail));
+            }
+        }
+        Ok(self.root.join(relative))
+    }
+
+    /// The validated logical publication identity, including selected directories.
+    /// Equal table bytes under another erasure transaction carry another stamp.
+    pub fn frontier_stamp(&self) -> Result<Option<String>> {
+        crate::erasure_frontier::load(self)?.map(|frontier| {
+            let mut publications = std::collections::BTreeMap::new();
+            for (table, replacement) in &frontier.tables {
+                publications.insert(table.clone(), crate::erasure_frontier::inventory(&self.root.join(&replacement.directory))?);
+            }
+            serde_json::to_vec(&(frontier, publications)).map(|bytes| etag(&bytes)).map_err(|_| ContextError::Invalid("the validated erasure frontier does not encode".into()))
+        }).transpose()
     }
 
     /// The table's merged schema. A table no `schema.json` declares refuses
@@ -274,6 +372,7 @@ impl Store {
 
     /// Every table a `schema.json` declares, sorted.
     pub fn tables(&self) -> Result<Vec<String>> {
+        let frontier = crate::erasure_frontier::load(self)?;
         let base = self.root.join("tables");
         let mut out = Vec::new();
         let mut stack = vec![base.clone()];
@@ -295,7 +394,9 @@ impl Store {
                 }
             }
         }
+        if let Some(frontier) = frontier { out.extend(frontier.tables.into_keys()); }
         out.sort();
+        out.dedup();
         Ok(out)
     }
 
@@ -568,6 +669,11 @@ fn check_segment_path(name: &str, what: &str) -> Result<()> {
     } else {
         Err(ContextError::Invalid(format!("{what} name `{name}` is not `/`-separated segments of [A-Za-z0-9._-]")))
     }
+}
+
+pub(crate) fn check_table_name(table: &str) -> Result<()> {
+    check_segment_path(table, "table")?;
+    check_table_layout(table)
 }
 
 /// Segments a table directory's own layout uses: its data and ledger trees, its files, and

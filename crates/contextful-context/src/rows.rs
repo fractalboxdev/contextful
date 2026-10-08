@@ -133,7 +133,7 @@ pub fn table_rows(store: &Store, decl: &TableDecl, columns: &[&str]) -> Result<V
     let s = scan(store, decl, Bounds::default())?;
     let mut out = Vec::new();
     for f in &s.files {
-        for batch in store.read_parquet(&store.root().join(f))? {
+        for batch in store.read_parquet(&store.logical_path(f)?)? {
             out.extend(batch_rows(&batch, columns)?);
         }
     }
