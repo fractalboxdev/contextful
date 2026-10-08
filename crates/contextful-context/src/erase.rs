@@ -2,7 +2,7 @@
 
 use crate::{ContextError, Result, Store};
 use crate::error::IoPath;
-use crate::erasure_frontier::{Certificate, Frontier, RetiredDirectory, TableReplacement, CERTIFICATE_FILE, FRONTIER_FILE};
+use crate::erasure_frontier::{relative_path, Certificate, Frontier, RetiredDirectory, TableReplacement, CERTIFICATE_FILE, FRONTIER_FILE};
 use arrow_array::{BooleanArray, RecordBatch};
 use arrow_select::{concat::concat_batches, filter::filter_record_batch};
 use contextful_core::disclosure::erase::{select_keys, select_subject, ErasureError, RetainedRows};
@@ -51,13 +51,6 @@ impl SigningPort for ConfiguredSigner {
 
 fn unsupported(reason: &str) -> ContextError { ErasureError::ErasureScopeUnsupported(reason.into()).into() }
 fn incomplete(reason: &str) -> ContextError { ErasureError::ErasureTransactionIncomplete(reason.into()).into() }
-
-pub(crate) fn relative_path(value: &str) -> Result<&Path> {
-    if value.contains('\\') || value.split('/').any(|part| part.is_empty() || part == "." || part == ".." || part.contains(':')) {
-        return Err(unsupported("a retained manifest names an unowned file path"));
-    }
-    Ok(Path::new(value))
-}
 
 fn files(root: &Path) -> Result<Vec<PathBuf>> {
     fn visit(root: &Path, list: &mut Vec<PathBuf>) -> Result<()> {
@@ -148,12 +141,12 @@ pub fn erase(store: &Store, request: EraseRequest<'_>) -> Result<Erased> {
         for name in &targets {
             let decl = request.declarations.iter().find(|decl| decl.name == *name).ok_or_else(|| unsupported("a selected frontier table has no declaration"))?;
             let source = &directories[*name];
-            let old_inventory = crate::erasure_frontier::inventory(source)?;
+            let old_inventory = crate::erasure_frontier::retirement_inventory(source)?;
             let old_directory = source.strip_prefix(bound.root()).map_err(|_| incomplete("the retired directory escapes its store"))?.to_str().ok_or_else(|| incomplete("the retired path is not text"))?.replace('\\', "/");
             let mut old = vec![RetiredDirectory { version:2, directory:old_directory, inventory_sha256:crate::store::etag(&serde_json::to_vec(&old_inventory).map_err(|_| incomplete("the retired inventory does not encode"))?), files:Some(old_inventory) }];
             if let Some(previous) = old_frontier.as_ref().and_then(|frontier| frontier.tables.get(*name)) {
                 let baseline = bound.root().join(&previous.baseline_directory);
-                let inventory = crate::erasure_frontier::inventory(&baseline)?;
+                let inventory = crate::erasure_frontier::retirement_inventory(&baseline)?;
                 old.push(RetiredDirectory { version:2, directory:previous.baseline_directory.clone(), inventory_sha256:crate::store::etag(&serde_json::to_vec(&inventory).map_err(|_| incomplete("the prior baseline inventory does not encode"))?), files:Some(inventory) });
             }
             retired.insert((*name).to_string(), old);
@@ -232,7 +225,7 @@ pub fn erase(store: &Store, request: EraseRequest<'_>) -> Result<Erased> {
         sync_tree(&working)?;
         for old in retired.values().flatten() {
             let path = bound.root().join(&old.directory);
-            let current = crate::erasure_frontier::inventory(&path)?;
+            let current = crate::erasure_frontier::retirement_inventory(&path)?;
             if crate::store::etag(&serde_json::to_vec(&current).map_err(|_| incomplete("the retired inventory does not encode"))?) != old.inventory_sha256 {
                 return Err(incomplete("the retired inventory changed before publication"));
             }
@@ -297,7 +290,10 @@ pub fn recover_committed_erasure(store: &Store) -> Result<()> {
                 }
             }
             if absent { continue; }
-            let inventory = crate::erasure_frontier::inventory(&path)?;
+            if old.version == 1 && path.join(CERTIFICATE_FILE).exists() {
+                return Err(incomplete("a hash-only retirement cannot admit its unbound certificate"));
+            }
+            let inventory = crate::erasure_frontier::retirement_inventory(&path)?;
             let admitted = match &old.files {
                 Some(files) => inventory.iter().all(|(path, digest)| files.get(path) == Some(digest)),
                 None => crate::store::etag(&serde_json::to_vec(&inventory).map_err(|_| incomplete("the retired inventory does not encode"))?) == old.inventory_sha256,

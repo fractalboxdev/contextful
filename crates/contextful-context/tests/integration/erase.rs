@@ -161,11 +161,11 @@ fn signed_retirement_fixture(store: &contextful_context::Store, table: &str, cha
     use sha2::{Digest, Sha256};
     use std::collections::BTreeMap;
     fn hash(bytes: &[u8]) -> String { Sha256::digest(bytes).iter().map(|b| format!("{b:02x}")).collect() }
-    fn visit(root: &std::path::Path, path: &std::path::Path, files: &mut BTreeMap<String,String>) {
+    fn visit(root: &std::path::Path, path: &std::path::Path, files: &mut BTreeMap<String,String>, include_certificate: bool) {
         for item in std::fs::read_dir(path).unwrap() {
             let path = item.unwrap().path();
-            if path.is_dir() { visit(root, &path, files); }
-            else if path != root.join("_erasure_certificate.json") {
+            if path.is_dir() { visit(root, &path, files, include_certificate); }
+            else if include_certificate || path != root.join("_erasure_certificate.json") {
                 files.insert(path.strip_prefix(root).unwrap().to_str().unwrap().replace('\\', "/"), hash(&std::fs::read(path).unwrap()));
             }
         }
@@ -173,10 +173,10 @@ fn signed_retirement_fixture(store: &contextful_context::Store, table: &str, cha
     let directory = select_store_replacement(store, table);
     let store_id = contextful_context::project::ensure_store_id(store.root()).unwrap();
     let mut files = BTreeMap::new();
-    visit(&directory, &directory, &mut files);
+    visit(&directory, &directory, &mut files, false);
     let mut retired_files = BTreeMap::new();
     let retired = store.root().join("tables").join(table);
-    visit(&retired, &retired, &mut retired_files);
+    visit(&retired, &retired, &mut retired_files, true);
     let signer = SeedSigner::generate(SignatureAlgorithm::Ed25519);
     let key = SignerKey::of(&signer);
     let audit_dir = store.root().parent().unwrap().join("fixture-audit");
@@ -401,6 +401,58 @@ fn retirement_refuses_an_added_root_certificate_outside_its_signed_inventory() {
     let result = contextful_context::erase::recover_committed_erasure(&bound);
     assert!(result.is_err(), "recovery collected an unadmitted certificate: {result:?}");
     assert!(certificate.is_file());
+    assert!(replacement.is_dir());
+}
+
+#[test]
+#[cfg(feature = "read")]
+fn retirement_certificates_require_per_file_signed_authority() {
+    for case in ["admitted", "substituted", "hash-only"] {
+        let fixture = Fixture::new();
+        let table = decl("name = \"notes\"\nprimary_key = [\"id\"]");
+        fixture.land(&table, "run-0001", json!([{ "id":"retired" }]), "2030-01-01T00:00:00Z").unwrap();
+        let original = fixture.store.root().join("tables/notes");
+        let certificate = original.join("_erasure_certificate.json");
+        std::fs::write(&certificate, b"owned retirement certificate").unwrap();
+        let (bound, replacement, _) = signed_retirement_fixture(&fixture.store, "notes", |retirement| {
+            if case == "hash-only" {
+                use sha2::{Digest, Sha256};
+                let mut files: std::collections::BTreeMap<String,String> = serde_json::from_value(retirement["files"].clone()).unwrap();
+                files.remove("_erasure_certificate.json");
+                retirement["inventory_sha256"] = json!(Sha256::digest(serde_json::to_vec(&files).unwrap()).iter().map(|byte| format!("{byte:02x}")).collect::<String>());
+                retirement.as_object_mut().unwrap().remove("files");
+                retirement.as_object_mut().unwrap().remove("version");
+            }
+        });
+        if case == "substituted" { std::fs::write(&certificate, b"changed retirement certificate").unwrap(); }
+        let result = contextful_context::erase::recover_committed_erasure(&bound);
+        if case == "admitted" {
+            result.unwrap();
+            assert!(!original.exists());
+        } else {
+            assert!(result.unwrap_err().to_string().starts_with("ErasureTransactionIncomplete"), "{case}");
+            assert!(certificate.is_file());
+        }
+        assert!(replacement.is_dir());
+    }
+}
+
+#[test]
+#[cfg(feature = "read")]
+fn rejected_retirement_preserves_other_owned_collection_work() {
+    let fixture = Fixture::new();
+    let table = decl("name = \"notes\"\nprimary_key = [\"id\"]");
+    fixture.land(&table, "run-0001", json!([{ "id":"retired" }]), "2030-01-01T00:00:00Z").unwrap();
+    let (bound, replacement) = select_signed_store_replacement(&fixture.store, "notes");
+    let original = bound.root().join("tables/notes");
+    std::fs::write(original.join("unadmitted-file"), b"unknown retained content").unwrap();
+    let staging = bound.root().join("_erasure/staging").join("b".repeat(64));
+    std::fs::create_dir_all(&staging).unwrap();
+    let marker = staging.join("owned-unpublished-work");
+    std::fs::write(&marker, b"owned staging bytes").unwrap();
+    assert!(contextful_context::erase::recover_committed_erasure(&bound).is_err());
+    assert!(original.join("schema.json").is_file());
+    assert!(marker.is_file(), "recovery unlinked other work before retirement validation");
     assert!(replacement.is_dir());
 }
 
