@@ -203,6 +203,7 @@ pub struct HttpFace<'a, C> {
     in_flight: AtomicUsize,
     exchange: Option<&'a (dyn Fn(&HttpRequest) -> HttpResponse + Sync)>,
     exchange_unconfigured: bool,
+    claim_write: Option<&'a (dyn Fn(&HttpRequest, &AdmittedAuthority, &dyn Fn() -> Result<(), AuthorityError>) -> HttpResponse + Sync)>,
 }
 
 /// A request slot held while one request is in flight.
@@ -249,7 +250,7 @@ impl<'a, C: Clock + Sync> HttpFace<'a, C> {
         let ceiling = ceiling(max_in_flight)?;
         audience(Some(admitting.audience))?;
         let tools = Tools::new(face, clock, record)?;
-        Ok(HttpFace { tools, admitting, control: None, ceiling, in_flight: AtomicUsize::new(0), exchange: None, exchange_unconfigured: false })
+        Ok(HttpFace { tools, admitting, control: None, ceiling, in_flight: AtomicUsize::new(0), exchange: None, exchange_unconfigured: false, claim_write: None })
     }
 
     /// The binary's exchange route mints the reader credential without putting issuer
@@ -263,6 +264,12 @@ impl<'a, C: Clock + Sync> HttpFace<'a, C> {
     /// Attach the store's control API without adding tools to the closed read face.
     pub fn with_control(mut self, control: &'a (dyn Fn(&HttpRequest) -> HttpResponse + Sync)) -> Self {
         self.control = Some(control);
+        self
+    }
+
+    /// The binary owns the claim writer; this route never joins the read MCP tool set.
+    pub fn with_claim_write(mut self, write: &'a (dyn Fn(&HttpRequest, &AdmittedAuthority, &dyn Fn() -> Result<(), AuthorityError>) -> HttpResponse + Sync)) -> Self {
+        self.claim_write = Some(write);
         self
     }
 
@@ -353,6 +360,8 @@ impl<'a, C: Clock + Sync> HttpFace<'a, C> {
             (MCP_PATH, _) => {
                 HttpResponse::message(405, "`/mcp` answers POST; the face holds no session and opens no server stream").with("Allow", "POST")
             }
+            ("/memory/claims", "POST") if self.claim_write.is_some() => self.claim_write_request(request),
+            ("/memory/claims", _) if self.claim_write.is_some() => HttpResponse::message(405, "`/memory/claims` answers POST").with("Allow", "POST"),
             ("/auth/exchange", "POST") if self.exchange.is_some() => self.exchange.expect("checked above")(request),
             ("/auth/exchange", _) if self.exchange.is_some() => HttpResponse::message(405, "`/auth/exchange` answers POST").with("Allow", "POST"),
             (WORKFLOWS_PATH, "GET") | (APPLY_PATH, "POST") if self.control.is_some() => self.control(request),
@@ -398,6 +407,22 @@ impl<'a, C: Clock + Sync> HttpFace<'a, C> {
             return unadmitted(&error);
         }
         self.control.expect("the route is installed only with a control handler")(request)
+    }
+
+    fn claim_write_request(&self, request: &HttpRequest) -> HttpResponse {
+        if request.header("Origin").is_some() {
+            return HttpResponse::json(403, &json!({ "error": { "http": 403, "identifier": "MemoryClaimBrowserRefused" } }));
+        }
+        let (authority, _) = match self.admit(request) {
+            Ok(a) => a,
+            Err(response) => return response,
+        };
+        let boundary = || {
+            let revocation = (self.admitting.revocation)().map_err(AuthorityError::AuthorityRevoked)?;
+            let admission = Admission::new(self.tools.clock().now(), &revocation).expecting(self.admitting.audience);
+            effect_boundary(&authority, &admission)
+        };
+        self.claim_write.expect("route exists")(request, &authority, &boundary)
     }
 
     fn admit(&self, request: &HttpRequest) -> Result<(AdmittedAuthority, RevocationState), HttpResponse> {

@@ -63,6 +63,11 @@
 "run.export.typed-watch" = { test = "crates/contextful-cli/tests/integration/export.rs::typed_export_watch_retries_a_refused_publication" }
 "run.export.typed-byte-limit" = { test = "crates/contextful-cli/tests/integration/export.rs::typed_export_splits_requests_by_bytes_and_refuses_an_oversized_event" }
 "run.export.typed-event-too-large" = { test = "crates/contextful-cli/tests/integration/export.rs::typed_export_splits_requests_by_bytes_and_refuses_an_oversized_event" }
+"read.revise.served-write" = { test = "contextful_cli::serve::served_claim_write_is_durable_actor_bound_and_outside_read_mcp" }
+"read.revise.served-scope" = { test = "contextful_cli::serve::served_claim_write_is_durable_actor_bound_and_outside_read_mcp" }
+"read.revise.browser-request" = { test = "contextful_cli::serve::served_claim_write_is_durable_actor_bound_and_outside_read_mcp" }
+"read.revise.malformed-request" = { test = "contextful_cli::serve::served_claim_write_is_durable_actor_bound_and_outside_read_mcp" }
+"read.revise.served-dedup" = { test = "contextful_cli::serve::served_claim_write_is_durable_actor_bound_and_outside_read_mcp" }
 "corpus.state.typescript-tag-pin" = { test = "contextful_spec::ts_pins::a_running_surface_test_tag_performs_its_clause" }
 "corpus.state.typescript-unfinished" = { test = "contextful_spec::ts_pins::a_skipped_or_todo_surface_test_is_broken" }
 "assurance.gate.native-test-files" = { test = "contextful_ci::stages::the_surfaces_stage_runs_each_native_typescript_test_file_even_without_a_test_script" }
@@ -96,7 +101,7 @@ authority = 207
 connector = 229
 corpus = 43
 disclosure = 63
-read = 178
+read = 183
 run = 306
 store = 216
 surface = 72
