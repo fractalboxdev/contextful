@@ -174,8 +174,10 @@ pub fn erase(store: &Store, request: EraseRequest<'_>) -> Result<Erased> {
                     rewritten.push(filter_record_batch(batch, &keep).map_err(|_| incomplete("retained batch cannot be rewritten"))?);
                     offset = end;
                 }
-                let first = rewritten.first().ok_or_else(|| unsupported("an empty retained part has no rewrite schema"))?;
-                let combined = concat_batches(&first.schema(), &rewritten).map_err(|_| incomplete("retained batches disagree on their schema"))?;
+                let combined = match rewritten.first() {
+                    Some(first) => concat_batches(&first.schema(), &rewritten).map_err(|_| incomplete("retained batches disagree on their schema"))?,
+                    None => empty_part(bound, &source.join(relative))?,
+                };
                 bound.write_parquet(&destination.join(relative), &combined)?;
             }
             rebuild_snapshots(bound, decl, &destination)?;
@@ -327,8 +329,13 @@ fn rebuild_snapshots(store: &Store, decl: &TableDecl, directory: &Path) -> Resul
         let snapshot = path.parent().ok_or_else(|| incomplete("a retained snapshot has no directory"))?;
         let mut batches = Vec::new();
         for part in &manifest.parts { batches.extend(store.read_parquet(&snapshot.join(relative_path(&part.name)?))?); }
-        let Some(first) = batches.first() else { continue };
-        let rows = concat_batches(&first.schema(), &batches).map_err(|_| incomplete("a retained snapshot has incompatible parts"))?;
+        let rows = match batches.first() {
+            Some(first) => concat_batches(&first.schema(), &batches).map_err(|_| incomplete("a retained snapshot has incompatible parts"))?,
+            None => match manifest.parts.first() {
+                Some(part) => empty_part(store, &snapshot.join(relative_path(&part.name)?))?,
+                None => RecordBatch::new_empty(crate::parquet_io::arrow_schema(&store.schema(&decl.name)?)),
+            },
+        };
         for part in &manifest.parts {
             let old = snapshot.join(relative_path(&part.name)?);
             std::fs::remove_file(&old).at(&old)?;
@@ -361,6 +368,12 @@ fn rebuild_snapshots(store: &Store, decl: &TableDecl, directory: &Path) -> Resul
         store.metadata().write(&path, &serde_json::to_vec(&manifest).map_err(|_| incomplete("the rewritten snapshot manifest does not encode"))?)?;
     }
     Ok(())
+}
+
+fn empty_part(store: &Store, path: &Path) -> Result<RecordBatch> {
+    let columns = store.parquet_schema(path)?;
+    let schema = contextful_core::store::reconcile::Schema { columns };
+    Ok(RecordBatch::new_empty(crate::parquet_io::arrow_schema(&schema)))
 }
 
 fn sync_tree(directory: &Path) -> Result<()> {
