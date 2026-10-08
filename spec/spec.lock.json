@@ -22281,7 +22281,7 @@
       "operation": "gate",
       "subject": "test-first-parts",
       "kind": "behavior",
-      "statement": "Remote validation requires a changed test in each changed source package under {{assurance.test.test-first}}; each changed source or test package checks only its own tests against the base in a separate dispatch.",
+      "statement": "Remote validation requires a changed test in each changed source package under {{assurance.test.test-first}}; each changed source package checks only its own changed tests against the base in a separate dispatch.",
       "why": "because one base build per package fits the sandbox's wall clock more reliably",
       "file": "spec/81-engineering.md",
       "line": 191

@@ -103,7 +103,7 @@ fn each_changed_test_package_has_its_own_dispatch_part() {
     assert!(validation.status.success(), "{}", stderr(&validation));
 }
 
-// spec: assurance.gate.test-first-parts@0bd45e25
+// spec: assurance.gate.test-first-parts@183cbf13
 #[test]
 fn a_source_package_requires_its_own_changed_test_when_another_package_is_red() {
     let r = Repo::init();
@@ -130,6 +130,51 @@ fn a_source_package_requires_its_own_changed_test_when_another_package_is_red() 
     assert!(stderr(&validation).contains("demo"), "{}", stderr(&validation));
     let whole = r.gate(&["--stage", "test-first", "--base", &base]);
     assert!(!whole.status.success() && stderr(&whole).contains("demo"), "{}", stderr(&whole));
+}
+
+#[test]
+fn a_test_package_without_changed_source_is_neither_dispatched_nor_held_red() {
+    let r = Repo::init();
+    r.write("crates/other/Cargo.toml", &manifest("other", ""));
+    r.write("crates/other/src/lib.rs", "pub fn value() -> i32 { 1 }\n");
+    r.write("crates/other/tests/integration/main.rs", "mod value;\n");
+    r.write("crates/other/tests/integration/value.rs", "#[test]\nfn value() { assert_eq!(other::value(), 1); }\n");
+    r.lock();
+    r.commit("second package and workspace lock");
+    let base = r.head();
+    r.write("crates/demo/src/lib.rs", TRIPLE);
+    r.write("crates/demo/tests/integration/main.rs", "mod double;\nmod triple;\n");
+    r.write("crates/demo/tests/integration/triple.rs", "#[test]\nfn triples() { assert_eq!(demo::triple(2), 6); }\n");
+    r.write("crates/other/tests/integration/value.rs", "#[test]\nfn value_is_one() { assert_eq!(other::value(), 1); }\n");
+    r.commit("triple, test first, and a renamed test in another package");
+
+    let listed = r.run_ci(&["stages", "--parts", "--base", &base, "--json"]);
+    assert!(listed.status.success(), "{}", stderr(&listed));
+    let stages: Vec<String> = serde_json::from_slice(&listed.stdout).unwrap();
+    assert!(stages.contains(&"test-first.demo".to_string()), "{stages:?}");
+    assert!(!stages.contains(&"test-first.other".to_string()), "{stages:?}");
+
+    let whole = r.gate(&["--stage", "test-first", "--base", &base]);
+    assert!(whole.status.success(), "{}", stderr(&whole));
+}
+
+#[test]
+fn validation_runs_beside_selected_package_parts() {
+    let r = Repo::init();
+    r.write("crates/other/Cargo.toml", &manifest("other", ""));
+    r.write("crates/other/src/lib.rs", "pub fn value() -> i32 { 1 }\n");
+    r.write("crates/other/tests/integration/main.rs", "mod value;\n");
+    r.write("crates/other/tests/integration/value.rs", "#[test]\nfn value() { assert_eq!(other::value(), 1); }\n");
+    r.lock();
+    r.commit("second package and workspace lock");
+    let base = r.head();
+    r.write("crates/demo/src/lib.rs", TRIPLE);
+    r.write("crates/other/src/lib.rs", "pub fn value() -> i32 { 2 }\n");
+    r.write("crates/other/tests/integration/value.rs", "#[test]\nfn value() { assert_eq!(other::value(), 2); }\n");
+    r.commit("two source packages, one changed test package");
+
+    let o = r.gate(&["--stage", "test-first.validate", "--stage", "test-first.other", "--base", &base]);
+    assert!(!o.status.success() && stderr(&o).contains("source package `demo`"), "{}", stderr(&o));
 }
 
 #[test]

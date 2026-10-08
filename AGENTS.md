@@ -122,7 +122,7 @@ The gate measures commits, so commit before running it.
 The FlareDispatch GitHub App dispatches `contextful-ci gate` from same-repository
 pull-request heads. Its `contextful-gate` run publishes the
 `flare-dispatch/contextful-gate` parent, 29 static child check-runs, and one
-test-first child per changed package:
+test-first child per changed source package:
 `flare-dispatch/check:<stage>` for each of `pins`, `toolchain`, `schema`,
 `workspace`, `acceptance`, `evaluate`, `features`, `crate-graph`, `connectors`,
 `surfaces`, `formal` and `budget`. The test-first, features and budget stages dispatch one check per
