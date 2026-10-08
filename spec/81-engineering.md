@@ -188,6 +188,10 @@ Stage order, secrets of record, the crate-graph, row-token, egress and dependenc
   *A-assurance*
 - `windows-checks` — Windows native checks run only as optional diagnostics and contribute no required merge or release verdict.
   *A-assurance*
+- `native-transport` — The sole GitHub Actions workflow accepts only FlareDispatch `workflow_dispatch` inputs for native Windows execution; FlareDispatch owns admission, immutable head selection, terminal receipt verification, required checks and artifact publication.
+  *A-assurance*
+- `native-receipt` — FlareDispatch accepts native results only when repository, head, base, nonce, command digest, trusted workflow identity, fixed runner label, observed native target, terminal exit and artifact digests match the admitted request.
+  *A-assurance*
 - `test-first-parts` — Remote validation requires a changed test in each changed source package under {{assurance.test.test-first}}; each changed source package checks only its own changed tests against the base in a separate dispatch.
   *because one base build per package fits the sandbox's wall clock more reliably*
 - `workspace-parts` — Remote workspace checks compile the feature-unified workspace without running tests, run differential and remaining CLI tests separately, and run each other non-acceptance package suite in exactly one of four groups.
