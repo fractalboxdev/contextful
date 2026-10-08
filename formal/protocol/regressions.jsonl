@@ -1,0 +1,3 @@
+[{"op":"acquire","node":2},{"op":"release","node":2}]
+[{"op":"acquire","node":0},{"op":"send","node":0,"target":"catalog"},{"op":"expire"},{"op":"acquire","node":1},{"op":"deliver","node":0}]
+[{"op":"acquire","node":0},{"op":"send","node":0,"target":"cursor"},{"op":"expire"},{"op":"acquire","node":1},{"op":"deliver","node":0}]

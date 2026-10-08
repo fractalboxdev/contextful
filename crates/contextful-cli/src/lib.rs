@@ -22,6 +22,7 @@ pub use context::derived_catalog;
 #[cfg(feature = "data-plane")]
 mod derive;
 mod differential;
+mod protocol_differential;
 #[cfg(feature = "data-plane")]
 mod disclosure;
 #[cfg(feature = "data-plane")]
