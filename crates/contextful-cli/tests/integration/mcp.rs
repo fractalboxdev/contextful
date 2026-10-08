@@ -273,7 +273,7 @@ fn a_server_admits_over_its_inherited_pipe_only_a_credential_binding_no_key() {
 }
 
 /// `contextful serve` and `contextful mcp` open the project's chain at `.contextful/audit/` unanchored before answering a message; a chain that does not open stops the process before it reads a row.
-// spec: disclosure.record.read-chain@06b13285
+// spec: disclosure.record.read-chain@87c3f90c
 #[test]
 fn the_server_appends_to_the_projects_chain_and_stops_on_one_that_does_not_open() {
     let (dir, public, token) = project();
