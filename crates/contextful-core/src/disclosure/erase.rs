@@ -47,9 +47,7 @@ pub fn select_subject(
 
 /// Identifies a column named by canonical table declarations.
 pub fn declares_erasure_column(declaration: &TableDecl, column: &str) -> bool {
-    declaration.columns.as_ref().is_some_and(|columns| columns.contains_key(column))
-        || declaration.erasure_key.as_deref() == Some(column)
-        || declaration.primary_key.as_ref().is_some_and(|columns| columns.iter().any(|key| key == column))
+    declaration.declared_column_names().contains(column)
 }
 
 /// Resolves scalar column predicates across every canonical declaring table.
@@ -58,8 +56,8 @@ pub fn column_key_set(declarations: &[TableDecl], column: &str, values: &[Value]
     if column.is_empty() || values.is_empty() || values.iter().any(|value| !matches!(value, Value::String(_) | Value::Number(_) | Value::Bool(_))) {
         return Err(unsupported());
     }
-    let keys: RetainedRows = declarations.iter().filter(|decl| declares_erasure_column(decl, column))
-        .map(|decl| (decl.name.clone(), values.iter().map(|value| Map::from_iter([(column.to_string(), value.clone())])).collect())).collect();
+    let keys: RetainedRows = TableDecl::declared_column_map(declarations).into_iter().filter(|(_, columns)| columns.contains(column))
+        .map(|(name, _)| (name.to_string(), values.iter().map(|value| Map::from_iter([(column.to_string(), value.clone())])).collect())).collect();
     if keys.is_empty() { return Err(unsupported()); }
     Ok(keys)
 }
