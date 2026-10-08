@@ -17,6 +17,8 @@ mod read;
 #[cfg(feature = "read")]
 mod read_deadline;
 mod reconcile;
+#[cfg(all(feature = "read", unix))]
+mod recovery_cli;
 mod retention;
 mod reserve;
 mod rows;
