@@ -389,6 +389,52 @@ fn partial_retirement_refuses_a_substituted_remaining_symlink() {
 
 #[test]
 #[cfg(feature = "read")]
+fn retirement_refuses_an_added_root_certificate_outside_its_signed_inventory() {
+    let fixture = Fixture::new();
+    let table = decl("name = \"notes\"\nprimary_key = [\"id\"]");
+    fixture.land(&table, "run-0001", json!([{ "id":"retired" }]), "2030-01-01T00:00:00Z").unwrap();
+    let (bound, replacement) = select_signed_store_replacement(&fixture.store, "notes");
+    let original = bound.root().join("tables/notes");
+    let certificate = original.join("_erasure_certificate.json");
+    assert!(!certificate.exists());
+    std::fs::write(&certificate, b"unadmitted retirement certificate").unwrap();
+    let result = contextful_context::erase::recover_committed_erasure(&bound);
+    assert!(result.is_err(), "recovery collected an unadmitted certificate: {result:?}");
+    assert!(certificate.is_file());
+    assert!(replacement.is_dir());
+}
+
+#[test]
+#[cfg(all(feature = "read", unix))]
+fn retirement_refuses_a_backslash_file_alias_even_with_the_admitted_digest() {
+    fn nested_file(path: &std::path::Path) -> std::path::PathBuf {
+        for entry in std::fs::read_dir(path).unwrap() {
+            let entry = entry.unwrap();
+            if entry.file_type().unwrap().is_dir() { return nested_file(&entry.path()); }
+            if entry.file_type().unwrap().is_file() { return entry.path(); }
+        }
+        panic!("the fixture has no retained nested file");
+    }
+    let fixture = Fixture::new();
+    let table = decl("name = \"notes\"\nprimary_key = [\"id\"]");
+    fixture.land(&table, "run-0001", json!([{ "id":"retired" }]), "2030-01-01T00:00:00Z").unwrap();
+    let (bound, replacement) = select_signed_store_replacement(&fixture.store, "notes");
+    let original = bound.root().join("tables/notes");
+    let admitted = nested_file(&original.join(contextful_core::store::lay_out::RUNS_DIR));
+    let relative = admitted.strip_prefix(&original).unwrap().to_str().unwrap();
+    assert!(relative.contains('/'));
+    let alias = original.join(relative.replace('/', "\\"));
+    assert!(!alias.exists());
+    std::fs::copy(&admitted, &alias).unwrap();
+    assert_eq!(std::fs::read(&admitted).unwrap(), std::fs::read(&alias).unwrap());
+    let result = contextful_context::erase::recover_committed_erasure(&bound);
+    assert!(result.is_err(), "an unadmitted physical alias was collected: {result:?}");
+    assert!(alias.is_file());
+    assert!(replacement.is_dir());
+}
+
+#[test]
+#[cfg(feature = "read")]
 fn recovery_refuses_changed_retired_content_without_deleting_it() {
     let fixture = Fixture::new();
     let table = decl("name = \"notes\"\nprimary_key = [\"id\"]");
