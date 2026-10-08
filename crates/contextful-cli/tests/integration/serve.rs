@@ -261,6 +261,12 @@ fn served_claim_write_is_durable_actor_bound_and_outside_read_mcp() {
     borrowed["session"] = json!("session-2");
     assert_eq!(post_claim(&addr, &alice, &borrowed, false).0, 403, "a writer cannot pick another session");
     assert_eq!(post_claim(&addr, &bob, &claim, false).0, 403, "the second operator cannot author Alice's claim");
+    let colon = mint("user://alice", "session:1", &["read", "write"]);
+    let mut colon_claim = claim.clone();
+    colon_claim["session"] = json!("session:1");
+    let (status, refused) = post_claim(&addr, &colon, &colon_claim, false);
+    assert_eq!((status, refused["error"]["identifier"].clone()), (403, json!("MemoryClaimScopeRefused")),
+        "a session holding the scope separator cannot alias another actor's scope");
     let write_tool = json!({ "jsonrpc": "2.0", "id": 7, "method": "tools/call",
         "params": { "name": "memory.write", "arguments": claim } });
     let (_, mcp) = post(&addr, &write_tool, &alice, None);
