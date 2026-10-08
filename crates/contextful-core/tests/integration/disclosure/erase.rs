@@ -35,6 +35,23 @@ columns = ["preference_id","subject","key","value","scope"]
 }
 
 #[test]
+fn canonical_memory_names_reach_column_selection_without_invented_types() {
+    use contextful_core::{disclosure::erase::{column_key_set_declared, select_column_keys_declared}, store::declare::DeclarationSet};
+    let pack = DeclarationSet::parse(r#"[[table]]
+name = "memory/preferences"
+shape = "memory_preferences"
+columns = ["preference_id","subject","key","value","scope","extra_name"]
+"#, &[]).unwrap();
+    assert!(pack.tables()[0].column_types().is_empty());
+    let values = [json!("erased")];
+    assert_eq!(column_key_set_declared(&pack, "extra_name", &values).unwrap().keys().collect::<Vec<_>>(), [&"memory/preferences".to_string()]);
+    let rows = BTreeMap::from([("memory/preferences".to_string(), vec![json!({"preference_id":"p1","subject":"erased"}).as_object().unwrap().clone(), json!({"preference_id":"p2","subject":"kept"}).as_object().unwrap().clone()])]);
+    let selected = select_column_keys_declared(&pack, &rows, "subject", &values).unwrap();
+    assert_eq!(selected.removes("memory/preferences"), [true, false]);
+    assert!(contextful_core::disclosure::erase::column_key_set(pack.tables(), "subject", &values).is_err(), "a bare typed table invents name-only columns");
+}
+
+#[test]
 fn column_scope_uses_structural_declarations() {
     use contextful_core::disclosure::erase::declares_erasure_column;
     for role in [

@@ -5,9 +5,9 @@ use crate::error::IoPath;
 use crate::erasure_frontier::{relative_path, Certificate, Frontier, RetiredDirectory, TableReplacement, CERTIFICATE_FILE, FRONTIER_FILE};
 use arrow_array::{BooleanArray, RecordBatch};
 use arrow_select::{concat::concat_batches, filter::filter_record_batch};
-use contextful_core::disclosure::erase::{column_key_set, select_column_keys, select_keys, select_subject, ErasureError, RetainedRows};
+use contextful_core::disclosure::erase::{column_key_set_declared, select_column_keys_declared, select_keys, select_subject, ErasureError, RetainedRows};
 use contextful_core::ports::{Clock, SigningPort};
-use contextful_core::store::declare::TableDecl;
+use contextful_core::store::declare::{DeclarationSet, TableDecl};
 use contextful_core::store::lay_out::{SnapshotManifest, MANIFEST_FILE, SNAPSHOTS_DIR};
 use contextful_core::store::index::{IndexEntry, IndexKind};
 use contextful_core::{AuthorityError, issue::SignatureEncoding};
@@ -95,6 +95,12 @@ pub fn erase_subject(store: &Store, request: EraseRequest<'_>) -> Result<Erased>
 
 /// Subject and key-set selectors enter the same admitted publication adapter.
 pub fn erase(store: &Store, request: EraseRequest<'_>) -> Result<Erased> {
+    erase_declared(store, &DeclarationSet::from_tables(request.declarations), request)
+}
+
+/// Erases through a canonical pack without dropping its separately declared column identities.
+pub fn erase_declared(store: &Store, declarations: &DeclarationSet, request: EraseRequest<'_>) -> Result<Erased> {
+    if request.declarations != declarations.tables() { return Err(unsupported("the request disagrees with the canonical declaration pack")); }
     revalidate(&request)?;
     let signer = request.signer.as_ref().ok_or_else(|| incomplete("no erasure signing port is configured"))?;
     if request.audit_key.is_empty() { return Err(incomplete("no project audit key is configured")); }
@@ -136,8 +142,8 @@ pub fn erase(store: &Store, request: EraseRequest<'_>) -> Result<Erased> {
                 (select_keys(request.declarations, &rows, keys)?, key_set_hash(subject_hash)?)
             }
             EraseSelector::ColumnKeySet { subject_hash, column, keys } => {
-                key_set_scope(request.tables, &column_key_set(request.declarations, column, keys)?)?;
-                (select_column_keys(request.declarations, &rows, column, keys)?, key_set_hash(subject_hash)?)
+                key_set_scope(request.tables, &column_key_set_declared(declarations, column, keys)?)?;
+                (select_column_keys_declared(declarations, &rows, column, keys)?, key_set_hash(subject_hash)?)
             }
         };
         let mut nonce = [0; 32]; getrandom::fill(&mut nonce).map_err(|_| incomplete("erasure transaction identity is unavailable"))?;
