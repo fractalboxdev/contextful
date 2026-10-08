@@ -17,7 +17,7 @@ use base64::engine::DecodePaddingMode;
 use base64::Engine;
 use biscuit_auth::Biscuit;
 use contextful_core::claims::AuthorityBlock;
-use contextful_core::grant::{Action, Grant};
+use contextful_core::grant::{Action, Grant, TablePattern};
 use contextful_core::identify::NormalizedSubject;
 use contextful_core::issue::{MintPlan, SignatureAlgorithm};
 use contextful_core::ports::SigningPort;
@@ -84,9 +84,28 @@ pub struct AdmittedAuthority {
     profile: i64,
     key_version: String,
     format: &'static str,
+    owner_project: Option<String>,
+    owner_active: bool,
 }
 
 impl AdmittedAuthority {
+    /// The owner claim is signed in the root block and never inferred from grants.
+    pub fn owner_project(&self) -> Option<&str> {
+        self.owner_project.as_deref()
+    }
+
+    /// Activate the signed owner claim only for the selected local project.
+    pub fn activate_owner(mut self, project: &str) -> Option<Self> {
+        if self.owner_project.as_deref() != Some(project) || !owner_grant(&self.grants) {
+            return None;
+        }
+        self.owner_active = true;
+        Some(self)
+    }
+
+    pub fn owner_active(&self) -> bool {
+        self.owner_active
+    }
     pub fn subject(&self) -> &NormalizedSubject {
         &self.subject
     }
@@ -185,6 +204,18 @@ impl AdmittedAuthority {
         })
         .expect("an admitted authority serializes")
     }
+}
+
+/// An owner claim names one store and carries an unrestricted read grant over it.
+pub fn owner_grant(grants: &[Grant]) -> bool {
+    grants.iter().any(|grant| {
+        grant.actions.contains(&Action::Read)
+            && grant.tables.contains(&TablePattern::All)
+            && grant.tenant.is_none()
+            && grant.aggregate.is_none()
+            && grant.templates.is_none()
+            && grant.max_rows.is_none()
+    })
 }
 
 /// Decode transmitted text into the library's bytes. Text that is not the encoding
@@ -420,6 +451,8 @@ fn admit<E: From<AuthorityError>>(
         profile: chain.version,
         key_version,
         format: BISCUIT_FORMAT,
+        owner_project: chain.hops.is_empty().then(|| block.owner_project.clone()).flatten(),
+        owner_active: false,
     };
     admission.revocation.check(&admitted, admission.at)?;
     admitted.subject.require_member(ADMISSION_SURFACE)?;

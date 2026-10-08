@@ -3,7 +3,7 @@
 
 use crate::error::{IoPath, Result};
 use contextful_core::issue::AuthoringPosture;
-use contextful_core::store::lay_out::{is_path_segment, store_root};
+use contextful_core::store::lay_out::{is_path_segment, store_root, STORE_ID_FILE};
 use contextful_core::store::StoreError;
 use std::fs;
 use std::path::{Path, PathBuf};
@@ -44,6 +44,43 @@ impl Project {
     pub fn memory_dir(&self) -> PathBuf {
         self.dir.join(".contextful/memory").join(&self.name)
     }
+}
+
+/// Read one persistent UUID from the synced store root.
+pub fn store_id(root: &Path) -> Result<String> {
+    let path = root.join(STORE_ID_FILE);
+    let raw = fs::read_to_string(&path).at(&path)?;
+    let id = raw.trim();
+    let valid = id.len() == 36 && id.bytes().enumerate().all(|(i, b)| match i {
+        8 | 13 | 18 | 23 => b == b'-',
+        14 => b == b'4',
+        19 => matches!(b, b'8' | b'9' | b'a' | b'b'),
+        _ => b.is_ascii_digit() || (b'a'..=b'f').contains(&b),
+    });
+    if !valid {
+        return Err(StoreError::StoreIdentityInvalid(format!("`{}` holds no canonical version-4 UUID", path.display())).into());
+    }
+    Ok(id.to_string())
+}
+
+/// Keep an existing UUID, or publish a new one by exclusive creation.
+pub fn ensure_store_id(root: &Path) -> Result<String> {
+    match store_id(root) {
+        Ok(id) => return Ok(id),
+        Err(crate::ContextError::Io { source, .. }) if source.kind() == std::io::ErrorKind::NotFound => {}
+        Err(error) => return Err(error),
+    }
+    if !root.is_dir() {
+        return Err(StoreError::StoreIdentityInvalid(format!("`{}` is not an initialized store root", root.display())).into());
+    }
+    let mut bytes = [0u8; 16];
+    getrandom::fill(&mut bytes).map_err(|e| crate::ContextError::Invalid(format!("store UUID entropy unavailable: {e}")))?;
+    bytes[6] = (bytes[6] & 0x0f) | 0x40;
+    bytes[8] = (bytes[8] & 0x3f) | 0x80;
+    let hex = |slice: &[u8]| slice.iter().map(|b| format!("{b:02x}")).collect::<String>();
+    let id = format!("{}-{}-{}-{}-{}", hex(&bytes[..4]), hex(&bytes[4..6]), hex(&bytes[6..8]), hex(&bytes[8..10]), hex(&bytes[10..]));
+    crate::store::create_new_file(&root.join(STORE_ID_FILE), format!("{id}\n").as_bytes())?;
+    store_id(root)
 }
 
 /// What an init did to the directory.
@@ -131,6 +168,7 @@ pub fn init(dir: &Path, name: &str) -> Result<Initialized> {
     };
     let root = dir.join(store_root(name));
     fs::create_dir_all(&root).at(&root)?;
+    ensure_store_id(&root)?;
     Ok(outcome)
 }
 

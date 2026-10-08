@@ -5,6 +5,12 @@
 
 #[derive(Debug, Clone, PartialEq, Eq, thiserror::Error)]
 pub enum StoreError {
+    /// A persisted store UUID is malformed or cannot identify a store. (`store.init.identity-invalid`)
+    #[error("StoreIdentityInvalid: {0}")]
+    StoreIdentityInvalid(String),
+    /// A pull would replace one store UUID with another. (`store.pull.identity-conflict`)
+    #[error("StoreIdentityConflict: {0}")]
+    StoreIdentityConflict(String),
     /// A row-retention column is absent or not declared Timestamp (`store.declare.retain-rows`).
     #[error("StoreRetentionColumnInvalid: {0}")]
     StoreRetentionColumnInvalid(String),

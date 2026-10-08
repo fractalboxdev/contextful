@@ -27,6 +27,9 @@
 # `contextful-spec state` reads this file and the tags and writes spec/status.md.
 
 [pin]
+"store.init.store-identity" = { test = "contextful_context::init::init_persists_a_distinct_store_uuid_across_repetition_and_recreation" }
+"store.init.identity-invalid" = { test = "contextful_context::init::malformed_store_uuid_and_absent_owner_root_refuse_identity" }
+"store.pull.identity-conflict" = { test = "contextful_sync::pull::a_clone_keeps_the_store_uuid_and_an_independent_store_refuses_it" }
 "store.declare.retain-rows" = { test = "contextful_context::retention::retention_refuses_an_undeclared_or_non_timestamp_column" }
 "store.bound-time.row-age-cutoff" = { test = "contextful_context::retention::a_superseded_snapshot_does_not_restore_a_now_expired_row" }
 "store.fold.row-retention" = { test = "contextful_context::retention::an_idle_fold_removes_an_expired_snapshot_partition" }
@@ -85,13 +88,13 @@
 # its live performed count, and a live count below its floor raises SpecCoverageRegression.
 
 [floor]
-assurance = 138
-authority = 206
-connector = 228
+assurance = 141
+authority = 207
+connector = 229
 corpus = 43
 disclosure = 63
-read = 172
-run = 279
-store = 204
-surface = 59
+read = 178
+run = 306
+store = 216
+surface = 60
 topology = 38

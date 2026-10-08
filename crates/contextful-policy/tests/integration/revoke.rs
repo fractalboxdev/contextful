@@ -25,7 +25,7 @@ fn the_credential_identifier_withdraws_the_whole_chain() {
 #[test]
 fn an_epoch_below_the_current_scoped_epoch_is_refused_at_admission() {
     let signer = issuer();
-    let credential = mint(&plan(&signer), &MintClaims { confirmation: None, epoch: 1 }, &signer).unwrap();
+    let credential = mint(&plan(&signer), &MintClaims { confirmation: None, epoch: 1, ..MintClaims::default() }, &signer).unwrap();
     let admitted = admit(&credential, &signer, DURING).unwrap();
     let claims = revocation_claims(&admitted);
     assert_eq!(claims.project, AUD);

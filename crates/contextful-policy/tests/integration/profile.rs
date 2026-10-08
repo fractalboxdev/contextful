@@ -6,7 +6,27 @@ use contextful_core::grant::{Action, AggregateGrant};
 use contextful_core::issue::SignatureAlgorithm;
 use contextful_policy::attenuate::{attenuate, Derivation};
 use contextful_policy::issue::{mint, MintClaims};
-use contextful_policy::profile::{authority_facts, ENGINE_FACTS, EVALUATOR_FACT_CEILING, PROFILE_VERSION, SUPPORTED_PROFILE_VERSIONS};
+use contextful_policy::profile::{authority_facts, ENGINE_FACTS, EVALUATOR_FACT_CEILING, OWNER_PROFILE_VERSION, PROFILE_VERSION, SUPPORTED_PROFILE_VERSIONS};
+
+/// Profile 2 permits a signed owner store identity only in the root authority block; profile 1 and attenuation blocks reject it, and activation requires an unrestricted read grant over the selected store.
+// spec: authority.profile.owner-claim@0b9f49b2
+#[test]
+fn a_signed_owner_claim_uses_profile_two_and_cannot_be_promoted_from_profile_one_or_a_child() {
+    let signer = issuer();
+    let claim = "one-local-store";
+    let token = mint(&plan_for(&signer, dana(), vec![grant(&[Action::Read], &["*"])]),
+        &MintClaims { owner_project: Some(claim.into()), ..MintClaims::default() }, &signer).unwrap();
+    assert_eq!(introspect(&token).unwrap().profile, OWNER_PROFILE_VERSION);
+    assert!(admit(&token, &signer, DURING).unwrap().activate_owner(claim).is_some());
+    assert!(admit(&token, &signer, DURING).unwrap().activate_owner("second-store").is_none());
+    let child = attenuate(&token, &Derivation::default()).unwrap();
+    assert!(admit(&child, &signer, DURING).unwrap().activate_owner(claim).is_none());
+    let restricted = mint(&plan_for(&signer, dana(), vec![grant(&[Action::Read], &["research/*"])]),
+        &MintClaims { owner_project: Some(claim.into()), ..MintClaims::default() }, &signer).unwrap();
+    assert!(admit(&restricted, &signer, DURING).unwrap().activate_owner(claim).is_none());
+    let first_profile = craft(&signer, &block(&signer), &[], "owner_project(\"one-local-store\");");
+    refused(admit(&first_profile, &signer, DURING), "ProfileElementUnrecognized");
+}
 use contextful_policy::revoke::RevocationState;
 use contextful_policy::verify::{introspect, verify_inherited_pipe, Admission};
 
@@ -234,15 +254,15 @@ fn a_statement_over_two_tables_needs_one_grant_covering_both() {
 // spec: authority.profile.version-unsupported@0eb5690f
 #[test]
 fn a_profile_version_outside_the_supported_set_is_refused() {
-    assert_eq!(SUPPORTED_PROFILE_VERSIONS, &[PROFILE_VERSION]);
+    assert_eq!(SUPPORTED_PROFILE_VERSIONS, &[PROFILE_VERSION, OWNER_PROFILE_VERSION]);
     let signer = issuer();
     let b = block(&signer);
-    let v2 = craft(&signer, &b, &["profile"], "profile(2);");
-    refused(admit(&v2, &signer, DURING), "ProfileVersionUnsupported");
+    let v3 = craft(&signer, &b, &["profile"], "profile(3);");
+    refused(admit(&v3, &signer, DURING), "ProfileVersionUnsupported");
     let none = craft(&signer, &b, &["profile"], "");
     refused(admit(&none, &signer, DURING), "ProfileVersionUnsupported");
     // A checkpoint whose supported set names the version admits it.
     let revocation = RevocationState::default();
-    let widened = Admission { profiles: &[1, 2], ..Admission::new(at(DURING), &revocation) };
-    assert_eq!(verify_inherited_pipe(&v2, &keys(&signer), &widened).unwrap().profile(), 2);
+    let widened = Admission { profiles: &[1, 3], ..Admission::new(at(DURING), &revocation) };
+    assert_eq!(verify_inherited_pipe(&v3, &keys(&signer), &widened).unwrap().profile(), 3);
 }
