@@ -68,3 +68,94 @@ fn m08_accountability() {
     assert!(!refused.status.success());
     assert!(String::from_utf8_lossy(&refused.stderr).contains("AuditChainBroken"));
 }
+
+/// The built surface exercises the erasure contract over disposable declared stores.
+#[test]
+#[ignore = "atomic erasure, retained-file collection and audit publication remain open"]
+fn subject_and_keyset_erasure_is_atomic_and_physically_complete() {
+    let expected_root = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../..").canonicalize().unwrap();
+    assert_eq!(contextful_acceptance::workspace_root(), expected_root, "acceptance harness source provenance differs from its owning test");
+    let cf = bin("contextful");
+    let p = GitRepo::init();
+    let subject = "erasure-fixture-alice-39ac";
+    p.write(".contextful/issuance.toml", &format!("default_audience = \"{AUD}\"\nmax_lifetime_secs = 3600\n"));
+    p.write("contextful.toml", r#"authoring_posture = "per_request"
+[[pipeline.tables]]
+name = "research/notes"
+primary_key = ["id"]
+subject_id = "subject"
+erasure_key = "id"
+retain_runs = "90d"
+result_cache = "1h"
+[[pipeline.tables.indexes]]
+kind = "fulltext"
+column = "text"
+[[pipeline.tables]]
+name = "research/keys"
+primary_key = ["id"]
+erasure_key = "id"
+retain_runs = "90d"
+[[pipeline.tables]]
+name = "research/blobs"
+primary_key = ["digest"]
+erasure_key = "digest"
+referenced_by = [{ table = "research/notes", column = "blob" }]
+[[pipeline.tables]]
+name = "research/citations"
+primary_key = ["id"]
+on_erase = "survive"
+"#);
+    for (table, rows) in [
+        ("research/notes", vec![json!({"id":"alice-shared","subject":subject,"blob":"shared","text":subject}), json!({"id":"alice-only","subject":subject,"blob":"unique","text":subject}), json!({"id":"bob","subject":"bob","blob":"shared","text":"remaining"})]),
+        ("research/keys", vec![json!({"id":"key-a","value":subject}), json!({"id":"key-b","value":"remaining"})]),
+        ("research/blobs", vec![json!({"digest":"shared","value":"remaining"}), json!({"digest":"unique","value":subject})]),
+        ("research/citations", vec![json!({"id":"citation","source_table":"research/notes","source_key":"alice-only"})]),
+    ] {
+        p.write("rows.jsonl", &rows.iter().map(Value::to_string).collect::<Vec<_>>().join("\n"));
+        ok(&p.run(&cf, &["context", "land", table, "--project", "research", "--rows", "rows.jsonl", "--run-id", "run-0001", "--site-id", "fixture"]));
+        ok(&p.run(&cf, &["context", "compact", table, "--project", "research"]));
+    }
+    let public = ok(&p.run(&cf, &["token", "keygen", "--out", ".contextful/issuer.seed"]));
+    let mint = |action| ok(&p.run(&cf, &["token", "mint", "--issuer-key", ".contextful/issuer.seed", "--on-behalf-of", "user://erasure-fixture", "--agent", "agent://erasure-fixture", "--zone", "fixture", "--action", action, "--table", "research/*", "--ttl", "3600"]));
+    let read = mint("read");
+    let forget = mint("forget");
+    let args = ["context", "erase", "--project", "research", "--subject", subject, "--tables", "research/notes", "--public-key", &public, "--audience", AUD, "--json"];
+    let refused = p.run_env(&cf, &args, &[("CONTEXTFUL_TOKEN", &read)]);
+    assert!(!refused.status.success());
+    assert!(String::from_utf8_lossy(&refused.stderr).contains("ErasureUngranted"), "{}", String::from_utf8_lossy(&refused.stderr));
+    let receipt: Value = serde_json::from_str(&ok(&p.run_env(&cf, &args, &[("CONTEXTFUL_TOKEN", &forget)]))).unwrap();
+    assert!(receipt["subject_hash"].as_str().is_some_and(|hash| !hash.contains(subject)));
+    assert_eq!(receipt["physical_collection"], json!("complete"));
+
+    let query = |sql: &str| -> Value { serde_json::from_str(&ok(&p.run(&cf, &["query", "--json", "--project", "research", sql]))).unwrap() };
+    // One statement sees the committed frontier across every affected relation.
+    let visible = query(r#"SELECT (SELECT count(*) FROM "research/notes") AS notes, (SELECT count(*) FROM "research/blobs") AS blobs, (SELECT count(*) FROM "research/citations") AS citations"#);
+    assert_eq!(visible["rows"], json!([["1", "1", "1"]]), "{visible}");
+    assert_eq!(query(r#"SELECT digest FROM "research/blobs""#)["rows"], json!([["shared"]]));
+    assert_eq!(query(r#"SELECT id FROM "research/citations""#)["rows"], json!([["citation"]]));
+
+    p.write("erase-keys.json", &json!({"subject_hash":receipt["subject_hash"],"keys":[{"table":"research/keys","key":"key-a"}]}).to_string());
+    ok(&p.run_env(&cf, &["context", "erase", "--project", "research", "--key-set", "erase-keys.json", "--public-key", &public, "--audience", AUD, "--json"], &[("CONTEXTFUL_TOKEN", &forget)]));
+    assert_eq!(query(r#"SELECT id FROM "research/keys""#)["rows"], json!([["key-b"]]));
+    let leaked: Vec<_> = p.files_containing(subject.as_bytes()).into_iter().filter(|path| path.starts_with(".contextful/")).collect();
+    assert!(leaked.is_empty(), "retained store or sidecar bytes hold the erased subject: {leaked:?}");
+    // Compressed Parquet needs decoding; absence from raw bytes alone proves nothing.
+    let mut directories = vec![p.root.join(".contextful/context/research")];
+    while let Some(directory) = directories.pop() {
+        for entry in std::fs::read_dir(directory).unwrap() {
+            let path = entry.unwrap().path();
+            if path.is_dir() {
+                directories.push(path);
+            } else if path.extension().is_some_and(|extension| extension == "parquet") {
+                let escaped = path.to_string_lossy().replace('\'', "''");
+                let decoded = ok(&p.run(&cf, &["query", "--json", &format!("SELECT to_json(row) FROM read_parquet('{escaped}') AS row")]));
+                assert!(!decoded.contains(subject), "retained Parquet {} contains erased data", path.display());
+            }
+        }
+    }
+    ok(&p.run(&cf, &["audit", "anchor", "--project", "research", "--issuer-key", ".contextful/issuer.seed"]));
+    ok(&p.run(&cf, &["audit", "verify", "--project", "research", "--public-key", &public]));
+    let audit = ok(&p.run(&cf, &["audit", "query", "--project", "research", "--sql", "SELECT subject_hash FROM audit_erasures"]));
+    assert!(audit.contains(receipt["subject_hash"].as_str().unwrap()), "{audit}");
+    assert!(!audit.contains(subject));
+}
