@@ -40,6 +40,16 @@ pub struct Located {
     pub declaration: PathBuf,
 }
 
+/// The synced UUID binds an owner credential to one store instance and its clones.
+pub(crate) fn owner_identity(project: &Project) -> Result<String> {
+    Ok(contextful_context::project::store_id(&project.store_root())?)
+}
+
+/// Legacy stores acquire the synced UUID before minting their first owner claim.
+pub(crate) fn mint_owner_identity(project: &Project) -> Result<String> {
+    Ok(contextful_context::project::ensure_store_id(&project.store_root())?)
+}
+
 /// Resolve the project from `--project` or by discovery, and the declaration from
 /// `--declaration` or beside the project (`store.init.default-declaration`).
 pub fn locate(project: Option<&str>, declaration: Option<PathBuf>) -> Result<Located> {

@@ -2,6 +2,18 @@
 
 **Status:** accepted
 
+## A synced UUID binds a store across clones
+
+`store.init` publishes a random version-4 UUID in `store-id` inside the store root. Owner mint on a root lacking an ID creates it once. Bucket sync carries it as an immutable object: an empty clone accepts the UUID, while a pull into an independently identified store refuses before copying data. Removing and reinitializing a root creates another UUID, so a signed owner claim from the removed root does not follow its filesystem path.
+
+| Option | Lost on | Cost |
+| --- | --- | --- |
+| Synced immutable UUID *(chosen)* | — | Roots lacking an ID receive one before owner mint; independently initialized stores cannot merge by pull. |
+| Digest of the absolute root path | Recreation | A token follows a new store placed at the same path and differs across clones. |
+| Issuer key fingerprint | Shared issuers | Two stores signed by one project issuer have the same fingerprint. |
+
+Consequences: a clone holds the original store identity; a new store at an old path does not.
+
 ## An empty complete snapshot carries a replacement frontier
 
 A zero-row result has two meanings for a replacing table. A source can finish enumerating its inventory and find no rows, or it can skip unchanged input without reading it. The run records a replacement frontier only for the complete result. The marker lives in the run manifest, survives bucket sync as committed data, and remains effective when a fold publishes an empty snapshot. An incomplete or failed pull commits neither rows nor frontier. A bounded read before the marker still reaches earlier runs while retention keeps them.

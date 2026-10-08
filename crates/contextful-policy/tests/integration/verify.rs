@@ -201,7 +201,7 @@ fn the_authority_core_flow_admits_narrows_and_re_reads() {
 /// A credential bound to `holder`'s key, and the request and proof a local client sends.
 fn key_bound(signer: &contextful_policy::issue::SeedSigner, holder: &ed25519_dalek::SigningKey) -> String {
     let jkt = contextful_policy::possession::jwk_thumbprint(holder.verifying_key().as_bytes());
-    contextful_policy::issue::mint(&plan(signer), &MintClaims { confirmation: Some(jkt), epoch: 0 }, signer).unwrap()
+    contextful_policy::issue::mint(&plan(signer), &MintClaims { confirmation: Some(jkt), epoch: 0, ..MintClaims::default() }, signer).unwrap()
 }
 
 const LOCAL_TARGET: &str = "unix:///run/contextful.sock/v1/query";
@@ -370,7 +370,7 @@ fn a_bearer_living_past_3600_s_admits_nothing_over_a_network() {
     let clock = FixedClock(at(MINTED));
     let plan = policy.check(&req, &MintContext { node: NodeRole::Primary, signer: &signer, clock: &clock }).unwrap();
     let jkt = contextful_policy::possession::jwk_thumbprint(holder.verifying_key().as_bytes());
-    let day = contextful_policy::issue::mint(&plan, &MintClaims { confirmation: Some(jkt), epoch: 0 }, &signer).unwrap();
+    let day = contextful_policy::issue::mint(&plan, &MintClaims { confirmation: Some(jkt), epoch: 0, ..MintClaims::default() }, &signer).unwrap();
     let mut nonces = NonceCache::new();
     let proof = sign_proof(&holder, &local_request(), at(DURING), "n-day");
     assert!(verify_network(&day, &keys(&signer), &admission, holder_proof(&proof, &mut nonces)).is_ok());

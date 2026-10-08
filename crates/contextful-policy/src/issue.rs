@@ -116,6 +116,8 @@ pub struct MintClaims {
     pub confirmation: Option<String>,
     /// The scoped revocation epoch the credential is minted under (`authority.revoke.epoch`).
     pub epoch: u64,
+    /// The local project authorized for explicit owner admission.
+    pub owner_project: Option<String>,
 }
 
 /// The authority block a plan mints: a fresh credential identifier, the subject
@@ -141,6 +143,7 @@ fn block_with_jti(plan: &MintPlan, claims: &MintClaims, jti: [u8; 16]) -> Author
         att: subject.attestations(),
         sub: subject.to_subject(),
         grants: plan.grants.clone(),
+        owner_project: claims.owner_project.clone(),
     }
 }
 

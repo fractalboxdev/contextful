@@ -26,6 +26,8 @@ StoreManifestUnreadable      = { clause = "store.lay-out.manifest-unreadable", g
 StoreUnknownTable            = { clause = "store.lay-out.unknown-table", gloss = "A table name resolves to no `schema.json` in the tree." }
 StoreNodeIdInvalid           = { clause = "store.lay-out.node-id-shape", gloss = "A resolved node id is too long or outside the path-safe pattern." }
 StoreProjectNameInvalid      = { clause = "store.init.name-shape", gloss = "A project name is not path-safe `/`-separated segments." }
+StoreIdentityInvalid         = { clause = "store.init.identity-invalid", gloss = "A store UUID is malformed or owner mint names no initialized root." }
+StoreIdentityConflict        = { clause = "store.pull.identity-conflict", gloss = "A pull would replace one store UUID with another." }
 StoreProjectConflict         = { clause = "store.init.name-conflict", gloss = "An init meets a `contextful.toml` declaring another project, or a project with no name." }
 StoreProjectUndiscovered     = { clause = "store.init.undiscovered", gloss = "A command given no `--project` finds no `contextful.toml` naming a project from its working directory up." }
 StoreNodeIdShared            = { clause = "store.lay-out.node-id-shared", gloss = "A node id is declared in a control-plane configuration applied to many machines." }
