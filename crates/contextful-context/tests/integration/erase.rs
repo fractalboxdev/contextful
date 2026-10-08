@@ -5,17 +5,23 @@ use serde_json::json;
 #[test]
 #[cfg(feature = "read")]
 fn partitioned_erasure_removes_designated_values_from_signed_paths_and_survivor_names() {
-    partitioned_erasure_paths(false);
+    partitioned_erasure_paths(false, false);
 }
 
 #[test]
 #[cfg(feature = "read")]
 fn partitioned_key_set_erasure_removes_designated_values_from_signed_paths_and_survivor_names() {
-    partitioned_erasure_paths(true);
+    partitioned_erasure_paths(true, false);
+}
+
+#[test]
+#[cfg(feature = "read")]
+fn all_erased_partitioned_snapshots_leave_no_designated_values_or_stale_indexes() {
+    partitioned_erasure_paths(false, true);
 }
 
 #[cfg(feature = "read")]
-fn partitioned_erasure_paths(key_set: bool) {
+fn partitioned_erasure_paths(key_set: bool, all_erased: bool) {
     use contextful_context::erase::{erase, EraseRequest, EraseSelector};
     use contextful_core::{grant::Action, issue::SignatureAlgorithm, ports::FixedClock};
     use contextful_policy::{enforce::erase::ForgetAdmission, issue::SeedSigner, revoke::RevocationState, verify::{effect_boundary, Admission}};
@@ -24,7 +30,9 @@ fn partitioned_erasure_paths(key_set: bool) {
         let fixture = Fixture::new();
         let partition = if key_set { "id" } else { "subject" };
         let table = decl(&format!("name = \"notes\"\nprimary_key = [\"id\"]\nsubject_id = \"subject\"\nerasure_key = \"id\"\npartition_by = [\"{partition}\"]\nretain_runs = \"90d\"\n[[pipeline.tables.indexes]]\nkind = \"fulltext\"\ncolumn = \"text\"\n{}", crate::index::INDEX));
-        fixture.land_typed(&table, "run-0001", json!([{ "id":canary, "subject":canary, "text":"removed text", "embedding":[1.0,0.0,0.0] }, {"id":"kept", "subject":"survivor", "text":"retained text", "embedding":[0.0,1.0,0.0]}]), "2030-01-01T00:00:00Z", &crate::index::f32x3()).unwrap();
+        let mut input = vec![json!({ "id":canary, "subject":canary, "text":"removed text", "embedding":[1.0,0.0,0.0] })];
+        if !all_erased { input.push(json!({"id":"kept", "subject":"survivor", "text":"retained text", "embedding":[0.0,1.0,0.0]})); }
+        fixture.land_typed(&table, "run-0001", json!(input), "2030-01-01T00:00:00Z", &crate::index::f32x3()).unwrap();
         contextful_context::project::ensure_store_id(fixture.store.root()).unwrap();
         contextful_context::fold::fold(&fixture.store, &table, crate::support::at("2030-01-01T00:01:00Z")).unwrap();
         let project = contextful_context::project::Project { dir:fixture.store.root().ancestors().nth(3).unwrap().to_path_buf(), name:"research".into() };
@@ -44,7 +52,8 @@ fn partitioned_erasure_paths(key_set: bool) {
         let subject_hash = contextful_policy::audit::query_digest(&audit_key, "fixture opaque subject");
         let selector = if key_set { EraseSelector::KeySet { subject_hash:&subject_hash, keys:&keys } } else { EraseSelector::Subject(canary) };
         let result = erase(&store, EraseRequest { declarations:&declarations, tables:&tables, selector, admission:&admission, signer:Some(signer), audit_dir:&audit_dir, audit_key:&audit_key, boundary:&boundary, clock:&FixedClock(now) }).unwrap();
-        assert_eq!(serde_json::to_value(contextful_context::rows::table_rows(&result.store, &table, &["id", "subject", "text"]).unwrap()).unwrap(), json!([{ "id":"kept", "subject":"survivor", "text":"retained text" }]));
+        let expected = if all_erased { json!([]) } else { json!([{ "id":"kept", "subject":"survivor", "text":"retained text" }]) };
+        assert_eq!(serde_json::to_value(contextful_context::rows::table_rows(&result.store, &table, &["id", "subject", "text"]).unwrap()).unwrap(), expected);
         let audit = serde_json::to_string(&contextful_policy::audit::entries(&audit_dir).unwrap()).unwrap();
         assert!(!audit.contains(canary), "signed retirement paths disclose the erased partition: {key_set}");
         fn check(directory: &std::path::Path, canary: &str) {
@@ -60,23 +69,24 @@ fn partitioned_erasure_paths(key_set: bool) {
         check(result.store.root(), canary);
         let mut continued = Fixture::new(); continued.store = result.store;
         let (manifest, snapshot) = crate::index::current(&continued, "notes");
+        let expected_ids: Vec<String> = if all_erased { vec![] } else { vec!["kept".into()] };
         for index in &manifest.indexes {
             match index {
                 contextful_core::store::index::IndexEntry::Vector(_) => {
                     let sidecar = contextful_context::vector::VectorSidecar::open(&snapshot, "notes", index, &contextful_context::vector::Sealing::Plaintext).unwrap();
-                    assert_eq!(sidecar.probe(&[0.0,1.0,0.0], 10).unwrap().into_iter().map(|candidate| candidate.id).collect::<Vec<_>>(), vec!["kept"]);
+                    assert_eq!(sidecar.probe(&[0.0,1.0,0.0], 10).unwrap().into_iter().map(|candidate| candidate.id).collect::<Vec<_>>(), expected_ids);
                 }
                 contextful_core::store::index::IndexEntry::Fulltext(_) => {
                     let sidecar = contextful_context::fulltext::FulltextSidecar::open(&snapshot, "notes", index, &contextful_context::vector::Sealing::Plaintext).unwrap();
                     assert!(sidecar.probe(&["removed".into()], 10).unwrap().candidates.is_empty());
-                    assert_eq!(sidecar.probe(&["retained".into()], 10).unwrap().candidates.into_iter().map(|candidate| candidate.id).collect::<Vec<_>>(), vec!["kept"]);
+                    assert_eq!(sidecar.probe(&["retained".into()], 10).unwrap().candidates.into_iter().map(|candidate| candidate.id).collect::<Vec<_>>(), expected_ids);
                 }
                 _ => panic!("unexpected fixture index"),
             }
         }
         continued.land_typed(&table, "run-0002", json!([{ "id":"later", "subject":"survivor", "text":"later retained", "embedding":[0.0,0.0,1.0]}]), "2030-01-01T00:06:00Z", &crate::index::f32x3()).unwrap();
         contextful_context::fold::fold(&continued.store, &table, crate::support::at("2030-01-01T00:07:00Z")).unwrap();
-        assert_eq!(contextful_context::rows::table_rows(&continued.store, &table, &["id"]).unwrap().len(), 2);
+        assert_eq!(contextful_context::rows::table_rows(&continued.store, &table, &["id"]).unwrap().len(), if all_erased { 1 } else { 2 });
         check(continued.store.root(), canary);
     }
 }
