@@ -4,6 +4,22 @@ use serde_json::json;
 use std::collections::BTreeMap;
 
 #[test]
+fn canonical_declaration_set_includes_typed_memory_shape_without_inferred_columns() {
+    let tables = TableDecl::parse_declaration_set(r#"
+[[pipeline.tables]]
+name = "notes"
+columns = {subject="utf8"}
+[[table]]
+name = "memory/facts"
+shape = "memory_facts"
+columns = ["claim_id","subject","predicate","object","scope","tier","confidence","valid_from","valid_to","evidence","superseded_by","grant_id","agent","extra_name"]
+"#, &[]).unwrap();
+    let memory = tables.iter().find(|table| table.name == "memory/facts").expect("the canonical declaration universe omits a memory shape");
+    assert_eq!(memory.primary_key(), &["claim_id"]);
+    assert!(memory.column_types().is_empty(), "name-only memory declarations invent column types");
+}
+
+#[test]
 fn column_scope_uses_structural_declarations() {
     use contextful_core::disclosure::erase::declares_erasure_column;
     for role in [

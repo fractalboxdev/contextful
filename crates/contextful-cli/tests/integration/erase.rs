@@ -1,6 +1,37 @@
 //! Erasure through the built binary, with fixture-owned keys and disposable rows.
 use std::process::{Command, Output};
 
+#[test]
+fn erasure_requires_forget_over_declared_memory_before_mutation() {
+    let directory = tempfile::tempdir().unwrap(); let root = directory.path();
+    ok(run(root, &["init", "research", "--authoring-posture", "per_request"], None, None));
+    std::fs::write(root.join("contextful.toml"), r#"authoring_posture = "per_request"
+[[pipeline.tables]]
+name = "notes"
+primary_key = ["id"]
+columns = {subject="utf8"}
+[[table]]
+name = "memory/facts"
+shape = "memory_facts"
+columns = ["claim_id","subject","predicate","object","scope","tier","confidence","valid_from","valid_to","evidence","superseded_by","grant_id","agent"]
+"#).unwrap();
+    std::fs::write(root.join(".contextful/issuance.toml"), "default_audience = \"erasure-fixture\"\nmax_lifetime_secs = 3600\n").unwrap();
+    std::fs::write(root.join("notes.jsonl"), "{\"id\":\"erased\",\"subject\":\"memory-forget-canary\"}\n").unwrap();
+    ok(run(root, &["context", "land", "notes", "--rows", "notes.jsonl", "--run-id", "r1", "--site-id", "fixture"], None, None));
+    let pins = ok(run(root, &["token", "keygen", "--out", ".contextful/issuer.seed"], None, None));
+    let limited = ok(run(root, &["token", "mint", "--issuer-key", ".contextful/issuer.seed", "--on-behalf-of", "user://fixture", "--agent", "agent://fixture", "--zone", "on-prem:fixture", "--action", "forget", "--table", "notes", "--ttl", "3600"], None, None));
+    std::fs::write(root.join("keys.json"), serde_json::json!({"subject_hash":format!("hmac-sha256:{}", "a".repeat(64)),"column":"subject","keys":["memory-forget-canary"]}).to_string()).unwrap();
+    let store = root.join(".contextful/context/research");
+    let request = ["context", "erase", "--project", "research", "--key-set", "keys.json", "--issuer-key", ".contextful/issuer.seed", "--public-key", &pins, "--audience", "erasure-fixture", "--json"];
+    let denied = run(root, &request, Some(&limited), Some(&pins));
+    assert!(!denied.status.success(), "a notes-only grant admits a canonical universe containing memory/facts");
+    assert!(String::from_utf8_lossy(&denied.stderr).contains("ErasureUngranted"));
+    assert!(!store.join("_erasure_frontier.json").exists(), "refused admission publishes an erasure");
+    assert!(!root.join(".contextful/audit.key").exists(), "refused admission bootstraps an audit key");
+    let rows: serde_json::Value = serde_json::from_str(&ok(run(root, &["query", "--json", "--project", "research", "SELECT id FROM notes"], None, None))).unwrap();
+    assert_eq!(rows["rows"], serde_json::json!([["erased"]]));
+}
+
 struct LiveMcp {
     child: std::process::Child,
     input: std::process::ChildStdin,
