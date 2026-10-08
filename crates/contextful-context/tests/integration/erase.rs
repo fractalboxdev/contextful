@@ -958,6 +958,10 @@ fn column_erasure_admits_composite_members_through_the_built_surface() {
     let receipt: serde_json::Value = serde_json::from_str(&run(&["context", "erase", "--project", "research", "--key-set", "keys.json", "--issuer-key", ".contextful/issuer.seed", "--public-key", &pins, "--audience", "erasure-fixture", "--json"], Some(&forget))).unwrap();
     assert_eq!(receipt["affected_counts"]["events"], 1);
     assert_eq!(receipt["subject_hash"], hash);
-    let result: serde_json::Value = serde_json::from_str(&run(&["query", "--project", "research", "--public-key", &pins, "--json", "SELECT id FROM events ORDER BY id"], None)).unwrap();
+    let output = Command::new(&binary).current_dir(root)
+        .args(["query", "--project", "research", "--json", "SELECT id FROM events ORDER BY id"])
+        .env("CONTEXTFUL_ISSUER_PUBKEY", &pins).env_remove("CONTEXTFUL_TOKEN").env_remove("CONTEXTFUL_NODE_ID").output().unwrap();
+    assert!(output.status.success(), "{}", String::from_utf8_lossy(&output.stderr));
+    let result: serde_json::Value = serde_json::from_slice(&output.stdout).unwrap();
     assert_eq!(result["rows"], serde_json::json!([["b"]]));
 }

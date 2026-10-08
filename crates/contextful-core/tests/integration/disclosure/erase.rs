@@ -18,8 +18,8 @@ primary_key = ["trace_id", "id"]
 }
 
 #[test]
-fn keyset_accepts_an_explicitly_declared_column_without_subject_or_erasure_metadata() {
-    use contextful_core::disclosure::erase::select_keys;
+fn explicit_column_declaration_does_not_widen_table_key_selection() {
+    use contextful_core::disclosure::erase::{declares_erasure_column, select_keys};
     let declarations = TableDecl::parse_pipeline(r#"
 [[pipeline.tables]]
 name = "events"
@@ -31,8 +31,8 @@ columns = { id = "utf8", trace_id = "utf8" }
         {"id":"a","trace_id":"erase-trace"}, {"id":"b","trace_id":"keep-trace"}
     ])))]);
     let keys = BTreeMap::from([("events".into(), objects(json!([{"trace_id":"erase-trace"}])))]);
-    let selected = select_keys(&declarations, &rows, &keys).unwrap();
-    assert_eq!(selected.removes("events"), &[true, false]);
+    assert!(declares_erasure_column(&declarations[0], "trace_id"));
+    assert!(select_keys(&declarations, &rows, &keys).is_err(), "explicit column declarations do not widen the table-key format");
     for selector in [json!({"unknown":"erase-trace"}), json!({"trace_id":null})] {
         let keys = BTreeMap::from([("events".into(), vec![selector.as_object().unwrap().clone()])]);
         assert!(select_keys(&declarations, &rows, &keys).unwrap_err().to_string().starts_with("ErasureScopeUnsupported"));

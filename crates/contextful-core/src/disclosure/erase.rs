@@ -49,10 +49,27 @@ pub fn select_subject(
 pub fn declares_erasure_column(declaration: &TableDecl, column: &str) -> bool {
     declaration.columns.as_ref().is_some_and(|columns| columns.contains_key(column))
         || declaration.erasure_key.as_deref() == Some(column)
-        || declaration.primary_key.as_ref().is_some_and(|columns| columns.len() == 1 && columns[0] == column)
+        || declaration.primary_key.as_ref().is_some_and(|columns| columns.iter().any(|key| key == column))
 }
 
-/// Selects complete declared primary keys or a declared scalar column.
+/// Resolves scalar column predicates across every canonical declaring table.
+pub fn column_key_set(declarations: &[TableDecl], column: &str, values: &[Value]) -> Result<RetainedRows, ErasureError> {
+    let unsupported = || ErasureError::ErasureScopeUnsupported("invalid declaration-scoped column key set".into());
+    if column.is_empty() || values.is_empty() || values.iter().any(|value| !matches!(value, Value::String(_) | Value::Number(_) | Value::Bool(_))) {
+        return Err(unsupported());
+    }
+    let keys: RetainedRows = declarations.iter().filter(|decl| declares_erasure_column(decl, column))
+        .map(|decl| (decl.name.clone(), values.iter().map(|value| Map::from_iter([(column.to_string(), value.clone())])).collect())).collect();
+    if keys.is_empty() { return Err(unsupported()); }
+    Ok(keys)
+}
+
+/// Selects column-scoped roots through the ordinary cascade and reference owner.
+pub fn select_column_keys(declarations: &[TableDecl], rows: &RetainedRows, column: &str, values: &[Value]) -> Result<ErasureSelection, ErasureError> {
+    select_key_rows(declarations, rows, &column_key_set(declarations, column, values)?)
+}
+
+/// Selects complete declared primary keys or an explicit scalar erasure key.
 pub fn select_keys(
     declarations: &[TableDecl],
     rows: &RetainedRows,
@@ -65,13 +82,14 @@ pub fn select_keys(
         for selector in selectors {
             let primary = decl.primary_key.as_ref().is_some_and(|keys| !keys.is_empty() && selector.len() == keys.len() && keys.iter().all(|key| selector.contains_key(key)));
             let erasure = decl.erasure_key.as_ref().is_some_and(|key| selector.len() == 1 && selector.contains_key(key));
-            let declared = selector.len() == 1 && selector.iter().all(|(column, value)| {
-                declares_erasure_column(decl, column)
-                    && matches!(value, Value::String(_) | Value::Number(_) | Value::Bool(_))
-            });
-            if !(primary || erasure || declared) || selector.values().any(Value::is_null) { return Err(unsupported()); }
+            if !(primary || erasure) || selector.values().any(Value::is_null) { return Err(unsupported()); }
         }
     }
+    select_key_rows(declarations, rows, keys)
+}
+
+fn select_key_rows(declarations: &[TableDecl], rows: &RetainedRows, keys: &RetainedRows) -> Result<ErasureSelection, ErasureError> {
+    let unsupported = || ErasureError::ErasureScopeUnsupported("incomplete declared erasure key set".into());
     select(declarations, rows, &keys.keys().cloned().collect::<Vec<_>>(), &|decl, row| {
         let selectors = keys.get(&decl.name).ok_or_else(unsupported)?;
         for selector in selectors {
