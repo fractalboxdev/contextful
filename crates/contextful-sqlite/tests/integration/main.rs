@@ -2,6 +2,7 @@
 //! port and the run storage ports, `derived.sqlite` behind the `DerivedCatalog` port.
 
 mod derived;
+mod export;
 mod machine;
 mod stores;
 

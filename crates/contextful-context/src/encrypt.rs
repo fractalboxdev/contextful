@@ -77,7 +77,7 @@ pub struct AesGcmFileCipher {
 /// Keys held by one encrypted store. No formatter exposes either key.
 pub(crate) struct ProjectEncryption {
     files: AesGcmFileCipher,
-    parquet_key: [u8; 16],
+    parquet_key: [u8; 32],
 }
 
 impl std::fmt::Debug for ProjectEncryption {
@@ -92,7 +92,8 @@ impl ProjectEncryption {
         hash.update(b"contextful/parquet/footer/v1\0");
         hash.update(key);
         let digest = hash.finalize();
-        let parquet_key = digest[..16].try_into().expect("SHA-256 holds 16 bytes");
+        // The 44-character encoding of an AES-256 key is unambiguous to DuckDB's key parser.
+        let parquet_key = digest.into();
         Self { files: AesGcmFileCipher::new(key, 1), parquet_key }
     }
 
@@ -100,9 +101,15 @@ impl ProjectEncryption {
         &self.files
     }
 
-    pub(crate) fn parquet_key(&self) -> &[u8; 16] {
+    pub(crate) fn parquet_key(&self) -> &[u8; 32] {
         &self.parquet_key
     }
+}
+
+impl FileCipher for ProjectEncryption {
+    fn key_version(&self) -> u32 { self.files.key_version() }
+    fn seal(&self, plaintext: &[u8]) -> Result<Vec<u8>, SealError> { self.files.seal(plaintext) }
+    fn open(&self, sealed: &[u8]) -> Result<Vec<u8>, SealError> { self.files.open(sealed) }
 }
 
 /// Resolve an environment binding to a raw 32-byte project key.

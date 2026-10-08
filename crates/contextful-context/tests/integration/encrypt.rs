@@ -394,11 +394,27 @@ fn encrypted_parquet_has_no_plaintext_canary_and_decrypts() {
     }
 }
 
+/// Persistent adapters share the opened store's cipher without receiving key material.
+#[test]
+fn a_bound_store_shares_one_opaque_cipher_with_persistent_adapters() {
+    let key_var = "CONTEXTFUL_TEST_KEY_74_SHARED_BINDING";
+    unsafe { std::env::set_var(key_var, "0123456789abcdef0123456789abcdef") };
+    let (_dir, opened) = store_with(&format!("[encryption]\nkey_source = \"env:{key_var}\"\n"));
+    let store = opened.unwrap();
+    let cipher = store.file_cipher().unwrap();
+    let second = store.file_cipher().unwrap();
+    assert!(std::sync::Arc::ptr_eq(&cipher, &second));
+    let sealed = cipher.seal(b"opaque-store-cipher-74").unwrap();
+    assert_eq!(second.open(&sealed).unwrap(), b"opaque-store-cipher-74");
+    assert!(store.encrypted());
+    let (_plain_dir, plain) = store_with("");
+    assert!(plain.unwrap().file_cipher().is_none());
+}
+
 /// A bound project key opens a store, and a landed row stays encrypted through a store read.
 #[test]
-#[ignore = "the metadata and remaining read paths must seal before bound stores open"]
 fn a_bound_store_lands_ciphertext_and_reads_its_row() {
-    use contextful_context::land::{land, Batch, RunContext};
+    use contextful_context::land::{Batch, RunContext};
     use contextful_context::rows::table_rows;
     use contextful_core::store::declare::TableDecl;
     use contextful_core::store::lay_out::NodeId;
@@ -411,7 +427,8 @@ fn a_bound_store_lands_ciphertext_and_reads_its_row() {
     unsafe { std::env::set_var(key_var, "0123456789abcdef0123456789abcdef") };
     let (dir, opened) = store_with(&format!("[encryption]\nkey_source = \"env:{key_var}\"\n"));
     let store = opened.unwrap();
-    let decl = TableDecl::parse_pipeline("[[pipeline.tables]]\nname = \"documents\"\n").unwrap().remove(0);
+    let manifest = "[[pipeline.tables]]\nname = \"documents\"\nprimary_key = [\"doc_id\"]\n";
+    let decl = TableDecl::parse_pipeline(manifest).unwrap().remove(0);
     let canary = "row-canary-5f1e unique plaintext marker";
     let batch = Batch { rows: vec![json!({"doc_id": "d1", "body": canary}).as_object().unwrap().clone()], types: Default::default() };
     let ctx = RunContext {
@@ -419,7 +436,14 @@ fn a_bound_store_lands_ciphertext_and_reads_its_row() {
         injection: Injection { run_id: "run-1".into(), site_id: "site-a".into(), batch_seq: Some(0), authored_by: None, taint: None },
         committed_at: Instant::parse("2030-01-01T00:00:00Z").unwrap(),
     };
-    land(&store, &decl, &batch, &ctx).unwrap();
+    contextful_context::land::land_run(&store, &decl, std::slice::from_ref(&batch), &ctx, &Default::default(), &|| Ok(())).unwrap();
+    let next = Batch { rows: vec![json!({"doc_id": "d2", "body": canary, "extra": 99}).as_object().unwrap().clone()], types: [("extra".into(), contextful_core::store::reconcile::ColumnType::Float64)].into() };
+    let next_ctx = RunContext {
+        node: NodeId::parse("ingest-a").unwrap(),
+        injection: Injection { run_id: "run-2".into(), site_id: "site-a".into(), batch_seq: Some(0), authored_by: None, taint: None },
+        committed_at: Instant::parse("2030-01-02T00:00:00Z").unwrap(),
+    };
+    contextful_context::land::land_run(&store, &decl, std::slice::from_ref(&next), &next_ctx, &Default::default(), &|| Ok(())).unwrap();
     let files = written(&dir.path().join(".contextful/context/research"));
     assert!(!files.is_empty());
     for path in &files {
@@ -428,10 +452,53 @@ fn a_bound_store_lands_ciphertext_and_reads_its_row() {
     }
     let rows = table_rows(&store, &decl, &["doc_id", "body"]).unwrap();
     assert_eq!(rows[0]["body"], canary);
+    #[cfg(feature = "read")]
+    {
+        use contextful_context::read::{Face, ReadOptions};
+        use contextful_core::store::bound_time::Bounds;
+        use contextful_policy::enforce::mask::Pepper;
+        use contextful_policy::enforce::session::Request;
+
+        let credentials = crate::read::Reads::new();
+        let authority = credentials.authority(crate::read::loop_subject("agent://encrypted-reader"), vec![crate::read::read(&["documents"], None)]);
+        let face = Face::open(store.clone(), "", Pepper::resolve(|_| Some("encrypted-reader-pepper".into()))).unwrap();
+        assert_eq!(face.operator_query("SELECT * FROM documents ORDER BY doc_id LIMIT 500 OFFSET 0", ReadOptions::default()).unwrap().rows.len(), 2);
+        let model = r#"
+[[model]]
+id = "encrypted_copy"
+sql = "SELECT doc_id, body, extra FROM documents"
+unique_key = ["doc_id"]
+[model.contract]
+version = "1.0.0"
+columns = [{ name = "doc_id", type = "utf8", nullable = false }, { name = "body", type = "utf8", nullable = false }, { name = "extra", type = "float64", nullable = true }]
+[model.freshness]
+max_lag = "1d"
+"#;
+        crate::read::build_model(&face, model, "encrypted_copy", "2030-01-03T00:00:00Z");
+        let manifests = contextful_context::build::manifests(&store, "encrypted_copy").unwrap();
+        assert_eq!(manifests.len(), 1);
+        assert!(manifests[0].parts.iter().all(|part| part.key_version == 1));
+        let id = manifests[0].publish.as_ref().unwrap().build_id.clone();
+        let now = Instant::parse("2030-01-03T00:00:00Z").unwrap();
+        contextful_context::build::hold(&store, "encrypted_copy", &id, canary, 60, now).unwrap();
+        assert_eq!(contextful_context::build::holds(&store, "encrypted_copy").unwrap()[0].principal, canary);
+        contextful_context::build::write_logs(&store, "encrypted_copy").unwrap();
+        assert_eq!(face.operator_query("SELECT * FROM encrypted_copy", ReadOptions::default()).unwrap().rows.len(), 2);
+        let session = face.session(&authority, &Request::default(), Bounds::default()).unwrap();
+        assert_eq!(face.query(&session, "SELECT * FROM documents ORDER BY doc_id LIMIT 500 OFFSET 0", ReadOptions::default()).unwrap().rows.len(), 2);
+        for _ in 0..2 {
+            let response = face.query(&session, "SELECT body, extra FROM documents ORDER BY doc_id", ReadOptions::default()).unwrap();
+            assert_eq!(crate::read::column(&response, "body"), vec![json!(canary), json!(canary)]);
+            assert_eq!(crate::read::column(&response, "extra"), vec![json!(null), json!(99.0)]);
+        }
+    }
+    for path in written(&dir.path().join(".contextful/context/research")) {
+        let bytes = std::fs::read(&path).unwrap();
+        assert!(!bytes.windows(canary.len()).any(|part| part == canary.as_bytes()), "{} holds plaintext after model publication", path.display());
+    }
 }
 
 #[test]
-#[ignore = "bound Store::open remains fail-closed until every persistent path seals"]
 fn a_fixed_seed_store_has_zero_plaintext_hits_and_decrypts_every_payload() {
     use contextful_context::land::{land, Batch, RunContext};
     use contextful_context::ledger;
@@ -480,7 +547,6 @@ fn a_fixed_seed_store_has_zero_plaintext_hits_and_decrypts_every_payload() {
 }
 
 #[test]
-#[ignore = "the metadata and remaining read paths must seal before bound stores open"]
 fn a_bound_store_seals_its_request_ledger() {
     use contextful_context::ledger;
     use contextful_core::store::lay_out::NodeId;
@@ -515,7 +581,6 @@ fn a_bound_store_seals_its_request_ledger() {
 }
 
 #[test]
-#[ignore = "the metadata and remaining read paths must seal before bound stores open"]
 fn a_bound_store_seals_landed_blob_bytes() {
     use sha2::Digest;
     let key_var = "CONTEXTFUL_TEST_KEY_74_BLOB";

@@ -3,7 +3,7 @@
 //! published builds, and the history logs derived from committed manifests.
 
 use crate::error::{ContextError, IoPath, Result};
-use crate::store::{replace_file, sorted_dirs, FileLock, Store, LOCK_WAIT_SECS};
+use crate::store::{sorted_dirs, FileLock, Store, LOCK_WAIT_SECS};
 use contextful_core::pipeline::model::{
     build_entries, contract_history, regenerate, BuildEntry, ContractHistoryEntry, HoldRecord, PublishSection, Receipt,
     BUILDS_LOG, CONTRACT_HISTORY_LOG, HOLDS_DIR, HOLDS_LOG,
@@ -52,8 +52,8 @@ fn attempts(store: &Store, model: &str) -> Result<Vec<BuildAttempt>> {
     for entry in entries {
         let path = entry.at(&dir)?.path();
         if path.extension().is_some_and(|ext| ext == "json") {
-            let text = fs::read_to_string(&path).at(&path)?;
-            out.push(serde_json::from_str(&text).map_err(|e| {
+            let bytes = store.metadata_files().read(&path)?;
+            out.push(serde_json::from_slice(&bytes).map_err(|e| {
                 contextful_core::store::StoreError::StoreManifestUnreadable(format!("file `{}`: {e}", path.display()))
             })?);
         }
@@ -66,7 +66,7 @@ fn record_attempt(store: &Store, model: &str, attempt: &BuildAttempt) -> Result<
     let dir = store.table_dir(model)?.join(ATTEMPTS_DIR);
     fs::create_dir_all(&dir).at(&dir)?;
     let path = dir.join(format!("{}.json", attempt.build_id));
-    replace_file(&path, serde_json::to_vec_pretty(attempt).expect("a build attempt serializes").as_slice())
+    store.metadata_files().replace(&path, serde_json::to_vec_pretty(attempt).expect("a build attempt serializes").as_slice())
 }
 
 fn refuse_attempt(store: &Store, model: &str, build_id: &str, completed_at: Instant) -> Result<()> {
@@ -137,12 +137,8 @@ pub fn manifests(store: &Store, model: &str) -> Result<Vec<SnapshotManifest>> {
             continue;
         }
         let path = d.join(MANIFEST_FILE);
-        let text = match fs::read_to_string(&path) {
-            Ok(t) => t,
-            Err(e) if e.kind() == std::io::ErrorKind::NotFound => continue,
-            Err(e) => return Err(ContextError::Io { path, source: e }),
-        };
-        let m: SnapshotManifest = serde_json::from_str(&text).map_err(|e| {
+        let Some(bytes) = store.metadata_files().read_optional(&path)? else { continue };
+        let m: SnapshotManifest = serde_json::from_slice(&bytes).map_err(|e| {
             contextful_core::store::StoreError::StoreManifestUnreadable(format!("table `{model}`: file `{}`: {e}", path.display()))
         })?;
         out.push(m);
@@ -169,8 +165,8 @@ pub fn holds(store: &Store, model: &str) -> Result<Vec<HoldRecord>> {
         if path.extension().is_none_or(|x| x != "json") {
             continue;
         }
-        let text = fs::read_to_string(&path).at(&path)?;
-        let record: HoldRecord = serde_json::from_str(&text).map_err(|e| {
+        let bytes = store.metadata_files().read(&path)?;
+        let record: HoldRecord = serde_json::from_slice(&bytes).map_err(|e| {
             contextful_core::store::StoreError::StoreManifestUnreadable(format!("table `{model}`: file `{}`: {e}", path.display()))
         })?;
         out.push(record);
@@ -201,34 +197,32 @@ pub fn hold(store: &Store, model: &str, build_id: &str, principal: &str, secs: u
     fs::create_dir_all(&dir).at(&dir)?;
     let _lock = FileLock::acquire(&dir.join(".lock"), std::time::Duration::from_secs(LOCK_WAIT_SECS))?;
     let path = dir.join(format!("{build_id}.json"));
-    let prior: Option<HoldRecord> = match fs::read_to_string(&path) {
-        Ok(t) => serde_json::from_str(&t).ok(),
-        Err(e) if e.kind() == std::io::ErrorKind::NotFound => None,
-        Err(e) => return Err(ContextError::Io { path, source: e }),
-    };
+    let prior: Option<HoldRecord> = store.metadata_files().read_optional(&path)?.and_then(|bytes| serde_json::from_slice(&bytes).ok());
     let receipt = if prior.is_some_and(|p| p.active(now)) { Receipt::Renewed } else { Receipt::Held };
     let record = HoldRecord { build_id: build_id.to_string(), principal: principal.to_string(), placed_at: now, expires_at: now.plus_secs(secs) };
-    replace_file(&path, serde_json::to_string_pretty(&record).expect("a hold serializes").as_bytes())?;
+    store.metadata_files().replace(&path, serde_json::to_string_pretty(&record).expect("a hold serializes").as_bytes())?;
     write_logs(store, model)?;
     Ok((receipt, record))
 }
 
-fn read_log<T: DeserializeOwned>(path: &Path) -> Result<Vec<T>> {
-    match fs::read_to_string(path) {
+fn read_log<T: DeserializeOwned>(store: &Store, path: &Path) -> Result<Vec<T>> {
+    match store.metadata_files().read_optional(path)? {
         // A line no entry type reads disagrees with every manifest, so regeneration drops it.
-        Ok(text) => Ok(text.lines().filter_map(|l| serde_json::from_str(l).ok()).collect()),
-        Err(e) if e.kind() == std::io::ErrorKind::NotFound => Ok(Vec::new()),
-        Err(e) => Err(ContextError::Io { path: path.to_path_buf(), source: e }),
+        Some(bytes) => {
+            let text = String::from_utf8(bytes).map_err(|e| ContextError::Invalid(format!("{}: {e}", path.display())))?;
+            Ok(text.lines().filter_map(|l| serde_json::from_str(l).ok()).collect())
+        }
+        None => Ok(Vec::new()),
     }
 }
 
-fn write_log<T: Serialize>(path: &Path, entries: &[T]) -> Result<()> {
+fn write_log<T: Serialize>(store: &Store, path: &Path, entries: &[T]) -> Result<()> {
     let mut text = String::new();
     for e in entries {
         text.push_str(&serde_json::to_string(e).expect("a log entry serializes"));
         text.push('\n');
     }
-    replace_file(path, text.as_bytes())
+    store.metadata_files().replace(path, text.as_bytes())
 }
 
 /// Regenerate `builds.jsonl`, `holds.jsonl` and `contract-history.jsonl` in the model's
@@ -240,7 +234,7 @@ pub fn write_logs(store: &Store, model: &str) -> Result<()> {
     let committed = manifests(store, model)?;
 
     let path = dir.join(BUILDS_LOG);
-    let existing = read_log::<BuildEntry>(&path)?;
+    let existing = read_log::<BuildEntry>(store, &path)?;
     let mut derived = build_entries(&committed);
     for attempt in attempts(store, model)? {
         if derived.iter().any(|entry| entry.build_id == attempt.build_id)
@@ -261,17 +255,17 @@ pub fn write_logs(store: &Store, model: &str) -> Result<()> {
         });
     }
     let builds = regenerate(&existing, &derived, |e| e.build_id.clone(), |e| e.completed_at);
-    write_log(&path, &builds)?;
+    write_log(store, &path, &builds)?;
 
     let path = dir.join(CONTRACT_HISTORY_LOG);
     let history =
-        regenerate(&read_log::<ContractHistoryEntry>(&path)?, &contract_history(&committed), |e| e.build_id.clone(), |e| e.built_at);
-    write_log(&path, &history)?;
+        regenerate(&read_log::<ContractHistoryEntry>(store, &path)?, &contract_history(&committed), |e| e.build_id.clone(), |e| e.built_at);
+    write_log(store, &path, &history)?;
 
     let path = dir.join(HOLDS_LOG);
     let key = |h: &HoldRecord| format!("{}@{}", h.build_id, h.placed_at.to_rfc3339_nanos());
-    let placed = regenerate(&read_log::<HoldRecord>(&path)?, &holds(store, model)?, key, |h| h.placed_at);
-    write_log(&path, &placed)
+    let placed = regenerate(&read_log::<HoldRecord>(store, &path)?, &holds(store, model)?, key, |h| h.placed_at);
+    write_log(store, &path, &placed)
 }
 
 #[cfg(feature = "read")]
@@ -557,7 +551,7 @@ mod materialize {
         // The model's table reads, and collects, under its own declaration.
         let own = face.decl(&spec.id);
 
-        let engine = SqlEngine::raw()?;
+        let engine = SqlEngine::raw_with_key(store.parquet_key())?;
         let tables = face.register_operator(&engine)?;
         let sql = spec.sql.trim().trim_end_matches(';');
         let admitted = admit_sql(&engine, spec, |n| tables.iter().any(|t| t == n))?;
@@ -612,18 +606,19 @@ mod materialize {
         let staged = (|| -> std::result::Result<(SnapshotManifest, Schema, u64), ReadFault> {
             let raw = staging.join("__model.parquet");
             let select: Vec<String> = cols.iter().map(|c| ident(&c.name)).collect();
-            let encryption = store.parquet_key().map(|_| format!(", ENCRYPTION_CONFIG {{footer_key: {}}}", literal(crate::encrypt::PARQUET_KEY_NAME))).unwrap_or_default();
-            engine.execute(&format!(
-                "COPY (SELECT {} FROM ({sql}) AS __model) TO {} (FORMAT parquet, COMPRESSION zstd{encryption})",
-                select.join(", "),
-                literal(&raw.to_string_lossy())
-            ))?;
+            let selected = format!("SELECT {} FROM ({sql}) AS __model", select.join(", "));
             let loose = Arc::new(ArrowSchema::new(
                 cols.iter().map(|c| Field::new(&c.name, parquet_io::data_type(&c.ty), true)).collect::<Vec<_>>(),
             ));
-            let batches: Vec<RecordBatch> =
-                store.read_parquet(&raw)?.iter().map(|b| parquet_io::conform(b, &loose)).collect::<Result<_>>()?;
-            fs::remove_file(&raw).at(&raw)?;
+            let source = if store.encrypted() {
+                engine.batches(&selected)?
+            } else {
+                engine.execute(&format!("COPY ({selected}) TO {} (FORMAT parquet, COMPRESSION zstd)", literal(&raw.to_string_lossy())))?;
+                let batches = store.read_parquet(&raw)?;
+                fs::remove_file(&raw).at(&raw)?;
+                batches
+            };
+            let batches: Vec<RecordBatch> = source.iter().map(|b| parquet_io::conform(b, &loose)).collect::<Result<_>>()?;
             let rows = arrow_select::concat::concat_batches(&loose, &batches).map_err(|e| invalid(format!("model `{}`: {e}", spec.id)))?;
             check_rows(spec, &cols, &rows)?;
 
@@ -691,14 +686,14 @@ mod materialize {
                 order_by: None,
                 row_count: n as u64,
                 valid_time: None,
-                parts: vec![PartEntry { name: part, key_version: 0 }],
+                parts: vec![PartEntry { name: part, key_version: store.sealing().key_version() }],
                 indexes: Vec::new(),
                 fence: None,
                 commit_seq: Some(commit_seq),
                 publish: section,
             };
             let bytes = serde_json::to_vec_pretty(&manifest).expect("a manifest serializes");
-            fs::write(staging.join(MANIFEST_FILE), bytes).at(staging.join(MANIFEST_FILE))?;
+            store.metadata_files().replace(&staging.join(MANIFEST_FILE), &bytes)?;
             Ok((manifest, schema, n as u64))
         })();
         let (manifest, schema, rows) = match staged {

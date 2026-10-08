@@ -2,7 +2,7 @@
 
 # Target ledger
 
-71 entries: 49 gated, 12 recorded, 2 scheduled, 8 open.
+71 entries: 50 gated, 12 recorded, 2 scheduled, 7 open.
 
 | Entry | Clause | Metric | Tier | Method | Target | Status |
 | --- | --- | --- | --- | --- | --- | --- |
@@ -25,7 +25,7 @@
 | `egress-internal-address-resolved` | `connector.attach.private-address` | `egress.resolved_internal.admitted` | gate | test `contextful_outbound::egress::a_name_resolving_inward_never_reaches_the_send_half` | `== 0` | gated |
 | `egress-refusal-before-dns` | `connector.meter.hook-refusal` | `egress.refused.lookups` | gate | test `contextful_outbound::egress::a_refused_intent_resolves_no_name_and_is_never_retried` | `== 0` | gated |
 | `encrypt-declared-refuses` | `store.encrypt.key-unbound` | `encrypt.declared.opens_and_files` | gate | test `contextful_context::encrypt::a_declared_encryption_opens_no_store_and_writes_no_file` | `== 0` | gated |
-| `encrypt-no-plaintext` | `store.encrypt.cipher` | `encrypt.canary_hits` | gate | issue 74 | `== 0` | open (issue 74) |
+| `encrypt-no-plaintext` | `store.encrypt.cipher` | `encrypt.canary_hits` | gate | test `contextful_context::encrypt::a_fixed_seed_store_has_zero_plaintext_hits_and_decrypts_every_payload` | `== 0` | gated |
 | `engine-keeper-threads` | `run.cancel.engine-keeper` | `keeper.threads_per_engine` | gate | test `contextful_engine::execution::one_keeper_thread_renews_and_feeds_every_open_execution_of_an_engine` | `== 1` | gated |
 | `eval-absolute-floors` | `assurance.baseline.floors-are-absolute` | `floors.red_on_baseline_pass` | gate | test `contextful_eval::baseline::each_floor_reds_a_run_its_baseline_passes` | `== 4` | gated |
 | `eval-through-enforcement` | `assurance.evaluate.policy-labels` | `retrieval.hybrid.forbidden_row_rate` | gate | test `contextful_cli::eval::the_native_golden_set_holds_its_floors_and_baseline` | `== 0` | gated |

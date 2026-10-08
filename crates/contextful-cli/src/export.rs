@@ -10,7 +10,7 @@ use crate::run::ProjectArgs;
 use anyhow::{Context, Result};
 use clap::Subcommand;
 use contextful_context::read::face::ReadOptions;
-use contextful_context::store::{replace_file, FileLock, LOCK_WAIT_SECS};
+use contextful_context::store::{FileLock, LOCK_WAIT_SECS};
 use contextful_core::connector::attach::Allowlist;
 use contextful_core::export::{change_events, change_state, log_records, parse_exports, typed_batch_len, typed_cell, Export, ExportCursor, ExportError, Signal, EXPORT_BATCH_ROWS};
 use contextful_core::store::catalog::MACHINE_CATALOG_FILE;
@@ -55,11 +55,10 @@ fn cursor_dir(project_dir: &Path, project: &str) -> PathBuf {
     project_dir.join(".contextful").join("exports").join(project)
 }
 
-fn read_cursor(path: &Path) -> Result<ExportCursor> {
-    match std::fs::read(path) {
-        Ok(bytes) => serde_json::from_slice(&bytes).with_context(|| format!("reading the export cursor `{}`", path.display())),
-        Err(e) if e.kind() == std::io::ErrorKind::NotFound => Ok(ExportCursor::default()),
-        Err(e) => Err(e).with_context(|| format!("reading the export cursor `{}`", path.display())),
+fn read_cursor(store: &contextful_context::Store, path: &Path) -> Result<ExportCursor> {
+    match store.metadata_files().read_optional(path)? {
+        Some(bytes) => serde_json::from_slice(&bytes).with_context(|| format!("reading the export cursor `{}`", path.display())),
+        None => Ok(ExportCursor::default()),
     }
 }
 
@@ -135,7 +134,7 @@ fn run_once(name: &str, project: &ProjectArgs, declaration: Option<PathBuf>, adm
             // One run of an export at a time, so one cursor never passes rows another run holds unsent.
             let _held = FileLock::acquire(&dir.join(format!("{name}.lock")), std::time::Duration::from_secs(LOCK_WAIT_SECS))?;
             let path = dir.join(format!("{name}.json"));
-            let mut cursor = read_cursor(&path)?;
+            let mut cursor = read_cursor(face.store(), &path)?;
 
             // Committed runs only, under the admitted credential (`run.export.post-commit-read`).
             let session = face.session(&authority, &Request { zone: None }, Bounds::default())?;
@@ -167,7 +166,7 @@ fn run_once(name: &str, project: &ProjectArgs, declaration: Option<PathBuf>, adm
                     Err(f) => return Err(refused(f.message).into()),
                 }
                 // The acknowledgement precedes the commit (`run.export.cursor-after-ack`).
-                replace_file(&path, &serde_json::to_vec(&last)?)?;
+                face.store().metadata_files().replace(&path, &serde_json::to_vec(&last)?)?;
                 cursor = last;
                 rows += response.rows.len();
                 batches += 1;
@@ -236,7 +235,11 @@ fn run_changes(l: &crate::project::Located, export: &Export, project: &ProjectAr
     let dir = cursor_dir(&l.project.dir, &l.project.name);
     std::fs::create_dir_all(&dir)?;
     let _held = FileLock::acquire(&dir.join(format!("{}.lock", export.name)), std::time::Duration::from_secs(LOCK_WAIT_SECS))?;
-    let mut ledger = ExportLedger::open(&l.project.store_root().join(MACHINE_CATALOG_FILE))?;
+    let machine = l.project.store_root().join(MACHINE_CATALOG_FILE);
+    let mut ledger = match face.store().file_cipher() {
+        Some(cipher) => ExportLedger::open_sealed(&machine, cipher)?,
+        None => ExportLedger::open(&machine)?,
+    };
     let session = face.session(&authority, &Request { zone: None }, Bounds::default())?;
     let identity = read_identity(&face, &session, &authority, export)?;
     let destination = format!("{:x}", Sha256::digest(export.endpoint.as_str().as_bytes()));

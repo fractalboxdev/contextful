@@ -252,7 +252,12 @@ fn open_local(args: &SyncArgs) -> Result<(Store, String, String)> {
 /// carries it (`store.push.run-state`).
 #[cfg(feature = "data-plane")]
 fn record_run_state(store: &Store, project: &str, node_id: &str) -> Result<()> {
-    let catalog = MachineCatalog::open(&store.root().join(MACHINE_CATALOG_FILE), Arc::new(crate::clock::SystemClock))?;
+    let machine = store.root().join(MACHINE_CATALOG_FILE);
+    let clock = Arc::new(crate::clock::SystemClock);
+    let catalog = match store.file_cipher() {
+        Some(cipher) => MachineCatalog::open_sealed(&machine, clock, cipher)?,
+        None => MachineCatalog::open(&machine, clock)?,
+    };
     let mut state = RunState::read(&catalog, node_id)?;
     state.control_version = run_state::local_control_version(store, project)?;
     run_state::record(store, &state)?;
@@ -376,6 +381,6 @@ fn compact(s: &Syncer, decls: &[TableDecl], table: &str, lease: &contextful_sync
     }
     // The local pointer carries the fence it was published under, as a pulled one does.
     let published = Pointer { snapshot_id: serde_json::from_value(serde_json::Value::String(snapshot_id.clone()))?, fence: Some(lease.lease.fence) };
-    contextful_context::store::replace_file(&pointer_path, &serde_json::to_vec_pretty(&published)?)?;
+    s.store.metadata_files().replace(&pointer_path, &serde_json::to_vec_pretty(&published)?)?;
     Ok(outcome)
 }

@@ -184,7 +184,7 @@ impl SessionPool {
     /// A connection for `session`: an idle one of the pooled entry building the same
     /// connection, or a new one, returned to that entry after the statement. A session no
     /// entry holds gets a connection of its own.
-    pub(crate) fn engine(&self, session: &Session, parquet_key: Option<&[u8; 16]>) -> Result<Lease, ReadFault> {
+    pub(crate) fn engine(&self, session: &Session, parquet_key: Option<&[u8]>) -> Result<Lease, ReadFault> {
         let home = self.lock().iter().rev().find(|e| same_setup(&e.session, session)).cloned();
         let idle = home.as_ref().and_then(|e| e.idle.lock().expect("the idle lock").pop());
         let engine = match idle {

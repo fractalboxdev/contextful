@@ -188,3 +188,15 @@ fn a_parquet_relation_names_its_in_memory_encryption_key() {
     .unwrap();
     assert!(sql.contains("encryption_config = {footer_key: 'contextful_project'}"), "{sql}");
 }
+#[test]
+fn encrypted_relations_union_each_file_without_reusing_parquet_metadata() {
+    use contextful_core::store::declare::TableDecl;
+    use contextful_core::store::relation::relation_with_encryption;
+
+    let decl = TableDecl::named("documents");
+    let sql = relation_with_encryption(&decl, &["a.parquet".into(), "b.parquet".into()], &[], &[], None, Some("project")).unwrap();
+    assert!(!sql.contains("union_by_name"), "{sql}");
+    assert_eq!(sql.matches("read_parquet(").count(), 2, "{sql}");
+    assert!(sql.contains("UNION ALL BY NAME"), "{sql}");
+    assert_eq!(sql.matches("footer_key: 'project'").count(), 2, "{sql}");
+}

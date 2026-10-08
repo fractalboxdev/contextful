@@ -60,8 +60,14 @@ pub fn relation_with_encryption(
             .map(|c| format!("CAST({} AS {}) AS {}", ident(&c.name), c.ty.sql(), ident(&c.name)))
             .collect();
         let replace = if vectors.is_empty() { String::new() } else { format!(" REPLACE ({})", vectors.join(", ")) };
-        let encrypted = encryption_key.map(|key| format!(", encryption_config = {{footer_key: {}}}", literal(key))).unwrap_or_default();
-        format!("SELECT *{replace} FROM read_parquet([{}], union_by_name = true, hive_partitioning = false{encrypted})", list.join(", "))
+        match encryption_key {
+            Some(key) => {
+                // DuckDB 1.5.5's Parquet metadata reuse omits the encrypted reader's utility.
+                let source = list.iter().map(|file| format!("SELECT * FROM read_parquet({file}, hive_partitioning = false, encryption_config = {{footer_key: {}}})", literal(key))).collect::<Vec<_>>().join(" UNION ALL BY NAME ");
+                if replace.is_empty() { source } else { format!("SELECT *{replace} FROM ({source})") }
+            }
+            None => format!("SELECT *{replace} FROM read_parquet([{}], union_by_name = true, hive_partitioning = false)", list.join(", ")),
+        }
     };
     if !files.is_empty() && !absent.is_empty() {
         base = format!("{base} UNION ALL BY NAME {}", zero_row(absent));

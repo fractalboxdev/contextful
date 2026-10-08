@@ -2,6 +2,16 @@
 
 use contextful_core::run::journal::{awakeable_key, sha256_hex, EntryKey, Stored, INLINE_CUTOFF_BYTES};
 
+#[test]
+fn shared_dynamic_stores_satisfy_the_generic_run_ports() {
+    use contextful_core::run::ports::{BlobStore, JournalStore};
+    use std::sync::Arc;
+    fn journal_port<T: JournalStore>() {}
+    fn blob_port<T: BlobStore>() {}
+    journal_port::<Arc<dyn JournalStore>>();
+    blob_port::<Arc<dyn BlobStore>>();
+}
+
 /// Every outbound request a step makes carries an idempotency key derived from its entry key, identical on every
 /// re-entry of that effect.
 // spec: run.journal.idempotency-key@cc89bbef

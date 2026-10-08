@@ -66,8 +66,9 @@ clause = "store.encrypt.cipher"
 metric = "encrypt.canary_hits"
 kind   = "test"
 tier   = "gate"
-method = { issue = 74 }
+method = { test = "contextful_context::encrypt::a_fixed_seed_store_has_zero_plaintext_hits_and_decrypts_every_payload" }
 target = { op = "==", value = 0 }
+seed   = 0
 
 # ---------------------------------------------------------------- connector egress
 
