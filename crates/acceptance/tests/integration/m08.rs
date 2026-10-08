@@ -71,13 +71,13 @@ fn m08_accountability() {
 
 /// The built surface exercises the erasure contract over disposable declared stores.
 #[test]
-#[ignore = "atomic erasure, retained-file collection and audit publication remain open"]
 fn subject_and_keyset_erasure_is_atomic_and_physically_complete() {
     let expected_root = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../..").canonicalize().unwrap();
     assert_eq!(contextful_acceptance::workspace_root(), expected_root, "acceptance harness source provenance differs from its owning test");
     let cf = bin("contextful");
     let p = GitRepo::init();
     let subject = "erasure-fixture-alice-39ac";
+    let trace = "erasure-fixture-trace-71bc";
     ok(&p.run(&cf, &["init", "research", "--authoring-posture", "per_request"]));
     p.write(".contextful/issuance.toml", &format!("default_audience = \"{AUD}\"\nmax_lifetime_secs = 3600\n"));
     p.write("contextful.toml", r#"authoring_posture = "per_request"
@@ -94,8 +94,20 @@ column = "text"
 [[pipeline.tables]]
 name = "research/keys"
 primary_key = ["id"]
-erasure_key = "id"
+columns = { trace_id = "utf8" }
 retain_runs = "90d"
+[[pipeline.tables]]
+name = "research/key_events"
+primary_key = ["trace_id", "id"]
+retain_runs = "90d"
+[[pipeline.tables]]
+name = "research/key_partitions"
+primary_key = ["id"]
+partition_by = ["trace_id"]
+retain_runs = "90d"
+[[pipeline.tables]]
+name = "research/unrelated"
+primary_key = ["id"]
 [[pipeline.tables]]
 name = "research/blobs"
 primary_key = ["digest"]
@@ -104,13 +116,24 @@ referenced_by = [{ table = "research/notes", column = "blob" }]
 [[pipeline.tables]]
 name = "research/citations"
 primary_key = ["id"]
+erasure_key = "id"
 on_erase = "survive"
+referenced_by = [{ table = "research/notes", column = "citation" }]
+[[pipeline.tables]]
+name = "research/citations_collect"
+primary_key = ["id"]
+erasure_key = "id"
+referenced_by = [{ table = "research/notes", column = "citation" }]
 "#);
     for (table, rows) in [
-        ("research/notes", vec![json!({"id":"alice-shared","subject":subject,"blob":"shared","text":subject}), json!({"id":"alice-only","subject":subject,"blob":"unique","text":subject}), json!({"id":"bob","subject":"bob","blob":"shared","text":"remaining"})]),
-        ("research/keys", vec![json!({"id":"key-a","value":subject}), json!({"id":"key-b","value":"remaining"})]),
+        ("research/notes", vec![json!({"id":"alice-shared","subject":subject,"blob":"shared","citation":"citation","text":subject}), json!({"id":"alice-only","subject":subject,"blob":"unique","citation":"citation","text":subject}), json!({"id":"bob","subject":"bob","blob":"shared","citation":"other","text":"remaining"})]),
+        ("research/keys", vec![json!({"id":"key-a","trace_id":trace,"value":subject}), json!({"id":"key-b","trace_id":"live-trace","value":"remaining"})]),
+        ("research/key_events", vec![json!({"id":"event-a","trace_id":trace,"value":subject}), json!({"id":"event-b","trace_id":"live-trace","value":"remaining"})]),
+        ("research/key_partitions", vec![json!({"id":"partition-a","trace_id":trace,"value":subject}), json!({"id":"partition-b","trace_id":"live-trace","value":"remaining"})]),
+        ("research/unrelated", vec![json!({"id":trace,"value":"remaining"})]),
         ("research/blobs", vec![json!({"digest":"shared","value":"remaining"}), json!({"digest":"unique","value":subject})]),
         ("research/citations", vec![json!({"id":"citation","source_table":"research/notes","source_key":"alice-only","source_run":"run-0001","source_seq":1})]),
+        ("research/citations_collect", vec![json!({"id":"citation","source_table":"research/notes","source_key":"alice-only","source_run":"run-0001","source_seq":1})]),
     ] {
         p.write("rows.jsonl", &rows.iter().map(Value::to_string).collect::<Vec<_>>().join("\n"));
         ok(&p.run(&cf, &["context", "land", table, "--project", "research", "--rows", "rows.jsonl", "--run-id", "run-0001", "--site-id", "fixture"]));
@@ -127,11 +150,14 @@ on_erase = "survive"
     let receipt: Value = serde_json::from_str(&ok(&p.run_env(&cf, &args, &[("CONTEXTFUL_TOKEN", &forget)]))).unwrap();
     assert!(receipt["subject_hash"].as_str().is_some_and(|hash| !hash.contains(subject)));
     assert_eq!(receipt["physical_collection"], json!("complete"));
+    // Each erased logical row occurs in its retained run and compacted snapshot.
+    assert_eq!(receipt["affected_counts"]["research/citations_collect"], json!(2));
+    assert!(receipt["affected_counts"].get("research/citations").is_none());
 
     let query = |sql: &str| -> Value { serde_json::from_str(&ok(&p.run_env(&cf, &["query", "--json", "--project", "research", sql], &[("CONTEXTFUL_ISSUER_PUBKEY", &public)]))).unwrap() };
     // One statement sees the committed frontier across every affected relation.
-    let visible = query(r#"SELECT (SELECT count(*) FROM "research/notes") AS notes, (SELECT count(*) FROM "research/blobs") AS blobs, (SELECT count(*) FROM "research/citations") AS citations"#);
-    assert_eq!(visible["rows"], json!([["1", "1", "1"]]), "{visible}");
+    let visible = query(r#"SELECT (SELECT count(*) FROM "research/notes") AS notes, (SELECT count(*) FROM "research/blobs") AS blobs, (SELECT count(*) FROM "research/citations") AS citations, (SELECT count(*) FROM "research/citations_collect") AS collected"#);
+    assert_eq!(visible["rows"], json!([["1", "1", "1", "0"]]), "{visible}");
     assert_eq!(query(r#"SELECT digest FROM "research/blobs""#)["rows"], json!([["shared"]]));
     assert_eq!(query(r#"SELECT id FROM "research/citations""#)["rows"], json!([["citation"]]));
     let citation = query(r#"SELECT source_table, source_run, source_seq FROM "research/citations""#)["rows"][0].clone();
@@ -141,26 +167,49 @@ on_erase = "survive"
     let unavailable: Value = serde_json::from_str(&ok(&p.run_env(&cf, &reference, &[("CONTEXTFUL_TOKEN", &read)]))).unwrap();
     assert_eq!(unavailable["rows"], json!([[false, "erased"]]));
 
-    p.write("erase-keys.json", &json!({"subject_hash":receipt["subject_hash"],"keys":[{"table":"research/keys","key":"key-a"}]}).to_string());
-    ok(&p.run_env(&cf, &["context", "erase", "--project", "research", "--key-set", "erase-keys.json", "--tables", "research/keys", "--issuer-key", ".contextful/issuer.seed", "--public-key", &public, "--audience", AUD, "--json"], &[("CONTEXTFUL_TOKEN", &forget)]));
+    p.write("erase-keys.json", &json!({"subject_hash":receipt["subject_hash"],"column":"trace_id","keys":[trace]}).to_string());
+    let key_receipt: Value = serde_json::from_str(&ok(&p.run_env(&cf, &["context", "erase", "--project", "research", "--key-set", "erase-keys.json", "--issuer-key", ".contextful/issuer.seed", "--public-key", &public, "--audience", AUD, "--json"], &[("CONTEXTFUL_TOKEN", &forget)]))).unwrap();
+    for table in ["research/keys", "research/key_events", "research/key_partitions"] {
+        assert_eq!(key_receipt["affected_counts"][table], json!(2), "{key_receipt}");
+    }
+    assert_eq!(key_receipt["subject_hash"], receipt["subject_hash"]);
+    assert_eq!(key_receipt["physical_collection"], json!("complete"));
     assert_eq!(query(r#"SELECT id FROM "research/keys""#)["rows"], json!([["key-b"]]));
+    assert_eq!(query(r#"SELECT id FROM "research/key_events""#)["rows"], json!([["event-b"]]));
+    assert_eq!(query(r#"SELECT id FROM "research/key_partitions""#)["rows"], json!([["partition-b"]]));
+    assert_eq!(query(r#"SELECT id FROM "research/unrelated""#)["rows"], json!([[trace]]));
     assert_eq!(serde_json::from_str::<Value>(&ok(&p.run_env(&cf, &reference, &[("CONTEXTFUL_TOKEN", &read)]))).unwrap()["rows"], json!([[false, "erased"]]));
     let leaked: Vec<_> = p.files_containing(subject.as_bytes()).into_iter().filter(|path| path.starts_with(".contextful/")).collect();
     assert!(leaked.is_empty(), "retained store or sidecar bytes hold the erased subject: {leaked:?}");
     // Compressed Parquet needs decoding; absence from raw bytes alone proves nothing.
     let mut directories = vec![p.root.join(".contextful/context/research")];
+    let affected = ["keys", "key_events", "key_partitions"];
+    let mut affected_parquet = [0; 3];
     while let Some(directory) = directories.pop() {
         for entry in std::fs::read_dir(directory).unwrap() {
             let path = entry.unwrap().path();
             if path.is_dir() {
                 directories.push(path);
-            } else if path.extension().is_some_and(|extension| extension == "parquet") {
+                continue;
+            }
+            let components: Vec<_> = path.components().map(|component| component.as_os_str().to_string_lossy().into_owned()).collect();
+            let affected_table = affected.iter().position(|table| components.windows(3).any(|names| names[0] == "tables" && names[1] == "research" && names[2] == *table));
+            if affected_table.is_some() {
+                assert!(!path.to_string_lossy().contains(trace), "an affected path retains the erased column key: {}", path.display());
+                assert!(!std::fs::read(&path).unwrap().windows(trace.len()).any(|bytes| bytes == trace.as_bytes()), "an affected sidecar retains the erased column key: {}", path.display());
+            }
+            if path.extension().is_some_and(|extension| extension == "parquet") {
                 let escaped = path.to_string_lossy().replace('\'', "''");
                 let decoded = ok(&p.run(&cf, &["query", "--json", &format!("SELECT to_json(row) FROM read_parquet('{escaped}') AS row")]));
                 assert!(!decoded.contains(subject), "retained Parquet {} contains erased data", path.display());
+                if let Some(index) = affected_table {
+                    affected_parquet[index] += 1;
+                    assert!(!decoded.contains(trace), "affected Parquet {} contains the erased column key", path.display());
+                }
             }
         }
     }
+    assert!(affected_parquet.iter().all(|count| *count > 0), "every affected table needs a retained survivor Parquet witness: {affected_parquet:?}");
     ok(&p.run(&cf, &["audit", "anchor", "--project", "research", "--issuer-key", ".contextful/issuer.seed"]));
     ok(&p.run(&cf, &["audit", "verify", "--project", "research", "--public-key", &public]));
     let audit = ok(&p.run(&cf, &["audit", "query", "--project", "research", "--sql", "SELECT subject_hash FROM audit_erasures"]));
