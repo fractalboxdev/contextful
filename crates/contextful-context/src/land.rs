@@ -861,6 +861,24 @@ pub fn stage_recorded_group(store: &Store, decl: &TableDecl, prepared: &crate::P
     store.check_writable("stage")?;
     if prepared.table() != decl.name { return Err(ContextError::Invalid("recording names another root declaration".into())); }
     let admitted = store.admit_recording(&decl.name, &prepared.encode()?, prepared.normalize()?)?;
+    stage_admitted_group(store, decl, &admitted, node, injection, ordinal, offsets)
+}
+
+/// Re-admit the exact body scope before the shared group stage and cleanup path.
+pub struct ScopedRecording<'a> {
+    pub prepared: &'a crate::PreparedRecording,
+    pub scope: &'a contextful_core::run::effect::EffectScope,
+}
+
+pub fn stage_effect_recorded_group(store: &Store, decl: &TableDecl, recording: ScopedRecording<'_>, node: &NodeId, injection: &Injection, ordinal: u32, offsets: &std::collections::BTreeMap<String, u64>) -> Result<std::collections::BTreeMap<String, StagedPart>> {
+    store.check_writable("stage")?;
+    let ScopedRecording { prepared, scope } = recording;
+    if prepared.table() != decl.name { return Err(ContextError::Invalid("recording names another root declaration".into())); }
+    let admitted = store.admit_effect_recording(&decl.name, &prepared.encode()?, prepared.normalize()?, scope)?;
+    stage_admitted_group(store, decl, &admitted, node, injection, ordinal, offsets)
+}
+
+fn stage_admitted_group(store: &Store, decl: &TableDecl, admitted: &crate::PreparedRecording, node: &NodeId, injection: &Injection, ordinal: u32, offsets: &std::collections::BTreeMap<String, u64>) -> Result<std::collections::BTreeMap<String, StagedPart>> {
     let mut parts = std::collections::BTreeMap::new();
     for (table, recorded) in admitted.tables() {
         if recorded.rows.is_empty() { continue; }

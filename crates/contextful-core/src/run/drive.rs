@@ -19,6 +19,9 @@ pub const INPUT_STEP: &str = "input";
 /// Rows per output table, keyed by the table's name in the job's `tables`.
 pub type Emitted = BTreeMap<String, Vec<Row>>;
 
+/// Canonically admitted effect groups, with no raw model result exposed to the body.
+pub type PreparedEmitted = BTreeMap<String, Vec<super::effect::PreparedEmission>>;
+
 /// What a store-driven job pins: the body it names, its input statement and the `as_of`
 /// it declares, absent when the execution resolves one at open (`run.journal.input-pin`).
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -173,6 +176,21 @@ pub trait RowCalls {
 pub trait RowBody: Send + Sync {
     /// Run one input row, every effect through `calls`, answering its rows per output table.
     fn run(&self, row: &InputRow, calls: &dyn RowCalls) -> Result<Emitted, RowStop>;
+    /// A compiled closed projection enables prepared effect recording; ordinary bodies
+    /// retain their existing calls and emission behavior.
+    fn recorded(&self) -> Option<&dyn RecordedRowBody> { None }
+}
+
+/// Paid calls whose results pass canonical removal before the existing journal records them.
+pub trait RecordedRowCalls {
+    fn call(&self, label: &str, input: &[u8], effect: &mut CallEffect<'_>) -> Result<super::effect::PreparedEmission, RowStop>;
+}
+
+/// A registered projection supplies opaque emitted groups, not arbitrary source bytes.
+/// Protected awakeables have no admitted result projection in this interface.
+pub trait RecordedRowBody: Send + Sync {
+    fn effects(&self) -> Vec<super::effect::RecordedEffect>;
+    fn run_recorded(&self, row: &InputRow, calls: &dyn RecordedRowCalls) -> Result<PreparedEmitted, RowStop>;
 }
 
 /// The row bodies an embedding binary registers before build.

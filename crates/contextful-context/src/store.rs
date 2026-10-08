@@ -86,6 +86,9 @@ impl Store {
     pub fn recording_identity(&self, table: &str, normalize: Option<contextful_core::pipeline::normalize::Normalize>) -> Result<Option<String>> {
         self.writer.recording_identity(table, normalize)
     }
+    pub fn effect_recording_identity(&self, table: &str, normalize: Option<contextful_core::pipeline::normalize::Normalize>) -> Result<String> {
+        self.writer.effect_recording_identity(table, normalize)
+    }
 
     /// Source runs admit canonical prepared recording; body-effect recording keeps its refusal.
     pub fn validate_source_plan(&self, plan: &contextful_core::run::plan::Plan, normalize: Option<contextful_core::pipeline::normalize::Normalize>) -> Result<()> {
@@ -105,6 +108,15 @@ impl Store {
 
     pub fn admit_recording(&self, table: &str, bytes: &[u8], normalize: Option<contextful_core::pipeline::normalize::Normalize>) -> Result<crate::PreparedRecording> {
         self.writer.admit_recording(table, bytes, normalize)
+    }
+
+    /// Body records bind their stable owner and row/effect key inside canonical admission.
+    pub fn prepare_effect_recording(&self, table: &str, batch: &crate::land::Batch, normalize: Option<contextful_core::pipeline::normalize::Normalize>, load_id: &str, scope: &contextful_core::run::effect::EffectScope) -> Result<crate::PreparedRecording> {
+        self.writer.prepare_effect_recording(table, batch, normalize, load_id, scope)
+    }
+
+    pub fn admit_effect_recording(&self, table: &str, bytes: &[u8], normalize: Option<contextful_core::pipeline::normalize::Normalize>, scope: &contextful_core::run::effect::EffectScope) -> Result<crate::PreparedRecording> {
+        self.writer.admit_effect_recording(table, bytes, normalize, scope)
     }
 
     pub(crate) fn rewrite_group(&self, group: contextful_core::pipeline::normalize::NormalizedGroup) -> Result<std::collections::BTreeMap<String, Vec<contextful_core::run::ports::Row>>> {

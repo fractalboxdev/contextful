@@ -154,7 +154,7 @@ Canonical nested form, late relational shredding, injected identity columns and 
 
 ## guard-secrets
 
-The write-time mask over credential-shaped spans in a pulled batch.
+The write-time mask over credential-shaped spans in pulled batches and registered body results.
 
 - `placement` — The secret guard runs at the one pull path streaming and backfill share, ahead of the recorded pull and the land path, so a replay reintroduces no credential.
 - `matchers` — Matchers are linear-time, regex-free forward scans, each anchored on a literal prefix; the credential catalogue lives in code under a precision and recall fixture test.
@@ -165,6 +165,8 @@ The write-time mask over credential-shaped spans in a pulled batch.
 - `mask-only` — The guard is on by default and blocks no run; each pull logs the count of masked cells per column.
   *A-run*
 - `coverage` — The guard reads pre-normalize string cells for plaintext shapes; encoded material and a credential split across two cells pass through.
+- `recorded-body` — Registered body results pass through the same guard before shaping and canonical preparation; the engine reports per-column counts once per fresh paid preparation, excluding counts from the recorded wire and replay.
+  *A-authority*
 
 #### Scenarios
 

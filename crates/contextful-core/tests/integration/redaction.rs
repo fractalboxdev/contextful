@@ -78,16 +78,25 @@ fn unicode_word_boundaries_refuse_at_declaration() {
 }
 
 #[test]
-fn adversarial_alternation_refuses_a_mebibyte_past_its_matching_work_bound() {
+fn adversarial_alternation_rewrites_every_matched_byte_of_a_mebibyte_in_one_pass() {
     let r = CompiledRule::compile(rule(json!({"pattern":".*[^a]|a"}), None)).unwrap();
     let mut value = json!("a".repeat(1024 * 1024));
     let start = std::time::Instant::now();
-    assert!(r.rewrite(&mut value, &|_, _| Ok(Some("x".into()))).is_err());
+    r.rewrite(&mut value, &|_, _| Ok(Some(String::new()))).unwrap();
+    assert_eq!(value, "");
     assert!(start.elapsed() < std::time::Duration::from_secs(10), "{:?}", start.elapsed());
 }
 
 #[test]
-fn ordinary_patterns_rewrite_a_mebibyte_within_the_matching_work_bound() {
+fn overlapping_matches_rewrite_as_one_span_and_adjacent_matches_stay_separate() {
+    let r = CompiledRule::compile(rule(json!({"pattern":"key=[a-z]+|[a-z]+=[0-9]+"}), None)).unwrap();
+    let mut value = json!("key=abc=123 tail");
+    r.rewrite(&mut value, &marker).unwrap();
+    assert_eq!(value, "[REDACTED:phone] tail");
+}
+
+#[test]
+fn ordinary_patterns_rewrite_a_mebibyte_in_one_pass() {
     let r = CompiledRule::compile(rule(json!({"pattern":"[0-9]{3}-[0-9]{3}-[0-9]{4}"}), None)).unwrap();
     let mut value = json!("call 415-555-0100 now ".repeat(48 * 1024));
     r.rewrite(&mut value, &marker).unwrap();

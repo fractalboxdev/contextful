@@ -26,6 +26,49 @@ redaction = [{ table = "messages", column = "body", match = "whole", operation =
     (dir, store)
 }
 
+#[test]
+// spec: authority.redact.effect-scope@a6bc8d71
+fn effect_recordings_require_the_signed_owner_key_and_cannot_upgrade_source_payloads() {
+    use contextful_core::run::effect::EffectScope;
+    use contextful_core::run::journal::EntryKey;
+    let (_dir, store) = declared();
+    let batch = Batch { rows:vec![json!({"body":"private-model-result"}).as_object().unwrap().clone()], types:Default::default() };
+    let key = EntryKey::new("job-owner", "row/7/model", b"private-model-input");
+    let scope = EffectScope::new(&key, "canonical-body-plan");
+    let prepared = store.prepare_effect_recording("messages", &batch, None, "job-owner", &scope).unwrap();
+    assert_eq!(prepared.summary().unwrap().rows, 1, "summary belongs to the admitted rewritten root, not caller metadata");
+    let bytes = prepared.encode().unwrap();
+    assert!(!bytes.windows(b"private-model-result".len()).any(|value| value == b"private-model-result"));
+    assert!(!bytes.windows(b"private-model-input".len()).any(|value| value == b"private-model-input"));
+    assert!(store.admit_effect_recording("messages", &bytes, None, &scope).is_ok());
+    for other in [
+        EffectScope::new(&EntryKey::new("other-job", &key.step_label, b"private-model-input"), "canonical-body-plan"),
+        EffectScope::new(&EntryKey::new("job-owner", "row/8/model", b"private-model-input"), "canonical-body-plan"),
+        EffectScope::new(&EntryKey::new("job-owner", "row/7/other", b"private-model-input"), "canonical-body-plan"),
+        EffectScope::new(&key, "changed-body-plan"),
+    ] { assert!(store.admit_effect_recording("messages", &bytes, None, &other).is_err()); }
+    assert!(store.admit_recording("messages", &bytes, None).is_err(), "a body handle cannot enter the ordinary source admission path");
+    let source = store.prepare_recording("messages", &batch, None, "source-owner").unwrap().encode().unwrap();
+    assert!(store.admit_effect_recording("messages", &source, None, &scope).is_err(), "free valid source bytes cannot acquire body authority");
+    assert!(store.admit_recording("messages", &source, None).is_ok(), "ordinary prepared source replay remains compatible");
+    let ctx = context();
+    assert!(contextful_context::land::stage_recorded_group(&store, &TableDecl::named("messages"), &prepared, &ctx.node, &ctx.injection, 0, &Default::default()).is_err(), "body bytes remain outside ordinary source staging");
+    let wrong = EffectScope::new(&EntryKey::new("other-job", &key.step_label, b"private-model-input"), "canonical-body-plan");
+    assert!(contextful_context::land::stage_effect_recorded_group(&store, &TableDecl::named("messages"), contextful_context::land::ScopedRecording { prepared:&prepared, scope:&wrong }, &ctx.node, &ctx.injection, 0, &Default::default()).is_err());
+    let parts = contextful_context::land::stage_effect_recorded_group(&store, &TableDecl::named("messages"), contextful_context::land::ScopedRecording { prepared:&prepared, scope:&scope }, &ctx.node, &ctx.injection, 0, &Default::default()).unwrap();
+    assert_eq!(parts["messages"].rows, 1);
+    let dir = tempfile::tempdir().unwrap();
+    std::fs::write(dir.path().join("contextful.toml"), "[project]\nname='research'\n[[pipeline.tables]]\nname='messages'\n").unwrap();
+    let plain = Store::open(dir.path(), "research").unwrap();
+    assert!(plain.recording_identity("messages", None).unwrap().is_none(), "ordinary unprotected source recording remains verbatim");
+    assert!(plain.prepare_recording("messages", &batch, None, "source-owner").is_err(), "body support does not widen the prepared source interface");
+    let prepared = plain.prepare_effect_recording("messages", &batch, None, "job-owner", &scope).expect("a declared ruleless root shares canonical body admission in mixed-output plans");
+    let bytes = prepared.encode().unwrap();
+    assert!(plain.admit_effect_recording("messages", &bytes, None, &scope).is_ok());
+    assert!(plain.admit_recording("messages", &bytes, None).is_err());
+    assert!(plain.prepare_effect_recording("undeclared", &batch, None, "job-owner", &scope).is_err(), "body recording never admits an undeclared root");
+}
+
 fn composed_declarations(ordinary: &str, producer: &str) -> tempfile::TempDir {
     let dir = tempfile::tempdir().unwrap();
     std::fs::write(dir.path().join("contextful.toml"), format!("[project]\nname = 'research'\n[[pipeline.tables]]\nname = 'feed_messages'\n{ordinary}\n")).unwrap();

@@ -14,7 +14,20 @@ Redaction holds only when no derived artifact carries the pre-redaction value, s
 | Redact in each adapter, or at read time | Uniformity | The guarantee is as strong as the least careful adapter; stored material outlives every reader that forgets. |
 
 Consequences: two failures at different pages of one walk render identically from a scrubbed URL.
-Revisit: an index structure provably independent of the indexed values; typed body-effect preparation.
+Revisit: an index structure provably independent of the indexed values.
+
+## A closed body projection records canonical opaque groups
+
+A registered effect projection binds labels, roots, types, transforms and normalization before input or paid calls. The existing canonical writer signs concrete rewritten groups under execution, row and effect scope. The existing journal records only their opaque wire; replay and staging independently re-admit that scope. Credential masking precedes shaping, and private counts reach the engine reporter only on fresh preparation.
+
+| Option | Lost on | Cost |
+| --- | --- | --- |
+| Closed projection and canonical opaque groups *(chosen)* | — | Typed body APIs carry projection and issued scope; authority changes refuse pending owners. |
+| Record raw results then rewrite outputs | At-rest completeness | The paid journal retains values removed from landed rows. |
+| Accept caller-labelled prepared bytes | Authority | A caller can claim preparation without canonical admission. |
+| Rewrite recorded values on replay | Idempotence | A keyed digest becomes a digest of its own output. |
+
+Consequences: journal and landing share the existing state machine and discard owner; earlier output tables remain published when a later table fails. Live parent admission is independent of each output table's cancellation policy. Declared ruleless roots support mixed outputs without admitting undeclared destinations. Removal protects designated row values, not arbitrary schema labels. Protected awakeable results require their own typed admission path.
 
 ## A prepared source record binds canonical authority before execution
 
@@ -29,19 +42,19 @@ The canonical writer prepares guarded, shaped source rows once, including concre
 
 Consequences: unrelated manifest edits conservatively change recording authority. An absent continuation carries no source bytes; an exact terminal null object carries no private value. A monotonic clock requires complete transform lineage; protected relational clocks refuse without descendant lineage. Protected body effects remain refused without their own typed preparation.
 
-## Span iteration uses bounded leftmost-first matches
+## Span iteration rewrites the union of all matches
 
-Removal patterns use a lazy DFA with leftmost-first, non-overlapping search: a match ends where a greedy quantifier stops, so no matched byte remains beside its substitute. Forward steps over one value draw on one budget proportional to its length; a value that exhausts it refuses the write. Empty matches and Unicode word boundaries refuse at declaration. Each Thompson NFA has a declaration ceiling; source paths retain concrete normalization lineage, and persisted identities derive only after rewritten values.
+Removal patterns compile to a bounded Thompson NFA. One forward pass keeps, for each NFA state, the leftmost start that reaches it, so every match end yields the widest match ending there; overlapping matches merge into one span and adjacent ones stay separate. Work is linear in the value's length with no restart, and no matched byte remains beside its substitute. Empty matches and Unicode word boundaries refuse at declaration. Source paths retain concrete normalization lineage, and persisted identities derive only after rewritten values.
 
 | Option | Lost on | Cost |
 | --- | --- | --- |
-| Leftmost-first search under a step budget and concrete lineage *(chosen)* | — | An adversarial pattern and value pair refuses its write; ordinary writes to undeclared tables in a protected relational project refuse. |
+| Union of all matches in one pass and concrete lineage *(chosen)* | — | Per-byte work grows with NFA states; ordinary writes to undeclared tables in a protected relational project refuse. |
 | Earliest-ending search | Completeness | `password=\S+` rewrites `password=h` and stores the remaining secret beside the marker. |
-| Unbounded greedy iterator search | Bounding | Repeated suffix searches have quadratic worst-case work. |
+| Leftmost-first iterator search | Bounding | Repeated suffix searches have quadratic worst-case work. |
 | Infer lineage from child names | Authority | A matching name establishes no source-column relationship. |
 | Rewrite after encoding or hashing identities | At-rest completeness | A derived identity or staged part retains a copy of the removed value. |
 
-Consequences: unmatched UTF-8 bytes remain intact; logical projection precedes removal, and identity materialization follows it. Canonical authority binds explicit source plans before execution; a prepared relational record carries its concrete rewritten group. The step budget, not wall-clock time, supplies the complexity guarantee.
+Consequences: unmatched UTF-8 bytes remain intact; logical projection precedes removal, and identity materialization follows it. Canonical authority binds explicit source plans before execution; a prepared relational record carries its concrete rewritten group.
 
 ## Per-row classes resolve through registered masks
 

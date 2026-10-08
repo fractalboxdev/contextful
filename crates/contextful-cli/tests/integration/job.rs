@@ -150,6 +150,104 @@ fn canonical_output_removal_refuses_before_recorded_body_calls_but_unprotected_j
     }
 }
 
+#[test]
+fn a_registered_prepared_body_lands_protected_effect_results() {
+    let declaration = "[[pipeline.tables]]\nname = \"scores\"\nredaction = [{ table = \"scores\", column = \"score\", operation = \"drop\" }]\n";
+    let (dir, public, token) = project(&format!("{declaration}\n{}", job("max_in_flight = 1\n")));
+    let ledger = dir.path().join("prepared-body-calls.txt");
+    let out = fire(dir.path(), &public, &token, "prepared-body", "2030-01-01T00:01:00Z", &[("SCORE_RECORDED", "1"), ("SCORE_LEDGER", ledger.to_str().unwrap())]);
+    ok(&out);
+    assert_eq!(std::fs::read_to_string(ledger).unwrap().lines().count(), 3);
+    assert_eq!(select(dir.path(), "SELECT doc_id FROM scores ORDER BY doc_id"), vec![vec!["d1".to_string()], vec!["d2".to_string()], vec!["d3".to_string()]]);
+    assert!(select(dir.path(), "SELECT score FROM scores").iter().all(|row| row == &["null".to_string()]));
+    let declaration = "[[pipeline.tables]]\nname = \"scores\"\nredaction = [{ table = \"scores\", column = \"score\", match = { pattern = \"private\" }, operation = \"drop\" }]\n";
+    let (guarded, public, token) = project(&format!("{declaration}\n{}", job("max_in_flight = 1\n")));
+    ok(&fire(guarded.path(), &public, &token, "guarded-body", "2030-01-01T00:01:00Z", &[("SCORE_RECORDED", "1"), ("SCORE_CANARY", "AKIA0123456789ABCDEF")]));
+    assert!(select(guarded.path(), "SELECT score FROM scores").iter().all(|row| row == &[contextful_core::pipeline::guard::MARKER.to_string()]), "retained paid result cells receive the ordinary guard before recording and staging");
+}
+
+#[test]
+fn a_cancelled_second_prepared_output_collects_its_relational_children_and_keeps_the_first() {
+    let declares = job("max_in_flight = 1\n").replace("tables = [\"scores\"]", "tables = [\"audits\", \"scores\"]");
+    let declaration = "[[pipeline.tables]]\nname='audits'\n[[pipeline.tables]]\nname='scores'\n[[pipeline.tables]]\nname='scores_score'\nredaction=[{table='scores_score', column='text', operation='hash'}]\n";
+    let (dir, public, token) = project(&format!("{declaration}\n{declares}"));
+    let p = dir.path();
+    let store = contextful_context::Store::open(p, "research").unwrap();
+    let lock = store.lock_commit("scores").unwrap();
+    let ledger = p.join("paid.txt");
+    let mut child = Command::new(host_binary()).args(["job", "fire", "score-documents", "--project", "research", "--run-id", "second-output", "--site-id", "site", "--now", "2030-01-01T00:01:00Z", "--public-key", &public, "--audience", AUD])
+        .current_dir(p).env_remove("CONTEXTFUL_NODE_ID").env("CONTEXTFUL_TOKEN", &token)
+        .env("SCORE_RECORDED", "1").env("SCORE_RELATIONAL", "1").env("SCORE_AUDIT", "1")
+        .env("SCORE_CANARY", "private-relational-model-canary").env("SCORE_LEDGER", &ledger)
+        .stdout(std::process::Stdio::piped()).stderr(std::process::Stdio::piped()).spawn().unwrap();
+    let node_dir = store.table_dir("scores_score").unwrap().join("data/runs/second-output.scores/ingest-a");
+    let deadline = std::time::Instant::now() + std::time::Duration::from_secs(20);
+    while !node_dir.join("_manifest.json").is_file() {
+        if child.try_wait().unwrap().is_some() {
+            let out = child.wait_with_output().unwrap();
+            panic!("second output never reached its real child commit: {}", String::from_utf8_lossy(&out.stderr));
+        }
+        assert!(std::time::Instant::now() < deadline, "second output reaches child commit while its root lock is held");
+        std::thread::sleep(std::time::Duration::from_millis(20));
+    }
+    assert_eq!(select(p, "SELECT doc_id FROM audits ORDER BY doc_id").len(), 3, "the first declared output is already published");
+    ok(&cf(p, &["run", "cancel", "second-output", "--project", "research", "--reason", "fixture parent retirement"]));
+    drop(lock);
+    let out = child.wait_with_output().unwrap();
+    assert!(!out.status.success(), "the cancelled live parent cannot publish the second root");
+    let row: serde_json::Value = serde_json::from_str(&ok(&cf(p, &["run", "show", "second-output", "--project", "research"]))).unwrap();
+    assert_eq!(row["status"], "canceled", "the existing stop closes the attempt under the cancellation policy");
+    assert_eq!(std::fs::read_to_string(&ledger).unwrap().lines().count(), 3);
+    assert_eq!(select(p, "SELECT doc_id FROM audits ORDER BY doc_id").len(), 3);
+    assert!(!store.table_dir("scores").unwrap().join("data/runs/second-output.scores/ingest-a/_group.json").exists());
+    assert!(select(p, "SELECT text FROM scores_score").is_empty(), "the unpublished second group is invisible");
+    assert!(!node_dir.join("stage.staging").exists(), "failed output collects its child's staged directory");
+    assert!(!store.table_dir("scores").unwrap().join("data/runs/second-output.scores/ingest-a/stage.staging").exists(), "failed output collects its root staged directory");
+    fn no_canary(path: &Path) {
+        for entry in std::fs::read_dir(path).unwrap() {
+            let path = entry.unwrap().path();
+            if path.is_dir() { no_canary(&path); } else {
+                let bytes = std::fs::read(&path).unwrap();
+                assert!(!bytes.windows(b"private-relational-model-canary".len()).any(|value| value == b"private-relational-model-canary"), "normalized paid results remove the designated canary before identity and persistence");
+            }
+        }
+    }
+    no_canary(p);
+}
+
+#[test]
+fn a_refused_second_output_child_commit_retains_names_for_existing_discard() {
+    let declares = job("max_in_flight = 1\n").replace("tables = [\"scores\"]", "tables = [\"audits\", \"scores\"]");
+    let declaration = "[[pipeline.tables]]\nname='audits'\n[[pipeline.tables]]\nname='scores'\n[[pipeline.tables]]\nname='scores_score'\nredaction=[{table='scores_score', column='text', operation='hash'}]\n";
+    let (dir, public, token) = project(&format!("{declaration}\n{declares}"));
+    let p = dir.path();
+    let store = contextful_context::Store::open(p, "research").unwrap();
+    let lock = store.lock_commit("scores_score").unwrap();
+    let mut child = Command::new(host_binary()).args(["job", "fire", "score-documents", "--project", "research", "--run-id", "child-refusal", "--site-id", "site", "--now", "2030-01-01T00:01:00Z", "--public-key", &public, "--audience", AUD])
+        .current_dir(p).env_remove("CONTEXTFUL_NODE_ID").env("CONTEXTFUL_TOKEN", &token)
+        .env("SCORE_RECORDED", "1").env("SCORE_RELATIONAL", "1").env("SCORE_AUDIT", "1")
+        .stdout(std::process::Stdio::piped()).stderr(std::process::Stdio::piped()).spawn().unwrap();
+    let node_dir = store.table_dir("scores_score").unwrap().join("data/runs/child-refusal.scores/ingest-a");
+    let stage = node_dir.join("stage.staging");
+    let deadline = std::time::Instant::now() + std::time::Duration::from_secs(20);
+    while !stage.is_dir() {
+        if child.try_wait().unwrap().is_some() {
+            let out = child.wait_with_output().unwrap();
+            panic!("second output never staged its real child: {}", String::from_utf8_lossy(&out.stderr));
+        }
+        assert!(std::time::Instant::now() < deadline, "second output reaches child stage while its commit lock is held");
+        std::thread::sleep(std::time::Duration::from_millis(20));
+    }
+    std::fs::create_dir(node_dir.join("_manifest.json")).unwrap();
+    drop(lock);
+    let out = child.wait_with_output().unwrap();
+    assert!(!out.status.success(), "the real child manifest obstruction refuses publication");
+    assert_eq!(select(p, "SELECT doc_id FROM audits ORDER BY doc_id").len(), 3, "the earlier group remains published");
+    assert!(!store.table_dir("scores").unwrap().join("data/runs/child-refusal.scores/ingest-a/_group.json").exists());
+    assert!(!stage.exists(), "the existing discard owner retains failed child names until root publication succeeds");
+    assert!(!store.table_dir("scores").unwrap().join("data/runs/child-refusal.scores/ingest-a/stage.staging").exists());
+}
+
 /// The rows every body emits land after the last input row completes and before the owner retires, one run per
 /// declared output table through {{run.land.stage-order}}.
 // spec: run.journal.row-output@6b72f3ec

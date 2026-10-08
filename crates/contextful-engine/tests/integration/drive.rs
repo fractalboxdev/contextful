@@ -454,3 +454,140 @@ fn a_timed_out_wait_is_a_recorded_step_every_re_entry_reads() {
     assert_eq!(done.status, RunStatus::Success);
     assert_eq!(checked.lock().unwrap().clone(), Some(Woken::TimedOut));
 }
+
+#[test]
+// spec: run.journal.body-projection@b4109523
+// spec: run.own.body-parent@24cc3aaf
+fn protected_body_effects_record_rewritten_results_and_resume_without_another_paid_call() {
+    use contextful_core::run::drive::{PreparedEmitted, RecordedRowBody, RecordedRowCalls};
+    use contextful_core::run::effect::{EffectAdmission, EffectScope, EmissionSummary, RecordedBodyPlan, RecordedEffect};
+    use contextful_core::run::ports::Types;
+    struct Canonical;
+    impl EffectAdmission for Canonical {
+        fn identity(&self, _: &RecordedEffect) -> Result<String, Failure> { Ok("test-canonical-removal".into()) }
+        fn prepare(&self, _: &RecordedEffect, mut rows:Vec<Row>, types:Types, scope:&EffectScope) -> Result<serde_json::Value, Failure> {
+            for row in &mut rows { row.remove("score"); }
+            Ok(json!({"rows":rows,"scope":scope,"types":types.keys().collect::<Vec<_>>() }))
+        }
+        fn admit(&self, _: &RecordedEffect, scope:&EffectScope, value:&serde_json::Value) -> Result<EmissionSummary, Failure> {
+            assert_eq!(&serde_json::from_value::<EffectScope>(value["scope"].clone()).unwrap(), scope);
+            let rows:Vec<Row> = serde_json::from_value(value["rows"].clone()).unwrap();
+            assert!(rows.iter().all(|r| !r.contains_key("score")));
+            Ok(EmissionSummary { rows:rows.len() as u64, columns:rows.iter().flat_map(|r| r.keys().cloned()).collect(), types:Default::default() })
+        }
+    }
+    struct Protected<'a>(&'a AtomicUsize);
+    impl RecordedRowBody for Protected<'_> {
+        fn effects(&self) -> Vec<RecordedEffect> { vec![RecordedEffect { label:"model".into(), table:"scores".into(), types:Default::default(), transforms:Vec::new(), normalize:None }] }
+        fn run_recorded(&self, row:&InputRow, calls:&dyn RecordedRowCalls) -> Result<PreparedEmitted, RowStop> {
+            let doc = doc_of(row);
+            let output = calls.call("model", doc.as_bytes(), &mut |_| {
+                self.0.fetch_add(1, Ordering::SeqCst);
+                Ok(serde_json::to_vec(&vec![json!({"doc_id":doc,"score":"private-paid-result-canary"})]).unwrap())
+            })?;
+            Ok(BTreeMap::from([("scores".into(), vec![output])]))
+        }
+    }
+    impl RowBody for Protected<'_> {
+        fn run(&self, _: &InputRow, _: &dyn RowCalls) -> Result<Emitted, RowStop> { panic!("prepared mode executes no raw body") }
+        fn recorded(&self) -> Option<&dyn RecordedRowBody> { Some(self) }
+    }
+    let rig = Rig::new();
+    let paid = AtomicUsize::new(0);
+    let body = Protected(&paid);
+    let plan = RecordedBodyPlan::compile(body.effects(), &["scores".into()]).unwrap();
+    let first = rig.engine.drive_recorded(&fire(input("SELECT doc_id FROM documents", Some(T0)), &body, 1, "prepared-1"), &plan, &Canonical, &mut |as_of| Ok(set(as_of, docs(3))), &mut |outputs, _owner| {
+        for output in &outputs["scores"] {
+            let scope = output.scope();
+            let value = match rig.engine.journal.row(scope.key()).unwrap().unwrap() { JournalRow::Recorded { value, .. } => value, other => panic!("{other:?}") };
+            let bytes = rig.engine.journal.load(&value).unwrap();
+            assert!(!String::from_utf8(bytes).unwrap().contains("private-paid-result-canary"));
+        }
+        Err(Failure::new(FailureTag::Storage, "commit failed"))
+    }).unwrap();
+    assert_eq!(first.status, RunStatus::Failed);
+    assert_eq!(paid.load(Ordering::SeqCst), 3);
+    let resumed = rig.engine.drive_recorded(&fire(input("SELECT doc_id FROM documents", Some(T0)), &body, 1, "prepared-2"), &plan, &Canonical, &mut |_| panic!("resume reads no source"), &mut |outputs, _owner| Ok(Landed { rows:outputs["scores"].iter().map(|o| o.summary().rows).sum(), bytes:0 })).unwrap();
+    assert_eq!(resumed.status, RunStatus::Success);
+    assert_eq!(resumed.rows, 3);
+    assert_eq!(paid.load(Ordering::SeqCst), 3);
+    struct Reused<'a> { paid: &'a AtomicUsize, previous:Mutex<Option<contextful_core::run::effect::PreparedEmission>> }
+    impl RecordedRowBody for Reused<'_> {
+        fn effects(&self) -> Vec<RecordedEffect> { Protected(self.paid).effects() }
+        fn run_recorded(&self, row:&InputRow, calls:&dyn RecordedRowCalls) -> Result<PreparedEmitted, RowStop> {
+            let mut previous = self.previous.lock().unwrap();
+            let output = if let Some(previous) = previous.as_ref() { previous.clone() } else {
+                let doc = doc_of(row);
+                let output = calls.call("model", doc.as_bytes(), &mut |_| Ok(serde_json::to_vec(&vec![json!({"doc_id":doc,"score":"private-paid-result-canary"})]).unwrap()))?;
+                *previous = Some(output.clone());
+                output
+            };
+            Ok(BTreeMap::from([("scores".into(), vec![output])]))
+        }
+    }
+    impl RowBody for Reused<'_> {
+        fn run(&self, _: &InputRow, _: &dyn RowCalls) -> Result<Emitted, RowStop> { unreachable!() }
+        fn recorded(&self) -> Option<&dyn RecordedRowBody> { Some(self) }
+    }
+    let rig = Rig::new();
+    let reused = Reused { paid:&paid, previous:Mutex::new(None) };
+    let refused = rig.engine.drive_recorded(&fire(input("SELECT doc_id FROM documents", Some(T0)), &reused, 1, "foreign-row"), &plan, &Canonical, &mut |as_of| Ok(set(as_of, docs(2))), &mut |_, _| panic!("foreign-row emission cannot reach landing")).unwrap();
+    assert_eq!(refused.status, RunStatus::Failed);
+    assert!(refused.error_message.unwrap().contains("outside this row's admitted calls"));
+    let rig = Rig::new();
+    let changed = RecordedBodyPlan::compile(vec![RecordedEffect { transforms:vec![contextful_core::pipeline::transform::TransformOp::Rename { from:"score".into(), to:"visible".into() }], ..body.effects().remove(0) }], &["scores".into()]).unwrap();
+    let reads = AtomicUsize::new(0);
+    let refused = rig.engine.drive_recorded(&fire(input("SELECT doc_id FROM documents", Some(T0)), &body, 1, "changed-registered-projection"), &changed, &Canonical, &mut |as_of| { reads.fetch_add(1, Ordering::SeqCst); Ok(set(as_of, Vec::new())) }, &mut |_, _| Ok(Landed::default()));
+    assert!(refused.is_err(), "caller cannot substitute a projection for the registered body's closed declaration");
+    assert_eq!(reads.load(Ordering::SeqCst), 0);
+    #[derive(Clone, Copy, Debug, PartialEq)]
+    enum Boundary { Entry, Stage, Commit }
+    struct LosingParent<'a> { rig:&'a Rig, boundary:Boundary, retired:std::cell::Cell<bool>, sink:crate::support::Sink }
+    impl LosingParent<'_> {
+        fn lose(&self, boundary:Boundary) {
+            if self.boundary != boundary || self.retired.replace(true) { return; }
+            let scope = job_scope(JOB);
+            let owner = self.rig.catalog().owner_at(&scope).unwrap().unwrap();
+            self.rig.catalog().retire_at(&scope, &owner.execution_id, None, None).unwrap();
+        }
+    }
+    impl contextful_core::run::ports::Destination for LosingParent<'_> {
+        fn admit_effect_recorded(&self, _: &str, payload:&serde_json::Value, scope:&EffectScope) -> Result<EmissionSummary, Failure> {
+            self.lose(Boundary::Entry);
+            Canonical.admit(plan_effect(), scope, payload)
+        }
+        fn stage_effect_recorded(&mut self, mut stage:contextful_core::run::ports::Stage, payload:&serde_json::Value, _: &EffectScope) -> Result<contextful_core::run::ports::Part, Failure> {
+            stage.rows = serde_json::from_value(payload["rows"].clone()).unwrap();
+            let part = contextful_core::run::ports::Destination::stage_batch(&mut self.sink, stage)?;
+            self.lose(Boundary::Stage);
+            Ok(part)
+        }
+        fn stage_batch(&mut self, _:contextful_core::run::ports::Stage) -> Result<contextful_core::run::ports::Part, Failure> { panic!("prepared groups never stage raw") }
+        fn commit(&mut self, commit:contextful_core::run::ports::Commit, before:&dyn Fn() -> Result<(), Failure>) -> Result<Landed, Failure> {
+            self.lose(Boundary::Commit);
+            contextful_core::run::ports::Destination::commit(&mut self.sink, commit, before)
+        }
+        fn discard(&mut self, table:&str, run:&str) -> Result<(), Failure> { contextful_core::run::ports::Destination::discard(&mut self.sink, table, run) }
+        fn newest_marker(&self, pipeline:&str, table:&str) -> Result<Option<contextful_core::run::ports::Marker>, Failure> { contextful_core::run::ports::Destination::newest_marker(&self.sink, pipeline, table) }
+    }
+    fn plan_effect() -> &'static RecordedEffect {
+        static EFFECT:std::sync::OnceLock<RecordedEffect> = std::sync::OnceLock::new();
+        EFFECT.get_or_init(|| RecordedEffect { label:"model".into(), table:"scores".into(), types:Default::default(), transforms:Vec::new(), normalize:None })
+    }
+    let mut committed_after_loss = Vec::new();
+    for boundary in [Boundary::Entry, Boundary::Stage, Boundary::Commit] {
+        let rig = Rig::new();
+        let mut destination = LosingParent { rig:&rig, boundary, retired:std::cell::Cell::new(false), sink:Default::default() };
+        let mut output_plan = crate::support::plan("kind = 'opaque-token'", "journal = false");
+        output_plan.spec.table = "scores".into();
+        let spec = contextful_engine::RunSpec { connector:output_plan.connector_pin("test-artifact"), plan:output_plan, run_id:format!("land-{boundary:?}"), site_id:"site-a".into(), pid:4242, boot_id:"boot-a".into(), trace_id:None };
+        let _ = rig.engine.drive_recorded(&fire(input("SELECT doc_id FROM documents", Some(T0)), &body, 1, &format!("parent-{boundary:?}")), &plan, &Canonical, &mut |as_of| Ok(set(as_of, docs(2))), &mut |outputs, owner| {
+            let row = rig.engine.run_emissions(&spec, owner, &outputs["scores"], &mut destination).map_err(|e| Failure::new(FailureTag::Storage, e.to_string()))?;
+            if row.status != RunStatus::Success { return Err(Failure::new(FailureTag::Storage, row.error_message.unwrap_or_default())); }
+            Ok(Landed { rows:row.rows, bytes:row.bytes })
+        });
+        assert!(destination.retired.get(), "the control actually loses its parent at {boundary:?}");
+        if !destination.sink.commits.is_empty() { committed_after_loss.push(boundary); }
+    }
+    assert!(committed_after_loss.is_empty(), "prepared results committed after live-parent loss at {committed_after_loss:?}");
+}

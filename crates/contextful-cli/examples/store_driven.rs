@@ -5,7 +5,9 @@
 //! `SCORE_LEDGER` names a file each served call appends `<doc_id> <idempotency key>` to;
 //! `SCORE_DIE_AFTER` ends the process inside the call past that many served calls.
 
-use contextful_core::run::drive::{Bodies, Emitted, InputRow, RowBody, RowCalls, RowStop};
+use contextful_core::run::drive::{Bodies, Emitted, InputRow, PreparedEmitted, RecordedRowBody, RecordedRowCalls, RowBody, RowCalls, RowStop};
+use contextful_core::run::effect::RecordedEffect;
+use contextful_core::store::reconcile::ColumnType;
 use contextful_core::run::{Failure, FailureTag};
 use serde_json::json;
 use std::io::Write;
@@ -48,6 +50,45 @@ impl RowBody for Score {
     }
 }
 
+/// A compiled JSON-row projection records canonical results before exposing handles.
+struct RecordedScore(Score);
+
+impl RecordedRowBody for RecordedScore {
+    fn effects(&self) -> Vec<RecordedEffect> {
+        let relational = std::env::var_os("SCORE_RELATIONAL").is_some();
+        let normalize = relational.then_some(contextful_core::pipeline::normalize::Normalize { mode:contextful_core::pipeline::normalize::Mode::Relational, ..Default::default() });
+        let mut effects = vec![RecordedEffect { label:"model".into(), table:"scores".into(), types:std::collections::BTreeMap::from([("doc_id".into(), ColumnType::Utf8), ("score".into(), if relational { ColumnType::Json } else { ColumnType::Utf8 }), ("padding".into(), ColumnType::Utf8)]), transforms:Vec::new(), normalize }];
+        if self.0.audit {
+            effects.push(RecordedEffect { label:"audit".into(), table:"audits".into(), types:std::collections::BTreeMap::from([("doc_id".into(), ColumnType::Utf8)]), transforms:Vec::new(), normalize:None });
+        }
+        effects
+    }
+    fn run_recorded(&self, row: &InputRow, calls: &dyn RecordedRowCalls) -> Result<PreparedEmitted, RowStop> {
+        let doc = row.row.get("doc_id").and_then(|v| v.as_str()).unwrap_or_default().to_string();
+        let body = row.row.get("body").and_then(|v| v.as_str()).unwrap_or_default().to_string();
+        let output = calls.call("model", doc.as_bytes(), &mut |key| {
+            let result = self.0.serve(&doc, key, &body)?;
+            let score = std::env::var("SCORE_CANARY").unwrap_or_else(|_| String::from_utf8_lossy(&result).into_owned());
+            let score = if std::env::var_os("SCORE_RELATIONAL").is_some() { json!([{ "text":score }]) } else { json!(score) };
+            let padding = std::env::var("SCORE_PADDING_BYTES").ok().and_then(|n| n.parse::<usize>().ok()).unwrap_or_default();
+            serde_json::to_vec(&vec![json!({"doc_id":doc,"score":score,"padding":"p".repeat(padding)})]).map_err(|_| Failure::deterministic(FailureTag::Permanent, "model row does not encode"))
+        })?;
+        let mut outputs = PreparedEmitted::from([("scores".into(), vec![output])]);
+        if self.0.audit {
+            let audit = calls.call("audit", doc.as_bytes(), &mut |_| serde_json::to_vec(&vec![json!({"doc_id":doc})]).map_err(|_| Failure::deterministic(FailureTag::Permanent, "audit row does not encode")))?;
+            outputs.insert("audits".into(), vec![audit]);
+        }
+        Ok(outputs)
+    }
+}
+
+impl RowBody for RecordedScore {
+    fn run(&self, _: &InputRow, _: &dyn RowCalls) -> Result<Emitted, RowStop> {
+        Err(Failure::deterministic(FailureTag::Permanent, "registered prepared body requires prepared calls").into())
+    }
+    fn recorded(&self) -> Option<&dyn RecordedRowBody> { Some(self) }
+}
+
 fn main() {
     let body = Score {
         ledger: std::env::var("SCORE_LEDGER").ok(),
@@ -56,7 +97,8 @@ fn main() {
         served: Mutex::new(0),
     };
     let mut bodies = Bodies::default();
-    if let Err(e) = bodies.register("score", Arc::new(body)) {
+    let body: Arc<dyn RowBody> = if std::env::var_os("SCORE_RECORDED").is_some() { Arc::new(RecordedScore(body)) } else { Arc::new(body) };
+    if let Err(e) = bodies.register("score", body) {
         eprintln!("{e}");
         std::process::exit(1);
     }
