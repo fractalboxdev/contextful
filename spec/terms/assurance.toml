@@ -59,6 +59,7 @@ EnforceUnmediatedPath            = { clause = "assurance.gate.row-token", gloss 
 UnconfiguredEgress               = { clause = "assurance.gate.unconfigured-egress", gloss = "An outbound call a default configuration reaches without operator configuration." }
 EnforceInterpolatedSubjectClaim  = { clause = "assurance.gate.interpolated-claim", gloss = "A subject claim formatted into SQL text in a runtime crate." }
 StagePredecessorMissing          = { clause = "assurance.gate.stage-subset", gloss = "A selected stage reading an unselected predecessor's absent output." }
+NativeHostMismatch               = { clause = "assurance.gate.native-host", gloss = "A native Windows gate leaf executed by a binary for another host." }
 BuildDiskPrecondition            = { clause = "assurance.gate.free-disk", gloss = "A gate stage beginning below the free-disk floor." }
 BuildSizeCeilingExceeded         = { clause = "assurance.gate.build-size", gloss = "Total build size past the gate's ceiling." }
 FootprintBudgetExceeded          = { clause = "assurance.gate.footprint-exceeded", gloss = "A profile artifact over its budget, or carrying an extra dynamic dependency." }

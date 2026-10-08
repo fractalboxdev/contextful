@@ -2,6 +2,32 @@
 
 use crate::repo_root;
 use std::process::Command;
+
+#[test]
+fn authoritative_gate_discovery_contains_both_native_windows_leaves() {
+    let out = Command::new(env!("CARGO_BIN_EXE_contextful-ci"))
+        .args(["stages", "--parts", "--json"])
+        .current_dir(repo_root()).output().unwrap();
+    assert!(out.status.success(), "{}", crate::stderr(&out));
+    let parts: Vec<String> = serde_json::from_slice(&out.stdout).unwrap();
+    let native: Vec<&str> = parts.iter().map(String::as_str)
+        .filter(|part| part.starts_with("windows.")).collect();
+    assert_eq!(native, ["windows.x86_64-msvc", "windows.aarch64-msvc"],
+        "the owning gate declares no complete native executor inventory");
+}
+
+#[cfg(not(target_os = "windows"))]
+#[test]
+fn a_native_windows_leaf_refuses_a_non_windows_host_before_workload_admission() {
+    let r = crate::Repo::init();
+    for part in ["windows.x86_64-msvc", "windows.aarch64-msvc"] {
+        let out = r.gate(&["--stage", part, "--base", &r.head()]);
+        assert!(!out.status.success(), "a foreign host passes native gate {part}");
+        assert!(crate::stderr(&out).contains("NativeHostMismatch"),
+            "the native leaf has no typed host refusal: {}", crate::stderr(&out));
+    }
+}
+
 #[test]
 fn native_transport_refuses_broad_triggers_credentials_and_unbound_runners() {
     let r = crate::Repo::init();
@@ -67,7 +93,7 @@ fn every_gate_stage_has_a_dispatchable_part() {
         .collect();
     assert_eq!(
         parts.len(),
-        29,
+        31,
         "the remote gate expects one check per part: {parts:?}"
     );
     assert!(parts.iter().any(|part| part == "workspace.cli"), "the CLI suite has no separate remote check: {parts:?}");
@@ -99,7 +125,10 @@ fn proposed_required_checks_match_every_gate_part() {
         .unwrap();
     assert!(out.status.success());
     let mut expected = vec!["flare-dispatch/contextful-gate".to_string()];
-    expected.extend(String::from_utf8_lossy(&out.stdout).lines().map(|part| format!("flare-dispatch/check:{part}")));
+    expected.extend(String::from_utf8_lossy(&out.stdout).lines().map(|part| {
+        let owner = if part.starts_with("windows.") { "native-gate" } else { "check" };
+        format!("flare-dispatch/{owner}:{part}")
+    }));
 
     let proposal: serde_json::Value = serde_json::from_str(&std::fs::read_to_string(repo_root().join(".github/rulesets/contextful-gate.proposed.json")).unwrap()).unwrap();
     assert_eq!(proposal["enforcement"], "disabled");

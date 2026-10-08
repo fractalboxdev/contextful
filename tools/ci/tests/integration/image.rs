@@ -254,7 +254,7 @@ fn the_budget_stage_builds_every_profile_one_part_each_and_the_evaluate_stage_no
     assert_eq!(String::from_utf8_lossy(&stages.stdout).lines().last(), Some("budget"));
     let parts = Command::new(env!("CARGO_BIN_EXE_contextful-ci")).args(["stages", "--parts"]).current_dir(repo_root()).output().unwrap();
     let listed = String::from_utf8_lossy(&parts.stdout).into_owned();
-    let tail: Vec<&str> = listed.lines().rev().take(3).collect();
+    let tail: Vec<&str> = listed.lines().filter(|part| !part.starts_with("windows.")).rev().take(3).collect();
     assert_eq!(tail, ["budget.full", "budget.edge", "budget.control"], "{listed}");
 
     // A tree whose binary declares no profile builds nothing, and has no budget part.

@@ -169,7 +169,7 @@ Stage order, secrets of record, the crate-graph, row-token, egress and dependenc
 - `stage-sequence` — The gate runs its stages in order — pins, toolchain, schema, test-first, workspace, acceptance, evaluate, features, crate graph, connectors, TypeScript surfaces, formal, budget — and a subset is selectable by name.
 - `stage-subset` — A selected subset runs in the sequence's order; a stage reading an unselected predecessor's output, with that output absent, raises `StagePredecessorMissing`, naming both stages, before any stage runs.
   *A-assurance*
-- `remote-check` — The FlareDispatch pull-request webhook dispatches every part from `contextful-ci stages --parts --base <base-sha>`, each as `flare-dispatch/check:<part>` on the head commit.
+- `remote-check` — The FlareDispatch pull-request webhook dispatches every part from `contextful-ci stages --parts --base <base-sha>` on the head commit; nonnative parts publish `flare-dispatch/check:<part>` and native parts publish `flare-dispatch/native-gate:<part>`.
   *A-assurance*
 - `test-first-parts` — Remote validation requires a changed test in each changed source package under {{assurance.test.test-first}}; each such package checks only its changed tests against the base in a separate dispatch.
   *A-assurance*
@@ -177,9 +177,13 @@ Stage order, secrets of record, the crate-graph, row-token, egress and dependenc
   *A-assurance*
 - `native-receipt` — FlareDispatch accepts native results only when repository, head, base, nonce, command digest, trusted workflow identity, fixed runner label, observed native target, terminal exit and artifact digests match the admitted request.
   *A-assurance*
+- `native-host` — A Windows gate leaf whose executing binary does not match its selected native MSVC target raises `NativeHostMismatch` before admitting a workload.
+  *because a cross-compiled binary or foreign runner demonstrates no native host behavior*
+- `native-workload` — Each Windows leaf checks Core, Policy and store writes without the read feature, runs filesystem, audit and store integration suites and required command-descendant tests, replays test-first against its comparison base, and records the bundled read-engine build outcome.
+  *A-assurance*
 - `workspace-parts` — Remote workspace checks compile the feature-unified workspace without running tests, run differential and remaining CLI tests separately, and run each other non-acceptance package suite in exactly one of four groups.
   *A-assurance*
-- `remote-predecessors` — Each dispatched part invokes `contextful-ci gate --predecessors --stage <part> --base <base-sha>`, so no check reads another check's sandbox.
+- `remote-predecessors` — Each nonnative part invokes `contextful-ci gate --predecessors --stage <part> --base <base-sha>`; native admission follows every nonnative success and invokes its exact leaf without predecessors, preserving the comparison base.
   *A-assurance*
 - `fork-dispatch` — FlareDispatch dispatches only a pull-request head pushed to this repository; a fork receives none of the required stage checks.
   *because a dispatch runs untrusted code in the organization's compute account, and absent required checks fail closed*
