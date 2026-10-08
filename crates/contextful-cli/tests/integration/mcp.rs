@@ -93,6 +93,7 @@ fn a_server_with_no_admissible_credential_writes_no_framing() {
 }
 
 /// The process transport requires a verified capability token; `--owner` selects its signed owner claim. An absent token raises `StdioCredentialMissing` before protocol framing and never resolves to owner context.
+// spec: surface.package.stdio-credential@c6b49c5d
 #[test]
 fn a_server_with_no_credential_raises_stdio_credential_missing() {
     let (dir, public, _token) = project();
@@ -235,6 +236,20 @@ fn owner_credential_does_not_cross_independent_stores_with_one_issuer() {
     let refused = serve(root, &args, Some(&owner), &read);
     assert!(!refused.status.success() && refused.stdout.is_empty());
     assert!(String::from_utf8_lossy(&refused.stderr).contains("OwnerCredentialInvalid"));
+}
+
+/// The child's working directory selects the store by walking up to the project manifest; finding none raises `StoreSelectorAbsent` and exits before writing any protocol framing.
+// spec: surface.package.store-selector@79c745d0
+#[test]
+fn a_spawned_server_without_a_project_manifest_refuses_before_framing() {
+    let (dir, public, token) = project();
+    std::fs::remove_file(dir.path().join("contextful.toml")).unwrap();
+    let nested = dir.path().join("nested/child");
+    std::fs::create_dir_all(&nested).unwrap();
+    let hello = [json!({ "jsonrpc": "2.0", "id": 1, "method": "initialize", "params": {} })];
+    let out = serve(&nested, &["mcp", "--public-key", &public, "--audience", AUD], Some(&token), &hello);
+    assert!(!out.status.success() && out.stdout.is_empty());
+    assert!(String::from_utf8_lossy(&out.stderr).starts_with("StoreSelectorAbsent"), "{}", String::from_utf8_lossy(&out.stderr));
 }
 
 /// The server admits over the stdio pipe it inherited: a credential binding no key admits

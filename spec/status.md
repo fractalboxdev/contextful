@@ -13,9 +13,9 @@ An unpinned clause is `committed`; a pinned one is `performed` when its Rust, Le
 | `read` | 2 | 15 | 200 | 31 | 22 | 9 | 178 | 0 | 178 |
 | `run` | 3 | 26 | 406 | 102 | 39 | 28 | 306 | 0 | 306 |
 | `store` | 1 | 17 | 252 | 59 | 13 | 19 | 216 | 0 | 216 |
-| `surface` | 2 | 20 | 114 | 52 | 22 | 0 | 60 | 0 | 60 |
+| `surface` | 2 | 20 | 114 | 52 | 22 | 0 | 62 | 0 | 62 |
 | `topology` | 1 | 6 | 70 | 24 | 5 | 5 | 38 | 0 | 38 |
-| **total** | 19 | 155 | 2120 | 596 | 191 | 103 | 1482 | 0 | |
+| **total** | 19 | 155 | 2120 | 596 | 191 | 103 | 1484 | 0 | |
 
 Decision records: 18.
 
@@ -37,7 +37,7 @@ A milestone reads `closed` when its acceptance test computes `passing` and every
 | 9 — Visibility | 6 | 41 | 3 | open | open |
 | 10 — Cadence and the operator plane | 11 | 76 | 64 | passing | open |
 | 11 — The derive tier | 7 | 88 | 79 | passing | closed |
-| 12 — The operator console | 12 | 49 | 1 | open | open |
+| 12 — The operator console | 12 | 49 | 3 | open | open |
 | 13 — Disclosure | 5 | 33 | 13 | open | open |
 | 14 — Assurance | 7 | 146 | 90 | passing | closed |
 
@@ -1479,6 +1479,8 @@ Unscheduled operations: 10.
 | `surface.fire.store-driven-concurrency` | `crates/contextful-core/tests/integration/job.rs::a_store_driven_block_without_a_positive_max_in_flight_raises_job_concurrency_unset` | performed |
 | `surface.fire.target-unbound` | `crates/contextful-cli/tests/integration/job.rs::a_job_target_naming_nothing_produced_is_refused_at_validation` | performed |
 | `surface.package.owner-flag` | `crates/contextful-cli/tests/integration/mcp.rs::explicit_owner_requires_a_signed_credential_for_the_selected_store` | performed |
+| `surface.package.stdio-credential` | `crates/contextful-cli/tests/integration/mcp.rs::a_server_with_no_credential_raises_stdio_credential_missing` | performed |
+| `surface.package.store-selector` | `crates/contextful-cli/tests/integration/mcp.rs::a_spawned_server_without_a_project_manifest_refuses_before_framing` | performed |
 | `surface.reconcile.fail-static` | `crates/contextful-cli/tests/integration/pipeline.rs::an_unreadable_snapshot_leaves_the_armed_set_running` | performed |
 | `surface.reconcile.issuer-pin` | `crates/contextful-cli/tests/integration/pipeline.rs::a_pulled_receipt_cannot_supply_its_own_trust_pin` | performed |
 | `surface.reconcile.learns-by-reading` | `crates/contextful-cli/tests/integration/pipeline.rs::a_wake_reads_the_applied_version_from_the_control_source` | performed |
