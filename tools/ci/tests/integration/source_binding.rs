@@ -96,7 +96,7 @@ fn shared_artifacts_execute_the_selected_checkout_source() {
         assert!(
             String::from_utf8_lossy(&tests.stderr)
                 .contains(&format!("{label}_source_build_script")),
-            "the selected checkout's build script did not execute"
+            "the selected build-script identity is absent from Cargo output"
         );
         if label == "bravo" {
             assert!(
@@ -169,4 +169,22 @@ fn a_configured_identity_from_another_checkout_is_refused() {
             .contains("the source-binding configuration belongs to this checkout"),
         "the failure is the build script's identity refusal"
     );
+}
+
+#[cfg(unix)]
+#[test]
+fn checkout_paths_cannot_emit_additional_cargo_directives() {
+    for separator in ["\n", "\r"] {
+        let temp = tempfile::tempdir().unwrap();
+        let root = temp.path().join(format!("a{separator}cargo:warning=source_binding_injected_directive"));
+        let dependency = temp.path().join("shared-dep");
+        write(&dependency, "Cargo.toml", "[package]\nname = \"shared-fixture\"\nversion = \"0.0.0\"\nedition = \"2021\"\n[workspace]\n");
+        write(&dependency, "src/lib.rs", "pub fn value() -> u32 { 1 }\n");
+        fixture(&root, "alpha");
+        let out = cargo_output(&root, &temp.path().join("shared"), "build");
+        assert!(!out.status.success(), "a checkout path supplies Cargo directive separators: {}\n{}", String::from_utf8_lossy(&out.stderr), String::from_utf8_lossy(&out.stdout));
+        assert!(String::from_utf8_lossy(&out.stderr).contains(
+            "the source-binding path contains a Cargo directive separator"
+        ), "the failure belongs to the source-binding owner");
+    }
 }
