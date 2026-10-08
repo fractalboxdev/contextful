@@ -137,6 +137,25 @@ branch and attaches its report to `refs/notes/measures`. A `v*` tag starts
 SHA256SUMS, and three independently tagged container images. The disabled
 ruleset proposal under `.github/rulesets/` lists the parent and all 24 children.
 
+### Landing without a remote verdict
+
+A remote check is evidence, never a lock. A child check still non-terminal 45 minutes
+after dispatch — the 1800 s container cap plus queue and setup — is a stalled
+execution, and the parent's failure that follows carries no verdict on the change.
+Landing proceeds on the identical local command instead:
+
+1. Rebase onto `origin/main` and regenerate `spec/` with `contextful-spec state` and
+   `extract`.
+2. Run `contextful-spec lint`, `cargo test` for every touched package, and
+   `contextful-ci gate --stage test-first --base origin/main`; run each stalled stage
+   locally with `--stage <stage>`.
+3. Record each command and its pass count in the pull request, then squash-merge.
+
+A stage that fails locally blocks the merge; a stage that stalls remotely does not.
+Native Windows checks are diagnostics and block nothing (`assurance.gate.windows-checks`).
+A pull request stacked on another rebases with `git rebase --onto origin/main <old base>`
+after its base squash-merges.
+
 The schema stage also holds every key in a tracked `.env*` file to dotenvx ciphertext
 under a comment stating what it grants (`contextful-ci secrets`); `.env.keys` stays
 untracked. A deliberate restatement of an engine rule carries `mirrors: <clause id>` at
