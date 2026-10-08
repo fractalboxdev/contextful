@@ -1,3 +1,7 @@
+//! Every workspace package's build script: the emitted checkout root enters each
+//! package's fingerprint, so a pooled target directory recompiles workspace packages
+//! per checkout while unchanged dependencies stay fresh.
+
 use std::{env, path::PathBuf};
 
 const _: Option<&str> = option_env!("CONTEXTFUL_SOURCE_ROOT");
