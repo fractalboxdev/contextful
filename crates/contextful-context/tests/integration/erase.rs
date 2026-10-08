@@ -4,6 +4,92 @@ use serde_json::json;
 
 #[test]
 #[cfg(feature = "read")]
+fn partitioned_erasure_removes_designated_values_from_signed_paths_and_survivor_names() {
+    use contextful_context::erase::{erase, EraseRequest, EraseSelector};
+    use contextful_core::{grant::Action, issue::SignatureAlgorithm, ports::FixedClock};
+    use contextful_policy::{enforce::erase::ForgetAdmission, issue::SeedSigner, revoke::RevocationState, verify::{effect_boundary, Admission}};
+    for key_set in [false, true] {
+        let canary = "erased-partition-canary";
+        let fixture = Fixture::new();
+        let table = decl("name = \"notes\"\nprimary_key = [\"id\"]\nsubject_id = \"subject\"\nerasure_key = \"id\"\npartition_by = [\"subject\"]\nretain_runs = \"90d\"\n[[pipeline.tables.indexes]]\nkind = \"fulltext\"\ncolumn = \"text\"");
+        fixture.land(&table, "run-0001", json!([{ "id":"removed", "subject":canary, "text":"removed text" }, {"id":"kept", "subject":"survivor", "text":"retained text"}]), "2030-01-01T00:00:00Z").unwrap();
+        contextful_context::project::ensure_store_id(fixture.store.root()).unwrap();
+        contextful_context::fold::fold(&fixture.store, &table, crate::support::at("2030-01-01T00:01:00Z")).unwrap();
+        let project = contextful_context::project::Project { dir:fixture.store.root().ancestors().nth(3).unwrap().to_path_buf(), name:"research".into() };
+        let audit_key = contextful_context::project::audit_key(&fixture.store, &project).unwrap();
+        let reads = crate::read::Reads::new();
+        let mut grant = crate::read::read(&["*"], None); grant.actions = vec![Action::Forget];
+        let authority = reads.authority(crate::read::loop_subject("agent://eraser"), vec![grant]);
+        let admission = ForgetAdmission::admit(&authority, &["notes"]).unwrap();
+        let now = crate::read::at("2030-01-01T00:05:00Z");
+        let revocation = RevocationState::default();
+        let boundary = |authority: &contextful_policy::verify::AdmittedAuthority| effect_boundary(authority, &Admission::new(now, &revocation));
+        let declarations = [table.clone()]; let tables = ["notes".to_string()];
+        let audit_dir = project.audit_dir();
+        let signer = std::sync::Arc::new(SeedSigner::generate(SignatureAlgorithm::Ed25519));
+        let store = fixture.store.with_erasure_verifier(audit_dir.clone(), vec![contextful_policy::issue::SignerKey::of(signer.as_ref())]).unwrap();
+        let keys = std::collections::BTreeMap::from([("notes".to_string(), vec![json!({"id":"removed"})])]);
+        let subject_hash = contextful_policy::audit::query_digest(&audit_key, "fixture opaque subject");
+        let selector = if key_set { EraseSelector::KeySet { subject_hash:&subject_hash, keys:&keys } } else { EraseSelector::Subject(canary) };
+        let result = erase(&store, EraseRequest { declarations:&declarations, tables:&tables, selector, admission:&admission, signer:Some(signer), audit_dir:&audit_dir, audit_key:&audit_key, boundary:&boundary, clock:&FixedClock(now) }).unwrap();
+        assert_eq!(contextful_context::rows::table_rows(&result.store, &table, &["id", "subject", "text"]).unwrap(), vec![json!({"id":"kept", "subject":"survivor", "text":"retained text"})]);
+        let audit = serde_json::to_string(&contextful_policy::audit::entries(&audit_dir).unwrap()).unwrap();
+        assert!(!audit.contains(canary), "signed retirement paths disclose the erased partition: {key_set}");
+        fn check(directory: &std::path::Path, canary: &str) {
+            for entry in std::fs::read_dir(directory).unwrap() {
+                let path = entry.unwrap().path();
+                assert!(!path.file_name().unwrap().to_string_lossy().contains(canary), "erased partition survives in a physical name");
+                if path.is_dir() { check(&path, canary); }
+                else if path.extension().is_some_and(|extension| extension == "json") {
+                    assert!(!String::from_utf8(std::fs::read(path).unwrap()).unwrap().contains(canary), "erased partition survives in a certificate or manifest");
+                }
+            }
+        }
+        check(result.store.root(), canary);
+        let mut continued = Fixture::new(); continued.store = result.store;
+        continued.land(&table, "run-0002", json!([{ "id":"later", "subject":"survivor", "text":"later retained"}]), "2030-01-01T00:06:00Z").unwrap();
+        contextful_context::fold::fold(&continued.store, &table, crate::support::at("2030-01-01T00:07:00Z")).unwrap();
+        assert_eq!(contextful_context::rows::table_rows(&continued.store, &table, &["id"]).unwrap().len(), 2);
+        check(continued.store.root(), canary);
+    }
+}
+
+#[test]
+#[cfg(feature = "read")]
+fn erasure_refuses_missing_or_foreign_canonical_audit_keys_before_signed_intent() {
+    use contextful_context::erase::{erase_subject, EraseRequest, EraseSelector};
+    use contextful_core::{grant::Action, issue::SignatureAlgorithm, ports::FixedClock};
+    use contextful_policy::{enforce::erase::ForgetAdmission, issue::SeedSigner, revoke::RevocationState, verify::{effect_boundary, Admission}};
+    for missing in [false, true] {
+        let fixture = Fixture::new();
+        let table = decl("name = \"notes\"\nprimary_key = [\"id\"]\nsubject_id = \"subject\"");
+        fixture.land(&table, "run-0001", json!([{ "id":"removed", "subject":"victim" }]), "2030-01-01T00:00:00Z").unwrap();
+        contextful_context::project::ensure_store_id(fixture.store.root()).unwrap();
+        let project = contextful_context::project::Project { dir:fixture.store.root().ancestors().nth(3).unwrap().to_path_buf(), name:"research".into() };
+        let canonical = contextful_context::project::audit_key(&fixture.store, &project).unwrap();
+        let mut requested = canonical;
+        if missing { std::fs::remove_file(project.dir.join(".contextful/audit.key")).unwrap(); } else { requested[0] ^= 1; }
+        let reads = crate::read::Reads::new();
+        let mut grant = crate::read::read(&["*"], None); grant.actions = vec![Action::Forget];
+        let authority = reads.authority(crate::read::loop_subject("agent://eraser"), vec![grant]);
+        let admission = ForgetAdmission::admit(&authority, &["notes"]).unwrap();
+        let now = crate::read::at("2030-01-01T00:05:00Z"); let revocation = RevocationState::default();
+        let boundary = |authority: &contextful_policy::verify::AdmittedAuthority| effect_boundary(authority, &Admission::new(now, &revocation));
+        let declarations = [table.clone()]; let tables = ["notes".to_string()]; let audit_dir = project.audit_dir();
+        let signer = std::sync::Arc::new(SeedSigner::generate(SignatureAlgorithm::Ed25519));
+        let store = fixture.store.with_erasure_verifier(audit_dir.clone(), vec![contextful_policy::issue::SignerKey::of(signer.as_ref())]).unwrap();
+        let result = erase_subject(&store, EraseRequest { declarations:&declarations, tables:&tables, selector:EraseSelector::Subject("victim"), admission:&admission, signer:Some(signer), audit_dir:&audit_dir, audit_key:&requested, boundary:&boundary, clock:&FixedClock(now) });
+        assert!(result.is_err(), "caller-supplied audit key admits erasure: missing={missing}");
+        assert!(contextful_policy::audit::entries(&audit_dir).unwrap().is_empty());
+        assert!(!fixture.store.root().join("_erasure_frontier.json").exists());
+        assert!(!fixture.store.root().join("_erasure/staging").exists());
+        assert!(fixture.store.root().join("tables/notes").is_dir());
+        if missing { assert!(!project.dir.join(".contextful/audit.key").exists()); }
+    }
+}
+
+#[test]
+#[cfg(feature = "read")]
 fn the_project_audit_key_has_one_stable_private_creation_and_refuses_bad_files() {
     let fixture = Fixture::new();
     let project = contextful_context::project::Project { dir: fixture.store.root().ancestors().nth(3).unwrap().to_path_buf(), name: "research".to_string() };
