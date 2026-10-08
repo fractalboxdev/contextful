@@ -5,7 +5,7 @@ use crate::store::{etag, Store};
 use contextful_core::disclosure::erase::ErasureError;
 use serde::{Deserialize, Serialize};
 use std::collections::BTreeMap;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 
 pub(crate) const FRONTIER_FILE: &str = "_erasure_frontier.json";
 pub(crate) const CERTIFICATE_FILE: &str = "_erasure_certificate.json";
@@ -104,6 +104,13 @@ fn incomplete(why: &str) -> ContextError {
 
 fn digest(value: &str) -> bool {
     value.len() == 64 && value.bytes().all(|c| c.is_ascii_digit() || (b'a'..=b'f').contains(&c))
+}
+
+pub(crate) fn relative_path(value: &str) -> Result<&Path> {
+    if value.contains('\\') || value.split('/').any(|part| part.is_empty() || part == "." || part == ".." || part.contains(':')) {
+        return Err(ErasureError::ErasureScopeUnsupported("a retained manifest names an unowned file path".into()).into());
+    }
+    Ok(Path::new(value))
 }
 
 /// Absence preserves the original layout; a present record validates every selected
@@ -236,7 +243,7 @@ pub(crate) fn retired_directories(store: &Store, frontier: &Frontier) -> Result<
         match (old.version, &old.files) {
             (1, None) => (),
             (2, Some(files)) if !files.is_empty()
-                && files.iter().all(|(path, hash)| crate::erase::relative_path(path).is_ok() && digest(hash))
+                && files.iter().all(|(path, hash)| relative_path(path).is_ok() && digest(hash))
                 && etag(&serde_json::to_vec(files).map_err(|_| incomplete("the retired inventory does not encode"))?) == old.inventory_sha256 => (),
             _ => return Err(incomplete("the signed retirement inventory has an invalid version or file binding")),
         }
@@ -246,22 +253,41 @@ pub(crate) fn retired_directories(store: &Store, frontier: &Frontier) -> Result<
 }
 
 pub(crate) fn inventory(directory: &std::path::Path) -> Result<BTreeMap<String, String>> {
-    fn visit(root: &std::path::Path, current: &std::path::Path, files: &mut BTreeMap<String, String>) -> Result<()> {
+    collect_inventory(directory, InventoryPurpose::Survivor)
+}
+
+#[cfg(feature = "read")]
+pub(crate) fn retirement_inventory(directory: &std::path::Path) -> Result<BTreeMap<String, String>> {
+    collect_inventory(directory, InventoryPurpose::Retirement)
+}
+
+#[derive(Clone, Copy)]
+enum InventoryPurpose {
+    Survivor,
+    #[cfg(feature = "read")]
+    Retirement,
+}
+
+fn collect_inventory(directory: &std::path::Path, purpose: InventoryPurpose) -> Result<BTreeMap<String, String>> {
+    fn visit(root: &std::path::Path, current: &std::path::Path, files: &mut BTreeMap<String, String>, purpose: InventoryPurpose) -> Result<()> {
         for entry in std::fs::read_dir(current).map_err(|_| incomplete("replacement directory is unreadable"))? {
             let entry = entry.map_err(|_| incomplete("replacement directory entry is unreadable"))?;
             let path = entry.path();
+            let relative = path.strip_prefix(root).map_err(|_| incomplete("a replacement file escapes its directory"))?;
+            // Component iteration yields canonical separators on either host;
+            // literal backslashes in Unix file names never alias nested paths.
+            let name = relative.components().map(|part| part.as_os_str().to_str().ok_or_else(|| incomplete("a replacement path is not text"))).collect::<Result<Vec<_>>>()?.join("/");
+            relative_path(&name).map_err(|_| incomplete("a replacement has a noncanonical physical path"))?;
             let kind = entry.file_type().map_err(|_| incomplete("replacement file type is unreadable"))?;
             if kind.is_symlink() {
                 return Err(incomplete("a replacement contains a substituted symlink"));
             }
             if kind.is_dir() {
-                visit(root, &path, files)?;
+                visit(root, &path, files, purpose)?;
             } else if kind.is_file() {
-                if path == root.join(CERTIFICATE_FILE) { continue; }
-                let relative = path.strip_prefix(root).map_err(|_| incomplete("a replacement file escapes its directory"))?;
-                let name = relative.to_str().ok_or_else(|| incomplete("a replacement path is not text"))?.replace('\\', "/");
+                if matches!(purpose, InventoryPurpose::Survivor) && path == root.join(CERTIFICATE_FILE) { continue; }
                 let bytes = std::fs::read(&path).map_err(|_| incomplete("a replacement file is unreadable"))?;
-                files.insert(name, etag(&bytes));
+                if files.insert(name, etag(&bytes)).is_some() { return Err(incomplete("a replacement has duplicate physical paths")); }
             } else {
                 return Err(incomplete("a replacement contains a non-regular file"));
             }
@@ -269,7 +295,7 @@ pub(crate) fn inventory(directory: &std::path::Path) -> Result<BTreeMap<String, 
         Ok(())
     }
     let mut files = BTreeMap::new();
-    visit(directory, directory, &mut files)?;
+    visit(directory, directory, &mut files, purpose)?;
     Ok(files)
 }
 
