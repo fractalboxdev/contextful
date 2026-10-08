@@ -5,6 +5,60 @@ use crate::{manifest, stderr, Repo};
 const TRIPLE: &str = "pub fn double(x: i32) -> i32 {\n    x * 2\n}\n\npub fn triple(x: i32) -> i32 {\n    x * 3\n}\n";
 
 #[test]
+fn runtime_red_requires_a_compiled_nonignored_assertion_failure() {
+    let r = Repo::init(); let base = r.head();
+    r.write("crates/demo/src/lib.rs", "pub fn double(x: i32) -> i32 { x * 3 }\n");
+    r.write("crates/demo/tests/integration/double.rs", "#[test]\nfn doubles() { assert_eq!(demo::double(2), 6); }\n");
+    r.commit("a compiled runtime assertion specifies the change");
+    let output = r.gate(&["--stage", "test-first", "--base", &base, "--runtime-red"]);
+    assert!(output.status.success(), "{}", stderr(&output));
+    assert!(stderr(&output).contains("assertion `left == right` failed"), "{}", stderr(&output));
+}
+
+#[test]
+fn runtime_red_refuses_compilation_while_canonical_red_retains_it() {
+    let r = Repo::init(); let base = r.head();
+    r.write("crates/demo/src/lib.rs", TRIPLE);
+    r.write("crates/demo/tests/integration/main.rs", "mod double;\nmod triple;\n");
+    r.write("crates/demo/tests/integration/triple.rs", "#[test]\nfn triples() { assert_eq!(demo::triple(2), 6); }\n");
+    r.commit("an API absent at the base");
+    let canonical = r.gate(&["--stage", "test-first", "--base", &base]);
+    assert!(canonical.status.success(), "{}", stderr(&canonical));
+    let strict = r.gate(&["--stage", "test-first", "--base", &base, "--runtime-red"]);
+    assert!(!strict.status.success());
+    assert!(stderr(&strict).contains("TestFirstBaseUnrunnable") && stderr(&strict).contains("compile"), "{}", stderr(&strict));
+}
+
+#[test]
+fn runtime_red_refuses_ignored_and_empty_execution() {
+    for body in ["#[test]\n#[ignore]\nfn doubles() { assert_eq!(demo::double(2), 6); }\n", "// no runtime case\n"] {
+        let r = Repo::init(); let base = r.head();
+        r.write("crates/demo/src/lib.rs", "pub fn double(x: i32) -> i32 { x * 3 }\n");
+        r.write("crates/demo/tests/integration/double.rs", body);
+        r.commit("no executed failing runtime case");
+        let strict = r.gate(&["--stage", "test-first", "--base", &base, "--runtime-red"]);
+        assert!(!strict.status.success());
+        assert!(stderr(&strict).contains("TestFirstBaseUnrunnable"), "{}", stderr(&strict));
+    }
+}
+
+#[test]
+fn runtime_red_refuses_a_killed_run_without_changing_canonical_semantics() {
+    let r = Repo::init();
+    r.write("crates/demo/src/lib.rs", "pub fn double(x: i32) -> i32 { x * 2 }\npub fn ready() -> bool { false }\n");
+    r.commit("the base never becomes ready"); let base = r.head();
+    r.write("crates/demo/src/lib.rs", "pub fn double(x: i32) -> i32 { x * 2 }\npub fn ready() -> bool { true }\n");
+    r.write("crates/demo/tests/integration/main.rs", "mod double;\nmod ready;\n");
+    r.write("crates/demo/tests/integration/ready.rs", "#[test]\nfn ready() { while !demo::ready() { std::thread::sleep(std::time::Duration::from_millis(10)); } }\n");
+    r.commit("the head becomes ready");
+    let strict = r.gate(&["--stage", "test-first", "--base", &base, "--base-bound-secs", "1", "--runtime-red"]);
+    assert!(!strict.status.success());
+    assert!(stderr(&strict).contains("TestFirstBaseUnrunnable") && stderr(&strict).contains("bound"), "{}", stderr(&strict));
+    let canonical = r.gate(&["--stage", "test-first", "--base", &base, "--base-bound-secs", "1"]);
+    assert!(canonical.status.success(), "{}", stderr(&canonical));
+}
+
+#[test]
 fn a_change_touching_no_source_passes() {
     let r = Repo::init();
     let base = r.head();
