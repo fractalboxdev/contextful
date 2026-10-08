@@ -1,15 +1,19 @@
 import { createHash, createHmac, createPublicKey, randomBytes, timingSafeEqual, verify, type KeyObject } from "node:crypto";
+import { deriveBrief, withinBriefBudget, type BriefInput } from "./brief.ts";
+import { answerDelivery } from "./publish.ts";
+import { buildView, sanitizeView, type ResultRows } from "./render.ts";
 import { ConsoleError } from "./turn.ts";
 import { parseVantage } from "./turn.ts";
 import { BrowseError } from "./browse.ts";
 
-export type Operator = { subject: string; grants: ReadonlySet<"query" | "admin">; assertion?: string };
+export type Operator = { subject: string; grants: ReadonlySet<"query" | "admin">; assertion?: string; session?: string };
 export type Store = { id: string; label: string };
 export type AccessIdentity = {
   kind: "access";
   issuer: string;
   queryAudience: string;
   adminAudience: string;
+  memorySessionClaim?: string;
   publicKey?: KeyObject | string;
   keys?: ReadonlyMap<string, KeyObject>;
 };
@@ -18,6 +22,7 @@ export type CognitoIdentity = {
   sessionSecret: string;
   queryGroup: string;
   adminGroup: string;
+  memorySessionClaim?: string;
   issuer?: string;
   clientId?: string;
   authorizeUrl?: string;
@@ -29,13 +34,17 @@ export type CognitoIdentity = {
 };
 export type Identity = AccessIdentity | CognitoIdentity;
 export type TurnInput = { operator: Operator; store: string; question: string };
-export type TurnResult = { answer: string; sources: unknown[]; widgets: unknown[] };
+export type TurnResult = { answer: string; sources: unknown[]; widgets: unknown[]; resultRows?: ResultRows;
+  evidence?: Array<{ table: string; run: string; seq: number }>; accessExplanation?: boolean; share?: boolean };
 export type PackList = { entries: unknown[]; truncated: boolean; declined: number };
 export type ConsoleAdapters = {
   identity: Identity;
   stores: Store[];
   adminCapability?: string;
   turn: (input: TurnInput) => Promise<TurnResult>;
+  brief?: (operator: Operator, store: string) => Promise<Omit<BriefInput, "budgetMs">>;
+  briefBudgetMs?: number;
+  redactView?: (operator: Operator, value: string) => string;
   read: { list: (operator: Operator) => Promise<Store[]> };
   browse?: {
     discover: (input: { operator: Operator; store: string; asOf?: string }) => Promise<unknown>;
@@ -50,7 +59,7 @@ export type ConsoleAdapters = {
   };
 };
 
-type Session = { subject: string; groups: string[]; expiresAt: number; assertion?: string };
+type Session = { subject: string; groups: string[]; expiresAt: number; assertion?: string; session?: string };
 
 function encoded(value: unknown): string {
   return Buffer.from(JSON.stringify(value)).toString("base64url");
@@ -91,11 +100,13 @@ function verifyCognitoSession(cookie: string, identity: CognitoIdentity): Operat
   if (!object(session) || typeof session.subject !== "string" || !session.subject ||
       !Number.isSafeInteger(session.expiresAt) || (session.expiresAt as number) <= Math.floor(Date.now() / 1000) ||
       !Array.isArray(session.groups) || !session.groups.every((group) => typeof group === "string") ||
-      (session.assertion !== undefined && typeof session.assertion !== "string")) return null;
+      (session.assertion !== undefined && typeof session.assertion !== "string") ||
+      (session.session !== undefined && typeof session.session !== "string")) return null;
   const grants = new Set<"query" | "admin">();
   if (session.groups.includes(identity.queryGroup)) grants.add("query");
   if (session.groups.includes(identity.adminGroup)) grants.add("admin");
-  return { subject: session.subject, grants, assertion: typeof session.assertion === "string" ? session.assertion : undefined };
+  return { subject: session.subject, grants, assertion: typeof session.assertion === "string" ? session.assertion : undefined,
+    session: session.session };
 }
 
 function verifyAccess(assertion: string, identity: AccessIdentity): Operator | null {
@@ -119,7 +130,8 @@ function verifyAccess(assertion: string, identity: AccessIdentity): Operator | n
     typeof identity.publicKey === "string" ? createPublicKey(identity.publicKey) : identity.publicKey;
   if (!key) return null;
   if (!verify("RSA-SHA256", Buffer.from(`${parts[0]}.${parts[1]}`), key, signature)) return null;
-  return { subject: claims.sub, grants, assertion };
+  const session = identity.memorySessionClaim ? claims[identity.memorySessionClaim] : undefined;
+  return { subject: claims.sub, grants, assertion, session: typeof session === "string" && session.trim() ? session : undefined };
 }
 
 function operatorFor(request: Request, identity: Identity): Operator | null {
@@ -188,7 +200,9 @@ async function cognitoCallback(request: Request, identity: CognitoIdentity): Pro
   if (!verify("RSA-SHA256", Buffer.from(`${parts[0]}.${parts[1]}`), key, Buffer.from(parts[2], "base64url"))) return refusal("ConsolePageForbidden");
   const groups = Array.isArray(claims["cognito:groups"]) ? claims["cognito:groups"].filter((group): group is string => typeof group === "string") : [];
   const lifetime = Math.min(claims.exp as number, Math.floor(Date.now() / 1000) + 3600);
-  const session = issueCognitoSession({ subject: claims.sub, groups, expiresAt: lifetime, assertion: tokens.id_token }, identity.sessionSecret);
+  const task = identity.memorySessionClaim ? claims[identity.memorySessionClaim] : undefined;
+  const session = issueCognitoSession({ subject: claims.sub, groups, expiresAt: lifetime, assertion: tokens.id_token,
+    session: typeof task === "string" && task.trim() ? task : undefined }, identity.sessionSecret);
   const destination = groups.includes(identity.adminGroup) ? "/admin" : "/query";
   return new Response(null, { status: 302, headers: {
     Location: destination,
@@ -289,17 +303,45 @@ export function createConsole(adapters: ConsoleAdapters): { fetch: (request: Req
             throw error;
           }
         }
+        if (request.method === "GET" && path === "/query/api/brief") {
+          const store = url.searchParams.get("store");
+          if (!store || !adapters.stores.some((entry) => entry.id === store)) return refusal("ConsoleRequestMalformed", 400);
+          const brief = adapters.brief;
+          if (!brief) return refusal("ConsoleAdapterUnavailable", 503);
+          const budgetMs = adapters.briefBudgetMs ?? NaN;
+          try {
+            const card = await withinBriefBudget(budgetMs, async () => {
+              const input = await brief(operator, store);
+              return deriveBrief({ ...input, budgetMs });
+            });
+            return card ? json(card) : new Response(null, { status: 204, headers: { "Cache-Control": "no-store" } });
+          } catch {
+            return new Response(null, { status: 204, headers: { "Cache-Control": "no-store" } });
+          }
+        }
         if (request.method === "POST" && path === "/query/api/ask") {
           let input: unknown;
           try { input = await body(request); } catch (error) { return bodyFailure(error); }
           if (!object(input) || typeof input.store !== "string" || typeof input.question !== "string" || !input.question.trim() ||
               !adapters.stores.some((store) => store.id === input.store)) return refusal("ConsoleRequestMalformed", 400);
-          try {
-            return json(await adapters.turn({ operator, store: input.store, question: input.question }));
-          } catch (error) {
+          if ("view" in input || "widgets" in input) return refusal("ConsoleViewNotServerBuilt", 400);
+          let turn: TurnResult;
+          try { turn = await adapters.turn({ operator, store: input.store, question: input.question }); }
+          catch (error) {
             if (error instanceof ConsoleError) return refusal(error.code, error.status);
             throw error;
           }
+          let answer: ReturnType<typeof answerDelivery>;
+          try {
+            answer = answerDelivery({ operator: operator.subject, answer: turn.answer, accessExplanation: turn.accessExplanation ?? false, share: turn.share });
+          } catch (error) {
+            return refusal(error instanceof Error ? error.message : "VisibilityShareAffordance");
+          }
+          const redactView = adapters.redactView;
+          const clean = turn.resultRows && redactView ?
+            sanitizeView({ component: "table.v1", props: turn.resultRows }, (value) => redactView(operator, value)) : null;
+          const built = clean ? buildView(clean.props) : null;
+          return json({ answer: answer.answer, sources: turn.sources, widgets: built ? [built] : [] });
         }
       } else {
         const store = url.searchParams.get("store");
@@ -331,15 +373,17 @@ const sharedStyle = `<style>
 :root{font-family:ui-sans-serif,system-ui,sans-serif;color:#182b39;background:#e7edf0}*{box-sizing:border-box}body{margin:0;min-height:100vh}.shell{display:grid;grid-template-columns:210px minmax(0,1fr);min-height:100vh}nav{background:#173b50;color:#eaf4f5;padding:26px 20px}nav strong{font-size:1.3rem;letter-spacing:-.04em}nav a{display:block;color:#eaf4f5;text-decoration:none;margin-top:24px;padding:9px 11px;border-radius:7px}nav a[aria-current]{background:#31657b}main{padding:30px min(5vw,64px);max-width:1200px;width:100%}h1{font-size:clamp(2rem,4vw,3rem);letter-spacing:-.055em;margin:5px 0 12px}h2{font-size:1.1rem}p{line-height:1.5}section{background:#fff;border:1px solid #c8d5da;border-radius:12px;padding:20px;margin:18px 0}button,select,textarea{font:inherit}button{background:#125a72;color:white;border:0;border-radius:7px;padding:10px 16px;cursor:pointer}button:focus-visible,a:focus-visible,select:focus-visible,textarea:focus-visible{outline:3px solid #efae4c;outline-offset:2px}textarea{width:100%;min-height:100px;padding:12px;border:1px solid #91a8b2;border-radius:7px}select{padding:8px;border:1px solid #91a8b2;border-radius:7px}pre{white-space:pre-wrap;overflow-wrap:anywhere}.muted{color:#536b78}.grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(240px,1fr));gap:14px}.node{border:1px solid #afc5cf;border-left:5px solid #3c7c92;border-radius:7px;padding:13px;background:#f5f9fa}#transcript article{border-left:3px solid #3c7c92;padding:8px 16px;margin:12px 0}#widgets table{border-collapse:collapse;width:100%}#widgets td,#widgets th{border-bottom:1px solid #c8d5da;padding:8px;text-align:left}@media(max-width:650px){.shell{display:block}nav{display:flex;gap:12px;align-items:center;padding:12px 20px}nav a{margin:0}main{padding:20px}}@media(prefers-reduced-motion:reduce){*{scroll-behavior:auto!important}}
 </style>`;
 
-const queryPage = `<!doctype html><html lang="en"><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Query · Contextful</title>${sharedStyle}<div class="shell"><nav aria-label="Console"><strong>Contextful</strong><a href="/query" aria-current="page">Query</a><a href="/admin">Admin</a></nav><main><h1>Ask the store</h1><p class="muted">Answers cite the rows your access permits.</p><section><label for="store">Store</label> <select id="store" required></select> <label for="as-of">As of</label> <input id="as-of" type="date"><p id="browse-status" role="status"></p><h2>Explore</h2><div id="chips" class="grid"></div><div id="insights" class="grid"></div><h2>Files</h2><div id="file-gallery" class="grid"></div><div id="file-preview"></div></section><section><form id="composer"><p><label for="question">Question</label></p><textarea id="question" required></textarea><p><button type="submit">Ask question</button></p></form></section><section><h2>Conversation</h2><div id="transcript" role="log" aria-live="polite"><p class="muted">Your answer appears here.</p></div></section><section><h2>Results</h2><div id="widgets"></div></section></main></div><script>
-const form=document.getElementById('composer'),store=document.getElementById('store'),asOf=document.getElementById('as-of'),questionField=document.getElementById('question'),transcript=document.getElementById('transcript'),widgets=document.getElementById('widgets'),chips=document.getElementById('chips'),insights=document.getElementById('insights'),gallery=document.getElementById('file-gallery'),filePreview=document.getElementById('file-preview'),browseStatus=document.getElementById('browse-status');
+const queryPage = `<!doctype html><html lang="en"><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Query · Contextful</title>${sharedStyle}<div class="shell"><nav aria-label="Console"><strong>Contextful</strong><a href="/query" aria-current="page">Query</a><a href="/admin">Admin</a></nav><main><h1>Ask the store</h1><p class="muted">Answers cite the rows your access permits.</p><section id="brief" hidden><h2>Since last visit</h2><div id="brief-body"></div></section><section><label for="store">Store</label> <select id="store" required></select> <label for="as-of">As of</label> <input id="as-of" type="date"><p id="browse-status" role="status"></p><h2>Explore</h2><div id="chips" class="grid"></div><div id="insights" class="grid"></div><h2>Files</h2><div id="file-gallery" class="grid"></div><div id="file-preview"></div></section><section><form id="composer"><p><label for="question">Question</label></p><textarea id="question" required></textarea><p><button type="submit">Ask question</button></p></form></section><section><h2>Conversation</h2><div id="transcript" role="log" aria-live="polite"><p class="muted">Your answer appears here.</p></div></section><section><h2>Results</h2><div id="widgets"></div></section></main></div><script>
+const form=document.getElementById('composer'),store=document.getElementById('store'),asOf=document.getElementById('as-of'),questionField=document.getElementById('question'),transcript=document.getElementById('transcript'),widgets=document.getElementById('widgets'),chips=document.getElementById('chips'),insights=document.getElementById('insights'),gallery=document.getElementById('file-gallery'),filePreview=document.getElementById('file-preview'),browseStatus=document.getElementById('browse-status'),brief=document.getElementById('brief');
 async function post(path,payload){const response=await fetch(path,{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify(payload)});const value=await response.json();if(!response.ok)throw new Error(value.error?.identifier??'Request failed');return value}
 function current(){return {store:store.value,...(asOf.value?{asOf:asOf.value}:{})}}
-function draw(widget){const props=widget.props??{};if(widget.component==='table.v1'&&Array.isArray(props.columns)&&Array.isArray(props.rows)){const table=document.createElement('table'),head=document.createElement('thead'),header=document.createElement('tr'),body=document.createElement('tbody');for(const column of props.columns){const cell=document.createElement('th');cell.textContent=String(column);header.append(cell)}head.append(header);for(const row of props.rows){const line=document.createElement('tr');for(const value of row){const cell=document.createElement('td');cell.textContent=String(value??'');line.append(cell)}body.append(line)}table.append(head,body);return table}if(widget.component==='metric.v1'){const metric=document.createElement('p');metric.style.fontSize='2rem';metric.textContent=String(props.value??'');return metric}const fallback=document.createElement('pre');fallback.textContent=JSON.stringify(props,null,2);return fallback}
+async function showBrief(){brief.hidden=true;const response=await fetch('/query/api/brief?store='+encodeURIComponent(store.value));if(!response.ok||response.status===204)return;const card=await response.json(),body=document.getElementById('brief-body');body.replaceChildren();for(const subject of card.subjects??[]){const item=document.createElement('article'),heading=document.createElement('h3'),list=document.createElement('ul');heading.textContent=subject.subject;item.append(heading);for(const article of subject.articles??[]){const entry=document.createElement('li');entry.textContent=article.label;list.append(entry)}item.append(list);body.append(item)}brief.hidden=!body.children.length}
+function tableView(props){const table=document.createElement('table'),head=document.createElement('thead'),header=document.createElement('tr'),body=document.createElement('tbody');for(const column of props.columns){const cell=document.createElement('th');cell.textContent=String(column);header.append(cell)}head.append(header);for(const row of props.rows){const line=document.createElement('tr');for(const value of row){const cell=document.createElement('td');cell.textContent=String(value??'');line.append(cell)}body.append(line)}table.append(head,body);return table}
+function draw(widget){const props=widget.props??{},known=['table.v1','metric.v1','line.v1','bar.v1'];if(!known.includes(widget.component))widget={...widget,component:'table.v1'};if(!Array.isArray(props.columns)||!Array.isArray(props.rows))return document.createElement('span');if(widget.component==='metric.v1'){const metric=document.createElement('p');metric.style.fontSize='2rem';metric.textContent=String(props.rows[0]?.[0]??'');return metric}if(widget.component==='line.v1'){const dateIndex=props.columns.findIndex(column=>/^(date|day|.*_date|.*_day)$/i.test(column)),measureIndex=props.columns.findIndex((_,index)=>index!==dateIndex&&props.rows.every(row=>typeof row[index]==="number"));if(measureIndex<0)return tableView(props);const values=props.rows.map(row=>Number(row[measureIndex])),svg=document.createElementNS('http://www.w3.org/2000/svg','svg');svg.setAttribute('viewBox','0 0 300 120');svg.setAttribute('role','img');svg.setAttribute('aria-label','Trend over time');const path=document.createElementNS('http://www.w3.org/2000/svg','polyline'),low=Math.min(...values),span=Math.max(...values)-low||1;path.setAttribute('fill','none');path.setAttribute('stroke','#3c7c92');path.setAttribute('stroke-width','3');path.setAttribute('points',values.map((value,index)=>(20+index*260/(values.length-1))+','+(100-(value-low)*80/span)).join(' '));svg.append(path);return svg}if(widget.component==='bar.v1'){const list=document.createElement('div');for(const row of props.rows){const entry=document.createElement('p');entry.textContent=String(row[0]??'')+' · '+String(row[1]??row[0]??'');list.append(entry)}return list}const frame=document.createElement('div');frame.append(tableView(props));if(widget.alternates?.includes('bar.v1')){const button=document.createElement('button');button.type='button';button.textContent='Bar view';button.addEventListener('click',()=>frame.replaceChildren(draw({...widget,component:'bar.v1'})));frame.append(button)}return frame}
 async function refreshBrowse(){chips.replaceChildren();insights.replaceChildren();gallery.replaceChildren();filePreview.replaceChildren();browseStatus.textContent='';if(!store.value)return;try{const data=await post('/query/api/browse',current());for(const chip of data.chips??[]){const button=document.createElement('button');button.type='button';button.textContent=chip.label;button.title=chip.description??'';button.addEventListener('click',()=>{questionField.value='Tell me about '+chip.label;questionField.focus()});chips.append(button)}for(const insight of data.insights??[]){const card=document.createElement('p');card.textContent=insight.label+': '+insight.rows+' rows';insights.append(card)}for(const file of data.files??[]){const button=document.createElement('button');button.type='button';button.textContent=file.label;button.addEventListener('click',async()=>{filePreview.replaceChildren();try{const preview=await post('/query/api/preview',{...current(),path:file.path});filePreview.append(draw({component:'table.v1',props:preview}))}catch(error){browseStatus.textContent=String(error)}});gallery.append(button)}}catch(error){browseStatus.textContent=String(error)}}
-fetch('/query/api/stores').then(r=>r.json()).then(rows=>{for(const row of rows){const option=document.createElement('option');option.value=row.id;option.textContent=row.label;store.append(option)}void refreshBrowse()});
-store.addEventListener('change',()=>{void refreshBrowse()});asOf.addEventListener('change',()=>{void refreshBrowse()});
-form.addEventListener('submit',async event=>{event.preventDefault();const question=questionField.value.trim();if(!question)return;const response=await fetch('/query/api/ask',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({store:store.value,question})});const answer=await response.json();transcript.replaceChildren();const item=document.createElement('article');item.textContent=question+'\\n'+(answer.answer??answer.error?.identifier??'No answer');transcript.append(item);widgets.replaceChildren();for(const widget of answer.widgets??[])widgets.append(draw(widget));if(answer.sources?.length){const sources=document.createElement('p');sources.textContent='Sources: '+answer.sources.map(x=>x.title??x.url).join(', ');transcript.append(sources)}});
+fetch('/query/api/stores').then(r=>r.json()).then(rows=>{for(const row of rows){const option=document.createElement('option');option.value=row.id;option.textContent=row.label;store.append(option)}if(store.value)showBrief();void refreshBrowse()});
+store.addEventListener('change',()=>{void showBrief();void refreshBrowse()});asOf.addEventListener('change',()=>{void refreshBrowse()});
+form.addEventListener('submit',async event=>{event.preventDefault();const question=questionField.value.trim();if(!question)return;brief.hidden=true;const response=await fetch('/query/api/ask',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({store:store.value,question})});const answer=await response.json();transcript.replaceChildren();const item=document.createElement('article');item.textContent=question+'\\n'+(answer.answer??answer.error?.identifier??'No answer');transcript.append(item);widgets.replaceChildren();for(const widget of answer.widgets??[])widgets.append(draw(widget));if(answer.sources?.length){const sources=document.createElement('p');sources.textContent='Sources: '+answer.sources.map(x=>x.title??x.url).join(', ');transcript.append(sources)}});
 </script></html>`;
 
 const adminPage = `<!doctype html><html lang="en"><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Admin · Contextful</title>${sharedStyle}<div class="shell"><nav aria-label="Console"><strong>Contextful</strong><a href="/query">Query</a><a href="/admin" aria-current="page">Admin</a></nav><main><h1>Store operations</h1><p class="muted">Pipelines, schedules, steps and run outcomes come from the store.</p><section><h2>Workflow canvas</h2><div id="canvas" class="grid"></div></section><section><h2>Operational record</h2><div id="record"></div></section><section><h2>Control document</h2><label for="document">Document</label><textarea id="document"></textarea><p><button id="edit">Edit</button> <button id="apply">Apply</button></p><p id="result" role="status"></p></section></main></div><script>

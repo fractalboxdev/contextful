@@ -72,6 +72,7 @@ ConsoleVantageUnparseable     = { clause = "surface.set-vantage.unparseable", gl
 ConsoleWebBoundUnparseable    = { clause = "surface.set-vantage.web-bound-unparseable", gloss = "A web leg whose publication bound does not parse." }
 ConsoleGalleryPathUnlisted    = { clause = "surface.browse.gallery-path-unlisted", gloss = "A gallery preview path absent from the reader's governed file listing." }
 ConsoleLearningUnscoped       = { clause = "surface.learn.unscoped", gloss = "A distilled conclusion landing without the reading-session scope." }
+ConsoleLearningWriteRefused   = { clause = "surface.learn.write-refused", gloss = "A served claim write that refuses or returns no scope-bound receipt." }
 ConsoleViewNotServerBuilt     = { clause = "surface.render.client-authored-view", gloss = "A view from a client or the model rather than inferred from a result." }
 ConsoleBriefUnavailable       = { clause = "surface.brief.absence-is-earned", gloss = "A greeting derivation that errored or overran its budget." }
 VisibilityShareAffordance     = { clause = "surface.publish-answer.share-affordance", gloss = "A share control offered on access-explanation output." }
