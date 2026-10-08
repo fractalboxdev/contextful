@@ -49,6 +49,47 @@ fn ok(output: Output) -> String {
 }
 
 #[test]
+fn column_keyset_erases_every_declaring_table_without_subject_identity() {
+    let directory = tempfile::tempdir().unwrap(); let root = directory.path();
+    ok(run(root, &["init", "research", "--authoring-posture", "per_request"], None, None));
+    std::fs::write(root.join("contextful.toml"), r#"authoring_posture = "per_request"
+[[pipeline.tables]]
+name = "notes"
+primary_key = ["id"]
+subject_id = "subject"
+erasure_key = "trace_id"
+columns = { id = "utf8", trace_id = "utf8", subject = "utf8" }
+[[pipeline.tables]]
+name = "events"
+primary_key = ["id"]
+columns = { id = "utf8", trace_id = "utf8" }
+[[pipeline.tables]]
+name = "unrelated"
+primary_key = ["id"]
+columns = { id = "utf8" }
+"#).unwrap();
+    std::fs::write(root.join(".contextful/issuance.toml"), "default_audience = \"erasure-fixture\"\nmax_lifetime_secs = 3600\n").unwrap();
+    for (table, rows) in [
+        ("notes", "{\"id\":\"a\",\"trace_id\":\"erase-trace\",\"subject\":\"alice\"}\n{\"id\":\"b\",\"trace_id\":\"keep-trace\",\"subject\":\"bob\"}\n"),
+        ("events", "{\"id\":\"c\",\"trace_id\":\"erase-trace\"}\n{\"id\":\"d\",\"trace_id\":\"keep-trace\"}\n"),
+        ("unrelated", "{\"id\":\"erase-trace\"}\n"),
+    ] {
+        std::fs::write(root.join("rows.jsonl"), rows).unwrap();
+        ok(run(root, &["context", "land", table, "--project", "research", "--rows", "rows.jsonl", "--run-id", "run-1", "--site-id", "fixture"], None, None));
+    }
+    let pins = ok(run(root, &["token", "keygen", "--out", ".contextful/issuer.seed"], None, None));
+    let forget = ok(run(root, &["token", "mint", "--issuer-key", ".contextful/issuer.seed", "--on-behalf-of", "user://fixture", "--agent", "agent://fixture", "--zone", "on-prem:fixture", "--action", "forget", "--table", "*", "--ttl", "3600"], None, None));
+    let hash = format!("hmac-sha256:{}", "a".repeat(64));
+    std::fs::write(root.join("keyset.json"), serde_json::to_vec(&serde_json::json!({"subject_hash":hash,"column":"trace_id","keys":["erase-trace"]})).unwrap()).unwrap();
+    let receipt: serde_json::Value = serde_json::from_str(&ok(run(root, &["context", "erase", "--project", "research", "--key-set", "keyset.json", "--issuer-key", ".contextful/issuer.seed", "--public-key", &pins, "--audience", "erasure-fixture", "--json"], Some(&forget), Some(&pins)))).unwrap();
+    assert_eq!(receipt["subject_hash"], hash);
+    assert_eq!(receipt["affected_counts"]["notes"], 1);
+    assert_eq!(receipt["affected_counts"]["events"], 1);
+    let query = ["query", "--json", "--project", "research", "SELECT (SELECT count(*) FROM notes), (SELECT count(*) FROM events), (SELECT count(*) FROM unrelated)"];
+    assert_eq!(serde_json::from_str::<serde_json::Value>(&ok(run(root, &query, None, Some(&pins)))).unwrap()["rows"], serde_json::json!([["1","1","1"]]));
+}
+
+#[test]
 fn unpublished_recovery_requires_complete_scope_and_preserves_live_rows() {
     let directory = tempfile::tempdir().unwrap(); let root = directory.path();
     ok(run(root, &["init", "research", "--authoring-posture", "per_request"], None, None));
