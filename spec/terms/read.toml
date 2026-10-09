@@ -72,6 +72,8 @@ read-filter-bytes            = { clause = "read.retrieve.filter-budget", value =
 read-sidecar-probe-floor     = { clause = "read.retrieve.sidecar-oversampling", value = 64, unit = "rows", basis = "chosen", gloss = "Smallest candidate count one sidecar probe requests." }
 read-sidecar-probe-factor    = { clause = "read.retrieve.sidecar-oversampling", value = 4, unit = "times", basis = "chosen", gloss = "Multiple of the limit one sidecar probe requests." }
 read-sidecar-restricted-factor = { clause = "read.retrieve.sidecar-oversampling", value = 4, unit = "times", basis = "chosen", gloss = "Further multiple applied when the request carries restriction context." }
+read-over-fetch-rounds        = { clause = "read.retrieve.adaptive-over-fetch", value = 4, unit = "rounds", basis = "chosen", gloss = "Most probe rounds one sidecar arm runs while visible rows under-fill the limit." }
+read-bytes-per-token         = { clause = "read.register.size-estimate", value = 4, unit = "B", basis = "chosen", gloss = "Serialized bytes counted as one estimated token in a table description." }
 read-sidecar-size-cap        = { clause = "read.retrieve.sidecar-size-cap", value = 64, unit = "MiB", basis = "chosen", gloss = "Stored-vector size past which a sidecar stays unloaded." }
 read-fulltext-sealed-cap     = { clause = "read.retrieve.fulltext-sealed-cap", value = 256, unit = "MiB", basis = "chosen", gloss = "Sealed full-text sidecar size past which it stays unopened." }
 read-window-anchor-tolerance = { clause = "read.rank.window-anchor-tolerance", value = 24, unit = "h", basis = "chosen", gloss = "How far past the anchor a publication instant still counts in-window." }

@@ -74,7 +74,11 @@ The relations, tools and templates one connection sees, the engine executing aga
   *because a session registers every granted table, and wrapping one declaring no pair refuses reads that never name it*
 - `bound-listing` — `context.files` and a `context.describe` naming no table select under `as_of` alone; each ignores `valid_as_of` and echoes only its `as_of` part.
   *because valid time narrows rows, and a listing returns files and table names, never rows*
-- `describe-payload` — `context.describe` returns row count, schema fingerprint, description, {{read.register.column-hints}}, declared indexes, partition scheme, `limits.max_rows`, zone label, lexicon and example queries.
+- `describe-payload` — `context.describe` returns row count, {{read.register.size-estimate}}, schema fingerprint, description, {{read.register.column-hints}}, declared indexes, partition scheme, `limits.max_rows`, zone label, lexicon and example queries.
+- `size-estimate` — `context.describe` reports `bytes`, the serialized JSON length of the caller's restricted rows, and `estimated_tokens`, one per 4 B of that length, rounded up.
+  *because a client choosing between a full-context read and a ranked one compares the corpus against its context window before reading it*
+- `join-route` — A cross-table join runs as one `context.query` statement over registered relations, or through an operator-defined view the describe payload lists; no tool joins on a caller's behalf.
+  *because a statement already composes each relation's restriction, and a join tool restates that composition outside the guard*
 - `column-hints` — A table's `column_hints` map supplies optional per-column hints; `context.describe` includes each hint only with a column the session registers.
   *because a hint for an absent column describes a relation the registered schema cannot query*
 - `describe-zone` — `context.describe` reports the session zone as `session_zone`, and per table, listed or described, `zone_admitted`: whether the table's effective allow-set admits that zone.
@@ -93,6 +97,8 @@ The relations, tools and templates one connection sees, the engine executing aga
 - `ledger-relation` — Each table's per-run request ledger registers as the child relation `<table>__requests`, holding identifiers, connector, method, host, status and timing of mediated outbound calls.
 - `scoped-ledger` — The child relation registers on the owner read alone: a credential carrying no tenant scope, over a table carrying no row policy. Naming a closed ledger raises `LedgerNotTenantScoped`, stating what closed the relation.
   *A-read*
+- `no-tenant-ledger` — No tenant-scoped projection of a request ledger registers; {{read.register.scoped-ledger}} is the ledger's one read path.
+  *because ledger rows carry no tenant column, and a projection filtering on a dimension its rows lack discloses every tenant's calls*
 - `lexicon-surface` — The describe payload carries the store's numeric-identifier and badge vocabulary. Aliases, time-window phrases and distillation examples stay on the serving side.
 - `reserved-relation` — The engine's reserved table namespaces register like any other relation, with no privileged path underneath.
   *P5*
@@ -120,12 +126,6 @@ The relations, tools and templates one connection sees, the engine executing aga
   *because the listener reads the body before admission, and an unbounded body lets an unadmitted caller hold memory*
 - `health` — `GET /health` answers `200` with the build identity of {{read.embed.build-identity}}, admitting no credential and reading no row.
   *because a container runtime probes readiness before any caller holds a credential*
-
-unsettled: Is a cross-table join worth a first-class retrieval call, or does an operator-defined view plus the describe payload stay the route? owner: read-path affects: read.register
-
-unsettled: What corpus-size and token metadata does the describe payload expose, so a client can choose between a full-context read and a ranked one? owner: read-path affects: read.register
-
-unsettled: Is a tenant-scoped projection of the request ledger worth building, given the tenant dimension has to reach ledger rows first? owner: read-path affects: read.register
 
 ## guard
 
@@ -200,6 +200,8 @@ The one response projection: cell encoding, the row ceiling, truncation, counts 
 - `wide-number-shape` — A column's JSON encoding follows its SQL type alone: integers of 32 bits or fewer, finite floats and decimals of 15 digits or fewer are numbers; wider integers and decimals are exact decimal strings.
   *because a wire type that varies with the values on one page breaks a typed client on the next*
 - `type-is-the-cell` — No separate type list rides the envelope; a cell's JSON type is the declaration.
+- `one-response-shape` — Every read answers with one complete result set in one response; no read tool streams partial rows.
+  *P4*
 - `zero-rows-is-success` — Fewer rows than the requested limit, zero included, is a success.
   *P2*
 - `match-count` — Match counts ride outside the internals opt-in, reporting how many rows the ranker scored as matching in the same call.
@@ -223,8 +225,6 @@ The one response projection: cell encoding, the row ceiling, truncation, counts 
 - `paths-stay-inside` — An ordinary read's result carries no store path. Provenance arrives as columns naming table, run, connector version, ingestion instant and authoring subject.
   *A-read*
 
-unsettled: Does partial-result streaming belong on this surface, or does a full result set stay the one response shape? owner: read-path affects: read.respond
-
 ## query
 
 The operator's raw statement verb on the command line: its arguments, the relations it registers, its row bound and its output.
@@ -239,13 +239,14 @@ The operator's raw statement verb on the command line: its arguments, the relati
 - `project-store` — A `--project` whose `.contextful/context/<project>/` store is absent raises `QueryProjectAbsent`.
   *because every declared table of an absent store registers as quiet, and an operator reads its zero rows as an answer*
 - `declaration-default` — `--declaration <path>` names the manifest whose declared tables register; without it, the {{store.init.default-declaration}} file does when present, and no manifest otherwise. With no project, `--declaration` refuses by {{store.init.undiscovered}}.
-- `limit-truncates` — `--limit <n>` bounds rows delivered with the over-fetch of {{read.respond.row-ceiling}}, and sets `truncated` per {{read.respond.truncation-is-exact}}. Without it every row is delivered and `truncated` is false.
+- `limit-truncates` — `--limit <n>` bounds rows delivered with the over-fetch of {{read.respond.row-ceiling}}, and sets `truncated` per {{read.respond.truncation-is-exact}}. Without it every row {{read.query.raw-row-ceiling}} admits is delivered.
+- `raw-row-ceiling` — An operator's raw read delivers at most the least `limits.max_rows` among the relations its parsed statement names, and at most `--limit` beside it.
+  *because a published bound the owner's own verb ignores advertises a guarantee one face breaks*
+- `json-only` — The verb prints the JSON projection alone; it carries no text rendering, and a call omitting `--json` is a usage error.
+  *because a second rendering is a second projection a script must reconcile with the first*
 - `engine-fault` — A statement the engine rejects exits non-zero with the engine's message on standard error and nothing on standard output.
   *because a caller parsing standard output never mistakes a partial or empty envelope for an answer*
 
-unsettled: Does a table's published `limits.max_rows` bound an operator's raw read, given the verb does not walk the statement for the relations it names? owner: read-path affects: read.query
-
-unsettled: Does the verb carry a text rendering beside `--json`, or does the JSON projection stay its one output? owner: read-path affects: read.query
 
 ## reference
 
@@ -301,6 +302,8 @@ Candidate generation for a ranked read: content tokens, the relevance floor, per
 - `fulltext-probe` — A full-text probe ranks the whole snapshot by BM25 over one should-clause per content token; a token the sidecar's tokenizer splits into several terms matches them at consecutive positions, and an ASCII word token matches its plural as {{read.retrieve.script-split-matching}} does.
   *because a term outside the recency window is found only by a probe that reads every row's postings*
 - `sidecar-oversampling` — One probe requests 4 times the limit or 64 rows, whichever is larger, and 4 times that where the request carries restriction context.
+- `adaptive-over-fetch` — Where the rows a reader can see under-fill the requested limit, the probe doubles its size and probes again, for at most 4 rounds, then answers and reports the under-fill in the retrieval block.
+  *A-read*
 - `sidecar-size-cap` — A sidecar holding more than 64 MiB of stored vectors stays unloaded and the arm takes the exact scan.
 - `fulltext-sealed-cap` — A sealed full-text sidecar file larger than 256 MiB stays unopened, and its arm adds no candidates.
   *A-store*
@@ -331,8 +334,6 @@ flowchart LR
 
 unsettled: Does the row id {{run.normalize.identity-columns}} injects serve as the row key of a table declaring no content-hash column? owner: read-path affects: read.retrieve
 
-unsettled: What adaptive over-fetch policy holds where rows a reader cannot see cluster near a query point and the visibility estimate under-fills the requested top-K? owner: read-path affects: read.retrieve
-
 ## rank
 
 Ordering of a candidate set: the three legs, their fusion, the question's timeframe, reported confidence.
@@ -360,6 +361,8 @@ Ordering of a candidate set: the three legs, their fusion, the question's timefr
   *A-topology*
 - `lexical-index-cache` — An opened full-text sidecar is cached on a fingerprint of its table, snapshot, path and key version in a FIFO of 64 entries, so a repeated read opens nothing and a new snapshot opens afresh.
 - `widened-window-statistics` — Lexical term statistics come from the widened candidate window, so an accelerated arm can order rows differently from the exact path.
+- `calibration-gate` — Reciprocal rank fusion replaces the min-max term of {{read.rank.fusion}} only once the evaluation baseline scores it at or above min-max on every tracked measure.
+  *A-read*
 
 The ranking legs, their fallback, and the ordering they feed:
 
@@ -374,8 +377,6 @@ flowchart LR
   TF -->|"token scores"| ORD
   ORD -->|"retrieval block"| OUT(["token caller"])
 ```
-
-unsettled: What replaces min-max window normalization as a cross-index score calibration, given one bounded leg and one corpus-relative unbounded leg? owner: read-path affects: read.rank
 
 ## cache
 
@@ -434,7 +435,7 @@ The embedding port and its default, the model identifier beside each vector, the
   *P3*
 - `required-face` — A client passing `require: [...]` is refused ahead of its first read with `RequiredFaceAbsent` for any name outside the reported set. An engine reporting no set satisfies no requirement.
   *A-topology*
-- `absent-read-backend` — Without the embedded SQL engine linked, both read tools raise `ReadBackendAbsent` rather than answering from a narrower path.
+- `absent-read-backend` — Without the embedded SQL engine linked, every read tool raises `ReadBackendAbsent` rather than answering from a narrower path.
   *A-topology*
 
 ## Shapes

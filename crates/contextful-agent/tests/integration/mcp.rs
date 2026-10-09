@@ -216,10 +216,38 @@ fn the_handshake_reports_the_build_and_refuses_an_absent_face() {
     let clock = FixedClock(at("2030-01-01T00:06:00Z"));
     let server = Server::new(&f.face, f.authority.clone(), &current, &clock, &f.audit).unwrap();
     let init = ask(&server, 1, "initialize", json!({ "protocolVersion": "2025-06-18", "require": ["duckdb"] }));
-    assert_eq!(init["result"]["contextful.build"]["backends"], json!(["duckdb", "fts"]));
-    let absent = ask(&server, 2, "initialize", json!({ "require": ["hnsw"] }));
+    assert_eq!(init["result"]["contextful.build"]["backends"], json!(["duckdb", "fts", "hnsw"]));
+    let absent = ask(&server, 2, "initialize", json!({ "require": ["m365"] }));
     assert!(absent["error"]["message"].as_str().unwrap().starts_with("RequiredFaceAbsent"), "{absent}");
     assert!(server.handle(&json!({ "jsonrpc": "2.0", "method": "notifications/initialized" }).to_string()).is_none());
+}
+
+/// A server reporting no embedded SQL engine answers every read tool in-band with
+/// `ReadBackendAbsent`, records the refusal, and reads no row; the handshake still answers.
+#[test]
+fn a_server_reporting_no_sql_engine_refuses_every_read_tool() {
+    use contextful_core::read::face::BuildIdentity;
+    let f = fixture();
+    let clock = FixedClock(at("2030-01-01T00:06:00Z"));
+    let unlinked = BuildIdentity { backends: vec!["fts".into()], connectors: Vec::new(), faces: Vec::new() };
+    let server = Server::new(&f.face, f.authority.clone(), &current, &clock, &f.audit).unwrap().with_build(unlinked);
+    let init = ask(&server, 1, "initialize", json!({}));
+    assert_eq!(init["result"]["contextful.build"]["backends"], json!(["fts"]), "{init}");
+    let reads = [
+        ("context.describe", json!({ "table": "research/notes" })),
+        ("context.query", json!({ "sql": "SELECT note_id FROM \"research/notes\"" })),
+        ("context.files", json!({})),
+        ("corpus.retrieve", json!({ "prefix": "research/", "query": "battery" })),
+    ];
+    for (tool, arguments) in reads {
+        let refused = call(&server, tool, arguments);
+        assert_eq!(refused["result"]["isError"], json!(true), "{refused}");
+        assert_eq!(refused["result"]["structuredContent"]["error"]["identifier"], json!("ReadBackendAbsent"), "{refused}");
+        assert!(refused["result"]["structuredContent"].get("rows").is_none(), "{refused}");
+    }
+    let entries = contextful_policy::audit::entries(&f.dir.path().join("audit")).unwrap();
+    assert_eq!(entries.len(), 4);
+    assert!(entries.iter().all(|e| e.attributes["contextful.read.refusal"] == json!("ReadBackendAbsent")), "{:?}", entries[0].attributes);
 }
 
 #[test]

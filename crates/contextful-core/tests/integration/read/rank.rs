@@ -137,3 +137,18 @@ fn the_retrieval_block_and_row_fields_carry_their_names() {
         json!({ "_score": 2, "_vscore": 0.71, "_in_window": true, "_date_basis": "published_at" }),
     );
 }
+
+/// Under the fallback every matching token contributes, ranking hyphenated, spaced and possessive phrasings equivalently.
+// spec: read.rank.fallback-counts-tokens@8d6ab25a
+#[test]
+fn the_token_fallback_scores_every_phrasing_alike() {
+    use contextful_core::read::tokens::lexical_score;
+    for query in ["solar-battery storage", "solar battery storage", "solar's battery storage"] {
+        let tokens = content_tokens(query);
+        assert_eq!(tokens, ["solar", "battery", "storage"], "{query}");
+        for snippet in ["Solar-battery storage costs", "Solar battery storage costs", "Solar's battery storage costs"] {
+            assert_eq!(lexical_score(&tokens, Some(snippet)), Some(3), "{query} over {snippet}");
+        }
+        assert_eq!(lexical_score(&tokens, Some("battery prices")), Some(1));
+    }
+}

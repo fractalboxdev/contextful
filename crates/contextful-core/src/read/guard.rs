@@ -121,3 +121,29 @@ fn walk(
         _ => Ok(()),
     }
 }
+
+/// Every unqualified base relation an operator statement names outside the common table
+/// expressions declared in scope, across the whole tree and whatever else it holds; a raw
+/// read applies their published row ceilings (`read.query.raw-row-ceiling`).
+pub fn named_relations(serialized: &Value) -> BTreeSet<String> {
+    fn collect(v: &Value, scope: &BTreeSet<String>, out: &mut BTreeSet<String>) {
+        match v {
+            Value::Array(a) => a.iter().for_each(|c| collect(c, scope, out)),
+            Value::Object(o) => {
+                let mut inner = scope.clone();
+                inner.extend(declared(o).map(str::to_string));
+                if o.get("type").and_then(Value::as_str) == Some("BASE_TABLE") && qualifier(o).is_none() {
+                    let name = o.get("table_name").and_then(Value::as_str).unwrap_or_default();
+                    if !scope.contains(name) {
+                        out.insert(name.to_string());
+                    }
+                }
+                o.values().for_each(|c| collect(c, &inner, out));
+            }
+            _ => {}
+        }
+    }
+    let mut out = BTreeSet::new();
+    collect(serialized, &BTreeSet::new(), &mut out);
+    out
+}

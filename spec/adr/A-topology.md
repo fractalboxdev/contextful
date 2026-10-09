@@ -19,7 +19,7 @@ Revisit: a capability a deployment needs that no OpenAI-compatible endpoint expo
 
 ## Profile capabilities are fixed at build; an absent one is a typed refusal
 
-Three profiles, `contextful-edge`, `contextful-full` and `contextful-control`, compile from one workspace by feature bundle, each linking only its role's dependencies; the CRDT library links into `contextful-control` alone. A capability the running profile does not wire is a typed refusal when reached, never a panic, no-op or look-alike fallback; a profile without the embedded SQL engine refuses both read tools. `topology.package` publishes each profile's wiring, a client's required faces match at the handshake, and a spawned engine finding no project manifest exits before writing protocol framing.
+Three profiles, `contextful-edge`, `contextful-full` and `contextful-control`, compile from one workspace by feature bundle, each linking only its role's dependencies; the CRDT library links into `contextful-control` alone. A capability the running profile does not wire is a typed refusal when reached, never a panic, no-op or look-alike fallback; a profile without the embedded SQL engine refuses every read tool. `topology.package` publishes each profile's wiring, a client's required faces match at the handshake, and a spawned engine finding no project manifest exits before writing protocol framing.
 
 | Option | Lost on | Cost |
 | --- | --- | --- |

@@ -9,8 +9,8 @@ use super::results::{self, ResultCache};
 use crate::scan::{scan, scan_at};
 use crate::store::Store;
 use contextful_core::grant::{authorize_template, least_row_ceiling, list_templates, raw_read_covers, Grant};
-use contextful_core::read::face::TOOLS;
-use contextful_core::read::guard::{admit, Admitted};
+use contextful_core::read::face::{estimated_tokens, TOOLS};
+use contextful_core::read::guard::{admit, named_relations, Admitted};
 use contextful_core::read::pin::{Pins, Resolved, PIN_ARGUMENT, RESOLVED_BLOCK};
 use contextful_core::read::respond::{Cell, Internals, Response};
 use contextful_core::read::template::{bind_query, parse_templates, Bindings, Bound, ParamType, QueryTemplate};
@@ -597,7 +597,12 @@ impl Face {
         for t in self.tables()? {
             engine.register(&t, &self.source(&t, Bounds::default(), None)?.base)?;
         }
-        let response = respond(&engine, sql, &Bindings::default(), opts.limit, opts)?;
+        // The least published row ceiling among the relations the statement names, beside
+        // `--limit` (`read.query.raw-row-ceiling`).
+        let named = engine.serialize(sql).map(|tree| named_relations(&tree)).unwrap_or_default();
+        let published = named.iter().filter_map(|t| self.policies.get(t).and_then(|p| p.max_rows)).min();
+        let ceiling = opts.limit.into_iter().chain(published).min();
+        let response = respond(&engine, sql, &Bindings::default(), ceiling, opts)?;
         self.publish_read(None, &frontier, response)
     }
 
@@ -725,12 +730,18 @@ impl Face {
         let r = self.registered(session, table)?;
         self.bind_valid_time(&BTreeSet::from([table.to_string()]), bounds)?;
         let engine = self.pool.engine(session, self.store.parquet_key())?;
-        let sql = format!("SELECT count(*) FROM {}", ident(r.name()));
+        // The row count beside the serialized JSON length of the caller's restricted rows
+        // (`read.register.size-estimate`).
+        let sql = format!(
+            "SELECT count(*), coalesce(sum(strlen(CAST(to_json(t) AS VARCHAR))), 0)::BIGINT FROM {} AS t",
+            ident(r.name())
+        );
         let (_, count) = match deadline {
             Some((ms, source)) => engine.run_timed(&sql, &Bindings::default(), None, ms, source)?,
             None => engine.run(&sql, &Bindings::default(), None)?,
         };
         let row_count = count.first().and_then(|r| r.first()).map(Cell::to_json).unwrap_or(Value::Null);
+        let bytes = count.first().and_then(|r| r.get(1)).map(Cell::to_json).and_then(|v| v.as_u64().or_else(|| v.as_str().and_then(|n| n.parse::<u64>().ok()))).unwrap_or(0);
         let decl = self.decl(table);
         let policy = session.policy(table).expect("a registered table carries its policy");
         let schema = session.columns(table).expect("a registered table carries its columns");
@@ -748,6 +759,8 @@ impl Face {
         let mut out = json!({
             "table": table,
             "row_count": row_count,
+            "bytes": bytes,
+            "estimated_tokens": estimated_tokens(bytes),
             "schema_fingerprint": fingerprint,
             "description": decl.agent_description,
             "hint": decl.agent_hint,

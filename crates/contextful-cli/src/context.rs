@@ -294,7 +294,7 @@ pub fn run(cmd: ContextCmd) -> Result<()> {
             let audit = crate::project::read_audit(&located.project, issuer_key.as_deref(), admit.public_key.as_deref(), admit.keyset.as_deref())?;
             let clock = crate::clock::SystemClock;
             let boundary = |authority: &AdmittedAuthority| effect_boundary(authority, &Admission::new(clock.now(), &revocation));
-            let server = contextful_agent::mcp::Server::new(&face, authority, &boundary, &clock, &audit).map_err(anyhow::Error::msg)?;
+            let server = contextful_agent::mcp::Server::new(&face, authority, &boundary, &clock, &audit).map_err(anyhow::Error::msg)?.with_build(crate::build_identity());
             let mut arguments = serde_json::json!({ "table":table, "run":run, "seq":seq });
             if let Some(value) = max_duration_ms { arguments["max_duration_ms"] = value.into(); }
             if let Some(value) = max_response_bytes { arguments["max_response_bytes"] = value.into(); }
@@ -345,7 +345,10 @@ pub fn run(cmd: ContextCmd) -> Result<()> {
         ContextCmd::Scan { table, store, as_of, valid_as_of } => {
             let o = Opened::open(&store)?;
             let s = scan(&o.store, &o.decl(&table), Bounds { as_of: bound(as_of)?, valid_as_of: bound(valid_as_of)? })?;
-            let mut out = serde_json::json!({ "files": s.files, "relation": s.relation });
+            // Column count and file list; a row count is a count query, never a stored field
+            // (`read.respond.operator-metadata`).
+            let column_count = o.store.try_schema(&table)?.map_or(0, |schema| schema.columns.len());
+            let mut out = serde_json::json!({ "files": s.files, "relation": s.relation, "column_count": column_count });
             if let Some(b) = s.bounds {
                 out["contextful.bounds"] = b;
             }

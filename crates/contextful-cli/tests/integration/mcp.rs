@@ -52,6 +52,26 @@ fn serve(dir: &Path, args: &[&str], token: Option<&str>, input: &[Value]) -> Out
     child.wait_with_output().unwrap()
 }
 
+/// The handshake reports the linked retrieval backends (`duckdb`, `fts`, `hnsw`), connector families (`m365`, `s3`, `wasm`) and faces (`http`, `eval`, `otlp`), composed from the same feature declarations the version output reads.
+// spec: read.embed.build-identity@df3e317e
+#[test]
+fn the_handshake_reports_what_this_build_links() {
+    let (dir, public, token) = project();
+    let args = ["mcp", "--project", "research", "--public-key", &public, "--audience", AUD];
+    let hello = [json!({ "jsonrpc": "2.0", "id": 1, "method": "initialize", "params": {} })];
+    let out = serve(dir.path(), &args, Some(&token), &hello);
+    let answer: Value = serde_json::from_str(stdout(&out).lines().next().unwrap()).unwrap();
+    let mut connectors = Vec::new();
+    if cfg!(feature = "s3-sync") {
+        connectors.push("s3");
+    }
+    if cfg!(feature = "component-host") {
+        connectors.push("wasm");
+    }
+    let expected = json!({ "backends": ["duckdb", "fts", "hnsw"], "connectors": connectors, "faces": ["http", "eval", "otlp"] });
+    assert_eq!(answer["result"]["contextful.build"], expected, "{answer}");
+}
+
 #[test]
 fn the_server_admits_its_credential_then_answers_tool_calls() {
     let (dir, public, token) = project();

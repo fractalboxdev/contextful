@@ -149,6 +149,7 @@ fn entry(m: &SnapshotManifest) -> VectorEntry {
 
 /// The fold builds each declared vector sidecar over the staged rows holding a non-null identifier and a non-zero vector, from the declared model where the table carries `embedding_model`, and records its entry in the snapshot manifest.
 // spec: store.index.vector-by-fold@6ab64801
+// spec: read.embed.model-identifier@80c8ae25
 #[test]
 fn the_fold_builds_each_declared_sidecar_over_identified_nonzero_vectors_of_its_model() {
     let f = Fixture::new();

@@ -26,6 +26,7 @@ conditions = { gloss = "filter conditions" }
 connections = { gloss = "embedded engine connections" }
 hops     = { gloss = "delegation hops" }
 attempts = { gloss = "retry attempts" }
+rounds   = { gloss = "repeated probe rounds" }
 workers  = { gloss = "runtime worker threads" }
 percent  = { gloss = "percent", aliases = ["%", "pct"] }
 words    = { gloss = "whitespace-separated words" }

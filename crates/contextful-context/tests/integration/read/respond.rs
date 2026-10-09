@@ -348,3 +348,56 @@ fn a_zone_excluded_tables_ledger_is_named_with_its_call_count() {
     assert_eq!(column(&seen, "request_id"), [json!("r1"), json!("r2")]);
     assert!(!seen.blocks.contains_key("contextful.restriction"), "{:?}", seen.blocks);
 }
+
+/// An ordinary read's result carries no store path. Provenance arrives as columns naming table, run, connector version, ingestion instant and authoring subject.
+// spec: read.respond.paths-stay-inside@513ecc57
+#[test]
+fn a_result_carries_provenance_columns_and_no_store_path() {
+    let r = Reads::new();
+    let s = r.session(&["research/*"], None, None);
+    let root = r.store.root().to_string_lossy().into_owned();
+    let request = RetrieveRequest::new("research/notes", "solar battery storage", at("2030-02-01T00:00:00Z"));
+    let ranked = r.face.retrieve(&s, &request, Bounds::default()).unwrap();
+    for provenance in ["_table", "_run_id", "_provenance", "_ingested_at", "_authored_by"] {
+        assert!(ranked.columns.iter().any(|c| c == provenance), "{provenance} missing from {:?}", ranked.columns);
+    }
+    assert!(column(&ranked, "_table").iter().all(|t| t == &json!("research/notes")));
+    assert!(column(&ranked, "_run_id").iter().all(|run| run == &json!("run-0001")));
+    let queried = r.query(&s, r#"SELECT * FROM "research/notes""#).unwrap();
+    for response in [&ranked, &queried] {
+        let text = response.to_json().to_string();
+        assert!(!text.contains(&root) && !text.contains("tables/research/") && !text.contains(".parquet"), "{text}");
+    }
+}
+
+/// A claim that the corpus lacks coverage of a subject comes from a count over the table with no recency truncation, taken after the full-scan fallback, never from a ranked top score.
+// spec: read.respond.coverage-is-a-count@d2e4c0ac
+#[test]
+fn coverage_counts_the_whole_table_past_the_ranked_window() {
+    let r = Reads::new();
+    let rows: Vec<Value> = (0..240).map(|i| json!({ "item_id": format!("bulk-{i:03}"), "title": "Wind turbine feed" })).collect();
+    land_rows(&r.store, "research/vendor", "run-0002", Value::Array(rows));
+    let s = r.session(&["research/*"], None, Some("public-cloud:us-east-1"));
+    let mut request = RetrieveRequest::new("research/vendor", "solar battery storage", at("2030-02-01T00:00:00Z"));
+    request.limit = Some(1);
+    let ranked = r.face.retrieve(&s, &request, Bounds::default()).unwrap();
+    let window = ranked.blocks["contextful.retrieval"]["window"].as_u64().unwrap();
+    let described = r.face.describe(&s, Some("research/vendor"), Bounds::default()).unwrap();
+    assert_eq!(described["row_count"], json!("241"));
+    assert!(window < 241, "the ranked window {window} covers the whole table");
+    let subject = r.query(&s, r#"SELECT count(*) AS n FROM "research/vendor" WHERE title ILIKE '%solar%'"#).unwrap();
+    assert_eq!(column(&subject, "n"), [json!("1")]);
+}
+
+/// A cross-table join runs as one `context.query` statement over registered relations, or through an operator-defined view the describe payload lists; no tool joins on a caller's behalf.
+// spec: read.register.join-route@0e31c09c
+#[test]
+fn a_join_is_one_statement_over_registered_relations() {
+    let r = Reads::new();
+    let s = r.session(&["research/*"], Some(("research/notes", "acme")), None);
+    let joined = r
+        .query(&s, r#"SELECT n.note_id, count(v.item_id) AS vendors FROM "research/notes" n LEFT JOIN "research/vendor" v ON true GROUP BY n.note_id ORDER BY n.note_id"#)
+        .unwrap();
+    assert_eq!(column(&joined, "note_id"), [json!("n1"), json!("n2"), json!("n3")]);
+    assert!(contextful_core::read::face::TOOLS.iter().all(|t| !t.contains("join")));
+}

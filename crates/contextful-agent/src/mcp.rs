@@ -14,7 +14,7 @@
 
 use contextful_context::read::{Face, ReadFault, ReadOptions, RecallRequest, RetrieveRequest};
 use contextful_core::memory::declare::Shape;
-use contextful_core::read::face::{register_tool, require, BuildIdentity, FaceScope, ToolKind, TOOLS};
+use contextful_core::read::face::{read_backend, register_tool, require, BuildIdentity, FaceScope, ToolKind, TOOLS};
 use contextful_core::read::guard::admit;
 use contextful_core::read::pin::{Pins, PIN_ARGUMENT};
 use contextful_core::read::template::READ_ARGUMENTS;
@@ -40,13 +40,13 @@ const PARSE_ERROR: i64 = -32700;
 const METHOD_NOT_FOUND: i64 = -32601;
 const INVALID_PARAMS: i64 = -32602;
 
-/// What this binary links, reported at the handshake (`read.embed.build-identity`): the
-/// embedded SQL engine and the lexical ranker, and the `http` face where the `http`
-/// feature links the network transport. It links no vector index and no connector family
-/// behind a feature.
+/// What this package links, reported at the handshake (`read.embed.build-identity`): the
+/// embedded SQL engine, the lexical ranker and the vector index, and the `http` face where
+/// the `http` feature links the network transport. It links no connector family; a binary
+/// linking more reports its own through [`Tools::with_build`].
 pub fn build_identity() -> BuildIdentity {
     let faces = if cfg!(feature = "http") { vec!["http".into()] } else { Vec::new() };
-    BuildIdentity { backends: vec!["duckdb".into(), "fts".into()], connectors: Vec::new(), faces }
+    BuildIdentity { backends: vec!["duckdb".into(), "fts".into(), "hnsw".into()], connectors: Vec::new(), faces }
 }
 
 /// The re-check an effect boundary runs against the carried authority.
@@ -131,6 +131,8 @@ pub struct Tools<'a> {
     face: &'a Face,
     clock: &'a (dyn Clock + Sync),
     record: &'a dyn ReadRecord,
+    /// The identity the handshake reports and every read tool call checks.
+    build: BuildIdentity,
 }
 
 /// The tool protocol over standard input and output for one admitted authority.
@@ -238,6 +240,11 @@ impl<'a> Server<'a> {
         Ok(Server { tools: Tools::new(face, clock, record)?, authority, boundary })
     }
 
+    /// The server reporting `build` in place of this binary's linked identity.
+    pub fn with_build(self, build: BuildIdentity) -> Server<'a> {
+        Server { tools: self.tools.with_build(build), ..self }
+    }
+
     /// Serve until the input closes.
     pub fn serve(&self, input: impl BufRead, mut output: impl Write) -> std::io::Result<()> {
         for line in input.lines() {
@@ -266,7 +273,20 @@ impl<'a> Tools<'a> {
         for tool in TOOLS {
             register_tool(FaceScope::Organization, tool, ToolKind::Read).map_err(|e| e.to_string())?;
         }
-        Ok(Tools { face, clock, record })
+        Ok(Tools { face, clock, record, build: build_identity() })
+    }
+
+    /// The tool set reporting `build` in place of this binary's linked identity. A build
+    /// reporting no embedded SQL engine refuses every read tool
+    /// (`read.embed.absent-read-backend`).
+    pub fn with_build(mut self, build: BuildIdentity) -> Tools<'a> {
+        self.build = build;
+        self
+    }
+
+    /// The identity the handshake and `/health` report.
+    pub fn build(&self) -> &BuildIdentity {
+        &self.build
     }
 
     /// The clock tool calls read the present from.
@@ -311,8 +331,8 @@ impl<'a> Tools<'a> {
             }
             Some(_) => return Err(invalid("`require` is a list of names")),
         };
-        let build = build_identity();
-        require(Some(&build), &wanted).map_err(|e| invalid(e.to_string()))?;
+        let build = &self.build;
+        require(Some(build), &wanted).map_err(|e| invalid(e.to_string()))?;
         let version = params.get("protocolVersion").and_then(Value::as_str).unwrap_or(PROTOCOL_VERSION);
         Ok(json!({
             "protocolVersion": version,
@@ -419,6 +439,9 @@ impl<'a> Tools<'a> {
         // Every read tool admits a pin map (`read.resolve-pin.pin-parameter`).
         let pins = Pins::parse(args.get(PIN_ARGUMENT)).map_err(invalid)?;
         let pins = &pins;
+        if let Err(absent) = read_backend(&self.build, name) {
+            return Ok(Err(absent.into()));
+        }
         Ok(match name {
             "context.describe" => {
                 only(args, name, &["table"])?;

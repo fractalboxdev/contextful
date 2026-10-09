@@ -432,7 +432,8 @@ fn m05_http_face() {
 
     // The handshake reports the network face.
     let (status, _, hello) = post_mcp(&addr, &json!({ "jsonrpc": "2.0", "id": 0, "method": "initialize", "params": { "protocolVersion": "2025-06-18" } }), Some(research));
-    assert_eq!((status, parse(&hello)["result"]["contextful.build"]["faces"].clone()), (200, json!(["http"])));
+    assert_eq!(status, 200);
+    assert!(parse(&hello)["result"]["contextful.build"]["faces"].as_array().unwrap().contains(&json!("http")), "{}", String::from_utf8_lossy(&hello));
 
     // Two credentials on one listener each read their own grants.
     let (status, _, notes) = post_mcp(&addr, &fast, Some(research));
