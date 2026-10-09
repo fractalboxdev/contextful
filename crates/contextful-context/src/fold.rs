@@ -77,8 +77,14 @@ pub enum Committed {
 /// that fails is reported, beside a published snapshot that stays published, since the
 /// pointer has already moved (`store.fold.collection-failed`).
 pub fn fold(store: &Store, decl: &TableDecl, now: Instant) -> Result<FoldOutcome> {
+    fold_under(store, decl, now, None)
+}
+
+/// [`fold`] under a compaction lease: the snapshot manifest and the pointer it publishes
+/// carry the lease's `fence` (`store.fold.compaction-lease`).
+pub fn fold_under(store: &Store, decl: &TableDecl, now: Instant, fence: Option<u64>) -> Result<FoldOutcome> {
     store.check_writable("compact")?;
-    match prepare(store, decl, now)? {
+    match prepare_under(store, decl, now, fence)? {
         Prepared::NothingLanded => Ok(match collect(store, decl, now) {
             Ok(collected) => match decl.retain_rows_secs().map_err(|e| ContextError::Invalid(e.to_string()))? {
                 Some(age) => FoldOutcome::NothingLandedRetained { cutoff: now.minus_secs(age), collected },
@@ -111,6 +117,11 @@ pub fn fold(store: &Store, decl: &TableDecl, now: Instant) -> Result<FoldOutcome
 /// partition, and write Parquet and the manifest under `<id>.staging/`
 /// (`store.fold.pass`).
 pub fn prepare(store: &Store, decl: &TableDecl, now: Instant) -> Result<Prepared> {
+    prepare_under(store, decl, now, None)
+}
+
+/// [`prepare`] with the compaction lease's `fence` stamped into the staged manifest.
+pub fn prepare_under(store: &Store, decl: &TableDecl, now: Instant, fence: Option<u64>) -> Result<Prepared> {
     let table = decl.name.as_str();
     // The pointer, then the runs, then the schema: a landing writes its schema before
     // its manifest, so every run read here has its columns in the schema read after. A
@@ -236,7 +247,7 @@ pub fn prepare(store: &Store, decl: &TableDecl, now: Instant) -> Result<Prepared
         valid_time: decl.valid_time.clone(),
         parts,
         indexes,
-        fence: None,
+        fence,
         commit_seq: unfolded_runs.iter().map(|r| r.commit_seq).chain(state.chain.first().map(|s| s.commit_seq)).flatten().max(),
         publish: None,
     };

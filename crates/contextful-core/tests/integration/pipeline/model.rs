@@ -164,6 +164,19 @@ fn a_top_level_key_outside_the_manifest_blocks_is_refused() {
     .unwrap();
 }
 
+/// A `[node]` block refuses as a node id every machine reconciling the manifest shares, ahead of the unknown-block
+/// refusal, naming the file and the node id's home.
+#[test]
+fn a_node_block_in_a_manifest_refuses_as_a_shared_node_id() {
+    let e = read_manifest(&ManifestFile { path: "manifest@v3.toml".into(), text: "[node]\nid = \"ingest-a\"\n".into() }).unwrap_err();
+    match &e {
+        RunError::Store(contextful_core::store::StoreError::StoreNodeIdShared(m)) => {
+            assert!(m.contains("manifest@v3.toml") && m.contains("[node]") && m.contains("config.toml"), "{m}");
+        }
+        other => panic!("expected StoreNodeIdShared, got {other}"),
+    }
+}
+
 /// A model's `id` names the store table it builds; an id declared twice, or equal to a pipeline destination table, refuses as {{run.declare.table-name-collision}}.
 #[test]
 fn a_model_id_is_its_table_and_collides_with_no_other() {
@@ -337,6 +350,8 @@ fn the_manifest_section_carries_its_keys_and_omits_an_absent_optional_one() {
 
 /// `semantics_version` advances when the engine adds an injected column, and `fingerprint_recipe` names the fingerprint's inputs, that column included.
 // spec: run.publish.semantics-version@a952eb95
+/// Adding an injected column advances the semantics version, whose fingerprint recipe names the column.
+// spec: store.reconcile.reserved-set-versioned@3ef4472c
 #[test]
 fn the_recipe_names_every_injected_column_the_semantics_version_counts() {
     assert_eq!(SEMANTICS_VERSION, 2);

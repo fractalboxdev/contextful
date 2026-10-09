@@ -196,6 +196,63 @@ fn the_fold_builds_each_declared_sidecar_over_identified_nonzero_vectors_of_its_
     assert!(current(&g, "events").0.indexes.is_empty());
 }
 
+/// A vector sidecar sits at `indexes/vec-<col>-<model>/zone=<label>/` and a full-text sidecar at
+/// `indexes/fts-<col>-<tokenizer>/`, inside the snapshot directory it indexes.
+// spec: store.index.paths@320c0117
+#[test]
+fn each_sidecar_sits_at_its_kind_path_inside_the_snapshot_it_indexes() {
+    let f = Fixture::new();
+    let fulltext = "[[pipeline.tables.indexes]]\nkind = \"fulltext\"\ncolumn = \"body\"\ntokenizer = \"unicode\"\n";
+    let d = decl(&format!("name = \"passages\"\nprimary_key = [\"passage_id\"]\n{INDEX}{fulltext}"));
+    f.land_typed(&d, "run-1", json!([{"passage_id": "p1", "body": "solar battery", "embedding": [1.0, 0.0, 0.0]}]), "2030-01-01T00:00:00Z", &f32x3()).unwrap();
+    fold(&f.store, &d, at("2030-01-01T01:00:00Z")).unwrap();
+    let (m, dir) = current(&f, "passages");
+    let mut paths: Vec<String> = m.indexes.iter().map(|e| e.path().unwrap().to_string()).collect();
+    paths.sort();
+    assert_eq!(paths, ["indexes/fts-body-unicode", "indexes/vec-embedding-e5/zone=all"]);
+    for p in &paths {
+        assert!(dir.join(p).join("_manifest.json").is_file(), "{p} sits inside {}", dir.display());
+    }
+    // Every sidecar file the pass wrote lies under the snapshot's own `indexes/`.
+    let table = f.store.table_dir("passages").unwrap();
+    let mut stray = Vec::new();
+    let mut stack = vec![table.clone()];
+    while let Some(d) = stack.pop() {
+        for e in std::fs::read_dir(&d).unwrap() {
+            let p = e.unwrap().path();
+            if p.is_dir() {
+                stack.push(p);
+            } else if p.to_string_lossy().contains("indexes") && !p.starts_with(dir.join("indexes")) {
+                stray.push(p);
+            }
+        }
+    }
+    assert!(stray.is_empty(), "{stray:?}");
+}
+
+/// Collecting a snapshot collects its sidecars in the same step.
+// spec: store.index.dies-with-snapshot@e3968987
+#[test]
+fn collecting_a_snapshot_collects_its_sidecars() {
+    let f = Fixture::new();
+    let d = decl(&format!("name = \"passages\"\nprimary_key = [\"passage_id\"]\n{INDEX}"));
+    f.land_typed(&d, "run-1", json!([{"passage_id": "p1", "embedding": [1.0, 0.0, 0.0]}]), "2030-01-01T00:00:00Z", &f32x3()).unwrap();
+    fold(&f.store, &d, at("2030-01-01T01:00:00Z")).unwrap();
+    let (first, first_dir) = current(&f, "passages");
+    let sidecar = first_dir.join(first.indexes[0].path().unwrap());
+    assert!(sidecar.join(GRAPH_FILE).is_file());
+    // Superseded, inside the window: the snapshot and its sidecar stay together.
+    f.land_typed(&d, "run-2", json!([{"passage_id": "p2", "embedding": [0.0, 1.0, 0.0]}]), "2030-01-02T00:00:00Z", &f32x3()).unwrap();
+    fold(&f.store, &d, at("2030-01-02T01:00:00Z")).unwrap();
+    assert!(first_dir.is_dir() && sidecar.join(GRAPH_FILE).is_file());
+    // Past the window, the pass that collects the snapshot collects its sidecar with it.
+    f.land_typed(&d, "run-3", json!([{"passage_id": "p3", "embedding": [0.0, 0.0, 1.0]}]), "2030-01-09T01:00:00Z", &f32x3()).unwrap();
+    fold(&f.store, &d, at("2030-01-09T01:00:00Z")).unwrap();
+    assert!(!first_dir.exists() && !sidecar.exists());
+    let (now, now_dir) = current(&f, "passages");
+    assert!(now_dir.join(now.indexes[0].path().unwrap()).join(GRAPH_FILE).is_file());
+}
+
 /// A vector sidecar is an HNSW graph over unit-length `Float32` vectors whose layers draw from a seed of the snapshot id and column, so one staged row set builds one byte-identical graph.
 // spec: store.index.graph@ab0cf2ff
 #[test]

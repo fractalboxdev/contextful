@@ -7,7 +7,7 @@
 use crate::project::{locate, pipeline_files, Located};
 use anyhow::{Context, Result};
 use clap::Subcommand;
-use contextful_context::fold::fold;
+use contextful_context::fold::fold_under;
 use contextful_context::{node, Store};
 use contextful_core::store::declare::TableDecl;
 use contextful_core::store::fold::FoldOutcome;
@@ -383,7 +383,7 @@ fn compact(s: &Syncer, decls: &[TableDecl], table: &str, lease: &contextful_sync
     let decl = decls.iter().find(|d| d.name == table).cloned().unwrap_or_else(|| TableDecl::named(table));
     let pointer_path = s.store.table_dir(table)?.join(POINTER_FILE);
     let before = std::fs::read(&pointer_path).ok();
-    let outcome = fold(&s.store, &decl, at)?;
+    let outcome = fold_under(&s.store, &decl, at, Some(lease.lease.fence))?;
     let FoldOutcome::Folded { snapshot_id, .. } = &outcome else { return Ok(outcome) };
     let published = push(s, at).and_then(|_| s.publish(table, snapshot_id, lease).map_err(anyhow::Error::from));
     if let Err(e) = published {

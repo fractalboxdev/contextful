@@ -2041,7 +2041,7 @@
       "operation": "lay-out",
       "subject": "node-id-shared",
       "kind": "refusal",
-      "statement": "A node id declared in a control-plane configuration raises `StoreNodeIdShared`.",
+      "statement": "A `[node]` block in a manifest, and so in every control-plane snapshot, raises `StoreNodeIdShared` ahead of {{run.model.top-level-block}}, naming the file and the store root's `config.toml` as the node id's home.",
       "why": "because a control-plane snapshot applies to every machine reconciling it, making one id many holders",
       "file": "spec/10-store.md",
       "line": 129
@@ -25488,6 +25488,10 @@
     [
       "store.lay-out.node-id-order",
       "store.lay-out.node-id-project"
+    ],
+    [
+      "store.lay-out.node-id-shared",
+      "run.model.top-level-block"
     ],
     [
       "store.init.declaration-file",

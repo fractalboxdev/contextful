@@ -126,7 +126,7 @@ The directory tree, run and snapshot manifests, the table pointer, the two catal
   *because a copied store carrying its identity makes two machines one holder*
 - `node-id-shape` — A node id longer than 64 chars or outside `^[A-Za-z0-9._-]+$` raises `StoreNodeIdInvalid` at process start, before any path, key or lease carries it.
   *P3*
-- `node-id-shared` — A node id declared in a control-plane configuration raises `StoreNodeIdShared`.
+- `node-id-shared` — A `[node]` block in a manifest, and so in every control-plane snapshot, raises `StoreNodeIdShared` ahead of {{run.model.top-level-block}}, naming the file and the store root's `config.toml` as the node id's home.
   *because a control-plane snapshot applies to every machine reconciling it, making one id many holders*
 - `node-id-local` — A machine with no writable state directory takes the reserved node id `local`.
 

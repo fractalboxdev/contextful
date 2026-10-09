@@ -987,6 +987,41 @@ fn apply_fires_nothing_and_a_second_apply_is_a_no_op() {
     assert_eq!(history(dir.path()).len(), 1);
 }
 
+/// A `[node]` block in a manifest, and so in every control-plane snapshot, raises `StoreNodeIdShared` ahead of
+/// {{run.model.top-level-block}}, naming the file and the store root's `config.toml` as the node id's home.
+// spec: store.lay-out.node-id-shared@31344a91
+#[test]
+fn a_node_id_in_a_control_plane_document_is_refused() {
+    let orders = scheduled("orders", "https://api.vendor.example/v1", "every 1h");
+    let shared = format!("authoring_posture = \"per_request\"\nsite_id = \"site-a\"\n\n[node]\nid = \"ingest-a\"\n\n{orders}");
+    let plain = format!("authoring_posture = \"per_request\"\nsite_id = \"site-a\"\n\n{orders}");
+    let dir = project("");
+    let declare = |text: &str| std::fs::write(dir.path().join("contextful.toml"), text).unwrap();
+    let refused = |verb: &str| {
+        let out = cf(dir.path(), &["pipeline", verb, "--project", "research"]);
+        assert!(!out.status.success(), "{verb} claimed a version");
+        let err = stderr(&out);
+        assert!(err.contains("StoreNodeIdShared") && err.contains("[node]") && err.contains("config.toml"), "{verb}: {err}");
+    };
+    // Neither verb claims a version for a document every reconciling machine would share.
+    declare(&shared);
+    refused("import");
+    assert!(!dir.path().join(CONTROL).join("manifest@v1.toml").exists());
+    declare(&plain);
+    ok(&cf(dir.path(), &["pipeline", "import", "--project", "research"]));
+    declare(&shared);
+    refused("apply");
+    assert!(!dir.path().join(CONTROL).join("manifest@v2.toml").exists());
+
+    // An applied snapshot carrying one refuses where it is read, naming its version.
+    declare(&plain);
+    let snapshot = dir.path().join(CONTROL).join("manifest@v1.toml");
+    let text = std::fs::read_to_string(&snapshot).unwrap();
+    std::fs::write(&snapshot, format!("[node]\nid = \"ingest-a\"\n\n{text}")).unwrap();
+    let err = stderr(&cf(dir.path(), &["pipeline", "plan", "--project", "research"]));
+    assert!(err.contains("StoreNodeIdShared") && err.contains("manifest@v1.toml"), "{err}");
+}
+
 /// A document failing engine validation raises `ApplyValidationRefused` and claims no version.
 // spec: surface.apply.validation@17970d8f
 #[test]

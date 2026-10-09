@@ -582,8 +582,15 @@ pub const MANIFEST_BLOCKS: [&str; 23] = [
 ];
 
 /// Refuse a manifest's top-level key outside [`MANIFEST_BLOCKS`] (`run.model.top-level-block`).
+/// A `[node]` block refuses first as a node id every machine reconciling the manifest
+/// would share (`store.lay-out.node-id-shared`).
 pub fn check_blocks(file: &str, value: &toml::Value) -> Result<(), RunError> {
     let Some(table) = value.as_table() else { return Ok(()) };
+    if table.contains_key("node") {
+        return Err(RunError::Store(crate::store::StoreError::StoreNodeIdShared(format!(
+            "{file}: a `[node]` block applies to every machine reconciling this manifest; a node id belongs in the store root's `config.toml` or `CONTEXTFUL_NODE_ID`"
+        ))));
+    }
     match table.keys().find(|k| !MANIFEST_BLOCKS.contains(&k.as_str())) {
         Some(k) => Err(RunError::PipelineUnknownBlock(format!(
             "{file}: top-level key `{k}` is no manifest block; the accepted blocks are {}",

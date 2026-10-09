@@ -1,7 +1,7 @@
 //! `store.push`, `store.merge` and `store.lease`: prefixes, the scoped-union merge and the lease object.
 
 use super::at;
-use contextful_core::store::lease::{BucketLease, TTL_SECS};
+use contextful_core::store::lease::{BucketLease, CLOCK_SKEW_SECS, RENEWAL_SECS, TTL_SECS};
 use contextful_core::store::object::Condition;
 use contextful_core::connector::reference::SecretName;
 use contextful_core::store::sync::{
@@ -177,6 +177,60 @@ fn acquisition_creates_or_replaces_on_the_etag_with_the_next_fence() {
     let (third, _) = BucketLease::acquire(Some((&second, "etag-2")), "ingest-a", now.plus_secs(600 + 31)).unwrap();
     assert_eq!(third.fence, 3);
     assert!(matches!(BucketLease::acquire(Some((&second, "etag-2")), "ingest-a", now.plus_secs(600 + 29)), Err(StoreError::LeaseHeld(_))));
+}
+
+/// A holder renews every 200 s by `If-Match` replace on the ETag it holds.
+// spec: store.lease.renewal@86e363e5
+#[test]
+fn a_holder_renews_every_200_seconds_on_the_etag_it_holds() {
+    assert_eq!(RENEWAL_SECS, 200);
+    const { assert!(RENEWAL_SECS * 2 < TTL_SECS, "one missed renewal leaves the grant standing") };
+    let now = at("2030-01-01T00:00:00Z");
+    let (held, _) = BucketLease::acquire(None, "ingest-a", now).unwrap();
+    let later = now.plus_secs(RENEWAL_SECS);
+    let (renewed, cond) = BucketLease::renew(&held, "etag-1", &held, later).unwrap();
+    assert_eq!(cond, Condition::IfMatch("etag-1".into()));
+    assert_eq!((renewed.fence, renewed.holder.as_deref(), renewed.expires_at), (held.fence, Some("ingest-a"), Some(later.plus_secs(TTL_SECS))));
+    // A lease another acquisition moved past this holder's fence refuses the renewal.
+    let taken = BucketLease { holder: Some("ingest-b".into()), fence: held.fence + 1, ..held.clone() };
+    assert!(matches!(BucketLease::renew(&taken, "etag-2", &held, later), Err(StoreError::LeaseFenced(_))));
+}
+
+/// Bucket leasing assumes the clocks of two machines differ by 30 s or less, and every expiry judgment reads the
+/// judging machine's monotonic clock.
+// spec: store.lease.clock-skew@3f066dfc
+#[test]
+fn an_expiry_judgment_allows_30_seconds_of_skew_on_the_judging_clock() {
+    assert_eq!(CLOCK_SKEW_SECS, 30);
+    let granted = at("2030-01-01T00:00:00Z");
+    let (held, _) = BucketLease::acquire(None, "ingest-a", granted).unwrap();
+    let expiry = granted.plus_secs(TTL_SECS);
+    // The judging machine's own reading decides: the grant stands until expiry plus the skew bound.
+    assert!(held.held_against("ingest-b", expiry));
+    assert!(held.held_against("ingest-b", expiry.plus_secs(CLOCK_SKEW_SECS - 1)));
+    assert!(!held.held_against("ingest-b", expiry.plus_secs(CLOCK_SKEW_SECS)));
+    // The holder's own lease never reads as held against it.
+    assert!(!held.held_against("ingest-a", granted));
+}
+
+/// A run finding an unexpired lease raises `LeaseHeld`, naming the holder and the expiry, is skipped, and is
+/// attempted again at the next reconciliation tick.
+// spec: store.lease.held@d87a6a45
+#[test]
+fn an_unexpired_lease_refuses_naming_its_holder_and_expiry_and_a_later_tick_takes_it() {
+    let granted = at("2030-01-01T00:00:00Z");
+    let (held, _) = BucketLease::acquire(None, "ingest-a", granted).unwrap();
+    let expiry = granted.plus_secs(TTL_SECS);
+    match BucketLease::acquire(Some((&held, "etag-1")), "ingest-b", granted.plus_secs(60)) {
+        Err(StoreError::LeaseHeld(m)) => {
+            assert!(m.contains("`ingest-a`") && m.contains(&expiry.to_string()), "{m}");
+            assert!(m.contains("skipped") && m.contains("next tick"), "{m}");
+        }
+        other => panic!("{other:?}"),
+    }
+    // The next attempt after the grant lapses takes the lease at the next fence.
+    let (taken, _) = BucketLease::acquire(Some((&held, "etag-1")), "ingest-b", expiry.plus_secs(CLOCK_SKEW_SECS)).unwrap();
+    assert_eq!((taken.holder.as_deref(), taken.fence), (Some("ingest-b"), held.fence + 1));
 }
 
 /// Releasing a lease another node holds raises `LeaseNotHeld` and leaves the object untouched.
