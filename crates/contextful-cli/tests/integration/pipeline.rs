@@ -269,6 +269,47 @@ redaction = [{ table = "messages", column = "body", json_path = "$.parts[*].text
     assert_eq!(vendor.targets(), vec!["/messages"]);
 }
 
+/// Every file under the store root whose bytes hold `needle`, relative to `dir`.
+fn holding(dir: &Path, needle: &str) -> Vec<std::path::PathBuf> {
+    let mut pending = vec![dir.join(".contextful")];
+    let mut found = Vec::new();
+    while let Some(path) = pending.pop() {
+        if path.is_dir() {
+            pending.extend(std::fs::read_dir(&path).unwrap().map(|e| e.unwrap().path()));
+        } else if std::fs::read(&path).unwrap().windows(needle.len()).any(|w| w == needle.as_bytes()) {
+            found.push(path.strip_prefix(dir).unwrap().to_owned());
+        }
+    }
+    found
+}
+
+/// A batch passes pull, the secret guard, the recorded pull, normalize, the transform chain, write-path redaction, shredding and batch write; the run then commits rows and position together through {{run.advance.commit-with-rows}}.
+// spec: run.land.stage-order@79301484
+#[test]
+fn a_batch_is_guarded_before_recording_and_redacted_before_shredding() {
+    const KEY: &str = "zK9s8d7f6g5h";
+    const PHONE: &str = "415-555-0100";
+    let body = format!(r#"[{{"note":"x-api-key: {KEY}","raw":"keep","body":{{"parts":[{{"text":"{PHONE}","public":"open"}}]}}}}]"#);
+    let vendor = Vendor::start(move |_| (200, body.clone()));
+    let extra = r#"
+journal = true
+normalize = "relational"
+transforms = [{ op = "rename", from = "raw", to = "kept" }]
+redaction = [{ table = "messages", column = "body", json_path = "$.parts[*].text", match = "whole", operation = "replace", argument = "phone" }]
+"#;
+    let dir = project(&pipeline("feed", &vendor.url("/messages"), extra, "tables = [\"messages\"]"));
+    ok(&fire(dir.path(), "feed", "run-a", "2030-01-01T00:00:00Z"));
+    // The guard masks the credential before the recorded pull, so no stored byte holds it.
+    assert!(holding(dir.path(), KEY).is_empty(), "{:?}", holding(dir.path(), KEY));
+    // Redaction rewrites the value before the recorded pull is prepared and before any part is written.
+    assert!(holding(dir.path(), PHONE).is_empty(), "{:?}", holding(dir.path(), PHONE));
+    let root: serde_json::Value = serde_json::from_str(&ok(&cf(dir.path(), &["query", "--json", "--project", "research", "SELECT note, kept, row_id FROM feed_messages"]))).unwrap();
+    assert_eq!(&root["rows"][0].as_array().unwrap()[..2], serde_json::json!(["x-api-key: [REDACTED:secret]", "keep"]).as_array().unwrap());
+    // Shredding follows redaction: the child table carries the replaced value under its parent.
+    let child: serde_json::Value = serde_json::from_str(&ok(&cf(dir.path(), &["query", "--json", "--project", "research", "SELECT text, public, parent_id FROM feed_messages_body_parts"]))).unwrap();
+    assert_eq!(child["rows"], serde_json::json!([["[REDACTED:phone]", "open", root["rows"][0][2]]]));
+}
+
 #[test]
 fn a_renamed_removed_clock_refuses_before_source_or_durable_watermark_bytes() {
     const CANARY: &str = "private-string-clock-canary-98";
@@ -2025,7 +2066,8 @@ fn a_native_pipeline_lands_nested_json_as_one_table_of_nested_columns() {
 
 }
 
-/// Relational normalization flattens objects and preserves list order in child tables.
+/// `native` keeps nesting up to the sink's capability and explodes the rest with {{run.record.schema-diff-home}}; `relational` flattens structs into parent-child column names and shreds lists into child tables joined by a foreign key.
+// spec: run.normalize.mode@3d26d022
 #[test]
 fn a_relational_pipeline_shreds_lists_into_indexed_child_rows() {
     let vendor = Vendor::start(|_| (200, SPANS.to_string()));

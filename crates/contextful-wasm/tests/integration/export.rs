@@ -189,3 +189,31 @@ fn attribution_keeps_512_values_of_at_most_512_bytes() {
     let mut plain = open();
     assert_eq!(plain.failed_partitions().unwrap(), ["tenant-a", "Tenant-A "], "values keep their bytes");
 }
+
+/// The destination world declares no host arm, so a guest supplies no destination.
+// spec: run.land.no-host-arm@733b9d33
+#[test]
+fn the_host_binds_the_source_world_and_no_world_it_hosts_reaches_the_destination() {
+    let wit = include_str!("../../wit/connector.wit");
+    // Each world's body, keyed by name.
+    let worlds: Vec<(&str, &str)> = wit
+        .split("\nworld ")
+        .skip(1)
+        .map(|w| {
+            let (name, rest) = w.split_once(" {").unwrap();
+            (name, rest.split_once('}').unwrap().0)
+        })
+        .collect();
+    let hosted = contextful_wasm::WORLD.split('/').nth(1).unwrap().split('@').next().unwrap();
+    assert_eq!(hosted, "source-connector");
+    let (_, destination) = worlds.iter().find(|(n, _)| *n == "destination-connector").expect("the destination world is declared");
+    assert!(destination.contains("export destination;"));
+    for (name, body) in &worlds {
+        let reaches = body.contains("destination");
+        assert_eq!(reaches, *name == "destination-connector", "`{name}`: only the destination world names the destination interface");
+        // The host binds the source world and the worlds that include it, never the destination world.
+        let bound = *name == hosted || body.contains(&format!("include {hosted};"));
+        assert!(!(bound && reaches), "`{name}` is hosted and reaches the destination");
+    }
+    assert!(worlds.iter().any(|(n, _)| *n == "configurable-source-connector"));
+}
