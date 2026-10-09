@@ -391,3 +391,55 @@ fn one_keeper_thread_renews_and_feeds_every_open_execution_of_an_engine() {
     assert!(x.resumed(), "the next open under the scope takes over after the lease lapses");
     assert_eq!(engine.keeper.threads(), 1);
 }
+
+/// Two escape hatches exist and no third: `journal.unsafe(label, effect)` for an idempotent read, and a source
+/// declaring that it journals no pull. Each carries its idempotency argument at a greppable call site.
+// spec: run.journal.escape-hatch@273348e9
+#[test]
+fn an_unsafe_read_reruns_on_every_replay_and_each_hatch_states_its_argument() {
+    let rig = Rig::new();
+    let reads = AtomicUsize::new(0);
+    let mut x = rig.engine.open_execution(&host("plan-a", "m-1", "job-1")).unwrap();
+    let id = x.execution_id().to_string();
+    assert_eq!(x.r#unsafe("peek", &mut counted(&reads, b"v1")).unwrap(), b"v1");
+    assert_eq!(x.r#unsafe("peek", &mut counted(&reads, b"v2")).unwrap(), b"v2", "an unsafe read resolves no recorded value");
+    assert_eq!(reads.load(Ordering::SeqCst), 2);
+    assert_eq!(rig.engine.journal.recorded(&id).unwrap(), 0, "an unsafe read records nothing");
+    assert_eq!(x.step("fetch", b"doc", &mut counted(&reads, b"fetched")).unwrap(), b"fetched");
+    assert_eq!(rig.engine.journal.recorded(&id).unwrap(), 1, "a step beside it still records");
+    drop(x);
+
+    // The second hatch: the sources the one constant lists, each with its argument.
+    for (source, why) in contextful_core::pipeline::declare::UNJOURNALED_SOURCES {
+        assert!(why.split_whitespace().count() >= 5, "`{source}` states why replaying its pull needs no recorded batch");
+    }
+    // Every `unsafe` call site in the tree states why its read is idempotent on the line above it.
+    let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../..");
+    for dir in ["crates", "tools"] {
+        for entry in walk(&root.join(dir)) {
+            let text = std::fs::read_to_string(&entry).unwrap_or_default();
+            let lines: Vec<&str> = text.lines().collect();
+            for (i, line) in lines.iter().enumerate() {
+                if line.contains(".r#unsafe(") && !entry.to_string_lossy().contains("/tests/") {
+                    let above = i.checked_sub(1).map(|j| lines[j].trim()).unwrap_or_default();
+                    assert!(above.starts_with("// idempotent:"), "{}:{} carries no `// idempotent:` argument", entry.display(), i + 1);
+                }
+            }
+        }
+    }
+}
+
+fn walk(dir: &std::path::Path) -> Vec<std::path::PathBuf> {
+    let mut out = Vec::new();
+    let Ok(entries) = std::fs::read_dir(dir) else { return out };
+    for e in entries.flatten() {
+        let p = e.path();
+        let name = e.file_name().to_string_lossy().into_owned();
+        if p.is_dir() && name != "target" && name != "node_modules" {
+            out.extend(walk(&p));
+        } else if p.extension().is_some_and(|x| x == "rs") {
+            out.push(p);
+        }
+    }
+    out
+}

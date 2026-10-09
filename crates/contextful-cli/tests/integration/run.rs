@@ -745,3 +745,38 @@ fn a_credentialed_cancel_gates_on_execute_over_the_recorded_pipeline() {
     // The local owner, presenting no credential, stops as before.
     ok(&cf(dir.path(), &["run", "cancel", "live-b", "--project", "research"]));
 }
+
+/// Pull journaling defaults on. A source whose pre-pull cursor cannot name the content it reads opts out through one
+/// constant, pinned against each source's declaration by a test. An empty pull is never journaled.
+// spec: run.journal.opt-out@4367ed31
+#[test]
+fn each_built_in_source_journals_unless_the_one_constant_lists_it_and_an_empty_pull_records_nothing() {
+    use contextful_core::pipeline::declare::{PipelineSpec, UNJOURNALED_SOURCES};
+    use contextful_core::run::journal::Row;
+    use contextful_core::run::ports::JournalStore;
+    for source in contextful_connectors::BUILT_IN {
+        let spec: PipelineSpec = serde_json::from_value(serde_json::json!({ "id": "p", "tables": ["t"], "source": { "name": source, "config": {} } })).unwrap();
+        let listed = UNJOURNALED_SOURCES.iter().any(|(s, _)| *s == source);
+        assert_eq!(spec.journals(), !listed, "source `{source}`");
+    }
+    assert!(UNJOURNALED_SOURCES.iter().all(|(s, _)| contextful_connectors::BUILT_IN.contains(s)), "the constant names only declared sources");
+
+    // A pull with rows records; an empty pull beside it records nothing.
+    let dir = project();
+    std::fs::write(
+        dir.path().join("empty.sh"),
+        "case \"$CONTEXTFUL_STEP\" in pull-0) printf '{\"rows\":[{\"id\":\"a\"}],\"cursor\":\"c1\",\"more\":true}';; pull-1) printf '{\"rows\":[],\"cursor\":\"c2\",\"more\":true}';; *) printf '{\"error\":{\"tag\":\"Permanent\",\"message\":\"feed paused\"}}'; exit 1;; esac\n",
+    )
+    .unwrap();
+    let failed = start(dir.path(), "feed-a.toml", "a1", "2030-01-01T00:00:00Z");
+    assert!(!failed.status.success());
+    assert!(String::from_utf8_lossy(&failed.stderr).contains("feed paused"), "{}", String::from_utf8_lossy(&failed.stderr));
+    let listing: serde_json::Value = serde_json::from_str(&ok(&history(dir.path(), &[]))).unwrap();
+    let execution = listing["runs"][0]["execution_id"].as_str().unwrap();
+    let journal = contextful_engine::stores::FileJournalStore::open(&dir.path().join(".contextful/run/research"));
+    let labels: Vec<String> = journal.rows(execution).unwrap().into_iter().filter_map(|row| match row {
+        Row::Recorded { key, .. } => Some(key.step_label),
+        _ => None,
+    }).collect();
+    assert_eq!(labels, ["pull-0"], "journaling defaults on, and the empty pull-1 records nothing");
+}
