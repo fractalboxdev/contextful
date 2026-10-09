@@ -1141,3 +1141,37 @@ fn only_the_binary_wires_a_catalog_backend_and_everything_else_names_the_port() 
     let port = std::fs::read_to_string(root.join("contextful-core/src/coordinate.rs")).unwrap();
     assert!(port.contains("pub trait Catalog"), "no `Catalog` port");
 }
+
+/// The edge profile is the one profile a function-class target hosts. Execution on such a deployment runs on a worker target.
+///
+/// Every function-class shape under `spec/targets/` lists `edge` alone, and the edge build
+/// links neither the run path nor a component host, so a run reaching such a deployment
+/// executes on a worker target and never in place.
+#[test]
+fn this_repository_function_class_shapes_host_the_edge_profile_and_run_nothing() {
+    let mut function_shapes = Vec::new();
+    for entry in std::fs::read_dir(repo_root().join("spec/targets")).unwrap() {
+        let path = entry.unwrap().path();
+        if path.extension().and_then(|e| e.to_str()) != Some("toml") {
+            continue;
+        }
+        let target: toml::Value = toml::from_str(&std::fs::read_to_string(&path).unwrap()).unwrap();
+        let provider = target["provider"].as_str().unwrap().to_string();
+        for shape in target["shape"].as_array().unwrap() {
+            if shape["kind"].as_str() != Some("function") {
+                continue;
+            }
+            let name = shape["name"].as_str().unwrap();
+            let profiles: Vec<&str> = shape["profiles"].as_array().unwrap().iter().filter_map(|p| p.as_str()).collect();
+            assert_eq!(profiles, ["edge"], "`{provider}` shape `{name}` is function-class and hosts {profiles:?}");
+            function_shapes.push(format!("{provider}/{name}"));
+        }
+    }
+    assert!(!function_shapes.is_empty(), "no target file declares a function-class shape");
+
+    let edge = profile_graph("contextful-edge");
+    assert!(!edge.is_empty(), "`contextful-edge` links no package");
+    for runner in ["contextful-engine", "contextful-connectors", "contextful-wasm", "wasmtime"] {
+        assert!(!edge.iter().any(|n| n == runner), "`contextful-edge` links `{runner}`, so {function_shapes:?} would execute in place");
+    }
+}
