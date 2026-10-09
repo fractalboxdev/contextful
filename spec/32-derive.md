@@ -85,7 +85,7 @@ The derive source: its configuration, the outstanding set recomputed each tick, 
   *A-run*
 - `parent-scan` — A parent table holding at most 1000000 rows is selected by an in-memory scan; a larger one streams through the read engine in batches, so selection holds one batch in memory.
   *A-run*
-- `dry-run` — A dry run of a derive pipeline prints its eligible, already-derived and outstanding unit counts from one selection, calling no engine and landing no row.
+- `dry-run` — `pipeline run --dry-run` on a derive pipeline prints its eligible, already-derived and outstanding unit counts from one selection, calling no engine and landing no row.
   *A-run*
 
 
@@ -163,7 +163,7 @@ Operator-declared argv chains against local binaries: resolution, pinning, envir
   *because a misspelled condition otherwise skips or runs its step silently*
 - `verified-spawn` — Each spawn re-reads its step's binary and runs it only while those bytes match the digest resolved at run start, else {{run.exec.digest-mismatch}}.
 - `engine-id` — An `exec` engine id reads `exec:<name>@<prefix>`, the prefix being 12 chars of lowercase hex over every step's binary digest and arguments.
-- `vendor-deadline` — A vendor engine reached over HTTP holds a request deadline of its own, clipped to the time {{run.exec.chain-deadline}} leaves, so a stalled vendor fails its unit before the chain elapses.
+- `vendor-deadline` — A vendor engine, a binding naming an `endpoint_host`, holds `request_timeout_secs` as its engine step's deadline, clipped to the time {{run.exec.chain-deadline}} leaves, so a stalled vendor fails its unit before the chain elapses.
   *because a chain deadline alone lets one stalled vendor call spend the unit's whole budget with no step to name*
 
 ```mermaid
@@ -275,7 +275,7 @@ The derived row and marker, the unit status, attempt accounting, citation keys a
   *A-run*
 - `parent-tombstone` — A fold drops derived rows whose parent key is absent or tombstoned in the parent table, then rebuilds their sidecars.
   *A-run*
-- `derived-id` — Every passage and marker row carries `derived_id`, lowercase hex SHA-256 over its `unit_ref`, `derivation_key` and `cue_seq`, and a derive table's sidecar names `derived_id` as its `id_column`.
+- `derived-id` — Every passage and marker row keyed as {{run.emit.primary-key}} carries `derived_id`, lowercase hex SHA-256 over its `unit_ref`, `derivation_key` and `cue_seq`, and a sidecar over such a table defaults its `id_column` to `derived_id`.
   *because a sidecar re-joins on one column, and a producer column outside the reserved underscore namespace needs no store change*
 
 #### Scenarios

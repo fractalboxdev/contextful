@@ -40,6 +40,7 @@ fn row(run_id: &str, st: RunStatus) -> RunRow {
         fetched: 0,
         kept: 0,
         declined: Default::default(),
+        audit: Vec::new(),
         error_kind: None,
         error_message: None,
         connector_id: "vendor".into(),

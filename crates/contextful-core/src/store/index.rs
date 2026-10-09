@@ -431,7 +431,8 @@ impl TableDecl {
 
     /// The one identifier column every sidecar of the table shares: each declaration's
     /// `id_column`, defaulting to a single-column primary key on a table declaring no
-    /// `valid_time` (`store.index.id-column`). `None` when the table declares no sidecar.
+    /// `valid_time` (`store.index.id-column`), and to `derived_id` on a table keyed as a
+    /// derive output table (`run.emit.derived-id`). `None` when the table declares no sidecar.
     ///
     /// A valid-time table keeps one row per key and valid-time line
     /// (`store.fold.valid-time-line`), so its key repeats within a snapshot and names no
@@ -441,7 +442,8 @@ impl TableDecl {
             [k] => Some(k.as_str()),
             _ => None,
         };
-        let default = single_key.filter(|_| self.valid_time.is_none());
+        let derived = (self.primary_key() == crate::run::derive::config::DERIVE_PRIMARY_KEY).then_some(crate::run::derive::emit::DERIVED_ID);
+        let default = single_key.filter(|_| self.valid_time.is_none()).or(derived);
         let mut resolved: Option<&str> = None;
         for idx in self.indexes() {
             let Some(id) = idx.id_column.as_deref().or(default) else {

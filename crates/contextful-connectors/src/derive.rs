@@ -6,16 +6,16 @@
 use contextful_core::connector::attach::{scrub, Allowlist};
 use contextful_core::connector::meter::LimiterDeclaration;
 use contextful_core::connector::reference::Template;
-use contextful_core::run::derive::config::{Binding, DeriveConfig, OutputFormat, StepSpec, Task};
+use contextful_core::run::derive::config::{Binding, DeriveConfig, OutputFormat, StepSpec, Task, PARENT_SCAN_ROWS};
 use contextful_core::run::derive::cues::{parse, passages};
 use contextful_core::run::derive::emit::{
-    check_last_error, document_status, marker_row, passage_rows, revived, select, Derivation, Unit, UnitStatus, DERIVATION_KEY, KIND, OUTPUT_COLUMNS,
+    check_last_error, derived_id, document_status, marker_row, passage_rows, revived, Counts, Derivation, Selection, Selector, Unit, UnitStatus, DERIVATION_KEY, DERIVED_ID, KIND, OUTPUT_COLUMNS,
 };
 use contextful_core::run::derive::engine::{bound_confidence, check_advisory_zone, settle, EngineError, Port, Settled, Upstream};
 use contextful_core::run::derive::exec::{
-    engine_id, excerpt, expand, is_url, Condition, StepFiles, CAPTURED_OUTPUT_BYTES, CHAIN_DEADLINE_SECS,
+    engine_id, excerpt, expand, is_url, vendor_deadline, ChainAudit, Condition, StepFiles, CAPTURED_OUTPUT_BYTES, CHAIN_DEADLINE_SECS,
 };
-use contextful_core::run::derive::task::{host_revived, host_rows, landing_order, select_host, DeriveTask, Derived, HostUnit};
+use contextful_core::run::derive::task::{host_revived, host_rows, landing_order, select_host, DeriveTask, Derived, HostSelection, HostUnit};
 use contextful_core::run::journal::sha256_hex;
 use contextful_core::run::ports::{Cancellation, PullRequest, Row, Source, TableReader};
 use contextful_core::run::{Failure, FailureTag, RunError};
@@ -118,6 +118,8 @@ pub struct Chain {
     pub deadline: Duration,
     pub max_output: u64,
     pub id: String,
+    /// The binding, which the engine step's vendor deadline reads.
+    pub binding: Binding,
 }
 
 impl Chain {
@@ -139,6 +141,7 @@ impl Chain {
             deadline: Duration::from_secs(b.timeout_secs.unwrap_or(CHAIN_DEADLINE_SECS)),
             max_output: b.max_output_bytes.unwrap_or(CAPTURED_OUTPUT_BYTES),
             id: engine_id(name, &steps),
+            binding: b.clone(),
         })
     }
 }
@@ -216,8 +219,9 @@ fn verify(label: &str, step: &Step) -> Result<(), RunError> {
     Ok(())
 }
 
-/// Run one step to completion within `deadline`, returning its standard output.
-fn run_step(label: &str, step: &Step, files: &StepFiles, env: &[(String, String)], max_output: u64, deadline: Instant, cancel: &dyn Cancellation) -> Result<Vec<u8>, ChainError> {
+/// Run one step to completion within `deadline`, returning its standard output and noting
+/// its standard error, when it wrote any, in `notes`.
+fn run_step(label: &str, step: &Step, files: &StepFiles, env: &[(String, String)], max_output: u64, deadline: Instant, cancel: &dyn Cancellation, notes: &mut Vec<String>) -> Result<Vec<u8>, ChainError> {
     if cancel.requested() {
         return Err(ChainError::Canceled);
     }
@@ -256,7 +260,7 @@ fn run_step(label: &str, step: &Step, files: &StepFiles, env: &[(String, String)
         if Instant::now() >= deadline {
             stop(&mut child);
             let _ = (out.join(), err.join());
-            return Err(RunError::DeriveStepTimeout(format!("step `{label}` was running when the chain's deadline passed; its process group is reaped")).into());
+            return Err(RunError::DeriveStepTimeout(format!("step `{label}` was running when its deadline passed; its process group is reaped")).into());
         }
         match child.try_wait() {
             Ok(Some(s)) => break s,
@@ -275,6 +279,9 @@ fn run_step(label: &str, step: &Step, files: &StepFiles, env: &[(String, String)
     if !status.success() {
         return Err(RunError::DeriveStepExit(format!("step `{label}` exited {status}: {}", excerpt(&stderr))).into());
     }
+    if !stderr.trim_ascii().is_empty() {
+        notes.push(format!("step `{label}`: {}", excerpt(&stderr)));
+    }
     Ok(stdout)
 }
 
@@ -287,6 +294,11 @@ fn head(input: &Path) -> Option<Vec<u8>> {
 
 /// Run a unit's chain over `media` and return the engine's cue document.
 pub fn run_chain(chain: &Chain, media: &Path, env: &[(String, String)], scratch: &Path, cancel: &dyn Cancellation) -> Result<String, ChainError> {
+    run_chain_noted(chain, media, env, scratch, cancel, &mut Vec::new())
+}
+
+/// [`run_chain`], noting each step's standard error in `notes` for the run audit.
+pub fn run_chain_noted(chain: &Chain, media: &Path, env: &[(String, String)], scratch: &Path, cancel: &dyn Cancellation, notes: &mut Vec<String>) -> Result<String, ChainError> {
     let deadline = Instant::now() + chain.deadline;
     let mut input = media.to_path_buf();
     for (i, step) in chain.preprocess.iter().enumerate() {
@@ -301,20 +313,21 @@ pub fn run_chain(chain: &Chain, media: &Path, env: &[(String, String)], scratch:
         let stem = scratch.join(format!("step-{i}"));
         let output = step.output_path.as_deref().map(|p| p.replace("{output_stem}", &stem.to_string_lossy())).unwrap_or_else(|| stem.to_string_lossy().into_owned());
         let files = StepFiles { input: input.to_string_lossy().into_owned(), output: output.clone(), output_stem: stem.to_string_lossy().into_owned() };
-        run_step(&label, step, &files, env, chain.max_output, deadline, cancel)?;
+        run_step(&label, step, &files, env, chain.max_output, deadline, cancel, notes)?;
         if !Path::new(&output).is_file() {
             return Err(RunError::DeriveStepProducedNothing(format!("step `{label}` exited zero and wrote no `{output}`")).into());
         }
         input = PathBuf::from(output);
     }
     let stem = scratch.join("engine");
+    let engine_deadline = Instant::now() + vendor_deadline(&chain.binding, deadline.saturating_duration_since(Instant::now()));
     let output = chain.engine.output_path.as_deref().map(|p| p.replace("{output_stem}", &stem.to_string_lossy()));
     let files = StepFiles {
         input: input.to_string_lossy().into_owned(),
         output: output.clone().unwrap_or_default(),
         output_stem: stem.to_string_lossy().into_owned(),
     };
-    let stdout = run_step("engine", &chain.engine, &files, env, chain.max_output, deadline, cancel)?;
+    let stdout = run_step("engine", &chain.engine, &files, env, chain.max_output, engine_deadline, cancel, notes)?;
     let bytes = match output {
         Some(path) => std::fs::read(&path).map_err(|_| RunError::DeriveStepProducedNothing(format!("the engine exited zero and wrote no `{path}`")))?,
         None => stdout,
@@ -573,12 +586,21 @@ impl DeriveSource {
         Some(format!("{:x}", digest.finalize()))
     }
 
-    /// Derive one unit into its rows; a run stop yields none.
-    fn derive_unit(&self, chain: &Chain, env: &[(String, String)], unit: &Unit, cancel: &dyn Cancellation) -> Result<Vec<Row>, Failure> {
+    /// Derive one unit into its rows, recording its captured output and any step failure
+    /// on `audit`; a run stop yields none.
+    fn derive_unit(&self, chain: &Chain, env: &[(String, String)], unit: &Unit, cancel: &dyn Cancellation, audit: &mut ChainAudit) -> Result<Vec<Row>, Failure> {
+        let mut notes = Vec::new();
         let outcome = self.media_path(&unit.media).map_err(ChainError::Unit).and_then(|media| {
             let scratch = tempfile::Builder::new().prefix("contextful-derive-").tempdir().map_err(|e| RunError::Invalid(format!("scratch directory: {e}")))?;
-            run_chain(chain, &media, env, scratch.path(), cancel)
+            run_chain_noted(chain, &media, env, scratch.path(), cancel, &mut notes)
         });
+        let unsecret = |text: &str| env.iter().filter(|(_, v)| v.len() >= 4).fold(text.to_string(), |t, (k, v)| t.replace(v.as_str(), &format!("${k}")));
+        for note in &notes {
+            audit.record(&unit.key, &unsecret(note));
+        }
+        if let Err(ChainError::Unit(e)) = &outcome {
+            audit.record(&unit.key, &unsecret(&e.to_string()));
+        }
         Ok(match outcome {
             Ok(doc) => {
                 let parsed = parse(&doc);
@@ -596,7 +618,7 @@ impl DeriveSource {
                 Settled::EndRun(why) => return Err(Failure::new(FailureTag::Transient, format!("deriving `{}`: {why}", unit.key))),
                 Settled::Unit(why) => vec![marker_row(unit, UnitStatus::Failed, Some(&why), true, &chain.id)],
             },
-            Err(ChainError::Unit(e)) => vec![marker_row(unit, UnitStatus::Failed, Some(&e.to_string()), true, &chain.id)],
+            Err(ChainError::Unit(e)) => vec![marker_row(unit, UnitStatus::Failed, Some(&unsecret(&e.to_string())), true, &chain.id)],
         })
     }
 
@@ -617,7 +639,7 @@ impl DeriveSource {
                 if title.is_some() || description.is_some() {
                     let text = [title.as_deref(), description.as_deref()].into_iter().flatten().collect::<Vec<_>>().join(". ");
                     let value = serde_json::json!({
-                        "unit_ref": unit.key, "cue_seq": 0, "kind": "passage", "unit_status": "ok",
+                        "unit_ref": unit.key, "cue_seq": 0, "kind": "passage", "unit_status": "ok", DERIVED_ID: derived_id(&unit.key, &unit.derivation_key, 0),
                         "attempts": unit.prior_attempts + 1, "engine_id": engine_id,
                         DERIVATION_KEY: unit.derivation_key, "url": scrub(&url),
                         "title": title, "description": description, "text": text, "_modality": "text",
@@ -630,7 +652,7 @@ impl DeriveSource {
                     }
                     let (image_url, probe_status) = probe_image(&url, &candidate, image_allow.as_ref(), &self.mediation, self.config.grant.as_ref(), timeout, probe_bytes);
                     let value = serde_json::json!({
-                        "unit_ref": unit.key, "cue_seq": rows.len() as i64, "kind": "passage", "unit_status": "ok",
+                        "unit_ref": unit.key, "cue_seq": rows.len() as i64, "kind": "passage", "unit_status": "ok", DERIVED_ID: derived_id(&unit.key, &unit.derivation_key, rows.len() as i64),
                         "attempts": unit.prior_attempts + 1, "engine_id": engine_id,
                         DERIVATION_KEY: unit.derivation_key, "url": scrub(&url),
                         "image_url": image_url, "probe_status": probe_status, "_modality": "image",
@@ -649,7 +671,45 @@ impl DeriveSource {
     }
 }
 
+/// Read `table`'s rows into `each`: in memory up to 1000000 rows, in the reader's batches
+/// above (`run.select.parent-scan`).
+fn scan_parents(reader: &dyn TableReader, table: &str, columns: &[&str], each: &mut dyn FnMut(Vec<Row>) -> Result<(), Failure>) -> Result<(), Failure> {
+    if reader.row_count(table)?.is_some_and(|n| n > PARENT_SCAN_ROWS) {
+        reader.row_batches(table, columns, each)
+    } else {
+        each(reader.rows(table, columns)?)
+    }
+}
+
 impl DeriveSource {
+    /// This tick's selection, its parents scanned per {{run.select.parent-scan}}.
+    fn selection(&self, derivation: &Derivation) -> Result<Selection, Failure> {
+        let derived = self.reader.rows(&self.output_table, &OUTPUT_COLUMNS)?;
+        let mut selector = Selector::new(&derived, &self.config, derivation);
+        let columns = [self.config.parent_id_column.as_str(), self.config.media_column.as_str(), DERIVATION_KEY];
+        scan_parents(self.reader.as_ref(), &self.config.source_table, &columns, &mut |mut parents| {
+            if matches!(self.config.task, Task::Transcribe) {
+                for parent in &mut parents {
+                    let Some(media) = parent.get(&self.config.media_column).and_then(serde_json::Value::as_str) else { continue };
+                    if let Some(digest) = self.local_content_digest(media) {
+                        let prior = parent.get(DERIVATION_KEY).cloned();
+                        parent.insert(DERIVATION_KEY.into(), serde_json::json!({"parent": prior, "local_sha256": digest}).to_string().into());
+                    }
+                }
+            }
+            selector.feed(&parents);
+            Ok(())
+        })?;
+        Ok(selector.finish())
+    }
+
+    /// The unit counts one selection yields, calling no engine and landing no row
+    /// (`run.select.dry-run`).
+    pub fn plan(&self) -> Result<Counts, Failure> {
+        let derivation = self.derivation().map_err(refused)?;
+        Ok(self.selection(&derivation)?.counts)
+    }
+
     fn pull_once(&self, cancel: &dyn Cancellation) -> Result<(Vec<u8>, bool), Failure> {
         self.validate_identity().map_err(refused)?;
         if self.config.task == Task::LinkPreview && (self.mediation.hook.is_none() || self.mediation.run_id.as_deref().is_none_or(str::is_empty)) {
@@ -667,18 +727,7 @@ impl DeriveSource {
             Some(chain) => self.derivation_of(chain),
             None => self.derivation().map_err(refused)?,
         };
-        let mut parents = self.reader.rows(&self.config.source_table, &[&self.config.parent_id_column, &self.config.media_column, DERIVATION_KEY])?;
-        if matches!(self.config.task, Task::Transcribe) {
-            for parent in &mut parents {
-                let Some(media) = parent.get(&self.config.media_column).and_then(serde_json::Value::as_str) else { continue };
-                if let Some(digest) = self.local_content_digest(media) {
-                    let prior = parent.get(DERIVATION_KEY).cloned();
-                    parent.insert(DERIVATION_KEY.into(), serde_json::json!({"parent": prior, "local_sha256": digest}).to_string().into());
-                }
-            }
-        }
-        let derived = self.reader.rows(&self.output_table, &OUTPUT_COLUMNS)?;
-        let sel = select(&parents, &derived, &self.config, &derivation);
+        let sel = self.selection(&derivation)?;
         for e in &sel.incomplete {
             eprintln!("{}: {e}", self.pipeline_id);
         }
@@ -690,6 +739,7 @@ impl DeriveSource {
         }
         let started = Instant::now();
         let budget = self.config.max_seconds_per_run.map(Duration::from_secs);
+        let mut audit = ChainAudit::default();
         let mut derived_units = Vec::new();
         for unit in &sel.outstanding {
             if cancel.requested() {
@@ -699,7 +749,7 @@ impl DeriveSource {
                 break;
             }
             let rows = match (&chain, &allow) {
-                (Some(chain), _) => self.derive_unit(chain, &env, unit, cancel)?,
+                (Some(chain), _) => self.derive_unit(chain, &env, unit, cancel, &mut audit)?,
                 (_, Some(allow)) => self.fetch_unit(allow, unit, cancel)?,
                 _ => unreachable!("a derive source names one built-in driver"),
             };
@@ -719,7 +769,10 @@ impl DeriveSource {
         }
         check_advisory_zone(&self.config.engine, &self.binding, &rows).map_err(refused)?;
         let produced = !rows.is_empty();
-        serde_json::to_vec(&serde_json::json!({ "rows": rows, "more": false, "skipped": sel.incomplete.len() }))
+        if audit.dropped() > 0 {
+            eprintln!("{}: {} captured-output entries past the run audit's bound are discarded", self.pipeline_id, audit.dropped());
+        }
+        serde_json::to_vec(&serde_json::json!({ "rows": rows, "more": false, "skipped": sel.incomplete.len(), "audit": audit.into_entries() }))
             .map(|bytes| (bytes, produced))
             .map_err(|e| Failure::new(FailureTag::Permanent, e.to_string()))
     }
@@ -749,6 +802,49 @@ pub struct HostDerive {
 }
 
 impl HostDerive {
+    /// This tick's host selection, its parents scanned per {{run.select.parent-scan}}: each
+    /// batch selects within the row budget the earlier batches left.
+    fn selection(&self, columns: &[&str], marker_table: &str) -> Result<HostSelection, Failure> {
+        let markers = self.reader.rows(marker_table, &OUTPUT_COLUMNS)?;
+        let mut sel = HostSelection::default();
+        let mut seen = std::collections::BTreeSet::new();
+        scan_parents(self.reader.as_ref(), &self.config.source_table, columns, &mut |parents| {
+            let fresh: Vec<Row> = parents
+                .into_iter()
+                .filter(|r| r.get(&self.config.parent_id_column).map(|k| seen.insert(k.to_string())).unwrap_or(true))
+                .collect();
+            let room = self.config.max_rows_per_run - sel.outstanding.len() as i64;
+            let batch = select_host(&fresh, &markers, &DeriveConfig { max_rows_per_run: room.max(0), ..self.config.clone() }, self.task.as_ref());
+            sel.outstanding.extend(batch.outstanding.into_iter().take(room.max(0) as usize));
+            sel.incomplete.extend(batch.incomplete);
+            sel.counts.eligible += batch.counts.eligible;
+            sel.counts.derived += batch.counts.derived;
+            sel.counts.outstanding += batch.counts.outstanding;
+            Ok(())
+        })?;
+        Ok(sel)
+    }
+
+    /// The unit counts one host selection yields, deriving nothing (`run.select.dry-run`).
+    pub fn plan(&self) -> Result<Counts, Failure> {
+        let (columns, marker_table) = self.wanted();
+        let wanted: Vec<&str> = columns.iter().map(String::as_str).collect();
+        Ok(self.selection(&wanted, &marker_table)?.counts)
+    }
+
+    /// The parent columns a unit reads and the store table its markers land in.
+    fn wanted(&self) -> (Vec<String>, String) {
+        let task = self.task.as_ref();
+        let mut columns: Vec<String> = vec![self.config.parent_id_column.clone(), DERIVATION_KEY.to_string()];
+        columns.extend(task.columns());
+        for column in self.retention_columns.values().filter(|c| c.as_str() != "_ingested_at") {
+            if !columns.contains(column) {
+                columns.push(column.clone());
+            }
+        }
+        (columns, self.store_table(&task.marker_table()))
+    }
+
     fn store_table(&self, table: &str) -> String {
         self.tables.get(table).cloned().unwrap_or_else(|| table.to_string())
     }
@@ -758,18 +854,9 @@ impl HostDerive {
     pub fn stage(&self, cancel: &dyn Cancellation) -> Result<(Vec<(String, Vec<Row>)>, u64), Failure> {
         let task = self.task.as_ref();
         let name = self.config.task.name().to_string();
-        let marker_table = self.store_table(&task.marker_table());
-        let mut columns: Vec<String> = vec![self.config.parent_id_column.clone(), DERIVATION_KEY.to_string()];
-        columns.extend(task.columns());
-        for column in self.retention_columns.values().filter(|c| c.as_str() != "_ingested_at") {
-            if !columns.contains(column) {
-                columns.push(column.clone());
-            }
-        }
+        let (columns, marker_table) = self.wanted();
         let wanted: Vec<&str> = columns.iter().map(String::as_str).collect();
-        let parents = self.reader.rows(&self.config.source_table, &wanted)?;
-        let markers = self.reader.rows(&marker_table, &OUTPUT_COLUMNS)?;
-        let sel = select_host(&parents, &markers, &self.config, task);
+        let sel = self.selection(&wanted, &marker_table)?;
         for e in &sel.incomplete {
             eprintln!("{}: {e}", self.pipeline_id);
         }

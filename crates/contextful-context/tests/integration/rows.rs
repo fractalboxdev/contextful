@@ -74,3 +74,25 @@ fn a_table_read_carries_only_the_named_columns() {
     let rows = table_rows(&f.store, &d, &["doc_id", "path", "absent"]).unwrap();
     assert_eq!(serde_json::Value::Object(rows[0].clone()), json!({"doc_id": "d1", "path": "a.txt"}));
 }
+
+/// A table counts its rows from part footers and hands them over one record batch at a time, in the order a
+/// whole read returns them.
+#[test]
+fn a_table_counts_its_rows_and_streams_them_batch_by_batch() {
+    use contextful_context::rows::{table_row_batches, table_row_count};
+    let f = Fixture::new();
+    let d = decl("name = \"documents\"");
+    assert_eq!(table_row_count(&f.store, &d).unwrap(), 0);
+    f.land(&d, "r1", json!([{"doc_id": "d1", "path": "a.txt"}, {"doc_id": "d2", "path": "b.txt"}]), "2026-01-01T00:00:00Z").unwrap();
+    f.land(&d, "r2", json!([{"doc_id": "d3", "path": "c.txt"}]), "2026-01-02T00:00:00Z").unwrap();
+    assert_eq!(table_row_count(&f.store, &d).unwrap(), 3);
+    let mut batches = Vec::new();
+    table_row_batches(&f.store, &d, &["doc_id"], &mut |rows| {
+        batches.push(rows);
+        Ok(())
+    })
+    .unwrap();
+    assert!(batches.len() >= 2, "each part is read apart: {batches:?}");
+    let streamed: Vec<_> = batches.concat();
+    assert_eq!(streamed, table_rows(&f.store, &d, &["doc_id"]).unwrap());
+}

@@ -32,6 +32,8 @@ pub(crate) struct Tally {
     pub kept: u64,
     /// Every pull's declined tally, summed by extension (`connector.source.declined-tally`).
     pub declined: std::collections::BTreeMap<String, u64>,
+    /// Every pull's audit entries, in pull order (`run.exec.audit-entries`).
+    pub audit: Vec<String>,
 }
 
 /// A failure an execution closes on.
@@ -186,6 +188,7 @@ impl<J: JournalStore, B: BlobStore> Engine<J, B> {
             fetched: 0,
             kept: 0,
             declined: Default::default(),
+            audit: Vec::new(),
             error_kind: None,
             error_message: None,
             connector_id: connector.id,
@@ -447,6 +450,7 @@ impl<'e, J: JournalStore, B: BlobStore> Execution<'e, J, B> {
                     r.fetched = tally.fetched;
                     r.kept = tally.kept;
                     r.declined = tally.declined.clone();
+                    r.audit = tally.audit.clone();
                 }
                 Err(close) => {
                     let (tag, message) = close.recorded();

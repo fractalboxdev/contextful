@@ -14,6 +14,8 @@ pub const ROWS_PER_RUN: i64 = 25;
 pub const ATTEMPTS_PER_UNIT: i64 = 3;
 /// Wall clock the unit loop holds for `link_preview`: 300 s (`run.select.seconds-per-run`).
 pub const LINK_SECONDS_PER_RUN: u64 = 300;
+/// Parent rows selection scans in memory before streaming: 1000000 rows (`run.select.parent-scan`).
+pub const PARENT_SCAN_ROWS: u64 = 1_000_000;
 
 /// The keys a derive source reads.
 pub const KEYS: [&str; 10] =

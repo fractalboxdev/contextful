@@ -162,6 +162,9 @@ pub enum RunError {
     /// A link engine returning the engine-unavailable variant. (`run.bind.engine-unavailable`)
     #[error("DeriveLinkEngineUnavailable: {0}")]
     DeriveLinkEngineUnavailable(String),
+    /// An engine reaching wider than its source table's zones. (`run.bind.locality-wider`)
+    #[error("DeriveLocalityWider: {0}")]
+    DeriveLocalityWider(String),
     /// A row zone taken from the operator's advisory key. (`run.bind.advisory-zone`)
     #[error("DeriveAdvisoryZone: {0}")]
     DeriveAdvisoryZone(String),

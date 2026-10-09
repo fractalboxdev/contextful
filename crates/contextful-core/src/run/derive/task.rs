@@ -4,7 +4,7 @@
 
 use super::config::{DeriveConfig, check_output_table, check_reserved_discriminator};
 use super::emit::{
-    DERIVATION_KEY, EMPTY_ATTEMPTS, KIND, MARKER_SEQ, UnitStatus, by_unit, redact, standing,
+    DERIVATION_KEY, DERIVED_ID, EMPTY_ATTEMPTS, KIND, MARKER_SEQ, UnitStatus, by_unit, derived_id, redact, standing,
 };
 use crate::run::RunError;
 use crate::run::journal::sha256_hex;
@@ -125,6 +125,8 @@ pub struct HostSelection {
     pub outstanding: Vec<HostUnit>,
     /// Parent rows skipped for a missing key.
     pub incomplete: Vec<RunError>,
+    /// The counts a dry run prints (`run.select.dry-run`).
+    pub counts: super::emit::Counts,
 }
 
 /// The outstanding host units of one tick: every parent row holding no settled marker under
@@ -151,14 +153,19 @@ pub fn select_host(
         if !seen.insert(key.clone()) {
             continue;
         }
+        sel.counts.eligible += 1;
         let derivation_key = host_key(config.task.name(), task.version(), &key, r, &columns);
         let prior = match units.get(&key) {
             None => 0,
             Some(rows) => match standing(rows, &derivation_key, config.max_attempts) {
-                None => continue,
+                None => {
+                    sel.counts.derived += 1;
+                    continue;
+                }
                 Some(attempts) => attempts,
             },
         };
+        sel.counts.outstanding += 1;
         sel.outstanding.push(HostUnit {
             key,
             row: r.clone(),
@@ -218,6 +225,7 @@ pub fn host_marker(
     .cloned()
     .unwrap_or_default();
     stamp(&mut row, unit, version);
+    row.insert(DERIVED_ID.into(), json!(derived_id(&unit.key, &unit.derivation_key, MARKER_SEQ)));
     row
 }
 

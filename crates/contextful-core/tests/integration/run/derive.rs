@@ -823,6 +823,59 @@ fn a_second_table_beside_the_output_table_refuses() {
     assert!(matches!(check_single_output("doc-text", &[]), Err(RunError::Invalid(_))));
 }
 
+/// An engine whose declared locality is wider than the zones its source table admits raises `DeriveLocalityWider`
+/// at build, naming the engine, its locality and the table.
+// spec: run.bind.locality-wider@aab2d682
+#[test]
+fn an_engine_reaching_past_its_source_tables_zones_refuses() {
+    use contextful_core::place::AllowSet;
+    use contextful_core::run::derive::engine::{check_locality, engine_locality};
+    let local = bindings("[derive.asr]\ndriver = \"exec\"\n").unwrap().remove("asr").unwrap();
+    let vendor = bindings("[derive.asr]\ndriver = \"exec\"\nendpoint_host = \"api.speech.example\"\n").unwrap().remove("asr").unwrap();
+    let fetch = bindings("[derive.asr]\ndriver = \"fetch\"\n").unwrap().remove("asr").unwrap();
+    assert_eq!(engine_locality(&vendor).unwrap().unwrap().labels(), ["public-cloud:api.speech.example"]);
+    assert!(engine_locality(&fetch).unwrap().is_none(), "a link reader sends a parent's address, no content");
+    let closed = AllowSet::fail_closed();
+    assert!(check_locality("asr", &local, "recordings", &closed).is_ok());
+    assert!(check_locality("asr", &fetch, "recordings", &closed).is_ok());
+    match check_locality("asr", &vendor, "recordings", &closed) {
+        Err(RunError::DeriveLocalityWider(m)) => {
+            for name in ["`asr`", "public-cloud:api.speech.example", "`recordings`", "local:device"] {
+                assert!(m.contains(name), "{name}: {m}");
+            }
+        }
+        other => panic!("{other:?}"),
+    }
+    let cloud = AllowSet::parse(&["local:device".into(), "public-cloud:*".into()]).unwrap();
+    assert!(check_locality("asr", &vendor, "recordings", &cloud).is_ok());
+    let other_host = AllowSet::parse(&["public-cloud:api.other.example".into()]).unwrap();
+    assert!(matches!(check_locality("asr", &vendor, "recordings", &other_host), Err(RunError::DeriveLocalityWider(_))));
+}
+
+/// Every passage and marker row keyed as {{run.emit.primary-key}} carries `derived_id`, lowercase hex SHA-256 over
+/// its `unit_ref`, `derivation_key` and `cue_seq`, and a sidecar over such a table defaults its `id_column` to
+/// `derived_id`.
+// spec: run.emit.derived-id@aa6997ae
+#[test]
+fn every_derived_row_carries_one_identifying_column_its_sidecars_default_to() {
+    use contextful_core::run::derive::emit::{derived_id, DERIVED_ID};
+    let unit = Unit { key: "doc1".into(), media: "a.wav".into(), prior_attempts: 0, derivation_key: "k1".into() };
+    let cues = vec![Cue { start_ms: 0, end_ms: 1000, text: "one".into() }, Cue { start_ms: 1000, end_ms: 2000, text: "two".into() }];
+    let rows = passage_rows(&unit, &cues, "exec:x@0");
+    let marker = marker_row(&unit, UnitStatus::Failed, None, true, "exec:x@0");
+    let ids: Vec<&str> = rows.iter().chain([&marker]).map(|r| r[DERIVED_ID].as_str().unwrap()).collect();
+    assert_eq!(ids, [derived_id("doc1", "k1", 0), derived_id("doc1", "k1", 1), derived_id("doc1", "k1", -1)]);
+    assert!(ids.iter().all(|id| id.len() == 64 && id.chars().all(|c| c.is_ascii_hexdigit() && !c.is_ascii_uppercase())));
+    assert_ne!(derived_id("doc1", "k1", 0), derived_id("doc1", "k2", 0), "a re-derived unit's rows take new ids");
+    let derive_table = TableDecl::parse_pipeline(
+        "[[pipeline.tables]]\nname = \"passages\"\nprimary_key = [\"unit_ref\", \"derivation_key\", \"cue_seq\"]\n\
+         [[pipeline.tables.indexes]]\nkind = \"fulltext\"\ncolumn = \"text\"\n",
+    )
+    .unwrap()
+    .remove(0);
+    assert_eq!(derive_table.id_column().unwrap(), Some(DERIVED_ID));
+}
+
 /// A non-null `last_error` write that has not passed address redaction raises `DeriveUnredactedError`.
 // spec: run.emit.unredacted-error@51bad6f9
 #[test]

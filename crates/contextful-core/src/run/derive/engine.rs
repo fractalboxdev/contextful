@@ -3,6 +3,7 @@
 //! ranges before a row lands.
 
 use super::config::Binding;
+use crate::place::{AllowSet, Entry};
 use crate::run::ports::Row;
 use crate::run::RunError;
 use serde_json::Value;
@@ -102,6 +103,34 @@ pub fn check_advisory_zone(engine: &str, binding: &Binding, rows: &[Row]) -> Res
     if rows.iter().any(|r| r.get(ZONE).and_then(Value::as_str) == Some(advisory)) {
         return Err(RunError::DeriveAdvisoryZone(format!(
             "engine `{engine}` rows carry zone `{advisory}` from the binding's advisory `zone` key; the adapter writes a row's zone"
+        )));
+    }
+    Ok(())
+}
+
+/// The zones an engine's adapter declares a unit's content reaches: `public-cloud:<host>`
+/// for a chain naming an `endpoint_host`, `local:device` for a chain on this machine, and
+/// none for a `fetch` reader, which sends a parent's address and no content.
+pub fn engine_locality(binding: &Binding) -> Result<Option<AllowSet>, RunError> {
+    if binding.driver == "fetch" {
+        return Ok(None);
+    }
+    let entry = match &binding.endpoint_host {
+        Some(host) => Entry::parse(&format!("public-cloud:{host}")).map_err(|e| RunError::Invalid(e.to_string()))?,
+        None => Entry::LocalDevice,
+    };
+    Ok(Some(AllowSet::of(vec![entry])))
+}
+
+/// Refuse an engine whose declared locality is wider than the zones `table` admits
+/// (`run.bind.locality-wider`).
+pub fn check_locality(engine: &str, binding: &Binding, table: &str, admitted: &AllowSet) -> Result<(), RunError> {
+    let Some(locality) = engine_locality(binding)? else { return Ok(()) };
+    if !locality.within(admitted) {
+        return Err(RunError::DeriveLocalityWider(format!(
+            "engine `{engine}` reaches [{}], wider than the zones [{}] source table `{table}` admits",
+            locality.labels().join(", "),
+            admitted.labels().join(", ")
         )));
     }
     Ok(())

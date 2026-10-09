@@ -124,6 +124,32 @@ pub fn batch_rows(batch: &RecordBatch, columns: &[&str]) -> Result<Vec<Map<Strin
         .collect()
 }
 
+/// The rows `decl`'s table holds across its current file list, read from part footers.
+pub fn table_row_count(store: &Store, decl: &TableDecl) -> Result<u64> {
+    if store.try_schema(&decl.name)?.is_none() {
+        return Ok(0);
+    }
+    let s = scan(store, decl, Bounds::default())?;
+    let mut total = 0u64;
+    for f in &s.files {
+        total = total.saturating_add(store.parquet_row_count(&store.logical_path(f)?)?);
+    }
+    Ok(total)
+}
+
+/// Every row of `decl`'s table, handed to `each` one record batch at a time in file order,
+/// holding the named columns (`run.select.parent-scan`).
+pub fn table_row_batches(store: &Store, decl: &TableDecl, columns: &[&str], each: &mut dyn FnMut(Vec<Map<String, Value>>) -> Result<()>) -> Result<()> {
+    if store.try_schema(&decl.name)?.is_none() {
+        return Ok(());
+    }
+    let s = scan(store, decl, Bounds::default())?;
+    for f in &s.files {
+        store.each_parquet_batch(&store.logical_path(f)?, &mut |batch| each(batch_rows(&batch, columns)?))?;
+    }
+    Ok(())
+}
+
 /// Every row of `decl`'s table across its current file list, holding the named columns.
 /// A table with no `schema.json` reads as no rows.
 pub fn table_rows(store: &Store, decl: &TableDecl, columns: &[&str]) -> Result<Vec<Map<String, Value>>> {

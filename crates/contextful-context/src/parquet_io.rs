@@ -164,6 +164,22 @@ pub fn read_with_key(path: &Path, key: Option<&[u8]>) -> Result<Vec<RecordBatch>
     }
 }
 
+/// The rows a store part holds, read from its footer.
+pub fn row_count_with_key(path: &Path, key: Option<&[u8]>) -> Result<u64> {
+    let b = builder_with_key(path, key)?;
+    Ok(u64::try_from(b.metadata().file_metadata().num_rows()).unwrap_or(0))
+}
+
+/// Hand each record batch of a store part to `each` as it decodes, holding one at a time.
+pub fn each_batch_with_key(path: &Path, key: Option<&[u8]>, each: &mut dyn FnMut(RecordBatch) -> Result<()>) -> Result<()> {
+    let pq = |e: String| ContextError::Parquet { path: path.to_path_buf(), message: e };
+    let reader = builder_with_key(path, key)?.build().map_err(|e| pq(e.to_string()))?;
+    for batch in reader {
+        each(batch.map_err(|e| pq(e.to_string()))?)?;
+    }
+    Ok(())
+}
+
 /// Decode a complete Parquet file already held in anonymous process memory.
 pub fn read_bytes(bytes: Vec<u8>) -> Result<Vec<RecordBatch>> {
     let path = Path::new("<in-memory parquet>");

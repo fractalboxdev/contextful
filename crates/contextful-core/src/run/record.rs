@@ -154,6 +154,9 @@ pub struct RunRow {
     /// pulls (`connector.source.declined-tally`).
     #[serde(default, skip_serializing_if = "std::collections::BTreeMap::is_empty")]
     pub declined: std::collections::BTreeMap<String, u64>,
+    /// Captured output the run's pulls recorded, in pull order (`run.exec.audit-entries`).
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub audit: Vec<String>,
     #[serde(default)]
     pub error_kind: Option<FailureTag>,
     #[serde(default)]

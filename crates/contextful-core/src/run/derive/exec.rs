@@ -11,6 +11,50 @@ pub const CAPTURED_OUTPUT_BYTES: u64 = 8 * 1024 * 1024;
 pub const STEP_ERROR_EXCERPT_BYTES: usize = 4 * 1024;
 /// Digest characters in an exec engine id: 12 chars (`run.exec.engine-id`).
 pub const ENGINE_ID_PREFIX: usize = 12;
+/// Captured-output entries one chain adds to the run record: 64 entries (`run.exec.audit-entries`).
+pub const AUDIT_ENTRIES: usize = 64;
+
+/// The captured output one chain adds to the run record: at most 64 entries, each naming
+/// its unit, its addresses redacted and its credentials masked; the rest are counted.
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+pub struct ChainAudit {
+    entries: Vec<String>,
+    dropped: u64,
+}
+
+impl ChainAudit {
+    /// Record one entry of `unit`'s captured output, or count it once the bound is reached.
+    pub fn record(&mut self, unit: &str, entry: &str) {
+        if self.entries.len() >= AUDIT_ENTRIES {
+            self.dropped += 1;
+            return;
+        }
+        self.entries.push(format!("{unit}: {}", crate::run::record::mask_credentials(&super::emit::redact(entry))));
+    }
+
+    pub fn entries(&self) -> &[String] {
+        &self.entries
+    }
+
+    /// Entries past the bound, counted and discarded.
+    pub fn dropped(&self) -> u64 {
+        self.dropped
+    }
+
+    pub fn into_entries(self) -> Vec<String> {
+        self.entries
+    }
+}
+
+/// The deadline a vendor engine's step holds: its own request deadline, clipped to what the
+/// chain deadline leaves (`run.exec.vendor-deadline`). A binding declaring no
+/// `endpoint_host` reaches no vendor and holds the chain's alone.
+pub fn vendor_deadline(binding: &super::config::Binding, chain_left: std::time::Duration) -> std::time::Duration {
+    match (&binding.endpoint_host, binding.request_timeout_secs) {
+        (Some(_), Some(secs)) => chain_left.min(std::time::Duration::from_secs(secs)),
+        _ => chain_left,
+    }
+}
 
 /// The files one step reads and writes, for placeholder expansion.
 #[derive(Debug, Clone, PartialEq, Eq)]

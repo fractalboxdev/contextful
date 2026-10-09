@@ -92,6 +92,8 @@ struct RecordedPull {
     snapshot_complete: Option<bool>,
     skipped: u64,
     declined: BTreeMap<String, u64>,
+    #[serde(default)]
+    audit: Vec<String>,
 }
 
 fn recorded(bytes: &[u8]) -> Result<RecordedPull, Failure> {
@@ -346,6 +348,7 @@ impl<J: JournalStore, B: BlobStore> Engine<J, B> {
         let mut snapshot_complete = false;
         let mut completion_reported = false;
         let mut declined: std::collections::BTreeMap<String, u64> = std::collections::BTreeMap::new();
+        let mut audit: Vec<String> = Vec::new();
         // Columns a staged batch carried with no declared type: their parts hold the
         // inferred type, so a later declaration cannot retype them (`run.land.late-type`).
         let mut undeclared: BTreeSet<String> = BTreeSet::new();
@@ -367,13 +370,14 @@ impl<J: JournalStore, B: BlobStore> Engine<J, B> {
                 Ok(prepared)
             }).transpose()?;
             let pull = match (&prepared, &effect_summary) {
-                (_, Some(summary)) => Pull { rows:Vec::new(), cursor:None, more:emissions.is_some_and(|all| ordinal + 1 < all.len()), snapshot_complete:None, types:summary.types.iter().map(|(column, ty)| (column.clone(), ty.name())).collect(), skipped:0, declined:Default::default() },
-                (_, None) if emissions.is_some() => Pull { rows:Vec::new(), cursor:None, more:false, snapshot_complete:None, types:Default::default(), skipped:0, declined:Default::default() },
-                (Some(prepared), _) => Pull { rows:Vec::new(), cursor:prepared.next.clone(), more:prepared.more, snapshot_complete:prepared.snapshot_complete, types:prepared.types.clone(), skipped:prepared.skipped, declined:prepared.declined.clone() },
+                (_, Some(summary)) => Pull { rows:Vec::new(), cursor:None, more:emissions.is_some_and(|all| ordinal + 1 < all.len()), snapshot_complete:None, types:summary.types.iter().map(|(column, ty)| (column.clone(), ty.name())).collect(), ..Pull::default() },
+                (_, None) if emissions.is_some() => Pull { rows:Vec::new(), cursor:None, more:false, snapshot_complete:None, types:Default::default(), ..Pull::default() },
+                (Some(prepared), _) => Pull { rows:Vec::new(), cursor:prepared.next.clone(), more:prepared.more, snapshot_complete:prepared.snapshot_complete, types:prepared.types.clone(), skipped:prepared.skipped, declined:prepared.declined.clone(), audit:prepared.audit.clone() },
                 (None, _) => Pull::decode(resolved.as_ref().expect("ordinary input resolves a pull").bytes())?,
             };
             completion_reported |= pull.snapshot_complete.is_some();
             skipped = skipped.saturating_add(pull.skipped);
+            audit.extend(pull.audit.iter().cloned());
             for (extension, n) in &pull.declined {
                 let held = declined.entry(extension.clone()).or_default();
                 *held = held.saturating_add(*n);
@@ -542,7 +546,7 @@ impl<J: JournalStore, B: BlobStore> Engine<J, B> {
             }
         }
         self.journal.collect(&execution_id)?;
-        Ok((landed, Tally { batches: batch_count, skipped, fetched, kept, declined }))
+        Ok((landed, Tally { batches: batch_count, skipped, fetched, kept, declined, audit }))
     }
 
     /// Resolve one pull through the execution's journal under the plan's retry schedule.
@@ -579,7 +583,7 @@ impl<J: JournalStore, B: BlobStore> Engine<J, B> {
                 let count = rows.len() as u64;
                 let columns = rows.iter().flat_map(|row| row.keys()).cloned().collect();
                 let prepared = if rows.is_empty() { Value::Null } else { dest.prepare_recorded(&spec.plan.spec.table, rows, types.clone(), execution.execution_id())? };
-                let recorded = RecordedPull { authority:authority.into(), prepared, rows:count, fetched, columns, types:types.iter().map(|(name, ty)| (name.clone(), ty.name())).collect(), next, last, more:pull.more, snapshot_complete:pull.snapshot_complete, skipped:pull.skipped, declined:pull.declined };
+                let recorded = RecordedPull { authority:authority.into(), prepared, rows:count, fetched, columns, types:types.iter().map(|(name, ty)| (name.clone(), ty.name())).collect(), next, last, more:pull.more, snapshot_complete:pull.snapshot_complete, skipped:pull.skipped, declined:pull.declined, audit:pull.audit };
                 serde_json::to_vec(&recorded).map_err(|e| Failure::deterministic(FailureTag::SchemaIncompatible, e.to_string()))
             });
             if late { execution.discard(); }

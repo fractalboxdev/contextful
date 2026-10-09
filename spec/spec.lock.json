@@ -10644,7 +10644,7 @@
       "operation": "select",
       "subject": "dry-run",
       "kind": "behavior",
-      "statement": "A dry run of a derive pipeline prints its eligible, already-derived and outstanding unit counts from one selection, calling no engine and landing no row.",
+      "statement": "`pipeline run --dry-run` on a derive pipeline prints its eligible, already-derived and outstanding unit counts from one selection, calling no engine and landing no row.",
       "why": "A-run",
       "file": "spec/32-derive.md",
       "line": 88
@@ -10996,7 +10996,7 @@
       "operation": "exec",
       "subject": "vendor-deadline",
       "kind": "behavior",
-      "statement": "A vendor engine reached over HTTP holds a request deadline of its own, clipped to the time {{run.exec.chain-deadline}} leaves, so a stalled vendor fails its unit before the chain elapses.",
+      "statement": "A vendor engine, a binding naming an `endpoint_host`, holds `request_timeout_secs` as its engine step's deadline, clipped to the time {{run.exec.chain-deadline}} leaves, so a stalled vendor fails its unit before the chain elapses.",
       "why": "because a chain deadline alone lets one stalled vendor call spend the unit's whole budget with no step to name",
       "file": "spec/32-derive.md",
       "line": 166
@@ -11382,7 +11382,7 @@
       "operation": "emit",
       "subject": "derived-id",
       "kind": "behavior",
-      "statement": "Every passage and marker row carries `derived_id`, lowercase hex SHA-256 over its `unit_ref`, `derivation_key` and `cue_seq`, and a derive table's sidecar names `derived_id` as its `id_column`.",
+      "statement": "Every passage and marker row keyed as {{run.emit.primary-key}} carries `derived_id`, lowercase hex SHA-256 over its `unit_ref`, `derivation_key` and `cue_seq`, and a sidecar over such a table defaults its `id_column` to `derived_id`.",
       "why": "because a sidecar re-joins on one column, and a producer column outside the reserved underscore namespace needs no store change",
       "file": "spec/32-derive.md",
       "line": 278
@@ -25774,6 +25774,10 @@
     [
       "run.emit.local-content-key",
       "run.emit.derivation-key"
+    ],
+    [
+      "run.emit.derived-id",
+      "run.emit.primary-key"
     ],
     [
       "connector.export.arrow-types",
