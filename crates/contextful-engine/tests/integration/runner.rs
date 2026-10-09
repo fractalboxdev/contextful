@@ -919,3 +919,47 @@ fn source_stage_schema_retirement_keeps_another_live_attempts_owner_and_journal(
     assert_eq!(rig.engine.journal.recorded(&failed.execution_id).unwrap(), 3);
     assert!(dest.sink.commits.is_empty());
 }
+
+/// Rate-limit pressure against one source paces only that source's runs.
+// spec: run.retry.pressure-is-local@79bd9164
+#[test]
+fn a_rate_limited_source_paces_its_own_run_and_no_other() {
+    let for_pipeline = |pipeline: &str| {
+        contextful_core::run::plan::Plan::compile(
+            format!("pipeline = \"{pipeline}\"\ntable = \"filings\"\n[connector]\nid = \"vendor\"\nversion = \"1.0.0\"\ncommand = [\"vendor\"]\n[cursor]\nkind = \"opaque-token\"\n").as_bytes(),
+        )
+        .unwrap()
+    };
+    let rig = Rig::new();
+    let engine = rig.engine.clone();
+    let paced = for_pipeline("paced");
+    let started = std::time::Instant::now();
+    let slow = std::thread::spawn(move || {
+        let mut source = Pages::new(three_pages());
+        // The vendor asks for one second, twice, before it serves.
+        source.fail = vec![Failure::new(FailureTag::RateLimited, "429").with_retry_after(1), Failure::new(FailureTag::RateLimited, "429").with_retry_after(1)];
+        let spec = contextful_engine::RunSpec {
+            connector: paced.connector_pin("artifact-1"),
+            plan: paced,
+            run_id: "run-paced".into(),
+            site_id: "site-a".into(),
+            pid: 1,
+            boot_id: "boot".into(),
+            trace_id: None,
+        };
+        let row = engine.run(&spec, &mut source, &mut Sink::default()).unwrap();
+        (row, started.elapsed(), source.calls().len())
+    });
+    std::thread::sleep(std::time::Duration::from_millis(100));
+    let quick_started = std::time::Instant::now();
+    let row = rig.run(&for_pipeline("quick"), "1.0.0", "run-quick", &mut Pages::new(three_pages()), &mut Sink::default()).unwrap();
+    let quick = quick_started.elapsed();
+    assert_eq!(row.status, RunStatus::Success);
+    assert!(quick < std::time::Duration::from_millis(900), "the other source's run waited {quick:?}");
+    assert!(!slow.is_finished(), "the paced run still waits out its vendor's hint");
+
+    let (paced_row, paced_took, calls) = slow.join().unwrap();
+    assert_eq!(paced_row.status, RunStatus::Success);
+    assert!(paced_took >= std::time::Duration::from_secs(2), "the paced run honored both hints: {paced_took:?}");
+    assert_eq!(calls, 3 + 2);
+}
