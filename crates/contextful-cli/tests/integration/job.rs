@@ -17,7 +17,19 @@ fn cf(dir: &Path, args: &[&str]) -> Output {
 fn host_binary() -> PathBuf {
     static BUILT: std::sync::Once = std::sync::Once::new();
     BUILT.call_once(|| {
-        let status = Command::new(env!("CARGO")).args(["build", "-q", "-p", "contextful-cli", "--example", "store_driven"]).status().unwrap();
+        let mut build = Command::new(env!("CARGO"));
+        // Package metadata belongs to this integration executable, not the nested build.
+        // Build scripts track these variables; inheriting them invalidates native artifacts.
+        for (name, _) in std::env::vars_os() {
+            if name.to_str().is_some_and(|name| name.starts_with("CARGO_PKG_") || name.starts_with("CARGO_CFG_") || matches!(name, "CARGO_MANIFEST_DIR" | "CARGO_MANIFEST_PATH" | "CARGO_MANIFEST_LINKS" | "OUT_DIR")) {
+                build.env_remove(name);
+            }
+        }
+        build.args(["build", "--locked", "-q", "-p", "contextful-cli", "--example", "store_driven"]);
+        if cfg!(feature = "contextful-full") {
+            build.args(["--no-default-features", "--features", "contextful-full"]);
+        }
+        let status = build.status().unwrap();
         assert!(status.success(), "building the store_driven example");
     });
     Path::new(env!("CARGO_BIN_EXE_contextful")).parent().unwrap().join("examples").join("store_driven")
@@ -339,4 +351,101 @@ fn a_job_target_naming_nothing_produced_is_refused_at_validation() {
         let e = err(&cf(p, &["job", "validate"]));
         assert!(e.contains("JobTargetUnbound") && e.contains(target), "{e}");
     }
+}
+
+
+fn scheduled_host(dir: &Path, public: &str, token: &str, args: &[&str], extra: &[(&str, &str)]) -> Output {
+    let mut vars = vec![("CONTEXTFUL_TOKEN", token), ("CONTEXTFUL_ISSUER_PUBKEY", public), ("CONTEXTFUL_AUDIENCE", AUD)];
+    vars.extend_from_slice(extra);
+    host(dir, args, &vars)
+}
+
+#[test]
+fn scheduled_jobs_use_the_applied_body_and_preserve_the_cadence_across_restart() {
+    let declaration = format!("site_id = \"site\"\n{}", job("max_in_flight = 1\nschedule = \"every 1m\"\n"));
+    let (dir, public, token) = project(&declaration);
+    let p = dir.path();
+    let ledger = p.join("scheduled-paid.txt");
+    ok(&scheduled_host(p, &public, &token, &["pipeline", "import", "--project", "research"], &[]));
+    // The running snapshot retains its registered body and pinned input after a draft edit.
+    std::fs::write(p.join("contextful.toml"), format!("authoring_posture = \"per_request\"\n{}", declaration.replace("body = \"score\"", "body = \"unregistered\""))).unwrap();
+    let args = ["pipeline", "serve", "--cycle", "--project", "research", "--now", "2030-01-01T00:01:00Z"];
+    let first = ok(&scheduled_host(p, &public, &token, &args, &[("SCORE_LEDGER", ledger.to_str().unwrap())]));
+    let first: serde_json::Value = serde_json::from_str(&first).unwrap();
+    assert_eq!(first["fired"], serde_json::json!(["job:score-documents"]));
+    assert_eq!(std::fs::read_to_string(&ledger).unwrap().lines().count(), 3);
+    let second = ok(&scheduled_host(p, &public, &token, &args, &[("SCORE_LEDGER", ledger.to_str().unwrap())]));
+    let second: serde_json::Value = serde_json::from_str(&second).unwrap();
+    assert_eq!(second["fired"], serde_json::json!([]));
+    assert_eq!(std::fs::read_to_string(&ledger).unwrap().lines().count(), 3);
+    assert_eq!(select(p, "SELECT count(*) FROM scores")[0][0], "3");
+}
+
+#[test]
+fn scheduled_jobs_validate_registration_schedule_and_dispatch_identity_before_import() {
+    for (extra, replacement, expected) in [
+        ("max_in_flight = 1\nschedule = \"nonsense\"\n", "score", "schedule"),
+        ("max_in_flight = 1\nschedule = \"every 1m\"\n", "absent", "JobBodyUnregistered"),
+    ] {
+        let declaration = job(extra).replace("body = \"score\"", &format!("body = {replacement:?}"));
+        let (dir, public, token) = project(&declaration);
+        let failure = err(&scheduled_host(dir.path(), &public, &token, &["pipeline", "import", "--project", "research"], &[]));
+        assert!(failure.contains(expected), "{failure}");
+        assert!(!dir.path().join(".contextful/control/research/manifest@current").exists());
+    }
+    let declaration = format!("{}\n[[pipeline]]\nid = \"job:score-documents\"\ntables = [\"items\"]\n[pipeline.source]\nname = \"http\"\nconfig = {{ endpoint = \"https://example.com/items\" }}\n", job("max_in_flight = 1\nschedule = \"every 1m\"\n"));
+    let (dir, public, token) = project(&declaration);
+    let failure = err(&scheduled_host(dir.path(), &public, &token, &["pipeline", "import", "--project", "research"], &[]));
+    assert!(failure.contains("job:score-documents"), "{failure}");
+}
+
+#[test]
+fn unscheduled_jobs_remain_applied_without_running() {
+    let (dir, public, token) = project(&format!("site_id = \"site\"\n{}", job("max_in_flight = 1\n")));
+    ok(&scheduled_host(dir.path(), &public, &token, &["pipeline", "import", "--project", "research"], &[]));
+    let out = ok(&scheduled_host(dir.path(), &public, &token, &["pipeline", "serve", "--cycle", "--project", "research", "--now", "2030-01-01T00:01:00Z"], &[]));
+    let value: serde_json::Value = serde_json::from_str(&out).unwrap();
+    assert_eq!(value["armed"], 0);
+    assert_eq!(value["fired"], serde_json::json!([]));
+    let snapshot = std::fs::read_to_string(dir.path().join(".contextful/control/research/manifest@v1.toml")).unwrap();
+    assert!(snapshot.contains("score-documents"));
+}
+
+#[test]
+fn scheduled_jobs_resume_paid_calls_after_a_failed_child() {
+    let (dir, public, token) = project(&format!("site_id = \"site\"\n{}", job("max_in_flight = 1\nschedule = \"every 1m\"\n")));
+    let p = dir.path();
+    let ledger = p.join("scheduled-resume.txt");
+    ok(&scheduled_host(p, &public, &token, &["pipeline", "import", "--project", "research"], &[]));
+    let failed = scheduled_host(p, &public, &token, &["pipeline", "serve", "--cycle", "--project", "research", "--now", "2030-01-01T00:01:00Z"], &[("SCORE_LEDGER", ledger.to_str().unwrap()), ("SCORE_DIE_AFTER", "2")]);
+    assert!(!failed.status.success());
+    assert_eq!(std::fs::read_to_string(&ledger).unwrap().lines().count(), 2);
+    let same = ok(&scheduled_host(p, &public, &token, &["pipeline", "serve", "--cycle", "--project", "research", "--now", "2030-01-01T00:01:00Z"], &[("SCORE_LEDGER", ledger.to_str().unwrap())]));
+    assert_eq!(serde_json::from_str::<serde_json::Value>(&same).unwrap()["fired"], serde_json::json!([]));
+    ok(&scheduled_host(p, &public, &token, &["pipeline", "serve", "--cycle", "--project", "research", "--now", "2030-01-01T00:02:00Z"], &[("SCORE_LEDGER", ledger.to_str().unwrap())]));
+    let paid = std::fs::read_to_string(ledger).unwrap();
+    assert_eq!(paid.lines().map(|line| line.split_whitespace().next().unwrap()).collect::<Vec<_>>(), ["d1", "d2", "d3"]);
+    assert_eq!(select(p, "SELECT count(*) FROM scores")[0][0], "3");
+}
+
+#[test]
+fn a_job_only_apply_changes_the_snapshot_and_stock_serve_refuses_its_body() {
+    let declaration = format!("site_id = \"site\"\n{}", job("max_in_flight = 1\nschedule = \"every 1m\"\n"));
+    let (dir, public, token) = project(&declaration);
+    let p = dir.path();
+    ok(&scheduled_host(p, &public, &token, &["pipeline", "import", "--project", "research"], &[]));
+    let stock = err(&cf(p, &["pipeline", "serve", "--cycle", "--project", "research"]));
+    assert!(stock.contains("JobBodyUnregistered"), "{stock}");
+    std::fs::write(p.join("contextful.toml"), format!("authoring_posture = \"per_request\"\n{}", declaration.replace("every 1m", "every 2m"))).unwrap();
+    let planned = ok(&scheduled_host(p, &public, &token, &["pipeline", "plan", "--json", "--project", "research"], &[]));
+    let planned: serde_json::Value = serde_json::from_str(&planned).unwrap();
+    assert_eq!(planned["jobs"][0]["id"], "job:score-documents");
+    assert_eq!(planned["jobs"][0]["action"], "change");
+    assert_eq!(planned["jobs"][0]["schedule"], "every 2m");
+    let changed = ok(&scheduled_host(p, &public, &token, &["pipeline", "apply", "--project", "research"], &[]));
+    assert!(changed.contains("applied v2"), "{changed}");
+    let snapshot = std::fs::read_to_string(p.join(".contextful/control/research/manifest@v2.toml")).unwrap();
+    assert!(snapshot.contains("every 2m"));
+    let unchanged = ok(&scheduled_host(p, &public, &token, &["pipeline", "apply", "--project", "research"], &[]));
+    assert!(unchanged.contains("unchanged at v2"), "{unchanged}");
 }

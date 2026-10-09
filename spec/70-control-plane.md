@@ -175,6 +175,14 @@ Job declaration, the closed kind union, same-tick order, the fire watermark, and
   *A-surface*
 - `store-driven-body` — A `store-driven` block whose `body` names no body the embedding binary registers raises `JobBodyUnregistered` at validation.
   *A-surface*
+- `scheduled-body` — A scheduled `store-driven` job runs through the cadence lease and dispatch pool under `job:<name>`, using the embedding executable's registered body and the applied snapshot's job declaration.
+  *A-surface*
+- `scheduled-history` — A scheduled job computes its next fire from its host execution's recorded start, including failed attempts; a restarted daemon resumes pending execution through {{run.journal.input-pin}}.
+  *A-surface*
+- `job-snapshot` — Import and full apply retain validated job declarations in the immutable snapshot; a pipeline-only apply preserves the snapshot's jobs, and a pipeline-only editor refuses to discard them under {{surface.apply.validation}}.
+  *A-surface*
+- `job-identity` — A pipeline sharing a job's `job:<name>` dispatch identity fails {{surface.apply.validation}} before a version is claimed.
+  *because one exclusion key cannot dispatch two distinct operations*
 - `cycle` — `serve --cycle` arms the applied snapshot, evaluates due-ness once, waits for every unit it dispatched, and prints what fired, what failed, what stays pending, the armed count and the next due instant.
 - `cycle-exit` — `serve --cycle` exits non-zero when any unit it dispatched failed, after printing its answer; a cycle with no failed unit, or one finding the cadence lease held, exits zero.
   *because a scheduler running the cycle reads the exit status, and a zero over a failed fire reports success*
@@ -364,6 +372,7 @@ kind     = "sync-push"
 
 [[job]]
 name          = "score-documents"
+schedule      = "every 1m"
 kind          = "store-driven"
 body          = "score"               # compiled code the embedding binary registers
 statement     = "SELECT doc_id, body FROM documents ORDER BY doc_id"

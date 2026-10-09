@@ -435,3 +435,21 @@ fn a_table_keyed_file_migrates_to_scope_keys_keeping_each_table_owner() {
     assert_eq!((pipeline.as_str(), table.as_str(), owner_text.as_str()), ("feed", "filings", text), "the table row keeps its key and text");
     assert_eq!(catalog(&dir, &clock).cursor("feed", "filings").unwrap().version, 3, "a second open migrates nothing");
 }
+
+#[test]
+fn scheduled_host_starts_survive_restart_without_output_runs() {
+    let dir = tempfile::tempdir().unwrap();
+    let clock = SetClock::new();
+    let mut row = run_row("host-attempt", "", RunStatus::Running);
+    row.host_scope = Some("job:score-documents".into());
+    let started = row.started_at;
+    catalog(&dir, &clock).put_run(&row).unwrap();
+    let reopened = catalog(&dir, &clock);
+    assert_eq!(reopened.last_run_start("job:score-documents").unwrap(), Some(started));
+    assert_eq!(reopened.last_run_start("job:other").unwrap(), None);
+    let db = rusqlite::Connection::open(dir.path().join(MACHINE_CATALOG_FILE)).unwrap();
+    let mut statement = db.prepare("EXPLAIN QUERY PLAN SELECT json_extract(row, '$.started_at') FROM run WHERE pipeline_id = ?1 OR json_extract(row, '$.host_scope') = ?1").unwrap();
+    let plan = statement.query_map(["job:score-documents"], |row| row.get::<_, String>(3)).unwrap().collect::<Result<Vec<_>, _>>().unwrap();
+    assert!(plan.iter().any(|step| step.contains("MULTI-INDEX OR")), "{plan:?}");
+    assert!(!plan.iter().any(|step| step.contains("SCAN")), "{plan:?}");
+}

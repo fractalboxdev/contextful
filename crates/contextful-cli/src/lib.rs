@@ -243,7 +243,7 @@ pub fn main_host(host: Host) {
         #[cfg(feature = "read-plane")]
         Cmd::Sync(c) => sync::run(c),
         #[cfg(feature = "data-plane")]
-        Cmd::Pipeline(c) => pipeline::run(c, &tasks),
+        Cmd::Pipeline(c) => pipeline::run(c, &tasks, &bodies),
         #[cfg(feature = "data-plane")]
         Cmd::Connector(c) => connector::run(c),
         #[cfg(feature = "data-plane")]
