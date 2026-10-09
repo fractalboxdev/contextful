@@ -232,6 +232,8 @@ Subject and key-set erasure publish one authenticated transaction record selecti
 
 The transaction references a row-free audit intent. A committed record selects that intent; recovery discards uncommitted replacements and completes committed physical collection. Reference counting uses the surviving view, retaining shared digests and surviving citing rows while refusing access to their erased sources.
 
+Signed per-file maps admit interrupted collection: absent files are completed work; remaining files require admitted digests. Version three signs canonical-key HMACs over an unambiguous store, transaction, retired-directory and physical-path tuple. Erasure and keyed recovery require the persisted key. Neutral survivor part names preserve rows and rebuilt indexes. Version two raw-path maps retain authenticated meaning and disclose partition names; no silent rebind occurs. Hash-only bindings require complete inventories.
+
 | Option | Lost on | Cost |
 | --- | --- | --- |
 | One authenticated publication record with response-release fencing *(chosen)* | — | Every store reader and writer validates the frontier; collection rewrites retained artifacts. |
