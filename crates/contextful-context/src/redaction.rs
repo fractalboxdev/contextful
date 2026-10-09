@@ -343,7 +343,7 @@ impl Writer {
                 Ok(())
             })
             .map_err(invalid)?;
-        Ok(group.into_tables())
+        Ok(group.into_tables()?)
     }
     pub fn open(project_dir: &Path) -> Result<Self> {
         Self::open_declared(project_dir, None)
