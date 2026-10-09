@@ -570,9 +570,10 @@ pub fn run(cmd: RunCmd) -> Result<()> {
             let store = Store::open(&located.dir, &located.name)?;
             let runs: Vec<serde_json::Value> = page.runs.iter().map(|r| -> Result<serde_json::Value> {
                 let mut value = serde_json::to_value(r)?;
-                let diffs: Vec<SchemaDiff> = store.committed_runs(&r.table)?
-                    .into_iter().filter(|m| m.run_id == r.run_id)
-                    .flat_map(|m| m.schema_diffs).collect();
+                let diffs: Vec<SchemaDiff> = if r.host_scope.is_some() { Vec::new() } else {
+                    store.committed_runs(&r.table)?.into_iter().filter(|m| m.run_id == r.run_id)
+                        .flat_map(|m| m.schema_diffs).collect()
+                };
                 value["schema_diffs"] = serde_json::to_value(diffs)?;
                 Ok(value)
             }).collect::<Result<_>>()?;

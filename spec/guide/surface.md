@@ -128,7 +128,7 @@ with that teammate's Query grant refuses ({{surface.open-console.wrong-page}}).
 | Question | Operation |
 | --- | --- |
 | Why did a schedule not arm? | `surface.arm`, `surface.reconcile` |
-| Which job kinds exist? | `surface.fire` |
+| How do builds follow sources? | {{surface.fire.build-dependency}} |
 | Who wins two concurrent applies? | `surface.apply` |
 | Which page can the operator enter? | `surface.open-console` |
 | Where does the workflow graph come from? | `surface.visualize` |

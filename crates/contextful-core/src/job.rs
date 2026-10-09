@@ -51,6 +51,8 @@ struct Block {
     #[serde(default)]
     target: Option<String>,
     #[serde(default)]
+    after: Option<String>,
+    #[serde(default)]
     body: Option<String>,
     #[serde(default)]
     statement: Option<String>,
@@ -93,6 +95,8 @@ pub struct Job {
     pub name: String,
     pub schedule: Option<String>,
     pub target: Option<String>,
+    /// Build after this pipeline, under its dependent-run head schedule.
+    pub after: Option<String>,
     pub kind: JobKind,
 }
 
@@ -131,11 +135,14 @@ fn check(value: toml::Value, registered: &dyn Fn(&str) -> bool) -> Result<Job, J
     if !KINDS.contains(&block.kind.as_str()) {
         return Err(JobError::JobKindUnknown(format!("job `{name}` names kind `{}`; the union is {}", block.kind, KINDS.join(", "))));
     }
+    if block.after.is_some() && (block.kind != "build" || block.schedule.is_some()) {
+        return Err(JobError::Invalid(format!("job `{name}`: `after` requires a build without an independent schedule")));
+    }
     let kind = if block.kind == STORE_DRIVEN { JobKind::StoreDriven(store_driven(&block, registered)?) } else { JobKind::Maintenance(block.kind.clone()) };
     if let Some(key) = block.other.keys().next() {
         return Err(JobError::Invalid(format!("job `{name}` carries unknown key `{key}`")));
     }
-    Ok(Job { name: block.name, schedule: block.schedule, target: block.target, kind })
+    Ok(Job { name: block.name, schedule: block.schedule, target: block.target, after: block.after, kind })
 }
 
 fn store_driven(block: &Block, registered: &dyn Fn(&str) -> bool) -> Result<StoreDriven, JobError> {
@@ -164,8 +171,7 @@ fn store_driven(block: &Block, registered: &dyn Fn(&str) -> bool) -> Result<Stor
 }
 
 /// The tables a manifest's jobs may target: every destination table its pipelines and
-/// store-driven jobs produce, and the declared models among them, the produced tables
-/// declaring their `columns` contract.
+/// store-driven jobs produce, and the separately declared SQL models.
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
 pub struct Targets {
     pub produced: std::collections::BTreeSet<String>,
@@ -173,15 +179,12 @@ pub struct Targets {
 }
 
 impl Targets {
-    pub fn new(specs: &[PipelineSpec], jobs: &[Job]) -> Targets {
-        let mut t = Targets::default();
+    pub fn new(specs: &[PipelineSpec], jobs: &[Job], models: &[crate::pipeline::model::ModelSpec]) -> Targets {
+        let mut t = Targets { produced: Default::default(), models: models.iter().map(|m| m.id.clone()).collect() };
         for spec in specs {
             for entry in &spec.tables {
                 let decl = entry.decl();
                 let name = spec.table_name(&decl.name);
-                if decl.columns.as_ref().is_some_and(|c| !c.is_empty()) {
-                    t.models.insert(name.clone());
-                }
                 t.produced.insert(name);
             }
         }
@@ -205,10 +208,13 @@ fn fold_spelling(name: &str) -> String {
 /// raises `PipelineUnboundTableName` with the expected spelling (`run.declare.unbound-table-name`).
 pub fn bind_targets(jobs: &[Job], targets: &Targets) -> Result<(), JobError> {
     for job in jobs {
-        let Some(target) = &job.target else { continue };
+        let Some(target) = &job.target else {
+            if job.kind_name() == "build" { return Err(JobError::JobTargetUnbound(format!("build job `{}` requires a model target", job.name))); }
+            continue;
+        };
         let (set, what) = match job.kind_name() {
             "fold" => (&targets.produced, "a produced table"),
-            "build" => (&targets.models, "a declared model (a produced table declaring its `columns`)"),
+            "build" => (&targets.models, "a declared model"),
             _ => continue,
         };
         if set.contains(target) {
@@ -227,4 +233,22 @@ pub fn bind_targets(jobs: &[Job], targets: &Targets) -> Result<(), JobError> {
         )));
     }
     Ok(())
+}
+
+
+/// Add explicitly dependent build jobs to the existing pipeline units. Models do not
+/// infer dependencies from SQL and job-to-job dependencies are not admitted.
+pub fn dependent_jobs(specs: &[PipelineSpec], jobs: &[Job]) -> Result<crate::pipeline::declare::DependentRuns, JobError> {
+    let mut runs = crate::pipeline::declare::dependent_runs(specs.iter()).map_err(|e| JobError::Invalid(e.to_string()))?;
+    for job in jobs {
+        let Some(parent) = &job.after else { continue };
+        if !specs.iter().any(|p| &p.id == parent) {
+            return Err(JobError::Invalid(format!("job `{}`: `after` names no declared pipeline `{parent}`", job.name)));
+        }
+        let id = format!("job:{}", job.name);
+        let head = runs.head_of.get(parent).unwrap_or(parent).clone();
+        runs.head_of.insert(id.clone(), head.clone());
+        runs.steps.entry(head).or_default().push(id);
+    }
+    Ok(runs)
 }

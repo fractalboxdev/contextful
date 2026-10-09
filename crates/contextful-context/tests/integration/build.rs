@@ -448,3 +448,24 @@ fn collection_after_a_build_follows_the_declared_window() {
     p.build(&kept, "2030-01-09T00:00:00Z").unwrap();
     assert!(p.dir().join("data/snapshots").join(&first.build_id).is_dir(), "a 30 d window keeps a build 8 days old");
 }
+
+#[test]
+fn a_build_publication_boundary_refusal_preserves_rows_and_watermark() {
+    let p = Project::new();
+    let old = p.build(MODEL, "2030-01-01T01:00:00Z").unwrap();
+    let rows = p.rows("SELECT day,n FROM daily ORDER BY day");
+    p.land("new", json!([{"day":"d3","v":4}]), "2030-01-01T02:00:00Z");
+    let old_schema = serde_json::to_value(p.fx.store.try_schema("daily").unwrap()).unwrap();
+    let changed = MODEL.replace("1.0.0", "2.0.0").replace("BIGINT", "VARCHAR").replace("type = \"int64\"", "type = \"utf8\"").replace("n <= 0", "n = '0'");
+    let spec = model_over(TABLES, &changed);
+    let face = p.face(&changed);
+    let result = contextful_context::build::build_guarded(&face, &BuildRequest {
+        model: &spec, site_id: "site-a", started_at: at("2030-01-01T03:00:00Z"), completed_at: at("2030-01-01T03:00:00Z"),
+    }, &|| Err(contextful_context::ContextError::Catalog(contextful_core::run::Failure::new(contextful_core::run::FailureTag::Canceled, "execution stopped"))));
+    assert!(result.unwrap_err().to_string().contains("execution stopped"));
+    let section = current_section(&p.fx.store, "daily").unwrap().unwrap();
+    assert_eq!(serde_json::to_value(p.fx.store.try_schema("daily").unwrap()).unwrap(), old_schema);
+    assert_eq!(section.build_id, old.build_id);
+    assert_eq!(section.watermark, old.watermark);
+    assert_eq!(p.rows("SELECT day,n FROM daily ORDER BY day"), rows);
+}

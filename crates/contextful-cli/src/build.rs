@@ -184,3 +184,80 @@ pub fn run(args: BuildArgs) -> Result<()> {
         }
     }
 }
+
+
+/// The native maintenance adapter uses the same execution owner and durable history
+/// as other host jobs. The model publisher remains the sole materialization path.
+pub(crate) fn fire_job(
+    located: &crate::project::Located, project: &ProjectArgs, job: &contextful_core::job::Job,
+    local: &str, applied: Option<u64>, run_id: Option<String>, site_id: Option<String>, site_id_env: Option<String>,
+) -> Result<()> {
+    use contextful_core::run::ports::{Cancellation, ExecutionPort, OpenExecution, Outcome};
+    use contextful_core::run::own::PlanPins;
+
+    use contextful_core::run::journal::sha256_hex;
+    let files = match applied {
+        Some(v) => vec![crate::cadence::snapshot_manifest(&located.project, local, v)?],
+        None => manifests(&located.declaration)?,
+    };
+    let models = if applied.is_some() { crate::model_source::applied(&files[0])? } else { crate::model_source::collect(&files)? };
+    let specs: Vec<_> = collect(&files)?.into_iter().map(|p| p.spec).collect();
+    crate::job::bind_declared(std::slice::from_ref(job), &specs, &models)?;
+    let spec = models.iter().find(|m| Some(&m.id) == job.target.as_ref()).context("build target is declared")?;
+    let site = site_id_for(local, &located.declaration, site_id, site_id_env)?;
+    let wire = crate::run::wire_at(&located.project, &project.now)?;
+    wire.engine.reap_orphans()?;
+    let started_at = wire.engine.catalog.now()?;
+    let run_id = run_id.unwrap_or_else(|| format!("build-job-{}", &sha256_hex(format!("{}:{}:{}", job.name, started_at, std::process::id()).as_bytes())[..20]));
+    let pin = sha256_hex(&serde_json::to_vec(&(applied, &job.name, spec))?);
+    let execution = wire.engine.open_execution(&OpenExecution {
+        scope: contextful_engine::drive::job_scope(&job.name),
+        pins: PlanPins { plan_ref: pin, identities: Default::default() }.into(),
+        run_id, site_id: site.clone(), pid: std::process::id(), boot_id: crate::run::boot_id(),
+        trace_id: None, connector: None, schedule: Default::default(),
+    })?;
+    let result = (|| -> Result<_> {
+        let face = if applied.is_some() {
+            // Runtime project/security configuration stays local; executable definitions
+            // and model contracts come solely from the applied version.
+            let mut manifest: toml::Value = toml::from_str(local)?;
+            let snapshot: toml::Value = toml::from_str(&files[0].text)?;
+            let table = manifest.as_table_mut().context("manifest table")?;
+            for key in ["pipeline", "model", "job"] {
+                table.remove(key);
+                if let Some(value) = snapshot.get(key) { table.insert(key.into(), value.clone()); }
+            }
+            contextful_context::read::Face::open_declared(Store::open(&located.project.dir, &located.project.name)?, &toml::to_string(&manifest)?, &[], Pepper::resolve(|k| std::env::var(k).ok()))?
+        } else {
+            open_face(&located.project, &located.declaration, local, Pepper::resolve(|k| std::env::var(k).ok()))?
+        };
+        Ok(contextful_context::build::build_guarded(&face, &BuildRequest { model: spec, site_id: &site, started_at, completed_at: now(&project.now)?.max(started_at) }, &|| {
+            contextful_engine::cancel::poll(wire.engine.catalog.as_ref(), execution.run_id(), execution.token());
+            if execution.token().requested() {
+                Err(contextful_context::ContextError::Catalog(contextful_core::run::Failure::new(contextful_core::run::FailureTag::Canceled, "build execution stopped before publication")))
+            } else { Ok(()) }
+        })?)
+    })();
+    let outcome = match &result {
+        Ok(built) => Outcome::Success { rows: built.rows, bytes: 0, batches: 1 },
+        Err(error) => Outcome::Failed(build_failure(error)),
+    };
+    execution.close(outcome)?;
+    let built = result?;
+    println!("{}: built {} · {} rows", built.model, built.build_id, built.rows);
+    Ok(())
+}
+
+
+fn build_failure(error: &anyhow::Error) -> contextful_core::run::Failure {
+    use contextful_core::run::{Failure, FailureTag};
+    use contextful_context::{ContextError, read::ReadFault};
+    let context = error.downcast_ref::<ContextError>().or_else(|| match error.downcast_ref::<ReadFault>() {
+        Some(ReadFault::Store(e)) => Some(e), _ => None,
+    });
+    match context {
+        Some(ContextError::Catalog(failure)) => failure.clone(),
+        Some(ContextError::Run(_) | ContextError::Invalid(_) | ContextError::ColumnType { .. }) => Failure::deterministic(FailureTag::Permanent, format!("{error:#}")),
+        _ => Failure::new(FailureTag::Storage, format!("{error:#}")),
+    }
+}
