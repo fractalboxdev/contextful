@@ -428,7 +428,15 @@ impl<J: JournalStore, B: BlobStore> Engine<J, B> {
                     types: types.clone(),
                 };
                 if let Some(input) = emitted { self.validate_body_owner(input.owner)?; }
-                let part = match (emission.zip(effect_scope), &prepared) { (Some((emission, scope)), _) => emission.stage(dest, stage, scope)?, (_, Some(prepared)) => dest.stage_recorded(stage, &prepared.prepared)?, _ => dest.stage_batch(stage)? };
+                let staged = match (emission.zip(effect_scope), &prepared) { (Some((emission, scope)), _) => emission.stage(dest, stage, scope), (_, Some(prepared)) => dest.stage_recorded(stage, &prepared.prepared), _ => dest.stage_batch(stage) };
+                let part = staged.map_err(|failure| {
+                    // Replaying an incompatible source batch cannot repair it. Prepared body
+                    // emissions retain their paid-work owner and recovery policy.
+                    if emitted.is_none() && failure.tag == FailureTag::SchemaIncompatible && failure.deterministic {
+                        execution.discard();
+                    }
+                    failure
+                })?;
                 staged_rows += count;
                 staged_bytes = staged_bytes.saturating_add(part.bytes);
                 parts.push(part);

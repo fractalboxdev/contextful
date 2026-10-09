@@ -722,3 +722,148 @@ fn a_type_declared_after_its_column_staged_refuses() {
     assert_eq!(rig.run(&opaque(), "1.0.0", "run-1", &mut Bodies(fresh), &mut sink).unwrap().status, RunStatus::Success);
     assert_eq!(sink.staged[1].types.get("ts").map(|t| t.name()), Some("Timestamp".into()));
 }
+
+/// A destination whose second-page integer check can fail before a part is accepted.
+struct SourceStageCheck {
+    sink: Sink,
+    protected: bool,
+    prepared: usize,
+    crash: bool,
+    failure: Option<Failure>,
+    on_refusal: Option<Box<dyn FnMut()>>,
+}
+
+impl SourceStageCheck {
+    fn new(protected: bool) -> Self {
+        Self { sink: Sink::default(), protected, prepared: 0, crash: false, failure: Some(Failure::deterministic(FailureTag::SchemaIncompatible, "score must be an integer")), on_refusal: None }
+    }
+
+    fn stage(&mut self, stage: Stage) -> Result<Part, Failure> {
+        if stage.rows.iter().any(|row| row.get("score").is_some_and(|score| !score.is_i64())) {
+            assert!(!self.crash, "the process dies after recording the incompatible source pull");
+            if let Some(failure) = &self.failure {
+                if let Some(observe) = &mut self.on_refusal { observe(); }
+                return Err(failure.clone());
+            }
+        }
+        self.sink.stage_batch(stage)
+    }
+}
+
+impl Destination for SourceStageCheck {
+    fn recording_identity(&self, _: &contextful_core::run::plan::Plan) -> Result<Option<String>, Failure> { Ok(self.protected.then(|| "source-stage-check".into())) }
+    fn prepare_recorded(&mut self, _: &str, rows: Vec<Row>, _: Types, _: &str) -> Result<Value, Failure> { self.prepared += 1; Ok(json!(rows)) }
+    fn stage_recorded(&mut self, mut stage: Stage, payload: &Value) -> Result<Part, Failure> { stage.rows = serde_json::from_value(payload.clone()).unwrap(); self.stage(stage) }
+    fn stage_batch(&mut self, stage: Stage) -> Result<Part, Failure> { assert!(!self.protected); self.stage(stage) }
+    fn commit(&mut self, commit: Commit, before: &dyn Fn() -> Result<(), Failure>) -> Result<Landed, Failure> { self.sink.commit(commit, before) }
+    fn discard(&mut self, table: &str, run: &str) -> Result<(), Failure> { self.sink.discard(table, run) }
+    fn newest_marker(&self, pipeline: &str, table: &str) -> Result<Option<Marker>, Failure> { self.sink.newest_marker(pipeline, table) }
+}
+
+fn incompatible_pages() -> Pages {
+    Pages::new(vec![vec![json!({"id":"seed","score":0})], vec![json!({"id":"one","score":1})], vec![json!({"id":"two","score":{"invalid":true}})]])
+}
+
+#[test]
+fn source_stage_schema_refusal_releases_recorded_pulls_without_advancing_the_committed_cursor() {
+    for protected in [false, true] {
+        let rig = Rig::new();
+        let plan = opaque();
+        let mut dest = SourceStageCheck::new(protected);
+        rig.run(&plan, "1.0.0", "seed", &mut Pages::new(vec![vec![json!({"id":"seed","score":0})]]), &mut dest).unwrap();
+        let before = rig.catalog().cursor("feed", "filings").unwrap();
+        let mut source = incompatible_pages();
+        let failed = rig.run(&plan, "1.0.0", "bad", &mut source, &mut dest).unwrap();
+        assert_eq!((failed.status, failed.error_kind), (RunStatus::Failed, Some(FailureTag::SchemaIncompatible)));
+        assert_eq!(dest.sink.commits.len(), 1, "no partial publication replaces the seed");
+        assert_eq!(rig.catalog().cursor("feed", "filings").unwrap().position, before.position);
+        assert!(dest.sink.discarded.contains(&("filings".into(), "bad".into())));
+        source.pages[2] = vec![json!({"id":"two","score":2})];
+        let repaired = rig.run(&plan, "1.0.0", "repaired", &mut source, &mut dest).unwrap();
+        assert_eq!(repaired.status, RunStatus::Success, "the unchanged plan reads the repaired source");
+        assert_ne!(repaired.execution_id, failed.execution_id);
+        assert_eq!(rig.engine.journal.recorded(&failed.execution_id).unwrap(), 0);
+        assert_eq!(ids(&dest.sink.commits[1]), [vec!["one"], vec!["two"]]);
+        assert_eq!(source.calls().iter().map(|(position, _)| position.clone()).collect::<Vec<_>>(), [Some(json!("p1")), Some(json!("p2")), Some(json!("p1")), Some(json!("p2"))]);
+    }
+}
+
+#[test]
+fn source_stage_replay_releases_an_existing_poisoned_owner_for_repair() {
+    for protected in [false, true] {
+        let rig = Rig::new();
+        let plan = opaque();
+        let mut dest = SourceStageCheck::new(protected);
+        dest.crash = true;
+        let mut source = incompatible_pages();
+        rig.crash(&plan, "old-owner", &mut source, &mut dest);
+        let execution = rig.row("old-owner").execution_id;
+        // A previous binary closed the failed attempt but retained these journal rows.
+        rig.catalog().update_run("old-owner", &mut |row| {
+            row.status = RunStatus::Failed;
+            row.error_kind = Some(FailureTag::SchemaIncompatible);
+            row.owner = None;
+            Ok(())
+        }).unwrap().unwrap().unwrap();
+        assert_eq!(rig.engine.journal.recorded(&execution).unwrap(), 3);
+        rig.clock.advance(60);
+        let calls = source.calls().len();
+        let prepared = dest.prepared;
+        source.pages[2] = vec![json!({"id":"two","score":2})];
+        dest.crash = false;
+        let replay = rig.run(&plan, "1.0.0", "replay", &mut source, &mut dest).unwrap();
+        assert_eq!((replay.status, replay.error_kind), (RunStatus::Failed, Some(FailureTag::SchemaIncompatible)));
+        assert_eq!(source.calls().len(), calls, "the retained invalid pull is replayed, not fetched again");
+        assert_eq!(dest.prepared, prepared, "prepared replay does not canonicalize the repaired source");
+        assert!(rig.catalog().owner("feed", "filings").unwrap().is_none(), "replay retires the poisoned owner");
+        assert!(dest.sink.commits.is_empty());
+        let repaired = rig.run(&plan, "1.0.0", "fresh", &mut source, &mut dest).unwrap();
+        assert_eq!(repaired.status, RunStatus::Success);
+        assert_ne!(repaired.execution_id, execution);
+        assert_eq!(source.calls().len(), calls + 3);
+    }
+}
+
+#[test]
+fn source_stage_non_schema_and_nondeterministic_failures_preserve_recorded_replay() {
+    for protected in [false, true] {
+        for failure in [Failure::new(FailureTag::Storage, "temporary write failure"), Failure::new(FailureTag::SchemaIncompatible, "schema check unavailable"), Failure::deterministic(FailureTag::Permanent, "another refusal")] {
+            let rig = Rig::new();
+            let mut dest = SourceStageCheck::new(protected);
+            dest.failure = Some(failure);
+            let mut source = incompatible_pages();
+            let failed = rig.run(&opaque(), "1.0.0", "failed", &mut source, &mut dest).unwrap();
+            assert_eq!(failed.status, RunStatus::Failed);
+            let calls = source.calls().len();
+            let prepared = dest.prepared;
+            source.pages.clear();
+            dest.failure = None;
+            let resumed = rig.run(&opaque(), "1.0.0", "resumed", &mut source, &mut dest).unwrap();
+            assert_eq!(resumed.status, RunStatus::Success);
+            assert_eq!(resumed.execution_id, failed.execution_id);
+            assert_eq!(source.calls().len(), calls);
+            assert_eq!(dest.prepared, prepared);
+            assert_eq!(dest.sink.commits[0].batches[2][0]["score"], json!({"invalid":true}));
+        }
+    }
+}
+
+#[test]
+fn source_stage_schema_retirement_keeps_another_live_attempts_owner_and_journal() {
+    let rig = Rig::new();
+    let catalog = rig.engine.catalog.clone();
+    let mut dest = SourceStageCheck::new(false);
+    dest.on_refusal = Some(Box::new(move || {
+        let mut row = catalog.run("refused").unwrap().unwrap();
+        row.run_id = "other-live-attempt".into();
+        catalog.put_run(&row).unwrap();
+        let mut owner = catalog.owner("feed", "filings").unwrap().unwrap();
+        owner.attempts.push(row.run_id);
+        catalog.put_owner(&owner).unwrap();
+    }));
+    let failed = rig.run(&opaque(), "1.0.0", "refused", &mut incompatible_pages(), &mut dest).unwrap();
+    assert_eq!(failed.status, RunStatus::Failed);
+    assert_eq!(rig.catalog().owner("feed", "filings").unwrap().unwrap().execution_id, failed.execution_id);
+    assert_eq!(rig.engine.journal.recorded(&failed.execution_id).unwrap(), 3);
+    assert!(dest.sink.commits.is_empty());
+}
