@@ -899,3 +899,22 @@ fn the_scope_probe_runs_before_the_first_page() {
     let bare = json!({"endpoint": vendor.url("/v1"), "scope_probe": {"endpoint": vendor.url("/identity"), "scopes_header": "X-Granted-Scopes", "expect": []}});
     assert!(HttpConfig::parse(&bare).is_err());
 }
+
+/// `skip_unchanged` is a boolean, false undeclared, and refuses beside another position a snapshot digest would
+/// share its place with.
+#[test]
+fn skip_unchanged_is_a_snapshot_key_refused_beside_another_position() {
+    let base = json!({ "endpoint": "https://api.vendor.example/items" });
+    assert!(!HttpConfig::parse(&base).unwrap().skip_unchanged);
+    let with = |extra: serde_json::Value| {
+        let mut cfg = base.clone();
+        cfg.as_object_mut().unwrap().extend(extra.as_object().unwrap().clone());
+        HttpConfig::parse(&cfg)
+    };
+    let declared = with(json!({ "skip_unchanged": true })).unwrap();
+    assert!(declared.skip_unchanged);
+    assert!(declared.accepts_incremental().is_err(), "a digest leaves a watermark no place to commit");
+    assert!(with(json!({ "skip_unchanged": "yes" })).is_err());
+    assert!(with(json!({ "skip_unchanged": true, "conditional": true })).is_err());
+    assert!(with(json!({ "skip_unchanged": true, "since_param": "since" })).is_err());
+}

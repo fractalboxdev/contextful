@@ -2414,3 +2414,57 @@ fn a_downgrade_event_names_all_five_fields_and_an_uncommitted_stage_records_none
     assert!(diffs("r2").is_none_or(|d| d.is_null() || d.as_array().is_some_and(Vec::is_empty)), "{history}");
     assert_eq!(diffs("r3").unwrap()[0], *event);
 }
+
+/// A snapshot-shaped source with `skip_unchanged = true` records its input's raw-byte digest as `{ sha256, rows }`; a
+/// matching digest returns zero batches, holds the position and closes a zero-row success. Undeclared, it is false.
+// spec: run.advance.skip-unchanged@afc48693
+#[test]
+fn an_unchanged_snapshot_digest_lands_nothing_and_holds_the_position() {
+    use sha2::{Digest, Sha256};
+    let body = Arc::new(Mutex::new(r#"[{"sku":"a"},{"sku":"b"}]"#.to_string()));
+    let served = body.clone();
+    let vendor = Vendor::start(move |_| (200, served.lock().unwrap().clone()));
+    let declared = |id: &str, skip: &str| format!(
+        "[[pipeline]]\nid = \"{id}\"\ntables = [\"items\"]\n[pipeline.source]\nname = \"http\"\nconfig = {{ endpoint = \"{}\"{skip} }}\n",
+        vendor.url("/v1/{table}")
+    );
+    let dir = project(&format!("{}{}", declared("feed", ", skip_unchanged = true"), declared("plain", "")));
+    let history = |pipeline: &str| -> Vec<serde_json::Value> {
+        let out: serde_json::Value = serde_json::from_str(&ok(&cf(dir.path(), &["run", "history", "--project", "research", "--pipeline", pipeline]))).unwrap();
+        out["runs"].as_array().unwrap().clone()
+    };
+    let run = |pipeline: &str, id: &str| history(pipeline).into_iter().find(|r| r["run_id"] == id).unwrap();
+    let manifest = |table: &str, id: &str| dir.path().join(format!(".contextful/context/research/tables/{table}/data/runs/{id}/ingest-a/_manifest.json"));
+
+    ok(&fire(dir.path(), "feed", "r1", "2030-01-01T00:00:00Z"));
+    assert_eq!(run("feed", "r1")["rows"], 2);
+    let committed: serde_json::Value = serde_json::from_slice(&std::fs::read(manifest("feed_items", "r1")).unwrap()).unwrap();
+    let digest = format!("{:x}", Sha256::digest(body.lock().unwrap().as_bytes()));
+    assert_eq!(committed["cursor"], serde_json::json!({ "sha256": digest, "rows": 2 }), "{committed}");
+
+    // The same bytes again: zero batches, the position held, a zero-row success.
+    ok(&fire(dir.path(), "feed", "r2", "2030-01-01T00:01:00Z"));
+    let skipped = run("feed", "r2");
+    assert_eq!((skipped["status"].as_str(), skipped["rows"].as_u64(), skipped["batches"].as_u64()), (Some("success"), Some(0), Some(0)), "{skipped}");
+    assert!(!manifest("feed_items", "r2").exists(), "an unchanged input commits nothing");
+    assert_eq!(vendor.targets().len(), 2, "the source still read its input");
+
+    // Changed bytes land.
+    *body.lock().unwrap() = r#"[{"sku":"c"}]"#.into();
+    ok(&fire(dir.path(), "feed", "r3", "2030-01-01T00:02:00Z"));
+    assert_eq!(run("feed", "r3")["rows"], 1);
+
+    // Undeclared, an unchanged input lands again.
+    ok(&fire(dir.path(), "plain", "p1", "2030-01-01T00:03:00Z"));
+    ok(&fire(dir.path(), "plain", "p2", "2030-01-01T00:04:00Z"));
+    assert_eq!(run("plain", "p2")["rows"], 1);
+
+    // A digest beside a declared incremental position refuses before any request.
+    let watermarked = project(&format!(
+        "[[pipeline]]\nid = \"feed\"\nincremental = \"at\"\ntables = [\"items\"]\n[pipeline.source]\nname = \"http\"\nconfig = {{ endpoint = \"{}\", since_param = \"since\", skip_unchanged = true }}\n",
+        vendor.url("/v1/{table}")
+    ));
+    let before = vendor.targets().len();
+    assert!(!fire(watermarked.path(), "feed", "w1", "2030-01-01T00:05:00Z").status.success());
+    assert_eq!(vendor.targets().len(), before);
+}

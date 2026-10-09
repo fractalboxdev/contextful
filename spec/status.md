@@ -11,11 +11,11 @@ An unpinned clause is `committed`; a pinned one is `performed` when its Rust, Le
 | `corpus` | 1 | 10 | 79 | 37 | 7 | 0 | 43 | 0 | 43 |
 | `disclosure` | 3 | 16 | 156 | 68 | 13 | 3 | 63 | 0 | 63 |
 | `read` | 2 | 16 | 212 | 35 | 22 | 9 | 184 | 0 | 184 |
-| `run` | 3 | 26 | 415 | 103 | 39 | 28 | 324 | 0 | 324 |
+| `run` | 3 | 26 | 415 | 103 | 39 | 28 | 325 | 0 | 325 |
 | `store` | 1 | 17 | 253 | 59 | 13 | 19 | 216 | 0 | 216 |
 | `surface` | 2 | 20 | 134 | 59 | 22 | 0 | 94 | 0 | 94 |
 | `topology` | 1 | 6 | 70 | 24 | 5 | 5 | 61 | 0 | 61 |
-| **total** | 19 | 156 | 2208 | 611 | 193 | 103 | 1581 | 0 | |
+| **total** | 19 | 156 | 2208 | 611 | 193 | 103 | 1582 | 0 | |
 
 Decision records: 18.
 
@@ -28,7 +28,7 @@ A milestone reads `closed` when its acceptance test computes `passing` and every
 | 0 — The test-first gate | 2 | 21 | 6 | passing | open |
 | 1 — The authority core | 14 | 239 | 190 | passing | closed |
 | 2 — The store | 9 | 175 | 143 | passing | closed |
-| 3 — The run path | 11 | 216 | 185 | passing | closed |
+| 3 — The run path | 11 | 216 | 186 | passing | closed |
 | 4 — Ingest | 25 | 519 | 345 | passing | open |
 | 5 — The read face under enforcement | 17 | 285 | 219 | passing | open |
 | 6 — Sync and replicas | 8 | 78 | 73 | passing | closed |
@@ -939,6 +939,7 @@ Unscheduled operations: 11.
 | `run.advance.field-rename` | `crates/contextful-core/tests/integration/run/advance.rs::a_position_measured_on_another_field_is_refused` | performed |
 | `run.advance.frontier` | `crates/contextful-core/tests/integration/run/advance.rs::the_position_moves_forward_or_holds` | performed |
 | `run.advance.inclusive-boundary` | `crates/contextful-engine/tests/integration/runner.rs::every_poll_re_lands_the_boundary_instant` | performed |
+| `run.advance.skip-unchanged` | `crates/contextful-cli/tests/integration/pipeline.rs::an_unchanged_snapshot_digest_lands_nothing_and_holds_the_position` | performed |
 | `run.advance.snapshot-completion` | `crates/contextful-cli/tests/integration/empty_replace.rs::a_complete_empty_snapshot_replaces_but_a_skip_and_failed_pull_do_not` | performed |
 | `run.advance.unorderable-position` | `crates/contextful-core/tests/integration/run/advance.rs::an_unorderable_clock_value_refuses_the_pull` | performed |
 | `run.advance.watermark-shape` | `crates/contextful-core/tests/integration/run/advance.rs::a_watermark_names_its_field` | performed |
