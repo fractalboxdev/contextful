@@ -666,3 +666,29 @@ fn run_history_lists_covered_pipelines_and_refuses_an_uncovered_one() {
     refused(&out, "GrantPipelineNotCovered");
     assert!(!String::from_utf8_lossy(&out.stderr).contains("feed-"), "the empty listing names no pipeline");
 }
+
+#[test]
+fn a_repaired_typed_source_runs_after_schema_refusal_without_changing_its_plan() {
+    let dir = project();
+    let p = dir.path();
+    std::fs::write(p.join("contextful.toml"), "authoring_posture = \"per_request\"\n[[pipeline.tables]]\nname = \"filings\"\ncolumns = { score = 'int64' }\n").unwrap();
+    std::fs::write(p.join("empty.sh"), "echo \"$CONTEXTFUL_STEP\" >> called\nif [ \"$CONTEXTFUL_STEP\" = pull-0 ]; then cat first.json; else cat second.json; fi\n").unwrap();
+    let first = |rows: serde_json::Value, more: bool| std::fs::write(p.join("first.json"), serde_json::json!({"rows":rows,"cursor":"p1","more":more}).to_string()).unwrap();
+    let second = |score: serde_json::Value| std::fs::write(p.join("second.json"), serde_json::json!({"rows":[{"id":"two","score":score}],"cursor":"p2","more":false}).to_string()).unwrap();
+    first(serde_json::json!([{"id":"seed","score":0}]), false);
+    ok(&start(p, "feed-a.toml", "seed", "2030-01-01T00:00:00Z"));
+    first(serde_json::json!([{"id":"one","score":1}]), true);
+    second(serde_json::json!({"invalid":true}));
+    refused(&start(p, "feed-a.toml", "bad", "2030-01-01T00:01:00Z"), "StoreSchemaIncompatible");
+    let store = contextful_context::Store::open(p, "research").unwrap();
+    let decl = contextful_core::store::declare::TableDecl::named("filings");
+    let rows = || contextful_context::rows::table_rows(&store, &decl, &["id", "score"]).unwrap();
+    assert_eq!(rows().len(), 1, "the valid first batch of the failed attempt stays unpublished");
+    assert_eq!(rows()[0]["id"], "seed");
+    second(serde_json::json!(2));
+    ok(&start(p, "feed-a.toml", "repaired", "2030-01-01T00:02:00Z"));
+    let landed = rows();
+    assert_eq!(landed.len(), 3);
+    assert!(landed.iter().any(|row| row["id"] == "two" && row["score"] == 2));
+    assert_eq!(std::fs::read_to_string(p.join("called")).unwrap(), "pull-0\npull-0\npull-1\npull-0\npull-1\n");
+}

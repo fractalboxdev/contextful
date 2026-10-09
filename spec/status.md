@@ -11,11 +11,11 @@ An unpinned clause is `committed`; a pinned one is `performed` when its Rust, Le
 | `corpus` | 1 | 10 | 79 | 37 | 7 | 0 | 43 | 0 | 43 |
 | `disclosure` | 3 | 16 | 134 | 66 | 13 | 3 | 63 | 0 | 63 |
 | `read` | 2 | 15 | 207 | 35 | 22 | 9 | 184 | 0 | 184 |
-| `run` | 3 | 26 | 411 | 102 | 39 | 28 | 308 | 0 | 308 |
+| `run` | 3 | 26 | 412 | 102 | 39 | 28 | 309 | 0 | 309 |
 | `store` | 1 | 17 | 252 | 59 | 13 | 19 | 216 | 0 | 216 |
 | `surface` | 2 | 20 | 130 | 59 | 22 | 0 | 90 | 0 | 90 |
 | `topology` | 1 | 6 | 70 | 24 | 5 | 5 | 38 | 0 | 38 |
-| **total** | 19 | 155 | 2170 | 608 | 193 | 103 | 1538 | 0 | |
+| **total** | 19 | 155 | 2171 | 608 | 193 | 103 | 1539 | 0 | |
 
 Decision records: 18.
 
@@ -28,7 +28,7 @@ A milestone reads `closed` when its acceptance test computes `passing` and every
 | 0 — The test-first gate | 2 | 21 | 6 | passing | open |
 | 1 — The authority core | 14 | 239 | 190 | passing | closed |
 | 2 — The store | 9 | 174 | 143 | passing | closed |
-| 3 — The run path | 11 | 213 | 147 | passing | closed |
+| 3 — The run path | 11 | 214 | 148 | passing | closed |
 | 4 — Ingest | 25 | 518 | 344 | passing | open |
 | 5 — The read face under enforcement | 17 | 285 | 219 | passing | open |
 | 6 — Sync and replicas | 8 | 78 | 73 | passing | closed |
@@ -1132,6 +1132,7 @@ Unscheduled operations: 10.
 | `run.own.one-commit-per-run` | `crates/contextful-engine/tests/integration/runner.rs::a_run_commits_once_and_a_crash_commits_nothing` | performed |
 | `run.own.pin-release` | `crates/contextful-core/tests/integration/run/own.rs::success_and_an_empty_failure_release_every_other_status_holds` | performed |
 | `run.own.pinned-plan-changed` | `crates/contextful-engine/tests/integration/runner.rs::a_moved_build_under_a_pending_owner_is_refused_before_replay` | performed |
+| `run.own.source-stage-schema` | `spec/pins.toml` | performed |
 | `run.own.stage-commit-seq` | `crates/contextful-context/tests/integration/run_commit.rs::a_staged_run_takes_its_commit_seq_at_its_commit` | performed |
 | `run.own.stage-discard` | `crates/contextful-cli/tests/integration/run.rs::a_failed_run_leaves_no_staged_part_and_a_commit_stamps_its_instant` | performed |
 | `run.own.stage-instant` | `crates/contextful-context/tests/integration/run_commit.rs::the_later_committer_wins_a_key_whichever_run_staged_first` | performed |
