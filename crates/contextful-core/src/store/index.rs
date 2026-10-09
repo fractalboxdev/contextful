@@ -61,7 +61,7 @@ pub fn partition_warnings(by: &[String], sizes: &[u64]) -> Vec<String> {
     let mut sorted = sizes.to_vec();
     sorted.sort_unstable();
     let mid = sorted.len() / 2;
-    let median = if sorted.len() % 2 == 0 { (sorted[mid - 1] + sorted[mid]) / 2 } else { sorted[mid] };
+    let median = if sorted.len().is_multiple_of(2) { sorted[mid - 1] / 2 + sorted[mid] / 2 } else { sorted[mid] };
     if median < PARTITION_MEDIAN_WARN_BYTES {
         warnings.push(format!("partition_by {columns} projects a median partition of {median} bytes, below 16 MiB"));
     }
