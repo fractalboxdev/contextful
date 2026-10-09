@@ -27,6 +27,11 @@
 # `contextful-spec state` reads this file and the tags and writes spec/status.md.
 
 [pin]
+"surface.fire.model-snapshot" = { test = "contextful_cli::pipeline::native_model_schedule_pins_sql_refreshes_and_preserves_restart_cadence" }
+"surface.fire.scheduled-build" = { test = "contextful_cli::pipeline::standalone_model_schedule_uses_durable_job_starts" }
+"surface.fire.build-dependency" = { test = "contextful_cli::pipeline::dependent_build_requires_the_entire_pipeline_unit_to_succeed" }
+"surface.fire.build-dependency-invalid" = { test = "contextful_core::job::build_dependency_is_explicit_and_cannot_have_a_second_schedule" }
+"run.model.build-boundary" = { test = "contextful_context::build::a_build_publication_boundary_refusal_preserves_rows_and_watermark" }
 "run.own.source-stage-schema" = { test = "contextful_engine::runner::source_stage_schema_refusal_releases_recorded_pulls_without_advancing_the_committed_cursor" }
 "surface.fire.scheduled-body" = { test = "contextful_cli::job::scheduled_jobs_use_the_applied_body_and_preserve_the_cadence_across_restart" }
 "surface.fire.scheduled-history" = { test = "contextful_cli::job::scheduled_jobs_resume_paid_calls_after_a_failed_child" }
@@ -124,7 +129,7 @@ connector = 229
 corpus = 43
 disclosure = 63
 read = 184
-run = 309
+run = 310
 store = 216
-surface = 90
+surface = 94
 topology = 38

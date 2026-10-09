@@ -11,11 +11,11 @@ An unpinned clause is `committed`; a pinned one is `performed` when its Rust, Le
 | `corpus` | 1 | 10 | 79 | 37 | 7 | 0 | 43 | 0 | 43 |
 | `disclosure` | 3 | 16 | 134 | 66 | 13 | 3 | 63 | 0 | 63 |
 | `read` | 2 | 15 | 207 | 35 | 22 | 9 | 184 | 0 | 184 |
-| `run` | 3 | 26 | 413 | 102 | 39 | 28 | 309 | 0 | 309 |
+| `run` | 3 | 26 | 413 | 102 | 39 | 28 | 310 | 0 | 310 |
 | `store` | 1 | 17 | 252 | 59 | 13 | 19 | 216 | 0 | 216 |
-| `surface` | 2 | 20 | 134 | 59 | 22 | 0 | 90 | 0 | 90 |
+| `surface` | 2 | 20 | 134 | 59 | 22 | 0 | 94 | 0 | 94 |
 | `topology` | 1 | 6 | 70 | 24 | 5 | 5 | 38 | 0 | 38 |
-| **total** | 19 | 155 | 2176 | 608 | 193 | 103 | 1539 | 0 | |
+| **total** | 19 | 155 | 2176 | 608 | 193 | 103 | 1544 | 0 | |
 
 Decision records: 18.
 
@@ -29,13 +29,13 @@ A milestone reads `closed` when its acceptance test computes `passing` and every
 | 1 — The authority core | 14 | 239 | 190 | passing | closed |
 | 2 — The store | 9 | 174 | 143 | passing | closed |
 | 3 — The run path | 11 | 214 | 148 | passing | closed |
-| 4 — Ingest | 25 | 519 | 344 | passing | open |
+| 4 — Ingest | 25 | 519 | 345 | passing | open |
 | 5 — The read face under enforcement | 17 | 285 | 219 | passing | open |
 | 6 — Sync and replicas | 8 | 78 | 73 | passing | closed |
 | 7 — Memory | 6 | 54 | 45 | passing | closed |
 | 8 — Accountability | 5 | 60 | 47 | passing | open |
 | 9 — Visibility | 6 | 41 | 3 | open | open |
-| 10 — Cadence and the operator plane | 11 | 91 | 73 | passing | open |
+| 10 — Cadence and the operator plane | 11 | 91 | 77 | passing | open |
 | 11 — The derive tier | 7 | 88 | 79 | passing | closed |
 | 12 — The operator console | 12 | 54 | 22 | passing | open |
 | 13 — Disclosure | 5 | 33 | 13 | open | open |
@@ -1090,6 +1090,7 @@ Unscheduled operations: 10.
 | `run.land.typed-pull` | `crates/contextful-cli/tests/integration/run.rs::a_pulled_type_lands_its_column_in_that_type` | performed |
 | `run.land.unknown-destination` | `crates/contextful-cli/tests/integration/pipeline.rs::another_destination_is_refused_before_any_request` | performed |
 | `run.land.unreadable-input` | `crates/contextful-connectors/tests/integration/http.rs::an_unreadable_body_refuses_naming_path_and_position` | performed |
+| `run.model.build-boundary` | `spec/pins.toml` | performed |
 | `run.model.build-id` | `crates/contextful-context/tests/integration/build.rs::a_build_id_is_the_snapshot_id` | performed |
 | `run.model.build-verb` | `crates/contextful-cli/tests/integration/build.rs::build_publishes_a_model_and_prints_its_receipt` | performed |
 | `run.model.contract-block` | `crates/contextful-core/tests/integration/pipeline/model.rs::a_contract_declares_a_semantic_version_and_typed_columns` | performed |
@@ -1509,13 +1510,17 @@ Unscheduled operations: 10.
 | `surface.edit.connector-upload` | `crates/contextful-cli/tests/integration/pipeline.rs::an_artifact_in_the_document_is_refused` | performed |
 | `surface.edit.secret-in-document` | `crates/contextful-cli/tests/integration/pipeline.rs::a_credential_in_the_document_is_refused` | performed |
 | `surface.edit.store-draft` | `spec/pins.toml` | performed |
+| `surface.fire.build-dependency` | `spec/pins.toml` | performed |
+| `surface.fire.build-dependency-invalid` | `spec/pins.toml` | performed |
 | `surface.fire.cycle` | `crates/contextful-cli/tests/integration/pipeline.rs::a_cycle_fires_what_is_due_once_and_reports_the_next_instant` | performed |
 | `surface.fire.cycle-control-source` | `crates/contextful-cli/tests/integration/pipeline.rs::a_cycle_with_no_applied_snapshot_is_refused` | performed |
 | `surface.fire.cycle-exit` | `crates/contextful-cli/tests/integration/pipeline.rs::a_cycle_with_a_failed_fire_exits_non_zero` | performed |
 | `surface.fire.job-identity` | `spec/pins.toml` | performed |
 | `surface.fire.job-kind-unknown` | `crates/contextful-core/tests/integration/job.rs::a_kind_outside_the_union_or_a_command_raises_job_kind_unknown` | performed |
 | `surface.fire.job-snapshot` | `spec/pins.toml` | performed |
+| `surface.fire.model-snapshot` | `spec/pins.toml` | performed |
 | `surface.fire.scheduled-body` | `spec/pins.toml` | performed |
+| `surface.fire.scheduled-build` | `spec/pins.toml` | performed |
 | `surface.fire.scheduled-history` | `spec/pins.toml` | performed |
 | `surface.fire.store-driven-body` | `crates/contextful-core/tests/integration/job.rs::a_store_driven_block_naming_an_unregistered_body_raises_job_body_unregistered` | performed |
 | `surface.fire.store-driven-concurrency` | `crates/contextful-core/tests/integration/job.rs::a_store_driven_block_without_a_positive_max_in_flight_raises_job_concurrency_unset` | performed |
