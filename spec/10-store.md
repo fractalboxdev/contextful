@@ -531,6 +531,7 @@ Uploading the store to a bucket: the wire format, the bucket manifest, prefix co
   *because a generation naming a pointer the bucket never held restores a state no node read*
 - `stranded` — A push names on stderr, per owning node, each local key another node owns that the committed bucket manifest neither lists nor tombstones, with the `CONTEXTFUL_NODE_ID` that pushes it.
   *because a moved store root re-derives the node id, and runs landed under the old one otherwise stay local without a message*
+- `after-run` — With `[sync] push_after_run = true`, `run start` and `pipeline run` push the store once the fire's runs close, and a failed push fails the command.
 
 A push: digest, upload, then the bucket-manifest commit by merge and compare-and-set.
 
@@ -843,6 +844,7 @@ prefix_from       = "env:CONTEXTFUL_SYNC_PREFIX"
 coordination      = "cas"
 push_retries      = 5
 pull_before_run   = true
+push_after_run    = true
 
 [node]
 id = "ingest-a"

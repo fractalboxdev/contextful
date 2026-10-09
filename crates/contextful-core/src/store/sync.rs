@@ -66,6 +66,9 @@ pub struct SyncConfig {
     /// Pull the bucket before a run or the tool server first reads (`store.pull.before-run`).
     #[serde(default)]
     pub pull_before_run: Option<bool>,
+    /// Push the store once a fire's runs close, success or failure (`store.push.after-run`).
+    #[serde(default)]
+    pub push_after_run: Option<bool>,
     /// The signing region of an `https://` or loopback `http://` endpoint; `us-east-1` when absent.
     #[serde(default)]
     pub region: Option<String>,

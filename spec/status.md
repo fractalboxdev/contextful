@@ -11,11 +11,11 @@ An unpinned clause is `committed`; a pinned one is `performed` when its Rust, Le
 | `corpus` | 1 | 10 | 79 | 37 | 7 | 0 | 43 | 0 | 43 |
 | `disclosure` | 3 | 16 | 156 | 68 | 13 | 3 | 63 | 0 | 63 |
 | `read` | 2 | 16 | 212 | 35 | 22 | 9 | 184 | 0 | 184 |
-| `run` | 3 | 26 | 415 | 103 | 39 | 28 | 325 | 0 | 325 |
-| `store` | 1 | 17 | 253 | 59 | 13 | 19 | 216 | 0 | 216 |
+| `run` | 3 | 26 | 415 | 103 | 39 | 28 | 326 | 0 | 326 |
+| `store` | 1 | 17 | 254 | 59 | 13 | 19 | 217 | 0 | 217 |
 | `surface` | 2 | 20 | 134 | 59 | 22 | 0 | 94 | 0 | 94 |
 | `topology` | 1 | 6 | 70 | 24 | 5 | 5 | 61 | 0 | 61 |
-| **total** | 19 | 156 | 2208 | 611 | 193 | 103 | 1582 | 0 | |
+| **total** | 19 | 156 | 2209 | 611 | 193 | 103 | 1584 | 0 | |
 
 Decision records: 18.
 
@@ -28,10 +28,10 @@ A milestone reads `closed` when its acceptance test computes `passing` and every
 | 0 — The test-first gate | 2 | 21 | 6 | passing | open |
 | 1 — The authority core | 14 | 239 | 190 | passing | closed |
 | 2 — The store | 9 | 175 | 143 | passing | closed |
-| 3 — The run path | 11 | 216 | 186 | passing | closed |
+| 3 — The run path | 11 | 216 | 187 | passing | closed |
 | 4 — Ingest | 25 | 519 | 345 | passing | open |
 | 5 — The read face under enforcement | 17 | 285 | 219 | passing | open |
-| 6 — Sync and replicas | 8 | 78 | 73 | passing | closed |
+| 6 — Sync and replicas | 8 | 79 | 74 | passing | closed |
 | 7 — Memory | 6 | 54 | 45 | passing | closed |
 | 8 — Accountability | 5 | 82 | 47 | passing | open |
 | 9 — Visibility | 6 | 41 | 3 | open | open |
@@ -1192,6 +1192,7 @@ Unscheduled operations: 11.
 | `run.record.empty-window` | `crates/contextful-core/tests/integration/run/record.rs::an_empty_window_answers_an_empty_list` | performed |
 | `run.record.error-cap` | `crates/contextful-core/tests/integration/run/record.rs::a_recorded_error_is_masked_and_capped_at_2_kib` | performed |
 | `run.record.export-ceiling` | `crates/contextful-cli/tests/integration/run.rs::each_pipeline_takes_the_full_ceiling_and_the_merge_clips_once` | performed |
+| `run.record.failure-publishes` | `crates/contextful-cli/tests/integration/sync/mod.rs::a_run_declaring_push_after_run_publishes_on_success_and_on_failure` | performed |
 | `run.record.history-export` | `crates/contextful-cli/tests/integration/run.rs::history_exports_a_header_then_one_run_per_line` | performed |
 | `run.record.input-bounds` | `crates/contextful-engine/tests/integration/drive.rs::the_run_row_carries_the_input_as_of_snapshots_and_row_count` | performed |
 | `run.record.orphan-reap` | `crates/contextful-core/tests/integration/run/record.rs::only_an_in_flight_row_with_a_lapsed_lease_is_reaped` | performed |
@@ -1413,6 +1414,7 @@ Unscheduled operations: 11.
 | `store.pull.schema-merge` | `crates/contextful-sync/tests/integration/pull.rs::a_pulled_schema_merges_into_the_local_one` | performed |
 | `store.pull.tombstone-applied` | `crates/contextful-sync/tests/integration/converge.rs::a_pull_deletes_the_copy_a_tombstone_names` | performed |
 | `store.pull.unconverged` | `crates/contextful-sync/tests/integration/pull.rs::a_key_that_keeps_moving_refuses_and_writes_no_pointer` | performed |
+| `store.push.after-run` | `crates/contextful-cli/tests/integration/sync/mod.rs::a_run_declaring_push_after_run_publishes_on_success_and_on_failure` | performed |
 | `store.push.control-artifact` | `crates/contextful-sync/tests/integration/push.rs::a_push_commits_the_signed_control_chain_and_project_head` | performed |
 | `store.push.control-diverged` | `crates/contextful-sync/tests/integration/push.rs::a_sibling_control_head_refuses_without_changing_the_bucket_head` | performed |
 | `store.push.control-version` | `spec/pins.toml` | performed |

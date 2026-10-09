@@ -499,7 +499,17 @@ pub fn run(cmd: RunCmd) -> Result<()> {
             let spec = RunSpec { connector, plan: plan.clone(), run_id, site_id, pid: std::process::id(), boot_id: boot_id(), trace_id: None };
             let mut source = CommandSource { argv: plan.spec.connector.command.clone(), cwd };
             let mut dest = StoreDestination { store, decls, node, author, normalize: None, relational_parts: BTreeMap::new(), schema_diffs: Vec::new() };
-            let row = w.engine.run(&spec, &mut source, &mut dest)?;
+            let ran = w.engine.run(&spec, &mut source, &mut dest);
+            // Every outcome past run open publishes (`run.record.failure-publishes`).
+            if w.engine.catalog.run(&spec.run_id)?.is_some() {
+                let pushed = crate::sync::push_after_run(&l, w.clock.now());
+                match (&ran, pushed) {
+                    (Ok(row), Err(e)) if row.status == RunStatus::Success => return Err(e),
+                    (_, Err(e)) => eprintln!("{e:#}"),
+                    _ => {}
+                }
+            }
+            let row = ran?;
             if row.status == RunStatus::Success {
                 println!("{}: success · {} rows in {} batches", row.run_id, row.rows, row.batches);
                 Ok(())
