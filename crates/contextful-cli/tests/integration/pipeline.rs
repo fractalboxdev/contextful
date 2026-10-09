@@ -2366,3 +2366,51 @@ fn legacy_build_without_a_captured_model_requires_reapply() {
     assert!(stderr(&out).contains("reapply with a declared model"), "{}", stderr(&out));
     assert!(vendor.targets().is_empty());
 }
+
+/// Each downgrade event names the table, column path, source type, landed type and reason; a stage that does not
+/// commit contributes none.
+// spec: run.record.schema-diff-shape@6ed8531d
+#[test]
+fn a_downgrade_event_names_all_five_fields_and_an_uncommitted_stage_records_none() {
+    use std::sync::atomic::{AtomicUsize, Ordering::SeqCst};
+    // The phase selects what page 1 answers and whether page 2 ends the walk or fails the run.
+    let phase = Arc::new(AtomicUsize::new(0));
+    let seen = phase.clone();
+    let vendor = Vendor::start(move |target| match (target.ends_with("p=1"), seen.load(SeqCst)) {
+        (true, 0) => (200, r#"[{"resource":"old"}]"#.into()),
+        (true, _) => (200, r#"[{"resource":{"service":"api"}}]"#.into()),
+        (false, 1) => (404, "{}".into()),
+        (false, _) => (200, "[]".into()),
+    });
+    let dir = project(&format!(
+        "[[pipeline]]\nid = \"otel\"\nnormalize = \"native\"\ntables = [\"spans\"]\n[pipeline.source]\nname = \"http\"\nconfig = {{ endpoint = \"{}\", page_param = \"p\" }}\n",
+        vendor.url("/v1/{table}")
+    ));
+    ok(&fire(dir.path(), "otel", "r1", "2030-01-01T00:00:00Z"));
+    // r2 stages the downgrading page, then fails on the next one and commits nothing.
+    phase.store(1, SeqCst);
+    assert!(!fire(dir.path(), "otel", "r2", "2030-01-01T00:01:00Z").status.success());
+    phase.store(2, SeqCst);
+    ok(&fire(dir.path(), "otel", "r3", "2030-01-01T00:02:00Z"));
+    assert_eq!(vendor.targets().iter().filter(|t| t.ends_with("p=2")).count(), 3, "every run reached its second page");
+
+    let runs = dir.path().join(".contextful/context/research/tables/otel_spans/data/runs");
+    assert!(!runs.join("r2/ingest-a/_manifest.json").exists(), "an uncommitted stage writes no manifest");
+    let manifest: serde_json::Value = serde_json::from_slice(&std::fs::read(runs.join("r3/ingest-a/_manifest.json")).unwrap()).unwrap();
+    let events = manifest["schema_diffs"].as_array().unwrap();
+    assert_eq!(events.len(), 1, "{manifest}");
+    let event = &events[0];
+    assert_eq!(event["table"], "otel_spans");
+    assert_eq!(event["column_path"], "resource");
+    assert_eq!(event["landed_type"], "Utf8");
+    for field in ["source_type", "reason"] {
+        assert!(event[field].as_str().is_some_and(|s| !s.is_empty()), "{field}: {event}");
+    }
+    assert_ne!(event["source_type"], event["landed_type"], "{event}");
+
+    let history: serde_json::Value =
+        serde_json::from_str(&ok(&cf(dir.path(), &["run", "history", "--project", "research", "--pipeline", "otel"]))).unwrap();
+    let diffs = |id: &str| history["runs"].as_array().unwrap().iter().find(|r| r["run_id"] == id).map(|r| r["schema_diffs"].clone());
+    assert!(diffs("r2").is_none_or(|d| d.is_null() || d.as_array().is_some_and(Vec::is_empty)), "{history}");
+    assert_eq!(diffs("r3").unwrap()[0], *event);
+}
