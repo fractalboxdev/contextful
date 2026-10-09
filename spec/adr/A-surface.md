@@ -161,3 +161,18 @@ Decision: a synced import or apply admits an admin capability and signs a receip
 | Replicate the local snapshot directory directly | Claim ordering | Independent local version counters collide, and a copied pointer carries no authorization proof. |
 
 Consequences: a cold node authenticates the bucket head. A bucket writer can replay an earlier signed head to a never-synced node; freshness needs an independent monotonic witness.
+
+
+## Native model builds share applied cadence and execution history
+
+The closed `build` job targets a declared SQL model. Applied control carries resolved SQL, contracts, tests and freshness declarations. A pipeline-only apply preserves these model definitions. A full apply versions them with the jobs and pipelines.
+
+A build job declaring `after` joins the named pipeline's existing dependent-run unit. The head owns cadence and exclusion; every pipeline step must succeed before the build runs. Independent scheduled builds consume committed inputs. Applied build jobs without captured model declarations require full reapply; no live draft substitutes for their missing plan. Job-to-job dependencies and SQL-inferred refresh are outside this contract.
+
+Native builds open the existing host execution scope and record starts and outcomes. The model publisher retains staging, contract checks, tests and pointer publication. Its guarded entry checks the execution stop boundary before persistent schema and pointer changes. Cooperative stop admission and model pointer CAS do not provide atomic cross-host fencing.
+
+| Option | Lost on | Cost |
+| --- | --- | --- |
+| Applied model definitions in native cadence *(chosen)* | — | Each control version carries resolved SQL; source ordering is explicit. |
+| Standalone build over mutable files | Applied identity | Draft SQL changes the running schedule. |
+| Separate model scheduler | One execution home | Cadence, exclusion and restart history have two implementations. |

@@ -18,7 +18,7 @@ use std::fs;
 use std::path::{Path, PathBuf};
 
 #[cfg(feature = "read")]
-pub use materialize::{admit_statements, build, BuildRequest, Built};
+pub use materialize::{admit_statements, build, build_guarded, BuildRequest, Built};
 
 /// The section of the snapshot the model's pointer names, when that build published one.
 pub fn current_section(store: &Store, model: &str) -> Result<Option<PublishSection>> {
@@ -528,6 +528,12 @@ mod materialize {
     /// pointer (`run.publish.staging`). A refusal at any step removes the staging directory
     /// and leaves the last published build serving.
     pub fn build(face: &Face, req: &BuildRequest<'_>) -> std::result::Result<Built, ReadFault> {
+        build_guarded(face, req, &|| Ok(()))
+    }
+
+    /// Admit publication under the caller's execution boundary after staging, before
+    /// changing persistent schema or the published pointer. This is not host fencing.
+    pub fn build_guarded(face: &Face, req: &BuildRequest<'_>, boundary: &dyn Fn() -> Result<()>) -> std::result::Result<Built, ReadFault> {
         let store = face.store();
         let spec = req.model;
         store.check_writable("build")?;
@@ -712,6 +718,15 @@ mod materialize {
         // The schema a reader resolves the new snapshot through goes in place under the
         // schema lock, and returns to its prior value when the pointer is lost.
         let _schema_lock = store.lock_schema(&spec.id)?;
+        if let Err(error) = boundary() {
+            drop(in_flight);
+            let _ = fs::remove_dir_all(&staging);
+            if publishes {
+                refuse_attempt(store, &spec.id, &build_id, req.completed_at)?;
+                write_logs(store, &spec.id)?;
+            }
+            return Err(error.into());
+        }
         let prior_schema = store.try_schema(&spec.id)?;
         store.write_schema(&spec.id, &schema)?;
         let section = manifest.publish.clone();

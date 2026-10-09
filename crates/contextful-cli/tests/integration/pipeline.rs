@@ -2128,3 +2128,166 @@ fn an_unknown_normalize_mode_is_refused_at_validation() {
         "{err}"
     );
 }
+
+fn inventory_model_job(dependency: &str) -> String {
+    format!(r#"
+[[model]]
+id = "inventory"
+sql_file = "inventory.sql"
+unique_key = ["id"]
+[model.contract]
+version = "1.0.0"
+columns = [{{ name = "id", type = "utf8", nullable = false }}, {{ name = "n", type = "int64", nullable = false }}]
+[model.freshness]
+max_lag = "5m"
+[[model.test]]
+name = "nonempty"
+sql = "SELECT * FROM inventory WHERE n < 1"
+[[job]]
+name = "refresh-inventory"
+kind = "build"
+target = "inventory"
+{dependency}
+"#)
+}
+
+#[test]
+fn native_model_schedule_pins_sql_refreshes_and_preserves_restart_cadence() {
+    let vendor = Vendor::start(|_| (200, "[{\"id\":\"a\"}]".into()));
+    let declaration = format!("site_id = \"site-a\"\n{}{}", scheduled("orders", &vendor.url("/orders"), "every 1m"), inventory_model_job("after = \"orders\""));
+    let dir = project(&declaration);
+    let p = dir.path();
+    std::fs::write(p.join("inventory.sql"), "SELECT id, CAST(count(*) AS BIGINT) AS n FROM orders_items GROUP BY id").unwrap();
+    ok(&cf(p, &["pipeline", "import", "--project", "research"]));
+    let snapshot = std::fs::read_to_string(p.join(".contextful/control/research/manifest@v1.toml")).unwrap();
+    assert!(snapshot.contains("count(*)"), "applied SQL must be resolved: {snapshot}");
+    std::fs::write(p.join("inventory.sql"), "SELECT missing FROM absent").unwrap();
+    std::fs::remove_file(p.join("inventory.sql")).unwrap();
+    let edited = declaration.replace("every 1m", "every 30s").replace("version = \"1.0.0\"", "version = \"9.0.0\"");
+    std::fs::write(p.join("contextful.toml"), format!("authoring_posture = \"per_request\"\n{edited}")).unwrap();
+    ok(&cf(p, &["pipeline", "apply", "orders", "--project", "research"]));
+    let preserved: toml::Value = std::fs::read_to_string(p.join(".contextful/control/research/manifest@v2.toml")).unwrap().parse().unwrap();
+    let original: toml::Value = snapshot.parse().unwrap();
+    assert_eq!(preserved["model"], original["model"]);
+    let cycle = |at: &str| cf(p, &["pipeline", "serve", "--cycle", "--project", "research", "--now", at]);
+    ok(&cycle("2030-01-01T00:01:00Z"));
+    let read = || json(&cf(p, &["query", "--project", "research", "--json", "SELECT id,n FROM inventory"]));
+    assert_eq!(read()["rows"], serde_json::json!([["a", "1"]]));
+    let same = json(&cycle("2030-01-01T00:01:00Z"));
+    assert_eq!(same["fired"], serde_json::json!([]));
+    ok(&cycle("2030-01-01T00:02:00Z"));
+    assert_eq!(read()["rows"], serde_json::json!([["a", "2"]]));
+    let rows = history(p);
+    assert_eq!(rows.iter().filter(|r| r["host_scope"] == "job:refresh-inventory" && r["status"] == "success").count(), 2, "{rows:?}");
+}
+
+#[test]
+fn standalone_model_schedule_uses_durable_job_starts() {
+    let vendor = Vendor::start(|_| (200, "[{\"id\":\"a\"}]".into()));
+    let declaration = format!("site_id = \"site-a\"\n{}{}", scheduled("orders", &vendor.url("/orders"), "every 1m"), inventory_model_job("schedule = \"every 1m\""));
+    let dir = project(&declaration);
+    let p = dir.path();
+    std::fs::write(p.join("inventory.sql"), "SELECT id, CAST(count(*) AS BIGINT) AS n FROM orders_items GROUP BY id").unwrap();
+    ok(&fire(p, "orders", "seed", "2030-01-01T00:01:00Z"));
+    ok(&cf(p, &["pipeline", "import", "--project", "research"]));
+    let args = ["pipeline", "serve", "--cycle", "--project", "research", "--now", "2030-01-01T00:01:00Z"];
+    let first = json(&cf(p, &args));
+    assert_eq!(first["fired"], serde_json::json!(["job:refresh-inventory"]));
+    let second = json(&cf(p, &args));
+    assert_eq!(second["fired"], serde_json::json!([]));
+}
+
+#[test]
+fn native_model_source_and_contract_failures_keep_the_last_publication() {
+    use std::sync::atomic::{AtomicBool, Ordering};
+    let failed = Arc::new(AtomicBool::new(false));
+    let mode = failed.clone();
+    let vendor = Vendor::start(move |_| if mode.load(Ordering::SeqCst) { (400, "invalid source".into()) } else { (200, "[{\"id\":\"a\"}]".into()) });
+    let declaration = format!("site_id = \"site-a\"\n{}{}", scheduled("orders", &vendor.url("/orders"), "every 1m"), inventory_model_job("after = \"orders\""));
+    let dir = project(&declaration);
+    let p = dir.path();
+    let sql = "SELECT id, CAST(count(*) AS BIGINT) AS n FROM orders_items GROUP BY id";
+    std::fs::write(p.join("inventory.sql"), sql).unwrap();
+    ok(&cf(p, &["pipeline", "import", "--project", "research"]));
+    let cycle = |at: &str| cf(p, &["pipeline", "serve", "--cycle", "--project", "research", "--now", at]);
+    let status = || json(&cf(p, &["build", "status", "inventory", "--project", "research", "--json"]));
+    ok(&cycle("2030-01-01T00:01:00Z"));
+    let original = status();
+    assert!(original["freshness"]["watermark"]["inputs"].is_object());
+    failed.store(true, Ordering::SeqCst);
+    assert!(!cycle("2030-01-01T00:02:00Z").status.success());
+    assert_eq!(status()["published_build_id"], original["published_build_id"]);
+    assert_eq!(status()["freshness"]["watermark"], original["freshness"]["watermark"]);
+    assert_eq!(history(p).iter().filter(|r| r["host_scope"] == "job:refresh-inventory").count(), 1, "source failure skips the build entirely");
+    failed.store(false, Ordering::SeqCst);
+    std::fs::write(p.join("inventory.sql"), sql.replace("count(*)", "0")).unwrap();
+    let plan = json(&cf(p, &["pipeline", "plan", "--project", "research", "--json"]));
+    assert_eq!(plan["models"][0]["action"], "change");
+    ok(&cf(p, &["pipeline", "apply", "--project", "research"]));
+    assert!(!cycle("2030-01-01T00:03:00Z").status.success());
+    assert_eq!(status()["published_build_id"], original["published_build_id"]);
+    assert_eq!(status()["freshness"]["watermark"], original["freshness"]["watermark"]);
+    assert_eq!(status()["last_build_status"], "refused");
+    assert_eq!(json(&cycle("2030-01-01T00:03:00Z"))["fired"], serde_json::json!([]));
+    std::fs::write(p.join("inventory.sql"), sql).unwrap();
+    ok(&cf(p, &["pipeline", "apply", "--project", "research"]));
+    ok(&cycle("2030-01-01T00:04:00Z"));
+    assert_ne!(status()["published_build_id"], original["published_build_id"]);
+}
+
+#[test]
+fn native_model_daemon_refreshes_and_restarts_under_one_cadence_lease() {
+    let vendor = Vendor::start(|_| (200, "[{\"id\":\"a\"}]".into()));
+    let declaration = format!("site_id = \"site-a\"\n{}{}", scheduled("orders", &vendor.url("/orders"), "every 2s"), inventory_model_job("after = \"orders\""));
+    let dir = project(&declaration);
+    let p = dir.path();
+    std::fs::write(p.join("inventory.sql"), "SELECT id, CAST(count(*) AS BIGINT) AS n FROM orders_items GROUP BY id").unwrap();
+    ok(&cf(p, &["pipeline", "import", "--project", "research"]));
+    let mut daemon = Daemon::start(p);
+    let first = daemon.wait_for("fire orders: done", 0);
+    daemon.wait_for("fire orders: done", first + 1);
+    let contender = serve_cycle_live(p);
+    assert!(contender["held_by"].is_string(), "{contender}");
+    assert!(daemon.terminate().success());
+    let before = history(p).iter().filter(|r| r["host_scope"] == "job:refresh-inventory").count();
+    assert!(before >= 2);
+    let mut restarted = Daemon::start(p);
+    restarted.wait_for("fire orders: done", 0);
+    assert!(restarted.terminate().success());
+    let after = history(p);
+    assert!(after.iter().filter(|r| r["host_scope"] == "job:refresh-inventory" && r["status"] == "success").count() > before);
+    let read = json(&cf(p, &["query", "--project", "research", "--json", "SELECT n FROM inventory"]));
+    assert!(read["rows"][0][0].as_str().unwrap().parse::<u64>().unwrap() >= 3, "{read}");
+}
+
+#[test]
+fn dependent_build_requires_the_entire_pipeline_unit_to_succeed() {
+    let source = Vendor::start(|_| (200, "[{\"id\":\"a\"}]".into()));
+    let tail = Vendor::start(|_| (400, "refused".into()));
+    let declaration = format!("site_id = \"site-a\"\n{}{}{}", scheduled("orders", &source.url("/orders"), "every 1m"),
+        pipeline("tail", &tail.url("/tail"), "after = \"orders\"", "tables = [\"items\"]"), inventory_model_job("after = \"orders\""));
+    let dir = project(&declaration);
+    let p = dir.path();
+    std::fs::write(p.join("inventory.sql"), "SELECT id, CAST(count(*) AS BIGINT) AS n FROM orders_items GROUP BY id").unwrap();
+    ok(&cf(p, &["pipeline", "import", "--project", "research"]));
+    let out = cf(p, &["pipeline", "serve", "--cycle", "--project", "research", "--now", "2030-01-01T00:01:00Z"]);
+    assert!(!out.status.success());
+    assert!(!history(p).iter().any(|r| r["host_scope"] == "job:refresh-inventory"));
+    assert!(!p.join(".contextful/context/research/tables/inventory/manifest.json").exists());
+}
+
+#[test]
+fn legacy_build_without_a_captured_model_requires_reapply() {
+    let vendor = Vendor::start(|_| (200, "[{\"id\":\"a\"}]".into()));
+    let dir = project(&format!("site_id = \"site-a\"\n{}", scheduled("orders", &vendor.url("/orders"), "every 1m")));
+    let p = dir.path();
+    ok(&cf(p, &["pipeline", "import", "--project", "research"]));
+    let file = p.join(".contextful/control/research/manifest@v1.toml");
+    let old = std::fs::read_to_string(&file).unwrap();
+    // Represent a model-free snapshot produced before build dispatch existed.
+    std::fs::write(&file, format!("{old}\n[[job]]\nname='old-build'\nkind='build'\ntarget='orders_items'\nschedule='every 1m'\n")).unwrap();
+    let out = cf(p, &["pipeline", "serve", "--cycle", "--project", "research", "--now", "2030-01-01T00:01:00Z"]);
+    assert!(!out.status.success());
+    assert!(stderr(&out).contains("reapply with a declared model"), "{}", stderr(&out));
+    assert!(vendor.targets().is_empty());
+}
