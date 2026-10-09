@@ -91,6 +91,11 @@ impl Fixture {
         let dir = tempfile::tempdir().unwrap();
         let store = Store::open(dir.path(), "research").unwrap();
         let face = Face::open(store, MANIFEST, Pepper::resolve(|_| None)).unwrap();
+        Fixture::over(dir, face)
+    }
+
+    /// A fixture over a face already opened in `dir`.
+    pub fn over(dir: tempfile::TempDir, face: Face) -> Fixture {
         let state = dir.path().join("state");
         Fixture { dir, face, state, signer: SeedSigner::generate(SignatureAlgorithm::Ed25519) }
     }

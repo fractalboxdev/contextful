@@ -495,6 +495,29 @@ fn memory_recall_answers_keyed_over_the_tool_protocol() {
     assert_eq!(notes["result"]["structuredContent"]["error"]["identifier"], json!("MemoryRecallNotClaims"), "{notes}");
 }
 
+/// A `memory.recall` read, and a `corpus.retrieve` read returning `memory_facts` rows, records the returned claim ids as `contextful.memory.claims` in its read entry, beside the caller's credential, subject and read instant.
+// spec: read.recall.usage-ledger@cbc45e6f
+#[test]
+fn memory_reads_record_the_claim_ids_they_returned() {
+    let f = claims();
+    let clock = FixedClock(at("2030-06-01T00:00:00Z"));
+    let server = Server::new(&f.face, f.authority.clone(), &current, &clock, &f.audit).unwrap();
+    call(&server, "memory.recall", json!({ "table": "research/facts", "subject": "acme", "observed_at": "2030-02-01T00:00:00Z" }));
+    call(&server, "memory.recall", json!({ "table": "research/facts", "subject": "nobody" }));
+    let ranked = call(&server, "corpus.retrieve", json!({ "prefix": "research/facts", "query": "acme cfo" }));
+    assert_eq!(rows(&ranked).as_array().map(Vec::len), Some(1), "{ranked}");
+    call(&server, "corpus.retrieve", json!({ "prefix": "research/notes", "query": "n1" }));
+    call(&server, "context.query", json!({ "sql": "SELECT claim_id FROM \"research/facts\"" }));
+
+    let entries = contextful_policy::audit::entries(&f.dir.path().join("audit")).unwrap();
+    let claims: Vec<&Value> = entries.iter().map(|e| &e.attributes["contextful.memory.claims"]).collect();
+    assert_eq!(claims, [&json!(["c-dana"]), &json!([]), &json!(["c-lee"]), &Value::Null, &Value::Null]);
+    let first = &entries[0].attributes;
+    assert_eq!(first["contextful.credential"], json!(f.authority.credential_id()));
+    assert_eq!(first["contextful.subject.on_behalf_of"], json!("user://dana@acme.example"));
+    assert_eq!(first["contextful.read.at"], json!(at("2030-06-01T00:00:00Z").to_rfc3339()));
+}
+
 /// `corpus.retrieve({prefix, query, query_embedding?, filter?, kinds?, limit?, since?, min_score?, as_of?})` returns the top rows across the item and artifact genres under one prefix, each with a snippet and full provenance. It composes the query surface and memory recall, storing nothing.
 // spec: read.retrieve.ranked-call@ea39e5ac
 #[test]

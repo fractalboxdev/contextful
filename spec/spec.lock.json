@@ -6407,7 +6407,7 @@
       "operation": "revise",
       "subject": "retention-default",
       "kind": "behavior",
-      "statement": "Claims retain their recorded validity until explicit expiry or erasure; ranking decay is opt-in per shape with a declared half-life, and never deletes a claim or changes its validity interval.",
+      "statement": "Claims retain their recorded validity until explicit expiry or erasure; a claims table declaring `decay_half_life` halves a claim's ranked score per half-life since its `valid_from`, never deleting a claim or changing its validity.",
       "why": "A-read",
       "file": "spec/21-memory.md",
       "line": 120
@@ -6671,7 +6671,7 @@
       "operation": "recall",
       "subject": "usage-ledger",
       "kind": "behavior",
-      "statement": "Each `memory.recall` and ranked memory arm records the ids of claims actually returned in the request ledger, under the caller's admitted authority and the read frontier.",
+      "statement": "A `memory.recall` read, and a `corpus.retrieve` read returning `memory_facts` rows, records the returned claim ids as `contextful.memory.claims` in its read entry, beside the caller's credential, subject and read instant.",
       "why": "A-read",
       "file": "spec/21-memory.md",
       "line": 167
@@ -6770,7 +6770,7 @@
       "operation": "settle",
       "subject": "calibration-report",
       "kind": "behavior",
-      "statement": "Calibration reports group settled predictions by shape and predicate, and name sample count, Brier score, expected calibration error and the held-out score used by {{read.synthesize.confidence-calibration}}.",
+      "statement": "Calibration reports group settled predictions by shape and predicate, and name sample count, Brier score, expected calibration error over 10 equal-width bins, and the held-out score {{read.synthesize.confidence-calibration}} uses, over every fifth prediction.",
       "why": "A-read",
       "file": "spec/21-memory.md",
       "line": 206

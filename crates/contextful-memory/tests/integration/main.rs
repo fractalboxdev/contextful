@@ -2,6 +2,7 @@
 
 mod evidence;
 mod recall;
+mod retention;
 mod support;
 mod synthesize;
 mod write;

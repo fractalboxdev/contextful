@@ -208,7 +208,7 @@ The five reserved relations cover evidence, contradiction, succession, subject a
 
 ## Memory confidence and retention separate history from ranking
 
-The source's emitted confidence is uncalibrated until a per-shape-and-predicate isotonic map improves held-out Brier score on settled outcomes. Reports expose sample count, Brier score, expected calibration error and that held-out score. A shape may opt into ranking decay with a declared half-life; recorded claims keep their validity until expiry or erasure. A stale citation stays gated, and a newly committed source row is the only automatic synthesis trigger. Equal-instant unscoped contradictions enter the dead-letter table without silently retiring either claim. An earlier direct observation keeps the existing out-of-order refusal.
+The source's emitted confidence is uncalibrated until a per-shape-and-predicate isotonic map improves held-out Brier score on settled outcomes. Reports expose sample count, Brier score, expected calibration error and that held-out score. A claims table may declare a half-life that scales its ranked scores; recorded claims keep their validity until expiry or erasure. A stale citation stays gated, and a newly committed source row is the only automatic synthesis trigger. Equal-instant unscoped contradictions enter the dead-letter table without silently retiring either claim. An earlier direct observation keeps the existing out-of-order refusal.
 
 | Option | Lost on | Cost |
 | --- | --- | --- |
@@ -219,7 +219,7 @@ The source's emitted confidence is uncalibrated until a per-shape-and-predicate 
 
 ## Memory reads expose use and resolve ownership from enforced rows
 
-The request ledger records returned claim ids under the caller and frontier. Ownership answers include every visible attached principal, ordered by attachment time and id. An external graph engine is a derived index; the store's enforced rows remain the answer source.
+A memory read's audit entry records the claim ids it returned under the caller's credential and subject. Ownership answers include every visible attached principal, ordered by attachment time and id. An external graph engine is a derived index; the store's enforced rows remain the answer source.
 
 | Option | Lost on | Cost |
 | --- | --- | --- |

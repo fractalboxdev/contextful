@@ -2,6 +2,7 @@
 //! extraction validation and its attempt budget, entity resolution, claim standing and
 //! revision, the recall evidence gate, and settled outcomes.
 
+pub mod calibrate;
 pub mod declare;
 pub mod error;
 pub mod recall;

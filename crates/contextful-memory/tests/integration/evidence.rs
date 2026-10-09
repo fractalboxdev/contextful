@@ -244,3 +244,54 @@ fn a_claim_served_past_its_cited_version_counts_stale() {
     assert_eq!(served(&after), (1, json!(0)));
     assert_eq!(stale(&after), json!(1), "the claim cites a version the key no longer serves");
 }
+
+/// A stale citation remains subject to {{read.recall.keyed-gate}}; only a newly committed source row advancing {{read.synthesize.pass-cursor}} starts synthesis against its live key version.
+// spec: read.recall.stale-revision@1f06d1b6
+#[test]
+fn a_stale_claim_stays_gated_until_a_new_source_row_resynthesizes_it() {
+    let f = Fixture::new();
+    let (writer, node) = (f.writer(), NodeId::parse("memory-a").unwrap());
+    let cfo = |object: &str, run: &str| {
+        json!({ "claims": [{ "subject": "acme", "predicate": "cfo", "object": object, "confidence": 0.9,
+            "evidence": [{ "table": ACCOUNTS, "run": run, "seq": 0 }] }] })
+        .to_string()
+    };
+    let inference = Scripted::new(&[cfo("Dana", "run-a1"), cfo("Lee", "run-a2")]);
+    let pass = |now: &str| {
+        Pass {
+            face: &f.face,
+            authority: &writer,
+            inference: &inference,
+            source: ACCOUNTS,
+            into: "memory/facts",
+            state: &f.state,
+            node: &node,
+            now: at(now),
+            boundary: &super::synthesize::admit,
+        }
+        .run()
+        .unwrap()
+    };
+    version(&f, "run-a1", "Dana");
+    assert_eq!(pass("2030-01-11T00:00:00Z").runs, ["run-a1"]);
+    version(&f, "run-a2", "Lee");
+
+    // Recall counts the claim stale, gates it, and launches no synthesis.
+    let r = reader(&f);
+    let after = recall(&f, &r);
+    assert_eq!((served(&after), stale(&after)), ((1, json!(0)), json!(1)));
+    let memory_only = f.authority("agent://outsider", &[Action::Read], &["memory/*"]);
+    assert_eq!(served(&recall(&f, &memory_only)), (0, json!(1)), "a stale claim passes the evidence gate like any other");
+    assert_eq!(inference.calls(), 1, "a stale read starts no model call");
+
+    // The newly committed version advances the cursor, and synthesis reads it.
+    let second = pass("2030-01-12T00:00:00Z");
+    assert_eq!(second.runs, ["run-a2"]);
+    let sent: String = inference.sent.lock().unwrap()[1].iter().map(|m| m.content.clone()).collect();
+    assert!(sent.contains("Lee") && !sent.contains("Dana"), "{sent}");
+    let current = recall(&f, &r);
+    let object_at = current.columns.iter().position(|c| c == "object").unwrap();
+    assert_eq!((current.rows[0][object_at].clone(), stale(&current)), (json!("Lee"), json!(0)));
+    assert!(pass("2030-01-13T00:00:00Z").runs.is_empty(), "nothing new, nothing synthesized");
+    assert_eq!(inference.calls(), 2);
+}
