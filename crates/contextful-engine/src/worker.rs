@@ -109,16 +109,20 @@ impl Relay {
         }
     }
 
-    /// Read and verify the signed fields of a message on `token`'s route.
+    /// Read and verify the signed fields of a message on `token`'s route. The signature
+    /// verifies before the token is looked up, so an unauthenticated caller learns nothing
+    /// of which tokens the relay holds (`run.suspend.resume-route`).
     fn verified(&self, state: &State, token: &str, header: &dyn Fn(&str) -> Option<String>) -> Result<Signed, RelayRefusal> {
-        let (run, step) = state.tokens.get(token).ok_or_else(|| RelayRefusal::UnknownToken(token.to_string()))?;
-        let rejected = |why: &str| RelayRefusal::Refused(SurfaceError::DispatchCallbackRejected(format!("step `{step}` of run `{run}`: {why}")));
-        let (signed, signature) = Signed::from_headers(header).ok_or_else(|| rejected("a signed field is absent or malformed"))?;
-        if (&signed.run, &signed.step) != (run, step) {
-            return Err(rejected("the signed run and step are not this token's"));
-        }
+        let unsigned = |why: &str| RelayRefusal::Refused(SurfaceError::DispatchCallbackRejected(format!("a message on `/awake/{token}`: {why}")));
+        let (signed, signature) = Signed::from_headers(header).ok_or_else(|| unsigned("a signed field is absent or malformed"))?;
         if !signed.verifies(&self.key, &signature) {
-            return Err(rejected("the signature does not verify"));
+            return Err(unsigned("the signature does not verify"));
+        }
+        let (run, step) = state.tokens.get(token).ok_or_else(|| RelayRefusal::UnknownToken(token.to_string()))?;
+        if (&signed.run, &signed.step) != (run, step) {
+            return Err(RelayRefusal::Refused(SurfaceError::DispatchCallbackRejected(format!(
+                "step `{step}` of run `{run}`: the signed run and step are not this token's"
+            ))));
         }
         Ok(signed)
     }

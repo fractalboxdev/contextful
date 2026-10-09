@@ -107,7 +107,11 @@ fn a_beating_worker_keeps_its_step_and_its_callback_completes_it() {
     // A heartbeat signed under another key changes nothing.
     let forged = headers(&s, 1, rig.clock.now(), b"other");
     assert_eq!(rig.relay.heartbeat(&t, &|k| forged.get(k).cloned()).unwrap_err().status(), 409);
-    assert_eq!(rig.relay.heartbeat("ffff", &|k| forged.get(k).cloned()).unwrap_err().status(), 404);
+    // The signature verifies before the token is looked up: a forged message learns nothing of the
+    // tokens the relay holds, and a signed one on an unknown token answers 404.
+    assert_eq!(rig.relay.heartbeat("ffff", &|k| forged.get(k).cloned()).unwrap_err().status(), 409);
+    let signed = headers(&s, 1, rig.clock.now(), KEY);
+    assert_eq!(rig.relay.heartbeat("ffff", &|k| signed.get(k).cloned()).unwrap_err().status(), 404);
     let done = StepOutcome::Done(StepResult::CatalogRow("orders-1".into()));
     let h = headers(&s, 1, rig.clock.now(), KEY);
     assert_eq!(rig.relay.callback(&t, &|k| h.get(k).cloned(), &done.encode()).unwrap(), done);
