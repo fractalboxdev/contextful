@@ -281,6 +281,7 @@ theorem subsumes_of_matches_witness :
 when every placement, over every constructor and every identifier, admitted by the first
 list is admitted by the second. -/
 -- spec: assurance.prove.symbolic-inclusion@e84fedf6
+-- spec: assurance.prove.subsumption-exact@3e1b3128
 theorem includedIn_iff_placement_inclusion :
     ∀ (small big : List Entry),
       includedIn small big = true ↔ ∀ p : Placement, allowSetOf small p = true → allowSetOf big p = true := by

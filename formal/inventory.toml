@@ -2,10 +2,10 @@
 # pretty-printed type, matched by `contextful formal check`.
 
 [claim]
-targets  = ["Authority.grant_includedIn_permits", "Authority.attenuate_permits_parent"]
+targets  = ["Authority.grant_includedIn_permits", "Authority.attenuate_permits_parent", "Authority.permits_iff_audience_and_every_block"]
 trusted  = ["delegation-library", "delegation-library-cryptography", "delegation-library-parser", "translator"]
 rests_on = ["delegation-library", "delegation-library-cryptography", "delegation-library-parser"]
-verified = ["crates/contextful-core/src/attenuate.rs::widened", "crates/contextful-core/src/attenuate.rs::attenuate"]
+verified = ["crates/contextful-core/src/attenuate.rs::widened", "crates/contextful-core/src/attenuate.rs::attenuate", "crates/contextful-policy/src/verify.rs::permits"]
 
 [constant."composed_sound"]
 module    = "Contextful.Layer"
@@ -44,7 +44,7 @@ module    = "Contextful.Placement"
 statement = "∀ {es : List AllowSet} {c : Placement}, floor es c = true → ∀ (a : AllowSet), a ∈ es → a c = true"
 assumptions    = ["propext", "Quot.sound"]
 negative  = """
-Leaves open: that the evidence list backing a floor is complete — the empty list folds to admit every caller; that the caller's placement is the one it declares; that the floor is consulted before inference runs.
+Leaves open: that the evidence list backing a floor is non-empty — the empty list folds to admit every caller, and the engine refuses a row naming no evidence table; that the placement a caller declares is its own; that the floor is consulted before inference runs.
 """
 
 [constant."failClosed_floor_rejects_cloud"]
@@ -96,6 +96,15 @@ assumptions    = ["propext", "Quot.sound"]
 binding   = "crates/contextful-core/src/attenuate.rs::attenuate; test crates/contextful-core/tests/integration/attenuate.rs::narrowing"
 negative  = """
 Leaves open: credential bytes, signatures and block chaining, which the delegation library owns; a change of the trusted environment between the two decisions; that every block the library verified reaches the decision; facts, checks and restrictions beyond grants, expiry and audience.
+"""
+
+[constant."Authority.permits_iff_audience_and_every_block"]
+module    = "Contextful.Authority"
+statement = "∀ (env : Authority.Env) (c : Authority.Credential) (r : Authority.Request), Authority.permits env c r = true ↔ c.audience = some env.audience ∧ ∀ (b : Authority.Block), b ∈ c.authority :: c.appended → Authority.Block.admits env b r = true"
+assumptions    = ["propext", "Quot.sound"]
+binding   = "crates/contextful-policy/src/verify.rs::permits; test crates/contextful-policy/tests/integration/profile.rs::an_appended_block_narrows_or_adds_nothing"
+negative  = """
+Leaves open: credential bytes, signatures and block chaining, which the delegation library owns; that the library's evaluator computes the conjunction the model states; facts, checks and restrictions beyond grants, expiry and audience; scoped-session execution after the decision.
 """
 
 [constant."Allowlist.allowlist_includedIn_sound"]

@@ -278,6 +278,7 @@ fn audit(root: &Path, tree: &Path) -> Result<Report> {
     refuse_dependencies(root)?;
     let inventory = Inventory::load(root)?;
     let claim = inventory.refuse_unpublishable(tree)?;
+    let admissions = inventory.admissions(tree)?;
     let toolchain = resolve_toolchain(root)?;
 
     let build = Command::new("lake").arg("build").current_dir(root).output().context("running `lake build`")?;
@@ -295,7 +296,11 @@ fn audit(root: &Path, tree: &Path) -> Result<Report> {
     }
 
     let elaborated = elaborate(root, &inventory)?;
-    let constants = inventory.rows.iter().map(|row| judge(row, elaborated.get(&row.name))).collect();
+    let constants = inventory
+        .rows
+        .iter()
+        .map(|row| judge(row, admissions.get(&row.name).map(Vec::as_slice).unwrap_or_default(), elaborated.get(&row.name)))
+        .collect();
     Ok(Report {
         commit: git(root, &["rev-parse", "HEAD"]).unwrap_or_else(|| "none".into()),
         worktree_clean: git(root, &["status", "--porcelain", "--", "."]).is_some_and(|s| s.is_empty()),
@@ -307,11 +312,14 @@ fn audit(root: &Path, tree: &Path) -> Result<Report> {
     })
 }
 
-fn judge(row: &InventoryRow, found: Option<&Elaborated>) -> Row {
-    let admitted: Vec<String> = match &row.assumptions {
+/// `admitted_by_record` holds the assumptions beyond the allowlist an `A-assurance` section
+/// admits for this row (`assurance.audit-assumptions.allowlist-admission`).
+fn judge(row: &InventoryRow, admitted_by_record: &[String], found: Option<&Elaborated>) -> Row {
+    let mut admitted: Vec<String> = match &row.assumptions {
         Some(list) => ASSUMPTION_ALLOWLIST.iter().filter(|a| list.iter().any(|l| l == *a)).map(|a| a.to_string()).collect(),
         None => ASSUMPTION_ALLOWLIST.iter().map(|a| a.to_string()).collect(),
     };
+    admitted.extend(admitted_by_record.iter().cloned());
     let mut out = Row {
         name: row.name.clone(),
         module: row.module.clone(),
@@ -446,6 +454,7 @@ struct RawRow {
     offered_as: Option<String>,
     translated: Option<String>,
     translation: Option<Translation>,
+    record: Option<String>,
 }
 
 /// The four links a statement about translated code inherits.
@@ -520,6 +529,24 @@ struct InventoryRow {
     offered_as: Option<String>,
     translated: Option<String>,
     translation: Option<Translation>,
+    record: Option<String>,
+}
+
+/// The decision record an assumption beyond the allowlist is admitted through.
+pub const ADMISSION_RECORD: &str = "spec/adr/A-assurance.md";
+
+/// Whether the section `heading` of the admission record names `assumption` in backticks.
+fn record_admits(tree: &Path, heading: &str, assumption: &str) -> bool {
+    let Ok(text) = std::fs::read_to_string(tree.join(ADMISSION_RECORD)) else { return false };
+    let mut in_section = false;
+    for line in text.lines() {
+        if let Some(h) = line.strip_prefix("## ") {
+            in_section = h.trim() == heading.trim();
+        } else if in_section && line.contains(&format!("`{assumption}`")) {
+            return true;
+        }
+    }
+    false
 }
 
 /// A target's binding, `<file>::<item>[ …]; test <file>::<function>`: the decision's code
@@ -620,6 +647,7 @@ impl Inventory {
                 assumptions: r.assumptions,
                 binding: r.binding,
                 negative: r.negative,
+                record: r.record,
                 offered_as: r.offered_as,
                 translated: r.translated,
                 translation: r.translation,
@@ -627,6 +655,32 @@ impl Inventory {
         }
         let revision = format!("sha256:{:x}", Sha256::digest(text.as_bytes()));
         Ok(Inventory { revision, claim: raw.claim, rows })
+    }
+
+    /// Per row, the assumptions beyond the allowlist it admits: each named by a section of
+    /// the admission record the row cites as `record = "A-assurance: <section>"`. A row
+    /// admitting one with no such citation raises `AssumptionOutsideAllowlist`.
+    fn admissions(&self, tree: &Path) -> Result<BTreeMap<String, Vec<String>>> {
+        let mut out = BTreeMap::new();
+        for row in &self.rows {
+            let beyond: Vec<&String> =
+                row.assumptions.iter().flatten().filter(|a| !ASSUMPTION_ALLOWLIST.contains(&a.as_str())).collect();
+            if beyond.is_empty() {
+                continue;
+            }
+            let section = row.record.as_deref().and_then(|r| r.trim().strip_prefix("A-assurance:")).map(str::trim);
+            for assumption in &beyond {
+                if !section.is_some_and(|s| record_admits(tree, s, assumption)) {
+                    return Err(FormalError::AssumptionOutsideAllowlist(format!(
+                        "`{}` admits `{assumption}`, which no `A-assurance` section its `record` cites names",
+                        row.name
+                    ))
+                    .into());
+                }
+            }
+            out.insert(row.name.clone(), beyond.into_iter().cloned().collect());
+        }
+        Ok(out)
     }
 
     /// The refusals the inventory's text and the bound code paths decide, before anything

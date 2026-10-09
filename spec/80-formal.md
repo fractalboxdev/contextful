@@ -105,12 +105,14 @@ The theorem inventory: layer composition, placement, the evidence floor, and the
 - `placement-is-a-layer` — `zone_layer_sound`: with the placement check as one more list member, a row the whole list admits was admitted by that check, with no bridging hypothesis.
 - `floor-no-downgrade` — `floor_no_downgrade`: a floor admitting a caller forces every member of its evidence list to admit that caller.
 - `fail-closed` — An evidence list holding one fail-closed member yields a floor admitting no public-cloud caller, and the fail-closed allow-set rejects both cloud categories.
+- `evidence-nonempty` — `floor_no_downgrade`'s negative space names a non-empty evidence list, which {{authority.place.empty-evidence}} holds at the engine.
 - `symbolic-inclusion` — Zone inclusion is decided by subsumption over patterns, quantified over every constructor and every identifier, the named provider and the undeclared case included.
+- `subsumption-exact` — Per-entry subsumption decides zone inclusion exactly, a bare category subsuming every identifier under it, so no normal form on allow-sets precedes the decision.
 - `sampled-inclusion` — Inclusion decided by evaluating a fixed set of example values raises `ZoneInclusionSampled`.
   *A-assurance*
 - `effective-policy` — An effective policy computed from two allow-sets is included in both.
-- `proof-targets` — The authority mapping of {{authority.profile.delegation-profile}} carries two proof targets: inclusion, and narrowing — for a fixed trusted environment, permission under an attenuated child implies permission under its parent.
-  *because both are pure decision functions; the other candidate targets need an execution relation no clause specifies*
+- `proof-targets` — The authority mapping of {{authority.profile.delegation-profile}} carries three proof targets: inclusion; narrowing, where permission under an attenuated child implies permission under its parent; and profile meaning, where permission holds exactly when the audience matches and every block admits.
+  *because all three are pure decision functions; scoped-session execution and mediation need an execution relation no clause specifies*
 - `target-binding` — A proof target is bound to one authenticated query path, recorded beside it as a module path and a test, before the claim names it.
 - `unbound-target` — A target the claim names with no binding raises `ProofTargetUnbound`, naming the target.
   *A-assurance*
@@ -121,11 +123,7 @@ The theorem inventory: layer composition, placement, the evidence floor, and the
   *because mediation quantifies over the reachable states of an execution; composition quantifies over a list*
 - `names-carry-reach` — A constant's name states the object it ranges over, not the property a reader hopes for.
 
-unsettled: Do profile meaning, restriction preservation and scoped-session execution become proof targets, and which execution relation does the mediation induction range over? owner: formal affects: assurance.prove
-
-unsettled: Is inclusion decided by subsumption over patterns or by a normal form on allow-sets, given a category pattern subsuming every identifier under it? owner: formal affects: assurance.prove
-
-unsettled: What discharges the completeness of an evidence list backing a floor, given that the empty list folds to admit-everything? owner: formal affects: assurance.prove
+unsettled: Does restriction preservation become a proof target, and which execution relation does the mediation induction range over? owner: formal affects: assurance.prove
 
 ## audit-assumptions
 
@@ -195,7 +193,7 @@ The sentence the assurance claim is allowed to be: named decisions, trusted depe
 - `translation-chain` — A statement about translated code inherits four links: the compiler's lowering, the translator (Aeneas, named by one release string), hand-written models of external definitions, and the production build configuration.
 - `unstated-chain` — A theorem claimed over translated code without its translation chain raises `TranslationChainUnstated`.
   *A-assurance*
-- `refinement-scope` — Refinement covers the decision functions behind the two proof targets, whose inputs are values and whose outputs are decisions.
+- `refinement-scope` — Refinement covers the decision functions behind the proof targets, whose inputs are values and whose outputs are decisions.
 - `refinement-exceeded` — Translation reaching cryptography, a parsing adapter, a database call or concurrency raises `RefinementScopeExceeded`, naming the module.
   *A-assurance*
 

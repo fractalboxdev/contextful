@@ -94,6 +94,7 @@ EnforcePermissiveZoneDefault         = { clause = "authority.place.permissive-de
 EnforceProtectedFloorWidened         = { clause = "authority.place.floor-widened", gloss = "A protected-class surface widened past its floor with no override." }
 EnforceRemovalWithPublicCloud        = { clause = "authority.place.removal-with-public-cloud", gloss = "Write-time removal and a public-cloud allow-set on one surface." }
 EnforceEvidenceFloorExceeded         = { clause = "authority.place.evidence-floor", gloss = "A synthesized row declaring a set wider than its evidence intersection." }
+EnforceEvidenceListEmpty             = { clause = "authority.place.empty-evidence", gloss = "A synthesized row naming no evidence table." }
 EnforceIncognitoWidening             = { clause = "authority.place.incognito-widening", gloss = "A session asserting a zone wider than the incognito pin." }
 EnforceCredentialShapedValue         = { clause = "authority.resist.credential-shaped-value", gloss = "A credential-shaped value on the write path." }
 EnforceWriteOnReadOnlyFace           = { clause = "authority.resist.write-tool", gloss = "A write tool registered on an organization-wide face." }

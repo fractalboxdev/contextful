@@ -312,9 +312,17 @@ pub fn session_zone(asserted: Option<&str>, signed: Option<&str>, incognito: boo
 
 /// A synthesized row's resolved set: at most the intersection of its evidence tables'
 /// sets. A wider declaration refuses and resolves to that intersection
-/// (`authority.place.evidence-floor`).
+/// (`authority.place.evidence-floor`); a row naming no evidence table refuses and resolves
+/// to the fail-closed pair (`authority.place.empty-evidence`).
 pub fn evidence_floor(declared: &AllowSet, evidence: &[AllowSet]) -> (AllowSet, Option<EnforceError>) {
-    let floor = evidence.iter().skip(1).fold(evidence.first().cloned().unwrap_or_else(AllowSet::any), |acc, e| acc.intersect(e));
+    let Some(first) = evidence.first() else {
+        let refusal = EnforceError::EvidenceListEmpty(format!(
+            "the row declares [{}] and names no evidence table",
+            declared.labels().join(", ")
+        ));
+        return (AllowSet::fail_closed(), Some(refusal));
+    };
+    let floor = evidence.iter().skip(1).fold(first.clone(), |acc, e| acc.intersect(e));
     if declared.within(&floor) {
         (declared.clone(), None)
     } else {

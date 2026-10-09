@@ -167,13 +167,32 @@ theorem attenuate_permits_parent :
   exact List.all_eq_true.mpr fun x hx =>
     List.all_eq_true.mp (hr : (c.appended ++ [b]).all _ = true) x (List.mem_append_left _ hx)
 
-/-- The authority mapping's two proof targets: inclusion, and narrowing for a fixed trusted environment. -/
--- spec: assurance.prove.proof-targets@96991a70
-theorem authorityMapping_inclusion_and_narrowing :
+/-- Profile meaning: a credential permits a request exactly when its audience is the
+checkpoint's and every block, the authority block and each appended one, admits the request.
+No block adds authority another block lacks. -/
+theorem permits_iff_audience_and_every_block :
+    ∀ (env : Env) (c : Credential) (r : Request),
+      permits env c r = true ↔
+        c.audience = some env.audience ∧ ∀ (b : Block), b ∈ c.authority :: c.appended → b.admits env r = true := by
+  intro env c r
+  simp only [permits, Bool.and_eq_true, decide_eq_true_eq, List.all_eq_true, List.mem_cons]
+  constructor
+  · intro ⟨⟨ha, hauth⟩, happ⟩
+    exact ⟨ha, fun b hb => hb.elim (fun h => h ▸ hauth) (happ b)⟩
+  · intro ⟨ha, hall⟩
+    exact ⟨⟨ha, hall _ (Or.inl rfl)⟩, fun b hb => hall b (Or.inr hb)⟩
+
+/-- The authority mapping's three proof targets: inclusion, narrowing for a fixed trusted
+environment, and profile meaning. -/
+-- spec: assurance.prove.proof-targets@d4f07193
+theorem authorityMapping_inclusion_narrowing_meaning :
     (∀ (child parent : Grant), child.includedIn parent = true →
         ∀ r : Request, child.permits r = true → parent.permits r = true) ∧
-      ∀ (env : Env) (c : Credential) (b : Block) (r : Request),
-        permits env (attenuate c b) r = true → permits env c r = true :=
-  ⟨grant_includedIn_permits, attenuate_permits_parent⟩
+      (∀ (env : Env) (c : Credential) (b : Block) (r : Request),
+        permits env (attenuate c b) r = true → permits env c r = true) ∧
+      ∀ (env : Env) (c : Credential) (r : Request),
+        permits env c r = true ↔
+          c.audience = some env.audience ∧ ∀ (b : Block), b ∈ c.authority :: c.appended → b.admits env r = true :=
+  ⟨grant_includedIn_permits, attenuate_permits_parent, permits_iff_audience_and_every_block⟩
 
 end Authority

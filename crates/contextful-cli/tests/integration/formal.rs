@@ -603,7 +603,7 @@ fn a_target_binds_a_module_path_and_a_test_in_the_tree() {
     // Every target of the policy package binds a module path and a test that resolve.
     let inv = repo_inventory("formal");
     let targets = inv["claim"]["targets"].as_array().unwrap();
-    assert_eq!(targets.len(), 2);
+    assert_eq!(targets.len(), 3);
     for t in targets {
         let binding = inv["constant"][t.as_str().unwrap()]["binding"].as_str().unwrap();
         let (decision, test) = binding.split_once("; test ").expect("a module path and a test");
@@ -686,8 +686,8 @@ fn translation_reaching_past_a_pure_decision_is_refused() {
     assert!(!String::from_utf8_lossy(&q.check().stderr).contains("RefinementScopeExceeded"));
 }
 
-/// Refinement covers the decision functions behind the two proof targets, whose inputs are values and whose outputs are decisions.
-// spec: assurance.scope-claim.refinement-scope@962a95e2
+/// Refinement covers the decision functions behind the proof targets, whose inputs are values and whose outputs are decisions.
+// spec: assurance.scope-claim.refinement-scope@99440669
 #[test]
 fn refinement_covers_only_the_decisions_behind_the_targets() {
     // A translated constant that is no proof target reaches past the scope.
@@ -1293,4 +1293,63 @@ fn a_recheck_of_the_policy_package_completes_within_600_s() {
     let elapsed = started.elapsed();
     assert!(out.contains("Authority.attenuate_permits_parent"), "{out}");
     assert!(elapsed < std::time::Duration::from_secs(600), "{elapsed:?}");
+}
+
+const ADMISSION: &str = "Classical choice in the case-split lemmas";
+
+/// A package whose row `Fx.em'` draws on `Classical.choice` and lists it among its
+/// admitted assumptions, citing `record` when given.
+fn admitting(toolchain: &str, record: Option<&str>) -> Pkg {
+    let p = Pkg::new(toolchain);
+    p.declare("theorem em' (p : Prop) : p ∨ ¬p := Classical.em p");
+    let mut inv = p.read("inventory.toml");
+    inv.push_str(
+        "\n[constant.\"Fx.em'\"]\nmodule    = \"Fx.Basic\"\nstatement = \"∀ (p : Prop), p ∨ ¬p\"\n\
+         assumptions    = [\"propext\", \"Quot.sound\", \"Classical.choice\"]\nnegative  = \"Leaves open: the rest.\"\n",
+    );
+    if let Some(record) = record {
+        inv.push_str(&format!("record    = \"{record}\"\n"));
+    }
+    p.write("inventory.toml", &inv);
+    p
+}
+
+/// An assumption joins the allowlist through an `A-assurance` section naming it, and each inventory row admitting it cites that section in a `record` field.
+// spec: assurance.audit-assumptions.allowlist-admission@1359866a
+#[test]
+fn an_assumption_beyond_the_allowlist_needs_a_cited_record() {
+    let adr = format!("# A-assurance — Assurance decisions\n\n## {ADMISSION}\n\nThe case-split lemmas draw on `Classical.choice`.\n");
+
+    // A row admitting it with no record is outside the allowlist.
+    let p = admitting("leanprover/lean4:v4.0.0", None);
+    let err = refused(&p.check(), "AssumptionOutsideAllowlist");
+    assert!(err.contains("Fx.em'") && err.contains("Classical.choice"), "{err}");
+
+    // So is a row citing a section that does not name it.
+    let q = admitting("leanprover/lean4:v4.0.0", Some("A-assurance: Another decision"));
+    q.write_tree("spec/adr/A-assurance.md", &format!("{adr}\n## Another decision\n\nNothing admitted.\n"));
+    refused(&q.check(), "AssumptionOutsideAllowlist");
+
+    // A cited section naming it admits it for that row alone.
+    let t = lean_or_skip!();
+    let r = admitting(&t, Some(&format!("A-assurance: {ADMISSION}")));
+    r.write_tree("spec/adr/A-assurance.md", &adr);
+    passed(&r.check());
+    let rows = r.report()["constants"].as_array().unwrap().clone();
+    let em = rows.iter().find(|c| c["name"] == "Fx.em'").unwrap();
+    assert_eq!(em["admitted"], serde_json::json!(["propext", "Quot.sound", "Classical.choice"]));
+    let narrows = rows.iter().find(|c| c["name"] == "Fx.narrows").unwrap();
+    assert_eq!(narrows["admitted"], serde_json::json!(["propext", "Quot.sound"]));
+    assert_eq!(r.report()["allowlist"], serde_json::json!(["propext", "Quot.sound"]));
+}
+
+/// `floor_no_downgrade`'s negative space names a non-empty evidence list, which {{authority.place.empty-evidence}} holds at the engine.
+// spec: assurance.prove.evidence-nonempty@28e0555a
+#[test]
+fn the_floor_theorem_leaves_non_emptiness_to_the_engine() {
+    let inv = repo_inventory("formal");
+    let negative = inv["constant"]["floor_no_downgrade"]["negative"].as_str().unwrap();
+    assert!(negative.contains("non-empty") && negative.contains("refuses a row naming no evidence table"), "{negative}");
+    let place = std::fs::read_to_string(repo().join("crates/contextful-core/src/place.rs")).unwrap();
+    assert!(place.contains("EvidenceListEmpty"), "the engine refuses an empty evidence list");
 }

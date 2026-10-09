@@ -5,8 +5,8 @@ An unpinned clause is `committed`; a pinned one is `performed` when its Rust, Le
 
 | Contract | Files | Operations | Clauses | Refusals | Limits | Unsettled | Performed | Broken | Floor |
 | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
-| `assurance` | 2 | 15 | 249 | 59 | 22 | 11 | 176 | 0 | 176 |
-| `authority` | 2 | 16 | 292 | 78 | 29 | 10 | 221 | 0 | 221 |
+| `assurance` | 2 | 15 | 251 | 59 | 22 | 9 | 179 | 0 | 179 |
+| `authority` | 2 | 16 | 293 | 79 | 29 | 9 | 222 | 0 | 222 |
 | `connector` | 2 | 14 | 349 | 89 | 21 | 15 | 229 | 0 | 229 |
 | `corpus` | 1 | 10 | 79 | 37 | 7 | 0 | 43 | 0 | 43 |
 | `disclosure` | 3 | 16 | 156 | 68 | 13 | 3 | 63 | 0 | 63 |
@@ -15,7 +15,7 @@ An unpinned clause is `committed`; a pinned one is `performed` when its Rust, Le
 | `store` | 1 | 17 | 253 | 59 | 13 | 19 | 216 | 0 | 216 |
 | `surface` | 2 | 20 | 134 | 59 | 22 | 0 | 94 | 0 | 94 |
 | `topology` | 1 | 6 | 70 | 24 | 5 | 5 | 38 | 0 | 38 |
-| **total** | 19 | 156 | 2207 | 610 | 193 | 100 | 1574 | 0 | |
+| **total** | 19 | 156 | 2210 | 611 | 193 | 97 | 1578 | 0 | |
 
 Decision records: 18.
 
@@ -26,11 +26,11 @@ A milestone reads `closed` when its acceptance test computes `passing` and every
 | Milestone | Operations | Clauses | Performed | Acceptance | Closed |
 | --- | --- | --- | --- | --- | --- |
 | 0 — The test-first gate | 2 | 21 | 6 | passing | open |
-| 1 — The authority core | 14 | 240 | 220 | passing | closed |
+| 1 — The authority core | 14 | 242 | 223 | passing | closed |
 | 2 — The store | 9 | 175 | 143 | passing | closed |
 | 3 — The run path | 11 | 214 | 148 | passing | closed |
 | 4 — Ingest | 25 | 519 | 345 | passing | open |
-| 5 — The read face under enforcement | 17 | 285 | 219 | passing | open |
+| 5 — The read face under enforcement | 17 | 286 | 220 | passing | open |
 | 6 — Sync and replicas | 8 | 78 | 73 | passing | closed |
 | 7 — Memory | 6 | 54 | 45 | passing | closed |
 | 8 — Accountability | 5 | 82 | 47 | passing | open |
@@ -48,6 +48,7 @@ Unscheduled operations: 11.
 | Clause | Pinned by | Verdict |
 | --- | --- | --- |
 | `assurance.audit-assumptions.allowlist` | `crates/contextful-cli/tests/integration/formal.rs::the_allowlist_is_propext_and_quot_sound` | performed |
+| `assurance.audit-assumptions.allowlist-admission` | `crates/contextful-cli/tests/integration/formal.rs::an_assumption_beyond_the_allowlist_needs_a_cited_record` | performed |
 | `assurance.audit-assumptions.assumption` | `crates/contextful-cli/tests/integration/formal.rs::a_declared_axiom_is_an_assumption` | performed |
 | `assurance.audit-assumptions.assumption-outside-allowlist` | `crates/contextful-cli/tests/integration/formal.rs::classical_choice_is_outside_the_allowlist` | performed |
 | `assurance.audit-assumptions.check-command` | `crates/contextful-cli/tests/integration/formal.rs::check_passes_a_clean_package_and_names_the_first_failing_constant` | performed |
@@ -181,6 +182,7 @@ Unscheduled operations: 11.
 | `assurance.prove.commutation-claim` | `crates/contextful-cli/tests/integration/formal.rs::a_commutation_claim_is_refused` | performed |
 | `assurance.prove.composition-sound` | `formal/Contextful/Layer.lean::composed_sound` | performed |
 | `assurance.prove.effective-policy` | `formal/Contextful/Placement.lean::effective_included_in_both` | performed |
+| `assurance.prove.evidence-nonempty` | `crates/contextful-cli/tests/integration/formal.rs::the_floor_theorem_leaves_non_emptiness_to_the_engine` | performed |
 | `assurance.prove.fail-closed` | `formal/Contextful/Placement.lean::failClosed_floor_rejects_cloud` | performed |
 | `assurance.prove.floor-no-downgrade` | `formal/Contextful/Placement.lean::floor_no_downgrade` | performed |
 | `assurance.prove.mediation-from-composition` | `crates/contextful-cli/tests/integration/formal.rs::a_composition_theorem_offered_as_mediation_is_refused` | performed |
@@ -190,8 +192,9 @@ Unscheduled operations: 11.
 | `assurance.prove.no-negative-space` | `crates/contextful-cli/tests/integration/formal.rs::a_row_without_negative_space_is_refused` | performed |
 | `assurance.prove.order-is-specified` | `formal/Contextful/Layer.lean::filter_then_mask_ne_mask_then_filter` | performed |
 | `assurance.prove.placement-is-a-layer` | `formal/Contextful/Placement.lean::zone_layer_sound` | performed |
-| `assurance.prove.proof-targets` | `formal/Contextful/Authority.lean::authorityMapping_inclusion_and_narrowing` | performed |
+| `assurance.prove.proof-targets` | `formal/Contextful/Authority.lean::authorityMapping_inclusion_narrowing_meaning` | performed |
 | `assurance.prove.sampled-inclusion` | `crates/contextful-cli/tests/integration/formal.rs::inclusion_over_sampled_placements_is_refused`, `formal/Contextful/Placement.lean::includedIn_not_decided_by_sample` | performed |
+| `assurance.prove.subsumption-exact` | `formal/Contextful/Placement.lean::includedIn_iff_placement_inclusion` | performed |
 | `assurance.prove.symbolic-inclusion` | `formal/Contextful/Placement.lean::includedIn_iff_placement_inclusion` | performed |
 | `assurance.prove.target-binding` | `crates/contextful-cli/tests/integration/formal.rs::a_target_binds_a_module_path_and_a_test_in_the_tree` | performed |
 | `assurance.prove.unbound-target` | `crates/contextful-cli/tests/integration/formal.rs::a_claimed_target_without_a_binding_is_refused` | performed |
@@ -349,6 +352,7 @@ Unscheduled operations: 11.
 | `authority.place.asserted-zone` | `crates/contextful-policy/tests/integration/enforce/zone.rs::an_asserted_zone_never_replaces_the_signed_one` | performed |
 | `authority.place.caller-zone` | `crates/contextful-context/tests/integration/read/enforce.rs::the_zone_is_declared_per_request` | performed |
 | `authority.place.disjunctive` | `crates/contextful-policy/tests/integration/enforce/zone.rs::any_matching_entry_admits_the_zone` | performed |
+| `authority.place.empty-evidence` | `crates/contextful-core/tests/integration/place.rs::a_row_naming_no_evidence_resolves_fail_closed` | performed |
 | `authority.place.evidence-floor` | `crates/contextful-policy/tests/integration/enforce/zone.rs::a_synthesized_row_resolves_to_its_evidence_intersection` | performed |
 | `authority.place.excluded-cell` | `crates/contextful-context/tests/integration/read/enforce.rs::a_cell_outside_its_column_set_arrives_null` | performed |
 | `authority.place.excluded-disclosed` | `crates/contextful-context/tests/integration/read/respond.rs::rows_dropped_counts_the_relation_never_the_statement` | performed |
