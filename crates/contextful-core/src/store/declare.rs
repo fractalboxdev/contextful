@@ -213,6 +213,59 @@ fn checked(tables: Vec<TableDecl>) -> Result<Vec<TableDecl>, crate::disclosure::
     Ok(tables)
 }
 
+/// Canonical typed table shapes and separately declared row-column identities.
+#[derive(Debug, Clone)]
+pub struct DeclarationSet {
+    tables: Vec<TableDecl>,
+    memory: crate::memory::declare::MemoryDeclarations,
+    columns: BTreeMap<String, BTreeSet<String>>,
+}
+
+#[derive(Debug, thiserror::Error)]
+pub enum DeclarationSetError {
+    #[error(transparent)]
+    Pipeline(#[from] crate::disclosure::declare::DeclareError),
+    #[error(transparent)]
+    Memory(#[from] crate::memory::declare::DeclareError),
+}
+
+impl DeclarationSet {
+    /// The manifest's pipeline and memory declarations, with pipeline-file producers.
+    pub fn parse(manifest: &str, pipelines: &[crate::pipeline::declare::ManifestFile]) -> Result<Self, DeclarationSetError> {
+        let mut tables = TableDecl::parse_pipeline_set(manifest, pipelines)?;
+        let memory = crate::memory::declare::MemoryDeclarations::parse(manifest)?;
+        if !memory.tables.is_empty() && tables.iter().any(|table| !table.name.split('/').all(super::lay_out::is_path_segment)) {
+            return Err(DeclarationSetError::Pipeline(DeclarationMalformed("memory declarations require normalized table identities".into()).into()));
+        }
+        let mut names = tables.iter().map(|table| table.name.as_str()).collect::<BTreeSet<_>>();
+        for table in &memory.tables {
+            if !table.name.split('/').all(super::lay_out::is_path_segment) {
+                return Err(DeclarationSetError::Pipeline(DeclarationMalformed(format!("memory table `{}` requires one normalized declaration identity", table.name)).into()));
+            }
+            if !names.insert(&table.name) {
+                return Err(DeclarationSetError::Pipeline(DeclarationMalformed(format!("table `{}` is declared more than once", table.name)).into()));
+            }
+        }
+        tables.extend(memory.tables.iter().map(|table| table.table_decl()));
+        let mut pack = Self::from_tables(&tables);
+        for table in &memory.tables {
+            pack.columns.entry(table.name.clone()).or_default().extend(table.columns.iter().cloned());
+        }
+        pack.memory = memory;
+        Ok(pack)
+    }
+
+    /// Typed-table convenience callers retain the same declaration and selector semantics.
+    pub fn from_tables(tables: &[TableDecl]) -> Self {
+        Self { tables: tables.to_vec(), memory: Default::default(), columns: TableDecl::declared_column_map(tables).into_iter()
+            .map(|(name, columns)| (name.to_string(), columns.into_iter().map(str::to_string).collect())).collect() }
+    }
+
+    pub fn tables(&self) -> &[TableDecl] { &self.tables }
+    pub fn declared_columns(&self) -> &BTreeMap<String, BTreeSet<String>> { &self.columns }
+    pub fn into_parts(self) -> (Vec<TableDecl>, crate::memory::declare::MemoryDeclarations) { (self.tables, self.memory) }
+}
+
 impl TableDecl {
     /// Explicit row-column identities, excluding descriptive metadata and injected defaults.
     pub fn declared_column_names(&self) -> BTreeSet<&str> {
@@ -282,14 +335,19 @@ impl TableDecl {
         checked(tables)
     }
 
-    /// Every table block of a declaration set (`store.declare.declaration-set`): the
-    /// declaration's under [`TableDecl::parse_pipeline`], then, for each `pipelines/`
-    /// file, the `[[pipeline.tables]]` of a `[pipeline]` table as named and those of each
-    /// specification `run.declare.manifest-file` reads under its destination name.
+    /// Typed tables from the canonical declaration pack. Name-only memory columns
+    /// remain in [`DeclarationSet`] rather than acquiring inferred column types.
     pub fn parse_declaration_set(
         declaration: &str,
         pipelines: &[crate::pipeline::declare::ManifestFile],
     ) -> Result<Vec<TableDecl>, crate::disclosure::declare::DeclareError> {
+        DeclarationSet::parse(declaration, pipelines).map(|pack| pack.tables).map_err(|error| match error {
+            DeclarationSetError::Pipeline(error) => error,
+            DeclarationSetError::Memory(error) => DeclarationMalformed(error.to_string()).into(),
+        })
+    }
+
+    fn parse_pipeline_set(declaration: &str, pipelines: &[crate::pipeline::declare::ManifestFile]) -> Result<Vec<TableDecl>, crate::disclosure::declare::DeclareError> {
         let mut tables = TableDecl::parse_pipeline(declaration)?;
         let mut declared = Vec::new();
         for f in pipelines {

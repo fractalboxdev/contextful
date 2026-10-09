@@ -217,13 +217,14 @@ fn run_erasure_recovery(args: &StoreArgs, admit: &AdmitArgs, json: bool) -> Resu
 }
 
 fn run_erasure(args: &StoreArgs, subject: Option<&str>, keyset_file: Option<&Path>, tables: &[String], issuer_key: &Path, admit: &AdmitArgs, json: bool) -> Result<()> {
-    use contextful_context::erase::{erase, EraseRequest, EraseSelector};
+    use contextful_context::erase::{erase_declared, EraseRequest, EraseSelector};
     use contextful_core::disclosure::erase::RetainedRows;
     use contextful_policy::enforce::erase::ForgetAdmission;
     use contextful_policy::issue::SeedSigner;
     let located = locate(args.project.as_deref(), args.declaration.clone())?;
     let text = std::fs::read_to_string(&located.declaration)?;
-    let declarations = TableDecl::parse_declaration_set(&text, &crate::project::pipeline_files(&located.declaration)?)?;
+    let pack = contextful_core::store::declare::DeclarationSet::parse(&text, &crate::project::pipeline_files(&located.declaration)?)?;
+    let declarations = pack.tables();
     #[derive(serde::Deserialize)]
     #[serde(deny_unknown_fields)]
     struct TableKeys { subject_hash: String, keys: Vec<KeyItem> }
@@ -241,7 +242,7 @@ fn run_erasure(args: &StoreArgs, subject: Option<&str>, keyset_file: Option<&Pat
     let mut selected_tables = tables.to_vec();
     if let Some(KeyFile::Column(file)) = &key_file {
         if !tables.is_empty() { bail!("ErasureScopeUnsupported: a column key set requires declaration-derived scope"); }
-        selected_tables = contextful_core::disclosure::erase::column_key_set(&declarations, &file.column, &file.keys)?.into_keys().collect();
+        selected_tables = contextful_core::disclosure::erase::column_key_set_declared(&pack, &file.column, &file.keys)?.into_keys().collect();
     }
     if let Some(KeyFile::Tables(file)) = &key_file {
         for item in &file.keys {
@@ -273,7 +274,7 @@ fn run_erasure(args: &StoreArgs, subject: Option<&str>, keyset_file: Option<&Pat
     let boundary = erasure_boundary(&located.project, admit);
     let audit_key = contextful_context::project::audit_key(&store, &located.project)?;
     let audit_dir = located.project.audit_dir();
-    let erased = erase(&store, EraseRequest { declarations: &declarations, tables: &selected_tables, selector, admission: &admitted,
+    let erased = erase_declared(&store, &pack, EraseRequest { declarations, tables: &selected_tables, selector, admission: &admitted,
         signer: Some(signer), audit_dir: &audit_dir, audit_key: &audit_key, boundary: &boundary, clock: &clock })?;
     let receipt = serde_json::json!({ "transaction_id": erased.transaction_id, "subject_hash": erased.subject_hash,
         "affected_counts": erased.affected_counts, "physical_collection": "complete" });

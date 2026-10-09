@@ -125,12 +125,12 @@ impl Face {
         let lexicon = toml::from_str::<ManifestLexicon>(manifest)
             .map_err(|e| ReadFault::Policy(DeclarationMalformed(e.to_string()).into()))?
             .lexicon;
-        let mut parsed = TableDecl::parse_declaration_set(manifest, pipelines).map_err(|e| ReadFault::Policy(e.into()))?;
-        let memory = MemoryDeclarations::parse(manifest).map_err(|e| match e {
-            DeclareError::Memory(m) => ReadFault::Refused(m.into()),
-            DeclareError::Malformed(m) => ReadFault::Policy(m.into()),
+        let pack = contextful_core::store::declare::DeclarationSet::parse(manifest, pipelines).map_err(|e| match e {
+            contextful_core::store::declare::DeclarationSetError::Pipeline(e) => ReadFault::Policy(e.into()),
+            contextful_core::store::declare::DeclarationSetError::Memory(DeclareError::Memory(m)) => ReadFault::Refused(m.into()),
+            contextful_core::store::declare::DeclarationSetError::Memory(DeclareError::Malformed(m)) => ReadFault::Policy(m.into()),
         })?;
-        parsed.extend(memory.tables.iter().map(|t| t.table_decl()));
+        let (parsed, memory) = pack.into_parts();
         // One name has one declaration: a second would replace the first's masks, zone and
         // predicate.
         let mut names = BTreeSet::new();

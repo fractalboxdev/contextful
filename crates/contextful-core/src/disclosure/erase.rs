@@ -1,6 +1,6 @@
 //! Refusals owned by the erasure contract; no row or subject material enters them.
 
-use crate::store::declare::{ErasureSurvival, TableDecl};
+use crate::store::declare::{DeclarationSet, ErasureSurvival, TableDecl};
 use serde_json::{Map, Value};
 use std::collections::BTreeMap;
 
@@ -52,11 +52,16 @@ pub fn declares_erasure_column(declaration: &TableDecl, column: &str) -> bool {
 
 /// Resolves scalar column predicates across every canonical declaring table.
 pub fn column_key_set(declarations: &[TableDecl], column: &str, values: &[Value]) -> Result<RetainedRows, ErasureError> {
+    column_key_set_declared(&DeclarationSet::from_tables(declarations), column, values)
+}
+
+/// Resolves a column across the complete canonical declaration pack, including name-only memory columns.
+pub fn column_key_set_declared(declarations: &DeclarationSet, column: &str, values: &[Value]) -> Result<RetainedRows, ErasureError> {
     let unsupported = || ErasureError::ErasureScopeUnsupported("invalid declaration-scoped column key set".into());
     if column.is_empty() || values.is_empty() || values.iter().any(|value| !matches!(value, Value::String(_) | Value::Number(_) | Value::Bool(_))) {
         return Err(unsupported());
     }
-    let keys: RetainedRows = TableDecl::declared_column_map(declarations).into_iter().filter(|(_, columns)| columns.contains(column))
+    let keys: RetainedRows = declarations.declared_columns().iter().filter(|(_, columns)| columns.contains(column))
         .map(|(name, _)| (name.to_string(), values.iter().map(|value| Map::from_iter([(column.to_string(), value.clone())])).collect())).collect();
     if keys.is_empty() { return Err(unsupported()); }
     Ok(keys)
@@ -64,7 +69,12 @@ pub fn column_key_set(declarations: &[TableDecl], column: &str, values: &[Value]
 
 /// Selects column-scoped roots through the ordinary cascade and reference owner.
 pub fn select_column_keys(declarations: &[TableDecl], rows: &RetainedRows, column: &str, values: &[Value]) -> Result<ErasureSelection, ErasureError> {
-    select_key_rows(declarations, rows, &column_key_set(declarations, column, values)?)
+    select_column_keys_declared(&DeclarationSet::from_tables(declarations), rows, column, values)
+}
+
+/// Uses canonical column identities through the ordinary cascade and reference owner.
+pub fn select_column_keys_declared(declarations: &DeclarationSet, rows: &RetainedRows, column: &str, values: &[Value]) -> Result<ErasureSelection, ErasureError> {
+    select_key_rows(declarations.tables(), rows, &column_key_set_declared(declarations, column, values)?)
 }
 
 /// Selects complete declared primary keys or an explicit scalar erasure key.

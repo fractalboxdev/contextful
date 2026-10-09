@@ -4,6 +4,58 @@ use serde_json::json;
 use std::collections::BTreeMap;
 
 #[test]
+fn canonical_declaration_set_includes_typed_memory_shape_without_inferred_columns() {
+    let tables = TableDecl::parse_declaration_set(r#"
+[[pipeline.tables]]
+name = "notes"
+columns = {subject="utf8"}
+[[table]]
+name = "memory/facts"
+shape = "memory_facts"
+columns = ["claim_id","subject","predicate","object","scope","tier","confidence","valid_from","valid_to","evidence","superseded_by","grant_id","agent","extra_name"]
+"#, &[]).unwrap();
+    let memory = tables.iter().find(|table| table.name == "memory/facts").expect("the canonical declaration universe omits a memory shape");
+    assert_eq!(memory.primary_key(), &["claim_id"]);
+    assert!(memory.column_types().is_empty(), "name-only memory declarations invent column types");
+}
+
+#[test]
+fn memory_declaration_collisions_refuse_and_ordinary_multiplicity_remains() {
+    let memory = |name: &str| format!(r#"[[table]]
+name = "{name}"
+shape = "memory_preferences"
+columns = ["preference_id","subject","key","value","scope"]
+"#);
+    let ordinary = "[[pipeline.tables]]\nname = \"memory/preferences\"\n";
+    for declaration in [format!("{ordinary}{}", memory("memory/preferences")), format!("{}{}", memory("memory/preferences"), memory("memory/preferences"))] {
+        let refusal = TableDecl::parse_declaration_set(&declaration, &[]).unwrap_err();
+        assert!(refusal.to_string().contains("declared more than once"), "the established duplicate refusal changes: {refusal}");
+    }
+    for declaration in [memory("memory//preferences"), memory("memory/./preferences")] {
+        assert!(TableDecl::parse_declaration_set(&declaration, &[]).is_err(), "an ambiguous memory identity is admitted");
+    }
+    let tables = TableDecl::parse_declaration_set("[[pipeline.tables]]\nname = \"notes\"\n[[pipeline.tables]]\nname = \"notes\"\n", &[]).unwrap();
+    assert_eq!(tables.len(), 2, "the canonical pack replaces existing ordinary multiplicity policy");
+}
+
+#[test]
+fn canonical_memory_names_reach_column_selection_without_invented_types() {
+    use contextful_core::{disclosure::erase::{column_key_set_declared, select_column_keys_declared}, store::declare::DeclarationSet};
+    let pack = DeclarationSet::parse(r#"[[table]]
+name = "memory/preferences"
+shape = "memory_preferences"
+columns = ["preference_id","subject","key","value","scope","extra_name"]
+"#, &[]).unwrap();
+    assert!(pack.tables()[0].column_types().is_empty());
+    let values = [json!("erased")];
+    assert_eq!(column_key_set_declared(&pack, "extra_name", &values).unwrap().keys().collect::<Vec<_>>(), [&"memory/preferences".to_string()]);
+    let rows = BTreeMap::from([("memory/preferences".to_string(), vec![json!({"preference_id":"p1","subject":"erased"}).as_object().unwrap().clone(), json!({"preference_id":"p2","subject":"kept"}).as_object().unwrap().clone()])]);
+    let selected = select_column_keys_declared(&pack, &rows, "subject", &values).unwrap();
+    assert_eq!(selected.removes("memory/preferences"), [true, false]);
+    assert!(contextful_core::disclosure::erase::column_key_set(pack.tables(), "subject", &values).is_err(), "a bare typed table invents name-only columns");
+}
+
+#[test]
 fn column_scope_uses_structural_declarations() {
     use contextful_core::disclosure::erase::declares_erasure_column;
     for role in [

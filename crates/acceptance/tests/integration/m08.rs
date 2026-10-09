@@ -10,6 +10,53 @@ use std::process::Output;
 
 const AUD: &str = "contextful://acme-research";
 
+#[test]
+fn column_keyset_erasure_collects_declared_memory_rows() {
+    let cf = bin("contextful"); let p = GitRepo::init();
+    let canary = "memory-column-erasure-canary-793d";
+    ok(&p.run(&cf, &["init", "research", "--authoring-posture", "per_request"]));
+    p.write(".contextful/issuance.toml", &format!("default_audience = \"{AUD}\"\nmax_lifetime_secs = 3600\n"));
+    p.write("contextful.toml", r#"authoring_posture = "per_request"
+[[pipeline.tables]]
+name = "notes"
+primary_key = ["id"]
+columns = {subject="utf8"}
+[[table]]
+name = "memory/facts"
+shape = "memory_facts"
+columns = ["claim_id","subject","predicate","object","scope","tier","confidence","valid_from","valid_to","evidence","superseded_by","grant_id","agent"]
+"#);
+    p.write("notes.jsonl", &format!("{}\n{}\n", json!({"id":"erased","subject":canary}), json!({"id":"kept","subject":"survivor"})));
+    ok(&p.run(&cf, &["context", "land", "notes", "--project", "research", "--rows", "notes.jsonl", "--run-id", "r1", "--site-id", "fixture"]));
+    let public = ok(&p.run(&cf, &["token", "keygen", "--out", ".contextful/issuer.seed"]));
+    let token = ok(&p.run(&cf, &["token", "mint", "--issuer-key", ".contextful/issuer.seed", "--on-behalf-of", "user://fixture", "--agent", "agent://fixture", "--zone", "on-prem:fixture", "--action", "read", "--action", "write", "--action", "forget", "--table", "*", "--ttl", "3600"]));
+    for subject in [canary, "survivor"] {
+        let claim = json!({"subject":subject,"predicate":"fixture","object":subject,"confidence":1.0,"evidence":[{"table":"notes","run":"r1","seq":0}]}).to_string();
+        ok(&p.run_env(&cf, &["memory", "write", "--project", "research", "--into", "memory/facts", "--claim", &claim, "--public-key", &public, "--audience", AUD], &[("CONTEXTFUL_TOKEN", &token)]));
+    }
+    let query = |sql: &str| -> Value { serde_json::from_str(&ok(&p.run_env(&cf, &["query", "--json", "--project", "research", sql], &[("CONTEXTFUL_ISSUER_PUBKEY", &public)]))).unwrap() };
+    assert_eq!(query("SELECT subject FROM \"memory/facts\" ORDER BY subject")["rows"], json!([[canary],["survivor"]]));
+    p.write("keys.json", &json!({"subject_hash":format!("hmac-sha256:{}", "a".repeat(64)),"column":"subject","keys":[canary]}).to_string());
+    let receipt: Value = serde_json::from_str(&ok(&p.run_env(&cf, &["context", "erase", "--project", "research", "--key-set", "keys.json", "--issuer-key", ".contextful/issuer.seed", "--public-key", &public, "--audience", AUD, "--json"], &[("CONTEXTFUL_TOKEN", &token)]))).unwrap();
+    assert_eq!(receipt["affected_counts"]["memory/facts"], json!(1), "the canonical memory column is omitted from physical collection: {receipt}");
+    assert_eq!(query("SELECT subject FROM \"memory/facts\" ORDER BY subject")["rows"], json!([["survivor"]]));
+    assert_eq!(query("SELECT id FROM notes ORDER BY id")["rows"], json!([["kept"]]));
+    fn parts(directory: &std::path::Path, out: &mut Vec<std::path::PathBuf>) {
+        for entry in std::fs::read_dir(directory).unwrap() {
+            let path = entry.unwrap().path();
+            if path.is_dir() { parts(&path, out); }
+            else if path.extension().is_some_and(|extension| extension == "parquet") { out.push(path); }
+        }
+    }
+    let mut retained = Vec::new(); parts(&p.root.join(".contextful/context/research"), &mut retained);
+    let memory = retained.into_iter().filter(|path| path.to_string_lossy().contains("tables/memory/facts/")).collect::<Vec<_>>();
+    assert!(!memory.is_empty(), "no retained memory survivor witnesses exist");
+    for path in memory {
+        let sql = format!("SELECT subject, object FROM read_parquet('{}')", path.to_string_lossy().replace('\'', "''"));
+        assert!(!query(&sql)["rows"].to_string().contains(canary), "a retained memory part holds erased values");
+    }
+}
+
 fn ok(out: &Output) -> String {
     assert!(out.status.success(), "{}", String::from_utf8_lossy(&out.stderr));
     String::from_utf8_lossy(&out.stdout).trim().to_string()
