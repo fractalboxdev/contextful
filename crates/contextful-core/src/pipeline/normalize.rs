@@ -65,8 +65,12 @@ impl NormalizedGroup {
         Ok(())
     }
 
-    pub fn into_tables(self) -> BTreeMap<String, Vec<Row>> {
-        relational_tables(self.rows, &self.table, &self.load_id, self.depth)
+    /// The shredded tables, each child holding the list index that reverses its projection
+    /// (`run.normalize.list-index-missing`).
+    pub fn into_tables(self) -> Result<BTreeMap<String, Vec<Row>>, RunError> {
+        let tables = relational_tables(self.rows, &self.table, &self.load_id, self.depth);
+        check_list_index(&tables, &self.table)?;
+        Ok(tables)
     }
 }
 
@@ -165,6 +169,27 @@ impl Normalize {
 /// column name; each list becomes an indexed child table with a parent reference.
 pub fn relational_tables(rows: Vec<Row>, table: &str, load_id: &str, depth: u32) -> BTreeMap<String, Vec<Row>> {
     relational(rows, table, load_id, depth, false).0
+}
+
+/// Refuses a child table of `root` holding a row without `list_index`, naming the parent
+/// table and the list the child shreds (`run.normalize.list-index-missing`). A child's
+/// parent is the longest other table whose name and `_` prefix the child's name.
+pub fn check_list_index(tables: &BTreeMap<String, Vec<Row>>, root: &str) -> Result<(), RunError> {
+    for (child, rows) in tables.iter().filter(|(name, _)| name.as_str() != root) {
+        if rows.iter().all(|row| row.contains_key("list_index")) {
+            continue;
+        }
+        let parent = tables
+            .keys()
+            .filter(|p| p.as_str() != child && child.starts_with(&format!("{p}_")))
+            .max_by_key(|p| p.len())
+            .map_or(root, String::as_str);
+        let list = child.strip_prefix(&format!("{parent}_")).unwrap_or(child);
+        return Err(RunError::PipelineListIndexMissing(format!(
+            "child table `{child}` of parent `{parent}` carries a row without `list_index`, so list `{list}` cannot be reassembled"
+        )));
+    }
+    Ok(())
 }
 
 fn relational(rows: Vec<Row>, table: &str, load_id: &str, depth: u32, collect: bool) -> (BTreeMap<String, Vec<Row>>, Vec<NormalizedCell>) {
