@@ -4,6 +4,9 @@
 use contextful_core::run::FailureTag;
 use contextful_decode::pdf::pages;
 
+/// The page text marking a page that fails to render.
+const UNRENDERABLE: &str = "\u{0}unrenderable";
+
 /// A PDF of one Helvetica text line per page; an empty string draws nothing on its page.
 /// `trailer` is spliced into the trailer dictionary.
 fn build(texts: &[&str], trailer: &str) -> Vec<u8> {
@@ -16,7 +19,12 @@ fn build(texts: &[&str], trailer: &str) -> Vec<u8> {
     ];
     for (i, t) in texts.iter().enumerate() {
         objects.push(format!("<< /Type /Page /Parent 2 0 R /MediaBox [0 0 612 792] /Resources << /Font << /F1 3 0 R >> >> /Contents {} 0 R >>", 5 + 2 * i));
-        let stream = if t.is_empty() { String::new() } else { format!("BT /F1 12 Tf 72 720 Td ({t}) Tj ET") };
+        // `UNRENDERABLE` draws with a font the page's resources do not hold.
+        let stream = match *t {
+            "" => String::new(),
+            UNRENDERABLE => "BT /F9 12 Tf 72 720 Td (lost) Tj ET".to_string(),
+            t => format!("BT /F1 12 Tf 72 720 Td ({t}) Tj ET"),
+        };
         objects.push(format!("<< /Length {} >>\nstream\n{stream}\nendstream", stream.len()));
     }
     let mut out = b"%PDF-1.4\n".to_vec();
@@ -59,4 +67,16 @@ fn an_encrypted_or_textless_document_refuses_whole_naming_it() {
         assert_eq!(f.tag, FailureTag::Permanent);
         assert!(f.deterministic, "a parse refusal spends no retry");
     }
+}
+
+/// A reader stopping partway through a multi-part input raises `PipelinePartialParse` over the whole input and lands none of its parts.
+// spec: run.land.partial-parse@443a2b98
+#[test]
+fn a_page_that_fails_to_render_refuses_the_whole_document() {
+    let out = pages(&build(&["Quarterly plan", UNRENDERABLE, "Hiring targets"], ""), "Team/Plan.pdf");
+    let f = out.expect_err("no page of a partly read document lands");
+    assert!(f.message.starts_with("PipelinePartialParse") && f.message.contains("Team/Plan.pdf"), "{f}");
+    assert!(f.message.contains("page 2"), "{f}");
+    assert_eq!(f.tag, FailureTag::Permanent);
+    assert!(f.deterministic);
 }
