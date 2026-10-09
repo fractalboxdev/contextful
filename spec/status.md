@@ -13,9 +13,9 @@ An unpinned clause is `committed`; a pinned one is `performed` when its Rust, Le
 | `read` | 2 | 15 | 207 | 35 | 22 | 9 | 184 | 0 | 184 |
 | `run` | 3 | 26 | 411 | 102 | 39 | 28 | 308 | 0 | 308 |
 | `store` | 1 | 17 | 252 | 59 | 13 | 19 | 216 | 0 | 216 |
-| `surface` | 2 | 20 | 126 | 59 | 22 | 0 | 86 | 0 | 86 |
+| `surface` | 2 | 20 | 130 | 59 | 22 | 0 | 90 | 0 | 90 |
 | `topology` | 1 | 6 | 70 | 24 | 5 | 5 | 38 | 0 | 38 |
-| **total** | 19 | 155 | 2166 | 608 | 193 | 103 | 1534 | 0 | |
+| **total** | 19 | 155 | 2170 | 608 | 193 | 103 | 1538 | 0 | |
 
 Decision records: 18.
 
@@ -35,7 +35,7 @@ A milestone reads `closed` when its acceptance test computes `passing` and every
 | 7 — Memory | 6 | 54 | 45 | passing | closed |
 | 8 — Accountability | 5 | 60 | 47 | passing | open |
 | 9 — Visibility | 6 | 41 | 3 | open | open |
-| 10 — Cadence and the operator plane | 11 | 83 | 69 | passing | open |
+| 10 — Cadence and the operator plane | 11 | 87 | 73 | passing | open |
 | 11 — The derive tier | 7 | 88 | 79 | passing | closed |
 | 12 — The operator console | 12 | 54 | 22 | passing | open |
 | 13 — Disclosure | 5 | 33 | 13 | open | open |
@@ -1511,7 +1511,11 @@ Unscheduled operations: 10.
 | `surface.fire.cycle` | `crates/contextful-cli/tests/integration/pipeline.rs::a_cycle_fires_what_is_due_once_and_reports_the_next_instant` | performed |
 | `surface.fire.cycle-control-source` | `crates/contextful-cli/tests/integration/pipeline.rs::a_cycle_with_no_applied_snapshot_is_refused` | performed |
 | `surface.fire.cycle-exit` | `crates/contextful-cli/tests/integration/pipeline.rs::a_cycle_with_a_failed_fire_exits_non_zero` | performed |
+| `surface.fire.job-identity` | `spec/pins.toml` | performed |
 | `surface.fire.job-kind-unknown` | `crates/contextful-core/tests/integration/job.rs::a_kind_outside_the_union_or_a_command_raises_job_kind_unknown` | performed |
+| `surface.fire.job-snapshot` | `spec/pins.toml` | performed |
+| `surface.fire.scheduled-body` | `spec/pins.toml` | performed |
+| `surface.fire.scheduled-history` | `spec/pins.toml` | performed |
 | `surface.fire.store-driven-body` | `crates/contextful-core/tests/integration/job.rs::a_store_driven_block_naming_an_unregistered_body_raises_job_body_unregistered` | performed |
 | `surface.fire.store-driven-concurrency` | `crates/contextful-core/tests/integration/job.rs::a_store_driven_block_without_a_positive_max_in_flight_raises_job_concurrency_unset` | performed |
 | `surface.fire.target-unbound` | `crates/contextful-cli/tests/integration/job.rs::a_job_target_naming_nothing_produced_is_refused_at_validation` | performed |

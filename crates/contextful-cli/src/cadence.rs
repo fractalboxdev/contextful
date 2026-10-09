@@ -1,16 +1,18 @@
 //! `contextful pipeline plan`, `apply` and `serve`: the local control plane.
 //!
-//! `apply` validates the pipelines it converges and claims the next `manifest@v<N>.toml`
+//! `apply` validates the pipelines and registered jobs it converges and claims the next `manifest@v<N>.toml`
 //! in the project's snapshot directory (`surface.apply.local-claim`); it dispatches nothing
 //! (`run.declare.apply-fires-nothing`). `serve` arms the applied version's schedules and
-//! dispatches each due pipeline as a `pipeline run --applied <N>` child process through the
-//! engine's scheduler, which holds the deployment's cadence lease.
+//! dispatches each due pipeline or job through this executable with `--applied <N>`.
+//! The engine's scheduler holds the deployment's cadence lease and shared dispatch pool.
 //!
 //! The control source is the snapshot directory, or a loopback `[control] url` serving
 //! `manifest@current` and each `manifest@v<N>.toml` beneath it (`surface.reconcile.loopback-only`).
 
 use crate::admit::{revocation_state, AdmitArgs, LedgerFile};
 use crate::clock::SystemClock;
+use contextful_core::job::{parse_jobs, JobKind};
+use contextful_core::run::drive::Bodies;
 use crate::pipeline::{check, manifests};
 use crate::project::Located;
 use crate::run::{boot_id, wire_at, ProjectArgs};
@@ -139,6 +141,7 @@ impl Source {
 
 /// The `[control]` block of the project manifest.
 struct ControlConfig {
+    bodies: BTreeSet<String>,
     source: Source,
     pool: usize,
     poll: Schedule,
@@ -215,7 +218,7 @@ fn control_config(text: &str, project: &Project) -> Result<ControlConfig> {
     let poll = block.get("poll").map(|v| v.as_str().context("`[control] poll` is a schedule string")).transpose()?;
     let (workers, relay) = worker_config(block)?;
     let trigger = block.get("trigger").map(|v| v.as_str().context("`[control] trigger` is a string")).transpose()?;
-    Ok(ControlConfig { source, pool, poll: poll_schedule(poll)?, trigger: Trigger::parse(trigger)?, workers, relay, issuer_pin: None })
+    Ok(ControlConfig { bodies: BTreeSet::new(), source, pool, poll: poll_schedule(poll)?, trigger: Trigger::parse(trigger)?, workers, relay, issuer_pin: None })
 }
 
 fn located(project: &ProjectArgs, declaration: Option<PathBuf>) -> Result<(Located, String, ControlConfig)> {
@@ -407,6 +410,11 @@ fn adopt_pulled(snaps: &SnapshotDir, project: &Project, declaration: &Path, task
     let pulled = collect(&[ManifestFile { path: snapshot_file(head.version), text: text.to_string() }])
         .map_err(|e| untrusted(format!("pulled snapshot: {e}")))?;
     let local = declared(declaration).map_err(|e| untrusted(format!("local declarations: {e:#}")))?;
+    let pulled_jobs = job_blocks(text, None, &local).map_err(|e| untrusted(format!("pulled jobs: {e:#}")))?;
+    let local_jobs = job_blocks(&std::fs::read_to_string(declaration)?, None, &local)?;
+    if pulled_jobs.iter().any(|job| !local_jobs.contains(job)) {
+        return Err(untrusted("pulled jobs differ from this node's declarations".into()).into());
+    }
     if pulled.iter().any(|p| local.get(&p.spec.id).is_none_or(|d| d.content_hash() != p.spec.content_hash())) {
         return Err(untrusted("pulled snapshot differs from this node's pipeline declarations".into()).into());
     }
@@ -420,13 +428,48 @@ fn adopt_pulled(snaps: &SnapshotDir, project: &Project, declaration: &Path, task
     Ok(())
 }
 
-/// The snapshot document: every specification as a `[[pipeline]]` block, sorted by id.
-fn render(specs: &BTreeMap<String, PipelineSpec>) -> Result<String> {
+/// Validate jobs through their owning schema and retain their declaration verbatim.
+fn job_blocks(text: &str, bodies: Option<&Bodies>, specs: &BTreeMap<String, PipelineSpec>) -> Result<Vec<toml::Value>> {
+    parse_job_blocks(text, bodies, specs).map_err(|error| SurfaceError::ApplyValidationRefused(format!("job declarations: {error:#}")).into())
+}
+
+fn parse_job_blocks(text: &str, bodies: Option<&Bodies>, specs: &BTreeMap<String, PipelineSpec>) -> Result<Vec<toml::Value>> {
+    let jobs = parse_jobs(text, &|name| bodies.is_none_or(|b| b.get(name).is_some()))?;
+    for job in jobs {
+        let id = format!("job:{}", job.name);
+        if specs.contains_key(&id) {
+            bail!("job `{}` and pipeline `{id}` share a dispatch identity", job.name);
+        }
+        if let Some(schedule) = job.schedule.as_deref() {
+            Schedule::parse(schedule).with_context(|| format!("job `{}` schedule", job.name))?;
+        }
+    }
+    let document: toml::Value = toml::from_str(text)?;
+    Ok(document.get("job").and_then(toml::Value::as_array).cloned().unwrap_or_default())
+}
+
+fn applied_jobs(source: &Source, version: Option<u64>, specs: &BTreeMap<String, PipelineSpec>) -> Result<Vec<toml::Value>> {
+    version.map(|v| job_blocks(&source.read(v)?, None, specs)).transpose().map(Option::unwrap_or_default)
+}
+
+/// A pipeline-only editor refuses a store whose applied snapshot carries jobs.
+fn refuse_job_edit(control: &ControlConfig) -> Result<()> {
+    let (version, specs) = applied(&control.source)?;
+    if !applied_jobs(&control.source, version, &specs)?.is_empty() {
+        return Err(SurfaceError::ApplyValidationRefused("the applied snapshot contains jobs; use the registered host's pipeline apply to edit them".into()).into());
+    }
+    Ok(())
+}
+
+/// The snapshot document: sorted pipeline specifications and validated job blocks.
+fn render(specs: &BTreeMap<String, PipelineSpec>, jobs: &[toml::Value]) -> Result<String> {
     #[derive(Serialize)]
     struct Doc<'a> {
         pipeline: Vec<&'a PipelineSpec>,
+        #[serde(skip_serializing_if = "<[toml::Value]>::is_empty")]
+        job: &'a [toml::Value],
     }
-    let body = toml::to_string(&Doc { pipeline: specs.values().collect() })
+    let body = toml::to_string(&Doc { pipeline: specs.values().collect(), job: jobs })
         .map_err(|e| SurfaceError::ApplyValidationRefused(format!("a specification holds a value a snapshot cannot carry: {e}")))?;
     // The document carries references alone (`surface.edit.secret-in-document`,
     // `surface.edit.connector-upload`).
@@ -439,7 +482,10 @@ fn validated_draft(document: &str, declaration: &Path, tasks: &Tasks) -> Result<
     let specs = collect(&[ManifestFile { path: "manifest@draft.toml".into(), text: document.to_owned() }])
         .map_err(|e| SurfaceError::ApplyValidationRefused(e.to_string()))?;
     let specs: BTreeMap<String, PipelineSpec> = specs.into_iter().map(|entry| (entry.spec.id.clone(), entry.spec)).collect();
-    let rendered = render(&specs)?;
+    if !job_blocks(document, None, &specs)?.is_empty() {
+        return Err(SurfaceError::ApplyValidationRefused("the pipeline editor does not edit jobs; use the registered host's pipeline apply".into()).into());
+    }
+    let rendered = render(&specs, &[])?;
     for spec in specs.values() {
         if let Some(schedule) = spec.schedule.as_deref() {
             Schedule::parse(schedule).map_err(|e| SurfaceError::ApplyValidationRefused(format!("pipeline `{}`: {e}", spec.id)))?;
@@ -452,6 +498,7 @@ fn validated_draft(document: &str, declaration: &Path, tasks: &Tasks) -> Result<
 /// Store one validated, version-bound control draft without changing the applied pointer.
 pub(crate) fn edit(project: &ProjectArgs, declaration: Option<PathBuf>, expected: u64, document: &str, operator: &str, tasks: &Tasks, boundary: &dyn Fn() -> Result<(), ControlError>) -> Result<Value> {
     let (located, _, control) = located(project, declaration)?;
+    refuse_job_edit(&control)?;
     let snapshots = owner(&control)?;
     snapshots.initialized()?;
     let text = validated_draft(document, &located.declaration, tasks)?;
@@ -469,6 +516,7 @@ pub(crate) fn claim_operator_nonce(project: &ProjectArgs, declaration: Option<Pa
 /// Revalidate the saved draft and claim it only at the version the editor read.
 pub(crate) fn apply_draft(project: &ProjectArgs, declaration: Option<PathBuf>, expected: u64, nonce: &str, operator: &str, tasks: &Tasks, authority: &AdmittedAuthority, admit: &AdmitArgs, boundary: &dyn Fn() -> Result<(), ControlError>) -> Result<()> {
     let (initial, _, control) = located(project, declaration.clone())?;
+    refuse_job_edit(&control)?;
     let snapshots = owner(&control)?;
     snapshots.initialized()?;
     let draft = snapshots.read_draft()?;
@@ -505,21 +553,35 @@ struct Change {
     schedule: Option<String>,
 }
 
+fn change(id: &str, declared: Option<(String, Option<String>)>, applied: Option<(String, Option<String>)>) -> Change {
+    let action = match (&declared, &applied) {
+        (Some(_), None) => "add",
+        (None, _) => "remove",
+        (Some((x, _)), Some((y, _))) if x == y => "unchanged",
+        _ => "change",
+    };
+    let schedule = declared.as_ref().or(applied.as_ref()).and_then(|(_, schedule)| schedule.clone());
+    Change { id: id.into(), action, content_hash: declared.map(|(hash, _)| hash), applied_hash: applied.map(|(hash, _)| hash), schedule }
+}
+
 fn diff(declared: &BTreeMap<String, PipelineSpec>, applied: &BTreeMap<String, PipelineSpec>) -> Vec<Change> {
-    let ids: std::collections::BTreeSet<&String> = declared.keys().chain(applied.keys()).collect();
-    ids.into_iter()
-        .map(|id| {
-            let (d, a) = (declared.get(id), applied.get(id));
-            let (dh, ah) = (d.map(|s| s.content_hash()), a.map(|s| s.content_hash()));
-            let action = match (&dh, &ah) {
-                (Some(_), None) => "add",
-                (None, _) => "remove",
-                (Some(x), Some(y)) if x == y => "unchanged",
-                _ => "change",
-            };
-            Change { id: id.clone(), action, content_hash: dh, applied_hash: ah, schedule: d.or(a).and_then(|s| s.schedule.clone()) }
-        })
-        .collect()
+    let ids: BTreeSet<&String> = declared.keys().chain(applied.keys()).collect();
+    let identity = |spec: &PipelineSpec| (spec.content_hash(), spec.schedule.clone());
+    ids.into_iter().map(|id| change(id, declared.get(id).map(identity), applied.get(id).map(identity))).collect()
+}
+
+fn job_diff(declared: &[toml::Value], applied: &[toml::Value]) -> Vec<Change> {
+    fn identities(jobs: &[toml::Value]) -> BTreeMap<String, (String, Option<String>)> {
+        jobs.iter().filter_map(|job| {
+            let name = job.get("name")?.as_str()?;
+            let hash = contextful_core::run::journal::sha256_hex(job.to_string().as_bytes());
+            let schedule = job.get("schedule").and_then(toml::Value::as_str).map(str::to_owned);
+            Some((format!("job:{name}"), (hash, schedule)))
+        }).collect()
+    }
+    let (declared, applied) = (identities(declared), identities(applied));
+    let ids: BTreeSet<&String> = declared.keys().chain(applied.keys()).collect();
+    ids.into_iter().map(|id| change(id, declared.get(id).cloned(), applied.get(id).cloned())).collect()
 }
 
 fn sigil(action: &str) -> char {
@@ -537,15 +599,17 @@ fn declared(declaration: &Path) -> Result<BTreeMap<String, PipelineSpec>> {
 
 /// `pipeline plan`: the declared set against the applied snapshot; reads only.
 pub(crate) fn plan(project: &ProjectArgs, declaration: Option<PathBuf>, as_json: bool) -> Result<()> {
-    let (l, _, control) = located(project, declaration)?;
+    let (l, declaration_text, control) = located(project, declaration)?;
     let (version, applied) = applied(&control.source)?;
-    let changes = diff(&declared(&l.declaration)?, &applied);
+    let declared = declared(&l.declaration)?;
+    let changes = diff(&declared, &applied);
+    let jobs = job_diff(&job_blocks(&declaration_text, None, &declared)?, &applied_jobs(&control.source, version, &applied)?);
     if as_json {
-        println!("{}", serde_json::to_string_pretty(&json!({ "applied": version, "pipelines": changes }))?);
+        println!("{}", serde_json::to_string_pretty(&json!({ "applied": version, "pipelines": changes, "jobs": jobs }))?);
         return Ok(());
     }
     println!("applied: {}", version.map(|v| format!("v{v}")).unwrap_or_else(|| "none".into()));
-    for c in &changes {
+    for c in changes.iter().chain(&jobs) {
         println!("{} {}{}", sigil(c.action), c.id, c.schedule.as_deref().map(|s| format!(" ({s})")).unwrap_or_default());
     }
     Ok(())
@@ -639,12 +703,13 @@ impl SyncAttestation {
 
 /// `pipeline import`: the guarded import, claiming v1 from every declared pipeline while the
 /// directory holds no version (`surface.apply.uninitialized-store`).
-pub(crate) fn import(project: &ProjectArgs, declaration: Option<PathBuf>, tasks: &Tasks, admit: &AdmitArgs, issuer_key: Option<&Path>) -> Result<()> {
-    let (l, _, control) = located(project, declaration)?;
+pub(crate) fn import(project: &ProjectArgs, declaration: Option<PathBuf>, tasks: &Tasks, bodies: &Bodies, admit: &AdmitArgs, issuer_key: Option<&Path>) -> Result<()> {
+    let (l, declaration_text, control) = located(project, declaration)?;
     let snapshots = owner(&control)?;
     let attestation = SyncAttestation::for_project(&l, project, admit, issuer_key)?;
     let declared = declared(&l.declaration)?;
-    let text = render(&declared)?;
+    let jobs = job_blocks(&declaration_text, Some(bodies), &declared)?;
+    let text = render(&declared, &jobs)?;
     for spec in declared.values() {
         check(spec, &l.declaration, tasks).map_err(|e| SurfaceError::ApplyValidationRefused(format!("pipeline `{}`: {e:#}", spec.id)))?;
     }
@@ -674,8 +739,8 @@ pub(crate) fn import(project: &ProjectArgs, declaration: Option<PathBuf>, tasks:
 /// `pipeline apply [id]`: validate what converges, then claim the next version. Losing the
 /// pointer's compare-and-swap reloads the winner and reapplies onto it
 /// (`surface.apply.version-race`).
-pub(crate) fn apply(project: &ProjectArgs, declaration: Option<PathBuf>, id: Option<&str>, tasks: &Tasks, admit: &AdmitArgs, issuer_key: Option<&Path>) -> Result<()> {
-    let (l, _, control) = located(project, declaration)?;
+pub(crate) fn apply(project: &ProjectArgs, declaration: Option<PathBuf>, id: Option<&str>, tasks: &Tasks, bodies: &Bodies, admit: &AdmitArgs, issuer_key: Option<&Path>) -> Result<()> {
+    let (l, declaration_text, control) = located(project, declaration)?;
     let snapshots = owner(&control)?;
     let attestation = SyncAttestation::for_project(&l, project, admit, issuer_key)?;
     snapshots.initialized()?;
@@ -701,7 +766,12 @@ pub(crate) fn apply(project: &ProjectArgs, declaration: Option<PathBuf>, id: Opt
             None => target = declared.clone(),
         }
         let changes: Vec<Change> = diff(&target, &base).into_iter().filter(|c| c.action != "unchanged").collect();
-        let text = render(&target)?;
+        let prior_jobs = applied_jobs(source, version, &base)?;
+        let jobs = if id.is_some() { prior_jobs.clone() } else {
+            job_blocks(&declaration_text, Some(bodies), &target)?
+        };
+        let text = render(&target, &jobs)?;
+        job_blocks(&text, Some(bodies), &target)?;
         collect(&[ManifestFile { path: "proposed applied snapshot".into(), text: text.clone() }])
             .map_err(|e| SurfaceError::ApplyValidationRefused(format!("combined snapshot: {e}")))?;
         for c in changes.iter().filter(|c| c.action != "remove") {
@@ -709,7 +779,7 @@ pub(crate) fn apply(project: &ProjectArgs, declaration: Option<PathBuf>, id: Opt
             check(spec, &l.declaration, tasks)
                 .map_err(|e| SurfaceError::ApplyValidationRefused(format!("pipeline `{}`: {e:#}", spec.id)))?;
         }
-        if changes.is_empty() {
+        if changes.is_empty() && jobs == prior_jobs {
             match version {
                 Some(v) => println!("unchanged at v{v}"),
                 None => println!("nothing declared to apply"),
@@ -727,7 +797,7 @@ pub(crate) fn apply(project: &ProjectArgs, declaration: Option<PathBuf>, id: Opt
         };
         match claim {
             Ok(v) => {
-                for c in &changes {
+                for c in changes.iter().chain(job_diff(&jobs, &prior_jobs).iter().filter(|c| c.action != "unchanged")) {
                     println!("{} {}", sigil(c.action), c.id);
                 }
                 println!("applied v{v}");
@@ -881,10 +951,21 @@ impl Dispatch for ChildDispatch {
 }
 
 impl ChildDispatch {
-    /// Run one landing step as a child `pipeline run --applied <N>`.
+    /// Run one applied pipeline or registered job through this embedding executable.
     fn step(&self, id: &str, version: u64) -> Result<String, ChildStepError> {
         let mut cmd = Command::new(&self.exe);
-        cmd.args(["pipeline", "run", id, "--applied", &version.to_string(), "--project", &self.project]);
+        let selected = (|| -> Result<Option<String>> {
+            let located = crate::project::locate(Some(&self.project), self.declaration.clone())?;
+            let manifest = std::fs::read_to_string(&located.declaration)?;
+            let snapshot = snapshot_manifest(&located.project, &manifest, version)?;
+            let jobs = parse_jobs(&snapshot.text, &|_| true)?;
+            Ok(jobs.into_iter().find(|job| id == format!("job:{}", job.name)).map(|job| job.name))
+        })().map_err(|e| ChildStepError::Infrastructure(format!("{id}: reading applied dispatch: {e:#}")))?;
+        match selected {
+            Some(name) => { cmd.args(["job", "fire", &name]); }
+            None => { cmd.args(["pipeline", "run", id]); }
+        }
+        cmd.args(["--applied", &version.to_string(), "--project", &self.project]);
         if let Some(d) = &self.declaration {
             cmd.arg("--declaration").arg(d);
         }
@@ -985,15 +1066,37 @@ fn arm(scheduler: &mut Scheduler, control: &ControlConfig, project: &Project, de
         eprintln!("pipeline `{}` stays unarmed: {reason}", spec.id);
         unarmed.push(Unarmed { id: spec.id.clone(), reason });
     }
+    let job_text = control.source.read(version)?;
+    job_blocks(&job_text, None, &specs)?;
+    let jobs = parse_jobs(&job_text, &|name| control.bodies.contains(name))?;
+    let mut scheduled_jobs = 0;
+    for job in jobs {
+        let id = format!("job:{}", job.name);
+        let reason = match (&job.kind, job.schedule.as_deref()) {
+            (JobKind::StoreDriven(_), Some(text)) => {
+                if control.relay.is_some() && !control.workers.is_empty() {
+                    bail!("scheduled job `{}` requires the local registered host; worker dispatch handles pipelines", job.name);
+                }
+                entries.push(Entry { id, schedule: Schedule::parse(text)? });
+                scheduled_jobs += 1;
+                continue;
+            }
+            (_, None) => "it declares no schedule".to_string(),
+            _ => "its maintenance kind has no native dispatch adapter".to_string(),
+        };
+        eprintln!("job `{}` stays unarmed: {reason}", job.name);
+        unarmed.push(Unarmed { id, reason });
+    }
     scheduler.arm_runs_with_derived(version, entries, runs.steps, runs.derived_parents)?;
-    eprintln!("armed v{version}: {} scheduled pipeline(s), {} unarmed", scheduler.armed().len(), unarmed.len());
+    eprintln!("armed v{version}: {} scheduled pipeline(s), {scheduled_jobs} scheduled job(s), {} unarmed", scheduler.armed().len() - scheduled_jobs, unarmed.len());
     Ok(Some(unarmed))
 }
 
 /// `pipeline serve [--cycle]`.
-pub(crate) fn serve(project: &ProjectArgs, declaration: Option<PathBuf>, cycle: bool, http: Option<&str>, public_key: Option<&str>, tasks: &Tasks) -> Result<()> {
+pub(crate) fn serve(project: &ProjectArgs, declaration: Option<PathBuf>, cycle: bool, http: Option<&str>, public_key: Option<&str>, tasks: &Tasks, bodies: &Bodies) -> Result<()> {
     let explicit = declaration.clone();
     let (l, text, mut control) = located(project, declaration)?;
+    control.bodies = bodies.names().into_iter().collect();
     control.issuer_pin = public_key.map(str::to_string).or_else(|| std::env::var(crate::admit::PUBKEY_VAR).ok());
     if !cycle {
         control.trigger.require_face(http.is_some())?;

@@ -27,6 +27,10 @@
 # `contextful-spec state` reads this file and the tags and writes spec/status.md.
 
 [pin]
+"surface.fire.scheduled-body" = { test = "contextful_cli::job::scheduled_jobs_use_the_applied_body_and_preserve_the_cadence_across_restart" }
+"surface.fire.scheduled-history" = { test = "contextful_cli::job::scheduled_jobs_resume_paid_calls_after_a_failed_child" }
+"surface.fire.job-snapshot" = { test = "contextful_cli::job::a_job_only_apply_changes_the_snapshot_and_stock_serve_refuses_its_body" }
+"surface.fire.job-identity" = { test = "contextful_cli::job::scheduled_jobs_validate_registration_schedule_and_dispatch_identity_before_import" }
 "authority.mask.row-class-selector" = { test = "contextful_policy::enforce::mask::the_requested_from_selector_shares_one_policy_and_refuses_ambiguous_fields" }
 "authority.redact.rules-per-pipeline" = { test = "contextful_core::redaction::pipeline_removal_rejects_unknown_tables_and_bounds_all_declared_rules" }
 "authority.redact.pattern-bytes" = { test = "contextful_core::redaction::source_and_expanded_automaton_limits_refuse_before_matching" }
@@ -121,5 +125,5 @@ disclosure = 63
 read = 184
 run = 308
 store = 216
-surface = 86
+surface = 90
 topology = 38

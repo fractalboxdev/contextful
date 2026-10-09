@@ -868,3 +868,22 @@ fn synced_admin_draft_apply_keeps_a_signed_receipt_under_network_authority() {
     assert_eq!(status, 200, "{record}");
     assert!(record["entries"].as_array().unwrap().iter().any(|entry| entry["attributes"]["contextful.operator.subject"] == "operator-a"));
 }
+
+#[test]
+fn control_editor_refuses_to_discard_applied_jobs() {
+    let (dir, public) = project();
+    let root = dir.path();
+    // A maintenance declaration requires no compiled body, but still belongs to the snapshot.
+    let manifest = root.join("contextful.toml");
+    let text = std::fs::read_to_string(&manifest).unwrap();
+    std::fs::write(&manifest, format!("{text}\n[[job]]\nname = \"nightly-check\"\nkind = \"validate\"\nschedule = \"every 1h\"\n")).unwrap();
+    stdout(&run(root, &["pipeline", "import", "--project", "research"]));
+    let admin = stdout(&run(root, &["token", "mint", "--issuer-key", ".contextful/issuer.seed", "--on-behalf-of", "user://dana@acme.example", "--zone", "on-prem:hq", "--action", "admin", "--table", "*", "--ttl", "900"]));
+    let (_listener, addr) = serve(root, &["serve", "--http", "127.0.0.1:0", "--audience", AUD, "--max-in-flight", "2", "--project", "research", "--public-key", &public]);
+    let edit = json!({"expected": 1, "document": "pipeline = []"}).to_string();
+    let (status, response) = control(&addr, "POST", "/control/edit", Some(&admin), &edit);
+    assert_eq!(status, 422, "{response}");
+    assert_eq!(response["error"]["identifier"], "ApplyValidationRefused");
+    let snapshot = std::fs::read_to_string(root.join(".contextful/control/research/manifest@v1.toml")).unwrap();
+    assert!(snapshot.contains("nightly-check"));
+}

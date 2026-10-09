@@ -44,6 +44,8 @@ CREATE TABLE IF NOT EXISTS run (
     row         TEXT NOT NULL
 );
 CREATE INDEX IF NOT EXISTS run_by_pipeline ON run (pipeline_id);
+CREATE INDEX IF NOT EXISTS run_by_host_scope ON run (json_extract(row, '$.host_scope'))
+    WHERE json_extract(row, '$.host_scope') IS NOT NULL;
 ";
 
 /// The machine-local catalog in one SQLite file.
@@ -393,7 +395,7 @@ impl Catalog for MachineCatalog {
         self.with(false, |tx, fail| {
             // Starts compare as instants, not as text: RFC 3339 spells a whole second shorter
             // than a fractional one, so a string maximum misorders the two.
-            let mut stmt = tx.prepare("SELECT json_extract(row, '$.started_at') FROM run WHERE pipeline_id = ?1").map_err(|e| fail(&e))?;
+            let mut stmt = tx.prepare("SELECT json_extract(row, '$.started_at') FROM run WHERE pipeline_id = ?1 OR json_extract(row, '$.host_scope') = ?1").map_err(|e| fail(&e))?;
             let starts = stmt
                 .query_map(params![pipeline_id], |r| r.get::<_, String>(0))
                 .map_err(|e| fail(&e))?

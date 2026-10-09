@@ -70,6 +70,9 @@ pub enum JobCmd {
         /// The project manifest holding the job block; absent, the project's `contextful.toml`.
         #[arg(long)]
         declaration: Option<PathBuf>,
+        /// Fire the job in immutable applied snapshot N.
+        #[arg(long)]
+        applied: Option<u64>,
         /// The run id of this attempt; each output table's run suffixes it with the table name.
         #[arg(long)]
         run_id: Option<String>,
@@ -145,10 +148,14 @@ pub fn run(cmd: JobCmd, bodies: &Bodies) -> Result<()> {
             }
             Ok(())
         }
-        JobCmd::Fire { name, project, declaration, run_id, site_id, site_id_env, admit } => {
+        JobCmd::Fire { name, project, declaration, applied, run_id, site_id, site_id_env, admit } => {
             let l = project.locate(declaration)?;
             let text = std::fs::read_to_string(&l.declaration).with_context(|| format!("reading the declaration `{}`", l.declaration.display()))?;
-            let jobs = parse_jobs(&text, &registered).with_context(|| l.declaration.display().to_string())?;
+            let job_text = match applied {
+                Some(version) => crate::cadence::snapshot_manifest(&l.project, &text, version)?.text,
+                None => text.clone(),
+            };
+            let jobs = parse_jobs(&job_text, &registered).with_context(|| l.declaration.display().to_string())?;
             bind(&jobs, &l.declaration)?;
             let job = jobs.into_iter().find(|j| j.name == name).with_context(|| format!("no job `{name}` is declared"))?;
             let JobKind::StoreDriven(driven) = &job.kind else {

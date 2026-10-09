@@ -167,7 +167,7 @@ pub enum PipelineCmd {
         #[arg(long)]
         json: bool,
     },
-    /// Validate and claim the next snapshot version holding every declared pipeline, or one.
+    /// Validate and claim declared pipelines and jobs; naming one pipeline preserves applied jobs.
     Apply {
         /// Converge this pipeline alone; absent, every declared pipeline.
         id: Option<String>,
@@ -194,7 +194,7 @@ pub enum PipelineCmd {
         #[arg(long)]
         issuer_key: Option<PathBuf>,
     },
-    /// Arm the applied snapshot's schedules and dispatch each due pipeline under the cadence lease.
+    /// Dispatch applied pipelines and registered store-driven jobs under the cadence lease.
     Serve {
         #[command(flatten)]
         project: ProjectArgs,
@@ -578,7 +578,7 @@ fn declaration_base(project: Option<&str>) -> Result<(PathBuf, bool)> {
     }
 }
 
-pub fn run(cmd: PipelineCmd, tasks: &Tasks) -> Result<()> {
+pub fn run(cmd: PipelineCmd, tasks: &Tasks, bodies: &contextful_core::run::drive::Bodies) -> Result<()> {
     match cmd {
         PipelineCmd::Validate { declaration, project, component_target } => {
             let files = manifests(&declaration)?;
@@ -648,12 +648,12 @@ pub fn run(cmd: PipelineCmd, tasks: &Tasks) -> Result<()> {
         }
         PipelineCmd::Plan { project, declaration, json } => crate::cadence::plan(&project, declaration, json),
         PipelineCmd::Apply { id, project, declaration, admit, issuer_key } => {
-            crate::cadence::apply(&project, declaration, id.as_deref(), tasks, &admit, issuer_key.as_deref())
+            crate::cadence::apply(&project, declaration, id.as_deref(), tasks, bodies, &admit, issuer_key.as_deref())
         }
         PipelineCmd::Import { project, declaration, admit, issuer_key } => {
-            crate::cadence::import(&project, declaration, tasks, &admit, issuer_key.as_deref())
+            crate::cadence::import(&project, declaration, tasks, bodies, &admit, issuer_key.as_deref())
         }
-        PipelineCmd::Serve { project, declaration, cycle, http, public_key } => crate::cadence::serve(&project, declaration, cycle, http.as_deref(), public_key.as_deref(), tasks),
+        PipelineCmd::Serve { project, declaration, cycle, http, public_key } => crate::cadence::serve(&project, declaration, cycle, http.as_deref(), public_key.as_deref(), tasks, bodies),
         PipelineCmd::Worker { project, declaration, listen } => crate::worker::serve_worker(&project, declaration, &listen),
         PipelineCmd::Run { id, project, declaration, run_id, site_id, site_id_env, component_target, admit, applied } => {
             let l = project.locate(declaration)?;
