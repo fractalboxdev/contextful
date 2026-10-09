@@ -540,6 +540,22 @@ fn every_poll_re_lands_the_boundary_instant() {
     assert_eq!(ids(&sink.commits[2]), [vec!["b", "c"]], "the boundary rows re-land on every poll");
 }
 
+/// A commit carries its plan's declared cursor kind, so a destination writing a commit log records which kind
+/// reached it.
+#[test]
+fn a_commit_carries_the_declared_cursor_kind() {
+    use contextful_core::run::advance::CursorKind;
+    let rig = Rig::new();
+    let mut sink = Sink::default();
+    rig.run(&opaque(), "1.0.0", "run-1", &mut Pages::new(three_pages()), &mut sink).unwrap();
+    let watermark = plan("kind = \"monotonic\"\nfield = \"updated_at\"", "");
+    let mut source = Polled { rows: vec![json!({"id": "a", "updated_at": 5})], calls: 0 };
+    let mut watermarked = Sink::default();
+    Rig::new().run(&watermark, "1.0.0", "run-2", &mut source, &mut watermarked).unwrap();
+    let kinds: Vec<CursorKind> = sink.commits.iter().chain(&watermarked.commits).map(|c| c.cursor_kind).collect();
+    assert_eq!(kinds, [CursorKind::OpaqueToken, CursorKind::Monotonic]);
+}
+
 /// A source serving every row it holds on each pull, its clock nested inside each row.
 struct Nested(Vec<Value>);
 

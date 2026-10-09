@@ -148,6 +148,7 @@ pub struct Committed {
     pub run_id: String,
     pub batches: Vec<Vec<Row>>,
     pub cursor: Option<Value>,
+    pub cursor_kind: contextful_core::run::advance::CursorKind,
     pub committed_at: Instant,
 }
 
@@ -199,6 +200,7 @@ impl Destination for Sink {
             run_id: commit.run_id,
             batches,
             cursor: commit.cursor,
+            cursor_kind: commit.cursor_kind,
             committed_at: commit.committed_at,
         });
         if std::mem::take(&mut self.die_after_land) {
