@@ -111,8 +111,24 @@ pub(crate) fn call(server: &Server<'_>, tool: &str, arguments: Value) -> Value {
     ask(server, 7, "tools/call", json!({ "name": tool, "arguments": arguments }))
 }
 
+#[test]
+fn reference_dispatch_is_read_admitted_bounded_and_audited() {
+    let fixture = fixture();
+    let clock = FixedClock(at("2030-01-01T00:06:00Z"));
+    let server = Server::new(&fixture.face, fixture.authority.clone(), &current, &clock, &fixture.audit).unwrap();
+    let result = call(&server, "context.reference", json!({ "table":"research/notes", "run":"never-landed", "seq":0 }));
+    assert_eq!(result["result"]["structuredContent"]["rows"], json!([[false, "missing"]]), "{result}");
+    let refused = call(&server, "context.reference", json!({ "table":"hr/salaries", "run":"never-landed", "seq":0 }));
+    assert_eq!(refused["result"]["isError"], json!(true), "{refused}");
+    let bytes = call(&server, "context.reference", json!({ "table":"research/notes", "run":"never-landed", "seq":0, "max_response_bytes":1 }));
+    assert_eq!(bytes["result"]["isError"], json!(true), "{bytes}");
+    let entries = contextful_policy::audit::entries(&fixture.dir.path().join("audit")).unwrap();
+    assert_eq!(entries.len(), 3);
+    assert_eq!(entries[0].attributes["contextful.tool"], json!("context.reference"));
+}
+
 /// The face exposes a closed tool set: `context.describe`, `context.query`, `context.execute_query` for templates, `context.files` and `context.file` over committed data files, `corpus.retrieve` for ranked reads across a prefix, and `memory.recall` for keyed claim reads.
-// spec: read.register.tool-set@8a963be6
+// spec: read.register.tool-set@3b79e223
 #[test]
 fn the_tool_list_is_the_closed_read_set() {
     let f = fixture();
@@ -120,7 +136,7 @@ fn the_tool_list_is_the_closed_read_set() {
     let server = Server::new(&f.face, f.authority.clone(), &current, &clock, &f.audit).unwrap();
     let tools = ask(&server, 1, "tools/list", json!({}));
     let names: Vec<&str> = tools["result"]["tools"].as_array().unwrap().iter().map(|t| t["name"].as_str().unwrap()).collect();
-    assert_eq!(names, ["context.describe", "context.query", "context.execute_query", "context.files", "context.file", "corpus.retrieve", "memory.recall"]);
+    assert_eq!(names, ["context.describe", "context.query", "context.reference", "context.execute_query", "context.files", "context.file", "corpus.retrieve", "memory.recall"]);
     let unknown = call(&server, "memory.write", json!({}));
     assert_eq!(unknown["error"]["code"], json!(-32602), "{unknown}");
 }

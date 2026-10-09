@@ -2,14 +2,14 @@
 //!
 //! A thin adapter: it checks the declared audience and in-flight ceiling and the issuer
 //! key, pulls the bucket when `[sync] pull_before_run = true`, opens the read face over
-//! the project's store and manifest and the project's audit chain unanchored
+//! the project's store and manifest and the project's audit chain with optional startup custody
 //! (`disclosure.record.read-chain`), binds the listener, and hands every request to the
 //! network transport, which admits each one on its own credential. Every value is
 //! resolved before the listener binds, so a process that cannot serve binds nothing.
 
 #[cfg(feature = "data-plane")]
 use crate::admit::AdmitArgs;
-use crate::admit::{face, revocation_state, LedgerFile, LivePins, AUDIENCE_VAR, PUBKEY_VAR};
+use crate::admit::{revocation_state, LedgerFile, LivePins, AUDIENCE_VAR, PUBKEY_VAR};
 use crate::project::locate;
 use crate::root::root as project_root;
 use crate::clock::SystemClock;
@@ -33,7 +33,6 @@ use contextful_memory::MemoryFault;
 use contextful_policy::exchange::answer as exchange_answer;
 use contextful_policy::issue::{SeedSigner, DEFAULT_SEED_PATH};
 use contextful_policy::possession::ProofChecker;
-use contextful_policy::audit::AuditLog;
 #[cfg(feature = "data-plane")]
 use contextful_policy::verify::AdmittedAuthority;
 #[cfg(feature = "data-plane")]
@@ -85,6 +84,9 @@ pub enum ServeError {
 
 #[derive(clap::Args)]
 pub struct ServeArgs {
+    /// Explicit startup audit signing port, checked against independent current pins.
+    #[arg(long)]
+    issuer_key: Option<PathBuf>,
     /// The address the transport listens on, such as `127.0.0.1:8080`; it answers
     /// MCP Streamable HTTP at `POST /mcp`.
     #[arg(long)]
@@ -207,12 +209,12 @@ pub fn run(args: ServeArgs, tasks: &Tasks) -> Result<()> {
     // A cold node pulls the bucket before the face opens; a failed pull binds nothing
     // (`store.pull.before-run`).
     crate::sync::pull_before_run(&located)?;
-    let face = face(&located)?;
+    let face = crate::admit::face_with_pins(&located, args.public_key.as_deref(), args.keyset.as_deref())?;
     let face = match args.result_cache_bytes {
         Some(budget) => face.with_result_cache(budget),
         None => face,
     };
-    let audit = AuditLog::unanchored(located.project.audit_dir())?;
+    let audit = crate::project::read_audit(&located.project, args.issuer_key.as_deref(), args.public_key.as_deref(), args.keyset.as_deref())?;
     #[cfg(feature = "data-plane")]
     let control_attestation_secret = std::env::var("CONTEXTFUL_CONTROL_ATTESTATION_SECRET").ok().filter(|secret| !secret.is_empty());
     #[cfg(feature = "data-plane")]

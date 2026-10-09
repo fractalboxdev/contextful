@@ -9,13 +9,13 @@ An unpinned clause is `committed`; a pinned one is `performed` when its Rust, Le
 | `authority` | 2 | 16 | 292 | 78 | 29 | 10 | 221 | 0 | 221 |
 | `connector` | 2 | 14 | 349 | 89 | 21 | 15 | 229 | 0 | 229 |
 | `corpus` | 1 | 10 | 79 | 37 | 7 | 0 | 43 | 0 | 43 |
-| `disclosure` | 3 | 16 | 134 | 66 | 13 | 3 | 63 | 0 | 63 |
-| `read` | 2 | 15 | 207 | 35 | 22 | 9 | 184 | 0 | 184 |
+| `disclosure` | 3 | 16 | 150 | 68 | 13 | 3 | 63 | 0 | 63 |
+| `read` | 2 | 16 | 212 | 35 | 22 | 9 | 184 | 0 | 184 |
 | `run` | 3 | 26 | 413 | 102 | 39 | 28 | 310 | 0 | 310 |
-| `store` | 1 | 17 | 252 | 59 | 13 | 19 | 216 | 0 | 216 |
+| `store` | 1 | 17 | 253 | 59 | 13 | 19 | 216 | 0 | 216 |
 | `surface` | 2 | 20 | 134 | 59 | 22 | 0 | 94 | 0 | 94 |
 | `topology` | 1 | 6 | 70 | 24 | 5 | 5 | 38 | 0 | 38 |
-| **total** | 19 | 155 | 2176 | 608 | 193 | 103 | 1544 | 0 | |
+| **total** | 19 | 156 | 2198 | 610 | 193 | 103 | 1544 | 0 | |
 
 Decision records: 18.
 
@@ -27,13 +27,13 @@ A milestone reads `closed` when its acceptance test computes `passing` and every
 | --- | --- | --- | --- | --- | --- |
 | 0 — The test-first gate | 2 | 21 | 6 | passing | open |
 | 1 — The authority core | 14 | 239 | 190 | passing | closed |
-| 2 — The store | 9 | 174 | 143 | passing | closed |
+| 2 — The store | 9 | 175 | 143 | passing | closed |
 | 3 — The run path | 11 | 214 | 148 | passing | closed |
 | 4 — Ingest | 25 | 519 | 345 | passing | open |
 | 5 — The read face under enforcement | 17 | 285 | 219 | passing | open |
 | 6 — Sync and replicas | 8 | 78 | 73 | passing | closed |
 | 7 — Memory | 6 | 54 | 45 | passing | closed |
-| 8 — Accountability | 5 | 60 | 47 | passing | open |
+| 8 — Accountability | 5 | 76 | 47 | passing | open |
 | 9 — Visibility | 6 | 41 | 3 | open | open |
 | 10 — Cadence and the operator plane | 11 | 91 | 77 | passing | open |
 | 11 — The derive tier | 7 | 88 | 79 | passing | closed |
@@ -41,7 +41,7 @@ A milestone reads `closed` when its acceptance test computes `passing` and every
 | 13 — Disclosure | 5 | 33 | 13 | open | open |
 | 14 — Assurance | 7 | 146 | 91 | passing | closed |
 
-Unscheduled operations: 10.
+Unscheduled operations: 11.
 
 ## Pins
 

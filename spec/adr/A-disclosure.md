@@ -228,6 +228,20 @@ Consequences: role membership stays outside the store, so a decision names the r
 
 ## Erasure is a forced rewrite, a bounded cascade and a measured receipt
 
+Subject and key-set erasure publish one authenticated transaction record selecting every affected table. Readers capture that frontier and validate it before response release; file and cache adapters share the same resolver. Writers fence staged commits against the frontier, preventing erased rows from returning through an older batch.
+
+The transaction references a row-free audit intent. A committed record selects that intent; recovery discards uncommitted replacements and completes committed physical collection. Reference counting uses the surviving view, retaining shared digests and surviving citing rows while refusing access to their erased sources.
+
+| Option | Lost on | Cost |
+| --- | --- | --- |
+| One authenticated publication record with response-release fencing *(chosen)* | — | Every store reader and writer validates the frontier; collection rewrites retained artifacts. |
+| Independent table pointer commits | Atomicity | A reader observes partial cross-table erasure. |
+| Response-time tombstone filters alone | Physical removal | Retained files and sidecars preserve erased bytes. |
+
+Consequences: audit publication failure leaves the original frontier selected. A disagreeing transaction refuses content instead of guessing a completion state. Existing grant admission, cascade depth and collection deadline retain their owners.
+
+## Forced rewrite and measured receipt
+
 `disclosure.erase` rewrites columnar files under the complement of the tenant grant filter; an undeclared subject column raises `ErasureSubjectUndeclared`. The cascade walks provenance to 16 hops, else `ErasureCascadeUnbounded` commits nothing; fact reads refuse with `ErasureRestagingRequired` until re-synthesis. Files holding erased rows are rewritten or collected within 24 h. A token-presented purge raises `PurgeRequiresOwner`. `disclosure.receipt` attests rewrite-and-exclude over the canonical store, names exclusions in `coverage`, and widens only with `receipt_version`.
 
 | Option | Lost on | Cost |

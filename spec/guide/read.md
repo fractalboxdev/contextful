@@ -109,6 +109,8 @@ An agent holding a capability token wants the current renewal terms for one vend
 
 ## Where to look
 
+Stored citations share {{read.reference.call}}; {{read.reference.erased-verdict}} distinguishes absence, {{read.reference.index-visibility}} controls metadata, and {{read.reference.frontier}} binds publication.
+
 - What a connection can name: `read.register`.
 - Which statements run: `read.guard`.
 - The envelope and its encodings: `read.respond`.

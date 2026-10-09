@@ -6,6 +6,9 @@ pub mod build;
 pub mod catalog;
 pub mod commit_log;
 pub mod encrypt;
+mod erasure_frontier;
+#[cfg(feature = "read")]
+pub mod erase;
 pub mod error;
 pub mod fold;
 pub mod fulltext;

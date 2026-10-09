@@ -202,7 +202,9 @@ fn a_cancelled_second_prepared_output_collects_its_relational_children_and_keeps
         assert!(std::time::Instant::now() < deadline, "second output reaches child commit while its root lock is held");
         std::thread::sleep(std::time::Duration::from_millis(20));
     }
-    assert_eq!(select(p, "SELECT doc_id FROM audits ORDER BY doc_id").len(), 3, "the first declared output is already published");
+    // The fixture holds the root table lock outside the frontier-before-table order, so a
+    // read here would wait on the frontier the blocked child holds; publication of the first
+    // output is checked once the lock is released.
     ok(&cf(p, &["run", "cancel", "second-output", "--project", "research", "--reason", "fixture parent retirement"]));
     drop(lock);
     let out = child.wait_with_output().unwrap();
@@ -210,7 +212,7 @@ fn a_cancelled_second_prepared_output_collects_its_relational_children_and_keeps
     let row: serde_json::Value = serde_json::from_str(&ok(&cf(p, &["run", "show", "second-output", "--project", "research"]))).unwrap();
     assert_eq!(row["status"], "canceled", "the existing stop closes the attempt under the cancellation policy");
     assert_eq!(std::fs::read_to_string(&ledger).unwrap().lines().count(), 3);
-    assert_eq!(select(p, "SELECT doc_id FROM audits ORDER BY doc_id").len(), 3);
+    assert_eq!(select(p, "SELECT doc_id FROM audits ORDER BY doc_id").len(), 3, "the first declared output stays published");
     assert!(!store.table_dir("scores").unwrap().join("data/runs/second-output.scores/ingest-a/_group.json").exists());
     assert!(select(p, "SELECT text FROM scores_score").is_empty(), "the unpublished second group is invisible");
     assert!(!node_dir.join("stage.staging").exists(), "failed output collects its child's staged directory");

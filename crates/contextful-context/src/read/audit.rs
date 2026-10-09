@@ -52,17 +52,18 @@ fn project(entry: &AuditEntry) -> Vec<Row<'_>> {
 }
 
 /// Run one operator statement over `audit_reads` projected from `entries`, on a
-/// connection that reaches no file and holds no other relation.
+/// connection that reaches no file. `audit_erasures` projects row-free erasure entries.
 pub fn audit_reads(entries: &[AuditEntry], sql: &str, opts: ReadOptions) -> Result<Response, ReadFault> {
     one_statement(sql)?;
     let engine = SqlEngine::projection(
         &format!(
-            "CREATE TABLE {STAGING} (read_at VARCHAR, on_behalf_of VARCHAR, agent VARCHAR, table_name VARCHAR, \
-             policy VARCHAR, outcome VARCHAR, row_count VARCHAR)"
+            "CREATE TABLE {STAGING} (kind VARCHAR, read_at VARCHAR, on_behalf_of VARCHAR, agent VARCHAR, table_name VARCHAR, \
+             policy VARCHAR, outcome VARCHAR, row_count VARCHAR, transaction_id VARCHAR, subject_hash VARCHAR, affected_counts VARCHAR, executed_at VARCHAR)"
         ),
         STAGING,
         entries.iter().flat_map(project).map(|r| {
             [
+                Some("read".to_string()),
                 Some(r.read_at.to_string()),
                 r.on_behalf_of.map(str::to_string),
                 r.agent.map(str::to_string),
@@ -70,12 +71,27 @@ pub fn audit_reads(entries: &[AuditEntry], sql: &str, opts: ReadOptions) -> Resu
                 r.policy.map(str::to_string),
                 r.outcome.map(str::to_string),
                 r.row_count.map(|n| n.to_string()),
+                None, None, None, None,
             ]
-        }),
+        }).chain(entries.iter().filter_map(|entry| {
+            let attributes = &entry.attributes;
+            if attributes.get("operation").and_then(Value::as_str) != Some("erasure") { return None; }
+            let mut row: [Option<String>; 12] = std::array::from_fn(|_| None);
+            row[0] = Some("erasure".to_string());
+            for (index, name) in [(8, "transaction_id"), (9, "subject_hash"), (11, "executed_at")] {
+                row[index] = Some(attributes.get(name)?.as_str()?.to_string());
+            }
+            let counts = attributes.get("affected_counts")?.as_object()?;
+            if counts.values().any(|count| count.as_u64().is_none()) { return None; }
+            row[10] = Some(Value::Object(counts.clone()).to_string());
+            Some(row)
+        })),
         &format!(
             "CREATE MACRO now() AS CAST(get_current_timestamp() AS TIMESTAMP); \
              CREATE TABLE {AUDIT_READS} AS SELECT CAST(CAST(read_at AS TIMESTAMPTZ) AS TIMESTAMP) AS read_at, on_behalf_of, agent, table_name, \
-             policy, outcome, CAST(row_count AS BIGINT) AS row_count FROM {STAGING}; DROP TABLE {STAGING}"
+             policy, outcome, CAST(row_count AS BIGINT) AS row_count FROM {STAGING} WHERE kind = 'read'; \
+             CREATE TABLE audit_erasures AS SELECT transaction_id, subject_hash, CAST(affected_counts AS JSON) AS affected_counts, \
+             CAST(CAST(executed_at AS TIMESTAMPTZ) AS TIMESTAMP) AS executed_at FROM {STAGING} WHERE kind = 'erasure'; DROP TABLE {STAGING}"
         ),
     )?;
     respond(&engine, sql, &Bindings::default(), opts.limit, opts)
