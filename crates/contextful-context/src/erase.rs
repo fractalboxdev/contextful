@@ -12,6 +12,9 @@ use contextful_core::store::lay_out::{SnapshotManifest, MANIFEST_FILE, SNAPSHOTS
 use contextful_core::store::index::{IndexEntry, IndexKind};
 use contextful_core::{AuthorityError, issue::SignatureEncoding};
 use contextful_policy::audit::{self, AuditLog};
+#[cfg(all(test, feature = "read"))]
+#[path = "erase_recovery_tests.rs"]
+mod recovery_tests;
 use contextful_policy::enforce::erase::ForgetAdmission;
 use contextful_policy::issue::SignerKey;
 use contextful_policy::verify::AdmittedAuthority;
@@ -248,9 +251,36 @@ pub fn erase(store: &Store, request: EraseRequest<'_>) -> Result<Erased> {
 
 /// Completes an already signed erasure's physical collection without selecting
 /// additional rows. Every retirement binding validates before the first deletion.
+/// This trusted store-owner API relies on previously authenticated signed intent;
+/// external adapters use `recover_admitted_erasure` for fresh effect admission.
 pub fn recover_committed_erasure(store: &Store) -> Result<()> {
+    recover_collection(store, |_, _| Ok(()))
+}
+
+/// Resumes signed collection under verified Forget authority for its complete frontier.
+/// No selector, signing port or caller-selected table subset enters this adapter.
+pub fn recover_admitted_erasure(
+    store: &Store,
+    authority: &AdmittedAuthority,
+    boundary: &dyn Fn(&AdmittedAuthority) -> std::result::Result<(), AuthorityError>,
+) -> Result<String> {
+    let mut transaction = None;
+    recover_collection(store, |bound, frontier| {
+        let frontier = frontier.ok_or_else(|| incomplete("recovery has no committed erasure frontier"))?;
+        let tables: Vec<&str> = frontier.tables.keys().map(String::as_str).collect();
+        let admitted = ForgetAdmission::admit(authority, &tables)?;
+        boundary(admitted.authority()).map_err(|error| ContextError::Invalid(error.to_string()))?;
+        bound.canonical_audit_key()?;
+        transaction = Some(frontier.transaction_id.clone());
+        Ok(())
+    })?;
+    transaction.ok_or_else(|| incomplete("recovery has no authenticated transaction identity"))
+}
+
+fn recover_collection(store: &Store, mut boundary: impl FnMut(&Store, Option<&Frontier>) -> Result<()>) -> Result<()> {
     store.with_frontier(|bound| {
         let frontier = crate::erasure_frontier::load(bound)?;
+        boundary(bound, frontier.as_ref())?;
         let retired = match &frontier {
             Some(frontier) => crate::erasure_frontier::retired_directories(bound, frontier)?,
             None => BTreeMap::new(),
@@ -311,6 +341,8 @@ pub fn recover_committed_erasure(store: &Store) -> Result<()> {
             present.push(path);
         }
         for path in present {
+            let current = crate::erasure_frontier::load(bound)?;
+            boundary(bound, current.as_ref())?;
             std::fs::remove_dir_all(&path).at(&path)?;
             let parent = path.parent().ok_or_else(|| incomplete("a retired directory has no parent"))?;
             contextful_fs::open_dir_for_sync(parent).at(parent)?.sync_all().at(parent)?;

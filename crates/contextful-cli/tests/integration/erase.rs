@@ -49,6 +49,54 @@ fn ok(output: Output) -> String {
 }
 
 #[test]
+fn signed_frontier_recovery_replays_without_signer_and_preserves_the_key_lifecycle() {
+    let directory = tempfile::tempdir().unwrap(); let root = directory.path();
+    ok(run(root, &["init", "research", "--authoring-posture", "per_request"], None, None));
+    std::fs::write(root.join("contextful.toml"), "authoring_posture = \"per_request\"\n[[pipeline.tables]]\nname = \"notes\"\nprimary_key = [\"id\"]\nsubject_id = \"subject\"\n").unwrap();
+    std::fs::write(root.join(".contextful/issuance.toml"), "default_audience = \"erasure-fixture\"\nmax_lifetime_secs = 3600\n").unwrap();
+    std::fs::write(root.join("rows.jsonl"), "{\"id\":\"a\",\"subject\":\"alice\"}\n{\"id\":\"b\",\"subject\":\"bob\"}\n").unwrap();
+    ok(run(root, &["context", "land", "notes", "--project", "research", "--rows", "rows.jsonl", "--run-id", "run-1", "--site-id", "fixture"], None, None));
+    let pins = ok(run(root, &["token", "keygen", "--out", ".contextful/issuer.seed"], None, None));
+    let forget = ok(run(root, &["token", "mint", "--issuer-key", ".contextful/issuer.seed", "--on-behalf-of", "user://fixture", "--agent", "agent://fixture", "--zone", "on-prem:fixture", "--action", "forget", "--table", "*", "--ttl", "3600"], None, None));
+    let key = root.join(".contextful/audit.key");
+    std::fs::write(&key, [42; 32]).unwrap();
+    #[cfg(unix)] {
+        use std::os::unix::fs::PermissionsExt;
+        std::fs::set_permissions(&key, std::fs::Permissions::from_mode(0o600)).unwrap();
+    }
+    std::fs::remove_file(&key).unwrap();
+    let store = root.join(".contextful/context/research");
+    assert!(!store.join("_erasure_frontier.json").exists());
+    let outcome = run(root, &["context", "erase", "--project", "research", "--subject", "alice", "--tables", "notes", "--issuer-key", ".contextful/issuer.seed", "--public-key", &pins, "--audience", "erasure-fixture", "--json"], Some(&forget), Some(&pins));
+    let receipt: serde_json::Value = serde_json::from_str(&ok(outcome)).unwrap();
+    assert_eq!(receipt["physical_collection"], "complete", "first-use creation has no prior signed key history");
+    assert_eq!(std::fs::read(&key).unwrap().len(), 32);
+    let frontier = std::fs::read(store.join("_erasure_frontier.json")).unwrap();
+    let audit_before = serde_json::to_vec(&contextful_policy::audit::entries(&root.join(".contextful/audit")).unwrap()).unwrap();
+    let seed_path = root.join(".contextful/issuer.seed");
+    let private_seed = std::fs::read(&seed_path).unwrap();
+    std::fs::remove_file(&seed_path).unwrap();
+    let recovery = ["context", "erase", "--recover", "--project", "research", "--public-key", &pins, "--audience", "erasure-fixture", "--json"];
+    for _ in 0..2 {
+        let recovered: serde_json::Value = serde_json::from_str(&ok(run(root, &recovery, Some(&forget), Some(&pins)))).unwrap();
+        assert_eq!(recovered["transaction_id"], receipt["transaction_id"]);
+        assert_eq!(recovered["physical_collection"], "complete");
+        assert_eq!(std::fs::read(store.join("_erasure_frontier.json")).unwrap(), frontier);
+        assert_eq!(serde_json::to_vec(&contextful_policy::audit::entries(&root.join(".contextful/audit")).unwrap()).unwrap(), audit_before);
+        assert!(!seed_path.exists(), "recovery recreates a signing key");
+    }
+    let query = ["query", "--json", "--project", "research", "SELECT id FROM notes ORDER BY id"];
+    assert_eq!(serde_json::from_str::<serde_json::Value>(&ok(run(root, &query, None, Some(&pins)))).unwrap()["rows"], serde_json::json!([["b"]]));
+    std::fs::write(&seed_path, private_seed).unwrap();
+    std::fs::remove_file(&key).unwrap();
+    let refused = run(root, &["context", "erase", "--project", "research", "--subject", "bob", "--tables", "notes", "--issuer-key", ".contextful/issuer.seed", "--public-key", &pins, "--audience", "erasure-fixture", "--json"], Some(&forget), Some(&pins));
+    assert!(!refused.status.success(), "published erasure loses its key without refusing");
+    assert!(String::from_utf8_lossy(&refused.stderr).contains("ErasureTransactionIncomplete"));
+    assert!(!key.exists(), "published history creates a replacement pseudonym key");
+    assert_eq!(std::fs::read(store.join("_erasure_frontier.json")).unwrap(), frontier);
+}
+
+#[test]
 fn erase_requires_forget_and_explicit_signing_and_preserves_normal_pinned_reads() {
     let directory = tempfile::tempdir().unwrap(); let root = directory.path();
     ok(run(root, &["init", "research", "--authoring-posture", "per_request"], None, None));
