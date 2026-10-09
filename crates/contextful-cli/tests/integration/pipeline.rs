@@ -2468,3 +2468,30 @@ fn an_unchanged_snapshot_digest_lands_nothing_and_holds_the_position() {
     assert!(!fire(watermarked.path(), "feed", "w1", "2030-01-01T00:05:00Z").status.success());
     assert_eq!(vendor.targets().len(), before);
 }
+
+/// Enabling `incremental` on a pipeline that holds a position starts from none, re-landing the source's current
+/// window once.
+// spec: run.advance.turning-incremental-on@5af77095
+#[test]
+fn enabling_incremental_over_a_held_position_starts_from_none_once() {
+    let vendor = Vendor::start(|t| match t.split_once("since=") {
+        None => (200, r#"[{"id":"a","at":1},{"id":"b","at":2}]"#.into()),
+        Some((_, since)) => (200, if since == "2" { r#"[{"id":"b","at":2},{"id":"c","at":3}]"# } else { "[]" }.into()),
+    });
+    let declared = |incremental: &str, since: &str| format!(
+        "[[pipeline]]\nid = \"feed\"\n{incremental}tables = [\"items\"]\n[pipeline.source]\nname = \"http\"\nconfig = {{ endpoint = \"{}\"{since} }}\n",
+        vendor.url("/v1/{table}")
+    );
+    let dir = project(&declared("", ""));
+    ok(&fire(dir.path(), "feed", "r1", "2030-01-01T00:00:00Z"));
+    std::fs::write(dir.path().join("contextful.toml"), format!("authoring_posture = \"per_request\"\n{}", declared("incremental = \"at\"\n", ", since_param = \"since\""))).unwrap();
+    ok(&fire(dir.path(), "feed", "r2", "2030-01-01T00:01:00Z"));
+    ok(&fire(dir.path(), "feed", "r3", "2030-01-01T00:02:00Z"));
+    let targets = vendor.targets();
+    assert_eq!(targets.len(), 3, "{targets:?}");
+    assert!(!targets[1].contains("since="), "the first incremental fire starts from none: {targets:?}");
+    assert!(targets[2].ends_with("since=2"), "then it reads from its watermark: {targets:?}");
+    let history: serde_json::Value = serde_json::from_str(&ok(&cf(dir.path(), &["run", "history", "--project", "research", "--pipeline", "feed"]))).unwrap();
+    let rows = |id: &str| history["runs"].as_array().unwrap().iter().find(|r| r["run_id"] == id).unwrap()["rows"].as_u64().unwrap();
+    assert_eq!((rows("r1"), rows("r2"), rows("r3")), (2, 2, 2), "the current window re-lands once");
+}

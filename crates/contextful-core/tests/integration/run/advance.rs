@@ -100,3 +100,14 @@ fn the_boundary_value_is_admitted() {
     assert!(admits(None, &json!(0)).unwrap());
     assert_eq!(compare(&json!("b"), &json!("a")).unwrap(), std::cmp::Ordering::Greater);
 }
+
+/// A stored position that is no watermark opens as none under a declared field; a watermark measured on another
+/// field still refuses.
+#[test]
+fn a_position_that_is_no_watermark_opens_as_none() {
+    for stored in [json!({ "next": null }), json!("p3"), json!({ "sha256": "ab", "rows": 2 }), Value::Null] {
+        assert_eq!(open_watermark(Some(&stored), "at").unwrap(), None, "{stored}");
+    }
+    let measured = watermark("updated_at", json!(5));
+    assert!(matches!(open_watermark(Some(&measured), "at"), Err(RunError::CursorFieldMismatch(_))));
+}
