@@ -178,6 +178,23 @@ fn a_registered_prepared_body_lands_protected_effect_results() {
     assert!(select(guarded.path(), "SELECT score FROM scores").iter().all(|row| row == &[contextful_core::pipeline::guard::MARKER.to_string()]), "retained paid result cells receive the ordinary guard before recording and staging");
 }
 
+/// Polls until `reached` holds while `child` runs, and panics with the child's stderr when
+/// it exits first. The verdict rests on the child's state transition; the bound only stops a
+/// hung child from holding the suite, so it sits far above a loaded host's latency.
+fn await_while_running(child: &mut std::process::Child, what: &str, reached: impl Fn() -> bool) {
+    const HANG_GUARD: std::time::Duration = std::time::Duration::from_secs(600);
+    let started = std::time::Instant::now();
+    while !reached() {
+        if child.try_wait().unwrap().is_some() {
+            let mut stderr = String::new();
+            std::io::Read::read_to_string(&mut child.stderr.take().unwrap(), &mut stderr).unwrap();
+            panic!("{what}: the child exited first: {stderr}");
+        }
+        assert!(started.elapsed() < HANG_GUARD, "{what}: the child still runs after {HANG_GUARD:?}");
+        std::thread::sleep(std::time::Duration::from_millis(20));
+    }
+}
+
 #[test]
 fn a_cancelled_second_prepared_output_collects_its_relational_children_and_keeps_the_first() {
     let declares = job("max_in_flight = 1\n").replace("tables = [\"scores\"]", "tables = [\"audits\", \"scores\"]");
@@ -193,15 +210,7 @@ fn a_cancelled_second_prepared_output_collects_its_relational_children_and_keeps
         .env("SCORE_CANARY", "private-relational-model-canary").env("SCORE_LEDGER", &ledger)
         .stdout(std::process::Stdio::piped()).stderr(std::process::Stdio::piped()).spawn().unwrap();
     let node_dir = store.table_dir("scores_score").unwrap().join("data/runs/second-output.scores/ingest-a");
-    let deadline = std::time::Instant::now() + std::time::Duration::from_secs(20);
-    while !node_dir.join("_manifest.json").is_file() {
-        if child.try_wait().unwrap().is_some() {
-            let out = child.wait_with_output().unwrap();
-            panic!("second output never reached its real child commit: {}", String::from_utf8_lossy(&out.stderr));
-        }
-        assert!(std::time::Instant::now() < deadline, "second output reaches child commit while its root lock is held");
-        std::thread::sleep(std::time::Duration::from_millis(20));
-    }
+    await_while_running(&mut child, "second output reaches its real child commit while its root lock is held", || node_dir.join("_manifest.json").is_file());
     // The fixture holds the root table lock outside the frontier-before-table order, so a
     // read here would wait on the frontier the blocked child holds; publication of the first
     // output is checked once the lock is released.
@@ -243,15 +252,7 @@ fn a_refused_second_output_child_commit_retains_names_for_existing_discard() {
         .stdout(std::process::Stdio::piped()).stderr(std::process::Stdio::piped()).spawn().unwrap();
     let node_dir = store.table_dir("scores_score").unwrap().join("data/runs/child-refusal.scores/ingest-a");
     let stage = node_dir.join("stage.staging");
-    let deadline = std::time::Instant::now() + std::time::Duration::from_secs(20);
-    while !stage.is_dir() {
-        if child.try_wait().unwrap().is_some() {
-            let out = child.wait_with_output().unwrap();
-            panic!("second output never staged its real child: {}", String::from_utf8_lossy(&out.stderr));
-        }
-        assert!(std::time::Instant::now() < deadline, "second output reaches child stage while its commit lock is held");
-        std::thread::sleep(std::time::Duration::from_millis(20));
-    }
+    await_while_running(&mut child, "second output stages its real child while its commit lock is held", || stage.is_dir());
     std::fs::create_dir(node_dir.join("_manifest.json")).unwrap();
     drop(lock);
     let out = child.wait_with_output().unwrap();
