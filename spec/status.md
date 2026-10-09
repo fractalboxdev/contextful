@@ -10,12 +10,12 @@ An unpinned clause is `committed`; a pinned one is `performed` when its Rust, Le
 | `connector` | 2 | 14 | 349 | 89 | 21 | 15 | 229 | 0 | 229 |
 | `corpus` | 1 | 10 | 79 | 37 | 7 | 0 | 43 | 0 | 43 |
 | `disclosure` | 3 | 16 | 156 | 68 | 13 | 3 | 63 | 0 | 63 |
-| `read` | 2 | 16 | 220 | 35 | 24 | 1 | 198 | 0 | 198 |
+| `read` | 2 | 16 | 220 | 35 | 24 | 1 | 202 | 0 | 202 |
 | `run` | 3 | 26 | 413 | 102 | 39 | 28 | 310 | 0 | 310 |
 | `store` | 1 | 17 | 253 | 59 | 13 | 19 | 216 | 0 | 216 |
 | `surface` | 2 | 20 | 134 | 59 | 22 | 0 | 94 | 0 | 94 |
 | `topology` | 1 | 6 | 70 | 24 | 5 | 5 | 38 | 0 | 38 |
-| **total** | 19 | 156 | 2214 | 610 | 195 | 95 | 1558 | 0 | |
+| **total** | 19 | 156 | 2214 | 610 | 195 | 95 | 1562 | 0 | |
 
 Decision records: 18.
 
@@ -30,7 +30,7 @@ A milestone reads `closed` when its acceptance test computes `passing` and every
 | 2 — The store | 9 | 175 | 143 | passing | closed |
 | 3 — The run path | 11 | 214 | 148 | passing | closed |
 | 4 — Ingest | 25 | 519 | 345 | passing | open |
-| 5 — The read face under enforcement | 17 | 293 | 233 | passing | open |
+| 5 — The read face under enforcement | 17 | 293 | 237 | passing | open |
 | 6 — Sync and replicas | 8 | 78 | 73 | passing | closed |
 | 7 — Memory | 6 | 54 | 45 | passing | closed |
 | 8 — Accountability | 5 | 82 | 47 | passing | open |
@@ -793,7 +793,9 @@ Unscheduled operations: 11.
 | `read.query.project-store` | `crates/contextful-cli/tests/integration/query.rs::a_project_with_no_store_is_refused` | performed |
 | `read.query.raw-row-ceiling` | `crates/contextful-cli/tests/integration/query.rs::a_published_row_ceiling_bounds_the_raw_read` | performed |
 | `read.rank.absent-block` | `crates/contextful-context/tests/integration/read/retrieve.rs::a_statement_carries_no_retrieval_block` | performed |
+| `read.rank.calibration-gate` | `crates/contextful-cli/tests/integration/eval.rs::the_ranked_read_keeps_the_fusion_the_native_baseline_admits` | performed |
 | `read.rank.caller-embedding` | `crates/contextful-core/tests/integration/read/embed.rs::a_caller_embedding_adds_a_cosine_leg_and_omitting_it_leaves_lexical_order` | performed |
+| `read.rank.degradation-not-error` | `crates/contextful-context/tests/integration/read/retrieve.rs::without_the_lexical_backend_a_ranked_read_answers_by_token_fallback` | performed |
 | `read.rank.delivered-counts` | `crates/contextful-context/tests/integration/read/retrieve.rs::a_byte_cut_updates_the_retrieval_counts` | performed |
 | `read.rank.fallback-counts-tokens` | `crates/contextful-core/tests/integration/read/rank.rs::the_token_fallback_scores_every_phrasing_alike` | performed |
 | `read.rank.flat-window-full-credit` | `crates/contextful-core/tests/integration/read/rank.rs::a_flat_window_awards_full_credit` | performed |
@@ -878,6 +880,7 @@ Unscheduled operations: 11.
 | `read.respond.engine-composed-ceiling` | `crates/contextful-context/tests/integration/read/native_rows.rs::engine_composed_rows_past_the_face_ceiling_arrive_complete_without_a_declared_ceiling` | performed |
 | `read.respond.face-ceiling` | `crates/contextful-context/tests/integration/read/register.rs::the_face_ceiling_bounds_every_read` | performed |
 | `read.respond.in-band-error` | `crates/contextful-agent/tests/integration/mcp.rs::a_refusal_arrives_in_band` | performed |
+| `read.respond.internals-opt-in` | `crates/contextful-agent/tests/integration/mcp.rs::every_read_tool_returns_internals_only_on_request` | performed |
 | `read.respond.match-count` | `crates/contextful-context/tests/integration/read/retrieve.rs::the_block_reports_how_many_rows_matched` | performed |
 | `read.respond.nested-values` | `crates/contextful-context/tests/integration/read/nested.rs::a_nested_column_lands_folds_and_reads_back_as_it_arrived` | performed |
 | `read.respond.one-projection` | `crates/contextful-cli/tests/integration/query.rs::the_command_line_and_the_tool_protocol_print_one_projection` | performed |
@@ -893,6 +896,7 @@ Unscheduled operations: 11.
 | `read.respond.type-is-the-cell` | `crates/contextful-core/tests/integration/read/respond.rs::the_envelope_carries_no_type_list` | performed |
 | `read.respond.wide-number-shape` | `crates/contextful-core/tests/integration/read/respond.rs::wide_numbers_are_exact_strings_whatever_their_value` | performed |
 | `read.respond.zero-rows-is-success` | `crates/contextful-core/tests/integration/read/respond.rs::zero_rows_is_an_ordinary_response` | performed |
+| `read.retrieve.adaptive-over-fetch` | `crates/contextful-context/tests/integration/read/retrieve.rs::an_under_filled_probe_doubles_until_the_reader_sees_its_rows` | performed |
 | `read.retrieve.candidate-window` | `crates/contextful-core/tests/integration/read/retrieve.rs::the_candidate_window_is_the_larger_of_a_multiple_and_a_floor` | performed |
 | `read.retrieve.content-tokens` | `crates/contextful-core/tests/integration/read/retrieve.rs::content_tokens_are_lowercased_split_stopped_and_deduplicated` | performed |
 | `read.retrieve.dedup-is-gated` | `crates/contextful-context/tests/integration/read/retrieve.rs::a_browse_shaped_read_skips_the_deduplicator` | performed |

@@ -99,7 +99,7 @@ pub const PROFILE: &str = profile!();
 pub(crate) fn build_identity() -> contextful_core::read::face::BuildIdentity {
     let named = |pairs: &[(bool, &str)]| pairs.iter().filter(|(linked, _)| *linked).map(|(_, n)| n.to_string()).collect();
     contextful_core::read::face::BuildIdentity {
-        backends: named(&[(true, "duckdb"), (true, "fts"), (true, "hnsw")]),
+        backends: named(&[(true, "duckdb"), (contextful_context::read::LEXICAL_BACKEND, "fts"), (true, "hnsw")]),
         connectors: named(&[(cfg!(feature = "s3-sync"), "s3"), (cfg!(feature = "component-host"), "wasm")]),
         faces: named(&[(true, "http"), (cfg!(feature = "data-plane"), "eval"), (cfg!(feature = "data-plane"), "otlp")]),
     }

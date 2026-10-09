@@ -230,7 +230,7 @@ impl Face {
         };
         let response = if opts.internals {
             let internals = Internals {
-                sql: sql.to_string(),
+                sql: Some(sql.to_string()),
                 engine: ENGINE,
                 limit: Some(ceiling),
                 row_count: response.rows.len() as u64,
@@ -331,6 +331,7 @@ impl Face {
     /// One citation resolves through the caller's relation and the certified erasure
     /// index, with no store path or source payload in its verdict.
     pub fn reference(&self, session: &Session, table: &str, run: &str, seq: i64, opts: ReadOptions) -> Result<Response, ReadFault> {
+        let started = std::time::Instant::now();
         let frontier = self.read_frontier(session)?;
         self.registered(session, table)?;
         let touched = BTreeSet::from([table.to_string()]);
@@ -349,7 +350,12 @@ impl Face {
         let mut response = Response::cut(vec!["available".into(), "reason".into()], vec![vec![json!(readable), json!(reason)]], Some(ceiling));
         if let Some(bounds) = opts.bounds.echo() { response = response.with_block("bounds", bounds); }
         if let Some(resolved) = super::pin::resolved(session, [table]) { response = response.with_block(RESOLVED_BLOCK, resolved); }
-        let response = self.finish_budget(session, &touched, opts, None, ceiling, response)?;
+        let mut response = self.finish_budget(session, &touched, opts, None, ceiling, response)?;
+        if opts.internals {
+            let sql = session.relation(table).map(|r| super::evidence::row_reads_sql(r.name())).into_iter().collect::<Vec<_>>();
+            let rows = response.rows.len() as u64;
+            response = response.with_block("internals", internals_block(&sql, Some(ceiling), rows, started));
+        }
         self.publish_read(Some(session), &frontier, response)
     }
 
@@ -732,10 +738,7 @@ impl Face {
         let engine = self.pool.engine(session, self.store.parquet_key())?;
         // The row count beside the serialized JSON length of the caller's restricted rows
         // (`read.register.size-estimate`).
-        let sql = format!(
-            "SELECT count(*), coalesce(sum(strlen(CAST(to_json(t) AS VARCHAR))), 0)::BIGINT FROM {} AS t",
-            ident(r.name())
-        );
+        let sql = describe_sql(r.name());
         let (_, count) = match deadline {
             Some((ms, source)) => engine.run_timed(&sql, &Bindings::default(), None, ms, source)?,
             None => engine.run(&sql, &Bindings::default(), None)?,
@@ -794,17 +797,26 @@ impl Face {
 
     /// The table description or listing under its selected serialized byte ceiling.
     pub fn describe_with_options(&self, session: &Session, table: Option<&str>, opts: ReadOptions) -> Result<Value, ReadFault> {
+        let started = std::time::Instant::now();
         let frontier = self.read_frontier(session)?;
         let touched = match table {
             Some(name) => BTreeSet::from([name.to_string()]),
             None => session.relations().map(|r| r.name().to_string()).collect(),
         };
         let deadline = self.duration_budget(session, &touched, opts.max_duration_ms);
-        let value = self.describe_value(session, table, opts.bounds, deadline)?;
+        let mut value = self.describe_value(session, table, opts.bounds, deadline)?;
         if let Some((bytes, source)) = self.byte_budget(session, &touched, opts.max_response_bytes) {
             if serde_json::to_vec(&value).expect("the description serializes").len() as u64 > bytes {
                 return Err(ReadError::ReadResponseTooLarge(format!("{bytes} bytes from {source}; the description exceeds the ceiling")).into());
             }
+        }
+        if opts.internals {
+            // A listing runs no statement; a description runs its count.
+            let (sql, rows) = match table {
+                Some(name) => (vec![describe_sql(name)], 1),
+                None => (Vec::new(), value["tables"].as_array().map_or(0, Vec::len) as u64),
+            };
+            value["contextful.internals"] = internals_block(&sql, None, rows, started);
         }
         self.publish_read(Some(session), &frontier, value)
     }
@@ -819,6 +831,7 @@ impl Face {
 
     /// The committed file listing under the request's serialized response budget.
     pub fn files_with_options(&self, session: &Session, opts: ReadOptions) -> Result<Response, ReadFault> {
+        let started = std::time::Instant::now();
         let frontier = self.read_frontier(session)?;
         let transaction = Bounds { valid_as_of: None, ..opts.bounds };
         let touched: BTreeSet<String> = session.relations().map(|r| r.name().to_string()).collect();
@@ -847,6 +860,13 @@ impl Face {
             None => response,
         };
         let response = self.finish_budget(session, &touched, opts, None, ceiling, response)?;
+        // A listing reads manifests and runs no statement.
+        let response = if opts.internals {
+            let rows = response.rows.len() as u64;
+            response.with_block("internals", internals_block(&[], Some(ceiling), rows, started))
+        } else {
+            response
+        };
         self.publish_read(Some(session), &frontier, response)
     }
 
@@ -1017,6 +1037,27 @@ pub fn operator_query(sql: &str, opts: ReadOptions) -> Result<Response, ReadFaul
     respond(&SqlEngine::raw()?, sql, &Bindings::default(), opts.limit, opts)
 }
 
+/// The statement a table description runs: the row count beside the serialized JSON
+/// length of the caller's restricted rows (`read.register.size-estimate`).
+fn describe_sql(relation: &str) -> String {
+    format!("SELECT count(*), coalesce(sum(strlen(CAST(to_json(t) AS VARCHAR))), 0)::BIGINT FROM {} AS t", ident(relation))
+}
+
+/// The internals object of a read that executed `sql`, one statement per entry and absent
+/// for a read running none, under `limit`, delivering `row_count` rows
+/// (`read.respond.internals-opt-in`).
+pub(crate) fn internals_block(sql: &[String], limit: Option<u64>, row_count: u64, started: std::time::Instant) -> Value {
+    let internals = Internals {
+        sql: (!sql.is_empty()).then(|| sql.join("\n")),
+        engine: ENGINE,
+        limit,
+        row_count,
+        elapsed_ms: started.elapsed().as_millis() as u64,
+        cache: None,
+    };
+    serde_json::to_value(internals).expect("internals serialize")
+}
+
 /// Refuse operator text holding other than exactly one statement before any statement
 /// runs (`read.query.one-statement`).
 pub(crate) fn one_statement(sql: &str) -> Result<(), ReadFault> {
@@ -1046,7 +1087,7 @@ fn respond_with_deadline(engine: &SqlEngine, sql: &str, parameters: &Bindings, c
     }
     Ok(if opts.internals {
         let internals = Internals {
-            sql: sql.to_string(),
+            sql: Some(sql.to_string()),
             engine: ENGINE,
             limit: ceiling,
             row_count: response.rows.len() as u64,
@@ -1088,7 +1129,7 @@ fn builtin_tool(name: &str) -> Value {
     let (description, mut properties, required): (&str, Value, Vec<&str>) = match name {
         "context.describe" => (
             "Describe one table this credential reads, or list them.",
-            json!({ "table": { "type": "string" }, "zone": { "type": "string" } }),
+            json!({ "table": { "type": "string" }, "internals": { "type": "boolean" }, "zone": { "type": "string" } }),
             vec![],
         ),
         "context.query" => (
@@ -1112,7 +1153,7 @@ fn builtin_tool(name: &str) -> Value {
         ),
         "context.reference" => (
             "Resolve one stored citation through this credential's registered relation.",
-            json!({ "table": { "type": "string" }, "run": { "type": "string" }, "seq": { "type": "integer", "minimum": 0 }, "zone": { "type": "string" } }),
+            json!({ "table": { "type": "string" }, "run": { "type": "string" }, "seq": { "type": "integer", "minimum": 0 }, "internals": { "type": "boolean" }, "zone": { "type": "string" } }),
             vec!["table", "run", "seq"],
         ),
         "context.execute_query" => (
@@ -1122,7 +1163,7 @@ fn builtin_tool(name: &str) -> Value {
         ),
         "context.files" => (
             "List committed data files of the tables this credential reads.",
-            json!({ "as_of": { "type": "string" }, "zone": { "type": "string" } }),
+            json!({ "as_of": { "type": "string" }, "internals": { "type": "boolean" }, "zone": { "type": "string" } }),
             vec![],
         ),
         "context.file" => (
@@ -1136,7 +1177,7 @@ fn builtin_tool(name: &str) -> Value {
                 "table": { "type": "string" }, "subject": { "type": "string" },
                 "observed_at": instant("The valid-time instant the claims cover; absent, the call's own."),
                 "as_of_ingest": instant("The transaction-time bound; absent, the latest committed state."),
-                "limit": { "type": "integer" }, "zone": { "type": "string" }
+                "limit": { "type": "integer" }, "internals": { "type": "boolean" }, "zone": { "type": "string" }
             }),
             vec!["table", "subject"],
         ),

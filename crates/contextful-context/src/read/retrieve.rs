@@ -13,7 +13,7 @@ use contextful_core::read::template::{Bindings, Bound};
 use crate::fulltext::{self, FulltextSidecar, SidecarCache};
 use crate::vector::{self, Fallback, VectorSidecar};
 use contextful_core::read::rank::{
-    candidate_window, sidecar_probe_size, fuse, min_max, order, Candidate, LexicalIndex, Publication, RetrievalBlock, RowRanking,
+    candidate_window, over_fetch_size, probe_again, fallback_order, OVER_FETCH_ROUNDS, fuse, order, Fusion, token_fallback, Candidate, LexicalIndex, Publication, RetrievalBlock, RowRanking,
     Timeframe,
 };
 use contextful_core::read::respond::{Cell, Response};
@@ -107,6 +107,9 @@ pub struct RetrieveRequest {
     /// A caller minimum overriding the relevance floor.
     pub min_score: Option<u32>,
     pub internals: bool,
+    /// The lexical leg's calibration; reciprocal rank unless an evaluation compares
+    /// another (`read.rank.calibration-gate`).
+    pub fusion: Fusion,
 }
 
 impl RetrieveRequest {
@@ -125,6 +128,7 @@ impl RetrieveRequest {
             anchor,
             min_score: None,
             internals: false,
+            fusion: Fusion::default(),
         }
     }
 }
@@ -241,6 +245,8 @@ impl Face {
     /// registered relation, so restriction completes before the cut
     /// (`authority.compose.before-the-cut`).
     pub fn retrieve(&self, session: &Session, request: &RetrieveRequest, bounds: Bounds) -> Result<Response, ReadFault> {
+        let started = std::time::Instant::now();
+        let mut executed: Vec<String> = Vec::new();
         let frontier = self.read_frontier(session)?;
         // The whole filter meets its budget before any arm is built
         // (`read.retrieve.filter-budget-refusal`).
@@ -268,6 +274,7 @@ impl Face {
         let mut tally = super::recall::RecallTally::default();
         let mut recalled = false;
         let mut rows: Vec<Row> = Vec::new();
+        let mut underfilled = false;
         for table in &arms {
             // An arm whose relation lacks a filter column drops rather than run unfiltered
             // (`read.retrieve.unsatisfiable-arm-drops`).
@@ -329,6 +336,7 @@ impl Face {
                     ident(ROW_SEQ)
                 );
                 let (columns, values) = engine.run_values_timed(&sql, &parameters, None, deadline)?;
+                executed.push(sql);
                 let page = values.len() as u64;
                 let cx = ArmContext {
                     engine: &engine,
@@ -353,51 +361,68 @@ impl Face {
             // Each sidecar adds its candidates to the window, each read through the relation,
             // so a row it recalls scores exactly as the exact path scores it
             // (`read.retrieve.sidecar-generates-candidates`).
-            let mut probes: Vec<(String, Vec<String>)> = Vec::new();
+            // Each sidecar arm probes, re-joins through the relation and, while the rows the
+            // reader can see under-fill the limit behind a full probe, doubles and probes
+            // again (`read.retrieve.adaptive-over-fetch`).
             if !claims {
+                let mut arms: Vec<Box<dyn Fn(u32) -> Result<(String, Vec<String>, u64), Fallback> + '_>> = Vec::new();
                 if let Some(query) = request.query_embedding.as_deref() {
-                    probes.extend(self.sidecar_candidates(session, table, query, limit).ok());
+                    arms.push(Box::new(move |round| self.sidecar_probe(session, table, query, limit, round)));
                 }
                 // A table declaring no full-text sidecar reads no snapshot manifest here.
                 let fulltext = decl.indexes().iter().any(|i| i.kind == IndexKind::Fulltext);
-                if fulltext && !tokens.is_empty() {
-                    probes.extend(self.fulltext_candidates(session, table, &tokens, limit).ok());
+                if super::LEXICAL_BACKEND && fulltext && !tokens.is_empty() {
+                    let tokens = &tokens;
+                    arms.push(Box::new(move |round| self.fulltext_probe(session, table, tokens, limit, round)));
                 }
-            }
-            for (id_column, ids) in probes {
-                let cx = ArmContext {
-                    engine: &engine,
-                    session,
-                    table,
-                    claims,
-                    anchor,
-                    window: u64::MAX,
-                    snippet: &snippet,
-                    basis: &basis,
-                    tokens: &tokens,
-                    request,
-                    memory_tables: &memory_tables,
-                    touched: &touched,
-                };
-                let present: std::collections::HashSet<String> = rows.iter().map(|r| r.id.clone()).collect();
-                let mut recalled_rows = Vec::new();
-                let mut added = 0u64;
-                for chunk in ids.chunks(REJOIN_CHUNK) {
-                    let marks = vec!["?"; chunk.len()].join(", ");
-                    // A recalled row meets the filter on its re-join
-                    // (`read.retrieve.unsatisfiable-arm-drops`).
-                    let (filtered, values) =
-                        predicate.as_ref().map_or((String::new(), Vec::new()), |(sql, v)| (format!(" AND {sql}"), v.clone()));
-                    let sql = format!(
-                        "SELECT * FROM {} WHERE CAST({} AS VARCHAR) IN ({marks}){filtered}",
-                        arm_source(table, row_key.as_deref(), ""),
-                        ident(&id_column)
-                    );
-                    let parameters = Bindings::positional(chunk.iter().map(|id| Bound::Text(id.clone())).chain(values));
-                    let (columns, values) = engine.run_values_timed(&sql, &parameters, None, deadline)?;
-                    self.arm_rows(&cx, &columns, values, &mut added, &mut recalled_rows, &mut tally)?;
+                for probe in arms {
+                    let mut rejoined = std::collections::HashSet::new();
+                    let mut visible = 0u64;
+                    for round in 0..OVER_FETCH_ROUNDS {
+                        let Ok((id_column, ids, size)) = probe(round) else { break };
+                        let returned = ids.len() as u64;
+                        let fresh: Vec<String> = ids.into_iter().filter(|id| rejoined.insert(id.clone())).collect();
+                        let cx = ArmContext {
+                            engine: &engine,
+                            session,
+                            table,
+                            claims,
+                            anchor,
+                            window: u64::MAX,
+                            snippet: &snippet,
+                            basis: &basis,
+                            tokens: &tokens,
+                            request,
+                            memory_tables: &memory_tables,
+                            touched: &touched,
+                        };
+                        let present: std::collections::HashSet<String> = rows.iter().map(|r| r.id.clone()).collect();
+                        let mut recalled_rows = Vec::new();
+                        let mut added = 0u64;
+                        for chunk in fresh.chunks(REJOIN_CHUNK) {
+                            let marks = vec!["?"; chunk.len()].join(", ");
+                            // A recalled row meets the filter on its re-join
+                            // (`read.retrieve.unsatisfiable-arm-drops`).
+                            let (filtered, values) =
+                                predicate.as_ref().map_or((String::new(), Vec::new()), |(sql, v)| (format!(" AND {sql}"), v.clone()));
+                            let sql = format!(
+                                "SELECT * FROM {} WHERE CAST({} AS VARCHAR) IN ({marks}){filtered}",
+                                arm_source(table, row_key.as_deref(), ""),
+                                ident(&id_column)
+                            );
+                            let parameters = Bindings::positional(chunk.iter().map(|id| Bound::Text(id.clone())).chain(values));
+                            let (columns, values) = engine.run_values_timed(&sql, &parameters, None, deadline)?;
+                            executed.push(sql);
+                            self.arm_rows(&cx, &columns, values, &mut added, &mut recalled_rows, &mut tally)?;
+                        }
+                        visible += recalled_rows.len() as u64;
+                        rows.extend(recalled_rows.into_iter().filter(|r| !present.contains(&r.id)));
+                        if !probe_again(visible, limit, returned, size, round) {
+                            underfilled |= visible < limit && returned >= size;
+                            break;
+                        }
+                    }
                 }
-                rows.extend(recalled_rows.into_iter().filter(|r| !present.contains(&r.id)));
             }
         }
         let prefloor = rows.len() as u64;
@@ -405,10 +430,15 @@ impl Face {
         let deduped = dedup(&mut rows);
         let candidates = rows.len() as u64;
 
-        let index = LexicalIndex::build(&rows.iter().map(|r| r.snippet.as_deref()).collect::<Vec<_>>());
-        let bm25 = index.bm25(&tokens);
-        let matched = bm25.iter().filter(|s| s.is_some()).count() as u64;
-        let lexical = min_max(&bm25);
+        // Without the lexical backend the token fallback scores the same snippets and the
+        // read still answers, in its own order (`read.rank.degradation-not-error`).
+        let lexical = if super::LEXICAL_BACKEND {
+            let index = LexicalIndex::build(&rows.iter().map(|r| r.snippet.as_deref()).collect::<Vec<_>>());
+            request.fusion.calibrate(&index.bm25(&tokens))
+        } else {
+            token_fallback(&rows.iter().map(|r| r.lexical).collect::<Vec<_>>(), tokens.len())
+        };
+        let matched = lexical.iter().filter(|s| s.is_some()).count() as u64;
         let ranking_empty = matched == 0 && rows.iter().all(|r| r.vector.is_none());
         let timeframe = request.since.map(|since| Timeframe { since: Some(since), anchor: request.anchor });
         let mut ranked: Vec<(Candidate, usize)> = rows
@@ -433,7 +463,11 @@ impl Face {
             })
             .collect();
         let mut order_only: Vec<Candidate> = ranked.iter().map(|(c, _)| c.clone()).collect();
-        order(&mut order_only, ranking_empty);
+        if super::LEXICAL_BACKEND {
+            order(&mut order_only, ranking_empty);
+        } else {
+            fallback_order(&mut order_only, ranking_empty);
+        }
         let rank: std::collections::HashMap<&str, usize> = order_only.iter().enumerate().map(|(i, c)| (c.id.as_str(), i)).collect();
         ranked.sort_by_key(|(c, _)| rank[c.id.as_str()]);
         // One probe row past the ceiling sets `truncated` (`read.respond.truncation-is-exact`).
@@ -487,6 +521,7 @@ impl Face {
             in_window,
             deduped,
             padded: 0,
+            underfilled,
             floor,
             since: request.since.map(|s| s.to_rfc3339()),
         };
@@ -500,7 +535,11 @@ impl Face {
         if recalled {
             response = response.with_block("recall", tally.block());
         }
-        let response = self.finish_budget(session, &touched, ReadOptions { limit: Some(asked), max_response_bytes: request.max_response_bytes, max_duration_ms: request.max_duration_ms, ..ReadOptions::default() }, None, limit, response)?;
+        let mut response = self.finish_budget(session, &touched, ReadOptions { limit: Some(asked), max_response_bytes: request.max_response_bytes, max_duration_ms: request.max_duration_ms, ..ReadOptions::default() }, None, limit, response)?;
+        if request.internals {
+            let rows = response.rows.len() as u64;
+            response = response.with_block("internals", super::face::internals_block(&executed, Some(limit), rows, started));
+        }
         self.publish_read(Some(session), &frontier, response)
     }
 
@@ -509,6 +548,12 @@ impl Face {
     /// (`read.retrieve.sidecar-falls-back`). The probe widens where the session restricts
     /// the table, since it sees none of the restriction (`read.retrieve.sidecar-oversampling`).
     pub fn sidecar_candidates(&self, session: &Session, table: &str, query: &[f32], limit: u64) -> Result<(String, Vec<String>), Fallback> {
+        self.sidecar_probe(session, table, query, limit, 0).map(|(column, ids, _)| (column, ids))
+    }
+
+    /// One round of the vector arm's probe: the identifiers and the probe size, which
+    /// doubles each round (`read.retrieve.adaptive-over-fetch`).
+    fn sidecar_probe(&self, session: &Session, table: &str, query: &[f32], limit: u64, round: u32) -> Result<(String, Vec<String>, u64), Fallback> {
         let (dir, entry) = vector::current_entry(&self.store, table, EMBEDDING_COLUMN, query.len())?;
         let IndexEntry::Vector(vector) = &entry else { return Err(Fallback::ManifestMismatch) };
         let id_column = vector.id_column.clone();
@@ -522,9 +567,10 @@ impl Face {
         let sidecar = VectorSidecar::open(&dir, table, &entry, &self.store.sealing())?;
         let restricted =
             session.tenant_scoped() || policy.is_some_and(|p| p.rows.is_some() || p.columns.values().any(|c| c.mask.is_some()));
-        let k = usize::try_from(sidecar_probe_size(limit, restricted)).unwrap_or(usize::MAX);
+        let size = over_fetch_size(limit, restricted, round);
+        let k = usize::try_from(size).unwrap_or(usize::MAX);
         let ids = sidecar.probe(query, k)?.into_iter().map(|c| c.id).collect();
-        Ok((id_column, ids))
+        Ok((id_column, ids, size))
     }
 
     /// The `id_column` and the candidate identifiers the table's current full-text
@@ -534,11 +580,18 @@ impl Face {
     /// masks or withholds, is never probed, since its matches would rank rows by text the
     /// reader cannot see.
     pub fn fulltext_candidates(&self, session: &Session, table: &str, tokens: &[String], limit: u64) -> Result<(String, Vec<String>), Fallback> {
+        self.fulltext_probe(session, table, tokens, limit, 0).map(|(column, ids, _)| (column, ids))
+    }
+
+    /// One round of the full-text arm's probe: the identifiers and the probe size, which
+    /// doubles each round (`read.retrieve.adaptive-over-fetch`).
+    fn fulltext_probe(&self, session: &Session, table: &str, tokens: &[String], limit: u64, round: u32) -> Result<(String, Vec<String>, u64), Fallback> {
         let (dir, snapshot_id, entries) = fulltext::current_entries(&self.store, table)?;
         let policy = session.policy(table);
         let restricted =
             session.tenant_scoped() || policy.is_some_and(|p| p.rows.is_some() || p.columns.values().any(|c| c.mask.is_some()));
-        let k = usize::try_from(sidecar_probe_size(limit, restricted)).unwrap_or(usize::MAX);
+        let size = over_fetch_size(limit, restricted, round);
+        let k = usize::try_from(size).unwrap_or(usize::MAX);
         let (mut id_column, mut first_fallback) = (None, None);
         let mut ids: Vec<String> = Vec::new();
         let mut seen = std::collections::HashSet::new();
@@ -567,7 +620,7 @@ impl Face {
             }
         }
         match id_column {
-            Some(c) => Ok((c, ids)),
+            Some(c) => Ok((c, ids, size)),
             None => Err(first_fallback.unwrap_or(Fallback::NoSidecar)),
         }
     }

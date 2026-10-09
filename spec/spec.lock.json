@@ -5154,7 +5154,7 @@
       "subject": "coverage-is-a-count",
       "kind": "behavior",
       "statement": "A claim that the corpus lacks coverage of a subject comes from a count over the table with no recency truncation, taken after the full-scan fallback, never from a ranked top score.",
-      "why": "because min-max normalization pins the best row at 1.0 and IDF lifts one incidental rare-term mention",
+      "why": "because the calibrated lexical leg scores the best row 1.0 and IDF lifts one incidental rare-term mention",
       "file": "spec/20-read.md",
       "line": 208
     },
@@ -5791,7 +5791,7 @@
       "operation": "rank",
       "subject": "fusion",
       "kind": "limit",
-      "statement": "Fusion computes `w_vec · clamp(cosine, 0, 1) + w_lex · minmax(bm25)` with default weights 60 percent and 40 percent. A document absent from one leg scores zero there; ties break by identifier.",
+      "statement": "Fusion computes `w_vec · clamp(cosine, 0, 1) + w_lex · rrf(bm25)`, weights 60 percent and 40 percent, `rrf` scoring BM25 rank `r` as `61 / (60 + r)`. A document absent from a leg scores zero; ties break by identifier.",
       "why": "",
       "file": "spec/20-read.md",
       "line": 342
@@ -5956,7 +5956,7 @@
       "operation": "rank",
       "subject": "calibration-gate",
       "kind": "behavior",
-      "statement": "Reciprocal rank fusion replaces the min-max term of {{read.rank.fusion}} only once the evaluation baseline scores it at or above min-max on every tracked measure.",
+      "statement": "A lexical-leg calibration replaces the one {{read.rank.fusion}} names only when the native evaluation scores it at or above that one on every tracked measure.",
       "why": "A-read",
       "file": "spec/20-read.md",
       "line": 364
@@ -29976,7 +29976,7 @@
             "value": 40,
             "unit": "percent",
             "basis": "chosen",
-            "gloss": "Default weight of the min-max BM25 leg in fusion."
+            "gloss": "Default weight of the reciprocal-rank BM25 leg in fusion."
           },
           "read-fusion-vector-weight": {
             "clause": "read.rank.fusion",

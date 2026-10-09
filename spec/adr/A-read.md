@@ -68,20 +68,20 @@ Criteria: bounded work per read, then recall, then an honest count.
 Consequences: an under-filled read costs up to 4 probes and re-joins.
 Revisit: under-fill reported on more than a small share of restricted reads.
 
-## Reciprocal rank fusion replaces min-max only behind the evaluation baseline
+## Reciprocal rank calibrates the lexical leg, admitted by the native evaluation
 
-Context: fusion adds a bounded cosine leg to a BM25 leg normalized by min-max over the window, so one outlier compresses every other lexical score.
-Decision: `read.rank` swaps the min-max term for reciprocal rank fusion only once the evaluation baseline scores the swap at or above min-max on every tracked measure; until then min-max holds.
+Context: fusion adds a bounded cosine leg to a corpus-relative BM25 leg; min-max over the window let one outlier compress every other lexical score.
+Decision: `read.rank` calibrates the BM25 leg by reciprocal rank, `61 / (60 + r)`. A calibration replaces the current one only when the native evaluation scores it at or above the current one on every tracked measure, on every leg; reciprocal rank met that against min-max and raised the hybrid leg's nDCG and R-precision.
 Criteria: no measured regression, fixed; then calibration across corpora.
 
 | Option | Lost on | Cost |
 | --- | --- | --- |
-| Reciprocal rank fusion, gated by the baseline *(chosen)* | — | Two fusion paths live until the baseline decides; score magnitudes stop informing order. |
+| Reciprocal rank, admitted by the evaluation *(chosen)* | — | Score magnitudes stop informing order; the comparison runs the native set twice. |
 | Keep min-max normalization | Calibration | One outlier score flattens the lexical leg in every window. |
 | Swap without a gate | Measured quality | A ranking change ships without evidence it ranks no worse. |
 | Learned score calibration | Determinism | A trained map adds a model per corpus and drifts as it grows. |
 
-Revisit: the baseline admits the swap, or a corpus where reciprocal rank fusion loses on a tracked measure.
+Revisit: a corpus where reciprocal rank loses a tracked measure to another calibration.
 
 ## A zone-withheld relation is named, with one whole-relation count
 

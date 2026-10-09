@@ -158,6 +158,22 @@ fn a_probe_oversamples_the_limit_and_widens_under_restriction() {
     assert_eq!(sidecar_probe_size(u64::MAX, true), u64::MAX, "saturates");
 }
 
+/// An under-filling arm doubles its probe for at most 4 rounds, and stops once the reader's
+/// visible rows fill the limit or a probe comes back short of its size.
+#[test]
+fn an_under_filled_probe_doubles_for_at_most_four_rounds() {
+    use contextful_core::read::rank::{over_fetch_size, probe_again, OVER_FETCH_ROUNDS};
+    assert_eq!(OVER_FETCH_ROUNDS, 4);
+    let sizes: Vec<u64> = (0..OVER_FETCH_ROUNDS).map(|r| over_fetch_size(5, true, r)).collect();
+    assert_eq!(sizes, [256, 512, 1024, 2048]);
+    assert_eq!(over_fetch_size(u64::MAX, false, 3), u64::MAX, "saturates");
+    assert!(probe_again(0, 5, 256, 256, 0));
+    assert!(probe_again(4, 5, 1024, 1024, 2));
+    assert!(!probe_again(4, 5, 2048, 2048, 3), "the fourth round is the last");
+    assert!(!probe_again(5, 5, 256, 256, 0), "the limit is filled");
+    assert!(!probe_again(0, 5, 100, 256, 0), "the graph holds no more");
+}
+
 fn budget_refused(r: Result<Filter, ReadError>) -> bool {
     matches!(r, Err(ReadError::FilterBudgetExceeded(_)))
 }

@@ -41,12 +41,14 @@ pub struct RecallRequest {
     pub max_response_bytes: Option<u64>,
     /// The instant the call is made at.
     pub anchor: Instant,
+    /// Return the internals object (`read.respond.internals-opt-in`).
+    pub internals: bool,
 }
 
 impl RecallRequest {
     /// A keyed recall of `subject` in `table`, asked at `anchor`, with every option unset.
     pub fn new(table: impl Into<String>, subject: impl Into<String>, anchor: Instant) -> RecallRequest {
-        RecallRequest { table: table.into(), subject: subject.into(), observed_at: None, as_of_ingest: None, limit: None, max_duration_ms: None, max_response_bytes: None, anchor }
+        RecallRequest { table: table.into(), subject: subject.into(), observed_at: None, as_of_ingest: None, limit: None, max_duration_ms: None, max_response_bytes: None, anchor, internals: false }
     }
 
     /// The bounds the session serving this recall opens under: `as_of_ingest` as its
@@ -85,6 +87,8 @@ impl Face {
     /// gate and suppressions are counted (`read.recall.keyed-gate`); claims order tier
     /// first under the least row ceiling (`read.recall.keyed-order`).
     pub fn recall(&self, session: &Session, request: &RecallRequest) -> Result<Response, ReadFault> {
+        let started = std::time::Instant::now();
+        let mut executed: Vec<String> = Vec::new();
         let table = request.table.as_str();
         let relation = session.relation(table).ok_or_else(|| EnforceError::UnknownRelation(format!("`{table}`")))?;
         if self.memory().table(table).is_none_or(|t| t.shape != Shape::Facts) {
@@ -115,6 +119,7 @@ impl Face {
                     Some((ms, source)) => engine.run_timed(&sql, &parameters, None, ms, source)?,
                     None => engine.run(&sql, &parameters, None)?,
                 };
+                executed.push(sql);
                 let read = rows.len() as u64;
                 for row in rows {
                     if full(&kept) {
@@ -164,7 +169,13 @@ impl Face {
             response = response.with_block("bounds", b);
         }
         response = self.restrict_timed(&engine, session, [table], response, deadline)?;
-        self.finish_budget(session, &touched, ReadOptions { limit: request.limit, max_duration_ms: request.max_duration_ms, max_response_bytes: request.max_response_bytes, ..ReadOptions::default() }, None, ceiling, response.with_block("recall", tally.block()))
+        let response = self.finish_budget(session, &touched, ReadOptions { limit: request.limit, max_duration_ms: request.max_duration_ms, max_response_bytes: request.max_response_bytes, ..ReadOptions::default() }, None, ceiling, response.with_block("recall", tally.block()))?;
+        Ok(if request.internals {
+            let rows = response.rows.len() as u64;
+            response.with_block("internals", super::face::internals_block(&executed, Some(ceiling), rows, started))
+        } else {
+            response
+        })
     }
 }
 

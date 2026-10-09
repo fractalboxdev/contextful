@@ -78,7 +78,7 @@ read-sidecar-size-cap        = { clause = "read.retrieve.sidecar-size-cap", valu
 read-fulltext-sealed-cap     = { clause = "read.retrieve.fulltext-sealed-cap", value = 256, unit = "MiB", basis = "chosen", gloss = "Sealed full-text sidecar size past which it stays unopened." }
 read-window-anchor-tolerance = { clause = "read.rank.window-anchor-tolerance", value = 24, unit = "h", basis = "chosen", gloss = "How far past the anchor a publication instant still counts in-window." }
 read-fusion-vector-weight    = { clause = "read.rank.fusion", value = 60, unit = "percent", basis = "chosen", gloss = "Default weight of the clamped cosine leg in fusion." }
-read-fusion-lexical-weight   = { clause = "read.rank.fusion", value = 40, unit = "percent", basis = "chosen", gloss = "Default weight of the min-max BM25 leg in fusion." }
+read-fusion-lexical-weight   = { clause = "read.rank.fusion", value = 40, unit = "percent", basis = "chosen", gloss = "Default weight of the reciprocal-rank BM25 leg in fusion." }
 read-lexical-index-cache     = { clause = "read.rank.lexical-index-cache", value = 64, unit = "entries", basis = "chosen", gloss = "FIFO capacity of opened full-text sidecars." }
 read-session-pool-entries    = { clause = "read.cache.pool-entries", value = 16, unit = "entries", basis = "chosen", gloss = "Resolved sessions one read face pools." }
 read-session-pool-connections = { clause = "read.cache.pool-connections", value = 4, unit = "connections", basis = "chosen", gloss = "Idle connections one pooled session keeps." }

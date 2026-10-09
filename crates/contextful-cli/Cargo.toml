@@ -69,6 +69,7 @@ read-plane = [
     "dep:contextful-agent",
     "dep:contextful-context",
     "contextful-context/read",
+    "contextful-context/fts",
     "dep:contextful-outbound",
     "dep:contextful-sync",
 ]

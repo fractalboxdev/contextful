@@ -46,7 +46,9 @@ const INVALID_PARAMS: i64 = -32602;
 /// linking more reports its own through [`Tools::with_build`].
 pub fn build_identity() -> BuildIdentity {
     let faces = if cfg!(feature = "http") { vec!["http".into()] } else { Vec::new() };
-    BuildIdentity { backends: vec!["duckdb".into(), "fts".into(), "hnsw".into()], connectors: Vec::new(), faces }
+    let lexical = contextful_context::read::LEXICAL_BACKEND.then(|| "fts".to_string());
+    let backends = std::iter::once("duckdb".to_string()).chain(lexical).chain(["hnsw".to_string()]).collect();
+    BuildIdentity { backends, connectors: Vec::new(), faces }
 }
 
 /// The re-check an effect boundary runs against the carried authority.
@@ -444,7 +446,7 @@ impl<'a> Tools<'a> {
         }
         Ok(match name {
             "context.describe" => {
-                only(args, name, &["table"])?;
+                only(args, name, &["table", "internals"])?;
                 let table = string(args, "table")?;
                 let opts = options(args)?;
                 self.session(caller, zone, opts.bounds, pins).and_then(|s| self.face.describe_with_options(&s, table.as_deref(), opts)).map(|v| (v, 0))
@@ -476,7 +478,7 @@ impl<'a> Tools<'a> {
                     .map(answered)
             }
             "context.reference" => {
-                only(args, name, &["table", "run", "seq", "max_duration_ms", "max_response_bytes"])?;
+                only(args, name, &["table", "run", "seq", "max_duration_ms", "max_response_bytes", "internals"])?;
                 let table = required(args, "table")?;
                 let run = required(args, "run")?;
                 let seq = args.get("seq").and_then(Value::as_i64).filter(|seq| *seq >= 0)
@@ -486,7 +488,7 @@ impl<'a> Tools<'a> {
                     .and_then(|session| self.face.reference(&session, &table, &run, seq, opts)).map(answered)
             }
             "context.files" => {
-                only(args, name, &[])?;
+                only(args, name, &["internals"])?;
                 let opts = options(args)?;
                 self.session(caller, zone, opts.bounds, pins).and_then(|s| self.face.files_with_options(&s, opts)).map(answered)
             }
@@ -538,7 +540,7 @@ impl<'a> Tools<'a> {
                 self.session(caller, zone, b, pins).and_then(|s| self.face.retrieve(&s, &request, b)).map(answered)
             }
             "memory.recall" => {
-                only(args, name, &["table", "subject", "observed_at", "as_of_ingest", "limit"])?;
+                only(args, name, &["table", "subject", "observed_at", "as_of_ingest", "limit", "internals"])?;
                 // The keyed read names its two clocks itself (`read.register.bound-arguments`).
                 if let Some(k) = ["as_of", "valid_as_of"].into_iter().find(|k| args.contains_key(*k)) {
                     return Err(invalid(format!("`{name}` takes no argument `{k}`; it reads `observed_at` and `as_of_ingest`")));
@@ -549,6 +551,7 @@ impl<'a> Tools<'a> {
                     limit: integer(args, "limit")?,
                     max_duration_ms: integer(args, "max_duration_ms")?,
                     max_response_bytes: integer(args, "max_response_bytes")?,
+                    internals: boolean(args, "internals")?,
                     ..RecallRequest::new(required(args, "table")?, required(args, "subject")?, self.clock.now())
                 };
                 self.session(caller, zone, request.bounds(), pins).and_then(|s| self.face.recall(&s, &request)).map(answered)

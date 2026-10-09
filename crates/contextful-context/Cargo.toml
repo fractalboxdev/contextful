@@ -41,15 +41,22 @@ thiserror = "2"
 toml = "0.8"
 
 [features]
-default = ["read"]
+default = ["read", "fts"]
 # The read face: the embedded SQL engine and the query face over it. A host that lands,
 # folds or scans a store without serving reads builds with `default-features = false`.
 read = ["dep:duckdb"]
+# The lexical backend: BM25 ranking and full-text sidecar probes. A read face without it
+# ranks by the token fallback (`read.rank.degradation-not-error`).
+fts = ["read"]
 
 [dev-dependencies]
 # Ledger measures record their figures (`assurance.measure.record`).
 contextful-eval = { path = "../../tools/eval" }
 tempfile = "3"
+
+# The read face without the lexical backend, beside none and all (`assurance.build.profile-build`).
+[package.metadata.contextful]
+feature-runs = ["read"]
 
 [[test]]
 name = "integration"

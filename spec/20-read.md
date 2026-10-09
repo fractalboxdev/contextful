@@ -206,7 +206,7 @@ The one response projection: cell encoding, the row ceiling, truncation, counts 
   *P2*
 - `match-count` — Match counts ride outside the internals opt-in, reporting how many rows the ranker scored as matching in the same call.
 - `coverage-is-a-count` — A claim that the corpus lacks coverage of a subject comes from a count over the table with no recency truncation, taken after the full-scan fallback, never from a ranked top score.
-  *because min-max normalization pins the best row at 1.0 and IDF lifts one incidental rare-term mention*
+  *because the calibrated lexical leg scores the best row 1.0 and IDF lifts one incidental rare-term mention*
 - `internals-opt-in` — Executed SQL, engine name, applied limit, row count and elapsed milliseconds ride a separate object returned only under `internals: true`, on every read tool and the HTTP face.
 - `query-internals-parameters` — Under `internals: true`, {{read.guard.query-binding}} includes the validated typed parameter map beside executed SQL in the internals object.
 - `duration-ceiling` — Under {{authority.grant.duration-ceiling}}, the engine interrupts the statement's connection at its deadline; `ReadDurationExceeded` names the ceiling, source and elapsed milliseconds, delivers no rows, and leaves other statements running.
@@ -339,7 +339,7 @@ unsettled: Does the row id {{run.normalize.identity-columns}} injects serve as t
 Ordering of a candidate set: the three legs, their fusion, the question's timeframe, reported confidence.
 
 - `three-legs` — Ranking runs exact cosine similarity over the candidate set, BM25 over a full-text index, and a weighted fusion of the two.
-- `fusion` — Fusion computes `w_vec · clamp(cosine, 0, 1) + w_lex · minmax(bm25)` with default weights 60 percent and 40 percent. A document absent from one leg scores zero there; ties break by identifier.
+- `fusion` — Fusion computes `w_vec · clamp(cosine, 0, 1) + w_lex · rrf(bm25)`, weights 60 percent and 40 percent, `rrf` scoring BM25 rank `r` as `61 / (60 + r)`. A document absent from a leg scores zero; ties break by identifier.
 - `lexical-leg-matches-only` — The BM25 leg ranks a disjunction of should-clauses; a document matching no term is absent. An empty query, candidate set or result yields an empty ranking that falls back to recency order.
 - `flat-window-full-credit` — A lexical window with no score spread awards every present document full credit.
 - `question-window-is-a-tier` — A question's timeframe projects a per-row in-window flag against the resolved publication column, and the flag leads the ordering. An out-of-window row sorts down and stays.
@@ -361,7 +361,7 @@ Ordering of a candidate set: the three legs, their fusion, the question's timefr
   *A-topology*
 - `lexical-index-cache` — An opened full-text sidecar is cached on a fingerprint of its table, snapshot, path and key version in a FIFO of 64 entries, so a repeated read opens nothing and a new snapshot opens afresh.
 - `widened-window-statistics` — Lexical term statistics come from the widened candidate window, so an accelerated arm can order rows differently from the exact path.
-- `calibration-gate` — Reciprocal rank fusion replaces the min-max term of {{read.rank.fusion}} only once the evaluation baseline scores it at or above min-max on every tracked measure.
+- `calibration-gate` — A lexical-leg calibration replaces the one {{read.rank.fusion}} names only when the native evaluation scores it at or above that one on every tracked measure.
   *A-read*
 
 The ranking legs, their fallback, and the ordering they feed:
