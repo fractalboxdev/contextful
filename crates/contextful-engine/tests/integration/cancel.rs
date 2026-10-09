@@ -388,3 +388,27 @@ fn a_dropped_registration_ends_the_keeper_thread_at_once() {
         std::thread::sleep(Duration::from_millis(5));
     }
 }
+
+/// A table run's own stop does not cut landing; bytes already home finish landing and record the unfulfilled stop.
+/// Prepared body outputs additionally require {{run.own.body-parent}}.
+// spec: run.cancel.land-path-uncut@cbd2730d
+#[test]
+fn a_stop_arriving_once_the_last_batch_is_home_lets_it_land_and_records_the_stop() {
+    let rig = Rig::new();
+    let engine = rig.engine.clone();
+    let mut sink = Sink {
+        on_stage: Some(Box::new(move |_| {
+            engine.cancel("run-1", Scope::Run, Some("too late".into())).unwrap();
+            // The keeper polls every 20 ms; the token has fired before the land path runs.
+            std::thread::sleep(Duration::from_millis(150));
+        })),
+        ..Sink::default()
+    };
+    let mut source = Pages::new(vec![vec![serde_json::json!({ "id": "only" })]]);
+    let row = rig.run(&plan("kind = \"opaque-token\"", ""), "1.0.0", "run-1", &mut source, &mut sink).unwrap();
+    assert_eq!(row.status, RunStatus::Success, "the stop did not cut the land path: {:?}", row.error_message);
+    assert_eq!(sink.commits.len(), 1, "the batch already home landed");
+    assert_eq!(rig.catalog().cursor("feed", "filings").unwrap().position, Some(serde_json::json!("p1")));
+    let stored = rig.catalog().run("run-1").unwrap().unwrap();
+    assert_eq!(stored.stop.as_ref().and_then(|s| s.reason.as_deref()), Some("too late"), "the unfulfilled stop stays recorded");
+}

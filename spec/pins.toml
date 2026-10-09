@@ -118,6 +118,7 @@
 "corpus.state.acceptance-first"     = { test = "contextful_spec::state::a_pin_in_a_milestone_with_no_acceptance_test_is_refused_until_one_exists" }
 "corpus.state.roadmap"              = { test = "contextful_spec::state::a_milestone_without_an_acceptance_line_is_a_roadmap_finding" }
 "corpus.state.verdict"              = { test = "contextful_spec::state::ignored_test_pin_is_broken" }
+"run.advance.engine-owned"          = { test = "crates/contextful-engine/tests/integration/runner.rs::a_marker_the_catalog_missed_retires_its_owner_before_replay" }
 "run.journal.prepared-owner"        = { test = "crates/contextful-cli/tests/integration/run.rs::removal_records_the_prepared_inline_and_blob_batch_and_resumes_without_repulling" }
 "run.journal.prepared-replay"       = { test = "crates/contextful-cli/tests/integration/run.rs::removal_records_the_prepared_inline_and_blob_batch_and_resumes_without_repulling" }
 "run.own.execution-owner"           = { test = "crates/contextful-engine/tests/integration/execution.rs::every_owner_is_keyed_on_its_scope_and_a_table_owner_keeps_its_stored_row" }
