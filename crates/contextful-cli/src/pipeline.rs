@@ -25,7 +25,7 @@ use contextful_core::store::ledger::RequestRecord;
 use contextful_core::connector::ConnectorError;
 #[cfg(feature = "s3-sync")]
 use contextful_connectors::object::ObjectConfig;
-use contextful_core::run::derive::config::{bind, bindings, check_output_table, Binding, DeriveConfig};
+use contextful_core::run::derive::config::{bind, bindings, check_output_table, check_single_output, Binding, DeriveConfig};
 use contextful_core::run::derive::task::{check_host_tables, DeriveTask, Tasks};
 use contextful_core::run::ports::{Row, Source, TableReader};
 use contextful_core::run::{Failure, FailureTag};
@@ -305,9 +305,9 @@ pub(crate) fn check(spec: &PipelineSpec, declaration: &Path, tasks: &Tasks) -> R
                 let tables = spec.tables.iter().map(|t| (t.name().to_string(), spec.table_name(t.name()))).collect();
                 return Ok(Checked::Host(Box::new(HostChecked { config, task, tables })));
             }
-            let [table] = spec.tables.as_slice() else {
-                bail!("derive pipeline `{}` declares {} tables; it writes one output table", spec.id, spec.tables.len());
-            };
+            let names: Vec<&str> = spec.tables.iter().map(|t| t.name()).collect();
+            check_single_output(&spec.id, &names)?;
+            let [table] = spec.tables.as_slice() else { unreachable!("one output table passed its check") };
             check_output_table(&TableDecl { name: spec.table_name(table.name()), ..table.decl() })?;
             let text = std::fs::read_to_string(declaration).unwrap_or_default();
             let bindings = bindings(&text)?;

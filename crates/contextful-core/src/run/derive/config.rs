@@ -367,6 +367,19 @@ pub fn check_reserved_discriminator(table: &crate::store::declare::TableDecl) ->
     Ok(())
 }
 
+/// Hold a built-in derive pipeline to its one output table: a second table records per-unit
+/// state outside the anti-join's view (`run.emit.failure-off-table`).
+pub fn check_single_output(pipeline_id: &str, tables: &[&str]) -> Result<(), RunError> {
+    match tables {
+        [_] => Ok(()),
+        [] => Err(RunError::Invalid(format!("derive pipeline `{pipeline_id}` declares no table; it writes one output table"))),
+        [output, rest @ ..] => Err(RunError::DeriveFailureOffTable(format!(
+            "derive pipeline `{pipeline_id}` declares {} beside its output table `{output}`; markers, failures and passages land in that one table",
+            rest.iter().map(|t| format!("`{t}`")).collect::<Vec<_>>().join(", ")
+        ))),
+    }
+}
+
 /// The key every derive output table declares (`run.emit.primary-key`).
 pub const DERIVE_PRIMARY_KEY: [&str; 3] = ["unit_ref", super::emit::DERIVATION_KEY, "cue_seq"];
 

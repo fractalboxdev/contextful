@@ -156,6 +156,21 @@ pub enum RunError {
     /// A path-form command with no content digest. (`run.exec.unpinned-path`)
     #[error("DeriveUnpinnedPath: {0}")]
     DeriveUnpinnedPath(String),
+    /// A confidence outside the normalized interval. (`run.bind.confidence-range`)
+    #[error("DeriveConfidenceOutOfRange: {0}")]
+    DeriveConfidenceOutOfRange(String),
+    /// A link engine returning the engine-unavailable variant. (`run.bind.engine-unavailable`)
+    #[error("DeriveLinkEngineUnavailable: {0}")]
+    DeriveLinkEngineUnavailable(String),
+    /// A row zone taken from the operator's advisory key. (`run.bind.advisory-zone`)
+    #[error("DeriveAdvisoryZone: {0}")]
+    DeriveAdvisoryZone(String),
+    /// Per-unit failure state recorded outside the output table. (`run.emit.failure-off-table`)
+    #[error("DeriveFailureOffTable: {0}")]
+    DeriveFailureOffTable(String),
+    /// A `last_error` written without address redaction. (`run.emit.unredacted-error`)
+    #[error("DeriveUnredactedError: {0}")]
+    DeriveUnredactedError(String),
     /// A history window bound outside the two accepted spellings. (`run.record.bound-spelling`)
     #[error("HistoryBoundSpelling: {0}")]
     HistoryBoundSpelling(String),

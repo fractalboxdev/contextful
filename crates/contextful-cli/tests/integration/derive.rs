@@ -379,6 +379,27 @@ fn a_registered_host_task_builds_and_an_unregistered_name_lists_both_sets() {
     }
 }
 
+/// A transcribe pipeline declaring a failure table beside its output table refuses at validation.
+#[test]
+fn a_transcribe_pipeline_declaring_a_failure_table_refuses_at_validation() {
+    let dir = tempfile::tempdir().unwrap();
+    let manifest = "[derive.reader]\ndriver = \"exec\"\n[derive.reader.engine]\ncommand = [\"cat\", \"{input}\"]\n\n\
+        [[pipeline]]\nid = \"doc-text\"\ntables = [\n  \
+        { name = \"passages\", primary_key = [\"unit_ref\", \"derivation_key\", \"cue_seq\"] },\n  \
+        { name = \"passage_failures\", primary_key = [\"unit_ref\"] },\n]\n\
+        [pipeline.source]\nname = \"derive\"\n\
+        config = { engine = \"reader\", source_table = \"documents\", media_column = \"path\", parent_id_column = \"doc_id\" }\n";
+    std::fs::write(dir.path().join("contextful.toml"), manifest).unwrap();
+    let out = cf(dir.path(), &["pipeline", "validate"]);
+    let err = String::from_utf8_lossy(&out.stderr);
+    assert!(!out.status.success() && err.contains("DeriveFailureOffTable") && err.contains("passage_failures"), "{err}");
+
+    let single = manifest.replace("  { name = \"passage_failures\", primary_key = [\"unit_ref\"] },\n", "");
+    std::fs::write(dir.path().join("contextful.toml"), single).unwrap();
+    let valid = ok(&cf(dir.path(), &["pipeline", "validate"]));
+    assert!(valid.contains("doc-text: valid"), "{valid}");
+}
+
 /// A host-task run commits each content table under its own commit, then the marker table, and a content table failing stops the fire before its marker lands, so the unit re-runs and its rows collapse by key.
 // spec: run.emit.marker-last@466e5fca
 #[test]

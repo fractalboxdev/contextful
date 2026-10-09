@@ -42,6 +42,7 @@ fn run(dir: &Path, toml: &str, media: &str) -> Result<String, RunError> {
     run_resolved(dir, &c, media, &Never).map_err(|e| match e {
         ChainError::Unit(e) => e,
         ChainError::Canceled => panic!("no stop was requested"),
+        ChainError::Unavailable(why) => panic!("the engine is present: {why}"),
     })
 }
 
@@ -679,4 +680,40 @@ fn a_unit_settled_by_a_concurrent_tick_lands_none_of_its_rows() {
     // A concurrent landing under another key settles nothing under this one.
     s.reader = Box::new(Racing { parents: parent_rows, landed: vec![settled("memo", "0".repeat(64))], output_reads: Default::default() });
     assert_eq!(unit(&pulled(&mut s), "memo")["text"], "Hello there.");
+}
+
+/// A transcriber whose engine is gone mid-run ends the run; a link reader that cannot reach its site costs that one
+/// unit a `failed`, retryable marker.
+#[test]
+fn an_unavailable_transcriber_ends_the_run_and_an_unreachable_link_costs_one_unit() {
+    let dir = tempfile::tempdir().unwrap();
+    std::fs::write(dir.path().join("memo.txt"), "Hello there.\n").unwrap();
+    std::fs::write(dir.path().join("brief.txt"), "Filing is due.\n").unwrap();
+    let digest = script(dir.path(), "engine.sh", "cat \"$1\"\nrm -f \"$0\"");
+    let engine = format!("[derive.reader.engine]\ncommand = [\"./engine.sh\", \"{{input}}\"]\nsha256 = \"{digest}\"\n");
+    let parents = json!([{"doc_id": "memo", "path": "memo.txt"}, {"doc_id": "brief", "path": "brief.txt"}]);
+    let failure = pull(&mut source(dir.path(), parents, &engine), &Never).unwrap_err();
+    assert_eq!(failure.tag, FailureTag::Transient);
+    assert!(failure.message.contains("EngineUnavailable") && failure.message.contains("brief"), "{failure:?}");
+
+    let closed = std::net::TcpListener::bind("127.0.0.1:0").unwrap().local_addr().unwrap().port();
+    let address = format!("http://localhost:{closed}/gone");
+    let rows = pulled(&mut link_source(dir.path(), &address, ""));
+    assert_eq!(rows.len(), 1, "{rows:?}");
+    assert_eq!(rows[0]["unit_status"], "failed");
+    assert_eq!(rows[0]["attempts"], 1);
+    assert_eq!(rows[0]["retryable"], true);
+    assert!(rows[0]["last_error"].as_str().unwrap().starts_with("DeriveLinkEngineUnavailable"), "{rows:?}");
+}
+
+/// A site answering a non-success status lands its unit's error with at most 4 KiB of the response.
+#[test]
+fn a_failing_site_answer_lands_a_bounded_upstream_excerpt() {
+    let site = Server::start(|_| Response { status: 503, headers: vec![], body: format!("overloaded {}", "z".repeat(10 * 1024)).into_bytes() });
+    let dir = tempfile::tempdir().unwrap();
+    let address = format!("http://localhost:{}/busy", site.port);
+    let rows = pulled(&mut link_source(dir.path(), &address, ""));
+    let error = rows[0]["last_error"].as_str().unwrap();
+    assert!(error.contains("upstream answered 503: overloaded"), "{error}");
+    assert!(error.len() < 4096 + 128, "{}", error.len());
 }

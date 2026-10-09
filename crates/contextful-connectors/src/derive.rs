@@ -9,8 +9,9 @@ use contextful_core::connector::reference::Template;
 use contextful_core::run::derive::config::{Binding, DeriveConfig, OutputFormat, StepSpec, Task};
 use contextful_core::run::derive::cues::{parse, passages};
 use contextful_core::run::derive::emit::{
-    document_status, marker_row, passage_rows, revived, select, Derivation, Unit, UnitStatus, DERIVATION_KEY, KIND, OUTPUT_COLUMNS,
+    check_last_error, document_status, marker_row, passage_rows, revived, select, Derivation, Unit, UnitStatus, DERIVATION_KEY, KIND, OUTPUT_COLUMNS,
 };
+use contextful_core::run::derive::engine::{bound_confidence, check_advisory_zone, settle, EngineError, Port, Settled, Upstream};
 use contextful_core::run::derive::exec::{
     engine_id, excerpt, expand, is_url, Condition, StepFiles, CAPTURED_OUTPUT_BYTES, CHAIN_DEADLINE_SECS,
 };
@@ -142,11 +143,13 @@ impl Chain {
     }
 }
 
-/// Why a unit's chain produced no document: a typed error the unit lands as a marker, or
-/// a run stop, which lands nothing and charges no attempt (`run.emit.canceled-unit`).
+/// Why a unit's chain produced no document: a typed error the unit lands as a marker, an
+/// engine that cannot run, which ends the run (`run.bind.engine-unavailable`), or a run
+/// stop, which lands nothing and charges no attempt (`run.emit.canceled-unit`).
 #[derive(Debug)]
 pub enum ChainError {
     Unit(RunError),
+    Unavailable(String),
     Canceled,
 }
 
@@ -160,6 +163,7 @@ impl std::fmt::Display for ChainError {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
             ChainError::Unit(e) => e.fmt(f),
+            ChainError::Unavailable(why) => write!(f, "EngineUnavailable: {why}"),
             ChainError::Canceled => f.write_str("the run was stopped; the step's process group is reaped"),
         }
     }
@@ -216,6 +220,9 @@ fn verify(label: &str, step: &Step) -> Result<(), RunError> {
 fn run_step(label: &str, step: &Step, files: &StepFiles, env: &[(String, String)], max_output: u64, deadline: Instant, cancel: &dyn Cancellation) -> Result<Vec<u8>, ChainError> {
     if cancel.requested() {
         return Err(ChainError::Canceled);
+    }
+    if !step.binary.exists() {
+        return Err(ChainError::Unavailable(format!("step `{label}`: `{}` is gone since the run resolved it", step.binary.display())));
     }
     verify(label, step)?;
     let args: Vec<String> = step.args.iter().map(|a| expand(a, files)).collect();
@@ -423,7 +430,12 @@ fn fetch_document(raw: &str, allow: &Allowlist, mediation: &Mediation, grant: Op
         }
         let client = mediation.client(allow.clone(), url.clone(), grant).with_timeout(timeout).with_body_limit(MAX_BODY_BYTES);
         let range = [("Range".to_string(), HeaderValue::Plain(format!("bytes=0-{}", prefix.saturating_sub(1))))];
-        let response = client.send_once("GET", &url, &range, None)?;
+        let response = client.send_once("GET", &url, &range, None).map_err(|f| match f.tag {
+            FailureTag::Transient => match settle(Port::LinkReader, EngineError::Unavailable(f.message.clone())) {
+                Settled::Unit(why) | Settled::EndRun(why) => Failure::new(FailureTag::Transient, why),
+            },
+            _ => f,
+        })?;
         if (300..400).contains(&response.status) {
             let location = response.header("location").ok_or_else(|| Failure::new(FailureTag::Permanent, format!("`{}` redirected without a location", scrub(&url))))?;
             if hop == FETCH_HOPS {
@@ -437,7 +449,10 @@ fn fetch_document(raw: &str, allow: &Allowlist, mediation: &Mediation, grant: Op
             return Err(classify(429, Some(retry), &scrub(&url)));
         }
         if !(200..300).contains(&response.status) {
-            return Err(classify(response.status, None, &scrub(&url)));
+            let answer = match settle(Port::LinkReader, EngineError::Upstream(Upstream::new(response.status, &response.body))) {
+                Settled::Unit(why) | Settled::EndRun(why) => why,
+            };
+            return Err(Failure { message: format!("`{}`: {answer}", scrub(&url)), ..classify(response.status, None, &scrub(&url)) });
         }
         if let Some(charset) = response.header("content-type").and_then(|s| {
             s.split(';').skip(1).find_map(|part| {
@@ -577,6 +592,10 @@ impl DeriveSource {
                 }
             }
             Err(ChainError::Canceled) => return Err(Failure::canceled(format!("stopped while deriving `{}`; its process group is reaped", unit.key))),
+            Err(ChainError::Unavailable(why)) => match settle(Port::Transcriber, EngineError::Unavailable(why)) {
+                Settled::EndRun(why) => return Err(Failure::new(FailureTag::Transient, format!("deriving `{}`: {why}", unit.key))),
+                Settled::Unit(why) => vec![marker_row(unit, UnitStatus::Failed, Some(&why), true, &chain.id)],
+            },
             Err(ChainError::Unit(e)) => vec![marker_row(unit, UnitStatus::Failed, Some(&e.to_string()), true, &chain.id)],
         })
     }
@@ -695,6 +714,10 @@ impl DeriveSource {
                 None => rows.extend(unit_rows),
             }
         }
+        for row in &rows {
+            check_last_error(row).map_err(refused)?;
+        }
+        check_advisory_zone(&self.config.engine, &self.binding, &rows).map_err(refused)?;
         let produced = !rows.is_empty();
         serde_json::to_vec(&serde_json::json!({ "rows": rows, "more": false, "skipped": sel.incomplete.len() }))
             .map(|bytes| (bytes, produced))
@@ -762,6 +785,12 @@ impl HostDerive {
             }
             let mut rows = host_rows(unit, &name, task, task.derive(unit));
             for (table, output) in &mut rows {
+                for row in output.iter_mut() {
+                    if let Some(e) = bound_confidence(row) {
+                        eprintln!("{}: unit `{}` in `{table}`: {e}", self.pipeline_id, unit.key);
+                    }
+                    check_last_error(row).map_err(refused)?;
+                }
                 if let Some(column) = self.retention_columns.get(table).filter(|c| c.as_str() != "_ingested_at") {
                     if let Some(clock) = unit.row.get(column) {
                         for row in output.iter_mut().filter(|r| r.get(KIND).and_then(serde_json::Value::as_str) == Some("marker")) {

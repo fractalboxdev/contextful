@@ -325,3 +325,16 @@ pub fn marker_row(unit: &Unit, status: UnitStatus, error: Option<&str>, retryabl
     });
     v.as_object().cloned().unwrap_or_default()
 }
+
+/// Refuse a row whose non-null `last_error` has not passed [`redact`]: an address in it
+/// still carrying credentials, a query or a fragment (`run.emit.unredacted-error`).
+pub fn check_last_error(row: &Row) -> Result<(), RunError> {
+    let Some(error) = row.get("last_error").and_then(Value::as_str) else { return Ok(()) };
+    if redact(error) != error {
+        return Err(RunError::DeriveUnredactedError(format!(
+            "unit `{}` writes a `last_error` holding an address that has not passed redaction",
+            row.get("unit_ref").and_then(Value::as_str).unwrap_or_default()
+        )));
+    }
+    Ok(())
+}

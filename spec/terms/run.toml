@@ -107,6 +107,7 @@ DeriveMediaOutsideRoot         = { clause = "run.bind.media-root", gloss = "A lo
 DeriveConfidenceOutOfRange     = { clause = "run.bind.confidence-range", gloss = "A confidence outside the normalized interval." }
 DeriveLinkEngineUnavailable    = { clause = "run.bind.engine-unavailable", gloss = "A link engine returning the engine-unavailable variant." }
 DeriveAdvisoryZone             = { clause = "run.bind.advisory-zone", gloss = "A row zone taken from the operator's advisory key." }
+DeriveLocalityWider            = { clause = "run.bind.locality-wider", gloss = "An engine reaching wider than its source table's zones." }
 DeriveStepConditionUnknown     = { clause = "run.exec.step-condition", gloss = "A preprocess condition naming no known condition." }
 DeriveShellCommand             = { clause = "run.exec.shell-command", gloss = "A step command given as a string, not an argument array." }
 DeriveEnvNameInvalid           = { clause = "run.exec.env-name", gloss = "An environment allowlist name outside the permitted characters." }
@@ -167,6 +168,7 @@ chunk-lease-renewal        = { clause = "run.backfill.chunk-lease", value = 60, 
 derive-rows-per-run        = { clause = "run.select.rows-per-run", value = 25, unit = "rows", basis = "chosen", gloss = "Units one derive run attempts." }
 derive-attempts-per-unit   = { clause = "run.select.attempts-per-unit", value = 3, unit = "attempts", basis = "chosen", gloss = "Attempts one unit receives before its marker settles." }
 derive-seconds-per-run     = { clause = "run.select.seconds-per-run", value = 300, unit = "s", basis = "chosen", gloss = "Wall clock the unit loop holds for a socket-opening task." }
+derive-memory-scan-rows    = { clause = "run.select.parent-scan", value = 1000000, unit = "rows", basis = "chosen", gloss = "Parent rows selection scans in memory before streaming." }
 derive-upstream-excerpt    = { clause = "run.bind.upstream-excerpt", value = 4, unit = "KiB", basis = "chosen", gloss = "Vendor response text an upstream error carries." }
 derive-chain-deadline      = { clause = "run.exec.chain-deadline", value = 1800, unit = "s", basis = "chosen", gloss = "Wall clock one unit's chain runs for." }
 derive-captured-output     = { clause = "run.exec.captured-output", value = 8, unit = "MiB", basis = "chosen", gloss = "Captured output one step may produce." }

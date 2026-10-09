@@ -10628,6 +10628,28 @@
       ]
     },
     {
+      "id": "run.select.parent-scan",
+      "contract": "run",
+      "operation": "select",
+      "subject": "parent-scan",
+      "kind": "limit",
+      "statement": "A parent table holding at most 1000000 rows is selected by an in-memory scan; a larger one streams through the read engine in batches, so selection holds one batch in memory.",
+      "why": "A-run",
+      "file": "spec/32-derive.md",
+      "line": 86
+    },
+    {
+      "id": "run.select.dry-run",
+      "contract": "run",
+      "operation": "select",
+      "subject": "dry-run",
+      "kind": "behavior",
+      "statement": "A dry run of a derive pipeline prints its eligible, already-derived and outstanding unit counts from one selection, calling no engine and landing no row.",
+      "why": "A-run",
+      "file": "spec/32-derive.md",
+      "line": 88
+    },
+    {
       "id": "run.bind.unbound-engine",
       "contract": "run",
       "operation": "bind",
@@ -10769,6 +10791,17 @@
       "why": "A-run",
       "file": "spec/32-derive.md",
       "line": 127
+    },
+    {
+      "id": "run.bind.locality-wider",
+      "contract": "run",
+      "operation": "bind",
+      "subject": "locality-wider",
+      "kind": "refusal",
+      "statement": "An engine whose declared locality is wider than the zones its source table admits raises `DeriveLocalityWider` at build, naming the engine, its locality and the table.",
+      "why": "because a derived passage carries its parent's content, and an engine outside the parent's zones moves that content where the parent cannot go",
+      "file": "spec/32-derive.md",
+      "line": 129
     },
     {
       "id": "run.exec.shell-command",
@@ -10956,6 +10989,17 @@
       "why": "",
       "file": "spec/32-derive.md",
       "line": 165
+    },
+    {
+      "id": "run.exec.vendor-deadline",
+      "contract": "run",
+      "operation": "exec",
+      "subject": "vendor-deadline",
+      "kind": "behavior",
+      "statement": "A vendor engine reached over HTTP holds a request deadline of its own, clipped to the time {{run.exec.chain-deadline}} leaves, so a stalled vendor fails its unit before the chain elapses.",
+      "why": "because a chain deadline alone lets one stalled vendor call spend the unit's whole budget with no step to name",
+      "file": "spec/32-derive.md",
+      "line": 166
     },
     {
       "id": "run.fetch.scheme",
@@ -11331,6 +11375,17 @@
       "scenarios": [
         "WHEN a parent row is tombstoned, THEN the next fold drops its passages and rebuilds the affected sidecars."
       ]
+    },
+    {
+      "id": "run.emit.derived-id",
+      "contract": "run",
+      "operation": "emit",
+      "subject": "derived-id",
+      "kind": "behavior",
+      "statement": "Every passage and marker row carries `derived_id`, lowercase hex SHA-256 over its `unit_ref`, `derivation_key` and `cue_seq`, and a derive table's sidecar names `derived_id` as its `id_column`.",
+      "why": "because a sidecar re-joins on one column, and a producer column outside the reserved underscore namespace needs no store change",
+      "file": "spec/32-derive.md",
+      "line": 278
     },
     {
       "id": "run.parse-cues.backward-cue",
@@ -25689,6 +25744,10 @@
       "run.exec.digest-mismatch"
     ],
     [
+      "run.exec.vendor-deadline",
+      "run.exec.chain-deadline"
+    ],
+    [
       "run.emit.attempts",
       "run.select.attempts-per-unit"
     ],
@@ -30063,6 +30122,10 @@
             "clause": "run.bind.engine-unavailable",
             "gloss": "A link engine returning the engine-unavailable variant."
           },
+          "DeriveLocalityWider": {
+            "clause": "run.bind.locality-wider",
+            "gloss": "An engine reaching wider than its source table's zones."
+          },
           "DeriveMediaOutsideRoot": {
             "clause": "run.bind.media-root",
             "gloss": "A local media path escaping the binding's media root."
@@ -30454,6 +30517,13 @@
             "unit": "s",
             "basis": "chosen",
             "gloss": "Wall clock one fetch hop holds."
+          },
+          "derive-memory-scan-rows": {
+            "clause": "run.select.parent-scan",
+            "value": 1000000,
+            "unit": "rows",
+            "basis": "chosen",
+            "gloss": "Parent rows selection scans in memory before streaming."
           },
           "derive-passage-bytes": {
             "clause": "run.parse-cues.passage-bytes",
