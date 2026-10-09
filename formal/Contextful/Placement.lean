@@ -298,6 +298,21 @@ theorem includedIn_iff_placement_inclusion :
     exact List.any_eq_true.mpr
       ⟨a, ha, subsumes_of_matches_witness a e avoid (fun _ hj => List.mem_filterMap.mpr ⟨a, ha, hj⟩) hm⟩
 
+/-- Inclusion decided over a fixed sample of placements decides nothing: for every sample,
+an entry list naming an identifier outside it passes every sampled placement and is
+included in no smaller list. -/
+-- spec: assurance.prove.sampled-inclusion@78ae6beb
+theorem includedIn_not_decided_by_sample :
+    ∀ (sample : List Placement), ∃ (small big : List Entry),
+      (∀ p ∈ sample, allowSetOf small p = true → allowSetOf big p = true) ∧ includedIn small big = false := by
+  intro sample
+  let avoid := sample.filterMap (fun p => p.named.map Prod.snd)
+  refine ⟨[.named .publicCloud (fresh avoid)], [], ?_, rfl⟩
+  intro p hp h
+  have hm : p.named = some (.publicCloud, fresh avoid) := by
+    simpa [allowSetOf, Entry.matches] using h
+  exact absurd (List.mem_filterMap.mpr ⟨p, hp, by rw [hm]; rfl⟩) (fresh_not_mem avoid)
+
 /-! ## The fail-closed pair -/
 
 /-- The fail-closed allow-set: the pair `local:device` and `on-prem:*`. -/

@@ -5,6 +5,7 @@
 targets  = ["Authority.grant_includedIn_permits", "Authority.attenuate_permits_parent"]
 trusted  = ["delegation-library", "delegation-library-cryptography", "delegation-library-parser", "translator"]
 rests_on = ["delegation-library", "delegation-library-cryptography", "delegation-library-parser"]
+verified = ["crates/contextful-core/src/attenuate.rs::widened", "crates/contextful-core/src/attenuate.rs::attenuate"]
 
 [constant."composed_sound"]
 module    = "Contextful.Layer"
@@ -20,6 +21,14 @@ statement = "∀ {l : Layer} {ls : List Layer} {r : RowId}, composed (l :: ls) r
 assumptions    = ["propext", "Quot.sound"]
 negative  = """
 Leaves open: that the required members were present in the list; that a member performs removal rather than a test; that an execution reaches the fold ahead of an effect. Says nothing about the order of the list; the theorem holds for any order, and the order is fixed elsewhere.
+"""
+
+[constant."filter_then_mask_ne_mask_then_filter"]
+module    = "Contextful.Layer"
+statement = "∃ keep mask rows, List.map mask (List.filter keep rows) ≠ List.filter keep (List.map mask rows)"
+assumptions    = ["propext", "Quot.sound"]
+negative  = """
+Leaves open: which order the engine applies, which the relation fixes and the composition theorems assume; that a mask rewrites values rather than removing rows; masks and filters over anything but one row's value.
 """
 
 [constant."zone_layer_sound"]
@@ -48,10 +57,19 @@ Leaves open: that the fail-closed member is in the evidence list; that the calle
 
 [constant."includedIn_iff_placement_inclusion"]
 module    = "Contextful.Placement"
+offered_as = "zone-inclusion"
 statement = "∀ (small big : List Entry), includedIn small big = true ↔ ∀ (p : Placement), allowSetOf small p = true → allowSetOf big p = true"
 assumptions    = ["propext", "Quot.sound"]
 negative  = """
 Leaves open: that the entries parsed from the manifest are the entries the model receives; that a manifest category has a placement case (checked at elaboration, not by this theorem); zone text outside the grammar, which the model folds into the undeclared case.
+"""
+
+[constant."includedIn_not_decided_by_sample"]
+module    = "Contextful.Placement"
+statement = "∀ (sample : List Placement), ∃ small big, (∀ (p : Placement), p ∈ sample → allowSetOf small p = true → allowSetOf big p = true) ∧ includedIn small big = false"
+assumptions    = ["propext", "Quot.sound"]
+negative  = """
+Leaves open: which decision procedure the engine runs; that the identifier space stays unbounded, which the witness's fresh identifier relies on; samples drawn after the entry lists are fixed.
 """
 
 [constant."effective_included_in_both"]

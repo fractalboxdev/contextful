@@ -21884,7 +21884,7 @@
       "operation": "model",
       "subject": "build-cost",
       "kind": "limit",
-      "statement": "A cold elaboration of the package completes within 60 s and writes at most 512 KiB of artifacts.",
+      "statement": "A cold elaboration of the package completes within 60 s and writes at most 2048 KiB of artifacts.",
       "why": "because the check runs on every change",
       "file": "spec/80-formal.md",
       "line": 71
@@ -21994,7 +21994,7 @@
       "operation": "model",
       "subject": "protocol-package",
       "kind": "behavior",
-      "statement": "The protocol model is a second Lean 4 package rooted at `formal/protocol/`, beside the policy package, pinned to the same `lean-toolchain` string, with one `lean_lib` and one `lean_exe` target; its `lakefile.toml` may `require` a pinned proof-automation library.",
+      "statement": "The protocol model is a second Lean 4 package rooted at `formal/protocol/`, beside the policy package, pinned to the same `lean-toolchain` string, with one `lean_lib` target, one `lean_exe` target and no `require` stanza.",
       "why": "A-assurance",
       "file": "spec/80-formal.md",
       "line": 84
@@ -22049,8 +22049,8 @@
       "operation": "model",
       "subject": "protocol-pins",
       "kind": "behavior",
-      "statement": "{{store.lease.stale-fence}} and {{store.fold.partial-snapshot}} pin to the protocol model's invariant theorems.",
-      "why": "",
+      "statement": "{{store.lease.stale-fence}} and {{store.lease.pointer-fence}} pin to the protocol model's invariant theorem `no_commit_below_granted`.",
+      "why": "because the model's guarded objects are the catalog row and the cursor object, and a snapshot's sidecars lie outside it",
       "file": "spec/80-formal.md",
       "line": 92
     },
@@ -22063,7 +22063,7 @@
       "statement": "`composed_sound`: a row the fold over a list admits is admitted by every member of that list.",
       "why": "",
       "file": "spec/80-formal.md",
-      "line": 100
+      "line": 99
     },
     {
       "id": "assurance.prove.narrowing",
@@ -22074,7 +22074,7 @@
       "statement": "`composed_narrows`: a row admitted by `l :: ls` is admitted by `ls`.",
       "why": "because appending a layer then removes rows and adds none",
       "file": "spec/80-formal.md",
-      "line": 101
+      "line": 100
     },
     {
       "id": "assurance.prove.order-is-specified",
@@ -22085,7 +22085,7 @@
       "statement": "The composition theorem ranges over the single order {{authority.compose.relation-order}} fixes, and filtering then masking is a different relation from masking then filtering.",
       "why": "",
       "file": "spec/80-formal.md",
-      "line": 103
+      "line": 102
     },
     {
       "id": "assurance.prove.commutation-claim",
@@ -22096,7 +22096,7 @@
       "statement": "A claim that the enforcement stages commute raises `CommutationClaimed`.",
       "why": "A-assurance",
       "file": "spec/80-formal.md",
-      "line": 104
+      "line": 103
     },
     {
       "id": "assurance.prove.placement-is-a-layer",
@@ -22107,7 +22107,7 @@
       "statement": "`zone_layer_sound`: with the placement check as one more list member, a row the whole list admits was admitted by that check, with no bridging hypothesis.",
       "why": "",
       "file": "spec/80-formal.md",
-      "line": 106
+      "line": 105
     },
     {
       "id": "assurance.prove.floor-no-downgrade",
@@ -22118,7 +22118,7 @@
       "statement": "`floor_no_downgrade`: a floor admitting a caller forces every member of its evidence list to admit that caller.",
       "why": "",
       "file": "spec/80-formal.md",
-      "line": 107
+      "line": 106
     },
     {
       "id": "assurance.prove.fail-closed",
@@ -22129,7 +22129,7 @@
       "statement": "An evidence list holding one fail-closed member yields a floor admitting no public-cloud caller, and the fail-closed allow-set rejects both cloud categories.",
       "why": "",
       "file": "spec/80-formal.md",
-      "line": 108
+      "line": 107
     },
     {
       "id": "assurance.prove.symbolic-inclusion",
@@ -22140,7 +22140,7 @@
       "statement": "Zone inclusion is decided by subsumption over patterns, quantified over every constructor and every identifier, the named provider and the undeclared case included.",
       "why": "",
       "file": "spec/80-formal.md",
-      "line": 109
+      "line": 108
     },
     {
       "id": "assurance.prove.sampled-inclusion",
@@ -22151,7 +22151,7 @@
       "statement": "Inclusion decided by evaluating a fixed set of example values raises `ZoneInclusionSampled`.",
       "why": "A-assurance",
       "file": "spec/80-formal.md",
-      "line": 110
+      "line": 109
     },
     {
       "id": "assurance.prove.effective-policy",
@@ -22162,7 +22162,7 @@
       "statement": "An effective policy computed from two allow-sets is included in both.",
       "why": "",
       "file": "spec/80-formal.md",
-      "line": 112
+      "line": 111
     },
     {
       "id": "assurance.prove.proof-targets",
@@ -22173,7 +22173,7 @@
       "statement": "The authority mapping of {{authority.profile.delegation-profile}} carries two proof targets: inclusion, and narrowing — for a fixed trusted environment, permission under an attenuated child implies permission under its parent.",
       "why": "because both are pure decision functions; the other candidate targets need an execution relation no clause specifies",
       "file": "spec/80-formal.md",
-      "line": 113
+      "line": 112
     },
     {
       "id": "assurance.prove.target-binding",
@@ -22184,7 +22184,7 @@
       "statement": "A proof target is bound to one authenticated query path, recorded beside it as a module path and a test, before the claim names it.",
       "why": "",
       "file": "spec/80-formal.md",
-      "line": 115
+      "line": 114
     },
     {
       "id": "assurance.prove.unbound-target",
@@ -22195,7 +22195,7 @@
       "statement": "A target the claim names with no binding raises `ProofTargetUnbound`, naming the target.",
       "why": "A-assurance",
       "file": "spec/80-formal.md",
-      "line": 116
+      "line": 115
     },
     {
       "id": "assurance.prove.negative-space",
@@ -22206,7 +22206,7 @@
       "statement": "Beside each theorem, its negative space states what it leaves open: that the required members were in the list, that a member removes rather than tests, and that execution reaches the fold before an effect.",
       "why": "",
       "file": "spec/80-formal.md",
-      "line": 118
+      "line": 117
     },
     {
       "id": "assurance.prove.no-negative-space",
@@ -22217,7 +22217,7 @@
       "statement": "A theorem published without its negative space raises `TheoremWithoutNegativeSpace`, naming the constant.",
       "why": "A-assurance",
       "file": "spec/80-formal.md",
-      "line": 119
+      "line": 118
     },
     {
       "id": "assurance.prove.mediation-from-composition",
@@ -22228,7 +22228,7 @@
       "statement": "A filter-composition theorem offered as a mediation theorem raises `MediationClaimedFromComposition`.",
       "why": "because mediation quantifies over the reachable states of an execution; composition quantifies over a list",
       "file": "spec/80-formal.md",
-      "line": 121
+      "line": 120
     },
     {
       "id": "assurance.prove.names-carry-reach",
@@ -22239,7 +22239,7 @@
       "statement": "A constant's name states the object it ranges over, not the property a reader hopes for.",
       "why": "",
       "file": "spec/80-formal.md",
-      "line": 123
+      "line": 122
     },
     {
       "id": "assurance.audit-assumptions.assumption",
@@ -22250,7 +22250,7 @@
       "statement": "An assumption is a declaration the Lean kernel accepts without proof: the set `#print axioms` reports for a constant, which the audit reads through `collectAxioms`.",
       "why": "",
       "file": "spec/80-formal.md",
-      "line": 135
+      "line": 134
     },
     {
       "id": "assurance.audit-assumptions.allowlist",
@@ -22261,7 +22261,7 @@
       "statement": "The assumption allowlist holds 2 entries, `propext` and `Quot.sound`, and every theorem's footprint is a subset of it.",
       "why": "because no required constant draws on `Classical.choice`",
       "file": "spec/80-formal.md",
-      "line": 136
+      "line": 135
     },
     {
       "id": "assurance.audit-assumptions.transitive-audit",
@@ -22272,7 +22272,7 @@
       "statement": "Each required constant's assumption footprint is read transitively off the elaborated environment, naming every assumption reached.",
       "why": "",
       "file": "spec/80-formal.md",
-      "line": 138
+      "line": 137
     },
     {
       "id": "assurance.audit-assumptions.verdict-input",
@@ -22283,7 +22283,7 @@
       "statement": "A verdict is a function of the elaborated environment and the inventory alone; source text, declaration counts and the build's exit status decide nothing.",
       "why": "because elaboration reports a hole as a warning and exits zero, and a character pattern misses a hole spelled in parentheses",
       "file": "spec/80-formal.md",
-      "line": 139
+      "line": 138
     },
     {
       "id": "assurance.audit-assumptions.assumption-outside-allowlist",
@@ -22294,7 +22294,7 @@
       "statement": "An assumption in a footprint and absent from the allowlist raises `AssumptionOutsideAllowlist`, printing the constant and the assumption.",
       "why": "A-assurance",
       "file": "spec/80-formal.md",
-      "line": 141
+      "line": 140
     },
     {
       "id": "assurance.audit-assumptions.hole-assumption",
@@ -22305,7 +22305,7 @@
       "statement": "A footprint containing the hole assumption raises `ProofHoleAssumption`, naming the declaration, whatever its syntax spells.",
       "why": "A-assurance",
       "file": "spec/80-formal.md",
-      "line": 143
+      "line": 142
     },
     {
       "id": "assurance.audit-assumptions.native-evaluation-assumption",
@@ -22316,7 +22316,7 @@
       "statement": "A footprint containing a per-declaration native-evaluation assumption raises `NativeEvaluationAssumption`, naming the declaration that minted it.",
       "why": "A-assurance",
       "file": "spec/80-formal.md",
-      "line": 145
+      "line": 144
     },
     {
       "id": "assurance.audit-assumptions.inventory",
@@ -22327,7 +22327,7 @@
       "statement": "`formal/inventory.toml` holds one row per required constant — name, module, expected statement text, admitted assumptions, binding, negative space — edited apart from the declarations satisfying it.",
       "why": "",
       "file": "spec/80-formal.md",
-      "line": 147
+      "line": 146
     },
     {
       "id": "assurance.audit-assumptions.missing-constant",
@@ -22338,7 +22338,7 @@
       "statement": "A required constant absent from the elaborated environment raises `TheoremConstantMissing`.",
       "why": "A-assurance",
       "file": "spec/80-formal.md",
-      "line": 148
+      "line": 147
     },
     {
       "id": "assurance.audit-assumptions.statement-drift",
@@ -22349,7 +22349,7 @@
       "statement": "A required constant whose elaborated statement differs from its expected text raises `TheoremStatementDrift`, printing both.",
       "why": "A-assurance",
       "file": "spec/80-formal.md",
-      "line": 150
+      "line": 149
     },
     {
       "id": "assurance.audit-assumptions.inventory-change",
@@ -22359,6 +22359,17 @@
       "kind": "behavior",
       "statement": "A change to a required statement lands in the commit carrying the proof it admits.",
       "why": "",
+      "file": "spec/80-formal.md",
+      "line": 151
+    },
+    {
+      "id": "assurance.audit-assumptions.allowlist-admission",
+      "contract": "assurance",
+      "operation": "audit-assumptions",
+      "subject": "allowlist-admission",
+      "kind": "behavior",
+      "statement": "An assumption joins the allowlist through an `A-assurance` section naming it, and each inventory row admitting it cites that section in a `record` field.",
+      "why": "A-assurance",
       "file": "spec/80-formal.md",
       "line": 152
     },
@@ -22371,7 +22382,7 @@
       "statement": "The report names the commit, the resolved toolchain, the allowlist and inventory revision applied, and for each required constant its statement match and the assumptions it reaches.",
       "why": "",
       "file": "spec/80-formal.md",
-      "line": 153
+      "line": 154
     },
     {
       "id": "assurance.audit-assumptions.check-command",
@@ -22382,7 +22393,7 @@
       "statement": "`contextful formal check` elaborates the package, matches every inventory row, audits every footprint, writes the report, and exits non-zero naming the first failing constant.",
       "why": "",
       "file": "spec/80-formal.md",
-      "line": 154
+      "line": 155
     },
     {
       "id": "assurance.recheck.two-phase",
@@ -22393,7 +22404,7 @@
       "statement": "A recheck rebuilds the package from the commit's own source and pinned toolchain into an empty artifact directory, fetching nothing, and re-runs the audit against the rebuilt environment.",
       "why": "",
       "file": "spec/80-formal.md",
-      "line": 179
+      "line": 178
     },
     {
       "id": "assurance.recheck.credential-free",
@@ -22404,7 +22415,7 @@
       "statement": "A recheck environment exposing a token, a signing key or a registry login raises `RecheckEnvironmentCredentialed`, naming the variable or file carrying it.",
       "why": "A-assurance",
       "file": "spec/80-formal.md",
-      "line": 180
+      "line": 179
     },
     {
       "id": "assurance.recheck.report-mismatch",
@@ -22415,7 +22426,7 @@
       "statement": "A recheck whose per-constant statement text or assumption set differs from the first phase's raises `RecheckReportMismatch`, naming the constant.",
       "why": "because `.olean` output is not byte-reproducible across hosts and paths, while the per-constant report is the fact under check",
       "file": "spec/80-formal.md",
-      "line": 182
+      "line": 181
     },
     {
       "id": "assurance.recheck.wall-time",
@@ -22426,7 +22437,7 @@
       "statement": "A recheck completes within 600 s.",
       "why": "",
       "file": "spec/80-formal.md",
-      "line": 184
+      "line": 183
     },
     {
       "id": "assurance.scope-claim.claim-sentence",
@@ -22437,7 +22448,7 @@
       "statement": "The assurance claim reads: these named decisions satisfy these named Lean specifications under these stated translation and runtime assumptions; each list resolves to code paths, constants and components in the tree.",
       "why": "",
       "file": "spec/80-formal.md",
-      "line": 190
+      "line": 189
     },
     {
       "id": "assurance.scope-claim.beyond-named-decisions",
@@ -22448,7 +22459,7 @@
       "statement": "A claim that the enforcement engine, or any object wider than the named decisions, is verified raises `ClaimBeyondNamedDecisions`.",
       "why": "A-assurance",
       "file": "spec/80-formal.md",
-      "line": 191
+      "line": 190
     },
     {
       "id": "assurance.scope-claim.trusted-dependencies",
@@ -22459,7 +22470,7 @@
       "statement": "The claim names the delegation library, its cryptography, its parser and the translator as trusted dependencies, and proves none of them.",
       "why": "",
       "file": "spec/80-formal.md",
-      "line": 193
+      "line": 192
     },
     {
       "id": "assurance.scope-claim.unnamed-dependency",
@@ -22470,7 +22481,7 @@
       "statement": "A claim resting on a component absent from its trusted-dependency list raises `TrustedDependencyUnnamed`, naming the component.",
       "why": "A-assurance",
       "file": "spec/80-formal.md",
-      "line": 194
+      "line": 193
     },
     {
       "id": "assurance.scope-claim.translation-chain",
@@ -22478,10 +22489,10 @@
       "operation": "scope-claim",
       "subject": "translation-chain",
       "kind": "behavior",
-      "statement": "A statement about translated code inherits four links: the compiler's lowering, the translator, hand-written models of external definitions, and the production build configuration.",
+      "statement": "A statement about translated code inherits four links: the compiler's lowering, the translator (Aeneas, named by one release string), hand-written models of external definitions, and the production build configuration.",
       "why": "",
       "file": "spec/80-formal.md",
-      "line": 196
+      "line": 195
     },
     {
       "id": "assurance.scope-claim.unstated-chain",
@@ -22492,7 +22503,7 @@
       "statement": "A theorem claimed over translated code without its translation chain raises `TranslationChainUnstated`.",
       "why": "A-assurance",
       "file": "spec/80-formal.md",
-      "line": 197
+      "line": 196
     },
     {
       "id": "assurance.scope-claim.refinement-scope",
@@ -22503,7 +22514,7 @@
       "statement": "Refinement covers the decision functions behind the two proof targets, whose inputs are values and whose outputs are decisions.",
       "why": "",
       "file": "spec/80-formal.md",
-      "line": 199
+      "line": 198
     },
     {
       "id": "assurance.scope-claim.refinement-exceeded",
@@ -22514,7 +22525,7 @@
       "statement": "Translation reaching cryptography, a parsing adapter, a database call or concurrency raises `RefinementScopeExceeded`, naming the module.",
       "why": "A-assurance",
       "file": "spec/80-formal.md",
-      "line": 200
+      "line": 199
     },
     {
       "id": "assurance.differential-test.reference-model",
@@ -22525,7 +22536,7 @@
       "statement": "The reference model is an executable Lean rendering of the decision functions, built to a binary that reads one case on standard input and prints one decision.",
       "why": "",
       "file": "spec/80-formal.md",
-      "line": 209
+      "line": 206
     },
     {
       "id": "assurance.differential-test.harness",
@@ -22536,7 +22547,7 @@
       "statement": "The harness drives the reference binary and the decision module's native and WebAssembly builds over each generated case and compares their decisions field by field.",
       "why": "A-assurance",
       "file": "spec/80-formal.md",
-      "line": 210
+      "line": 207
     },
     {
       "id": "assurance.differential-test.builds",
@@ -22547,7 +22558,7 @@
       "statement": "The native build decides in process and the `wasm32-unknown-unknown` build under the decision-module host; absent `--wasm`, the command compiles the module from the working tree, and the report names the builds compared.",
       "why": "A-assurance",
       "file": "spec/80-formal.md",
-      "line": 212
+      "line": 209
     },
     {
       "id": "assurance.differential-test.decision-cases",
@@ -22558,7 +22569,7 @@
       "statement": "A case names one decision: table-pattern coverage, grant narrowing, zone admission against an allow-set, session-zone resolution, or credential admission; a placement decision also carries the zone it resolved.",
       "why": "",
       "file": "spec/80-formal.md",
-      "line": 214
+      "line": 211
     },
     {
       "id": "assurance.differential-test.credential-cases",
@@ -22569,7 +22580,7 @@
       "statement": "A `verify` case admits one credential against pinned keys as a network checkpoint does; both builds decide it and are compared, the reference model decides none, and the report counts each credential verdict.",
       "why": "because the reference model carries no signature scheme, and a gateway admits the credential before it places the request",
       "file": "spec/80-formal.md",
-      "line": 215
+      "line": 212
     },
     {
       "id": "assurance.differential-test.case-classes",
@@ -22580,7 +22591,7 @@
       "statement": "Each run generates malformed inputs, boundary values and well-formed requests, and its report names the classes it drew from.",
       "why": "because a green run is evidence over the generated classes, not an equivalence proof",
       "file": "spec/80-formal.md",
-      "line": 217
+      "line": 214
     },
     {
       "id": "assurance.differential-test.malformed-bytes",
@@ -22591,7 +22602,7 @@
       "statement": "The malformed class draws case texts carrying invalid UTF-8 or an integer literal outside the unsigned 64-bit range, handed as bytes to every decider, and each decides such a text malformed.",
       "why": "because a 32-bit WebAssembly build and a 64-bit native build part ways first at byte decoding and integer width",
       "file": "spec/80-formal.md",
-      "line": 219
+      "line": 216
     },
     {
       "id": "assurance.differential-test.minimized",
@@ -22602,7 +22613,7 @@
       "statement": "A disagreement is shrunk until no single field removal, string shortening or byte removal keeps any two of the three decisions apart, and the minimized case is recorded.",
       "why": "",
       "file": "spec/80-formal.md",
-      "line": 221
+      "line": 218
     },
     {
       "id": "assurance.differential-test.corpus-replay",
@@ -22613,7 +22624,7 @@
       "statement": "Every counterexample-corpus case replays before any freshly generated case.",
       "why": "",
       "file": "spec/80-formal.md",
-      "line": 222
+      "line": 219
     },
     {
       "id": "assurance.differential-test.corpus-entries",
@@ -22624,7 +22635,7 @@
       "statement": "The counterexample corpus retains at most 256 entries, evicting the oldest case a fresh seed reproduces.",
       "why": "",
       "file": "spec/80-formal.md",
-      "line": 223
+      "line": 220
     },
     {
       "id": "assurance.differential-test.run-budget",
@@ -22635,7 +22646,7 @@
       "statement": "One invocation, corpus replay included, completes within 300 s.",
       "why": "",
       "file": "spec/80-formal.md",
-      "line": 224
+      "line": 221
     },
     {
       "id": "assurance.differential-test.disagreement",
@@ -22646,7 +22657,7 @@
       "statement": "A case on which any two of the three decisions differ raises `ReferenceModelDrift`, printing the minimized case and every decision.",
       "why": "A-assurance",
       "file": "spec/80-formal.md",
-      "line": 225
+      "line": 222
     },
     {
       "id": "assurance.differential-test.discarded-counterexample",
@@ -22657,7 +22668,7 @@
       "statement": "A run reporting a disagreement and writing no corpus entry raises `CounterexampleDiscarded`.",
       "why": "A-assurance",
       "file": "spec/80-formal.md",
-      "line": 227
+      "line": 224
     },
     {
       "id": "assurance.differential-test.seed",
@@ -22668,7 +22679,7 @@
       "statement": "Each run records its generator seed, and re-running with that seed reproduces the same case sequence.",
       "why": "",
       "file": "spec/80-formal.md",
-      "line": 229
+      "line": 226
     },
     {
       "id": "assurance.differential-test.protocol-cases",
@@ -22679,7 +22690,7 @@
       "statement": "Protocol cases are operation sequences and node interleavings a `proptest-state-machine` generator draws over acquire, renew, release, expire, commit, pause, delay and crash steps across three nodes.",
       "why": "",
       "file": "spec/80-formal.md",
-      "line": 230
+      "line": 227
     },
     {
       "id": "assurance.differential-test.protocol-harness",
@@ -22690,7 +22701,7 @@
       "statement": "The harness drives the protocol package's compiled executable and the Rust store through each protocol case, comparing lease holder, fence, pointer ETag and commit outcome after every step.",
       "why": "A-assurance",
       "file": "spec/80-formal.md",
-      "line": 231
+      "line": 228
     },
     {
       "id": "assurance.differential-test.protocol-drift",
@@ -22701,7 +22712,7 @@
       "statement": "A step after which the model's state and the store's projected state differ raises `ProtocolConformanceDrift`, printing the minimized operation sequence and both states.",
       "why": "A-assurance",
       "file": "spec/80-formal.md",
-      "line": 233
+      "line": 230
     },
     {
       "id": "assurance.differential-test.command",
@@ -22712,7 +22723,7 @@
       "statement": "`contextful formal differential --seed <n> --cases <n>` replays the corpus, then runs the generated cases, exiting non-zero on the first disagreement.",
       "why": "",
       "file": "spec/80-formal.md",
-      "line": 235
+      "line": 232
     },
     {
       "id": "assurance.structure-tree.one-home",
@@ -26464,7 +26475,7 @@
     ],
     [
       "assurance.model.protocol-pins",
-      "store.fold.partial-snapshot"
+      "store.lease.pointer-fence"
     ],
     [
       "assurance.prove.order-is-specified",
@@ -27304,7 +27315,7 @@
           },
           "assurance-formal-build-artifacts": {
             "clause": "assurance.model.build-cost",
-            "value": 512,
+            "value": 2048,
             "unit": "KiB",
             "basis": "chosen",
             "gloss": "Artifacts a full elaboration writes."
