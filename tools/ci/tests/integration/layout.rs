@@ -54,6 +54,20 @@ fn a_top_level_test_file_states_why_it_needs_its_own_process() {
     assert!(o.status.success(), "{}", stderr(&o));
 }
 
+// spec: assurance.test.global-state-lock@7953bb8a
+#[test]
+fn a_lock_over_process_global_state_lives_in_the_integration_root() {
+    let r = Repo::init();
+    r.write("crates/demo/tests/integration/double.rs", "static ENV: std::sync::Mutex<()> = std::sync::Mutex::new(());\n#[test]\nfn doubles() {\n    let _held = ENV.lock().unwrap();\n    assert_eq!(demo::double(2), 4);\n}\n");
+    let err = stderr(&layout(&r));
+    assert!(err.contains("crates/demo/tests/integration/double.rs:1: a lock over process-global state lives outside"), "{err}");
+
+    r.write("crates/demo/tests/integration/main.rs", "mod double;\n\npub static ENV: std::sync::RwLock<()> = std::sync::RwLock::new(());\n");
+    r.write("crates/demo/tests/integration/double.rs", "#[test]\nfn doubles() {\n    let _held = crate::ENV.read().unwrap();\n    assert_eq!(demo::double(2), 4);\n}\n");
+    let o = layout(&r);
+    assert!(o.status.success(), "{}", stderr(&o));
+}
+
 #[test]
 fn the_live_tree_keeps_its_test_placement() {
     let o = Command::new(env!("CARGO_BIN_EXE_contextful-ci")).arg("test-layout").current_dir(repo_root()).output().unwrap();

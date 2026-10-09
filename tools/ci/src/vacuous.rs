@@ -9,7 +9,6 @@
 //! compared by `assert_eq!`.
 
 use anyhow::{Context, Result};
-use std::collections::BTreeSet;
 use std::fs;
 use std::path::Path;
 use syn::parse::Parser;
@@ -21,28 +20,21 @@ use crate::refuse;
 
 /// Methods that turn a collection into an iterator over (some of) its elements.
 const ADAPTERS: &[&str] = &[
-    "iter", "into_iter", "iter_mut", "values", "keys", "values_mut", "windows", "chunks", "chars",
-    "bytes", "lines", "split_whitespace", "filter", "map", "filter_map", "flat_map", "flatten",
-    "skip", "take", "enumerate", "rev", "cloned", "copied", "as_slice", "as_bytes", "as_str",
-    "as_array", "as_object", "unwrap",
+    "iter", "into_iter", "iter_mut", "windows", "chunks", "chars", "bytes", "lines",
+    "split_whitespace", "filter", "map", "filter_map", "flat_map", "flatten", "skip", "take",
+    "enumerate", "rev", "cloned", "copied", "chain", "as_slice", "as_bytes", "as_str",
 ];
 
 /// Suffixes of `<c>` that establish its presence.
 const PRESENCE: &[&str] = &[".len()", ".first()", ".last()", ".contains(", ".get(", "[", ".count()"];
 
 /// Refuse when any of `files` (paths relative to `root`) holds an exclusion assertion with
-/// no presence check, naming every site on stderr. A file paired with a line set is held
-/// only on those lines: the lines a change adds or alters.
-pub fn check(root: &Path, files: &[(String, Option<BTreeSet<usize>>)]) -> Result<()> {
+/// no presence check, naming every site on stderr.
+pub fn check(root: &Path, files: &[String]) -> Result<()> {
     let mut sites = Vec::new();
-    for (rel, lines) in files {
+    for rel in files {
         let source = fs::read_to_string(root.join(rel)).with_context(|| format!("read {rel}"))?;
-        sites.extend(
-            sites_in(&source)
-                .into_iter()
-                .filter(|(line, _)| lines.as_ref().is_none_or(|held| held.contains(line)))
-                .map(|(line, c)| format!("{rel}:{line}: no presence check of `{c}` precedes it")),
-        );
+        sites.extend(sites_in(&source).into_iter().map(|(line, c)| format!("{rel}:{line}: no presence check of `{c}` precedes it")));
     }
     if sites.is_empty() {
         eprintln!("vacuous: {} test file(s), no exclusion assertion over an unshown collection", files.len());
@@ -169,16 +161,24 @@ fn squash(s: &str) -> String {
 }
 
 /// Whether `text` establishes that `collection` holds an element: `!<c>.is_empty()`, an
-/// unnegated `<c>.….any(`, a length, an element or an index read, or `assert_eq!(<c>`.
+/// `if <c>.is_empty() { continue }` guard, an unnegated `<c>.….any(`, a
+/// length, an element or an index read, or `assert_eq!(<c>`.
 fn present(text: &str, collection: &str) -> bool {
     let text = squash(text);
     let bare = collection.trim_start_matches('&');
-    for c in [collection, bare] {
+    // A map's keys or values are present when the map is.
+    let map = [".keys()", ".values()"].iter().find_map(|v| bare.strip_suffix(v)).unwrap_or(bare);
+    for c in [collection, bare, map] {
         if c.is_empty() {
             continue;
         }
         for (i, _) in text.match_indices(c) {
             let (before, after) = (&text[..i], &text[i + c.len()..]);
+            // `if <c>.is_empty() { continue; }` skips an empty element of an enclosing loop.
+            let keyword = before.strip_suffix("if").is_some_and(|b| !b.chars().last().is_some_and(|ch| ch.is_alphanumeric() || ch == '_'));
+            if keyword && after.starts_with(".is_empty(){continue") {
+                return true;
+            }
             if before.chars().last().is_some_and(|ch| ch.is_alphanumeric() || ch == '_' || ch == '.' || ch == ':') {
                 continue;
             }

@@ -562,6 +562,7 @@ fn media_outside_the_root_fails_that_unit_alone() {
         let r = unit(&rows, key);
         assert_eq!(r["unit_status"], "failed", "{r}");
         assert!(r["last_error"].as_str().unwrap().starts_with("DeriveMediaOutsideRoot"), "{r}");
+        assert!(!rows.is_empty(), "the exclusion below ranges over no element");
         assert!(!rows.iter().any(|r| r["text"] == "Private key."), "{rows:?}");
     }
     assert_eq!(unit(&rows, "memo")["text"], "Hello there.");
@@ -674,6 +675,7 @@ fn a_unit_settled_by_a_concurrent_tick_lands_none_of_its_rows() {
     let parent_rows: Vec<Row> = parents.as_array().unwrap().iter().map(|r| r.as_object().unwrap().clone()).collect();
     s.reader = Box::new(Racing { parents: parent_rows.clone(), landed: vec![settled("memo", memo_key)], output_reads: Default::default() });
     let rows = pulled(&mut s);
+    assert!(!rows.is_empty(), "the exclusion below ranges over no element");
     assert!(rows.iter().all(|r| r["unit_ref"] != "memo"), "the revived unit lands nothing: {rows:?}");
     assert_eq!(unit(&rows, "brief")["text"], "Filing is due.");
     assert_eq!(unit(&rows, "brief")["derivation_key"], brief_key);

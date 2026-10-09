@@ -22907,7 +22907,7 @@
       "operation": "test",
       "subject": "vacuous-exclusion",
       "kind": "refusal",
-      "statement": "An exclusion assertion — `all`, or a negated `any` — on a test line the change adds or alters, over a collection no earlier statement of its function shows non-empty, raises `VacuousAssertion` in the test-first stage.",
+      "statement": "An exclusion assertion — `all`, or a negated `any` — in a tracked test file under `crates/` or `tools/`, over a collection no earlier statement of its function shows non-empty, raises `VacuousAssertion` in the test-first stage.",
       "why": "P7",
       "file": "spec/81-engineering.md",
       "line": 81

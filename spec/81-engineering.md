@@ -78,7 +78,7 @@ Assertion construction, guard validation, suite placement, test-first and accept
 
 - `presence-before-absence` — A test whose central claim is an absence first constructs the condition it names and verifies that condition obtains.
   *P7*
-- `vacuous-exclusion` — An exclusion assertion — `all`, or a negated `any` — on a test line the change adds or alters, over a collection no earlier statement of its function shows non-empty, raises `VacuousAssertion` in the test-first stage.
+- `vacuous-exclusion` — An exclusion assertion — `all`, or a negated `any` — in a tracked test file under `crates/` or `tools/`, over a collection no earlier statement of its function shows non-empty, raises `VacuousAssertion` in the test-first stage.
   *P7*
 - `guard-fires-both-ways` — A guard is validated against the fixture that motivated it and against the state it stands against, passing on the first and failing on the second.
 - `one-integration-binary` — A crate's integration tests compile in one target, `tests/integration/main.rs`, which declares each suite as a module selected by path.

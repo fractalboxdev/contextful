@@ -15,7 +15,7 @@ fn lint(r: &Repo) -> std::process::Output {
     r.run_ci(&["vacuous", SUITE])
 }
 
-// spec: assurance.test.vacuous-exclusion@ecf5142f
+// spec: assurance.test.vacuous-exclusion@8d283f0d
 #[test]
 fn an_exclusion_over_a_collection_never_shown_non_empty_fails_the_test_first_stage() {
     let r = Repo::init();
@@ -35,15 +35,16 @@ fn an_exclusion_over_a_collection_never_shown_non_empty_fails_the_test_first_sta
 }
 
 #[test]
-fn only_the_lines_a_change_adds_are_held() {
+fn an_unchanged_test_file_is_held_too() {
     let r = Repo::init();
     r.write(SUITE, &module("", "assert!(!found.iter().any(|x| *x == 5));"));
     let base = r.commit("an older absence claim");
-    r.write("crates/demo/tests/integration/double.rs", &format!("{}\n#[test]\nfn doubles_two() {{\n    assert_eq!(demo::double(2), 4);\n}}\n", std::fs::read_to_string(r.root.join(SUITE)).unwrap()));
-    r.commit("a new test beside it");
+    r.write("crates/demo/tests/integration/main.rs", "mod double;\nmod triple;\n");
+    r.write("crates/demo/tests/integration/triple.rs", "#[test]\nfn doubles_three() {\n    assert_eq!(demo::double(3), 6);\n}\n");
+    r.commit("a new suite beside it");
     let o = r.gate(&["--stage", "test-first.validate", "--base", &base]);
-    assert!(!lint(&r).status.success(), "the whole file holds the older claim");
-    assert!(!stderr(&o).contains("VacuousAssertion"), "{}", stderr(&o));
+    assert!(!o.status.success(), "{}", stderr(&o));
+    assert!(stderr(&o).contains(&format!("VacuousAssertion: {SUITE}:4")), "{}", stderr(&o));
 }
 
 // spec: assurance.test.presence-before-absence@50712221
@@ -65,6 +66,12 @@ fn a_presence_check_before_the_exclusion_admits_it() {
     let r = Repo::init();
     r.write(SUITE, &module("", "assert!(!found.is_empty() && found.iter().all(|x| x % 2 == 0));"));
     assert!(lint(&r).status.success(), "{}", stderr(&lint(&r)));
+    // An empty element of a loop is skipped, so the claim ranges over a present one.
+    let r = Repo::init();
+    r.write(SUITE, "#[test]\nfn each() {\n    for found in [vec![2, 4], Vec::new()] {\n        if found.is_empty() {\n            continue;\n        }\n        assert!(!found.iter().any(|x| *x == 5));\n    }\n}\n");
+    assert!(lint(&r).status.success(), "{}", stderr(&lint(&r)));
+    r.write(SUITE, "#[test]\nfn each() {\n    let found: Vec<i32> = Vec::new();\n    if found.is_empty() {\n        return;\n    }\n    assert!(!found.iter().any(|x| *x == 5));\n}\n");
+    assert!(!lint(&r).status.success(), "an early return admitted the claim");
 }
 
 // spec: assurance.test.guard-fires-both-ways@aa3590a0

@@ -5,7 +5,7 @@ An unpinned clause is `committed`; a pinned one is `performed` when its Rust, Le
 
 | Contract | Files | Operations | Clauses | Refusals | Limits | Unsettled | Performed | Broken | Floor |
 | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
-| `assurance` | 2 | 15 | 249 | 59 | 22 | 13 | 157 | 0 | 157 |
+| `assurance` | 2 | 15 | 249 | 59 | 22 | 13 | 159 | 0 | 159 |
 | `authority` | 2 | 16 | 292 | 78 | 29 | 10 | 221 | 0 | 221 |
 | `connector` | 2 | 14 | 349 | 89 | 21 | 15 | 229 | 0 | 229 |
 | `corpus` | 1 | 10 | 79 | 37 | 7 | 0 | 79 | 0 | 79 |
@@ -15,7 +15,7 @@ An unpinned clause is `committed`; a pinned one is `performed` when its Rust, Le
 | `store` | 1 | 17 | 253 | 59 | 13 | 19 | 216 | 0 | 216 |
 | `surface` | 2 | 20 | 134 | 59 | 22 | 0 | 94 | 0 | 94 |
 | `topology` | 1 | 6 | 70 | 24 | 5 | 5 | 38 | 0 | 38 |
-| **total** | 19 | 156 | 2207 | 610 | 193 | 102 | 1591 | 0 | |
+| **total** | 19 | 156 | 2207 | 610 | 193 | 102 | 1593 | 0 | |
 
 Decision records: 18.
 
@@ -25,7 +25,7 @@ A milestone reads `closed` when its acceptance test computes `passing` and every
 
 | Milestone | Operations | Clauses | Performed | Acceptance | Closed |
 | --- | --- | --- | --- | --- | --- |
-| 0 — The test-first gate | 2 | 22 | 17 | passing | closed |
+| 0 — The test-first gate | 2 | 22 | 19 | passing | closed |
 | 1 — The authority core | 14 | 239 | 190 | passing | closed |
 | 2 — The store | 9 | 175 | 143 | passing | closed |
 | 3 — The run path | 11 | 214 | 148 | passing | closed |
@@ -195,7 +195,9 @@ Unscheduled operations: 11.
 | `assurance.test.acceptance-surface` | `spec/pins.toml` | performed |
 | `assurance.test.base-run-bound` | `tools/ci/tests/integration/test_first.rs::a_base_run_past_its_bound_is_killed_and_counts_red` | performed |
 | `assurance.test.base-unrunnable` | `tools/ci/tests/integration/test_first.rs::an_unloadable_base_fails_the_stage_instead_of_reading_red` | performed |
+| `assurance.test.connector-kit` | `crates/contextful-wasm/tests/integration/kit.rs::the_kit_passes_the_probe_guest_and_replays_a_recorded_exchange` | performed |
 | `assurance.test.feature-gated-suite` | `tools/ci/tests/integration/layout.rs::a_suite_gated_only_at_its_declaration_is_refused` | performed |
+| `assurance.test.global-state-lock` | `tools/ci/tests/integration/layout.rs::a_lock_over_process_global_state_lives_in_the_integration_root` | performed |
 | `assurance.test.guard-fires-both-ways` | `tools/ci/tests/integration/vacuous.rs::the_vacuous_guard_refuses_its_motivating_fixture_and_admits_the_state_it_guards` | performed |
 | `assurance.test.one-integration-binary` | `tools/ci/tests/integration/layout.rs::a_second_test_target_or_a_package_without_the_integration_root_is_refused` | performed |
 | `assurance.test.own-process` | `tools/ci/tests/integration/layout.rs::a_top_level_test_file_states_why_it_needs_its_own_process` | performed |

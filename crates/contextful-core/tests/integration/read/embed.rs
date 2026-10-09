@@ -18,6 +18,7 @@ fn the_default_embedder_is_deterministic_and_normalized() {
     let battery = e.embed("battery");
     let solar = e.embed("solar");
     assert!(cosine(&heavy, &battery).unwrap() > cosine(&heavy, &solar).unwrap());
+    assert!(!e.embed("").is_empty(), "the exclusion below ranges over no element");
     assert!(e.embed("").iter().all(|x| *x == 0.0));
 }
 

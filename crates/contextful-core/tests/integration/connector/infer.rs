@@ -13,6 +13,7 @@ fn close_marker(fenced: &str) -> String {
     const LEAD: &str = "carrying the token ";
     let at = fenced.find(LEAD).expect("the preamble names the token") + LEAD.len();
     let token = &fenced[at..at + TOKEN_HEX];
+    assert!(!token.is_empty(), "the exclusion below ranges over no element");
     assert!(token.chars().all(|c| c.is_ascii_hexdigit()), "token: {token}");
     format!("[END DATA BLOCK {token}]")
 }

@@ -79,6 +79,7 @@ fn direct_removal_lands_sparse_cells_as_null_without_retaining_the_sensitive_spa
         let path = dir.path().join(".contextful/context/research/tables/messages/data/runs/run-a/ingest-a");
         let part = std::fs::read_dir(path).unwrap().map(|entry| entry.unwrap().path()).find(|path| path.extension().is_some_and(|extension| extension == "parquet")).unwrap();
         let bytes = std::fs::read(part).unwrap();
+        assert!(!bytes.is_empty(), "the exclusion below ranges over no element");
         assert!(!bytes.windows(b"415-555-0100".len()).any(|bytes| bytes == b"415-555-0100"));
         bytes
     };
@@ -623,6 +624,7 @@ fn a_failing_table_is_named_with_its_kind_and_run() {
     assert!(!out.status.success());
     let err = stderr(&out);
     assert!(err.contains("PipelineTableFailed: table `shop_bad` failed as Permanent in run `r1.shop_bad`"), "{err}");
+    assert!(!vendor.targets().is_empty(), "the exclusion below ranges over no element");
     assert!(vendor.targets().iter().all(|t| t.starts_with("/v1/bad")), "abort halts the fire: {:?}", vendor.targets());
 }
 
@@ -1269,6 +1271,7 @@ fn serve_reconciles_continuously_and_rearms_each_applied_version() {
     // No run history: the entry fires on boot, then again one interval on.
     let first = daemon.wait_for("fire orders: done", armed);
     daemon.wait_for("fire orders: done", first + 1);
+    assert!(!vendor.targets().is_empty(), "the exclusion below ranges over no element");
     assert!(vendor.targets().iter().all(|t| t == "/v1/orders"), "{:?}", vendor.targets());
 
     // An apply while serve runs re-arms the new version on the next poll.
@@ -1285,6 +1288,7 @@ fn serve_reconciles_continuously_and_rearms_each_applied_version() {
     let before = vendor.targets().len();
     daemon.wait_for("fire orders: done", malformed);
     assert!(vendor.targets().len() > before);
+    assert!(!vendor.targets()[before..].is_empty(), "the exclusion below ranges over no element");
     assert!(vendor.targets()[before..].iter().all(|t| t == "/v2/orders"), "{:?}", vendor.targets());
 }
 
@@ -1375,6 +1379,7 @@ fn a_loopback_control_url_serves_the_applied_snapshot() {
     let answer = serve_cycle(dir.path(), "2030-01-01T00:00:00Z");
     assert_eq!(answer["fired"], serde_json::json!(["orders"]), "{answer}");
     assert_eq!(vendor.targets(), ["/v1/orders"], "orders fires as the plane applied it");
+    assert!(!control.targets().is_empty(), "the exclusion below ranges over no element");
     assert!(control.targets().iter().all(|t| t.starts_with("/control/manifest@")), "{:?}", control.targets());
     // An apply claims through the plane at the URL; no local writer substitutes for it.
     let out = cf(dir.path(), &["pipeline", "apply", "--project", "research"]);
@@ -1566,6 +1571,7 @@ fn an_external_wake_ends_its_blocked_child_on_stop() {
     signal(daemon.pid(), "TERM");
     let status = exits_within_grace(&mut daemon.child);
     assert!(status.success(), "{}", daemon.lines().join("\n"));
+    assert!(!children.0.is_empty(), "the exclusion below ranges over no element");
     assert!(children.0.iter().all(|pid| !alive(*pid)), "a child outlived the HTTP serve");
     let _ = request.join();
 }
@@ -2340,6 +2346,7 @@ fn dependent_build_requires_the_entire_pipeline_unit_to_succeed() {
     ok(&cf(p, &["pipeline", "import", "--project", "research"]));
     let out = cf(p, &["pipeline", "serve", "--cycle", "--project", "research", "--now", "2030-01-01T00:01:00Z"]);
     assert!(!out.status.success());
+    assert!(!history(p).is_empty(), "the exclusion below ranges over no element");
     assert!(!history(p).iter().any(|r| r["host_scope"] == "job:refresh-inventory"));
     assert!(!p.join(".contextful/context/research/tables/inventory/manifest.json").exists());
 }

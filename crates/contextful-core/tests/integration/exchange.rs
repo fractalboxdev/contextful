@@ -200,6 +200,7 @@ fn the_tenant_claim_scopes_every_minted_grant() {
             (TablePattern::Exact("research/notes".into()), tenant("research/notes")),
         ]
     );
+    assert!(!plan.grants.is_empty(), "the exclusion below ranges over no element");
     assert!(plan.grants.iter().all(|g| g.tables.len() == 1));
 
     // The subject carries the principal and nothing naming the tenant.
@@ -214,6 +215,7 @@ fn the_tenant_claim_scopes_every_minted_grant() {
     // A policy naming no tenant claim mints unscoped grants.
     let unscoped = ExchangePolicy::parse(&SPEC_POLICY.replace("tenant_claim   = \"org_id\"\n", "")).unwrap();
     let plan = mint(&unscoped, &claims(json!(["analyst"])), 3600).unwrap();
+    assert!(!plan.grants.is_empty(), "the exclusion below ranges over no element");
     assert!(plan.grants.iter().all(|g| g.tenant.is_none()));
 }
 

@@ -60,6 +60,7 @@ fn a_plan_leaves_out_keys_another_node_owns() {
     a.syncer.pull(&PullScope::default()).unwrap();
     a.land("run-2", json!([{"id": 1, "pages": 3}]), "2030-01-01T00:00:00Z");
     let entries = a.syncer.plan_manifest().unwrap().manifest().entries;
+    assert!(!entries.is_empty(), "the exclusion below ranges over no element");
     assert!(entries.keys().all(|k| !k.contains("/ingest-b/")), "{:?}", entries.keys().collect::<Vec<_>>());
     assert!(entries.contains_key("research/tables/filings/data/runs/run-2/ingest-a/part-00000.parquet"));
     let schema = std::fs::read(a.root().join("tables/filings/schema.json")).unwrap();

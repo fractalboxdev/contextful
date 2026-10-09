@@ -315,6 +315,7 @@ fn a_ranked_read_names_its_excluded_arms() {
     let s = r.session(&["research/*"], Some(("research/notes", "acme")), None);
     let request = RetrieveRequest::new("research/", "solar battery storage", at("2030-02-01T00:00:00Z"));
     let ranked = r.face.retrieve(&s, &request, Bounds::default()).unwrap();
+    assert!(!column(&ranked, "_table").is_empty(), "the exclusion below ranges over no element");
     assert!(column(&ranked, "_table").iter().all(|t| t != "research/vendor"));
     let tables = &restriction(&ranked)["tables"];
     assert_eq!(tables, &json!([{ "table": "research/vendor", "excluded": true, "rows_dropped": 1, "columns_masked": [] }]));

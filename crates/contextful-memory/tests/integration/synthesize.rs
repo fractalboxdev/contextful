@@ -365,6 +365,7 @@ fn a_backlog_goes_out_in_bounded_batches() {
     let failed = pass(&f, &writer, &inference, &node, "2030-01-11T00:00:00Z").run();
     assert!(matches!(failed, Err(MemoryFault::Memory(MemoryError::ExtractExhausted(_)))), "{failed:?}");
     let sent = inference.sent.lock().unwrap().clone();
+    assert!(!sent.is_empty(), "the exclusion below ranges over no element");
     assert!(sent.iter().all(|m| m[1].content.len() < PROMPT_BYTES + 1024), "each prompt stays under the bound");
     let (_, landed) = facts(&f, &writer, r#"SELECT object FROM "memory/facts" ORDER BY object"#);
     assert_eq!(landed, [vec![json!("f0")], vec![json!("f1")], vec![json!("f2")]], "three batches committed before the fourth failed");

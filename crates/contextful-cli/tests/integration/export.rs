@@ -546,6 +546,7 @@ fn a_run_committing_after_the_cursor_under_an_earlier_stamp_is_delivered() {
     assert_eq!(got.len(), 2);
     assert_eq!(span_ids(&got[1]), ids("b", 2));
     let seqs: Vec<i64> = got.iter().flat_map(records).map(|r| attribute(&r, "contextful.commit_seq").unwrap().parse().unwrap()).collect();
+    assert!(!seqs.is_empty(), "the exclusion below ranges over no element");
     assert!(seqs.windows(2).all(|w| w[0] <= w[1]), "{seqs:?}");
 }
 

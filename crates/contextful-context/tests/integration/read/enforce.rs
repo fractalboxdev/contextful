@@ -28,6 +28,7 @@ fn the_relation_applies_tenant_policy_zone_then_projection() {
     // The projection masks over rows the predicates already selected on cleartext values.
     let rows = contacts(&r, &s, "ORDER BY contact_id");
     assert_eq!(column(&rows, "contact_id"), [json!("c1"), json!("c2")]);
+    assert!(!column(&rows, "handle").is_empty(), "the exclusion below ranges over no element");
     assert!(column(&rows, "handle").iter().all(|h| h.as_str().unwrap().len() == 32));
     let zoned = r.session(&["research/*"], Some(("research/contacts", "acme")), Some("public-cloud:x"));
     assert!(contacts(&r, &zoned, "").rows.is_empty(), "the zone step removes what the predicates admitted");
@@ -46,9 +47,11 @@ fn each_added_step_only_removes_rows() {
     let all = ids(&auditor);
     assert_eq!(all.len(), 4);
     for narrower in [ids(&tenant), ids(&policy), ids(&both)] {
+        assert!(!narrower.is_empty(), "the exclusion below ranges over no element");
         assert!(narrower.iter().all(|id| all.contains(id)));
     }
     let both_ids = ids(&both);
+    assert!(!both_ids.is_empty(), "the exclusion below ranges over no element");
     assert!(both_ids.iter().all(|id| ids(&tenant).contains(id) && ids(&policy).contains(id)));
     assert_eq!(both_ids, [json!("c1"), json!("c2")]);
 }
@@ -134,6 +137,7 @@ fn masks_substitute_columns_where_they_stand() {
     assert_eq!(masked.columns, schema);
     let named = r.query(&s, r#"SELECT email, contact_id FROM "research/contacts" ORDER BY contact_id"#).unwrap();
     assert_eq!(named.columns, ["email", "contact_id"]);
+    assert!(!column(&named, "email").is_empty(), "the exclusion below ranges over no element");
     assert!(column(&named, "email").iter().all(|e| e.as_str().unwrap().len() == 5));
 }
 
@@ -196,7 +200,9 @@ fn drop_nulls_a_cell_or_empties_a_string() {
     let r = Reads::new();
     let s = r.session(&["research/contacts"], None, None);
     let rows = contacts(&r, &s, "");
+    assert!(!column(&rows, "phone").is_empty(), "the exclusion below ranges over no element");
     assert!(column(&rows, "phone").iter().all(|p| p == &json!("")));
+    assert!(!column(&rows, "age").is_empty(), "the exclusion below ranges over no element");
     assert!(column(&rows, "age").iter().all(Value::is_null));
 }
 

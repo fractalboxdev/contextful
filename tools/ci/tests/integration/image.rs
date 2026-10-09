@@ -265,6 +265,7 @@ fn the_budget_stage_builds_every_profile_one_part_each_and_the_evaluate_stage_no
     assert!(o.status.success(), "{}", stderr(&o));
     assert!(String::from_utf8_lossy(&o.stdout).contains("budget: no package declares a profile"), "{}", stderr(&o));
     let listed = String::from_utf8_lossy(&r.run_ci(&["stages", "--parts"]).stdout).into_owned();
+    assert!(!listed.is_empty(), "the exclusion below ranges over no element");
     assert!(!listed.lines().any(|l| l.starts_with("budget")), "{listed}");
 
     // A binary declaring the three profiles under a fragment budgeting the edge alone: the

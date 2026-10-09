@@ -145,7 +145,7 @@ fn two_nodes_converge_through_one_s3_bucket() {
     let a = node("ingest-a", Arc::new(open(&server)), "");
     let b = node("ingest-b", Arc::new(open(&server)), "");
     assert_eq!(a.syncer.probe().unwrap(), Coordination::Cas);
-    assert!(server.keys().iter().all(|k| !k.contains("cas-probe")), "the sentinel leaves");
+    assert_eq!(server.keys().iter().filter(|k| k.contains("cas-probe")).count(), 0, "the sentinel the probe wrote leaves");
     a.land("run-1", json!([{"id": 1}]), "2030-01-01T00:00:00Z");
     b.land("run-1", json!([{"id": 2}]), "2030-01-01T00:00:01Z");
     let now = at("2030-01-01T00:01:00Z");

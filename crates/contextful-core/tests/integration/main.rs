@@ -89,3 +89,7 @@ fn memory_limit() -> Option<u64> {
         .find_map(|t| t.trim().parse::<u64>().ok())
         .filter(|b| *b < (1 << 62))
 }
+
+/// Serialises the tests reading the allocator witness `connector::reference` installs, the
+/// process's one global allocator (`assurance.test.global-state-lock`).
+pub static WITNESS: std::sync::Mutex<()> = std::sync::Mutex::new(());

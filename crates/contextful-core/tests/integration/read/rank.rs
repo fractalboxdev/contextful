@@ -58,6 +58,7 @@ fn the_lexical_leg_holds_matching_documents_alone() {
     let scores = index.bm25(&content_tokens("solar storage"));
     assert!(scores[0].is_some() && scores[1].is_some());
     assert_eq!(scores[2], None);
+    assert!(!index.bm25(&[]).is_empty(), "the exclusion below ranges over no element");
     assert!(index.bm25(&[]).iter().all(Option::is_none));
     assert!(LexicalIndex::build(&[]).bm25(&content_tokens("solar")).is_empty());
     let mut c = vec![

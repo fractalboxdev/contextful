@@ -294,7 +294,7 @@ fn main() {
         Cmd::TestLayout => repo_root().and_then(|root| layout::check(&root)),
         Cmd::Vacuous { files } => repo_root().and_then(|root| {
             let files = if files.is_empty() { tracked(&root)?.into_iter().filter(|p| is_test(p)).collect() } else { files };
-            vacuous::check(&root, &files.into_iter().map(|f| (f, None)).collect::<Vec<_>>())
+            vacuous::check(&root, &files)
         }),
         Cmd::NativeTransport => repo_root().and_then(|root| native_transport::check(&root)),
         Cmd::Topology => repo_root().and_then(|root| topology::check(&root)),
@@ -1027,20 +1027,6 @@ fn changed_tests(base: &str) -> Result<Vec<String>> {
     Ok(git(&["diff", "--name-only", "--diff-filter=ACMR", &range])?.lines().filter(|p| is_test(p)).map(str::to_string).collect())
 }
 
-/// The lines of `path` the change adds or alters against `base`, numbered in the head.
-fn added_lines(base: &str, path: &str) -> Result<std::collections::BTreeSet<usize>> {
-    let range = format!("{base}...HEAD");
-    let diff = git(&["diff", "-U0", "--no-color", &range, "--", path])?;
-    let mut lines = std::collections::BTreeSet::new();
-    for hunk in diff.lines().filter_map(|l| l.strip_prefix("@@ ")) {
-        let Some(added) = hunk.split_whitespace().find_map(|w| w.strip_prefix('+')) else { continue };
-        let (start, count) = added.split_once(',').unwrap_or((added, "1"));
-        let (start, count): (usize, usize) = (start.parse()?, count.parse()?);
-        lines.extend(start..start + count);
-    }
-    Ok(lines)
-}
-
 fn changed_package(root: &Path, path: &str) -> Result<String> {
     let manifest = Path::new(path)
         .ancestors()
@@ -1063,8 +1049,7 @@ fn test_first_parts(root: &Path, base: &str) -> Result<Vec<String>> {
 
 fn test_first(root: &Path, base: &str, bound: Duration, only: Option<&[String]>) -> Result<()> {
     if only.is_none_or(|parts| parts.iter().any(|part| part == "validate")) {
-        let held = changed_tests(base)?.into_iter().map(|f| Ok((added_lines(base, &f)?, f))).collect::<Result<Vec<_>>>()?;
-        vacuous::check(root, &held.into_iter().map(|(lines, f)| (f, Some(lines))).collect::<Vec<_>>())?;
+        vacuous::check(root, &tracked(root)?.into_iter().filter(|p| is_test(p)).collect::<Vec<_>>())?;
     }
     let sources = sources_outside_refactors(base)?;
     if sources.is_empty() {

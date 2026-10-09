@@ -312,6 +312,7 @@ fn the_later_committer_wins_a_key_whichever_run_staged_first() {
     let a = stage(&f, &d, &batch(json!([{"id": "k", "v": "from-a"}])), &staging("run-a", "2030-01-01T00:01:00Z"), 0, 0).unwrap();
     let staged = f.table_dir("filings").join("data/runs/run-a/ingest-a/stage.staging").join(&a.name);
     let columns = contextful_context::parquet_io::columns(&staged).unwrap();
+    assert!(!columns.is_empty(), "the exclusion below ranges over no element");
     assert!(!columns.iter().any(|c| c == "_ingested_at" || c == "_commit_seq"), "{columns:?}");
     land_batches(&f.store, &d, &[batch(json!([{"id": "k", "v": "from-b"}]))], &staging("run-b", "2030-01-01T00:03:00Z"), &fed("b"), &|| Ok(())).unwrap();
     commit_parts(&f.store, &d, &[a.name], &staging("run-a", "2030-01-01T00:05:00Z"), &fed("a"), &|| Ok(()), &|_| Ok(())).unwrap();

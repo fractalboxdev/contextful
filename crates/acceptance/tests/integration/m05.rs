@@ -137,6 +137,7 @@ name = "hr/salaries"
     let rows: Vec<Value> = column(&ranked, "_row");
     let ids: Vec<&str> = rows.iter().map(|r| r["note_id"].as_str().unwrap()).collect();
     assert_eq!(ids, ["n1", "n2"], "{ranked}");
+    assert!(!column(&ranked, "_table").is_empty(), "the exclusion below ranges over no element");
     assert!(column(&ranked, "_table").iter().all(|t| t == "research/notes"), "{ranked}");
     let scores: Vec<i64> = column(&ranked, "_score").iter().map(|s| s.as_i64().unwrap()).collect();
     assert_eq!(scores, [3, 2], "{ranked}");

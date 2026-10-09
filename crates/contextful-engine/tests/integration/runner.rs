@@ -48,6 +48,7 @@ fn prepared_pulls_bind_authority_before_open_and_replay_only_rewritten_bytes() {
     let execution = rig.row("run-a").execution_id;
     assert_eq!(rig.engine.journal.recorded(&execution).unwrap(), 1);
     let held = bytes(&rig.dir.path().join("journal").join(&execution));
+    assert!(!held.is_empty(), "the exclusion below ranges over no element");
     assert!(!held.windows(b"private-recording-canary".len()).any(|part| part == b"private-recording-canary"));
     assert!(String::from_utf8_lossy(&held).contains("prepared-once"));
     rig.clock.advance(60);

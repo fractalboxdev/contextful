@@ -325,6 +325,7 @@ fn a_selected_replacement_keeps_logical_file_names_and_reads_its_physical_files(
     fixture.store = store;
     assert_eq!(fixture.store.table_dir("research/notes").unwrap(), selected);
     let scan = fixture.scan(&table, Bounds::default()).unwrap();
+    assert!(!scan.files.is_empty(), "the exclusion below ranges over no element");
     assert!(scan.files.iter().all(|p| p.starts_with("tables/research/notes/")));
     assert!(scan.relation.contains("_erasure/working/"), "the relation bypasses the selected frontier: {}", scan.relation);
     assert_eq!(fixture.store.tables().unwrap(), vec!["research/notes"]);
@@ -820,6 +821,7 @@ fn subject_erasure_publishes_survivors_and_collects_original_retained_parts() {
     }
     check_bytes(erased.store.root());
     let historical = contextful_context::rows::table_rows(&erased.store, &table, &["subject"]).unwrap();
+    assert!(!historical.is_empty(), "the exclusion below ranges over no element");
     assert!(historical.iter().all(|row| row["subject"] == "bob"));
     let audit = contextful_policy::audit::entries(&audit_dir).unwrap();
     assert_eq!(audit.len(), 1);

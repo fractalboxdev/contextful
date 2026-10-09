@@ -24,6 +24,7 @@ fn a_bound_run_state_stays_sealed_across_record_and_read() {
     let expected = state(&n, canary, "2030-01-01T00:00:00Z", Some((9, "2030-01-01T00:01:00Z")));
     let path = files.record(&expected).unwrap();
     let bytes = std::fs::read(&path).unwrap();
+    assert!(!bytes.is_empty(), "the exclusion below ranges over no element");
     assert!(!bytes.windows(canary.len()).any(|part| part == canary.as_bytes()));
     assert_eq!(files.run_states().unwrap()["ingest-a"], expected);
     assert!(run_state::RunStateFiles::new(n.syncer.store.root(), MetadataFiles::plaintext()).run_states().unwrap().is_empty());

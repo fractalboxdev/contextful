@@ -140,6 +140,7 @@ fn racers_on_one_key_run_the_effect_once_and_read_equal_bytes() {
                 .collect();
             handles.into_iter().map(|h| h.join().unwrap()).collect()
         });
+        assert!(!values.is_empty(), "the exclusion below ranges over no element");
         assert!(values.windows(2).all(|w| w[0] == w[1]), "iteration {iteration}: racers read different bytes");
         most = most.max(effects.load(Ordering::SeqCst));
     }

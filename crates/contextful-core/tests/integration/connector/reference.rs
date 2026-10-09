@@ -4,7 +4,6 @@ use contextful_core::connector::reference::{check_material, Hydrated, Part, Secr
 use contextful_core::connector::ConnectorError;
 use std::alloc::{GlobalAlloc, Layout, System};
 use std::sync::atomic::{AtomicU8, AtomicUsize, Ordering};
-use std::sync::Mutex;
 use zeroize::{Zeroize, ZeroizeOnDrop};
 
 /// `secret://<name>` carries a logical name matching `[a-z0-9-]+` of at most 128 chars. A reference is never a
@@ -128,12 +127,9 @@ unsafe impl GlobalAlloc for Witness {
 #[global_allocator]
 static ALLOCATOR: Witness = Witness;
 
-/// Serialises the tests that share [`WATCHED`] and [`VERDICT`].
-static WITNESS: Mutex<()> = Mutex::new(());
-
 /// Drops `h` and reports whether its heap block read all zeros as the allocator took it back.
 fn freed_zeroed(h: Hydrated) -> bool {
-    let _one = WITNESS.lock().unwrap_or_else(|p| p.into_inner());
+    let _one = crate::WITNESS.lock().unwrap_or_else(|p| p.into_inner());
     VERDICT.store(0, Ordering::SeqCst);
     WATCHED.store(h.reveal().as_ptr() as usize, Ordering::SeqCst);
     drop(h);

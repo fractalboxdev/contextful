@@ -745,6 +745,7 @@ fn a_watermarked_read_walks_every_page_in_one_pull() {
     let mut s = source(json!({"endpoint": vendor.url("/v1"), "page_param": "p", "since_param": "since"}), vec![]).watermarked();
     let (rows, cursor, more) = pulled(&mut s, Some(json!({"field": "at", "at": "2030-01-01"}))).unwrap();
     assert_eq!((rows, cursor, more), (vec!["w1".to_string(), "w2".to_string()], None, false));
+    assert!(!vendor.received("/v1").is_empty(), "the exclusion below ranges over no element");
     assert!(vendor.received("/v1").iter().all(|r| r.query("since").as_deref() == Some("2030-01-01")));
     let pulled: Value = serde_json::from_slice(&s.pull(&request(Some(json!({"field": "at", "at": "2030-01-01"}))), &Never).unwrap()).unwrap();
     assert_eq!(pulled["snapshot_complete"], json!(false), "a watermark is a window, not a complete snapshot");

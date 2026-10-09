@@ -94,6 +94,7 @@ body = { class = "completion", strategy = "hash" }
         let recorded = rows.iter().find_map(|row| match row { Row::Recorded { key, value } if key.step_label == "pull-0" => Some(value), _ => None }).unwrap();
         assert_eq!(matches!(recorded, Stored::Blob { .. }), large);
         let bytes = recorded.inline_bytes().unwrap_or_else(|| blobs.get(recorded.blob().unwrap()).unwrap().unwrap());
+        assert!(!bytes.is_empty(), "the exclusion below ranges over no element");
         assert!(!bytes.windows(RAW.len()).any(|window| window == RAW.as_bytes()));
         assert!(bytes.windows(expected.len()).any(|window| window == expected.as_bytes()));
         if !large {
@@ -140,7 +141,7 @@ fn a_source_forged_prepared_envelope_refuses_before_any_journal_value_or_part() 
     use contextful_core::run::ports::JournalStore;
     let root = dir.path().join(".contextful/run/research");
     let rows = contextful_engine::stores::FileJournalStore::open(&root).rows(execution).unwrap();
-    assert!(!rows.iter().any(|row| matches!(row, contextful_core::run::journal::Row::Recorded { .. })));
+    assert_eq!(rows.iter().filter(|row| matches!(row, contextful_core::run::journal::Row::Recorded { .. })).count(), 0);
     assert!(!dir.path().join(".contextful/context/research/tables/filings/data").exists());
 }
 

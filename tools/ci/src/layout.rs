@@ -1,7 +1,8 @@
 //! Test placement (`assurance.test.one-integration-binary`, `assurance.test.feature-gated-suite`,
-//! `assurance.test.own-process`): one integration target per package, a feature-gated suite
-//! gated at the head of its own file, and a top-level test file saying why it needs its
-//! own process.
+//! `assurance.test.own-process`, `assurance.test.global-state-lock`): one integration target
+//! per package, a feature-gated suite gated at the head of its own file, a top-level test
+//! file saying why it needs its own process, and a lock over process-global state declared
+//! in the integration root.
 
 use anyhow::{bail, Context, Result};
 use std::path::Path;
@@ -52,6 +53,29 @@ fn package(dir: &Path, rel: &str, breaches: &mut Vec<String>) -> Result<()> {
     }
     if main.is_file() {
         gated_suites(&main, rel, breaches)?;
+    }
+    stray_locks(&dir.join("tests"), &dir.join("tests"), &main, rel, breaches)?;
+    Ok(())
+}
+
+/// A lock over process-global state — a `static` `Mutex<()>` or `RwLock<()>` — declared in
+/// any test file but the integration root, where every suite reaches the one instance.
+fn stray_locks(tests: &Path, dir: &Path, main: &Path, rel: &str, breaches: &mut Vec<String>) -> Result<()> {
+    let mut entries: Vec<_> = std::fs::read_dir(dir)?.flatten().map(|e| e.path()).collect();
+    entries.sort();
+    for path in entries {
+        if path.is_dir() {
+            stray_locks(tests, &path, main, rel, breaches)?;
+        } else if path.extension().is_some_and(|e| e == "rs") && path != main {
+            for (i, line) in std::fs::read_to_string(&path)?.lines().enumerate() {
+                let code = line.trim_start();
+                let declares = code.starts_with("static ") || code.starts_with("pub static ") || code.starts_with("pub(crate) static ");
+                if declares && (code.contains("Mutex<()>") || code.contains("RwLock<()>")) {
+                    let at = path.strip_prefix(tests).unwrap_or(&path).display();
+                    breaches.push(format!("{rel}/tests/{at}:{}: a lock over process-global state lives outside {MAIN}", i + 1));
+                }
+            }
+        }
     }
     Ok(())
 }

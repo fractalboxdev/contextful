@@ -161,6 +161,7 @@ fn an_observation_before_a_live_contradicting_prior_refuses() {
     }
     let s = f.face.session(&writer, &contextful_policy::enforce::session::Request::default(), Default::default()).unwrap();
     let rows = contextful_memory::claims::read_claims(&f.face, &s, "memory/facts").unwrap();
+    assert!(!rows.is_empty(), "the exclusion below ranges over no element");
     assert!(rows.iter().all(|c| c.valid_to.is_none_or(|end| end >= c.valid_from)), "{rows:?}");
     assert!(rows.iter().any(|c| c.object == "Lee" && c.valid_to.is_none() && c.superseded_by.is_none()), "{rows:?}");
     assert!(rows.iter().all(|c| c.object != "Dana"), "{rows:?}");

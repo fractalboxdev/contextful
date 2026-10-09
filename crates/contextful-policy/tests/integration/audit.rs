@@ -1145,6 +1145,7 @@ fn a_chain_header_fixes_the_digest_and_segment_size_and_roots_the_first_link() {
         assert_eq!(root.root, merkle(DigestAlgorithm::Blake3, &lines(&segment(dir.path(), n))));
     }
     assert!(!root_file(dir.path(), 3).exists());
+    assert!(!lines(&segment(dir.path(), 3)).is_empty(), "the exclusion below ranges over no element");
     assert!(lines(&segment(dir.path(), 3)).iter().all(|e| e.entry_hash.starts_with("blake3:")));
     assert_eq!(verify_signed(dir.path(), &SignerKey::of(&key())).unwrap().seq, 7);
 

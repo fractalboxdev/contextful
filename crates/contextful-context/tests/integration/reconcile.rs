@@ -52,6 +52,7 @@ fn one_variant_column_keeps_each_scalar_kind_through_land_fold_and_read() {
         &[("value", variant)],
     );
     assert!(matches!(result, Err(ContextError::Store(StoreError::StoreSchemaIncompatible(_)))), "{result:?}");
+    assert!(!f.store.committed_runs("attributes").unwrap().is_empty(), "the exclusion below ranges over no element");
     assert!(f.store.committed_runs("attributes").unwrap().iter().all(|run| run.run_id != "conflict"));
     assert!(!f.table_dir("attributes").join("data/runs/conflict/ingest-a/part-00000.parquet").exists());
 
