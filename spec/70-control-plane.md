@@ -167,7 +167,7 @@ Job declaration, the closed kind union, same-tick order, the fire watermark, and
 
 - `job-kind-unknown` — A block naming a kind outside the union, an argument vector or a host command raises `JobKindUnknown` at validation.
   *A-surface*
-- `target-unbound` — A `fold` target naming no produced table, or a `build` target naming no produced table declaring its `columns`, raises `JobTargetUnbound` at validation.
+- `target-unbound` — A `fold` target naming no produced table, or a `build` target naming no declared `[[model]]`, raises `JobTargetUnbound` at validation.
   *P1*
 - `cycle-control-source` — A configured control source that does not resolve under `cycle` raises `CycleControlSourceUnresolved`.
   *P3*
@@ -177,10 +177,18 @@ Job declaration, the closed kind union, same-tick order, the fire watermark, and
   *A-surface*
 - `scheduled-body` — A scheduled `store-driven` job runs through the cadence lease and dispatch pool under `job:<name>`, using the embedding executable's registered body and the applied snapshot's job declaration.
   *A-surface*
-- `scheduled-history` — A scheduled job computes its next fire from its host execution's recorded start, including failed attempts; a restarted daemon resumes pending execution through {{run.journal.input-pin}}.
+- `scheduled-history` — A scheduled `store-driven` job computes its next fire from its host execution's recorded start, including failed attempts; a restarted daemon resumes pending execution through {{run.journal.input-pin}}.
   *A-surface*
 - `job-snapshot` — Import and full apply retain validated job declarations in the immutable snapshot; a pipeline-only apply preserves the snapshot's jobs, and a pipeline-only editor refuses to discard them under {{surface.apply.validation}}.
   *A-surface*
+- `model-snapshot` — Import and full apply retain validated model declarations with file SQL resolved inline; pipeline-only apply preserves applied models, and applied build dispatch reads that version's model, contract and tests without consulting draft definitions.
+  *A-surface*
+- `scheduled-build` — A scheduled `build` job dispatches the native model publisher through the cadence lease and pool under `job:<name>`; its execution records starts and outcomes for restart cadence, including failed attempts.
+  *A-surface*
+- `build-dependency` — A build job's `after` names a pipeline and inherits its dependent-run head schedule; builds follow all pipeline steps and run only after a successful unit. Jobs without `after` read already committed inputs.
+  *A-surface*
+- `build-dependency-invalid` — Import and apply refuse a job dependency naming no pipeline, combining `after` with `schedule`, or naming a kind other than `build`, under {{surface.apply.validation}}.
+  *because a dependency has one native cadence and never dispatches an unsupported job graph*
 - `job-identity` — A pipeline sharing a job's `job:<name>` dispatch identity fails {{surface.apply.validation}} before a version is claimed.
   *because one exclusion key cannot dispatch two distinct operations*
 - `cycle` — `serve --cycle` arms the applied snapshot, evaluates due-ness once, waits for every unit it dispatched, and prints what fired, what failed, what stays pending, the armed count and the next due instant.

@@ -71,24 +71,24 @@ fn a_store_driven_block_naming_an_unregistered_body_raises_job_body_unregistered
 fn targets(manifest: &str) -> contextful_core::job::Targets {
     use contextful_core::pipeline::declare::{collect, ManifestFile};
     let specs: Vec<_> = collect(&[ManifestFile { path: "contextful.toml".into(), text: manifest.into() }]).unwrap().into_iter().map(|d| d.spec).collect();
-    contextful_core::job::Targets::new(&specs, &parse_jobs(manifest, &registered).unwrap())
+    contextful_core::job::Targets::new(&specs, &parse_jobs(manifest, &registered).unwrap(), &[contextful_core::pipeline::model::ModelSpec { id: "daily".into(), sql: "SELECT 1".into(), sql_file: None, disclosure_opt_out: None, disclosure: None, materialized: None, unique_key: None, publish: None, contract: None, freshness: None, tests: vec![] }])
 }
 
 const PIPELINES: &str = "[[pipeline]]\nid = \"meta_ads\"\ntables = [\"insights\", { name = \"spend\", columns = { day = \"timestamp\", usd = \"double\" } }]\n\
                          [pipeline.source]\nname = \"http\"\nconfig = { endpoint = \"https://api.vendor.example/v1\" }\n\n";
 
-/// A `fold` target naming no produced table, or a `build` target naming no produced table declaring its `columns`,
+/// A `fold` target naming no produced table, or a `build` target naming no declared SQL model,
 /// raises `JobTargetUnbound`; a target the manifest produces binds.
 #[test]
 fn a_job_target_binds_to_a_produced_table() {
     use contextful_core::job::bind_targets;
     let bound = format!(
-        "{PIPELINES}[[job]]\nname = \"f\"\nkind = \"fold\"\ntarget = \"meta_ads_insights\"\n[[job]]\nname = \"b\"\nkind = \"build\"\ntarget = \"meta_ads_spend\"\n\
+        "{PIPELINES}[[job]]\nname = \"f\"\nkind = \"fold\"\ntarget = \"meta_ads_insights\"\n[[job]]\nname = \"b\"\nkind = \"build\"\ntarget = \"daily\"\n\
          [[job]]\nname = \"s\"\nkind = \"fold\"\ntarget = \"scores\"\n{}",
         store_driven("max_in_flight = 1\n")
     );
     bind_targets(&parse_jobs(&bound, &registered).unwrap(), &targets(&bound)).unwrap();
-    for (job, target) in [("fold", "meta_ads_clicks"), ("build", "meta_ads_insights"), ("build", "warehouse")] {
+    for (job, target) in [("fold", "meta_ads_clicks"), ("build", "meta_ads_insights"), ("build", "meta_ads_spend"), ("build", "warehouse")] {
         let m = format!("{PIPELINES}[[job]]\nname = \"j\"\nkind = \"{job}\"\ntarget = \"{target}\"\n");
         match bind_targets(&parse_jobs(&m, &registered).unwrap(), &targets(&m)) {
             Err(JobError::JobTargetUnbound(msg)) => assert!(msg.contains(target) && msg.contains(job), "{msg}"),
@@ -108,4 +108,25 @@ fn a_misspelled_target_names_the_produced_spelling() {
         Err(JobError::PipelineUnboundTableName(msg)) => assert!(msg.contains("`meta_ads_insights`"), "{msg}"),
         other => panic!("expected PipelineUnboundTableName, got {other:?}"),
     }
+}
+
+#[test]
+fn build_dependency_is_explicit_and_cannot_have_a_second_schedule() {
+    let declaration = "[[job]]\nname='inventory'\nkind='build'\ntarget='inventory'\nafter='source'\n";
+    assert!(parse_jobs(declaration, &registered).is_ok());
+    assert!(parse_jobs(&format!("{declaration}schedule='every 1m'\n"), &registered).is_err());
+    assert!(parse_jobs(&declaration.replace("kind='build'", "kind='fold'"), &registered).is_err());
+}
+
+#[test]
+fn dependent_build_joins_the_pipeline_unit_after_all_landing_steps() {
+    let files = [contextful_core::pipeline::declare::ManifestFile { path: "test.toml".into(), text: "[[pipeline]]\nid='source'\ntables=['items']\n[pipeline.source]\nname='http'\nconfig={endpoint='https://example.com'}\n[[pipeline]]\nid='tail'\nafter='source'\ntables=['items']\n[pipeline.source]\nname='http'\nconfig={endpoint='https://example.com'}\n".into() }];
+    let specs: Vec<_> = contextful_core::pipeline::declare::collect(&files).unwrap().into_iter().map(|p| p.spec).collect();
+    let declaration = "[[job]]\nname='inventory'\nkind='build'\ntarget='inventory'\nafter='source'\n";
+    let jobs = parse_jobs(declaration, &registered).unwrap();
+    let runs = contextful_core::job::dependent_jobs(&specs, &jobs).unwrap();
+    assert_eq!(runs.steps["source"], ["tail", "job:inventory"]);
+    assert_eq!(runs.head_of["job:inventory"], "source");
+    let jobs = parse_jobs(&declaration.replace("after='source'", "after='job:inventory'"), &registered).unwrap();
+    assert!(contextful_core::job::dependent_jobs(&specs, &jobs).is_err());
 }

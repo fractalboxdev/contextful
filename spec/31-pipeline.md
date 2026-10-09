@@ -381,6 +381,8 @@ The `[[model]]` block: a table defined by SQL over store tables, its contract, f
 - `test-failed` — A failing test raises `ModelTestFailed`, naming the test and its row count; the build publishes nothing.
   *because a test exists to stop a build before readers trust it*
 - `build-verb` — `contextful build <model>` materializes the model into staging, checks its contract, runs its tests, then commits; `--json` prints the build id, row count and watermark.
+- `build-boundary` — A guarded model build admits its caller's execution boundary after staging and before changing the persistent schema or published pointer; a refusal discards staging and preserves prior schema, membership and watermark.
+  *because a stopped execution must not publish its staged model*
 - `unknown-model` — `build` naming no declared model raises `ModelUndeclared`, naming the declared models.
   *because a build of a misspelled id otherwise reports nothing to do*
 - `build-id` — A build's id is the snapshot id it publishes.

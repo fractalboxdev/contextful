@@ -156,8 +156,11 @@ pub fn run(cmd: JobCmd, bodies: &Bodies) -> Result<()> {
                 None => text.clone(),
             };
             let jobs = parse_jobs(&job_text, &registered).with_context(|| l.declaration.display().to_string())?;
-            bind(&jobs, &l.declaration)?;
             let job = jobs.into_iter().find(|j| j.name == name).with_context(|| format!("no job `{name}` is declared"))?;
+            if job.kind_name() == "build" {
+                return crate::build::fire_job(&l, &project, &job, &text, applied, run_id, site_id, site_id_env);
+            }
+            bind(std::slice::from_ref(&job), &l.declaration)?;
             let JobKind::StoreDriven(driven) = &job.kind else {
                 bail!("job `{name}` is kind `{}`; `job fire` fires a store-driven job", job.kind_name());
             };
@@ -234,6 +237,15 @@ pub fn run(cmd: JobCmd, bodies: &Bodies) -> Result<()> {
 /// produce (`surface.fire.target-unbound`).
 fn bind(jobs: &[Job], declaration: &std::path::Path) -> Result<()> {
     let specs: Vec<_> = contextful_core::pipeline::declare::collect(&crate::pipeline::manifests(declaration)?)?.into_iter().map(|d| d.spec).collect();
-    bind_targets(jobs, &Targets::new(&specs, jobs)).with_context(|| declaration.display().to_string())?;
+    let models = crate::model_source::collect(&crate::pipeline::manifests(declaration)?)?;
+    bind_declared(jobs, &specs, &models).with_context(|| declaration.display().to_string())?;
+    Ok(())
+}
+
+
+pub(crate) fn bind_declared(jobs: &[Job], specs: &[contextful_core::pipeline::declare::PipelineSpec], models: &[contextful_core::pipeline::model::ModelSpec]) -> Result<()> {
+    let targets = Targets::new(specs, jobs, models);
+    bind_targets(jobs, &targets)?;
+    contextful_core::job::dependent_jobs(specs, jobs)?;
     Ok(())
 }

@@ -18,8 +18,9 @@ use crate::project::Located;
 use crate::run::{boot_id, wire_at, ProjectArgs};
 use anyhow::{bail, Context, Result};
 use contextful_context::project::Project;
-use contextful_core::pipeline::declare::{collect, dependent_runs, ManifestFile, PipelineSpec};
+use contextful_core::pipeline::declare::{collect, ManifestFile, PipelineSpec};
 use contextful_core::pipeline::transform::TransformOp;
+use contextful_core::pipeline::model::ModelSpec;
 use contextful_core::grant::Action;
 use contextful_core::ports::Clock;
 use contextful_core::run::derive::task::Tasks;
@@ -435,6 +436,7 @@ fn job_blocks(text: &str, bodies: Option<&Bodies>, specs: &BTreeMap<String, Pipe
 
 fn parse_job_blocks(text: &str, bodies: Option<&Bodies>, specs: &BTreeMap<String, PipelineSpec>) -> Result<Vec<toml::Value>> {
     let jobs = parse_jobs(text, &|name| bodies.is_none_or(|b| b.get(name).is_some()))?;
+    contextful_core::job::dependent_jobs(&specs.values().cloned().collect::<Vec<_>>(), &jobs)?;
     for job in jobs {
         let id = format!("job:{}", job.name);
         if specs.contains_key(&id) {
@@ -455,21 +457,23 @@ fn applied_jobs(source: &Source, version: Option<u64>, specs: &BTreeMap<String, 
 /// A pipeline-only editor refuses a store whose applied snapshot carries jobs.
 fn refuse_job_edit(control: &ControlConfig) -> Result<()> {
     let (version, specs) = applied(&control.source)?;
-    if !applied_jobs(&control.source, version, &specs)?.is_empty() {
-        return Err(SurfaceError::ApplyValidationRefused("the applied snapshot contains jobs; use the registered host's pipeline apply to edit them".into()).into());
+    if !applied_jobs(&control.source, version, &specs)?.is_empty() || !applied_models(&control.source, version)?.is_empty() {
+        return Err(SurfaceError::ApplyValidationRefused("the applied snapshot contains jobs or models; use the registered host's pipeline apply to edit them".into()).into());
     }
     Ok(())
 }
 
 /// The snapshot document: sorted pipeline specifications and validated job blocks.
-fn render(specs: &BTreeMap<String, PipelineSpec>, jobs: &[toml::Value]) -> Result<String> {
+fn render(specs: &BTreeMap<String, PipelineSpec>, jobs: &[toml::Value], models: &[ModelSpec]) -> Result<String> {
     #[derive(Serialize)]
     struct Doc<'a> {
         pipeline: Vec<&'a PipelineSpec>,
         #[serde(skip_serializing_if = "<[toml::Value]>::is_empty")]
         job: &'a [toml::Value],
+        #[serde(skip_serializing_if = "<[ModelSpec]>::is_empty")]
+        model: &'a [ModelSpec],
     }
-    let body = toml::to_string(&Doc { pipeline: specs.values().collect(), job: jobs })
+    let body = toml::to_string(&Doc { pipeline: specs.values().collect(), job: jobs, model: models })
         .map_err(|e| SurfaceError::ApplyValidationRefused(format!("a specification holds a value a snapshot cannot carry: {e}")))?;
     // The document carries references alone (`surface.edit.secret-in-document`,
     // `surface.edit.connector-upload`).
@@ -485,7 +489,8 @@ fn validated_draft(document: &str, declaration: &Path, tasks: &Tasks) -> Result<
     if !job_blocks(document, None, &specs)?.is_empty() {
         return Err(SurfaceError::ApplyValidationRefused("the pipeline editor does not edit jobs; use the registered host's pipeline apply".into()).into());
     }
-    let rendered = render(&specs, &[])?;
+    if !crate::model_source::applied(&ManifestFile { path: "draft".into(), text: document.into() })?.is_empty() { bail!("the pipeline editor does not edit models; use pipeline apply"); }
+    let rendered = render(&specs, &[], &[])?;
     for spec in specs.values() {
         if let Some(schedule) = spec.schedule.as_deref() {
             Schedule::parse(schedule).map_err(|e| SurfaceError::ApplyValidationRefused(format!("pipeline `{}`: {e}", spec.id)))?;
@@ -603,13 +608,14 @@ pub(crate) fn plan(project: &ProjectArgs, declaration: Option<PathBuf>, as_json:
     let (version, applied) = applied(&control.source)?;
     let declared = declared(&l.declaration)?;
     let changes = diff(&declared, &applied);
+    let model_changes = model_diff(&crate::model_source::collect(&manifests(&l.declaration)?)?, &applied_models(&control.source, version)?);
     let jobs = job_diff(&job_blocks(&declaration_text, None, &declared)?, &applied_jobs(&control.source, version, &applied)?);
     if as_json {
-        println!("{}", serde_json::to_string_pretty(&json!({ "applied": version, "pipelines": changes, "jobs": jobs }))?);
+        println!("{}", serde_json::to_string_pretty(&json!({ "applied": version, "pipelines": changes, "jobs": jobs, "models": model_changes }))?);
         return Ok(());
     }
     println!("applied: {}", version.map(|v| format!("v{v}")).unwrap_or_else(|| "none".into()));
-    for c in changes.iter().chain(&jobs) {
+    for c in changes.iter().chain(&jobs).chain(&model_changes) {
         println!("{} {}{}", sigil(c.action), c.id, c.schedule.as_deref().map(|s| format!(" ({s})")).unwrap_or_default());
     }
     Ok(())
@@ -709,7 +715,9 @@ pub(crate) fn import(project: &ProjectArgs, declaration: Option<PathBuf>, tasks:
     let attestation = SyncAttestation::for_project(&l, project, admit, issuer_key)?;
     let declared = declared(&l.declaration)?;
     let jobs = job_blocks(&declaration_text, Some(bodies), &declared)?;
-    let text = render(&declared, &jobs)?;
+    let models = crate::model_source::collect(&manifests(&l.declaration)?)?;
+    let text = render(&declared, &jobs, &models)?;
+    validate_build_jobs(&text)?;
     for spec in declared.values() {
         check(spec, &l.declaration, tasks).map_err(|e| SurfaceError::ApplyValidationRefused(format!("pipeline `{}`: {e:#}", spec.id)))?;
     }
@@ -770,7 +778,10 @@ pub(crate) fn apply(project: &ProjectArgs, declaration: Option<PathBuf>, id: Opt
         let jobs = if id.is_some() { prior_jobs.clone() } else {
             job_blocks(&declaration_text, Some(bodies), &target)?
         };
-        let text = render(&target, &jobs)?;
+        let prior_models = applied_models(source, version)?;
+        let models = if id.is_some() { prior_models.clone() } else { crate::model_source::collect(&manifests(&l.declaration)?)? };
+        let text = render(&target, &jobs, &models)?;
+        validate_build_jobs(&text)?;
         job_blocks(&text, Some(bodies), &target)?;
         collect(&[ManifestFile { path: "proposed applied snapshot".into(), text: text.clone() }])
             .map_err(|e| SurfaceError::ApplyValidationRefused(format!("combined snapshot: {e}")))?;
@@ -779,7 +790,7 @@ pub(crate) fn apply(project: &ProjectArgs, declaration: Option<PathBuf>, id: Opt
             check(spec, &l.declaration, tasks)
                 .map_err(|e| SurfaceError::ApplyValidationRefused(format!("pipeline `{}`: {e:#}", spec.id)))?;
         }
-        if changes.is_empty() && jobs == prior_jobs {
+        if changes.is_empty() && jobs == prior_jobs && models == prior_models {
             match version {
                 Some(v) => println!("unchanged at v{v}"),
                 None => println!("nothing declared to apply"),
@@ -1041,7 +1052,10 @@ fn arm(scheduler: &mut Scheduler, control: &ControlConfig, project: &Project, de
     if version == scheduler.version() {
         return Ok(Some(Vec::new()));
     }
-    let runs = dependent_runs(specs.values()).map_err(|e| SurfaceError::ControlSnapshotUnreadable(format!("{}: {e}", snapshot_file(version))))?;
+    let job_text = control.source.read(version)?;
+    validate_build_jobs(&job_text).context("applied build plans are incomplete; reapply with a declared model and resolved SQL")?;
+    let jobs = parse_jobs(&job_text, &|name| control.bodies.contains(name))?;
+    let runs = contextful_core::job::dependent_jobs(&specs.values().cloned().collect::<Vec<_>>(), &jobs)?;
     let mut entries = Vec::new();
     let mut unarmed = Vec::new();
     for spec in specs.values() {
@@ -1066,14 +1080,16 @@ fn arm(scheduler: &mut Scheduler, control: &ControlConfig, project: &Project, de
         eprintln!("pipeline `{}` stays unarmed: {reason}", spec.id);
         unarmed.push(Unarmed { id: spec.id.clone(), reason });
     }
-    let job_text = control.source.read(version)?;
     job_blocks(&job_text, None, &specs)?;
-    let jobs = parse_jobs(&job_text, &|name| control.bodies.contains(name))?;
     let mut scheduled_jobs = 0;
     for job in jobs {
         let id = format!("job:{}", job.name);
+        if job.after.is_some() {
+            if control.relay.is_some() && !control.workers.is_empty() { bail!("dependent build jobs require local dispatch"); }
+            continue;
+        }
         let reason = match (&job.kind, job.schedule.as_deref()) {
-            (JobKind::StoreDriven(_), Some(text)) => {
+            (JobKind::StoreDriven(_), Some(text)) | (JobKind::Maintenance(_), Some(text)) if job.kind_name() == "build" || matches!(job.kind, JobKind::StoreDriven(_)) => {
                 if control.relay.is_some() && !control.workers.is_empty() {
                     bail!("scheduled job `{}` requires the local registered host; worker dispatch handles pipelines", job.name);
                 }
@@ -1402,4 +1418,27 @@ fn wake(scheduler: &mut Scheduler, control: &ControlConfig, project: &Project, d
 /// diagnostic and its disposition read together.
 fn one_line(e: &anyhow::Error) -> String {
     format!("{e:#}").lines().map(str::trim).filter(|l| !l.is_empty()).collect::<Vec<_>>().join("; ")
+}
+
+
+fn applied_models(source: &Source, version: Option<u64>) -> Result<Vec<ModelSpec>> {
+    version.map(|v| crate::model_source::applied(&ManifestFile { path: snapshot_file(v), text: source.read(v)? })).transpose().map(Option::unwrap_or_default)
+}
+
+fn model_diff(declared: &[ModelSpec], applied: &[ModelSpec]) -> Vec<Change> {
+    let identities = |models: &[ModelSpec]| -> BTreeMap<String, (String, Option<String>)> {
+        models.iter().map(|m| (format!("model:{}", m.id), (contextful_core::run::journal::sha256_hex(&serde_json::to_vec(m).expect("model serializes")), None))).collect()
+    };
+    let (d, a) = (identities(declared), identities(applied));
+    let ids: BTreeSet<_> = d.keys().chain(a.keys()).collect();
+    ids.into_iter().map(|id| change(id, d.get(id).cloned(), a.get(id).cloned())).collect()
+}
+
+fn validate_build_jobs(text: &str) -> Result<()> {
+    let file = ManifestFile { path: "applied snapshot".into(), text: text.into() };
+    let models = crate::model_source::applied(&file)?;
+    let specs: Vec<_> = collect(&[file])?.into_iter().map(|p| p.spec).collect();
+    let jobs = parse_jobs(text, &|_| true)?;
+    crate::job::bind_declared(&jobs, &specs, &models)?;
+    Ok(())
 }
