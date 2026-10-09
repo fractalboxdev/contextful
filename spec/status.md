@@ -13,9 +13,9 @@ An unpinned clause is `committed`; a pinned one is `performed` when its Rust, Le
 | `read` | 2 | 16 | 212 | 35 | 22 | 9 | 184 | 0 | 184 |
 | `run` | 3 | 26 | 413 | 102 | 39 | 28 | 310 | 0 | 310 |
 | `store` | 1 | 17 | 253 | 59 | 13 | 19 | 216 | 0 | 216 |
-| `surface` | 2 | 20 | 134 | 59 | 22 | 0 | 94 | 0 | 94 |
+| `surface` | 2 | 20 | 136 | 59 | 22 | 0 | 96 | 0 | 96 |
 | `topology` | 1 | 6 | 70 | 24 | 5 | 5 | 38 | 0 | 38 |
-| **total** | 19 | 156 | 2206 | 610 | 193 | 103 | 1544 | 0 | |
+| **total** | 19 | 156 | 2208 | 610 | 193 | 103 | 1546 | 0 | |
 
 Decision records: 18.
 
@@ -37,7 +37,7 @@ A milestone reads `closed` when its acceptance test computes `passing` and every
 | 9 — Visibility | 6 | 41 | 3 | open | open |
 | 10 — Cadence and the operator plane | 11 | 91 | 77 | passing | open |
 | 11 — The derive tier | 7 | 88 | 79 | passing | closed |
-| 12 — The operator console | 12 | 54 | 22 | passing | open |
+| 12 — The operator console | 12 | 56 | 24 | passing | open |
 | 13 — Disclosure | 5 | 33 | 13 | open | open |
 | 14 — Assurance | 7 | 148 | 91 | passing | closed |
 
@@ -1530,6 +1530,8 @@ Unscheduled operations: 11.
 | `surface.ground.org-face-read-only` | `apps/console/test/turn.test.ts::apps/console/test/turn.test.ts::organization packs refuse writes at startup` | performed |
 | `surface.learn.unscoped` | `apps/console/test/learn.test.ts::apps/console/test/learn.test.ts::unscoped learning refuses before distillation or landing` | performed |
 | `surface.learn.write-refused` | `apps/console/test/answer_memory.test.ts::apps/console/test/answer_memory.test.ts::hosted Query reports a served learning refusal without exposing its credential` | performed |
+| `surface.open-console.narrow-sidebar` | `apps/console/test/transcripts.test.ts::apps/console/test/transcripts.test.ts::Query keeps chat controls reachable below the sidebar breakpoint` | performed |
+| `surface.open-console.saved-transcript` | `apps/console/test/transcripts.test.ts::apps/console/test/transcripts.test.ts::Query restores a saved transcript only for its operator, reading session and a listed store` | performed |
 | `surface.package.owner-flag` | `crates/contextful-cli/tests/integration/mcp.rs::explicit_owner_requires_a_signed_credential_for_the_selected_store` | performed |
 | `surface.package.stdio-credential` | `crates/contextful-cli/tests/integration/mcp.rs::a_server_with_no_credential_raises_stdio_credential_missing` | performed |
 | `surface.package.store-selector` | `crates/contextful-cli/tests/integration/mcp.rs::a_spawned_server_without_a_project_manifest_refuses_before_framing` | performed |

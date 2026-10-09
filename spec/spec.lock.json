@@ -21163,6 +21163,34 @@
       ]
     },
     {
+      "id": "surface.open-console.saved-transcript",
+      "contract": "surface",
+      "operation": "open-console",
+      "subject": "saved-transcript",
+      "kind": "behavior",
+      "statement": "Query restores a saved transcript only under the verified operator and reading session that wrote it, and only for a store the stores route still lists.",
+      "why": "because a shared browser tab otherwise hands one operator's answer rows to the next",
+      "file": "spec/71-console.md",
+      "line": 71,
+      "scenarios": [
+        "WHEN a second operator opens Query in the tab where another saved a transcript, THEN Query restores none of its answers or rows."
+      ]
+    },
+    {
+      "id": "surface.open-console.narrow-sidebar",
+      "contract": "surface",
+      "operation": "open-console",
+      "subject": "narrow-sidebar",
+      "kind": "behavior",
+      "statement": "On a viewport too narrow for the sidebar, a header control opens it as a drawer, keeping chat creation, switching and deletion reachable.",
+      "why": "because a hidden sidebar with no replacement strands every chat control on a phone",
+      "file": "spec/71-console.md",
+      "line": 73,
+      "scenarios": [
+        "WHEN Query renders on a phone-width viewport, THEN a header control opens the chat list with its create, switch and delete controls."
+      ]
+    },
+    {
       "id": "surface.open-console.engine-faces",
       "contract": "surface",
       "operation": "open-console",
@@ -21171,7 +21199,7 @@
       "statement": "Query reaches the governed read face; Admin reaches workflow state and sends edit or apply through a server-held control capability.",
       "why": "A-surface",
       "file": "spec/71-console.md",
-      "line": 71
+      "line": 75
     },
     {
       "id": "surface.open-console.ungated-route",
@@ -21182,7 +21210,7 @@
       "statement": "An anonymous hosted console route serving page or API content instead of the declared identity gate raises `ConsoleRouteUngated` at deploy probe.",
       "why": "A-surface",
       "file": "spec/71-console.md",
-      "line": 73,
+      "line": 77,
       "scenarios": [
         "WHEN an anonymous deploy probe receives `/query` or `/admin/api/workflows` content, THEN it raises `ConsoleRouteUngated`."
       ]
@@ -21196,7 +21224,7 @@
       "statement": "A page or API request without a verified Access assertion or Cognito session granting that page raises `ConsolePageForbidden` and dispatches nothing.",
       "why": "A-surface",
       "file": "spec/71-console.md",
-      "line": 75,
+      "line": 79,
       "scenarios": [
         "WHEN a Query-only operator requests `/admin/api/workflows`, THEN it raises `ConsolePageForbidden` without dispatching."
       ]
@@ -21210,7 +21238,7 @@
       "statement": "An Admin edit or apply without a server-held admin capability raises `ConsoleAdminGrantMissing` and reaches no control call.",
       "why": "A-surface",
       "file": "spec/71-console.md",
-      "line": 77,
+      "line": 81,
       "scenarios": [
         "WHEN an Admin operator applies a document without the server-held admin capability, THEN it raises `ConsoleAdminGrantMissing` without a control call."
       ]
@@ -21224,7 +21252,7 @@
       "statement": "A `CONTEXTFUL_STORES_JSON` value that does not parse raises `StoreRegistryUnreadable` at startup, and no built-in store stands in for the configured set.",
       "why": "P3",
       "file": "spec/71-console.md",
-      "line": 123
+      "line": 129
     },
     {
       "id": "surface.register-store.malformed-entry",
@@ -21235,7 +21263,7 @@
       "statement": "One entry that does not decode raises `StoreEntryMalformed` naming it, and is dropped while its siblings are served.",
       "why": "A-surface",
       "file": "spec/71-console.md",
-      "line": 125
+      "line": 131
     },
     {
       "id": "surface.register-store.reserved-id",
@@ -21246,7 +21274,7 @@
       "statement": "A configured entry claiming either built-in id raises `StoreIdReserved`.",
       "why": "because the entry otherwise reads the fixture's rows under its own name",
       "file": "spec/71-console.md",
-      "line": 127
+      "line": 133
     },
     {
       "id": "surface.register-store.authored-name",
@@ -21257,7 +21285,7 @@
       "statement": "An entry carrying its own credential or binding name raises `StoreNameAuthored`.",
       "why": "A-surface",
       "file": "spec/71-console.md",
-      "line": 129
+      "line": 135
     },
     {
       "id": "surface.register-store.shared-registry",
@@ -21268,7 +21296,7 @@
       "statement": "Query, Admin and the embeddable client library resolve store identities from the same deployment registry.",
       "why": "A-surface",
       "file": "spec/71-console.md",
-      "line": 131
+      "line": 137
     },
     {
       "id": "surface.visualize.workflow-canvas",
@@ -21279,7 +21307,7 @@
       "statement": "Admin projects store-published pipelines, schedules, steps, dataflow and run outcomes, and shows store-owned annotations for surrounding work.",
       "why": "A-surface",
       "file": "spec/71-console.md",
-      "line": 138
+      "line": 144
     },
     {
       "id": "surface.visualize.operational-record",
@@ -21290,7 +21318,7 @@
       "statement": "Admin's inspector, pack file surface and learnings view present the store-published operational record.",
       "why": "A-surface",
       "file": "spec/71-console.md",
-      "line": 140
+      "line": 146
     },
     {
       "id": "surface.visualize.listing-page",
@@ -21301,7 +21329,7 @@
       "statement": "One listing call answers at most 1000 entries, flags truncation, and counts the keys the read route declines to serve.",
       "why": "",
       "file": "spec/71-console.md",
-      "line": 142
+      "line": 148
     },
     {
       "id": "surface.package.stdio-credential",
@@ -21312,7 +21340,7 @@
       "statement": "The process transport requires a verified capability token; `--owner` selects its signed owner claim. An absent token raises `StdioCredentialMissing` before protocol framing and never resolves to owner context.",
       "why": "A-read",
       "file": "spec/71-console.md",
-      "line": 148
+      "line": 154
     },
     {
       "id": "surface.package.store-selector",
@@ -21323,7 +21351,7 @@
       "statement": "The child's working directory selects the store by walking up to the project manifest; finding none raises `StoreSelectorAbsent` and exits before writing any protocol framing.",
       "why": "A-topology",
       "file": "spec/71-console.md",
-      "line": 150
+      "line": 156
     },
     {
       "id": "surface.package.owner-flag",
@@ -21334,7 +21362,7 @@
       "statement": "A process `--owner` admits the local owner context only with a verified signed claim bound to the selected store and an unrestricted read grant; any other credential raises `OwnerCredentialInvalid` before protocol framing.",
       "why": "A-surface",
       "file": "spec/71-console.md",
-      "line": 152
+      "line": 158
     },
     {
       "id": "surface.speak.redactor-lookahead",
@@ -21345,7 +21373,7 @@
       "statement": "The streaming redactor buffers 128 chars across each chunk boundary, and no denylist entry is longer than the buffer.",
       "why": "because an identifier split between two chunks otherwise passes unredacted",
       "file": "spec/71-console.md",
-      "line": 192
+      "line": 198
     },
     {
       "id": "surface.speak.unanswerable-suggestion",
@@ -21356,7 +21384,7 @@
       "statement": "A suggested prompt whose answer under these rules is a decline raises `ConsoleSuggestionUnanswerable` when the suggestion set is built.",
       "why": "A-surface",
       "file": "spec/71-console.md",
-      "line": 194
+      "line": 200
     },
     {
       "id": "surface.speak.stream-redaction",
@@ -21367,7 +21395,7 @@
       "statement": "The server redacts each streamed model chunk before Query emits prose to the operator.",
       "why": "A-surface",
       "file": "spec/71-console.md",
-      "line": 196
+      "line": 202
     },
     {
       "id": "surface.ground.ungrounded-answer",
@@ -21378,7 +21406,7 @@
       "statement": "A path composing answer prose in a turn holding no tool result raises `ConsoleUngroundedAnswer`.",
       "why": "P2",
       "file": "spec/71-console.md",
-      "line": 203
+      "line": 209
     },
     {
       "id": "surface.ground.unadmitted-tool",
@@ -21389,7 +21417,7 @@
       "statement": "A call naming a tool the turn's packs do not admit raises `ConsoleToolNotAdmitted` and dispatches nothing.",
       "why": "A-surface",
       "file": "spec/71-console.md",
-      "line": 205
+      "line": 211
     },
     {
       "id": "surface.ground.mutating-tool",
@@ -21400,7 +21428,7 @@
       "statement": "The console's query endpoint admits a read subset: a client-reachable path naming a write raises `ConsoleMutatingToolRequested`. The one write a turn performs is authored on the server.",
       "why": "A-surface",
       "file": "spec/71-console.md",
-      "line": 207
+      "line": 213
     },
     {
       "id": "surface.ground.org-face-read-only",
@@ -21411,7 +21439,7 @@
       "statement": "A pack registering a write tool on an organization-wide face raises `ConsoleWriteToolOnOrgFace` at startup, naming the pack and the tool, and the face serves nothing.",
       "why": "A-surface",
       "file": "spec/71-console.md",
-      "line": 209
+      "line": 215
     },
     {
       "id": "surface.ground.direct-file-read",
@@ -21422,7 +21450,7 @@
       "statement": "A table function resolving a path straight against stored bytes raises `ConsoleFileAccessDirect` on this surface.",
       "why": "P5",
       "file": "spec/71-console.md",
-      "line": 211
+      "line": 217
     },
     {
       "id": "surface.ground.mint-refused",
@@ -21433,7 +21461,7 @@
       "statement": "A refused mint raises `ConsoleTokenExchangeRefused`. A store carrying a shared credential falls back to it; one carrying none surfaces the refusal to the reader.",
       "why": "P2",
       "file": "spec/71-console.md",
-      "line": 213
+      "line": 219
     },
     {
       "id": "surface.ground.sources-per-turn",
@@ -21444,7 +21472,7 @@
       "statement": "A source list carries at most 8 entries.",
       "why": "",
       "file": "spec/71-console.md",
-      "line": 215
+      "line": 221
     },
     {
       "id": "surface.ground.sources-block",
@@ -21455,7 +21483,7 @@
       "statement": "Every grounded answer includes a sources block citing only the governed results its admitted read tools returned.",
       "why": "A-surface",
       "file": "spec/71-console.md",
-      "line": 216
+      "line": 222
     },
     {
       "id": "surface.plan-turn.planner-reached-memory",
@@ -21466,7 +21494,7 @@
       "statement": "Scaffolding and every deterministic fallback cover data tables; scaffolding naming a memory relation raises `ConsolePlannerReachedMemory`.",
       "why": "A-surface",
       "file": "spec/71-console.md",
-      "line": 255
+      "line": 261
     },
     {
       "id": "surface.plan-turn.code-path-bounds",
@@ -21477,7 +21505,7 @@
       "statement": "The code path reads at most 5000 rows per data table and stops after 10 s.",
       "why": "",
       "file": "spec/71-console.md",
-      "line": 257
+      "line": 263
     },
     {
       "id": "surface.plan-turn.overlay-cache",
@@ -21488,7 +21516,7 @@
       "statement": "The overlay caches for 5 min, a miss included.",
       "why": "",
       "file": "spec/71-console.md",
-      "line": 258
+      "line": 264
     },
     {
       "id": "surface.plan-turn.overlay-length",
@@ -21499,7 +21527,7 @@
       "statement": "An overlay is truncated at 8000 chars.",
       "why": "",
       "file": "spec/71-console.md",
-      "line": 259
+      "line": 265
     },
     {
       "id": "surface.plan-turn.turn-flow",
@@ -21510,7 +21538,7 @@
       "statement": "A Query turn plans over admitted read tools, replans once after an unanswered first round, and synthesizes from the resulting governed rows.",
       "why": "A-surface",
       "file": "spec/71-console.md",
-      "line": 260
+      "line": 266
     },
     {
       "id": "surface.plan-turn.overlay-audience",
@@ -21521,7 +21549,7 @@
       "statement": "A store's prompt overlay reaches the operator-facing synthesis text and stays outside the planner's text.",
       "why": "A-surface",
       "file": "spec/71-console.md",
-      "line": 262
+      "line": 268
     },
     {
       "id": "surface.set-vantage.unparseable",
@@ -21532,7 +21560,7 @@
       "statement": "A vantage that is neither a calendar day nor an instant raises `ConsoleVantageUnparseable`, answered `400`.",
       "why": "P2",
       "file": "spec/71-console.md",
-      "line": 269
+      "line": 275
     },
     {
       "id": "surface.set-vantage.web-bound-unparseable",
@@ -21543,7 +21571,7 @@
       "statement": "A web leg whose bound fails to parse fails that leg and raises `ConsoleWebBoundUnparseable`.",
       "why": "P2",
       "file": "spec/71-console.md",
-      "line": 271
+      "line": 277
     },
     {
       "id": "surface.set-vantage.sample-labels",
@@ -21554,7 +21582,7 @@
       "statement": "A table's arrivals contribute at most 3 entries of sampled label.",
       "why": "",
       "file": "spec/71-console.md",
-      "line": 273
+      "line": 279
     },
     {
       "id": "surface.browse.discovered-chips",
@@ -21565,7 +21593,7 @@
       "statement": "Query builds pre-question chips from described tables admitted to the reader's zone and humanizes their table labels.",
       "why": "A-surface",
       "file": "spec/71-console.md",
-      "line": 279
+      "line": 285
     },
     {
       "id": "surface.browse.insights-panel",
@@ -21576,7 +21604,7 @@
       "statement": "The insights panel presents row counts returned by the reader's table descriptions.",
       "why": "because a row count from the read face already reflects the reader's relation",
       "file": "spec/71-console.md",
-      "line": 281
+      "line": 287
     },
     {
       "id": "surface.browse.file-gallery",
@@ -21587,7 +21615,7 @@
       "statement": "The file gallery presents only paths returned by the reader's governed file listing and previews them through the read face.",
       "why": "P5",
       "file": "spec/71-console.md",
-      "line": 283
+      "line": 289
     },
     {
       "id": "surface.browse.gallery-path-unlisted",
@@ -21598,7 +21626,7 @@
       "statement": "A gallery preview naming a path absent from the governed file listing under the request's `as_of` raises `ConsoleGalleryPathUnlisted` before preview dispatch.",
       "why": "because the browser must not turn an arbitrary path into a store read",
       "file": "spec/71-console.md",
-      "line": 285,
+      "line": 291,
       "scenarios": [
         "WHEN a Query client requests a path absent from the reader's bound file listing, THEN it raises `ConsoleGalleryPathUnlisted` without a preview call."
       ]
@@ -21612,7 +21640,7 @@
       "statement": "After the answer streams, a second pass distils the exchange into at most 3 entries shaped `{subject, key, learning}`, zero included.",
       "why": "",
       "file": "spec/71-console.md",
-      "line": 296
+      "line": 302
     },
     {
       "id": "surface.learn.unscoped",
@@ -21623,7 +21651,7 @@
       "statement": "A distilled conclusion landing without the reading-session scope raises `ConsoleLearningUnscoped`.",
       "why": "A-surface",
       "file": "spec/71-console.md",
-      "line": 297
+      "line": 303
     },
     {
       "id": "surface.learn.write-refused",
@@ -21634,7 +21662,7 @@
       "statement": "A served claim write that refuses or returns no scope-bound receipt raises `ConsoleLearningWriteRefused` to Query before answer publication.",
       "why": "because a failed write cannot count as a durable learning",
       "file": "spec/71-console.md",
-      "line": 299
+      "line": 305
     },
     {
       "id": "surface.learn.subject-resolution",
@@ -21645,7 +21673,7 @@
       "statement": "Distillation preserves the subject it observes; recall resolves that subject through entity matching.",
       "why": "A-surface",
       "file": "spec/71-console.md",
-      "line": 301
+      "line": 307
     },
     {
       "id": "surface.render.client-authored-view",
@@ -21656,7 +21684,7 @@
       "statement": "A view specification arriving from a client, or composed by the model, raises `ConsoleViewNotServerBuilt`.",
       "why": "A-surface",
       "file": "spec/71-console.md",
-      "line": 308
+      "line": 314
     },
     {
       "id": "surface.render.component-choice",
@@ -21667,7 +21695,7 @@
       "statement": "One row with one measure draws a metric; a date column with a measure over 3 rows on distinct days draws a line; anything else draws a table offering a bar view.",
       "why": "",
       "file": "spec/71-console.md",
-      "line": 310
+      "line": 316
     },
     {
       "id": "surface.render.older-transcript",
@@ -21678,7 +21706,7 @@
       "statement": "A client reading a transcript with an unknown component-union member renders its view as a table.",
       "why": "A-surface",
       "file": "spec/71-console.md",
-      "line": 311
+      "line": 317
     },
     {
       "id": "surface.brief.absence-is-earned",
@@ -21689,7 +21717,7 @@
       "statement": "The card needs a session with no turns, at present time, a live conclusion, an arrived row matching an interest, and a derivation inside its budget. An error or timeout raises `ConsoleBriefUnavailable`, and no card renders.",
       "why": "A-surface",
       "file": "spec/71-console.md",
-      "line": 347
+      "line": 353
     },
     {
       "id": "surface.brief.topic-tier",
@@ -21700,7 +21728,7 @@
       "statement": "The topic tier needs at least 2 tokens shared between the conclusion's subject and text and the row's label and topics, one of them naming the subject.",
       "why": "",
       "file": "spec/71-console.md",
-      "line": 349
+      "line": 355
     },
     {
       "id": "surface.brief.card-subjects",
@@ -21711,7 +21739,7 @@
       "statement": "A card carries at most 3 subjects.",
       "why": "",
       "file": "spec/71-console.md",
-      "line": 350
+      "line": 356
     },
     {
       "id": "surface.brief.articles-per-subject",
@@ -21722,7 +21750,7 @@
       "statement": "A subject carries at most 3 entries of matched article.",
       "why": "",
       "file": "spec/71-console.md",
-      "line": 351
+      "line": 357
     },
     {
       "id": "surface.brief.catchup-window",
@@ -21733,7 +21761,7 @@
       "statement": "The backend caps the requested window at 7 d.",
       "why": "",
       "file": "spec/71-console.md",
-      "line": 352
+      "line": 358
     },
     {
       "id": "surface.brief.greeting",
@@ -21744,7 +21772,7 @@
       "statement": "Query derives a greeting card from arrived rows matching live conclusions in a turnless present-time session.",
       "why": "A-surface",
       "file": "spec/71-console.md",
-      "line": 353
+      "line": 359
     },
     {
       "id": "surface.publish-answer.share-affordance",
@@ -21755,7 +21783,7 @@
       "statement": "A surface offering a share control on access-explanation output raises `VisibilityShareAffordance`.",
       "why": "A-surface",
       "file": "spec/71-console.md",
-      "line": 360
+      "line": 366
     },
     {
       "id": "surface.publish-answer.askerless-audience",
@@ -21766,7 +21794,7 @@
       "statement": "A scheduled job posting to an audience under a service identity raises `VisibilityAskerlessAudience`, naming the destination; a scheduled post's corpus is narrowed in the reviewed manifest to what the destination reaches.",
       "why": "A-surface",
       "file": "spec/71-console.md",
-      "line": 362
+      "line": 368
     },
     {
       "id": "surface.publish-answer.one-operator-principal",
@@ -21777,7 +21805,7 @@
       "statement": "An answer uses one operator's credential; the console offers no room-intersection principal.",
       "why": "A-surface",
       "file": "spec/71-console.md",
-      "line": 364
+      "line": 370
     },
     {
       "id": "assurance.model.package",

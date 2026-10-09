@@ -4,6 +4,7 @@ import {
 } from "lucide-react";
 import { ColumnarResult, WidgetView, type Rows, type Widget } from "./result.tsx";
 import { AsOfSelect, post, Shell, StoreSelect, TopNav, type Store } from "./shell.tsx";
+import { restoreSaved, saveSaved } from "./transcripts.ts";
 import { Bubble, Button, cn, Message, MessageAvatar, MessageContent, MessageHeader, Textarea } from "./ui.tsx";
 
 type Source = { id?: string; label?: string; title?: string; url?: string };
@@ -16,18 +17,17 @@ type Browse = {
 };
 type Brief = { windowDays: number; subjects: Array<{ subject: string; articles: Array<{ id: string; label: string }> }> };
 
-// Tab-scoped: transcripts carry answer rows, and a shared browser must not hand one
-// operator's answers to the next.
+// Tab-scoped and operator-scoped: transcripts carry answer rows, and a shared browser must
+// not hand one operator's answers to the next.
 const SESSIONS_KEY = "contextful-console-sessions";
 
 function newSession(store: string): Session {
   return { id: `s_${Date.now().toString(36)}_${Math.floor(Math.random() * 1e9).toString(36)}`, store, title: "New chat", turns: [], updatedAt: Date.now() };
 }
 
-function readSessions(): Session[] {
+function readSessions(scope: string, stores: Store[]): Session[] {
   try {
-    const value: unknown = JSON.parse(sessionStorage.getItem(SESSIONS_KEY) ?? "[]");
-    return Array.isArray(value) ? value as Session[] : [];
+    return restoreSaved<Session>(sessionStorage.getItem(SESSIONS_KEY), scope, stores);
   } catch {
     return [];
   }
@@ -38,15 +38,19 @@ export function QueryApp() {
   const [sessions, setSessions] = useState<Session[]>([]);
   const [activeId, setActiveId] = useState("");
   const [asOf, setAsOf] = useState("");
+  const [scope, setScope] = useState("");
   const [loaded, setLoaded] = useState(false);
 
   useEffect(() => {
-    fetch("/query/api/stores").then((response) => response.json() as Promise<Store[]>).catch(() => []).then((list) => {
+    fetch("/query/api/stores").then(async (response) => ({
+      scope: response.headers.get("x-console-transcript-scope") ?? "",
+      list: await response.json() as Store[],
+    })).catch(() => ({ scope: "", list: [] })).then(({ scope: verified, list }) => {
       const known = Array.isArray(list) ? list : [];
       setStores(known);
-      const fallback = known[0]?.id ?? "";
-      let initial = readSessions().map((session) => known.some((store) => store.id === session.store) ? session : { ...session, store: fallback });
-      if (initial.length === 0) initial = [newSession(fallback)];
+      setScope(verified);
+      let initial = readSessions(verified, known);
+      if (initial.length === 0) initial = [newSession(known[0]?.id ?? "")];
       setSessions(initial);
       setActiveId(initial[0].id);
       setLoaded(true);
@@ -54,9 +58,9 @@ export function QueryApp() {
   }, []);
 
   useEffect(() => {
-    if (!loaded) return;
-    try { sessionStorage.setItem(SESSIONS_KEY, JSON.stringify(sessions)); } catch { /* storage unavailable */ }
-  }, [sessions, loaded]);
+    if (!loaded || !scope) return;
+    try { sessionStorage.setItem(SESSIONS_KEY, saveSaved(scope, sessions)); } catch { /* storage unavailable */ }
+  }, [sessions, scope, loaded]);
 
   const active = sessions.find((session) => session.id === activeId);
   const store = active?.store ?? stores[0]?.id ?? "";
@@ -119,7 +123,7 @@ export function QueryApp() {
               <span className="truncate">{session.title}</span>
             </button>
             <button type="button" onClick={() => remove(session.id)} title="Delete chat" aria-label="Delete chat"
-              className="shrink-0 text-muted-foreground opacity-0 transition group-hover:opacity-100 hover:text-destructive focus-visible:opacity-100">
+              className="shrink-0 text-muted-foreground transition hover:text-destructive focus-visible:opacity-100 md:opacity-0 md:group-hover:opacity-100">
               <Trash2Icon className="size-3.5" />
             </button>
           </div>
