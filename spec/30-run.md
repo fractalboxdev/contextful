@@ -276,7 +276,7 @@ The execution owner a scope holds and the connector build it pins while pending.
   *A-run*
 - `live-owner` — An open under a host scope whose pending owner has an attempt on an unexpired {{run.record.owner-lease}} fails `Transient` naming that attempt, and its run row closes `failed` without joining the owner.
   *because two live handles on one owner share its journal, and either one retiring it strands the other*
-- `pin-release` — `success`, a failure that wrote no batch, and a failure a replay reproduces, {{run.own.staged-bytes}} or {{run.land.late-type}}, release the owner; every other status holds it.
+- `pin-release` — `success`, a failure that wrote no batch, and replay-stable failures under {{run.own.staged-bytes}}, {{run.land.late-type}}, or {{run.own.source-stage-schema}} release the owner; every other status holds it.
 - `admission-pin` — A run pins its connector identity at admission and a replay resolves the artifact from that pin; a connector rebuilt later reaches no in-flight or replayed run.
   *A-connector*
 - `backpressure` — The runner stages each shaped batch through the destination as one part before its next pull, so a run holds one pulled batch in memory; the commit names the staged parts.
@@ -286,6 +286,8 @@ The execution owner a scope holds and the connector build it pins while pending.
   *because a replay of the run's recorded pulls stages the same bytes past the bound and fails identically, holding the table's owner indefinitely*
 - `stage-schema` — A stage refuses against `schema.json` and the run's earlier stages, then merges its columns into the run's own staged schema; only the commit merges them into `schema.json`.
   *because otherwise rows no commit publishes fix a column's type in the table's schema*
+- `source-stage-schema` — A deterministic `SchemaIncompatible` from staging an ordinary source batch, raw or prepared, retires its owner unless another live attempt holds it; the failed run changes neither committed cursor nor published rows. This exception excludes prepared body-emission staging.
+  *because a recorded source batch that fails the same schema check on replay prevents a repaired source from being fetched*
 - `stage-commit-seq` — A staged part carries no `_commit_seq`; the commit assigns it under {{store.reserve.commit-order}} and writes it into each part it names, so a run committing between a stage and that commit takes the lower value.
   *because a value fixed at the stage orders a run by its first pull, and the readable runs then hold no prefix of the sequence*
 - `stage-instant` — A staged part carries no `_ingested_at`; the commit writes its commit instant into each part it names, so every row of a run carries the instant its marker carries.

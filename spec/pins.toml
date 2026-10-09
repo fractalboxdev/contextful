@@ -27,6 +27,7 @@
 # `contextful-spec state` reads this file and the tags and writes spec/status.md.
 
 [pin]
+"run.own.source-stage-schema" = { test = "contextful_engine::runner::source_stage_schema_refusal_releases_recorded_pulls_without_advancing_the_committed_cursor" }
 "surface.fire.scheduled-body" = { test = "contextful_cli::job::scheduled_jobs_use_the_applied_body_and_preserve_the_cadence_across_restart" }
 "surface.fire.scheduled-history" = { test = "contextful_cli::job::scheduled_jobs_resume_paid_calls_after_a_failed_child" }
 "surface.fire.job-snapshot" = { test = "contextful_cli::job::a_job_only_apply_changes_the_snapshot_and_stock_serve_refuses_its_body" }
@@ -123,7 +124,7 @@ connector = 229
 corpus = 43
 disclosure = 63
 read = 184
-run = 308
+run = 309
 store = 216
 surface = 90
 topology = 38
