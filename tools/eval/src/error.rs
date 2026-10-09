@@ -21,6 +21,12 @@ pub enum EvalError {
     /// A corpus whose tables declare no zone or row policy, read with no `local:` zone
     /// (`assurance.evaluate.unlabeled-corpus`).
     EvalCorpusUnlabeled { corpus: String },
+    /// A mined or promoted golden the write-time redaction pass cannot clear
+    /// (`assurance.baseline.generated-redaction`).
+    GoldenRedactionFailed { case: String, reason: String },
+    /// Fetched public benchmark bytes under another digest than the manifest pins
+    /// (`assurance.baseline.public-corpora`).
+    PublicCorpusDigestMismatch { corpus: String, expected: String, actual: String },
 }
 
 impl EvalError {
@@ -33,6 +39,8 @@ impl EvalError {
             EvalError::MeasureRecordMissing { .. } => "MeasureRecordMissing",
             EvalError::TraceExportOutOfPerimeter { .. } => "TraceExportOutOfPerimeter",
             EvalError::EvalCorpusUnlabeled { .. } => "EvalCorpusUnlabeled",
+            EvalError::GoldenRedactionFailed { .. } => "GoldenRedactionFailed",
+            EvalError::PublicCorpusDigestMismatch { .. } => "PublicCorpusDigestMismatch",
         }
     }
 
@@ -42,6 +50,10 @@ impl EvalError {
 
     pub(crate) fn entry_unresolved(entry: &str, reason: impl Into<String>) -> Self {
         EvalError::MeasureEntryUnresolved { entry: entry.to_string(), reason: reason.into() }
+    }
+
+    pub(crate) fn redaction_failed(case: &str, reason: impl Into<String>) -> Self {
+        EvalError::GoldenRedactionFailed { case: case.to_string(), reason: reason.into() }
     }
 
     pub(crate) fn record_missing(entry: &str, reason: impl Into<String>) -> Self {
@@ -70,6 +82,13 @@ impl fmt::Display for EvalError {
             EvalError::EvalCorpusUnlabeled { corpus } => write!(
                 f,
                 "EvalCorpusUnlabeled: `{corpus}`: no table declares a zone or row policy; label the corpus or pass a `local:` zone as --zone"
+            ),
+            EvalError::GoldenRedactionFailed { case, reason } => {
+                write!(f, "GoldenRedactionFailed: `{case}`: {reason}; the golden is not committed")
+            }
+            EvalError::PublicCorpusDigestMismatch { corpus, expected, actual } => write!(
+                f,
+                "PublicCorpusDigestMismatch: `{corpus}`: the manifest pins sha256 {expected}; the fetched bytes hash to {actual}"
             ),
         }
     }

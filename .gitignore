@@ -12,3 +12,6 @@ dist/
 # an unencrypted one never reaches a remote.
 .env
 .env.*
+
+# Public benchmark corpora, fetched under each dataset's terms and checked against its manifest digest.
+/evals/public/

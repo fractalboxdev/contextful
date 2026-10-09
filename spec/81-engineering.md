@@ -380,10 +380,11 @@ Holding a run against committed baselines and absolute floors, intervals, golden
 - `held-out` — Retrieval and synthesis are tuned on no gate input.
 - `rotation` — The native set rotates on a cadence, a sample of its truth is reviewed on each rotation, and a comparison across generations resolves through the pinned run stamp.
 - `native-gate` — A native benchmark generated from a real corpus is the red or green gate; public benchmark sets run beside it as held-out comparison and decide nothing.
+- `public-corpora` — A public benchmark corpus enters through a fetch-manifest entry naming its URL, its dataset's terms and a SHA-256 digest, and is never committed; fetched bytes under another digest raise `PublicCorpusDigestMismatch`.
+  *because a corpus whose bytes drift scores another benchmark under the same name*
 - `trace-export` — A run touching a deployed store with a hosted trace endpoint configured raises `TraceExportOutOfPerimeter`; hosted collection serves runs over public or synthetic fixtures alone.
   *A-assurance*
 
-unsettled: Which public benchmark corpora are admissible gate inputs under research and non-commercial licences: fetched under the dataset's terms, transformed into a synthetic subset, or pinned by a content-hashed fetch manifest? owner: build affects: assurance.baseline
 
 ## measure
 
