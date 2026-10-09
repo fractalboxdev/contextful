@@ -51,8 +51,11 @@ on_erase = "survive"
     }
 }
 
-/// A table block declares any of `primary_key`, `order_by`, `write_mode`, `replicate`, `subject_id`, `class`, `policy`, `visibility`, `valid_time`, `cluster_by`, `partition_by`, `retain_runs`, `columns`, `indexes`, `agent_description`, `agent_hint`, `example_queries`, `content_hash_column`, `result_cache` and `private`; an unset key is absent from the canonical serialization.
-// spec: store.declare.table-block@b89faa39
+/// A table block declares any of `primary_key`, `order_by`, `write_mode`, `replicate`, `subject_id`, `class`,
+/// `policy`, `visibility`, `valid_time`, `cluster_by`, `partition_by`, `bloom_filter`, `retain_runs`,
+/// `retain_rows`, `columns`, `indexes`, `agent_description`, `agent_hint`, `example_queries`,
+/// `content_hash_column`, `result_cache` and `private`; an unset key is absent from the canonical serialization.
+// spec: store.declare.table-block@6e3269c9
 #[test]
 fn a_table_block_parses_its_keys_and_omits_unset_ones() {
     let t = &TableDecl::parse_pipeline(SPEC_EXAMPLE).unwrap()[0];
@@ -71,7 +74,7 @@ fn a_table_block_parses_its_keys_and_omits_unset_ones() {
 
     let canonical: serde_json::Value = serde_json::from_str(&t.canonical()).unwrap();
     let keys: Vec<&str> = canonical.as_object().unwrap().keys().map(String::as_str).collect();
-    for unset in ["replicate", "subject_id", "class", "policy", "visibility", "agent_description", "agent_hint", "example_queries", "content_hash_column", "result_cache", "private"] {
+    for unset in ["replicate", "subject_id", "class", "policy", "visibility", "bloom_filter", "agent_description", "agent_hint", "example_queries", "content_hash_column", "result_cache", "private"] {
         assert!(!keys.contains(&unset), "an unset `{unset}` appears in {keys:?}");
     }
     assert_eq!(TableDecl::named("bare").canonical(), r#"{"name":"bare"}"#);
@@ -90,8 +93,12 @@ example_queries = ["SELECT count(*) FROM notes"]
 content_hash_column = "body_sha256"
 result_cache = "30s"
 private = true
+bloom_filter = ["owner", "note_id"]
 "#;
     let n = &TableDecl::parse_pipeline(every).unwrap()[0];
+    assert_eq!(n.bloom_filter(), ["owner", "note_id"]);
+    assert!(n.canonical().contains("\"bloom_filter\":[\"owner\",\"note_id\"]"), "{}", n.canonical());
+    assert!(TableDecl::named("bare").bloom_filter().is_empty());
     assert_eq!(n.example_queries.as_ref().unwrap().len(), 1);
     assert_eq!(n.content_hash_column(), Some("body_sha256"));
     assert_eq!(n.result_cache_secs().unwrap(), Some(30));

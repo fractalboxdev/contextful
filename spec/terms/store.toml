@@ -89,6 +89,7 @@ store-ledger-retention      = { clause = "store.reserve.ledger-retention", value
 store-compaction-interval   = { clause = "store.fold.triggers", value = 6, unit = "h", basis = "chosen", gloss = "Elapsed time after a table's previous pass that fires the next." }
 store-compaction-run-count  = { clause = "store.fold.triggers", value = 50, unit = "runs", basis = "chosen", gloss = "Runs committed on a table since its previous pass that fire the next." }
 store-run-retention         = { clause = "store.fold.retention", value = 7, unit = "d", basis = "chosen", gloss = "Default `retain_runs` window, past which a folded run or a snapshot superseded by ordinary writes is collected." }
+store-partition-count       = { clause = "store.index.partition-warnings", value = 1000, unit = "partitions", basis = "chosen", gloss = "Projected partition count above which planning warns." }
 store-partition-median      = { clause = "store.index.partition-warnings", value = 16, unit = "MiB", basis = "chosen", gloss = "Projected median partition size below which planning warns." }
 store-kdf-memory            = { clause = "store.encrypt.password-kdf", value = 64, unit = "MiB", basis = "standard:rfc9106", gloss = "Argon2id memory cost." }
 store-kdf-iterations        = { clause = "store.encrypt.password-kdf", value = 3, unit = "iterations", basis = "standard:rfc9106", gloss = "Argon2id time cost." }

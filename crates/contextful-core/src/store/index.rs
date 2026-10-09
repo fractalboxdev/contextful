@@ -38,11 +38,12 @@ pub const FULLTEXT_BUILDER: &str = "contextful-postings";
 /// The on-disk postings format version the builder writes and the reader accepts.
 pub const FULLTEXT_BUILDER_VERSION: u32 = 1;
 
-/// Partitions past which a partition plan warns: 1000 (`store.index.partition-warnings`).
+/// Partitions past which a partition plan warns: 1000, the `store-partition-count` bound of
+/// `store.index.partition-warnings`. Every check and message reads it here.
 pub const PARTITION_COUNT_WARN: usize = 1000;
 
-/// Median partition size below which a partition plan warns: 16 MiB
-/// (`store.index.partition-warnings`).
+/// Median partition size below which a partition plan warns: 16 MiB, the
+/// `store-partition-median` bound of `store.index.partition-warnings`.
 pub const PARTITION_MEDIAN_WARN_BYTES: u64 = 16 * 1024 * 1024;
 
 /// The warnings a partition plan over `by` raises, given each partition's size in bytes:
@@ -63,7 +64,10 @@ pub fn partition_warnings(by: &[String], sizes: &[u64]) -> Vec<String> {
     let mid = sorted.len() / 2;
     let median = if sorted.len().is_multiple_of(2) { sorted[mid - 1] / 2 + sorted[mid] / 2 } else { sorted[mid] };
     if median < PARTITION_MEDIAN_WARN_BYTES {
-        warnings.push(format!("partition_by {columns} projects a median partition of {median} bytes, below 16 MiB"));
+        warnings.push(format!(
+            "partition_by {columns} projects a median partition of {median} bytes, below {} MiB",
+            PARTITION_MEDIAN_WARN_BYTES / (1024 * 1024)
+        ));
     }
     warnings
 }
