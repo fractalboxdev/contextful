@@ -736,6 +736,53 @@ fn a_ranked_read_keeps_the_newest_row_per_content_hash() {
     assert_eq!(ids(&grid, "passage_id"), ["r5"]);
 }
 
+/// A table holds items, landed by connectors, or artifacts, synthesized and tagged by an open kind string the
+/// engine does not enumerate. Both append, dedupe on content and carry a timestamp.
+// spec: store.declare.two-genres@982edc5a
+#[test]
+fn items_and_artifacts_of_any_kind_append_dedupe_on_content_and_carry_a_timestamp() {
+    let genres = "\n[[pipeline.tables]]\nname = \"genre/items\"\ncontent_hash_column = \"digest\"\n\n[[pipeline.tables]]\nname = \"genre/artifacts\"\ncontent_hash_column = \"digest\"\n";
+    let manifest = format!("{MANIFEST}{genres}");
+    let mut r = Reads::with_manifest(&manifest);
+    let decls = TableDecl::parse_pipeline(&manifest).unwrap();
+    // A kind string no list in the engine names lands as written.
+    let kind = "field-note-unlisted";
+    for run in 1..=2 {
+        for (table, row) in [
+            ("genre/items", json!({ "doc_id": format!("i{run}"), "title": "Battery storage filing", "digest": "h-item" })),
+            ("genre/artifacts", json!({ "doc_id": format!("a{run}"), "kind": kind, "title": "Battery storage synthesis", "digest": "h-artifact" })),
+        ] {
+            let decl = decls.iter().find(|d| d.name == table).unwrap();
+            let ctx = RunContext {
+                node: NodeId::parse("ingest-a").unwrap(),
+                injection: Injection { run_id: format!("run-000{run}"), site_id: "site-a".into(), batch_seq: Some(0), authored_by: None, taint: None },
+                committed_at: at(&format!("2030-01-1{run}T00:00:00Z")),
+            };
+            let rows = vec![row.as_object().unwrap().clone()];
+            land(&r.store, decl, &Batch { rows, types: HashMap::new() }, &ctx).unwrap();
+        }
+    }
+    r.face = Face::open(r.store.clone(), &manifest, pepper()).unwrap();
+    let s = r.session(&["genre/*"], None, None);
+    // Both genres append: each run's copy is a row of its own.
+    for table in ["genre/items", "genre/artifacts"] {
+        assert_eq!(r.store.committed_runs(table).unwrap().len(), 2, "{table}");
+    }
+    // A ranked read keeps the newest copy per content digest in each genre.
+    let ranked = r.face.retrieve(&s, &RetrieveRequest { limit: Some(50), min_score: Some(0), ..ask("genre/", "battery storage") }, Bounds::default()).unwrap();
+    assert_eq!(sorted(ids(&ranked, "doc_id")), ["a2", "i2"]);
+    assert_eq!(ranked.blocks["contextful.retrieval"]["deduped"], json!(2));
+    let mut kinds: Vec<String> = column(&ranked, "_kind").iter().map(|k| k.as_str().unwrap_or("item").to_string()).collect();
+    kinds.sort();
+    assert_eq!(kinds, [kind, "item"]);
+    // Each row carries its transaction time.
+    let only = RetrieveRequest { kinds: Some(vec![kind.into()]), min_score: Some(0), ..ask("genre/", "battery storage") };
+    assert_eq!(ids(&r.face.retrieve(&s, &only, Bounds::default()).unwrap(), "doc_id"), ["a2"]);
+    for t in column(&ranked, "_ingested_at") {
+        assert!(t.as_str().is_some_and(|t| t.starts_with("2030-01-12")), "{t}");
+    }
+}
+
 /// The row key is absent from the outer projection.
 // spec: read.retrieve.row-key-stays-internal@0987d291
 #[test]
