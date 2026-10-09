@@ -1,7 +1,7 @@
 //! `surface.fire`: job blocks against the closed kind union and the store-driven kind's
 //! declaration.
 
-use contextful_core::job::{parse_jobs, JobError, JobKind, KINDS, STORE_DRIVEN};
+use contextful_core::job::{parse_jobs, JobError, JobKind, KINDS, STORE_DRIVEN, SYNTHESIZE};
 
 fn registered(name: &str) -> bool {
     name == "score"
@@ -19,8 +19,8 @@ fn a_store_driven_block_validates_with_its_pinned_input_and_concurrency() {
     let JobKind::StoreDriven(d) = &jobs[0].kind else { panic!("{:?}", jobs[0].kind) };
     assert_eq!((d.max_in_flight, d.tables.as_slice()), (4, ["scores".to_string()].as_slice()));
     assert_eq!((d.input.body.as_str(), d.input.as_of.as_deref()), ("score", Some("2030-01-01T00:00:00Z")));
-    assert_eq!(KINDS.len(), 7, "the union holds seven kinds");
-    for kind in KINDS.iter().filter(|k| **k != STORE_DRIVEN) {
+    assert_eq!(KINDS.len(), 8, "the union holds eight kinds");
+    for kind in KINDS.iter().filter(|k| ![STORE_DRIVEN, SYNTHESIZE].contains(*k)) {
         let jobs = parse_jobs(&format!("[[job]]\nname = \"m\"\nkind = \"{kind}\"\nschedule = \"every 1h\"\n"), &registered).unwrap();
         assert_eq!(jobs[0].kind_name(), *kind);
     }
@@ -129,4 +129,21 @@ fn dependent_build_joins_the_pipeline_unit_after_all_landing_steps() {
     assert_eq!(runs.head_of["job:inventory"], "source");
     let jobs = parse_jobs(&declaration.replace("after='source'", "after='job:inventory'"), &registered).unwrap();
     assert!(contextful_core::job::dependent_jobs(&specs, &jobs).is_err());
+}
+
+/// A `synthesize` block names its claims table as `target` beside its `source`, `endpoint`
+/// and `model`; any of them absent refuses, and no other kind carries those keys.
+#[test]
+fn a_synthesize_block_names_its_target_source_endpoint_and_model() {
+    let block = "[[job]]\nname = \"s\"\nkind = \"synthesize\"\ntarget = \"memory/facts\"\nsource = \"research/notes\"\nendpoint = \"http://127.0.0.1:9/v1\"\nmodel = \"m\"\n";
+    let jobs = parse_jobs(block, &registered).unwrap();
+    let JobKind::Synthesize(s) = &jobs[0].kind else { panic!("{:?}", jobs[0].kind) };
+    assert_eq!((s.source.as_str(), s.model.as_str(), jobs[0].target.as_deref()), ("research/notes", "m", Some("memory/facts")));
+    for key in ["target", "source", "endpoint", "model"] {
+        let without: String = block.lines().filter(|l| !l.starts_with(key)).map(|l| format!("{l}\n")).collect();
+        let e = parse_jobs(&without, &registered).unwrap_err();
+        assert!(e.to_string().contains(key), "{e}");
+    }
+    let fold = parse_jobs("[[job]]\nname = \"f\"\nkind = \"fold\"\nsource = \"research/notes\"\n", &registered).unwrap_err();
+    assert!(fold.to_string().contains("source"), "{fold}");
 }

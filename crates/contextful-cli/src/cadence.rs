@@ -1089,7 +1089,9 @@ fn arm(scheduler: &mut Scheduler, control: &ControlConfig, project: &Project, de
             continue;
         }
         let reason = match (&job.kind, job.schedule.as_deref()) {
-            (JobKind::StoreDriven(_), Some(text)) | (JobKind::Maintenance(_), Some(text)) if job.kind_name() == "build" || matches!(job.kind, JobKind::StoreDriven(_)) => {
+            (JobKind::StoreDriven(_) | JobKind::Synthesize(_), Some(text)) | (JobKind::Maintenance(_), Some(text))
+                if job.kind_name() == "build" || matches!(job.kind, JobKind::StoreDriven(_) | JobKind::Synthesize(_)) =>
+            {
                 if control.relay.is_some() && !control.workers.is_empty() {
                     bail!("scheduled job `{}` requires the local registered host; worker dispatch handles pipelines", job.name);
                 }

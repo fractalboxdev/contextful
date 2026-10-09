@@ -208,7 +208,7 @@ The five reserved relations cover evidence, contradiction, succession, subject a
 
 ## Memory confidence and retention separate history from ranking
 
-The source's emitted confidence is uncalibrated until a per-shape-and-predicate isotonic map improves held-out Brier score on settled outcomes. Reports expose sample count, Brier score, expected calibration error and that held-out score. A claims table may declare a half-life that scales its ranked scores; recorded claims keep their validity until expiry or erasure. A stale citation stays gated, and a newly committed source row is the only automatic synthesis trigger. Equal-instant unscoped contradictions enter the dead-letter table without silently retiring either claim. An earlier direct observation keeps the existing out-of-order refusal.
+The source's emitted confidence is uncalibrated until a per-shape-and-predicate isotonic map improves held-out Brier score on settled outcomes. Reports expose sample count, Brier score, expected calibration error and that held-out score. Recall fits the maps on the claims table's declared outcome table, read through the caller's session, and labels each confidence. A claims table may declare a half-life that scales its ranked scores; recorded claims keep their validity until expiry or erasure. A stale citation stays gated, and a newly committed source row is the only automatic synthesis trigger. Equal-instant unscoped contradictions enter the dead-letter table without silently retiring either claim. An earlier direct observation keeps the existing out-of-order refusal.
 
 | Option | Lost on | Cost |
 | --- | --- | --- |

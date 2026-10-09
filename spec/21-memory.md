@@ -76,7 +76,7 @@ Extract, Resolve and Consolidate; the dedup key, evidence support, the audit rec
   *because a reader weighs a conclusion by which grant could have produced it*
 - `claim-taint` — A source row carries its own `_taint`, else `ingested:third-party`. Every row a batch commits lands under {{store.reserve.taint}} with the least-trusted label among the batch's rows.
   *because a row no label vouches for is trusted least, and a claim re-synthesized from claims stays as low as its origin*
-- `cadence` — Each memory shape defaults to an operator-triggered synthesis pass; a deployment schedule for that shape replaces the default, and a pass still advances only through {{read.synthesize.pass-cursor}}.
+- `cadence` — A claims table synthesizes when `contextful memory synthesize` runs; a `[[job]]` of kind `synthesize` targeting it with a `schedule` replaces that default, and each fire still advances only through {{read.synthesize.pass-cursor}}.
   *A-read*
 - `confidence-calibration` — A model-emitted confidence is labelled `uncalibrated` until a shape-and-predicate isotonic map trained on settled outcomes lowers held-out Brier score; a validated map supplies the reported calibrated confidence.
   *A-read*
@@ -162,6 +162,8 @@ Serving memory: the ranked arm at the read's anchor, the keyed read at an observ
 - `keyed-order` — Keyed claims order by tier, `curated` first, then `valid_from`, newest first, then `claim_id`; `limit` and the table's ceilings bound them under {{read.respond.row-ceiling}}.
 - `keyed-not-claims` — A granted `table` declaring a shape other than `memory_facts`, or no memory shape, raises `MemoryRecallNotClaims`.
   *because a keyed read answers with a claim's subject, validity and evidence, which no other table carries*
+- `confidence-label` — Each keyed claim carries `confidence_label`, `calibrated` or `uncalibrated` under {{read.synthesize.confidence-calibration}}, fitted on its table's declared `labels` table joined `prediction_id` to `claim_id`, read through the caller's session.
+  *A-read*
 - `stale-revision` — A stale citation remains subject to {{read.recall.keyed-gate}}; only a newly committed source row advancing {{read.synthesize.pass-cursor}} starts synthesis against its live key version.
   *A-read*
 - `usage-ledger` — A `memory.recall` read, and a `corpus.retrieve` read returning `memory_facts` rows, records the returned claim ids as `contextful.memory.claims` in its read entry, beside the caller's credential, subject and read instant.
@@ -188,7 +190,7 @@ Mention-to-entity matching, aliases, the knowledge card, place identity and near
   *A-read*
 - `graph-index` — An external graph engine is a derived index of admitted memory edges; an entity or ownership answer resolves through the store's enforced rows at the read frontier.
   *A-read*
-- `ownership-answer` — An artifact's ownership answer returns every attached principal visible to the caller, newest attachment first, with principal id breaking equal-instant ties.
+- `ownership-answer` — An artifact's ownership answer returns the target of every `owned_by` edge from it visible to the caller, newest `_ingested_at` first, with principal id breaking equal-instant ties.
   *A-read*
 
 

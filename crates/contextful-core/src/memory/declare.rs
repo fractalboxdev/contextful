@@ -63,6 +63,9 @@ pub struct MemoryTable {
     /// A claims table's declared ranking half-life in seconds; `None` ranks without decay
     /// (`read.revise.retention-default`).
     pub decay_half_life_secs: Option<u64>,
+    /// A claims table's settled-outcome table, whose `prediction_id` names a `claim_id`
+    /// and whose `verdict` settles it (`read.recall.confidence-label`).
+    pub labels: Option<String>,
 }
 
 impl MemoryTable {
@@ -88,6 +91,8 @@ struct RawTable {
     columns: Vec<String>,
     #[serde(default)]
     decay_half_life: Option<String>,
+    #[serde(default)]
+    labels: Option<String>,
 }
 
 #[derive(Deserialize, Default)]
@@ -152,7 +157,10 @@ impl MemoryDeclarations {
                     _ => return Err(DeclarationMalformed(format!("table `{}`: `decay_half_life = \"{h}\"` is no positive span such as `30d`", t.name)).into()),
                 },
             };
-            tables.push(MemoryTable { name: t.name, shape, columns: t.columns, decay_half_life_secs });
+            if t.labels.is_some() && shape != Shape::Facts {
+                return Err(DeclarationMalformed(format!("table `{}`: only a `{}` table declares `labels`", t.name, Shape::Facts.name())).into());
+            }
+            tables.push(MemoryTable { name: t.name, shape, columns: t.columns, decay_half_life_secs, labels: t.labels });
         }
         Ok(MemoryDeclarations { tables, declared_relations: raw.relation.unwrap_or_default().declared })
     }

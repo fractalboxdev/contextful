@@ -133,38 +133,8 @@ pub fn run(cmd: MemoryCmd) -> Result<()> {
         }
         MemoryCmd::Synthesize { project, source, into, endpoint, model } => {
             let (authority, revocation) = project.admit.admit(project.project.as_deref(), "a synthesis pass")?;
-            let boundary = || effect_boundary(&authority, &Admission::new(SystemClock.now(), &revocation));
             let located = locate(project.project.as_deref(), project.declaration.clone())?;
-            let face = face(&located)?;
-            let (node, _) = node::resolve(face.store(), |k| std::env::var(k).ok())?;
-            let inference = Endpoint::new(&endpoint, &model, std::env::var(INFERENCE_KEY_VAR).ok()).map_err(anyhow::Error::msg)?;
-            // Machine-local state: pass cursors live beside the run state, outside the store root.
-            let state = located.project.memory_dir();
-            let report = Pass {
-                face: &face,
-                authority: &authority,
-                inference: &inference,
-                source: &source,
-                into: &into,
-                state: &state,
-                node: &node,
-                now: SystemClock.now(),
-                boundary: &boundary,
-            }
-            .run()?;
-            if report.runs.is_empty() {
-                println!("{into}: no new runs in {source}");
-            } else {
-                println!(
-                    "{into}: read {} from {source}; {} landed, {} retired, {} restated, {} dead-lettered",
-                    report.runs.join(", "),
-                    report.landed,
-                    report.retired,
-                    report.restated,
-                    report.dead_lettered
-                );
-            }
-            Ok(())
+            synthesize(&located, &authority, &revocation, &source, &into, &endpoint, &model, SystemClock.now())
         }
         MemoryCmd::Write { project, into, claim, observed_at, dedup_key } => {
             let candidate: CandidateClaim = serde_json::from_str(&claim).context("`--claim` is one claim as JSON")?;
@@ -184,4 +154,53 @@ pub fn run(cmd: MemoryCmd) -> Result<()> {
             Ok(())
         }
     }
+}
+
+/// One synthesis pass from `source` into `into`, printing its report. The operator's
+/// `memory synthesize` and a scheduled `synthesize` job both run it
+/// (`read.synthesize.cadence`).
+#[allow(clippy::too_many_arguments)]
+fn synthesize(
+    located: &crate::project::Located,
+    authority: &contextful_policy::verify::AdmittedAuthority,
+    revocation: &contextful_policy::revoke::RevocationState,
+    source: &str,
+    into: &str,
+    endpoint: &str,
+    model: &str,
+    now: Instant,
+) -> Result<()> {
+    let boundary = || effect_boundary(authority, &Admission::new(SystemClock.now(), revocation));
+    let face = face(located)?;
+    let (node, _) = node::resolve(face.store(), |k| std::env::var(k).ok())?;
+    let inference = Endpoint::new(endpoint, model, std::env::var(INFERENCE_KEY_VAR).ok()).map_err(anyhow::Error::msg)?;
+    // Machine-local state: pass cursors live beside the run state, outside the store root.
+    let state = located.project.memory_dir();
+    let report = Pass { face: &face, authority, inference: &inference, source, into, state: &state, node: &node, now, boundary: &boundary }.run()?;
+    if report.runs.is_empty() {
+        println!("{into}: no new runs in {source}");
+    } else {
+        println!(
+            "{into}: read {} from {source}; {} landed, {} retired, {} restated, {} dead-lettered",
+            report.runs.join(", "),
+            report.landed,
+            report.retired,
+            report.restated,
+            report.dead_lettered
+        );
+    }
+    Ok(())
+}
+
+/// Fire a `synthesize` job: admit its credential and run one pass into its target.
+pub(crate) fn fire_synthesis(
+    located: &crate::project::Located,
+    project: &crate::run::ProjectArgs,
+    admit: &AdmitArgs,
+    job: &contextful_core::job::Synthesis,
+    into: &str,
+) -> Result<()> {
+    let (authority, revocation) = admit.admit(project.project.as_deref(), "a synthesize job")?;
+    let now = crate::run::clock(&project.now)?.now();
+    synthesize(located, &authority, &revocation, &job.source, into, &job.endpoint, &job.model, now)
 }
