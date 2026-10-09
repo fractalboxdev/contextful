@@ -88,7 +88,7 @@ Assertion construction, guard validation, suite placement, test-first and accept
 - `connector-kit` — The connector authoring toolkit ships a conformance suite — discovery returns valid schemas, an opened table yields a finite stream, a position round-trips — plus recorded-HTTP fixture replay and property tests over position monotonicity.
 - `test-first` — A change altering Rust source under `crates/` or `tools/` adds or alters a test under a package's `tests/` that fails against the base commit's source; a change without one raises `TestNotFirst`.
   *A-assurance*
-- `test-first-scope` — The test-first stage builds each changed test file's target against the base source with every feature enabled, then runs exactly the tests under that file's top-level module; a target failing to compile there counts as failing.
+- `test-first-scope` — For each package held by {{assurance.gate.test-first-parts}}, the test-first stage builds each changed test file's target against the base source with every feature enabled, then runs its top-level module; a target failing to compile there counts as failing.
 - `comparison-base` — Test-first resolves the supplied comparison revision to one commit and uses that commit for source selection, changed-test selection and base replay; each report records that commit and the tested head.
   *A-assurance*
 - `merge-source` — Test-first includes source introduced by merge resolutions; refactor exemptions apply only to source attributable to exempt commits and preserve obligations from behavior changes elsewhere in the comparison.

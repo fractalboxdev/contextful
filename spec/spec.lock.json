@@ -22808,7 +22808,7 @@
       "operation": "test",
       "subject": "test-first-scope",
       "kind": "behavior",
-      "statement": "The test-first stage builds each changed test file's target against the base source with every feature enabled, then runs exactly the tests under that file's top-level module; a target failing to compile there counts as failing.",
+      "statement": "For each package held by {{assurance.gate.test-first-parts}}, the test-first stage builds each changed test file's target against the base source with every feature enabled, then runs its top-level module; a target failing to compile there counts as failing.",
       "why": "",
       "file": "spec/81-engineering.md",
       "line": 91
@@ -26212,6 +26212,10 @@
     [
       "assurance.structure-tree.mirror-exemption",
       "assurance.structure-tree.duplicated-capability"
+    ],
+    [
+      "assurance.test.test-first-scope",
+      "assurance.gate.test-first-parts"
     ],
     [
       "assurance.test.base-evidence",
