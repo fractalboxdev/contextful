@@ -5,7 +5,7 @@ use crate::error::IoPath;
 use crate::erasure_frontier::{relative_path, Certificate, Frontier, RetiredDirectory, TableReplacement, CERTIFICATE_FILE, FRONTIER_FILE};
 use arrow_array::{BooleanArray, RecordBatch};
 use arrow_select::{concat::concat_batches, filter::filter_record_batch};
-use contextful_core::disclosure::erase::{select_keys, select_subject, ErasureError, RetainedRows};
+use contextful_core::disclosure::erase::{column_key_set, select_column_keys, select_keys, select_subject, ErasureError, RetainedRows};
 use contextful_core::ports::{Clock, SigningPort};
 use contextful_core::store::declare::TableDecl;
 use contextful_core::store::lay_out::{SnapshotManifest, MANIFEST_FILE, SNAPSHOTS_DIR};
@@ -24,6 +24,7 @@ use std::{collections::BTreeMap, path::{Path, PathBuf}, sync::Arc};
 pub enum EraseSelector<'a> {
     Subject(&'a str),
     KeySet { subject_hash: &'a str, keys: &'a RetainedRows },
+    ColumnKeySet { subject_hash: &'a str, column: &'a str, keys: &'a [serde_json::Value] },
 }
 
 pub struct EraseRequest<'a> {
@@ -54,6 +55,18 @@ impl SigningPort for ConfiguredSigner {
 
 fn unsupported(reason: &str) -> ContextError { ErasureError::ErasureScopeUnsupported(reason.into()).into() }
 fn incomplete(reason: &str) -> ContextError { ErasureError::ErasureTransactionIncomplete(reason.into()).into() }
+
+fn key_set_hash(subject_hash: &str) -> Result<String> {
+    let digest = subject_hash.strip_prefix("hmac-sha256:").ok_or_else(|| unsupported("a key set has no opaque subject hash"))?;
+    if digest.len() != 64 || !digest.bytes().all(|c| c.is_ascii_digit() || (b'a'..=b'f').contains(&c)) { return Err(unsupported("a key set has an invalid opaque subject hash")); }
+    Ok(subject_hash.to_string())
+}
+
+fn key_set_scope(tables: &[String], keys: &RetainedRows) -> Result<()> {
+    let requested = tables.iter().collect::<std::collections::BTreeSet<_>>();
+    if requested.len() != tables.len() || requested != keys.keys().collect() { return Err(unsupported("the key set disagrees with the requested tables")); }
+    Ok(())
+}
 
 fn files(root: &Path) -> Result<Vec<PathBuf>> {
     fn visit(root: &Path, list: &mut Vec<PathBuf>) -> Result<()> {
@@ -119,11 +132,12 @@ pub fn erase(store: &Store, request: EraseRequest<'_>) -> Result<Erased> {
             EraseSelector::Subject(subject) => (select_subject(request.declarations, &rows, request.tables, subject)?,
                 audit::query_digest(request.audit_key, &format!("contextful.erasure.subject\n{subject}"))),
             EraseSelector::KeySet { subject_hash, keys } => {
-                let digest = subject_hash.strip_prefix("hmac-sha256:").ok_or_else(|| unsupported("a key set has no opaque subject hash"))?;
-                if digest.len() != 64 || !digest.bytes().all(|c| c.is_ascii_digit() || (b'a'..=b'f').contains(&c)) { return Err(unsupported("a key set has an invalid opaque subject hash")); }
-                let requested = request.tables.iter().collect::<std::collections::BTreeSet<_>>();
-                if requested.len() != request.tables.len() || requested != keys.keys().collect() { return Err(unsupported("the key set disagrees with the requested tables")); }
-                (select_keys(request.declarations, &rows, keys)?, (*subject_hash).to_string())
+                key_set_scope(request.tables, keys)?;
+                (select_keys(request.declarations, &rows, keys)?, key_set_hash(subject_hash)?)
+            }
+            EraseSelector::ColumnKeySet { subject_hash, column, keys } => {
+                key_set_scope(request.tables, &column_key_set(request.declarations, column, keys)?)?;
+                (select_column_keys(request.declarations, &rows, column, keys)?, key_set_hash(subject_hash)?)
             }
         };
         let mut nonce = [0; 32]; getrandom::fill(&mut nonce).map_err(|_| incomplete("erasure transaction identity is unavailable"))?;

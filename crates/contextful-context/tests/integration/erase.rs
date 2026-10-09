@@ -932,3 +932,36 @@ fn an_unsigned_structural_frontier_has_no_authority_to_publish_a_replacement() {
     assert!(result.is_err(), "unsigned structural records published a table: {result:?}");
     assert!(result.unwrap_err().to_string().starts_with("ErasureTransactionIncomplete"));
 }
+#[test]
+#[cfg(feature = "read")]
+fn column_erasure_admits_composite_members_through_the_built_surface() {
+    use std::process::Command;
+    let binary = crate::recovery_cli::executable();
+    let directory = tempfile::tempdir().unwrap(); let root = directory.path();
+    let run = |args: &[&str], token: Option<&str>| {
+        let mut command = Command::new(&binary);
+        command.current_dir(root).args(args).env_remove("CONTEXTFUL_TOKEN").env_remove("CONTEXTFUL_ISSUER_PUBKEY").env_remove("CONTEXTFUL_NODE_ID");
+        if let Some(token) = token { command.env("CONTEXTFUL_TOKEN", token); }
+        let output = command.output().unwrap();
+        assert!(output.status.success(), "{}", String::from_utf8_lossy(&output.stderr));
+        String::from_utf8(output.stdout).unwrap().trim().to_string()
+    };
+    run(&["init", "research", "--authoring-posture", "per_request"], None);
+    std::fs::write(root.join("contextful.toml"), "authoring_posture = \"per_request\"\n[[pipeline.tables]]\nname = \"events\"\nprimary_key = [\"trace_id\",\"id\"]\n").unwrap();
+    std::fs::write(root.join(".contextful/issuance.toml"), "default_audience = \"erasure-fixture\"\nmax_lifetime_secs = 3600\n").unwrap();
+    std::fs::write(root.join("rows.jsonl"), "{\"trace_id\":\"erase-trace\",\"id\":\"a\"}\n{\"trace_id\":\"keep-trace\",\"id\":\"b\"}\n").unwrap();
+    run(&["context", "land", "events", "--project", "research", "--rows", "rows.jsonl", "--run-id", "run-1", "--site-id", "fixture"], None);
+    let pins = run(&["token", "keygen", "--out", ".contextful/issuer.seed"], None);
+    let forget = run(&["token", "mint", "--issuer-key", ".contextful/issuer.seed", "--on-behalf-of", "user://fixture", "--agent", "agent://fixture", "--zone", "on-prem:fixture", "--action", "forget", "--table", "*", "--ttl", "3600"], None);
+    let hash = format!("hmac-sha256:{}", "a".repeat(64));
+    std::fs::write(root.join("keys.json"), serde_json::to_vec(&serde_json::json!({"subject_hash":hash,"column":"trace_id","keys":["erase-trace"]})).unwrap()).unwrap();
+    let receipt: serde_json::Value = serde_json::from_str(&run(&["context", "erase", "--project", "research", "--key-set", "keys.json", "--issuer-key", ".contextful/issuer.seed", "--public-key", &pins, "--audience", "erasure-fixture", "--json"], Some(&forget))).unwrap();
+    assert_eq!(receipt["affected_counts"]["events"], 1);
+    assert_eq!(receipt["subject_hash"], hash);
+    let output = Command::new(&binary).current_dir(root)
+        .args(["query", "--project", "research", "--json", "SELECT id FROM events ORDER BY id"])
+        .env("CONTEXTFUL_ISSUER_PUBKEY", &pins).env_remove("CONTEXTFUL_TOKEN").env_remove("CONTEXTFUL_NODE_ID").output().unwrap();
+    assert!(output.status.success(), "{}", String::from_utf8_lossy(&output.stderr));
+    let result: serde_json::Value = serde_json::from_slice(&output.stdout).unwrap();
+    assert_eq!(result["rows"], serde_json::json!([["b"]]));
+}

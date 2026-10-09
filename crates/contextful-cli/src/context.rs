@@ -75,7 +75,7 @@ pub enum ContextCmd {
         subject: Option<String>,
         #[arg(long = "key-set", alias = "keyset-file", conflicts_with = "recover")]
         keyset_file: Option<PathBuf>,
-        #[arg(long, value_delimiter = ',', required_unless_present = "recover", conflicts_with = "recover")]
+        #[arg(long, value_delimiter = ',', required_unless_present_any = ["recover", "keyset_file"], conflicts_with = "recover")]
         tables: Vec<String>,
         /// Explicit configured signing port; verification pins remain independent.
         #[arg(long, required_unless_present = "recover", conflicts_with = "recover")]
@@ -224,20 +224,26 @@ fn run_erasure(args: &StoreArgs, subject: Option<&str>, keyset_file: Option<&Pat
     let located = locate(args.project.as_deref(), args.declaration.clone())?;
     let text = std::fs::read_to_string(&located.declaration)?;
     let declarations = TableDecl::parse_declaration_set(&text, &crate::project::pipeline_files(&located.declaration)?)?;
-    let (authority, _) = admit.admit(args.project.as_deref(), "context erase")?;
-    let names = tables.iter().map(String::as_str).collect::<Vec<_>>();
-    let admitted = ForgetAdmission::admit(&authority, &names)?;
-    let store = crate::project::open_store(&located.project, admit.public_key.as_deref(), admit.keyset.as_deref())?;
-    let signer = std::sync::Arc::new(SeedSigner::resolve(Some(issuer_key))?);
     #[derive(serde::Deserialize)]
     #[serde(deny_unknown_fields)]
-    struct KeyFile { subject_hash: String, keys: Vec<KeyItem> }
+    struct TableKeys { subject_hash: String, keys: Vec<KeyItem> }
+    #[derive(serde::Deserialize)]
+    #[serde(deny_unknown_fields)]
+    struct ColumnKeys { subject_hash: String, column: String, keys: Vec<serde_json::Value> }
+    #[derive(serde::Deserialize)]
+    #[serde(untagged)]
+    enum KeyFile { Tables(TableKeys), Column(ColumnKeys) }
     #[derive(serde::Deserialize)]
     #[serde(deny_unknown_fields)]
     struct KeyItem { table: String, key: Option<serde_json::Value>, keys: Option<serde_json::Map<String, serde_json::Value>> }
     let key_file = keyset_file.map(|path| -> Result<KeyFile> { Ok(serde_json::from_slice(&std::fs::read(path)?)?) }).transpose()?;
     let mut keys = RetainedRows::new();
-    if let Some(file) = &key_file {
+    let mut selected_tables = tables.to_vec();
+    if let Some(KeyFile::Column(file)) = &key_file {
+        if !tables.is_empty() { bail!("ErasureScopeUnsupported: a column key set requires declaration-derived scope"); }
+        selected_tables = contextful_core::disclosure::erase::column_key_set(&declarations, &file.column, &file.keys)?.into_keys().collect();
+    }
+    if let Some(KeyFile::Tables(file)) = &key_file {
         for item in &file.keys {
             let decl = declarations.iter().find(|decl| decl.name == item.table).context("ErasureScopeUnsupported: key selector names an undeclared table")?;
             let key = match (&item.key, &item.keys) {
@@ -254,14 +260,20 @@ fn run_erasure(args: &StoreArgs, subject: Option<&str>, keyset_file: Option<&Pat
     }
     let selector = match (subject, &key_file) {
         (Some(subject), None) => EraseSelector::Subject(subject),
-        (None, Some(file)) => EraseSelector::KeySet { subject_hash: &file.subject_hash, keys: &keys },
+        (None, Some(KeyFile::Tables(file))) => EraseSelector::KeySet { subject_hash: &file.subject_hash, keys: &keys },
+        (None, Some(KeyFile::Column(file))) => EraseSelector::ColumnKeySet { subject_hash: &file.subject_hash, column: &file.column, keys: &file.keys },
         _ => bail!("ErasureScopeUnsupported: select one subject or key set"),
     };
+    let (authority, _) = admit.admit(args.project.as_deref(), "context erase")?;
+    let names = declarations.iter().map(|decl| decl.name.as_str()).collect::<Vec<_>>();
+    let admitted = ForgetAdmission::admit(&authority, &names)?;
+    let store = crate::project::open_store(&located.project, admit.public_key.as_deref(), admit.keyset.as_deref())?;
+    let signer = std::sync::Arc::new(SeedSigner::resolve(Some(issuer_key))?);
     let clock = crate::clock::SystemClock;
     let boundary = erasure_boundary(&located.project, admit);
     let audit_key = contextful_context::project::audit_key(&store, &located.project)?;
     let audit_dir = located.project.audit_dir();
-    let erased = erase(&store, EraseRequest { declarations: &declarations, tables, selector, admission: &admitted,
+    let erased = erase(&store, EraseRequest { declarations: &declarations, tables: &selected_tables, selector, admission: &admitted,
         signer: Some(signer), audit_dir: &audit_dir, audit_key: &audit_key, boundary: &boundary, clock: &clock })?;
     let receipt = serde_json::json!({ "transaction_id": erased.transaction_id, "subject_hash": erased.subject_hash,
         "affected_counts": erased.affected_counts, "physical_collection": "complete" });

@@ -214,6 +214,37 @@ fn checked(tables: Vec<TableDecl>) -> Result<Vec<TableDecl>, crate::disclosure::
 }
 
 impl TableDecl {
+    /// Explicit row-column identities, excluding descriptive metadata and injected defaults.
+    pub fn declared_column_names(&self) -> BTreeSet<&str> {
+        let mut names = BTreeSet::new();
+        if let Some(columns) = &self.columns { names.extend(columns.keys().map(String::as_str)); }
+        for columns in [&self.primary_key, &self.cluster_by, &self.partition_by].into_iter().flatten() {
+            names.extend(columns.iter().map(String::as_str));
+        }
+        for column in [&self.order_by, &self.subject_id, &self.erasure_key, &self.content_hash_column].into_iter().flatten() {
+            names.insert(column.as_str());
+        }
+        if let Some(time) = &self.valid_time {
+            names.insert(time.from.as_str());
+            if let Some(to) = &time.to { names.insert(to.as_str()); }
+        }
+        if let Some(retention) = &self.retain_rows { names.insert(retention.column.as_str()); }
+        for index in self.indexes.iter().flatten() {
+            names.insert(index.column.as_str());
+            if let Some(id) = &index.id_column { names.insert(id.as_str()); }
+        }
+        names
+    }
+
+    /// Canonical column identities, including incoming references owned by their source table.
+    pub fn declared_column_map(declarations: &[Self]) -> BTreeMap<&str, BTreeSet<&str>> {
+        let mut names: BTreeMap<_, _> = declarations.iter().map(|table| (table.name.as_str(), table.declared_column_names())).collect();
+        for reference in declarations.iter().flat_map(|table| table.referenced_by.iter().flatten()) {
+            if let Some(columns) = names.get_mut(reference.table.as_str()) { columns.insert(reference.column.as_str()); }
+        }
+        names
+    }
+
     /// A table with every key unset.
     pub fn named(name: impl Into<String>) -> TableDecl {
         TableDecl { name: name.into(), ..TableDecl::default() }
