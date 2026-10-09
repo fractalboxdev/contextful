@@ -248,3 +248,15 @@ fn a_signing_source_refuses_a_cleartext_endpoint_off_loopback() {
     assert!(ObjectConfig::parse(&loopback).is_ok());
     assert!(ObjectConfig::parse(&json!({"bucket": "lake", "key": "k.jsonl", "endpoint": "http://objects.vendor.example"})).is_ok());
 }
+
+
+#[test]
+fn an_object_source_explicitly_reads_one_json_object() {
+    let bucket = MemBucket::with(&[("snapshot.json", br#"{"data":{"items":[]},"next":"ignored"}"#)]);
+    let mut selected = source(json!({"bucket":"b","key":"snapshot.json","format":"json-object","records":"/data"}), bucket.clone());
+    assert_eq!(read(&mut selected, None).0, vec![json!({"items":[]})]);
+    let mut root = source(json!({"bucket":"b","key":"snapshot.json","format":"json-object"}), bucket.clone());
+    assert_eq!(read(&mut root, None).0, vec![json!({"data":{"items":[]},"next":"ignored"})]);
+    let mut inferred = source(json!({"bucket":"b","key":"snapshot.json"}), bucket);
+    assert!(inferred.pull(&request(None), &Never).unwrap_err().message.contains("PipelineUnreadableInput"));
+}

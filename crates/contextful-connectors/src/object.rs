@@ -190,7 +190,7 @@ impl ObjectConfig {
             }
         }
         let records = text(cfg, "records")?;
-        if records.is_some() && format != Format::Json {
+        if records.is_some() && !matches!(format, Format::Json | Format::JsonObject) {
             return Err(ConnectorError::ConnectorFormatKeyRejected(format!("`records` reads a JSON body and the source's format is `{}`", format.name())).into());
         }
         let compression = match text(cfg, "compression")?.as_deref() {
