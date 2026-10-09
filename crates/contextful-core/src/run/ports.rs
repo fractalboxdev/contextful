@@ -31,7 +31,7 @@ pub struct PullRequest {
 }
 
 /// One pull, decoded from the bytes the source handed over.
-#[derive(Debug, Clone, PartialEq, Deserialize, Serialize)]
+#[derive(Debug, Clone, Default, PartialEq, Deserialize, Serialize)]
 #[serde(deny_unknown_fields)]
 pub struct Pull {
     #[serde(default)]
