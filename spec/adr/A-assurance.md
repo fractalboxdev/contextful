@@ -2,6 +2,20 @@
 
 **Status:** accepted
 
+## FlareDispatch owns native Windows diagnostics through a dispatch-only transport
+
+Context: Linux containers cannot execute MSVC command-tree or directory durability regressions. Native Windows runners supply both target C toolchains and runtime behavior. Windows diagnostics preserve porting evidence and carry no merge or release verdict.
+Decision: one trusted GitHub workflow accepts FlareDispatch dispatch inputs. FlareDispatch binds repository/head/base, nonce and command to its admitted request and verifies API job identity, fixed runner labels, observed native target, terminal exit and artifact digests before recording its diagnostic. The executor holds read-only repository permission and no publication credential. Reviewed same-repository workload code shares the runner user; a wrapper records evidence and supplies no hostile-code isolation.
+
+| Option | Lost on | Cost |
+| --- | --- | --- |
+| Flare-governed dispatch-only native transport *(chosen)* | — | Actions dispatch/read/artifact permissions and an authenticated execution backend. |
+| Cloudflare Linux containers alone | Runtime fidelity | Cross-compilation supplies no native Windows execution or MSVC linker. |
+| Independent PR-triggered Actions orchestration | One admission and publisher | Two trigger and verdict authorities can disagree about the tested head. |
+
+Criteria: native runtime fidelity decides the transport; one admission authority, immutable provenance and finite execution remain constraints.
+Consequences: a missing or mismatched native receipt records a failed diagnostic and blocks no merge or release. The narrow workflow invariant permits this executor alone; broad triggers and a second workflow fail the schema stage. A reviewed executor reaches the default branch before its dispatch is admitted.
+
 ## Assurance claims carry their qualifiers, and the proof gate audits assumptions
 
 `assurance.scope-claim` states named authorization decisions, named specifications and stated translation and runtime assumptions; a wider claim raises `ClaimBeyondNamedDecisions`. `assurance.prove` publishes each theorem with the statement it leaves open; the composition theorem covers the one order the engine applies. `assurance.audit-assumptions` matches a hand-maintained inventory against each constant's transitive assumption footprint over a two-entry allowlist. `assurance.recheck` rebuilds from pinned source, credential-free, in a zero-dependency package.
