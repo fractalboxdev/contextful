@@ -2495,3 +2495,28 @@ fn enabling_incremental_over_a_held_position_starts_from_none_once() {
     let rows = |id: &str| history["runs"].as_array().unwrap().iter().find(|r| r["run_id"] == id).unwrap()["rows"].as_u64().unwrap();
     assert_eq!((rows("r1"), rows("r2"), rows("r3")), (2, 2, 2), "the current window re-lands once");
 }
+
+/// The boundary re-land is idempotent on a table declaring a key; on a keyless table the repeats accumulate in its
+/// union view.
+// spec: run.advance.declared-key-required@93c712e7
+#[test]
+fn the_boundary_re_land_dedups_under_a_key_and_accumulates_without_one() {
+    // Every poll answers the same boundary row at `at = 5`.
+    let vendor = Vendor::start(|_| (200, r#"[{"id":"a","at":5}]"#.into()));
+    let declared = |id: &str, table: &str| format!(
+        "[[pipeline]]\nid = \"{id}\"\nincremental = \"at\"\ntables = [{table}]\n[pipeline.source]\nname = \"http\"\nconfig = {{ endpoint = \"{}\", since_param = \"since\" }}\n",
+        vendor.url("/v1/items")
+    );
+    let dir = project(&format!("{}{}", declared("keyed", "{ name = \"items\", primary_key = [\"id\"] }"), declared("bare", "\"items\"")));
+    for n in 0..3 {
+        ok(&fire(dir.path(), "keyed", &format!("k{n}"), &format!("2030-01-01T00:0{n}:00Z")));
+        ok(&fire(dir.path(), "bare", &format!("b{n}"), &format!("2030-01-01T00:0{n}:30Z")));
+    }
+    let count = |table: &str| -> serde_json::Value {
+        let out: serde_json::Value = serde_json::from_str(&ok(&cf(dir.path(), &["query", "--json", "--project", "research", &format!("SELECT count(*) FROM \"{table}\"")]))).unwrap();
+        out["rows"][0][0].clone()
+    };
+    assert_eq!(count("keyed_items"), "1", "a keyed table holds the boundary row once");
+    assert_eq!(count("bare_items"), "3", "a keyless table accumulates each re-land");
+    assert!(vendor.targets().iter().filter(|t| t.ends_with("since=5")).count() >= 4, "every later poll re-reads the boundary instant");
+}

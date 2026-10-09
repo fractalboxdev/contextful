@@ -963,3 +963,49 @@ fn a_rate_limited_source_paces_its_own_run_and_no_other() {
     assert!(paced_took >= std::time::Duration::from_secs(2), "the paced run honored both hints: {paced_took:?}");
     assert_eq!(calls, 3 + 2);
 }
+
+/// A source answering one page whose cursor is `cursor`, recording the position each pull asked from.
+struct Opaque {
+    cursor: Value,
+    asked: Arc<Mutex<Vec<Option<Value>>>>,
+}
+
+impl Source for Opaque {
+    fn pull(&mut self, request: &PullRequest, _: &dyn Cancellation) -> Result<Vec<u8>, Failure> {
+        self.asked.lock().unwrap().push(request.position.clone());
+        Ok(serde_json::to_vec(&json!({ "rows": [{ "id": "r" }], "cursor": self.cursor, "more": false })).unwrap())
+    }
+}
+
+/// A position is opaque bytes the connector owns, and its kind is a manifest fact the engine reads. Each table carries
+/// its own position.
+// spec: run.advance.cursor-bytes@888988bb
+#[test]
+fn a_position_round_trips_untouched_and_each_table_keeps_its_own() {
+    let for_table = |table: &str, cursor: &str| {
+        contextful_core::run::plan::Plan::compile(
+            format!("pipeline = \"feed\"\ntable = \"{table}\"\n[connector]\nid = \"vendor\"\nversion = \"1.0.0\"\ncommand = [\"vendor\"]\n{cursor}").as_bytes(),
+        )
+        .unwrap()
+    };
+    // The kind is read off the manifest; undeclared, it is an opaque token.
+    let filings = for_table("filings", "");
+    assert_eq!(filings.cursor_kind, contextful_core::run::advance::CursorKind::OpaqueToken);
+    assert_eq!(for_table("filings", "[cursor]\nkind = \"snapshot-id\"\n").cursor_kind, contextful_core::run::advance::CursorKind::SnapshotId);
+
+    let rig = Rig::new();
+    let token = json!({ "v": 3, "continuation": "Zm9vYmFy+/=", "nested": [null, 1.5, { "deep": "\u{0}tab\t" }] });
+    let asked = Arc::new(Mutex::new(Vec::new()));
+    let mut source = Opaque { cursor: token.clone(), asked: asked.clone() };
+    rig.run(&filings, "1.0.0", "run-1", &mut source, &mut Sink::default()).unwrap();
+    rig.run(&filings, "1.0.0", "run-2", &mut source, &mut Sink::default()).unwrap();
+    assert_eq!(*asked.lock().unwrap(), [None, Some(token.clone())], "the second run asks from the token, byte for byte");
+
+    // Another table of the pipeline starts from its own position.
+    let other_asked = Arc::new(Mutex::new(Vec::new()));
+    let mut other = Opaque { cursor: json!("other-1"), asked: other_asked.clone() };
+    rig.run(&for_table("returns", ""), "1.0.0", "run-3", &mut other, &mut Sink::default()).unwrap();
+    assert_eq!(*other_asked.lock().unwrap(), [None]);
+    assert_eq!(rig.catalog().cursor("feed", "filings").unwrap().position, Some(token));
+    assert_eq!(rig.catalog().cursor("feed", "returns").unwrap().position, Some(json!("other-1")));
+}
