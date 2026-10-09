@@ -123,29 +123,20 @@
 "run.journal.prepared-replay"       = { test = "crates/contextful-cli/tests/integration/run.rs::removal_records_the_prepared_inline_and_blob_batch_and_resumes_without_repulling" }
 "run.own.execution-owner"           = { test = "crates/contextful-engine/tests/integration/execution.rs::every_owner_is_keyed_on_its_scope_and_a_table_owner_keeps_its_stored_row" }
 "run.cancel.two-grains"             = { test = "crates/contextful-core/tests/integration/run/cancel.rs::only_an_in_flight_row_accepts_a_mark_and_scopes_read_by_grain" }
-"topology.compose.read-path"          = { item = "contextful_ci::topology::READ_PATH" }
-"topology.compose.run-path"           = { item = "contextful_ci::topology::RUN_PATH" }
 "topology.compose.three-crossings"    = { test = "tools/ci/tests/integration/topology.rs::the_crate_graph_stage_refuses_an_undeclared_crossing" }
 "topology.compose.crossing-version"   = { item = "contextful_wasm::host::WORLD" }
 "topology.compose.run-path-droppable" = { test = "tools/ci/tests/integration/topology.rs::this_repository_edge_profile_serves_reads_and_links_no_component_host" }
 "topology.compose.cli-binary"         = { test = "tools/ci/tests/integration/topology.rs::one_workspace_compiles_every_package_and_ships_one_binary" }
 "topology.compose.mediation"          = { test = "crates/contextful-context/tests/integration/read/enforce.rs::every_row_path_takes_the_session" }
-"topology.compose.enforcement-span"   = { item = "contextful_policy::enforce" }
-"topology.compose.semantic-layer"     = { item = "contextful_policy::verify::Admission" }
-"topology.compose.one-tree"           = { item = "contextful_ci::topology::PROFILES" }
 "topology.compose.connector-pillar"   = { test = "crates/contextful-engine/tests/integration/runner.rs::a_component_connector_runs_on_an_engine_wiring_its_world" }
 "topology.compose.open-store"         = { test = "crates/contextful-context/tests/integration/read/register.rs::the_embedded_engine_reads_the_parquet_an_external_reader_opens" }
 "topology.compose.inference-egress"   = { test = "crates/contextful-outbound/tests/integration/infer.rs::a_completion_posts_the_conversation_and_returns_the_content" }
 "topology.compose.local-first"        = { test = "tools/ci/tests/integration/topology.rs::a_sync_crate_linking_an_http_stack_without_its_s3_feature_is_refused" }
 "topology.compose.memory-substrate"   = { test = "crates/contextful-context/tests/integration/read/respond.rs::describe_marks_declared_memory_tables_regardless_of_name" }
 "topology.compose.two-spines"         = { test = "crates/contextful-context/tests/integration/read/register.rs::a_tables_request_ledger_reads_as_its_child_relation" }
-"topology.coordinate.primitive"            = { item = "contextful_core::coordinate::Catalog" }
 "topology.coordinate.inventory"            = { item = "contextful_core::coordinate::Catalog" }
 "topology.coordinate.cadence-fallback"     = { test = "crates/contextful-engine/tests/integration/scheduler.rs::a_held_cadence_lease_dispatches_nothing" }
-"topology.coordinate.catalog-port"         = { item = "contextful_core::coordinate::Catalog" }
 "topology.coordinate.weak-backend"         = { test = "crates/contextful-core/tests/integration/surface/control.rs::a_conditional_write_owner_refuses_a_network_filesystem" }
-"topology.coordinate.cluster-availability" = { item = "contextful_core::coordinate::Catalog" }
-"topology.coordinate.air-gap"              = { item = "contextful_engine::catalog::LocalCatalog" }
 
 # The floor is machine-maintained: `contextful-spec pins` sets each contract's entry to
 # its live performed count, and a live count below its floor raises SpecCoverageRegression.

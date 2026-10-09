@@ -980,3 +980,161 @@ fn this_repository_edge_profile_serves_reads_and_links_no_component_host() {
         assert!(!edge.iter().any(|n| n == absent), "`contextful-edge` links `{absent}`");
     }
 }
+
+/// The workspace packages `package` reaches through normal dependencies, itself included.
+fn reaches(package: &str) -> Vec<String> {
+    let o = Command::new("cargo")
+        .args(["tree", "-q", "--locked", "-p", package, "-e", "normal", "--prefix", "none", "--no-dedupe"])
+        .current_dir(repo_root())
+        .output()
+        .unwrap();
+    assert!(o.status.success(), "{}", stderr(&o));
+    let mut names: Vec<String> = stdout(&o).lines().filter_map(|l| l.split_whitespace().next()).map(str::to_string).collect();
+    names.sort_unstable();
+    names.dedup();
+    names
+}
+
+fn holds(path: &str) -> bool {
+    repo_root().join("crates").join(path).exists()
+}
+
+/// The read path holds data at rest and its retrieval: the context store, the catalog, query and ranking, memory
+/// queries, bucket sync, and the capability check a record passes before it lands.
+// spec: topology.compose.read-path@f98df676
+#[test]
+fn the_read_replica_links_the_store_catalog_query_ranking_and_sync() {
+    let edge = profile_graph("contextful-edge");
+    for package in ["contextful-context", "contextful-sync", "contextful-agent", "contextful-policy", "duckdb"] {
+        assert!(edge.iter().any(|n| n == package), "the read path links no `{package}`");
+    }
+    for (part, path) in [
+        ("context store", "contextful-context/src/store.rs"),
+        ("catalog", "contextful-context/src/catalog.rs"),
+        ("query face", "contextful-context/src/read"),
+        ("full-text ranking", "contextful-context/src/fulltext"),
+        ("vector ranking", "contextful-context/src/vector"),
+        ("memory queries", "contextful-memory/src/claims.rs"),
+        ("landing", "contextful-context/src/land.rs"),
+    ] {
+        assert!(holds(path), "no {part} at crates/{path}");
+    }
+    let verify = std::fs::read_to_string(repo_root().join("crates/contextful-policy/src/verify.rs")).unwrap();
+    assert!(verify.contains("pub fn require_write"), "no capability check a record passes before it lands");
+}
+
+/// The run path holds execution: the journal, the scheduler, cursor commit, awakeables, and every connector invoked
+/// as a journaled step. It owns no store and no ranking.
+// spec: topology.compose.run-path@5bcd0337
+#[test]
+fn the_execution_core_holds_the_journal_scheduler_and_awakeables_and_no_store() {
+    for (part, path) in [
+        ("journal", "contextful-engine/src/journal.rs"),
+        ("scheduler", "contextful-engine/src/scheduler.rs"),
+        ("cursor commit", "contextful-engine/src/execution.rs"),
+        ("awakeables", "contextful-engine/src/awake.rs"),
+    ] {
+        assert!(holds(path), "no {part} at crates/{path}");
+    }
+    let engine = reaches("contextful-engine");
+    for store in ["contextful-context", "contextful-sync", "duckdb", "parquet", "arrow", "tantivy", "contextful-memory"] {
+        assert!(!engine.iter().any(|n| n == store), "the execution core reaches `{store}`");
+    }
+    let runner = std::fs::read_to_string(repo_root().join("crates/contextful-engine/src/runner.rs")).unwrap();
+    assert!(runner.contains("step_keyed"), "a connector pull is no journaled step");
+}
+
+/// The enforcement stack spans both halves: capability allowlists and the journal on the run path; the statement
+/// guard, visibility semi-join, row and column restriction, masking and the audit chain on the read path.
+// spec: topology.compose.enforcement-span@9f5f59fc
+#[test]
+fn the_enforcement_stack_has_a_run_path_half_and_a_read_path_half() {
+    let connectors = reaches("contextful-connectors");
+    assert!(connectors.iter().any(|n| n == "contextful-outbound"), "connectors reach no mediated client and its allowlist");
+    assert!(holds("contextful-outbound/src/egress.rs"));
+    assert!(holds("contextful-engine/src/journal.rs"));
+    let context = reaches("contextful-context");
+    assert!(context.iter().any(|n| n == "contextful-policy"), "the read path reaches no enforcement");
+    for (part, path) in [
+        ("statement guard and session", "contextful-policy/src/enforce/session.rs"),
+        ("row and column restriction", "contextful-policy/src/enforce/scope.rs"),
+        ("visibility predicates", "contextful-policy/src/enforce/predicate.rs"),
+        ("masking", "contextful-policy/src/enforce/mask.rs"),
+        ("audit chain", "contextful-policy/src/audit.rs"),
+    ] {
+        assert!(holds(path), "no {part} at crates/{path}");
+    }
+}
+
+/// Enforcement interprets no content. Retrieval, memory synthesis, the operator console and inference placement
+/// interpret content and reach enforcement through the three crossings alone.
+// spec: topology.compose.semantic-layer@54d9907a
+#[test]
+fn the_enforcement_package_reaches_no_retrieval_memory_or_inference_package() {
+    let policy = reaches("contextful-policy");
+    for content in ["contextful-context", "contextful-memory", "contextful-outbound", "contextful-agent", "contextful-engine", "duckdb", "tantivy"] {
+        assert!(!policy.iter().any(|n| n == content), "enforcement reaches `{content}`");
+    }
+}
+
+/// Laptop through cluster runs from one source tree. A single-node or edge deployment runs no external queue, cache
+/// or coordination process; a multi-node deployment adds one shared database.
+// spec: topology.compose.one-tree@dbc1fd99
+/// Coordination rests on one property: a linearizable conditional write. No component depends on a stronger one, and
+/// the tree ships no consensus implementation or external coordination service.
+// spec: topology.coordinate.primitive@c29954df
+/// Cluster availability is the shared database's availability. The engine adds no replication and no failover
+/// protocol between daemons.
+// spec: topology.coordinate.cluster-availability@3374e11d
+/// Single-node and edge deployments reach no process outside themselves for coordination, and run air-gapped with
+/// only their sources reachable.
+// spec: topology.coordinate.air-gap@a525ed4e
+#[test]
+fn no_profile_links_a_queue_cache_consensus_or_coordination_client() {
+    const OUTSIDE: [&str; 14] = [
+        "redis", "lapin", "rdkafka", "async-nats", "nats", "memcache", "etcd-client", "zookeeper", "consul", "raft", "openraft", "tikv-client", "hazelcast", "rumqttc",
+    ];
+    for profile in ["contextful-edge", "contextful-full", "contextful-control"] {
+        let graph = profile_graph(profile);
+        for client in OUTSIDE {
+            assert!(!graph.iter().any(|n| n == client), "`{profile}` links `{client}`");
+        }
+    }
+}
+
+/// Every catalog backend is reached through the `Catalog` port, and code above the port names no backend. Swapping a
+/// backend is a wiring change in `contextful-cli`.
+// spec: topology.coordinate.catalog-port@4b1eafe6
+#[test]
+fn only_the_binary_wires_a_catalog_backend_and_everything_else_names_the_port() {
+    let root = repo_root().join("crates");
+    let defining = ["contextful-engine/src/catalog.rs", "contextful-engine/src/lib.rs", "contextful-sqlite/src/machine.rs", "contextful-sqlite/src/lib.rs"];
+    let mut named = Vec::new();
+    for entry in std::fs::read_dir(&root).unwrap().flatten() {
+        let src = entry.path().join("src");
+        let mut stack = vec![src];
+        while let Some(dir) = stack.pop() {
+            for f in std::fs::read_dir(&dir).into_iter().flatten().flatten() {
+                let p = f.path();
+                if p.is_dir() {
+                    stack.push(p);
+                    continue;
+                }
+                if p.extension().is_none_or(|x| x != "rs") {
+                    continue;
+                }
+                let rel = p.strip_prefix(&root).unwrap().to_string_lossy().replace('\\', "/");
+                if rel.starts_with("contextful-cli/") || defining.contains(&rel.as_str()) {
+                    continue;
+                }
+                let text = std::fs::read_to_string(&p).unwrap_or_default();
+                if text.contains("LocalCatalog") || text.contains("MachineCatalog") {
+                    named.push(rel);
+                }
+            }
+        }
+    }
+    assert!(named.is_empty(), "code above the port names a backend: {named:?}");
+    let port = std::fs::read_to_string(root.join("contextful-core/src/coordinate.rs")).unwrap();
+    assert!(port.contains("pub trait Catalog"), "no `Catalog` port");
+}

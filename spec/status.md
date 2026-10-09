@@ -11,11 +11,11 @@ An unpinned clause is `committed`; a pinned one is `performed` when its Rust, Le
 | `corpus` | 1 | 10 | 79 | 37 | 7 | 0 | 43 | 0 | 43 |
 | `disclosure` | 3 | 16 | 156 | 68 | 13 | 3 | 63 | 0 | 63 |
 | `read` | 2 | 16 | 212 | 35 | 22 | 9 | 184 | 0 | 184 |
-| `run` | 3 | 26 | 415 | 103 | 39 | 28 | 326 | 0 | 326 |
+| `run` | 3 | 26 | 415 | 103 | 39 | 28 | 334 | 0 | 334 |
 | `store` | 1 | 17 | 254 | 59 | 13 | 19 | 217 | 0 | 217 |
 | `surface` | 2 | 20 | 134 | 59 | 22 | 0 | 94 | 0 | 94 |
 | `topology` | 1 | 6 | 70 | 24 | 5 | 5 | 61 | 0 | 61 |
-| **total** | 19 | 156 | 2209 | 611 | 193 | 103 | 1584 | 0 | |
+| **total** | 19 | 156 | 2209 | 611 | 193 | 103 | 1592 | 0 | |
 
 Decision records: 18.
 
@@ -28,7 +28,7 @@ A milestone reads `closed` when its acceptance test computes `passing` and every
 | 0 — The test-first gate | 2 | 21 | 6 | passing | open |
 | 1 — The authority core | 14 | 239 | 190 | passing | closed |
 | 2 — The store | 9 | 175 | 143 | passing | closed |
-| 3 — The run path | 11 | 216 | 187 | passing | closed |
+| 3 — The run path | 11 | 216 | 195 | passing | closed |
 | 4 — Ingest | 25 | 519 | 345 | passing | open |
 | 5 — The read face under enforcement | 17 | 285 | 219 | passing | open |
 | 6 — Sync and replicas | 8 | 79 | 74 | passing | closed |
@@ -935,12 +935,16 @@ Unscheduled operations: 11.
 | `read.synthesize.row-cap` | `crates/contextful-memory/tests/integration/synthesize.rs::a_row_over_the_cap_reaches_the_model_truncated_and_counted` | performed |
 | `run.advance.commit-with-rows` | `crates/contextful-engine/tests/integration/runner.rs::the_position_commits_with_the_rows_and_the_catalog_caches_it` | performed |
 | `run.advance.concurrency-by-kind` | `crates/contextful-engine/tests/integration/runner.rs::a_token_cursor_moves_under_one_writer_and_a_watermark_never_rewinds` | performed |
+| `run.advance.cursor-bytes` | `crates/contextful-engine/tests/integration/runner.rs::a_position_round_trips_untouched_and_each_table_keeps_its_own` | performed |
 | `run.advance.cursor-kind` | `crates/contextful-core/tests/integration/run/advance.rs::three_kinds_and_an_undeclared_one_reads_opaque_token` | performed |
+| `run.advance.declared-key-required` | `crates/contextful-cli/tests/integration/pipeline.rs::the_boundary_re_land_dedups_under_a_key_and_accumulates_without_one` | performed |
+| `run.advance.engine-owned` | `spec/pins.toml` | performed |
 | `run.advance.field-rename` | `crates/contextful-core/tests/integration/run/advance.rs::a_position_measured_on_another_field_is_refused` | performed |
 | `run.advance.frontier` | `crates/contextful-core/tests/integration/run/advance.rs::the_position_moves_forward_or_holds` | performed |
 | `run.advance.inclusive-boundary` | `crates/contextful-engine/tests/integration/runner.rs::every_poll_re_lands_the_boundary_instant` | performed |
 | `run.advance.skip-unchanged` | `crates/contextful-cli/tests/integration/pipeline.rs::an_unchanged_snapshot_digest_lands_nothing_and_holds_the_position` | performed |
 | `run.advance.snapshot-completion` | `crates/contextful-cli/tests/integration/empty_replace.rs::a_complete_empty_snapshot_replaces_but_a_skip_and_failed_pull_do_not` | performed |
+| `run.advance.turning-incremental-on` | `crates/contextful-cli/tests/integration/pipeline.rs::enabling_incremental_over_a_held_position_starts_from_none_once` | performed |
 | `run.advance.unorderable-position` | `crates/contextful-core/tests/integration/run/advance.rs::an_unorderable_clock_value_refuses_the_pull` | performed |
 | `run.advance.watermark-shape` | `crates/contextful-core/tests/integration/run/advance.rs::a_watermark_names_its_field` | performed |
 | `run.advance.zero-row-commit` | `crates/contextful-cli/tests/integration/empty_replace.rs::a_complete_empty_snapshot_replaces_but_a_skip_and_failed_pull_do_not` | performed |
@@ -960,6 +964,7 @@ Unscheduled operations: 11.
 | `run.cancel.engine-keeper` | `crates/contextful-engine/tests/integration/execution.rs::one_keeper_thread_renews_and_feeds_every_open_execution_of_an_engine` | performed |
 | `run.cancel.host-grain` | `crates/contextful-engine/tests/integration/execution.rs::a_pipeline_stop_on_a_host_run_halts_only_its_own_scope` | performed |
 | `run.cancel.keeper-panic` | `crates/contextful-engine/tests/integration/cancel.rs::a_panicking_keeper_job_leaves_the_keeper_running` | performed |
+| `run.cancel.land-path-uncut` | `crates/contextful-engine/tests/integration/cancel.rs::a_stop_arriving_once_the_last_batch_is_home_lets_it_land_and_records_the_stop` | performed |
 | `run.cancel.not-in-flight` | `crates/contextful-cli/tests/integration/serve.rs::a_stop_on_a_finished_run_answers_409_and_exits_non_zero` | performed |
 | `run.cancel.poll-interval` | `crates/contextful-engine/tests/integration/cancel.rs::the_token_reads_the_catalog_before_the_first_await_and_every_500_ms` | performed |
 | `run.cancel.re-mark` | `crates/contextful-core/tests/integration/run/cancel.rs::a_second_mark_overwrites_the_first` | performed |
@@ -1066,6 +1071,7 @@ Unscheduled operations: 11.
 | `run.journal.body-projection` | `crates/contextful-engine/tests/integration/drive.rs::protected_body_effects_record_rewritten_results_and_resume_without_another_paid_call` | performed |
 | `run.journal.claim-takeover` | `crates/contextful-engine/tests/integration/journal.rs::a_claim_whose_holder_lapsed_is_taken_over` | performed |
 | `run.journal.collection` | `crates/contextful-engine/tests/integration/runner.rs::retirement_collects_the_executions_journal` | performed |
+| `run.journal.effect-boundary` | `crates/contextful-engine/tests/integration/execution.rs::a_body_resumed_across_a_step_and_an_awakeable_commits_what_an_uninterrupted_one_commits` | performed |
 | `run.journal.entry-key` | `crates/contextful-engine/tests/integration/journal.rs::a_racing_caller_waits_for_the_first_callers_value` | performed |
 | `run.journal.escape-hatch` | `crates/contextful-engine/tests/integration/execution.rs::an_unsafe_read_reruns_on_every_replay_and_each_hatch_states_its_argument` | performed |
 | `run.journal.idempotency-key` | `crates/contextful-core/tests/integration/run/journal.rs::the_idempotency_key_derives_from_the_entry_key_alone` | performed |
@@ -1209,6 +1215,8 @@ Unscheduled operations: 11.
 | `run.retry.default-policy` | `crates/contextful-core/tests/integration/run/retry.rs::the_default_schedule_doubles_from_100_ms_over_5_attempts` | performed |
 | `run.retry.deterministic-verdict` | `crates/contextful-core/tests/integration/run/retry.rs::a_deterministic_refusal_is_terminal_and_spends_no_attempt` | performed |
 | `run.retry.failure-taxonomy` | `crates/contextful-core/tests/integration/run/retry.rs::ten_tags_cross_every_port_and_the_decision_reads_the_tag_alone` | performed |
+| `run.retry.one-layer` | `crates/contextful-wasm/tests/integration/meter.rs::the_adapter_the_mint_and_the_meter_each_return_their_failure_once` | performed |
+| `run.retry.pressure-is-local` | `crates/contextful-engine/tests/integration/runner.rs::a_rate_limited_source_paces_its_own_run_and_no_other` | performed |
 | `run.retry.retry-after` | `crates/contextful-core/tests/integration/run/retry.rs::retry_after_supersedes_the_delay_up_to_300_s` | performed |
 | `run.retry.retryable-classes` | `crates/contextful-core/tests/integration/run/retry.rs::only_transient_and_rate_limited_retry` | performed |
 | `run.retry.schedule` | `crates/contextful-core/tests/integration/run/retry.rs::a_schedule_carries_backoff_attempts_clamp_jitter_and_retry_on` | performed |
@@ -1573,36 +1581,36 @@ Unscheduled operations: 11.
 | `topology.compose.cli-binary` | `spec/pins.toml` | performed |
 | `topology.compose.connector-pillar` | `spec/pins.toml` | performed |
 | `topology.compose.crossing-version` | `spec/pins.toml` | performed |
-| `topology.compose.enforcement-span` | `spec/pins.toml` | performed |
+| `topology.compose.enforcement-span` | `tools/ci/tests/integration/topology.rs::the_enforcement_stack_has_a_run_path_half_and_a_read_path_half` | performed |
 | `topology.compose.inference-egress` | `spec/pins.toml` | performed |
 | `topology.compose.local-first` | `spec/pins.toml` | performed |
 | `topology.compose.mediation` | `spec/pins.toml` | performed |
 | `topology.compose.memory-substrate` | `spec/pins.toml` | performed |
-| `topology.compose.one-tree` | `spec/pins.toml` | performed |
+| `topology.compose.one-tree` | `tools/ci/tests/integration/topology.rs::no_profile_links_a_queue_cache_consensus_or_coordination_client` | performed |
 | `topology.compose.open-store` | `spec/pins.toml` | performed |
-| `topology.compose.read-path` | `spec/pins.toml` | performed |
-| `topology.compose.run-path` | `spec/pins.toml` | performed |
+| `topology.compose.read-path` | `tools/ci/tests/integration/topology.rs::the_read_replica_links_the_store_catalog_query_ranking_and_sync` | performed |
+| `topology.compose.run-path` | `tools/ci/tests/integration/topology.rs::the_execution_core_holds_the_journal_scheduler_and_awakeables_and_no_store` | performed |
 | `topology.compose.run-path-droppable` | `spec/pins.toml` | performed |
 | `topology.compose.script-runtime` | `tools/ci/tests/integration/topology.rs::a_crate_linking_a_javascript_runtime_is_refused` | performed |
-| `topology.compose.semantic-layer` | `spec/pins.toml` | performed |
+| `topology.compose.semantic-layer` | `tools/ci/tests/integration/topology.rs::the_enforcement_package_reaches_no_retrieval_memory_or_inference_package` | performed |
 | `topology.compose.three-crossings` | `spec/pins.toml` | performed |
 | `topology.compose.two-spines` | `spec/pins.toml` | performed |
 | `topology.compose.undeclared-crossing` | `tools/ci/tests/integration/topology.rs::a_run_path_crate_reaching_a_read_path_crate_is_refused` | performed |
 | `topology.compose.vendor-sdk` | `tools/ci/tests/integration/topology.rs::a_crate_declaring_a_model_vendor_sdk_is_refused` | performed |
 | `topology.compose.workspace` | `tools/ci/tests/integration/topology.rs::one_workspace_compiles_every_package_and_ships_one_binary` | performed |
-| `topology.coordinate.air-gap` | `spec/pins.toml` | performed |
+| `topology.coordinate.air-gap` | `tools/ci/tests/integration/topology.rs::no_profile_links_a_queue_cache_consensus_or_coordination_client` | performed |
 | `topology.coordinate.cadence-fallback` | `spec/pins.toml` | performed |
 | `topology.coordinate.cadence-lease-renewal` | `crates/contextful-engine/tests/integration/scheduler.rs::the_cadence_lease_renews_every_30_s` | performed |
 | `topology.coordinate.cadence-lease-ttl` | `crates/contextful-engine/tests/integration/coordinate.rs::a_cadence_lease_lives_90_s` | performed |
 | `topology.coordinate.catalog-clock` | `crates/contextful-engine/tests/integration/coordinate.rs::expiry_is_read_on_the_catalogs_clock` | performed |
-| `topology.coordinate.catalog-port` | `spec/pins.toml` | performed |
-| `topology.coordinate.cluster-availability` | `spec/pins.toml` | performed |
+| `topology.coordinate.catalog-port` | `tools/ci/tests/integration/topology.rs::only_the_binary_wires_a_catalog_backend_and_everything_else_names_the_port` | performed |
+| `topology.coordinate.cluster-availability` | `tools/ci/tests/integration/topology.rs::no_profile_links_a_queue_cache_consensus_or_coordination_client` | performed |
 | `topology.coordinate.cursor-cas` | `crates/contextful-engine/tests/integration/coordinate.rs::a_cursor_update_is_predicated_on_the_stored_version` | performed |
 | `topology.coordinate.fence-advances` | `crates/contextful-engine/tests/integration/coordinate.rs::every_acquisition_takes_a_new_fence` | performed |
 | `topology.coordinate.fenced-commit` | `crates/contextful-engine/tests/integration/coordinate.rs::a_commit_carrying_a_superseded_fence_is_refused` | performed |
 | `topology.coordinate.inventory` | `spec/pins.toml` | performed |
 | `topology.coordinate.lease-row` | `crates/contextful-engine/tests/integration/coordinate.rs::a_lease_row_carries_holder_expiry_and_fence_per_key` | performed |
-| `topology.coordinate.primitive` | `spec/pins.toml` | performed |
+| `topology.coordinate.primitive` | `tools/ci/tests/integration/topology.rs::no_profile_links_a_queue_cache_consensus_or_coordination_client` | performed |
 | `topology.coordinate.weak-backend` | `spec/pins.toml` | performed |
 | `topology.package.capability-absent` | `crates/contextful-cli/tests/integration/profile.rs::a_data_plane_subcommand_on_a_build_without_it_is_refused_by_name` | performed |
 | `topology.package.component-host` | `crates/contextful-engine/tests/integration/runner.rs::a_component_connector_runs_on_an_engine_wiring_its_world` | performed |
