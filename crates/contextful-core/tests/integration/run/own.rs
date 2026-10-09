@@ -4,7 +4,7 @@ use contextful_core::run::own::releases;
 use contextful_core::run::record::RunStatus;
 
 /// `success`, and a failure that wrote no batch, release the owner; every other status holds it.
-// spec: run.own.pin-release@910426de
+// spec: run.own.pin-release@dbab6ab5
 #[test]
 fn success_and_an_empty_failure_release_every_other_status_holds() {
     assert!(releases(RunStatus::Success, 0));
