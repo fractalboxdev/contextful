@@ -156,7 +156,7 @@ fn a_lost_machine_catalog_resumes_from_the_cursor_inside_the_newest_commit() {
     run("leased.toml", "l1");
     let log_dir = root.join("cursors/leased/ingest-a");
     let entries: Vec<Value> = keys(&log_dir).into_iter().map(|k| json(log_dir.join(k))).collect();
-    assert!(entries.iter().any(|e| e["kind"] == "commit" && e["cursor"] == "p1"), "{entries:?}");
+    assert!(entries.iter().any(|e| e["kind"] == "commit" && e["cursor"] == "p1" && e["cursor_kind"] == "opaque-token"), "{entries:?}");
     std::fs::remove_file(root.join("machine.sqlite")).unwrap();
     run("leased.toml", "l2");
     assert_eq!(handed(), ["", "\"p1\""], "the second run starts at the committed position, not the start");

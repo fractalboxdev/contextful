@@ -69,7 +69,7 @@ fn fenced_landing(f: &Fixture, run: &str, fence: u64) -> contextful_core::store:
 
 fn commit(f: &Fixture, run: &str, fence: u64) -> contextful_context::Result<u64> {
     use contextful_core::store::commit_log::{CommitEntry, Kind};
-    let entry = CommitEntry { kind: Kind::Commit, table: "filings".into(), run_id: Some(run.into()), cursor: Some(json!(run)), fence };
+    let entry = CommitEntry { kind: Kind::Commit, table: "filings".into(), run_id: Some(run.into()), cursor: Some(json!(run)), cursor_kind: None, fence };
     contextful_context::commit_log::append(&f.store, "feed", "ingest-a", &entry)
 }
 
@@ -116,7 +116,7 @@ fn a_commit_created_before_the_next_acquisition_stands() {
     assert!(f.store.root().join("cursors/feed/ingest-a/00000000000000000002.json").exists());
     // Another table of the pipeline holds its own fences.
     let other = contextful_core::store::commit_log::CommitEntry {
-        kind: contextful_core::store::commit_log::Kind::Acquire, table: "refunds".into(), run_id: None, cursor: None, fence: 9,
+        kind: contextful_core::store::commit_log::Kind::Acquire, table: "refunds".into(), run_id: None, cursor: None, cursor_kind: None, fence: 9,
     };
     contextful_context::commit_log::append(&f.store, "feed", "ingest-a", &other).unwrap();
     fenced_landing(&f, "run-second", 2);
@@ -144,7 +144,7 @@ fn a_fenced_manifest_written_before_the_commit_log_stays_readable() {
 fn each_node_keeps_its_own_commit_log() {
     let f = Fixture::new();
     use contextful_core::store::commit_log::{CommitEntry, Kind};
-    let entry = |fence| CommitEntry { kind: Kind::Acquire, table: "filings".into(), run_id: None, cursor: None, fence };
+    let entry = |fence| CommitEntry { kind: Kind::Acquire, table: "filings".into(), run_id: None, cursor: None, cursor_kind: None, fence };
     contextful_context::commit_log::append(&f.store, "feed", "ingest-a", &entry(9)).unwrap();
     // Another node's log starts at its own first fence, unrefused by this node's higher one.
     assert_eq!(contextful_context::commit_log::append(&f.store, "feed", "ingest-b", &entry(1)).unwrap(), 1);
@@ -170,7 +170,7 @@ fn a_store_on_exfat_commits_a_run_and_its_log_entry() {
     let again = land_batches(&store, &d, &[batch(json!([{"id": "d2"}]))], &ctx, &position, &|| Ok(()));
     assert!(again.unwrap_err().to_string().contains("already committed"));
     contextful_context::commit_log::open_fence(&store, "feed", "ingest-a", "filings", 1).unwrap();
-    let entry = CommitEntry { kind: Kind::Commit, table: "filings".into(), run_id: Some("run-x".into()), cursor: Some(json!("p1")), fence: 1 };
+    let entry = CommitEntry { kind: Kind::Commit, table: "filings".into(), run_id: Some("run-x".into()), cursor: Some(json!("p1")), cursor_kind: None, fence: 1 };
     assert_eq!(contextful_context::commit_log::append(&store, "feed", "ingest-a", &entry).unwrap(), 2);
     assert_eq!(store.committed_runs("filings").unwrap().into_iter().map(|m| m.run_id).collect::<Vec<_>>(), ["run-x"]);
 }
@@ -345,4 +345,36 @@ fn a_failed_run_leaves_no_staged_part() {
     assert!(!node_dir.join("stage.staging").exists());
     assert!(!node_dir.join("part-00000.parquet").exists() && !node_dir.join("part-00001.parquet").exists());
     assert!(readable(&f).is_empty());
+}
+
+/// A cursor whose kind takes no lease reaching `cursors/` raises `LeaseCursorKindMismatch`.
+// spec: store.lease.cursor-kind@50308227
+#[test]
+fn a_commit_log_entry_for_a_kind_that_takes_no_lease_is_refused() {
+    use contextful_core::run::advance::CursorKind;
+    use contextful_core::store::commit_log::{CommitEntry, Kind};
+    use contextful_core::store::StoreError;
+    let f = Fixture::new();
+    contextful_context::commit_log::open_fence(&f.store, "feed", "ingest-a", "filings", 1).unwrap();
+    let entry = |kind| CommitEntry {
+        kind: Kind::Commit,
+        table: "filings".into(),
+        run_id: Some("run-1".into()),
+        cursor: Some(json!("p1")),
+        cursor_kind: Some(kind),
+        fence: 1,
+    };
+    let refused = contextful_context::commit_log::append(&f.store, "feed", "ingest-a", &entry(CursorKind::Monotonic)).unwrap_err();
+    match refused.store() {
+        Some(StoreError::LeaseCursorKindMismatch(m)) => assert!(m.contains("monotonic") && m.contains("feed"), "{m}"),
+        other => panic!("expected LeaseCursorKindMismatch, got {other:?}"),
+    }
+    assert_eq!(contextful_context::commit_log::read(&f.store, "feed", "ingest-a").unwrap().len(), 1, "the refused entry wrote nothing");
+    // The kinds that take a lease record theirs beside the cursor.
+    for (seq, kind) in [(2, CursorKind::OpaqueToken), (3, CursorKind::SnapshotId)] {
+        assert_eq!(contextful_context::commit_log::append(&f.store, "feed", "ingest-a", &entry(kind)).unwrap(), seq);
+    }
+    let stored: serde_json::Value =
+        serde_json::from_slice(&std::fs::read(f.store.root().join("cursors/feed/ingest-a/00000000000000000002.json")).unwrap()).unwrap();
+    assert_eq!(stored["cursor_kind"], "opaque-token");
 }
