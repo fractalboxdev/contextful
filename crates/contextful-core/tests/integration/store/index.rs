@@ -285,3 +285,27 @@ fn the_spec_snapshot_manifest_example_deserializes_its_index_entries() {
     }
     assert_eq!((vectors, fulltexts), (1, 1));
 }
+
+/// Planning warns, naming the column, where a partition specification projects more than 1000 partitions or a
+/// median partition below 16 MiB.
+// spec: store.index.partition-warnings@ab32a372
+#[test]
+fn a_partition_plan_past_either_bound_warns_naming_the_column() {
+    use contextful_core::store::index::{partition_warnings, PARTITION_COUNT_WARN, PARTITION_MEDIAN_WARN_BYTES};
+    assert_eq!((PARTITION_COUNT_WARN, PARTITION_MEDIAN_WARN_BYTES), (1000, 16 * 1024 * 1024));
+    let by = vec!["tenant".to_string(), "day".to_string()];
+    let big = PARTITION_MEDIAN_WARN_BYTES;
+    // Within both bounds: no warning.
+    assert!(partition_warnings(&by, &vec![big; 1000]).is_empty());
+    // More than 1000 partitions.
+    let many = partition_warnings(&by, &vec![big; 1001]);
+    assert_eq!(many.len(), 1);
+    assert!(many[0].contains("`tenant`") && many[0].contains("`day`") && many[0].contains("1001 partitions"), "{many:?}");
+    // A median partition below 16 MiB, though the mean clears it.
+    let small = partition_warnings(&by, &[1, 2, big * 10]);
+    assert_eq!(small.len(), 1);
+    assert!(small[0].contains("`tenant`") && small[0].contains("median"), "{small:?}");
+    assert!(partition_warnings(&by, &[big - 1, big, big + 1]).is_empty());
+    // No partition specification, nothing to warn about.
+    assert!(partition_warnings(&[], &[1]).is_empty());
+}

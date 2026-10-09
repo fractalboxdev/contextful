@@ -45,7 +45,9 @@ pub fn scheduled(state: &TableState, now: Instant) -> bool {
 pub enum FoldOutcome {
     /// A snapshot was published; `collection` carries why the collection after it failed,
     /// which leaves the snapshot published (`store.fold.collection-failed`).
-    Folded { snapshot_id: String, runs: usize, rows: u64, retention: Option<RetentionReport>, collected: Vec<String>, collection: Option<String> },
+    /// `warnings` carries what the pass's partition plan warns about
+    /// (`store.index.partition-warnings`); a warning fails nothing.
+    Folded { snapshot_id: String, runs: usize, rows: u64, retention: Option<RetentionReport>, collected: Vec<String>, collection: Option<String>, warnings: Vec<String> },
     /// No committed run was left to fold.
     NothingLanded,
     /// No snapshot changed, while row-age retention and collection were checked.
@@ -65,7 +67,7 @@ impl FoldOutcome {
 impl std::fmt::Display for FoldOutcome {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
-            FoldOutcome::Folded { snapshot_id, runs, rows, retention, collected, collection } => {
+            FoldOutcome::Folded { snapshot_id, runs, rows, retention, collected, collection, .. } => {
                 write!(f, "folded {snapshot_id} ({runs} runs, {rows} rows)")?;
                 if let Some(report) = retention {
                     write!(f, "; cutoff {}, {} rows expired, {} partitions dropped", report.cutoff, report.rows_expired, report.partitions_dropped)?;

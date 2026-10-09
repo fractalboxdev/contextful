@@ -174,6 +174,23 @@ fn a_pass_under_a_lease_stamps_its_fence() {
     assert_eq!((chain[0].snapshot_id.clone(), chain[0].fence), (pointer.snapshot_id, Some(7)));
 }
 
+/// A pass over a partitioned table reports what its partition plan warns about, naming the columns, and still
+/// publishes; an unpartitioned table warns about nothing.
+#[test]
+fn a_pass_reports_its_partition_warnings_and_publishes() {
+    let f = Fixture::new();
+    let d = decl("name = \"events\"\npartition_by = [\"tenant\"]");
+    f.land(&d, "run-1", json!([{"tenant": "acme", "e": 1}, {"tenant": "globex", "e": 2}]), "2030-01-01T00:00:00Z").unwrap();
+    let FoldOutcome::Folded { warnings, .. } = fold(&f.store, &d, at("2030-01-01T01:00:00Z")).unwrap() else { panic!("nothing folded") };
+    assert_eq!(warnings.len(), 1, "{warnings:?}");
+    assert!(warnings[0].contains("`tenant`") && warnings[0].contains("median"), "{warnings:?}");
+    assert!(f.store.pointer("events").unwrap().is_some());
+    let plain = decl("name = \"plain\"");
+    f.land(&plain, "run-1", json!([{"e": 1}]), "2030-01-01T00:00:00Z").unwrap();
+    let FoldOutcome::Folded { warnings, .. } = fold(&f.store, &plain, at("2030-01-01T01:00:00Z")).unwrap() else { panic!("nothing folded") };
+    assert!(warnings.is_empty(), "{warnings:?}");
+}
+
 #[cfg(feature = "read")]
 /// A statement running during a pass reads the snapshot the pointer named when it started; statements starting
 /// after the commit read the new one.

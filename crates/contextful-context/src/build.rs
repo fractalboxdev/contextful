@@ -737,6 +737,7 @@ mod materialize {
             etag,
             runs: 0,
             retention: None,
+            warnings: Vec::new(),
             _in_flight: Some(Arc::new(in_flight)),
         };
         let restore = |store: &Store| -> Result<()> {

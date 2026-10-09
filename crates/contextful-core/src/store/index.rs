@@ -38,6 +38,36 @@ pub const FULLTEXT_BUILDER: &str = "contextful-postings";
 /// The on-disk postings format version the builder writes and the reader accepts.
 pub const FULLTEXT_BUILDER_VERSION: u32 = 1;
 
+/// Partitions past which a partition plan warns: 1000 (`store.index.partition-warnings`).
+pub const PARTITION_COUNT_WARN: usize = 1000;
+
+/// Median partition size below which a partition plan warns: 16 MiB
+/// (`store.index.partition-warnings`).
+pub const PARTITION_MEDIAN_WARN_BYTES: u64 = 16 * 1024 * 1024;
+
+/// The warnings a partition plan over `by` raises, given each partition's size in bytes:
+/// more than [`PARTITION_COUNT_WARN`] partitions, or a median partition below
+/// [`PARTITION_MEDIAN_WARN_BYTES`]. Each names the partition columns
+/// (`store.index.partition-warnings`).
+pub fn partition_warnings(by: &[String], sizes: &[u64]) -> Vec<String> {
+    if by.is_empty() || sizes.is_empty() {
+        return Vec::new();
+    }
+    let columns = by.iter().map(|c| format!("`{c}`")).collect::<Vec<_>>().join(", ");
+    let mut warnings = Vec::new();
+    if sizes.len() > PARTITION_COUNT_WARN {
+        warnings.push(format!("partition_by {columns} projects {} partitions, more than {PARTITION_COUNT_WARN}", sizes.len()));
+    }
+    let mut sorted = sizes.to_vec();
+    sorted.sort_unstable();
+    let mid = sorted.len() / 2;
+    let median = if sorted.len() % 2 == 0 { (sorted[mid - 1] + sorted[mid]) / 2 } else { sorted[mid] };
+    if median < PARTITION_MEDIAN_WARN_BYTES {
+        warnings.push(format!("partition_by {columns} projects a median partition of {median} bytes, below 16 MiB"));
+    }
+    warnings
+}
+
 /// A sidecar kind a declaration names.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "lowercase")]

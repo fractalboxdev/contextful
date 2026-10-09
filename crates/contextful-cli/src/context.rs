@@ -377,6 +377,11 @@ pub fn run(cmd: ContextCmd) -> Result<()> {
                     Some(Err(e)) => FoldOutcome::Failed(e.to_string()),
                     Some(Ok(true)) | None => fold(&o.store, &decl, at).unwrap_or_else(|e| FoldOutcome::Failed(e.to_string())),
                 };
+                if let FoldOutcome::Folded { warnings, .. } = &outcome {
+                    for w in warnings {
+                        eprintln!("warning: {t}: {w}");
+                    }
+                }
                 if outcome.is_failure() {
                     failed += 1;
                 }

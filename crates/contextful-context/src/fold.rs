@@ -47,6 +47,8 @@ pub struct Staged {
     pub etag: String,
     pub runs: usize,
     pub retention: Option<RetentionReport>,
+    /// What the partition plan warns about (`store.index.partition-warnings`).
+    pub warnings: Vec<String>,
     /// Held for the pass's life, so a concurrent pass's collection reads this staging
     /// directory as in flight rather than as one an earlier pass abandoned.
     pub(crate) _in_flight: Option<std::sync::Arc<FileLock>>,
@@ -95,6 +97,7 @@ pub fn fold_under(store: &Store, decl: &TableDecl, now: Instant, fence: Option<u
         Prepared::Staged(staged) => {
             let runs = staged.runs;
             let retention = staged.retention.clone();
+            let warnings = staged.warnings.clone();
             match commit(store, *staged)? {
                 Committed::Published(m) => {
                     let collected = collect(store, decl, now);
@@ -105,6 +108,7 @@ pub fn fold_under(store: &Store, decl: &TableDecl, now: Instant, fence: Option<u
                     retention,
                     collected: collected.as_ref().cloned().unwrap_or_default(),
                     collection: collected.err().map(|e| e.to_string()),
+                    warnings,
                 })},
                 Committed::Lost => Ok(FoldOutcome::Failed("the pointer moved during the pass; nothing was published".into())),
             }
@@ -227,13 +231,17 @@ pub fn prepare_under(store: &Store, decl: &TableDecl, now: Instant, fence: Optio
         indexes.push(entry);
     }
     let mut parts = Vec::new();
+    let mut sizes = Vec::new();
     if rows.num_rows() > 0 {
         for (dir, batch) in partition(&rows, decl.partition_by()).map_err(invalid)? {
             let name = if dir.is_empty() { part_name(0) } else { format!("{dir}/{}", part_name(0)) };
-            store.write_parquet(&staging.join(&name), &batch)?;
+            let path = staging.join(&name);
+            store.write_parquet(&path, &batch)?;
+            sizes.push(fs::metadata(&path).at(&path)?.len());
             parts.push(PartEntry { name, key_version: store.sealing().key_version() });
         }
     }
+    let warnings = contextful_core::store::index::partition_warnings(decl.partition_by(), &sizes);
     let manifest = SnapshotManifest {
         snapshot_id,
         parent,
@@ -260,6 +268,7 @@ pub fn prepare_under(store: &Store, decl: &TableDecl, now: Instant, fence: Optio
         etag,
         runs: unfolded.len(),
         retention,
+        warnings,
         _in_flight: Some(std::sync::Arc::new(in_flight)),
     })))
 }

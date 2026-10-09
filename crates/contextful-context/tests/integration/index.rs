@@ -61,6 +61,25 @@ fn partitioning_is_off_unless_declared() {
     assert_eq!(g.query(&parted, Bounds::default(), "SELECT tenant, e FROM t ORDER BY e"), [[s("acme"), s("1")], [s("globex"), s("2")], [None, s("3")]]);
 }
 
+/// A multi-tenant table carries the tenant identifier as its outermost partition column.
+// spec: store.index.tenant-outermost@13d7e0b2
+#[test]
+fn the_tenant_identifier_is_the_outermost_partition_directory() {
+    let f = Fixture::new();
+    let d = decl("name = \"events\"\npartition_by = [\"tenant\", \"day\"]");
+    f.land(&d, "run-1", json!([
+        {"tenant": "acme", "day": "d1", "e": 1}, {"tenant": "acme", "day": "d2", "e": 2}, {"tenant": "globex", "day": "d1", "e": 3},
+    ]), "2030-01-01T00:00:00Z").unwrap();
+    fold(&f.store, &d, at("2030-01-01T01:00:00Z")).unwrap();
+    let (m, _) = current(&f, "events");
+    let parts: Vec<&str> = m.parts.iter().map(|p| p.name.as_str()).collect();
+    assert_eq!(parts, ["tenant=acme/day=d1/part-00000.parquet", "tenant=acme/day=d2/part-00000.parquet", "tenant=globex/day=d1/part-00000.parquet"]);
+    // One tenant's rows are one directory subtree: dropping the inner predicate still reads that tenant alone.
+    let acme: Vec<&str> = parts.iter().copied().filter(|p| p.starts_with("tenant=acme/")).collect();
+    assert_eq!(acme.len(), 2);
+    assert!(parts.iter().all(|p| p.split('/').next().unwrap().starts_with("tenant=")));
+}
+
 /// A `partition_by` column typed binary or vector raises `StorePartitionColumnType` at validation, before any Parquet.
 // spec: store.index.partition-type@1e6a72e5
 #[test]
