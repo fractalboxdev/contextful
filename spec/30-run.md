@@ -354,6 +354,9 @@ Stopping work in flight at either grain, the one token every await observes, and
   *A-run*
 - `resumable-remains` — A stopped run's recorded pull keeps its owner and replays next attempt; a stopped pull that recorded nothing releases it. A stopped chunk returns to pending, its attempt count unchanged. A stop advances no position.
 - `authority-from-the-record` — A stop authorizes against the pipeline read off the run record, never off the request.
+- `stop-unauthorized` — A credentialed stop needs an `execute` grant covering the pipeline read off the run record; an uncovered or unrecorded run raises `CancelUnauthorized` without naming the pipeline, answering `403` over HTTP.
+  *because a stop halts work `execute` fires, and a refusal naming the pipeline discloses it to a credential that cannot read it*
+- `stop-route` — `POST /runs/:run_id/stop` writes a stop under a per-request network credential, its optional JSON body carrying `scope` and `reason`, and answers `200` with the marked run ids.
 
 ```mermaid
 sequenceDiagram
@@ -450,7 +453,7 @@ The best-effort live view of a run and the subscription that carries it off the 
 - `outputs-by-reference` — A step output appears as a post-redaction reference and a byte count, never inline; fetching the payload is a separately authorized request.
 - `connect` — A subscriber receives the folded snapshot and its update receiver under one lock, missing and duplicating no update.
 - `broadcast-ring` — The per-run broadcast holds 256 entries; a subscriber that overruns it resynchronizes to the latest snapshot.
-- `unauthenticated-upgrade` — The run-stream socket authenticates on the HTTP request before the upgrade; a missing or invalid credential raises `RunStreamUnauthorized` with `401`, and an unseen run answers `404`.
+- `unauthenticated-upgrade` — The run-stream socket, `GET /runs/:run_id/stream`, authenticates on the HTTP request before the upgrade; a missing or invalid credential raises `RunStreamUnauthorized` with `401`, and an unseen run answers `404`.
   *A-read*
 - `read-only-socket` — A subscription is read-only; a stop travels as an authenticated route.
 - `restart-discards` — A restart discards in-memory snapshots; a subscriber recovers history from the durable record.

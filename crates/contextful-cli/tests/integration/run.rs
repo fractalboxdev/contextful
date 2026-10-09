@@ -694,3 +694,54 @@ fn a_repaired_typed_source_runs_after_schema_refusal_without_changing_its_plan()
     assert!(landed.iter().any(|row| row["id"] == "two" && row["score"] == 2));
     assert_eq!(std::fs::read_to_string(p.join("called")).unwrap(), "pull-0\npull-0\npull-1\npull-0\npull-1\n");
 }
+
+/// An in-flight copy of run `from`, recorded as `run_id` under `pipeline`.
+fn put_running(dir: &Path, from: &str, run_id: &str, pipeline: &str) {
+    use contextful_core::coordinate::Catalog;
+    let clock = std::sync::Arc::new(contextful_core::ports::FixedClock(contextful_core::time::Instant::parse("2030-01-01T00:00:00Z").unwrap()));
+    let catalog = contextful_sqlite::MachineCatalog::open(&dir.join(".contextful/context/research/machine.sqlite"), clock).unwrap();
+    let mut row = catalog.run(from).unwrap().expect("the source row");
+    row.run_id = run_id.into();
+    row.pipeline_id = pipeline.into();
+    row.status = contextful_core::run::record::RunStatus::Running;
+    row.ended_at = None;
+    row.stop = None;
+    catalog.put_run(&row).unwrap();
+}
+
+fn stop_of(dir: &Path, run_id: &str) -> Option<contextful_core::run::record::StopMark> {
+    use contextful_core::coordinate::Catalog;
+    let clock = std::sync::Arc::new(contextful_core::ports::FixedClock(contextful_core::time::Instant::parse("2030-01-01T00:00:00Z").unwrap()));
+    let catalog = contextful_sqlite::MachineCatalog::open(&dir.join(".contextful/context/research/machine.sqlite"), clock).unwrap();
+    catalog.run(run_id).unwrap().expect("the run row").stop
+}
+
+/// A credentialed `run cancel` needs `execute` over the pipeline its run record holds, and its refusal names no
+/// pipeline; an unrecorded run refuses alike.
+#[test]
+fn a_credentialed_cancel_gates_on_execute_over_the_recorded_pipeline() {
+    let dir = project();
+    let public = issuer(dir.path());
+    ok(&start(dir.path(), "feed-a.toml", "a1", "2030-01-01T00:00:00Z"));
+    put_running(dir.path(), "a1", "live-a", "feed-a");
+    put_running(dir.path(), "a1", "live-b", "feed-b");
+    let execute = ok(&cf(dir.path(), &["token", "mint", "--on-behalf-of", "user://dana@acme.example", "--action", "execute", "--table", "feed-a"]));
+
+    let out = credentialed(dir.path(), &execute, &public, &["run", "cancel", "live-b"]);
+    refused(&out, "CancelUnauthorized");
+    let stderr = String::from_utf8_lossy(&out.stderr);
+    assert!(!stderr.contains("feed-b"), "the refusal names no pipeline: {stderr}");
+    assert!(stop_of(dir.path(), "live-b").is_none());
+    let absent = credentialed(dir.path(), &execute, &public, &["run", "cancel", "zz"]);
+    refused(&absent, "CancelUnauthorized");
+    assert_eq!(String::from_utf8_lossy(&absent.stderr), stderr);
+    // A read grant over the pipeline confers no stop.
+    refused(&credentialed(dir.path(), &reader(dir.path(), "feed-a"), &public, &["run", "cancel", "live-a"]), "CancelUnauthorized");
+    assert!(stop_of(dir.path(), "live-a").is_none());
+
+    let stopped = ok(&credentialed(dir.path(), &execute, &public, &["run", "cancel", "live-a", "--reason", "ops"]));
+    assert!(stopped.contains("live-a: stop requested"), "{stopped}");
+    assert_eq!(stop_of(dir.path(), "live-a").unwrap().reason.as_deref(), Some("ops"));
+    // The local owner, presenting no credential, stops as before.
+    ok(&cf(dir.path(), &["run", "cancel", "live-b", "--project", "research"]));
+}

@@ -122,7 +122,6 @@
 "run.journal.prepared-replay"       = { test = "crates/contextful-cli/tests/integration/run.rs::removal_records_the_prepared_inline_and_blob_batch_and_resumes_without_repulling" }
 "run.own.execution-owner"           = { test = "crates/contextful-engine/tests/integration/execution.rs::every_owner_is_keyed_on_its_scope_and_a_table_owner_keeps_its_stored_row" }
 "run.cancel.two-grains"             = { test = "crates/contextful-core/tests/integration/run/cancel.rs::only_an_in_flight_row_accepts_a_mark_and_scopes_read_by_grain" }
-"run.cancel.not-in-flight"          = { test = "crates/contextful-cli/tests/integration/run.rs::every_run_surface_raises_its_refusal_by_name" }
 "topology.compose.read-path"          = { item = "contextful_ci::topology::READ_PATH" }
 "topology.compose.run-path"           = { item = "contextful_ci::topology::RUN_PATH" }
 "topology.compose.three-crossings"    = { test = "tools/ci/tests/integration/topology.rs::the_crate_graph_stage_refuses_an_undeclared_crossing" }

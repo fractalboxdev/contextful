@@ -888,3 +888,151 @@ fn control_editor_refuses_to_discard_applied_jobs() {
     let snapshot = std::fs::read_to_string(root.join(".contextful/control/research/manifest@v1.toml")).unwrap();
     assert!(snapshot.contains("nightly-check"));
 }
+
+fn machine(root: &Path) -> contextful_sqlite::MachineCatalog {
+    let clock = std::sync::Arc::new(contextful_core::ports::FixedClock(Instant::parse("2030-01-01T00:00:00Z").unwrap()));
+    contextful_sqlite::MachineCatalog::open(&root.join(".contextful/context/research/machine.sqlite"), clock).unwrap()
+}
+
+/// Record `run_id` of `pipeline` in `status` in the store's machine catalog.
+fn record_run(root: &Path, run_id: &str, pipeline: &str, status: &str) {
+    use contextful_core::coordinate::Catalog;
+    let row: contextful_core::run::record::RunRow = serde_json::from_value(json!({
+        "run_id": run_id, "pipeline_id": pipeline, "table": "research/notes", "site_id": "site-a", "status": status,
+        "started_at": "2030-01-01T00:00:00Z", "rows": 0, "bytes": 0, "batches": 0,
+        "connector_id": "vendor", "connector_version": "1", "connector_hash": "h", "phase": "plan", "execution_id": format!("x-{run_id}"),
+    })).unwrap();
+    machine(root).put_run(&row).unwrap();
+}
+
+fn stop_mark(root: &Path, run_id: &str) -> Option<contextful_core::run::record::StopMark> {
+    use contextful_core::coordinate::Catalog;
+    machine(root).run(run_id).unwrap().expect("the run row").stop
+}
+
+fn mint(root: &Path, action: &str, table: &str) -> String {
+    stdout(&run(root, &["token", "mint", "--issuer-key", ".contextful/issuer.seed", "--on-behalf-of", "user://dana@acme.example", "--zone", "on-prem:hq", "--action", action, "--table", table, "--ttl", "900"]))
+}
+
+/// A websocket upgrade to `path`, writing `frame` after the request; the answer's head and the bytes after it.
+fn upgrade(addr: &str, path: &str, token: Option<&str>, frame: &[u8]) -> (String, Vec<u8>) {
+    let mut stream = TcpStream::connect(addr).unwrap();
+    let auth = token.map(|token| format!("Authorization: Bearer {token}\r\n")).unwrap_or_default();
+    write!(stream, "GET {path} HTTP/1.1\r\nHost: localhost\r\n{auth}Upgrade: websocket\r\nConnection: Upgrade\r\nSec-WebSocket-Version: 13\r\nSec-WebSocket-Key: dGhlIHNhbXBsZSBub25jZQ==\r\n\r\n").unwrap();
+    let _ = stream.write_all(frame);
+    let mut raw = Vec::new();
+    stream.read_to_end(&mut raw).unwrap();
+    let split = raw.windows(4).position(|w| w == b"\r\n\r\n").unwrap();
+    (String::from_utf8_lossy(&raw[..split]).into_owned(), raw[split + 4..].to_vec())
+}
+
+/// The payload of the first server frame in `bytes`, which is unmasked.
+fn first_frame(bytes: &[u8]) -> &[u8] {
+    match bytes[1] & 0x7f {
+        126 => &bytes[4..4 + usize::from(u16::from_be_bytes([bytes[2], bytes[3]]))],
+        127 => panic!("a snapshot past 64 KiB"),
+        n => &bytes[2..2 + usize::from(n)],
+    }
+}
+
+/// `POST /runs/:run_id/stop` writes a stop under a per-request network credential, its optional JSON body carrying
+/// `scope` and `reason`, and answers `200` with the marked run ids.
+// spec: run.cancel.stop-route@6e91ad11
+#[test]
+fn the_served_stop_route_marks_the_run_and_answers_its_ids() {
+    let (dir, public) = project();
+    let root = dir.path();
+    record_run(root, "live-a", "feed-a", "running");
+    record_run(root, "live-a2", "feed-a", "waiting");
+    record_run(root, "live-b", "feed-b", "running");
+    let execute = mint(root, "execute", "feed-a");
+    let (_listener, addr) = serve(root, &["serve", "--http", "127.0.0.1:0", "--audience", AUD, "--max-in-flight", "2", "--project", "research", "--public-key", &public]);
+
+    assert_eq!(control(&addr, "POST", "/runs/live-a/stop", None, "").0, 401);
+    let (status, answer) = control(&addr, "POST", "/runs/live-a/stop", Some(&execute), &json!({ "reason": "ops" }).to_string());
+    assert_eq!(status, 200, "{answer}");
+    assert_eq!(answer, json!({ "stopped": ["live-a"] }));
+    let mark = stop_mark(root, "live-a").unwrap();
+    assert_eq!((mark.scope.as_str(), mark.reason.as_deref()), ("run", Some("ops")));
+    assert!(stop_mark(root, "live-a2").is_none(), "a run-scoped stop marks one run");
+    let (status, answer) = control(&addr, "POST", "/runs/live-a2/stop", Some(&execute), &json!({ "scope": "pipeline" }).to_string());
+    assert_eq!(status, 200, "{answer}");
+    let mut stopped: Vec<String> = serde_json::from_value(answer["stopped"].clone()).unwrap();
+    stopped.sort();
+    assert_eq!(stopped, ["live-a", "live-a2"]);
+    assert!(stop_mark(root, "live-b").is_none(), "a pipeline stop halts only its own pipeline");
+    assert_eq!(control(&addr, "POST", "/runs/live-a/stop", Some(&execute), &json!({ "scope": "fire" }).to_string()).0, 400);
+    assert_eq!(control(&addr, "POST", "/runs/live-a/stop", Some(&execute), "[1]").0, 400);
+}
+
+/// Only a `pending`, `running` or `waiting` row accepts a mark; a stop matching none raises
+/// `CancelTargetNotInFlight`, answering `409` over HTTP and exiting non-zero at the terminal.
+// spec: run.cancel.not-in-flight@285fe285
+#[test]
+fn a_stop_on_a_finished_run_answers_409_and_exits_non_zero() {
+    let (dir, public) = project();
+    let root = dir.path();
+    record_run(root, "done-a", "feed-a", "success");
+    let execute = mint(root, "execute", "feed-a");
+    let (_listener, addr) = serve(root, &["serve", "--http", "127.0.0.1:0", "--audience", AUD, "--max-in-flight", "2", "--project", "research", "--public-key", &public]);
+    let (status, answer) = control(&addr, "POST", "/runs/done-a/stop", Some(&execute), "");
+    assert_eq!(status, 409, "{answer}");
+    assert_eq!(answer["error"]["identifier"], "CancelTargetNotInFlight");
+    assert!(stop_mark(root, "done-a").is_none());
+    let out = run(root, &["run", "cancel", "done-a", "--project", "research"]);
+    assert!(!out.status.success());
+    assert!(String::from_utf8_lossy(&out.stderr).contains("CancelTargetNotInFlight"));
+}
+
+/// A stop authorizes against the pipeline read off the run record, never off the request.
+// spec: run.cancel.authority-from-the-record@959bdd65
+#[test]
+fn a_served_stop_authorizes_against_the_recorded_pipeline_not_the_request() {
+    let (dir, public) = project();
+    let root = dir.path();
+    record_run(root, "live-b", "feed-b", "running");
+    let execute = mint(root, "execute", "feed-a");
+    let (_listener, addr) = serve(root, &["serve", "--http", "127.0.0.1:0", "--audience", AUD, "--max-in-flight", "2", "--project", "research", "--public-key", &public]);
+    // A body naming a covered pipeline confers nothing over the pipeline the record holds.
+    let (status, answer) = control(&addr, "POST", "/runs/live-b/stop", Some(&execute), &json!({ "pipeline": "feed-a" }).to_string());
+    assert_eq!(status, 403, "{answer}");
+    assert_eq!(answer["error"]["identifier"], "CancelUnauthorized");
+    assert!(!answer.to_string().contains("feed-b"), "{answer}");
+    assert!(stop_mark(root, "live-b").is_none());
+    let (status, absent) = control(&addr, "POST", "/runs/zz/stop", Some(&execute), "");
+    assert_eq!((status, &absent), (403, &answer), "an unrecorded run refuses as an uncovered one");
+}
+
+/// A subscription is read-only; a stop travels as an authenticated route.
+// spec: run.project.read-only-socket@1a1d5f50
+#[test]
+fn the_served_run_stream_carries_the_snapshot_and_takes_no_stop() {
+    let (dir, public) = project();
+    let root = dir.path();
+    record_run(root, "live-a", "feed-a", "running");
+    let reader = mint(root, "read", "feed-a");
+    let other = mint(root, "read", "feed-b");
+    let (_listener, addr) = serve(root, &["serve", "--http", "127.0.0.1:0", "--audience", AUD, "--max-in-flight", "2", "--project", "research", "--public-key", &public]);
+
+    let (head, body) = upgrade(&addr, "/runs/live-a/stream", None, b"");
+    assert!(head.starts_with("HTTP/1.1 401"), "{head}");
+    assert!(String::from_utf8_lossy(&body).contains("RunStreamUnauthorized"));
+    assert!(upgrade(&addr, "/runs/zz/stream", Some(&reader), b"").0.starts_with("HTTP/1.1 404"));
+    assert!(upgrade(&addr, "/runs/live-a/stream", Some(&other), b"").0.starts_with("HTTP/1.1 404"), "an unreadable run reads as unseen");
+
+    // A masked client text frame asking for a stop: the socket reads nothing from its caller.
+    let ask = br#"{"stop":"live-a"}"#;
+    let mut frame = vec![0x81, 0x80 | ask.len() as u8, 1, 2, 3, 4];
+    frame.extend(ask.iter().enumerate().map(|(i, b)| b ^ [1, 2, 3, 4][i % 4]));
+    let (head, frames) = upgrade(&addr, "/runs/live-a/stream", Some(&reader), &frame);
+    assert!(head.starts_with("HTTP/1.1 101"), "{head}");
+    assert_eq!(frames[0], 0x81, "a text frame");
+    assert!(frames.ends_with(&[0x88, 0x02, 0x03, 0xE8]), "then a normal close");
+    let wire: Value = serde_json::from_slice(first_frame(&frames)).unwrap();
+    assert_eq!((wire["run_id"].as_str(), wire["workflow_id"].as_str(), wire["status"].as_str()), (Some("live-a"), Some("feed-a"), Some("running")));
+    assert!(stop_mark(root, "live-a").is_none(), "the subscription wrote no stop");
+    // The stop travels as the authenticated route.
+    let (status, _) = control(&addr, "POST", "/runs/live-a/stop", Some(&mint(root, "execute", "feed-a")), "");
+    assert_eq!(status, 200);
+    assert!(stop_mark(root, "live-a").is_some());
+}

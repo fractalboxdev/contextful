@@ -95,6 +95,8 @@ pub enum RunCmd {
         scope: StopScope,
         #[arg(long)]
         reason: Option<String>,
+        #[command(flatten)]
+        admit: AdmitArgs,
     },
     /// Print run history through a window, newest first.
     History {
@@ -519,13 +521,13 @@ pub fn run(cmd: RunCmd) -> Result<()> {
             println!("{}", serde_json::to_string_pretty(&row)?);
             Ok(())
         }
-        RunCmd::Cancel { run_id, project, scope, reason } => {
-            let w = wire(&project)?;
+        RunCmd::Cancel { run_id, project, scope, reason, admit } => {
+            let grants = if AdmitArgs::presented() { Some(admit.admit(project.project.as_deref(), "`run cancel`")?.0.grants().to_vec()) } else { None };
             let scope = match scope {
                 StopScope::Run => Scope::Run,
                 StopScope::Pipeline => Scope::Pipeline,
             };
-            for id in w.engine.cancel(&run_id, scope, reason)? {
+            for id in stop(&wire(&project)?, grants.as_deref(), &run_id, scope, reason)? {
                 println!("{id}: stop requested");
             }
             Ok(())
@@ -603,4 +605,71 @@ pub fn run(cmd: RunCmd) -> Result<()> {
             Ok(())
         }
     }
+}
+
+/// Write a stop onto `run_id`, authorized against the pipeline its run record holds when
+/// `grants` accompany it; the local owner presenting none stops as the catalog's owner
+/// (`run.cancel.stop-unauthorized`, `run.cancel.authority-from-the-record`).
+pub(crate) fn stop(w: &Wired, grants: Option<&[Grant]>, run_id: &str, scope: Scope, reason: Option<String>) -> Result<Vec<String>> {
+    if let Some(grants) = grants {
+        let record = w.engine.catalog.run(run_id)?;
+        contextful_core::run::cancel::authorize_stop(grants, record.as_ref())?;
+    }
+    Ok(w.engine.cancel(run_id, scope, reason)?)
+}
+
+/// `POST /runs/:run_id/stop`: an optional JSON body of `scope` and `reason`, then
+/// [`stop`] under the request's grants; `200` with the marked run ids, `403` for
+/// `CancelUnauthorized`, `409` for `CancelTargetNotInFlight` (`run.cancel.stop-route`).
+pub(crate) fn served_stop(project: &ProjectArgs, grants: &[Grant], run_id: &str, body: &[u8]) -> (u16, serde_json::Value) {
+    use serde_json::{json, Value};
+    let malformed = |why: &str| (400, json!({ "error": { "http": 400, "message": why } }));
+    let fields = match body.iter().all(u8::is_ascii_whitespace) {
+        true => serde_json::Map::new(),
+        false => match serde_json::from_slice::<Value>(body) {
+            Ok(Value::Object(fields)) => fields,
+            _ => return malformed("a stop body is a JSON object of `scope` and `reason`"),
+        },
+    };
+    let scope = match fields.get("scope").map(Value::as_str) {
+        None | Some(Some("run")) => Scope::Run,
+        Some(Some("pipeline")) => Scope::Pipeline,
+        _ => return malformed("`scope` is `run` or `pipeline`"),
+    };
+    let reason = match fields.get("reason") {
+        None | Some(Value::Null) => None,
+        Some(Value::String(r)) => Some(r.clone()),
+        _ => return malformed("`reason` is a string"),
+    };
+    let stopped = wire(project).and_then(|w| stop(&w, Some(grants), run_id, scope, reason));
+    match stopped {
+        Ok(ids) => (200, json!({ "stopped": ids })),
+        Err(e) => {
+            let run = e.chain().find_map(|c| {
+                c.downcast_ref::<contextful_core::run::RunError>().cloned().or_else(|| match c.downcast_ref::<contextful_engine::EngineError>() {
+                    Some(contextful_engine::EngineError::Refused(r)) => Some(r.clone()),
+                    _ => None,
+                })
+            });
+            let status = match run {
+                Some(contextful_core::run::RunError::CancelUnauthorized(_)) => 403,
+                Some(contextful_core::run::RunError::CancelTargetNotInFlight(_)) => 409,
+                _ => 500,
+            };
+            let text = run.map(|r| r.to_string()).unwrap_or_else(|| format!("{e:#}"));
+            let identifier = text.split_once(':').map_or("", |(id, _)| id).trim().to_string();
+            (status, json!({ "error": { "http": status, "identifier": identifier, "message": text } }))
+        }
+    }
+}
+
+/// The wire snapshot of `run_id` for a credential whose read grant covers its recorded
+/// pipeline, recovered from the durable record; `None` for an unrecorded or uncovered run
+/// (`run.project.unauthenticated-upgrade`, `run.project.restart-discards`).
+pub(crate) fn served_snapshot(project: &ProjectArgs, grants: &[Grant], run_id: &str) -> Option<String> {
+    let w = wire(project).ok()?;
+    let row = w.engine.catalog.run(run_id).ok()??;
+    trace_run(grants, &row.pipeline_id).ok()?;
+    let hub = contextful_engine::project::Hub::new(w.clock.now());
+    Some(hub.connect_or_recover(&row).0.to_wire())
 }

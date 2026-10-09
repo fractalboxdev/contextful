@@ -11,11 +11,11 @@ An unpinned clause is `committed`; a pinned one is `performed` when its Rust, Le
 | `corpus` | 1 | 10 | 79 | 37 | 7 | 0 | 43 | 0 | 43 |
 | `disclosure` | 3 | 16 | 156 | 68 | 13 | 3 | 63 | 0 | 63 |
 | `read` | 2 | 16 | 212 | 35 | 22 | 9 | 184 | 0 | 184 |
-| `run` | 3 | 26 | 413 | 102 | 39 | 28 | 317 | 0 | 317 |
+| `run` | 3 | 26 | 415 | 103 | 39 | 28 | 322 | 0 | 322 |
 | `store` | 1 | 17 | 253 | 59 | 13 | 19 | 216 | 0 | 216 |
 | `surface` | 2 | 20 | 134 | 59 | 22 | 0 | 94 | 0 | 94 |
 | `topology` | 1 | 6 | 70 | 24 | 5 | 5 | 61 | 0 | 61 |
-| **total** | 19 | 156 | 2206 | 610 | 193 | 103 | 1574 | 0 | |
+| **total** | 19 | 156 | 2208 | 611 | 193 | 103 | 1579 | 0 | |
 
 Decision records: 18.
 
@@ -28,7 +28,7 @@ A milestone reads `closed` when its acceptance test computes `passing` and every
 | 0 — The test-first gate | 2 | 21 | 6 | passing | open |
 | 1 — The authority core | 14 | 239 | 190 | passing | closed |
 | 2 — The store | 9 | 175 | 143 | passing | closed |
-| 3 — The run path | 11 | 214 | 178 | passing | closed |
+| 3 — The run path | 11 | 216 | 183 | passing | closed |
 | 4 — Ingest | 25 | 519 | 345 | passing | open |
 | 5 — The read face under enforcement | 17 | 285 | 219 | passing | open |
 | 6 — Sync and replicas | 8 | 78 | 73 | passing | closed |
@@ -952,15 +952,18 @@ Unscheduled operations: 11.
 | `run.bind.remote-url-unsupported` | `crates/contextful-connectors/tests/integration/derive.rs::an_address_for_an_engine_reading_local_files_refuses_naming_the_step` | performed |
 | `run.bind.unbound-engine` | `crates/contextful-core/tests/integration/run/derive.rs::an_engine_with_no_block_refuses_naming_every_bound_engine` | performed |
 | `run.bind.unknown-task` | `crates/contextful-core/tests/integration/run/derive.rs::a_task_outside_the_pair_refuses_printing_both` | performed |
+| `run.cancel.authority-from-the-record` | `crates/contextful-cli/tests/integration/serve.rs::a_served_stop_authorizes_against_the_recorded_pipeline_not_the_request` | performed |
 | `run.cancel.catalog-channel` | `crates/contextful-engine/tests/integration/cancel.rs::a_stop_is_a_mark_on_the_run_row` | performed |
 | `run.cancel.child-reaped` | `crates/contextful-engine/tests/integration/command.rs::a_stop_signals_and_reaps_the_whole_process_group` | performed |
 | `run.cancel.distinct-terminal-status` | `crates/contextful-core/tests/integration/run/record.rs::canceled_is_terminal_distinct_and_unobserved_by_health` | performed |
 | `run.cancel.engine-keeper` | `crates/contextful-engine/tests/integration/execution.rs::one_keeper_thread_renews_and_feeds_every_open_execution_of_an_engine` | performed |
 | `run.cancel.host-grain` | `crates/contextful-engine/tests/integration/execution.rs::a_pipeline_stop_on_a_host_run_halts_only_its_own_scope` | performed |
 | `run.cancel.keeper-panic` | `crates/contextful-engine/tests/integration/cancel.rs::a_panicking_keeper_job_leaves_the_keeper_running` | performed |
-| `run.cancel.not-in-flight` | `spec/pins.toml` | performed |
+| `run.cancel.not-in-flight` | `crates/contextful-cli/tests/integration/serve.rs::a_stop_on_a_finished_run_answers_409_and_exits_non_zero` | performed |
 | `run.cancel.poll-interval` | `crates/contextful-engine/tests/integration/cancel.rs::the_token_reads_the_catalog_before_the_first_await_and_every_500_ms` | performed |
 | `run.cancel.re-mark` | `crates/contextful-core/tests/integration/run/cancel.rs::a_second_mark_overwrites_the_first` | performed |
+| `run.cancel.stop-route` | `crates/contextful-cli/tests/integration/serve.rs::the_served_stop_route_marks_the_run_and_answers_its_ids` | performed |
+| `run.cancel.stop-unauthorized` | `crates/contextful-core/tests/integration/run/cancel.rs::a_stop_needs_execute_over_the_recorded_pipeline_and_names_none` | performed |
 | `run.cancel.storage-blip` | `crates/contextful-engine/tests/integration/cancel.rs::a_failed_poll_keeps_polling` | performed |
 | `run.cancel.two-grains` | `spec/pins.toml` | performed |
 | `run.declare.apply-fires-nothing` | `crates/contextful-cli/tests/integration/pipeline.rs::apply_fires_nothing_and_a_second_apply_is_a_no_op` | performed |
@@ -1158,11 +1161,13 @@ Unscheduled operations: 11.
 | `run.project.emission-never-blocks` | `crates/contextful-engine/tests/integration/project.rs::emission_into_a_full_channel_drops_and_returns` | performed |
 | `run.project.metadata-too-large` | `crates/contextful-core/tests/integration/run/project.rs::a_metadata_write_past_the_bound_is_refused_and_leaves_the_snapshot` | performed |
 | `run.project.outputs-by-reference` | `crates/contextful-core/tests/integration/run/project.rs::a_step_output_is_a_reference_and_a_byte_count` | performed |
+| `run.project.read-only-socket` | `crates/contextful-cli/tests/integration/serve.rs::the_served_run_stream_carries_the_snapshot_and_takes_no_stop` | performed |
 | `run.project.reducer-is-total` | `crates/contextful-core/tests/integration/run/project.rs::the_reducer_appends_merges_and_never_overwrites_a_terminal_status` | performed |
 | `run.project.restart-discards` | `crates/contextful-engine/tests/integration/project.rs::a_restarted_hub_holds_nothing_and_recovers_from_the_record` | performed |
 | `run.project.step-view` | `crates/contextful-core/tests/integration/run/project.rs::a_step_view_carries_label_status_attempts_instants_output_and_failure` | performed |
 | `run.project.stopped-step` | `crates/contextful-core/tests/integration/run/project.rs::a_stopped_run_fails_its_executing_step_as_canceled` | performed |
 | `run.project.terminal-slot` | `crates/contextful-engine/tests/integration/project.rs::a_terminal_transition_survives_a_full_channel_and_a_lagging_projection_reconciles` | performed |
+| `run.project.unauthenticated-upgrade` | `crates/contextful-agent/tests/integration/http.rs::the_run_stream_authenticates_before_the_upgrade` | performed |
 | `run.project.version` | `crates/contextful-core/tests/integration/run/project.rs::versions_compare_epoch_first_and_a_delta_at_or_below_is_discarded` | performed |
 | `run.project.wire-snapshot` | `crates/contextful-core/tests/integration/run/project.rs::the_wire_snapshot_carries_every_member_and_round_trips` | performed |
 | `run.publish.build-entry` | `crates/contextful-core/tests/integration/pipeline/model.rs::a_build_entry_is_read_off_each_committed_section` | performed |

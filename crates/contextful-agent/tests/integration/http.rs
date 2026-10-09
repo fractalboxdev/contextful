@@ -733,3 +733,94 @@ fn unconfigured_exchange_answers_before_reading_its_body() {
     assert!(raw.starts_with("HTTP/1.1 404"), "{raw}");
     assert!(raw.contains("ExchangeUnconfigured"), "{raw}");
 }
+
+/// A face serving the run routes for the rest of the test process: a stop records the run id it was asked for,
+/// and only `run-seen` has a snapshot. The counter tallies snapshot lookups.
+fn listen_runs() -> (&'static Fixture, SocketAddr, &'static Mutex<Vec<String>>, &'static AtomicU64) {
+    let f: &'static Fixture = Box::leak(Box::new(fixture()));
+    let clock: &'static FixedClock = Box::leak(Box::new(FixedClock(at(NOW))));
+    let admitting = Admitting { checkpoint: &f.checkpoint, audience: AUD, revocation: &no_revocation };
+    let stopped: &'static Mutex<Vec<String>> = Box::leak(Box::new(Mutex::new(Vec::new())));
+    let lookups: &'static AtomicU64 = Box::leak(Box::new(AtomicU64::new(0)));
+    let stop = move |_: &HttpRequest, _: &AdmittedAuthority, run: &str| {
+        stopped.lock().unwrap().push(run.to_string());
+        HttpResponse::json(200, &json!({ "stopped": [run] }))
+    };
+    let snapshot = move |_: &AdmittedAuthority, run: &str| {
+        lookups.fetch_add(1, Ordering::SeqCst);
+        (run == "run-seen").then(|| json!({ "run_id": run, "status": "running" }).to_string())
+    };
+    let stop: &'static _ = Box::leak(Box::new(stop));
+    let snapshot: &'static _ = Box::leak(Box::new(snapshot));
+    let runs = contextful_agent::http::RunRoutes { stop, snapshot };
+    let face = Box::leak(Box::new(HttpFace::new(&f.face, clock, &f.audit, admitting, Some(4)).unwrap().with_runs(runs)));
+    let listener = TcpListener::bind("127.0.0.1:0").unwrap();
+    let addr = listener.local_addr().unwrap();
+    std::thread::spawn(move || face.serve(listener));
+    (f, addr, stopped, lookups)
+}
+
+fn upgrade(run: &str, credential: Option<&str>) -> HttpRequest {
+    let mut headers = vec![
+        ("Upgrade".into(), "websocket".into()),
+        ("Connection".into(), "Upgrade".into()),
+        ("Sec-WebSocket-Version".into(), "13".into()),
+        ("Sec-WebSocket-Key".into(), "dGhlIHNhbXBsZSBub25jZQ==".into()),
+    ];
+    if let Some(c) = credential {
+        headers.push(("Authorization".into(), format!("Bearer {c}")));
+    }
+    HttpRequest { method: "GET".into(), target: format!("/runs/{run}/stream"), headers, body: vec![] }
+}
+
+/// The run-stream socket, `GET /runs/:run_id/stream`, authenticates on the HTTP request before the upgrade; a missing
+/// or invalid credential raises `RunStreamUnauthorized` with `401`, and an unseen run answers `404`.
+// spec: run.project.unauthenticated-upgrade@6bc3f4ea
+#[test]
+fn the_run_stream_authenticates_before_the_upgrade() {
+    let (f, addr, _, lookups) = listen_runs();
+    let token = credential(&f.signer, "*", 900, None);
+    for presented in [None, Some("not-a-credential")] {
+        let (status, head, answer) = send(addr, &upgrade("run-seen", presented));
+        assert_eq!(status, 401, "{head}");
+        assert_eq!(body(&answer)["error"]["identifier"], "RunStreamUnauthorized");
+        assert!(head.contains("WWW-Authenticate"), "{head}");
+    }
+    assert_eq!(lookups.load(Ordering::SeqCst), 0, "no run is looked up before the credential admits");
+    let (status, _, _) = send(addr, &upgrade("run-unseen", Some(&token)));
+    assert_eq!(status, 404);
+
+    let (status, head, frames) = send(addr, &upgrade("run-seen", Some(&token)));
+    assert_eq!(status, 101, "{head}");
+    assert!(head.contains("Sec-WebSocket-Accept: s3pPLMBiTxaQ9kYGzzhZRbK+xOo="), "{head}");
+    // One unmasked text frame carrying the snapshot, then a close frame.
+    assert_eq!(frames[0], 0x81);
+    let len = frames[1] as usize;
+    assert!(len < 126);
+    assert_eq!(body(&frames[2..2 + len]), json!({ "run_id": "run-seen", "status": "running" }));
+    assert_eq!(&frames[2 + len..], &[0x88, 0x02, 0x03, 0xE8]);
+
+    let (status, _, _) = send(addr, &HttpRequest { method: "GET".into(), target: "/runs/run-seen/stream".into(),
+        headers: vec![("Authorization".into(), format!("Bearer {token}"))], body: vec![] });
+    assert_eq!(status, 400, "a stream request without the upgrade headers is refused");
+}
+
+#[test]
+fn the_stop_route_admits_its_credential_before_the_stop() {
+    let (f, addr, stopped, _) = listen_runs();
+    let stop = |credential: Option<&str>| HttpRequest {
+        method: "POST".into(),
+        target: "/runs/run-a/stop".into(),
+        headers: credential.map(|c| vec![("Authorization".into(), format!("Bearer {c}"))]).unwrap_or_default(),
+        body: b"{}".to_vec(),
+    };
+    assert_eq!(send(addr, &stop(None)).0, 401);
+    assert!(stopped.lock().unwrap().is_empty());
+    let token = credential_with_action(&f.signer, Action::Execute, "*", 900, None);
+    let (status, _, answer) = send(addr, &stop(Some(&token)));
+    assert_eq!((status, body(&answer)), (200, json!({ "stopped": ["run-a"] })));
+    assert_eq!(*stopped.lock().unwrap(), ["run-a"]);
+    let (status, head, _) = send(addr, &HttpRequest { method: "GET".into(), target: "/runs/run-a/stop".into(), headers: vec![], body: vec![] });
+    assert_eq!(status, 405);
+    assert!(head.contains("Allow: POST"), "{head}");
+}

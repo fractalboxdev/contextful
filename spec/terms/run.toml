@@ -43,6 +43,7 @@ StepFailed                     = { clause = "run.retry.step-failed", gloss = "A 
 ExecutionPinMismatch           = { clause = "run.own.pinned-plan-changed", gloss = "A connector identity, component world, plan hash, plan reference or host identity moved under a pending owner." }
 RunStagedBytesExceeded         = { clause = "run.own.staged-bytes", gloss = "A run whose staged parts pass the per-run staged-bytes bound." }
 CancelTargetNotInFlight        = { clause = "run.cancel.not-in-flight", gloss = "A stop matching no pending, running or waiting run." }
+CancelUnauthorized             = { clause = "run.cancel.stop-unauthorized", gloss = "A credentialed stop whose grants cover no execute over the recorded pipeline." }
 SiteIdUnresolved               = { clause = "run.record.site-id-unresolved", gloss = "A site id with no declaration, two in one place, or an unset variable." }
 HistoryBoundSpelling           = { clause = "run.record.bound-spelling", gloss = "A history window bound outside the two accepted spellings." }
 RunMetadataTooLarge            = { clause = "run.project.metadata-too-large", gloss = "A snapshot metadata write past its serialized bound." }
