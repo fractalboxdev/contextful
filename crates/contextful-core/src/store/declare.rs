@@ -84,6 +84,9 @@ pub struct TableDecl {
     pub cluster_by: Option<Vec<String>>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub partition_by: Option<Vec<String>>,
+    /// Columns whose Parquet parts carry a bloom filter (`store.index.kinds`).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub bloom_filter: Option<Vec<String>>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub retain_runs: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -394,6 +397,11 @@ impl TableDecl {
 
     pub fn cluster_by(&self) -> &[String] {
         self.cluster_by.as_deref().unwrap_or(&[])
+    }
+
+    /// The columns opted into a per-column bloom filter (`store.index.kinds`).
+    pub fn bloom_filter(&self) -> &[String] {
+        self.bloom_filter.as_deref().unwrap_or(&[])
     }
 
     pub fn partition_by(&self) -> &[String] {

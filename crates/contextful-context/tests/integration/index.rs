@@ -61,6 +61,41 @@ fn partitioning_is_off_unless_declared() {
     assert_eq!(g.query(&parted, Bounds::default(), "SELECT tenant, e FROM t ORDER BY e"), [[s("acme"), s("1")], [s("globex"), s("2")], [None, s("3")]]);
 }
 
+#[cfg(feature = "read")]
+/// Five index kinds exist: Parquet footer zone maps, a sorted-Parquet sparse-map primary-key lookup, an HNSW
+/// vector graph, a positional full-text index, and opt-in per-column bloom filters.
+// spec: store.index.kinds@7d38fc4b
+#[test]
+fn a_snapshot_carries_each_of_the_five_index_kinds() {
+    let f = Fixture::new();
+    let fulltext = "[[pipeline.tables.indexes]]\nkind = \"fulltext\"\ncolumn = \"body\"\n";
+    let d = decl(&format!("name = \"passages\"\nprimary_key = [\"passage_id\"]\nbloom_filter = [\"issuer\"]\n{INDEX}{fulltext}"));
+    // Landed out of key order.
+    f.land_typed(&d, "run-1", json!([
+        {"passage_id": "p3", "issuer": "z", "body": "grid storage", "embedding": [0.0, 0.0, 1.0]},
+        {"passage_id": "p1", "issuer": "x", "body": "solar battery", "embedding": [1.0, 0.0, 0.0]},
+        {"passage_id": "p2", "issuer": "y", "body": "wind turbine", "embedding": [0.0, 1.0, 0.0]},
+    ]), "2030-01-01T00:00:00Z", &f32x3()).unwrap();
+    fold(&f.store, &d, at("2030-01-01T01:00:00Z")).unwrap();
+    let (m, dir) = current(&f, "passages");
+    let part = dir.join(&m.parts[0].name);
+    let meta = |column: &str, select: &str| query(&format!("SELECT {select} FROM parquet_metadata('{}') WHERE path_in_schema = '{column}'", part.display()));
+    // Zone maps: every row group's footer carries the column's bounds.
+    assert_eq!(meta("issuer", "stats_min_value, stats_max_value"), [[s("x"), s("z")]]);
+    // A keyed table's rows sort by key, so the footer bounds of its key column form a sparse map a lookup probes.
+    let keys = query(&format!("SELECT passage_id FROM read_parquet('{}')", part.display()));
+    assert_eq!(keys, [[s("p1")], [s("p2")], [s("p3")]]);
+    assert_eq!(meta("passage_id", "stats_min_value, stats_max_value"), [[s("p1"), s("p3")]]);
+    // Bloom filters: on the column the table opts in, and on no other.
+    assert_ne!(meta("issuer", "bloom_filter_offset"), [[None]]);
+    assert_eq!(meta("body", "bloom_filter_offset"), [[None]]);
+    // The graph and the positional full-text index sit beside the parts.
+    let kinds: Vec<Option<IndexKind>> = m.indexes.iter().map(|e| e.kind()).collect();
+    assert_eq!(kinds, [Some(IndexKind::Vector), Some(IndexKind::Fulltext)]);
+    assert!(dir.join(m.indexes[0].path().unwrap()).join(GRAPH_FILE).is_file());
+    assert!(dir.join(m.indexes[1].path().unwrap()).join(POSTINGS_FILE).is_file());
+}
+
 /// A multi-tenant table carries the tenant identifier as its outermost partition column.
 // spec: store.index.tenant-outermost@13d7e0b2
 #[test]

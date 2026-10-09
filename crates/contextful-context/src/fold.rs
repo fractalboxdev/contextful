@@ -222,8 +222,12 @@ pub fn prepare_under(store: &Store, decl: &TableDecl, now: Instant, fence: Optio
     if unfolded.is_empty() && retention.as_ref().is_none_or(|r| r.rows_expired == 0) {
         return Ok(Prepared::NothingLanded);
     }
+    // A keyed table declaring no clustering sorts by its key, so each part's footer bounds
+    // on the key form a sparse map a point lookup probes (`store.index.kinds`).
     if !decl.cluster_by().is_empty() {
         rows = sort(&rows, decl.cluster_by()).map_err(invalid)?;
+    } else if decl.is_keyed() {
+        rows = sort(&rows, decl.primary_key()).map_err(invalid)?;
     }
     crate::vector::check_identifiers(&rows, decl)?;
 
@@ -245,7 +249,7 @@ pub fn prepare_under(store: &Store, decl: &TableDecl, now: Instant, fence: Optio
         for (dir, batch) in partition(&rows, decl.partition_by()).map_err(invalid)? {
             let name = if dir.is_empty() { part_name(0) } else { format!("{dir}/{}", part_name(0)) };
             let path = staging.join(&name);
-            store.write_parquet(&path, &batch)?;
+            store.write_parquet_blooming(&path, &batch, decl.bloom_filter())?;
             sizes.push(fs::metadata(&path).at(&path)?.len());
             parts.push(PartEntry { name, key_version: store.sealing().key_version() });
         }

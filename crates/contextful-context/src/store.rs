@@ -240,6 +240,11 @@ impl Store {
         crate::parquet_io::write_with_key(path, batch, self.parquet_key())
     }
 
+    /// [`Store::write_parquet`] with a bloom filter on each of `bloom` (`store.index.kinds`).
+    pub(crate) fn write_parquet_blooming(&self, path: &Path, batch: &arrow_array::RecordBatch, bloom: &[String]) -> Result<()> {
+        crate::parquet_io::write_with_key_blooming(path, batch, self.parquet_key(), bloom)
+    }
+
     pub(crate) fn read_parquet(&self, path: &Path) -> Result<Vec<arrow_array::RecordBatch>> {
         crate::parquet_io::read_with_key(path, self.parquet_key())
     }
