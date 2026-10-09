@@ -1,5 +1,5 @@
-import type { ReactNode } from "react";
-import { ClockIcon, DatabaseIcon, MessageSquareIcon, Settings2Icon } from "lucide-react";
+import { useState, type ReactNode } from "react";
+import { ClockIcon, DatabaseIcon, MenuIcon, MessageSquareIcon, Settings2Icon, XIcon } from "lucide-react";
 import { cn } from "./ui.tsx";
 
 export type Store = { id: string; label: string };
@@ -11,14 +11,22 @@ const pages: Array<{ page: Page; href: string; label: string; icon: typeof Messa
 ];
 
 /** The console frame: a sidebar carrying the brand, page links and page-specific
- *  content, and a main column under the shared header bar. */
+ *  content, and a main column under the shared header bar. Below the `md` breakpoint
+ *  the sidebar opens as a drawer from a button beside the header. */
 export function Shell({ page, sidebar, header, children }: { page: Page; sidebar?: ReactNode; header: ReactNode; children: ReactNode }) {
+  const [open, setOpen] = useState(false);
   return (
     <div className="flex h-dvh">
-      <aside className="hidden w-64 shrink-0 flex-col border-r border-border bg-card/40 md:flex">
+      {open && <div className="fixed inset-0 z-30 bg-background/60 md:hidden" onClick={() => setOpen(false)} aria-hidden />}
+      <aside id="console-sidebar" className={cn("w-64 shrink-0 flex-col border-r border-border bg-card md:static md:flex md:bg-card/40",
+        open ? "fixed inset-y-0 left-0 z-40 flex" : "hidden")}>
         <div className="flex items-center gap-2 px-3 pt-3 pb-2">
           <span className="text-sm font-semibold text-foreground">Contextful</span>
           <span className="rounded-full border border-border px-2 py-0.5 text-[11px] text-muted-foreground">Console</span>
+          <button type="button" onClick={() => setOpen(false)} aria-label="Close chats"
+            className="ml-auto text-muted-foreground hover:text-foreground md:hidden">
+            <XIcon className="size-4" />
+          </button>
         </div>
         <nav aria-label="Console" className="space-y-0.5 px-2 pb-2">
           {pages.map((item) => (
@@ -29,10 +37,24 @@ export function Shell({ page, sidebar, header, children }: { page: Page; sidebar
             </a>
           ))}
         </nav>
-        <div className="min-h-0 flex-1 overflow-y-auto border-t border-border px-2 py-2 scrollbar-thin">{sidebar}</div>
+        <div className="min-h-0 flex-1 overflow-y-auto border-t border-border px-2 py-2 scrollbar-thin"
+          onClick={(event) => {
+            const button = (event.target as Element).closest("button");
+            if (button && button.getAttribute("aria-label") !== "Delete chat") setOpen(false);
+          }}>
+          {sidebar}
+        </div>
       </aside>
       <div className="flex min-w-0 flex-1 flex-col">
-        {header}
+        <div className="flex items-stretch">
+          {sidebar && (
+            <button type="button" onClick={() => setOpen(true)} aria-controls="console-sidebar" aria-expanded={open} aria-label="Open chats"
+              className="flex items-center border-b border-border pl-4 text-muted-foreground hover:text-foreground md:hidden">
+              <MenuIcon className="size-4" />
+            </button>
+          )}
+          <div className="min-w-0 flex-1">{header}</div>
+        </div>
         <div className="min-h-0 flex-1">{children}</div>
       </div>
     </div>
