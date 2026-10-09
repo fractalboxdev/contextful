@@ -748,6 +748,7 @@ pub fn run(cmd: PipelineCmd, tasks: &Tasks, bodies: &contextful_core::run::drive
             }
             let stop_on_failure = matches!(checked, Checked::Host(_)) || spec.on_table_error() == contextful_core::pipeline::declare::OnTableError::Abort;
             let mut failed: Vec<String> = Vec::new();
+            let mut tallies: Vec<(String, IngestTally)> = Vec::new();
             for t in order {
                 let table = spec.table_name(t.name());
                 // The destination name is path-safe, so a run id built from it is too.
@@ -820,6 +821,7 @@ pub fn run(cmd: PipelineCmd, tasks: &Tasks, bodies: &contextful_core::run::drive
                     Ok(row) => row,
                     Err(e) => {
                         eprintln!("{}", RunError::PipelineTableFailed(format!("table `{table}` failed as refused in run `{run_id}`: {e:#}")));
+                        tallies.push((table.clone(), IngestTally { failed: 1, ..IngestTally::default() }));
                         failed.push(run_id);
                         if stop_on_failure {
                             break;
@@ -827,6 +829,7 @@ pub fn run(cmd: PipelineCmd, tasks: &Tasks, bodies: &contextful_core::run::drive
                         continue;
                     }
                 };
+                tallies.push((table.clone(), IngestTally::of(&row)));
                 if row.status == RunStatus::Success {
                     let mut skipped = if row.skipped > 0 { format!(" · {} skipped", row.skipped) } else { String::new() };
                     if !row.declined.is_empty() {
@@ -848,10 +851,56 @@ pub fn run(cmd: PipelineCmd, tasks: &Tasks, bodies: &contextful_core::run::drive
                     break;
                 }
             }
+            let total = tallies.iter().fold(IngestTally::default(), |sum, (_, t)| sum.plus(t));
+            println!("tally: {total}");
+            for (table, t) in &tallies {
+                println!("tally {table}: {t}");
+            }
             if !failed.is_empty() {
                 bail!("pipeline `{}`: {} table(s) failed: {}", spec.id, failed.len(), failed.join(", "));
             }
             Ok(())
         }
+    }
+}
+
+/// One fire's ingest counts, for a table or summed over the fire (`run.land.ingest-tally`).
+#[derive(Debug, Clone, Copy, Default)]
+struct IngestTally {
+    fetched: u64,
+    kept: u64,
+    skipped: u64,
+    failed: u64,
+    /// Rows the declared `filter` operations dropped: the chain never adds a row, so this
+    /// is `fetched - kept`.
+    dropped_low_quality: u64,
+}
+
+impl IngestTally {
+    fn of(row: &contextful_core::run::record::RunRow) -> IngestTally {
+        if row.status != RunStatus::Success {
+            return IngestTally { failed: 1, ..IngestTally::default() };
+        }
+        IngestTally { fetched: row.fetched, kept: row.kept, skipped: row.skipped, failed: 0, dropped_low_quality: row.fetched.saturating_sub(row.kept) }
+    }
+
+    fn plus(self, other: &IngestTally) -> IngestTally {
+        IngestTally {
+            fetched: self.fetched.saturating_add(other.fetched),
+            kept: self.kept.saturating_add(other.kept),
+            skipped: self.skipped.saturating_add(other.skipped),
+            failed: self.failed.saturating_add(other.failed),
+            dropped_low_quality: self.dropped_low_quality.saturating_add(other.dropped_low_quality),
+        }
+    }
+}
+
+impl std::fmt::Display for IngestTally {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(
+            f,
+            "fetched {} · kept {} · skipped {} · failed {} · dropped_low_quality {}",
+            self.fetched, self.kept, self.skipped, self.failed, self.dropped_low_quality
+        )
     }
 }

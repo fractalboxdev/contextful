@@ -36,6 +36,8 @@ pub fn row(run_id: &str, started: &str) -> RunRow {
         bytes: 0,
         batches: 0,
         skipped: 0,
+        fetched: 0,
+        kept: 0,
         declined: Default::default(),
         error_kind: None,
         error_message: None,

@@ -11,11 +11,11 @@ An unpinned clause is `committed`; a pinned one is `performed` when its Rust, Le
 | `corpus` | 1 | 10 | 79 | 37 | 7 | 0 | 43 | 0 | 43 |
 | `disclosure` | 3 | 16 | 156 | 68 | 13 | 3 | 63 | 0 | 63 |
 | `read` | 2 | 16 | 212 | 35 | 22 | 9 | 184 | 0 | 184 |
-| `run` | 3 | 26 | 413 | 102 | 39 | 28 | 320 | 0 | 320 |
+| `run` | 3 | 26 | 413 | 102 | 39 | 28 | 321 | 0 | 321 |
 | `store` | 1 | 17 | 253 | 59 | 13 | 19 | 216 | 0 | 216 |
 | `surface` | 2 | 20 | 134 | 59 | 22 | 0 | 94 | 0 | 94 |
 | `topology` | 1 | 6 | 70 | 24 | 5 | 5 | 38 | 0 | 38 |
-| **total** | 19 | 156 | 2206 | 610 | 193 | 103 | 1554 | 0 | |
+| **total** | 19 | 156 | 2206 | 610 | 193 | 103 | 1555 | 0 | |
 
 Decision records: 18.
 
@@ -29,7 +29,7 @@ A milestone reads `closed` when its acceptance test computes `passing` and every
 | 1 — The authority core | 14 | 239 | 190 | passing | closed |
 | 2 — The store | 9 | 175 | 143 | passing | closed |
 | 3 — The run path | 11 | 214 | 148 | passing | closed |
-| 4 — Ingest | 25 | 519 | 355 | passing | open |
+| 4 — Ingest | 25 | 519 | 356 | passing | open |
 | 5 — The read face under enforcement | 17 | 285 | 219 | passing | open |
 | 6 — Sync and replicas | 8 | 78 | 73 | passing | closed |
 | 7 — Memory | 6 | 54 | 45 | passing | closed |
@@ -1084,6 +1084,7 @@ Unscheduled operations: 11.
 | `run.journal.unwired-capability` | `crates/contextful-engine/tests/integration/execution.rs::suspending_on_an_engine_without_an_awakeable_store_is_refused_at_the_first_reach` | performed |
 | `run.land.batch-write` | `crates/contextful-context/tests/integration/run_commit.rs::a_run_lands_each_batch_as_a_part_and_carries_its_position` | performed |
 | `run.land.commit-visibility` | `crates/contextful-context/tests/integration/run_commit.rs::staged_parts_join_the_file_list_only_at_their_commit` | performed |
+| `run.land.ingest-tally` | `crates/contextful-cli/tests/integration/pipeline.rs::a_fire_tallies_fetched_kept_and_filtered_rows_and_failed_tables` | performed |
 | `run.land.irreconcilable-schema` | `crates/contextful-cli/tests/integration/run.rs::an_irreconcilable_pulled_schema_fails_the_batch` | performed |
 | `run.land.late-type` | `crates/contextful-engine/tests/integration/runner.rs::a_type_declared_after_its_column_staged_refuses` | performed |
 | `run.land.no-host-arm` | `crates/contextful-wasm/tests/integration/export.rs::the_host_binds_the_source_world_and_no_world_it_hosts_reaches_the_destination` | performed |

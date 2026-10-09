@@ -37,6 +37,8 @@ fn row(run_id: &str, st: RunStatus) -> RunRow {
         bytes: 900,
         batches: 3,
         skipped: 0,
+        fetched: 0,
+        kept: 0,
         declined: Default::default(),
         error_kind: None,
         error_message: None,

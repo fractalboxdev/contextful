@@ -625,6 +625,31 @@ fn a_failing_table_is_named_with_its_kind_and_run() {
     assert!(vendor.targets().iter().all(|t| t.starts_with("/v1/bad")), "abort halts the fire: {:?}", vendor.targets());
 }
 
+/// A fire reports `fetched`, `kept`, `skipped`, `failed` and `dropped_low_quality`, the rows its declared `filter` operations drop, in total and per table; a non-zero `failed` exits non-zero.
+// spec: run.land.ingest-tally@cd6727e0
+#[test]
+fn a_fire_tallies_fetched_kept_and_filtered_rows_and_failed_tables() {
+    let serve = |t: &str| if t.starts_with("/v1/bad") {
+        (404, "{}".to_string())
+    } else {
+        (200, r#"[{"id":"a","status":"open"},{"id":"b","status":"closed"},{"id":"c","status":"open"}]"#.to_string())
+    };
+    let filter = "transforms = [{ op = \"filter\", column = \"status\", equals = \"open\" }]";
+    let vendor = Vendor::start(serve);
+    let dir = project(&pipeline("shop", &vendor.url("/v1/{table}"), &format!("on_table_error = \"continue\"\n{filter}"), "tables = [\"bad\", \"good\"]"));
+    let out = fire(dir.path(), "shop", "r1", "2030-01-01T00:00:00Z");
+    assert!(!out.status.success(), "a failed table exits non-zero");
+    let stdout = String::from_utf8_lossy(&out.stdout);
+    assert!(stdout.contains("tally: fetched 3 · kept 2 · skipped 0 · failed 1 · dropped_low_quality 1"), "{stdout}");
+    assert!(stdout.contains("tally shop_good: fetched 3 · kept 2 · skipped 0 · failed 0 · dropped_low_quality 1"), "{stdout}");
+    assert!(stdout.contains("tally shop_bad: fetched 0 · kept 0 · skipped 0 · failed 1 · dropped_low_quality 0"), "{stdout}");
+
+    let vendor = Vendor::start(serve);
+    let dir = project(&pipeline("shop", &vendor.url("/v1/{table}"), filter, "tables = [\"good\"]"));
+    let out = ok(&fire(dir.path(), "shop", "r1", "2030-01-01T00:00:00Z"));
+    assert!(out.contains("tally: fetched 3 · kept 2 · skipped 0 · failed 0 · dropped_low_quality 1"), "{out}");
+}
+
 /// `on_table_error` is abort, the default, halting the fire at the first failing table, or continue, landing
 /// every other table and reporting the failed run ids through {{run.declare.table-error-exit}}.
 // spec: run.declare.table-error@86b78a63

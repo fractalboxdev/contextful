@@ -81,6 +81,9 @@ struct RecordedPull {
     authority: String,
     prepared: Value,
     rows: u64,
+    /// Rows that entered the transform chain; absent on a pull recorded before the count.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    fetched: Option<u64>,
     columns: BTreeSet<String>,
     types: BTreeMap<String, String>,
     next: Option<Value>,
@@ -339,6 +342,7 @@ impl<J: JournalStore, B: BlobStore> Engine<J, B> {
         let (mut staged_rows, mut staged_bytes) = (0u64, 0u64);
         let mut types = Types::new();
         let mut skipped = 0u64;
+        let (mut fetched, mut kept) = (0u64, 0u64);
         let mut snapshot_complete = false;
         let mut completion_reported = false;
         let mut declined: std::collections::BTreeMap<String, u64> = std::collections::BTreeMap::new();
@@ -412,8 +416,18 @@ impl<J: JournalStore, B: BlobStore> Engine<J, B> {
             if last {
                 snapshot_complete = !pull.more && pull.snapshot_complete.unwrap_or(false);
             }
+            let entering = rows.len() as u64;
             let rows = if prepared.is_some() || emissions.is_some() { rows } else { shape.shape(rows)? };
             let count = effect_summary.as_ref().map(|summary| summary.rows).unwrap_or_else(|| prepared.as_ref().map_or(rows.len() as u64, |prepared| prepared.rows));
+            // A recorded pull carries the count that entered its chain; an emission has no chain.
+            let entering = match (&prepared, &effect_summary) {
+                (_, Some(_)) => count,
+                (Some(prepared), _) => prepared.fetched.unwrap_or(prepared.rows),
+                _ if emissions.is_some() => count,
+                _ => entering,
+            };
+            fetched = fetched.saturating_add(entering);
+            kept = kept.saturating_add(count);
             if count > 0 {
                 let columns = effect_summary.as_ref().map(|summary| summary.columns.clone()).unwrap_or_else(|| prepared.as_ref().map(|prepared| prepared.columns.clone()).unwrap_or_else(|| rows.iter().flat_map(|r| r.keys()).cloned().collect()));
                 undeclared.extend(columns.into_iter().filter(|c| !types.contains_key(c)));
@@ -528,7 +542,7 @@ impl<J: JournalStore, B: BlobStore> Engine<J, B> {
             }
         }
         self.journal.collect(&execution_id)?;
-        Ok((landed, Tally { batches: batch_count, skipped, declined }))
+        Ok((landed, Tally { batches: batch_count, skipped, fetched, kept, declined }))
     }
 
     /// Resolve one pull through the execution's journal under the plan's retry schedule.
@@ -560,11 +574,12 @@ impl<J: JournalStore, B: BlobStore> Engine<J, B> {
                 } else {
                     (pull.rows, pull.cursor.or_else(|| request.position.clone()), !pull.more)
                 };
+                let fetched = Some(rows.len() as u64);
                 let rows = shape.shape(rows).map_err(preparation_failure)?;
                 let count = rows.len() as u64;
                 let columns = rows.iter().flat_map(|row| row.keys()).cloned().collect();
                 let prepared = if rows.is_empty() { Value::Null } else { dest.prepare_recorded(&spec.plan.spec.table, rows, types.clone(), execution.execution_id())? };
-                let recorded = RecordedPull { authority:authority.into(), prepared, rows:count, columns, types:types.iter().map(|(name, ty)| (name.clone(), ty.name())).collect(), next, last, more:pull.more, snapshot_complete:pull.snapshot_complete, skipped:pull.skipped, declined:pull.declined };
+                let recorded = RecordedPull { authority:authority.into(), prepared, rows:count, fetched, columns, types:types.iter().map(|(name, ty)| (name.clone(), ty.name())).collect(), next, last, more:pull.more, snapshot_complete:pull.snapshot_complete, skipped:pull.skipped, declined:pull.declined };
                 serde_json::to_vec(&recorded).map_err(|e| Failure::deterministic(FailureTag::SchemaIncompatible, e.to_string()))
             });
             if late { execution.discard(); }
