@@ -72,6 +72,31 @@ fn the_walk_stays_under_the_root_skips_dot_entries_and_visits_in_sorted_order() 
     assert!(matches!(refused, ConfigError::Run(RunError::PipelineUnknownConfigKey(_))), "{refused}");
 }
 
+/// An artifact path normalizing under the evaluation directory, reached by a manifest lint or a connector, raises `GoldenSetIngested`.
+// spec: assurance.baseline.answer-key-in-the-store@5cbcc761
+#[test]
+fn a_source_reaching_the_evaluation_directory_raises_golden_set_ingested() {
+    // The configuration refuses a root under it before any I/O, however the path is spelled.
+    for root in ["evals", "evals/cases", "./docs/../evals/corpora", "/srv/repo/evals"] {
+        let refused = FileConfig::parse(&json!({ "root": root })).unwrap_err();
+        assert!(refused.to_string().contains("GoldenSetIngested"), "{root}: {refused}");
+    }
+    for root in ["docs", "evals/../docs", "evaluations", "my-evals"] {
+        assert!(FileConfig::parse(&json!({ "root": root })).is_ok(), "{root}");
+    }
+
+    // A walk from above it refuses once it admits a file there.
+    let dir = tempfile::tempdir().unwrap();
+    write(dir.path(), "docs/guide.md", "# Guide");
+    write(dir.path(), "evals/cases/native.jsonl", "{}");
+    let failure = read(&source(dir.path(), json!({ "root": "." })), None).unwrap_err();
+    assert!(failure.to_string().contains("GoldenSetIngested"), "{failure}");
+    assert!(failure.to_string().contains("evals/cases/native.jsonl"), "{failure}");
+    // Excluded, the directory is never reached.
+    let (rows, _, _) = read(&source(dir.path(), json!({ "root": ".", "exclude": ["evals/**"] })), None).unwrap();
+    assert_eq!(rows.iter().map(|r| r["path"].as_str().unwrap()).collect::<Vec<_>>(), ["docs/guide.md"]);
+}
+
 /// The `file` walk follows no symbolic link, to a file or a directory.
 // spec: connector.source.file-no-follow@55bc744f
 #[cfg(unix)]

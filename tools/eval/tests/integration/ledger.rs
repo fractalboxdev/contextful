@@ -65,6 +65,51 @@ fn an_entry_carries_its_clause_metric_tier_method_and_threshold() {
     assert!(toml::from_str::<Ledger>(&ENTRY.replace("seed   =", "sede   =")).is_err());
 }
 
+/// A gate-tier entry measures a count, a ratio within one run or a size under a locked resolve; a wall-clock or resident-memory figure is trend-tier.
+// spec: assurance.measure.count-first@e7a56676
+#[test]
+fn a_timing_or_resident_set_figure_decides_no_gate() {
+    for (from, to) in [
+        ("kind   = \"test\"", "kind   = \"bench\""),
+        ("metric = \"effects_per_key.max\"", "metric = \"read.latency_ms.p95\""),
+        ("metric = \"effects_per_key.max\"", "metric = \"engine.idle_rss\""),
+    ] {
+        let r = reasons(&ledger(&ENTRY.replacen(from, to, 1)));
+        assert_eq!(r.len(), 1, "{to}: {r:?}");
+        assert!(r[0].contains("a timing is trend-tier"), "{to}: {r:?}");
+        // The same figure at the trend tier records and decides nothing.
+        let trend = ENTRY.replacen(from, to, 1).replacen("tier   = \"gate\"", "tier   = \"trend\"\ndirection = \"lower_is_better\"", 1);
+        assert!(reasons(&ledger(&trend)).is_empty(), "{to}");
+    }
+    // Counts, ratios and sizes gate.
+    for metric in ["journal.effects_per_key.max", "retrieval.hybrid.r_precision", "topology.store_write.unique_packages"] {
+        let r = reasons(&ledger(&ENTRY.replacen("effects_per_key.max", metric, 1)));
+        assert!(r.is_empty(), "{metric}: {r:?}");
+    }
+    // The committed ledger holds every gate entry to a count.
+    let committed: Ledger = toml::from_str(&std::fs::read_to_string(concat!(env!("CARGO_MANIFEST_DIR"), "/../../evals/ledger.toml")).unwrap()).unwrap();
+    assert!(committed.entry.values().any(|e| e.tier == Tier::Gate));
+    assert!(committed.entry.values().filter(|e| e.tier == Tier::Gate).all(|e| e.kind != Kind::Bench));
+}
+
+/// A threshold is an absolute figure of this system's own measure, and it tightens only through {{assurance.baseline.raise-only}}.
+// spec: assurance.measure.absolute-threshold@d8925df3
+#[test]
+fn a_threshold_is_a_finite_absolute_figure() {
+    for value in ["inf", "-inf", "nan"] {
+        let r = reasons(&ledger(&ENTRY.replacen("value = 1 }", &format!("value = {value} }}"), 1)));
+        assert_eq!(r.len(), 1, "{value}: {r:?}");
+        assert!(r[0].contains("no absolute figure"), "{value}: {r:?}");
+    }
+    // A target compares the measured figure alone: no baseline, history or other system enters.
+    let t = Target { op: Op::Le, value: 12.0 };
+    assert!(t.holds(12.0) && !t.holds(12.5));
+    for relative in ["baseline = \"main\"", "relative = 0.05", "against = \"upstream\""] {
+        let text = ENTRY.replacen("target = { op = \"==\", value = 1 }", &format!("target = {{ op = \"==\", value = 1, {relative} }}"), 1);
+        assert!(toml::from_str::<Ledger>(&text).is_err(), "{relative}");
+    }
+}
+
 #[test]
 fn a_threshold_compares_by_its_operator() {
     let t = |op, value| Target { op, value };

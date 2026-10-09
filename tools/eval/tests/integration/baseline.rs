@@ -218,6 +218,23 @@ fn a_mean_carries_its_sample_count_and_shrinking_it_regresses() {
     }
 }
 
+/// A path resolving to nothing, a mean over fewer than 30 cases, a malformed entry or a non-finite band raises `BaselinePathUnresolved` before the suite runs.
+// spec: assurance.baseline.unresolvable-path@05e66768
+#[test]
+fn a_malformed_entry_or_band_refuses_from_the_file_alone() {
+    let with = |key: &str, value: &str| format!(r#"{{"_run": {{"k": 10, "tier": "deterministic", "model": null, "samples": 1}}, "{key}": {value}}}"#);
+    for (key, value) in [
+        ("retrieval.hybrid.recall_at_k", r#""high""#),
+        ("retrieval.hybrid.recall_at_k", r#"{"band": 0.02}"#),
+        ("retrieval.hybrid.recall_at_k", r#"{"value": 0.7, "band": -0.01}"#),
+        ("retrieval.hybrid.nowhere_at_k", "0.7"),
+    ] {
+        assert_eq!(unresolved(Baselines::parse(&with(key, value))), key, "{value}");
+    }
+    // JSON holds no infinity: a band past every finite number refuses the file as a whole.
+    assert_eq!(unresolved(Baselines::parse(&with("retrieval.hybrid.recall_at_k", r#"{"value": 0.7, "band": 1e999}"#))), "");
+}
+
 #[test]
 fn an_entry_naming_nothing_or_under_thirty_cases_refuses_the_whole_gate() {
     assert_eq!(GATED_MEAN_CASES, 30);

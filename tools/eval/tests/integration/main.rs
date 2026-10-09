@@ -2,6 +2,9 @@
 
 mod baseline;
 mod case;
+mod checkpoint;
+mod convert;
+mod custody;
 mod embed;
 mod floors;
 mod ledger;

@@ -65,6 +65,33 @@ fn an_operation_gloss_in_the_fragment_is_a_registry_finding() {
     assert!(found.iter().any(|m| m.contains("`fold`") && m.contains("gloss")), "{found:?}");
 }
 
+/// A bound with a measured basis names a trend-tier or scheduled-tier ledger entry id as its benchmark.
+// spec: assurance.measure.measured-basis@f3004e76
+#[test]
+fn a_measured_basis_names_a_trend_or_scheduled_ledger_entry() {
+    let s = Scratch::copy();
+    let frag = s.read("spec/terms/authority.toml");
+    let chosen = "value = 256, unit = \"B\", basis = \"chosen\"";
+    assert!(frag.contains(chosen));
+    let with = |benchmark: &str| s.write("spec/terms/authority.toml", &frag.replacen(chosen, &format!("value = 256, unit = \"B\", basis = \"measured:{benchmark}\""), 1));
+    let found = |s: &Scratch| codes(&s.lint("registry"), "SpecRegistry").into_iter().filter(|m| m.contains("subject-value-bytes")).collect::<Vec<_>>();
+    s.write(
+        "evals/ledger.toml",
+        "[entry.mint-latency]\ntier = \"trend\"\n\n[entry.mint-soak]\ntier = \"scheduled\"\n\n[entry.mint-refusals]\ntier = \"gate\"\n",
+    );
+    for benchmark in ["mint-latency", "mint-soak"] {
+        with(benchmark);
+        assert!(found(&s).is_empty(), "{benchmark}: {:?}", found(&s));
+    }
+    with("mint-refusals");
+    assert!(found(&s).iter().any(|m| m.contains("names a gate entry")), "{:?}", found(&s));
+    with("mint-nowhere");
+    assert!(found(&s).iter().any(|m| m.contains("names no entry of evals/ledger.toml")), "{:?}", found(&s));
+    std::fs::remove_file(s.root.join("evals/ledger.toml")).unwrap();
+    with("mint-latency");
+    assert!(found(&s).iter().any(|m| m.contains("does not read")), "{:?}", found(&s));
+}
+
 // spec: corpus.guide.bad-guide@d6d374ef
 #[test]
 fn a_contract_without_a_guide_is_a_guide_finding() {

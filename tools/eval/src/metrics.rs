@@ -17,8 +17,9 @@ pub const LEGS: [&str; 3] = ["lexical", "vector", "hybrid"];
 /// The ranked metrics, by the field name a run report carries them under.
 pub const RANKED_METRICS: [&str; 5] = ["recall_at_k", "r_precision", "hit_rate_at_k", "reciprocal_rank", "ndcg_at_k"];
 
-/// The relevance rates, by report field name. Each is lower-is-better except the in-window rate.
-pub const RELEVANCE_METRICS: [&str; 3] = ["forbidden_row_rate", "duplicate_row_rate", "in_window_rate"];
+/// The relevance rates, by report field name. Each is lower-is-better except the in-window
+/// and abstention rates.
+pub const RELEVANCE_METRICS: [&str; 4] = ["forbidden_row_rate", "duplicate_row_rate", "in_window_rate", "abstention_rate"];
 
 /// A stored row a ranking names: its table and its row key.
 #[derive(Debug, Clone, PartialEq, Eq, Hash, PartialOrd, Ord, Serialize, Deserialize)]
@@ -147,6 +148,19 @@ pub fn in_window_rate(returned: &[Returned], recency_bound: bool) -> f64 {
         return f64::NAN;
     }
     returned.iter().filter(|r| r.in_window).count() as f64 / returned.len() as f64
+}
+
+/// 1.0 when a must-abstain case returned zero rows, else 0.0 (`assurance.evaluate.abstention`).
+/// NaN for a case that does not abstain.
+pub fn abstention_rate(returned: usize, must_abstain: bool) -> f64 {
+    if !must_abstain {
+        return f64::NAN;
+    }
+    if returned == 0 {
+        1.0
+    } else {
+        0.0
+    }
 }
 
 /// One case's ranked metrics at `k`.

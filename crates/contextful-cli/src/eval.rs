@@ -24,10 +24,12 @@ use contextful_core::store::reserve::Injection;
 use contextful_core::time::Instant;
 use contextful_eval::baseline::{self, Baselines, Outcome, RunStamp, Tier};
 use contextful_eval::case::{self, Case, KEY_SEPARATOR};
+use contextful_eval::checkpoint::{CaseResult, Checkpoint, Header};
 use contextful_eval::embed::{StubEmbedder, DEFAULT_SEED};
 use contextful_eval::floors;
 use contextful_eval::metrics::{Returned, RowRef, LEGS};
 use contextful_eval::report::{self, CaseRun};
+use contextful_eval::systems::{self, Systems};
 use contextful_eval::EvalError;
 use contextful_policy::enforce::mask::Pepper;
 use contextful_policy::enforce::session::{Request, Session};
@@ -50,6 +52,9 @@ const EMBEDDING_COLUMN: &str = "embedding";
 
 /// The zone prefix that admits an unlabeled corpus (`assurance.evaluate.unlabeled-corpus`).
 const LOCAL_ZONE_PREFIX: &str = "local:";
+
+/// Tokens the deterministic tier's stub reader holds in its context window.
+const STUB_READER_CONTEXT_TOKENS: u64 = 128_000;
 
 #[derive(Subcommand)]
 pub enum EvalCmd {
@@ -83,6 +88,14 @@ pub struct RunArgs {
     /// On a green run, raise each improved baseline entry to its measured value.
     #[arg(long, requires = "baseline")]
     update_baseline: bool,
+    /// Append each finished case's result to this JSON Lines file, and resume from the
+    /// results it already holds.
+    #[arg(long)]
+    checkpoint: Option<PathBuf>,
+    /// Tokens the reader's context window holds; the systems figures bucket each case's
+    /// corpus size against it.
+    #[arg(long, default_value_t = STUB_READER_CONTEXT_TOKENS)]
+    context_window: u64,
     #[command(flatten)]
     admit: AdmitArgs,
 }
@@ -146,13 +159,16 @@ fn row_text(row: &Map<String, Value>, key: &[String]) -> String {
 }
 
 /// Land every table of `corpus` into `store` at `at`, embedding each row that carries no
-/// embedding, then fold each table so its declared sidecars build.
-fn land_corpus(corpus: &Corpus, store: &Store, embedder: &StubEmbedder, at: Instant) -> Result<()> {
+/// embedding, then fold each table so its declared sidecars build. Returns the corpus's
+/// size in tokens.
+fn land_corpus(corpus: &Corpus, store: &Store, embedder: &StubEmbedder, at: Instant) -> Result<u64> {
     let (node, _) = node::resolve(store, |k| std::env::var(k).ok())?;
+    let mut corpus_tokens = 0;
     for (table, path) in corpus.tables()? {
         let decl = corpus.decl(&table);
         let mut rows = read_rows(&path)?;
         for row in &mut rows {
+            corpus_tokens += systems::tokens(&row_text(row, decl.primary_key()));
             if !row.contains_key(EMBEDDING_COLUMN) {
                 let v = embedder.embed(&row_text(row, decl.primary_key()));
                 row.insert(EMBEDDING_COLUMN.into(), serde_json::to_value(v)?);
@@ -174,7 +190,7 @@ fn land_corpus(corpus: &Corpus, store: &Store, embedder: &StubEmbedder, at: Inst
             bail!("folding `{table}`: {outcome}");
         }
     }
-    Ok(())
+    Ok(corpus_tokens)
 }
 
 /// A returned row's reference: its table and its declared primary-key values
@@ -197,6 +213,13 @@ fn instant(field: &str, value: Option<&str>, default: Instant) -> Result<Instant
     value.map_or(Ok(default), |s| Instant::parse(s).with_context(|| format!("`{field}` is not an RFC 3339 instant: {s}")))
 }
 
+/// What reading one case yields: its return on each leg, and the tokens the reader reads —
+/// the question and each row of the hybrid leg it is handed.
+struct CaseRead {
+    legs: BTreeMap<String, Vec<Returned>>,
+    reader_tokens: u64,
+}
+
 /// Read one case on every leg (`assurance.evaluate.legs`).
 fn read_case(
     face: &Face,
@@ -206,12 +229,13 @@ fn read_case(
     k: usize,
     embedder: &StubEmbedder,
     landed_at: Instant,
-) -> Result<BTreeMap<String, Vec<Returned>>> {
+) -> Result<CaseRead> {
     let anchor = instant("time_anchor", case.expected.time_anchor.as_deref(), landed_at)?;
     let since = case.expected.since.as_deref().map(|s| instant("since", Some(s), landed_at)).transpose()?;
     let embedding = case.query_embedding.clone().unwrap_or_else(|| embedder.embed(&case.question));
     let prefix = case.prefix.clone().unwrap_or_default();
     let mut legs = BTreeMap::new();
+    let mut reader_tokens = systems::tokens(&case.question);
     for leg in LEGS {
         let (query, query_embedding) = match leg {
             "lexical" => (case.question.as_str(), None),
@@ -235,9 +259,17 @@ fn read_case(
                 Returned { row: row_ref(corpus, table, &row[r]), in_window: row[w].as_bool().unwrap_or(false) }
             })
             .collect();
+        if leg == "hybrid" {
+            for row in &response.rows {
+                let table = row[t].as_str().unwrap_or_default();
+                if let Some(values) = row[r].as_object() {
+                    reader_tokens += systems::tokens(&row_text(values, corpus.decl(table).primary_key()));
+                }
+            }
+        }
         legs.insert(leg.to_string(), returned);
     }
-    Ok(legs)
+    Ok(CaseRead { legs, reader_tokens })
 }
 
 fn session(face: &Face, authority: &AdmittedAuthority, revocation: &contextful_policy::revoke::RevocationState, zone: Option<&str>) -> Result<Session> {
@@ -282,18 +314,58 @@ pub fn run(cmd: EvalCmd) -> Result<()> {
     if let Some(signal) = pepper.signal() {
         eprintln!("{signal}");
     }
-    let mut legs: Vec<BTreeMap<String, Vec<Returned>>> = vec![BTreeMap::new(); cases.len()];
+    // A checkpoint resumes the cases it holds whole; the case a crash interrupted runs again
+    // (`assurance.evaluate.checkpoint`).
+    let (mut checkpoint, mut done) = match &a.checkpoint {
+        Some(path) => {
+            let (cp, done) = Checkpoint::open(path, &Header { run: stamp.clone(), seed: a.seed })?;
+            if let Some(stale) = done.keys().find(|id| !cases.iter().any(|c| &c.id == *id)) {
+                bail!("checkpoint `{}` holds case `{stale}`, which the case file does not carry", path.display());
+            }
+            eprintln!("eval: resuming {} finished case(s) from `{}`", done.len(), path.display());
+            (Some(cp), done)
+        }
+        None => (None, BTreeMap::new()),
+    };
+    let mut results: Vec<Option<CaseResult>> = cases.iter().map(|c| done.remove(&c.id)).collect();
     for (corpus, idx) in &opened {
+        if idx.iter().all(|&i| results[i].is_some()) {
+            continue;
+        }
         let scratch = tempfile::tempdir()?;
         let store = Store::open(scratch.path(), SCRATCH_PROJECT)?;
-        land_corpus(corpus, &store, &embedder, landed_at)?;
+        let corpus_tokens = land_corpus(corpus, &store, &embedder, landed_at)?;
         let face = Face::open(store, &corpus.manifest, pepper.clone())?;
         let s = session(&face, &authority, &revocation, a.zone.as_deref())?;
         for &i in idx {
-            legs[i] = read_case(&face, &s, corpus, &cases[i], a.k, &embedder, landed_at)?;
+            if results[i].is_some() {
+                continue;
+            }
+            let started = std::time::Instant::now();
+            let read = read_case(&face, &s, corpus, &cases[i], a.k, &embedder, landed_at)?;
+            let systems = Systems {
+                tokens: read.reader_tokens,
+                latency_ms: started.elapsed().as_secs_f64() * 1000.0,
+                // The deterministic tier calls no model.
+                cost: 0.0,
+                corpus_tokens,
+                context_window: a.context_window,
+            };
+            let result = CaseResult { id: cases[i].id.clone(), legs: read.legs, edges: None, systems: Some(systems) };
+            if let Some(cp) = &mut checkpoint {
+                cp.append(&result)?;
+            }
+            results[i] = Some(result);
         }
     }
-    let runs: Vec<CaseRun<'_>> = cases.iter().zip(legs).map(|(case, legs)| CaseRun { case, legs }).collect();
+    let runs: Vec<CaseRun<'_>> = cases
+        .iter()
+        .zip(results)
+        .map(|(case, r)| {
+            let r = r.expect("every case read or resumed");
+            CaseRun { case, legs: r.legs, edges: r.edges, systems: r.systems }
+        })
+        .collect();
     let report = report::build(&stamp, a.seed, &runs);
     let text = serde_json::to_string_pretty(&report)? + "\n";
     match &a.report {
@@ -308,6 +380,7 @@ pub fn run(cmd: EvalCmd) -> Result<()> {
 fn verdict(report: &Value, baselines: Option<Baselines>, a: &RunArgs) -> Result<()> {
     let floors = floors::check(report);
     let mut red: Vec<String> = floors.breaches().map(|c| format!("floor {}: {} against {:?} {}", c.path, c.measured, c.side, c.bound)).collect();
+    let floor_red = red.len();
     let mut compared = None;
     if let Some(b) = baselines {
         let v = baseline::gate(report, &b)?;
@@ -318,6 +391,17 @@ fn verdict(report: &Value, baselines: Option<Baselines>, a: &RunArgs) -> Result<
             }
         }
         compared = Some((b, v));
+    }
+    // Both verdicts come from the report and the in-tree files alone (`assurance.baseline.offline`).
+    eprintln!("eval: floor verdict: {} ({} floor(s), {floor_red} breached)", if floor_red == 0 { "held" } else { "red" }, floors.checks.len());
+    match &a.baseline {
+        Some(path) => eprintln!(
+            "eval: baseline verdict: {} against `{}` ({} regressed)",
+            if red.len() == floor_red { "held" } else { "red" },
+            path.display(),
+            red.len() - floor_red
+        ),
+        None => eprintln!("eval: baseline verdict: none, no --baseline"),
     }
     if !red.is_empty() {
         red.iter().for_each(|r| eprintln!("eval: red: {r}"));
