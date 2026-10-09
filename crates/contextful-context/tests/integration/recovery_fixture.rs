@@ -12,6 +12,55 @@ fn ok(output: Output) -> String {
     String::from_utf8(output.stdout).unwrap().trim().to_string()
 }
 
+pub fn unpublished_process_crash_recovery(cli: &std::path::Path) {
+    use std::os::unix::process::ExitStatusExt;
+    use std::time::{Duration, Instant};
+    struct OwnedChild(std::process::Child);
+    impl Drop for OwnedChild {
+        fn drop(&mut self) { let _ = self.0.kill(); let _ = self.0.wait(); }
+    }
+    let directory = tempfile::tempdir().unwrap(); let root = directory.path();
+    ok(run(cli, root, &["init", "research", "--authoring-posture", "per_request"], None, None));
+    std::fs::write(root.join("contextful.toml"), "authoring_posture = \"per_request\"\n[[pipeline.tables]]\nname = \"notes\"\nprimary_key = [\"id\"]\nsubject_id = \"subject\"\n").unwrap();
+    std::fs::write(root.join(".contextful/issuance.toml"), "default_audience = \"erasure-fixture\"\nmax_lifetime_secs = 3600\n").unwrap();
+    std::fs::write(root.join("rows.jsonl"), "{\"id\":\"a\",\"subject\":\"alice\"}\n{\"id\":\"b\",\"subject\":\"bob\"}\n").unwrap();
+    ok(run(cli, root, &["context", "land", "notes", "--project", "research", "--rows", "rows.jsonl", "--run-id", "run-1", "--site-id", "fixture"], None, None));
+    let pins = ok(run(cli, root, &["token", "keygen", "--out", ".contextful/issuer.seed"], None, None));
+    let forget = ok(run(cli, root, &["token", "mint", "--issuer-key", ".contextful/issuer.seed", "--on-behalf-of", "user://fixture", "--agent", "agent://fixture", "--zone", "on-prem:fixture", "--action", "forget", "--table", "*", "--ttl", "3600"], None, None));
+    let store = root.join(".contextful/context/research");
+    let padding = store.join("tables/notes/owned-padding");
+    std::fs::create_dir(&padding).unwrap();
+    // Ordinary retained files make the unpublished copy observable without a production fault hook.
+    for index in 0..4096 { std::fs::write(padding.join(format!("file-{index:05}")), b"fixture-owned inventory").unwrap(); }
+    let mut child = OwnedChild(Command::new(cli).current_dir(root)
+        .args(["context", "erase", "--project", "research", "--subject", "alice", "--tables", "notes", "--issuer-key", ".contextful/issuer.seed", "--public-key", &pins, "--audience", "erasure-fixture", "--json"])
+        .env("CONTEXTFUL_TOKEN", &forget).env("CONTEXTFUL_ISSUER_PUBKEY", &pins).env_remove("CONTEXTFUL_NODE_ID")
+        .stdout(std::process::Stdio::null()).stderr(std::process::Stdio::null()).spawn().unwrap());
+    let until = Instant::now() + Duration::from_secs(60);
+    let staging = store.join("_erasure/staging");
+    let transaction = loop {
+        let copied = std::fs::read_dir(&staging).ok().and_then(|mut entries| entries.next()).map(|entry| entry.unwrap().path());
+        if let Some(path) = copied.filter(|path| path.join("tables/notes/owned-padding/file-00000").is_file()) { break path; }
+        assert!(child.0.try_wait().unwrap().is_none(), "erasure exits before an unpublished copy is observed");
+        assert!(Instant::now() < until, "erasure creates no copied replacement inside the fixture deadline");
+        std::thread::sleep(Duration::from_millis(1));
+    };
+    child.0.kill().unwrap();
+    assert_eq!(child.0.wait().unwrap().signal(), Some(9));
+    assert!(!store.join("_erasure_frontier.json").exists(), "the crash occurs before publication");
+    assert!(transaction.exists(), "the owned unpublished transaction survives its process");
+    let query = ["query", "--json", "--project", "research", "SELECT id FROM notes ORDER BY id"];
+    assert_eq!(serde_json::from_str::<serde_json::Value>(&ok(run(cli, root, &query, None, Some(&pins)))).unwrap()["rows"], serde_json::json!([["a"],["b"]]));
+    std::fs::remove_file(root.join(".contextful/issuer.seed")).unwrap();
+    let recovery = ["context", "erase", "--recover", "--project", "research", "--public-key", &pins, "--audience", "erasure-fixture", "--json"];
+    ok(run(cli, root, &recovery, Some(&forget), Some(&pins)));
+    assert!(!transaction.exists(), "an unpublished replacement survives built-surface recovery");
+    assert!(!store.join("_erasure_frontier.json").exists(), "recovery publishes no erasure");
+    assert_eq!(std::fs::read_dir(&padding).unwrap().count(), 4096, "recovery preserves live table files");
+    assert_eq!(serde_json::from_str::<serde_json::Value>(&ok(run(cli, root, &query, None, Some(&pins)))).unwrap()["rows"], serde_json::json!([["a"],["b"]]));
+    ok(run(cli, root, &recovery, Some(&forget), Some(&pins)));
+}
+
 pub fn process_crash_recovery(cli: &std::path::Path) {
     use std::os::unix::process::ExitStatusExt;
     use std::time::{Duration, Instant};
