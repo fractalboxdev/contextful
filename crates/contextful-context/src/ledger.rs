@@ -16,8 +16,8 @@ use arrow_array::types::{Int32Type, Int64Type, TimestampNanosecondType};
 use arrow_array::{Array, ArrayRef, Int32Array, Int64Array, RecordBatch, StringArray, TimestampNanosecondArray};
 use contextful_core::store::lay_out::{is_path_segment, NodeId};
 use contextful_core::store::ledger::{ledger_columns, RequestRecord};
-use contextful_core::store::reconcile::Schema;
-use contextful_core::store::reserve::ledger_path;
+use contextful_core::store::reconcile::{Column, ColumnType, Schema};
+use contextful_core::store::reserve::{ledger_path, LEDGER_RETENTION_SECS};
 use contextful_core::time::Instant;
 use parquet::arrow::ArrowWriter;
 use parquet::basic::{Compression, ZstdLevel};
@@ -27,6 +27,11 @@ use std::sync::Arc;
 
 /// The directory holding a table's ledger files.
 const LEDGER_DIR: &str = contextful_core::store::lay_out::REQUESTS_DIR;
+/// The prefix of a merged ledger file, `folded-<snapshot-id>.parquet` (`store.reserve.ledger-fold`).
+pub const FOLDED_PREFIX: &str = "folded-";
+/// The column a merged ledger file carries beside the ledger's own: each row's run commit
+/// instant, from which retention ages it (`store.reserve.ledger-retention`).
+const COMMITTED_AT: &str = "committed_at";
 /// How long an append waits for another flush of the same run to release the file.
 const LOCK_WAIT: std::time::Duration = std::time::Duration::from_secs(10);
 
@@ -193,8 +198,18 @@ fn decode(path: &Path, batches: Vec<RecordBatch>) -> Result<Vec<(String, Request
 
 /// The Parquet bytes of one complete ledger file.
 fn encode(path: &Path, rows: &[(String, RequestRecord)]) -> Result<Vec<u8>> {
+    encode_with(path, rows, None)
+}
+
+/// The Parquet bytes of a ledger file, with a `committed_at` column after the ledger's own
+/// where `committed` gives each row's run commit instant.
+fn encode_with(path: &Path, rows: &[(String, RequestRecord)], committed: Option<&[Instant]>) -> Result<Vec<u8>> {
     let pq = |e: parquet::errors::ParquetError| ContextError::Parquet { path: path.to_path_buf(), message: e.to_string() };
-    let schema = parquet_io::arrow_schema(&Schema { columns: ledger_columns() });
+    let mut ledger = ledger_columns();
+    if committed.is_some() {
+        ledger.push(Column::new(COMMITTED_AT, ColumnType::Timestamp, false));
+    }
+    let schema = parquet_io::arrow_schema(&Schema { columns: ledger });
     let text = |f: &dyn Fn(&(String, RequestRecord)) -> Option<String>| -> ArrayRef { Arc::new(rows.iter().map(f).collect::<StringArray>()) };
     let columns: Vec<ArrayRef> = vec![
         text(&|(run, _)| Some(run.clone())),
@@ -213,6 +228,10 @@ fn encode(path: &Path, rows: &[(String, RequestRecord)]) -> Result<Vec<u8>> {
         ),
         Arc::new(rows.iter().map(|(_, r)| i64::try_from(r.duration_ms).unwrap_or(i64::MAX)).collect::<Int64Array>()),
     ];
+    let mut columns = columns;
+    if let Some(at) = committed {
+        columns.push(Arc::new(at.iter().map(|i| i64::try_from(i.unix_nanos()).ok()).collect::<TimestampNanosecondArray>().with_timezone("UTC")));
+    }
     let batch = RecordBatch::try_new(schema.clone(), columns).map_err(|e| ContextError::Parquet { path: path.to_path_buf(), message: e.to_string() })?;
     let mut bytes = Vec::new();
     let props = WriterProperties::builder().set_compression(Compression::ZSTD(ZstdLevel::default())).build();
@@ -220,4 +239,84 @@ fn encode(path: &Path, rows: &[(String, RequestRecord)]) -> Result<Vec<u8>> {
     w.write(&batch).map_err(pq)?;
     w.close().map_err(pq)?;
     Ok(bytes)
+}
+
+/// A ledger file as Arrow batches, opened with the project key where sealed.
+fn batches_for_store(store: &Store, path: &Path) -> Result<Vec<RecordBatch>> {
+    match store.sealing() {
+        Sealing::Plaintext => parquet_io::read(path),
+        Sealing::Sealed(cipher) => {
+            let sealed = std::fs::read(path).at(path)?;
+            let plain = cipher.open(&sealed).map_err(|e| ContextError::Invalid(format!("{}: opening: {e}", path.display())))?;
+            parquet_io::read_bytes(plain)
+        }
+    }
+}
+
+/// Every row of a merged ledger file with its run's commit instant.
+fn read_merged(store: &Store, path: &Path) -> Result<Vec<(String, RequestRecord, Instant)>> {
+    let batches = batches_for_store(store, path)?;
+    let invalid = || ContextError::Parquet { path: path.to_path_buf(), message: format!("the merged ledger column `{COMMITTED_AT}` is missing or mistyped") };
+    let mut at = Vec::new();
+    for b in &batches {
+        let column = b.column_by_name(COMMITTED_AT).and_then(|c| c.as_primitive_opt::<TimestampNanosecondType>()).ok_or_else(invalid)?;
+        for i in 0..b.num_rows() {
+            at.push(Instant::from_unix_nanos(i128::from(column.value(i))).map_err(|_| invalid())?);
+        }
+    }
+    Ok(decode(path, batches)?.into_iter().zip(at).map(|((run, r), at)| (run, r, at)).collect())
+}
+
+/// Merge `table`'s ledger files of committed runs, with every earlier merge, into
+/// `requests/folded-<snapshot_id>.parquet`, drop each row whose run committed 365 d or more
+/// before `now`, then remove the files merged. A run with no committed manifest keeps its
+/// file. A merge keeps one row per `(run_id, request_id)`, so a merge interrupted before
+/// its removals repeats nothing (`store.reserve.ledger-fold`, `store.reserve.ledger-retention`).
+/// Returns the merged file, or `None` where no row remains in one.
+pub fn fold_ledgers(store: &Store, table: &str, snapshot_id: &str, now: Instant) -> Result<Option<PathBuf>> {
+    let files = files(store, table)?;
+    if files.is_empty() {
+        return Ok(None);
+    }
+    let committed: std::collections::BTreeMap<String, Instant> = store
+        .committed_runs(table)?
+        .into_iter()
+        .map(|m| (format!("{}.{}.parquet", m.run_id, m.node_id), m.committed_at))
+        .collect();
+    let mut rows: Vec<(String, RequestRecord, Instant)> = Vec::new();
+    let mut merged = Vec::new();
+    for path in files {
+        let name = path.file_name().map(|n| n.to_string_lossy().into_owned()).unwrap_or_default();
+        if name.starts_with(FOLDED_PREFIX) {
+            rows.extend(read_merged(store, &path)?);
+            merged.push(path);
+        } else if let Some(at) = committed.get(&name) {
+            rows.extend(read_for_store(store, &path)?.into_iter().map(|(run, r)| (run, r, *at)));
+            merged.push(path);
+        }
+    }
+    let target = store.table_dir(table)?.join(LEDGER_DIR).join(format!("{FOLDED_PREFIX}{snapshot_id}.parquet"));
+    if merged.is_empty() {
+        return Ok(target.is_file().then_some(target));
+    }
+    let mut seen = std::collections::BTreeSet::new();
+    rows.retain(|(run, r, at)| at.plus_secs(LEDGER_RETENTION_SECS) > now && seen.insert((run.clone(), r.request_id.clone())));
+    let wrote = !rows.is_empty();
+    if wrote {
+        let (calls, at): (Vec<(String, RequestRecord)>, Vec<Instant>) = rows.into_iter().map(|(run, r, at)| ((run, r), at)).unzip();
+        let plain = encode_with(&target, &calls, Some(&at))?;
+        let bytes = match store.sealing() {
+            Sealing::Plaintext => plain,
+            Sealing::Sealed(cipher) => cipher.seal(&plain).map_err(|e| ContextError::Invalid(format!("{}: sealing: {e}", target.display())))?,
+        };
+        write_synced(&target, &bytes)?;
+    }
+    for path in merged.iter().filter(|p| !(wrote && **p == target)) {
+        match std::fs::remove_file(path) {
+            Ok(()) => {}
+            Err(e) if e.kind() == std::io::ErrorKind::NotFound => {}
+            Err(e) => return Err(e).at(path),
+        }
+    }
+    Ok(wrote.then_some(target))
 }

@@ -358,6 +358,51 @@ fn a_replica_missing_a_snapshot_part_refuses_and_leaves_it_unpublished() {
     assert!(!r.root().join("tables/filings/_pointer.json").exists());
 }
 
+/// Each fold pass merges a table's committed ledger files into `requests/folded-<snapshot-id>.parquet`, and a
+/// replica carries ledgers with their table.
+// spec: store.reserve.ledger-fold@41270f90
+#[test]
+fn a_pass_merges_committed_ledgers_and_a_replica_carries_the_merge() {
+    use contextful_core::store::ledger::RequestRecord;
+    let (_dir, b, a) = pushed();
+    let call = |id: &str| RequestRecord {
+        request_id: id.into(),
+        vendor_request_id: None,
+        connector: "http".into(),
+        method: "GET".into(),
+        url_host: "api.example.org".into(),
+        status_code: Some(200),
+        started_at: at("2030-01-01T00:00:00Z"),
+        duration_ms: 1,
+        batch_seq: Some(0),
+    };
+    let node_a = contextful_core::store::lay_out::NodeId::parse("ingest-a").unwrap();
+    contextful_context::ledger::append(&a.syncer.store, "filings", "run-1", &node_a, &[call("c1"), call("c2")]).unwrap();
+    contextful_context::ledger::append(&a.syncer.store, "filings", "run-9", &node_a, &[call("c9")]).unwrap();
+    let held = a.syncer.acquire("filings", at(NOW)).unwrap();
+    let FoldOutcome::Folded { snapshot_id, .. } = fold(&a.syncer.store, &TableDecl::named("filings"), at(NOW)).unwrap() else { panic!() };
+    let merged = format!("folded-{snapshot_id}.parquet");
+    let names = |n: &crate::support::Node| -> Vec<String> {
+        contextful_context::ledger::files(&n.syncer.store, "filings").unwrap().iter().map(|p| p.file_name().unwrap().to_string_lossy().into_owned()).collect()
+    };
+    // The committed run's file merged; the run still in flight keeps its own.
+    assert_eq!(names(&a), [merged.clone(), "run-9.ingest-a.parquet".to_string()]);
+    a.syncer.push(at(NOW)).unwrap();
+    a.syncer.publish("filings", &snapshot_id, &held).unwrap();
+
+    let r = node("replica-1", b, "\n[replica]\nof = \"team/research\"\n");
+    r.syncer.pull(&PullScope::default()).unwrap();
+    assert_eq!(names(&r), [merged, "run-9.ingest-a.parquet".to_string()]);
+    let mut calls: Vec<String> = contextful_context::ledger::files(&r.syncer.store, "filings")
+        .unwrap()
+        .iter()
+        .flat_map(|p| contextful_context::ledger::read(p).unwrap())
+        .map(|(run, c)| format!("{run}/{}", c.request_id))
+        .collect();
+    calls.sort();
+    assert_eq!(calls, ["run-1/c1", "run-1/c2", "run-9/c9"]);
+}
+
 /// A refresh requesting a replicate-off table raises `ReplicaSensitiveTable`; the consumer reads through the
 /// proxying face.
 // spec: store.replicate.sensitive-refused@e105ab21

@@ -87,7 +87,7 @@ pub fn fold(store: &Store, decl: &TableDecl, now: Instant) -> Result<FoldOutcome
 pub fn fold_under(store: &Store, decl: &TableDecl, now: Instant, fence: Option<u64>) -> Result<FoldOutcome> {
     store.check_writable("compact")?;
     match prepare_under(store, decl, now, fence)? {
-        Prepared::NothingLanded => Ok(match collect(store, decl, now) {
+        Prepared::NothingLanded => Ok(match merge_ledgers(store, decl, now).and_then(|_| collect(store, decl, now)) {
             Ok(collected) => match decl.retain_rows_secs().map_err(|e| ContextError::Invalid(e.to_string()))? {
                 Some(age) => FoldOutcome::NothingLandedRetained { cutoff: now.minus_secs(age), collected },
                 None => FoldOutcome::NothingLanded,
@@ -100,7 +100,7 @@ pub fn fold_under(store: &Store, decl: &TableDecl, now: Instant, fence: Option<u
             let warnings = staged.warnings.clone();
             match commit(store, *staged)? {
                 Committed::Published(m) => {
-                    let collected = collect(store, decl, now);
+                    let collected = merge_ledgers(store, decl, now).and_then(|_| collect(store, decl, now));
                     Ok(FoldOutcome::Folded {
                     snapshot_id: m.snapshot_id.to_string(),
                     runs,
@@ -114,6 +114,15 @@ pub fn fold_under(store: &Store, decl: &TableDecl, now: Instant, fence: Option<u
             }
         }
     }
+}
+
+/// Merge the table's committed request ledgers under the snapshot its pointer names, before
+/// collection removes the run manifests that date them (`store.reserve.ledger-fold`).
+fn merge_ledgers(store: &Store, decl: &TableDecl, now: Instant) -> Result<()> {
+    if let Some((pointer, _)) = store.pointer(&decl.name)? {
+        crate::ledger::fold_ledgers(store, &decl.name, &pointer.snapshot_id.to_string(), now)?;
+    }
+    Ok(())
 }
 
 /// Stage the next snapshot: select the committed runs the current snapshot omits,
