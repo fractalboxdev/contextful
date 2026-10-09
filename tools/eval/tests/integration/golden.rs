@@ -203,3 +203,29 @@ fn a_public_corpus_enters_through_its_content_hashed_manifest() {
     let ignore = std::fs::read_to_string(root.join(".gitignore")).unwrap();
     assert!(ignore.lines().any(|l| l.trim() == format!("/{PUBLIC_CORPUS_DIR}/")), "{PUBLIC_CORPUS_DIR}");
 }
+
+#[test]
+fn a_store_view_reads_the_memory_shapes_columns() {
+    use contextful_eval::golden::ShapeRows;
+    let rows = |v: serde_json::Value| -> Vec<serde_json::Map<String, serde_json::Value>> {
+        v.as_array().unwrap().iter().map(|r| r.as_object().unwrap().clone()).collect()
+    };
+    let entities = rows(json!([{ "entity_id": "e1", "name": "Ada Varga" }, { "entity_id": "e2", "name": "Lisbon Archive" }]));
+    let facts = rows(json!([
+        { "claim_id": "f1", "subject": "e1", "predicate": "role", "object": "archivist", "superseded_by": null },
+        { "claim_id": "f0", "subject": "e1", "predicate": "role", "object": "clerk", "superseded_by": "f1" },
+    ]));
+    let edges = rows(json!([{ "edge_id": 7, "source_id": "e1", "rel_type": "works at", "target_id": "e2" }]));
+    let key = |k: &str| vec![k.to_string()];
+    let view = StoreView::from_memory(
+        ShapeRows { table: "kg/entities", key: &key("entity_id"), rows: &entities },
+        ShapeRows { table: "kg/facts", key: &key("claim_id"), rows: &facts },
+        ShapeRows { table: "kg/edges", key: &[], rows: &edges },
+    );
+    assert_eq!(view.entities.len(), 2);
+    // A retired claim is no fact.
+    assert_eq!(view.facts, vec![Fact { entity: "e1".into(), attribute: "role".into(), value: "archivist".into(), row: RowRef::new("kg/facts", "f1") }]);
+    // With no declared key the shape's id column keys the row.
+    assert_eq!(view.edges[0].row, RowRef::new("kg/edges", "7"));
+    assert_eq!(walks(&view, "c").len(), 1);
+}

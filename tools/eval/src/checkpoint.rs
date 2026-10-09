@@ -15,6 +15,7 @@ use std::path::{Path, PathBuf};
 use serde::{Deserialize, Serialize};
 
 use crate::baseline::RunStamp;
+use crate::judge::CaseJudgment;
 use crate::metrics::Returned;
 use crate::systems::Systems;
 
@@ -36,6 +37,9 @@ pub struct CaseResult {
     pub edges: Option<BTreeMap<String, Vec<String>>>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub systems: Option<Systems>,
+    /// The case's answer and judged verdicts.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub judged: Option<CaseJudgment>,
 }
 
 /// A checkpoint that cannot resume this run.

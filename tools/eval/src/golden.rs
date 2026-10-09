@@ -11,7 +11,7 @@ use std::collections::{BTreeMap, BTreeSet};
 
 use contextful_core::enforce::EnforceError;
 use contextful_core::redaction::{CompiledRule, Matcher, Operation, Rule};
-use serde_json::Value;
+use serde_json::{Map, Value};
 
 use crate::baseline::{RunStamp, REPORT_RUN_KEY};
 use crate::case::{self, Case, Expected};
@@ -55,7 +55,64 @@ pub struct StoreView {
     pub edges: Vec<Edge>,
 }
 
+/// One table's rows as a read returned them, with its declared primary key.
+#[derive(Debug, Clone, Copy)]
+pub struct ShapeRows<'a> {
+    pub table: &'a str,
+    /// The declared primary key; empty, the shape's id column keys each row.
+    pub key: &'a [String],
+    pub rows: &'a [Map<String, Value>],
+}
+
+impl ShapeRows<'_> {
+    fn row_ref(&self, row: &Map<String, Value>, id_column: &str) -> RowRef {
+        let columns: Vec<&str> = if self.key.is_empty() { vec![id_column] } else { self.key.iter().map(String::as_str).collect() };
+        let key: Vec<String> = columns.iter().map(|c| text(row.get(*c))).collect();
+        RowRef::new(self.table, key.join(case::KEY_SEPARATOR))
+    }
+}
+
+/// A cell as text: a string as itself, null as empty, any other value as JSON.
+fn text(v: Option<&Value>) -> String {
+    match v {
+        Some(Value::String(s)) => s.clone(),
+        None | Some(Value::Null) => String::new(),
+        Some(v) => v.to_string(),
+    }
+}
+
 impl StoreView {
+    /// The view of tables in the memory shapes' columns: `entity_id` and `name`; `claim_id`,
+    /// `subject`, `predicate` and `object`, a claim with a `superseded_by` retired; and
+    /// `edge_id`, `source_id`, `rel_type` and `target_id`.
+    pub fn from_memory(entities: ShapeRows<'_>, facts: ShapeRows<'_>, edges: ShapeRows<'_>) -> StoreView {
+        let get = |row: &Map<String, Value>, c: &str| text(row.get(c));
+        StoreView {
+            entities: entities.rows.iter().map(|r| Entity { id: get(r, "entity_id"), name: get(r, "name") }).collect(),
+            facts: facts
+                .rows
+                .iter()
+                .filter(|r| r.get("superseded_by").is_none_or(Value::is_null))
+                .map(|r| Fact {
+                    entity: get(r, "subject"),
+                    attribute: get(r, "predicate"),
+                    value: get(r, "object"),
+                    row: facts.row_ref(r, "claim_id"),
+                })
+                .collect(),
+            edges: edges
+                .rows
+                .iter()
+                .map(|r| Edge {
+                    from: get(r, "source_id"),
+                    relation: get(r, "rel_type"),
+                    to: get(r, "target_id"),
+                    row: edges.row_ref(r, "edge_id"),
+                })
+                .collect(),
+        }
+    }
+
     fn name(&self, id: &str) -> Option<&str> {
         self.entities.iter().find(|e| e.id == id).map(|e| e.name.as_str())
     }

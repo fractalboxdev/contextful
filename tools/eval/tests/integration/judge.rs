@@ -252,3 +252,20 @@ fn an_abstained_answer_cites_nothing() {
     let a = Answer::abstain();
     assert!(a.abstained && a.citations.is_empty());
 }
+
+#[test]
+fn a_case_judgment_round_trips_and_folds_like_the_whole_run() {
+    use contextful_eval::judge::{fold, judge_case, CaseJudgment};
+    let cases = cases();
+    let rows = retrieved();
+    let whole = run(&judged(&cases, &rows), &StubReader, &StubJudge, 7).unwrap();
+    let parts: Vec<CaseJudgment> = cases
+        .iter()
+        .zip(&rows)
+        .map(|(c, r)| {
+            let j = judge_case(c, r, &StubReader, &StubJudge).unwrap();
+            serde_json::from_str(&serde_json::to_string(&j).unwrap()).unwrap()
+        })
+        .collect();
+    assert_eq!(fold(&parts, 7), whole);
+}

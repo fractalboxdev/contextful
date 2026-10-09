@@ -339,6 +339,7 @@ The read-path quality harness: case format, deterministic metrics and floors, ju
 - `model-endpoint` — The judge and the reader reach a model through {{connector.infer.model-endpoint}}, and the harness holds no credential.
 - `judge` — The judge is one pinned open-weights instruct model, called once per judged item at temperature zero; a judge swap is a full re-baseline.
   *because a majority vote at temperature zero samples one mode and adds cost without reducing variance*
+- `judged-run` — `contextful eval run --tier judged` reads and judges every case through the endpoint and model `--endpoint` and `--model` name, stamping that model in the run block; the deterministic tier judges with the stubs.
 - `systems-metrics` — Tokens per query, latency and cost report beside the quality figures, bucketed by corpus size in tokens relative to the reader's context window.
 - `checkpoint` — A run appends each case's result as JSONL, and a crash re-runs the in-flight case.
 - `run-report` — A run report carries one field per gated metric, the sample count behind each mean, the run block, the per-slice breakdown, and the tally of cases sampled, dropped and unscored.
@@ -377,6 +378,8 @@ Holding a run against committed baselines and absolute floors, intervals, golden
   *A-assurance*
 - `promotion-source` — Only an adjudicated outcome label promotes into a golden set; a self-rated row does not.
 - `generators` — Three generators draft candidate cases from the deployment's store — entity-to-fact-to-edge walks, composed edge chains, and questions about absent entities — and a human approves each before commit.
+- `draft-command` — `contextful eval draft` reads the declared entity, fact and edge tables through one admitted session, runs the three generators, and writes their candidates as case lines; it commits nothing.
+- `commit-command` — `contextful eval commit` appends each draft an `--approve <id>=<reviewer>` names, redacted under the declaration's removal rules, to the named case file; an id the file already holds refuses the commit.
 - `held-out` — Retrieval and synthesis are tuned on no gate input.
 - `rotation` — The native set rotates on a cadence, a sample of its truth is reviewed on each rotation, and a comparison across generations resolves through the pinned run stamp.
 - `native-gate` — A native benchmark generated from a real corpus is the red or green gate; public benchmark sets run beside it as held-out comparison and decide nothing.
@@ -395,6 +398,8 @@ The target ledger: each tracked target, the clause it serves, how it is measured
   *P7*
 - `open-entry` — An entry naming an issue in place of a method reports open and gates nothing, and `evals/ledger.md` carries every entry's computed status.
 - `tier` — A gate-tier entry decides the evaluate stage, a trend-tier entry is measured on the default-branch run and decides nothing, and a scheduled-tier entry runs on the scheduled job alone.
+- `judged-tier` — An entry whose metric names a judged figure is scheduled-tier; on another tier it resolves to nothing under {{assurance.measure.unresolved-entry}}.
+  *because a judged figure costs a model call per item and moves with the judge, not with the change*
 - `count-first` — A gate-tier entry measures a count, a ratio within one run or a size under a locked resolve; a wall-clock or resident-memory figure is trend-tier.
   *because a shared container moves wall-clock figures past any band narrow enough to catch a regression*
 - `record` — A measure writes one JSON record carrying its entry id, value, sample count, seed and run stamp; a gate-tier method finishing without one raises `MeasureRecordMissing`.

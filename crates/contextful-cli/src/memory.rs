@@ -23,7 +23,7 @@ use contextful_policy::enforce::session::Request;
 use std::path::PathBuf;
 
 /// The environment variable holding the inference endpoint's bearer key, if it takes one.
-const INFERENCE_KEY_VAR: &str = "CONTEXTFUL_INFERENCE_KEY";
+pub(crate) const INFERENCE_KEY_VAR: &str = "CONTEXTFUL_INFERENCE_KEY";
 
 #[derive(clap::Args)]
 pub struct Project {

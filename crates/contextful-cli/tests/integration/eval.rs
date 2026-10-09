@@ -657,3 +657,247 @@ fn a_red_run_exits_non_zero_and_only_a_green_one_raises_its_baseline() {
     assert!(!out.status.success());
     assert!(stderr(&out).contains("floor retrieval.hybrid.r_precision.mean"), "{}", stderr(&out));
 }
+
+/// An OpenAI-compatible endpoint answering each completion with the next scripted content
+/// and recording each request body.
+struct Model {
+    port: u16,
+    bodies: std::sync::Arc<std::sync::Mutex<Vec<Value>>>,
+}
+
+impl Model {
+    fn start(contents: &[&str]) -> Model {
+        use std::io::{BufRead, BufReader, Read, Write};
+        let listener = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
+        let port = listener.local_addr().unwrap().port();
+        let bodies: std::sync::Arc<std::sync::Mutex<Vec<Value>>> = Default::default();
+        let seen = bodies.clone();
+        let answers = std::sync::Mutex::new(contents.iter().rev().map(|c| c.to_string()).collect::<Vec<_>>());
+        std::thread::spawn(move || {
+            for mut stream in listener.incoming().flatten() {
+                let mut reader = BufReader::new(stream.try_clone().unwrap());
+                let mut line = String::new();
+                reader.read_line(&mut line).unwrap();
+                let mut len = 0;
+                loop {
+                    let mut h = String::new();
+                    if reader.read_line(&mut h).unwrap() == 0 || h.trim().is_empty() {
+                        break;
+                    }
+                    if let Some((k, v)) = h.split_once(':') {
+                        if k.eq_ignore_ascii_case("content-length") {
+                            len = v.trim().parse().unwrap();
+                        }
+                    }
+                }
+                let mut body = vec![0; len];
+                reader.read_exact(&mut body).unwrap();
+                seen.lock().unwrap().push(serde_json::from_slice(&body).unwrap_or(Value::Null));
+                let content = answers.lock().unwrap().pop().unwrap_or_default();
+                let reply = json!({ "choices": [{ "message": { "role": "assistant", "content": content } }] }).to_string();
+                let _ = write!(stream, "HTTP/1.1 200 OK\r\nContent-Type: application/json\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{reply}", reply.len());
+            }
+        });
+        Model { port, bodies }
+    }
+
+    fn url(&self) -> String {
+        format!("http://127.0.0.1:{}/v1", self.port)
+    }
+}
+
+/// Two answerable lab cases and one the corpus cannot answer.
+fn judged_cases() -> [Value; 3] {
+    [
+        json!({ "id": "valve", "corpus": "corpus", "question": "pressure valve", "prefix": "lab/plain",
+                "expected": { "answer": "pressure valve manual", "artifacts": ["lab/plain#a,1"] } }),
+        json!({ "id": "forklift", "corpus": "corpus", "question": "forklift battery", "prefix": "lab/plain",
+                "expected": { "answer": "forklift battery charging", "artifacts": ["lab/plain#b,1"] } }),
+        json!({ "id": "unknown", "corpus": "corpus", "question": "submarine periscope", "prefix": "lab/plain",
+                "expected": { "must_abstain": true } }),
+    ]
+}
+
+#[test]
+fn the_deterministic_tier_judges_with_stubs_and_replays_identically() {
+    let issuer = Issuer::new();
+    let goldens = corpus(issuer.path(), LAB, &lab_rows(), &judged_cases());
+    let token = issuer.mint(READER, "on-prem:hq");
+    let (out, first) = issuer.eval(&goldens, &token, &[]);
+    assert!(out.status.success(), "{}", stderr(&out));
+    let (out, second) = issuer.eval(&goldens, &token, &[]);
+    assert!(out.status.success(), "{}", stderr(&out));
+    assert_eq!(first["run"]["tier"], json!("deterministic"));
+    assert_eq!(first["judge"]["accuracy"]["n"], json!(2));
+    assert_eq!(first["judge"]["correct_refusal"]["n"], json!(1));
+    assert!(first["judge"]["accuracy"]["interval"]["lo"].is_number(), "{}", first["judge"]);
+    assert_eq!(first["judge"], second["judge"], "the stub reader and judge replay every figure");
+
+    // A resumed run reports the judged figures its checkpoint recorded.
+    let cp = issuer.path().join("judged.jsonl");
+    let (out, full) = issuer.eval(&goldens, &token, &["--checkpoint", cp.to_str().unwrap()]);
+    assert!(out.status.success(), "{}", stderr(&out));
+    let (out, resumed) = issuer.eval(&goldens, &token, &["--checkpoint", cp.to_str().unwrap()]);
+    assert!(stderr(&out).contains("resuming 3 finished case(s)"), "{}", stderr(&out));
+    assert_eq!(resumed["judge"], full["judge"]);
+}
+
+/// `contextful eval run --tier judged` reads and judges every case through the endpoint and model `--endpoint` and
+/// `--model` name, stamping that model in the run block; the deterministic tier judges with the stubs.
+// spec: assurance.evaluate.judged-run@157f9c52
+#[test]
+fn the_judged_tier_reads_and_judges_through_the_named_endpoint() {
+    let issuer = Issuer::new();
+    let goldens = corpus(issuer.path(), LAB, &lab_rows(), &judged_cases());
+    let token = issuer.mint(READER, "on-prem:hq");
+    // Case by case: the reader's answer, then one verdict per judged item. The unanswerable
+    // case retrieves no row, so the reader abstains without a call.
+    let model = Model::start(&[
+        "pressure valve manual [lab/plain#a,1]",
+        "1",
+        "1",
+        "forklift battery charging [lab/plain#b,1]",
+        "0.5",
+        "1",
+        "REFUSED",
+    ]);
+    let url = model.url();
+    let args = ["--tier", "judged", "--endpoint", url.as_str(), "--model", "open-instruct-7b"];
+    let (out, report) = issuer.eval(&goldens, &token, &args);
+    assert!(out.status.success(), "{}", stderr(&out));
+    assert_eq!(report["run"], json!({ "k": 5, "tier": "judged", "model": "open-instruct-7b", "samples": 1 }));
+    let calls = report["judge"]["judge_calls"].as_u64().unwrap() as usize;
+    let bodies = model.bodies.lock().unwrap().clone();
+    assert!(calls >= 3, "{}", report["judge"]);
+    assert!(bodies.len() > calls, "the reader asked too: {} bodies", bodies.len());
+    for b in &bodies {
+        assert_eq!(b["model"], json!("open-instruct-7b"));
+        assert_eq!(b["temperature"], json!(0));
+    }
+    assert_eq!(calls, 5);
+    assert_eq!(bodies.len(), 7);
+    assert_eq!(report["judge"]["correct_refusal"]["mean"], json!(1.0));
+    assert_eq!(report["judge"]["accuracy"]["mean"], json!(0.75));
+    // The judged tier names its endpoint and model.
+    let (out, report) = issuer.eval(&goldens, &token, &["--tier", "judged"]);
+    assert!(!out.status.success());
+    assert!(stderr(&out).contains("--endpoint"), "{}", stderr(&out));
+    assert_eq!(report, Value::Null);
+}
+
+/// A project store holding entity, fact and edge tables in the memory shapes' columns.
+fn knowledge(issuer: &Issuer) {
+    let p = issuer.path();
+    std::fs::create_dir_all(p.join(".contextful/context/kg")).unwrap();
+    std::fs::write(p.join(".contextful/context/kg/config.toml"), "[node]\nid = \"eval-a\"\n").unwrap();
+    std::fs::write(
+        p.join("contextful.toml"),
+        r#"authoring_posture = "per_request"
+
+[[pipeline.tables]]
+name = "kg/entities"
+primary_key = ["entity_id"]
+
+[[pipeline.tables]]
+name = "kg/facts"
+primary_key = ["claim_id"]
+redaction = [{ table = "kg/facts", column = "object", match = { pattern = "[0-9]{3}-[0-9]{4}" }, operation = "replace", argument = "phone" }]
+
+[[pipeline.tables]]
+name = "kg/edges"
+primary_key = ["edge_id"]
+"#,
+    )
+    .unwrap();
+    let rows = [
+        ("kg/entities", vec![json!({ "entity_id": "e1", "name": "Ada Varga" }), json!({ "entity_id": "e2", "name": "Lisbon Archive" })]),
+        ("kg/facts", vec![json!({ "claim_id": "f1", "subject": "e1", "predicate": "desk phone", "object": "555-0100" })]),
+        ("kg/edges", vec![json!({ "edge_id": "g1", "source_id": "e1", "rel_type": "works at", "target_id": "e2" })]),
+    ];
+    for (i, (table, rows)) in rows.iter().enumerate() {
+        let file = p.join(format!("rows-{i}.jsonl"));
+        std::fs::write(&file, rows.iter().map(Value::to_string).collect::<Vec<_>>().join("\n") + "\n").unwrap();
+        let args = ["context", "land", table, "--project", "kg", "--rows", file.to_str().unwrap(), "--run-id", "r1", "--site-id", "s"];
+        stdout(&run(p, &args, None));
+    }
+}
+
+fn kg_token(issuer: &Issuer) -> String {
+    let args = ["token", "mint", "--issuer-key", ".contextful/issuer.seed", "--on-behalf-of", "user://ops@example.org", "--agent", READER, "--zone", "on-prem:hq", "--table", "kg/*", "--ttl", "600"];
+    stdout(&run(issuer.path(), &args, None))
+}
+
+fn draft(issuer: &Issuer, token: Option<&str>) -> (Output, Vec<Value>) {
+    let out_file = issuer.path().join("drafts.jsonl");
+    let args = [
+        "eval", "draft", "--project", "kg", "--entities", "kg/entities", "--facts", "kg/facts", "--edges", "kg/edges",
+        "--decoy", "Mira Okafor", "--decoy", "Ada Varga", "--corpus", "../corpora/kg", "--out", out_file.to_str().unwrap(), "--zone", "on-prem:hq",
+        "--public-key", &issuer.public, "--audience", AUD,
+    ];
+    let _ = std::fs::remove_file(&out_file);
+    let out = run(issuer.path(), &args, token);
+    let text = std::fs::read_to_string(&out_file).unwrap_or_default();
+    (out, text.lines().map(|l| serde_json::from_str(l).unwrap()).collect())
+}
+
+/// `contextful eval draft` reads the declared entity, fact and edge tables through one admitted session, runs the
+/// three generators, and writes their candidates as case lines; it commits nothing.
+// spec: assurance.baseline.draft-command@12d955c1
+#[test]
+fn draft_writes_the_generators_candidates_from_the_store() {
+    let issuer = Issuer::new();
+    knowledge(&issuer);
+    let (out, drafts) = draft(&issuer, Some(&kg_token(&issuer)));
+    assert!(out.status.success(), "{}", stderr(&out));
+    let ids: Vec<&str> = drafts.iter().map(|d| d["id"].as_str().unwrap()).collect();
+    // One walk, no chain over a single edge, and one absent decoy: the store already names Ada Varga.
+    assert_eq!(drafts.len(), 2, "{ids:?}");
+    assert!(ids.iter().any(|i| i.starts_with("gen-absent-")), "{ids:?}");
+    let walk = drafts.iter().find(|d| d["id"].as_str().unwrap().starts_with("gen-walk-")).unwrap_or_else(|| panic!("{ids:?}: {}", stderr(&out)));
+    assert_eq!(walk["corpus"], json!("../corpora/kg"));
+    assert_eq!(walk["expected"]["artifacts"], json!(["kg/facts#f1"]));
+    assert_eq!(walk["expected"]["edges"], json!(["kg/edges#g1"]));
+    assert!(!issuer.path().join("evals").exists(), "a draft commits nothing");
+    // With no credential the store is not read.
+    let (out, drafts) = draft(&issuer, None);
+    assert!(!out.status.success());
+    assert!(drafts.is_empty());
+}
+
+/// `contextful eval commit` appends each draft an `--approve <id>=<reviewer>` names, redacted under the
+/// declaration's removal rules, to the named case file; an id the file already holds refuses the commit.
+// spec: assurance.baseline.commit-command@299ebda3
+#[test]
+fn commit_appends_approved_drafts_redacted_and_refuses_a_repeated_id() {
+    let issuer = Issuer::new();
+    knowledge(&issuer);
+    let (out, drafts) = draft(&issuer, Some(&kg_token(&issuer)));
+    assert!(out.status.success(), "{}", stderr(&out));
+    let walk = drafts.iter().find(|d| d["id"].as_str().unwrap().starts_with("gen-walk-")).unwrap()["id"].as_str().unwrap().to_string();
+    let into = issuer.path().join("evals/cases/kg.jsonl");
+    let approve = format!("{walk}=reviewer-a");
+    let commit = |approvals: &[&str]| {
+        let mut args = vec!["eval", "commit", "--drafts", "drafts.jsonl", "--into", into.to_str().unwrap(), "--declaration", "contextful.toml"];
+        for a in approvals {
+            args.extend(["--approve", a]);
+        }
+        run(issuer.path(), &args, None)
+    };
+    let out = commit(&[approve.as_str()]);
+    assert!(out.status.success(), "{}", stderr(&out));
+    let text = std::fs::read_to_string(&into).unwrap();
+    assert_eq!(text.lines().count(), 1, "only the approved draft commits: {text}");
+    let case: Value = serde_json::from_str(text.lines().next().unwrap()).unwrap();
+    assert_eq!(case["id"], json!(walk));
+    // The fact's value passes the declared removal rule before it reaches the tree.
+    let answer = case["expected"]["answer"].as_str().unwrap();
+    assert!(answer.contains("[REDACTED:phone]") && !answer.contains("555-0100"), "{answer}");
+    // An id the case file already holds refuses, and the file stays as written.
+    let out = commit(&[approve.as_str()]);
+    assert!(!out.status.success());
+    assert!(stderr(&out).contains(&walk), "{}", stderr(&out));
+    assert_eq!(std::fs::read_to_string(&into).unwrap(), text);
+    // An approval naming no draft refuses.
+    let out = commit(&["gen-walk-none=reviewer-a"]);
+    assert!(!out.status.success());
+}

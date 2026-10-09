@@ -22,7 +22,7 @@ use std::collections::{BTreeMap, HashSet};
 
 use contextful_core::connector::infer::{fence, DataItem};
 use contextful_core::memory::synthesize::{Inference, Message};
-use serde::Serialize;
+use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
 
 use crate::baseline::{RunStamp, Tier};
@@ -62,7 +62,7 @@ pub struct Retrieved {
 }
 
 /// A reader's answer: its text, the rows it cites, and whether it declined.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct Answer {
     pub text: String,
     pub citations: Vec<RowRef>,
@@ -81,7 +81,7 @@ pub trait Reader {
 }
 
 /// What one judged item scores.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum Dimension {
     Accuracy,
@@ -101,7 +101,7 @@ pub struct JudgedItem<'a> {
 
 /// A judge's verdict on one item: a score in [0, 1], or, for abstention, whether the
 /// answer refused or asserted.
-#[derive(Debug, Clone, Copy, PartialEq, Serialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum Judgment {
     Score(f64),
@@ -375,22 +375,51 @@ impl JudgedReport {
     }
 }
 
-/// Read and judge every case, then fold each judged dimension into a figure whose interval
-/// resamples under `seed`.
-pub fn run(cases: &[JudgedCase<'_>], reader: &dyn Reader, judge: &dyn Judge, seed: u64) -> Result<JudgedReport, String> {
+/// One judged item's verdict.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct Verdict {
+    pub dimension: Dimension,
+    pub judgment: Judgment,
+}
+
+/// One case read and judged: the answer and each item's verdict, in judging order. A
+/// checkpoint carries it, so a resumed case contributes without a second model call.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct CaseJudgment {
+    pub id: String,
+    pub answer: Answer,
+    pub verdicts: Vec<Verdict>,
+}
+
+/// Read `case` from `rows` and judge each of its items once.
+pub fn judge_case(case: &Case, rows: &[Retrieved], reader: &dyn Reader, judge: &dyn Judge) -> Result<CaseJudgment, String> {
+    let answer = reader.answer(&case.question, rows).map_err(|e| format!("`{}`: the reader failed: {e}", case.id))?;
+    let mut verdicts = Vec::new();
+    for dimension in dimensions(case, &answer) {
+        let item = JudgedItem { dimension, case, rows, answer: &answer };
+        let judgment = judge.judge(&item).map_err(|e| format!("`{}`: the judge failed: {e}", case.id))?;
+        let fits = matches!(
+            (dimension, judgment),
+            (Dimension::Abstention, Judgment::Refused | Judgment::Answered) | (Dimension::Accuracy | Dimension::CitationFaithfulness | Dimension::TemporalCorrectness, Judgment::Score(_))
+        );
+        if !fits {
+            return Err(format!("`{}`: the judge answered {judgment:?} for {dimension:?}", case.id));
+        }
+        verdicts.push(Verdict { dimension, judgment });
+    }
+    Ok(CaseJudgment { id: case.id.clone(), answer, verdicts })
+}
+
+/// Fold judged cases into one figure per judged dimension, each interval resampled under `seed`.
+pub fn fold(cases: &[CaseJudgment], seed: u64) -> JudgedReport {
     let mut values: BTreeMap<&'static str, Vec<f64>> = FIGURES.iter().map(|f| (*f, Vec::new())).collect();
     let mut judge_calls = 0;
-    let mut out = Vec::with_capacity(cases.len());
-    for jc in cases {
-        let case = jc.case;
-        let answer = reader.answer(&case.question, &jc.rows).map_err(|e| format!("`{}`: the reader failed: {e}", case.id))?;
-        let mut verdicts = serde_json::Map::new();
-        for dimension in dimensions(case, &answer) {
-            let item = JudgedItem { dimension, case, rows: &jc.rows, answer: &answer };
-            let judgment = judge.judge(&item).map_err(|e| format!("`{}`: the judge failed: {e}", case.id))?;
+    let mut push = |figure: &'static str, v: f64| values.get_mut(figure).expect("a known figure").push(v);
+    for c in cases {
+        for v in &c.verdicts {
             judge_calls += 1;
-            let mut push = |figure: &'static str, v: f64| values.get_mut(figure).expect("a known figure").push(v);
-            match (dimension, judgment) {
+            match (v.dimension, v.judgment) {
                 (Dimension::Abstention, Judgment::Refused) => {
                     push("correct_refusal", 1.0);
                     push("hallucination_on_unknown", 0.0);
@@ -399,14 +428,12 @@ pub fn run(cases: &[JudgedCase<'_>], reader: &dyn Reader, judge: &dyn Judge, see
                     push("correct_refusal", 0.0);
                     push("hallucination_on_unknown", 1.0);
                 }
-                (Dimension::Accuracy, Judgment::Score(v)) => push("accuracy", v),
-                (Dimension::CitationFaithfulness, Judgment::Score(v)) => push("citation_faithfulness", v),
-                (Dimension::TemporalCorrectness, Judgment::Score(v)) => push("temporal_correctness", v),
-                (d, j) => return Err(format!("`{}`: the judge answered {j:?} for {d:?}", case.id)),
+                (Dimension::Accuracy, Judgment::Score(s)) => push("accuracy", s),
+                (Dimension::CitationFaithfulness, Judgment::Score(s)) => push("citation_faithfulness", s),
+                (Dimension::TemporalCorrectness, Judgment::Score(s)) => push("temporal_correctness", s),
+                _ => {}
             }
-            verdicts.insert(serde_json::to_value(dimension).expect("a dimension serializes").as_str().unwrap_or_default().to_string(), serde_json::to_value(judgment).expect("a judgment serializes"));
         }
-        out.push(json!({ "id": case.id, "answer": answer, "verdicts": verdicts }));
     }
     let figures = values
         .into_iter()
@@ -417,7 +444,15 @@ pub fn run(cases: &[JudgedCase<'_>], reader: &dyn Reader, judge: &dyn Judge, see
             (name, Figure { summary, interval: Interval { level: INTERVAL_LEVEL, resamples: BOOTSTRAP_RESAMPLES, lo, hi } })
         })
         .collect();
-    Ok(JudgedReport { figures, judge_calls, cases: out })
+    let cases = cases.iter().map(|c| serde_json::to_value(c).expect("a judgment serializes")).collect();
+    JudgedReport { figures, judge_calls, cases }
+}
+
+/// Read and judge every case, then fold each judged dimension into a figure whose interval
+/// resamples under `seed`.
+pub fn run(cases: &[JudgedCase<'_>], reader: &dyn Reader, judge: &dyn Judge, seed: u64) -> Result<JudgedReport, String> {
+    let judged = cases.iter().map(|jc| judge_case(jc.case, &jc.rows, reader, judge)).collect::<Result<Vec<_>, _>>()?;
+    Ok(fold(&judged, seed))
 }
 
 /// The 95 percent percentile-bootstrap interval of the mean of `values`, from

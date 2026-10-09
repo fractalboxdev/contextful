@@ -1,24 +1,30 @@
-//! `contextful eval run` — the read-path quality harness's runner
-//! (`assurance.evaluate.run-command`).
+//! `contextful eval` — the read-path quality harness's runner
+//! (`assurance.evaluate.run-command`) and its golden-set verbs.
 //!
-//! A thin adapter: it loads the case file through the harness's one loader, lands each
-//! referenced corpus into a scratch store through the landing and fold paths
+//! `run` is a thin adapter: it loads the case file through the harness's one loader, lands
+//! each referenced corpus into a scratch store through the landing and fold paths
 //! `contextful context` uses, reads every case through the ranked call under one admitted
-//! credential, and hands the returns to the harness core for scoring and both verdicts. No
-//! metric, floor or baseline rule lives here.
+//! credential, has the harness core read and judge each case — through the stubs, or
+//! through the operator's inference endpoint on the judged tier — and hands the returns to
+//! the core for scoring and both verdicts. `draft` reads a project's entity, fact and edge
+//! tables and writes the generators' candidates; `commit` appends approved candidates,
+//! redacted, to a case file. No metric, floor, baseline or generator rule lives here.
 
-use crate::admit::AdmitArgs;
+use crate::admit::{face, AdmitArgs};
+use crate::memory::INFERENCE_KEY_VAR;
+use crate::project::locate;
 use crate::context::read_rows;
 use crate::clock::SystemClock;
 use anyhow::{bail, Context, Result};
 use clap::Subcommand;
 use contextful_context::fold::fold;
 use contextful_context::land::{land, Batch, RunContext};
-use contextful_context::read::{Face, RetrieveRequest};
+use contextful_context::read::{Face, ReadOptions, RetrieveRequest};
 use contextful_context::{node, Store};
 use contextful_core::ports::Clock;
 use contextful_core::store::bound_time::Bounds;
 use contextful_core::store::declare::TableDecl;
+use contextful_core::store::relation::ident;
 use contextful_core::store::reconcile::{ColumnType, FloatItem};
 use contextful_core::store::reserve::Injection;
 use contextful_core::time::Instant;
@@ -27,6 +33,8 @@ use contextful_eval::case::{self, Case, KEY_SEPARATOR};
 use contextful_eval::checkpoint::{CaseResult, Checkpoint, Header};
 use contextful_eval::embed::{StubEmbedder, DEFAULT_SEED};
 use contextful_eval::floors;
+use contextful_eval::golden::{self, GoldenRedaction, ShapeRows, StoreView};
+use contextful_eval::judge::{self, Judge, ModelJudge, ModelReader, Reader, Retrieved, StubJudge, StubReader};
 use contextful_eval::metrics::{Returned, RowRef, LEGS};
 use contextful_eval::report::{self, CaseRun};
 use contextful_eval::systems::{self, Systems};
@@ -36,9 +44,11 @@ use contextful_outbound::{Client, HeaderValue};
 use contextful_eval::EvalError;
 use contextful_policy::enforce::mask::Pepper;
 use contextful_policy::enforce::session::{Request, Session};
+use contextful_outbound::infer::Endpoint;
 use contextful_policy::verify::{effect_boundary, Admission, AdmittedAuthority};
 use serde_json::{Map, Value};
-use std::collections::{BTreeMap, HashMap};
+use std::collections::{BTreeMap, BTreeSet, HashMap};
+use std::io::Write as _;
 use std::path::{Path, PathBuf};
 
 /// The corpus manifest a corpus directory holds (`assurance.evaluate.corpus-layout`).
@@ -69,6 +79,19 @@ const DEPLOYED_STORE_ROOT: &str = ".contextful/context";
 pub enum EvalCmd {
     /// Run a case file through the ranked read and score it; exits non-zero on a red floor or baseline.
     Run(RunArgs),
+    /// Draft candidate cases from a project's entity, fact and edge tables.
+    Draft(DraftArgs),
+    /// Append approved drafts, redacted, to a case file.
+    Commit(CommitArgs),
+}
+
+/// The evaluation tier a run reads and judges under.
+#[derive(Clone, Copy, PartialEq, Eq, clap::ValueEnum)]
+enum RunTier {
+    /// The stub reader and judge: no model call.
+    Deterministic,
+    /// The model reader and judge, through `--endpoint` serving `--model`.
+    Judged,
 }
 
 #[derive(clap::Args)]
@@ -113,8 +136,67 @@ pub struct RunArgs {
     /// fixtures alone.
     #[arg(long)]
     trace_endpoint: Option<String>,
+    /// The tier the reading stage runs under.
+    #[arg(long, value_enum, default_value = "deterministic")]
+    tier: RunTier,
+    /// The OpenAI-compatible endpoint `/chat/completions` hangs off; the judged tier reads
+    /// and judges through it.
+    #[arg(long, required_if_eq("tier", "judged"))]
+    endpoint: Option<String>,
+    /// The pinned model the endpoint serves the reader and judge, stamped in the run block.
+    #[arg(long, required_if_eq("tier", "judged"))]
+    model: Option<String>,
     #[command(flatten)]
     admit: AdmitArgs,
+}
+
+#[derive(clap::Args)]
+pub struct DraftArgs {
+    /// The project whose store holds the tables; absent, the nearest `contextful.toml` names it.
+    #[arg(long)]
+    project: Option<String>,
+    /// The manifest declaring the tables; absent, the project's `contextful.toml`.
+    #[arg(long)]
+    declaration: Option<PathBuf>,
+    /// The table holding entities: `entity_id` and `name`.
+    #[arg(long)]
+    entities: String,
+    /// The table holding facts: `claim_id`, `subject`, `predicate` and `object`.
+    #[arg(long)]
+    facts: String,
+    /// The table holding edges: `edge_id`, `source_id`, `rel_type` and `target_id`.
+    #[arg(long)]
+    edges: String,
+    /// A name for an absent-entity question; repeatable. A name the store holds is skipped.
+    #[arg(long = "decoy")]
+    decoys: Vec<String>,
+    /// The corpus path each drafted case records, relative to the case file it will join.
+    #[arg(long)]
+    corpus: String,
+    /// The drafts file to write, one case per line.
+    #[arg(long)]
+    out: PathBuf,
+    /// The zone this process declares for the read session.
+    #[arg(long)]
+    zone: Option<String>,
+    #[command(flatten)]
+    admit: AdmitArgs,
+}
+
+#[derive(clap::Args)]
+pub struct CommitArgs {
+    /// The drafts file `eval draft` wrote.
+    #[arg(long)]
+    drafts: PathBuf,
+    /// `<case id>=<reviewer>` approving one draft; repeatable.
+    #[arg(long = "approve")]
+    approvals: Vec<String>,
+    /// The case file the approved drafts append to.
+    #[arg(long)]
+    into: PathBuf,
+    /// The manifest whose tables' removal rules redact each draft.
+    #[arg(long)]
+    declaration: PathBuf,
 }
 
 /// A corpus directory: its manifest and table declarations.
@@ -235,6 +317,8 @@ fn instant(field: &str, value: Option<&str>, default: Instant) -> Result<Instant
 struct CaseRead {
     legs: BTreeMap<String, Vec<Returned>>,
     reader_tokens: u64,
+    /// The hybrid leg's rows, top first, as the reader reads them.
+    rows: Vec<Retrieved>,
 }
 
 /// Read one case on every leg (`assurance.evaluate.legs`).
@@ -253,6 +337,7 @@ fn read_case(
     let prefix = case.prefix.clone().unwrap_or_default();
     let mut legs = BTreeMap::new();
     let mut reader_tokens = systems::tokens(&case.question);
+    let mut rows = Vec::new();
     for leg in LEGS {
         let (query, query_embedding) = match leg {
             "lexical" => (case.question.as_str(), None),
@@ -280,13 +365,15 @@ fn read_case(
             for row in &response.rows {
                 let table = row[t].as_str().unwrap_or_default();
                 if let Some(values) = row[r].as_object() {
-                    reader_tokens += systems::tokens(&row_text(values, corpus.decl(table).primary_key()));
+                    let text = row_text(values, corpus.decl(table).primary_key());
+                    reader_tokens += systems::tokens(&text);
+                    rows.push(Retrieved { row: row_ref(corpus, table, &row[r]), text, in_window: row[w].as_bool().unwrap_or(false) });
                 }
             }
         }
         legs.insert(leg.to_string(), returned);
     }
-    Ok(CaseRead { legs, reader_tokens })
+    Ok(CaseRead { legs, reader_tokens, rows })
 }
 
 fn session(face: &Face, authority: &AdmittedAuthority, revocation: &contextful_policy::revoke::RevocationState, zone: Option<&str>) -> Result<Session> {
@@ -295,10 +382,33 @@ fn session(face: &Face, authority: &AdmittedAuthority, revocation: &contextful_p
 }
 
 pub fn run(cmd: EvalCmd) -> Result<()> {
-    let EvalCmd::Run(a) = cmd;
+    match cmd {
+        EvalCmd::Run(a) => run_cases(a),
+        EvalCmd::Draft(a) => draft(a),
+        EvalCmd::Commit(a) => commit(a),
+    }
+}
+
+fn run_cases(a: RunArgs) -> Result<()> {
     let text = std::fs::read_to_string(&a.goldens).with_context(|| format!("reading `{}`", a.goldens.display()))?;
     let cases = case::load(&text).map_err(|e| anyhow::anyhow!("`{}`: {e}", a.goldens.display()))?;
-    let stamp = RunStamp { k: a.k, tier: Tier::Deterministic, model: None, samples: 1 };
+    // The judged tier reaches the operator's endpoint; the host holds its key
+    // (`assurance.evaluate.model-endpoint`).
+    let endpoint = match (a.tier, &a.endpoint, &a.model) {
+        (RunTier::Judged, Some(url), Some(model)) => {
+            Some((Endpoint::new(url, model, std::env::var(INFERENCE_KEY_VAR).ok()).map_err(anyhow::Error::msg)?, model.clone()))
+        }
+        _ => None,
+    };
+    let (reader, judge, stamp): (Box<dyn Reader + '_>, Box<dyn Judge + '_>, RunStamp) = match &endpoint {
+        Some((e, model)) => {
+            let judge = ModelJudge::new(e, model.clone());
+            let stamp = judge.stamp(a.k);
+            (Box::new(ModelReader::new(e)), Box::new(judge), stamp)
+        }
+        None => (Box::new(StubReader), Box::new(StubJudge), StubJudge.stamp(a.k)),
+    };
+    debug_assert!(stamp.tier == if endpoint.is_some() { Tier::Judged } else { Tier::Deterministic });
     // Every baseline refusal needing no report lands before any corpus does.
     let baselines = match &a.baseline {
         Some(path) => {
@@ -377,22 +487,23 @@ pub fn run(cmd: EvalCmd) -> Result<()> {
                 corpus_tokens,
                 context_window: a.context_window,
             };
-            let result = CaseResult { id: cases[i].id.clone(), legs: read.legs, edges: None, systems: Some(systems) };
+            let judged = judge::judge_case(&cases[i], &read.rows, reader.as_ref(), judge.as_ref()).map_err(anyhow::Error::msg)?;
+            let result = CaseResult { id: cases[i].id.clone(), legs: read.legs, edges: None, systems: Some(systems), judged: Some(judged) };
             if let Some(cp) = &mut checkpoint {
                 cp.append(&result)?;
             }
             results[i] = Some(result);
         }
     }
-    let runs: Vec<CaseRun<'_>> = cases
-        .iter()
-        .zip(results)
-        .map(|(case, r)| {
-            let r = r.expect("every case read or resumed");
-            CaseRun { case, legs: r.legs, edges: r.edges, systems: r.systems }
-        })
-        .collect();
-    let report = report::build(&stamp, a.seed, &runs);
+    let mut judged = Vec::with_capacity(cases.len());
+    let mut runs: Vec<CaseRun<'_>> = Vec::with_capacity(cases.len());
+    for (case, r) in cases.iter().zip(results) {
+        let r = r.expect("every case read or resumed");
+        judged.push(r.judged.with_context(|| format!("case `{}` carries no judged result; its checkpoint predates the reading stage", case.id))?);
+        runs.push(CaseRun { case, legs: r.legs, edges: r.edges, systems: r.systems });
+    }
+    let mut report = report::build(&stamp, a.seed, &runs);
+    report["judge"] = judge::fold(&judged, a.seed).to_json();
     let text = serde_json::to_string_pretty(&report)? + "\n";
     match &a.report {
         Some(path) => std::fs::write(path, &text).with_context(|| format!("writing the report `{}`", path.display()))?,
@@ -481,4 +592,109 @@ fn verdict(report: &Value, cases: &[Case], baselines: Option<Baselines>, a: &Run
         eprintln!("eval: raised {} baseline entr(ies): {}", moved.len(), moved.join(", "));
     }
     Ok(())
+}
+
+/// Every row of `table`, read through `session`.
+fn table_rows(face: &Face, session: &Session, table: &str) -> Result<Vec<Map<String, Value>>> {
+    let response = face.query(session, &format!("SELECT * FROM {}", ident(table)), ReadOptions::default()).with_context(|| format!("reading `{table}`"))?;
+    Ok(response
+        .rows
+        .iter()
+        .map(|row| response.columns.iter().cloned().zip(row.iter().cloned()).collect())
+        .collect())
+}
+
+/// `contextful eval draft`: read the three tables under one admitted session, run the
+/// generators, and write every candidate (`assurance.baseline.draft-command`).
+fn draft(a: DraftArgs) -> Result<()> {
+    let (authority, revocation) = a.admit.admit(a.project.as_deref(), "drafting golden candidates")?;
+    let located = locate(a.project.as_deref(), a.declaration.clone())?;
+    let face = face(&located)?;
+    let session = session(&face, &authority, &revocation, a.zone.as_deref())?;
+    let manifest = std::fs::read_to_string(&located.declaration).with_context(|| format!("reading `{}`", located.declaration.display()))?;
+    let decls = TableDecl::parse_pipeline(&manifest)?;
+    let key = |table: &str| decls.iter().find(|d| d.name == table).map(|d| d.primary_key().to_vec()).unwrap_or_default();
+    let (entities, facts, edges) = (table_rows(&face, &session, &a.entities)?, table_rows(&face, &session, &a.facts)?, table_rows(&face, &session, &a.edges)?);
+    let (ek, fk, gk) = (key(&a.entities), key(&a.facts), key(&a.edges));
+    let view = StoreView::from_memory(
+        ShapeRows { table: &a.entities, key: &ek, rows: &entities },
+        ShapeRows { table: &a.facts, key: &fk, rows: &facts },
+        ShapeRows { table: &a.edges, key: &gk, rows: &edges },
+    );
+    let decoys: Vec<&str> = a.decoys.iter().map(String::as_str).collect();
+    let candidates: Vec<golden::Candidate> =
+        golden::walks(&view, &a.corpus).into_iter().chain(golden::chains(&view, &a.corpus)).chain(golden::absent(&view, &decoys, &a.corpus)).collect();
+    let mut text = String::new();
+    for c in &candidates {
+        text.push_str(&serde_json::to_string(&c.case)?);
+        text.push('\n');
+    }
+    std::fs::write(&a.out, text).with_context(|| format!("writing `{}`", a.out.display()))?;
+    eprintln!(
+        "eval: read {} entities, {} facts and {} edges; drafted {} candidate(s) into `{}`; none is committed until approved",
+        entities.len(),
+        facts.len(),
+        edges.len(),
+        candidates.len(),
+        a.out.display()
+    );
+    Ok(())
+}
+
+/// `contextful eval commit`: append each approved draft, redacted under the declaration's
+/// removal rules, to the case file (`assurance.baseline.commit-command`).
+fn commit(a: CommitArgs) -> Result<()> {
+    let text = std::fs::read_to_string(&a.drafts).with_context(|| format!("reading `{}`", a.drafts.display()))?;
+    let drafts = case::load(&text).map_err(|e| anyhow::anyhow!("`{}`: {e}", a.drafts.display()))?;
+    let mut approvals = BTreeMap::new();
+    for approval in &a.approvals {
+        let (id, reviewer) = approval.split_once('=').with_context(|| format!("`--approve {approval}` is not <case id>=<reviewer>"))?;
+        if reviewer.trim().is_empty() {
+            bail!("`--approve {approval}` names no reviewer");
+        }
+        if !drafts.iter().any(|c| c.id == id) {
+            bail!("`--approve {approval}` names no draft of `{}`", a.drafts.display());
+        }
+        approvals.insert(id.to_string(), reviewer.to_string());
+    }
+    let manifest = std::fs::read_to_string(&a.declaration).with_context(|| format!("reading `{}`", a.declaration.display()))?;
+    let rules = TableDecl::parse_pipeline(&manifest)?.into_iter().flat_map(|d| d.redaction.unwrap_or_default()).collect();
+    let redaction = GoldenRedaction::new(rules)?;
+    let candidates = drafts.into_iter().map(|case| golden::Candidate { generator: generator_of(&case), case }).collect();
+    let committed = golden::commit(candidates, &approvals, &redaction)?;
+    let existing = match std::fs::read_to_string(&a.into) {
+        Ok(t) if !t.trim().is_empty() => case::load(&t).map_err(|e| anyhow::anyhow!("`{}`: {e}", a.into.display()))?,
+        Ok(_) => Vec::new(),
+        Err(e) if e.kind() == std::io::ErrorKind::NotFound => Vec::new(),
+        Err(e) => return Err(e).with_context(|| format!("reading `{}`", a.into.display())),
+    };
+    let held: BTreeSet<&str> = existing.iter().map(|c| c.id.as_str()).collect();
+    if let Some(c) = committed.iter().find(|c| held.contains(c.id.as_str())) {
+        bail!("`{}` already holds case `{}`; nothing was committed", a.into.display(), c.id);
+    }
+    if let Some(dir) = a.into.parent().filter(|d| !d.as_os_str().is_empty()) {
+        std::fs::create_dir_all(dir).with_context(|| format!("creating `{}`", dir.display()))?;
+    }
+    let mut lines = String::new();
+    for c in &committed {
+        lines.push_str(&serde_json::to_string(c)?);
+        lines.push('\n');
+    }
+    let mut file = std::fs::OpenOptions::new().create(true).append(true).open(&a.into).with_context(|| format!("opening `{}`", a.into.display()))?;
+    file.write_all(lines.as_bytes())?;
+    eprintln!("eval: committed {} case(s) to `{}`", committed.len(), a.into.display());
+    Ok(())
+}
+
+/// The generator a drafted case's tags name.
+fn generator_of(case: &Case) -> golden::Generator {
+    match case.tags.iter().find_map(|t| match t.as_str() {
+        "chain" => Some(golden::Generator::Chain),
+        "absent" => Some(golden::Generator::Absent),
+        "walk" => Some(golden::Generator::Walk),
+        _ => None,
+    }) {
+        Some(g) => g,
+        None => golden::Generator::Walk,
+    }
 }

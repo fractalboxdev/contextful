@@ -5,7 +5,7 @@ An unpinned clause is `committed`; a pinned one is `performed` when its Rust, Le
 
 | Contract | Files | Operations | Clauses | Refusals | Limits | Unsettled | Performed | Broken | Floor |
 | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
-| `assurance` | 2 | 15 | 248 | 59 | 22 | 14 | 164 | 0 | 164 |
+| `assurance` | 2 | 15 | 253 | 60 | 22 | 13 | 178 | 0 | 178 |
 | `authority` | 2 | 16 | 292 | 78 | 29 | 10 | 221 | 0 | 221 |
 | `connector` | 2 | 14 | 349 | 89 | 21 | 15 | 229 | 0 | 229 |
 | `corpus` | 1 | 10 | 79 | 37 | 7 | 0 | 43 | 0 | 43 |
@@ -15,7 +15,7 @@ An unpinned clause is `committed`; a pinned one is `performed` when its Rust, Le
 | `store` | 1 | 17 | 253 | 59 | 13 | 19 | 216 | 0 | 216 |
 | `surface` | 2 | 20 | 134 | 59 | 22 | 0 | 94 | 0 | 94 |
 | `topology` | 1 | 6 | 70 | 24 | 5 | 5 | 38 | 0 | 38 |
-| **total** | 19 | 156 | 2206 | 610 | 193 | 103 | 1562 | 0 | |
+| **total** | 19 | 156 | 2211 | 611 | 193 | 102 | 1576 | 0 | |
 
 Decision records: 18.
 
@@ -39,7 +39,7 @@ A milestone reads `closed` when its acceptance test computes `passing` and every
 | 11 — The derive tier | 7 | 88 | 79 | passing | closed |
 | 12 — The operator console | 12 | 54 | 22 | passing | open |
 | 13 — Disclosure | 5 | 33 | 13 | open | open |
-| 14 — Assurance | 7 | 148 | 109 | passing | closed |
+| 14 — Assurance | 7 | 153 | 123 | passing | closed |
 
 Unscheduled operations: 11.
 
@@ -59,17 +59,25 @@ Unscheduled operations: 11.
 | `assurance.audit-assumptions.verdict-input` | `crates/contextful-cli/tests/integration/formal.rs::source_text_and_build_status_decide_nothing` | performed |
 | `assurance.baseline.answer-key-in-the-store` | `crates/contextful-connectors/tests/integration/file.rs::a_source_reaching_the_evaluation_directory_raises_golden_set_ingested` | performed |
 | `assurance.baseline.band-units` | `tools/eval/tests/integration/baseline.rs::latency_bands_in_milliseconds_and_counts_pin_at_zero` | performed |
+| `assurance.baseline.commit-command` | `crates/contextful-cli/tests/integration/eval.rs::commit_appends_approved_drafts_redacted_and_refuses_a_repeated_id` | performed |
 | `assurance.baseline.default-dead-band` | `tools/eval/tests/integration/baseline.rs::a_bare_rate_entry_gates_at_two_percent` | performed |
+| `assurance.baseline.draft-command` | `crates/contextful-cli/tests/integration/eval.rs::draft_writes_the_generators_candidates_from_the_store` | performed |
 | `assurance.baseline.file` | `tools/eval/tests/integration/baseline.rs::a_file_holds_a_run_block_and_bare_or_banded_entries` | performed |
 | `assurance.baseline.floor-coverage` | `tools/eval/tests/integration/floors.rs::a_report_missing_a_floor_figure_breaches_that_floor` | performed |
 | `assurance.baseline.floors-are-absolute` | `tools/eval/tests/integration/baseline.rs::a_floor_reds_a_run_its_baseline_passes` | performed |
+| `assurance.baseline.generated-redaction` | `tools/eval/tests/integration/golden.rs::a_golden_passes_write_time_redaction_or_refuses` | performed |
+| `assurance.baseline.generators` | `tools/eval/tests/integration/golden.rs::three_generators_draft_candidates_and_only_approved_ones_commit` | performed |
 | `assurance.baseline.golden-custody` | `tools/eval/tests/integration/custody.rs::the_golden_set_is_tracked_jsonl_read_through_one_loader` | performed |
 | `assurance.baseline.held-out` | `tools/eval/tests/integration/custody.rs::no_runtime_source_reads_a_gate_input` | performed |
+| `assurance.baseline.interval` | `tools/eval/tests/integration/judge.rs::each_judged_figure_carries_a_seeded_bootstrap_interval` | performed |
 | `assurance.baseline.metric-path` | `tools/eval/tests/integration/baseline.rs::an_entry_names_a_report_field_path` | performed |
 | `assurance.baseline.native-gate` | `tools/ci/tests/integration/measure.rs::the_native_set_gates_and_a_public_set_decides_nothing` | performed |
 | `assurance.baseline.offline` | `crates/contextful-cli/tests/integration/eval.rs::both_verdicts_come_from_in_tree_files_with_no_trace_store` | performed |
+| `assurance.baseline.promotion-source` | `tools/eval/tests/integration/golden.rs::only_an_adjudicated_label_promotes` | performed |
+| `assurance.baseline.public-corpora` | `tools/eval/tests/integration/golden.rs::a_public_corpus_enters_through_its_content_hashed_manifest` | performed |
 | `assurance.baseline.raise-only` | `tools/eval/tests/integration/baseline.rs::an_update_raises_improved_entries_only_and_only_on_green` | performed |
 | `assurance.baseline.rank-quality-dead-band` | `tools/eval/tests/integration/baseline.rs::a_bare_ndcg_entry_gates_at_three_percent` | performed |
+| `assurance.baseline.rotation` | `tools/eval/tests/integration/golden.rs::the_native_set_rotates_on_a_cadence_with_a_reviewed_sample` | performed |
 | `assurance.baseline.run-stamp-drift` | `tools/eval/tests/integration/baseline.rs::a_run_configured_unlike_the_baseline_is_refused_from_its_configuration_alone` | performed |
 | `assurance.baseline.sample-count` | `tools/eval/tests/integration/baseline.rs::a_mean_carries_its_sample_count_and_shrinking_it_regresses` | performed |
 | `assurance.baseline.trace-export` | `crates/contextful-cli/tests/integration/eval.rs::a_hosted_trace_endpoint_serves_fixtures_and_refuses_a_deployed_store` | performed |
@@ -121,8 +129,13 @@ Unscheduled operations: 11.
 | `assurance.evaluate.distinct-top-k` | `tools/eval/tests/integration/metrics.rs::a_repeated_row_counts_once_in_the_top_k` | performed |
 | `assurance.evaluate.duplicate-row-rate` | `tools/eval/tests/integration/floors.rs::a_repeated_table_and_row_key_pair_breaches_the_floor` | performed |
 | `assurance.evaluate.forbidden-row-rate` | `tools/eval/tests/integration/floors.rs::one_forbidden_row_in_one_case_breaches_the_floor` | performed |
+| `assurance.evaluate.grounded-reader` | `tools/eval/tests/integration/judge.rs::the_reader_answers_from_retrieved_rows_alone` | performed |
 | `assurance.evaluate.in-window-rate` | `tools/eval/tests/integration/floors.rs::a_bounded_case_under_ninety_five_percent_in_window_breaches_the_floor` | performed |
+| `assurance.evaluate.judge` | `tools/eval/tests/integration/judge.rs::the_judge_is_pinned_and_called_once_per_item` | performed |
+| `assurance.evaluate.judged-dimensions` | `tools/eval/tests/integration/judge.rs::the_reading_stage_reports_four_judged_dimensions` | performed |
+| `assurance.evaluate.judged-run` | `crates/contextful-cli/tests/integration/eval.rs::the_judged_tier_reads_and_judges_through_the_named_endpoint` | performed |
 | `assurance.evaluate.legs` | `crates/contextful-cli/tests/integration/eval.rs::each_leg_calls_the_ranked_read_with_the_options_a_caller_passes` | performed |
+| `assurance.evaluate.model-endpoint` | `tools/eval/tests/integration/judge.rs::the_reader_and_judge_reach_the_model_through_the_inference_port` | performed |
 | `assurance.evaluate.policy-labels` | `crates/contextful-cli/tests/integration/eval.rs::a_row_the_credential_may_not_read_never_scores` | performed |
 | `assurance.evaluate.precision-floor` | `tools/eval/tests/integration/floors.rs::a_leg_below_sixty_percent_r_precision_breaches_the_floor` | performed |
 | `assurance.evaluate.real-read-path` | `tools/eval/tests/integration/custody.rs::the_harness_depends_on_no_store_or_runtime_package` | performed |
@@ -162,6 +175,7 @@ Unscheduled operations: 11.
 | `assurance.gate.workspace-parts` | `tools/ci/tests/integration/target_dirs.rs::remote_workspace_parts_compile_the_union_and_run_each_package_suite` | performed |
 | `assurance.measure.absolute-threshold` | `tools/eval/tests/integration/ledger.rs::a_threshold_is_a_finite_absolute_figure` | performed |
 | `assurance.measure.count-first` | `tools/eval/tests/integration/ledger.rs::a_timing_or_resident_set_figure_decides_no_gate` | performed |
+| `assurance.measure.judged-tier` | `tools/eval/tests/integration/ledger.rs::a_judged_figure_runs_on_the_scheduled_tier_alone` | performed |
 | `assurance.measure.ledger` | `tools/eval/tests/integration/ledger.rs::an_entry_carries_its_clause_metric_tier_method_and_threshold` | performed |
 | `assurance.measure.measured-basis` | `tools/spec/tests/integration/readable.rs::a_measured_basis_names_a_trend_or_scheduled_ledger_entry` | performed |
 | `assurance.measure.open-entry` | `tools/ci/tests/integration/measure.rs::an_issue_entry_is_listed_open_and_gates_nothing` | performed |

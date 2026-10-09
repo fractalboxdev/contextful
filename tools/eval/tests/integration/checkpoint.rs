@@ -13,7 +13,7 @@ fn result(id: &str, key: &str) -> CaseResult {
         .iter()
         .map(|l| (l.to_string(), vec![Returned { row: RowRef::new("t", key), in_window: true }]))
         .collect::<BTreeMap<_, _>>();
-    CaseResult { id: id.into(), legs, edges: None, systems: None }
+    CaseResult { id: id.into(), legs, edges: None, systems: None, judged: None }
 }
 
 /// A run appends each case's result as JSONL, and a crash re-runs the in-flight case.
