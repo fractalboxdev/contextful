@@ -1,4 +1,5 @@
 //! `pipeline serve` dispatching onto remote workers through the relay, and `pipeline worker`.
+#![cfg(feature = "data-plane")]
 
 use crate::pipeline::{cf, ok, project, Vendor};
 use contextful_core::surface::worker::{sign_submission, Signed, StepOutcome, StepResult, HEARTBEAT_LAPSE_SECS, SIGNATURE_HEADER, TIMESTAMP_HEADER, WORKER_KEY_VAR};

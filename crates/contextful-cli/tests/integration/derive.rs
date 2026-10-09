@@ -1,5 +1,6 @@
 //! `contextful derive test-engine` through the built binary, and host derive tasks through
 //! an embedding binary.
+#![cfg(feature = "data-plane")]
 
 use std::process::{Command, Output};
 

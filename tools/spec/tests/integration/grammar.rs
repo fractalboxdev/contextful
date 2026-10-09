@@ -54,6 +54,7 @@ fn an_identifier_shared_across_contracts_needs_no_registration() {
     assert!(found.iter().all(|m| !m.contains("unregistered_shared_token")), "{found:?}");
 }
 
+// spec: corpus.anatomy.scenario@8e3945d0
 #[test]
 fn a_scenario_attaches_to_its_clause_in_the_lock() {
     let s = Scratch::copy();
@@ -78,6 +79,7 @@ fn a_scenario_may_point_at_a_fixture_table() {
     assert!(codes(&all_codes(&s), "SpecScenario").is_empty());
 }
 
+// spec: corpus.anatomy.bad-scenario@e28b3c77
 #[test]
 fn a_scenario_naming_another_operations_clause_is_a_finding() {
     let s = Scratch::copy();

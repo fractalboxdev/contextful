@@ -1,4 +1,5 @@
 //! Canonical recovery through the owning workspace's actual CLI process.
+#![cfg(all(feature = "read", unix))]
 
 #[path = "recovery_fixture.rs"]
 mod fixture;

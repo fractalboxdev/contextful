@@ -141,6 +141,7 @@ fn a_pointer_is_recorded_as_a_lock_edge() {
     assert!(pointers.iter().any(|p| p == &serde_json::json!(["store.lay-out.catalog-ports", "topology.coordinate.catalog-port"])), "{pointers:?}");
 }
 
+// spec: corpus.render.counterfactual@7e439286
 #[test]
 fn a_guide_in_the_future_tense_is_counterfactual() {
     let s = Scratch::copy();

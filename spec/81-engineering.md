@@ -78,12 +78,14 @@ Assertion construction, guard validation, suite placement, test-first and accept
 
 - `presence-before-absence` — A test whose central claim is an absence first constructs the condition it names and verifies that condition obtains.
   *P7*
-- `vacuous-exclusion` — An exclusion assertion evaluated over an empty collection raises `VacuousAssertion`.
+- `vacuous-exclusion` — An exclusion assertion — `all`, or a negated `any` — on a test line the change adds or alters, over a collection no earlier statement of its function shows non-empty, raises `VacuousAssertion` in the test-first stage.
   *P7*
 - `guard-fires-both-ways` — A guard is validated against the fixture that motivated it and against the state it stands against, passing on the first and failing on the second.
 - `one-integration-binary` — A crate's integration tests compile in one target, `tests/integration/main.rs`, which declares each suite as a module selected by path.
   *because each file directly under `tests/` links its own static binary, hundreds of MiB for an engine-linked crate*
 - `feature-gated-suite` — A feature-gated suite carries a module-level `cfg` attribute at the head of its module file and compiles to nothing while its feature is off.
+- `global-state-lock` — A suite contending process-global state acquires a named lock the integration binary's root module owns; every suite touching that state takes the same lock.
+  *because a lock declared inside one suite leaves another suite free to race the same state*
 - `own-process` — A test needing its own process sits in a top-level file stating why at its site; a thread-scoped log capture is such a test.
 - `connector-kit` — The connector authoring toolkit ships a conformance suite — discovery returns valid schemas, an opened table yields a finite stream, a position round-trips — plus recorded-HTTP fixture replay and property tests over position monotonicity.
 - `test-first` — A change altering Rust source under `crates/` or `tools/` adds or alters a test under a package's `tests/` that fails against the base commit's source; a change without one raises `TestNotFirst`.
@@ -124,8 +126,6 @@ flowchart LR
   B -->|"yes"| OK["test-first stage"]
   OK -->|"passing change"| WS
 ```
-
-unsettled: Does a suite contending process-global state declare that state in its module, or acquire a named lock the integration binary owns? owner: build affects: assurance.test
 
 ## build
 

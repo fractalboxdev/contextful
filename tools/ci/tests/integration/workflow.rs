@@ -90,6 +90,9 @@ fn every_gate_stage_has_a_dispatchable_part() {
     }
 }
 
+/// The remote gate's required checks are exactly the parts `contextful-ci stages --parts`
+/// prints, each one `contextful-ci gate --stage <part>`, the command a contributor runs.
+// spec: assurance.automate.one-path@616b297c
 #[test]
 fn proposed_required_checks_match_every_gate_part() {
     let out = Command::new(env!("CARGO_BIN_EXE_contextful-ci"))

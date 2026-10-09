@@ -1,5 +1,6 @@
 //! `contextful audit explain` through the built binary: the window replay, its coverage
 //! block, the audience report, and the refusals an explanation over the chain raises.
+#![cfg(feature = "data-plane")]
 
 use contextful_policy::audit::{attr, AuditLog};
 use contextful_policy::issue::SeedSigner;

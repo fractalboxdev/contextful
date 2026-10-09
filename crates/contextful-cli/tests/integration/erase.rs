@@ -1,4 +1,5 @@
 //! Erasure through the built binary, with fixture-owned keys and disposable rows.
+#![cfg(feature = "data-plane")]
 use std::process::{Command, Output};
 
 #[test]

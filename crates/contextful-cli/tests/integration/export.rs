@@ -1,4 +1,5 @@
 //! `contextful export run` through the built binary, against a loopback OTLP/HTTP collector.
+#![cfg(feature = "data-plane")]
 
 use std::io::{BufRead, BufReader, Read, Write};
 use std::net::TcpListener;

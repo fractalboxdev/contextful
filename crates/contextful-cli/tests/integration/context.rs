@@ -1,4 +1,5 @@
 //! `contextful context` through the built binary, against a scratch project.
+#![cfg(feature = "data-plane")]
 
 use std::path::Path;
 use std::process::{Command, Output};

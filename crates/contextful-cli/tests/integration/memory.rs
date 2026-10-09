@@ -1,4 +1,5 @@
 //! `contextful memory` through the built binary, against a loopback inference endpoint.
+#![cfg(feature = "data-plane")]
 
 use serde_json::{json, Value};
 use std::io::{BufRead, BufReader, Read, Write};

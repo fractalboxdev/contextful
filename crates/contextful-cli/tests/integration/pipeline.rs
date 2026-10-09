@@ -1,4 +1,5 @@
 //! `contextful pipeline` through the built binary, against a loopback vendor.
+#![cfg(feature = "data-plane")]
 
 use std::io::{BufRead, BufReader, Write};
 use std::net::TcpListener;

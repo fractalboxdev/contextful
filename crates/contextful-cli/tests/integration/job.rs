@@ -1,6 +1,7 @@
 //! `contextful job` through an embedding binary registering the `score` row body: job
 //! blocks against the kind union, and a store-driven fire reading its input through the
 //! read face under the job's credential.
+#![cfg(feature = "data-plane")]
 
 use contextful_core::run::drive::row_label;
 use contextful_core::run::journal::EntryKey;

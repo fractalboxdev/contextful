@@ -3,6 +3,7 @@
 //!
 //! The RSA key pairs under `tests/fixtures/exchange/` are test-only and sign nothing
 //! outside this suite.
+#![cfg(feature = "exchange")]
 
 use contextful_core::exchange::VerifyingMaterial;
 use contextful_core::issue::{IssuancePolicy, MintContext, MintPlan, NodeRole, SignatureAlgorithm, SignatureEncoding};

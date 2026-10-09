@@ -20,6 +20,43 @@ fn the_live_targets_are_complete() {
     }
 }
 
+// spec: corpus.targets.file@5c435fab
+#[test]
+fn each_provider_file_holds_named_shapes_with_one_default() {
+    let s = Scratch::copy();
+    assert!(s.lint("targets").is_empty());
+    for provider in ["cloudflare", "aws", "local"] {
+        let text: toml::Value = s.read(&format!("spec/targets/{provider}.toml")).parse().unwrap();
+        assert_eq!(text["provider"].as_str(), Some(provider));
+        let shapes = text["shape"].as_array().expect("named shapes");
+        assert!(!shapes.is_empty(), "{provider}");
+        assert_eq!(shapes.iter().filter(|s| s.get("default").and_then(toml::Value::as_bool) == Some(true)).count(), 1, "{provider}");
+        for shape in shapes {
+            assert!(shape["name"].is_str() && shape["kind"].is_str() && shape["profiles"].is_array() && shape["roles"].is_table(), "{shape:?}");
+        }
+    }
+    drop_line(&s, CF, "kind ");
+    let found = codes(&s.lint("targets"), "SpecTargetIncomplete");
+    assert_eq!(found.len(), 1, "{found:?}");
+    assert!(found[0].contains("kind"), "{found:?}");
+}
+
+// spec: corpus.targets.roles@52319714
+#[test]
+fn a_shape_fills_eight_roles_and_may_fill_a_realtime_projection() {
+    let s = Scratch::copy();
+    assert!(s.read(CF).contains("realtime "), "the live Cloudflare shape fills the realtime projection");
+    drop_line(&s, CF, "realtime ");
+    assert!(s.lint("targets").is_empty(), "{:?}", s.lint("targets"));
+    for role in ["cron_tick", "reconciler", "orchestrator", "catalog", "object_store", "query_face", "compute", "secrets"] {
+        let s = Scratch::copy();
+        drop_line(&s, CF, &format!("{role} "));
+        let found = codes(&s.lint("targets"), "SpecTargetIncomplete");
+        assert_eq!(found.len(), 1, "{role}: {found:?}");
+        assert!(found[0].contains(&format!("fills no `{role}` role")), "{found:?}");
+    }
+}
+
 #[test]
 fn a_shape_leaving_a_role_unfilled_is_refused() {
     let s = Scratch::copy();

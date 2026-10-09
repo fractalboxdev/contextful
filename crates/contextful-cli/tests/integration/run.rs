@@ -1,4 +1,5 @@
 //! `contextful run` through the built binary: history, and the refusals each surface raises.
+#![cfg(feature = "data-plane")]
 
 use std::path::Path;
 use std::process::{Command, Output};
