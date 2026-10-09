@@ -251,6 +251,115 @@ fn both_verdicts_come_from_in_tree_files_with_no_trace_store() {
     assert!(stderr(&out).contains("eval: baseline verdict: none"), "{}", stderr(&out));
 }
 
+/// A loopback collector answering one POST with 200, handing back the body it received.
+fn collector() -> (String, std::thread::JoinHandle<String>) {
+    use std::io::{BufRead, BufReader, Read, Write};
+    let listener = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
+    let url = format!("http://127.0.0.1:{}/v1/runs", listener.local_addr().unwrap().port());
+    let handle = std::thread::spawn(move || {
+        let (stream, _) = listener.accept().unwrap();
+        let mut reader = BufReader::new(stream.try_clone().unwrap());
+        let mut length = 0;
+        loop {
+            let mut line = String::new();
+            reader.read_line(&mut line).unwrap();
+            if let Some(v) = line.to_ascii_lowercase().strip_prefix("content-length:") {
+                length = v.trim().parse().unwrap();
+            }
+            if line == "\r\n" || line.is_empty() {
+                break;
+            }
+        }
+        let mut body = vec![0; length];
+        reader.read_exact(&mut body).unwrap();
+        let mut stream = stream;
+        stream.write_all(b"HTTP/1.1 200 OK\r\ncontent-length: 0\r\nconnection: close\r\n\r\n").unwrap();
+        String::from_utf8(body).unwrap()
+    });
+    (url, handle)
+}
+
+/// A trace store records run history and curation staging, and decides no verdict.
+// spec: assurance.baseline.trace-store@b327df67
+#[test]
+fn the_trace_store_records_history_and_staging_and_decides_nothing() {
+    let issuer = Issuer::new();
+    let mut cases = two_cases().to_vec();
+    cases.push(json!({ "id": "absent", "corpus": "corpus", "question": "pressure valve", "prefix": "lab/plain", "expected": { "must_abstain": true } }));
+    let goldens = corpus(issuer.path(), LAB, &lab_rows(), &cases);
+    let token = issuer.mint(READER, "on-prem:hq");
+    let store = issuer.path().join("traces");
+    let s = store.to_str().unwrap();
+    let (out, plain) = issuer.eval(&goldens, &token, &[]);
+    assert!(out.status.success(), "{}", stderr(&out));
+    let (out, traced) = issuer.eval(&goldens, &token, &["--trace-store", s]);
+    assert!(out.status.success(), "{}", stderr(&out));
+    assert_eq!(traced["retrieval"], plain["retrieval"], "the store moves no figure");
+
+    // A red run records its verdict as it stands.
+    let mut wrong = cases.clone();
+    wrong[0]["expected"]["artifacts"] = json!(["lab/plain#a,2"]);
+    let red = corpus(issuer.path(), LAB, &lab_rows(), &wrong);
+    let (out, _) = issuer.eval(&red, &token, &["--trace-store", s]);
+    assert!(!out.status.success());
+    let history: Vec<Value> = std::fs::read_to_string(store.join("runs.jsonl")).unwrap().lines().map(|l| serde_json::from_str(l).unwrap()).collect();
+    assert_eq!(history.len(), 2);
+    assert_eq!(history[0]["floors"], json!("held"));
+    assert_eq!(history[0]["baseline"], Value::Null);
+    assert_eq!(history[0]["n_cases"], json!(3));
+    assert_eq!(history[1]["floors"], json!("red"));
+    // The case set file now carries the red truth; restore the original for the runs below.
+    let goldens = corpus(issuer.path(), LAB, &lab_rows(), &cases);
+    // The must-abstain case returned rows, so a curator reviews it.
+    let staging = std::fs::read_to_string(store.join("staging.jsonl")).unwrap();
+    assert!(staging.lines().any(|l| l.contains("\"absent\"") && l.contains("must-abstain")), "{staging}");
+
+    // A store that cannot record leaves the outcome as it was.
+    let blocked = issuer.path().join("blocked");
+    std::fs::write(&blocked, "a file, not a directory").unwrap();
+    let (out, report) = issuer.eval(&goldens, &token, &["--trace-store", blocked.to_str().unwrap()]);
+    assert!(out.status.success(), "{}", stderr(&out));
+    assert!(stderr(&out).contains("recorded nothing"), "{}", stderr(&out));
+    assert_eq!(report["retrieval"], plain["retrieval"]);
+
+    // A self-hosted collector receives the same record.
+    let (url, received) = collector();
+    let (out, _) = issuer.eval(&goldens, &token, &["--trace-endpoint", &url]);
+    assert!(out.status.success(), "{}", stderr(&out));
+    let body: Value = serde_json::from_str(&received.join().unwrap()).unwrap();
+    assert_eq!(body["floors"], json!("held"));
+    assert_eq!(body["seed"], plain["seed"]);
+}
+
+/// A run touching a deployed store with a hosted trace endpoint configured raises `TraceExportOutOfPerimeter`; hosted collection serves runs over public or synthetic fixtures alone.
+// spec: assurance.baseline.trace-export@7c0d7ccd
+#[test]
+fn a_hosted_trace_endpoint_serves_fixtures_and_refuses_a_deployed_store() {
+    let issuer = Issuer::new();
+    let goldens = corpus(issuer.path(), LAB, &lab_rows(), &two_cases());
+    let token = issuer.mint(READER, "on-prem:hq");
+    // Fixtures alone: a hosted endpoint is admitted, and one nobody answers decides nothing.
+    let hosted = "https://collector.example.invalid/v1/runs";
+    let (out, report) = issuer.eval(&goldens, &token, &["--trace-endpoint", hosted]);
+    assert!(out.status.success(), "{}", stderr(&out));
+    assert!(stderr(&out).contains("received nothing"), "{}", stderr(&out));
+    assert!(report["retrieval"].is_object());
+
+    // The same corpus holding a deployed project's store root.
+    std::fs::create_dir_all(issuer.path().join("corpus/.contextful/context/ops")).unwrap();
+    let (out, report) = issuer.eval(&goldens, &token, &["--trace-endpoint", hosted]);
+    assert!(!out.status.success());
+    assert!(stderr(&out).contains("TraceExportOutOfPerimeter"), "{}", stderr(&out));
+    assert!(stderr(&out).contains(".contextful/context"), "{}", stderr(&out));
+    assert_eq!(report, Value::Null, "the refusal lands no row and writes no report");
+
+    // A collector inside the perimeter serves the deployed store's run.
+    let (url, received) = collector();
+    let (out, _) = issuer.eval(&goldens, &token, &["--trace-endpoint", &url]);
+    assert!(out.status.success(), "{}", stderr(&out));
+    assert!(received.join().unwrap().contains("\"floors\""));
+}
+
 /// Every generated fixture and randomized schedule derives from the record's seed, and replaying that seed reproduces a count-valued entry's value.
 // spec: assurance.measure.seeded@2f5ac2a3
 #[test]

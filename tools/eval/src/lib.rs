@@ -20,6 +20,7 @@ pub mod metrics;
 pub mod record;
 pub mod report;
 pub mod systems;
+pub mod trace;
 pub mod trend;
 
 pub use error::EvalError;

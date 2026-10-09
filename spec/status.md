@@ -5,7 +5,7 @@ An unpinned clause is `committed`; a pinned one is `performed` when its Rust, Le
 
 | Contract | Files | Operations | Clauses | Refusals | Limits | Unsettled | Performed | Broken | Floor |
 | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
-| `assurance` | 2 | 15 | 248 | 59 | 22 | 14 | 162 | 0 | 162 |
+| `assurance` | 2 | 15 | 248 | 59 | 22 | 14 | 164 | 0 | 164 |
 | `authority` | 2 | 16 | 292 | 78 | 29 | 10 | 221 | 0 | 221 |
 | `connector` | 2 | 14 | 349 | 89 | 21 | 15 | 229 | 0 | 229 |
 | `corpus` | 1 | 10 | 79 | 37 | 7 | 0 | 43 | 0 | 43 |
@@ -15,7 +15,7 @@ An unpinned clause is `committed`; a pinned one is `performed` when its Rust, Le
 | `store` | 1 | 17 | 253 | 59 | 13 | 19 | 216 | 0 | 216 |
 | `surface` | 2 | 20 | 134 | 59 | 22 | 0 | 94 | 0 | 94 |
 | `topology` | 1 | 6 | 70 | 24 | 5 | 5 | 38 | 0 | 38 |
-| **total** | 19 | 156 | 2206 | 610 | 193 | 103 | 1560 | 0 | |
+| **total** | 19 | 156 | 2206 | 610 | 193 | 103 | 1562 | 0 | |
 
 Decision records: 18.
 
@@ -39,7 +39,7 @@ A milestone reads `closed` when its acceptance test computes `passing` and every
 | 11 — The derive tier | 7 | 88 | 79 | passing | closed |
 | 12 — The operator console | 12 | 54 | 22 | passing | open |
 | 13 — Disclosure | 5 | 33 | 13 | open | open |
-| 14 — Assurance | 7 | 148 | 107 | passing | closed |
+| 14 — Assurance | 7 | 148 | 109 | passing | closed |
 
 Unscheduled operations: 11.
 
@@ -72,6 +72,8 @@ Unscheduled operations: 11.
 | `assurance.baseline.rank-quality-dead-band` | `tools/eval/tests/integration/baseline.rs::a_bare_ndcg_entry_gates_at_three_percent` | performed |
 | `assurance.baseline.run-stamp-drift` | `tools/eval/tests/integration/baseline.rs::a_run_configured_unlike_the_baseline_is_refused_from_its_configuration_alone` | performed |
 | `assurance.baseline.sample-count` | `tools/eval/tests/integration/baseline.rs::a_mean_carries_its_sample_count_and_shrinking_it_regresses` | performed |
+| `assurance.baseline.trace-export` | `crates/contextful-cli/tests/integration/eval.rs::a_hosted_trace_endpoint_serves_fixtures_and_refuses_a_deployed_store` | performed |
+| `assurance.baseline.trace-store` | `crates/contextful-cli/tests/integration/eval.rs::the_trace_store_records_history_and_staging_and_decides_nothing` | performed |
 | `assurance.baseline.unresolvable-path` | `tools/eval/tests/integration/baseline.rs::a_malformed_entry_or_band_refuses_from_the_file_alone` | performed |
 | `assurance.build.checkout-artifacts` | `tools/ci/tests/integration/source_binding.rs::shared_artifacts_execute_the_selected_checkout_source` | performed |
 | `assurance.build.container-image` | `tools/ci/tests/integration/image.rs::the_container_recipe_builds_one_static_profile_into_a_shell_free_non_root_image` | performed |

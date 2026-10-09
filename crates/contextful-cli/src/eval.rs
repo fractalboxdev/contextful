@@ -30,6 +30,9 @@ use contextful_eval::floors;
 use contextful_eval::metrics::{Returned, RowRef, LEGS};
 use contextful_eval::report::{self, CaseRun};
 use contextful_eval::systems::{self, Systems};
+use contextful_eval::trace::{self, RunRecord, TraceStore, Verdict};
+use contextful_core::connector::attach::Allowlist;
+use contextful_outbound::{Client, HeaderValue};
 use contextful_eval::EvalError;
 use contextful_policy::enforce::mask::Pepper;
 use contextful_policy::enforce::session::{Request, Session};
@@ -55,6 +58,12 @@ const LOCAL_ZONE_PREFIX: &str = "local:";
 
 /// Tokens the deterministic tier's stub reader holds in its context window.
 const STUB_READER_CONTEXT_TOKENS: u64 = 128_000;
+
+/// Seconds the trace export waits on its endpoint.
+const TRACE_EXPORT_TIMEOUT_SECS: u64 = 5;
+
+/// A deployed project's store root, beneath a corpus directory a run would read.
+const DEPLOYED_STORE_ROOT: &str = ".contextful/context";
 
 #[derive(Subcommand)]
 pub enum EvalCmd {
@@ -96,6 +105,14 @@ pub struct RunArgs {
     /// corpus size against it.
     #[arg(long, default_value_t = STUB_READER_CONTEXT_TOKENS)]
     context_window: u64,
+    /// The trace store directory: the run's record joins its history, and the cases a
+    /// curator reviews join its staging.
+    #[arg(long)]
+    trace_store: Option<PathBuf>,
+    /// The trace collector the run's record is posted to; a hosted one serves runs over
+    /// fixtures alone.
+    #[arg(long)]
+    trace_endpoint: Option<String>,
     #[command(flatten)]
     admit: AdmitArgs,
 }
@@ -306,6 +323,15 @@ pub fn run(cmd: EvalCmd) -> Result<()> {
         }
         opened.push((corpus, idx));
     }
+    // A corpus directory holding a project's store root is a deployed store; a hosted
+    // trace endpoint refuses such a run before any row lands (`assurance.baseline.trace-export`).
+    let deployed: Vec<String> = opened
+        .iter()
+        .map(|(c, _)| c.dir.join(DEPLOYED_STORE_ROOT))
+        .filter(|p| p.is_dir())
+        .map(|p| p.display().to_string())
+        .collect();
+    trace::admit_export(a.trace_endpoint.as_deref(), &deployed)?;
 
     let (authority, revocation) = a.admit.admit(None, "the evaluation run")?;
     let landed_at = instant("--landed-at", a.landed_at.as_deref(), Instant::from_unix_nanos(0)?)?;
@@ -372,12 +398,49 @@ pub fn run(cmd: EvalCmd) -> Result<()> {
         Some(path) => std::fs::write(path, &text).with_context(|| format!("writing the report `{}`", path.display()))?,
         None => print!("{text}"),
     }
-    verdict(&report, baselines, &a)
+    verdict(&report, &cases, baselines, &a)
+}
+
+/// Record the run in the trace store and export its record to the trace endpoint, each
+/// when configured. Both follow the verdicts and decide none: a failure prints and the
+/// run's outcome stands (`assurance.baseline.trace-store`).
+fn trace(report: &Value, cases: &[Case], floors: Verdict, baseline: Option<Verdict>, a: &RunArgs) {
+    if a.trace_store.is_none() && a.trace_endpoint.is_none() {
+        return;
+    }
+    let record = match RunRecord::of(report, floors, baseline) {
+        Ok(r) => r,
+        Err(e) => return eprintln!("eval: trace: {e}"),
+    };
+    if let Some(dir) = &a.trace_store {
+        let staged = trace::staged(cases, report);
+        match TraceStore::open(dir).and_then(|s| s.record(&record, &staged)) {
+            Ok(()) => eprintln!("eval: trace store `{}`: recorded the run, staged {} case(s)", dir.display(), staged.len()),
+            Err(e) => eprintln!("eval: trace store `{}` recorded nothing: {e}", dir.display()),
+        }
+    }
+    if let Some(endpoint) = &a.trace_endpoint {
+        match export_trace(endpoint, &record) {
+            Ok(status) => eprintln!("eval: trace endpoint answered {status}"),
+            Err(e) => eprintln!("eval: trace endpoint `{endpoint}` received nothing: {e}"),
+        }
+    }
+}
+
+/// POST the run record as JSON to the trace endpoint.
+fn export_trace(endpoint: &str, record: &RunRecord) -> Result<u16> {
+    let url = url::Url::parse(endpoint)?;
+    let allow = Allowlist::parse(&[url.host_str().unwrap_or_default()])?;
+    let client = Client::new(allow, url.clone()).with_timeout(std::time::Duration::from_secs(TRACE_EXPORT_TIMEOUT_SECS));
+    let headers = [("Content-Type".to_string(), HeaderValue::Plain("application/json".to_string()))];
+    let body = serde_json::to_vec(record)?;
+    let response = client.send_once("POST", &url, &headers, Some(&body)).map_err(|f| anyhow::anyhow!(f.message))?;
+    Ok(response.status)
 }
 
 /// Hold the report to the floors and the baseline, print both verdicts, and raise the
 /// baseline on green when asked (`assurance.evaluate.run-verdict`).
-fn verdict(report: &Value, baselines: Option<Baselines>, a: &RunArgs) -> Result<()> {
+fn verdict(report: &Value, cases: &[Case], baselines: Option<Baselines>, a: &RunArgs) -> Result<()> {
     let floors = floors::check(report);
     let mut red: Vec<String> = floors.breaches().map(|c| format!("floor {}: {} against {:?} {}", c.path, c.measured, c.side, c.bound)).collect();
     let floor_red = red.len();
@@ -403,6 +466,8 @@ fn verdict(report: &Value, baselines: Option<Baselines>, a: &RunArgs) -> Result<
         ),
         None => eprintln!("eval: baseline verdict: none, no --baseline"),
     }
+    let baseline_verdict = a.baseline.as_ref().map(|_| Verdict::of(red.len() == floor_red));
+    trace(report, cases, Verdict::of(floor_red == 0), baseline_verdict, a);
     if !red.is_empty() {
         red.iter().for_each(|r| eprintln!("eval: red: {r}"));
         bail!("the evaluation run is red: {} breach(es)", red.len());

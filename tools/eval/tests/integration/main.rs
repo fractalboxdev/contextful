@@ -11,6 +11,7 @@ mod ledger;
 mod metrics;
 mod record;
 mod report;
+mod trace;
 mod trend;
 
 use std::collections::HashSet;

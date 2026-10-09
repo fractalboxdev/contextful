@@ -479,7 +479,7 @@ tools/
   ci/                     typed subcommands the gate invokes
   spec/                   the corpus checker
   eval/                   the quality harness's metrics, floors, baseline gate, ledger, records, trends,
-                          run checkpoint, and one converter per external ground-truth source
+                          run checkpoint, trace store, and one converter per external ground-truth source
 crates/acceptance/
   tests/integration/mNN.rs  one milestone's acceptance test, driving a built binary
 evals/

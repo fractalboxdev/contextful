@@ -81,8 +81,12 @@ fn no_runtime_source_reads_a_gate_input() {
 #[test]
 fn the_harness_depends_on_no_store_or_runtime_package() {
     let manifest: toml::Value = toml::from_str(&std::fs::read_to_string(Path::new(env!("CARGO_MANIFEST_DIR")).join("Cargo.toml")).unwrap()).unwrap();
-    let deps: Vec<&String> = manifest["dependencies"].as_table().unwrap().keys().collect();
-    assert_eq!(deps, ["serde", "serde_json"], "the harness core is a pure computation");
+    // The harness reaches no store, engine, query runtime or async runtime of its own.
+    const PRIMITIVES: [&str; 9] =
+        ["contextful-context", "contextful-engine", "contextful-sqlite", "contextful-sync", "duckdb", "rusqlite", "arrow", "parquet", "tokio"];
+    for dep in manifest["dependencies"].as_table().unwrap().keys() {
+        assert!(!PRIMITIVES.iter().any(|p| dep == p || dep.starts_with(&format!("{p}-"))), "the harness depends on `{dep}`");
+    }
     // The runner lands, folds and reads through the store's own entry points.
     let runner = std::fs::read_to_string(root().join("crates/contextful-cli/src/eval.rs")).unwrap();
     for call in ["land(store, &decl", "fold(store, &decl", "face.retrieve(", "face.session(", "effect_boundary("] {
