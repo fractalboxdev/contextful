@@ -11,11 +11,11 @@ An unpinned clause is `committed`; a pinned one is `performed` when its Rust, Le
 | `corpus` | 1 | 10 | 79 | 37 | 7 | 0 | 43 | 0 | 43 |
 | `disclosure` | 3 | 16 | 156 | 68 | 13 | 3 | 63 | 0 | 63 |
 | `read` | 2 | 16 | 212 | 35 | 22 | 9 | 184 | 0 | 184 |
-| `run` | 3 | 26 | 415 | 103 | 39 | 28 | 334 | 0 | 334 |
+| `run` | 3 | 26 | 415 | 103 | 39 | 28 | 335 | 0 | 335 |
 | `store` | 1 | 17 | 254 | 59 | 13 | 19 | 217 | 0 | 217 |
 | `surface` | 2 | 20 | 134 | 59 | 22 | 0 | 94 | 0 | 94 |
 | `topology` | 1 | 6 | 70 | 24 | 5 | 5 | 61 | 0 | 61 |
-| **total** | 19 | 156 | 2209 | 611 | 193 | 103 | 1592 | 0 | |
+| **total** | 19 | 156 | 2209 | 611 | 193 | 103 | 1593 | 0 | |
 
 Decision records: 18.
 
@@ -28,7 +28,7 @@ A milestone reads `closed` when its acceptance test computes `passing` and every
 | 0 — The test-first gate | 2 | 21 | 6 | passing | open |
 | 1 — The authority core | 14 | 239 | 190 | passing | closed |
 | 2 — The store | 9 | 175 | 143 | passing | closed |
-| 3 — The run path | 11 | 216 | 195 | passing | closed |
+| 3 — The run path | 11 | 216 | 196 | passing | closed |
 | 4 — Ingest | 25 | 519 | 345 | passing | open |
 | 5 — The read face under enforcement | 17 | 285 | 219 | passing | open |
 | 6 — Sync and replicas | 8 | 79 | 74 | passing | closed |
@@ -1079,6 +1079,7 @@ Unscheduled operations: 11.
 | `run.journal.input-pin` | `crates/contextful-engine/tests/integration/drive.rs::a_resume_under_a_changed_statement_or_as_of_refuses_before_any_replay` | performed |
 | `run.journal.input-replay` | `crates/contextful-engine/tests/integration/drive.rs::a_resume_iterates_the_recorded_rows_whatever_the_store_holds_since` | performed |
 | `run.journal.input-truncated` | `crates/contextful-core/tests/integration/run/drive.rs::a_truncated_input_response_refuses_and_a_whole_one_keys_each_row` | performed |
+| `run.journal.machine-state` | `crates/contextful-cli/tests/integration/run.rs::a_catalog_rebuild_leaves_the_journal_owner_and_awakeables_untouched` | performed |
 | `run.journal.missing-blob` | `crates/contextful-engine/tests/integration/journal.rs::a_missing_blob_refuses_rather_than_reading_empty` | performed |
 | `run.journal.open-as-of` | `crates/contextful-engine/tests/integration/drive.rs::an_undeclared_as_of_is_the_open_instant_and_a_resume_keeps_it` | performed |
 | `run.journal.opt-out` | `crates/contextful-cli/tests/integration/run.rs::each_built_in_source_journals_unless_the_one_constant_lists_it_and_an_empty_pull_records_nothing` | performed |

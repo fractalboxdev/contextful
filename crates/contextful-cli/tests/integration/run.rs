@@ -780,3 +780,46 @@ fn each_built_in_source_journals_unless_the_one_constant_lists_it_and_an_empty_p
     }).collect();
     assert_eq!(labels, ["pull-0"], "journaling defaults on, and the empty pull-1 records nothing");
 }
+
+/// Journal rows, execution owners and awakeables live in the host's own stores, never in the derived catalog; a
+/// catalog rebuild leaves them untouched and reconstructs none from the file tree.
+// spec: run.journal.machine-state@8ebd0d74
+#[test]
+fn a_catalog_rebuild_leaves_the_journal_owner_and_awakeables_untouched() {
+    use contextful_core::coordinate::Catalog;
+    use contextful_core::run::ports::JournalStore;
+    let dir = project();
+    std::fs::write(
+        dir.path().join("empty.sh"),
+        "case \"$CONTEXTFUL_STEP\" in pull-0) echo pull-0 >> called; printf '{\"rows\":[{\"id\":\"a\"}],\"cursor\":\"c1\",\"more\":true}';; *) if [ -f ready ]; then printf '{\"rows\":[],\"more\":false}'; else printf '{\"error\":{\"tag\":\"Permanent\",\"message\":\"feed paused\"}}'; exit 1; fi;; esac\n",
+    )
+    .unwrap();
+    assert!(!start(dir.path(), "feed-a.toml", "a1", "2030-01-01T00:00:00Z").status.success());
+    let run_root = dir.path().join(".contextful/run/research");
+    let machine = || {
+        let clock = std::sync::Arc::new(contextful_core::ports::FixedClock(contextful_core::time::Instant::parse("2030-01-01T00:00:00Z").unwrap()));
+        contextful_sqlite::MachineCatalog::open(&dir.path().join(".contextful/context/research/machine.sqlite"), clock).unwrap()
+    };
+    let snapshot = || {
+        let owner = machine().owner("feed-a", "filings").unwrap().expect("the failed run holds its owner");
+        let journal = contextful_engine::stores::FileJournalStore::open(&run_root);
+        let rows = journal.rows(&owner.execution_id).unwrap();
+        let mut files: Vec<String> = Vec::new();
+        let mut stack = vec![run_root.clone()];
+        while let Some(d) = stack.pop() {
+            for e in std::fs::read_dir(&d).into_iter().flatten().flatten() {
+                if e.path().is_dir() { stack.push(e.path()) } else { files.push(format!("{}:{}", e.path().display(), std::fs::read(e.path()).unwrap().len())) }
+            }
+        }
+        files.sort();
+        (owner, rows, files)
+    };
+    let before = snapshot();
+    assert!(!before.1.is_empty(), "the journal holds the recorded pull");
+    ok(&cf(dir.path(), &["context", "rebuild-catalog", "--project", "research"]));
+    assert_eq!(snapshot(), before, "the rebuild touched no journal row, owner or awakeable");
+    // The resumed run reads its recorded pull back from the journal the rebuild left alone.
+    std::fs::write(dir.path().join("ready"), "").unwrap();
+    ok(&start(dir.path(), "feed-a.toml", "a2", "2030-01-01T00:02:00Z"));
+    assert_eq!(std::fs::read_to_string(dir.path().join("called")).unwrap(), "pull-0\n", "the recorded pull replayed rather than refetching");
+}
