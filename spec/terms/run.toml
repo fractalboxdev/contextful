@@ -133,6 +133,7 @@ DeriveCueOutOfOrder            = { clause = "run.parse-cues.backward-cue", gloss
 DeriveTestEngineUnsupported    = { clause = "run.test-engine.unsupported-driver", gloss = "The single-file verb handed a fetch engine." }
 
 [limit]
+llm-candidate-min-tail = { clause = "run.guard-secrets.llm-admission", value = 32, unit = "B", basis = "chosen", gloss = "Minimum LLM candidate tail; bare candidates require this many initial ASCII alphanumerics." }
 journal-inline-cutoff      = { clause = "run.journal.inline-cutoff", value = 1, unit = "MiB", basis = "chosen", gloss = "Largest journaled value held inline in its row." }
 blob-sweep-interval        = { clause = "run.journal.blob-sweep", value = 24, unit = "h", basis = "chosen", gloss = "Cadence of the blob mark-and-sweep pass." }
 blob-sweep-grace           = { clause = "run.journal.blob-sweep", value = 1, unit = "h", basis = "chosen", gloss = "Age below which an unreferenced blob survives a sweep." }

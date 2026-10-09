@@ -405,7 +405,12 @@ The declared behavior of each source compiled into the engine.
   *because a watermark position carries no page token*
 - `http-limiter` — The generic HTTP source reads its {{connector.meter.limiter-declaration}} from a `limiter` config table, and the project manifest holds each {{connector.meter.limiter-binding}} under `[limiters.<quota>]`.
 - `http-scope-probe` — The generic HTTP source reads its {{connector.declare-capability.scope-probe}} from a `scope_probe` config table and carries its first reference-bound header as the bound credential.
-- `body-format` — `format` selects the `contextful-decode` decoder — `json` by default, `jsonl`, `csv`, `feed` or a workbook — and one decoder serves the HTTP, file and object sources. Over HTTP the format is explicit; file sources infer it from the extension.
+- `body-format` — `format` selects the `contextful-decode` decoder — `json` by default, `json-object`, `jsonl`, `csv`, `feed` or a workbook — for HTTP, file and object sources. HTTP declares formats; file sources infer them from extensions.
+- `json-record-shape` — `json` requires an array of objects; `json-object` requires one object. Both select `records` when declared, otherwise the root; a missing selection or wrong shape is unreadable input under {{run.land.unreadable-input}}.
+- `json-object-record` — `json-object` emits one row even when the selected object or its nested arrays are empty; decoding retains the full parsed body for pagination pointers.
+- `json-body-paths` — `records`, `next_cursor_path` and `next_url_path` read JSON pointers in either JSON mode.
+- `json-object-pagination` — `json-object` admits cursor, next-URL and Link-header pagination; page-number pagination refuses under {{connector.source.format-key-mismatch}} before I/O.
+  *because one object never supplies the empty record array that terminates page-number pagination*
 - `format-key-mismatch` — A JSON record path, a pagination shape, or a decode key declared against a format that does not read it raises `ConnectorFormatKeyRejected` at build.
   *P1*
 - `delimited-cell` — A delimited source lands every cell as a string and an empty unquoted field as null.

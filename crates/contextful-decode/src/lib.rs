@@ -21,6 +21,8 @@ use serde_json::Value;
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Format {
     Json,
+    /// One JSON object, selected at the root or a records pointer.
+    JsonObject,
     Jsonl,
     Csv,
     /// An RSS or Atom document, one row per item or entry.
@@ -33,17 +35,19 @@ impl Format {
     pub fn parse(s: &str) -> Result<Format, ConnectorError> {
         match s {
             "json" => Ok(Format::Json),
+            "json-object" => Ok(Format::JsonObject),
             "jsonl" => Ok(Format::Jsonl),
             "csv" => Ok(Format::Csv),
             "feed" => Ok(Format::Feed),
             "xlsx" => Ok(Format::Workbook),
-            other => Err(ConnectorError::ConnectorFormatKeyRejected(format!("format `{other}` is none of json, jsonl, csv, feed and xlsx"))),
+            other => Err(ConnectorError::ConnectorFormatKeyRejected(format!("format `{other}` is none of json, json-object, jsonl, csv, feed and xlsx"))),
         }
     }
 
     pub fn name(self) -> &'static str {
         match self {
             Format::Json => "json",
+            Format::JsonObject => "json-object",
             Format::Jsonl => "jsonl",
             Format::Csv => "csv",
             Format::Feed => "feed",
@@ -86,12 +90,16 @@ pub fn decode(format: Format, body: &[u8], records: Option<&str>, input: &str) -
 /// Decode a body with the declared character encoding of delimited text.
 pub fn decode_with_encoding(format: Format, body: &[u8], records: Option<&str>, input: &str, encoding: Option<&str>) -> Result<(Vec<Row>, Option<Value>), Failure> {
     match format {
-        Format::Json => {
+        Format::Json | Format::JsonObject => {
             let v: Value = serde_json::from_slice(body).map_err(|e| unreadable(input, format!("line {} column {}", e.line(), e.column()), e))?;
             let list = match records {
                 Some(p) => v.pointer(p).cloned().ok_or_else(|| unreadable(input, format!("pointer `{p}`"), "the record pointer names nothing"))?,
                 None => v.clone(),
             };
+            if format == Format::JsonObject {
+                let row = object(list, input, format!("pointer `{}`", records.unwrap_or("")))?;
+                return Ok((vec![row], Some(v)));
+            }
             let items = match list {
                 Value::Array(items) => items,
                 other => return Err(unreadable(input, format!("pointer `{}`", records.unwrap_or("")), format!("records are an array, found {other}"))),

@@ -433,7 +433,7 @@ impl HttpConfig {
         let records = text(cfg, "records")?;
         let next_cursor_path = text(cfg, "next_cursor_path")?;
         let next_url_path = text(cfg, "next_url_path")?;
-        if format != Format::Json {
+        if !matches!(format, Format::Json | Format::JsonObject) {
             for (k, v) in [("records", &records), ("next_cursor_path", &next_cursor_path), ("next_url_path", &next_url_path)] {
                 if v.is_some() {
                     return Err(ConnectorError::ConnectorFormatKeyRejected(format!("`{k}` reads a JSON body and the source's format is `{}`", format.name())).into());
@@ -455,6 +455,9 @@ impl HttpConfig {
             return Err(incremental("`since_param` declares an incremental position").into());
         }
         let page_param = text(cfg, "page_param")?;
+        if format == Format::JsonObject && page_param.is_some() {
+            return Err(ConnectorError::ConnectorFormatKeyRejected("`page_param` ends on an empty record array; `json-object` yields one record per body".into()).into());
+        }
         let link_header = cfg.get("link_header").and_then(Value::as_bool).unwrap_or(false);
         let declared: Vec<&str> = [
             page_param.as_ref().map(|_| "page_param"),

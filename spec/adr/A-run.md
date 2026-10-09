@@ -171,6 +171,10 @@ The credential catalogue lives in host code and answers to its precision and rec
 
 Consequences: operators see masked-cell counts but cannot turn a match into a pull failure by configuration.
 
+LLM admission separates tagged provider families from bare untagged candidates under {{run.guard-secrets.llm-admission}}. A prefix-only scan conflates long hyphenated public identifiers with credentials. Case and entropy heuristics leave low-entropy credentials unmasked; column exceptions make protection depend on a source's field names.
+
+The narrower bare grammar does not detect an unknown anonymous hyphenated key whose opening is too short. Assignment and Bearer contexts still mask such values. Tagged families retain their broad payload alphabet; vendor grammar changes require catalogue and fixture review. No fixed vendor key length or complete future format catalogue is assumed.
+
 ## A decoder child owns one input and two bounds
 
 An input whose decoder can die runs in a fresh child. Its process group ends at a 60 s wall-clock deadline measured from spawn, and its memory cap is 512 MiB. These bounds protect the serving process while letting one input fail by name; a child never carries parser state into another input.

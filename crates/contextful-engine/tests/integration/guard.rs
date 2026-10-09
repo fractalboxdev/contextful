@@ -68,3 +68,40 @@ fn each_pull_reports_masked_cells_and_the_run_proceeds() {
     let (_, counts) = reported.iter().find(|(step, c)| step == "pull-0" && c.contains_key("memo")).expect("the pull reported its counts");
     assert_eq!(counts.iter().map(|(k, v)| (k.as_str(), *v)).collect::<Vec<_>>(), [("memo", 1), ("note", 2)]);
 }
+
+#[test]
+fn natural_identifiers_and_masked_provider_keys_survive_recursive_journal_replay() {
+    let slugs = [
+        "sk-public-company-orders-rise-above-average-before-next-quarter",
+        "sk-public-company-orders-fall-below-average-before-next-quarter",
+    ];
+    let keys = [format!("sk-proj-{}", "aB9_-".repeat(24)), format!("sk-{}", "Ab9".repeat(16))];
+    let rig = Rig::new();
+    let rows = slugs.iter().zip(&keys).enumerate().map(|(n, (slug, key))| json!({
+        "id": format!("public-{n}"), "slug": slug,
+        "nested": {"items": [{"slug":slug,"description":key}]}, "description":key,
+    })).collect();
+    let mut source = Pages::new(vec![rows, Vec::new()]);
+    source.die_after = Some(1);
+    let mut sink = Sink::default();
+    let p = plan("kind = \"opaque-token\"", "");
+    rig.crash(&p, "before-restart", &mut source, &mut sink);
+    let execution = rig.row("before-restart").execution_id;
+    assert_eq!(rig.engine.journal.recorded(&execution).unwrap(), 1);
+    for slug in slugs { assert!(files_holding(rig.dir.path(), slug) > 0, "the journal preserves each public identity"); }
+    for key in &keys { assert_eq!(files_holding(rig.dir.path(), key), 0, "provider keys never reach the journal"); }
+    // Change upstream bytes: the next attempt must use the already guarded journal entry.
+    source.pages[0] = vec![json!({"id":"replacement","slug":"changed-after-recording"})];
+    rig.clock.advance(60);
+    let resumed = rig.run(&p, "1.0.0", "after-restart", &mut source, &mut sink).unwrap();
+    assert_eq!(resumed.status, contextful_core::run::record::RunStatus::Success);
+    assert_eq!(source.calls().iter().filter(|(position, _)| position.is_none()).count(), 1);
+    let rows = &sink.commits[0].batches[0];
+    assert_eq!(rows.len(), 2);
+    for (row, slug) in rows.iter().zip(slugs) {
+        assert_eq!(row["slug"], slug);
+        assert_eq!(row["nested"]["items"][0]["slug"], slug);
+        assert_eq!(row["description"], MARKER);
+        assert_eq!(row["nested"]["items"][0]["description"], MARKER);
+    }
+}
