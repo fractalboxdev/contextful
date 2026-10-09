@@ -2,10 +2,10 @@
 
 **Status:** accepted
 
-## FlareDispatch owns native Windows execution through a dispatch-only transport
+## FlareDispatch owns native Windows diagnostics through a dispatch-only transport
 
-Context: Linux containers cannot execute MSVC command-tree or directory durability regressions. Native Windows runners supply both target C toolchains and runtime behavior.
-Decision: one trusted GitHub workflow accepts FlareDispatch dispatch inputs. FlareDispatch binds repository/head/base, nonce and command to its admitted request and verifies API job identity, fixed runner labels, observed native target, terminal exit and artifact digests before publishing its check. The executor holds read-only repository permission and no publication credential. Reviewed same-repository workload code shares the runner user; a wrapper records evidence and supplies no hostile-code isolation.
+Context: Linux containers cannot execute MSVC command-tree or directory durability regressions. Native Windows runners supply both target C toolchains and runtime behavior. Windows diagnostics preserve porting evidence and carry no merge or release verdict.
+Decision: one trusted GitHub workflow accepts FlareDispatch dispatch inputs. FlareDispatch binds repository/head/base, nonce and command to its admitted request and verifies API job identity, fixed runner labels, observed native target, terminal exit and artifact digests before recording its diagnostic. The executor holds read-only repository permission and no publication credential. Reviewed same-repository workload code shares the runner user; a wrapper records evidence and supplies no hostile-code isolation.
 
 | Option | Lost on | Cost |
 | --- | --- | --- |
@@ -14,7 +14,7 @@ Decision: one trusted GitHub workflow accepts FlareDispatch dispatch inputs. Fla
 | Independent PR-triggered Actions orchestration | One admission and publisher | Two trigger and verdict authorities can disagree about the tested head. |
 
 Criteria: native runtime fidelity decides the transport; one admission authority, immutable provenance and finite execution remain constraints.
-Consequences: missing or mismatched native receipts refuse success. The narrow workflow invariant permits this executor alone; broad triggers and a second workflow fail the owning gate. A reviewed executor reaches the default branch before its dispatch is admitted; native gate leaves retain separate Linux predecessors.
+Consequences: a missing or mismatched native receipt records a failed diagnostic and blocks no merge or release. The narrow workflow invariant permits this executor alone; broad triggers and a second workflow fail the schema stage. A reviewed executor reaches the default branch before its dispatch is admitted.
 
 ## Assurance claims carry their qualifiers, and the proof gate audits assumptions
 

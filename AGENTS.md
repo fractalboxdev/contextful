@@ -161,10 +161,10 @@ A pull request stacked on another rebases with `git rebase --onto origin/main <o
 after its base squash-merges.
 
 The sole Actions workflow transports FlareDispatch-admitted native Windows
-execution through `workflow_dispatch` and read-only repository permission.
+diagnostics through `workflow_dispatch` and read-only repository permission.
 `contextful-ci native-transport` checks its fixed runners, immutable executor
 checkout, bound inputs and artifact directory. FlareDispatch verifies authentic
-API job conclusions and receipts before publishing native checks or artifacts.
+API job conclusions and receipts before recording a diagnostic; none is required.
 The wrapper records subprocess evidence; reviewed workload code shares its user.
 
 The schema stage also holds every key in a tracked `.env*` file to dotenvx ciphertext
