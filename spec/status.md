@@ -14,8 +14,8 @@ An unpinned clause is `committed`; a pinned one is `performed` when its Rust, Le
 | `run` | 3 | 26 | 413 | 102 | 39 | 28 | 310 | 0 | 310 |
 | `store` | 1 | 17 | 253 | 59 | 13 | 19 | 216 | 0 | 216 |
 | `surface` | 2 | 20 | 134 | 59 | 22 | 0 | 94 | 0 | 94 |
-| `topology` | 1 | 6 | 70 | 24 | 5 | 5 | 39 | 0 | 39 |
-| **total** | 19 | 156 | 2211 | 611 | 193 | 102 | 1577 | 0 | |
+| `topology` | 1 | 6 | 74 | 24 | 5 | 5 | 44 | 0 | 44 |
+| **total** | 19 | 156 | 2215 | 611 | 193 | 102 | 1582 | 0 | |
 
 Decision records: 18.
 
@@ -28,7 +28,7 @@ A milestone reads `closed` when its acceptance test computes `passing` and every
 | 0 — The test-first gate | 2 | 21 | 6 | passing | open |
 | 1 — The authority core | 14 | 239 | 190 | passing | closed |
 | 2 — The store | 9 | 175 | 143 | passing | closed |
-| 3 — The run path | 11 | 214 | 149 | passing | closed |
+| 3 — The run path | 11 | 218 | 154 | passing | closed |
 | 4 — Ingest | 25 | 519 | 345 | passing | open |
 | 5 — The read face under enforcement | 17 | 285 | 219 | passing | open |
 | 6 — Sync and replicas | 8 | 78 | 73 | passing | closed |
@@ -1596,8 +1596,13 @@ Unscheduled operations: 11.
 | `topology.coordinate.fence-advances` | `crates/contextful-engine/tests/integration/coordinate.rs::every_acquisition_takes_a_new_fence` | performed |
 | `topology.coordinate.fenced-commit` | `crates/contextful-engine/tests/integration/coordinate.rs::a_commit_carrying_a_superseded_fence_is_refused` | performed |
 | `topology.coordinate.lease-row` | `crates/contextful-engine/tests/integration/coordinate.rs::a_lease_row_carries_holder_expiry_and_fence_per_key` | performed |
+| `topology.package.apply-home` | `tools/ci/tests/integration/topology.rs::the_snapshot_directory_has_one_home_both_callers_share` | performed |
+| `topology.package.canonical-toml` | `crates/contextful-control/tests/integration/plane.rs::apply_claims_canonical_toml_with_every_comment_kept` | performed |
 | `topology.package.capability-absent` | `crates/contextful-cli/tests/integration/profile.rs::a_data_plane_subcommand_on_a_build_without_it_is_refused_by_name` | performed |
 | `topology.package.component-host` | `crates/contextful-engine/tests/integration/runner.rs::a_component_connector_runs_on_an_engine_wiring_its_world` | performed |
+| `topology.package.control-identity` | `crates/contextful-control/tests/integration/plane.rs::apply_admits_only_a_fresh_unreplayed_operator_attestation` | performed |
+| `topology.package.control-profile` | `tools/ci/tests/integration/topology.rs::this_repository_control_profile_links_the_control_plane_and_the_crdt_library` | performed |
+| `topology.package.control-team-state` | `crates/contextful-control/tests/integration/plane.rs::replicas_of_the_configuration_document_merge_concurrent_edits` | performed |
 | `topology.package.crate-map` | `tools/ci/tests/integration/topology.rs::this_repository_crate_map_names_every_crate` | performed |
 | `topology.package.crate-map-drift` | `tools/ci/tests/integration/topology.rs::a_crate_missing_from_the_crate_map_is_refused` | performed |
 | `topology.package.crdt-leak` | `tools/ci/tests/integration/topology.rs::a_crdt_library_outside_the_control_profile_is_refused` | performed |

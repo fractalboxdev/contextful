@@ -1,0 +1,30 @@
+[package]
+build = "../../tools/ci/build_source.rs"
+name = "contextful-control"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+publish = false
+
+# The self-hosted control plane (`topology.package.control-profile`): the configuration as
+# one CRDT document, the console's operator attestation as identity, and canonical TOML
+# claimed through the shared snapshot directory. The one package linking the CRDT library
+# (`topology.package.crdt-leak`); it links no run path (`topology.package.profile-leak`).
+
+[dependencies]
+contextful-core = { path = "../contextful-core" }
+contextful-policy = { path = "../contextful-policy" }
+contextful-snapshot = { path = "../contextful-snapshot" }
+loro = "1.16"
+toml_edit = "0.22"
+
+[dev-dependencies]
+# Signing the console's operator attestation the way the console does.
+hmac = "0.12"
+sha2 = "0.10"
+tempfile = "3"
+
+[[test]]
+name = "integration"
+path = "tests/integration/main.rs"

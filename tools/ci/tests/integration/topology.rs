@@ -930,6 +930,69 @@ fn this_repository_binary_declares_the_three_profiles_each_linking_its_role() {
     }
 }
 
+/// `contextful-control` is the self-hosted control plane: team state, the edit-time configuration document and identity. It materializes canonical TOML on apply and is the one profile linking the CRDT library.
+///
+/// The profile links `contextful-control`, which holds the configuration as a `loro`
+/// document, verifies the operator through `contextful-policy` and claims canonical TOML,
+/// written by `toml_edit`, through `contextful-snapshot`; neither other profile links the
+/// control package or the CRDT library.
+// spec: topology.package.control-profile@8b92af49
+#[test]
+fn this_repository_control_profile_links_the_control_plane_and_the_crdt_library() {
+    let control = profile_graph("contextful-control");
+    for linked in ["contextful-control", "loro", "contextful-snapshot", "contextful-policy", "toml_edit"] {
+        assert!(control.iter().any(|n| n == linked), "`contextful-control` links no `{linked}`: {control:?}");
+    }
+    for profile in ["contextful-edge", "contextful-full"] {
+        let graph = profile_graph(profile);
+        for absent in ["contextful-control", "loro"] {
+            assert!(!graph.iter().any(|n| n == absent), "`{profile}` links `{absent}`");
+        }
+    }
+}
+
+/// The normal dependencies of one workspace package, transitively.
+fn package_graph(package: &str) -> Vec<String> {
+    let o = Command::new("cargo")
+        .args(["tree", "-q", "--locked", "-p", package, "-e", "normal", "--prefix", "none", "--format", "{p}"])
+        .current_dir(repo_root())
+        .output()
+        .unwrap();
+    assert!(o.status.success(), "{}", stderr(&o));
+    stdout(&o).lines().filter_map(|l| l.split_whitespace().next()).map(str::to_string).collect()
+}
+
+/// `contextful-snapshot` is the one home of the snapshot directory {{surface.apply.local-claim}} claims into; `contextful-engine` and `contextful-control` both call it, and it links no run-path package.
+// spec: topology.package.apply-home@5c5206fc
+#[test]
+fn the_snapshot_directory_has_one_home_both_callers_share() {
+    for caller in ["contextful-engine", "contextful-control"] {
+        assert!(package_graph(caller).iter().any(|n| n == "contextful-snapshot"), "`{caller}` does not call `contextful-snapshot`");
+    }
+    let snapshot = package_graph("contextful-snapshot");
+    for run_path in ["contextful-engine", "contextful-connectors", "contextful-sqlite", "contextful-memory", "contextful-outbound", "contextful-wasm"] {
+        assert!(!snapshot.iter().any(|n| n == run_path), "`contextful-snapshot` links `{run_path}`");
+    }
+    let crates = repo_root().join("crates");
+    let mut homes = Vec::new();
+    for package in std::fs::read_dir(&crates).unwrap() {
+        let src = package.unwrap().path().join("src");
+        let mut stack = vec![src];
+        while let Some(dir) = stack.pop() {
+            let Ok(entries) = std::fs::read_dir(&dir) else { continue };
+            for entry in entries {
+                let path = entry.unwrap().path();
+                if path.is_dir() {
+                    stack.push(path);
+                } else if std::fs::read_to_string(&path).is_ok_and(|text| text.contains("pub struct SnapshotDir")) {
+                    homes.push(path.strip_prefix(&crates).unwrap().display().to_string());
+                }
+            }
+        }
+    }
+    assert_eq!(homes, ["contextful-snapshot/src/lib.rs"], "one snapshot directory type");
+}
+
 /// `contextful-full` is the daemon: the durable-execution core, the in-process scheduler, the component host, the SQL query face, transforms, the full-text and vector sidecars and the tool server.
 ///
 /// The engine crate carries the journal and the scheduler, the component host is

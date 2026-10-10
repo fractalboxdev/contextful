@@ -109,6 +109,14 @@ The domain crate, dependency direction, and the three build profiles with what e
 - `full-profile` — `contextful-full` is the daemon: the durable-execution core, the in-process scheduler, the component host, the SQL query face, transforms, the full-text and vector sidecars and the tool server.
 - `control-profile` — `contextful-control` is the self-hosted control plane: team state, the edit-time configuration document and identity. It materializes canonical TOML on apply and is the one profile linking the CRDT library.
   *A-topology*
+- `control-team-state` — The control profile's team state is the configuration — its ingest sources, models and access policy — held as one `loro` document whose replicas merge concurrent edits; that document is the edit-time copy of what apply claims.
+  *A-topology*
+- `control-identity` — The control profile identifies an operator by {{surface.apply.operator-attestation}} alone, refusing an apply without one, and keeps no account store.
+  *because the console already signs every Admin mutation, and a second account concept is a second identity to provision and revoke*
+- `canonical-toml` — Apply materializes canonical TOML: every table's keys in byte order, tables after the values they nest in, quoting and spacing the format-preserving editor chooses, and every comment kept; canonicalizing canonical text changes no byte.
+  *because equal configurations then claim identical bytes, and a comment is the operator's record of why a value holds*
+- `apply-home` — `contextful-snapshot` is the one home of the snapshot directory {{surface.apply.local-claim}} claims into; `contextful-engine` and `contextful-control` both call it, and it links no run-path package.
+  *A-topology*
 - `component-host` — A component connector runs where a component host is linked: the full profile and the container or worker shapes built from it.
   *A-topology*
 - `host-missing` — Dispatching a component connector on a profile with no component host raises `ComponentHostMissing`, naming the connector and the profile, with no fallback to a similarly named native source.
@@ -379,7 +387,7 @@ The three profiles as feature bundles:
 [features]
 contextful-edge    = ["read-plane", "transport-ureq", "s3-sync"]
 contextful-full    = ["data-plane", "transport-ureq", "s3-sync", "drive", "component-host"]
-contextful-control = []
+contextful-control = ["dep:contextful-control"]
 ```
 
 A published-hostname descriptor:

@@ -17,6 +17,8 @@ path = "src/main.rs"
 # none of them (`topology.package.profile`).
 contextful-agent = { path = "../contextful-agent", optional = true }
 contextful-connectors = { path = "../contextful-connectors", optional = true }
+# The control plane, linked by the control profile alone (`topology.package.control-profile`).
+contextful-control = { path = "../contextful-control", optional = true }
 contextful-context = { path = "../contextful-context", default-features = false, optional = true }
 contextful-core = { path = "../contextful-core" }
 contextful-engine = { path = "../contextful-engine", optional = true }
@@ -64,7 +66,7 @@ default = ["data-plane", "transport-ureq", "component-host", "s3-sync"]
 # alone (`topology.package.edge-profile`).
 contextful-edge = ["read-plane", "transport-ureq", "s3-sync"]
 contextful-full = ["data-plane", "transport-ureq", "s3-sync", "drive", "component-host"]
-contextful-control = []
+contextful-control = ["dep:contextful-control"]
 # The read path: the store, bucket sync, the read face and its tool server. A build
 # without it answers each data-plane subcommand with `ProfileCapabilityAbsent`.
 read-plane = [
