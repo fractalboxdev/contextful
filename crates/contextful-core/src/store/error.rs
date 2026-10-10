@@ -54,6 +54,9 @@ pub enum StoreError {
     /// A run manifest or reachable snapshot manifest fails to parse. (`store.lay-out.manifest-unreadable`)
     #[error("StoreManifestUnreadable: {0}")]
     StoreManifestUnreadable(String),
+    /// A run or snapshot manifest carries a `format_version` major newer than the build reads. (`store.lay-out.format-newer`)
+    #[error("StoreManifestFormatNewer: {0}")]
+    StoreManifestFormatNewer(String),
     /// A resolved node id is too long or outside the path-safe pattern. (`store.lay-out.node-id-shape`)
     #[error("StoreNodeIdInvalid: {0}")]
     StoreNodeIdInvalid(String),

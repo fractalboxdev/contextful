@@ -102,6 +102,7 @@ fn section(build: &str, version: &str, fingerprint: &str, built: &str) -> Publis
 fn snapshot(created: &str, parent: Option<&SnapshotId>, publish: Option<PublishSection>) -> SnapshotManifest {
     let id = SnapshotId::next(at(created), parent);
     SnapshotManifest {
+        format_version: Default::default(),
         snapshot_id: id.clone(),
         parent: parent.cloned(),
         ancestors: None,

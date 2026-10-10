@@ -682,6 +682,7 @@ mod materialize {
                 _ => None,
             };
             let manifest = SnapshotManifest {
+                format_version: Default::default(),
                 snapshot_id: snapshot_id.clone(),
                 parent: parent.clone(),
                 ancestors: SnapshotManifest::ancestors_after(chain.first()),

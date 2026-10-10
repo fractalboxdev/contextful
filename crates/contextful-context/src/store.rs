@@ -6,7 +6,7 @@ use crate::encrypt::{bind_key_source, MetadataFiles, ProjectEncryption};
 use crate::vector::Sealing;
 use contextful_core::store::declare::TableDecl;
 use contextful_core::store::lay_out::{
-    is_path_segment, store_root, Pointer, CONFIG_FILE, RunManifest, SnapshotId, SnapshotManifest, MANIFEST_FILE, POINTER_FILE, SCHEMA_FILE,
+    is_path_segment, store_root, FormatVersion, Pointer, CONFIG_FILE, RunManifest, SnapshotId, SnapshotManifest, MANIFEST_FILE, POINTER_FILE, SCHEMA_FILE,
 };
 use contextful_core::store::reconcile::Schema;
 use contextful_core::store::resolve::TableState;
@@ -500,6 +500,9 @@ impl Store {
                 let Some(bytes) = self.metadata().read_optional(&path)? else { continue };
                 let unreadable =
                     |why: String| StoreError::StoreManifestUnreadable(format!("table `{table}`: file `{}`: {why}", path.display()));
+                if let Some(v) = FormatVersion::declared(&bytes) {
+                    v.admit(&format!("table `{table}`: file `{}`", path.display()))?;
+                }
                 let m: RunManifest = serde_json::from_slice(&bytes).map_err(|e| unreadable(e.to_string()))?;
                 let (run_seg, node_seg) = (file_name(&run_dir), file_name(&node_dir));
                 if m.run_id != run_seg || m.node_id != node_seg || m.table != table {
@@ -588,6 +591,9 @@ impl Store {
                 None if !chain.is_empty() => return Ok((chain, true)),
                 None => return Err(ContextError::Invalid(format!("{}: missing snapshot manifest", path.display()))),
             };
+            if let Some(v) = FormatVersion::declared(&bytes) {
+                v.admit(&format!("table `{table}`: file `{}`", path.display()))?;
+            }
             let m: SnapshotManifest = serde_json::from_slice(&bytes).map_err(|e| {
                 StoreError::StoreManifestUnreadable(format!("table `{table}`: file `{}`: {e}", path.display()))
             })?;

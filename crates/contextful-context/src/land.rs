@@ -801,6 +801,7 @@ fn create_manifest(
         return Err(ContextError::Invalid(format!("table `{}`: an empty replacement frontier requires a no-part replacing run", decl.name)));
     }
     let manifest = RunManifest {
+        format_version: Default::default(),
         run_id: ctx.injection.run_id.clone(),
         table: decl.name.clone(),
         node_id: ctx.node.to_string(),

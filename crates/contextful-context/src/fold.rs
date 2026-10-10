@@ -256,6 +256,7 @@ pub fn prepare_under(store: &Store, decl: &TableDecl, now: Instant, fence: Optio
     }
     let warnings = contextful_core::store::index::partition_warnings(decl.partition_by(), &sizes);
     let manifest = SnapshotManifest {
+        format_version: Default::default(),
         snapshot_id,
         parent,
         ancestors: SnapshotManifest::ancestors_after(state.chain.first()),
