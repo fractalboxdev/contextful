@@ -112,6 +112,37 @@ fn a_gate_method_writing_no_record_is_refused() {
     assert!(stderr(&o).contains("MeasureRecordMissing: `demo-doubles`"), "{}", stderr(&o));
 }
 
+/// A native benchmark generated from a real corpus is the red or green gate; public benchmark sets run beside it as held-out comparison and decide nothing.
+// spec: assurance.baseline.native-gate@b7278bc1
+#[test]
+fn the_native_set_gates_and_a_public_set_decides_nothing() {
+    let method = "{ test = \"demo::measured::doubles_measured\" }";
+    let r = repo(&entry("demo-doubles", "run.journal.entry-key", method, "target = { op = \"==\", value = 4 }"));
+    r.write("spec/spec.lock.json", "{\"clauses\": [{\"id\": \"run.journal.entry-key\"}, {\"id\": \"assurance.baseline.native-gate\"}]}\n");
+    r.write("evals/cases/native.jsonl", "{}\n");
+    r.commit("a native set no entry runs");
+    let o = r.gate(&["--stage", "evaluate"]);
+    assert!(!o.status.success());
+    assert!(stderr(&o).contains("no gate-tier ledger entry owned by `assurance.baseline.native-gate` runs it"), "{}", stderr(&o));
+
+    // The native set's entry decides the stage, and a public set at the trend tier sits beside it.
+    let public = "[entry.public-recall]\nclause = \"assurance.baseline.native-gate\"\nmetric = \"retrieval.hybrid.recall_at_k\"\nkind = \"eval\"\ntier = \"trend\"\ndirection = \"higher_is_better\"\nmethod = { cases = \"evals/cases/public.jsonl\" }\n";
+    r.write("evals/cases/public.jsonl", "{}\n");
+    r.write("evals/ledger.toml", &(entry("demo-doubles", "assurance.baseline.native-gate", method, "target = { op = \"==\", value = 4 }") + public));
+    r.commit("the native set gates");
+    let o = r.gate(&["--stage", "evaluate"]);
+    assert!(o.status.success(), "{}", stderr(&o));
+    assert!(stderr(&o).contains("baseline verdict held for evals/cases/native.jsonl (demo-doubles)"), "{}", stderr(&o));
+    assert!(!stderr(&o).contains("public-recall"), "a public set decided the stage: {}", stderr(&o));
+
+    // A red native figure reds the stage.
+    r.write("evals/ledger.toml", &(entry("demo-doubles", "assurance.baseline.native-gate", method, "target = { op = \">=\", value = 5 }") + public));
+    r.commit("a native figure below its target");
+    let o = r.gate(&["--stage", "evaluate"]);
+    assert!(!o.status.success());
+    assert!(stderr(&o).contains("baseline verdict red for evals/cases/native.jsonl"), "{}", stderr(&o));
+}
+
 #[test]
 fn a_held_target_passes_and_a_missed_one_reds_the_stage() {
     let r = repo(&entry("demo-doubles", "run.journal.entry-key", "{ test = \"demo::measured::doubles_measured\" }", "target = { op = \"==\", value = 4 }"));

@@ -478,7 +478,8 @@ Where the build-time material sits:
 tools/
   ci/                     typed subcommands the gate invokes
   spec/                   the corpus checker
-  eval/                   the quality harness's metrics, floors, baseline gate, ledger, records and trends
+  eval/                   the quality harness's metrics, floors, baseline gate, ledger, records, trends,
+                          run checkpoint, trace store, and one converter per external ground-truth source
 crates/acceptance/
   tests/integration/mNN.rs  one milestone's acceptance test, driving a built binary
 evals/
@@ -487,7 +488,6 @@ evals/
   ledger.toml             one entry per tracked target, keyed to its clause
   ledger.md               every entry's computed status, generated
   generators/             graph walk, edge chain, absent entity
-  converters/             one per external ground-truth source
 crates/<name>/tests/
   integration/main.rs     the crate's one integration binary
   integration/<suite>.rs  a module, selected by path

@@ -164,6 +164,242 @@ fn each_leg_calls_the_ranked_read_with_the_options_a_caller_passes() {
     assert_eq!(mean(&report, "/retrieval/hybrid/reciprocal_rank/mean"), 0.5);
 }
 
+/// Two cases over the lab corpus, each with one relevant row its question names.
+fn two_cases() -> [Value; 2] {
+    [
+        json!({ "id": "valve", "corpus": "corpus", "question": "pressure valve", "prefix": "lab/plain", "expected": { "artifacts": ["lab/plain#a,1"] } }),
+        json!({ "id": "forklift", "corpus": "corpus", "question": "forklift battery", "prefix": "lab/plain", "expected": { "artifacts": ["lab/plain#b,1"] } }),
+    ]
+}
+
+#[test]
+fn a_killed_run_resumes_from_its_checkpoint_and_reruns_only_the_in_flight_case() {
+    let issuer = Issuer::new();
+    let goldens = corpus(issuer.path(), LAB, &lab_rows(), &two_cases());
+    let token = issuer.mint(READER, "on-prem:hq");
+    let checkpoint = issuer.path().join("run.jsonl");
+    let cp = checkpoint.to_str().unwrap();
+    let (out, full) = issuer.eval(&goldens, &token, &["--checkpoint", cp]);
+    assert!(out.status.success(), "{}", stderr(&out));
+    let text = std::fs::read_to_string(&checkpoint).unwrap();
+    let lines: Vec<&str> = text.lines().collect();
+    assert_eq!(lines.len(), 3, "a header and one result per case: {text}");
+
+    // The kill lands while the second case's line is half written. The first case's line is
+    // doctored so a re-run of it would show: a resumed run must report it as recorded.
+    let mut first: Value = serde_json::from_str(lines[1]).unwrap();
+    assert_eq!(first["id"], json!("valve"));
+    first["legs"]["lexical"] = json!([{ "row": { "table": "lab/plain", "key": "a,2" }, "in_window": true }]);
+    let torn = &lines[2][..lines[2].len() / 2];
+    std::fs::write(&checkpoint, format!("{}\n{first}\n{torn}", lines[0])).unwrap();
+    let (out, resumed) = issuer.eval(&goldens, &token, &["--checkpoint", cp]);
+    assert!(stderr(&out).contains("resuming 1 finished case(s)"), "{}", stderr(&out));
+    // The doctored miss scores as recorded and reds the lexical precision floor.
+    assert!(!out.status.success());
+    assert!(stderr(&out).contains("floor retrieval.lexical.r_precision.mean"), "{}", stderr(&out));
+    assert_eq!(resumed["cases"][0]["legs"]["lexical"], json!(["lab/plain#a,2"]), "the finished case did not run again");
+    assert_eq!(resumed["cases"][1]["legs"], full["cases"][1]["legs"], "the in-flight case ran again");
+    assert_eq!(std::fs::read_to_string(&checkpoint).unwrap().lines().count(), 3);
+
+    // A checkpoint written under another seed resumes nothing.
+    let (out, report) = issuer.eval(&goldens, &token, &["--checkpoint", cp, "--seed", "7"]);
+    assert!(stderr(&out).contains("was written under"), "{}", stderr(&out));
+    assert_eq!(report, Value::Null);
+}
+
+/// The gate is a local command comparing the report against in-tree baselines and floors, reporting both verdicts, with or without a trace store reachable.
+// spec: assurance.baseline.offline@cb4d0757
+#[test]
+fn both_verdicts_come_from_in_tree_files_with_no_trace_store() {
+    let issuer = Issuer::new();
+    let goldens = root().join("evals/cases/native.jsonl");
+    let baseline = root().join("evals/baselines/native.json");
+    let token = issuer.mint(READER, "on-prem:hq");
+    let args = ["--baseline", baseline.to_str().unwrap()];
+    let (out, report) = issuer.eval(&goldens, &token, &args);
+    assert!(out.status.success(), "{}", stderr(&out));
+    assert!(stderr(&out).contains("eval: floor verdict: held"), "{}", stderr(&out));
+    assert!(stderr(&out).contains("eval: baseline verdict: held against"), "{}", stderr(&out));
+
+    // A trace endpoint nobody answers changes neither verdict nor figure.
+    let mut cmd = Command::new(env!("CARGO_BIN_EXE_contextful"));
+    let report_path = issuer.path().join("unreachable.json");
+    cmd.args(["eval", "run", "--goldens", goldens.to_str().unwrap(), "--k", "5", "--public-key", &issuer.public, "--audience", AUD])
+        .args(["--report", report_path.to_str().unwrap()])
+        .args(args)
+        .current_dir(issuer.path())
+        .env("CONTEXTFUL_TOKEN", &token)
+        .env("OTEL_EXPORTER_OTLP_ENDPOINT", "http://127.0.0.1:9")
+        .env("HTTPS_PROXY", "http://127.0.0.1:9");
+    let out = cmd.output().unwrap();
+    assert!(out.status.success(), "{}", stderr(&out));
+    let again: Value = serde_json::from_str(&std::fs::read_to_string(&report_path).unwrap()).unwrap();
+    assert_eq!(again["retrieval"], report["retrieval"]);
+    assert!(stderr(&out).contains("eval: baseline verdict: held against"), "{}", stderr(&out));
+
+    // A red floor and a held baseline report apart.
+    let wrong = issuer.path().join("wrong.jsonl");
+    let text = std::fs::read_to_string(&goldens).unwrap().replace("\"corpus\": \"../corpora/native\"", &format!("\"corpus\": {}", json!(root().join("evals/corpora/native"))));
+    let text = text.replace("kb/articles#art-0", "kb/articles#art-2").replace("kb/articles#cat-0", "kb/articles#cat-2");
+    let text = text.replace("kb/articles#log-0", "kb/articles#log-2").replace("kb/articles#car-0", "kb/articles#car-2");
+    let text = text.replace("kb/articles#pen-0", "kb/articles#pen-2").replace("kb/articles#sea-0", "kb/articles#sea-2");
+    let text = text.replace("kb/articles#ice-0", "kb/articles#ice-2").replace("kb/articles#ant-0", "kb/articles#ant-2");
+    std::fs::write(&wrong, text.replace("kb/cjk#ja-", "kb/cjk#jx-").replace("news/wire#", "news/wirex#")).unwrap();
+    let (out, _) = issuer.eval(&wrong, &token, &[]);
+    assert!(!out.status.success());
+    assert!(stderr(&out).contains("eval: floor verdict: red"), "{}", stderr(&out));
+    assert!(stderr(&out).contains("eval: baseline verdict: none"), "{}", stderr(&out));
+}
+
+/// A loopback collector answering one POST with 200, handing back the body it received.
+fn collector() -> (String, std::thread::JoinHandle<String>) {
+    use std::io::{BufRead, BufReader, Read, Write};
+    let listener = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
+    let url = format!("http://127.0.0.1:{}/v1/runs", listener.local_addr().unwrap().port());
+    let handle = std::thread::spawn(move || {
+        let (stream, _) = listener.accept().unwrap();
+        let mut reader = BufReader::new(stream.try_clone().unwrap());
+        let mut length = 0;
+        loop {
+            let mut line = String::new();
+            reader.read_line(&mut line).unwrap();
+            if let Some(v) = line.to_ascii_lowercase().strip_prefix("content-length:") {
+                length = v.trim().parse().unwrap();
+            }
+            if line == "\r\n" || line.is_empty() {
+                break;
+            }
+        }
+        let mut body = vec![0; length];
+        reader.read_exact(&mut body).unwrap();
+        let mut stream = stream;
+        stream.write_all(b"HTTP/1.1 200 OK\r\ncontent-length: 0\r\nconnection: close\r\n\r\n").unwrap();
+        String::from_utf8(body).unwrap()
+    });
+    (url, handle)
+}
+
+/// A trace store records run history and curation staging, and decides no verdict.
+// spec: assurance.baseline.trace-store@b327df67
+#[test]
+fn the_trace_store_records_history_and_staging_and_decides_nothing() {
+    let issuer = Issuer::new();
+    let mut cases = two_cases().to_vec();
+    cases.push(json!({ "id": "absent", "corpus": "corpus", "question": "pressure valve", "prefix": "lab/plain", "expected": { "must_abstain": true } }));
+    let goldens = corpus(issuer.path(), LAB, &lab_rows(), &cases);
+    let token = issuer.mint(READER, "on-prem:hq");
+    let store = issuer.path().join("traces");
+    let s = store.to_str().unwrap();
+    let (out, plain) = issuer.eval(&goldens, &token, &[]);
+    assert!(out.status.success(), "{}", stderr(&out));
+    let (out, traced) = issuer.eval(&goldens, &token, &["--trace-store", s]);
+    assert!(out.status.success(), "{}", stderr(&out));
+    assert_eq!(traced["retrieval"], plain["retrieval"], "the store moves no figure");
+
+    // A red run records its verdict as it stands.
+    let mut wrong = cases.clone();
+    wrong[0]["expected"]["artifacts"] = json!(["lab/plain#a,2"]);
+    let red = corpus(issuer.path(), LAB, &lab_rows(), &wrong);
+    let (out, _) = issuer.eval(&red, &token, &["--trace-store", s]);
+    assert!(!out.status.success());
+    let history: Vec<Value> = std::fs::read_to_string(store.join("runs.jsonl")).unwrap().lines().map(|l| serde_json::from_str(l).unwrap()).collect();
+    assert_eq!(history.len(), 2);
+    assert_eq!(history[0]["floors"], json!("held"));
+    assert_eq!(history[0]["baseline"], Value::Null);
+    assert_eq!(history[0]["n_cases"], json!(3));
+    assert_eq!(history[1]["floors"], json!("red"));
+    // The case set file now carries the red truth; restore the original for the runs below.
+    let goldens = corpus(issuer.path(), LAB, &lab_rows(), &cases);
+    // The must-abstain case returned rows, so a curator reviews it.
+    let staging = std::fs::read_to_string(store.join("staging.jsonl")).unwrap();
+    assert!(staging.lines().any(|l| l.contains("\"absent\"") && l.contains("must-abstain")), "{staging}");
+
+    // A store that cannot record leaves the outcome as it was.
+    let blocked = issuer.path().join("blocked");
+    std::fs::write(&blocked, "a file, not a directory").unwrap();
+    let (out, report) = issuer.eval(&goldens, &token, &["--trace-store", blocked.to_str().unwrap()]);
+    assert!(out.status.success(), "{}", stderr(&out));
+    assert!(stderr(&out).contains("recorded nothing"), "{}", stderr(&out));
+    assert_eq!(report["retrieval"], plain["retrieval"]);
+
+    // A self-hosted collector receives the same record.
+    let (url, received) = collector();
+    let (out, _) = issuer.eval(&goldens, &token, &["--trace-endpoint", &url]);
+    assert!(out.status.success(), "{}", stderr(&out));
+    let body: Value = serde_json::from_str(&received.join().unwrap()).unwrap();
+    assert_eq!(body["floors"], json!("held"));
+    assert_eq!(body["seed"], plain["seed"]);
+}
+
+/// A run touching a deployed store with a hosted trace endpoint configured raises `TraceExportOutOfPerimeter`; hosted collection serves runs over public or synthetic fixtures alone.
+// spec: assurance.baseline.trace-export@7c0d7ccd
+#[test]
+fn a_hosted_trace_endpoint_serves_fixtures_and_refuses_a_deployed_store() {
+    let issuer = Issuer::new();
+    let goldens = corpus(issuer.path(), LAB, &lab_rows(), &two_cases());
+    let token = issuer.mint(READER, "on-prem:hq");
+    // Fixtures alone: a hosted endpoint is admitted, and one nobody answers decides nothing.
+    let hosted = "https://collector.example.invalid/v1/runs";
+    let (out, report) = issuer.eval(&goldens, &token, &["--trace-endpoint", hosted]);
+    assert!(out.status.success(), "{}", stderr(&out));
+    assert!(stderr(&out).contains("received nothing"), "{}", stderr(&out));
+    assert!(report["retrieval"].is_object());
+
+    // The same corpus holding a deployed project's store root.
+    std::fs::create_dir_all(issuer.path().join("corpus/.contextful/context/ops")).unwrap();
+    let (out, report) = issuer.eval(&goldens, &token, &["--trace-endpoint", hosted]);
+    assert!(!out.status.success());
+    assert!(stderr(&out).contains("TraceExportOutOfPerimeter"), "{}", stderr(&out));
+    assert!(stderr(&out).contains(".contextful/context"), "{}", stderr(&out));
+    assert_eq!(report, Value::Null, "the refusal lands no row and writes no report");
+
+    // A collector inside the perimeter serves the deployed store's run.
+    let (url, received) = collector();
+    let (out, _) = issuer.eval(&goldens, &token, &["--trace-endpoint", &url]);
+    assert!(out.status.success(), "{}", stderr(&out));
+    assert!(received.join().unwrap().contains("\"floors\""));
+}
+
+/// Every generated fixture and randomized schedule derives from the record's seed, and replaying that seed reproduces a count-valued entry's value.
+// spec: assurance.measure.seeded@2f5ac2a3
+#[test]
+fn replaying_the_ledger_seed_reproduces_the_native_gate_figures() {
+    let ledger: toml::Value = toml::from_str(&std::fs::read_to_string(root().join("evals/ledger.toml")).unwrap()).unwrap();
+    let entry = &ledger["entry"]["eval-through-enforcement"];
+    let seed = entry["seed"].as_integer().unwrap().to_string();
+    let issuer = Issuer::new();
+    let goldens = root().join("evals/cases/native.jsonl");
+    let token = issuer.mint(READER, "on-prem:hq");
+    let (out, first) = issuer.eval(&goldens, &token, &["--seed", &seed]);
+    assert!(out.status.success(), "{}", stderr(&out));
+    let (out, replay) = issuer.eval(&goldens, &token, &["--seed", &seed]);
+    assert!(out.status.success(), "{}", stderr(&out));
+    assert_eq!(first["seed"].as_i64().map(|s| s.to_string()), Some(seed));
+    let metric = entry["metric"].as_str().unwrap().replace('.', "/");
+    assert_eq!(first.pointer(&format!("/{metric}")), replay.pointer(&format!("/{metric}")));
+    assert_eq!(first["retrieval"], replay["retrieval"], "every figure replays");
+    assert_eq!(first["cases"], replay["cases"], "every ranking replays");
+}
+
+#[test]
+fn each_case_reports_its_tokens_latency_and_corpus_bucket() {
+    let issuer = Issuer::new();
+    let goldens = corpus(issuer.path(), LAB, &lab_rows(), &two_cases());
+    let token = issuer.mint(READER, "on-prem:hq");
+    let (out, report) = issuer.eval(&goldens, &token, &[]);
+    assert!(out.status.success(), "{}", stderr(&out));
+    assert_eq!(report["latency_ms"]["n"], json!(2));
+    assert!(mean(&report, "/systems/tokens_per_query/min") >= 4.0, "a question and the rows it was handed: {}", report["systems"]);
+    assert_eq!(mean(&report, "/systems/cost/max"), 0.0);
+    assert_eq!(report["systems"]["buckets"]["le_1x"]["n_cases"], json!(2));
+    // A window smaller than the corpus moves both cases to a larger bucket.
+    let (out, small) = issuer.eval(&goldens, &token, &["--context-window", "4"]);
+    assert!(out.status.success(), "{}", stderr(&out));
+    let buckets = small["systems"]["buckets"].as_object().unwrap();
+    assert_eq!(buckets.len(), 1);
+    assert!(buckets.keys().all(|b| b != "le_1x"), "{buckets:?}");
+}
+
 /// The deterministic tier embeds every row and question with a seeded feature-hashing stub embedder; a corpus row or a case carrying its own embedding keeps it.
 // spec: assurance.evaluate.stub-embedder@57f9091d
 #[test]

@@ -40,6 +40,31 @@ pub const COLUMNS: [&str; 10] = ["slug", "ordinal", "path", "kind", "title", "he
 /// Extensions of compound-binary office containers (`connector.source.conversion-required`).
 const COMPOUND: [&str; 7] = ["doc", "dot", "xls", "xlt", "ppt", "pot", "pps"];
 
+/// The directory name holding the golden set and its corpora, which no source ingests
+/// (`assurance.baseline.answer-key-in-the-store`).
+pub const EVALUATION_DIR: &str = "evals";
+
+/// Whether `path`, normalized lexically — each `.` dropped, each `..` removing the segment
+/// before it — passes through the evaluation directory.
+pub fn under_evaluation_dir(path: &Path) -> bool {
+    use std::path::Component;
+    let mut kept: Vec<&std::ffi::OsStr> = Vec::new();
+    for c in path.components() {
+        match c {
+            Component::Normal(s) => kept.push(s),
+            Component::ParentDir => {
+                kept.pop();
+            }
+            Component::CurDir | Component::RootDir | Component::Prefix(_) => {}
+        }
+    }
+    kept.iter().any(|s| *s == EVALUATION_DIR)
+}
+
+fn golden_set_ingested(path: &Path) -> String {
+    format!("GoldenSetIngested: `{NAME}` source path `{}` normalizes under the evaluation directory `{EVALUATION_DIR}/`, which holds the answer key", path.display())
+}
+
 fn invalid(why: String) -> ConfigError {
     ConfigError::Run(RunError::Invalid(format!("`{NAME}` source {why}")))
 }
@@ -110,6 +135,9 @@ impl FileConfig {
             Some(other) => return Err(invalid(format!("`root` is a directory path, found {other}"))),
             None => return Err(invalid("names no `root`, the directory the walk starts from".into())),
         };
+        if under_evaluation_dir(&root) {
+            return Err(ConfigError::Run(RunError::Invalid(golden_set_ingested(&root))));
+        }
         let globs = |key: &str| -> Result<Vec<Glob>, ConfigError> {
             match cfg.get(key) {
                 None => Ok(Vec::new()),
@@ -310,6 +338,9 @@ impl FileSource {
                 if meta.is_dir() {
                     dirs.push((abs, path));
                 } else if meta.is_file() && self.config.admits(&path) {
+                    if under_evaluation_dir(Path::new(&path)) {
+                        return Err(Failure::deterministic(FailureTag::Config, golden_set_ingested(Path::new(&path))));
+                    }
                     let extension = name.rsplit_once('.').filter(|(s, _)| !s.is_empty()).map(|(_, e)| e.to_lowercase()).unwrap_or_default();
                     found.push(Found { path, abs, size: meta.len(), extension });
                 }

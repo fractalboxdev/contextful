@@ -10,6 +10,8 @@
 
 pub mod baseline;
 pub mod case;
+pub mod checkpoint;
+pub mod convert;
 pub mod embed;
 mod error;
 pub mod floors;
@@ -17,6 +19,8 @@ pub mod ledger;
 pub mod metrics;
 pub mod record;
 pub mod report;
+pub mod systems;
+pub mod trace;
 pub mod trend;
 
 pub use error::EvalError;

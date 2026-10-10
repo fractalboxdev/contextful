@@ -15,6 +15,9 @@ pub enum EvalError {
     MeasureEntryUnresolved { entry: String, reason: String },
     /// A gate-tier method finishing without writing its record (`assurance.measure.record`).
     MeasureRecordMissing { entry: String, reason: String },
+    /// A hosted trace endpoint configured for a run touching a deployed store
+    /// (`assurance.baseline.trace-export`).
+    TraceExportOutOfPerimeter { endpoint: String, reason: String },
     /// A corpus whose tables declare no zone or row policy, read with no `local:` zone
     /// (`assurance.evaluate.unlabeled-corpus`).
     EvalCorpusUnlabeled { corpus: String },
@@ -28,6 +31,7 @@ impl EvalError {
             EvalError::BaselineRunStampMismatch { .. } => "BaselineRunStampMismatch",
             EvalError::MeasureEntryUnresolved { .. } => "MeasureEntryUnresolved",
             EvalError::MeasureRecordMissing { .. } => "MeasureRecordMissing",
+            EvalError::TraceExportOutOfPerimeter { .. } => "TraceExportOutOfPerimeter",
             EvalError::EvalCorpusUnlabeled { .. } => "EvalCorpusUnlabeled",
         }
     }
@@ -59,6 +63,9 @@ impl fmt::Display for EvalError {
             }
             EvalError::MeasureRecordMissing { entry, reason } => {
                 write!(f, "MeasureRecordMissing: `{entry}`: {reason}")
+            }
+            EvalError::TraceExportOutOfPerimeter { endpoint, reason } => {
+                write!(f, "TraceExportOutOfPerimeter: `{endpoint}`: {reason}")
             }
             EvalError::EvalCorpusUnlabeled { corpus } => write!(
                 f,

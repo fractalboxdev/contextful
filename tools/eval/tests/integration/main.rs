@@ -2,12 +2,16 @@
 
 mod baseline;
 mod case;
+mod checkpoint;
+mod convert;
+mod custody;
 mod embed;
 mod floors;
 mod ledger;
 mod metrics;
 mod record;
 mod report;
+mod trace;
 mod trend;
 
 use std::collections::HashSet;

@@ -336,6 +336,11 @@ fn registry(c: &Corpus) -> Vec<Finding> {
             if !basis_ok {
                 out.push(f("registry", &frel, 0, "SpecRegistry", format!("bound `{id}` basis `{}` is not chosen, measured:<b> or standard:<n>", l.basis)));
             }
+            if let Some(benchmark) = l.basis.strip_prefix("measured:") {
+                if let Err(why) = measured_basis(&c.root, benchmark) {
+                    out.push(f("registry", &frel, 0, "SpecRegistry", format!("bound `{id}` basis `{}`: {why}", l.basis)));
+                }
+            }
         }
     }
     // each statement: errors it names are its own; numerals with units are its bounds
@@ -374,6 +379,21 @@ fn registry(c: &Corpus) -> Vec<Finding> {
 }
 
 /// Blank backticks but keep their content (a bound inside ticks still counts).
+/// The target ledger a measured basis names its benchmark in.
+const LEDGER: &str = "evals/ledger.toml";
+
+/// A measured basis names a trend-tier or scheduled-tier entry of the target ledger
+/// (`assurance.measure.measured-basis`).
+fn measured_basis(root: &std::path::Path, benchmark: &str) -> Result<(), String> {
+    let text = std::fs::read_to_string(root.join(LEDGER)).map_err(|e| format!("names benchmark `{benchmark}`, and {LEDGER} does not read: {e}"))?;
+    let ledger: toml::Value = toml::from_str(&text).map_err(|e| format!("{LEDGER} does not parse: {e}"))?;
+    let entry = ledger.get("entry").and_then(|e| e.get(benchmark)).ok_or_else(|| format!("names no entry of {LEDGER}"))?;
+    match entry.get("tier").and_then(toml::Value::as_str) {
+        Some("trend" | "scheduled") => Ok(()),
+        tier => Err(format!("names a {} entry; a measured basis is a trend-tier or scheduled-tier entry", tier.unwrap_or("tierless"))),
+    }
+}
+
 fn without_ticks_keep(s: &str) -> String {
     s.replace('`', " ")
 }

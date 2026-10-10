@@ -290,6 +290,16 @@ impl Ledger {
     }
 }
 
+/// Metric-name suffixes of a wall-clock or resident-memory figure.
+const TIMED_SUFFIXES: [&str; 5] = ["_ms", "_us", "_ns", "_secs", "_rss"];
+
+/// Whether `e` measures a wall-clock or resident-memory figure (`assurance.measure.count-first`):
+/// a bench entry, or a metric whose last segment names a duration or a resident set.
+fn timed(e: &Entry) -> bool {
+    let last = e.metric.rsplit('.').find(|s| !matches!(*s, "p50" | "p95" | "mean" | "min" | "max")).unwrap_or_default();
+    e.kind == Kind::Bench || last == "rss" || TIMED_SUFFIXES.iter().any(|s| last.ends_with(s))
+}
+
 fn resolve(id: &str, e: &Entry, world: &dyn World) -> Result<(), String> {
     if !slug(id) {
         return Err("an entry id is a slug of lowercase letters, digits and hyphens".into());
@@ -309,6 +319,15 @@ fn resolve(id: &str, e: &Entry, world: &dyn World) -> Result<(), String> {
     let method = e.method().ok_or("a method names exactly one of `test`, `cases`, `probe` or `issue`")?;
     if !matches!(method, Method::Issue(_)) && e.tier == Tier::Gate && e.target.is_none() {
         return Err("a gate-tier entry carries a target".into());
+    }
+    if let Some(t) = e.target.filter(|t| !t.value.is_finite()) {
+        return Err(format!("target `{t}` is no absolute figure; a threshold is a finite number"));
+    }
+    if e.tier == Tier::Gate && timed(e) {
+        return Err(format!(
+            "metric `{}` is a wall-clock or resident-memory figure; a gate-tier entry measures a count, a ratio or a size, and a timing is trend-tier",
+            e.metric
+        ));
     }
     if e.tier == Tier::Trend && e.direction.is_none() {
         return Err("a trend-tier entry declares a direction".into());
