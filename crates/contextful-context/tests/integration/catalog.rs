@@ -115,6 +115,7 @@ fn the_derived_catalog_records_each_sidecars_builder_under_its_one_path() {
     let recorded: Vec<(String, String, String, u32)> =
         rows.sidecars.iter().map(|s| (s.snapshot_id.clone(), s.path.clone(), s.builder.clone(), s.builder_version)).collect();
     assert_eq!(recorded, expected);
+    assert!(!rows.sidecars.is_empty());
     assert!(rows.sidecars.iter().all(|s| s.table == "passages"));
     assert_eq!(catalog.rows().unwrap().sidecars, rows.sidecars);
     // One path per column and model: no builder segment, so a rebuild under another builder

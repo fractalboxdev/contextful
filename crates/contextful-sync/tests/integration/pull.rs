@@ -320,6 +320,7 @@ fn a_replica_pull_writes_its_descriptor_beside_the_catalog() {
     std::fs::write(a.root().join(DESCRIPTOR_FILE), b"{}").unwrap();
     a.syncer.push(at("2030-01-01T02:00:00Z")).unwrap();
     let m: BucketManifest = serde_json::from_slice(&b.get("team/manifest.json").unwrap().unwrap().0).unwrap();
+    assert!(!m.entries.is_empty());
     assert!(!m.entries.keys().any(|k| k.ends_with(DESCRIPTOR_FILE)));
 }
 

@@ -216,6 +216,7 @@ fn a_statement_started_during_a_pass_reads_the_snapshot_named_at_its_start() {
     assert_eq!(read(&during.relation), expected);
     // A statement starting after the commit reads the new snapshot alone.
     let next = f.scan(&d, Bounds::default()).unwrap();
+    assert!(!next.files.is_empty());
     assert!(next.files.iter().all(|p| p.contains(&after.snapshot_id.to_string())), "{:?}", next.files);
     assert_eq!(read(&next.relation), expected);
 }
