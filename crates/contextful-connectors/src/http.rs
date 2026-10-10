@@ -25,7 +25,7 @@ pub const NAME: &str = "http";
 pub const PAGE_CAP: usize = 1000;
 
 /// The configuration keys the HTTP source reads (`run.declare.config-key`).
-pub const KEYS: [&str; 20] = [
+pub const KEYS: [&str; 21] = [
     "endpoint",
     "table_pattern",
     "format",
@@ -46,6 +46,7 @@ pub const KEYS: [&str; 20] = [
     "conditional",
     "expansion",
     "encoding",
+    "skip_unchanged",
 ];
 
 /// A detail document address and the column receiving its decoded JSON value.
@@ -366,6 +367,9 @@ pub struct HttpConfig {
     pub expansion: Option<Expansion>,
     /// The character encoding of a CSV body; absent means UTF-8.
     pub encoding: Option<String>,
+    /// Whether a snapshot read commits its raw-byte digest as the position and lands
+    /// nothing when the digest matches the stored one (`run.advance.skip-unchanged`).
+    pub skip_unchanged: bool,
 }
 
 fn key_error(k: &str) -> RunError {
@@ -502,6 +506,15 @@ impl HttpConfig {
             None => false,
             Some(v) => v.as_bool().ok_or_else(|| RunError::Invalid(format!("`{NAME}` source key `conditional` is a boolean, found {v}")))?,
         };
+        let skip_unchanged = match cfg.get("skip_unchanged") {
+            None => false,
+            Some(v) => v.as_bool().ok_or_else(|| RunError::Invalid(format!("`{NAME}` source key `skip_unchanged` is a boolean, found {v}")))?,
+        };
+        if skip_unchanged {
+            if let Some(k) = [conditional.then_some("conditional"), since_param.as_ref().map(|_| "since_param")].into_iter().flatten().next() {
+                return Err(RunError::Invalid(format!("`skip_unchanged` beside `{k}`: the digest is the snapshot's whole position")).into());
+            }
+        }
         let expansion = cfg.get("expansion").map(expansion).transpose()?;
         if let (true, Some(k)) = (conditional, declared.first()) {
             return Err(ConnectorError::ConnectorConditionalRejected(format!("`conditional` beside `{k}`: a validator names one document, and a page walk reads many")).into());
@@ -539,6 +552,7 @@ impl HttpConfig {
             conditional,
             expansion,
             encoding,
+            skip_unchanged,
         };
         if c.scope_probe.is_some() && c.probe_credential().is_none() {
             return Err(RunError::Invalid(format!("the `{NAME}` source's `scope_probe` carries a bound credential, and no `headers` template binds one")).into());
@@ -557,6 +571,11 @@ impl HttpConfig {
     /// refuses at build, ahead of the run that would commit its first position
     /// (`connector.source.workbook-incremental`).
     pub fn accepts_incremental(&self) -> Result<(), ConnectorError> {
+        if self.skip_unchanged {
+            return Err(ConnectorError::ConnectorConditionalRejected(
+                "`skip_unchanged` beside a declared `incremental`: the position holds the watermark, leaving the digest no place to commit".into(),
+            ));
+        }
         if self.conditional {
             return Err(ConnectorError::ConnectorConditionalRejected(
                 "`conditional` beside a declared `incremental`: the position holds the watermark, leaving the validators no place to commit".into(),
@@ -772,7 +791,19 @@ impl HttpSource {
 
     /// Fetch the page `token` names: its rows and the token of the page after it. A next
     /// URL is joined against the page's own, so the token alone names the page.
-    fn page(&self, base: &Url, token: Option<&str>, request: &PullRequest, mut budget: Option<&mut ExpansionBudget>) -> Result<(Vec<Row>, Option<String>), Failure> {
+    fn page(&self, base: &Url, token: Option<&str>, request: &PullRequest, budget: Option<&mut ExpansionBudget>) -> Result<(Vec<Row>, Option<String>), Failure> {
+        self.page_digested(base, token, request, budget, None)
+    }
+
+    /// [`HttpSource::page`], feeding the page's raw body to `digest` when one is given.
+    fn page_digested(
+        &self,
+        base: &Url,
+        token: Option<&str>,
+        request: &PullRequest,
+        mut budget: Option<&mut ExpansionBudget>,
+        digest: Option<&mut sha2::Sha256>,
+    ) -> Result<(Vec<Row>, Option<String>), Failure> {
         let current = self.page_url(base, token)?;
         // Hydrated per request: the resolver's cache retires a lease ahead of its expiry,
         // so a long walk re-hydrates rather than sending an expired credential.
@@ -785,6 +816,9 @@ impl HttpSource {
         if !(200..300).contains(&resp.status) {
             let retry_after = resp.header("retry-after").and_then(|v| v.trim().parse().ok());
             return Err(classify(resp.status, retry_after, &scrub(&resp.url)));
+        }
+        if let Some(d) = digest {
+            sha2::Digest::update(d, &resp.body);
         }
         let (batch, body) = match self.config.format {
             Format::Workbook => (workbook::rows(&resp.body, self.config.sheet.as_deref(), self.config.skip_rows, &scrub(&resp.url))?, None),
@@ -1093,6 +1127,38 @@ impl HttpSource {
         Ok(out)
     }
 
+    /// A digested pull: every page walked in one pull, their raw bytes hashed in order. A
+    /// digest and row count matching the stored position return no rows and the position
+    /// unchanged; otherwise the rows land under the position `{ sha256, rows }`
+    /// (`run.advance.skip-unchanged`).
+    fn digested_pull(&self, request: &PullRequest, cancel: &dyn Cancellation) -> Result<Value, Failure> {
+        let base = self.base_url(request)?;
+        let mut digest = <sha2::Sha256 as sha2::Digest>::new();
+        let mut rows = Vec::new();
+        let mut seen: Vec<String> = Vec::new();
+        let mut token: Option<String> = None;
+        for _ in 0..PAGE_CAP {
+            if cancel.requested() {
+                return Err(Failure::canceled("stopped during the page walk"));
+            }
+            let (batch, next) = self.page_digested(&base, token.as_deref(), request, None, Some(&mut digest))?;
+            rows.extend(batch);
+            let Some(next) = next else {
+                let sha256: String = sha2::Digest::finalize(digest).iter().map(|b| format!("{b:02x}")).collect();
+                let position = serde_json::json!({ "sha256": sha256, "rows": rows.len() });
+                if request.position.as_ref() == Some(&position) {
+                    return Ok(serde_json::json!({ "rows": [], "cursor": position, "more": false, "snapshot_complete": false }));
+                }
+                let budget = ExpansionBudget::new(EXPANSION_BYTES, EXPANSION_TIME);
+                let rows = self.expand(rows, request, cancel, &base, budget)?;
+                return Ok(serde_json::json!({ "rows": rows, "cursor": position, "more": false, "snapshot_complete": true }));
+            };
+            HttpSource::advance(&mut seen, &next, &base)?;
+            token = Some(next);
+        }
+        Err(HttpSource::capped(&base))
+    }
+
     /// A conditional pull: one request for the one document, carrying the stored validators.
     /// The validators are the whole position, and the pull reports no further page
     /// (`connector.source.conditional-position`).
@@ -1136,7 +1202,9 @@ impl Source for HttpSource {
             return Err(Failure::canceled("stopped ahead of the page request"));
         }
         self.open()?;
-        let pulled = if self.config.conditional {
+        let pulled = if self.config.skip_unchanged {
+            self.digested_pull(request, cancel)?
+        } else if self.config.conditional {
             self.conditional_pull(request, cancel)?
         } else if self.walks_whole() {
             serde_json::json!({ "rows": self.walk(request, cancel)?, "more": false, "snapshot_complete": !self.watermarked })

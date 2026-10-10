@@ -138,3 +138,57 @@ fn a_guest_request_hands_the_hook_its_traffic_class_and_run_id() {
     assert_eq!((intents[0].method.as_str(), intents[0].host.as_str()), ("GET", "127.0.0.1"));
     assert_eq!((intents[0].class.as_deref(), intents[0].run_id.as_deref()), (Some("reads"), Some("run-7f3a")));
 }
+
+/// A credential mint that is down, counting each ask.
+struct DownMint(std::sync::atomic::AtomicUsize);
+
+impl contextful_wasm::Hydrate for DownMint {
+    fn hydrate(&self) -> Result<contextful_outbound::client::HeaderValue, contextful_core::run::Failure> {
+        self.0.fetch_add(1, Ordering::SeqCst);
+        Err(contextful_core::run::Failure::new(FailureTag::Transient, "the mint endpoint is unreachable"))
+    }
+}
+
+/// The step's schedule is the only retry layer: an adapter, a credential mint and a meter acquire inside a step return
+/// their failure to it.
+// spec: run.retry.one-layer@5fdf55c3
+#[test]
+fn the_adapter_the_mint_and_the_meter_each_return_their_failure_once() {
+    // The adapter: a vendor dropping the connection is reached once, and the step sees the failure.
+    let listener = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
+    let addr = listener.local_addr().unwrap();
+    let accepted = std::sync::Arc::new(std::sync::atomic::AtomicUsize::new(0));
+    let counted = accepted.clone();
+    std::thread::spawn(move || {
+        for stream in listener.incoming().flatten() {
+            counted.fetch_add(1, Ordering::SeqCst);
+            drop(stream);
+        }
+    });
+    let mut s = open_with(loopback(), &Limits::default(), None).unwrap();
+    s.open(&format!("fetch http://{addr}/v1"), None).unwrap();
+    let adapter = s.next().unwrap_err();
+    assert_eq!(adapter.tag, FailureTag::Transient, "{adapter}");
+    assert_eq!(accepted.load(Ordering::SeqCst), 1, "the adapter retried nothing");
+
+    // The credential mint: asked once, nothing sent.
+    let mint = std::sync::Arc::new(DownMint(Default::default()));
+    let server = Server::start(|_| Response::text(200, "ok"));
+    let grant = Grant { hydrate: vec![("Authorization".into(), mint.clone() as std::sync::Arc<dyn contextful_wasm::Hydrate>)], ..loopback() };
+    let mut s = open_with(grant, &Limits::default(), None).unwrap();
+    s.open(&format!("fetch {}", server.url("/v1")), None).unwrap();
+    let minted = s.next().unwrap_err();
+    assert_eq!(minted.tag, FailureTag::Transient, "{minted}");
+    assert_eq!(mint.0.load(Ordering::SeqCst), 1, "the mint retried nothing");
+    assert!(server.received().is_empty());
+
+    // The meter acquire: an unreachable limiter is asked once, nothing sent.
+    let gate = Gate::new(Reservation::Unreachable("connection refused".into()));
+    let server = Server::start(|_| Response::text(200, "ok"));
+    let mut s = open_with(gated(gate.clone(), &["127.0.0.1"]), &Limits::default(), None).unwrap();
+    s.open(&format!("fetch {}", server.url("/v1")), None).unwrap();
+    let metered = s.next().unwrap_err();
+    assert_eq!(metered.tag, FailureTag::Transient, "{metered}");
+    assert_eq!(gate.asked.load(Ordering::SeqCst), 1, "the meter retried nothing");
+    assert!(server.received().is_empty());
+}

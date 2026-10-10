@@ -129,6 +129,8 @@ The domain crate, dependency direction, and the three build profiles with what e
   *because a host syncing through a filesystem bucket, or embedding the sync package without a bucket, links no network stack*
 - `store-sqlite-free` — `contextful-context` reaching `libsqlite3-sys` through a normal dependency, with its default features, on any target, raises `StoreLinksSqlite`, naming the path that pulled it.
   *A-store*
+- `interchange-whole` — The edge profile links the columnar interchange crates whole, as the full profile does; no slimmed interchange build exists.
+  *because a slimmed build forks the format code an edge replica reads with from the code the full profile writes with*
 
 Profiles, the domain crate they share, and the dependency edges the gates raise on.
 
@@ -160,8 +162,6 @@ flowchart TD
   EDGE -. "ProfileCapabilityAbsent" .-x COMP
   HOST -- "runs" --> COMP
 ```
-
-unsettled: Does the columnar interchange crate stay whole in the edge profile or ship slimmed? owner: topology affects: topology.package
 
 unsettled: Does the edge profile pull native connectors through an execution core that links no scheduler? owner: topology affects: topology.package
 
@@ -297,6 +297,8 @@ The conditional-write primitive, every single-writer operation, lease rows with 
   *A-store*
 - `cluster-availability` — Cluster availability is the shared database's availability. The engine adds no replication and no failover protocol between daemons.
 - `air-gap` — Single-node and edge deployments reach no process outside themselves for coordination, and run air-gapped with only their sources reachable.
+- `no-clustered-catalog` — Clustered availability behind the `Catalog` port comes from Postgres alone; the tree ships no self-contained clustered catalog.
+  *because a clustered catalog of its own rebuilds the replication Postgres provides, for the few operators who refuse to run Postgres*
 
 Every single-writer operation reduces to one linearizable conditional write behind the
 `Catalog` port.
@@ -336,13 +338,13 @@ flowchart LR
   PTR -. "stale fence: LeaseFenced" .-> FENCED
 ```
 
-unsettled: Is a self-contained clustered catalog worth building behind the `Catalog` port for an operator wanting clustered availability without Postgres? owner: topology affects: topology.coordinate
 
 ## bound-application
 
 Where the engine's contracts end, what an application owns, and the surfaces the commercial layer reaches.
 
-unsettled: Where does the boundary sit between a surface adapter and a restated contract when a case has neither a generated artifact nor a callable route? owner: topology affects: topology.bound-application
+- `restated-case` — A case with neither a generated artifact nor a callable route stays with the application, which restates the engine rule at its site under {{assurance.structure-tree.mirror-exemption}}.
+  *because a restatement naming its clause id surfaces when the rule changes, and an adapter for one case costs more than it guards*
 
 ## Shapes
 

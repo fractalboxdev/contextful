@@ -369,6 +369,51 @@ fn a_run_commits_once_and_a_crash_commits_nothing() {
     assert_eq!(sink.staged.iter().filter(|s| s.run_id == "run-2").map(|s| s.ordinal).collect::<Vec<_>>(), [0, 1, 2]);
 }
 
+/// A source that fails its first pull at `p1` with a non-retryable failure, then serves as `Pages` does.
+struct FailsSecondPull {
+    inner: Pages,
+    failed: bool,
+}
+
+impl Source for FailsSecondPull {
+    fn pull(&mut self, request: &PullRequest, cancel: &dyn Cancellation) -> Result<Vec<u8>, Failure> {
+        if !self.failed && request.position == Some(json!("p1")) {
+            self.failed = true;
+            return Err(Failure::new(FailureTag::Permanent, "the vendor refused page 1"));
+        }
+        self.inner.pull(request, cancel)
+    }
+}
+
+/// A run failing after it staged batches commits none of them under {{run.own.one-commit-per-run}} and closes
+/// `failed`, holding its owner so the journal keeps the resume point; only {{run.record.orphan-reap}} closes a run
+/// `partial_failure`.
+// spec: run.retry.partial-failure@2920372d
+#[test]
+fn a_run_failing_after_a_stage_commits_nothing_and_closes_failed() {
+    let rig = Rig::new();
+    let mut source = FailsSecondPull { inner: Pages::new(three_pages()), failed: false };
+    let mut sink = Sink::default();
+    let row = rig.run(&opaque(), "1.0.0", "run-1", &mut source, &mut sink).unwrap();
+    assert_eq!((row.status, row.error_kind), (RunStatus::Failed, Some(FailureTag::Permanent)));
+    assert_eq!(sink.staged.len(), 1, "the first page staged before the failure");
+    assert!(sink.commits.is_empty(), "the failed run commits nothing it staged");
+    assert_eq!(rig.catalog().cursor("feed", "filings").unwrap().position, None, "the position stands");
+    let held = rig.catalog().owner("feed", "filings").unwrap().expect("the failure holds the owner");
+    assert_eq!(held.execution_id, row.execution_id);
+    assert_eq!(rig.engine.journal.recorded(&row.execution_id).unwrap(), 1, "the journal keeps the first pull");
+
+    let again = rig.run(&opaque(), "1.0.0", "run-2", &mut source, &mut sink).unwrap();
+    assert_eq!(again.status, RunStatus::Success);
+    assert_eq!(again.execution_id, row.execution_id, "the next run resumes the held execution");
+    assert_eq!(sink.commits.len(), 1);
+    assert_eq!(sink.commits[0].batches.len(), 3);
+    assert_eq!(source.inner.calls().iter().filter(|(p, _)| p.is_none()).count(), 1, "the recorded first pull replays");
+    for run in ["run-1", "run-2"] {
+        assert_ne!(rig.row(run).status, RunStatus::PartialFailure, "a closing run never reads partial_failure");
+    }
+}
+
 /// The runner stages each shaped batch through the destination as one part before its next pull, so a run holds
 /// one pulled batch in memory; the commit names the staged parts.
 // spec: run.own.backpressure@417ad0e7
@@ -918,4 +963,94 @@ fn source_stage_schema_retirement_keeps_another_live_attempts_owner_and_journal(
     assert_eq!(rig.catalog().owner("feed", "filings").unwrap().unwrap().execution_id, failed.execution_id);
     assert_eq!(rig.engine.journal.recorded(&failed.execution_id).unwrap(), 3);
     assert!(dest.sink.commits.is_empty());
+}
+
+/// Rate-limit pressure against one source paces only that source's runs.
+// spec: run.retry.pressure-is-local@79bd9164
+#[test]
+fn a_rate_limited_source_paces_its_own_run_and_no_other() {
+    let for_pipeline = |pipeline: &str| {
+        contextful_core::run::plan::Plan::compile(
+            format!("pipeline = \"{pipeline}\"\ntable = \"filings\"\n[connector]\nid = \"vendor\"\nversion = \"1.0.0\"\ncommand = [\"vendor\"]\n[cursor]\nkind = \"opaque-token\"\n").as_bytes(),
+        )
+        .unwrap()
+    };
+    let rig = Rig::new();
+    let engine = rig.engine.clone();
+    let paced = for_pipeline("paced");
+    let started = std::time::Instant::now();
+    let slow = std::thread::spawn(move || {
+        let mut source = Pages::new(three_pages());
+        // The vendor asks for one second, twice, before it serves.
+        source.fail = vec![Failure::new(FailureTag::RateLimited, "429").with_retry_after(1), Failure::new(FailureTag::RateLimited, "429").with_retry_after(1)];
+        let spec = contextful_engine::RunSpec {
+            connector: paced.connector_pin("artifact-1"),
+            plan: paced,
+            run_id: "run-paced".into(),
+            site_id: "site-a".into(),
+            pid: 1,
+            boot_id: "boot".into(),
+            trace_id: None,
+        };
+        let row = engine.run(&spec, &mut source, &mut Sink::default()).unwrap();
+        (row, started.elapsed(), source.calls().len())
+    });
+    std::thread::sleep(std::time::Duration::from_millis(100));
+    let quick_started = std::time::Instant::now();
+    let row = rig.run(&for_pipeline("quick"), "1.0.0", "run-quick", &mut Pages::new(three_pages()), &mut Sink::default()).unwrap();
+    let quick = quick_started.elapsed();
+    assert_eq!(row.status, RunStatus::Success);
+    assert!(quick < std::time::Duration::from_millis(900), "the other source's run waited {quick:?}");
+    assert!(!slow.is_finished(), "the paced run still waits out its vendor's hint");
+
+    let (paced_row, paced_took, calls) = slow.join().unwrap();
+    assert_eq!(paced_row.status, RunStatus::Success);
+    assert!(paced_took >= std::time::Duration::from_secs(2), "the paced run honored both hints: {paced_took:?}");
+    assert_eq!(calls, 3 + 2);
+}
+
+/// A source answering one page whose cursor is `cursor`, recording the position each pull asked from.
+struct Opaque {
+    cursor: Value,
+    asked: Arc<Mutex<Vec<Option<Value>>>>,
+}
+
+impl Source for Opaque {
+    fn pull(&mut self, request: &PullRequest, _: &dyn Cancellation) -> Result<Vec<u8>, Failure> {
+        self.asked.lock().unwrap().push(request.position.clone());
+        Ok(serde_json::to_vec(&json!({ "rows": [{ "id": "r" }], "cursor": self.cursor, "more": false })).unwrap())
+    }
+}
+
+/// A position is opaque bytes the connector owns, and its kind is a manifest fact the engine reads. Each table carries
+/// its own position.
+// spec: run.advance.cursor-bytes@888988bb
+#[test]
+fn a_position_round_trips_untouched_and_each_table_keeps_its_own() {
+    let for_table = |table: &str, cursor: &str| {
+        contextful_core::run::plan::Plan::compile(
+            format!("pipeline = \"feed\"\ntable = \"{table}\"\n[connector]\nid = \"vendor\"\nversion = \"1.0.0\"\ncommand = [\"vendor\"]\n{cursor}").as_bytes(),
+        )
+        .unwrap()
+    };
+    // The kind is read off the manifest; undeclared, it is an opaque token.
+    let filings = for_table("filings", "");
+    assert_eq!(filings.cursor_kind, contextful_core::run::advance::CursorKind::OpaqueToken);
+    assert_eq!(for_table("filings", "[cursor]\nkind = \"snapshot-id\"\n").cursor_kind, contextful_core::run::advance::CursorKind::SnapshotId);
+
+    let rig = Rig::new();
+    let token = json!({ "v": 3, "continuation": "Zm9vYmFy+/=", "nested": [null, 1.5, { "deep": "\u{0}tab\t" }] });
+    let asked = Arc::new(Mutex::new(Vec::new()));
+    let mut source = Opaque { cursor: token.clone(), asked: asked.clone() };
+    rig.run(&filings, "1.0.0", "run-1", &mut source, &mut Sink::default()).unwrap();
+    rig.run(&filings, "1.0.0", "run-2", &mut source, &mut Sink::default()).unwrap();
+    assert_eq!(*asked.lock().unwrap(), [None, Some(token.clone())], "the second run asks from the token, byte for byte");
+
+    // Another table of the pipeline starts from its own position.
+    let other_asked = Arc::new(Mutex::new(Vec::new()));
+    let mut other = Opaque { cursor: json!("other-1"), asked: other_asked.clone() };
+    rig.run(&for_table("returns", ""), "1.0.0", "run-3", &mut other, &mut Sink::default()).unwrap();
+    assert_eq!(*other_asked.lock().unwrap(), [None]);
+    assert_eq!(rig.catalog().cursor("feed", "filings").unwrap().position, Some(token));
+    assert_eq!(rig.catalog().cursor("feed", "returns").unwrap().position, Some(json!("other-1")));
 }

@@ -431,6 +431,11 @@ pub trait ExecutionPort {
     /// Resolve step `label` over `input`: the recorded value on replay, else `effect`
     /// under the execution's retry schedule, recorded once.
     fn step(&mut self, label: &str, input: &[u8], effect: &mut StepEffect<'_>) -> Result<Vec<u8>, Self::Error>;
+    /// Run `effect`, an idempotent read, under the step's retry schedule and record nothing,
+    /// so every replay runs it again. A call site states on the line above it, as
+    /// `// idempotent: <why>`, why the read returns what the body needs on every run
+    /// (`run.journal.escape-hatch`).
+    fn r#unsafe(&mut self, label: &str, effect: &mut StepEffect<'_>) -> Result<Vec<u8>, Self::Error>;
     /// Commit `position` as the scope's cursor and retire the owner in one transaction.
     fn commit(&mut self, position: Option<Value>) -> Result<(), Self::Error>;
     /// Suspend step `label` on a fresh awakeable living `ttl_secs`; returns its token.

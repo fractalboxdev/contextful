@@ -115,8 +115,18 @@ pub struct PipelineSpec {
     pub on_table_error: Option<OnTableError>,
 }
 
+/// The sources that journal no pull by default, each with why its replay needs no
+/// recorded batch: the one opt-out constant (`run.journal.opt-out`,
+/// `run.journal.escape-hatch`). Every other source journals its pulls.
+pub const UNJOURNALED_SOURCES: &[(&str, &str)] = &[(
+    "derive",
+    "a tick recomputes its outstanding units from the parent table and the settled markers, so a replay re-derives only what never settled",
+)];
+
 impl PipelineSpec {
-    fn default_journal(&self) -> bool { self.source.name != "derive" }
+    fn default_journal(&self) -> bool {
+        !UNJOURNALED_SOURCES.iter().any(|(source, _)| *source == self.source.name)
+    }
 
     pub fn journals(&self) -> bool { self.journal.unwrap_or(self.default_journal()) }
 

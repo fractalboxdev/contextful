@@ -845,10 +845,12 @@ pub fn run(cmd: PipelineCmd, tasks: &Tasks, bodies: &contextful_core::run::drive
             let stop_on_failure = matches!(checked, Checked::Host(_)) || spec.on_table_error() == contextful_core::pipeline::declare::OnTableError::Abort;
             let mut failed: Vec<String> = Vec::new();
             let mut tallies: Vec<(String, IngestTally)> = Vec::new();
+            let mut attempted: Vec<String> = Vec::new();
             for t in order {
                 let table = spec.table_name(t.name());
                 // The destination name is path-safe, so a run id built from it is too.
                 let run_id = if spec.tables.len() == 1 { base_run.clone() } else { format!("{base_run}.{table}") };
+                attempted.push(run_id.clone());
                 // A table that cannot open is a failed table like one whose run fails, so
                 // `continue` lands the others.
                 let mut limiters: Vec<Arc<contextful_outbound::Limiter>> = Vec::new();
@@ -952,10 +954,16 @@ pub fn run(cmd: PipelineCmd, tasks: &Tasks, bodies: &contextful_core::run::drive
             for (table, t) in &tallies {
                 println!("tally {table}: {t}");
             }
+            // Every outcome past run open publishes (`run.record.failure-publishes`).
+            let opened = attempted.iter().any(|id| w.engine.catalog.run(id).ok().flatten().is_some());
+            let pushed = if opened { crate::sync::push_after_run(&l, w.clock.now()) } else { Ok(()) };
             if !failed.is_empty() {
+                if let Err(e) = pushed {
+                    eprintln!("{e:#}");
+                }
                 bail!("pipeline `{}`: {} table(s) failed: {}", spec.id, failed.len(), failed.join(", "));
             }
-            Ok(())
+            pushed
         }
     }
 }

@@ -244,3 +244,22 @@ fn typed_pipeline_removal_reaches_prepared_journal_admission_with_all_rules_reta
     spec.validate().unwrap();
     assert_eq!(spec.destination_decl(&spec.tables[0]).redaction.unwrap().len(), 1);
 }
+
+/// The journal default reads the one opt-out constant: a source it lists journals no pull unless the specification
+/// says otherwise, and every other source journals.
+#[test]
+fn the_journal_default_reads_the_one_opt_out_constant() {
+    use contextful_core::pipeline::declare::UNJOURNALED_SOURCES;
+    let named = |source: &str| -> PipelineSpec {
+        serde_json::from_value(json!({ "id": "p", "tables": ["t"], "source": { "name": source, "config": {} } })).unwrap()
+    };
+    for (source, why) in UNJOURNALED_SOURCES {
+        assert!(!why.trim().is_empty(), "`{source}` states why it journals no pull");
+        assert!(!named(source).journals(), "{source}");
+    }
+    assert!(named("http").journals());
+    assert!(named("some-component").journals());
+    let mut explicit = named("http");
+    explicit.journal = Some(false);
+    assert!(!explicit.journals());
+}

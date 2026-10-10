@@ -358,6 +358,17 @@ pub fn run(args: ServeArgs, tasks: &Tasks) -> Result<()> {
     let http = http.with_control(&control);
     #[cfg(feature = "data-plane")]
     let http = http.with_claim_write(&claim_write);
+    #[cfg(feature = "data-plane")]
+    let run_project = crate::run::ProjectArgs { project: Some(located.project.name.clone()), now: None };
+    #[cfg(feature = "data-plane")]
+    let run_stop = |request: &HttpRequest, authority: &AdmittedAuthority, run_id: &str| {
+        let (status, body) = crate::run::served_stop(&run_project, authority.grants(), run_id, &request.body);
+        HttpResponse::json(status, &body)
+    };
+    #[cfg(feature = "data-plane")]
+    let run_snapshot = |authority: &AdmittedAuthority, run_id: &str| crate::run::served_snapshot(&run_project, authority.grants(), run_id);
+    #[cfg(feature = "data-plane")]
+    let http = http.with_runs(contextful_agent::http::RunRoutes { stop: &run_stop, snapshot: &run_snapshot });
     let listener = TcpListener::bind(&args.http)?;
     eprintln!("listening on http://{}/mcp", listener.local_addr()?);
     http.serve(listener)?;

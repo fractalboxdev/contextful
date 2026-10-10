@@ -2366,3 +2366,157 @@ fn legacy_build_without_a_captured_model_requires_reapply() {
     assert!(stderr(&out).contains("reapply with a declared model"), "{}", stderr(&out));
     assert!(vendor.targets().is_empty());
 }
+
+/// Each downgrade event names the table, column path, source type, landed type and reason; a stage that does not
+/// commit contributes none.
+// spec: run.record.schema-diff-shape@6ed8531d
+#[test]
+fn a_downgrade_event_names_all_five_fields_and_an_uncommitted_stage_records_none() {
+    use std::sync::atomic::{AtomicUsize, Ordering::SeqCst};
+    // The phase selects what page 1 answers and whether page 2 ends the walk or fails the run.
+    let phase = Arc::new(AtomicUsize::new(0));
+    let seen = phase.clone();
+    let vendor = Vendor::start(move |target| match (target.ends_with("p=1"), seen.load(SeqCst)) {
+        (true, 0) => (200, r#"[{"resource":"old"}]"#.into()),
+        (true, _) => (200, r#"[{"resource":{"service":"api"}}]"#.into()),
+        (false, 1) => (404, "{}".into()),
+        (false, _) => (200, "[]".into()),
+    });
+    let dir = project(&format!(
+        "[[pipeline]]\nid = \"otel\"\nnormalize = \"native\"\ntables = [\"spans\"]\n[pipeline.source]\nname = \"http\"\nconfig = {{ endpoint = \"{}\", page_param = \"p\" }}\n",
+        vendor.url("/v1/{table}")
+    ));
+    ok(&fire(dir.path(), "otel", "r1", "2030-01-01T00:00:00Z"));
+    // r2 stages the downgrading page, then fails on the next one and commits nothing.
+    phase.store(1, SeqCst);
+    assert!(!fire(dir.path(), "otel", "r2", "2030-01-01T00:01:00Z").status.success());
+    phase.store(2, SeqCst);
+    ok(&fire(dir.path(), "otel", "r3", "2030-01-01T00:02:00Z"));
+    assert_eq!(vendor.targets().iter().filter(|t| t.ends_with("p=2")).count(), 3, "every run reached its second page");
+
+    let runs = dir.path().join(".contextful/context/research/tables/otel_spans/data/runs");
+    assert!(!runs.join("r2/ingest-a/_manifest.json").exists(), "an uncommitted stage writes no manifest");
+    let manifest: serde_json::Value = serde_json::from_slice(&std::fs::read(runs.join("r3/ingest-a/_manifest.json")).unwrap()).unwrap();
+    let events = manifest["schema_diffs"].as_array().unwrap();
+    assert_eq!(events.len(), 1, "{manifest}");
+    let event = &events[0];
+    assert_eq!(event["table"], "otel_spans");
+    assert_eq!(event["column_path"], "resource");
+    assert_eq!(event["landed_type"], "Utf8");
+    for field in ["source_type", "reason"] {
+        assert!(event[field].as_str().is_some_and(|s| !s.is_empty()), "{field}: {event}");
+    }
+    assert_ne!(event["source_type"], event["landed_type"], "{event}");
+
+    let history: serde_json::Value =
+        serde_json::from_str(&ok(&cf(dir.path(), &["run", "history", "--project", "research", "--pipeline", "otel"]))).unwrap();
+    let diffs = |id: &str| history["runs"].as_array().unwrap().iter().find(|r| r["run_id"] == id).map(|r| r["schema_diffs"].clone());
+    assert!(diffs("r2").is_none_or(|d| d.is_null() || d.as_array().is_some_and(Vec::is_empty)), "{history}");
+    assert_eq!(diffs("r3").unwrap()[0], *event);
+}
+
+/// A snapshot-shaped source with `skip_unchanged = true` records its input's raw-byte digest as `{ sha256, rows }`; a
+/// matching digest returns zero batches, holds the position and closes a zero-row success. Undeclared, it is false.
+// spec: run.advance.skip-unchanged@afc48693
+#[test]
+fn an_unchanged_snapshot_digest_lands_nothing_and_holds_the_position() {
+    use sha2::{Digest, Sha256};
+    let body = Arc::new(Mutex::new(r#"[{"sku":"a"},{"sku":"b"}]"#.to_string()));
+    let served = body.clone();
+    let vendor = Vendor::start(move |_| (200, served.lock().unwrap().clone()));
+    let declared = |id: &str, skip: &str| format!(
+        "[[pipeline]]\nid = \"{id}\"\ntables = [\"items\"]\n[pipeline.source]\nname = \"http\"\nconfig = {{ endpoint = \"{}\"{skip} }}\n",
+        vendor.url("/v1/{table}")
+    );
+    let dir = project(&format!("{}{}", declared("feed", ", skip_unchanged = true"), declared("plain", "")));
+    let history = |pipeline: &str| -> Vec<serde_json::Value> {
+        let out: serde_json::Value = serde_json::from_str(&ok(&cf(dir.path(), &["run", "history", "--project", "research", "--pipeline", pipeline]))).unwrap();
+        out["runs"].as_array().unwrap().clone()
+    };
+    let run = |pipeline: &str, id: &str| history(pipeline).into_iter().find(|r| r["run_id"] == id).unwrap();
+    let manifest = |table: &str, id: &str| dir.path().join(format!(".contextful/context/research/tables/{table}/data/runs/{id}/ingest-a/_manifest.json"));
+
+    ok(&fire(dir.path(), "feed", "r1", "2030-01-01T00:00:00Z"));
+    assert_eq!(run("feed", "r1")["rows"], 2);
+    let committed: serde_json::Value = serde_json::from_slice(&std::fs::read(manifest("feed_items", "r1")).unwrap()).unwrap();
+    let digest = format!("{:x}", Sha256::digest(body.lock().unwrap().as_bytes()));
+    assert_eq!(committed["cursor"], serde_json::json!({ "sha256": digest, "rows": 2 }), "{committed}");
+
+    // The same bytes again: zero batches, the position held, a zero-row success.
+    ok(&fire(dir.path(), "feed", "r2", "2030-01-01T00:01:00Z"));
+    let skipped = run("feed", "r2");
+    assert_eq!((skipped["status"].as_str(), skipped["rows"].as_u64(), skipped["batches"].as_u64()), (Some("success"), Some(0), Some(0)), "{skipped}");
+    assert!(!manifest("feed_items", "r2").exists(), "an unchanged input commits nothing");
+    assert_eq!(vendor.targets().len(), 2, "the source still read its input");
+
+    // Changed bytes land.
+    *body.lock().unwrap() = r#"[{"sku":"c"}]"#.into();
+    ok(&fire(dir.path(), "feed", "r3", "2030-01-01T00:02:00Z"));
+    assert_eq!(run("feed", "r3")["rows"], 1);
+
+    // Undeclared, an unchanged input lands again.
+    ok(&fire(dir.path(), "plain", "p1", "2030-01-01T00:03:00Z"));
+    ok(&fire(dir.path(), "plain", "p2", "2030-01-01T00:04:00Z"));
+    assert_eq!(run("plain", "p2")["rows"], 1);
+
+    // A digest beside a declared incremental position refuses before any request.
+    let watermarked = project(&format!(
+        "[[pipeline]]\nid = \"feed\"\nincremental = \"at\"\ntables = [\"items\"]\n[pipeline.source]\nname = \"http\"\nconfig = {{ endpoint = \"{}\", since_param = \"since\", skip_unchanged = true }}\n",
+        vendor.url("/v1/{table}")
+    ));
+    let before = vendor.targets().len();
+    assert!(!fire(watermarked.path(), "feed", "w1", "2030-01-01T00:05:00Z").status.success());
+    assert_eq!(vendor.targets().len(), before);
+}
+
+/// Enabling `incremental` on a pipeline that holds a position starts from none, re-landing the source's current
+/// window once.
+// spec: run.advance.turning-incremental-on@5af77095
+#[test]
+fn enabling_incremental_over_a_held_position_starts_from_none_once() {
+    let vendor = Vendor::start(|t| match t.split_once("since=") {
+        None => (200, r#"[{"id":"a","at":1},{"id":"b","at":2}]"#.into()),
+        Some((_, since)) => (200, if since == "2" { r#"[{"id":"b","at":2},{"id":"c","at":3}]"# } else { "[]" }.into()),
+    });
+    let declared = |incremental: &str, since: &str| format!(
+        "[[pipeline]]\nid = \"feed\"\n{incremental}tables = [\"items\"]\n[pipeline.source]\nname = \"http\"\nconfig = {{ endpoint = \"{}\"{since} }}\n",
+        vendor.url("/v1/{table}")
+    );
+    let dir = project(&declared("", ""));
+    ok(&fire(dir.path(), "feed", "r1", "2030-01-01T00:00:00Z"));
+    std::fs::write(dir.path().join("contextful.toml"), format!("authoring_posture = \"per_request\"\n{}", declared("incremental = \"at\"\n", ", since_param = \"since\""))).unwrap();
+    ok(&fire(dir.path(), "feed", "r2", "2030-01-01T00:01:00Z"));
+    ok(&fire(dir.path(), "feed", "r3", "2030-01-01T00:02:00Z"));
+    let targets = vendor.targets();
+    assert_eq!(targets.len(), 3, "{targets:?}");
+    assert!(!targets[1].contains("since="), "the first incremental fire starts from none: {targets:?}");
+    assert!(targets[2].ends_with("since=2"), "then it reads from its watermark: {targets:?}");
+    let history: serde_json::Value = serde_json::from_str(&ok(&cf(dir.path(), &["run", "history", "--project", "research", "--pipeline", "feed"]))).unwrap();
+    let rows = |id: &str| history["runs"].as_array().unwrap().iter().find(|r| r["run_id"] == id).unwrap()["rows"].as_u64().unwrap();
+    assert_eq!((rows("r1"), rows("r2"), rows("r3")), (2, 2, 2), "the current window re-lands once");
+}
+
+/// The boundary re-land is idempotent on a table declaring a key; on a keyless table the repeats accumulate in its
+/// union view.
+// spec: run.advance.declared-key-required@93c712e7
+#[test]
+fn the_boundary_re_land_dedups_under_a_key_and_accumulates_without_one() {
+    // Every poll answers the same boundary row at `at = 5`.
+    let vendor = Vendor::start(|_| (200, r#"[{"id":"a","at":5}]"#.into()));
+    let declared = |id: &str, table: &str| format!(
+        "[[pipeline]]\nid = \"{id}\"\nincremental = \"at\"\ntables = [{table}]\n[pipeline.source]\nname = \"http\"\nconfig = {{ endpoint = \"{}\", since_param = \"since\" }}\n",
+        vendor.url("/v1/items")
+    );
+    let dir = project(&format!("{}{}", declared("keyed", "{ name = \"items\", primary_key = [\"id\"] }"), declared("bare", "\"items\"")));
+    for n in 0..3 {
+        ok(&fire(dir.path(), "keyed", &format!("k{n}"), &format!("2030-01-01T00:0{n}:00Z")));
+        ok(&fire(dir.path(), "bare", &format!("b{n}"), &format!("2030-01-01T00:0{n}:30Z")));
+    }
+    let count = |table: &str| -> serde_json::Value {
+        let out: serde_json::Value = serde_json::from_str(&ok(&cf(dir.path(), &["query", "--json", "--project", "research", &format!("SELECT count(*) FROM \"{table}\"")]))).unwrap();
+        out["rows"][0][0].clone()
+    };
+    assert_eq!(count("keyed_items"), "1", "a keyed table holds the boundary row once");
+    assert_eq!(count("bare_items"), "3", "a keyless table accumulates each re-land");
+    assert!(vendor.targets().iter().filter(|t| t.ends_with("since=5")).count() >= 4, "every later poll re-reads the boundary instant");
+}

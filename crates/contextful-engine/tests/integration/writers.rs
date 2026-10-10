@@ -175,6 +175,43 @@ fn the_runner_projects_each_step_and_its_terminal_status() {
     assert_eq!(steps, [("pull-0", Completed), ("pull-1", Completed), ("pull-2", Completed)]);
 }
 
+/// Live run state is a best-effort projection of events the runner emits after durable state changes; execution
+/// never reads it.
+// spec: run.project.best-effort@d23bbc69
+#[test]
+fn a_run_lands_the_same_whether_its_projection_drops_every_event_or_none() {
+    let run = |emitter: Option<contextful_engine::project::Emitter>| {
+        let dir = tempfile::tempdir().unwrap();
+        let clock = SetClock::new(crate::support::T0);
+        let engine = Engine {
+            catalog: Arc::new(LocalCatalog::open(dir.path(), Arc::new(clock))),
+            journal: Journal::open(dir.path()),
+            awakeables: None,
+            keeper: Keeper::default(),
+            emitter,
+            worlds: Vec::new(),
+        };
+        let mut sink = Sink::default();
+        let row = rig_run(&engine, "run-seen", &mut Pages::new(three_pages()), &mut sink);
+        let stored = engine.catalog.run("run-seen").unwrap().expect("the durable row");
+        (dir, row, stored, sink.commits)
+    };
+    let (_unprojected, row, stored, commits) = run(None);
+    // A rendezvous channel no one drains drops every non-terminal delta the runner emits.
+    let hub = Hub::with_capacity(crate::support::at(crate::support::T0), 0);
+    let (_projected, seen_row, seen_stored, seen_commits) = run(Some(hub.emitter()));
+    assert!(hub.dropped() > 0, "the projection lost events");
+    assert_eq!((seen_row.status, seen_row.rows), (row.status, row.rows), "execution reads nothing back from its projection");
+    assert_eq!((seen_stored.status, seen_stored.rows), (stored.status, stored.rows));
+    assert_eq!(seen_commits.len(), commits.len());
+    assert_eq!(seen_commits[0].batches, commits[0].batches);
+    assert_eq!(seen_commits[0].cursor, commits[0].cursor);
+    // The terminal transition the runner emitted after its durable close reads what the record holds.
+    hub.pump(crate::support::at("2030-01-01T00:00:10Z"));
+    let (snapshot, _) = hub.connect("run-seen").expect("the terminal transition survives the drops");
+    assert_eq!(snapshot.status, seen_stored.status);
+}
+
 #[test]
 fn a_refused_fence_record_releases_the_lease() {
     let rig = Rig::new();

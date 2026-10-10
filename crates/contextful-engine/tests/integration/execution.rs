@@ -17,7 +17,7 @@ use serde_json::json;
 use std::collections::BTreeMap;
 use std::panic::AssertUnwindSafe;
 use std::sync::atomic::{AtomicUsize, Ordering};
-use std::sync::Arc;
+use std::sync::{Arc, Mutex};
 use std::time::Duration;
 
 const SCOPE: &str = "index-42";
@@ -390,4 +390,111 @@ fn one_keeper_thread_renews_and_feeds_every_open_execution_of_an_engine() {
     let x = engine.open_execution(&host_in("index-3", "plan-a", "m-1", "job-3b")).unwrap();
     assert!(x.resumed(), "the next open under the scope takes over after the lease lapses");
     assert_eq!(engine.keeper.threads(), 1);
+}
+
+/// Two escape hatches exist and no third: `journal.unsafe(label, effect)` for an idempotent read, and a source
+/// declaring that it journals no pull. Each carries its idempotency argument at a greppable call site.
+// spec: run.journal.escape-hatch@273348e9
+#[test]
+fn an_unsafe_read_reruns_on_every_replay_and_each_hatch_states_its_argument() {
+    let rig = Rig::new();
+    let reads = AtomicUsize::new(0);
+    let mut x = rig.engine.open_execution(&host("plan-a", "m-1", "job-1")).unwrap();
+    let id = x.execution_id().to_string();
+    assert_eq!(x.r#unsafe("peek", &mut counted(&reads, b"v1")).unwrap(), b"v1");
+    assert_eq!(x.r#unsafe("peek", &mut counted(&reads, b"v2")).unwrap(), b"v2", "an unsafe read resolves no recorded value");
+    assert_eq!(reads.load(Ordering::SeqCst), 2);
+    assert_eq!(rig.engine.journal.recorded(&id).unwrap(), 0, "an unsafe read records nothing");
+    assert_eq!(x.step("fetch", b"doc", &mut counted(&reads, b"fetched")).unwrap(), b"fetched");
+    assert_eq!(rig.engine.journal.recorded(&id).unwrap(), 1, "a step beside it still records");
+    drop(x);
+
+    // The second hatch: the sources the one constant lists, each with its argument.
+    for (source, why) in contextful_core::pipeline::declare::UNJOURNALED_SOURCES {
+        assert!(why.split_whitespace().count() >= 5, "`{source}` states why replaying its pull needs no recorded batch");
+    }
+    // Every `unsafe` call site in the tree states why its read is idempotent on the line above it.
+    let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../..");
+    for dir in ["crates", "tools"] {
+        for entry in walk(&root.join(dir)) {
+            let text = std::fs::read_to_string(&entry).unwrap_or_default();
+            let lines: Vec<&str> = text.lines().collect();
+            for (i, line) in lines.iter().enumerate() {
+                if line.contains(".r#unsafe(") && !entry.to_string_lossy().contains("/tests/") {
+                    let above = i.checked_sub(1).map(|j| lines[j].trim()).unwrap_or_default();
+                    assert!(above.starts_with("// idempotent:"), "{}:{} carries no `// idempotent:` argument", entry.display(), i + 1);
+                }
+            }
+        }
+    }
+}
+
+fn walk(dir: &std::path::Path) -> Vec<std::path::PathBuf> {
+    let mut out = Vec::new();
+    let Ok(entries) = std::fs::read_dir(dir) else { return out };
+    for e in entries.flatten() {
+        let p = e.path();
+        let name = e.file_name().to_string_lossy().into_owned();
+        if p.is_dir() && name != "target" && name != "node_modules" {
+            out.extend(walk(&p));
+        } else if p.extension().is_some_and(|x| x == "rs") {
+            out.push(p);
+        }
+    }
+    out
+}
+
+/// A body replays faithfully when every observable side effect passes through a recorded step, a cursor commit or an
+/// awakeable; the work between them is pure.
+// spec: run.journal.effect-boundary@31a98cb7
+#[test]
+fn a_body_resumed_across_a_step_and_an_awakeable_commits_what_an_uninterrupted_one_commits() {
+    // The body: a recorded fetch, an awakeable, pure work over both, then a cursor commit.
+    fn body<X: ExecutionPort<Error = EngineError>>(x: &mut X, fetches: &AtomicUsize, tokens: &Mutex<Vec<String>>) -> Option<serde_json::Value> {
+        let fetched = x.step("fetch", b"doc-1", &mut counted(fetches, b"41")).unwrap();
+        let token = x.suspend("approval", 3600).unwrap();
+        tokens.lock().unwrap().push(token.clone());
+        let Wake::Resumed(payload) = x.awaited(&token).unwrap() else { return None };
+        let n: u64 = String::from_utf8(fetched).unwrap().parse().unwrap();
+        let position = json!({ "page": n + 1, "approved": String::from_utf8(payload).unwrap() });
+        x.commit(Some(position.clone())).unwrap();
+        Some(position)
+    }
+    let setup = || {
+        let rig = Rig::new();
+        let store = Arc::new(FileAwakeableStore::open(rig.dir.path()));
+        let engine = Engine { awakeables: Some(store.clone()), ..rig.engine.clone() };
+        let registry = Registry::over(store, rig.engine.journal.clone());
+        (rig, engine, registry)
+    };
+
+    // Uninterrupted: the awakeable resolves before the body awaits it.
+    let (rig, engine, registry) = setup();
+    let (fetches, tokens) = (AtomicUsize::new(0), Mutex::new(Vec::new()));
+    let mut x = engine.open_execution(&host("plan-a", "m-1", "job-1")).unwrap();
+    let fetched = x.step("fetch", b"doc-1", &mut counted(&fetches, b"41")).unwrap();
+    let token = x.suspend("approval", 3600).unwrap();
+    registry.resolve(&token, b"yes", rig.catalog().now().unwrap()).unwrap();
+    drop((fetched, x));
+    rig.clock.advance(60);
+    let mut x = engine.open_execution(&host("plan-a", "m-1", "job-2")).unwrap();
+    let uninterrupted = body(&mut x, &fetches, &tokens).expect("the body completes");
+
+    // Interrupted: the process dies while the awakeable is pending, and a later attempt resumes.
+    let (rig, engine, registry) = setup();
+    let (fetches, tokens) = (AtomicUsize::new(0), Mutex::new(Vec::new()));
+    let mut x = engine.open_execution(&host("plan-a", "m-1", "job-1")).unwrap();
+    assert_eq!(body(&mut x, &fetches, &tokens), None, "the awakeable is pending");
+    drop(x);
+    registry.resolve(&tokens.lock().unwrap()[0], b"yes", rig.catalog().now().unwrap()).unwrap();
+    rig.clock.advance(60);
+    let mut x = engine.open_execution(&host("plan-a", "m-1", "job-2")).unwrap();
+    assert!(x.resumed());
+    let resumed = body(&mut x, &fetches, &tokens).expect("the resumed body completes");
+
+    assert_eq!(resumed, uninterrupted, "the resumed body commits what the uninterrupted one commits");
+    assert_eq!(fetches.load(Ordering::SeqCst), 1, "the recorded fetch ran once across both attempts");
+    let tokens = tokens.lock().unwrap();
+    assert_eq!(tokens[0], tokens[1], "the resumed attempt awaits the awakeable the first one minted");
+    assert_eq!(rig.catalog().cursor_at(&OwnerScope::host(SCOPE)).unwrap().position, Some(resumed));
 }

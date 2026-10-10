@@ -43,6 +43,7 @@ StepFailed                     = { clause = "run.retry.step-failed", gloss = "A 
 ExecutionPinMismatch           = { clause = "run.own.pinned-plan-changed", gloss = "A connector identity, component world, plan hash, plan reference or host identity moved under a pending owner." }
 RunStagedBytesExceeded         = { clause = "run.own.staged-bytes", gloss = "A run whose staged parts pass the per-run staged-bytes bound." }
 CancelTargetNotInFlight        = { clause = "run.cancel.not-in-flight", gloss = "A stop matching no pending, running or waiting run." }
+CancelUnauthorized             = { clause = "run.cancel.stop-unauthorized", gloss = "A credentialed stop whose grants cover no execute over the recorded pipeline." }
 SiteIdUnresolved               = { clause = "run.record.site-id-unresolved", gloss = "A site id with no declaration, two in one place, or an unset variable." }
 HistoryBoundSpelling           = { clause = "run.record.bound-spelling", gloss = "A history window bound outside the two accepted spellings." }
 RunMetadataTooLarge            = { clause = "run.project.metadata-too-large", gloss = "A snapshot metadata write past its serialized bound." }
@@ -162,6 +163,8 @@ run-error-cap              = { clause = "run.record.error-cap", value = 2, unit 
 projection-coalesce-window = { clause = "run.project.coalescing", value = 100, unit = "ms", basis = "chosen", gloss = "Window snapshot broadcasts collapse into." }
 run-metadata-bytes         = { clause = "run.project.metadata-too-large", value = 16384, unit = "B", basis = "chosen", gloss = "Serialized bound on snapshot application metadata." }
 broadcast-ring-entries     = { clause = "run.project.broadcast-ring", value = 256, unit = "entries", basis = "chosen", gloss = "Snapshots the per-run broadcast holds." }
+channel-eviction-delay     = { clause = "run.project.channel-eviction", value = 60, unit = "s", basis = "chosen", gloss = "Time a run's channel outlives its folded terminal event." }
+allowed-lateness-default   = { clause = "run.advance.allowed-lateness", value = 0, unit = "s", basis = "chosen", gloss = "Re-read window a table declaring no `allowed_lateness` takes." }
 plan-version-prefix        = { clause = "run.compile.plan-version", value = 16, unit = "chars", basis = "chosen", gloss = "Hash characters forming a plan's version." }
 chunk-lease-ttl            = { clause = "run.backfill.chunk-lease", value = 300, unit = "s", basis = "chosen", gloss = "Life of an unrenewed chunk lease." }
 chunk-lease-renewal        = { clause = "run.backfill.chunk-lease", value = 60, unit = "s", basis = "chosen", gloss = "Renewal cadence of a held chunk lease." }

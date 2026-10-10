@@ -593,6 +593,31 @@ fn a_run_takes_its_site_id_from_the_manifest_unless_the_flag_names_one() {
     refused(&bare("b1", &[]), "SiteIdUnresolved");
 }
 
+/// Every landed row carries its run's site id in the `_site_id` column {{store.reserve.injected}} writes, so a row
+/// names the site that wrote it.
+// spec: run.record.writing-site@8dcff47e
+#[test]
+fn every_landed_row_names_the_site_that_wrote_it() {
+    let dir = project();
+    std::fs::write(dir.path().join("empty.sh"), "printf '{\"rows\":[{\"id\":\"d1\"},{\"id\":\"d2\"}],\"more\":false}'\n").unwrap();
+    let start = |run: &str, site: &str, now: &str| {
+        cf(dir.path(), &["run", "start", "--plan", "feed-a.toml", "--project", "research", "--run-id", run, "--site-id", site, "--now", now])
+    };
+    ok(&start("s1", "site-a", "2030-01-01T00:00:00Z"));
+    ok(&start("s2", "site-b", "2030-01-01T00:01:00Z"));
+    let q = "SELECT _run_id, _site_id, count(*) FROM filings GROUP BY ALL ORDER BY _run_id";
+    let r: serde_json::Value = serde_json::from_str(&ok(&cf(dir.path(), &["query", "--json", "--project", "research", q]))).unwrap();
+    let rows = r["rows"].as_array().unwrap();
+    assert_eq!(rows.len(), 2, "both runs landed rows: {r}");
+    for row in rows {
+        let want = if row[0] == "s1" { "site-a" } else { "site-b" };
+        assert_eq!(row[1], want, "every row names its run's site: {r}");
+    }
+    let unattributed = "SELECT count(*) FROM filings WHERE _site_id IS NULL";
+    let n: serde_json::Value = serde_json::from_str(&ok(&cf(dir.path(), &["query", "--json", "--project", "research", unattributed]))).unwrap();
+    assert_eq!(n["rows"][0][0], "0", "no landed row reads null: {n}");
+}
+
 const AUD: &str = "contextful://research";
 
 /// An issuer for the scratch project at the default seed path; its public key pin.
@@ -693,4 +718,133 @@ fn a_repaired_typed_source_runs_after_schema_refusal_without_changing_its_plan()
     assert_eq!(landed.len(), 3);
     assert!(landed.iter().any(|row| row["id"] == "two" && row["score"] == 2));
     assert_eq!(std::fs::read_to_string(p.join("called")).unwrap(), "pull-0\npull-0\npull-1\npull-0\npull-1\n");
+}
+
+/// An in-flight copy of run `from`, recorded as `run_id` under `pipeline`.
+fn put_running(dir: &Path, from: &str, run_id: &str, pipeline: &str) {
+    use contextful_core::coordinate::Catalog;
+    let clock = std::sync::Arc::new(contextful_core::ports::FixedClock(contextful_core::time::Instant::parse("2030-01-01T00:00:00Z").unwrap()));
+    let catalog = contextful_sqlite::MachineCatalog::open(&dir.join(".contextful/context/research/machine.sqlite"), clock).unwrap();
+    let mut row = catalog.run(from).unwrap().expect("the source row");
+    row.run_id = run_id.into();
+    row.pipeline_id = pipeline.into();
+    row.status = contextful_core::run::record::RunStatus::Running;
+    row.ended_at = None;
+    row.stop = None;
+    catalog.put_run(&row).unwrap();
+}
+
+fn stop_of(dir: &Path, run_id: &str) -> Option<contextful_core::run::record::StopMark> {
+    use contextful_core::coordinate::Catalog;
+    let clock = std::sync::Arc::new(contextful_core::ports::FixedClock(contextful_core::time::Instant::parse("2030-01-01T00:00:00Z").unwrap()));
+    let catalog = contextful_sqlite::MachineCatalog::open(&dir.join(".contextful/context/research/machine.sqlite"), clock).unwrap();
+    catalog.run(run_id).unwrap().expect("the run row").stop
+}
+
+/// A credentialed `run cancel` needs `execute` over the pipeline its run record holds, and its refusal names no
+/// pipeline; an unrecorded run refuses alike.
+#[test]
+fn a_credentialed_cancel_gates_on_execute_over_the_recorded_pipeline() {
+    let dir = project();
+    let public = issuer(dir.path());
+    ok(&start(dir.path(), "feed-a.toml", "a1", "2030-01-01T00:00:00Z"));
+    put_running(dir.path(), "a1", "live-a", "feed-a");
+    put_running(dir.path(), "a1", "live-b", "feed-b");
+    let execute = ok(&cf(dir.path(), &["token", "mint", "--on-behalf-of", "user://dana@acme.example", "--action", "execute", "--table", "feed-a"]));
+
+    let out = credentialed(dir.path(), &execute, &public, &["run", "cancel", "live-b"]);
+    refused(&out, "CancelUnauthorized");
+    let stderr = String::from_utf8_lossy(&out.stderr);
+    assert!(!stderr.contains("feed-b"), "the refusal names no pipeline: {stderr}");
+    assert!(stop_of(dir.path(), "live-b").is_none());
+    let absent = credentialed(dir.path(), &execute, &public, &["run", "cancel", "zz"]);
+    refused(&absent, "CancelUnauthorized");
+    assert_eq!(String::from_utf8_lossy(&absent.stderr), stderr);
+    // A read grant over the pipeline confers no stop.
+    refused(&credentialed(dir.path(), &reader(dir.path(), "feed-a"), &public, &["run", "cancel", "live-a"]), "CancelUnauthorized");
+    assert!(stop_of(dir.path(), "live-a").is_none());
+
+    let stopped = ok(&credentialed(dir.path(), &execute, &public, &["run", "cancel", "live-a", "--reason", "ops"]));
+    assert!(stopped.contains("live-a: stop requested"), "{stopped}");
+    assert_eq!(stop_of(dir.path(), "live-a").unwrap().reason.as_deref(), Some("ops"));
+    // The local owner, presenting no credential, stops as before.
+    ok(&cf(dir.path(), &["run", "cancel", "live-b", "--project", "research"]));
+}
+
+/// Pull journaling defaults on. A source whose pre-pull cursor cannot name the content it reads opts out through one
+/// constant, pinned against each source's declaration by a test. An empty pull is never journaled.
+// spec: run.journal.opt-out@4367ed31
+#[test]
+fn each_built_in_source_journals_unless_the_one_constant_lists_it_and_an_empty_pull_records_nothing() {
+    use contextful_core::pipeline::declare::{PipelineSpec, UNJOURNALED_SOURCES};
+    use contextful_core::run::journal::Row;
+    use contextful_core::run::ports::JournalStore;
+    for source in contextful_connectors::BUILT_IN {
+        let spec: PipelineSpec = serde_json::from_value(serde_json::json!({ "id": "p", "tables": ["t"], "source": { "name": source, "config": {} } })).unwrap();
+        let listed = UNJOURNALED_SOURCES.iter().any(|(s, _)| *s == source);
+        assert_eq!(spec.journals(), !listed, "source `{source}`");
+    }
+    assert!(UNJOURNALED_SOURCES.iter().all(|(s, _)| contextful_connectors::BUILT_IN.contains(s)), "the constant names only declared sources");
+
+    // A pull with rows records; an empty pull beside it records nothing.
+    let dir = project();
+    std::fs::write(
+        dir.path().join("empty.sh"),
+        "case \"$CONTEXTFUL_STEP\" in pull-0) printf '{\"rows\":[{\"id\":\"a\"}],\"cursor\":\"c1\",\"more\":true}';; pull-1) printf '{\"rows\":[],\"cursor\":\"c2\",\"more\":true}';; *) printf '{\"error\":{\"tag\":\"Permanent\",\"message\":\"feed paused\"}}'; exit 1;; esac\n",
+    )
+    .unwrap();
+    let failed = start(dir.path(), "feed-a.toml", "a1", "2030-01-01T00:00:00Z");
+    assert!(!failed.status.success());
+    assert!(String::from_utf8_lossy(&failed.stderr).contains("feed paused"), "{}", String::from_utf8_lossy(&failed.stderr));
+    let listing: serde_json::Value = serde_json::from_str(&ok(&history(dir.path(), &[]))).unwrap();
+    let execution = listing["runs"][0]["execution_id"].as_str().unwrap();
+    let journal = contextful_engine::stores::FileJournalStore::open(&dir.path().join(".contextful/run/research"));
+    let labels: Vec<String> = journal.rows(execution).unwrap().into_iter().filter_map(|row| match row {
+        Row::Recorded { key, .. } => Some(key.step_label),
+        _ => None,
+    }).collect();
+    assert_eq!(labels, ["pull-0"], "journaling defaults on, and the empty pull-1 records nothing");
+}
+
+/// Journal rows, execution owners and awakeables live in the host's own stores, never in the derived catalog; a
+/// catalog rebuild leaves them untouched and reconstructs none from the file tree.
+// spec: run.journal.machine-state@8ebd0d74
+#[test]
+fn a_catalog_rebuild_leaves_the_journal_owner_and_awakeables_untouched() {
+    use contextful_core::coordinate::Catalog;
+    use contextful_core::run::ports::JournalStore;
+    let dir = project();
+    std::fs::write(
+        dir.path().join("empty.sh"),
+        "case \"$CONTEXTFUL_STEP\" in pull-0) echo pull-0 >> called; printf '{\"rows\":[{\"id\":\"a\"}],\"cursor\":\"c1\",\"more\":true}';; *) if [ -f ready ]; then printf '{\"rows\":[],\"more\":false}'; else printf '{\"error\":{\"tag\":\"Permanent\",\"message\":\"feed paused\"}}'; exit 1; fi;; esac\n",
+    )
+    .unwrap();
+    assert!(!start(dir.path(), "feed-a.toml", "a1", "2030-01-01T00:00:00Z").status.success());
+    let run_root = dir.path().join(".contextful/run/research");
+    let machine = || {
+        let clock = std::sync::Arc::new(contextful_core::ports::FixedClock(contextful_core::time::Instant::parse("2030-01-01T00:00:00Z").unwrap()));
+        contextful_sqlite::MachineCatalog::open(&dir.path().join(".contextful/context/research/machine.sqlite"), clock).unwrap()
+    };
+    let snapshot = || {
+        let owner = machine().owner("feed-a", "filings").unwrap().expect("the failed run holds its owner");
+        let journal = contextful_engine::stores::FileJournalStore::open(&run_root);
+        let rows = journal.rows(&owner.execution_id).unwrap();
+        let mut files: Vec<String> = Vec::new();
+        let mut stack = vec![run_root.clone()];
+        while let Some(d) = stack.pop() {
+            for e in std::fs::read_dir(&d).into_iter().flatten().flatten() {
+                if e.path().is_dir() { stack.push(e.path()) } else { files.push(format!("{}:{}", e.path().display(), std::fs::read(e.path()).unwrap().len())) }
+            }
+        }
+        files.sort();
+        (owner, rows, files)
+    };
+    let before = snapshot();
+    assert!(!before.1.is_empty(), "the journal holds the recorded pull");
+    ok(&cf(dir.path(), &["context", "rebuild-catalog", "--project", "research"]));
+    assert_eq!(snapshot(), before, "the rebuild touched no journal row, owner or awakeable");
+    // The resumed run reads its recorded pull back from the journal the rebuild left alone.
+    std::fs::write(dir.path().join("ready"), "").unwrap();
+    ok(&start(dir.path(), "feed-a.toml", "a2", "2030-01-01T00:02:00Z"));
+    assert_eq!(std::fs::read_to_string(dir.path().join("called")).unwrap(), "pull-0\n", "the recorded pull replayed rather than refetching");
 }

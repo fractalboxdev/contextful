@@ -76,11 +76,14 @@ fn watermark_at(position: &Value) -> Result<&Value, RunError> {
         .ok_or_else(|| RunError::Invalid(format!("position {position} is not a watermark `{{\"field\", \"at\"}}`")))
 }
 
-/// Open a stored watermark against the declared `incremental` field. A different stored
-/// field refuses before any request leaves the host (`run.advance.field-rename`).
+/// Open a stored watermark against the declared `incremental` field. A stored position that
+/// is no watermark, held from before `incremental` was enabled, opens as none
+/// (`run.advance.turning-incremental-on`); a different stored field refuses before any
+/// request leaves the host (`run.advance.field-rename`).
 pub fn open_watermark<'a>(stored: Option<&'a Value>, declared_field: &str) -> Result<Option<&'a Value>, RunError> {
     let Some(position) = stored else { return Ok(None) };
-    let field = position.get("field").and_then(Value::as_str).unwrap_or_default();
+    let Some(field) = position.get("field") else { return Ok(None) };
+    let field = field.as_str().unwrap_or_default();
     if field != declared_field {
         return Err(RunError::CursorFieldMismatch(format!(
             "the stored position was measured against `{field}` and the pipeline declares `incremental = \"{declared_field}\"`; reset the position to change the field"

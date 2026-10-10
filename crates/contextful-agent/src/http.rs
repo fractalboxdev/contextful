@@ -48,6 +48,15 @@ pub const RECORD_PATH: &str = "/control/record";
 pub const EDIT_PATH: &str = "/control/edit";
 pub const APPLY_PATH: &str = "/control/apply";
 
+/// The run routes: `POST /runs/:run_id/stop` and the run-stream socket
+/// `GET /runs/:run_id/stream` (`run.cancel.stop-route`, `run.project.unauthenticated-upgrade`).
+const RUNS_PREFIX: &str = "/runs/";
+const STOP_SUFFIX: &str = "/stop";
+const STREAM_SUFFIX: &str = "/stream";
+
+/// The key a websocket handshake appends before hashing (RFC 6455, section 1.3).
+const WEBSOCKET_GUID: &str = "258EAFA5-E914-47DA-95CA-C5AB0DC85B11";
+
 /// Largest request head the face reads; a head past it answers `431`.
 const REQUEST_HEAD_BYTES: usize = 64 * 1024;
 
@@ -128,6 +137,31 @@ impl HttpResponse {
         self
     }
 
+    /// `101`: a websocket upgrade answering `key`, then `text` as one unmasked text frame and
+    /// a normal close frame.
+    fn upgraded(key: &str, text: &[u8]) -> HttpResponse {
+        let accept = base64(&sha1(format!("{key}{WEBSOCKET_GUID}").as_bytes()));
+        let mut frames = vec![0x81];
+        match text.len() {
+            n if n < 126 => frames.push(n as u8),
+            n if n <= usize::from(u16::MAX) => {
+                frames.push(126);
+                frames.extend_from_slice(&(n as u16).to_be_bytes());
+            }
+            n => {
+                frames.push(127);
+                frames.extend_from_slice(&(n as u64).to_be_bytes());
+            }
+        }
+        frames.extend_from_slice(text);
+        frames.extend_from_slice(&[0x88, 0x02, 0x03, 0xE8]);
+        HttpResponse {
+            status: 101,
+            headers: vec![("Upgrade".into(), "websocket".into()), ("Connection".into(), "Upgrade".into()), ("Sec-WebSocket-Accept".into(), accept)],
+            body: frames,
+        }
+    }
+
     /// A transport-level answer carrying a message and no refusal identifier.
     fn message(status: u16, message: impl Into<String>) -> HttpResponse {
         HttpResponse::json(status, &json!({ "error": { "http": status, "message": message.into() } }))
@@ -153,7 +187,11 @@ impl HttpResponse {
         for (k, v) in &self.headers {
             head.push_str(&format!("{k}: {v}\r\n"));
         }
-        head.push_str(&format!("Content-Length: {}\r\nConnection: close\r\n\r\n", self.body.len()));
+        if self.status == 101 {
+            head.push_str("\r\n");
+        } else {
+            head.push_str(&format!("Content-Length: {}\r\nConnection: close\r\n\r\n", self.body.len()));
+        }
         out.write_all(head.as_bytes())?;
         out.write_all(&self.body)?;
         out.flush()
@@ -162,13 +200,16 @@ impl HttpResponse {
 
 fn reason(status: u16) -> &'static str {
     match status {
+        101 => "Switching Protocols",
         200 => "OK",
         202 => "Accepted",
         400 => "Bad Request",
         401 => "Unauthorized",
         404 => "Not Found",
+        403 => "Forbidden",
         405 => "Method Not Allowed",
         408 => "Request Timeout",
+        409 => "Conflict",
         411 => "Length Required",
         413 => "Content Too Large",
         431 => "Request Header Fields Too Large",
@@ -206,6 +247,15 @@ pub struct HttpFace<'a, C> {
     exchange: Option<&'a (dyn Fn(&HttpRequest) -> HttpResponse + Sync)>,
     exchange_unconfigured: bool,
     claim_write: Option<&'a (dyn Fn(&HttpRequest, &AdmittedAuthority, &dyn Fn() -> Result<(), AuthorityError>) -> HttpResponse + Sync)>,
+    runs: Option<RunRoutes<'a>>,
+}
+
+/// What the run routes answer from, both called only under an admitted credential: a
+/// stop of the named run, and the wire snapshot of a run the credential may watch, `None`
+/// for a run it has not seen or may not watch.
+pub struct RunRoutes<'a> {
+    pub stop: &'a (dyn Fn(&HttpRequest, &AdmittedAuthority, &str) -> HttpResponse + Sync),
+    pub snapshot: &'a (dyn Fn(&AdmittedAuthority, &str) -> Option<String> + Sync),
 }
 
 /// A request slot held while one request is in flight.
@@ -252,7 +302,7 @@ impl<'a, C: Clock + Sync> HttpFace<'a, C> {
         let ceiling = ceiling(max_in_flight)?;
         audience(Some(admitting.audience))?;
         let tools = Tools::new(face, clock, record)?;
-        Ok(HttpFace { tools, admitting, control: None, ceiling, in_flight: AtomicUsize::new(0), exchange: None, exchange_unconfigured: false, claim_write: None })
+        Ok(HttpFace { tools, admitting, control: None, ceiling, in_flight: AtomicUsize::new(0), exchange: None, exchange_unconfigured: false, claim_write: None, runs: None })
     }
 
     /// Report `build` at the handshake and `/health` in place of this package's linked
@@ -279,6 +329,12 @@ impl<'a, C: Clock + Sync> HttpFace<'a, C> {
     /// The binary owns the claim writer; this route never joins the read MCP tool set.
     pub fn with_claim_write(mut self, write: &'a (dyn Fn(&HttpRequest, &AdmittedAuthority, &dyn Fn() -> Result<(), AuthorityError>) -> HttpResponse + Sync)) -> Self {
         self.claim_write = Some(write);
+        self
+    }
+
+    /// Attach the run routes: an authenticated stop and the read-only run-stream socket.
+    pub fn with_runs(mut self, runs: RunRoutes<'a>) -> Self {
+        self.runs = Some(runs);
         self
     }
 
@@ -378,8 +434,45 @@ impl<'a, C: Clock + Sync> HttpFace<'a, C> {
             ("/memory/claims", _) if self.claim_write.is_some() => HttpResponse::message(405, "`/memory/claims` answers POST").with("Allow", "POST"),
             ("/auth/exchange", "POST") if self.exchange.is_some() => self.exchange.expect("checked above")(request),
             ("/auth/exchange", _) if self.exchange.is_some() => HttpResponse::message(405, "`/auth/exchange` answers POST").with("Allow", "POST"),
+            (path, method) if self.runs.is_some() && run_route(path).is_some() => {
+                let (run, stream) = run_route(path).expect("matched above");
+                match (stream, method) {
+                    (false, "POST") => self.stop_request(request, run),
+                    (false, _) => HttpResponse::message(405, "`/runs/:run_id/stop` answers POST").with("Allow", "POST"),
+                    (true, "GET") => self.stream_request(request, run),
+                    (true, _) => HttpResponse::message(405, "`/runs/:run_id/stream` answers GET").with("Allow", "GET"),
+                }
+            }
             (other, _) => HttpResponse::message(404, format!("no route `{other}`; the protocol endpoint is `{MCP_PATH}`")),
         }
+    }
+
+    /// A stop under an admitted credential; the binary authorizes it against the run
+    /// record (`run.cancel.stop-route`).
+    fn stop_request(&self, request: &HttpRequest, run: &str) -> HttpResponse {
+        self.admitted(request, |authority, _| (self.runs.as_ref().expect("route exists").stop)(request, authority, run))
+    }
+
+    /// The run-stream socket: the credential admits on the HTTP request before any run is
+    /// looked up or the connection upgrades; a refusal answers `401` as
+    /// `RunStreamUnauthorized`, an unseen run `404`, and a seen run upgrades, receives its
+    /// snapshot as one text frame and is closed, reading nothing from the caller
+    /// (`run.project.unauthenticated-upgrade`, `run.project.read-only-socket`).
+    fn stream_request(&self, request: &HttpRequest, run: &str) -> HttpResponse {
+        let upgrading = request.header("Upgrade").is_some_and(|u| u.trim().eq_ignore_ascii_case("websocket"));
+        let Some(key) = request.header("Sec-WebSocket-Key").map(str::trim).filter(|k| upgrading && !k.is_empty()) else {
+            return HttpResponse::message(400, "a run stream is a websocket upgrade carrying `Upgrade: websocket` and `Sec-WebSocket-Key`");
+        };
+        let answer = self.admitted(request, |authority, _| match (self.runs.as_ref().expect("route exists").snapshot)(authority, run) {
+            None => HttpResponse::message(404, format!("no run `{run}` to stream")),
+            Some(snapshot) => HttpResponse::upgraded(key, snapshot.as_bytes()),
+        });
+        if answer.status != 401 {
+            return answer;
+        }
+        let why = serde_json::from_slice::<Value>(&answer.body).ok().and_then(|b| b["error"]["message"].as_str().map(str::to_string)).unwrap_or_default();
+        let text = contextful_core::run::RunError::RunStreamUnauthorized(why).to_string();
+        HttpResponse::json(401, &json!({ "error": { "http": 401, "identifier": "RunStreamUnauthorized", "message": text } })).with("WWW-Authenticate", CHALLENGE)
     }
 
     /// Admit the request's credential, then answer its one message.
@@ -533,4 +626,76 @@ fn read_request_preflight(stream: &mut impl Read, preflight: impl Fn(&HttpReques
     }
     request.body = body;
     Ok(request)
+}
+
+/// The run id and whether the path is the stream route, for `/runs/:run_id/stop` or
+/// `/runs/:run_id/stream`; `None` for any other path.
+fn run_route(path: &str) -> Option<(&str, bool)> {
+    let rest = path.strip_prefix(RUNS_PREFIX)?;
+    let (run, stream) = match (rest.strip_suffix(STOP_SUFFIX), rest.strip_suffix(STREAM_SUFFIX)) {
+        (Some(run), _) => (run, false),
+        (_, Some(run)) => (run, true),
+        _ => return None,
+    };
+    (!run.is_empty() && !run.contains('/')).then_some((run, stream))
+}
+
+/// SHA-1 of `data` (FIPS 180-4), used only for the websocket handshake's accept value.
+fn sha1(data: &[u8]) -> [u8; 20] {
+    let mut h: [u32; 5] = [0x67452301, 0xEFCDAB89, 0x98BADCFE, 0x10325476, 0xC3D2E1F0];
+    let mut msg = data.to_vec();
+    msg.push(0x80);
+    while msg.len() % 64 != 56 {
+        msg.push(0);
+    }
+    msg.extend_from_slice(&((data.len() as u64) * 8).to_be_bytes());
+    for block in msg.chunks(64) {
+        let mut w = [0u32; 80];
+        for (i, word) in block.chunks(4).enumerate() {
+            w[i] = u32::from_be_bytes([word[0], word[1], word[2], word[3]]);
+        }
+        for i in 16..80 {
+            w[i] = (w[i - 3] ^ w[i - 8] ^ w[i - 14] ^ w[i - 16]).rotate_left(1);
+        }
+        let [mut a, mut b, mut c, mut d, mut e] = h;
+        for (i, wi) in w.iter().enumerate() {
+            let (f, k) = match i {
+                0..=19 => ((b & c) | (!b & d), 0x5A827999),
+                20..=39 => (b ^ c ^ d, 0x6ED9EBA1),
+                40..=59 => ((b & c) | (b & d) | (c & d), 0x8F1BBCDC),
+                _ => (b ^ c ^ d, 0xCA62C1D6),
+            };
+            let t = a.rotate_left(5).wrapping_add(f).wrapping_add(e).wrapping_add(k).wrapping_add(*wi);
+            e = d;
+            d = c;
+            c = b.rotate_left(30);
+            b = a;
+            a = t;
+        }
+        for (x, y) in h.iter_mut().zip([a, b, c, d, e]) {
+            *x = x.wrapping_add(y);
+        }
+    }
+    let mut out = [0u8; 20];
+    for (i, word) in h.iter().enumerate() {
+        out[i * 4..i * 4 + 4].copy_from_slice(&word.to_be_bytes());
+    }
+    out
+}
+
+/// Standard padded base64 of `data`.
+fn base64(data: &[u8]) -> String {
+    const ALPHABET: &[u8; 64] = b"ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
+    let mut out = String::with_capacity(data.len().div_ceil(3) * 4);
+    for chunk in data.chunks(3) {
+        let n = (u32::from(chunk[0]) << 16) | (u32::from(*chunk.get(1).unwrap_or(&0)) << 8) | u32::from(*chunk.get(2).unwrap_or(&0));
+        for i in 0..4 {
+            if i <= chunk.len() {
+                out.push(ALPHABET[((n >> (18 - 6 * i)) & 63) as usize] as char);
+            } else {
+                out.push('=');
+            }
+        }
+    }
+    out
 }

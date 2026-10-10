@@ -1,9 +1,42 @@
 //! `run.cancel`: the stop mark on a run row.
 
 use super::{at, row};
-use contextful_core::run::cancel::{mark, stops, Scope, POLL_INTERVAL_MS};
+use contextful_core::grant::{Action, Grant, TablePattern};
+use contextful_core::run::cancel::{authorize_stop, mark, stops, Scope, POLL_INTERVAL_MS};
 use contextful_core::run::record::RunStatus;
 use contextful_core::run::RunError;
+
+fn grant(action: Action, table: &str) -> Grant {
+    Grant {
+        actions: vec![action],
+        tables: vec![TablePattern::parse(table).unwrap()],
+        tenant: None,
+        aggregate: None,
+        templates: None,
+        max_rows: None,
+        max_duration_ms: None,
+        max_response_bytes: None,
+    }
+}
+
+/// A credentialed stop needs an `execute` grant covering the pipeline read off the run record; an uncovered or
+/// unrecorded run raises `CancelUnauthorized` without naming the pipeline, answering `403` over HTTP.
+// spec: run.cancel.stop-unauthorized@d74bca36
+#[test]
+fn a_stop_needs_execute_over_the_recorded_pipeline_and_names_none() {
+    let mut recorded = row("run-1", "2030-01-01T00:00:00Z");
+    recorded.pipeline_id = "payroll-feed".into();
+    assert_eq!(authorize_stop(&[grant(Action::Execute, "payroll-feed")], Some(&recorded)), Ok(()));
+    assert_eq!(authorize_stop(&[grant(Action::Execute, "payroll-*")], Some(&recorded)), Ok(()));
+    for grants in [vec![grant(Action::Read, "payroll-feed")], vec![grant(Action::Execute, "other-feed")], vec![]] {
+        let refused = authorize_stop(&grants, Some(&recorded)).unwrap_err();
+        assert!(matches!(refused, RunError::CancelUnauthorized(_)), "{refused}");
+        assert!(!refused.to_string().contains("payroll"), "the refusal names no pipeline: {refused}");
+    }
+    // An unrecorded run refuses exactly as an uncovered one, so a credential learns no run id.
+    let absent = authorize_stop(&[grant(Action::Execute, "*")], None).unwrap_err();
+    assert_eq!(absent, authorize_stop(&[], Some(&recorded)).unwrap_err());
+}
 
 /// Marking an already-marked row overwrites it with the newer request.
 // spec: run.cancel.re-mark@d92c0b5b

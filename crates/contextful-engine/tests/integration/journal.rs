@@ -3,6 +3,8 @@
 use contextful_core::run::journal::{sha256_hex, EntryKey, Row, BLOB_SWEEP_GRACE_SECS, BLOB_SWEEP_INTERVAL_SECS, INLINE_CUTOFF_BYTES};
 use contextful_core::run::ports::Cancellation;
 use contextful_core::run::{Failure, RunError};
+use contextful_core::time::Instant;
+use contextful_engine::awake::Registry;
 use contextful_engine::journal::{Journal, Resolved, StepError};
 use std::panic::AssertUnwindSafe;
 use std::sync::atomic::{AtomicUsize, Ordering};
@@ -195,6 +197,43 @@ fn concurrent_blob_writers_converge_on_one_file() {
     let names: Vec<String> = std::fs::read_dir(j.blob_dir()).unwrap().map(|e| e.unwrap().file_name().to_string_lossy().into_owned()).collect();
     assert_eq!(names, std::slice::from_ref(&sha), "no staged file survives");
     assert_eq!(std::fs::read(j.blob_path(&sha)).unwrap(), value);
+}
+
+/// {{run.journal.inline-cutoff}} holds for every step kind, a pull, a recorded effect, an input step and an
+/// awakeable payload alike, and no step kind overrides it.
+// spec: run.journal.one-cutoff@3e3611f7
+#[test]
+fn every_step_kind_places_its_value_by_the_one_cutoff() {
+    let dir = tempfile::tempdir().unwrap();
+    let j = Journal::open(dir.path());
+    let at_cutoff = vec![b'a'; INLINE_CUTOFF_BYTES];
+    let over = vec![b'b'; INLINE_CUTOFF_BYTES + 1];
+    let stored = |k: &EntryKey| match j.row(k).unwrap() {
+        Some(Row::Recorded { value, .. }) => value,
+        other => panic!("{other:?}"),
+    };
+    // A pull and a recorded effect resolve through the claimed step; an input step records outside a claim.
+    for (label, inline, blob) in [("pull-0", "pull-1", "pull-2"), ("effect", "effect-small", "effect-large"), ("input", "input-small", "input-large")] {
+        let small = EntryKey::new("x-1", inline, label.as_bytes());
+        let large = EntryKey::new("x-1", blob, label.as_bytes());
+        if label == "input" {
+            j.record(&small, &at_cutoff).unwrap();
+            j.record(&large, &over).unwrap();
+        } else {
+            j.step(&small, "run-a", &live, &Never, &always, &mut || Ok(at_cutoff.clone())).unwrap();
+            j.step(&large, "run-a", &live, &Never, &always, &mut || Ok(over.clone())).unwrap();
+        }
+        assert!(stored(&small).blob().is_none(), "{label}: a value at the cutoff stays inline");
+        assert_eq!(stored(&large).blob(), Some(sha256_hex(&over).as_str()), "{label}: one byte past it is a blob");
+    }
+    let registry = Registry::open(dir.path(), Journal::open(dir.path()));
+    let now = Instant::parse("2030-01-01T00:00:01Z").unwrap();
+    for (payload, blob) in [(&at_cutoff, false), (&over, true)] {
+        let a = registry.suspend("x-1", "upload", "2030-01-01T00:00:00Z", 60).unwrap();
+        registry.resolve(&a.token, payload, now).unwrap();
+        let row = registry.state(&a.token, now).unwrap();
+        assert_eq!(row.payload.as_ref().and_then(|p| p.blob()).is_some(), blob, "an awakeable payload follows the same cutoff");
+    }
 }
 
 /// A row whose blob reference resolves to no stored blob raises `BlobMissing` carrying the reference, never an empty

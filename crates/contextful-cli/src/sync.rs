@@ -230,6 +230,22 @@ pub fn pull_before_run(l: &Located) -> Result<()> {
     Ok(())
 }
 
+/// Push the store once a fire's runs close when `[sync] push_after_run = true`, on the
+/// failure arm as on the success arm (`store.push.after-run`,
+/// `run.record.failure-publishes`). A store declaring no `[sync]` is left as it is.
+pub fn push_after_run(l: &Located, at: Instant) -> Result<()> {
+    let (Some(config), _) = sync_config(l)? else { return Ok(()) };
+    if config.push_after_run != Some(true) {
+        return Ok(());
+    }
+    let r = open_with(l, config).and_then(|(s, _)| push(&s, at)).context("`push_after_run`")?;
+    for refusal in &r.refused {
+        eprintln!("warning: {refusal}");
+    }
+    eprintln!("push_after_run: pushed");
+    Ok(())
+}
+
 /// The project's root keyspace, `<prefix>/<project>/`, in its `[sync]` bucket, or `None`
 /// when the store declares no `[sync]` (`disclosure.attest.root-replication`).
 pub fn root_bucket(l: &Located) -> Result<Option<RootBucket>> {

@@ -528,6 +528,12 @@ impl<J: JournalStore + Clone, B: BlobStore + Clone> ExecutionPort for Execution<
         Ok(self.step_keyed(&key, &|_| true, effect)?.bytes().to_vec())
     }
 
+    fn r#unsafe(&mut self, label: &str, effect: &mut StepEffect<'_>) -> Result<Vec<u8>, EngineError> {
+        self.live(&format!("unsafe read `{label}`"))?;
+        let key = EntryKey::new(&self.execution_id, &format!("unsafe:{label}"), &[]);
+        Ok(self.step_keyed(&key, &|_| false, effect)?.bytes().to_vec())
+    }
+
     fn commit(&mut self, position: Option<Value>) -> Result<(), EngineError> {
         self.live("a commit")?;
         let cached = self.cursor_row()?;

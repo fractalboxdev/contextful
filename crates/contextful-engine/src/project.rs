@@ -12,6 +12,8 @@ use std::sync::{Arc, Mutex, MutexGuard};
 
 /// Snapshots the per-run broadcast holds: 256 entries (`run.project.broadcast-ring`).
 pub const BROADCAST_RING_ENTRIES: usize = 256;
+/// Seconds a run's channel outlives its folded terminal event (`run.project.channel-eviction`).
+pub const CHANNEL_EVICTION_SECS: u64 = 60;
 /// Deltas the emission channel buffers before it drops.
 pub const EMISSION_CHANNEL_CAPACITY: usize = 1024;
 
@@ -21,6 +23,8 @@ struct RunChannel {
     ring: VecDeque<(u64, Snapshot)>,
     /// Sequence number the next broadcast takes.
     head: u64,
+    /// The pump that first saw the snapshot terminal.
+    terminal_at: Option<Instant>,
 }
 
 impl RunChannel {
@@ -124,7 +128,12 @@ impl Hub {
             if let Some(s) = ch.coalescer.poll(now) {
                 ch.broadcast(s);
             }
+            if ch.terminal_at.is_none() && ch.snapshot.is_terminal() {
+                ch.terminal_at = Some(now);
+            }
         }
+        // A terminal channel lives 60 s past its terminal event (`run.project.channel-eviction`).
+        st.runs.retain(|_, ch| ch.terminal_at.is_none_or(|t| now < t.plus_secs(CHANNEL_EVICTION_SECS)));
     }
 
     /// The folded snapshot of a run and a subscription starting right after it, taken
@@ -135,6 +144,16 @@ impl Hub {
         let ch = st.runs.get(run_id)?;
         let sub = Subscription { shared: self.shared.clone(), run_id: run_id.to_string(), next: ch.head };
         Some((ch.snapshot.clone(), sub))
+    }
+
+    /// A subscription starting at the oldest snapshot the run's ring holds, so a late
+    /// joiner reads each held snapshot in order before live updates
+    /// (`run.project.catch-up`). `None` for a run this hub has not seen.
+    pub fn catch_up(&self, run_id: &str) -> Option<Subscription> {
+        let st = self.shared.lock();
+        let ch = st.runs.get(run_id)?;
+        let next = ch.ring.front().map_or(ch.head, |(seq, _)| *seq);
+        Some(Subscription { shared: self.shared.clone(), run_id: run_id.to_string(), next })
     }
 
     /// Connect, recovering a run this hub has not seen from its durable record.
@@ -149,7 +168,7 @@ impl Hub {
             snapshot.status = record.status;
             snapshot.started_at = Some(record.started_at);
             snapshot.ended_at = record.ended_at;
-            RunChannel { snapshot, coalescer: Coalescer::default(), ring: VecDeque::new(), head: 0 }
+            RunChannel { snapshot, coalescer: Coalescer::default(), ring: VecDeque::new(), head: 0, terminal_at: None }
         });
         let sub = Subscription { shared: self.shared.clone(), run_id: record.run_id.clone(), next: ch.head };
         (ch.snapshot.clone(), sub)
@@ -182,6 +201,7 @@ fn fold(st: &mut State, d: &Delta, now: Instant) {
         coalescer: Coalescer::default(),
         ring: VecDeque::new(),
         head: 0,
+        terminal_at: None,
     });
     // A refused metadata write leaves the snapshot as it stood; the projection is best-effort.
     if reduce(&mut ch.snapshot, d).is_ok() {

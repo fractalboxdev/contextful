@@ -3,6 +3,7 @@
 
 use super::record::{RunRow, StopMark};
 use super::RunError;
+use crate::grant::{Action, Grant};
 use crate::time::Instant;
 
 /// Cadence of the catalog read feeding the cancellation token: 500 ms (`run.cancel.poll-interval`).
@@ -68,5 +69,20 @@ pub fn stops(target: &RunRow, row: &RunRow) -> bool {
     match Scope::read(&stop.scope) {
         Scope::Run => row.run_id == target.run_id,
         Scope::Pipeline => same_grain(target, row),
+    }
+}
+
+/// Authorize a credentialed stop against the pipeline its run record holds: an `execute`
+/// grant covering that pipeline admits it. An unrecorded run refuses exactly as an
+/// uncovered one, and neither refusal names the pipeline (`run.cancel.stop-unauthorized`,
+/// `run.cancel.authority-from-the-record`).
+pub fn authorize_stop(grants: &[Grant], record: Option<&RunRow>) -> Result<(), RunError> {
+    let covered = record.is_some_and(|r| {
+        grants.iter().any(|g| g.actions.contains(&Action::Execute) && g.tables.iter().any(|p| p.covers_name(&r.pipeline_id)))
+    });
+    if covered {
+        Ok(())
+    } else {
+        Err(RunError::CancelUnauthorized("no execute grant covers this run's pipeline".into()))
     }
 }

@@ -369,3 +369,73 @@ fn two_sites_declaring_different_residency_diverge_at_push() {
     assert_eq!(manifest()["residency"], json!({ "site_id": "site-b", "regions": ["eu-central-1", "eu-west-1"] }));
     refused(&cf(a.path(), &["sync", "push", "--project", "research"], &[]), "ResidencySitesDiverge");
 }
+
+/// Every `run-state.json` under `bucket`, read.
+fn bucket_run_states(bucket: &Path) -> Vec<Value> {
+    fn walk(dir: &Path, out: &mut Vec<Value>) {
+        for e in std::fs::read_dir(dir).into_iter().flatten().flatten() {
+            let p = e.path();
+            if p.is_dir() {
+                walk(&p, out);
+            } else if p.file_name().is_some_and(|n| n == "run-state.json") {
+                out.push(serde_json::from_slice(&std::fs::read(&p).unwrap()).unwrap());
+            }
+        }
+    }
+    let mut out = Vec::new();
+    walk(bucket, &mut out);
+    out
+}
+
+/// With `[sync] push_after_run = true`, `run start` and `pipeline run` push the store once the fire's runs close, and
+/// a failed push fails the command.
+// spec: store.push.after-run@59c1d209
+/// The bucket push runs on the failure arm as on the success arm, for every failure past run open.
+// spec: run.record.failure-publishes@a9b84cbe
+#[test]
+fn a_run_declaring_push_after_run_publishes_on_success_and_on_failure() {
+    let bucket = tempfile::tempdir().unwrap();
+    let a = project("ingest-a", &file_sync(bucket.path(), "push_after_run = true\n"));
+    let names = |runs: &[Value]| -> String { runs.iter().map(Value::to_string).collect::<Vec<_>>().join("\n") };
+
+    let out = start(a.path(), "s1");
+    ok(&out);
+    assert!(String::from_utf8_lossy(&out.stderr).contains("push_after_run"), "{}", String::from_utf8_lossy(&out.stderr));
+    assert!(names(&bucket_run_states(bucket.path())).contains("s1"), "a success publishes");
+
+    // A run failing past its open publishes its failed row.
+    std::fs::write(a.path().join("fail.sh"), "printf '{\"error\":{\"tag\":\"Permanent\",\"message\":\"feed paused\"}}'; exit 1\n").unwrap();
+    std::fs::write(a.path().join("fail.toml"), "pipeline = \"broken\"\ntable = \"filings\"\n[connector]\nid = \"vendor\"\nversion = \"1\"\ncommand = [\"sh\", \"fail.sh\"]\n").unwrap();
+    let failed = cf(a.path(), &["run", "start", "--plan", "fail.toml", "--project", "research", "--run-id", "f1", "--site-id", "site", "--now", "2030-01-01T01:01:00Z"], &[]);
+    assert!(!failed.status.success());
+    assert!(String::from_utf8_lossy(&failed.stderr).contains("feed paused"), "{}", String::from_utf8_lossy(&failed.stderr));
+    let published = names(&bucket_run_states(bucket.path()));
+    assert!(published.contains("f1") && published.contains("failed"), "the failure arm publishes: {published}");
+
+    // A refusal before any run opens publishes nothing new.
+    let before = names(&bucket_run_states(bucket.path()));
+    let refused_early = cf(a.path(), &["run", "start", "--plan", "absent.toml", "--project", "research", "--run-id", "x1", "--site-id", "site"], &[]);
+    assert!(!refused_early.status.success());
+    assert!(!String::from_utf8_lossy(&refused_early.stderr).contains("push_after_run"));
+    assert_eq!(names(&bucket_run_states(bucket.path())), before);
+
+    // A failing pipeline fire publishes too.
+    std::fs::create_dir_all(a.path().join("pipelines")).unwrap();
+    std::fs::write(a.path().join("pipelines/feed.toml"), "id = \"web\"\ntables = [\"filings\"]\n[source]\nname = \"http\"\nconfig = { endpoint = \"http://127.0.0.1:9/v1\" }\n").unwrap();
+    let fired = cf(a.path(), &["pipeline", "run", "web", "--project", "research", "--run-id", "w1", "--site-id", "site", "--now", "2030-01-01T01:02:00Z"], &[]);
+    assert!(!fired.status.success());
+    assert!(String::from_utf8_lossy(&fired.stderr).contains("push_after_run"), "{}", String::from_utf8_lossy(&fired.stderr));
+    assert!(names(&bucket_run_states(bucket.path())).contains("w1"));
+
+    // Undeclared, a run pushes nothing.
+    let quiet_bucket = tempfile::tempdir().unwrap();
+    let quiet = project("ingest-q", &file_sync(quiet_bucket.path(), ""));
+    ok(&start(quiet.path(), "q1"));
+    assert!(bucket_run_states(quiet_bucket.path()).is_empty());
+
+    // A push that fails fails the command, though the run itself succeeded.
+    let broken = project("ingest-e", "endpoint = \"ftp://objects.example.org\"\nbucket = \"context-team\"\nprefix = \"team\"\npush_after_run = true\n");
+    let out = start(broken.path(), "e1");
+    assert!(!out.status.success());
+    assert!(String::from_utf8_lossy(&out.stderr).contains("push_after_run"), "{}", String::from_utf8_lossy(&out.stderr));
+}

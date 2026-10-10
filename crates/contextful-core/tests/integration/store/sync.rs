@@ -297,3 +297,11 @@ fn an_unbound_or_literal_credential_key_is_refused_naming_the_key() {
         }
     }
 }
+
+#[test]
+fn push_after_run_is_an_optional_sync_key() {
+    let declared: SyncConfig = toml::from_str("endpoint = \"file:///tmp/b\"\nbucket = \"b\"\npush_after_run = true\n").unwrap();
+    assert_eq!(declared.push_after_run, Some(true));
+    let undeclared: SyncConfig = toml::from_str("endpoint = \"file:///tmp/b\"\nbucket = \"b\"\n").unwrap();
+    assert_eq!(undeclared.push_after_run, None);
+}

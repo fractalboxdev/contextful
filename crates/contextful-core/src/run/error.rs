@@ -21,6 +21,9 @@ pub enum RunError {
     /// A stop matching no pending, running or waiting run. (`run.cancel.not-in-flight`)
     #[error("CancelTargetNotInFlight: {0}")]
     CancelTargetNotInFlight(String),
+    /// A credentialed stop whose grants cover no execute over the recorded pipeline. (`run.cancel.stop-unauthorized`)
+    #[error("CancelUnauthorized: {0}")]
+    CancelUnauthorized(String),
     /// A capability the running profile links no implementation for. (`run.journal.unwired-capability`)
     #[error("CapabilityUnwired: {0}")]
     CapabilityUnwired(String),

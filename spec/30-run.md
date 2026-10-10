@@ -71,6 +71,12 @@ Recording a step's value once, resolving it on replay, and collecting what a rep
   *P6*
 - `collection` — Retiring an execution owner deletes its journal rows in the retiring transaction.
   *because recorded work is needed only while a replay can reach it, and an uncollected journal grows with total ingest*
+- `retire-order` — A journal store apart from the catalog deletes a retired owner's rows after the catalog commits the retirement, and the next open under that scope repeats the delete.
+  *because a delete ahead of the commit strands a pending owner without its recorded steps, while a late delete leaves only rows no replay reaches*
+- `one-cutoff` — {{run.journal.inline-cutoff}} holds for every step kind, a pull, a recorded effect, an input step and an awakeable payload alike, and no step kind overrides it.
+  *because one placement rule lets every adapter and the blob sweep read a row without knowing which step kind wrote it*
+- `fan-out-join` — Fan-out bodies rejoin only at an explicit join node; a join reached by a failed branch fails the run unless it declares `allow_partial`, which records each failed branch's label and failure tag on the run record.
+  *because an implicit join hides which branch failed, and a partial result recorded as complete reads as one*
 - `blob-sweep` — A mark-and-sweep pass every 24 h deletes each blob that no journal row or pending awakeable references and that is older than 1 h.
   *because the grace window covers a blob written ahead of the row that names it*
 - `effect-boundary` — A body replays faithfully when every observable side effect passes through a recorded step, a cursor commit or an awakeable; the work between them is pure.
@@ -134,12 +140,6 @@ sequenceDiagram
   Note over A,J: a pending claim whose owner lease expired passes to the next caller
 ```
 
-unsettled: Does the inline-versus-blob cutoff stay one number across every step kind? owner: run-path affects: run.journal
-
-unsettled: Does a journal store apart from the catalog retire an owner's rows after the catalog commits, repeating the retire at the next open? owner: run-path affects: run.journal
-
-unsettled: How do fan-out bodies express an explicit join, and what does a partially-failed fan-out record? owner: run-path affects: run.journal
-
 ## advance
 
 Committing an incremental read position under its declared kind, and the boundary a poll re-reads.
@@ -160,14 +160,14 @@ Committing an incremental read position under its declared kind, and the boundar
 - `frontier` — The frontier counts every fetched row, landed or not. A committed position moves forward or holds; an empty or older window never rewinds it.
 - `unorderable-position` — A row with no orderable value in the clock field, or a stream switching between text and numeric positions mid-pass, raises `CursorPositionUnorderable`, terminal for the pull.
   *A-run*
+- `allowed-lateness` — A table declares `allowed_lateness`, default 0 s; a `monotonic` poll re-reads from its stored position minus that window, so a row arriving that late still lands.
+  *because lateness belongs to the source feeding a table, and a position records only where the frontier stands*
 - `turning-incremental-on` — Enabling `incremental` on a pipeline that holds a position starts from none, re-landing the source's current window once.
 - `skip-unchanged` — A snapshot-shaped source with `skip_unchanged = true` records its input's raw-byte digest as `{ sha256, rows }`; a matching digest returns zero batches, holds the position and closes a zero-row success. Undeclared, it is false.
 - `snapshot-completion` — A snapshot source reports complete inventory or unchanged skip independently of row count; a replacing run carries only complete inventory into its manifest.
   *A-store*
 - `zero-row-commit` — A complete empty snapshot of a replacing table commits {{store.declare.empty-replacement}}; a skipped unchanged input holds the frontier and position, and a failed pull publishes neither.
   *A-store*
-
-unsettled: What bounds allowed lateness for an out-of-order source, and does a lateness window hang on the position or on the table? owner: run-path affects: run.advance
 
 #### Scenarios
 
@@ -192,6 +192,8 @@ Durable suspension on an external callback, its deadline and its resumption.
 - `unknown-token` — A token with no row raises `AwakeableUnknown` and allocates no state.
   *P2*
 - `resume-route` — `POST /awake/:token` answers `200` with the recorded payload, `404` for {{run.suspend.unknown-token}}, `409` for {{run.suspend.conflicting-resolution}} and `410` for {{run.suspend.expired-token}}. `GET /awake/:token` reports state without resuming. Both authenticate before touching the registry.
+- `caller-binding` — An awakeable may bind a verified caller subject at mint; resolving it then takes the token and a credential for that subject, and any other caller answers as {{run.suspend.unknown-token}}. An unbound token is its whole authority.
+  *because a token leaked through a log otherwise resumes a run, and answering unknown discloses nothing to the wrong holder*
 - `payload-offload` — A payload above {{run.journal.inline-cutoff}} lands in the journal's blob store, and the pending row references it.
 - `survives-restart` — A durable awakeable store persists every registry row, so a process reopening it over the same location drops no pending callback; an in-process store ends with its process.
 - `row-parks` — A store-driven row awaiting an unresolved awakeable parks and frees its slot; the other rows run on, and the parked row re-enters its body once the awakeable resolves or its deadline passes.
@@ -224,8 +226,6 @@ sequenceDiagram
   end
 ```
 
-unsettled: Is resuming a suspension bound to a verified caller identity, or is possession of the single-use token the whole authority? owner: run-path affects: run.suspend
-
 ## retry
 
 Classifying a failure, the single retry layer, and the delay before the next attempt.
@@ -249,13 +249,13 @@ Classifying a failure, the single retry layer, and the delay before the next att
 - `one-layer` — The step's schedule is the only retry layer: an adapter, a credential mint and a meter acquire inside a step return their failure to it.
   *because nested retry layers multiply attempts and amplify a vendor outage*
 - `decision-is-pure` — The retry decision is a pure function of the one-based attempt that just closed and the classified failure, jitter derived from an injected seed. The runner owns the sleep and the attempt counter.
-- `partial-failure` — A run that landed some batches and then failed closes `partial_failure`, naming how many landed; the journal holds the resume point.
+- `partial-failure` — A run failing after it staged batches commits none of them under {{run.own.one-commit-per-run}} and closes `failed`, holding its owner so the journal keeps the resume point; only {{run.record.orphan-reap}} closes a run `partial_failure`.
+- `no-compensation` — The engine offers no compensation combinator; undoing a partial effect is an author-written recorded step, replayed like any other.
+  *because compensation depends on each vendor's undo semantics, which the engine cannot know*
+- `attempt-counter` — An in-flight schedule's attempt counter persists on its step's journal row, so a crash mid-backoff resumes the remaining budget instead of restarting it.
+  *because a budget restarting at each crash retries a failing vendor without bound*
 - `pressure-is-local` — Rate-limit pressure against one source paces only that source's runs.
 - `bound-hit-is-transient` — A connector striking one of its declared resource bounds answers `Transient`, and every bound decision is recorded on the run record.
-
-unsettled: Does the engine offer a compensation combinator for partial-failure rollback, or does compensation stay author-written recorded steps? owner: run-path affects: run.retry
-
-unsettled: Where does an in-flight schedule's attempt counter persist, so a crash mid-backoff resumes the budget instead of restarting it? owner: run-path affects: run.retry
 
 ## own
 
@@ -354,6 +354,9 @@ Stopping work in flight at either grain, the one token every await observes, and
   *A-run*
 - `resumable-remains` — A stopped run's recorded pull keeps its owner and replays next attempt; a stopped pull that recorded nothing releases it. A stopped chunk returns to pending, its attempt count unchanged. A stop advances no position.
 - `authority-from-the-record` — A stop authorizes against the pipeline read off the run record, never off the request.
+- `stop-unauthorized` — A credentialed stop needs an `execute` grant covering the pipeline read off the run record; an uncovered or unrecorded run raises `CancelUnauthorized` without naming the pipeline, answering `403` over HTTP.
+  *because a stop halts work `execute` fires, and a refusal naming the pipeline discloses it to a credential that cannot read it*
+- `stop-route` — `POST /runs/:run_id/stop` writes a stop under a per-request network credential, its optional JSON body carrying `scope` and `reason`, and answers `200` with the marked run ids.
 
 ```mermaid
 sequenceDiagram
@@ -395,11 +398,13 @@ The durable run record, its statuses, its owner lease and windowed history over 
 - `status-set` — A run status is `pending`, `running`, `waiting`, `success`, `partial_failure`, `failed` or `canceled`, spelled identically on the record and the wire snapshot; every surface classifying a run covers all seven.
   *because two vocabularies for one lifecycle leave a suspended or partly failed run without a reading*
 - `row-at-open` — A row is written at run open, before the first pull, so a zero-row `success`, a `failed` row carrying its error kind, and no row at all read apart.
+- `rebuild-restores-history` — A catalog rebuild restores run history from {{run.record.reserved-table}}, so a rebuilt catalog lists every run the store recorded instead of starting empty.
+  *because the catalog is a cache, and a rebuild dropping history loses the only record of failed runs*
 - `time-travel` — Run history inherits the store's transaction-time bound, so one as-of selector rewinds it with every other table.
 - `owner-lease` — A `running` or `waiting` row carries an owner of process id, boot id and a lease expiry, renewed every 10 s with a 30 s time-to-live.
   *because a second process sharing the catalog needs a liveness signal to tell a live run from an orphan*
 - `orphan-reap` — Startup marks `partial_failure` only a non-terminal row whose owner lease has expired; a row held by a live process is left alone.
-- `writing-site` — The writing site is an engine-injected provenance column beside the ingestion stamp and run id; a row written without one reads null and renders unattributed.
+- `writing-site` — Every landed row carries its run's site id in the `_site_id` column {{store.reserve.injected}} writes, so a row names the site that wrote it.
 - `site-id-length` — A site id matches letters, digits, dot, underscore and hyphen, from 1 chars to 64 chars.
   *because it is interpolated into run directories and request-ledger filenames*
 - `site-id-unresolved` — A site id comes from the manifest's `site_id`, or the variable its `site_id_env` names, and a run's `--site-id` or `--site-id-env` replaces that declaration; no declaration, both keys in one place, or an unset variable raises `SiteIdUnresolved` at startup.
@@ -428,8 +433,6 @@ The durable run record, its statuses, its owner lease and windowed history over 
 
 - `run.record.schema-diff-home`: WHEN a nested column downgrades and its table commits, THEN run history and that table's run manifest carry the same event; a failed stage carries none.
 
-unsettled: What does a run-record manifest carry for a catalog rebuild to restore history instead of resetting it? owner: run-path affects: run.record
-
 ## project
 
 The best-effort live view of a run and the subscription that carries it off the machine.
@@ -450,15 +453,15 @@ The best-effort live view of a run and the subscription that carries it off the 
 - `outputs-by-reference` — A step output appears as a post-redaction reference and a byte count, never inline; fetching the payload is a separately authorized request.
 - `connect` — A subscriber receives the folded snapshot and its update receiver under one lock, missing and duplicating no update.
 - `broadcast-ring` — The per-run broadcast holds 256 entries; a subscriber that overruns it resynchronizes to the latest snapshot.
-- `unauthenticated-upgrade` — The run-stream socket authenticates on the HTTP request before the upgrade; a missing or invalid credential raises `RunStreamUnauthorized` with `401`, and an unseen run answers `404`.
+- `catch-up` — A late joiner may subscribe from the oldest snapshot {{run.project.broadcast-ring}} holds, reading each held snapshot in order before live updates.
+  *because the folded snapshot shows where a run stands, and a late joiner animating the catch-up needs how it got there*
+- `channel-eviction` — The hub evicts a run's channel 60 s after it folds the run's terminal event; a later subscriber recovers from the durable record as after {{run.project.restart-discards}}.
+  *because a channel allocated per run otherwise grows a long-lived process by every run it has seen*
+- `unauthenticated-upgrade` — The run-stream socket, `GET /runs/:run_id/stream`, authenticates on the HTTP request before the upgrade; a missing or invalid credential raises `RunStreamUnauthorized` with `401`, and an unseen run answers `404`.
   *A-read*
 - `read-only-socket` — A subscription is read-only; a stop travels as an authenticated route.
 - `restart-discards` — A restart discards in-memory snapshots; a subscriber recovers history from the durable record.
 - `delegated-progress` — A heavy step delegated to another host reports progress by posting to the awakeable callback route, and the orchestrating run folds it into its own snapshot.
-
-unsettled: Does the hub keep a bounded ring of recent deltas so a late joiner can animate the catch-up? owner: run-path affects: run.project
-
-unsettled: How is a per-run channel evicted in a long-lived process, given that a channel is allocated on a run's first event? owner: run-path affects: run.project
 
 ## Shapes
 
