@@ -32,7 +32,6 @@ use contextful_core::time::Instant;
 use contextful_engine::awake::{AwakeError, Registry};
 use contextful_engine::cancel::Keeper;
 use contextful_engine::command::CommandSource;
-use contextful_core::coordinate::Catalog;
 use contextful_core::store::catalog::MACHINE_CATALOG_FILE;
 use contextful_core::store::encrypt::FileCipher;
 use contextful_engine::{Engine, Journal, RunSpec};
