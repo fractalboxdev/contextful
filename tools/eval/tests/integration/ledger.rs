@@ -169,3 +169,25 @@ fn every_trend_entry_declares_its_comparison_direction() {
     assert_eq!(findings.len(), 1, "{findings:?}");
     assert!(findings[0].contains("trend-tier entry declares a direction"), "{findings:?}");
 }
+
+/// An entry whose metric names a judged figure is scheduled-tier; on another tier it resolves to nothing under
+/// {{assurance.measure.unresolved-entry}}.
+// spec: assurance.measure.judged-tier@1f6b17d2
+#[test]
+fn a_judged_figure_runs_on_the_scheduled_tier_alone() {
+    let entry = |tier: &str, metric: &str| {
+        format!(
+            "[entry.judged]\nclause = \"run.journal.entry-key\"\nmetric = \"{metric}\"\nkind = \"eval\"\ntier = \"{tier}\"\ndirection = \"higher_is_better\"\nmethod = {{ cases = \"evals/cases/deep-recall.jsonl\" }}\ntarget = {{ op = \">=\", value = 0.8 }}\n"
+        )
+    };
+    assert!(reasons(&ledger(&entry("scheduled", "judge.accuracy"))).is_empty());
+    for tier in ["gate", "trend"] {
+        for metric in ["judge.accuracy", "slices.recall.judge.citation_faithfulness"] {
+            let r = reasons(&ledger(&entry(tier, metric)));
+            assert_eq!(r.len(), 1, "{tier} {metric}: {r:?}");
+            assert!(r[0].contains("MeasureEntryUnresolved") && r[0].contains("scheduled"), "{r:?}");
+        }
+    }
+    // A deterministic figure stays on any tier.
+    assert!(reasons(&ledger(&entry("gate", "retrieval.hybrid.recall_at_k"))).is_empty());
+}

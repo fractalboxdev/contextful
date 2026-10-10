@@ -290,6 +290,9 @@ impl Ledger {
     }
 }
 
+/// The metric-path segment naming the judged figures.
+const JUDGE_SEGMENT: &str = "judge";
+
 /// Metric-name suffixes of a wall-clock or resident-memory figure.
 const TIMED_SUFFIXES: [&str; 5] = ["_ms", "_us", "_ns", "_secs", "_rss"];
 
@@ -315,6 +318,10 @@ fn resolve(id: &str, e: &Entry, world: &dyn World) -> Result<(), String> {
     }
     if e.kind == Kind::Eval {
         MetricPath::parse(&e.metric).map_err(|err| format!("metric `{}`: {err}", e.metric))?;
+    }
+    // A judged figure costs a model call per item (`assurance.measure.judged-tier`).
+    if e.metric.split('.').any(|s| s == JUDGE_SEGMENT) && e.tier != Tier::Scheduled {
+        return Err(format!("metric `{}` is a judged figure, which runs on the scheduled tier alone, not {}", e.metric, e.tier));
     }
     let method = e.method().ok_or("a method names exactly one of `test`, `cases`, `probe` or `issue`")?;
     if !matches!(method, Method::Issue(_)) && e.tier == Tier::Gate && e.target.is_none() {

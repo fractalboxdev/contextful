@@ -7,12 +7,14 @@ license.workspace = true
 repository.workspace = true
 
 [dependencies]
+contextful-core = { path = "../../crates/contextful-core" }
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
+sha2 = "0.10"
+toml = "0.8"
 
 [dev-dependencies]
 tempfile = "3"
-toml = "0.8"
 
 [[test]]
 name = "integration"

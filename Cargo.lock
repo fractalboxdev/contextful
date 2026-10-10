@@ -969,8 +969,10 @@ dependencies = [
 name = "contextful-eval"
 version = "0.5.0"
 dependencies = [
+ "contextful-core",
  "serde",
  "serde_json",
+ "sha2 0.10.9",
  "tempfile",
  "toml 0.8.23",
 ]

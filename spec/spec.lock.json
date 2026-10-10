@@ -23969,6 +23969,17 @@
       "line": 340
     },
     {
+      "id": "assurance.evaluate.judged-run",
+      "contract": "assurance",
+      "operation": "evaluate",
+      "subject": "judged-run",
+      "kind": "behavior",
+      "statement": "`contextful eval run --tier judged` reads and judges every case through the endpoint and model `--endpoint` and `--model` name, stamping that model in the run block; the deterministic tier judges with the stubs.",
+      "why": "",
+      "file": "spec/81-engineering.md",
+      "line": 342
+    },
+    {
       "id": "assurance.evaluate.systems-metrics",
       "contract": "assurance",
       "operation": "evaluate",
@@ -23977,7 +23988,7 @@
       "statement": "Tokens per query, latency and cost report beside the quality figures, bucketed by corpus size in tokens relative to the reader's context window.",
       "why": "",
       "file": "spec/81-engineering.md",
-      "line": 342
+      "line": 343
     },
     {
       "id": "assurance.evaluate.checkpoint",
@@ -23988,7 +23999,7 @@
       "statement": "A run appends each case's result as JSONL, and a crash re-runs the in-flight case.",
       "why": "",
       "file": "spec/81-engineering.md",
-      "line": 343
+      "line": 344
     },
     {
       "id": "assurance.evaluate.run-report",
@@ -23999,7 +24010,7 @@
       "statement": "A run report carries one field per gated metric, the sample count behind each mean, the run block, the per-slice breakdown, and the tally of cases sampled, dropped and unscored.",
       "why": "",
       "file": "spec/81-engineering.md",
-      "line": 344
+      "line": 345
     },
     {
       "id": "assurance.baseline.file",
@@ -24010,7 +24021,7 @@
       "statement": "A baseline file carries a reserved run block `{k, tier, model, samples}` and one entry per gated metric: a bare number at the run's dead band, or an object overriding the band.",
       "why": "",
       "file": "spec/81-engineering.md",
-      "line": 355
+      "line": 356
     },
     {
       "id": "assurance.baseline.default-dead-band",
@@ -24021,7 +24032,7 @@
       "statement": "A rate-valued entry with no override gates at a 2 percent dead band.",
       "why": "",
       "file": "spec/81-engineering.md",
-      "line": 356
+      "line": 357
     },
     {
       "id": "assurance.baseline.rank-quality-dead-band",
@@ -24032,7 +24043,7 @@
       "statement": "The ranked-quality entry gates at a 3 percent dead band.",
       "why": "",
       "file": "spec/81-engineering.md",
-      "line": 357
+      "line": 358
     },
     {
       "id": "assurance.baseline.band-units",
@@ -24043,7 +24054,7 @@
       "statement": "A band carries its metric's own units, and a count entry is pinned at zero with no band.",
       "why": "",
       "file": "spec/81-engineering.md",
-      "line": 358
+      "line": 359
     },
     {
       "id": "assurance.baseline.metric-path",
@@ -24054,7 +24065,7 @@
       "statement": "An entry names a metric by the report's field path: `retrieval.<modality>.<metric>`, `edge_retrieval.<modality>.<metric>`, `judge.<dimension>`, `latency_ms`, `n_cases`, or `slices.<tag>.` before a bare `<metric>` or any of these but `latency_ms`.",
       "why": "",
       "file": "spec/81-engineering.md",
-      "line": 359
+      "line": 360
     },
     {
       "id": "assurance.baseline.sample-count",
@@ -24065,7 +24076,7 @@
       "statement": "Every mean-valued path takes a `.n` suffix naming its sample count.",
       "why": "because blanking one case's truth lifts a NaN-filtered mean without moving the case count",
       "file": "spec/81-engineering.md",
-      "line": 360
+      "line": 361
     },
     {
       "id": "assurance.baseline.unresolvable-path",
@@ -24076,7 +24087,7 @@
       "statement": "A path resolving to nothing, a mean over fewer than 30 cases, a malformed entry or a non-finite band raises `BaselinePathUnresolved` before the suite runs.",
       "why": "P7",
       "file": "spec/81-engineering.md",
-      "line": 362
+      "line": 363
     },
     {
       "id": "assurance.baseline.run-stamp-drift",
@@ -24087,7 +24098,7 @@
       "statement": "A run block differing from the run's own configuration raises `BaselineRunStampMismatch` before the suite runs.",
       "why": "P7",
       "file": "spec/81-engineering.md",
-      "line": 364
+      "line": 365
     },
     {
       "id": "assurance.baseline.interval",
@@ -24098,7 +24109,7 @@
       "statement": "Each judged figure reports a 95 percent percentile-bootstrap interval over cases from 1000 resamples.",
       "why": "",
       "file": "spec/81-engineering.md",
-      "line": 366
+      "line": 367
     },
     {
       "id": "assurance.baseline.raise-only",
@@ -24109,7 +24120,7 @@
       "statement": "A baseline update runs after every gate and floor passes, moves each improved entry to its measured value, moves none in the worse direction, and adds no path.",
       "why": "",
       "file": "spec/81-engineering.md",
-      "line": 367
+      "line": 368
     },
     {
       "id": "assurance.baseline.floors-are-absolute",
@@ -24120,7 +24131,7 @@
       "statement": "An absolute floor gates independently of every committed value.",
       "why": "",
       "file": "spec/81-engineering.md",
-      "line": 368
+      "line": 369
     },
     {
       "id": "assurance.baseline.floor-coverage",
@@ -24131,7 +24142,7 @@
       "statement": "A report lacking a floor's figure on any leg of its `retrieval` surface breaches that floor; only a forbidden-row or in-window rate over no case holds.",
       "why": "",
       "file": "spec/81-engineering.md",
-      "line": 369
+      "line": 370
     },
     {
       "id": "assurance.baseline.offline",
@@ -24142,7 +24153,7 @@
       "statement": "The gate is a local command comparing the report against in-tree baselines and floors, reporting both verdicts, with or without a trace store reachable.",
       "why": "",
       "file": "spec/81-engineering.md",
-      "line": 370
+      "line": 371
     },
     {
       "id": "assurance.baseline.trace-store",
@@ -24153,7 +24164,7 @@
       "statement": "A trace store records run history and curation staging, and decides no verdict.",
       "why": "",
       "file": "spec/81-engineering.md",
-      "line": 371
+      "line": 372
     },
     {
       "id": "assurance.baseline.golden-custody",
@@ -24164,7 +24175,7 @@
       "statement": "Version-controlled JSONL under `evals/cases/` is the canonical golden set, one loader is its only ingestion door, and a reviewer's edit reaches the gate as a change to the tree.",
       "why": "A-assurance",
       "file": "spec/81-engineering.md",
-      "line": 372
+      "line": 373
     },
     {
       "id": "assurance.baseline.answer-key-in-the-store",
@@ -24175,7 +24186,7 @@
       "statement": "An artifact path normalizing under the evaluation directory, reached by a manifest lint or a connector, raises `GoldenSetIngested`.",
       "why": "A-assurance",
       "file": "spec/81-engineering.md",
-      "line": 374
+      "line": 375
     },
     {
       "id": "assurance.baseline.generated-redaction",
@@ -24186,7 +24197,7 @@
       "statement": "A golden mined from a live query or promoted from a labeled outcome passes {{authority.redact.write-time}} before commit; a case it cannot redact raises `GoldenRedactionFailed`.",
       "why": "A-assurance",
       "file": "spec/81-engineering.md",
-      "line": 376
+      "line": 377
     },
     {
       "id": "assurance.baseline.promotion-source",
@@ -24197,7 +24208,7 @@
       "statement": "Only an adjudicated outcome label promotes into a golden set; a self-rated row does not.",
       "why": "",
       "file": "spec/81-engineering.md",
-      "line": 378
+      "line": 379
     },
     {
       "id": "assurance.baseline.generators",
@@ -24208,7 +24219,29 @@
       "statement": "Three generators draft candidate cases from the deployment's store — entity-to-fact-to-edge walks, composed edge chains, and questions about absent entities — and a human approves each before commit.",
       "why": "",
       "file": "spec/81-engineering.md",
-      "line": 379
+      "line": 380
+    },
+    {
+      "id": "assurance.baseline.draft-command",
+      "contract": "assurance",
+      "operation": "baseline",
+      "subject": "draft-command",
+      "kind": "behavior",
+      "statement": "`contextful eval draft` reads the declared entity, fact and edge tables through one admitted session, runs the three generators, and writes their candidates as case lines; it commits nothing.",
+      "why": "",
+      "file": "spec/81-engineering.md",
+      "line": 381
+    },
+    {
+      "id": "assurance.baseline.commit-command",
+      "contract": "assurance",
+      "operation": "baseline",
+      "subject": "commit-command",
+      "kind": "behavior",
+      "statement": "`contextful eval commit` appends each draft an `--approve <id>=<reviewer>` names, redacted under the declaration's removal rules, to the named case file; an id the file already holds refuses the commit.",
+      "why": "",
+      "file": "spec/81-engineering.md",
+      "line": 382
     },
     {
       "id": "assurance.baseline.held-out",
@@ -24219,7 +24252,7 @@
       "statement": "Retrieval and synthesis are tuned on no gate input.",
       "why": "",
       "file": "spec/81-engineering.md",
-      "line": 380
+      "line": 383
     },
     {
       "id": "assurance.baseline.rotation",
@@ -24230,7 +24263,7 @@
       "statement": "The native set rotates on a cadence, a sample of its truth is reviewed on each rotation, and a comparison across generations resolves through the pinned run stamp.",
       "why": "",
       "file": "spec/81-engineering.md",
-      "line": 381
+      "line": 384
     },
     {
       "id": "assurance.baseline.native-gate",
@@ -24241,7 +24274,18 @@
       "statement": "A native benchmark generated from a real corpus is the red or green gate; public benchmark sets run beside it as held-out comparison and decide nothing.",
       "why": "",
       "file": "spec/81-engineering.md",
-      "line": 382
+      "line": 385
+    },
+    {
+      "id": "assurance.baseline.public-corpora",
+      "contract": "assurance",
+      "operation": "baseline",
+      "subject": "public-corpora",
+      "kind": "refusal",
+      "statement": "A public benchmark corpus enters through a fetch-manifest entry naming its URL, its dataset's terms and a SHA-256 digest, and is never committed; fetched bytes under another digest raise `PublicCorpusDigestMismatch`.",
+      "why": "because a corpus whose bytes drift scores another benchmark under the same name",
+      "file": "spec/81-engineering.md",
+      "line": 386
     },
     {
       "id": "assurance.baseline.trace-export",
@@ -24252,7 +24296,7 @@
       "statement": "A run touching a deployed store with a hosted trace endpoint configured raises `TraceExportOutOfPerimeter`; hosted collection serves runs over public or synthetic fixtures alone.",
       "why": "A-assurance",
       "file": "spec/81-engineering.md",
-      "line": 383
+      "line": 388
     },
     {
       "id": "assurance.measure.ledger",
@@ -24263,7 +24307,7 @@
       "statement": "`evals/ledger.toml` holds one entry per tracked target: an id, an owning clause id, a run-report metric path, a tier, a method naming one integration test, case set or probe, and a threshold.",
       "why": "",
       "file": "spec/81-engineering.md",
-      "line": 392
+      "line": 396
     },
     {
       "id": "assurance.measure.unresolved-entry",
@@ -24274,7 +24318,7 @@
       "statement": "An entry whose owning clause, method or metric path resolves to nothing raises `MeasureEntryUnresolved` before any measure runs.",
       "why": "P7",
       "file": "spec/81-engineering.md",
-      "line": 393,
+      "line": 397,
       "scenarios": [
         "WHEN an entry names `run.journal.entry-keys`, THEN the run raises `MeasureEntryUnresolved` and no test runs."
       ]
@@ -24288,7 +24332,7 @@
       "statement": "An entry naming an issue in place of a method reports open and gates nothing, and `evals/ledger.md` carries every entry's computed status.",
       "why": "",
       "file": "spec/81-engineering.md",
-      "line": 395,
+      "line": 399,
       "scenarios": [
         "WHEN an entry's method is `{ issue = 43 }`, THEN `evals/ledger.md` lists it open and the evaluate stage ignores it."
       ]
@@ -24302,7 +24346,18 @@
       "statement": "A gate-tier entry decides the evaluate stage, a trend-tier entry is measured on the default-branch run and decides nothing, and a scheduled-tier entry runs on the scheduled job alone.",
       "why": "",
       "file": "spec/81-engineering.md",
-      "line": 396
+      "line": 400
+    },
+    {
+      "id": "assurance.measure.judged-tier",
+      "contract": "assurance",
+      "operation": "measure",
+      "subject": "judged-tier",
+      "kind": "behavior",
+      "statement": "An entry whose metric names a judged figure is scheduled-tier; on another tier it resolves to nothing under {{assurance.measure.unresolved-entry}}.",
+      "why": "because a judged figure costs a model call per item and moves with the judge, not with the change",
+      "file": "spec/81-engineering.md",
+      "line": 401
     },
     {
       "id": "assurance.measure.count-first",
@@ -24313,7 +24368,7 @@
       "statement": "A gate-tier entry measures a count, a ratio within one run or a size under a locked resolve; a wall-clock or resident-memory figure is trend-tier.",
       "why": "because a shared container moves wall-clock figures past any band narrow enough to catch a regression",
       "file": "spec/81-engineering.md",
-      "line": 397
+      "line": 403
     },
     {
       "id": "assurance.measure.record",
@@ -24324,7 +24379,7 @@
       "statement": "A measure writes one JSON record carrying its entry id, value, sample count, seed and run stamp; a gate-tier method finishing without one raises `MeasureRecordMissing`.",
       "why": "P7",
       "file": "spec/81-engineering.md",
-      "line": 399
+      "line": 405
     },
     {
       "id": "assurance.measure.seeded",
@@ -24335,7 +24390,7 @@
       "statement": "Every generated fixture and randomized schedule derives from the record's seed, and replaying that seed reproduces a count-valued entry's value.",
       "why": "because a failure that cannot replay cannot be fixed",
       "file": "spec/81-engineering.md",
-      "line": 401
+      "line": 407
     },
     {
       "id": "assurance.measure.seed-mismatch",
@@ -24346,7 +24401,7 @@
       "statement": "A gate or scheduled record whose seed differs from its entry's declared seed raises `MeasureSeedMismatch` and counts as red; a trend mismatch leaves no comparable record.",
       "why": "because a figure measured under another seed replays nothing the ledger names",
       "file": "spec/81-engineering.md",
-      "line": 403
+      "line": 409
     },
     {
       "id": "assurance.measure.timing-iterations",
@@ -24357,7 +24412,7 @@
       "statement": "A timed batch reports p50 and p95 over 200 repeats of its operation, each after warm-up.",
       "why": "",
       "file": "spec/81-engineering.md",
-      "line": 405
+      "line": 411
     },
     {
       "id": "assurance.measure.timing-batches",
@@ -24368,7 +24423,7 @@
       "statement": "A timed figure is the median of 5 repeats of its timed batch.",
       "why": "",
       "file": "spec/81-engineering.md",
-      "line": 406
+      "line": 412
     },
     {
       "id": "assurance.measure.trend-direction",
@@ -24379,7 +24434,7 @@
       "statement": "Each trend-tier ledger entry declares `higher_is_better` or `lower_is_better` for its metric.",
       "why": "A-assurance",
       "file": "spec/81-engineering.md",
-      "line": 407
+      "line": 413
     },
     {
       "id": "assurance.measure.trend-baseline",
@@ -24390,7 +24445,7 @@
       "statement": "A trend figure compares with the newest earlier successful default-branch report for the same entry and seed under {{assurance.measure.runner-stamp}}; absent matching history yields no annotation.",
       "why": "A-assurance",
       "file": "spec/81-engineering.md",
-      "line": 409,
+      "line": 415,
       "scenarios": [
         "WHEN a newer failed report follows two successful matches, THEN the trend compares with the newer successful match and the stage passes."
       ]
@@ -24404,7 +24459,7 @@
       "statement": "A trend figure more than 25 percent worse than its baseline annotates the run report and fails no stage.",
       "why": "",
       "file": "spec/81-engineering.md",
-      "line": 411,
+      "line": 417,
       "scenarios": [
         "WHEN a trend p95 moves from 40 ms to 52 ms on a matching runner stamp, THEN the report carries a +30 percent annotation and the stage passes."
       ]
@@ -24418,7 +24473,7 @@
       "statement": "The run block carries the runner's processor model, processor count and memory limit, and a trend figure compares only against a baseline with the same stamp.",
       "why": "",
       "file": "spec/81-engineering.md",
-      "line": 412
+      "line": 418
     },
     {
       "id": "assurance.measure.absolute-threshold",
@@ -24429,7 +24484,7 @@
       "statement": "A threshold is an absolute figure of this system's own measure, and it tightens only through {{assurance.baseline.raise-only}}.",
       "why": "",
       "file": "spec/81-engineering.md",
-      "line": 413
+      "line": 419
     },
     {
       "id": "assurance.measure.history",
@@ -24440,7 +24495,7 @@
       "statement": "A run on the default branch attaches its run report to the measured commit under `refs/notes/measures`, and no verdict reads a note.",
       "why": "A-assurance",
       "file": "spec/81-engineering.md",
-      "line": 414
+      "line": 420
     },
     {
       "id": "assurance.measure.scheduled",
@@ -24451,7 +24506,7 @@
       "statement": "The FlareDispatch nightly run executes every tier against the default-branch head and reports one check per run.",
       "why": "",
       "file": "spec/81-engineering.md",
-      "line": 416
+      "line": 422
     },
     {
       "id": "assurance.measure.measured-basis",
@@ -24462,7 +24517,7 @@
       "statement": "A bound with a measured basis names a trend-tier or scheduled-tier ledger entry id as its benchmark.",
       "why": "",
       "file": "spec/81-engineering.md",
-      "line": 417
+      "line": 423
     },
     {
       "id": "assurance.release.version",
@@ -24473,7 +24528,7 @@
       "statement": "A release tag is `v0.<closed>.<patch>`: `<closed>` counts the milestones computing `closed` in the tagged commit's `spec/status.md`, and `<patch>` counts the existing tags `v0.<closed>.*`.",
       "why": "A-assurance",
       "file": "spec/81-engineering.md",
-      "line": 447,
+      "line": 453,
       "scenarios": [
         "WHEN milestones 0 to 7 and 11 compute `closed` and `v0.9.0` exists, THEN the computed version is `v0.9.1`."
       ]
@@ -24487,7 +24542,7 @@
       "statement": "`contextful-ci tag` creates a signed annotated tag on `HEAD` naming the closed milestones once every refusal of this operation clears, and never moves or replaces an existing tag.",
       "why": "A-assurance",
       "file": "spec/81-engineering.md",
-      "line": 449
+      "line": 455
     },
     {
       "id": "assurance.release.dirty-tree",
@@ -24498,7 +24553,7 @@
       "statement": "A working tree or index differing from `HEAD` raises `TagTreeDirty`.",
       "why": "because the gate then judges files the tagged commit does not hold",
       "file": "spec/81-engineering.md",
-      "line": 451
+      "line": 457
     },
     {
       "id": "assurance.release.off-branch",
@@ -24509,7 +24564,7 @@
       "statement": "A `HEAD` unreachable from the default branch, `origin/HEAD` unless `--branch` names another, raises `TagOffDefaultBranch`.",
       "why": "A-assurance",
       "file": "spec/81-engineering.md",
-      "line": 453
+      "line": 459
     },
     {
       "id": "assurance.release.version-regressed",
@@ -24520,7 +24575,7 @@
       "statement": "A computed version below the highest existing `v<major>.<minor>.<patch>` tag raises `TagVersionRegressed`, naming both.",
       "why": "A-assurance",
       "file": "spec/81-engineering.md",
-      "line": 455,
+      "line": 461,
       "scenarios": [
         "WHEN milestone 11 reopens after `v0.9.0`, THEN the computed `v0.8.0` raises `TagVersionRegressed`."
       ]
@@ -24534,7 +24589,7 @@
       "statement": "A `[workspace.package]` version in `HEAD`'s `Cargo.toml` that is absent or differs from the computed version raises `TagWorkspaceVersionMismatch`, naming both.",
       "why": "A-assurance",
       "file": "spec/81-engineering.md",
-      "line": 457
+      "line": 463
     },
     {
       "id": "assurance.release.gate-failed",
@@ -24545,7 +24600,7 @@
       "statement": "Once the other refusals clear, every gate stage runs against `HEAD` with `HEAD~1` as base; a failing stage raises `TagGateFailed`, naming the stage's refusal, and no tag is created.",
       "why": "A-assurance",
       "file": "spec/81-engineering.md",
-      "line": 459
+      "line": 465
     },
     {
       "id": "assurance.release.release-run",
@@ -24556,7 +24611,7 @@
       "statement": "A `v*` tag at a default-branch commit starts FlareDispatch `contextful-release`, with one `contextful-release-cell` child per {{assurance.build.targets}} matrix cell and one `contextful-release-formula` child for their metadata.",
       "why": "because distributed builds and formula generation share one tag identity",
       "file": "spec/81-engineering.md",
-      "line": 461
+      "line": 467
     },
     {
       "id": "assurance.release.release-dry-run",
@@ -24567,7 +24622,7 @@
       "statement": "A manual `contextful-release` dry run builds the release assets and publishes neither a GitHub release nor container images.",
       "why": "because a packaging rehearsal must not claim a released version",
       "file": "spec/81-engineering.md",
-      "line": 463
+      "line": 469
     }
   ],
   "owns": {
@@ -26414,6 +26469,10 @@
       "authority.redact.write-time"
     ],
     [
+      "assurance.measure.judged-tier",
+      "assurance.measure.unresolved-entry"
+    ],
+    [
       "assurance.measure.trend-baseline",
       "assurance.measure.runner-stamp"
     ],
@@ -26949,6 +27008,10 @@
           "ProtocolInvariantViolated": {
             "clause": "assurance.model.protocol-check",
             "gloss": "A state the bounded check reaches breaks a protocol invariant."
+          },
+          "PublicCorpusDigestMismatch": {
+            "clause": "assurance.baseline.public-corpora",
+            "gloss": "Fetched public benchmark bytes whose SHA-256 digest differs from the fetch manifest's."
           },
           "RecheckEnvironmentCredentialed": {
             "clause": "assurance.recheck.credential-free",

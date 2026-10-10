@@ -7,6 +7,8 @@ mod convert;
 mod custody;
 mod embed;
 mod floors;
+mod golden;
+mod judge;
 mod ledger;
 mod metrics;
 mod record;

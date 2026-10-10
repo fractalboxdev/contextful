@@ -68,6 +68,7 @@ BaselinePathUnresolved           = { clause = "assurance.baseline.unresolvable-p
 BaselineRunStampMismatch         = { clause = "assurance.baseline.run-stamp-drift", gloss = "A baseline run block differing from the run's configuration." }
 GoldenSetIngested                = { clause = "assurance.baseline.answer-key-in-the-store", gloss = "A golden set reaching the store it measures." }
 GoldenRedactionFailed            = { clause = "assurance.baseline.generated-redaction", gloss = "A generated golden the write-time redaction pass cannot clear." }
+PublicCorpusDigestMismatch       = { clause = "assurance.baseline.public-corpora", gloss = "Fetched public benchmark bytes whose SHA-256 digest differs from the fetch manifest's." }
 TraceExportOutOfPerimeter        = { clause = "assurance.baseline.trace-export", gloss = "A hosted trace endpoint configured for a run touching a deployed store." }
 MeasureEntryUnresolved           = { clause = "assurance.measure.unresolved-entry", gloss = "A ledger entry naming no clause, method or metric path." }
 MeasureRecordMissing             = { clause = "assurance.measure.record", gloss = "A gate-tier method finishing without writing its record." }
