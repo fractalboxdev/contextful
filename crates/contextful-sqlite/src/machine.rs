@@ -1,11 +1,12 @@
 //! `machine.sqlite` behind the `Catalog` port: lease rows, each scope's cursor row and
-//! pending owner, and run rows. Plain catalogs use SQLite's write lock; sealed catalogs
+//! pending owner, backfill chunk rows, and run rows. Plain catalogs use SQLite's write lock; sealed catalogs
 //! lock the snapshot across in-memory transactions. Either lock serializes conditional
 //! updates across connections on the machine (`topology.coordinate.backends`).
 
 use crate::{open, sealed::SealedFile, storage};
 use contextful_core::coordinate::{Cas, Catalog, CursorRow, Lease, LeaseKey, LeaseRow};
 use contextful_core::ports::Clock;
+use contextful_core::run::backfill::ChunkRow;
 use contextful_core::run::own::{ExecutionOwner, OwnerScope};
 use contextful_core::run::record::RunRow;
 use contextful_core::run::{Failure, RunError};
@@ -42,6 +43,14 @@ CREATE TABLE IF NOT EXISTS run (
     run_id      TEXT PRIMARY KEY,
     pipeline_id TEXT NOT NULL,
     row         TEXT NOT NULL
+);
+CREATE TABLE IF NOT EXISTS chunk (
+    pipeline_id TEXT NOT NULL,
+    tbl         TEXT NOT NULL,
+    part        TEXT NOT NULL,
+    ordinal     INTEGER NOT NULL,
+    row         TEXT NOT NULL,
+    PRIMARY KEY (pipeline_id, tbl, part)
 );
 CREATE INDEX IF NOT EXISTS run_by_pipeline ON run (pipeline_id);
 CREATE INDEX IF NOT EXISTS run_by_host_scope ON run (json_extract(row, '$.host_scope'))
@@ -248,6 +257,36 @@ fn fenced(tx: &Transaction, scope: &OwnerScope, fence: Option<&Lease>, fail: Fai
     }))
 }
 
+/// Clear the pending owner of `at` while it holds `execution_id`.
+fn retire_owner(tx: &Transaction, at: &OwnerScope, execution_id: &str, fail: Fail) -> Result<(), Failure> {
+    if scope(tx, at, fail)?.1.is_some_and(|o| o.execution_id == execution_id) {
+        let [p, t, k, c] = key(at);
+        tx.execute(&format!("UPDATE scope SET owner = NULL WHERE {WHERE_KEY}"), params![p, t, k, c]).map_err(|e| fail(&e))?;
+    }
+    Ok(())
+}
+
+/// The plan row of a chunk scope; `None` for any other scope or an unplanned chunk.
+fn chunk_row(tx: &Transaction, at: &OwnerScope, fail: Fail) -> Result<Option<ChunkRow>, Failure> {
+    let OwnerScope::Chunk { pipeline_id, table, chunk } = at else { return Ok(None) };
+    let text = tx
+        .query_row("SELECT row FROM chunk WHERE pipeline_id = ?1 AND tbl = ?2 AND part = ?3", params![pipeline_id, table, chunk], |r| r.get::<_, String>(0))
+        .optional()
+        .map_err(|e| fail(&e))?;
+    text.map(|t| from_text(&t, fail)).transpose()
+}
+
+fn put_chunk_row(tx: &Transaction, row: &ChunkRow, fail: Fail) -> Result<(), Failure> {
+    let text = to_text(row, fail)?;
+    tx.execute(
+        "INSERT INTO chunk (pipeline_id, tbl, part, ordinal, row) VALUES (?1, ?2, ?3, ?4, ?5)
+         ON CONFLICT (pipeline_id, tbl, part) DO UPDATE SET ordinal = excluded.ordinal, row = excluded.row",
+        params![row.pipeline_id, row.table, row.chunk, row.ordinal, text],
+    )
+    .map_err(|e| fail(&e))?;
+    Ok(())
+}
+
 fn run_row(tx: &Transaction, run_id: &str, fail: Fail) -> Result<Option<RunRow>, Failure> {
     let text = tx
         .query_row("SELECT row FROM run WHERE run_id = ?1", params![run_id], |r| r.get::<_, String>(0))
@@ -354,12 +393,45 @@ impl Catalog for MachineCatalog {
                 if swap_cursor(tx, at, expected, next, fail)? == Cas::VersionMoved {
                     return Ok(Cas::VersionMoved);
                 }
+                if let Some(mut row) = chunk_row(tx, at, fail)? {
+                    row.complete(self.clock.now());
+                    put_chunk_row(tx, &row, fail)?;
+                }
             }
-            if scope(tx, at, fail)?.1.is_some_and(|o| o.execution_id == execution_id) {
-                let [p, t, k, c] = key(at);
-                tx.execute(&format!("UPDATE scope SET owner = NULL WHERE {WHERE_KEY}"), params![p, t, k, c]).map_err(|e| fail(&e))?;
-            }
+            retire_owner(tx, at, execution_id, fail)?;
             Ok(Cas::Applied)
+        })
+    }
+
+    fn chunk_at(&self, at: &OwnerScope) -> Result<Option<ChunkRow>, Failure> {
+        self.with(false, |tx, fail| chunk_row(tx, at, fail))
+    }
+
+    fn chunks(&self, pipeline_id: &str, table: &str) -> Result<Vec<ChunkRow>, Failure> {
+        self.with(false, |tx, fail| {
+            let mut stmt = tx.prepare("SELECT row FROM chunk WHERE pipeline_id = ?1 AND tbl = ?2 ORDER BY ordinal, part").map_err(|e| fail(&e))?;
+            let texts = stmt
+                .query_map(params![pipeline_id, table], |r| r.get::<_, String>(0))
+                .map_err(|e| fail(&e))?
+                .collect::<Result<Vec<_>, _>>()
+                .map_err(|e| fail(&e))?;
+            texts.iter().map(|t| from_text(t, fail)).collect()
+        })
+    }
+
+    fn put_chunk(&self, row: &ChunkRow) -> Result<(), Failure> {
+        self.with(true, |tx, fail| put_chunk_row(tx, row, fail))
+    }
+
+    fn update_chunk(&self, at: &OwnerScope, retire: Option<&str>, f: &mut dyn FnMut(&mut ChunkRow)) -> Result<Option<ChunkRow>, Failure> {
+        self.with(true, |tx, fail| {
+            let Some(mut row) = chunk_row(tx, at, fail)? else { return Ok(None) };
+            f(&mut row);
+            put_chunk_row(tx, &row, fail)?;
+            if let Some(execution_id) = retire {
+                retire_owner(tx, at, execution_id, fail)?;
+            }
+            Ok(Some(row))
         })
     }
 

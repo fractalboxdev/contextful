@@ -7,6 +7,9 @@ use crate::time::Instant;
 use serde::{Deserialize, Serialize};
 use std::collections::BTreeMap;
 
+/// The suffix naming a table's seeding scope.
+pub const SEED_SUFFIX: &str = "#seed";
+
 /// What an execution owner is keyed on (`run.own.execution-owner`, `run.own.host-scope`).
 ///
 /// A table scope serializes as the `pipeline_id` and `table` fields an owner row carries,
@@ -34,6 +37,15 @@ impl OwnerScope {
     pub fn host(id: &str) -> OwnerScope {
         OwnerScope::Host { host_scope: id.to_string() }
     }
+
+    /// The seeding scope of a table: `<table>#seed`, apart from the live table's, so a
+    /// seed's owner pins its own source identity and its cursor stays its own
+    /// (`run.seed.scope`, `run.own.scope-independence`). A seed's chunks key on the same
+    /// table segment.
+    pub fn seed(pipeline_id: &str, table: &str) -> OwnerScope {
+        OwnerScope::table(pipeline_id, &format!("{table}{SEED_SUFFIX}"))
+    }
+
 
     /// The pipeline and table a table or chunk scope names; `None` for a host scope.
     pub fn pipeline_table(&self) -> Option<(&str, &str)> {

@@ -6,7 +6,7 @@
 //! <root>/catalog.lock
 //! <root>/runs/<run_id>.json                  one run row
 //! <root>/scopes/<pipeline>/<table>.json      a live table's cursor row and pending owner
-//! <root>/scopes/<pipeline>/%chunk/<table>/<chunk>.json   a backfill chunk's
+//! <root>/scopes/<pipeline>/%chunk/<table>/<chunk>.json   a backfill chunk's, beside its plan row
 //! <root>/scopes/%host/<scope>.json           a host scope's
 //! <root>/leases/<key>.json                   one lease row
 //! ```
@@ -14,6 +14,7 @@
 use crate::fsutil::{read_json, replace, to_json, FileLock};
 use contextful_core::coordinate::{Cas, Catalog, CursorRow, Lease, LeaseKey, LeaseRow};
 use contextful_core::ports::Clock;
+use contextful_core::run::backfill::ChunkRow;
 use contextful_core::run::own::{ExecutionOwner, OwnerScope};
 use contextful_core::run::record::RunRow;
 use contextful_core::run::{Failure, RunError};
@@ -33,6 +34,9 @@ struct ScopeRow {
     cursor: CursorRow,
     #[serde(default)]
     owner: Option<ExecutionOwner>,
+    /// A chunk scope's plan row; a table or host scope's file carries none.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    chunk: Option<ChunkRow>,
 }
 
 /// The single-node catalog backend behind the `Catalog` port.
@@ -182,12 +186,62 @@ impl Catalog for LocalCatalog {
                 return Ok(Cas::VersionMoved);
             }
             scope.cursor = CursorRow { version: expected + 1, ..next };
+            if let Some(chunk) = &mut scope.chunk {
+                chunk.complete(self.clock.now());
+            }
         }
         if scope.owner.as_ref().is_some_and(|o| o.execution_id == execution_id) {
             scope.owner = None;
         }
         replace(&self.scope_path(at), &to_json(&scope)?)?;
         Ok(Cas::Applied)
+    }
+
+    fn chunk_at(&self, scope: &OwnerScope) -> Result<Option<ChunkRow>, Failure> {
+        Ok(self.scope(scope)?.chunk)
+    }
+
+    fn chunks(&self, pipeline_id: &str, table: &str) -> Result<Vec<ChunkRow>, Failure> {
+        let dir = self.root.join("scopes").join(segment(pipeline_id)).join("%chunk").join(segment(table));
+        let entries = match std::fs::read_dir(&dir) {
+            Ok(e) => e,
+            Err(e) if e.kind() == std::io::ErrorKind::NotFound => return Ok(Vec::new()),
+            Err(e) => return Err(crate::fsutil::storage(&dir, e)),
+        };
+        let mut rows = Vec::new();
+        for entry in entries {
+            let path = entry.map_err(|e| crate::fsutil::storage(&dir, e))?.path();
+            if path.extension().is_some_and(|x| x == "json") && !path.file_name().is_some_and(|n| n.to_string_lossy().starts_with('.')) {
+                if let Some(chunk) = read_json::<ScopeRow>(&path)?.and_then(|s| s.chunk) {
+                    rows.push(chunk);
+                }
+            }
+        }
+        rows.sort_by(|a, b| (a.ordinal, &a.chunk).cmp(&(b.ordinal, &b.chunk)));
+        Ok(rows)
+    }
+
+    fn put_chunk(&self, row: &ChunkRow) -> Result<(), Failure> {
+        let _lock = self.lock()?;
+        let at = row.scope();
+        let mut scope = self.scope(&at)?;
+        scope.chunk = Some(row.clone());
+        replace(&self.scope_path(&at), &to_json(&scope)?)
+    }
+
+    fn update_chunk(&self, at: &OwnerScope, retire: Option<&str>, f: &mut dyn FnMut(&mut ChunkRow)) -> Result<Option<ChunkRow>, Failure> {
+        let _lock = self.lock()?;
+        let mut scope = self.scope(at)?;
+        let Some(chunk) = &mut scope.chunk else { return Ok(None) };
+        f(chunk);
+        let updated = chunk.clone();
+        if let Some(execution_id) = retire {
+            if scope.owner.as_ref().is_some_and(|o| o.execution_id == execution_id) {
+                scope.owner = None;
+            }
+        }
+        replace(&self.scope_path(at), &to_json(&scope)?)?;
+        Ok(Some(updated))
     }
 
     fn put_run(&self, row: &RunRow) -> Result<(), Failure> {

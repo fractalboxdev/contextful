@@ -1,5 +1,6 @@
 //! The engine's one integration binary, one module per operation.
 
+mod backfill;
 mod cancel;
 #[cfg(unix)]
 mod command;

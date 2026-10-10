@@ -219,6 +219,9 @@ pub enum RunError {
     /// The replacing write mode beside a windowed or chunked load. (`run.declare.replace-unsupported`)
     #[error("PipelineReplaceUnsupported: {0}")]
     PipelineReplaceUnsupported(String),
+    /// An inverted, empty or scale-incomparable rewind window. (`run.backfill.rewind-invalid`)
+    #[error("PipelineRewindWindowInvalid: {0}")]
+    PipelineRewindWindowInvalid(String),
     /// A seeded stamp at or past the ceiling. (`run.seed.ceiling-breached`)
     #[error("PipelineSeedCeilingBreached: {0}")]
     PipelineSeedCeilingBreached(String),
