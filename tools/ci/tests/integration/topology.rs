@@ -1037,6 +1037,7 @@ fn the_execution_core_holds_the_journal_scheduler_and_awakeables_and_no_store() 
         assert!(holds(path), "no {part} at crates/{path}");
     }
     let engine = reaches("contextful-engine");
+    assert!(!engine.is_empty(), "the execution core reaches no package");
     for store in ["contextful-context", "contextful-sync", "duckdb", "parquet", "arrow", "tantivy", "contextful-memory"] {
         assert!(!engine.iter().any(|n| n == store), "the execution core reaches `{store}`");
     }
@@ -1072,6 +1073,7 @@ fn the_enforcement_stack_has_a_run_path_half_and_a_read_path_half() {
 #[test]
 fn the_enforcement_package_reaches_no_retrieval_memory_or_inference_package() {
     let policy = reaches("contextful-policy");
+    assert!(!policy.is_empty(), "enforcement reaches no package");
     for content in ["contextful-context", "contextful-memory", "contextful-outbound", "contextful-agent", "contextful-engine", "duckdb", "tantivy"] {
         assert!(!policy.iter().any(|n| n == content), "enforcement reaches `{content}`");
     }
@@ -1096,6 +1098,7 @@ fn no_profile_links_a_queue_cache_consensus_or_coordination_client() {
     ];
     for profile in ["contextful-edge", "contextful-full", "contextful-control"] {
         let graph = profile_graph(profile);
+        assert!(!graph.is_empty(), "`{profile}` links no package");
         for client in OUTSIDE {
             assert!(!graph.iter().any(|n| n == client), "`{profile}` links `{client}`");
         }
