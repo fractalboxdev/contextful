@@ -1406,7 +1406,7 @@
       "statement": "The edge profile links the columnar interchange crates whole, as the full profile does; no slimmed interchange build exists.",
       "why": "because a slimmed build forks the format code an edge replica reads with from the code the full profile writes with",
       "file": "spec/01-topology.md",
-      "line": 132
+      "line": 140
     },
     {
       "id": "topology.deploy.unsupported-shape",
@@ -1703,7 +1703,7 @@
       "statement": "Clustered availability behind the `Catalog` port comes from Postgres alone; the tree ships no self-contained clustered catalog.",
       "why": "because a clustered catalog of its own rebuilds the replication Postgres provides, for the few operators who refuse to run Postgres",
       "file": "spec/01-topology.md",
-      "line": 300
+      "line": 308
     },
     {
       "id": "topology.bound-application.restated-case",
@@ -1714,7 +1714,7 @@
       "statement": "A case with neither a generated artifact nor a callable route stays with the application, which restates the engine rule at its site under {{assurance.structure-tree.mirror-exemption}}.",
       "why": "because a restatement naming its clause id surfaces when the rule changes, and an adapter for one case costs more than it guards",
       "file": "spec/01-topology.md",
-      "line": 346
+      "line": 354
     },
     {
       "id": "store.lay-out.components",
