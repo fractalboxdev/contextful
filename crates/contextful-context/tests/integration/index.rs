@@ -142,8 +142,9 @@ fn a_binary_or_vector_partition_column_is_refused() {
 }
 
 #[cfg(feature = "read")]
-/// A tenant value is written and compared byte for byte, with no trimming, case folding or Unicode normalization; a percent-escaped directory name is representation alone.
-// spec: store.index.tenant-verbatim@4f788f5f
+/// Land checks a tenant value against no canonical form; it is written and compared byte for byte, with no
+/// trimming, case folding or Unicode normalization, and a percent-escaped directory name is representation alone.
+// spec: store.index.tenant-verbatim@aed0fdd9
 #[test]
 fn a_tenant_value_is_kept_byte_for_byte() {
     let f = Fixture::new();
@@ -152,6 +153,9 @@ fn a_tenant_value_is_kept_byte_for_byte() {
     let tenants = ["caf\u{e9}", "cafe\u{301}", " acme", "ACME", "a/b"];
     let rows: Vec<_> = tenants.iter().enumerate().map(|(i, t)| json!({"tenant": t, "e": i})).collect();
     f.land(&d, "run-1", json!(rows), "2030-01-01T00:00:00Z").unwrap();
+    // Land refuses none and rewrites none.
+    let landed = f.query(&d, Bounds::default(), "SELECT tenant FROM t ORDER BY e");
+    assert_eq!(landed, tenants.iter().map(|t| vec![s(t)]).collect::<Vec<_>>());
     fold(&f.store, &d, at("2030-01-01T01:00:00Z")).unwrap();
     assert_eq!(f.scan(&d, Bounds::default()).unwrap().files.len(), 5);
     let read = f.query(&d, Bounds::default(), "SELECT tenant FROM t ORDER BY e");

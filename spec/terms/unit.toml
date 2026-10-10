@@ -39,6 +39,7 @@ cases     = { gloss = "evaluation cases" }
 resamples = { gloss = "bootstrap resamples" }
 repeats   = { gloss = "repeated measurement samples" }
 nodes    = { gloss = "graph nodes" }
+extensions = { gloss = "in-place extensions of a sidecar graph" }
 runs     = { gloss = "committed runs" }
 units    = { gloss = "dispatched units of scheduled work" }
 times    = { gloss = "multiples of a stated base quantity" }

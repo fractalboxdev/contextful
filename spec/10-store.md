@@ -104,6 +104,10 @@ The directory tree, run and snapshot manifests, the table pointer, the two catal
 - `table-pointer` — `tables/<t>/_pointer.json` names the table's current snapshot and the fence that published it. A snapshot is readable only when the pointer or a chain of `parent` links from it reaches it.
   *A-store*
 - `manifest-default` — A field added to a manifest carries a default value.
+- `format-version` — A run or snapshot manifest carries `format_version` as `<major>.<minor>`, `1.0` for this layout; one without it reads as `1.0`, and a newer minor parses as this build's.
+  *A-store*
+- `format-newer` — A run or snapshot manifest whose `format_version` major exceeds this build's raises `StoreManifestFormatNewer`, naming the file and both versions, and the table answers no read until a newer build reads it.
+  *A-store*
 - `manifest-unreadable` — A run manifest or a reachable snapshot manifest that fails to parse raises `StoreManifestUnreadable`, naming the table and the file, and the table answers no read until it parses.
   *P4*
 - `schema-file` — A table's schema is `schema.json` in Arrow JSON form; each arriving batch's schema merges into it and the merged result replaces it.
@@ -131,8 +135,6 @@ The directory tree, run and snapshot manifests, the table pointer, the two catal
 - `node-id-local` — A machine with no writable state directory takes the reserved node id `local`.
 
 unsettled: Does a store re-bind the node id it last derived, so runs landed before its root moved, or under the bare host id an earlier build used, push without `CONTEXTFUL_NODE_ID`? owner: store affects: store.lay-out
-
-unsettled: How does a consumer discover the format version of a run or snapshot manifest, and what does it do with a version newer than it parses? owner: store affects: store.lay-out
 
 ## init
 
@@ -364,8 +366,16 @@ Sidecar index kinds and identity, clustering, partitioning and the tenant partit
 - `paths` — A vector sidecar sits at `indexes/vec-<col>-<model>/zone=<label>/` and a full-text sidecar at `indexes/fts-<col>-<tokenizer>/`, inside the snapshot directory it indexes.
 - `path-collision` — Two sidecar declarations of one table resolving to one path under {{store.index.paths}} raise `StoreIndexPathCollision`, naming both, at manifest validation and before the fold builds either.
   *because a second build overwrites the first sidecar's files, and the manifest then records an entry no reader opens*
-- `identity` — A sidecar's identity is `(column, builder, builder-version)`; two builders over one column coexist, the caller picks at query time, and `derived.sqlite` records each builder.
-- `rebuild` — Swapping a builder rebuilds the sidecar, leaves the Parquet untouched, and callers on the existing identity read through the cutover.
+- `identity` — A sidecar's identity is its one path under {{store.index.paths}}; `derived.sqlite` records the builder and builder version of each sidecar a reachable snapshot holds.
+  *A-store*
+- `rebuild` — A pass over a table whose current sidecar records another builder or builder version than this build's rebuilds it in full into a new snapshot of unchanged rows; readers keep the prior snapshot until the pointer moves.
+  *A-store*
+- `graph-format` — The vector graph's byte layout is no committed format: a reader opens a sidecar only under its own builder and builder version, and any other meets {{read.retrieve.sidecar-falls-back}}.
+  *A-store*
+- `graph-extensions` — A vector entry records `extensions`, the passes since its last full build that extended its graph in place; a pass finding 16 extensions rebuilds the graph in full and records 0.
+  *A-store*
+- `filter-copies` — A sidecar copies no row value besides its `id_column` and indexed column, save the tenant column and zone label a filtered traversal reads; every other filter applies at {{store.index.candidate-ids}}.
+  *A-store*
 - `not-in-file-set` — `indexes/` joins no table's file set; a snapshot reader lists only the parts its manifest names.
 - `dies-with-snapshot` — Collecting a snapshot collects its sidecars in the same step.
 - `candidate-ids` — A sidecar yields candidate `id_column` values, not rows; they re-join through the enforced relation on that column before a top-K is final.
@@ -391,13 +401,8 @@ Sidecar index kinds and identity, clustering, partitioning and the tenant partit
 - `partition-warnings` — Planning warns, naming the column, where a partition specification projects more than 1000 partitions or a median partition below 16 MiB.
 - `tenant-outermost` — A multi-tenant table carries the tenant identifier as its outermost partition column.
   *because a dropped tenant predicate then reads nothing instead of every tenant*
-- `tenant-verbatim` — A tenant value is written and compared byte for byte, with no trimming, case folding or Unicode normalization; a percent-escaped directory name is representation alone.
-
-unsettled: Is the on-disk vector graph format stable enough to commit to, and how many incremental extensions precede a full rebuild? owner: store affects: store.index
-
-unsettled: Is a tenant partition value validated against a canonical form, given the build rewrites nothing? owner: store affects: store.index
-
-unsettled: Which filter columns may a sidecar copy for filtered traversal, given a copy sits outside the enforced relation? owner: store affects: store.index
+- `tenant-verbatim` — Land checks a tenant value against no canonical form; it is written and compared byte for byte, with no trimming, case folding or Unicode normalization, and a percent-escaped directory name is representation alone.
+  *A-store*
 
 unsettled: What resident bound replaces the stored-vector cap for a memory-mapped plaintext sidecar, and what counts toward it? owner: store affects: read.retrieve
 
@@ -424,9 +429,9 @@ The two clocks a row carries, the parameter bounding each, and what a bounded re
 - `beneath-enforcement` — Both bounds apply beneath the row predicate, the column mask and the tenant filter, narrowing what enforcement admits and widening nothing.
   *P5*
 - `covering-versions` — Over an unkeyed table a valid-time bound returns every version whose interval covers the instant.
+- `interval-rows` — A key valid over several intervals holds one row per interval: a keyed table declaring `valid_time` dedupes on its primary key and `from`, so a fold keeps every interval.
+  *A-store*
 - `echo` — A bounded read echoes `contextful.bounds` as `{as_of?, valid_as_of?, inclusive}`, each instant in RFC 3339 UTC with nine fractional digits and a `Z` suffix; an unbounded read omits it.
-
-unsettled: How is a set of validity intervals for one key modelled, given one pair of columns holds one interval? owner: store affects: store.bound-time
 
 ## encrypt
 
@@ -578,6 +583,8 @@ Fetching a bucket into a store: the digest diff, the parallel download, and the 
 - `convergence` — When a named key disappears mid-download, the pull re-fetches the manifest and retries the shortfall, up to 3 attempts.
 - `unconverged` — Exhausting those retries raises `SyncPullDidNotConverge`, naming the key that kept moving, and writes no pointer.
   *P4*
+- `unconverged-resume` — A pull refused by {{store.pull.unconverged}} keeps each object it verified, so the next `sync pull` downloads only the keys still differing; no pull retries past its attempts.
+  *A-store*
 - `pointer-last` — A pull writes a table's pointer only after every Parquet part of the snapshot it names is home, so no reader meets a pointer ahead of its data.
   *A-store*
 - `tombstone-applied` — A pull deletes the local copy of each key a tombstone names and no entry lists.
@@ -628,8 +635,6 @@ sequenceDiagram
   P->>P: write table pointers after their objects
 ```
 
-unsettled: What recovers a pull whose retries are exhausted by pushes arriving faster than the re-fetch shrinks the shortfall? owner: store affects: store.pull
-
 #### Scenarios
 
 - `store.pull.control-head`: WHEN a cold node pulls a signed control head, THEN its local applied pointer stays absent until reconciliation verifies the head.
@@ -652,6 +657,10 @@ Reconciling one bucket manifest between writers: per-entry ownership, tombstones
 
 - `tombstone-owner` — A tombstone whose owner differs from the owner of the entry it names raises `SyncTombstoneForeign`, and the merge keeps the entry.
   *A-store*
+- `tombstone-signed` — A push signs each tombstone it writes with its node's issuer key, recording `signer` and `signature` over the key, owner and `deleted_at`; a node holding no issuer key writes it unsigned.
+  *A-store*
+- `tombstone-unverified` — A tombstone unsigned, failing its signature, or signed by a key the key-set ledger does not record as verifying at its `deleted_at` raises `SyncTombstoneUnverified`; a merge keeps the entry it names and a pull deletes nothing.
+  *A-store*
 - `tombstone-ttl` — A tombstone leaves the manifest 30 d after its `deleted_at`.
 - `retries` — `[sync] push_retries` bounds the re-commit loop, defaulting to 5 attempts.
 - `exhausted` — Exhausting those retries raises `SyncManifestRebaseExhausted`, reports every uploaded object as already in the bucket, and asks for a re-run.
@@ -662,8 +671,6 @@ Reconciling one bucket manifest between writers: per-entry ownership, tombstones
   *A-store*
 - `ownership` — A key's owner is read off the key: a run directory's node segment, a request-ledger file's node, a commit log's node directory, or a run state's node directory. Every other key is unowned and propagates no deletion.
   *A-store*
-
-unsettled: Which key signs a tombstone, given a node id carries no key material? owner: store affects: store.merge
 
 ## lease
 
@@ -711,12 +718,12 @@ A consuming replica of the bucket: the refresh diff, what it holds whole, what i
   *A-store*
 - `partial-parquet` — A replica holding a strict subset of a snapshot's Parquet raises `ReplicaPartialParquet` at refresh and leaves that snapshot unpublished.
   *A-store*
+- `descriptor` — A replica's pull writes `replica.json` beside `derived.sqlite`, naming per table the snapshot it holds and that snapshot's parts and sidecar paths present on disk; no push carries it.
+  *A-store*
 - `missing-index` — A query needing a sidecar or a partition the replica lacks raises `ReplicaMissingIndex`, naming the refresh that supplies it.
   *A-store*
 - `sensitive-refused` — A refresh requesting a replicate-off table raises `ReplicaSensitiveTable`; the consumer reads through the proxying face.
   *A-store*
-
-unsettled: Where does a replica advertise the sidecars and partitions it holds, a descriptor beside its catalog or a queryable central row? owner: store affects: store.replicate
 
 ## Shapes
 
@@ -792,12 +799,12 @@ A run manifest, a snapshot manifest and a table pointer, `lay_out::RunManifest`,
 
 ```json
 { "run_id": "run-4815", "table": "filings", "node_id": "ingest-a",
-  "parts": [{ "name": "part-00000.parquet", "key_version": 3 }],
+  "format_version": "1.0", "parts": [{ "name": "part-00000.parquet", "key_version": 3 }],
   "committed_at": "2025-03-15T15:58:00Z", "pipeline_id": "filings-sync",
   "cursor": { "field": "revised_at", "at": "2025-03-15T15:57:41Z" }, "fence": null }
 
 { "snapshot_id": "snapshot-01742054400000000000", "parent": "snapshot-01741968000000000000",
-  "table": "filings", "created_at": "2025-03-15T16:00:00Z",
+  "format_version": "1.0", "table": "filings", "created_at": "2025-03-15T16:00:00Z",
   "includes_runs": ["run-4812/ingest-a", "run-4813/ingest-a", "run-4814/ingest-b"],
   "primary_key": ["document_id", "page"], "order_by": "revised_at", "row_count": 128400,
   "valid_time": { "from": "effective_from", "to": "effective_to" }, "fence": 12,

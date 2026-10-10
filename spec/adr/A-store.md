@@ -268,3 +268,138 @@ Decision: the lattice adds `Struct`, `List` and `Map` with `Utf8` keys, recursiv
 | Struct fields fixed at first sight | Silent drops | A later field refuses or vanishes. |
 
 Consequences: a producer with an open key set declares `map<utf8, …>`, and only a union keeps a text form.
+
+## A manifest carries a format version whose major refuses
+
+**Status:** accepted
+
+Context: run and snapshot manifests gain fields under `store.lay-out.manifest-default`, and a reader meeting a layout it cannot interpret either refuses or reads it wrong. Criteria: a newer field never breaks an older reader; a changed meaning never reads silently; the version sits in the file it governs.
+
+Decision: each manifest carries `format_version` as `<major>.<minor>`. A minor adds defaulted fields an older build ignores; a major changes meaning, and a build reading a newer major refuses the table before parsing the rest.
+
+| Option | Lost on | Cost |
+| --- | --- | --- |
+| `format_version` in each manifest, major refuses *(chosen)* | — | Every manifest carries one more field, and a major bump strands older readers. |
+| One store-wide version file | Version in the governed file | A synced manifest arrives without the file that interprets it. |
+| No version; parse what parses | Silent misreading | A field whose meaning changed reads under the old meaning. |
+
+Consequences: a mixed fleet refuses a newer major by name instead of folding it.
+Revisit: a second major, which needs a migration path.
+
+## A sidecar's builder is recorded, not encoded in its path
+
+**Status:** accepted
+
+Context: `store.index.paths` fixes one sidecar per column and model or tokenizer, and the graph layout changes with its builder. Criteria: one path per declaration; no reader opens bytes another builder wrote; bounded drift from repeated extension.
+
+Decision: a sidecar's entry and `derived.sqlite` record its builder and builder version. The graph format stays uncommitted: a reader opens only its own builder's version and otherwise takes the exact scan. A pass whose current sidecar records another builder, or 16 in-place extensions, rebuilds it in full into a new snapshot.
+
+| Option | Lost on | Cost |
+| --- | --- | --- |
+| Builder recorded in the entry and the derived catalog *(chosen)* | — | An upgrade pays one full rebuild per sidecar at its next pass. |
+| Builder and version in the sidecar path | One path per declaration | Two graphs over one column coexist, and a read needs a selector. |
+| A committed, versioned graph format | Builder freedom | Every layout change carries a reader for each older layout. |
+
+Consequences: an upgraded build reads by exact scan until the next pass rebuilds.
+Revisit: a second builder declared over one column.
+
+## A tenant value is its bytes
+
+**Status:** accepted
+
+Context: a tenant scope binds the outermost partition column by byte equality, and a canonical form applied at land rewrites what a producer sent. Criteria: the grant, the directory and the row agree without a rule each must apply; no landed value changes.
+
+Decision: land checks a tenant value against no canonical form and keeps its exact bytes; two spellings a normalizer equates are two tenants.
+
+| Option | Lost on | Cost |
+| --- | --- | --- |
+| Exact bytes, no canonical form *(chosen)* | — | A producer sending two spellings of one tenant splits it, visibly. |
+| Normalize at land | No rewritten value | The stored value differs from the source's, and a grant minted from the source misses it. |
+| Refuse a non-canonical value | Adoption cost | A source emitting decomposed text stops landing. |
+
+Consequences: tenant hygiene belongs to the producer and the grant issuer.
+Revisit: a source whose tenant spelling varies between batches.
+
+## A sidecar copies only the tenant and zone
+
+**Status:** accepted
+
+Context: a filtered traversal reads a filter value per graph node, and any column copied into a sidecar sits outside the enforced relation. Criteria: no row value escapes enforcement; restricted reads keep recall.
+
+Decision: a sidecar holds its `id_column` and indexed column alone, save the tenant column and zone label, which already name its partition and path. Every other predicate applies when candidates re-join through the enforced relation.
+
+| Option | Lost on | Cost |
+| --- | --- | --- |
+| Tenant and zone only *(chosen)* | — | A restricted read oversamples instead of filtering inside the graph. |
+| Any declared filter column | Enforcement | A copied column bypasses masks and row policy on disk and in the bucket. |
+| No copies at all | Recall | A tenant-scoped probe walks other tenants' nodes. |
+
+Consequences: a filter beyond tenant and zone costs oversampling, never exposure.
+Revisit: a declared filter whose oversampling misses recall targets.
+
+## A validity interval is one row
+
+**Status:** accepted
+
+Context: one pair of valid-time columns holds one interval, and a key can be valid over several. Criteria: a fold keeps every interval; a bounded read stays one predicate over the pair.
+
+Decision: each interval is its own row. A keyed table declaring `valid_time` dedupes on its primary key and `from`, so a fold supersedes a repeated interval and keeps distinct ones.
+
+| Option | Lost on | Cost |
+| --- | --- | --- |
+| One row per interval *(chosen)* | — | A key's rows grow with its intervals. |
+| A list of intervals in one row | One predicate | Each read unnests the list before filtering. |
+| A child interval table | One scan | Every bounded read joins. |
+
+Consequences: `valid_as_of` stays one predicate over the declared pair.
+Revisit: a key whose interval count makes the row set dominate the table.
+
+## An exhausted pull refuses and resumes
+
+**Status:** accepted
+
+Context: pushes arriving faster than a pull's re-fetch shrinks its shortfall exhaust `store.pull.convergence`. Criteria: no pointer ahead of its data; a typed outcome; repeated work bounded by what is still missing.
+
+Decision: exhaustion raises a typed refusal and writes no pointer, and every object already verified stays on disk, so the next pull fetches only the keys still differing.
+
+| Option | Lost on | Cost |
+| --- | --- | --- |
+| Typed refusal, verified objects kept *(chosen)* | — | An operator or schedule re-runs the pull. |
+| Retry without bound | Termination | A pull racing a busy bucket holds its process indefinitely. |
+| Publish the converged tables | No pointer ahead of data | A pointer reaches a snapshot whose sidecars are still moving. |
+
+Consequences: a contended pull converges across runs, each downloading less.
+Revisit: pulls refusing under ordinary write rates.
+
+## A tombstone is signed by its node's issuer key
+
+**Status:** accepted
+
+Context: a tombstone names its owner by node id, which carries no key material, so any writer can claim another node's deletion. Criteria: a deletion verifies to a key the project records; an unverifiable deletion removes nothing; no new key custody.
+
+Decision: a push signs each tombstone with its node's issuer key over the key, owner and `deleted_at`. A merge or pull accepts one only when the signature verifies and the key-set ledger records the signer as verifying at `deleted_at`.
+
+| Option | Lost on | Cost |
+| --- | --- | --- |
+| Issuer key, checked against the key-set ledger *(chosen)* | — | A node without an issuer key, or outside the ledger, propagates no deletion. |
+| A per-node sync key | Key custody | A second key per machine to mint, rotate and record. |
+| Unsigned tombstones | Verifiable deletion | A forged tombstone removes another node's entries. |
+
+Consequences: retiring an issuer key ends the deletions it signs after retirement.
+Revisit: a deployment whose writers hold no issuer key.
+
+## A replica advertises a descriptor beside its catalog
+
+**Status:** accepted
+
+Context: a replica holds whole snapshots, and a router or reader needs to know which sidecars and parts it holds before sending a query. Criteria: no central service; the answer matches the disk; a missing sidecar refuses rather than degrading.
+
+Decision: each replica pull writes `replica.json` beside `derived.sqlite`, naming per table the snapshot held and its parts and sidecar paths on disk. A read needing an entry the descriptor omits raises `ReplicaMissingIndex`, naming the pull that supplies it.
+
+| Option | Lost on | Cost |
+| --- | --- | --- |
+| A local descriptor beside the catalog *(chosen)* | — | A router reads one file per replica. |
+| A queryable central row | No central service | Every replica writes to shared state it otherwise never touches. |
+| Probe the disk per query | Matches the disk | A read races a pull rewriting the files it probes. |
+
+Consequences: a replica's holdings read without opening a snapshot manifest.

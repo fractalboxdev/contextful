@@ -23,6 +23,7 @@ replicate  = {}
 [error]
 StoreRetentionColumnInvalid  = { clause = "store.declare.retain-rows", gloss = "A row-retention column or age is invalid, or a landed value is null." }
 StoreManifestUnreadable      = { clause = "store.lay-out.manifest-unreadable", gloss = "A run manifest or reachable snapshot manifest fails to parse." }
+StoreManifestFormatNewer     = { clause = "store.lay-out.format-newer", gloss = "A run or snapshot manifest carries a `format_version` major newer than the build reads." }
 StoreUnknownTable            = { clause = "store.lay-out.unknown-table", gloss = "A table name resolves to no `schema.json` in the tree." }
 StoreNodeIdInvalid           = { clause = "store.lay-out.node-id-shape", gloss = "A resolved node id is too long or outside the path-safe pattern." }
 StoreProjectNameInvalid      = { clause = "store.init.name-shape", gloss = "A project name is not path-safe `/`-separated segments." }
@@ -69,6 +70,7 @@ SyncControlDiverged          = { clause = "store.push.control-diverged", gloss =
 SyncProbeInconclusive        = { clause = "store.probe.inconclusive", gloss = "The conditional-write probe met an unsupported method, a forbidden response or a transport error." }
 SyncCoordinationUnproven     = { clause = "store.probe.unproven", gloss = "`cas` is declared against a backend the probe did not demonstrate." }
 SyncTombstoneForeign         = { clause = "store.merge.tombstone-owner", gloss = "A tombstone names an entry another node owns." }
+SyncTombstoneUnverified      = { clause = "store.merge.tombstone-unverified", gloss = "A tombstone is unsigned, fails its signature, or names a signer the key-set ledger does not verify." }
 SyncManifestRebaseExhausted  = { clause = "store.merge.exhausted", gloss = "The bucket manifest commit lost its race past the retry bound." }
 SyncCursorConflict           = { clause = "store.merge.cursor-recency", gloss = "A cursor was resolved by recency instead of through its commit." }
 LeaseHeld                    = { clause = "store.lease.held", gloss = "A run or pass found an unexpired lease another node holds." }
@@ -90,6 +92,7 @@ store-compaction-interval   = { clause = "store.fold.triggers", value = 6, unit 
 store-compaction-run-count  = { clause = "store.fold.triggers", value = 50, unit = "runs", basis = "chosen", gloss = "Runs committed on a table since its previous pass that fire the next." }
 store-run-retention         = { clause = "store.fold.retention", value = 7, unit = "d", basis = "chosen", gloss = "Default `retain_runs` window, past which a folded run or a snapshot superseded by ordinary writes is collected." }
 store-partition-count       = { clause = "store.index.partition-warnings", value = 1000, unit = "partitions", basis = "chosen", gloss = "Projected partition count above which planning warns." }
+store-graph-extensions      = { clause = "store.index.graph-extensions", value = 16, unit = "extensions", basis = "chosen", gloss = "In-place graph extensions after which a pass rebuilds a vector sidecar in full." }
 store-partition-median      = { clause = "store.index.partition-warnings", value = 16, unit = "MiB", basis = "chosen", gloss = "Projected median partition size below which planning warns." }
 store-kdf-memory            = { clause = "store.encrypt.password-kdf", value = 64, unit = "MiB", basis = "standard:rfc9106", gloss = "Argon2id memory cost." }
 store-kdf-iterations        = { clause = "store.encrypt.password-kdf", value = 3, unit = "iterations", basis = "standard:rfc9106", gloss = "Argon2id time cost." }
