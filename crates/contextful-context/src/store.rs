@@ -244,6 +244,14 @@ impl Store {
         crate::parquet_io::read_with_key(path, self.parquet_key())
     }
 
+    pub(crate) fn parquet_row_count(&self, path: &Path) -> Result<u64> {
+        crate::parquet_io::row_count_with_key(path, self.parquet_key())
+    }
+
+    pub(crate) fn each_parquet_batch(&self, path: &Path, each: &mut dyn FnMut(arrow_array::RecordBatch) -> Result<()>) -> Result<()> {
+        crate::parquet_io::each_batch_with_key(path, self.parquet_key(), each)
+    }
+
     pub(crate) fn parquet_columns(&self, path: &Path) -> Result<Vec<String>> {
         crate::parquet_io::columns_with_key(path, self.parquet_key())
     }

@@ -83,10 +83,10 @@ The derive source: its configuration, the outstanding set recomputed each tick, 
   *A-run*
 - `derive-after-conflict` — A derive child whose `after` names a pipeline other than its source-table parent raises `DeriveAfterConflict` and arms none.
   *A-run*
-
-unsettled: At what parent-table size does the in-memory scan stop fitting, and what replaces it? owner: derive affects: run.select
-
-unsettled: Does a dry run print eligible, already-derived and outstanding counts before a scheduled tick pays for them? owner: derive affects: run.select
+- `parent-scan` — A parent table holding at most 1000000 rows is selected by an in-memory scan; a larger one streams through the read engine in batches, so selection holds one batch in memory.
+  *A-run*
+- `dry-run` — `pipeline run --dry-run` on a derive pipeline prints its eligible, already-derived and outstanding unit counts from one selection, calling no engine and landing no row.
+  *A-run*
 
 
 #### Scenarios
@@ -126,8 +126,8 @@ Where a derive engine's definition lives, the port every engine implements, and 
   *P6*
 - `advisory-zone` — A row zone taken from the binding's advisory `zone` key raises `DeriveAdvisoryZone`.
   *A-run*
-
-unsettled: Does a build-time check refuse an engine whose declared locality is wider than the source table's admitted zones? owner: derive affects: run.bind
+- `locality-wider` — An engine whose declared locality is wider than the zones its source table admits raises `DeriveLocalityWider` at build, naming the engine, its locality and the table.
+  *because a derived passage carries its parent's content, and an engine outside the parent's zones moves that content where the parent cannot go*
 
 unsettled: Does a host task declaring no model reach refuse a socket it opens, as {{run.select.metered-client}} refuses one for `link_preview` (issue 95)? owner: derive affects: run.bind
 
@@ -163,6 +163,8 @@ Operator-declared argv chains against local binaries: resolution, pinning, envir
   *because a misspelled condition otherwise skips or runs its step silently*
 - `verified-spawn` — Each spawn re-reads its step's binary and runs it only while those bytes match the digest resolved at run start, else {{run.exec.digest-mismatch}}.
 - `engine-id` — An `exec` engine id reads `exec:<name>@<prefix>`, the prefix being 12 chars of lowercase hex over every step's binary digest and arguments.
+- `vendor-deadline` — A vendor engine, a binding naming an `endpoint_host`, holds `request_timeout_secs` as its engine step's deadline, clipped to the time {{run.exec.chain-deadline}} leaves, so a stalled vendor fails its unit before the chain elapses.
+  *because a chain deadline alone lets one stalled vendor call spend the unit's whole budget with no step to name*
 
 ```mermaid
 sequenceDiagram
@@ -183,8 +185,6 @@ sequenceDiagram
   Note over T,E: failures: DeriveStepExit, DeriveStepProducedNothing, DeriveOutputCap past 8 MiB
   Note over T,E: past 1800 s: DeriveStepTimeout, the group signalled, then reaped
 ```
-
-unsettled: Does a vendor engine reached over HTTP need a deadline of its own, separate from the chain deadline? owner: derive affects: run.exec
 
 ## fetch
 
@@ -275,14 +275,14 @@ The derived row and marker, the unit status, attempt accounting, citation keys a
   *A-run*
 - `parent-tombstone` — A fold drops derived rows whose parent key is absent or tombstoned in the parent table, then rebuilds their sidecars.
   *A-run*
+- `derived-id` — Every passage and marker row keyed as {{run.emit.primary-key}} carries `derived_id`, lowercase hex SHA-256 over its `unit_ref`, `derivation_key` and `cue_seq`, and a sidecar over such a table defaults its `id_column` to `derived_id`.
+  *because a sidecar re-joins on one column, and a producer column outside the reserved underscore namespace needs no store change*
 
 #### Scenarios
 
 - `run.emit.output-modality`: WHEN a video parent yields a transcript passage and an advertised picture, THEN their output modalities are `text` and `image`.
 - `run.emit.local-content-key`: WHEN a local file changes bytes under the same path, THEN the next tick selects its unit under another key.
 - `run.emit.parent-tombstone`: WHEN a parent row is tombstoned, THEN the next fold drops its passages and rebuilds the affected sidecars.
-
-unsettled: Which single column identifies a derived row for a sidecar's `id_column`, given a derive table keys on three? owner: derive affects: run.emit
 
 ## parse-cues
 

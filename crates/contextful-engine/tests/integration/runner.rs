@@ -726,6 +726,26 @@ fn the_run_row_holds_every_pulls_declined_tally_by_extension() {
     assert!(row.declined.is_empty(), "a source declaring no tally leaves the row without one");
 }
 
+/// The run row holds every pull's audit entries in pull order; a source recording none leaves the row without them.
+#[test]
+fn the_run_row_holds_every_pulls_audit_entries_in_order() {
+    let rig = Rig::new();
+    let bodies = vec![
+        json!({"rows": [{"id": "d1"}], "audit": ["d1: step `engine`: warming up"]}),
+        json!({"rows": [{"id": "d2"}]}),
+        json!({"rows": [{"id": "d3"}], "audit": ["d3: DeriveStepExit: step `engine` exited 3: boom", "d3: step `preprocess-0`: resampled"]}),
+    ];
+    let row = rig.run(&opaque(), "1.0.0", "run-1", &mut Bodies(bodies), &mut Sink::default()).unwrap();
+    let want = ["d1: step `engine`: warming up", "d3: DeriveStepExit: step `engine` exited 3: boom", "d3: step `preprocess-0`: resampled"];
+    assert_eq!((row.status, row.audit.as_slice()), (RunStatus::Success, want.map(String::from).as_slice()));
+    assert_eq!(rig.row("run-1").audit, want, "the catalog holds the entries");
+
+    let plain = Rig::new();
+    let row = plain.run(&opaque(), "1.0.0", "run-1", &mut Pages::new(three_pages()), &mut Sink::default()).unwrap();
+    assert!(row.audit.is_empty());
+    assert!(serde_json::to_value(&row).unwrap().get("audit").is_none(), "an empty audit is not serialized");
+}
+
 /// A pull declaring a type for a column an earlier staged batch of its run carried undeclared raises
 /// `PipelineTypeDeclaredLate`, deterministic, naming the column; the run commits nothing and retires its owner.
 // spec: run.land.late-type@ee345c25

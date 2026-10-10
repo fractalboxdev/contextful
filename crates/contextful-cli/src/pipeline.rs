@@ -25,7 +25,8 @@ use contextful_core::store::ledger::RequestRecord;
 use contextful_core::connector::ConnectorError;
 #[cfg(feature = "s3-sync")]
 use contextful_connectors::object::ObjectConfig;
-use contextful_core::run::derive::config::{bind, bindings, check_output_table, Binding, DeriveConfig};
+use contextful_core::run::derive::config::{bind, bindings, check_output_table, check_single_output, Binding, DeriveConfig};
+use contextful_core::run::derive::engine::check_locality;
 use contextful_core::run::derive::task::{check_host_tables, DeriveTask, Tasks};
 use contextful_core::run::ports::{Row, Source, TableReader};
 use contextful_core::run::{Failure, FailureTag};
@@ -143,6 +144,10 @@ pub enum PipelineCmd {
         /// Fire the specification applied snapshot version N holds rather than the declared one.
         #[arg(long)]
         applied: Option<u64>,
+        /// Print a derive pipeline's eligible, already-derived and outstanding unit counts
+        /// from one selection, calling no engine and landing no row.
+        #[arg(long)]
+        dry_run: bool,
     },
     /// Check every declared pipeline and model without network I/O; a local component artifact loads and runs discovery.
     Validate {
@@ -305,13 +310,14 @@ pub(crate) fn check(spec: &PipelineSpec, declaration: &Path, tasks: &Tasks) -> R
                 let tables = spec.tables.iter().map(|t| (t.name().to_string(), spec.table_name(t.name()))).collect();
                 return Ok(Checked::Host(Box::new(HostChecked { config, task, tables })));
             }
-            let [table] = spec.tables.as_slice() else {
-                bail!("derive pipeline `{}` declares {} tables; it writes one output table", spec.id, spec.tables.len());
-            };
+            let names: Vec<&str> = spec.tables.iter().map(|t| t.name()).collect();
+            check_single_output(&spec.id, &names)?;
+            let [table] = spec.tables.as_slice() else { unreachable!("one output table passed its check") };
             check_output_table(&TableDecl { name: spec.table_name(table.name()), ..table.decl() })?;
             let text = std::fs::read_to_string(declaration).unwrap_or_default();
             let bindings = bindings(&text)?;
             let binding = bind(&spec.id, &config, &bindings, &declaration.display().to_string())?.clone();
+            check_locality(&config.engine, &binding, &config.source_table, &source_zones(declaration, &config.source_table)?)?;
             let limiter = config.grant.as_ref().map(|grant| require_binding(grant, &manifest_bindings(&text)?).cloned()).transpose()?;
             Ok(Checked::Derive(Box::new((config, binding, limiter))))
         }
@@ -330,6 +336,57 @@ pub(crate) fn check(spec: &PipelineSpec, declaration: &Path, tasks: &Tasks) -> R
             Ok(Checked::Component(Box::new(decl)))
         }
     }
+}
+
+/// The zones a derive source table admits: its declaring pipeline's table policy, or the
+/// fail-closed pair where no manifest declares the table (`authority.place.fail-closed`).
+fn source_zones(declaration: &Path, table: &str) -> Result<contextful_core::place::AllowSet> {
+    let files = if declaration.exists() { manifests(declaration)? } else { Vec::new() };
+    for d in collect(&files)? {
+        if let Some(t) = d.spec.tables.iter().find(|t| d.spec.table_name(t.name()) == table) {
+            let policy = contextful_policy::enforce::policy::TablePolicy::from_decl(&d.spec.destination_decl(t))?;
+            return Ok(policy.placement.effective());
+        }
+    }
+    Ok(contextful_core::place::AllowSet::fail_closed())
+}
+
+/// Print one derive selection's unit counts, calling no engine and landing no row
+/// (`run.select.dry-run`).
+fn dry_run_counts(spec: &PipelineSpec, checked: &Checked, l: &crate::project::Located, text: &str, author: Option<&crate::admit::Author>, resolver: Arc<contextful_outbound::Resolver>) -> Result<()> {
+    let decls: Vec<TableDecl> = spec.tables.iter().map(|t| spec.destination_decl(t)).collect();
+    let reader = Box::new(StoreReader::open(l, text, decls.clone(), author)?);
+    let counts = match checked {
+        Checked::Derive(pair) => {
+            let table = spec.table_name(spec.tables[0].name());
+            let source = DeriveSource {
+                pipeline_id: spec.id.clone(),
+                config: pair.0.clone(),
+                binding: pair.1.clone(),
+                output_schema: serde_json::to_value(decls.iter().find(|d| d.name == table).and_then(|d| d.columns.clone()))?,
+                output_table: table,
+                reader,
+                resolver,
+                mediation: Mediation::default(),
+                store_root: Some(Store::open(&l.project.dir, &l.project.name)?.root().to_path_buf()),
+                cwd: l.project.dir.clone(),
+            };
+            source.plan()
+        }
+        Checked::Host(host) => HostDerive {
+            pipeline_id: spec.id.clone(),
+            config: host.config.clone(),
+            task: host.task.clone(),
+            tables: host.tables.clone(),
+            retention_columns: spec.tables.iter().filter_map(|t| t.decl().retain_rows.map(|r| (t.name().to_string(), r.column))).collect(),
+            reader,
+        }
+        .plan(),
+        _ => bail!("pipeline `{}` reads source `{}`; a dry run counts a derive pipeline's units", spec.id, spec.source.name),
+    }
+    .map_err(|f| anyhow::anyhow!("pipeline `{}`: {f}", spec.id))?;
+    println!("{}", serde_json::json!({ "pipeline": spec.id, "eligible": counts.eligible, "derived": counts.derived, "outstanding": counts.outstanding }));
+    Ok(())
 }
 
 /// A host task's staging runs outside any execution, so nothing stops it.
@@ -489,11 +546,47 @@ impl TableReader for StoreReader {
             let selected: Vec<_> = response.columns.iter().enumerate().filter(|(_, name)| columns.contains(&name.as_str())).collect();
             return Ok(response.rows.into_iter().map(|row| selected.iter().map(|(index, name)| ((*name).clone(), row[*index].clone())).collect()).collect());
         }
-        let decl = self.decls.iter().find(|d| d.name == table).cloned().unwrap_or_else(|| TableDecl::named(table));
-        contextful_context::rows::table_rows(&self.store, &decl, columns).map_err(|e| match e {
-            ContextError::ColumnType { .. } => Failure::deterministic(FailureTag::SchemaIncompatible, format!("`{table}`: {e}")),
-            e => Failure::new(FailureTag::Storage, e.to_string()),
-        })
+        contextful_context::rows::table_rows(&self.store, &self.decl(table), columns).map_err(|e| store_failure(table, e))
+    }
+
+    /// An admitted read answers through the read face, which counts no rows, so it selects in memory.
+    fn row_count(&self, table: &str) -> Result<Option<u64>, Failure> {
+        if self.admitted.is_some() {
+            return Ok(None);
+        }
+        contextful_context::rows::table_row_count(&self.store, &self.decl(table)).map(Some).map_err(|e| store_failure(table, e))
+    }
+
+    fn row_batches(&self, table: &str, columns: &[&str], each: &mut dyn FnMut(Vec<Row>) -> Result<(), Failure>) -> Result<(), Failure> {
+        if self.admitted.is_some() {
+            return each(self.rows(table, columns)?);
+        }
+        let mut failed = None;
+        let read = contextful_context::rows::table_row_batches(&self.store, &self.decl(table), columns, &mut |rows| {
+            each(rows).map_err(|f| {
+                let message = f.message.clone();
+                failed = Some(f);
+                ContextError::Invalid(message)
+            })
+        });
+        match (read, failed) {
+            (_, Some(f)) => Err(f),
+            (Err(e), None) => Err(store_failure(table, e)),
+            (Ok(()), None) => Ok(()),
+        }
+    }
+}
+
+impl StoreReader {
+    fn decl(&self, table: &str) -> TableDecl {
+        self.decls.iter().find(|d| d.name == table).cloned().unwrap_or_else(|| TableDecl::named(table))
+    }
+}
+
+fn store_failure(table: &str, e: ContextError) -> Failure {
+    match e {
+        ContextError::ColumnType { .. } => Failure::deterministic(FailureTag::SchemaIncompatible, format!("`{table}`: {e}")),
+        e => Failure::new(FailureTag::Storage, e.to_string()),
     }
 }
 
@@ -655,7 +748,7 @@ pub fn run(cmd: PipelineCmd, tasks: &Tasks, bodies: &contextful_core::run::drive
         }
         PipelineCmd::Serve { project, declaration, cycle, http, public_key } => crate::cadence::serve(&project, declaration, cycle, http.as_deref(), public_key.as_deref(), tasks, bodies),
         PipelineCmd::Worker { project, declaration, listen } => crate::worker::serve_worker(&project, declaration, &listen),
-        PipelineCmd::Run { id, project, declaration, run_id, site_id, site_id_env, component_target, admit, applied } => {
+        PipelineCmd::Run { id, project, declaration, run_id, site_id, site_id_env, component_target, admit, applied, dry_run } => {
             let l = project.locate(declaration)?;
             crate::sync::pull_before_run(&l)?;
             let declaration = l.declaration.clone();
@@ -686,6 +779,9 @@ pub fn run(cmd: PipelineCmd, tasks: &Tasks, bodies: &contextful_core::run::drive
                 Checked::Derive(_) | Checked::Host(_) | Checked::File(_) | Checked::Image(_) => {}
                 #[cfg(feature = "s3-sync")]
                 Checked::Object(config) => resolver.preflight(config.credentials())?,
+            }
+            if dry_run {
+                return dry_run_counts(&spec, &checked, &l, &text, author.as_ref(), resolver);
             }
 
             // A declaration's relative paths resolve against the project directory

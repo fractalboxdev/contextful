@@ -379,6 +379,96 @@ fn a_registered_host_task_builds_and_an_unregistered_name_lists_both_sets() {
     }
 }
 
+/// A transcribe pipeline declaring a failure table beside its output table refuses at validation.
+#[test]
+fn a_transcribe_pipeline_declaring_a_failure_table_refuses_at_validation() {
+    let dir = tempfile::tempdir().unwrap();
+    let manifest = "[derive.reader]\ndriver = \"exec\"\n[derive.reader.engine]\ncommand = [\"cat\", \"{input}\"]\n\n\
+        [[pipeline]]\nid = \"doc-text\"\ntables = [\n  \
+        { name = \"passages\", primary_key = [\"unit_ref\", \"derivation_key\", \"cue_seq\"] },\n  \
+        { name = \"passage_failures\", primary_key = [\"unit_ref\"] },\n]\n\
+        [pipeline.source]\nname = \"derive\"\n\
+        config = { engine = \"reader\", source_table = \"documents\", media_column = \"path\", parent_id_column = \"doc_id\" }\n";
+    std::fs::write(dir.path().join("contextful.toml"), manifest).unwrap();
+    let out = cf(dir.path(), &["pipeline", "validate"]);
+    let err = String::from_utf8_lossy(&out.stderr);
+    assert!(!out.status.success() && err.contains("DeriveFailureOffTable") && err.contains("passage_failures"), "{err}");
+
+    let single = manifest.replace("  { name = \"passage_failures\", primary_key = [\"unit_ref\"] },\n", "");
+    std::fs::write(dir.path().join("contextful.toml"), single).unwrap();
+    let valid = ok(&cf(dir.path(), &["pipeline", "validate"]));
+    assert!(valid.contains("doc-text: valid"), "{valid}");
+}
+
+/// A transcribe project over three landed documents, its engine writing one line of standard error per unit and
+/// deriving one unit per run.
+fn transcribe_project(binding_extra: &str) -> tempfile::TempDir {
+    let dir = tempfile::tempdir().unwrap();
+    let store = dir.path().join(".contextful/context/research");
+    std::fs::create_dir_all(&store).unwrap();
+    std::fs::write(store.join("config.toml"), "[node]\nid = \"ingest-a\"\n").unwrap();
+    for (name, text) in [("memo.txt", "Revenue rose.\n"), ("brief.txt", "Filing is due.\n"), ("note.txt", "Call back.\n")] {
+        std::fs::write(dir.path().join(name), text).unwrap();
+    }
+    std::fs::write(dir.path().join("engine.sh"), "echo \"read $1\" >&2\nprintf '1\\n00:00:01,000 --> 00:00:02,000\\n'\ncat \"$1\"\n").unwrap();
+    let manifest = format!(
+        "authoring_posture = \"per_request\"\n[[pipeline]]\nid = \"doc-text\"\ntables = [{{ name = \"passages\", primary_key = [\"unit_ref\", \"derivation_key\", \"cue_seq\"] }}]\n\
+         [pipeline.source]\nname = \"derive\"\n\
+         config = {{ engine = \"reader\", source_table = \"documents\", media_column = \"path\", parent_id_column = \"doc_id\", max_rows_per_run = 1 }}\n\n\
+         [derive.reader]\ndriver = \"exec\"\n{binding_extra}\n[derive.reader.engine]\ncommand = [\"sh\", \"engine.sh\", \"{{input}}\"]\noutput_format = \"srt\"\n"
+    );
+    std::fs::write(dir.path().join("contextful.toml"), manifest).unwrap();
+    std::fs::write(
+        dir.path().join("documents.jsonl"),
+        "{\"doc_id\":\"d1\",\"path\":\"memo.txt\"}\n{\"doc_id\":\"d2\",\"path\":\"brief.txt\"}\n{\"doc_id\":\"d3\",\"path\":\"note.txt\"}\n",
+    )
+    .unwrap();
+    ok(&cf(dir.path(), &["context", "land", "documents", "--project", "research", "--rows", "documents.jsonl", "--run-id", "load-1", "--site-id", "site", "--now", "2030-01-01T00:00:00Z"]));
+    dir
+}
+
+fn derive_fire(dir: &std::path::Path, args: &[&str]) -> Output {
+    let mut all = vec!["pipeline", "run", "doc-text", "--project", "research", "--site-id", "site", "--now", "2030-01-01T01:00:00Z"];
+    all.extend_from_slice(args);
+    cf(dir, &all)
+}
+
+/// `pipeline run --dry-run` on a derive pipeline prints its eligible, already-derived and outstanding unit counts from
+/// one selection, calling no engine and landing no row.
+// spec: run.select.dry-run@ccd856c7
+#[test]
+fn a_dry_run_prints_the_selection_counts_and_lands_nothing() {
+    let dir = transcribe_project("");
+    let counts = |dir: &std::path::Path| -> serde_json::Value { serde_json::from_str(&ok(&derive_fire(dir, &["--dry-run"]))).unwrap() };
+    assert_eq!(counts(dir.path()), serde_json::json!({"pipeline": "doc-text", "eligible": 3, "derived": 0, "outstanding": 3}));
+    let history = ok(&cf(dir.path(), &["run", "history", "--project", "research", "--export"]));
+    assert!(!history.contains("doc-text"), "a dry run records no run: {history}");
+    ok(&derive_fire(dir.path(), &["--run-id", "derive-1"]));
+    assert_eq!(counts(dir.path()), serde_json::json!({"pipeline": "doc-text", "eligible": 3, "derived": 1, "outstanding": 2}));
+    assert_eq!(counts(dir.path())["derived"], 1, "a dry run lands no row");
+}
+
+/// A derive run records each unit's standard error on its run record's audit.
+#[test]
+fn a_derive_run_records_its_engines_standard_error_on_the_run_record() {
+    let dir = transcribe_project("");
+    ok(&derive_fire(dir.path(), &["--run-id", "derive-1"]));
+    let history = ok(&cf(dir.path(), &["run", "history", "--project", "research", "--export"]));
+    let run: serde_json::Value = history.lines().skip(1).map(|line| serde_json::from_str::<serde_json::Value>(line).unwrap()).find(|r| r["run_id"] == "derive-1").unwrap();
+    let audit = run["audit"].as_array().unwrap_or_else(|| panic!("{run}"));
+    assert_eq!(audit.len(), 1, "{audit:?}");
+    assert!(audit[0].as_str().unwrap().starts_with("d1: step `engine`: read "), "{audit:?}");
+}
+
+/// An engine reaching a vendor host past the source table's fail-closed zones refuses at validation.
+#[test]
+fn a_vendor_engine_past_the_source_tables_zones_refuses_at_validation() {
+    let dir = transcribe_project("endpoint_host = \"api.speech.example\"\n");
+    let out = cf(dir.path(), &["pipeline", "validate"]);
+    let err = String::from_utf8_lossy(&out.stderr);
+    assert!(!out.status.success() && err.contains("DeriveLocalityWider") && err.contains("public-cloud:api.speech.example") && err.contains("documents"), "{err}");
+}
+
 /// A host-task run commits each content table under its own commit, then the marker table, and a content table failing stops the fire before its marker lands, so the unit re-runs and its rows collapse by key.
 // spec: run.emit.marker-last@466e5fca
 #[test]

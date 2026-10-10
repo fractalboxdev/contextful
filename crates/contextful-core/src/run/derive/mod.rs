@@ -6,5 +6,6 @@
 pub mod config;
 pub mod cues;
 pub mod emit;
+pub mod engine;
 pub mod exec;
 pub mod task;

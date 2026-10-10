@@ -14,6 +14,8 @@ pub const ROWS_PER_RUN: i64 = 25;
 pub const ATTEMPTS_PER_UNIT: i64 = 3;
 /// Wall clock the unit loop holds for `link_preview`: 300 s (`run.select.seconds-per-run`).
 pub const LINK_SECONDS_PER_RUN: u64 = 300;
+/// Parent rows selection scans in memory before streaming: 1000000 rows (`run.select.parent-scan`).
+pub const PARENT_SCAN_ROWS: u64 = 1_000_000;
 
 /// The keys a derive source reads.
 pub const KEYS: [&str; 10] =
@@ -365,6 +367,19 @@ pub fn check_reserved_discriminator(table: &crate::store::declare::TableDecl) ->
         )));
     }
     Ok(())
+}
+
+/// Hold a built-in derive pipeline to its one output table: a second table records per-unit
+/// state outside the anti-join's view (`run.emit.failure-off-table`).
+pub fn check_single_output(pipeline_id: &str, tables: &[&str]) -> Result<(), RunError> {
+    match tables {
+        [_] => Ok(()),
+        [] => Err(RunError::Invalid(format!("derive pipeline `{pipeline_id}` declares no table; it writes one output table"))),
+        [output, rest @ ..] => Err(RunError::DeriveFailureOffTable(format!(
+            "derive pipeline `{pipeline_id}` declares {} beside its output table `{output}`; markers, failures and passages land in that one table",
+            rest.iter().map(|t| format!("`{t}`")).collect::<Vec<_>>().join(", ")
+        ))),
+    }
 }
 
 /// The key every derive output table declares (`run.emit.primary-key`).

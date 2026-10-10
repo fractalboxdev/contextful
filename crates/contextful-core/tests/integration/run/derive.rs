@@ -740,3 +740,155 @@ fn a_changed_engine_rederives_every_unit_and_no_read_between_ticks_is_empty() {
     assert_eq!(empty_reads, 0);
     crate::emit("derivation-freshness", empty_reads as f64, reads, 0);
 }
+
+/// A `confidence` outside `0.0..=1.0` after adapter normalization raises `DeriveConfidenceOutOfRange` and lands null.
+// spec: run.bind.confidence-range@520821c7
+#[test]
+fn a_confidence_outside_the_unit_interval_refuses_and_lands_null() {
+    use contextful_core::run::derive::engine::bound_confidence;
+    for held in [json!(0.0), json!(0.42), json!(1.0), Value::Null] {
+        let mut row = rows(json!([{"text": "kept", "confidence": held.clone()}])).remove(0);
+        assert!(bound_confidence(&mut row).is_none(), "{held}");
+        assert_eq!(row["confidence"], held);
+    }
+    let mut absent = rows(json!([{"text": "no score"}])).remove(0);
+    assert!(bound_confidence(&mut absent).is_none());
+    assert!(!absent.contains_key("confidence"));
+    for out in [json!(1.5), json!(-0.01), json!(87), json!("high")] {
+        let mut row = rows(json!([{"text": "scored", "confidence": out.clone()}])).remove(0);
+        assert!(matches!(bound_confidence(&mut row), Some(RunError::DeriveConfidenceOutOfRange(_))), "{out}");
+        assert_eq!(row["confidence"], Value::Null, "{out}");
+        assert_eq!(row["text"], "scored");
+    }
+}
+
+/// An `Upstream` excerpt holds at most 4 KiB and no request body.
+// spec: run.bind.upstream-excerpt@7e2ce56a
+#[test]
+fn an_upstream_excerpt_holds_4_kib_of_the_response() {
+    use contextful_core::run::derive::engine::{Upstream, UPSTREAM_EXCERPT_BYTES};
+    assert_eq!(UPSTREAM_EXCERPT_BYTES, 4096);
+    let answer = Upstream::new(503, "é".repeat(5000).as_bytes());
+    assert_eq!(answer.status, 503);
+    assert!(answer.excerpt().len() <= 4096 && answer.excerpt().len() > 4000, "{}", answer.excerpt().len());
+    assert!(answer.excerpt().chars().all(|c| c == 'é'));
+    let short = Upstream::new(500, b"  overloaded\n");
+    assert_eq!(short.excerpt(), "overloaded");
+    assert_eq!(short.to_string(), "upstream answered 500: overloaded");
+}
+
+/// `EngineUnavailable` from a transcriber ends the run; from a `LinkReader` it raises `DeriveLinkEngineUnavailable`
+/// and costs that one unit.
+// spec: run.bind.engine-unavailable@9b776229
+#[test]
+fn an_unavailable_transcriber_ends_the_run_and_an_unavailable_link_reader_costs_one_unit() {
+    use contextful_core::run::derive::engine::{settle, EngineError, Port, Settled, Upstream};
+    match settle(Port::Transcriber, EngineError::Unavailable("speech-cli is gone".into())) {
+        Settled::EndRun(why) => assert!(why.contains("EngineUnavailable") && why.contains("speech-cli"), "{why}"),
+        other => panic!("{other:?}"),
+    }
+    match settle(Port::LinkReader, EngineError::Unavailable("connection refused".into())) {
+        Settled::Unit(why) => assert!(why.starts_with("DeriveLinkEngineUnavailable") && why.contains("connection refused"), "{why}"),
+        other => panic!("{other:?}"),
+    }
+    for port in [Port::Transcriber, Port::LinkReader] {
+        assert!(matches!(settle(port, EngineError::Upstream(Upstream::new(502, b"bad gateway"))), Settled::Unit(why) if why.contains("502")));
+    }
+}
+
+/// A row zone taken from the binding's advisory `zone` key raises `DeriveAdvisoryZone`.
+// spec: run.bind.advisory-zone@d6f43bbd
+#[test]
+fn a_row_zone_copied_from_the_advisory_key_refuses() {
+    use contextful_core::run::derive::engine::check_advisory_zone;
+    let b = bindings("[derive.asr]\ndriver = \"exec\"\nzone = \"local:device\"\n").unwrap().remove("asr").unwrap();
+    let copied = rows(json!([{"unit_ref": "a", "text": "x", "zone": "local:device"}]));
+    assert!(matches!(check_advisory_zone("asr", &b, &copied), Err(RunError::DeriveAdvisoryZone(m)) if m.contains("asr") && m.contains("local:device")));
+    let adapter = rows(json!([{"unit_ref": "a", "text": "x", "zone": "vendor:us"}, {"unit_ref": "b", "text": "y"}]));
+    assert!(check_advisory_zone("asr", &b, &adapter).is_ok());
+    let unzoned = bindings("[derive.asr]\ndriver = \"exec\"\n").unwrap().remove("asr").unwrap();
+    assert!(check_advisory_zone("asr", &unzoned, &copied).is_ok());
+}
+
+/// Per-unit failure state recorded outside the output table raises `DeriveFailureOffTable`.
+// spec: run.emit.failure-off-table@0f138530
+#[test]
+fn a_second_table_beside_the_output_table_refuses() {
+    use contextful_core::run::derive::config::check_single_output;
+    assert!(check_single_output("doc-text", &["passages"]).is_ok());
+    match check_single_output("doc-text", &["passages", "passage_failures"]) {
+        Err(RunError::DeriveFailureOffTable(m)) => assert!(m.contains("doc-text") && m.contains("passage_failures") && m.contains("passages"), "{m}"),
+        other => panic!("{other:?}"),
+    }
+    assert!(matches!(check_single_output("doc-text", &[]), Err(RunError::Invalid(_))));
+}
+
+/// An engine whose declared locality is wider than the zones its source table admits raises `DeriveLocalityWider`
+/// at build, naming the engine, its locality and the table.
+// spec: run.bind.locality-wider@aab2d682
+#[test]
+fn an_engine_reaching_past_its_source_tables_zones_refuses() {
+    use contextful_core::place::AllowSet;
+    use contextful_core::run::derive::engine::{check_locality, engine_locality};
+    let local = bindings("[derive.asr]\ndriver = \"exec\"\n").unwrap().remove("asr").unwrap();
+    let vendor = bindings("[derive.asr]\ndriver = \"exec\"\nendpoint_host = \"api.speech.example\"\n").unwrap().remove("asr").unwrap();
+    let fetch = bindings("[derive.asr]\ndriver = \"fetch\"\n").unwrap().remove("asr").unwrap();
+    assert_eq!(engine_locality(&vendor).unwrap().unwrap().labels(), ["public-cloud:api.speech.example"]);
+    assert!(engine_locality(&fetch).unwrap().is_none(), "a link reader sends a parent's address, no content");
+    let closed = AllowSet::fail_closed();
+    assert!(check_locality("asr", &local, "recordings", &closed).is_ok());
+    assert!(check_locality("asr", &fetch, "recordings", &closed).is_ok());
+    match check_locality("asr", &vendor, "recordings", &closed) {
+        Err(RunError::DeriveLocalityWider(m)) => {
+            for name in ["`asr`", "public-cloud:api.speech.example", "`recordings`", "local:device"] {
+                assert!(m.contains(name), "{name}: {m}");
+            }
+        }
+        other => panic!("{other:?}"),
+    }
+    let cloud = AllowSet::parse(&["local:device".into(), "public-cloud:*".into()]).unwrap();
+    assert!(check_locality("asr", &vendor, "recordings", &cloud).is_ok());
+    let other_host = AllowSet::parse(&["public-cloud:api.other.example".into()]).unwrap();
+    assert!(matches!(check_locality("asr", &vendor, "recordings", &other_host), Err(RunError::DeriveLocalityWider(_))));
+}
+
+/// Every passage and marker row keyed as {{run.emit.primary-key}} carries `derived_id`, lowercase hex SHA-256 over
+/// its `unit_ref`, `derivation_key` and `cue_seq`, and a sidecar over such a table defaults its `id_column` to
+/// `derived_id`.
+// spec: run.emit.derived-id@aa6997ae
+#[test]
+fn every_derived_row_carries_one_identifying_column_its_sidecars_default_to() {
+    use contextful_core::run::derive::emit::{derived_id, DERIVED_ID};
+    let unit = Unit { key: "doc1".into(), media: "a.wav".into(), prior_attempts: 0, derivation_key: "k1".into() };
+    let cues = vec![Cue { start_ms: 0, end_ms: 1000, text: "one".into() }, Cue { start_ms: 1000, end_ms: 2000, text: "two".into() }];
+    let rows = passage_rows(&unit, &cues, "exec:x@0");
+    let marker = marker_row(&unit, UnitStatus::Failed, None, true, "exec:x@0");
+    let ids: Vec<&str> = rows.iter().chain([&marker]).map(|r| r[DERIVED_ID].as_str().unwrap()).collect();
+    assert_eq!(ids, [derived_id("doc1", "k1", 0), derived_id("doc1", "k1", 1), derived_id("doc1", "k1", -1)]);
+    assert!(ids.iter().all(|id| id.len() == 64 && id.chars().all(|c| c.is_ascii_hexdigit() && !c.is_ascii_uppercase())));
+    assert_ne!(derived_id("doc1", "k1", 0), derived_id("doc1", "k2", 0), "a re-derived unit's rows take new ids");
+    let derive_table = TableDecl::parse_pipeline(
+        "[[pipeline.tables]]\nname = \"passages\"\nprimary_key = [\"unit_ref\", \"derivation_key\", \"cue_seq\"]\n\
+         [[pipeline.tables.indexes]]\nkind = \"fulltext\"\ncolumn = \"text\"\n",
+    )
+    .unwrap()
+    .remove(0);
+    assert_eq!(derive_table.id_column().unwrap(), Some(DERIVED_ID));
+}
+
+/// A non-null `last_error` write that has not passed address redaction raises `DeriveUnredactedError`.
+// spec: run.emit.unredacted-error@51bad6f9
+#[test]
+fn a_last_error_holding_an_unredacted_address_refuses() {
+    use contextful_core::run::derive::emit::check_last_error;
+    let raw = "fetching https://user:pw@example.com/a?token=s3cret failed";
+    let unit = Unit { key: "u".into(), media: "m".into(), prior_attempts: 0, derivation_key: "k".into() };
+    let marker = marker_row(&unit, UnitStatus::Failed, Some(raw), true, "exec:x@0");
+    assert!(check_last_error(&marker).is_ok(), "{marker:?}");
+    assert!(!marker["last_error"].as_str().unwrap().contains("s3cret"));
+    let mut forged = marker.clone();
+    forged.insert("last_error".into(), json!(raw));
+    assert!(matches!(check_last_error(&forged), Err(RunError::DeriveUnredactedError(m)) if m.contains("`u`") && !m.contains("s3cret")));
+    forged.insert("last_error".into(), Value::Null);
+    assert!(check_last_error(&forged).is_ok());
+}

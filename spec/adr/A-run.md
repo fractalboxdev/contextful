@@ -118,6 +118,20 @@ Decision: the build maps output tables to derive pipelines, resolves each derive
 
 Consequences: the source-table name is a scheduling dependency when it names another derive output; an external source table adds no edge.
 
+## Selection stays bounded and countable before a tick pays
+
+Context: the anti-join holds every parent row in memory, and an operator sees what a tick costs only after its engine calls. Criteria: selection memory independent of archive size; the outstanding count known before any engine spend. Decision: a parent table up to 1000000 rows scans in memory, and a larger one streams through the read engine in batches. A dry run computes the same selection and prints eligible, already-derived and outstanding counts without calling an engine.
+
+| Option | Lost on | Cost |
+| --- | --- | --- |
+| In-memory up to a row ceiling, streamed above it; a counting dry run *(chosen)* | — | Two selection paths agree on one anti-join; a dry run reads both tables once. |
+| Always scan in memory | Memory bound | A large archive exhausts the process before the first unit runs. |
+| Always stream | Tick latency | A small table pays batch setup on every tick. |
+| A watermark instead of a full selection | Stranding | A unit passed once stays underived, as the anti-join decision records. |
+| No dry run; read the run record after | Cost control | The first scheduled tick spends engine quota before anyone sees its size. |
+
+Consequences: the ceiling is a chosen figure; a measured archive revises it.
+
 ## A derive engine is a machine-bound argv child with a cleared environment
 
 A manifest requests an engine by name; the machine's configuration defines what that name executes, and row data never becomes syntax. `run.bind` refuses an unbound name or a command key in a manifest; a `[derive.<name>]` block states argv chain or host list, environment allowlist, pins and bounds, and the adapter, not the operator's zone key, declares locality. `run.exec` spawns an argument array with no shell, a cleared environment plus allowlist, and wall-clock and output bounds, killing the process group on deadline.

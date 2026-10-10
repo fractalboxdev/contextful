@@ -42,6 +42,7 @@ fn run(dir: &Path, toml: &str, media: &str) -> Result<String, RunError> {
     run_resolved(dir, &c, media, &Never).map_err(|e| match e {
         ChainError::Unit(e) => e,
         ChainError::Canceled => panic!("no stop was requested"),
+        ChainError::Unavailable(why) => panic!("the engine is present: {why}"),
     })
 }
 
@@ -679,4 +680,167 @@ fn a_unit_settled_by_a_concurrent_tick_lands_none_of_its_rows() {
     // A concurrent landing under another key settles nothing under this one.
     s.reader = Box::new(Racing { parents: parent_rows, landed: vec![settled("memo", "0".repeat(64))], output_reads: Default::default() });
     assert_eq!(unit(&pulled(&mut s), "memo")["text"], "Hello there.");
+}
+
+/// A transcriber whose engine is gone mid-run ends the run; a link reader that cannot reach its site costs that one
+/// unit a `failed`, retryable marker.
+#[test]
+fn an_unavailable_transcriber_ends_the_run_and_an_unreachable_link_costs_one_unit() {
+    let dir = tempfile::tempdir().unwrap();
+    std::fs::write(dir.path().join("memo.txt"), "Hello there.\n").unwrap();
+    std::fs::write(dir.path().join("brief.txt"), "Filing is due.\n").unwrap();
+    let digest = script(dir.path(), "engine.sh", "cat \"$1\"\nrm -f \"$0\"");
+    let engine = format!("[derive.reader.engine]\ncommand = [\"./engine.sh\", \"{{input}}\"]\nsha256 = \"{digest}\"\n");
+    let parents = json!([{"doc_id": "memo", "path": "memo.txt"}, {"doc_id": "brief", "path": "brief.txt"}]);
+    let failure = pull(&mut source(dir.path(), parents, &engine), &Never).unwrap_err();
+    assert_eq!(failure.tag, FailureTag::Transient);
+    assert!(failure.message.contains("EngineUnavailable") && failure.message.contains("brief"), "{failure:?}");
+
+    let closed = std::net::TcpListener::bind("127.0.0.1:0").unwrap().local_addr().unwrap().port();
+    let address = format!("http://localhost:{closed}/gone");
+    let rows = pulled(&mut link_source(dir.path(), &address, ""));
+    assert_eq!(rows.len(), 1, "{rows:?}");
+    assert_eq!(rows[0]["unit_status"], "failed");
+    assert_eq!(rows[0]["attempts"], 1);
+    assert_eq!(rows[0]["retryable"], true);
+    assert!(rows[0]["last_error"].as_str().unwrap().starts_with("DeriveLinkEngineUnavailable"), "{rows:?}");
+}
+
+/// A site answering a non-success status lands its unit's error with at most 4 KiB of the response.
+#[test]
+fn a_failing_site_answer_lands_a_bounded_upstream_excerpt() {
+    let site = Server::start(|_| Response { status: 503, headers: vec![], body: format!("overloaded {}", "z".repeat(10 * 1024)).into_bytes() });
+    let dir = tempfile::tempdir().unwrap();
+    let address = format!("http://localhost:{}/busy", site.port);
+    let rows = pulled(&mut link_source(dir.path(), &address, ""));
+    let error = rows[0]["last_error"].as_str().unwrap();
+    assert!(error.contains("upstream answered 503: overloaded"), "{error}");
+    assert!(error.len() < 4096 + 128, "{}", error.len());
+}
+
+fn full_pull(s: &mut DeriveSource) -> contextful_core::run::ports::Pull {
+    let request = PullRequest { step_label: "pull-0".into(), position: None, idempotency_key: "k".into() };
+    contextful_core::run::ports::Pull::decode(&s.pull(&request, &Never).unwrap()).unwrap()
+}
+
+/// A chain contributes at most 64 entries of captured output to the run record.
+// spec: run.exec.audit-entries@e41d7d98
+#[test]
+fn a_chain_adds_at_most_64_captured_output_entries_to_the_run_record() {
+    let dir = tempfile::tempdir().unwrap();
+    let mut parents = Vec::new();
+    for i in 0..70 {
+        std::fs::write(dir.path().join(format!("doc{i:02}.txt")), "x").unwrap();
+        parents.push(json!({"doc_id": format!("doc{i:02}"), "path": format!("doc{i:02}.txt")}));
+    }
+    let digest = script(dir.path(), "engine.sh", "echo \"warming up for $1\" >&2\ncat \"$1\"");
+    let engine = format!("[derive.reader.engine]\ncommand = [\"./engine.sh\", \"{{input}}\"]\nsha256 = \"{digest}\"\n");
+    let mut s = source(dir.path(), json!(parents), &engine);
+    s.config.max_rows_per_run = 70;
+    let pull = full_pull(&mut s);
+    assert_eq!(pull.rows.len(), 70, "every unit lands");
+    assert_eq!(pull.audit.len(), 64, "{:?}", pull.audit);
+    assert!(pull.audit[0].starts_with("doc00: step `engine`: warming up for"), "{}", pull.audit[0]);
+    assert!(pull.audit[63].starts_with("doc63: "), "{}", pull.audit[63]);
+
+    // A chain writing no standard error adds no entry.
+    let quiet = format!("[derive.reader.engine]\ncommand = [\"cat\", \"{{input}}\"]\n");
+    let mut s = source(dir.path(), json!([{"doc_id": "doc00", "path": "doc00.txt"}]), &quiet);
+    assert!(full_pull(&mut s).audit.is_empty());
+}
+
+/// A step exiting non-zero raises `DeriveStepExit` carrying its bounded error text into the run audit.
+// spec: run.exec.non-zero-exit@bfb1a94e
+#[test]
+fn a_step_exiting_non_zero_carries_its_error_text_into_the_run_audit() {
+    let dir = tempfile::tempdir().unwrap();
+    std::fs::write(dir.path().join("memo.txt"), "x").unwrap();
+    let digest = script(dir.path(), "engine.sh", "echo \"boom with $VENDOR_KEY\" >&2\nexit 3");
+    let engine = format!(
+        "[derive.reader.engine]\ncommand = [\"./engine.sh\", \"{{input}}\"]\nsha256 = \"{digest}\"\n[derive.reader.env]\nVENDOR_KEY = \"sk-literal-vendor-value\"\n"
+    );
+    let pull = full_pull(&mut source(dir.path(), json!([{"doc_id": "memo", "path": "memo.txt"}]), &engine));
+    let marker = &pull.rows[0];
+    assert_eq!(marker["unit_status"], "failed");
+    let error = marker["last_error"].as_str().unwrap();
+    assert!(error.starts_with("DeriveStepExit") && error.contains("boom with") && error.contains("exit status: 3"), "{error}");
+    assert_eq!(pull.audit.len(), 1, "{:?}", pull.audit);
+    assert!(pull.audit[0].starts_with("memo: DeriveStepExit") && pull.audit[0].contains("boom with"), "{:?}", pull.audit);
+    for text in [error, pull.audit[0].as_str()] {
+        assert!(!text.contains("sk-literal-vendor-value"), "an environment value never reaches the audit: {text}");
+    }
+}
+
+/// A vendor engine, a binding naming an `endpoint_host`, holds `request_timeout_secs` as its engine step's deadline,
+/// clipped to the time {{run.exec.chain-deadline}} leaves, so a stalled vendor fails its unit before the chain elapses.
+// spec: run.exec.vendor-deadline@5bf89e80
+#[test]
+fn a_stalled_vendor_fails_its_unit_at_its_own_deadline() {
+    let dir = tempfile::tempdir().unwrap();
+    std::fs::write(dir.path().join("doc.txt"), "x").unwrap();
+    let started = std::time::Instant::now();
+    let vendor = "[derive.reader]\ntimeout_secs = 60\nendpoint_host = \"api.speech.example\"\nrequest_timeout_secs = 1\n[derive.reader.engine]\ncommand = [\"sleep\", \"30\"]\n";
+    match run(dir.path(), vendor, "doc.txt") {
+        Err(RunError::DeriveStepTimeout(m)) => assert!(m.contains("`engine`"), "{m}"),
+        other => panic!("{other:?}"),
+    }
+    assert!(started.elapsed().as_secs() < 10, "{:?}", started.elapsed());
+    // The chain's remaining time clips a longer vendor deadline.
+    let started = std::time::Instant::now();
+    let clipped = "[derive.reader]\ntimeout_secs = 1\nendpoint_host = \"api.speech.example\"\nrequest_timeout_secs = 600\n[derive.reader.engine]\ncommand = [\"sleep\", \"30\"]\n";
+    assert!(matches!(run(dir.path(), clipped, "doc.txt"), Err(RunError::DeriveStepTimeout(_))));
+    assert!(started.elapsed().as_secs() < 10);
+    // A binding reaching no vendor holds the chain deadline alone.
+    let local = "[derive.reader]\nrequest_timeout_secs = 1\n[derive.reader.engine]\ncommand = [\"sh\", \"-c\", \"sleep 2; cat \\\"$0\\\"\", \"{input}\"]\n";
+    assert_eq!(run(dir.path(), local, "doc.txt").unwrap(), "x");
+}
+
+/// A reader that counts `count` parent rows and serves them whole or in two batches, tallying which read ran.
+struct Counted {
+    parents: Vec<Row>,
+    count: u64,
+    whole_reads: Arc<std::sync::atomic::AtomicU32>,
+    batch_reads: Arc<std::sync::atomic::AtomicU32>,
+}
+
+impl TableReader for Counted {
+    fn rows(&self, table: &str, _columns: &[&str]) -> Result<Vec<Row>, Failure> {
+        if table == "documents" {
+            self.whole_reads.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
+            return Ok(self.parents.clone());
+        }
+        Ok(Vec::new())
+    }
+
+    fn row_count(&self, _table: &str) -> Result<Option<u64>, Failure> {
+        Ok(Some(self.count))
+    }
+
+    fn row_batches(&self, _table: &str, _columns: &[&str], each: &mut dyn FnMut(Vec<Row>) -> Result<(), Failure>) -> Result<(), Failure> {
+        self.batch_reads.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
+        let (first, second) = self.parents.split_at(2);
+        each(first.to_vec())?;
+        each(second.to_vec())
+    }
+}
+
+/// A parent table holding at most 1000000 rows is selected by an in-memory scan; a larger one streams through the
+/// read engine in batches, so selection holds one batch in memory.
+// spec: run.select.parent-scan@0dc2f678
+#[test]
+fn a_parent_table_past_a_million_rows_streams_in_batches() {
+    let dir = tempfile::tempdir().unwrap();
+    let mut parents: Vec<Row> = (0..4).map(|i| json!({"doc_id": format!("d{i}"), "path": format!("d{i}.txt")}).as_object().unwrap().clone()).collect();
+    // A key repeated across batches counts once.
+    parents.push(parents[0].clone());
+    for (count, streamed) in [(1_000_000, false), (1_000_001, true)] {
+        let (whole, batched) = (Arc::new(std::sync::atomic::AtomicU32::new(0)), Arc::new(std::sync::atomic::AtomicU32::new(0)));
+        let mut s = source(dir.path(), json!([]), "[derive.reader.engine]\ncommand = [\"cat\", \"{input}\"]\n");
+        s.config.max_rows_per_run = 3;
+        s.reader = Box::new(Counted { parents: parents.clone(), count, whole_reads: whole.clone(), batch_reads: batched.clone() });
+        let counts = s.plan().unwrap();
+        assert_eq!((counts.eligible, counts.derived, counts.outstanding), (4, 0, 4), "{count} rows");
+        let reads = (whole.load(std::sync::atomic::Ordering::SeqCst), batched.load(std::sync::atomic::Ordering::SeqCst));
+        assert_eq!(reads, if streamed { (0, 1) } else { (1, 0) }, "{count} rows");
+    }
 }

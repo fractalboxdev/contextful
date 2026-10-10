@@ -53,6 +53,15 @@ impl UnitStatus {
 /// The column every passage and marker row carries its derivation key in (`run.emit.derivation-key`).
 pub const DERIVATION_KEY: &str = "derivation_key";
 
+/// The one column identifying a derived row (`run.emit.derived-id`).
+pub const DERIVED_ID: &str = "derived_id";
+
+/// A derived row's id: lowercase hex SHA-256 over its `unit_ref`, `derivation_key` and
+/// `cue_seq` (`run.emit.derived-id`).
+pub fn derived_id(unit_ref: &str, derivation_key: &str, cue_seq: i64) -> String {
+    sha256_hex(&serde_json::to_vec(&json!([unit_ref, derivation_key, cue_seq])).expect("a JSON value serializes"))
+}
+
 /// What a unit's rows are derived under, besides the parent row: the engine id, the
 /// binding's output-bearing parameters and the output table's declared columns.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -95,6 +104,17 @@ pub struct Selection {
     pub outstanding: Vec<Unit>,
     /// Parent rows skipped for a missing key or media value.
     pub incomplete: Vec<RunError>,
+    /// The counts a dry run prints (`run.select.dry-run`).
+    pub counts: Counts,
+}
+
+/// One selection's unit counts: every distinct complete parent, those already settled under
+/// their current key, and those outstanding before the run's row budget truncates them.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, serde::Serialize)]
+pub struct Counts {
+    pub eligible: u64,
+    pub derived: u64,
+    pub outstanding: u64,
 }
 
 fn text(v: Option<&Value>) -> Option<String> {
@@ -203,32 +223,64 @@ pub(super) fn standing(rows: &[Landed], key: &str, max_attempts: i64) -> Option<
 /// budget after the anti-join. A parent missing its key or media value is skipped and
 /// reported.
 pub fn select(parents: &[Row], derived: &[Row], config: &DeriveConfig, derivation: &Derivation) -> Selection {
-    let units = by_unit(derived);
-    let mut sel = Selection::default();
-    let mut seen = BTreeMap::new();
-    for r in parents {
-        let (Some(key), Some(media)) = (text(r.get(&config.parent_id_column)), text(r.get(&config.media_column))) else {
-            sel.incomplete.push(RunError::DeriveUnitIncomplete(format!(
-                "a `{}` row lacks `{}` or `{}`; it is skipped",
-                config.source_table, config.parent_id_column, config.media_column
-            )));
-            continue;
-        };
-        if seen.insert(key.clone(), ()).is_some() {
-            continue;
-        }
-        let derivation_key = derivation.key(&key, &media, text(r.get(DERIVATION_KEY)).as_deref());
-        let prior = match units.get(&key) {
-            None => 0,
-            Some(rows) => match standing(rows, &derivation_key, config.max_attempts) {
-                None => continue,
-                Some(attempts) => attempts,
-            },
-        };
-        sel.outstanding.push(Unit { key, media, prior_attempts: prior, derivation_key });
+    let mut selector = Selector::new(derived, config, derivation);
+    selector.feed(parents);
+    selector.finish()
+}
+
+/// [`select`] over parent rows fed in batches, so selection holds one batch of parents and
+/// the outstanding units within the run's row budget (`run.select.parent-scan`).
+pub struct Selector<'a> {
+    units: BTreeMap<String, Vec<Landed>>,
+    config: &'a DeriveConfig,
+    derivation: &'a Derivation,
+    seen: std::collections::BTreeSet<String>,
+    budget: usize,
+    sel: Selection,
+}
+
+impl<'a> Selector<'a> {
+    pub fn new(derived: &[Row], config: &'a DeriveConfig, derivation: &'a Derivation) -> Selector<'a> {
+        let budget = usize::try_from(config.max_rows_per_run).unwrap_or(usize::MAX);
+        Selector { units: by_unit(derived), config, derivation, seen: Default::default(), budget, sel: Selection::default() }
     }
-    sel.outstanding.truncate(usize::try_from(config.max_rows_per_run).unwrap_or(usize::MAX));
-    sel
+
+    /// Select from one batch of parent rows.
+    pub fn feed(&mut self, parents: &[Row]) {
+        let config = self.config;
+        for r in parents {
+            let (Some(key), Some(media)) = (text(r.get(&config.parent_id_column)), text(r.get(&config.media_column))) else {
+                self.sel.incomplete.push(RunError::DeriveUnitIncomplete(format!(
+                    "a `{}` row lacks `{}` or `{}`; it is skipped",
+                    config.source_table, config.parent_id_column, config.media_column
+                )));
+                continue;
+            };
+            if !self.seen.insert(key.clone()) {
+                continue;
+            }
+            self.sel.counts.eligible += 1;
+            let derivation_key = self.derivation.key(&key, &media, text(r.get(DERIVATION_KEY)).as_deref());
+            let prior = match self.units.get(&key) {
+                None => 0,
+                Some(rows) => match standing(rows, &derivation_key, config.max_attempts) {
+                    None => {
+                        self.sel.counts.derived += 1;
+                        continue;
+                    }
+                    Some(attempts) => attempts,
+                },
+            };
+            self.sel.counts.outstanding += 1;
+            if self.sel.outstanding.len() < self.budget {
+                self.sel.outstanding.push(Unit { key, media, prior_attempts: prior, derivation_key });
+            }
+        }
+    }
+
+    pub fn finish(self) -> Selection {
+        self.sel
+    }
 }
 
 /// Refuse landing `unit`'s rows when the output table already holds it settled under its
@@ -307,7 +359,7 @@ pub fn passage_rows(unit: &Unit, passages: &[Cue], engine_id: &str) -> Vec<Row> 
                 "unit_ref": unit.key, "cue_seq": i as i64, KIND: "passage", "text": p.text,
                 "start_ms": p.start_ms as i64, "end_ms": p.end_ms as i64,
                 "unit_status": UnitStatus::Ok.name(), "attempts": unit.prior_attempts + 1, "engine_id": engine_id,
-                DERIVATION_KEY: unit.derivation_key, "_modality": "text",
+                DERIVATION_KEY: unit.derivation_key, DERIVED_ID: derived_id(&unit.key, &unit.derivation_key, i as i64), "_modality": "text",
             });
             v.as_object().cloned().unwrap_or_default()
         })
@@ -321,7 +373,20 @@ pub fn marker_row(unit: &Unit, status: UnitStatus, error: Option<&str>, retryabl
     let v = json!({
         "unit_ref": unit.key, "cue_seq": MARKER_SEQ, KIND: "marker", "unit_status": status.name(),
         "attempts": attempts, "last_error": error.map(redact), "retryable": retryable, "engine_id": engine_id,
-        DERIVATION_KEY: unit.derivation_key,
+        DERIVATION_KEY: unit.derivation_key, DERIVED_ID: derived_id(&unit.key, &unit.derivation_key, MARKER_SEQ),
     });
     v.as_object().cloned().unwrap_or_default()
+}
+
+/// Refuse a row whose non-null `last_error` has not passed [`redact`]: an address in it
+/// still carrying credentials, a query or a fragment (`run.emit.unredacted-error`).
+pub fn check_last_error(row: &Row) -> Result<(), RunError> {
+    let Some(error) = row.get("last_error").and_then(Value::as_str) else { return Ok(()) };
+    if redact(error) != error {
+        return Err(RunError::DeriveUnredactedError(format!(
+            "unit `{}` writes a `last_error` holding an address that has not passed redaction",
+            row.get("unit_ref").and_then(Value::as_str).unwrap_or_default()
+        )));
+    }
+    Ok(())
 }

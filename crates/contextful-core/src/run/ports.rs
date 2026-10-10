@@ -31,7 +31,7 @@ pub struct PullRequest {
 }
 
 /// One pull, decoded from the bytes the source handed over.
-#[derive(Debug, Clone, PartialEq, Deserialize, Serialize)]
+#[derive(Debug, Clone, Default, PartialEq, Deserialize, Serialize)]
 #[serde(deny_unknown_fields)]
 pub struct Pull {
     #[serde(default)]
@@ -57,6 +57,10 @@ pub struct Pull {
     /// (`connector.source.declined-tally`).
     #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
     pub declined: BTreeMap<String, u64>,
+    /// Captured output the source records on the run record's audit, in order
+    /// (`run.exec.audit-entries`).
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub audit: Vec<String>,
 }
 
 fn is_zero(n: &u64) -> bool {
@@ -66,7 +70,7 @@ fn is_zero(n: &u64) -> bool {
 impl Pull {
     /// Decode a pull. Bytes outside the shape are a deterministic `SchemaIncompatible`.
     pub fn decode(bytes: &[u8]) -> Result<Pull, Failure> {
-        serde_json::from_slice(bytes).map_err(|e| Failure::deterministic(FailureTag::SchemaIncompatible, format!("a pull is `{{\"rows\", \"cursor\", \"more\", \"snapshot_complete\", \"types\", \"skipped\", \"declined\"}}`: {e}")))
+        serde_json::from_slice(bytes).map_err(|e| Failure::deterministic(FailureTag::SchemaIncompatible, format!("a pull is `{{\"rows\", \"cursor\", \"more\", \"snapshot_complete\", \"types\", \"skipped\", \"declined\", \"audit\"}}`: {e}")))
     }
 }
 
@@ -236,6 +240,17 @@ impl Shape for Unshaped {
 pub trait TableReader {
     /// Every row of `table`, holding the named columns it carries.
     fn rows(&self, table: &str, columns: &[&str]) -> Result<Vec<Row>, Failure>;
+
+    /// The rows `table` holds, where the reader counts them without reading them.
+    fn row_count(&self, _table: &str) -> Result<Option<u64>, Failure> {
+        Ok(None)
+    }
+
+    /// Hand `table`'s rows to `each` in batches, holding one batch at a time; a reader
+    /// without batched access hands every row as one batch.
+    fn row_batches(&self, table: &str, columns: &[&str], each: &mut dyn FnMut(Vec<Row>) -> Result<(), Failure>) -> Result<(), Failure> {
+        each(self.rows(table, columns)?)
+    }
 }
 
 /// Where journal rows persist (`run.journal.storage-ports`). Each call is atomic against
