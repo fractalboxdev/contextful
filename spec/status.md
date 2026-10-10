@@ -10,12 +10,12 @@ An unpinned clause is `committed`; a pinned one is `performed` when its Rust, Le
 | `connector` | 2 | 14 | 349 | 89 | 21 | 15 | 229 | 0 | 229 |
 | `corpus` | 1 | 10 | 79 | 37 | 7 | 0 | 43 | 0 | 43 |
 | `disclosure` | 3 | 16 | 156 | 68 | 13 | 3 | 63 | 0 | 63 |
-| `read` | 2 | 16 | 212 | 35 | 22 | 9 | 184 | 0 | 184 |
+| `read` | 2 | 16 | 213 | 35 | 22 | 9 | 193 | 0 | 193 |
 | `run` | 3 | 26 | 418 | 103 | 40 | 23 | 334 | 0 | 334 |
 | `store` | 1 | 17 | 253 | 59 | 13 | 19 | 216 | 0 | 216 |
 | `surface` | 2 | 20 | 134 | 59 | 22 | 0 | 94 | 0 | 94 |
 | `topology` | 1 | 6 | 70 | 24 | 5 | 5 | 38 | 0 | 38 |
-| **total** | 19 | 156 | 2216 | 612 | 194 | 97 | 1600 | 0 | |
+| **total** | 19 | 156 | 2217 | 612 | 194 | 97 | 1609 | 0 | |
 
 Decision records: 18.
 
@@ -32,7 +32,7 @@ A milestone reads `closed` when its acceptance test computes `passing` and every
 | 4 — Ingest | 25 | 519 | 356 | passing | open |
 | 5 — The read face under enforcement | 17 | 285 | 219 | passing | open |
 | 6 — Sync and replicas | 8 | 78 | 73 | passing | closed |
-| 7 — Memory | 6 | 54 | 45 | passing | closed |
+| 7 — Memory | 6 | 55 | 54 | passing | closed |
 | 8 — Accountability | 5 | 82 | 47 | passing | open |
 | 9 — Visibility | 6 | 41 | 3 | open | open |
 | 10 — Cadence and the operator plane | 11 | 91 | 77 | passing | open |
@@ -834,6 +834,7 @@ Unscheduled operations: 11.
 | `read.rank.widened-window-statistics` | `crates/contextful-context/tests/integration/read/retrieve.rs::sidecar_widening_changes_the_bm25_order_of_shared_rows` | performed |
 | `read.rank.window-anchor-tolerance` | `crates/contextful-core/tests/integration/read/rank.rs::the_anchor_tolerates_24_hours_and_names_the_basis` | performed |
 | `read.recall.cli-verb` | `crates/contextful-cli/tests/integration/memory.rs::recall_cli_answers_historical_and_current_claims_as_json` | performed |
+| `read.recall.confidence-label` | `crates/contextful-memory/tests/integration/calibration.rs::recall_labels_confidence_from_the_declared_outcome_table` | performed |
 | `read.recall.evidence-key` | `crates/contextful-memory/tests/integration/evidence.rs::a_fold_superseding_the_cited_version_keeps_the_claim` | performed |
 | `read.recall.evidence-key-masked` | `crates/contextful-memory/tests/integration/evidence.rs::a_writer_zone_nulling_a_non_key_column_still_stamps_the_key` | performed |
 | `read.recall.evidence-no-value` | `crates/contextful-memory/tests/integration/evidence.rs::a_memory_reader_reads_no_source_key_value` | performed |
@@ -848,7 +849,9 @@ Unscheduled operations: 11.
 | `read.recall.keyed-order` | `crates/contextful-memory/tests/integration/recall.rs::keyed_claims_order_tier_first_and_meet_the_limit` | performed |
 | `read.recall.keyed-window` | `crates/contextful-memory/tests/integration/recall.rs::the_keyed_read_stops_gating_one_claim_past_the_ceiling` | performed |
 | `read.recall.ranked-arm` | `crates/contextful-memory/tests/integration/synthesize.rs::a_ranked_arm_over_claims_serves_live_claims_alone` | performed |
+| `read.recall.stale-revision` | `crates/contextful-memory/tests/integration/evidence.rs::a_stale_claim_stays_gated_until_a_new_source_row_resynthesizes_it` | performed |
 | `read.recall.suppression-count` | `crates/contextful-memory/tests/integration/synthesize.rs::a_suppressed_claim_is_counted_and_never_named` | performed |
+| `read.recall.usage-ledger` | `crates/contextful-agent/tests/integration/mcp.rs::memory_reads_record_the_claim_ids_they_returned` | performed |
 | `read.register.admission-refused` | `crates/contextful-agent/tests/integration/http.rs::a_refused_admission_answers_401_with_its_identifier` | performed |
 | `read.register.advertised-is-enforced` | `crates/contextful-context/tests/integration/read/register.rs::the_published_limit_is_the_applied_one` | performed |
 | `read.register.bare-name` | `crates/contextful-context/tests/integration/read/register.rs::every_bare_name_resolves_to_the_callers_relation` | performed |
@@ -883,6 +886,8 @@ Unscheduled operations: 11.
 | `read.register.tool-set` | `crates/contextful-agent/tests/integration/mcp.rs::the_tool_list_is_the_closed_read_set` | performed |
 | `read.resolve-entity.ambiguous-mention` | `crates/contextful-core/tests/integration/memory/resolve.rs::a_mention_two_identities_share_is_ambiguous` | performed |
 | `read.resolve-entity.edge-endpoint` | `crates/contextful-core/tests/integration/memory/resolve.rs::an_edge_with_an_unresolved_endpoint_is_refused` | performed |
+| `read.resolve-entity.graph-index` | `crates/contextful-memory/tests/integration/owners.rs::an_ownership_answer_reads_enforced_rows_at_the_frontier` | performed |
+| `read.resolve-entity.ownership-answer` | `crates/contextful-memory/tests/integration/owners.rs::an_ownership_answer_returns_every_attached_principal_newest_first` | performed |
 | `read.resolve-pin.absent-watermark` | `crates/contextful-context/tests/integration/read/pin.rs::a_build_over_no_input_echoes_a_null_watermark` | performed |
 | `read.resolve-pin.consumer-comparison` | `crates/contextful-context/tests/integration/read/pin.rs::a_derivation_spanning_two_builds_fails_and_a_pinned_one_holds` | performed |
 | `read.resolve-pin.earlier-bound-wins` | `crates/contextful-context/tests/integration/read/pin.rs::a_pin_and_as_of_resolve_to_the_earlier_bound` | performed |
@@ -948,18 +953,22 @@ Unscheduled operations: 11.
 | `read.revise.malformed-request` | `spec/pins.toml` | performed |
 | `read.revise.observed-at` | `crates/contextful-memory/tests/integration/write.rs::an_observed_write_lands_valid_from_its_observed_instant` | performed |
 | `read.revise.observed-order` | `crates/contextful-memory/tests/integration/write.rs::an_observation_before_a_live_contradicting_prior_refuses` | performed |
+| `read.revise.retention-default` | `crates/contextful-memory/tests/integration/retention.rs::decay_reorders_ranking_only_where_a_half_life_is_declared` | performed |
 | `read.revise.served-dedup` | `spec/pins.toml` | performed |
 | `read.revise.served-scope` | `spec/pins.toml` | performed |
 | `read.revise.served-write` | `spec/pins.toml` | performed |
 | `read.revise.supersede` | `crates/contextful-core/tests/integration/memory/revise.rs::an_equal_or_higher_claim_retires_its_prior_on_one_line` | performed |
 | `read.revise.tier` | `crates/contextful-core/tests/integration/memory/revise.rs::tier_follows_the_write_path_and_the_lowest_grounding` | performed |
 | `read.revise.unscoped-collision` | `crates/contextful-memory/tests/integration/write.rs::unscoped_writers_at_one_instant_record_a_conflict_without_retirement` | performed |
+| `read.settle.calibration-report` | `crates/contextful-core/tests/integration/memory/calibrate.rs::the_report_names_count_brier_ece_and_held_out_score_per_shape_and_predicate` | performed |
 | `read.settle.grace-window` | `crates/contextful-core/tests/integration/memory/settle.rs::the_label_window_runs_through_the_deadline_plus_a_day` | performed |
 | `read.settle.registration` | `crates/contextful-core/tests/integration/memory/settle.rs::a_registration_names_one_form_one_source_and_a_metric_comparator` | performed |
 | `read.settle.settling-citation` | `crates/contextful-core/tests/integration/memory/settle.rs::a_judged_verdict_carries_a_web_citation` | performed |
 | `read.settle.source-mismatch` | `crates/contextful-core/tests/integration/memory/settle.rs::a_verdict_from_another_source_is_refused` | performed |
 | `read.synthesize.attribution` | `crates/contextful-memory/tests/integration/synthesize.rs::a_landed_claim_names_the_grant_that_wrote_it` | performed |
+| `read.synthesize.cadence` | `crates/contextful-cli/tests/integration/memory.rs::a_scheduled_synthesize_job_replaces_the_operator_triggered_pass` | performed |
 | `read.synthesize.claim-taint` | `crates/contextful-memory/tests/integration/synthesize.rs::a_batch_lands_under_its_least_trusted_row` | performed |
+| `read.synthesize.confidence-calibration` | `crates/contextful-core/tests/integration/memory/calibrate.rs::emitted_confidence_stays_uncalibrated_until_a_held_out_map_validates` | performed |
 | `read.synthesize.dead-letter` | `crates/contextful-memory/tests/integration/synthesize.rs::an_exhausted_batch_dead_letters_and_holds_the_cursor` | performed |
 | `read.synthesize.extract-attempts` | `crates/contextful-core/tests/integration/memory/synthesize.rs::an_invalid_response_is_retried_with_feedback_three_attempts_in_all` | performed |
 | `read.synthesize.pass-cursor` | `crates/contextful-memory/tests/integration/synthesize.rs::a_pass_reads_the_runs_past_its_cursor` | performed |

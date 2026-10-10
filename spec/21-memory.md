@@ -76,7 +76,7 @@ Extract, Resolve and Consolidate; the dedup key, evidence support, the audit rec
   *because a reader weighs a conclusion by which grant could have produced it*
 - `claim-taint` — A source row carries its own `_taint`, else `ingested:third-party`. Every row a batch commits lands under {{store.reserve.taint}} with the least-trusted label among the batch's rows.
   *because a row no label vouches for is trusted least, and a claim re-synthesized from claims stays as low as its origin*
-- `cadence` — Each memory shape defaults to an operator-triggered synthesis pass; a deployment schedule for that shape replaces the default, and a pass still advances only through {{read.synthesize.pass-cursor}}.
+- `cadence` — A claims table synthesizes when `contextful memory synthesize` runs; a `[[job]]` of kind `synthesize` targeting it with a `schedule` replaces that default, and each fire still advances only through {{read.synthesize.pass-cursor}}.
   *A-read*
 - `confidence-calibration` — A model-emitted confidence is labelled `uncalibrated` until a shape-and-predicate isotonic map trained on settled outcomes lowers held-out Brier score; a validated map supplies the reported calibrated confidence.
   *A-read*
@@ -117,7 +117,7 @@ Supersession within one validity line, confidence decay, the direct write and it
   *because such a claim rests on a replaced version from its first read, while a citation no readable row carries lands undigested and recall withholds it*
 - `unscoped-collision` — Direct writes with no scope, equal subject, predicate and valid-from, and different objects record both claim ids in the dead-letter table; neither claim retires the other until an explicit revision resolves the conflict.
   *A-read*
-- `retention-default` — Claims retain their recorded validity until explicit expiry or erasure; ranking decay is opt-in per shape with a declared half-life, and never deletes a claim or changes its validity interval.
+- `retention-default` — Claims retain their recorded validity until explicit expiry or erasure; a claims table declaring `decay_half_life` halves a claim's ranked score per half-life since its `valid_from`, never deleting a claim or changing its validity.
   *A-read*
 - `served-write` — A writable served face answers `POST /memory/claims` under a per-request network credential, lands a declared claim through the direct write, and keeps the read MCP tool set closed.
   *A-read*
@@ -162,9 +162,11 @@ Serving memory: the ranked arm at the read's anchor, the keyed read at an observ
 - `keyed-order` — Keyed claims order by tier, `curated` first, then `valid_from`, newest first, then `claim_id`; `limit` and the table's ceilings bound them under {{read.respond.row-ceiling}}.
 - `keyed-not-claims` — A granted `table` declaring a shape other than `memory_facts`, or no memory shape, raises `MemoryRecallNotClaims`.
   *because a keyed read answers with a claim's subject, validity and evidence, which no other table carries*
+- `confidence-label` — Each keyed claim carries `confidence_label`, `calibrated` or `uncalibrated` under {{read.synthesize.confidence-calibration}}, fitted on its table's declared `labels` table joined `prediction_id` to `claim_id`, read through the caller's session.
+  *A-read*
 - `stale-revision` — A stale citation remains subject to {{read.recall.keyed-gate}}; only a newly committed source row advancing {{read.synthesize.pass-cursor}} starts synthesis against its live key version.
   *A-read*
-- `usage-ledger` — Each `memory.recall` and ranked memory arm records the ids of claims actually returned in the request ledger, under the caller's admitted authority and the read frontier.
+- `usage-ledger` — A `memory.recall` read, and a `corpus.retrieve` read returning `memory_facts` rows, records the returned claim ids as `contextful.memory.claims` in its read entry, beside the caller's credential, subject and read instant.
   *A-read*
 
 The evidence check a claim passes on its way to a grounded turn:
@@ -188,7 +190,7 @@ Mention-to-entity matching, aliases, the knowledge card, place identity and near
   *A-read*
 - `graph-index` — An external graph engine is a derived index of admitted memory edges; an entity or ownership answer resolves through the store's enforced rows at the read frontier.
   *A-read*
-- `ownership-answer` — An artifact's ownership answer returns every attached principal visible to the caller, newest attachment first, with principal id breaking equal-instant ties.
+- `ownership-answer` — An artifact's ownership answer returns the target of every `owned_by` edge from it visible to the caller, newest `_ingested_at` first, with principal id breaking equal-instant ties.
   *A-read*
 
 
@@ -203,7 +205,7 @@ Predictions, observations, the registration, the citation a verdict owes, and th
 - `settling-citation` — An `adjudicator` or `manual` verdict without an `http` or `https` settling citation raises `OutcomeCitationMissing`; the citation rides the label view.
   *A-read*
 - `grace-window` — The label join keeps an observation from the prediction instant through the deadline plus an inclusive grace of 86400 s.
-- `calibration-report` — Calibration reports group settled predictions by shape and predicate, and name sample count, Brier score, expected calibration error and the held-out score used by {{read.synthesize.confidence-calibration}}.
+- `calibration-report` — Calibration reports group settled predictions by shape and predicate, and name sample count, Brier score, expected calibration error over 10 equal-width bins, and the held-out score {{read.synthesize.confidence-calibration}} uses, over every fifth prediction.
   *A-read*
 
 Registration, observation and the label view:

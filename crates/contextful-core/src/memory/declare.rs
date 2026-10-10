@@ -60,6 +60,12 @@ pub struct MemoryTable {
     pub name: String,
     pub shape: Shape,
     pub columns: Vec<String>,
+    /// A claims table's declared ranking half-life in seconds; `None` ranks without decay
+    /// (`read.revise.retention-default`).
+    pub decay_half_life_secs: Option<u64>,
+    /// A claims table's settled-outcome table, whose `prediction_id` names a `claim_id`
+    /// and whose `verdict` settles it (`read.recall.confidence-label`).
+    pub labels: Option<String>,
 }
 
 impl MemoryTable {
@@ -83,6 +89,10 @@ struct RawTable {
     name: String,
     shape: String,
     columns: Vec<String>,
+    #[serde(default)]
+    decay_half_life: Option<String>,
+    #[serde(default)]
+    labels: Option<String>,
 }
 
 #[derive(Deserialize, Default)]
@@ -137,7 +147,20 @@ impl MemoryDeclarations {
                 ))
                 .into());
             }
-            tables.push(MemoryTable { name: t.name, shape, columns: t.columns });
+            let decay_half_life_secs = match t.decay_half_life.as_deref() {
+                None => None,
+                Some(_) if shape != Shape::Facts => {
+                    return Err(DeclarationMalformed(format!("table `{}`: only a `{}` table declares `decay_half_life`", t.name, Shape::Facts.name())).into())
+                }
+                Some(h) => match crate::time::duration_secs(h) {
+                    Some(secs) if secs > 0 => Some(secs),
+                    _ => return Err(DeclarationMalformed(format!("table `{}`: `decay_half_life = \"{h}\"` is no positive span such as `30d`", t.name)).into()),
+                },
+            };
+            if t.labels.is_some() && shape != Shape::Facts {
+                return Err(DeclarationMalformed(format!("table `{}`: only a `{}` table declares `labels`", t.name, Shape::Facts.name())).into());
+            }
+            tables.push(MemoryTable { name: t.name, shape, columns: t.columns, decay_half_life_secs, labels: t.labels });
         }
         Ok(MemoryDeclarations { tables, declared_relations: raw.relation.unwrap_or_default().declared })
     }

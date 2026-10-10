@@ -8,7 +8,11 @@ use serde::Deserialize;
 use std::collections::BTreeMap;
 
 /// The closed union of job kinds, beside the pipeline-run kind.
-pub const KINDS: [&str; 7] = ["sweep", "build", "fold", "rebuild-catalog", "sync-push", "validate", STORE_DRIVEN];
+pub const KINDS: [&str; 8] = ["sweep", "build", "fold", "rebuild-catalog", "sync-push", "validate", STORE_DRIVEN, SYNTHESIZE];
+
+/// The kind running one synthesis pass from a source table into the claims table it
+/// targets (`read.synthesize.cadence`).
+pub const SYNTHESIZE: &str = "synthesize";
 
 /// The kind whose per-row body is compiled code the embedding binary registers.
 pub const STORE_DRIVEN: &str = "store-driven";
@@ -62,6 +66,12 @@ struct Block {
     max_in_flight: Option<toml::Value>,
     #[serde(default)]
     tables: Vec<String>,
+    #[serde(default)]
+    source: Option<String>,
+    #[serde(default)]
+    endpoint: Option<String>,
+    #[serde(default)]
+    model: Option<String>,
     #[serde(flatten)]
     other: BTreeMap<String, toml::Value>,
 }
@@ -81,12 +91,22 @@ pub struct StoreDriven {
     pub tables: Vec<String>,
 }
 
+/// A synthesize job's declaration: the source table a pass reads and the inference
+/// endpoint and model it extracts through; the job's `target` names the claims table.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Synthesis {
+    pub source: String,
+    pub endpoint: String,
+    pub model: String,
+}
+
 /// A job's kind: one of the union, with the store-driven kind's declaration.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum JobKind {
     /// A maintenance kind the engine names, spelled as the union spells it.
     Maintenance(String),
     StoreDriven(StoreDriven),
+    Synthesize(Synthesis),
 }
 
 /// One validated job block.
@@ -106,6 +126,7 @@ impl Job {
         match &self.kind {
             JobKind::Maintenance(k) => k,
             JobKind::StoreDriven(_) => STORE_DRIVEN,
+            JobKind::Synthesize(_) => SYNTHESIZE,
         }
     }
 }
@@ -138,11 +159,32 @@ fn check(value: toml::Value, registered: &dyn Fn(&str) -> bool) -> Result<Job, J
     if block.after.is_some() && (block.kind != "build" || block.schedule.is_some()) {
         return Err(JobError::Invalid(format!("job `{name}`: `after` requires a build without an independent schedule")));
     }
-    let kind = if block.kind == STORE_DRIVEN { JobKind::StoreDriven(store_driven(&block, registered)?) } else { JobKind::Maintenance(block.kind.clone()) };
+    let kind = match block.kind.as_str() {
+        STORE_DRIVEN => JobKind::StoreDriven(store_driven(&block, registered)?),
+        SYNTHESIZE => JobKind::Synthesize(synthesis(&block)?),
+        _ => JobKind::Maintenance(block.kind.clone()),
+    };
+    if !matches!(kind, JobKind::Synthesize(_)) {
+        let carried = [("source", &block.source), ("endpoint", &block.endpoint), ("model", &block.model)];
+        if let Some((key, _)) = carried.into_iter().find(|(_, v)| v.is_some()) {
+            return Err(JobError::Invalid(format!("job `{name}` carries unknown key `{key}`")));
+        }
+    }
     if let Some(key) = block.other.keys().next() {
         return Err(JobError::Invalid(format!("job `{name}` carries unknown key `{key}`")));
     }
     Ok(Job { name: block.name, schedule: block.schedule, target: block.target, after: block.after, kind })
+}
+
+/// A synthesize block names its claims table as `target`, and its `source`, `endpoint`
+/// and `model` (`read.synthesize.cadence`).
+fn synthesis(block: &Block) -> Result<Synthesis, JobError> {
+    let name = &block.name;
+    let required = |key: &str, value: &Option<String>| {
+        value.clone().filter(|v| !v.trim().is_empty()).ok_or_else(|| JobError::Invalid(format!("job `{name}` of kind `{SYNTHESIZE}` declares no `{key}`")))
+    };
+    required("target", &block.target)?;
+    Ok(Synthesis { source: required("source", &block.source)?, endpoint: required("endpoint", &block.endpoint)?, model: required("model", &block.model)? })
 }
 
 fn store_driven(block: &Block, registered: &dyn Fn(&str) -> bool) -> Result<StoreDriven, JobError> {

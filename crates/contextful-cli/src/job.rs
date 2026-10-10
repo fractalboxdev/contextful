@@ -143,7 +143,7 @@ pub fn run(cmd: JobCmd, bodies: &Bodies) -> Result<()> {
                     JobKind::StoreDriven(d) => {
                         println!("{}: valid ({}, body {}, max_in_flight {}, plan {})", job.name, job.kind_name(), d.input.body, d.max_in_flight, &d.input.plan_ref()[..16])
                     }
-                    JobKind::Maintenance(_) => println!("{}: valid ({})", job.name, job.kind_name()),
+                    JobKind::Maintenance(_) | JobKind::Synthesize(_) => println!("{}: valid ({})", job.name, job.kind_name()),
                 }
             }
             Ok(())
@@ -159,6 +159,10 @@ pub fn run(cmd: JobCmd, bodies: &Bodies) -> Result<()> {
             let job = jobs.into_iter().find(|j| j.name == name).with_context(|| format!("no job `{name}` is declared"))?;
             if job.kind_name() == "build" {
                 return crate::build::fire_job(&l, &project, &job, &text, applied, run_id, site_id, site_id_env);
+            }
+            if let JobKind::Synthesize(synthesis) = &job.kind {
+                let into = job.target.as_deref().context("a validated synthesize job names its target")?;
+                return crate::memory::fire_synthesis(&l, &project, &admit, synthesis, into);
             }
             bind(std::slice::from_ref(&job), &l.declaration)?;
             let JobKind::StoreDriven(driven) = &job.kind else {

@@ -6,6 +6,7 @@ use super::engine::{cell, SqlEngine};
 use super::face::{Face, ReadOptions};
 use super::fault::ReadFault;
 use contextful_core::memory::declare::Shape;
+use contextful_core::memory::revise::decay_weight;
 use contextful_core::read::embed::cosine;
 use contextful_core::read::filter::{Filter, Scalar};
 use contextful_core::read::template::{Bindings, Bound};
@@ -415,10 +416,17 @@ impl Face {
             .enumerate()
             .map(|(i, r)| {
                 let in_window = timeframe.is_none_or(|tf| tf.admits(r.publication));
+                // A declared half-life scales a claim's fused score, ranking alone
+                // (`read.revise.retention-default`).
+                let half_life = self.memory().table(&r.table).and_then(|t| t.decay_half_life_secs);
+                let valid_from = half_life
+                    .and_then(|_| r.values.iter().find(|(k, _)| k == "valid_from"))
+                    .and_then(|(_, v)| v.as_str())
+                    .and_then(|v| Instant::parse(v).ok());
                 let c = Candidate {
                     id: r.id.clone(),
                     in_window,
-                    fused: fuse(r.vector, lexical[i]),
+                    fused: fuse(r.vector, lexical[i]) * decay_weight(half_life, valid_from, request.anchor),
                     recency: r.publication.instant().or(r.ingested),
                 };
                 (c, i)

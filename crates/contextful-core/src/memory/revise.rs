@@ -209,3 +209,14 @@ pub fn direct_write(table: &str, shape: Shape) -> Result<(), MemoryError> {
         ))),
     }
 }
+
+/// The factor a claim's ranked score carries under a declared half-life: one half per
+/// half-life elapsed from `valid_from` to `anchor`. No half-life, no `valid_from`, or a
+/// `valid_from` at or after the anchor weighs 1. The factor ranks alone; it never ends,
+/// retires or deletes a claim (`read.revise.retention-default`).
+pub fn decay_weight(half_life_secs: Option<u64>, valid_from: Option<Instant>, anchor: Instant) -> f64 {
+    match (half_life_secs, valid_from) {
+        (Some(half_life), Some(from)) if half_life > 0 => 0.5f64.powf(from.secs_until(anchor) as f64 / half_life as f64),
+        _ => 1.0,
+    }
+}

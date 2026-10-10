@@ -6297,7 +6297,7 @@
       "operation": "synthesize",
       "subject": "cadence",
       "kind": "behavior",
-      "statement": "Each memory shape defaults to an operator-triggered synthesis pass; a deployment schedule for that shape replaces the default, and a pass still advances only through {{read.synthesize.pass-cursor}}.",
+      "statement": "A claims table synthesizes when `contextful memory synthesize` runs; a `[[job]]` of kind `synthesize` targeting it with a `schedule` replaces that default, and each fire still advances only through {{read.synthesize.pass-cursor}}.",
       "why": "A-read",
       "file": "spec/21-memory.md",
       "line": 79
@@ -6407,7 +6407,7 @@
       "operation": "revise",
       "subject": "retention-default",
       "kind": "behavior",
-      "statement": "Claims retain their recorded validity until explicit expiry or erasure; ranking decay is opt-in per shape with a declared half-life, and never deletes a claim or changes its validity interval.",
+      "statement": "Claims retain their recorded validity until explicit expiry or erasure; a claims table declaring `decay_half_life` halves a claim's ranked score per half-life since its `valid_from`, never deleting a claim or changing its validity.",
       "why": "A-read",
       "file": "spec/21-memory.md",
       "line": 120
@@ -6655,6 +6655,17 @@
       "line": 163
     },
     {
+      "id": "read.recall.confidence-label",
+      "contract": "read",
+      "operation": "recall",
+      "subject": "confidence-label",
+      "kind": "behavior",
+      "statement": "Each keyed claim carries `confidence_label`, `calibrated` or `uncalibrated` under {{read.synthesize.confidence-calibration}}, fitted on its table's declared `labels` table joined `prediction_id` to `claim_id`, read through the caller's session.",
+      "why": "A-read",
+      "file": "spec/21-memory.md",
+      "line": 165
+    },
+    {
       "id": "read.recall.stale-revision",
       "contract": "read",
       "operation": "recall",
@@ -6663,7 +6674,7 @@
       "statement": "A stale citation remains subject to {{read.recall.keyed-gate}}; only a newly committed source row advancing {{read.synthesize.pass-cursor}} starts synthesis against its live key version.",
       "why": "A-read",
       "file": "spec/21-memory.md",
-      "line": 165
+      "line": 167
     },
     {
       "id": "read.recall.usage-ledger",
@@ -6671,10 +6682,10 @@
       "operation": "recall",
       "subject": "usage-ledger",
       "kind": "behavior",
-      "statement": "Each `memory.recall` and ranked memory arm records the ids of claims actually returned in the request ledger, under the caller's admitted authority and the read frontier.",
+      "statement": "A `memory.recall` read, and a `corpus.retrieve` read returning `memory_facts` rows, records the returned claim ids as `contextful.memory.claims` in its read entry, beside the caller's credential, subject and read instant.",
       "why": "A-read",
       "file": "spec/21-memory.md",
-      "line": 167
+      "line": 169
     },
     {
       "id": "read.resolve-entity.ambiguous-mention",
@@ -6685,7 +6696,7 @@
       "statement": "A mention matching two canonical identities with no deterministic key separating them is recorded as an ambiguous skip, raises `MemoryEntityAmbiguous`, and dead-letters its candidate claim.",
       "why": "A-read",
       "file": "spec/21-memory.md",
-      "line": 185
+      "line": 187
     },
     {
       "id": "read.resolve-entity.edge-endpoint",
@@ -6696,7 +6707,7 @@
       "statement": "A candidate edge whose source or target resolves to no identity is dead-lettered, raising `MemoryEdgeEndpointUnresolved`.",
       "why": "A-read",
       "file": "spec/21-memory.md",
-      "line": 187
+      "line": 189
     },
     {
       "id": "read.resolve-entity.graph-index",
@@ -6707,7 +6718,7 @@
       "statement": "An external graph engine is a derived index of admitted memory edges; an entity or ownership answer resolves through the store's enforced rows at the read frontier.",
       "why": "A-read",
       "file": "spec/21-memory.md",
-      "line": 189
+      "line": 191
     },
     {
       "id": "read.resolve-entity.ownership-answer",
@@ -6715,10 +6726,10 @@
       "operation": "resolve-entity",
       "subject": "ownership-answer",
       "kind": "behavior",
-      "statement": "An artifact's ownership answer returns every attached principal visible to the caller, newest attachment first, with principal id breaking equal-instant ties.",
+      "statement": "An artifact's ownership answer returns the target of every `owned_by` edge from it visible to the caller, newest `_ingested_at` first, with principal id breaking equal-instant ties.",
       "why": "A-read",
       "file": "spec/21-memory.md",
-      "line": 191
+      "line": 193
     },
     {
       "id": "read.settle.registration",
@@ -6729,7 +6740,7 @@
       "statement": "A registration names exactly one form (relative horizon, absolute deadline, open watch) and one source (`metric`, `adjudicator`, `manual`), with a comparator exactly when the source is `metric`; otherwise it raises `OutcomeRegistrationInvalid`.",
       "why": "A-read",
       "file": "spec/21-memory.md",
-      "line": 199
+      "line": 201
     },
     {
       "id": "read.settle.source-mismatch",
@@ -6740,7 +6751,7 @@
       "statement": "An observation carrying a verdict whose resolution source is absent or differs from the registration's raises `OutcomeSourceMismatch`.",
       "why": "A-read",
       "file": "spec/21-memory.md",
-      "line": 201
+      "line": 203
     },
     {
       "id": "read.settle.settling-citation",
@@ -6751,7 +6762,7 @@
       "statement": "An `adjudicator` or `manual` verdict without an `http` or `https` settling citation raises `OutcomeCitationMissing`; the citation rides the label view.",
       "why": "A-read",
       "file": "spec/21-memory.md",
-      "line": 203
+      "line": 205
     },
     {
       "id": "read.settle.grace-window",
@@ -6762,7 +6773,7 @@
       "statement": "The label join keeps an observation from the prediction instant through the deadline plus an inclusive grace of 86400 s.",
       "why": "",
       "file": "spec/21-memory.md",
-      "line": 205
+      "line": 207
     },
     {
       "id": "read.settle.calibration-report",
@@ -6770,10 +6781,10 @@
       "operation": "settle",
       "subject": "calibration-report",
       "kind": "behavior",
-      "statement": "Calibration reports group settled predictions by shape and predicate, and name sample count, Brier score, expected calibration error and the held-out score used by {{read.synthesize.confidence-calibration}}.",
+      "statement": "Calibration reports group settled predictions by shape and predicate, and name sample count, Brier score, expected calibration error over 10 equal-width bins, and the held-out score {{read.synthesize.confidence-calibration}} uses, over every fifth prediction.",
       "why": "A-read",
       "file": "spec/21-memory.md",
-      "line": 206
+      "line": 208
     },
     {
       "id": "run.journal.step-output",
@@ -25510,6 +25521,10 @@
     [
       "read.recall.keyed-order",
       "read.respond.row-ceiling"
+    ],
+    [
+      "read.recall.confidence-label",
+      "read.synthesize.confidence-calibration"
     ],
     [
       "read.recall.stale-revision",

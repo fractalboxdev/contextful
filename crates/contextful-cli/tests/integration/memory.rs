@@ -224,3 +224,44 @@ fn recall_cli_answers_historical_and_current_claims_as_json() {
     assert!(withheld["rows"].as_array().unwrap().is_empty());
     assert_eq!(withheld["contextful.recall"]["suppressed"]["MemoryEvidenceUnresolved"], json!(1));
 }
+
+/// A claims table synthesizes when `contextful memory synthesize` runs; a `[[job]]` of kind `synthesize` targeting it with a `schedule` replaces that default, and each fire still advances only through {{read.synthesize.pass-cursor}}.
+// spec: read.synthesize.cadence@cf3ba0f2
+#[test]
+fn a_scheduled_synthesize_job_replaces_the_operator_triggered_pass() {
+    let (dir, public, token) = project();
+    let p = dir.path();
+    let endpoint = Endpoint::start(vec![claim("Dana")]);
+    let manifest = std::fs::read_to_string(p.join("contextful.toml")).unwrap();
+    let declare = |schedule: &str| {
+        let job = format!(
+            "site_id = \"site\"\n{manifest}\n[[job]]\nname = \"synth-facts\"\nkind = \"synthesize\"\ntarget = \"memory/facts\"\nsource = \"research/notes\"\nendpoint = \"{}\"\nmodel = \"fixture\"\n{schedule}",
+            endpoint.url()
+        );
+        std::fs::write(p.join("contextful.toml"), job).unwrap();
+    };
+    let env = [("CONTEXTFUL_TOKEN", token.as_str()), ("CONTEXTFUL_ISSUER_PUBKEY", public.as_str()), ("CONTEXTFUL_AUDIENCE", AUD), ("CONTEXTFUL_INFERENCE_KEY", "")];
+    let cycle = |now: &str| -> Value { serde_json::from_str(&stdout(&run(p, &["pipeline", "serve", "--cycle", "--project", "research", "--now", now], &env))).unwrap() };
+    let recalled = || -> usize {
+        let args = ["memory", "recall", "--project", "research", "--table", "memory/facts", "--subject", "acme", "--observed-at", "2030-06-01T00:00:00Z", "--public-key", &public, "--audience", AUD];
+        let answer: Value = serde_json::from_str(&stdout(&run(p, &args, &[("CONTEXTFUL_TOKEN", &token)]))).unwrap();
+        answer["rows"].as_array().unwrap().len()
+    };
+
+    // Without a schedule the job stays unarmed: synthesis waits for the operator.
+    declare("");
+    stdout(&run(p, &["pipeline", "import", "--project", "research"], &env));
+    let idle = cycle("2030-01-01T00:01:00Z");
+    assert_eq!((idle["armed"].clone(), idle["fired"].clone()), (json!(0), json!([])), "{idle}");
+    assert_eq!((recalled(), endpoint.bodies.lock().unwrap().len()), (0, 0));
+
+    // A schedule arms it; each fire reads only runs past the pass cursor.
+    declare("schedule = \"every 1m\"\n");
+    stdout(&run(p, &["pipeline", "apply", "--project", "research"], &env));
+    let fired = cycle("2030-01-01T00:02:00Z");
+    assert_eq!(fired["fired"], json!(["job:synth-facts"]), "{fired}");
+    assert_eq!((recalled(), endpoint.bodies.lock().unwrap().len()), (1, 1));
+    let again = cycle("2030-01-01T00:04:00Z");
+    assert_eq!(again["fired"], json!(["job:synth-facts"]), "{again}");
+    assert_eq!(endpoint.bodies.lock().unwrap().len(), 1, "no run past the cursor, no model call");
+}

@@ -1,9 +1,11 @@
 //! `memory.recall`: one subject's claims at an observed instant, under an ingest bound,
 //! through the evidence gate.
 
+use super::engine::SqlEngine;
 use super::face::Face;
 use super::fault::ReadFault;
 use contextful_core::enforce::EnforceError;
+use contextful_core::memory::calibrate::{Calibration, Confidence, Settled};
 use contextful_core::memory::declare::Shape;
 use contextful_core::memory::recall::{gate, withheld, EvidenceRead, Grounding};
 use contextful_core::memory::synthesize::EvidenceRef;
@@ -143,12 +145,72 @@ impl Face {
                 }
             }
         }
+        // Each claim's confidence is reported through the table's validated calibration
+        // (`read.recall.confidence-label`).
+        let calibration = self.calibration(&engine, session, table, deadline)?;
+        let (confidence_at, predicate_at) = (position(&columns, "confidence"), position(&columns, "predicate"));
+        for row in &mut kept {
+            let emitted = row[confidence_at].as_f64();
+            let reported = emitted.map(|c| calibration.confidence(Shape::Facts, row[predicate_at].as_str().unwrap_or_default(), c));
+            if let Some(Confidence::Calibrated(v)) = reported {
+                row[confidence_at] = json!(v);
+            }
+            row.push(json!(reported.map_or("uncalibrated", Confidence::label)));
+        }
+        let mut columns = columns;
+        columns.push(CONFIDENCE_LABEL.to_string());
         let mut response = Response::cut(columns, kept, Some(ceiling));
         if let Some(b) = request.echo() {
             response = response.with_block("bounds", b);
         }
         response = self.restrict_timed(&engine, session, [table], response, deadline)?;
         self.finish_budget(session, &touched, ReadOptions { limit: request.limit, max_duration_ms: request.max_duration_ms, max_response_bytes: request.max_response_bytes, ..ReadOptions::default() }, None, ceiling, response.with_block("recall", tally.block()))
+    }
+}
+
+/// The keyed response's column labelling each claim's confidence
+/// (`read.recall.confidence-label`).
+pub const CONFIDENCE_LABEL: &str = "confidence_label";
+
+fn position(columns: &[String], name: &str) -> usize {
+    columns.iter().position(|c| c == name).expect("a claim carries its canonical columns")
+}
+
+impl Face {
+    /// The validated calibration of `table`'s claims: its declared `labels` table joined on
+    /// `prediction_id` = `claim_id`, read through `session` in settlement order. A table
+    /// declaring none, or one the session does not register, fits nothing
+    /// (`read.recall.confidence-label`).
+    fn calibration(&self, engine: &SqlEngine, session: &Session, table: &str, deadline: Option<(u64, &'static str)>) -> Result<Calibration, ReadFault> {
+        let Some(labels) = self.memory().table(table).and_then(|t| t.labels.as_deref()) else { return Ok(Calibration::default()) };
+        let (Some(facts), Some(outcomes)) = (session.relation(table), session.relation(labels)) else { return Ok(Calibration::default()) };
+        if self.store.try_schema(labels)?.is_none() || self.store.try_schema(table)?.is_none() {
+            return Ok(Calibration::default());
+        }
+        let sql = format!(
+            "SELECT f.{predicate}, CAST(f.{confidence} AS DOUBLE), CAST(o.{verdict} AS BOOLEAN) FROM {facts} f JOIN {outcomes} o ON o.{prediction} = f.{claim} \
+             WHERE o.{verdict} IS NOT NULL ORDER BY o.{ingested}, o.{prediction}",
+            predicate = ident("predicate"),
+            confidence = ident("confidence"),
+            verdict = ident("verdict"),
+            prediction = ident("prediction_id"),
+            claim = ident("claim_id"),
+            ingested = ident(contextful_core::store::reserve::INGESTED_AT),
+            facts = ident(facts.name()),
+            outcomes = ident(outcomes.name()),
+        );
+        let (_, rows) = match deadline {
+            Some((ms, source)) => engine.run_timed(&sql, &Bindings::default(), None, ms, source)?,
+            None => engine.run(&sql, &Bindings::default(), None)?,
+        };
+        let samples: Vec<Settled> = rows
+            .into_iter()
+            .filter_map(|row| match (row[0].to_json(), row[1].to_json(), row[2].to_json()) {
+                (Value::String(predicate), Value::Number(c), Value::Bool(held)) => Some(Settled { shape: Shape::Facts, predicate, confidence: c.as_f64()?, held }),
+                _ => None,
+            })
+            .collect();
+        Ok(Calibration::fit(&samples))
     }
 }
 

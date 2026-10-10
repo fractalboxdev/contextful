@@ -13,6 +13,7 @@
 //! (`disclosure.record.unpersisted-wire`).
 
 use contextful_context::read::{Face, ReadFault, ReadOptions, RecallRequest, RetrieveRequest};
+use contextful_core::memory::declare::Shape;
 use contextful_core::read::face::{register_tool, require, BuildIdentity, FaceScope, ToolKind, TOOLS};
 use contextful_core::read::guard::admit;
 use contextful_core::read::pin::{Pins, PIN_ARGUMENT};
@@ -72,6 +73,10 @@ impl<S: SigningPort + Send + Sync + 'static> ReadRecord for AuditLog<S> {
     }
 }
 
+/// The read-entry attribute listing the claim ids a memory read returned
+/// (`read.recall.usage-ledger`).
+pub const MEMORY_CLAIMS: &str = "contextful.memory.claims";
+
 /// One read as its audit entry records it.
 pub struct ReadEntry<'r> {
     pub tool: &'r str,
@@ -83,6 +88,9 @@ pub struct ReadEntry<'r> {
     pub tables: Vec<String>,
     /// The typed refusal of a read enforcement refused (`disclosure.record.refused-read`).
     pub refusal: Option<&'r str>,
+    /// The claim ids a memory read returned (`read.recall.usage-ledger`); `None` for a
+    /// read that is no memory read.
+    pub claims: Option<Vec<String>>,
 }
 
 /// A read's entry attributes (`disclosure.record.read-attributes`): the tool, the
@@ -104,6 +112,9 @@ pub fn read_attributes(read: &ReadEntry<'_>) -> Value {
     attributes.insert(attr::TABLES.into(), json!(read.tables));
     if let Some(identifier) = read.refusal {
         attributes.insert(attr::REFUSAL.into(), json!(identifier));
+    }
+    if let Some(claims) = &read.claims {
+        attributes.insert(MEMORY_CLAIMS.into(), json!(claims));
     }
     Value::Object(attributes)
 }
@@ -330,29 +341,57 @@ impl<'a> Tools<'a> {
             Some(Value::Object(m)) => m.clone(),
             Some(_) => return Err(invalid("`arguments` is an object")),
         };
-        let read = |rows, refusal| ReadEntry {
+        let read = |rows, refusal, claims| ReadEntry {
             tool: name,
             authority: caller.authority,
             rows,
             at: self.clock.now(),
             tables: self.relations(name, &args),
             refusal,
+            claims,
         };
         match self.dispatch(caller, name, &args) {
             // The result leaves only once its entry is durable; otherwise no row does.
-            Ok(Ok((value, rows))) => match self.record.record(read_attributes(&read(rows, None))) {
+            Ok(Ok((value, rows))) => match self.record.record(read_attributes(&read(rows, None, self.claims(name, &value)))) {
                 Ok(()) => Ok(result(value)),
                 Err(e) => Ok(unrecorded(&e)),
             },
             // A refusal is recorded before it answers (`disclosure.record.refused-read`).
             Ok(Err(fault)) => match fault.refusal() {
-                Some(r) => match self.record.record(read_attributes(&read(0, Some(r.identifier())))) {
+                Some(r) => match self.record.record(read_attributes(&read(0, Some(r.identifier()), None))) {
                     Ok(()) => Ok(refused(r)),
                     Err(e) => Ok(unrecorded(&e)),
                 },
                 None => Ok(json!({ "content": [{ "type": "text", "text": fault.to_string() }], "isError": true })),
             },
             Err(protocol) => Err(protocol),
+        }
+    }
+
+    /// The claim ids a memory read returned (`read.recall.usage-ledger`): every row's
+    /// `claim_id` of a `memory.recall` answer, and each `memory_facts` row's of a
+    /// `corpus.retrieve` answer returning one. Any other read returns `None`.
+    fn claims(&self, name: &str, value: &Value) -> Option<Vec<String>> {
+        let columns = value.get("columns")?.as_array()?;
+        let at = |column: &str| columns.iter().position(|c| c == column);
+        let rows = value.get("rows")?.as_array()?;
+        let id = |v: &Value| v.as_str().map(str::to_string);
+        match name {
+            "memory.recall" => {
+                let i = at("claim_id")?;
+                Some(rows.iter().filter_map(|r| r.get(i).and_then(id)).collect())
+            }
+            "corpus.retrieve" => {
+                let (table, row) = (at("_table")?, at("_row")?);
+                let memory = self.face.memory();
+                let claims: Vec<String> = rows
+                    .iter()
+                    .filter(|r| r.get(table).and_then(Value::as_str).and_then(|t| memory.table(t)).is_some_and(|t| t.shape == Shape::Facts))
+                    .filter_map(|r| r.get(row).and_then(|o| o.get("claim_id")).and_then(id))
+                    .collect();
+                (!claims.is_empty()).then_some(claims)
+            }
+            _ => None,
         }
     }
 

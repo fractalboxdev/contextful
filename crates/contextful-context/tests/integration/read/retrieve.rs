@@ -711,3 +711,50 @@ fn a_browse_shaped_read_skips_the_deduplicator() {
     assert_eq!(ranked.blocks["contextful.retrieval"]["floor"], json!(1));
     assert_eq!((ranked.rows.len(), ranked.blocks["contextful.retrieval"]["deduped"].clone()), (11, json!(4)));
 }
+
+/// A claims table declaring `decay_half_life` scales each claim's fused score by its age
+/// from `valid_from`; the same claims rank by relevance alone without it, and a table of
+/// another shape declaring one refuses.
+#[test]
+fn a_declared_half_life_scales_a_claims_ranked_score() {
+    use contextful_core::store::reconcile::ColumnType;
+    let facts = "[[table]]\nname = \"research/insights\"\nshape = \"memory_facts\"\n{decay}columns = [\"claim_id\", \"subject\", \"predicate\", \"object\", \"scope\", \"tier\", \"confidence\", \"valid_from\", \"valid_to\", \"evidence\", \"superseded_by\", \"grant_id\", \"agent\"]\n";
+    let ranked = |decay: &str| {
+        let r = Reads::with_manifest(&format!("{MANIFEST}\n{}", facts.replace("{decay}", decay)));
+        land_rows(&r.store, "research/sources", "src-1", json!([{ "source_id": "s1" }]));
+        let evidence = r#"[{"table":"research/sources","run":"src-1","seq":0}]"#;
+        let claim = |id: &str, subject: &str, from: &str| {
+            json!({ "claim_id": id, "subject": subject, "predicate": "cfo", "object": id, "scope": null, "tier": "curated",
+                "confidence": 1.0, "valid_from": from, "valid_to": null, "evidence": evidence, "superseded_by": null,
+                "grant_id": "g", "agent": null })
+        };
+        let rows = json!([
+            claim("old", "acme holdings", "2020-01-01T00:00:00Z"),
+            claim("fresh", "acme", "2030-01-31T00:00:00Z"),
+            claim("filler", "acme widgets corp", "2030-01-31T00:00:00Z"),
+        ]);
+        let rows = rows.as_array().unwrap().iter().map(|r| r.as_object().unwrap().clone()).collect();
+        let types = [("valid_from", ColumnType::Timestamp), ("valid_to", ColumnType::Timestamp), ("confidence", ColumnType::Float64),
+            ("scope", ColumnType::Utf8), ("superseded_by", ColumnType::Utf8), ("agent", ColumnType::Utf8)]
+            .iter()
+            .map(|(c, t)| (c.to_string(), t.clone()))
+            .collect();
+        let ctx = RunContext {
+            node: NodeId::parse("ingest-a").unwrap(),
+            injection: Injection { run_id: "memory-1".into(), site_id: "site-a".into(), batch_seq: Some(0), authored_by: None, taint: None },
+            committed_at: at("2030-01-10T00:00:00Z"),
+        };
+        let decl = TableDecl { primary_key: Some(vec!["claim_id".into()]), ..TableDecl::named("research/insights") };
+        land(&r.store, &decl, &Batch { rows, types }, &ctx).unwrap();
+        let s = r.session(&["research/*"], None, None);
+        let answer = r.face.retrieve(&s, &ask("research/insights", "acme holdings"), Bounds::default()).unwrap();
+        ids(&answer, "claim_id")
+    };
+    assert_eq!(ranked(""), ["old", "fresh", "filler"]);
+    assert_eq!(ranked("decay_half_life = \"365d\"\n"), ["fresh", "old", "filler"]);
+
+    let entities = "[[table]]\nname = \"research/people\"\nshape = \"memory_entities\"\ndecay_half_life = \"365d\"\ncolumns = [\"entity_id\", \"kind\", \"name\", \"aliases\"]\n";
+    let dir = tempfile::tempdir().unwrap();
+    let refused = Face::open(Store::open(dir.path(), "research").unwrap(), &format!("{MANIFEST}\n{entities}"), Pepper::resolve(|_| None));
+    assert!(refused.err().is_some_and(|e| e.to_string().contains("decay_half_life")));
+}

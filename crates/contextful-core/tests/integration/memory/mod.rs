@@ -1,5 +1,6 @@
 //! Synthesized memory's domain, one module per operation.
 
+mod calibrate;
 mod declare;
 mod recall;
 mod resolve;

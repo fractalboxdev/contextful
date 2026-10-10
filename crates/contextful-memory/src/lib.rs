@@ -1,6 +1,7 @@
 //! Memory synthesis and the direct write over the store.
 
 pub mod claims;
+pub mod owners;
 pub mod relations;
 pub mod synthesize;
 pub mod write;
