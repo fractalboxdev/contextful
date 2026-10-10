@@ -91,6 +91,20 @@ macro_rules! profile {
 /// The profile this build was selected with.
 pub const PROFILE: &str = profile!();
 
+/// What this binary links, as its handshake and `/health` report it, composed from the
+/// feature declarations that select [`PROFILE`] (`read.embed.build-identity`): the read
+/// path's engine, lexical and vector backends, the `s3` and `wasm` connector families, and
+/// the `http`, `eval` and `otlp` faces.
+#[cfg(feature = "read-plane")]
+pub(crate) fn build_identity() -> contextful_core::read::face::BuildIdentity {
+    let named = |pairs: &[(bool, &str)]| pairs.iter().filter(|(linked, _)| *linked).map(|(_, n)| n.to_string()).collect();
+    contextful_core::read::face::BuildIdentity {
+        backends: named(&[(true, "duckdb"), (contextful_context::read::LEXICAL_BACKEND, "fts"), (true, "hnsw")]),
+        connectors: named(&[(cfg!(feature = "s3-sync"), "s3"), (cfg!(feature = "component-host"), "wasm")]),
+        faces: named(&[(true, "http"), (cfg!(feature = "data-plane"), "eval"), (cfg!(feature = "data-plane"), "otlp")]),
+    }
+}
+
 /// `contextful --version`: the workspace version, then the profile.
 const VERSION: &str = concat!(env!("CARGO_PKG_VERSION"), " ", profile!());
 

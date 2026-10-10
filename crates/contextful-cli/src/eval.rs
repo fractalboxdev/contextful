@@ -20,6 +20,7 @@ use clap::Subcommand;
 use contextful_context::fold::fold;
 use contextful_context::land::{land, Batch, RunContext};
 use contextful_context::read::{Face, ReadOptions, RetrieveRequest};
+use contextful_core::read::rank::Fusion;
 use contextful_context::{node, Store};
 use contextful_core::ports::Clock;
 use contextful_core::store::bound_time::Bounds;
@@ -146,6 +147,10 @@ pub struct RunArgs {
     /// The pinned model the endpoint serves the reader and judge, stamped in the run block.
     #[arg(long, required_if_eq("tier", "judged"))]
     model: Option<String>,
+    /// The lexical leg's calibration under evaluation: `reciprocal-rank`, the ranked read's,
+    /// or `min-max`, the one it replaced (`read.rank.calibration-gate`).
+    #[arg(long, default_value = "reciprocal-rank", value_parser = parse_fusion)]
+    fusion: Fusion,
     #[command(flatten)]
     admit: AdmitArgs,
 }
@@ -321,7 +326,12 @@ struct CaseRead {
     rows: Vec<Retrieved>,
 }
 
+fn parse_fusion(name: &str) -> std::result::Result<Fusion, String> {
+    Fusion::parse(name).ok_or_else(|| format!("`{name}` is not `min-max` or `reciprocal-rank`"))
+}
+
 /// Read one case on every leg (`assurance.evaluate.legs`).
+#[allow(clippy::too_many_arguments)]
 fn read_case(
     face: &Face,
     session: &Session,
@@ -330,6 +340,7 @@ fn read_case(
     k: usize,
     embedder: &StubEmbedder,
     landed_at: Instant,
+    fusion: Fusion,
 ) -> Result<CaseRead> {
     let anchor = instant("time_anchor", case.expected.time_anchor.as_deref(), landed_at)?;
     let since = case.expected.since.as_deref().map(|s| instant("since", Some(s), landed_at)).transpose()?;
@@ -348,6 +359,7 @@ fn read_case(
             query_embedding,
             limit: Some(u64::try_from(k)?),
             since,
+            fusion,
             ..RetrieveRequest::new(prefix.clone(), query, anchor)
         };
         let response = face.retrieve(session, &request, Bounds::default()).with_context(|| format!("case `{}`, {leg} leg", case.id))?;
@@ -478,7 +490,7 @@ fn run_cases(a: RunArgs) -> Result<()> {
                 continue;
             }
             let started = std::time::Instant::now();
-            let read = read_case(&face, &s, corpus, &cases[i], a.k, &embedder, landed_at)?;
+            let read = read_case(&face, &s, corpus, &cases[i], a.k, &embedder, landed_at, a.fusion)?;
             let systems = Systems {
                 tokens: read.reader_tokens,
                 latency_ms: started.elapsed().as_secs_f64() * 1000.0,

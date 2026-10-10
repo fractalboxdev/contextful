@@ -216,10 +216,38 @@ fn the_handshake_reports_the_build_and_refuses_an_absent_face() {
     let clock = FixedClock(at("2030-01-01T00:06:00Z"));
     let server = Server::new(&f.face, f.authority.clone(), &current, &clock, &f.audit).unwrap();
     let init = ask(&server, 1, "initialize", json!({ "protocolVersion": "2025-06-18", "require": ["duckdb"] }));
-    assert_eq!(init["result"]["contextful.build"]["backends"], json!(["duckdb", "fts"]));
-    let absent = ask(&server, 2, "initialize", json!({ "require": ["hnsw"] }));
+    assert_eq!(init["result"]["contextful.build"]["backends"], json!(["duckdb", "fts", "hnsw"]));
+    let absent = ask(&server, 2, "initialize", json!({ "require": ["m365"] }));
     assert!(absent["error"]["message"].as_str().unwrap().starts_with("RequiredFaceAbsent"), "{absent}");
     assert!(server.handle(&json!({ "jsonrpc": "2.0", "method": "notifications/initialized" }).to_string()).is_none());
+}
+
+/// A server reporting no embedded SQL engine answers every read tool in-band with
+/// `ReadBackendAbsent`, records the refusal, and reads no row; the handshake still answers.
+#[test]
+fn a_server_reporting_no_sql_engine_refuses_every_read_tool() {
+    use contextful_core::read::face::BuildIdentity;
+    let f = fixture();
+    let clock = FixedClock(at("2030-01-01T00:06:00Z"));
+    let unlinked = BuildIdentity { backends: vec!["fts".into()], connectors: Vec::new(), faces: Vec::new() };
+    let server = Server::new(&f.face, f.authority.clone(), &current, &clock, &f.audit).unwrap().with_build(unlinked);
+    let init = ask(&server, 1, "initialize", json!({}));
+    assert_eq!(init["result"]["contextful.build"]["backends"], json!(["fts"]), "{init}");
+    let reads = [
+        ("context.describe", json!({ "table": "research/notes" })),
+        ("context.query", json!({ "sql": "SELECT note_id FROM \"research/notes\"" })),
+        ("context.files", json!({})),
+        ("corpus.retrieve", json!({ "prefix": "research/", "query": "battery" })),
+    ];
+    for (tool, arguments) in reads {
+        let refused = call(&server, tool, arguments);
+        assert_eq!(refused["result"]["isError"], json!(true), "{refused}");
+        assert_eq!(refused["result"]["structuredContent"]["error"]["identifier"], json!("ReadBackendAbsent"), "{refused}");
+        assert!(refused["result"]["structuredContent"].get("rows").is_none(), "{refused}");
+    }
+    let entries = contextful_policy::audit::entries(&f.dir.path().join("audit")).unwrap();
+    assert_eq!(entries.len(), 4);
+    assert!(entries.iter().all(|e| e.attributes["contextful.read.refusal"] == json!("ReadBackendAbsent")), "{:?}", entries[0].attributes);
 }
 
 #[test]
@@ -459,6 +487,41 @@ fn claims() -> Fixture {
         let decl = TableDecl { primary_key: Some(vec!["claim_id".into()]), ..TableDecl::named("research/facts") };
         put(store, &decl, "memory-1", "2030-01-02T00:00:00Z", rows, &ts);
     })
+}
+
+/// Executed SQL, engine name, applied limit, row count and elapsed milliseconds ride a separate object returned only under `internals: true`, on every read tool and the HTTP face.
+// spec: read.respond.internals-opt-in@82ae2a18
+#[test]
+fn every_read_tool_returns_internals_only_on_request() {
+    let f = claims();
+    let clock = FixedClock(at("2030-06-01T00:00:00Z"));
+    let server = Server::new(&f.face, f.authority.clone(), &current, &clock, &f.audit).unwrap();
+    let listed = call(&server, "context.files", json!({}));
+    let path = rows(&listed).as_array().unwrap().iter().find(|r| r[0] == json!("research/notes")).unwrap()[1].clone();
+    let reads = [
+        ("context.describe", json!({ "table": "research/notes" }), true),
+        ("context.describe", json!({}), false),
+        ("context.query", json!({ "sql": "SELECT note_id FROM \"research/notes\"" }), true),
+        ("context.reference", json!({ "table": "research/notes", "run": "run-0001", "seq": 0 }), true),
+        ("context.files", json!({}), false),
+        ("context.file", json!({ "path": path }), true),
+        ("corpus.retrieve", json!({ "prefix": "research/", "query": "acme cfo" }), true),
+        ("memory.recall", json!({ "table": "research/facts", "subject": "acme" }), true),
+    ];
+    for (tool, arguments, runs_sql) in reads {
+        let plain = call(&server, tool, arguments.clone());
+        let content = &plain["result"]["structuredContent"];
+        assert!(plain["result"].get("isError").is_none(), "{tool}: {plain}");
+        assert!(content.get("contextful.internals").is_none(), "{tool}: {plain}");
+        let mut asked = arguments.clone();
+        asked["internals"] = json!(true);
+        let answer = call(&server, tool, asked);
+        let internals = &answer["result"]["structuredContent"]["contextful.internals"];
+        assert_eq!(internals["engine"], json!("duckdb"), "{tool}: {answer}");
+        assert!(internals["row_count"].is_u64() && internals["elapsed_ms"].is_u64(), "{tool}: {internals}");
+        assert!(internals.get("limit").is_some(), "{tool}: {internals}");
+        assert_eq!(internals["sql"].is_string(), runs_sql, "{tool}: {internals}");
+    }
 }
 
 /// `memory.recall` answers over the tool protocol with the subject's claims at `observed_at`,

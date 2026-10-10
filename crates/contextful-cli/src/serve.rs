@@ -352,7 +352,8 @@ pub fn run(args: ServeArgs, tasks: &Tasks) -> Result<()> {
     };
     let http = HttpFace::new(&face, &clock, &audit, admitting, Some(ceiling))
         .map_err(anyhow::Error::msg)?
-        .with_exchange(&exchange_route, exchange.is_none());
+        .with_exchange(&exchange_route, exchange.is_none())
+        .with_build(crate::build_identity());
     #[cfg(feature = "data-plane")]
     let http = http.with_control(&control);
     #[cfg(feature = "data-plane")]

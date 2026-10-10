@@ -174,8 +174,68 @@ pub fn min_max(scores: &[Option<f64>]) -> Vec<Option<f64>> {
         .collect()
 }
 
-/// The fused score `0.6 · clamp(cosine, 0, 1) + 0.4 · minmax(bm25)`; a document absent
-/// from a leg scores zero there (`read.rank.fusion`).
+/// The constant of reciprocal rank fusion: a document at lexical rank `r`, counting from
+/// 1, scores `(K + 1) / (K + r)`, so the best scores 1 (`read.rank.calibration-gate`).
+pub const RECIPROCAL_RANK_K: f64 = 60.0;
+
+/// How the lexical leg is calibrated before fusion. Reciprocal rank is the default, the
+/// native evaluation scoring it at or above min-max on every tracked measure
+/// (`read.rank.fusion`, `read.rank.calibration-gate`).
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+pub enum Fusion {
+    /// Min-max over the window, the calibration reciprocal rank replaced.
+    MinMax,
+    /// Reciprocal rank over the window (`read.rank.fusion`).
+    #[default]
+    ReciprocalRank,
+}
+
+impl Fusion {
+    /// The fusion named `min-max` or `reciprocal-rank`.
+    pub fn parse(name: &str) -> Option<Fusion> {
+        match name {
+            "min-max" => Some(Fusion::MinMax),
+            "reciprocal-rank" => Some(Fusion::ReciprocalRank),
+            _ => None,
+        }
+    }
+
+    /// The calibrated lexical leg of `scores`.
+    pub fn calibrate(self, scores: &[Option<f64>]) -> Vec<Option<f64>> {
+        match self {
+            Fusion::MinMax => min_max(scores),
+            Fusion::ReciprocalRank => reciprocal_rank(scores),
+        }
+    }
+}
+
+/// Reciprocal rank over the present documents of a window: `(K + 1) / (K + r)` at
+/// descending-score rank `r`, ties sharing their best rank (`read.rank.calibration-gate`).
+pub fn reciprocal_rank(scores: &[Option<f64>]) -> Vec<Option<f64>> {
+    scores
+        .iter()
+        .map(|s| {
+            s.map(|s| {
+                let rank = 1 + scores.iter().flatten().filter(|o| **o > s).count();
+                (RECIPROCAL_RANK_K + 1.0) / (RECIPROCAL_RANK_K + rank as f64)
+            })
+        })
+        .collect()
+}
+
+/// The lexical leg of a build without the lexical backend: each row's matching-token
+/// count over the query's content-token count, every matching token contributing alike;
+/// a row matching no token is absent (`read.rank.degradation-not-error`,
+/// `read.rank.fallback-counts-tokens`).
+pub fn token_fallback(scores: &[Option<u32>], tokens: usize) -> Vec<Option<f64>> {
+    scores
+        .iter()
+        .map(|s| s.filter(|n| *n > 0 && tokens > 0).map(|n| f64::from(n) / tokens as f64))
+        .collect()
+}
+
+/// The fused score `0.6 · clamp(cosine, 0, 1) + 0.4 · lexical`, `lexical` being the
+/// calibrated BM25 leg; a document absent from a leg scores zero there (`read.rank.fusion`).
 pub fn fuse(cosine: Option<f64>, lexical: Option<f64>) -> f64 {
     let v = cosine.map_or(0.0, |c| c.clamp(0.0, 1.0));
     let l = lexical.unwrap_or(0.0);
@@ -268,6 +328,37 @@ pub fn order(candidates: &mut [Candidate], ranking_empty: bool) {
     });
 }
 
+/// Order candidates under the token fallback: the in-window flag leads, then the fused
+/// score, recency breaking ties, newest first, then the identifier
+/// (`read.rank.degradation-not-error`). An empty ranking falls back to recency order.
+pub fn fallback_order(candidates: &mut [Candidate], ranking_empty: bool) {
+    candidates.sort_by(|a, b| {
+        b.in_window.cmp(&a.in_window).then_with(|| {
+            let by_score = if ranking_empty { std::cmp::Ordering::Equal } else { b.fused.partial_cmp(&a.fused).unwrap_or(std::cmp::Ordering::Equal) };
+            by_score.then_with(|| b.recency.cmp(&a.recency)).then_with(|| a.id.cmp(&b.id))
+        })
+    });
+}
+
+/// Most probe rounds one sidecar arm runs while visible rows under-fill the limit
+/// (`read.retrieve.adaptive-over-fetch`).
+pub const OVER_FETCH_ROUNDS: u32 = 4;
+
+/// The probe size of `round`, counting from zero: the first probe's
+/// [`sidecar_probe_size`] doubled once per round, saturating
+/// (`read.retrieve.adaptive-over-fetch`).
+pub fn over_fetch_size(limit: u64, restricted: bool, round: u32) -> u64 {
+    let first = sidecar_probe_size(limit, restricted);
+    (0..round).fold(first, |size, _| size.saturating_mul(2))
+}
+
+/// Whether an arm probes again: the rows the reader can see under-fill the limit, the
+/// last probe returned its full size, so the graph holds more, and a round remains
+/// (`read.retrieve.adaptive-over-fetch`).
+pub fn probe_again(visible: u64, limit: u64, returned: u64, size: u64, round: u32) -> bool {
+    visible < limit && returned >= size && round + 1 < OVER_FETCH_ROUNDS
+}
+
 /// The `contextful.retrieval` block (`read.rank.retrieval-block`).
 #[derive(Debug, Clone, Default, PartialEq, Eq, Serialize)]
 pub struct RetrievalBlock {
@@ -279,6 +370,10 @@ pub struct RetrievalBlock {
     pub in_window: u64,
     pub deduped: u64,
     pub padded: u64,
+    /// A sidecar arm's rounds ran out with the rows the reader can see under the limit
+    /// (`read.retrieve.adaptive-over-fetch`); absent otherwise.
+    #[serde(skip_serializing_if = "std::ops::Not::not")]
+    pub underfilled: bool,
     pub floor: Option<u32>,
     pub since: Option<String>,
 }

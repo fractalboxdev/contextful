@@ -175,9 +175,14 @@ impl Face {
 
     /// Whether the row a citation's run and sequence name reads through `relation`.
     fn row_reads(&self, engine: &SqlEngine, relation: &str, r: &EvidenceRef, deadline: Option<(u64, &'static str)>) -> Result<bool, ReadFault> {
-        let sql = format!("SELECT count(*) FROM {} WHERE {} = ? AND {} = ?", ident(relation), ident(RUN_ID), ident(ROW_SEQ));
+        let sql = row_reads_sql(relation);
         evidence_count(engine, &sql, &Bindings::positional([Bound::Text(r.run.clone()), Bound::Integer(r.seq)]), deadline)
     }
+}
+
+/// The statement reading whether a cited run and sequence row reads through `relation`.
+pub(crate) fn row_reads_sql(relation: &str) -> String {
+    format!("SELECT count(*) FROM {} WHERE {} = ? AND {} = ?", ident(relation), ident(RUN_ID), ident(ROW_SEQ))
 }
 
 fn evidence_count(engine: &SqlEngine, sql: &str, parameters: &Bindings, deadline: Option<(u64, &'static str)>) -> Result<bool, ReadFault> {

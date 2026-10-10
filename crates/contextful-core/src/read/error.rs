@@ -31,6 +31,9 @@ pub enum ReadError {
     /// A client required a face this binary did not link. (`read.embed.required-face`)
     #[error("RequiredFaceAbsent: {0}")]
     RequiredFaceAbsent(String),
+    /// A read tool was called on a binary without the embedded SQL engine. (`read.embed.absent-read-backend`)
+    #[error("ReadBackendAbsent: {0}")]
+    ReadBackendAbsent(String),
     /// A query parameter was missing, unused, untyped or mistyped. (`read.guard.query-binding`)
     #[error("QueryParameterRejected: {0}")]
     QueryParameterRejected(String),
@@ -75,6 +78,7 @@ impl ReadError {
             ReadError::PinnedBuildUnavailable(_) => "PinnedBuildUnavailable",
             ReadError::QueryParameterRejected(_) => "QueryParameterRejected",
             ReadError::RequiredFaceAbsent(_) => "RequiredFaceAbsent",
+            ReadError::ReadBackendAbsent(_) => "ReadBackendAbsent",
             ReadError::QueryProjectAbsent(_) => "QueryProjectAbsent",
             ReadError::QueryNotOneStatement(_) => "QueryNotOneStatement",
             ReadError::StatementNotReadOnly(_) => "StatementNotReadOnly",

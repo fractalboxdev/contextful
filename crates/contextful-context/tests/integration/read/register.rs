@@ -46,6 +46,50 @@ fn describe_reports_the_store_lexicon_on_each_registered_table() {
     }
 }
 
+/// `context.describe` returns row count, its size estimate, schema fingerprint, description, column hints, declared indexes, partition scheme, `limits.max_rows`, zone label, lexicon and example queries.
+// spec: read.register.describe-payload@d77f0748
+#[test]
+fn describe_returns_the_whole_payload() {
+    let r = Reads::new();
+    let s = r.session(&["research/*"], None, None);
+    let d = r.face.describe(&s, Some("research/notes"), Bounds::default()).unwrap();
+    for field in [
+        "row_count", "bytes", "estimated_tokens", "schema_fingerprint", "description", "columns", "indexes", "partition_by",
+        "limits", "zone", "lexicon", "example_queries",
+    ] {
+        assert!(d.get(field).is_some(), "describe omits `{field}`: {d}");
+    }
+    assert_eq!(d["row_count"], json!("4"));
+    assert_eq!(d["description"], json!("Research notes, one partition per tenant."));
+    assert_eq!(d["partition_by"], json!(["tenant"]));
+    assert_eq!(d["limits"]["max_rows"], json!(3));
+    assert_eq!(d["schema_fingerprint"].as_str().unwrap().len(), 64);
+    assert!(d["columns"].as_array().unwrap().iter().any(|c| c["name"] == "note_id"));
+}
+
+/// `context.describe` reports `bytes`, the serialized JSON length of the caller's restricted rows, and `estimated_tokens`, one per 4 B of that length, rounded up.
+// spec: read.register.size-estimate@8b53fbbc
+#[test]
+fn describe_estimates_the_size_of_the_callers_restricted_rows() {
+    let r = Reads::new();
+    let whole = r.session(&["research/*"], None, None);
+    let acme = r.session(&["research/*"], Some(("research/notes", "acme")), None);
+    let size = |s: &contextful_policy::enforce::session::Session, table: &str| {
+        let d = r.face.describe(s, Some(table), Bounds::default()).unwrap();
+        (d["bytes"].as_u64().unwrap(), d["estimated_tokens"].as_u64().unwrap())
+    };
+    let (all_bytes, all_tokens) = size(&whole, "research/notes");
+    let (acme_bytes, acme_tokens) = size(&acme, "research/notes");
+    assert!(all_bytes > acme_bytes && acme_bytes > 0, "{all_bytes} {acme_bytes}");
+    for (bytes, tokens) in [(all_bytes, all_tokens), (acme_bytes, acme_tokens)] {
+        assert_eq!(tokens, bytes.div_ceil(4));
+    }
+    // The estimate measures the rows as the caller's relation serializes them.
+    let expected = r.query(&acme, r#"SELECT sum(strlen(CAST(to_json(t) AS VARCHAR)))::BIGINT AS n FROM "research/notes" AS t"#).unwrap();
+    assert_eq!(column(&expected, "n"), [json!(acme_bytes.to_string())]);
+    assert_eq!(size(&whole, "research/quiet"), (0, 0));
+}
+
 // spec: read.register.column-hints@ce544829
 #[test]
 fn describe_reports_declared_hints_on_existing_columns_only() {
@@ -403,6 +447,7 @@ fn a_tables_request_ledger_reads_as_its_child_relation() {
 /// carrying no row policy. Naming a closed ledger raises `LedgerNotTenantScoped`, stating what closed the
 /// relation.
 // spec: read.register.scoped-ledger@4e735917
+// spec: read.register.no-tenant-ledger@e9a33b3e
 #[test]
 fn a_tenant_scoped_read_naming_the_ledger_is_refused() {
     let r = Reads::new();

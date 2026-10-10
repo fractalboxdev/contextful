@@ -51,6 +51,28 @@ pub fn require(reported: Option<&BuildIdentity>, required: &[String]) -> Result<
     }
 }
 
+/// Serialized bytes a table description counts as one estimated token
+/// (`read.register.size-estimate`).
+pub const BYTES_PER_TOKEN: u64 = 4;
+
+/// The estimated tokens of `bytes` serialized bytes, rounded up (`read.register.size-estimate`).
+pub fn estimated_tokens(bytes: u64) -> u64 {
+    bytes.div_ceil(BYTES_PER_TOKEN)
+}
+
+/// The backend name of the embedded SQL engine every read tool executes on.
+pub const SQL_ENGINE: &str = "duckdb";
+
+/// Refuse a read tool on a build whose reported backends lack the embedded SQL engine,
+/// rather than answering from a narrower path (`read.embed.absent-read-backend`).
+pub fn read_backend(reported: &BuildIdentity, tool: &str) -> Result<(), ReadError> {
+    if reported.backends.iter().any(|b| b == SQL_ENGINE) {
+        Ok(())
+    } else {
+        Err(ReadError::ReadBackendAbsent(format!("`{tool}` reads through `{SQL_ENGINE}`, which this binary does not link")))
+    }
+}
+
 /// Whom a face serves.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum FaceScope {

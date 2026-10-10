@@ -52,6 +52,37 @@ Criteria: no hit crosses a restriction, revocation or frontier, fixed; then repe
 
 Consequences: a commit on an untouched table leaves an entry live.
 
+## A restricted sidecar probe doubles for a bounded number of rounds and reports under-fill
+
+Context: rows a reader cannot see can cluster near a query point, so one oversampled probe re-joined through the reader's restriction returns fewer rows than the limit.
+Decision: `read.retrieve` doubles the probe and probes again while visible rows under-fill the limit, for at most 4 rounds, then answers with the rows it holds and reports the under-fill in the retrieval block.
+Criteria: bounded work per read, then recall, then an honest count.
+
+| Option | Lost on | Cost |
+| --- | --- | --- |
+| Doubling for 4 rounds, under-fill reported *(chosen)* | — | A reader whose visible rows sit past the last round's reach receives fewer rows than the limit, named as such. |
+| One fixed oversampling factor | Recall | A clustered restriction under-fills silently. |
+| Probe until the limit fills | Bounded work | A reader seeing few rows walks the whole graph. |
+| Estimate visibility per reader before probing | Simplicity | A per-reader statistic is one more input for a restriction to leak through. |
+
+Consequences: an under-filled read costs up to 4 probes and re-joins.
+Revisit: under-fill reported on more than a small share of restricted reads.
+
+## Reciprocal rank calibrates the lexical leg, admitted by the native evaluation
+
+Context: fusion adds a bounded cosine leg to a corpus-relative BM25 leg; min-max over the window let one outlier compress every other lexical score.
+Decision: `read.rank` calibrates the BM25 leg by reciprocal rank, `61 / (60 + r)`. A calibration replaces the current one only when the native evaluation scores it at or above the current one on every tracked measure, on every leg; reciprocal rank met that against min-max and raised the hybrid leg's nDCG and R-precision.
+Criteria: no measured regression, fixed; then calibration across corpora.
+
+| Option | Lost on | Cost |
+| --- | --- | --- |
+| Reciprocal rank, admitted by the evaluation *(chosen)* | — | Score magnitudes stop informing order; the comparison runs the native set twice. |
+| Keep min-max normalization | Calibration | One outlier score flattens the lexical leg in every window. |
+| Swap without a gate | Measured quality | A ranking change ships without evidence it ranks no worse. |
+| Learned score calibration | Determinism | A trained map adds a model per corpus and drifts as it grows. |
+
+Revisit: a corpus where reciprocal rank loses a tracked measure to another calibration.
+
 ## A zone-withheld relation is named, with one whole-relation count
 
 `read.respond` names each touched relation the session's zone excludes or column-masks in a restriction block that every transport serializes; `context.describe` states the session zone and whether each table admits it. `authority.place` counts the rows the zone step removes over the whole relation, after the tenant and row-policy steps, never over the caller's statement. `authority.compose.before-the-cut` holds: the count is a property of the relation, so no ranked position, filter or requested size moves it.

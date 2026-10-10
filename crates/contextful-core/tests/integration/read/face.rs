@@ -2,7 +2,7 @@
 
 use super::strings;
 use contextful_core::enforce::EnforceError;
-use contextful_core::read::face::{register_tool, require, BuildIdentity, FaceScope, ToolKind};
+use contextful_core::read::face::{read_backend, register_tool, require, BuildIdentity, FaceScope, ToolKind, TOOLS};
 use contextful_core::read::ReadError;
 
 #[test]
@@ -23,6 +23,24 @@ fn a_requirement_outside_the_reported_set_is_refused() {
     }
     assert!(matches!(require(None, &strings(&["duckdb"])), Err(ReadError::RequiredFaceAbsent(_))));
     assert_eq!(require(None, &[]), Ok(()));
+}
+
+/// Without the embedded SQL engine linked, every read tool raises `ReadBackendAbsent` rather than answering from a narrower path.
+// spec: read.embed.absent-read-backend@b0029a31
+#[test]
+fn a_build_without_the_sql_engine_refuses_every_read_tool() {
+    let linked = BuildIdentity { backends: strings(&["duckdb", "fts"]), connectors: Vec::new(), faces: Vec::new() };
+    let unlinked = BuildIdentity { backends: strings(&["fts", "hnsw"]), connectors: Vec::new(), faces: strings(&["http"]) };
+    for tool in TOOLS.iter().copied().chain(["notes_for"]) {
+        assert_eq!(read_backend(&linked, tool), Ok(()), "{tool}");
+        match read_backend(&unlinked, tool) {
+            Err(e @ ReadError::ReadBackendAbsent(_)) => {
+                assert_eq!(e.identifier(), "ReadBackendAbsent");
+                assert!(e.to_string().contains(tool) && e.to_string().contains("duckdb"), "{e}");
+            }
+            other => panic!("{tool}: {other:?}"),
+        }
+    }
 }
 
 /// An organization-wide face serves the read subset of the tool surface; conversational writes are server-authored.

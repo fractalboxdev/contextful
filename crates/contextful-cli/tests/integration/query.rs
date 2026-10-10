@@ -127,8 +127,46 @@ fn a_project_registers_every_table_under_its_bare_name() {
     assert_eq!(quiet["truncated"], json!(false));
 }
 
+/// An operator's raw read delivers at most the least `limits.max_rows` among the relations
+/// its parsed statement names, and at most `--limit` beside it.
+// spec: read.query.raw-row-ceiling@57c00e79
+#[test]
+fn a_published_row_ceiling_bounds_the_raw_read() {
+    let p = project();
+    std::fs::write(
+        p.path().join("contextful.toml"),
+        "authoring_posture = \"per_request\"\n[[pipeline.tables]]\nname = \"research/notes\"\n[pipeline.tables.policy.limits]\nmax_rows = 1\n\n[[pipeline.tables]]\nname = \"research/quiet\"\n[pipeline.tables.policy.limits]\nmax_rows = 5\n",
+    )
+    .unwrap();
+    let notes = "SELECT note_id FROM \"research/notes\" ORDER BY note_id";
+    let capped = query(p.path(), &["--project", "research", notes]);
+    assert_eq!(capped, json!({ "columns": ["note_id"], "rows": [["n1"]], "truncated": true }));
+    let looser = query(p.path(), &["--project", "research", "--limit", "5", notes]);
+    assert_eq!(looser["rows"], json!([["n1"]]));
+    // A relation named inside a common table expression or a subquery bounds the read too.
+    let nested = "WITH n AS (SELECT note_id FROM \"research/notes\") SELECT note_id FROM n UNION ALL SELECT 'x' FROM \"research/quiet\" ORDER BY 1";
+    assert_eq!(query(p.path(), &["--project", "research", nested])["rows"], json!([["n1"]]));
+    // A statement naming no ceilinged relation reads every row.
+    let free = query(p.path(), &["--project", "research", "SELECT range AS n FROM range(3)"]);
+    assert_eq!((free["rows"].as_array().unwrap().len(), &free["truncated"]), (3, &json!(false)));
+}
+
+/// The verb prints the JSON projection alone; it carries no text rendering, and a call omitting `--json` is a usage error.
+// spec: read.query.json-only@74f0d772
+#[test]
+fn the_verb_prints_only_the_json_projection() {
+    let dir = tempfile::tempdir().unwrap();
+    let bare = run(dir.path(), &["query", "SELECT 1 AS one"]);
+    assert_eq!(bare.status.code(), Some(2), "{}", String::from_utf8_lossy(&bare.stderr));
+    assert!(bare.stdout.is_empty());
+    assert!(String::from_utf8_lossy(&bare.stderr).contains("--json"));
+    let printed = stdout(&run(dir.path(), &["query", "--json", "SELECT 1 AS one"]));
+    assert_eq!(printed.lines().count(), 1);
+    assert_eq!(serde_json::from_str::<Value>(&printed).unwrap(), json!({ "columns": ["one"], "rows": [[1]], "truncated": false }));
+}
+
 /// `--limit` bounds delivered rows and sets `truncated` from the over-fetched probe row.
-// spec: read.query.limit-truncates@2f389281
+// spec: read.query.limit-truncates@f575d33b
 #[test]
 fn a_limit_truncates_exactly() {
     let dir = tempfile::tempdir().unwrap();

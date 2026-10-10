@@ -24,3 +24,7 @@ pub use recall::RecallRequest;
 pub use results::{ResultCache, ResultCounts};
 pub use retrieve::RetrieveRequest;
 pub use shape::aggregate_shape;
+
+/// Whether the lexical backend, BM25 and full-text sidecar probes, links into this build;
+/// without it ranking takes the token fallback (`read.rank.degradation-not-error`).
+pub const LEXICAL_BACKEND: bool = cfg!(feature = "fts");

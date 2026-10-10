@@ -85,6 +85,7 @@ fn describe_reports_the_declared_fulltext_index() {
 
 /// A full-text probe ranks the whole snapshot by BM25 over one should-clause per content token; a token the sidecar's tokenizer splits into several terms matches them at consecutive positions, and an ASCII word token matches its plural as {{read.retrieve.script-split-matching}} does.
 // spec: read.retrieve.fulltext-probe@c8bb146b
+#[cfg(feature = "fts")]
 #[test]
 fn a_probe_matches_unspaced_phrases_and_plurals_across_the_snapshot() {
     let r = text_reads("");
@@ -112,6 +113,7 @@ fn a_probe_matches_unspaced_phrases_and_plurals_across_the_snapshot() {
 }
 
 /// A term on the oldest of 10,001 rows returns for limit 10 (ledger `lexical-deep-recall`).
+#[cfg(feature = "fts")]
 #[test]
 fn a_term_on_one_row_behind_10000_newer_rows_returns_for_limit_10() {
     let manifest = format!("{MANIFEST}{TEXT}");
@@ -180,6 +182,7 @@ fn a_read_without_its_full_text_sidecar_ranks_the_window_unchanged() {
 
 /// An opened full-text sidecar is cached on a fingerprint of its table, snapshot, path and key version in a FIFO of 64 entries, so a repeated read opens nothing and a new snapshot opens afresh.
 // spec: read.rank.lexical-index-cache@c69b917a
+#[cfg(feature = "fts")]
 #[test]
 fn an_opened_sidecar_serves_repeated_reads_until_a_new_snapshot() {
     let r = text_reads("");

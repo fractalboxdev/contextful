@@ -570,6 +570,35 @@ fn the_native_golden_set_holds_its_floors_and_baseline() {
     contextful_eval::record::emit("native-golden-floor", precision, n, seed);
 }
 
+/// A lexical-leg calibration replaces the one {{read.rank.fusion}} names only when the native evaluation scores it at or above that one on every tracked measure.
+// spec: read.rank.calibration-gate@9a3cd5e6
+#[test]
+fn the_ranked_read_keeps_the_fusion_the_native_baseline_admits() {
+    use contextful_core::read::rank::Fusion;
+    let issuer = Issuer::new();
+    let goldens = root().join("evals/cases/native.jsonl");
+    let token = issuer.mint(READER, "on-prem:hq");
+    let (min_max, minmax_report) = issuer.eval(&goldens, &token, &["--fusion", "min-max"]);
+    assert!(min_max.status.success(), "{}", stderr(&min_max));
+    let (rrf, rrf_report) = issuer.eval(&goldens, &token, &["--fusion", "reciprocal-rank"]);
+    assert!(rrf.status.success(), "{}", stderr(&rrf));
+    let mut admitted = true;
+    for leg in ["hybrid", "lexical", "vector"] {
+        for metric in ["ndcg_at_k", "r_precision", "recall_at_k", "reciprocal_rank"] {
+            let pointer = format!("/retrieval/{leg}/{metric}/mean");
+            let (held, candidate) = (mean(&minmax_report, &pointer), mean(&rrf_report, &pointer));
+            eprintln!("{leg}.{metric}: min-max {held} reciprocal-rank {candidate}");
+            admitted &= candidate >= held;
+        }
+        let pointer = format!("/retrieval/{leg}/forbidden_row_rate/max");
+        admitted &= mean(&rrf_report, &pointer) <= mean(&minmax_report, &pointer);
+    }
+    let expected = if admitted { Fusion::ReciprocalRank } else { Fusion::MinMax };
+    assert_eq!(Fusion::default(), expected, "the baseline {} reciprocal rank fusion", if admitted { "admits" } else { "refuses" });
+    let bad = run(issuer.path(), &["eval", "run", "--goldens", goldens.to_str().unwrap(), "--fusion", "softmax"], Some(&token));
+    assert_eq!(bad.status.code(), Some(2));
+}
+
 /// The corpus loads through the real store, and the retriever under test calls {{read.retrieve.ranked-call}} with the options a caller passes.
 // spec: assurance.evaluate.through-the-store@aaa02c86
 #[test]

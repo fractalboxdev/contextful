@@ -12,7 +12,7 @@
 //! no protocol session, opens no server stream and serves no raw statement
 //! (`read.guard.statement-provenance`).
 
-use crate::mcp::{build_identity, Caller, ReadRecord, Tools};
+use crate::mcp::{Caller, ReadRecord, Tools};
 use contextful_context::read::Face;
 use contextful_core::grant::{Action, TablePattern};
 use contextful_core::ports::Clock;
@@ -255,6 +255,13 @@ impl<'a, C: Clock + Sync> HttpFace<'a, C> {
         Ok(HttpFace { tools, admitting, control: None, ceiling, in_flight: AtomicUsize::new(0), exchange: None, exchange_unconfigured: false, claim_write: None })
     }
 
+    /// Report `build` at the handshake and `/health` in place of this package's linked
+    /// identity (`read.embed.build-identity`).
+    pub fn with_build(mut self, build: contextful_core::read::face::BuildIdentity) -> Self {
+        self.tools = self.tools.with_build(build);
+        self
+    }
+
     /// Attach the store's control API without adding tools to the closed read face.
     pub fn with_control(mut self, control: &'a (dyn Fn(&HttpRequest, &AdmittedAuthority) -> HttpResponse + Sync)) -> Self {
         self.control = Some(control);
@@ -356,7 +363,7 @@ impl<'a, C: Clock + Sync> HttpFace<'a, C> {
     /// Answer one request under a slot already held.
     pub fn answer(&self, request: &HttpRequest) -> HttpResponse {
         match (request.path(), request.method.as_str()) {
-            (HEALTH_PATH, "GET") => HttpResponse::json(200, &json!({ "contextful.build": build_identity() })),
+            (HEALTH_PATH, "GET") => HttpResponse::json(200, &json!({ "contextful.build": self.tools.build() })),
             (HEALTH_PATH, _) => HttpResponse::message(405, "`/health` answers GET").with("Allow", "GET"),
             (MCP_PATH, "POST") => self.message(request),
             (MCP_PATH, _) => {

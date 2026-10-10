@@ -368,6 +368,7 @@ fn a_served_read_appends_its_entry_before_the_answer() {
 
 /// A notification answers `202` with no body. The face holds no protocol session and opens no server stream: a `GET` or `DELETE` on `/mcp` answers `405`, any other path `404`.
 // spec: read.register.stateless-session@7d9b76e1
+// spec: read.respond.one-response-shape@e91c57db
 #[test]
 fn a_notification_answers_202_and_the_face_holds_no_session_or_stream() {
     let key = holder(1);

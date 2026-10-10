@@ -36,11 +36,22 @@ fn ranking_fuses_a_cosine_leg_and_a_bm25_leg() {
     assert!((fused[2] - 0.6).abs() < 1e-9);
 }
 
-/// Fusion computes `w_vec · clamp(cosine, 0, 1) + w_lex · minmax(bm25)` with default weights 60 percent and 40 percent. A document absent from one leg scores zero there; ties break by identifier.
-// spec: read.rank.fusion@c26bf771
+/// Fusion computes `w_vec · clamp(cosine, 0, 1) + w_lex · rrf(bm25)`, weights 60 percent and 40 percent, `rrf` scoring BM25 rank `r` as `61 / (60 + r)`. A document absent from a leg scores zero; ties break by identifier.
+// spec: read.rank.fusion@8bba92dc
 #[test]
 fn fusion_weights_clamps_and_breaks_ties_by_identifier() {
+    use contextful_core::read::rank::{reciprocal_rank, Fusion, RECIPROCAL_RANK_K};
     assert_eq!((FUSION_VECTOR_WEIGHT_PERCENT, FUSION_LEXICAL_WEIGHT_PERCENT), (60, 40));
+    assert_eq!((Fusion::default(), RECIPROCAL_RANK_K), (Fusion::ReciprocalRank, 60.0));
+    let rrf = Fusion::default().calibrate(&[Some(9.0), None, Some(1.0), Some(4.0), Some(9.0)]);
+    // Tied scores share their best rank, so 4.0 ranks third and 1.0 fourth.
+    let expect = [Some(1.0), None, Some(61.0 / 64.0), Some(61.0 / 63.0), Some(1.0)];
+    for (got, want) in rrf.iter().zip(expect) {
+        assert_eq!(got.is_some(), want.is_some());
+        assert!((got.unwrap_or(0.0) - want.unwrap_or(0.0)).abs() < 1e-12, "{rrf:?}");
+    }
+    assert_eq!(reciprocal_rank(&[]), []);
+    assert_eq!(Fusion::MinMax.calibrate(&[Some(1.0), Some(3.0)]), min_max(&[Some(1.0), Some(3.0)]));
     assert!((fuse(Some(0.5), Some(1.0)) - 0.7).abs() < 1e-9);
     assert!((fuse(Some(-0.4), Some(1.0)) - 0.4).abs() < 1e-9);
     assert!((fuse(Some(1.7), None) - 0.6).abs() < 1e-9);
@@ -74,6 +85,8 @@ fn the_lexical_leg_holds_matching_documents_alone() {
 #[test]
 fn a_flat_window_awards_full_credit() {
     assert_eq!(min_max(&[Some(2.5), None, Some(2.5)]), [Some(1.0), None, Some(1.0)]);
+    let calibrated = contextful_core::read::rank::Fusion::default().calibrate(&[Some(2.5), None, Some(2.5)]);
+    assert_eq!(calibrated, [Some(1.0), None, Some(1.0)]);
     assert_eq!(min_max(&[Some(1.0), Some(3.0), Some(2.0)]), [Some(0.0), Some(1.0), Some(0.5)]);
 }
 
@@ -126,7 +139,7 @@ fn publication_text_casts_to_an_instant_before_comparison() {
 // spec: read.rank.retrieval-block@a1cf3e6e
 #[test]
 fn the_retrieval_block_and_row_fields_carry_their_names() {
-    let block = RetrievalBlock { window: 200, candidates_prefloor: 200, candidates: 61, matched: 61, returned: 20, in_window: 14, deduped: 3, padded: 0, floor: Some(2), since: Some("2026-02-07".into()) };
+    let block = RetrievalBlock { window: 200, candidates_prefloor: 200, candidates: 61, matched: 61, returned: 20, in_window: 14, deduped: 3, padded: 0, underfilled: false, floor: Some(2), since: Some("2026-02-07".into()) };
     assert_eq!(
         serde_json::to_value(&block).unwrap(),
         json!({ "window": 200, "candidates_prefloor": 200, "candidates": 61, "matched": 61, "returned": 20, "in_window": 14, "deduped": 3, "padded": 0, "floor": 2, "since": "2026-02-07" }),
@@ -136,4 +149,39 @@ fn the_retrieval_block_and_row_fields_carry_their_names() {
         serde_json::to_value(&row).unwrap(),
         json!({ "_score": 2, "_vscore": 0.71, "_in_window": true, "_date_basis": "published_at" }),
     );
+}
+
+/// The token fallback scores matching-token share and breaks ties by recency, newest first.
+#[test]
+fn the_token_fallback_orders_by_token_share_then_recency() {
+    use contextful_core::read::rank::{fallback_order, token_fallback};
+    assert_eq!(token_fallback(&[Some(3), Some(1), Some(0), None], 3), [Some(1.0), Some(1.0 / 3.0), None, None]);
+    assert_eq!(token_fallback(&[Some(2)], 0), [None]);
+    let mut c = vec![
+        candidate("old-full", true, 0.4, "2029-01-01T00:00:00Z"),
+        candidate("new-full", true, 0.4, "2030-01-01T00:00:00Z"),
+        candidate("partial", true, 0.2, "2031-01-01T00:00:00Z"),
+        candidate("outside", false, 0.4, "2032-01-01T00:00:00Z"),
+    ];
+    fallback_order(&mut c, false);
+    let ids: Vec<&str> = c.iter().map(|c| c.id.as_str()).collect();
+    assert_eq!(ids, ["new-full", "old-full", "partial", "outside"]);
+    fallback_order(&mut c, true);
+    let ids: Vec<&str> = c.iter().map(|c| c.id.as_str()).collect();
+    assert_eq!(ids, ["partial", "new-full", "old-full", "outside"]);
+}
+
+/// Under the fallback every matching token contributes, ranking hyphenated, spaced and possessive phrasings equivalently.
+// spec: read.rank.fallback-counts-tokens@8d6ab25a
+#[test]
+fn the_token_fallback_scores_every_phrasing_alike() {
+    use contextful_core::read::tokens::lexical_score;
+    for query in ["solar-battery storage", "solar battery storage", "solar's battery storage"] {
+        let tokens = content_tokens(query);
+        assert_eq!(tokens, ["solar", "battery", "storage"], "{query}");
+        for snippet in ["Solar-battery storage costs", "Solar battery storage costs", "Solar's battery storage costs"] {
+            assert_eq!(lexical_score(&tokens, Some(snippet)), Some(3), "{query} over {snippet}");
+        }
+        assert_eq!(lexical_score(&tokens, Some("battery prices")), Some(1));
+    }
 }

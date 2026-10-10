@@ -14,6 +14,25 @@ fn ids(r: &Response, key: &str) -> Vec<String> {
     column(r, "_row").iter().map(|row| row[key].as_str().unwrap().to_string()).collect()
 }
 
+/// Without the lexical backend linked, ranking substitutes a token fallback scoring each query token over the snippet, recency breaking ties. The result differs in order and still answers.
+// spec: read.rank.degradation-not-error@14477b43
+#[cfg(not(feature = "fts"))]
+#[test]
+fn without_the_lexical_backend_a_ranked_read_answers_by_token_fallback() {
+    assert!(!contextful_context::read::LEXICAL_BACKEND);
+    let r = Reads::new();
+    let s = r.session(&["research/*"], None, None);
+    let ranked = r.face.retrieve(&s, &ask("research/notes", "solar battery storage"), Bounds::default()).unwrap();
+    assert!(ranked.blocks["contextful.retrieval"]["matched"].as_u64().unwrap() > 0, "{:?}", ranked.blocks);
+    let scores: Vec<u64> = column(&ranked, "_score").iter().map(|s| s.as_u64().unwrap()).collect();
+    assert!(!scores.is_empty());
+    assert!(scores.windows(2).all(|w| w[0] >= w[1]), "{scores:?}");
+    // n1 and n4 match every token; the later publication leads.
+    let order = ids(&ranked, "note_id");
+    let (n4, n1) = (order.iter().position(|i| i == "n4").unwrap(), order.iter().position(|i| i == "n1").unwrap());
+    assert!(n4 < n1, "{order:?}");
+}
+
 /// A snippet concatenates up to three text columns: label-priority columns — title, summary, description, thesis and kin — first, then prose-worthy columns in schema order.
 // spec: read.retrieve.snippet@f249e729
 #[test]
@@ -289,6 +308,58 @@ fn sidecar_reads_with_rows(extra: &str, row_for: impl Fn(usize) -> (String, Valu
     r
 }
 
+/// `lab/indexed` alone, under a row policy keyed on `owner`: `p0000`, the oldest row and
+/// the reader's own, points near the question; `crowd` rows of another agent point nearer
+/// still; 299 newer rows of the reader's point elsewhere and fill the recency window.
+fn crowded_reads(crowd: usize) -> Reads {
+    use contextful_context::fold::fold;
+    use contextful_core::store::reconcile::{ColumnType, FloatItem};
+    let manifest = format!("{MANIFEST}{SIDECAR}[pipeline.tables.policy.rows]\npredicate = \"owner = subject.agent\"\n");
+    let mut r = Reads::with_manifest(&format!("{MANIFEST}{SIDECAR}"));
+    let rows: Vec<serde_json::Map<String, Value>> = (0..crowd + 300)
+        .map(|i| {
+            let (owner, embedding) = match i {
+                0 => ("agent://research-loop", json!([0.05, 0.0, 1.0])),
+                i if i <= crowd => ("agent://other", json!([(i % 7) as f64 / 1000.0, (i % 11) as f64 / 1000.0, 1.0])),
+                i => ("agent://research-loop", json!([1.0, (i % 10) as f64 / 10.0, 0.0])),
+            };
+            json!({"passage_id": format!("p{i:04}"), "title": format!("passage {i}"), "owner": owner, "embedding": embedding}).as_object().unwrap().clone()
+        })
+        .collect();
+    let types: HashMap<String, ColumnType> = [("embedding".to_string(), ColumnType::FixedSizeList(FloatItem::Float32, 3))].into_iter().collect();
+    let decl = TableDecl::parse_pipeline(&manifest).unwrap().into_iter().find(|d| d.name == "lab/indexed").unwrap();
+    let ctx = RunContext {
+        node: NodeId::parse("ingest-a").unwrap(),
+        injection: Injection { run_id: "run-0001".into(), site_id: "site-a".into(), batch_seq: Some(0), authored_by: None, taint: None },
+        committed_at: at("2030-01-10T00:00:00Z"),
+    };
+    land(&r.store, &decl, &Batch { rows, types }, &ctx).unwrap();
+    fold(&r.store, &decl, at("2030-01-11T00:00:00Z")).unwrap();
+    r.face = Face::open(r.store.clone(), &manifest, pepper()).unwrap();
+    r
+}
+
+/// Where the rows a reader can see under-fill the requested limit, the probe doubles its size and probes again, for at most 4 rounds, then answers and reports the under-fill in the retrieval block.
+// spec: read.retrieve.adaptive-over-fetch@5399f76a
+#[test]
+fn an_under_filled_probe_doubles_until_the_reader_sees_its_rows() {
+    let question = |table: &str| RetrieveRequest { query_embedding: Some(vec![0.0, 0.0, 1.0]), limit: Some(5), ..ask(table, "") };
+    // 600 rows the reader cannot see sit nearer than its own: the first 256-row probe and
+    // the 512-row second miss `p0000`, the 1024-row third reaches it.
+    let r = crowded_reads(600);
+    let s = r.session(&["lab/*"], None, None);
+    let ranked = r.face.retrieve(&s, &question("lab/indexed"), Bounds::default()).unwrap();
+    assert!(ids(&ranked, "passage_id").contains(&"p0000".to_string()), "{:?}", ids(&ranked, "passage_id"));
+    assert!(ranked.blocks["contextful.retrieval"].get("underfilled").is_none(), "{:?}", ranked.blocks);
+    // Past 2048 nearer hidden rows the fourth round still sees none of the reader's: the
+    // read answers and names the under-fill.
+    let r = crowded_reads(2200);
+    let s = r.session(&["lab/*"], None, None);
+    let ranked = r.face.retrieve(&s, &question("lab/indexed"), Bounds::default()).unwrap();
+    assert!(!ids(&ranked, "passage_id").contains(&"p0000".to_string()));
+    assert_eq!(ranked.blocks["contextful.retrieval"]["underfilled"], json!(true), "{:?}", ranked.blocks);
+}
+
 fn battery(table: &str) -> RetrieveRequest {
     RetrieveRequest { query_embedding: Some(vec![0.0, 0.0, 1.0]), ..ask(table, "battery") }
 }
@@ -330,6 +401,7 @@ fn the_sidecar_adds_a_row_the_recency_window_misses_with_its_exact_scores() {
 
 /// Lexical term statistics come from the widened candidate window, so an accelerated arm can order rows differently from the exact path.
 // spec: read.rank.widened-window-statistics@3374cd12
+#[cfg(feature = "fts")]
 #[test]
 fn sidecar_widening_changes_the_bm25_order_of_shared_rows() {
     let r = sidecar_reads_with_rows("", |i| match i {
@@ -754,7 +826,7 @@ fn a_declared_half_life_scales_a_claims_ranked_score() {
         ids(&answer, "claim_id")
     };
     assert_eq!(ranked(""), ["old", "fresh", "filler"]);
-    assert_eq!(ranked("decay_half_life = \"365d\"\n"), ["fresh", "old", "filler"]);
+    assert_eq!(ranked("decay_half_life = \"365d\"\n"), ["fresh", "filler", "old"]);
 
     let entities = "[[table]]\nname = \"research/people\"\nshape = \"memory_entities\"\ndecay_half_life = \"365d\"\ncolumns = [\"entity_id\", \"kind\", \"name\", \"aliases\"]\n";
     let dir = tempfile::tempdir().unwrap();

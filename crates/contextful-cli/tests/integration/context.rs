@@ -112,6 +112,25 @@ fn scan_prints_files_relation_and_bounds() {
     assert!(unbounded.get("contextful.bounds").is_none());
 }
 
+/// Operator-surface table metadata carries column count and backing file list; a row count is an ordinary count query, never a stored field.
+// spec: read.respond.operator-metadata@e74a259a
+#[test]
+fn scan_reports_the_column_count_and_files_but_no_row_count() {
+    let p = project();
+    land(p.path(), "filings", "run-1", "2030-01-01T00:00:00Z");
+    let v: serde_json::Value = serde_json::from_str(&stdout(&run(p.path(), &["context", "scan", "filings", "--project", "research"]))).unwrap();
+    // `doc` and `e`, beside the engine's always-injected provenance columns.
+    let schema: serde_json::Value =
+        serde_json::from_slice(&std::fs::read(p.path().join(".contextful/context/research/tables/filings/schema.json")).unwrap()).unwrap();
+    let declared = schema["fields"].as_array().unwrap().len();
+    assert!(declared >= 2);
+    assert_eq!(v["column_count"], serde_json::json!(declared));
+    assert_eq!(v["files"].as_array().unwrap().len(), 1);
+    let fields = v.as_object().unwrap();
+    assert!(!fields.is_empty(), "{v}");
+    assert!(fields.keys().all(|k| !k.contains("row")), "{v}");
+}
+
 /// `derived.sqlite` is a cache: `contextful context rebuild-catalog` reconstructs it from the pointers, the manifests they reach, every committed run manifest and every `schema.json`. It is never synced and commits nothing.
 // spec: store.lay-out.derived-catalog@da56c778
 #[test]

@@ -204,7 +204,9 @@ impl Response {
 /// What rides under `internals: true` alone (`read.respond.internals-opt-in`).
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 pub struct Internals {
-    pub sql: String,
+    /// The statements the read executed, one per line; absent for a read running none.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub sql: Option<String>,
     pub engine: &'static str,
     pub limit: Option<u64>,
     pub row_count: u64,
