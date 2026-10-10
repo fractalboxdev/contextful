@@ -4,7 +4,7 @@
 use contextful_core::run::project::{Change, StepPatch, StepStatus};
 use contextful_core::run::record::{Phase, RunRow, RunStatus};
 use contextful_core::time::Instant;
-use contextful_engine::project::{Hub, Update, BROADCAST_RING_ENTRIES};
+use contextful_engine::project::{Hub, Update, BROADCAST_RING_ENTRIES, CHANNEL_EVICTION_SECS};
 
 fn at(s: &str) -> Instant {
     Instant::parse(s).unwrap()
@@ -175,4 +175,70 @@ fn a_restarted_hub_holds_nothing_and_recovers_from_the_record() {
     assert_eq!(recovered.status, RunStatus::Success);
     assert_eq!(recovered.started_at, Some(at("2030-01-01T00:00:00Z")));
     assert!(recovered.version > held, "the new epoch sorts above every version the old hub issued");
+}
+
+/// A late joiner may subscribe from the oldest snapshot {{run.project.broadcast-ring}} holds, reading each held
+/// snapshot in order before live updates.
+// spec: run.project.catch-up@4df8991a
+#[test]
+fn a_late_joiner_replays_the_held_ring_before_live_updates() {
+    let hub = Hub::new(tick(0));
+    let emitter = hub.emitter();
+    emitter.emit("run-1", "filings-feed", status(RunStatus::Running));
+    hub.pump(tick(1));
+    for i in 0..3 {
+        emitter.emit("run-1", "filings-feed", step(&format!("pull-{i}"), StepStatus::Running));
+        hub.pump(tick(2 + i));
+    }
+    assert!(hub.catch_up("run-unseen").is_none());
+    let mut late = hub.catch_up("run-1").unwrap();
+    let mut held = Vec::new();
+    while let Some(Update::Snapshot(s)) = late.recv() {
+        held.push(s.steps.len());
+    }
+    assert_eq!(held, [0, 1, 2, 3], "every held snapshot, oldest first");
+    emitter.emit("run-1", "filings-feed", step("pull-3", StepStatus::Running));
+    hub.pump(tick(9));
+    let Some(Update::Snapshot(live)) = late.recv() else { panic!("expected the live update") };
+    assert_eq!(live.steps.len(), 4);
+
+    // Past the ring, the late joiner starts at the oldest entry the ring still holds.
+    for i in 4..(4 + BROADCAST_RING_ENTRIES as i128) {
+        emitter.emit("run-1", "filings-feed", step(&format!("pull-{i}"), StepStatus::Running));
+        hub.pump(tick(10 + i));
+    }
+    let mut late = hub.catch_up("run-1").unwrap();
+    let mut count = 0;
+    while let Some(Update::Snapshot(_)) = late.recv() {
+        count += 1;
+    }
+    assert_eq!(count, BROADCAST_RING_ENTRIES);
+}
+
+/// The hub evicts a run's channel 60 s after it folds the run's terminal event; a later subscriber recovers from the
+/// durable record as after {{run.project.restart-discards}}.
+// spec: run.project.channel-eviction@c1fa246d
+#[test]
+fn a_terminal_channel_is_evicted_after_60_s() {
+    assert_eq!(CHANNEL_EVICTION_SECS, 60);
+    let hub = Hub::new(tick(0));
+    let emitter = hub.emitter();
+    emitter.emit("run-1", "filings-feed", status(RunStatus::Running));
+    emitter.emit("run-2", "filings-feed", status(RunStatus::Running));
+    hub.pump(tick(1));
+    emitter.emit("run-1", "filings-feed", status(RunStatus::Success));
+    let folded = tick(2);
+    hub.pump(folded);
+
+    hub.pump(folded.plus_secs(59));
+    assert!(hub.connect("run-1").is_some(), "the channel outlives its terminal event by 60 s");
+    hub.pump(folded.plus_secs(60));
+    assert!(hub.connect("run-1").is_none(), "the terminal channel is evicted");
+    assert!(hub.connect("run-2").is_some(), "a run still in flight keeps its channel");
+
+    let (recovered, _) = hub.connect_or_recover(&row("run-1", RunStatus::Success));
+    assert_eq!(recovered.status, RunStatus::Success, "a later subscriber recovers from the record");
+    hub.pump(folded.plus_secs(120));
+    hub.pump(folded.plus_secs(180));
+    assert!(hub.connect("run-1").is_none(), "a recovered terminal channel is evicted in turn");
 }
