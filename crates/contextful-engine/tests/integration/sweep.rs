@@ -22,7 +22,7 @@ fn twelve(state: SweepState) -> Sweep {
 }
 
 fn input(as_of: Option<&str>) -> StoreInput {
-    StoreInput { body: "echo".into(), statement: "SELECT doc_id FROM documents".into(), as_of: as_of.map(str::to_string), sweep: None }
+    StoreInput { body: "echo".into(), statement: "SELECT doc_id FROM documents".into(), as_of: as_of.map(str::to_string), sweep: None, structural_identity: None }
 }
 
 fn fire<'a>(body: &'a dyn RowBody, sweep: Sweep, as_of: Option<&str>, run_id: &str) -> SweepFire<'a> {

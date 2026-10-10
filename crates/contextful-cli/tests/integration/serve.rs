@@ -388,6 +388,19 @@ fn control_edit_saves_a_validated_draft_and_apply_claims_its_expected_version() 
     let (status, draft) = control(&addr, "POST", "/control/edit", Some(&admin), &edit);
     assert_eq!(status, 200, "{draft}");
     assert_eq!(draft["expected"], 1);
+    let snapshot_path = root.join(".contextful/control/research/manifest@v1.toml");
+    let original_snapshot: toml::Value = toml::from_str(&std::fs::read_to_string(&snapshot_path).unwrap()).unwrap();
+    let draft_path = root.join(".contextful/control/research/manifest@draft.json");
+    let saved_bytes = std::fs::read(&draft_path).unwrap();
+    let mut saved: serde_json::Value = serde_json::from_slice(&saved_bytes).unwrap();
+    let mut saved_document: toml::Value = toml::from_str(saved["document"].as_str().unwrap()).unwrap();
+    assert_eq!(saved_document["standalone_tables"], original_snapshot["standalone_tables"], "pipeline editing retains the applied table contracts");
+    saved_document["standalone_tables"] = toml::Value::Array(vec![]);
+    saved["document"] = json!(toml::to_string(&saved_document).unwrap());
+    std::fs::write(&draft_path, serde_json::to_vec(&saved).unwrap()).unwrap();
+    let (status, refused) = control(&addr, "POST", "/control/apply", Some(&admin), &json!({ "expected": 1, "nonce": draft["nonce"] }).to_string());
+    assert_eq!(status, 422, "tampering with preserved table contracts refuses: {refused}");
+    std::fs::write(&draft_path, saved_bytes).unwrap();
     let declaration = root.join("contextful.toml");
     let owner_text = std::fs::read_to_string(&declaration).unwrap();
     std::fs::write(&declaration, format!("{owner_text}\n[control]\nurl = \"http://127.0.0.1:12345/\"\n")).unwrap();
@@ -403,6 +416,8 @@ fn control_edit_saves_a_validated_draft_and_apply_claims_its_expected_version() 
     assert_eq!(status, 200, "{applied}");
     assert_eq!(applied["applied"], 2);
     assert_eq!(applied["pipelines"][0]["schedule"], "every 1d");
+    let next: toml::Value = toml::from_str(&std::fs::read_to_string(root.join(".contextful/control/research/manifest@v2.toml")).unwrap()).unwrap();
+    assert_eq!(next["standalone_tables"], original_snapshot["standalone_tables"]);
     let (status, refused) = control(&addr, "POST", "/control/apply", Some(&admin), &apply);
     assert_eq!(status, 409, "{refused}");
     assert_eq!(refused["error"]["identifier"], "ControlDraftAbsent");

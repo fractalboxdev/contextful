@@ -256,7 +256,7 @@ fn store_driven(block: &Block, registered: &dyn Fn(&str) -> bool) -> Result<Stor
         }
         .map_err(|e| JobError::Invalid(format!("{e} (job `{name}`)")))?;
     }
-    Ok(StoreDriven { input: StoreInput { body, statement, as_of: block.as_of.clone(), sweep: None }, max_in_flight, tables: block.tables.clone(), isolated_items:block.isolated_items.clone(), sweep: block.sweep.clone().map(Box::new) })
+    Ok(StoreDriven { input: StoreInput { body, statement, as_of: block.as_of.clone(), sweep: None, structural_identity: None }, max_in_flight, tables: block.tables.clone(), isolated_items:block.isolated_items.clone(), sweep: block.sweep.clone().map(Box::new) })
 }
 
 /// The tables a manifest's jobs may target: every destination table its pipelines and
