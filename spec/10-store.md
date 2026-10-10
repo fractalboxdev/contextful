@@ -532,6 +532,7 @@ Uploading the store to a bucket: the wire format, the bucket manifest, prefix co
 - `stranded` — A push names on stderr, per owning node, each local key another node owns that the committed bucket manifest neither lists nor tombstones, with the `CONTEXTFUL_NODE_ID` that pushes it.
   *because a moved store root re-derives the node id, and runs landed under the old one otherwise stay local without a message*
 - `after-run` — With `[sync] push_after_run = true`, `run start` and `pipeline run` push the store once the fire's runs close, and a failed push fails the command.
+  *because a push spends bucket writes and network on every fire, and an operator syncing on a schedule pays nothing for an undeclared key*
 
 A push: digest, upload, then the bucket-manifest commit by merge and compare-and-set.
 

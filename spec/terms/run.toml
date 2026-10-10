@@ -163,6 +163,8 @@ run-error-cap              = { clause = "run.record.error-cap", value = 2, unit 
 projection-coalesce-window = { clause = "run.project.coalescing", value = 100, unit = "ms", basis = "chosen", gloss = "Window snapshot broadcasts collapse into." }
 run-metadata-bytes         = { clause = "run.project.metadata-too-large", value = 16384, unit = "B", basis = "chosen", gloss = "Serialized bound on snapshot application metadata." }
 broadcast-ring-entries     = { clause = "run.project.broadcast-ring", value = 256, unit = "entries", basis = "chosen", gloss = "Snapshots the per-run broadcast holds." }
+channel-eviction-delay     = { clause = "run.project.channel-eviction", value = 60, unit = "s", basis = "chosen", gloss = "Time a run's channel outlives its folded terminal event." }
+allowed-lateness-default   = { clause = "run.advance.allowed-lateness", value = 0, unit = "s", basis = "chosen", gloss = "Re-read window a table declaring no `allowed_lateness` takes." }
 plan-version-prefix        = { clause = "run.compile.plan-version", value = 16, unit = "chars", basis = "chosen", gloss = "Hash characters forming a plan's version." }
 chunk-lease-ttl            = { clause = "run.backfill.chunk-lease", value = 300, unit = "s", basis = "chosen", gloss = "Life of an unrenewed chunk lease." }
 chunk-lease-renewal        = { clause = "run.backfill.chunk-lease", value = 60, unit = "s", basis = "chosen", gloss = "Renewal cadence of a held chunk lease." }

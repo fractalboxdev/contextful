@@ -1354,6 +1354,17 @@
       "line": 130
     },
     {
+      "id": "topology.package.interchange-whole",
+      "contract": "topology",
+      "operation": "package",
+      "subject": "interchange-whole",
+      "kind": "behavior",
+      "statement": "The edge profile links the columnar interchange crates whole, as the full profile does; no slimmed interchange build exists.",
+      "why": "because a slimmed build forks the format code an edge replica reads with from the code the full profile writes with",
+      "file": "spec/01-topology.md",
+      "line": 132
+    },
+    {
       "id": "topology.deploy.unsupported-shape",
       "contract": "topology",
       "operation": "deploy",
@@ -1638,6 +1649,28 @@
       "why": "",
       "file": "spec/01-topology.md",
       "line": 299
+    },
+    {
+      "id": "topology.coordinate.no-clustered-catalog",
+      "contract": "topology",
+      "operation": "coordinate",
+      "subject": "no-clustered-catalog",
+      "kind": "behavior",
+      "statement": "Clustered availability behind the `Catalog` port comes from Postgres alone; the tree ships no self-contained clustered catalog.",
+      "why": "because a clustered catalog of its own rebuilds the replication Postgres provides, for the few operators who refuse to run Postgres",
+      "file": "spec/01-topology.md",
+      "line": 300
+    },
+    {
+      "id": "topology.bound-application.restated-case",
+      "contract": "topology",
+      "operation": "bound-application",
+      "subject": "restated-case",
+      "kind": "behavior",
+      "statement": "A case with neither a generated artifact nor a callable route stays with the application, which restates the engine rule at its site under {{assurance.structure-tree.mirror-exemption}}.",
+      "why": "because a restatement naming its clause id surfaces when the rule changes, and an adapter for one case costs more than it guards",
+      "file": "spec/01-topology.md",
+      "line": 346
     },
     {
       "id": "store.lay-out.components",
@@ -3974,7 +4007,7 @@
       "subject": "after-run",
       "kind": "behavior",
       "statement": "With `[sync] push_after_run = true`, `run start` and `pipeline run` push the store once the fire's runs close, and a failed push fails the command.",
-      "why": "",
+      "why": "because a push spends bucket writes and network on every fire, and an operator syncing on a schedule pays nothing for an undeclared key",
       "file": "spec/10-store.md",
       "line": 534
     },
@@ -3987,7 +4020,7 @@
       "statement": "A downloaded object whose digest differs from its entry raises `SyncObjectDigestMismatch` and is discarded.",
       "why": "P4",
       "file": "spec/10-store.md",
-      "line": 573
+      "line": 574
     },
     {
       "id": "store.pull.identity-conflict",
@@ -3998,7 +4031,7 @@
       "statement": "A pull into a store holding a different {{store.init.store-identity}} raises `StoreIdentityConflict` before downloading files.",
       "why": "because importing another UUID lets that store's owner credential read local rows",
       "file": "spec/10-store.md",
-      "line": 575
+      "line": 576
     },
     {
       "id": "store.pull.convergence",
@@ -4009,7 +4042,7 @@
       "statement": "When a named key disappears mid-download, the pull re-fetches the manifest and retries the shortfall, up to 3 attempts.",
       "why": "",
       "file": "spec/10-store.md",
-      "line": 577
+      "line": 578
     },
     {
       "id": "store.pull.unconverged",
@@ -4020,7 +4053,7 @@
       "statement": "Exhausting those retries raises `SyncPullDidNotConverge`, naming the key that kept moving, and writes no pointer.",
       "why": "P4",
       "file": "spec/10-store.md",
-      "line": 578
+      "line": 579
     },
     {
       "id": "store.pull.pointer-last",
@@ -4031,7 +4064,7 @@
       "statement": "A pull writes a table's pointer only after every Parquet part of the snapshot it names is home, so no reader meets a pointer ahead of its data.",
       "why": "A-store",
       "file": "spec/10-store.md",
-      "line": 580
+      "line": 581
     },
     {
       "id": "store.pull.tombstone-applied",
@@ -4042,7 +4075,7 @@
       "statement": "A pull deletes the local copy of each key a tombstone names and no entry lists.",
       "why": "because a deletion that never reaches a consumer resurrects once its tombstone ages out",
       "file": "spec/10-store.md",
-      "line": 582
+      "line": 583
     },
     {
       "id": "store.pull.pointer-advance",
@@ -4053,7 +4086,7 @@
       "statement": "A pull advances a local pointer only to a bucket pointer carrying a higher fence, or the same fence and a later snapshot, and verifies every advancing table before writing any pointer.",
       "why": "A-store",
       "file": "spec/10-store.md",
-      "line": 584
+      "line": 585
     },
     {
       "id": "store.pull.schema-merge",
@@ -4064,7 +4097,7 @@
       "statement": "A pulled `schema.json` differing from the local copy merges into it column by column through {{store.reconcile.incompatible}}'s lattice rather than replacing it.",
       "why": "because rows landed locally carry columns the bucket's copy may lack",
       "file": "spec/10-store.md",
-      "line": 586
+      "line": 587
     },
     {
       "id": "store.pull.before-run",
@@ -4075,7 +4108,7 @@
       "statement": "With `[sync] pull_before_run = true`, `run start`, `pipeline run`, `mcp` and `serve` pull every table of the bucket into the store before their first read, and a failed pull stops the command.",
       "why": "because a container starting on an empty disk otherwise serves and folds against a store missing every other node's runs",
       "file": "spec/10-store.md",
-      "line": 588
+      "line": 589
     },
     {
       "id": "store.pull.generation",
@@ -4086,7 +4119,7 @@
       "statement": "`contextful sync pull --generation <N>` reads `gen-<N>.json` in place of the bucket manifest, downloads each listed key in scope at its listed digest, and writes exactly that generation's pointers, whatever their fence.",
       "why": "",
       "file": "spec/10-store.md",
-      "line": 590
+      "line": 591
     },
     {
       "id": "store.pull.generation-absent",
@@ -4097,7 +4130,7 @@
       "statement": "A generation the bucket holds no `gen-<N>.json` for raises `SyncGenerationAbsent`, naming N and the newest generation, and writes nothing.",
       "why": "because a restore falling back to another generation reads a state nobody named",
       "file": "spec/10-store.md",
-      "line": 591
+      "line": 592
     },
     {
       "id": "store.pull.generation-diverged",
@@ -4108,7 +4141,7 @@
       "statement": "A generation pull into a store holding a syncable file in scope that the generation does not list raises `SyncGenerationDiverged`, naming the file, and writes nothing.",
       "why": "because a kept unlisted run adds rows the generation never held, and deleting it loses unpushed work",
       "file": "spec/10-store.md",
-      "line": 593
+      "line": 594
     },
     {
       "id": "store.pull.generation-schema",
@@ -4119,7 +4152,7 @@
       "statement": "A generation pull takes each `schema.json` as the bucket holds it, merged per {{store.pull.schema-merge}}, never refusing on its generation digest.",
       "why": "because the lattice keeps every column an earlier generation carried, and the merged copy replaces the old one in the bucket",
       "file": "spec/10-store.md",
-      "line": 595
+      "line": 596
     },
     {
       "id": "store.pull.generation-run-state",
@@ -4130,7 +4163,7 @@
       "statement": "A generation pull holds no `nodes/<node-id>/run-state.json` to {{store.pull.generation-diverged}}: one the generation does not list stays as it is, and any other unlisted file under `nodes/` meets that refusal.",
       "why": "because a run state summarizes history outside the store root, and a restore predating it otherwise refuses every node that pushed since",
       "file": "spec/10-store.md",
-      "line": 597
+      "line": 598
     },
     {
       "id": "store.pull.run-state-cursor",
@@ -4141,7 +4174,7 @@
       "statement": "A run opening where a pulled run state records a commit marker for its pipeline and table newer than every local one resumes from that marker's cursor.",
       "why": "because a collected run takes its manifest's cursor out of the bucket, and a cold node otherwise re-reads the source from its start",
       "file": "spec/10-store.md",
-      "line": 599
+      "line": 600
     },
     {
       "id": "store.pull.control-head",
@@ -4152,7 +4185,7 @@
       "statement": "A pull downloads the bucket manifest's project-scoped control head, its snapshot and receipt ancestry under their listed digests, leaving the local applied pointer untouched for {{surface.reconcile.pulled-control}}.",
       "why": "A-surface",
       "file": "spec/10-store.md",
-      "line": 601,
+      "line": 602,
       "scenarios": [
         "WHEN a cold node pulls a signed control head, THEN its local applied pointer stays absent until reconciliation verifies the head."
       ]
@@ -4166,7 +4199,7 @@
       "statement": "An unsupported-method response, a forbidden response or a transport error raises `SyncProbeInconclusive` and counts as capability not demonstrated.",
       "why": "A-store",
       "file": "spec/10-store.md",
-      "line": 640
+      "line": 641
     },
     {
       "id": "store.probe.unproven",
@@ -4177,7 +4210,7 @@
       "statement": "Declaring `cas` against a backend the probe did not demonstrate raises `SyncCoordinationUnproven` and stops the push.",
       "why": "A-store",
       "file": "spec/10-store.md",
-      "line": 642
+      "line": 643
     },
     {
       "id": "store.probe.sentinel",
@@ -4188,7 +4221,7 @@
       "statement": "The probe creates a sentinel under `_contextful/cas-probe/` and demonstrates `cas` when a second create and a stale `If-Match` both fail and a current `If-Match` replaces it, deleting the sentinel after.",
       "why": "",
       "file": "spec/10-store.md",
-      "line": 644
+      "line": 645
     },
     {
       "id": "store.probe.network-volume",
@@ -4199,7 +4232,7 @@
       "statement": "A filesystem bucket whose mount type is not apfs, hfs, ext4, xfs, btrfs, zfs, tmpfs or overlay resolves `single-writer` without the sentinel, naming the mount type, and a declared `cas` there meets {{store.probe.unproven}}.",
       "why": "because the bucket's advisory lock is not a guarantee across the clients of a network share, and a sentinel run from one client cannot observe another",
       "file": "spec/10-store.md",
-      "line": 645
+      "line": 646
     },
     {
       "id": "store.merge.tombstone-owner",
@@ -4210,7 +4243,7 @@
       "statement": "A tombstone whose owner differs from the owner of the entry it names raises `SyncTombstoneForeign`, and the merge keeps the entry.",
       "why": "A-store",
       "file": "spec/10-store.md",
-      "line": 652
+      "line": 653
     },
     {
       "id": "store.merge.tombstone-ttl",
@@ -4221,7 +4254,7 @@
       "statement": "A tombstone leaves the manifest 30 d after its `deleted_at`.",
       "why": "",
       "file": "spec/10-store.md",
-      "line": 654
+      "line": 655
     },
     {
       "id": "store.merge.retries",
@@ -4232,7 +4265,7 @@
       "statement": "`[sync] push_retries` bounds the re-commit loop, defaulting to 5 attempts.",
       "why": "",
       "file": "spec/10-store.md",
-      "line": 655
+      "line": 656
     },
     {
       "id": "store.merge.exhausted",
@@ -4243,7 +4276,7 @@
       "statement": "Exhausting those retries raises `SyncManifestRebaseExhausted`, reports every uploaded object as already in the bucket, and asks for a re-run.",
       "why": "A-store",
       "file": "spec/10-store.md",
-      "line": 656
+      "line": 657
     },
     {
       "id": "store.merge.cursor-recency",
@@ -4254,7 +4287,7 @@
       "statement": "Resolving a cursor by whichever copy was written last raises `SyncCursorConflict`; a cursor resolves through its commit.",
       "why": "A-run",
       "file": "spec/10-store.md",
-      "line": 658
+      "line": 659
     },
     {
       "id": "store.merge.scoped-union",
@@ -4265,7 +4298,7 @@
       "statement": "A merge takes each local entry this writer owns or no node owns, and from the remote every other entry; a remote entry it owns and no longer holds leaves with a tombstone.",
       "why": "A-store",
       "file": "spec/10-store.md",
-      "line": 660
+      "line": 661
     },
     {
       "id": "store.merge.ownership",
@@ -4276,7 +4309,7 @@
       "statement": "A key's owner is read off the key: a run directory's node segment, a request-ledger file's node, a commit log's node directory, or a run state's node directory. Every other key is unowned and propagates no deletion.",
       "why": "A-store",
       "file": "spec/10-store.md",
-      "line": 662
+      "line": 663
     },
     {
       "id": "store.lease.ttl",
@@ -4287,7 +4320,7 @@
       "statement": "A lease is granted for 10 min.",
       "why": "",
       "file": "spec/10-store.md",
-      "line": 671
+      "line": 672
     },
     {
       "id": "store.lease.renewal",
@@ -4298,7 +4331,7 @@
       "statement": "A holder renews every 200 s by `If-Match` replace on the ETag it holds.",
       "why": "",
       "file": "spec/10-store.md",
-      "line": 672
+      "line": 673
     },
     {
       "id": "store.lease.clock-skew",
@@ -4309,7 +4342,7 @@
       "statement": "Bucket leasing assumes the clocks of two machines differ by 30 s or less, and every expiry judgment reads the judging machine's monotonic clock.",
       "why": "because correctness rests on the fence, and the skew bound only sets how early a holder stops committing",
       "file": "spec/10-store.md",
-      "line": 673
+      "line": 674
     },
     {
       "id": "store.lease.held",
@@ -4320,7 +4353,7 @@
       "statement": "A run finding an unexpired lease raises `LeaseHeld`, naming the holder and the expiry, is skipped, and is attempted again at the next reconciliation tick.",
       "why": "A-store",
       "file": "spec/10-store.md",
-      "line": 675
+      "line": 676
     },
     {
       "id": "store.lease.stale-fence",
@@ -4331,7 +4364,7 @@
       "statement": "A commit-log create, pointer replace or catalog `UPDATE` losing its condition to a higher fence raises `LeaseFenced`, and the run or snapshot it carried stays unreadable.",
       "why": "A-store",
       "file": "spec/10-store.md",
-      "line": 677
+      "line": 678
     },
     {
       "id": "store.lease.not-held",
@@ -4342,7 +4375,7 @@
       "statement": "Releasing a lease another node holds raises `LeaseNotHeld` and leaves the object untouched.",
       "why": "A-store",
       "file": "spec/10-store.md",
-      "line": 679
+      "line": 680
     },
     {
       "id": "store.lease.cursor-kind",
@@ -4353,7 +4386,7 @@
       "statement": "A cursor whose kind takes no lease reaching `cursors/` raises `LeaseCursorKindMismatch`.",
       "why": "A-run",
       "file": "spec/10-store.md",
-      "line": 681
+      "line": 682
     },
     {
       "id": "store.lease.local-node",
@@ -4364,7 +4397,7 @@
       "statement": "A bucket lease attempted under the node id `local` raises `LeaseNodeIdLocal`, logging the variable that sets a node id; that machine keeps the machine lease.",
       "why": "P3",
       "file": "spec/10-store.md",
-      "line": 683
+      "line": 684
     },
     {
       "id": "store.lease.acquire",
@@ -4375,7 +4408,7 @@
       "statement": "Acquisition creates the lease object under `If-None-Match`, or replaces an expired or released one under `If-Match` on its ETag, the fence one past the object's.",
       "why": "A-store",
       "file": "spec/10-store.md",
-      "line": 685
+      "line": 686
     },
     {
       "id": "store.lease.pointer-fence",
@@ -4386,7 +4419,7 @@
       "statement": "Taking a table's compaction lease raises the fence stored in its bucket pointer, so a publish carrying a lower fence loses its condition.",
       "why": "A-store",
       "file": "spec/10-store.md",
-      "line": 687
+      "line": 688
     },
     {
       "id": "store.lease.network-volume",
@@ -4397,7 +4430,7 @@
       "statement": "Taking a compaction lease on a bucket {{store.probe.network-volume}} resolves to `single-writer` meets {{store.probe.unproven}} naming the mount type, and writes no lease object and no pointer fence.",
       "why": "because a conditional put holding on one machine only lets two machines each take the lease",
       "file": "spec/10-store.md",
-      "line": 689
+      "line": 690
     },
     {
       "id": "store.lease.commit-log",
@@ -4408,7 +4441,7 @@
       "statement": "Under a machine lease, a run commits by creating the next `cursors/<pipeline-id>/<node-id>/<seq>.json`, and an acquisition creates one carrying its fence; a manifest marked `logged` is readable once that log records it.",
       "why": "A-store",
       "file": "spec/10-store.md",
-      "line": 691
+      "line": 692
     },
     {
       "id": "store.replicate.write-refused",
@@ -4419,7 +4452,7 @@
       "statement": "A write verb against a replica raises `ReplicaWriteRefused`, naming the canonical store.",
       "why": "A-store",
       "file": "spec/10-store.md",
-      "line": 709
+      "line": 710
     },
     {
       "id": "store.replicate.partial-parquet",
@@ -4430,7 +4463,7 @@
       "statement": "A replica holding a strict subset of a snapshot's Parquet raises `ReplicaPartialParquet` at refresh and leaves that snapshot unpublished.",
       "why": "A-store",
       "file": "spec/10-store.md",
-      "line": 711
+      "line": 712
     },
     {
       "id": "store.replicate.missing-index",
@@ -4441,7 +4474,7 @@
       "statement": "A query needing a sidecar or a partition the replica lacks raises `ReplicaMissingIndex`, naming the refresh that supplies it.",
       "why": "A-store",
       "file": "spec/10-store.md",
-      "line": 713
+      "line": 714
     },
     {
       "id": "store.replicate.sensitive-refused",
@@ -4452,7 +4485,7 @@
       "statement": "A refresh requesting a replicate-off table raises `ReplicaSensitiveTable`; the consumer reads through the proxying face.",
       "why": "A-store",
       "file": "spec/10-store.md",
-      "line": 715
+      "line": 716
     },
     {
       "id": "read.register.connection-views",
@@ -6974,6 +7007,39 @@
       "line": 72
     },
     {
+      "id": "run.journal.retire-order",
+      "contract": "run",
+      "operation": "journal",
+      "subject": "retire-order",
+      "kind": "behavior",
+      "statement": "A journal store apart from the catalog deletes a retired owner's rows after the catalog commits the retirement, and the next open under that scope repeats the delete.",
+      "why": "because a delete ahead of the commit strands a pending owner without its recorded steps, while a late delete leaves only rows no replay reaches",
+      "file": "spec/30-run.md",
+      "line": 74
+    },
+    {
+      "id": "run.journal.one-cutoff",
+      "contract": "run",
+      "operation": "journal",
+      "subject": "one-cutoff",
+      "kind": "behavior",
+      "statement": "{{run.journal.inline-cutoff}} holds for every step kind, a pull, a recorded effect, an input step and an awakeable payload alike, and no step kind overrides it.",
+      "why": "because one placement rule lets every adapter and the blob sweep read a row without knowing which step kind wrote it",
+      "file": "spec/30-run.md",
+      "line": 76
+    },
+    {
+      "id": "run.journal.fan-out-join",
+      "contract": "run",
+      "operation": "journal",
+      "subject": "fan-out-join",
+      "kind": "behavior",
+      "statement": "Fan-out bodies rejoin only at an explicit join node; a join reached by a failed branch fails the run unless it declares `allow_partial`, which records each failed branch's label and failure tag on the run record.",
+      "why": "because an implicit join hides which branch failed, and a partial result recorded as complete reads as one",
+      "file": "spec/30-run.md",
+      "line": 78
+    },
+    {
       "id": "run.journal.blob-sweep",
       "contract": "run",
       "operation": "journal",
@@ -6982,7 +7048,7 @@
       "statement": "A mark-and-sweep pass every 24 h deletes each blob that no journal row or pending awakeable references and that is older than 1 h.",
       "why": "because the grace window covers a blob written ahead of the row that names it",
       "file": "spec/30-run.md",
-      "line": 74
+      "line": 80
     },
     {
       "id": "run.journal.effect-boundary",
@@ -6993,7 +7059,7 @@
       "statement": "A body replays faithfully when every observable side effect passes through a recorded step, a cursor commit or an awakeable; the work between them is pure.",
       "why": "",
       "file": "spec/30-run.md",
-      "line": 76
+      "line": 82
     },
     {
       "id": "run.journal.recorded-batch",
@@ -7004,7 +7070,7 @@
       "statement": "A journaled pull records its guarded source batch, or its canonically prepared replacement under {{authority.redact.before-the-record}}, ahead of landing.",
       "why": "",
       "file": "spec/30-run.md",
-      "line": 77
+      "line": 83
     },
     {
       "id": "run.journal.replay-lands",
@@ -7015,7 +7081,7 @@
       "statement": "A journal hit hands the recorded batch to the land path, so a resumed run lands bytes identical to an uninterrupted one, batch ordinal included.",
       "why": "",
       "file": "spec/30-run.md",
-      "line": 78
+      "line": 84
     },
     {
       "id": "run.journal.ledger-settles-first",
@@ -7026,7 +7092,7 @@
       "statement": "The outbound request ledger settles durably before the entry recording its batch commits.",
       "why": "",
       "file": "spec/30-run.md",
-      "line": 79
+      "line": 85
     },
     {
       "id": "run.journal.redacting-source",
@@ -7037,7 +7103,7 @@
       "statement": "A journaled source declaring removal without canonical prepared-recording admission raises `JournalRedactionConflict` before its first pull; a boolean removal assertion supplies no admission.",
       "why": "A-authority",
       "file": "spec/30-run.md",
-      "line": 80
+      "line": 86
     },
     {
       "id": "run.journal.prepared-owner",
@@ -7048,7 +7114,7 @@
       "statement": "Protected recording binds the plan, shape, canonical declarations, normalization and pepper identities into owner pins before source execution; a changed identity follows {{run.own.pinned-plan-changed}}.",
       "why": "A-authority",
       "file": "spec/30-run.md",
-      "line": 82
+      "line": 88
     },
     {
       "id": "run.journal.prepared-replay",
@@ -7059,7 +7125,7 @@
       "statement": "A protected journal hit admits the recorded rewritten payload against its canonical writer without repeating shaping, normalization or removal and without fetching the source again.",
       "why": "A-authority",
       "file": "spec/30-run.md",
-      "line": 84
+      "line": 90
     },
     {
       "id": "run.journal.opt-out",
@@ -7070,7 +7136,7 @@
       "statement": "Pull journaling defaults on. A source whose pre-pull cursor cannot name the content it reads opts out through one constant, pinned against each source's declaration by a test. An empty pull is never journaled.",
       "why": "",
       "file": "spec/30-run.md",
-      "line": 86
+      "line": 92
     },
     {
       "id": "run.journal.escape-hatch",
@@ -7081,7 +7147,7 @@
       "statement": "Two escape hatches exist and no third: `journal.unsafe(label, effect)` for an idempotent read, and a source declaring that it journals no pull. Each carries its idempotency argument at a greppable call site.",
       "why": "",
       "file": "spec/30-run.md",
-      "line": 87
+      "line": 93
     },
     {
       "id": "run.journal.substrate-port",
@@ -7092,7 +7158,7 @@
       "statement": "The run-path substrate is one interface: open or resume an execution under a scope for a content-hashed plan reference, record a step output, commit a cursor, suspend on an awakeable with a timeout, attach a retry schedule, describe capabilities.",
       "why": "A-run",
       "file": "spec/30-run.md",
-      "line": 88
+      "line": 94
     },
     {
       "id": "run.journal.storage-ports",
@@ -7103,7 +7169,7 @@
       "statement": "Journal rows, blobs and awakeables persist through a journal store, a blob store and an awakeable store; every `run.journal` and `run.suspend` clause holds for each adapter, the file tree included.",
       "why": "A-run",
       "file": "spec/30-run.md",
-      "line": 90
+      "line": 96
     },
     {
       "id": "run.journal.sqlite-stores",
@@ -7114,7 +7180,7 @@
       "statement": "`contextful-sqlite` serves the journal, blob and awakeable stores from one SQLite file in write-ahead-log mode over one connection, a blob as a row keyed by its sha256; an awakeable update commits with the journal writes inside it.",
       "why": "because a resolution recording its payload through a second connection waits on the write lock its own update holds",
       "file": "spec/30-run.md",
-      "line": 92
+      "line": 98
     },
     {
       "id": "run.journal.sqlite-write-lock",
@@ -7125,7 +7191,7 @@
       "statement": "Every `contextful-sqlite` store write opens an immediate transaction, so concurrent writers of one key across connections to one file serialize: one record lands, and every other returns the standing value instead of a locked-database failure.",
       "why": "because under write-ahead logging a deferred read upgrading to a write fails on the lock at once instead of waiting through the busy timeout",
       "file": "spec/30-run.md",
-      "line": 94
+      "line": 100
     },
     {
       "id": "run.journal.plan-pin",
@@ -7136,7 +7202,7 @@
       "statement": "A run resolves the plan reference it started against for its whole life.",
       "why": "",
       "file": "spec/30-run.md",
-      "line": 96
+      "line": 102
     },
     {
       "id": "run.journal.store-input",
@@ -7147,7 +7213,7 @@
       "statement": "A store-driven run reads its statement once, through the read face under the job's grant at its `as_of`, and records the resolved snapshot id per table and the ordered input rows as its first step.",
       "why": "A-surface",
       "file": "spec/30-run.md",
-      "line": 97
+      "line": 103
     },
     {
       "id": "run.journal.input-replay",
@@ -7158,7 +7224,7 @@
       "statement": "A resume iterates the recorded input and never re-reads the statement, so a row landed after the pinned `as_of`, or folded since, never enters the input set.",
       "why": "",
       "file": "spec/30-run.md",
-      "line": 99
+      "line": 105
     },
     {
       "id": "run.journal.open-as-of",
@@ -7169,7 +7235,7 @@
       "statement": "A store-driven job declaring no `as_of` resolves it to the instant its execution opens, recorded in the input step, so every resume reads that instant.",
       "why": "",
       "file": "spec/30-run.md",
-      "line": 100
+      "line": 106
     },
     {
       "id": "run.journal.input-pin",
@@ -7180,7 +7246,7 @@
       "statement": "A store-driven run's plan reference hashes its body name, statement and declared `as_of`, so a resume under a changed one meets {{run.own.pinned-plan-changed}} before any step replays.",
       "why": "A-surface",
       "file": "spec/30-run.md",
-      "line": 101
+      "line": 107
     },
     {
       "id": "run.journal.input-truncated",
@@ -7191,7 +7257,7 @@
       "statement": "An input statement whose response the face truncates at its row ceiling raises `RunInputTruncated` before any row runs.",
       "why": "because a silently shortened input set closes `success` as though every row ran",
       "file": "spec/30-run.md",
-      "line": 103
+      "line": 109
     },
     {
       "id": "run.journal.row-step",
@@ -7202,7 +7268,7 @@
       "statement": "Each input row runs the registered body under a row key, its ordinal in the recorded input; every step the body records carries a label scoped to that key, and a paid call carries {{run.journal.idempotency-key}}.",
       "why": "because two rows sharing one label under one execution resolve to one recorded value",
       "file": "spec/30-run.md",
-      "line": 105
+      "line": 111
     },
     {
       "id": "run.journal.row-concurrency",
@@ -7213,7 +7279,7 @@
       "statement": "A store-driven run holds at most `max_in_flight` rows inside the body at once; a failing row admits no further row, and the run closes after the rows in flight return.",
       "why": "",
       "file": "spec/30-run.md",
-      "line": 107
+      "line": 113
     },
     {
       "id": "run.journal.row-output",
@@ -7224,7 +7290,7 @@
       "statement": "The rows every body emits land after the last input row completes and before the owner retires, one run per declared output table through {{run.land.stage-order}}.",
       "why": "because a landing that fails then holds the owner, and its resume replays every paid call instead of paying again",
       "file": "spec/30-run.md",
-      "line": 108
+      "line": 114
     },
     {
       "id": "run.journal.body-projection",
@@ -7235,7 +7301,7 @@
       "statement": "A registered body's closed effect labels, declared roots, types, transforms and normalization bind its owner before input or effect execution; a caller-supplied projection differing from that registration refuses.",
       "why": "A-authority",
       "file": "spec/30-run.md",
-      "line": 110
+      "line": 116
     },
     {
       "id": "run.journal.unwired-capability",
@@ -7246,7 +7312,7 @@
       "statement": "Reaching for a capability the running profile does not wire raises `CapabilityUnwired` at the first reach, before any half-finished work.",
       "why": "A-topology",
       "file": "spec/30-run.md",
-      "line": 112
+      "line": 118
     },
     {
       "id": "run.journal.machine-state",
@@ -7257,7 +7323,7 @@
       "statement": "Journal rows, execution owners and awakeables live in the host's own stores, never in the derived catalog; a catalog rebuild leaves them untouched and reconstructs none from the file tree.",
       "why": "",
       "file": "spec/30-run.md",
-      "line": 114
+      "line": 120
     },
     {
       "id": "run.advance.cursor-kind",
@@ -7381,6 +7447,17 @@
       "line": 161
     },
     {
+      "id": "run.advance.allowed-lateness",
+      "contract": "run",
+      "operation": "advance",
+      "subject": "allowed-lateness",
+      "kind": "limit",
+      "statement": "A table declares `allowed_lateness`, default 0 s; a `monotonic` poll re-reads from its stored position minus that window, so a row arriving that late still lands.",
+      "why": "because lateness belongs to the source feeding a table, and a position records only where the frontier stands",
+      "file": "spec/30-run.md",
+      "line": 163
+    },
+    {
       "id": "run.advance.turning-incremental-on",
       "contract": "run",
       "operation": "advance",
@@ -7389,7 +7466,7 @@
       "statement": "Enabling `incremental` on a pipeline that holds a position starts from none, re-landing the source's current window once.",
       "why": "",
       "file": "spec/30-run.md",
-      "line": 163
+      "line": 165
     },
     {
       "id": "run.advance.skip-unchanged",
@@ -7400,7 +7477,7 @@
       "statement": "A snapshot-shaped source with `skip_unchanged = true` records its input's raw-byte digest as `{ sha256, rows }`; a matching digest returns zero batches, holds the position and closes a zero-row success. Undeclared, it is false.",
       "why": "",
       "file": "spec/30-run.md",
-      "line": 164
+      "line": 166
     },
     {
       "id": "run.advance.snapshot-completion",
@@ -7411,7 +7488,7 @@
       "statement": "A snapshot source reports complete inventory or unchanged skip independently of row count; a replacing run carries only complete inventory into its manifest.",
       "why": "A-store",
       "file": "spec/30-run.md",
-      "line": 165
+      "line": 167
     },
     {
       "id": "run.advance.zero-row-commit",
@@ -7422,7 +7499,7 @@
       "statement": "A complete empty snapshot of a replacing table commits {{store.declare.empty-replacement}}; a skipped unchanged input holds the frontier and position, and a failed pull publishes neither.",
       "why": "A-store",
       "file": "spec/30-run.md",
-      "line": 167,
+      "line": 169,
       "scenarios": [
         "WHEN a complete snapshot holds zero rows after a non-empty replacing run, THEN the current read is empty and a bounded read before the commit retains the older rows.",
         "WHEN an unchanged input is skipped, THEN the current read and cursor retain their prior values.",
@@ -7529,6 +7606,17 @@
       "line": 194
     },
     {
+      "id": "run.suspend.caller-binding",
+      "contract": "run",
+      "operation": "suspend",
+      "subject": "caller-binding",
+      "kind": "behavior",
+      "statement": "An awakeable may bind a verified caller subject at mint; resolving it then takes the token and a credential for that subject, and any other caller answers as {{run.suspend.unknown-token}}. An unbound token is its whole authority.",
+      "why": "because a token leaked through a log otherwise resumes a run, and answering unknown discloses nothing to the wrong holder",
+      "file": "spec/30-run.md",
+      "line": 195
+    },
+    {
       "id": "run.suspend.payload-offload",
       "contract": "run",
       "operation": "suspend",
@@ -7537,7 +7625,7 @@
       "statement": "A payload above {{run.journal.inline-cutoff}} lands in the journal's blob store, and the pending row references it.",
       "why": "",
       "file": "spec/30-run.md",
-      "line": 195
+      "line": 197
     },
     {
       "id": "run.suspend.survives-restart",
@@ -7548,7 +7636,7 @@
       "statement": "A durable awakeable store persists every registry row, so a process reopening it over the same location drops no pending callback; an in-process store ends with its process.",
       "why": "",
       "file": "spec/30-run.md",
-      "line": 196
+      "line": 198
     },
     {
       "id": "run.suspend.row-parks",
@@ -7559,7 +7647,7 @@
       "statement": "A store-driven row awaiting an unresolved awakeable parks and frees its slot; the other rows run on, and the parked row re-enters its body once the awakeable resolves or its deadline passes.",
       "why": "",
       "file": "spec/30-run.md",
-      "line": 197
+      "line": 199
     },
     {
       "id": "run.suspend.recorded-timeout",
@@ -7570,7 +7658,7 @@
       "statement": "A row's wait past its deadline records a timeout value as that wait's step output, so every re-entry of the body reads the identical value.",
       "why": "because a body branching on the clock rather than on a recorded value replays differently after a crash",
       "file": "spec/30-run.md",
-      "line": 198
+      "line": 200
     },
     {
       "id": "run.retry.failure-taxonomy",
@@ -7699,10 +7787,32 @@
       "operation": "retry",
       "subject": "partial-failure",
       "kind": "behavior",
-      "statement": "A run that landed some batches and then failed closes `partial_failure`, naming how many landed; the journal holds the resume point.",
+      "statement": "A run failing after it staged batches commits none of them under {{run.own.one-commit-per-run}} and closes `failed`, holding its owner so the journal keeps the resume point; only {{run.record.orphan-reap}} closes a run `partial_failure`.",
       "why": "",
       "file": "spec/30-run.md",
       "line": 252
+    },
+    {
+      "id": "run.retry.no-compensation",
+      "contract": "run",
+      "operation": "retry",
+      "subject": "no-compensation",
+      "kind": "behavior",
+      "statement": "The engine offers no compensation combinator; undoing a partial effect is an author-written recorded step, replayed like any other.",
+      "why": "because compensation depends on each vendor's undo semantics, which the engine cannot know",
+      "file": "spec/30-run.md",
+      "line": 253
+    },
+    {
+      "id": "run.retry.attempt-counter",
+      "contract": "run",
+      "operation": "retry",
+      "subject": "attempt-counter",
+      "kind": "behavior",
+      "statement": "An in-flight schedule's attempt counter persists on its step's journal row, so a crash mid-backoff resumes the remaining budget instead of restarting it.",
+      "why": "because a budget restarting at each crash retries a failing vendor without bound",
+      "file": "spec/30-run.md",
+      "line": 255
     },
     {
       "id": "run.retry.pressure-is-local",
@@ -7713,7 +7823,7 @@
       "statement": "Rate-limit pressure against one source paces only that source's runs.",
       "why": "",
       "file": "spec/30-run.md",
-      "line": 253
+      "line": 257
     },
     {
       "id": "run.retry.bound-hit-is-transient",
@@ -7724,7 +7834,7 @@
       "statement": "A connector striking one of its declared resource bounds answers `Transient`, and every bound decision is recorded on the run record.",
       "why": "",
       "file": "spec/30-run.md",
-      "line": 254
+      "line": 258
     },
     {
       "id": "run.own.execution-owner",
@@ -8230,6 +8340,17 @@
       "line": 400
     },
     {
+      "id": "run.record.rebuild-restores-history",
+      "contract": "run",
+      "operation": "record",
+      "subject": "rebuild-restores-history",
+      "kind": "behavior",
+      "statement": "A catalog rebuild restores run history from {{run.record.reserved-table}}, so a rebuilt catalog lists every run the store recorded instead of starting empty.",
+      "why": "because the catalog is a cache, and a rebuild dropping history loses the only record of failed runs",
+      "file": "spec/30-run.md",
+      "line": 401
+    },
+    {
       "id": "run.record.time-travel",
       "contract": "run",
       "operation": "record",
@@ -8238,7 +8359,7 @@
       "statement": "Run history inherits the store's transaction-time bound, so one as-of selector rewinds it with every other table.",
       "why": "",
       "file": "spec/30-run.md",
-      "line": 401
+      "line": 403
     },
     {
       "id": "run.record.owner-lease",
@@ -8249,7 +8370,7 @@
       "statement": "A `running` or `waiting` row carries an owner of process id, boot id and a lease expiry, renewed every 10 s with a 30 s time-to-live.",
       "why": "because a second process sharing the catalog needs a liveness signal to tell a live run from an orphan",
       "file": "spec/30-run.md",
-      "line": 402
+      "line": 404
     },
     {
       "id": "run.record.orphan-reap",
@@ -8260,7 +8381,7 @@
       "statement": "Startup marks `partial_failure` only a non-terminal row whose owner lease has expired; a row held by a live process is left alone.",
       "why": "",
       "file": "spec/30-run.md",
-      "line": 404
+      "line": 406
     },
     {
       "id": "run.record.writing-site",
@@ -8268,10 +8389,10 @@
       "operation": "record",
       "subject": "writing-site",
       "kind": "behavior",
-      "statement": "The writing site is an engine-injected provenance column beside the ingestion stamp and run id; a row written without one reads null and renders unattributed.",
+      "statement": "Every landed row carries its run's site id in the `_site_id` column {{store.reserve.injected}} writes, so a row names the site that wrote it.",
       "why": "",
       "file": "spec/30-run.md",
-      "line": 405
+      "line": 407
     },
     {
       "id": "run.record.site-id-length",
@@ -8282,7 +8403,7 @@
       "statement": "A site id matches letters, digits, dot, underscore and hyphen, from 1 chars to 64 chars.",
       "why": "because it is interpolated into run directories and request-ledger filenames",
       "file": "spec/30-run.md",
-      "line": 406
+      "line": 408
     },
     {
       "id": "run.record.site-id-unresolved",
@@ -8293,7 +8414,7 @@
       "statement": "A site id comes from the manifest's `site_id`, or the variable its `site_id_env` names, and a run's `--site-id` or `--site-id-env` replaces that declaration; no declaration, both keys in one place, or an unset variable raises `SiteIdUnresolved` at startup.",
       "why": "P3",
       "file": "spec/30-run.md",
-      "line": 408
+      "line": 410
     },
     {
       "id": "run.record.history-window",
@@ -8304,7 +8425,7 @@
       "statement": "History is read through a window, an inclusive start-instant lower bound plus a row ceiling, both applied in the storage adapter's `WHERE` clause, newest first.",
       "why": "",
       "file": "spec/30-run.md",
-      "line": 410
+      "line": 412
     },
     {
       "id": "run.record.describe-window",
@@ -8315,7 +8436,7 @@
       "statement": "The describe surface answers with 5 rows by default and clamps a caller's ceiling at 500 rows.",
       "why": "",
       "file": "spec/30-run.md",
-      "line": 411
+      "line": 413
     },
     {
       "id": "run.record.bound-spelling",
@@ -8326,7 +8447,7 @@
       "statement": "A window lower bound is `YYYY-MM-DD` or a UTC RFC3339 instant ending `Z`; any other spelling raises `HistoryBoundSpelling` at every caller-facing surface.",
       "why": "because a bound read under a guessed zone silently moves the window",
       "file": "spec/30-run.md",
-      "line": 412
+      "line": 414
     },
     {
       "id": "run.record.truncation-flag",
@@ -8337,7 +8458,7 @@
       "statement": "A history response echoes its window and flags truncation when the pipeline recorded more runs inside it than the ceiling returned.",
       "why": "",
       "file": "spec/30-run.md",
-      "line": 414
+      "line": 416
     },
     {
       "id": "run.record.empty-window",
@@ -8348,7 +8469,7 @@
       "statement": "An empty window answers `[]` and raises nothing.",
       "why": "",
       "file": "spec/30-run.md",
-      "line": 415
+      "line": 417
     },
     {
       "id": "run.record.history-export",
@@ -8359,7 +8480,7 @@
       "statement": "History leaves the machine as a process listing and an NDJSON export over one run projection; the export's first line carries store, window, count and truncation flag, then one run per line. It resolves no bucket.",
       "why": "",
       "file": "spec/30-run.md",
-      "line": 416
+      "line": 418
     },
     {
       "id": "run.record.export-ceiling",
@@ -8370,7 +8491,7 @@
       "statement": "The export answers with 500 rows by default and clamps at 5000 rows, each pipeline's window taking the full ceiling before the merged result is clipped once.",
       "why": "",
       "file": "spec/30-run.md",
-      "line": 417
+      "line": 419
     },
     {
       "id": "run.record.error-cap",
@@ -8381,7 +8502,7 @@
       "statement": "A recorded error is masked over credential-shaped spans and capped at 2 KiB with an ellipsis marker, on the one projection every surface serves.",
       "why": "",
       "file": "spec/30-run.md",
-      "line": 418
+      "line": 420
     },
     {
       "id": "run.record.failure-publishes",
@@ -8392,7 +8513,7 @@
       "statement": "The bucket push runs on the failure arm as on the success arm, for every failure past run open.",
       "why": "",
       "file": "spec/30-run.md",
-      "line": 419
+      "line": 421
     },
     {
       "id": "run.record.per-table-accounting",
@@ -8403,7 +8524,7 @@
       "statement": "A table failing inside a multi-table fire leaves one row with its error kind, a step-failure and a run-failure event, and a position where the next run resumes, under either `on_table_error` setting.",
       "why": "",
       "file": "spec/30-run.md",
-      "line": 420
+      "line": 422
     },
     {
       "id": "run.record.counts-at-destination",
@@ -8414,7 +8535,7 @@
       "statement": "Row and byte counts are measured at the destination, not at the source.",
       "why": "",
       "file": "spec/30-run.md",
-      "line": 421
+      "line": 423
     },
     {
       "id": "run.record.skipped-count",
@@ -8425,7 +8546,7 @@
       "statement": "A pull's optional `skipped` field counts inputs the source declined to land whole; the run row sums it over the run's pulls, replayed pulls included, beside the destination counts.",
       "why": "because a skipped input raises no error, and a count on the record surfaces it without reading the landed rows",
       "file": "spec/30-run.md",
-      "line": 422
+      "line": 424
     },
     {
       "id": "run.record.input-bounds",
@@ -8436,7 +8557,7 @@
       "statement": "A store-driven run's row carries its input: the resolved `as_of`, the snapshot id per table and the input row count.",
       "why": "",
       "file": "spec/30-run.md",
-      "line": 424
+      "line": 426
     },
     {
       "id": "run.record.schema-diff-home",
@@ -8447,7 +8568,7 @@
       "statement": "A table's run manifest holds its committed downgrade events with its parts and cursor; run history reads them under that run id.",
       "why": "A-run",
       "file": "spec/30-run.md",
-      "line": 425,
+      "line": 427,
       "scenarios": [
         "WHEN a nested column downgrades and its table commits, THEN run history and that table's run manifest carry the same event; a failed stage carries none."
       ]
@@ -8461,7 +8582,7 @@
       "statement": "Each downgrade event names the table, column path, source type, landed type and reason; a stage that does not commit contributes none.",
       "why": "A-run",
       "file": "spec/30-run.md",
-      "line": 427
+      "line": 429
     },
     {
       "id": "run.project.best-effort",
@@ -8607,6 +8728,28 @@
       "line": 455
     },
     {
+      "id": "run.project.catch-up",
+      "contract": "run",
+      "operation": "project",
+      "subject": "catch-up",
+      "kind": "behavior",
+      "statement": "A late joiner may subscribe from the oldest snapshot {{run.project.broadcast-ring}} holds, reading each held snapshot in order before live updates.",
+      "why": "because the folded snapshot shows where a run stands, and a late joiner animating the catch-up needs how it got there",
+      "file": "spec/30-run.md",
+      "line": 456
+    },
+    {
+      "id": "run.project.channel-eviction",
+      "contract": "run",
+      "operation": "project",
+      "subject": "channel-eviction",
+      "kind": "limit",
+      "statement": "The hub evicts a run's channel 60 s after it folds the run's terminal event; a later subscriber recovers from the durable record as after {{run.project.restart-discards}}.",
+      "why": "because a channel allocated per run otherwise grows a long-lived process by every run it has seen",
+      "file": "spec/30-run.md",
+      "line": 458
+    },
+    {
       "id": "run.project.unauthenticated-upgrade",
       "contract": "run",
       "operation": "project",
@@ -8615,7 +8758,7 @@
       "statement": "The run-stream socket, `GET /runs/:run_id/stream`, authenticates on the HTTP request before the upgrade; a missing or invalid credential raises `RunStreamUnauthorized` with `401`, and an unseen run answers `404`.",
       "why": "A-read",
       "file": "spec/30-run.md",
-      "line": 456
+      "line": 460
     },
     {
       "id": "run.project.read-only-socket",
@@ -8626,7 +8769,7 @@
       "statement": "A subscription is read-only; a stop travels as an authenticated route.",
       "why": "",
       "file": "spec/30-run.md",
-      "line": 458
+      "line": 462
     },
     {
       "id": "run.project.restart-discards",
@@ -8637,7 +8780,7 @@
       "statement": "A restart discards in-memory snapshots; a subscriber recovers history from the durable record.",
       "why": "",
       "file": "spec/30-run.md",
-      "line": 459
+      "line": 463
     },
     {
       "id": "run.project.delegated-progress",
@@ -8648,7 +8791,7 @@
       "statement": "A heavy step delegated to another host reports progress by posting to the awakeable callback route, and the orchestrating run folds it into its own snapshot.",
       "why": "",
       "file": "spec/30-run.md",
-      "line": 460
+      "line": 464
     },
     {
       "id": "run.declare.pipeline-spec",
@@ -25283,6 +25426,10 @@
       "surface.apply.weak-conditional-backend"
     ],
     [
+      "topology.bound-application.restated-case",
+      "assurance.structure-tree.mirror-exemption"
+    ],
+    [
       "store.lay-out.catalog-ports",
       "topology.coordinate.catalog-port"
     ],
@@ -25735,6 +25882,10 @@
       "run.record.owner-lease"
     ],
     [
+      "run.journal.one-cutoff",
+      "run.journal.inline-cutoff"
+    ],
+    [
       "run.journal.recorded-batch",
       "authority.redact.before-the-record"
     ],
@@ -25775,8 +25926,20 @@
       "run.suspend.expired-token"
     ],
     [
+      "run.suspend.caller-binding",
+      "run.suspend.unknown-token"
+    ],
+    [
       "run.suspend.payload-offload",
       "run.journal.inline-cutoff"
+    ],
+    [
+      "run.retry.partial-failure",
+      "run.own.one-commit-per-run"
+    ],
+    [
+      "run.retry.partial-failure",
+      "run.record.orphan-reap"
     ],
     [
       "run.own.unclosed-execution",
@@ -25811,8 +25974,24 @@
       "run.own.body-parent"
     ],
     [
+      "run.record.rebuild-restores-history",
+      "run.record.reserved-table"
+    ],
+    [
+      "run.record.writing-site",
+      "store.reserve.injected"
+    ],
+    [
       "run.project.wire-snapshot",
       "run.record.status-set"
+    ],
+    [
+      "run.project.catch-up",
+      "run.project.broadcast-ring"
+    ],
+    [
+      "run.project.channel-eviction",
+      "run.project.restart-discards"
     ],
     [
       "run.declare.order-by-default",
@@ -30665,6 +30844,13 @@
           }
         },
         "limit": {
+          "allowed-lateness-default": {
+            "clause": "run.advance.allowed-lateness",
+            "value": 0,
+            "unit": "s",
+            "basis": "chosen",
+            "gloss": "Re-read window a table declaring no `allowed_lateness` takes."
+          },
           "blob-sweep-grace": {
             "clause": "run.journal.blob-sweep",
             "value": 1,
@@ -30692,6 +30878,13 @@
             "unit": "ms",
             "basis": "chosen",
             "gloss": "Cadence of the catalog read feeding the cancellation token."
+          },
+          "channel-eviction-delay": {
+            "clause": "run.project.channel-eviction",
+            "value": 60,
+            "unit": "s",
+            "basis": "chosen",
+            "gloss": "Time a run's channel outlives its folded terminal event."
           },
           "chunk-lease-renewal": {
             "clause": "run.backfill.chunk-lease",
