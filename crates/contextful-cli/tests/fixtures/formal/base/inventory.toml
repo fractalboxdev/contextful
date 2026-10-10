@@ -7,12 +7,12 @@ rests_on = ["delegation-library"]
 module    = "Fx.Basic"
 statement = "∀ (n : Nat), n + 0 = n"
 assumptions    = ["propext", "Quot.sound"]
-binding   = "engine/fx/src/lib.rs::narrows"
+binding   = "engine/fx/src/lib.rs::narrows; test engine/fx/tests/fx.rs::narrows_holds"
 negative  = "Leaves open: that a caller reaches the fold."
 
 [constant."Fx.extensional"]
 module    = "Fx.Basic"
 statement = "∀ (f g : Nat → Nat), (∀ (n : Nat), f n = g n) → ∀ (a b : Prop), (a ↔ b) → f = g ∧ a = b"
 assumptions    = ["propext", "Quot.sound"]
-binding   = "engine/fx/src/lib.rs::extensional"
+binding   = "engine/fx/src/lib.rs::extensional; test engine/fx/tests/fx.rs::extensional_holds"
 negative  = "Leaves open: every function outside Nat."

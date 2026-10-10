@@ -1,11 +1,13 @@
 //! `contextful formal` — elaboration and assumption audit of the Lean models.
 //!
 //! `check` refuses a package manifest declaring a dependency and a toolchain that drifts
-//! from its pin, refuses an inventory that publishes a theorem without its negative space,
-//! names an unbound proof target or rests on an unnamed component, then builds the package
-//! and reads each required constant's elaborated statement and transitive assumption footprint
-//! off the elaborated environment through a generated Lean file. Source text decides
-//! nothing. `recheck` repeats the audit over the commit's own source in an empty artifact
+//! from its pin, refuses an inventory whose claim reaches past what its theorems carry — a
+//! theorem without its negative space, an unbound proof target, an object wider than the
+//! named decisions, an unnamed component, a commutation, sampled inclusion or mediation
+//! claim, a translated theorem without its chain or past the refinement scope — then
+//! builds the package, surfaces an unmodelled manifest category, and reads each required
+//! constant's elaborated statement and transitive assumption footprint off the elaborated
+//! environment through a generated Lean file. Source text decides nothing. `recheck` repeats the audit over the commit's own source in an empty artifact
 //! directory, from a credential-free environment, and compares the per-constant reports.
 
 use anyhow::{bail, Context, Result};
@@ -33,6 +35,36 @@ pub const RECHECK_WALL_TIME: Duration = Duration::from_secs(600);
 /// Where `check` writes its report, relative to the package root, absent `--report`.
 pub const DEFAULT_REPORT: &str = ".lake/contextful-report.json";
 
+/// The translator a translation chain names (`assurance.scope-claim.translation-chain`).
+pub const TRANSLATOR: &str = "aeneas";
+
+/// What a translated module may not reach (`assurance.scope-claim.refinement-exceeded`):
+/// each entry a path root and the kind of object it reaches.
+pub const REFINEMENT_EXCLUDED: [(&str, &str); 22] = [
+    ("biscuit_auth", "cryptography"),
+    ("ed25519_dalek", "cryptography"),
+    ("jsonwebtoken", "cryptography"),
+    ("ring", "cryptography"),
+    ("sha2", "cryptography"),
+    ("hmac", "cryptography"),
+    ("biscuit_parser", "a parsing adapter"),
+    ("serde_json", "a parsing adapter"),
+    ("serde_yaml", "a parsing adapter"),
+    ("toml", "a parsing adapter"),
+    ("sqlparser", "a parsing adapter"),
+    ("csv", "a parsing adapter"),
+    ("duckdb", "a database call"),
+    ("rusqlite", "a database call"),
+    ("sqlx", "a database call"),
+    ("postgres", "a database call"),
+    ("std::thread", "concurrency"),
+    ("std::sync", "concurrency"),
+    ("tokio", "concurrency"),
+    ("rayon", "concurrency"),
+    ("crossbeam", "concurrency"),
+    ("async", "concurrency"),
+];
+
 /// The refusals of `contextful formal`, one variant per error identifier of the
 /// `assurance` contract it raises. `Display` begins with the identifier.
 #[derive(Debug, Clone, PartialEq, Eq, thiserror::Error)]
@@ -43,6 +75,27 @@ pub enum FormalError {
     /// (`assurance.model.toolchain-drift`)
     #[error("ProofToolchainDrift: {0}")]
     ProofToolchainDrift(String),
+    /// (`assurance.model.unmodelled-constructor`)
+    #[error("UnmodelledConstructor: {0}")]
+    UnmodelledConstructor(String),
+    /// (`assurance.prove.commutation-claim`)
+    #[error("CommutationClaimed: {0}")]
+    CommutationClaimed(String),
+    /// (`assurance.prove.sampled-inclusion`)
+    #[error("ZoneInclusionSampled: {0}")]
+    ZoneInclusionSampled(String),
+    /// (`assurance.prove.mediation-from-composition`)
+    #[error("MediationClaimedFromComposition: {0}")]
+    MediationClaimedFromComposition(String),
+    /// (`assurance.scope-claim.beyond-named-decisions`)
+    #[error("ClaimBeyondNamedDecisions: {0}")]
+    ClaimBeyondNamedDecisions(String),
+    /// (`assurance.scope-claim.unstated-chain`)
+    #[error("TranslationChainUnstated: {0}")]
+    TranslationChainUnstated(String),
+    /// (`assurance.scope-claim.refinement-exceeded`)
+    #[error("RefinementScopeExceeded: {0}")]
+    RefinementScopeExceeded(String),
     /// (`assurance.prove.unbound-target`)
     #[error("ProofTargetUnbound: {0}")]
     ProofTargetUnbound(String),
@@ -138,8 +191,11 @@ fn resolve_root(root: Option<PathBuf>) -> Result<PathBuf> {
 // ---------------------------------------------------------------- check
 
 fn check(root: &Path, report_path: &Path) -> Result<()> {
-    let report = audit(root)?;
+    let report = audit(root, &tree_root(root))?;
     write_report(&report, report_path)?;
+    if let Some(claim) = &report.claim {
+        println!("claim: {}", claim.sentence);
+    }
     for row in &report.constants {
         println!("{:<24} {}", row.verdict, row.name);
     }
@@ -169,7 +225,23 @@ pub struct Report {
     pub toolchain: Toolchain,
     pub allowlist: Vec<String>,
     pub inventory_revision: String,
+    /// The assurance claim the inventory states; `None` when it names no target.
+    pub claim: Option<ClaimReport>,
     pub constants: Vec<Row>,
+}
+
+/// The claim sentence and the lists it resolves (`assurance.scope-claim.claim-sentence`).
+#[derive(Debug, Serialize)]
+pub struct ClaimReport {
+    /// Each target's decision, as a code path in the tree.
+    pub decisions: Vec<String>,
+    /// The named Lean specifications: the target constants.
+    pub specifications: Vec<String>,
+    /// The trusted dependencies the claim names and proves none of.
+    pub trusted: Vec<String>,
+    /// One stated translation chain per translated constant.
+    pub translation: Vec<String>,
+    pub sentence: String,
 }
 
 #[derive(Debug, Serialize)]
@@ -196,35 +268,58 @@ pub struct Row {
     pub failure: Option<FormalError>,
 }
 
-fn audit(root: &Path) -> Result<Report> {
+/// The tree a binding's code path resolves in: the repository holding the package, else the
+/// package root's parent.
+fn tree_root(root: &Path) -> PathBuf {
+    git_toplevel(root).unwrap_or_else(|| root.parent().unwrap_or(root).to_path_buf())
+}
+
+fn audit(root: &Path, tree: &Path) -> Result<Report> {
     refuse_dependencies(root)?;
     let inventory = Inventory::load(root)?;
-    inventory.refuse_unpublishable()?;
+    let claim = inventory.refuse_unpublishable(tree)?;
+    let admissions = inventory.admissions(tree)?;
     let toolchain = resolve_toolchain(root)?;
 
     let build = Command::new("lake").arg("build").current_dir(root).output().context("running `lake build`")?;
     if !build.status.success() {
+        let log = format!("{}{}", String::from_utf8_lossy(&build.stdout), String::from_utf8_lossy(&build.stderr));
+        if let Some(category) = log.lines().find_map(|l| l.split("UnmodelledConstructor: ").nth(1)) {
+            return Err(FormalError::UnmodelledConstructor(format!(
+                "the manifest category `{}` has no case in the placement inductive",
+                category.trim()
+            ))
+            .into());
+        }
         // The exit status decides nothing: a failed module leaves its constants absent.
         eprintln!("note: `lake build` exited {}; auditing the environment it left", build.status);
     }
 
     let elaborated = elaborate(root, &inventory)?;
-    let constants = inventory.rows.iter().map(|row| judge(row, elaborated.get(&row.name))).collect();
+    let constants = inventory
+        .rows
+        .iter()
+        .map(|row| judge(row, admissions.get(&row.name).map(Vec::as_slice).unwrap_or_default(), elaborated.get(&row.name)))
+        .collect();
     Ok(Report {
         commit: git(root, &["rev-parse", "HEAD"]).unwrap_or_else(|| "none".into()),
         worktree_clean: git(root, &["status", "--porcelain", "--", "."]).is_some_and(|s| s.is_empty()),
         toolchain,
         allowlist: ASSUMPTION_ALLOWLIST.iter().map(|s| s.to_string()).collect(),
         inventory_revision: inventory.revision,
+        claim,
         constants,
     })
 }
 
-fn judge(row: &InventoryRow, found: Option<&Elaborated>) -> Row {
-    let admitted: Vec<String> = match &row.assumptions {
+/// `admitted_by_record` holds the assumptions beyond the allowlist an `A-assurance` section
+/// admits for this row (`assurance.audit-assumptions.allowlist-admission`).
+fn judge(row: &InventoryRow, admitted_by_record: &[String], found: Option<&Elaborated>) -> Row {
+    let mut admitted: Vec<String> = match &row.assumptions {
         Some(list) => ASSUMPTION_ALLOWLIST.iter().filter(|a| list.iter().any(|l| l == *a)).map(|a| a.to_string()).collect(),
         None => ASSUMPTION_ALLOWLIST.iter().map(|a| a.to_string()).collect(),
     };
+    admitted.extend(admitted_by_record.iter().cloned());
     let mut out = Row {
         name: row.name.clone(),
         module: row.module.clone(),
@@ -356,6 +451,50 @@ struct RawRow {
     assumptions: Option<Vec<String>>,
     binding: Option<String>,
     negative: Option<String>,
+    offered_as: Option<String>,
+    translated: Option<String>,
+    translation: Option<Translation>,
+    record: Option<String>,
+}
+
+/// The four links a statement about translated code inherits.
+#[derive(Debug, Clone, Default, Deserialize)]
+struct Translation {
+    lowering: Option<String>,
+    translator: Option<String>,
+    models: Option<String>,
+    build: Option<String>,
+}
+
+impl Translation {
+    /// The first link the chain leaves unstated, or a translator other than
+    /// [`TRANSLATOR`] at one release string.
+    fn unstated(&self) -> Option<String> {
+        let blank = |s: &Option<String>| s.as_deref().is_none_or(|s| s.trim().is_empty());
+        for (link, value) in
+            [("lowering", &self.lowering), ("translator", &self.translator), ("models", &self.models), ("build", &self.build)]
+        {
+            if blank(value) {
+                return Some(format!("the `{link}` link is unstated"));
+            }
+        }
+        let translator = self.translator.as_deref().unwrap_or_default().trim();
+        match translator.split_whitespace().collect::<Vec<_>>().as_slice() {
+            [name, _release] if name.eq_ignore_ascii_case(TRANSLATOR) => None,
+            _ => Some(format!("the translator `{translator}` is not `{TRANSLATOR} <release>`")),
+        }
+    }
+
+    fn render(&self) -> String {
+        let s = |v: &Option<String>| v.as_deref().unwrap_or_default().trim().to_string();
+        format!(
+            "lowering: {}; translator: {}; models: {}; build: {}",
+            s(&self.lowering),
+            s(&self.translator),
+            s(&self.models),
+            s(&self.build)
+        )
+    }
 }
 
 #[derive(Debug, Default, Deserialize)]
@@ -366,6 +505,9 @@ struct Claim {
     trusted: Vec<String>,
     #[serde(default)]
     rests_on: Vec<String>,
+    /// The objects the claim calls verified; each is a named decision.
+    #[serde(default)]
+    verified: Vec<String>,
 }
 
 #[derive(Debug, Deserialize)]
@@ -384,6 +526,94 @@ struct InventoryRow {
     assumptions: Option<Vec<String>>,
     binding: Option<String>,
     negative: Option<String>,
+    offered_as: Option<String>,
+    translated: Option<String>,
+    translation: Option<Translation>,
+    record: Option<String>,
+}
+
+/// The decision record an assumption beyond the allowlist is admitted through.
+pub const ADMISSION_RECORD: &str = "spec/adr/A-assurance.md";
+
+/// Whether the section `heading` of the admission record names `assumption` in backticks.
+fn record_admits(tree: &Path, heading: &str, assumption: &str) -> bool {
+    let Ok(text) = std::fs::read_to_string(tree.join(ADMISSION_RECORD)) else { return false };
+    let mut in_section = false;
+    for line in text.lines() {
+        if let Some(h) = line.strip_prefix("## ") {
+            in_section = h.trim() == heading.trim();
+        } else if in_section && line.contains(&format!("`{assumption}`")) {
+            return true;
+        }
+    }
+    false
+}
+
+/// A target's binding, `<file>::<item>[ …]; test <file>::<function>`: the decision's code
+/// path and the test exercising it.
+struct Binding {
+    decision: String,
+    test: Option<String>,
+}
+
+impl Binding {
+    fn parse(text: &str) -> Binding {
+        let mut parts = text.split(';').map(str::trim);
+        let decision = parts.next().unwrap_or_default().split_whitespace().next().unwrap_or_default().to_string();
+        let test = parts.find_map(|p| p.strip_prefix("test ")).map(|t| t.trim().to_string()).filter(|t| !t.is_empty());
+        Binding { decision, test }
+    }
+
+    /// The decision's file: the part before its first `::`.
+    fn file(&self) -> &str {
+        self.decision.split("::").next().unwrap_or_default()
+    }
+}
+
+fn is_ident(c: Option<char>) -> bool {
+    c.is_some_and(|c| c.is_alphanumeric() || c == '_')
+}
+
+/// Whether `<file>::<item>` names a file in the tree whose text declares the item's last
+/// segment; with `function`, as `fn <item>`.
+fn resolves(tree: &Path, path: &str, function: bool) -> bool {
+    let Some((file, item)) = path.split_once("::") else { return false };
+    let item = item.rsplit("::").next().unwrap_or_default();
+    let Ok(text) = std::fs::read_to_string(tree.join(file)) else { return false };
+    let needle = if function { format!("fn {item}") } else { item.to_string() };
+    !item.is_empty()
+        && text.match_indices(&needle).any(|(i, _)| {
+            !is_ident(text[..i].chars().next_back()) && !is_ident(text[i + needle.len()..].chars().next())
+        })
+}
+
+/// The excluded object a module's source reaches, as its path root and kind.
+fn excluded_reach(source: &str) -> Option<(&'static str, &'static str)> {
+    REFINEMENT_EXCLUDED.iter().copied().find(|(root, _)| {
+        source.match_indices(root).any(|(i, _)| {
+            let before = source[..i].chars().next_back();
+            let rest = &source[i + root.len()..];
+            if is_ident(before) || before == Some(':') {
+                return false;
+            }
+            if *root == "async" {
+                return rest.starts_with([' ', '\n']);
+            }
+            rest.starts_with("::") || rest.starts_with(';') || rest.starts_with(" as ")
+        })
+    })
+}
+
+/// Whether a statement quantifies over every placement: a binder of the placement type
+/// whose variable no membership hypothesis bounds, which a sampled statement lacks.
+fn quantifies_every_placement(statement: &str) -> bool {
+    statement.match_indices("Placement)").any(|(i, _)| {
+        let head = statement[..i].trim_end_matches(|c: char| c.is_alphanumeric() || c == '_' || c == '.');
+        let Some(head) = head.trim_end().strip_suffix(':') else { return false };
+        let Some(open) = head.rfind('(') else { return false };
+        let rest = statement[i + "Placement)".len()..].trim_start_matches([',', ' ']);
+        head[open + 1..].split_whitespace().any(|name| !rest.starts_with(&format!("{name} ∈")))
+    })
 }
 
 /// `inventory.toml`: one row per required constant, in file order, and the claim.
@@ -417,14 +647,45 @@ impl Inventory {
                 assumptions: r.assumptions,
                 binding: r.binding,
                 negative: r.negative,
+                record: r.record,
+                offered_as: r.offered_as,
+                translated: r.translated,
+                translation: r.translation,
             });
         }
         let revision = format!("sha256:{:x}", Sha256::digest(text.as_bytes()));
         Ok(Inventory { revision, claim: raw.claim, rows })
     }
 
-    /// The refusals the inventory's text alone decides, before anything builds.
-    fn refuse_unpublishable(&self) -> Result<()> {
+    /// Per row, the assumptions beyond the allowlist it admits: each named by a section of
+    /// the admission record the row cites as `record = "A-assurance: <section>"`. A row
+    /// admitting one with no such citation raises `AssumptionOutsideAllowlist`.
+    fn admissions(&self, tree: &Path) -> Result<BTreeMap<String, Vec<String>>> {
+        let mut out = BTreeMap::new();
+        for row in &self.rows {
+            let beyond: Vec<&String> =
+                row.assumptions.iter().flatten().filter(|a| !ASSUMPTION_ALLOWLIST.contains(&a.as_str())).collect();
+            if beyond.is_empty() {
+                continue;
+            }
+            let section = row.record.as_deref().and_then(|r| r.trim().strip_prefix("A-assurance:")).map(str::trim);
+            for assumption in &beyond {
+                if !section.is_some_and(|s| record_admits(tree, s, assumption)) {
+                    return Err(FormalError::AssumptionOutsideAllowlist(format!(
+                        "`{}` admits `{assumption}`, which no `A-assurance` section its `record` cites names",
+                        row.name
+                    ))
+                    .into());
+                }
+            }
+            out.insert(row.name.clone(), beyond.into_iter().cloned().collect());
+        }
+        Ok(out)
+    }
+
+    /// The refusals the inventory's text and the bound code paths decide, before anything
+    /// builds; returns the claim the inventory states.
+    fn refuse_unpublishable(&self, tree: &Path) -> Result<Option<ClaimReport>> {
         let blank = |s: &Option<String>| s.as_deref().is_none_or(|s| s.trim().is_empty());
         if let Some(row) = self.rows.iter().find(|r| blank(&r.negative)) {
             return Err(FormalError::TheoremWithoutNegativeSpace(format!(
@@ -433,22 +694,66 @@ impl Inventory {
             ))
             .into());
         }
-        for target in &self.claim.targets {
-            match self.rows.iter().find(|r| &r.name == target) {
-                Some(row) if !blank(&row.binding) => {}
-                Some(_) => {
-                    return Err(FormalError::ProofTargetUnbound(format!(
-                        "`{target}` carries no binding to a query path"
+        for row in &self.rows {
+            let name = &row.name;
+            match row.offered_as.as_deref().map(str::trim) {
+                Some("commutation") => {
+                    return Err(FormalError::CommutationClaimed(format!(
+                        "`{name}` is offered as a commutation of the enforcement stages, whose order the relation fixes"
                     ))
                     .into())
                 }
-                None => {
-                    return Err(FormalError::ProofTargetUnbound(format!(
-                        "`{target}` is claimed and has no inventory row"
+                Some("mediation") if row.statement.contains("composed") || row.statement.contains("List Layer") => {
+                    return Err(FormalError::MediationClaimedFromComposition(format!(
+                        "`{name}` ranges over a list of layers, not the reachable states of an execution"
                     ))
                     .into())
                 }
+                Some("zone-inclusion") if !quantifies_every_placement(&row.statement) => {
+                    return Err(FormalError::ZoneInclusionSampled(format!(
+                        "`{name}` decides inclusion without quantifying over every placement: `{}`",
+                        row.statement
+                    ))
+                    .into())
+                }
+                _ => {}
             }
+        }
+
+        let mut decisions = Vec::new();
+        for target in &self.claim.targets {
+            let Some(row) = self.rows.iter().find(|r| &r.name == target) else {
+                return Err(FormalError::ProofTargetUnbound(format!("`{target}` is claimed and has no inventory row")).into());
+            };
+            let Some(text) = row.binding.as_deref().filter(|b| !b.trim().is_empty()) else {
+                return Err(FormalError::ProofTargetUnbound(format!("`{target}` carries no binding to a query path")).into());
+            };
+            let binding = Binding::parse(text);
+            if !resolves(tree, &binding.decision, false) {
+                return Err(FormalError::ProofTargetUnbound(format!(
+                    "`{target}` is bound to `{}`, which names no code in the tree",
+                    binding.decision
+                ))
+                .into());
+            }
+            match &binding.test {
+                Some(test) if resolves(tree, test, true) => {}
+                Some(test) => {
+                    return Err(FormalError::ProofTargetUnbound(format!(
+                        "`{target}` is bound to the test `{test}`, which names no test in the tree"
+                    ))
+                    .into())
+                }
+                None => return Err(FormalError::ProofTargetUnbound(format!("`{target}` is bound to no test")).into()),
+            }
+            decisions.push(binding);
+        }
+        if let Some(object) = self.claim.verified.iter().find(|v| !decisions.iter().any(|d| d.decision == v.trim())) {
+            return Err(FormalError::ClaimBeyondNamedDecisions(format!(
+                "the claim calls `{object}` verified; its named decisions are {}",
+                decisions.iter().map(|d| format!("`{}`", d.decision)).collect::<Vec<_>>().join(", ")
+            ))
+            .into());
         }
         let trusted: BTreeSet<&String> = self.claim.trusted.iter().collect();
         if let Some(c) = self.claim.rests_on.iter().find(|c| !trusted.contains(c)) {
@@ -457,7 +762,49 @@ impl Inventory {
             ))
             .into());
         }
-        Ok(())
+
+        let mut translation = Vec::new();
+        for row in &self.rows {
+            let Some(module) = row.translated.as_deref().map(str::trim) else { continue };
+            let name = &row.name;
+            let chain = row.translation.clone().unwrap_or_default();
+            if let Some(gap) = chain.unstated() {
+                return Err(FormalError::TranslationChainUnstated(format!("`{name}` is claimed over `{module}`: {gap}")).into());
+            }
+            let behind_target = self.claim.targets.contains(name) && decisions.iter().any(|d| d.file() == module);
+            if !behind_target {
+                return Err(FormalError::RefinementScopeExceeded(format!(
+                    "`{module}` is translated for `{name}`, outside the decision functions behind the proof targets"
+                ))
+                .into());
+            }
+            let source = std::fs::read_to_string(tree.join(module))
+                .with_context(|| format!("reading the translated module {module}"))?;
+            if let Some((root, kind)) = excluded_reach(&source) {
+                return Err(FormalError::RefinementScopeExceeded(format!("`{module}` reaches {kind} through `{root}`")).into());
+            }
+            translation.push(format!("{name}: {}", chain.render()));
+        }
+
+        if self.claim.targets.is_empty() {
+            return Ok(None);
+        }
+        let decisions: Vec<String> = decisions.into_iter().map(|d| d.decision).collect();
+        let list = |items: &[String]| if items.is_empty() { "none".to_string() } else { items.join(", ") };
+        let sentence = format!(
+            "these named decisions ({}) satisfy these named Lean specifications ({}) under these stated translation and runtime assumptions (trusted: {}; translation: {})",
+            list(&decisions),
+            list(&self.claim.targets),
+            list(&self.claim.trusted),
+            list(&translation),
+        );
+        Ok(Some(ClaimReport {
+            decisions,
+            specifications: self.claim.targets.clone(),
+            trusted: self.claim.trusted.clone(),
+            translation,
+            sentence,
+        }))
     }
 }
 
@@ -575,7 +922,8 @@ fn recheck(root: Option<PathBuf>) -> Result<()> {
     std::env::remove_var("ELAN_TOOLCHAIN");
     let root = resolve_root(root)?;
 
-    let first = audit(&root)?;
+    let tree = tree_root(&root);
+    let first = audit(&root, &tree)?;
     if let Some(e) = first_failure(&first) {
         return Err(e.into());
     }
@@ -593,7 +941,8 @@ fn recheck(root: Option<PathBuf>) -> Result<()> {
         bail!("the rebuild directory {} carries artifacts", rebuilt.display());
     }
     println!("rebuilt: {}", rebuilt.display());
-    let second = audit(&rebuilt);
+    // Bindings resolve in the repository's tree; the rebuild holds the package alone.
+    let second = audit(&rebuilt, &tree);
     let _ = std::fs::remove_dir_all(&scratch);
     let second = second?;
     if let Some(e) = first_failure(&second) {

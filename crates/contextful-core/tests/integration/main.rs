@@ -11,6 +11,7 @@ mod memory;
 mod issue;
 mod job;
 mod pipeline;
+mod place;
 mod read;
 mod redaction;
 mod revoke;

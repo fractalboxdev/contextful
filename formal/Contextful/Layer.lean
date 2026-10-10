@@ -29,3 +29,12 @@ theorem composed_sound :
 theorem composed_narrows :
     ∀ {l : Layer} {ls : List Layer} {r : RowId}, composed (l :: ls) r = true → composed ls r = true :=
   fun h => (Bool.and_eq_true _ _).mp h |>.2
+
+/-- The composition theorems range over the one order the relation fixes: every filtering
+layer first, then the projection carrying masks. Filtering then masking is a different
+relation from masking then filtering: one row, one filter and one mask tell them apart. -/
+-- spec: assurance.prove.order-is-specified@6d850bcd
+theorem filter_then_mask_ne_mask_then_filter :
+    ∃ (keep : Nat → Bool) (mask : Nat → Nat) (rows : List Nat),
+      (rows.filter keep).map mask ≠ (rows.map mask).filter keep :=
+  ⟨fun v => v == 1, fun _ => 0, [1], by decide⟩

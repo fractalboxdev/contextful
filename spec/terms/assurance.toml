@@ -82,7 +82,7 @@ TagGateFailed                    = { clause = "assurance.release.gate-failed", g
 
 [limit]
 assurance-formal-build-time      = { clause = "assurance.model.build-cost", value = 60, unit = "s", basis = "chosen", gloss = "Cold elaboration of the Lean package." }
-assurance-formal-build-artifacts = { clause = "assurance.model.build-cost", value = 512, unit = "KiB", basis = "chosen", gloss = "Artifacts a full elaboration writes." }
+assurance-formal-build-artifacts = { clause = "assurance.model.build-cost", value = 2048, unit = "KiB", basis = "chosen", gloss = "Artifacts a full elaboration writes." }
 assurance-assumption-allowlist        = { clause = "assurance.audit-assumptions.allowlist", value = 2, unit = "entries", basis = "chosen", gloss = "Assumptions a required constant's footprint may reach." }
 assurance-recheck-wall-time      = { clause = "assurance.recheck.wall-time", value = 600, unit = "s", basis = "chosen", gloss = "One recheck from an empty artifact directory." }
 assurance-counterexample-corpus  = { clause = "assurance.differential-test.corpus-entries", value = 256, unit = "entries", basis = "chosen", gloss = "Minimized disagreements the corpus retains." }

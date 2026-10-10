@@ -3,7 +3,7 @@
 
 [constant."Protocol.one_holder_per_fence"]
 module    = "Protocol.Invariants"
-statement = "∀ {s : Protocol.State}, Protocol.Reachable s → ∀ (n m : Protocol.Node) (f : Nat), (s.node n).belief = some f → (s.node m).belief = some f → n = m"
+statement = "∀ {s : Protocol.State}, Protocol.Reachable s → ∀ (n m : Protocol.Node) (fence : Nat), (s.node n).belief = some fence → (s.node m).belief = some fence → n = m"
 assumptions    = ["propext", "Quot.sound"]
 negative  = """
 Leaves open: that the Rust store refines the step function; that the storage service applies a conditional write atomically; process state and clocks beyond the steps modelled. Speaks of the fence a node believes it holds, not of which node the lease object names.
@@ -35,7 +35,7 @@ Leaves open: that the Rust store refines the step function; that the storage ser
 
 [constant."Protocol.protocol_safety"]
 module    = "Protocol.Invariants"
-statement = "∀ {s : Protocol.State}, Protocol.Reachable s → (∀ (n m : Protocol.Node) (f : Nat), (s.node n).belief = some f → (s.node m).belief = some f → n = m) ∧ (∀ (st : Protocol.Step), s.granted ≤ (Protocol.step s st).granted ∧ s.catalogFence ≤ (Protocol.step s st).catalogFence ∧ s.cursorFence ≤ (Protocol.step s st).cursorFence) ∧ (∀ (st : Protocol.Step) (t : Protocol.Target) (f : Nat), Protocol.landed s st = some (t, f) → s.granted ≤ f) ∧ ∀ (n : Protocol.Node), Option.map Protocol.Lease.fence (Protocol.step s (Protocol.Step.release n)).lease = Option.map Protocol.Lease.fence s.lease"
+statement = "∀ {s : Protocol.State}, Protocol.Reachable s → (∀ (n m : Protocol.Node) (fence : Nat), (s.node n).belief = some fence → (s.node m).belief = some fence → n = m) ∧ (∀ (st : Protocol.Step), s.granted ≤ (Protocol.step s st).granted ∧ s.catalogFence ≤ (Protocol.step s st).catalogFence ∧ s.cursorFence ≤ (Protocol.step s st).cursorFence) ∧ (∀ (st : Protocol.Step) (t : Protocol.Target) (f : Nat), Protocol.landed s st = some (t, f) → s.granted ≤ f) ∧ ∀ (n : Protocol.Node), Option.map Protocol.Lease.fence (Protocol.step s (Protocol.Step.release n)).lease = Option.map Protocol.Lease.fence s.lease"
 assumptions    = ["propext", "Quot.sound"]
 negative  = """
 Leaves open: that the Rust store refines the step function; that the storage service applies a conditional write atomically; process state and clocks beyond the steps modelled.

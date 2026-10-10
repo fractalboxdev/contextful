@@ -235,8 +235,8 @@ theorem reachable_inv : ∀ {s : State}, Reachable s → Inv s := by
 
 /-- One lease holder per fence: no two nodes of a reachable state believe they hold the same fence. -/
 theorem one_holder_per_fence :
-    ∀ {s : State}, Reachable s → ∀ (n m : Node) (f : Nat),
-      (s.node n).belief = some f → (s.node m).belief = some f → n = m :=
+    ∀ {s : State}, Reachable s → ∀ (n m : Node) (fence : Nat),
+      (s.node n).belief = some fence → (s.node m).belief = some fence → n = m :=
   fun h => (reachable_inv h).2.1
 
 /-- Fences only increase: no step lowers the highest fence granted or the fence either
@@ -306,6 +306,8 @@ theorem fences_only_increase :
 
 /-- No commit lands carrying a fence below the highest granted: every write a step of a
 reachable state lands carries a fence at least the lease object's. -/
+-- spec: store.lease.stale-fence@5ca608ca
+-- spec: store.lease.pointer-fence@037c9e49
 theorem no_commit_below_granted :
     ∀ {s : State}, Reachable s → ∀ (st : Step) (t : Target) (f : Nat),
       landed s st = some (t, f) → s.granted ≤ f := by
@@ -348,7 +350,7 @@ the lease object and its fence. -/
 -- spec: assurance.model.protocol-safety@01e46fbe
 theorem protocol_safety :
     ∀ {s : State}, Reachable s →
-      (∀ (n m : Node) (f : Nat), (s.node n).belief = some f → (s.node m).belief = some f → n = m) ∧
+      (∀ (n m : Node) (fence : Nat), (s.node n).belief = some fence → (s.node m).belief = some fence → n = m) ∧
       (∀ st : Step, s.granted ≤ (step s st).granted ∧ s.catalogFence ≤ (step s st).catalogFence ∧
         s.cursorFence ≤ (step s st).cursorFence) ∧
       (∀ (st : Step) (t : Target) (f : Nat), landed s st = some (t, f) → s.granted ≤ f) ∧

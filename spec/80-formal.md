@@ -68,7 +68,7 @@ The Lean policy package and the Lean protocol state machine, their pins, and the
   *A-assurance*
 - `toolchain-drift` — A build whose resolved toolchain string differs from the pinned one raises `ProofToolchainDrift`, printing both strings.
   *A-assurance*
-- `build-cost` — A cold elaboration of the package completes within 60 s and writes at most 512 KiB of artifacts.
+- `build-cost` — A cold elaboration of the package completes within 60 s and writes at most 2048 KiB of artifacts.
   *because the check runs on every change*
 - `build-command` — `lake build` at the package root elaborates every declaration and writes the environment the audit reads.
 - `module-layout` — Four modules carry the package — the layer algebra, placement with the floor, the authority mapping and connector host containment — and the library root re-exports all four.
@@ -81,7 +81,7 @@ The Lean policy package and the Lean protocol state machine, their pins, and the
 - `from-the-spec` — Each definition is written from the specification text and derived from no engine source.
   *because a definition copied from code makes every theorem restate the code instead of checking the specification*
 - `out-of-model` — The policy package defines no credential bytes, signature verification, SQL semantics, journal write, process state or attacker observation, and no theorem reaches one.
-- `protocol-package` — The protocol model is a second Lean 4 package rooted at `formal/protocol/`, beside the policy package, pinned to the same `lean-toolchain` string, with one `lean_lib` and one `lean_exe` target; its `lakefile.toml` may `require` a pinned proof-automation library.
+- `protocol-package` — The protocol model is a second Lean 4 package rooted at `formal/protocol/`, beside the policy package, pinned to the same `lean-toolchain` string, with one `lean_lib` target, one `lean_exe` target and no `require` stanza.
   *A-assurance*
 - `protocol-model` — The protocol model is a total, computable step function over lease acquisition, renewal, expiry and release, the fenced compare-and-swap on the catalog row and the cursor object, holder pause, message delay and crash.
   *A-assurance*
@@ -89,9 +89,8 @@ The Lean policy package and the Lean protocol state machine, their pins, and the
 - `protocol-theorems` — Each protocol invariant theorem is a required constant in the protocol package's inventory, audited by {{assurance.audit-assumptions.check-command}} against the same allowlist.
 - `protocol-check` — The gate evaluates every invariant on each state reached by every step sequence over three nodes and four lease generations; a breaking state raises `ProtocolInvariantViolated`, printing the shortest sequence reaching it.
   *P7*
-- `protocol-pins` — {{store.lease.stale-fence}} and {{store.fold.partial-snapshot}} pin to the protocol model's invariant theorems.
-
-unsettled: Is the Veil framework mature enough for its bounded and SMT checking to discharge the protocol invariant theorems within the formal stage's budget? owner: build affects: assurance.model
+- `protocol-pins` — {{store.lease.stale-fence}} and {{store.lease.pointer-fence}} pin to the protocol model's invariant theorem `no_commit_below_granted`.
+  *because the model's guarded objects are the catalog row and the cursor object, and a snapshot's sidecars lie outside it*
 
 ## prove
 
@@ -106,12 +105,14 @@ The theorem inventory: layer composition, placement, the evidence floor, and the
 - `placement-is-a-layer` — `zone_layer_sound`: with the placement check as one more list member, a row the whole list admits was admitted by that check, with no bridging hypothesis.
 - `floor-no-downgrade` — `floor_no_downgrade`: a floor admitting a caller forces every member of its evidence list to admit that caller.
 - `fail-closed` — An evidence list holding one fail-closed member yields a floor admitting no public-cloud caller, and the fail-closed allow-set rejects both cloud categories.
+- `evidence-nonempty` — `floor_no_downgrade`'s negative space names a non-empty evidence list, which {{authority.place.empty-evidence}} holds at the engine.
 - `symbolic-inclusion` — Zone inclusion is decided by subsumption over patterns, quantified over every constructor and every identifier, the named provider and the undeclared case included.
+- `subsumption-exact` — Per-entry subsumption decides zone inclusion exactly, a bare category subsuming every identifier under it, so no normal form on allow-sets precedes the decision.
 - `sampled-inclusion` — Inclusion decided by evaluating a fixed set of example values raises `ZoneInclusionSampled`.
   *A-assurance*
 - `effective-policy` — An effective policy computed from two allow-sets is included in both.
-- `proof-targets` — The authority mapping of {{authority.profile.delegation-profile}} carries two proof targets: inclusion, and narrowing — for a fixed trusted environment, permission under an attenuated child implies permission under its parent.
-  *because both are pure decision functions; the other candidate targets need an execution relation no clause specifies*
+- `proof-targets` — The authority mapping of {{authority.profile.delegation-profile}} carries three proof targets: inclusion; narrowing, where permission under an attenuated child implies permission under its parent; and profile meaning, where permission holds exactly when the audience matches and every block admits.
+  *because all three are pure decision functions; scoped-session execution and mediation need an execution relation no clause specifies*
 - `target-binding` — A proof target is bound to one authenticated query path, recorded beside it as a module path and a test, before the claim names it.
 - `unbound-target` — A target the claim names with no binding raises `ProofTargetUnbound`, naming the target.
   *A-assurance*
@@ -122,11 +123,7 @@ The theorem inventory: layer composition, placement, the evidence floor, and the
   *because mediation quantifies over the reachable states of an execution; composition quantifies over a list*
 - `names-carry-reach` — A constant's name states the object it ranges over, not the property a reader hopes for.
 
-unsettled: Do profile meaning, restriction preservation and scoped-session execution become proof targets, and which execution relation does the mediation induction range over? owner: formal affects: assurance.prove
-
-unsettled: Is inclusion decided by subsumption over patterns or by a normal form on allow-sets, given a category pattern subsuming every identifier under it? owner: formal affects: assurance.prove
-
-unsettled: What discharges the completeness of an evidence list backing a floor, given that the empty list folds to admit-everything? owner: formal affects: assurance.prove
+unsettled: Does restriction preservation become a proof target, and which execution relation does the mediation induction range over? owner: formal affects: assurance.prove
 
 ## audit-assumptions
 
@@ -150,6 +147,8 @@ The assumption allowlist, the transitive footprint audit over the elaborated env
 - `statement-drift` — A required constant whose elaborated statement differs from its expected text raises `TheoremStatementDrift`, printing both.
   *A-assurance*
 - `inventory-change` — A change to a required statement lands in the commit carrying the proof it admits.
+- `allowlist-admission` — An assumption joins the allowlist through an `A-assurance` section naming it, and each inventory row admitting it cites that section in a `record` field.
+  *A-assurance*
 - `report` — The report names the commit, the resolved toolchain, the allowlist and inventory revision applied, and for each required constant its statement match and the assumptions it reaches.
 - `check-command` — `contextful formal check` elaborates the package, matches every inventory row, audits every footprint, writes the report, and exits non-zero naming the first failing constant.
 
@@ -169,8 +168,6 @@ flowchart LR
   A -->|"no: AssumptionOutsideAllowlist"| X
   A -->|"yes"| OK["passing row"]
 ```
-
-unsettled: Which review admits a new assumption to the allowlist, and where is it recorded beside the constant that draws on it? owner: formal affects: assurance.audit-assumptions
 
 ## recheck
 
@@ -193,14 +190,12 @@ The sentence the assurance claim is allowed to be: named decisions, trusted depe
 - `trusted-dependencies` — The claim names the delegation library, its cryptography, its parser and the translator as trusted dependencies, and proves none of them.
 - `unnamed-dependency` — A claim resting on a component absent from its trusted-dependency list raises `TrustedDependencyUnnamed`, naming the component.
   *A-assurance*
-- `translation-chain` — A statement about translated code inherits four links: the compiler's lowering, the translator, hand-written models of external definitions, and the production build configuration.
+- `translation-chain` — A statement about translated code inherits four links: the compiler's lowering, the translator (Aeneas, named by one release string), hand-written models of external definitions, and the production build configuration.
 - `unstated-chain` — A theorem claimed over translated code without its translation chain raises `TranslationChainUnstated`.
   *A-assurance*
-- `refinement-scope` — Refinement covers the decision functions behind the two proof targets, whose inputs are values and whose outputs are decisions.
+- `refinement-scope` — Refinement covers the decision functions behind the proof targets, whose inputs are values and whose outputs are decisions.
 - `refinement-exceeded` — Translation reaching cryptography, a parsing adapter, a database call or concurrency raises `RefinementScopeExceeded`, naming the module.
   *A-assurance*
-
-unsettled: Which translation toolchain reaches Lean from the engine's source, and does it resolve against the pinned release string? owner: formal affects: assurance.scope-claim
 
 ## differential-test
 
@@ -275,15 +270,16 @@ The package on disk:
 formal/
   lakefile.toml            one lean_lib, no require stanza
   lean-toolchain           one exact release string
-  Contextful.lean          library root, re-exports the three modules
+  Contextful.lean          library root, re-exports the four modules
   Contextful/
     Layer.lean             Layer, composed, composed_sound, composed_narrows
     Placement.lean         placement inductive, allow-sets, floor, zone_layer_sound
     Authority.lean         profile elements, effective authority, narrowing
+    Allowlist.lean         connector host patterns, inclusion, the widening witness
   inventory.toml           required constants and their expected statements
   reference/               the executable model the differential harness drives
   protocol/                second Lean package: lease, compare-and-swap and fence
-    lakefile.toml          one lean_lib, one lean_exe
+    lakefile.toml          one lean_lib, one lean_exe, no require stanza
     lean-toolchain         the release string the policy package pins
     Protocol/
       Step.lean            state, steps, the total step function

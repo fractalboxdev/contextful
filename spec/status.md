@@ -5,8 +5,8 @@ An unpinned clause is `committed`; a pinned one is `performed` when its Rust, Le
 
 | Contract | Files | Operations | Clauses | Refusals | Limits | Unsettled | Performed | Broken | Floor |
 | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
-| `assurance` | 2 | 15 | 253 | 60 | 22 | 13 | 178 | 0 | 178 |
-| `authority` | 2 | 16 | 292 | 78 | 29 | 10 | 221 | 0 | 221 |
+| `assurance` | 2 | 15 | 256 | 60 | 22 | 8 | 211 | 0 | 211 |
+| `authority` | 2 | 16 | 293 | 79 | 29 | 9 | 222 | 0 | 222 |
 | `connector` | 2 | 14 | 349 | 89 | 21 | 15 | 229 | 0 | 229 |
 | `corpus` | 1 | 10 | 79 | 37 | 7 | 0 | 43 | 0 | 43 |
 | `disclosure` | 3 | 16 | 156 | 68 | 13 | 3 | 63 | 0 | 63 |
@@ -15,7 +15,7 @@ An unpinned clause is `committed`; a pinned one is `performed` when its Rust, Le
 | `store` | 1 | 17 | 253 | 59 | 13 | 19 | 216 | 0 | 216 |
 | `surface` | 2 | 20 | 134 | 59 | 22 | 0 | 94 | 0 | 94 |
 | `topology` | 1 | 6 | 70 | 24 | 5 | 5 | 38 | 0 | 38 |
-| **total** | 19 | 156 | 2217 | 612 | 194 | 97 | 1609 | 0 | |
+| **total** | 19 | 156 | 2221 | 613 | 194 | 91 | 1643 | 0 | |
 
 Decision records: 18.
 
@@ -26,11 +26,11 @@ A milestone reads `closed` when its acceptance test computes `passing` and every
 | Milestone | Operations | Clauses | Performed | Acceptance | Closed |
 | --- | --- | --- | --- | --- | --- |
 | 0 — The test-first gate | 2 | 21 | 6 | passing | open |
-| 1 — The authority core | 14 | 239 | 190 | passing | closed |
+| 1 — The authority core | 14 | 242 | 223 | passing | closed |
 | 2 — The store | 9 | 175 | 143 | passing | closed |
 | 3 — The run path | 11 | 214 | 148 | passing | closed |
 | 4 — Ingest | 25 | 519 | 356 | passing | open |
-| 5 — The read face under enforcement | 17 | 285 | 219 | passing | open |
+| 5 — The read face under enforcement | 17 | 286 | 220 | passing | open |
 | 6 — Sync and replicas | 8 | 78 | 73 | passing | closed |
 | 7 — Memory | 6 | 55 | 54 | passing | closed |
 | 8 — Accountability | 5 | 82 | 47 | passing | open |
@@ -48,9 +48,13 @@ Unscheduled operations: 11.
 | Clause | Pinned by | Verdict |
 | --- | --- | --- |
 | `assurance.audit-assumptions.allowlist` | `crates/contextful-cli/tests/integration/formal.rs::the_allowlist_is_propext_and_quot_sound` | performed |
+| `assurance.audit-assumptions.allowlist-admission` | `crates/contextful-cli/tests/integration/formal.rs::an_assumption_beyond_the_allowlist_needs_a_cited_record` | performed |
+| `assurance.audit-assumptions.assumption` | `crates/contextful-cli/tests/integration/formal.rs::a_declared_axiom_is_an_assumption` | performed |
 | `assurance.audit-assumptions.assumption-outside-allowlist` | `crates/contextful-cli/tests/integration/formal.rs::classical_choice_is_outside_the_allowlist` | performed |
 | `assurance.audit-assumptions.check-command` | `crates/contextful-cli/tests/integration/formal.rs::check_passes_a_clean_package_and_names_the_first_failing_constant` | performed |
 | `assurance.audit-assumptions.hole-assumption` | `crates/contextful-cli/tests/integration/formal.rs::a_parenthesized_hole_is_a_hole` | performed |
+| `assurance.audit-assumptions.inventory` | `crates/contextful-cli/tests/integration/formal.rs::every_inventory_row_carries_its_six_fields` | performed |
+| `assurance.audit-assumptions.inventory-change` | `crates/contextful-cli/tests/integration/formal.rs::a_statement_change_lands_with_its_proof` | performed |
 | `assurance.audit-assumptions.missing-constant` | `crates/contextful-cli/tests/integration/formal.rs::a_deleted_theorem_is_missing` | performed |
 | `assurance.audit-assumptions.native-evaluation-assumption` | `crates/contextful-cli/tests/integration/formal.rs::native_decide_mints_a_native_evaluation_assumption` | performed |
 | `assurance.audit-assumptions.report` | `crates/contextful-cli/tests/integration/formal.rs::the_report_names_commit_toolchain_allowlist_revision_and_rows` | performed |
@@ -188,26 +192,48 @@ Unscheduled operations: 11.
 | `assurance.measure.trend-baseline` | `tools/ci/tests/integration/measure.rs::a_trend_report_uses_the_latest_successful_matching_history_without_failing_the_run` | performed |
 | `assurance.measure.trend-direction` | `tools/eval/tests/integration/ledger.rs::every_trend_entry_declares_its_comparison_direction` | performed |
 | `assurance.measure.unresolved-entry` | `tools/ci/tests/integration/measure.rs::an_entry_naming_no_clause_refuses_before_any_test_runs` | performed |
+| `assurance.model.build-command` | `crates/contextful-cli/tests/integration/formal.rs::lake_build_writes_the_environment_the_audit_reads` | performed |
+| `assurance.model.build-cost` | `crates/contextful-cli/tests/integration/formal.rs::a_cold_build_fits_its_time_and_artifact_budget` | performed |
 | `assurance.model.declared-dependency` | `crates/contextful-cli/tests/integration/formal.rs::a_require_stanza_is_refused` | performed |
 | `assurance.model.floor` | `formal/Contextful/Placement.lean::floor` | performed |
+| `assurance.model.from-the-spec` | `crates/contextful-cli/tests/integration/formal.rs::the_models_import_no_engine_source` | performed |
 | `assurance.model.layer` | `formal/Contextful/Layer.lean::composed` | performed |
+| `assurance.model.module-layout` | `crates/contextful-cli/tests/integration/formal.rs::the_library_root_re_exports_four_modules` | performed |
+| `assurance.model.out-of-model` | `crates/contextful-cli/tests/integration/formal.rs::the_policy_package_reaches_no_process_state_or_bytes` | performed |
+| `assurance.model.package` | `crates/contextful-cli/tests/integration/formal.rs::the_policy_package_has_one_library_no_dependency_and_an_exact_toolchain` | performed |
 | `assurance.model.placement-inductive` | `formal/Contextful/Placement.lean::Placement` | performed |
+| `assurance.model.protocol-check` | `crates/contextful-cli/tests/integration/formal.rs::the_bounded_check_covers_three_nodes_and_four_generations` | performed |
 | `assurance.model.protocol-model` | `formal/protocol/Protocol/Step.lean::step` | performed |
+| `assurance.model.protocol-package` | `crates/contextful-cli/tests/integration/formal.rs::the_protocol_package_sits_beside_the_policy_package` | performed |
+| `assurance.model.protocol-pins` | `crates/contextful-cli/tests/integration/formal.rs::the_store_fence_clauses_pin_to_the_protocol_invariant` | performed |
 | `assurance.model.protocol-safety` | `formal/protocol/Protocol/Invariants.lean::protocol_safety` | performed |
+| `assurance.model.protocol-theorems` | `crates/contextful-cli/tests/integration/formal.rs::the_protocol_invariants_pass_the_same_audit` | performed |
 | `assurance.model.toolchain-drift` | `crates/contextful-cli/tests/integration/formal.rs::an_override_toolchain_drifts_from_the_pin` | performed |
+| `assurance.model.total-definitions` | `crates/contextful-cli/tests/integration/formal.rs::every_definition_is_total_and_computable` | performed |
+| `assurance.model.unmodelled-constructor` | `crates/contextful-cli/tests/integration/formal.rs::a_manifest_category_without_a_case_is_refused` | performed |
+| `assurance.prove.commutation-claim` | `crates/contextful-cli/tests/integration/formal.rs::a_commutation_claim_is_refused` | performed |
 | `assurance.prove.composition-sound` | `formal/Contextful/Layer.lean::composed_sound` | performed |
 | `assurance.prove.effective-policy` | `formal/Contextful/Placement.lean::effective_included_in_both` | performed |
+| `assurance.prove.evidence-nonempty` | `crates/contextful-cli/tests/integration/formal.rs::the_floor_theorem_leaves_non_emptiness_to_the_engine` | performed |
 | `assurance.prove.fail-closed` | `formal/Contextful/Placement.lean::failClosed_floor_rejects_cloud` | performed |
 | `assurance.prove.floor-no-downgrade` | `formal/Contextful/Placement.lean::floor_no_downgrade` | performed |
+| `assurance.prove.mediation-from-composition` | `crates/contextful-cli/tests/integration/formal.rs::a_composition_theorem_offered_as_mediation_is_refused` | performed |
+| `assurance.prove.names-carry-reach` | `crates/contextful-cli/tests/integration/formal.rs::every_constant_name_carries_the_object_it_ranges_over` | performed |
 | `assurance.prove.narrowing` | `formal/Contextful/Layer.lean::composed_narrows` | performed |
+| `assurance.prove.negative-space` | `crates/contextful-cli/tests/integration/formal.rs::every_composition_theorem_states_what_it_leaves_open` | performed |
 | `assurance.prove.no-negative-space` | `crates/contextful-cli/tests/integration/formal.rs::a_row_without_negative_space_is_refused` | performed |
+| `assurance.prove.order-is-specified` | `formal/Contextful/Layer.lean::filter_then_mask_ne_mask_then_filter` | performed |
 | `assurance.prove.placement-is-a-layer` | `formal/Contextful/Placement.lean::zone_layer_sound` | performed |
-| `assurance.prove.proof-targets` | `formal/Contextful/Authority.lean::authorityMapping_inclusion_and_narrowing` | performed |
+| `assurance.prove.proof-targets` | `formal/Contextful/Authority.lean::authorityMapping_inclusion_narrowing_meaning` | performed |
+| `assurance.prove.sampled-inclusion` | `crates/contextful-cli/tests/integration/formal.rs::inclusion_over_sampled_placements_is_refused`, `formal/Contextful/Placement.lean::includedIn_not_decided_by_sample` | performed |
+| `assurance.prove.subsumption-exact` | `formal/Contextful/Placement.lean::includedIn_iff_placement_inclusion` | performed |
 | `assurance.prove.symbolic-inclusion` | `formal/Contextful/Placement.lean::includedIn_iff_placement_inclusion` | performed |
+| `assurance.prove.target-binding` | `crates/contextful-cli/tests/integration/formal.rs::a_target_binds_a_module_path_and_a_test_in_the_tree` | performed |
 | `assurance.prove.unbound-target` | `crates/contextful-cli/tests/integration/formal.rs::a_claimed_target_without_a_binding_is_refused` | performed |
 | `assurance.recheck.credential-free` | `crates/contextful-cli/tests/integration/formal.rs::a_credentialed_recheck_is_refused` | performed |
 | `assurance.recheck.report-mismatch` | `crates/contextful-cli/tests/integration/formal.rs::a_recheck_disagreeing_with_the_first_phase_is_refused` | performed |
 | `assurance.recheck.two-phase` | `crates/contextful-cli/tests/integration/formal.rs::a_recheck_rebuilds_the_commit_and_reaches_the_same_report` | performed |
+| `assurance.recheck.wall-time` | `crates/contextful-cli/tests/integration/formal.rs::a_recheck_of_the_policy_package_completes_within_600_s` | performed |
 | `assurance.release.annotated` | `tools/ci/tests/integration/release.rs::the_tag_is_signed_annotated_on_head_and_leaves_earlier_tags_in_place` | performed |
 | `assurance.release.dirty-tree` | `tools/ci/tests/integration/release.rs::a_tree_differing_from_head_is_refused_before_the_gate` | performed |
 | `assurance.release.gate-failed` | `tools/ci/tests/integration/release.rs::a_failing_gate_stage_is_refused_and_creates_no_tag` | performed |
@@ -215,7 +241,14 @@ Unscheduled operations: 11.
 | `assurance.release.version` | `tools/ci/tests/integration/release.rs::the_version_counts_closed_milestones_and_earlier_tags_of_that_count` | performed |
 | `assurance.release.version-regressed` | `tools/ci/tests/integration/release.rs::a_milestone_reopening_below_the_last_tag_is_refused` | performed |
 | `assurance.release.workspace-version` | `tools/ci/tests/integration/release.rs::a_workspace_version_other_than_the_computed_one_is_refused` | performed |
+| `assurance.scope-claim.beyond-named-decisions` | `crates/contextful-cli/tests/integration/formal.rs::a_claim_verifying_more_than_its_decisions_is_refused` | performed |
+| `assurance.scope-claim.claim-sentence` | `crates/contextful-cli/tests/integration/formal.rs::check_states_the_claim_sentence` | performed |
+| `assurance.scope-claim.refinement-exceeded` | `crates/contextful-cli/tests/integration/formal.rs::translation_reaching_past_a_pure_decision_is_refused` | performed |
+| `assurance.scope-claim.refinement-scope` | `crates/contextful-cli/tests/integration/formal.rs::refinement_covers_only_the_decisions_behind_the_targets` | performed |
+| `assurance.scope-claim.translation-chain` | `crates/contextful-cli/tests/integration/formal.rs::a_translated_target_carries_its_four_links_into_the_claim` | performed |
+| `assurance.scope-claim.trusted-dependencies` | `crates/contextful-cli/tests/integration/formal.rs::the_claim_trusts_the_delegation_library_and_the_translator` | performed |
 | `assurance.scope-claim.unnamed-dependency` | `crates/contextful-cli/tests/integration/formal.rs::a_claim_resting_on_an_unnamed_component_is_refused` | performed |
+| `assurance.scope-claim.unstated-chain` | `crates/contextful-cli/tests/integration/formal.rs::a_translated_theorem_without_its_chain_is_refused` | performed |
 | `assurance.structure-tree.decision-module` | `crates/contextful-cli/tests/integration/differential.rs::the_native_and_webassembly_builds_agree_with_the_reference_over_the_seeded_budget` | performed |
 | `assurance.structure-tree.derivation-check` | `tools/ci/tests/integration/stages.rs::declared_derived_artifact_is_checked_by_schema_stage` | performed |
 | `assurance.structure-tree.mirror-unresolved` | `spec/pins.toml` | performed |
@@ -351,6 +384,7 @@ Unscheduled operations: 11.
 | `authority.place.asserted-zone` | `crates/contextful-policy/tests/integration/enforce/zone.rs::an_asserted_zone_never_replaces_the_signed_one` | performed |
 | `authority.place.caller-zone` | `crates/contextful-context/tests/integration/read/enforce.rs::the_zone_is_declared_per_request` | performed |
 | `authority.place.disjunctive` | `crates/contextful-policy/tests/integration/enforce/zone.rs::any_matching_entry_admits_the_zone` | performed |
+| `authority.place.empty-evidence` | `crates/contextful-core/tests/integration/place.rs::a_row_naming_no_evidence_resolves_fail_closed` | performed |
 | `authority.place.evidence-floor` | `crates/contextful-policy/tests/integration/enforce/zone.rs::a_synthesized_row_resolves_to_its_evidence_intersection` | performed |
 | `authority.place.excluded-cell` | `crates/contextful-context/tests/integration/read/enforce.rs::a_cell_outside_its_column_set_arrives_null` | performed |
 | `authority.place.excluded-disclosed` | `crates/contextful-context/tests/integration/read/respond.rs::rows_dropped_counts_the_relation_never_the_statement` | performed |
@@ -1433,8 +1467,8 @@ Unscheduled operations: 11.
 | `store.lease.local-node` | `crates/contextful-core/tests/integration/store/sync.rs::a_bucket_lease_under_the_local_node_id_refuses_naming_the_variable` | performed |
 | `store.lease.network-volume` | `crates/contextful-sync/tests/integration/push.rs::a_compaction_lease_on_a_network_volume_is_refused` | performed |
 | `store.lease.not-held` | `crates/contextful-core/tests/integration/store/sync.rs::releasing_another_nodes_lease_refuses` | performed |
-| `store.lease.pointer-fence` | `crates/contextful-sync/tests/integration/pull.rs::a_publish_under_a_superseded_fence_loses_its_condition` | performed |
-| `store.lease.stale-fence` | `crates/contextful-context/tests/integration/run_commit.rs::a_commit_under_a_superseded_fence_loses_and_its_run_stays_unreadable` | performed |
+| `store.lease.pointer-fence` | `crates/contextful-sync/tests/integration/pull.rs::a_publish_under_a_superseded_fence_loses_its_condition`, `formal/protocol/Protocol/Invariants.lean::no_commit_below_granted` | performed |
+| `store.lease.stale-fence` | `crates/contextful-context/tests/integration/run_commit.rs::a_commit_under_a_superseded_fence_loses_and_its_run_stays_unreadable`, `formal/protocol/Protocol/Invariants.lean::no_commit_below_granted` | performed |
 | `store.lease.ttl` | `crates/contextful-core/tests/integration/store/sync.rs::a_lease_is_granted_for_10_minutes` | performed |
 | `store.merge.cursor-recency` | `crates/contextful-core/tests/integration/store/sync.rs::differing_copies_of_a_commit_log_entry_refuse` | performed |
 | `store.merge.exhausted` | `crates/contextful-sync/tests/integration/push.rs::exhausted_rounds_refuse_and_report_every_uploaded_object` | performed |

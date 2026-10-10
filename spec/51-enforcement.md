@@ -350,6 +350,8 @@ Inference zones: grammar, composition across grains, floors, incognito, and the 
   *A-authority*
 - `evidence-floor` — A synthesized row declaring a set wider than the intersection of its evidence tables' sets raises `EnforceEvidenceFloorExceeded` and resolves to that intersection.
   *A-authority*
+- `empty-evidence` — A synthesized row naming no evidence table raises `EnforceEvidenceListEmpty` and resolves to the fail-closed pair of {{authority.place.fail-closed}}.
+  *because an empty list intersects to every zone, and a row citing nothing then resolves to the widest set*
 - `incognito` — Incognito pins the session to the fail-closed pair, the uncredentialed local owner's reads included.
   *A-authority*
 - `incognito-widening` — A session asserting a zone wider than the incognito pin raises `EnforceIncognitoWidening`.
@@ -392,8 +394,6 @@ flowchart LR
 ```
 
 unsettled: Does the restriction block also carry the rows a row predicate removes and the column names a mask policy nulls, given both disclose how much of a table the caller's scope withholds? owner: authority affects: authority.place
-
-unsettled: What fixes the completeness of the evidence list a synthesized row's floor intersects over, given that an empty list intersects to everything? owner: authority affects: authority.place
 
 ## resist
 

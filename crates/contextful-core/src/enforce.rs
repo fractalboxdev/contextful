@@ -17,6 +17,9 @@ pub enum EnforceError {
     /// A synthesized row declaring a set wider than its evidence intersection. (`authority.place.evidence-floor`)
     #[error("EnforceEvidenceFloorExceeded: {0}")]
     EvidenceFloorExceeded(String),
+    /// A synthesized row naming no evidence table. (`authority.place.empty-evidence`)
+    #[error("EnforceEvidenceListEmpty: {0}")]
+    EvidenceListEmpty(String),
     /// A session asserting a zone wider than the incognito pin. (`authority.place.incognito-widening`)
     #[error("EnforceIncognitoWidening: {0}")]
     IncognitoWidening(String),
@@ -69,6 +72,7 @@ impl EnforceError {
             EnforceError::CombineWithoutGeneralization(_) => "EnforceCombineWithoutGeneralization",
             EnforceError::DigestAloneOnExhaustibleClass(_) => "EnforceDigestAloneOnExhaustibleClass",
             EnforceError::EvidenceFloorExceeded(_) => "EnforceEvidenceFloorExceeded",
+            EnforceError::EvidenceListEmpty(_) => "EnforceEvidenceListEmpty",
             EnforceError::IncognitoWidening(_) => "EnforceIncognitoWidening",
             EnforceError::MaskOnAbsentColumn(_) => "EnforceMaskOnAbsentColumn",
             EnforceError::PermissiveZoneDefault(_) => "EnforcePermissiveZoneDefault",
