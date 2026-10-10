@@ -361,8 +361,12 @@ fn a_result_carries_provenance_columns_and_no_store_path() {
     for provenance in ["_table", "_run_id", "_provenance", "_ingested_at", "_authored_by"] {
         assert!(ranked.columns.iter().any(|c| c == provenance), "{provenance} missing from {:?}", ranked.columns);
     }
-    assert!(column(&ranked, "_table").iter().all(|t| t == &json!("research/notes")));
-    assert!(column(&ranked, "_run_id").iter().all(|run| run == &json!("run-0001")));
+    let tables = column(&ranked, "_table");
+    assert!(!tables.is_empty());
+    assert!(tables.iter().all(|t| t == &json!("research/notes")));
+    let runs = column(&ranked, "_run_id");
+    assert!(!runs.is_empty());
+    assert!(runs.iter().all(|run| run == &json!("run-0001")));
     let queried = r.query(&s, r#"SELECT * FROM "research/notes""#).unwrap();
     for response in [&ranked, &queried] {
         let text = response.to_json().to_string();

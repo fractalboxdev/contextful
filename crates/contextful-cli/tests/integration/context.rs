@@ -126,7 +126,9 @@ fn scan_reports_the_column_count_and_files_but_no_row_count() {
     assert!(declared >= 2);
     assert_eq!(v["column_count"], serde_json::json!(declared));
     assert_eq!(v["files"].as_array().unwrap().len(), 1);
-    assert!(v.as_object().unwrap().keys().all(|k| !k.contains("row")), "{v}");
+    let fields = v.as_object().unwrap();
+    assert!(!fields.is_empty(), "{v}");
+    assert!(fields.keys().all(|k| !k.contains("row")), "{v}");
 }
 
 /// `derived.sqlite` is a cache: `contextful context rebuild-catalog` reconstructs it from the pointers, the manifests they reach, every committed run manifest and every `schema.json`. It is never synced and commits nothing.

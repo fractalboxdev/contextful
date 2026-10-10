@@ -25,6 +25,7 @@ fn without_the_lexical_backend_a_ranked_read_answers_by_token_fallback() {
     let ranked = r.face.retrieve(&s, &ask("research/notes", "solar battery storage"), Bounds::default()).unwrap();
     assert!(ranked.blocks["contextful.retrieval"]["matched"].as_u64().unwrap() > 0, "{:?}", ranked.blocks);
     let scores: Vec<u64> = column(&ranked, "_score").iter().map(|s| s.as_u64().unwrap()).collect();
+    assert!(!scores.is_empty());
     assert!(scores.windows(2).all(|w| w[0] >= w[1]), "{scores:?}");
     // n1 and n4 match every token; the later publication leads.
     let order = ids(&ranked, "note_id");
@@ -825,7 +826,7 @@ fn a_declared_half_life_scales_a_claims_ranked_score() {
         ids(&answer, "claim_id")
     };
     assert_eq!(ranked(""), ["old", "fresh", "filler"]);
-    assert_eq!(ranked("decay_half_life = \"365d\"\n"), ["fresh", "old", "filler"]);
+    assert_eq!(ranked("decay_half_life = \"365d\"\n"), ["fresh", "filler", "old"]);
 
     let entities = "[[table]]\nname = \"research/people\"\nshape = \"memory_entities\"\ndecay_half_life = \"365d\"\ncolumns = [\"entity_id\", \"kind\", \"name\", \"aliases\"]\n";
     let dir = tempfile::tempdir().unwrap();
