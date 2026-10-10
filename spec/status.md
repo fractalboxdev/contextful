@@ -5,17 +5,17 @@ An unpinned clause is `committed`; a pinned one is `performed` when its Rust, Le
 
 | Contract | Files | Operations | Clauses | Refusals | Limits | Unsettled | Performed | Broken | Floor |
 | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
-| `assurance` | 2 | 15 | 248 | 59 | 22 | 14 | 146 | 0 | 146 |
+| `assurance` | 2 | 15 | 253 | 60 | 22 | 13 | 178 | 0 | 178 |
 | `authority` | 2 | 16 | 292 | 78 | 29 | 10 | 221 | 0 | 221 |
 | `connector` | 2 | 14 | 349 | 89 | 21 | 15 | 229 | 0 | 229 |
 | `corpus` | 1 | 10 | 79 | 37 | 7 | 0 | 43 | 0 | 43 |
 | `disclosure` | 3 | 16 | 156 | 68 | 13 | 3 | 63 | 0 | 63 |
 | `read` | 2 | 16 | 213 | 35 | 22 | 9 | 193 | 0 | 193 |
-| `run` | 3 | 26 | 413 | 102 | 39 | 28 | 310 | 0 | 310 |
+| `run` | 3 | 26 | 418 | 103 | 40 | 23 | 334 | 0 | 334 |
 | `store` | 1 | 17 | 253 | 59 | 13 | 19 | 216 | 0 | 216 |
 | `surface` | 2 | 20 | 134 | 59 | 22 | 0 | 94 | 0 | 94 |
 | `topology` | 1 | 6 | 70 | 24 | 5 | 5 | 38 | 0 | 38 |
-| **total** | 19 | 156 | 2207 | 610 | 193 | 103 | 1553 | 0 | |
+| **total** | 19 | 156 | 2217 | 612 | 194 | 97 | 1609 | 0 | |
 
 Decision records: 18.
 
@@ -29,17 +29,17 @@ A milestone reads `closed` when its acceptance test computes `passing` and every
 | 1 — The authority core | 14 | 239 | 190 | passing | closed |
 | 2 — The store | 9 | 175 | 143 | passing | closed |
 | 3 — The run path | 11 | 214 | 148 | passing | closed |
-| 4 — Ingest | 25 | 519 | 345 | passing | open |
+| 4 — Ingest | 25 | 519 | 356 | passing | open |
 | 5 — The read face under enforcement | 17 | 285 | 219 | passing | open |
 | 6 — Sync and replicas | 8 | 78 | 73 | passing | closed |
 | 7 — Memory | 6 | 55 | 54 | passing | closed |
 | 8 — Accountability | 5 | 82 | 47 | passing | open |
 | 9 — Visibility | 6 | 41 | 3 | open | open |
 | 10 — Cadence and the operator plane | 11 | 91 | 77 | passing | open |
-| 11 — The derive tier | 7 | 88 | 79 | passing | closed |
+| 11 — The derive tier | 7 | 93 | 92 | passing | closed |
 | 12 — The operator console | 12 | 54 | 22 | passing | open |
 | 13 — Disclosure | 5 | 33 | 13 | open | open |
-| 14 — Assurance | 7 | 148 | 91 | passing | closed |
+| 14 — Assurance | 7 | 153 | 123 | passing | closed |
 
 Unscheduled operations: 11.
 
@@ -57,16 +57,32 @@ Unscheduled operations: 11.
 | `assurance.audit-assumptions.statement-drift` | `crates/contextful-cli/tests/integration/formal.rs::a_weakened_statement_drifts` | performed |
 | `assurance.audit-assumptions.transitive-audit` | `crates/contextful-cli/tests/integration/formal.rs::a_footprint_reaches_through_helper_lemmas` | performed |
 | `assurance.audit-assumptions.verdict-input` | `crates/contextful-cli/tests/integration/formal.rs::source_text_and_build_status_decide_nothing` | performed |
+| `assurance.baseline.answer-key-in-the-store` | `crates/contextful-connectors/tests/integration/file.rs::a_source_reaching_the_evaluation_directory_raises_golden_set_ingested` | performed |
 | `assurance.baseline.band-units` | `tools/eval/tests/integration/baseline.rs::latency_bands_in_milliseconds_and_counts_pin_at_zero` | performed |
+| `assurance.baseline.commit-command` | `crates/contextful-cli/tests/integration/eval.rs::commit_appends_approved_drafts_redacted_and_refuses_a_repeated_id` | performed |
 | `assurance.baseline.default-dead-band` | `tools/eval/tests/integration/baseline.rs::a_bare_rate_entry_gates_at_two_percent` | performed |
+| `assurance.baseline.draft-command` | `crates/contextful-cli/tests/integration/eval.rs::draft_writes_the_generators_candidates_from_the_store` | performed |
 | `assurance.baseline.file` | `tools/eval/tests/integration/baseline.rs::a_file_holds_a_run_block_and_bare_or_banded_entries` | performed |
 | `assurance.baseline.floor-coverage` | `tools/eval/tests/integration/floors.rs::a_report_missing_a_floor_figure_breaches_that_floor` | performed |
 | `assurance.baseline.floors-are-absolute` | `tools/eval/tests/integration/baseline.rs::a_floor_reds_a_run_its_baseline_passes` | performed |
+| `assurance.baseline.generated-redaction` | `tools/eval/tests/integration/golden.rs::a_golden_passes_write_time_redaction_or_refuses` | performed |
+| `assurance.baseline.generators` | `tools/eval/tests/integration/golden.rs::three_generators_draft_candidates_and_only_approved_ones_commit` | performed |
+| `assurance.baseline.golden-custody` | `tools/eval/tests/integration/custody.rs::the_golden_set_is_tracked_jsonl_read_through_one_loader` | performed |
+| `assurance.baseline.held-out` | `tools/eval/tests/integration/custody.rs::no_runtime_source_reads_a_gate_input` | performed |
+| `assurance.baseline.interval` | `tools/eval/tests/integration/judge.rs::each_judged_figure_carries_a_seeded_bootstrap_interval` | performed |
 | `assurance.baseline.metric-path` | `tools/eval/tests/integration/baseline.rs::an_entry_names_a_report_field_path` | performed |
+| `assurance.baseline.native-gate` | `tools/ci/tests/integration/measure.rs::the_native_set_gates_and_a_public_set_decides_nothing` | performed |
+| `assurance.baseline.offline` | `crates/contextful-cli/tests/integration/eval.rs::both_verdicts_come_from_in_tree_files_with_no_trace_store` | performed |
+| `assurance.baseline.promotion-source` | `tools/eval/tests/integration/golden.rs::only_an_adjudicated_label_promotes` | performed |
+| `assurance.baseline.public-corpora` | `tools/eval/tests/integration/golden.rs::a_public_corpus_enters_through_its_content_hashed_manifest` | performed |
 | `assurance.baseline.raise-only` | `tools/eval/tests/integration/baseline.rs::an_update_raises_improved_entries_only_and_only_on_green` | performed |
 | `assurance.baseline.rank-quality-dead-band` | `tools/eval/tests/integration/baseline.rs::a_bare_ndcg_entry_gates_at_three_percent` | performed |
+| `assurance.baseline.rotation` | `tools/eval/tests/integration/golden.rs::the_native_set_rotates_on_a_cadence_with_a_reviewed_sample` | performed |
 | `assurance.baseline.run-stamp-drift` | `tools/eval/tests/integration/baseline.rs::a_run_configured_unlike_the_baseline_is_refused_from_its_configuration_alone` | performed |
 | `assurance.baseline.sample-count` | `tools/eval/tests/integration/baseline.rs::a_mean_carries_its_sample_count_and_shrinking_it_regresses` | performed |
+| `assurance.baseline.trace-export` | `crates/contextful-cli/tests/integration/eval.rs::a_hosted_trace_endpoint_serves_fixtures_and_refuses_a_deployed_store` | performed |
+| `assurance.baseline.trace-store` | `crates/contextful-cli/tests/integration/eval.rs::the_trace_store_records_history_and_staging_and_decides_nothing` | performed |
+| `assurance.baseline.unresolvable-path` | `tools/eval/tests/integration/baseline.rs::a_malformed_entry_or_band_refuses_from_the_file_alone` | performed |
 | `assurance.build.checkout-artifacts` | `tools/ci/tests/integration/source_binding.rs::shared_artifacts_execute_the_selected_checkout_source` | performed |
 | `assurance.build.container-image` | `tools/ci/tests/integration/image.rs::the_container_recipe_builds_one_static_profile_into_a_shell_free_non_root_image` | performed |
 | `assurance.build.debug-info` | `tools/ci/tests/integration/target_dirs.rs::development_and_test_builds_carry_line_tables_only` | performed |
@@ -104,23 +120,34 @@ Unscheduled operations: 11.
 | `assurance.differential-test.run-budget` | `crates/contextful-cli/tests/integration/differential.rs::a_run_past_its_budget_stops` | performed |
 | `assurance.differential-test.seed` | `crates/contextful-cli/tests/integration/differential.rs::a_recorded_seed_reproduces_the_case_sequence` | performed |
 | `assurance.evaluate.absent-truth` | `tools/eval/tests/integration/metrics.rs::a_case_with_no_truth_is_nan_and_leaves_the_aggregate` | performed |
+| `assurance.evaluate.abstention` | `tools/eval/tests/integration/report.rs::a_must_abstain_case_scores_only_an_empty_return` | performed |
 | `assurance.evaluate.case-format` | `tools/eval/tests/integration/case.rs::a_case_line_carries_its_corpus_question_tags_and_expected_block` | performed |
+| `assurance.evaluate.checkpoint` | `tools/eval/tests/integration/checkpoint.rs::a_killed_run_resumes_from_its_jsonl_and_reruns_only_the_in_flight_case` | performed |
+| `assurance.evaluate.converter` | `tools/eval/tests/integration/convert.rs::a_benchmark_converts_into_the_case_format_and_the_runner_reads_nothing_else` | performed |
 | `assurance.evaluate.corpus-layout` | `crates/contextful-cli/tests/integration/eval.rs::each_leg_calls_the_ranked_read_with_the_options_a_caller_passes` | performed |
 | `assurance.evaluate.deterministic-tier` | `tools/eval/tests/integration/report.rs::every_ranked_metric_reports_per_leg_and_per_slice` | performed |
 | `assurance.evaluate.distinct-top-k` | `tools/eval/tests/integration/metrics.rs::a_repeated_row_counts_once_in_the_top_k` | performed |
 | `assurance.evaluate.duplicate-row-rate` | `tools/eval/tests/integration/floors.rs::a_repeated_table_and_row_key_pair_breaches_the_floor` | performed |
 | `assurance.evaluate.forbidden-row-rate` | `tools/eval/tests/integration/floors.rs::one_forbidden_row_in_one_case_breaches_the_floor` | performed |
+| `assurance.evaluate.grounded-reader` | `tools/eval/tests/integration/judge.rs::the_reader_answers_from_retrieved_rows_alone` | performed |
 | `assurance.evaluate.in-window-rate` | `tools/eval/tests/integration/floors.rs::a_bounded_case_under_ninety_five_percent_in_window_breaches_the_floor` | performed |
+| `assurance.evaluate.judge` | `tools/eval/tests/integration/judge.rs::the_judge_is_pinned_and_called_once_per_item` | performed |
+| `assurance.evaluate.judged-dimensions` | `tools/eval/tests/integration/judge.rs::the_reading_stage_reports_four_judged_dimensions` | performed |
+| `assurance.evaluate.judged-run` | `crates/contextful-cli/tests/integration/eval.rs::the_judged_tier_reads_and_judges_through_the_named_endpoint` | performed |
 | `assurance.evaluate.legs` | `crates/contextful-cli/tests/integration/eval.rs::each_leg_calls_the_ranked_read_with_the_options_a_caller_passes` | performed |
+| `assurance.evaluate.model-endpoint` | `tools/eval/tests/integration/judge.rs::the_reader_and_judge_reach_the_model_through_the_inference_port` | performed |
 | `assurance.evaluate.policy-labels` | `crates/contextful-cli/tests/integration/eval.rs::a_row_the_credential_may_not_read_never_scores` | performed |
 | `assurance.evaluate.precision-floor` | `tools/eval/tests/integration/floors.rs::a_leg_below_sixty_percent_r_precision_breaches_the_floor` | performed |
+| `assurance.evaluate.real-read-path` | `tools/eval/tests/integration/custody.rs::the_harness_depends_on_no_store_or_runtime_package` | performed |
 | `assurance.evaluate.regression-case` | `tools/eval/tests/integration/report.rs::only_a_regression_case_scores_its_must_not_retrieve_set` | performed |
 | `assurance.evaluate.row-reference` | `tools/eval/tests/integration/case.rs::a_row_is_named_by_its_table_and_key_after_the_last_hash` | performed |
 | `assurance.evaluate.run-command` | `crates/contextful-cli/tests/integration/eval.rs::each_corpus_lands_at_the_epoch_unless_landed_at_names_an_instant` | performed |
 | `assurance.evaluate.run-report` | `tools/eval/tests/integration/report.rs::a_report_carries_its_run_block_counts_and_tally` | performed |
 | `assurance.evaluate.run-verdict` | `crates/contextful-cli/tests/integration/eval.rs::a_red_run_exits_non_zero_and_only_a_green_one_raises_its_baseline` | performed |
 | `assurance.evaluate.stub-embedder` | `crates/contextful-cli/tests/integration/eval.rs::rows_and_questions_without_an_embedding_take_the_seeded_stub` | performed |
+| `assurance.evaluate.systems-metrics` | `tools/eval/tests/integration/report.rs::tokens_latency_and_cost_report_per_corpus_size_bucket` | performed |
 | `assurance.evaluate.through-the-store` | `crates/contextful-cli/tests/integration/eval.rs::a_ranking_that_loses_its_sidecars_goes_red_against_the_baseline` | performed |
+| `assurance.evaluate.truth-per-surface` | `tools/eval/tests/integration/report.rs::artifact_and_edge_truth_score_their_own_surfaces` | performed |
 | `assurance.evaluate.unlabeled-corpus` | `crates/contextful-cli/tests/integration/eval.rs::an_unlabeled_corpus_refuses_without_a_local_zone` | performed |
 | `assurance.gate.budget-stage` | `tools/ci/tests/integration/image.rs::the_budget_stage_builds_every_profile_one_part_each_and_the_evaluate_stage_none` | performed |
 | `assurance.gate.crate-graph` | `tools/ci/tests/integration/topology.rs::the_crate_graph_stage_refuses_an_undeclared_crossing` | performed |
@@ -146,11 +173,16 @@ Unscheduled operations: 11.
 | `assurance.gate.test-first-parts` | `tools/ci/tests/integration/test_first.rs::a_source_package_requires_its_own_changed_test_when_another_package_is_red` | performed |
 | `assurance.gate.typescript-surfaces` | `tools/ci/tests/integration/stages.rs::the_surfaces_stage_installs_then_runs_each_declared_check` | performed |
 | `assurance.gate.workspace-parts` | `tools/ci/tests/integration/target_dirs.rs::remote_workspace_parts_compile_the_union_and_run_each_package_suite` | performed |
+| `assurance.measure.absolute-threshold` | `tools/eval/tests/integration/ledger.rs::a_threshold_is_a_finite_absolute_figure` | performed |
+| `assurance.measure.count-first` | `tools/eval/tests/integration/ledger.rs::a_timing_or_resident_set_figure_decides_no_gate` | performed |
+| `assurance.measure.judged-tier` | `tools/eval/tests/integration/ledger.rs::a_judged_figure_runs_on_the_scheduled_tier_alone` | performed |
 | `assurance.measure.ledger` | `tools/eval/tests/integration/ledger.rs::an_entry_carries_its_clause_metric_tier_method_and_threshold` | performed |
+| `assurance.measure.measured-basis` | `tools/spec/tests/integration/readable.rs::a_measured_basis_names_a_trend_or_scheduled_ledger_entry` | performed |
 | `assurance.measure.open-entry` | `tools/ci/tests/integration/measure.rs::an_issue_entry_is_listed_open_and_gates_nothing` | performed |
 | `assurance.measure.record` | `tools/ci/tests/integration/measure.rs::a_gate_method_writing_no_record_is_refused` | performed |
 | `assurance.measure.runner-stamp` | `tools/eval/tests/integration/trend.rs::a_figure_compares_only_on_a_matching_runner` | performed |
 | `assurance.measure.seed-mismatch` | `tools/ci/tests/integration/measure.rs::a_record_under_another_seed_than_its_entry_declares_is_refused` | performed |
+| `assurance.measure.seeded` | `crates/contextful-cli/tests/integration/eval.rs::replaying_the_ledger_seed_reproduces_the_native_gate_figures` | performed |
 | `assurance.measure.tier` | `tools/ci/tests/integration/measure.rs::a_failed_or_reseeded_trend_method_does_not_fail_the_measure_run` | performed |
 | `assurance.measure.trend-band` | `tools/eval/tests/integration/trend.rs::a_figure_past_the_band_is_annotated_and_fails_nothing` | performed |
 | `assurance.measure.trend-baseline` | `tools/ci/tests/integration/measure.rs::a_trend_report_uses_the_latest_successful_matching_history_without_failing_the_run` | performed |
@@ -952,15 +984,20 @@ Unscheduled operations: 11.
 | `run.advance.unorderable-position` | `crates/contextful-core/tests/integration/run/advance.rs::an_unorderable_clock_value_refuses_the_pull` | performed |
 | `run.advance.watermark-shape` | `crates/contextful-core/tests/integration/run/advance.rs::a_watermark_names_its_field` | performed |
 | `run.advance.zero-row-commit` | `crates/contextful-cli/tests/integration/empty_replace.rs::a_complete_empty_snapshot_replaces_but_a_skip_and_failed_pull_do_not` | performed |
+| `run.bind.advisory-zone` | `crates/contextful-core/tests/integration/run/derive.rs::a_row_zone_copied_from_the_advisory_key_refuses` | performed |
 | `run.bind.command-in-manifest` | `crates/contextful-core/tests/integration/run/derive.rs::an_executable_key_in_the_manifest_refuses` | performed |
+| `run.bind.confidence-range` | `crates/contextful-core/tests/integration/run/derive.rs::a_confidence_outside_the_unit_interval_refuses_and_lands_null` | performed |
 | `run.bind.driver-mismatch` | `crates/contextful-core/tests/integration/run/derive.rs::a_driver_the_task_does_not_serve_refuses` | performed |
 | `run.bind.endpoint-host-bare` | `crates/contextful-core/tests/integration/run/derive.rs::a_fetch_binding_refuses_process_keys_and_nonbare_endpoint_hosts` | performed |
+| `run.bind.engine-unavailable` | `crates/contextful-core/tests/integration/run/derive.rs::an_unavailable_transcriber_ends_the_run_and_an_unavailable_link_reader_costs_one_unit` | performed |
 | `run.bind.host-task` | `crates/contextful-core/tests/integration/run/host_task.rs::a_registered_task_resolves_by_name_and_a_taken_name_refuses` | performed |
+| `run.bind.locality-wider` | `crates/contextful-core/tests/integration/run/derive.rs::an_engine_reaching_past_its_source_tables_zones_refuses` | performed |
 | `run.bind.media-root` | `crates/contextful-connectors/tests/integration/derive.rs::media_outside_the_root_fails_that_unit_alone` | performed |
 | `run.bind.media-unreadable` | `crates/contextful-connectors/tests/integration/derive.rs::unreadable_media_fails_that_unit_alone` | performed |
 | `run.bind.remote-url-unsupported` | `crates/contextful-connectors/tests/integration/derive.rs::an_address_for_an_engine_reading_local_files_refuses_naming_the_step` | performed |
 | `run.bind.unbound-engine` | `crates/contextful-core/tests/integration/run/derive.rs::an_engine_with_no_block_refuses_naming_every_bound_engine` | performed |
 | `run.bind.unknown-task` | `crates/contextful-core/tests/integration/run/derive.rs::a_task_outside_the_pair_refuses_printing_both` | performed |
+| `run.bind.upstream-excerpt` | `crates/contextful-core/tests/integration/run/derive.rs::an_upstream_excerpt_holds_4_kib_of_the_response` | performed |
 | `run.cancel.catalog-channel` | `crates/contextful-engine/tests/integration/cancel.rs::a_stop_is_a_mark_on_the_run_row` | performed |
 | `run.cancel.child-reaped` | `crates/contextful-engine/tests/integration/command.rs::a_stop_signals_and_reaps_the_whole_process_group` | performed |
 | `run.cancel.distinct-terminal-status` | `crates/contextful-core/tests/integration/run/record.rs::canceled_is_terminal_distinct_and_unobserved_by_health` | performed |
@@ -992,7 +1029,9 @@ Unscheduled operations: 11.
 | `run.emit.content-empty` | `crates/contextful-cli/tests/integration/derive.rs::a_content_table_left_without_rows_stops_answering_the_earlier_key` | performed |
 | `run.emit.content-marker-retention-clock` | `spec/pins.toml` | performed |
 | `run.emit.derivation-key` | `crates/contextful-core/tests/integration/run/derive.rs::a_derivation_key_hashes_engine_binding_columns_and_parent` | performed |
+| `run.emit.derived-id` | `crates/contextful-core/tests/integration/run/derive.rs::every_derived_row_carries_one_identifying_column_its_sidecars_default_to` | performed |
 | `run.emit.empty-document` | `crates/contextful-core/tests/integration/run/derive.rs::only_a_well_formed_webvtt_without_cues_is_empty` | performed |
+| `run.emit.failure-off-table` | `crates/contextful-core/tests/integration/run/derive.rs::a_second_table_beside_the_output_table_refuses` | performed |
 | `run.emit.host-rows` | `crates/contextful-core/tests/integration/run/host_task.rs::a_unit_lands_stamped_content_rows_and_one_marker` | performed |
 | `run.emit.local-content-key` | `spec/pins.toml` | performed |
 | `run.emit.marker-last` | `crates/contextful-cli/tests/integration/derive.rs::a_failure_before_the_marker_re_runs_the_unit_and_its_rows_collapse_by_key` | performed |
@@ -1005,7 +1044,9 @@ Unscheduled operations: 11.
 | `run.emit.stale-supersedes` | `crates/contextful-context/tests/integration/index.rs::superseded_derived_rows_stop_answering_at_the_replacing_landing_and_leave_the_sidecar_at_the_fold` | performed |
 | `run.emit.task-version` | `crates/contextful-core/tests/integration/run/host_task.rs::raising_the_task_version_re_selects_every_settled_unit` | performed |
 | `run.emit.unit-status` | `crates/contextful-core/tests/integration/run/derive.rs::a_unit_status_is_one_of_four` | performed |
+| `run.emit.unredacted-error` | `crates/contextful-core/tests/integration/run/derive.rs::a_last_error_holding_an_unredacted_address_refuses` | performed |
 | `run.emit.version-retained` | `crates/contextful-cli/tests/integration/derive.rs::a_raised_task_version_re_derives_and_a_retaining_table_keeps_both_versions` | performed |
+| `run.exec.audit-entries` | `crates/contextful-connectors/tests/integration/derive.rs::a_chain_adds_at_most_64_captured_output_entries_to_the_run_record` | performed |
 | `run.exec.captured-output` | `crates/contextful-connectors/tests/integration/derive.rs::a_step_captures_8_mib_by_default_and_the_declared_bound_otherwise` | performed |
 | `run.exec.chain-deadline` | `crates/contextful-connectors/tests/integration/derive.rs::the_chain_runs_1800_s_by_default_and_the_declared_bound_otherwise` | performed |
 | `run.exec.deadline-elapsed` | `crates/contextful-connectors/tests/integration/derive.rs::a_chain_outrunning_its_deadline_refuses_naming_the_step` | performed |
@@ -1014,12 +1055,14 @@ Unscheduled operations: 11.
 | `run.exec.env-name` | `crates/contextful-core/tests/integration/run/derive.rs::an_allowlist_name_outside_the_variable_grammar_refuses` | performed |
 | `run.exec.missing-binary` | `crates/contextful-connectors/tests/integration/derive.rs::a_command_that_is_no_executable_file_refuses` | performed |
 | `run.exec.no-shell` | `crates/contextful-connectors/tests/integration/derive.rs::a_step_runs_its_argument_array_with_a_cleared_environment` | performed |
+| `run.exec.non-zero-exit` | `crates/contextful-connectors/tests/integration/derive.rs::a_step_exiting_non_zero_carries_its_error_text_into_the_run_audit` | performed |
 | `run.exec.output-cap` | `crates/contextful-connectors/tests/integration/derive.rs::output_past_the_bound_stops_the_step_with_the_byte_count` | performed |
 | `run.exec.shell-command` | `crates/contextful-core/tests/integration/run/derive.rs::a_command_given_as_one_string_refuses` | performed |
 | `run.exec.silent-step` | `crates/contextful-connectors/tests/integration/derive.rs::a_preprocess_step_writing_no_output_refuses` | performed |
 | `run.exec.step-condition` | `crates/contextful-connectors/tests/integration/derive.rs::a_preprocess_step_runs_only_while_its_condition_holds` | performed |
 | `run.exec.step-error-excerpt` | `crates/contextful-core/tests/integration/run/derive.rs::a_failing_steps_error_carries_4_kib_of_its_stderr` | performed |
 | `run.exec.unpinned-path` | `crates/contextful-connectors/tests/integration/derive.rs::a_path_form_command_without_a_digest_refuses_quoting_it` | performed |
+| `run.exec.vendor-deadline` | `crates/contextful-connectors/tests/integration/derive.rs::a_stalled_vendor_fails_its_unit_at_its_own_deadline` | performed |
 | `run.exec.verified-spawn` | `crates/contextful-connectors/tests/integration/derive.rs::a_binary_replaced_after_resolution_never_runs` | performed |
 | `run.export.at-least-once` | `crates/contextful-cli/tests/integration/export.rs::a_batch_acknowledged_without_its_cursor_commit_is_resent` | performed |
 | `run.export.batch-rows` | `crates/contextful-cli/tests/integration/export.rs::a_delivery_batch_holds_at_most_five_hundred_rows` | performed |
@@ -1091,10 +1134,16 @@ Unscheduled operations: 11.
 | `run.journal.store-input` | `crates/contextful-cli/tests/integration/job.rs::a_fire_reads_its_input_at_the_pinned_as_of_and_lands_its_output_table` | performed |
 | `run.journal.substrate-port` | `crates/contextful-engine/tests/integration/execution.rs::the_substrate_port_opens_steps_suspends_commits_and_closes_an_execution` | performed |
 | `run.journal.unwired-capability` | `crates/contextful-engine/tests/integration/execution.rs::suspending_on_an_engine_without_an_awakeable_store_is_refused_at_the_first_reach` | performed |
+| `run.land.batch-write` | `crates/contextful-context/tests/integration/run_commit.rs::a_run_lands_each_batch_as_a_part_and_carries_its_position` | performed |
+| `run.land.commit-visibility` | `crates/contextful-context/tests/integration/run_commit.rs::staged_parts_join_the_file_list_only_at_their_commit` | performed |
+| `run.land.ingest-tally` | `crates/contextful-cli/tests/integration/pipeline.rs::a_fire_tallies_fetched_kept_and_filtered_rows_and_failed_tables` | performed |
 | `run.land.irreconcilable-schema` | `crates/contextful-cli/tests/integration/run.rs::an_irreconcilable_pulled_schema_fails_the_batch` | performed |
 | `run.land.late-type` | `crates/contextful-engine/tests/integration/runner.rs::a_type_declared_after_its_column_staged_refuses` | performed |
+| `run.land.no-host-arm` | `crates/contextful-wasm/tests/integration/export.rs::the_host_binds_the_source_world_and_no_world_it_hosts_reaches_the_destination` | performed |
 | `run.land.parse-boundary` | `crates/contextful-connectors/tests/integration/boundary.rs::a_decode_runs_in_a_child_the_parent_kills_at_its_deadline` | performed |
 | `run.land.parse-crashed` | `crates/contextful-connectors/tests/integration/boundary.rs::a_crashed_decode_is_named_and_a_refusal_crosses_intact` | performed |
+| `run.land.partial-parse` | `crates/contextful-decode/tests/integration/pdf.rs::a_page_that_fails_to_render_refuses_the_whole_document` | performed |
+| `run.land.stage-order` | `crates/contextful-cli/tests/integration/pipeline.rs::a_batch_is_guarded_before_recording_and_redacted_before_shredding` | performed |
 | `run.land.table-failed` | `crates/contextful-cli/tests/integration/pipeline.rs::a_failing_table_is_named_with_its_kind_and_run` | performed |
 | `run.land.typed-pull` | `crates/contextful-cli/tests/integration/run.rs::a_pulled_type_lands_its_column_in_that_type` | performed |
 | `run.land.unknown-destination` | `crates/contextful-cli/tests/integration/pipeline.rs::another_destination_is_refused_before_any_request` | performed |
@@ -1128,10 +1177,15 @@ Unscheduled operations: 11.
 | `run.model.validate-undeclared` | `crates/contextful-cli/tests/integration/build.rs::validate_names_a_relation_no_manifest_declares` | performed |
 | `run.model.watermark` | `crates/contextful-context/tests/integration/build.rs::the_watermark_names_each_input_frontier` | performed |
 | `run.normalize.field-collision` | `crates/contextful-core/tests/integration/pipeline/normalize.rs::source_fields_cannot_replace_relational_identity_columns` | performed |
+| `run.normalize.host-stage` | `crates/contextful-core/tests/integration/pipeline/normalize.rs::engine_code_types_flattens_extracts_and_identifies_raw_json_rows` | performed |
 | `run.normalize.identity-columns` | `crates/contextful-core/tests/integration/pipeline/normalize.rs::repeated_nested_items_keep_distinct_parent_links_and_stable_ids` | performed |
+| `run.normalize.list-index-missing` | `crates/contextful-core/tests/integration/pipeline/normalize.rs::a_child_table_without_its_list_index_is_refused_naming_parent_and_list` | performed |
+| `run.normalize.mode` | `crates/contextful-cli/tests/integration/pipeline.rs::a_relational_pipeline_shreds_lists_into_indexed_child_rows` | performed |
+| `run.normalize.mode-resolution` | `crates/contextful-core/tests/integration/pipeline/normalize.rs::an_explicit_mode_wins_and_an_undeclared_one_resolves_native` | performed |
 | `run.normalize.mode-unknown` | `crates/contextful-cli/tests/integration/pipeline.rs::an_unknown_normalize_mode_is_refused_at_validation` | performed |
 | `run.normalize.native-store` | `crates/contextful-cli/tests/integration/pipeline.rs::a_native_pipeline_lands_nested_json_as_one_table_of_nested_columns` | performed |
 | `run.normalize.nesting-depth` | `crates/contextful-cli/tests/integration/pipeline.rs::native_nesting_stops_at_the_declared_depth` | performed |
+| `run.normalize.normalized-form` | `crates/contextful-core/tests/integration/pipeline/normalize.rs::one_normalized_group_holds_nested_rows_and_shreds_only_when_materialized` | performed |
 | `run.normalize.row-id` | `crates/contextful-core/tests/integration/pipeline/normalize.rs::repeated_nested_items_keep_distinct_parent_links_and_stable_ids` | performed |
 | `run.own.backpressure` | `crates/contextful-engine/tests/integration/runner.rs::each_batch_stages_before_the_next_pull` | performed |
 | `run.own.body-parent` | `crates/contextful-engine/tests/integration/drive.rs::protected_body_effects_record_rewritten_results_and_resume_without_another_paid_call` | performed |
@@ -1218,6 +1272,7 @@ Unscheduled operations: 11.
 | `run.select.derive-cycle` | `crates/contextful-core/tests/integration/pipeline/declare.rs::a_derived_source_cycle_names_every_member_at_build` | performed |
 | `run.select.derive-failed-parent` | `crates/contextful-cli/tests/integration/derive.rs::a_child_reads_committed_parent_rows_after_its_parent_fails` | performed |
 | `run.select.derive-order` | `crates/contextful-cli/tests/integration/derive.rs::a_child_declared_first_derives_its_parents_new_rows_in_one_tick` | performed |
+| `run.select.dry-run` | `crates/contextful-cli/tests/integration/derive.rs::a_dry_run_prints_the_selection_counts_and_lands_nothing` | performed |
 | `run.select.foreign-output-table` | `crates/contextful-core/tests/integration/run/derive.rs::a_key_naming_another_pipelines_output_refuses` | performed |
 | `run.select.incomplete-unit` | `spec/pins.toml` | performed |
 | `run.select.journaled-pull` | `crates/contextful-core/tests/integration/run/derive.rs::a_derive_pipeline_journaling_its_pulls_refuses` | performed |
@@ -1226,6 +1281,7 @@ Unscheduled operations: 11.
 | `run.select.metered-client` | `spec/pins.toml` | performed |
 | `run.select.no-store-root` | `crates/contextful-connectors/tests/integration/derive.rs::a_derive_source_refuses_an_absent_store_root_or_pipeline_id` | performed |
 | `run.select.parent-outcome` | `crates/contextful-cli/tests/integration/derive.rs::a_derived_child_stops_when_the_parent_process_cannot_start` | performed |
+| `run.select.parent-scan` | `crates/contextful-connectors/tests/integration/derive.rs::a_parent_table_past_a_million_rows_streams_in_batches` | performed |
 | `run.select.required-key` | `crates/contextful-core/tests/integration/run/derive.rs::a_missing_or_blank_required_key_refuses` | performed |
 | `run.select.rows-per-run` | `crates/contextful-core/tests/integration/run/derive.rs::a_run_takes_25_units_by_default_after_the_anti_join` | performed |
 | `run.select.seconds-per-run` | `crates/contextful-core/tests/integration/run/derive.rs::link_preview_holds_300_s_and_transcribe_carries_no_default` | performed |
