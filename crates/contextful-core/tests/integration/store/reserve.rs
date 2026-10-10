@@ -112,6 +112,18 @@ fn a_table_inside_a_reserved_namespace_is_refused() {
     }
 }
 
+/// The run record's table refuses as a producer's name, yet validates for the reads and
+/// folds every table takes; `_visibility` validates for none.
+#[test]
+fn the_run_record_validates_as_a_table_while_its_name_refuses() {
+    use contextful_core::store::declare::TableDecl;
+    use contextful_core::store::reserve::RUN_RECORD_TABLE;
+    assert_eq!(RUN_RECORD_TABLE, "_runs");
+    assert!(matches!(check_table_name(RUN_RECORD_TABLE), Err(StoreError::StoreReservedTableName(_))));
+    TableDecl::named(RUN_RECORD_TABLE).validate(&schema(&["run_id"])).unwrap();
+    assert!(matches!(TableDecl::named("_visibility/wiki/grants").validate(&schema(&["id"])), Err(StoreError::StoreReservedTableName(_))));
+}
+
 /// A table name ending in `__requests` is reserved to request-ledger relations and refuses as
 /// {{store.reserve.table-name}}.
 // spec: store.reserve.ledger-suffix@d94383f5

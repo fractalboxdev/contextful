@@ -26,4 +26,5 @@ mod redaction;
 mod reserve;
 mod rows;
 mod run_commit;
+mod run_record;
 mod support;

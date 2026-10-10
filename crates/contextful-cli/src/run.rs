@@ -12,7 +12,8 @@ use anyhow::{bail, Context, Result};
 use contextful_context::project::Project;
 use clap::Subcommand;
 use contextful_context::land::{commit_parts, commit_parts_group, commit_parts_with_diffs, discard_staged, publish_group, stage_part, stage_normalized_group, NormalizedStage, Batch, Position, RunContext};
-use contextful_context::{commit_log, node, ContextError, Store};
+use contextful_context::{commit_log, node, run_record, ContextError, Store};
+use contextful_core::coordinate::Catalog;
 use contextful_core::store::commit_log::{CommitEntry, Kind};
 use contextful_core::ports::{Clock, FixedClock};
 use contextful_core::run::cancel::Scope;
@@ -188,6 +189,10 @@ pub(crate) fn wire_at(project: &Project, now: &Option<String>) -> Result<Wired> 
         }
         None => (Arc::new(FileJournalStore::open(&root)), Arc::new(FileBlobStore::open(&root)), Arc::new(FileAwakeableStore::open(&root))),
     };
+    // The machine catalog caches run rows in front of the store's run record
+    // (`run.record.reserved-table`).
+    let resolve: run_record::NodeResolver = Box::new(|s| contextful_context::node::resolve(s, |k| std::env::var(k).ok()).map(|(n, _)| n));
+    let catalog: Arc<dyn Catalog + Send + Sync> = Arc::new(run_record::RecordedCatalog::new(catalog, store, resolve));
     let journal = Journal::over(rows, blobs);
     let registry = Registry::over(awakeables.clone(), journal.clone());
     Ok(Wired { engine: Engine { catalog, journal, awakeables: Some(awakeables), keeper: Keeper::default(), emitter: None, worlds: crate::component::worlds() }, registry, clock })
