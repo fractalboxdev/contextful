@@ -14,7 +14,8 @@ publish = false
 
 [dependencies]
 contextful-core = { path = "../contextful-core" }
-contextful-fs = { path = "../contextful-fs" }
+# The atomic replace, exclusive create and advisory lock under the engine's local state.
+contextful-snapshot = { path = "../contextful-snapshot" }
 getrandom = "0.3"
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
@@ -27,6 +28,8 @@ libc = "0.2"
 windows-sys = { version = "0.61.2", features = ["Win32_Foundation", "Win32_Security", "Win32_System_JobObjects", "Win32_System_Diagnostics_ToolHelp", "Win32_System_Threading"] }
 
 [dev-dependencies]
+# The exFAT volume the journal suite mounts.
+contextful-fs = { path = "../contextful-fs" }
 # Ledger measures record their figures (`assurance.measure.record`).
 contextful-eval = { path = "../../tools/eval" }
 tempfile = "3"

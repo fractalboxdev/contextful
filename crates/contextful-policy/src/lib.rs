@@ -10,6 +10,7 @@ pub mod exchange;
 pub mod explain;
 pub mod issue;
 pub mod keyset;
+pub mod operator;
 pub mod possession;
 pub mod profile;
 pub mod replica;

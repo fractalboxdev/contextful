@@ -21,7 +21,7 @@ use contextful_agent::http::{HttpRequest, HttpResponse, APPLY_PATH, EDIT_PATH, R
 use contextful_core::surface::SurfaceError;
 use contextful_core::run::derive::task::Tasks;
 #[cfg(feature = "data-plane")]
-use contextful_engine::control::ControlError;
+use contextful_snapshot::ControlError;
 use contextful_core::issue::{IssuancePolicy, MintContext, NodeRole};
 use contextful_core::ports::{Clock, SigningPort};
 #[cfg(feature = "data-plane")]
@@ -35,10 +35,6 @@ use contextful_policy::issue::{SeedSigner, DEFAULT_SEED_PATH};
 use contextful_policy::possession::ProofChecker;
 #[cfg(feature = "data-plane")]
 use contextful_policy::verify::AdmittedAuthority;
-#[cfg(feature = "data-plane")]
-use hmac::{Hmac, Mac};
-#[cfg(feature = "data-plane")]
-use sha2::{Digest, Sha256};
 #[cfg(feature = "data-plane")]
 use std::time::{SystemTime, UNIX_EPOCH};
 use contextful_policy::keyset::{KeyCheckpoint, StaticPins};
@@ -123,25 +119,19 @@ pub struct ServeArgs {
 
 #[cfg(feature = "data-plane")]
 fn operator_attestation(request: &HttpRequest, secret: &str) -> Option<(String, String, i64, i64)> {
-    let subject = request.header("X-Contextful-Operator")?;
-    let at: i64 = request.header("X-Contextful-Operator-Time")?.parse().ok()?;
-    let nonce = request.header("X-Contextful-Operator-Nonce")?;
-    let signature = request.header("X-Contextful-Operator-Signature")?;
-    if subject.is_empty() || subject.len() > 256 || nonce.len() != 32 || !nonce.bytes().all(|byte| byte.is_ascii_hexdigit()) || signature.len() != 64 {
-        return None;
-    }
+    use contextful_policy::operator::{verify, Signed, NONCE_HEADER, OPERATOR_HEADER, SIGNATURE_HEADER, TIME_HEADER};
+    let signed = Signed {
+        method: &request.method,
+        target: &request.target,
+        body: &request.body,
+        operator: request.header(OPERATOR_HEADER)?,
+        time: request.header(TIME_HEADER)?,
+        nonce: request.header(NONCE_HEADER)?,
+        signature: request.header(SIGNATURE_HEADER)?,
+    };
     let now = SystemTime::now().duration_since(UNIX_EPOCH).ok()?.as_secs() as i64;
-    if now.abs_diff(at) > 60 { return None; }
-    let digest = format!("{:x}", Sha256::digest(&request.body));
-    let message = format!("{}\n{}\n{digest}\n{subject}\n{at}\n{nonce}", request.method, request.target);
-    let mut mac = Hmac::<Sha256>::new_from_slice(secret.as_bytes()).ok()?;
-    mac.update(message.as_bytes());
-    let mut signature_bytes = [0u8; 32];
-    for (index, chunk) in signature.as_bytes().chunks_exact(2).enumerate() {
-        signature_bytes[index] = u8::from_str_radix(std::str::from_utf8(chunk).ok()?, 16).ok()?;
-    }
-    mac.verify_slice(&signature_bytes).ok()?;
-    Some((subject.to_owned(), nonce.to_owned(), at, now))
+    let operator = verify(secret, &signed, now)?;
+    Some((operator.subject, operator.nonce, operator.signed_at, now))
 }
 
 #[cfg(feature = "data-plane")]

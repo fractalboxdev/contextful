@@ -86,7 +86,7 @@ The two halves of the engine, the three crossings between them, complete mediati
 
 The domain crate, dependency direction, and the three build profiles with what each links.
 
-- `crate-map` — Seventeen crates compose the workspace. `contextful-cli` is the binary and wires every adapter per profile by dependency injection.
+- `crate-map` — Eighteen crates compose the workspace. `contextful-cli` is the binary and wires every adapter per profile by dependency injection.
 - `crate-map-drift` — A `crates/` package absent from the crate tree under `## Shapes`, or a {{topology.package.crate-map}} count differing from that tree's entries, raises `CrateMapDrift`, naming the package or both counts.
   *because a package added without a map entry otherwise passes every other gate*
 - `domain-crate` — `contextful-core` holds the pure domain types and the port traits every adapter implements, performs no I/O, and links into every profile.
@@ -108,6 +108,14 @@ The domain crate, dependency direction, and the three build profiles with what e
 - `edge-eligibility` — The edge profile is the one profile a function-class target hosts. Execution on such a deployment runs on a worker target.
 - `full-profile` — `contextful-full` is the daemon: the durable-execution core, the in-process scheduler, the component host, the SQL query face, transforms, the full-text and vector sidecars and the tool server.
 - `control-profile` — `contextful-control` is the self-hosted control plane: team state, the edit-time configuration document and identity. It materializes canonical TOML on apply and is the one profile linking the CRDT library.
+  *A-topology*
+- `control-team-state` — The control profile's team state is the configuration — its ingest sources, models and access policy — held as one `loro` document whose replicas merge concurrent edits; that document is the edit-time copy of what apply claims.
+  *A-topology*
+- `control-identity` — The control profile identifies an operator by {{surface.apply.operator-attestation}} alone, refusing an apply without one, and keeps no account store.
+  *because the console already signs every Admin mutation, and a second account concept is a second identity to provision and revoke*
+- `canonical-toml` — Apply materializes canonical TOML: every table's keys in byte order, tables after the values they nest in, quoting and spacing the format-preserving editor chooses, and every comment kept; canonicalizing canonical text changes no byte.
+  *because equal configurations then claim identical bytes, and a comment is the operator's record of why a value holds*
+- `apply-home` — `contextful-snapshot` is the one home of the snapshot directory {{surface.apply.local-claim}} claims into; `contextful-engine` and `contextful-control` both call it, and it links no run-path package.
   *A-topology*
 - `component-host` — A component connector runs where a component host is linked: the full profile and the container or worker shapes built from it.
   *A-topology*
@@ -366,6 +374,7 @@ crates/
   contextful-sync/         bucket push and pull
   contextful-agent/        tool server and connector scaffolder
   contextful-eval/         read-path quality harness
+  contextful-snapshot/     control snapshot directory: versions, pointer, drafts, receipts
   contextful-control/      control plane; the one CRDT consumer
   contextful-cli/          the `contextful` binary; dependency injection per profile
   acceptance/              black-box suite driving the built binary
@@ -378,7 +387,7 @@ The three profiles as feature bundles:
 [features]
 contextful-edge    = ["read-plane", "transport-ureq", "s3-sync"]
 contextful-full    = ["data-plane", "transport-ureq", "s3-sync", "drive", "component-host"]
-contextful-control = []
+contextful-control = ["dep:contextful-control"]
 ```
 
 A published-hostname descriptor:

@@ -17,6 +17,8 @@ path = "src/main.rs"
 # none of them (`topology.package.profile`).
 contextful-agent = { path = "../contextful-agent", optional = true }
 contextful-connectors = { path = "../contextful-connectors", optional = true }
+# The control plane, linked by the control profile alone (`topology.package.control-profile`).
+contextful-control = { path = "../contextful-control", optional = true }
 contextful-context = { path = "../contextful-context", default-features = false, optional = true }
 contextful-core = { path = "../contextful-core" }
 contextful-engine = { path = "../contextful-engine", optional = true }
@@ -29,6 +31,8 @@ contextful-policy = { path = "../contextful-policy", features = ["exchange"] }
 contextful-outbound = { path = "../contextful-outbound", default-features = false, optional = true }
 # The binary is the one package compiling SQLite into the build (`topology.package.sqlite-adapter`).
 contextful-sqlite = { path = "../contextful-sqlite", features = ["bundled"], optional = true }
+# The control snapshot directory every apply claims into (`surface.apply.local-claim`).
+contextful-snapshot = { path = "../contextful-snapshot", optional = true }
 contextful-sync = { path = "../contextful-sync", optional = true }
 # The component host (`topology.package.component-host`), linked under `component-host`.
 contextful-wasm = { path = "../contextful-wasm", default-features = false, optional = true }
@@ -62,7 +66,7 @@ default = ["data-plane", "transport-ureq", "component-host", "s3-sync"]
 # alone (`topology.package.edge-profile`).
 contextful-edge = ["read-plane", "transport-ureq", "s3-sync"]
 contextful-full = ["data-plane", "transport-ureq", "s3-sync", "drive", "component-host"]
-contextful-control = []
+contextful-control = ["dep:contextful-control"]
 # The read path: the store, bucket sync, the read face and its tool server. A build
 # without it answers each data-plane subcommand with `ProfileCapabilityAbsent`.
 read-plane = [
@@ -82,6 +86,7 @@ data-plane = [
     "dep:contextful-engine",
     "dep:contextful-eval",
     "dep:contextful-memory",
+    "dep:contextful-snapshot",
     "dep:contextful-sqlite",
 ]
 transport-ureq = ["read-plane", "contextful-outbound/transport-ureq", "contextful-connectors?/transport-ureq", "contextful-wasm?/transport-ureq"]

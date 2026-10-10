@@ -6,7 +6,6 @@ pub mod cancel;
 pub mod catalog;
 pub mod command;
 pub mod conformance;
-pub mod control;
 pub mod drive;
 pub mod execution;
 pub mod fsutil;

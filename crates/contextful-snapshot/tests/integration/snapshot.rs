@@ -1,7 +1,7 @@
 //! `surface.apply` and `surface.reconcile` over the local snapshot directory.
 
 use contextful_core::surface::SurfaceError;
-use contextful_engine::control::{ControlError, Draft, SnapshotDir};
+use contextful_snapshot::{ControlError, Draft, SnapshotDir};
 
 #[test]
 fn control_mutations_check_authority_under_the_lock_and_refuse_without_writes() {

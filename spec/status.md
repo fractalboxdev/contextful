@@ -14,8 +14,8 @@ An unpinned clause is `committed`; a pinned one is `performed` when its Rust, Le
 | `run` | 3 | 26 | 430 | 104 | 42 | 13 | 364 | 0 | 364 |
 | `store` | 1 | 17 | 254 | 59 | 13 | 19 | 217 | 0 | 217 |
 | `surface` | 2 | 20 | 134 | 59 | 22 | 0 | 94 | 0 | 94 |
-| `topology` | 1 | 6 | 73 | 24 | 5 | 2 | 62 | 0 | 62 |
-| **total** | 19 | 156 | 2246 | 614 | 198 | 69 | 1765 | 0 | |
+| `topology` | 1 | 6 | 77 | 24 | 5 | 2 | 68 | 0 | 68 |
+| **total** | 19 | 156 | 2250 | 614 | 198 | 69 | 1771 | 0 | |
 
 Decision records: 18.
 
@@ -28,7 +28,7 @@ A milestone reads `closed` when its acceptance test computes `passing` and every
 | 0 — The test-first gate | 2 | 22 | 19 | passing | closed |
 | 1 — The authority core | 14 | 242 | 223 | passing | closed |
 | 2 — The store | 9 | 175 | 143 | passing | closed |
-| 3 — The run path | 11 | 228 | 201 | passing | closed |
+| 3 — The run path | 11 | 232 | 207 | passing | closed |
 | 4 — Ingest | 25 | 519 | 356 | passing | open |
 | 5 — The read face under enforcement | 17 | 294 | 238 | passing | open |
 | 6 — Sync and replicas | 8 | 79 | 74 | passing | closed |
@@ -1664,13 +1664,13 @@ Unscheduled operations: 11.
 | `surface.apply.operator-attestation` | `spec/pins.toml` | performed |
 | `surface.apply.owner-unconfigured` | `crates/contextful-cli/tests/integration/pipeline.rs::an_owner_with_nothing_behind_it_is_refused` | performed |
 | `surface.apply.receipt-digest` | `crates/contextful-policy/tests/integration/control_receipt.rs::a_receipt_digest_uses_canonical_json_for_its_successor` | performed |
-| `surface.apply.receipt-file` | `crates/contextful-engine/tests/integration/control.rs::an_attested_claim_commits_the_snapshot_and_receipt_together` | performed |
+| `surface.apply.receipt-file` | `crates/contextful-snapshot/tests/integration/snapshot.rs::an_attested_claim_commits_the_snapshot_and_receipt_together` | performed |
 | `surface.apply.receipt-message` | `crates/contextful-policy/tests/integration/control_receipt.rs::a_control_receipt_binds_every_signed_field_and_the_snapshot_bytes` | performed |
 | `surface.apply.served-admin-grant` | `crates/contextful-agent/tests/integration/http.rs::control_refuses_a_tenant_scoped_admin_grant_over_every_table` | performed |
 | `surface.apply.synced-attestation` | `crates/contextful-cli/tests/integration/pipeline.rs::a_synced_import_requires_admin_and_writes_a_verifiable_receipt` | performed |
 | `surface.apply.uninitialized-store` | `crates/contextful-cli/tests/integration/pipeline.rs::an_apply_before_the_import_is_refused` | performed |
 | `surface.apply.validation` | `crates/contextful-cli/tests/integration/pipeline.rs::an_invalid_document_claims_no_version` | performed |
-| `surface.apply.version-race` | `crates/contextful-engine/tests/integration/control.rs::a_lost_claim_conflicts_and_overwrites_nothing` | performed |
+| `surface.apply.version-race` | `crates/contextful-snapshot/tests/integration/snapshot.rs::a_lost_claim_conflicts_and_overwrites_nothing` | performed |
 | `surface.apply.weak-conditional-backend` | `crates/contextful-core/tests/integration/surface/control.rs::a_conditional_write_owner_refuses_a_network_filesystem` | performed |
 | `surface.arm.catch-up` | `crates/contextful-engine/tests/integration/scheduler.rs::a_daemon_booting_past_missed_intervals_fires_once` | performed |
 | `surface.arm.grammar` | `crates/contextful-core/tests/integration/surface/arm.rs::a_schedule_is_an_interval_or_a_five_field_cron` | performed |
@@ -1785,8 +1785,13 @@ Unscheduled operations: 11.
 | `topology.coordinate.lease-row` | `crates/contextful-engine/tests/integration/coordinate.rs::a_lease_row_carries_holder_expiry_and_fence_per_key` | performed |
 | `topology.coordinate.primitive` | `tools/ci/tests/integration/topology.rs::no_profile_links_a_queue_cache_consensus_or_coordination_client` | performed |
 | `topology.coordinate.weak-backend` | `spec/pins.toml` | performed |
+| `topology.package.apply-home` | `tools/ci/tests/integration/topology.rs::the_snapshot_directory_has_one_home_both_callers_share` | performed |
+| `topology.package.canonical-toml` | `crates/contextful-control/tests/integration/plane.rs::apply_claims_canonical_toml_with_every_comment_kept` | performed |
 | `topology.package.capability-absent` | `crates/contextful-cli/tests/integration/profile.rs::a_data_plane_subcommand_on_a_build_without_it_is_refused_by_name` | performed |
 | `topology.package.component-host` | `crates/contextful-engine/tests/integration/runner.rs::a_component_connector_runs_on_an_engine_wiring_its_world` | performed |
+| `topology.package.control-identity` | `crates/contextful-control/tests/integration/plane.rs::apply_admits_only_a_fresh_unreplayed_operator_attestation` | performed |
+| `topology.package.control-profile` | `tools/ci/tests/integration/topology.rs::this_repository_control_profile_links_the_control_plane_and_the_crdt_library` | performed |
+| `topology.package.control-team-state` | `crates/contextful-control/tests/integration/plane.rs::replicas_of_the_configuration_document_merge_concurrent_edits` | performed |
 | `topology.package.crate-map` | `tools/ci/tests/integration/topology.rs::this_repository_crate_map_names_every_crate` | performed |
 | `topology.package.crate-map-drift` | `tools/ci/tests/integration/topology.rs::a_crate_missing_from_the_crate_map_is_refused` | performed |
 | `topology.package.crdt-leak` | `tools/ci/tests/integration/topology.rs::a_crdt_library_outside_the_control_profile_is_refused` | performed |
@@ -1794,6 +1799,7 @@ Unscheduled operations: 11.
 | `topology.package.dependency-direction` | `tools/ci/tests/integration/topology.rs::a_domain_crate_depending_on_an_adapter_is_refused` | performed |
 | `topology.package.domain-crate` | `tools/ci/tests/integration/domain.rs::the_domain_crate_performs_no_io_and_links_into_every_profile` | performed |
 | `topology.package.domain-impurity` | `tools/ci/tests/integration/topology.rs::a_domain_crate_reaching_an_async_runtime_is_refused` | performed |
+| `topology.package.edge-eligibility` | `spec/pins.toml` | performed |
 | `topology.package.edge-profile` | `tools/ci/tests/integration/topology.rs::this_repository_edge_profile_serves_reads_and_links_no_component_host` | performed |
 | `topology.package.exchange-optional` | `tools/ci/tests/integration/topology.rs::a_library_reaching_the_exchange_stack_is_refused` | performed |
 | `topology.package.fixed-at-build` | `tools/ci/tests/integration/topology.rs::a_profile_linking_build_tooling_is_refused` | performed |

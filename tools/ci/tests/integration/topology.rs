@@ -733,13 +733,13 @@ fn a_crate_missing_from_the_crate_map_is_refused() {
     passes(&r);
 }
 
-/// Seventeen crates compose the workspace. `contextful-cli` is the binary and wires every adapter per profile by dependency injection.
-// spec: topology.package.crate-map@398fd784
+/// Eighteen crates compose the workspace. `contextful-cli` is the binary and wires every adapter per profile by dependency injection.
+// spec: topology.package.crate-map@724e3bb7
 #[test]
 fn this_repository_crate_map_names_every_crate() {
     let o = topology(repo_root());
     assert!(o.status.success(), "{}", stderr(&o));
-    assert!(stdout(&o).contains("crate map: 17 crates"), "{}", stdout(&o));
+    assert!(stdout(&o).contains("crate map: 18 crates"), "{}", stdout(&o));
 }
 
 /// The crate-graph stage runs the dependency rules and refuses a run-path crate reaching a
@@ -928,6 +928,71 @@ fn this_repository_binary_declares_the_three_profiles_each_linking_its_role() {
     for absent in ["contextful-engine", "contextful-context", "contextful-sync", "duckdb", "wasmtime", "ureq", "libsqlite3-sys"] {
         assert!(!control.iter().any(|n| n == absent), "`contextful-control` links `{absent}`");
     }
+}
+
+/// `contextful-control` is the self-hosted control plane: team state, the edit-time configuration document and identity. It materializes canonical TOML on apply and is the one profile linking the CRDT library.
+///
+/// The profile links `contextful-control`, which holds the configuration as a `loro`
+/// document, verifies the operator through `contextful-policy` and claims canonical TOML,
+/// written by `toml_edit`, through `contextful-snapshot`; neither other profile links the
+/// control package or the CRDT library.
+// spec: topology.package.control-profile@8b92af49
+#[test]
+fn this_repository_control_profile_links_the_control_plane_and_the_crdt_library() {
+    let control = profile_graph("contextful-control");
+    for linked in ["contextful-control", "loro", "contextful-snapshot", "contextful-policy", "toml_edit"] {
+        assert!(control.iter().any(|n| n == linked), "`contextful-control` links no `{linked}`: {control:?}");
+    }
+    for profile in ["contextful-edge", "contextful-full"] {
+        let graph = profile_graph(profile);
+        assert!(!graph.is_empty(), "`{profile}` links no package");
+        for absent in ["contextful-control", "loro"] {
+            assert!(!graph.iter().any(|n| n == absent), "`{profile}` links `{absent}`");
+        }
+    }
+}
+
+/// The normal dependencies of one workspace package, transitively.
+fn package_graph(package: &str) -> Vec<String> {
+    let o = Command::new("cargo")
+        .args(["tree", "-q", "--locked", "-p", package, "-e", "normal", "--prefix", "none", "--format", "{p}"])
+        .current_dir(repo_root())
+        .output()
+        .unwrap();
+    assert!(o.status.success(), "{}", stderr(&o));
+    stdout(&o).lines().filter_map(|l| l.split_whitespace().next()).map(str::to_string).collect()
+}
+
+/// `contextful-snapshot` is the one home of the snapshot directory {{surface.apply.local-claim}} claims into; `contextful-engine` and `contextful-control` both call it, and it links no run-path package.
+// spec: topology.package.apply-home@5c5206fc
+#[test]
+fn the_snapshot_directory_has_one_home_both_callers_share() {
+    for caller in ["contextful-engine", "contextful-control"] {
+        assert!(package_graph(caller).iter().any(|n| n == "contextful-snapshot"), "`{caller}` does not call `contextful-snapshot`");
+    }
+    let snapshot = package_graph("contextful-snapshot");
+    assert!(!snapshot.is_empty(), "`contextful-snapshot` links no package");
+    for run_path in ["contextful-engine", "contextful-connectors", "contextful-sqlite", "contextful-memory", "contextful-outbound", "contextful-wasm"] {
+        assert!(!snapshot.iter().any(|n| n == run_path), "`contextful-snapshot` links `{run_path}`");
+    }
+    let crates = repo_root().join("crates");
+    let mut homes = Vec::new();
+    for package in std::fs::read_dir(&crates).unwrap() {
+        let src = package.unwrap().path().join("src");
+        let mut stack = vec![src];
+        while let Some(dir) = stack.pop() {
+            let Ok(entries) = std::fs::read_dir(&dir) else { continue };
+            for entry in entries {
+                let path = entry.unwrap().path();
+                if path.is_dir() {
+                    stack.push(path);
+                } else if std::fs::read_to_string(&path).is_ok_and(|text| text.contains("pub struct SnapshotDir")) {
+                    homes.push(path.strip_prefix(&crates).unwrap().display().to_string());
+                }
+            }
+        }
+    }
+    assert_eq!(homes, ["contextful-snapshot/src/lib.rs"], "one snapshot directory type");
 }
 
 /// `contextful-full` is the daemon: the durable-execution core, the in-process scheduler, the component host, the SQL query face, transforms, the full-text and vector sidecars and the tool server.
@@ -1140,4 +1205,38 @@ fn only_the_binary_wires_a_catalog_backend_and_everything_else_names_the_port() 
     assert!(named.is_empty(), "code above the port names a backend: {named:?}");
     let port = std::fs::read_to_string(root.join("contextful-core/src/coordinate.rs")).unwrap();
     assert!(port.contains("pub trait Catalog"), "no `Catalog` port");
+}
+
+/// The edge profile is the one profile a function-class target hosts. Execution on such a deployment runs on a worker target.
+///
+/// Every function-class shape under `spec/targets/` lists `edge` alone, and the edge build
+/// links neither the run path nor a component host, so a run reaching such a deployment
+/// executes on a worker target and never in place.
+#[test]
+fn this_repository_function_class_shapes_host_the_edge_profile_and_run_nothing() {
+    let mut function_shapes = Vec::new();
+    for entry in std::fs::read_dir(repo_root().join("spec/targets")).unwrap() {
+        let path = entry.unwrap().path();
+        if path.extension().and_then(|e| e.to_str()) != Some("toml") {
+            continue;
+        }
+        let target: toml::Value = toml::from_str(&std::fs::read_to_string(&path).unwrap()).unwrap();
+        let provider = target["provider"].as_str().unwrap().to_string();
+        for shape in target["shape"].as_array().unwrap() {
+            if shape["kind"].as_str() != Some("function") {
+                continue;
+            }
+            let name = shape["name"].as_str().unwrap();
+            let profiles: Vec<&str> = shape["profiles"].as_array().unwrap().iter().filter_map(|p| p.as_str()).collect();
+            assert_eq!(profiles, ["edge"], "`{provider}` shape `{name}` is function-class and hosts {profiles:?}");
+            function_shapes.push(format!("{provider}/{name}"));
+        }
+    }
+    assert!(!function_shapes.is_empty(), "no target file declares a function-class shape");
+
+    let edge = profile_graph("contextful-edge");
+    assert!(!edge.is_empty(), "`contextful-edge` links no package");
+    for runner in ["contextful-engine", "contextful-connectors", "contextful-wasm", "wasmtime"] {
+        assert!(!edge.iter().any(|n| n == runner), "`contextful-edge` links `{runner}`, so {function_shapes:?} would execute in place");
+    }
 }

@@ -31,6 +31,19 @@ Three profiles, `contextful-edge`, `contextful-full` and `contextful-control`, c
 
 Consequences: the dependency audit refuses a control-only library in another profile's resolved graph.
 
+## The control plane edits the configuration as one CRDT document and claims through the shared snapshot package
+
+Team state is the configuration itself — ingest sources, models and access policy — so `topology.package` holds it as one `loro` document whose replicas merge offline edits, and an apply canonicalizes that document and claims it as the next version. The claim runs through `contextful-snapshot`, the package the engine already calls, so local and control-plane applies share one version claim, one pointer and one replay store, and the control profile links no run path.
+
+| Option | Lost on | Cost |
+| --- | --- | --- |
+| The configuration as one CRDT document; one shared snapshot package *(chosen)* | — | Concurrent text edits can merge into invalid TOML, which apply refuses before claiming. |
+| A separate team-state model beside the configuration | Single source | Two documents to reconcile, and an apply translating between them. |
+| Copy the snapshot directory into the control package | One home | Two claim paths whose version races drift apart. |
+| Link the engine into the control profile | Profile role | The control profile then links the run path. |
+
+Consequences: a change to the version claim lands once and both callers take it.
+
 ## The engine and its consumers meet only at public surfaces
 
 `topology.compose` admits exactly three crossings between read path and run path: the connector interface world, the columnar-part-plus-manifest layout, and capability tokens, each versioned with a conformance suite both sides run. The engine owns no domain; an application names its vocabulary in a per-store lexicon, and a behavior becomes a shared abstraction once a second application needs it. `topology.bound-application` gives the commercial layer only the public surfaces, and a paid feature is net-new, never a license check on a data-plane capability.
