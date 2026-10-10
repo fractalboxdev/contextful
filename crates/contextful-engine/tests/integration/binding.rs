@@ -20,7 +20,6 @@ fn unknown<T: std::fmt::Debug>(out: Result<T, AwakeError>, token: &str) {
 /// An awakeable may bind a verified caller subject at mint; resolving it then takes the token and a credential
 /// for that subject, and any other caller answers as {{run.suspend.unknown-token}}. An unbound token is its whole
 /// authority.
-// spec: run.suspend.caller-binding@32d5c652
 #[test]
 fn a_bound_token_resolves_only_for_its_subject_and_answers_others_as_unknown() {
     let dir = tempfile::tempdir().unwrap();
