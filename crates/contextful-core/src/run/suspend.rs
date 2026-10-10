@@ -32,6 +32,11 @@ pub struct Awakeable {
     /// Where the recorded payload lives; a blob above the inline cutoff.
     #[serde(default)]
     pub payload: Option<Stored>,
+    /// The verified caller subject bound at mint; a bound token resolves only for a
+    /// credential of that subject, and an unbound token is its whole authority
+    /// (`run.suspend.caller-binding`).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub caller: Option<String>,
 }
 
 /// Decode a caller-supplied instant: RFC 3339 in UTC, ending `Z`.
@@ -57,7 +62,20 @@ impl Awakeable {
             state: AwakeableState::Pending,
             payload_sha256: None,
             payload: None,
+            caller: None,
         })
+    }
+
+    /// The row bound to the verified caller `subject` (`run.suspend.caller-binding`).
+    pub fn bound_to(self, subject: &str) -> Awakeable {
+        Awakeable { caller: Some(subject.to_string()), ..self }
+    }
+
+    /// Whether `caller`, the subject a verified credential names or `None` for a caller
+    /// presenting none, reaches this row. Any other caller answers as
+    /// [`unknown`], disclosing nothing (`run.suspend.caller-binding`).
+    pub fn answers(&self, caller: Option<&str>) -> bool {
+        self.caller.as_deref().is_none_or(|bound| caller == Some(bound))
     }
 
     /// The state at `now`: a pending row past its deadline reads `timed_out`, and the

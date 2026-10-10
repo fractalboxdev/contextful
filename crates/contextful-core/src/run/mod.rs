@@ -10,6 +10,7 @@ pub mod drive;
 pub mod effect;
 pub mod error;
 pub mod failure;
+pub mod join;
 pub mod journal;
 pub mod own;
 pub mod plan;

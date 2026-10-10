@@ -32,4 +32,8 @@ impl<S: Source> Source for Guarded<S> {
         }
         serde_json::to_vec(&pull).map_err(|e| Failure::new(FailureTag::Permanent, e.to_string()))
     }
+
+    fn settle(&mut self) -> Result<(), Failure> {
+        self.inner.settle()
+    }
 }

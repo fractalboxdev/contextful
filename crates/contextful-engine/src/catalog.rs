@@ -37,6 +37,9 @@ struct ScopeRow {
     /// A chunk scope's plan row; a table or host scope's file carries none.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     chunk: Option<ChunkRow>,
+    /// The execution the scope's last retirement retired (`run.journal.retire-order`).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    retired: Option<String>,
 }
 
 /// The single-node catalog backend behind the `Catalog` port.
@@ -193,6 +196,9 @@ impl Catalog for LocalCatalog {
         if scope.owner.as_ref().is_some_and(|o| o.execution_id == execution_id) {
             scope.owner = None;
         }
+        if !execution_id.is_empty() {
+            scope.retired = Some(execution_id.to_string());
+        }
         replace(&self.scope_path(at), &to_json(&scope)?)?;
         Ok(Cas::Applied)
     }
@@ -242,6 +248,10 @@ impl Catalog for LocalCatalog {
         }
         replace(&self.scope_path(at), &to_json(&scope)?)?;
         Ok(Some(updated))
+    }
+
+    fn retired_at(&self, scope: &OwnerScope) -> Result<Option<String>, Failure> {
+        Ok(self.scope(scope)?.retired)
     }
 
     fn put_run(&self, row: &RunRow) -> Result<(), Failure> {

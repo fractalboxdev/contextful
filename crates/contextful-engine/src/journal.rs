@@ -192,6 +192,21 @@ impl<J: JournalStore, B: BlobStore> Journal<J, B> {
         }
     }
 
+    /// The attempts a schedule on `key` closed in flight, as its pending row persists them;
+    /// 0 when no pending row stands (`run.retry.attempt-counter`).
+    pub fn attempts(&self, key: &EntryKey) -> Result<u32, Failure> {
+        Ok(match self.rows.read(key)? {
+            Some(Row::Pending { attempts, .. }) => attempts,
+            _ => 0,
+        })
+    }
+
+    /// Persist on `key`'s journal row that `run_id`'s schedule closed `attempts` attempts,
+    /// before the backoff sleep that follows them (`run.retry.attempt-counter`).
+    pub fn note_attempts(&self, key: &EntryKey, run_id: &str, attempts: u32) -> Result<(), Failure> {
+        self.rows.note_attempts(key, run_id, attempts)
+    }
+
     /// Recorded entries under an execution.
     pub fn recorded(&self, execution_id: &str) -> Result<usize, Failure> {
         Ok(self.rows.rows(execution_id)?.iter().filter(|r| matches!(r, Row::Recorded { .. })).count())

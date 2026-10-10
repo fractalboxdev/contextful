@@ -259,7 +259,7 @@ fn a_reopened_file_holds_every_row_and_blob() {
     drop(s);
 
     let reopened = SqliteRunStores::open(&path).unwrap();
-    assert_eq!(reopened.journal.read(&key("x-1")).unwrap(), Some(Row::Pending { key: key("x-1"), run_id: "run-a".into() }));
+    assert_eq!(reopened.journal.read(&key("x-1")).unwrap(), Some(Row::pending(&key("x-1"), "run-a")));
     assert_eq!(reopened.journal.read(&key("x-2")).unwrap(), Some(Row::Recorded { key: key("x-2"), value: binary }), "non-UTF-8 inline bytes round-trip");
     assert_eq!(reopened.blobs.get("aa").unwrap().as_deref(), Some(&b"bytes"[..]));
     assert_eq!(reopened.blobs.swept_at().unwrap(), Some(42));
@@ -289,6 +289,7 @@ fn awakeable(token: &str) -> Awakeable {
         state: AwakeableState::Pending,
         payload_sha256: None,
         payload: None,
+        caller: None,
     }
 }
 

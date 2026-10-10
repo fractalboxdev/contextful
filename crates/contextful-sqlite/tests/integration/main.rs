@@ -69,6 +69,7 @@ pub fn run_row(run_id: &str, pipeline: &str, status: RunStatus) -> RunRow {
         stop: None,
         host_scope: None,
         input: None,
+        failed_branches: Vec::new(),
     }
 }
 

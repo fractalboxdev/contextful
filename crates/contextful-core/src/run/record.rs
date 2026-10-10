@@ -178,6 +178,10 @@ pub struct RunRow {
     /// A store-driven run's input (`run.record.input-bounds`); `None` for every other run.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub input: Option<InputBounds>,
+    /// Each fan-out branch that failed into a join declaring `allow_partial`, with its
+    /// label and failure tag (`run.journal.fan-out-join`).
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub failed_branches: Vec<super::join::FailedBranch>,
 }
 
 /// The input a store-driven run read: the resolved `as_of`, the snapshot id per table the

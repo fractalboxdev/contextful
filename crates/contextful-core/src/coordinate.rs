@@ -164,7 +164,13 @@ pub trait Catalog {
     /// lease, on the holder's fence; the owner's journal is unreachable once it applies.
     /// Under a chunk scope holding a chunk row, a cursor commit also marks the chunk done in
     /// that transaction: a completed chunk retires the same way.
+    /// The same transaction names the retired execution as the scope's last retirement,
+    /// [`Catalog::retired_at`].
     fn retire_at(&self, scope: &OwnerScope, execution_id: &str, cursor: Option<(CursorRow, u64)>, fence: Option<&Lease>) -> Result<Cas, Failure>;
+    /// The execution the scope's last applied retirement retired, whose journal rows a
+    /// journal store apart from the catalog deletes after that commit and again at the
+    /// scope's next open (`run.journal.retire-order`); `None` before any retirement.
+    fn retired_at(&self, scope: &OwnerScope) -> Result<Option<String>, Failure>;
 
     /// The chunk row of a chunk scope; `None` when no plan holds it. A catalog keeping no
     /// chunk plans holds none.

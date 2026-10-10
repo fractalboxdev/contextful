@@ -274,6 +274,47 @@ fn retiring_an_owner_caches_its_position_in_the_same_transaction() {
     assert_eq!(c.cursor("feed", "filings").unwrap().position, Some(json!("p1")));
 }
 
+/// The retiring transaction names the retired execution on its scope, so an open after a
+/// lost journal delete finds the rows to delete again (`run.journal.retire-order`).
+#[test]
+fn a_retirement_names_its_execution_on_the_scope_across_reopens() {
+    let dir = tempfile::tempdir().unwrap();
+    let clock = SetClock::new();
+    let scope = OwnerScope::table("feed", "filings");
+    {
+        let c = catalog(&dir, &clock);
+        assert_eq!(c.retired_at(&scope).unwrap(), None, "no retirement yet");
+        c.put_owner(&owner("x-1")).unwrap();
+        assert_eq!(c.retire("feed", "filings", "x-1", Some((cursor("p1"), 4)), None).unwrap(), Cas::VersionMoved);
+        assert_eq!(c.retired_at(&scope).unwrap(), None, "a moved version retires nothing");
+        assert_eq!(c.retire("feed", "filings", "x-1", Some((cursor("p1"), 0)), None).unwrap(), Cas::Applied);
+        assert_eq!(c.retired_at(&scope).unwrap().as_deref(), Some("x-1"));
+        assert_eq!(c.retired_at(&OwnerScope::host("other")).unwrap(), None, "another scope names nothing");
+    }
+    assert_eq!(catalog(&dir, &clock).retired_at(&scope).unwrap().as_deref(), Some("x-1"), "the name survives a reopen");
+
+    // A scope-keyed file written before the column gains it empty and keeps its owner.
+    let path = dir.path().join("old").join(MACHINE_CATALOG_FILE);
+    std::fs::create_dir_all(path.parent().unwrap()).unwrap();
+    let conn = rusqlite::Connection::open(&path).unwrap();
+    conn.execute_batch(
+        "CREATE TABLE scope (pipeline_id TEXT NOT NULL, tbl TEXT NOT NULL, kind TEXT NOT NULL, part TEXT NOT NULL,
+             version INTEGER NOT NULL, cursor TEXT NOT NULL, owner TEXT, PRIMARY KEY (pipeline_id, tbl, kind, part));",
+    )
+    .unwrap();
+    conn.execute(
+        "INSERT INTO scope VALUES ('feed', 'filings', 'table', '', 0, ?1, ?2)",
+        [serde_json::to_string(&CursorRow::default()).unwrap(), serde_json::to_string(&owner("x-2")).unwrap()],
+    )
+    .unwrap();
+    drop(conn);
+    let c = MachineCatalog::open(&path, Arc::new(clock.clone())).unwrap();
+    assert_eq!(c.retired_at(&scope).unwrap(), None);
+    assert_eq!(c.owner("feed", "filings").unwrap(), Some(owner("x-2")));
+    assert_eq!(c.retire("feed", "filings", "x-2", None, None).unwrap(), Cas::Applied);
+    assert_eq!(c.retired_at(&scope).unwrap().as_deref(), Some("x-2"));
+}
+
 #[test]
 fn a_chunk_commit_marks_its_row_done_in_the_retiring_transaction_and_a_rewind_retires_its_owner() {
     let dir = tempfile::tempdir().unwrap();
