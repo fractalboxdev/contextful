@@ -147,5 +147,6 @@ fn apply_admits_only_a_fresh_unreplayed_operator_attestation() {
     assert_eq!(apply(&snaps, &doc, Some(v), SECRET, &attest("bob", &nonce(3), NOW, &document), NOW).unwrap(), 2);
 
     let entries: Vec<String> = std::fs::read_dir(dir.path()).unwrap().map(|e| e.unwrap().file_name().to_string_lossy().into_owned()).collect();
+    assert!(!entries.is_empty(), "the applied versions left no snapshot");
     assert!(!entries.iter().any(|name| name.contains("account") || name.contains("user")), "{entries:?}");
 }

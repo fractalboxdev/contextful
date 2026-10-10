@@ -945,6 +945,7 @@ fn this_repository_control_profile_links_the_control_plane_and_the_crdt_library(
     }
     for profile in ["contextful-edge", "contextful-full"] {
         let graph = profile_graph(profile);
+        assert!(!graph.is_empty(), "`{profile}` links no package");
         for absent in ["contextful-control", "loro"] {
             assert!(!graph.iter().any(|n| n == absent), "`{profile}` links `{absent}`");
         }
@@ -970,6 +971,7 @@ fn the_snapshot_directory_has_one_home_both_callers_share() {
         assert!(package_graph(caller).iter().any(|n| n == "contextful-snapshot"), "`{caller}` does not call `contextful-snapshot`");
     }
     let snapshot = package_graph("contextful-snapshot");
+    assert!(!snapshot.is_empty(), "`contextful-snapshot` links no package");
     for run_path in ["contextful-engine", "contextful-connectors", "contextful-sqlite", "contextful-memory", "contextful-outbound", "contextful-wasm"] {
         assert!(!snapshot.iter().any(|n| n == run_path), "`contextful-snapshot` links `{run_path}`");
     }
