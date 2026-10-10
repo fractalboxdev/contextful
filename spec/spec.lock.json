@@ -1986,8 +1986,8 @@
       "operation": "lay-out",
       "subject": "machine-catalog",
       "kind": "behavior",
-      "statement": "`machine.sqlite` holds one machine's journal, cursor cache and lease rows. It is never synced, never rebuilt and never replaced by a pull.",
-      "why": "A-store",
+      "statement": "`machine.sqlite` holds one machine's journal, cursor cache, lease rows and run-row cache. It is never synced or replaced by a pull; a rebuild refills it from {{run.record.reserved-table}} only while it holds no run row, and rebuilds nothing else.",
+      "why": "because run rows alone have a durable copy in the store, and a catalog already holding runs is a live machine's cache, which a refill rewrites",
       "file": "spec/10-store.md",
       "line": 119
     },
@@ -25605,6 +25605,10 @@
     [
       "topology.bound-application.restated-case",
       "assurance.structure-tree.mirror-exemption"
+    ],
+    [
+      "store.lay-out.machine-catalog",
+      "run.record.reserved-table"
     ],
     [
       "store.lay-out.catalog-ports",

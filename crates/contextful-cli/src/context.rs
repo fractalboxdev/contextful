@@ -11,17 +11,20 @@ use contextful_context::catalog::rebuild;
 use contextful_context::fold::fold;
 use contextful_context::land::{land_run, Batch, Position, RunContext};
 use contextful_context::scan::scan;
-use contextful_context::{node, ContextError, Store};
+use contextful_context::{node, run_record, ContextError, Store};
+use contextful_core::ports::Clock;
 use contextful_core::store::bound_time::{Bound, Bounds};
-use contextful_core::store::catalog::DERIVED_CATALOG_FILE;
+use contextful_core::store::catalog::{DERIVED_CATALOG_FILE, MACHINE_CATALOG_FILE};
 use contextful_core::store::declare::TableDecl;
 use contextful_core::store::fold::{scheduled, FoldOutcome};
 use contextful_core::store::reconcile::ColumnType;
 use contextful_core::store::reserve::Injection;
 use contextful_core::time::Instant;
-use contextful_sqlite::DerivedSqlite;
+use crate::clock::SystemClock;
+use contextful_sqlite::{DerivedSqlite, MachineCatalog};
 use std::collections::HashMap;
 use std::path::{Path, PathBuf};
+use std::sync::Arc;
 
 /// Choose a rebuildable catalog without a plaintext file for a bound encrypted store.
 pub fn derived_catalog(path: &Path, encrypted: bool) -> Result<DerivedSqlite> {
@@ -397,6 +400,16 @@ pub fn run(cmd: ContextCmd) -> Result<()> {
             let store = crate::project::open_store(&l.project, None, None)?;
             let catalog = derived_catalog(&store.root().join(DERIVED_CATALOG_FILE), store.encrypted())?;
             let rows = rebuild(&store, &catalog)?;
+            // Run history comes back from the store's run record
+            // (`run.record.rebuild-restores-history`).
+            let machine_path = store.root().join(MACHINE_CATALOG_FILE);
+            let clock: Arc<dyn Clock + Send + Sync> = Arc::new(SystemClock);
+            let machine = match store.file_cipher() {
+                Some(cipher) => MachineCatalog::open_sealed(&machine_path, clock, cipher)?,
+                None => MachineCatalog::open(&machine_path, clock)?,
+            };
+            let restored = run_record::restore(&store, &machine)?;
+            eprintln!("restored {} run(s) from the run record", restored.len());
             println!("{}", serde_json::to_string_pretty(&rows)?);
             Ok(())
         }

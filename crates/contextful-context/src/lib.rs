@@ -21,6 +21,7 @@ pub mod replica;
 #[cfg(feature = "read")]
 pub mod read;
 pub mod rows;
+pub mod run_record;
 pub mod scan;
 pub mod store;
 mod redaction;

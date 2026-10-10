@@ -70,9 +70,10 @@ fn a_store_holds_its_canonical_tree_beside_two_disposable_catalogs() {
     assert_eq!(count(a.path()), before);
 }
 
-/// `machine.sqlite` holds one machine's journal, cursor cache and lease rows. It is never synced, never rebuilt
-/// and never replaced by a pull.
-// spec: store.lay-out.machine-catalog@8bc17aa0
+/// `machine.sqlite` holds one machine's journal, cursor cache, lease rows and run-row cache. It is never synced or
+/// replaced by a pull; a rebuild refills it from {{run.record.reserved-table}} only while it holds no run row, and
+/// rebuilds nothing else.
+// spec: store.lay-out.machine-catalog@31c18d65
 #[test]
 fn the_machine_catalog_stays_on_its_machine_through_push_pull_and_rebuild() {
     let bucket = tempfile::tempdir().unwrap();
@@ -97,6 +98,14 @@ fn the_machine_catalog_stays_on_its_machine_through_push_pull_and_rebuild() {
     assert_eq!(std::fs::read(&machine).unwrap(), held, "a rebuild rewrote the machine catalog");
     let shown: Value = serde_json::from_str(&ok(&cf(b.path(), &["run", "show", "run-b", "--project", "research"], &[]))).unwrap();
     assert_eq!(shown["run_id"], "run-b");
+
+    // An empty catalog is refilled from the run record: every run the pulled store recorded.
+    std::fs::remove_file(&machine).unwrap();
+    ok(&cf(b.path(), &["context", "rebuild-catalog", "--project", "research"], &[]));
+    for run in ["run-a", "run-b"] {
+        let shown: Value = serde_json::from_str(&ok(&cf(b.path(), &["run", "show", run, "--project", "research"], &[]))).unwrap();
+        assert_eq!(shown["run_id"], run);
+    }
 }
 
 /// A pass holds the table's compaction lease and stamps its fence into the snapshot manifest and the pointer.

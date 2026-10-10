@@ -473,8 +473,12 @@ impl TableDecl {
     }
 
     /// Hold the declaration to the table's reconciled schema, before any Parquet lands.
+    /// The engine's own run record reads and folds as any table; the land path alone
+    /// refuses a producer writing it (`store.reserve.table-name`).
     pub fn validate(&self, schema: &Schema) -> Result<(), StoreError> {
-        check_table_name(&self.name)?;
+        if self.name != super::reserve::RUN_RECORD_TABLE {
+            check_table_name(&self.name)?;
+        }
         self.retain_rows_secs().map_err(|e| StoreError::StoreRetentionColumnInvalid(e.to_string()))?;
         if let Some(retention) = &self.retain_rows {
             let column = &retention.column;

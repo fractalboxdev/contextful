@@ -11,11 +11,11 @@ An unpinned clause is `committed`; a pinned one is `performed` when its Rust, Le
 | `corpus` | 1 | 10 | 79 | 37 | 7 | 0 | 79 | 0 | 79 |
 | `disclosure` | 3 | 16 | 156 | 68 | 13 | 3 | 63 | 0 | 63 |
 | `read` | 2 | 16 | 221 | 35 | 24 | 1 | 211 | 0 | 211 |
-| `run` | 3 | 26 | 430 | 104 | 42 | 13 | 369 | 0 | 369 |
+| `run` | 3 | 26 | 430 | 104 | 42 | 13 | 372 | 0 | 372 |
 | `store` | 1 | 17 | 264 | 61 | 14 | 11 | 253 | 0 | 253 |
 | `surface` | 2 | 20 | 134 | 59 | 22 | 0 | 94 | 0 | 94 |
 | `topology` | 1 | 6 | 78 | 24 | 5 | 4 | 70 | 0 | 70 |
-| **total** | 19 | 156 | 2261 | 616 | 199 | 63 | 1814 | 0 | |
+| **total** | 19 | 156 | 2261 | 616 | 199 | 63 | 1817 | 0 | |
 
 Decision records: 18.
 
@@ -28,7 +28,7 @@ A milestone reads `closed` when its acceptance test computes `passing` and every
 | 0 — The test-first gate | 2 | 22 | 19 | passing | closed |
 | 1 — The authority core | 14 | 242 | 223 | passing | closed |
 | 2 — The store | 9 | 181 | 170 | passing | closed |
-| 3 — The run path | 11 | 233 | 213 | passing | closed |
+| 3 — The run path | 11 | 233 | 216 | passing | closed |
 | 4 — Ingest | 25 | 519 | 357 | passing | open |
 | 5 — The read face under enforcement | 17 | 294 | 238 | passing | open |
 | 6 — Sync and replicas | 8 | 83 | 83 | passing | closed |
@@ -1376,6 +1376,8 @@ Unscheduled operations: 11.
 | `run.record.input-bounds` | `crates/contextful-engine/tests/integration/drive.rs::the_run_row_carries_the_input_as_of_snapshots_and_row_count` | performed |
 | `run.record.orphan-reap` | `crates/contextful-core/tests/integration/run/record.rs::only_an_in_flight_row_with_a_lapsed_lease_is_reaped` | performed |
 | `run.record.owner-lease` | `crates/contextful-core/tests/integration/run/record.rs::an_owner_lease_lives_30_s_and_renews_every_10_s` | performed |
+| `run.record.rebuild-restores-history` | `crates/contextful-cli/tests/integration/run.rs::a_catalog_rebuild_restores_every_recorded_run` | performed |
+| `run.record.reserved-table` | `crates/contextful-cli/tests/integration/run.rs::a_run_appends_a_plan_and_a_commit_row_to_the_run_record` | performed |
 | `run.record.row-at-open` | `crates/contextful-engine/tests/integration/runner.rs::the_row_exists_before_the_first_pull` | performed |
 | `run.record.schema-diff-home` | `crates/contextful-cli/tests/integration/pipeline.rs::a_native_downgrade_is_recorded_on_the_commit_and_in_history` | performed |
 | `run.record.schema-diff-shape` | `crates/contextful-cli/tests/integration/pipeline.rs::a_downgrade_event_names_all_five_fields_and_an_uncommitted_stage_records_none` | performed |
@@ -1383,6 +1385,7 @@ Unscheduled operations: 11.
 | `run.record.site-id-unresolved` | `crates/contextful-core/tests/integration/run/record.rs::a_site_id_resolves_from_exactly_one_bound_source` | performed |
 | `run.record.skipped-count` | `crates/contextful-engine/tests/integration/runner.rs::the_run_row_sums_the_skipped_count_of_every_pull` | performed |
 | `run.record.status-set` | `crates/contextful-core/tests/integration/run/record.rs::seven_statuses_spelled_once_for_record_and_wire` | performed |
+| `run.record.time-travel` | `crates/contextful-context/tests/integration/run_record.rs::an_as_of_bound_rewinds_run_history_with_every_other_table` | performed |
 | `run.record.truncation-flag` | `crates/contextful-core/tests/integration/run/record.rs::history_echoes_its_window_and_flags_truncation` | performed |
 | `run.record.writing-site` | `crates/contextful-cli/tests/integration/run.rs::every_landed_row_names_the_site_that_wrote_it` | performed |
 | `run.retry.decision-is-pure` | `crates/contextful-core/tests/integration/run/retry.rs::the_decision_is_a_function_of_attempt_failure_and_seed` | performed |

@@ -848,3 +848,73 @@ fn a_catalog_rebuild_leaves_the_journal_owner_and_awakeables_untouched() {
     ok(&start(dir.path(), "feed-a.toml", "a2", "2030-01-01T00:02:00Z"));
     assert_eq!(std::fs::read_to_string(dir.path().join("called")).unwrap(), "pull-0\n", "the recorded pull replayed rather than refetching");
 }
+
+fn machine_catalog(dir: &Path) -> contextful_sqlite::MachineCatalog {
+    let clock = std::sync::Arc::new(contextful_core::ports::FixedClock(contextful_core::time::Instant::parse("2030-01-01T00:00:00Z").unwrap()));
+    contextful_sqlite::MachineCatalog::open(&dir.join(".contextful/context/research/machine.sqlite"), clock).unwrap()
+}
+
+/// The durable run record is a reserved store table holding two append-only rows per run, one at plan and one at
+/// commit; the latest row per run and phase wins. The local catalog is a cache in front of it.
+// spec: run.record.reserved-table@167d70be
+#[test]
+fn a_run_appends_a_plan_and_a_commit_row_to_the_run_record() {
+    use contextful_context::run_record::{append, decl, history};
+    use contextful_core::coordinate::Catalog;
+    use contextful_core::run::record::RunStatus;
+    use contextful_core::store::bound_time::Bounds;
+    let dir = project();
+    ok(&start(dir.path(), "feed-a.toml", "a1", "2030-01-01T00:00:00Z"));
+    let store = contextful_context::Store::open(dir.path(), "research").unwrap();
+    let mut appended: Vec<(String, String, String)> = contextful_context::rows::table_rows(&store, &decl(), &["run_id", "phase", "status"])
+        .unwrap()
+        .into_iter()
+        .map(|r| (r["run_id"].as_str().unwrap().into(), r["phase"].as_str().unwrap().into(), r["status"].as_str().unwrap().into()))
+        .collect();
+    appended.sort();
+    assert_eq!(appended, [("a1".into(), "commit".into(), "success".into()), ("a1".into(), "plan".into(), "running".into())]);
+
+    // The catalog's row is the one the record answers with.
+    let recorded = history(&store, Bounds::default()).unwrap();
+    assert_eq!(recorded.len(), 1);
+    assert_eq!(machine_catalog(dir.path()).run("a1").unwrap().as_ref(), Some(&recorded[0]));
+
+    // A later commit row for the run wins.
+    let mut later = recorded[0].clone();
+    later.status = RunStatus::Failed;
+    let node = contextful_core::store::lay_out::NodeId::parse("ingest-a").unwrap();
+    append(&store, &node, &later, contextful_core::time::Instant::parse("2030-01-01T00:05:00Z").unwrap()).unwrap();
+    assert_eq!(history(&store, Bounds::default()).unwrap()[0].status, RunStatus::Failed);
+}
+
+/// A catalog rebuild restores run history from {{run.record.reserved-table}}, so a rebuilt catalog lists every run
+/// the store recorded instead of starting empty.
+// spec: run.record.rebuild-restores-history@afa7da7e
+#[test]
+fn a_catalog_rebuild_restores_every_recorded_run() {
+    let dir = project();
+    std::fs::write(
+        dir.path().join("empty.sh"),
+        "if [ -f ready ]; then printf '{\"rows\":[{\"id\":\"a\"}],\"more\":false}'; else printf '{\"error\":{\"tag\":\"Permanent\",\"message\":\"feed paused\"}}'; exit 1; fi\n",
+    )
+    .unwrap();
+    assert!(!start(dir.path(), "feed-a.toml", "a1", "2030-01-01T00:00:00Z").status.success());
+    std::fs::write(dir.path().join("ready"), "").unwrap();
+    ok(&start(dir.path(), "feed-b.toml", "b1", "2030-01-01T00:01:00Z"));
+    let listed = |d: &Path| -> Vec<(String, String)> {
+        let listing: serde_json::Value = serde_json::from_str(&ok(&history(d, &[]))).unwrap();
+        listing["runs"].as_array().unwrap().iter().map(|r| (r["run_id"].as_str().unwrap().into(), r["status"].as_str().unwrap().into())).collect()
+    };
+    let before = listed(dir.path());
+    assert_eq!(before, [("b1".to_string(), "success".to_string()), ("a1".to_string(), "failed".to_string())]);
+
+    std::fs::remove_file(dir.path().join(".contextful/context/research/machine.sqlite")).unwrap();
+    assert!(listed(dir.path()).is_empty(), "a fresh catalog holds no run");
+    ok(&cf(dir.path(), &["context", "rebuild-catalog", "--project", "research"]));
+    assert_eq!(listed(dir.path()), before);
+    let failed = {
+        use contextful_core::coordinate::Catalog;
+        machine_catalog(dir.path()).run("a1").unwrap().expect("the failed run is restored")
+    };
+    assert!(failed.error_kind.is_some() && failed.error_message.as_deref().is_some_and(|m| m.contains("feed paused")), "{failed:?}");
+}

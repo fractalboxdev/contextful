@@ -16,7 +16,7 @@ use contextful_core::store::lay_out::{is_path_segment, part_name, NodeId, PartEn
 use contextful_core::store::reconcile::{decode_binary, supertype, Column, ColumnType, FloatItem, Schema, LIST_ITEM, VECTOR_ITEM};
 use contextful_core::store::reserve::{
     optional_value_problem, producer_columns, Injection, ALWAYS_INJECTED, AUTHORED_BY, BATCH_SEQ, COMMIT_SEQ, INGESTED_AT, ROW_SEQ, TAINT,
-    RUN_ID, SITE_ID,
+    RUN_ID, RUN_RECORD_TABLE, SITE_ID,
 };
 use contextful_core::store::StoreError;
 use contextful_core::time::Instant;
@@ -542,7 +542,12 @@ fn commit_run(
     store.check_writable("land")?;
     let bound = store.frontier_store()?;
     let store = &bound;
-    let rewritten = batches.iter().map(|batch| store.rewrite_batch(&decl.name, batch)).collect::<Result<Vec<_>>>()?;
+    // The writer rules hold producer batches; the engine's run record carries none.
+    let rewritten = if engine_owned(&decl.name) {
+        batches.to_vec()
+    } else {
+        batches.iter().map(|batch| store.rewrite_batch(&decl.name, batch)).collect::<Result<Vec<_>>>()?
+    };
     let batches = rewritten.as_slice();
     let per_batch = batches.len() > 1 || position.pipeline_id.is_some();
     let (node_dir, manifest_path) = run_dir(store, &decl.name, &ctx.node, &ctx.injection.run_id)?;
@@ -591,10 +596,37 @@ struct RunSite {
     run_columns: Schema,
 }
 
+thread_local! {
+    /// Set while the engine appends to its own run record, the one writer a reserved
+    /// namespace admits (`run.record.reserved-table`).
+    static ENGINE_OWNED: std::cell::Cell<bool> = const { std::cell::Cell::new(false) };
+}
+
+/// Whether this thread is the engine appending to its run record `table`.
+fn engine_owned(table: &str) -> bool {
+    table == RUN_RECORD_TABLE && ENGINE_OWNED.with(std::cell::Cell::get)
+}
+
+/// Land `batch` into the engine's run record, which every producer landing refuses as
+/// `StoreReservedTableName`.
+pub(crate) fn land_engine_owned(store: &Store, decl: &TableDecl, batch: &Batch, ctx: &RunContext) -> Result<RunManifest> {
+    struct Reset;
+    impl Drop for Reset {
+        fn drop(&mut self) {
+            ENGINE_OWNED.with(|c| c.set(false));
+        }
+    }
+    ENGINE_OWNED.with(|c| c.set(true));
+    let _reset = Reset;
+    land(store, decl, batch, ctx)
+}
+
 /// The node directory of run `run_id` in `table`, and its manifest path.
 fn run_dir(store: &Store, table: &str, node: &NodeId, run_id: &str) -> Result<(PathBuf, PathBuf)> {
     check_run_id(run_id)?;
-    contextful_core::store::reserve::check_table_name(table)?;
+    if !engine_owned(table) {
+        contextful_core::store::reserve::check_table_name(table)?;
+    }
     let node_dir = store.table_dir(table)?.join(contextful_core::store::lay_out::RUNS_DIR).join(run_id).join(node.as_str());
     let manifest_path = node_dir.join(MANIFEST_FILE);
     Ok((node_dir, manifest_path))

@@ -116,8 +116,8 @@ The directory tree, run and snapshot manifests, the table pointer, the two catal
   *because a row names the bytes it came from, and a committed row naming no stored body answers for content nobody can retrieve*
 - `derived-catalog` — `derived.sqlite` is a cache: `contextful context rebuild-catalog` reconstructs it from the pointers, the manifests they reach, every committed run manifest and every `schema.json`. It is never synced and commits nothing.
   *A-store*
-- `machine-catalog` — `machine.sqlite` holds one machine's journal, cursor cache and lease rows. It is never synced, never rebuilt and never replaced by a pull.
-  *A-store*
+- `machine-catalog` — `machine.sqlite` holds one machine's journal, cursor cache, lease rows and run-row cache. It is never synced or replaced by a pull; a rebuild refills it from {{run.record.reserved-table}} only while it holds no run row, and rebuilds nothing else.
+  *because run rows alone have a durable copy in the store, and a catalog already holding runs is a live machine's cache, which a refill rewrites*
 - `catalog-ports` — The store reaches `machine.sqlite` through {{topology.coordinate.catalog-port}} and `derived.sqlite` through the `DerivedCatalog` port, both traits in `contextful-core`; `contextful-sqlite` implements both, and a host implements either over its own connection.
   *A-store*
 - `unknown-table` — A table name no `schema.json` in the tree declares raises `StoreUnknownTable`, never an empty result.

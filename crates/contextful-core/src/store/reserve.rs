@@ -35,7 +35,11 @@ pub const LEDGER_RETENTION_SECS: u64 = 365 * 24 * 60 * 60;
 /// durable run record, and `_visibility`, under which each source's mirrored access
 /// tables land (`disclosure.mirror.grants-table`).
 pub const RESERVED_TABLE_NAMESPACES: [(&str, &str); 2] =
-    [("_runs", "the durable run record"), ("_visibility", "the mirrored access tables")];
+    [(RUN_RECORD_TABLE, "the durable run record"), ("_visibility", "the mirrored access tables")];
+
+/// The table holding the durable run record (`run.record.reserved-table`). The engine
+/// alone appends to it; every reader reads it as any other table.
+pub const RUN_RECORD_TABLE: &str = "_runs";
 
 /// What a write path knows about the batch it lands. A path with no batch scope or no
 /// authenticated subject omits that column (`store.reserve.no-placeholder`).
