@@ -11,6 +11,7 @@ use crate::rows::batch_rows;
 use crate::scan::scan;
 use crate::store::Store;
 use contextful_core::coordinate::{Cas, Catalog, CursorRow, Lease, LeaseKey, LeaseRow};
+use contextful_core::run::backfill::ChunkRow;
 use contextful_core::run::failure::FailureTag;
 use contextful_core::run::own::{ExecutionOwner, OwnerScope};
 use contextful_core::run::record::{Phase, RunRow};
@@ -183,6 +184,18 @@ impl Catalog for RecordedCatalog {
     }
     fn retire_at(&self, scope: &OwnerScope, execution_id: &str, cursor: Option<(CursorRow, u64)>, fence: Option<&Lease>) -> std::result::Result<Cas, Failure> {
         self.inner.retire_at(scope, execution_id, cursor, fence)
+    }
+    fn chunk_at(&self, scope: &OwnerScope) -> std::result::Result<Option<ChunkRow>, Failure> {
+        self.inner.chunk_at(scope)
+    }
+    fn chunks(&self, pipeline_id: &str, table: &str) -> std::result::Result<Vec<ChunkRow>, Failure> {
+        self.inner.chunks(pipeline_id, table)
+    }
+    fn put_chunk(&self, row: &ChunkRow) -> std::result::Result<(), Failure> {
+        self.inner.put_chunk(row)
+    }
+    fn update_chunk(&self, scope: &OwnerScope, retire: Option<&str>, f: &mut dyn FnMut(&mut ChunkRow)) -> std::result::Result<Option<ChunkRow>, Failure> {
+        self.inner.update_chunk(scope, retire, f)
     }
     fn put_run(&self, row: &RunRow) -> std::result::Result<(), Failure> {
         self.record(row)?;
