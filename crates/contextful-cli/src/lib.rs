@@ -26,6 +26,8 @@ mod protocol_differential;
 #[cfg(feature = "data-plane")]
 mod disclosure;
 #[cfg(feature = "data-plane")]
+mod effective;
+#[cfg(feature = "data-plane")]
 mod eval;
 #[cfg(feature = "data-plane")]
 mod export;

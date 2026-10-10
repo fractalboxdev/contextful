@@ -209,7 +209,7 @@ fn store_driven(block: &Block, registered: &dyn Fn(&str) -> bool) -> Result<Stor
     if block.tables.is_empty() {
         return Err(JobError::Invalid(format!("job `{name}` declares no output `tables`")));
     }
-    Ok(StoreDriven { input: StoreInput { body, statement, as_of: block.as_of.clone() }, max_in_flight, tables: block.tables.clone() })
+    Ok(StoreDriven { input: StoreInput { body, statement, as_of: block.as_of.clone(), structural_identity: None }, max_in_flight, tables: block.tables.clone() })
 }
 
 /// The tables a manifest's jobs may target: every destination table its pipelines and

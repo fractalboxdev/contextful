@@ -31,7 +31,7 @@ fn a_truncated_input_response_refuses_and_a_whole_one_keys_each_row() {
 
 #[test]
 fn the_plan_reference_moves_with_the_body_statement_and_as_of_and_labels_scope_to_the_row() {
-    let base = StoreInput { body: "score".into(), statement: "SELECT 1".into(), as_of: None };
+    let base = StoreInput { body: "score".into(), statement: "SELECT 1".into(), as_of: None, structural_identity: None };
     let moved = [
         StoreInput { body: "rank".into(), ..base.clone() },
         StoreInput { statement: "SELECT 2".into(), ..base.clone() },
@@ -126,4 +126,49 @@ fn registered_prepared_bodies_expose_closed_effects_without_changing_raw_body_ca
     }
     let body: &dyn RowBody = &Registered;
     assert_eq!(body.recorded().unwrap().effects()[0].label, "model");
+}
+
+#[test]
+fn absent_structural_identity_preserves_the_legacy_plan_reference_and_owner_pins() {
+    use contextful_core::run::journal::sha256_hex;
+    use contextful_core::run::own::{OwnerPins, PlanPins};
+    let input = StoreInput { body: "score".into(), statement: "SELECT 1".into(), as_of: None, structural_identity: None };
+    assert_eq!(input.plan_ref(), "17c489406081a603bfc9c37653fd2140197a795941c38d362e93a5bed5e459b1");
+    let legacy: OwnerPins = PlanPins {
+        plan_ref: "17c489406081a603bfc9c37653fd2140197a795941c38d362e93a5bed5e459b1".into(),
+        identities: BTreeMap::from([
+            ("body".into(), "score".into()),
+            ("statement".into(), sha256_hex(b"SELECT 1")),
+            ("as_of".into(), "open".into()),
+        ]),
+    }.into();
+    assert_eq!(input.pins(), legacy);
+    assert_eq!(serde_json::to_vec(&input.pins()).unwrap(), serde_json::to_vec(&legacy).unwrap());
+}
+
+#[test]
+fn structural_identity_binds_the_plan_and_pending_owner_without_changing_input_text() {
+    use contextful_core::run::own::OwnerPins;
+    let input = StoreInput { body: "score".into(), statement: "SELECT 1".into(), as_of: None, structural_identity: None };
+    let first = StoreInput { structural_identity: Some("structure-a".into()), ..input.clone() };
+    let changed = StoreInput { structural_identity: Some("structure-b".into()), ..input.clone() };
+    for (left, right) in [(&input, &first), (&first, &changed), (&input, &changed)] {
+        assert_ne!(left.plan_ref(), right.plan_ref());
+        assert_ne!(left.pins(), right.pins());
+    }
+    let OwnerPins::Plan(pins) = first.pins() else { panic!("store input uses host plan pins") };
+    assert_eq!(pins.identities["structural_identity"], "structure-a");
+    assert_eq!(first.plan_ref(), first.clone().plan_ref());
+}
+
+
+#[test]
+fn structural_identity_is_resolved_by_the_host_and_is_not_a_job_key() {
+    use contextful_core::job::{parse_jobs, JobError, JobKind};
+    let declaration = "[[job]]\nname = \"score\"\nkind = \"store-driven\"\nbody = \"score\"\nstatement = \"SELECT 1\"\ntables = [\"scores\"]\nmax_in_flight = 1\n";
+    let jobs = parse_jobs(declaration, &|name| name == "score").unwrap();
+    let JobKind::StoreDriven(driven) = &jobs[0].kind else { panic!("store-driven job") };
+    assert_eq!(driven.input.structural_identity, None);
+    let supplied = format!("{declaration}structural_identity = \"untrusted\"\n");
+    assert!(matches!(parse_jobs(&supplied, &|name| name == "score"), Err(JobError::Invalid(message)) if message.contains("unknown key `structural_identity`")));
 }

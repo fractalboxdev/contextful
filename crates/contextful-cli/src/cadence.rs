@@ -21,6 +21,7 @@ use contextful_context::project::Project;
 use contextful_core::pipeline::declare::{collect, ManifestFile, PipelineSpec};
 use contextful_core::pipeline::transform::TransformOp;
 use contextful_core::pipeline::model::ModelSpec;
+use contextful_core::store::declare::TableDecl;
 use contextful_core::grant::Action;
 use contextful_core::ports::Clock;
 use contextful_core::run::derive::task::Tasks;
@@ -239,7 +240,8 @@ pub(crate) fn snapshot_manifest(project: &Project, text: &str, version: u64) -> 
 fn applied(snaps: &Source) -> Result<(Option<u64>, BTreeMap<String, PipelineSpec>)> {
     let Some(version) = snaps.current()? else { return Ok((None, BTreeMap::new())) };
     let text = snaps.read(version)?;
-    let specs = collect(&[ManifestFile { path: snapshot_file(version), text }])
+    let specs = crate::effective::public_manifest(ManifestFile { path: snapshot_file(version), text })
+        .and_then(|file| collect(&[file]).map_err(Into::into))
         .map_err(|e| SurfaceError::ControlSnapshotUnreadable(format!("{}: {e}", snapshot_file(version))))?;
     Ok((Some(version), specs.into_iter().map(|d| (d.spec.id.clone(), d.spec)).collect()))
 }
@@ -408,7 +410,8 @@ fn adopt_pulled(snaps: &SnapshotDir, project: &Project, declaration: &Path, task
     let text = std::str::from_utf8(latest).map_err(|e| untrusted(format!("pulled snapshot is not UTF-8: {e}")))?;
     let document: toml::Value = toml::from_str(text).map_err(|e| untrusted(format!("pulled snapshot: {e}")))?;
     check_document(&document).map_err(|e| untrusted(format!("pulled snapshot: {e}")))?;
-    let pulled = collect(&[ManifestFile { path: snapshot_file(head.version), text: text.to_string() }])
+    validate_build_jobs(text).map_err(|e| untrusted(format!("pulled snapshot: {e:#}")))?;
+    let pulled = collect(&[crate::effective::public_manifest(ManifestFile { path: snapshot_file(head.version), text: text.to_string() })?])
         .map_err(|e| untrusted(format!("pulled snapshot: {e}")))?;
     let local = declared(declaration).map_err(|e| untrusted(format!("local declarations: {e:#}")))?;
     let pulled_jobs = job_blocks(text, None, &local).map_err(|e| untrusted(format!("pulled jobs: {e:#}")))?;
@@ -464,7 +467,7 @@ fn refuse_job_edit(control: &ControlConfig) -> Result<()> {
 }
 
 /// The snapshot document: sorted pipeline specifications and validated job blocks.
-fn render(specs: &BTreeMap<String, PipelineSpec>, jobs: &[toml::Value], models: &[ModelSpec]) -> Result<String> {
+fn render(specs: &BTreeMap<String, PipelineSpec>, jobs: &[toml::Value], models: &[ModelSpec], tables: Option<&[TableDecl]>) -> Result<String> {
     #[derive(Serialize)]
     struct Doc<'a> {
         pipeline: Vec<&'a PipelineSpec>,
@@ -472,8 +475,10 @@ fn render(specs: &BTreeMap<String, PipelineSpec>, jobs: &[toml::Value], models: 
         job: &'a [toml::Value],
         #[serde(skip_serializing_if = "<[ModelSpec]>::is_empty")]
         model: &'a [ModelSpec],
+        #[serde(skip_serializing_if = "Option::is_none")]
+        standalone_tables: Option<&'a [TableDecl]>,
     }
-    let body = toml::to_string(&Doc { pipeline: specs.values().collect(), job: jobs, model: models })
+    let body = toml::to_string(&Doc { pipeline: specs.values().collect(), job: jobs, model: models, standalone_tables: tables })
         .map_err(|e| SurfaceError::ApplyValidationRefused(format!("a specification holds a value a snapshot cannot carry: {e}")))?;
     // The document carries references alone (`surface.edit.secret-in-document`,
     // `surface.edit.connector-upload`).
@@ -482,7 +487,7 @@ fn render(specs: &BTreeMap<String, PipelineSpec>, jobs: &[toml::Value], models: 
     Ok(format!("# An applied snapshot, claimed by `contextful pipeline apply`; immutable once claimed.\n\n{body}"))
 }
 
-fn validated_draft(document: &str, declaration: &Path, tasks: &Tasks) -> Result<String> {
+fn validated_draft(document: &str, declaration: &Path, tasks: &Tasks, tables: Option<&[TableDecl]>) -> Result<String> {
     let specs = collect(&[ManifestFile { path: "manifest@draft.toml".into(), text: document.to_owned() }])
         .map_err(|e| SurfaceError::ApplyValidationRefused(e.to_string()))?;
     let specs: BTreeMap<String, PipelineSpec> = specs.into_iter().map(|entry| (entry.spec.id.clone(), entry.spec)).collect();
@@ -490,7 +495,10 @@ fn validated_draft(document: &str, declaration: &Path, tasks: &Tasks) -> Result<
         return Err(SurfaceError::ApplyValidationRefused("the pipeline editor does not edit jobs; use the registered host's pipeline apply".into()).into());
     }
     if !crate::model_source::applied(&ManifestFile { path: "draft".into(), text: document.into() })?.is_empty() { bail!("the pipeline editor does not edit models; use pipeline apply"); }
-    let rendered = render(&specs, &[], &[])?;
+    if !crate::effective::snapshot_tables(document)?.unwrap_or_default().is_empty() || !crate::effective::standalone_tables(&[ManifestFile { path: "draft.toml".into(), text: document.into() }])?.is_empty() {
+        return Err(SurfaceError::ApplyValidationRefused("the pipeline editor does not edit standalone tables; use pipeline apply".into()).into());
+    }
+    let rendered = render(&specs, &[], &[], tables)?;
     for spec in specs.values() {
         if let Some(schedule) = spec.schedule.as_deref() {
             Schedule::parse(schedule).map_err(|e| SurfaceError::ApplyValidationRefused(format!("pipeline `{}`: {e}", spec.id)))?;
@@ -506,7 +514,11 @@ pub(crate) fn edit(project: &ProjectArgs, declaration: Option<PathBuf>, expected
     refuse_job_edit(&control)?;
     let snapshots = owner(&control)?;
     snapshots.initialized()?;
-    let text = validated_draft(document, &located.declaration, tasks)?;
+    if control.source.current()? != Some(expected) {
+        return Err(SurfaceError::ManifestVersionConflict(format!("the editor read v{expected}, which is no longer current")).into());
+    }
+    let tables = applied_tables(&control.source, Some(expected))?;
+    let text = validated_draft(document, &located.declaration, tasks, tables.as_deref())?;
     let draft = Draft::new(expected, text, operator.to_owned())?;
     snapshots.save_draft_guarded(&draft, boundary)?;
     Ok(json!({ "expected": expected, "nonce": draft.nonce }))
@@ -528,7 +540,9 @@ pub(crate) fn apply_draft(project: &ProjectArgs, declaration: Option<PathBuf>, e
     if draft.expected != expected || draft.nonce != nonce || draft.operator != operator {
         return Err(SurfaceError::ManifestVersionConflict(format!("the draft read v{} and apply named v{expected}", draft.expected)).into());
     }
-    if validated_draft(&draft.document, &initial.declaration, tasks)? != draft.document {
+    let tables = applied_tables(&control.source, Some(expected))?;
+    let public = crate::effective::public_manifest(ManifestFile { path: "saved draft".into(), text: draft.document.clone() })?;
+    if validated_draft(&public.text, &initial.declaration, tasks, tables.as_deref())? != draft.document {
         return Err(SurfaceError::ApplyValidationRefused("the saved draft is not the validated snapshot".into()).into());
     }
     let (fresh, _, control) = located(project, declaration)?;
@@ -610,12 +624,13 @@ pub(crate) fn plan(project: &ProjectArgs, declaration: Option<PathBuf>, as_json:
     let changes = diff(&declared, &applied);
     let model_changes = model_diff(&crate::model_source::collect(&manifests(&l.declaration)?)?, &applied_models(&control.source, version)?);
     let jobs = job_diff(&job_blocks(&declaration_text, None, &declared)?, &applied_jobs(&control.source, version, &applied)?);
+    let tables = table_diff(&crate::effective::standalone_tables(&manifests(&l.declaration)?)?, &applied_tables(&control.source, version)?.unwrap_or_default());
     if as_json {
-        println!("{}", serde_json::to_string_pretty(&json!({ "applied": version, "pipelines": changes, "jobs": jobs, "models": model_changes }))?);
+        println!("{}", serde_json::to_string_pretty(&json!({ "applied": version, "pipelines": changes, "jobs": jobs, "models": model_changes, "tables": tables }))?);
         return Ok(());
     }
     println!("applied: {}", version.map(|v| format!("v{v}")).unwrap_or_else(|| "none".into()));
-    for c in changes.iter().chain(&jobs).chain(&model_changes) {
+    for c in changes.iter().chain(&jobs).chain(&model_changes).chain(&tables) {
         println!("{} {}{}", sigil(c.action), c.id, c.schedule.as_deref().map(|s| format!(" ({s})")).unwrap_or_default());
     }
     Ok(())
@@ -716,7 +731,8 @@ pub(crate) fn import(project: &ProjectArgs, declaration: Option<PathBuf>, tasks:
     let declared = declared(&l.declaration)?;
     let jobs = job_blocks(&declaration_text, Some(bodies), &declared)?;
     let models = crate::model_source::collect(&manifests(&l.declaration)?)?;
-    let text = render(&declared, &jobs, &models)?;
+    let tables = crate::effective::standalone_tables(&manifests(&l.declaration)?)?;
+    let text = render(&declared, &jobs, &models, Some(&tables))?;
     validate_build_jobs(&text)?;
     for spec in declared.values() {
         check(spec, &l.declaration, tasks).map_err(|e| SurfaceError::ApplyValidationRefused(format!("pipeline `{}`: {e:#}", spec.id)))?;
@@ -780,17 +796,19 @@ pub(crate) fn apply(project: &ProjectArgs, declaration: Option<PathBuf>, id: Opt
         };
         let prior_models = applied_models(source, version)?;
         let models = if id.is_some() { prior_models.clone() } else { crate::model_source::collect(&manifests(&l.declaration)?)? };
-        let text = render(&target, &jobs, &models)?;
+        let prior_tables = applied_tables(source, version)?;
+        let tables = if id.is_some() { prior_tables.clone() } else { Some(crate::effective::standalone_tables(&manifests(&l.declaration)?)?) };
+        let text = render(&target, &jobs, &models, tables.as_deref())?;
         validate_build_jobs(&text)?;
         job_blocks(&text, Some(bodies), &target)?;
-        collect(&[ManifestFile { path: "proposed applied snapshot".into(), text: text.clone() }])
+        collect(&[crate::effective::public_manifest(ManifestFile { path: "proposed applied snapshot".into(), text: text.clone() })?])
             .map_err(|e| SurfaceError::ApplyValidationRefused(format!("combined snapshot: {e}")))?;
         for c in changes.iter().filter(|c| c.action != "remove") {
             let spec = &target[&c.id];
             check(spec, &l.declaration, tasks)
                 .map_err(|e| SurfaceError::ApplyValidationRefused(format!("pipeline `{}`: {e:#}", spec.id)))?;
         }
-        if changes.is_empty() && jobs == prior_jobs && models == prior_models {
+        if changes.is_empty() && jobs == prior_jobs && models == prior_models && tables == prior_tables {
             match version {
                 Some(v) => println!("unchanged at v{v}"),
                 None => println!("nothing declared to apply"),
@@ -809,6 +827,9 @@ pub(crate) fn apply(project: &ProjectArgs, declaration: Option<PathBuf>, id: Opt
         match claim {
             Ok(v) => {
                 for c in changes.iter().chain(job_diff(&jobs, &prior_jobs).iter().filter(|c| c.action != "unchanged")) {
+                    println!("{} {}", sigil(c.action), c.id);
+                }
+                for c in table_diff(tables.as_deref().unwrap_or_default(), prior_tables.as_deref().unwrap_or_default()).iter().filter(|c| c.action != "unchanged") {
                     println!("{} {}", sigil(c.action), c.id);
                 }
                 println!("applied v{v}");
@@ -1427,6 +1448,22 @@ fn applied_models(source: &Source, version: Option<u64>) -> Result<Vec<ModelSpec
     version.map(|v| crate::model_source::applied(&ManifestFile { path: snapshot_file(v), text: source.read(v)? })).transpose().map(Option::unwrap_or_default)
 }
 
+fn applied_tables(source: &Source, version: Option<u64>) -> Result<Option<Vec<TableDecl>>> {
+    match version {
+        Some(version) => crate::effective::snapshot_tables(&source.read(version)?),
+        None => Ok(None),
+    }
+}
+
+fn table_diff(declared: &[TableDecl], applied: &[TableDecl]) -> Vec<Change> {
+    let identities = |tables: &[TableDecl]| -> BTreeMap<String, (String, Option<String>)> {
+        tables.iter().map(|t| (format!("table:{}", t.name), (contextful_core::run::journal::sha256_hex(t.canonical().as_bytes()), None))).collect()
+    };
+    let (d, a) = (identities(declared), identities(applied));
+    let ids: BTreeSet<_> = d.keys().chain(a.keys()).collect();
+    ids.into_iter().map(|id| change(id, d.get(id).cloned(), a.get(id).cloned())).collect()
+}
+
 fn model_diff(declared: &[ModelSpec], applied: &[ModelSpec]) -> Vec<Change> {
     let identities = |models: &[ModelSpec]| -> BTreeMap<String, (String, Option<String>)> {
         models.iter().map(|m| (format!("model:{}", m.id), (contextful_core::run::journal::sha256_hex(&serde_json::to_vec(m).expect("model serializes")), None))).collect()
@@ -1437,9 +1474,10 @@ fn model_diff(declared: &[ModelSpec], applied: &[ModelSpec]) -> Vec<Change> {
 }
 
 fn validate_build_jobs(text: &str) -> Result<()> {
+    crate::effective::validate_snapshot_tables(text)?;
     let file = ManifestFile { path: "applied snapshot".into(), text: text.into() };
     let models = crate::model_source::applied(&file)?;
-    let specs: Vec<_> = collect(&[file])?.into_iter().map(|p| p.spec).collect();
+    let specs: Vec<_> = collect(&[crate::effective::public_manifest(file)?])?.into_iter().map(|p| p.spec).collect();
     let jobs = parse_jobs(text, &|_| true)?;
     crate::job::bind_declared(&jobs, &specs, &models)?;
     Ok(())

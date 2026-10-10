@@ -23,7 +23,7 @@ use std::time::Duration;
 const JOB: &str = "score";
 
 fn input(statement: &str, as_of: Option<&str>) -> StoreInput {
-    StoreInput { body: "score".into(), statement: statement.into(), as_of: as_of.map(str::to_string) }
+    StoreInput { body: "score".into(), statement: statement.into(), as_of: as_of.map(str::to_string), structural_identity: None }
 }
 
 fn fire<'a>(input: StoreInput, body: &'a dyn RowBody, max_in_flight: usize, run_id: &str) -> Drive<'a> {
@@ -549,10 +549,11 @@ fn protected_body_effects_record_rewritten_results_and_resume_without_another_pa
             Ok(EmissionSummary { rows:rows.len() as u64, columns:rows.iter().flat_map(|r| r.keys().cloned()).collect(), types:Default::default() })
         }
     }
-    struct Protected<'a>(&'a AtomicUsize);
+    struct Protected<'a>(&'a AtomicUsize, &'a AtomicUsize);
     impl RecordedRowBody for Protected<'_> {
         fn effects(&self) -> Vec<RecordedEffect> { vec![RecordedEffect { label:"model".into(), table:"scores".into(), types:Default::default(), transforms:Vec::new(), normalize:None }] }
         fn run_recorded(&self, row:&InputRow, calls:&dyn RecordedRowCalls) -> Result<PreparedEmitted, RowStop> {
+            self.1.fetch_add(1, Ordering::SeqCst);
             let doc = doc_of(row);
             let output = calls.call("model", doc.as_bytes(), &mut |_| {
                 self.0.fetch_add(1, Ordering::SeqCst);
@@ -567,9 +568,11 @@ fn protected_body_effects_record_rewritten_results_and_resume_without_another_pa
     }
     let rig = Rig::new();
     let paid = AtomicUsize::new(0);
-    let body = Protected(&paid);
+    let entered = AtomicUsize::new(0);
+    let body = Protected(&paid, &entered);
+    let pinned = StoreInput { structural_identity: Some("prepared-structure-a".into()), ..input("SELECT doc_id FROM documents", Some(T0)) };
     let plan = RecordedBodyPlan::compile(body.effects(), &["scores".into()]).unwrap();
-    let first = rig.engine.drive_recorded(&fire(input("SELECT doc_id FROM documents", Some(T0)), &body, 1, "prepared-1"), &plan, &Canonical, &mut |as_of| Ok(set(as_of, docs(3))), &mut |outputs, _owner| {
+    let first = rig.engine.drive_recorded(&fire(pinned.clone(), &body, 1, "prepared-1"), &plan, &Canonical, &mut |as_of| Ok(set(as_of, docs(3))), &mut |outputs, _owner| {
         for output in &outputs["scores"] {
             let scope = output.scope();
             let value = match rig.engine.journal.row(scope.key()).unwrap().unwrap() { JournalRow::Recorded { value, .. } => value, other => panic!("{other:?}") };
@@ -580,13 +583,23 @@ fn protected_body_effects_record_rewritten_results_and_resume_without_another_pa
     }).unwrap();
     assert_eq!(first.status, RunStatus::Failed);
     assert_eq!(paid.load(Ordering::SeqCst), 3);
-    let resumed = rig.engine.drive_recorded(&fire(input("SELECT doc_id FROM documents", Some(T0)), &body, 1, "prepared-2"), &plan, &Canonical, &mut |_| panic!("resume reads no source"), &mut |outputs, _owner| Ok(Landed { rows:outputs["scores"].iter().map(|o| o.summary().rows).sum(), bytes:0 })).unwrap();
+    assert_eq!(entered.load(Ordering::SeqCst), 3);
+    for (i, identity) in [Some("prepared-structure-b".into()), None].into_iter().enumerate() {
+        let changed = StoreInput { structural_identity: identity, ..pinned.clone() };
+        let result = rig.engine.drive_recorded(&fire(changed, &body, 1, &format!("prepared-structure-refused-{i}")), &plan, &Canonical,
+            &mut |_| panic!("refused prepared structure cannot read"),
+            &mut |_, _| panic!("refused prepared structure cannot land"));
+        assert!(matches!(result, Err(EngineError::Refused(RunError::ExecutionPinMismatch(_)))), "{result:?}");
+        assert_eq!(entered.load(Ordering::SeqCst), 3, "refused prepared structure cannot enter the body");
+        assert_eq!(paid.load(Ordering::SeqCst), 3);
+    }
+    let resumed = rig.engine.drive_recorded(&fire(pinned, &body, 1, "prepared-2"), &plan, &Canonical, &mut |_| panic!("resume reads no source"), &mut |outputs, _owner| Ok(Landed { rows:outputs["scores"].iter().map(|o| o.summary().rows).sum(), bytes:0 })).unwrap();
     assert_eq!(resumed.status, RunStatus::Success);
     assert_eq!(resumed.rows, 3);
     assert_eq!(paid.load(Ordering::SeqCst), 3);
     struct Reused<'a> { paid: &'a AtomicUsize, previous:Mutex<Option<contextful_core::run::effect::PreparedEmission>> }
     impl RecordedRowBody for Reused<'_> {
-        fn effects(&self) -> Vec<RecordedEffect> { Protected(self.paid).effects() }
+        fn effects(&self) -> Vec<RecordedEffect> { Protected(self.paid, self.paid).effects() }
         fn run_recorded(&self, row:&InputRow, calls:&dyn RecordedRowCalls) -> Result<PreparedEmitted, RowStop> {
             let mut previous = self.previous.lock().unwrap();
             let output = if let Some(previous) = previous.as_ref() { previous.clone() } else {
@@ -663,4 +676,34 @@ fn protected_body_effects_record_rewritten_results_and_resume_without_another_pa
         if !destination.sink.commits.is_empty() { committed_after_loss.push(boundary); }
     }
     assert!(committed_after_loss.is_empty(), "prepared results committed after live-parent loss at {committed_after_loss:?}");
+}
+
+#[test]
+fn changed_or_removed_structure_refuses_pending_raw_replay_before_read_body_or_land() {
+    let rig = Rig::new();
+    let endpoint = Endpoint::default();
+    let body = Score::new(&endpoint);
+    let original = StoreInput { structural_identity: Some("structure-a".into()), ..input("SELECT doc_id FROM documents", Some(T0)) };
+    let first = rig.engine.drive(&fire(original.clone(), &body, 1, "structure-first"),
+        &mut |as_of| Ok(set(as_of, docs(1))),
+        &mut |_| Err(Failure::new(FailureTag::Storage, "commit failed"))).unwrap();
+    assert_eq!(first.status, RunStatus::Failed);
+    assert_eq!(endpoint.served().len(), 1);
+    let pending = rig.catalog().owner_at(&job_scope(JOB)).unwrap().expect("recorded execution remains pending");
+    for (i, identity) in [Some("structure-b".into()), None].into_iter().enumerate() {
+        let changed = StoreInput { structural_identity: identity, ..original.clone() };
+        let result = rig.engine.drive(&fire(changed, &body, 1, &format!("structure-refused-{i}")),
+            &mut |_| panic!("refused structure cannot read"),
+            &mut |_| panic!("refused structure cannot land"));
+        assert!(matches!(result, Err(EngineError::Refused(RunError::ExecutionPinMismatch(_)))), "{result:?}");
+        assert_eq!(body.entered.lock().unwrap().len(), 1, "refused structure cannot enter the body");
+        assert_eq!(endpoint.served().len(), 1);
+        assert_eq!(rig.catalog().owner_at(&job_scope(JOB)).unwrap().unwrap().execution_id, pending.execution_id);
+    }
+    let landed = Mutex::new(Vec::new());
+    let resumed = rig.engine.drive(&fire(original, &body, 1, "structure-resumed"),
+        &mut |_| panic!("original structure reuses recorded input"), &mut keep(&landed)).unwrap();
+    assert_eq!(resumed.status, RunStatus::Success);
+    assert_eq!(resumed.rows, 1);
+    assert_eq!(endpoint.served().len(), 1, "original structure replays the paid call");
 }

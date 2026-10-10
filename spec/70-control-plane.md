@@ -183,6 +183,16 @@ Job declaration, the closed kind union, same-tick order, the fire watermark, and
   *A-surface*
 - `model-snapshot` — Import and full apply retain validated model declarations with file SQL resolved inline; pipeline-only apply preserves applied models, and applied build dispatch reads that version's model, contract and tests without consulting draft definitions.
   *A-surface*
+- `standalone-snapshot` — Import and full apply retain standalone table contracts in immutable snapshot metadata; pipeline-only apply preserves that metadata, including absent metadata.
+  *A-surface*
+- `applied-data-contract` — Applied store-driven and build jobs resolve table declarations and models from their snapshot; unapplied structural edits change neither input selection nor output landing contracts.
+  *A-surface*
+- `applied-current-authority` — Before opening an applied job execution, differing current table authority or model disclosure refuses under {{surface.apply.validation}}; current writer admission remains authoritative.
+  *because a pinned read structure must not preserve authority the live declaration has changed*
+- `applied-contract-missing` — Applied jobs lacking standalone contract metadata refuse under {{surface.apply.validation}} until full apply captures those contracts; no live declaration substitutes for missing snapshot metadata.
+  *A-surface*
+- `executable-pin` — Store-driven and build executions pin table declarations, model definitions, output membership, and memory shapes and relations; changed structure meets {{run.own.pinned-plan-changed}} before replay or publication.
+  *A-surface*
 - `scheduled-build` — A scheduled `build` job dispatches the native model publisher through the cadence lease and pool under `job:<name>`; its execution records starts and outcomes for restart cadence, including failed attempts.
   *A-surface*
 - `build-dependency` — A build job's `after` names a pipeline and inherits its dependent-run head schedule; builds follow all pipeline steps and run only after a successful unit. Jobs without `after` read already committed inputs.
@@ -298,6 +308,8 @@ Validation, the immutable version claim, the pointer advance, the owner's storag
   *A-surface*
 - `operator-attestation` — An Admin mutation lacking a fresh console signature over its verified operator, route and body, or reusing a nonce held in store control state across restarts, raises `ControlOperatorAttestationInvalid` before changing the document.
   *because a shared store capability cannot identify the person who used the console*
+- `draft-table-contracts` — Pipeline editing preserves standalone table metadata from the draft's expected immutable version; apply regenerates that metadata and refuses an altered saved draft under {{surface.apply.validation}} before advancing the pointer.
+  *A-surface*
 - `draft-absent` — An Admin apply finding no validated store draft raises `ControlDraftAbsent` and changes no applied version.
   *because an absent draft supplies no document for the version claim*
 - `served-admin-grant` — A served `/control/*` request whose admitted credential holds no Admin grant over `*` without a tenant scope raises `ControlAdminGrantMissing`, answered `403`, before its handler runs.

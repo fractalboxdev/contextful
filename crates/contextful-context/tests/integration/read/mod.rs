@@ -3,6 +3,7 @@
 #![cfg(feature = "read")]
 
 mod audit;
+mod cold;
 mod enforce;
 mod extension;
 mod fulltext;

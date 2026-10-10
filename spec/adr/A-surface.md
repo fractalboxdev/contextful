@@ -176,3 +176,27 @@ Native builds open the existing host execution scope and record starts and outco
 | Applied model definitions in native cadence *(chosen)* | — | Each control version carries resolved SQL; source ordering is explicit. |
 | Standalone build over mutable files | Applied identity | Draft SQL changes the running schedule. |
 | Separate model scheduler | One execution home | Cadence, exclusion and restart history have two implementations. |
+
+
+## Applied jobs retain structure and check current authority
+
+An applied job carries its input and output table contracts alongside resolved models.
+Standalone declarations occupy internal snapshot metadata; public memory tables keep their
+existing grammar. Pipeline-only changes preserve metadata from their expected version.
+Missing contract metadata requires a full apply rather than reconstruction from mutable files.
+
+The read face uses applied structure. Before an attempt opens, current table authority and
+model disclosure must agree with the applied definitions; writer admission still uses current
+policy. This check occurs at attempt startup, not continuously within a running attempt.
+
+The native execution pin includes executable declarations and output membership. A pending
+execution under changed structure refuses, including after reapply. Restoring its original
+contract permits replay; no automatic rewind repeats paid work. Hosts omitting the optional
+structural identity retain their previous encoding.
+
+| Option | Lost on | Cost |
+| --- | --- | --- |
+| Captured structure and current-authority comparison *(chosen)* | — | Snapshots missing contracts need full apply; policy changes can refuse scheduled attempts. |
+| Resolve output contracts from live files | Replay identity | Unapplied edits alter deduplication, types and landing semantics. |
+| Replay entirely under historical authority | Revocation | An applied snapshot can retain access the current declaration removed. |
+| Rewind pending owners automatically | Recorded effects | A structural edit can repeat paid calls. |

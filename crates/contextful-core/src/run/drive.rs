@@ -29,20 +29,29 @@ pub struct StoreInput {
     pub body: String,
     pub statement: String,
     pub as_of: Option<String>,
+    /// An optional identity of executable structure resolved by the host, never a job key.
+    /// Absent, the plan reference and owner identities retain their legacy encoding.
+    pub structural_identity: Option<String>,
 }
 
 impl StoreInput {
-    /// The content hash of the body name, statement and declared `as_of`.
+    /// The content hash of the input and any host-resolved structural identity.
     pub fn plan_ref(&self) -> String {
-        let canonical = json!({ "kind": "store-driven", "body": self.body, "statement": self.statement, "as_of": self.as_of });
+        let mut canonical = json!({ "kind": "store-driven", "body": self.body, "statement": self.statement, "as_of": self.as_of });
+        if let Some(identity) = &self.structural_identity {
+            canonical["structural_identity"] = json!(identity);
+        }
         sha256_hex(canonical.to_string().as_bytes())
     }
 
     /// The pins a host owner holds while the job's execution is pending; a resume under a
-    /// changed statement or `as_of` refuses with `ExecutionPinMismatch`.
+    /// changed input or host-resolved structure refuses with `ExecutionPinMismatch`.
     pub fn pins(&self) -> OwnerPins {
         let mut identities = BTreeMap::from([("body".to_string(), self.body.clone()), ("statement".to_string(), sha256_hex(self.statement.as_bytes()))]);
         identities.insert("as_of".to_string(), self.as_of.clone().unwrap_or_else(|| "open".to_string()));
+        if let Some(identity) = &self.structural_identity {
+            identities.insert("structural_identity".to_string(), identity.clone());
+        }
         PlanPins { plan_ref: self.plan_ref(), identities }.into()
     }
 }

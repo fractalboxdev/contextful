@@ -755,7 +755,7 @@ pub fn run(cmd: PipelineCmd, tasks: &Tasks, bodies: &contextful_core::run::drive
             let text = if declaration.exists() { std::fs::read_to_string(&declaration)? } else { String::new() };
             let site_id = crate::run::site_id_for(&text, &declaration, site_id, site_id_env)?;
             let files = match applied {
-                Some(version) => vec![crate::cadence::snapshot_manifest(&l.project, &text, version)?],
+                Some(version) => vec![crate::effective::public_manifest(crate::cadence::snapshot_manifest(&l.project, &text, version)?)?],
                 None => manifests(&declaration)?,
             };
             let declared: Vec<Declared> = collect(&files)?;

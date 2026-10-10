@@ -170,6 +170,26 @@ fn a_bad_signature_or_local_declaration_refuses_pulled_control_without_arming() 
     }
 }
 
+fn malformed_pulled_tables_refuse_before_adoption(tables: &str) {
+    let document = pipeline("orders", "https://api.vendor.example/v1", "", "tables = [\"orders\"]");
+    let (dir, signer) = staged_control(&format!("{document}\n{tables}"));
+    std::fs::write(dir.path().join("contextful.toml"), format!("authoring_posture = 'per_request'\n{document}")).unwrap();
+    let out = serve_staged(dir.path(), &signer.public_key_text());
+    assert!(!out.status.success(), "malformed table contracts cannot arm");
+    assert!(!dir.path().join(".contextful/control/research/manifest@current").exists(), "validation precedes adopting the signed head: {}", stderr(&out));
+    assert!(stderr(&out).contains("ControlSnapshotUntrusted"), "{}", stderr(&out));
+}
+
+#[test]
+fn pulled_duplicate_standalone_tables_refuse_before_adoption() {
+    malformed_pulled_tables_refuse_before_adoption("[[standalone_tables]]\nname='scores'\n[[standalone_tables]]\nname='scores'\n");
+}
+
+#[test]
+fn pulled_invalid_standalone_retention_refuses_before_adoption() {
+    malformed_pulled_tables_refuse_before_adoption("[[standalone_tables]]\nname='scores'\nretain_runs='invalid'\n");
+}
+
 /// A receipt's signer grants no trust without a locally supplied issuer pin.
 // spec: surface.reconcile.issuer-pin@21162c50
 #[test]

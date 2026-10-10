@@ -6,7 +6,7 @@
 //! registered body per row through the engine, and lands the emitted rows, one table run
 //! per output table.
 
-use crate::admit::{face, AdmitArgs};
+use crate::admit::AdmitArgs;
 use crate::run::{boot_id, site_id_for, wire_at, ProjectArgs, StoreDestination};
 use anyhow::{bail, Context, Result};
 use clap::Subcommand;
@@ -23,7 +23,6 @@ use contextful_core::run::record::RunStatus;
 use contextful_core::run::retry::Schedule;
 use contextful_core::run::{Failure, FailureTag};
 use contextful_core::store::bound_time::{Bound, Bounds};
-use contextful_core::store::declare::TableDecl;
 use contextful_engine::drive::{Drive, PARKED_POLL};
 use contextful_engine::RunSpec;
 use contextful_policy::enforce::session::Request;
@@ -151,23 +150,21 @@ pub fn run(cmd: JobCmd, bodies: &Bodies) -> Result<()> {
         JobCmd::Fire { name, project, declaration, applied, run_id, site_id, site_id_env, admit } => {
             let l = project.locate(declaration)?;
             let text = std::fs::read_to_string(&l.declaration).with_context(|| format!("reading the declaration `{}`", l.declaration.display()))?;
-            let job_text = match applied {
-                Some(version) => crate::cadence::snapshot_manifest(&l.project, &text, version)?.text,
-                None => text.clone(),
-            };
-            let jobs = parse_jobs(&job_text, &registered).with_context(|| l.declaration.display().to_string())?;
-            let job = jobs.into_iter().find(|j| j.name == name).with_context(|| format!("no job `{name}` is declared"))?;
+            let effective = crate::effective::Effective::resolve(&l, &text, applied)?;
+            let jobs = parse_jobs(&effective.main, &registered).with_context(|| l.declaration.display().to_string())?;
+            let mut job = jobs.into_iter().find(|j| j.name == name).with_context(|| format!("no job `{name}` is declared"))?;
             if job.kind_name() == "build" {
-                return crate::build::fire_job(&l, &project, &job, &text, applied, run_id, site_id, site_id_env);
+                return crate::build::fire_job(&l, &project, &job, &text, &effective, run_id, site_id, site_id_env);
             }
             if let JobKind::Synthesize(synthesis) = &job.kind {
                 let into = job.target.as_deref().context("a validated synthesize job names its target")?;
                 return crate::memory::fire_synthesis(&l, &project, &admit, synthesis, into);
             }
-            bind(std::slice::from_ref(&job), &l.declaration)?;
-            let JobKind::StoreDriven(driven) = &job.kind else {
+            bind_declared(std::slice::from_ref(&job), &effective.specs, &effective.models)?;
+            let JobKind::StoreDriven(driven) = &mut job.kind else {
                 bail!("job `{name}` is kind `{}`; `job fire` fires a store-driven job", job.kind_name());
             };
+            driven.input.structural_identity = Some(effective.structural_identity(&driven.tables)?);
             let body = bodies.get(&driven.input.body).context("a validated body is registered")?;
             let site_id = site_id_for(&text, &l.declaration, site_id, site_id_env)?;
             let (authority, _) = admit.admit(project.project.as_deref(), "a store-driven job")?;
@@ -179,7 +176,7 @@ pub fn run(cmd: JobCmd, bodies: &Bodies) -> Result<()> {
             } else {
                 for table in &driven.tables { store.validate_writer_recording(table, None)?; }
             }
-            let face = face(&l)?;
+            let face = effective.face(&l, &text)?;
             let w = wire_at(&l.project, &project.now)?;
             for reaped in w.engine.reap_orphans()? {
                 eprintln!("{reaped}: reaped as partial_failure, its owner lease lapsed");
@@ -196,7 +193,7 @@ pub fn run(cmd: JobCmd, bodies: &Bodies) -> Result<()> {
                 InputSet::from_response(as_of, snapshots, &response.columns, response.rows, response.truncated).map_err(|e| refused(&e))
             };
 
-            let decls = TableDecl::parse_pipeline(&text).with_context(|| l.declaration.display().to_string())?;
+            let decls = effective.tables.clone();
             let (node, _) = node::resolve(&store, |k| std::env::var(k).ok())?;
             let mut dest = StoreDestination { store, decls, node, author: None, normalize: None, relational_parts: Default::default(), schema_diffs: Vec::new() };
             let engine = &w.engine;

@@ -22,9 +22,9 @@ use contextful_core::pipeline::declare::ManifestFile;
 use contextful_core::store::bound_time::Bounds;
 use contextful_core::store::StoreError;
 use contextful_core::store::declare::{DeclarationMalformed, TableDecl};
-use contextful_core::store::reconcile::{Column, ColumnType};
+use contextful_core::store::reconcile::{Column, ColumnType, Schema};
 use contextful_core::store::relation::{ident, relation, relation_with_encryption};
-use contextful_core::store::reserve::{COMMIT_SEQ, INGESTED_AT, ROW_SEQ, RUN_ID, SITE_ID};
+use contextful_core::store::reserve::{producer_columns, COMMIT_SEQ, INGESTED_AT, ROW_SEQ, RUN_ID, SITE_ID};
 use contextful_policy::enforce::mask::Pepper;
 use contextful_policy::enforce::policy::TablePolicy;
 use contextful_policy::enforce::scope;
@@ -98,8 +98,7 @@ struct ManifestLexicon {
     lexicon: Lexicon,
 }
 
-/// The columns a table with no landed batch registers over: the injected columns every
-/// write path carries.
+/// The injected columns every write path carries, including a table's empty relation.
 fn injected_columns() -> Vec<Column> {
     vec![
         Column::new(INGESTED_AT, ColumnType::Timestamp, false),
@@ -361,8 +360,8 @@ impl Face {
 
     /// One table under the request's bounds, or under its pinned build where `pin` names
     /// one and `as_of` is not the earlier bound (`read.resolve-pin.earlier-bound-wins`). A
-    /// table no batch has landed in registers as a zero-row relation over the injected
-    /// columns (`read.register.quiet-table`).
+    /// table no batch has landed in registers as a zero-row relation over its declared
+    /// and injected columns (`read.register.quiet-table`).
     fn source(&self, table: &str, bounds: Bounds, pin: Option<&str>) -> Result<TableSource, ReadFault> {
         let decl = self.decl(table);
         let policy = match self.policies.get(table) {
@@ -386,7 +385,16 @@ impl Face {
                 if let Some(build) = pin {
                     super::pin::pinned(&self.store, table, build, bounds.as_of)?;
                 }
-                let columns = injected_columns();
+                let declared = Schema { columns: decl.column_types().into_iter().map(|(name, ty)| Column::new(name, ty, true)).collect() };
+                // The same namespace rule as landing drops producer spellings of
+                // injected columns and refuses other reserved names.
+                let mut columns = producer_columns(&declared)?.columns;
+                columns.extend(injected_columns());
+                // An undeclared future column meets its mask when it lands. A known
+                // declared column already has a type against which to check the mask.
+                let mut known_policy = policy.clone();
+                known_policy.columns.retain(|name, _| columns.iter().any(|column| &column.name == name));
+                known_policy.check_schema(table, &columns)?;
                 let base = relation(&TableDecl::named(table), &[], &columns, &[], None)?;
                 TableSource { decl, policy, base, files: Vec::new(), columns, landed: false, ledger, resolved: None }
             }

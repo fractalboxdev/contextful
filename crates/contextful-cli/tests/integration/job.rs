@@ -10,6 +10,9 @@ use std::process::{Command, Output};
 
 const AUD: &str = "contextful://acme-research";
 
+#[path = "job_applied.rs"]
+mod applied;
+
 fn cf(dir: &Path, args: &[&str]) -> Output {
     Command::new(env!("CARGO_BIN_EXE_contextful")).args(args).current_dir(dir).env_remove("CONTEXTFUL_NODE_ID").output().unwrap()
 }
@@ -272,21 +275,30 @@ fn a_refused_second_output_child_commit_retains_names_for_existing_discard() {
 #[test]
 fn each_declared_output_table_lands_in_its_own_run_and_a_failed_landing_holds_the_owner() {
     let declares = |tables: &str| job("max_in_flight = 2\n").replace("tables = [\"scores\"]", tables);
-    let (dir, public, token) = project(&declares("tables = [\"scores\"]"));
+    let declaration = declares("tables = [\"scores\", \"audits\"]");
+    let (dir, public, token) = project(&declaration);
     let p = dir.path();
     let ledger = p.join("ledger.txt");
     let ledger_env = ledger.to_str().unwrap();
     let env = [("SCORE_LEDGER", ledger_env), ("SCORE_AUDIT", "1")];
     let paid = || std::fs::read_to_string(&ledger).unwrap().lines().count();
 
-    // The body emits `audits`, which the job does not declare: every row runs, then the landing fails.
+    // A real publication obstruction holds the owner after all body calls completed.
+    let store = contextful_context::Store::open(p, "research").unwrap();
+    let obstruction = store.table_dir("scores").unwrap().join("data/runs/fire-1.scores/ingest-a/_manifest.json");
+    std::fs::create_dir_all(&obstruction).unwrap();
     let refused = err(&fire(p, &public, &token, "fire-1", "2030-01-01T00:01:00Z", &env));
-    assert!(refused.contains("fire-1 failed") && refused.contains("does not declare in `tables`"), "{refused}");
+    assert!(refused.contains("fire-1 failed"), "{refused}");
     assert_eq!(paid(), 3, "every row paid before the landing");
 
-    // Declaring the table, the next fire resumes the held owner: no call pays again, and each
-    // declared table lands in its own run, its id the fire's suffixed with the table.
-    std::fs::write(p.join("contextful.toml"), format!("authoring_posture = \"per_request\"\n{}", declares("tables = [\"scores\", \"audits\"]"))).unwrap();
+    // A changed output membership cannot reinterpret this pending execution.
+    std::fs::write(p.join("contextful.toml"), format!("authoring_posture = \"per_request\"\n{}", declares("tables = [\"scores\"]"))).unwrap();
+    let changed = err(&fire(p, &public, &token, "changed-output", "2030-01-01T00:02:00Z", &env));
+    assert!(changed.contains("ExecutionPinMismatch"), "{changed}");
+    assert_eq!(paid(), 3);
+    std::fs::write(p.join("contextful.toml"), format!("authoring_posture = \"per_request\"\n{declaration}")).unwrap();
+    std::fs::remove_dir(&obstruction).unwrap();
+    // Repairing storage with the original contract resumes without another paid call.
     let out = ok(&fire(p, &public, &token, "fire-2", "2030-01-01T00:02:00Z", &env));
     assert!(out.contains("score-documents: fire-2 success · 6 rows landed from 3 input rows"), "{out}");
     assert_eq!(paid(), 3, "the resume replays every recorded call");
@@ -295,13 +307,14 @@ fn each_declared_output_table_lands_in_its_own_run_and_a_failed_landing_holds_th
         .as_array()
         .unwrap()
         .iter()
+        .filter(|r| r["status"] == "success")
         .map(|r| (r["run_id"].as_str().unwrap().to_string(), r["table"].as_str().unwrap().to_string(), r["status"].as_str().unwrap().to_string(), r["rows"].as_u64().unwrap()))
         .collect();
     runs.sort();
     assert_eq!(
         runs,
         vec![("fire-2.audits".to_string(), "audits".to_string(), "success".to_string(), 3), ("fire-2.scores".to_string(), "scores".to_string(), "success".to_string(), 3)],
-        "one run per declared output table, and none for the refused landing"
+        "one successful run per declared output table"
     );
     assert_eq!(select(p, "SELECT doc_id FROM audits ORDER BY doc_id"), vec![vec!["d1".to_string()], vec!["d2".to_string()], vec!["d3".to_string()]]);
     let resumed: serde_json::Value = serde_json::from_str(&ok(&cf(p, &["run", "show", "fire-2", "--project", "research"]))).unwrap();
