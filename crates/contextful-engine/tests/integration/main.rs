@@ -17,6 +17,7 @@ mod guard;
 mod journal;
 mod lateness;
 mod ledger;
+mod nodes;
 mod project;
 mod retire;
 mod writers;

@@ -455,3 +455,68 @@ fn a_job_only_apply_changes_the_snapshot_and_stock_serve_refuses_its_body() {
     let unchanged = ok(&scheduled_host(p, &public, &token, &["pipeline", "apply", "--project", "research"], &[]));
     assert!(unchanged.contains("unchanged at v2"), "{unchanged}");
 }
+
+/// A plan fanning out three translations, the French one failing, rejoined at `merge`.
+fn fan_out_plan(allow_partial: bool) -> String {
+    let step = |id: &str, script: &str| serde_json::json!({ "id": id, "kind": "step", "connector": { "id": "translator", "version": "1", "command": ["sh", "-c", script] } });
+    let mut publish = step("publish", "printf done");
+    publish["after"] = serde_json::json!(["merge"]);
+    serde_json::json!({
+        "id": "translate",
+        "nodes": [
+            step("fetch", "printf doc"),
+            { "id": "fan", "kind": "parallel", "nodes": ["en", "fr", "de"], "after": ["fetch"] },
+            step("en", "printf hello"),
+            step("fr", "echo the vendor refused >&2; exit 3"),
+            step("de", "printf hallo"),
+            { "id": "merge", "kind": "join", "parallel": "fan", "allow_partial": allow_partial },
+            publish,
+        ],
+    })
+    .to_string()
+}
+
+/// The run record of `run_id`, read through `run history`.
+fn recorded(dir: &Path, run_id: &str) -> serde_json::Value {
+    let history: serde_json::Value = serde_json::from_str(&ok(&cf(dir, &["run", "history", "--project", "research"]))).unwrap();
+    let runs = history["runs"].as_array().unwrap();
+    assert!(!runs.is_empty(), "the history lists the fired runs");
+    runs.iter().find(|r| r["run_id"] == run_id).unwrap_or_else(|| panic!("no run `{run_id}` in {history}")).clone()
+}
+
+/// Fan-out bodies rejoin only at an explicit join node; a join reached by a failed branch fails the run unless it
+/// declares `allow_partial`, which records each failed branch's label and failure tag on the run record.
+// spec: run.journal.fan-out-join@ca72f881
+#[test]
+fn a_fired_plan_rejoins_its_fan_out_and_a_partial_join_records_the_failed_branch() {
+    let dir = tempfile::tempdir().unwrap();
+    let p = dir.path();
+    std::fs::create_dir_all(p.join(".contextful/context/research")).unwrap();
+    std::fs::write(p.join(".contextful/context/research/config.toml"), "[node]\nid = \"ingest-a\"\n").unwrap();
+    std::fs::create_dir_all(p.join("plans")).unwrap();
+    std::fs::write(p.join("plans/partial.json"), fan_out_plan(true)).unwrap();
+    std::fs::write(p.join("plans/strict.json"), fan_out_plan(false)).unwrap();
+    std::fs::write(
+        p.join("contextful.toml"),
+        "[[job]]\nname = \"translate\"\nkind = \"plan\"\nplan = \"plans/partial.json\"\n\n[[job]]\nname = \"translate-strict\"\nkind = \"plan\"\nplan = \"plans/strict.json\"\n",
+    )
+    .unwrap();
+    let valid = ok(&cf(p, &["job", "validate"]));
+    assert!(valid.contains("translate: valid (plan, plan translate version") && valid.contains("7 nodes"), "{valid}");
+
+    // A join declaring `allow_partial` passes the others on and records the failed branch.
+    let fire = |job: &str, run: &str| cf(p, &["job", "fire", job, "--project", "research", "--run-id", run, "--site-id", "site", "--now", "2030-01-01T00:00:00Z"]);
+    let partial = ok(&fire("translate", "plan-partial"));
+    assert!(partial.contains("plan-partial success") && partial.contains("failed branches: fr Permanent"), "{partial}");
+    let row = recorded(p, "plan-partial");
+    assert_eq!(row["status"], "success", "{row}");
+    assert_eq!(row["host_scope"], "job:translate");
+    assert_eq!(row["failed_branches"], serde_json::json!([{ "label": "fr", "tag": "Permanent" }]), "{row}");
+
+    // A join declaring no `allow_partial` fails the run on the branch's failure.
+    let strict = err(&fire("translate-strict", "plan-strict"));
+    assert!(strict.contains("plan-strict failed") && strict.contains("branch `fr`") && strict.contains("join `merge`"), "{strict}");
+    let row = recorded(p, "plan-strict");
+    assert_eq!((&row["status"], &row["error_kind"]), (&serde_json::json!("failed"), &serde_json::json!("Permanent")), "{row}");
+    assert!(row.get("failed_branches").is_none(), "a failed run records no partial result: {row}");
+}

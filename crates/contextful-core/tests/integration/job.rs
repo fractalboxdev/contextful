@@ -1,7 +1,7 @@
 //! `surface.fire`: job blocks against the closed kind union and the store-driven kind's
 //! declaration.
 
-use contextful_core::job::{parse_jobs, JobError, JobKind, KINDS, STORE_DRIVEN, SYNTHESIZE};
+use contextful_core::job::{parse_jobs, JobError, JobKind, KINDS, PLAN, STORE_DRIVEN, SYNTHESIZE};
 
 fn registered(name: &str) -> bool {
     name == "score"
@@ -19,8 +19,8 @@ fn a_store_driven_block_validates_with_its_pinned_input_and_concurrency() {
     let JobKind::StoreDriven(d) = &jobs[0].kind else { panic!("{:?}", jobs[0].kind) };
     assert_eq!((d.max_in_flight, d.tables.as_slice()), (4, ["scores".to_string()].as_slice()));
     assert_eq!((d.input.body.as_str(), d.input.as_of.as_deref()), ("score", Some("2030-01-01T00:00:00Z")));
-    assert_eq!(KINDS.len(), 8, "the union holds eight kinds");
-    for kind in KINDS.iter().filter(|k| ![STORE_DRIVEN, SYNTHESIZE].contains(*k)) {
+    assert_eq!(KINDS.len(), 9, "the union holds nine kinds");
+    for kind in KINDS.iter().filter(|k| ![STORE_DRIVEN, SYNTHESIZE, PLAN].contains(*k)) {
         let jobs = parse_jobs(&format!("[[job]]\nname = \"m\"\nkind = \"{kind}\"\nschedule = \"every 1h\"\n"), &registered).unwrap();
         assert_eq!(jobs[0].kind_name(), *kind);
     }
@@ -146,4 +146,16 @@ fn a_synthesize_block_names_its_target_source_endpoint_and_model() {
     }
     let fold = parse_jobs("[[job]]\nname = \"f\"\nkind = \"fold\"\nsource = \"research/notes\"\n", &registered).unwrap_err();
     assert!(fold.to_string().contains("source"), "{fold}");
+}
+
+#[test]
+fn a_plan_block_names_its_plan_file_and_no_other_kind_carries_one() {
+    let jobs = parse_jobs("[[job]]\nname = \"translate\"\nkind = \"plan\"\nplan = \"plans/translate.json\"\n", &registered).unwrap();
+    assert_eq!(jobs[0].kind_name(), PLAN);
+    let JobKind::Plan(p) = &jobs[0].kind else { panic!("{:?}", jobs[0].kind) };
+    assert_eq!(p.path, "plans/translate.json");
+    let missing = parse_jobs("[[job]]\nname = \"translate\"\nkind = \"plan\"\n", &registered).unwrap_err();
+    assert!(missing.to_string().contains("names no `plan`"), "{missing}");
+    let stray = parse_jobs("[[job]]\nname = \"f\"\nkind = \"fold\"\nplan = \"p.json\"\n", &registered).unwrap_err();
+    assert!(stray.to_string().contains("unknown key `plan`"), "{stray}");
 }

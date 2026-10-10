@@ -18,7 +18,7 @@ Consequences: entries authored as a chain run as one unit under the head entry's
 
 ## Configuration reaches only engine-named code and secrets
 
-Configuration selects among things the engine names, never code, a host command, a secret or a remote control source. `surface.fire` runs a closed union — `sweep`, `build`, `fold`, `rebuild-catalog`, `sync-push`, `validate`, `synthesize` — beside the pipeline-run kind; anything else raises `JobKindUnknown`. `surface.register-store` derives the secret name `<ID>_QUERY_TOKEN` and binding name from the kebab-case id; authoring either raises `StoreNameAuthored`. `surface.reconcile` polls a control URL only on loopback, following no redirect and no proxy; any other host raises `ControlSourceNotLoopback`.
+Configuration selects among things the engine names, never code, a host command, a secret or a remote control source. `surface.fire` runs a closed union — `sweep`, `build`, `fold`, `rebuild-catalog`, `sync-push`, `validate`, `synthesize`, `plan` — beside the pipeline-run kind; anything else raises `JobKindUnknown`. `surface.register-store` derives the secret name `<ID>_QUERY_TOKEN` and binding name from the kebab-case id; authoring either raises `StoreNameAuthored`. `surface.reconcile` polls a control URL only on loopback, following no redirect and no proxy; any other host raises `ControlSourceNotLoopback`.
 
 | Option | Lost on | Cost |
 | --- | --- | --- |

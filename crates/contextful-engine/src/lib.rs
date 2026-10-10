@@ -12,6 +12,7 @@ pub mod execution;
 pub mod fsutil;
 pub mod guard;
 pub mod journal;
+pub mod nodes;
 pub mod project;
 pub mod runner;
 pub mod scheduler;

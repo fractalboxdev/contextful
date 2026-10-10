@@ -58,6 +58,7 @@ PipelineUnknownConfigKey       = { clause = "run.declare.config-key", gloss = "A
 PipelineInlineStepBody         = { clause = "run.compile.inline-step-body", gloss = "A plan step whose body is not a connector reference." }
 PipelineUndeclaredControlFlow  = { clause = "run.compile.control-flow", gloss = "A data-dependent conditional or loop in a workflow body." }
 PipelineNodeIdCollision        = { clause = "run.compile.node-id-collision", gloss = "One node id repeated in a plan." }
+PipelineParallelUnjoined       = { clause = "run.compile.unjoined-parallel", gloss = "A `parallel` node no join rejoins, or read around its join." }
 PipelineTransformArity         = { clause = "run.transform.arity", gloss = "A chain operation emitting more rows than it consumed." }
 PipelineTransformColumnMissing = { clause = "run.transform.column-missing", gloss = "A chain operation naming a column the batch lacks." }
 PipelineNormalizeModeUnknown   = { clause = "run.normalize.mode-unknown", gloss = "A normalize mode outside the two." }

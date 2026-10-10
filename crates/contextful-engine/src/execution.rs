@@ -362,6 +362,12 @@ impl<'e, J: JournalStore, B: BlobStore> Execution<'e, J, B> {
         matches!(self.scope, OwnerScope::Chunk { .. })
     }
 
+    /// Replace the schedule the execution's next steps retry under, answering the one it
+    /// held; a plan step declaring its own retry runs under it.
+    pub(crate) fn swap_schedule(&mut self, schedule: Schedule) -> Schedule {
+        std::mem::replace(&mut self.schedule, schedule)
+    }
+
     /// Mark the failure this execution is about to close on as one a replay of its recorded
     /// steps reproduces, so the close retires the owner and collects its journal.
     pub(crate) fn discard(&mut self) {

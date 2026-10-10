@@ -191,6 +191,8 @@ Job declaration, the closed kind union, same-tick order, the fire watermark, and
   *because a dependency has one native cadence and never dispatches an unsupported job graph*
 - `job-identity` — A pipeline sharing a job's `job:<name>` dispatch identity fails {{surface.apply.validation}} before a version is claimed.
   *because one exclusion key cannot dispatch two distinct operations*
+- `plan-job` — A `plan` block names a compiled plan file beside its manifest; `job fire` lowers that plan onto one execution under host scope `job:<name>`, pinned to the plan's version.
+  *A-surface*
 - `cycle` — `serve --cycle` arms the applied snapshot, evaluates due-ness once, waits for every unit it dispatched, and prints what fired, what failed, what stays pending, the armed count and the next due instant.
 - `cycle-exit` — `serve --cycle` exits non-zero when any unit it dispatched failed, after printing its answer; a cycle with no failed unit, or one finding the cadence lease held, exits zero.
   *because a scheduler running the cycle reads the exit status, and a zero over a failed fire reports success*
