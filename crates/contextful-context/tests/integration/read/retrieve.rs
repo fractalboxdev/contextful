@@ -372,6 +372,55 @@ fn sidecar_dirs(r: &Reads, table: &str) -> (std::path::PathBuf, std::path::PathB
     (dir.clone(), dir.join(path))
 }
 
+/// A query needing a sidecar or a partition the replica lacks raises `ReplicaMissingIndex`, naming the refresh that supplies it.
+// spec: store.replicate.missing-index@63b045c5
+#[test]
+fn a_replica_lacking_a_needed_sidecar_or_part_refuses_naming_the_refresh() {
+    use contextful_core::store::StoreError;
+    let mut r = sidecar_reads("");
+    let project = r.store.root().ancestors().nth(3).unwrap().to_path_buf();
+    std::fs::write(r.store.root().join("config.toml"), "[replica]\nof = \"team/research\"\n").unwrap();
+    r.store = Store::open(&project, "research").unwrap();
+    r.face = Face::open(r.store.clone(), &format!("{MANIFEST}{SIDECAR}"), pepper()).unwrap();
+    // Advertising what it holds, the replica reads through its sidecar.
+    contextful_context::replica::advertise(&r.store).unwrap();
+    let s = r.session(&["lab/*"], None, None);
+    assert_eq!(ids(&r.face.retrieve(&s, &battery("lab/indexed"), Bounds::default()).unwrap(), "passage_id")[0], "p000");
+    let missing = |result: Result<Response, contextful_context::read::ReadFault>| match result {
+        Err(contextful_context::read::ReadFault::Store(e)) => match e.store() {
+            Some(StoreError::ReplicaMissingIndex(m)) => m.clone(),
+            other => panic!("{other:?}"),
+        },
+        other => panic!("{other:?}"),
+    };
+
+    // A replica advertising nothing answers no read needing a sidecar.
+    let descriptor = r.store.root().join(contextful_context::replica::DESCRIPTOR_FILE);
+    let advertised = std::fs::read(&descriptor).unwrap();
+    std::fs::remove_file(&descriptor).unwrap();
+    let m = missing(r.face.retrieve(&s, &battery("lab/indexed"), Bounds::default()));
+    assert!(m.contains("no copy") && m.contains("contextful sync pull --table lab/indexed"), "{m}");
+    std::fs::write(&descriptor, advertised).unwrap();
+
+    // A sidecar the descriptor omits refuses the read that needs it, never the exact scan.
+    let (_, sidecar) = sidecar_dirs(&r, "lab/indexed");
+    std::fs::remove_dir_all(&sidecar).unwrap();
+    contextful_context::replica::advertise(&r.store).unwrap();
+    let m = missing(r.face.retrieve(&s, &battery("lab/indexed"), Bounds::default()));
+    assert!(m.contains("sidecar `indexes/vec-embedding-e5/zone=all`") && m.contains("contextful sync pull --table lab/indexed"), "{m}");
+    // A read needing no sidecar still answers from the parts.
+    assert!(!ids(&r.face.retrieve(&s, &ask("lab/indexed", "battery"), Bounds::default()).unwrap(), "passage_id").is_empty());
+
+    // A part the descriptor omits refuses every read of its snapshot.
+    let plain = r.store.chain("lab/plain").unwrap().0.remove(0);
+    let dir = r.store.snapshot_dir("lab/plain", &plain.snapshot_id).unwrap();
+    std::fs::remove_file(dir.join("part-00000.parquet")).unwrap();
+    contextful_context::replica::advertise(&r.store).unwrap();
+    let scanned = contextful_context::scan::scan(&r.store, &TableDecl::named("lab/plain"), Bounds::default()).unwrap_err();
+    let Some(StoreError::ReplicaMissingIndex(m)) = scanned.store() else { panic!("{scanned}") };
+    assert!(m.contains("part `part-00000.parquet`") && m.contains("--table lab/plain"), "{m}");
+}
+
 /// Each sidecar arm, vector over a query embedding and full-text over the content tokens, adds its top results to the recency window, each re-joined by {{authority.compose.vector-arm}}. Per-row scores equal the exact path's.
 // spec: read.retrieve.sidecar-generates-candidates@f6d3b339
 #[test]

@@ -394,7 +394,7 @@ Revisit: a deployment whose writers hold no issuer key.
 
 Context: a replica holds whole snapshots, and a router or reader needs to know which sidecars and parts it holds before sending a query. Criteria: no central service; the answer matches the disk; a missing sidecar refuses rather than degrading.
 
-Decision: each replica pull writes `replica.json` beside `derived.sqlite`, naming per table the snapshot held and its parts and sidecar paths on disk. A read needing an entry the descriptor omits raises `ReplicaMissingIndex`, naming the pull that supplies it.
+Decision: each replica pull writes `replica.json` beside `derived.sqlite`, naming per table each snapshot held with its parts and sidecar paths on disk. A read needing an entry the descriptor omits raises `ReplicaMissingIndex`, naming the pull that supplies it.
 
 | Option | Lost on | Cost |
 | --- | --- | --- |

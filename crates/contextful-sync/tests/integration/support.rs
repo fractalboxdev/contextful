@@ -8,6 +8,9 @@ use contextful_core::store::object::{Condition, ObjectError, ObjectStore, Put};
 use contextful_core::store::reserve::Injection;
 use contextful_core::store::sync::SyncConfig;
 use contextful_core::time::Instant;
+use contextful_core::issue::SignatureAlgorithm;
+use contextful_core::revoke::KeySetLedger;
+use contextful_policy::issue::SeedSigner;
 use contextful_sync::{FsBucket, Syncer, VolumeClass};
 use std::sync::{Arc, Mutex};
 
@@ -19,6 +22,8 @@ pub struct Node {
     /// Holds the node's scratch directory for the test's life.
     pub _dir: tempfile::TempDir,
     pub syncer: Syncer,
+    /// The issuer key the node signs its tombstones with.
+    pub signer: Arc<SeedSigner>,
 }
 
 /// A bucket classed as a local volume whatever filesystem holds the test's scratch directory.
@@ -38,8 +43,33 @@ pub fn node_in(project: &str, id: &str, bucket: Arc<dyn ObjectStore>, extra_conf
     std::fs::write(root.join("config.toml"), format!("[node]\nid = \"{id}\"\n{extra_config}")).unwrap();
     let store = Store::open(dir.path(), project).unwrap();
     let config = SyncConfig { endpoint: "file://bucket".into(), bucket: "context-team".into(), prefix: Some("team".into()), coordination: Some("cas".into()), ..SyncConfig::default() };
-    let syncer = Syncer { store, bucket, config, prefix: "team".into(), project: project.into(), node: id.into(), residency: None, control_dir: Some(dir.path().join(".contextful/control").join(project)) };
-    Node { _dir: dir, syncer }
+    let signer = Arc::new(SeedSigner::generate(SignatureAlgorithm::Ed25519));
+    let syncer = Syncer {
+        store,
+        bucket,
+        config,
+        prefix: "team".into(),
+        project: project.into(),
+        node: id.into(),
+        residency: None,
+        control_dir: Some(dir.path().join(".contextful/control").join(project)),
+        signer: Some(signer.clone()),
+        key_set: Some(dir.path().join(KeySetLedger::PATH)),
+    };
+    Node { _dir: dir, syncer, signer }
+}
+
+/// Record every node's issuer key, from `since`, in every node's key-set ledger.
+pub fn trust(nodes: &[&Node], since: &str) {
+    let mut ledger = KeySetLedger::default();
+    for n in nodes {
+        ledger.record(&n.signer.public_key_text(), at(since));
+    }
+    for n in nodes {
+        let path = n.syncer.key_set.clone().unwrap();
+        std::fs::create_dir_all(path.parent().unwrap()).unwrap();
+        std::fs::write(&path, ledger.to_toml()).unwrap();
+    }
 }
 
 impl Node {

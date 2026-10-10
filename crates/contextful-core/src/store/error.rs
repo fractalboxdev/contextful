@@ -183,4 +183,7 @@ pub enum StoreError {
     /// A tombstone names an entry another node owns. (`store.merge.tombstone-owner`)
     #[error("SyncTombstoneForeign: {0}")]
     SyncTombstoneForeign(String),
+    /// A tombstone is unsigned, fails its signature, or names a signer the key-set ledger does not verify. (`store.merge.tombstone-unverified`)
+    #[error("SyncTombstoneUnverified: {0}")]
+    SyncTombstoneUnverified(String),
 }

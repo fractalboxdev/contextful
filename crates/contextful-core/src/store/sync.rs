@@ -251,11 +251,32 @@ pub struct Entry {
     pub owner: String,
 }
 
-/// A deletion a writer records for an entry it owns.
+/// A deletion a writer records for an entry it owns, signed by its node's issuer key
+/// (`store.merge.tombstone-signed`).
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct Tombstone {
     pub owner: String,
     pub deleted_at: Instant,
+    /// The signing key's public text, `ed25519:<hex>` or `es256:<hex>`; absent when the
+    /// writing node holds no issuer key.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub signer: Option<String>,
+    /// Hex of the signature over [`Tombstone::message`].
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub signature: Option<String>,
+}
+
+impl Tombstone {
+    /// An unsigned tombstone `owner` records at `deleted_at`.
+    pub fn unsigned(owner: &str, deleted_at: Instant) -> Tombstone {
+        Tombstone { owner: owner.to_string(), deleted_at, signer: None, signature: None }
+    }
+
+    /// The bytes a tombstone's signature covers: the key it names, its owner and its
+    /// `deleted_at`.
+    pub fn message(&self, key: &str) -> Vec<u8> {
+        format!("contextful-tombstone\n{key}\n{}\n{}", self.owner, self.deleted_at.to_rfc3339_nanos()).into_bytes()
+    }
 }
 
 /// The bucket manifest: its format and generation, key (relative to the prefix) to entry,
@@ -364,6 +385,19 @@ pub struct Merged {
 /// commit-log entry whose copies differ refuses outright: a cursor resolves through its
 /// commit, never through whichever copy was written last.
 pub fn merge(remote: &BucketManifest, local: &BTreeMap<String, Entry>, me: &str, now: Instant) -> Result<Merged, StoreError> {
+    merge_verified(remote, local, me, now, &|_, _| Ok(()))
+}
+
+/// [`merge`], holding each remote tombstone that would remove a listed entry to `verify`:
+/// one it refuses keeps the entry, leaves the manifest and is answered by
+/// `SyncTombstoneUnverified` (`store.merge.tombstone-unverified`).
+pub fn merge_verified(
+    remote: &BucketManifest,
+    local: &BTreeMap<String, Entry>,
+    me: &str,
+    now: Instant,
+    verify: &dyn Fn(&str, &Tombstone) -> Result<(), String>,
+) -> Result<Merged, StoreError> {
     let mut out = BucketManifest { residency: remote.residency.clone(), control_heads: remote.control_heads.clone(), ..BucketManifest::default() };
     let mut refused = Vec::new();
     for (key, entry) in local {
@@ -386,7 +420,7 @@ pub fn merge(remote: &BucketManifest, local: &BTreeMap<String, Entry>, me: &str,
         }
         if entry.owner == me {
             // Owned here and no longer held here: its deletion propagates.
-            out.tombstones.insert(key.clone(), Tombstone { owner: me.to_string(), deleted_at: now });
+            out.tombstones.insert(key.clone(), Tombstone::unsigned(me, now));
             continue;
         }
         out.entries.insert(key.clone(), entry.clone());
@@ -405,6 +439,13 @@ pub fn merge(remote: &BucketManifest, local: &BTreeMap<String, Entry>, me: &str,
             }
             Some(e) if e.owner == me => continue,
             Some(_) => {
+                if let Err(why) = verify(key, t) {
+                    refused.push(StoreError::SyncTombstoneUnverified(format!(
+                        "a tombstone by `{}` names `{key}`, and {why}; the entry stays",
+                        t.owner
+                    )));
+                    continue;
+                }
                 out.entries.remove(key);
             }
             None => {}

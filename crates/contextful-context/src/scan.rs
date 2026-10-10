@@ -50,6 +50,10 @@ pub fn scan_at(store: &Store, decl: &TableDecl, bounds: Bounds, snapshot: Option
             state.resolve(bounds.as_of)?
         }
     };
+    // A replica reads only the parts it advertises (`store.replicate.missing-index`).
+    if let Some(s) = resolution.snapshot {
+        crate::replica::require(store, table, s, &[])?;
+    }
     let table_rel = format!("tables/{table}");
     let files: Vec<String> = resolution.files().into_iter().map(|f| format!("{table_rel}/{f}")).collect();
     let absolute: Vec<String> = files.iter().map(|f| store.logical_path(f).map(|path| path.to_string_lossy().into_owned())).collect::<Result<_>>()?;

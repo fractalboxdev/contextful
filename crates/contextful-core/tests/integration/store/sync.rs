@@ -103,7 +103,7 @@ fn a_merge_keeps_every_local_entry_and_only_the_remote_entries_it_does_not_own()
     let stale: BTreeMap<String, Entry> = [(RUN_B.to_string(), entry("stale", "ingest-b"))].into();
     assert_eq!(merge(&remote, &stale, "ingest-a", now).unwrap().manifest.entries[RUN_B].sha256, "b");
     assert_eq!(m.entries[SCHEMA].sha256, "s2", "the local copy wins");
-    assert_eq!(m.tombstones.get(gone), Some(&Tombstone { owner: "ingest-a".into(), deleted_at: now }));
+    assert_eq!(m.tombstones.get(gone), Some(&Tombstone::unsigned("ingest-a", now)));
 }
 
 /// A tombstone whose owner differs from the owner of the entry it names raises `SyncTombstoneForeign`, and the
@@ -114,14 +114,14 @@ fn a_tombstone_naming_another_owners_entry_refuses_and_the_entry_stays() {
     let now = at("2030-01-01T00:00:00Z");
     let remote = BucketManifest {
         entries: [(RUN_B.to_string(), entry("b", "ingest-b"))].into(),
-        tombstones: [(RUN_B.to_string(), Tombstone { owner: "ingest-c".into(), deleted_at: now })].into(),
+        tombstones: [(RUN_B.to_string(), Tombstone::unsigned("ingest-c", now))].into(),
         ..Default::default()
     };
     let m = merge(&remote, &BTreeMap::new(), "ingest-a", now).unwrap();
     assert!(m.manifest.entries.contains_key(RUN_B));
     assert!(matches!(&m.refused[..], [StoreError::SyncTombstoneForeign(msg)] if msg.contains("ingest-c") && msg.contains("ingest-b")));
     // The owner's own tombstone removes a copy another node still lists.
-    let owned = BucketManifest { tombstones: [(RUN_B.to_string(), Tombstone { owner: "ingest-b".into(), deleted_at: now })].into(), ..Default::default() };
+    let owned = BucketManifest { tombstones: [(RUN_B.to_string(), Tombstone::unsigned("ingest-b", now))].into(), ..Default::default() };
     let local: BTreeMap<String, Entry> = [(RUN_B.to_string(), entry("b", "ingest-b"))].into();
     assert!(!merge(&owned, &local, "ingest-a", now).unwrap().manifest.entries.contains_key(RUN_B));
 }
@@ -132,7 +132,7 @@ fn a_tombstone_naming_another_owners_entry_refuses_and_the_entry_stays() {
 fn a_tombstone_leaves_the_manifest_after_30_days() {
     assert_eq!(TOMBSTONE_TTL_SECS, 30 * 86_400);
     let deleted = at("2030-01-01T00:00:00Z");
-    let remote = BucketManifest { tombstones: [(RUN_B.to_string(), Tombstone { owner: "ingest-b".into(), deleted_at: deleted })].into(), ..Default::default() };
+    let remote = BucketManifest { tombstones: [(RUN_B.to_string(), Tombstone::unsigned("ingest-b", deleted))].into(), ..Default::default() };
     let kept = merge(&remote, &BTreeMap::new(), "ingest-a", deleted.plus_secs(TOMBSTONE_TTL_SECS - 1)).unwrap();
     assert!(kept.manifest.tombstones.contains_key(RUN_B));
     let dropped = merge(&remote, &BTreeMap::new(), "ingest-a", deleted.plus_secs(TOMBSTONE_TTL_SECS)).unwrap();
