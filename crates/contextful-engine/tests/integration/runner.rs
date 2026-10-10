@@ -151,6 +151,37 @@ fn prepared_replay_binds_shape_identity_and_never_reapplies_the_shape() {
     assert_eq!(shape.calls.get(), 1, "recorded prepared rows bypass shape application during replay");
 }
 
+/// The run row holds the rows entering the transform chain and the rows it kept, a replayed prepared pull
+/// counting what entered its chain when it was recorded.
+#[test]
+fn the_run_row_counts_rows_before_and_after_the_chain() {
+    use contextful_core::run::ports::Shape;
+    struct Dropping;
+    impl Shape for Dropping {
+        fn recording_identity(&self) -> Result<Option<String>, contextful_core::run::RunError> { Ok(Some("dropping-v1".into())) }
+        fn shape(&self, rows: Vec<Row>) -> Result<Vec<Row>, contextful_core::run::RunError> {
+            Ok(rows.into_iter().filter(|row| row["id"] != "d2").collect())
+        }
+    }
+    let plan = opaque();
+    let spec = |run: &str| contextful_engine::RunSpec { plan:plan.clone(), connector:plan.connector_pin("artifact-1"), run_id:run.into(), site_id:"site-a".into(), pid:4242, boot_id:"boot-a".into(), trace_id:None };
+
+    let rig = Rig::new();
+    let row = rig.engine.run_with(&spec("plain"), &mut Pages::new(three_pages()), &Dropping, &mut Sink::default()).unwrap();
+    assert_eq!((row.status, row.fetched, row.kept), (RunStatus::Success, 4, 3));
+    assert_eq!((rig.row("plain").fetched, rig.row("plain").kept), (4, 3), "the catalog holds the counts");
+
+    let rig = Rig::new();
+    let mut source = Pages::new(three_pages());
+    source.die_after = Some(1);
+    let mut dest = Protected { sink:Sink::default(), authority:"canonical".into() };
+    assert!(std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| rig.engine.run_with(&spec("prepared-a"), &mut source, &Dropping, &mut dest))).is_err());
+    rig.clock.advance(60);
+    source.die_after = None;
+    let row = rig.engine.run_with(&spec("prepared-b"), &mut source, &Dropping, &mut dest).unwrap();
+    assert_eq!((row.status, row.fetched, row.kept), (RunStatus::Success, 4, 3), "the replayed first page counts its two fetched rows");
+}
+
 #[test]
 fn unknown_protected_clock_lineage_refuses_before_source_and_owner_admission() {
     struct UnknownClock;

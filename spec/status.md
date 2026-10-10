@@ -11,11 +11,11 @@ An unpinned clause is `committed`; a pinned one is `performed` when its Rust, Le
 | `corpus` | 1 | 10 | 79 | 37 | 7 | 0 | 43 | 0 | 43 |
 | `disclosure` | 3 | 16 | 156 | 68 | 13 | 3 | 63 | 0 | 63 |
 | `read` | 2 | 16 | 212 | 35 | 22 | 9 | 184 | 0 | 184 |
-| `run` | 3 | 26 | 413 | 102 | 39 | 28 | 310 | 0 | 310 |
+| `run` | 3 | 26 | 413 | 102 | 39 | 28 | 321 | 0 | 321 |
 | `store` | 1 | 17 | 253 | 59 | 13 | 19 | 216 | 0 | 216 |
 | `surface` | 2 | 20 | 134 | 59 | 22 | 0 | 94 | 0 | 94 |
 | `topology` | 1 | 6 | 70 | 24 | 5 | 5 | 38 | 0 | 38 |
-| **total** | 19 | 156 | 2211 | 611 | 193 | 102 | 1576 | 0 | |
+| **total** | 19 | 156 | 2211 | 611 | 193 | 102 | 1587 | 0 | |
 
 Decision records: 18.
 
@@ -29,7 +29,7 @@ A milestone reads `closed` when its acceptance test computes `passing` and every
 | 1 — The authority core | 14 | 239 | 190 | passing | closed |
 | 2 — The store | 9 | 175 | 143 | passing | closed |
 | 3 — The run path | 11 | 214 | 148 | passing | closed |
-| 4 — Ingest | 25 | 519 | 345 | passing | open |
+| 4 — Ingest | 25 | 519 | 356 | passing | open |
 | 5 — The read face under enforcement | 17 | 285 | 219 | passing | open |
 | 6 — Sync and replicas | 8 | 78 | 73 | passing | closed |
 | 7 — Memory | 6 | 54 | 45 | passing | closed |
@@ -1114,10 +1114,16 @@ Unscheduled operations: 11.
 | `run.journal.store-input` | `crates/contextful-cli/tests/integration/job.rs::a_fire_reads_its_input_at_the_pinned_as_of_and_lands_its_output_table` | performed |
 | `run.journal.substrate-port` | `crates/contextful-engine/tests/integration/execution.rs::the_substrate_port_opens_steps_suspends_commits_and_closes_an_execution` | performed |
 | `run.journal.unwired-capability` | `crates/contextful-engine/tests/integration/execution.rs::suspending_on_an_engine_without_an_awakeable_store_is_refused_at_the_first_reach` | performed |
+| `run.land.batch-write` | `crates/contextful-context/tests/integration/run_commit.rs::a_run_lands_each_batch_as_a_part_and_carries_its_position` | performed |
+| `run.land.commit-visibility` | `crates/contextful-context/tests/integration/run_commit.rs::staged_parts_join_the_file_list_only_at_their_commit` | performed |
+| `run.land.ingest-tally` | `crates/contextful-cli/tests/integration/pipeline.rs::a_fire_tallies_fetched_kept_and_filtered_rows_and_failed_tables` | performed |
 | `run.land.irreconcilable-schema` | `crates/contextful-cli/tests/integration/run.rs::an_irreconcilable_pulled_schema_fails_the_batch` | performed |
 | `run.land.late-type` | `crates/contextful-engine/tests/integration/runner.rs::a_type_declared_after_its_column_staged_refuses` | performed |
+| `run.land.no-host-arm` | `crates/contextful-wasm/tests/integration/export.rs::the_host_binds_the_source_world_and_no_world_it_hosts_reaches_the_destination` | performed |
 | `run.land.parse-boundary` | `crates/contextful-connectors/tests/integration/boundary.rs::a_decode_runs_in_a_child_the_parent_kills_at_its_deadline` | performed |
 | `run.land.parse-crashed` | `crates/contextful-connectors/tests/integration/boundary.rs::a_crashed_decode_is_named_and_a_refusal_crosses_intact` | performed |
+| `run.land.partial-parse` | `crates/contextful-decode/tests/integration/pdf.rs::a_page_that_fails_to_render_refuses_the_whole_document` | performed |
+| `run.land.stage-order` | `crates/contextful-cli/tests/integration/pipeline.rs::a_batch_is_guarded_before_recording_and_redacted_before_shredding` | performed |
 | `run.land.table-failed` | `crates/contextful-cli/tests/integration/pipeline.rs::a_failing_table_is_named_with_its_kind_and_run` | performed |
 | `run.land.typed-pull` | `crates/contextful-cli/tests/integration/run.rs::a_pulled_type_lands_its_column_in_that_type` | performed |
 | `run.land.unknown-destination` | `crates/contextful-cli/tests/integration/pipeline.rs::another_destination_is_refused_before_any_request` | performed |
@@ -1151,10 +1157,15 @@ Unscheduled operations: 11.
 | `run.model.validate-undeclared` | `crates/contextful-cli/tests/integration/build.rs::validate_names_a_relation_no_manifest_declares` | performed |
 | `run.model.watermark` | `crates/contextful-context/tests/integration/build.rs::the_watermark_names_each_input_frontier` | performed |
 | `run.normalize.field-collision` | `crates/contextful-core/tests/integration/pipeline/normalize.rs::source_fields_cannot_replace_relational_identity_columns` | performed |
+| `run.normalize.host-stage` | `crates/contextful-core/tests/integration/pipeline/normalize.rs::engine_code_types_flattens_extracts_and_identifies_raw_json_rows` | performed |
 | `run.normalize.identity-columns` | `crates/contextful-core/tests/integration/pipeline/normalize.rs::repeated_nested_items_keep_distinct_parent_links_and_stable_ids` | performed |
+| `run.normalize.list-index-missing` | `crates/contextful-core/tests/integration/pipeline/normalize.rs::a_child_table_without_its_list_index_is_refused_naming_parent_and_list` | performed |
+| `run.normalize.mode` | `crates/contextful-cli/tests/integration/pipeline.rs::a_relational_pipeline_shreds_lists_into_indexed_child_rows` | performed |
+| `run.normalize.mode-resolution` | `crates/contextful-core/tests/integration/pipeline/normalize.rs::an_explicit_mode_wins_and_an_undeclared_one_resolves_native` | performed |
 | `run.normalize.mode-unknown` | `crates/contextful-cli/tests/integration/pipeline.rs::an_unknown_normalize_mode_is_refused_at_validation` | performed |
 | `run.normalize.native-store` | `crates/contextful-cli/tests/integration/pipeline.rs::a_native_pipeline_lands_nested_json_as_one_table_of_nested_columns` | performed |
 | `run.normalize.nesting-depth` | `crates/contextful-cli/tests/integration/pipeline.rs::native_nesting_stops_at_the_declared_depth` | performed |
+| `run.normalize.normalized-form` | `crates/contextful-core/tests/integration/pipeline/normalize.rs::one_normalized_group_holds_nested_rows_and_shreds_only_when_materialized` | performed |
 | `run.normalize.row-id` | `crates/contextful-core/tests/integration/pipeline/normalize.rs::repeated_nested_items_keep_distinct_parent_links_and_stable_ids` | performed |
 | `run.own.backpressure` | `crates/contextful-engine/tests/integration/runner.rs::each_batch_stages_before_the_next_pull` | performed |
 | `run.own.body-parent` | `crates/contextful-engine/tests/integration/drive.rs::protected_body_effects_record_rewritten_results_and_resume_without_another_paid_call` | performed |

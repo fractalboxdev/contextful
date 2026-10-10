@@ -29,16 +29,27 @@ pub fn pages(bytes: &[u8], input: &str) -> Result<Vec<String>, Failure> {
         return Err(unreadable(input, "the page tree".into(), "the document carries no pages"));
     }
     let mut out = Vec::with_capacity(numbers.len());
+    let partial = |page: u32, why: String| {
+        Failure::deterministic(
+            FailureTag::Permanent,
+            RunError::PipelinePartialParse(format!("`{input}` stopped at page {page}: {why}; none of its pages land")).to_string(),
+        )
+    };
     for page in numbers {
         let mut text = String::new();
-        {
+        // The renderer panics on some page structures it cannot draw; that page stops the
+        // read the way a returned error does.
+        let rendered = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
             let mut sink = PlainTextOutput::new(&mut text);
-            pdf_extract::output_doc_page(&doc, &mut sink, page).map_err(|e| {
-                Failure::deterministic(
-                    FailureTag::Permanent,
-                    RunError::PipelinePartialParse(format!("`{input}` stopped at page {page}: {e}; none of its pages land")).to_string(),
-                )
-            })?;
+            pdf_extract::output_doc_page(&doc, &mut sink, page)
+        }));
+        match rendered {
+            Ok(Ok(())) => {}
+            Ok(Err(e)) => return Err(partial(page, e.to_string())),
+            Err(panic) => {
+                let why = panic.downcast_ref::<String>().cloned().or_else(|| panic.downcast_ref::<&str>().map(|s| s.to_string()));
+                return Err(partial(page, why.unwrap_or_else(|| "the page did not render".into())));
+            }
         }
         out.push(text.trim().to_string());
     }

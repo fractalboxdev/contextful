@@ -12,6 +12,8 @@ fn batch(rows: serde_json::Value) -> Batch {
     Batch { rows: rows.as_array().unwrap().iter().map(|r| r.as_object().unwrap().clone()).collect(), types: Default::default() }
 }
 
+/// A landing table is created on first sight of its schema, {{store.reconcile.first-sight}}; each batch is written durably in its own call, optionally carrying its ordinal as the join key onto the run's request ledger.
+// spec: run.land.batch-write@7a060194
 #[cfg(feature = "read")]
 #[test]
 fn a_run_lands_each_batch_as_a_part_and_carries_its_position() {
@@ -24,7 +26,9 @@ fn a_run_lands_each_batch_as_a_part_and_carries_its_position() {
     };
     let position = Position { pipeline_id: Some("feed".into()), cursor: Some(json!("p3")), fence: Some(4), logged: false, replace_frontier: false };
     let batches = [batch(json!([{"id": "d1"}, {"id": "d2"}])), batch(json!([])), batch(json!([{"id": "d3"}]))];
+    assert!(f.store.try_schema("filings").unwrap().is_none(), "no table exists before its first batch");
     let m = land_batches(&f.store, &d, &batches, &ctx, &position, &|| Ok(())).unwrap();
+    assert!(f.store.try_schema("filings").unwrap().is_some_and(|s| s.get("id").is_some()), "the first batch's schema creates the table");
     assert_eq!((m.fence, m.logged), (Some(4), false));
     assert_eq!(m.parts.iter().map(|p| p.name.as_str()).collect::<Vec<_>>(), ["part-00000.parquet", "part-00001.parquet"]);
     assert_eq!((m.pipeline_id.as_deref(), m.cursor.clone()), (Some("feed"), Some(json!("p3"))));
@@ -187,8 +191,8 @@ fn fed(cursor: &str) -> Position {
     Position { pipeline_id: Some("feed".into()), cursor: Some(json!(cursor)), fence: None, logged: false, replace_frontier: false }
 }
 
-/// A staged part joins no file list; the commit naming the parts publishes them together, each row numbered
-/// across the run and stamped with the commit instant.
+/// A commit makes a run's rows visible for one table in one step; a crash before it leaves a recoverable partial run.
+// spec: run.land.commit-visibility@cdc5abf5
 #[cfg(feature = "read")]
 #[test]
 fn staged_parts_join_the_file_list_only_at_their_commit() {
@@ -202,6 +206,7 @@ fn staged_parts_join_the_file_list_only_at_their_commit() {
     assert!(readable(&f).is_empty(), "staged parts are in flight");
     let node_dir = f.table_dir("filings").join("data/runs/run-s/ingest-a");
     assert!(!node_dir.join("part-00000.parquet").exists(), "a staged part sits apart from the parts a manifest names");
+    assert!(node_dir.join("stage.staging").is_dir(), "an uncommitted run's staged parts stay on disk for recovery");
 
     let m = commit_parts(&f.store, &d, &[a.name, b.name], &staging("run-s", "2030-01-01T00:05:00Z"), &fed("p2"), &|| Ok(()), &|_| Ok(())).unwrap();
     assert_eq!((m.committed_at, m.cursor.clone()), (at("2030-01-01T00:05:00Z"), Some(json!("p2"))));

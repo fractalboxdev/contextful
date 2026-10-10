@@ -269,6 +269,47 @@ redaction = [{ table = "messages", column = "body", json_path = "$.parts[*].text
     assert_eq!(vendor.targets(), vec!["/messages"]);
 }
 
+/// Every file under the store root whose bytes hold `needle`, relative to `dir`.
+fn holding(dir: &Path, needle: &str) -> Vec<std::path::PathBuf> {
+    let mut pending = vec![dir.join(".contextful")];
+    let mut found = Vec::new();
+    while let Some(path) = pending.pop() {
+        if path.is_dir() {
+            pending.extend(std::fs::read_dir(&path).unwrap().map(|e| e.unwrap().path()));
+        } else if std::fs::read(&path).unwrap().windows(needle.len()).any(|w| w == needle.as_bytes()) {
+            found.push(path.strip_prefix(dir).unwrap().to_owned());
+        }
+    }
+    found
+}
+
+/// A batch passes pull, the secret guard, the recorded pull, normalize, the transform chain, write-path redaction, shredding and batch write; the run then commits rows and position together through {{run.advance.commit-with-rows}}.
+// spec: run.land.stage-order@79301484
+#[test]
+fn a_batch_is_guarded_before_recording_and_redacted_before_shredding() {
+    const KEY: &str = "zK9s8d7f6g5h";
+    const PHONE: &str = "415-555-0100";
+    let body = format!(r#"[{{"note":"x-api-key: {KEY}","raw":"keep","body":{{"parts":[{{"text":"{PHONE}","public":"open"}}]}}}}]"#);
+    let vendor = Vendor::start(move |_| (200, body.clone()));
+    let extra = r#"
+journal = true
+normalize = "relational"
+transforms = [{ op = "rename", from = "raw", to = "kept" }]
+redaction = [{ table = "messages", column = "body", json_path = "$.parts[*].text", match = "whole", operation = "replace", argument = "phone" }]
+"#;
+    let dir = project(&pipeline("feed", &vendor.url("/messages"), extra, "tables = [\"messages\"]"));
+    ok(&fire(dir.path(), "feed", "run-a", "2030-01-01T00:00:00Z"));
+    // The guard masks the credential before the recorded pull, so no stored byte holds it.
+    assert!(holding(dir.path(), KEY).is_empty(), "{:?}", holding(dir.path(), KEY));
+    // Redaction rewrites the value before the recorded pull is prepared and before any part is written.
+    assert!(holding(dir.path(), PHONE).is_empty(), "{:?}", holding(dir.path(), PHONE));
+    let root: serde_json::Value = serde_json::from_str(&ok(&cf(dir.path(), &["query", "--json", "--project", "research", "SELECT note, kept, row_id FROM feed_messages"]))).unwrap();
+    assert_eq!(&root["rows"][0].as_array().unwrap()[..2], serde_json::json!(["x-api-key: [REDACTED:secret]", "keep"]).as_array().unwrap());
+    // Shredding follows redaction: the child table carries the replaced value under its parent.
+    let child: serde_json::Value = serde_json::from_str(&ok(&cf(dir.path(), &["query", "--json", "--project", "research", "SELECT text, public, parent_id FROM feed_messages_body_parts"]))).unwrap();
+    assert_eq!(child["rows"], serde_json::json!([["[REDACTED:phone]", "open", root["rows"][0][2]]]));
+}
+
 #[test]
 fn a_renamed_removed_clock_refuses_before_source_or_durable_watermark_bytes() {
     const CANARY: &str = "private-string-clock-canary-98";
@@ -582,6 +623,31 @@ fn a_failing_table_is_named_with_its_kind_and_run() {
     let err = stderr(&out);
     assert!(err.contains("PipelineTableFailed: table `shop_bad` failed as Permanent in run `r1.shop_bad`"), "{err}");
     assert!(vendor.targets().iter().all(|t| t.starts_with("/v1/bad")), "abort halts the fire: {:?}", vendor.targets());
+}
+
+/// A fire reports `fetched`, `kept`, `skipped`, `failed` and `dropped_low_quality`, the rows its declared `filter` operations drop, in total and per table; a non-zero `failed` exits non-zero.
+// spec: run.land.ingest-tally@cd6727e0
+#[test]
+fn a_fire_tallies_fetched_kept_and_filtered_rows_and_failed_tables() {
+    let serve = |t: &str| if t.starts_with("/v1/bad") {
+        (404, "{}".to_string())
+    } else {
+        (200, r#"[{"id":"a","status":"open"},{"id":"b","status":"closed"},{"id":"c","status":"open"}]"#.to_string())
+    };
+    let filter = "transforms = [{ op = \"filter\", column = \"status\", equals = \"open\" }]";
+    let vendor = Vendor::start(serve);
+    let dir = project(&pipeline("shop", &vendor.url("/v1/{table}"), &format!("on_table_error = \"continue\"\n{filter}"), "tables = [\"bad\", \"good\"]"));
+    let out = fire(dir.path(), "shop", "r1", "2030-01-01T00:00:00Z");
+    assert!(!out.status.success(), "a failed table exits non-zero");
+    let stdout = String::from_utf8_lossy(&out.stdout);
+    assert!(stdout.contains("tally: fetched 3 · kept 2 · skipped 0 · failed 1 · dropped_low_quality 1"), "{stdout}");
+    assert!(stdout.contains("tally shop_good: fetched 3 · kept 2 · skipped 0 · failed 0 · dropped_low_quality 1"), "{stdout}");
+    assert!(stdout.contains("tally shop_bad: fetched 0 · kept 0 · skipped 0 · failed 1 · dropped_low_quality 0"), "{stdout}");
+
+    let vendor = Vendor::start(serve);
+    let dir = project(&pipeline("shop", &vendor.url("/v1/{table}"), filter, "tables = [\"good\"]"));
+    let out = ok(&fire(dir.path(), "shop", "r1", "2030-01-01T00:00:00Z"));
+    assert!(out.contains("tally: fetched 3 · kept 2 · skipped 0 · failed 0 · dropped_low_quality 1"), "{out}");
 }
 
 /// `on_table_error` is abort, the default, halting the fire at the first failing table, or continue, landing
@@ -2025,7 +2091,8 @@ fn a_native_pipeline_lands_nested_json_as_one_table_of_nested_columns() {
 
 }
 
-/// Relational normalization flattens objects and preserves list order in child tables.
+/// `native` keeps nesting up to the sink's capability and explodes the rest with {{run.record.schema-diff-home}}; `relational` flattens structs into parent-child column names and shreds lists into child tables joined by a foreign key.
+// spec: run.normalize.mode@3d26d022
 #[test]
 fn a_relational_pipeline_shreds_lists_into_indexed_child_rows() {
     let vendor = Vendor::start(|_| (200, SPANS.to_string()));

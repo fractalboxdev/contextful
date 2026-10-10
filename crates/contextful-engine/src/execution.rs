@@ -27,6 +27,9 @@ pub(crate) struct Tally {
     pub batches: u64,
     /// The sum of every pull's `skipped` count (`run.record.skipped-count`).
     pub skipped: u64,
+    /// Rows entering the transform chain and rows it kept, summed (`run.land.ingest-tally`).
+    pub fetched: u64,
+    pub kept: u64,
     /// Every pull's declined tally, summed by extension (`connector.source.declined-tally`).
     pub declined: std::collections::BTreeMap<String, u64>,
 }
@@ -180,6 +183,8 @@ impl<J: JournalStore, B: BlobStore> Engine<J, B> {
             bytes: 0,
             batches: 0,
             skipped: 0,
+            fetched: 0,
+            kept: 0,
             declined: Default::default(),
             error_kind: None,
             error_message: None,
@@ -439,6 +444,8 @@ impl<'e, J: JournalStore, B: BlobStore> Execution<'e, J, B> {
                     r.bytes = landed.bytes;
                     r.batches = tally.batches;
                     r.skipped = tally.skipped;
+                    r.fetched = tally.fetched;
+                    r.kept = tally.kept;
                     r.declined = tally.declined.clone();
                 }
                 Err(close) => {

@@ -137,7 +137,7 @@ fn relational_lineage_rewrites_children_before_deriving_persisted_identities() {
             })
             .unwrap();
         assert!(seen.contains(&("messages_body_parts".into(), "text".into())));
-        let tables = group.into_tables();
+        let tables = group.into_tables().unwrap();
         assert_eq!(tables["messages_body_parts"][0]["text"], "[REDACTED:phone]");
         assert_eq!(tables["messages_body_parts"][0]["public"], "keep");
         tables

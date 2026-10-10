@@ -143,6 +143,13 @@ pub struct RunRow {
     /// Inputs the run's pulls declared skipped, summed (`run.record.skipped-count`).
     #[serde(default, skip_serializing_if = "is_zero")]
     pub skipped: u64,
+    /// Rows the run's pulls carried into the transform chain, summed (`run.land.ingest-tally`).
+    #[serde(default, skip_serializing_if = "is_zero")]
+    pub fetched: u64,
+    /// Rows the transform chain kept for staging, summed; `fetched - kept` is the rows its
+    /// `filter` operations dropped (`run.land.ingest-tally`).
+    #[serde(default, skip_serializing_if = "is_zero")]
+    pub kept: u64,
     /// What the run's directory walks declined, tallied by extension and summed over its
     /// pulls (`connector.source.declined-tally`).
     #[serde(default, skip_serializing_if = "std::collections::BTreeMap::is_empty")]

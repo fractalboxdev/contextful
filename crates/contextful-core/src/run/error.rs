@@ -231,6 +231,9 @@ pub enum RunError {
     /// A normalize mode outside `native` and `relational`. (`run.normalize.mode-unknown`)
     #[error("PipelineNormalizeModeUnknown: {0}")]
     PipelineNormalizeModeUnknown(String),
+    /// A relational child table without a list index. (`run.normalize.list-index-missing`)
+    #[error("PipelineListIndexMissing: {0}")]
+    PipelineListIndexMissing(String),
     /// A chain operation emitting more rows than it consumed. (`run.transform.arity`)
     #[error("PipelineTransformArity: {0}")]
     PipelineTransformArity(String),
