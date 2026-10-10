@@ -3,6 +3,7 @@
 
 use crate::{at, owner, run_row, SetClock, T0};
 use contextful_core::coordinate::{Cas, Catalog, CursorRow, LeaseKey};
+use contextful_core::run::backfill::{Bound, ChunkRow, ChunkStatus, Window};
 use contextful_core::run::own::OwnerScope;
 use contextful_core::run::record::RunStatus;
 use contextful_core::run::RunError;
@@ -271,6 +272,45 @@ fn retiring_an_owner_caches_its_position_in_the_same_transaction() {
     assert_eq!(c.retire("feed", "filings", "x-1", Some((cursor("p1"), 0)), None).unwrap(), Cas::Applied);
     assert_eq!(c.owner("feed", "filings").unwrap(), None);
     assert_eq!(c.cursor("feed", "filings").unwrap().position, Some(json!("p1")));
+}
+
+#[test]
+fn a_chunk_commit_marks_its_row_done_in_the_retiring_transaction_and_a_rewind_retires_its_owner() {
+    let dir = tempfile::tempdir().unwrap();
+    let clock = SetClock::new();
+    let c = catalog(&dir, &clock);
+    for (i, name) in ["c1", "c0"].iter().enumerate() {
+        let start = 10 - 10 * i as i64;
+        let window = Window::new(Bound::Int(start), Bound::Int(start + 10)).unwrap();
+        c.put_chunk(&ChunkRow::planned("feed", "filings", name, 1 - i as u32, window)).unwrap();
+    }
+    let plan = c.chunks("feed", "filings").unwrap();
+    assert_eq!(plan.iter().map(|r| r.chunk.as_str()).collect::<Vec<_>>(), ["c0", "c1"], "chunks list in plan order");
+    assert!(c.chunks("feed", "orders").unwrap().is_empty());
+
+    let at0 = OwnerScope::chunk("feed", "filings", "c0");
+    let mut held = owner("x-c0");
+    held.scope = at0.clone();
+    c.put_owner(&held).unwrap();
+    c.update_chunk(&at0, None, &mut |r| r.claim(at(T0))).unwrap();
+
+    // A moved version applies nothing: the chunk keeps running and its owner stays.
+    assert_eq!(c.retire_at(&at0, "x-c0", Some((cursor("p1"), 4)), None).unwrap(), Cas::VersionMoved);
+    assert_eq!(c.chunk_at(&at0).unwrap().unwrap().status, ChunkStatus::Running);
+    assert!(c.owner_at(&at0).unwrap().is_some());
+
+    assert_eq!(c.retire_at(&at0, "x-c0", Some((cursor("p1"), 0)), None).unwrap(), Cas::Applied);
+    let done = c.chunk_at(&at0).unwrap().unwrap();
+    assert_eq!((done.status, done.attempts, done.cursor_committed), (ChunkStatus::Done, 1, true));
+    assert_eq!(c.owner_at(&at0).unwrap(), None);
+    assert_eq!(c.cursor_at(&at0).unwrap().position, Some(json!("p1")));
+
+    // A rewind returns the chunk to pending and retires the owner it names in one transaction.
+    c.put_owner(&held).unwrap();
+    let rewound = c.update_chunk(&at0, Some("x-c0"), &mut ChunkRow::rewind).unwrap().unwrap();
+    assert_eq!((rewound.status, rewound.cursor_committed), (ChunkStatus::Pending, false));
+    assert_eq!(c.owner_at(&at0).unwrap(), None);
+    assert_eq!(c.update_chunk(&OwnerScope::chunk("feed", "filings", "c9"), None, &mut ChunkRow::rewind).unwrap(), None);
 }
 
 #[test]

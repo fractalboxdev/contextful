@@ -11,11 +11,11 @@ An unpinned clause is `committed`; a pinned one is `performed` when its Rust, Le
 | `corpus` | 1 | 10 | 79 | 37 | 7 | 0 | 79 | 0 | 79 |
 | `disclosure` | 3 | 16 | 156 | 68 | 13 | 3 | 63 | 0 | 63 |
 | `read` | 2 | 16 | 221 | 35 | 24 | 1 | 211 | 0 | 211 |
-| `run` | 3 | 26 | 430 | 104 | 42 | 13 | 364 | 0 | 364 |
+| `run` | 3 | 26 | 430 | 104 | 42 | 13 | 369 | 0 | 369 |
 | `store` | 1 | 17 | 264 | 61 | 14 | 11 | 253 | 0 | 253 |
 | `surface` | 2 | 20 | 134 | 59 | 22 | 0 | 94 | 0 | 94 |
 | `topology` | 1 | 6 | 77 | 24 | 5 | 2 | 68 | 0 | 68 |
-| **total** | 19 | 156 | 2260 | 616 | 199 | 61 | 1807 | 0 | |
+| **total** | 19 | 156 | 2260 | 616 | 199 | 61 | 1812 | 0 | |
 
 Decision records: 18.
 
@@ -28,8 +28,8 @@ A milestone reads `closed` when its acceptance test computes `passing` and every
 | 0 — The test-first gate | 2 | 22 | 19 | passing | closed |
 | 1 — The authority core | 14 | 242 | 223 | passing | closed |
 | 2 — The store | 9 | 181 | 170 | passing | closed |
-| 3 — The run path | 11 | 232 | 207 | passing | closed |
-| 4 — Ingest | 25 | 519 | 356 | passing | open |
+| 3 — The run path | 11 | 232 | 211 | passing | closed |
+| 4 — Ingest | 25 | 519 | 357 | passing | open |
 | 5 — The read face under enforcement | 17 | 294 | 238 | passing | open |
 | 6 — Sync and replicas | 8 | 83 | 83 | passing | closed |
 | 7 — Memory | 6 | 55 | 54 | passing | closed |
@@ -1090,6 +1090,7 @@ Unscheduled operations: 11.
 | `run.advance.unorderable-position` | `crates/contextful-core/tests/integration/run/advance.rs::an_unorderable_clock_value_refuses_the_pull` | performed |
 | `run.advance.watermark-shape` | `crates/contextful-core/tests/integration/run/advance.rs::a_watermark_names_its_field` | performed |
 | `run.advance.zero-row-commit` | `crates/contextful-cli/tests/integration/empty_replace.rs::a_complete_empty_snapshot_replaces_but_a_skip_and_failed_pull_do_not` | performed |
+| `run.backfill.rewind-invalid` | `crates/contextful-engine/tests/integration/backfill.rs::an_inverted_empty_or_off_scale_window_is_refused_and_a_window_past_the_plan_rewinds_nothing` | performed |
 | `run.bind.advisory-zone` | `crates/contextful-core/tests/integration/run/derive.rs::a_row_zone_copied_from_the_advisory_key_refuses` | performed |
 | `run.bind.command-in-manifest` | `crates/contextful-core/tests/integration/run/derive.rs::an_executable_key_in_the_manifest_refuses` | performed |
 | `run.bind.confidence-range` | `crates/contextful-core/tests/integration/run/derive.rs::a_confidence_outside_the_unit_interval_refuses_and_lands_null` | performed |
@@ -1115,6 +1116,7 @@ Unscheduled operations: 11.
 | `run.cancel.not-in-flight` | `crates/contextful-cli/tests/integration/serve.rs::a_stop_on_a_finished_run_answers_409_and_exits_non_zero` | performed |
 | `run.cancel.poll-interval` | `crates/contextful-engine/tests/integration/cancel.rs::the_token_reads_the_catalog_before_the_first_await_and_every_500_ms` | performed |
 | `run.cancel.re-mark` | `crates/contextful-core/tests/integration/run/cancel.rs::a_second_mark_overwrites_the_first` | performed |
+| `run.cancel.resumable-remains` | `crates/contextful-engine/tests/integration/backfill.rs::a_stopped_chunk_returns_to_pending_keeping_a_recorded_pull_and_its_position` | performed |
 | `run.cancel.stop-route` | `crates/contextful-cli/tests/integration/serve.rs::the_served_stop_route_marks_the_run_and_answers_its_ids` | performed |
 | `run.cancel.stop-unauthorized` | `crates/contextful-core/tests/integration/run/cancel.rs::a_stop_needs_execute_over_the_recorded_pipeline_and_names_none` | performed |
 | `run.cancel.storage-blip` | `crates/contextful-engine/tests/integration/cancel.rs::a_failed_poll_keeps_polling` | performed |
@@ -1314,8 +1316,11 @@ Unscheduled operations: 11.
 | `run.own.live-owner` | `crates/contextful-engine/tests/integration/execution.rs::a_host_open_under_a_live_attempt_fails_transient_and_joins_nothing` | performed |
 | `run.own.marker-reconciles` | `crates/contextful-engine/tests/integration/runner.rs::a_marker_the_catalog_missed_retires_its_owner_before_replay` | performed |
 | `run.own.one-commit-per-run` | `crates/contextful-engine/tests/integration/runner.rs::a_run_commits_once_and_a_crash_commits_nothing` | performed |
+| `run.own.pin-recovery` | `crates/contextful-engine/tests/integration/backfill.rs::a_restored_build_resumes_to_completion_and_a_rewind_retires_the_owners_it_covers` | performed |
 | `run.own.pin-release` | `crates/contextful-core/tests/integration/run/own.rs::success_and_an_empty_failure_release_every_other_status_holds` | performed |
 | `run.own.pinned-plan-changed` | `crates/contextful-engine/tests/integration/runner.rs::a_moved_build_under_a_pending_owner_is_refused_before_replay` | performed |
+| `run.own.retirement` | `crates/contextful-engine/tests/integration/backfill.rs::a_commit_retires_its_owner_with_the_position_and_a_chunk_completes_in_that_transaction` | performed |
+| `run.own.scope-independence` | `crates/contextful-engine/tests/integration/backfill.rs::a_finishing_table_releases_no_other_scope_and_a_seed_pins_its_own_source` | performed |
 | `run.own.source-stage-schema` | `spec/pins.toml` | performed |
 | `run.own.stage-commit-seq` | `crates/contextful-context/tests/integration/run_commit.rs::a_staged_run_takes_its_commit_seq_at_its_commit` | performed |
 | `run.own.stage-discard` | `crates/contextful-cli/tests/integration/run.rs::a_failed_run_leaves_no_staged_part_and_a_commit_stamps_its_instant` | performed |

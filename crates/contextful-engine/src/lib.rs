@@ -2,6 +2,7 @@
 //! adapters, the local catalog, awakeables, cancellation, the command source and the live run projection.
 
 pub mod awake;
+pub mod backfill;
 pub mod cancel;
 pub mod catalog;
 pub mod command;

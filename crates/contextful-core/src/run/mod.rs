@@ -3,6 +3,7 @@
 //! record and the plan a run pins. The runner and its storage are `contextful-engine`.
 
 pub mod advance;
+pub mod backfill;
 pub mod cancel;
 pub mod derive;
 pub mod drive;

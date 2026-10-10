@@ -1,6 +1,7 @@
 //! The `run` contract's domain, one module per operation.
 
 mod advance;
+mod backfill;
 mod cancel;
 mod derive;
 mod drive;

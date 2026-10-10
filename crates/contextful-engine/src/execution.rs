@@ -8,6 +8,7 @@ use crate::journal::{Resolved, StepError};
 use crate::runner::{Engine, EngineError};
 use crate::stores::{FileBlobStore, FileJournalStore};
 use contextful_core::coordinate::{Cas, CursorRow, Lease};
+use contextful_core::run::backfill::ChunkStatus;
 use contextful_core::run::journal::{sha256_hex, EntryKey};
 use contextful_core::run::own::{releases, ExecutionOwner, OwnerPins, OwnerScope};
 use contextful_core::run::plan::NATIVE_WORLD;
@@ -321,6 +322,11 @@ impl<'e, J: JournalStore, B: BlobStore> Execution<'e, J, B> {
         self.pins = owner.pins;
         self.opened_at = Some(owner.opened_at);
         self.owned = true;
+        // A planned chunk the attempt claims runs, its attempt count one higher.
+        if self.chunked() && self.engine.catalog.chunk_at(&self.scope)?.is_some_and(|c| c.status != ChunkStatus::Done) {
+            let now = self.engine.catalog.now()?;
+            self.engine.catalog.update_chunk(&self.scope, None, &mut |c| c.claim(now))?;
+        }
         Ok(())
     }
 
@@ -340,6 +346,11 @@ impl<'e, J: JournalStore, B: BlobStore> Execution<'e, J, B> {
             }
         }
         Ok(())
+    }
+
+    /// Whether the execution runs under a backfill chunk scope.
+    fn chunked(&self) -> bool {
+        matches!(self.scope, OwnerScope::Chunk { .. })
     }
 
     /// Mark the failure this execution is about to close on as one a replay of its recorded
@@ -467,6 +478,11 @@ impl<'e, J: JournalStore, B: BlobStore> Execution<'e, J, B> {
         };
         let error = row.error_kind.map(|tag| Failure::new(tag, row.error_message.clone().unwrap_or_default()));
         self.emit(Change::Status { status: row.status, at: row.ended_at, error });
+        // A planned chunk settles on the status: a stop returns it to pending
+        // (`run.cancel.resumable-remains`); its commit already marked it done.
+        if self.owned && self.chunked() && engine.catalog.chunk_at(&self.scope)?.is_some() {
+            engine.catalog.update_chunk(&self.scope, None, &mut |c| c.settle(row.status))?;
+        }
         let execution_id = self.execution_id.clone();
         // A success that committed retired already; any other releasing status retires
         // unless another live attempt shares the execution.

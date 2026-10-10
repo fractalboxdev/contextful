@@ -2,7 +2,8 @@
 //! the `Catalog` port every catalog backend sits behind. Code above the port names no
 //! backend (`topology.coordinate.catalog-port`).
 
-use crate::run::failure::Failure;
+use crate::run::backfill::ChunkRow;
+use crate::run::failure::{Failure, FailureTag};
 use crate::run::own::{ExecutionOwner, OwnerScope};
 use crate::run::record::RunRow;
 use crate::run::RunError;
@@ -161,7 +162,28 @@ pub trait Catalog {
     /// version it was read at, cache the position its commit reached, in one transaction
     /// (`run.own.retirement`). The update is conditional on that version and, under a
     /// lease, on the holder's fence; the owner's journal is unreachable once it applies.
+    /// Under a chunk scope holding a chunk row, a cursor commit also marks the chunk done in
+    /// that transaction: a completed chunk retires the same way.
     fn retire_at(&self, scope: &OwnerScope, execution_id: &str, cursor: Option<(CursorRow, u64)>, fence: Option<&Lease>) -> Result<Cas, Failure>;
+
+    /// The chunk row of a chunk scope; `None` when no plan holds it. A catalog keeping no
+    /// chunk plans holds none.
+    fn chunk_at(&self, _scope: &OwnerScope) -> Result<Option<ChunkRow>, Failure> {
+        Ok(None)
+    }
+    /// Every chunk row of a pipeline's table, in plan order.
+    fn chunks(&self, _pipeline_id: &str, _table: &str) -> Result<Vec<ChunkRow>, Failure> {
+        Ok(Vec::new())
+    }
+    /// Write `row` under its chunk scope, keeping that scope's cursor and owner.
+    fn put_chunk(&self, row: &ChunkRow) -> Result<(), Failure> {
+        Err(Failure::new(FailureTag::Permanent, format!("this catalog keeps no chunk plan; chunk `{}` of `{}`/`{}` has no home", row.chunk, row.pipeline_id, row.table)))
+    }
+    /// Apply `f` to the chunk row of `scope` and, given an execution id, retire the scope's
+    /// owner while it holds that id, in one transaction; `None` when no row exists.
+    fn update_chunk(&self, scope: &OwnerScope, _retire: Option<&str>, _f: &mut dyn FnMut(&mut ChunkRow)) -> Result<Option<ChunkRow>, Failure> {
+        Err(Failure::new(FailureTag::Permanent, format!("this catalog keeps no chunk plan; {scope} has no chunk row")))
+    }
 
     /// The cursor row of a pipeline's table.
     fn cursor(&self, pipeline_id: &str, table: &str) -> Result<CursorRow, Failure> {
