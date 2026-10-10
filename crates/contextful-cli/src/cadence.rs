@@ -30,7 +30,7 @@ use contextful_core::store::sync::ControlHead;
 use contextful_core::surface::edit::check_document;
 use contextful_core::surface::dispatch::{CHILD_GRACE_SECS, DEFAULT_POOL};
 use contextful_core::surface::SurfaceError;
-use contextful_engine::control::{ControlError, Draft, SnapshotDir};
+use contextful_snapshot::{ControlError, Draft, SnapshotDir};
 use contextful_engine::scheduler::{Beat, Dispatch, Entry, Fired, LeaseState, Scheduler};
 use contextful_engine::worker::{Relay, WorkerDispatch};
 use contextful_policy::control_receipt::ControlReceipt;

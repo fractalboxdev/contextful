@@ -733,13 +733,13 @@ fn a_crate_missing_from_the_crate_map_is_refused() {
     passes(&r);
 }
 
-/// Seventeen crates compose the workspace. `contextful-cli` is the binary and wires every adapter per profile by dependency injection.
-// spec: topology.package.crate-map@398fd784
+/// Eighteen crates compose the workspace. `contextful-cli` is the binary and wires every adapter per profile by dependency injection.
+// spec: topology.package.crate-map@724e3bb7
 #[test]
 fn this_repository_crate_map_names_every_crate() {
     let o = topology(repo_root());
     assert!(o.status.success(), "{}", stderr(&o));
-    assert!(stdout(&o).contains("crate map: 17 crates"), "{}", stdout(&o));
+    assert!(stdout(&o).contains("crate map: 18 crates"), "{}", stdout(&o));
 }
 
 /// The crate-graph stage runs the dependency rules and refuses a run-path crate reaching a

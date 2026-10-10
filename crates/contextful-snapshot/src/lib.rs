@@ -1,11 +1,14 @@
 //! The local snapshot directory: immutable `manifest@v<N>.toml` versions and the
-//! `manifest@current` pointer naming the applied one (`surface.apply.local-claim`).
+//! `manifest@current` pointer naming the applied one (`surface.apply.local-claim`). It sits
+//! outside the run path, so the engine and the control plane claim through one home.
 //!
 //! A claim holds an advisory lock across the pointer read, the exclusive create of the
 //! next version file and the pointer replace, so the pointer's compare-and-swap is
 //! linearizable among processes on one machine (`surface.apply.version-race`).
 
-use crate::fsutil::{create_new, filesystem_kind, replace, FileLock};
+pub mod fs;
+
+use crate::fs::{create_new, filesystem_kind, replace, FileLock};
 use contextful_core::surface::control::{admit_conditional, parse_pointer, receipt_file, snapshot_file, POINTER_FILE};
 use contextful_core::surface::SurfaceError;
 use std::io::ErrorKind;

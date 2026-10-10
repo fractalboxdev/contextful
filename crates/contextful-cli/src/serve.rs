@@ -21,7 +21,7 @@ use contextful_agent::http::{HttpRequest, HttpResponse, APPLY_PATH, EDIT_PATH, R
 use contextful_core::surface::SurfaceError;
 use contextful_core::run::derive::task::Tasks;
 #[cfg(feature = "data-plane")]
-use contextful_engine::control::ControlError;
+use contextful_snapshot::ControlError;
 use contextful_core::issue::{IssuancePolicy, MintContext, NodeRole};
 use contextful_core::ports::{Clock, SigningPort};
 #[cfg(feature = "data-plane")]

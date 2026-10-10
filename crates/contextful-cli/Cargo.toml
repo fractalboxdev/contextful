@@ -29,6 +29,8 @@ contextful-policy = { path = "../contextful-policy", features = ["exchange"] }
 contextful-outbound = { path = "../contextful-outbound", default-features = false, optional = true }
 # The binary is the one package compiling SQLite into the build (`topology.package.sqlite-adapter`).
 contextful-sqlite = { path = "../contextful-sqlite", features = ["bundled"], optional = true }
+# The control snapshot directory every apply claims into (`surface.apply.local-claim`).
+contextful-snapshot = { path = "../contextful-snapshot", optional = true }
 contextful-sync = { path = "../contextful-sync", optional = true }
 # The component host (`topology.package.component-host`), linked under `component-host`.
 contextful-wasm = { path = "../contextful-wasm", default-features = false, optional = true }
@@ -82,6 +84,7 @@ data-plane = [
     "dep:contextful-engine",
     "dep:contextful-eval",
     "dep:contextful-memory",
+    "dep:contextful-snapshot",
     "dep:contextful-sqlite",
 ]
 transport-ureq = ["read-plane", "contextful-outbound/transport-ureq", "contextful-connectors?/transport-ureq", "contextful-wasm?/transport-ureq"]

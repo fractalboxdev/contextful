@@ -420,7 +420,7 @@ fn control_edit_saves_a_validated_draft_and_apply_claims_its_expected_version() 
 fn published_workflow_listing_caps_entries_and_flags_truncation() {
     let (dir, public) = project();
     let root = dir.path();
-    let snapshot = contextful_engine::control::SnapshotDir::open(&root.join(".contextful/control/research"));
+    let snapshot = contextful_snapshot::SnapshotDir::open(&root.join(".contextful/control/research"));
     let document = (0..1001).map(|index| format!(
         "[[pipeline]]\nid = \"flow-{index:04}\"\ntables = [\"research/notes\"]\n[pipeline.source]\nname = \"http\"\nconfig = {{ endpoint = \"https://example.test/filings\" }}\n"
     )).collect::<Vec<_>>().join("\n");

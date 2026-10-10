@@ -1095,7 +1095,7 @@
       "operation": "package",
       "subject": "crate-map",
       "kind": "behavior",
-      "statement": "Seventeen crates compose the workspace. `contextful-cli` is the binary and wires every adapter per profile by dependency injection.",
+      "statement": "Eighteen crates compose the workspace. `contextful-cli` is the binary and wires every adapter per profile by dependency injection.",
       "why": "",
       "file": "spec/01-topology.md",
       "line": 89
