@@ -47,6 +47,8 @@ pub struct Staged {
     pub etag: String,
     pub runs: usize,
     pub retention: Option<RetentionReport>,
+    /// What the partition plan warns about (`store.index.partition-warnings`).
+    pub warnings: Vec<String>,
     /// Held for the pass's life, so a concurrent pass's collection reads this staging
     /// directory as in flight rather than as one an earlier pass abandoned.
     pub(crate) _in_flight: Option<std::sync::Arc<FileLock>>,
@@ -77,9 +79,15 @@ pub enum Committed {
 /// that fails is reported, beside a published snapshot that stays published, since the
 /// pointer has already moved (`store.fold.collection-failed`).
 pub fn fold(store: &Store, decl: &TableDecl, now: Instant) -> Result<FoldOutcome> {
+    fold_under(store, decl, now, None)
+}
+
+/// [`fold`] under a compaction lease: the snapshot manifest and the pointer it publishes
+/// carry the lease's `fence` (`store.fold.compaction-lease`).
+pub fn fold_under(store: &Store, decl: &TableDecl, now: Instant, fence: Option<u64>) -> Result<FoldOutcome> {
     store.check_writable("compact")?;
-    match prepare(store, decl, now)? {
-        Prepared::NothingLanded => Ok(match collect(store, decl, now) {
+    match prepare_under(store, decl, now, fence)? {
+        Prepared::NothingLanded => Ok(match merge_ledgers(store, decl, now).and_then(|_| collect(store, decl, now)) {
             Ok(collected) => match decl.retain_rows_secs().map_err(|e| ContextError::Invalid(e.to_string()))? {
                 Some(age) => FoldOutcome::NothingLandedRetained { cutoff: now.minus_secs(age), collected },
                 None => FoldOutcome::NothingLanded,
@@ -89,9 +97,10 @@ pub fn fold(store: &Store, decl: &TableDecl, now: Instant) -> Result<FoldOutcome
         Prepared::Staged(staged) => {
             let runs = staged.runs;
             let retention = staged.retention.clone();
+            let warnings = staged.warnings.clone();
             match commit(store, *staged)? {
                 Committed::Published(m) => {
-                    let collected = collect(store, decl, now);
+                    let collected = merge_ledgers(store, decl, now).and_then(|_| collect(store, decl, now));
                     Ok(FoldOutcome::Folded {
                     snapshot_id: m.snapshot_id.to_string(),
                     runs,
@@ -99,6 +108,7 @@ pub fn fold(store: &Store, decl: &TableDecl, now: Instant) -> Result<FoldOutcome
                     retention,
                     collected: collected.as_ref().cloned().unwrap_or_default(),
                     collection: collected.err().map(|e| e.to_string()),
+                    warnings,
                 })},
                 Committed::Lost => Ok(FoldOutcome::Failed("the pointer moved during the pass; nothing was published".into())),
             }
@@ -106,11 +116,25 @@ pub fn fold(store: &Store, decl: &TableDecl, now: Instant) -> Result<FoldOutcome
     }
 }
 
+/// Merge the table's committed request ledgers under the snapshot its pointer names, before
+/// collection removes the run manifests that date them (`store.reserve.ledger-fold`).
+fn merge_ledgers(store: &Store, decl: &TableDecl, now: Instant) -> Result<()> {
+    if let Some((pointer, _)) = store.pointer(&decl.name)? {
+        crate::ledger::fold_ledgers(store, &decl.name, &pointer.snapshot_id.to_string(), now)?;
+    }
+    Ok(())
+}
+
 /// Stage the next snapshot: select the committed runs the current snapshot omits,
 /// dedupe by key or union, reconcile to the merged schema, sort by `cluster_by`,
 /// partition, and write Parquet and the manifest under `<id>.staging/`
 /// (`store.fold.pass`).
 pub fn prepare(store: &Store, decl: &TableDecl, now: Instant) -> Result<Prepared> {
+    prepare_under(store, decl, now, None)
+}
+
+/// [`prepare`] with the compaction lease's `fence` stamped into the staged manifest.
+pub fn prepare_under(store: &Store, decl: &TableDecl, now: Instant, fence: Option<u64>) -> Result<Prepared> {
     let table = decl.name.as_str();
     // The pointer, then the runs, then the schema: a landing writes its schema before
     // its manifest, so every run read here has its columns in the schema read after. A
@@ -123,7 +147,14 @@ pub fn prepare(store: &Store, decl: &TableDecl, now: Instant) -> Result<Prepared
 
     let unfolded_runs = state.unfolded_runs();
     let unfolded: Vec<String> = unfolded_runs.iter().map(|r| r.key()).collect();
-    if unfolded.is_empty() && decl.retain_rows.is_none() {
+    // A declared sidecar another builder wrote, or a graph past its extensions, rebuilds in
+    // full though nothing landed (`store.index.rebuild`, `store.index.graph-extensions`).
+    let declared: BTreeSet<String> = decl.indexes().iter().map(|i| i.path(escape)).collect();
+    let rebuild = state
+        .chain
+        .first()
+        .is_some_and(|s| s.indexes.iter().any(|e| e.path().is_some_and(|p| declared.contains(p)) && e.needs_rebuild()));
+    if unfolded.is_empty() && decl.retain_rows.is_none() && !rebuild {
         return Ok(Prepared::NothingLanded);
     }
     let table_dir = store.table_dir(table)?;
@@ -195,11 +226,15 @@ pub fn prepare(store: &Store, decl: &TableDecl, now: Instant) -> Result<Prepared
         rows = filtered;
         Some(RetentionReport { cutoff, rows_expired: count + footer_expired, partitions_dropped: before.difference(&after).count() as u64 })
     } else { None };
-    if unfolded.is_empty() && retention.as_ref().is_none_or(|r| r.rows_expired == 0) {
+    if unfolded.is_empty() && retention.as_ref().is_none_or(|r| r.rows_expired == 0) && !rebuild {
         return Ok(Prepared::NothingLanded);
     }
+    // A keyed table declaring no clustering sorts by its key, so each part's footer bounds
+    // on the key form a sparse map a point lookup probes (`store.index.kinds`).
     if !decl.cluster_by().is_empty() {
         rows = sort(&rows, decl.cluster_by()).map_err(invalid)?;
+    } else if decl.is_keyed() {
+        rows = sort(&rows, decl.primary_key()).map_err(invalid)?;
     }
     crate::vector::check_identifiers(&rows, decl)?;
 
@@ -216,14 +251,19 @@ pub fn prepare(store: &Store, decl: &TableDecl, now: Instant) -> Result<Prepared
         indexes.push(entry);
     }
     let mut parts = Vec::new();
+    let mut sizes = Vec::new();
     if rows.num_rows() > 0 {
         for (dir, batch) in partition(&rows, decl.partition_by()).map_err(invalid)? {
             let name = if dir.is_empty() { part_name(0) } else { format!("{dir}/{}", part_name(0)) };
-            store.write_parquet(&staging.join(&name), &batch)?;
+            let path = staging.join(&name);
+            store.write_parquet_blooming(&path, &batch, decl.bloom_filter())?;
+            sizes.push(fs::metadata(&path).at(&path)?.len());
             parts.push(PartEntry { name, key_version: store.sealing().key_version() });
         }
     }
+    let warnings = contextful_core::store::index::partition_warnings(decl.partition_by(), &sizes);
     let manifest = SnapshotManifest {
+        format_version: Default::default(),
         snapshot_id,
         parent,
         ancestors: SnapshotManifest::ancestors_after(state.chain.first()),
@@ -236,7 +276,7 @@ pub fn prepare(store: &Store, decl: &TableDecl, now: Instant) -> Result<Prepared
         valid_time: decl.valid_time.clone(),
         parts,
         indexes,
-        fence: None,
+        fence,
         commit_seq: unfolded_runs.iter().map(|r| r.commit_seq).chain(state.chain.first().map(|s| s.commit_seq)).flatten().max(),
         publish: None,
     };
@@ -249,6 +289,7 @@ pub fn prepare(store: &Store, decl: &TableDecl, now: Instant) -> Result<Prepared
         etag,
         runs: unfolded.len(),
         retention,
+        warnings,
         _in_flight: Some(std::sync::Arc::new(in_flight)),
     })))
 }

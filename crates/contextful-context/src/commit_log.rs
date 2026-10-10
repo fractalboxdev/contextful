@@ -4,7 +4,7 @@
 
 use crate::error::{IoPath, Result};
 use crate::store::Store;
-use contextful_core::store::commit_log::{admit, file_name, parse_seq, CommitEntry, Kind};
+use contextful_core::store::commit_log::{admit, admit_kind, file_name, parse_seq, CommitEntry, Kind};
 use std::path::PathBuf;
 
 fn dir(store: &Store, pipeline_id: &str, node_id: &str) -> Result<PathBuf> {
@@ -43,6 +43,7 @@ pub fn read(store: &Store, pipeline_id: &str, node_id: &str) -> Result<Vec<Commi
 /// higher fence, read before the create or found holding the slot, refuses with
 /// `LeaseFenced`; the create is the commit point.
 pub fn append(store: &Store, pipeline_id: &str, node_id: &str, entry: &CommitEntry) -> Result<u64> {
+    admit_kind(pipeline_id, entry)?;
     let d = dir(store, pipeline_id, node_id)?;
     std::fs::create_dir_all(&d).at(&d)?;
     loop {
@@ -59,5 +60,5 @@ pub fn append(store: &Store, pipeline_id: &str, node_id: &str, entry: &CommitEnt
 
 /// Record a lease acquisition under `fence` for `table`.
 pub fn open_fence(store: &Store, pipeline_id: &str, node_id: &str, table: &str, fence: u64) -> Result<u64> {
-    append(store, pipeline_id, node_id, &CommitEntry { kind: Kind::Acquire, table: table.to_string(), run_id: None, cursor: None, fence })
+    append(store, pipeline_id, node_id, &CommitEntry { kind: Kind::Acquire, table: table.to_string(), run_id: None, cursor: None, cursor_kind: None, fence })
 }

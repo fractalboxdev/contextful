@@ -54,6 +54,9 @@ pub enum StoreError {
     /// A run manifest or reachable snapshot manifest fails to parse. (`store.lay-out.manifest-unreadable`)
     #[error("StoreManifestUnreadable: {0}")]
     StoreManifestUnreadable(String),
+    /// A run or snapshot manifest carries a `format_version` major newer than the build reads. (`store.lay-out.format-newer`)
+    #[error("StoreManifestFormatNewer: {0}")]
+    StoreManifestFormatNewer(String),
     /// A resolved node id is too long or outside the path-safe pattern. (`store.lay-out.node-id-shape`)
     #[error("StoreNodeIdInvalid: {0}")]
     StoreNodeIdInvalid(String),
@@ -180,4 +183,7 @@ pub enum StoreError {
     /// A tombstone names an entry another node owns. (`store.merge.tombstone-owner`)
     #[error("SyncTombstoneForeign: {0}")]
     SyncTombstoneForeign(String),
+    /// A tombstone is unsigned, fails its signature, or names a signer the key-set ledger does not verify. (`store.merge.tombstone-unverified`)
+    #[error("SyncTombstoneUnverified: {0}")]
+    SyncTombstoneUnverified(String),
 }

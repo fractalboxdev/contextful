@@ -86,3 +86,39 @@ fn an_empty_store_derives_no_rows() {
     let catalog = Rows::default();
     assert_eq!(rebuild(&f.store, &catalog).unwrap(), DerivedRows::default());
 }
+
+/// A sidecar's identity is its one path under {{store.index.paths}}; `derived.sqlite` records the builder and builder version of each sidecar a reachable snapshot holds.
+// spec: store.index.identity@a1937925
+#[test]
+fn the_derived_catalog_records_each_sidecars_builder_under_its_one_path() {
+    use contextful_core::store::index::{FULLTEXT_BUILDER, FULLTEXT_BUILDER_VERSION, VECTOR_BUILDER, VECTOR_BUILDER_VERSION};
+    use contextful_core::store::reconcile::{ColumnType, FloatItem};
+    let f = Fixture::new();
+    let d = decl(&format!(
+        "name = \"passages\"\nprimary_key = [\"passage_id\"]\n{}[[pipeline.tables.indexes]]\nkind = \"fulltext\"\ncolumn = \"body\"\n",
+        crate::index::INDEX
+    ));
+    let vectors = [("embedding", ColumnType::FixedSizeList(FloatItem::Float32, 3))];
+    f.land_typed(&d, "run-1", json!([{"passage_id": "p1", "body": "solar", "embedding": [1.0, 0.0, 0.0]}]), "2030-01-01T00:00:00Z", &vectors).unwrap();
+    fold(&f.store, &d, at("2030-01-01T01:00:00Z")).unwrap();
+    f.land_typed(&d, "run-2", json!([{"passage_id": "p2", "body": "wind", "embedding": [0.0, 1.0, 0.0]}]), "2030-01-01T02:00:00Z", &vectors).unwrap();
+    fold(&f.store, &d, at("2030-01-01T03:00:00Z")).unwrap();
+
+    let catalog = Rows::default();
+    let rows = rebuild(&f.store, &catalog).unwrap();
+    let (chain, _) = f.store.chain("passages").unwrap();
+    let mut expected = Vec::new();
+    for s in chain.iter().rev() {
+        expected.push((s.snapshot_id.to_string(), "indexes/fts-body-unicode".to_string(), FULLTEXT_BUILDER.to_string(), FULLTEXT_BUILDER_VERSION));
+        expected.push((s.snapshot_id.to_string(), "indexes/vec-embedding-e5/zone=all".to_string(), VECTOR_BUILDER.to_string(), VECTOR_BUILDER_VERSION));
+    }
+    let recorded: Vec<(String, String, String, u32)> =
+        rows.sidecars.iter().map(|s| (s.snapshot_id.clone(), s.path.clone(), s.builder.clone(), s.builder_version)).collect();
+    assert_eq!(recorded, expected);
+    assert!(!rows.sidecars.is_empty());
+    assert!(rows.sidecars.iter().all(|s| s.table == "passages"));
+    assert_eq!(catalog.rows().unwrap().sidecars, rows.sidecars);
+    // One path per column and model: no builder segment, so a rebuild under another builder
+    // replaces the sidecar at the path it already held.
+    assert!(rows.sidecars.iter().all(|s| !s.path.contains(&s.builder)));
+}

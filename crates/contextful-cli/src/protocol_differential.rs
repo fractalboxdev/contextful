@@ -162,6 +162,7 @@ impl Store {
                             table: "protocol".into(),
                             run_id: None,
                             cursor: None,
+                            cursor_kind: None,
                             fence: lease.fence,
                         });
                         self.cursor_etag += 1;
@@ -234,6 +235,7 @@ impl Store {
                                     table: "protocol".into(),
                                     run_id: Some(format!("node-{node}")),
                                     cursor: None,
+                                    cursor_kind: None,
                                     fence,
                                 });
                                 self.cursor_etag += 1;

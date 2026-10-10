@@ -361,6 +361,25 @@ impl Face {
             // Each sidecar adds its candidates to the window, each read through the relation,
             // so a row it recalls scores exactly as the exact path scores it
             // (`read.retrieve.sidecar-generates-candidates`).
+            // A table declaring no full-text sidecar reads no snapshot manifest here.
+            let fulltext = decl.indexes().iter().any(|i| i.kind == IndexKind::Fulltext);
+            // A replica answers by every sidecar the read needs, or refuses naming the pull
+            // that supplies it (`store.replicate.missing-index`).
+            if !claims && self.store.replica_of().is_some() {
+                if let Some(snapshot) = self.store.chain(table)?.0.first() {
+                    let needed: Vec<&str> = snapshot
+                        .indexes
+                        .iter()
+                        .filter(|e| match e.kind_name() {
+                            Some("vector") => request.query_embedding.is_some() && e.column() == Some(EMBEDDING_COLUMN),
+                            Some("fulltext") => super::LEXICAL_BACKEND && fulltext && !tokens.is_empty(),
+                            _ => false,
+                        })
+                        .filter_map(|e| e.path())
+                        .collect();
+                    crate::replica::require(&self.store, table, snapshot, &needed)?;
+                }
+            }
             // Each sidecar arm probes, re-joins through the relation and, while the rows the
             // reader can see under-fill the limit behind a full probe, doubles and probes
             // again (`read.retrieve.adaptive-over-fetch`).
@@ -369,8 +388,6 @@ impl Face {
                 if let Some(query) = request.query_embedding.as_deref() {
                     arms.push(Box::new(move |round| self.sidecar_probe(session, table, query, limit, round)));
                 }
-                // A table declaring no full-text sidecar reads no snapshot manifest here.
-                let fulltext = decl.indexes().iter().any(|i| i.kind == IndexKind::Fulltext);
                 if super::LEXICAL_BACKEND && fulltext && !tokens.is_empty() {
                     let tokens = &tokens;
                     arms.push(Box::new(move |round| self.fulltext_probe(session, table, tokens, limit, round)));

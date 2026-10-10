@@ -24,9 +24,9 @@ A table's {{store.declare.retain-rows}} declaration gives rows an age limit. Rea
 
 Catalog lifetimes differ: `derived.sqlite` rebuilds from the tree ({{store.lay-out.derived-catalog}}); `machine.sqlite` keeps machine-local journal, cursors and leases ({{store.lay-out.machine-catalog}}). Both use ports ({{store.lay-out.catalog-ports}}).
 
-A bucket mirrors the tree. A push uploads changed files, commits the bucket manifest by compare-and-set, and re-merges a lost race within a bound ({{store.merge.retries}}). A pull checks every digest ({{store.pull.digest-mismatch}}), refuses a different store identity ({{store.pull.identity-conflict}}), and writes no pointer unless it converges ({{store.pull.unconverged}}). Leases keep writers apart, with a fence storage checks on commit ({{store.lease.stale-fence}}). A replica is read-only ({{store.replicate.write-refused}}) and holds a snapshot whole or not at all ({{store.replicate.partial-parquet}}).
+A bucket mirrors the tree. A push uploads changed files, commits the bucket manifest by compare-and-set, and re-merges a lost race within a bound ({{store.merge.retries}}). A pull checks every digest ({{store.pull.digest-mismatch}}), refuses a different store identity ({{store.pull.identity-conflict}}), and writes no pointer unless it converges ({{store.pull.unconverged}}). Leases keep writers apart, with a fence storage checks on commit ({{store.lease.stale-fence}}). A replica is read-only ({{store.replicate.write-refused}}) and holds a snapshot whole or not at all ({{store.replicate.partial-parquet}}) ({{store.replicate.descriptor}}). Deletions are signed ({{store.merge.tombstone-signed}}).
 
-A pull carries the signed control head ({{store.pull.control-head}}) without changing the applied pointer. The reconciler verifies before arming.
+A pull carries the signed control head ({{store.pull.control-head}}) without changing the applied pointer.
 
 ## Worked example
 

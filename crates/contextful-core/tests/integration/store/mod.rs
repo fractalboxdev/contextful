@@ -19,6 +19,7 @@ pub fn at(s: &str) -> Instant {
 
 pub fn run(id: &str, committed: &str, parts: usize) -> RunManifest {
     RunManifest {
+        format_version: Default::default(),
         run_id: id.into(),
         table: "filings".into(),
         node_id: "ingest-a".into(),
@@ -37,6 +38,7 @@ pub fn run(id: &str, committed: &str, parts: usize) -> RunManifest {
 
 pub fn snapshot(created: &str, parent: Option<&SnapshotId>, includes: &[&str]) -> SnapshotManifest {
     SnapshotManifest {
+        format_version: Default::default(),
         snapshot_id: SnapshotId::next(at(created), parent),
         parent: parent.cloned(),
         ancestors: None,

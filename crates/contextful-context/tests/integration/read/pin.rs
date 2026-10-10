@@ -143,6 +143,8 @@ fn an_unknown_or_collected_build_is_refused_naming_the_oldest_pinnable() {
 
 /// A pin and the store's transaction-time bound are upper bounds on one clock; a table named by both resolves to the earlier.
 // spec: read.resolve-pin.earlier-bound-wins@fdefcb2a
+/// A read carrying `as_of` and a build pin resolves each table named by both by {{read.resolve-pin.earlier-bound-wins}}.
+// spec: store.bound-time.pin-bound@a0d5b545
 #[test]
 fn a_pin_and_as_of_resolve_to_the_earlier_bound() {
     let p = Pinned::new();

@@ -1,10 +1,10 @@
 //! `derived.sqlite` behind the `DerivedCatalog` port: one row per table, per reachable
-//! snapshot and per committed run, replaced whole by each rebuild
-//! (`store.lay-out.derived-catalog`).
+//! snapshot, per committed run and per sidecar with its builder, replaced whole by each
+//! rebuild (`store.lay-out.derived-catalog`, `store.index.identity`).
 
 use crate::{open, storage};
 use contextful_core::run::Failure;
-use contextful_core::store::catalog::{DerivedCatalog, DerivedRows, DerivedRun, DerivedSnapshot, DerivedTable};
+use contextful_core::store::catalog::{DerivedCatalog, DerivedRows, DerivedRun, DerivedSidecar, DerivedSnapshot, DerivedTable};
 use contextful_core::time::Instant;
 use rusqlite::{params, Connection, TransactionBehavior};
 use std::path::{Path, PathBuf};
@@ -34,6 +34,15 @@ CREATE TABLE IF NOT EXISTS run (
     parts        INTEGER NOT NULL,
     pipeline_id  TEXT,
     PRIMARY KEY (tbl, run_id, node_id)
+);
+CREATE TABLE IF NOT EXISTS sidecar (
+    tbl             TEXT NOT NULL,
+    snapshot_id     TEXT NOT NULL,
+    path            TEXT NOT NULL,
+    kind            TEXT NOT NULL,
+    builder         TEXT NOT NULL,
+    builder_version INTEGER NOT NULL,
+    PRIMARY KEY (tbl, snapshot_id, path)
 );
 ";
 
@@ -74,7 +83,7 @@ impl DerivedCatalog for DerivedSqlite {
     fn replace(&self, rows: &DerivedRows) -> Result<(), Failure> {
         let mut conn = self.conn.lock().unwrap_or_else(|p| p.into_inner());
         let tx = conn.transaction_with_behavior(TransactionBehavior::Immediate).map_err(|e| self.fail(e))?;
-        tx.execute_batch("DELETE FROM tbl; DELETE FROM snapshot; DELETE FROM run;").map_err(|e| self.fail(e))?;
+        tx.execute_batch("DELETE FROM tbl; DELETE FROM snapshot; DELETE FROM run; DELETE FROM sidecar;").map_err(|e| self.fail(e))?;
         for t in &rows.tables {
             tx.execute(
                 "INSERT INTO tbl (name, schema, snapshot_id, fence) VALUES (?1, ?2, ?3, ?4)",
@@ -93,6 +102,13 @@ impl DerivedCatalog for DerivedSqlite {
             tx.execute(
                 "INSERT INTO run (tbl, run_id, node_id, committed_at, parts, pipeline_id) VALUES (?1, ?2, ?3, ?4, ?5, ?6)",
                 params![r.table, r.run_id, r.node_id, r.committed_at.to_rfc3339_nanos(), r.parts as i64, r.pipeline_id],
+            )
+            .map_err(|e| self.fail(e))?;
+        }
+        for c in &rows.sidecars {
+            tx.execute(
+                "INSERT INTO sidecar (tbl, snapshot_id, path, kind, builder, builder_version) VALUES (?1, ?2, ?3, ?4, ?5, ?6)",
+                params![c.table, c.snapshot_id, c.path, c.kind, c.builder, i64::from(c.builder_version)],
             )
             .map_err(|e| self.fail(e))?;
         }
@@ -152,7 +168,25 @@ impl DerivedCatalog for DerivedSqlite {
                 .map_err(|e| self.fail(e))?;
             rows.collect::<Result<Vec<_>, _>>().map_err(|e| self.fail(e))?
         };
+        let sidecars = {
+            let mut stmt = tx
+                .prepare("SELECT tbl, snapshot_id, path, kind, builder, builder_version FROM sidecar ORDER BY tbl, snapshot_id, path")
+                .map_err(|e| self.fail(e))?;
+            let rows = stmt
+                .query_map([], |r| {
+                    Ok(DerivedSidecar {
+                        table: r.get(0)?,
+                        snapshot_id: r.get(1)?,
+                        path: r.get(2)?,
+                        kind: r.get(3)?,
+                        builder: r.get(4)?,
+                        builder_version: u32::try_from(r.get::<_, i64>(5)?).unwrap_or(u32::MAX),
+                    })
+                })
+                .map_err(|e| self.fail(e))?;
+            rows.collect::<Result<Vec<_>, _>>().map_err(|e| self.fail(e))?
+        };
         tx.commit().map_err(|e| self.fail(e))?;
-        Ok(DerivedRows { tables, snapshots, runs })
+        Ok(DerivedRows { tables, snapshots, runs, sidecars })
     }
 }

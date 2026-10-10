@@ -682,6 +682,7 @@ mod materialize {
                 _ => None,
             };
             let manifest = SnapshotManifest {
+                format_version: Default::default(),
                 snapshot_id: snapshot_id.clone(),
                 parent: parent.clone(),
                 ancestors: SnapshotManifest::ancestors_after(chain.first()),
@@ -737,6 +738,7 @@ mod materialize {
             etag,
             runs: 0,
             retention: None,
+            warnings: Vec::new(),
             _in_flight: Some(Arc::new(in_flight)),
         };
         let restore = |store: &Store| -> Result<()> {

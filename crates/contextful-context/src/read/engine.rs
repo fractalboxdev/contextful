@@ -283,6 +283,8 @@ impl SqlEngine {
                 for file in l.files() {
                     rows.extend(crate::ledger::read_for_store(store, std::path::Path::new(file))?);
                 }
+                let mut seen = std::collections::BTreeSet::new();
+                rows.retain(|(run, r): &(String, contextful_core::store::ledger::RequestRecord)| seen.insert((run.clone(), r.request_id.clone())));
                 crate::ledger::register_memory(&self.conn, &decoded, &rows)?;
                 let source = contextful_core::store::ledger::ledger_sql(l.files());
                 let sql = l.sql().replace(&source, &format!("SELECT * FROM {}", ident(&decoded)));

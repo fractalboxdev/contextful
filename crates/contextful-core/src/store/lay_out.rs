@@ -171,6 +171,74 @@ impl From<SnapshotId> for String {
     }
 }
 
+/// A run or snapshot manifest's `format_version`, `<major>.<minor>`
+/// (`store.lay-out.format-version`). A minor adds defaulted fields an older build ignores;
+/// a major changes meaning, and a build reading a newer major refuses the table
+/// (`store.lay-out.format-newer`).
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize)]
+#[serde(try_from = "String", into = "String")]
+pub struct FormatVersion {
+    pub major: u32,
+    pub minor: u32,
+}
+
+impl FormatVersion {
+    /// The layout this build writes and reads.
+    pub const CURRENT: FormatVersion = FormatVersion { major: 1, minor: 0 };
+
+    /// The version a manifest's bytes declare, read before the rest of the manifest so a
+    /// newer major refuses whatever else it reshaped. A manifest without the field reads as
+    /// `1.0`; `None` when the bytes hold no JSON object or the version is malformed, which
+    /// the full parse then reports.
+    pub fn declared(bytes: &[u8]) -> Option<FormatVersion> {
+        #[derive(Deserialize)]
+        struct Declared {
+            #[serde(default)]
+            format_version: FormatVersion,
+        }
+        serde_json::from_slice::<Declared>(bytes).ok().map(|d| d.format_version)
+    }
+
+    /// Refuse a version whose major this build does not read, naming `file` and both versions.
+    pub fn admit(self, file: &str) -> Result<(), StoreError> {
+        if self.major > Self::CURRENT.major {
+            return Err(StoreError::StoreManifestFormatNewer(format!(
+                "`{file}` declares format_version {self}, and this build reads {} at most within major {}",
+                Self::CURRENT,
+                Self::CURRENT.major
+            )));
+        }
+        Ok(())
+    }
+}
+
+impl Default for FormatVersion {
+    fn default() -> Self {
+        Self::CURRENT
+    }
+}
+
+impl std::fmt::Display for FormatVersion {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "{}.{}", self.major, self.minor)
+    }
+}
+
+impl TryFrom<String> for FormatVersion {
+    type Error = String;
+    fn try_from(s: String) -> Result<Self, String> {
+        let (major, minor) = s.split_once('.').ok_or_else(|| format!("format_version `{s}` is not `<major>.<minor>`"))?;
+        let parse = |v: &str| v.parse::<u32>().map_err(|e| format!("format_version `{s}`: {e}"));
+        Ok(FormatVersion { major: parse(major)?, minor: parse(minor)? })
+    }
+}
+
+impl From<FormatVersion> for String {
+    fn from(v: FormatVersion) -> String {
+        v.to_string()
+    }
+}
+
 /// One data file a manifest names.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct PartEntry {
@@ -184,6 +252,9 @@ pub struct PartEntry {
 /// first carries a default (`store.lay-out.manifest-default`).
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct RunManifest {
+    /// The layout this manifest follows (`store.lay-out.format-version`).
+    #[serde(default)]
+    pub format_version: FormatVersion,
     pub run_id: String,
     pub table: String,
     pub node_id: String,
@@ -234,6 +305,9 @@ impl RunManifest {
 /// A snapshot's manifest (`store.lay-out.snapshot-manifest`).
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct SnapshotManifest {
+    /// The layout this manifest follows (`store.lay-out.format-version`).
+    #[serde(default)]
+    pub format_version: FormatVersion,
     pub snapshot_id: SnapshotId,
     #[serde(default)]
     pub parent: Option<SnapshotId>,

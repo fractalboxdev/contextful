@@ -220,6 +220,80 @@ fn an_unparseable_manifest_refuses_the_table_until_it_parses() {
     }
 }
 
+fn set_format(path: &std::path::Path, version: Option<&str>) {
+    let mut doc: serde_json::Value = serde_json::from_slice(&fs::read(path).unwrap()).unwrap();
+    match version {
+        Some(v) => doc["format_version"] = json!(v),
+        None => {
+            doc.as_object_mut().unwrap().remove("format_version");
+        }
+    }
+    fs::write(path, serde_json::to_vec(&doc).unwrap()).unwrap();
+}
+
+fn format_of(path: &std::path::Path) -> serde_json::Value {
+    serde_json::from_slice::<serde_json::Value>(&fs::read(path).unwrap()).unwrap()["format_version"].clone()
+}
+
+/// A run or snapshot manifest carries `format_version` as `<major>.<minor>`, `1.0` for this layout; one without it reads as `1.0`, and a newer minor parses as this build's.
+// spec: store.lay-out.format-version@e5022749
+#[test]
+fn a_manifest_carries_its_format_version_and_reads_a_newer_minor() {
+    let f = Fixture::new();
+    let d = decl("name = \"filings\"");
+    f.land(&d, "run-1", json!([{"id": "a"}]), "2030-01-01T00:00:00Z").unwrap();
+    let run_manifest = f.table_dir("filings").join("data/runs/run-1/ingest-a/_manifest.json");
+    assert_eq!(format_of(&run_manifest), json!("1.0"));
+    fold(&f.store, &d, at("2030-01-01T01:00:00Z")).unwrap();
+    let (chain, _) = f.store.chain("filings").unwrap();
+    let snap_manifest = f.store.snapshot_dir("filings", &chain[0].snapshot_id).unwrap().join("_manifest.json");
+    assert_eq!(format_of(&snap_manifest), json!("1.0"));
+
+    // An absent version reads as 1.0; a newer minor, with a field this build does not know, reads too.
+    set_format(&run_manifest, None);
+    let m: RunManifest = serde_json::from_slice(&fs::read(&run_manifest).unwrap()).unwrap();
+    assert_eq!(m.format_version.to_string(), "1.0");
+    let mut doc: serde_json::Value = serde_json::from_slice(&fs::read(&snap_manifest).unwrap()).unwrap();
+    doc["format_version"] = json!("1.7");
+    doc["a_later_field"] = json!({"kept": true});
+    fs::write(&snap_manifest, serde_json::to_vec(&doc).unwrap()).unwrap();
+    assert_eq!(f.scan(&d, Bounds::default()).unwrap().files.len(), 1);
+}
+
+/// A run or snapshot manifest whose `format_version` major exceeds this build's raises `StoreManifestFormatNewer`, naming the file and both versions, and the table answers no read until a newer build reads it.
+// spec: store.lay-out.format-newer@db746a2b
+#[test]
+fn a_newer_major_refuses_the_table_naming_the_file_and_both_versions() {
+    let f = Fixture::new();
+    let d = decl("name = \"filings\"");
+    f.land(&d, "run-1", json!([{"id": "a"}]), "2030-01-01T00:00:00Z").unwrap();
+    let run_manifest = f.table_dir("filings").join("data/runs/run-1/ingest-a/_manifest.json");
+    let good = fs::read(&run_manifest).unwrap();
+    // A newer major may change any field's meaning: the version refuses before the rest parses.
+    let mut doc: serde_json::Value = serde_json::from_slice(&good).unwrap();
+    doc["format_version"] = json!("2.0");
+    doc["parts"] = json!({"reshaped": true});
+    fs::write(&run_manifest, serde_json::to_vec(&doc).unwrap()).unwrap();
+    for err in [f.scan(&d, Bounds::default()).unwrap_err(), fold(&f.store, &d, at("2030-01-01T01:00:00Z")).unwrap_err()] {
+        match store_err(err) {
+            StoreError::StoreManifestFormatNewer(m) => {
+                assert!(m.contains("run-1/ingest-a/_manifest.json") && m.contains("2.0") && m.contains("1.0"), "{m}")
+            }
+            other => panic!("expected StoreManifestFormatNewer, got {other:?}"),
+        }
+    }
+    fs::write(&run_manifest, good).unwrap();
+
+    fold(&f.store, &d, at("2030-01-01T01:00:00Z")).unwrap();
+    let (chain, _) = f.store.chain("filings").unwrap();
+    let snap_manifest = f.store.snapshot_dir("filings", &chain[0].snapshot_id).unwrap().join("_manifest.json");
+    set_format(&snap_manifest, Some("3.1"));
+    match store_err(f.scan(&d, Bounds::default()).unwrap_err()) {
+        StoreError::StoreManifestFormatNewer(m) => assert!(m.contains("_manifest.json") && m.contains("3.1"), "{m}"),
+        other => panic!("expected StoreManifestFormatNewer, got {other:?}"),
+    }
+}
+
 /// A table's schema is `schema.json` in Arrow JSON form; each arriving batch's schema merges into it and the merged result replaces it.
 // spec: store.lay-out.schema-file@14b75c3f
 #[test]

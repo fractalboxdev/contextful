@@ -8,9 +8,13 @@ use contextful_core::store::lease::{compaction_key, BucketLease, BucketPointer, 
 use contextful_core::store::lay_out::{Pointer, SnapshotId, SnapshotManifest, MANIFEST_FILE, POINTER_FILE, SNAPSHOT_ANCESTORS_MAX};
 use contextful_core::store::object::{CasScope, Condition, ObjectError, ObjectStore, Put};
 use contextful_core::store::sync::{
-    admit_format, confine, generation_key, generation_of, is_commit_log, is_pointer, merge, owner_of, run_state_node, BucketManifest, ControlHead, Coordination, Entry, SyncConfig,
-    GENERATION_PREFIX, MANIFEST_KEY, PROBE_PREFIX, PULL_CONVERGENCE,
+    admit_format, confine, generation_key, generation_of, is_commit_log, is_pointer, merge_verified, owner_of, run_state_node, BucketManifest, ControlHead, Coordination, Entry, SyncConfig,
+    Tombstone, GENERATION_PREFIX, MANIFEST_KEY, PROBE_PREFIX, PULL_CONVERGENCE,
 };
+use contextful_core::ports::SigningPort;
+use contextful_core::revoke::KeySetLedger;
+use contextful_policy::issue::sign_through;
+use contextful_policy::keyset::{KeySource, StaticPins};
 use contextful_core::store::StoreError;
 use contextful_core::surface::reside::{compare_sites, SiteRegions};
 use contextful_core::surface::SurfaceError;
@@ -88,6 +92,7 @@ fn syncable(rel: &str) -> bool {
         || rel.starts_with("control/")
         || catalog(DERIVED_CATALOG_FILE)
         || catalog(MACHINE_CATALOG_FILE)
+        || rel == contextful_context::replica::DESCRIPTOR_FILE
         || name.starts_with('.')
         || name.ends_with(".lock")
         || rel.split('/').any(|s| s.ends_with(".staging"))
@@ -394,6 +399,9 @@ pub struct PullReport {
     pub removed: Vec<String>,
     pub pointers: Vec<String>,
     pub attempts: u32,
+    /// Tombstones the pull applied nothing for, each a `SyncTombstoneUnverified` refusal
+    /// (`store.merge.tombstone-unverified`).
+    pub unverified: Vec<String>,
 }
 
 /// Which tables a pull reaches.
@@ -428,6 +436,23 @@ pub struct Syncer {
     pub residency: Option<SiteResidency>,
     /// Local applied snapshots, absent for a URL-backed control source.
     pub control_dir: Option<PathBuf>,
+    /// The issuer key this node signs its tombstones with; absent, it writes them unsigned
+    /// (`store.merge.tombstone-signed`).
+    pub signer: Option<Arc<dyn SigningPort + Send + Sync>>,
+    /// The project's key-set ledger, read at each check of another node's tombstone
+    /// (`store.merge.tombstone-unverified`).
+    pub key_set: Option<PathBuf>,
+}
+
+fn hex_encode(bytes: &[u8]) -> String {
+    bytes.iter().map(|b| format!("{b:02x}")).collect()
+}
+
+fn hex_decode(text: &str) -> Option<Vec<u8>> {
+    if !text.len().is_multiple_of(2) {
+        return None;
+    }
+    (0..text.len()).step_by(2).map(|i| text.get(i..i + 2).and_then(|h| u8::from_str_radix(h, 16).ok())).collect()
 }
 
 /// A site's id and the allow-set it declares, `None` when it declares no `[residency]`.
@@ -453,7 +478,50 @@ impl SiteResidency {
     }
 }
 
+/// Whether `t` verifies for `key`: signed, its signature good over the key, owner and
+/// `deleted_at`, by a key `ledger` records as verifying at that instant
+/// (`store.merge.tombstone-unverified`).
+fn verify_tombstone(ledger: Option<&KeySetLedger>, key: &str, t: &Tombstone) -> std::result::Result<(), String> {
+    let (Some(signer), Some(signature)) = (&t.signer, &t.signature) else { return Err("it is unsigned".into()) };
+    let signer: SignerKey = signer.parse().map_err(|e| format!("its signer does not parse: {e}"))?;
+    let signature = hex_decode(signature).ok_or("its signature is not hex")?;
+    if !signer.verifies(&t.message(key), &signature) {
+        return Err("its signature does not verify".into());
+    }
+    let ledger = ledger.ok_or("no key-set ledger records its signer")?;
+    let recorded = ledger.keys.iter().find(|k| {
+        StaticPins::parse(&k.key).ok().and_then(|pins| pins.keys().ok()).is_some_and(|set| {
+            set.keys().any(|i| i.algorithm() == signer.algorithm && i.public_key.to_bytes() == signer.public_key)
+        })
+    });
+    match recorded {
+        None => Err(format!("the key-set ledger does not record its signer `{signer}`")),
+        Some(k) if !ledger.verifies(&k.key, t.deleted_at) => Err(format!("the key-set ledger retires its signer `{signer}` by its `deleted_at`")),
+        Some(_) => Ok(()),
+    }
+}
+
 impl Syncer {
+    /// The project's key-set ledger, absent when none is configured or the file is absent
+    /// or malformed: every other node's tombstone then fails verification.
+    fn key_set_ledger(&self) -> Option<KeySetLedger> {
+        let path = self.key_set.as_ref()?;
+        let text = std::fs::read_to_string(path).ok()?;
+        KeySetLedger::parse(&text, &path.display().to_string()).ok()
+    }
+
+    /// Sign each tombstone this node owns and has not signed (`store.merge.tombstone-signed`).
+    fn sign_tombstones(&self, manifest: &mut BucketManifest) -> Result<()> {
+        let Some(signer) = &self.signer else { return Ok(()) };
+        let key = SignerKey::of(signer.as_ref()).to_string();
+        for (k, t) in manifest.tombstones.iter_mut().filter(|(_, t)| t.owner == self.node && t.signature.is_none()) {
+            let signature = sign_through(signer.as_ref(), &t.message(k)).map_err(|e| SyncError::Context(ContextError::Invalid(format!("signing the tombstone of `{k}`: {e}"))))?;
+            t.signer = Some(key.clone());
+            t.signature = Some(hex_encode(&signature));
+        }
+        Ok(())
+    }
+
     fn admit_control_head(&self, plan: &ManifestPlan, remote: &BucketManifest) -> Result<()> {
         let Some(bucket) = remote.control_heads.get(&self.project) else { return Ok(()) };
         let Some(local) = &plan.control_head else { return Ok(()) };
@@ -760,8 +828,11 @@ impl Syncer {
             if let Some(r) = &self.residency {
                 r.check(&remote)?;
             }
-            let merged = merge(&remote, &entries, &self.node, now)?;
+            let ledger = self.key_set_ledger();
+            let verify = |key: &str, t: &Tombstone| verify_tombstone(ledger.as_ref(), key, t);
+            let merged = merge_verified(&remote, &entries, &self.node, now, &verify)?;
             let mut committed = merged.manifest;
+            self.sign_tombstones(&mut committed)?;
             if let Some(head) = &plan.control_head {
                 committed.control_heads.insert(self.project.clone(), head.clone());
             }
@@ -1062,7 +1133,15 @@ impl Syncer {
         }
         // A tombstone deletes the local copy of the key it names; a restore lists its set whole.
         if generation.is_none() {
-            for key in manifest.tombstones.keys().filter(|k| in_project(k) && reaches(k) && !manifest.entries.contains_key(*k)) {
+            let ledger = self.key_set_ledger();
+            for (key, t) in manifest.tombstones.iter().filter(|(k, _)| in_project(k) && reaches(k) && !manifest.entries.contains_key(*k)) {
+                // A deletion whose signer the ledger does not verify removes nothing here.
+                if let Err(why) = verify_tombstone(ledger.as_ref(), key, t) {
+                    report.unverified.push(
+                        StoreError::SyncTombstoneUnverified(format!("a tombstone by `{}` names `{key}`, and {why}; the local copy stays", t.owner)).to_string(),
+                    );
+                    continue;
+                }
                 if let Some(path) = self.local_path(key) {
                     match std::fs::remove_file(&path) {
                         Ok(()) => report.removed.push(key.clone()),
@@ -1128,6 +1207,8 @@ impl Syncer {
             write(&path, &self.store.seal_metadata_bytes(&path, &bytes)?)?;
             report.pointers.push(rel_key);
         }
+        // A replica advertises what it now holds (`store.replicate.descriptor`).
+        contextful_context::replica::advertise(&self.store)?;
         Ok(report)
     }
 

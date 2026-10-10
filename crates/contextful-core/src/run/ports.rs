@@ -137,6 +137,8 @@ pub struct Commit {
     pub site_id: String,
     pub parts: Vec<Part>,
     pub cursor: Option<Value>,
+    /// The declared kind of `cursor`.
+    pub cursor_kind: crate::run::advance::CursorKind,
     pub committed_at: Instant,
     /// The fence of the single-writer lease the commit runs under.
     pub fence: Option<u64>,

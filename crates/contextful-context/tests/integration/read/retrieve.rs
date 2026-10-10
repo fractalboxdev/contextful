@@ -372,6 +372,55 @@ fn sidecar_dirs(r: &Reads, table: &str) -> (std::path::PathBuf, std::path::PathB
     (dir.clone(), dir.join(path))
 }
 
+/// A query needing a sidecar or a partition the replica lacks raises `ReplicaMissingIndex`, naming the refresh that supplies it.
+// spec: store.replicate.missing-index@63b045c5
+#[test]
+fn a_replica_lacking_a_needed_sidecar_or_part_refuses_naming_the_refresh() {
+    use contextful_core::store::StoreError;
+    let mut r = sidecar_reads("");
+    let project = r.store.root().ancestors().nth(3).unwrap().to_path_buf();
+    std::fs::write(r.store.root().join("config.toml"), "[replica]\nof = \"team/research\"\n").unwrap();
+    r.store = Store::open(&project, "research").unwrap();
+    r.face = Face::open(r.store.clone(), &format!("{MANIFEST}{SIDECAR}"), pepper()).unwrap();
+    // Advertising what it holds, the replica reads through its sidecar.
+    contextful_context::replica::advertise(&r.store).unwrap();
+    let s = r.session(&["lab/*"], None, None);
+    assert_eq!(ids(&r.face.retrieve(&s, &battery("lab/indexed"), Bounds::default()).unwrap(), "passage_id")[0], "p000");
+    let missing = |result: Result<Response, contextful_context::read::ReadFault>| match result {
+        Err(contextful_context::read::ReadFault::Store(e)) => match e.store() {
+            Some(StoreError::ReplicaMissingIndex(m)) => m.clone(),
+            other => panic!("{other:?}"),
+        },
+        other => panic!("{other:?}"),
+    };
+
+    // A replica advertising nothing answers no read needing a sidecar.
+    let descriptor = r.store.root().join(contextful_context::replica::DESCRIPTOR_FILE);
+    let advertised = std::fs::read(&descriptor).unwrap();
+    std::fs::remove_file(&descriptor).unwrap();
+    let m = missing(r.face.retrieve(&s, &battery("lab/indexed"), Bounds::default()));
+    assert!(m.contains("no copy") && m.contains("contextful sync pull --table lab/indexed"), "{m}");
+    std::fs::write(&descriptor, advertised).unwrap();
+
+    // A sidecar the descriptor omits refuses the read that needs it, never the exact scan.
+    let (_, sidecar) = sidecar_dirs(&r, "lab/indexed");
+    std::fs::remove_dir_all(&sidecar).unwrap();
+    contextful_context::replica::advertise(&r.store).unwrap();
+    let m = missing(r.face.retrieve(&s, &battery("lab/indexed"), Bounds::default()));
+    assert!(m.contains("sidecar `indexes/vec-embedding-e5/zone=all`") && m.contains("contextful sync pull --table lab/indexed"), "{m}");
+    // A read needing no sidecar still answers from the parts.
+    assert!(!ids(&r.face.retrieve(&s, &ask("lab/indexed", "battery"), Bounds::default()).unwrap(), "passage_id").is_empty());
+
+    // A part the descriptor omits refuses every read of its snapshot.
+    let plain = r.store.chain("lab/plain").unwrap().0.remove(0);
+    let dir = r.store.snapshot_dir("lab/plain", &plain.snapshot_id).unwrap();
+    std::fs::remove_file(dir.join("part-00000.parquet")).unwrap();
+    contextful_context::replica::advertise(&r.store).unwrap();
+    let scanned = contextful_context::scan::scan(&r.store, &TableDecl::named("lab/plain"), Bounds::default()).unwrap_err();
+    let Some(StoreError::ReplicaMissingIndex(m)) = scanned.store() else { panic!("{scanned}") };
+    assert!(m.contains("part `part-00000.parquet`") && m.contains("--table lab/plain"), "{m}");
+}
+
 /// Each sidecar arm, vector over a query embedding and full-text over the content tokens, adds its top results to the recency window, each re-joined by {{authority.compose.vector-arm}}. Per-row scores equal the exact path's.
 // spec: read.retrieve.sidecar-generates-candidates@f6d3b339
 #[test]
@@ -734,6 +783,53 @@ fn a_ranked_read_keeps_the_newest_row_per_content_hash() {
     assert_eq!(revised.blocks["contextful.retrieval"]["deduped"], json!(4));
     let grid = r.face.retrieve(&s, &RetrieveRequest { limit: Some(50), ..ask("lab/revised", "grid maintenance") }, Bounds::default()).unwrap();
     assert_eq!(ids(&grid, "passage_id"), ["r5"]);
+}
+
+/// A table holds items, landed by connectors, or artifacts, synthesized and tagged by an open kind string the
+/// engine does not enumerate. Both append, dedupe on content and carry a timestamp.
+// spec: store.declare.two-genres@982edc5a
+#[test]
+fn items_and_artifacts_of_any_kind_append_dedupe_on_content_and_carry_a_timestamp() {
+    let genres = "\n[[pipeline.tables]]\nname = \"genre/items\"\ncontent_hash_column = \"digest\"\n\n[[pipeline.tables]]\nname = \"genre/artifacts\"\ncontent_hash_column = \"digest\"\n";
+    let manifest = format!("{MANIFEST}{genres}");
+    let mut r = Reads::with_manifest(&manifest);
+    let decls = TableDecl::parse_pipeline(&manifest).unwrap();
+    // A kind string no list in the engine names lands as written.
+    let kind = "field-note-unlisted";
+    for run in 1..=2 {
+        for (table, row) in [
+            ("genre/items", json!({ "doc_id": format!("i{run}"), "title": "Battery storage filing", "digest": "h-item" })),
+            ("genre/artifacts", json!({ "doc_id": format!("a{run}"), "kind": kind, "title": "Battery storage synthesis", "digest": "h-artifact" })),
+        ] {
+            let decl = decls.iter().find(|d| d.name == table).unwrap();
+            let ctx = RunContext {
+                node: NodeId::parse("ingest-a").unwrap(),
+                injection: Injection { run_id: format!("run-000{run}"), site_id: "site-a".into(), batch_seq: Some(0), authored_by: None, taint: None },
+                committed_at: at(&format!("2030-01-1{run}T00:00:00Z")),
+            };
+            let rows = vec![row.as_object().unwrap().clone()];
+            land(&r.store, decl, &Batch { rows, types: HashMap::new() }, &ctx).unwrap();
+        }
+    }
+    r.face = Face::open(r.store.clone(), &manifest, pepper()).unwrap();
+    let s = r.session(&["genre/*"], None, None);
+    // Both genres append: each run's copy is a row of its own.
+    for table in ["genre/items", "genre/artifacts"] {
+        assert_eq!(r.store.committed_runs(table).unwrap().len(), 2, "{table}");
+    }
+    // A ranked read keeps the newest copy per content digest in each genre.
+    let ranked = r.face.retrieve(&s, &RetrieveRequest { limit: Some(50), min_score: Some(0), ..ask("genre/", "battery storage") }, Bounds::default()).unwrap();
+    assert_eq!(sorted(ids(&ranked, "doc_id")), ["a2", "i2"]);
+    assert_eq!(ranked.blocks["contextful.retrieval"]["deduped"], json!(2));
+    let mut kinds: Vec<String> = column(&ranked, "_kind").iter().map(|k| k.as_str().unwrap_or("item").to_string()).collect();
+    kinds.sort();
+    assert_eq!(kinds, [kind, "item"]);
+    // Each row carries its transaction time.
+    let only = RetrieveRequest { kinds: Some(vec![kind.into()]), min_score: Some(0), ..ask("genre/", "battery storage") };
+    assert_eq!(ids(&r.face.retrieve(&s, &only, Bounds::default()).unwrap(), "doc_id"), ["a2"]);
+    for t in column(&ranked, "_ingested_at") {
+        assert!(t.as_str().is_some_and(|t| t.starts_with("2030-01-12")), "{t}");
+    }
 }
 
 /// The row key is absent from the outer projection.

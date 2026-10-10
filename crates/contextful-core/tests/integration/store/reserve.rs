@@ -72,6 +72,7 @@ fn modality_takes_five_values() {
 }
 
 /// `_prompt_hash` is `sha256:<hex>` over the prompt template, not the rendered prompt.
+// spec: store.reserve.prompt-hash@c5ce4660
 #[test]
 fn prompt_hash_is_a_prefixed_sha256() {
     let hex = "a".repeat(64);

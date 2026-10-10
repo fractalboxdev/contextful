@@ -78,6 +78,9 @@ fn a_reserved_producer_column_refuses_before_any_parquet() {
 
 #[cfg(feature = "read")]
 /// A producer sets any of `_modality`, `_lang`, `_provenance` and `_prompt_hash`, and each surfaces in the provenance envelope where present.
+/// `_lang` carries a BCP-47 tag; `_provenance` carries the evidence rows the row derives from, addressed by the
+/// identity the source table keys on.
+// spec: store.reserve.lang-and-provenance@011eedef
 #[test]
 fn a_producer_sets_the_optional_columns_and_modality_is_checked() {
     let f = Fixture::new();

@@ -100,12 +100,17 @@ pub fn arrow_schema(s: &Schema) -> Arc<ArrowSchema> {
 
 /// Write one batch as a ZSTD-compressed Parquet file.
 pub fn write(path: &Path, batch: &RecordBatch) -> Result<()> {
+    write_blooming(path, batch, &[])
+}
+
+/// Write one batch with a bloom filter on each of `bloom` (`store.index.kinds`).
+pub fn write_blooming(path: &Path, batch: &RecordBatch, bloom: &[String]) -> Result<()> {
     let pq = |e: parquet::errors::ParquetError| ContextError::Parquet { path: path.to_path_buf(), message: e.to_string() };
     if let Some(dir) = path.parent() {
         std::fs::create_dir_all(dir).at(dir)?;
     }
     let file = File::create(path).at(path)?;
-    let props = WriterProperties::builder().set_compression(Compression::ZSTD(ZstdLevel::default())).build();
+    let props = blooming(WriterProperties::builder().set_compression(Compression::ZSTD(ZstdLevel::default())), bloom).build();
     let mut w = ArrowWriter::try_new(file, batch.schema(), Some(props)).map_err(pq)?;
     w.write(batch).map_err(pq)?;
     w.close().map_err(pq)?;
@@ -114,13 +119,17 @@ pub fn write(path: &Path, batch: &RecordBatch) -> Result<()> {
 
 /// Write one batch with Parquet modular encryption of every column and the footer.
 pub fn write_encrypted(path: &Path, batch: &RecordBatch, key: &[u8]) -> Result<()> {
+    write_encrypted_blooming(path, batch, key, &[])
+}
+
+/// [`write_encrypted`] with a bloom filter on each of `bloom`.
+pub fn write_encrypted_blooming(path: &Path, batch: &RecordBatch, key: &[u8], bloom: &[String]) -> Result<()> {
     let pq = |e: parquet::errors::ParquetError| ContextError::Parquet { path: path.to_path_buf(), message: e.to_string() };
     if let Some(dir) = path.parent() {
         std::fs::create_dir_all(dir).at(dir)?;
     }
     let encryption = FileEncryptionProperties::builder(key.to_vec()).build().map_err(pq)?;
-    let props = WriterProperties::builder()
-        .set_compression(Compression::ZSTD(ZstdLevel::default()))
+    let props = blooming(WriterProperties::builder().set_compression(Compression::ZSTD(ZstdLevel::default())), bloom)
         .with_file_encryption_properties(encryption)
         .build();
     let file = File::create(path).at(path)?;
@@ -132,10 +141,23 @@ pub fn write_encrypted(path: &Path, batch: &RecordBatch, key: &[u8]) -> Result<(
 
 /// A store part uses modular encryption exactly when its project binds a key.
 pub fn write_with_key(path: &Path, batch: &RecordBatch, key: Option<&[u8]>) -> Result<()> {
+    write_with_key_blooming(path, batch, key, &[])
+}
+
+/// [`write_with_key`] with a bloom filter on each of `bloom` (`store.index.kinds`).
+pub fn write_with_key_blooming(path: &Path, batch: &RecordBatch, key: Option<&[u8]>, bloom: &[String]) -> Result<()> {
     match key {
-        Some(key) => write_encrypted(path, batch, key),
-        None => write(path, batch),
+        Some(key) => write_encrypted_blooming(path, batch, key, bloom),
+        None => write_blooming(path, batch, bloom),
     }
+}
+
+/// Enable a bloom filter on each top-level column of `bloom`.
+fn blooming(mut props: parquet::file::properties::WriterPropertiesBuilder, bloom: &[String]) -> parquet::file::properties::WriterPropertiesBuilder {
+    for column in bloom {
+        props = props.set_column_bloom_filter_enabled(parquet::schema::types::ColumnPath::from(column.as_str()), true);
+    }
+    props
 }
 
 /// Read every batch of a Parquet file.

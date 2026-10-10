@@ -24,19 +24,58 @@ pub const DEFAULT_M: u32 = 16;
 /// Default candidate-list width while inserting into the graph.
 pub const DEFAULT_EF_CONSTRUCTION: u32 = 200;
 
-/// The builder a vector sidecar records, with [`VECTOR_BUILDER_VERSION`] its identity
-/// (`store.index.identity`).
+/// The builder a vector sidecar records, with [`VECTOR_BUILDER_VERSION`]; both sit in its
+/// entry and in `derived.sqlite`, never in its path (`store.index.identity`).
 pub const VECTOR_BUILDER: &str = "contextful-hnsw";
 
-/// The on-disk graph format version the builder writes and the reader accepts.
+/// The on-disk graph format version the builder writes and the reader accepts; the layout
+/// is no committed format (`store.index.graph-format`).
 pub const VECTOR_BUILDER_VERSION: u32 = 1;
 
-/// The builder a full-text sidecar records, with [`FULLTEXT_BUILDER_VERSION`] its identity
-/// (`store.index.identity`).
+/// In-place extensions after which a pass rebuilds a vector graph in full: 16, the
+/// `store-graph-extensions` bound of `store.index.graph-extensions`.
+pub const GRAPH_EXTENSIONS_MAX: u32 = 16;
+
+/// The builder a full-text sidecar records, with [`FULLTEXT_BUILDER_VERSION`]; both sit in
+/// its entry and in `derived.sqlite`, never in its path (`store.index.identity`).
 pub const FULLTEXT_BUILDER: &str = "contextful-postings";
 
 /// The on-disk postings format version the builder writes and the reader accepts.
 pub const FULLTEXT_BUILDER_VERSION: u32 = 1;
+
+/// Partitions past which a partition plan warns: 1000, the `store-partition-count` bound of
+/// `store.index.partition-warnings`. Every check and message reads it here.
+pub const PARTITION_COUNT_WARN: usize = 1000;
+
+/// Median partition size below which a partition plan warns: 16 MiB, the
+/// `store-partition-median` bound of `store.index.partition-warnings`.
+pub const PARTITION_MEDIAN_WARN_BYTES: u64 = 16 * 1024 * 1024;
+
+/// The warnings a partition plan over `by` raises, given each partition's size in bytes:
+/// more than [`PARTITION_COUNT_WARN`] partitions, or a median partition below
+/// [`PARTITION_MEDIAN_WARN_BYTES`]. Each names the partition columns
+/// (`store.index.partition-warnings`).
+pub fn partition_warnings(by: &[String], sizes: &[u64]) -> Vec<String> {
+    if by.is_empty() || sizes.is_empty() {
+        return Vec::new();
+    }
+    let columns = by.iter().map(|c| format!("`{c}`")).collect::<Vec<_>>().join(", ");
+    let mut warnings = Vec::new();
+    if sizes.len() > PARTITION_COUNT_WARN {
+        warnings.push(format!("partition_by {columns} projects {} partitions, more than {PARTITION_COUNT_WARN}", sizes.len()));
+    }
+    let mut sorted = sizes.to_vec();
+    sorted.sort_unstable();
+    let mid = sorted.len() / 2;
+    let median = if sorted.len().is_multiple_of(2) { sorted[mid - 1] / 2 + sorted[mid] / 2 } else { sorted[mid] };
+    if median < PARTITION_MEDIAN_WARN_BYTES {
+        warnings.push(format!(
+            "partition_by {columns} projects a median partition of {median} bytes, below {} MiB",
+            PARTITION_MEDIAN_WARN_BYTES / (1024 * 1024)
+        ));
+    }
+    warnings
+}
 
 /// A sidecar kind a declaration names.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
@@ -285,6 +324,10 @@ pub struct VectorEntry {
     pub ef_construction: u32,
     pub builder: String,
     pub builder_version: u32,
+    /// Passes since the last full build that extended the graph in place
+    /// (`store.index.graph-extensions`); a full build records 0.
+    #[serde(default, skip_serializing_if = "is_zero")]
+    pub extensions: u32,
     /// Rows the graph holds.
     pub row_count: u64,
     /// The key version sealing the sidecar's files; 0 for plaintext.
@@ -342,7 +385,34 @@ impl std::fmt::Display for UnrecognizedEntry {
     }
 }
 
+fn is_zero(n: &u32) -> bool {
+    *n == 0
+}
+
 impl IndexEntry {
+    /// The builder and builder version a recognised entry records.
+    pub fn builder(&self) -> Option<(&str, u32)> {
+        match self {
+            IndexEntry::Vector(e) => Some((&e.builder, e.builder_version)),
+            IndexEntry::Fulltext(e) => Some((&e.builder, e.builder_version)),
+            IndexEntry::Unrecognized(_) => None,
+        }
+    }
+
+    /// Whether a pass rebuilds this sidecar in full though no run landed: it records
+    /// another builder or builder version than this build's (`store.index.rebuild`), or a
+    /// vector graph has reached [`GRAPH_EXTENSIONS_MAX`] in-place extensions
+    /// (`store.index.graph-extensions`). An unrecognised entry is left as written.
+    pub fn needs_rebuild(&self) -> bool {
+        match self {
+            IndexEntry::Vector(e) => {
+                e.builder != VECTOR_BUILDER || e.builder_version != VECTOR_BUILDER_VERSION || e.extensions >= GRAPH_EXTENSIONS_MAX
+            }
+            IndexEntry::Fulltext(e) => e.builder != FULLTEXT_BUILDER || e.builder_version != FULLTEXT_BUILDER_VERSION,
+            IndexEntry::Unrecognized(_) => false,
+        }
+    }
+
     /// The kind of a recognised entry.
     pub fn kind(&self) -> Option<IndexKind> {
         match self {

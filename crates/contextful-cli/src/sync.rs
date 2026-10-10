@@ -7,7 +7,7 @@
 use crate::project::{locate, pipeline_files, Located};
 use anyhow::{Context, Result};
 use clap::Subcommand;
-use contextful_context::fold::fold;
+use contextful_context::fold::fold_under;
 use contextful_context::{node, Store};
 use contextful_core::store::declare::TableDecl;
 use contextful_core::store::fold::FoldOutcome;
@@ -142,7 +142,29 @@ fn open_with(l: &Located, config: SyncConfig) -> Result<(Syncer, Vec<TableDecl>)
     let decls = TableDecl::parse_declaration_set(&text, &pipeline_files(&l.declaration)?)?;
     let site_id = crate::project::site_id_for(&text, &l.declaration, None, None).unwrap_or_else(|_| node_id.to_string());
     let residency = Some(SiteResidency { site_id, regions: crate::reside::declared(&text)?.map(|r| r.entries()) });
-    let syncer = Syncer { store, bucket, config, prefix, project: l.project.name.clone(), node: node_id.to_string(), residency, control_dir };
+    // Tombstones sign with the project's issuer key and verify against its key-set ledger
+    // (`store.merge.tombstone-signed`, `store.merge.tombstone-unverified`).
+    let seed = l.project.dir.join(contextful_policy::issue::DEFAULT_SEED_PATH);
+    let signer: Option<std::sync::Arc<dyn contextful_core::ports::SigningPort + Send + Sync>> = match std::fs::read_to_string(&seed) {
+        Ok(text) => Some(std::sync::Arc::new(
+            contextful_policy::issue::SeedSigner::from_seed(&text).with_context(|| format!("issuer key `{}`", seed.display()))?,
+        )),
+        Err(e) if e.kind() == std::io::ErrorKind::NotFound => None,
+        Err(e) => return Err(e).with_context(|| format!("reading `{}`", seed.display())),
+    };
+    let key_set = Some(l.project.dir.join(contextful_core::revoke::KeySetLedger::PATH));
+    let syncer = Syncer {
+        store,
+        bucket,
+        config,
+        prefix,
+        project: l.project.name.clone(),
+        node: node_id.to_string(),
+        residency,
+        control_dir,
+        signer,
+        key_set,
+    };
     Ok((syncer, decls))
 }
 
@@ -342,6 +364,9 @@ pub fn run(cmd: SyncCmd) -> Result<()> {
             let (s, decls) = open(&args)?;
             let replicate_off = decls.iter().filter(|d| d.replicate == Some(false)).map(|d| d.name.clone()).collect();
             let r = s.pull(&PullScope { tables, replicate_off, generation })?;
+            for refusal in &r.unverified {
+                eprintln!("warning: {refusal}");
+            }
             println!("pulled {} objects and {} pointers in {} attempt(s)", r.downloaded.len(), r.pointers.len(), r.attempts);
             Ok(())
         }
@@ -383,7 +408,7 @@ fn compact(s: &Syncer, decls: &[TableDecl], table: &str, lease: &contextful_sync
     let decl = decls.iter().find(|d| d.name == table).cloned().unwrap_or_else(|| TableDecl::named(table));
     let pointer_path = s.store.table_dir(table)?.join(POINTER_FILE);
     let before = std::fs::read(&pointer_path).ok();
-    let outcome = fold(&s.store, &decl, at)?;
+    let outcome = fold_under(&s.store, &decl, at, Some(lease.lease.fence))?;
     let FoldOutcome::Folded { snapshot_id, .. } = &outcome else { return Ok(outcome) };
     let published = push(s, at).and_then(|_| s.publish(table, snapshot_id, lease).map_err(anyhow::Error::from));
     if let Err(e) = published {

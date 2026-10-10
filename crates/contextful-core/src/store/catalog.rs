@@ -47,13 +47,29 @@ pub struct DerivedRun {
     pub pipeline_id: Option<String>,
 }
 
+/// One sidecar a reachable snapshot holds: its one path, and the builder and builder
+/// version that wrote it (`store.index.identity`).
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct DerivedSidecar {
+    pub table: String,
+    pub snapshot_id: String,
+    /// The sidecar directory, relative to the snapshot directory.
+    pub path: String,
+    pub kind: String,
+    pub builder: String,
+    pub builder_version: u32,
+}
+
 /// Every row `derived.sqlite` holds, each list in the catalog's order: tables by name,
-/// snapshots by table then id, runs by table, run id and node id.
+/// snapshots by table then id, runs by table, run id and node id, sidecars by table,
+/// snapshot id and path.
 #[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
 pub struct DerivedRows {
     pub tables: Vec<DerivedTable>,
     pub snapshots: Vec<DerivedSnapshot>,
     pub runs: Vec<DerivedRun>,
+    #[serde(default)]
+    pub sidecars: Vec<DerivedSidecar>,
 }
 
 impl DerivedRows {
@@ -62,6 +78,7 @@ impl DerivedRows {
         self.tables.sort_by(|a, b| a.table.cmp(&b.table));
         self.snapshots.sort_by(|a, b| (&a.table, &a.snapshot_id).cmp(&(&b.table, &b.snapshot_id)));
         self.runs.sort_by(|a, b| (&a.table, &a.run_id, &a.node_id).cmp(&(&b.table, &b.run_id, &b.node_id)));
+        self.sidecars.sort_by(|a, b| (&a.table, &a.snapshot_id, &a.path).cmp(&(&b.table, &b.snapshot_id, &b.path)));
         self
     }
 }

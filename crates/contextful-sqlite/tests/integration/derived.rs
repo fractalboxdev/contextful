@@ -3,7 +3,9 @@
 
 use crate::{at, SetClock, T0};
 use contextful_core::coordinate::{Cas, Catalog, CursorRow, LeaseKey};
-use contextful_core::store::catalog::{DerivedCatalog, DerivedRows, DerivedRun, DerivedSnapshot, DerivedTable, DERIVED_CATALOG_FILE, MACHINE_CATALOG_FILE};
+use contextful_core::store::catalog::{
+    DerivedCatalog, DerivedRows, DerivedRun, DerivedSidecar, DerivedSnapshot, DerivedTable, DERIVED_CATALOG_FILE, MACHINE_CATALOG_FILE,
+};
 use contextful_sqlite::{DerivedSqlite, MachineCatalog};
 use std::sync::Arc;
 
@@ -37,6 +39,21 @@ fn rows(tables: &[&str]) -> DerivedRows {
                 })
             })
             .collect(),
+        sidecars: tables
+            .iter()
+            .flat_map(|t| {
+                [("indexes/vec-embedding-e5/zone=all", "vector", "contextful-hnsw"), ("indexes/fts-body-cjk", "fulltext", "contextful-postings")].map(
+                    |(path, kind, builder)| DerivedSidecar {
+                        table: t.to_string(),
+                        snapshot_id: format!("snapshot-{t}"),
+                        path: path.into(),
+                        kind: kind.into(),
+                        builder: builder.into(),
+                        builder_version: 1,
+                    },
+                )
+            })
+            .collect(),
     }
 }
 
@@ -50,6 +67,9 @@ fn a_replace_swaps_the_whole_row_set_and_reads_back_in_order() {
     c.replace(&first).unwrap();
     assert_eq!(c.rows().unwrap(), first.clone().sorted());
     assert_eq!(c.rows().unwrap().runs[0].node_id, "ingest-a", "runs read back by table, run id and node id");
+    // Each sidecar's builder and version read back under its one path (`store.index.identity`).
+    let sidecars: Vec<(String, String, u32)> = c.rows().unwrap().sidecars.into_iter().map(|s| (s.table, s.builder, s.builder_version)).collect();
+    assert_eq!(sidecars[0], ("calls".into(), "contextful-postings".into(), 1));
 
     // A second replace leaves no row of the first behind.
     let second = rows(&["filings"]);

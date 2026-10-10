@@ -163,6 +163,9 @@ pub fn build(
         ef_construction: index.ef_construction(),
         builder: VECTOR_BUILDER.to_string(),
         builder_version: VECTOR_BUILDER_VERSION,
+        // Every build lays the graph out whole from the staged rows
+        // (`store.index.graph-extensions`).
+        extensions: 0,
         row_count: kept_ids.len() as u64,
         key_version: sealing.key_version(),
     };

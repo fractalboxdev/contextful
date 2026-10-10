@@ -1,6 +1,6 @@
 //! What a push never overwrites, what a pull never regresses, and the tables a refresh reaches.
 
-use crate::support::{at, bucket, node, Script, Scripted};
+use crate::support::{at, bucket, node, trust, Script, Scripted};
 use contextful_context::fold::fold;
 use contextful_core::store::declare::TableDecl;
 use contextful_core::store::fold::FoldOutcome;
@@ -93,6 +93,7 @@ fn a_pull_deletes_the_copy_a_tombstone_names() {
     let dir = tempfile::tempdir().unwrap();
     let b = bucket(dir.path());
     let (a, c) = (node("ingest-a", b.clone(), ""), node("ingest-b", b.clone(), ""));
+    trust(&[&a, &c], "2030-01-01T00:00:00Z");
     c.land("run-1", json!([{"id": 2}]), "2030-01-01T00:00:00Z");
     c.syncer.push(at(NOW)).unwrap();
     a.syncer.pull(&PullScope::default()).unwrap();
@@ -109,6 +110,111 @@ fn a_pull_deletes_the_copy_a_tombstone_names() {
     // A's next push does not resurrect it.
     a.syncer.push(at("2030-01-01T03:00:00Z")).unwrap();
     assert!(!manifest(b.as_ref()).entries.contains_key("research/tables/filings/data/runs/run-1/ingest-b/part-00000.parquet"));
+}
+
+const RUN_B: &str = "research/tables/filings/data/runs/run-1/ingest-b/part-00000.parquet";
+
+/// B lands and pushes a run, A pulls it, then B collects it and pushes its tombstone.
+fn tombstoned(b: &Arc<dyn ObjectStore>) -> (crate::support::Node, crate::support::Node) {
+    let (a, c) = (node("ingest-a", b.clone(), ""), node("ingest-b", b.clone(), ""));
+    c.land("run-1", json!([{"id": 2}]), "2030-01-01T00:00:00Z");
+    c.syncer.push(at(NOW)).unwrap();
+    a.syncer.pull(&PullScope::default()).unwrap();
+    std::fs::remove_dir_all(c.root().join("tables/filings/data/runs/run-1")).unwrap();
+    c.syncer.push(at("2030-01-01T02:00:00Z")).unwrap();
+    (a, c)
+}
+
+fn unhex(text: &str) -> Vec<u8> {
+    (0..text.len()).step_by(2).map(|i| u8::from_str_radix(&text[i..i + 2], 16).unwrap()).collect()
+}
+
+/// A push signs each tombstone it writes with its node's issuer key, recording `signer` and `signature` over the key, owner and `deleted_at`; a node holding no issuer key writes it unsigned.
+// spec: store.merge.tombstone-signed@72655178
+#[test]
+fn a_push_signs_each_tombstone_with_its_issuer_key() {
+    use contextful_policy::issue::SignerKey;
+    let dir = tempfile::tempdir().unwrap();
+    let b = bucket(dir.path());
+    let (_a, c) = tombstoned(&b);
+    let t = manifest(b.as_ref()).tombstones[RUN_B].clone();
+    assert_eq!(t.owner, "ingest-b");
+    let key = SignerKey::of(c.signer.as_ref());
+    assert_eq!(t.signer.as_deref(), Some(key.to_string().as_str()));
+    let signature = unhex(t.signature.as_deref().unwrap());
+    assert!(key.verifies(&t.message(RUN_B), &signature));
+    // The signature covers the key, the owner and the instant.
+    assert!(!key.verifies(&t.message("research/tables/filings/schema.json"), &signature));
+    let moved = Tombstone { deleted_at: at("2030-01-02T00:00:00Z"), ..t.clone() };
+    assert!(!key.verifies(&moved.message(RUN_B), &signature));
+
+    // A node with no issuer key tombstones unsigned.
+    let dir = tempfile::tempdir().unwrap();
+    let b = bucket(dir.path());
+    let mut c = node("ingest-b", b.clone(), "");
+    c.syncer.signer = None;
+    c.land("run-1", json!([{"id": 2}]), "2030-01-01T00:00:00Z");
+    c.syncer.push(at(NOW)).unwrap();
+    std::fs::remove_dir_all(c.root().join("tables/filings/data/runs/run-1")).unwrap();
+    c.syncer.push(at("2030-01-01T02:00:00Z")).unwrap();
+    let t = &manifest(b.as_ref()).tombstones[RUN_B];
+    assert_eq!((t.signer.as_deref(), t.signature.as_deref()), (None, None));
+}
+
+/// A tombstone unsigned, failing its signature, or signed by a key the key-set ledger does not record as verifying at its `deleted_at` raises `SyncTombstoneUnverified`; a merge keeps the entry it names and a pull deletes nothing.
+// spec: store.merge.tombstone-unverified@48537fa8
+#[test]
+fn an_unverified_tombstone_deletes_nothing() {
+    use contextful_core::revoke::KeySetLedger;
+    let unverified = |report: &contextful_sync::sync::PullReport| report.unverified.iter().any(|m| m.starts_with("SyncTombstoneUnverified") && m.contains(RUN_B));
+
+    // No ledger records B's key: A keeps its copy and names the tombstone.
+    let dir = tempfile::tempdir().unwrap();
+    let b = bucket(dir.path());
+    let (a, c) = tombstoned(&b);
+    let local = a.root().join("tables/filings/data/runs/run-1/ingest-b/part-00000.parquet");
+    let report = a.syncer.pull(&PullScope::default()).unwrap();
+    assert!(local.exists() && report.removed.is_empty());
+    assert!(unverified(&report), "{:?}", report.unverified);
+    // Recorded, the same tombstone applies.
+    trust(&[&a, &c], "2030-01-01T00:00:00Z");
+    assert!(a.syncer.pull(&PullScope::default()).unwrap().unverified.is_empty());
+    assert!(!local.exists());
+
+    // A key the ledger retired before the deletion verifies nothing it signed after.
+    let dir = tempfile::tempdir().unwrap();
+    let b = bucket(dir.path());
+    let (a, c) = tombstoned(&b);
+    let mut ledger = KeySetLedger::default();
+    ledger.retire_now(&c.signer.public_key_text(), at("2030-01-01T01:30:00Z"));
+    let path = a.syncer.key_set.clone().unwrap();
+    std::fs::create_dir_all(path.parent().unwrap()).unwrap();
+    std::fs::write(&path, ledger.to_toml()).unwrap();
+    let report = a.syncer.pull(&PullScope::default()).unwrap();
+    assert!(unverified(&report), "{:?}", report.unverified);
+    assert!(a.root().join("tables/filings/data/runs/run-1/ingest-b/part-00000.parquet").exists());
+
+    // A tombstone whose signature fails, or one written unsigned, removes no entry at a merge.
+    for forged in [true, false] {
+        let dir = tempfile::tempdir().unwrap();
+        let b = bucket(dir.path());
+        let (a, c) = (node("ingest-a", b.clone(), ""), node("ingest-b", b.clone(), ""));
+        trust(&[&a, &c], "2030-01-01T00:00:00Z");
+        c.land("run-1", json!([{"id": 2}]), "2030-01-01T00:00:00Z");
+        c.syncer.push(at(NOW)).unwrap();
+        let mut m = manifest(b.as_ref());
+        let mut t = Tombstone { owner: "ingest-b".into(), deleted_at: at(NOW), signer: None, signature: None };
+        if forged {
+            t.signer = Some(contextful_policy::issue::SignerKey::of(c.signer.as_ref()).to_string());
+            t.signature = Some("00".repeat(64));
+        }
+        m.tombstones.insert(RUN_B.into(), t);
+        b.put("team/manifest.json", &serde_json::to_vec(&m).unwrap(), contextful_core::store::object::Condition::None).unwrap();
+        let report = a.syncer.push(at("2030-01-01T02:00:00Z")).unwrap();
+        assert!(report.refused.iter().any(|r| r.starts_with("SyncTombstoneUnverified") && r.contains(RUN_B)), "{:?}", report.refused);
+        let after = manifest(b.as_ref());
+        assert!(after.entries.contains_key(RUN_B) && !after.tombstones.contains_key(RUN_B), "forged: {forged}");
+    }
 }
 
 fn publish(n: &crate::support::Node, table: &str, now: &str) -> String {

@@ -243,6 +243,87 @@ fn a_key_that_keeps_moving_refuses_and_writes_no_pointer() {
     assert!(!c.root().join("tables/filings/_pointer.json").exists());
 }
 
+/// A pull refused by {{store.pull.unconverged}} keeps each object it verified, so the next `sync pull` downloads
+/// only the keys still differing; no pull retries past its attempts.
+// spec: store.pull.unconverged-resume@ef4ad40e
+#[test]
+fn an_exhausted_pull_keeps_what_it_verified_and_the_next_fetches_only_the_rest() {
+    let (_dir, b, a) = pushed();
+    let held = a.syncer.acquire("filings", at(NOW)).unwrap();
+    let FoldOutcome::Folded { snapshot_id, .. } = fold(&a.syncer.store, &TableDecl::named("filings"), at(NOW)).unwrap() else { panic!() };
+    a.syncer.push(at(NOW)).unwrap();
+    a.syncer.publish("filings", &snapshot_id, &held).unwrap();
+    let part = format!("team/research/tables/filings/data/snapshots/{snapshot_id}/part-00000.parquet");
+    let moving = part.clone();
+    let gets = Arc::new(AtomicUsize::new(0));
+    let counted = gets.clone();
+    let flaky: Arc<dyn ObjectStore> = Arc::new(Scripted {
+        inner: b.clone(),
+        script: Script {
+            on_get: Some(Box::new(move |key| {
+                if key == moving {
+                    counted.fetch_add(1, Ordering::SeqCst);
+                    return Some(Ok(None));
+                }
+                None
+            })),
+            ..Script::default()
+        },
+    });
+    let c = node("ingest-b", flaky, "");
+    assert!(matches!(c.syncer.pull(&PullScope::default()), Err(SyncError::Store(StoreError::SyncPullDidNotConverge(_)))));
+    assert_eq!(gets.load(Ordering::SeqCst), 3, "one get of the moving key per attempt, and no fourth");
+    // Every other verified object stayed.
+    let schema = c.root().join("tables/filings/schema.json");
+    let snapshot_manifest = c.root().join(format!("tables/filings/data/snapshots/{snapshot_id}/_manifest.json"));
+    assert!(schema.is_file() && snapshot_manifest.is_file());
+    assert!(!c.root().join("tables/filings/_pointer.json").exists());
+
+    // The next pull, against a bucket that holds still, downloads the shortfall alone.
+    let mut c = c;
+    c.syncer.bucket = b;
+    let report = c.syncer.pull(&PullScope::default()).unwrap();
+    assert_eq!(report.downloaded, [part.trim_start_matches("team/").to_string()]);
+    assert_eq!(report.pointers, ["research/tables/filings/_pointer.json"]);
+}
+
+/// A replica's pull writes `replica.json` beside `derived.sqlite`, naming per table each snapshot it holds with
+/// that snapshot's parts and sidecar paths present on disk; no push carries it.
+// spec: store.replicate.descriptor@a083a2e5
+#[test]
+fn a_replica_pull_writes_its_descriptor_beside_the_catalog() {
+    use contextful_context::replica::{read, DESCRIPTOR_FILE};
+    let (_dir, b, a) = pushed();
+    let decl = contextful_core::store::declare::TableDecl::parse_pipeline(
+        "[[pipeline.tables]]\nname = \"filings\"\n[[pipeline.tables.indexes]]\nkind = \"fulltext\"\ncolumn = \"title\"\nid_column = \"id\"\n",
+    )
+    .unwrap()
+    .remove(0);
+    let held = a.syncer.acquire("filings", at(NOW)).unwrap();
+    let FoldOutcome::Folded { snapshot_id, .. } = fold(&a.syncer.store, &decl, at(NOW)).unwrap() else { panic!() };
+    a.syncer.push(at(NOW)).unwrap();
+    a.syncer.publish("filings", &snapshot_id, &held).unwrap();
+    // A writer advertises nothing.
+    assert!(!a.root().join(DESCRIPTOR_FILE).exists());
+
+    let r = node("replica-1", b.clone(), "\n[replica]\nof = \"team/research\"\n");
+    r.syncer.pull(&PullScope::default()).unwrap();
+    assert!(r.root().join(DESCRIPTOR_FILE).is_file() && r.root().join(DESCRIPTOR_FILE).parent() == Some(r.root().as_path()));
+    let d = read(&r.syncer.store).unwrap().unwrap();
+    assert_eq!(d.of, "team/research");
+    let filings = &d.tables["filings"];
+    assert_eq!(filings[0].snapshot_id, snapshot_id);
+    assert_eq!(filings[0].parts, ["part-00000.parquet"]);
+    assert_eq!(filings[0].sidecars, ["indexes/fts-title-unicode"]);
+
+    // A writer's push carries no descriptor, and an emitted plan lists none.
+    std::fs::write(a.root().join(DESCRIPTOR_FILE), b"{}").unwrap();
+    a.syncer.push(at("2030-01-01T02:00:00Z")).unwrap();
+    let m: BucketManifest = serde_json::from_slice(&b.get("team/manifest.json").unwrap().unwrap().0).unwrap();
+    assert!(!m.entries.is_empty());
+    assert!(!m.entries.keys().any(|k| k.ends_with(DESCRIPTOR_FILE)));
+}
+
 /// A pull writes a table's pointer only after every Parquet part of the snapshot it names is home, so no reader
 /// meets a pointer ahead of its data.
 // spec: store.pull.pointer-last@d68b649f
@@ -356,6 +437,51 @@ fn a_replica_missing_a_snapshot_part_refuses_and_leaves_it_unpublished() {
         other => panic!("{other:?}"),
     }
     assert!(!r.root().join("tables/filings/_pointer.json").exists());
+}
+
+/// Each fold pass merges a table's committed ledger files into `requests/folded-<snapshot-id>.parquet`, and a
+/// replica carries ledgers with their table.
+// spec: store.reserve.ledger-fold@41270f90
+#[test]
+fn a_pass_merges_committed_ledgers_and_a_replica_carries_the_merge() {
+    use contextful_core::store::ledger::RequestRecord;
+    let (_dir, b, a) = pushed();
+    let call = |id: &str| RequestRecord {
+        request_id: id.into(),
+        vendor_request_id: None,
+        connector: "http".into(),
+        method: "GET".into(),
+        url_host: "api.example.org".into(),
+        status_code: Some(200),
+        started_at: at("2030-01-01T00:00:00Z"),
+        duration_ms: 1,
+        batch_seq: Some(0),
+    };
+    let node_a = contextful_core::store::lay_out::NodeId::parse("ingest-a").unwrap();
+    contextful_context::ledger::append(&a.syncer.store, "filings", "run-1", &node_a, &[call("c1"), call("c2")]).unwrap();
+    contextful_context::ledger::append(&a.syncer.store, "filings", "run-9", &node_a, &[call("c9")]).unwrap();
+    let held = a.syncer.acquire("filings", at(NOW)).unwrap();
+    let FoldOutcome::Folded { snapshot_id, .. } = fold(&a.syncer.store, &TableDecl::named("filings"), at(NOW)).unwrap() else { panic!() };
+    let merged = format!("folded-{snapshot_id}.parquet");
+    let names = |n: &crate::support::Node| -> Vec<String> {
+        contextful_context::ledger::files(&n.syncer.store, "filings").unwrap().iter().map(|p| p.file_name().unwrap().to_string_lossy().into_owned()).collect()
+    };
+    // The committed run's file merged; the run still in flight keeps its own.
+    assert_eq!(names(&a), [merged.clone(), "run-9.ingest-a.parquet".to_string()]);
+    a.syncer.push(at(NOW)).unwrap();
+    a.syncer.publish("filings", &snapshot_id, &held).unwrap();
+
+    let r = node("replica-1", b, "\n[replica]\nof = \"team/research\"\n");
+    r.syncer.pull(&PullScope::default()).unwrap();
+    assert_eq!(names(&r), [merged, "run-9.ingest-a.parquet".to_string()]);
+    let mut calls: Vec<String> = contextful_context::ledger::files(&r.syncer.store, "filings")
+        .unwrap()
+        .iter()
+        .flat_map(|p| contextful_context::ledger::read(p).unwrap())
+        .map(|(run, c)| format!("{run}/{}", c.request_id))
+        .collect();
+    calls.sort();
+    assert_eq!(calls, ["run-1/c1", "run-1/c2", "run-9/c9"]);
 }
 
 /// A refresh requesting a replicate-off table raises `ReplicaSensitiveTable`; the consumer reads through the

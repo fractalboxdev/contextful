@@ -4,6 +4,7 @@
 //! and the higher fence in the log (`store.lease.stale-fence`).
 
 use super::StoreError;
+use crate::run::advance::CursorKind;
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 
@@ -26,6 +27,10 @@ pub struct CommitEntry {
     pub run_id: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub cursor: Option<Value>,
+    /// The declared kind of the cursor a commit carries; only a kind that takes a lease
+    /// reaches the log (`store.lease.cursor-kind`).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub cursor_kind: Option<CursorKind>,
     pub fence: u64,
 }
 
@@ -54,4 +59,16 @@ pub fn admit(log: &[CommitEntry], table: &str, fence: u64) -> Result<(), StoreEr
 /// under which a fenced run manifest is readable.
 pub fn committed(log: &[CommitEntry], table: &str, run_id: &str, fence: u64) -> bool {
     log.iter().any(|e| e.kind == Kind::Commit && e.table == table && e.run_id.as_deref() == Some(run_id) && e.fence == fence)
+}
+
+/// Refuse an entry for `pipeline_id` whose cursor kind takes no lease: a commit log holds
+/// single-writer positions alone (`store.lease.cursor-kind`).
+pub fn admit_kind(pipeline_id: &str, entry: &CommitEntry) -> Result<(), StoreError> {
+    match entry.cursor_kind {
+        Some(kind) if !kind.single_writer() => Err(StoreError::LeaseCursorKindMismatch(format!(
+            "pipeline `{pipeline_id}` declares a `{}` cursor, which takes no lease; its position commits in its run manifest, not under `cursors/`",
+            kind.name()
+        ))),
+        _ => Ok(()),
+    }
 }

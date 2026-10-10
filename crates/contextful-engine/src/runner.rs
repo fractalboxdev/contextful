@@ -509,6 +509,7 @@ impl<J: JournalStore, B: BlobStore> Engine<J, B> {
                     site_id: spec.site_id.clone(),
                     parts,
                     cursor: position.clone(),
+                    cursor_kind: plan.cursor_kind,
                     committed_at,
                     fence: lease.as_ref().map(|l| l.fence),
                     replace_frontier,

@@ -394,7 +394,7 @@ impl Destination for StoreDestination {
         // unreadable unless the log records this run under its fence.
         let commit_point = |_: &contextful_core::store::lay_out::RunManifest| match commit.fence {
             Some(fence) => {
-                let entry = CommitEntry { kind: Kind::Commit, table: commit.table.clone(), run_id: Some(commit.run_id.clone()), cursor: commit.cursor.clone(), fence };
+                let entry = CommitEntry { kind: Kind::Commit, table: commit.table.clone(), run_id: Some(commit.run_id.clone()), cursor: commit.cursor.clone(), cursor_kind: Some(commit.cursor_kind), fence };
                 commit_log::append(&self.store, &commit.pipeline_id, self.node.as_str(), &entry).map(|_| ())
             }
             None => Ok(()),

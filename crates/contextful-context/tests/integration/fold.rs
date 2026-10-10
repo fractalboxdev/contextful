@@ -1,7 +1,7 @@
 //! `store.fold`: a pass, its publication through the pointer, and what it collects.
 
 use crate::support::{at, decl, s, Fixture};
-use contextful_context::fold::{commit, fold, prepare, Committed, Prepared};
+use contextful_context::fold::{commit, fold, fold_under, prepare, Committed, Prepared};
 use contextful_context::store::FileLock;
 use contextful_core::store::bound_time::{Bound, Bounds};
 use contextful_core::store::fold::FoldOutcome;
@@ -154,6 +154,71 @@ fn the_pointer_replace_is_conditioned_on_the_etag_read_at_pass_start() {
     let _held = FileLock::try_acquire(&f.table_dir("events").join("_pointer.json.lock")).unwrap().expect("a free lock");
     assert_eq!(commit(&f.store, b).unwrap(), Committed::Lost);
     assert_eq!(f.store.pointer("events").unwrap().unwrap().0.snapshot_id, m.snapshot_id);
+}
+
+/// A pass under a compaction lease stamps the lease's fence into the snapshot manifest and the pointer it
+/// publishes; a pass under none stamps nothing.
+#[test]
+fn a_pass_under_a_lease_stamps_its_fence() {
+    let f = Fixture::new();
+    let d = decl("name = \"events\"");
+    f.land(&d, "run-1", json!([{"e": 1}]), "2030-01-01T00:00:00Z").unwrap();
+    fold(&f.store, &d, at("2030-01-01T01:00:00Z")).unwrap();
+    let (unleased, _) = f.store.pointer("events").unwrap().unwrap();
+    assert_eq!(unleased.fence, None);
+    f.land(&d, "run-2", json!([{"e": 2}]), "2030-01-01T02:00:00Z").unwrap();
+    assert!(matches!(fold_under(&f.store, &d, at("2030-01-01T03:00:00Z"), Some(7)).unwrap(), FoldOutcome::Folded { .. }));
+    let (pointer, _) = f.store.pointer("events").unwrap().unwrap();
+    assert_eq!(pointer.fence, Some(7));
+    let (chain, _) = f.store.chain("events").unwrap();
+    assert_eq!((chain[0].snapshot_id.clone(), chain[0].fence), (pointer.snapshot_id, Some(7)));
+}
+
+/// A pass over a partitioned table reports what its partition plan warns about, naming the columns, and still
+/// publishes; an unpartitioned table warns about nothing.
+#[test]
+fn a_pass_reports_its_partition_warnings_and_publishes() {
+    let f = Fixture::new();
+    let d = decl("name = \"events\"\npartition_by = [\"tenant\"]");
+    f.land(&d, "run-1", json!([{"tenant": "acme", "e": 1}, {"tenant": "globex", "e": 2}]), "2030-01-01T00:00:00Z").unwrap();
+    let FoldOutcome::Folded { warnings, .. } = fold(&f.store, &d, at("2030-01-01T01:00:00Z")).unwrap() else { panic!("nothing folded") };
+    assert_eq!(warnings.len(), 1, "{warnings:?}");
+    assert!(warnings[0].contains("`tenant`") && warnings[0].contains("median"), "{warnings:?}");
+    assert!(f.store.pointer("events").unwrap().is_some());
+    let plain = decl("name = \"plain\"");
+    f.land(&plain, "run-1", json!([{"e": 1}]), "2030-01-01T00:00:00Z").unwrap();
+    let FoldOutcome::Folded { warnings, .. } = fold(&f.store, &plain, at("2030-01-01T01:00:00Z")).unwrap() else { panic!("nothing folded") };
+    assert!(warnings.is_empty(), "{warnings:?}");
+}
+
+#[cfg(feature = "read")]
+/// A statement running during a pass reads the snapshot the pointer named when it started; statements starting
+/// after the commit read the new one.
+// spec: store.fold.non-blocking@05f96f28
+#[test]
+fn a_statement_started_during_a_pass_reads_the_snapshot_named_at_its_start() {
+    let f = Fixture::new();
+    let d = decl("name = \"events\"\nprimary_key = [\"k\"]");
+    f.land(&d, "run-1", json!([{"k": "a", "v": 1}]), "2030-01-01T00:00:00Z").unwrap();
+    fold(&f.store, &d, at("2030-01-01T01:00:00Z")).unwrap();
+    f.land(&d, "run-2", json!([{"k": "a", "v": 2}, {"k": "b", "v": 3}]), "2030-01-01T02:00:00Z").unwrap();
+    let (before, _) = f.store.pointer("events").unwrap().unwrap();
+
+    // A pass stages; a statement starts while it runs and resolves the pointer as it stands.
+    let pass = staged(&f, &d, "2030-01-01T03:00:00Z");
+    let during = f.scan(&d, Bounds::default()).unwrap();
+    assert!(during.files.iter().any(|p| p.contains(&before.snapshot_id.to_string())), "{:?}", during.files);
+    let Committed::Published(after) = commit(&f.store, pass).unwrap() else { panic!("the pass lost its pointer") };
+
+    // That statement finishes on what it resolved; the commit edited none of its files.
+    let read = |relation: &str| crate::support::query(&format!("WITH t AS ({relation}) SELECT k, v FROM t ORDER BY k"));
+    let expected = [[s("a"), s("2")], [s("b"), s("3")]];
+    assert_eq!(read(&during.relation), expected);
+    // A statement starting after the commit reads the new snapshot alone.
+    let next = f.scan(&d, Bounds::default()).unwrap();
+    assert!(!next.files.is_empty());
+    assert!(next.files.iter().all(|p| p.contains(&after.snapshot_id.to_string())), "{:?}", next.files);
+    assert_eq!(read(&next.relation), expected);
 }
 
 /// A reader observes a snapshot and every declared sidecar together or neither; a commit exposing one without the other raises `StorePartialSnapshot`.

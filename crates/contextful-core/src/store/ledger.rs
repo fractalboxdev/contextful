@@ -63,7 +63,7 @@ pub fn ledger_columns() -> Vec<Column> {
 }
 
 /// The SQL a table's ledger registers as: its explicit file list projected to the ledger
-/// columns, or a zero-row relation over them where no call has been recorded.
+/// columns, one row per `(run_id, request_id)`, or a zero-row relation over them where no call has been recorded.
 pub fn ledger_sql(files: &[String]) -> String {
     let columns = ledger_columns();
     if files.is_empty() {
@@ -72,8 +72,10 @@ pub fn ledger_sql(files: &[String]) -> String {
     }
     let names: Vec<String> = columns.iter().map(|c| ident(&c.name)).collect();
     let list: Vec<String> = files.iter().map(|f| literal(f)).collect();
+    // A merged file and a file it merged both list one call only where a merge stopped
+    // before its removals, or two nodes merged apart; the relation keeps one row per call.
     format!(
-        "SELECT {} FROM read_parquet([{}], union_by_name = true, hive_partitioning = false)",
+        "SELECT {} FROM read_parquet([{}], union_by_name = true, hive_partitioning = false) QUALIFY row_number() OVER (PARTITION BY run_id, request_id) = 1",
         names.join(", "),
         list.join(", ")
     )

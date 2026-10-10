@@ -71,7 +71,28 @@ fn an_unkeyed_table_returns_every_covering_version() {
 }
 
 #[cfg(feature = "read")]
-/// A keyed table declaring `valid_time` keeps one row per key and line, so a valid-time read reaches a key's past version.
+/// `[pipeline.tables.valid_time]` declares `from` and an optional `to`; a table declaring `from` alone treats
+/// each row as valid from that instant onward.
+// spec: store.bound-time.valid-time-declaration@f83b61c5
+#[test]
+fn a_from_only_declaration_reads_each_row_valid_from_its_instant_onward() {
+    let pair = decl("name = \"rates\"\n[pipeline.tables.valid_time]\nfrom = \"from_ts\"\nto = \"to_ts\"");
+    let vt = pair.valid_time.as_ref().unwrap();
+    assert_eq!((vt.from.as_str(), vt.to.as_deref()), ("from_ts", Some("to_ts")));
+    let d = decl("name = \"rates\"\n[pipeline.tables.valid_time]\nfrom = \"from_ts\"");
+    let vt = d.valid_time.as_ref().unwrap();
+    assert_eq!((vt.from.as_str(), vt.to.as_deref()), ("from_ts", None));
+    let f = Fixture::new();
+    f.land_typed(&d, "run-1", json!([{"ccy": "eur", "from_ts": "2030-01-15T00:00:00Z"}]), "2030-01-01T00:00:00Z", &[("from_ts", ColumnType::Timestamp)]).unwrap();
+    assert!(f.query(&d, valid_as_of("2030-01-14T23:59:59Z"), "SELECT ccy FROM t").is_empty());
+    for instant in ["2030-01-15T00:00:00Z", "2031-06-01T00:00:00Z", "2099-12-31T00:00:00Z"] {
+        assert_eq!(f.query(&d, valid_as_of(instant), "SELECT ccy FROM t"), [[s("eur")]], "{instant}");
+    }
+}
+
+#[cfg(feature = "read")]
+/// A key valid over several intervals holds one row per interval: a keyed table declaring `valid_time` dedupes on its primary key and `from`, so a fold keeps every interval.
+// spec: store.bound-time.interval-rows@8705c4e1
 #[test]
 fn a_keyed_valid_time_read_reaches_the_version_valid_then() {
     let f = Fixture::new();
@@ -86,6 +107,15 @@ fn a_keyed_valid_time_read_reaches_the_version_valid_then() {
     fold(&f.store, &d, at("2030-01-01T01:00:00Z")).unwrap();
     assert_eq!(rates("2030-02-15T00:00:00Z"), [[s("1")]]);
     assert_eq!(rates("2030-03-15T00:00:00Z"), [[s("1")], [s("2")]]);
+    assert_eq!(f.store.chain("rates").unwrap().0[0].row_count, 2, "one row per interval");
+    // A repeated interval supersedes its row; a distinct one adds a row.
+    f.land_typed(&d, "run-2", json!([
+        {"ccy": "eur", "rate": 3, "from_ts": "2030-03-01T00:00:00Z"},
+        {"ccy": "eur", "rate": 4, "from_ts": "2030-05-01T00:00:00Z"},
+    ]), "2030-01-02T00:00:00Z", &ts).unwrap();
+    fold(&f.store, &d, at("2030-01-02T01:00:00Z")).unwrap();
+    assert_eq!(f.store.chain("rates").unwrap().0[0].row_count, 3);
+    assert_eq!(rates("2030-03-15T00:00:00Z"), [[s("1")], [s("3")]]);
 }
 
 #[cfg(feature = "read")]

@@ -61,6 +61,60 @@ fn partitioning_is_off_unless_declared() {
     assert_eq!(g.query(&parted, Bounds::default(), "SELECT tenant, e FROM t ORDER BY e"), [[s("acme"), s("1")], [s("globex"), s("2")], [None, s("3")]]);
 }
 
+#[cfg(feature = "read")]
+/// Five index kinds exist: Parquet footer zone maps, a sorted-Parquet sparse-map primary-key lookup, an HNSW
+/// vector graph, a positional full-text index, and opt-in per-column bloom filters.
+// spec: store.index.kinds@7d38fc4b
+#[test]
+fn a_snapshot_carries_each_of_the_five_index_kinds() {
+    let f = Fixture::new();
+    let fulltext = "[[pipeline.tables.indexes]]\nkind = \"fulltext\"\ncolumn = \"body\"\n";
+    let d = decl(&format!("name = \"passages\"\nprimary_key = [\"passage_id\"]\nbloom_filter = [\"issuer\"]\n{INDEX}{fulltext}"));
+    // Landed out of key order.
+    f.land_typed(&d, "run-1", json!([
+        {"passage_id": "p3", "issuer": "z", "body": "grid storage", "embedding": [0.0, 0.0, 1.0]},
+        {"passage_id": "p1", "issuer": "x", "body": "solar battery", "embedding": [1.0, 0.0, 0.0]},
+        {"passage_id": "p2", "issuer": "y", "body": "wind turbine", "embedding": [0.0, 1.0, 0.0]},
+    ]), "2030-01-01T00:00:00Z", &f32x3()).unwrap();
+    fold(&f.store, &d, at("2030-01-01T01:00:00Z")).unwrap();
+    let (m, dir) = current(&f, "passages");
+    let part = dir.join(&m.parts[0].name);
+    let meta = |column: &str, select: &str| query(&format!("SELECT {select} FROM parquet_metadata('{}') WHERE path_in_schema = '{column}'", part.display()));
+    // Zone maps: every row group's footer carries the column's bounds.
+    assert_eq!(meta("issuer", "stats_min_value, stats_max_value"), [[s("x"), s("z")]]);
+    // A keyed table's rows sort by key, so the footer bounds of its key column form a sparse map a lookup probes.
+    let keys = query(&format!("SELECT passage_id FROM read_parquet('{}')", part.display()));
+    assert_eq!(keys, [[s("p1")], [s("p2")], [s("p3")]]);
+    assert_eq!(meta("passage_id", "stats_min_value, stats_max_value"), [[s("p1"), s("p3")]]);
+    // Bloom filters: on the column the table opts in, and on no other.
+    assert_ne!(meta("issuer", "bloom_filter_offset"), [[None]]);
+    assert_eq!(meta("body", "bloom_filter_offset"), [[None]]);
+    // The graph and the positional full-text index sit beside the parts.
+    let kinds: Vec<Option<IndexKind>> = m.indexes.iter().map(|e| e.kind()).collect();
+    assert_eq!(kinds, [Some(IndexKind::Vector), Some(IndexKind::Fulltext)]);
+    assert!(dir.join(m.indexes[0].path().unwrap()).join(GRAPH_FILE).is_file());
+    assert!(dir.join(m.indexes[1].path().unwrap()).join(POSTINGS_FILE).is_file());
+}
+
+/// A multi-tenant table carries the tenant identifier as its outermost partition column.
+// spec: store.index.tenant-outermost@13d7e0b2
+#[test]
+fn the_tenant_identifier_is_the_outermost_partition_directory() {
+    let f = Fixture::new();
+    let d = decl("name = \"events\"\npartition_by = [\"tenant\", \"day\"]");
+    f.land(&d, "run-1", json!([
+        {"tenant": "acme", "day": "d1", "e": 1}, {"tenant": "acme", "day": "d2", "e": 2}, {"tenant": "globex", "day": "d1", "e": 3},
+    ]), "2030-01-01T00:00:00Z").unwrap();
+    fold(&f.store, &d, at("2030-01-01T01:00:00Z")).unwrap();
+    let (m, _) = current(&f, "events");
+    let parts: Vec<&str> = m.parts.iter().map(|p| p.name.as_str()).collect();
+    assert_eq!(parts, ["tenant=acme/day=d1/part-00000.parquet", "tenant=acme/day=d2/part-00000.parquet", "tenant=globex/day=d1/part-00000.parquet"]);
+    // One tenant's rows are one directory subtree: dropping the inner predicate still reads that tenant alone.
+    let acme: Vec<&str> = parts.iter().copied().filter(|p| p.starts_with("tenant=acme/")).collect();
+    assert_eq!(acme.len(), 2);
+    assert!(parts.iter().all(|p| p.split('/').next().unwrap().starts_with("tenant=")));
+}
+
 /// A `partition_by` column typed binary or vector raises `StorePartitionColumnType` at validation, before any Parquet.
 // spec: store.index.partition-type@1e6a72e5
 #[test]
@@ -88,8 +142,9 @@ fn a_binary_or_vector_partition_column_is_refused() {
 }
 
 #[cfg(feature = "read")]
-/// A tenant value is written and compared byte for byte, with no trimming, case folding or Unicode normalization; a percent-escaped directory name is representation alone.
-// spec: store.index.tenant-verbatim@4f788f5f
+/// Land checks a tenant value against no canonical form; it is written and compared byte for byte, with no
+/// trimming, case folding or Unicode normalization, and a percent-escaped directory name is representation alone.
+// spec: store.index.tenant-verbatim@aed0fdd9
 #[test]
 fn a_tenant_value_is_kept_byte_for_byte() {
     let f = Fixture::new();
@@ -98,6 +153,9 @@ fn a_tenant_value_is_kept_byte_for_byte() {
     let tenants = ["caf\u{e9}", "cafe\u{301}", " acme", "ACME", "a/b"];
     let rows: Vec<_> = tenants.iter().enumerate().map(|(i, t)| json!({"tenant": t, "e": i})).collect();
     f.land(&d, "run-1", json!(rows), "2030-01-01T00:00:00Z").unwrap();
+    // Land refuses none and rewrites none.
+    let landed = f.query(&d, Bounds::default(), "SELECT tenant FROM t ORDER BY e");
+    assert_eq!(landed, tenants.iter().map(|t| vec![s(t)]).collect::<Vec<_>>());
     fold(&f.store, &d, at("2030-01-01T01:00:00Z")).unwrap();
     assert_eq!(f.scan(&d, Bounds::default()).unwrap().files.len(), 5);
     let read = f.query(&d, Bounds::default(), "SELECT tenant FROM t ORDER BY e");
@@ -194,6 +252,185 @@ fn the_fold_builds_each_declared_sidecar_over_identified_nonzero_vectors_of_its_
     g.land(&plain, "run-1", json!([{"e": 1}]), "2030-01-01T00:00:00Z").unwrap();
     fold(&g.store, &plain, at("2030-01-01T01:00:00Z")).unwrap();
     assert!(current(&g, "events").0.indexes.is_empty());
+}
+
+/// A vector sidecar sits at `indexes/vec-<col>-<model>/zone=<label>/` and a full-text sidecar at
+/// `indexes/fts-<col>-<tokenizer>/`, inside the snapshot directory it indexes.
+// spec: store.index.paths@320c0117
+#[test]
+fn each_sidecar_sits_at_its_kind_path_inside_the_snapshot_it_indexes() {
+    let f = Fixture::new();
+    let fulltext = "[[pipeline.tables.indexes]]\nkind = \"fulltext\"\ncolumn = \"body\"\ntokenizer = \"unicode\"\n";
+    let d = decl(&format!("name = \"passages\"\nprimary_key = [\"passage_id\"]\n{INDEX}{fulltext}"));
+    f.land_typed(&d, "run-1", json!([{"passage_id": "p1", "body": "solar battery", "embedding": [1.0, 0.0, 0.0]}]), "2030-01-01T00:00:00Z", &f32x3()).unwrap();
+    fold(&f.store, &d, at("2030-01-01T01:00:00Z")).unwrap();
+    let (m, dir) = current(&f, "passages");
+    let mut paths: Vec<String> = m.indexes.iter().map(|e| e.path().unwrap().to_string()).collect();
+    paths.sort();
+    assert_eq!(paths, ["indexes/fts-body-unicode", "indexes/vec-embedding-e5/zone=all"]);
+    for p in &paths {
+        assert!(dir.join(p).join("_manifest.json").is_file(), "{p} sits inside {}", dir.display());
+    }
+    // Every sidecar file the pass wrote lies under the snapshot's own `indexes/`.
+    let table = f.store.table_dir("passages").unwrap();
+    let mut stray = Vec::new();
+    let mut stack = vec![table.clone()];
+    while let Some(d) = stack.pop() {
+        for e in std::fs::read_dir(&d).unwrap() {
+            let p = e.unwrap().path();
+            if p.is_dir() {
+                stack.push(p);
+            } else if p.to_string_lossy().contains("indexes") && !p.starts_with(dir.join("indexes")) {
+                stray.push(p);
+            }
+        }
+    }
+    assert!(stray.is_empty(), "{stray:?}");
+}
+
+/// Rewrite field `key` of the current snapshot's first sidecar entry, in the snapshot
+/// manifest and in the sidecar's own manifest alike.
+fn restamp(f: &Fixture, table: &str, key: &str, value: Value) {
+    let (m, dir) = current(f, table);
+    let path = dir.join("_manifest.json");
+    let mut doc: Value = serde_json::from_slice(&std::fs::read(&path).unwrap()).unwrap();
+    doc["indexes"][0][key] = value;
+    std::fs::write(&path, serde_json::to_vec(&doc).unwrap()).unwrap();
+    let own = dir.join(m.indexes[0].path().unwrap()).join("_manifest.json");
+    std::fs::write(&own, serde_json::to_vec(&doc["indexes"][0]).unwrap()).unwrap();
+}
+
+fn passages(f: &Fixture) -> contextful_core::store::declare::TableDecl {
+    let d = decl(&format!("name = \"passages\"\nprimary_key = [\"passage_id\"]\n{INDEX}"));
+    f.land_typed(&d, "run-1", json!([
+        {"passage_id": "p1", "embedding": [1.0, 0.0, 0.0]}, {"passage_id": "p2", "embedding": [0.0, 1.0, 0.0]},
+    ]), "2030-01-01T00:00:00Z", &f32x3()).unwrap();
+    fold(&f.store, &d, at("2030-01-01T01:00:00Z")).unwrap();
+    d
+}
+
+/// A pass over a table whose current sidecar records another builder or builder version than this build's rebuilds it in full into a new snapshot of unchanged rows; readers keep the prior snapshot until the pointer moves.
+// spec: store.index.rebuild@70fe2117
+#[test]
+fn a_pass_rebuilds_a_sidecar_another_builder_version_wrote() {
+    use contextful_core::store::fold::FoldOutcome;
+    use contextful_core::store::index::{VECTOR_BUILDER, VECTOR_BUILDER_VERSION};
+    let f = Fixture::new();
+    let d = passages(&f);
+    // A pass under this build's own builder, with nothing landed, publishes nothing.
+    assert_eq!(fold(&f.store, &d, at("2030-01-01T02:00:00Z")).unwrap(), FoldOutcome::NothingLanded);
+
+    for (key, value) in [("builder_version", json!(VECTOR_BUILDER_VERSION + 1)), ("builder", json!("another-hnsw"))] {
+        restamp(&f, "passages", key, value);
+        let (before, before_dir) = current(&f, "passages");
+        // Until the pass publishes, readers resolve the snapshot the old builder wrote.
+        assert_eq!(f.scan(&d, Bounds::default()).unwrap().files[0], format!("tables/passages/data/snapshots/{}/part-00000.parquet", before.snapshot_id));
+        let outcome = fold(&f.store, &d, at("2030-01-01T03:00:00Z")).unwrap();
+        assert!(matches!(outcome, FoldOutcome::Folded { runs: 0, rows: 2, .. }), "{outcome:?}");
+        let (after, after_dir) = current(&f, "passages");
+        assert_eq!(after.parent.as_ref(), Some(&before.snapshot_id));
+        assert_eq!((after.row_count, after.includes_runs.len()), (before.row_count, 0));
+        let e = entry(&after);
+        assert_eq!((e.builder.as_str(), e.builder_version, e.row_count), (VECTOR_BUILDER, VECTOR_BUILDER_VERSION, 2));
+        assert!(after_dir.join(&e.path).join(GRAPH_FILE).is_file());
+        assert!(before_dir.is_dir(), "the prior snapshot stays on disk for readers that resolved it");
+        VectorSidecar::open(&after_dir, "passages", &after.indexes[0], &Sealing::Plaintext).unwrap();
+    }
+}
+
+/// The vector graph's byte layout is no committed format: a reader opens a sidecar only under its own builder and builder version, and any other meets {{read.retrieve.sidecar-falls-back}}.
+// spec: store.index.graph-format@dfcd5caa
+#[test]
+fn a_reader_opens_only_its_own_builder_version() {
+    use contextful_context::vector::Fallback;
+    use contextful_core::store::index::VECTOR_BUILDER_VERSION;
+    let f = Fixture::new();
+    passages(&f);
+    let (m, dir) = current(&f, "passages");
+    VectorSidecar::open(&dir, "passages", &m.indexes[0], &Sealing::Plaintext).unwrap();
+    for (key, value) in [("builder_version", json!(VECTOR_BUILDER_VERSION + 1)), ("builder_version", json!(0)), ("builder", json!("another-hnsw"))] {
+        let f = Fixture::new();
+        passages(&f);
+        restamp(&f, "passages", key, value);
+        let (m, dir) = current(&f, "passages");
+        assert_eq!(VectorSidecar::open(&dir, "passages", &m.indexes[0], &Sealing::Plaintext).err(), Some(Fallback::ManifestMismatch), "{key}");
+    }
+}
+
+/// A vector entry records `extensions`, the passes since its last full build that extended its graph in place; a pass finding 16 extensions rebuilds the graph in full and records 0.
+// spec: store.index.graph-extensions@184f2494
+#[test]
+fn a_pass_finding_sixteen_extensions_rebuilds_the_graph_in_full() {
+    use contextful_core::store::fold::FoldOutcome;
+    use contextful_core::store::index::GRAPH_EXTENSIONS_MAX;
+    assert_eq!(GRAPH_EXTENSIONS_MAX, 16);
+    let f = Fixture::new();
+    let d = passages(&f);
+    assert_eq!(entry(&current(&f, "passages").0).extensions, 0, "a full build records no extension");
+    restamp(&f, "passages", "extensions", json!(GRAPH_EXTENSIONS_MAX - 1));
+    assert_eq!(fold(&f.store, &d, at("2030-01-01T02:00:00Z")).unwrap(), FoldOutcome::NothingLanded);
+    restamp(&f, "passages", "extensions", json!(GRAPH_EXTENSIONS_MAX));
+    let outcome = fold(&f.store, &d, at("2030-01-01T03:00:00Z")).unwrap();
+    assert!(matches!(outcome, FoldOutcome::Folded { runs: 0, .. }), "{outcome:?}");
+    let e = entry(&current(&f, "passages").0);
+    assert_eq!((e.extensions, e.row_count), (0, 2));
+    // A pass folding new runs builds in full and records none either.
+    f.land_typed(&d, "run-2", json!([{"passage_id": "p3", "embedding": [0.0, 0.0, 1.0]}]), "2030-01-01T04:00:00Z", &f32x3()).unwrap();
+    fold(&f.store, &d, at("2030-01-01T05:00:00Z")).unwrap();
+    assert_eq!(entry(&current(&f, "passages").0).extensions, 0);
+}
+
+/// A sidecar copies no row value besides its `id_column` and indexed column, save the tenant column and zone label a filtered traversal reads; every other filter applies at {{store.index.candidate-ids}}.
+// spec: store.index.filter-copies@ca1ef51a
+#[test]
+fn a_sidecar_copies_no_other_column_value() {
+    let f = Fixture::new();
+    let fulltext = "[[pipeline.tables.indexes]]\nkind = \"fulltext\"\ncolumn = \"body\"\ntokenizer = \"unicode\"\n";
+    let d = decl(&format!("name = \"passages\"\nprimary_key = [\"passage_id\"]\npartition_by = [\"tenant\"]\n{INDEX}{fulltext}"));
+    f.land_typed(&d, "run-1", json!([
+        {"passage_id": "p1", "tenant": "acme", "body": "solar battery", "region": "canaryregionzq", "embedding": [1.0, 0.0, 0.0]},
+        {"passage_id": "p2", "tenant": "acme", "body": "wind farm", "region": "canaryregionzq", "embedding": [0.0, 1.0, 0.0]},
+    ]), "2030-01-01T00:00:00Z", &f32x3()).unwrap();
+    fold(&f.store, &d, at("2030-01-01T01:00:00Z")).unwrap();
+    let (m, dir) = current(&f, "passages");
+    assert_eq!(m.indexes.len(), 2);
+    let mut files = Vec::new();
+    let mut stack = vec![dir.join("indexes")];
+    while let Some(d) = stack.pop() {
+        for e in std::fs::read_dir(&d).unwrap() {
+            let p = e.unwrap().path();
+            if p.is_dir() { stack.push(p) } else { files.push(p) }
+        }
+    }
+    assert!(files.len() >= 4, "{files:?}");
+    let has = |bytes: &[u8], needle: &[u8]| bytes.windows(needle.len()).any(|w| w == needle);
+    let all: Vec<u8> = files.iter().flat_map(|p| std::fs::read(p).unwrap()).collect();
+    // The identifiers and the indexed text are the sidecars' own; no other column's value is.
+    assert!(has(&all, b"p1") && has(&all, b"solar"));
+    assert!(!has(&all, b"canaryregionzq"));
+}
+
+/// Collecting a snapshot collects its sidecars in the same step.
+// spec: store.index.dies-with-snapshot@e3968987
+#[test]
+fn collecting_a_snapshot_collects_its_sidecars() {
+    let f = Fixture::new();
+    let d = decl(&format!("name = \"passages\"\nprimary_key = [\"passage_id\"]\n{INDEX}"));
+    f.land_typed(&d, "run-1", json!([{"passage_id": "p1", "embedding": [1.0, 0.0, 0.0]}]), "2030-01-01T00:00:00Z", &f32x3()).unwrap();
+    fold(&f.store, &d, at("2030-01-01T01:00:00Z")).unwrap();
+    let (first, first_dir) = current(&f, "passages");
+    let sidecar = first_dir.join(first.indexes[0].path().unwrap());
+    assert!(sidecar.join(GRAPH_FILE).is_file());
+    // Superseded, inside the window: the snapshot and its sidecar stay together.
+    f.land_typed(&d, "run-2", json!([{"passage_id": "p2", "embedding": [0.0, 1.0, 0.0]}]), "2030-01-02T00:00:00Z", &f32x3()).unwrap();
+    fold(&f.store, &d, at("2030-01-02T01:00:00Z")).unwrap();
+    assert!(first_dir.is_dir() && sidecar.join(GRAPH_FILE).is_file());
+    // Past the window, the pass that collects the snapshot collects its sidecar with it.
+    f.land_typed(&d, "run-3", json!([{"passage_id": "p3", "embedding": [0.0, 0.0, 1.0]}]), "2030-01-09T01:00:00Z", &f32x3()).unwrap();
+    fold(&f.store, &d, at("2030-01-09T01:00:00Z")).unwrap();
+    assert!(!first_dir.exists() && !sidecar.exists());
+    let (now, now_dir) = current(&f, "passages");
+    assert!(now_dir.join(now.indexes[0].path().unwrap()).join(GRAPH_FILE).is_file());
 }
 
 /// A vector sidecar is an HNSW graph over unit-length `Float32` vectors whose layers draw from a seed of the snapshot id and column, so one staged row set builds one byte-identical graph.
