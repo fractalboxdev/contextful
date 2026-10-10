@@ -8,6 +8,7 @@ mod drive;
 mod host_task;
 mod join;
 mod journal;
+mod nodes;
 mod own;
 mod plan;
 mod preparation;

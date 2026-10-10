@@ -1100,6 +1100,7 @@ fn arm(scheduler: &mut Scheduler, control: &ControlConfig, project: &Project, de
                 continue;
             }
             (_, None) => "it declares no schedule".to_string(),
+            (JobKind::Plan(_), Some(_)) => format!("its plan kind fires through `contextful job fire {}`", job.name),
             _ => "its maintenance kind has no native dispatch adapter".to_string(),
         };
         eprintln!("job `{}` stays unarmed: {reason}", job.name);

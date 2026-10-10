@@ -8,7 +8,11 @@ use serde::Deserialize;
 use std::collections::BTreeMap;
 
 /// The closed union of job kinds, beside the pipeline-run kind.
-pub const KINDS: [&str; 8] = ["sweep", "build", "fold", "rebuild-catalog", "sync-push", "validate", STORE_DRIVEN, SYNTHESIZE];
+pub const KINDS: [&str; 9] = ["sweep", "build", "fold", "rebuild-catalog", "sync-push", "validate", STORE_DRIVEN, SYNTHESIZE, PLAN];
+
+/// The kind lowering a compiled node plan onto one host execution
+/// (`surface.fire.plan-job`).
+pub const PLAN: &str = "plan";
 
 /// The kind running one synthesis pass from a source table into the claims table it
 /// targets (`read.synthesize.cadence`).
@@ -72,6 +76,8 @@ struct Block {
     endpoint: Option<String>,
     #[serde(default)]
     model: Option<String>,
+    #[serde(default)]
+    plan: Option<String>,
     #[serde(flatten)]
     other: BTreeMap<String, toml::Value>,
 }
@@ -100,6 +106,12 @@ pub struct Synthesis {
     pub model: String,
 }
 
+/// A plan job's declaration: the compiled plan file, relative to its manifest's directory.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct PlanJob {
+    pub path: String,
+}
+
 /// A job's kind: one of the union, with the store-driven kind's declaration.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum JobKind {
@@ -107,6 +119,7 @@ pub enum JobKind {
     Maintenance(String),
     StoreDriven(StoreDriven),
     Synthesize(Synthesis),
+    Plan(PlanJob),
 }
 
 /// One validated job block.
@@ -127,6 +140,7 @@ impl Job {
             JobKind::Maintenance(k) => k,
             JobKind::StoreDriven(_) => STORE_DRIVEN,
             JobKind::Synthesize(_) => SYNTHESIZE,
+            JobKind::Plan(_) => PLAN,
         }
     }
 }
@@ -162,6 +176,9 @@ fn check(value: toml::Value, registered: &dyn Fn(&str) -> bool) -> Result<Job, J
     let kind = match block.kind.as_str() {
         STORE_DRIVEN => JobKind::StoreDriven(store_driven(&block, registered)?),
         SYNTHESIZE => JobKind::Synthesize(synthesis(&block)?),
+        PLAN => JobKind::Plan(PlanJob {
+            path: block.plan.clone().filter(|p| !p.trim().is_empty()).ok_or_else(|| JobError::Invalid(format!("job `{name}` of kind `{PLAN}` names no `plan` file")))?,
+        }),
         _ => JobKind::Maintenance(block.kind.clone()),
     };
     if !matches!(kind, JobKind::Synthesize(_)) {
@@ -169,6 +186,9 @@ fn check(value: toml::Value, registered: &dyn Fn(&str) -> bool) -> Result<Job, J
         if let Some((key, _)) = carried.into_iter().find(|(_, v)| v.is_some()) {
             return Err(JobError::Invalid(format!("job `{name}` carries unknown key `{key}`")));
         }
+    }
+    if !matches!(kind, JobKind::Plan(_)) && block.plan.is_some() {
+        return Err(JobError::Invalid(format!("job `{name}` carries unknown key `plan`")));
     }
     if let Some(key) = block.other.keys().next() {
         return Err(JobError::Invalid(format!("job `{name}` carries unknown key `{key}`")));

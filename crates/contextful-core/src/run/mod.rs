@@ -12,6 +12,7 @@ pub mod error;
 pub mod failure;
 pub mod join;
 pub mod journal;
+pub mod nodes;
 pub mod own;
 pub mod plan;
 pub mod ports;

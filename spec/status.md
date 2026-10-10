@@ -11,11 +11,11 @@ An unpinned clause is `committed`; a pinned one is `performed` when its Rust, Le
 | `corpus` | 1 | 10 | 79 | 37 | 7 | 0 | 79 | 0 | 79 |
 | `disclosure` | 3 | 16 | 156 | 68 | 13 | 3 | 63 | 0 | 63 |
 | `read` | 2 | 16 | 221 | 35 | 24 | 1 | 211 | 0 | 211 |
-| `run` | 3 | 26 | 430 | 104 | 42 | 13 | 379 | 0 | 379 |
+| `run` | 3 | 26 | 433 | 105 | 42 | 13 | 388 | 0 | 388 |
 | `store` | 1 | 17 | 264 | 61 | 14 | 11 | 253 | 0 | 253 |
-| `surface` | 2 | 20 | 134 | 59 | 22 | 0 | 94 | 0 | 94 |
+| `surface` | 2 | 20 | 135 | 59 | 22 | 0 | 95 | 0 | 95 |
 | `topology` | 1 | 6 | 78 | 24 | 5 | 4 | 72 | 0 | 72 |
-| **total** | 19 | 156 | 2261 | 616 | 199 | 63 | 1826 | 0 | |
+| **total** | 19 | 156 | 2265 | 617 | 199 | 63 | 1836 | 0 | |
 
 Decision records: 18.
 
@@ -28,14 +28,14 @@ A milestone reads `closed` when its acceptance test computes `passing` and every
 | 0 — The test-first gate | 2 | 22 | 19 | passing | closed |
 | 1 — The authority core | 14 | 242 | 223 | passing | closed |
 | 2 — The store | 9 | 181 | 170 | passing | closed |
-| 3 — The run path | 11 | 233 | 225 | passing | closed |
-| 4 — Ingest | 25 | 519 | 357 | passing | open |
+| 3 — The run path | 11 | 233 | 226 | passing | closed |
+| 4 — Ingest | 25 | 522 | 365 | passing | open |
 | 5 — The read face under enforcement | 17 | 294 | 238 | passing | open |
 | 6 — Sync and replicas | 8 | 83 | 83 | passing | closed |
 | 7 — Memory | 6 | 55 | 54 | passing | closed |
 | 8 — Accountability | 5 | 82 | 47 | passing | open |
 | 9 — Visibility | 6 | 41 | 3 | open | open |
-| 10 — Cadence and the operator plane | 11 | 92 | 78 | passing | open |
+| 10 — Cadence and the operator plane | 11 | 93 | 79 | passing | open |
 | 11 — The derive tier | 7 | 93 | 92 | passing | closed |
 | 12 — The operator console | 12 | 54 | 22 | passing | open |
 | 13 — Disclosure | 5 | 33 | 13 | open | open |
@@ -1123,6 +1123,14 @@ Unscheduled operations: 11.
 | `run.cancel.stop-unauthorized` | `crates/contextful-core/tests/integration/run/cancel.rs::a_stop_needs_execute_over_the_recorded_pipeline_and_names_none` | performed |
 | `run.cancel.storage-blip` | `crates/contextful-engine/tests/integration/cancel.rs::a_failed_poll_keeps_polling` | performed |
 | `run.cancel.two-grains` | `spec/pins.toml` | performed |
+| `run.compile.branch-arm` | `crates/contextful-engine/tests/integration/nodes.rs::a_branch_records_its_arm_and_a_resume_takes_the_same_one` | performed |
+| `run.compile.branch-scope` | `crates/contextful-engine/tests/integration/nodes.rs::fan_out_bodies_run_under_labels_scoped_to_their_parallel_node` | performed |
+| `run.compile.inline-step-body` | `crates/contextful-core/tests/integration/run/nodes.rs::a_step_body_other_than_a_connector_reference_raises_pipeline_inline_step_body` | performed |
+| `run.compile.lowering` | `spec/pins.toml` | performed |
+| `run.compile.node-id-collision` | `crates/contextful-core/tests/integration/run/nodes.rs::a_repeated_node_id_raises_pipeline_node_id_collision` | performed |
+| `run.compile.plan-node` | `spec/pins.toml` | performed |
+| `run.compile.plan-version` | `crates/contextful-core/tests/integration/run/nodes.rs::a_plan_version_hashes_the_canonical_json_of_id_and_nodes` | performed |
+| `run.compile.unjoined-parallel` | `crates/contextful-core/tests/integration/run/nodes.rs::a_parallel_node_without_its_join_raises_pipeline_parallel_unjoined` | performed |
 | `run.declare.apply-fires-nothing` | `crates/contextful-cli/tests/integration/pipeline.rs::apply_fires_nothing_and_a_second_apply_is_a_no_op` | performed |
 | `run.declare.config-key` | `crates/contextful-connectors/tests/integration/http.rs::an_unknown_config_key_is_refused_naming_the_accepted_keys` | performed |
 | `run.declare.content-hash` | `crates/contextful-core/tests/integration/pipeline/declare.rs::an_explicit_default_hashes_as_its_absence` | performed |
@@ -1231,6 +1239,7 @@ Unscheduled operations: 11.
 | `run.journal.effect-boundary` | `crates/contextful-engine/tests/integration/execution.rs::a_body_resumed_across_a_step_and_an_awakeable_commits_what_an_uninterrupted_one_commits` | performed |
 | `run.journal.entry-key` | `crates/contextful-engine/tests/integration/journal.rs::a_racing_caller_waits_for_the_first_callers_value` | performed |
 | `run.journal.escape-hatch` | `crates/contextful-engine/tests/integration/execution.rs::an_unsafe_read_reruns_on_every_replay_and_each_hatch_states_its_argument` | performed |
+| `run.journal.fan-out-join` | `crates/contextful-cli/tests/integration/job.rs::a_fired_plan_rejoins_its_fan_out_and_a_partial_join_records_the_failed_branch` | performed |
 | `run.journal.idempotency-key` | `crates/contextful-core/tests/integration/run/journal.rs::the_idempotency_key_derives_from_the_entry_key_alone` | performed |
 | `run.journal.inline-cutoff` | `crates/contextful-core/tests/integration/run/journal.rs::values_up_to_1_mib_are_inline_and_larger_ones_are_blobs` | performed |
 | `run.journal.input-pin` | `crates/contextful-engine/tests/integration/drive.rs::a_resume_under_a_changed_statement_or_as_of_refuses_before_any_replay` | performed |
@@ -1767,6 +1776,7 @@ Unscheduled operations: 11.
 | `surface.fire.job-kind-unknown` | `crates/contextful-core/tests/integration/job.rs::a_kind_outside_the_union_or_a_command_raises_job_kind_unknown` | performed |
 | `surface.fire.job-snapshot` | `spec/pins.toml` | performed |
 | `surface.fire.model-snapshot` | `spec/pins.toml` | performed |
+| `surface.fire.plan-job` | `spec/pins.toml` | performed |
 | `surface.fire.scheduled-body` | `spec/pins.toml` | performed |
 | `surface.fire.scheduled-build` | `spec/pins.toml` | performed |
 | `surface.fire.scheduled-history` | `spec/pins.toml` | performed |

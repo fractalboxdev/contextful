@@ -1,10 +1,11 @@
 //! `contextful job` — the manifest's `[[job]]` blocks on the command line.
 //!
 //! `validate` holds every block to the closed kind union and the row bodies the binary
-//! registers. `fire` runs one store-driven job once: it admits the job's credential, reads
-//! the input statement through the read face under it at the job's `as_of`, runs the
-//! registered body per row through the engine, and lands the emitted rows, one table run
-//! per output table.
+//! registers, and compiles each plan job's plan. `fire` runs one store-driven job once: it
+//! admits the job's credential, reads the input statement through the read face under it at
+//! the job's `as_of`, runs the registered body per row through the engine, and lands the
+//! emitted rows, one table run per output table. A plan job's fire lowers its compiled plan
+//! onto one execution (`surface.fire.plan-job`).
 
 use crate::admit::{face, AdmitArgs};
 use crate::run::{boot_id, site_id_for, wire_at, ProjectArgs, StoreDestination};
@@ -12,7 +13,9 @@ use anyhow::{bail, Context, Result};
 use clap::Subcommand;
 use contextful_connectors::derive::Staged;
 use contextful_context::{node, Store};
-use contextful_core::job::{bind_targets, parse_jobs, Job, JobKind, StoreDriven, Targets};
+use contextful_core::job::{bind_targets, parse_jobs, Job, JobKind, PlanJob, StoreDriven, Targets};
+use contextful_core::run::nodes::NodePlan;
+use contextful_engine::nodes::{CommandConnectors, PlanFire};
 use contextful_core::run::advance::CursorKind;
 use contextful_core::run::drive::{Bodies, Emitted, InputSet};
 use contextful_core::run::effect::{EffectAdmission, EffectScope, EmissionSummary, RecordedBodyPlan, RecordedEffect};
@@ -62,7 +65,7 @@ pub enum JobCmd {
         #[arg(long, default_value = "contextful.toml")]
         declaration: PathBuf,
     },
-    /// Fire one store-driven job once, resuming its pending execution when one holds.
+    /// Fire one store-driven or plan job once, resuming its pending execution when one holds.
     Fire {
         name: String,
         #[command(flatten)]
@@ -143,6 +146,10 @@ pub fn run(cmd: JobCmd, bodies: &Bodies) -> Result<()> {
                     JobKind::StoreDriven(d) => {
                         println!("{}: valid ({}, body {}, max_in_flight {}, plan {})", job.name, job.kind_name(), d.input.body, d.max_in_flight, &d.input.plan_ref()[..16])
                     }
+                    JobKind::Plan(declared) => {
+                        let plan = compile_plan(&declaration, declared)?;
+                        println!("{}: valid ({}, plan {} version {}, {} nodes)", job.name, job.kind_name(), plan.id, plan.version, plan.nodes.len())
+                    }
                     JobKind::Maintenance(_) | JobKind::Synthesize(_) => println!("{}: valid ({})", job.name, job.kind_name()),
                 }
             }
@@ -163,6 +170,9 @@ pub fn run(cmd: JobCmd, bodies: &Bodies) -> Result<()> {
             if let JobKind::Synthesize(synthesis) = &job.kind {
                 let into = job.target.as_deref().context("a validated synthesize job names its target")?;
                 return crate::memory::fire_synthesis(&l, &project, &admit, synthesis, into);
+            }
+            if let JobKind::Plan(declared) = &job.kind {
+                return fire_plan(&l, &project, &text, &job.name, declared, run_id, site_id, site_id_env);
             }
             bind(std::slice::from_ref(&job), &l.declaration)?;
             let JobKind::StoreDriven(driven) = &job.kind else {
@@ -235,6 +245,43 @@ pub fn run(cmd: JobCmd, bodies: &Bodies) -> Result<()> {
             }
         }
     }
+}
+
+/// The compiled plan a plan job names, read relative to its manifest's directory.
+fn compile_plan(declaration: &std::path::Path, declared: &PlanJob) -> Result<NodePlan> {
+    let path = declaration.parent().unwrap_or(std::path::Path::new(".")).join(&declared.path);
+    let bytes = std::fs::read(&path).with_context(|| format!("reading the plan `{}`", path.display()))?;
+    NodePlan::compile(&bytes).with_context(|| path.display().to_string())
+}
+
+/// Fire one plan job: compile its plan and lower it onto one execution under
+/// `job:<name>`, each step's connector command running beside the manifest
+/// (`surface.fire.plan-job`, `run.compile.lowering`).
+#[allow(clippy::too_many_arguments)]
+fn fire_plan(
+    l: &crate::project::Located, project: &ProjectArgs, text: &str, name: &str, declared: &PlanJob,
+    run_id: Option<String>, site_id: Option<String>, site_id_env: Option<String>,
+) -> Result<()> {
+    let plan = compile_plan(&l.declaration, declared)?;
+    let site_id = site_id_for(text, &l.declaration, site_id, site_id_env)?;
+    let w = wire_at(&l.project, &project.now)?;
+    for reaped in w.engine.reap_orphans()? {
+        eprintln!("{reaped}: reaped as partial_failure, its owner lease lapsed");
+    }
+    let run_id = run_id.unwrap_or_else(|| format!("plan-{}", &sha256_hex(format!("{}{}", w.clock.now().unix_nanos(), std::process::id()).as_bytes())[..12]));
+    let cwd = l.declaration.parent().filter(|d| !d.as_os_str().is_empty()).map(std::path::Path::to_path_buf).unwrap_or_else(|| ".".into());
+    let fire = PlanFire { job: name.to_string(), plan: &plan, run_id, site_id, pid: std::process::id(), boot_id: boot_id(), poll: PARKED_POLL };
+    let row = w.engine.run_plan(&fire, &CommandConnectors { cwd })?;
+    if row.status != RunStatus::Success {
+        bail!("{name}: {} {} — {}", row.run_id, row.status, row.error_message.unwrap_or_default());
+    }
+    let partial: Vec<String> = row.failed_branches.iter().map(|b| format!("{} {}", b.label, b.tag.name())).collect();
+    if partial.is_empty() {
+        println!("{name}: {} success · plan {} version {}", row.run_id, plan.id, plan.version);
+    } else {
+        println!("{name}: {} success · plan {} version {} · partial join, failed branches: {}", row.run_id, plan.id, plan.version, partial.join(", "));
+    }
+    Ok(())
 }
 
 /// Bind each job's target to the tables the manifest's pipelines and store-driven jobs

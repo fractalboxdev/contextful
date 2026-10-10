@@ -97,7 +97,7 @@ The plan a specification becomes at build time: node kinds, version and schema.
 
 - `authoring-surface` — The authoring surface runs at build time only and emits a content-hashed plan; nothing from it executes where the engine serves, and no build profile embeds a scripting runtime.
   *A-run*
-- `plan-node` — A plan is a flat node list with predecessor edges: `step` (connector, optional retry), `sleep` (duration string), `awaitEvent` (optional timeout), `branch` (predicate, label-to-node-id map) and `parallel` (node ids).
+- `plan-node` — A plan is a flat node list with predecessor edges: `step` (connector, optional retry), `sleep` (duration string), `awaitEvent` (optional timeout), `branch` (predicate, label-to-node-id map), `parallel` (node ids) and `join` (parallel node id, `allow_partial`).
 - `plan-version` — A plan's version is the leading 16 chars of the sha256 over the RFC 8785 canonical JSON of its `{id, nodes}`.
 - `plan-schema` — The plan type is defined once in a schema library; its JSON Schema is the contract every language binds to, and the run path deserializes plan JSON against it.
 - `inline-step-body` — A `step` body other than a connector reference raises `PipelineInlineStepBody`.
@@ -107,6 +107,10 @@ The plan a specification becomes at build time: node kinds, version and schema.
 - `node-id-collision` — A node id repeated in one plan raises `PipelineNodeIdCollision`, naming the id and both positions.
   *A-run*
 - `lowering` — A plan lowers node by node onto {{run.journal.substrate-port}}.
+- `unjoined-parallel` — A `parallel` node no `join` node names, or a node other than its join reading it or one of its bodies, raises `PipelineParallelUnjoined` at compile.
+  *because an output read around its join reaches a partial result no run record marks as partial*
+- `branch-arm` — A `branch` node records, once, its predicate node's output trimmed of surrounding whitespace as the arm label, so every replay takes the arm the first attempt took; the other arms' nodes are skipped.
+- `branch-scope` — Each body of a `parallel` node runs under step labels prefixed by the parallel node's id, and its outcome reaches only the join, as {{run.journal.fan-out-join}} states.
 
 ## transform
 

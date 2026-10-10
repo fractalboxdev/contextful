@@ -213,6 +213,15 @@ pub enum RunError {
     /// Write-path redaction declared over a source whose pulls are journaled. (`run.journal.redacting-source`)
     #[error("JournalRedactionConflict: {0}")]
     JournalRedactionConflict(String),
+    /// A plan step whose body is not a connector reference. (`run.compile.inline-step-body`)
+    #[error("PipelineInlineStepBody: {0}")]
+    PipelineInlineStepBody(String),
+    /// One node id repeated in a plan. (`run.compile.node-id-collision`)
+    #[error("PipelineNodeIdCollision: {0}")]
+    PipelineNodeIdCollision(String),
+    /// A `parallel` node no join rejoins, or read around its join. (`run.compile.unjoined-parallel`)
+    #[error("PipelineParallelUnjoined: {0}")]
+    PipelineParallelUnjoined(String),
     /// One pipeline id declared twice. (`run.declare.duplicate-id`)
     #[error("PipelineDuplicateId: {0}")]
     PipelineDuplicateId(String),
