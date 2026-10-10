@@ -1278,3 +1278,217 @@ fn this_repository_function_class_shapes_host_the_edge_profile_and_run_nothing()
         assert!(!edge.iter().any(|n| n == runner), "`contextful-edge` links `{runner}`, so {function_shapes:?} would execute in place");
     }
 }
+
+/// Every `.rs` file under `crates/<package>/src/` of this repository.
+fn workspace_sources() -> Vec<std::path::PathBuf> {
+    let mut files = Vec::new();
+    let mut stack: Vec<std::path::PathBuf> = std::fs::read_dir(repo_root().join("crates")).unwrap().flatten().map(|e| e.path().join("src")).collect();
+    while let Some(dir) = stack.pop() {
+        for entry in std::fs::read_dir(&dir).into_iter().flatten().flatten() {
+            let path = entry.path();
+            if path.is_dir() {
+                stack.push(path);
+            } else if path.extension().is_some_and(|x| x == "rs") {
+                files.push(path);
+            }
+        }
+    }
+    files.sort();
+    files
+}
+
+/// `path` relative to the repository root, with `/` separators.
+fn relative(path: &std::path::Path) -> String {
+    let root = repo_root().canonicalize().unwrap();
+    path.canonicalize().unwrap().strip_prefix(&root).unwrap().to_string_lossy().replace('\\', "/")
+}
+
+/// The names a file exposes: `pub` items, their `pub` fields, enum variants, trait items
+/// and `pub` methods.
+fn public_names(source: &str) -> Vec<String> {
+    use syn::visit::Visit;
+    #[derive(Default)]
+    struct Names(Vec<String>);
+    fn public(v: &syn::Visibility) -> bool {
+        !matches!(v, syn::Visibility::Inherited)
+    }
+    impl<'a> Visit<'a> for Names {
+        fn visit_item(&mut self, item: &'a syn::Item) {
+            match item {
+                syn::Item::Fn(f) if public(&f.vis) => self.0.push(f.sig.ident.to_string()),
+                syn::Item::Struct(s) if public(&s.vis) => {
+                    self.0.push(s.ident.to_string());
+                    self.0.extend(s.fields.iter().filter(|f| public(&f.vis)).filter_map(|f| f.ident.as_ref().map(ToString::to_string)));
+                }
+                syn::Item::Enum(e) if public(&e.vis) => {
+                    self.0.push(e.ident.to_string());
+                    self.0.extend(e.variants.iter().map(|v| v.ident.to_string()));
+                }
+                syn::Item::Trait(t) if public(&t.vis) => {
+                    self.0.push(t.ident.to_string());
+                    for item in &t.items {
+                        match item {
+                            syn::TraitItem::Fn(f) => self.0.push(f.sig.ident.to_string()),
+                            syn::TraitItem::Type(t) => self.0.push(t.ident.to_string()),
+                            syn::TraitItem::Const(c) => self.0.push(c.ident.to_string()),
+                            _ => {}
+                        }
+                    }
+                }
+                syn::Item::Type(t) if public(&t.vis) => self.0.push(t.ident.to_string()),
+                syn::Item::Const(c) if public(&c.vis) => self.0.push(c.ident.to_string()),
+                syn::Item::Mod(m) if public(&m.vis) => self.0.push(m.ident.to_string()),
+                syn::Item::Macro(m) => self.0.extend(m.ident.as_ref().map(ToString::to_string)),
+                _ => {}
+            }
+            syn::visit::visit_item(self, item);
+        }
+        fn visit_impl_item_fn(&mut self, f: &'a syn::ImplItemFn) {
+            if public(&f.vis) {
+                self.0.push(f.sig.ident.to_string());
+            }
+            syn::visit::visit_impl_item_fn(self, f);
+        }
+    }
+    let file = syn::parse_file(source).unwrap();
+    let mut names = Names::default();
+    names.visit_file(&file);
+    names.0
+}
+
+/// The engine offers no compensation combinator; undoing a partial effect is an author-written recorded step,
+/// replayed like any other.
+///
+/// No public name under `crates/` and no word of the component interface names a
+/// compensation, a saga or an undo, while the retry decision, its schedule and the
+/// journal's recorded step stand public beside them.
+// spec: run.retry.no-compensation@8f6b5ac4
+#[test]
+fn no_public_api_offers_a_compensation_combinator_beside_the_recorded_step() {
+    const COMPENSATION: [&str; 3] = ["compensat", "saga", "undo"];
+    let mut names = Vec::new();
+    for path in workspace_sources() {
+        let rel = relative(&path);
+        let source = std::fs::read_to_string(&path).unwrap();
+        names.extend(public_names(&source).into_iter().map(|name| (rel.clone(), name)));
+    }
+    for (home, name) in [("contextful-core/src/run/retry.rs", "decide"), ("contextful-core/src/run/retry.rs", "Schedule"), ("contextful-engine/src/journal.rs", "step")] {
+        assert!(names.contains(&(format!("crates/{home}"), name.to_string())), "no public `{name}` at crates/{home}");
+    }
+    let offered: Vec<&(String, String)> = names.iter().filter(|(_, name)| COMPENSATION.iter().any(|w| name.to_lowercase().contains(w))).collect();
+    assert!(offered.is_empty(), "a public compensation entry point: {offered:?}");
+
+    let wit = std::fs::read_to_string(repo_root().join("crates/contextful-wasm/wit/connector.wit")).unwrap().to_lowercase();
+    assert!(wit.contains("interface"), "the component interface declares nothing");
+    let words: Vec<&str> = COMPENSATION.into_iter().filter(|w| wit.contains(w)).collect();
+    assert!(words.is_empty(), "the component interface names {words:?}");
+}
+
+/// The interchange packages a profile links, each with the features it resolves to.
+fn interchange(profile: &str) -> std::collections::BTreeMap<String, String> {
+    let o = Command::new("cargo")
+        .args(["tree", "-q", "--locked", "-p", "contextful-cli", "--no-default-features", "--features", profile])
+        .args(["-e", "normal", "--prefix", "none", "--format", "{p} [{f}]"])
+        .current_dir(repo_root())
+        .output()
+        .unwrap();
+    assert!(o.status.success(), "{}", stderr(&o));
+    stdout(&o)
+        .lines()
+        .filter(|l| l.starts_with("arrow") || l.starts_with("parquet"))
+        .filter_map(|l| {
+            let (package, rest) = l.split_once(" [")?;
+            Some((package.to_string(), rest.split(']').next()?.to_string()))
+        })
+        .collect()
+}
+
+/// The edge profile links the columnar interchange crates whole, as the full profile does; no slimmed interchange
+/// build exists.
+///
+/// Every `arrow*` and `parquet` package the edge build links resolves to the version and
+/// feature set the full build resolves it to, and `contextful-context` declares each one
+/// unconditionally, with `parquet`'s features fixed, so no feature selects a slimmed copy.
+// spec: topology.package.interchange-whole@438b7594
+#[test]
+fn the_edge_profile_links_the_interchange_packages_the_full_profile_links() {
+    let edge = interchange("contextful-edge");
+    let full = interchange("contextful-full");
+    let parquet = edge.iter().find(|(package, _)| package.starts_with("parquet ")).map(|(_, features)| features.clone());
+    let parquet = parquet.expect("`contextful-edge` links no `parquet`");
+    for feature in ["arrow", "zstd", "encryption"] {
+        assert!(parquet.split(',').any(|f| f == feature), "the edge build's `parquet` drops `{feature}`: {parquet}");
+    }
+    assert!(edge.len() >= 10, "`contextful-edge` links {} interchange packages: {edge:?}", edge.len());
+    let slimmed: Vec<String> = edge.iter().filter(|(p, f)| full.get(*p) != Some(*f)).map(|(p, f)| format!("{p} [{f}] vs {:?}", full.get(p))).collect();
+    assert!(slimmed.is_empty(), "the edge build resolves interchange packages unlike the full build: {slimmed:?}");
+
+    let manifest: toml::Value = toml::from_str(&std::fs::read_to_string(repo_root().join("crates/contextful-context/Cargo.toml")).unwrap()).unwrap();
+    let deps = manifest["dependencies"].as_table().unwrap();
+    let declared: Vec<&String> = deps.keys().filter(|k| k.starts_with("arrow") || k.as_str() == "parquet").collect();
+    assert!(declared.len() >= 8, "`contextful-context` declares {declared:?}");
+    for name in declared {
+        let optional = deps[name].get("optional").and_then(toml::Value::as_bool).unwrap_or(false);
+        assert!(!optional, "`contextful-context` declares `{name}` optional");
+    }
+    let features: Vec<&str> = deps["parquet"]["features"].as_array().unwrap().iter().filter_map(toml::Value::as_str).collect();
+    assert_eq!(features, ["arrow", "zstd", "encryption"], "`parquet`'s declared features");
+}
+
+/// Clustered availability behind the `Catalog` port comes from Postgres alone; the tree ships no self-contained
+/// clustered catalog.
+///
+/// The port's implementors under `crates/*/src` are exactly the local catalog file, the
+/// machine SQLite catalog, the Postgres catalog and the run-recording wrapper that delegates
+/// to an inner catalog; only `contextful-pg` declares a Postgres client, and the full
+/// profile links no replication or consensus library of its own.
+// spec: topology.coordinate.no-clustered-catalog@a06475e4
+#[test]
+fn the_catalog_port_has_exactly_the_known_implementors_and_postgres_alone_clusters() {
+    let mut implementors = Vec::new();
+    for path in workspace_sources() {
+        let source = std::fs::read_to_string(&path).unwrap();
+        let file = syn::parse_file(&source).unwrap();
+        for item in file.items {
+            let syn::Item::Impl(imp) = item else { continue };
+            let Some((_, trait_path, _)) = &imp.trait_ else { continue };
+            if trait_path.segments.last().is_none_or(|s| s.ident != "Catalog") {
+                continue;
+            }
+            let syn::Type::Path(ty) = imp.self_ty.as_ref() else { panic!("`Catalog` implemented for a non-path type in {}", path.display()) };
+            implementors.push((ty.path.segments.last().unwrap().ident.to_string(), relative(&path)));
+        }
+    }
+    implementors.sort();
+    let known: Vec<(String, String)> = [
+        ("LocalCatalog", "crates/contextful-engine/src/catalog.rs"),
+        ("MachineCatalog", "crates/contextful-sqlite/src/machine.rs"),
+        ("PgCatalog", "crates/contextful-pg/src/lib.rs"),
+        ("RecordedCatalog", "crates/contextful-context/src/run_record.rs"),
+    ]
+    .into_iter()
+    .map(|(t, p)| (t.to_string(), p.to_string()))
+    .collect();
+    assert_eq!(implementors, known, "the `Catalog` port's implementors");
+
+    let recorded = std::fs::read_to_string(repo_root().join("crates/contextful-context/src/run_record.rs")).unwrap();
+    assert!(recorded.contains("inner: Arc<dyn Catalog + Send + Sync>"), "`RecordedCatalog` holds no inner catalog to delegate to");
+    assert!(recorded.contains("self.inner.acquire(key, holder, ttl_secs)"), "`RecordedCatalog` grants leases of its own");
+
+    let mut postgres_clients = Vec::new();
+    for entry in std::fs::read_dir(repo_root().join("crates")).unwrap().flatten() {
+        let Ok(text) = std::fs::read_to_string(entry.path().join("Cargo.toml")) else { continue };
+        let manifest: toml::Value = toml::from_str(&text).unwrap();
+        let deps = manifest.get("dependencies").and_then(toml::Value::as_table);
+        if deps.is_some_and(|d| d.contains_key("postgres") || d.contains_key("tokio-postgres")) {
+            postgres_clients.push(manifest["package"]["name"].as_str().unwrap().to_string());
+        }
+    }
+    assert_eq!(postgres_clients, ["contextful-pg"], "packages declaring a Postgres client");
+
+    const REPLICATION: [&str; 6] = ["raft", "openraft", "raft-rs", "omnipaxos", "etcd-client", "foundationdb"];
+    let full = profile_graph("contextful-full");
+    assert!(full.iter().any(|n| n == "contextful-pg"), "the full profile links no Postgres catalog");
+    let replicated: Vec<&String> = full.iter().filter(|n| REPLICATION.contains(&n.as_str())).collect();
+    assert!(replicated.is_empty(), "the full profile links a replication library: {replicated:?}");
+}

@@ -11,11 +11,11 @@ An unpinned clause is `committed`; a pinned one is `performed` when its Rust, Le
 | `corpus` | 1 | 10 | 79 | 37 | 7 | 0 | 79 | 0 | 79 |
 | `disclosure` | 3 | 16 | 156 | 68 | 13 | 3 | 63 | 0 | 63 |
 | `read` | 2 | 16 | 221 | 35 | 24 | 1 | 211 | 0 | 211 |
-| `run` | 3 | 26 | 430 | 104 | 42 | 13 | 378 | 0 | 378 |
+| `run` | 3 | 26 | 430 | 104 | 42 | 13 | 379 | 0 | 379 |
 | `store` | 1 | 17 | 264 | 61 | 14 | 11 | 253 | 0 | 253 |
 | `surface` | 2 | 20 | 134 | 59 | 22 | 0 | 94 | 0 | 94 |
-| `topology` | 1 | 6 | 78 | 24 | 5 | 4 | 70 | 0 | 70 |
-| **total** | 19 | 156 | 2261 | 616 | 199 | 63 | 1823 | 0 | |
+| `topology` | 1 | 6 | 78 | 24 | 5 | 4 | 72 | 0 | 72 |
+| **total** | 19 | 156 | 2261 | 616 | 199 | 63 | 1826 | 0 | |
 
 Decision records: 18.
 
@@ -28,7 +28,7 @@ A milestone reads `closed` when its acceptance test computes `passing` and every
 | 0 — The test-first gate | 2 | 22 | 19 | passing | closed |
 | 1 — The authority core | 14 | 242 | 223 | passing | closed |
 | 2 — The store | 9 | 181 | 170 | passing | closed |
-| 3 — The run path | 11 | 233 | 222 | passing | closed |
+| 3 — The run path | 11 | 233 | 225 | passing | closed |
 | 4 — Ingest | 25 | 519 | 357 | passing | open |
 | 5 — The read face under enforcement | 17 | 294 | 238 | passing | open |
 | 6 — Sync and replicas | 8 | 83 | 83 | passing | closed |
@@ -1398,6 +1398,7 @@ Unscheduled operations: 11.
 | `run.retry.default-policy` | `crates/contextful-core/tests/integration/run/retry.rs::the_default_schedule_doubles_from_100_ms_over_5_attempts` | performed |
 | `run.retry.deterministic-verdict` | `crates/contextful-core/tests/integration/run/retry.rs::a_deterministic_refusal_is_terminal_and_spends_no_attempt` | performed |
 | `run.retry.failure-taxonomy` | `crates/contextful-core/tests/integration/run/retry.rs::ten_tags_cross_every_port_and_the_decision_reads_the_tag_alone` | performed |
+| `run.retry.no-compensation` | `tools/ci/tests/integration/topology.rs::no_public_api_offers_a_compensation_combinator_beside_the_recorded_step` | performed |
 | `run.retry.one-layer` | `crates/contextful-wasm/tests/integration/meter.rs::the_adapter_the_mint_and_the_meter_each_return_their_failure_once` | performed |
 | `run.retry.partial-failure` | `crates/contextful-engine/tests/integration/runner.rs::a_run_failing_after_a_stage_commits_nothing_and_closes_failed` | performed |
 | `run.retry.pressure-is-local` | `crates/contextful-engine/tests/integration/runner.rs::a_rate_limited_source_paces_its_own_run_and_no_other` | performed |
@@ -1835,6 +1836,7 @@ Unscheduled operations: 11.
 | `topology.coordinate.fenced-commit` | `crates/contextful-engine/tests/integration/coordinate.rs::a_commit_carrying_a_superseded_fence_is_refused` | performed |
 | `topology.coordinate.inventory` | `spec/pins.toml` | performed |
 | `topology.coordinate.lease-row` | `crates/contextful-engine/tests/integration/coordinate.rs::a_lease_row_carries_holder_expiry_and_fence_per_key` | performed |
+| `topology.coordinate.no-clustered-catalog` | `tools/ci/tests/integration/topology.rs::the_catalog_port_has_exactly_the_known_implementors_and_postgres_alone_clusters` | performed |
 | `topology.coordinate.primitive` | `tools/ci/tests/integration/topology.rs::no_profile_links_a_queue_cache_consensus_or_coordination_client` | performed |
 | `topology.coordinate.weak-backend` | `spec/pins.toml` | performed |
 | `topology.package.apply-home` | `tools/ci/tests/integration/topology.rs::the_snapshot_directory_has_one_home_both_callers_share` | performed |
@@ -1857,6 +1859,7 @@ Unscheduled operations: 11.
 | `topology.package.fixed-at-build` | `tools/ci/tests/integration/topology.rs::a_profile_linking_build_tooling_is_refused` | performed |
 | `topology.package.full-profile` | `tools/ci/tests/integration/topology.rs::this_repository_full_profile_links_every_daemon_role` | performed |
 | `topology.package.host-missing` | `crates/contextful-cli/tests/integration/component_absent.rs::a_component_source_is_refused_by_name_on_a_build_without_the_host` | performed |
+| `topology.package.interchange-whole` | `tools/ci/tests/integration/topology.rs::the_edge_profile_links_the_interchange_packages_the_full_profile_links` | performed |
 | `topology.package.profile` | `tools/ci/tests/integration/topology.rs::this_repository_binary_declares_the_three_profiles_each_linking_its_role` | performed |
 | `topology.package.profile-leak` | `tools/ci/tests/integration/topology.rs::a_profile_linking_a_dependency_outside_its_role_is_refused` | performed |
 | `topology.package.s3-sync-optional` | `tools/ci/tests/integration/topology.rs::a_sync_crate_linking_an_http_stack_without_its_s3_feature_is_refused` | performed |
