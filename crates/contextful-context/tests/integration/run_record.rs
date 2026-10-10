@@ -92,6 +92,9 @@ impl Catalog for Chunks {
         f(row);
         Ok(Some(row.clone()))
     }
+    fn retired_at(&self, scope: &OwnerScope) -> Result<Option<String>, Failure> {
+        Ok(Some(format!("retired under {scope}")))
+    }
     fn now(&self) -> Result<Instant, Failure> {
         unimplemented!()
     }
@@ -154,6 +157,15 @@ fn the_recorded_catalog_keeps_the_wrapped_catalogs_chunk_plan() {
     let claimed = recorded.update_chunk(&scope, None, &mut |r| r.status = ChunkStatus::Running).unwrap();
     assert_eq!(claimed.map(|r| r.status), Some(ChunkStatus::Running));
     assert_eq!(inner.0.lock().unwrap()[0].status, ChunkStatus::Running);
+}
+
+/// The recording catalog reads a scope's last retirement from the catalog it wraps.
+#[test]
+fn the_recorded_catalog_reads_the_wrapped_catalogs_last_retirement() {
+    let f = Fixture::new();
+    let recorded = RecordedCatalog::new(Arc::new(Chunks::default()), f.store.clone(), Box::new(|_| Ok(NodeId::parse("ingest-a").unwrap())));
+    let scope = OwnerScope::table("feed", "filings");
+    assert_eq!(recorded.retired_at(&scope).unwrap(), Some(format!("retired under {scope}")));
 }
 
 /// A producer landing into the run record still refuses; only the engine appends to it.
