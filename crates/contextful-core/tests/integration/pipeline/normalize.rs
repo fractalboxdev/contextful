@@ -108,7 +108,9 @@ fn one_normalized_group_holds_nested_rows_and_shreds_only_when_materialized() {
     let group = NormalizedGroup::new(rows.clone(), "spans", "run-1", 5);
     // The group keeps the nested values a native sink lands as struct and list columns.
     assert_eq!(group.column_values("resource").unwrap(), [serde_json::json!({"service": "api"})]);
-    assert!(native_types(&rows, 5).values().all(ColumnType::is_nested));
+    let types = native_types(&rows, 5);
+    assert!(!types.is_empty());
+    assert!(types.values().all(ColumnType::is_nested));
     // The relational projection is computed from the same group at materialization.
     assert_eq!(group.destinations(), ["spans", "spans_events"]);
     let tables = group.into_tables().unwrap();

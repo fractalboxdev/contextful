@@ -946,6 +946,7 @@ fn every_constant_name_carries_the_object_it_ranges_over() {
             rows += 1;
             let last = name.rsplit('.').next().unwrap();
             let named = words(last);
+            assert!(!named.is_empty(), "{name}");
             for hoped in ["secure", "verified", "correct", "mediate", "complete"] {
                 assert!(!named.iter().any(|w| w.starts_with(hoped)), "{name} names `{hoped}`, a property, not an object");
             }
@@ -971,7 +972,9 @@ fn every_inventory_row_carries_its_six_fields() {
         assert!(module.starts_with("Contextful."), "{name}: {module}");
         assert!(!row["statement"].as_str().unwrap().trim().is_empty(), "{name}");
         let assumptions: Vec<&str> = row["assumptions"].as_array().unwrap().iter().map(|a| a.as_str().unwrap()).collect();
-        assert!(assumptions.iter().all(|a| ["propext", "Quot.sound"].contains(a)), "{name}: {assumptions:?}");
+        for a in &assumptions {
+            assert!(["propext", "Quot.sound"].contains(a), "{name}: {assumptions:?}");
+        }
         assert!(!row["negative"].as_str().unwrap().trim().is_empty(), "{name}");
         if targets.contains(&name.as_str()) {
             assert!(!row["binding"].as_str().unwrap().trim().is_empty(), "{name}");
