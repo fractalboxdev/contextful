@@ -118,7 +118,7 @@ pub fn journal_store<J: JournalStore + Clone, B: BlobStore + Clone>(adapter: &st
     assert!(!rows.replace_if_pending(&k, "run-z", "run-b").unwrap(), "{adapter}: a takeover naming another holder writes nothing");
     assert!(rows.replace_if_pending(&k, "run-a", "run-b").unwrap(), "{adapter}: a takeover naming the holder passes the claim");
     rows.release(&k, "run-a").unwrap();
-    assert_eq!(rows.read(&k).unwrap(), Some(Row::Pending { key: k.clone(), run_id: "run-b".into() }), "{adapter}: a release drops only its own claim");
+    assert_eq!(rows.read(&k).unwrap(), Some(Row::pending(&k, "run-b")), "{adapter}: a release drops only its own claim");
     let first = Stored::place(b"first");
     assert_eq!(rows.record(&k, &first).unwrap(), None, "{adapter}: a record over a claim lands");
     assert_eq!(rows.record(&k, &Stored::place(b"second")).unwrap(), Some(first.clone()), "{adapter}: the first record stands");
@@ -184,6 +184,28 @@ pub fn journal_store<J: JournalStore + Clone, B: BlobStore + Clone>(adapter: &st
         Err(StepError::Journal(RunError::BlobMissing(m))) => assert!(m.contains(&sha), "{adapter}: `BlobMissing` names the reference: {m}"),
         other => panic!("{adapter}: a missing blob read as {other:?}"),
     }
+
+    // run.retry.attempt-counter: a schedule's closed attempts persist on its pending row,
+    // survive a takeover, and leave with a release or a record.
+    let j = journal(fresh);
+    let k = key("x-3");
+    assert_eq!(j.attempts(&k).unwrap(), 0, "{adapter}: a step with no row has closed no attempt");
+    j.note_attempts(&k, "run-a", 2).unwrap();
+    assert_eq!(j.row(&k).unwrap(), Some(Row::Pending { key: k.clone(), run_id: "run-a".into(), attempts: 2 }), "{adapter}: the count persists on a pending row");
+    j.note_attempts(&k, "run-z", 4).unwrap();
+    assert_eq!(j.attempts(&k).unwrap(), 2, "{adapter}: another run's count leaves the claim alone");
+    assert!(j.row_store().replace_if_pending(&k, "run-a", "run-b").unwrap());
+    assert_eq!(j.attempts(&k).unwrap(), 2, "{adapter}: a takeover keeps the count");
+    j.note_attempts(&k, "run-b", 3).unwrap();
+    assert_eq!(j.attempts(&k).unwrap(), 3, "{adapter}: the holder's count moves");
+    j.row_store().release(&k, "run-b").unwrap();
+    assert!(j.row_store().create_pending(&k, "run-c").unwrap(), "{adapter}: a release drops the counted claim");
+    assert_eq!(j.attempts(&k).unwrap(), 0, "{adapter}: a fresh claim starts its count at zero");
+    j.note_attempts(&k, "run-c", 1).unwrap();
+    assert_eq!(j.row_store().record(&k, &Stored::place(b"v")).unwrap(), None);
+    j.note_attempts(&k, "run-c", 2).unwrap();
+    assert!(matches!(j.row(&k).unwrap(), Some(Row::Recorded { .. })), "{adapter}: a recorded row takes no count");
+    assert_eq!(j.attempts(&k).unwrap(), 0, "{adapter}: a recorded step carries no count");
 
     // run.journal.collection: retiring an execution deletes its rows and no other's.
     let j = journal(fresh);

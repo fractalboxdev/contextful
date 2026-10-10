@@ -185,6 +185,9 @@ impl Catalog for RecordedCatalog {
     fn retire_at(&self, scope: &OwnerScope, execution_id: &str, cursor: Option<(CursorRow, u64)>, fence: Option<&Lease>) -> std::result::Result<Cas, Failure> {
         self.inner.retire_at(scope, execution_id, cursor, fence)
     }
+    fn retired_at(&self, scope: &OwnerScope) -> std::result::Result<Option<String>, Failure> {
+        self.inner.retired_at(scope)
+    }
     fn chunk_at(&self, scope: &OwnerScope) -> std::result::Result<Option<ChunkRow>, Failure> {
         self.inner.chunk_at(scope)
     }

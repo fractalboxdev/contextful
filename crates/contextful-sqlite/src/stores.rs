@@ -5,6 +5,7 @@
 //! ```text
 //! journal        one row per entry key: a pending claim's holder, or the recorded value
 //!                inline as bytes or as a blob reference
+//! journal_attempts  the attempts a pending claim's schedule closed in flight
 //! journal_blob   one row per value above the inline cutoff, keyed by its sha256
 //! journal_sweep  the instant the last sweep pass ran
 //! awakeable      one registry row per token
@@ -42,6 +43,13 @@ CREATE TABLE IF NOT EXISTS journal (
     PRIMARY KEY (execution_id, step_label, input_hash),
     CHECK ((holder IS NOT NULL AND inline_value IS NULL AND blob_sha256 IS NULL)
         OR (holder IS NULL AND (inline_value IS NULL) <> (blob_sha256 IS NULL)))
+) WITHOUT ROWID;
+CREATE TABLE IF NOT EXISTS journal_attempts (
+    execution_id TEXT NOT NULL,
+    step_label   TEXT NOT NULL,
+    input_hash   TEXT NOT NULL,
+    attempts     INTEGER NOT NULL,
+    PRIMARY KEY (execution_id, step_label, input_hash)
 ) WITHOUT ROWID;
 CREATE TABLE IF NOT EXISTS journal_blob (
     sha256 TEXT PRIMARY KEY,
@@ -245,18 +253,23 @@ fn inline(bytes: Vec<u8>) -> Stored {
     }
 }
 
-type Columns = (String, String, String, Option<String>, Option<Vec<u8>>, Option<String>, Option<i64>);
+type Columns = (String, String, String, Option<String>, Option<Vec<u8>>, Option<String>, Option<i64>, i64);
 
-const COLUMNS: &str = "execution_id, step_label, input_hash, holder, inline_value, blob_sha256, blob_bytes";
+/// A journal row beside the attempts its pending claim persisted, as `j` joined to `a`.
+const COLUMNS: &str = "j.execution_id, j.step_label, j.input_hash, j.holder, j.inline_value, j.blob_sha256, j.blob_bytes, COALESCE(a.attempts, 0)
+    FROM journal j LEFT JOIN journal_attempts a
+    ON a.execution_id = j.execution_id AND a.step_label = j.step_label AND a.input_hash = j.input_hash";
+
+const KEY_MATCH: &str = "execution_id = ?1 AND step_label = ?2 AND input_hash = ?3";
 
 fn columns(r: &rusqlite::Row) -> rusqlite::Result<Columns> {
-    Ok((r.get(0)?, r.get(1)?, r.get(2)?, r.get(3)?, r.get(4)?, r.get(5)?, r.get(6)?))
+    Ok((r.get(0)?, r.get(1)?, r.get(2)?, r.get(3)?, r.get(4)?, r.get(5)?, r.get(6)?, r.get(7)?))
 }
 
-fn row(db: &Db, (execution_id, step_label, input_hash, holder, inline_value, blob_sha256, blob_bytes): Columns) -> Result<Row, Failure> {
+fn row(db: &Db, (execution_id, step_label, input_hash, holder, inline_value, blob_sha256, blob_bytes, attempts): Columns) -> Result<Row, Failure> {
     let key = EntryKey { execution_id, step_label, input_hash };
     match (holder, inline_value, blob_sha256) {
-        (Some(run_id), _, _) => Ok(Row::Pending { key, run_id }),
+        (Some(run_id), _, _) => Ok(Row::Pending { key, run_id, attempts: u32::try_from(attempts).unwrap_or(u32::MAX) }),
         (None, _, Some(sha256)) => Ok(Row::Recorded { key, value: Stored::Blob { sha256, bytes: blob_bytes.unwrap_or_default() as u64 } }),
         (None, Some(bytes), None) => Ok(Row::Recorded { key, value: inline(bytes) }),
         (None, None, None) => Err(db.fail(format!("journal row for step `{}` holds neither a claim nor a value", key.step_label))),
@@ -267,7 +280,7 @@ impl SqliteJournalStore {
     fn read_in(&self, tx: &Open, key: &EntryKey) -> Result<Option<Row>, Failure> {
         let found = tx.run(|c| {
             c.query_row(
-                &format!("SELECT {COLUMNS} FROM journal WHERE execution_id = ?1 AND step_label = ?2 AND input_hash = ?3"),
+                &format!("SELECT {COLUMNS} WHERE j.execution_id = ?1 AND j.step_label = ?2 AND j.input_hash = ?3"),
                 params![key.execution_id, key.step_label, key.input_hash],
                 columns,
             )
@@ -323,7 +336,8 @@ impl JournalStore for SqliteJournalStore {
                      ON CONFLICT (execution_id, step_label, input_hash) DO UPDATE SET holder = NULL, inline_value = excluded.inline_value,
                         blob_sha256 = excluded.blob_sha256, blob_bytes = excluded.blob_bytes",
                     params![key.execution_id, key.step_label, key.input_hash, inline_value, blob_sha256, blob_bytes],
-                )
+                )?;
+                c.execute(&format!("DELETE FROM journal_attempts WHERE {KEY_MATCH}"), params![key.execution_id, key.step_label, key.input_hash])
             })?;
             Ok(None)
         })
@@ -332,9 +346,37 @@ impl JournalStore for SqliteJournalStore {
     fn release(&self, key: &EntryKey, run_id: &str) -> Result<(), Failure> {
         self.db.with(true, |tx| {
             tx.run(|c| {
-                c.execute(
+                let n = c.execute(
                     "DELETE FROM journal WHERE execution_id = ?1 AND step_label = ?2 AND input_hash = ?3 AND holder = ?4",
                     params![key.execution_id, key.step_label, key.input_hash, run_id],
+                )?;
+                if n == 1 {
+                    c.execute(&format!("DELETE FROM journal_attempts WHERE {KEY_MATCH}"), params![key.execution_id, key.step_label, key.input_hash])?;
+                }
+                Ok(())
+            })
+        })
+    }
+
+    fn note_attempts(&self, key: &EntryKey, run_id: &str, attempts: u32) -> Result<(), Failure> {
+        self.db.with(true, |tx| {
+            match self.read_in(tx, key)? {
+                None => {
+                    tx.run(|c| {
+                        c.execute(
+                            "INSERT INTO journal (execution_id, step_label, input_hash, holder) VALUES (?1, ?2, ?3, ?4)",
+                            params![key.execution_id, key.step_label, key.input_hash, run_id],
+                        )
+                    })?;
+                }
+                Some(Row::Pending { run_id: holder, .. }) if holder == run_id => {}
+                Some(_) => return Ok(()),
+            }
+            tx.run(|c| {
+                c.execute(
+                    "INSERT INTO journal_attempts (execution_id, step_label, input_hash, attempts) VALUES (?1, ?2, ?3, ?4)
+                     ON CONFLICT (execution_id, step_label, input_hash) DO UPDATE SET attempts = excluded.attempts",
+                    params![key.execution_id, key.step_label, key.input_hash, i64::from(attempts)],
                 )
             })?;
             Ok(())
@@ -344,7 +386,7 @@ impl JournalStore for SqliteJournalStore {
     fn rows(&self, execution_id: &str) -> Result<Vec<Row>, Failure> {
         self.db.with(false, |tx| {
             let found = tx.run(|c| {
-                let mut stmt = c.prepare(&format!("SELECT {COLUMNS} FROM journal WHERE execution_id = ?1"))?;
+                let mut stmt = c.prepare(&format!("SELECT {COLUMNS} WHERE j.execution_id = ?1"))?;
                 let rows = stmt.query_map(params![execution_id], columns)?.collect::<rusqlite::Result<Vec<_>>>();
                 rows
             })?;
@@ -354,7 +396,10 @@ impl JournalStore for SqliteJournalStore {
 
     fn retire(&self, execution_id: &str) -> Result<(), Failure> {
         self.db.with(true, |tx| {
-            tx.run(|c| c.execute("DELETE FROM journal WHERE execution_id = ?1", params![execution_id]))?;
+            tx.run(|c| {
+                c.execute("DELETE FROM journal_attempts WHERE execution_id = ?1", params![execution_id])?;
+                c.execute("DELETE FROM journal WHERE execution_id = ?1", params![execution_id])
+            })?;
             Ok(())
         })
     }

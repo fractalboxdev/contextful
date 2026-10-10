@@ -86,6 +86,34 @@ mod hosted {
         connector: Connector,
         limits: Limits,
         content_hash: String,
+        /// The admitted bytes, kept for the admission store a replay resolves its pin from.
+        wasm: Vec<u8>,
+    }
+
+    /// Admitted component artifacts under `.contextful/artifacts/admitted/<content hash>`,
+    /// named by the pin a run carries, so a replay resolves the build its owner recorded
+    /// (`run.own.admission-pin`).
+    pub struct Admitted {
+        dir: std::path::PathBuf,
+        guest: Option<serde_json::Value>,
+    }
+
+    impl contextful_core::run::own::Artifacts for Admitted {
+        fn by_hash(&self, hash: &str) -> Result<Option<Vec<u8>>, Failure> {
+            if Digest::parse(hash).is_none() {
+                return Ok(None);
+            }
+            let path = self.dir.join(hash);
+            match std::fs::read(&path) {
+                Ok(bytes) => Ok(Some(bytes)),
+                Err(e) if e.kind() == std::io::ErrorKind::NotFound => Ok(None),
+                Err(e) => Err(Failure::new(contextful_core::run::FailureTag::Storage, format!("reading admitted artifact `{hash}`: {e}"))),
+            }
+        }
+
+        fn hash_of(&self, bytes: &[u8]) -> String {
+            content_hash(&Digest::of(bytes), self.guest.as_ref())
+        }
     }
 
     fn artifact_error(error: ConnectorError) -> anyhow::Error {
@@ -235,13 +263,45 @@ mod hosted {
         let host = ComponentHost::with_cache_dir(target, base.join(".contextful/cache/components")).map_err(failure)?;
         let (connector, digest) = host.load_artifact(&decl.artifact, &wasm, decl.requirement(store_pin)).map_err(failure)?;
         let content_hash = content_hash(&digest, decl.guest.as_ref());
-        Ok(Loaded { name: name.to_string(), host, connector, limits, content_hash })
+        Ok(Loaded { name: name.to_string(), host, connector, limits, content_hash, wasm })
     }
 
     impl Loaded {
         /// The connector's content hash (`connector.import.config-hashing`).
         pub fn content_hash(&self) -> String {
             self.content_hash.clone()
+        }
+
+        /// The project's admission store, holding this build under its content hash.
+        pub fn artifacts(&self, decl: &ComponentSource, base: &Path) -> Result<Admitted> {
+            let dir = base.join(".contextful/artifacts/admitted");
+            let path = dir.join(&self.content_hash);
+            if !path.exists() {
+                std::fs::create_dir_all(&dir).with_context(|| format!("creating admission store `{}`", dir.display()))?;
+                let mut temporary = tempfile::NamedTempFile::new_in(&dir)?;
+                temporary.write_all(&self.wasm)?;
+                if let Err(e) = temporary.persist_noclobber(&path) {
+                    if e.error.kind() != std::io::ErrorKind::AlreadyExists {
+                        return Err(e.error.into());
+                    }
+                }
+            }
+            Ok(Admitted { dir, guest: decl.guest.clone() })
+        }
+
+        /// The recorded build `wasm` a pending owner pinned, loaded against its own digest:
+        /// its replay runs the bytes it started on, whatever the declaration now resolves.
+        pub fn recorded(&self, decl: &ComponentSource, base: &Path, wasm: &[u8], target: ComponentTarget, store_pin: bool) -> Result<Loaded> {
+            let mut pinned = decl.clone();
+            pinned.artifact.pin = Some(Digest::of(wasm));
+            let target = match target {
+                ComponentTarget::Native => Target::Native,
+                ComponentTarget::Pulley => Target::Pulley,
+            };
+            let host = ComponentHost::with_cache_dir(target, base.join(".contextful/cache/components")).map_err(failure)?;
+            let (connector, digest) = host.load_artifact(&pinned.artifact, wasm, pinned.requirement(store_pin)).map_err(failure)?;
+            let content_hash = content_hash(&digest, decl.guest.as_ref());
+            Ok(Loaded { name: self.name.clone(), host, connector, limits: limits(decl)?, content_hash, wasm: wasm.to_vec() })
         }
 
         /// The connector a run of this component pins.
@@ -467,8 +527,25 @@ mod absent {
         absent(name).and_then(|()| unreachable!("`absent` refuses on this build"))
     }
 
+    /// An admission store this build never opens.
+    pub enum Admitted {}
+
+    impl contextful_core::run::own::Artifacts for Admitted {
+        fn by_hash(&self, _hash: &str) -> Result<Option<Vec<u8>>, contextful_core::run::Failure> {
+            match *self {}
+        }
+    }
+
     impl Loaded {
         pub fn content_hash(&self) -> String {
+            match *self {}
+        }
+
+        pub fn artifacts(&self, _decl: &ComponentSource, _base: &Path) -> Result<Admitted> {
+            match *self {}
+        }
+
+        pub fn recorded(&self, _decl: &ComponentSource, _base: &Path, _wasm: &[u8], _target: ComponentTarget, _store_pin: bool) -> Result<Loaded> {
             match *self {}
         }
 

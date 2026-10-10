@@ -720,6 +720,40 @@ fn each_table_binds_its_segment_and_keeps_its_own_position() {
     assert_eq!(&targets[2..], ["/repos/acme/wid%20gets/issues?since=4", "/repos/acme/tools/pulls?since=8"]);
 }
 
+/// A table declares `allowed_lateness`, default 0 s; a `monotonic` poll re-reads from its stored position minus
+/// that window, so a row arriving that late still lands.
+// spec: run.advance.allowed-lateness@131a158e
+#[test]
+fn a_table_entry_declares_allowed_lateness_and_each_poll_re_reads_that_window() {
+    // A row stamped 80 reaches the vendor after the first poll committed position 100.
+    let vendor = Vendor::start(|t| match t {
+        "/v1/late?since=70" => (200, "[{\"id\":\"a\",\"at\":100},{\"id\":\"late\",\"at\":80}]".into()),
+        "/v1/late" => (200, "[{\"id\":\"a\",\"at\":100}]".into()),
+        _ if t.starts_with("/v1/prompt") => (200, "[{\"id\":\"b\",\"at\":100}]".into()),
+        _ => (404, "{}".into()),
+    });
+    let manifest = |lateness: &str| {
+        format!(
+            "[[pipeline]]\nid = \"shop\"\nincremental = \"at\"\ntables = [{{ name = \"late\", allowed_lateness = \"{lateness}\" }}, \"prompt\"]\n[pipeline.source]\nname = \"http\"\nconfig = {{ endpoint = \"{}\", since_param = \"since\" }}\n",
+            vendor.url("/v1/{table}")
+        )
+    };
+    let dir = project(&manifest("30s"));
+    ok(&fire(dir.path(), "shop", "f1", "2030-01-01T00:00:00Z"));
+    let out = ok(&fire(dir.path(), "shop", "f2", "2030-01-01T00:01:00Z"));
+    let targets = vendor.targets();
+    assert_eq!(targets.len(), 4, "{targets:?}");
+    assert_eq!(&targets[2..], ["/v1/late?since=70", "/v1/prompt?since=100"], "only the late table re-reads its window");
+    let late = out.lines().find(|l| l.starts_with("shop_late:")).unwrap_or_else(|| panic!("{out}"));
+    assert!(late.contains("2 rows"), "the row 20 s late landed beside the boundary row: {out}");
+
+    // A window no span spells refuses at validation, naming the key.
+    let dir = project(&manifest("soon"));
+    let out = cf(dir.path(), &["pipeline", "validate"]);
+    assert!(!out.status.success());
+    assert!(stderr(&out).contains("allowed_lateness"), "{}", stderr(&out));
+}
+
 #[test]
 fn validate_holds_store_tables_to_their_visibility_block() {
     let dir = project("[[pipeline.tables]]\nname = \"wiki/pages\"\n\n[pipeline.tables.visibility]\nsource = \"wiki\"\nresource_key = \"page_id\"\nfidelity = \"mirrored\"\nfamily = \"item-exception\"\nmax_acl_staleness = \"1h30m\"\n");

@@ -198,6 +198,7 @@ impl PipelineSpec {
         }
         for t in &self.tables {
             let d = t.decl();
+            d.allowed_lateness_secs().map_err(|e| RunError::PipelineSpecInvalid(format!("pipeline `{}`: {}", self.id, e.0)))?;
             // A visibility refusal names the destination table.
             let destination = self.destination_decl(t);
             crate::disclosure::declare::Binding::of(&destination).map_err(|e| match e {

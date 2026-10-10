@@ -64,10 +64,19 @@ impl<A: AwakeableStore, J: JournalStore, B: BlobStore> Registry<A, J, B> {
 
     /// Mint a single-use token and persist its `pending` row.
     pub fn suspend(&self, execution_id: &str, step_label: &str, created_at: &str, ttl_secs: u64) -> Result<Awakeable, AwakeError> {
+        self.suspend_for(execution_id, step_label, created_at, ttl_secs, None)
+    }
+
+    /// Mint a single-use token bound, when `caller` names one, to that verified caller
+    /// subject, and persist its `pending` row (`run.suspend.caller-binding`).
+    pub fn suspend_for(&self, execution_id: &str, step_label: &str, created_at: &str, ttl_secs: u64, caller: Option<&str>) -> Result<Awakeable, AwakeError> {
         let mut bytes = [0u8; 16];
         getrandom::fill(&mut bytes).map_err(|e| Failure::new(contextful_core::run::FailureTag::Storage, format!("minting a token: {e}")))?;
         let token: String = bytes.iter().map(|b| format!("{b:02x}")).collect();
-        let row = Awakeable::mint(&token, execution_id, step_label, created_at, ttl_secs).map_err(AwakeError::Refused)?;
+        let mut row = Awakeable::mint(&token, execution_id, step_label, created_at, ttl_secs).map_err(AwakeError::Refused)?;
+        if let Some(subject) = caller {
+            row = row.bound_to(subject);
+        }
         self.store.insert(&row)?;
         Ok(row)
     }
@@ -75,6 +84,18 @@ impl<A: AwakeableStore, J: JournalStore, B: BlobStore> Registry<A, J, B> {
     /// The row under `token`, evaluated at `now`; an unknown token refuses and
     /// allocates nothing.
     pub fn state(&self, token: &str, now: Instant) -> Result<Awakeable, AwakeError> {
+        self.state_as(token, None, now)
+    }
+
+    /// [`Registry::state`] for `caller`, the subject its verified credential names: a
+    /// token bound to another subject answers as unknown (`run.suspend.caller-binding`).
+    pub fn state_as(&self, token: &str, caller: Option<&str>, now: Instant) -> Result<Awakeable, AwakeError> {
+        self.row_at(token, now).and_then(|row| if row.answers(caller) { Ok(row) } else { Err(AwakeError::Refused(unknown(token))) })
+    }
+
+    /// The row under `token` evaluated at `now`, whoever it is bound to: the awaiting
+    /// run's own read.
+    fn row_at(&self, token: &str, now: Instant) -> Result<Awakeable, AwakeError> {
         let found = if is_token(token) { self.store.get(token)? } else { None };
         let mut row = found.ok_or_else(|| AwakeError::Refused(unknown(token)))?;
         row.evaluate(now);
@@ -85,12 +106,22 @@ impl<A: AwakeableStore, J: JournalStore, B: BlobStore> Registry<A, J, B> {
     /// payload is recorded as the awaited step's output, a payload above the inline
     /// cutoff in the blob store, and the registry row references it.
     pub fn resolve(&self, token: &str, payload: &[u8], now: Instant) -> Result<Vec<u8>, AwakeError> {
+        self.resolve_as(token, None, payload, now)
+    }
+
+    /// [`Registry::resolve`] for `caller`, the subject its verified credential names. A
+    /// token bound to another subject, or presented with no credential, answers as
+    /// unknown and changes nothing (`run.suspend.caller-binding`).
+    pub fn resolve_as(&self, token: &str, caller: Option<&str>, payload: &[u8], now: Instant) -> Result<Vec<u8>, AwakeError> {
         if !is_token(token) {
             return Err(AwakeError::Refused(unknown(token)));
         }
         let mut outcome = None;
         let mut refused = None;
         let row = self.store.update(token, &mut |row| {
+            if !row.answers(caller) {
+                return Ok(false);
+            }
             let before = row.state;
             outcome = Some(row.resolve(payload, now));
             if row.state == before {
@@ -127,7 +158,7 @@ impl<A: AwakeableStore, J: JournalStore, B: BlobStore> Registry<A, J, B> {
         if let Some(Row::Recorded { value, .. }) = self.journal.row(&resume_key(execution_id, token))? {
             return Ok(Awaited::Resumed(self.journal.load(&value)?));
         }
-        Ok(match self.state(token, now)?.state {
+        Ok(match self.row_at(token, now)?.state {
             AwakeableState::TimedOut => Awaited::TimedOut,
             _ => Awaited::Pending,
         })

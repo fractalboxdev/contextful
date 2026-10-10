@@ -1,6 +1,9 @@
 //! The engine's one integration binary, one module per operation.
 
+mod admission;
+mod attempts;
 mod backfill;
+mod binding;
 mod cancel;
 #[cfg(unix)]
 mod command;
@@ -12,7 +15,10 @@ mod drive;
 mod execution;
 mod guard;
 mod journal;
+mod lateness;
+mod ledger;
 mod project;
+mod retire;
 mod writers;
 mod runner;
 mod scheduler;
@@ -52,6 +58,7 @@ pub fn support_row(run_id: &str, status: RunStatus) -> RunRow {
         stop: None,
         host_scope: None,
         input: None,
+        failed_branches: Vec::new(),
     }
 }
 mod worker;

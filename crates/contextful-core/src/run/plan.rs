@@ -5,7 +5,7 @@
 //! command that serves its pulls, the cursor, an optional retry schedule, and the
 //! journaling and redaction declarations the journal is held to.
 
-use super::advance::CursorKind;
+use super::advance::{CursorKind, ALLOWED_LATENESS_DEFAULT_SECS};
 use super::journal::sha256_hex;
 use super::own::ConnectorPin;
 use super::retry::{Schedule, ScheduleSpec};
@@ -40,6 +40,22 @@ pub struct CursorSpec {
     /// The `incremental` clock field a monotonic position is measured against.
     #[serde(default)]
     pub field: Option<String>,
+    /// The window a `monotonic` poll re-reads behind its stored position, spelled as a
+    /// span such as `90s` or `5m`; absent, [`ALLOWED_LATENESS_DEFAULT_SECS`]
+    /// (`run.advance.allowed-lateness`).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub allowed_lateness: Option<String>,
+}
+
+impl CursorSpec {
+    /// The declared `allowed_lateness` in seconds; a spelling no span parser reads refuses.
+    pub fn allowed_lateness_secs(&self) -> Result<u64, RunError> {
+        match self.allowed_lateness.as_deref() {
+            None => Ok(ALLOWED_LATENESS_DEFAULT_SECS),
+            Some(span) => crate::time::duration_secs(span)
+                .ok_or_else(|| RunError::Invalid(format!("`allowed_lateness = \"{span}\"` is no span of digits followed by `s`, `m`, `h` or `d`"))),
+        }
+    }
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -86,6 +102,7 @@ impl Plan {
         if cursor_kind == CursorKind::Monotonic && spec.cursor.field.is_none() {
             return Err(RunError::Invalid("a `monotonic` cursor names its `field`".into()));
         }
+        spec.cursor.allowed_lateness_secs()?;
         if spec.connector.command.is_empty() {
             return Err(RunError::Invalid(format!("connector `{}` names no command", spec.connector.id)));
         }

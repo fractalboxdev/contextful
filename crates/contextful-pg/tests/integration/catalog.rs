@@ -5,6 +5,7 @@
 use crate::server::{self, Server};
 use crate::{at, owner, run_row, T0};
 use contextful_core::coordinate::{Cas, Catalog, CursorRow, LeaseKey};
+use contextful_core::run::own::OwnerScope;
 use contextful_core::run::record::RunStatus;
 use contextful_core::run::RunError;
 use contextful_core::store::StoreError;
@@ -95,6 +96,23 @@ fn retiring_an_owner_caches_its_position_in_the_same_transaction() {
     assert_eq!(c.retire("feed", "filings", "x-1", Some((cursor("p1"), 0)), None).unwrap(), Cas::Applied);
     assert_eq!(c.owner("feed", "filings").unwrap(), None);
     assert_eq!(c.cursor("feed", "filings").unwrap().position, Some(json!("p1")));
+}
+
+/// An applied retirement names its execution as the scope's last retirement; a moved
+/// version names nothing, and the name survives a second connection.
+#[test]
+fn an_applied_retirement_names_the_scopes_last_retired_execution() {
+    let Some(server) = server::start() else { return };
+    let c = catalog(&server);
+    let scope = OwnerScope::table("feed", "filings");
+    assert_eq!(c.retired_at(&scope).unwrap(), None, "no retirement yet");
+    c.put_owner(&owner("x-1")).unwrap();
+    assert_eq!(c.retire("feed", "filings", "x-1", Some((cursor("p1"), 4)), None).unwrap(), Cas::VersionMoved);
+    assert_eq!(c.retired_at(&scope).unwrap(), None, "a moved version retires nothing");
+    assert_eq!(c.retire("feed", "filings", "x-1", Some((cursor("p1"), 0)), None).unwrap(), Cas::Applied);
+    assert_eq!(c.retired_at(&scope).unwrap().as_deref(), Some("x-1"));
+    assert_eq!(c.retired_at(&OwnerScope::host("other")).unwrap(), None, "another scope names nothing");
+    assert_eq!(catalog(&server).retired_at(&scope).unwrap().as_deref(), Some("x-1"), "a second connection reads the name");
 }
 
 #[test]

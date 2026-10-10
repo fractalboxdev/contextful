@@ -506,6 +506,9 @@ pub struct DeriveSource {
     pub store_root: Option<PathBuf>,
     /// Where relative media paths and path-form binaries resolve.
     pub cwd: PathBuf,
+    /// The last pull's ledger scope awaiting [`Source::settle`]: its batch ordinal, or `None`
+    /// when it produced no batch. `None` here when nothing awaits settlement.
+    pub unsettled: Option<Option<i32>>,
 }
 
 impl DeriveSource {
@@ -781,10 +784,19 @@ impl DeriveSource {
 impl Source for DeriveSource {
     fn pull(&mut self, _request: &PullRequest, cancel: &dyn Cancellation) -> Result<Vec<u8>, Failure> {
         let result = self.pull_once(cancel);
-        if let Some(hook) = &self.mediation.hook {
-            hook.finish(result.as_ref().ok().and_then(|(_, produced)| produced.then_some(0)))?;
+        if self.mediation.hook.is_some() {
+            self.unsettled = Some(result.as_ref().ok().and_then(|(_, produced)| produced.then_some(0)));
         }
         result.map(|(bytes, _)| bytes)
+    }
+
+    /// Settle the last pull's requests into the run's request ledger, joined to its batch
+    /// ordinal when it produced one (`run.journal.ledger-settles-first`).
+    fn settle(&mut self) -> Result<(), Failure> {
+        match (&self.mediation.hook, self.unsettled.take()) {
+            (Some(hook), Some(batch_seq)) => hook.finish(batch_seq),
+            _ => Ok(()),
+        }
     }
 }
 

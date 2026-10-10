@@ -28,6 +28,7 @@ CREATE TABLE scope (
     version     INTEGER NOT NULL,
     cursor      TEXT NOT NULL,
     owner       TEXT,
+    retired     TEXT,
     PRIMARY KEY (pipeline_id, tbl, kind, part)
 );
 ";
@@ -178,6 +179,10 @@ fn migrate_scope_keys(tx: &Transaction, fail: Fail) -> Result<(), Failure> {
         .and_then(|mut q| q.query_map([], |r| r.get::<_, String>(0))?.collect())
         .map_err(|e| fail(&e))?;
     if columns.iter().any(|c| c == "kind") {
+        // A scope table predating the retirement column gains it empty.
+        if !columns.iter().any(|c| c == "retired") {
+            tx.execute_batch("ALTER TABLE scope ADD COLUMN retired TEXT;").map_err(|e| fail(&e))?;
+        }
         return Ok(());
     }
     if columns.is_empty() {
@@ -399,6 +404,11 @@ impl Catalog for MachineCatalog {
                 }
             }
             retire_owner(tx, at, execution_id, fail)?;
+            if !execution_id.is_empty() {
+                let [p, t, k, c] = key(at);
+                seed_scope(tx, at, fail)?;
+                tx.execute(&format!("UPDATE scope SET retired = ?5 WHERE {WHERE_KEY}"), params![p, t, k, c, execution_id]).map_err(|e| fail(&e))?;
+            }
             Ok(Cas::Applied)
         })
     }
@@ -432,6 +442,16 @@ impl Catalog for MachineCatalog {
                 retire_owner(tx, at, execution_id, fail)?;
             }
             Ok(Some(row))
+        })
+    }
+
+    fn retired_at(&self, at: &OwnerScope) -> Result<Option<String>, Failure> {
+        self.with(false, |tx, fail| {
+            let [p, t, k, c] = key(at);
+            tx.query_row(&format!("SELECT retired FROM scope WHERE {WHERE_KEY}"), params![p, t, k, c], |r| r.get::<_, Option<String>>(0))
+                .optional()
+                .map(Option::flatten)
+                .map_err(|e| fail(&e))
         })
     }
 

@@ -34,8 +34,10 @@ CREATE TABLE IF NOT EXISTS contextful_scope (
     version     BIGINT NOT NULL,
     cursor      TEXT NOT NULL,
     owner       TEXT,
+    retired     TEXT,
     PRIMARY KEY (pipeline_id, tbl, kind, part)
 );
+ALTER TABLE contextful_scope ADD COLUMN IF NOT EXISTS retired TEXT;
 CREATE TABLE IF NOT EXISTS contextful_run (
     run_id      TEXT PRIMARY KEY,
     pipeline_id TEXT NOT NULL,
@@ -339,7 +341,21 @@ impl Catalog for PgCatalog {
                 let sql = format!("UPDATE contextful_scope SET owner = NULL WHERE {WHERE_KEY}");
                 tx.execute(sql.as_str(), &[&p, &t, &k, &c]).map_err(|e| fail(&e))?;
             }
+            if !execution_id.is_empty() {
+                let [p, t, k, c] = key(at);
+                let sql = format!("UPDATE contextful_scope SET retired = $5 WHERE {WHERE_KEY}");
+                tx.execute(sql.as_str(), &[&p, &t, &k, &c, &execution_id]).map_err(|e| fail(&e))?;
+            }
             Ok(Cas::Applied)
+        })
+    }
+
+    fn retired_at(&self, at: &OwnerScope) -> Result<Option<String>, Failure> {
+        self.with(|tx, fail| {
+            let [p, t, k, c] = key(at);
+            let sql = format!("SELECT retired FROM contextful_scope WHERE {WHERE_KEY}");
+            let row = tx.query_opt(sql.as_str(), &[&p, &t, &k, &c]).map_err(|e| fail(&e))?;
+            Ok(row.and_then(|r| r.get::<_, Option<String>>(0)))
         })
     }
 

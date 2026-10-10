@@ -186,6 +186,53 @@ fn pipeline_run_lands_a_pinned_component_and_records_its_digest() {
     assert_ne!(hash, pin);
 }
 
+/// A run pins its connector identity at admission and a replay resolves the artifact from that pin; a connector
+/// rebuilt later reaches no in-flight or replayed run.
+// spec: run.own.admission-pin@d7885d15
+#[test]
+fn a_replay_runs_the_component_build_its_owner_pinned_and_a_rebuild_waits_for_a_fresh_run() {
+    use contextful_core::coordinate::Catalog;
+    use contextful_core::pipeline::declare::{collect, ManifestFile};
+    use contextful_core::run::own::{ConnectorPin, ExecutionOwner, OwnerScope, Pins};
+
+    // An unpinned local artifact: rebuilding it changes the bytes and leaves the declaration alone.
+    let dir = project(&manifest("connectors/probe.wasm", &["items"], ""));
+    ok(&fire(dir.path(), "run-1", &[], &[]));
+    assert_eq!(run_row(dir.path(), "run-1")["connector_hash"], serde_json::json!(digest(PROBE)));
+
+    // A later run admitted against the same build dies holding its owner.
+    let text = std::fs::read_to_string(dir.path().join("contextful.toml")).unwrap();
+    let declared = collect(&[ManifestFile { path: "contextful.toml".into(), text }]).unwrap();
+    let catalog = contextful_sqlite::MachineCatalog::open(
+        &dir.path().join(".contextful/context/research/machine.sqlite"),
+        Arc::new(contextful_core::ports::FixedClock(contextful_core::time::Instant::parse("2030-01-01T00:00:00Z").unwrap())),
+    )
+    .unwrap();
+    let recorded = ConnectorPin { id: "connectors/probe.wasm".into(), version: env!("CARGO_PKG_VERSION").into(), world: contextful_wasm::WORLD.into(), hash: digest(PROBE) };
+    catalog
+        .put_owner(&ExecutionOwner {
+            execution_id: "x-died".into(),
+            scope: OwnerScope::table("probe", "probe_items"),
+            pins: Pins { connector: recorded, content_hash: declared[0].spec.content_hash(), input_hash: String::new() }.into(),
+            attempts: vec!["run-died".into()],
+            opened_at: contextful_core::time::Instant::parse("2030-01-01T00:00:00Z").unwrap(),
+        })
+        .unwrap();
+
+    // The connector is rebuilt on disk; the replay still runs the build its owner pinned.
+    std::fs::copy(PROBE_BASE, dir.path().join("connectors/probe.wasm")).unwrap();
+    assert_ne!(digest(PROBE), digest(PROBE_BASE));
+    ok(&fire(dir.path(), "run-2", &[], &[]));
+    let replay = run_row(dir.path(), "run-2");
+    assert_eq!(replay["status"], "success", "{replay}");
+    assert_eq!(replay["execution_id"], "x-died", "the run resumed the pending owner");
+    assert_eq!(replay["connector_hash"], serde_json::json!(digest(PROBE)), "the replay ran the recorded build, not the rebuild");
+
+    // Only a run admitted after the replay closed reaches the rebuild.
+    ok(&fire(dir.path(), "run-3", &[], &[]));
+    assert_eq!(run_row(dir.path(), "run-3")["connector_hash"], serde_json::json!(digest(PROBE_BASE)));
+}
+
 #[cfg(unix)]
 #[test]
 fn a_pipeline_run_writes_a_reusable_component_cache_entry() {

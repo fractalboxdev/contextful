@@ -52,6 +52,7 @@ fn row(run_id: &str, st: RunStatus) -> RunRow {
         stop: None,
         host_scope: None,
         input: None,
+        failed_branches: Vec::new(),
     }
 }
 

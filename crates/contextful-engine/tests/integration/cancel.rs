@@ -199,6 +199,7 @@ impl Catalog for Flaky {
         owner_at(scope: &OwnerScope) -> Result<Option<ExecutionOwner>, Failure>;
         put_owner(owner: &ExecutionOwner) -> Result<(), Failure>;
         retire_at(scope: &OwnerScope, execution_id: &str, cursor: Option<(CursorRow, u64)>, fence: Option<&Lease>) -> Result<Cas, Failure>;
+        retired_at(scope: &OwnerScope) -> Result<Option<String>, Failure>;
         renew(lease: &Lease, ttl_secs: u64) -> Result<Option<Lease>, Failure>;
         lease_holds(lease: &Lease) -> Result<bool, Failure>;
         put_run(row: &RunRow) -> Result<(), Failure>;
@@ -252,6 +253,7 @@ impl Catalog for Panics {
         owner_at(scope: &OwnerScope) -> Result<Option<ExecutionOwner>, Failure>;
         put_owner(owner: &ExecutionOwner) -> Result<(), Failure>;
         retire_at(scope: &OwnerScope, execution_id: &str, cursor: Option<(CursorRow, u64)>, fence: Option<&Lease>) -> Result<Cas, Failure>;
+        retired_at(scope: &OwnerScope) -> Result<Option<String>, Failure>;
         renew(lease: &Lease, ttl_secs: u64) -> Result<Option<Lease>, Failure>;
         lease_holds(lease: &Lease) -> Result<bool, Failure>;
         put_run(row: &RunRow) -> Result<(), Failure>;

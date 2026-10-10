@@ -201,6 +201,7 @@ impl<J: JournalStore, B: BlobStore> Engine<J, B> {
             stop: None,
             host_scope: open.scope.host_id().map(str::to_string),
             input: None,
+            failed_branches: Vec::new(),
         };
         self.catalog.put_run(&row)?;
         let token = CancelToken::default();
@@ -299,6 +300,14 @@ impl<'e, J: JournalStore, B: BlobStore> Execution<'e, J, B> {
     /// Resume the pending owner when its pins hold, or claim a fresh one, and add this
     /// attempt to it. A build pin's input hash is the hash of the opening position.
     pub(crate) fn claim(&mut self) -> Result<(), Close> {
+        // The journal deletes a retired owner's rows only after the catalog commits the
+        // retirement, so a crash between the two leaves rows this open deletes again
+        // (`run.journal.retire-order`).
+        if let Some(retired) = self.engine.catalog.retired_at(&self.scope)? {
+            if self.pending.as_ref().is_none_or(|o| o.execution_id != retired) {
+                self.engine.journal.collect(&retired)?;
+            }
+        }
         let cached = self.cursor_row()?;
         if let OwnerPins::Build(p) = &mut self.pins {
             p.input_hash = sha256_hex(&serde_json::to_vec(&cached.position).unwrap_or_default());
@@ -388,7 +397,9 @@ impl<'e, J: JournalStore, B: BlobStore> Execution<'e, J, B> {
         let holder_live = |run: &str| engine.holder_live(run);
         let token = &self.token;
         let label = key.step_label.as_str();
-        let mut attempt = 1;
+        // A schedule a crash interrupted mid-backoff resumes the budget its step's journal
+        // row persisted (`run.retry.attempt-counter`).
+        let mut attempt = engine.journal.attempts(key)? + 1;
         loop {
             self.emit(Change::Step(StepPatch { attempts: Some(attempt), ..StepPatch::new(label).status(StepStatus::Running) }));
             let failure = match engine.journal.step(key, &self.run_id, &holder_live, token, journal_it, &mut || effect(token)) {
@@ -404,6 +415,7 @@ impl<'e, J: JournalStore, B: BlobStore> Execution<'e, J, B> {
             }
             match decide(&self.schedule, label, attempt, &failure, seed(&self.run_id)) {
                 Decision::Retry { delay_ms } => {
+                    engine.journal.note_attempts(key, &self.run_id, attempt)?;
                     self.emit(Change::Step(StepPatch { failure: Some(failure.clone()), ..StepPatch::new(label).status(StepStatus::Retrying) }));
                     if !token.wait_timeout(Duration::from_millis(delay_ms)) {
                         return Err(Close::Failed(Failure::canceled(format!("stopped during the retry sleep of `{label}`"))));

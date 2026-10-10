@@ -6,6 +6,7 @@ mod cancel;
 mod derive;
 mod drive;
 mod host_task;
+mod join;
 mod journal;
 mod own;
 mod plan;
@@ -52,5 +53,6 @@ pub fn row(run_id: &str, started: &str) -> RunRow {
         stop: None,
         host_scope: None,
         input: None,
+        failed_branches: Vec::new(),
     }
 }

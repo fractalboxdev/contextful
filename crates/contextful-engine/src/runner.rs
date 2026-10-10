@@ -10,10 +10,10 @@ use crate::journal::{Journal, Resolved};
 use crate::project::Emitter;
 use crate::stores::{FileBlobStore, FileJournalStore};
 use contextful_core::coordinate::{Cas, Catalog, CursorRow, LeaseKey};
-use contextful_core::run::advance::{admits, advance, clock, frontier, open_watermark, resolve_concurrent, watermark, CursorKind};
+use contextful_core::run::advance::{admits, advance, clock, frontier, open_watermark, resolve_concurrent, rewind, watermark, CursorKind};
 use contextful_core::run::cancel::{mark, same_grain, Scope};
 use contextful_core::run::journal::EntryKey;
-use contextful_core::run::own::{ConnectorPin, OwnerScope, Pins};
+use contextful_core::run::own::{admission_pin, resolve_pinned, Artifacts, ConnectorPin, OwnerScope, Pins};
 use contextful_core::run::plan::Plan;
 use contextful_core::run::ports::{
     AwakeableStore, BlobStore, Cancellation, Commit, Destination, JournalStore, Landed, OpenExecution, Part, Pull, PullRequest, Shape, Source, Stage, Types, Unshaped,
@@ -100,6 +100,18 @@ fn recorded(bytes: &[u8]) -> Result<RecordedPull, Failure> {
     serde_json::from_slice(bytes).map_err(|e| Failure::deterministic(FailureTag::SchemaIncompatible, format!("prepared journal pull is malformed: {e}")))
 }
 
+/// One pull inside its journal step: the source settles the pull's outbound requests into
+/// its run's request ledger before the step returns, so the ledger is durable before the
+/// entry recording the batch commits (`run.journal.ledger-settles-first`). A failed pull
+/// settles too, and its failure answers first.
+fn pulled(source: &mut dyn Source, request: &PullRequest, cancel: &dyn Cancellation) -> Result<Vec<u8>, Failure> {
+    let bytes = source.pull(request, cancel);
+    let settled = source.settle();
+    let bytes = bytes?;
+    settled?;
+    Ok(bytes)
+}
+
 fn preparation_failure(error: RunError) -> Failure { Failure::deterministic(FailureTag::Permanent, error.to_string()) }
 
 enum TypeRefusal { Conflict(Failure), Late(Failure) }
@@ -126,6 +138,8 @@ struct PullStep<'a> {
     shape: &'a dyn Shape,
     authority: Option<&'a str>,
     at: Option<&'a Value>,
+    /// The clock value the pull admits rows from: `at` less any allowed lateness.
+    floor: Option<&'a Value>,
     types: &'a Types,
     undeclared: &'a BTreeSet<String>,
     ordinal: usize,
@@ -200,6 +214,18 @@ impl<J: JournalStore, B: BlobStore> Engine<J, B> {
             self.journal.collect(&execution_id)?;
         }
         Ok(())
+    }
+
+    /// Admit the connector a run of `pipeline_id`'s `table` executes and resolve its
+    /// artifact by pin: a pending owner's recorded build, so the replay runs the bytes it
+    /// started on, else `admitted`. The answered pin is the [`RunSpec::connector`] the run
+    /// carries, so a connector rebuilt later reaches no in-flight or replayed run
+    /// (`run.own.admission-pin`).
+    pub fn admit_connector(&self, pipeline_id: &str, table: &str, admitted: &ConnectorPin, artifacts: &dyn Artifacts) -> Result<(ConnectorPin, Vec<u8>), Failure> {
+        let pending = self.catalog.owner(pipeline_id, table)?;
+        let pin = admission_pin(pending.as_ref(), admitted).clone();
+        let bytes = resolve_pinned(&pin, artifacts)?;
+        Ok((pin, bytes))
     }
 
     /// Execute one run. A run that opened closes on a status its row records; the row is
@@ -302,6 +328,10 @@ impl<J: JournalStore, B: BlobStore> Engine<J, B> {
         let input = match emissions { Some(emissions) => BodyInput::Effects(emissions), None => BodyInput::Source { authority:authority.as_deref() } };
         let outcome = self.body(spec, &mut execution, &mut source, shape, dest, input);
         if outcome.is_err() {
+            // Abandoned work, a stop's `Canceled` included, settles the request ledger on
+            // this ordinary failure path and leaves the position alone
+            // (`run.cancel.abandoned-work`); the run closes on its own failure.
+            let _ = source.settle();
             // A run id names one attempt, so no later commit names a failed run's staged
             // parts (`run.own.stage-discard`). The run closes on its own failure; a part the
             // discard leaves joins no file list.
@@ -333,6 +363,7 @@ impl<J: JournalStore, B: BlobStore> Engine<J, B> {
         let execution_id = execution.execution_id().to_string();
 
         let field = plan.spec.cursor.field.clone().unwrap_or_default();
+        let lateness = plan.spec.cursor.allowed_lateness_secs()?;
         let mut position = cached.position.clone();
         let mut at = match plan.cursor_kind {
             CursorKind::Monotonic => open_watermark(position.as_ref(), &field)?.cloned(),
@@ -358,12 +389,19 @@ impl<J: JournalStore, B: BlobStore> Engine<J, B> {
                 return Err(Close::Failed(Failure::canceled("stopped between pulls")));
             }
             let label = format!("pull-{ordinal}");
-            let key = EntryKey::new(&execution_id, &label, &json_bytes(&position));
-            let request = PullRequest { step_label: label.clone(), position: position.clone(), idempotency_key: key.idempotency_key() };
+            // The poll's first pull re-reads `allowed_lateness` behind the stored position;
+            // the committed position itself never rewinds (`run.advance.allowed-lateness`).
+            let floor = match (plan.cursor_kind, ordinal, at.as_ref()) {
+                (CursorKind::Monotonic, 0, Some(stored)) if lateness > 0 => Some(rewind(stored, lateness)?),
+                _ => at.clone(),
+            };
+            let asked = if floor != at { floor.clone().map(|v| watermark(&field, v)) } else { position.clone() };
+            let key = EntryKey::new(&execution_id, &label, &json_bytes(&asked));
+            let request = PullRequest { step_label: label.clone(), position: asked, idempotency_key: key.idempotency_key() };
             let emission = emissions.and_then(|emissions| emissions.get(ordinal));
             let effect_scope = emission.zip(emitted).map(|(emission, input)| input.owner.expected(emission.scope().key())).transpose()?;
             let effect_summary = emission.zip(effect_scope).map(|(emission, scope)| emission.admit_to(dest, scope)).transpose()?;
-            let resolved = if emissions.is_none() { Some(self.step(execution, source, dest, PullStep { spec, key:&key, request:&request, shape, authority, at:at.as_ref(), types:&types, undeclared:&undeclared, ordinal })?) } else { None };
+            let resolved = if emissions.is_none() { Some(self.step(execution, source, dest, PullStep { spec, key:&key, request:&request, shape, authority, at:at.as_ref(), floor:floor.as_ref(), types:&types, undeclared:&undeclared, ordinal })?) } else { None };
             let prepared = authority.zip(resolved.as_ref()).map(|(authority, resolved)| {
                 let prepared = recorded(resolved.bytes())?;
                 if prepared.authority != authority { return Err(Failure::deterministic(FailureTag::Permanent, "prepared journal authority changed")); }
@@ -394,13 +432,14 @@ impl<J: JournalStore, B: BlobStore> Engine<J, B> {
                 (Vec::new(), prepared.last)
             } else { match plan.cursor_kind {
                 CursorKind::Monotonic => {
-                    // The frontier counts every fetched row; the load admits those at or after the stored position.
+                    // The frontier counts every fetched row; the load admits those at or after
+                    // the stored position less the table's allowed lateness.
                     let f = frontier(&field, &pull.rows)?;
                     let next = advance(at.as_ref(), f.as_ref())?;
                     let mut admitted = Vec::new();
                     for r in pull.rows {
                         if let Some(v) = clock(&r, &field) {
-                            if admits(at.as_ref(), v)? {
+                            if admits(floor.as_ref(), v)? {
                                 admitted.push(r);
                             }
                         }
@@ -552,13 +591,13 @@ impl<J: JournalStore, B: BlobStore> Engine<J, B> {
 
     /// Resolve one pull through the execution's journal under the plan's retry schedule.
     fn step(&self, execution: &mut Execution<'_, J, B>, source: &mut dyn Source, dest: &mut dyn Destination, step: PullStep<'_>) -> Result<Resolved, Close> {
-        let PullStep { spec, key, request, shape, authority, at, types:held, undeclared, ordinal } = step;
+        let PullStep { spec, key, request, shape, authority, at, floor, types:held, undeclared, ordinal } = step;
         let journaled = spec.plan.spec.journal;
         if let Some(authority) = authority {
             let journal_it = |bytes: &[u8]| recorded(bytes).is_ok_and(|pull| pull.rows > 0);
             let mut late = false;
             let result = execution.step_keyed(key, &journal_it, &mut |token| {
-                let bytes = source.pull(request, token)?;
+                let bytes = pulled(source, request, token)?;
                 let pull = Pull::decode(&bytes)?;
                 dest.validate_recorded_control(&spec.plan, &pull)?;
                 let types = shape.shape_types(pulled_types(&pull)?);
@@ -572,7 +611,7 @@ impl<J: JournalStore, B: BlobStore> Engine<J, B> {
                     let next = advance(at, front.as_ref()).map_err(preparation_failure)?;
                     let mut rows = Vec::new();
                     for row in pull.rows {
-                        if let Some(clock) = clock(&row, field) { if admits(at, clock).map_err(preparation_failure)? { rows.push(row); } }
+                        if let Some(clock) = clock(&row, field) { if admits(floor, clock).map_err(preparation_failure)? { rows.push(row); } }
                     }
                     let advanced = next.as_ref() != at;
                     (rows, next.map(|value| watermark(field, value)), !(pull.more && advanced))
@@ -592,7 +631,7 @@ impl<J: JournalStore, B: BlobStore> Engine<J, B> {
         }
         // An empty pull is never journaled.
         let journal_it = |bytes: &[u8]| journaled && Pull::decode(bytes).is_ok_and(|p| !p.rows.is_empty());
-        execution.step_keyed(key, &journal_it, &mut |token| source.pull(request, token))
+        execution.step_keyed(key, &journal_it, &mut |token| pulled(source, request, token))
     }
 
     /// Write a stop onto a run row, and under `pipeline` scope onto every in-flight run of

@@ -65,7 +65,7 @@ impl FileJournalStore {
 
 impl JournalStore for FileJournalStore {
     fn create_pending(&self, key: &EntryKey, run_id: &str) -> Result<bool, Failure> {
-        create_new(&self.row_path(key), &to_json(&Row::Pending { key: key.clone(), run_id: run_id.to_string() })?)
+        create_new(&self.row_path(key), &to_json(&Row::pending(key, run_id))?)
     }
 
     fn read(&self, key: &EntryKey) -> Result<Option<Row>, Failure> {
@@ -76,8 +76,8 @@ impl JournalStore for FileJournalStore {
         let path = self.row_path(key);
         let _lock = self.lock(key)?;
         match read_json::<Row>(&path)? {
-            Some(Row::Pending { run_id: h, .. }) if h == holder => {
-                replace(&path, &to_json(&Row::Pending { key: key.clone(), run_id: run_id.to_string() })?)?;
+            Some(Row::Pending { run_id: h, attempts, .. }) if h == holder => {
+                replace(&path, &to_json(&Row::Pending { key: key.clone(), run_id: run_id.to_string(), attempts })?)?;
                 Ok(true)
             }
             _ => Ok(false),
@@ -105,6 +105,18 @@ impl JournalStore for FileJournalStore {
         // The lock file stays: unlinking it under the lock lets a later caller lock a new
         // inode while this holder still holds the old one.
         Ok(())
+    }
+
+    fn note_attempts(&self, key: &EntryKey, run_id: &str, attempts: u32) -> Result<(), Failure> {
+        let path = self.row_path(key);
+        std::fs::create_dir_all(self.execution_dir(&key.execution_id)).map_err(|e| storage(&path, e))?;
+        let _lock = self.lock(key)?;
+        match read_json::<Row>(&path)? {
+            None => {}
+            Some(Row::Pending { run_id: h, .. }) if h == run_id => {}
+            Some(_) => return Ok(()),
+        }
+        replace(&path, &to_json(&Row::Pending { key: key.clone(), run_id: run_id.to_string(), attempts })?)
     }
 
     fn rows(&self, execution_id: &str) -> Result<Vec<Row>, Failure> {

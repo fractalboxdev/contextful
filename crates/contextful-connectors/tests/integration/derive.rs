@@ -210,6 +210,7 @@ fn source(dir: &Path, parents: Value, engine_toml: &str) -> DeriveSource {
         mediation: contextful_connectors::http::Mediation { hook: Some(Arc::new(Admitted)), run_id: Some("derive-test".into()), ..Default::default() },
         store_root: Some(dir.to_path_buf()),
         cwd: dir.to_path_buf(),
+        unsettled: None,
     }
 }
 
@@ -845,4 +846,42 @@ fn a_parent_table_past_a_million_rows_streams_in_batches() {
         let reads = (whole.load(std::sync::atomic::Ordering::SeqCst), batched.load(std::sync::atomic::Ordering::SeqCst));
         assert_eq!(reads, if streamed { (0, 1) } else { (1, 0) }, "{count} rows");
     }
+}
+
+/// A hook recording each scope a source settles, with the batch ordinal it carries.
+#[derive(Default)]
+struct Ledger {
+    finished: std::sync::Mutex<Vec<Option<i32>>>,
+}
+
+impl contextful_outbound::PreSendHook for Ledger {
+    fn admit(&self, _: &contextful_outbound::Intent) -> Result<(), String> {
+        Ok(())
+    }
+
+    fn settle(&self, _: &contextful_outbound::Intent, _: &contextful_outbound::Outcome) {}
+
+    fn finish(&self, batch_seq: Option<i32>) -> Result<(), Failure> {
+        self.finished.lock().unwrap().push(batch_seq);
+        Ok(())
+    }
+}
+
+/// A link preview's request ledger settles through `Source::settle`, which the runner calls
+/// ahead of the journal record (`run.journal.ledger-settles-first`), never inside the pull.
+#[test]
+fn a_link_preview_settles_its_request_ledger_through_settle_not_inside_the_pull() {
+    let site = Server::start(|_| Response { status: 200, headers: vec![], body: b"<title>Settled</title>".to_vec() });
+    let dir = tempfile::tempdir().unwrap();
+    let address = format!("http://localhost:{}/article", site.port);
+    let ledger = Arc::new(Ledger::default());
+    let mut source = link_source(dir.path(), &address, "");
+    source.mediation.hook = Some(ledger.clone());
+    let rows = pulled(&mut source);
+    assert_eq!(rows.len(), 1, "{rows:?}");
+    assert!(ledger.finished.lock().unwrap().is_empty(), "the pull settled nothing itself");
+    source.settle().unwrap();
+    assert_eq!(*ledger.finished.lock().unwrap(), [Some(0)], "the settle carries the produced batch's ordinal");
+    source.settle().unwrap();
+    assert_eq!(ledger.finished.lock().unwrap().len(), 1, "a second settle finds nothing unsettled");
 }

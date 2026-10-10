@@ -1,6 +1,7 @@
 //! `run.own`: the scope an execution owner is keyed on, the build or plan reference it
 //! pins while pending, and when a closing run releases it.
 
+use super::failure::{Failure, FailureTag};
 use super::record::RunStatus;
 use super::RunError;
 use crate::time::Instant;
@@ -98,6 +99,42 @@ impl std::fmt::Display for ConnectorPin {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         write!(f, "{}@{} ({}, {})", self.id, self.version, self.world, self.hash)
     }
+}
+
+/// Where admitted connector artifacts live, content-addressed by the hash a
+/// [`ConnectorPin`] carries.
+pub trait Artifacts {
+    /// The bytes stored under `hash`; `None` when no admitted artifact holds it.
+    fn by_hash(&self, hash: &str) -> Result<Option<Vec<u8>>, Failure>;
+    /// The content hash a pin names `bytes` by: their sha256, unless the store's artifacts
+    /// fold more into their pin, as a component's forwarded guest table does.
+    fn hash_of(&self, bytes: &[u8]) -> String {
+        super::journal::sha256_hex(bytes)
+    }
+}
+
+/// The connector build a run of a scope executes: the pending owner's admitted pin, so a
+/// replay resolves the artifact that owner recorded, else the build admitted now. A
+/// connector rebuilt later reaches no in-flight or replayed run (`run.own.admission-pin`).
+pub fn admission_pin<'a>(pending: Option<&'a ExecutionOwner>, admitted: &'a ConnectorPin) -> &'a ConnectorPin {
+    match pending.map(|owner| &owner.pins) {
+        Some(OwnerPins::Build(pins)) => &pins.connector,
+        _ => admitted,
+    }
+}
+
+/// The artifact `pin` names, looked up by its content hash alone. An absent artifact, or
+/// bytes whose [`Artifacts::hash_of`] differs from the pin, refuses rather than running
+/// another build.
+pub fn resolve_pinned(pin: &ConnectorPin, artifacts: &dyn Artifacts) -> Result<Vec<u8>, Failure> {
+    let bytes = artifacts
+        .by_hash(&pin.hash)?
+        .ok_or_else(|| Failure::deterministic(FailureTag::UnknownConnector, format!("connector {pin} is pinned and no admitted artifact holds hash {}; restore the recorded build", pin.hash)))?;
+    let digest = artifacts.hash_of(&bytes);
+    if digest != pin.hash {
+        return Err(Failure::deterministic(FailureTag::UnknownConnector, format!("the artifact stored under {} hashes to {digest}; connector {pin} runs only its recorded bytes", pin.hash)));
+    }
+    Ok(bytes)
 }
 
 /// What an owner pins while pending.

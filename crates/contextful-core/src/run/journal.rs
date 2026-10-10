@@ -102,9 +102,27 @@ impl Stored {
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(tag = "state", rename_all = "snake_case")]
 pub enum Row {
-    /// The run holding the claim; its owner lease decides a takeover.
-    Pending { key: EntryKey, run_id: String },
+    /// The run holding the claim; its owner lease decides a takeover. `attempts` counts the
+    /// attempts the step's schedule closed in flight, so a crash mid-backoff resumes the
+    /// remaining budget (`run.retry.attempt-counter`).
+    Pending {
+        key: EntryKey,
+        run_id: String,
+        #[serde(default, skip_serializing_if = "is_zero")]
+        attempts: u32,
+    },
     Recorded { key: EntryKey, value: Stored },
+}
+
+fn is_zero(n: &u32) -> bool {
+    *n == 0
+}
+
+impl Row {
+    /// A fresh claim on `key` held by `run_id`, no attempt yet closed.
+    pub fn pending(key: &EntryKey, run_id: &str) -> Row {
+        Row::Pending { key: key.clone(), run_id: run_id.to_string(), attempts: 0 }
+    }
 }
 
 /// Whether a sweep deletes a blob: unreferenced by every journal row and pending

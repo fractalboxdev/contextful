@@ -36,7 +36,7 @@ impl JournalStore for MemoryJournalStore {
         if rows.contains_key(key) {
             return Ok(false);
         }
-        rows.insert(key.clone(), Row::Pending { key: key.clone(), run_id: run_id.to_string() });
+        rows.insert(key.clone(), Row::pending(key, run_id));
         Ok(true)
     }
 
@@ -47,8 +47,9 @@ impl JournalStore for MemoryJournalStore {
     fn replace_if_pending(&self, key: &EntryKey, holder: &str, run_id: &str) -> Result<bool, Failure> {
         let mut rows = locked(&self.rows)?;
         match rows.get(key) {
-            Some(Row::Pending { run_id: h, .. }) if h == holder => {
-                rows.insert(key.clone(), Row::Pending { key: key.clone(), run_id: run_id.to_string() });
+            Some(Row::Pending { run_id: h, attempts, .. }) if h == holder => {
+                let attempts = *attempts;
+                rows.insert(key.clone(), Row::Pending { key: key.clone(), run_id: run_id.to_string(), attempts });
                 Ok(true)
             }
             _ => Ok(false),
@@ -69,6 +70,17 @@ impl JournalStore for MemoryJournalStore {
         if matches!(rows.get(key), Some(Row::Pending { run_id: h, .. }) if h == run_id) {
             rows.remove(key);
         }
+        Ok(())
+    }
+
+    fn note_attempts(&self, key: &EntryKey, run_id: &str, attempts: u32) -> Result<(), Failure> {
+        let mut rows = locked(&self.rows)?;
+        match rows.get(key) {
+            None => {}
+            Some(Row::Pending { run_id: h, .. }) if h == run_id => {}
+            Some(_) => return Ok(()),
+        }
+        rows.insert(key.clone(), Row::Pending { key: key.clone(), run_id: run_id.to_string(), attempts });
         Ok(())
     }
 

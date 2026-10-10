@@ -84,17 +84,32 @@ pub trait Cancellation {
 pub trait Source {
     /// The bytes one pull hands over, as the source handed them.
     fn pull(&mut self, request: &PullRequest, cancel: &dyn Cancellation) -> Result<Vec<u8>, Failure>;
+
+    /// Settle durably, into the run's request ledger, every outbound request this source
+    /// made since its last settle. The runner calls it after each pull, before the journal
+    /// records the batch (`run.journal.ledger-settles-first`), and once on the failure
+    /// path a stop takes (`run.cancel.abandoned-work`). A source keeping no ledger settles
+    /// nothing.
+    fn settle(&mut self) -> Result<(), Failure> {
+        Ok(())
+    }
 }
 
 impl<S: Source + ?Sized> Source for Box<S> {
     fn pull(&mut self, request: &PullRequest, cancel: &dyn Cancellation) -> Result<Vec<u8>, Failure> {
         (**self).pull(request, cancel)
     }
+    fn settle(&mut self) -> Result<(), Failure> {
+        (**self).settle()
+    }
 }
 
 impl<S: Source + ?Sized> Source for &mut S {
     fn pull(&mut self, request: &PullRequest, cancel: &dyn Cancellation) -> Result<Vec<u8>, Failure> {
         (**self).pull(request, cancel)
+    }
+    fn settle(&mut self) -> Result<(), Failure> {
+        (**self).settle()
     }
 }
 
@@ -274,6 +289,11 @@ pub trait JournalStore: Send + Sync {
     /// Drop `run_id`'s pending claim on `key`, leaving a recorded row or another run's
     /// claim alone.
     fn release(&self, key: &EntryKey, run_id: &str) -> Result<(), Failure>;
+    /// Persist that `run_id`'s schedule on `key` closed `attempts` attempts, as a pending
+    /// claim of `run_id` carrying the count, where no row stands or `run_id`'s own claim
+    /// does; a recorded row or another run's claim is left alone
+    /// (`run.retry.attempt-counter`).
+    fn note_attempts(&self, key: &EntryKey, run_id: &str, attempts: u32) -> Result<(), Failure>;
     /// Every row under `execution_id`, in no particular order.
     fn rows(&self, execution_id: &str) -> Result<Vec<JournalRow>, Failure>;
     /// Delete every row under `execution_id` (`run.journal.collection`); an execution
@@ -307,6 +327,7 @@ impl<T: JournalStore + ?Sized> JournalStore for std::sync::Arc<T> {
     fn replace_if_pending(&self, key: &EntryKey, holder: &str, run_id: &str) -> Result<bool, Failure> { (**self).replace_if_pending(key, holder, run_id) }
     fn record(&self, key: &EntryKey, value: &Stored) -> Result<Option<Stored>, Failure> { (**self).record(key, value) }
     fn release(&self, key: &EntryKey, run_id: &str) -> Result<(), Failure> { (**self).release(key, run_id) }
+    fn note_attempts(&self, key: &EntryKey, run_id: &str, attempts: u32) -> Result<(), Failure> { (**self).note_attempts(key, run_id, attempts) }
     fn rows(&self, execution_id: &str) -> Result<Vec<JournalRow>, Failure> { (**self).rows(execution_id) }
     fn retire(&self, execution_id: &str) -> Result<(), Failure> { (**self).retire(execution_id) }
     fn executions(&self) -> Result<Vec<String>, Failure> { (**self).executions() }

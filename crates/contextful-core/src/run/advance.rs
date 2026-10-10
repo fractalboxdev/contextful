@@ -161,3 +161,30 @@ pub fn admits(at: Option<&Value>, v: &Value) -> Result<bool, RunError> {
         Some(at) => Ok(compare(v, at)? != Ordering::Less),
     }
 }
+
+/// The re-read window a table declaring no `allowed_lateness` takes: 0 s
+/// (`run.advance.allowed-lateness`).
+pub const ALLOWED_LATENESS_DEFAULT_SECS: u64 = 0;
+
+/// The clock value a `monotonic` poll re-reads from: the stored position `at` less the
+/// table's `allowed_lateness` window, so a row arriving that late still lands
+/// (`run.advance.allowed-lateness`). An instant moves back by the window and a number by
+/// the window's seconds; a zero window returns `at` unchanged, and any other clock under a
+/// non-zero window refuses as unorderable.
+pub fn rewind(at: &Value, lateness_secs: u64) -> Result<Value, RunError> {
+    if lateness_secs == 0 {
+        return Ok(at.clone());
+    }
+    let back = i64::try_from(lateness_secs).unwrap_or(i64::MAX);
+    match at {
+        Value::String(s) => Instant::parse(s)
+            .map(|instant| Value::String(instant.minus_secs(lateness_secs).to_rfc3339()))
+            .map_err(|_| RunError::CursorPositionUnorderable(format!("clock value {at} is no instant, so an `allowed_lateness` of {lateness_secs} s cannot rewind it"))),
+        Value::Number(n) => match (n.as_i64(), n.as_f64()) {
+            (Some(i), _) => Ok(Value::from(i.saturating_sub(back))),
+            (None, Some(f)) => serde_json::Number::from_f64(f - lateness_secs as f64).map(Value::Number).ok_or_else(|| unorderable(at, at)),
+            _ => Err(unorderable(at, at)),
+        },
+        _ => Err(unorderable(at, at)),
+    }
+}
