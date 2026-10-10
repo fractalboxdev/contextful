@@ -733,13 +733,13 @@ fn a_crate_missing_from_the_crate_map_is_refused() {
     passes(&r);
 }
 
-/// Eighteen crates compose the workspace. `contextful-cli` is the binary and wires every adapter per profile by dependency injection.
-// spec: topology.package.crate-map@724e3bb7
+/// Nineteen crates compose the workspace. `contextful-cli` is the binary and wires every adapter per profile by dependency injection.
+// spec: topology.package.crate-map@76535123
 #[test]
 fn this_repository_crate_map_names_every_crate() {
     let o = topology(repo_root());
     assert!(o.status.success(), "{}", stderr(&o));
-    assert!(stdout(&o).contains("crate map: 18 crates"), "{}", stdout(&o));
+    assert!(stdout(&o).contains("crate map: 19 crates"), "{}", stdout(&o));
 }
 
 /// The crate-graph stage runs the dependency rules and refuses a run-path crate reaching a
@@ -1176,7 +1176,7 @@ fn no_profile_links_a_queue_cache_consensus_or_coordination_client() {
 #[test]
 fn only_the_binary_wires_a_catalog_backend_and_everything_else_names_the_port() {
     let root = repo_root().join("crates");
-    let defining = ["contextful-engine/src/catalog.rs", "contextful-engine/src/lib.rs", "contextful-sqlite/src/machine.rs", "contextful-sqlite/src/lib.rs"];
+    let defining = ["contextful-engine/src/catalog.rs", "contextful-engine/src/lib.rs", "contextful-sqlite/src/machine.rs", "contextful-sqlite/src/lib.rs", "contextful-pg/src/lib.rs"];
     let mut named = Vec::new();
     for entry in std::fs::read_dir(&root).unwrap().flatten() {
         let src = entry.path().join("src");
@@ -1196,7 +1196,7 @@ fn only_the_binary_wires_a_catalog_backend_and_everything_else_names_the_port() 
                     continue;
                 }
                 let text = std::fs::read_to_string(&p).unwrap_or_default();
-                if text.contains("LocalCatalog") || text.contains("MachineCatalog") {
+                if text.contains("LocalCatalog") || text.contains("MachineCatalog") || text.contains("PgCatalog") {
                     named.push(rel);
                 }
             }
@@ -1205,6 +1205,44 @@ fn only_the_binary_wires_a_catalog_backend_and_everything_else_names_the_port() 
     assert!(named.is_empty(), "code above the port names a backend: {named:?}");
     let port = std::fs::read_to_string(root.join("contextful-core/src/coordinate.rs")).unwrap();
     assert!(port.contains("pub trait Catalog"), "no `Catalog` port");
+}
+
+/// Single-node self-hosting uses a local catalog file owned by one process; a self-hosted cluster uses Postgres via
+/// `pg-catalog`, linked into the full profile; a managed edge deployment uses per-object SQLite; a managed cloud
+/// deployment uses managed Postgres.
+///
+/// The machine catalog file and the Postgres catalog each implement the port; the full profile links the Postgres
+/// adapter and its client while the edge and control profiles and a bare data-plane build link neither; and each
+/// provider's target file assigns its single-writer catalog role to the backend of its deployment shape.
+// spec: topology.coordinate.backends@a04f8089
+#[test]
+fn each_deployment_shape_reaches_its_catalog_backend_and_the_full_profile_links_postgres() {
+    for (backend, path) in [("MachineCatalog", "contextful-sqlite/src/machine.rs"), ("PgCatalog", "contextful-pg/src/lib.rs")] {
+        let text = std::fs::read_to_string(repo_root().join("crates").join(path)).unwrap_or_default();
+        assert!(text.contains(&format!("impl Catalog for {backend}")), "no `{backend}` behind the port at crates/{path}");
+    }
+    let full = profile_graph("contextful-full");
+    for package in ["contextful-pg", "postgres", "contextful-sqlite"] {
+        assert!(full.iter().any(|n| n == package), "the full profile links no `{package}`");
+    }
+    for profile in ["contextful-edge", "contextful-control", "data-plane"] {
+        let graph = profile_graph(profile);
+        assert!(!graph.is_empty(), "`{profile}` links no package");
+        for package in ["contextful-pg", "postgres", "tokio-postgres"] {
+            assert!(!graph.iter().any(|n| n == package), "`{profile}` links `{package}`");
+        }
+    }
+    let catalog = |provider: &str| -> Vec<(String, String)> {
+        let target: toml::Value = toml::from_str(&std::fs::read_to_string(repo_root().join(format!("spec/targets/{provider}.toml"))).unwrap()).unwrap();
+        target["shape"].as_array().unwrap().iter().map(|s| (s["kind"].as_str().unwrap().to_string(), s["roles"]["catalog"].as_str().unwrap().to_string())).collect()
+    };
+    for (provider, backend) in [("local", "local catalog file, one process"), ("cloudflare", "Durable Object SQLite"), ("aws", "Postgres via pg-catalog")] {
+        let shapes = catalog(provider);
+        assert!(!shapes.is_empty(), "`{provider}` declares no shape");
+        for (kind, role) in &shapes {
+            assert!(role.contains(backend), "`{provider}` {kind} shape's catalog is `{role}`, not {backend}");
+        }
+    }
 }
 
 /// The edge profile is the one profile a function-class target hosts. Execution on such a deployment runs on a worker target.

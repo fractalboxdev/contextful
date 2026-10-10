@@ -29,6 +29,8 @@ contextful-memory = { path = "../contextful-memory", optional = true }
 # package's `exchange` feature (`topology.package.exchange-optional`).
 contextful-policy = { path = "../contextful-policy", features = ["exchange"] }
 contextful-outbound = { path = "../contextful-outbound", default-features = false, optional = true }
+# The self-hosted cluster's Postgres catalog, linked under `pg-catalog` (`topology.coordinate.backends`).
+contextful-pg = { path = "../contextful-pg", optional = true }
 # The binary is the one package compiling SQLite into the build (`topology.package.sqlite-adapter`).
 contextful-sqlite = { path = "../contextful-sqlite", features = ["bundled"], optional = true }
 # The control snapshot directory every apply claims into (`surface.apply.local-claim`).
@@ -65,7 +67,7 @@ default = ["data-plane", "transport-ureq", "component-host", "s3-sync"]
 # `--no-default-features --features <profile>`. The read replica links the read path
 # alone (`topology.package.edge-profile`).
 contextful-edge = ["read-plane", "transport-ureq", "s3-sync"]
-contextful-full = ["data-plane", "transport-ureq", "s3-sync", "drive", "component-host"]
+contextful-full = ["data-plane", "transport-ureq", "s3-sync", "drive", "component-host", "pg-catalog"]
 contextful-control = ["dep:contextful-control"]
 # The read path: the store, bucket sync, the read face and its tool server. A build
 # without it answers each data-plane subcommand with `ProfileCapabilityAbsent`.
@@ -100,6 +102,9 @@ pulley = ["component-host", "contextful-wasm/pulley"]
 pdf = ["data-plane", "contextful-connectors/pdf"]
 # The Google Drive source, decoding its PDF pages through the same worker.
 drive = ["pdf", "contextful-connectors/drive"]
+# The Postgres catalog a self-hosted cluster's daemons share, opened in place of the
+# local catalog file when `CONTEXTFUL_CATALOG_URL` names it.
+pg-catalog = ["data-plane", "dep:contextful-pg"]
 # The S3 and R2 bucket adapter behind `s3://`, `r2://` and `https://` sync endpoints
 # (`topology.package.s3-sync-optional`) and the `s3` object source.
 s3-sync = ["read-plane", "contextful-sync/s3-sync", "contextful-connectors?/s3"]

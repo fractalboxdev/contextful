@@ -31,7 +31,9 @@ use contextful_core::time::Instant;
 use contextful_engine::awake::{AwakeError, Registry};
 use contextful_engine::cancel::Keeper;
 use contextful_engine::command::CommandSource;
+use contextful_core::coordinate::Catalog;
 use contextful_core::store::catalog::MACHINE_CATALOG_FILE;
+use contextful_core::store::encrypt::FileCipher;
 use contextful_engine::{Engine, Journal, RunSpec};
 use contextful_sqlite::{MachineCatalog, SqliteRunStores};
 use contextful_engine::stores::{FileAwakeableStore, FileBlobStore, FileJournalStore};
@@ -178,24 +180,56 @@ pub(crate) fn wire_at(project: &Project, now: &Option<String>) -> Result<Wired> 
     let root = project.run_dir();
     let clock = clock(now)?;
     let catalog_path = project.store_root().join(MACHINE_CATALOG_FILE);
-    // The catalog's lease rows need a linearizable conditional write
-    // (`surface.apply.weak-conditional-backend`).
-    contextful_core::surface::control::admit_conditional(
-        "the catalog",
-        &catalog_path.display().to_string(),
-        contextful_engine::fsutil::filesystem_kind(&catalog_path).as_deref(),
-    )?;
-    let (catalog, rows, blobs, awakeables): (_, SharedJournal, SharedBlobs, SharedAwakeables) = match store.file_cipher() {
+    let catalog = open_catalog(&catalog_path, clock.clone(), store.file_cipher())?;
+    let (rows, blobs, awakeables): (SharedJournal, SharedBlobs, SharedAwakeables) = match store.file_cipher() {
         Some(cipher) => {
-            let catalog = Arc::new(MachineCatalog::open_sealed(&catalog_path, clock.clone(), cipher.clone())?);
             let stores = SqliteRunStores::open_sealed(&catalog_path, cipher)?;
-            (catalog, Arc::new(stores.journal), Arc::new(stores.blobs), Arc::new(stores.awakeables))
+            (Arc::new(stores.journal), Arc::new(stores.blobs), Arc::new(stores.awakeables))
         }
-        None => (Arc::new(MachineCatalog::open(&catalog_path, clock.clone())?), Arc::new(FileJournalStore::open(&root)), Arc::new(FileBlobStore::open(&root)), Arc::new(FileAwakeableStore::open(&root))),
+        None => (Arc::new(FileJournalStore::open(&root)), Arc::new(FileBlobStore::open(&root)), Arc::new(FileAwakeableStore::open(&root))),
     };
     let journal = Journal::over(rows, blobs);
     let registry = Registry::over(awakeables.clone(), journal.clone());
     Ok(Wired { engine: Engine { catalog, journal, awakeables: Some(awakeables), keeper: Keeper::default(), emitter: None, worlds: crate::component::worlds() }, registry, clock })
+}
+
+/// The variable naming the Postgres catalog a self-hosted cluster's daemons share
+/// (`topology.coordinate.backends`).
+pub(crate) const CATALOG_URL_VAR: &str = "CONTEXTFUL_CATALOG_URL";
+
+/// The catalog this process coordinates through: the Postgres catalog
+/// `CONTEXTFUL_CATALOG_URL` names, else the machine catalog file at `machine`, sealed under
+/// `cipher` when the store is encrypted. Swapping one for the other is this wiring alone
+/// (`topology.coordinate.catalog-port`).
+pub(crate) fn open_catalog(machine: &Path, clock: Arc<dyn Clock + Send + Sync>, cipher: Option<Arc<dyn FileCipher>>) -> Result<Arc<dyn Catalog + Send + Sync>> {
+    if let Some(url) = std::env::var(CATALOG_URL_VAR).ok().filter(|u| !u.trim().is_empty()) {
+        return open_postgres(&url, cipher.is_some());
+    }
+    // The catalog's lease rows need a linearizable conditional write
+    // (`surface.apply.weak-conditional-backend`).
+    contextful_core::surface::control::admit_conditional("the catalog", &machine.display().to_string(), contextful_engine::fsutil::filesystem_kind(machine).as_deref())?;
+    Ok(match cipher {
+        Some(cipher) => Arc::new(MachineCatalog::open_sealed(machine, clock, cipher)?),
+        None => Arc::new(MachineCatalog::open(machine, clock)?),
+    })
+}
+
+#[cfg(feature = "pg-catalog")]
+fn open_postgres(url: &str, encrypted: bool) -> Result<Arc<dyn Catalog + Send + Sync>> {
+    if encrypted {
+        bail!("an encrypted store seals its catalog in `{MACHINE_CATALOG_FILE}`, and the Postgres catalog `{CATALOG_URL_VAR}` names holds rows unsealed; unset `{CATALOG_URL_VAR}`");
+    }
+    Ok(Arc::new(contextful_pg::PgCatalog::connect(url)?))
+}
+
+#[cfg(not(feature = "pg-catalog"))]
+fn open_postgres(_url: &str, _encrypted: bool) -> Result<Arc<dyn Catalog + Send + Sync>> {
+    let subcommand = std::env::args().nth(1).unwrap_or_default();
+    Err(crate::ProfileError::ProfileCapabilityAbsent(format!(
+        "`{subcommand}` reaches the Postgres catalog `{CATALOG_URL_VAR}` names, which `{}` does not link; run it on a `contextful-full` build or one with `--features pg-catalog`",
+        crate::PROFILE
+    ))
+    .into())
 }
 
 /// The boot identity of this machine: a process id means nothing across boots.
