@@ -14,8 +14,8 @@ An unpinned clause is `committed`; a pinned one is `performed` when its Rust, Le
 | `run` | 3 | 26 | 430 | 104 | 42 | 13 | 369 | 0 | 369 |
 | `store` | 1 | 17 | 264 | 61 | 14 | 11 | 253 | 0 | 253 |
 | `surface` | 2 | 20 | 134 | 59 | 22 | 0 | 94 | 0 | 94 |
-| `topology` | 1 | 6 | 77 | 24 | 5 | 2 | 68 | 0 | 68 |
-| **total** | 19 | 156 | 2260 | 616 | 199 | 61 | 1812 | 0 | |
+| `topology` | 1 | 6 | 78 | 24 | 5 | 4 | 70 | 0 | 70 |
+| **total** | 19 | 156 | 2261 | 616 | 199 | 63 | 1814 | 0 | |
 
 Decision records: 18.
 
@@ -28,7 +28,7 @@ A milestone reads `closed` when its acceptance test computes `passing` and every
 | 0 — The test-first gate | 2 | 22 | 19 | passing | closed |
 | 1 — The authority core | 14 | 242 | 223 | passing | closed |
 | 2 — The store | 9 | 181 | 170 | passing | closed |
-| 3 — The run path | 11 | 232 | 211 | passing | closed |
+| 3 — The run path | 11 | 233 | 213 | passing | closed |
 | 4 — Ingest | 25 | 519 | 357 | passing | open |
 | 5 — The read face under enforcement | 17 | 294 | 238 | passing | open |
 | 6 — Sync and replicas | 8 | 83 | 83 | passing | closed |
@@ -1813,11 +1813,13 @@ Unscheduled operations: 11.
 | `topology.compose.vendor-sdk` | `tools/ci/tests/integration/topology.rs::a_crate_declaring_a_model_vendor_sdk_is_refused` | performed |
 | `topology.compose.workspace` | `tools/ci/tests/integration/topology.rs::one_workspace_compiles_every_package_and_ships_one_binary` | performed |
 | `topology.coordinate.air-gap` | `tools/ci/tests/integration/topology.rs::no_profile_links_a_queue_cache_consensus_or_coordination_client` | performed |
+| `topology.coordinate.backends` | `tools/ci/tests/integration/topology.rs::each_deployment_shape_reaches_its_catalog_backend_and_the_full_profile_links_postgres` | performed |
 | `topology.coordinate.cadence-fallback` | `spec/pins.toml` | performed |
 | `topology.coordinate.cadence-lease-renewal` | `crates/contextful-engine/tests/integration/scheduler.rs::the_cadence_lease_renews_every_30_s` | performed |
 | `topology.coordinate.cadence-lease-ttl` | `crates/contextful-engine/tests/integration/coordinate.rs::a_cadence_lease_lives_90_s` | performed |
 | `topology.coordinate.catalog-clock` | `crates/contextful-engine/tests/integration/coordinate.rs::expiry_is_read_on_the_catalogs_clock` | performed |
 | `topology.coordinate.catalog-port` | `tools/ci/tests/integration/topology.rs::only_the_binary_wires_a_catalog_backend_and_everything_else_names_the_port` | performed |
+| `topology.coordinate.catalog-url` | `crates/contextful-cli/tests/integration/catalog.rs::a_named_postgres_catalog_replaces_the_local_catalog_file` | performed |
 | `topology.coordinate.cluster-availability` | `tools/ci/tests/integration/topology.rs::no_profile_links_a_queue_cache_consensus_or_coordination_client` | performed |
 | `topology.coordinate.cursor-cas` | `crates/contextful-engine/tests/integration/coordinate.rs::a_cursor_update_is_predicated_on_the_stored_version` | performed |
 | `topology.coordinate.fence-advances` | `crates/contextful-engine/tests/integration/coordinate.rs::every_acquisition_takes_a_new_fence` | performed |

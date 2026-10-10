@@ -11,6 +11,8 @@ mod component;
 mod component_absent;
 #[cfg(feature = "data-plane")]
 mod build;
+mod catalog;
+mod catalog_absent;
 #[cfg(feature = "data-plane")]
 mod context;
 #[cfg(feature = "data-plane")]

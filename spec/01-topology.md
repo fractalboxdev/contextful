@@ -86,7 +86,7 @@ The two halves of the engine, the three crossings between them, complete mediati
 
 The domain crate, dependency direction, and the three build profiles with what each links.
 
-- `crate-map` — Eighteen crates compose the workspace. `contextful-cli` is the binary and wires every adapter per profile by dependency injection.
+- `crate-map` — Nineteen crates compose the workspace. `contextful-cli` is the binary and wires every adapter per profile by dependency injection.
 - `crate-map-drift` — A `crates/` package absent from the crate tree under `## Shapes`, or a {{topology.package.crate-map}} count differing from that tree's entries, raises `CrateMapDrift`, naming the package or both counts.
   *because a package added without a map entry otherwise passes every other gate*
 - `domain-crate` — `contextful-core` holds the pure domain types and the port traits every adapter implements, performs no I/O, and links into every profile.
@@ -301,6 +301,8 @@ The conditional-write primitive, every single-writer operation, lease rows with 
   *A-store*
 - `backends` — Single-node self-hosting uses a local catalog file owned by one process; a self-hosted cluster uses Postgres via `pg-catalog`, linked into the full profile; a managed edge deployment uses per-object SQLite; a managed cloud deployment uses managed Postgres.
   *A-store*
+- `catalog-url` — A build linking `pg-catalog` given `CONTEXTFUL_CATALOG_URL` opens the Postgres catalog it names in place of the local catalog file; a build without `pg-catalog` given it raises {{topology.package.capability-absent}}.
+  *because a daemon falling back to its own file while its peers share the database holds leases no peer sees*
 - `weak-backend` — A catalog backend whose conditional update is not linearizable refuses at open with {{surface.apply.weak-conditional-backend}}.
   *A-store*
 - `cluster-availability` — Cluster availability is the shared database's availability. The engine adds no replication and no failover protocol between daemons.
@@ -346,6 +348,9 @@ flowchart LR
   PTR -. "stale fence: LeaseFenced" .-> FENCED
 ```
 
+unsettled: Does the Postgres catalog connect over TLS, and which certificate roots does it trust? owner: topology affects: topology.coordinate
+unsettled: Does an encrypted store seal its rows in the Postgres catalog, or keep refusing that pairing at open? owner: topology affects: topology.coordinate
+
 
 ## bound-application
 
@@ -370,6 +375,7 @@ crates/
   contextful-context/      table parts, query face, snapshot commit, retrieval
   contextful-memory/       deterministic memory synthesis
   contextful-sqlite/       the SQLite adapter behind the catalog and run store ports
+  contextful-pg/           the Postgres adapter behind the catalog port
   contextful-policy/       predicates, masks, redaction, zones, audit chain, token trait
   contextful-sync/         bucket push and pull
   contextful-agent/        tool server and connector scaffolder
@@ -386,7 +392,7 @@ The three profiles as feature bundles:
 ```toml
 [features]
 contextful-edge    = ["read-plane", "transport-ureq", "s3-sync"]
-contextful-full    = ["data-plane", "transport-ureq", "s3-sync", "drive", "component-host"]
+contextful-full    = ["data-plane", "transport-ureq", "s3-sync", "drive", "component-host", "pg-catalog"]
 contextful-control = ["dep:contextful-control"]
 ```
 

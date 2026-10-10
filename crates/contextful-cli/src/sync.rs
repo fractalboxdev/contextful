@@ -19,8 +19,6 @@ use contextful_core::time::Instant;
 #[cfg(feature = "data-plane")]
 use contextful_core::store::catalog::MACHINE_CATALOG_FILE;
 #[cfg(feature = "data-plane")]
-use contextful_sqlite::MachineCatalog;
-#[cfg(feature = "data-plane")]
 use contextful_sync::{run_state, RunState};
 use contextful_sync::{FsBucket, PullScope, SiteResidency, Syncer};
 use std::path::PathBuf;
@@ -292,11 +290,8 @@ fn open_local(args: &SyncArgs) -> Result<(Store, String, String)> {
 fn record_run_state(store: &Store, project: &str, node_id: &str) -> Result<()> {
     let machine = store.root().join(MACHINE_CATALOG_FILE);
     let clock = Arc::new(crate::clock::SystemClock);
-    let catalog = match store.file_cipher() {
-        Some(cipher) => MachineCatalog::open_sealed(&machine, clock, cipher)?,
-        None => MachineCatalog::open(&machine, clock)?,
-    };
-    let mut state = RunState::read(&catalog, node_id)?;
+    let catalog = crate::run::open_catalog(&machine, clock, store.file_cipher())?;
+    let mut state = RunState::read(catalog.as_ref(), node_id)?;
     state.control_version = run_state::local_control_version(store, project)?;
     run_state::record(store, &state)?;
     Ok(())

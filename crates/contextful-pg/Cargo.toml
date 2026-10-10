@@ -1,0 +1,26 @@
+[package]
+build = "../../tools/ci/build_source.rs"
+name = "contextful-pg"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+publish = false
+
+# The Postgres adapter behind the `Catalog` port, the self-hosted cluster's catalog
+# (`topology.coordinate.backends`). Only `contextful-cli` links it, under its `pg-catalog`
+# feature, which the full profile selects.
+
+[dependencies]
+contextful-core = { path = "../contextful-core" }
+postgres = "0.19"
+serde = "1"
+serde_json = "1"
+
+[dev-dependencies]
+serde_json = "1"
+tempfile = "3"
+
+[[test]]
+name = "integration"
+path = "tests/integration/main.rs"
