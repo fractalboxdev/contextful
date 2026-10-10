@@ -28,6 +28,7 @@ fn an_annotation_naming_no_clause_is_refused() {
     assert!(err.contains("tools/lint/check.sh:2"), "{err}");
 }
 
+// spec: topology.bound-application.restated-case@16b746a9
 #[test]
 fn an_annotation_naming_a_clause_passes() {
     let r = Repo::init();

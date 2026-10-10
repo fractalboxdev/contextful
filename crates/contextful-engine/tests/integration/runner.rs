@@ -369,6 +369,51 @@ fn a_run_commits_once_and_a_crash_commits_nothing() {
     assert_eq!(sink.staged.iter().filter(|s| s.run_id == "run-2").map(|s| s.ordinal).collect::<Vec<_>>(), [0, 1, 2]);
 }
 
+/// A source that fails its first pull at `p1` with a non-retryable failure, then serves as `Pages` does.
+struct FailsSecondPull {
+    inner: Pages,
+    failed: bool,
+}
+
+impl Source for FailsSecondPull {
+    fn pull(&mut self, request: &PullRequest, cancel: &dyn Cancellation) -> Result<Vec<u8>, Failure> {
+        if !self.failed && request.position == Some(json!("p1")) {
+            self.failed = true;
+            return Err(Failure::new(FailureTag::Permanent, "the vendor refused page 1"));
+        }
+        self.inner.pull(request, cancel)
+    }
+}
+
+/// A run failing after it staged batches commits none of them under {{run.own.one-commit-per-run}} and closes
+/// `failed`, holding its owner so the journal keeps the resume point; only {{run.record.orphan-reap}} closes a run
+/// `partial_failure`.
+// spec: run.retry.partial-failure@2920372d
+#[test]
+fn a_run_failing_after_a_stage_commits_nothing_and_closes_failed() {
+    let rig = Rig::new();
+    let mut source = FailsSecondPull { inner: Pages::new(three_pages()), failed: false };
+    let mut sink = Sink::default();
+    let row = rig.run(&opaque(), "1.0.0", "run-1", &mut source, &mut sink).unwrap();
+    assert_eq!((row.status, row.error_kind), (RunStatus::Failed, Some(FailureTag::Permanent)));
+    assert_eq!(sink.staged.len(), 1, "the first page staged before the failure");
+    assert!(sink.commits.is_empty(), "the failed run commits nothing it staged");
+    assert_eq!(rig.catalog().cursor("feed", "filings").unwrap().position, None, "the position stands");
+    let held = rig.catalog().owner("feed", "filings").unwrap().expect("the failure holds the owner");
+    assert_eq!(held.execution_id, row.execution_id);
+    assert_eq!(rig.engine.journal.recorded(&row.execution_id).unwrap(), 1, "the journal keeps the first pull");
+
+    let again = rig.run(&opaque(), "1.0.0", "run-2", &mut source, &mut sink).unwrap();
+    assert_eq!(again.status, RunStatus::Success);
+    assert_eq!(again.execution_id, row.execution_id, "the next run resumes the held execution");
+    assert_eq!(sink.commits.len(), 1);
+    assert_eq!(sink.commits[0].batches.len(), 3);
+    assert_eq!(source.inner.calls().iter().filter(|(p, _)| p.is_none()).count(), 1, "the recorded first pull replays");
+    for run in ["run-1", "run-2"] {
+        assert_ne!(rig.row(run).status, RunStatus::PartialFailure, "a closing run never reads partial_failure");
+    }
+}
+
 /// The runner stages each shaped batch through the destination as one part before its next pull, so a run holds
 /// one pulled batch in memory; the commit names the staged parts.
 // spec: run.own.backpressure@417ad0e7

@@ -593,6 +593,31 @@ fn a_run_takes_its_site_id_from_the_manifest_unless_the_flag_names_one() {
     refused(&bare("b1", &[]), "SiteIdUnresolved");
 }
 
+/// Every landed row carries its run's site id in the `_site_id` column {{store.reserve.injected}} writes, so a row
+/// names the site that wrote it.
+// spec: run.record.writing-site@8dcff47e
+#[test]
+fn every_landed_row_names_the_site_that_wrote_it() {
+    let dir = project();
+    std::fs::write(dir.path().join("empty.sh"), "printf '{\"rows\":[{\"id\":\"d1\"},{\"id\":\"d2\"}],\"more\":false}'\n").unwrap();
+    let start = |run: &str, site: &str, now: &str| {
+        cf(dir.path(), &["run", "start", "--plan", "feed-a.toml", "--project", "research", "--run-id", run, "--site-id", site, "--now", now])
+    };
+    ok(&start("s1", "site-a", "2030-01-01T00:00:00Z"));
+    ok(&start("s2", "site-b", "2030-01-01T00:01:00Z"));
+    let q = "SELECT _run_id, _site_id, count(*) FROM filings GROUP BY ALL ORDER BY _run_id";
+    let r: serde_json::Value = serde_json::from_str(&ok(&cf(dir.path(), &["query", "--json", "--project", "research", q]))).unwrap();
+    let rows = r["rows"].as_array().unwrap();
+    assert_eq!(rows.len(), 2, "both runs landed rows: {r}");
+    for row in rows {
+        let want = if row[0] == "s1" { "site-a" } else { "site-b" };
+        assert_eq!(row[1], want, "every row names its run's site: {r}");
+    }
+    let unattributed = "SELECT count(*) FROM filings WHERE _site_id IS NULL";
+    let n: serde_json::Value = serde_json::from_str(&ok(&cf(dir.path(), &["query", "--json", "--project", "research", unattributed]))).unwrap();
+    assert_eq!(n["rows"][0][0], "0", "no landed row reads null: {n}");
+}
+
 const AUD: &str = "contextful://research";
 
 /// An issuer for the scratch project at the default seed path; its public key pin.
