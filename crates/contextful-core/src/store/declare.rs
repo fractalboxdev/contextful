@@ -89,6 +89,10 @@ pub struct TableDecl {
     pub bloom_filter: Option<Vec<String>>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub retain_runs: Option<String>,
+    /// The window a `monotonic` poll of this table re-reads behind its stored position,
+    /// spelled as a span (`run.advance.allowed-lateness`).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub allowed_lateness: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub retain_rows: Option<RetainRows>,
     /// A derive output table keeping each task version's rows current under that version
@@ -209,6 +213,7 @@ impl FoldCoverage {
 fn checked(tables: Vec<TableDecl>) -> Result<Vec<TableDecl>, crate::disclosure::declare::DeclareError> {
     for t in &tables {
         t.retain_runs_secs()?;
+        t.allowed_lateness_secs()?;
         t.retain_rows_secs()?;
         t.result_cache_secs()?;
         crate::disclosure::declare::Binding::of(t)?;
@@ -418,6 +423,14 @@ impl TableDecl {
         let Some(s) = &self.retain_runs else { return Ok(DEFAULT_RETAIN_RUNS_SECS) };
         crate::time::duration_secs(s)
             .ok_or_else(|| DeclarationMalformed(format!("table `{}`: retain_runs `{s}` is not <n>d, <n>h, <n>m or <n>s", self.name)))
+    }
+
+    /// The declared `allowed_lateness` in seconds: `<n>d`, `<n>h`, `<n>m` or `<n>s`, 0 s
+    /// when undeclared (`run.advance.allowed-lateness`).
+    pub fn allowed_lateness_secs(&self) -> Result<u64, DeclarationMalformed> {
+        let Some(s) = &self.allowed_lateness else { return Ok(crate::run::advance::ALLOWED_LATENESS_DEFAULT_SECS) };
+        crate::time::duration_secs(s)
+            .ok_or_else(|| DeclarationMalformed(format!("table `{}`: allowed_lateness `{s}` is not <n>d, <n>h, <n>m or <n>s", self.name)))
     }
 
     /// The declared row-age duration in seconds, if the table retains by row age.

@@ -106,6 +106,11 @@ impl std::fmt::Display for ConnectorPin {
 pub trait Artifacts {
     /// The bytes stored under `hash`; `None` when no admitted artifact holds it.
     fn by_hash(&self, hash: &str) -> Result<Option<Vec<u8>>, Failure>;
+    /// The content hash a pin names `bytes` by: their sha256, unless the store's artifacts
+    /// fold more into their pin, as a component's forwarded guest table does.
+    fn hash_of(&self, bytes: &[u8]) -> String {
+        super::journal::sha256_hex(bytes)
+    }
 }
 
 /// The connector build a run of a scope executes: the pending owner's admitted pin, so a
@@ -119,12 +124,13 @@ pub fn admission_pin<'a>(pending: Option<&'a ExecutionOwner>, admitted: &'a Conn
 }
 
 /// The artifact `pin` names, looked up by its content hash alone. An absent artifact, or
-/// bytes whose sha256 differs from the pin, refuses rather than running another build.
+/// bytes whose [`Artifacts::hash_of`] differs from the pin, refuses rather than running
+/// another build.
 pub fn resolve_pinned(pin: &ConnectorPin, artifacts: &dyn Artifacts) -> Result<Vec<u8>, Failure> {
     let bytes = artifacts
         .by_hash(&pin.hash)?
         .ok_or_else(|| Failure::deterministic(FailureTag::UnknownConnector, format!("connector {pin} is pinned and no admitted artifact holds hash {}; restore the recorded build", pin.hash)))?;
-    let digest = super::journal::sha256_hex(&bytes);
+    let digest = artifacts.hash_of(&bytes);
     if digest != pin.hash {
         return Err(Failure::deterministic(FailureTag::UnknownConnector, format!("the artifact stored under {} hashes to {digest}; connector {pin} runs only its recorded bytes", pin.hash)));
     }

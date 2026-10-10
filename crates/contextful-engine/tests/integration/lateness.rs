@@ -30,7 +30,6 @@ fn polled(lateness: Option<&str>) -> Plan {
 
 /// A table declares `allowed_lateness`, default 0 s; a `monotonic` poll re-reads from its stored position minus
 /// that window, so a row arriving that late still lands.
-// spec: run.advance.allowed-lateness@131a158e
 #[test]
 fn a_poll_re_reads_the_declared_lateness_behind_its_position() {
     assert_eq!(ALLOWED_LATENESS_DEFAULT_SECS, 0);

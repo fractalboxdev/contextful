@@ -370,6 +370,7 @@ fn dry_run_counts(spec: &PipelineSpec, checked: &Checked, l: &crate::project::Lo
                 mediation: Mediation::default(),
                 store_root: Some(Store::open(&l.project.dir, &l.project.name)?.root().to_path_buf()),
                 cwd: l.project.dir.clone(),
+                unsettled: None,
             };
             source.plan()
         }
@@ -628,7 +629,7 @@ fn plan(spec: &PipelineSpec, table: &str, connector: ConnectorSpec) -> Result<Pl
             pipeline: spec.id.clone(),
             table: spec.table_name(table),
             connector,
-            cursor: CursorSpec { kind: Some(cursor_kind.name().to_string()), field: spec.incremental.clone(), ..CursorSpec::default() },
+            cursor: CursorSpec { kind: Some(cursor_kind.name().to_string()), field: spec.incremental.clone(), allowed_lateness: spec.tables.iter().find(|t| t.name() == table).and_then(|t| t.decl().allowed_lateness) },
             retry: None,
             // A derive pipeline re-reads the store each tick and records no pull.
             journal: spec.journals(),
@@ -859,6 +860,22 @@ pub fn run(cmd: PipelineCmd, tasks: &Tasks, bodies: &contextful_core::run::drive
                     let plan = plan(&spec, t.name(), connector)?;
                     dest.store.validate_source_plan(&plan, dest.normalize)?;
                     let connector: ConnectorPin = plan.connector_pin(&artifact);
+                    // A pending owner's replay runs the component build its pin names, resolved
+                    // from the admission store; a build that store lacks admits the current one,
+                    // which the pinned owner then refuses (`run.own.admission-pin`).
+                    let (connector, recorded) = match (&checked, &loaded) {
+                        (Checked::Component(decl), Some(c)) => {
+                            let admitted = c.artifacts(decl, &base)?;
+                            match w.engine.admit_connector(&spec.id, &table, &connector, &admitted) {
+                                Ok((pin, wasm)) if pin != connector => {
+                                    let recorded = c.recorded(decl, &base, &wasm, component_target, dest.store.requires_connector_pin())?;
+                                    (pin, Some(recorded))
+                                }
+                                _ => (connector, None),
+                            }
+                        }
+                        _ => (connector, None),
+                    };
                     let run = RunSpec { plan, connector, run_id: run_id.clone(), site_id: site_id.clone(), pid: std::process::id(), boot_id: boot_id(), trace_id: None };
                     let shape = Chain { ops: spec.transforms.clone(), table: table.clone() };
                     let mut source: Box<dyn Source> = match &checked {
@@ -898,9 +915,10 @@ pub fn run(cmd: PipelineCmd, tasks: &Tasks, bodies: &contextful_core::run::drive
                                 mediation,
                                 store_root: Some(dest.store.root().to_path_buf()),
                                 cwd: base.clone(),
+                                unsettled: None,
                             })
                         }
-                        Checked::Component(decl) => match &loaded {
+                        Checked::Component(decl) => match recorded.as_ref().or(loaded.as_ref()) {
                             Some(c) => c.source(decl, t.name(), &resolver, &run_id)?,
                             None => bail!("pipeline `{}`: component source `{}` did not load", spec.id, spec.source.name),
                         },

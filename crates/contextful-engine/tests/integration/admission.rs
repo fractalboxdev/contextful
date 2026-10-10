@@ -35,7 +35,6 @@ fn spec(p: &Plan, connector: ConnectorPin, run_id: &str) -> RunSpec {
 
 /// A run pins its connector identity at admission and a replay resolves the artifact from that pin; a connector
 /// rebuilt later reaches no in-flight or replayed run.
-// spec: run.own.admission-pin@d7885d15
 #[test]
 fn a_replay_runs_the_artifact_its_pin_names_and_a_rebuild_waits_for_a_fresh_run() {
     let rig = Rig::new();

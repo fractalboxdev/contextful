@@ -23,7 +23,6 @@ fn fanned() -> FanOut<&'static str> {
 
 /// Fan-out bodies rejoin only at an explicit join node; a join reached by a failed branch fails the run unless it
 /// declares `allow_partial`, which records each failed branch's label and failure tag on the run record.
-// spec: run.journal.fan-out-join@ca72f881
 #[test]
 fn a_failed_branch_fails_its_join_unless_the_join_allows_partial() {
     // Every branch succeeding passes every output on, labelled, in branch order.
