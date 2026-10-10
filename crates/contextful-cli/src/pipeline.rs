@@ -628,7 +628,7 @@ fn plan(spec: &PipelineSpec, table: &str, connector: ConnectorSpec) -> Result<Pl
             pipeline: spec.id.clone(),
             table: spec.table_name(table),
             connector,
-            cursor: CursorSpec { kind: Some(cursor_kind.name().to_string()), field: spec.incremental.clone() },
+            cursor: CursorSpec { kind: Some(cursor_kind.name().to_string()), field: spec.incremental.clone(), ..CursorSpec::default() },
             retry: None,
             // A derive pipeline re-reads the store each tick and records no pull.
             journal: spec.journals(),

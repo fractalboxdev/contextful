@@ -99,7 +99,7 @@ fn output_plan(job: &str, table: &str, driven: &StoreDriven) -> Result<Plan> {
                 world: NATIVE_WORLD.to_string(),
                 command: vec![format!("builtin:{}", contextful_core::job::STORE_DRIVEN)],
             },
-            cursor: CursorSpec { kind: Some(CursorKind::OpaqueToken.name().to_string()), field: None },
+            cursor: CursorSpec { kind: Some(CursorKind::OpaqueToken.name().to_string()), field: None, ..CursorSpec::default() },
             retry: None,
             // The rows are the body's recorded output; the land re-derives them on a resume.
             journal: false,
