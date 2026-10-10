@@ -154,14 +154,19 @@ fn an_await_event_resumes_on_its_payload_and_a_sleep_waits_out_its_span() {
     let started = std::time::Instant::now();
     let row = std::thread::scope(|s| {
         let run = s.spawn(|| engine.run_plan(&fire(&plan, "plan-1"), &connectors).unwrap());
+        // The run marks itself waiting once the awakeable it suspends on is minted.
+        let deadline = std::time::Instant::now() + Duration::from_secs(30);
         let token = loop {
+            assert!(!run.is_finished(), "the run closed before suspending");
+            assert!(std::time::Instant::now() < deadline, "the run never suspended");
             let rows = store.rows().unwrap();
-            if let Some(row) = rows.first() {
-                break row.token.clone();
+            if let (Some(row), Some(status)) = (rows.first(), rig.catalog().run("plan-1").unwrap().map(|r| r.status)) {
+                if status == RunStatus::Waiting {
+                    break row.token.clone();
+                }
             }
             std::thread::sleep(Duration::from_millis(10));
         };
-        assert_eq!(rig.row("plan-1").status, RunStatus::Waiting);
         registry.resolve(&token, b"approved", rig.catalog().now().unwrap()).unwrap();
         run.join().unwrap()
     });
