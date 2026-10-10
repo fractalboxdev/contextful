@@ -38,7 +38,9 @@ fn effect_recordings_require_the_signed_owner_key_and_cannot_upgrade_source_payl
     let prepared = store.prepare_effect_recording("messages", &batch, None, "job-owner", &scope).unwrap();
     assert_eq!(prepared.summary().unwrap().rows, 1, "summary belongs to the admitted rewritten root, not caller metadata");
     let bytes = prepared.encode().unwrap();
+    assert!(!bytes.is_empty(), "the exclusion below ranges over no element");
     assert!(!bytes.windows(b"private-model-result".len()).any(|value| value == b"private-model-result"));
+    assert!(!bytes.is_empty(), "the exclusion below ranges over no element");
     assert!(!bytes.windows(b"private-model-input".len()).any(|value| value == b"private-model-input"));
     assert!(store.admit_effect_recording("messages", &bytes, None, &scope).is_ok());
     for other in [
@@ -178,6 +180,7 @@ fn canonical_prepared_recording_admits_only_its_rewritten_payload_and_current_au
     let (_dir, store) = declared();
     let prepared = store.prepare_recording("messages", &input(), None, "execution-a").unwrap();
     let encoded = prepared.encode().unwrap();
+    assert!(!encoded.is_empty(), "the exclusion below ranges over no element");
     assert!(!encoded.windows(b"415-555-0100".len()).any(|bytes| bytes == b"415-555-0100"));
     assert!(String::from_utf8_lossy(&encoded).contains("[REDACTED:phone]"));
     let admitted = store.admit_recording("messages", &encoded, None).unwrap();
@@ -256,6 +259,7 @@ fn prepared_relational_replay_retains_no_removed_child_value_or_pre_rewrite_iden
         let batch = Batch { rows:vec![json!({"body":[{"text":secret}],"public":"keep"}).as_object().unwrap().clone()], types:Default::default() };
         let normalize = contextful_core::pipeline::normalize::Normalize { mode:contextful_core::pipeline::normalize::Mode::Relational, depth:5 };
         let encoded = store.prepare_recording("messages", &batch, Some(normalize), "same-execution").unwrap().encode().unwrap();
+        assert!(!encoded.is_empty(), "the exclusion below ranges over no element");
         assert!(!encoded.windows(secret.len()).any(|bytes| bytes == secret.as_bytes()));
         let admitted = store.admit_recording("messages", &encoded, Some(normalize)).unwrap();
         let parts = contextful_context::land::stage_recorded_group(&store, &TableDecl::named("messages"), &admitted, &context().node, &context().injection, 0, &Default::default()).unwrap();

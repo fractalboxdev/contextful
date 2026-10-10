@@ -158,6 +158,7 @@ fn a_push_keeps_the_catalogs_transaction_files_local() {
     a.syncer.push(at(NOW)).unwrap();
     let keys = b.list("team/").unwrap();
     for local in ["derived.sqlite"].iter().chain(sidecars.iter()) {
+        assert!(!keys.is_empty(), "the exclusion below ranges over no element");
         assert!(!keys.iter().any(|k| k.ends_with(local)), "{local} left the machine: {keys:?}");
     }
     assert!(keys.iter().any(|k| k.ends_with("part-00000.parquet")), "{keys:?}");

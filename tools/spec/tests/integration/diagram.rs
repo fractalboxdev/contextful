@@ -137,6 +137,19 @@ fn a_sequence_with_undeclared_or_too_many_parts_is_a_sequence_finding() {
 }
 
 // spec: corpus.diagram.message@8d390cf8
+// spec: corpus.diagram.fence@2bd37815
+#[test]
+fn box_drawing_outside_a_mermaid_fence_is_an_ascii_diagram() {
+    let s = Scratch::copy();
+    let before = messages(&s, "SpecAsciiDiagram");
+    let text = s.read(GUIDE);
+    s.write(GUIDE, &format!("{text}\n```mermaid\nflowchart LR\n  A[\"writer\"] -->|\"rows\"| B[(\"run store\")]\n```\n"));
+    assert_eq!(messages(&s, "SpecAsciiDiagram"), before);
+    s.write(GUIDE, &format!("{text}\n┌────────┐\n│ writer │\n└────────┘\n"));
+    let after = messages(&s, "SpecAsciiDiagram");
+    assert_eq!(after.len(), before.len() + 3, "{after:?}");
+}
+
 #[test]
 fn a_long_message_or_note_is_a_message_finding() {
     let wrong = "sequenceDiagram\n  participant A as caller\n  participant B as server\n  A->>B: query the table and every sidecar it declares at once\n  Note over A,B: one note that runs on well past the twelve words it may hold here\n";

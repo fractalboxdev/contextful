@@ -385,6 +385,7 @@ fn the_fold_builds_each_full_text_sidecar_over_identified_rows_with_terms() {
     let only_vector = decl(&format!("name = \"passages\"\nprimary_key = [\"passage_id\"]\n{INDEX}"));
     v.land_typed(&only_vector, "run-1", json!([{"passage_id": "p1", "body": "battery", "embedding": [1.0, 0.0, 0.0]}]), "2030-01-01T00:00:00Z", &f32x3()).unwrap();
     fold(&v.store, &only_vector, at("2030-01-01T01:00:00Z")).unwrap();
+    assert!(!current(&v, "passages").0.indexes.is_empty(), "the exclusion below ranges over no element");
     assert!(current(&v, "passages").0.indexes.iter().all(|x| x.kind() == Some(IndexKind::Vector)));
     // A full-text sidecar over text the staged rows type otherwise refuses before landing.
     let n = Fixture::new();

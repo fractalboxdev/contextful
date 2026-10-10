@@ -714,6 +714,7 @@ fn a_changed_engine_rederives_every_unit_and_no_read_between_ticks_is_empty() {
         sel.outstanding.len()
     };
     while tick_with(&old, false, &mut table) > 0 {}
+    assert!(!read(&table).is_empty(), "the exclusion below ranges over no element");
     assert!(read(&table).iter().all(|p| p.len() == 1));
     // The engine changes: every settled unit is outstanding again.
     let all = DeriveConfig { max_rows_per_run: 100, ..c.clone() };

@@ -1,5 +1,6 @@
 //! The table write verbs — `context land`, `run start`, `pipeline run` — under each
 //! authoring posture, with and without an accompanying credential.
+#![cfg(feature = "data-plane")]
 
 use std::path::Path;
 use std::process::{Command, Output, Stdio};

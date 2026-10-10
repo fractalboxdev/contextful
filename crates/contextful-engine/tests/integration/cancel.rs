@@ -96,6 +96,7 @@ fn a_stop_keeps_a_recorded_pull_for_the_next_attempt() {
     assert_eq!(resumed.status, RunStatus::Success);
     assert_eq!(resumed.execution_id, row.execution_id);
     assert_eq!(crate::support::ids(&sink.commits[0])[0], ["d1"], "the recorded pull replayed");
+    assert!(!pages.calls().is_empty(), "the exclusion below ranges over no element");
     assert!(pages.calls().iter().all(|(p, _)| p.is_some()), "the first page was not re-issued");
 }
 

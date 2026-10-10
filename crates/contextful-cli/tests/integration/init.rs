@@ -1,4 +1,5 @@
 //! `contextful init` and project discovery through the built binary.
+#![cfg(feature = "data-plane")]
 
 use std::path::Path;
 use std::process::{Command, Output};

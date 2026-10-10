@@ -1,6 +1,7 @@
 //! `contextful eval run` through the built binary: a case file lands its corpus into a
 //! scratch store, reads every case through the ranked call under one admitted credential,
 //! and holds the report to the floors and a baseline.
+#![cfg(feature = "data-plane")]
 
 use serde_json::{json, Value};
 use std::path::{Path, PathBuf};

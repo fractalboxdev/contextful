@@ -46,6 +46,9 @@ fn sealed_machine_catalog_persists_lease_cursor_and_run_without_plaintext() {
     for entry in std::fs::read_dir(dir.path()).unwrap() {
         let path = entry.unwrap().path();
         let bytes = std::fs::read(&path).unwrap();
+        if bytes.is_empty() {
+            continue;
+        }
         assert!(!bytes.windows(canary.len()).any(|window| window == canary.as_bytes()), "{} exposes the canary", path.display());
         assert!(!bytes.starts_with(b"SQLite format 3"), "{} exposes a SQLite page", path.display());
     }

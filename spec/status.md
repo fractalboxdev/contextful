@@ -5,17 +5,17 @@ An unpinned clause is `committed`; a pinned one is `performed` when its Rust, Le
 
 | Contract | Files | Operations | Clauses | Refusals | Limits | Unsettled | Performed | Broken | Floor |
 | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
-| `assurance` | 2 | 15 | 256 | 60 | 22 | 8 | 211 | 0 | 211 |
+| `assurance` | 2 | 15 | 257 | 60 | 22 | 7 | 224 | 0 | 224 |
 | `authority` | 2 | 16 | 293 | 79 | 29 | 9 | 222 | 0 | 222 |
 | `connector` | 2 | 14 | 349 | 89 | 21 | 15 | 229 | 0 | 229 |
-| `corpus` | 1 | 10 | 79 | 37 | 7 | 0 | 43 | 0 | 43 |
+| `corpus` | 1 | 10 | 79 | 37 | 7 | 0 | 79 | 0 | 79 |
 | `disclosure` | 3 | 16 | 156 | 68 | 13 | 3 | 63 | 0 | 63 |
 | `read` | 2 | 16 | 213 | 35 | 22 | 9 | 193 | 0 | 193 |
 | `run` | 3 | 26 | 418 | 103 | 40 | 23 | 334 | 0 | 334 |
 | `store` | 1 | 17 | 253 | 59 | 13 | 19 | 216 | 0 | 216 |
 | `surface` | 2 | 20 | 134 | 59 | 22 | 0 | 94 | 0 | 94 |
 | `topology` | 1 | 6 | 70 | 24 | 5 | 5 | 38 | 0 | 38 |
-| **total** | 19 | 156 | 2221 | 613 | 194 | 91 | 1643 | 0 | |
+| **total** | 19 | 156 | 2222 | 613 | 194 | 90 | 1692 | 0 | |
 
 Decision records: 18.
 
@@ -25,7 +25,7 @@ A milestone reads `closed` when its acceptance test computes `passing` and every
 
 | Milestone | Operations | Clauses | Performed | Acceptance | Closed |
 | --- | --- | --- | --- | --- | --- |
-| 0 — The test-first gate | 2 | 21 | 6 | passing | open |
+| 0 — The test-first gate | 2 | 22 | 19 | passing | closed |
 | 1 — The authority core | 14 | 242 | 223 | passing | closed |
 | 2 — The store | 9 | 175 | 143 | passing | closed |
 | 3 — The run path | 11 | 214 | 148 | passing | closed |
@@ -61,6 +61,11 @@ Unscheduled operations: 11.
 | `assurance.audit-assumptions.statement-drift` | `crates/contextful-cli/tests/integration/formal.rs::a_weakened_statement_drifts` | performed |
 | `assurance.audit-assumptions.transitive-audit` | `crates/contextful-cli/tests/integration/formal.rs::a_footprint_reaches_through_helper_lemmas` | performed |
 | `assurance.audit-assumptions.verdict-input` | `crates/contextful-cli/tests/integration/formal.rs::source_text_and_build_status_decide_nothing` | performed |
+| `assurance.automate.build-time-toolchain` | `tools/ci/tests/integration/automate.rs::no_runtime_package_depends_on_the_automation_toolchain` | performed |
+| `assurance.automate.one-path` | `tools/ci/tests/integration/workflow.rs::proposed_required_checks_match_every_gate_part` | performed |
+| `assurance.automate.subcommand-surface` | `tools/ci/tests/integration/automate.rs::every_subcommand_has_generated_help_and_refuses_an_untyped_option` | performed |
+| `assurance.automate.typed-subcommand` | `tools/ci/tests/integration/automate.rs::every_automation_step_is_at_most_five_commands_without_a_branch_loop_or_retry` | performed |
+| `assurance.automate.unchecked-shell` | `tools/ci/tests/integration/shell.rs::a_shell_file_shellcheck_rejects_fails_the_toolchain_stage` | performed |
 | `assurance.baseline.answer-key-in-the-store` | `crates/contextful-connectors/tests/integration/file.rs::a_source_reaching_the_evaluation_directory_raises_golden_set_ingested` | performed |
 | `assurance.baseline.band-units` | `tools/eval/tests/integration/baseline.rs::latency_bands_in_milliseconds_and_counts_pin_at_zero` | performed |
 | `assurance.baseline.commit-command` | `crates/contextful-cli/tests/integration/eval.rs::commit_appends_approved_drafts_redacted_and_refuses_a_repeated_id` | performed |
@@ -255,9 +260,17 @@ Unscheduled operations: 11.
 | `assurance.test.acceptance-surface` | `spec/pins.toml` | performed |
 | `assurance.test.base-run-bound` | `tools/ci/tests/integration/test_first.rs::a_base_run_past_its_bound_is_killed_and_counts_red` | performed |
 | `assurance.test.base-unrunnable` | `tools/ci/tests/integration/test_first.rs::an_unloadable_base_fails_the_stage_instead_of_reading_red` | performed |
+| `assurance.test.connector-kit` | `crates/contextful-wasm/tests/integration/kit.rs::the_kit_passes_the_probe_guest_and_replays_a_recorded_exchange` | performed |
+| `assurance.test.feature-gated-suite` | `tools/ci/tests/integration/layout.rs::a_suite_gated_only_at_its_declaration_is_refused` | performed |
+| `assurance.test.global-state-lock` | `tools/ci/tests/integration/layout.rs::a_lock_over_process_global_state_lives_in_the_integration_root` | performed |
+| `assurance.test.guard-fires-both-ways` | `tools/ci/tests/integration/vacuous.rs::the_vacuous_guard_refuses_its_motivating_fixture_and_admits_the_state_it_guards` | performed |
+| `assurance.test.one-integration-binary` | `tools/ci/tests/integration/layout.rs::a_second_test_target_or_a_package_without_the_integration_root_is_refused` | performed |
+| `assurance.test.own-process` | `tools/ci/tests/integration/layout.rs::a_top_level_test_file_states_why_it_needs_its_own_process` | performed |
+| `assurance.test.presence-before-absence` | `tools/ci/tests/integration/vacuous.rs::a_presence_check_before_the_exclusion_admits_it` | performed |
 | `assurance.test.refactor-trailer` | `spec/pins.toml` | performed |
 | `assurance.test.test-first` | `spec/pins.toml` | performed |
 | `assurance.test.test-first-scope` | `tools/ci/tests/integration/test_first.rs::only_the_changes_test_modules_run_against_the_base` | performed |
+| `assurance.test.vacuous-exclusion` | `tools/ci/tests/integration/vacuous.rs::an_exclusion_over_a_collection_never_shown_non_empty_fails_the_test_first_stage` | performed |
 | `authority.attenuate.expiry-extended` | `crates/contextful-core/tests/integration/attenuate.rs::expiry_extended` | performed |
 | `authority.attenuate.narrowing` | `crates/contextful-core/tests/integration/attenuate.rs::narrowing` | performed |
 | `authority.attenuate.offline` | `crates/contextful-policy/tests/integration/attenuate.rs::a_holder_derives_a_child_offline_and_the_parent_stays_intact` | performed |
@@ -710,16 +723,30 @@ Unscheduled operations: 11.
 | `connector.widen.host-inclusion` | `crates/contextful-core/tests/integration/connector/widen.rs::generated_hosts_agree_with_the_proved_model`, `formal/Contextful/Allowlist.lean::allowlist_includedIn_sound` | performed |
 | `connector.widen.host-witness` | `crates/contextful-core/tests/integration/connector/widen.rs::generated_hosts_agree_with_the_proved_model`, `formal/Contextful/Allowlist.lean::widen_witness_admitted` | performed |
 | `corpus.address.clause-id` | `tools/spec/tests/integration/readable.rs::a_clause_item_takes_its_contract_and_operation_from_its_file_and_section` | performed |
+| `corpus.address.contract-segment` | `tools/spec/tests/integration/address.rs::the_first_segment_is_the_front_matter_contract_its_registry_entry_lists` | performed |
+| `corpus.address.duplicate-id` | `tools/spec/tests/integration/address.rs::a_clause_id_in_two_items_is_a_duplicate_naming_both_locations` | performed |
+| `corpus.address.ids-are-stable` | `tools/spec/tests/integration/address.rs::moving_an_operation_between_files_of_one_contract_rewrites_no_id` | performed |
+| `corpus.address.malformed-id` | `tools/spec/tests/integration/address.rs::a_clause_under_a_section_its_file_does_not_own_is_a_malformed_id` | performed |
+| `corpus.address.operation-segment` | `tools/spec/tests/integration/address.rs::the_second_segment_is_an_operation_registered_in_the_fragment_and_owned_once` | performed |
+| `corpus.address.subject-segment` | `tools/spec/tests/integration/address.rs::a_subject_over_forty_chars_is_malformed_and_forty_is_admitted` | performed |
+| `corpus.anatomy.after-list` | `tools/spec/tests/integration/anatomy.rs::prose_tables_and_diagrams_after_the_list_state_no_obligation` | performed |
 | `corpus.anatomy.bad-anatomy` | `tools/spec/tests/integration/readable.rs::an_item_outside_the_clause_shape_is_an_anatomy_finding` | performed |
+| `corpus.anatomy.bad-scenario` | `tools/spec/tests/integration/grammar.rs::a_scenario_naming_another_operations_clause_is_a_finding` | performed |
 | `corpus.anatomy.clause-list` | `tools/spec/tests/integration/readable.rs::a_clause_list_split_by_prose_is_an_anatomy_finding` | performed |
+| `corpus.anatomy.file-headings` | `tools/spec/tests/integration/anatomy.rs::sections_out_of_owns_order_or_a_second_title_are_anatomy_findings` | performed |
+| `corpus.anatomy.file-length` | `tools/spec/tests/integration/anatomy.rs::a_contract_file_over_nine_hundred_lines_is_an_anatomy_finding` | performed |
+| `corpus.anatomy.kind-is-computed` | `tools/spec/tests/integration/anatomy.rs::the_lock_carries_the_kind_the_fragment_assigns` | performed |
 | `corpus.anatomy.lede` | `tools/spec/tests/integration/readable.rs::the_lede_lands_in_the_lock_and_its_absence_is_an_anatomy_finding` | performed |
+| `corpus.anatomy.scenario` | `tools/spec/tests/integration/grammar.rs::a_scenario_attaches_to_its_clause_in_the_lock` | performed |
+| `corpus.anatomy.statement-words` | `tools/spec/tests/integration/anatomy.rs::a_statement_over_forty_words_is_an_anatomy_finding_and_forty_is_admitted` | performed |
 | `corpus.diagram.boundary` | `tools/spec/tests/integration/diagram.rs::a_flowchart_node_standing_for_a_contract_or_boundary_is_a_diagram_finding` | performed |
 | `corpus.diagram.branch` | `tools/spec/tests/integration/diagram.rs::a_box_branching_on_a_condition_is_a_branch_finding` | performed |
 | `corpus.diagram.connected` | `tools/spec/tests/integration/diagram.rs::a_node_no_edge_reaches_is_an_orphan` | performed |
 | `corpus.diagram.decision` | `tools/spec/tests/integration/diagram.rs::a_decision_without_labelled_exits_or_with_a_long_label_is_a_decision_finding` | performed |
 | `corpus.diagram.edge` | `tools/spec/tests/integration/diagram.rs::an_unlabelled_two_way_or_bundled_edge_is_an_edge_finding` | performed |
+| `corpus.diagram.fence` | `tools/spec/tests/integration/diagram.rs::box_drawing_outside_a_mermaid_fence_is_an_ascii_diagram` | performed |
 | `corpus.diagram.layout` | `tools/spec/tests/integration/diagram.rs::a_chart_without_direction_too_deep_or_too_large_is_a_layout_finding` | performed |
-| `corpus.diagram.message` | `tools/spec/tests/integration/diagram.rs::a_long_message_or_note_is_a_message_finding` | performed |
+| `corpus.diagram.message` | `tools/spec/tests/integration/diagram.rs::box_drawing_outside_a_mermaid_fence_is_an_ascii_diagram` | performed |
 | `corpus.diagram.node` | `tools/spec/tests/integration/diagram.rs::a_node_bundling_attributes_naming_an_error_or_an_operation_is_a_diagram_finding` | performed |
 | `corpus.diagram.sequence` | `tools/spec/tests/integration/diagram.rs::a_sequence_with_undeclared_or_too_many_parts_is_a_sequence_finding` | performed |
 | `corpus.diagram.shape` | `tools/spec/tests/integration/diagram.rs::a_table_drawn_as_a_box_or_a_question_drawn_as_a_box_is_a_shape_finding` | performed |
@@ -729,19 +756,39 @@ Unscheduled operations: 11.
 | `corpus.guide.file` | `tools/spec/tests/integration/readable.rs::a_guide_over_its_length_or_off_its_title_is_a_guide_finding` | performed |
 | `corpus.guide.non-normative` | `tools/spec/tests/integration/readable.rs::a_guide_naming_an_error_or_holding_a_clause_item_is_a_guide_finding` | performed |
 | `corpus.rationale.contract-adr` | `spec/pins.toml` | performed |
+| `corpus.rationale.options-table` | `tools/spec/tests/integration/rationale.rs::an_options_table_off_its_header_rows_or_chosen_mark_is_a_record_finding` | performed |
+| `corpus.rationale.orphan-record` | `tools/spec/tests/integration/rationale.rs::a_record_no_why_cites_or_a_why_naming_no_record_is_a_record_finding` | performed |
+| `corpus.rationale.record-anatomy` | `tools/spec/tests/integration/rationale.rs::a_principle_over_four_hundred_words_or_off_its_sections_is_a_record_finding` | performed |
+| `corpus.rationale.record-threshold` | `tools/spec/tests/integration/rationale.rs::a_decision_one_clause_rests_on_lives_in_its_because_cell` | performed |
+| `corpus.rationale.unsettled-line` | `tools/spec/tests/integration/rationale.rs::an_unsettled_line_off_its_form_or_an_appendix_heading_is_an_unsettled_finding` | performed |
+| `corpus.rationale.why-cell` | `tools/spec/tests/integration/rationale.rs::a_because_over_thirty_words_or_a_refusal_without_a_why_is_a_record_finding` | performed |
 | `corpus.reference.dangling` | `spec/pins.toml`, `tools/spec/tests/integration/readable.rs::a_guide_pointer_naming_no_clause_dangles` | performed |
 | `corpus.reference.no-literature` | `spec/pins.toml`, `tools/spec/tests/integration/readable.rs::an_autolink_to_an_external_document_is_an_external_link_finding` | performed |
 | `corpus.reference.pointer` | `spec/pins.toml`, `tools/spec/tests/integration/readable.rs::a_pointer_is_recorded_as_a_lock_edge` | performed |
+| `corpus.registry.bound-entry` | `tools/spec/tests/integration/registry.rs::a_bound_off_its_unit_basis_or_statement_value_is_a_registry_finding` | performed |
+| `corpus.registry.fragment` | `tools/spec/tests/integration/registry.rs::each_contract_registers_its_operations_errors_and_bounds_in_its_own_fragment` | performed |
+| `corpus.registry.one-error-one-clause` | `tools/spec/tests/integration/registry.rs::an_error_named_by_a_second_clause_or_dropped_by_its_own_is_a_registry_finding` | performed |
+| `corpus.registry.unregistered` | `tools/spec/tests/integration/registry.rs::an_unregistered_error_or_an_entry_naming_a_missing_clause_is_a_registry_finding` | performed |
+| `corpus.render.banned-vocabulary` | `tools/spec/tests/integration/render.rs::a_banned_noun_a_bare_issue_number_or_a_pull_request_link_is_a_banned_word` | performed |
 | `corpus.render.card` | `tools/spec/tests/integration/readable.rs::state_writes_a_card_per_contract_and_a_stale_card_is_a_render_finding` | performed |
+| `corpus.render.counterfactual` | `tools/spec/tests/integration/readable.rs::a_guide_in_the_future_tense_is_counterfactual` | performed |
+| `corpus.render.dated-prose` | `tools/spec/tests/integration/render.rs::build_state_words_and_an_iso_date_are_dated_prose` | performed |
+| `corpus.render.generated` | `tools/spec/tests/integration/render.rs::a_committed_render_differing_from_regeneration_is_stale` | performed |
+| `corpus.render.local-path` | `tools/spec/tests/integration/render.rs::a_machine_local_path_is_a_local_path_finding` | performed |
+| `corpus.render.lock-file` | `tools/spec/tests/integration/render.rs::the_lock_carries_clauses_ledes_owns_registry_and_pointers` | performed |
 | `corpus.state.acceptance` | `spec/pins.toml` | performed |
 | `corpus.state.acceptance-first` | `spec/pins.toml` | performed |
+| `corpus.state.bad-pin` | `tools/spec/tests/integration/state.rs::a_pin_naming_no_clause_an_item_on_a_limit_or_an_unresolved_test_is_a_broken_pin` | performed |
 | `corpus.state.closed` | `spec/pins.toml` | performed |
+| `corpus.state.coverage-floor` | `tools/spec/tests/integration/state.rs::a_live_count_below_its_floor_is_a_coverage_regression` | performed |
 | `corpus.state.deferred-depth` | `spec/pins.toml` | performed |
 | `corpus.state.lean-tag` | `spec/pins.toml` | performed |
+| `corpus.state.pin` | `tools/spec/tests/integration/state.rs::a_pin_maps_a_clause_to_a_test_or_a_behavior_to_an_item` | performed |
 | `corpus.state.roadmap` | `spec/pins.toml` | performed |
 | `corpus.state.scaffold` | `tools/spec/tests/integration/scaffold.rs::scaffold_writes_one_failing_tagged_test_per_refusal_and_limit` | performed |
 | `corpus.state.scaffold-lean` | `spec/pins.toml` | performed |
 | `corpus.state.stale-pin` | `tools/spec/tests/integration/tags.rs::a_tag_with_a_stale_rev_raises_spec_stale_pin` | performed |
+| `corpus.state.status-is-computed` | `tools/spec/tests/integration/state.rs::status_is_regenerated_from_pins_alone` | performed |
 | `corpus.state.tag-pin` | `tools/spec/tests/integration/tags.rs::a_tag_pin_resolves_to_performed` | performed |
 | `corpus.state.theorem-beside-test` | `spec/pins.toml` | performed |
 | `corpus.state.typescript-tag-pin` | `spec/pins.toml` | performed |
@@ -749,9 +796,11 @@ Unscheduled operations: 11.
 | `corpus.state.unfinished-test` | `tools/spec/tests/integration/tags.rs::a_tag_on_a_todo_body_is_broken` | performed |
 | `corpus.state.verdict` | `spec/pins.toml` | performed |
 | `corpus.targets.cap-unrecorded` | `spec/pins.toml` | performed |
+| `corpus.targets.file` | `tools/spec/tests/integration/targets.rs::each_provider_file_holds_named_shapes_with_one_default` | performed |
 | `corpus.targets.function-profile` | `spec/pins.toml` | performed |
 | `corpus.targets.incomplete` | `spec/pins.toml` | performed |
 | `corpus.targets.page` | `spec/pins.toml` | performed |
+| `corpus.targets.roles` | `tools/spec/tests/integration/targets.rs::a_shape_fills_eight_roles_and_may_fill_a_realtime_projection` | performed |
 | `disclosure.attest.anchor-verb` | `crates/contextful-cli/tests/integration/audit.rs::anchor_signs_an_unanchored_chain_so_it_verifies_under_the_issuer_pin` | performed |
 | `disclosure.attest.broken-chain` | `crates/contextful-policy/tests/integration/audit.rs::a_disagreeing_digest_a_gap_or_a_vanished_chain_raises_audit_chain_broken` | performed |
 | `disclosure.attest.inclusion-proof` | `crates/contextful-policy/tests/integration/audit.rs::an_inclusion_proof_verifies_offline_with_at_most_12_hashes_in_a_4096_entry_segment` | performed |

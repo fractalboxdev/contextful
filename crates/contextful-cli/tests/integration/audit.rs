@@ -1,5 +1,6 @@
 //! `contextful audit` through the built binary: verify, prove, check a proof offline, and
 //! query `audit_reads` over the project's chain.
+#![cfg(feature = "data-plane")]
 
 use contextful_policy::audit::{attr, AuditLog, AuditOptions, ChainHeader};
 use contextful_policy::issue::SeedSigner;

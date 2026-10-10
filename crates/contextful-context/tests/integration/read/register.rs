@@ -125,6 +125,7 @@ fn every_bare_name_resolves_to_the_callers_relation() {
 
     let request = contextful_context::read::RetrieveRequest::new("research/notes", "solar battery storage", at("2030-02-01T00:00:00Z"));
     let ranked = r.face.retrieve(&s, &request, Bounds::default()).unwrap();
+    assert!(!column(&ranked, "_row").is_empty(), "the exclusion below ranges over no element");
     assert!(column(&ranked, "_row").iter().all(|row| row["tenant"] == json!("acme")), "{:?}", ranked.rows);
 
     let files = r.face.files(&s, Bounds::default()).unwrap();
@@ -394,6 +395,7 @@ fn a_tables_request_ledger_reads_as_its_child_relation() {
     assert!(quiet.rows.is_empty() && quiet.columns.contains(&"request_id".to_string()), "{:?}", quiet.columns);
     // The ledger file stays out of the data listing.
     let files = r.face.files(&s, Bounds::default()).unwrap();
+    assert!(!column(&files, "path").is_empty(), "the exclusion below ranges over no element");
     assert!(column(&files, "path").iter().all(|p| !p.as_str().unwrap().contains("/requests/")));
 }
 

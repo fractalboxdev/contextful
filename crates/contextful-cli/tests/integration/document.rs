@@ -1,4 +1,5 @@
 //! The `file` document source through the built binary, over a folder in the project.
+#![cfg(feature = "data-plane")]
 
 use crate::pipeline::{cf, ok, project, stderr};
 use serde_json::{json, Value};

@@ -58,6 +58,7 @@ fn an_aes_gcm_file_round_trips_without_plaintext_or_key_reuse() {
     let first = cipher.seal(canary).unwrap();
     let second = cipher.seal(canary).unwrap();
     assert_ne!(first, second);
+    assert!(!first.is_empty(), "the exclusion below ranges over no element");
     assert!(!first.windows(canary.len()).any(|part| part == canary));
     assert_eq!(cipher.key_version(), 3);
     assert_eq!(cipher.open(&first).unwrap(), canary);
@@ -82,6 +83,7 @@ fn sealed_metadata_files_round_trip_without_plaintext_or_fallback() {
     assert!(!files.create_new(&path, b"other").unwrap());
     assert_eq!(files.read(&path).unwrap(), value.as_bytes());
     let disk = std::fs::read(&path).unwrap();
+    assert!(!disk.is_empty(), "the exclusion below ranges over no element");
     assert!(!disk.windows(canary.len()).any(|part| part == canary));
     assert!(MetadataFiles::sealed(&AesGcmFileCipher::new([0x42; 32], 1)).read(&path).is_err());
     std::fs::write(&path, b"CFSEAL01").unwrap();
@@ -255,6 +257,7 @@ fn a_plaintext_sidecar_is_mapped_and_a_sealed_one_opens_into_memory_alone() {
     for (path, bytes) in &files {
         assert!(bytes.starts_with(b"SEALED"), "{} is not sealed", path.display());
         for cleartext in [canary.as_bytes(), b"CFHNSW".as_slice(), b"passage_id".as_slice(), &1.0f32.to_le_bytes()] {
+            assert!(!bytes.is_empty(), "the exclusion below ranges over no element");
             assert!(!bytes.windows(cleartext.len()).any(|w| w == cleartext), "{} carries cleartext {cleartext:?}", path.display());
         }
     }
@@ -321,6 +324,7 @@ fn a_sealed_full_text_sidecar_opens_into_memory_alone() {
     for (path, bytes) in &files {
         assert!(bytes.starts_with(b"SEALED"), "{} is not sealed", path.display());
         for cleartext in [canary.as_bytes(), b"CFPOST01".as_slice(), b"zephyrine".as_slice(), b"passage_id".as_slice()] {
+            assert!(!bytes.is_empty(), "the exclusion below ranges over no element");
             assert!(!bytes.windows(cleartext.len()).any(|w| w == cleartext), "{} carries cleartext {cleartext:?}", path.display());
         }
     }
@@ -375,6 +379,7 @@ fn encrypted_parquet_has_no_plaintext_canary_and_decrypts() {
     let key = [0x37; 16];
     parquet_io::write_encrypted(&path, &batch, &key).unwrap();
     let bytes = std::fs::read(&path).unwrap();
+    assert!(!bytes.is_empty(), "the exclusion below ranges over no element");
     assert!(!bytes.windows(canary.len()).any(|part| part == canary.as_bytes()));
     assert!(!bytes.starts_with(b"PAR1"), "the footer is encrypted");
     assert!(parquet_io::read(&path).is_err());
@@ -448,6 +453,7 @@ fn a_bound_store_lands_ciphertext_and_reads_its_row() {
     assert!(!files.is_empty());
     for path in &files {
         let bytes = std::fs::read(path).unwrap();
+        assert!(!bytes.is_empty(), "the exclusion below ranges over no element");
         assert!(!bytes.windows(canary.len()).any(|part| part == canary.as_bytes()), "{} holds plaintext", path.display());
     }
     let rows = table_rows(&store, &decl, &["doc_id", "body"]).unwrap();
@@ -477,6 +483,7 @@ max_lag = "1d"
         crate::read::build_model(&face, model, "encrypted_copy", "2030-01-03T00:00:00Z");
         let manifests = contextful_context::build::manifests(&store, "encrypted_copy").unwrap();
         assert_eq!(manifests.len(), 1);
+        assert!(!manifests[0].parts.is_empty(), "the exclusion below ranges over no element");
         assert!(manifests[0].parts.iter().all(|part| part.key_version == 1));
         let id = manifests[0].publish.as_ref().unwrap().build_id.clone();
         let now = Instant::parse("2030-01-03T00:00:00Z").unwrap();
@@ -494,6 +501,7 @@ max_lag = "1d"
     }
     for path in written(&dir.path().join(".contextful/context/research")) {
         let bytes = std::fs::read(&path).unwrap();
+        assert!(!bytes.is_empty(), "the exclusion below ranges over no element");
         assert!(!bytes.windows(canary.len()).any(|part| part == canary.as_bytes()), "{} holds plaintext after model publication", path.display());
     }
 }
@@ -574,9 +582,11 @@ fn a_bound_store_seals_its_request_ledger() {
     ledger::append(&store, "documents", "run-1", &node, &[record.clone()]).unwrap();
     let path = ledger::files(&store, "documents").unwrap().remove(0);
     let bytes = std::fs::read(path.clone()).unwrap();
+    assert!(!bytes.is_empty(), "the exclusion below ranges over no element");
     assert!(!bytes.windows(canary.len()).any(|part| part == canary.as_bytes()));
     let rows = ledger::read_for_store(&store, &path).unwrap();
     assert_eq!(rows, [("run-1".into(), record)]);
+    assert!(!written(&dir.path().join(".contextful/context/research")).is_empty(), "the exclusion below ranges over no element");
     assert!(written(&dir.path().join(".contextful/context/research")).iter().all(|p| !std::fs::read(p).unwrap().windows(canary.len()).any(|part| part == canary.as_bytes())));
 }
 
@@ -593,6 +603,7 @@ fn a_bound_store_seals_landed_blob_bytes() {
     store.land_blob(&digest, canary).unwrap();
     assert_eq!(store.blob(&digest).unwrap().as_deref(), Some(canary.as_slice()));
     let files = written(&dir.path().join(".contextful/context/research"));
+    assert!(!files.is_empty(), "the exclusion below ranges over no element");
     assert!(files.iter().all(|p| !std::fs::read(p).unwrap().windows(canary.len()).any(|part| part == canary)));
 }
 

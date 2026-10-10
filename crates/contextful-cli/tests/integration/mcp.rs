@@ -1,5 +1,6 @@
 //! `contextful mcp` through the built binary: admission at startup, then the tool
 //! protocol over standard input and output.
+#![cfg(feature = "data-plane")]
 
 use serde_json::{json, Value};
 use std::io::Write;

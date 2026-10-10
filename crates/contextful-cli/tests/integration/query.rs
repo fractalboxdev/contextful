@@ -1,5 +1,6 @@
 //! `contextful query` through the built binary: operator text, run raw, printed as the
 //! one response projection.
+#![cfg(feature = "data-plane")]
 
 use serde_json::{json, Value};
 use std::io::Write;

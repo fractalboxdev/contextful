@@ -1,5 +1,6 @@
 //! `contextful build` through the built binary: a declared model built and published,
 //! and a published build held.
+#![cfg(feature = "data-plane")]
 
 use serde_json::Value;
 use std::path::Path;

@@ -257,6 +257,7 @@ fn the_schema_stage_regenerates_into_scratch_and_refuses_a_stale_committed_copy(
     assert_eq!(std::fs::read_to_string(r.root.join("spec/spec.lock.json")).unwrap(), "{\"clauses\": [ ]}\n");
     assert!(!r.root.join("target/gate/schema").exists());
     let calls = bin.calls();
+    assert!(!calls.is_empty(), "the exclusion below ranges over no element");
     assert!(calls.iter().all(|c| !c.ends_with("lint")), "{calls:?}");
     assert!(calls.iter().any(|c| c.contains("--root") && c.contains("target/gate/schema") && c.ends_with("extract")), "{calls:?}");
 

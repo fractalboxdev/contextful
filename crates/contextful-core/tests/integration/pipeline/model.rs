@@ -285,6 +285,7 @@ fn staleness_is_derived_from_the_watermark_and_max_lag() {
     assert!(f.stale(at("2030-01-01T06:00:01Z")));
     // No field of the section records staleness.
     let v = serde_json::to_value(&s).unwrap();
+    assert!(!v.as_object().unwrap().is_empty(), "the exclusion below ranges over no element");
     assert!(v.as_object().unwrap().keys().all(|k| !k.contains("stale")), "{v}");
     // Inputs with no commit leave nothing to measure the lag from.
     s.watermark.at = None;

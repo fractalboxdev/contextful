@@ -46,6 +46,9 @@ fn sealed_run_stores_share_catalog_and_keep_journal_bytes_off_disk() {
     for entry in std::fs::read_dir(dir.path()).unwrap() {
         let path = entry.unwrap().path();
         let bytes = std::fs::read(&path).unwrap();
+        if bytes.is_empty() {
+            continue;
+        }
         assert!(!bytes.windows(canary.len()).any(|part| part == canary.as_bytes()), "{} contains journal plaintext", path.display());
         assert!(!bytes.starts_with(b"SQLite format 3"), "{} contains a SQLite page", path.display());
     }
@@ -106,6 +109,7 @@ fn sealed_run_stores_serialize_claims_across_connections() {
         handles.into_iter().map(|handle| handle.join().unwrap()).collect()
     });
     assert_eq!(claimed.iter().filter(|won| **won).count(), 1);
+    assert!(!stores.is_empty(), "the exclusion below ranges over no element");
     assert!(stores.iter().all(|store| store.journal.read(&key("x-1")).unwrap().is_some()));
 }
 
@@ -177,6 +181,7 @@ fn the_file_runs_in_write_ahead_log_mode_and_holds_blobs_as_rows() {
     assert_eq!(held, value, "the blob is one row keyed by its sha256");
     let dir: PathBuf = s.path().parent().unwrap().to_path_buf();
     let names: Vec<String> = std::fs::read_dir(&dir).unwrap().map(|e| e.unwrap().file_name().to_string_lossy().into_owned()).collect();
+    assert!(!names.is_empty(), "the exclusion below ranges over no element");
     assert!(names.iter().all(|n| n.starts_with(MACHINE_CATALOG_FILE)), "no blob file lands beside the database: {names:?}");
 }
 

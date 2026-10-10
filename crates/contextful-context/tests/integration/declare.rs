@@ -75,6 +75,7 @@ fn the_last_write_per_key_wins_within_a_run_and_across_runs_at_one_instant() {
     assert_eq!(titles(&f), expected, "before a fold");
 
     fold(&f.store, &d, at("2030-01-01T01:00:00Z")).unwrap();
+    assert!(!f.scan(&d, Bounds::default()).unwrap().files.is_empty(), "the exclusion below ranges over no element");
     assert!(f.scan(&d, Bounds::default()).unwrap().files.iter().all(|p| p.contains("/data/snapshots/")));
     assert_eq!(titles(&f), expected, "after a fold");
     let seq = f.query(&d, Bounds::default(), "SELECT _row_seq FROM t WHERE doc = 'a'");

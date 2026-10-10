@@ -51,9 +51,11 @@ fn an_identifier_shared_across_contracts_needs_no_registration() {
     extend_statement(&s, STORE, "- `includes-runs` — ", "It reads `unregistered_shared_token`.");
     extend_statement(&s, "spec/30-run.md", "- `", "It reads `unregistered_shared_token`.");
     let found = codes(&all_codes(&s), "SpecRegistry");
-    assert!(found.iter().all(|m| !m.contains("unregistered_shared_token")), "{found:?}");
+    assert!(s.read(STORE).contains("unregistered_shared_token"), "the token is planted");
+    assert_eq!(found.iter().filter(|m| m.contains("unregistered_shared_token")).count(), 0, "{found:?}");
 }
 
+// spec: corpus.anatomy.scenario@8e3945d0
 #[test]
 fn a_scenario_attaches_to_its_clause_in_the_lock() {
     let s = Scratch::copy();
@@ -78,6 +80,7 @@ fn a_scenario_may_point_at_a_fixture_table() {
     assert!(codes(&all_codes(&s), "SpecScenario").is_empty());
 }
 
+// spec: corpus.anatomy.bad-scenario@e28b3c77
 #[test]
 fn a_scenario_naming_another_operations_clause_is_a_finding() {
     let s = Scratch::copy();

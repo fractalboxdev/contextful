@@ -1,4 +1,5 @@
 //! Complete empty snapshots replace rows; unchanged and failed pulls keep the frontier.
+#![cfg(feature = "data-plane")]
 
 use serde_json::{json, Value};
 use std::io::Write;

@@ -62,6 +62,7 @@ fn the_engine_resolves_the_publication_column() {
     assert!(basis.contains(&("n1".into(), "published_at".into())), "{basis:?}");
     assert!(basis.contains(&("n3".into(), "uncastable".into())), "{basis:?}");
     let quiet = r.face.retrieve(&s, &RetrieveRequest { min_score: Some(0), ..ask("research/visits", "") }, Bounds::default()).unwrap();
+    assert!(!column(&quiet, "_date_basis").is_empty(), "the exclusion below ranges over no element");
     assert!(column(&quiet, "_date_basis").iter().all(|b| b == "_ingested_at"), "{:?}", quiet.rows);
 }
 
@@ -74,6 +75,7 @@ fn reserved_columns_project_null_for_a_table_lacking_them() {
     let ranked = r.face.retrieve(&s, &ask("research/", "solar battery storage"), Bounds::default()).unwrap();
     assert_eq!(ranked.rows.len(), 2);
     for c in ["_modality", "_lang", "_provenance", "_prompt_hash", "_kind"] {
+        assert!(!column(&ranked, c).is_empty(), "the exclusion below ranges over no element");
         assert!(column(&ranked, c).iter().all(|v| v.is_null()), "{c}");
     }
 }
@@ -150,6 +152,7 @@ fn only_the_integer_score_crosses() {
     let s = r.session(&["research/notes"], Some(("research/notes", "acme")), None);
     let ranked = r.face.retrieve(&s, &ask("research/", "solar battery storage"), Bounds::default()).unwrap();
     assert_eq!(column(&ranked, "_score"), [json!(3), json!(2)]);
+    assert!(!column(&ranked, "_vscore").is_empty(), "the exclusion below ranges over no element");
     assert!(column(&ranked, "_vscore").iter().all(|v| v.is_null()));
     for row in &ranked.rows {
         for v in row {

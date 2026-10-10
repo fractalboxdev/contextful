@@ -22907,7 +22907,7 @@
       "operation": "test",
       "subject": "vacuous-exclusion",
       "kind": "refusal",
-      "statement": "An exclusion assertion evaluated over an empty collection raises `VacuousAssertion`.",
+      "statement": "An exclusion assertion — `all`, or a negated `any` — in a tracked test file under `crates/` or `tools/`, over a collection no earlier statement of its function shows non-empty, raises `VacuousAssertion` in the test-first stage.",
       "why": "P7",
       "file": "spec/81-engineering.md",
       "line": 81
@@ -22946,6 +22946,17 @@
       "line": 86
     },
     {
+      "id": "assurance.test.global-state-lock",
+      "contract": "assurance",
+      "operation": "test",
+      "subject": "global-state-lock",
+      "kind": "behavior",
+      "statement": "A suite contending process-global state acquires a named lock the integration binary's root module owns; every suite touching that state takes the same lock.",
+      "why": "because a lock declared inside one suite leaves another suite free to race the same state",
+      "file": "spec/81-engineering.md",
+      "line": 87
+    },
+    {
       "id": "assurance.test.own-process",
       "contract": "assurance",
       "operation": "test",
@@ -22954,7 +22965,7 @@
       "statement": "A test needing its own process sits in a top-level file stating why at its site; a thread-scoped log capture is such a test.",
       "why": "",
       "file": "spec/81-engineering.md",
-      "line": 87
+      "line": 89
     },
     {
       "id": "assurance.test.connector-kit",
@@ -22965,7 +22976,7 @@
       "statement": "The connector authoring toolkit ships a conformance suite — discovery returns valid schemas, an opened table yields a finite stream, a position round-trips — plus recorded-HTTP fixture replay and property tests over position monotonicity.",
       "why": "",
       "file": "spec/81-engineering.md",
-      "line": 88
+      "line": 90
     },
     {
       "id": "assurance.test.test-first",
@@ -22976,7 +22987,7 @@
       "statement": "A change altering Rust source under `crates/` or `tools/` adds or alters a test under a package's `tests/` that fails against the base commit's source; a change without one raises `TestNotFirst`.",
       "why": "A-assurance",
       "file": "spec/81-engineering.md",
-      "line": 89
+      "line": 91
     },
     {
       "id": "assurance.test.test-first-scope",
@@ -22987,7 +22998,7 @@
       "statement": "The test-first stage builds each changed test file's target against the base source with every feature enabled, then runs exactly the tests under that file's top-level module; a target failing to compile there counts as failing.",
       "why": "",
       "file": "spec/81-engineering.md",
-      "line": 91
+      "line": 93
     },
     {
       "id": "assurance.test.comparison-base",
@@ -22998,7 +23009,7 @@
       "statement": "Test-first resolves the supplied comparison revision to one commit and uses that commit for source selection, changed-test selection and base replay; each report records that commit and the tested head.",
       "why": "A-assurance",
       "file": "spec/81-engineering.md",
-      "line": 92,
+      "line": 94,
       "scenarios": [
         "WHEN linear or divergent history supplies a comparison revision, THEN source selection, changed-test selection and replay use the same resolved commit."
       ]
@@ -23012,7 +23023,7 @@
       "statement": "Test-first includes source introduced by merge resolutions; refactor exemptions apply only to source attributable to exempt commits and preserve obligations from behavior changes elsewhere in the comparison.",
       "why": "A-assurance",
       "file": "spec/81-engineering.md",
-      "line": 94,
+      "line": 96,
       "scenarios": [
         "WHEN a merge resolution introduces source behavior without a changed test, THEN the change fails {{assurance.test.test-first}}.",
         "WHEN a comparison combines refactor and behavior commits, THEN the behavior changes retain their failing-test obligation."
@@ -23027,7 +23038,7 @@
       "statement": "Test-first reports assertion failures, compilation failures and bounded test executions separately; infrastructure faults follow {{assurance.test.base-unrunnable}} and supply no failing-test evidence.",
       "why": "A-assurance",
       "file": "spec/81-engineering.md",
-      "line": 96,
+      "line": 98,
       "scenarios": [
         "WHEN a base assertion fails, THEN its diagnostic identifies test failure independently of infrastructure output.",
         "WHEN base execution fails through infrastructure, THEN the failure supplies no failing-test evidence."
@@ -23042,7 +23053,7 @@
       "statement": "One test-first execution against the base, its build excluded, runs for at most 300 s; a run past the bound is killed with its process group and counts as failing.",
       "why": "",
       "file": "spec/81-engineering.md",
-      "line": 98
+      "line": 100
     },
     {
       "id": "assurance.test.base-unrunnable",
@@ -23053,7 +23064,7 @@
       "statement": "A base invocation whose output reports a full disk, an unloadable manifest or an unfetchable dependency raises `TestFirstBaseUnrunnable` instead of a verdict.",
       "why": "because such a fault fails at base whatever the tests assert, and reading it as red admits an untested change",
       "file": "spec/81-engineering.md",
-      "line": 99
+      "line": 101
     },
     {
       "id": "assurance.test.refactor-trailer",
@@ -23064,7 +23075,7 @@
       "statement": "A commit carrying the trailer `Test-First: refactor` exempts the source it alters from {{assurance.test.test-first}}; the rest of the range stays held, and the workspace stage alone holds that commit.",
       "why": "because a behavior-preserving change has no failing test to write, and the existing suite is its specification",
       "file": "spec/81-engineering.md",
-      "line": 101
+      "line": 103
     },
     {
       "id": "assurance.test.acceptance-surface",
@@ -23075,7 +23086,7 @@
       "statement": "An acceptance test drives a built binary through its command line, MCP or HTTP surface; a workspace package among the acceptance package's dependencies raises `AcceptanceLinksEngine`.",
       "why": "A-assurance",
       "file": "spec/81-engineering.md",
-      "line": 103
+      "line": 105
     },
     {
       "id": "assurance.build.target-dir-per-stage",

@@ -330,6 +330,7 @@ fn a_generated_node_id_persists_in_the_state_directory() {
     // Generated once, as `node-<8 hex>`, then read back.
     let dir = tempfile::tempdir().unwrap();
     let id = persisted_node_id(dir.path()).unwrap();
+    assert!(!id[5..].is_empty(), "the exclusion below ranges over no element");
     assert!(id.starts_with("node-") && id.len() == 13 && id[5..].bytes().all(|b| b.is_ascii_hexdigit()), "{id}");
     assert_eq!(persisted_node_id(dir.path()).unwrap(), id);
 
@@ -356,6 +357,7 @@ fn two_store_roots_on_one_host_take_distinct_node_ids() {
         node.as_str().to_string()
     };
     let research = id(a.path(), "research");
+    assert!(!research[5..].is_empty(), "the exclusion below ranges over no element");
     assert!(research.starts_with("node-") && research.len() == 13 && research[5..].bytes().all(|b| b.is_ascii_hexdigit()), "{research}");
     // Stable across resolutions, distinct per project and per checkout, none equal to the host id.
     assert_eq!(id(a.path(), "research"), research);
@@ -363,6 +365,7 @@ fn two_store_roots_on_one_host_take_distinct_node_ids() {
     assert_eq!(id(a.path(), "research"), research);
     let others = [id(a.path(), "filings"), id(b.path(), "research")];
     let host_id = persisted_node_id(host.path()).unwrap();
+    assert!(!others.is_empty(), "the exclusion below ranges over no element");
     assert!(others.iter().all(|o| *o != research && *o != host_id), "{research} {others:?} {host_id}");
     assert_ne!(others[0], others[1]);
 

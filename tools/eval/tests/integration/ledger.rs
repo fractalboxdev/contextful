@@ -88,6 +88,7 @@ fn a_timing_or_resident_set_figure_decides_no_gate() {
     }
     // The committed ledger holds every gate entry to a count.
     let committed: Ledger = toml::from_str(&std::fs::read_to_string(concat!(env!("CARGO_MANIFEST_DIR"), "/../../evals/ledger.toml")).unwrap()).unwrap();
+    assert!(!committed.entry.is_empty());
     assert!(committed.entry.values().any(|e| e.tier == Tier::Gate));
     assert!(committed.entry.values().filter(|e| e.tier == Tier::Gate).all(|e| e.kind != Kind::Bench));
 }

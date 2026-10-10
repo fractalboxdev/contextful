@@ -320,6 +320,7 @@ fn malformed_selected_root_listings_refuse_before_removals() {
         let failure = d.source("files").unwrap().pull(&request(Some(prior)), &Never).unwrap_err();
         assert_eq!(failure.tag, FailureTag::Permanent, "{fixture}: {failure}");
         assert!(failure.message.contains("listing") && failure.message.contains("root-f"), "{fixture}: {failure}");
+        assert!(!fake.received("/drive/v3/files").is_empty(), "the exclusion below ranges over no element");
         assert!(fake.received("/drive/v3/files").iter().all(|request| query(request).iter().any(|(key, value)| key == "fields" && value.contains("incompleteSearch"))));
     }
 }
@@ -660,6 +661,7 @@ fn the_access_token_is_minted_from_references_and_lands_in_no_row_or_position() 
         assert!(form.contains(&(pair.0.to_string(), pair.1.to_string())), "{pair:?} in {form:?}");
     }
     assert_eq!(minted[0].method, "POST");
+    assert!(!fake.received("/drive/v3/files").is_empty(), "the exclusion below ranges over no element");
     assert!(fake.received("/drive/v3/files").iter().all(|r| r.header("authorization") == Some(&format!("Bearer {ACCESS}"))));
     assert_eq!(d.sensitive_headers(), ["Authorization"]);
     for landed in [&files, &pages] {

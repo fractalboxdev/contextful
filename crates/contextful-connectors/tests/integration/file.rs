@@ -324,6 +324,7 @@ fn frontmatter_keys_land_as_string_columns_on_every_row() {
     write(dir.path(), "shouted.md", "---\nOwner: Finance\n---\nbody");
     let (rows, _, _) = read(&source(dir.path(), json!({"root": "."})), None).unwrap();
     assert_eq!(row(&rows, "shouted", 1)["owner"], json!("Finance"), "a key lands under its lowercased name");
+    assert!(!rows.is_empty(), "the exclusion below ranges over no element");
     assert!(rows.iter().all(|r| !r.contains_key("Owner")), "`owner` and `Owner` share one column");
     for r in rows.iter().filter(|r| r["slug"] == json!("guide")) {
         assert_eq!(

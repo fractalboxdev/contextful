@@ -14,6 +14,7 @@ fn the_stub_embedder_is_seeded_unit_length_and_word_bounded() {
     assert!((dot(&v, &v) - 1.0).abs() < 1e-6, "a unit vector");
     assert_eq!(v, e.embed("modern ART museum"), "case and a trailing plural fold into one feature");
     assert_ne!(v, StubEmbedder::new(DEFAULT_SEED + 1).embed("modern art museums"), "the seed moves every feature");
+    assert!(!e.embed("a ! ?").is_empty(), "the exclusion below ranges over no element");
     assert!(e.embed("a ! ?").iter().all(|x| *x == 0.0), "no feature embeds as zero");
 
     // A word never shares a feature with a longer word containing it.

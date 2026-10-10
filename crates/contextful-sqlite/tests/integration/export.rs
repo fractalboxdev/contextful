@@ -57,6 +57,9 @@ fn sealed_export_reloads_independent_writers_and_preserves_catalog_and_journal()
     for entry in std::fs::read_dir(dir.path()).unwrap() {
         let bytes = std::fs::read(entry.unwrap().path()).unwrap();
         assert!(!bytes.starts_with(b"SQLite format 3"));
+        if bytes.is_empty() {
+            continue;
+        }
         assert!(!bytes.windows(b"sealed-export-canary-74".len()).any(|b| b == b"sealed-export-canary-74"));
     }
 }

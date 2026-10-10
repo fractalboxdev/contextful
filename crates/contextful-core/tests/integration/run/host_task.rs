@@ -395,6 +395,7 @@ fn a_content_table_a_unit_lands_nothing_in_takes_an_empty_marker() {
         );
         let table = [landed_at(&first[t], "r1", 1), landed_at(&out[t], "r2", 2)].concat();
         let flags = superseded(&table);
+        assert!(!flags[..first[t].len()].is_empty(), "the exclusion below ranges over no element");
         assert!(
             flags[..first[t].len()].iter().all(|s| *s),
             "{t}: the earlier key yields to the empty landing"

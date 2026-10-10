@@ -1,6 +1,5 @@
-#[path = "support.rs"]
-mod support;
-use support::{at, decl, Fixture};
+#![cfg(feature = "read")]
+use crate::support::{at, decl, Fixture};
 use contextful_context::fold::fold;
 use contextful_core::store::bound_time::Bounds;
 use serde_json::json;

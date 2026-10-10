@@ -1,4 +1,5 @@
 //! Cancellation persists across preparation's interrupt reset and stops before reuse.
+#![cfg(feature = "read")]
 
 #[path = "../../src/read/deadline.rs"]
 mod deadline;

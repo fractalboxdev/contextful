@@ -1,4 +1,5 @@
 //! The local disclosure diagnostic through the built command.
+#![cfg(feature = "data-plane")]
 
 use std::process::Command;
 use contextful_acceptance::http::{Response, Server};

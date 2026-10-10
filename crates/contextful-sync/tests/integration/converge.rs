@@ -35,6 +35,7 @@ fn encrypted_schema_merge_keeps_both_columns_without_plaintext() {
     let mine = codec.seal_bytes(path, &first).unwrap();
     let theirs = codec.seal_bytes(path, &second).unwrap();
     let merged = merge_schema_bytes(&codec, path, &mine, &theirs).unwrap();
+    assert!(!merged.is_empty(), "the exclusion below ranges over no element");
     assert!(!merged.windows(b"metadata-canary-5f1e".len()).any(|w| w == b"metadata-canary-5f1e"));
     let clear = codec.open_bytes(path, &merged).unwrap();
     let columns = schema_columns(&clear);
@@ -56,7 +57,7 @@ fn a_push_never_uploads_a_copy_of_another_nodes_key() {
     // A's copy of B's part goes stale; A's push leaves B's object and entry alone.
     std::fs::write(a.root().join("tables/filings/data/runs/run-1/ingest-b/part-00000.parquet"), b"stale").unwrap();
     let report = a.syncer.push(at(NOW)).unwrap();
-    assert!(!report.uploaded.iter().any(|k| k.contains("ingest-b/")), "{:?}", report.uploaded);
+    assert_eq!(report.uploaded.iter().filter(|k| k.contains("ingest-b/")).count(), 0, "{:?}", report.uploaded);
     assert_eq!(b.get(key).unwrap().unwrap().1, before);
     assert_eq!(manifest(b.as_ref()).entries["research/tables/filings/data/runs/run-1/ingest-b/part-00000.parquet"].sha256, before);
 }

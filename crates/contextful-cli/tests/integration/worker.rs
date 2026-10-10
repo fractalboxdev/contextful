@@ -1,4 +1,5 @@
 //! `pipeline serve` dispatching onto remote workers through the relay, and `pipeline worker`.
+#![cfg(feature = "data-plane")]
 
 use crate::pipeline::{cf, ok, project, Vendor};
 use contextful_core::surface::worker::{sign_submission, Signed, StepOutcome, StepResult, HEARTBEAT_LAPSE_SECS, SIGNATURE_HEADER, TIMESTAMP_HEADER, WORKER_KEY_VAR};
@@ -172,6 +173,7 @@ fn a_killed_worker_s_step_moves_once_and_its_late_callback_is_rejected() {
     assert_eq!(answer["fired"], serde_json::json!(["orders"]), "{}", serve.log());
     assert_eq!(serve.count("attempt 2 on"), 1, "rescheduled once:\n{}", serve.log());
     assert_eq!(serve.count("attempt 3 on"), 0, "{}", serve.log());
+    assert!(!vendor.targets().is_empty(), "the exclusion below ranges over no element");
     assert!(vendor.targets().iter().all(|t| t == "/v1/orders"), "{:?}", vendor.targets());
     assert!(worker.log().contains("attempt 2 callback `200`"), "{}", worker.log());
 }

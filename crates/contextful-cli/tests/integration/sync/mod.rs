@@ -1,5 +1,6 @@
 //! `contextful sync` through the built binary: the endpoint a `[sync]` block names, its
 //! credentials, and the pull a run, a pipeline or either tool server takes before it reads.
+#![cfg(feature = "data-plane")]
 
 mod run_state;
 mod node_id;

@@ -6,6 +6,7 @@
 pub mod batch;
 pub mod decision;
 pub mod host;
+pub mod kit;
 pub mod limits;
 mod mediate;
 pub mod source;

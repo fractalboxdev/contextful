@@ -1,6 +1,7 @@
 //! `contextful job` through an embedding binary registering the `score` row body: job
 //! blocks against the kind union, and a store-driven fire reading its input through the
 //! read face under the job's credential.
+#![cfg(feature = "data-plane")]
 
 use contextful_core::run::drive::row_label;
 use contextful_core::run::journal::EntryKey;
@@ -171,10 +172,12 @@ fn a_registered_prepared_body_lands_protected_effect_results() {
     ok(&out);
     assert_eq!(std::fs::read_to_string(ledger).unwrap().lines().count(), 3);
     assert_eq!(select(dir.path(), "SELECT doc_id FROM scores ORDER BY doc_id"), vec![vec!["d1".to_string()], vec!["d2".to_string()], vec!["d3".to_string()]]);
+    assert!(!select(dir.path(), "SELECT score FROM scores").is_empty(), "the exclusion below ranges over no element");
     assert!(select(dir.path(), "SELECT score FROM scores").iter().all(|row| row == &["null".to_string()]));
     let declaration = "[[pipeline.tables]]\nname = \"scores\"\nredaction = [{ table = \"scores\", column = \"score\", match = { pattern = \"private\" }, operation = \"drop\" }]\n";
     let (guarded, public, token) = project(&format!("{declaration}\n{}", job("max_in_flight = 1\n")));
     ok(&fire(guarded.path(), &public, &token, "guarded-body", "2030-01-01T00:01:00Z", &[("SCORE_RECORDED", "1"), ("SCORE_CANARY", "AKIA0123456789ABCDEF")]));
+    assert!(!select(guarded.path(), "SELECT score FROM scores").is_empty(), "the exclusion below ranges over no element");
     assert!(select(guarded.path(), "SELECT score FROM scores").iter().all(|row| row == &[contextful_core::pipeline::guard::MARKER.to_string()]), "retained paid result cells receive the ordinary guard before recording and staging");
 }
 

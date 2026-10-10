@@ -5,6 +5,7 @@ mod attach;
 mod decision;
 mod export;
 mod import;
+mod kit;
 mod meter;
 mod package;
 mod source;

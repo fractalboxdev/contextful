@@ -369,6 +369,7 @@ fn a_tampered_log_is_rewritten_and_collected_history_kept() {
     p.build(MODEL, "2030-01-01T00:00:02Z").unwrap();
     let c = p.build(MODEL, "2030-01-09T00:00:00Z").unwrap();
     assert!(!p.dir().join("data/snapshots").join(&a.build_id).exists());
+    assert!(!p.log::<BuildEntry>(BUILDS_LOG).is_empty(), "the exclusion below ranges over no element");
     assert!(p.log::<BuildEntry>(BUILDS_LOG).iter().all(|e| e.status == contextful_core::pipeline::model::BuildStatus::Published),
         "retention preserves successful build outcomes");
     let ids: Vec<String> = p.log::<BuildEntry>(BUILDS_LOG).into_iter().map(|e| e.build_id).collect();

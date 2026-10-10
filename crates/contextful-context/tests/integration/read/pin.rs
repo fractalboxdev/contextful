@@ -90,6 +90,7 @@ fn a_pinned_table_reads_its_build_and_an_unnamed_one_the_latest() {
     let daily: Vec<&String> = paths.iter().filter(|f| f.starts_with("tables/lab/daily/")).collect();
     assert_eq!(daily.len(), 1, "{paths:?}");
     assert!(daily[0].contains(&format!("/data/snapshots/{}/", first.build_id)), "{paths:?}");
+    assert!(!paths.is_empty(), "the exclusion below ranges over no element");
     assert!(!paths.iter().any(|f| f.contains(&second.build_id)), "{paths:?}");
 }
 
@@ -256,6 +257,7 @@ fn a_pinned_build_reads_under_its_own_schema() {
     let s = p.session(Bounds::default(), &Pins::default().with(DAILY, &first.build_id));
 
     let all = p.r.face.query(&s, r#"SELECT * FROM "lab/daily" ORDER BY day"#, ReadOptions::default()).unwrap();
+    assert!(!all.columns.is_empty(), "the exclusion below ranges over no element");
     assert!(!all.columns.iter().any(|c| c == "label"), "{:?}", all.columns);
     assert_eq!(column(&all, "n"), vec![json!("2"), json!("1")]);
     assert_eq!(resolved_build(&all.to_json(), DAILY), first.build_id);

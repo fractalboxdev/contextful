@@ -243,6 +243,7 @@ referenced_by = [{ table = "research/notes", column = "citation" }]
             let affected_table = affected.iter().position(|table| components.windows(3).any(|names| names[0] == "tables" && names[1] == "research" && names[2] == *table));
             if affected_table.is_some() {
                 assert!(!path.to_string_lossy().contains(trace), "an affected path retains the erased column key: {}", path.display());
+                assert!(!std::fs::read(&path).unwrap().is_empty(), "the exclusion below ranges over no element");
                 assert!(!std::fs::read(&path).unwrap().windows(trace.len()).any(|bytes| bytes == trace.as_bytes()), "an affected sidecar retains the erased column key: {}", path.display());
             }
             if path.extension().is_some_and(|extension| extension == "parquet") {

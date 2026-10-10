@@ -55,7 +55,3 @@ tempfile = "3"
 name = "integration"
 path = "tests/integration/main.rs"
 
-[[test]]
-name = "issue88_bench"
-path = "tests/integration/issue88_bench.rs"
-required-features = ["read"]

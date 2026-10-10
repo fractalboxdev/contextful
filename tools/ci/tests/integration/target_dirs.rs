@@ -119,6 +119,7 @@ fn the_workspace_stage_runs_one_invocation_and_the_store_suites_link_no_engine_w
     assert!(tree.status.success(), "{}", stderr(&tree));
     let tree = String::from_utf8_lossy(&tree.stdout);
     for engine in ["duckdb ", "libduckdb-sys "] {
+        assert!(!tree.is_empty(), "the exclusion below ranges over no element");
         assert!(!tree.lines().any(|l| l.starts_with(engine)), "the store adapter's suites link `{engine}` without `read`");
     }
 }

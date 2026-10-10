@@ -544,6 +544,7 @@ fn protected_body_effects_record_rewritten_results_and_resume_without_another_pa
         fn admit(&self, _: &RecordedEffect, scope:&EffectScope, value:&serde_json::Value) -> Result<EmissionSummary, Failure> {
             assert_eq!(&serde_json::from_value::<EffectScope>(value["scope"].clone()).unwrap(), scope);
             let rows:Vec<Row> = serde_json::from_value(value["rows"].clone()).unwrap();
+            assert!(!rows.is_empty(), "the exclusion below ranges over no element");
             assert!(rows.iter().all(|r| !r.contains_key("score")));
             Ok(EmissionSummary { rows:rows.len() as u64, columns:rows.iter().flat_map(|r| r.keys().cloned()).collect(), types:Default::default() })
         }

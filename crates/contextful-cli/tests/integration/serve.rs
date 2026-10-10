@@ -1,6 +1,7 @@
 //! `contextful serve --http` through the built binary: startup refusals, then MCP
 //! Streamable HTTP admitting a short-lived bearer, and a holder-bound credential minted by
 //! `token mint --holder` under a proof on every request.
+#![cfg(feature = "data-plane")]
 
 use contextful_core::time::Instant;
 use contextful_policy::possession::{jwk_thumbprint, sign_proof, ProofRequest};

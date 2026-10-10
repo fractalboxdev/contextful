@@ -1,6 +1,7 @@
 //! A credential bound to a holder key over the process transport: the command-line write
 //! verbs and the stdio tool server admit it through a holder seed or a proof presented in
 //! the environment.
+#![cfg(feature = "data-plane")]
 
 use contextful_core::time::Instant;
 use contextful_policy::possession::{jwk_thumbprint, sign_proof, ProofRequest};

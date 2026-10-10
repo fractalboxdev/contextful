@@ -11,6 +11,8 @@ mod erase;
 mod fold;
 mod index;
 mod init;
+#[cfg(feature = "read")]
+mod issue88_bench;
 mod lay_out;
 mod ledger;
 mod read;

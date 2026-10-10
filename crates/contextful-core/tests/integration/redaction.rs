@@ -231,10 +231,12 @@ fn every_byte_of_every_match_is_rewritten_and_no_other_byte_is() {
             }
         }
         for found in unanchored.find_iter(&text) {
+            assert!(!covered[found.range()].is_empty(), "the exclusion below ranges over no element");
             assert!(covered[found.range()].iter().all(|byte| *byte), "{pattern} over {text}: leftmost-first {:?} escapes the union", found.range());
         }
         for start in 0..text.len() {
             if let Some(found) = unanchored.find(regex_automata::Input::new(&text).span(start..text.len())) {
+                assert!(!covered[found.range()].is_empty(), "the exclusion below ranges over no element");
                 assert!(covered[found.range()].iter().all(|byte| *byte), "{pattern} over {text}: leftmost-first {:?} from {start} escapes the union", found.range());
             }
         }
