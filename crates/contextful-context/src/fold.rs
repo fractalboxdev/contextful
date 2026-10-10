@@ -147,7 +147,14 @@ pub fn prepare_under(store: &Store, decl: &TableDecl, now: Instant, fence: Optio
 
     let unfolded_runs = state.unfolded_runs();
     let unfolded: Vec<String> = unfolded_runs.iter().map(|r| r.key()).collect();
-    if unfolded.is_empty() && decl.retain_rows.is_none() {
+    // A declared sidecar another builder wrote, or a graph past its extensions, rebuilds in
+    // full though nothing landed (`store.index.rebuild`, `store.index.graph-extensions`).
+    let declared: BTreeSet<String> = decl.indexes().iter().map(|i| i.path(escape)).collect();
+    let rebuild = state
+        .chain
+        .first()
+        .is_some_and(|s| s.indexes.iter().any(|e| e.path().is_some_and(|p| declared.contains(p)) && e.needs_rebuild()));
+    if unfolded.is_empty() && decl.retain_rows.is_none() && !rebuild {
         return Ok(Prepared::NothingLanded);
     }
     let table_dir = store.table_dir(table)?;
@@ -219,7 +226,7 @@ pub fn prepare_under(store: &Store, decl: &TableDecl, now: Instant, fence: Optio
         rows = filtered;
         Some(RetentionReport { cutoff, rows_expired: count + footer_expired, partitions_dropped: before.difference(&after).count() as u64 })
     } else { None };
-    if unfolded.is_empty() && retention.as_ref().is_none_or(|r| r.rows_expired == 0) {
+    if unfolded.is_empty() && retention.as_ref().is_none_or(|r| r.rows_expired == 0) && !rebuild {
         return Ok(Prepared::NothingLanded);
     }
     // A keyed table declaring no clustering sorts by its key, so each part's footer bounds

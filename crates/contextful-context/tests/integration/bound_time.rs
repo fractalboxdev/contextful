@@ -91,7 +91,8 @@ fn a_from_only_declaration_reads_each_row_valid_from_its_instant_onward() {
 }
 
 #[cfg(feature = "read")]
-/// A keyed table declaring `valid_time` keeps one row per key and line, so a valid-time read reaches a key's past version.
+/// A key valid over several intervals holds one row per interval: a keyed table declaring `valid_time` dedupes on its primary key and `from`, so a fold keeps every interval.
+// spec: store.bound-time.interval-rows@8705c4e1
 #[test]
 fn a_keyed_valid_time_read_reaches_the_version_valid_then() {
     let f = Fixture::new();
@@ -106,6 +107,15 @@ fn a_keyed_valid_time_read_reaches_the_version_valid_then() {
     fold(&f.store, &d, at("2030-01-01T01:00:00Z")).unwrap();
     assert_eq!(rates("2030-02-15T00:00:00Z"), [[s("1")]]);
     assert_eq!(rates("2030-03-15T00:00:00Z"), [[s("1")], [s("2")]]);
+    assert_eq!(f.store.chain("rates").unwrap().0[0].row_count, 2, "one row per interval");
+    // A repeated interval supersedes its row; a distinct one adds a row.
+    f.land_typed(&d, "run-2", json!([
+        {"ccy": "eur", "rate": 3, "from_ts": "2030-03-01T00:00:00Z"},
+        {"ccy": "eur", "rate": 4, "from_ts": "2030-05-01T00:00:00Z"},
+    ]), "2030-01-02T00:00:00Z", &ts).unwrap();
+    fold(&f.store, &d, at("2030-01-02T01:00:00Z")).unwrap();
+    assert_eq!(f.store.chain("rates").unwrap().0[0].row_count, 3);
+    assert_eq!(rates("2030-03-15T00:00:00Z"), [[s("1")], [s("3")]]);
 }
 
 #[cfg(feature = "read")]

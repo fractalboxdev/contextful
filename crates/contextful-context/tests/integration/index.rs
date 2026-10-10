@@ -288,6 +288,128 @@ fn each_sidecar_sits_at_its_kind_path_inside_the_snapshot_it_indexes() {
     assert!(stray.is_empty(), "{stray:?}");
 }
 
+/// Rewrite field `key` of the current snapshot's first sidecar entry, in the snapshot
+/// manifest and in the sidecar's own manifest alike.
+fn restamp(f: &Fixture, table: &str, key: &str, value: Value) {
+    let (m, dir) = current(f, table);
+    let path = dir.join("_manifest.json");
+    let mut doc: Value = serde_json::from_slice(&std::fs::read(&path).unwrap()).unwrap();
+    doc["indexes"][0][key] = value;
+    std::fs::write(&path, serde_json::to_vec(&doc).unwrap()).unwrap();
+    let own = dir.join(m.indexes[0].path().unwrap()).join("_manifest.json");
+    std::fs::write(&own, serde_json::to_vec(&doc["indexes"][0]).unwrap()).unwrap();
+}
+
+fn passages(f: &Fixture) -> contextful_core::store::declare::TableDecl {
+    let d = decl(&format!("name = \"passages\"\nprimary_key = [\"passage_id\"]\n{INDEX}"));
+    f.land_typed(&d, "run-1", json!([
+        {"passage_id": "p1", "embedding": [1.0, 0.0, 0.0]}, {"passage_id": "p2", "embedding": [0.0, 1.0, 0.0]},
+    ]), "2030-01-01T00:00:00Z", &f32x3()).unwrap();
+    fold(&f.store, &d, at("2030-01-01T01:00:00Z")).unwrap();
+    d
+}
+
+/// A pass over a table whose current sidecar records another builder or builder version than this build's rebuilds it in full into a new snapshot of unchanged rows; readers keep the prior snapshot until the pointer moves.
+// spec: store.index.rebuild@70fe2117
+#[test]
+fn a_pass_rebuilds_a_sidecar_another_builder_version_wrote() {
+    use contextful_core::store::fold::FoldOutcome;
+    use contextful_core::store::index::{VECTOR_BUILDER, VECTOR_BUILDER_VERSION};
+    let f = Fixture::new();
+    let d = passages(&f);
+    // A pass under this build's own builder, with nothing landed, publishes nothing.
+    assert_eq!(fold(&f.store, &d, at("2030-01-01T02:00:00Z")).unwrap(), FoldOutcome::NothingLanded);
+
+    for (key, value) in [("builder_version", json!(VECTOR_BUILDER_VERSION + 1)), ("builder", json!("another-hnsw"))] {
+        restamp(&f, "passages", key, value);
+        let (before, before_dir) = current(&f, "passages");
+        // Until the pass publishes, readers resolve the snapshot the old builder wrote.
+        assert_eq!(f.scan(&d, Bounds::default()).unwrap().files[0], format!("tables/passages/data/snapshots/{}/part-00000.parquet", before.snapshot_id));
+        let outcome = fold(&f.store, &d, at("2030-01-01T03:00:00Z")).unwrap();
+        assert!(matches!(outcome, FoldOutcome::Folded { runs: 0, rows: 2, .. }), "{outcome:?}");
+        let (after, after_dir) = current(&f, "passages");
+        assert_eq!(after.parent.as_ref(), Some(&before.snapshot_id));
+        assert_eq!((after.row_count, after.includes_runs.len()), (before.row_count, 0));
+        let e = entry(&after);
+        assert_eq!((e.builder.as_str(), e.builder_version, e.row_count), (VECTOR_BUILDER, VECTOR_BUILDER_VERSION, 2));
+        assert!(after_dir.join(&e.path).join(GRAPH_FILE).is_file());
+        assert!(before_dir.is_dir(), "the prior snapshot stays on disk for readers that resolved it");
+        VectorSidecar::open(&after_dir, "passages", &after.indexes[0], &Sealing::Plaintext).unwrap();
+    }
+}
+
+/// The vector graph's byte layout is no committed format: a reader opens a sidecar only under its own builder and builder version, and any other meets {{read.retrieve.sidecar-falls-back}}.
+// spec: store.index.graph-format@dfcd5caa
+#[test]
+fn a_reader_opens_only_its_own_builder_version() {
+    use contextful_context::vector::Fallback;
+    use contextful_core::store::index::VECTOR_BUILDER_VERSION;
+    let f = Fixture::new();
+    passages(&f);
+    let (m, dir) = current(&f, "passages");
+    VectorSidecar::open(&dir, "passages", &m.indexes[0], &Sealing::Plaintext).unwrap();
+    for (key, value) in [("builder_version", json!(VECTOR_BUILDER_VERSION + 1)), ("builder_version", json!(0)), ("builder", json!("another-hnsw"))] {
+        let f = Fixture::new();
+        passages(&f);
+        restamp(&f, "passages", key, value);
+        let (m, dir) = current(&f, "passages");
+        assert_eq!(VectorSidecar::open(&dir, "passages", &m.indexes[0], &Sealing::Plaintext).err(), Some(Fallback::ManifestMismatch), "{key}");
+    }
+}
+
+/// A vector entry records `extensions`, the passes since its last full build that extended its graph in place; a pass finding 16 extensions rebuilds the graph in full and records 0.
+// spec: store.index.graph-extensions@184f2494
+#[test]
+fn a_pass_finding_sixteen_extensions_rebuilds_the_graph_in_full() {
+    use contextful_core::store::fold::FoldOutcome;
+    use contextful_core::store::index::GRAPH_EXTENSIONS_MAX;
+    assert_eq!(GRAPH_EXTENSIONS_MAX, 16);
+    let f = Fixture::new();
+    let d = passages(&f);
+    assert_eq!(entry(&current(&f, "passages").0).extensions, 0, "a full build records no extension");
+    restamp(&f, "passages", "extensions", json!(GRAPH_EXTENSIONS_MAX - 1));
+    assert_eq!(fold(&f.store, &d, at("2030-01-01T02:00:00Z")).unwrap(), FoldOutcome::NothingLanded);
+    restamp(&f, "passages", "extensions", json!(GRAPH_EXTENSIONS_MAX));
+    let outcome = fold(&f.store, &d, at("2030-01-01T03:00:00Z")).unwrap();
+    assert!(matches!(outcome, FoldOutcome::Folded { runs: 0, .. }), "{outcome:?}");
+    let e = entry(&current(&f, "passages").0);
+    assert_eq!((e.extensions, e.row_count), (0, 2));
+    // A pass folding new runs builds in full and records none either.
+    f.land_typed(&d, "run-2", json!([{"passage_id": "p3", "embedding": [0.0, 0.0, 1.0]}]), "2030-01-01T04:00:00Z", &f32x3()).unwrap();
+    fold(&f.store, &d, at("2030-01-01T05:00:00Z")).unwrap();
+    assert_eq!(entry(&current(&f, "passages").0).extensions, 0);
+}
+
+/// A sidecar copies no row value besides its `id_column` and indexed column, save the tenant column and zone label a filtered traversal reads; every other filter applies at {{store.index.candidate-ids}}.
+// spec: store.index.filter-copies@ca1ef51a
+#[test]
+fn a_sidecar_copies_no_other_column_value() {
+    let f = Fixture::new();
+    let fulltext = "[[pipeline.tables.indexes]]\nkind = \"fulltext\"\ncolumn = \"body\"\ntokenizer = \"unicode\"\n";
+    let d = decl(&format!("name = \"passages\"\nprimary_key = [\"passage_id\"]\npartition_by = [\"tenant\"]\n{INDEX}{fulltext}"));
+    f.land_typed(&d, "run-1", json!([
+        {"passage_id": "p1", "tenant": "acme", "body": "solar battery", "region": "canaryregionzq", "embedding": [1.0, 0.0, 0.0]},
+        {"passage_id": "p2", "tenant": "acme", "body": "wind farm", "region": "canaryregionzq", "embedding": [0.0, 1.0, 0.0]},
+    ]), "2030-01-01T00:00:00Z", &f32x3()).unwrap();
+    fold(&f.store, &d, at("2030-01-01T01:00:00Z")).unwrap();
+    let (m, dir) = current(&f, "passages");
+    assert_eq!(m.indexes.len(), 2);
+    let mut files = Vec::new();
+    let mut stack = vec![dir.join("indexes")];
+    while let Some(d) = stack.pop() {
+        for e in std::fs::read_dir(&d).unwrap() {
+            let p = e.unwrap().path();
+            if p.is_dir() { stack.push(p) } else { files.push(p) }
+        }
+    }
+    assert!(files.len() >= 4, "{files:?}");
+    let has = |bytes: &[u8], needle: &[u8]| bytes.windows(needle.len()).any(|w| w == needle);
+    let all: Vec<u8> = files.iter().flat_map(|p| std::fs::read(p).unwrap()).collect();
+    // The identifiers and the indexed text are the sidecars' own; no other column's value is.
+    assert!(has(&all, b"p1") && has(&all, b"solar"));
+    assert!(!has(&all, b"canaryregionzq"));
+}
+
 /// Collecting a snapshot collects its sidecars in the same step.
 // spec: store.index.dies-with-snapshot@e3968987
 #[test]

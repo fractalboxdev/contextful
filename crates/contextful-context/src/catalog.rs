@@ -3,11 +3,12 @@
 //! (`store.lay-out.derived-catalog`). This package names no catalog backend.
 
 use crate::{ContextError, Result, Store};
-use contextful_core::store::catalog::{DerivedCatalog, DerivedRows, DerivedRun, DerivedSnapshot, DerivedTable};
+use contextful_core::store::catalog::{DerivedCatalog, DerivedRows, DerivedRun, DerivedSidecar, DerivedSnapshot, DerivedTable};
 
 /// Every row the canonical tree determines: each table a `schema.json` declares with the
-/// snapshot its pointer names, each snapshot the pointer's `parent` chain reaches, and
-/// each committed run manifest.
+/// snapshot its pointer names, each snapshot the pointer's `parent` chain reaches with the
+/// builder of each sidecar it holds (`store.index.identity`), and each committed run
+/// manifest.
 pub fn derive(store: &Store) -> Result<DerivedRows> {
     let mut rows = DerivedRows::default();
     for table in store.tables()? {
@@ -20,6 +21,17 @@ pub fn derive(store: &Store) -> Result<DerivedRows> {
             fence: pointer.and_then(|p| p.fence),
         });
         for s in store.chain(&table)?.0 {
+            for e in &s.indexes {
+                let (Some(path), Some(kind), Some((builder, builder_version))) = (e.path(), e.kind_name(), e.builder()) else { continue };
+                rows.sidecars.push(DerivedSidecar {
+                    table: table.clone(),
+                    snapshot_id: s.snapshot_id.to_string(),
+                    path: path.to_string(),
+                    kind: kind.to_string(),
+                    builder: builder.to_string(),
+                    builder_version,
+                });
+            }
             rows.snapshots.push(DerivedSnapshot {
                 table: table.clone(),
                 snapshot_id: s.snapshot_id.to_string(),
