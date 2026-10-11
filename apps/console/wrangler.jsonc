@@ -1,0 +1,16 @@
+// The console preview serves the prerendered Query and Admin documents through Workers
+// Static Assets and runs no script: no identity, no stores, and every `/…/api/` call
+// answers 404, which each page renders as an empty state. The hosted console is the
+// Node server in `src/entry.ts`; this Worker previews its pages alone.
+{
+  "name": "contextful-console",
+  "compatibility_date": "2026-09-01",
+  "assets": { "directory": "./client/dist", "html_handling": "auto-trailing-slash" },
+  "workers_dev": true,
+  "preview_urls": true,
+  // Workers Builds runs `wrangler preview` on non-production branches, and that command
+  // refuses a configuration without a `previews` block.
+  "previews": {},
+  // Workers Builds watches `apps/console/*`, builds with `pnpm build:preview`, and
+  // uploads a preview version per non-production branch.
+}
