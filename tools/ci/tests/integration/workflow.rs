@@ -70,8 +70,17 @@ fn every_gate_stage_has_a_dispatchable_part() {
         36,
         "the remote gate expects one check per part: {parts:?}"
     );
-    for part in ["workspace.cli", "workspace.cli-pipeline", "features.binary-all-pipeline", "features.binary-data-plane-pipeline", "evaluate.binary", "evaluate.packages"] {
+    for part in ["workspace.cli", "workspace.cli-pipe", "features.binary-all-pipe", "features.binary-data-plane-pipe", "evaluate.binary", "evaluate.packages"] {
         assert!(parts.iter().any(|p| p == part), "`{part}` has no separate remote check: {parts:?}");
+    }
+    // The dispatcher admits a part name of 1 to 32 characters from `[A-Za-z0-9._-]`, opening alphanumeric.
+    let admitted = |p: &str| {
+        (1..=32).contains(&p.len())
+            && p.starts_with(|c: char| c.is_ascii_alphanumeric())
+            && p.chars().all(|c| c.is_ascii_alphanumeric() || matches!(c, '.' | '_' | '-'))
+    };
+    for part in &parts {
+        assert!(admitted(part), "the dispatcher refuses the part name `{part}`");
     }
     let whole = Command::new(env!("CARGO_BIN_EXE_contextful-ci"))
         .arg("stages")

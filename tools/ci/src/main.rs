@@ -685,10 +685,11 @@ fn workspace(root: &Path, only: Option<&[String]>) -> Result<()> {
 
 /// The binary's integration modules run apart from its other ordinary tests under a build
 /// linking the data plane, one named group per remote part, so each part fits the sandbox's
-/// wall clock (`assurance.gate.cli-groups`).
+/// wall clock (`assurance.gate.cli-groups`). A group name keeps every part name within the
+/// dispatcher's 32 characters.
 const CLI_GROUPS: [(&str, &[&str]); 2] = [
     ("eval", &["eval", "audit", "derive", "erase"]),
-    ("pipeline", &["pipeline", "formal", "author", "holder", "empty_replace"]),
+    ("pipe", &["pipeline", "formal", "author", "holder", "empty_replace"]),
 ];
 
 /// The feature linking the data plane, whose command groups fill most of the binary's suite.

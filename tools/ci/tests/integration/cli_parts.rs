@@ -77,11 +77,11 @@ fn a_data_plane_build_runs_each_cli_group_in_its_own_part_and_every_test_once() 
     let one = |name: &str| vec![(name.to_string(), 1)];
     for (ordinary, formal) in [("workspace.cli", "workspace.cli-formal"), ("features.binary-data-plane", "features.formal-data-plane")] {
         let groups: Vec<&String> = parts.iter().filter(|p| p.strip_prefix(ordinary).is_some_and(|s| s.starts_with('-') && *p != formal)).collect();
-        assert!(groups.iter().any(|p| p.ends_with("-pipeline")), "{ordinary} has no pipeline group: {parts:?}");
+        assert!(groups.iter().any(|p| p.ends_with("-pipe")), "{ordinary} has no pipe group: {parts:?}");
         assert_eq!(ran(&r, ordinary), one("other"), "{ordinary} ran a grouped or differential test");
         assert_eq!(ran(&r, formal), one("differential"), "{formal}");
         for group in groups {
-            let expected = if group.ends_with("-pipeline") { one("pipeline") } else { Vec::new() };
+            let expected = if group.ends_with("-pipe") { one("pipeline") } else { Vec::new() };
             assert_eq!(ran(&r, group), expected, "{group}");
         }
     }
