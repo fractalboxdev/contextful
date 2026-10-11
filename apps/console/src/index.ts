@@ -216,6 +216,12 @@ function refusal(identifier: string, status = 403): Response {
   return Response.json({ error: { identifier } }, { status, headers: { "Cache-Control": "no-store" } });
 }
 
+// An opaque digest of the verified operator and reading session; the Query page restores
+// saved chats only under the digest that wrote them.
+function transcriptScope(operator: Operator): string {
+  return createHash("sha256").update(JSON.stringify([operator.subject, operator.session ?? null])).digest("base64url");
+}
+
 function json(value: unknown): Response {
   return Response.json(value, { headers: { "Cache-Control": "no-store" } });
 }
@@ -294,7 +300,11 @@ export function createConsole(adapters: ConsoleAdapters): { fetch: (request: Req
       }
       if (request.method === "GET" && path === `/${grant}`) return page(grant);
       if (grant === "query") {
-        if (request.method === "GET" && path === "/query/api/stores") return json(await adapters.read.list(operator));
+        if (request.method === "GET" && path === "/query/api/stores") {
+          const response = json(await adapters.read.list(operator));
+          response.headers.set("X-Console-Transcript-Scope", transcriptScope(operator));
+          return response;
+        }
         if (request.method === "POST" && (path === "/query/api/browse" || path === "/query/api/preview")) {
           let input: unknown;
           try { input = await body(request); } catch (error) { return bodyFailure(error); }

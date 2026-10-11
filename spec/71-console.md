@@ -68,6 +68,10 @@ The hosted console's two pages, their API routes, identity gates, page grants an
   *A-surface*
 - `query-surface` — Query presents one composer, one transcript and widgets for returned rows.
   *A-surface*
+- `saved-transcript` — Query restores a saved transcript only under the verified operator and reading session that wrote it, and only for a store the stores route still lists.
+  *because a shared browser tab otherwise hands one operator's answer rows to the next*
+- `narrow-sidebar` — On a viewport too narrow for the sidebar, a header control opens it as a drawer, keeping chat creation, switching and deletion reachable.
+  *because a hidden sidebar with no replacement strands every chat control on a phone*
 - `engine-faces` — Query reaches the governed read face; Admin reaches workflow state and sends edit or apply through a server-held control capability.
   *A-surface*
 - `ungated-route` — An anonymous hosted console route serving page or API content instead of the declared identity gate raises `ConsoleRouteUngated` at deploy probe.
@@ -84,6 +88,8 @@ The hosted console's two pages, their API routes, identity gates, page grants an
 - `surface.open-console.admin-grant`: WHEN an Admin operator applies a document without the server-held admin capability, THEN it raises `ConsoleAdminGrantMissing` without a control call.
 - `surface.open-console.page-grants`: WHEN a verified operator holds only a Query grant, THEN Query admits the session and Admin refuses its page and API requests.
 - `surface.open-console.query-surface`: WHEN an operator asks on Query, THEN the question and grounded answer occupy one transcript beside its widgets.
+- `surface.open-console.saved-transcript`: WHEN a second operator opens Query in the tab where another saved a transcript, THEN Query restores none of its answers or rows.
+- `surface.open-console.narrow-sidebar`: WHEN Query renders on a phone-width viewport, THEN a header control opens the chat list with its create, switch and delete controls.
 
 ```mermaid
 flowchart LR
