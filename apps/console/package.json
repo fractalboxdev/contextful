@@ -1,10 +1,12 @@
 {
   "name": "@contextful/console",
   "private": true,
+  "packageManager": "pnpm@10.14.0",
   "type": "module",
   "scripts": {
     "typecheck": "tsc --noEmit",
     "build:client": "node scripts/build-client.mjs",
+    "build:preview": "node scripts/build-client.mjs && printf '/ /query 302\\n' > client/dist/_redirects",
     "test": "node scripts/build-client.mjs && node --experimental-strip-types --test test/*.test.ts",
     "build": "node scripts/build-client.mjs && esbuild src/entry.ts --bundle --platform=node --format=esm --target=node22 --outfile=dist/server.js"
   },

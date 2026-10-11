@@ -1,5 +1,9 @@
 packages:
   - .
 
-allowBuilds:
-  esbuild@0.25.12: true
+onlyBuiltDependencies:
+  - esbuild
+
+# @tailwindcss/cli's file watcher ships prebuilt binaries; its install script never runs.
+ignoredBuiltDependencies:
+  - '@parcel/watcher'

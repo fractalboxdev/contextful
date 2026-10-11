@@ -9,5 +9,7 @@
   "routes": [{ "pattern": "spec.contextful.work", "custom_domain": true, "previews_enabled": true }],
   // Workers Builds runs `wrangler preview` on non-production branches, and that command
   // refuses a configuration without a `previews` block.
-  "previews": {}
+  "previews": {},
+  // Workers Builds watches `spec/*` and `apps/docs/*`: a commit touching neither builds
+  // no preview and no deployment.
 }
