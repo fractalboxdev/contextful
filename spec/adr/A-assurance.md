@@ -165,9 +165,25 @@ Decision: `assurance.gate.workspace-parts` compiles the full union without execu
 | One union compile, two CLI partitions and four other suite groups *(chosen)* | — | Remote sandboxes rebuild shared dependencies; seven workspace checks replace one. |
 | A lock-keyed shared build cache | Operability | A cache bucket and credential become part of the gate; a cold lock still exceeds the cap. |
 | One check for the full workspace | Stage wall clock | A cold sandbox times out before it reports a verdict. |
-| A higher step timeout | Platform limit | Workflow steps admit at most 30 minutes. |
+| A higher exec deadline alone | Stage wall clock | One cold check compiles the union and runs every package suite in series. |
 
 Consequences: seven remote workspace checks cover the same package set as the unsplit local stage. Every binary feature set retains all tests across its two checks. Each CLI partition compiles independently; reference-program builds occupy only the differential partition.
+
+## Gate parts run under a 45 min exec deadline
+
+**Status:** accepted
+
+Context: a part building the binary cold and running its CLI suite takes 1250–1750 s; under a 1800 s deadline the slowest regularly end without a verdict. The dispatcher runs two parts at a time, and each part repeats its own cold build. Criteria: every part reports a verdict, and the whole gate finishes soonest.
+
+Decision: `assurance.gate.container` gives each part 45 min. The slowest passing part uses about 65% of it, and the part list stays as `assurance.gate.workspace-parts` and `assurance.build.profile-build` define it.
+
+| Option | Lost on | Cost |
+| --- | --- | --- |
+| A 45 min exec deadline *(chosen)* | — | A hung part reports 15 min later. |
+| Splitting each long part by test module | Gate wall clock | Each extra part adds a cold build of 550–760 s to a queue served two at a time. |
+| A shared build cache | Operability | A cache bucket and credential become part of the gate. |
+
+Consequences: a part non-terminal 60 min after dispatch is stalled. A part nearing 45 min splits under `assurance.gate.part-budget`.
 
 ## One decision module compiles native and to WebAssembly
 
