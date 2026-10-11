@@ -1,6 +1,7 @@
 {
   "name": "@contextful/console",
   "private": true,
+  "packageManager": "pnpm@10.14.0",
   "type": "module",
   "scripts": {
     "typecheck": "tsc --noEmit",

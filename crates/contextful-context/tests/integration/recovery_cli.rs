@@ -58,7 +58,7 @@ pub(super) fn executable() -> std::path::PathBuf {
     assert_eq!(workspace.join("crates/contextful-context").canonicalize().unwrap(), manifest);
     assert!(workspace.join("Cargo.toml").is_file());
     let output = std::process::Command::new("cargo").current_dir(workspace)
-        .args(["build", "--locked", "--offline", "--message-format=json", "-p", "contextful-cli", "--no-default-features", "--features", "data-plane", "--bin", "contextful"])
+        .args(["build", "--locked", "--message-format=json", "-p", "contextful-cli", "--no-default-features", "--features", "data-plane", "--bin", "contextful"])
         .output().unwrap();
     assert!(output.status.success(), "the actual owning CLI fails to build: {}", String::from_utf8_lossy(&output.stderr));
     String::from_utf8(output.stdout).unwrap().lines().filter_map(|line| serde_json::from_str::<serde_json::Value>(line).ok())
