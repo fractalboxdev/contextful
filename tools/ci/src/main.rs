@@ -409,20 +409,36 @@ fn repo_root() -> Result<PathBuf> {
 
 /// The stages whose work splits into parts FlareDispatch dispatches one check
 /// each, so each part fits one stage's wall clock (`assurance.build.profile-build`,
+/// `assurance.gate.workspace-parts`, `assurance.gate.evaluate-parts`,
 /// `assurance.gate.budget-stage`).
-const SPLIT: [&str; 4] = ["test-first", "workspace", "features", "budget"];
+const SPLIT: [&str; 5] = ["test-first", "workspace", "evaluate", "features", "budget"];
 
-/// The parts of a split `stage`: the features stage's `packages`, every featured package but
-/// the binary, then `binary-<run>` and `formal-<run>` per binary feature run; the budget stage's
-/// `<profile>` per profile the binary declares, its name after `contextful-`.
+/// The parts of a split `stage`: the workspace stage's package groups with `cli`,
+/// `cli-<group>` per [`CLI_GROUPS`] group and `cli-formal`; the evaluate stage's
+/// [`measure::EVALUATE_PARTS`]; the features stage's `packages`, every featured package but
+/// the binary, then per binary feature run `binary-<run>`, `binary-<run>-<group>` when the run
+/// links the data plane, and `formal-<run>`; the budget stage's `<profile>` per profile the
+/// binary declares, its name after `contextful-`.
 fn parts(root: &Path, stage: &str, base: Option<&str>) -> Result<Vec<String>> {
     Ok(match stage {
         "test-first" => match base { Some(base) => test_first_parts(root, base)?, None => vec!["validate".into()] },
-        "workspace" => ["compile", "cli", "cli-formal", "foundation", "runtime", "read", "ci"].into_iter().map(str::to_string).collect(),
+        "workspace" => {
+            let cli = std::iter::once("cli".to_string()).chain(CLI_GROUPS.iter().map(|(group, _)| format!("cli-{group}")));
+            std::iter::once("compile".to_string())
+                .chain(cli)
+                .chain(["cli-formal", "foundation", "runtime", "read", "ci"].map(str::to_string))
+                .collect()
+        }
+        "evaluate" => measure::EVALUATE_PARTS.into_iter().map(str::to_string).collect(),
         "features" => {
             let featured = featured_packages(root)?;
             let binary = featured.iter().filter(|p| p.name == topology::BINARY).flat_map(Featured::runs);
-            std::iter::once("packages".to_string()).chain(binary.flat_map(|(label, _)| [format!("binary-{label}"), format!("formal-{label}")])).collect()
+            let binary = binary.flat_map(|(label, combination)| {
+                let groups: &[(&str, &[&str])] = if links_data_plane(&combination) { &CLI_GROUPS } else { &[] };
+                let groups: Vec<String> = groups.iter().map(|(group, _)| format!("binary-{label}-{group}")).collect();
+                std::iter::once(format!("binary-{label}")).chain(groups).chain([format!("formal-{label}")])
+            });
+            std::iter::once("packages".to_string()).chain(binary).collect()
         }
         "budget" => topology::declared_profiles(root)?.iter().map(|p| p.strip_prefix("contextful-").unwrap_or(p).to_string()).collect(),
         _ => Vec::new(),
@@ -509,7 +525,7 @@ fn run_stage(root: &Path, stage: &str, only: Option<&[String]>, base: &str, boun
         "evaluate" => {
             provision_lean(root)?;
             provision_wasm(root)?;
-            measure::evaluate(root)?
+            measure::evaluate(root, only)?
         }
         "features" => features(root, only)?,
         "crate-graph" => {
@@ -630,8 +646,7 @@ fn workspace_part(package: &str) -> &'static str {
 
 fn workspace(root: &Path, only: Option<&[String]>) -> Result<()> {
     if let Some(only) = only {
-        let ordinary = only.iter().any(|part| part == "cli");
-        let formal = only.iter().any(|part| part == "cli-formal");
+        let slices = cli_slices(true, |suffix| only.iter().any(|part| *part == format!("cli{suffix}")));
         if only.iter().any(|part| part == "compile") {
             let mut args = vec!["test", "--workspace"];
             if root.join(ACCEPTANCE_DIR).join("Cargo.toml").exists() {
@@ -642,7 +657,7 @@ fn workspace(root: &Path, only: Option<&[String]>) -> Result<()> {
         }
         let packages: Vec<String> = workspace_packages(root)?
             .into_iter()
-            .filter(|package| only.iter().any(|part| part == workspace_part(package)) || (formal && package == topology::BINARY))
+            .filter(|package| only.iter().any(|part| part == workspace_part(package)) || (!slices.is_empty() && package == topology::BINARY))
             .collect();
         let other: Vec<&String> = packages.iter().filter(|package| package.as_str() != topology::BINARY).collect();
         if !other.is_empty() {
@@ -653,9 +668,11 @@ fn workspace(root: &Path, only: Option<&[String]>) -> Result<()> {
             run_staged(root, "workspace", &args)?;
         }
         if packages.iter().any(|package| package == topology::BINARY) {
-            let mut args = vec!["test", "--package", topology::BINARY];
-            cli_partition(&mut args, ordinary, formal);
-            run_staged(root, "workspace", &args)?;
+            for slice in slices {
+                let mut args = vec!["test", "--package", topology::BINARY];
+                args.extend(slice.iter().map(String::as_str));
+                run_staged(root, "workspace", &args)?;
+            }
         }
         return Ok(());
     }
@@ -666,14 +683,44 @@ fn workspace(root: &Path, only: Option<&[String]>) -> Result<()> {
     run_staged(root, "workspace", &args)
 }
 
-/// The differential module runs separately from the other CLI tests in remote parts;
-/// selecting both partitions retains Cargo's complete suite, including doctests.
-fn cli_partition(args: &mut Vec<&str>, ordinary: bool, formal: bool) {
-    if !ordinary {
-        args.extend(["--test", "integration", "differential::"]);
-    } else if !formal {
-        args.extend(["--", "--skip", "differential::"]);
+/// The binary's integration modules run apart from its other ordinary tests under a build
+/// linking the data plane, one named group per remote part, so each part fits the sandbox's
+/// wall clock (`assurance.gate.cli-groups`).
+const CLI_GROUPS: [(&str, &[&str]); 2] = [
+    ("eval", &["eval", "audit", "derive", "erase"]),
+    ("pipeline", &["pipeline", "formal", "author", "holder", "empty_replace"]),
+];
+
+/// The feature linking the data plane, whose command groups fill most of the binary's suite.
+const DATA_PLANE: &str = "data-plane";
+
+/// Whether a feature `combination` links the data plane into the binary.
+fn links_data_plane(combination: &[String]) -> bool {
+    combination.iter().any(|a| a == "--all-features")
+        || combination.windows(2).any(|w| w[0] == "--features" && w[1].split(',').any(|f| f.trim() == DATA_PLANE))
+}
+
+/// The cargo test arguments of each selected slice of the binary's suite, one invocation each.
+/// `selected` reads a part's suffix: `` for the ordinary tests outside every group, `-<group>`
+/// for a group under `grouped`, and `-formal` for the differential module. Selecting every
+/// slice runs Cargo's complete suite, doctests included, in one invocation.
+fn cli_slices(grouped: bool, selected: impl Fn(&str) -> bool) -> Vec<Vec<String>> {
+    let groups: &[(&str, &[&str])] = if grouped { &CLI_GROUPS } else { &[] };
+    let skip = |modules: &[&str]| modules.iter().flat_map(|m| ["--skip".to_string(), format!("{m}::")]).collect::<Vec<_>>();
+    let mut slices = Vec::new();
+    let mut every = true;
+    let mut add = |chosen: bool, args: Vec<String>| {
+        every &= chosen;
+        if chosen { slices.push(args) }
+    };
+    let ordinary = ["--", "--skip", "differential::"].map(str::to_string);
+    let grouped: Vec<&str> = groups.iter().flat_map(|(_, modules)| modules.iter().copied()).collect();
+    add(selected(""), ordinary.iter().cloned().chain(skip(&grouped)).collect());
+    for (group, modules) in groups {
+        add(selected(&format!("-{group}")), ordinary.iter().cloned().chain(modules.iter().map(|m| format!("{m}::"))).collect());
     }
+    add(selected("-formal"), ["--test", "integration", "differential::"].map(str::to_string).to_vec());
+    if every { vec![Vec::new()] } else { slices }
 }
 
 /// The feature combinations the workspace stage's unified build does not reach
@@ -681,8 +728,9 @@ fn cli_partition(args: &mut Vec<&str>, ordinary: bool, formal: bool) {
 /// than `default` runs its suite alone, once with no features, once with every feature, and
 /// once per feature set its manifest lists under `[package.metadata.contextful]
 /// feature-runs` (`assurance.build.profile-build`). `only` narrows the stage to its named
-/// parts: `packages`, every package but the binary, and `binary-<run>` plus `formal-<run>`
-/// for the binary's ordinary and differential tests under each feature set.
+/// parts: `packages`, every package but the binary, and `binary-<run>`, `binary-<run>-<group>`
+/// and `formal-<run>` for the slices of the binary's suite under each feature set
+/// ([`cli_slices`]).
 /// `cargo test -p` resolves the selected package's features without its dependents', so the
 /// store adapter's write suites run with the read face off
 /// (`topology.package.store-write-engine-free`) and the policy package's without `exchange`.
@@ -691,9 +739,8 @@ fn cli_partition(args: &mut Vec<&str>, ordinary: bool, formal: bool) {
 /// (`assurance.build.target-dir-per-stage`).
 fn features(root: &Path, only: Option<&[String]>) -> Result<()> {
     let featured = featured_packages(root)?;
-    let formal = featured.iter().filter(|package| package.name == topology::BINARY).any(|package| {
-        package.runs().iter().any(|(label, _)| only.is_none_or(|parts| parts.iter().any(|part| part.strip_prefix("formal-") == Some(label.as_str()))))
-    });
+    let named = |part: String| only.is_none_or(|parts| parts.contains(&part));
+    let formal = featured.iter().filter(|package| package.name == topology::BINARY).any(|package| package.runs().into_iter().any(|(label, _)| named(format!("formal-{label}"))));
     if formal {
         provision_lean(root)?;
         provision_wasm(root)?;
@@ -706,22 +753,27 @@ fn features(root: &Path, only: Option<&[String]>) -> Result<()> {
         let name = &package.name;
         let binary = name == topology::BINARY;
         for (label, combination) in package.runs() {
-            let ordinary = only.is_none_or(|o| o.iter().any(|p| if binary { p.strip_prefix("binary-") == Some(label.as_str()) } else { p == "packages" }));
-            let formal = binary && only.is_none_or(|o| o.iter().any(|p| p.strip_prefix("formal-") == Some(label.as_str())));
-            if !ordinary && !formal { continue; }
+            let slices = if binary {
+                let part = |suffix: &str| if suffix == "-formal" { format!("formal-{label}") } else { format!("binary-{label}{suffix}") };
+                cli_slices(links_data_plane(&combination), |suffix| named(part(suffix)))
+            } else if named("packages".to_string()) {
+                vec![Vec::new()]
+            } else {
+                Vec::new()
+            };
             let shown = combination.join(" ");
-            eprintln!("features: {name} {shown}");
-            let mut partition = Vec::new();
-            if binary { cli_partition(&mut partition, ordinary, formal); }
-            let status = Command::new("cargo")
-                .args(["test", "-p", name])
-                .args(&combination)
-                .args(&partition)
-                .env("CARGO_TARGET_DIR", &target)
-                .current_dir(root)
-                .status()?;
-            if !status.success() {
-                return Err(exited(format!("cargo test -p {name} {shown}"), status));
+            for slice in slices {
+                eprintln!("features: {name} {}", std::iter::once(shown.as_str()).chain(slice.iter().map(String::as_str)).collect::<Vec<_>>().join(" "));
+                let status = Command::new("cargo")
+                    .args(["test", "-p", name])
+                    .args(&combination)
+                    .args(&slice)
+                    .env("CARGO_TARGET_DIR", &target)
+                    .current_dir(root)
+                    .status()?;
+                if !status.success() {
+                    return Err(exited(format!("cargo test -p {name} {shown}"), status));
+                }
             }
         }
     }

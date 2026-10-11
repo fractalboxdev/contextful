@@ -434,3 +434,33 @@ fn a_failed_or_reseeded_trend_method_does_not_fail_the_measure_run() {
     assert!(o.status.success(), "{}", stderr(&o));
     assert!(stderr(&o).contains("trend method failed") || stderr(&o).contains("failed"), "{}", stderr(&o));
 }
+
+// spec: assurance.gate.evaluate-parts@4a833493
+#[test]
+fn the_evaluate_parts_split_the_binary_tests_from_every_other_entry() {
+    const CLI: &str = r#"
+#[test]
+fn measured() {
+    let dir = std::path::PathBuf::from(std::env::var_os("CONTEXTFUL_MEASURE_DIR").expect("a measure run"));
+    let record = "{\"id\": \"cli-figure\", \"value\": 1, \"n\": 1, \"seed\": 7, \"run\": {\"processor\": \"t\", \"nproc\": 1, \"memory_limit\": null}}";
+    std::fs::write(dir.join("cli-figure.json"), record).unwrap();
+}
+"#;
+    let ledger = entry("demo-doubles", "run.journal.entry-key", "{ test = \"demo::measured::doubles_measured\" }", "target = { op = \">=\", value = 4 }\nseed = 7")
+        + "\n"
+        + &entry("cli-figure", "run.journal.entry-key", "{ test = \"contextful_cli::measured::measured\" }", "target = { op = \"==\", value = 1 }\nseed = 7");
+    let r = repo(&ledger);
+    r.write("crates/contextful-cli/Cargo.toml", &crate::manifest("contextful-cli", ""));
+    r.write("crates/contextful-cli/src/lib.rs", "");
+    r.write("crates/contextful-cli/tests/integration/main.rs", "mod measured;\n");
+    r.write("crates/contextful-cli/tests/integration/measured.rs", CLI);
+    r.lock();
+    r.commit("a binary-owned entry beside a package entry");
+    for (part, ran, skipped) in [("evaluate.binary", "cli-figure", "demo-doubles"), ("evaluate.packages", "demo-doubles", "cli-figure")] {
+        let o = r.gate(&["--stage", part]);
+        let err = stderr(&o);
+        assert!(o.status.success(), "{part}: {err}");
+        assert!(err.contains(&format!("measure: {ran} = ")), "{part} skipped {ran}: {err}");
+        assert!(!err.contains(&format!("measure: {skipped} = ")), "{part} also ran {skipped}: {err}");
+    }
+}

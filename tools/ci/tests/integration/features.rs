@@ -120,7 +120,7 @@ fn bundled(r: &Repo, lib_edge: &str, runs: &str) {
 }
 
 /// Each binary feature run partitions differential tests from its remaining suite.
-// spec: assurance.build.profile-build@0250142c
+// spec: assurance.build.profile-build@2b561d9c
 #[test]
 fn the_features_stage_tests_each_listed_run_in_two_binary_parts() {
     let r = Repo::init();
@@ -137,7 +137,7 @@ fn the_features_stage_tests_each_listed_run_in_two_binary_parts() {
     let listed = String::from_utf8_lossy(&r.run_ci(&["stages", "--parts"]).stdout).into_owned();
     let parts: Vec<&str> = listed.lines().collect();
     let at = |s: &str| parts.iter().position(|x| *x == s).unwrap_or_else(|| panic!("no `{s}` part: {listed}"));
-    assert!(at("evaluate") < at("features.packages") && at("features.packages") < at("features.binary-none"), "{listed}");
+    assert!(at("evaluate.packages") < at("features.packages") && at("features.packages") < at("features.binary-none"), "{listed}");
     assert!(at("features.binary-none") < at("features.binary-all") && at("features.binary-all") < at("features.binary-extra"), "{listed}");
     assert!(at("features.binary-extra") < at("crate-graph") && !parts.contains(&"features"), "{listed}");
     for label in ["none", "all", "extra"] {

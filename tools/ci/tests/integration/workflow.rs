@@ -67,10 +67,12 @@ fn every_gate_stage_has_a_dispatchable_part() {
         .collect();
     assert_eq!(
         parts.len(),
-        29,
+        36,
         "the remote gate expects one check per part: {parts:?}"
     );
-    assert!(parts.iter().any(|part| part == "workspace.cli"), "the CLI suite has no separate remote check: {parts:?}");
+    for part in ["workspace.cli", "workspace.cli-pipeline", "features.binary-all-pipeline", "features.binary-data-plane-pipeline", "evaluate.binary", "evaluate.packages"] {
+        assert!(parts.iter().any(|p| p == part), "`{part}` has no separate remote check: {parts:?}");
+    }
     let whole = Command::new(env!("CARGO_BIN_EXE_contextful-ci"))
         .arg("stages")
         .output()

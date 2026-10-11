@@ -148,7 +148,7 @@ Target directories, the engine-linked invocation, linked query functions, build 
   *because every engine-linked test binary embeds the bundled engine, and full debug information multiplies each past a sandbox's disk*
 - `release-profile` — Release builds compile with thin link-time optimization, one codegen unit per crate and symbols stripped, and unwind on panic.
   *because the run keeper survives a panicking job only by unwinding to its guard*
-- `profile-build` — The features stage tests each package under every feature set its manifest lists in `feature-runs`: other packages share one check; each binary feature run has separate checks for differential tests and all remaining tests.
+- `profile-build` — The features stage tests each package under every feature set its manifest lists in `feature-runs`: other packages share one check; each binary feature run has separate checks for differential tests, each group of {{assurance.gate.cli-groups}}, and all remaining tests.
   *because one cold build of the binary under one feature set fills most of a stage's wall clock, and a listed set reaches what none and all miss*
 - `container-image` — The repository's `Dockerfile` builds one profile, `contextful-full` unless `PROFILE` names another, as a static `linux/amd64` binary, and ships it in a shell-free runtime image as a non-root user over a declared store volume.
 - `targets` — All three profiles cross-compile to `x86_64-unknown-linux-musl` and `aarch64-unknown-linux-musl`; edge and full also build for `aarch64-apple-darwin` and `x86_64-apple-darwin`.
@@ -194,8 +194,10 @@ Stage order, secrets of record, the crate-graph, row-token, egress and dependenc
   *A-assurance*
 - `test-first-parts` — Remote validation requires a changed test in each changed source package under {{assurance.test.test-first}}; each changed source package checks only its own changed tests against the base in a separate dispatch.
   *because one base build per package fits the sandbox's wall clock more reliably*
-- `workspace-parts` — Remote workspace checks compile the feature-unified workspace without running tests, run differential and remaining CLI tests separately, and run each other non-acceptance package suite in exactly one of four groups.
+- `workspace-parts` — Remote workspace checks compile the feature-unified workspace without running tests, run differential tests, each group of {{assurance.gate.cli-groups}} and remaining CLI tests separately, and run each other non-acceptance package suite in exactly one of four groups.
   *A-assurance*
+- `cli-groups` — Under a build linking the data plane, named groups of the binary's integration modules run as one check each and its remaining ordinary tests as another; every test runs in exactly one check.
+  *because the binary's ordinary suite after one cold build of it overruns a stage's 30 min wall clock*
 - `remote-predecessors` — Each dispatched part invokes `contextful-ci gate --predecessors --stage <part> --base <base-sha>`, so no check reads another check's sandbox.
   *A-assurance*
 - `fork-dispatch` — FlareDispatch dispatches only a pull-request head pushed to this repository; a fork receives none of the required stage checks.
@@ -212,6 +214,8 @@ Stage order, secrets of record, the crate-graph, row-token, egress and dependenc
   *A-assurance*
 - `pins-stage` — The pins stage resolves every pinned artifact identity a run depends on before any compilation.
 - `evaluate-stage` — The evaluate stage runs every gate-tier ledger entry and the native case set in the deterministic tier, and reports the floor and baseline verdicts.
+- `evaluate-parts` — The evaluate stage dispatches two checks: `binary` runs the gate-tier tests of the binary package, and `packages` runs every other gate-tier test and probe, each reporting its own floor verdict.
+  *because the binary's cold build and the other packages' builds together overrun one stage's wall clock*
 - `schema-stage` — The schema stage regenerates each derived artifact into a scratch location, compares it byte for byte against the committed copy, and runs `contextful-spec lint`.
 - `secret-ciphertext` — In the schema stage, a key other than `DOTENV_PUBLIC_KEY*` in a git-tracked `.env*` file other than `.env.example` holding a value without the `encrypted:` prefix, or a tracked `.env.keys`, raises `SecretPlaintext`, naming file and key.
   *because a tracked file reaches every clone, and only dotenvx ciphertext is safe there while its private key stays untracked*

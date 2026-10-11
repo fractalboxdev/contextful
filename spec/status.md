@@ -5,7 +5,7 @@ An unpinned clause is `committed`; a pinned one is `performed` when its Rust, Le
 
 | Contract | Files | Operations | Clauses | Refusals | Limits | Unsettled | Performed | Broken | Floor |
 | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
-| `assurance` | 2 | 15 | 257 | 60 | 22 | 7 | 224 | 0 | 224 |
+| `assurance` | 2 | 15 | 259 | 60 | 22 | 7 | 226 | 0 | 226 |
 | `authority` | 2 | 16 | 293 | 79 | 29 | 9 | 222 | 0 | 222 |
 | `connector` | 2 | 14 | 353 | 89 | 21 | 15 | 229 | 0 | 229 |
 | `corpus` | 1 | 10 | 79 | 37 | 7 | 0 | 79 | 0 | 79 |
@@ -15,7 +15,7 @@ An unpinned clause is `committed`; a pinned one is `performed` when its Rust, Le
 | `store` | 1 | 17 | 264 | 61 | 14 | 11 | 253 | 0 | 253 |
 | `surface` | 2 | 20 | 137 | 59 | 22 | 0 | 97 | 0 | 97 |
 | `topology` | 1 | 6 | 78 | 24 | 5 | 4 | 72 | 0 | 72 |
-| **total** | 19 | 156 | 2273 | 617 | 200 | 63 | 1838 | 0 | |
+| **total** | 19 | 156 | 2275 | 617 | 200 | 63 | 1840 | 0 | |
 
 Decision records: 18.
 
@@ -39,7 +39,7 @@ A milestone reads `closed` when its acceptance test computes `passing` and every
 | 11 — The derive tier | 7 | 93 | 92 | passing | closed |
 | 12 — The operator console | 12 | 56 | 24 | passing | open |
 | 13 — Disclosure | 5 | 33 | 13 | open | open |
-| 14 — Assurance | 7 | 153 | 123 | passing | closed |
+| 14 — Assurance | 7 | 155 | 125 | passing | closed |
 
 Unscheduled operations: 11.
 
@@ -159,10 +159,12 @@ Unscheduled operations: 11.
 | `assurance.evaluate.truth-per-surface` | `tools/eval/tests/integration/report.rs::artifact_and_edge_truth_score_their_own_surfaces` | performed |
 | `assurance.evaluate.unlabeled-corpus` | `crates/contextful-cli/tests/integration/eval.rs::an_unlabeled_corpus_refuses_without_a_local_zone` | performed |
 | `assurance.gate.budget-stage` | `tools/ci/tests/integration/image.rs::the_budget_stage_builds_every_profile_one_part_each_and_the_evaluate_stage_none` | performed |
+| `assurance.gate.cli-groups` | `tools/ci/tests/integration/cli_parts.rs::a_data_plane_build_runs_each_cli_group_in_its_own_part_and_every_test_once` | performed |
 | `assurance.gate.crate-graph` | `tools/ci/tests/integration/topology.rs::the_crate_graph_stage_refuses_an_undeclared_crossing` | performed |
 | `assurance.gate.deny-list` | `tools/ci/tests/integration/deny.rs::a_deny_list_drifting_from_the_refusals_is_refused` | performed |
 | `assurance.gate.deny-profile-graph` | `tools/ci/tests/integration/deny.rs::a_profile_graph_is_the_binary_under_its_feature_alone` | performed |
 | `assurance.gate.dependency-deny` | `tools/ci/tests/integration/deny.rs::the_crate_graph_stage_runs_cargo_deny_over_each_profile` | performed |
+| `assurance.gate.evaluate-parts` | `tools/ci/tests/integration/measure.rs::the_evaluate_parts_split_the_binary_tests_from_every_other_entry` | performed |
 | `assurance.gate.evaluate-stage` | `tools/ci/tests/integration/stages.rs::the_evaluate_stage_runs_the_native_case_set_and_reports_both_verdicts` | performed |
 | `assurance.gate.footprint` | `tools/ci/tests/integration/image.rs::this_repository_profiles_hold_to_their_footprint_budgets` | performed |
 | `assurance.gate.footprint-exceeded` | `tools/ci/tests/integration/image.rs::an_artifact_over_budget_or_linking_beyond_the_c_library_is_refused` | performed |

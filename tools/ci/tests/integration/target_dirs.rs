@@ -125,7 +125,7 @@ fn the_workspace_stage_runs_one_invocation_and_the_store_suites_link_no_engine_w
 }
 
 /// Workspace compilation and both CLI partitions run separately; four groups run every other package.
-// spec: assurance.gate.workspace-parts@4ac089c3
+// spec: assurance.gate.workspace-parts@83ff6940
 #[test]
 fn remote_workspace_parts_compile_the_union_and_run_each_package_suite() {
     let r = Repo::init();
