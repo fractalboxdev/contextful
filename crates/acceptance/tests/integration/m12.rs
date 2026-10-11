@@ -84,8 +84,9 @@ fn m12_console() {
     let console_package = workspace_root().join("apps/console");
     let bundle = console_package.join("dist/server.js");
     let _ = std::fs::remove_file(&bundle);
-    ok(&Command::new("pnpm").arg("--dir").arg(&console_package).args(["install", "--frozen-lockfile"]).output().unwrap());
-    ok(&Command::new("pnpm").arg("--dir").arg(&console_package).arg("build").output().unwrap());
+    // Corepack reads `packageManager` from the working directory, not from `--dir`.
+    ok(&Command::new("pnpm").args(["install", "--frozen-lockfile"]).current_dir(&console_package).output().unwrap());
+    ok(&Command::new("pnpm").arg("build").current_dir(&console_package).output().unwrap());
     assert!(bundle.is_file(), "the console build writes its runnable server");
     let cf = bin("contextful");
     let repo = GitRepo::init();
