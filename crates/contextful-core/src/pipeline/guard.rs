@@ -61,8 +61,12 @@ fn llm_provider(s: &str, out: &mut Vec<(Kind, Range<usize>)>) {
         }
         let n = run_len(b, i + 3, base64url);
         floor = i + 3 + n;
-        // Real keys run 48 to 164 characters; 32 clears hyphenated slugs such as `sk-learn-...`.
-        if n >= 32 {
+        // Tagged provider families retain their base64url tails. A bare legacy
+        // candidate needs a long alphanumeric opening, not a natural hyphenated slug.
+        let tail = &s[i + 3..floor];
+        let tagged = ["proj-", "svcacct-", "service-", "admin-", "ant-"].iter().any(|prefix| tail.starts_with(prefix));
+        let admitted = tagged || run_len(b, i + 3, |c| c.is_ascii_alphanumeric()) >= 32;
+        if n >= 32 && admitted {
             out.push((Kind::LlmProviderKey, i..i + 3 + n));
         }
     }

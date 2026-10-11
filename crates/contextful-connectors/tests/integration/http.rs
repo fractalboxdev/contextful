@@ -918,3 +918,46 @@ fn skip_unchanged_is_a_snapshot_key_refused_beside_another_position() {
     assert!(with(json!({ "skip_unchanged": true, "conditional": true })).is_err());
     assert!(with(json!({ "skip_unchanged": true, "since_param": "since" })).is_err());
 }
+
+#[test]
+fn json_object_cursor_pages_preserve_empty_lists_and_root_metadata() {
+    let vendor = Server::start(|r| match r.query("after").as_deref() {
+        None => Response::json(200, r#"{"data":{"id":"first","items":[]},"meta":{"next":"second"}}"#),
+        Some("second") => Response::json(200, r#"{"data":{"id":"second","items":[]},"meta":{"next":null}}"#),
+        _ => Response::json(500, "{}"),
+    });
+    let mut s = source(json!({"endpoint":vendor.url("/v1"),"format":"json-object","records":"/data","next_cursor_path":"/meta/next","cursor_param":"after"}), vec![]);
+    let first: Value = serde_json::from_slice(&s.pull(&request(None), &Never).unwrap()).unwrap();
+    assert_eq!(first["rows"], json!([{"id":"first","items":[]}]));
+    assert_eq!(first["more"], true);
+    let second: Value = serde_json::from_slice(&s.pull(&request(Some(first["cursor"].clone())), &Never).unwrap()).unwrap();
+    assert_eq!(second["rows"], json!([{"id":"second","items":[]}]));
+    assert_eq!(second["more"], false);
+    assert_eq!(vendor.received("/v1").len(), 2);
+}
+
+#[test]
+fn json_object_next_url_and_link_walks_keep_the_full_root() {
+    for (key, value) in [("next_url_path", json!("/next")), ("link_header", json!(true))] {
+        let vendor = Server::start(|r| match r.path() {
+            "/v1" => Response { status:200, headers:vec![("Link".into(), "</v1/2>; rel=\"next\"".into())], body:br#"{"data":{"id":"first","items":[]},"next":"/v1/2"}"#.to_vec() },
+            _ => Response::json(200, r#"{"data":{"id":"second","items":[]}}"#),
+        });
+        let s = source(json!({"endpoint":vendor.url("/v1"),"format":"json-object","records":"/data",key:value}), vec![]);
+        let rows = s.walk(&request(None), &Never).unwrap();
+        assert_eq!(ids(&rows), ["first", "second"]);
+        assert_eq!([&rows[0]["items"], &rows[1]["items"]], [&json!([]), &json!([])]);
+        assert_eq!(vendor.received("/v1/2").len(), 1);
+    }
+}
+
+#[test]
+fn json_object_page_number_pagination_refuses_before_io() {
+    let vendor = Server::start(|_| Response::json(200, "{}"));
+    let error = HttpConfig::parse(&json!({"endpoint":vendor.url("/v1"),"format":"json-object","page_param":"page"})).unwrap_err();
+    match error {
+        ConfigError::Connector(ConnectorError::ConnectorFormatKeyRejected(message)) => assert!(message.contains("page_param") && message.contains("json-object"), "{message}"),
+        other => panic!("{other}"),
+    }
+    assert!(vendor.requests.lock().unwrap().is_empty());
+}

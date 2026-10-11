@@ -43,3 +43,37 @@ fn a_declared_csv_encoding_preserves_text_and_refuses_invalid_input() {
     let failure = decode_with_encoding(Format::Csv, b"name\n\x81\n", None, "names.csv", Some("shift_jis")).unwrap_err();
     assert!(failure.message.contains("ConnectorEncodingInvalid"), "{failure}");
 }
+
+
+#[test]
+fn json_object_selects_one_object_and_retains_the_pagination_root() {
+    let format = Format::parse("json-object").unwrap();
+    assert_eq!(format.name(), "json-object");
+    for (body, pointer, expected) in [
+        (json!({"items":[]}), None, json!({"items":[]})),
+        (json!({}), None, json!({})),
+        (json!({"data":{"items":[]},"next":"second"}), Some("/data"), json!({"items":[]})),
+    ] {
+        let (rows, root) = decode(format, &serde_json::to_vec(&body).unwrap(), pointer, "snapshot").unwrap();
+        assert_eq!(rows.len(), 1);
+        assert_eq!(Value::Object(rows[0].clone()), expected);
+        assert_eq!(root, Some(body));
+    }
+}
+
+#[test]
+fn json_object_refuses_nonobjects_and_bad_input_without_relaxing_json_arrays() {
+    let format = Format::parse("json-object").unwrap();
+    for (body, pointer) in [
+        ("[]", None), ("[{}]", None), ("null", None), ("7", None), ("true", None),
+        ("\"text\"", None), ("{", None), ("{}", Some("/missing")),
+        ("{\"data\":[]}", Some("/data")), ("{\"data\":null}", Some("/data")),
+    ] {
+        let failure = decode(format, body.as_bytes(), pointer, "snapshot").unwrap_err();
+        assert!(failure.deterministic && failure.message.contains("PipelineUnreadableInput") && failure.message.contains("snapshot"), "{failure}");
+    }
+    let array = Format::parse("json").unwrap();
+    assert!(decode(array, b"{}", None, "snapshot").is_err());
+    assert!(decode(array, b"[]", None, "snapshot").unwrap().0.is_empty());
+    assert_eq!(decode(array, b"[{\"id\":1}]", None, "snapshot").unwrap().0.len(), 1);
+}

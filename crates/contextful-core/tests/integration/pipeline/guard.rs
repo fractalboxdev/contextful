@@ -103,10 +103,15 @@ fn positive(r: &mut Lcg, kind: Kind) -> (String, std::ops::Range<usize>) {
             let lines: Vec<String> = (0..count).map(|_| r.chars(BASE64, 64)).collect();
             whole(format!("-----BEGIN {label}PRIVATE KEY-----\n{}\n-----END {label}PRIVATE KEY-----", lines.join("\n")))
         }
-        Kind::LlmProviderKey => match r.below(3) {
+        Kind::LlmProviderKey => match r.below(8) {
             0 => whole(format!("sk-{}", r.chars(ALNUM, 48))),
             1 => whole(format!("sk-proj-{}", r.text(BASE64URL, 40, 120))),
-            _ => whole(format!("sk-ant-api03-{}-AA", r.text(BASE64URL, 80, 95))),
+            2 => whole(format!("sk-ant-api03-{}-AA", r.text(BASE64URL, 80, 95))),
+            3 => whole(format!("sk-svcacct-{}", r.text(BASE64URL, 40, 120))),
+            4 => whole(format!("sk-service-{}", r.text(BASE64URL, 40, 120))),
+            5 => whole(format!("sk-admin-{}", r.text(BASE64URL, 40, 120))),
+            6 => whole(format!("sk-ant-admin01-{}AA", r.chars(BASE64URL, 93))),
+            _ => whole(format!("sk-ant-api01-{}", r.text(BASE64URL, 80, 95))),
         },
         Kind::GoogleApiKey => whole(format!("AIza{}", r.chars(BASE64URL, 35))),
         Kind::StripeKey => whole(format!("{}{}", r.pick(&STRIPE), r.text(ALNUM, 24, 99))),
@@ -243,6 +248,8 @@ fn the_catalogue_holds_its_precision_and_recall_fixture() {
             "a risk-free task-list",
             "import sk-learn as the baseline",
             "my-sk-learn-pipeline-config-v2-with-a-long-tail",
+            "sk-public-company-orders-rise-above-average-before-next-quarter",
+            "sk-public-company-orders-fall-below-average-before-next-quarter",
             "release 1.2.3",
             "task_test_4eC39HqLyjWDarjtT1zdp7dc",
             "disk_test_suite_runs_nightly_on_the_ci_box",
@@ -433,4 +440,37 @@ fn encoded_or_split_credentials_pass_through() {
     // A nested string is still a pre-normalize string cell.
     assert_eq!(batch[0]["nested"]["deep"][0], MARKER);
     assert_eq!(counts.keys().collect::<Vec<_>>(), ["nested"]);
+}
+
+#[test]
+fn llm_candidates_preserve_natural_identifiers_and_mask_known_provider_families() {
+    for slug in [
+        "sk-public-company-orders-rise-above-average-before-next-quarter",
+        "sk-public-company-orders-fall-below-average-before-next-quarter",
+    ] {
+        assert_eq!(mask(slug), None, "a public hyphenated identifier is not a bare legacy key");
+        assert_eq!(mask(&format!("secret={slug}")), Some(format!("secret={MARKER}")), "assignment context still masks");
+        assert_eq!(mask(&format!("Bearer {slug}")), Some(format!("Bearer {MARKER}")), "Bearer context still masks");
+    }
+    for family in ["proj-", "svcacct-", "service-", "admin-", "ant-api03-", "ant-api01-", "ant-admin01-", "ant-oat01-"] {
+        let candidate = format!("sk-{family}{}", "aB9_-".repeat(24));
+        assert_eq!(spans(&candidate), [(Kind::LlmProviderKey, 0..candidate.len())], "{family}");
+        assert_eq!(mask(&candidate), Some(MARKER.into()));
+    }
+    // Admission depends on the alphabet and length, never mixed case or entropy.
+    for payload in ["a".repeat(48), "9".repeat(32), "Ab9".repeat(16)] {
+        let candidate = format!("sk-{payload}");
+        assert_eq!(mask(&candidate), Some(MARKER.into()));
+    }
+    let full = format!("sk-{}-remaining_private_tail", "a".repeat(32));
+    assert_eq!(spans(&full), [(Kind::LlmProviderKey, 0..full.len())], "an admitted opening masks the whole base64url candidate");
+    assert!(spans(&format!("sk-{}-short_opening_with_a_long_tail", "a".repeat(31))).is_empty());
+    assert!(spans(&format!("sk-{}", "a".repeat(31))).is_empty());
+    for family in ["proj-", "svcacct-", "service-", "admin-", "ant-"] {
+        let short = format!("sk-{family}{}", "a".repeat(31 - family.len()));
+        assert!(spans(&short).is_empty());
+        let boundary = format!("{short}a");
+        assert_eq!(mask(&boundary), Some(MARKER.into()), "the existing minimum counts the tagged tail");
+        assert!(spans(&format!("prefix-{boundary}")).is_empty());
+    }
 }
