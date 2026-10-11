@@ -72,6 +72,7 @@ fn a_data_plane_build_runs_each_cli_group_in_its_own_part_and_every_test_once() 
     let listed = r.run_ci(&["stages", "--parts"]);
     assert!(listed.status.success(), "{}", stderr(&listed));
     let parts: Vec<String> = String::from_utf8_lossy(&listed.stdout).lines().map(str::to_string).collect();
+    assert!(parts.iter().any(|p| p == "features.binary-none"), "no binary-none part: {parts:?}");
     assert!(!parts.iter().any(|p| p.starts_with("features.binary-none-")), "a build without the data plane splits its CLI suite: {parts:?}");
     let one = |name: &str| vec![(name.to_string(), 1)];
     for (ordinary, formal) in [("workspace.cli", "workspace.cli-formal"), ("features.binary-data-plane", "features.formal-data-plane")] {
