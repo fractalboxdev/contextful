@@ -40,7 +40,7 @@ const store: StoreEntry = {
   bindingName: "FIELD_NOTES",
 };
 
-function fixture(options: { exchange?: boolean; exchangeStatus?: number; emptyToken?: boolean; shared?: string; rows?: unknown[][]; tables?: Array<{ table: string; kind: string }> } = {}) {
+function fixture(options: { exchange?: boolean; exchangeStatus?: number; emptyToken?: boolean; shared?: string; rows?: unknown[][]; tables?: Array<Record<string, unknown>> } = {}) {
   const calls: Array<{ url: string; authorization: string | null; body: Record<string, unknown> }> = [];
   let modelCalls = 0;
   let modelBody: Record<string, unknown> | null = null;
@@ -130,6 +130,22 @@ test("Query reads only a question-matched data table and refuses an unclear sele
     store: "field-notes", question: "What changed?" }),
     (error: unknown) => error instanceof ConsoleError && error.code === "ConsoleUngroundedAnswer");
   assert.equal(unclear.calls.filter((call) => call.url.endsWith("/mcp") && (call.body.params as Record<string, unknown>).name === "context.query").length, 0);
+});
+
+test("Query searches text columns for a subject no table name or description carries", async () => {
+  const tables = [
+    { table: "market/quotes", kind: "data", columns: [{ name: "quote_id", type: "VARCHAR" }, { name: "ticker", type: "VARCHAR" }, { name: "price", type: "DOUBLE" }] },
+    { table: "market/news", kind: "data", columns: [{ name: "news_id", type: "VARCHAR" }, { name: "headline", type: "VARCHAR" }] },
+  ];
+  const { turn, calls } = fixture({ tables });
+  const answer = await turn({ operator: { subject: "operator-1", grants: new Set(["query"]), assertion: "verified-access-jwt" },
+    store: "field-notes", question: "Tell me about TSLA" });
+  assert.match(answer.answer, /Northwind filed on Monday/);
+  assert.deepEqual(calls.filter((call) => (call.body.params as Record<string, unknown> | undefined)?.name === "context.query")
+    .map((call) => ((call.body.params as Record<string, unknown>).arguments as Record<string, unknown>).sql), [
+    `SELECT * FROM "market/quotes" WHERE lower(CAST("quote_id" AS VARCHAR)) LIKE '%tsla%' OR lower(CAST("ticker" AS VARCHAR)) LIKE '%tsla%'`,
+    `SELECT * FROM "market/news" WHERE lower(CAST("news_id" AS VARCHAR)) LIKE '%tsla%' OR lower(CAST("headline" AS VARCHAR)) LIKE '%tsla%'`,
+  ]);
 });
 
 test("Query sends the model only rows represented by its eight visible sources", async () => {

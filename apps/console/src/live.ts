@@ -44,6 +44,29 @@ export function selectTable(question: string, listing: unknown): string | null {
   return ranked.length > 0 && (ranked.length === 1 || ranked[0].score > ranked[1].score) ? ranked[0].table : null;
 }
 
+const filler = new Set(["the", "and", "for", "with", "about", "tell", "me", "what", "which", "who", "when", "where", "why", "how",
+  "is", "are", "was", "were", "do", "does", "did", "of", "on", "in", "to", "a", "an", "any", "show", "give", "latest", "news", "info",
+  "information", "know", "can", "you", "please", "it", "its", "this", "that"]);
+
+const textType = /^(varchar|text|string|char)/i;
+
+export type TableRead = { table: string; where: string };
+
+export function searchTables(question: string, listing: unknown): TableRead[] {
+  const subjects = [...new Set(question.toLowerCase().match(/[a-z0-9]+/g) ?? [])].filter((word) => word.length >= 2 && !filler.has(word));
+  if (subjects.length === 0) return [];
+  const entries = Array.isArray(listing) ? listing : [];
+  return entries.flatMap((item) => {
+    if (!record(item) || typeof item.table !== "string" || item.kind !== "data" || !Array.isArray(item.columns)) return [];
+    const text = item.columns.flatMap((column) => record(column) && typeof column.name === "string" && !column.name.startsWith("_")
+      && typeof column.type === "string" && textType.test(column.type) ? [column.name] : []);
+    if (text.length === 0) return [];
+    const where = text.flatMap((column) => subjects.map((word) =>
+      `lower(CAST("${column.replaceAll('"', '""')}" AS VARCHAR)) LIKE '%${word}%'`)).join(" OR ");
+    return [{ table: item.table, where: ` WHERE ${where}` }];
+  }).slice(0, 4);
+}
+
 function source(columns: string[], row: unknown[], table: string): Source | null {
   const at = (name: string) => row[columns.indexOf(name)];
   const idColumn = columns.find((name) => !name.startsWith("_") && (name.endsWith("_id") || name === "id"));
@@ -115,8 +138,9 @@ export function createLiveTurn(options: LiveOptions): (input: TurnInput & { reca
 
     const description = await call("context.describe", {});
     const selected = selectTable(input.question, description.tables);
-    if (!selected) throw new ConsoleError("ConsoleUngroundedAnswer", "No data table matches this question.");
-    const tables = [selected];
+    const reads = selected ? [{ table: selected, where: "" }] : searchTables(input.question, description.tables);
+    if (reads.length === 0) throw new ConsoleError("ConsoleUngroundedAnswer", "No data table matches this question.");
+    const tables = reads.map((read) => read.table);
     let remainingSources = 8;
     let resultRows: TurnResult["resultRows"];
     const evidence: NonNullable<TurnResult["evidence"]> = [];
@@ -127,7 +151,9 @@ export function createLiveTurn(options: LiveOptions): (input: TurnInput & { reca
       planner: async ({ previous }) => previous.length ? [] : tables.map((table) => ({ tool: `read:${table}`, arguments: {} })),
       transport: { call: async ({ tool, maxRows, signal }): Promise<ToolResult> => {
         const table = tool.slice("read:".length);
-        const result = await call("context.query", { sql: `SELECT * FROM "${table.replaceAll('"', '""')}"`, limit: Math.min(maxRows, remainingSources) }, signal);
+        if (remainingSources <= 0) return { rows: [], sources: [] };
+        const where = reads.find((read) => read.table === table)?.where ?? "";
+        const result = await call("context.query", { sql: `SELECT * FROM "${table.replaceAll('"', '""')}"${where}`, limit: Math.min(maxRows, remainingSources) }, signal);
         const columns = strings(result.columns);
         const rawRows = Array.isArray(result.rows) ? result.rows.filter(Array.isArray) : [];
         const sourced = rawRows.flatMap((row) => { const citation = source(columns, row, table); return citation ? [{ row, citation }] : []; }).slice(0, remainingSources);
@@ -146,6 +172,7 @@ export function createLiveTurn(options: LiveOptions): (input: TurnInput & { reca
           const value = row[index];
           return typeof value === "string" ? redactText(value, denylist) : value;
         }));
+        if (resultRows?.rows.length && cleanRows.length === 0) return { rows: [], sources: [] };
         resultRows = { columns: visible.map(({ column }) => column), rows: cleanRows };
         return {
           rows: cleanRows.map((row) => Object.fromEntries(visible.map(({ column }, index) => [column, row[index]]))),
