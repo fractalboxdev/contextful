@@ -173,7 +173,7 @@ Consequences: seven remote workspace checks cover the same package set as the un
 
 **Status:** accepted
 
-Context: a part building the binary cold and running its CLI suite takes 1250–1750 s; under a 1800 s deadline most end without a verdict. The dispatcher runs two parts at a time, and each part repeats its own cold build. Criteria: every part reports a verdict, and the whole gate finishes soonest.
+Context: a part building the binary cold and running its CLI suite takes 1250–1750 s; under a 1800 s deadline the slowest regularly end without a verdict. The dispatcher runs two parts at a time, and each part repeats its own cold build. Criteria: every part reports a verdict, and the whole gate finishes soonest.
 
 Decision: `assurance.gate.container` gives each part 45 min. The slowest passing part uses about 65% of it, and the part list stays as `assurance.gate.workspace-parts` and `assurance.build.profile-build` define it.
 
