@@ -143,8 +143,8 @@ The CLI differential module runs in `workspace.cli-formal` and `features.formal-
 
 ### Landing without a remote verdict
 
-A remote check is evidence, never a lock. A child check still non-terminal 45 minutes
-after dispatch — the 1800 s container cap plus queue and setup — is a stalled
+A remote check is evidence, never a lock. A child check still non-terminal 60 minutes
+after dispatch — the 2700 s part deadline plus queue and setup — is a stalled
 execution, and the parent's failure that follows carries no verdict on the change.
 Landing proceeds on the identical local command instead:
 
