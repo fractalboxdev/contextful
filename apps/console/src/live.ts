@@ -138,9 +138,11 @@ export function createLiveTurn(options: LiveOptions): (input: TurnInput & { reca
 
     const description = await call("context.describe", {});
     const selected = selectTable(input.question, description.tables);
-    const reads = selected ? [{ table: selected, where: "" }] : searchTables(input.question, description.tables);
-    if (reads.length === 0) throw new ConsoleError("ConsoleUngroundedAnswer", "No data table matches this question.");
-    const tables = reads.map((read) => read.table);
+    const searches = searchTables(input.question, description.tables);
+    const first = selected ? [{ table: selected, where: "" }] : searches;
+    if (first.length === 0) throw new ConsoleError("ConsoleUngroundedAnswer", "No data table matches this question.");
+    const tables = [...new Set([...first, ...searches].map((read) => read.table))];
+    let reads = first;
     let remainingSources = 8;
     let resultRows: TurnResult["resultRows"];
     const evidence: NonNullable<TurnResult["evidence"]> = [];
@@ -148,7 +150,10 @@ export function createLiveTurn(options: LiveOptions): (input: TurnInput & { reca
       denylist: denylist.filter((entry) => entry.length <= 128),
       tools: tables.map((table) => ({ name: `read:${table}`, pack: "data", kind: "read" as const, table })),
       tables: tables.map((name) => ({ name, kind: "data" as const })),
-      planner: async ({ previous }) => previous.length ? [] : tables.map((table) => ({ tool: `read:${table}`, arguments: {} })),
+      planner: async ({ previous }) => {
+        if (previous.length) reads = selected ? searches : [];
+        return reads.map((read) => ({ tool: `read:${read.table}`, arguments: {} }));
+      },
       transport: { call: async ({ tool, maxRows, signal }): Promise<ToolResult> => {
         const table = tool.slice("read:".length);
         if (remainingSources <= 0) return { rows: [], sources: [] };
