@@ -73,6 +73,9 @@ fn project(manifest: &str) -> (tempfile::TempDir, String, String) {
     for (rows, run, now) in [("early.jsonl", "load-1", "2030-01-01T00:00:00Z"), ("late.jsonl", "load-2", "2030-01-01T00:00:20Z")] {
         ok(&cf(p, &["context", "land", "documents", "--project", "research", "--rows", rows, "--run-id", run, "--site-id", "site", "--now", now]));
     }
+    // The embedding binary builds before the credential's 600 s lifetime starts: a cold build
+    // outlasts it, and every waiting test would then present an expired credential.
+    host_binary();
     let public = ok(&cf(p, &["token", "keygen", "--out", ".contextful/issuer.seed"]));
     let token = ok(&cf(
         p,
