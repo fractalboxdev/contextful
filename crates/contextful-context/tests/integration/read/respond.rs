@@ -344,7 +344,7 @@ fn a_zone_excluded_tables_ledger_is_named_with_its_call_count() {
     );
     // The admitting zone reads the calls and carries no block.
     let public = r.session(&["research/*"], None, Some("public-cloud:us-east-1"));
-    let seen = r.query(&public, r#"SELECT request_id FROM "research/vendor__requests""#).unwrap();
+    let seen = r.query(&public, r#"SELECT request_id FROM "research/vendor__requests" ORDER BY request_id"#).unwrap();
     assert_eq!(column(&seen, "request_id"), [json!("r1"), json!("r2")]);
     assert!(!seen.blocks.contains_key("contextful.restriction"), "{:?}", seen.blocks);
 }

@@ -34,7 +34,8 @@ fn store(half_life: Option<&str>) -> Fixture {
     land_rows(&f.face, "research/notes", "run-0001", json!([{ "note_id": "n1", "text": "filings" }]));
     let (writer, node) = (f.writer(), NodeId::parse("memory-a").unwrap());
     // An old claim matching the whole question, a fresh one matching one word of it, and a
-    // fresh one matching that word in a longer subject, which ranks last either way.
+    // fresh one matching that word in a longer subject. A 365d half-life decays the old
+    // claim ten times over, below both fresh ones.
     let claims = [
         ("acme holdings", "Dana Rivera", "2020-01-01T00:00:00Z", "2030-05-31T12:00:00Z"),
         ("acme", "Lee", "2030-05-31T00:00:00Z", "2030-05-31T13:00:00Z"),
@@ -80,7 +81,7 @@ fn decay_reorders_ranking_only_where_a_half_life_is_declared() {
     assert_eq!(ranked(&hard), [json!("Dana Rivera"), json!("Lee"), json!("Kim")], "no declared half-life, no decay");
 
     let fading = store(Some("365d"));
-    assert_eq!(ranked(&fading), [json!("Lee"), json!("Dana Rivera"), json!("Kim")], "a decayed claim ranks lower and still answers");
+    assert_eq!(ranked(&fading), [json!("Lee"), json!("Kim"), json!("Dana Rivera")], "a decayed claim ranks lower and still answers");
     for f in [&hard, &fading] {
         let (object, from, to) = recalled(f, "acme holdings");
         assert_eq!(object, json!("Dana Rivera"));
