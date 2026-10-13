@@ -25,6 +25,23 @@ pub trait RecoveryFixture {
     fn verification(&self) -> (String, serde_json::Value);
 }
 
+pub trait ExportRecoveryFixture {
+    fn storage(&self) -> &dyn RecoveryFixture;
+    fn declaration(&self) -> String;
+    fn wait_for_commit(&self, timeout: Duration) -> Result<()>;
+    fn release_acknowledgement(&self) -> Result<()>;
+    fn batches(&self) -> Vec<serde_json::Value>;
+}
+
+#[derive(Debug, Serialize, Deserialize)]
+pub struct ExportRecoveryEvidence {
+    pub image_digest: String,
+    pub image_id: String,
+    pub hard_kill_observed: bool,
+    pub replacement_disk_empty: bool,
+    pub retried_event_ids: Vec<String>,
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct RecoveryEvidence {
     pub image_digest: String,
@@ -157,7 +174,7 @@ fn docker(args: &[&str], timeout: Duration) -> Result<String> {
     Ok(out.trim().into())
 }
 
-fn config(dir: &Path, fixture: &dyn RecoveryFixture) -> Result<()> {
+pub fn prepare_disk(dir: &Path, fixture: &dyn RecoveryFixture) -> Result<()> {
     let store = dir.join(".contextful/context/research");
     std::fs::create_dir_all(&store).map_err(|_| "ConformanceScratchUnavailable")?;
     #[cfg(unix)]
@@ -243,8 +260,8 @@ pub fn run(
     let root = tempfile::tempdir().map_err(|_| "ConformanceScratchUnavailable")?;
     let old_disk = root.path().join("old");
     let replacement = root.path().join("replacement");
-    config(&old_disk, fixture)?;
-    config(&replacement, fixture)?;
+    prepare_disk(&old_disk, fixture)?;
+    prepare_disk(&replacement, fixture)?;
     let empty = !replacement.join(".contextful/run").exists()
         && !replacement
             .join(".contextful/context/research/machine.sqlite")
@@ -395,6 +412,9 @@ pub fn run(
     let answer: serde_json::Value =
         serde_json::from_str(&answer.1).map_err(|_| "ConformanceQueryMalformed")?;
     if answer["rows"] != expected {
+        if std::env::var_os("CONTEXTFUL_RECOVERY_DIAGNOSTICS").is_some() {
+            eprintln!("replacement answer {answer}; expected rows {expected}");
+        }
         return Err("ConformanceReplacementRowsChanged".into());
     }
     if docker(&["image", "inspect", image, "--format", "{{.Id}}"], timeout)? != image_id {
@@ -408,5 +428,223 @@ pub fn run(
         replacement_disk_empty: empty,
         first_page_calls: fixture.first_page_calls(),
         rows: answer["rows"].clone(),
+    })
+}
+
+/// The receiver commits before its first acknowledgement; a hard-killed sender's
+/// empty-disk replacement retries the exact persisted batch, then advances its cursor.
+pub fn run_export(
+    image: &str,
+    fixture: &dyn ExportRecoveryFixture,
+    timeout: Duration,
+) -> Result<ExportRecoveryEvidence> {
+    validate_image(image)?;
+    let image_id = docker(&["image", "inspect", image, "--format", "{{.Id}}"], timeout)?;
+    let storage = fixture.storage();
+    let root = tempfile::tempdir().map_err(|_| "ConformanceScratchUnavailable")?;
+    let old_disk = root.path().join("old");
+    let replacement = root.path().join("replacement");
+    for disk in [&old_disk, &replacement] {
+        prepare_disk(disk, storage)?;
+        std::fs::write(disk.join("contextful.toml"), fixture.declaration())
+            .map_err(|_| "ConformanceScratchUnavailable")?;
+        std::fs::write(
+            disk.join(".contextful/issuance.toml"),
+            "default_audience = \"contextful://conformance\"\nmax_lifetime_secs = 3600\n",
+        )
+        .map_err(|_| "ConformanceScratchUnavailable")?;
+    }
+    let mut environment = storage.environment();
+    environment.insert(
+        "CONTEXTFUL_STORAGE_PROFILE".into(),
+        "cloudflare-postgres".into(),
+    );
+    let env = root.path().join("bindings.env");
+    let write_env = |environment: &std::collections::BTreeMap<String, String>| -> Result<()> {
+        std::fs::write(
+            &env,
+            environment
+                .iter()
+                .map(|(key, value)| format!("{key}={value}\n"))
+                .collect::<String>(),
+        )
+        .map_err(|_| "ConformanceScratchUnavailable")?;
+        #[cfg(unix)]
+        {
+            use std::os::unix::fs::PermissionsExt;
+            std::fs::set_permissions(&env, std::fs::Permissions::from_mode(0o600))
+                .map_err(|_| "ConformanceScratchUnavailable")?;
+        }
+        Ok(())
+    };
+    write_env(&environment)?;
+    let name = format!("contextful-export-recovery-{}", std::process::id());
+    let call = |disk: &Path, label: &str, args: &[&str]| -> Result<(ExitStatus, String)> {
+        invoke(
+            image,
+            storage,
+            disk,
+            &env,
+            &format!("{name}-{label}"),
+            args,
+            timeout,
+        )
+    };
+    let success = |result: (ExitStatus, String)| -> Result<String> {
+        if result.0.success() {
+            Ok(result.1.trim().into())
+        } else {
+            Err("ConformanceImageCommandFailed".into())
+        }
+    };
+    success(call(
+        &old_disk,
+        "initialize",
+        &["storage", "initialize", "--project", "research"],
+    )?)?;
+    std::fs::write(
+        old_disk.join("rows.jsonl"),
+        "{\"id\":\"a\",\"value\":\"first\"}\n{\"id\":\"b\",\"value\":\"second\"}\n",
+    )
+    .map_err(|_| "ConformanceScratchUnavailable")?;
+    success(call(
+        &old_disk,
+        "land",
+        &[
+            "context",
+            "land",
+            "items",
+            "--project",
+            "research",
+            "--rows",
+            "rows.jsonl",
+            "--run-id",
+            "image-load",
+            "--site-id",
+            "conformance",
+        ],
+    )?)?;
+    success(call(
+        &old_disk,
+        "push",
+        &["sync", "push", "--project", "research"],
+    )?)?;
+    let public = success(call(
+        &old_disk,
+        "keygen",
+        &["token", "keygen", "--out", ".contextful/issuer.seed"],
+    )?)?;
+    let token = success(call(
+        &old_disk,
+        "mint",
+        &[
+            "token",
+            "mint",
+            "--issuer-key",
+            ".contextful/issuer.seed",
+            "--on-behalf-of",
+            "svc://conformance",
+            "--zone",
+            "on-prem:hq",
+            "--table",
+            "items",
+            "--ttl",
+            "3600",
+        ],
+    )?)?;
+    environment.insert("CONTEXTFUL_TOKEN".into(), token);
+    write_env(&environment)?;
+    let args = [
+        "export",
+        "run",
+        "mirror",
+        "--project",
+        "research",
+        "--public-key",
+        &public,
+        "--audience",
+        "contextful://conformance",
+    ];
+    let old = Container(format!("{name}-old"));
+    let mut running = Invocation::spawn(command(
+        image,
+        storage.network_container(),
+        &old_disk,
+        &env,
+        &old.0,
+        &args,
+    ))?;
+    fixture.wait_for_commit(timeout)?;
+    docker(&["kill", "--signal", "KILL", &old.0], timeout)?;
+    if running.wait(timeout)?.0.code() != Some(137) {
+        return Err("ConformanceHardCrashNotObserved".into());
+    }
+    fixture.release_acknowledgement()?;
+    let empty = !replacement
+        .join(".contextful/context/research/machine.sqlite")
+        .exists()
+        && !replacement
+            .join(".contextful/context/research/tables")
+            .exists();
+    if !empty {
+        return Err("ConformanceReplacementDiskNotEmpty".into());
+    }
+    let deadline = Instant::now() + timeout;
+    let mut attempt = 0;
+    loop {
+        attempt += 1;
+        if call(&replacement, &format!("resume-{attempt}"), &args)?
+            .0
+            .success()
+        {
+            break;
+        }
+        if Instant::now() >= deadline {
+            return Err("ConformanceReplacementResumeFailed".into());
+        }
+        std::thread::sleep(Duration::from_millis(250));
+    }
+    let batches = fixture.batches();
+    if batches.len() != 2 || batches[0] != batches[1] {
+        return Err("ConformanceExportRetryChanged".into());
+    }
+    let ids = batches[0]["events"]
+        .as_array()
+        .ok_or("ConformanceExportEventsMissing")?
+        .iter()
+        .map(|event| {
+            event["id"]
+                .as_str()
+                .map(str::to_string)
+                .ok_or("ConformanceExportEventIdentityMissing")
+        })
+        .collect::<std::result::Result<Vec<_>, _>>()?;
+    success(call(&replacement, "acknowledged", &args)?)?;
+    let acknowledged = fixture.batches();
+    for batch in &acknowledged[2..] {
+        let events = batch["events"]
+            .as_array()
+            .ok_or("ConformanceExportEventsMissing")?;
+        if events.iter().any(|event| {
+            event["id"]
+                .as_str()
+                .is_some_and(|id| ids.iter().any(|old| old == id))
+        }) {
+            if std::env::var_os("CONTEXTFUL_RECOVERY_DIAGNOSTICS").is_some() {
+                eprintln!("acknowledged batches {acknowledged:?}");
+            }
+            return Err("ConformanceAcknowledgedExportRepeated".into());
+        }
+    }
+    success(call(&replacement, "stable", &args)?)?;
+    if fixture.batches().len() != acknowledged.len() {
+        return Err("ConformanceExportCursorNotStable".into());
+    }
+    Ok(ExportRecoveryEvidence {
+        image_digest: image.split_once('@').expect("validated image").1.into(),
+        image_id,
+        hard_kill_observed: true,
+        replacement_disk_empty: true,
+        retried_event_ids: ids,
     })
 }
