@@ -351,7 +351,7 @@ The execution owner a scope holds and the connector build it pins while pending.
   *because a stage-time instant ranks a run by its first pull, so under {{store.declare.dedup-view}} an earlier committer outranks a later one on a shared key*
 - `stage-discard` — A run that fails removes every part it staged, and a commit failing before its manifest exists removes the parts it copied; a run's crash leaves its staged parts.
   *because a run id names one attempt, so no later commit names a failed run's staged parts*
-- `body-parent` — Prepared body outputs require the unchanged parent execution and current in-flight attempt at admission, staging and commit; a stopped parent refuses admission and staging, while staged output follows {{run.cancel.land-path-uncut}}.
+- `body-parent` — Prepared body outputs require the unchanged parent execution and current in-flight, unstopped attempt at admission, staging and commit; a stopped parent reaches {{run.cancel.abandoned-work}} independently of the output table's stop policy.
   *A-authority*
 
 ```mermaid
