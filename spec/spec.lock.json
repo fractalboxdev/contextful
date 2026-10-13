@@ -952,7 +952,7 @@
       "operation": "compose",
       "subject": "cli-binary",
       "kind": "behavior",
-      "statement": "The system ships one command binary, `contextful`, and one package scope, `@contextful/*`. The smallest deployable build is a profile, not a crate.",
+      "statement": "The runtime ships one command binary, `contextful`, and one package scope, `@contextful/*`; release assurance follows {{assurance.consumer.suite}}. The smallest deployable build is a profile, not a crate.",
       "why": "",
       "file": "spec/01-topology.md",
       "line": 67
@@ -26313,6 +26313,10 @@
     [
       "topology.compose.undeclared-crossing",
       "assurance.gate.crate-graph"
+    ],
+    [
+      "topology.compose.cli-binary",
+      "assurance.consumer.suite"
     ],
     [
       "topology.compose.mediation",
