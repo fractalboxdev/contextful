@@ -218,10 +218,18 @@ fn compatibility(profile: &str, target: &str, binary: &Path, suite: &Path, outpu
         if output.exists() { std::fs::remove_file(output).context("removing prior compatibility evidence")?; }
         let executed = Command::new(suite).arg("--binary").arg(binary).arg("--output").arg(output)
             .env_clear().env("PATH", "/usr/bin:/bin").status();
-        if executed.is_ok() && output.exists() {
-            let report: serde_json::Value = serde_json::from_slice(&std::fs::read(output)?)?;
-            if report["artifact_digest"] != artifact_digest || report["suite_revision"] != registry["suite_revision"] { bail!("ConformanceReleaseEvidenceMismatch"); }
-            return Ok(report);
+        if let Ok(status) = executed {
+            if output.exists() {
+                let mut report: serde_json::Value = serde_json::from_slice(&std::fs::read(output)?)?;
+                if report["artifact_digest"] != artifact_digest || report["suite_revision"] != registry["suite_revision"] { bail!("ConformanceReleaseEvidenceMismatch"); }
+                if !status.success() {
+                    report["scenarios"].as_array_mut().context("suite report scenarios")?.push(serde_json::json!({
+                        "id":"suite-exit", "required":true, "outcome":"failed", "requirement":"consumer-suite",
+                        "diagnostic":"ConformanceSuiteProcessFailed", "exit_code":status.code(),
+                    }));
+                }
+                return Ok(report);
+            }
         }
         failure = "ConformanceSuiteUnavailable";
     }

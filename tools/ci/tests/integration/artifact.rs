@@ -156,6 +156,43 @@ fn release_archives_carry_the_consumer_suite_and_digest_bound_compatibility_evid
 }
 
 #[test]
+fn a_failed_native_suite_retains_cases_and_cannot_publish_a_passing_report() {
+    let bin = tempfile::tempdir().unwrap();
+    let target = tempfile::tempdir().unwrap();
+    let dist = tempfile::tempdir().unwrap();
+    let triple = match std::env::consts::OS {
+        "macos" => format!("{}-apple-darwin", std::env::consts::ARCH),
+        "linux" => format!("{}-unknown-linux-musl", std::env::consts::ARCH),
+        other => panic!("no native release target for {other}"),
+    };
+    let digest = format!("{:x}", Sha256::digest(b"synthetic release artifact\n"));
+    let claimed = serde_json::json!({
+        "schema_version":1, "suite_revision":"consumer-v1", "artifact_digest":digest,
+        "scenarios":[{"id":"pagination-checkpoint", "required":true, "outcome":"passed", "diagnostic":null}],
+    });
+    let suite = bin.path().join("suite");
+    std::fs::write(&suite, format!("#!/bin/sh\nwhile [ $# -gt 0 ]; do\n  if [ \"$1\" = --output ]; then shift; out=$1; fi\n  shift\ndone\nprintf '%s\\n' '{claimed}' > \"$out\"\nexit 1\n")).unwrap();
+    let real = std::env::var("CARGO").unwrap_or_else(|_| "cargo".into());
+    let quote = |value: &str| format!("'{}'", value.replace('\'', "'\\''"));
+    let cargo = bin.path().join("cargo");
+    std::fs::write(&cargo, format!("#!/bin/sh\nif [ \"$1\" = build ]; then\n  t=''; b=contextful; prev=''\n  for a in \"$@\"; do [ \"$prev\" = --target ] && t=\"$a\"; [ \"$prev\" = --bin ] && b=\"$a\"; prev=\"$a\"; done\n  d=\"$CARGO_TARGET_DIR/$t/release\"\n  mkdir -p \"$d\"\n  if [ \"$b\" = contextful ]; then printf 'synthetic release artifact\\n' > \"$d/$b\"; else cp {} \"$d/$b\"; fi\n  chmod +x \"$d/$b\"\n  exit 0\nfi\nexec {} \"$@\"\n", quote(suite.to_str().unwrap()), quote(&real))).unwrap();
+    std::fs::set_permissions(&cargo, std::os::unix::fs::PermissionsExt::from_mode(0o755)).unwrap();
+    let run = ci(&["release", "--profile", "contextful-full", "--target", &triple, "--target-dir", target.path().to_str().unwrap(), "--out", dist.path().to_str().unwrap()], Some(bin.path()));
+    assert!(run.status.success(), "{}", String::from_utf8_lossy(&run.stderr));
+    let stem = format!("contextful-full-{}-{triple}", version());
+    let report: serde_json::Value = serde_json::from_slice(&std::fs::read(dist.path().join(format!("{stem}.compatibility.json"))).unwrap()).unwrap();
+    assert_eq!(report["artifact_digest"], digest);
+    let cases = report["scenarios"].as_array().unwrap();
+    assert_eq!(cases[0], claimed["scenarios"][0], "completed scenarios retain their evidence");
+    assert!(cases.iter().any(|case| case["id"] == "suite-exit" && case["required"] == true && case["outcome"] == "failed"), "a failed process published passing native evidence: {report}");
+    let metadata: serde_json::Value = serde_json::from_slice(&std::fs::read(dist.path().join(format!("{stem}.release.json"))).unwrap()).unwrap();
+    assert_eq!(metadata["compatibility"]["scenarios"], report["scenarios"]);
+    let archived = Command::new("tar").arg("-xzOf").arg(dist.path().join(format!("{stem}.tar.gz"))).arg(format!("{stem}/compatibility.json")).output().unwrap();
+    assert!(archived.status.success());
+    assert_eq!(serde_json::from_slice::<serde_json::Value>(&archived.stdout).unwrap(),report);
+}
+
+#[test]
 fn release_companion_sbom_covers_its_own_graph_without_widening_control() {
     let bin = tempfile::tempdir().unwrap();
     fake_cargo(bin.path());
