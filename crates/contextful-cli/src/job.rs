@@ -214,6 +214,42 @@ pub fn run(cmd: JobCmd, bodies: &Bodies) -> Result<()> {
                 job: name.clone(), input: driven.input.clone(), body: body.as_ref(), max_in_flight: driven.max_in_flight,
                 run_id: run_id.clone(), site_id: site_id.clone(), pid: std::process::id(), boot_id: boot_id(), schedule: Schedule::default(), poll: PARKED_POLL,
             };
+            if let Some(policy) = &driven.isolated_items {
+                let report = if let Some(plan) = &recorded_plan {
+                    engine.drive_items_recorded(&drive, policy, plan, &effects, &mut read, &mut |id, emitted, owner| {
+                        land_tables(driven, &name, &format!("{run_id}.item-{id}"), &site_id, |table, spec| {
+                            dest.normalize = plan.effects().find(|effect| effect.table == table).and_then(|effect| effect.normalize);
+                            engine.run_emissions(spec, owner, emitted.get(table).map(Vec::as_slice).unwrap_or_default(), &mut dest).map_err(engine_error)
+                        })
+                    })?
+                } else {
+                    engine.drive_items_admitted(&drive, policy, &mut read, &mut |id, emitted, owner| {
+                        if emitted.keys().any(|table| !driven.tables.contains(table)) {
+                            return Err(Failure::deterministic(FailureTag::Permanent, "isolated body emitted an undeclared table"));
+                        }
+                        land_tables(driven, &name, &format!("{run_id}.item-{id}"), &site_id, |table, spec| {
+                            dest.store.validate_writer_plan(&spec.plan, dest.normalize).map_err(|e| Failure::deterministic(FailureTag::Permanent, e.to_string()))?;
+                            let mut source = Staged(emitted.get(table).cloned().unwrap_or_default(), 0);
+                            engine.run_body_rows(spec, owner, &mut source, &mut dest).map_err(engine_error)
+                        })
+                    })?
+                };
+                let (mut successful, mut failed, mut parked, mut deferred) = (0, 0, 0, 0);
+                for item in &report.items {
+                    use contextful_engine::drive::ItemStatus;
+                    let status = match &item.status {
+                        ItemStatus::Succeeded(_) => { successful += 1; "success" },
+                        ItemStatus::Failed(_) => { failed += 1; "failed" },
+                        ItemStatus::Parked => { parked += 1; "parked" },
+                        ItemStatus::Deferred => { deferred += 1; "deferred" },
+                    };
+                    println!("{name}: item {} execution {} {status}", item.logical_id, item.execution_id);
+                }
+                let summary = format!("{name}: {successful} successful items, {failed} failed, {parked} parked, {deferred} deferred");
+                if !report.succeeded() { bail!("{summary}"); }
+                println!("{summary}");
+                return Ok(());
+            }
             let row = if let Some(plan) = &recorded_plan {
                 let mut land = |emitted: &contextful_core::run::drive::PreparedEmitted, owner: &contextful_engine::drive::BodyOwner| -> Result<Landed, Failure> {
                     land_tables(driven, &name, &run_id, &site_id, |table, spec| {

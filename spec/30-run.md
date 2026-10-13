@@ -2,6 +2,7 @@
 contract: run
 owns:
   - journal
+  - items
   - advance
   - suspend
   - retry
@@ -130,8 +131,8 @@ Recording a step's value once, resolving it on replay, and collecting what a rep
   *because a silently shortened input set closes `success` as though every row ran*
 - `row-step` — Each input row runs the registered body under a row key, its ordinal in the recorded input; every step the body records carries a label scoped to that key, and a paid call carries {{run.journal.idempotency-key}}.
   *because two rows sharing one label under one execution resolve to one recorded value*
-- `row-concurrency` — A store-driven run holds at most `max_in_flight` rows inside the body at once; a failing row admits no further row, and the run closes after the rows in flight return.
-- `row-output` — The rows every body emits land after the last input row completes and before the owner retires, one run per declared output table through {{run.land.stage-order}}.
+- `row-concurrency` — A batch store-driven run holds at most `max_in_flight` rows inside the body at once; a failing row admits no further row, and the run closes after the rows in flight return.
+- `row-output` — A batch's emitted rows land after the last input row completes and before the owner retires, one run per declared output table through {{run.land.stage-order}}.
   *because a landing that fails then holds the owner, and its resume replays every paid call instead of paying again*
 - `body-projection` — A registered body's closed effect labels, declared roots, types, transforms and normalization bind its owner before input or effect execution; a caller-supplied projection differing from that registration refuses.
   *A-authority*
@@ -159,6 +160,29 @@ sequenceDiagram
   Note over A,V: a crash before the write re-enters under the same key
   Note over A,J: a pending claim whose owner lease expired passes to the next caller
 ```
+
+## items
+
+Independent store-driven items, their durable receipts, bounded retries and entity admission.
+
+- `opt-in` — A store-driven job defaults to batch execution; `isolated_items` explicitly declares logical and entity key columns, an entity namespace and a positive failed-attempt budget.
+  *because independent completion changes aggregate failure and retry semantics*
+- `identity` — An isolated item's logical identity derives from its declared key and namespace; its execution identity binds that identity, job, input row, policy and pinned plan, independently of input order.
+- `completion` — Each successful item lands independently and stores a durable completion receipt; a later fire under the same execution identity skips its body and landing.
+- `outcomes` — Individual outcomes distinguish success, failure, parked and deferred; the aggregate succeeds only when every required item succeeds.
+- `retry-budget` — Failed attempts consume the declared item budget across fires; permanent failures terminate immediately, parked entries consume no failed attempt, and terminal failure receipts prevent further body entry.
+  *P6*
+- `replay` — A nonterminal failed or parked item retains its execution owner and recorded paid calls; its next admitted attempt reuses that journal.
+- `entity-admission` — Admission holds one leased entity namespace and key across triggers, job names and execution versions; unrelated entities occupy at most the job's `max_in_flight` body slots.
+- `overlap` — An active entity lease returns a deferred item outcome through the scheduler's failed fire report; its next scheduled fire rechecks admission.
+- `fence` — Recorded effects and output publication check their execution owner and entity fence immediately before dispatch; a superseded owner sends no provider request and publishes no output.
+  *because an owner that resumes after transfer cannot authorize another effect*
+
+#### Scenarios
+
+- `run.items.completion`: WHEN one input fails permanently among three isolated items, THEN both healthy items land and reordering a later fire repeats neither completed body.
+- `run.items.entity-admission`: WHEN two jobs target one entity under different plans, THEN one enters its body and the other reports deferred while unrelated entities proceed.
+- `run.items.fence`: WHEN an entity lease transfers before a paid call, THEN the earlier attempt invokes no provider.
 
 ## advance
 

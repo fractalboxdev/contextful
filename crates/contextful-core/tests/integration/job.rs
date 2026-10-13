@@ -159,3 +159,12 @@ fn a_plan_block_names_its_plan_file_and_no_other_kind_carries_one() {
     let stray = parse_jobs("[[job]]\nname = \"f\"\nkind = \"fold\"\nplan = \"p.json\"\n", &registered).unwrap_err();
     assert!(stray.to_string().contains("unknown key `plan`"), "{stray}");
 }
+#[test]
+fn isolated_items_require_explicit_stable_keys_entity_scope_and_retry_bound() {
+    let text = "[[job]]\nname='score'\nkind='store-driven'\nbody='score'\nstatement='select * from docs'\nmax_in_flight=2\ntables=['scores']\n[job.isolated_items]\nlogical_key='id'\nentity_key='entity'\nentity_namespace='documents'\nmax_attempts=3\n";
+    let jobs = contextful_core::job::parse_jobs(text, &|_| true).unwrap();
+    let contextful_core::job::JobKind::StoreDriven(job) = &jobs[0].kind else { panic!("wrong kind") };
+    assert_eq!(job.isolated_items.as_ref().unwrap().max_attempts,3);
+    assert!(contextful_core::job::parse_jobs(&text.replace("max_attempts=3","max_attempts=0"), &|_| true).is_err());
+    assert!(contextful_core::job::parse_jobs(&text.replace("entity_key='entity'","entity_key=''"), &|_| true).is_err());
+}
