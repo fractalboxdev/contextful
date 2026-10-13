@@ -42,7 +42,7 @@ const TABLES: &[(&str, &str)] = &[
     ("contextful_recovery", "CREATE TABLE IF NOT EXISTS contextful_recovery (id INTEGER PRIMARY KEY CHECK (id = 1), project TEXT NOT NULL, generation TEXT NOT NULL, frontier_sha256 TEXT NOT NULL)"),
     ("contextful_lease", "CREATE TABLE IF NOT EXISTS contextful_lease (key TEXT PRIMARY KEY, holder TEXT, expires_us INTEGER, fence INTEGER NOT NULL)"),
     ("contextful_scope", "CREATE TABLE IF NOT EXISTS contextful_scope (scope TEXT PRIMARY KEY, version INTEGER NOT NULL, cursor TEXT NOT NULL, owner TEXT, retired TEXT)"),
-    ("contextful_run", "CREATE TABLE IF NOT EXISTS contextful_run (run_id TEXT PRIMARY KEY, pipeline_id TEXT NOT NULL, host_scope TEXT, started_ns INTEGER NOT NULL, row TEXT NOT NULL)"),
+    ("contextful_run", "CREATE TABLE IF NOT EXISTS contextful_run (run_id TEXT PRIMARY KEY, pipeline_id TEXT NOT NULL, host_scope TEXT, started_ns TEXT NOT NULL, row TEXT NOT NULL)"),
     ("contextful_journal", "CREATE TABLE IF NOT EXISTS contextful_journal (execution_id TEXT NOT NULL, step_label TEXT NOT NULL, input_hash TEXT NOT NULL, kind TEXT NOT NULL, holder TEXT, body TEXT NOT NULL, PRIMARY KEY (execution_id, step_label, input_hash))"),
     ("contextful_blob", "CREATE TABLE IF NOT EXISTS contextful_blob (sha256 TEXT PRIMARY KEY, put_at INTEGER NOT NULL)"),
     ("contextful_sweep", "CREATE TABLE IF NOT EXISTS contextful_sweep (id INTEGER PRIMARY KEY CHECK (id = 1), swept_at INTEGER NOT NULL)"),

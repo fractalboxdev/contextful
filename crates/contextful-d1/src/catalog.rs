@@ -591,7 +591,7 @@ impl Catalog for D1Catalog {
     }
 
     fn last_run_start(&self, pipeline_id: &str) -> Result<Option<Instant>, Failure> {
-        let result = self.db.query("SELECT CAST(MAX(started_ns) AS TEXT) AS started_ns FROM contextful_run WHERE pipeline_id = ? OR host_scope = ?", vec![json!(pipeline_id), json!(pipeline_id)]).map_err(storage)?;
+        let result = self.db.query("SELECT CAST(MAX(CAST(started_ns AS INTEGER)) AS TEXT) AS started_ns FROM contextful_run WHERE pipeline_id = ? OR host_scope = ?", vec![json!(pipeline_id), json!(pipeline_id)]).map_err(storage)?;
         result
             .rows
             .first()

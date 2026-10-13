@@ -115,6 +115,46 @@ fn a_replacement_checks_the_same_d1_schema_and_recovery_identity() {
 }
 
 #[test]
+fn d1_run_timestamps_remain_exact_text_for_sql_export() {
+    let fixture = Fixture::start();
+    let db = D1::connect(&fixture.endpoint).unwrap();
+    db.initialize_recovery("sample", "generation").unwrap();
+    let timestamp = "1791918353123456789";
+    db.query(
+        "INSERT INTO contextful_run (run_id, pipeline_id, started_ns, row) VALUES (?, ?, ?, ?)",
+        vec![json!("run"), json!("pipeline"), json!(timestamp), json!("{}")],
+    )
+    .unwrap();
+    let result = db
+        .query(
+            "SELECT typeof(started_ns) AS kind, CAST(started_ns AS TEXT) AS exact FROM contextful_run",
+            vec![],
+        )
+        .unwrap();
+    assert_eq!(result.rows[0]["kind"], "text");
+    assert_eq!(result.rows[0]["exact"], timestamp);
+}
+
+#[test]
+fn d1_run_timestamp_text_keeps_numeric_cadence_order() {
+    let fixture = Fixture::start();
+    let db = D1::connect(&fixture.endpoint).unwrap();
+    db.initialize_recovery("sample", "generation").unwrap();
+    for (run_id, timestamp) in [("older", "99"), ("newer", "100")] {
+        db.query(
+            "INSERT INTO contextful_run (run_id, pipeline_id, started_ns, row) VALUES (?, ?, ?, ?)",
+            vec![json!(run_id), json!("pipeline"), json!(timestamp), json!("{}")],
+        )
+        .unwrap();
+    }
+    let catalog = contextful_d1::D1Catalog::connect(&fixture.endpoint).unwrap();
+    assert_eq!(
+        catalog.last_run_start("pipeline").unwrap(),
+        Some(Instant::from_unix_nanos(100).unwrap())
+    );
+}
+
+#[test]
 fn an_uninitialized_d1_database_refuses_execution() {
     let fixture = Fixture::start();
     let client = D1::connect(&fixture.endpoint).unwrap();
