@@ -13,6 +13,7 @@ mod command_admission;
 mod coordinate;
 mod drive;
 mod execution;
+mod guarded_callback;
 mod guard;
 mod journal;
 mod lateness;

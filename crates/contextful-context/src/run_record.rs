@@ -152,6 +152,10 @@ impl RecordedCatalog {
 }
 
 impl Catalog for RecordedCatalog {
+    fn supports_strict_execution_guards(&self) -> bool { self.inner.supports_strict_execution_guards() }
+    fn execution_guard(&self, admission: &contextful_core::coordinate::ExecutionAdmission) -> std::result::Result<Box<dyn contextful_core::coordinate::ExecutionGuard>, Failure> {
+        self.inner.execution_guard(admission)
+    }
     fn now(&self) -> std::result::Result<Instant, Failure> {
         self.inner.now()
     }

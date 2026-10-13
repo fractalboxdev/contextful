@@ -14,10 +14,10 @@ ARG CARGO_BUILD_JOBS=2
 RUN apk add --no-cache build-base
 WORKDIR /src
 COPY . .
+RUN test "$RUST_TARGET" = "$(rustc -vV | awk '/^host:/ { print $2 }')"
 RUN --mount=type=cache,target=/usr/local/cargo/registry \
     --mount=type=cache,target=/src/target \
-    test "$RUST_TARGET" = "$(rustc -vV | awk '/^host:/ { print $2 }')" \
- && cargo build --release --locked -p contextful-cli --bin contextful \
+    cargo build --release --locked -p contextful-cli --bin contextful \
       --no-default-features --features "$PROFILE" --target "$RUST_TARGET" \
  && cargo build --release --locked -p contextful-ci \
  && ./target/release/contextful-ci footprint --profile "$PROFILE" target/$RUST_TARGET/release/contextful \

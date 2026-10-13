@@ -541,6 +541,8 @@ impl<J: JournalStore, B: BlobStore> Engine<J, B> {
                     ))
                 }
             };
+            precommit()?;
+            let _guard = execution.guard(true)?;
             dest.commit(
                 Commit {
                     pipeline_id: pipeline_id.to_string(),

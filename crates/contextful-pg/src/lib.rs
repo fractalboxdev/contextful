@@ -19,6 +19,7 @@ use std::sync::Mutex;
 
 mod stores;
 mod export;
+mod guard;
 pub use export::PgExportLedger;
 pub use stores::{PgAwakeableStore, PgBlobStore, PgJournalStore, PgRunStores, EXECUTION_SCHEMA_VERSION};
 
@@ -125,6 +126,15 @@ impl PgCatalog {
     /// connection.
     fn with<T>(&self, f: impl FnOnce(&mut Transaction, Fail) -> Result<T, Failure>) -> Result<T, Failure> {
         let fail = |e: &dyn std::fmt::Display| storage(&self.name, e);
+        // A blocked takeover or keeper renewal must not hold the shared client
+        // while the admitted callback updates its run metadata.
+        if guard::active() {
+            let mut client = connect(&self.config).map_err(|e| fail(&e))?;
+            let mut tx = client.transaction().map_err(|e| fail(&e))?;
+            let out = f(&mut tx, &fail)?;
+            tx.commit().map_err(|e| fail(&e))?;
+            return Ok(out);
+        }
         let mut client = self.client.lock().unwrap_or_else(|p| p.into_inner());
         if client.is_closed() {
             *client = connect(&self.config).map_err(|e| fail(&e))?;
@@ -280,6 +290,10 @@ fn put_run_row(tx: &mut Transaction, row: &RunRow, fail: Fail) -> Result<(), Fai
 }
 
 impl Catalog for PgCatalog {
+    fn supports_strict_execution_guards(&self) -> bool { true }
+    fn execution_guard(&self, admission: &contextful_core::coordinate::ExecutionAdmission) -> Result<Box<dyn contextful_core::coordinate::ExecutionGuard>, Failure> {
+        guard::acquire(self, admission)
+    }
     fn now(&self) -> Result<Instant, Failure> {
         self.with(|tx, fail| {
             let us: i64 = tx.query_one(format!("SELECT {NOW_US}").as_str(), &[]).map_err(|e| fail(&e))?.get(0);
@@ -291,6 +305,7 @@ impl Catalog for PgCatalog {
     /// database's clock, and increments the fence (`topology.coordinate.fence-advances`).
     fn acquire(&self, key: &LeaseKey, holder: &str, ttl_secs: u64) -> Result<Option<Lease>, Failure> {
         let spelling = key.spelling();
+        guard::mutation(self, None, Some(&spelling))?;
         self.with(|tx, fail| {
             tx.execute("INSERT INTO contextful_lease (key, fence) VALUES ($1, 0) ON CONFLICT DO NOTHING", &[&spelling]).map_err(|e| fail(&e))?;
             let sql = format!(
@@ -304,6 +319,7 @@ impl Catalog for PgCatalog {
     }
 
     fn release(&self, lease: &Lease) -> Result<(), Failure> {
+        guard::mutation(self, None, Some(&lease.key))?;
         self.with(|tx, fail| {
             let fence = fence_i64(lease.fence, fail)?;
             tx.execute("UPDATE contextful_lease SET holder = NULL, expires_us = NULL WHERE key = $1 AND fence = $2 AND holder = $3", &[&lease.key, &fence, &lease.holder])
@@ -313,6 +329,7 @@ impl Catalog for PgCatalog {
     }
 
     fn renew(&self, lease: &Lease, ttl_secs: u64) -> Result<Option<Lease>, Failure> {
+        guard::mutation(self, None, Some(&lease.key))?;
         self.with(|tx, fail| {
             let fence = fence_i64(lease.fence, fail)?;
             let sql = format!("UPDATE contextful_lease SET expires_us = {NOW_US} + $4 WHERE key = $1 AND fence = $2 AND holder = $3 RETURNING expires_us");
@@ -338,6 +355,7 @@ impl Catalog for PgCatalog {
     }
 
     fn cursor_cas_at(&self, at: &OwnerScope, expected_version: u64, next: CursorRow, fence: Option<&Lease>) -> Result<Cas, Failure> {
+        guard::mutation(self, Some(at), None)?;
         self.with(|tx, fail| {
             if scope(tx, at, true, fail)?.0.version != expected_version {
                 return Ok(Cas::VersionMoved);
@@ -354,6 +372,7 @@ impl Catalog for PgCatalog {
     }
 
     fn put_owner(&self, owner: &ExecutionOwner) -> Result<(), Failure> {
+        guard::mutation(self, Some(&owner.scope), None)?;
         self.with(|tx, fail| {
             seed_scope(tx, &owner.scope, fail)?;
             let [p, t, k, c] = key(&owner.scope);
@@ -365,6 +384,7 @@ impl Catalog for PgCatalog {
     }
 
     fn retire_at(&self, at: &OwnerScope, execution_id: &str, cursor: Option<(CursorRow, u64)>, fence: Option<&Lease>) -> Result<Cas, Failure> {
+        guard::mutation(self, Some(at), None)?;
         self.with(|tx, fail| {
             let (_, owner) = scope(tx, at, true, fail)?;
             if let Some(refused) = fenced(tx, at, fence, fail)? {

@@ -310,6 +310,12 @@ impl<'e, J: JournalStore, B: BlobStore> Execution<'e, J, B> {
         self.current_attempt().map(|_| ())
     }
 
+    pub(crate) fn guard(&self, publication: bool) -> Result<Box<dyn contextful_core::coordinate::ExecutionGuard>, Failure> {
+        use contextful_core::coordinate::{ExecutionAdmission, ExecutionExpectation};
+        let owner = ExecutionExpectation { scope: self.scope.clone(), execution_id: self.execution_id.clone(), pins: self.pins.clone(), run_id: self.run_id.clone() };
+        self.engine.catalog.execution_guard(&ExecutionAdmission::new(vec![owner], self.lease().into_iter().collect(), publication)?)
+    }
+
     fn current_attempt(&self) -> Result<RunRow, Failure> {
         if !self.owned || self.retired {
             return Err(Failure::canceled("execution no longer owns publication"));
@@ -444,7 +450,7 @@ impl<'e, J: JournalStore, B: BlobStore> Execution<'e, J, B> {
         loop {
             self.assert_current()?;
             self.emit(Change::Step(StepPatch { attempts: Some(attempt), ..StepPatch::new(label).status(StepStatus::Running) }));
-            let failure = match engine.journal.step(key, &self.run_id, &holder_live, token, journal_it, &mut || { self.assert_current()?; effect(token) }) {
+            let failure = match engine.journal.step(key, &self.run_id, &holder_live, token, journal_it, &mut || { self.assert_current()?; let _guard = self.guard(false)?; effect(token) }) {
                 Ok(r) => {
                     self.emit(Change::Step(StepPatch::new(label).status(StepStatus::Completed)));
                     return Ok(r);

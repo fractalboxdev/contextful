@@ -1176,7 +1176,7 @@ fn no_profile_links_a_queue_cache_consensus_or_coordination_client() {
 #[test]
 fn only_the_binary_wires_a_catalog_backend_and_everything_else_names_the_port() {
     let root = repo_root().join("crates");
-    let defining = ["contextful-engine/src/catalog.rs", "contextful-engine/src/lib.rs", "contextful-sqlite/src/machine.rs", "contextful-sqlite/src/lib.rs", "contextful-pg/src/lib.rs"];
+    let defining = ["contextful-engine/src/catalog.rs", "contextful-engine/src/lib.rs", "contextful-sqlite/src/machine.rs", "contextful-sqlite/src/lib.rs"];
     let mut named = Vec::new();
     for entry in std::fs::read_dir(&root).unwrap().flatten() {
         let src = entry.path().join("src");
@@ -1192,7 +1192,7 @@ fn only_the_binary_wires_a_catalog_backend_and_everything_else_names_the_port() 
                     continue;
                 }
                 let rel = p.strip_prefix(&root).unwrap().to_string_lossy().replace('\\', "/");
-                if rel.starts_with("contextful-cli/") || defining.contains(&rel.as_str()) {
+                if rel.starts_with("contextful-cli/") || rel.starts_with("contextful-pg/src/") || defining.contains(&rel.as_str()) {
                     continue;
                 }
                 let text = std::fs::read_to_string(&p).unwrap_or_default();
@@ -1236,13 +1236,18 @@ fn each_deployment_shape_reaches_its_catalog_backend_and_the_full_profile_links_
         let target: toml::Value = toml::from_str(&std::fs::read_to_string(repo_root().join(format!("spec/targets/{provider}.toml"))).unwrap()).unwrap();
         target["shape"].as_array().unwrap().iter().map(|s| (s["kind"].as_str().unwrap().to_string(), s["roles"]["catalog"].as_str().unwrap().to_string())).collect()
     };
-    for (provider, backend) in [("local", "local catalog file, one process"), ("cloudflare", "Durable Object SQLite"), ("aws", "Postgres via pg-catalog")] {
+    for (provider, backend) in [("local", "local catalog file, one process"), ("aws", "Postgres via pg-catalog")] {
         let shapes = catalog(provider);
         assert!(!shapes.is_empty(), "`{provider}` declares no shape");
         for (kind, role) in &shapes {
             assert!(role.contains(backend), "`{provider}` {kind} shape's catalog is `{role}`, not {backend}");
         }
     }
+    let shapes=catalog("cloudflare");
+    assert_eq!(shapes.len(),2,"Cloudflare declares SQLite and PostgreSQL execution shapes");
+    assert!(shapes.iter().all(|(kind,_)| kind=="orchestrated"));
+    assert!(shapes.iter().any(|(_,role)| role.contains("Durable Object SQLite")));
+    assert!(shapes.iter().any(|(_,role)| role=="Postgres execution database with authenticated TLS"));
 }
 
 /// The edge profile is the one profile a function-class target hosts. Execution on such a deployment runs on a worker target.

@@ -146,7 +146,7 @@ pub fn run(command: StorageCmd) -> Result<()> {
         }
         println!(
             "{}",
-            json!({ "profile":"local", "replacement_safe":false, "capabilities":["journal", "blobs", "awakeables", "owners", "cadence", "exports"] })
+            json!({ "profile":"local", "replacement_safe":false, "strict_execution_guards":false, "capabilities":["journal", "blobs", "awakeables", "owners", "cadence", "exports"] })
         );
         return Ok(());
     };
@@ -155,7 +155,7 @@ pub fn run(command: StorageCmd) -> Result<()> {
     let schema = recovery(&project, &remote, initialize)?;
     println!(
         "{}",
-        json!({ "profile":CLOUDFLARE_POSTGRES, "replacement_safe":true, "schema":schema, "project":project.name,
+        json!({ "profile":CLOUDFLARE_POSTGRES, "replacement_safe":true, "strict_execution_guards":true, "schema":schema, "project":project.name,
         "capabilities":["journal", "blobs", "awakeables", "owners", "cadence", "exports", "fenced-dispatch", "recovery-identity"] })
     );
     Ok(())
