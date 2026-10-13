@@ -1070,6 +1070,7 @@ dependencies = [
 name = "contextful-pg"
 version = "0.5.0"
 dependencies = [
+ "contextful-acceptance",
  "contextful-core",
  "contextful-engine",
  "postgres",

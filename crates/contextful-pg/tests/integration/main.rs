@@ -7,6 +7,7 @@
 
 mod catalog;
 mod open;
+mod image_awakeable;
 mod server;
 mod stores;
 mod export;
