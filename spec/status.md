@@ -11,11 +11,11 @@ An unpinned clause is `committed`; a pinned one is `performed` when its Rust, Le
 | `corpus` | 1 | 10 | 79 | 37 | 7 | 0 | 79 | 0 | 79 |
 | `disclosure` | 3 | 16 | 156 | 68 | 13 | 3 | 63 | 0 | 63 |
 | `read` | 2 | 16 | 221 | 35 | 24 | 1 | 211 | 0 | 211 |
-| `run` | 3 | 27 | 466 | 110 | 43 | 13 | 388 | 0 | 388 |
+| `run` | 3 | 27 | 475 | 112 | 43 | 13 | 397 | 0 | 397 |
 | `store` | 1 | 17 | 264 | 61 | 14 | 11 | 253 | 0 | 253 |
 | `surface` | 2 | 20 | 137 | 59 | 22 | 0 | 98 | 0 | 98 |
 | `topology` | 1 | 6 | 79 | 25 | 5 | 3 | 72 | 0 | 72 |
-| **total** | 19 | 157 | 2305 | 623 | 200 | 62 | 1839 | 0 | |
+| **total** | 19 | 157 | 2314 | 625 | 200 | 62 | 1848 | 0 | |
 
 Decision records: 18.
 
@@ -29,7 +29,7 @@ A milestone reads `closed` when its acceptance test computes `passing` and every
 | 1 — The authority core | 14 | 242 | 223 | passing | closed |
 | 2 — The store | 9 | 181 | 170 | passing | closed |
 | 3 — The run path | 12 | 262 | 226 | passing | open |
-| 4 — Ingest | 25 | 531 | 365 | passing | open |
+| 4 — Ingest | 25 | 540 | 374 | passing | open |
 | 5 — The read face under enforcement | 17 | 294 | 238 | passing | open |
 | 6 — Sync and replicas | 8 | 83 | 83 | passing | closed |
 | 7 — Memory | 6 | 55 | 54 | passing | closed |
@@ -1196,6 +1196,15 @@ Unscheduled operations: 11.
 | `run.export.delivery` | `crates/contextful-cli/tests/integration/export.rs::a_batch_leaves_through_the_mediated_client_with_its_header_hydrated` | performed |
 | `run.export.delivery-refused` | `crates/contextful-cli/tests/integration/export.rs::a_refused_delivery_leaves_the_cursor_where_it_stood` | performed |
 | `run.export.export-block` | `crates/contextful-cli/tests/integration/export.rs::an_export_run_delivers_the_rows_its_cursor_has_not_passed` | performed |
+| `run.export.group-activation` | `spec/pins.toml` | performed |
+| `run.export.group-block` | `spec/pins.toml` | performed |
+| `run.export.group-checkpoint` | `spec/pins.toml` | performed |
+| `run.export.group-delivery` | `spec/pins.toml` | performed |
+| `run.export.group-identity` | `spec/pins.toml` | performed |
+| `run.export.group-incompatible` | `spec/pins.toml` | performed |
+| `run.export.group-rebuild` | `spec/pins.toml` | performed |
+| `run.export.group-source` | `spec/pins.toml` | performed |
+| `run.export.group-storage` | `spec/pins.toml` | performed |
 | `run.export.log-record` | `crates/contextful-core/tests/integration/pipeline/export.rs::each_row_becomes_one_log_record_carrying_its_commit_position` | performed |
 | `run.export.post-commit-read` | `crates/contextful-cli/tests/integration/export.rs::export_reads_through_the_face_under_the_admitted_credential` | performed |
 | `run.export.secret-preflight` | `crates/contextful-cli/tests/integration/export.rs::an_unresolved_header_reference_refuses_before_any_request` | performed |

@@ -7,8 +7,7 @@ contract: run
 ## What it is for
 
 A pipeline declares a source and tables. A run pins its plan, records effects for replay,
-and commits rows with their position ({{run.advance.commit-with-rows}}). The derive tier
-uses runs for per-row work.
+and commits rows with their position ({{run.advance.commit-with-rows}}).
 
 ## How it works
 
@@ -132,6 +131,12 @@ request leaves the host ({{run.advance.field-rename}}); starting over is an expl
 ({{run.advance.turning-incremental-on}}).
 
 ## Where to look
+
+For downstream projections, follow {{run.export.group-block}} to the producer completion
+({{run.export.group-source}}), delivery barrier ({{run.export.group-delivery}}) and
+receiver activation ({{run.export.group-activation}}). Recovery follows
+{{run.export.group-checkpoint}} or {{run.export.group-rebuild}}; profile admission
+follows {{run.export.group-storage}}.
 
 | Question | Operation |
 | --- | --- |

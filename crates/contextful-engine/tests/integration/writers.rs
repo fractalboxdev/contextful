@@ -98,6 +98,7 @@ fn a_writer_whose_lease_passed_to_another_lands_nothing() {
     let mut sink = Sink::default();
     let row = rig_run(&rig.engine, "run-fenced", &mut source, &mut sink);
     assert_eq!(row.status, RunStatus::Failed);
+    assert_eq!(row.error_kind, Some(contextful_core::run::FailureTag::Storage));
     assert!(row.error_message.unwrap().contains("LeaseFenced"));
     assert!(sink.commits.is_empty(), "the fenced writer committed nothing");
     assert_eq!(rig.catalog().cursor("feed", "filings").unwrap().position, None);

@@ -14,6 +14,8 @@ use serde_json::{json, Value};
 use std::collections::{BTreeMap, BTreeSet};
 use url::Url;
 
+pub mod publication;
+
 /// Rows one delivery batch holds (`run.export.batch-rows`).
 pub const EXPORT_BATCH_ROWS: usize = 500;
 /// Maximum JSON request size for typed delivery.
