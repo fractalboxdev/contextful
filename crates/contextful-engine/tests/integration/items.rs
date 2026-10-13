@@ -405,3 +405,34 @@ fn raw_item_publication_refuses_a_fence_transferred_during_staging() {
     assert!(!result.succeeded());
     assert!(sink.commits.is_empty());
 }
+
+#[test]
+fn terminal_sibling_failure_does_not_pin_later_fires_to_old_input() {
+    let rig = Rig::new();
+    let body = Body {
+        calls: Mutex::default(),
+        entered: AtomicUsize::new(0),
+    };
+    let land = &mut |_: &str, _: &Emitted| Ok(Landed::default());
+    assert!(!rig
+        .engine
+        .drive_items(
+            &fire(&body, "first"),
+            &policy(),
+            &mut |_| Ok(input(&["good", "bad"])),
+            land
+        )
+        .unwrap()
+        .succeeded());
+    let next = rig
+        .engine
+        .drive_items(
+            &fire(&body, "second"),
+            &policy(),
+            &mut |_| Ok(input(&["good", "bad", "later"])),
+            land,
+        )
+        .unwrap();
+    assert_eq!(next.items.len(), 3);
+    assert_eq!(body.calls.lock().unwrap().len(), 3);
+}

@@ -219,7 +219,7 @@ impl<J: JournalStore + Clone + Send + Sync, B: BlobStore + Clone + Send + Sync> 
             + Sync,
     {
         policy.validate()?;
-        let aggregate = self.open_execution(&OpenExecution {
+        let mut aggregate = self.open_execution(&OpenExecution {
             scope: job_scope(&drive.job),
             pins: pins.clone(),
             run_id: drive.run_id.clone(),
@@ -555,6 +555,21 @@ impl<J: JournalStore + Clone + Send + Sync, B: BlobStore + Clone + Send + Sync> 
         };
         items.sort_by(|a, b| a.logical_id.cmp(&b.logical_id));
         let report = ItemReport { items };
+        let mut terminal = true;
+        for item in &report.items {
+            terminal &= match &item.status {
+                ItemStatus::Succeeded(_) => true,
+                ItemStatus::Failed(_) => self
+                    .catalog
+                    .cursor_at(&OwnerScope::host(&format!("item:{}", item.execution_id)))?
+                    .position
+                    .is_some(),
+                ItemStatus::Parked | ItemStatus::Deferred => false,
+            };
+        }
+        if terminal && !report.succeeded() {
+            aggregate.discard();
+        }
         let outcome = if report.succeeded() {
             let landed = report
                 .items
