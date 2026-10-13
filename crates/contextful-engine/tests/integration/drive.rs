@@ -663,4 +663,35 @@ fn protected_body_effects_record_rewritten_results_and_resume_without_another_pa
         if !destination.sink.commits.is_empty() { committed_after_loss.push(boundary); }
     }
     assert!(committed_after_loss.is_empty(), "prepared results committed after live-parent loss at {committed_after_loss:?}");
+
+    struct GuardedOutput { held:Arc<AtomicUsize>, sink:crate::support::Sink }
+    impl contextful_core::run::ports::Destination for GuardedOutput {
+        fn admit_effect_recorded(&self, _: &str, payload:&serde_json::Value, scope:&EffectScope) -> Result<EmissionSummary, Failure> { Canonical.admit(plan_effect(), scope, payload) }
+        fn stage_effect_recorded(&mut self, mut stage:contextful_core::run::ports::Stage, payload:&serde_json::Value, _: &EffectScope) -> Result<contextful_core::run::ports::Part, Failure> {
+            stage.rows = serde_json::from_value(payload["rows"].clone()).unwrap();
+            contextful_core::run::ports::Destination::stage_batch(&mut self.sink, stage)
+        }
+        fn stage_batch(&mut self, _:contextful_core::run::ports::Stage) -> Result<contextful_core::run::ports::Part, Failure> { panic!("prepared groups never stage raw") }
+        fn commit(&mut self, commit:contextful_core::run::ports::Commit, before:&dyn Fn() -> Result<(), Failure>) -> Result<Landed, Failure> {
+            before()?;
+            assert_eq!(self.held.load(Ordering::SeqCst), 1, "prepared parent admission spans actual destination commit");
+            contextful_core::run::ports::Destination::commit(&mut self.sink, commit, before)
+        }
+        fn discard(&mut self, table:&str, run:&str) -> Result<(), Failure> { contextful_core::run::ports::Destination::discard(&mut self.sink, table, run) }
+        fn newest_marker(&self, pipeline:&str, table:&str) -> Result<Option<contextful_core::run::ports::Marker>, Failure> { contextful_core::run::ports::Destination::newest_marker(&self.sink, pipeline, table) }
+    }
+    let mut rig = Rig::new();
+    let (catalog, held) = crate::guarded_callback::for_parent(rig.engine.catalog.clone(), job_scope(JOB));
+    rig.engine.catalog = catalog;
+    let mut destination = GuardedOutput { held, sink:Default::default() };
+    let mut output_plan = crate::support::plan("kind = 'opaque-token'", "journal = false");
+    output_plan.spec.table = "scores".into();
+    let spec = contextful_engine::RunSpec { connector:output_plan.connector_pin("test-artifact"), plan:output_plan, run_id:"guarded-land".into(), site_id:"site-a".into(), pid:4242, boot_id:"boot-a".into(), trace_id:None };
+    let row = rig.engine.drive_recorded(&fire(input("SELECT doc_id FROM documents", Some(T0)), &body, 1, "guarded-parent"), &plan, &Canonical, &mut |as_of| Ok(set(as_of, docs(1))), &mut |outputs, owner| {
+        let row = rig.engine.run_emissions(&spec, owner, &outputs["scores"], &mut destination).map_err(|e| Failure::new(FailureTag::Storage, e.to_string()))?;
+        assert_eq!(row.status, RunStatus::Success);
+        Ok(Landed { rows:row.rows, bytes:row.bytes })
+    }).unwrap();
+    assert_eq!(row.status, RunStatus::Success);
+    assert_eq!(destination.sink.commits.len(), 1);
 }

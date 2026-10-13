@@ -16,6 +16,7 @@ struct Gate {
     inner: Arc<dyn Catalog + Send + Sync>,
     held: Arc<AtomicUsize>,
     refuse: AtomicBool,
+    parent: Option<OwnerScope>,
 }
 struct Held(Arc<AtomicUsize>);
 impl contextful_core::coordinate::ExecutionGuard for Held {}
@@ -32,8 +33,14 @@ impl Catalog for Gate {
         &self,
         admission: &contextful_core::coordinate::ExecutionAdmission,
     ) -> Result<Box<dyn contextful_core::coordinate::ExecutionGuard>, Failure> {
-        assert_eq!(admission.owners().len(), 1);
-        assert_eq!(admission.owners()[0].run_id, "guarded-1");
+        if let Some(parent) = &self.parent {
+            if admission.publication {
+                assert!(admission.owners().iter().any(|owner| &owner.scope == parent), "actual publication omits its prepared parent from durable admission");
+            }
+        } else {
+            assert_eq!(admission.owners().len(), 1);
+            assert_eq!(admission.owners()[0].run_id, "guarded-1");
+        }
         if self.refuse.load(Ordering::SeqCst) {
             return Err(Failure::new(
                 FailureTag::Transient,
@@ -110,6 +117,11 @@ impl Catalog for Gate {
     }
 }
 
+pub(crate) fn for_parent(inner: Arc<dyn Catalog + Send + Sync>, parent: OwnerScope) -> (Arc<dyn Catalog + Send + Sync>, Arc<AtomicUsize>) {
+    let held = Arc::new(AtomicUsize::new(0));
+    (Arc::new(Gate { inner, held: held.clone(), refuse: AtomicBool::new(false), parent: Some(parent) }), held)
+}
+
 #[test]
 fn provider_callback_retains_the_catalog_guard_and_a_refusal_dispatches_nothing() {
     let mut rig = Rig::new();
@@ -118,6 +130,7 @@ fn provider_callback_retains_the_catalog_guard_and_a_refusal_dispatches_nothing(
         inner: rig.engine.catalog.clone(),
         held: held.clone(),
         refuse: AtomicBool::new(false),
+        parent: None,
     });
     rig.engine.catalog = gate.clone();
     let mut execution = rig
