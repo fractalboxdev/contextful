@@ -952,7 +952,7 @@
       "operation": "compose",
       "subject": "cli-binary",
       "kind": "behavior",
-      "statement": "The system ships one command binary, `contextful`, and one package scope, `@contextful/*`. The smallest deployable build is a profile, not a crate.",
+      "statement": "The runtime ships one command binary, `contextful`, and one package scope, `@contextful/*`; release assurance follows {{assurance.consumer.suite}}. The smallest deployable build is a profile, not a crate.",
       "why": "",
       "file": "spec/01-topology.md",
       "line": 67
@@ -25771,6 +25771,150 @@
       "why": "because a packaging rehearsal must not claim a released version",
       "file": "spec/81-engineering.md",
       "line": 470
+    },
+    {
+      "id": "assurance.consumer.suite",
+      "contract": "assurance",
+      "operation": "consumer",
+      "subject": "suite",
+      "kind": "behavior",
+      "statement": "`contextful-conformance --binary <path> --output <report>` executes its versioned scenarios through the supplied artifact's public CLI and HTTP surfaces outside a source checkout.",
+      "why": "A-assurance",
+      "file": "spec/82-consumer.md",
+      "line": 13
+    },
+    {
+      "id": "assurance.consumer.credential-isolation",
+      "contract": "assurance",
+      "operation": "consumer",
+      "subject": "credential-isolation",
+      "kind": "behavior",
+      "statement": "Every artifact invocation receives an empty inherited environment, an isolated home and scratch directory, a fixed executable search path and explicitly supplied synthetic fixture credentials.",
+      "why": "because compatibility evidence requires no provider account or inherited credential",
+      "file": "spec/82-consumer.md",
+      "line": 15
+    },
+    {
+      "id": "assurance.consumer.requirements",
+      "contract": "assurance",
+      "operation": "consumer",
+      "subject": "requirements",
+      "kind": "behavior",
+      "statement": "Every required scenario executes its declared capabilities; a missing capability or unsupported storage profile records `unsupported`, names its requirement and refuses consumer activation.",
+      "why": "A-assurance",
+      "file": "spec/82-consumer.md",
+      "line": 17,
+      "scenarios": [
+        "WHEN a read-only artifact receives a required replay scenario, THEN evidence names the missing run capability and the suite exits unsuccessfully."
+      ]
+    },
+    {
+      "id": "assurance.consumer.verdict",
+      "contract": "assurance",
+      "operation": "consumer",
+      "subject": "verdict",
+      "kind": "behavior",
+      "statement": "A compatibility verdict passes only when every required scenario reports executed success; a parse, an unsupported requirement or a skipped required scenario supplies no execution pass.",
+      "why": "P7",
+      "file": "spec/82-consumer.md",
+      "line": 19,
+      "scenarios": [
+        "WHEN a required scenario is skipped, THEN the aggregate compatibility verdict fails."
+      ]
+    },
+    {
+      "id": "assurance.consumer.scenarios",
+      "contract": "assurance",
+      "operation": "consumer",
+      "subject": "scenarios",
+      "kind": "behavior",
+      "statement": "The suite exercises pagination and checkpoints, applied scheduling and dependencies, graceful restart, hard-crash replay, empty and replacement captures, public identifiers, credential masking, typed export acknowledgement and receiver visibility.",
+      "why": "",
+      "file": "spec/82-consumer.md",
+      "line": 21
+    },
+    {
+      "id": "assurance.consumer.mutation-controls",
+      "contract": "assurance",
+      "operation": "consumer",
+      "subject": "mutation-controls",
+      "kind": "behavior",
+      "statement": "Planted cursor skips, duplicate public identities, repeated in-window scheduling and acknowledgement before receiver commit each fail their owning scenario.",
+      "why": "because a scenario that accepts its motivating defect proves no compatibility",
+      "file": "spec/82-consumer.md",
+      "line": 22,
+      "scenarios": [
+        "WHEN a native source advances past an unserved page, THEN the pagination scenario fails."
+      ]
+    },
+    {
+      "id": "assurance.consumer.report",
+      "contract": "assurance",
+      "operation": "consumer",
+      "subject": "report",
+      "kind": "behavior",
+      "statement": "Evidence records the suite revision and version, supplied binary SHA-256 digest, reported version, feature profile, storage profile and every scenario outcome, requirement and diagnostic.",
+      "why": "",
+      "file": "spec/82-consumer.md",
+      "line": 24
+    },
+    {
+      "id": "assurance.consumer.provenance",
+      "contract": "assurance",
+      "operation": "consumer",
+      "subject": "provenance",
+      "kind": "behavior",
+      "statement": "Unknown source correspondence remains null; a reported version or successful scenario never supplies a source commit.",
+      "why": "because source correspondence requires evidence beyond behavior and a version string",
+      "file": "spec/82-consumer.md",
+      "line": 25,
+      "scenarios": [
+        "WHEN a binary reports a version without source evidence, THEN source correspondence remains null."
+      ]
+    },
+    {
+      "id": "assurance.consumer.artifact-stability",
+      "contract": "assurance",
+      "operation": "consumer",
+      "subject": "artifact-stability",
+      "kind": "behavior",
+      "statement": "The suite verifies the supplied artifact's digest before and after execution; changed bytes refuse a compatibility verdict.",
+      "why": "",
+      "file": "spec/82-consumer.md",
+      "line": 27
+    },
+    {
+      "id": "assurance.consumer.release-distribution",
+      "contract": "assurance",
+      "operation": "consumer",
+      "subject": "release-distribution",
+      "kind": "behavior",
+      "statement": "Each release archive carries the matching-target suite and compatibility report; release metadata names the report and binary digest, preserving failed and skipped outcomes.",
+      "why": "A-assurance",
+      "file": "spec/82-consumer.md",
+      "line": 28
+    },
+    {
+      "id": "assurance.consumer.foreign-target",
+      "contract": "assurance",
+      "operation": "consumer",
+      "subject": "foreign-target",
+      "kind": "behavior",
+      "statement": "A release target unavailable to its packaging host records explicit skipped scenarios with a target diagnostic; its report supplies no execution pass.",
+      "why": "because a cross compilation cannot demonstrate the produced artifact's behavior",
+      "file": "spec/82-consumer.md",
+      "line": 30
+    },
+    {
+      "id": "assurance.consumer.storage-profile",
+      "contract": "assurance",
+      "operation": "consumer",
+      "subject": "storage-profile",
+      "kind": "behavior",
+      "statement": "The local profile uses isolated filesystem state; `cloudflare-postgres` uses synthetic PostgreSQL and signed S3 services. An unavailable fixture records its named requirement through {{assurance.consumer.requirements}}.",
+      "why": "",
+      "file": "spec/82-consumer.md",
+      "line": 32
     }
   ],
   "owns": {
@@ -25968,6 +26112,9 @@
       "baseline",
       "measure",
       "release"
+    ],
+    "spec/82-consumer.md": [
+      "consumer"
     ]
   },
   "ledes": {
@@ -25975,6 +26122,7 @@
     "assurance.automate": "Typed subcommands over compiled binaries, and the boundary shell keeps.",
     "assurance.baseline": "Holding a run against committed baselines and absolute floors, intervals, golden custody and case generation.",
     "assurance.build": "Target directories, the engine-linked invocation, linked query functions, build targets, release artifacts and the dependency allowlist.",
+    "assurance.consumer": "Artifact compatibility: source-independent execution, required capabilities, scenario evidence, storage profiles and release distribution.",
     "assurance.differential-test": "The executable reference models, the case generators, the minimized counterexample corpus and the command running them.",
     "assurance.evaluate": "The read-path quality harness: case format, deterministic metrics and floors, judged dimensions, the reader and the judge.",
     "assurance.gate": "Stage order, secrets of record, the crate-graph, row-token, egress and dependency rules, the formal stage, the container's ceilings, disk, footprint budgets and surface checks.",
@@ -26165,6 +26313,10 @@
     [
       "topology.compose.undeclared-crossing",
       "assurance.gate.crate-graph"
+    ],
+    [
+      "topology.compose.cli-binary",
+      "assurance.consumer.suite"
     ],
     [
       "topology.compose.mediation",
@@ -27793,6 +27945,10 @@
     [
       "assurance.release.release-run",
       "assurance.build.targets"
+    ],
+    [
+      "assurance.consumer.storage-profile",
+      "assurance.consumer.requirements"
     ]
   ],
   "registry": {
@@ -27801,11 +27957,13 @@
         "title": "Assurance",
         "files": [
           "spec/80-formal.md",
-          "spec/81-engineering.md"
+          "spec/81-engineering.md",
+          "spec/82-consumer.md"
         ],
         "titles": [
           "The formal model",
-          "Engineering gates and the quality harness"
+          "Engineering gates and the quality harness",
+          "Consumer compatibility"
         ],
         "gloss": "The proof package, theorems and proof gate, the differential harness; one home per capability, test placement, build gates and retrieval evaluation."
       },
@@ -28150,6 +28308,10 @@
             "aliases": []
           },
           "build": {
+            "gloss": "",
+            "aliases": []
+          },
+          "consumer": {
             "gloss": "",
             "aliases": []
           },

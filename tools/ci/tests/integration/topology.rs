@@ -686,17 +686,24 @@ fn one_workspace_compiles_every_package_and_ships_one_binary() {
         assert!(members.contains(d), "{} is outside the workspace", d.display());
     }
 
-    // The shipped packages under crates/ build one binary, `contextful`; neither half has its own.
+    // Runtime packages ship one binary; acceptance ships the release conformance companion.
     let bins: Vec<String> = meta["packages"]
         .as_array()
         .unwrap()
         .iter()
         .filter(|p| p["manifest_path"].as_str().unwrap().contains("/crates/"))
+        .filter(|p| p["name"] != "contextful-acceptance")
         .flat_map(|p| p["targets"].as_array().unwrap().clone())
         .filter(|t| t["kind"].as_array().unwrap().iter().any(|k| k == "bin"))
         .map(|t| t["name"].as_str().unwrap().to_string())
         .collect();
     assert_eq!(bins, ["contextful"]);
+    let companions: Vec<_> = meta["packages"].as_array().unwrap().iter()
+        .filter(|p| p["name"] == "contextful-acceptance")
+        .flat_map(|p| p["targets"].as_array().unwrap())
+        .filter(|t| t["kind"].as_array().unwrap().iter().any(|k| k == "bin"))
+        .map(|t| t["name"].as_str().unwrap()).collect();
+    assert_eq!(companions,["contextful-conformance"]);
 }
 
 /// A topology page whose crate-map clause states `count` and whose `## Shapes` tree lists `entries`.

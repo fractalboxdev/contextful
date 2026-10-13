@@ -12,6 +12,8 @@ use std::process::Command;
 /// The binary every profile builds.
 const BINARY: &str = "contextful";
 const PACKAGE: &str = "contextful-cli";
+const SUITE_PACKAGE: &str = "contextful-acceptance";
+const SUITE_BINARY: &str = "contextful-conformance";
 
 const LINUX: [&str; 2] = ["x86_64-unknown-linux-musl", "aarch64-unknown-linux-musl"];
 const DARWIN: [&str; 2] = ["aarch64-apple-darwin", "x86_64-apple-darwin"];
@@ -151,20 +153,34 @@ pub fn release(root: &Path, builder: Builder, profiles: &[String], targets: &[St
             bail!("`cargo {}` exited {}", args.join(" "), status.code().unwrap_or(-1));
         }
         let binary = target_dir.join(target).join("release").join(BINARY);
-        package(root, profile, &version, target, &binary, out)?;
+        let suite = target_dir.join(target).join("release").join(SUITE_BINARY);
+        let status = Command::new("cargo")
+            .args([builder.subcommand(), "--release", "--locked", "-p", SUITE_PACKAGE, "--bin", SUITE_BINARY, "--target", target])
+            .env("CARGO_TARGET_DIR", target_dir).current_dir(root).status().context("building consumer conformance suite")?;
+        if !status.success() { bail!("consumer conformance build failed for {target}"); }
+        package(root, profile, &version, target, &binary, &suite, out)?;
     }
     Ok(())
 }
 
 /// Write `<stem>.tar.gz` holding `binary` as `contextful` and the licence, `<stem>.tar.gz.sha256`
 /// in `sha256sum` form, and `<stem>.cdx.json`, the SBOM of the profile's resolved graph.
-fn package(root: &Path, profile: &str, version: &str, target: &str, binary: &Path, out: &Path) -> Result<()> {
+fn package(root: &Path, profile: &str, version: &str, target: &str, binary: &Path, suite: &Path, out: &Path) -> Result<()> {
     let stem = stem(profile, version, target);
     let staging = out.join(&stem);
     let _ = std::fs::remove_dir_all(&staging);
     std::fs::create_dir_all(&staging)?;
     std::fs::copy(binary, staging.join(BINARY)).with_context(|| format!("copying {}", binary.display()))?;
+    std::fs::copy(suite, staging.join(SUITE_BINARY)).context("copying consumer suite")?;
+    let suite_sbom_name = format!("{stem}.conformance.cdx.json");
+    let suite_sbom = application_sbom(root, SUITE_PACKAGE, SUITE_BINARY, None, version, target)?;
+    std::fs::write(out.join(&suite_sbom_name), serde_json::to_vec_pretty(&suite_sbom)?)?;
+    std::fs::copy(out.join(&suite_sbom_name), staging.join("conformance.cdx.json"))?;
     std::fs::copy(root.join("LICENSE"), staging.join("LICENSE")).context("copying LICENSE")?;
+    let compatibility_path = out.join(format!("{stem}.compatibility.json"));
+    let report = compatibility(profile, target, binary, suite, &compatibility_path)?;
+    std::fs::write(&compatibility_path, serde_json::to_vec_pretty(&report)?)?;
+    std::fs::copy(&compatibility_path, staging.join("compatibility.json"))?;
     let archive = format!("{stem}.tar.gz");
     let status = Command::new("tar")
         .args(["-czf", &archive, &stem])
@@ -185,10 +201,47 @@ fn package(root: &Path, profile: &str, version: &str, target: &str, binary: &Pat
         "archive": archive,
         "sha256": digest,
         "sbom": format!("{stem}.cdx.json"),
+        "compatibility": {"report":format!("{stem}.compatibility.json"), "artifact_digest":report["artifact_digest"], "scenarios":report["scenarios"], "suite_sbom":suite_sbom_name},
     });
     std::fs::write(out.join(format!("{stem}.release.json")), serde_json::to_string_pretty(&metadata)? + "\n")?;
     println!("release: {archive} {digest}");
     Ok(())
+}
+
+/// Every archive carries evidence; a foreign target has explicit skips and no execution pass.
+fn compatibility(profile: &str, target: &str, binary: &Path, suite: &Path, output: &Path) -> Result<serde_json::Value> {
+    let artifact_digest = hex(&Sha256::digest(std::fs::read(binary)?));
+    let registry: serde_json::Value = serde_json::from_str(include_str!("../../../crates/acceptance/src/conformance/manifest.json"))?;
+    let native = host_target().is_ok_and(|host| host == target);
+    let mut failure = if native { "ConformanceSuiteUnavailable" } else { "ConformanceTargetNotExecutable" };
+    if native {
+        if output.exists() { std::fs::remove_file(output).context("removing prior compatibility evidence")?; }
+        let executed = Command::new(suite).arg("--binary").arg(binary).arg("--output").arg(output)
+            .env_clear().env("PATH", "/usr/bin:/bin").status();
+        if let Ok(status) = executed {
+            if output.exists() {
+                let mut report: serde_json::Value = serde_json::from_slice(&std::fs::read(output)?)?;
+                if report["artifact_digest"] != artifact_digest || report["suite_revision"] != registry["suite_revision"] { bail!("ConformanceReleaseEvidenceMismatch"); }
+                if !status.success() {
+                    report["scenarios"].as_array_mut().context("suite report scenarios")?.push(serde_json::json!({
+                        "id":"suite-exit", "required":true, "outcome":"failed", "requirement":"consumer-suite",
+                        "diagnostic":"ConformanceSuiteProcessFailed", "exit_code":status.code(),
+                    }));
+                }
+                return Ok(report);
+            }
+        }
+        failure = "ConformanceSuiteUnavailable";
+    }
+    let scenarios: Vec<_> = registry["scenarios"].as_array().context("suite registry scenarios")?.iter().map(|scenario| serde_json::json!({
+        "id":scenario["id"], "required":true, "outcome":if native { "failed" } else { "skipped" },
+        "requirement":scenario["requirement"], "diagnostic":failure,
+    })).collect();
+    Ok(serde_json::json!({
+        "schema_version":1, "suite_revision":registry["suite_revision"], "suite_version":env!("CARGO_PKG_VERSION"),
+        "artifact_digest":artifact_digest, "reported_version":null, "feature_profile":null,
+        "requested_profile":profile, "storage_profile":"local", "source_commit":null, "scenarios":scenarios,
+    }))
 }
 
 fn hex(bytes: &[u8]) -> String {
@@ -206,10 +259,13 @@ struct Component {
 
 /// The packages `profile` links on `target`: the binary's normal dependencies, procedural
 /// macros excluded, as `cargo tree` resolves them for that feature set alone.
-fn components(root: &Path, profile: &str, target: &str) -> Result<Vec<Component>> {
-    let o = Command::new("cargo")
-        .args(["tree", "--locked", "-p", PACKAGE, "--no-default-features", "--features", profile, "--target", target])
-        .args(["-e", "normal,no-proc-macro", "--prefix", "none", "--format", "{p}|{l}"])
+fn components(root: &Path, package: &str, features: Option<&str>, target: &str) -> Result<Vec<Component>> {
+    let mut cargo = Command::new("cargo");
+    cargo.args(["tree", "--locked", "-p", package, "--target", target]);
+    if let Some(features) = features {
+        cargo.args(["--no-default-features", "--features", features]);
+    }
+    let o = cargo.args(["-e", "normal,no-proc-macro", "--prefix", "none", "--format", "{p}|{l}"])
         .current_dir(root)
         .output()
         .context("running cargo tree")?;
@@ -240,10 +296,15 @@ fn components(root: &Path, profile: &str, target: &str) -> Result<Vec<Component>
 /// The CycloneDX 1.5 SBOM of `profile` built for `target`: the binary as the described
 /// component and every other linked package as a library carrying its purl and licence.
 fn sbom(root: &Path, profile: &str, version: &str, target: &str) -> Result<serde_json::Value> {
-    let all = components(root, profile, target)?;
+    application_sbom(root, PACKAGE, profile, Some(profile), version, target)
+}
+
+/// Each released executable describes its own resolved normal dependency graph.
+fn application_sbom(root: &Path, package: &str, application: &str, features: Option<&str>, version: &str, target: &str) -> Result<serde_json::Value> {
+    let all = components(root, package, features, target)?;
     let libraries: Vec<serde_json::Value> = all
         .iter()
-        .filter(|c| c.name != PACKAGE)
+        .filter(|c| c.name != package)
         .map(|c| {
             let mut v = serde_json::json!({
                 "type": "library",
@@ -261,6 +322,12 @@ fn sbom(root: &Path, profile: &str, version: &str, target: &str) -> Result<serde
             v
         })
         .collect();
+    let purl = match features {
+        Some(features) => format!("pkg:cargo/{package}@{version}?features={features}&target={target}"),
+        None => format!("pkg:cargo/{package}@{version}?target={target}"),
+    };
+    let mut properties = vec![serde_json::json!({"name":"contextful:target","value":target})];
+    if let Some(profile) = features {properties.push(serde_json::json!({"name":"contextful:profile","value":profile}));}
     Ok(serde_json::json!({
         "bomFormat": "CycloneDX",
         "specVersion": "1.5",
@@ -268,15 +335,12 @@ fn sbom(root: &Path, profile: &str, version: &str, target: &str) -> Result<serde
         "metadata": {
             "component": {
                 "type": "application",
-                "name": profile,
+                "name": application,
                 "version": version,
-                "purl": format!("pkg:cargo/{PACKAGE}@{version}?features={profile}&target={target}"),
+                "purl": purl,
                 "licenses": [{ "expression": "Apache-2.0" }],
             },
-            "properties": [
-                { "name": "contextful:profile", "value": profile },
-                { "name": "contextful:target", "value": target },
-            ],
+            "properties": properties,
         },
         "components": libraries,
     }))
