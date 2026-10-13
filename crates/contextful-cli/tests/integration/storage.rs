@@ -43,6 +43,7 @@ fn ordinary_storage_check_reports_its_execution_capabilities_as_json() {
     let value: serde_json::Value = serde_json::from_slice(&out.stdout).unwrap();
     assert_eq!(value["profile"], "local");
     assert_eq!(value["replacement_safe"], false);
+    assert_eq!(value["strict_execution_guards"],false);
     assert!(value["capabilities"]
         .as_array()
         .unwrap()

@@ -237,6 +237,27 @@ fn superseded_entity_fence_refuses_paid_effect_before_provider_dispatch() {
 }
 
 #[test]
+fn superseded_aggregate_parent_refuses_an_items_paid_callback() {
+    struct Stale<'a> { rig: &'a Rig, called: AtomicUsize }
+    impl RowBody for Stale<'_> {
+        fn run(&self, _: &InputRow, calls: &dyn RowCalls) -> Result<Emitted, RowStop> {
+            let catalog=self.rig.catalog();
+            let mut parent=catalog.owner_at(&contextful_engine::drive::job_scope("score")).unwrap().unwrap();
+            parent.execution_id="replacement".into();parent.attempts=vec!["replacement".into()];
+            catalog.put_owner(&parent).unwrap();
+            calls.call("effect",b"input",&mut |_| {self.called.fetch_add(1,Ordering::SeqCst);Ok(Vec::new())})?;
+            Ok(BTreeMap::new())
+        }
+    }
+    let rig=Rig::new();
+    let body=Stale {rig:&rig,called:AtomicUsize::new(0)};
+    let normal=Body {calls:Mutex::default(),entered:AtomicUsize::new(0)};
+    let result=rig.engine.drive_items(&Drive {body:&body,..fire(&normal,"parent-stale")},&policy(),&mut |_| Ok(input(&["good"])),&mut |_,_| Ok(Landed::default()));
+    assert!(result.is_err() || !result.unwrap().succeeded());
+    assert_eq!(body.called.load(Ordering::SeqCst),0,"parent takeover must fence the paid item callback");
+}
+
+#[test]
 fn independent_retries_keep_paid_results_and_stop_at_the_durable_attempt_bound() {
     struct Retry {
         paid: AtomicUsize,

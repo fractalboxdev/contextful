@@ -104,7 +104,7 @@ Recording a step's value once, resolving it on replay, and collecting what a rep
   *A-run*
 - `container-profile` — `CONTEXTFUL_STORAGE_PROFILE=cloudflare-postgres` selects {{run.journal.postgres-stores}} with shared owners, cadence and {{run.export.remote-state}}; corpus objects use a remote S3-compatible bucket with pull-before-run and push-after-run enabled.
   *A-run*
-- `storage-incomplete` — Missing `CONTEXTFUL_CATALOG_URL`, `CONTEXTFUL_RECOVERY_ID`, corpus bindings or a supported outbox raises `StorageCapabilityMissing` before execution admission; absent compiled adapters follow {{topology.package.capability-absent}}.
+- `storage-incomplete` — Missing `CONTEXTFUL_CATALOG_URL`, `CONTEXTFUL_RECOVERY_ID`, corpus bindings, strict execution guards or a supported outbox raises `StorageCapabilityMissing` before execution admission; absent compiled adapters follow {{topology.package.capability-absent}}.
   *A-run*
 - `storage-unsupported` — An unknown storage profile or an encrypted corpus paired with an unsealed execution adapter raises `StorageProfileUnsupported` before execution admission.
   *because an unrecognized durability claim cannot select a local fallback safely*
@@ -116,6 +116,10 @@ Recording a step's value once, resolving it on replay, and collecting what a rep
   *A-run*
 - `current-owner` — An execution checks its durable owner, admitted pins and active attempt immediately before effect dispatch and publication; a superseded attempt enters neither boundary, and a late stop still follows {{run.cancel.land-path-uncut}}.
   *A-run*
+- `durable-dispatch` — PostgreSQL admission holds shared owner and unexpired lease locks through each bounded provider or destination callback, including item ancestors and entity fences; owner replacement, retirement and takeover serialize after admitted callbacks.
+  *A-run*
+- `guard-callback` — A guarded callback may update run metadata; mutating its admitted owner or lease refuses. Nested callbacks retain only scopes and leases their caller already admits. Local adapters expose cooperative checks without strict execution-guard capability.
+  *because nested lock expansion and owner mutation can deadlock the admission that invokes them*
 - `plan-pin` — A run resolves the plan reference it started against for its whole life.
 - `store-input` — A store-driven run reads its statement once, through the read face under the job's grant at its `as_of`, and records the resolved snapshot id per table and the ordered input rows as its first step.
   *A-surface*

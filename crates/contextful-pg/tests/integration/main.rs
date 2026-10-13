@@ -10,6 +10,7 @@ mod open;
 mod server;
 mod stores;
 mod export;
+mod guard;
 
 use contextful_core::run::own::{ConnectorPin, ExecutionOwner, OwnerScope, Pins};
 use contextful_core::run::record::{Phase, RunRow, RunStatus};

@@ -132,6 +132,7 @@ fn admit_types(incoming: &Types, held: &Types, undeclared: &BTreeSet<String>, or
 }
 
 struct PullStep<'a> {
+    parent: Option<&'a crate::drive::BodyOwner>,
     spec: &'a RunSpec,
     key: &'a EntryKey,
     request: &'a PullRequest,
@@ -416,7 +417,7 @@ impl<J: JournalStore, B: BlobStore> Engine<J, B> {
             let emission = emissions.and_then(|emissions| emissions.get(ordinal));
             let effect_scope = emission.zip(emitted).map(|(emission, input)| input.owner.expected(emission.scope().key())).transpose()?;
             let effect_summary = emission.zip(effect_scope).map(|(emission, scope)| emission.admit_to(dest, scope)).transpose()?;
-            let resolved = if emissions.is_none() { Some(self.step(execution, source, dest, PullStep { spec, key:&key, request:&request, shape, authority, at:at.as_ref(), floor:floor.as_ref(), types:&types, undeclared:&undeclared, ordinal })?) } else { None };
+            let resolved = if emissions.is_none() { Some(self.step(execution, source, dest, PullStep { parent, spec, key:&key, request:&request, shape, authority, at:at.as_ref(), floor:floor.as_ref(), types:&types, undeclared:&undeclared, ordinal })?) } else { None };
             let prepared = authority.zip(resolved.as_ref()).map(|(authority, resolved)| {
                 let prepared = recorded(resolved.bytes())?;
                 if prepared.authority != authority { return Err(Failure::deterministic(FailureTag::Permanent, "prepared journal authority changed")); }
@@ -556,6 +557,7 @@ impl<J: JournalStore, B: BlobStore> Engine<J, B> {
                     ))
                 }
             };
+            let _guard = execution.guard(parent, true)?;
             dest.commit(
                 Commit {
                     pipeline_id: pipeline_id.to_string(),
@@ -607,12 +609,12 @@ impl<J: JournalStore, B: BlobStore> Engine<J, B> {
 
     /// Resolve one pull through the execution's journal under the plan's retry schedule.
     fn step(&self, execution: &mut Execution<'_, J, B>, source: &mut dyn Source, dest: &mut dyn Destination, step: PullStep<'_>) -> Result<Resolved, Close> {
-        let PullStep { spec, key, request, shape, authority, at, floor, types:held, undeclared, ordinal } = step;
+        let PullStep { parent, spec, key, request, shape, authority, at, floor, types:held, undeclared, ordinal } = step;
         let journaled = spec.plan.spec.journal;
         if let Some(authority) = authority {
             let journal_it = |bytes: &[u8]| recorded(bytes).is_ok_and(|pull| pull.rows > 0);
             let mut late = false;
-            let result = execution.step_keyed(key, &journal_it, &mut |token| {
+            let result = execution.step_keyed_with_parent(key, &journal_it, &mut |token| {
                 let bytes = pulled(source, request, token)?;
                 let pull = Pull::decode(&bytes)?;
                 dest.validate_recorded_control(&spec.plan, &pull)?;
@@ -641,13 +643,13 @@ impl<J: JournalStore, B: BlobStore> Engine<J, B> {
                 let prepared = if rows.is_empty() { Value::Null } else { dest.prepare_recorded(&spec.plan.spec.table, rows, types.clone(), execution.execution_id())? };
                 let recorded = RecordedPull { authority:authority.into(), prepared, rows:count, fetched, columns, types:types.iter().map(|(name, ty)| (name.clone(), ty.name())).collect(), next, last, more:pull.more, snapshot_complete:pull.snapshot_complete, skipped:pull.skipped, declined:pull.declined, audit:pull.audit };
                 serde_json::to_vec(&recorded).map_err(|e| Failure::deterministic(FailureTag::SchemaIncompatible, e.to_string()))
-            });
+            }, parent);
             if late { execution.discard(); }
             return result;
         }
         // An empty pull is never journaled.
         let journal_it = |bytes: &[u8]| journaled && Pull::decode(bytes).is_ok_and(|p| !p.rows.is_empty());
-        execution.step_keyed(key, &journal_it, &mut |token| pulled(source, request, token))
+        execution.step_keyed_with_parent(key, &journal_it, &mut |token| pulled(source, request, token), parent)
     }
 
     /// Write a stop onto a run row, and under `pipeline` scope onto every in-flight run of

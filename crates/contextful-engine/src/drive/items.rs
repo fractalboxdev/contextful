@@ -356,6 +356,7 @@ impl<J: JournalStore + Clone + Send + Sync, B: BlobStore + Clone + Send + Sync> 
                 let next = &next;
                 let pins = &pins;
                 let set = &set;
+                let aggregate = &aggregate;
                 threads.spawn(move || {
                     while let Some((row, id, entity)) =
                         rows.get(next.fetch_add(1, Ordering::SeqCst))
@@ -406,6 +407,7 @@ impl<J: JournalStore + Clone + Send + Sync, B: BlobStore + Clone + Send + Sync> 
                                 }
                             };
                             x.hold(lease);
+                            x.inherit(aggregate);
                             if let Err(close) = x.claim() {
                                 let (tag, message) = close.recorded();
                                 x.close_with(Err(close))?;
@@ -437,6 +439,8 @@ impl<J: JournalStore + Clone + Send + Sync, B: BlobStore + Clone + Send + Sync> 
                                             execution_id: x.execution_id().into(),
                                             run_id: attempt.clone(),
                                             identity: pins.plan_ref().into(),
+                                            pins: pins.clone(),
+                                            parents: x.parents(),
                                             effects,
                                             fence: x.lease(),
                                         },
@@ -586,6 +590,7 @@ impl<J: JournalStore + Clone + Send + Sync, B: BlobStore + Clone + Send + Sync> 
         if report.succeeded() {
             let completion = (|| {
                 aggregate.assert_publication_current()?;
+                let _guard = aggregate.guard(None, true)?;
                 let row = self.catalog.run(aggregate.run_id())?.ok_or_else(|| {
                     Failure::new(FailureTag::Storage, "aggregate completion run is absent")
                 })?;

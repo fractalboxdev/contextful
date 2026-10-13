@@ -182,6 +182,9 @@ pub(crate) fn wire_at(project: &Project, now: &Option<String>) -> Result<Wired> 
     let clock = clock(now)?;
     let catalog_path = project.store_root().join(MACHINE_CATALOG_FILE);
     let catalog = open_catalog(&catalog_path, clock.clone(), store.file_cipher())?;
+    if remote.is_some() && !catalog.supports_strict_execution_guards() {
+        bail!("StorageCapabilityMissing: replacement-safe execution requires strict dispatch and publication guards");
+    }
     let (rows, blobs, awakeables): (SharedJournal, SharedBlobs, SharedAwakeables) = if let Some(remote) = remote {
         remote_run_stores(&remote.url)?
     } else {

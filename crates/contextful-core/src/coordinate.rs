@@ -4,7 +4,7 @@
 
 use crate::run::backfill::ChunkRow;
 use crate::run::failure::{Failure, FailureTag};
-use crate::run::own::{ExecutionOwner, OwnerScope};
+use crate::run::own::{ExecutionOwner, OwnerPins, OwnerScope};
 use crate::run::record::RunRow;
 use crate::run::RunError;
 use crate::store::StoreError;
@@ -132,8 +132,68 @@ pub enum Cas {
     Fenced(StoreError),
 }
 
-/// The `Catalog` port: the single-writer operations and the run-path rows they guard.
+/// One exact pending owner and active attempt admitted by a callback.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ExecutionExpectation {
+    pub scope: OwnerScope,
+    pub execution_id: String,
+    pub pins: OwnerPins,
+    pub run_id: String,
+}
+
+/// Canonical lock order and exact identities for one bounded dispatch or publication.
+#[derive(Debug, Clone)]
+pub struct ExecutionAdmission {
+    owners: Vec<ExecutionExpectation>,
+    leases: Vec<Lease>,
+    pub publication: bool,
+}
+
+impl ExecutionAdmission {
+    pub fn new(mut owners: Vec<ExecutionExpectation>, mut leases: Vec<Lease>, publication: bool) -> Result<Self, Failure> {
+        owners.sort_by_key(|o| serde_json::to_string(&o.scope).expect("scope serializes"));
+        for pair in owners.windows(2) {
+            if pair[0].scope == pair[1].scope && pair[0] != pair[1] { return Err(Failure::new(FailureTag::Permanent, "conflicting execution expectations")); }
+        }
+        owners.dedup();
+        leases.sort_by(|a, b| a.key.cmp(&b.key));
+        for pair in leases.windows(2) {
+            if pair[0].key == pair[1].key && (pair[0].holder != pair[1].holder || pair[0].fence != pair[1].fence) { return Err(Failure::new(FailureTag::Permanent, "conflicting lease expectations")); }
+        }
+        leases.dedup_by(|a, b| a.key == b.key);
+        Ok(Self { owners, leases, publication })
+    }
+    pub fn owners(&self) -> &[ExecutionExpectation] { &self.owners }
+    pub fn leases(&self) -> &[Lease] { &self.leases }
+}
+
+/// The guard remains on its acquiring thread through the bounded callback. Callbacks
+/// may update run metadata, but must not mutate their guarded owner or lease rows.
+pub trait ExecutionGuard {}
+struct CooperativeGuard;
+impl ExecutionGuard for CooperativeGuard {}
+
+/// The single-writer operations and the run-path rows they guard.
 pub trait Catalog {
+    /// Strict adapters serialize owner replacement and lease takeover with dispatch.
+    fn supports_strict_execution_guards(&self) -> bool { false }
+
+    /// Local adapters check admission cooperatively. Strict adapters retain durable
+    /// owner and lease locks until the returned token drops, including parent scopes.
+    fn execution_guard(&self, admission: &ExecutionAdmission) -> Result<Box<dyn ExecutionGuard>, Failure> {
+        for expected in admission.owners() {
+            let owner = self.owner_at(&expected.scope)?;
+            let row = self.run(&expected.run_id)?;
+            if !owner.as_ref().is_some_and(|o| o.execution_id == expected.execution_id && o.pins == expected.pins && (expected.scope.host_id().is_none() || o.attempts.last() == Some(&expected.run_id))) ||
+                !row.as_ref().is_some_and(|r| r.status.is_in_flight() && r.owner.is_some() && (admission.publication || r.stop.is_none())) {
+                return Err(Failure::new(FailureTag::Transient, "execution admission was superseded"));
+            }
+        }
+        for lease in admission.leases() {
+            if !self.lease_holds(lease)? { return Err(Failure::new(FailureTag::Transient, "execution lease was superseded")); }
+        }
+        Ok(Box::new(CooperativeGuard))
+    }
     /// The catalog's clock, against which every lease expiry is evaluated
     /// (`topology.coordinate.catalog-clock`).
     fn now(&self) -> Result<Instant, Failure>;
