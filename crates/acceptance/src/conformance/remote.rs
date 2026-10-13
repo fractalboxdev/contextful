@@ -4,15 +4,42 @@ use super::{Result, Running};
 use crate::s3::{S3Server, ACCESS_KEY, SECRET_KEY};
 use std::net::{TcpListener, TcpStream};
 use std::path::{Path, PathBuf};
-use std::process::Command;
+use std::process::{Command, Stdio};
 use std::time::{Duration, Instant};
 
 pub(super) struct Remote {
-    _process: Running,
+    _process: Postgres,
     _root: tempfile::TempDir,
     _bucket: S3Server,
     pub environment: Vec<(String, String)>,
     pub config: String,
+}
+
+struct Postgres {
+    process: Running,
+    timeout: Duration,
+}
+
+impl Drop for Postgres {
+    fn drop(&mut self) {
+        if !matches!(self.process.child.try_wait(), Ok(None)) {
+            return;
+        }
+        // PostgreSQL's fast shutdown releases its shared memory before scratch removal.
+        let _ = Command::new("/bin/kill")
+            .args(["-INT", &self.process.child.id().to_string()])
+            .stdout(Stdio::null())
+            .stderr(Stdio::null())
+            .status();
+        let deadline = Instant::now() + self.timeout;
+        while Instant::now() < deadline {
+            if !matches!(self.process.child.try_wait(), Ok(None)) {
+                break;
+            }
+            std::thread::sleep(Duration::from_millis(20));
+        }
+        // Running retains process-group cleanup when fast shutdown exceeds the bound.
+    }
 }
 
 fn executable(name: &str) -> Result<PathBuf> {
@@ -89,12 +116,16 @@ impl Remote {
             .args(["-h", "127.0.0.1", "-p", &port.to_string(), "-k"])
             .arg(root.path())
             .arg("-F");
-        let mut process = Running::spawn(server)?;
+        let mut process = Postgres {
+            process: Running::spawn(server)?,
+            timeout: timeout.min(Duration::from_secs(5)),
+        };
         loop {
             if TcpStream::connect(("127.0.0.1", port)).is_ok() {
                 break;
             }
             if process
+                .process
                 .child
                 .try_wait()
                 .map_err(|_| "ConformanceProcessUnavailable")?
