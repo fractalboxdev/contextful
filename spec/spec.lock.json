@@ -8275,6 +8275,72 @@
       "line": 312
     },
     {
+      "id": "run.own.body-implementation",
+      "contract": "run",
+      "operation": "own",
+      "subject": "body-implementation",
+      "kind": "behavior",
+      "statement": "Store-driven owner pins include the host-verified digest of its executing binary and concrete registered body type; configuration selects a body name and supplies no implementation identity.",
+      "why": "A-run",
+      "file": "spec/30-run.md",
+      "line": 314
+    },
+    {
+      "id": "run.own.body-dependencies",
+      "contract": "run",
+      "operation": "own",
+      "subject": "body-dependencies",
+      "kind": "behavior",
+      "statement": "Registration declares prompt/template, public provider/model configuration and policy identities affecting execution; owner pins carry their digests independently of structural input and output declarations.",
+      "why": "A-run",
+      "file": "spec/30-run.md",
+      "line": 316
+    },
+    {
+      "id": "run.own.body-admission",
+      "contract": "run",
+      "operation": "own",
+      "subject": "body-admission",
+      "kind": "behavior",
+      "statement": "Body implementation and dependency pins bind before input reads, recorded-call replay or body entry; unavailable or changed pins follow {{run.own.pinned-plan-changed}}.",
+      "why": "",
+      "file": "spec/30-run.md",
+      "line": 318
+    },
+    {
+      "id": "run.own.body-compatibility",
+      "contract": "run",
+      "operation": "own",
+      "subject": "body-compatibility",
+      "kind": "behavior",
+      "statement": "Registrations without dependency declarations declare none and receive the verified host implementation pin; pending owners without implementation pins refuse before input reads or body entry under {{run.own.pinned-plan-changed}}.",
+      "why": "because an unversioned record cannot establish which executable produced its paid calls",
+      "file": "spec/30-run.md",
+      "line": 319
+    },
+    {
+      "id": "run.own.body-fresh",
+      "contract": "run",
+      "operation": "own",
+      "subject": "body-fresh",
+      "kind": "behavior",
+      "statement": "A fresh execution under changed implementation or dependencies receives a distinct plan identity and preserves earlier run records; pending work requires its recorded host build and registered dependencies.",
+      "why": "",
+      "file": "spec/30-run.md",
+      "line": 321
+    },
+    {
+      "id": "run.own.body-public-configuration",
+      "contract": "run",
+      "operation": "own",
+      "subject": "body-public-configuration",
+      "kind": "behavior",
+      "statement": "Semantic provider configuration contains public endpoint, model and generation parameters; credential-bearing endpoints refuse registration, credentials enter neither exported diagnostics nor recorded pins, and credential rotation alone changes no semantic identity.",
+      "why": "because credential custody and executable semantics are independent identities",
+      "file": "spec/30-run.md",
+      "line": 322
+    },
+    {
       "id": "run.own.execution-id-keys-the-journal",
       "contract": "run",
       "operation": "own",
@@ -8283,7 +8349,7 @@
       "statement": "Recorded work keys on the execution id; a catalog run id is the provenance of one attempt, so attempts under one owner resolve the same recorded values.",
       "why": "",
       "file": "spec/30-run.md",
-      "line": 314
+      "line": 324
     },
     {
       "id": "run.own.retirement",
@@ -8294,7 +8360,7 @@
       "statement": "Retiring an owner and caching its committed position share one catalog transaction; a later fire receives a fresh execution id even at a byte-identical position. A completed backfill chunk retires the same way.",
       "why": "",
       "file": "spec/30-run.md",
-      "line": 315
+      "line": 325
     },
     {
       "id": "run.own.marker-reconciles",
@@ -8305,7 +8371,7 @@
       "statement": "At run open, a commit marker newer than the catalog's cached position retires the pending owner that produced it before any replay.",
       "why": "because a crash between marker and catalog otherwise replays a recorded pull into rows already committed",
       "file": "spec/30-run.md",
-      "line": 316
+      "line": 326
     },
     {
       "id": "run.own.pinned-plan-changed",
@@ -8316,7 +8382,7 @@
       "statement": "While an owner is pending, a changed pin — connector identity, component world, pipeline `content_hash`, or a host's plan reference or identities — raises `ExecutionPinMismatch` before replay, terminal and non-retryable, naming the scope and both pin sets.",
       "why": "A-connector",
       "file": "spec/30-run.md",
-      "line": 318,
+      "line": 328,
       "scenarios": [
         "WHEN a host scope's pending owner pins plan reference `plan-a` and an open asks for `plan-b`, THEN the open refuses with `ExecutionPinMismatch` and its run row closes `failed`."
       ]
@@ -8330,7 +8396,7 @@
       "statement": "Restoring the recorded build and resuming to completion clears a pending owner; an explicit chunk rewind retires the owners its window covers.",
       "why": "",
       "file": "spec/30-run.md",
-      "line": 320
+      "line": 330
     },
     {
       "id": "run.own.scope-independence",
@@ -8341,7 +8407,7 @@
       "statement": "A finishing table releases nothing another table's unfinished execution holds, and a seeding scope carries its own source identity.",
       "why": "",
       "file": "spec/30-run.md",
-      "line": 321
+      "line": 331
     },
     {
       "id": "run.own.unclosed-execution",
@@ -8352,7 +8418,7 @@
       "statement": "An execution handle dropped without close records no status; its owner stays pending, and the next open under its scope resumes it once {{run.record.owner-lease}} lapses.",
       "why": "A-run",
       "file": "spec/30-run.md",
-      "line": 322,
+      "line": 332,
       "scenarios": [
         "WHEN a host execution records two steps and its process dies mid-third, THEN the next open under its scope after the lease lapses replays both steps without running their effects."
       ]
@@ -8366,7 +8432,7 @@
       "statement": "An open under a host scope whose pending owner has an attempt on an unexpired {{run.record.owner-lease}} fails `Transient` naming that attempt, and its run row closes `failed` without joining the owner.",
       "why": "because two live handles on one owner share its journal, and either one retiring it strands the other",
       "file": "spec/30-run.md",
-      "line": 324,
+      "line": 334,
       "scenarios": [
         "WHEN attempt `job-a` holds host scope `index-42` open and `job-b` opens under it, THEN `job-b` fails `Transient` naming `job-a`, and `job-a` alone holds the owner."
       ]
@@ -8380,7 +8446,7 @@
       "statement": "`success`, a failure that wrote no batch, and replay-stable failures under {{run.own.staged-bytes}}, {{run.land.late-type}}, or {{run.own.source-stage-schema}} release the owner; every other status holds it.",
       "why": "",
       "file": "spec/30-run.md",
-      "line": 326
+      "line": 336
     },
     {
       "id": "run.own.admission-pin",
@@ -8391,7 +8457,7 @@
       "statement": "A run pins its connector identity at admission and a replay resolves the artifact from that pin; a connector rebuilt later reaches no in-flight or replayed run.",
       "why": "A-connector",
       "file": "spec/30-run.md",
-      "line": 327
+      "line": 337
     },
     {
       "id": "run.own.backpressure",
@@ -8402,7 +8468,7 @@
       "statement": "The runner stages each shaped batch through the destination as one part before its next pull, so a run holds one pulled batch in memory; the commit names the staged parts.",
       "why": "because holding every batch until the commit sizes a run's memory by the sum of its pulls",
       "file": "spec/30-run.md",
-      "line": 329,
+      "line": 339,
       "scenarios": [
         "WHEN a source serves three pages, THEN the destination stages part 0 after the first pull, part 1 after the second and part 2 after the third, and one commit names all three."
       ]
@@ -8416,7 +8482,7 @@
       "statement": "One run produces one atomic commit per table; a crash mid-run leaves parts under that run's own directory, and a resumption continues from the last recorded step.",
       "why": "",
       "file": "spec/30-run.md",
-      "line": 331
+      "line": 341
     },
     {
       "id": "run.own.staged-bytes",
@@ -8427,7 +8493,7 @@
       "statement": "A stage carrying one run's staged parts past 1 GiB raises `RunStagedBytesExceeded`, deterministic; the run commits nothing and retires its owner, so the next fire pulls afresh from the stored cursor.",
       "why": "because a replay of the run's recorded pulls stages the same bytes past the bound and fails identically, holding the table's owner indefinitely",
       "file": "spec/30-run.md",
-      "line": 332,
+      "line": 342,
       "scenarios": [
         "WHEN each of three pulls stages a 400 MiB part, THEN the third stage fails the run `Permanent` with `RunStagedBytesExceeded`, the cursor stays where it stood, and the next fire pulls all three pages under a fresh execution."
       ]
@@ -8441,7 +8507,7 @@
       "statement": "A stage refuses against `schema.json` and the run's earlier stages, then merges its columns into the run's own staged schema; only the commit merges them into `schema.json`.",
       "why": "because otherwise rows no commit publishes fix a column's type in the table's schema",
       "file": "spec/30-run.md",
-      "line": 334,
+      "line": 344,
       "scenarios": [
         "WHEN run `run-s` stages `ts` as text and fails, THEN a later run lands `ts` as a timestamp, and `run-s`'s commit refuses with `StoreSchemaIncompatible`."
       ]
@@ -8455,7 +8521,7 @@
       "statement": "A deterministic `SchemaIncompatible` from staging an ordinary source batch, raw or prepared, retires its owner unless another live attempt holds it; the failed run changes neither committed cursor nor published rows. This exception excludes prepared body-emission staging.",
       "why": "because a recorded source batch that fails the same schema check on replay prevents a repaired source from being fetched",
       "file": "spec/30-run.md",
-      "line": 336
+      "line": 346
     },
     {
       "id": "run.own.stage-commit-seq",
@@ -8466,7 +8532,7 @@
       "statement": "A staged part carries no `_commit_seq`; the commit assigns it under {{store.reserve.commit-order}} and writes it into each part it names, so a run committing between a stage and that commit takes the lower value.",
       "why": "because a value fixed at the stage orders a run by its first pull, and the readable runs then hold no prefix of the sequence",
       "file": "spec/30-run.md",
-      "line": 338,
+      "line": 348,
       "scenarios": [
         "WHEN run `run-s` stages a part, run `run-c` then commits as `_commit_seq` 1, and `run-s` commits after it, THEN every row of `run-s` reads `_commit_seq` 2."
       ]
@@ -8480,7 +8546,7 @@
       "statement": "A staged part carries no `_ingested_at`; the commit writes its commit instant into each part it names, so every row of a run carries the instant its marker carries.",
       "why": "because a stage-time instant ranks a run by its first pull, so under {{store.declare.dedup-view}} an earlier committer outranks a later one on a shared key",
       "file": "spec/30-run.md",
-      "line": 340,
+      "line": 350,
       "scenarios": [
         "WHEN run `run-a` stages key `k` at 00:01, run `run-b` commits `k` at 00:03 and `run-a` commits at 00:05, THEN the keyed read returns `run-a`'s row, `_ingested_at` 00:05."
       ]
@@ -8494,7 +8560,7 @@
       "statement": "A run that fails removes every part it staged, and a commit failing before its manifest exists removes the parts it copied; a run's crash leaves its staged parts.",
       "why": "because a run id names one attempt, so no later commit names a failed run's staged parts",
       "file": "spec/30-run.md",
-      "line": 342,
+      "line": 352,
       "scenarios": [
         "WHEN a run stages its first page and its second pull fails, THEN its run directory holds no staged part."
       ]
@@ -8508,7 +8574,7 @@
       "statement": "Prepared body outputs require the unchanged parent execution and current in-flight, unstopped attempt at admission, staging and commit; a stopped parent reaches {{run.cancel.abandoned-work}} independently of the output table's stop policy.",
       "why": "A-authority",
       "file": "spec/30-run.md",
-      "line": 344
+      "line": 354
     },
     {
       "id": "run.cancel.catalog-channel",
@@ -8519,7 +8585,7 @@
       "statement": "A stop is written onto the run row as a requested-at instant, a scope and an optional reason; the catalog is the only channel.",
       "why": "",
       "file": "spec/30-run.md",
-      "line": 381
+      "line": 391
     },
     {
       "id": "run.cancel.two-grains",
@@ -8530,7 +8596,7 @@
       "statement": "A `run`-scoped stop halts one run and the fire continues; a `pipeline`-scoped stop halts every in-flight run of the pipeline and every table or chunk the fire had left. An unrecognized stored scope reads as `run`.",
       "why": "",
       "file": "spec/30-run.md",
-      "line": 382
+      "line": 392
     },
     {
       "id": "run.cancel.host-grain",
@@ -8541,7 +8607,7 @@
       "statement": "A `pipeline`-scoped stop on a host execution's run halts every in-flight run under the same host-declared scope and no run of another scope.",
       "why": "",
       "file": "spec/30-run.md",
-      "line": 383
+      "line": 393
     },
     {
       "id": "run.cancel.one-token",
@@ -8552,7 +8618,7 @@
       "statement": "Each run holds one cancellation token that every await selects on: the pull, a retry sleep, an awakeable wait, a meter acquire and a subprocess wait.",
       "why": "because a stop observed only at the pull leaves sleeps and child processes running after the record reads canceled",
       "file": "spec/30-run.md",
-      "line": 384
+      "line": 394
     },
     {
       "id": "run.cancel.poll-interval",
@@ -8563,7 +8629,7 @@
       "statement": "The token is fed by one catalog read before the run's first await and then one every 500 ms, the cancellation arm evaluated ahead of the work arm.",
       "why": "",
       "file": "spec/30-run.md",
-      "line": 386
+      "line": 396
     },
     {
       "id": "run.cancel.engine-keeper",
@@ -8574,7 +8640,7 @@
       "statement": "One keeper per engine renews every registered execution's owner lease and feeds its token, sleeping until the earliest deadline; opening an execution registers it, and close or drop deregisters it.",
       "why": "A-run",
       "file": "spec/30-run.md",
-      "line": 387,
+      "line": 397,
       "scenarios": [
         "WHEN 20 executions are open on one engine, THEN one keeper thread renews all 20 owner leases, and it exits once the last one closes or drops."
       ]
@@ -8588,7 +8654,7 @@
       "statement": "A keeper job that panics warns and leaves the keeper running: every other registration keeps its cadence, the panicking one retries at its next deadline, and dropping it returns.",
       "why": "because the keeper is shared, so one adapter's panic that ended its thread lapses every open execution's lease under a live run",
       "file": "spec/30-run.md",
-      "line": 389
+      "line": 399
     },
     {
       "id": "run.cancel.land-path-uncut",
@@ -8599,7 +8665,7 @@
       "statement": "A table run's own stop does not cut landing; bytes already home finish landing and record the unfulfilled stop. Prepared body outputs additionally require {{run.own.body-parent}}.",
       "why": "",
       "file": "spec/30-run.md",
-      "line": 391
+      "line": 401
     },
     {
       "id": "run.cancel.abandoned-work",
@@ -8610,7 +8676,7 @@
       "statement": "Abandoned work surfaces as the `Canceled` tag through the ordinary failure path, which settles the request ledger, closes the record and leaves the position alone.",
       "why": "A-run",
       "file": "spec/30-run.md",
-      "line": 392
+      "line": 402
     },
     {
       "id": "run.cancel.child-reaped",
@@ -8621,7 +8687,7 @@
       "statement": "A stop signals a running subprocess chain's process group, and the record is written `canceled` only after the group is reaped.",
       "why": "because a record reading canceled while a child still runs misstates what the machine is doing",
       "file": "spec/30-run.md",
-      "line": 394
+      "line": 404
     },
     {
       "id": "run.cancel.storage-blip",
@@ -8632,7 +8698,7 @@
       "statement": "A failed poll read warns and keeps polling.",
       "why": "",
       "file": "spec/30-run.md",
-      "line": 396
+      "line": 406
     },
     {
       "id": "run.cancel.not-in-flight",
@@ -8643,7 +8709,7 @@
       "statement": "Only a `pending`, `running` or `waiting` row accepts a mark; a stop matching none raises `CancelTargetNotInFlight`, answering `409` over HTTP and exiting non-zero at the terminal.",
       "why": "A-run",
       "file": "spec/30-run.md",
-      "line": 397
+      "line": 407
     },
     {
       "id": "run.cancel.re-mark",
@@ -8654,7 +8720,7 @@
       "statement": "Marking an already-marked row overwrites it with the newer request.",
       "why": "",
       "file": "spec/30-run.md",
-      "line": 399
+      "line": 409
     },
     {
       "id": "run.cancel.distinct-terminal-status",
@@ -8665,7 +8731,7 @@
       "statement": "`canceled` is a terminal status apart from `failed`, and upstream health observations skip it.",
       "why": "A-run",
       "file": "spec/30-run.md",
-      "line": 400
+      "line": 410
     },
     {
       "id": "run.cancel.resumable-remains",
@@ -8676,7 +8742,7 @@
       "statement": "A stopped run's recorded pull keeps its owner and replays next attempt; a stopped pull that recorded nothing releases it. A stopped chunk returns to pending, its attempt count unchanged. A stop advances no position.",
       "why": "",
       "file": "spec/30-run.md",
-      "line": 402
+      "line": 412
     },
     {
       "id": "run.cancel.authority-from-the-record",
@@ -8687,7 +8753,7 @@
       "statement": "A stop authorizes against the pipeline read off the run record, never off the request.",
       "why": "",
       "file": "spec/30-run.md",
-      "line": 403
+      "line": 413
     },
     {
       "id": "run.cancel.stop-unauthorized",
@@ -8698,7 +8764,7 @@
       "statement": "A credentialed stop needs an `execute` grant covering the pipeline read off the run record; an uncovered or unrecorded run raises `CancelUnauthorized` without naming the pipeline, answering `403` over HTTP.",
       "why": "because a stop halts work `execute` fires, and a refusal naming the pipeline discloses it to a credential that cannot read it",
       "file": "spec/30-run.md",
-      "line": 404
+      "line": 414
     },
     {
       "id": "run.cancel.stop-route",
@@ -8709,7 +8775,7 @@
       "statement": "`POST /runs/:run_id/stop` writes a stop under a per-request network credential, its optional JSON body carrying `scope` and `reason`, and answers `200` with the marked run ids.",
       "why": "",
       "file": "spec/30-run.md",
-      "line": 406
+      "line": 416
     },
     {
       "id": "run.record.reserved-table",
@@ -8720,7 +8786,7 @@
       "statement": "The durable run record is a reserved store table holding two append-only rows per run, one at plan and one at commit; the latest row per run and phase wins. The local catalog is a cache in front of it.",
       "why": "",
       "file": "spec/30-run.md",
-      "line": 443
+      "line": 453
     },
     {
       "id": "run.record.columns",
@@ -8731,7 +8797,7 @@
       "statement": "A run row carries run id, pipeline id, site id, status, owner, start and end instants, row and byte counts, error kind and message, connector id, version and hash, trace id and phase.",
       "why": "",
       "file": "spec/30-run.md",
-      "line": 444
+      "line": 454
     },
     {
       "id": "run.record.status-set",
@@ -8742,7 +8808,7 @@
       "statement": "A run status is `pending`, `running`, `waiting`, `success`, `partial_failure`, `failed` or `canceled`, spelled identically on the record and the wire snapshot; every surface classifying a run covers all seven.",
       "why": "because two vocabularies for one lifecycle leave a suspended or partly failed run without a reading",
       "file": "spec/30-run.md",
-      "line": 445
+      "line": 455
     },
     {
       "id": "run.record.row-at-open",
@@ -8753,7 +8819,7 @@
       "statement": "A row is written at run open, before the first pull, so a zero-row `success`, a `failed` row carrying its error kind, and no row at all read apart.",
       "why": "",
       "file": "spec/30-run.md",
-      "line": 447
+      "line": 457
     },
     {
       "id": "run.record.rebuild-restores-history",
@@ -8764,7 +8830,7 @@
       "statement": "A catalog rebuild restores run history from {{run.record.reserved-table}}, so a rebuilt catalog lists every run the store recorded instead of starting empty.",
       "why": "because the catalog is a cache, and a rebuild dropping history loses the only record of failed runs",
       "file": "spec/30-run.md",
-      "line": 448
+      "line": 458
     },
     {
       "id": "run.record.time-travel",
@@ -8775,7 +8841,7 @@
       "statement": "Run history inherits the store's transaction-time bound, so one as-of selector rewinds it with every other table.",
       "why": "",
       "file": "spec/30-run.md",
-      "line": 450
+      "line": 460
     },
     {
       "id": "run.record.owner-lease",
@@ -8786,7 +8852,7 @@
       "statement": "A `running` or `waiting` row carries an owner of process id, boot id and a lease expiry, renewed every 10 s with a 30 s time-to-live.",
       "why": "because a second process sharing the catalog needs a liveness signal to tell a live run from an orphan",
       "file": "spec/30-run.md",
-      "line": 451
+      "line": 461
     },
     {
       "id": "run.record.orphan-reap",
@@ -8797,7 +8863,7 @@
       "statement": "Startup marks `partial_failure` only a non-terminal row whose owner lease has expired; a row held by a live process is left alone.",
       "why": "",
       "file": "spec/30-run.md",
-      "line": 453
+      "line": 463
     },
     {
       "id": "run.record.writing-site",
@@ -8808,7 +8874,7 @@
       "statement": "Every landed row carries its run's site id in the `_site_id` column {{store.reserve.injected}} writes, so a row names the site that wrote it.",
       "why": "",
       "file": "spec/30-run.md",
-      "line": 454
+      "line": 464
     },
     {
       "id": "run.record.site-id-length",
@@ -8819,7 +8885,7 @@
       "statement": "A site id matches letters, digits, dot, underscore and hyphen, from 1 chars to 64 chars.",
       "why": "because it is interpolated into run directories and request-ledger filenames",
       "file": "spec/30-run.md",
-      "line": 455
+      "line": 465
     },
     {
       "id": "run.record.site-id-unresolved",
@@ -8830,7 +8896,7 @@
       "statement": "A site id comes from the manifest's `site_id`, or the variable its `site_id_env` names, and a run's `--site-id` or `--site-id-env` replaces that declaration; no declaration, both keys in one place, or an unset variable raises `SiteIdUnresolved` at startup.",
       "why": "P3",
       "file": "spec/30-run.md",
-      "line": 457
+      "line": 467
     },
     {
       "id": "run.record.history-window",
@@ -8841,7 +8907,7 @@
       "statement": "History is read through a window, an inclusive start-instant lower bound plus a row ceiling, both applied in the storage adapter's `WHERE` clause, newest first.",
       "why": "",
       "file": "spec/30-run.md",
-      "line": 459
+      "line": 469
     },
     {
       "id": "run.record.describe-window",
@@ -8852,7 +8918,7 @@
       "statement": "The describe surface answers with 5 rows by default and clamps a caller's ceiling at 500 rows.",
       "why": "",
       "file": "spec/30-run.md",
-      "line": 460
+      "line": 470
     },
     {
       "id": "run.record.bound-spelling",
@@ -8863,7 +8929,7 @@
       "statement": "A window lower bound is `YYYY-MM-DD` or a UTC RFC3339 instant ending `Z`; any other spelling raises `HistoryBoundSpelling` at every caller-facing surface.",
       "why": "because a bound read under a guessed zone silently moves the window",
       "file": "spec/30-run.md",
-      "line": 461
+      "line": 471
     },
     {
       "id": "run.record.truncation-flag",
@@ -8874,7 +8940,7 @@
       "statement": "A history response echoes its window and flags truncation when the pipeline recorded more runs inside it than the ceiling returned.",
       "why": "",
       "file": "spec/30-run.md",
-      "line": 463
+      "line": 473
     },
     {
       "id": "run.record.empty-window",
@@ -8885,7 +8951,7 @@
       "statement": "An empty window answers `[]` and raises nothing.",
       "why": "",
       "file": "spec/30-run.md",
-      "line": 464
+      "line": 474
     },
     {
       "id": "run.record.history-export",
@@ -8896,7 +8962,7 @@
       "statement": "History leaves the machine as a process listing and an NDJSON export over one run projection; the export's first line carries store, window, count and truncation flag, then one run per line. It resolves no bucket.",
       "why": "",
       "file": "spec/30-run.md",
-      "line": 465
+      "line": 475
     },
     {
       "id": "run.record.export-ceiling",
@@ -8907,7 +8973,7 @@
       "statement": "The export answers with 500 rows by default and clamps at 5000 rows, each pipeline's window taking the full ceiling before the merged result is clipped once.",
       "why": "",
       "file": "spec/30-run.md",
-      "line": 466
+      "line": 476
     },
     {
       "id": "run.record.error-cap",
@@ -8918,7 +8984,7 @@
       "statement": "A recorded error is masked over credential-shaped spans and capped at 2 KiB with an ellipsis marker, on the one projection every surface serves.",
       "why": "",
       "file": "spec/30-run.md",
-      "line": 467
+      "line": 477
     },
     {
       "id": "run.record.failure-publishes",
@@ -8929,7 +8995,7 @@
       "statement": "The bucket push runs on the failure arm as on the success arm, for every failure past run open.",
       "why": "",
       "file": "spec/30-run.md",
-      "line": 468
+      "line": 478
     },
     {
       "id": "run.record.per-table-accounting",
@@ -8940,7 +9006,7 @@
       "statement": "A table failing inside a multi-table fire leaves one row with its error kind, a step-failure and a run-failure event, and a position where the next run resumes, under either `on_table_error` setting.",
       "why": "",
       "file": "spec/30-run.md",
-      "line": 469
+      "line": 479
     },
     {
       "id": "run.record.counts-at-destination",
@@ -8951,7 +9017,7 @@
       "statement": "Row and byte counts are measured at the destination, not at the source.",
       "why": "",
       "file": "spec/30-run.md",
-      "line": 470
+      "line": 480
     },
     {
       "id": "run.record.skipped-count",
@@ -8962,7 +9028,7 @@
       "statement": "A pull's optional `skipped` field counts inputs the source declined to land whole; the run row sums it over the run's pulls, replayed pulls included, beside the destination counts.",
       "why": "because a skipped input raises no error, and a count on the record surfaces it without reading the landed rows",
       "file": "spec/30-run.md",
-      "line": 471
+      "line": 481
     },
     {
       "id": "run.record.input-bounds",
@@ -8973,7 +9039,18 @@
       "statement": "A store-driven run's row carries its input: the resolved `as_of`, the snapshot id per table and the input row count.",
       "why": "",
       "file": "spec/30-run.md",
-      "line": 473
+      "line": 483
+    },
+    {
+      "id": "run.record.plan-identity",
+      "contract": "run",
+      "operation": "record",
+      "subject": "plan-identity",
+      "kind": "behavior",
+      "statement": "A run row retains its admitted plan reference after owner retirement; a record lacking that field decodes with no plan identity.",
+      "why": "",
+      "file": "spec/30-run.md",
+      "line": 484
     },
     {
       "id": "run.record.schema-diff-home",
@@ -8984,7 +9061,7 @@
       "statement": "A table's run manifest holds its committed downgrade events with its parts and cursor; run history reads them under that run id.",
       "why": "A-run",
       "file": "spec/30-run.md",
-      "line": 474,
+      "line": 485,
       "scenarios": [
         "WHEN a nested column downgrades and its table commits, THEN run history and that table's run manifest carry the same event; a failed stage carries none."
       ]
@@ -8998,7 +9075,7 @@
       "statement": "Each downgrade event names the table, column path, source type, landed type and reason; a stage that does not commit contributes none.",
       "why": "A-run",
       "file": "spec/30-run.md",
-      "line": 476
+      "line": 487
     },
     {
       "id": "run.project.best-effort",
@@ -9009,7 +9086,7 @@
       "statement": "Live run state is a best-effort projection of events the runner emits after durable state changes; execution never reads it.",
       "why": "",
       "file": "spec/30-run.md",
-      "line": 487
+      "line": 498
     },
     {
       "id": "run.project.wire-snapshot",
@@ -9020,7 +9097,7 @@
       "statement": "The wire snapshot carries run id, workflow id, a status from {{run.record.status-set}}, an ordered step list, an application metadata map, optional start and end instants, an optional tagged error and a version. Every deploy target emits it identically.",
       "why": "",
       "file": "spec/30-run.md",
-      "line": 488
+      "line": 499
     },
     {
       "id": "run.project.step-view",
@@ -9031,7 +9108,7 @@
       "statement": "A step view carries its label, a status of `pending`, `running`, `completed`, `failed` or `retrying`, its attempt count, optional instants, an optional output reference with byte count, and an optional tagged failure.",
       "why": "",
       "file": "spec/30-run.md",
-      "line": 489
+      "line": 500
     },
     {
       "id": "run.project.stopped-step",
@@ -9042,7 +9119,7 @@
       "statement": "A stopped run reports its executing step `failed` with the `Canceled` tag and leaves the run-level error unset.",
       "why": "",
       "file": "spec/30-run.md",
-      "line": 490
+      "line": 501
     },
     {
       "id": "run.project.emission-never-blocks",
@@ -9053,7 +9130,7 @@
       "statement": "Progress emission is no journal step: events reach an in-process observer over a bounded channel that drops when full and never blocks the runner.",
       "why": "",
       "file": "spec/30-run.md",
-      "line": 491
+      "line": 502
     },
     {
       "id": "run.project.terminal-slot",
@@ -9064,7 +9141,7 @@
       "statement": "A terminal transition bypasses the lossy channel through a per-run slot that is never dropped; a projection reading non-terminal behind a terminal run record reconciles from the record.",
       "why": "because a dropped terminal event otherwise leaves a finished run reading running forever",
       "file": "spec/30-run.md",
-      "line": 492
+      "line": 503
     },
     {
       "id": "run.project.coalescing",
@@ -9075,7 +9152,7 @@
       "statement": "Snapshot broadcasts coalesce to at most one per 100 ms, keeping only the latest; a terminal transition flushes immediately. The clock is injected.",
       "why": "",
       "file": "spec/30-run.md",
-      "line": 494
+      "line": 505
     },
     {
       "id": "run.project.metadata-too-large",
@@ -9086,7 +9163,7 @@
       "statement": "A metadata write whose serialized size exceeds 16384 B raises `RunMetadataTooLarge` naming size and bound, and the snapshot stands unchanged.",
       "why": "because a silently clipped map reads as the complete metadata",
       "file": "spec/30-run.md",
-      "line": 495
+      "line": 506
     },
     {
       "id": "run.project.version",
@@ -9097,7 +9174,7 @@
       "statement": "The snapshot version is `(epoch, counter)`, the epoch being the hub's start instant, compared lexicographically; a client discards any delta at or below the highest version it holds.",
       "why": "because a bare counter restarts at zero with the process and freezes every client's view",
       "file": "spec/30-run.md",
-      "line": 497
+      "line": 508
     },
     {
       "id": "run.project.reducer-is-total",
@@ -9108,7 +9185,7 @@
       "statement": "The reducer is total: nothing overwrites a terminal step or run status, a new step label appends, an existing one merges field-wise, and a stale delta is a no-op.",
       "why": "",
       "file": "spec/30-run.md",
-      "line": 499
+      "line": 510
     },
     {
       "id": "run.project.outputs-by-reference",
@@ -9119,7 +9196,7 @@
       "statement": "A step output appears as a post-redaction reference and a byte count, never inline; fetching the payload is a separately authorized request.",
       "why": "",
       "file": "spec/30-run.md",
-      "line": 500
+      "line": 511
     },
     {
       "id": "run.project.connect",
@@ -9130,7 +9207,7 @@
       "statement": "A subscriber receives the folded snapshot and its update receiver under one lock, missing and duplicating no update.",
       "why": "",
       "file": "spec/30-run.md",
-      "line": 501
+      "line": 512
     },
     {
       "id": "run.project.broadcast-ring",
@@ -9141,7 +9218,7 @@
       "statement": "The per-run broadcast holds 256 entries; a subscriber that overruns it resynchronizes to the latest snapshot.",
       "why": "",
       "file": "spec/30-run.md",
-      "line": 502
+      "line": 513
     },
     {
       "id": "run.project.catch-up",
@@ -9152,7 +9229,7 @@
       "statement": "A late joiner may subscribe from the oldest snapshot {{run.project.broadcast-ring}} holds, reading each held snapshot in order before live updates.",
       "why": "because the folded snapshot shows where a run stands, and a late joiner animating the catch-up needs how it got there",
       "file": "spec/30-run.md",
-      "line": 503
+      "line": 514
     },
     {
       "id": "run.project.channel-eviction",
@@ -9163,7 +9240,7 @@
       "statement": "The hub evicts a run's channel 60 s after it folds the run's terminal event; a later subscriber recovers from the durable record as after {{run.project.restart-discards}}.",
       "why": "because a channel allocated per run otherwise grows a long-lived process by every run it has seen",
       "file": "spec/30-run.md",
-      "line": 505
+      "line": 516
     },
     {
       "id": "run.project.unauthenticated-upgrade",
@@ -9174,7 +9251,7 @@
       "statement": "The run-stream socket, `GET /runs/:run_id/stream`, authenticates on the HTTP request before the upgrade; a missing or invalid credential raises `RunStreamUnauthorized` with `401`, and an unseen run answers `404`.",
       "why": "A-read",
       "file": "spec/30-run.md",
-      "line": 507
+      "line": 518
     },
     {
       "id": "run.project.read-only-socket",
@@ -9185,7 +9262,7 @@
       "statement": "A subscription is read-only; a stop travels as an authenticated route.",
       "why": "",
       "file": "spec/30-run.md",
-      "line": 509
+      "line": 520
     },
     {
       "id": "run.project.restart-discards",
@@ -9196,7 +9273,7 @@
       "statement": "A restart discards in-memory snapshots; a subscriber recovers history from the durable record.",
       "why": "",
       "file": "spec/30-run.md",
-      "line": 510
+      "line": 521
     },
     {
       "id": "run.project.delegated-progress",
@@ -9207,7 +9284,7 @@
       "statement": "A heavy step delegated to another host reports progress by posting to the awakeable callback route, and the orchestrating run folds it into its own snapshot.",
       "why": "",
       "file": "spec/30-run.md",
-      "line": 511
+      "line": 522
     },
     {
       "id": "run.declare.pipeline-spec",
@@ -26589,6 +26666,14 @@
     [
       "run.retry.partial-failure",
       "run.record.orphan-reap"
+    ],
+    [
+      "run.own.body-admission",
+      "run.own.pinned-plan-changed"
+    ],
+    [
+      "run.own.body-compatibility",
+      "run.own.pinned-plan-changed"
     ],
     [
       "run.own.unclosed-execution",

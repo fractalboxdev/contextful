@@ -168,3 +168,20 @@ fn isolated_items_require_explicit_stable_keys_entity_scope_and_retry_bound() {
     assert!(contextful_core::job::parse_jobs(&text.replace("max_attempts=3","max_attempts=0"), &|_| true).is_err());
     assert!(contextful_core::job::parse_jobs(&text.replace("entity_key='entity'","entity_key=''"), &|_| true).is_err());
 }
+
+#[test]
+fn registered_dependencies_hash_public_semantics_and_refuse_endpoint_credentials() {
+    use contextful_core::run::drive::{BodyDependencies, ProviderModelIdentity};
+    let model=ProviderModelIdentity::new("https://model.example/v1","model-a").unwrap();
+    let a=BodyDependencies::new(b"prompt-a",&model,b"policy-a");
+    let b=BodyDependencies::new(b"prompt-b",&model,b"policy-a");
+    assert_ne!(a,b);
+    assert!(!serde_json::to_string(&a).unwrap().contains("model.example"));
+    let credential_error=ProviderModelIdentity::new("https://user:secret@model.example/v1","model-a").unwrap_err();
+    assert!(!credential_error.to_string().contains("secret"));
+    assert!(ProviderModelIdentity::new("https://model.example/v1?api_key=secret","model-a").is_err());
+    let configured=ProviderModelIdentity::new("https://model.example/v1","model-a").unwrap().with_generation(Some(0.8),None,Some(300)).unwrap();
+    assert_ne!(a,BodyDependencies::new(b"prompt-a",&configured,b"policy-a"));
+    let manifest="[[job]]\nname='score'\nkind='store-driven'\nbody='score'\nstatement='select * from docs'\nmax_in_flight=2\ntables=['scores']\nimplementation_digest='forged'\n";
+    assert!(contextful_core::job::parse_jobs(manifest,&|_|true).is_err());
+}

@@ -249,3 +249,11 @@ fn a_run_row_carries_every_column() {
         assert!(v.get(column).is_some(), "no `{column}` in {v}");
     }
 }
+#[test]
+fn old_run_records_decode_without_a_plan_identity() {
+    let row=super::row("old","2030-01-01T00:00:00Z");
+    let mut value=serde_json::to_value(row).unwrap();
+    value.as_object_mut().unwrap().remove("plan_ref");
+    let decoded:contextful_core::run::record::RunRow=serde_json::from_value(value).unwrap();
+    assert_eq!(decoded.plan_ref,None);
+}
