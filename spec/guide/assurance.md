@@ -139,4 +139,4 @@ beside one test ({{corpus.state.theorem-beside-test}}).
 | Which gate stage runs what? | `assurance.gate` |
 | When does quality go red? | `assurance.evaluate`, `assurance.baseline` |
 | Which targets are measured? | `assurance.measure` |
-| What does a release tag promise? | `assurance.release` |
+| What accompanies releases? | `assurance.release`, `assurance.consumer` |

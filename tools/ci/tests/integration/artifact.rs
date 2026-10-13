@@ -23,8 +23,8 @@ fn ci(args: &[&str], bin: Option<&Path>) -> Output {
 fn fake_cargo(dir: &Path) {
     let real = std::env::var("CARGO").unwrap_or_else(|_| "cargo".into());
     let script = format!(
-        "#!/bin/sh\nif [ \"$1\" = build ] || [ \"$1\" = zigbuild ]; then\n  t=''; prev=''\n  for a in \"$@\"; do [ \"$prev\" = --target ] && t=\"$a\"; prev=\"$a\"; done\n  \
-         mkdir -p \"$CARGO_TARGET_DIR/$t/release\"\n  echo \"$*\" > \"$CARGO_TARGET_DIR/$t/release/contextful\"\n  exit 0\nfi\nexec '{real}' \"$@\"\n"
+        "#!/bin/sh\nif [ \"$1\" = build ] || [ \"$1\" = zigbuild ]; then\n  t=''; b=contextful; prev=''\n  for a in \"$@\"; do [ \"$prev\" = --target ] && t=\"$a\"; [ \"$prev\" = --bin ] && b=\"$a\"; prev=\"$a\"; done\n  \
+         mkdir -p \"$CARGO_TARGET_DIR/$t/release\"\n  echo \"$*\" > \"$CARGO_TARGET_DIR/$t/release/$b\"\n  exit 0\nfi\nexec '{real}' \"$@\"\n"
     );
     let path = dir.join("cargo");
     std::fs::write(&path, script).unwrap();
@@ -121,6 +121,101 @@ fn zigbuild_packages_a_darwin_cell_and_emits_its_formula_metadata() {
     assert_eq!(metadata["archive"], format!("{stem}.tar.gz"));
     assert_eq!(metadata["sbom"], format!("{stem}.cdx.json"));
     assert_eq!(metadata["sha256"].as_str().unwrap().len(), 64);
+}
+
+#[test]
+fn release_archives_carry_the_consumer_suite_and_digest_bound_compatibility_evidence() {
+    let bin = tempfile::tempdir().unwrap();
+    fake_cargo(bin.path());
+    let target = tempfile::tempdir().unwrap();
+    let dist = tempfile::tempdir().unwrap();
+    let triple = if std::env::consts::OS == "macos" { LINUX_X86 } else { "aarch64-apple-darwin" };
+    let run = ci(&["release", "--profile", "contextful-full", "--target", triple, "--target-dir", target.path().to_str().unwrap(), "--out", dist.path().to_str().unwrap()], Some(bin.path()));
+    assert!(run.status.success(), "{}", String::from_utf8_lossy(&run.stderr));
+    let stem = format!("contextful-full-{}-{triple}", version());
+    let archive = dist.path().join(format!("{stem}.tar.gz"));
+    let extract = |name: &str| Command::new("tar").args(["-xzOf"]).arg(&archive).arg(format!("{stem}/{name}")).output().unwrap();
+    assert!(extract("contextful-conformance").status.success(), "the consumer cannot run the suite without the checkout");
+    let evidence = extract("compatibility.json");
+    assert!(evidence.status.success());
+    let report: serde_json::Value = serde_json::from_slice(&evidence.stdout).unwrap();
+    let binary = extract("contextful");
+    let digest = format!("{:x}", Sha256::digest(&binary.stdout));
+    assert_eq!(report["artifact_digest"], digest);
+    assert_eq!(report["suite_revision"], "consumer-v1");
+    assert!(report["source_commit"].is_null());
+    let cases = report["scenarios"].as_array().unwrap();
+    assert!(!cases.is_empty());
+    assert!(cases.iter().all(|case| case["outcome"] == "skipped"));
+    assert_eq!(cases[0]["diagnostic"], "ConformanceTargetNotExecutable");
+    let metadata: serde_json::Value = serde_json::from_slice(&std::fs::read(dist.path().join(format!("{stem}.release.json"))).unwrap()).unwrap();
+    assert_eq!(metadata["compatibility"]["report"], format!("{stem}.compatibility.json"));
+    assert_eq!(metadata["compatibility"]["artifact_digest"], digest);
+    let sidecar: serde_json::Value = serde_json::from_slice(&std::fs::read(dist.path().join(format!("{stem}.compatibility.json"))).unwrap()).unwrap();
+    assert_eq!(sidecar, report);
+}
+
+#[test]
+fn a_failed_native_suite_retains_cases_and_cannot_publish_a_passing_report() {
+    let bin = tempfile::tempdir().unwrap();
+    let target = tempfile::tempdir().unwrap();
+    let dist = tempfile::tempdir().unwrap();
+    let triple = match std::env::consts::OS {
+        "macos" => format!("{}-apple-darwin", std::env::consts::ARCH),
+        "linux" => format!("{}-unknown-linux-musl", std::env::consts::ARCH),
+        other => panic!("no native release target for {other}"),
+    };
+    let digest = format!("{:x}", Sha256::digest(b"synthetic release artifact\n"));
+    let claimed = serde_json::json!({
+        "schema_version":1, "suite_revision":"consumer-v1", "artifact_digest":digest,
+        "scenarios":[{"id":"pagination-checkpoint", "required":true, "outcome":"passed", "diagnostic":null}],
+    });
+    let suite = bin.path().join("suite");
+    std::fs::write(&suite, format!("#!/bin/sh\nwhile [ $# -gt 0 ]; do\n  if [ \"$1\" = --output ]; then shift; out=$1; fi\n  shift\ndone\nprintf '%s\\n' '{claimed}' > \"$out\"\nexit 1\n")).unwrap();
+    let real = std::env::var("CARGO").unwrap_or_else(|_| "cargo".into());
+    let quote = |value: &str| format!("'{}'", value.replace('\'', "'\\''"));
+    let cargo = bin.path().join("cargo");
+    std::fs::write(&cargo, format!("#!/bin/sh\nif [ \"$1\" = build ]; then\n  t=''; b=contextful; prev=''\n  for a in \"$@\"; do [ \"$prev\" = --target ] && t=\"$a\"; [ \"$prev\" = --bin ] && b=\"$a\"; prev=\"$a\"; done\n  d=\"$CARGO_TARGET_DIR/$t/release\"\n  mkdir -p \"$d\"\n  if [ \"$b\" = contextful ]; then printf 'synthetic release artifact\\n' > \"$d/$b\"; else cp {} \"$d/$b\"; fi\n  chmod +x \"$d/$b\"\n  exit 0\nfi\nexec {} \"$@\"\n", quote(suite.to_str().unwrap()), quote(&real))).unwrap();
+    std::fs::set_permissions(&cargo, std::os::unix::fs::PermissionsExt::from_mode(0o755)).unwrap();
+    let run = ci(&["release", "--profile", "contextful-full", "--target", &triple, "--target-dir", target.path().to_str().unwrap(), "--out", dist.path().to_str().unwrap()], Some(bin.path()));
+    assert!(run.status.success(), "{}", String::from_utf8_lossy(&run.stderr));
+    let stem = format!("contextful-full-{}-{triple}", version());
+    let report: serde_json::Value = serde_json::from_slice(&std::fs::read(dist.path().join(format!("{stem}.compatibility.json"))).unwrap()).unwrap();
+    assert_eq!(report["artifact_digest"], digest);
+    let cases = report["scenarios"].as_array().unwrap();
+    assert_eq!(cases[0], claimed["scenarios"][0], "completed scenarios retain their evidence");
+    assert!(cases.iter().any(|case| case["id"] == "suite-exit" && case["required"] == true && case["outcome"] == "failed"), "a failed process published passing native evidence: {report}");
+    let metadata: serde_json::Value = serde_json::from_slice(&std::fs::read(dist.path().join(format!("{stem}.release.json"))).unwrap()).unwrap();
+    assert_eq!(metadata["compatibility"]["scenarios"], report["scenarios"]);
+    let archived = Command::new("tar").arg("-xzOf").arg(dist.path().join(format!("{stem}.tar.gz"))).arg(format!("{stem}/compatibility.json")).output().unwrap();
+    assert!(archived.status.success());
+    assert_eq!(serde_json::from_slice::<serde_json::Value>(&archived.stdout).unwrap(),report);
+}
+
+#[test]
+fn release_companion_sbom_covers_its_own_graph_without_widening_control() {
+    let bin = tempfile::tempdir().unwrap();
+    fake_cargo(bin.path());
+    let target = tempfile::tempdir().unwrap();
+    let dist = tempfile::tempdir().unwrap();
+    let run = ci(&["release", "--profile", "contextful-control", "--target", LINUX_X86, "--target-dir", target.path().to_str().unwrap(), "--out", dist.path().to_str().unwrap()], Some(bin.path()));
+    assert!(run.status.success(), "{}", String::from_utf8_lossy(&run.stderr));
+    let stem = format!("contextful-control-{}-{LINUX_X86}",version());
+    let metadata: serde_json::Value = serde_json::from_slice(&std::fs::read(dist.path().join(format!("{stem}.release.json"))).unwrap()).unwrap();
+    let companion_name = metadata["compatibility"]["suite_sbom"].as_str().expect("the shipped companion has its own SBOM asset");
+    assert_eq!(companion_name,format!("{stem}.conformance.cdx.json"));
+    let companion_path = dist.path().join(companion_name);
+    let companion = sbom_names(&companion_path);
+    assert!(companion.iter().any(|name|name == "s3s"),"the companion's normal dependencies are outside the control binary's graph");
+    assert!(!companion.iter().any(|name|name == "contextful-core"),"the consumer suite reaches no workspace engine package");
+    let control = sbom_names(&dist.path().join(format!("{stem}.cdx.json")));
+    assert!(control.iter().any(|name|name == "contextful-core"));
+    assert!(!control.iter().any(|name|name == "s3s" || name == "duckdb"),"the control SBOM continues to describe the control executable alone");
+    let graph: serde_json::Value = serde_json::from_slice(&std::fs::read(&companion_path).unwrap()).unwrap();
+    assert_eq!(graph["metadata"]["component"]["name"],"contextful-conformance");
+    let archived = Command::new("tar").arg("-xzOf").arg(dist.path().join(format!("{stem}.tar.gz"))).arg(format!("{stem}/conformance.cdx.json")).output().unwrap();
+    assert!(archived.status.success());
+    assert_eq!(serde_json::from_slice::<serde_json::Value>(&archived.stdout).unwrap(),graph);
 }
 
 /// The formula command accepts a manifest covering every release matrix cell once, with matching asset names and SHA-256 digests, and writes formulas and SHA256SUMS without local archives.

@@ -1,0 +1,12 @@
+{
+  "suite_revision": "consumer-v1",
+  "scenarios": [
+    {"id":"pagination-checkpoint","requirement":"run,query"},
+    {"id":"hard-crash-replay","requirement":"run,query,exec"},
+    {"id":"graceful-restart","requirement":"pipeline,run,query,exec,token"},
+    {"id":"empty-replacement","requirement":"pipeline,query"},
+    {"id":"applied-scheduling","requirement":"pipeline,build,query,token"},
+    {"id":"public-identity-masking","requirement":"pipeline,query"},
+    {"id":"typed-export-acknowledgement","requirement":"export,query,token"}
+  ]
+}

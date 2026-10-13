@@ -151,17 +151,49 @@
 "topology.coordinate.cadence-fallback"     = { test = "crates/contextful-engine/tests/integration/scheduler.rs::a_held_cadence_lease_dispatches_nothing" }
 "topology.coordinate.weak-backend"         = { test = "crates/contextful-core/tests/integration/surface/control.rs::a_conditional_write_owner_refuses_a_network_filesystem" }
 
+"run.journal.postgres-stores" = { test = "crates/contextful-pg/tests/integration/stores.rs::recorded_paid_calls_blobs_and_pending_callbacks_survive_an_empty_local_disk" }
+"run.journal.execution-schema" = { test = "crates/contextful-pg/tests/integration/stores.rs::incompatible_execution_schema_refuses_before_any_work" }
+"run.journal.execution-recovery" = { test = "crates/contextful-pg/tests/integration/stores.rs::a_corpus_only_restore_cannot_initialize_execution_state_at_startup" }
+"run.journal.current-owner" = { test = "crates/contextful-engine/tests/integration/execution.rs::a_superseded_execution_refuses_provider_dispatch_and_cursor_publication" }
+"run.journal.guard-callback" = { test = "crates/contextful-pg/tests/integration/guard.rs::durable_guard_serializes_takeover_and_keeps_run_metadata_reentrant" }
+"run.suspend.postgres-reconciliation" = { test = "crates/contextful-pg/tests/integration/stores.rs::a_resolution_interrupted_after_journaling_preserves_the_original_callback_bytes" }
+"run.export.writer-fenced" = { test = "crates/contextful-pg/tests/integration/export.rs::ownership_transfer_waits_for_an_admitted_outbound_effect" }
+"run.items.opt-in" = { test = "crates/contextful-core/tests/integration/job.rs::isolated_items_require_explicit_stable_keys_entity_scope_and_retry_bound" }
+"run.items.identity" = { test = "crates/contextful-engine/tests/integration/items.rs::item_failures_commit_healthy_siblings_and_reordered_retry_skips_paid_work" }
+"run.items.completion" = { test = "crates/contextful-cli/tests/integration/job.rs::isolated_items_skip_completed_paid_calls_and_outputs_on_later_fires" }
+"run.items.terminal-input" = { test = "crates/contextful-engine/tests/integration/items.rs::terminal_sibling_failure_does_not_pin_later_fires_to_old_input" }
+"run.items.outcomes" = { test = "crates/contextful-engine/tests/integration/items.rs::item_parked_and_entity_overlap_report_individual_outcomes" }
+"run.items.retry-budget" = { test = "crates/contextful-engine/tests/integration/items.rs::independent_retries_keep_paid_results_and_stop_at_the_durable_attempt_bound" }
+"run.items.replay" = { test = "crates/contextful-engine/tests/integration/items.rs::independent_retries_keep_paid_results_and_stop_at_the_durable_attempt_bound" }
+"run.items.entity-admission" = { test = "crates/contextful-engine/tests/integration/items.rs::another_job_version_defers_the_same_entity_while_unrelated_entities_progress" }
+"run.own.body-implementation" = { test = "crates/contextful-engine/tests/integration/body_identity.rs::same_name_replacement_refuses_before_input_replay_or_body_entry" }
+"run.own.body-dependencies" = { test = "crates/contextful-engine/tests/integration/body_identity.rs::dependency_only_changes_refuse_and_unchanged_resume_reuses_paid_calls" }
+"run.own.body-admission" = { test = "crates/contextful-engine/tests/integration/body_identity.rs::isolated_items_pin_semantic_dependencies_before_replaying_the_input_set" }
+"run.own.body-compatibility" = { test = "crates/contextful-engine/tests/integration/body_identity.rs::owners_without_implementation_pins_refuse_before_input_or_body" }
+"run.own.body-fresh" = { test = "crates/contextful-engine/tests/integration/body_identity.rs::dependency_only_changes_refuse_and_unchanged_resume_reuses_paid_calls" }
+"run.own.body-public-configuration" = { test = "crates/contextful-core/tests/integration/job.rs::registered_dependencies_hash_public_semantics_and_refuse_endpoint_credentials" }
+"run.record.plan-identity" = { test = "crates/contextful-engine/tests/integration/body_identity.rs::dependency_only_changes_refuse_and_unchanged_resume_reuses_paid_calls" }
+"assurance.consumer.suite" = { test = "crates/acceptance/tests/integration/conformance.rs::the_distributed_suite_runs_outside_the_checkout_and_reports_actual_execution" }
+"assurance.consumer.credential-isolation" = { test = "crates/acceptance/tests/integration/conformance.rs::artifact_runs_with_an_empty_provider_environment" }
+"assurance.consumer.requirements" = { test = "crates/acceptance/tests/integration/conformance.rs::missing_capability_reports_unsupported_without_admitting_work" }
+"assurance.consumer.scenarios" = { test = "crates/acceptance/tests/integration/conformance.rs::the_distributed_suite_runs_outside_the_checkout_and_reports_actual_execution" }
+"assurance.consumer.mutation-controls" = { test = "crates/acceptance/tests/integration/conformance.rs::consumer_scenarios_reject_cursor_skips_duplicate_identity_and_premature_acknowledgement" }
+"assurance.consumer.report" = { test = "crates/acceptance/tests/integration/conformance.rs::the_distributed_suite_runs_outside_the_checkout_and_reports_actual_execution" }
+"assurance.consumer.provenance" = { test = "crates/acceptance/tests/integration/conformance.rs::missing_capability_reports_unsupported_without_admitting_work" }
+"assurance.consumer.release-distribution" = { test = "tools/ci/tests/integration/artifact.rs::release_archives_carry_the_consumer_suite_and_digest_bound_compatibility_evidence" }
+"assurance.consumer.foreign-target" = { test = "tools/ci/tests/integration/artifact.rs::release_archives_carry_the_consumer_suite_and_digest_bound_compatibility_evidence" }
+
 # The floor is machine-maintained: `contextful-spec pins` sets each contract's entry to
 # its live performed count, and a live count below its floor raises SpecCoverageRegression.
 
 [floor]
-assurance = 224
+assurance = 233
 authority = 222
 connector = 229
 corpus = 79
 disclosure = 63
 read = 211
-run = 397
+run = 419
 store = 253
 surface = 98
 topology = 72

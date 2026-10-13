@@ -16,6 +16,7 @@ evaluate          = {}
 baseline          = {}
 measure           = {}
 release           = {}
+consumer          = {}
 
 [error]
 FormalPackageDependency          = { clause = "assurance.model.declared-dependency", gloss = "The Lean package manifest declares an external library." }

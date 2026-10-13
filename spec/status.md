@@ -5,17 +5,17 @@ An unpinned clause is `committed`; a pinned one is `performed` when its Rust, Le
 
 | Contract | Files | Operations | Clauses | Refusals | Limits | Unsettled | Performed | Broken | Floor |
 | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
-| `assurance` | 2 | 15 | 257 | 60 | 22 | 7 | 224 | 0 | 224 |
+| `assurance` | 3 | 16 | 269 | 60 | 22 | 7 | 233 | 0 | 233 |
 | `authority` | 2 | 16 | 293 | 79 | 29 | 9 | 222 | 0 | 222 |
 | `connector` | 2 | 14 | 353 | 89 | 21 | 15 | 229 | 0 | 229 |
 | `corpus` | 1 | 10 | 79 | 37 | 7 | 0 | 79 | 0 | 79 |
 | `disclosure` | 3 | 16 | 156 | 68 | 13 | 3 | 63 | 0 | 63 |
 | `read` | 2 | 16 | 221 | 35 | 24 | 1 | 211 | 0 | 211 |
-| `run` | 3 | 27 | 475 | 112 | 43 | 13 | 397 | 0 | 397 |
+| `run` | 3 | 27 | 475 | 112 | 43 | 13 | 419 | 0 | 419 |
 | `store` | 1 | 17 | 264 | 61 | 14 | 11 | 253 | 0 | 253 |
 | `surface` | 2 | 20 | 137 | 59 | 22 | 0 | 98 | 0 | 98 |
 | `topology` | 1 | 6 | 79 | 25 | 5 | 3 | 72 | 0 | 72 |
-| **total** | 19 | 157 | 2314 | 625 | 200 | 62 | 1848 | 0 | |
+| **total** | 20 | 158 | 2326 | 625 | 200 | 62 | 1879 | 0 | |
 
 Decision records: 18.
 
@@ -28,8 +28,8 @@ A milestone reads `closed` when its acceptance test computes `passing` and every
 | 0 — The test-first gate | 2 | 22 | 19 | passing | closed |
 | 1 — The authority core | 14 | 242 | 223 | passing | closed |
 | 2 — The store | 9 | 181 | 170 | passing | closed |
-| 3 — The run path | 12 | 262 | 226 | passing | open |
-| 4 — Ingest | 25 | 540 | 374 | passing | open |
+| 3 — The run path | 12 | 262 | 247 | passing | closed |
+| 4 — Ingest | 25 | 540 | 375 | passing | open |
 | 5 — The read face under enforcement | 17 | 294 | 238 | passing | open |
 | 6 — Sync and replicas | 8 | 83 | 83 | passing | closed |
 | 7 — Memory | 6 | 55 | 54 | passing | closed |
@@ -41,7 +41,7 @@ A milestone reads `closed` when its acceptance test computes `passing` and every
 | 13 — Disclosure | 5 | 33 | 13 | open | open |
 | 14 — Assurance | 7 | 153 | 123 | passing | closed |
 
-Unscheduled operations: 11.
+Unscheduled operations: 12.
 
 ## Pins
 
@@ -110,6 +110,15 @@ Unscheduled operations: 11.
 | `assurance.build.target-dir-per-stage` | `tools/ci/tests/integration/target_dirs.rs::each_cargo_stage_builds_in_its_own_target_directory_reclaimed_on_pass` | performed |
 | `assurance.build.targets` | `tools/ci/tests/integration/artifact.rs::the_release_matrix_is_every_profile_on_musl_and_edge_and_full_on_darwin` | performed |
 | `assurance.build.wasi-probe` | `tools/ci/tests/integration/artifact.rs::the_edge_profile_probes_wasm32_wasip2_against_its_footprint_budget` | performed |
+| `assurance.consumer.credential-isolation` | `spec/pins.toml` | performed |
+| `assurance.consumer.foreign-target` | `spec/pins.toml` | performed |
+| `assurance.consumer.mutation-controls` | `spec/pins.toml` | performed |
+| `assurance.consumer.provenance` | `spec/pins.toml` | performed |
+| `assurance.consumer.release-distribution` | `spec/pins.toml` | performed |
+| `assurance.consumer.report` | `spec/pins.toml` | performed |
+| `assurance.consumer.requirements` | `spec/pins.toml` | performed |
+| `assurance.consumer.scenarios` | `spec/pins.toml` | performed |
+| `assurance.consumer.suite` | `spec/pins.toml` | performed |
 | `assurance.differential-test.builds` | `crates/contextful-cli/tests/integration/differential.rs::a_webassembly_build_deciding_apart_from_the_native_build_is_a_disagreement` | performed |
 | `assurance.differential-test.case-classes` | `crates/contextful-cli/tests/integration/differential.rs::the_report_names_the_three_case_classes` | performed |
 | `assurance.differential-test.command` | `crates/contextful-cli/tests/integration/differential.rs::the_command_replays_then_generates_and_stops_at_the_first_disagreement` | performed |
@@ -1222,6 +1231,7 @@ Unscheduled operations: 11.
 | `run.export.typed-state` | `spec/pins.toml` | performed |
 | `run.export.typed-view-recheck` | `spec/pins.toml` | performed |
 | `run.export.typed-watch` | `spec/pins.toml` | performed |
+| `run.export.writer-fenced` | `spec/pins.toml` | performed |
 | `run.fetch.address-literal` | `crates/contextful-connectors/tests/integration/derive.rs::a_link_preview_refuses_non_http_schemes_and_address_literals_before_a_socket` | performed |
 | `run.fetch.binding-key` | `crates/contextful-core/tests/integration/run/derive.rs::a_fetch_binding_refuses_process_keys_and_nonbare_endpoint_hosts` | performed |
 | `run.fetch.charset` | `crates/contextful-connectors/tests/integration/derive.rs::a_link_preview_bounds_redirects_and_refuses_non_utf8_documents` | performed |
@@ -1240,15 +1250,27 @@ Unscheduled operations: 11.
 | `run.guard-secrets.mask-span` | `crates/contextful-core/tests/integration/pipeline/guard.rs::only_the_matched_range_is_replaced_and_overlaps_merge` | performed |
 | `run.guard-secrets.matchers` | `crates/contextful-core/tests/integration/pipeline/guard.rs::the_catalogue_holds_its_precision_and_recall_fixture` | performed |
 | `run.guard-secrets.placement` | `crates/contextful-engine/tests/integration/guard.rs::the_journal_records_the_masked_pull_and_a_replay_lands_it_masked` | performed |
+| `run.items.completion` | `spec/pins.toml` | performed |
+| `run.items.entity-admission` | `spec/pins.toml` | performed |
+| `run.items.identity` | `spec/pins.toml` | performed |
+| `run.items.opt-in` | `spec/pins.toml` | performed |
+| `run.items.outcomes` | `spec/pins.toml` | performed |
+| `run.items.replay` | `spec/pins.toml` | performed |
+| `run.items.retry-budget` | `spec/pins.toml` | performed |
+| `run.items.terminal-input` | `spec/pins.toml` | performed |
 | `run.journal.blob-sweep` | `crates/contextful-engine/tests/integration/journal.rs::the_sweep_deletes_unreferenced_blobs_past_the_grace_window_once_a_day` | performed |
 | `run.journal.blob-write` | `crates/contextful-engine/tests/integration/journal.rs::concurrent_blob_writers_converge_on_one_file` | performed |
 | `run.journal.body-projection` | `crates/contextful-engine/tests/integration/drive.rs::protected_body_effects_record_rewritten_results_and_resume_without_another_paid_call` | performed |
 | `run.journal.claim-takeover` | `crates/contextful-engine/tests/integration/journal.rs::a_claim_whose_holder_lapsed_is_taken_over` | performed |
 | `run.journal.collection` | `crates/contextful-engine/tests/integration/runner.rs::retirement_collects_the_executions_journal` | performed |
+| `run.journal.current-owner` | `spec/pins.toml` | performed |
 | `run.journal.effect-boundary` | `crates/contextful-engine/tests/integration/execution.rs::a_body_resumed_across_a_step_and_an_awakeable_commits_what_an_uninterrupted_one_commits` | performed |
 | `run.journal.entry-key` | `crates/contextful-engine/tests/integration/journal.rs::a_racing_caller_waits_for_the_first_callers_value` | performed |
 | `run.journal.escape-hatch` | `crates/contextful-engine/tests/integration/execution.rs::an_unsafe_read_reruns_on_every_replay_and_each_hatch_states_its_argument` | performed |
+| `run.journal.execution-recovery` | `spec/pins.toml` | performed |
+| `run.journal.execution-schema` | `spec/pins.toml` | performed |
 | `run.journal.fan-out-join` | `crates/contextful-cli/tests/integration/job.rs::a_fired_plan_rejoins_its_fan_out_and_a_partial_join_records_the_failed_branch` | performed |
+| `run.journal.guard-callback` | `spec/pins.toml` | performed |
 | `run.journal.idempotency-key` | `crates/contextful-core/tests/integration/run/journal.rs::the_idempotency_key_derives_from_the_entry_key_alone` | performed |
 | `run.journal.inline-cutoff` | `crates/contextful-core/tests/integration/run/journal.rs::values_up_to_1_mib_are_inline_and_larger_ones_are_blobs` | performed |
 | `run.journal.input-pin` | `crates/contextful-engine/tests/integration/drive.rs::a_resume_under_a_changed_statement_or_as_of_refuses_before_any_replay` | performed |
@@ -1261,6 +1283,7 @@ Unscheduled operations: 11.
 | `run.journal.open-as-of` | `crates/contextful-engine/tests/integration/drive.rs::an_undeclared_as_of_is_the_open_instant_and_a_resume_keeps_it` | performed |
 | `run.journal.opt-out` | `crates/contextful-cli/tests/integration/run.rs::each_built_in_source_journals_unless_the_one_constant_lists_it_and_an_empty_pull_records_nothing` | performed |
 | `run.journal.plan-pin` | `crates/contextful-engine/tests/integration/execution.rs::a_resumed_execution_holds_the_plan_reference_it_started_against` | performed |
+| `run.journal.postgres-stores` | `spec/pins.toml` | performed |
 | `run.journal.prepared-owner` | `spec/pins.toml` | performed |
 | `run.journal.prepared-replay` | `spec/pins.toml` | performed |
 | `run.journal.recorded-batch` | `crates/contextful-cli/tests/integration/run.rs::run_start_journals_and_lands_only_masked_credentials` | performed |
@@ -1332,7 +1355,13 @@ Unscheduled operations: 11.
 | `run.normalize.row-id` | `crates/contextful-core/tests/integration/pipeline/normalize.rs::repeated_nested_items_keep_distinct_parent_links_and_stable_ids` | performed |
 | `run.own.admission-pin` | `crates/contextful-cli/tests/integration/component.rs::a_replay_runs_the_component_build_its_owner_pinned_and_a_rebuild_waits_for_a_fresh_run` | performed |
 | `run.own.backpressure` | `crates/contextful-engine/tests/integration/runner.rs::each_batch_stages_before_the_next_pull` | performed |
+| `run.own.body-admission` | `spec/pins.toml` | performed |
+| `run.own.body-compatibility` | `spec/pins.toml` | performed |
+| `run.own.body-dependencies` | `spec/pins.toml` | performed |
+| `run.own.body-fresh` | `spec/pins.toml` | performed |
+| `run.own.body-implementation` | `spec/pins.toml` | performed |
 | `run.own.body-parent` | `crates/contextful-engine/tests/integration/drive.rs::protected_body_effects_record_rewritten_results_and_resume_without_another_paid_call` | performed |
+| `run.own.body-public-configuration` | `spec/pins.toml` | performed |
 | `run.own.execution-id-keys-the-journal` | `crates/contextful-engine/tests/integration/runner.rs::a_second_attempt_under_one_owner_replays_the_firsts_recorded_pulls` | performed |
 | `run.own.execution-owner` | `spec/pins.toml` | performed |
 | `run.own.host-scope` | `crates/contextful-engine/tests/integration/execution.rs::every_owner_is_keyed_on_its_scope_and_a_table_owner_keeps_its_stored_row` | performed |
@@ -1399,6 +1428,7 @@ Unscheduled operations: 11.
 | `run.record.input-bounds` | `crates/contextful-engine/tests/integration/drive.rs::the_run_row_carries_the_input_as_of_snapshots_and_row_count` | performed |
 | `run.record.orphan-reap` | `crates/contextful-core/tests/integration/run/record.rs::only_an_in_flight_row_with_a_lapsed_lease_is_reaped` | performed |
 | `run.record.owner-lease` | `crates/contextful-core/tests/integration/run/record.rs::an_owner_lease_lives_30_s_and_renews_every_10_s` | performed |
+| `run.record.plan-identity` | `spec/pins.toml` | performed |
 | `run.record.rebuild-restores-history` | `crates/contextful-cli/tests/integration/run.rs::a_catalog_rebuild_restores_every_recorded_run` | performed |
 | `run.record.reserved-table` | `crates/contextful-cli/tests/integration/run.rs::a_run_appends_a_plan_and_a_commit_row_to_the_run_record` | performed |
 | `run.record.row-at-open` | `crates/contextful-engine/tests/integration/runner.rs::the_row_exists_before_the_first_pull` | performed |
@@ -1456,6 +1486,7 @@ Unscheduled operations: 11.
 | `run.suspend.expired-token` | `crates/contextful-core/tests/integration/run/suspend.rs::a_resolution_past_the_deadline_is_refused` | performed |
 | `run.suspend.idempotent-resolution` | `crates/contextful-core/tests/integration/run/suspend.rs::an_identical_second_resolution_returns_the_recorded_value` | performed |
 | `run.suspend.payload-offload` | `crates/contextful-engine/tests/integration/suspend.rs::a_payload_above_the_cutoff_lands_in_the_blob_store` | performed |
+| `run.suspend.postgres-reconciliation` | `spec/pins.toml` | performed |
 | `run.suspend.recorded-timeout` | `crates/contextful-engine/tests/integration/drive.rs::a_timed_out_wait_is_a_recorded_step_every_re_entry_reads` | performed |
 | `run.suspend.resume-is-a-step-output` | `crates/contextful-engine/tests/integration/suspend.rs::a_resumed_run_reads_its_payload_back_from_the_journal` | performed |
 | `run.suspend.row-parks` | `crates/contextful-engine/tests/integration/drive.rs::a_parked_row_frees_its_slot_and_re_enters_on_its_payload_or_its_deadline` | performed |
