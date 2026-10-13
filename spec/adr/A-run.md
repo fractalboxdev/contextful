@@ -4,7 +4,7 @@
 
 ## Disposable execution state shares one remote recovery database
 
-Execution replacement preserves the original recorded value, callback and export event identity. The deciding criteria are complete-state recovery and compatibility with the existing storage ports. The Cloudflare container profile uses PostgreSQL for owners, cadence history, journals, blobs, awakeables and delivery state, with R2-compatible corpus objects. Remote database connections authenticate the server with WebPKI roots and hostname verification.
+Execution replacement preserves the original recorded value, callback and export event identity. The deciding criteria are complete-state recovery and compatibility with the existing storage ports. The `postgres` profile uses PostgreSQL for owners, cadence history, journals, blobs, awakeables and delivery state, with S3-compatible corpus objects. Remote database connections authenticate the server with WebPKI roots and hostname verification.
 
 | Option | Lost on | Cost |
 | --- | --- | --- |
@@ -348,4 +348,4 @@ Criteria: atomic downstream visibility and stale replay refusal decide the proto
 | Reset an existing export cursor | Recovery safety | An older checkpoint can reverse tombstones or reuse identities. |
 | Re-execute jobs during projection recovery | Effect isolation | Recovery repeats paid effects and chooses another input frontier. |
 
-Consequences: the local SQLite profile persists producer, outbox and receiver state transactionally. The Cloudflare Postgres profile refuses coordinated groups until its shared outbox adapter supports this protocol.
+Consequences: the local SQLite profile persists producer, outbox and receiver state transactionally. The `postgres` profile refuses coordinated groups until its shared outbox adapter supports this protocol.

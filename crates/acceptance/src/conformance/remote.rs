@@ -141,10 +141,7 @@ impl Remote {
         let bucket = S3Server::start("conformance");
         let config = format!("[node]\nid = \"conformance\"\n[sync]\nendpoint = \"{}\"\nbucket = \"conformance\"\nprefix = \"consumer\"\ncoordination = \"cas\"\npull_before_run = true\npush_after_run = true\naccess_key_id = \"env://CONTEXTFUL_SYNC_ACCESS_KEY_ID\"\nsecret_access_key = \"env://CONTEXTFUL_SYNC_SECRET_ACCESS_KEY\"\n", bucket.endpoint);
         let environment = vec![
-            (
-                "CONTEXTFUL_STORAGE_PROFILE".into(),
-                "cloudflare-postgres".into(),
-            ),
+            ("CONTEXTFUL_STORAGE_PROFILE".into(), "postgres".into()),
             (
                 "CONTEXTFUL_CATALOG_URL".into(),
                 format!("postgres://conformance@127.0.0.1:{port}/postgres?sslmode=disable"),

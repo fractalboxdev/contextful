@@ -102,7 +102,7 @@ Recording a step's value once, resolving it on replay, and collecting what a rep
   *because under write-ahead logging a deferred read upgrading to a write fails on the lock at once instead of waiting through the busy timeout*
 - `postgres-stores` — `contextful-pg` serves journal rows, blobs and awakeables through {{run.journal.storage-ports}} in the catalog's PostgreSQL database; conditional journal writes serialize across connections, and recorded values survive replacement of every local disk.
   *A-run*
-- `container-profile` — `CONTEXTFUL_STORAGE_PROFILE=cloudflare-postgres` selects {{run.journal.postgres-stores}} with shared owners, cadence and {{run.export.remote-state}}; corpus objects use a remote S3-compatible bucket with pull-before-run and push-after-run enabled.
+- `container-profile` — `CONTEXTFUL_STORAGE_PROFILE=postgres` selects {{run.journal.postgres-stores}} with shared owners, cadence and {{run.export.remote-state}}; corpus objects use a remote S3-compatible bucket with pull-before-run and push-after-run enabled.
   *A-run*
 - `storage-incomplete` — Missing `CONTEXTFUL_CATALOG_URL`, `CONTEXTFUL_RECOVERY_ID`, corpus bindings, strict execution guards or a supported outbox raises `StorageCapabilityMissing` before execution admission; absent compiled adapters follow {{topology.package.capability-absent}}.
   *A-run*

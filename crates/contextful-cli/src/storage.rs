@@ -9,7 +9,7 @@ use serde_json::json;
 
 pub const STORAGE_PROFILE_VAR: &str = "CONTEXTFUL_STORAGE_PROFILE";
 pub const RECOVERY_ID_VAR: &str = "CONTEXTFUL_RECOVERY_ID";
-pub const CLOUDFLARE_POSTGRES: &str = "cloudflare-postgres";
+pub const POSTGRES: &str = "postgres";
 
 #[derive(Subcommand)]
 pub enum StorageCmd {
@@ -40,13 +40,13 @@ pub fn validate_environment() -> Result<bool> {
     let profile = variable(STORAGE_PROFILE_VAR).unwrap_or_else(|| "local".into());
     match profile.as_str() {
         "local" => Ok(false),
-        CLOUDFLARE_POSTGRES => {
+        POSTGRES => {
             for (key, capability) in [(CATALOG_URL_VAR, "catalog, execution owners and cadence"), (RECOVERY_ID_VAR, "whole-state recovery identity")] {
                 if variable(key).is_none() { bail!("StorageCapabilityMissing: `{profile}` requires `{key}` for {capability}") }
             }
             Ok(true)
         }
-        _ => bail!("StorageProfileUnsupported: `{profile}`; supported profiles are `local` and `{CLOUDFLARE_POSTGRES}`"),
+        _ => bail!("StorageProfileUnsupported: `{profile}`; supported profiles are `local` and `{POSTGRES}`"),
     }
 }
 
@@ -55,10 +55,10 @@ fn remote() -> Result<Option<Remote>> {
         return Ok(None);
     }
     if !cfg!(feature = "pg-catalog") {
-        return Err(crate::ProfileError::ProfileCapabilityAbsent(format!("storage profile `{CLOUDFLARE_POSTGRES}` requires `pg-catalog` for journal, blobs, awakeables, owners, cadence and exports; build profile is `{}`", crate::PROFILE)).into());
+        return Err(crate::ProfileError::ProfileCapabilityAbsent(format!("storage profile `{POSTGRES}` requires `pg-catalog` for journal, blobs, awakeables, owners, cadence and exports; build profile is `{}`", crate::PROFILE)).into());
     }
     if !cfg!(feature = "s3-sync") {
-        return Err(crate::ProfileError::ProfileCapabilityAbsent(format!("storage profile `{CLOUDFLARE_POSTGRES}` requires `s3-sync` for durable corpus objects; build profile is `{}`", crate::PROFILE)).into());
+        return Err(crate::ProfileError::ProfileCapabilityAbsent(format!("storage profile `{POSTGRES}` requires `s3-sync` for durable corpus objects; build profile is `{}`", crate::PROFILE)).into());
     }
     Ok(Some(Remote {
         url: variable(CATALOG_URL_VAR).context("catalog binding")?,
@@ -74,7 +74,7 @@ fn validate_project(project: &Project) -> Result<()> {
             .and_then(toml::Value::as_array)
             .is_some_and(|groups| !groups.is_empty())
         {
-            bail!("StorageCapabilityMissing: `{CLOUDFLARE_POSTGRES}` has no coordinated-group-outbox adapter")
+            bail!("StorageCapabilityMissing: `{POSTGRES}` has no coordinated-group-outbox adapter")
         }
     }
     let path = project
@@ -142,7 +142,7 @@ pub fn run(command: StorageCmd) -> Result<()> {
     };
     let Some(remote) = remote()? else {
         if initialize {
-            bail!("StorageProfileUnsupported: initialization requires `{CLOUDFLARE_POSTGRES}`")
+            bail!("StorageProfileUnsupported: initialization requires `{POSTGRES}`")
         }
         println!(
             "{}",
@@ -155,7 +155,7 @@ pub fn run(command: StorageCmd) -> Result<()> {
     let schema = recovery(&project, &remote, initialize)?;
     println!(
         "{}",
-        json!({ "profile":CLOUDFLARE_POSTGRES, "replacement_safe":true, "strict_execution_guards":true, "schema":schema, "project":project.name,
+        json!({ "profile":POSTGRES, "replacement_safe":true, "strict_execution_guards":true, "schema":schema, "project":project.name,
         "capabilities":["journal", "blobs", "awakeables", "owners", "cadence", "exports", "fenced-dispatch", "recovery-identity"] })
     );
     Ok(())

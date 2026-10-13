@@ -106,7 +106,7 @@ fn pending_awakeable_and_large_callback_survive_release_image_replacement() {
         ]);
         for (key, value) in fixture.environment().into_iter().chain([(
             "CONTEXTFUL_STORAGE_PROFILE".into(),
-            "cloudflare-postgres".into(),
+            "postgres".into(),
         )]) {
             command.args(["--env", &format!("{key}={value}")]);
         }

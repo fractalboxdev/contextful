@@ -16,7 +16,7 @@ fn command() -> Command {
 fn an_incomplete_container_profile_names_its_missing_durable_binding() {
     let out = command()
         .args(["storage", "check"])
-        .env("CONTEXTFUL_STORAGE_PROFILE", "cloudflare-postgres")
+        .env("CONTEXTFUL_STORAGE_PROFILE", "postgres")
         .output()
         .unwrap();
     assert!(!out.status.success());
@@ -66,10 +66,23 @@ fn unsupported_storage_profiles_refuse_before_admitting_a_command() {
 }
 
 #[test]
+fn cloudflare_postgres_is_not_an_execution_profile() {
+    let out = command()
+        .args(["run", "history", "--project", "missing"])
+        .env("CONTEXTFUL_STORAGE_PROFILE", "cloudflare-postgres")
+        .output()
+        .unwrap();
+    assert!(!out.status.success());
+    let error = String::from_utf8_lossy(&out.stderr);
+    assert!(error.contains("StorageProfileUnsupported"), "{error}");
+    assert!(error.contains("cloudflare-postgres"), "{error}");
+}
+
+#[test]
 fn a_container_profile_requires_a_recovery_identity_before_connecting() {
     let out = command()
         .args(["storage", "check"])
-        .env("CONTEXTFUL_STORAGE_PROFILE", "cloudflare-postgres")
+        .env("CONTEXTFUL_STORAGE_PROFILE", "postgres")
         .env(
             "CONTEXTFUL_CATALOG_URL",
             "host=127.0.0.1 port=1 password=canary-secret dbname=execution",

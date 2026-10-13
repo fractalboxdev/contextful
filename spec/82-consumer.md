@@ -29,7 +29,7 @@ Artifact compatibility: source-independent execution, required capabilities, sce
   *A-assurance*
 - `foreign-target` — A release target unavailable to its packaging host records explicit skipped scenarios with a target diagnostic; its report supplies no execution pass.
   *because a cross compilation cannot demonstrate the produced artifact's behavior*
-- `storage-profile` — The local profile uses isolated filesystem state; `cloudflare-postgres` uses synthetic PostgreSQL and signed S3 services. An unavailable fixture records its named requirement through {{assurance.consumer.requirements}}.
+- `storage-profile` — The local profile uses isolated filesystem state; `postgres` uses synthetic PostgreSQL and signed S3 services. An unavailable fixture records its named requirement through {{assurance.consumer.requirements}}.
 
 #### Scenarios
 

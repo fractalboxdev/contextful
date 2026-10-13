@@ -8,7 +8,7 @@ serves   = "Edge-first deployments on native object storage with near-zero idle 
 
 [[shape]]
 name     = "worker-container"
-default  = false
+default  = true
 kind     = "orchestrated"
 profiles = ["full"]
 excludes = []
@@ -21,23 +21,5 @@ catalog      = "Durable Object SQLite, one object per store"
 object_store = "R2"
 query_face   = "Worker router → warm contextful-full Container"
 compute      = "Container"
-secrets      = "Workers Secrets"
-realtime     = "Durable Object with a hibernating WebSocket"
-
-[[shape]]
-name     = "worker-container-postgres"
-default  = true
-kind     = "orchestrated"
-profiles = ["full"]
-excludes = []
-
-[shape.roles]
-cron_tick    = "Cron Trigger"
-reconciler   = "Worker"
-orchestrator = "Workflows"
-catalog      = "Postgres execution database with authenticated TLS"
-object_store = "R2"
-query_face   = "Worker router → warm contextful-full Container"
-compute      = "Container with cloudflare-postgres storage profile"
 secrets      = "Workers Secrets"
 realtime     = "Durable Object with a hibernating WebSocket"

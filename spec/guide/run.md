@@ -51,7 +51,7 @@ ports with file and SQLite adapters ({{run.journal.storage-ports}},
 Initialize {{run.journal.execution-recovery}} under {{run.journal.container-profile}}:
 
 ```sh
-export CONTEXTFUL_STORAGE_PROFILE=cloudflare-postgres
+export CONTEXTFUL_STORAGE_PROFILE=postgres
 export CONTEXTFUL_CATALOG_URL='host=database.example user=contextful dbname=execution sslmode=require'
 export CONTEXTFUL_RECOVERY_ID=deployment-recovery-identity
 contextful storage initialize --project research

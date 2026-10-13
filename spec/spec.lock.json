@@ -7386,7 +7386,7 @@
       "operation": "journal",
       "subject": "container-profile",
       "kind": "behavior",
-      "statement": "`CONTEXTFUL_STORAGE_PROFILE=cloudflare-postgres` selects {{run.journal.postgres-stores}} with shared owners, cadence and {{run.export.remote-state}}; corpus objects use a remote S3-compatible bucket with pull-before-run and push-after-run enabled.",
+      "statement": "`CONTEXTFUL_STORAGE_PROFILE=postgres` selects {{run.journal.postgres-stores}} with shared owners, cadence and {{run.export.remote-state}}; corpus objects use a remote S3-compatible bucket with pull-before-run and push-after-run enabled.",
       "why": "A-run",
       "file": "spec/30-run.md",
       "line": 105
@@ -10621,7 +10621,7 @@
       "operation": "export",
       "subject": "group-storage",
       "kind": "refusal",
-      "statement": "A coordinated publication under the `cloudflare-postgres` storage profile raises `PublicationStorageUnsupported` naming the coordinated-group-outbox capability before execution, staging or delivery.",
+      "statement": "A coordinated publication under the `postgres` storage profile raises `PublicationStorageUnsupported` naming the coordinated-group-outbox capability before execution, staging or delivery.",
       "why": "because a machine-local outbox cannot coordinate replaced containers",
       "file": "spec/31-pipeline.md",
       "line": 322
@@ -25911,7 +25911,7 @@
       "operation": "consumer",
       "subject": "storage-profile",
       "kind": "behavior",
-      "statement": "The local profile uses isolated filesystem state; `cloudflare-postgres` uses synthetic PostgreSQL and signed S3 services. An unavailable fixture records its named requirement through {{assurance.consumer.requirements}}.",
+      "statement": "The local profile uses isolated filesystem state; `postgres` uses synthetic PostgreSQL and signed S3 services. An unavailable fixture records its named requirement through {{assurance.consumer.requirements}}.",
       "why": "",
       "file": "spec/82-consumer.md",
       "line": 32

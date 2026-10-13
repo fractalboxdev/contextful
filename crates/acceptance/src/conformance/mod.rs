@@ -163,10 +163,7 @@ pub fn run(options: &Options) -> Result<Report> {
             report.scenarios.push(result);
             continue;
         }
-        if !matches!(
-            options.storage_profile.as_str(),
-            "local" | "cloudflare-postgres"
-        ) {
+        if !matches!(options.storage_profile.as_str(), "local" | "postgres") {
             result.outcome = Outcome::Unsupported;
             result.requirement = Some(format!("storage profile {}", options.storage_profile));
             result.diagnostic = Some("ConformanceStorageUnsupported".into());
@@ -183,7 +180,7 @@ pub fn run(options: &Options) -> Result<Report> {
             for capability in requirement
                 .split(',')
                 .filter(|capability| *capability != "exec")
-                .chain((options.storage_profile == "cloudflare-postgres").then_some("storage"))
+                .chain((options.storage_profile == "postgres").then_some("storage"))
             {
                 match probe.invoke(&[capability, "--help"], &[]) {
                     Ok(checked) if checked.status.success() => {}
@@ -207,7 +204,7 @@ pub fn run(options: &Options) -> Result<Report> {
             } else {
                 let verdict = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
                     let mut fixture = Fixture::new(&binary, options.timeout_seconds)?;
-                    if options.storage_profile == "cloudflare-postgres" {
+                    if options.storage_profile == "postgres" {
                         fixture.configure_remote()?;
                     }
                     scenarios::run(id, &fixture)
@@ -288,7 +285,7 @@ impl Fixture {
         let initialized = self.invoke(&["storage", "initialize", "--project", "research"], &[])?;
         if !initialized.status.success() {
             return Err(if initialized.storage_capability_missing {
-                "ConformanceCapabilityMissing:cloudflare-postgres"
+                "ConformanceCapabilityMissing:postgres"
             } else {
                 "ConformanceStorageInitializeFailed"
             }

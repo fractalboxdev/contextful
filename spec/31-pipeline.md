@@ -319,7 +319,7 @@ The outbound copy of a landed table to an operator-declared target: the export b
   *A-run*
 - `group-incompatible` — Membership drift, incarnation mismatch, a changed pending read identity, an incompatible checkpoint, an incomplete producer frontier, or a predecessor/order mismatch raises `PublicationIncompatible` before delivery or activation.
   *A-run*
-- `group-storage` — A coordinated publication under the `cloudflare-postgres` storage profile raises `PublicationStorageUnsupported` naming the coordinated-group-outbox capability before execution, staging or delivery.
+- `group-storage` — A coordinated publication under the `postgres` storage profile raises `PublicationStorageUnsupported` naming the coordinated-group-outbox capability before execution, staging or delivery.
   *because a machine-local outbox cannot coordinate replaced containers*
 
 unsettled: Does the arm map a table onto the OTLP span or metric signal, and through which column declaration? owner: pipeline affects: run.export

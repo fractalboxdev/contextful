@@ -273,10 +273,7 @@ pub fn run(
         return Err("ConformanceReplacementDiskNotEmpty".into());
     }
     let mut environment = fixture.environment();
-    environment.insert(
-        "CONTEXTFUL_STORAGE_PROFILE".into(),
-        "cloudflare-postgres".into(),
-    );
+    environment.insert("CONTEXTFUL_STORAGE_PROFILE".into(), "postgres".into());
     for key in ["CONTEXTFUL_CATALOG_URL", "CONTEXTFUL_RECOVERY_ID"] {
         if environment.get(key).is_none_or(|v| v.is_empty()) {
             return Err(format!("ConformanceCapabilityMissing:{key}"));
@@ -423,7 +420,7 @@ pub fn run(
     Ok(RecoveryEvidence {
         image_digest: image.split_once('@').expect("validated image").1.into(),
         image_id,
-        storage_profile: "cloudflare-postgres".into(),
+        storage_profile: "postgres".into(),
         hard_kill_observed: true,
         replacement_disk_empty: empty,
         first_page_calls: fixture.first_page_calls(),
@@ -455,10 +452,7 @@ pub fn run_export(
         .map_err(|_| "ConformanceScratchUnavailable")?;
     }
     let mut environment = storage.environment();
-    environment.insert(
-        "CONTEXTFUL_STORAGE_PROFILE".into(),
-        "cloudflare-postgres".into(),
-    );
+    environment.insert("CONTEXTFUL_STORAGE_PROFILE".into(), "postgres".into());
     let env = root.path().join("bindings.env");
     let write_env = |environment: &std::collections::BTreeMap<String, String>| -> Result<()> {
         std::fs::write(

@@ -144,7 +144,7 @@ fn coordinated_exports_require_a_completed_producer_and_rebuild_full_state() {
     let manifest = format!("{}\n[[publication]]\nname='projection'\njob='producer'\nmembers=['spans-mirror']\n",typed_block(&collector.endpoint()));
     let (dir,public,token) = project(&manifest,"spans");
     let p = dir.path();
-    let unsupported = cf(p,&["export","group","projection","--project","research","--public-key",&public,"--audience",AUD],&[("CONTEXTFUL_TOKEN",&token),("CONTEXTFUL_STORAGE_PROFILE","cloudflare-postgres"),("CONTEXTFUL_CATALOG_URL","host=localhost user=contextful"),("CONTEXTFUL_RECOVERY_ID","synthetic-publication-refusal")]);
+    let unsupported = cf(p,&["export","group","projection","--project","research","--public-key",&public,"--audience",AUD],&[("CONTEXTFUL_TOKEN",&token),("CONTEXTFUL_STORAGE_PROFILE","postgres"),("CONTEXTFUL_CATALOG_URL","host=localhost user=contextful"),("CONTEXTFUL_RECOVERY_ID","synthetic-publication-refusal")]);
     let refusal=err(&unsupported);
     assert!(refusal.contains("PublicationStorageUnsupported"),"{refusal}");
     land(p,"load-1","2030-01-01T00:00:00Z",&ids("a",2));
