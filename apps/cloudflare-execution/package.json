@@ -4,7 +4,8 @@
   "type": "module",
   "scripts": {
     "test": "node --experimental-strip-types --test test/*.test.ts",
-    "typecheck": "tsc --noEmit"
+    "typecheck": "tsc --noEmit",
+    "types": "wrangler types src/worker-configuration.d.ts --config wrangler.example.jsonc --env-interface ContextfulExecutionEnv --include-runtime=false"
   },
   "dependencies": {
     "@cloudflare/containers": "^0.3.7"
