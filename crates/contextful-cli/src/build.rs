@@ -210,7 +210,8 @@ pub(crate) fn fire_job(
     let specs: Vec<_> = collect(&files)?.into_iter().map(|p| p.spec).collect();
     crate::job::bind_declared(std::slice::from_ref(job), &specs, &models)?;
     let spec = models.iter().find(|m| Some(&m.id) == job.target.as_ref()).context("build target is declared")?;
-    let group_text = if applied.is_some() {&files[0].text} else {local};
+    // Publication bindings belong to local delivery, independently of the applied model.
+    let group_text = local;
     let grouped = crate::export::publication::validate_job(group_text,&job.name,std::slice::from_ref(&spec.id))?;
     let _publication = if grouped {Some(crate::export::publication::lock(located)?)} else {None};
     let site = site_id_for(local, &located.declaration, site_id, site_id_env)?;

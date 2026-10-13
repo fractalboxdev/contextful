@@ -179,7 +179,8 @@ pub fn run(cmd: JobCmd, bodies: &Bodies) -> Result<()> {
             let JobKind::StoreDriven(driven) = &job.kind else {
                 bail!("job `{name}` is kind `{}`; `job fire` fires a store-driven job", job.kind_name());
             };
-            let grouped = crate::export::publication::validate_job(&job_text,&name,&driven.tables)?;
+            // Delivery bindings stay local; the applied job supplies the output table set.
+            let grouped = crate::export::publication::validate_job(&text,&name,&driven.tables)?;
             let _publication = if grouped {Some(crate::export::publication::lock(&l)?)} else {None};
             let body = bodies.get(&driven.input.body).context("a validated body is registered")?;
             let site_id = site_id_for(&text, &l.declaration, site_id, site_id_env)?;
@@ -261,7 +262,7 @@ pub fn run(cmd: JobCmd, bodies: &Bodies) -> Result<()> {
                     })?;
                     if grouped {
                         let row = engine.catalog.run(&run_id)?.ok_or_else(||Failure::new(FailureTag::Storage,"publication producer run is absent"))?;
-                        crate::export::publication::record_source(face.store(),&job_text,&name,&row).map_err(|e|Failure::new(FailureTag::Storage,e.to_string()))?;
+                        crate::export::publication::record_source(face.store(),&text,&name,&row).map_err(|e|Failure::new(FailureTag::Storage,e.to_string()))?;
                     }
                     Ok(landed)
                 };
@@ -278,7 +279,7 @@ pub fn run(cmd: JobCmd, bodies: &Bodies) -> Result<()> {
                 })?;
                 if grouped {
                     let row = engine.catalog.run(&run_id)?.ok_or_else(||Failure::new(FailureTag::Storage,"publication producer run is absent"))?;
-                    crate::export::publication::record_source(face.store(),&job_text,&name,&row).map_err(|e|Failure::new(FailureTag::Storage,e.to_string()))?;
+                    crate::export::publication::record_source(face.store(),&text,&name,&row).map_err(|e|Failure::new(FailureTag::Storage,e.to_string()))?;
                 }
                 Ok(landed)
             };

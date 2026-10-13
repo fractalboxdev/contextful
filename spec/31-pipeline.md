@@ -303,7 +303,7 @@ The outbound copy of a landed table to an operator-declared target: the export b
   *because a row-count bound alone admits an unbounded request body*
 - `typed-event-too-large` — A typed event unable to fit one request raises `ExportEventTooLarge`; watch stops rather than retrying that event.
   *because an unchanged oversized event cannot make progress on retry*
-- `group-block` — A `[[publication]]` declares `name`, producer `job` and typed export `members`; members cover every producer output exactly once and share one destination and header binding.
+- `group-block` — A local `[[publication]]` declares `name`, producer `job` and typed export `members`; members cover every producer output exactly once and share one destination and header binding.
   *A-run*
 - `group-source` — A successful store-driven job or materialized model build records one immutable completion binding its run identifier, pinned input frontier and all output table frontiers, including empty outputs.
   *A-run*

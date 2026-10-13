@@ -438,7 +438,8 @@ fn scheduled_host(dir: &Path, public: &str, token: &str, args: &[&str], extra: &
 
 #[test]
 fn scheduled_jobs_use_the_applied_body_and_preserve_the_cadence_across_restart() {
-    let declaration = format!("site_id = \"site\"\n{}", job("max_in_flight = 1\nschedule = \"every 1m\"\n"));
+    let group = "[[export]]\nname='scores-copy'\ntable='scores'\nendpoint='http://127.0.0.1:1/events'\nformat='changes-v1'\nkey=['doc_id']\nschedule='every 30s'\n[[publication]]\nname='scoring'\njob='score-documents'\nmembers=['scores-copy']\n";
+    let declaration = format!("site_id = \"site\"\n{}\n{group}", job("max_in_flight = 1\nschedule = \"every 1m\"\n"));
     let (dir, public, token) = project(&declaration);
     let p = dir.path();
     let ledger = p.join("scheduled-paid.txt");
@@ -449,6 +450,9 @@ fn scheduled_jobs_use_the_applied_body_and_preserve_the_cadence_across_restart()
     let first = ok(&scheduled_host(p, &public, &token, &args, &[("SCORE_LEDGER", ledger.to_str().unwrap())]));
     let first: serde_json::Value = serde_json::from_str(&first).unwrap();
     assert_eq!(first["fired"], serde_json::json!(["job:score-documents"]));
+    let source = contextful_sqlite::PublicationLedger::open(&p.join(".contextful/context/research/machine.sqlite")).unwrap().source("scoring").unwrap().expect("the applied body publishes its local output group");
+    assert_eq!(source.input["rows"],3);
+    assert_eq!(source.frontiers.len(),1);
     assert_eq!(std::fs::read_to_string(&ledger).unwrap().lines().count(), 3);
     let second = ok(&scheduled_host(p, &public, &token, &args, &[("SCORE_LEDGER", ledger.to_str().unwrap())]));
     let second: serde_json::Value = serde_json::from_str(&second).unwrap();
