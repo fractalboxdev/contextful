@@ -86,7 +86,7 @@ impl SyntheticFixture {
             }
             if request.query("cursor").is_none() {
                 calls.fetch_add(1, Ordering::SeqCst);
-                Response::json(200, &serde_json::json!({"rows":[{"id":"a","payload":"x".repeat(80 * 1024)}],"next":"p2"}).to_string())
+                Response::json(200, &serde_json::json!({"rows":[{"id":"a","payload":"x".repeat(2 * 1024 * 1024)}],"next":"p2"}).to_string())
             } else {
                 let (state, ready) = &*page;
                 let mut state = state.lock().unwrap();
@@ -188,7 +188,7 @@ impl RecoveryFixture for SyntheticFixture {
     fn verification(&self) -> (String, serde_json::Value) {
         (
             "SELECT id, length(payload) AS bytes FROM feed_items ORDER BY id".into(),
-            serde_json::json!([["a", 81920], ["b", 4]]),
+            serde_json::json!([["a", 2097152], ["b", 4]]),
         )
     }
 }
