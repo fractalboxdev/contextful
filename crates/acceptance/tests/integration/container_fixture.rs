@@ -43,6 +43,10 @@ fn synthetic_container_provider_is_reachable_on_the_shared_loopback() {
         "provider health response differs"
     );
     assert_eq!(fixture.first_page_calls(), 0);
+    assert_eq!(
+        fixture.verification().1,
+        serde_json::json!([["a", 2097152], ["b", 4]])
+    );
 }
 
 #[test]
