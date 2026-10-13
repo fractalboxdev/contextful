@@ -237,6 +237,27 @@ fn superseded_entity_fence_refuses_paid_effect_before_provider_dispatch() {
 }
 
 #[test]
+fn superseded_aggregate_parent_refuses_an_items_paid_callback() {
+    struct Stale<'a> { rig: &'a Rig, called: AtomicUsize }
+    impl RowBody for Stale<'_> {
+        fn run(&self, _: &InputRow, calls: &dyn RowCalls) -> Result<Emitted, RowStop> {
+            let catalog=self.rig.catalog();
+            let mut parent=catalog.owner_at(&contextful_engine::drive::job_scope("score")).unwrap().unwrap();
+            parent.execution_id="replacement".into();parent.attempts=vec!["replacement".into()];
+            catalog.put_owner(&parent).unwrap();
+            calls.call("effect",b"input",&mut |_| {self.called.fetch_add(1,Ordering::SeqCst);Ok(Vec::new())})?;
+            Ok(BTreeMap::new())
+        }
+    }
+    let rig=Rig::new();
+    let body=Stale {rig:&rig,called:AtomicUsize::new(0)};
+    let normal=Body {calls:Mutex::default(),entered:AtomicUsize::new(0)};
+    let result=rig.engine.drive_items(&Drive {body:&body,..fire(&normal,"parent-stale")},&policy(),&mut |_| Ok(input(&["good"])),&mut |_,_| Ok(Landed::default()));
+    assert!(result.is_err() || !result.unwrap().succeeded());
+    assert_eq!(body.called.load(Ordering::SeqCst),0,"parent takeover must fence the paid item callback");
+}
+
+#[test]
 fn independent_retries_keep_paid_results_and_stop_at_the_durable_attempt_bound() {
     struct Retry {
         paid: AtomicUsize,
@@ -435,4 +456,74 @@ fn terminal_sibling_failure_does_not_pin_later_fires_to_old_input() {
         .unwrap();
     assert_eq!(next.items.len(), 3);
     assert_eq!(body.calls.lock().unwrap().len(), 3);
+}
+
+#[test]
+fn an_item_parent_stop_after_staging_keeps_publication_uncut() {
+    let rig = Rig::new();
+    let body = Body {
+        calls: Mutex::default(),
+        entered: AtomicUsize::new(0),
+    };
+    let catalog = rig.engine.catalog.clone();
+    let mut sink = crate::support::Sink::default();
+    sink.on_stage = Some(Box::new(move |_| {
+        let parent = catalog
+            .runs(None)
+            .unwrap()
+            .into_iter()
+            .find(|row| {
+                row.host_scope
+                    .as_deref()
+                    .is_some_and(|scope| scope.starts_with("item:"))
+            })
+            .unwrap();
+        let now = catalog.now().unwrap();
+        catalog
+            .update_run(&parent.run_id, &mut |row| {
+                contextful_core::run::cancel::mark(
+                    row,
+                    contextful_core::run::cancel::Scope::Run,
+                    None,
+                    now,
+                )
+            })
+            .unwrap()
+            .unwrap()
+            .unwrap();
+    }));
+    let result = rig
+        .engine
+        .drive_items_admitted(
+            &fire(&body, "late-stop"),
+            &policy(),
+            &mut |_| Ok(input(&["good"])),
+            &mut |_, _, owner| {
+                let plan = crate::support::plan("kind='opaque-token'", "journal=false");
+                let spec = contextful_engine::RunSpec {
+                    connector: plan.connector_pin("native"),
+                    plan,
+                    run_id: "output".into(),
+                    site_id: "site".into(),
+                    pid: 42,
+                    boot_id: "boot".into(),
+                    trace_id: None,
+                };
+                let mut source = crate::support::Pages::new(vec![vec![json!({"id":"good"})]]);
+                let row = rig
+                    .engine
+                    .run_body_rows(&spec, owner, &mut source, &mut sink)
+                    .map_err(|e| Failure::new(FailureTag::Storage, e.to_string()))?;
+                if row.status != contextful_core::run::record::RunStatus::Success {
+                    return Err(Failure::new(
+                        FailureTag::Transient,
+                        "publication cut after staging",
+                    ));
+                }
+                Ok(Landed::default())
+            },
+        )
+        .unwrap();
+    assert!(result.succeeded());
+    assert_eq!(sink.commits.len(), 1);
 }

@@ -108,13 +108,6 @@ prevents circular chains. A conflicting `after` refuses under {{run.select.deriv
 
 ## Worked example
 
-For `link_preview`, `grant = { quota = "preview", class = "batch-read", usage_headers = ["x-ratelimit-remaining"] }`
-in `[pipeline.source.config]` selects `[limiters.preview]`: `endpoint`,
-`token = "secret://limiter-token"` and `permits` ({{connector.meter.limiter-binding}}).
-`class` groups usage; `usage_headers` forwards response headers in usage reports
-({{connector.meter.forward-credential}}). Eligibility: {{run.select.unmetered-grant}}.
-Accounting: {{run.select.metered-client}}.
-
 The `meta-ads` pipeline pulls ad insights incrementally. Its declaration names `updated_time`
 as the stream clock ({{run.declare.incremental-field}}), so the source reports a monotonic
 cursor that stores the field name beside the value ({{run.advance.watermark-shape}}).
