@@ -1,15 +1,15 @@
-#![cfg(feature = "pg-conformance")]
 //! The remote profile runs against a supplied PG-enabled release artifact and synthetic services.
 
 use contextful_acceptance::conformance::{self, Options};
 use std::path::PathBuf;
 
 #[test]
+#[ignore = "requires a supplied pg-catalog artifact and installed PostgreSQL fixture tools"]
 fn the_cloudflare_profile_executes_every_required_scenario_on_remote_state() {
     let _guard = super::CONFORMANCE_ENV.lock().unwrap();
     let selected = PathBuf::from(
         std::env::var_os("CONTEXTFUL_CONFORMANCE_TEST_BINARY")
-            .expect("pg-conformance requires a supplied pg-catalog artifact"),
+            .expect("remote conformance requires a supplied pg-catalog artifact"),
     );
     let dir = tempfile::tempdir().unwrap();
     let binary = dir.path().join("contextful");
@@ -39,6 +39,29 @@ fn unexpected_storage_initialization_errors_fail_without_exporting_credentials()
     let _guard = super::CONFORMANCE_ENV.lock().unwrap();
     let dir = tempfile::tempdir().unwrap();
     let binary = dir.path().join("contextful");
+    let helpers = dir.path().join("helpers");
+    std::fs::create_dir(&helpers).unwrap();
+    std::fs::write(helpers.join("initdb"), "#!/bin/sh\nexit 0\n").unwrap();
+    // Classification stops at the artifact's initialize error, before any SQL request.
+    std::fs::write(helpers.join("postgres"), "#!/usr/bin/python3\nimport signal, socket, sys\nport = int(sys.argv[sys.argv.index('-p') + 1])\nsignal.signal(signal.SIGINT, lambda *_: sys.exit(0))\nwith socket.socket() as server:\n    server.bind(('127.0.0.1', port))\n    server.listen()\n    while True:\n        connection, _ = server.accept()\n        connection.close()\n").unwrap();
+    for helper in ["initdb", "postgres"] {
+        std::fs::set_permissions(helpers.join(helper), std::fs::Permissions::from_mode(0o700))
+            .unwrap();
+    }
+    let prior_path = std::env::var_os("PATH");
+    // Both fixture tools resolve here; the ordinary test needs no PostgreSQL installation.
+    std::env::set_var("PATH", &helpers);
+    struct RestorePath(Option<std::ffi::OsString>);
+    impl Drop for RestorePath {
+        fn drop(&mut self) {
+            if let Some(path) = &self.0 {
+                std::env::set_var("PATH", path);
+            } else {
+                std::env::remove_var("PATH");
+            }
+        }
+    }
+    let _restore = RestorePath(prior_path);
     for (error, expected, diagnostic) in [
         (
             "database connection refused",
@@ -86,6 +109,7 @@ fn unexpected_storage_initialization_errors_fail_without_exporting_credentials()
 
 #[test]
 #[cfg(target_os = "macos")]
+#[ignore = "requires a supplied pg-catalog artifact, installed PostgreSQL fixture tools and macOS IPC inspection"]
 fn a_remote_fixture_releases_postgres_shared_memory_on_drop() {
     use std::os::unix::fs::PermissionsExt;
     use std::process::Command;
@@ -93,7 +117,7 @@ fn a_remote_fixture_releases_postgres_shared_memory_on_drop() {
     let _guard = super::CONFORMANCE_ENV.lock().unwrap();
     let selected = PathBuf::from(
         std::env::var_os("CONTEXTFUL_CONFORMANCE_TEST_BINARY")
-            .expect("pg-conformance requires a supplied pg-catalog artifact"),
+            .expect("remote conformance requires a supplied pg-catalog artifact"),
     );
     let prior_path = std::env::var_os("PATH").unwrap();
     let postgres = std::env::split_paths(&prior_path)
