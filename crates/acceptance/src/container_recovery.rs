@@ -6,6 +6,8 @@ use std::path::Path;
 use std::process::{Child, Command, ExitStatus, Stdio};
 use std::time::{Duration, Instant};
 
+pub mod docker_fixture;
+
 type Result<T> = std::result::Result<T, String>;
 
 /// External synthetic services occupy the named container's network namespace. The
