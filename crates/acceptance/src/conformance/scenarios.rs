@@ -495,6 +495,10 @@ fn export(f: &Fixture) -> Result<()> {
         ],
         &[],
     )?;
+    if f.remote.is_some() {
+        f.ok(&["context", "compact", "items", "--project", PROJECT], &[])?;
+        f.ok(&["sync", "push", "--project", PROJECT], &[])?;
+    }
     let public = f.ok(
         &["token", "keygen", "--out", ".contextful/issuer.seed"],
         &[],
@@ -537,6 +541,7 @@ fn export(f: &Fixture) -> Result<()> {
         !state.lock().unwrap().active.is_empty(),
         "ConformanceReceiverCompletionMissing",
     )?;
+    f.replace_local_state()?;
     f.ok(&args, &[("CONTEXTFUL_TOKEN", &token)])?;
     {
         let sink = state.lock().unwrap();
@@ -555,6 +560,19 @@ fn export(f: &Fixture) -> Result<()> {
         )?;
     }
     f.ok(&args, &[("CONTEXTFUL_TOKEN", &token)])?;
-    let attempts = state.lock().unwrap().attempts.len();
-    require(attempts == 2, "ConformanceAcknowledgedExportRepeated")
+    let attempts = state.lock().unwrap().attempts.clone();
+    if f.remote.is_some() {
+        require(attempts.len() <= 3, "ConformanceAcknowledgedExportRepeated")?;
+        for batch in &attempts[2..] {
+            let Some(events) = batch["events"].as_array() else {
+                return Err("ConformanceExportRetryChanged".into());
+            };
+            require(events.len() == 1 && events[0]["kind"] == "publication_complete" && events[0]["changes"] == 0, "ConformanceAcknowledgedExportRepeated")?;
+        }
+    } else {
+        require(attempts.len() == 2, "ConformanceAcknowledgedExportRepeated")?;
+    }
+    f.ok(&args, &[("CONTEXTFUL_TOKEN", &token)])?;
+    let stable = state.lock().unwrap().attempts == attempts;
+    require(stable, "ConformanceAcknowledgedExportRepeated")
 }

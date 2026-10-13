@@ -522,3 +522,46 @@ fn a_lost_sink_acknowledgement_reoffers_the_same_d1_event_identity() {
     assert_eq!(replacement.state("sink").unwrap(), state);
     assert!(replacement.pending("sink", 500).unwrap().is_empty());
 }
+
+#[test]
+fn a_restored_d1_export_checkpoint_replays_deduplicable_events() {
+    let fixture = Fixture::start();
+    let db = D1::connect(&fixture.endpoint).unwrap();
+    db.initialize_recovery("sample", "generation").unwrap();
+    let export = parse_exports("[[export]]\nname='sink'\ntable='items'\nendpoint='https://sink.example/events'\nformat='changes-v1'\nkey=['id']\nschedule='every 30s'\n").unwrap().remove(0);
+    let state = change_state(&export, &[json!({"id":"a","value":7})]).unwrap();
+    let events = change_events(&export, "publication-1", 0, &Default::default(), &state).unwrap();
+    let mut sender = contextful_d1::D1ExportLedger::connect(&fixture.endpoint).unwrap();
+    let old_checkpoint = contextful_core::export::ExportCursor { commit_seq: 4, row_seq: 8 };
+    let new_checkpoint = contextful_core::export::ExportCursor { commit_seq: 5, row_seq: 9 };
+    sender.advance_checkpoint("sink", old_checkpoint).unwrap();
+    sender.stage("sink", ExportPublication {
+        source: "source-1", id: "publication-1", identity: "identity-1", destination: "destination-1"
+    }, &events, &state).unwrap();
+    let backup = db.query("SELECT body FROM contextful_export WHERE name = ?", vec![json!("sink")]).unwrap().rows[0]["body"].as_str().unwrap().to_owned();
+    sender.advance_checkpoint("sink", new_checkpoint).unwrap();
+    let sent = sender.pending("sink", 500).unwrap();
+    let mut sink = std::collections::BTreeMap::new();
+    for event in &sent {
+        assert!(sink.insert(event.id.clone(), event.clone()).is_none());
+    }
+    let through = sent.last().unwrap().sequence;
+    sender.offer("sink", through).unwrap();
+    sender.acknowledge("sink", through).unwrap();
+    assert_eq!(sender.checkpoint("sink").unwrap(), new_checkpoint);
+    drop(sender);
+
+    db.query("UPDATE contextful_export SET version = version + 1, body = ? WHERE name = ?", vec![json!(backup), json!("sink")]).unwrap();
+    let mut replacement = contextful_d1::D1ExportLedger::connect(&fixture.endpoint).unwrap();
+    assert_eq!(replacement.checkpoint("sink").unwrap(), old_checkpoint);
+    let retried = replacement.pending("sink", 500).unwrap();
+    assert_eq!(retried, sent);
+    for event in &retried {
+        assert_eq!(sink.get(&event.id), Some(event));
+    }
+    assert_eq!(sink.len(), sent.len());
+    replacement.offer("sink", through).unwrap();
+    replacement.acknowledge("sink", through).unwrap();
+    assert_eq!(replacement.state("sink").unwrap(), state);
+    assert!(replacement.pending("sink", 500).unwrap().is_empty());
+}

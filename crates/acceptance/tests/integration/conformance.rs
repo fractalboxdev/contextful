@@ -158,6 +158,9 @@ fn a_d1_consumer_replays_after_empty_disk_replacement() {
         timeout_seconds: 60,
     }).unwrap();
     assert!(report.passed(), "{}", serde_json::to_string_pretty(&report).unwrap());
+    assert!(report.scenarios.iter().any(|scenario| {
+        scenario.id == "typed-export-acknowledgement" && scenario.outcome == Outcome::Passed
+    }));
     let endpoint = &settings[0].1;
     let sql = |statement: &str| {
         let body = serde_json::json!({"sql":statement,"params":[]}).to_string();
