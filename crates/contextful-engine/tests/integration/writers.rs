@@ -17,6 +17,28 @@ fn key() -> LeaseKey {
     LeaseKey::Pipeline("feed/filings".into())
 }
 
+#[test]
+fn an_append_writer_superseded_after_staging_cannot_publish() {
+    let rig = Rig::new();
+    let catalog = rig.engine.catalog.clone();
+    let mut sink = Sink {
+        on_stage: Some(Box::new(move |_| {
+            let scope = contextful_core::run::own::OwnerScope::table("feed", "filings");
+            let mut owner = catalog.owner_at(&scope).unwrap().expect("staged work has an owner");
+            owner.execution_id = "replacement-execution".into();
+            owner.attempts = vec!["replacement-attempt".into()];
+            catalog.put_owner(&owner).unwrap();
+        })),
+        ..Sink::default()
+    };
+    let mut source = Pages::new(vec![vec![json!({"id":"a", "updated_at":1})]]);
+    let row = rig.run(&plan("kind = \"monotonic\"\nfield = \"updated_at\"", ""), "1.0.0", "old-container", &mut source, &mut sink).unwrap();
+    assert_eq!(sink.staged.len(), 1);
+    assert_eq!(row.status, RunStatus::Failed);
+    assert!(sink.commits.is_empty());
+    assert_eq!(rig.catalog().cursor("feed", "filings").unwrap().position, None);
+}
+
 /// A source running `during` inside each pull, then serving a page.
 struct During<F: FnMut(usize)> {
     during: F,

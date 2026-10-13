@@ -530,6 +530,7 @@ impl<J: JournalStore, B: BlobStore> Engine<J, B> {
         let landed = if batch_count > 0 || moved || replace_frontier {
             let precommit = || -> Result<(), Failure> {
                 if let Some(input) = emitted { self.validate_body_owner(input.owner)?; }
+                execution.assert_publication_current()?;
                 let Some(l) = execution.lease() else { return Ok(()) };
                 if self.catalog.lease_holds(&l)? {
                     Ok(())

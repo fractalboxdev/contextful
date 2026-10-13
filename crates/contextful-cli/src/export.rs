@@ -12,7 +12,7 @@ use clap::Subcommand;
 use contextful_context::read::face::ReadOptions;
 use contextful_context::store::{FileLock, LOCK_WAIT_SECS};
 use contextful_core::connector::attach::Allowlist;
-use contextful_core::export::{change_events, change_state, log_records, parse_exports, typed_batch_len, typed_cell, Export, ExportCursor, ExportError, Signal, EXPORT_BATCH_ROWS};
+use contextful_core::export::{change_events, change_state, log_records, parse_exports, typed_batch_len, typed_cell, ChangeEvent, ChangeState, Export, ExportCursor, ExportError, ExportPosition, Signal, EXPORT_BATCH_ROWS};
 use contextful_core::store::catalog::MACHINE_CATALOG_FILE;
 use contextful_core::store::bound_time::Bounds;
 use contextful_core::store::relation::ident;
@@ -104,6 +104,8 @@ fn wall_clock() -> Result<contextful_core::time::Instant> {
 
 fn run_once(name: &str, project: &ProjectArgs, declaration: Option<PathBuf>, admit: &AdmitArgs) -> Result<()> {
             let l = project.locate(declaration)?;
+            crate::storage::preflight(&l.project)?;
+            crate::sync::pull_before_run(&l)?;
             let text = std::fs::read_to_string(&l.declaration).with_context(|| format!("reading the declaration `{}`", l.declaration.display()))?;
             let export = parse_exports(&text)
                 .with_context(|| l.declaration.display().to_string())?
@@ -115,26 +117,26 @@ fn run_once(name: &str, project: &ProjectArgs, declaration: Option<PathBuf>, adm
                 return run_changes(&l, &export, project, admit);
             }
 
+            let (authority, _) = admit.admit(project.project.as_deref(), "an export")?;
+            let face = face(&l)?;
+            let dir = cursor_dir(&l.project.dir, &l.project.name);
+            std::fs::create_dir_all(&dir).with_context(|| format!("creating `{}`", dir.display()))?;
+            let _held = FileLock::acquire(&dir.join(format!("{name}.lock")), std::time::Duration::from_secs(LOCK_WAIT_SECS))?;
+            let mut ledger = Ledger::open(&l.project, face.store(), name)?;
+
             // Every header reference resolves before any row is read (`run.export.secret-preflight`).
             let vars: BTreeMap<String, String> = std::env::vars().collect();
             let resolver = contextful_outbound::assemble(&vars, Arc::new(SystemClock))?;
-            resolver.preflight(export.headers.values())?;
+            ledger.dispatch(name, || resolver.preflight(export.headers.values()))??;
             let allow = Allowlist::parse(&[export.endpoint.host_str().unwrap_or_default()])?;
             if export.headers.values().any(|t| t.has_reference()) {
                 allow.check_bound()?;
             }
             let client = Client::new(allow, export.endpoint.clone()).with_body_limit(64 * 1024);
 
-            let (authority, _) = admit.admit(project.project.as_deref(), "an export")?;
-            let face = face(&l)?;
             let types = face.store().try_schema(&export.table)?.map(|s| s.columns.into_iter().map(|c| (c.name, c.ty)).collect()).unwrap_or_default();
-
-            let dir = cursor_dir(&l.project.dir, &l.project.name);
-            std::fs::create_dir_all(&dir).with_context(|| format!("creating `{}`", dir.display()))?;
-            // One run of an export at a time, so one cursor never passes rows another run holds unsent.
-            let _held = FileLock::acquire(&dir.join(format!("{name}.lock")), std::time::Duration::from_secs(LOCK_WAIT_SECS))?;
             let path = dir.join(format!("{name}.json"));
-            let mut cursor = read_cursor(face.store(), &path)?;
+            let mut cursor = match ledger.checkpoint(name)? { Some(cursor) => cursor, None => read_cursor(face.store(), &path)? };
 
             // Committed runs only, under the admitted credential (`run.export.post-commit-read`).
             let session = face.session(&authority, &Request { zone: None }, Bounds::default())?;
@@ -153,20 +155,24 @@ fn run_once(name: &str, project: &ProjectArgs, declaration: Option<PathBuf>, adm
                 }
                 let (body, last) = log_records(&export, &response.columns, &response.rows, &types)?;
                 let Some(last) = last else { break };
-                let mut headers = vec![("Content-Type".to_string(), HeaderValue::Plain("application/json".to_string()))];
-                for (header, t) in &export.headers {
-                    let v = resolver.render(t)?;
-                    headers.push((header.clone(), if t.has_reference() { HeaderValue::Sensitive(v.into()) } else { HeaderValue::Plain(v.reveal().to_string()) }));
-                }
                 let bytes = serde_json::to_vec(&body)?;
                 let refused = |why: String| ExportError::ExportDeliveryRefused(format!("export `{name}`: {why}; the cursor stays at {}.{}", cursor.commit_seq, cursor.row_seq));
-                match client.send("POST", &export.endpoint, &headers, Some(&bytes)) {
+                match ledger.dispatch(name, || {
+                    let mut headers = vec![("Content-Type".to_string(), HeaderValue::Plain("application/json".to_string()))];
+                    for (header, t) in &export.headers {
+                        let v = resolver.render(t)?;
+                        headers.push((header.clone(), if t.has_reference() { HeaderValue::Sensitive(v.into()) } else { HeaderValue::Plain(v.reveal().to_string()) }));
+                    }
+                    Ok::<_, anyhow::Error>(client.send("POST", &export.endpoint, &headers, Some(&bytes)))
+                })?? {
                     Ok(r) if (200..300).contains(&r.status) => {}
                     Ok(r) => return Err(refused(format!("the target answered {}", r.status)).into()),
                     Err(f) => return Err(refused(f.message).into()),
                 }
                 // The acknowledgement precedes the commit (`run.export.cursor-after-ack`).
-                face.store().metadata_files().replace(&path, &serde_json::to_vec(&last)?)?;
+                if !ledger.advance_checkpoint(name, last)? {
+                    face.store().metadata_files().replace(&path, &serde_json::to_vec(&last)?)?;
+                }
                 cursor = last;
                 rows += response.rows.len();
                 batches += 1;
@@ -224,22 +230,18 @@ fn read_state(face: &contextful_context::read::face::Face, session: &Session, ex
 }
 
 fn run_changes(l: &crate::project::Located, export: &Export, project: &ProjectArgs, admit: &AdmitArgs) -> Result<()> {
-    let vars: BTreeMap<String, String> = std::env::vars().collect();
-    let resolver = contextful_outbound::assemble(&vars, Arc::new(SystemClock))?;
-    resolver.preflight(export.headers.values())?;
-    let allow = Allowlist::parse(&[export.endpoint.host_str().unwrap_or_default()])?;
-    if export.headers.values().any(|t| t.has_reference()) { allow.check_bound()?; }
-    let client = Client::new(allow, export.endpoint.clone()).with_body_limit(64 * 1024);
     let (authority, _) = admit.admit(project.project.as_deref(), "an export")?;
     let face = face(l)?;
     let dir = cursor_dir(&l.project.dir, &l.project.name);
     std::fs::create_dir_all(&dir)?;
     let _held = FileLock::acquire(&dir.join(format!("{}.lock", export.name)), std::time::Duration::from_secs(LOCK_WAIT_SECS))?;
-    let machine = l.project.store_root().join(MACHINE_CATALOG_FILE);
-    let mut ledger = match face.store().file_cipher() {
-        Some(cipher) => ExportLedger::open_sealed(&machine, cipher)?,
-        None => ExportLedger::open(&machine)?,
-    };
+    let mut ledger = Ledger::open(&l.project, face.store(), &export.name)?;
+    let vars: BTreeMap<String, String> = std::env::vars().collect();
+    let resolver = contextful_outbound::assemble(&vars, Arc::new(SystemClock))?;
+    ledger.dispatch(&export.name, || resolver.preflight(export.headers.values()))??;
+    let allow = Allowlist::parse(&[export.endpoint.host_str().unwrap_or_default()])?;
+    if export.headers.values().any(|t| t.has_reference()) { allow.check_bound()?; }
+    let client = Client::new(allow, export.endpoint.clone()).with_body_limit(64 * 1024);
     let session = face.session(&authority, &Request { zone: None }, Bounds::default())?;
     let identity = read_identity(&face, &session, &authority, export)?;
     let destination = format!("{:x}", Sha256::digest(export.endpoint.as_str().as_bytes()));
@@ -273,13 +275,15 @@ fn run_changes(l: &crate::project::Located, export: &Export, project: &ProjectAr
         let Some(last) = batch.last() else { break };
         let through = last.sequence;
         ledger.offer(&export.name, through)?;
-        let mut headers = vec![("Content-Type".to_string(), HeaderValue::Plain("application/json".to_string()))];
-        for (header, template) in &export.headers {
-            let value = resolver.render(template)?;
-            headers.push((header.clone(), if template.has_reference() { HeaderValue::Sensitive(Arc::new(value)) } else { HeaderValue::Plain(value.reveal().to_string()) }));
-        }
         let body = serde_json::to_vec(&serde_json::json!({"version": 1, "events": batch}))?;
-        match client.send("POST", &export.endpoint, &headers, Some(&body)) {
+        match ledger.dispatch(&export.name, || {
+            let mut headers = vec![("Content-Type".to_string(), HeaderValue::Plain("application/json".to_string()))];
+            for (header, template) in &export.headers {
+                let value = resolver.render(template)?;
+                headers.push((header.clone(), if template.has_reference() { HeaderValue::Sensitive(Arc::new(value)) } else { HeaderValue::Plain(value.reveal().to_string()) }));
+            }
+            Ok::<_, anyhow::Error>(client.send("POST", &export.endpoint, &headers, Some(&body)))
+        })?? {
             Ok(response) if (200..300).contains(&response.status) => ledger.acknowledge(&export.name, through)?,
             Ok(response) => return Err(ExportError::ExportDeliveryRefused(format!("export `{}`: target answered {}", export.name, response.status)).into()),
             Err(failure) => return Err(ExportError::ExportDeliveryRefused(format!("export `{}`: {}", export.name, failure.message)).into()),
@@ -288,4 +292,37 @@ fn run_changes(l: &crate::project::Located, export: &Export, project: &ProjectAr
     }
     println!("{}: acknowledged {delivered} typed events", export.name);
     Ok(())
+}
+
+enum Ledger {
+    Local(Box<ExportLedger>),
+    #[cfg(feature = "pg-catalog")]
+    Remote(Box<contextful_pg::PgExportLedger>),
+}
+
+impl Ledger {
+    fn open(project: &contextful_context::project::Project, store: &contextful_context::Store, name: &str) -> Result<Self> {
+        if let Some(remote) = crate::storage::preflight(project)? {
+            #[cfg(feature = "pg-catalog")]
+            {
+                let mut ledger = contextful_pg::PgExportLedger::connect(&remote.url)?;
+                let holder = format!("{}:{}:{}", crate::run::boot_id(), std::process::id(), wall_clock()?.unix_nanos());
+                ledger.claim(name, &holder, contextful_core::coordinate::CADENCE_LEASE_TTL_SECS)?;
+                return Ok(Self::Remote(Box::new(ledger)));
+            }
+            #[cfg(not(feature = "pg-catalog"))]
+            { let _ = (remote, name); anyhow::bail!("ProfileCapabilityAbsent: remote export state requires `pg-catalog`") }
+        }
+        let machine = project.store_root().join(MACHINE_CATALOG_FILE);
+        Ok(Self::Local(Box::new(match store.file_cipher() { Some(cipher) => ExportLedger::open_sealed(&machine, cipher)?, None => ExportLedger::open(&machine)? })))
+    }
+    fn position(&self, name: &str) -> Result<ExportPosition> { Ok(match self { Self::Local(s) => s.position(name)?, #[cfg(feature="pg-catalog")] Self::Remote(s) => s.position(name)? }) }
+    fn state(&self, name: &str) -> Result<ChangeState> { Ok(match self { Self::Local(s) => s.state(name)?, #[cfg(feature="pg-catalog")] Self::Remote(s) => s.state(name)? }) }
+    fn stage(&mut self, name: &str, publication: ExportPublication<'_>, events: &[ChangeEvent], state: &ChangeState) -> Result<bool> { Ok(match self { Self::Local(s) => s.stage(name, publication, events, state)?, #[cfg(feature="pg-catalog")] Self::Remote(s) => s.stage(name, publication, events, state)? }) }
+    fn pending(&mut self, name: &str, limit: usize) -> Result<Vec<ChangeEvent>> { Ok(match self { Self::Local(s) => s.pending(name, limit)?, #[cfg(feature="pg-catalog")] Self::Remote(s) => s.pending(name, limit)? }) }
+    fn offer(&mut self, name: &str, through: u64) -> Result<()> { match self { Self::Local(s) => s.offer(name, through)?, #[cfg(feature="pg-catalog")] Self::Remote(s) => s.offer(name, through)? }; Ok(()) }
+    fn acknowledge(&mut self, name: &str, through: u64) -> Result<()> { match self { Self::Local(s) => s.acknowledge(name, through)?, #[cfg(feature="pg-catalog")] Self::Remote(s) => s.acknowledge(name, through)? }; Ok(()) }
+    fn dispatch<T>(&self, name: &str, effect: impl FnOnce() -> T) -> Result<T> { Ok(match self { Self::Local(_) => { let _ = name; effect() }, #[cfg(feature="pg-catalog")] Self::Remote(s) => s.dispatch(name, effect)? }) }
+    fn checkpoint(&self, name: &str) -> Result<Option<ExportCursor>> { Ok(match self { Self::Local(_) => { let _ = name; None }, #[cfg(feature="pg-catalog")] Self::Remote(s) => Some(s.checkpoint(name)?) }) }
+    fn advance_checkpoint(&mut self, name: &str, cursor: ExportCursor) -> Result<bool> { match self { Self::Local(_) => { let _ = (name, cursor); Ok(false) }, #[cfg(feature="pg-catalog")] Self::Remote(s) => { s.advance_checkpoint(name, cursor)?; Ok(true) } } }
 }

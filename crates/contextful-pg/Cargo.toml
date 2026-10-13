@@ -14,10 +14,14 @@ publish = false
 [dependencies]
 contextful-core = { path = "../contextful-core" }
 postgres = "0.19"
+rustls = { version = "0.23", default-features = false, features = ["ring", "std", "tls12"] }
+tokio-postgres-rustls = "0.14"
+webpki-roots = "1"
 serde = "1"
 serde_json = "1"
 
 [dev-dependencies]
+contextful-engine = { path = "../contextful-engine" }
 serde_json = "1"
 tempfile = "3"
 

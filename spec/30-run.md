@@ -99,6 +99,22 @@ Recording a step's value once, resolving it on replay, and collecting what a rep
   *because a resolution recording its payload through a second connection waits on the write lock its own update holds*
 - `sqlite-write-lock` — Every `contextful-sqlite` store write opens an immediate transaction, so concurrent writers of one key across connections to one file serialize: one record lands, and every other returns the standing value instead of a locked-database failure.
   *because under write-ahead logging a deferred read upgrading to a write fails on the lock at once instead of waiting through the busy timeout*
+- `postgres-stores` — `contextful-pg` serves journal rows, blobs and awakeables through {{run.journal.storage-ports}} in the catalog's PostgreSQL database; conditional journal writes serialize across connections, and recorded values survive replacement of every local disk.
+  *A-run*
+- `container-profile` — `CONTEXTFUL_STORAGE_PROFILE=cloudflare-postgres` selects {{run.journal.postgres-stores}} with shared owners, cadence and {{run.export.remote-state}}; corpus objects use a remote S3-compatible bucket with pull-before-run and push-after-run enabled.
+  *A-run*
+- `storage-incomplete` — Missing `CONTEXTFUL_CATALOG_URL`, `CONTEXTFUL_RECOVERY_ID`, corpus bindings or a supported outbox raises `StorageCapabilityMissing` before execution admission; absent compiled adapters follow {{topology.package.capability-absent}}.
+  *A-run*
+- `storage-unsupported` — An unknown storage profile or an encrypted corpus paired with an unsealed execution adapter raises `StorageProfileUnsupported` before execution admission.
+  *because an unrecognized durability claim cannot select a local fallback safely*
+- `execution-schema` — An execution database whose schema differs from the executable's supported schema raises `ExecutionSchemaIncompatible` before execution admission; preflight creates no missing execution table.
+  *because creating an empty replacement for a missing table erases the evidence of a partial restore*
+- `execution-recovery` — Missing execution tables or a mismatched project recovery identity raise `ExecutionRecoveryMismatch`; normal startup never provisions that identity, and a corpus-only restore admits no paid or effectful work.
+  *A-run*
+- `execution-backup` — An execution backup contains owners, leases, cadence run history, journal rows, blobs, awakeables and export state from one quiesced PostgreSQL snapshot, together with the corpus object frontier, project recovery identity and executable schema.
+  *A-run*
+- `current-owner` — An execution checks its durable owner, admitted pins and active attempt immediately before effect dispatch and publication; a superseded attempt enters neither boundary, and a late stop still follows {{run.cancel.land-path-uncut}}.
+  *A-run*
 - `plan-pin` — A run resolves the plan reference it started against for its whole life.
 - `store-input` — A store-driven run reads its statement once, through the read face under the job's grant at its `as_of`, and records the resolved snapshot id per table and the ordered input rows as its first step.
   *A-surface*
@@ -195,6 +211,8 @@ Durable suspension on an external callback, its deadline and its resumption.
 - `caller-binding` — An awakeable may bind a verified caller subject at mint; resolving it then takes the token and a credential for that subject, and any other caller answers as {{run.suspend.unknown-token}}. An unbound token is its whole authority.
   *because a token leaked through a log otherwise resumes a run, and answering unknown discloses nothing to the wrong holder*
 - `payload-offload` — A payload above {{run.journal.inline-cutoff}} lands in the journal's blob store, and the pending row references it.
+- `postgres-reconciliation` — A PostgreSQL callback row interrupted after its resume value commits recovers its resolved payload from that journal value; a conflicting resolution follows {{run.suspend.conflicting-resolution}}.
+  *because a separately committed callback row cannot overwrite the journal value that already determines replay*
 - `survives-restart` — A durable awakeable store persists every registry row, so a process reopening it over the same location drops no pending callback; an in-process store ends with its process.
 - `row-parks` — A store-driven row awaiting an unresolved awakeable parks and frees its slot; the other rows run on, and the parked row re-enters its body once the awakeable resolves or its deadline passes.
 - `recorded-timeout` — A row's wait past its deadline records a timeout value as that wait's step output, so every re-entry of the body reads the identical value.

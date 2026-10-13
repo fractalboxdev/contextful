@@ -19,3 +19,4 @@ mod e2e;
 mod issue98;
 mod issue98_body;
 mod harness;
+mod container_recovery;

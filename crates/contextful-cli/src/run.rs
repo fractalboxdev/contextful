@@ -176,17 +176,22 @@ pub(crate) fn wire(args: &ProjectArgs) -> Result<Wired> {
 
 /// Wire the engine to a located project's run state and machine catalog.
 pub(crate) fn wire_at(project: &Project, now: &Option<String>) -> Result<Wired> {
+    let remote = crate::storage::preflight(project)?;
     let store = Store::open(&project.dir, &project.name)?;
     let root = project.run_dir();
     let clock = clock(now)?;
     let catalog_path = project.store_root().join(MACHINE_CATALOG_FILE);
     let catalog = open_catalog(&catalog_path, clock.clone(), store.file_cipher())?;
-    let (rows, blobs, awakeables): (SharedJournal, SharedBlobs, SharedAwakeables) = match store.file_cipher() {
-        Some(cipher) => {
-            let stores = SqliteRunStores::open_sealed(&catalog_path, cipher)?;
-            (Arc::new(stores.journal), Arc::new(stores.blobs), Arc::new(stores.awakeables))
+    let (rows, blobs, awakeables): (SharedJournal, SharedBlobs, SharedAwakeables) = if let Some(remote) = remote {
+        remote_run_stores(&remote.url)?
+    } else {
+        match store.file_cipher() {
+            Some(cipher) => {
+                let stores = SqliteRunStores::open_sealed(&catalog_path, cipher)?;
+                (Arc::new(stores.journal), Arc::new(stores.blobs), Arc::new(stores.awakeables))
+            }
+            None => (Arc::new(FileJournalStore::open(&root)), Arc::new(FileBlobStore::open(&root)), Arc::new(FileAwakeableStore::open(&root))),
         }
-        None => (Arc::new(FileJournalStore::open(&root)), Arc::new(FileBlobStore::open(&root)), Arc::new(FileAwakeableStore::open(&root))),
     };
     // The machine catalog caches run rows in front of the store's run record
     // (`run.record.reserved-table`).
@@ -195,6 +200,17 @@ pub(crate) fn wire_at(project: &Project, now: &Option<String>) -> Result<Wired> 
     let journal = Journal::over(rows, blobs);
     let registry = Registry::over(awakeables.clone(), journal.clone());
     Ok(Wired { engine: Engine { catalog, journal, awakeables: Some(awakeables), keeper: Keeper::default(), emitter: None, worlds: crate::component::worlds() }, registry, clock })
+}
+
+#[cfg(feature = "pg-catalog")]
+fn remote_run_stores(url: &str) -> Result<(SharedJournal, SharedBlobs, SharedAwakeables)> {
+    let stores = contextful_pg::PgRunStores::connect(url)?;
+    Ok((Arc::new(stores.journal), Arc::new(stores.blobs), Arc::new(stores.awakeables)))
+}
+
+#[cfg(not(feature = "pg-catalog"))]
+fn remote_run_stores(_url: &str) -> Result<(SharedJournal, SharedBlobs, SharedAwakeables)> {
+    bail!("ProfileCapabilityAbsent: durable execution stores require `pg-catalog`")
 }
 
 /// The variable naming the Postgres catalog a self-hosted cluster's daemons share

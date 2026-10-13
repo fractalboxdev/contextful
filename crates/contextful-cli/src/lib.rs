@@ -53,6 +53,8 @@ mod root;
 mod serve;
 #[cfg(feature = "read-plane")]
 mod sync;
+#[cfg(feature = "data-plane")]
+pub mod storage;
 mod token;
 #[cfg(feature = "data-plane")]
 mod worker;
@@ -136,6 +138,10 @@ struct Cli {
 
 #[derive(Subcommand)]
 enum Cmd {
+    /// Validate or initialize a complete execution storage profile.
+    #[cfg(feature = "data-plane")]
+    #[command(subcommand)]
+    Storage(storage::StorageCmd),
     /// Declare a project in `contextful.toml` here and create its store root.
     #[cfg(feature = "data-plane")]
     Init(project::InitArgs),
@@ -242,7 +248,14 @@ pub fn main_host(host: Host) {
     let matches = Cli::command().get_matches();
     admit::record_command_path(&matches);
     let cli = Cli::from_arg_matches(&matches).unwrap_or_else(|e| e.format(&mut Cli::command()).exit());
+    #[cfg(feature = "data-plane")]
+    if let Err(error) = storage::validate_environment() {
+        eprintln!("{error:#}");
+        std::process::exit(1);
+    }
     let result = match cli.cmd {
+        #[cfg(feature = "data-plane")]
+        Cmd::Storage(command) => storage::run(command),
         #[cfg(feature = "data-plane")]
         Cmd::Init(c) => project::run(c),
         Cmd::Token(c) => token::run(c),

@@ -14,8 +14,13 @@ use contextful_core::run::record::RunRow;
 use contextful_core::run::{Failure, FailureTag, RunError};
 use contextful_core::store::StoreError;
 use contextful_core::time::Instant;
-use postgres::{Client, Config, NoTls, Transaction};
+use postgres::{Client, Config, Transaction};
 use std::sync::Mutex;
+
+mod stores;
+mod export;
+pub use export::PgExportLedger;
+pub use stores::{PgAwakeableStore, PgBlobStore, PgJournalStore, PgRunStores, EXECUTION_SCHEMA_VERSION};
 
 /// The catalog's tables, created once under an advisory lock so daemons opening together
 /// do not race the DDL. Instants are microseconds since the epoch on the database's clock.
@@ -89,11 +94,21 @@ impl PgCatalog {
     /// Connect to the database `conninfo` names, a key-value string or a `postgres://`
     /// URL, and create the catalog's tables on first open.
     pub fn connect(conninfo: &str) -> Result<PgCatalog, Failure> {
+        Self::connect_schema(conninfo, true)
+    }
+
+    /// Validate protected remote transport without connecting or resolving a host.
+    pub fn validate_transport(conninfo: &str) -> Result<(), Failure> {
+        protected_config(conninfo).map(|_| ())
+    }
+
+    fn connect_schema(conninfo: &str, initialize: bool) -> Result<PgCatalog, Failure> {
         // A parse error can quote the string, password included, so it is not passed on.
-        let config: Config = conninfo.parse().map_err(|_| storage("", "the connection string does not parse"))?;
+        let config = protected_config(conninfo)?;
         let name = describe(&config);
-        let client = config.connect(NoTls).map_err(|e| storage(&name, e))?;
+        let client = connect(&config).map_err(|e| storage(&name, e))?;
         let catalog = PgCatalog { config, name, client: Mutex::new(client) };
+        if !initialize { return Ok(catalog) }
         catalog.with(|tx, fail| {
             tx.execute("SELECT pg_advisory_xact_lock($1)", &[&SCHEMA_LOCK]).map_err(|e| fail(&e))?;
             tx.batch_execute(SCHEMA).map_err(|e| fail(&e))
@@ -112,13 +127,38 @@ impl PgCatalog {
         let fail = |e: &dyn std::fmt::Display| storage(&self.name, e);
         let mut client = self.client.lock().unwrap_or_else(|p| p.into_inner());
         if client.is_closed() {
-            *client = self.config.connect(NoTls).map_err(|e| fail(&e))?;
+            *client = connect(&self.config).map_err(|e| fail(&e))?;
         }
         let mut tx = client.transaction().map_err(|e| fail(&e))?;
         let out = f(&mut tx, &fail)?;
         tx.commit().map_err(|e| fail(&e))?;
         Ok(out)
     }
+}
+
+fn protected_config(conninfo: &str) -> Result<Config, Failure> {
+    let mut config: Config = conninfo.parse().map_err(|_| storage("", "the connection string does not parse"))?;
+    let local = config.get_hosts().iter().all(|host| match host {
+        postgres::config::Host::Tcp(host) => host == "localhost" || host.parse::<std::net::IpAddr>().is_ok_and(|ip| ip.is_loopback()),
+        #[cfg(unix)]
+        postgres::config::Host::Unix(_) => true,
+    });
+    if !local {
+        if config.get_ssl_mode() == postgres::config::SslMode::Disable {
+            return Err(storage(&describe(&config), "DatabaseTransportUnprotected: remote PostgreSQL requires authenticated TLS; sslmode=disable is restricted to loopback or Unix sockets"));
+        }
+        // Prefer never permits a plaintext fallback beyond the local transport boundary.
+        config.ssl_mode(postgres::config::SslMode::Require);
+    }
+    Ok(config)
+}
+
+fn connect(config: &Config) -> Result<Client, postgres::Error> {
+    let roots = rustls::RootCertStore::from_iter(webpki_roots::TLS_SERVER_ROOTS.iter().cloned());
+    let tls = rustls::ClientConfig::builder_with_provider(std::sync::Arc::new(rustls::crypto::ring::default_provider()))
+        .with_safe_default_protocol_versions().expect("ring supports the configured TLS versions")
+        .with_root_certificates(roots).with_no_client_auth();
+    config.connect(tokio_postgres_rustls::MakeRustlsConnect::new(tls))
 }
 
 fn instant_us(us: i64, fail: Fail) -> Result<Instant, Failure> {
