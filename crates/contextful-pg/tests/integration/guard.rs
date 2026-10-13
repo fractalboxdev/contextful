@@ -308,6 +308,7 @@ fn actual_destination_commit_retains_admission_after_precommit() {
     }
     struct Output {
         db: Arc<PgCatalog>,
+        observer: postgres::Client,
         writer: Option<std::thread::JoinHandle<()>>,
         published: bool,
     }
@@ -341,6 +342,16 @@ fn actual_destination_commit_retains_admission_after_precommit() {
                 receive.recv_timeout(Duration::from_millis(150)).is_err(),
                 "takeover cannot pass between precommit and the actual destination publication"
             );
+            let deadline=std::time::Instant::now()+Duration::from_secs(2);
+            loop {
+                let blocked:bool=self.observer.query_one("SELECT EXISTS (SELECT 1 FROM pg_stat_activity WHERE datname=current_database() AND wait_event_type='Lock' AND query LIKE 'UPDATE contextful_lease SET expires_us%')",&[]).unwrap().get(0);
+                if blocked { break; }
+                assert!(std::time::Instant::now()<deadline,"the real keeper renewal must reach the guard's lease lock");
+                std::thread::sleep(Duration::from_millis(5));
+            }
+            // The fast keeper's lease renewal now waits behind this guard. A final
+            // precommit still reads the held lease without waiting on that renewal.
+            precommit()?;
             self.published = true;
             Ok(Landed { rows: 1, bytes: 1 })
         }
@@ -360,11 +371,11 @@ fn actual_destination_commit_retains_admission_after_precommit() {
         catalog: db.clone(),
         journal: Journal::open(dir.path()),
         awakeables: None,
-        keeper: Keeper::default(),
+        keeper: Keeper::new(contextful_engine::cancel::Cadence { poll:Duration::from_millis(5),renew:Duration::from_millis(5) }),
         emitter: None,
         worlds: Vec::new(),
     };
-    let plan=Plan::compile(b"pipeline = \"feed\"\ntable = \"filings\"\n[connector]\nid = \"vendor\"\nversion = \"1.0.0\"\ncommand = [\"vendor\"]\n[cursor]\nkind = \"monotonic\"\nfield = \"updated_at\"\n").unwrap();
+    let plan=Plan::compile(b"pipeline = \"feed\"\ntable = \"filings\"\n[connector]\nid = \"vendor\"\nversion = \"1.0.0\"\ncommand = [\"vendor\"]\n[cursor]\nkind = \"opaque-token\"\n").unwrap();
     let spec = contextful_engine::RunSpec {
         connector: plan.connector_pin("artifact"),
         plan,
@@ -376,11 +387,18 @@ fn actual_destination_commit_retains_admission_after_precommit() {
     };
     let mut output = Output {
         db,
+        observer:postgres::Client::connect(&server.conninfo,postgres::NoTls).unwrap(),
         writer: None,
         published: false,
     };
-    let row = engine.run(&spec, &mut Input, &mut output).unwrap();
-    output.writer.take().unwrap().join().unwrap();
-    assert!(output.published);
+    let (send,receive)=mpsc::channel();
+    let running=std::thread::spawn(move || {
+        let row = engine.run(&spec, &mut Input, &mut output).unwrap();
+        output.writer.take().unwrap().join().unwrap();
+        send.send((row,output.published)).unwrap();
+    });
+    let (row,published)=receive.recv_timeout(Duration::from_secs(8)).expect("guarded commit and keeper renewal must not deadlock");
+    running.join().unwrap();
+    assert!(published);
     assert_eq!(row.status, contextful_core::run::record::RunStatus::Success);
 }
