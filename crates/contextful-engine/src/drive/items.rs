@@ -16,7 +16,7 @@ use contextful_core::run::effect::{
 use contextful_core::run::journal::EntryKey;
 use contextful_core::run::own::{OwnerPins, OwnerScope};
 use contextful_core::run::ports::{BlobStore, JournalStore, Landed, OpenExecution};
-use contextful_core::run::record::RunStatus;
+use contextful_core::run::record::{RunRow, RunStatus};
 use contextful_core::run::{Failure, FailureTag};
 use serde::{Deserialize, Serialize};
 use std::collections::BTreeSet;
@@ -116,6 +116,18 @@ impl<J: JournalStore + Clone + Send + Sync, B: BlobStore + Clone + Send + Sync> 
         read: &mut ReadInput<'_>,
         land: &mut dyn FnMut(&str, &Emitted, &BodyOwner) -> Result<Landed, Failure>,
     ) -> Result<ItemReport, EngineError> {
+        self.drive_items_admitted_with_completion(drive, policy, read, land, &mut |_| Ok(()))
+    }
+
+    /// Aggregate publication completes after every item receipt and before owner retirement.
+    pub fn drive_items_admitted_with_completion(
+        &self,
+        drive: &Drive<'_>,
+        policy: &ItemPolicy,
+        read: &mut ReadInput<'_>,
+        land: &mut dyn FnMut(&str, &Emitted, &BodyOwner) -> Result<Landed, Failure>,
+        complete: &mut dyn FnMut(&RunRow) -> Result<(), Failure>,
+    ) -> Result<ItemReport, EngineError> {
         self.drive_items_using(
             drive,
             policy,
@@ -123,6 +135,7 @@ impl<J: JournalStore + Clone + Send + Sync, B: BlobStore + Clone + Send + Sync> 
             read,
             land,
             &|row, calls| drive.body.run(row, calls).map(|out| (out, Vec::new())),
+            complete,
         )
     }
 
@@ -135,6 +148,28 @@ impl<J: JournalStore + Clone + Send + Sync, B: BlobStore + Clone + Send + Sync> 
         admission: &dyn EffectAdmission,
         read: &mut ReadInput<'_>,
         land: &mut dyn FnMut(&str, &PreparedEmitted, &BodyOwner) -> Result<Landed, Failure>,
+    ) -> Result<ItemReport, EngineError> {
+        self.drive_items_recorded_with_completion(
+            drive,
+            policy,
+            plan,
+            admission,
+            read,
+            land,
+            &mut |_| Ok(()),
+        )
+    }
+
+    /// Canonical aggregate publication retains the paid-work owner until completion records.
+    pub fn drive_items_recorded_with_completion(
+        &self,
+        drive: &Drive<'_>,
+        policy: &ItemPolicy,
+        plan: &RecordedBodyPlan,
+        admission: &dyn EffectAdmission,
+        read: &mut ReadInput<'_>,
+        land: &mut dyn FnMut(&str, &PreparedEmitted, &BodyOwner) -> Result<Landed, Failure>,
+        complete: &mut dyn FnMut(&RunRow) -> Result<(), Failure>,
     ) -> Result<ItemReport, EngineError> {
         let body = drive.body.recorded().ok_or_else(|| {
             contextful_core::run::RunError::JournalRedactionConflict(
@@ -159,38 +194,46 @@ impl<J: JournalStore + Clone + Send + Sync, B: BlobStore + Clone + Send + Sync> 
             .collect::<Result<_, _>>()?;
         let pins = projection_pins(drive, plan.identity(), authorities)?;
         let identity = pins.plan_ref().to_string();
-        self.drive_items_using(drive, policy, pins, read, land, &|row, calls| {
-            let prepared = PreparedCalls {
-                calls,
-                plan,
-                admission,
-                identity: &identity,
-                issued: Mutex::new(Vec::new()),
-            };
-            let outputs = body.run_recorded(row, &prepared)?;
-            let issued = prepared
-                .issued
-                .into_inner()
-                .unwrap_or_else(|e| e.into_inner());
-            for (table, emissions) in &outputs {
-                for emission in emissions {
-                    if emission.table() != table || !issued.contains(emission.scope()) {
-                        return Err(RowStop::Failed(Failure::deterministic(
-                            FailureTag::Permanent,
-                            "body returned an effect outside this item's admitted calls",
-                        )));
+        self.drive_items_using(
+            drive,
+            policy,
+            pins,
+            read,
+            land,
+            &|row, calls| {
+                let prepared = PreparedCalls {
+                    calls,
+                    plan,
+                    admission,
+                    identity: &identity,
+                    issued: Mutex::new(Vec::new()),
+                };
+                let outputs = body.run_recorded(row, &prepared)?;
+                let issued = prepared
+                    .issued
+                    .into_inner()
+                    .unwrap_or_else(|e| e.into_inner());
+                for (table, emissions) in &outputs {
+                    for emission in emissions {
+                        if emission.table() != table || !issued.contains(emission.scope()) {
+                            return Err(RowStop::Failed(Failure::deterministic(
+                                FailureTag::Permanent,
+                                "body returned an effect outside this item's admitted calls",
+                            )));
+                        }
+                        PreparedEmission::replay(
+                            plan,
+                            emission.label(),
+                            emission.scope(),
+                            &emission.encode()?,
+                            admission,
+                        )?;
                     }
-                    PreparedEmission::replay(
-                        plan,
-                        emission.label(),
-                        emission.scope(),
-                        &emission.encode()?,
-                        admission,
-                    )?;
                 }
-            }
-            Ok((outputs, issued))
-        })
+                Ok((outputs, issued))
+            },
+            complete,
+        )
     }
 
     fn drive_items_using<T: Send, F>(
@@ -201,6 +244,7 @@ impl<J: JournalStore + Clone + Send + Sync, B: BlobStore + Clone + Send + Sync> 
         read: &mut ReadInput<'_>,
         land: &mut dyn FnMut(&str, &Output<T>, &BodyOwner) -> Result<Landed, Failure>,
         run: &F,
+        complete: &mut dyn FnMut(&RunRow) -> Result<(), Failure>,
     ) -> Result<ItemReport, EngineError>
     where
         F: Fn(&InputRow, &Calls<'_, '_, J, B>) -> Result<(Output<T>, Vec<EffectScope>), RowStop>
@@ -463,7 +507,7 @@ impl<J: JournalStore + Clone + Send + Sync, B: BlobStore + Clone + Send + Sync> 
                                 _ => false,
                             };
                             if terminal {
-                                x.assert_current()?;
+                                x.assert_publication_current()?;
                                 let cached = x.cursor_row()?;
                                 let receipt = match &status {
                                     ItemStatus::Succeeded(l) => ItemReceipt {
@@ -539,6 +583,19 @@ impl<J: JournalStore + Clone + Send + Sync, B: BlobStore + Clone + Send + Sync> 
         };
         items.sort_by(|a, b| a.logical_id.cmp(&b.logical_id));
         let report = ItemReport { items };
+        if report.succeeded() {
+            let completion = (|| {
+                aggregate.assert_publication_current()?;
+                let row = self.catalog.run(aggregate.run_id())?.ok_or_else(|| {
+                    Failure::new(FailureTag::Storage, "aggregate completion run is absent")
+                })?;
+                complete(&row)
+            })();
+            if let Err(failure) = completion {
+                aggregate.close_with(Err(Close::Failed(failure.clone())))?;
+                return Err(failure.into());
+            }
+        }
         let mut terminal = true;
         for item in &report.items {
             terminal &= match &item.status {

@@ -219,15 +219,21 @@ pub fn run(cmd: JobCmd, bodies: &Bodies) -> Result<()> {
                 run_id: run_id.clone(), site_id: site_id.clone(), pid: std::process::id(), boot_id: boot_id(), schedule: Schedule::default(), poll: PARKED_POLL,
             };
             if let Some(policy) = &driven.isolated_items {
+                let mut complete = |row:&contextful_core::run::record::RunRow| {
+                    if grouped {
+                        crate::export::publication::record_source(face.store(),&text,&name,row).map_err(|e|Failure::new(FailureTag::Storage,e.to_string()))?;
+                    }
+                    Ok(())
+                };
                 let report = if let Some(plan) = &recorded_plan {
-                    engine.drive_items_recorded(&drive, policy, plan, &effects, &mut read, &mut |id, emitted, owner| {
+                    engine.drive_items_recorded_with_completion(&drive, policy, plan, &effects, &mut read, &mut |id, emitted, owner| {
                         land_tables(driven, &name, &format!("{run_id}.item-{id}"), &site_id, |table, spec| {
                             dest.normalize = plan.effects().find(|effect| effect.table == table).and_then(|effect| effect.normalize);
                             engine.run_emissions(spec, owner, emitted.get(table).map(Vec::as_slice).unwrap_or_default(), &mut dest).map_err(engine_error)
                         })
-                    })?
+                    },&mut complete)?
                 } else {
-                    engine.drive_items_admitted(&drive, policy, &mut read, &mut |id, emitted, owner| {
+                    engine.drive_items_admitted_with_completion(&drive, policy, &mut read, &mut |id, emitted, owner| {
                         if emitted.keys().any(|table| !driven.tables.contains(table)) {
                             return Err(Failure::deterministic(FailureTag::Permanent, "isolated body emitted an undeclared table"));
                         }
@@ -236,7 +242,7 @@ pub fn run(cmd: JobCmd, bodies: &Bodies) -> Result<()> {
                             let mut source = Staged(emitted.get(table).cloned().unwrap_or_default(), 0);
                             engine.run_body_rows(spec, owner, &mut source, &mut dest).map_err(engine_error)
                         })
-                    })?
+                    },&mut complete)?
                 };
                 let (mut successful, mut failed, mut parked, mut deferred) = (0, 0, 0, 0);
                 for item in &report.items {

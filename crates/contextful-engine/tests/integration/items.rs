@@ -436,3 +436,135 @@ fn terminal_sibling_failure_does_not_pin_later_fires_to_old_input() {
     assert_eq!(next.items.len(), 3);
     assert_eq!(body.calls.lock().unwrap().len(), 3);
 }
+
+#[test]
+fn an_item_parent_stop_after_staging_keeps_publication_uncut() {
+    let rig = Rig::new();
+    let body = Body {
+        calls: Mutex::default(),
+        entered: AtomicUsize::new(0),
+    };
+    let catalog = rig.engine.catalog.clone();
+    let mut sink = crate::support::Sink::default();
+    sink.on_stage = Some(Box::new(move |_| {
+        let parent = catalog
+            .runs(None)
+            .unwrap()
+            .into_iter()
+            .find(|row| {
+                row.host_scope
+                    .as_deref()
+                    .is_some_and(|scope| scope.starts_with("item:"))
+            })
+            .unwrap();
+        let now = catalog.now().unwrap();
+        catalog
+            .update_run(&parent.run_id, &mut |row| {
+                contextful_core::run::cancel::mark(
+                    row,
+                    contextful_core::run::cancel::Scope::Run,
+                    None,
+                    now,
+                )
+            })
+            .unwrap()
+            .unwrap()
+            .unwrap();
+    }));
+    let result = rig
+        .engine
+        .drive_items_admitted(
+            &fire(&body, "late-stop"),
+            &policy(),
+            &mut |_| Ok(input(&["good"])),
+            &mut |_, _, owner| {
+                let plan = crate::support::plan("kind='opaque-token'", "journal=false");
+                let spec = contextful_engine::RunSpec {
+                    connector: plan.connector_pin("native"),
+                    plan,
+                    run_id: "output".into(),
+                    site_id: "site".into(),
+                    pid: 42,
+                    boot_id: "boot".into(),
+                    trace_id: None,
+                };
+                let mut source = crate::support::Pages::new(vec![vec![json!({"id":"good"})]]);
+                let row = rig
+                    .engine
+                    .run_body_rows(&spec, owner, &mut source, &mut sink)
+                    .map_err(|e| Failure::new(FailureTag::Storage, e.to_string()))?;
+                if row.status != contextful_core::run::record::RunStatus::Success {
+                    return Err(Failure::new(
+                        FailureTag::Transient,
+                        "publication cut after staging",
+                    ));
+                }
+                Ok(Landed::default())
+            },
+        )
+        .unwrap();
+    assert!(result.succeeded());
+    assert_eq!(sink.commits.len(), 1);
+}
+
+#[test]
+fn aggregate_completion_runs_before_retirement_and_failed_completion_replays_paid_work() {
+    let rig = Rig::new();
+    let body = Body {
+        calls: Mutex::default(),
+        entered: AtomicUsize::new(0),
+    };
+    let result = rig.engine.drive_items_admitted_with_completion(
+        &fire(&body, "first"),
+        &policy(),
+        &mut |_| Ok(input(&["good"])),
+        &mut |_, _, _| Ok(Landed::default()),
+        &mut |row| {
+            assert!(rig
+                .catalog()
+                .owner_at(&contextful_engine::drive::job_scope("score"))
+                .unwrap()
+                .is_some());
+            assert_eq!(row.input.as_ref().unwrap().rows, 1);
+            Err(Failure::new(FailureTag::Storage, "completion unavailable"))
+        },
+    );
+    assert!(result.is_err());
+    assert_eq!(body.calls.lock().unwrap().len(), 1);
+    let result = rig
+        .engine
+        .drive_items_admitted_with_completion(
+            &fire(&body, "resume"),
+            &policy(),
+            &mut |_| panic!("completion retry preserves input"),
+            &mut |_, _, _| panic!("completion retry preserves landed item"),
+            &mut |row| {
+                assert!(rig
+                    .catalog()
+                    .owner_at(&contextful_engine::drive::job_scope("score"))
+                    .unwrap()
+                    .is_some());
+                assert_eq!(row.input.as_ref().unwrap().rows, 1);
+                Ok(())
+            },
+        )
+        .unwrap();
+    assert!(result.succeeded());
+    assert_eq!(body.calls.lock().unwrap().len(), 1);
+    assert!(rig
+        .catalog()
+        .owner_at(&contextful_engine::drive::job_scope("score"))
+        .unwrap()
+        .is_none());
+    assert!(!rig
+        .engine
+        .drive_items_admitted_with_completion(
+            &fire(&body, "failed"),
+            &policy(),
+            &mut |_| Ok(input(&["bad"])),
+            &mut |_, _, _| panic!("failed body lands nothing"),
+            &mut |_| panic!("failed aggregate records no completion")
+        )
+        .unwrap()
+        .succeeded());
+}

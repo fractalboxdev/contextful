@@ -125,6 +125,29 @@ fn a_successful_job_records_one_coordinated_output_frontier() {
 }
 
 #[test]
+fn isolated_aggregate_publication_records_only_successful_complete_frontiers() {
+    let group="[[export]]\nname='scores-copy'\ntable='scores'\nendpoint='http://127.0.0.1:1/events'\nformat='changes-v1'\nkey=['doc_id']\nschedule='every 30s'\n[[publication]]\nname='scoring'\njob='score-documents'\nmembers=['scores-copy']\n";
+    for prepared in [false,true] {
+        let isolated=job("max_in_flight=2\n[job.isolated_items]\nlogical_key='doc_id'\nentity_key='doc_id'\nentity_namespace='documents'\nmax_attempts=2\n");
+        let declared=if prepared {format!("[[pipeline.tables]]\nname='scores'\n{isolated}\n{group}")} else {format!("{isolated}\n{group}")};
+        let (dir,public,token)=project(&declared);
+        let env=if prepared {vec![("SCORE_RECORDED","1")]} else {Vec::new()};
+        ok(&fire(dir.path(),&public,&token,"isolated-group","2030-01-01T00:01:00Z",&env));
+        let ledger=contextful_sqlite::PublicationLedger::open(&dir.path().join(".contextful/context/research/machine.sqlite")).unwrap();
+        let source=ledger.source("scoring").unwrap().expect("successful isolated aggregate records its complete producer frontier");
+        assert_eq!(source.run,"isolated-group");assert_eq!(source.input["rows"],3);assert_eq!(source.frontiers.keys().collect::<Vec<_>>(),["scores"]);
+        assert_eq!(select(dir.path(),"SELECT doc_id FROM scores ORDER BY doc_id").len(),3);
+    }
+    let isolated=job("max_in_flight=2\n[job.isolated_items]\nlogical_key='doc_id'\nentity_key='doc_id'\nentity_namespace='documents'\nmax_attempts=2\n");
+    let (dir,public,token)=project(&format!("{isolated}\n{group}"));
+    let store=contextful_context::Store::open(dir.path(),"research").unwrap();
+    let data=store.table_dir("scores").unwrap().join("data");std::fs::create_dir_all(&data).unwrap();std::fs::write(data.join("runs"),b"landing obstruction").unwrap();
+    assert!(!fire(dir.path(),&public,&token,"failed-group","2030-01-01T00:01:00Z",&[]).status.success());
+    let ledger=contextful_sqlite::PublicationLedger::open(&dir.path().join(".contextful/context/research/machine.sqlite")).unwrap();
+    assert!(ledger.source("scoring").unwrap().is_none(),"failed isolated aggregate publishes no completion frontier");
+}
+
+#[test]
 fn coordinated_job_exports_and_rebuilds_include_a_quiet_empty_member() {
     use contextful_acceptance::http::{Response,Server};
     use std::sync::{Arc,Mutex};

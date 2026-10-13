@@ -269,6 +269,14 @@ impl<J: JournalStore, B: BlobStore> Engine<J, B> {
     }
 
     pub(crate) fn validate_body_owner(&self, owner: &crate::drive::BodyOwner) -> Result<(), Failure> {
+        self.validate_body_attempt(owner,true)
+    }
+
+    fn validate_body_publication(&self, owner:&crate::drive::BodyOwner)->Result<(),Failure> {
+        self.validate_body_attempt(owner,false)
+    }
+
+    fn validate_body_attempt(&self, owner:&crate::drive::BodyOwner,admit_effect:bool)->Result<(),Failure> {
         if let Some(lease)=&owner.fence { if !self.catalog.lease_holds(lease)? { return Err(Failure::new(FailureTag::Transient,"body entity fence was superseded")); } }
         let active = self.catalog.owner_at(&owner.scope)?.ok_or_else(|| Failure::deterministic(FailureTag::Permanent, "prepared body owner is absent"))?;
         if active.execution_id != owner.execution_id || active.pins.plan_ref() != owner.identity || active.attempts.last() != Some(&owner.run_id) {
@@ -278,7 +286,7 @@ impl<J: JournalStore, B: BlobStore> Engine<J, B> {
         if run.execution_id != owner.execution_id {
             return Err(Failure::deterministic(FailureTag::Permanent, "prepared body attempt execution changed"));
         }
-        if run.stop.is_some() || run.status == RunStatus::Canceled {
+        if admit_effect && (run.stop.is_some() || run.status == RunStatus::Canceled) {
             return Err(Failure::canceled("prepared body attempt stopped"));
         }
         if !run.status.is_in_flight() || run.owner.is_none() {
@@ -536,7 +544,7 @@ impl<J: JournalStore, B: BlobStore> Engine<J, B> {
         let committed_at = self.catalog.now()?;
         let landed = if batch_count > 0 || moved || replace_frontier {
             let precommit = || -> Result<(), Failure> {
-                if let Some(owner) = parent { self.validate_body_owner(owner)?; }
+                if let Some(owner) = parent { self.validate_body_publication(owner)?; }
                 execution.assert_publication_current()?;
                 let Some(l) = execution.lease() else { return Ok(()) };
                 if self.catalog.lease_holds(&l)? {
