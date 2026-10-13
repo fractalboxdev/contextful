@@ -21,6 +21,7 @@ serde = "1"
 serde_json = "1"
 
 [dev-dependencies]
+contextful-acceptance = { path = "../acceptance" }
 contextful-engine = { path = "../contextful-engine" }
 serde_json = "1"
 tempfile = "3"
