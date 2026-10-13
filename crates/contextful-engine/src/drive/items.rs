@@ -1,6 +1,9 @@
 //! Independent item execution shares the journal, owner keeper and landing runner.
 
-use super::{job_scope, BodyOwner, Calls, Drive, Output, PreparedCalls, ReadInput};
+use super::{
+    body_pins, job_scope, projection_pins, BodyOwner, Calls, Drive, Output, PreparedCalls,
+    ReadInput,
+};
 use crate::execution::{Close, Tally};
 use crate::runner::{Engine, EngineError};
 pub use contextful_core::run::drive::ItemPolicy;
@@ -11,12 +14,12 @@ use contextful_core::run::effect::{
     EffectAdmission, EffectScope, PreparedEmission, RecordedBodyPlan,
 };
 use contextful_core::run::journal::EntryKey;
-use contextful_core::run::own::{OwnerPins, OwnerScope, PlanPins};
+use contextful_core::run::own::{OwnerPins, OwnerScope};
 use contextful_core::run::ports::{BlobStore, JournalStore, Landed, OpenExecution};
 use contextful_core::run::record::RunStatus;
 use contextful_core::run::{Failure, FailureTag};
 use serde::{Deserialize, Serialize};
-use std::collections::{BTreeMap, BTreeSet};
+use std::collections::BTreeSet;
 use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::Mutex;
 
@@ -116,7 +119,7 @@ impl<J: JournalStore + Clone + Send + Sync, B: BlobStore + Clone + Send + Sync> 
         self.drive_items_using(
             drive,
             policy,
-            drive.input.pins(),
+            body_pins(drive)?,
             read,
             land,
             &|row, calls| drive.body.run(row, calls).map(|out| (out, Vec::new())),
@@ -154,23 +157,8 @@ impl<J: JournalStore + Clone + Send + Sync, B: BlobStore + Clone + Send + Sync> 
             .effects()
             .map(|e| admission.identity(e).map(|a| (e.label.clone(), a)))
             .collect::<Result<_, _>>()?;
-        let identity = contextful_core::run::journal::sha256_hex(
-            &serde_json::to_vec(&(
-                "prepared-body-owner-v1",
-                drive.input.plan_ref(),
-                plan.identity(),
-                authorities,
-            ))
-            .map_err(|e| contextful_core::run::RunError::Invalid(e.to_string()))?,
-        );
-        let pins = PlanPins {
-            plan_ref: identity.clone(),
-            identities: BTreeMap::from([
-                ("input".into(), drive.input.plan_ref()),
-                ("body_projection".into(), plan.identity()),
-            ]),
-        }
-        .into();
+        let pins = projection_pins(drive, plan.identity(), authorities)?;
+        let identity = pins.plan_ref().to_string();
         self.drive_items_using(drive, policy, pins, read, land, &|row, calls| {
             let prepared = PreparedCalls {
                 calls,

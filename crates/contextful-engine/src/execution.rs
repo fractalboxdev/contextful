@@ -198,6 +198,7 @@ impl<J: JournalStore, B: BlobStore> Engine<J, B> {
             trace_id: open.trace_id.clone(),
             phase: Phase::Plan,
             execution_id: execution_id.clone(),
+            plan_ref: Some(open.pins.plan_ref().to_string()),
             stop: None,
             host_scope: open.scope.host_id().map(str::to_string),
             input: None,

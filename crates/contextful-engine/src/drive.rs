@@ -10,7 +10,7 @@ use crate::runner::{Engine, EngineError};
 use contextful_core::run::drive::{row_label, CallEffect, Emitted, InputRow, InputSet, PreparedEmitted, RecordedRowCalls, RowBody, RowCalls, RowStop, StoreInput, Woken, INPUT_STEP};
 use contextful_core::run::effect::{EffectAdmission, EffectScope, PreparedEmission, RecordedBodyPlan};
 use contextful_core::run::journal::EntryKey;
-use contextful_core::run::own::{OwnerPins, OwnerScope, PlanPins};
+use contextful_core::run::own::{OwnerPins, OwnerScope};
 use contextful_core::run::ports::{BlobStore, Cancellation, JournalStore, Landed, OpenExecution, Wake};
 use contextful_core::run::record::{RunRow, RunStatus};
 use contextful_core::run::retry::Schedule;
@@ -20,6 +20,8 @@ use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::Mutex;
 use std::time::Duration;
 mod items;
+mod identity;
+use identity::{body_pins,projection_pins};
 pub use items::{entity_lease_key, ItemOutcome, ItemPolicy, ItemReport, ItemStatus};
 
 /// How often a run holding only parked rows re-checks their awakeables.
@@ -183,7 +185,7 @@ impl<J: JournalStore + Clone + Send + Sync, B: BlobStore + Clone + Send + Sync> 
     /// execution records none; `land` lands the emitted rows before the owner retires. A fire
     /// that opened closes on a status its row records, returned whatever that status.
     pub fn drive(&self, drive: &Drive<'_>, read: &mut ReadInput<'_>, land: &mut LandOutput<'_>) -> Result<RunRow, EngineError> {
-        self.drive_using(drive, drive.input.pins(), read, land, &|row, calls| drive.body.run(row, calls))
+        self.drive_using(drive, body_pins(drive)?, read, land, &|row, calls| drive.body.run(row, calls))
     }
 
     /// The same row/owner machine records only canonical prepared effect results.
@@ -195,8 +197,8 @@ impl<J: JournalStore + Clone + Send + Sync, B: BlobStore + Clone + Send + Sync> 
             return Err(contextful_core::run::RunError::Invalid("caller projection differs from the registered body's declaration".into()).into());
         }
         let authorities: Vec<_> = plan.effects().map(|effect| admission.identity(effect).map(|identity| (effect.label.clone(), identity))).collect::<Result<_, _>>()?;
-        let identity = contextful_core::run::journal::sha256_hex(&serde_json::to_vec(&("prepared-body-owner-v1", drive.input.plan_ref(), plan.identity(), authorities)).map_err(|_| contextful_core::run::RunError::Invalid("prepared body identity does not encode".into()))?);
-        let pins = PlanPins { plan_ref:identity.clone(), identities:BTreeMap::from([("input".into(), drive.input.plan_ref()), ("body_projection".into(), plan.identity())]) }.into();
+        let pins = projection_pins(drive,plan.identity(),authorities)?;
+        let identity = pins.plan_ref().to_string();
         let scopes = Mutex::new(Vec::new());
         let mut admitted_land = |outputs: &PreparedEmitted| {
             let owner = self.catalog.owner_at(&job_scope(&drive.job))?.ok_or_else(|| Failure::deterministic(FailureTag::Permanent, "prepared body owner is absent"))?;

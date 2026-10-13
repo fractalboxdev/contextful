@@ -39,6 +39,7 @@ The record opens before the first pull ({{run.record.row-at-open}}). An executio
 pins the connector and plan ({{run.own.pinned-plan-changed}}); host jobs use their own
 scope ({{run.own.host-scope}}).
 
+Bodies: {{run.own.body-implementation}}, {{run.own.body-dependencies}}, {{run.own.body-compatibility}}.
 Items follow {{run.items.opt-in}} and {{run.items.identity}}.
 Outcomes follow {{run.items.completion}} and {{run.items.outcomes}};
 admission follows {{run.items.entity-admission}}, {{run.items.overlap}} and {{run.items.fence}}.
@@ -116,7 +117,7 @@ With no pending owner, a fire receives a fresh execution id ({{run.own.retiremen
 the boundary instant ({{run.advance.inclusive-boundary}}); `insights` declares a
 `primary_key`, so those repeats are idempotent ({{run.advance.declared-key-required}}).
 
-The first page is journaled and written; then the process dies before commit.
+The process dies after recording its first page.
 
 On restart, startup marks the row `partial_failure` because its owner lease has expired
 ({{run.record.orphan-reap}}). The next fire finds no commit marker newer than the cached

@@ -15,6 +15,19 @@ Execution replacement preserves the original recorded value, callback and export
 
 Consequences: startup checks a provisioned project recovery identity, every required table and the executable schema without repairing a partial restore. Backup drains and stops every writer, captures one PostgreSQL snapshot and its corpus frontier, and restores that set before restarting writers. A callback interrupted after its journal write reconciles to that value. An exporter holds its durable lease row across a bounded outbound call; takeover waits for an admitted call. Encrypted PostgreSQL rows and remote coordinated-group outboxes require their own conforming adapters; the profile refuses both combinations.
 
+## Registered bodies pin the executing host and public semantic dependencies
+
+An embedding binary owns compiled body code. Configuration names registered code and cannot authenticate a digest supplied beside that name. The engine fingerprints its executing host file and concrete body type before owner admission. Registration contributes immutable digests of prompt/template content, typed public provider/model configuration and policy content. Credential values have no field in provider semantics and enter neither pins nor diagnostics.
+
+| Option | Lost on | Cost |
+| --- | --- | --- |
+| Verified host artifact plus declared public semantics *(chosen)* | — | Any host rebuild conservatively refuses pending work unless the recorded build remains available. |
+| Body name and structural declarations | Executable identity | Changed code or prompts reuse recorded calls under different semantics. |
+| Manifest-supplied implementation digest | Authority | Untrusted configuration can preserve a digest while replacing code. |
+| Executable digest alone | Dependency identity | Runtime prompt, model or policy changes escape the pin. |
+
+Consequences: existing registrations declare no external semantic dependencies unless the host supplies them; each receives an implementation pin. Pending owners without implementation pins refuse because they establish no executable identity. Original builds resume recorded work; fresh executions retain earlier records and use their admitted identities.
+
 ## A plan is compiled, content-hashed data with no embedded runtime
 
 A journaled step replays correctly only against the definition that produced it. The authoring surface is a build-time compiler emitting a serialized, content-hashed plan, a run pins against the plan hash, and no profile links a script runtime. `run.compile` accepts a step body only as a connector reference, and control flow is declared as `branch` and `parallel` nodes, so data selects an arm and never which arms exist. `run.transform` never emits more rows than it consumed.
