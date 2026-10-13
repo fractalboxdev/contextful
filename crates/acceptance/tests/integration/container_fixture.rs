@@ -14,6 +14,38 @@ fn container_fixture_requires_pinned_service_images_before_starting_services() {
 }
 
 #[test]
+#[ignore = "requires cached synthetic service images"]
+fn synthetic_container_provider_is_reachable_on_the_shared_loopback() {
+    use contextful_acceptance::container_recovery::RecoveryFixture;
+    let postgres = std::env::var("CONTEXTFUL_FIXTURE_POSTGRES_IMAGE").unwrap();
+    let proxy = std::env::var("CONTEXTFUL_FIXTURE_PROXY_IMAGE").unwrap();
+    let fixture = SyntheticFixture::start(&postgres, &proxy, Duration::from_secs(30)).unwrap();
+    let response = std::process::Command::new("docker")
+        .args([
+            "exec",
+            fixture.network_container(),
+            "wget",
+            "--timeout=3",
+            "-q",
+            "-O",
+            "-",
+            "http://127.0.0.1:18080/health",
+        ])
+        .output()
+        .unwrap();
+    assert!(
+        response.status.success(),
+        "loopback provider unavailable: {}",
+        String::from_utf8_lossy(&response.stderr)
+    );
+    assert!(
+        response.stdout == b"ready",
+        "provider health response differs"
+    );
+    assert_eq!(fixture.first_page_calls(), 0);
+}
+
+#[test]
 #[ignore = "requires a supplied digest-pinned release image and cached synthetic service images"]
 fn digest_pinned_release_image_recovers_paid_pull_on_empty_disk() {
     let image =
