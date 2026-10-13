@@ -90,6 +90,15 @@
 "run.export.typed-watch" = { test = "crates/contextful-cli/tests/integration/export.rs::typed_export_watch_retries_a_refused_publication" }
 "run.export.typed-byte-limit" = { test = "crates/contextful-cli/tests/integration/export.rs::typed_export_splits_requests_by_bytes_and_refuses_an_oversized_event" }
 "run.export.typed-event-too-large" = { test = "crates/contextful-cli/tests/integration/export.rs::typed_export_splits_requests_by_bytes_and_refuses_an_oversized_event" }
+"run.export.group-block" = { test = "crates/contextful-cli/tests/integration/job.rs::coordinated_job_exports_and_rebuilds_include_a_quiet_empty_member" }
+"run.export.group-source" = { test = "crates/contextful-cli/tests/integration/job.rs::a_successful_job_records_one_coordinated_output_frontier" }
+"run.export.group-delivery" = { test = "crates/contextful-cli/tests/integration/export.rs::coordinated_exports_require_a_completed_producer_and_rebuild_full_state" }
+"run.export.group-identity" = { test = "crates/contextful-core/tests/integration/pipeline/export.rs::publication_groups_bind_the_base_members_and_empty_outputs" }
+"run.export.group-activation" = { test = "crates/contextful-sqlite/tests/integration/export.rs::coordinated_receiver_activates_all_members_once_and_refuses_rollback" }
+"run.export.group-checkpoint" = { test = "crates/contextful-sqlite/tests/integration/export.rs::restored_publication_checkpoint_cannot_reverse_a_durable_receiver_tombstone" }
+"run.export.group-rebuild" = { test = "crates/contextful-cli/tests/integration/job.rs::coordinated_job_exports_and_rebuilds_include_a_quiet_empty_member" }
+"run.export.group-incompatible" = { test = "crates/contextful-sqlite/tests/integration/export.rs::coordinated_outbox_retries_identical_bytes_and_checkpoint_rejects_incompatibility" }
+"run.export.group-storage" = { test = "crates/contextful-cli/tests/integration/export.rs::coordinated_exports_require_a_completed_producer_and_rebuild_full_state" }
 "read.revise.served-write" = { test = "contextful_cli::serve::served_claim_write_is_durable_actor_bound_and_outside_read_mcp" }
 "read.revise.served-scope" = { test = "contextful_cli::serve::served_claim_write_is_durable_actor_bound_and_outside_read_mcp" }
 "read.revise.browser-request" = { test = "contextful_cli::serve::served_claim_write_is_durable_actor_bound_and_outside_read_mcp" }
@@ -152,7 +161,7 @@ connector = 229
 corpus = 79
 disclosure = 63
 read = 211
-run = 388
+run = 397
 store = 253
 surface = 98
 topology = 72
