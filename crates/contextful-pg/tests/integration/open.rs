@@ -22,3 +22,30 @@ fn a_malformed_connection_string_refuses_the_open_without_echoing_it() {
     assert!(failure.message.contains("Postgres catalog"), "{}", failure.message);
     assert!(!failure.message.contains("canary-secret"), "{}", failure.message);
 }
+
+#[test]
+fn a_remote_database_cannot_disable_authenticated_transport() {
+    let error = PgCatalog::validate_transport("host=database.example port=5432 user=worker sslmode=disable").unwrap_err();
+    assert!(error.message.contains("DatabaseTransportUnprotected"), "{error}");
+    assert!(!error.message.contains("canary-secret"), "{error}");
+}
+
+#[test]
+fn remote_host_addresses_cannot_hide_behind_absent_or_local_host_names() {
+    for connection in [
+        "hostaddr=203.0.113.1 sslmode=disable",
+        "host=localhost hostaddr=203.0.113.1 sslmode=disable",
+        "host=localhost,localhost hostaddr=127.0.0.1,203.0.113.1 sslmode=disable",
+    ] {
+        let error = PgCatalog::validate_transport(connection).expect_err("remote hostaddr requires authenticated TLS without connecting");
+        assert!(error.message.contains("DatabaseTransportUnprotected"), "{error}");
+    }
+    for connection in [
+        "sslmode=disable",
+        "host=/tmp sslmode=disable",
+        "hostaddr=127.0.0.1 sslmode=disable",
+        "host=localhost hostaddr=::1 sslmode=disable",
+    ] {
+        PgCatalog::validate_transport(connection).expect("local sockets and every loopback address permit local plaintext");
+    }
+}

@@ -19,6 +19,26 @@ pub const EXPORT_BATCH_ROWS: usize = 500;
 /// Maximum JSON request size for typed delivery.
 pub const TYPED_REQUEST_BYTES: usize = 64 * 1024;
 
+/// The delivered frontier and the current or staged publication of one export.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct ExportPosition {
+    pub source_publication: Option<String>,
+    pub pending_publication: Option<String>,
+    pub identity: Option<String>,
+    pub destination: Option<String>,
+    pub ack_sequence: Option<u64>,
+    pub next_sequence: u64,
+}
+
+/// The source frontier and read/delivery identity of one staged publication.
+#[derive(Debug, Clone, Copy)]
+pub struct ExportPublication<'a> {
+    pub source: &'a str,
+    pub id: &'a str,
+    pub identity: &'a str,
+    pub destination: &'a str,
+}
+
 /// The resource's `service.name` on every delivered batch.
 pub const SERVICE_NAME: &str = "contextful";
 

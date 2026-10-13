@@ -73,9 +73,18 @@ fn the_latest_row_per_run_and_phase_wins() {
 
 /// An inner catalog that keeps chunk rows in memory and answers nothing else.
 #[derive(Default)]
-struct Chunks(Mutex<Vec<ChunkRow>>);
+struct Chunks(Mutex<Vec<ChunkRow>>, Arc<std::sync::atomic::AtomicUsize>);
+
+struct GuardCount(Arc<std::sync::atomic::AtomicUsize>);
+impl contextful_core::coordinate::ExecutionGuard for GuardCount {}
+impl Drop for GuardCount { fn drop(&mut self) { self.0.fetch_sub(1,std::sync::atomic::Ordering::SeqCst); } }
 
 impl Catalog for Chunks {
+    fn supports_strict_execution_guards(&self) -> bool { true }
+    fn execution_guard(&self, _: &contextful_core::coordinate::ExecutionAdmission) -> Result<Box<dyn contextful_core::coordinate::ExecutionGuard>,Failure> {
+        self.1.fetch_add(1,std::sync::atomic::Ordering::SeqCst);
+        Ok(Box::new(GuardCount(self.1.clone())))
+    }
     fn chunk_at(&self, scope: &OwnerScope) -> Result<Option<ChunkRow>, Failure> {
         Ok(self.0.lock().unwrap().iter().find(|r| &OwnerScope::chunk(&r.pipeline_id, &r.table, &r.chunk) == scope).cloned())
     }
@@ -148,6 +157,11 @@ fn the_recorded_catalog_keeps_the_wrapped_catalogs_chunk_plan() {
     let f = Fixture::new();
     let inner = Arc::new(Chunks::default());
     let recorded = RecordedCatalog::new(inner.clone(), f.store.clone(), Box::new(|_| Ok(NodeId::parse("ingest-a").unwrap())));
+    assert!(recorded.supports_strict_execution_guards());
+    let token=recorded.execution_guard(&contextful_core::coordinate::ExecutionAdmission::new(Vec::new(),Vec::new(),false).unwrap()).unwrap();
+    assert_eq!(inner.1.load(std::sync::atomic::Ordering::SeqCst),1);
+    drop(token);
+    assert_eq!(inner.1.load(std::sync::atomic::Ordering::SeqCst),0);
     let window = Window::new(Position::Int(0), Position::Int(10)).unwrap();
     recorded.put_chunk(&ChunkRow::planned("feed", "filings", "c0", 0, window)).unwrap();
     assert_eq!(inner.0.lock().unwrap().len(), 1);

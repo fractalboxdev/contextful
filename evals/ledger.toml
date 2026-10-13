@@ -387,14 +387,15 @@ method = { test = "contextful_ci::topology::this_repository_store_write_half_lin
 target = { op = "==", value = 0 }
 
 # A ratchet: the write half's distinct packages across every target, under the locked
-# resolve. Growth past the ceiling reds the evaluate stage.
+# normal-dependency resolve contains 212 packages; growth past that graph reds evaluate.
+# Baseline evidence: evals/baselines/store-write-packages.json.
 [entry.store-write-package-count]
 clause = "topology.package.store-write-engine-free"
 metric = "topology.store_write.unique_packages"
 kind   = "size"
 tier   = "gate"
 method = { test = "contextful_ci::topology::this_repository_store_write_half_links_no_forbidden_package" }
-target = { op = "<=", value = 200 }
+target = { op = "<=", value = 212 }
 
 [entry.no-sqlite-link]
 clause = "topology.package.store-sqlite-free"

@@ -14,8 +14,14 @@ use contextful_core::run::record::RunRow;
 use contextful_core::run::{Failure, FailureTag, RunError};
 use contextful_core::store::StoreError;
 use contextful_core::time::Instant;
-use postgres::{Client, Config, NoTls, Transaction};
+use postgres::{Client, Config, Transaction};
 use std::sync::Mutex;
+
+mod stores;
+mod export;
+mod guard;
+pub use export::PgExportLedger;
+pub use stores::{PgAwakeableStore, PgBlobStore, PgJournalStore, PgRunStores, EXECUTION_SCHEMA_VERSION};
 
 /// The catalog's tables, created once under an advisory lock so daemons opening together
 /// do not race the DDL. Instants are microseconds since the epoch on the database's clock.
@@ -89,11 +95,21 @@ impl PgCatalog {
     /// Connect to the database `conninfo` names, a key-value string or a `postgres://`
     /// URL, and create the catalog's tables on first open.
     pub fn connect(conninfo: &str) -> Result<PgCatalog, Failure> {
+        Self::connect_schema(conninfo, true)
+    }
+
+    /// Validate protected remote transport without connecting or resolving a host.
+    pub fn validate_transport(conninfo: &str) -> Result<(), Failure> {
+        protected_config(conninfo).map(|_| ())
+    }
+
+    fn connect_schema(conninfo: &str, initialize: bool) -> Result<PgCatalog, Failure> {
         // A parse error can quote the string, password included, so it is not passed on.
-        let config: Config = conninfo.parse().map_err(|_| storage("", "the connection string does not parse"))?;
+        let config = protected_config(conninfo)?;
         let name = describe(&config);
-        let client = config.connect(NoTls).map_err(|e| storage(&name, e))?;
+        let client = connect(&config).map_err(|e| storage(&name, e))?;
         let catalog = PgCatalog { config, name, client: Mutex::new(client) };
+        if !initialize { return Ok(catalog) }
         catalog.with(|tx, fail| {
             tx.execute("SELECT pg_advisory_xact_lock($1)", &[&SCHEMA_LOCK]).map_err(|e| fail(&e))?;
             tx.batch_execute(SCHEMA).map_err(|e| fail(&e))
@@ -110,15 +126,49 @@ impl PgCatalog {
     /// connection.
     fn with<T>(&self, f: impl FnOnce(&mut Transaction, Fail) -> Result<T, Failure>) -> Result<T, Failure> {
         let fail = |e: &dyn std::fmt::Display| storage(&self.name, e);
+        // A blocked takeover or keeper renewal must not hold the shared client
+        // while the admitted callback updates its run metadata.
+        if guard::active() {
+            let mut client = connect(&self.config).map_err(|e| fail(&e))?;
+            let mut tx = client.transaction().map_err(|e| fail(&e))?;
+            let out = f(&mut tx, &fail)?;
+            tx.commit().map_err(|e| fail(&e))?;
+            return Ok(out);
+        }
         let mut client = self.client.lock().unwrap_or_else(|p| p.into_inner());
         if client.is_closed() {
-            *client = self.config.connect(NoTls).map_err(|e| fail(&e))?;
+            *client = connect(&self.config).map_err(|e| fail(&e))?;
         }
         let mut tx = client.transaction().map_err(|e| fail(&e))?;
         let out = f(&mut tx, &fail)?;
         tx.commit().map_err(|e| fail(&e))?;
         Ok(out)
     }
+}
+
+fn protected_config(conninfo: &str) -> Result<Config, Failure> {
+    let mut config: Config = conninfo.parse().map_err(|_| storage("", "the connection string does not parse"))?;
+    let local = config.get_hostaddrs().iter().all(std::net::IpAddr::is_loopback) && config.get_hosts().iter().all(|host| match host {
+        postgres::config::Host::Tcp(host) => host == "localhost" || host.parse::<std::net::IpAddr>().is_ok_and(|ip| ip.is_loopback()),
+        #[cfg(unix)]
+        postgres::config::Host::Unix(_) => true,
+    });
+    if !local {
+        if config.get_ssl_mode() == postgres::config::SslMode::Disable {
+            return Err(storage(&describe(&config), "DatabaseTransportUnprotected: remote PostgreSQL requires authenticated TLS; sslmode=disable is restricted to loopback or Unix sockets"));
+        }
+        // Prefer never permits a plaintext fallback beyond the local transport boundary.
+        config.ssl_mode(postgres::config::SslMode::Require);
+    }
+    Ok(config)
+}
+
+fn connect(config: &Config) -> Result<Client, postgres::Error> {
+    let roots = rustls::RootCertStore::from_iter(webpki_roots::TLS_SERVER_ROOTS.iter().cloned());
+    let tls = rustls::ClientConfig::builder_with_provider(std::sync::Arc::new(rustls::crypto::ring::default_provider()))
+        .with_safe_default_protocol_versions().expect("ring supports the configured TLS versions")
+        .with_root_certificates(roots).with_no_client_auth();
+    config.connect(tokio_postgres_rustls::MakeRustlsConnect::new(tls))
 }
 
 fn instant_us(us: i64, fail: Fail) -> Result<Instant, Failure> {
@@ -240,6 +290,10 @@ fn put_run_row(tx: &mut Transaction, row: &RunRow, fail: Fail) -> Result<(), Fai
 }
 
 impl Catalog for PgCatalog {
+    fn supports_strict_execution_guards(&self) -> bool { true }
+    fn execution_guard(&self, admission: &contextful_core::coordinate::ExecutionAdmission) -> Result<Box<dyn contextful_core::coordinate::ExecutionGuard>, Failure> {
+        guard::acquire(self, admission)
+    }
     fn now(&self) -> Result<Instant, Failure> {
         self.with(|tx, fail| {
             let us: i64 = tx.query_one(format!("SELECT {NOW_US}").as_str(), &[]).map_err(|e| fail(&e))?.get(0);
@@ -251,6 +305,7 @@ impl Catalog for PgCatalog {
     /// database's clock, and increments the fence (`topology.coordinate.fence-advances`).
     fn acquire(&self, key: &LeaseKey, holder: &str, ttl_secs: u64) -> Result<Option<Lease>, Failure> {
         let spelling = key.spelling();
+        guard::mutation(self, None, Some(&spelling))?;
         self.with(|tx, fail| {
             tx.execute("INSERT INTO contextful_lease (key, fence) VALUES ($1, 0) ON CONFLICT DO NOTHING", &[&spelling]).map_err(|e| fail(&e))?;
             let sql = format!(
@@ -264,6 +319,7 @@ impl Catalog for PgCatalog {
     }
 
     fn release(&self, lease: &Lease) -> Result<(), Failure> {
+        guard::mutation(self, None, Some(&lease.key))?;
         self.with(|tx, fail| {
             let fence = fence_i64(lease.fence, fail)?;
             tx.execute("UPDATE contextful_lease SET holder = NULL, expires_us = NULL WHERE key = $1 AND fence = $2 AND holder = $3", &[&lease.key, &fence, &lease.holder])
@@ -273,6 +329,7 @@ impl Catalog for PgCatalog {
     }
 
     fn renew(&self, lease: &Lease, ttl_secs: u64) -> Result<Option<Lease>, Failure> {
+        guard::mutation(self, None, Some(&lease.key))?;
         self.with(|tx, fail| {
             let fence = fence_i64(lease.fence, fail)?;
             let sql = format!("UPDATE contextful_lease SET expires_us = {NOW_US} + $4 WHERE key = $1 AND fence = $2 AND holder = $3 RETURNING expires_us");
@@ -298,6 +355,7 @@ impl Catalog for PgCatalog {
     }
 
     fn cursor_cas_at(&self, at: &OwnerScope, expected_version: u64, next: CursorRow, fence: Option<&Lease>) -> Result<Cas, Failure> {
+        guard::mutation(self, Some(at), None)?;
         self.with(|tx, fail| {
             if scope(tx, at, true, fail)?.0.version != expected_version {
                 return Ok(Cas::VersionMoved);
@@ -314,6 +372,7 @@ impl Catalog for PgCatalog {
     }
 
     fn put_owner(&self, owner: &ExecutionOwner) -> Result<(), Failure> {
+        guard::mutation(self, Some(&owner.scope), None)?;
         self.with(|tx, fail| {
             seed_scope(tx, &owner.scope, fail)?;
             let [p, t, k, c] = key(&owner.scope);
@@ -325,6 +384,7 @@ impl Catalog for PgCatalog {
     }
 
     fn retire_at(&self, at: &OwnerScope, execution_id: &str, cursor: Option<(CursorRow, u64)>, fence: Option<&Lease>) -> Result<Cas, Failure> {
+        guard::mutation(self, Some(at), None)?;
         self.with(|tx, fail| {
             let (_, owner) = scope(tx, at, true, fail)?;
             if let Some(refused) = fenced(tx, at, fence, fail)? {

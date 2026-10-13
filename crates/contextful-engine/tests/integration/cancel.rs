@@ -181,6 +181,56 @@ macro_rules! delegate {
     };
 }
 
+struct BlockedRenewal {
+    inner: Arc<dyn Catalog + Send + Sync>,
+    entered: Arc<std::sync::Barrier>,
+    released: Arc<std::sync::Barrier>,
+}
+impl Catalog for BlockedRenewal {
+    fn renew(&self, lease:&Lease, ttl_secs:u64)->Result<Option<Lease>,Failure> {
+        self.entered.wait();
+        self.released.wait();
+        self.inner.renew(lease,ttl_secs)
+    }
+    delegate! {
+        now() -> Result<Instant, Failure>;
+        acquire(key: &LeaseKey, holder: &str, ttl_secs: u64) -> Result<Option<Lease>, Failure>;
+        release(lease: &Lease) -> Result<(), Failure>;
+        lease_row(key: &LeaseKey) -> Result<LeaseRow, Failure>;
+        cursor_at(scope: &OwnerScope) -> Result<CursorRow, Failure>;
+        cursor_cas_at(scope: &OwnerScope, expected_version: u64, next: CursorRow, fence: Option<&Lease>) -> Result<Cas, Failure>;
+        owner_at(scope: &OwnerScope) -> Result<Option<ExecutionOwner>, Failure>;
+        put_owner(owner: &ExecutionOwner) -> Result<(), Failure>;
+        retire_at(scope: &OwnerScope, execution_id: &str, cursor: Option<(CursorRow, u64)>, fence: Option<&Lease>) -> Result<Cas, Failure>;
+        retired_at(scope: &OwnerScope) -> Result<Option<String>, Failure>;
+        lease_holds(lease: &Lease) -> Result<bool, Failure>;
+        put_run(row: &RunRow) -> Result<(), Failure>;
+        run(run_id: &str) -> Result<Option<RunRow>, Failure>;
+        runs(pipeline_id: Option<&str>) -> Result<Vec<RunRow>, Failure>;
+        update_run(run_id: &str, f: &mut dyn FnMut(&mut RunRow) -> Result<(), RunError>) -> Result<Option<Result<RunRow, RunError>>, Failure>;
+    }
+}
+
+#[test]
+fn a_renewal_waiting_on_durable_admission_leaves_the_lease_slot_available() {
+    let rig=Rig::new();
+    let lease=rig.catalog().acquire(&LeaseKey::Pipeline("guarded".into()),"holder",30).unwrap().unwrap();
+    let slot=std::sync::Mutex::new(Some(lease));
+    let entered=Arc::new(std::sync::Barrier::new(2));
+    let released=Arc::new(std::sync::Barrier::new(2));
+    let catalog=BlockedRenewal {inner:rig.engine.catalog.clone(),entered:entered.clone(),released:released.clone()};
+    let available=std::thread::scope(|threads| {
+        let renewing=threads.spawn(|| contextful_engine::cancel::renew_lease(&catalog,&slot));
+        entered.wait();
+        let available=match slot.try_lock() { Ok(mut slot)=>{*slot=None;true},Err(_)=>false };
+        released.wait();
+        renewing.join().unwrap();
+        available
+    });
+    assert!(available,"a blocked durable renewal cannot hold the lease slot needed by the guarded callback's precommit");
+    assert!(slot.lock().unwrap().is_none(),"a returned renewal cannot resurrect a cleared execution slot");
+}
+
 impl Catalog for Flaky {
     fn run(&self, run_id: &str) -> Result<Option<RunRow>, Failure> {
         if self.failures.load(Ordering::SeqCst) > 0 {

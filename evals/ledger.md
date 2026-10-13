@@ -72,7 +72,7 @@
 | `stale-fence-differential` | `assurance.differential-test.protocol-harness` | `protocol.drift_cases` | gate | test `contextful_cli::protocol_differential::fixed_seed_replays_protocol_cases_against_the_store` | `== 0` | gated |
 | `stale-fence-never-lands` | `store.lease.stale-fence` | `lease.stale_commits_landed` | gate | test `contextful_context::run_commit::a_commit_under_a_superseded_fence_loses_and_its_run_stays_unreadable` | `== 0` | gated |
 | `store-write-deny-set` | `topology.package.store-write-engine-free` | `topology.store_write.forbidden_packages` | gate | test `contextful_ci::topology::this_repository_store_write_half_links_no_forbidden_package` | `== 0` | gated |
-| `store-write-package-count` | `topology.package.store-write-engine-free` | `topology.store_write.unique_packages` | gate | test `contextful_ci::topology::this_repository_store_write_half_links_no_forbidden_package` | `<= 200` | gated |
+| `store-write-package-count` | `topology.package.store-write-engine-free` | `topology.store_write.unique_packages` | gate | test `contextful_ci::topology::this_repository_store_write_half_links_no_forbidden_package` | `<= 212` | gated |
 | `vector-filtered-recall` | `read.retrieve.sidecar-oversampling` | `slices.filtered.retrieval.vector.recall_at_k` | scheduled | issue 43 | `>= 0.95` | open (issue 43) |
 | `vector-recall` | `read.retrieve.sidecar-generates-candidates` | `retrieval.vector.recall_at_k` | gate | test `contextful_context::index::vector_recall_at_10_holds_against_exact_search` | `>= 0.95` | gated |
 | `vector-resident` | `read.retrieve.sidecar-size-cap` | `vector.probe.rss_anon_delta_mib` | scheduled | issue 43 | `< 64` | open (issue 43) |

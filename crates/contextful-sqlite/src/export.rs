@@ -2,6 +2,7 @@
 
 use crate::{stores::Db, storage};
 use contextful_core::export::{ChangeEvent, ChangeState};
+pub use contextful_core::export::{ExportPosition, ExportPublication};
 use contextful_core::run::Failure;
 use contextful_core::store::encrypt::FileCipher;
 use rusqlite::{params, Connection, OptionalExtension};
@@ -43,26 +44,6 @@ CREATE TABLE IF NOT EXISTS typed_export_binding (
   acknowledged_publication TEXT
 );
 ";
-
-/// The delivered frontier and the current or staged publication of one export.
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub struct ExportPosition {
-    pub source_publication: Option<String>,
-    pub pending_publication: Option<String>,
-    pub identity: Option<String>,
-    pub destination: Option<String>,
-    pub ack_sequence: Option<u64>,
-    pub next_sequence: u64,
-}
-
-/// The source frontier and read/delivery identity of one staged publication.
-#[derive(Debug, Clone, Copy)]
-pub struct ExportPublication<'a> {
-    pub source: &'a str,
-    pub id: &'a str,
-    pub identity: &'a str,
-    pub destination: &'a str,
-}
 
 pub struct ExportLedger {
     path: PathBuf,

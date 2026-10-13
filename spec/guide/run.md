@@ -43,6 +43,30 @@ Each pull records its value once ({{run.journal.step-output}}); outbound request
 idempotency keys ({{run.journal.idempotency-key}}). Journal state persists through store
 ports with file and SQLite adapters ({{run.journal.storage-ports}},
 {{run.journal.sqlite-stores}}). A batch follows {{run.land.stage-order}}.
+Initialize {{run.journal.execution-recovery}} under {{run.journal.container-profile}}:
+
+```sh
+export CONTEXTFUL_STORAGE_PROFILE=cloudflare-postgres
+export CONTEXTFUL_CATALOG_URL='host=database.example user=contextful dbname=execution sslmode=require'
+export CONTEXTFUL_RECOVERY_ID=deployment-recovery-identity
+contextful storage initialize --project research
+contextful storage check --project research
+```
+
+```toml
+[sync]
+endpoint = "r2://ACCOUNT_ID"
+bucket = "CORPUS_BUCKET"
+pull_before_run = true
+push_after_run = true
+access_key_id = "env://CORPUS_ACCESS_KEY_ID"
+secret_access_key = "env://CORPUS_SECRET_ACCESS_KEY"
+```
+
+Stop writers, capture {{run.journal.execution-backup}}, restore
+{{run.journal.execution-recovery}}, and restart. Replacement uses
+{{run.journal.postgres-stores}}; exports follow {{run.export.remote-state}} and
+{{run.export.writer-fenced}}.
 The stage types its observed batch ({{run.land.observed-schema}}) and preserves nested
 columns or projects them into parent and child rows ({{run.normalize.mode}}). A downgrade
 travels with its table's commit ({{run.record.schema-diff-home}}). The secret guard's

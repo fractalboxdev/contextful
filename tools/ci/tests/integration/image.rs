@@ -35,6 +35,18 @@ fn instructions() -> Vec<String> {
     out
 }
 
+#[test]
+fn the_container_recipe_accepts_a_native_linux_release_target_without_changing_profiles() {
+    let lines = instructions();
+    assert!(lines.iter().any(|line| line == "ARG PLATFORM=linux/amd64"));
+    assert_eq!(lines.iter().filter(|line| line.starts_with("FROM --platform=$PLATFORM ")).count(), 2);
+    assert!(lines.iter().any(|line| line == "ARG RUST_TARGET=x86_64-unknown-linux-musl"));
+    let build = lines.iter().find(|line| line.contains("cargo build")).unwrap();
+    assert!(build.contains("--target \"$RUST_TARGET\""), "{build}");
+    assert!(build.contains("target/$RUST_TARGET/release/contextful"), "{build}");
+    assert!(lines.iter().any(|line| line.starts_with("RUN test \"$RUST_TARGET\"") && line.contains("rustc -vV")), "the target must match the pinned builder's native platform: {lines:?}");
+}
+
 /// The repository's `Dockerfile` builds one profile, `contextful-full` unless `PROFILE` names another, as a static `linux/amd64` binary, and ships it in a shell-free runtime image as a non-root user over a declared store volume.
 // spec: assurance.build.container-image@898ae2c7
 #[test]
@@ -43,7 +55,7 @@ fn the_container_recipe_builds_one_static_profile_into_a_shell_free_non_root_ima
     let froms: Vec<&String> = lines.iter().filter(|l| l.starts_with("FROM ")).collect();
     assert_eq!(froms.len(), 2, "one builder and one runtime stage: {froms:?}");
     for from in &froms {
-        assert!(from.contains("--platform=linux/amd64"), "{from}");
+        assert!(from.contains("--platform=$PLATFORM"), "{from}");
         assert!(from.contains("@sha256:"), "a base image is pinned by digest: {from}");
     }
     assert!(froms[1].contains("distroless/static"), "the runtime stage carries no shell or C library: {}", froms[1]);
@@ -51,7 +63,7 @@ fn the_container_recipe_builds_one_static_profile_into_a_shell_free_non_root_ima
     let builder: Vec<&String> = lines.iter().skip_while(|l| !l.starts_with("FROM ")).skip(1).take_while(|l| !l.starts_with("FROM ")).collect();
     assert!(builder.iter().any(|l| *l == "ARG PROFILE=contextful-full"), "{builder:?}");
     let build = builder.iter().find(|l| l.contains("cargo build")).expect("the builder runs cargo build");
-    for flag in ["--release", "--locked", "--no-default-features", "--features \"$PROFILE\"", "--target x86_64-unknown-linux-musl"] {
+    for flag in ["--release", "--locked", "--no-default-features", "--features \"$PROFILE\"", "--target \"$RUST_TARGET\""] {
         assert!(build.contains(flag), "`{flag}` absent from: {build}");
     }
     assert!(

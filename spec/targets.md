@@ -54,21 +54,21 @@ flowchart LR
 
 Edge-first deployments on native object storage with near-zero idle cost.
 
-| Role | `worker-container` (default) |
-| --- | --- |
-| cron tick | Cron Trigger |
-| reconciler | Worker |
-| durable orchestrator | Workflows |
-| single-writer catalog | Durable Object SQLite, one object per store |
-| object store | R2 |
-| hot-path query face | Worker router → warm contextful-full Container |
-| heavy compute | Container |
-| secrets | Workers Secrets |
-| realtime run projection | Durable Object with a hibernating WebSocket |
-| kind · profiles | orchestrated · full |
-| wall-clock cap · excluded | none · nothing |
+| Role | `worker-container` | `worker-container-postgres` (default) |
+| --- | --- | --- |
+| cron tick | Cron Trigger | Cron Trigger |
+| reconciler | Worker | Worker |
+| durable orchestrator | Workflows | Workflows |
+| single-writer catalog | Durable Object SQLite, one object per store | Postgres execution database with authenticated TLS |
+| object store | R2 | R2 |
+| hot-path query face | Worker router → warm contextful-full Container | Worker router → warm contextful-full Container |
+| heavy compute | Container | Container with cloudflare-postgres storage profile |
+| secrets | Workers Secrets | Workers Secrets |
+| realtime run projection | Durable Object with a hibernating WebSocket | Durable Object with a hibernating WebSocket |
+| kind · profiles | orchestrated · full | orchestrated · full |
+| wall-clock cap · excluded | none · nothing | none · nothing |
 
-The `worker-container` shape; the table above names the primitive filling each role:
+The `worker-container-postgres` shape; the table above names the primitive filling each role:
 
 ```mermaid
 flowchart LR

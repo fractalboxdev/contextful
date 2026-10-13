@@ -59,6 +59,7 @@ pub struct BodyOwner {
     pub(crate) execution_id: String,
     pub(crate) run_id: String,
     pub(crate) identity: String,
+    pub(crate) pins: contextful_core::run::own::OwnerPins,
     effects: Vec<EffectScope>,
 }
 
@@ -196,7 +197,7 @@ impl<J: JournalStore + Clone + Send + Sync, B: BlobStore + Clone + Send + Sync> 
         let scopes = Mutex::new(Vec::new());
         let mut admitted_land = |outputs: &PreparedEmitted| {
             let owner = self.catalog.owner_at(&job_scope(&drive.job))?.ok_or_else(|| Failure::deterministic(FailureTag::Permanent, "prepared body owner is absent"))?;
-            land(outputs, &BodyOwner { scope:job_scope(&drive.job), execution_id:owner.execution_id, run_id:drive.run_id.clone(), identity:identity.clone(), effects:scopes.lock().unwrap_or_else(|e| e.into_inner()).clone() })
+            land(outputs, &BodyOwner { scope:job_scope(&drive.job), execution_id:owner.execution_id, run_id:drive.run_id.clone(), identity:identity.clone(), pins:owner.pins, effects:scopes.lock().unwrap_or_else(|e| e.into_inner()).clone() })
         };
         self.drive_using(drive, pins, read, &mut admitted_land, &|row, calls| {
             let prepared = PreparedCalls { calls, plan, admission, identity:&identity, issued:Mutex::new(Vec::new()) };
