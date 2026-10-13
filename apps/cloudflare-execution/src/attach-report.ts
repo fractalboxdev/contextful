@@ -53,6 +53,10 @@ export function attachConformanceReport(releasePath: string, providerPath: strin
   if (release.profile !== "contextful-full" || !release.archive.endsWith(".tar.gz") ||
       release.d1_compatibility.report !== `${stem}.cloudflare-d1.compatibility.json` ||
       digest(archivePath) !== release.sha256 ||
+      baseline.artifact_digest !== release.d1_compatibility.artifact_digest ||
+      baseline.source_commit !== release.d1_compatibility.source_commit ||
+      baseline.suite_revision !== release.d1_compatibility.suite_revision ||
+      baseline.storage_profile !== "cloudflare-d1" || baseline.source_dirty !== false ||
       provider.artifact_digest !== release.d1_compatibility.artifact_digest ||
       provider.source_commit !== release.d1_compatibility.source_commit ||
       provider.suite_revision !== release.d1_compatibility.suite_revision ||

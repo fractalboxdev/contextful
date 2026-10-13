@@ -62,6 +62,9 @@ test("a provider pass enters the archive and companion release evidence", () => 
     writeFileSync(skippedPath, JSON.stringify({ ...provider, scenarios: [{ id: "replacement", required: true, outcome: "skipped" }] }));
     assert.throws(() => attachConformanceReport(metadataPath, skippedPath, join(root, "skipped-output")),
       /ConformanceReleaseEvidenceMismatch/);
+    writeFileSync(join(root, `${stem}.cloudflare-d1.compatibility.json`), JSON.stringify({ ...baseline, source_dirty: true }));
+    assert.throws(() => attachConformanceReport(metadataPath, providerPath, join(root, "dirty-output")),
+      /ConformanceReleaseEvidenceMismatch/);
   } finally {
     rmSync(root, { recursive: true, force: true });
   }
