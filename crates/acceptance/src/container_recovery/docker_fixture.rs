@@ -61,8 +61,8 @@ impl SyntheticFixture {
                 "pg_isready",
                 "--username",
                 "conformance",
-                    "--host",
-                    "127.0.0.1",
+                "--host",
+                "127.0.0.1",
             ],
             Duration::from_secs(3),
         )
@@ -77,6 +77,13 @@ impl SyntheticFixture {
         let second = Arc::new((Mutex::new((false, false)), Condvar::new()));
         let (calls, page) = (first.clone(), second.clone());
         let provider = Server::start(move |request| {
+            if request.path() == "/health" {
+                return Response {
+                    status: 200,
+                    headers: vec![],
+                    body: b"ready".to_vec(),
+                };
+            }
             if request.query("cursor").is_none() {
                 calls.fetch_add(1, Ordering::SeqCst);
                 Response::json(200, &serde_json::json!({"rows":[{"id":"a","payload":"x".repeat(80 * 1024)}],"next":"p2"}).to_string())

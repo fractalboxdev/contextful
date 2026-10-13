@@ -59,21 +59,32 @@ pub fn validate_image(image: &str) -> Result<()> {
 struct Invocation {
     child: Child,
     output: tempfile::NamedTempFile,
+    diagnostic: tempfile::NamedTempFile,
 }
 
 impl Invocation {
     fn spawn(mut command: Command) -> Result<Self> {
         let output = tempfile::NamedTempFile::new().map_err(|_| "ConformanceScratchUnavailable")?;
+        let diagnostic =
+            tempfile::NamedTempFile::new().map_err(|_| "ConformanceScratchUnavailable")?;
         let child = command
             .stdout(Stdio::from(
                 output
                     .reopen()
                     .map_err(|_| "ConformanceScratchUnavailable")?,
             ))
-            .stderr(Stdio::null())
+            .stderr(Stdio::from(
+                diagnostic
+                    .reopen()
+                    .map_err(|_| "ConformanceScratchUnavailable")?,
+            ))
             .spawn()
             .map_err(|_| "ConformanceDockerUnavailable")?;
-        Ok(Self { child, output })
+        Ok(Self {
+            child,
+            output,
+            diagnostic,
+        })
     }
     fn wait(&mut self, timeout: Duration) -> Result<(ExitStatus, String)> {
         let deadline = Instant::now() + timeout;
@@ -83,6 +94,17 @@ impl Invocation {
                 .try_wait()
                 .map_err(|_| "ConformanceProcessUnavailable")?
             {
+                if !status.success()
+                    && std::env::var_os("CONTEXTFUL_RECOVERY_DIAGNOSTICS").is_some()
+                {
+                    use std::io::Read;
+                    let mut detail = String::new();
+                    let _ = self
+                        .diagnostic
+                        .reopen()
+                        .map(|file| file.take(16 * 1024).read_to_string(&mut detail));
+                    eprintln!("container recovery process {status}: {detail}");
+                }
                 if self
                     .output
                     .as_file()
@@ -138,6 +160,19 @@ fn docker(args: &[&str], timeout: Duration) -> Result<String> {
 fn config(dir: &Path, fixture: &dyn RecoveryFixture) -> Result<()> {
     let store = dir.join(".contextful/context/research");
     std::fs::create_dir_all(&store).map_err(|_| "ConformanceScratchUnavailable")?;
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::PermissionsExt;
+        for path in [
+            dir.to_path_buf(),
+            dir.join(".contextful"),
+            dir.join(".contextful/context"),
+            store.clone(),
+        ] {
+            std::fs::set_permissions(path, std::fs::Permissions::from_mode(0o777))
+                .map_err(|_| "ConformanceScratchUnavailable")?;
+        }
+    }
     std::fs::write(dir.join("contextful.toml"), fixture.declaration())
         .map_err(|_| "ConformanceScratchUnavailable")?;
     std::fs::write(store.join("config.toml"), fixture.corpus_config())
@@ -160,8 +195,6 @@ fn command(
             "--rm",
             "--name",
             name,
-            "--user",
-            "0:0",
             "--network",
             &format!("container:{network}"),
             "--env-file",
