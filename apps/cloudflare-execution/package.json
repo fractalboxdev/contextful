@@ -5,6 +5,7 @@
   "scripts": {
     "test": "node --experimental-strip-types --test test/*.test.ts",
     "typecheck": "tsc --noEmit",
+    "build": "wrangler deploy --dry-run --containers-rollout=none --config wrangler.example.jsonc --outdir ../../.tmp/cloudflare-execution-build",
     "types": "wrangler types src/worker-configuration.d.ts --config wrangler.example.jsonc --env-interface ContextfulExecutionEnv --include-runtime=false",
     "prepare-image": "node --experimental-strip-types src/prepare-image.ts",
     "attach-report": "node --experimental-strip-types src/attach-report.ts"
