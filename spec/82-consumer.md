@@ -30,6 +30,12 @@ Artifact compatibility: source-independent execution, required capabilities, sce
 - `foreign-target` — A release target unavailable to its packaging host records explicit skipped scenarios with a target diagnostic; its report supplies no execution pass.
   *because a cross compilation cannot demonstrate the produced artifact's behavior*
 - `storage-profile` — The local profile uses isolated filesystem state; `postgres` uses synthetic PostgreSQL and signed S3 services. An unavailable fixture records its named requirement through {{assurance.consumer.requirements}}.
+- `d1-profile` — A `cloudflare-d1` verdict runs the supplied `contextful-full` artifact against D1 and R2 bindings, replaces its local disk, and records every required outcome independently of the local and PostgreSQL profiles.
+  *A-assurance*
+- `d1-release` — Release evidence binds a `cloudflare-d1` report to the artifact digest, source revision, suite revision and storage profile; a required failure, unsupported case, skip or unverified binding supplies no compatibility verdict.
+  *A-assurance*
+- `d1-deployment` — Deployment readiness requires a replacement run against Cloudflare D1 and R2, with the same artifact digest and source revision as its release report.
+  *A-assurance*
 
 #### Scenarios
 

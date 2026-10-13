@@ -740,13 +740,13 @@ fn a_crate_missing_from_the_crate_map_is_refused() {
     passes(&r);
 }
 
-/// Nineteen crates compose the workspace. `contextful-cli` is the binary and wires every adapter per profile by dependency injection.
-// spec: topology.package.crate-map@76535123
+/// Twenty crates compose the workspace. `contextful-cli` is the binary and wires every adapter per profile by dependency injection.
+// spec: topology.package.crate-map@5582ac05
 #[test]
 fn this_repository_crate_map_names_every_crate() {
     let o = topology(repo_root());
     assert!(o.status.success(), "{}", stderr(&o));
-    assert!(stdout(&o).contains("crate map: 19 crates"), "{}", stdout(&o));
+    assert!(stdout(&o).contains("crate map: 20 crates"), "{}", stdout(&o));
 }
 
 /// The crate-graph stage runs the dependency rules and refuses a run-path crate reaching a
@@ -1216,26 +1216,26 @@ fn only_the_binary_wires_a_catalog_backend_and_everything_else_names_the_port() 
 
 /// Single-node self-hosting uses a local catalog file owned by one process; a self-hosted cluster uses Postgres via
 /// `pg-catalog`, linked into the full profile; a managed edge deployment uses per-object SQLite; a managed cloud
-/// deployment uses managed Postgres.
+/// deployment uses D1 and R2 through a private Worker binding.
 ///
-/// The machine catalog file and the Postgres catalog each implement the port; the full profile links the Postgres
+/// The machine, PostgreSQL and D1 catalogs each implement the port; the full profile links the remote
 /// adapter and its client while the edge and control profiles and a bare data-plane build link neither; and each
 /// provider's target file assigns its single-writer catalog role to the backend of its deployment shape.
-// spec: topology.coordinate.backends@a04f8089
+// spec: topology.coordinate.backends@af49f83a
 #[test]
 fn each_deployment_shape_reaches_its_catalog_backend_and_the_full_profile_links_postgres() {
-    for (backend, path) in [("MachineCatalog", "contextful-sqlite/src/machine.rs"), ("PgCatalog", "contextful-pg/src/lib.rs")] {
+    for (backend, path) in [("MachineCatalog", "contextful-sqlite/src/machine.rs"), ("PgCatalog", "contextful-pg/src/lib.rs"), ("D1Catalog", "contextful-d1/src/catalog.rs")] {
         let text = std::fs::read_to_string(repo_root().join("crates").join(path)).unwrap_or_default();
         assert!(text.contains(&format!("impl Catalog for {backend}")), "no `{backend}` behind the port at crates/{path}");
     }
     let full = profile_graph("contextful-full");
-    for package in ["contextful-pg", "postgres", "contextful-sqlite"] {
+    for package in ["contextful-pg", "postgres", "contextful-sqlite", "contextful-d1"] {
         assert!(full.iter().any(|n| n == package), "the full profile links no `{package}`");
     }
     for profile in ["contextful-edge", "contextful-control", "data-plane"] {
         let graph = profile_graph(profile);
         assert!(!graph.is_empty(), "`{profile}` links no package");
-        for package in ["contextful-pg", "postgres", "tokio-postgres"] {
+        for package in ["contextful-pg", "postgres", "tokio-postgres", "contextful-d1"] {
             assert!(!graph.iter().any(|n| n == package), "`{profile}` links `{package}`");
         }
     }
@@ -1251,10 +1251,10 @@ fn each_deployment_shape_reaches_its_catalog_backend_and_the_full_profile_links_
         }
     }
     let shapes=catalog("cloudflare");
-    assert_eq!(shapes.len(),2,"Cloudflare declares SQLite and PostgreSQL execution shapes");
+    assert_eq!(shapes.len(),2,"Cloudflare declares SQLite and D1 execution shapes");
     assert!(shapes.iter().all(|(kind,_)| kind=="orchestrated"));
     assert!(shapes.iter().any(|(_,role)| role.contains("Durable Object SQLite")));
-    assert!(shapes.iter().any(|(_,role)| role=="Postgres execution database with authenticated TLS"));
+    assert!(shapes.iter().any(|(_,role)| role=="D1 through a private Worker outbound binding"));
 }
 
 /// The edge profile is the one profile a function-class target hosts. Execution on such a deployment runs on a worker target.
@@ -1473,6 +1473,7 @@ fn the_catalog_port_has_exactly_the_known_implementors_and_postgres_alone_cluste
     }
     implementors.sort();
     let known: Vec<(String, String)> = [
+        ("D1Catalog", "crates/contextful-d1/src/catalog.rs"),
         ("LocalCatalog", "crates/contextful-engine/src/catalog.rs"),
         ("MachineCatalog", "crates/contextful-sqlite/src/machine.rs"),
         ("PgCatalog", "crates/contextful-pg/src/lib.rs"),

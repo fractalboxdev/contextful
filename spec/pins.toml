@@ -182,18 +182,26 @@
 "assurance.consumer.provenance" = { test = "crates/acceptance/tests/integration/conformance.rs::missing_capability_reports_unsupported_without_admitting_work" }
 "assurance.consumer.release-distribution" = { test = "tools/ci/tests/integration/artifact.rs::release_archives_carry_the_consumer_suite_and_digest_bound_compatibility_evidence" }
 "assurance.consumer.foreign-target" = { test = "tools/ci/tests/integration/artifact.rs::release_archives_carry_the_consumer_suite_and_digest_bound_compatibility_evidence" }
+"run.journal.d1-profile" = { test = "crates/contextful-cli/tests/integration/storage.rs::d1_storage_initialization_and_history_survive_a_new_cli_process" }
+"run.journal.d1-blob" = { test = "crates/contextful-d1/tests/integration/main.rs::a_recorded_r2_blob_survives_replacement_and_sweep" }
+"run.journal.d1-atomicity" = { test = "crates/contextful-d1/tests/integration/main.rs::a_recorded_r2_blob_survives_replacement_and_sweep" }
+"run.journal.d1-guard" = { test = "crates/contextful-d1/tests/integration/main.rs::a_crashed_d1_guard_requires_explicit_reconciliation_before_takeover" }
+"run.journal.d1-recovery" = { test = "crates/contextful-d1/tests/integration/main.rs::a_replacement_checks_the_same_d1_schema_and_recovery_identity" }
+"run.export.d1-state" = { test = "crates/contextful-d1/tests/integration/main.rs::a_lost_sink_acknowledgement_reoffers_the_same_d1_event_identity" }
+"assurance.consumer.d1-profile" = { test = "crates/acceptance/tests/integration/conformance.rs::a_d1_consumer_replays_after_empty_disk_replacement" }
+"assurance.consumer.d1-release" = { test = "tools/ci/tests/integration/artifact.rs::release_archives_carry_the_consumer_suite_and_digest_bound_compatibility_evidence" }
 
 # The floor is machine-maintained: `contextful-spec pins` sets each contract's entry to
 # its live performed count, and a live count below its floor raises SpecCoverageRegression.
 
 [floor]
-assurance = 233
+assurance = 235
 authority = 222
 connector = 229
 corpus = 79
 disclosure = 63
 read = 211
-run = 419
+run = 425
 store = 253
 surface = 98
 topology = 72

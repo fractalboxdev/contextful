@@ -8,6 +8,7 @@ fn command() -> Command {
     command
         .env_remove("CONTEXTFUL_STORAGE_PROFILE")
         .env_remove("CONTEXTFUL_CATALOG_URL")
+        .env_remove("CONTEXTFUL_D1_ENDPOINT")
         .env_remove("CONTEXTFUL_RECOVERY_ID");
     command
 }
@@ -76,6 +77,88 @@ fn cloudflare_postgres_is_not_an_execution_profile() {
     let error = String::from_utf8_lossy(&out.stderr);
     assert!(error.contains("StorageProfileUnsupported"), "{error}");
     assert!(error.contains("cloudflare-postgres"), "{error}");
+}
+
+#[test]
+fn d1_profile_requires_a_private_binding_before_project_access() {
+    let out = command()
+        .args(["run", "history", "--project", "missing"])
+        .env("CONTEXTFUL_STORAGE_PROFILE", "cloudflare-d1")
+        .output()
+        .unwrap();
+    assert!(!out.status.success());
+    let error = String::from_utf8_lossy(&out.stderr);
+    assert!(error.contains("StorageCapabilityMissing"), "{error}");
+    assert!(error.contains("CONTEXTFUL_D1_ENDPOINT"), "{error}");
+    assert!(!error.contains("missing"), "{error}");
+}
+
+#[test]
+#[cfg(feature = "d1-catalog")]
+fn a_postgres_url_cannot_impersonate_the_d1_private_binding() {
+    let out = command()
+        .args(["run", "history", "--project", "missing"])
+        .env("CONTEXTFUL_STORAGE_PROFILE", "cloudflare-d1")
+        .env("CONTEXTFUL_D1_ENDPOINT", "postgres://localhost/execution")
+        .env("CONTEXTFUL_RECOVERY_ID", "generation")
+        .output().unwrap();
+    assert!(!out.status.success());
+    let error = String::from_utf8_lossy(&out.stderr);
+    assert!(error.contains("StorageBindingRouteInvalid"), "{error}");
+    assert!(!error.contains("project `missing`"), "{error}");
+}
+
+#[test]
+#[cfg(all(feature = "d1-catalog", feature = "s3-sync"))]
+fn d1_storage_initialization_and_history_survive_a_new_cli_process() {
+    use contextful_acceptance::s3::{S3Server, ACCESS_KEY, SECRET_KEY};
+    use std::io::{BufRead, BufReader};
+    use std::process::Stdio;
+
+    let dir = tempfile::tempdir().unwrap();
+    let root = dir.path();
+    let mut binding = Command::new("node")
+        .arg(concat!(env!("CARGO_MANIFEST_DIR"), "/../contextful-d1/tests/fixture.mjs"))
+        .arg(root)
+        .stdout(Stdio::piped()).stderr(Stdio::null()).spawn().unwrap();
+    let mut line = String::new();
+    BufReader::new(binding.stdout.take().unwrap()).read_line(&mut line).unwrap();
+    let d1_port: u16 = line.trim().parse().unwrap();
+    let s3 = S3Server::start("conformance");
+    let store = root.join(".contextful/context/research");
+    std::fs::create_dir_all(&store).unwrap();
+    std::fs::write(root.join("contextful.toml"), "[[pipeline.tables]]\nname = 'filings'\n").unwrap();
+    std::fs::write(store.join("config.toml"), format!("[node]\nid = 'site'\n[sync]\nendpoint = '{}'\nbucket = 'conformance'\nprefix = 'd1-test'\ncoordination = 'cas'\npull_before_run = true\npush_after_run = true\naccess_key_id = 'env://D1_TEST_ACCESS_KEY'\nsecret_access_key = 'env://D1_TEST_SECRET_KEY'\n", s3.endpoint)).unwrap();
+    let invoke = |operation: &[&str]| command()
+        .args(operation).current_dir(root)
+        .env("CONTEXTFUL_STORAGE_PROFILE", "cloudflare-d1")
+        .env("CONTEXTFUL_D1_ENDPOINT", format!("http://127.0.0.1:{d1_port}"))
+        .env("CONTEXTFUL_RECOVERY_ID", "generation")
+        .env("D1_TEST_ACCESS_KEY", ACCESS_KEY)
+        .env("D1_TEST_SECRET_KEY", SECRET_KEY)
+        .output().unwrap();
+    let initialize = invoke(&["storage", "initialize", "--project", "research"]);
+    assert!(initialize.status.success(), "{}", String::from_utf8_lossy(&initialize.stderr));
+    let checked = invoke(&["storage", "check", "--project", "research"]);
+    assert!(checked.status.success(), "{}", String::from_utf8_lossy(&checked.stderr));
+    let report: serde_json::Value = serde_json::from_slice(&checked.stdout).unwrap();
+    assert_eq!(report["profile"], "cloudflare-d1");
+    let history = invoke(&["run", "history", "--project", "research"]);
+    assert!(history.status.success(), "{}", String::from_utf8_lossy(&history.stderr));
+    let db = contextful_d1::D1::connect(&format!("http://127.0.0.1:{d1_port}")).unwrap();
+    let token = "a".repeat(64);
+    db.query("INSERT INTO contextful_guard (scope, token, admitted_at) VALUES ('global', ?, 1)", vec![serde_json::json!(token)]).unwrap();
+    let guarded = invoke(&["storage", "guard", "--project", "research"]);
+    assert!(guarded.status.success(), "{}", String::from_utf8_lossy(&guarded.stderr));
+    let state: serde_json::Value = serde_json::from_slice(&guarded.stdout).unwrap();
+    assert_eq!(state["token"], token);
+    let cleared = invoke(&["storage", "reconcile-guard", "--project", "research", "--token", &token, "--evidence", "idempotency:fixture-retry"]);
+    assert!(cleared.status.success(), "{}", String::from_utf8_lossy(&cleared.stderr));
+    let guard_after = invoke(&["storage", "guard", "--project", "research"]);
+    let state: serde_json::Value = serde_json::from_slice(&guard_after.stdout).unwrap();
+    assert!(state["token"].is_null());
+    let _ = binding.kill();
+    let _ = binding.wait();
 }
 
 #[test]

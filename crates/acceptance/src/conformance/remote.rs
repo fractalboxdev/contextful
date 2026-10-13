@@ -8,9 +8,9 @@ use std::process::{Command, Stdio};
 use std::time::{Duration, Instant};
 
 pub(super) struct Remote {
-    _process: Postgres,
-    _root: tempfile::TempDir,
-    _bucket: S3Server,
+    _process: Option<Postgres>,
+    _root: Option<tempfile::TempDir>,
+    _bucket: Option<S3Server>,
     pub environment: Vec<(String, String)>,
     pub config: String,
 }
@@ -157,11 +157,89 @@ impl Remote {
             ),
         ];
         Ok(Self {
-            _process: process,
-            _root: root,
-            _bucket: bucket,
+            _process: Some(process),
+            _root: Some(root),
+            _bucket: Some(bucket),
             environment,
             config,
         })
+    }
+
+    /// A disposable D1 binding and an R2 bucket supply one replacement scenario.
+    pub fn start_d1(root: &Path) -> Result<Self> {
+        let required = |name: &str| std::env::var(name).ok().filter(|v| !v.is_empty()).ok_or_else(|| "ConformanceCapabilityMissing:cloudflare-d1".to_string());
+        let endpoint = required("CONTEXTFUL_CONFORMANCE_D1_ENDPOINT")?;
+        let url = url::Url::parse(&endpoint).map_err(|_| "ConformanceCapabilityMissing:cloudflare-d1")?;
+        let host = url.host_str().ok_or("ConformanceCapabilityMissing:cloudflare-d1")?;
+        if url.scheme() != "http" || !(host == "contextful.d1" || host == "localhost" || host.parse::<std::net::IpAddr>().is_ok_and(|ip| ip.is_loopback())) || url.path() != "/" || url.query().is_some() || url.fragment().is_some() {
+            return Err("ConformanceCapabilityMissing:cloudflare-d1".into());
+        }
+        let r2_endpoint = required("CONTEXTFUL_CONFORMANCE_R2_ENDPOINT")?;
+        let bucket = required("CONTEXTFUL_CONFORMANCE_R2_BUCKET")?;
+        let access = required("CONTEXTFUL_CONFORMANCE_R2_ACCESS_KEY_ID")?;
+        let secret = required("CONTEXTFUL_CONFORMANCE_R2_SECRET_ACCESS_KEY")?;
+        let recovery = required("CONTEXTFUL_CONFORMANCE_RECOVERY_ID")?;
+        if required("CONTEXTFUL_CONFORMANCE_D1_DISPOSABLE")?.as_str() != "1" {
+            return Err("ConformanceCapabilityMissing:disposable-d1-binding".into());
+        }
+        let endpoint = endpoint.trim_end_matches('/');
+        let query = |sql: &str| -> Result<serde_json::Value> {
+            let payload = serde_json::json!({"sql":sql,"params":[]});
+            let bytes = serde_json::to_vec(&payload).map_err(|_| "ConformanceD1BindingUnreadable")?;
+            let mut response = ureq::post(&format!("{endpoint}/sql")).header("content-type", "application/json").send(bytes.as_slice()).map_err(|_| "ConformanceD1BindingUnavailable")?;
+            if response.status() != 200 { return Err("ConformanceD1BindingUnavailable".into()) }
+            let body = response.body_mut().read_to_vec().map_err(|_| "ConformanceD1BindingUnreadable")?;
+            serde_json::from_slice(&body).map_err(|_| "ConformanceD1BindingUnreadable".into())
+        };
+        let tables = query("SELECT name FROM sqlite_master WHERE type = 'table' AND name LIKE 'contextful_%'")?;
+        let has_recovery = tables["rows"].as_array().is_some_and(|rows| rows.iter().any(|row| row["name"] == "contextful_recovery"));
+        if has_recovery {
+            let has_marker = tables["rows"].as_array().is_some_and(|rows| rows.iter().any(|row| row["name"] == "contextful_conformance"));
+            if !has_marker { return Err("ConformanceCapabilityMissing:disposable-d1-binding".into()) }
+            let marker = query("SELECT generation FROM contextful_conformance WHERE id = 1")?;
+            if marker["rows"][0]["generation"].as_str() != Some(recovery.as_str()) {
+                return Err("ConformanceCapabilityMissing:disposable-d1-binding".into());
+            }
+            let bound = query("SELECT project, generation FROM contextful_recovery WHERE id = 1")?;
+            if bound["rows"][0]["project"] != "research" || bound["rows"][0]["generation"] != recovery {
+                return Err("ConformanceRecoveryMismatch".into());
+            }
+            let deletes: Vec<_> = ["contextful_guard", "contextful_reconciliation", "contextful_export", "contextful_awakeable", "contextful_sweep", "contextful_blob", "contextful_journal", "contextful_run", "contextful_scope", "contextful_lease"].into_iter()
+                .map(|table| serde_json::json!({"sql":format!("DELETE FROM {table}"),"params":[]})).collect();
+            let bytes = serde_json::to_vec(&deletes).map_err(|_| "ConformanceStorageResetFailed")?;
+            let response = ureq::post(&format!("{endpoint}/batch")).header("content-type", "application/json").send(bytes.as_slice()).map_err(|_| "ConformanceStorageResetFailed")?;
+            if response.status() != 200 { return Err("ConformanceStorageResetFailed".into()) }
+        } else if !tables["rows"].as_array().is_some_and(Vec::is_empty) {
+            return Err("ConformanceRecoveryMismatch".into());
+        }
+        let prefix = root.file_name().and_then(|n| n.to_str()).ok_or("ConformanceScratchUnavailable")?;
+        let config = format!("[node]\nid = \"conformance\"\n[sync]\nendpoint = \"{r2_endpoint}\"\nbucket = \"{bucket}\"\nprefix = \"consumer-d1/{prefix}\"\ncoordination = \"cas\"\npull_before_run = true\npush_after_run = true\naccess_key_id = \"env://CONTEXTFUL_SYNC_ACCESS_KEY_ID\"\nsecret_access_key = \"env://CONTEXTFUL_SYNC_SECRET_ACCESS_KEY\"\n");
+        Ok(Self { _process: None, _root: None, _bucket: None,
+            environment: vec![
+                ("CONTEXTFUL_STORAGE_PROFILE".into(), "cloudflare-d1".into()),
+                ("CONTEXTFUL_D1_ENDPOINT".into(), endpoint.into()),
+                ("CONTEXTFUL_RECOVERY_ID".into(), recovery),
+                ("CONTEXTFUL_SYNC_ACCESS_KEY_ID".into(), access),
+                ("CONTEXTFUL_SYNC_SECRET_ACCESS_KEY".into(), secret),
+            ], config })
+    }
+
+    /// A D1 database receives its disposable marker after initialization succeeds.
+    pub fn mark_disposable(&self) -> Result<()> {
+        let Some(endpoint) = self.environment.iter().find(|(key, _)| key == "CONTEXTFUL_D1_ENDPOINT").map(|(_, value)| value) else { return Ok(()) };
+        let generation = self.environment.iter().find(|(key, _)| key == "CONTEXTFUL_RECOVERY_ID").map(|(_, value)| value).ok_or("ConformanceRecoveryMismatch")?;
+        let query = |sql: &str, params: Vec<serde_json::Value>| -> Result<serde_json::Value> {
+            let bytes = serde_json::to_vec(&serde_json::json!({"sql":sql,"params":params})).map_err(|_| "ConformanceD1BindingUnreadable")?;
+            let mut response = ureq::post(&format!("{endpoint}/sql")).header("content-type", "application/json")
+                .send(bytes.as_slice()).map_err(|_| "ConformanceD1BindingUnavailable")?;
+            if response.status() != 200 { return Err("ConformanceD1BindingUnavailable".into()) }
+            let body = response.body_mut().read_to_vec().map_err(|_| "ConformanceD1BindingUnreadable")?;
+            serde_json::from_slice(&body).map_err(|_| "ConformanceD1BindingUnreadable".into())
+        };
+        query("CREATE TABLE IF NOT EXISTS contextful_conformance (id INTEGER PRIMARY KEY CHECK (id = 1), generation TEXT NOT NULL)", vec![])?;
+        query("INSERT OR IGNORE INTO contextful_conformance (id, generation) VALUES (1, ?)", vec![serde_json::json!(generation)])?;
+        let marked = query("SELECT generation FROM contextful_conformance WHERE id = 1", vec![])?;
+        if marked["rows"][0]["generation"].as_str() != Some(generation.as_str()) { return Err("ConformanceRecoveryMismatch".into()) }
+        Ok(())
     }
 }

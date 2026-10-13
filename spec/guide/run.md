@@ -72,6 +72,8 @@ Stop writers, capture {{run.journal.execution-backup}}, restore
 {{run.journal.execution-recovery}}, and restart. Replacement uses
 {{run.journal.postgres-stores}}; exports follow {{run.export.remote-state}} and
 {{run.export.writer-fenced}}.
+Cloudflare recovery follows {{run.journal.d1-profile}}, {{run.journal.d1-guard}},
+{{run.journal.d1-backup}} and {{run.export.d1-state}}.
 The stage types its observed batch ({{run.land.observed-schema}}) and preserves nested
 columns or projects them into parent and child rows ({{run.normalize.mode}}). A downgrade
 travels with its table's commit ({{run.record.schema-diff-home}}). The secret guard's
@@ -90,7 +92,7 @@ A deployment declares its writing site ({{run.record.writing-site}}) once in `co
 as `site_id` or `site_id_env`; `--site-id` replaces it for one run
 ({{run.record.site-id-unresolved}}).
 
-Every run closes on a status from one shared set ({{run.record.status-set}}); live progress is
+Every run closes on a shared status ({{run.record.status-set}}); live progress is
 a best-effort projection the runner never reads back ({{run.project.best-effort}}).
 
 A backfill splits history into leased chunks whose commits are fenced against a stale holder ({{run.backfill.fenced-commit}}); a seed bulk-loads

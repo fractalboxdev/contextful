@@ -1,4 +1,4 @@
-//! The consumer suite accepts an artifact without a checkout or provider credentials.
+//! The consumer suite accepts an artifact without a checkout; D1 uses explicit bindings.
 
 use contextful_acceptance::conformance::{self, Options, Outcome};
 use std::path::Path;
@@ -92,6 +92,95 @@ fn unknown_storage_or_scenario_never_counts_as_a_pass() {
             .iter()
             .any(|r| matches!(r.outcome, Outcome::Unsupported | Outcome::Failed)));
     }
+}
+
+#[test]
+#[cfg(unix)]
+fn a_d1_consumer_run_requires_its_real_bindings_before_a_verdict() {
+    let _guard = super::CONFORMANCE_ENV.lock().unwrap();
+    let dir = tempfile::tempdir().unwrap();
+    let binary = dir.path().join("contextful");
+    executable(&binary, "#!/bin/sh\nprintf 'contextful fixture contextful-full\\n'\n");
+    let report = conformance::run(&Options {
+        binary,
+        storage_profile: "cloudflare-d1".into(),
+        required: vec!["hard-crash-replay".into()],
+        timeout_seconds: 30,
+    }).unwrap();
+    assert!(!report.passed());
+    let result = report.scenarios.iter().find(|s| s.id == "hard-crash-replay").unwrap();
+    assert_eq!(result.outcome, Outcome::Unsupported);
+    assert_eq!(result.diagnostic.as_deref(), Some("ConformanceCapabilityMissing:cloudflare-d1"));
+}
+
+#[test]
+#[cfg(unix)]
+fn a_d1_consumer_replays_after_empty_disk_replacement() {
+    use std::io::{BufRead, BufReader};
+    use std::process::{Command, Stdio};
+    let _guard = super::CONFORMANCE_ENV.lock().unwrap();
+    let root = tempfile::tempdir().unwrap();
+    let mut bridge = Command::new("node")
+        .arg(Path::new(env!("CARGO_MANIFEST_DIR")).join("../contextful-d1/tests/fixture.mjs"))
+        .arg(root.path())
+        .stdout(Stdio::piped())
+        .spawn().unwrap();
+    let mut port = String::new();
+    BufReader::new(bridge.stdout.take().unwrap()).read_line(&mut port).unwrap();
+    let corpus = contextful_acceptance::s3::S3Server::start("conformance");
+    let settings = [
+        ("CONTEXTFUL_CONFORMANCE_D1_ENDPOINT", format!("http://127.0.0.1:{}", port.trim())),
+        ("CONTEXTFUL_CONFORMANCE_R2_ENDPOINT", corpus.endpoint.clone()),
+        ("CONTEXTFUL_CONFORMANCE_R2_BUCKET", "conformance".into()),
+        ("CONTEXTFUL_CONFORMANCE_R2_ACCESS_KEY_ID", contextful_acceptance::s3::ACCESS_KEY.into()),
+        ("CONTEXTFUL_CONFORMANCE_R2_SECRET_ACCESS_KEY", contextful_acceptance::s3::SECRET_KEY.into()),
+        ("CONTEXTFUL_CONFORMANCE_RECOVERY_ID", "synthetic-d1-replacement".into()),
+        ("CONTEXTFUL_CONFORMANCE_D1_DISPOSABLE", "1".into()),
+    ];
+    for (key, value) in &settings { std::env::set_var(key, value); }
+    let dir = tempfile::tempdir().unwrap();
+    let workspace = contextful_acceptance::workspace_root();
+    let host = Command::new("rustc").arg("-vV").output().unwrap();
+    assert!(host.status.success());
+    let host = String::from_utf8(host.stdout).unwrap();
+    let target_triple = host.lines().find_map(|line| line.strip_prefix("host: ")).unwrap();
+    let build = Command::new(env!("CARGO"))
+        .args(["build", "--locked", "--offline", "-p", "contextful-cli", "--bin", "contextful", "--no-default-features", "--features", "contextful-full", "--target", target_triple])
+        .current_dir(&workspace).status().unwrap();
+    assert!(build.success());
+    let target = std::env::var_os("CARGO_TARGET_DIR").map(std::path::PathBuf::from).unwrap_or_else(|| workspace.join("target"));
+    let binary = dir.path().join("supplied-contextful");
+    std::fs::copy(target.join(target_triple).join("debug/contextful"), &binary).unwrap();
+    let report = conformance::run(&Options {
+        binary: binary.clone(),
+        storage_profile: "cloudflare-d1".into(),
+        required: vec![],
+        timeout_seconds: 60,
+    }).unwrap();
+    assert!(report.passed(), "{}", serde_json::to_string_pretty(&report).unwrap());
+    let endpoint = &settings[0].1;
+    let sql = |statement: &str| {
+        let body = serde_json::json!({"sql":statement,"params":[]}).to_string();
+        let mut response = ureq::post(&format!("{endpoint}/sql"))
+            .header("content-type", "application/json")
+            .send(body.as_bytes()).unwrap();
+        assert_eq!(response.status(), 200);
+        let bytes = response.body_mut().read_to_vec().unwrap();
+        serde_json::from_slice::<serde_json::Value>(&bytes).unwrap()
+    };
+    sql("INSERT INTO contextful_scope (scope, version, cursor) VALUES ('protected-sentinel', 0, '{}')");
+    sql("DROP TABLE IF EXISTS contextful_conformance");
+    let refused = conformance::run(&Options {
+        binary,
+        storage_profile: "cloudflare-d1".into(),
+        required: vec!["empty-replacement".into()],
+        timeout_seconds: 60,
+    }).unwrap();
+    assert!(!refused.passed(), "an unmarked D1 database was reset");
+    assert_eq!(sql("SELECT COUNT(*) AS n FROM contextful_scope WHERE scope = 'protected-sentinel'")["rows"][0]["n"], 1);
+    for (key, _) in &settings { std::env::remove_var(key); }
+    let _ = bridge.kill();
+    let _ = bridge.wait();
 }
 
 #[test]

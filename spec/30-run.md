@@ -104,7 +104,19 @@ Recording a step's value once, resolving it on replay, and collecting what a rep
   *A-run*
 - `container-profile` — `CONTEXTFUL_STORAGE_PROFILE=postgres` selects {{run.journal.postgres-stores}} with shared owners, cadence and {{run.export.remote-state}}; corpus objects use a remote S3-compatible bucket with pull-before-run and push-after-run enabled.
   *A-run*
-- `storage-incomplete` — Missing `CONTEXTFUL_CATALOG_URL`, `CONTEXTFUL_RECOVERY_ID`, corpus bindings, strict execution guards or a supported outbox raises `StorageCapabilityMissing` before execution admission; absent compiled adapters follow {{topology.package.capability-absent}}.
+- `d1-profile` — `CONTEXTFUL_STORAGE_PROFILE=cloudflare-d1` selects D1 for catalog, journal, awakeables and export state through a private Worker outbound binding; R2 holds blob content and corpus objects.
+  *A-run*
+- `d1-blob` — D1 stores each blob digest, whose R2 object key is `blobs/<sha256>`; the R2 write precedes its D1 reference, and a read verifies the content digest.
+  *A-run*
+- `d1-atomicity` — D1 commits metadata atomically; an interrupted R2 upload can leave an unreferenced object, while R2 deletion follows removal of every D1 reference.
+  *A-run*
+- `d1-guard` — A committed D1 guard prevents owner or lease transfer throughout an admitted external callback; a crash guard requires recorded receipt or idempotency evidence before takeover.
+  *A-run*
+- `d1-recovery` — The D1 recovery identity binds one project and schema to an R2 object frontier; a missing object or mismatched generation follows {{run.journal.execution-recovery}}.
+  *A-run*
+- `d1-backup` — A D1 recovery captures the execution database with its guard and export rows, the R2 blob and corpus frontier, project recovery identity and executable schema before writers resume.
+  *A-run*
+- `storage-incomplete` — Missing profile bindings, corpus state, strict execution guards or a supported outbox raises `StorageCapabilityMissing` before execution admission; absent compiled adapters follow {{topology.package.capability-absent}}.
   *A-run*
 - `storage-unsupported` — An unknown storage profile or an encrypted corpus paired with an unsealed execution adapter raises `StorageProfileUnsupported` before execution admission.
   *because an unrecognized durability claim cannot select a local fallback safely*

@@ -830,6 +830,8 @@ dependencies = [
  "sha2 0.10.9",
  "tempfile",
  "tokio",
+ "ureq",
+ "url",
 ]
 
 [[package]]
@@ -877,6 +879,7 @@ dependencies = [
  "contextful-context",
  "contextful-control",
  "contextful-core",
+ "contextful-d1",
  "contextful-engine",
  "contextful-eval",
  "contextful-memory",
@@ -982,6 +985,19 @@ dependencies = [
  "trybuild",
  "url",
  "zeroize",
+]
+
+[[package]]
+name = "contextful-d1"
+version = "0.5.0"
+dependencies = [
+ "contextful-core",
+ "serde",
+ "serde_json",
+ "sha2 0.10.9",
+ "tempfile",
+ "ureq",
+ "url",
 ]
 
 [[package]]
@@ -5520,6 +5536,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "9a7ac20be9b7726e0bbdbf974c059676d9acb1cd414961f570a4e8231cacd7fc"
 dependencies = [
  "base64 0.23.1",
+ "flate2",
  "log",
  "percent-encoding",
  "rustls",

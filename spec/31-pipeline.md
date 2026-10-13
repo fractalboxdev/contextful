@@ -271,6 +271,8 @@ The outbound copy of a landed table to an operator-declared target: the export b
 - `local-state` — The local storage profile keeps log cursors in `.contextful/exports/<project>/<name>.json`, outside corpus sync, and typed delivery state in `machine.sqlite`.
 - `remote-state` — Under {{run.journal.container-profile}}, PostgreSQL holds typed outboxes, acknowledged keyed state and log checkpoints in the execution database; a replacement reoffers identical pending event ids before advancing its acknowledged frontier.
   *A-run*
+- `d1-state` — Under {{run.journal.d1-profile}}, D1 commits export outboxes, acknowledged keyed state and log checkpoints; a sink commit without its D1 acknowledgement reoffers the same delivery identity.
+  *A-run*
 - `writer-fenced` — A PostgreSQL exporter whose durable writer lease has transferred raises `ExecutionWriterFenced` before dispatch or state publication; its lease row stays locked throughout an admitted outbound call, and takeover waits for that call.
   *A-run*
 - `at-least-once` — A run ending between a target's acknowledgement and the cursor commit resends that batch on the next run; a target deduplicates on `contextful.commit_seq` and `contextful.row_seq`.
@@ -319,7 +321,7 @@ The outbound copy of a landed table to an operator-declared target: the export b
   *A-run*
 - `group-incompatible` — Membership drift, incarnation mismatch, a changed pending read identity, an incompatible checkpoint, an incomplete producer frontier, or a predecessor/order mismatch raises `PublicationIncompatible` before delivery or activation.
   *A-run*
-- `group-storage` — A coordinated publication under the `postgres` storage profile raises `PublicationStorageUnsupported` naming the coordinated-group-outbox capability before execution, staging or delivery.
+- `group-storage` — A coordinated publication under `postgres` or `cloudflare-d1` raises `PublicationStorageUnsupported` naming the coordinated-group-outbox capability before execution, staging or delivery.
   *because a machine-local outbox cannot coordinate replaced containers*
 
 unsettled: Does the arm map a table onto the OTLP span or metric signal, and through which column declaration? owner: pipeline affects: run.export

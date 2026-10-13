@@ -102,7 +102,7 @@ pub fn digest(path: &Path) -> Result<String> {
     Ok(format!("{:x}", hash.finalize()))
 }
 
-/// No source checkout, Cargo invocation, provider environment or external service is required.
+/// The local and PostgreSQL profiles use synthetic fixtures; D1 requires explicit bindings.
 pub fn run(options: &Options) -> Result<Report> {
     if options.timeout_seconds == 0 {
         return Err("ConformanceTimeoutInvalid".into());
@@ -163,7 +163,7 @@ pub fn run(options: &Options) -> Result<Report> {
             report.scenarios.push(result);
             continue;
         }
-        if !matches!(options.storage_profile.as_str(), "local" | "postgres") {
+        if !matches!(options.storage_profile.as_str(), "local" | "postgres" | "cloudflare-d1") {
             result.outcome = Outcome::Unsupported;
             result.requirement = Some(format!("storage profile {}", options.storage_profile));
             result.diagnostic = Some("ConformanceStorageUnsupported".into());
@@ -180,7 +180,7 @@ pub fn run(options: &Options) -> Result<Report> {
             for capability in requirement
                 .split(',')
                 .filter(|capability| *capability != "exec")
-                .chain((options.storage_profile == "postgres").then_some("storage"))
+                .chain((options.storage_profile != "local").then_some("storage"))
             {
                 match probe.invoke(&[capability, "--help"], &[]) {
                     Ok(checked) if checked.status.success() => {}
@@ -204,8 +204,8 @@ pub fn run(options: &Options) -> Result<Report> {
             } else {
                 let verdict = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
                     let mut fixture = Fixture::new(&binary, options.timeout_seconds)?;
-                    if options.storage_profile == "postgres" {
-                        fixture.configure_remote()?;
+                    if options.storage_profile != "local" {
+                        fixture.configure_remote(&options.storage_profile)?;
                     }
                     scenarios::run(id, &fixture)
                 }));
@@ -278,14 +278,14 @@ impl Fixture {
         Ok(fixture)
     }
 
-    fn configure_remote(&mut self) -> Result<()> {
-        let remote = remote::Remote::start(self.timeout)?;
+    fn configure_remote(&mut self, profile: &str) -> Result<()> {
+        let remote = if profile == "cloudflare-d1" { remote::Remote::start_d1(self.dir.path())? } else { remote::Remote::start(self.timeout)? };
         self.write(".contextful/context/research/config.toml", &remote.config)?;
         self.remote = Some(remote);
         let initialized = self.invoke(&["storage", "initialize", "--project", "research"], &[])?;
         if !initialized.status.success() {
             return Err(if initialized.storage_capability_missing {
-                "ConformanceCapabilityMissing:postgres"
+                if profile == "cloudflare-d1" { "ConformanceCapabilityMissing:cloudflare-d1" } else { "ConformanceCapabilityMissing:postgres" }
             } else {
                 "ConformanceStorageInitializeFailed"
             }
@@ -297,6 +297,7 @@ impl Fixture {
         if checked["replacement_safe"] != true {
             return Err("ConformanceCapabilityMissing:replacement-safe-storage".into());
         }
+        self.remote.as_ref().expect("remote is configured").mark_disposable()?;
         Ok(())
     }
 
