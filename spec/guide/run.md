@@ -39,6 +39,11 @@ The record opens before the first pull ({{run.record.row-at-open}}). An executio
 pins the connector and plan ({{run.own.pinned-plan-changed}}); host jobs use their own
 scope ({{run.own.host-scope}}).
 
+Items follow {{run.items.opt-in}} and {{run.items.identity}}.
+Outcomes follow {{run.items.completion}} and {{run.items.outcomes}};
+admission follows {{run.items.entity-admission}}, {{run.items.overlap}} and {{run.items.fence}}.
+Retries follow {{run.items.retry-budget}} and {{run.items.replay}}.
+
 Each pull records its value once ({{run.journal.step-output}}); outbound requests carry
 idempotency keys ({{run.journal.idempotency-key}}). Journal state persists through store
 ports with file and SQLite adapters ({{run.journal.storage-ports}},
@@ -102,13 +107,6 @@ Chained derives follow
 prevents circular chains. A conflicting `after` refuses under {{run.select.derive-after-conflict}}.
 
 ## Worked example
-
-For `link_preview`, `grant = { quota = "preview", class = "batch-read", usage_headers = ["x-ratelimit-remaining"] }`
-in `[pipeline.source.config]` selects `[limiters.preview]`: `endpoint`,
-`token = "secret://limiter-token"` and `permits` ({{connector.meter.limiter-binding}}).
-`class` groups usage; `usage_headers` forwards response headers in usage reports
-({{connector.meter.forward-credential}}). Eligibility: {{run.select.unmetered-grant}}.
-Accounting: {{run.select.metered-client}}.
 
 The `meta-ads` pipeline pulls ad insights incrementally. Its declaration names `updated_time`
 as the stream clock ({{run.declare.incremental-field}}), so the source reports a monotonic

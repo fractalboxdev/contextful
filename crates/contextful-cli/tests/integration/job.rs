@@ -10,6 +10,23 @@ use std::process::{Command, Output};
 
 const AUD: &str = "contextful://acme-research";
 
+#[test]
+fn isolated_items_skip_completed_paid_calls_and_outputs_on_later_fires() {
+    for prepared in [false,true] {
+        let manifest = job("max_in_flight=2\n[job.isolated_items]\nlogical_key='doc_id'\nentity_key='doc_id'\nentity_namespace='documents'\nmax_attempts=2\n");
+        let manifest=if prepared {format!("[[pipeline.tables]]\nname='scores'\n{manifest}")} else {manifest};
+        let (dir, public, token) = project(&manifest);
+        let ledger = dir.path().join("calls.txt");
+        let mut env = vec![("SCORE_LEDGER",ledger.to_str().unwrap())];
+        if prepared {env.push(("SCORE_RECORDED","1"));}
+        let first = ok(&fire(dir.path(),&public,&token,"first","2030-01-01T00:00:30Z",&env));
+        assert!(first.contains("3 successful items"),"{first}");
+        ok(&fire(dir.path(),&public,&token,"second","2030-01-01T00:00:40Z",&env));
+        assert_eq!(std::fs::read_to_string(ledger).unwrap().lines().count(),3);
+        assert_eq!(select(dir.path(),"SELECT doc_id FROM scores ORDER BY doc_id").len(),3);
+    }
+}
+
 fn cf(dir: &Path, args: &[&str]) -> Output {
     Command::new(env!("CARGO_BIN_EXE_contextful")).args(args).current_dir(dir).env_remove("CONTEXTFUL_NODE_ID").output().unwrap()
 }
@@ -271,7 +288,7 @@ fn a_refused_second_output_child_commit_retains_names_for_existing_discard() {
 
 /// The rows every body emits land after the last input row completes and before the owner retires, one run per
 /// declared output table through {{run.land.stage-order}}.
-// spec: run.journal.row-output@6b72f3ec
+// spec: run.journal.row-output@90602540
 #[test]
 fn each_declared_output_table_lands_in_its_own_run_and_a_failed_landing_holds_the_owner() {
     let declares = |tables: &str| job("max_in_flight = 2\n").replace("tables = [\"scores\"]", tables);

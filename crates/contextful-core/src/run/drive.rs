@@ -22,6 +22,26 @@ pub type Emitted = BTreeMap<String, Vec<Row>>;
 /// Canonically admitted effect groups, with no raw model result exposed to the body.
 pub type PreparedEmitted = BTreeMap<String, Vec<super::effect::PreparedEmission>>;
 
+/// Explicit independent-item admission; keys name non-null input columns.
+#[derive(Debug, Clone, PartialEq, Eq, Deserialize, Serialize)]
+#[serde(deny_unknown_fields)]
+pub struct ItemPolicy {
+    pub logical_key: String,
+    pub entity_key: String,
+    pub entity_namespace: String,
+    /// Failed body attempts across fires, excluding parked entries.
+    pub max_attempts: u32,
+}
+
+impl ItemPolicy {
+    pub fn validate(&self) -> Result<(), RunError> {
+        if self.logical_key.trim().is_empty() || self.entity_key.trim().is_empty() || self.entity_namespace.trim().is_empty() || self.max_attempts == 0 {
+            return Err(RunError::Invalid("isolated_items requires logical_key, entity_key, entity_namespace and positive max_attempts".into()));
+        }
+        Ok(())
+    }
+}
+
 /// What a store-driven job pins: the body it names, its input statement and the `as_of`
 /// it declares, absent when the execution resolves one at open (`run.journal.input-pin`).
 #[derive(Debug, Clone, PartialEq, Eq)]

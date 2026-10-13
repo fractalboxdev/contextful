@@ -284,7 +284,7 @@ fn a_resume_under_a_changed_statement_or_as_of_refuses_before_any_replay() {
 
 /// A store-driven run holds at most `max_in_flight` rows inside the body at once; a failing row admits no further
 /// row, and the run closes after the rows in flight return.
-// spec: run.journal.row-concurrency@be5e10f8
+// spec: run.journal.row-concurrency@a89f75ac
 #[test]
 fn at_most_max_in_flight_rows_run_and_a_failed_row_admits_no_further_row() {
     struct FirstWave<'a> {
@@ -614,13 +614,19 @@ fn protected_body_effects_record_rewritten_results_and_resume_without_another_pa
     assert!(refused.is_err(), "caller cannot substitute a projection for the registered body's closed declaration");
     assert_eq!(reads.load(Ordering::SeqCst), 0);
     #[derive(Clone, Copy, Debug, PartialEq)]
-    enum Boundary { Entry, Stage, Commit }
+    enum Boundary { Entry, Stage, Commit, StopCommit }
     struct LosingParent<'a> { rig:&'a Rig, boundary:Boundary, retired:std::cell::Cell<bool>, sink:crate::support::Sink }
     impl LosingParent<'_> {
         fn lose(&self, boundary:Boundary) {
-            if self.boundary != boundary || self.retired.replace(true) { return; }
+            if self.boundary != boundary && !(self.boundary == Boundary::StopCommit && boundary == Boundary::Commit) { return; }
+            if self.retired.replace(true) { return; }
             let scope = job_scope(JOB);
             let owner = self.rig.catalog().owner_at(&scope).unwrap().unwrap();
+            if self.boundary == Boundary::StopCommit {
+                let now=self.rig.catalog().now().unwrap();
+                self.rig.catalog().update_run(owner.attempts.last().unwrap(),&mut |row| contextful_core::run::cancel::mark(row,contextful_core::run::cancel::Scope::Run,None,now)).unwrap().unwrap().unwrap();
+                return;
+            }
             self.rig.catalog().retire_at(&scope, &owner.execution_id, None, None).unwrap();
         }
     }
@@ -648,7 +654,7 @@ fn protected_body_effects_record_rewritten_results_and_resume_without_another_pa
         EFFECT.get_or_init(|| RecordedEffect { label:"model".into(), table:"scores".into(), types:Default::default(), transforms:Vec::new(), normalize:None })
     }
     let mut committed_after_loss = Vec::new();
-    for boundary in [Boundary::Entry, Boundary::Stage, Boundary::Commit] {
+    for boundary in [Boundary::Entry, Boundary::Stage, Boundary::Commit, Boundary::StopCommit] {
         let rig = Rig::new();
         let mut destination = LosingParent { rig:&rig, boundary, retired:std::cell::Cell::new(false), sink:Default::default() };
         let mut output_plan = crate::support::plan("kind = 'opaque-token'", "journal = false");

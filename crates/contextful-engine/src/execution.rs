@@ -75,7 +75,7 @@ impl From<Close> for EngineError {
 
 impl Close {
     /// The tag and message the run row records.
-    fn recorded(&self) -> (FailureTag, String) {
+    pub(crate) fn recorded(&self) -> (FailureTag, String) {
         match self {
             Close::Failed(f) => (f.tag, f.to_string()),
             Close::Refused(RunError::StepFailed { failure, .. }) => (failure.tag, self.message()),
@@ -115,6 +115,7 @@ pub struct Execution<'e, J: JournalStore = FileJournalStore, B: BlobStore = File
     /// The scope's owner as it stood at open, before this attempt claimed it.
     pending: Option<ExecutionOwner>,
     pins: OwnerPins,
+    parents: Vec<contextful_core::coordinate::ExecutionExpectation>,
     /// The scope's cursor row, read at claim.
     cursor: Option<CursorRow>,
     /// When the claimed owner opened: the first attempt's claim, carried by every resume.
@@ -213,6 +214,7 @@ impl<J: JournalStore, B: BlobStore> Engine<J, B> {
             execution_id,
             pending,
             pins: open.pins.clone(),
+            parents: Vec::new(),
             cursor: None,
             opened_at: None,
             schedule: open.schedule.clone(),
@@ -313,11 +315,21 @@ impl<'e, J: JournalStore, B: BlobStore> Execution<'e, J, B> {
     pub(crate) fn guard(&self, parent: Option<&crate::drive::BodyOwner>, publication: bool) -> Result<Box<dyn contextful_core::coordinate::ExecutionGuard>, Failure> {
         use contextful_core::coordinate::{ExecutionAdmission, ExecutionExpectation};
         let mut owners = vec![ExecutionExpectation { scope: self.scope.clone(), execution_id: self.execution_id.clone(), pins: self.pins.clone(), run_id: self.run_id.clone() }];
+        owners.extend(self.parents.clone());
+        let mut leases: Vec<_> = self.lease().into_iter().collect();
         if let Some(parent) = parent {
-            owners.push(ExecutionExpectation { scope:parent.scope.clone(), execution_id:parent.execution_id.clone(), pins:parent.pins.clone(), run_id:parent.run_id.clone() });
+            owners.push(ExecutionExpectation { scope: parent.scope.clone(), execution_id: parent.execution_id.clone(), pins: parent.pins.clone(), run_id: parent.run_id.clone() });
+            owners.extend(parent.parents.clone());
+            leases.extend(parent.fence.clone());
         }
-        self.engine.catalog.execution_guard(&ExecutionAdmission::new(owners, self.lease().into_iter().collect(), publication)?)
+        self.engine.catalog.execution_guard(&ExecutionAdmission::new(owners, leases, publication)?)
     }
+
+    pub(crate) fn inherit(&mut self, parent: &Self) {
+        self.parents = parent.parents.clone();
+        self.parents.push(contextful_core::coordinate::ExecutionExpectation { scope: parent.scope.clone(), execution_id: parent.execution_id.clone(), pins: parent.pins.clone(), run_id: parent.run_id.clone() });
+    }
+    pub(crate) fn parents(&self) -> Vec<contextful_core::coordinate::ExecutionExpectation> { self.parents.clone() }
 
     fn current_attempt(&self) -> Result<RunRow, Failure> {
         if !self.owned || self.retired {
@@ -331,6 +343,15 @@ impl<'e, J: JournalStore, B: BlobStore> Execution<'e, J, B> {
             return Err(Failure::new(FailureTag::Transient, "execution owner was superseded or expired"));
         }
         Ok(attempt.expect("admitted current attempt"))
+    }
+
+    /// Leave a waiting item resumable, with no live attempt or held entity lease.
+    pub(crate) fn park(mut self) -> Result<(), Failure> {
+        drop(self.registration.take());
+        if let Some(lease) = self.held.lock().unwrap_or_else(|e| e.into_inner()).take() { self.engine.catalog.release(&lease)?; }
+        self.engine.catalog.update_run(&self.run_id, &mut |row| { row.status = RunStatus::Waiting; row.owner = None; Ok(()) })?;
+        self.emit(Change::Status { status:RunStatus::Waiting, at:None, error:None });
+        Ok(())
     }
 
     /// The scope's cursor row, read once, at or before claim.
@@ -443,6 +464,10 @@ impl<'e, J: JournalStore, B: BlobStore> Execution<'e, J, B> {
         journal_it: &dyn Fn(&[u8]) -> bool,
         effect: &mut StepEffect<'_>,
     ) -> Result<Resolved, Close> {
+        self.step_keyed_with_parent(key, journal_it, effect, None)
+    }
+
+    pub(crate) fn step_keyed_with_parent(&self, key: &EntryKey, journal_it: &dyn Fn(&[u8]) -> bool, effect: &mut StepEffect<'_>, parent: Option<&crate::drive::BodyOwner>) -> Result<Resolved, Close> {
         let engine = self.engine;
         let holder_live = |run: &str| engine.holder_live(run);
         let token = &self.token;
@@ -453,7 +478,7 @@ impl<'e, J: JournalStore, B: BlobStore> Execution<'e, J, B> {
         loop {
             self.assert_current()?;
             self.emit(Change::Step(StepPatch { attempts: Some(attempt), ..StepPatch::new(label).status(StepStatus::Running) }));
-            let failure = match engine.journal.step(key, &self.run_id, &holder_live, token, journal_it, &mut || { self.assert_current()?; let _guard = self.guard(None, false)?; effect(token) }) {
+            let failure = match engine.journal.step(key, &self.run_id, &holder_live, token, journal_it, &mut || { self.assert_current()?; let _guard = self.guard(parent, false)?; effect(token) }) {
                 Ok(r) => {
                     self.emit(Change::Step(StepPatch::new(label).status(StepStatus::Completed)));
                     return Ok(r);

@@ -19,6 +19,8 @@ use std::collections::{BTreeMap, BTreeSet};
 use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::Mutex;
 use std::time::Duration;
+mod items;
+pub use items::{entity_lease_key, ItemOutcome, ItemPolicy, ItemReport, ItemStatus};
 
 /// How often a run holding only parked rows re-checks their awakeables.
 pub const PARKED_POLL: Duration = Duration::from_millis(500);
@@ -60,7 +62,9 @@ pub struct BodyOwner {
     pub(crate) run_id: String,
     pub(crate) identity: String,
     pub(crate) pins: contextful_core::run::own::OwnerPins,
+    pub(crate) parents: Vec<contextful_core::coordinate::ExecutionExpectation>,
     effects: Vec<EffectScope>,
+    pub(crate) fence: Option<contextful_core::coordinate::Lease>,
 }
 
 impl BodyOwner {
@@ -176,6 +180,7 @@ impl<T> Default for Pass<T> {
 }
 
 impl<J: JournalStore + Clone + Send + Sync, B: BlobStore + Clone + Send + Sync> Engine<J, B> {
+
     /// Run one store-driven fire. `read` reads the input set at the resolved `as_of` when the
     /// execution records none; `land` lands the emitted rows before the owner retires. A fire
     /// that opened closes on a status its row records, returned whatever that status.
@@ -197,7 +202,7 @@ impl<J: JournalStore + Clone + Send + Sync, B: BlobStore + Clone + Send + Sync> 
         let scopes = Mutex::new(Vec::new());
         let mut admitted_land = |outputs: &PreparedEmitted| {
             let owner = self.catalog.owner_at(&job_scope(&drive.job))?.ok_or_else(|| Failure::deterministic(FailureTag::Permanent, "prepared body owner is absent"))?;
-            land(outputs, &BodyOwner { scope:job_scope(&drive.job), execution_id:owner.execution_id, run_id:drive.run_id.clone(), identity:identity.clone(), pins:owner.pins, effects:scopes.lock().unwrap_or_else(|e| e.into_inner()).clone() })
+            land(outputs, &BodyOwner { scope:job_scope(&drive.job), execution_id:owner.execution_id, run_id:drive.run_id.clone(), identity:identity.clone(), pins:owner.pins, parents:Vec::new(), effects:scopes.lock().unwrap_or_else(|e| e.into_inner()).clone(),fence:None })
         };
         self.drive_using(drive, pins, read, &mut admitted_land, &|row, calls| {
             let prepared = PreparedCalls { calls, plan, admission, identity:&identity, issued:Mutex::new(Vec::new()) };
