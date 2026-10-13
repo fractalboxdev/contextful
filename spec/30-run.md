@@ -165,6 +165,7 @@ Independent store-driven items, their durable receipts, bounded retries and enti
   *because independent completion changes aggregate failure and retry semantics*
 - `identity` — An isolated item's logical identity derives from its declared key and namespace; its execution identity binds that identity, job, input row, policy and pinned plan, independently of input order.
 - `completion` — Each successful item lands independently and stores a durable completion receipt; a later fire under the same execution identity skips its body and landing.
+- `terminal-input` — An aggregate whose items all hold terminal receipts releases its pinned input owner, so later fires read fresh input while retaining each item's completion or terminal failure.
 - `outcomes` — Individual outcomes distinguish success, failure, parked and deferred; the aggregate succeeds only when every required item succeeds.
 - `retry-budget` — Failed attempts consume the declared item budget across fires; permanent failures terminate immediately, parked entries consume no failed attempt, and terminal failure receipts prevent further body entry.
   *P6*
