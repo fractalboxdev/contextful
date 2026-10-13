@@ -527,3 +527,65 @@ fn an_item_parent_stop_after_staging_keeps_publication_uncut() {
     assert!(result.succeeded());
     assert_eq!(sink.commits.len(), 1);
 }
+
+#[test]
+fn aggregate_completion_runs_before_retirement_and_failed_completion_replays_paid_work() {
+    let rig = Rig::new();
+    let body = Body {
+        calls: Mutex::default(),
+        entered: AtomicUsize::new(0),
+    };
+    let result = rig.engine.drive_items_admitted_with_completion(
+        &fire(&body, "first"),
+        &policy(),
+        &mut |_| Ok(input(&["good"])),
+        &mut |_, _, _| Ok(Landed::default()),
+        &mut |row| {
+            assert!(rig
+                .catalog()
+                .owner_at(&contextful_engine::drive::job_scope("score"))
+                .unwrap()
+                .is_some());
+            assert_eq!(row.input.as_ref().unwrap().rows, 1);
+            Err(Failure::new(FailureTag::Storage, "completion unavailable"))
+        },
+    );
+    assert!(result.is_err());
+    assert_eq!(body.calls.lock().unwrap().len(), 1);
+    let result = rig
+        .engine
+        .drive_items_admitted_with_completion(
+            &fire(&body, "resume"),
+            &policy(),
+            &mut |_| panic!("completion retry preserves input"),
+            &mut |_, _, _| panic!("completion retry preserves landed item"),
+            &mut |row| {
+                assert!(rig
+                    .catalog()
+                    .owner_at(&contextful_engine::drive::job_scope("score"))
+                    .unwrap()
+                    .is_some());
+                assert_eq!(row.input.as_ref().unwrap().rows, 1);
+                Ok(())
+            },
+        )
+        .unwrap();
+    assert!(result.succeeded());
+    assert_eq!(body.calls.lock().unwrap().len(), 1);
+    assert!(rig
+        .catalog()
+        .owner_at(&contextful_engine::drive::job_scope("score"))
+        .unwrap()
+        .is_none());
+    assert!(!rig
+        .engine
+        .drive_items_admitted_with_completion(
+            &fire(&body, "failed"),
+            &policy(),
+            &mut |_| Ok(input(&["bad"])),
+            &mut |_, _, _| panic!("failed body lands nothing"),
+            &mut |_| panic!("failed aggregate records no completion")
+        )
+        .unwrap()
+        .succeeded());
+}

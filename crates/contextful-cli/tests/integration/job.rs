@@ -111,6 +111,76 @@ fn fire(dir: &Path, public: &str, token: &str, run: &str, now: &str, env: &[(&st
     )
 }
 
+#[test]
+fn a_successful_job_records_one_coordinated_output_frontier() {
+    let group = "[[export]]\nname='scores-copy'\ntable='scores'\nendpoint='http://127.0.0.1:1/events'\nformat='changes-v1'\nkey=['doc_id']\nschedule='every 30s'\n[[publication]]\nname='scoring'\njob='score-documents'\nmembers=['scores-copy']\n";
+    let (dir, public, token) = project(&format!("{}\n{group}",job("max_in_flight=1\n")));
+    ok(&fire(dir.path(),&public,&token,"group-run","2030-01-01T00:01:00Z",&[]));
+    let ledger = contextful_sqlite::PublicationLedger::open(&dir.path().join(".contextful/context/research/machine.sqlite")).unwrap();
+    let source = ledger.source("scoring").unwrap().unwrap();
+    assert_eq!(source.run,"group-run");
+    assert_eq!(source.frontiers.keys().collect::<Vec<_>>(),["scores"]);
+    assert_eq!(source.input["as_of"],"2030-01-01T00:00:10Z");
+    assert_eq!(source.input["rows"],3);
+}
+
+#[test]
+fn isolated_aggregate_publication_records_only_successful_complete_frontiers() {
+    let group="[[export]]\nname='scores-copy'\ntable='scores'\nendpoint='http://127.0.0.1:1/events'\nformat='changes-v1'\nkey=['doc_id']\nschedule='every 30s'\n[[publication]]\nname='scoring'\njob='score-documents'\nmembers=['scores-copy']\n";
+    for prepared in [false,true] {
+        let isolated=job("max_in_flight=2\n[job.isolated_items]\nlogical_key='doc_id'\nentity_key='doc_id'\nentity_namespace='documents'\nmax_attempts=2\n");
+        let declared=if prepared {format!("[[pipeline.tables]]\nname='scores'\n{isolated}\n{group}")} else {format!("{isolated}\n{group}")};
+        let (dir,public,token)=project(&declared);
+        let env=if prepared {vec![("SCORE_RECORDED","1")]} else {Vec::new()};
+        ok(&fire(dir.path(),&public,&token,"isolated-group","2030-01-01T00:01:00Z",&env));
+        let ledger=contextful_sqlite::PublicationLedger::open(&dir.path().join(".contextful/context/research/machine.sqlite")).unwrap();
+        let source=ledger.source("scoring").unwrap().expect("successful isolated aggregate records its complete producer frontier");
+        assert_eq!(source.run,"isolated-group");assert_eq!(source.input["rows"],3);assert_eq!(source.frontiers.keys().collect::<Vec<_>>(),["scores"]);
+        assert_eq!(select(dir.path(),"SELECT doc_id FROM scores ORDER BY doc_id").len(),3);
+    }
+    let isolated=job("max_in_flight=2\n[job.isolated_items]\nlogical_key='doc_id'\nentity_key='doc_id'\nentity_namespace='documents'\nmax_attempts=2\n");
+    let (dir,public,token)=project(&format!("{isolated}\n{group}"));
+    let store=contextful_context::Store::open(dir.path(),"research").unwrap();
+    let data=store.table_dir("scores").unwrap().join("data");std::fs::create_dir_all(&data).unwrap();std::fs::write(data.join("runs"),b"landing obstruction").unwrap();
+    assert!(!fire(dir.path(),&public,&token,"failed-group","2030-01-01T00:01:00Z",&[]).status.success());
+    let ledger=contextful_sqlite::PublicationLedger::open(&dir.path().join(".contextful/context/research/machine.sqlite")).unwrap();
+    assert!(ledger.source("scoring").unwrap().is_none(),"failed isolated aggregate publishes no completion frontier");
+}
+
+#[test]
+fn coordinated_job_exports_and_rebuilds_include_a_quiet_empty_member() {
+    use contextful_acceptance::http::{Response,Server};
+    use std::sync::{Arc,Mutex};
+    let receiver_dir = tempfile::tempdir().unwrap();
+    let receiver = Arc::new(Mutex::new(contextful_sqlite::PublicationReceiver::open(&receiver_dir.path().join("receiver.sqlite")).unwrap()));
+    let sink = receiver.clone();
+    let server = Server::start(move |request| {
+        let batch = serde_json::from_slice(&request.body).unwrap();
+        sink.lock().unwrap().receive(&batch).unwrap();
+        Response::json(200,"{}")
+    });
+    let group = format!("[[export]]\nname='scores-copy'\ntable='scores'\nendpoint='{}'\nformat='changes-v1'\nkey=['doc_id']\nschedule='every 30s'\n[[export]]\nname='audits-copy'\ntable='audits'\nendpoint='{}'\nformat='changes-v1'\nkey=['doc_id']\nschedule='every 30s'\n[[publication]]\nname='scoring'\njob='score-documents'\nmembers=['scores-copy','audits-copy']\n",server.url("/events"),server.url("/events"));
+    let declares = job("max_in_flight=1\n").replace("tables = [\"scores\"]","tables = [\"scores\",\"audits\"]");
+    let (dir,public,token) = project(&format!("[[pipeline.tables]]\nname='audits'\n{declares}\n{group}"));
+    let p = dir.path();
+    let paid = p.join("paid.txt");
+    ok(&fire(p,&public,&token,"quiet-group","2030-01-01T00:01:00Z",&[("SCORE_LEDGER",paid.to_str().unwrap())]));
+    let export_token = ok(&cf(p,&["token","mint","--issuer-key",".contextful/issuer.seed","--on-behalf-of","svc://projection","--zone","on-prem:hq","--table","scores","--table","audits","--ttl","600"]));
+    let deliver = |command:&str,extra:&[&str]| {
+        let mut args = vec!["export",command,"scoring","--project","research","--public-key",&public,"--audience",AUD];
+        args.extend_from_slice(extra);
+        Command::new(env!("CARGO_BIN_EXE_contextful")).args(args).current_dir(p).env("CONTEXTFUL_TOKEN",&export_token).env_remove("CONTEXTFUL_NODE_ID").output().unwrap()
+    };
+    ok(&deliver("group",&[]));
+    let state = receiver.lock().unwrap().state("scoring").unwrap();
+    assert_eq!(state["scores-copy"].len(),3);
+    assert!(state["audits-copy"].is_empty());
+    ok(&deliver("rebuild",&["--namespace","rebuilt"]));
+    assert_eq!(receiver.lock().unwrap().state("scoring").unwrap(),state);
+    assert_eq!(receiver.lock().unwrap().active("scoring").unwrap().unwrap().plan.namespace,"rebuilt");
+    assert_eq!(std::fs::read_to_string(paid).unwrap().lines().count(),3);
+}
+
 /// The rows `sql` answers over the project, each as its cells' text.
 fn select(dir: &Path, sql: &str) -> Vec<Vec<String>> {
     let v: serde_json::Value = serde_json::from_str(&ok(&cf(dir, &["query", "--json", "--project", "research", sql]))).unwrap();
@@ -265,7 +335,8 @@ fn a_cancelled_second_prepared_output_collects_its_relational_children_and_keeps
 fn a_refused_second_output_child_commit_retains_names_for_existing_discard() {
     let declares = job("max_in_flight = 1\n").replace("tables = [\"scores\"]", "tables = [\"audits\", \"scores\"]");
     let declaration = "[[pipeline.tables]]\nname='audits'\n[[pipeline.tables]]\nname='scores'\n[[pipeline.tables]]\nname='scores_score'\nredaction=[{table='scores_score', column='text', operation='hash'}]\n";
-    let (dir, public, token) = project(&format!("{declaration}\n{declares}"));
+    let group = "[[export]]\nname='scores-copy'\ntable='scores'\nendpoint='http://127.0.0.1:1/events'\nformat='changes-v1'\nkey=['doc_id']\nschedule='every 30s'\n[[export]]\nname='audits-copy'\ntable='audits'\nendpoint='http://127.0.0.1:1/events'\nformat='changes-v1'\nkey=['doc_id']\nschedule='every 30s'\n[[publication]]\nname='scoring'\njob='score-documents'\nmembers=['scores-copy','audits-copy']\n";
+    let (dir, public, token) = project(&format!("{declaration}\n{declares}\n{group}"));
     let p = dir.path();
     let store = contextful_context::Store::open(p, "research").unwrap();
     let lock = store.lock_commit("scores_score").unwrap();
@@ -284,6 +355,8 @@ fn a_refused_second_output_child_commit_retains_names_for_existing_discard() {
     assert!(!store.table_dir("scores").unwrap().join("data/runs/child-refusal.scores/ingest-a/_group.json").exists());
     assert!(!stage.exists(), "the existing discard owner retains failed child names until root publication succeeds");
     assert!(!store.table_dir("scores").unwrap().join("data/runs/child-refusal.scores/ingest-a/stage.staging").exists());
+    let ledger = contextful_sqlite::PublicationLedger::open(&p.join(".contextful/context/research/machine.sqlite")).unwrap();
+    assert!(ledger.source("scoring").unwrap().is_none(),"a partial producer publishes no coordinated completion frontier");
 }
 
 /// The rows every body emits land after the last input row completes and before the owner retires, one run per
@@ -388,7 +461,8 @@ fn scheduled_host(dir: &Path, public: &str, token: &str, args: &[&str], extra: &
 
 #[test]
 fn scheduled_jobs_use_the_applied_body_and_preserve_the_cadence_across_restart() {
-    let declaration = format!("site_id = \"site\"\n{}", job("max_in_flight = 1\nschedule = \"every 1m\"\n"));
+    let group = "[[export]]\nname='scores-copy'\ntable='scores'\nendpoint='http://127.0.0.1:1/events'\nformat='changes-v1'\nkey=['doc_id']\nschedule='every 30s'\n[[publication]]\nname='scoring'\njob='score-documents'\nmembers=['scores-copy']\n";
+    let declaration = format!("site_id = \"site\"\n{}\n{group}", job("max_in_flight = 1\nschedule = \"every 1m\"\n"));
     let (dir, public, token) = project(&declaration);
     let p = dir.path();
     let ledger = p.join("scheduled-paid.txt");
@@ -399,6 +473,9 @@ fn scheduled_jobs_use_the_applied_body_and_preserve_the_cadence_across_restart()
     let first = ok(&scheduled_host(p, &public, &token, &args, &[("SCORE_LEDGER", ledger.to_str().unwrap())]));
     let first: serde_json::Value = serde_json::from_str(&first).unwrap();
     assert_eq!(first["fired"], serde_json::json!(["job:score-documents"]));
+    let source = contextful_sqlite::PublicationLedger::open(&p.join(".contextful/context/research/machine.sqlite")).unwrap().source("scoring").unwrap().expect("the applied body publishes its local output group");
+    assert_eq!(source.input["rows"],3);
+    assert_eq!(source.frontiers.len(),1);
     assert_eq!(std::fs::read_to_string(&ledger).unwrap().lines().count(), 3);
     let second = ok(&scheduled_host(p, &public, &token, &args, &[("SCORE_LEDGER", ledger.to_str().unwrap())]));
     let second: serde_json::Value = serde_json::from_str(&second).unwrap();

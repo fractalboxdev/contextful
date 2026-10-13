@@ -9,12 +9,14 @@
 
 mod derived;
 mod export;
+mod publication;
 mod machine;
 mod sealed;
 mod stores;
 
 pub use derived::DerivedSqlite;
 pub use export::{ExportLedger, ExportPosition, ExportPublication};
+pub use publication::{PublicationLedger, PublicationReceiver, SourcePublication};
 pub use machine::MachineCatalog;
 pub use stores::{SqliteAwakeableStore, SqliteBlobStore, SqliteJournalStore, SqliteRunStores};
 

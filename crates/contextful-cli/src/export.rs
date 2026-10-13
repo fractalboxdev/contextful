@@ -24,8 +24,42 @@ use std::collections::BTreeMap;
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
 
+pub(crate) mod publication;
+
 #[derive(Subcommand)]
 pub enum ExportCmd {
+    /// Deliver all declared publication members behind one visibility barrier.
+    Group {
+        name: String,
+        #[command(flatten)] project: ProjectArgs,
+        #[arg(long)] declaration: Option<PathBuf>,
+        #[command(flatten)] admit: AdmitArgs,
+    },
+    /// Rebuild every member into a fresh receiver namespace without executing jobs.
+    Rebuild {
+        name: String,
+        #[arg(long)] namespace: String,
+        #[command(flatten)] project: ProjectArgs,
+        #[arg(long)] declaration: Option<PathBuf>,
+        #[command(flatten)] admit: AdmitArgs,
+    },
+    /// Save authenticated publication delivery state for one namespace.
+    Checkpoint {
+        name: String,
+        #[arg(long)] namespace: String,
+        #[arg(long)] out: PathBuf,
+        #[command(flatten)] project: ProjectArgs,
+        #[arg(long)] declaration: Option<PathBuf>,
+    },
+    /// Restore compatible delivery bytes; the receiver retains its visibility frontier.
+    Restore {
+        name: String,
+        #[arg(long)] namespace: String,
+        #[arg(long)] checkpoint: PathBuf,
+        #[command(flatten)] project: ProjectArgs,
+        #[arg(long)] declaration: Option<PathBuf>,
+        #[command(flatten)] admit: AdmitArgs,
+    },
     /// Deliver every row an export's cursor has not passed to its OTLP target.
     Run {
         name: String,
@@ -64,6 +98,10 @@ fn read_cursor(store: &contextful_context::Store, path: &Path) -> Result<ExportC
 
 pub fn run(cmd: ExportCmd) -> Result<()> {
     match cmd {
+        ExportCmd::Group {name,project,declaration,admit} => publication::deliver(&name,None,&project,declaration,&admit,None),
+        ExportCmd::Rebuild {name,namespace,project,declaration,admit} => publication::deliver(&name,Some(namespace),&project,declaration,&admit,None),
+        ExportCmd::Checkpoint {name,namespace,out,project,declaration} => publication::checkpoint(&name,&namespace,&out,&project,declaration),
+        ExportCmd::Restore {name,namespace,checkpoint,project,declaration,admit} => publication::deliver(&name,Some(namespace),&project,declaration,&admit,Some(checkpoint)),
         ExportCmd::Run { name, project, declaration, admit } => run_once(&name, &project, declaration, &admit),
         ExportCmd::Watch { name, project, declaration, admit } => {
             let l = project.locate(declaration.clone())?;
@@ -182,7 +220,10 @@ fn run_once(name: &str, project: &ProjectArgs, declaration: Option<PathBuf>, adm
 }
 
 fn source_publication(face: &contextful_context::read::face::Face, table: &str) -> Result<String> {
-    let store = face.store();
+    source_frontier(face.store(), table)
+}
+
+pub(crate) fn source_frontier(store: &contextful_context::Store, table: &str) -> Result<String> {
     let mut runs = store.committed_runs(table)?;
     runs.sort_by(|a, b| (a.commit_seq, &a.run_id, &a.node_id).cmp(&(b.commit_seq, &b.run_id, &b.node_id)));
     let pointer = store.pointer(table)?.map(|(p, _)| p.snapshot_id.to_string());
@@ -207,6 +248,11 @@ fn read_identity(face: &contextful_context::read::face::Face, session: &Session,
 }
 
 fn read_state(face: &contextful_context::read::face::Face, session: &Session, export: &Export) -> Result<contextful_core::export::ChangeState> {
+    if face.store().try_schema(&export.table)?.is_none() {
+        let response = face.query(session,&format!("SELECT * FROM {} LIMIT 1",ident(&export.table)),ReadOptions::default())?;
+        if response.rows.is_empty() && !response.truncated {return Ok(Default::default());}
+        anyhow::bail!("PublicationIncompatible: a quiet member has no stored rows or inferred schema");
+    }
     let order = export.key.iter().map(|k| ident(k)).collect::<Vec<_>>().join(", ");
     let types: BTreeMap<_, _> = face.store().try_schema(&export.table)?.map(|s| s.columns.into_iter().map(|c| (c.name, c.ty)).collect()).unwrap_or_default();
     let mut rows = Vec::new();

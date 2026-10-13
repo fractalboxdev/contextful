@@ -156,6 +156,8 @@ pub fn run(args: BuildArgs) -> Result<()> {
             let l = args.project.locate(args.declaration)?;
             let spec = model(&l.declaration, &id)?;
             let text = if l.declaration.exists() { std::fs::read_to_string(&l.declaration)? } else { String::new() };
+            let grouped = crate::export::publication::validate_job(&text,&id,std::slice::from_ref(&id))?;
+            let _publication = if grouped {Some(crate::export::publication::lock(&l)?)} else {None};
             let site_id = site_id_for(&text, &l.declaration, args.site_id, args.site_id_env)?;
             let started_at = now(&args.project.now)?;
             let face = open_face(&l.project, &l.declaration, &text, Pepper::resolve(|k| std::env::var(k).ok()))
@@ -166,6 +168,10 @@ pub fn run(args: BuildArgs) -> Result<()> {
                 None => now(&None)?.max(started_at),
             };
             let built = build(&face, &BuildRequest { model: &spec, site_id: &site_id, started_at, completed_at })?;
+            if grouped {
+                if built.section.is_none() {anyhow::bail!("PublicationIncompatible: a publication member is a materialized build");}
+                crate::export::publication::record_completion(face.store(),&text,&id,&built.build_id,serde_json::to_value(&built.watermark)?)?;
+            }
             if args.json {
                 println!(
                     "{}",
@@ -204,6 +210,10 @@ pub(crate) fn fire_job(
     let specs: Vec<_> = collect(&files)?.into_iter().map(|p| p.spec).collect();
     crate::job::bind_declared(std::slice::from_ref(job), &specs, &models)?;
     let spec = models.iter().find(|m| Some(&m.id) == job.target.as_ref()).context("build target is declared")?;
+    // Publication bindings belong to local delivery, independently of the applied model.
+    let group_text = local;
+    let grouped = crate::export::publication::validate_job(group_text,&job.name,std::slice::from_ref(&spec.id))?;
+    let _publication = if grouped {Some(crate::export::publication::lock(located)?)} else {None};
     let site = site_id_for(local, &located.declaration, site_id, site_id_env)?;
     let wire = crate::run::wire_at(&located.project, &project.now)?;
     wire.engine.reap_orphans()?;
@@ -244,6 +254,11 @@ pub(crate) fn fire_job(
     };
     execution.close(outcome)?;
     let built = result?;
+    if grouped {
+        if built.section.is_none() {anyhow::bail!("PublicationIncompatible: a publication member is a materialized build");}
+        let store = Store::open(&located.project.dir,&located.project.name)?;
+        crate::export::publication::record_completion(&store,group_text,&job.name,&built.build_id,serde_json::to_value(&built.watermark)?)?;
+    }
     println!("{}: built {} · {} rows", built.model, built.build_id, built.rows);
     Ok(())
 }
