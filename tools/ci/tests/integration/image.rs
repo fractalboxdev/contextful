@@ -44,7 +44,7 @@ fn the_container_recipe_accepts_a_native_linux_release_target_without_changing_p
     let build = lines.iter().find(|line| line.contains("cargo build")).unwrap();
     assert!(build.contains("--target \"$RUST_TARGET\""), "{build}");
     assert!(build.contains("target/$RUST_TARGET/release/contextful"), "{build}");
-    assert!(build.contains("rustc -vV") && build.contains("test \"$RUST_TARGET\""), "the target must match the pinned builder's native platform: {build}");
+    assert!(lines.iter().any(|line| line.starts_with("RUN test \"$RUST_TARGET\"") && line.contains("rustc -vV")), "a separate bounded instruction checks the pinned builder's native platform");
 }
 
 /// The repository's `Dockerfile` builds one profile, `contextful-full` unless `PROFILE` names another, as a static `linux/amd64` binary, and ships it in a shell-free runtime image as a non-root user over a declared store volume.
