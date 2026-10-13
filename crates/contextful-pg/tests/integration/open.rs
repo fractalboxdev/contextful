@@ -22,3 +22,10 @@ fn a_malformed_connection_string_refuses_the_open_without_echoing_it() {
     assert!(failure.message.contains("Postgres catalog"), "{}", failure.message);
     assert!(!failure.message.contains("canary-secret"), "{}", failure.message);
 }
+
+#[test]
+fn a_remote_database_cannot_disable_authenticated_transport() {
+    let error = PgCatalog::validate_transport("host=database.example port=5432 user=worker sslmode=disable").unwrap_err();
+    assert!(error.message.contains("DatabaseTransportUnprotected"), "{error}");
+    assert!(!error.message.contains("canary-secret"), "{error}");
+}

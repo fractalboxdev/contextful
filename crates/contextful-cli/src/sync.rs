@@ -186,7 +186,7 @@ fn control_dir(text: &str, project_dir: &std::path::Path, project: &str) -> Resu
 
 /// Open the bucket `[sync] endpoint` names through the adapter its scheme selects
 /// (`store.endpoint.schemes`).
-fn bucket(config: &SyncConfig) -> Result<Arc<dyn ObjectStore>> {
+pub(crate) fn bucket(config: &SyncConfig) -> Result<Arc<dyn ObjectStore>> {
     Ok(match config.resolve_endpoint()? {
         Endpoint::File(dir) => Arc::new(FsBucket::open(std::path::Path::new(&dir), &config.bucket).map_err(|e| anyhow::anyhow!("bucket: {e}"))?),
         Endpoint::S3 { url, region } => s3_bucket(config, &url, &region)?,

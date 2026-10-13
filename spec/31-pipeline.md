@@ -266,8 +266,13 @@ The outbound copy of a landed table to an operator-declared target: the export b
   *A-topology*
 - `secret-preflight` — A header reference no adapter answers refuses at preflight as {{connector.resolve.unresolved-name}}, before any row is read.
   *because a target the export cannot authenticate to is known before a batch is built*
-- `cursor-after-ack` — The cursor, the last delivered `_commit_seq` and `_row_seq`, commits to `.contextful/exports/<project>/<name>.json`, outside the synced store root, only after the target answers 2xx for the batch.
-  *because a cursor is one node's delivery state, and a synced copy moves another node's export past rows it never sent*
+- `cursor-after-ack` — The cursor, the last delivered `_commit_seq` and `_row_seq`, commits only after the target answers 2xx for the batch.
+  *because an unacknowledged batch remains eligible for delivery after a restart*
+- `local-state` — The local storage profile keeps log cursors in `.contextful/exports/<project>/<name>.json`, outside corpus sync, and typed delivery state in `machine.sqlite`.
+- `remote-state` — Under {{run.journal.container-profile}}, PostgreSQL holds typed outboxes, acknowledged keyed state and log checkpoints in the execution database; a replacement reoffers identical pending event ids before advancing its acknowledged frontier.
+  *A-run*
+- `writer-fenced` — A PostgreSQL exporter whose durable writer lease has transferred raises `ExecutionWriterFenced` before dispatch or state publication; its lease row stays locked throughout an admitted outbound call, and takeover waits for that call.
+  *A-run*
 - `at-least-once` — A run ending between a target's acknowledgement and the cursor commit resends that batch on the next run; a target deduplicates on `contextful.commit_seq` and `contextful.row_seq`.
   *A-topology*
 - `delivery-refused` — A target answering other than 2xx, or unreachable, raises `ExportDeliveryRefused` naming the export and the answer, and the cursor stays where it stood.
@@ -286,11 +291,11 @@ The outbound copy of a landed table to an operator-declared target: the export b
   *because acknowledgement can fail after the target applies a batch*
 - `typed-complete` — A publication-complete event follows every change, including an empty set, and states that publication's change count.
   *because a consumer needs a boundary after which its keyed state represents one observed frontier*
-- `typed-outbox` — Events and their next keyed state stage together in machine-local `machine.sqlite`; a pending publication blocks staging a later frontier.
+- `typed-outbox` — Events and their next keyed state stage together in the configured execution store; a pending publication blocks staging a later frontier.
   *because a failed send must retain its exact payload and order across restarts*
 - `typed-identity-changed` — Pending events under a changed read identity, or an export redirected to another target under the same name, raise `ExportIdentityChanged` without delivery; watch exits.
   *because an old outbox cannot prove authorization under a changed view or establish a new target's baseline*
-- `typed-ack` — A typed export advances its machine-local acknowledgement sequence only after HTTP 2xx; acknowledging the completion event promotes its staged state in the same transaction.
+- `typed-ack` — A typed export advances its durable acknowledgement sequence only after HTTP 2xx; acknowledging the completion event promotes its staged state in the same transaction.
   *because a receiver acknowledgement and local state promotion have one durable order*
 - `typed-watch` — `contextful export watch <name>` fires the typed export on its schedule and retries a refused send with capped exponential delay from the pending outbox.
   *because delivery resumes without another operator invocation*

@@ -12,7 +12,7 @@ use contextful_core::run::backfill::ChunkStatus;
 use contextful_core::run::journal::{sha256_hex, EntryKey};
 use contextful_core::run::own::{releases, ExecutionOwner, OwnerPins, OwnerScope};
 use contextful_core::run::plan::NATIVE_WORLD;
-use contextful_core::run::ports::{BlobStore, Capabilities, ExecutionPort, JournalStore, Landed, OpenExecution, Outcome, StepEffect, Substrate, Wake};
+use contextful_core::run::ports::{BlobStore, Cancellation, Capabilities, ExecutionPort, JournalStore, Landed, OpenExecution, Outcome, StepEffect, Substrate, Wake};
 use contextful_core::run::project::{Change, StepPatch, StepStatus};
 use contextful_core::run::record::{cap_error, Owner, Phase, RunRow, RunStatus};
 use contextful_core::run::retry::{decide, Decision, Schedule};
@@ -289,6 +289,41 @@ impl<'e, J: JournalStore, B: BlobStore> Execution<'e, J, B> {
         self.held.lock().unwrap_or_else(|e| e.into_inner()).clone()
     }
 
+    /// Check the live attempt and its admission fence immediately at an effect boundary.
+    pub fn assert_current(&self) -> Result<(), Failure> {
+        if self.token.requested() {
+            return Err(Failure::canceled("execution no longer admits effects"));
+        }
+        if let Some(lease) = self.lease() {
+            if !self.engine.catalog.lease_holds(&lease)? {
+                return Err(Failure::new(FailureTag::Transient, "execution admission fence was superseded"));
+            }
+        }
+        if self.current_attempt()?.stop.is_some() {
+            return Err(Failure::canceled("execution no longer admits effects"));
+        }
+        Ok(())
+    }
+
+    /// Landing finishes after a stop; superseded ownership still refuses publication.
+    pub(crate) fn assert_publication_current(&self) -> Result<(), Failure> {
+        self.current_attempt().map(|_| ())
+    }
+
+    fn current_attempt(&self) -> Result<RunRow, Failure> {
+        if !self.owned || self.retired {
+            return Err(Failure::canceled("execution no longer owns publication"));
+        }
+        let owner = self.engine.catalog.owner_at(&self.scope)?;
+        let current = owner.as_ref().is_some_and(|o| o.execution_id == self.execution_id && o.pins == self.pins &&
+            (self.scope.host_id().is_none() || o.attempts.last() == Some(&self.run_id)));
+        let attempt = self.engine.catalog.run(&self.run_id)?;
+        if !current || !attempt.as_ref().is_some_and(|r| r.status.is_in_flight() && r.owner.is_some()) {
+            return Err(Failure::new(FailureTag::Transient, "execution owner was superseded or expired"));
+        }
+        Ok(attempt.expect("admitted current attempt"))
+    }
+
     /// The scope's cursor row, read once, at or before claim.
     pub(crate) fn cursor_row(&mut self) -> Result<CursorRow, Failure> {
         if self.cursor.is_none() {
@@ -407,8 +442,9 @@ impl<'e, J: JournalStore, B: BlobStore> Execution<'e, J, B> {
         // row persisted (`run.retry.attempt-counter`).
         let mut attempt = engine.journal.attempts(key)? + 1;
         loop {
+            self.assert_current()?;
             self.emit(Change::Step(StepPatch { attempts: Some(attempt), ..StepPatch::new(label).status(StepStatus::Running) }));
-            let failure = match engine.journal.step(key, &self.run_id, &holder_live, token, journal_it, &mut || effect(token)) {
+            let failure = match engine.journal.step(key, &self.run_id, &holder_live, token, journal_it, &mut || { self.assert_current()?; effect(token) }) {
                 Ok(r) => {
                     self.emit(Change::Step(StepPatch::new(label).status(StepStatus::Completed)));
                     return Ok(r);
@@ -570,6 +606,7 @@ impl<J: JournalStore + Clone, B: BlobStore + Clone> ExecutionPort for Execution<
 
     fn commit(&mut self, position: Option<Value>) -> Result<(), EngineError> {
         self.live("a commit")?;
+        self.assert_current()?;
         let cached = self.cursor_row()?;
         let next = CursorRow { position, version: 0, ..cached.clone() };
         let lease = self.lease();

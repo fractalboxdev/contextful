@@ -33,6 +33,11 @@ BlobMissing                    = { clause = "run.journal.missing-blob", gloss = 
 RunInputTruncated              = { clause = "run.journal.input-truncated", gloss = "A store-driven input statement the read face truncated at its row ceiling." }
 JournalRedactionConflict       = { clause = "run.journal.redacting-source", gloss = "Write-path redaction declared over a source whose pulls are journaled." }
 CapabilityUnwired              = { clause = "run.journal.unwired-capability", gloss = "A capability the running profile links no implementation for." }
+StorageCapabilityMissing       = { clause = "run.journal.storage-incomplete", gloss = "A disposable execution profile lacks a required durable binding or adapter." }
+StorageProfileUnsupported      = { clause = "run.journal.storage-unsupported", gloss = "The storage profile or its encryption pairing is unsupported." }
+ExecutionSchemaIncompatible    = { clause = "run.journal.execution-schema", gloss = "The durable execution schema differs from the executable's supported schema." }
+ExecutionRecoveryMismatch      = { clause = "run.journal.execution-recovery", gloss = "A complete execution backup or its project recovery identity is missing." }
+ExecutionWriterFenced          = { clause = "run.export.writer-fenced", gloss = "An exporter no longer owns its durable writer lease." }
 CursorFieldMismatch            = { clause = "run.advance.field-rename", gloss = "A stored position's field differs from the declared incremental field." }
 CursorPositionUnorderable      = { clause = "run.advance.unorderable-position", gloss = "A clock value with no ordering, or a position type changing mid-pass." }
 AwakeableAlreadyResolved       = { clause = "run.suspend.conflicting-resolution", gloss = "A second resolution carrying a different payload." }

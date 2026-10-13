@@ -2,6 +2,19 @@
 
 **Status:** accepted
 
+## Disposable execution state shares one remote recovery database
+
+Execution replacement preserves the original recorded value, callback and export event identity. The deciding criteria are complete-state recovery and compatibility with the existing storage ports. The Cloudflare container profile uses PostgreSQL for owners, cadence history, journals, blobs, awakeables and delivery state, with R2-compatible corpus objects. Remote database connections authenticate the server with WebPKI roots and hostname verification.
+
+| Option | Lost on | Cost |
+| --- | --- | --- |
+| One remote execution database behind existing ports *(chosen)* | — | Every recorded operation crosses the database boundary; the operator owns database availability and a coordinated corpus backup. |
+| Local execution files beside remote corpus objects | Replacement safety | A disposable disk loses paid-call records, callbacks and pending exports. |
+| A per-store Durable Object protocol | Adapter conformance | A separate transport and schema protocol needs the same whole-state and crash guarantees before the profile can select it. |
+| Independently restored execution stores | Consistency | A restored owner can name a missing recorded value or an already acknowledged outbox. |
+
+Consequences: startup checks a provisioned project recovery identity, every required table and the executable schema without repairing a partial restore. Backup drains and stops every writer, captures one PostgreSQL snapshot and its corpus frontier, and restores that set before restarting writers. A callback interrupted after its journal write reconciles to that value. An exporter holds its durable lease row across a bounded outbound call; takeover waits for an admitted call. Encrypted PostgreSQL rows and remote coordinated-group outboxes require their own conforming adapters; the profile refuses both combinations.
+
 ## A plan is compiled, content-hashed data with no embedded runtime
 
 A journaled step replays correctly only against the definition that produced it. The authoring surface is a build-time compiler emitting a serialized, content-hashed plan, a run pins against the plan hash, and no profile links a script runtime. `run.compile` accepts a step body only as a connector reference, and control flow is declared as `branch` and `parallel` nodes, so data selects an arm and never which arms exist. `run.transform` never emits more rows than it consumed.

@@ -54,6 +54,25 @@ fn counted<'a>(runs: &'a AtomicUsize, value: &'a [u8]) -> impl FnMut(&dyn contex
     }
 }
 
+#[test]
+fn a_superseded_execution_refuses_provider_dispatch_and_cursor_publication() {
+    let rig = Rig::new();
+    let calls = AtomicUsize::new(0);
+    let mut old = rig.engine.open_execution(&host("plan-a", "m-1", "old-container")).unwrap();
+    old.step("provider", b"first", &mut counted(&calls, b"recorded")).unwrap();
+    assert_eq!(calls.load(Ordering::SeqCst), 1);
+    let scope = OwnerScope::host(SCOPE);
+    let mut replacement = rig.catalog().owner_at(&scope).unwrap().expect("an admitted execution owns its scope");
+    replacement.execution_id = "replacement-execution".into();
+    replacement.attempts = vec!["replacement-attempt".into()];
+    rig.catalog().put_owner(&replacement).unwrap();
+    assert!(matches!(old.step("provider-next", b"second", &mut counted(&calls, b"wrong")), Err(EngineError::Failure(f)) if f.tag == FailureTag::Transient));
+    assert_eq!(calls.load(Ordering::SeqCst), 1);
+    assert!(old.commit(Some(json!("wrong-frontier"))).is_err());
+    assert_eq!(rig.catalog().cursor_at(&scope).unwrap().position, None);
+    assert_eq!(rig.catalog().owner_at(&scope).unwrap(), Some(replacement));
+}
+
 /// An execution handle dropped without close records no status; its owner stays pending, and the next open under
 /// its scope resumes it once {{run.record.owner-lease}} lapses.
 // spec: run.own.unclosed-execution@ec6d4ebb
