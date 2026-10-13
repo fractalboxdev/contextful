@@ -311,6 +311,16 @@ The execution owner a scope holds and the connector build it pins while pending.
 - `execution-owner` — One durable execution owner exists per scope; a table or chunk owner holds the connector identity with its component world, the pipeline `content_hash` and the input hash.
 - `host-scope` — The catalog keys every owner on its scope — live table, backfill chunk or host-declared id — a table owner keeping its stored key byte for byte, and a host owner pinning the plan reference and identities the host supplies.
   *A-run*
+- `body-implementation` — Store-driven owner pins include the host-verified digest of its executing binary and concrete registered body type; configuration selects a body name and supplies no implementation identity.
+  *A-run*
+- `body-dependencies` — Registration declares prompt/template, public provider/model configuration and policy identities affecting execution; owner pins carry their digests independently of structural input and output declarations.
+  *A-run*
+- `body-admission` — Body implementation and dependency pins bind before input reads, recorded-call replay or body entry; unavailable or changed pins follow {{run.own.pinned-plan-changed}}.
+- `body-compatibility` — Registrations without dependency declarations declare none and receive the verified host implementation pin; pending owners without implementation pins refuse before input reads or body entry under {{run.own.pinned-plan-changed}}.
+  *because an unversioned record cannot establish which executable produced its paid calls*
+- `body-fresh` — A fresh execution under changed implementation or dependencies receives a distinct plan identity and preserves earlier run records; pending work requires its recorded host build and registered dependencies.
+- `body-public-configuration` — Semantic provider configuration contains public endpoint, model and generation parameters; credential-bearing endpoints refuse registration, credentials enter neither exported diagnostics nor recorded pins, and credential rotation alone changes no semantic identity.
+  *because credential custody and executable semantics are independent identities*
 - `execution-id-keys-the-journal` — Recorded work keys on the execution id; a catalog run id is the provenance of one attempt, so attempts under one owner resolve the same recorded values.
 - `retirement` — Retiring an owner and caching its committed position share one catalog transaction; a later fire receives a fresh execution id even at a byte-identical position. A completed backfill chunk retires the same way.
 - `marker-reconciles` — At run open, a commit marker newer than the catalog's cached position retires the pending owner that produced it before any replay.
@@ -471,6 +481,7 @@ The durable run record, its statuses, its owner lease and windowed history over 
 - `skipped-count` — A pull's optional `skipped` field counts inputs the source declined to land whole; the run row sums it over the run's pulls, replayed pulls included, beside the destination counts.
   *because a skipped input raises no error, and a count on the record surfaces it without reading the landed rows*
 - `input-bounds` — A store-driven run's row carries its input: the resolved `as_of`, the snapshot id per table and the input row count.
+- `plan-identity` — A run row retains its admitted plan reference after owner retirement; a record lacking that field decodes with no plan identity.
 - `schema-diff-home` — A table's run manifest holds its committed downgrade events with its parts and cursor; run history reads them under that run id.
   *A-run*
 - `schema-diff-shape` — Each downgrade event names the table, column path, source type, landed type and reason; a stage that does not commit contributes none.

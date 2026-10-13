@@ -169,6 +169,9 @@ pub struct RunRow {
     pub phase: Phase,
     /// The execution whose journal this attempt resolves against (`run.own.execution-id-keys-the-journal`).
     pub execution_id: String,
+    /// Immutable plan identity admitted at this attempt's open, retained after retirement.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub plan_ref: Option<String>,
     #[serde(default)]
     pub stop: Option<StopMark>,
     /// The host scope an execution opened under; `None` for a table or chunk run, whose

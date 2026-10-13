@@ -4,6 +4,7 @@ mod admission;
 mod attempts;
 mod backfill;
 mod binding;
+mod body_identity;
 mod cancel;
 #[cfg(unix)]
 mod command;
@@ -60,6 +61,7 @@ pub fn support_row(run_id: &str, status: RunStatus) -> RunRow {
         execution_id: "x-1".into(),
         stop: None,
         host_scope: None,
+        plan_ref: None,
         input: None,
         failed_branches: Vec::new(),
     }

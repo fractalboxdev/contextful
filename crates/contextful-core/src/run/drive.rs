@@ -22,6 +22,47 @@ pub type Emitted = BTreeMap<String, Vec<Row>>;
 /// Canonically admitted effect groups, with no raw model result exposed to the body.
 pub type PreparedEmitted = BTreeMap<String, Vec<super::effect::PreparedEmission>>;
 
+/// Public inference semantics carry no credential field or credential-bearing URL.
+#[derive(Debug, Clone, PartialEq, Serialize)]
+pub struct ProviderModelIdentity {
+    endpoint: String,
+    model: String,
+    temperature: Option<f64>,
+    top_p: Option<f64>,
+    max_output_tokens: Option<u64>,
+}
+
+impl ProviderModelIdentity {
+    pub fn new(endpoint:&str, model:&str)->Result<Self,RunError> {
+        let url=url::Url::parse(endpoint).map_err(|_|RunError::Invalid("provider identity requires an absolute public endpoint".into()))?;
+        if !matches!(url.scheme(),"http"|"https") || url.host_str().is_none() || !url.username().is_empty() || url.password().is_some() || url.query().is_some() || url.fragment().is_some() || model.trim().is_empty() {
+            return Err(RunError::Invalid("provider identity excludes credentials, query parameters and fragments and requires a model".into()));
+        }
+        Ok(Self {endpoint:url.to_string(),model:model.into(),temperature:None,top_p:None,max_output_tokens:None})
+    }
+
+    pub fn with_generation(mut self,temperature:Option<f64>,top_p:Option<f64>,max_output_tokens:Option<u64>)->Result<Self,RunError> {
+        if temperature.is_some_and(|v|!v.is_finite() || !(0.0..=2.0).contains(&v)) || top_p.is_some_and(|v|!v.is_finite() || !(0.0..=1.0).contains(&v)) || max_output_tokens==Some(0) {
+            return Err(RunError::Invalid("public generation identity requires finite sampling bounds and positive output tokens".into()));
+        }
+        self.temperature=temperature;self.top_p=top_p;self.max_output_tokens=max_output_tokens;Ok(self)
+    }
+}
+
+/// Only public semantic digests enter execution pins and diagnostics.
+#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize)]
+pub struct BodyDependencies { identities:BTreeMap<String,String> }
+impl BodyDependencies {
+    pub fn new(prompt:&[u8],provider_model:&ProviderModelIdentity,policy:&[u8])->Self {
+        Self {identities:BTreeMap::from([
+            ("prompt".into(),sha256_hex(prompt)),
+            ("provider-model".into(),sha256_hex(&serde_json::to_vec(provider_model).expect("public provider identity serializes"))),
+            ("policy".into(),sha256_hex(policy)),
+        ])}
+    }
+    pub fn identities(&self)->&BTreeMap<String,String>{&self.identities}
+}
+
 /// Explicit independent-item admission; keys name non-null input columns.
 #[derive(Debug, Clone, PartialEq, Eq, Deserialize, Serialize)]
 #[serde(deny_unknown_fields)]
@@ -199,6 +240,10 @@ pub trait RowBody: Send + Sync {
     /// A compiled closed projection enables prepared effect recording; ordinary bodies
     /// retain their existing calls and emission behavior.
     fn recorded(&self) -> Option<&dyn RecordedRowBody> { None }
+    /// Concrete code identity joins the host artifact fingerprint at admission.
+    fn implementation_type(&self)->&'static str {std::any::type_name::<Self>()}
+    /// A registration declares every public semantic dependency affecting its work.
+    fn dependencies(&self)->BodyDependencies {BodyDependencies::default()}
 }
 
 /// Paid calls whose results pass canonical removal before the existing journal records them.
@@ -219,6 +264,14 @@ pub struct Bodies {
     bodies: BTreeMap<String, Arc<dyn RowBody>>,
 }
 
+struct RegisteredBody {body:Arc<dyn RowBody>,dependencies:BodyDependencies}
+impl RowBody for RegisteredBody {
+    fn run(&self,row:&InputRow,calls:&dyn RowCalls)->Result<Emitted,RowStop>{self.body.run(row,calls)}
+    fn recorded(&self)->Option<&dyn RecordedRowBody>{self.body.recorded()}
+    fn implementation_type(&self)->&'static str{self.body.implementation_type()}
+    fn dependencies(&self)->BodyDependencies{self.dependencies.clone()}
+}
+
 impl std::fmt::Debug for Bodies {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         f.debug_list().entries(self.bodies.keys()).finish()
@@ -228,10 +281,16 @@ impl std::fmt::Debug for Bodies {
 impl Bodies {
     /// Register `body` under `name`; a blank or taken name refuses.
     pub fn register(&mut self, name: &str, body: Arc<dyn RowBody>) -> Result<(), RunError> {
+        let dependencies=body.dependencies();
+        self.register_with_dependencies(name,body,dependencies)
+    }
+
+    /// The host declares semantic inputs; configuration supplies no implementation digest.
+    pub fn register_with_dependencies(&mut self,name:&str,body:Arc<dyn RowBody>,dependencies:BodyDependencies)->Result<(),RunError> {
         if name.trim().is_empty() || self.bodies.contains_key(name) {
             return Err(RunError::Invalid(format!("a row body is already named `{name}`, or the name is blank")));
         }
-        self.bodies.insert(name.to_string(), body);
+        self.bodies.insert(name.to_string(), Arc::new(RegisteredBody {body,dependencies}));
         Ok(())
     }
 
