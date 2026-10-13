@@ -31,6 +31,60 @@ fn the_cloudflare_profile_executes_every_required_scenario_on_remote_state() {
 }
 
 #[test]
+#[cfg(unix)]
+fn unexpected_storage_initialization_errors_fail_without_exporting_credentials() {
+    use contextful_acceptance::conformance::Outcome;
+    use std::os::unix::fs::PermissionsExt;
+
+    let _guard = super::CONFORMANCE_ENV.lock().unwrap();
+    let dir = tempfile::tempdir().unwrap();
+    let binary = dir.path().join("contextful");
+    for (error, expected, diagnostic) in [
+        (
+            "database connection refused",
+            Outcome::Failed,
+            "ConformanceStorageInitializeFailed",
+        ),
+        (
+            "ProfileCapabilityAbsent: pg-catalog",
+            Outcome::Unsupported,
+            "ConformanceCapabilityMissing:cloudflare-postgres",
+        ),
+        (
+            "StorageCapabilityMissing: pg-catalog",
+            Outcome::Unsupported,
+            "ConformanceCapabilityMissing:cloudflare-postgres",
+        ),
+        (
+            "StorageProfileUnsupported: cloudflare-postgres",
+            Outcome::Unsupported,
+            "ConformanceCapabilityMissing:cloudflare-postgres",
+        ),
+    ] {
+        std::fs::write(&binary,format!("#!/bin/sh\nif [ \"$1\" = --version ]; then printf 'contextful fixture development\\n'; exit 0; fi\nif [ \"$2\" = --help ]; then exit 0; fi\nif [ \"$1 $2\" = 'storage initialize' ]; then printf '%s\\n' '{error}: credential-material' >&2; exit 1; fi\nexit 99\n")).unwrap();
+        std::fs::set_permissions(&binary, std::fs::Permissions::from_mode(0o700)).unwrap();
+        let report = conformance::run(&Options {
+            binary: binary.clone(),
+            storage_profile: "cloudflare-postgres".into(),
+            required: vec!["pagination-checkpoint".into()],
+            timeout_seconds: 60,
+        })
+        .unwrap();
+        assert!(!report.passed());
+        let scenario = report
+            .scenarios
+            .iter()
+            .find(|scenario| scenario.required)
+            .unwrap();
+        assert_eq!(scenario.outcome, expected, "{report:?}");
+        assert_eq!(scenario.diagnostic.as_deref(), Some(diagnostic));
+        assert!(!serde_json::to_string(&report)
+            .unwrap()
+            .contains("credential-material"));
+    }
+}
+
+#[test]
 #[cfg(target_os = "macos")]
 fn a_remote_fixture_releases_postgres_shared_memory_on_drop() {
     use std::os::unix::fs::PermissionsExt;

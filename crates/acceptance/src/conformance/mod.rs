@@ -258,6 +258,7 @@ struct Fixture {
 struct Captured {
     status: ExitStatus,
     stdout: String,
+    storage_capability_missing: bool,
 }
 
 impl Fixture {
@@ -286,7 +287,12 @@ impl Fixture {
         self.remote = Some(remote);
         let initialized = self.invoke(&["storage", "initialize", "--project", "research"], &[])?;
         if !initialized.status.success() {
-            return Err("ConformanceCapabilityMissing:cloudflare-postgres".into());
+            return Err(if initialized.storage_capability_missing {
+                "ConformanceCapabilityMissing:cloudflare-postgres"
+            } else {
+                "ConformanceStorageInitializeFailed"
+            }
+            .into());
         }
         let checked = self.ok(&["storage", "check", "--project", "research"], &[])?;
         let checked: serde_json::Value =
@@ -344,14 +350,7 @@ impl Fixture {
         let mut child = Running::spawn(self.command(args, env))?;
         let deadline = Instant::now() + self.timeout;
         let status = loop {
-            if child
-                .out
-                .as_file()
-                .metadata()
-                .map_err(|_| "ConformanceOutputUnavailable")?
-                .len()
-                > 1024 * 1024
-            {
+            if child.output_limit_exceeded()? {
                 return Err("ConformanceOutputLimit".into());
             }
             if let Some(status) = child
@@ -367,7 +366,12 @@ impl Fixture {
             std::thread::sleep(Duration::from_millis(10));
         };
         let stdout = child.stdout()?;
-        Ok(Captured { status, stdout })
+        let storage_capability_missing = !status.success() && child.storage_capability_missing()?;
+        Ok(Captured {
+            status,
+            stdout,
+            storage_capability_missing,
+        })
     }
 
     fn ok(&self, args: &[&str], env: &[(&str, &str)]) -> Result<String> {
@@ -390,29 +394,51 @@ impl Fixture {
 struct Running {
     child: Child,
     out: tempfile::NamedTempFile,
+    err: tempfile::NamedTempFile,
 }
 
 impl Running {
     fn spawn(mut command: Command) -> Result<Self> {
         let out = tempfile::NamedTempFile::new().map_err(|_| "ConformanceScratchUnavailable")?;
+        let err = tempfile::NamedTempFile::new().map_err(|_| "ConformanceScratchUnavailable")?;
         let file = out.reopen().map_err(|_| "ConformanceScratchUnavailable")?;
+        let error = err.reopen().map_err(|_| "ConformanceScratchUnavailable")?;
         let child = command
             .stdout(Stdio::from(file))
-            .stderr(Stdio::null())
+            .stderr(Stdio::from(error))
             .spawn()
             .map_err(|_| "ConformanceProcessUnavailable")?;
-        Ok(Self { child, out })
+        Ok(Self { child, out, err })
+    }
+
+    fn output_limit_exceeded(&self) -> Result<bool> {
+        let mut bytes = 0;
+        for file in [&self.out, &self.err] {
+            bytes += file
+                .as_file()
+                .metadata()
+                .map_err(|_| "ConformanceOutputUnavailable")?
+                .len();
+        }
+        Ok(bytes > 1024 * 1024)
+    }
+
+    fn storage_capability_missing(&self) -> Result<bool> {
+        let bytes = std::fs::read(self.err.path()).map_err(|_| "ConformanceOutputUnavailable")?;
+        Ok(String::from_utf8_lossy(&bytes)
+            .split_ascii_whitespace()
+            .any(|word| {
+                matches!(
+                    word,
+                    "ProfileCapabilityAbsent:"
+                        | "StorageCapabilityMissing:"
+                        | "StorageProfileUnsupported:"
+                )
+            }))
     }
 
     fn stdout(&self) -> Result<String> {
-        if self
-            .out
-            .as_file()
-            .metadata()
-            .map_err(|_| "ConformanceOutputUnavailable")?
-            .len()
-            > 1024 * 1024
-        {
+        if self.output_limit_exceeded()? {
             return Err("ConformanceOutputLimit".into());
         }
         std::fs::read_to_string(self.out.path()).map_err(|_| "ConformanceOutputUnavailable".into())
