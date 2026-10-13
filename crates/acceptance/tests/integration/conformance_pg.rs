@@ -49,8 +49,10 @@ fn unexpected_storage_initialization_errors_fail_without_exporting_credentials()
             .unwrap();
     }
     let prior_path = std::env::var_os("PATH");
-    // Both fixture tools resolve here; the ordinary test needs no PostgreSQL installation.
-    std::env::set_var("PATH", &helpers);
+    // Fixture tools resolve first while concurrent acceptance builds retain their toolchain.
+    let mut paths = vec![helpers];
+    paths.extend(prior_path.iter().flat_map(|path| std::env::split_paths(path)));
+    std::env::set_var("PATH", std::env::join_paths(paths).unwrap());
     struct RestorePath(Option<std::ffi::OsString>);
     impl Drop for RestorePath {
         fn drop(&mut self) {
