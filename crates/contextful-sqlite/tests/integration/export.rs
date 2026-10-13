@@ -15,6 +15,119 @@ fn publication() -> ExportPublication<'static> {
     ExportPublication { source: "frontier-1", id: "publication-1", identity: "reader-1", destination: "target-1" }
 }
 
+#[test]
+fn coordinated_receiver_activates_all_members_once_and_refuses_rollback() {
+    use contextful_core::export::publication::{publication as group, GroupBatch, PublicationPlan};
+    use contextful_sqlite::PublicationReceiver;
+    use std::collections::BTreeMap;
+    let dir = tempfile::tempdir().unwrap();
+    let path = dir.path().join("receiver.sqlite");
+    let mut receiver = PublicationReceiver::open(&path).unwrap();
+    let plan = PublicationPlan { name:"copy".into(), incarnation:"store-1".into(), namespace:"initial".into(), base:None, order:1,
+        destination:"receiver".into(),read_identity:"reader".into(),
+        input:json!({"snapshot":"one"}), members:[("a".into(),"items".into()),("b".into(),"empty".into())].into() };
+    let first_state = [("a".into(),[("{\"id\":1}".into(),json!({"id":1,"body":"one"}))].into()),("b".into(),BTreeMap::new())].into();
+    let first = group(plan.clone(), &BTreeMap::new(), &first_state).unwrap();
+    let batch = |events| GroupBatch { version:1, group:first.group.clone(), events };
+    receiver.receive(&batch(first.events[..2].to_vec())).unwrap();
+    assert!(receiver.active("copy").unwrap().is_none());
+    assert!(receiver.state("copy").unwrap().is_empty());
+    drop(receiver);
+    let mut receiver = PublicationReceiver::open(&path).unwrap();
+    receiver.receive(&batch(first.events.clone())).unwrap();
+    assert_eq!(receiver.state("copy").unwrap(), first_state);
+    let mut second_plan = plan.clone();
+    second_plan.base = Some(first.group.id.clone());
+    second_plan.order = 2;
+    let second_state = [("a".into(),BTreeMap::new()),("b".into(),[("{\"id\":2}".into(),json!({"id":2}))].into())].into();
+    let second = group(second_plan, &first_state, &second_state).unwrap();
+    receiver.receive(&GroupBatch {version:1,group:second.group.clone(),events:second.events[..2].to_vec()}).unwrap();
+    assert_eq!(receiver.state("copy").unwrap(), first_state);
+    receiver.receive(&GroupBatch {version:1,group:second.group.clone(),events:second.events[2..].to_vec()}).unwrap();
+    assert_eq!(receiver.state("copy").unwrap(), second_state);
+    receiver.receive(&batch(first.events.clone())).unwrap();
+    assert_eq!(receiver.state("copy").unwrap(), second_state);
+    let mut stale_plan = plan.clone();
+    stale_plan.input = json!({"snapshot":"stale-but-different"});
+    let stale = group(stale_plan, &BTreeMap::new(), &first_state).unwrap();
+    assert!(receiver.receive(&GroupBatch {version:1,group:stale.group,events:stale.events}).is_err());
+    let mut rebuild_plan = plan;
+    rebuild_plan.namespace = "rebuilt".into();
+    let rebuilt = group(rebuild_plan.clone(), &BTreeMap::new(), &second_state).unwrap();
+    receiver.receive(&GroupBatch {version:1,group:rebuilt.group.clone(),events:rebuilt.events[..2].to_vec()}).unwrap();
+    assert_eq!(receiver.active("copy").unwrap().unwrap().plan.namespace, "initial");
+    receiver.receive(&GroupBatch {version:1,group:rebuilt.group.clone(),events:rebuilt.events[2..].to_vec()}).unwrap();
+    assert_eq!(receiver.active("copy").unwrap().unwrap().plan.namespace, "rebuilt");
+    rebuild_plan.incarnation = "store-2".into();
+    rebuild_plan.namespace = "foreign".into();
+    let foreign = group(rebuild_plan, &BTreeMap::new(), &first_state).unwrap();
+    assert!(receiver.receive(&GroupBatch {version:1,group:foreign.group,events:foreign.events}).is_err());
+}
+
+#[test]
+fn coordinated_outbox_retries_identical_bytes_and_checkpoint_rejects_incompatibility() {
+    use contextful_core::export::publication::PublicationPlan;
+    use contextful_sqlite::PublicationLedger;
+    use std::collections::BTreeMap;
+    let dir = tempfile::tempdir().unwrap();
+    let path = dir.path().join("sender.sqlite");
+    let mut ledger = PublicationLedger::open(&path).unwrap();
+    let plan = PublicationPlan {name:"copy".into(),incarnation:"store-1".into(),namespace:"one".into(),destination:"receiver".into(),read_identity:"read-identity".into(),base:None,order:1,input:json!("frontier"),members:[("a".into(),"items".into())].into()};
+    let states = [("a".into(),[("{\"id\":1}".into(),json!({"id":1}))].into())].into();
+    ledger.stage(&plan, &states, "read-identity").unwrap();
+    let checkpoint = ledger.checkpoint("copy", "one").unwrap();
+    let first = ledger.batch("copy", "one").unwrap().unwrap();
+    assert_eq!(serde_json::to_vec(&first).unwrap(), serde_json::to_vec(&ledger.batch("copy", "one").unwrap().unwrap()).unwrap());
+    assert!(ledger.acknowledge("copy", "one", &first.group.id, 0).is_err());
+    assert!(ledger.stage(&plan, &states, "different-reader").is_err());
+    ledger.acknowledge("copy", "one", &first.group.id, first.events.last().unwrap().sequence).unwrap();
+    assert!(ledger.batch("copy", "one").unwrap().is_none());
+    ledger.restore("copy", "one", &checkpoint, "store-1", "read-identity").unwrap();
+    let replay = ledger.batch("copy", "one").unwrap().unwrap();
+    assert_eq!(first, replay);
+    assert!(ledger.restore("copy", "one", &checkpoint, "store-2", "read-identity").is_err());
+    assert!(ledger.restore("copy", "one", &checkpoint, "store-1", "other-reader").is_err());
+    assert!(ledger.stage(&PublicationPlan {members:BTreeMap::new(),..plan}, &BTreeMap::new(), "read-identity").is_err());
+}
+
+#[test]
+fn restored_publication_checkpoint_cannot_reverse_a_durable_receiver_tombstone() {
+    use contextful_core::export::publication::PublicationPlan;
+    use contextful_sqlite::{PublicationLedger,PublicationReceiver};
+    let dir = tempfile::tempdir().unwrap();
+    let sender_path = dir.path().join("sender.sqlite");
+    let receiver_path = dir.path().join("receiver.sqlite");
+    let mut sender = PublicationLedger::open(&sender_path).unwrap();
+    let mut receiver = PublicationReceiver::open(&receiver_path).unwrap();
+    let mut plan = PublicationPlan {name:"copy".into(),incarnation:"store-1".into(),namespace:"one".into(),destination:"receiver".into(),read_identity:"reader".into(),base:None,order:1,input:json!("frontier-one"),members:[("a".into(),"items".into())].into()};
+    let first_state = [("a".into(),[("{\"id\":1}".into(),json!({"id":1}))].into())].into();
+    sender.stage(&plan,&first_state,"reader").unwrap();
+    let checkpoint = sender.checkpoint("copy","one").unwrap();
+    let first = sender.batch("copy","one").unwrap().unwrap();
+    receiver.receive(&first).unwrap();
+    sender.acknowledge("copy","one",&first.group.id,first.events.last().unwrap().sequence).unwrap();
+    plan.base = Some(first.group.id.clone());
+    plan.order = 2;
+    plan.input = json!("frontier-two");
+    let second_state = [("a".into(),[("{\"id\":2}".into(),json!({"id":2}))].into())].into();
+    sender.stage(&plan,&second_state,"reader").unwrap();
+    let second = sender.batch("copy","one").unwrap().unwrap();
+    receiver.receive(&second).unwrap();
+    sender.acknowledge("copy","one",&second.group.id,second.events.last().unwrap().sequence).unwrap();
+    assert_eq!(receiver.state("copy").unwrap(),second_state);
+    drop(receiver);
+    sender.restore("copy","one",&checkpoint,"store-1","reader").unwrap();
+    let restored = sender.batch("copy","one").unwrap().unwrap();
+    assert_eq!(serde_json::to_vec(&restored).unwrap(),serde_json::to_vec(&first).unwrap());
+    let mut receiver = PublicationReceiver::open(&receiver_path).unwrap();
+    receiver.receive(&restored).unwrap();
+    assert_eq!(receiver.state("copy").unwrap(),second_state);
+    assert_eq!(receiver.active("copy").unwrap().unwrap(),second.group);
+    let mut altered = first;
+    altered.events[0].change = contextful_core::export::publication::GroupChange::Delete {key:json!({"id":1})};
+    assert!(receiver.receive(&altered).is_err());
+}
+
 fn fixture(name: &str) -> (Vec<ChangeEvent>, ChangeState) {
     let row = json!({"id": "one", "body": "sealed-export-canary-74"});
     let events = vec![

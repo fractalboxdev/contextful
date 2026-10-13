@@ -55,6 +55,21 @@ fn build(p: &Path, now: &str) -> Value {
     serde_json::from_str(&stdout(&run(p, &["build", "daily", "--site-id", "site-a", "--now", now, "--json"]))).unwrap()
 }
 
+#[test]
+fn a_published_build_records_its_coordinated_frontier_without_exporting() {
+    let dir = project();
+    let p = dir.path();
+    let group = "[[export]]\nname='daily-copy'\ntable='daily'\nendpoint='http://127.0.0.1:1/events'\nformat='changes-v1'\nkey=['day']\nschedule='every 30s'\n[[publication]]\nname='daily-projection'\njob='daily'\nmembers=['daily-copy']\n";
+    std::fs::write(p.join("contextful.toml"),format!("{DECLARATION}\n{group}")).unwrap();
+    let built = build(p,"2030-01-01T00:01:00Z");
+    let ledger = contextful_sqlite::PublicationLedger::open(&p.join(".contextful/context/research/machine.sqlite")).unwrap();
+    let source = ledger.source("daily-projection").unwrap().unwrap();
+    assert_eq!(source.run,built["build_id"].as_str().unwrap());
+    assert_eq!(source.input,built["watermark"]);
+    assert_eq!(source.frontiers.len(),1);
+    assert!(ledger.active_namespace("daily-projection").unwrap().is_none());
+}
+
 // spec: run.publish.failed-attempt@b0b70724
 #[test]
 fn a_killed_build_reports_failed_and_keeps_the_published_build() {

@@ -144,6 +144,7 @@ pub fn run(cmd: JobCmd, bodies: &Bodies) -> Result<()> {
             for job in jobs {
                 match &job.kind {
                     JobKind::StoreDriven(d) => {
+                        crate::export::publication::validate_job(&text,&job.name,&d.tables)?;
                         println!("{}: valid ({}, body {}, max_in_flight {}, plan {})", job.name, job.kind_name(), d.input.body, d.max_in_flight, &d.input.plan_ref()[..16])
                     }
                     JobKind::Plan(declared) => {
@@ -178,6 +179,8 @@ pub fn run(cmd: JobCmd, bodies: &Bodies) -> Result<()> {
             let JobKind::StoreDriven(driven) = &job.kind else {
                 bail!("job `{name}` is kind `{}`; `job fire` fires a store-driven job", job.kind_name());
             };
+            let grouped = crate::export::publication::validate_job(&job_text,&name,&driven.tables)?;
+            let _publication = if grouped {Some(crate::export::publication::lock(&l)?)} else {None};
             let body = bodies.get(&driven.input.body).context("a validated body is registered")?;
             let site_id = site_id_for(&text, &l.declaration, site_id, site_id_env)?;
             let (authority, _) = admit.admit(project.project.as_deref(), "a store-driven job")?;
@@ -252,10 +255,15 @@ pub fn run(cmd: JobCmd, bodies: &Bodies) -> Result<()> {
             }
             let row = if let Some(plan) = &recorded_plan {
                 let mut land = |emitted: &contextful_core::run::drive::PreparedEmitted, owner: &contextful_engine::drive::BodyOwner| -> Result<Landed, Failure> {
-                    land_tables(driven, &name, &run_id, &site_id, |table, spec| {
+                    let landed = land_tables(driven, &name, &run_id, &site_id, |table, spec| {
                         dest.normalize = plan.effects().find(|effect| effect.table == table).and_then(|effect| effect.normalize);
                         engine.run_emissions(spec, owner, emitted.get(table).map(Vec::as_slice).unwrap_or_default(), &mut dest).map_err(engine_error)
-                    })
+                    })?;
+                    if grouped {
+                        let row = engine.catalog.run(&run_id)?.ok_or_else(||Failure::new(FailureTag::Storage,"publication producer run is absent"))?;
+                        crate::export::publication::record_source(face.store(),&job_text,&name,&row).map_err(|e|Failure::new(FailureTag::Storage,e.to_string()))?;
+                    }
+                    Ok(landed)
                 };
                 engine.drive_recorded(&drive, plan, &effects, &mut read, &mut land)?
             } else {
@@ -263,11 +271,16 @@ pub fn run(cmd: JobCmd, bodies: &Bodies) -> Result<()> {
                 if let Some(table) = emitted.keys().find(|t| !driven.tables.contains(t)) {
                     return Err(Failure::deterministic(FailureTag::Permanent, format!("body `{}` emitted rows for `{table}`, which job `{name}` does not declare in `tables`", driven.input.body)));
                 }
-                land_tables(driven, &name, &run_id, &site_id, |table, spec| {
+                let landed = land_tables(driven, &name, &run_id, &site_id, |table, spec| {
                     dest.store.validate_writer_plan(&spec.plan, dest.normalize).map_err(|e| Failure::deterministic(FailureTag::Permanent, e.to_string()))?;
                     let mut source: Box<dyn Source> = Box::new(Staged(emitted.get(table).cloned().unwrap_or_default(), 0));
                     engine.run_with(spec, &mut source, &Unshaped, &mut dest).map_err(|e| Failure::new(FailureTag::Storage, e.to_string()))
-                })
+                })?;
+                if grouped {
+                    let row = engine.catalog.run(&run_id)?.ok_or_else(||Failure::new(FailureTag::Storage,"publication producer run is absent"))?;
+                    crate::export::publication::record_source(face.store(),&job_text,&name,&row).map_err(|e|Failure::new(FailureTag::Storage,e.to_string()))?;
+                }
+                Ok(landed)
             };
 
             w.engine.drive(&drive, &mut read, &mut land)?

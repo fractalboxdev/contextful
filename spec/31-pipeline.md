@@ -303,6 +303,24 @@ The outbound copy of a landed table to an operator-declared target: the export b
   *because a row-count bound alone admits an unbounded request body*
 - `typed-event-too-large` — A typed event unable to fit one request raises `ExportEventTooLarge`; watch stops rather than retrying that event.
   *because an unchanged oversized event cannot make progress on retry*
+- `group-block` — A `[[publication]]` declares `name`, producer `job` and typed export `members`; members cover every producer output exactly once and share one destination and header binding.
+  *A-run*
+- `group-source` — A successful store-driven job or materialized model build records one immutable completion binding its run identifier, pinned input frontier and all output table frontiers, including empty outputs.
+  *A-run*
+- `group-delivery` — `contextful export group <name>` reads every completed producer member through {{run.export.post-commit-read}}, rechecks every frontier, and stages one ordered outbox with explicit member-complete events followed by one group-complete event.
+  *A-run*
+- `group-identity` — A group's identity binds its store incarnation, destination, namespace, read identity, predecessor, publication order, input frontier, membership, delivered base and next state; each event identifier binds that group and its sequence.
+  *A-run*
+- `group-activation` — A receiver stages member events transactionally and activates every member together only after validating the complete group; interrupted delivery preserves the active group, and acknowledged retries preserve its bytes and visibility.
+  *A-run*
+- `group-checkpoint` — `contextful export checkpoint` saves delivery state; `contextful export restore` replays compatible immutable events while the receiver retains its accepted groups and active frontier, so an older checkpoint reverses no deletion or later publication.
+  *A-run*
+- `group-rebuild` — `contextful export rebuild <name> --namespace <epoch>` exports the completed producer's full admitted state into a fresh namespace without executing its effects; the receiver keeps its active namespace until the replacement group completes.
+  *A-run*
+- `group-incompatible` — Membership drift, incarnation mismatch, a changed pending read identity, an incompatible checkpoint, an incomplete producer frontier, or a predecessor/order mismatch raises `PublicationIncompatible` before delivery or activation.
+  *A-run*
+- `group-storage` — A coordinated publication under the `cloudflare-postgres` storage profile raises `PublicationStorageUnsupported` naming the coordinated-group-outbox capability before execution, staging or delivery.
+  *because a machine-local outbox cannot coordinate replaced containers*
 
 unsettled: Does the arm map a table onto the OTLP span or metric signal, and through which column declaration? owner: pipeline affects: run.export
 

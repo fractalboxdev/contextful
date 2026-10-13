@@ -332,3 +332,20 @@ Criteria: no representable torn publication, which decided it; one write path fo
 | A build log as the source of truth | One home per fact | Log and pointer disagree after a crash, and no rule says which wins. |
 
 Consequences: a model's rows carry the injected columns, so every relation a store table compiles to reads a model unchanged.
+
+## Coordinated exports activate a complete immutable group in a receiver namespace
+
+Context: output tables commit independently. A downstream projection needs one completed producer frontier across every member, including empty results. An exporter checkpoint can lag the receiver after an acknowledgement is lost.
+
+Decision: a successful producer records its pinned input and complete output frontiers. The admitted exporter stages member changes and a final group barrier in one outbox. Group identity covers incarnation, namespace, predecessor, order, membership and both states. The receiver validates canonical bytes before atomically replacing its active projection. Accepted groups remain idempotent across checkpoint rollback. Rebuilds start from an empty base in a fresh namespace and execute no producer effects.
+
+Criteria: atomic downstream visibility and stale replay refusal decide the protocol. Existing per-table commits and single-export delivery remain compatible.
+
+| Option | Lost on | Cost |
+| --- | --- | --- |
+| Immutable group barrier and fresh rebuild namespace *(chosen)* | — | Receiver retains accepted delivery identities; producer frontiers remain unavailable to export during an incomplete generation. |
+| Independently activate each member | Atomic visibility | Interruption exposes mixed generations. |
+| Reset an existing export cursor | Recovery safety | An older checkpoint can reverse tombstones or reuse identities. |
+| Re-execute jobs during projection recovery | Effect isolation | Recovery repeats paid effects and chooses another input frontier. |
+
+Consequences: the local SQLite profile persists producer, outbox and receiver state transactionally. The Cloudflare Postgres profile refuses coordinated groups until its shared outbox adapter supports this protocol.

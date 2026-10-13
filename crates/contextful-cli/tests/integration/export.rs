@@ -139,6 +139,51 @@ fn typed_events(request: &Received) -> Vec<serde_json::Value> {
 }
 
 #[test]
+fn coordinated_exports_require_a_completed_producer_and_rebuild_full_state() {
+    let collector = Collector::start();
+    let manifest = format!("{}\n[[publication]]\nname='projection'\njob='producer'\nmembers=['spans-mirror']\n",typed_block(&collector.endpoint()));
+    let (dir,public,token) = project(&manifest,"spans");
+    let p = dir.path();
+    let unsupported = cf(p,&["export","group","projection","--project","research","--public-key",&public,"--audience",AUD],&[("CONTEXTFUL_TOKEN",&token),("CONTEXTFUL_STORAGE_PROFILE","cloudflare-postgres")]);
+    assert!(err(&unsupported).contains("PublicationStorageUnsupported"));
+    land(p,"load-1","2030-01-01T00:00:00Z",&ids("a",2));
+    let invoke = |command:&str,extra:&[&str]| {
+        let mut args = vec!["export",command,"projection","--project","research","--public-key",&public,"--audience",AUD];
+        args.extend_from_slice(extra);
+        cf(p,&args,&[("CONTEXTFUL_TOKEN",&token)])
+    };
+    assert!(err(&invoke("group",&[])).contains("completed producer"));
+    assert!(collector.received().is_empty());
+    // The producer's immutable completion record is the boundary exercised by job tests.
+    let store = contextful_context::Store::open(p,"research").unwrap();
+    let mut runs = store.committed_runs("spans").unwrap();
+    runs.sort_by(|a,b| (a.commit_seq,&a.run_id,&a.node_id).cmp(&(b.commit_seq,&b.run_id,&b.node_id)));
+    let pointer = store.pointer("spans").unwrap().map(|(p,_)|p.snapshot_id.to_string());
+    use sha2::{Digest,Sha256};
+    let frontier = format!("{:x}",Sha256::digest(serde_json::to_vec(&(pointer,runs)).unwrap()));
+    let ledger = contextful_sqlite::PublicationLedger::open(&p.join(".contextful/context/research/machine.sqlite")).unwrap();
+    ledger.record_source("projection",&contextful_sqlite::SourcePublication {run:"producer-run".into(),input:serde_json::json!({"snapshot":"one"}),frontiers:[("spans".into(),frontier)].into()}).unwrap();
+    collector.answer(503);
+    assert!(err(&invoke("group",&[])).contains("ExportDeliveryRefused"));
+    collector.answer(200);
+    ok(&invoke("group",&[]));
+    let requests = collector.received();
+    assert_eq!(requests.len(),2);
+    assert_eq!(requests[0].body,requests[1].body);
+    assert_eq!(requests[1].body["events"].as_array().unwrap().len(),4);
+    assert_eq!(requests[1].body["events"][3]["kind"],"group_complete");
+    ok(&invoke("rebuild",&["--namespace","repaired"]));
+    let rebuilt = collector.received().last().unwrap().body.clone();
+    assert_eq!(rebuilt["group"]["namespace"],"repaired");
+    assert!(rebuilt["group"]["base"].is_null());
+    assert_eq!(rebuilt["events"][0]["kind"],"upsert");
+    assert!(err(&invoke("rebuild",&["--namespace","repaired"])).contains("fresh namespace"));
+    land(p,"partial-producer","2030-01-01T00:00:01Z",&ids("b",1));
+    assert!(err(&invoke("group",&[])).contains("producer frontier"));
+    assert_eq!(collector.received().len(),3);
+}
+
+#[test]
 fn typed_export_refuses_a_truncated_initial_state() {
     for table_cap in [false, true] {
         let collector = Collector::start();

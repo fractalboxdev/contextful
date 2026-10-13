@@ -9,6 +9,34 @@ use std::collections::BTreeMap;
 const BLOCK: &str = "[[export]]\nname = \"spans-mirror\"\ntable = \"spans\"\nendpoint = \"https://otel.example.com/v1/logs\"\nsignal = \"logs\"\nheaders = { Authorization = \"Bearer ${secret://otel-token}\" }\n";
 
 #[test]
+fn publication_groups_bind_the_base_members_and_empty_outputs() {
+    contextful_core::pipeline::model::check_blocks("contextful.toml", &toml::from_str("[[publication]]\nname='projection'\njob='producer'\nmembers=['copy']\n").unwrap()).unwrap();
+    use contextful_core::export::publication::{publication, GroupChange, PublicationPlan};
+    let plan = PublicationPlan {
+        name: "projection".into(), incarnation: "store-one".into(), namespace: "epoch-one".into(),
+        destination:"receiver".into(),read_identity:"reader".into(),
+        base: None, order: 1, input: json!({"source":"snapshot-one"}),
+        members: [("items".into(), "items".into()), ("empty".into(), "empty".into())].into(),
+    };
+    let states = [("items".into(), [("{\"id\":1}".into(), json!({"id":1}))].into()), ("empty".into(), BTreeMap::new())].into();
+    let first = publication(plan.clone(), &BTreeMap::new(), &states).unwrap();
+    assert_eq!(first.events.len(), 4);
+    assert!(matches!(first.events[0].change, GroupChange::MemberComplete { changes:0 }));
+    assert!(matches!(first.events.last().unwrap().change, GroupChange::GroupComplete));
+    assert_eq!(first, publication(plan.clone(), &BTreeMap::new(), &states).unwrap());
+    let mut changed = plan.clone();
+    changed.base = Some("other-base".into());
+    assert_ne!(first.group.id, publication(changed, &BTreeMap::new(), &states).unwrap().group.id);
+    let mut changed = plan;
+    changed.incarnation = "other-store".into();
+    assert_ne!(first.group.id, publication(changed, &BTreeMap::new(), &states).unwrap().group.id);
+    assert!(publication(first.group.plan.clone(), &BTreeMap::new(), &BTreeMap::new()).is_err());
+    let mut unknown = serde_json::to_value(&first.events[0]).unwrap();
+    unknown["unrecognized"] = json!("different bytes");
+    assert!(serde_json::from_value::<contextful_core::export::publication::GroupEvent>(unknown).is_err());
+}
+
+#[test]
 fn a_typed_export_declares_a_key_and_schedule() {
     let block = "[[export]]\nname = \"state-copy\"\ntable = \"items\"\nendpoint = \"https://receiver.example.com/events\"\nformat = \"changes-v1\"\nkey = [\"id\"]\nschedule = \"every 30s\"\n";
     let exports = parse_exports(block).unwrap();
