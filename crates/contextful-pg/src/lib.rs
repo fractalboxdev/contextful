@@ -148,7 +148,7 @@ impl PgCatalog {
 
 fn protected_config(conninfo: &str) -> Result<Config, Failure> {
     let mut config: Config = conninfo.parse().map_err(|_| storage("", "the connection string does not parse"))?;
-    let local = config.get_hosts().iter().all(|host| match host {
+    let local = config.get_hostaddrs().iter().all(std::net::IpAddr::is_loopback) && config.get_hosts().iter().all(|host| match host {
         postgres::config::Host::Tcp(host) => host == "localhost" || host.parse::<std::net::IpAddr>().is_ok_and(|ip| ip.is_loopback()),
         #[cfg(unix)]
         postgres::config::Host::Unix(_) => true,
