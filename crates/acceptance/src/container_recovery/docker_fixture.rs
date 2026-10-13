@@ -45,6 +45,8 @@ impl SyntheticFixture {
                 "--rm",
                 "--name",
                 &postgres.0,
+                "--publish",
+                "127.0.0.1::5432",
                 "--env",
                 "POSTGRES_HOST_AUTH_METHOD=trust",
                 "--env",
@@ -136,6 +138,20 @@ impl SyntheticFixture {
             second,
         })
     }
+
+    /// The same synthetic catalog is reachable by host-side public-port fixtures.
+    pub fn host_catalog_url(&self, timeout: Duration) -> Result<String> {
+        let address = docker(&["port", &self.postgres.0, "5432/tcp"], timeout)?;
+        let address: std::net::SocketAddr = address
+            .parse()
+            .map_err(|_| "ConformanceFixtureNetworkUnavailable")?;
+        if !address.ip().is_loopback() {
+            return Err("ConformanceFixtureNetworkUnavailable".into());
+        }
+        Ok(format!(
+            "postgres://conformance@{address}/postgres?sslmode=disable&connect_timeout=5"
+        ))
+    }
 }
 
 impl RecoveryFixture for SyntheticFixture {
@@ -188,7 +204,7 @@ impl RecoveryFixture for SyntheticFixture {
     fn verification(&self) -> (String, serde_json::Value) {
         (
             "SELECT id, length(payload) AS bytes FROM feed_items ORDER BY id".into(),
-            serde_json::json!([["a", 2097152], ["b", 4]]),
+            serde_json::json!([["a", "2097152"], ["b", "4"]]),
         )
     }
 }
@@ -196,5 +212,120 @@ impl RecoveryFixture for SyntheticFixture {
 impl Drop for SyntheticFixture {
     fn drop(&mut self) {
         let _ = self.release_second_page();
+    }
+}
+
+pub struct SyntheticExportFixture {
+    _proxy: Container,
+    _sink: Server,
+    base: SyntheticFixture,
+    state: Arc<(Mutex<SinkState>, Condvar)>,
+}
+
+#[derive(Default)]
+struct SinkState {
+    batches: Vec<serde_json::Value>,
+    events: BTreeMap<String, serde_json::Value>,
+    released: bool,
+}
+
+impl SyntheticExportFixture {
+    pub fn start(postgres_image: &str, proxy_image: &str, timeout: Duration) -> Result<Self> {
+        let base = SyntheticFixture::start(postgres_image, proxy_image, timeout)?;
+        let state = Arc::new((Mutex::new(SinkState::default()), Condvar::new()));
+        let held = state.clone();
+        let sink = Server::start(move |request| {
+            let Ok(batch) = serde_json::from_slice::<serde_json::Value>(&request.body) else {
+                return Response::json(400, "{}");
+            };
+            let (state, ready) = &*held;
+            let mut state = state.lock().unwrap();
+            let Some(events) = batch["events"].as_array() else {
+                return Response::json(400, "{}");
+            };
+            let mut committed = state.events.clone();
+            for event in events {
+                let Some(id) = event["id"].as_str() else {
+                    return Response::json(400, "{}");
+                };
+                if committed.get(id).is_some_and(|old| old != event) {
+                    return Response::json(409, "{}");
+                }
+                committed.insert(id.into(), event.clone());
+            }
+            state.events = committed;
+            state.batches.push(batch);
+            let first = state.batches.len() == 1;
+            ready.notify_all();
+            if first {
+                while !state.released {
+                    state = ready.wait(state).unwrap();
+                }
+            }
+            Response::json(if first { 503 } else { 200 }, "{}")
+        });
+        let proxy = Container(format!("{}-sink", base.network_container()));
+        docker(
+            &[
+                "run",
+                "--detach",
+                "--rm",
+                "--name",
+                &proxy.0,
+                "--network",
+                &format!("container:{}", base.network_container()),
+                proxy_image,
+                "TCP-LISTEN:18082,bind=127.0.0.1,reuseaddr,fork",
+                &format!("TCP:host.docker.internal:{}", sink.port),
+            ],
+            timeout,
+        )?;
+        Ok(Self {
+            _proxy: proxy,
+            _sink: sink,
+            base,
+            state,
+        })
+    }
+}
+
+impl super::ExportRecoveryFixture for SyntheticExportFixture {
+    fn storage(&self) -> &dyn RecoveryFixture {
+        &self.base
+    }
+    fn declaration(&self) -> String {
+        "authoring_posture = \"per_request\"\n[[pipeline.tables]]\nname = \"items\"\nprimary_key = [\"id\"]\n[[export]]\nname = \"mirror\"\ntable = \"items\"\nendpoint = \"http://127.0.0.1:18082/changes\"\nformat = \"changes-v1\"\nkey = [\"id\"]\nschedule = \"every 30s\"\n".into()
+    }
+    fn wait_for_commit(&self, timeout: Duration) -> Result<()> {
+        let (state, ready) = &*self.state;
+        let (state, _) = ready
+            .wait_timeout_while(state.lock().unwrap(), timeout, |state| {
+                state.batches.is_empty()
+            })
+            .map_err(|_| "ConformanceFixtureStateUnavailable")?;
+        if state.batches.is_empty() {
+            Err("ConformanceSinkCommitMissing".into())
+        } else {
+            Ok(())
+        }
+    }
+    fn release_acknowledgement(&self) -> Result<()> {
+        let (state, ready) = &*self.state;
+        state
+            .lock()
+            .map_err(|_| "ConformanceFixtureStateUnavailable")?
+            .released = true;
+        ready.notify_all();
+        Ok(())
+    }
+    fn batches(&self) -> Vec<serde_json::Value> {
+        self.state.0.lock().unwrap().batches.clone()
+    }
+}
+
+impl Drop for SyntheticExportFixture {
+    fn drop(&mut self) {
+        use super::ExportRecoveryFixture;
+        let _ = self.release_acknowledgement();
     }
 }
