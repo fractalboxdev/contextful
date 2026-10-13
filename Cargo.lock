@@ -818,6 +818,7 @@ dependencies = [
  "async-trait",
  "base64 0.22.1",
  "bytes",
+ "clap",
  "ed25519-dalek",
  "futures-util",
  "hyper-util",

@@ -1,0 +1,541 @@
+//! Synthetic source and receiver fixtures exercise native contracts through the CLI.
+
+use super::{Fixture, Result, Running};
+use crate::http::{Response, Server};
+use serde_json::{json, Value};
+use std::collections::BTreeMap;
+use std::process::Command;
+use std::sync::{Arc, Mutex};
+use std::time::{Duration, Instant};
+
+const PROJECT: &str = "research";
+const AUDIENCE: &str = "contextful://conformance";
+
+pub(super) fn run(id: &str, fixture: &Fixture) -> Result<()> {
+    match id {
+        "pagination-checkpoint" => paged(fixture, false),
+        "hard-crash-replay" => paged(fixture, true),
+        "graceful-restart" => graceful(fixture),
+        "empty-replacement" => replacement(fixture),
+        "applied-scheduling" => scheduling(fixture),
+        "public-identity-masking" => masking(fixture),
+        "typed-export-acknowledgement" => export(fixture),
+        _ => Err("ConformanceScenarioUnknown".into()),
+    }
+}
+
+fn require(condition: bool, diagnostic: &str) -> Result<()> {
+    if condition {
+        Ok(())
+    } else {
+        Err(diagnostic.into())
+    }
+}
+
+fn rows(value: &Value) -> Result<&Vec<Value>> {
+    value["rows"]
+        .as_array()
+        .ok_or_else(|| "ConformanceRowsMalformed".into())
+}
+
+fn scheduled(endpoint: &str, extra: &str) -> String {
+    format!("site_id = \"conformance\"\nauthoring_posture = \"per_request\"\n[[pipeline]]\nid = \"feed\"\nschedule = \"every 1h\"\ntables = [{{ name = \"items\", primary_key = [\"id\"]{extra} }}]\n[pipeline.source]\nname = \"http\"\nconfig = {{ endpoint = \"{endpoint}\" }}\n")
+}
+
+fn import(f: &Fixture) -> Result<String> {
+    let public = f.ok(
+        &["token", "keygen", "--out", ".contextful/issuer.seed"],
+        &[],
+    )?;
+    let admin = f.ok(
+        &[
+            "token",
+            "mint",
+            "--issuer-key",
+            ".contextful/issuer.seed",
+            "--on-behalf-of",
+            "svc://conformance-control",
+            "--action",
+            "admin",
+            "--table",
+            "*",
+            "--ttl",
+            "3600",
+        ],
+        &[],
+    )?;
+    f.ok(
+        &[
+            "pipeline",
+            "import",
+            "--project",
+            PROJECT,
+            "--issuer-key",
+            ".contextful/issuer.seed",
+            "--public-key",
+            public.trim(),
+            "--audience",
+            AUDIENCE,
+        ],
+        &[("CONTEXTFUL_TOKEN", admin.trim())],
+    )?;
+    Ok(public.trim().into())
+}
+
+fn fire(f: &Fixture, run: &str, now: &str) -> Result<String> {
+    f.ok(
+        &[
+            "pipeline",
+            "run",
+            "feed",
+            "--project",
+            PROJECT,
+            "--run-id",
+            run,
+            "--site-id",
+            "conformance",
+            "--now",
+            now,
+        ],
+        &[],
+    )
+}
+
+// The protocol and crash point match the milestone-three acceptance fixture.
+const VENDOR: &str = r#"
+printf 'page=%s key=%s\n' "${CONTEXTFUL_CURSOR:-start}" "$CONTEXTFUL_IDEMPOTENCY_KEY" >> effects.log
+case "$CONTEXTFUL_CURSOR" in
+  '') printf '{"rows":[{"id":"a"},{"id":"b"}],"cursor":"p2","more":true}' ;;
+  '"p2"') if [ -f crash-armed ]; then rm crash-armed; kill -9 "$PPID"; fi
+          printf '{"rows":[{"id":"c"}],"cursor":"done","more":false}' ;;
+  *) printf '{"rows":[],"cursor":"done","more":false}' ;;
+esac
+"#;
+
+fn paged(f: &Fixture, crash: bool) -> Result<()> {
+    f.write("contextful.toml", "authoring_posture = \"per_request\"\n[[pipeline.tables]]\nname = \"items\"\nprimary_key = [\"id\"]\n")?;
+    f.write("vendor.sh", VENDOR)?;
+    f.write("plan.toml", "pipeline = \"feed\"\ntable = \"items\"\n[connector]\nid = \"vendor\"\nversion = \"1.0.0\"\nworld = \"native\"\ncommand = [\"sh\", \"vendor.sh\"]\n[cursor]\nkind = \"opaque-token\"\n")?;
+    if crash {
+        f.write("crash-armed", "armed")?;
+    }
+    let start = |id: &str, now: &str| {
+        f.invoke(
+            &[
+                "run",
+                "start",
+                "--plan",
+                "plan.toml",
+                "--project",
+                PROJECT,
+                "--run-id",
+                id,
+                "--site-id",
+                "conformance",
+                "--now",
+                now,
+            ],
+            &[],
+        )
+    };
+    let first = start("capture-1", "2030-01-01T00:00:00Z")?;
+    if crash {
+        #[cfg(unix)]
+        {
+            use std::os::unix::process::ExitStatusExt;
+            require(
+                first.status.signal() == Some(9),
+                "ConformanceHardCrashNotObserved",
+            )?;
+        }
+        #[cfg(not(unix))]
+        return Err("ConformanceHardCrashUnsupported".into());
+        let state: Value =
+            serde_json::from_str(&f.ok(&["run", "show", "capture-1", "--project", PROJECT], &[])?)
+                .map_err(|_| "ConformanceRunMalformed")?;
+        require(
+            state["status"] == "running",
+            "ConformanceCrashRecordMissing",
+        )?;
+        f.replace_local_state()?;
+        let deadline = Instant::now() + f.timeout;
+        let mut attempt = 0;
+        loop {
+            attempt += 1;
+            if start(&format!("capture-resume-{attempt}"), "2030-01-01T00:01:00Z")?
+                .status
+                .success()
+            {
+                break;
+            }
+            require(
+                f.remote.is_some() && Instant::now() < deadline,
+                "ConformanceResumeFailed",
+            )?;
+            std::thread::sleep(Duration::from_millis(250));
+        }
+    } else {
+        require(first.status.success(), "ConformanceCaptureFailed")?;
+    }
+    let answer = f.query("SELECT id FROM items ORDER BY id")?;
+    require(
+        rows(&answer)? == &[json!(["a"]), json!(["b"]), json!(["c"])],
+        "ConformanceCursorSkipOrDuplicateIdentity",
+    )?;
+    let log = std::fs::read_to_string(f.dir.path().join("effects.log"))
+        .map_err(|_| "ConformanceEffectsMissing")?;
+    let pages: Vec<_> = log.lines().collect();
+    require(
+        pages
+            .iter()
+            .filter(|l| l.starts_with("page=start "))
+            .count()
+            == 1,
+        "ConformanceRecordedCallRepeated",
+    )?;
+    let retry: Vec<_> = pages
+        .iter()
+        .filter(|l| l.starts_with("page=\"p2\" "))
+        .collect();
+    require(
+        retry.len() == if crash { 2 } else { 1 },
+        "ConformanceRetryCountMismatch",
+    )?;
+    if crash {
+        require(retry[0] == retry[1], "ConformanceRetryIdentityChanged")?;
+    }
+    require(
+        start("capture-3", "2030-01-01T00:02:00Z")?.status.success(),
+        "ConformanceCheckpointResumeFailed",
+    )?;
+    let after = f.query("SELECT id FROM items ORDER BY id")?;
+    require(
+        after["rows"] == answer["rows"],
+        "ConformanceCheckpointRewinds",
+    )?;
+    let log = std::fs::read_to_string(f.dir.path().join("effects.log"))
+        .map_err(|_| "ConformanceEffectsMissing")?;
+    require(
+        log.lines().filter(|l| l.starts_with("page=start ")).count() == 1,
+        "ConformanceCheckpointRewinds",
+    )?;
+    require(
+        log.lines()
+            .filter(|l| l.starts_with("page=\"done\" "))
+            .count()
+            == 1,
+        "ConformanceCheckpointNotAdvanced",
+    )
+}
+
+fn replacement(f: &Fixture) -> Result<()> {
+    let capture = Arc::new(Mutex::new(json!([{"id":"a"},{"id":"b"}])));
+    let state = capture.clone();
+    let source = Server::start(move |_| Response::json(200, &state.lock().unwrap().to_string()));
+    f.write(
+        "contextful.toml",
+        &scheduled(&source.url("/items"), ", write_mode = \"replace\""),
+    )?;
+    fire(f, "replace-1", "2030-01-01T00:00:00Z")?;
+    require(
+        rows(&f.query("SELECT id FROM feed_items ORDER BY id")?)?.len() == 2,
+        "ConformanceInitialCaptureMissing",
+    )?;
+    *capture.lock().unwrap() = json!([{"id":"c"}]);
+    fire(f, "replace-2", "2030-01-01T00:01:00Z")?;
+    require(
+        f.query("SELECT id FROM feed_items ORDER BY id")?["rows"] == json!([["c"]]),
+        "ConformanceReplacementRetainsRows",
+    )?;
+    *capture.lock().unwrap() = json!([]);
+    fire(f, "replace-3", "2030-01-01T00:02:00Z")?;
+    require(
+        rows(&f.query("SELECT id FROM feed_items")?)?.is_empty(),
+        "ConformanceEmptyCaptureRetainsRows",
+    )
+}
+
+fn scheduling(f: &Fixture) -> Result<()> {
+    let source = Server::start(|_| Response::json(200, "[{\"id\":\"applied\"}]"));
+    let manifest = format!("{}\n[[model]]\nid = \"summary\"\nsql = \"SELECT id FROM feed_items\"\nunique_key = [\"id\"]\n[model.contract]\nversion = \"1.0.0\"\ncolumns = [{{ name = \"id\", type = \"utf8\", nullable = false }}]\n[[job]]\nname = \"refresh-summary\"\nkind = \"build\"\ntarget = \"summary\"\nafter = \"feed\"\n", scheduled(&source.url("/applied"), ""));
+    f.write("contextful.toml", &manifest)?;
+    let public = import(f)?;
+    // The editable document is not the applied execution identity.
+    f.write(
+        "contextful.toml",
+        &manifest.replace("/applied", "/unapplied"),
+    )?;
+    let first: Value = serde_json::from_str(&f.ok(
+        &[
+            "pipeline",
+            "serve",
+            "--cycle",
+            "--project",
+            PROJECT,
+            "--now",
+            "2030-01-01T00:00:00Z",
+            "--public-key",
+            &public,
+        ],
+        &[],
+    )?)
+    .map_err(|_| "ConformanceCycleMalformed")?;
+    require(
+        first["fired"]
+            .as_array()
+            .is_some_and(|fired| fired.contains(&json!("feed"))),
+        "ConformanceAppliedNotScheduled",
+    )?;
+    f.ok(
+        &[
+            "pipeline",
+            "serve",
+            "--cycle",
+            "--project",
+            PROJECT,
+            "--now",
+            "2030-01-01T00:00:00Z",
+            "--public-key",
+            &public,
+        ],
+        &[],
+    )?;
+    require(
+        !source.received("/applied").is_empty(),
+        "ConformanceAppliedSnapshotUnused",
+    )?;
+    require(
+        source.received("/applied").len() == 1,
+        "ConformanceScheduleRepeatedWithinWindow",
+    )?;
+    require(
+        source.received("/unapplied").is_empty(),
+        "ConformanceUnappliedDocumentExecuted",
+    )?;
+    require(
+        f.query("SELECT id FROM summary")?["rows"] == json!([["applied"]]),
+        "ConformanceDependencyOutputMissing",
+    )
+}
+
+fn graceful(f: &Fixture) -> Result<()> {
+    let source = Server::start(|_| Response::json(200, "[{\"id\":\"stable\"}]"));
+    f.write("contextful.toml", &scheduled(&source.url("/items"), ""))?;
+    let public = import(f)?;
+    let mut daemon = Running::spawn(f.command(
+        &[
+            "pipeline",
+            "serve",
+            "--project",
+            PROJECT,
+            "--public-key",
+            &public,
+        ],
+        &[],
+    ))?;
+    let deadline = Instant::now() + f.timeout;
+    loop {
+        if !source.received("/items").is_empty() {
+            if let Ok(answer) = f.query("SELECT id FROM feed_items") {
+                if answer["rows"] == json!([["stable"]]) {
+                    break;
+                }
+            }
+        }
+        require(
+            daemon
+                .child
+                .try_wait()
+                .map_err(|_| "ConformanceProcessUnavailable")?
+                .is_none(),
+            "ConformanceDaemonExited",
+        )?;
+        require(Instant::now() < deadline, "ConformanceDaemonTimeout")?;
+        std::thread::sleep(Duration::from_millis(20));
+    }
+    let signal = Command::new("/bin/kill")
+        .args(["-TERM", &daemon.child.id().to_string()])
+        .status()
+        .map_err(|_| "ConformanceSignalUnavailable")?;
+    require(signal.success(), "ConformanceSignalUnavailable")?;
+    let status = loop {
+        if let Some(status) = daemon
+            .child
+            .try_wait()
+            .map_err(|_| "ConformanceProcessUnavailable")?
+        {
+            break status;
+        }
+        require(Instant::now() < deadline, "ConformanceGracefulStopTimeout")?;
+        std::thread::sleep(Duration::from_millis(20));
+    };
+    require(status.success(), "ConformanceGracefulStopFailed")?;
+    let calls = source.received("/items").len();
+    f.ok(
+        &[
+            "pipeline",
+            "serve",
+            "--cycle",
+            "--project",
+            PROJECT,
+            "--public-key",
+            &public,
+        ],
+        &[],
+    )?;
+    require(
+        source.received("/items").len() == calls,
+        "ConformanceGracefulRestartRepeatedCall",
+    )?;
+    require(
+        f.query("SELECT id FROM feed_items")?["rows"] == json!([["stable"]]),
+        "ConformanceGracefulRestartLostRows",
+    )
+}
+
+fn masking(f: &Fixture) -> Result<()> {
+    let source = Server::start(|_| {
+        Response::json(200, "[{\"id\":\"public-0001\",\"note\":\"x-api-key: sk_live_0123456789abcdefghij\"},{\"id\":\"public-0002\",\"note\":\"ordinary public text\"}]")
+    });
+    f.write("contextful.toml", &scheduled(&source.url("/items"), ""))?;
+    fire(f, "masked", "2030-01-01T00:00:00Z")?;
+    let answer = f.query("SELECT id, note FROM feed_items ORDER BY id")?;
+    let actual = rows(&answer)?;
+    require(
+        actual.len() == 2 && actual[0][0] == "public-0001" && actual[1][0] == "public-0002",
+        "ConformancePublicIdentityChanged",
+    )?;
+    require(
+        actual[0][1]
+            .as_str()
+            .is_some_and(|note| note.contains("[REDACTED:secret]")),
+        "ConformanceCredentialUnmasked",
+    )?;
+    require(
+        actual[1][1] == "ordinary public text",
+        "ConformancePublicValueMasked",
+    )
+}
+
+fn export(f: &Fixture) -> Result<()> {
+    #[derive(Default)]
+    struct Sink {
+        attempts: Vec<Value>,
+        events: BTreeMap<String, Value>,
+        active: BTreeMap<String, Value>,
+    }
+    let state = Arc::new(Mutex::new(Sink::default()));
+    let target = state.clone();
+    let sink = Server::start(move |request| {
+        let Ok(batch) = serde_json::from_slice::<Value>(&request.body) else {
+            return Response::json(400, "{}");
+        };
+        let mut sink = target.lock().unwrap();
+        sink.attempts.push(batch.clone());
+        let Some(events) = batch["events"].as_array() else {
+            return Response::json(400, "{}");
+        };
+        let mut transaction = sink.events.clone();
+        for event in events {
+            let Some(id) = event["id"].as_str() else {
+                return Response::json(400, "{}");
+            };
+            if transaction.get(id).is_some_and(|old| old != event) {
+                return Response::json(409, "{}");
+            }
+            transaction.insert(id.into(), event.clone());
+        }
+        sink.events = transaction;
+        if events
+            .iter()
+            .any(|event| event["kind"] == "publication_complete")
+        {
+            sink.active = sink.events.clone();
+        }
+        // The first committed transaction loses its acknowledgement.
+        Response::json(if sink.attempts.len() == 1 { 503 } else { 200 }, "{}")
+    });
+    f.write("contextful.toml", &format!("authoring_posture = \"per_request\"\n[[pipeline.tables]]\nname = \"items\"\nprimary_key = [\"id\"]\n[[export]]\nname = \"mirror\"\ntable = \"items\"\nendpoint = \"{}\"\nformat = \"changes-v1\"\nkey = [\"id\"]\nschedule = \"every 30s\"\n", sink.url("/changes")))?;
+    f.write(
+        "rows.jsonl",
+        "{\"id\":\"a\",\"value\":\"first\"}\n{\"id\":\"b\",\"value\":\"second\"}\n",
+    )?;
+    f.ok(
+        &[
+            "context",
+            "land",
+            "items",
+            "--project",
+            PROJECT,
+            "--rows",
+            "rows.jsonl",
+            "--run-id",
+            "load",
+            "--site-id",
+            "conformance",
+        ],
+        &[],
+    )?;
+    let public = f.ok(
+        &["token", "keygen", "--out", ".contextful/issuer.seed"],
+        &[],
+    )?;
+    let token = f.ok(
+        &[
+            "token",
+            "mint",
+            "--issuer-key",
+            ".contextful/issuer.seed",
+            "--on-behalf-of",
+            "svc://conformance",
+            "--zone",
+            "on-prem:hq",
+            "--table",
+            "items",
+            "--ttl",
+            "3600",
+        ],
+        &[],
+    )?;
+    let args = [
+        "export",
+        "run",
+        "mirror",
+        "--project",
+        PROJECT,
+        "--public-key",
+        &public,
+        "--audience",
+        AUDIENCE,
+    ];
+    require(
+        !f.invoke(&args, &[("CONTEXTFUL_TOKEN", &token)])?
+            .status
+            .success(),
+        "ConformanceAcknowledgementBeforeCommit",
+    )?;
+    require(
+        !state.lock().unwrap().active.is_empty(),
+        "ConformanceReceiverCompletionMissing",
+    )?;
+    f.ok(&args, &[("CONTEXTFUL_TOKEN", &token)])?;
+    {
+        let sink = state.lock().unwrap();
+        require(sink.attempts.len() == 2, "ConformancePendingExportLost")?;
+        require(
+            sink.attempts[0] == sink.attempts[1],
+            "ConformanceExportRetryChanged",
+        )?;
+        require(
+            sink.active
+                .values()
+                .filter(|event| event["kind"] == "upsert")
+                .count()
+                == 2,
+            "ConformanceReceiverRowsMissing",
+        )?;
+    }
+    f.ok(&args, &[("CONTEXTFUL_TOKEN", &token)])?;
+    let attempts = state.lock().unwrap().attempts.len();
+    require(attempts == 2, "ConformanceAcknowledgedExportRepeated")
+}

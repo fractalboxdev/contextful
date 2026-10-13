@@ -2,6 +2,20 @@
 
 **Status:** accepted
 
+## Consumer compatibility binds execution evidence to artifact bytes
+
+Context: a manifest parse establishes neither replay behavior nor receiver durability. A release version does not establish source correspondence. Criteria: consumers reproduce the verdict outside the checkout with no inherited provider account; every required case retains its outcome.
+
+Decision: a distributable matching-target suite drives public surfaces with synthetic sources and a transactional sink. Reports bind binary SHA-256, suite revision, selected storage profile and scenario outcomes. Foreign-target packaging preserves explicit skips. Each release archive includes the suite and evidence; release metadata carries the report reference.
+
+| Option | Lost on | Cost |
+| --- | --- | --- |
+| Distributable public-surface scenarios *(chosen)* | — | Native execution requires a matching host and synthetic fixture capabilities. |
+| Source-only integration tests | Consumer reproducibility | Consumers need the checkout and build toolchain. |
+| Manifest and version checks | Behavioral evidence | Parsing hides replay and acknowledgement defects. |
+
+Consequences: compatibility remains scoped to executed scenarios and named storage profiles. A foreign-target archive carries no native execution pass until a matching host runs its suite. Unknown source correspondence remains unknown.
+
 ## FlareDispatch owns native Windows diagnostics through a dispatch-only transport
 
 Context: Linux containers cannot execute MSVC command-tree or directory durability regressions. Native Windows runners supply both target C toolchains and runtime behavior. Windows diagnostics preserve porting evidence and carry no merge or release verdict.

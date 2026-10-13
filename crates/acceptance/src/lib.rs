@@ -5,6 +5,7 @@ pub mod http;
 pub mod container_recovery;
 pub mod s3;
 pub mod stdio;
+pub mod conformance;
 
 use std::path::{Path, PathBuf};
 use std::process::{Command, Output};

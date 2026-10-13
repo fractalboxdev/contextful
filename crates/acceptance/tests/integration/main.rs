@@ -20,3 +20,7 @@ mod issue98;
 mod issue98_body;
 mod harness;
 mod container_recovery;
+mod conformance;
+mod conformance_pg;
+
+static CONFORMANCE_ENV: std::sync::Mutex<()> = std::sync::Mutex::new(());
