@@ -2,6 +2,7 @@
 
 [operation]
 journal       = {}
+items         = {}
 advance       = {}
 suspend       = {}
 retry         = {}

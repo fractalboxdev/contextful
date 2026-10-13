@@ -284,7 +284,7 @@ fn a_resume_under_a_changed_statement_or_as_of_refuses_before_any_replay() {
 
 /// A store-driven run holds at most `max_in_flight` rows inside the body at once; a failing row admits no further
 /// row, and the run closes after the rows in flight return.
-// spec: run.journal.row-concurrency@be5e10f8
+// spec: run.journal.row-concurrency@a89f75ac
 #[test]
 fn at_most_max_in_flight_rows_run_and_a_failed_row_admits_no_further_row() {
     struct FirstWave<'a> {

@@ -75,7 +75,7 @@ impl From<Close> for EngineError {
 
 impl Close {
     /// The tag and message the run row records.
-    fn recorded(&self) -> (FailureTag, String) {
+    pub(crate) fn recorded(&self) -> (FailureTag, String) {
         match self {
             Close::Failed(f) => (f.tag, f.to_string()),
             Close::Refused(RunError::StepFailed { failure, .. }) => (failure.tag, self.message()),
@@ -322,6 +322,15 @@ impl<'e, J: JournalStore, B: BlobStore> Execution<'e, J, B> {
             return Err(Failure::new(FailureTag::Transient, "execution owner was superseded or expired"));
         }
         Ok(attempt.expect("admitted current attempt"))
+    }
+
+    /// Leave a waiting item resumable, with no live attempt or held entity lease.
+    pub(crate) fn park(mut self) -> Result<(), Failure> {
+        drop(self.registration.take());
+        if let Some(lease) = self.held.lock().unwrap_or_else(|e| e.into_inner()).take() { self.engine.catalog.release(&lease)?; }
+        self.engine.catalog.update_run(&self.run_id, &mut |row| { row.status = RunStatus::Waiting; row.owner = None; Ok(()) })?;
+        self.emit(Change::Status { status:RunStatus::Waiting, at:None, error:None });
+        Ok(())
     }
 
     /// The scope's cursor row, read once, at or before claim.

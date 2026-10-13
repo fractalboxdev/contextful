@@ -151,7 +151,7 @@ struct EmissionInput<'a> {
 }
 
 enum BodyInput<'a> {
-    Source { authority: Option<&'a str> },
+    Source { authority: Option<&'a str>, parent:Option<&'a crate::drive::BodyOwner> },
     Effects(&'a EmissionInput<'a>),
 }
 
@@ -236,7 +236,13 @@ impl<J: JournalStore, B: BlobStore> Engine<J, B> {
 
     /// Execute one run, passing each recorded batch through `shape` before it lands.
     pub fn run_with(&self, spec: &RunSpec, source: &mut dyn Source, shape: &dyn Shape, dest: &mut dyn Destination) -> Result<RunRow, EngineError> {
-        self.run_input(spec, source, shape, dest, None)
+        self.run_input(spec, source, shape, dest, None, None)
+    }
+
+    /// Raw item rows retain their originating owner's entity fence through commit.
+    pub fn run_body_rows(&self,spec:&RunSpec,owner:&crate::drive::BodyOwner,source:&mut dyn Source,dest:&mut dyn Destination)->Result<RunRow,EngineError> {
+        self.validate_body_owner(owner)?;
+        self.run_input(spec,source,&Unshaped,dest,None,Some(owner))
     }
 
     /// Land admitted body groups through the ordinary lease/stage/commit/discard machine.
@@ -259,10 +265,11 @@ impl<J: JournalStore, B: BlobStore> Engine<J, B> {
                 Err(Failure::deterministic(FailureTag::Permanent, "prepared body landing has no source"))
             }
         }
-        self.run_input(spec, &mut NoSource, &Unshaped, dest, Some(&EmissionInput { owner, frames:emissions }))
+        self.run_input(spec, &mut NoSource, &Unshaped, dest, Some(&EmissionInput { owner, frames:emissions }),Some(owner))
     }
 
-    fn validate_body_owner(&self, owner: &crate::drive::BodyOwner) -> Result<(), Failure> {
+    pub(crate) fn validate_body_owner(&self, owner: &crate::drive::BodyOwner) -> Result<(), Failure> {
+        if let Some(lease)=&owner.fence { if !self.catalog.lease_holds(lease)? { return Err(Failure::new(FailureTag::Transient,"body entity fence was superseded")); } }
         let active = self.catalog.owner_at(&owner.scope)?.ok_or_else(|| Failure::deterministic(FailureTag::Permanent, "prepared body owner is absent"))?;
         if active.execution_id != owner.execution_id || active.pins.plan_ref() != owner.identity || active.attempts.last() != Some(&owner.run_id) {
             return Err(Failure::deterministic(FailureTag::Permanent, "prepared body owner or pinned authority changed"));
@@ -274,13 +281,13 @@ impl<J: JournalStore, B: BlobStore> Engine<J, B> {
         if run.stop.is_some() || run.status == RunStatus::Canceled {
             return Err(Failure::canceled("prepared body attempt stopped"));
         }
-        if !run.status.is_in_flight() {
+        if !run.status.is_in_flight() || run.owner.is_none() {
             return Err(Failure::deterministic(FailureTag::Permanent, "prepared body attempt stopped or changed"));
         }
         Ok(())
     }
 
-    fn run_input(&self, spec: &RunSpec, source: &mut dyn Source, shape: &dyn Shape, dest: &mut dyn Destination, emissions: Option<&EmissionInput<'_>>) -> Result<RunRow, EngineError> {
+    fn run_input(&self, spec: &RunSpec, source: &mut dyn Source, shape: &dyn Shape, dest: &mut dyn Destination, emissions: Option<&EmissionInput<'_>>,parent:Option<&crate::drive::BodyOwner>) -> Result<RunRow, EngineError> {
         let plan = &spec.plan;
         plan.validate()?;
         if !self.capabilities().hosts(&plan.spec.connector.world) {
@@ -325,7 +332,7 @@ impl<J: JournalStore, B: BlobStore> Engine<J, B> {
         let mut execution = self.begin(&open)?;
         // Every pull passes the secret guard before the journal records it (`run.guard-secrets.placement`).
         let mut source = Guarded { inner: source, report: log_counts };
-        let input = match emissions { Some(emissions) => BodyInput::Effects(emissions), None => BodyInput::Source { authority:authority.as_deref() } };
+        let input = match emissions { Some(emissions) => BodyInput::Effects(emissions), None => BodyInput::Source { authority:authority.as_deref(),parent } };
         let outcome = self.body(spec, &mut execution, &mut source, shape, dest, input);
         if outcome.is_err() {
             // Abandoned work, a stop's `Canceled` included, settles the request ledger on
@@ -341,7 +348,7 @@ impl<J: JournalStore, B: BlobStore> Engine<J, B> {
     }
 
     fn body(&self, spec: &RunSpec, execution: &mut Execution<'_, J, B>, source: &mut dyn Source, shape: &dyn Shape, dest: &mut dyn Destination, input: BodyInput<'_>) -> Result<(Landed, Tally), Close> {
-        let (authority, emitted) = match input { BodyInput::Source { authority } => (authority, None), BodyInput::Effects(emitted) => (None, Some(emitted)) };
+        let (authority, emitted,parent) = match input { BodyInput::Source { authority,parent } => (authority, None,parent), BodyInput::Effects(emitted) => (None, Some(emitted),Some(emitted.owner)) };
         let emissions = emitted.map(|input| input.frames);
         let plan = &spec.plan;
         let (pipeline_id, table) = (plan.spec.pipeline.as_str(), plan.spec.table.as_str());
@@ -384,7 +391,7 @@ impl<J: JournalStore, B: BlobStore> Engine<J, B> {
         // inferred type, so a later declaration cannot retype them (`run.land.late-type`).
         let mut undeclared: BTreeSet<String> = BTreeSet::new();
         for ordinal in 0.. {
-            if let Some(input) = emitted { self.validate_body_owner(input.owner)?; }
+            if let Some(owner) = parent { self.validate_body_owner(owner)?; }
             if execution.token().requested() {
                 return Err(Close::Failed(Failure::canceled("stopped between pulls")));
             }
@@ -484,7 +491,7 @@ impl<J: JournalStore, B: BlobStore> Engine<J, B> {
                     rows,
                     types: types.clone(),
                 };
-                if let Some(input) = emitted { self.validate_body_owner(input.owner)?; }
+                if let Some(owner) = parent { self.validate_body_owner(owner)?; }
                 let staged = match (emission.zip(effect_scope), &prepared) { (Some((emission, scope)), _) => emission.stage(dest, stage, scope), (_, Some(prepared)) => dest.stage_recorded(stage, &prepared.prepared), _ => dest.stage_batch(stage) };
                 let part = staged.map_err(|failure| {
                     // Replaying an incompatible source batch cannot repair it. Prepared body
@@ -529,7 +536,7 @@ impl<J: JournalStore, B: BlobStore> Engine<J, B> {
         let committed_at = self.catalog.now()?;
         let landed = if batch_count > 0 || moved || replace_frontier {
             let precommit = || -> Result<(), Failure> {
-                if let Some(input) = emitted { self.validate_body_owner(input.owner)?; }
+                if let Some(owner) = parent { self.validate_body_owner(owner)?; }
                 execution.assert_publication_current()?;
                 let Some(l) = execution.lease() else { return Ok(()) };
                 if self.catalog.lease_holds(&l)? {

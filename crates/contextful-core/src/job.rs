@@ -3,7 +3,7 @@
 //! the embedding binary registers; it never carries a command (`surface.fire.job-kind-unknown`).
 
 use crate::pipeline::declare::PipelineSpec;
-use crate::run::drive::StoreInput;
+use crate::run::drive::{ItemPolicy, StoreInput};
 use serde::Deserialize;
 use std::collections::BTreeMap;
 
@@ -71,6 +71,8 @@ struct Block {
     #[serde(default)]
     tables: Vec<String>,
     #[serde(default)]
+    isolated_items: Option<ItemPolicy>,
+    #[serde(default)]
     source: Option<String>,
     #[serde(default)]
     endpoint: Option<String>,
@@ -95,6 +97,7 @@ pub struct StoreDriven {
     pub max_in_flight: usize,
     /// The tables the body's rows land in.
     pub tables: Vec<String>,
+    pub isolated_items: Option<ItemPolicy>,
 }
 
 /// A synthesize job's declaration: the source table a pass reads and the inference
@@ -190,6 +193,9 @@ fn check(value: toml::Value, registered: &dyn Fn(&str) -> bool) -> Result<Job, J
     if !matches!(kind, JobKind::Plan(_)) && block.plan.is_some() {
         return Err(JobError::Invalid(format!("job `{name}` carries unknown key `plan`")));
     }
+    if !matches!(kind, JobKind::StoreDriven(_)) && block.isolated_items.is_some() {
+        return Err(JobError::Invalid(format!("job `{name}` carries unknown key `isolated_items`")));
+    }
     if let Some(key) = block.other.keys().next() {
         return Err(JobError::Invalid(format!("job `{name}` carries unknown key `{key}`")));
     }
@@ -229,7 +235,8 @@ fn store_driven(block: &Block, registered: &dyn Fn(&str) -> bool) -> Result<Stor
     if block.tables.is_empty() {
         return Err(JobError::Invalid(format!("job `{name}` declares no output `tables`")));
     }
-    Ok(StoreDriven { input: StoreInput { body, statement, as_of: block.as_of.clone() }, max_in_flight, tables: block.tables.clone() })
+    if let Some(policy) = &block.isolated_items { policy.validate().map_err(|e| JobError::Invalid(e.to_string()))?; }
+    Ok(StoreDriven { input: StoreInput { body, statement, as_of: block.as_of.clone() }, max_in_flight, tables: block.tables.clone(), isolated_items:block.isolated_items.clone() })
 }
 
 /// The tables a manifest's jobs may target: every destination table its pipelines and

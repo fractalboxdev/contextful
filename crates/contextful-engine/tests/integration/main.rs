@@ -12,6 +12,7 @@ mod command_windows;
 mod command_admission;
 mod coordinate;
 mod drive;
+mod items;
 mod execution;
 mod guard;
 mod journal;

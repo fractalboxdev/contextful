@@ -68,7 +68,7 @@ Acceptance: `contextful_acceptance::m02::m02_store`
 
 | Operations | Intent |
 | --- | --- |
-| `run.journal`, `run.advance`, `run.suspend`, `run.retry`, `run.own`, `run.cancel`, `run.record`, `run.project` | Journal, cursor, suspension, retry, cancellation and the run record; the crossings, packaging and coordination they rest on. |
+| `run.journal`, `run.items`, `run.advance`, `run.suspend`, `run.retry`, `run.own`, `run.cancel`, `run.record`, `run.project` | Journal, isolated items, cursor, suspension, retry, cancellation and the run record; the crossings, packaging and coordination they rest on. |
 | `topology.compose`, `topology.package`, `topology.coordinate` | — |
 
 Reach: A run crashes mid-step and resumes from its journal without re-issuing a recorded effect.
