@@ -315,10 +315,16 @@ fn keep(shared: &Shared) {
 /// Renew the single-writer lease in `held`. A lease a later acquisition took stays in the
 /// slot, where the fenced commit refuses it.
 pub fn renew_lease(catalog: &dyn Catalog, held: &Mutex<Option<Lease>>) {
-    let mut slot = held.lock().unwrap_or_else(|e| e.into_inner());
-    let Some(lease) = slot.clone() else { return };
+    let Some(lease) = held.lock().unwrap_or_else(|e| e.into_inner()).clone() else { return };
     match catalog.renew(&lease, OWNER_LEASE_TTL_SECS) {
-        Ok(Some(renewed)) => *slot = Some(renewed),
+        Ok(Some(renewed)) => {
+            // A durable guard may block renewal while its callback reads this slot.
+            // Closing or replacing the slot during that wait remains authoritative.
+            let mut slot = held.lock().unwrap_or_else(|e| e.into_inner());
+            if slot.as_ref().is_some_and(|current| current.key == lease.key && current.holder == lease.holder && current.fence == lease.fence && current.expires_at <= renewed.expires_at) {
+                *slot = Some(renewed);
+            }
+        }
         Ok(None) => eprintln!("warning: lease `{}` passed to a later holder; this run's commit is fenced", lease.key),
         Err(f) => eprintln!("warning: renewing lease `{}`: {f}", lease.key),
     }
