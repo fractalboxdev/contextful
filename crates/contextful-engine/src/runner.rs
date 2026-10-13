@@ -557,6 +557,7 @@ impl<J: JournalStore, B: BlobStore> Engine<J, B> {
                     ))
                 }
             };
+            precommit()?;
             let _guard = execution.guard(parent, true)?;
             dest.commit(
                 Commit {
