@@ -274,7 +274,7 @@ fn the_distributed_suite_runs_outside_the_checkout_and_reports_actual_execution(
         report.artifact_digest,
         conformance::digest(&binary).unwrap()
     );
-    assert_eq!(report.scenarios.len(), 7);
+    assert_eq!(report.scenarios.len(), 8);
     assert!(report
         .scenarios
         .iter()

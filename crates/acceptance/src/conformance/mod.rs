@@ -255,6 +255,7 @@ struct Fixture {
 struct Captured {
     status: ExitStatus,
     stdout: String,
+    stderr: String,
     storage_capability_missing: bool,
 }
 
@@ -364,10 +365,12 @@ impl Fixture {
             std::thread::sleep(Duration::from_millis(10));
         };
         let stdout = child.stdout()?;
+        let stderr = child.stderr()?;
         let storage_capability_missing = !status.success() && child.storage_capability_missing()?;
         Ok(Captured {
             status,
             stdout,
+            stderr,
             storage_capability_missing,
         })
     }
@@ -433,6 +436,11 @@ impl Running {
                         | "StorageProfileUnsupported:"
                 )
             }))
+    }
+
+    fn stderr(&self) -> Result<String> {
+        let bytes = std::fs::read(self.err.path()).map_err(|_| "ConformanceOutputUnavailable")?;
+        Ok(String::from_utf8_lossy(&bytes).into_owned())
     }
 
     fn stdout(&self) -> Result<String> {

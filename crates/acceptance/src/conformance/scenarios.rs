@@ -20,6 +20,7 @@ pub(super) fn run(id: &str, fixture: &Fixture) -> Result<()> {
         "applied-scheduling" => scheduling(fixture),
         "public-identity-masking" => masking(fixture),
         "typed-export-acknowledgement" => export(fixture),
+        "coordinated-group-publication" => group(fixture),
         _ => Err("ConformanceScenarioUnknown".into()),
     }
 }
@@ -575,4 +576,127 @@ fn export(f: &Fixture) -> Result<()> {
     f.ok(&args, &[("CONTEXTFUL_TOKEN", &token)])?;
     let stable = state.lock().unwrap().attempts == attempts;
     require(stable, "ConformanceAcknowledgedExportRepeated")
+}
+
+/// A receiver stages each group's events and activates a group only at its complete barrier.
+#[derive(Default)]
+struct GroupReceiver {
+    bodies: Vec<Vec<u8>>,
+    staged: BTreeMap<String, Vec<Value>>,
+    active: Option<(Value, Vec<Value>)>,
+    activations: usize,
+}
+
+impl GroupReceiver {
+    fn receive(&mut self, body: &[u8]) -> u16 {
+        let Ok(batch) = serde_json::from_slice::<Value>(body) else {
+            return 400;
+        };
+        let (Some(id), Some(events)) = (batch["group"]["id"].as_str(), batch["events"].as_array()) else {
+            return 400;
+        };
+        let mut staged = self.staged.get(id).cloned().unwrap_or_default();
+        for event in events {
+            let Some(sequence) = event["sequence"].as_u64() else {
+                return 400;
+            };
+            if event["id"] != json!(format!("{id}:{sequence}")) {
+                return 409;
+            }
+            match staged.get(sequence as usize) {
+                Some(prior) if prior != event => return 409,
+                Some(_) => {}
+                None if sequence as usize == staged.len() => staged.push(event.clone()),
+                None => return 409,
+            }
+        }
+        let complete = staged.last().is_some_and(|e| e["kind"] == "group_complete");
+        if complete && self.active.as_ref().map(|(g, _)| &g["id"]) != Some(&json!(id)) {
+            self.active = Some((batch["group"].clone(), staged.clone()));
+            self.activations += 1;
+        }
+        self.staged.insert(id.into(), staged);
+        200
+    }
+
+    fn upserts(&self) -> usize {
+        self.active.as_ref().map_or(0, |(_, events)| {
+            events.iter().filter(|e| e["kind"] == "upsert").count()
+        })
+    }
+}
+
+fn group(f: &Fixture) -> Result<()> {
+    let state = Arc::new(Mutex::new(GroupReceiver::default()));
+    let target = state.clone();
+    let sink = Server::start(move |request| {
+        let mut receiver = target.lock().unwrap();
+        receiver.bodies.push(request.body.clone());
+        match receiver.bodies.len() {
+            // The sender stops before the receiver commits anything.
+            1 => Response::json(503, "{}"),
+            // The receiver commits the first batch and its acknowledgement is lost.
+            2 => {
+                receiver.receive(&request.body);
+                Response::json(503, "{}")
+            }
+            _ => Response::json(receiver.receive(&request.body), "{}"),
+        }
+    });
+    f.write("contextful.toml", &format!("authoring_posture = \"per_request\"\n[[pipeline.tables]]\nname = \"events\"\n[[model]]\nid = \"daily\"\nsql = \"SELECT day, note FROM events\"\nunique_key = [\"day\"]\n[model.contract]\nversion = \"1.0.0\"\ncolumns = [{{ name = \"day\", type = \"utf8\", nullable = false }}, {{ name = \"note\", type = \"utf8\", nullable = false }}]\n[[export]]\nname = \"daily-copy\"\ntable = \"daily\"\nendpoint = \"{}\"\nformat = \"changes-v1\"\nkey = [\"day\"]\nschedule = \"every 30s\"\n[[publication]]\nname = \"projection\"\njob = \"daily\"\nmembers = [\"daily-copy\"]\n", sink.url("/groups")))?;
+    // Enough rows that one group spans several delivery requests.
+    let note = "n".repeat(300);
+    let rows: String = (0..300).map(|i| format!("{{\"day\":\"d{i:03}\",\"note\":\"{note}\"}}\n")).collect();
+    f.write("rows.jsonl", &rows)?;
+    let produce = |run: &str, now: &str| -> Result<()> {
+        f.ok(&["context", "land", "events", "--project", PROJECT, "--rows", "rows.jsonl", "--run-id", run, "--site-id", "conformance", "--now", now], &[])?;
+        let built = f.invoke(&["build", "daily", "--project", PROJECT, "--site-id", "conformance", "--now", now], &[])?;
+        if !built.status.success() {
+            return Err(if built.stderr.contains("PublicationStorageUnsupported") {
+                "ConformanceCapabilityMissing:coordinated-group-outbox".into()
+            } else {
+                "ConformanceCommandFailed:build".into()
+            });
+        }
+        // Generation one crosses empty-disk replacements, so its corpus must reach the bucket.
+        if f.remote.is_some() && run == "load-1" {
+            f.ok(&["sync", "push", "--project", PROJECT], &[])?;
+        }
+        Ok(())
+    };
+    produce("load-1", "2030-01-01T00:01:00Z")?;
+    let public = f.ok(&["token", "keygen", "--out", ".contextful/issuer.seed"], &[])?;
+    let token = f.ok(&["token", "mint", "--issuer-key", ".contextful/issuer.seed", "--on-behalf-of", "svc://conformance", "--zone", "on-prem:hq", "--table", "daily", "--ttl", "3600"], &[])?;
+    let args = ["export", "group", "projection", "--project", PROJECT, "--public-key", &public, "--audience", AUDIENCE];
+    let deliver = || f.invoke(&args, &[("CONTEXTFUL_TOKEN", &token)]);
+    for _ in 0..2 {
+        require(!deliver()?.status.success(), "ConformanceAcknowledgementBeforeCommit")?;
+        require(state.lock().unwrap().active.is_none(), "ConformanceReceiverPartialGroup")?;
+        f.replace_local_state()?;
+    }
+    f.ok(&args, &[("CONTEXTFUL_TOKEN", &token)])?;
+    let first = {
+        let receiver = state.lock().unwrap();
+        require(receiver.bodies.len() > 3, "ConformanceGroupSingleRequest")?;
+        require(receiver.bodies[0] == receiver.bodies[1] && receiver.bodies[1] == receiver.bodies[2], "ConformanceExportRetryChanged")?;
+        require(receiver.activations == 1 && receiver.upserts() == 300, "ConformanceReceiverRowsMissing")?;
+        receiver.active.as_ref().expect("activated")
+            .0["id"].clone()
+    };
+    f.ok(&args, &[("CONTEXTFUL_TOKEN", &token)])?;
+    let delivered = state.lock().unwrap().bodies.len();
+    f.write("rows.jsonl", &format!("{{\"day\":\"d999\",\"note\":\"{note}\"}}\n"))?;
+    produce("load-2", "2030-01-01T00:02:00Z")?;
+    f.ok(&args, &[("CONTEXTFUL_TOKEN", &token)])?;
+    let receiver = state.lock().unwrap();
+    let (group, events) = receiver.active.as_ref().expect("activated");
+    require(receiver.bodies.len() == delivered + 1, "ConformanceAcknowledgedExportRepeated")?;
+    require(
+        receiver.activations == 2 && group["base"] == first && group["order"] == 2,
+        "ConformanceGroupPredecessorMissing",
+    )?;
+    require(
+        events.iter().filter(|e| e["kind"] == "upsert").count() == 1,
+        "ConformanceGroupChangesMissing",
+    )
 }
