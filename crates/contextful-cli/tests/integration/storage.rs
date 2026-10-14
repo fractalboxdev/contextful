@@ -157,6 +157,12 @@ fn d1_storage_initialization_and_history_survive_a_new_cli_process() {
     let guard_after = invoke(&["storage", "guard", "--project", "research"]);
     let state: serde_json::Value = serde_json::from_slice(&guard_after.stdout).unwrap();
     assert!(state["token"].is_null());
+    let config_path = store.join("config.toml");
+    let config = std::fs::read_to_string(&config_path).unwrap();
+    std::fs::write(&config_path, config.replace(&s3.endpoint, "http://127.0.0.1:1")).unwrap();
+    let unavailable = invoke(&["storage", "check", "--project", "research"]);
+    assert!(!unavailable.status.success(), "an unreachable R2 bucket passed preflight");
+    assert!(String::from_utf8_lossy(&unavailable.stderr).contains("StorageCapabilityMissing: R2 corpus bucket"));
     let _ = binding.kill();
     let _ = binding.wait();
 }

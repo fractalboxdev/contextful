@@ -115,6 +115,23 @@ fn a_replacement_checks_the_same_d1_schema_and_recovery_identity() {
 }
 
 #[test]
+fn a_replacement_refuses_a_missing_recorded_r2_object_before_execution() {
+    let fixture = Fixture::start();
+    let db = D1::connect(&fixture.endpoint).unwrap();
+    db.initialize_recovery("sample", "backup-generation").unwrap();
+    let bytes = b"recorded result";
+    let digest = format!("{:x}", Sha256::digest(bytes));
+    db.put_blob(&digest, bytes).unwrap();
+    db.query(
+        "INSERT INTO contextful_blob (sha256, put_at) VALUES (?, 1)",
+        vec![json!(digest)],
+    ).unwrap();
+    db.verify_recovery("sample", "backup-generation").unwrap();
+    db.delete_blob(&digest).unwrap();
+    assert!(db.verify_recovery("sample", "backup-generation").is_err());
+}
+
+#[test]
 fn d1_run_timestamps_remain_exact_text_for_sql_export() {
     let fixture = Fixture::start();
     let db = D1::connect(&fixture.endpoint).unwrap();
