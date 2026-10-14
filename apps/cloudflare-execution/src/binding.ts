@@ -7,6 +7,7 @@ export interface ExecutionBindings {
   EXECUTION_BLOBS?: {
     put(key: string, body: ReadableStream<Uint8Array> | ArrayBuffer): Promise<unknown>;
     get(key: string): Promise<{ body: ReadableStream<Uint8Array> } | null>;
+    head(key: string): Promise<unknown | null>;
     delete(key: string): Promise<void>;
   };
 }
@@ -71,6 +72,10 @@ export async function handleExecutionBinding(request: Request, env: ExecutionBin
       if (request.method === "GET") {
         const object = await env.EXECUTION_BLOBS.get(key);
         return object ? new Response(object.body) : error("StorageBlobMissing", 404);
+      }
+      if (request.method === "HEAD") {
+        const object = await env.EXECUTION_BLOBS.head(key);
+        return new Response(null, { status: object ? 204 : 404 });
       }
       if (request.method === "DELETE") {
         await env.EXECUTION_BLOBS.delete(key);

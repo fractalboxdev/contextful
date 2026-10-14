@@ -31,7 +31,7 @@ test("queries and batches use the D1 binding with ordered parameters", async () 
       return statements.map(() => ({ results: [], meta: { changes: 1 } }));
     },
   };
-  const env = { EXECUTION_DB: db, EXECUTION_BLOBS: { put: async () => {}, get: async () => null, delete: async () => {} } } satisfies ExecutionBindings;
+  const env = { EXECUTION_DB: db, EXECUTION_BLOBS: { put: async () => {}, get: async () => null, head: async () => null, delete: async () => {} } } satisfies ExecutionBindings;
   const single = await handleExecutionBinding(new Request(`${endpoint}/sql`, {
     method: "POST", body: JSON.stringify({ sql: "SELECT ? AS value", params: [7] }),
   }), env);
@@ -62,6 +62,7 @@ test("content-addressed blob transport keeps bytes outside D1", async () => {
         const bytes = objects.get(key);
         return bytes ? { body: new Blob([Uint8Array.from(bytes).buffer]).stream() as ReadableStream<Uint8Array> } : null;
       },
+      async head(key: string) { return objects.get(key) ?? null; },
       async delete(key: string) { objects.delete(key); },
     },
   } satisfies ExecutionBindings;
@@ -70,6 +71,10 @@ test("content-addressed blob transport keeps bytes outside D1", async () => {
   assert.equal(put.status, 204);
   const get = await handleExecutionBinding(new Request(`${endpoint}/blob/${digest}`), env);
   assert.equal(await get.text(), "payload");
+  const head = await handleExecutionBinding(new Request(`${endpoint}/blob/${digest}`, { method: "HEAD" }), env);
+  assert.equal(head.status, 204);
+  const missing = await handleExecutionBinding(new Request(`${endpoint}/blob/${"b".repeat(64)}`, { method: "HEAD" }), env);
+  assert.equal(missing.status, 404);
   assert.equal(objects.size, 1);
   assert.equal(objects.has(`blobs/${digest}`), true);
 });

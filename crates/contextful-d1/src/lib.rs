@@ -178,6 +178,22 @@ impl D1 {
         {
             return Err("ExecutionRecoveryMismatch".into());
         }
+        let mut after = String::new();
+        loop {
+            let rows = self.query(
+                "SELECT sha256 FROM contextful_blob WHERE sha256 > ? ORDER BY sha256 LIMIT 100",
+                vec![json!(after)],
+            )?.rows;
+            if rows.is_empty() { break; }
+            for row in rows {
+                let sha256 = row.get("sha256").and_then(Value::as_str)
+                    .ok_or("ExecutionRecoveryMismatch")?;
+                if !self.head_blob(sha256)? {
+                    return Err(format!("ExecutionRecoveryMismatch: missing R2 blob `{sha256}`"));
+                }
+                after = sha256.to_owned();
+            }
+        }
         Ok(())
     }
 
@@ -251,6 +267,15 @@ impl D1 {
             .map_err(|_| "StorageBindingUnreadable")?;
         Self::digest(sha256, &bytes)?;
         Ok(Some(bytes))
+    }
+
+    pub fn head_blob(&self, sha256: &str) -> Result<bool, String> {
+        Self::valid_digest(sha256)?;
+        let response = self.agent.head(&format!("{}/blob/{sha256}", self.endpoint))
+            .call().map_err(|_| "StorageBindingUnavailable")?;
+        if response.status() == 204 { Ok(true) }
+        else if response.status() == 404 { Ok(false) }
+        else { Err("StorageBindingFailed".into()) }
     }
 
     pub fn delete_blob(&self, sha256: &str) -> Result<(), String> {

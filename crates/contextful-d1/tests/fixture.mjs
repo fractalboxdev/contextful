@@ -37,6 +37,10 @@ const server = createServer(async (request, response) => {
       const file = join(root, "blobs", path.slice(6));
       if (request.method === "PUT") writeFileSync(file, body);
       if (request.method === "DELETE" && existsSync(file)) unlinkSync(file);
+      if (request.method === "HEAD") {
+        response.writeHead(existsSync(file) ? 204 : 404).end();
+        return;
+      }
       if (request.method === "GET") {
         if (!existsSync(file)) {
           response.writeHead(404).end();

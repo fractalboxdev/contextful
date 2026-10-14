@@ -142,7 +142,13 @@ fn validate_project(project: &Project, profile: &str) -> Result<()> {
     if sync.pull_before_run != Some(true) || sync.push_after_run != Some(true) {
         bail!("StorageCapabilityMissing: disposable disks require `[sync] pull_before_run = true` and `push_after_run = true`")
     }
-    crate::sync::bucket(&sync)?;
+    let bucket = crate::sync::bucket(&sync)?;
+    if profile == CLOUDFLARE_D1 {
+        let prefix = sync.resolve_prefix(variable)?;
+        let probe = if prefix.is_empty() { ".contextful-preflight/".to_owned() }
+            else { format!("{prefix}/.contextful-preflight/") };
+        bucket.list(&probe).map_err(|error| anyhow::anyhow!("StorageCapabilityMissing: R2 corpus bucket: {error}"))?;
+    }
     Ok(())
 }
 
