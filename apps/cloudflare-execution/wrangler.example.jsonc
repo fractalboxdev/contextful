@@ -1,0 +1,52 @@
+{
+  "$schema": "./node_modules/wrangler/config-schema.json",
+  "name": "contextful-execution",
+  "main": "src/index.ts",
+  "compatibility_date": "2026-10-14",
+  "compatibility_flags": ["nodejs_compat"],
+  "workers_dev": false,
+  "secrets": {
+    "required": [
+      "CONFORMANCE_TOKEN",
+      "CONFORMANCE_R2_ENDPOINT",
+      "CONFORMANCE_R2_BUCKET",
+      "CONFORMANCE_R2_ACCESS_KEY_ID",
+      "CONFORMANCE_R2_SECRET_ACCESS_KEY",
+      "CONFORMANCE_RECOVERY_ID"
+    ]
+  },
+  "containers": [
+    {
+      "name": "contextful-execution",
+      "class_name": "D1ExecutionContainer",
+      "image": "./Dockerfile.conformance",
+      "image_build_context": "../../.tmp/cloudflare-conformance-image",
+      "max_instances": 1,
+      "instance_type": "standard-1"
+    }
+  ],
+  "durable_objects": {
+    "bindings": [
+      { "name": "EXECUTION_CONTAINER", "class_name": "D1ExecutionContainer" }
+    ]
+  },
+  "exports": {
+    "ContainerProxy": { "type": "worker" },
+    "D1ExecutionContainer": {
+      "type": "durable-object",
+      "storage": "sqlite",
+      "container": "contextful-execution"
+    }
+  },
+  "d1_databases": [
+    {
+      "binding": "EXECUTION_DB",
+      "database_name": "replace-with-disposable-d1-name",
+      "database_id": "00000000-0000-0000-0000-000000000000"
+    }
+  ],
+  "r2_buckets": [
+    { "binding": "EXECUTION_BLOBS", "bucket_name": "replace-with-disposable-r2-bucket" }
+  ],
+  "observability": { "enabled": true, "head_sampling_rate": 1 }
+}

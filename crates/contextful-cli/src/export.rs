@@ -343,32 +343,41 @@ fn run_changes(l: &crate::project::Located, export: &Export, project: &ProjectAr
 enum Ledger {
     Local(Box<ExportLedger>),
     #[cfg(feature = "pg-catalog")]
-    Remote(Box<contextful_pg::PgExportLedger>),
+    Postgres(Box<contextful_pg::PgExportLedger>),
+    #[cfg(feature = "d1-catalog")]
+    D1(Box<contextful_d1::D1ExportLedger>),
 }
 
 impl Ledger {
     fn open(project: &contextful_context::project::Project, store: &contextful_context::Store, name: &str) -> Result<Self> {
+        let _ = name;
         if let Some(remote) = crate::storage::preflight(project)? {
-            #[cfg(feature = "pg-catalog")]
-            {
-                let mut ledger = contextful_pg::PgExportLedger::connect(&remote.url)?;
-                let holder = format!("{}:{}:{}", crate::run::boot_id(), std::process::id(), wall_clock()?.unix_nanos());
-                ledger.claim(name, &holder, contextful_core::coordinate::CADENCE_LEASE_TTL_SECS)?;
-                return Ok(Self::Remote(Box::new(ledger)));
+            let holder = format!("{}:{}:{}", crate::run::boot_id(), std::process::id(), wall_clock()?.unix_nanos());
+            match remote {
+                crate::storage::Remote::Postgres { url, .. } => {
+                    #[cfg(feature = "pg-catalog")]
+                    { let mut ledger = contextful_pg::PgExportLedger::connect(&url)?; ledger.claim(name, &holder, contextful_core::coordinate::CADENCE_LEASE_TTL_SECS)?; return Ok(Self::Postgres(Box::new(ledger))) }
+                    #[cfg(not(feature = "pg-catalog"))]
+                    { let _ = (url, holder); anyhow::bail!("ProfileCapabilityAbsent: remote export state requires `pg-catalog`") }
+                }
+                crate::storage::Remote::D1 { endpoint, .. } => {
+                    #[cfg(feature = "d1-catalog")]
+                    { let mut ledger = contextful_d1::D1ExportLedger::connect(&endpoint)?; ledger.claim(name, &holder, contextful_core::coordinate::CADENCE_LEASE_TTL_SECS)?; return Ok(Self::D1(Box::new(ledger))) }
+                    #[cfg(not(feature = "d1-catalog"))]
+                    { let _ = (endpoint, holder); anyhow::bail!("ProfileCapabilityAbsent: remote export state requires `d1-catalog`") }
+                }
             }
-            #[cfg(not(feature = "pg-catalog"))]
-            { let _ = (remote, name); anyhow::bail!("ProfileCapabilityAbsent: remote export state requires `pg-catalog`") }
         }
         let machine = project.store_root().join(MACHINE_CATALOG_FILE);
         Ok(Self::Local(Box::new(match store.file_cipher() { Some(cipher) => ExportLedger::open_sealed(&machine, cipher)?, None => ExportLedger::open(&machine)? })))
     }
-    fn position(&self, name: &str) -> Result<ExportPosition> { Ok(match self { Self::Local(s) => s.position(name)?, #[cfg(feature="pg-catalog")] Self::Remote(s) => s.position(name)? }) }
-    fn state(&self, name: &str) -> Result<ChangeState> { Ok(match self { Self::Local(s) => s.state(name)?, #[cfg(feature="pg-catalog")] Self::Remote(s) => s.state(name)? }) }
-    fn stage(&mut self, name: &str, publication: ExportPublication<'_>, events: &[ChangeEvent], state: &ChangeState) -> Result<bool> { Ok(match self { Self::Local(s) => s.stage(name, publication, events, state)?, #[cfg(feature="pg-catalog")] Self::Remote(s) => s.stage(name, publication, events, state)? }) }
-    fn pending(&mut self, name: &str, limit: usize) -> Result<Vec<ChangeEvent>> { Ok(match self { Self::Local(s) => s.pending(name, limit)?, #[cfg(feature="pg-catalog")] Self::Remote(s) => s.pending(name, limit)? }) }
-    fn offer(&mut self, name: &str, through: u64) -> Result<()> { match self { Self::Local(s) => s.offer(name, through)?, #[cfg(feature="pg-catalog")] Self::Remote(s) => s.offer(name, through)? }; Ok(()) }
-    fn acknowledge(&mut self, name: &str, through: u64) -> Result<()> { match self { Self::Local(s) => s.acknowledge(name, through)?, #[cfg(feature="pg-catalog")] Self::Remote(s) => s.acknowledge(name, through)? }; Ok(()) }
-    fn dispatch<T>(&self, name: &str, effect: impl FnOnce() -> T) -> Result<T> { Ok(match self { Self::Local(_) => { let _ = name; effect() }, #[cfg(feature="pg-catalog")] Self::Remote(s) => s.dispatch(name, effect)? }) }
-    fn checkpoint(&self, name: &str) -> Result<Option<ExportCursor>> { Ok(match self { Self::Local(_) => { let _ = name; None }, #[cfg(feature="pg-catalog")] Self::Remote(s) => Some(s.checkpoint(name)?) }) }
-    fn advance_checkpoint(&mut self, name: &str, cursor: ExportCursor) -> Result<bool> { match self { Self::Local(_) => { let _ = (name, cursor); Ok(false) }, #[cfg(feature="pg-catalog")] Self::Remote(s) => { s.advance_checkpoint(name, cursor)?; Ok(true) } } }
+    fn position(&self, name: &str) -> Result<ExportPosition> { Ok(match self { Self::Local(s) => s.position(name)?, #[cfg(feature="pg-catalog")] Self::Postgres(s) => s.position(name)?, #[cfg(feature="d1-catalog")] Self::D1(s) => s.position(name)? }) }
+    fn state(&self, name: &str) -> Result<ChangeState> { Ok(match self { Self::Local(s) => s.state(name)?, #[cfg(feature="pg-catalog")] Self::Postgres(s) => s.state(name)?, #[cfg(feature="d1-catalog")] Self::D1(s) => s.state(name)? }) }
+    fn stage(&mut self, name: &str, publication: ExportPublication<'_>, events: &[ChangeEvent], state: &ChangeState) -> Result<bool> { Ok(match self { Self::Local(s) => s.stage(name, publication, events, state)?, #[cfg(feature="pg-catalog")] Self::Postgres(s) => s.stage(name, publication, events, state)?, #[cfg(feature="d1-catalog")] Self::D1(s) => s.stage(name, publication, events, state)? }) }
+    fn pending(&mut self, name: &str, limit: usize) -> Result<Vec<ChangeEvent>> { Ok(match self { Self::Local(s) => s.pending(name, limit)?, #[cfg(feature="pg-catalog")] Self::Postgres(s) => s.pending(name, limit)?, #[cfg(feature="d1-catalog")] Self::D1(s) => s.pending(name, limit)? }) }
+    fn offer(&mut self, name: &str, through: u64) -> Result<()> { match self { Self::Local(s) => s.offer(name, through)?, #[cfg(feature="pg-catalog")] Self::Postgres(s) => s.offer(name, through)?, #[cfg(feature="d1-catalog")] Self::D1(s) => s.offer(name, through)? }; Ok(()) }
+    fn acknowledge(&mut self, name: &str, through: u64) -> Result<()> { match self { Self::Local(s) => s.acknowledge(name, through)?, #[cfg(feature="pg-catalog")] Self::Postgres(s) => s.acknowledge(name, through)?, #[cfg(feature="d1-catalog")] Self::D1(s) => s.acknowledge(name, through)? }; Ok(()) }
+    fn dispatch<T>(&self, name: &str, effect: impl FnOnce() -> T) -> Result<T> { Ok(match self { Self::Local(_) => { let _ = name; effect() }, #[cfg(feature="pg-catalog")] Self::Postgres(s) => s.dispatch(name, effect)?, #[cfg(feature="d1-catalog")] Self::D1(s) => s.dispatch(name, effect)? }) }
+    fn checkpoint(&self, name: &str) -> Result<Option<ExportCursor>> { Ok(match self { Self::Local(_) => { let _ = name; None }, #[cfg(feature="pg-catalog")] Self::Postgres(s) => Some(s.checkpoint(name)?), #[cfg(feature="d1-catalog")] Self::D1(s) => Some(s.checkpoint(name)?) }) }
+    fn advance_checkpoint(&mut self, name: &str, cursor: ExportCursor) -> Result<bool> { match self { Self::Local(_) => { let _ = (name, cursor); Ok(false) }, #[cfg(feature="pg-catalog")] Self::Postgres(s) => { s.advance_checkpoint(name, cursor)?; Ok(true) }, #[cfg(feature="d1-catalog")] Self::D1(s) => { s.advance_checkpoint(name, cursor)?; Ok(true) } } }
 }

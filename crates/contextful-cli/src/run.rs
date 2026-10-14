@@ -186,7 +186,7 @@ pub(crate) fn wire_at(project: &Project, now: &Option<String>) -> Result<Wired> 
         bail!("StorageCapabilityMissing: replacement-safe execution requires strict dispatch and publication guards");
     }
     let (rows, blobs, awakeables): (SharedJournal, SharedBlobs, SharedAwakeables) = if let Some(remote) = remote {
-        remote_run_stores(&remote.url)?
+        remote_run_stores(&remote)?
     } else {
         match store.file_cipher() {
             Some(cipher) => {
@@ -205,15 +205,24 @@ pub(crate) fn wire_at(project: &Project, now: &Option<String>) -> Result<Wired> 
     Ok(Wired { engine: Engine { catalog, journal, awakeables: Some(awakeables), keeper: Keeper::default(), emitter: None, worlds: crate::component::worlds() }, registry, clock })
 }
 
-#[cfg(feature = "pg-catalog")]
-fn remote_run_stores(url: &str) -> Result<(SharedJournal, SharedBlobs, SharedAwakeables)> {
-    let stores = contextful_pg::PgRunStores::connect(url)?;
-    Ok((Arc::new(stores.journal), Arc::new(stores.blobs), Arc::new(stores.awakeables)))
-}
-
-#[cfg(not(feature = "pg-catalog"))]
-fn remote_run_stores(_url: &str) -> Result<(SharedJournal, SharedBlobs, SharedAwakeables)> {
-    bail!("ProfileCapabilityAbsent: durable execution stores require `pg-catalog`")
+fn remote_run_stores(remote: &crate::storage::Remote) -> Result<(SharedJournal, SharedBlobs, SharedAwakeables)> {
+    match remote {
+        crate::storage::Remote::Postgres { url, .. } => {
+            #[cfg(feature = "pg-catalog")]
+            {
+                let stores = contextful_pg::PgRunStores::connect(url)?;
+                Ok((Arc::new(stores.journal), Arc::new(stores.blobs), Arc::new(stores.awakeables)))
+            }
+            #[cfg(not(feature = "pg-catalog"))]
+            { let _ = url; bail!("ProfileCapabilityAbsent: durable execution stores require `pg-catalog`") }
+        }
+        crate::storage::Remote::D1 { endpoint, .. } => {
+            #[cfg(feature = "d1-catalog")]
+            { Ok((Arc::new(contextful_d1::D1JournalStore::connect(endpoint)?), Arc::new(contextful_d1::D1BlobStore::connect(endpoint)?), Arc::new(contextful_d1::D1AwakeableStore::connect(endpoint)?))) }
+            #[cfg(not(feature = "d1-catalog"))]
+            { let _ = endpoint; bail!("ProfileCapabilityAbsent: durable execution stores require `d1-catalog`") }
+        }
+    }
 }
 
 /// The variable naming the Postgres catalog a self-hosted cluster's daemons share
@@ -225,6 +234,14 @@ pub(crate) const CATALOG_URL_VAR: &str = "CONTEXTFUL_CATALOG_URL";
 /// `cipher` when the store is encrypted. Swapping one for the other is this wiring alone
 /// (`topology.coordinate.catalog-port`).
 pub(crate) fn open_catalog(machine: &Path, clock: Arc<dyn Clock + Send + Sync>, cipher: Option<Arc<dyn FileCipher>>) -> Result<Arc<dyn Catalog + Send + Sync>> {
+    if std::env::var(crate::storage::STORAGE_PROFILE_VAR).ok().as_deref() == Some(crate::storage::CLOUDFLARE_D1) {
+        if cipher.is_some() { bail!("StorageProfileUnsupported: `cloudflare-d1` has no sealed-row adapter") }
+        let endpoint = std::env::var(crate::storage::D1_ENDPOINT_VAR).context("StorageCapabilityMissing: private D1 binding")?;
+        #[cfg(feature = "d1-catalog")]
+        { return Ok(Arc::new(contextful_d1::D1Catalog::connect(&endpoint)?)) }
+        #[cfg(not(feature = "d1-catalog"))]
+        { let _ = endpoint; bail!("ProfileCapabilityAbsent: D1 catalog requires `d1-catalog`") }
+    }
     if let Some(url) = std::env::var(CATALOG_URL_VAR).ok().filter(|u| !u.trim().is_empty()) {
         return open_postgres(&url, cipher.is_some());
     }

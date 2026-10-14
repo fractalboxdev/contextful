@@ -5,17 +5,17 @@ An unpinned clause is `committed`; a pinned one is `performed` when its Rust, Le
 
 | Contract | Files | Operations | Clauses | Refusals | Limits | Unsettled | Performed | Broken | Floor |
 | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
-| `assurance` | 3 | 16 | 269 | 60 | 22 | 7 | 233 | 0 | 233 |
+| `assurance` | 3 | 16 | 272 | 60 | 22 | 7 | 235 | 0 | 235 |
 | `authority` | 2 | 16 | 293 | 79 | 29 | 9 | 222 | 0 | 222 |
 | `connector` | 2 | 14 | 353 | 89 | 21 | 15 | 229 | 0 | 229 |
 | `corpus` | 1 | 10 | 79 | 37 | 7 | 0 | 79 | 0 | 79 |
 | `disclosure` | 3 | 16 | 156 | 68 | 13 | 3 | 63 | 0 | 63 |
 | `read` | 2 | 16 | 221 | 35 | 24 | 1 | 211 | 0 | 211 |
-| `run` | 3 | 27 | 475 | 112 | 43 | 13 | 419 | 0 | 419 |
+| `run` | 3 | 27 | 482 | 112 | 43 | 13 | 426 | 0 | 426 |
 | `store` | 1 | 17 | 264 | 61 | 14 | 11 | 253 | 0 | 253 |
 | `surface` | 2 | 20 | 137 | 59 | 22 | 0 | 98 | 0 | 98 |
 | `topology` | 1 | 6 | 79 | 25 | 5 | 3 | 72 | 0 | 72 |
-| **total** | 20 | 158 | 2326 | 625 | 200 | 62 | 1879 | 0 | |
+| **total** | 20 | 158 | 2336 | 625 | 200 | 62 | 1888 | 0 | |
 
 Decision records: 18.
 
@@ -28,8 +28,8 @@ A milestone reads `closed` when its acceptance test computes `passing` and every
 | 0 — The test-first gate | 2 | 22 | 19 | passing | closed |
 | 1 — The authority core | 14 | 242 | 223 | passing | closed |
 | 2 — The store | 9 | 181 | 170 | passing | closed |
-| 3 — The run path | 12 | 262 | 247 | passing | closed |
-| 4 — Ingest | 25 | 540 | 375 | passing | open |
+| 3 — The run path | 12 | 268 | 253 | passing | closed |
+| 4 — Ingest | 25 | 541 | 376 | passing | open |
 | 5 — The read face under enforcement | 17 | 294 | 238 | passing | open |
 | 6 — Sync and replicas | 8 | 83 | 83 | passing | closed |
 | 7 — Memory | 6 | 55 | 54 | passing | closed |
@@ -111,6 +111,8 @@ Unscheduled operations: 12.
 | `assurance.build.targets` | `tools/ci/tests/integration/artifact.rs::the_release_matrix_is_every_profile_on_musl_and_edge_and_full_on_darwin` | performed |
 | `assurance.build.wasi-probe` | `tools/ci/tests/integration/artifact.rs::the_edge_profile_probes_wasm32_wasip2_against_its_footprint_budget` | performed |
 | `assurance.consumer.credential-isolation` | `spec/pins.toml` | performed |
+| `assurance.consumer.d1-profile` | `spec/pins.toml` | performed |
+| `assurance.consumer.d1-release` | `spec/pins.toml` | performed |
 | `assurance.consumer.foreign-target` | `spec/pins.toml` | performed |
 | `assurance.consumer.mutation-controls` | `spec/pins.toml` | performed |
 | `assurance.consumer.provenance` | `spec/pins.toml` | performed |
@@ -1202,6 +1204,7 @@ Unscheduled operations: 12.
 | `run.export.commit-order` | `crates/contextful-cli/tests/integration/export.rs::a_run_committing_after_the_cursor_under_an_earlier_stamp_is_delivered` | performed |
 | `run.export.commit-seq-missing` | `crates/contextful-cli/tests/integration/export.rs::rows_without_a_commit_sequence_refuse_the_export` | performed |
 | `run.export.cursor-after-ack` | `crates/contextful-cli/tests/integration/export.rs::the_cursor_commits_after_the_target_acknowledges` | performed |
+| `run.export.d1-state` | `spec/pins.toml` | performed |
 | `run.export.delivery` | `crates/contextful-cli/tests/integration/export.rs::a_batch_leaves_through_the_mediated_client_with_its_header_hydrated` | performed |
 | `run.export.delivery-refused` | `crates/contextful-cli/tests/integration/export.rs::a_refused_delivery_leaves_the_cursor_where_it_stood` | performed |
 | `run.export.export-block` | `crates/contextful-cli/tests/integration/export.rs::an_export_run_delivers_the_rows_its_cursor_has_not_passed` | performed |
@@ -1264,6 +1267,12 @@ Unscheduled operations: 12.
 | `run.journal.claim-takeover` | `crates/contextful-engine/tests/integration/journal.rs::a_claim_whose_holder_lapsed_is_taken_over` | performed |
 | `run.journal.collection` | `crates/contextful-engine/tests/integration/runner.rs::retirement_collects_the_executions_journal` | performed |
 | `run.journal.current-owner` | `spec/pins.toml` | performed |
+| `run.journal.d1-atomicity` | `spec/pins.toml` | performed |
+| `run.journal.d1-backup` | `spec/pins.toml` | performed |
+| `run.journal.d1-blob` | `spec/pins.toml` | performed |
+| `run.journal.d1-guard` | `spec/pins.toml` | performed |
+| `run.journal.d1-profile` | `spec/pins.toml` | performed |
+| `run.journal.d1-recovery` | `spec/pins.toml` | performed |
 | `run.journal.effect-boundary` | `crates/contextful-engine/tests/integration/execution.rs::a_body_resumed_across_a_step_and_an_awakeable_commits_what_an_uninterrupted_one_commits` | performed |
 | `run.journal.entry-key` | `crates/contextful-engine/tests/integration/journal.rs::a_racing_caller_waits_for_the_first_callers_value` | performed |
 | `run.journal.escape-hatch` | `crates/contextful-engine/tests/integration/execution.rs::an_unsafe_read_reruns_on_every_replay_and_each_hatch_states_its_argument` | performed |

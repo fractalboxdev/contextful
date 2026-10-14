@@ -143,7 +143,9 @@ fn release_archives_carry_the_consumer_suite_and_digest_bound_compatibility_evid
     let digest = format!("{:x}", Sha256::digest(&binary.stdout));
     assert_eq!(report["artifact_digest"], digest);
     assert_eq!(report["suite_revision"], "consumer-v1");
-    assert!(report["source_commit"].is_null());
+    let source = Command::new("git").args(["rev-parse", "HEAD"]).current_dir(repo_root()).output().unwrap();
+    assert!(source.status.success());
+    assert_eq!(report["source_commit"], String::from_utf8_lossy(&source.stdout).trim());
     let cases = report["scenarios"].as_array().unwrap();
     assert!(!cases.is_empty());
     assert!(cases.iter().all(|case| case["outcome"] == "skipped"));
@@ -153,6 +155,20 @@ fn release_archives_carry_the_consumer_suite_and_digest_bound_compatibility_evid
     assert_eq!(metadata["compatibility"]["artifact_digest"], digest);
     let sidecar: serde_json::Value = serde_json::from_slice(&std::fs::read(dist.path().join(format!("{stem}.compatibility.json"))).unwrap()).unwrap();
     assert_eq!(sidecar, report);
+    let d1_evidence = extract("cloudflare-d1.compatibility.json");
+    assert!(d1_evidence.status.success());
+    let d1_report: serde_json::Value = serde_json::from_slice(&d1_evidence.stdout).unwrap();
+    assert_eq!(d1_report["artifact_digest"], digest);
+    assert_eq!(d1_report["source_commit"], report["source_commit"]);
+    assert_eq!(d1_report["suite_revision"], report["suite_revision"]);
+    assert_eq!(d1_report["storage_profile"], "cloudflare-d1");
+    assert_eq!(d1_report["binding_origin"], "unverified");
+    assert_eq!(d1_report["compatible"], false);
+    let d1_cases = d1_report["scenarios"].as_array().unwrap();
+    assert!(!d1_cases.is_empty());
+    assert!(d1_cases.iter().all(|case| case["outcome"] == "skipped"));
+    assert_eq!(metadata["d1_compatibility"]["report"], format!("{stem}.cloudflare-d1.compatibility.json"));
+    assert_eq!(metadata["d1_compatibility"]["artifact_digest"], digest);
 }
 
 #[test]

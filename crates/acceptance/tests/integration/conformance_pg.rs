@@ -5,7 +5,7 @@ use std::path::PathBuf;
 
 #[test]
 #[ignore = "requires a supplied pg-catalog artifact and installed PostgreSQL fixture tools"]
-fn the_cloudflare_profile_executes_every_required_scenario_on_remote_state() {
+fn the_postgres_profile_executes_every_required_scenario_on_remote_state() {
     let _guard = super::CONFORMANCE_ENV.lock().unwrap();
     let selected = PathBuf::from(
         std::env::var_os("CONTEXTFUL_CONFORMANCE_TEST_BINARY")
@@ -16,7 +16,7 @@ fn the_cloudflare_profile_executes_every_required_scenario_on_remote_state() {
     std::fs::copy(selected, &binary).unwrap();
     let report = conformance::run(&Options {
         binary,
-        storage_profile: "cloudflare-postgres".into(),
+        storage_profile: "postgres".into(),
         required: vec![],
         timeout_seconds: 60,
     })
@@ -26,7 +26,7 @@ fn the_cloudflare_profile_executes_every_required_scenario_on_remote_state() {
         "{}",
         serde_json::to_string_pretty(&report).unwrap()
     );
-    assert_eq!(report.storage_profile, "cloudflare-postgres");
+    assert_eq!(report.storage_profile, "postgres");
     assert_eq!(report.scenarios.len(), 7);
 }
 
@@ -73,24 +73,24 @@ fn unexpected_storage_initialization_errors_fail_without_exporting_credentials()
         (
             "ProfileCapabilityAbsent: pg-catalog",
             Outcome::Unsupported,
-            "ConformanceCapabilityMissing:cloudflare-postgres",
+            "ConformanceCapabilityMissing:postgres",
         ),
         (
             "StorageCapabilityMissing: pg-catalog",
             Outcome::Unsupported,
-            "ConformanceCapabilityMissing:cloudflare-postgres",
+            "ConformanceCapabilityMissing:postgres",
         ),
         (
-            "StorageProfileUnsupported: cloudflare-postgres",
+            "StorageProfileUnsupported: postgres",
             Outcome::Unsupported,
-            "ConformanceCapabilityMissing:cloudflare-postgres",
+            "ConformanceCapabilityMissing:postgres",
         ),
     ] {
         std::fs::write(&binary,format!("#!/bin/sh\nif [ \"$1\" = --version ]; then printf 'contextful fixture development\\n'; exit 0; fi\nif [ \"$2\" = --help ]; then exit 0; fi\nif [ \"$1 $2\" = 'storage initialize' ]; then printf '%s\\n' '{error}: credential-material' >&2; exit 1; fi\nexit 99\n")).unwrap();
         std::fs::set_permissions(&binary, std::fs::Permissions::from_mode(0o700)).unwrap();
         let report = conformance::run(&Options {
             binary: binary.clone(),
-            storage_profile: "cloudflare-postgres".into(),
+            storage_profile: "postgres".into(),
             required: vec!["pagination-checkpoint".into()],
             timeout_seconds: 60,
         })
@@ -148,7 +148,7 @@ fn a_remote_fixture_releases_postgres_shared_memory_on_drop() {
     std::env::set_var("PATH", std::env::join_paths(paths).unwrap());
     let result = conformance::run(&Options {
         binary: selected,
-        storage_profile: "cloudflare-postgres".into(),
+        storage_profile: "postgres".into(),
         required: vec!["pagination-checkpoint".into()],
         timeout_seconds: 60,
     });

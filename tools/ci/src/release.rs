@@ -178,9 +178,23 @@ fn package(root: &Path, profile: &str, version: &str, target: &str, binary: &Pat
     std::fs::copy(out.join(&suite_sbom_name), staging.join("conformance.cdx.json"))?;
     std::fs::copy(root.join("LICENSE"), staging.join("LICENSE")).context("copying LICENSE")?;
     let compatibility_path = out.join(format!("{stem}.compatibility.json"));
-    let report = compatibility(profile, target, binary, suite, &compatibility_path)?;
+    let report = compatibility(root, profile, target, binary, suite, &compatibility_path, "local")?;
     std::fs::write(&compatibility_path, serde_json::to_vec_pretty(&report)?)?;
     std::fs::copy(&compatibility_path, staging.join("compatibility.json"))?;
+    let d1_report = if profile == "contextful-full" {
+        let d1_path = out.join(format!("{stem}.cloudflare-d1.compatibility.json"));
+        let evidence = compatibility(root, profile, target, binary, suite, &d1_path, "cloudflare-d1")?;
+        std::fs::write(&d1_path, serde_json::to_vec_pretty(&evidence)?)?;
+        std::fs::copy(&d1_path, staging.join("cloudflare-d1.compatibility.json"))?;
+        Some(serde_json::json!({
+            "report":format!("{stem}.cloudflare-d1.compatibility.json"),
+            "artifact_digest":evidence["artifact_digest"],
+            "source_commit":evidence["source_commit"],
+            "suite_revision":evidence["suite_revision"],
+            "storage_profile":evidence["storage_profile"],
+            "compatible":evidence["compatible"],
+        }))
+    } else { None };
     let archive = format!("{stem}.tar.gz");
     let status = Command::new("tar")
         .args(["-czf", &archive, &stem])
@@ -195,7 +209,7 @@ fn package(root: &Path, profile: &str, version: &str, target: &str, binary: &Pat
     std::fs::write(out.join(format!("{archive}.sha256")), format!("{digest}  {archive}\n"))?;
     let sbom = sbom(root, profile, version, target)?;
     std::fs::write(out.join(format!("{stem}.cdx.json")), serde_json::to_string_pretty(&sbom)? + "\n")?;
-    let metadata = serde_json::json!({
+    let mut metadata = serde_json::json!({
         "profile": profile,
         "target": target,
         "archive": archive,
@@ -203,31 +217,74 @@ fn package(root: &Path, profile: &str, version: &str, target: &str, binary: &Pat
         "sbom": format!("{stem}.cdx.json"),
         "compatibility": {"report":format!("{stem}.compatibility.json"), "artifact_digest":report["artifact_digest"], "scenarios":report["scenarios"], "suite_sbom":suite_sbom_name},
     });
+    if let Some(d1_report) = d1_report { metadata["d1_compatibility"] = d1_report; }
     std::fs::write(out.join(format!("{stem}.release.json")), serde_json::to_string_pretty(&metadata)? + "\n")?;
     println!("release: {archive} {digest}");
     Ok(())
 }
 
 /// Every archive carries evidence; a foreign target has explicit skips and no execution pass.
-fn compatibility(profile: &str, target: &str, binary: &Path, suite: &Path, output: &Path) -> Result<serde_json::Value> {
+fn compatibility(root: &Path, profile: &str, target: &str, binary: &Path, suite: &Path, output: &Path, storage_profile: &str) -> Result<serde_json::Value> {
     let artifact_digest = hex(&Sha256::digest(std::fs::read(binary)?));
+    let worker_binding = storage_profile == "cloudflare-d1" &&
+        std::env::var("CONTEXTFUL_CONFORMANCE_D1_ENDPOINT").ok().as_deref() == Some("http://contextful.d1") &&
+        std::env::var("CONTEXTFUL_CONFORMANCE_R2_ENDPOINT").ok().is_some_and(|endpoint| {
+            endpoint.strip_prefix("https://").and_then(|rest| rest.split('/').next())
+                .is_some_and(|host| host.len() > ".r2.cloudflarestorage.com".len() && host.ends_with(".r2.cloudflarestorage.com"))
+        });
+    let binding_origin = if worker_binding { "cloudflare-worker" } else { "unverified" };
+    let source = Command::new("git").args(["rev-parse", "HEAD"]).current_dir(root).output().context("reading release source revision")?;
+    if !source.status.success() { bail!("ConformanceSourceRevisionUnavailable") }
+    let source_commit = String::from_utf8(source.stdout).context("decoding source revision")?.trim().to_owned();
+    if source_commit.len() != 40 || !source_commit.bytes().all(|b| b.is_ascii_hexdigit()) { bail!("ConformanceSourceRevisionInvalid") }
+    let dirty = Command::new("git").args(["status", "--porcelain", "--untracked-files=all"]).current_dir(root).output().context("checking release source tree")?;
+    if !dirty.status.success() { bail!("ConformanceSourceRevisionUnavailable") }
+    let source_dirty = !dirty.stdout.is_empty();
     let registry: serde_json::Value = serde_json::from_str(include_str!("../../../crates/acceptance/src/conformance/manifest.json"))?;
     let native = host_target().is_ok_and(|host| host == target);
     let mut failure = if native { "ConformanceSuiteUnavailable" } else { "ConformanceTargetNotExecutable" };
     if native {
         if output.exists() { std::fs::remove_file(output).context("removing prior compatibility evidence")?; }
-        let executed = Command::new(suite).arg("--binary").arg(binary).arg("--output").arg(output)
-            .env_clear().env("PATH", "/usr/bin:/bin").status();
+        let mut command = Command::new(suite);
+        command.arg("--binary").arg(binary).arg("--output").arg(output)
+            .arg("--storage-profile").arg(storage_profile)
+            .env_clear().env("PATH", "/usr/bin:/bin");
+        if storage_profile == "cloudflare-d1" {
+            for key in ["CONTEXTFUL_CONFORMANCE_D1_ENDPOINT", "CONTEXTFUL_CONFORMANCE_R2_ENDPOINT",
+                "CONTEXTFUL_CONFORMANCE_R2_BUCKET", "CONTEXTFUL_CONFORMANCE_R2_ACCESS_KEY_ID",
+                "CONTEXTFUL_CONFORMANCE_R2_SECRET_ACCESS_KEY", "CONTEXTFUL_CONFORMANCE_RECOVERY_ID",
+                "CONTEXTFUL_CONFORMANCE_D1_DISPOSABLE"] {
+                if let Some(value) = std::env::var_os(key) { command.env(key, value); }
+            }
+        }
+        let executed = command.status();
         if let Ok(status) = executed {
             if output.exists() {
                 let mut report: serde_json::Value = serde_json::from_slice(&std::fs::read(output)?)?;
                 if report["artifact_digest"] != artifact_digest || report["suite_revision"] != registry["suite_revision"] { bail!("ConformanceReleaseEvidenceMismatch"); }
+                report["source_commit"] = serde_json::json!(source_commit);
+                report["source_dirty"] = serde_json::json!(source_dirty);
+                report["storage_profile"] = serde_json::json!(storage_profile);
+                report["requested_profile"] = serde_json::json!(profile);
+                report["binding_origin"] = serde_json::json!(binding_origin);
+                if source_dirty {
+                    report["scenarios"].as_array_mut().context("suite report scenarios")?.push(serde_json::json!({
+                        "id":"source-revision", "required":true, "outcome":"failed", "requirement":"clean source revision",
+                        "diagnostic":"ConformanceSourceTreeDirty",
+                    }));
+                }
                 if !status.success() {
                     report["scenarios"].as_array_mut().context("suite report scenarios")?.push(serde_json::json!({
                         "id":"suite-exit", "required":true, "outcome":"failed", "requirement":"consumer-suite",
                         "diagnostic":"ConformanceSuiteProcessFailed", "exit_code":status.code(),
                     }));
                 }
+                let scenarios = report["scenarios"].as_array().context("suite report scenarios")?;
+                report["compatible"] = serde_json::json!(!source_dirty &&
+                    scenarios.iter().any(|s| s["required"] == true) &&
+                    scenarios.iter().filter(|s| s["required"] == true).all(|s| s["outcome"] == "passed") &&
+                    !scenarios.iter().any(|s| s["outcome"] == "failed") &&
+                    (storage_profile != "cloudflare-d1" || (worker_binding && report["feature_profile"] == "contextful-full")));
                 return Ok(report);
             }
         }
@@ -240,7 +297,8 @@ fn compatibility(profile: &str, target: &str, binary: &Path, suite: &Path, outpu
     Ok(serde_json::json!({
         "schema_version":1, "suite_revision":registry["suite_revision"], "suite_version":env!("CARGO_PKG_VERSION"),
         "artifact_digest":artifact_digest, "reported_version":null, "feature_profile":null,
-        "requested_profile":profile, "storage_profile":"local", "source_commit":null, "scenarios":scenarios,
+        "requested_profile":profile, "storage_profile":storage_profile, "binding_origin":binding_origin,
+        "source_commit":source_commit, "source_dirty":source_dirty, "compatible":false, "scenarios":scenarios,
     }))
 }
 

@@ -4,7 +4,7 @@
 
 ## Disposable execution state shares one remote recovery database
 
-Execution replacement preserves the original recorded value, callback and export event identity. The deciding criteria are complete-state recovery and compatibility with the existing storage ports. The Cloudflare container profile uses PostgreSQL for owners, cadence history, journals, blobs, awakeables and delivery state, with R2-compatible corpus objects. Remote database connections authenticate the server with WebPKI roots and hostname verification.
+Execution replacement preserves the original recorded value, callback and export event identity. The deciding criteria are complete-state recovery and compatibility with the existing storage ports. The `postgres` profile uses PostgreSQL for owners, cadence history, journals, blobs, awakeables and delivery state, with S3-compatible corpus objects. Remote database connections authenticate the server with WebPKI roots and hostname verification.
 
 | Option | Lost on | Cost |
 | --- | --- | --- |
@@ -14,6 +14,19 @@ Execution replacement preserves the original recorded value, callback and export
 | Independently restored execution stores | Consistency | A restored owner can name a missing recorded value or an already acknowledged outbox. |
 
 Consequences: startup validates recovery identity, tables and schema without repairing restores. Backup quiesces writers and captures one PostgreSQL snapshot with its corpus frontier. PostgreSQL guards retain canonical shared owner and lease locks through bounded dispatch and publication callbacks on dedicated connections. Takeover waits even when an admitted callback spans lease expiry. Run metadata remains unlocked; active guards route other catalog transactions through separate connections to keep blocked takeover and renewal from occupying the callback's client. Guarded owner mutation and nested lock expansion refuse. Encrypted rows and remote coordinated-group outboxes require separate conforming adapters; the profile refuses both combinations.
+
+## D1 execution state uses a private binding and durable callback guards
+
+Cloudflare Containers reach D1 and R2 through a Worker outbound handler. D1 holds small transactional state; R2 holds content-addressed blobs and corpus objects. D1's batch transaction ends with the request, so it cannot hold a database lock across a provider call. A durable guard row admits a bounded callback and blocks owner or lease transfer until release. A crash during that callback leaves the guard for reconciliation; automatic expiry could admit a second writer while the first effect remains ambiguous. A recorded call releases its guard before journaling its value. R2 objects upload before their D1 references become visible; unreferenced objects can be collected after a separate sweep. Recovery captures D1 and an R2 frontier while writers are quiesced.
+
+| Option | Lost on | Cost |
+| --- | --- | --- |
+| D1 metadata, R2 content, durable guards *(chosen)* | — | A Worker bridge and explicit reconciliation of orphan guards and R2 objects. |
+| PostgreSQL behind Hyperdrive | Native D1 profile | An external database remains mandatory. |
+| D1 pre-dispatch checks alone | Fencing | Owner transfer can race between the check and external call. |
+| Local SQLite with R2 sync | Replacement safety | A crash can lose a paid-call record or export checkpoint. |
+
+Consequences: D1 writes that move an owner or lease predicate on the absence of a guard. Guard acquisition checks the exact owner, active attempt and fence in the same D1 statement. A missing bridge, schema, recovery identity or R2 binding refuses admission. Coordinated publication refuses until its D1 outbox has an atomic activation path.
 
 ## Registered bodies pin the executing host and public semantic dependencies
 
@@ -348,4 +361,4 @@ Criteria: atomic downstream visibility and stale replay refusal decide the proto
 | Reset an existing export cursor | Recovery safety | An older checkpoint can reverse tombstones or reuse identities. |
 | Re-execute jobs during projection recovery | Effect isolation | Recovery repeats paid effects and chooses another input frontier. |
 
-Consequences: the local SQLite profile persists producer, outbox and receiver state transactionally. The Cloudflare Postgres profile refuses coordinated groups until its shared outbox adapter supports this protocol.
+Consequences: the local SQLite profile persists producer, outbox and receiver state transactionally. The `postgres` profile refuses coordinated groups until its shared outbox adapter supports this protocol.

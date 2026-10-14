@@ -7,6 +7,9 @@ dist/
 
 # Agent worktrees and session state.
 .claude/
+.worktrees/
+.pnpm-store/
+.wrangler/
 
 # Secrets. A dotenvx-encrypted file is tracked deliberately and force-added;
 # an unencrypted one never reaches a remote.

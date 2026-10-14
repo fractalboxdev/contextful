@@ -104,6 +104,10 @@ fn fire(f: &Fixture, run: &str, now: &str) -> Result<String> {
 // The protocol and crash point match the milestone-three acceptance fixture.
 const VENDOR: &str = r#"
 printf 'page=%s key=%s\n' "${CONTEXTFUL_CURSOR:-start}" "$CONTEXTFUL_IDEMPOTENCY_KEY" >> effects.log
+if [ ! -f "charged-$CONTEXTFUL_IDEMPOTENCY_KEY" ]; then
+  : > "charged-$CONTEXTFUL_IDEMPOTENCY_KEY"
+  printf 'page=%s key=%s\n' "${CONTEXTFUL_CURSOR:-start}" "$CONTEXTFUL_IDEMPOTENCY_KEY" >> charges.log
+fi
 case "$CONTEXTFUL_CURSOR" in
   '') printf '{"rows":[{"id":"a"},{"id":"b"}],"cursor":"p2","more":true}' ;;
   '"p2"') if [ -f crash-armed ]; then rm crash-armed; kill -9 "$PPID"; fi
@@ -158,6 +162,17 @@ fn paged(f: &Fixture, crash: bool) -> Result<()> {
             "ConformanceCrashRecordMissing",
         )?;
         f.replace_local_state()?;
+        if f.remote.as_ref().is_some_and(|remote| remote.environment.iter().any(|(key, value)| key == "CONTEXTFUL_STORAGE_PROFILE" && value == "cloudflare-d1")) {
+            let attempts = std::fs::read_to_string(f.dir.path().join("effects.log"))
+                .map_err(|_| "ConformanceEffectsMissing")?;
+            let key = attempts.lines().find_map(|line| line.strip_prefix("page=\"p2\" key="))
+                .filter(|key| !key.is_empty()).ok_or("ConformanceRetryIdentityMissing")?;
+            let state: Value = serde_json::from_str(&f.ok(&["storage", "guard", "--project", PROJECT], &[])?)
+                .map_err(|_| "ConformanceGuardReportMalformed")?;
+            let token = state["token"].as_str().ok_or("ConformanceGuardMissing")?;
+            f.ok(&["storage", "reconcile-guard", "--project", PROJECT, "--token", token,
+                "--evidence", &format!("idempotency:{key}")], &[])?;
+        }
         let deadline = Instant::now() + f.timeout;
         let mut attempt = 0;
         loop {
@@ -203,6 +218,10 @@ fn paged(f: &Fixture, crash: bool) -> Result<()> {
     )?;
     if crash {
         require(retry[0] == retry[1], "ConformanceRetryIdentityChanged")?;
+        let charges = std::fs::read_to_string(f.dir.path().join("charges.log"))
+            .map_err(|_| "ConformanceChargesMissing")?;
+        require(charges.lines().filter(|line| line.starts_with("page=\"p2\" ")).count() == 1,
+            "ConformanceAmbiguousCallBilledTwice")?;
     }
     require(
         start("capture-3", "2030-01-01T00:02:00Z")?.status.success(),
@@ -476,6 +495,10 @@ fn export(f: &Fixture) -> Result<()> {
         ],
         &[],
     )?;
+    if f.remote.is_some() {
+        f.ok(&["context", "compact", "items", "--project", PROJECT], &[])?;
+        f.ok(&["sync", "push", "--project", PROJECT], &[])?;
+    }
     let public = f.ok(
         &["token", "keygen", "--out", ".contextful/issuer.seed"],
         &[],
@@ -518,6 +541,7 @@ fn export(f: &Fixture) -> Result<()> {
         !state.lock().unwrap().active.is_empty(),
         "ConformanceReceiverCompletionMissing",
     )?;
+    f.replace_local_state()?;
     f.ok(&args, &[("CONTEXTFUL_TOKEN", &token)])?;
     {
         let sink = state.lock().unwrap();
@@ -536,6 +560,19 @@ fn export(f: &Fixture) -> Result<()> {
         )?;
     }
     f.ok(&args, &[("CONTEXTFUL_TOKEN", &token)])?;
-    let attempts = state.lock().unwrap().attempts.len();
-    require(attempts == 2, "ConformanceAcknowledgedExportRepeated")
+    let attempts = state.lock().unwrap().attempts.clone();
+    if f.remote.is_some() {
+        require(attempts.len() <= 3, "ConformanceAcknowledgedExportRepeated")?;
+        for batch in &attempts[2..] {
+            let Some(events) = batch["events"].as_array() else {
+                return Err("ConformanceExportRetryChanged".into());
+            };
+            require(events.len() == 1 && events[0]["kind"] == "publication_complete" && events[0]["changes"] == 0, "ConformanceAcknowledgedExportRepeated")?;
+        }
+    } else {
+        require(attempts.len() == 2, "ConformanceAcknowledgedExportRepeated")?;
+    }
+    f.ok(&args, &[("CONTEXTFUL_TOKEN", &token)])?;
+    let stable = state.lock().unwrap().attempts == attempts;
+    require(stable, "ConformanceAcknowledgedExportRepeated")
 }

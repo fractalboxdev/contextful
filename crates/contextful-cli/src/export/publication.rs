@@ -17,9 +17,9 @@ fn ledger(store: &contextful_context::Store) -> Result<PublicationLedger> {
 }
 
 fn supported() -> Result<()> {
-    if std::env::var("CONTEXTFUL_STORAGE_PROFILE").as_deref() == Ok("cloudflare-postgres") {
+    if std::env::var("CONTEXTFUL_STORAGE_PROFILE").as_deref() == Ok("postgres") {
         anyhow::bail!(
-            "PublicationStorageUnsupported: cloudflare-postgres lacks coordinated-group-outbox"
+            "PublicationStorageUnsupported: postgres lacks coordinated-group-outbox"
         );
     }
     Ok(())
