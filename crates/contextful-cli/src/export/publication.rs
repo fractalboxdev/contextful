@@ -10,7 +10,7 @@ use contextful_sqlite::PublicationLedger;
 
 /// The machine-local ledger, or D1 under the `cloudflare-d1` profile.
 enum Ledger {
-    Local(PublicationLedger),
+    Local(Box<PublicationLedger>),
     #[cfg(feature = "d1-catalog")]
     D1(Box<contextful_d1::D1PublicationLedger>),
 }
@@ -18,25 +18,25 @@ enum Ledger {
 macro_rules! each {
     ($ledger:expr, $l:ident => $call:expr) => {
         match $ledger {
-            Ledger::Local($l) => $call?,
+            Ledger::Local($l) => $call.map_err(anyhow::Error::from),
             #[cfg(feature = "d1-catalog")]
-            Ledger::D1($l) => $call?,
+            Ledger::D1($l) => $call.map_err(anyhow::Error::from),
         }
     };
 }
 
 impl Ledger {
-    fn incarnation(&self, candidate: &str) -> Result<String> { Ok(each!(self, l => l.incarnation(candidate))) }
-    fn record_source(&self, name: &str, source: &SourcePublication) -> Result<()> { Ok(each!(self, l => l.record_source(name, source))) }
-    fn source(&self, name: &str) -> Result<Option<SourcePublication>> { Ok(each!(self, l => l.source(name))) }
-    fn active_namespace(&self, name: &str) -> Result<Option<String>> { Ok(each!(self, l => l.active_namespace(name))) }
-    fn active(&self, name: &str, namespace: &str) -> Result<Option<PublicationGroup>> { Ok(each!(self, l => l.active(name, namespace))) }
-    fn pending_identity(&self, name: &str, namespace: &str) -> Result<Option<String>> { Ok(each!(self, l => l.pending_identity(name, namespace))) }
-    fn stage(&mut self, plan: &PublicationPlan, states: &GroupState, identity: &str) -> Result<()> { Ok(each!(self, l => l.stage(plan, states, identity))) }
-    fn batch(&mut self, name: &str, namespace: &str) -> Result<Option<GroupBatch>> { Ok(each!(self, l => l.batch(name, namespace))) }
-    fn acknowledge(&mut self, name: &str, namespace: &str, group: &str, through: u64) -> Result<()> { Ok(each!(self, l => l.acknowledge(name, namespace, group, through))) }
-    fn checkpoint(&self, name: &str, namespace: &str) -> Result<Vec<u8>> { Ok(each!(self, l => l.checkpoint(name, namespace))) }
-    fn restore(&mut self, name: &str, namespace: &str, bytes: &[u8], incarnation: &str, identity: &str) -> Result<()> { Ok(each!(self, l => l.restore(name, namespace, bytes, incarnation, identity))) }
+    fn incarnation(&self, candidate: &str) -> Result<String> { each!(self, l => l.incarnation(candidate)) }
+    fn record_source(&self, name: &str, source: &SourcePublication) -> Result<()> { each!(self, l => l.record_source(name, source)) }
+    fn source(&self, name: &str) -> Result<Option<SourcePublication>> { each!(self, l => l.source(name)) }
+    fn active_namespace(&self, name: &str) -> Result<Option<String>> { each!(self, l => l.active_namespace(name)) }
+    fn active(&self, name: &str, namespace: &str) -> Result<Option<PublicationGroup>> { each!(self, l => l.active(name, namespace)) }
+    fn pending_identity(&self, name: &str, namespace: &str) -> Result<Option<String>> { each!(self, l => l.pending_identity(name, namespace)) }
+    fn stage(&mut self, plan: &PublicationPlan, states: &GroupState, identity: &str) -> Result<()> { each!(self, l => l.stage(plan, states, identity)) }
+    fn batch(&mut self, name: &str, namespace: &str) -> Result<Option<GroupBatch>> { each!(self, l => l.batch(name, namespace)) }
+    fn acknowledge(&mut self, name: &str, namespace: &str, group: &str, through: u64) -> Result<()> { each!(self, l => l.acknowledge(name, namespace, group, through)) }
+    fn checkpoint(&self, name: &str, namespace: &str) -> Result<Vec<u8>> { each!(self, l => l.checkpoint(name, namespace)) }
+    fn restore(&mut self, name: &str, namespace: &str, bytes: &[u8], incarnation: &str, identity: &str) -> Result<()> { each!(self, l => l.restore(name, namespace, bytes, incarnation, identity)) }
 }
 
 /// Under `cloudflare-d1` the publication's durable lease, not the machine file lock, fences writers.
@@ -57,10 +57,10 @@ fn ledger(store: &contextful_context::Store, name: &str) -> Result<Ledger> {
         }
     }
     let path = store.root().join(MACHINE_CATALOG_FILE);
-    Ok(Ledger::Local(match store.file_cipher() {
+    Ok(Ledger::Local(Box::new(match store.file_cipher() {
         Some(cipher) => PublicationLedger::open_sealed(&path, cipher)?,
         None => PublicationLedger::open(&path)?,
-    }))
+    })))
 }
 
 fn supported() -> Result<()> {
