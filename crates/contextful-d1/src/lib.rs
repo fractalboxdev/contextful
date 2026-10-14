@@ -16,6 +16,8 @@ mod blob;
 pub use blob::D1BlobStore;
 mod export;
 pub use export::D1ExportLedger;
+mod publication;
+pub use publication::{D1PublicationLedger, GROUP_ROW_BYTES, GROUP_STATE_BYTES};
 
 #[derive(Debug, Clone, Serialize)]
 pub struct Statement<'a> {
@@ -49,7 +51,7 @@ pub struct D1 {
 }
 
 /// A complete backup carries these D1 tables and its R2 objects together.
-pub const EXECUTION_SCHEMA_VERSION: i64 = 2;
+pub const EXECUTION_SCHEMA_VERSION: i64 = 3;
 const TABLES: &[(&str, &str)] = &[
     ("contextful_execution_schema", "CREATE TABLE IF NOT EXISTS contextful_execution_schema (id INTEGER PRIMARY KEY CHECK (id = 1), version INTEGER NOT NULL)"),
     ("contextful_recovery", "CREATE TABLE IF NOT EXISTS contextful_recovery (id INTEGER PRIMARY KEY CHECK (id = 1), project TEXT NOT NULL, generation TEXT NOT NULL, frontier_sha256 TEXT NOT NULL)"),
@@ -63,7 +65,9 @@ const TABLES: &[(&str, &str)] = &[
     ("contextful_export", "CREATE TABLE IF NOT EXISTS contextful_export (name TEXT PRIMARY KEY, version INTEGER NOT NULL, body TEXT NOT NULL)"),
     ("contextful_guard", "CREATE TABLE IF NOT EXISTS contextful_guard (scope TEXT PRIMARY KEY, token TEXT NOT NULL, admitted_at INTEGER NOT NULL)"),
     ("contextful_reconciliation", "CREATE TABLE IF NOT EXISTS contextful_reconciliation (token TEXT PRIMARY KEY, evidence TEXT NOT NULL, reconciled_at INTEGER NOT NULL)"),
+    ("contextful_publication", PUBLICATION_TABLE),
 ];
+const PUBLICATION_TABLE: &str = "CREATE TABLE IF NOT EXISTS contextful_publication (role TEXT NOT NULL, name TEXT NOT NULL, namespace TEXT NOT NULL, version INTEGER NOT NULL, body TEXT NOT NULL, blob TEXT, token TEXT, PRIMARY KEY (role, name, namespace))";
 
 impl D1 {
     pub fn connect(endpoint: &str) -> Result<Self, String> {
@@ -117,6 +121,11 @@ impl D1 {
             vec![],
         )?;
         if !existing.rows.is_empty() {
+            // Schema 2 lacks only the coordinated publication table.
+            self.batch(&[
+                Statement { sql: PUBLICATION_TABLE, params: vec![] },
+                Statement { sql: "UPDATE contextful_execution_schema SET version = 3 WHERE id = 1 AND version = 2", params: vec![] },
+            ])?;
             return self.verify_recovery(project, generation);
         }
         let frontier =

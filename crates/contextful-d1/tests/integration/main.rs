@@ -1,3 +1,6 @@
+mod publication;
+
+
 use contextful_core::coordinate::{
     Cas, Catalog, CursorRow, ExecutionAdmission, ExecutionExpectation, LeaseKey,
 };
