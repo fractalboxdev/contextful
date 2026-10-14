@@ -18,11 +18,9 @@ those promises without taking the librarian's word.
 
 - **The math check.** A proof assistant reads the rulebook, not the code, and proves the
   promises follow from it. An auditor confirms no proof hides a skipped step
-  ({{assurance.audit-assumptions.hole-assumption}}), like a teacher marking the working.
+  ({{assurance.audit-assumptions.hole-assumption}}).
 - **The twin check.** A small reference program built from the proofs and the real engine
-  answer the same made-up questions ({{assurance.differential-test.harness}}). A
-  disagreement shrinks and is saved, so every later run asks it first
-  ({{assurance.differential-test.corpus-replay}}).
+  answer the same made-up questions ({{assurance.differential-test.harness}}).
 - **The house rules.** Every code change arrives with a test that failed before it
   ({{assurance.test.test-first}}), the gate runs its stages in a fixed order
   ({{assurance.gate.stage-sequence}}), and search results are scored against rows that
@@ -99,6 +97,24 @@ only annotate ({{assurance.measure.trend-band}}) against earlier matching report
 ({{assurance.measure.trend-baseline}}) in their declared direction
 ({{assurance.measure.trend-direction}}).
 
+A backtest places each case against the reader's cutoff ({{assurance.backtest.cutoff-slice}})
+and purges overlapping labels ({{assurance.backtest.split}}); forecast tracks never pool
+({{assurance.forecast.tracks-separate}}).
+
+```mermaid
+flowchart LR
+  CASES["case set"] -->|"resolution minus cutoff"| SEEN{"Resolved before reader cutoff?"}
+  SEEN -->|"before: exposed"| EXPOSED["exposed slice"]
+  SEEN -->|"after: unseen"| UNSEEN["unseen slice"]
+  REF["declared reference"] -->|"discontinuity or control"| EST["leakage estimate"]
+  EXPOSED -->|"scores"| EST
+  UNSEEN -->|"scores"| EST
+  CASES -->|"label intervals"| FOLD{"Where does the label fall?"}
+  FOLD -->|"overlaps a test label"| PURGED["purged cases"]
+  FOLD -->|"inside embargo span"| EMBARGOED["embargoed cases"]
+  FOLD -->|"clear of both"| TRAIN["training fold"]
+```
+
 ## Worked example
 
 A contributor reorders the engine's layers so masking runs before filtering.
@@ -120,9 +136,6 @@ form ({{assurance.differential-test.minimized}}), enters the counterexample corp
 ({{assurance.differential-test.discarded-counterexample}}), and replays before fresh cases
 on every later run ({{assurance.differential-test.corpus-replay}}), reproducible from the
 recorded seed ({{assurance.differential-test.seed}}).
-
-Past both, evaluation fails if a
-must-not-retrieve row appears ({{assurance.evaluate.forbidden-row-rate}}).
 
 The composition theorem is not a
 mediation theorem ({{assurance.prove.mediation-from-composition}}), stages are not claimed

@@ -333,3 +333,21 @@ Decision: `assurance.structure-tree.derivation-check` exports the committed tree
 | Trust a build-time export | Committed artifact currency | The build can succeed while the committed output remains stale. |
 
 Consequences: a generator must produce stable bytes; nondeterministic output reds the schema stage.
+
+## Backtests estimate leakage against a reference, and their tracks never pool
+
+**Status:** accepted
+
+Context: a model can remember outcomes its weights saw, and recency alone lifts accuracy near a cutoff. Criteria: a reported leak survives a model that cannot have seen the outcome; one figure answers one question.
+
+Decision: `assurance.backtest.cutoff-slice` states leakage against a declared reference, a cutoff discontinuity or a clean control model. `assurance.forecast.tracks-separate` keeps backtest, prospective, tool-free and tool-using scores apart. The platform owns fill timing (`assurance.backtest.fill-instant`); costs, slippage and sizing live in a declared execution component (`assurance.backtest.execution-component`). Decoding corrections and log-probability regressions belong to the consumer, reading `connector.infer.logprobs` and the run record. Prompt disclaimers and anonymization are no control.
+
+| Option | Lost on | Cost |
+| --- | --- | --- |
+| Reference-based estimate, separate tracks, platform fill, component costs *(chosen)* | — | Every report declares a reference and an execution component; small tracks report wide intervals. |
+| Bare pre/post-cutoff gap | Survives a clean model | Recency reads as leakage near every cutoff. |
+| One pooled score across tracks | One figure, one question | A tool-using backtest lifts a prospective forecaster's rank. |
+| Costs inside the platform | One home per capability | Every venue's cost model becomes an engine release. |
+| Platform decoding corrections | Consumer choice | One correction fixed for every model and question. |
+
+Consequences: a report without a reference or an execution component refuses; a consumer correcting decoding reads the landed log-probabilities.

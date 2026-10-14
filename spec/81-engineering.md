@@ -8,6 +8,8 @@ owns:
   - gate
   - evaluate
   - baseline
+  - backtest
+  - forecast
   - measure
   - release
 ---
@@ -370,6 +372,8 @@ Holding a run against committed baselines and absolute floors, intervals, golden
   *P7*
 - `run-stamp-drift` — A run block differing from the run's own configuration raises `BaselineRunStampMismatch` before the suite runs.
   *P7*
+- `cutoff-block` — A judged baseline's run block carries the reader's and the judge's snapshot ids and {{connector.infer.cutoffs}}, so {{assurance.baseline.run-stamp-drift}} refuses a run under a changed snapshot or cutoff.
+  *because a score from a model trained later measures more recall, not better reading*
 - `interval` — Each judged figure reports a 95 percent percentile-bootstrap interval over cases from 1000 resamples.
 - `raise-only` — A baseline update runs after every gate and floor passes, moves each improved entry to its measured value, moves none in the worse direction, and adds no path.
 - `floors-are-absolute` — An absolute floor gates independently of every committed value.
@@ -394,6 +398,85 @@ Holding a run against committed baselines and absolute floors, intervals, golden
 - `trace-export` — A run touching a deployed store with a hosted trace endpoint configured raises `TraceExportOutOfPerimeter`; hosted collection serves runs over public or synthetic fixtures alone.
   *A-assurance*
 
+
+## backtest
+
+Look-ahead-free backtests: the bounded case, model-knowledge controls, label intervals and splits, trial accounting, fill timing and execution, planted leaks, and the trajectory evidence a case is judged on.
+
+- `bounded-case` — A bounded case carries a horizon, an instant each of its reads passes as {{store.available-time.available-as-of}}; its trajectory is the ordered tool calls, queries and retrieved documents its run records.
+- `checkpoint-route` — A reader, derive engine or embedder naming a checkpoint family resolves each bounded case to the newest family checkpoint whose post-training {{connector.infer.cutoffs}} precedes the case's horizon.
+  *because date-bounded checkpoints remove memorized outcomes at the source*
+- `cutoff-slice` — A backtest report places each case by its resolution instant minus the reader's post-training cutoff and states leakage against a declared reference, a cutoff discontinuity or a clean control model, never a bare pre/post gap.
+  *A-assurance*
+- `cutoff-sensitivity` — The report repeats {{assurance.backtest.cutoff-slice}} with each `estimated` cutoff moved across its declared uncertainty interval, and states the minimum detectable effect.
+  *because finding no leakage bounds it and does not certify its absence*
+- `latest-arm` — A case set run under a checkpoint family also runs the family's latest checkpoint as a paired arm, and the report states the latest-minus-routed difference.
+  *because the latest-minus-dated gap isolates the leakage premium*
+- `answer-key-only` — A judge scores a case resolved before the judge's post-training cutoff against the case's stored expected answer alone.
+  *because a judge reasoning about an outcome may remember it*
+- `run-stamp` — Beyond {{assurance.evaluate.judged-cutoffs}}, taken through {{assurance.evaluate.cutoff-flags}}, a backtest run block stamps the derive engine's and embedder's snapshot ids and cutoffs, the temperature, seed, prompt digest and tool-schema version.
+  *because two runs differing in any of these are two trials, and a report cannot slice on a value it never recorded*
+- `label-interval` — Every bounded case declares its label interval `[t0, t1]`, the span its outcome is observed over; a bounded case without one raises `EvalLabelIntervalMissing` before any of its reads.
+  *because purge and embargo need each label's span, and a label observed past the horizon is the leak itself*
+- `split` — A split purges each training case whose label interval overlaps a test case's, and embargoes each training case starting within a declared span after a test fold ends.
+  *because serially correlated labels carry a test fold's outcome into adjacent training cases*
+- `trial-ledger` — Every run against one case set lands its return series as one trial row, and the report computes the deflated Sharpe ratio from trial count, Sharpe variance, series length, skew and kurtosis.
+  *because the deflated Sharpe needs every trial's Sharpe, not a reported count*
+- `seed-repeats` — A configuration runs its declared repeat count; its repeats count as one trial, and the report shows their spread.
+- `universe-table` — A case names its universe as a membership table declaring valid time and `available_time`; a case naming literal symbols reports under a separate `fixed-universe` slice.
+  *because a literal symbol list names the survivors known when the case was written*
+- `fill-instant` — The report fills each decision at the first price available strictly after the decision's recorded instant.
+  *A-assurance*
+- `execution-component` — Costs, slippage, sizing and liquidity caps belong to a declared execution component whose digest and parameters the report stamps; a report without one raises `EvalExecutionUndeclared`.
+  *A-assurance*
+- `planted-future` — Each bounded case plants a row available after its horizon in every table it reads; a planted row in the case's trajectory fails the case.
+  *because a planted row proves the bound held on the path the case took, not only in its configuration*
+- `planted-delisting` — A universe case plants a member delisted inside its window; the case fails unless its trajectory holds that member's delisting return.
+  *because survivorship shows as a missing delisting return, which no aggregate figure reveals*
+- `leak-score` — Each retrieved document lands one leak-score row per document and case horizon on a 0 to 4 scale, and the report gives the Brier score per leak tier.
+  *because leaked page content passes every bound, so only the document's own content can show it*
+- `trajectory-check` — A bounded case fails when a call in its trajectory lacks the {{disclosure.record.bound-entry}} attributes, or a retrieved document scores at or above the case's declared leak threshold.
+  *because a bound proves the configuration, and leaked page content passes the bound*
+- `query-finding` — A recorded query naming an entity first available after the case's horizon lands a finding naming the call.
+  *because a model that remembers the outcome steers its queries toward it*
+- `trajectory-replay` — `contextful eval replay <run>` re-serves each recorded response without reading the store and reproduces the run report's digest.
+  *because a backtest a third party cannot re-score is a claim, not evidence*
+- `replay-root` — A backtest run report carries the signed audit-chain root covering its run's {{disclosure.record.bound-entry}} entries.
+  *because the root lets a verifier prove each replayed response is the one the run recorded*
+
+#### Scenarios
+
+- `assurance.backtest.label-interval`: WHEN a bounded case declares a horizon and no label interval, THEN the run raises `EvalLabelIntervalMissing` and reads nothing for that case.
+- `assurance.backtest.planted-future`: WHEN a bounded case's trajectory returns the row planted one day after its horizon, THEN the case fails and the report names the call that returned it.
+
+unsettled: Does the leak-score judge run in the platform or arrive as consumer-landed rows? owner: eval affects: assurance.backtest
+
+## forecast
+
+Forecast cases resolved after they are asked: the freeze instant, settlement, lead time, market context, imputation, coverage, the no-evidence baseline and the tracks scores never pool across.
+
+- `forecast-case` — A forecast case carries a freeze instant, a resolution statement naming its vintage, a resolution instant and a probability answer; a backtest forecast case is a {{assurance.backtest.bounded-case}} whose horizon is its freeze instant.
+- `resolved-before-freeze` — A backtest forecast case whose resolution instant precedes its freeze instant raises `EvalCaseResolvedBeforeFreeze`.
+  *because a question picked after its answer is known leaks through its own existence*
+- `settlement` — A forecast case settles through the label join within {{read.settle.grace-window}}, and its scores report as {{read.settle.calibration-report}} groups them.
+  *because one settlement path keeps a forecast's Brier score comparable with an application's calibration*
+- `lead-time` — An answer recorded less than the case's declared minimum lead before resolution scores on a separate track.
+  *because an answer given near resolution reads the outcome rather than forecasting it*
+- `market-context` — A market case carries the freeze-instant market price as an available row, and the report shows each forecaster's edge over it.
+- `imputed` — A missing answer scores as probability 0.5 on a dataset case and as the freeze-instant market price on a market case.
+  *because dropping a missing answer rewards abstaining on hard questions*
+- `coverage-floor` — A forecaster answering below 95 percent of a round's cases is reported unranked.
+  *because imputation alone still lets a forecaster pick its questions*
+- `no-evidence-baseline` — Each round also scores a forecaster given the question text alone, and the report subtracts its Brier score from each forecaster's.
+  *because which questions exist can reveal their answers without any retrieval*
+- `tracks-separate` — Backtest, prospective, tool-free and tool-using scores never pool into one figure.
+  *A-assurance*
+
+#### Scenarios
+
+- `assurance.forecast.resolved-before-freeze`: WHEN a backtest forecast case freezes on `2014-06-01` and resolved on `2014-05-20`, THEN the run raises `EvalCaseResolvedBeforeFreeze` before reading the case.
+
+unsettled: Which reference anchors difficulty-adjusted Brier for finance cases, market price or a two-way fixed-effects fit? owner: eval affects: assurance.forecast
 
 ## measure
 

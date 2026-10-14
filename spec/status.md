@@ -5,17 +5,17 @@ An unpinned clause is `committed`; a pinned one is `performed` when its Rust, Le
 
 | Contract | Files | Operations | Clauses | Refusals | Limits | Unsettled | Performed | Broken | Floor |
 | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
-| `assurance` | 3 | 16 | 274 | 60 | 22 | 7 | 235 | 0 | 235 |
+| `assurance` | 3 | 18 | 305 | 63 | 23 | 9 | 235 | 0 | 235 |
 | `authority` | 2 | 16 | 295 | 79 | 29 | 9 | 222 | 0 | 222 |
 | `connector` | 2 | 14 | 356 | 90 | 21 | 16 | 229 | 0 | 229 |
 | `corpus` | 1 | 10 | 79 | 37 | 7 | 0 | 79 | 0 | 79 |
-| `disclosure` | 3 | 16 | 156 | 68 | 13 | 3 | 63 | 0 | 63 |
+| `disclosure` | 3 | 16 | 157 | 68 | 13 | 3 | 63 | 0 | 63 |
 | `read` | 2 | 18 | 238 | 38 | 24 | 4 | 211 | 0 | 211 |
 | `run` | 3 | 28 | 497 | 113 | 43 | 14 | 426 | 0 | 426 |
 | `store` | 3 | 19 | 287 | 65 | 14 | 13 | 253 | 0 | 253 |
 | `surface` | 2 | 20 | 137 | 59 | 22 | 0 | 98 | 0 | 98 |
 | `topology` | 1 | 6 | 79 | 25 | 5 | 3 | 72 | 0 | 72 |
-| **total** | 22 | 163 | 2398 | 634 | 200 | 69 | 1888 | 0 | |
+| **total** | 22 | 165 | 2430 | 637 | 201 | 71 | 1888 | 0 | |
 
 Decision records: 18.
 
@@ -33,14 +33,14 @@ A milestone reads `closed` when its acceptance test computes `passing` and every
 | 5 — The read face under enforcement | 17 | 298 | 238 | passing | open |
 | 6 — Sync and replicas | 8 | 83 | 83 | passing | closed |
 | 7 — Memory | 6 | 55 | 54 | passing | closed |
-| 8 — Accountability | 5 | 82 | 47 | passing | open |
+| 8 — Accountability | 5 | 83 | 47 | passing | open |
 | 9 — Visibility | 6 | 41 | 3 | open | open |
 | 10 — Cadence and the operator plane | 11 | 93 | 79 | passing | open |
 | 11 — The derive tier | 7 | 94 | 92 | passing | closed |
 | 12 — The operator console | 12 | 56 | 25 | passing | open |
 | 13 — Disclosure | 5 | 33 | 13 | open | open |
-| 14 — Assurance | 7 | 155 | 123 | passing | closed |
-| 15 — Point-in-time evaluation | 5 | 46 | 0 | open | open |
+| 14 — Assurance | 7 | 156 | 123 | passing | closed |
+| 15 — Point-in-time evaluation | 7 | 76 | 0 | open | open |
 
 Unscheduled operations: 12.
 
