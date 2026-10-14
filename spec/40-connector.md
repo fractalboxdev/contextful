@@ -284,9 +284,20 @@ Model egress: the single endpoint, the data fence and the trust label of model o
 - `empty-batch` — A call fencing no value renders an explicit no-data line, never an empty section.
 - `operator-template` — The operator's prompt template stays unfenced in the system role. The idempotency hash covers the template alone.
   *because hardening the fence leaves a dedup key intact*
+- `cutoffs` — A model reference carries a pinned snapshot id and pre-training and post-training cutoffs, each tagged `documented` or `estimated`. An undeclared cutoff compares as the call's own instant.
+  *because tuning adds knowledge after pre-training, and an estimated cutoff often falls before the reported one*
+- `logprobs` — A call to an endpoint exposing token log-probabilities lands them with the call record.
+  *because probe-based leakage estimates read first-token probabilities*
 
 The zone a call's declared locality maps onto belongs to the `authority` contract; a
 placement-filtered read consults that mapping, not the endpoint URL.
+
+unsettled: Does a call to an endpoint naming an alias rather than a pinned snapshot refuse under an availability horizon? owner: connector affects: connector.infer
+
+#### Scenarios
+
+- `connector.infer.cutoffs`: WHEN a model reference carries a pre-training cutoff and no post-training cutoff, THEN the post-training cutoff compares as the call's own instant.
+- `connector.infer.logprobs`: WHEN an endpoint returns token log-probabilities, THEN the call record carries them beside the response.
 
 ## package
 
