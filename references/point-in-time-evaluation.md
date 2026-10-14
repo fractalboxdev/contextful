@@ -2,11 +2,12 @@
 
 Evaluating a reader, an agent or a forecast as of a past instant without letting
 later information in. Leaks enter through five layers: the data (backfill stamps,
-publication lag, restatements), retrieval (live search, corpus statistics), the
-model's weights, the tools around it, and the evaluation protocol (overlapping
-labels, selection over many trials). The store's two clocks live in
-`store.bound-time`; an availability-time column, vintages, an as-of join, a read
-horizon, walk-forward sweeps and a backtest protocol are not yet operations.
+publication lag, restatements), retrieval (live search, rankers trained on later
+data), the model's weights, the tools around it, and the evaluation protocol
+(overlapping labels, selection over many trials). The controls these sources bear
+on are an availability-time column beside the two clocks of `store.bound-time`,
+vintages, a per-row as-of join, a read horizon, walk-forward sweeps and a backtest
+protocol with a trial ledger.
 
 ## Model memory
 
@@ -20,8 +21,9 @@ Bias in Financial Backtesting with Large Language Models." *EMNLP*, 2026.
 - **Informs:** `connector.infer`, `assurance.evaluate`
 - **Question:** Can memorized outcomes be attenuated at decoding time without
   retraining? Context-aware decoding scaled per entity and date gives a largest
-  model-level mean in-sample return correction of −67.1% and lifts in-sample/out-of-sample rank correlation from
-  0.779 to 0.846; it needs logits, which the single model endpoint does not promise.
+  model-level mean in-sample return correction of −67.1% and lifts the
+  in-sample/out-of-sample rank correlation from 0.779 to 0.846; it needs logits,
+  which the single model endpoint does not promise.
 
 ### Lookahead Propensity
 
@@ -286,8 +288,8 @@ arXiv:2512.16030, 2025. <https://arxiv.org/abs/2512.16030>
 - **Informs:** `read.settle`
 - **Question:** Are post-cutoff forecasts calibrated? Across 300 market questions
   resolving after the cutoffs, all five models are overconfident (best ECE 0.120;
-  a reasoning-enhanced model 0.395) and one alone has a positive Brier skill score — the measures the
-  calibration report already names.
+  a reasoning-enhanced model 0.395) and one alone has a positive Brier skill
+  score — the measures the calibration report already names.
 
 ## Finance benchmarks and backtest method
 
@@ -352,7 +354,8 @@ Models." arXiv:2511.03628, 2025. <https://arxiv.org/abs/2511.03628>
 ### DeepFund
 
 Li, C., Shi, Y., Wang, C., et al. "Time Travel is Cheating: Going Live with DeepFund
-for Real-Time Fund Investment Benchmarking." *NeurIPS Datasets and Benchmarks*, 2025.
+for Real-Time Fund Investment Benchmarking." *NeurIPS Datasets and Benchmarks*,
+2025.
 <https://arxiv.org/abs/2505.11065>
 
 - **Priority:** should-read
@@ -437,7 +440,8 @@ Torp, K., Jensen, C. S., Snodgrass, R. T. "Effective Timestamping in Databases."
 
 ### Datomic as-of
 
-Datomic. "Filters: as-of, since, history." <https://docs.datomic.com/reference/filters.html>
+Datomic. "Filters: as-of, since, history."
+<https://docs.datomic.com/reference/filters.html>
 
 - **Priority:** optional
 - **Informs:** `store.bound-time`, `run.record`
@@ -457,7 +461,8 @@ XTDB. "Time in XTDB." <https://docs.xtdb.com/about/time-in-xtdb.html>
 
 ### Feast point-in-time joins
 
-Feast. "Point-in-time joins." <https://docs.feast.dev/getting-started/concepts/point-in-time-joins>
+Feast. "Point-in-time joins."
+<https://docs.feast.dev/getting-started/concepts/point-in-time-joins>
 
 - **Priority:** must-read
 - **Informs:** `store.bound-time`, `read.register`
@@ -468,7 +473,8 @@ Feast. "Point-in-time joins." <https://docs.feast.dev/getting-started/concepts/p
 
 ### Tecton data delay
 
-Tecton. "BatchSource — `data_delay`." <https://docs.tecton.ai/docs/sdk-reference/data-sources/BatchSource>
+Tecton. "BatchSource — `data_delay`."
+<https://docs.tecton.ai/docs/sdk-reference/data-sources/BatchSource>
 
 - **Priority:** optional
 - **Informs:** `run.backfill`, `store.bound-time`
@@ -488,7 +494,8 @@ KX. "aj, aj0, ajf, ajf0 — as-of join." <https://code.kx.com/q/ref/aj/>
 
 ### ALFRED vintages
 
-Federal Reserve Bank of St. Louis. "ALFRED: Archival FRED." <https://alfred.stlouisfed.org/help>
+Federal Reserve Bank of St. Louis. "ALFRED: Archival FRED."
+<https://alfred.stlouisfed.org/help>
 
 - **Priority:** must-read
 - **Informs:** `store.bound-time`, `connector.source`, `store.fold`
