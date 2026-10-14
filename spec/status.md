@@ -5,9 +5,9 @@ An unpinned clause is `committed`; a pinned one is `performed` when its Rust, Le
 
 | Contract | Files | Operations | Clauses | Refusals | Limits | Unsettled | Performed | Broken | Floor |
 | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
-| `assurance` | 3 | 16 | 272 | 60 | 22 | 7 | 235 | 0 | 235 |
+| `assurance` | 3 | 16 | 273 | 60 | 22 | 7 | 235 | 0 | 235 |
 | `authority` | 2 | 16 | 293 | 79 | 29 | 9 | 222 | 0 | 222 |
-| `connector` | 2 | 14 | 353 | 89 | 21 | 15 | 229 | 0 | 229 |
+| `connector` | 2 | 14 | 355 | 89 | 21 | 16 | 229 | 0 | 229 |
 | `corpus` | 1 | 10 | 79 | 37 | 7 | 0 | 79 | 0 | 79 |
 | `disclosure` | 3 | 16 | 156 | 68 | 13 | 3 | 63 | 0 | 63 |
 | `read` | 2 | 16 | 222 | 35 | 24 | 1 | 211 | 0 | 211 |
@@ -15,7 +15,7 @@ An unpinned clause is `committed`; a pinned one is `performed` when its Rust, Le
 | `store` | 1 | 17 | 264 | 61 | 14 | 11 | 253 | 0 | 253 |
 | `surface` | 2 | 20 | 137 | 59 | 22 | 0 | 98 | 0 | 98 |
 | `topology` | 1 | 6 | 79 | 25 | 5 | 3 | 72 | 0 | 72 |
-| **total** | 20 | 158 | 2337 | 625 | 200 | 62 | 1888 | 0 | |
+| **total** | 20 | 158 | 2340 | 625 | 200 | 63 | 1888 | 0 | |
 
 Decision records: 18.
 
@@ -29,7 +29,7 @@ A milestone reads `closed` when its acceptance test computes `passing` and every
 | 1 — The authority core | 14 | 242 | 223 | passing | closed |
 | 2 — The store | 9 | 181 | 170 | passing | closed |
 | 3 — The run path | 12 | 268 | 253 | passing | closed |
-| 4 — Ingest | 25 | 541 | 376 | passing | open |
+| 4 — Ingest | 25 | 543 | 376 | passing | open |
 | 5 — The read face under enforcement | 17 | 295 | 238 | passing | open |
 | 6 — Sync and replicas | 8 | 83 | 83 | passing | closed |
 | 7 — Memory | 6 | 55 | 54 | passing | closed |
@@ -39,7 +39,7 @@ A milestone reads `closed` when its acceptance test computes `passing` and every
 | 11 — The derive tier | 7 | 93 | 92 | passing | closed |
 | 12 — The operator console | 12 | 56 | 25 | passing | open |
 | 13 — Disclosure | 5 | 33 | 13 | open | open |
-| 14 — Assurance | 7 | 153 | 123 | passing | closed |
+| 14 — Assurance | 7 | 154 | 123 | passing | closed |
 
 Unscheduled operations: 12.
 

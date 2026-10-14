@@ -341,6 +341,8 @@ The read-path quality harness: case format, deterministic metrics and floors, ju
 - `judge` — The judge is one pinned open-weights instruct model, called once per judged item at temperature zero; a judge swap is a full re-baseline.
   *because a majority vote at temperature zero samples one mode and adds cost without reducing variance*
 - `judged-run` — `contextful eval run --tier judged` reads and judges every case through the endpoint and model `--endpoint` and `--model` name, stamping that model in the run block; the deterministic tier judges with the stubs.
+- `judged-cutoffs` — A judged run block stamps the reader's and the judge's snapshot ids and their {{connector.infer.cutoffs}}.
+  *because a score from a model trained past a case's resolution measures recall, not reading*
 - `systems-metrics` — Tokens per query, latency and cost report beside the quality figures, bucketed by corpus size in tokens relative to the reader's context window.
 - `checkpoint` — A run appends each case's result as JSONL, and a crash re-runs the in-flight case.
 - `run-report` — A run report carries one field per gated metric, the sample count behind each mean, the run block, the per-slice breakdown, and the tally of cases sampled, dropped and unscored.
@@ -349,6 +351,7 @@ The read-path quality harness: case format, deterministic metrics and floors, ju
 
 - `assurance.evaluate.unlabeled-corpus`: WHEN a corpus's tables declare no policy and the run passes no `--zone`, THEN the run raises `EvalCorpusUnlabeled` and lands no row.
 - `assurance.evaluate.policy-labels`: WHEN a regression case names a row another agent owns under `owner = subject.agent`, THEN no leg returns it and the hybrid forbidden-row rate reads 0.
+- `assurance.evaluate.judged-cutoffs`: WHEN the judge endpoint declares an estimated post-training cutoff, THEN the run block carries that cutoff tagged `estimated` beside the judge's snapshot id.
 
 ## baseline
 
