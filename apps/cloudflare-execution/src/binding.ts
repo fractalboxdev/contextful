@@ -83,7 +83,8 @@ export async function handleExecutionBinding(request: Request, env: ExecutionBin
       }
     }
     return error("StorageBindingRouteInvalid", 404);
-  } catch {
+  } catch (cause) {
+    console.error("StorageBindingFailed", cause instanceof Error ? `${cause.name}: ${cause.message}` : typeof cause);
     return error("StorageBindingFailed", 503);
   }
 }

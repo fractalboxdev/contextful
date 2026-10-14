@@ -1,0 +1,65 @@
+{
+  "schema_version": 1,
+  "suite_revision": "consumer-v1",
+  "suite_version": "0.5.0",
+  "artifact_digest": "42b68d2f217449033caa3e9fc7824fe31d08f10130adbd70954a53917c1c8240",
+  "reported_version": "contextful 0.5.0 contextful-full",
+  "feature_profile": "contextful-full",
+  "storage_profile": "cloudflare-d1",
+  "source_commit": "60374e4c0f8eb633df0af40199291d756118e0b8",
+  "scenarios": [
+    {
+      "id": "pagination-checkpoint",
+      "required": true,
+      "outcome": "passed",
+      "requirement": "run,query",
+      "diagnostic": null
+    },
+    {
+      "id": "hard-crash-replay",
+      "required": true,
+      "outcome": "passed",
+      "requirement": "run,query,exec",
+      "diagnostic": null
+    },
+    {
+      "id": "graceful-restart",
+      "required": true,
+      "outcome": "passed",
+      "requirement": "pipeline,run,query,exec,token",
+      "diagnostic": null
+    },
+    {
+      "id": "empty-replacement",
+      "required": true,
+      "outcome": "passed",
+      "requirement": "pipeline,query",
+      "diagnostic": null
+    },
+    {
+      "id": "applied-scheduling",
+      "required": true,
+      "outcome": "passed",
+      "requirement": "pipeline,build,query,token",
+      "diagnostic": null
+    },
+    {
+      "id": "public-identity-masking",
+      "required": true,
+      "outcome": "passed",
+      "requirement": "pipeline,query",
+      "diagnostic": null
+    },
+    {
+      "id": "typed-export-acknowledgement",
+      "required": true,
+      "outcome": "passed",
+      "requirement": "export,query,token",
+      "diagnostic": null
+    }
+  ],
+  "source_dirty": false,
+  "binding_origin": "cloudflare-worker",
+  "compatible": true,
+  "suite_exit_code": 0
+}

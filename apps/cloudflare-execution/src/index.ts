@@ -1,4 +1,5 @@
 export { D1ExecutionContainer } from "./container.ts";
+export { ContainerProxy } from "@cloudflare/containers";
 
 const missing = () => new Response(null, { status: 404 });
 
@@ -15,7 +16,8 @@ export default {
     try {
       const id = env.EXECUTION_CONTAINER.idFromName("conformance");
       return Response.json(await env.EXECUTION_CONTAINER.get(id).runConformance());
-    } catch {
+    } catch (error) {
+      console.error("ConformanceRunFailed", error instanceof Error ? `${error.name}: ${error.message}` : typeof error);
       return Response.json({ error: "ConformanceRunFailed" }, { status: 503 });
     }
   },

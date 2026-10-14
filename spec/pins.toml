@@ -187,6 +187,7 @@
 "run.journal.d1-atomicity" = { test = "crates/contextful-d1/tests/integration/main.rs::a_recorded_r2_blob_survives_replacement_and_sweep" }
 "run.journal.d1-guard" = { test = "crates/contextful-d1/tests/integration/main.rs::a_crashed_d1_guard_requires_explicit_reconciliation_before_takeover" }
 "run.journal.d1-recovery" = { test = "crates/contextful-d1/tests/integration/main.rs::a_replacement_checks_the_same_d1_schema_and_recovery_identity" }
+"run.journal.d1-backup" = { test = "crates/contextful-cli/tests/integration/storage.rs::d1_storage_initialization_and_history_survive_a_new_cli_process" }
 "run.export.d1-state" = { test = "crates/contextful-d1/tests/integration/main.rs::a_lost_sink_acknowledgement_reoffers_the_same_d1_event_identity" }
 "assurance.consumer.d1-profile" = { test = "crates/acceptance/tests/integration/conformance.rs::a_d1_consumer_replays_after_empty_disk_replacement" }
 "assurance.consumer.d1-release" = { test = "tools/ci/tests/integration/artifact.rs::release_archives_carry_the_consumer_suite_and_digest_bound_compatibility_evidence" }
@@ -201,7 +202,7 @@ connector = 229
 corpus = 79
 disclosure = 63
 read = 211
-run = 425
+run = 426
 store = 253
 surface = 98
 topology = 72

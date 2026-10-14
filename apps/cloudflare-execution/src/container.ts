@@ -6,11 +6,6 @@ import { completeConformanceReport, type ReleaseProvenance } from "./conformance
 export class D1ExecutionContainer extends Container<ContextfulExecutionEnv> {
   private conformanceRunning = false;
 
-  static outboundByHost = {
-    "contextful.d1": (request: Request, env: ExecutionBindings) =>
-      handleExecutionBinding(request, env),
-  };
-
   async runConformance() {
     if (this.conformanceRunning) throw new Error("ConformanceAlreadyRunning");
     this.conformanceRunning = true;
@@ -68,3 +63,8 @@ export class D1ExecutionContainer extends Container<ContextfulExecutionEnv> {
     };
   }
 }
+
+D1ExecutionContainer.outboundByHost = {
+  "contextful.d1": (request: Request, env: unknown) =>
+    handleExecutionBinding(request, env as ExecutionBindings),
+};

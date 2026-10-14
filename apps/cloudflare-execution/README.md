@@ -13,6 +13,8 @@ npm run prepare-image -- <release.tar.gz> <release.json> <cloudflare-d1.compatib
 
 An operator overlay based on `wrangler.example.jsonc` supplies a disposable D1 identifier, R2 bucket, account selection, and the six required secrets. The template keeps `workers_dev` disabled; the disposable test overlay enables its protected route. `CONFORMANCE_TOKEN` authenticates `POST /conformance`. The R2 endpoint, bucket, access key, secret key, and recovery identity pass into the Container process. The endpoint returns `compatible: true` only when every scenario passes, the suite exits successfully, and its digest matches the packaged release binary.
 
+The corpus endpoint uses `r2://<account-id>` so storage preflight identifies the R2 binding; the S3 adapter resolves it to the account's HTTPS endpoint. The [provider report](evidence/cloudflare-d1-provider.json) records seven required outcomes for the source-pinned release binary.
+
 The passing provider report attaches to a new release output directory:
 
 ```sh
