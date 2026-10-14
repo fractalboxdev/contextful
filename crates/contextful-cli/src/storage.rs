@@ -6,6 +6,8 @@ use clap::Subcommand;
 use contextful_context::project::Project;
 use contextful_core::store::{config::StoreConfig, sync::Endpoint};
 use serde_json::json;
+#[cfg(feature = "d1-catalog")]
+use sha2::{Digest, Sha256};
 
 pub const STORAGE_PROFILE_VAR: &str = "CONTEXTFUL_STORAGE_PROFILE";
 pub const RECOVERY_ID_VAR: &str = "CONTEXTFUL_RECOVERY_ID";
@@ -22,6 +24,11 @@ pub enum StorageCmd {
     },
     /// Bind a fresh remote execution database to this project's recovery identity.
     Initialize {
+        #[command(flatten)]
+        project: ProjectArgs,
+    },
+    /// Record the quiesced R2 corpus frontier in D1 before exporting the database.
+    Capture {
         #[command(flatten)]
         project: ProjectArgs,
     },
@@ -180,6 +187,8 @@ fn recovery(project: &Project, remote: &Remote, initialize: bool) -> Result<i64>
                 let db = contextful_d1::D1::connect(endpoint).map_err(anyhow::Error::msg)?;
                 if initialize { db.initialize_recovery(&project.name, recovery).map_err(anyhow::Error::msg)? }
                 else { db.verify_recovery(&project.name, recovery).map_err(anyhow::Error::msg)? }
+                let objects = db.recovery_objects(&project.name, recovery).map_err(anyhow::Error::msg)?;
+                verify_corpus_frontier(project, &objects)?;
                 Ok(contextful_d1::EXECUTION_SCHEMA_VERSION)
             }
             #[cfg(not(feature = "d1-catalog"))]
@@ -188,10 +197,35 @@ fn recovery(project: &Project, remote: &Remote, initialize: bool) -> Result<i64>
     }
 }
 
+#[cfg(feature = "d1-catalog")]
+fn verify_corpus_frontier(project: &Project, objects: &[contextful_d1::RecoveryObject]) -> Result<()> {
+    if objects.is_empty() { return Ok(()) }
+    let path = project.store_root().join(contextful_core::store::lay_out::CONFIG_FILE);
+    let text = std::fs::read_to_string(path)?;
+    let config: StoreConfig = toml::from_str(&text)?;
+    let sync = config.sync.context("StorageCapabilityMissing: durable corpus `[sync]` binding is required")?;
+    let prefix = sync.resolve_prefix(variable)?;
+    let bucket = crate::sync::bucket(&sync)?;
+    for object in objects {
+        if !prefix.is_empty() && !object.key.starts_with(&format!("{prefix}/")) {
+            bail!("ExecutionRecoveryMismatch: corpus key outside the recovery prefix")
+        }
+        let Some((bytes, _)) = bucket.get(&object.key)
+            .map_err(|error| anyhow::anyhow!("StorageCapabilityMissing: R2 corpus object: {error}"))?
+        else { bail!("ExecutionRecoveryMismatch: missing R2 corpus object `{}`", object.key) };
+        let digest = format!("{:x}", Sha256::digest(&bytes));
+        if digest != object.sha256 {
+            bail!("ExecutionRecoveryMismatch: R2 corpus object `{}` changed", object.key)
+        }
+    }
+    Ok(())
+}
+
 pub fn run(command: StorageCmd) -> Result<()> {
     let (args, initialize) = match command {
         StorageCmd::Check { project } => (project, false),
         StorageCmd::Initialize { project } => (project, true),
+        StorageCmd::Capture { project } => return capture(project),
         StorageCmd::Guard { project } => return guard(project, None),
         StorageCmd::ReconcileGuard { project, token, evidence } => return guard(project, Some((token, evidence))),
     };
@@ -214,6 +248,39 @@ pub fn run(command: StorageCmd) -> Result<()> {
         "capabilities":["journal", "blobs", "awakeables", "owners", "cadence", "exports", "fenced-dispatch", "recovery-identity"] })
     );
     Ok(())
+}
+
+fn capture(args: ProjectArgs) -> Result<()> {
+    let Some(remote) = remote()? else { bail!("StorageProfileUnsupported: recovery capture requires `{CLOUDFLARE_D1}`") };
+    let Remote::D1 { endpoint, recovery: generation } = &remote else {
+        bail!("StorageProfileUnsupported: recovery capture requires `{CLOUDFLARE_D1}`")
+    };
+    let project = args.locate(None)?.project;
+    validate_project(&project, CLOUDFLARE_D1)?;
+    recovery(&project, &remote, false)?;
+    #[cfg(feature = "d1-catalog")]
+    {
+        let path = project.store_root().join(contextful_core::store::lay_out::CONFIG_FILE);
+        let text = std::fs::read_to_string(path)?;
+        let config: StoreConfig = toml::from_str(&text)?;
+        let sync = config.sync.context("StorageCapabilityMissing: durable corpus `[sync]` binding is required")?;
+        let prefix = sync.resolve_prefix(variable)?;
+        let bucket = crate::sync::bucket(&sync)?;
+        let root = if prefix.is_empty() { String::new() } else { format!("{prefix}/") };
+        let listed = bucket.list(&root)?;
+        let mut objects = Vec::with_capacity(listed.len());
+        for key in listed {
+            let (bytes, _) = bucket.get(&key)?.ok_or_else(|| anyhow::anyhow!("ExecutionRecoveryMismatch: missing R2 corpus object `{key}`"))?;
+            objects.push(contextful_d1::RecoveryObject { key, sha256: format!("{:x}", Sha256::digest(&bytes)) });
+        }
+        let db = contextful_d1::D1::connect(endpoint).map_err(anyhow::Error::msg)?;
+        let frontier = db.capture_recovery(&project.name, generation, &objects).map_err(anyhow::Error::msg)?;
+        println!("{}", json!({"profile":CLOUDFLARE_D1,"project":project.name,"generation":generation,
+            "frontier_sha256":frontier,"corpus_objects":objects.len(),"schema":contextful_d1::EXECUTION_SCHEMA_VERSION}));
+        Ok(())
+    }
+    #[cfg(not(feature = "d1-catalog"))]
+    { let _ = (endpoint, generation); bail!("ProfileCapabilityAbsent: recovery capture requires `d1-catalog`") }
 }
 
 fn guard(args: ProjectArgs, reconciliation: Option<(String, String)>) -> Result<()> {

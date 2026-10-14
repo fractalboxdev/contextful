@@ -29,6 +29,19 @@ pub struct QueryResult {
     pub changes: u64,
 }
 
+#[derive(Debug, Clone, Deserialize, Serialize)]
+pub struct RecoveryObject {
+    pub key: String,
+    pub sha256: String,
+}
+
+#[derive(Deserialize)]
+struct RecoveryFrontier {
+    project: String,
+    generation: String,
+    objects: Vec<RecoveryObject>,
+}
+
 /// A container has no D1 credential; the Worker intercepts this virtual host.
 pub struct D1 {
     pub(crate) endpoint: String,
@@ -156,6 +169,28 @@ impl D1 {
         {
             return Err("ExecutionSchemaIncompatible".into());
         }
+        self.recovery_objects(project, generation)?;
+        let mut after = String::new();
+        loop {
+            let rows = self.query(
+                "SELECT sha256 FROM contextful_blob WHERE sha256 > ? ORDER BY sha256 LIMIT 100",
+                vec![json!(after)],
+            )?.rows;
+            if rows.is_empty() { break; }
+            for row in rows {
+                let sha256 = row.get("sha256").and_then(Value::as_str)
+                    .ok_or("ExecutionRecoveryMismatch")?;
+                if !self.head_blob(sha256)? {
+                    return Err(format!("ExecutionRecoveryMismatch: missing R2 blob `{sha256}`"));
+                }
+                after = sha256.to_owned();
+            }
+        }
+        Ok(())
+    }
+
+    /// The corpus keys and content digests bound to this recovery generation.
+    pub fn recovery_objects(&self, project: &str, generation: &str) -> Result<Vec<RecoveryObject>, String> {
         let identity = self.query(
             "SELECT project, generation, frontier_sha256 FROM contextful_recovery WHERE id = 1",
             vec![],
@@ -171,27 +206,44 @@ impl D1 {
             .and_then(Value::as_str)
             .ok_or("ExecutionRecoveryMismatch")?;
         let frontier = self.get_blob(digest)?.ok_or("ExecutionRecoveryMismatch")?;
-        let manifest: Value =
+        let manifest: RecoveryFrontier =
             serde_json::from_slice(&frontier).map_err(|_| "ExecutionRecoveryMismatch")?;
-        if manifest.get("project").and_then(Value::as_str) != Some(project)
-            || manifest.get("generation").and_then(Value::as_str) != Some(generation)
+        if manifest.project != project || manifest.generation != generation
         {
             return Err("ExecutionRecoveryMismatch".into());
         }
-        let mut after = String::new();
-        loop {
-            let rows = self.query(
-                "SELECT sha256 FROM contextful_blob WHERE sha256 > ? ORDER BY sha256 LIMIT 100",
-                vec![json!(after)],
-            )?.rows;
-            if rows.is_empty() { break; }
-            for row in rows {
-                let sha256 = row.get("sha256").and_then(Value::as_str)
-                    .ok_or("ExecutionRecoveryMismatch")?;
-                if !self.head_blob(sha256)? {
-                    return Err(format!("ExecutionRecoveryMismatch: missing R2 blob `{sha256}`"));
-                }
-                after = sha256.to_owned();
+        Self::validate_recovery_objects(&manifest.objects)?;
+        Ok(manifest.objects)
+    }
+
+    /// Bind a quiesced corpus inventory to the D1 snapshot exported after this update.
+    pub fn capture_recovery(&self, project: &str, generation: &str, objects: &[RecoveryObject]) -> Result<String, String> {
+        Self::validate_recovery_objects(objects)?;
+        self.verify_recovery(project, generation)?;
+        let identity = self.query("SELECT frontier_sha256 FROM contextful_recovery WHERE id = 1", vec![])?;
+        let previous = identity.rows.first().and_then(|row| row.get("frontier_sha256"))
+            .and_then(Value::as_str).ok_or("ExecutionRecoveryMismatch")?;
+        let mut objects = objects.to_vec();
+        objects.sort_by(|a, b| a.key.cmp(&b.key));
+        let frontier = serde_json::to_vec(&json!({"project":project,"generation":generation,"objects":objects}))
+            .map_err(|_| "ExecutionRecoveryMismatch")?;
+        let digest = format!("{:x}", Sha256::digest(&frontier));
+        self.put_blob(&digest, &frontier)?;
+        let changed = self.query("UPDATE contextful_recovery SET frontier_sha256 = ? WHERE id = 1 AND project = ? AND generation = ? AND frontier_sha256 = ?",
+            vec![json!(digest), json!(project), json!(generation), json!(previous)])?;
+        if changed.changes != 1 { return Err("ExecutionRecoveryMismatch".into()) }
+        self.verify_recovery(project, generation)?;
+        Ok(digest)
+    }
+
+    fn validate_recovery_objects(objects: &[RecoveryObject]) -> Result<(), String> {
+        let mut keys = std::collections::BTreeSet::new();
+        for object in objects {
+            if contextful_core::store::sync::confine("", &object.key).is_err()
+                || Self::valid_digest(&object.sha256).is_err()
+                || !keys.insert(&object.key)
+            {
+                return Err("ExecutionRecoveryMismatch".into());
             }
         }
         Ok(())

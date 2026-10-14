@@ -158,6 +158,12 @@ fn d1_storage_initialization_and_history_survive_a_new_cli_process() {
     let marker: serde_json::Value = serde_json::from_slice(&marker).unwrap();
     assert_eq!(marker["objects"][0]["key"], captured_key);
     assert_eq!(marker["objects"][0]["sha256"], format!("{:x}", Sha256::digest(captured_bytes)));
+    s3.seed(captured_key, b"changed after capture");
+    let changed_capture = invoke(&["storage", "check", "--project", "research"]);
+    assert!(!changed_capture.status.success(), "a changed captured object passed preflight");
+    s3.seed(captured_key, captured_bytes);
+    let intact_capture = invoke(&["storage", "check", "--project", "research"]);
+    assert!(intact_capture.status.success(), "{}", String::from_utf8_lossy(&intact_capture.stderr));
     let corpus_key = "d1-test/corpus-object";
     let corpus_bytes = b"recoverable corpus";
     let corpus_digest = format!("{:x}", Sha256::digest(corpus_bytes));
