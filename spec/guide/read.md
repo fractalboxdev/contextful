@@ -37,7 +37,7 @@ sequenceDiagram
   end
 ```
 
-Ranked reads go through `corpus.retrieve` ({{read.retrieve.ranked-call}}), which works as a funnel. Query text becomes content tokens ({{read.retrieve.content-tokens}}). Each table contributes an arm over a recency-ordered candidate window ({{read.retrieve.candidate-window}}); a vector or full-text sidecar widens that window without changing any row's score ({{read.retrieve.sidecar-generates-candidates}}), and a full-text probe finds a term anywhere in the snapshot ({{read.retrieve.fulltext-probe}}); a relevance floor drops noise ({{read.retrieve.relevance-floor}}). Ranking fuses exact cosine with BM25 ({{read.rank.fusion}}), and a question's timeframe leads the ordering as a tier rather than a filter ({{read.rank.question-window-is-a-tier}}). A missing lexical backend changes the order, never whether the read answers ({{read.rank.degradation-not-error}}).
+Ranked reads go through `corpus.retrieve` ({{read.retrieve.ranked-call}}): content tokens ({{read.retrieve.content-tokens}}), a recency-ordered window per table ({{read.retrieve.candidate-window}}) that sidecars widen without changing scores ({{read.retrieve.sidecar-generates-candidates}}), a full-text probe over the snapshot ({{read.retrieve.fulltext-probe}}) and a relevance floor ({{read.retrieve.relevance-floor}}). Ranking fuses cosine with BM25 ({{read.rank.fusion}}); a question's timeframe is a tier, not a filter ({{read.rank.question-window-is-a-tier}}). A missing lexical backend changes the order, never the answer ({{read.rank.degradation-not-error}}).
 
 ```mermaid
 sequenceDiagram
@@ -59,6 +59,31 @@ sequenceDiagram
   end
   R->>R: fuse cosine and BM25, window first
   R-->>A: ranked rows with the retrieval block
+```
+
+Time travel takes three bounds on every read tool ({{read.register.bound-arguments}}, {{read.register.available-bound-argument}}): `as_of` freezes the corpus, `valid_as_of` picks what was true, and `available_as_of` is the simulated present ({{store.available-time.available-as-of}}). An `ASOF JOIN` matches on availability ({{read.as-of-join.per-row-bound}}).
+
+```mermaid
+sequenceDiagram
+  participant A as agent
+  box read
+    participant T as tool server
+    participant J as as-of join
+  end
+  box store
+    participant S as committed parts
+  end
+  A->>T: context.query with three bounds
+  T->>S: scan snapshots committed by as_of
+  Note over T,S: as_of freezes the corpus for the whole eval
+  T->>S: keep rows valid at valid_as_of
+  T->>S: keep rows available by available_as_of
+  Note over T,S: available_as_of is the simulated present
+  T->>J: driving rows and right relation
+  J->>S: right rows available by each driving instant
+  S-->>J: latest available right row per key
+  J-->>T: joined rows
+  T-->>A: rows with the three bounds echoed
 ```
 
 Every transport serializes one projection ({{read.respond.one-projection}}). Internals carries bindings ({{read.respond.query-internals-parameters}}). Tools without SQL have no deadline ({{read.register.duration-no-statement}}). A deadline refuses without rows ({{read.respond.duration-ceiling}}); a byte bound preserves whole rows ({{read.respond.byte-ceiling}}). A row ceiling sets `truncated` through an over-fetched probe row ({{read.respond.truncation-is-exact}}); a byte cut also sets it, and each cut names its cause ({{read.respond.truncation-cause}}). Zero rows is a success ({{read.respond.zero-rows-is-success}}). A caller may pin tables to published builds, and a pin never silently widens to the latest state ({{read.resolve-pin.unknown-build}}).

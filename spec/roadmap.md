@@ -194,6 +194,7 @@ Acceptance: `contextful_acceptance::m14::m14_assurance`
 | Operations | Intent |
 | --- | --- |
 | `store.available-time` | The declared availability instant, its resolution at landing, and the `available_as_of` bound. |
+| `read.as-of-join` | The point-in-time join matching each driving row to the right row available at its instant. |
 
 Reach: An earnings row landed in one commit with its period end and filing acceptance answers no `available_as_of` read between the two, and answers one after acceptance.
 

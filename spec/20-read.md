@@ -11,6 +11,7 @@ owns:
   - cache
   - resolve-pin
   - embed
+  - as-of-join
 ---
 
 # The read face
@@ -74,6 +75,10 @@ The relations, tools and templates one connection sees, the engine executing aga
   *because a session registers every granted table, and wrapping one declaring no pair refuses reads that never name it*
 - `bound-listing` — `context.files` and a `context.describe` naming no table select under `as_of` alone; each ignores `valid_as_of` and echoes only its `as_of` part.
   *because valid time narrows rows, and a listing returns files and table names, never rows*
+- `available-bound-argument` — Every read tool {{read.register.bound-arguments}} names also admits `available_as_of` and echoes it under {{store.available-time.bound-echo}}; {{store.available-time.available-as-of}} wraps only the tables the read touches.
+  *because a session registers every granted table, and wrapping one declaring no availability time refuses reads that never name it*
+- `available-bound-listing` — A listing {{read.register.bound-listing}} names ignores `available_as_of` and echoes no `available_as_of` part.
+  *because availability time narrows rows, and a listing returns files and table names, never rows*
 - `describe-payload` — `context.describe` returns row count, {{read.register.size-estimate}}, schema fingerprint, description, {{read.register.column-hints}}, declared indexes, partition scheme, `limits.max_rows`, zone label, lexicon and example queries.
 - `size-estimate` — `context.describe` reports `bytes`, the serialized JSON length of the caller's restricted rows, and `estimated_tokens`, one per 4 B of that length, rounded up.
   *because a client choosing between a full-context read and a ranked one compares the corpus against its context window before reading it*
@@ -147,6 +152,8 @@ Admission of caller-written SQL: what parses, what a base relation names, whose 
 - `quoted-identifiers` — Every schema- or manifest-derived identifier is double-quoted where rendered, admitting any UTF-8 vendor field name as an identifier and never as an expression.
 - `template-declaration` — A template declares an identifier, one SQL statement, positional parameters written `name:type` over integer, float, string, timestamp and boolean, and an optional row ceiling.
 - `template-reserved-parameter` — A template parameter named `as_of`, `valid_as_of`, `zone` or `pin` refuses the manifest; those names carry the read's bounds, zone and pin map on every template tool.
+  *because a parameter sharing a read argument's name hides that bound from the template tool*
+- `available-reserved-parameter` — A template parameter named `available_as_of` refuses the manifest as {{read.guard.template-reserved-parameter}} refuses the other reserved names; that name carries the read's availability bound on every template tool.
   *because a parameter sharing a read argument's name hides that bound from the template tool*
 - `template-relation-shape` — Manifest validation and face startup refuse a template whose SQL names anything but the store's own tables as plain identifiers, or whose identifier opens with a built-in tool prefix — `context.`, `corpus.` or `memory.` — raising `TemplateNamesForeignRelation`.
   *A-read*
@@ -442,6 +449,22 @@ The embedding port and its default, the model identifier beside each vector, the
   *A-topology*
 - `absent-read-backend` — Without the embedded SQL engine linked, every read tool raises `ReadBackendAbsent` rather than answering from a narrower path.
   *A-topology*
+
+## as-of-join
+
+The point-in-time join: an `ASOF JOIN` written in one read statement or template body, matching each driving row to the right relation's row that was available at that row's own instant.
+
+- `per-row-bound` — An `ASOF JOIN` matches each driving row, per equality key, to the right relation's row whose declared availability instant is the latest at or before the driving instant its inequality names, its valid-time `from` within `max_age` when given.
+  *A-read*
+- `horizon-caps-row` — Under `available_as_of`, each driving row's instant is the earlier of the instant its inequality names and `available_as_of`, so no right row past the bound joins.
+- `join-undeclared` — An `ASOF JOIN` whose right relation declares no `available_time` refuses as {{store.available-time.undeclared}} does, naming the table, whether or not the read carries `available_as_of`.
+  *because joining on valid time picks a restatement published after the event*
+
+#### Scenarios
+
+- `read.as-of-join.per-row-bound`: WHEN a point-in-time security master maps stable id `sec-1` to ticker `FB` available `2012-05-18` and to `META` available `2022-06-09`, THEN a trade of `sec-1` on `2021-03-01` joins `FB` and one on `2022-07-01` joins `META`.
+
+unsettled: Does an as-of join's `max_age` measure valid time or availability time? owner: read-path affects: read.as-of-join
 
 ## Shapes
 
