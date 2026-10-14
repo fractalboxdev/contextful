@@ -48,6 +48,7 @@ names it by title.
 | [privacy-and-disclosure.md](./privacy-and-disclosure.md) | Differential privacy, reconstruction, declassification, keyed pseudonyms | `disclosure.release`, `disclosure.suppress`, `authority.mask` |
 | [audit-and-erasure.md](./audit-and-erasure.md) | Tamper-evident logs, erasure in append-only stores, provenance | `disclosure.record`, `disclosure.attest`, `disclosure.erase`, `disclosure.erase` |
 | [retrieval-and-memory.md](./retrieval-and-memory.md) | Hybrid rank fusion, filtered ANN, agent memory, memory poisoning | `read.rank`, `read.retrieve`, `read.revise`, `read.recall`, `assurance.evaluate` |
+| [point-in-time-evaluation.md](./point-in-time-evaluation.md) | Look-ahead bias in model weights and retrieval, forecasting and finance backtests, availability time and as-of joins | `store.bound-time`, `read.retrieve`, `read.settle`, `connector.infer`, `assurance.evaluate` |
 | [prompt-injection.md](./prompt-injection.md) | Indirect prompt injection and defenses by construction | `connector.infer`, `authority.resist`, `surface.plan-turn`, `surface.ground` |
 | [formal-methods.md](./formal-methods.md) | Model checking, verification-guided development, Rust verification | `assurance.prove`, `assurance.differential-test`, `assurance.scope-claim`, `store.lease`, `run.journal` |
 | [specification-practice.md](./specification-practice.md) | Decision records, requirement syntax and quality, spec-to-test traceability | `corpus.rationale`, `corpus.address`, `corpus.anatomy`, `corpus.state`, `corpus.reference` |
