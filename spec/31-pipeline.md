@@ -346,6 +346,8 @@ Phases, chunk plans, fenced chunk leases and the rewind window.
 - `rewind` — A rewind returns every chunk overlapping the half-open range to pending and appends one reason row per rewound chunk to an audit log a catalog rebuild leaves untouched.
 - `rewind-invalid` — An inverted, empty or scale-incomparable rewind window raises `PipelineRewindWindowInvalid`; a window overlapping no chunk is a no-op.
   *P4*
+- `available-instant` — A backfill lands each row's availability column as {{store.available-time.declaration}} resolves it from the source, while `_ingested_at` stays the commit instant {{run.own.stage-instant}} writes.
+  *because a 2026 backfill of 2014 history stamped with its commit instant answers no availability bound before 2026*
 
 ```mermaid
 stateDiagram-v2
@@ -365,6 +367,7 @@ The bulk-load source mode, its ceiling, its scope and the parity it guarantees.
 
 - `block` — `[pipeline.seed]` attaches a bulk-load source with a ceiling `below` expressed on the seeded table's `order_by` scale.
 - `one-land-path` — Seeded rows travel {{run.land.stage-order}} unchanged; attribution survives only in the load id and a run recorded under the `seeding` phase.
+- `available-instant` — A seeded row lands its availability instant and `_ingested_at` as {{run.backfill.available-instant}} lands a backfilled row's.
 - `declaration-missing` — A seeded table without `primary_key`, or with `order_by` left at the ingest stamp, raises `PipelineSeedDeclarationMissing` at plan and validate.
   *A-run*
 - `ceiling-breached` — A seeded row whose ordering stamp reaches `below` raises `PipelineSeedCeilingBreached` naming the value; its chunk lands nothing, and the stamp is neither clamped nor dropped.

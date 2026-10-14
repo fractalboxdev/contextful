@@ -1,4 +1,4 @@
-# Registry fragment — contract `store`, file spec/10-store.md.
+# Registry fragment — contract `store`, files spec/10-store.md and spec/12-time.md.
 
 [operation]
 lay-out    = {}
@@ -53,6 +53,8 @@ StoreAsOfUnretained          = { clause = "store.bound-time.as-of-unretained", g
 StoreValidTimeUndeclared     = { clause = "store.bound-time.valid-time-undeclared", gloss = "A valid-time-bounded read names a table declaring no pair." }
 StoreAvailableTimeUndeclared = { clause = "store.available-time.undeclared", gloss = "An availability-bounded read names a table declaring no availability time." }
 StoreAvailableTimeNull       = { clause = "store.available-time.null", gloss = "A landing row resolves to a null availability instant." }
+StoreVintageHashUndeclared   = { clause = "store.available-time.vintage-hash-undeclared", gloss = "A vintage table declares no `content_hash_column`." }
+StoreVintageRetainRows       = { clause = "store.available-time.vintage-retain-rows", gloss = "A vintage table declares a row-age retention cutoff." }
 StoreEncryptionKeyUnbound    = { clause = "store.encrypt.key-unbound", gloss = "A declared key source names a binding the process lacks." }
 StoreIndexOverRedactedColumn = { clause = "store.encrypt.redacted-index", gloss = "An index is declared over a column redacted at write time." }
 StoreIndexPathCollision      = { clause = "store.index.path-collision", gloss = "Two sidecar declarations of one table resolve to one path." }
