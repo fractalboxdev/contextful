@@ -362,3 +362,20 @@ Criteria: atomic downstream visibility and stale replay refusal decide the proto
 | Re-execute jobs during projection recovery | Effect isolation | Recovery repeats paid effects and chooses another input frontier. |
 
 Consequences: the local SQLite profile persists producer, outbox and receiver state transactionally. The `postgres` profile refuses coordinated groups until its shared outbox adapter supports this protocol.
+
+## A sweep freezes one transaction-time bound and carries state through its own outputs
+
+Context: a sweep asks one question at many origins over history a backfill loaded after all of them. Availability time separates origins; transaction time fixes the corpus and which sweep writes an origin sees.
+
+Decision: every origin reads at one `as_of`, declared or resolved once at sweep open. A `fresh` sweep reads its output tables at that bound too, so origins share nothing. A `carried` sweep runs origins in order and reads its output tables at the preceding origin's commit, every other table staying frozen. Each origin's writes carry the origin as their availability instant.
+
+Criteria: origins differing only in their availability bound, which decided it.
+
+| Option | Lost on | Cost |
+| --- | --- | --- |
+| One frozen `as_of`, outputs read at the preceding commit *(chosen)* | — | A carried sweep runs serially. |
+| Each origin resolves its own `as_of` at open | Comparable origins | A landing between two origins changes the corpus one reads and the other does not. |
+| Transaction time set to the origin | Backfilled history | A history loaded after every origin answers no origin at all. |
+| Carried state held in the journal, outside the store | One write path | Bounded reads never reach it. |
+
+Consequences: an origin later than the frozen bound refuses.

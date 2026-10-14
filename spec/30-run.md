@@ -10,6 +10,7 @@ owns:
   - cancel
   - record
   - project
+  - sweep
 ---
 
 # Durable runs
@@ -493,6 +494,8 @@ The durable run record, its statuses, its owner lease and windowed history over 
 - `skipped-count` — A pull's optional `skipped` field counts inputs the source declined to land whole; the run row sums it over the run's pulls, replayed pulls included, beside the destination counts.
   *because a skipped input raises no error, and a count on the record surfaces it without reading the landed rows*
 - `input-bounds` — A store-driven run's row carries its input: the resolved `as_of`, the snapshot id per table and the input row count.
+- `sweep-bounds` — A sweep origin's run row carries, beside {{run.record.input-bounds}}, its `available_as_of`, any `valid_as_of` it read under, the sweep id and the origin.
+  *because a score reported per origin is auditable only when each run names the bounds it read under*
 - `plan-identity` — A run row retains its admitted plan reference after owner retirement; a record lacking that field decodes with no plan identity.
 - `schema-diff-home` — A table's run manifest holds its committed downgrade events with its parts and cursor; run history reads them under that run id.
   *A-run*
@@ -532,6 +535,35 @@ The best-effort live view of a run and the subscription that carries it off the 
 - `read-only-socket` — A subscription is read-only; a stop travels as an authenticated route.
 - `restart-discards` — A restart discards in-memory snapshots; a subscriber recovers history from the durable record.
 - `delegated-progress` — A heavy step delegated to another host reports progress by posting to the awakeable callback route, and the orchestrating run folds it into its own snapshot.
+
+## sweep
+
+Walk-forward runs: one store-driven job run once per origin across a declared span, each origin reading only what was available at it, under one frozen transaction-time bound.
+
+- `origins` — A store-driven `[[job]]` declaring `sweep = { start, end, step, state }` opens one run per origin from `start` through `end` at each `step`, a `<n><unit>` interval in {{surface.arm.grammar}} units, each reading with `available_as_of` equal to its origin.
+  *because an origin reading rows published after it scores a forecast against its own answer*
+- `sweep-id` — A sweep's id is the execution id of the fire that opens it; every origin's run records it, so run history groups one sweep's origins.
+- `frozen-as-of` — Every origin of one sweep reads at one `as_of`: the job's declared `as_of`, else the instant the sweep opens, recorded once as {{run.journal.open-as-of}} records it for resumes.
+  *A-run*
+- `origin-after-open` — A sweep whose `end` is later than its `as_of` raises `RunSweepOriginAfterOpen`, at validation for a declared `as_of` and at sweep open otherwise, and opens no origin.
+  *because an origin past the frozen corpus reads nothing newer than it, and that empty answer looks like a forecast*
+- `carried-state` — Under `state = "carried"`, origins run in ascending order one at a time, each reading the job's output `tables` at the commit of the preceding origin and every other table at the sweep's `as_of`.
+  *A-run*
+- `fresh-state` — Under `state = "fresh"`, the default, every table an origin reads, its output tables included, resolves at the sweep's `as_of`, so no origin reads a row another origin wrote.
+  *A-run*
+- `simulated-write` — A row an origin lands into a table declaring `available_time` carries the origin as its availability instant, so a later origin reads it and an earlier origin never does.
+  *because notes an agent wrote at a 2014 origin were available in 2014, not at the instant they committed*
+- `origin-pin` — An origin's plan reference hashes the sweep declaration and its origin beside the fields {{run.journal.input-pin}} hashes, so a resume under a changed sweep meets {{run.own.pinned-plan-changed}}.
+- `no-collapse` — A sweep runs every origin it declares, however many have passed, and {{surface.arm.catch-up}} collapses none; a failed origin of a `carried` sweep leaves every later origin unopened.
+  *because each origin is a distinct question, and a collapsed or skipped origin drops silently from the score*
+- `cache-key` — No recorded or cached value crosses origins: each origin runs under its own execution id, which keys {{run.journal.entry-key}}, and carries its origin as `available_as_of` among the bounds {{read.cache.result-key}} keys on.
+  *because a cache keyed without the bound passes one origin's answer to another*
+
+#### Scenarios
+
+- `run.sweep.origins`: WHEN a `fresh` sweep of 12 origins, `7d` apart from `2014-03-05T00:00:00Z`, reads a 2026-backfilled table holding a planted row available `2014-04-30T00:00:00Z`, THEN origins 1 to 8 return no planted row and origins 9 to 12 return it.
+
+unsettled: Does a carried-state sweep resume from the last committed origin or replay from the start? owner: run-path affects: run.sweep
 
 ## Shapes
 
