@@ -40,7 +40,7 @@ A milestone reads `closed` when its acceptance test computes `passing` and every
 | 12 — The operator console | 12 | 56 | 25 | passing | open |
 | 13 — Disclosure | 5 | 33 | 13 | open | open |
 | 14 — Assurance | 7 | 155 | 123 | passing | closed |
-| 15 — Point-in-time evaluation | 1 | 11 | 0 | absent | open |
+| 15 — Point-in-time evaluation | 1 | 11 | 0 | open | open |
 
 Unscheduled operations: 12.
 
