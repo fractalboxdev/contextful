@@ -9,6 +9,7 @@ reconcile  = {}
 fold       = {}
 index      = {}
 bound-time = {}
+available-time = {}
 encrypt    = {}
 endpoint   = {}
 emit       = {}
@@ -50,6 +51,8 @@ StoreIndexIdNotUnique        = { clause = "store.index.id-unique", gloss = "One 
 StoreValidTimeNotTimestamp   = { clause = "store.bound-time.valid-time-type", gloss = "A declared valid-time column is not timestamp-typed." }
 StoreAsOfUnretained          = { clause = "store.bound-time.as-of-unretained", gloss = "An `as_of` precedes the oldest retained snapshot of a table whose history was collected." }
 StoreValidTimeUndeclared     = { clause = "store.bound-time.valid-time-undeclared", gloss = "A valid-time-bounded read names a table declaring no pair." }
+StoreAvailableTimeUndeclared = { clause = "store.available-time.undeclared", gloss = "An availability-bounded read names a table declaring no availability time." }
+StoreAvailableTimeNull       = { clause = "store.available-time.null", gloss = "A landing row resolves to a null availability instant." }
 StoreEncryptionKeyUnbound    = { clause = "store.encrypt.key-unbound", gloss = "A declared key source names a binding the process lacks." }
 StoreIndexOverRedactedColumn = { clause = "store.encrypt.redacted-index", gloss = "An index is declared over a column redacted at write time." }
 StoreIndexPathCollision      = { clause = "store.index.path-collision", gloss = "Two sidecar declarations of one table resolve to one path." }

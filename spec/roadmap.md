@@ -31,6 +31,7 @@ flowchart LR
   E -->|unlocks| L[12 Operator console]
   I -->|unlocks| M[13 Disclosure]
   A -->|unlocks| N[14 Assurance]
+  D -->|unlocks| O[15 Point-in-time evaluation]
 ```
 
 ## 0 — The test-first gate
@@ -187,3 +188,13 @@ Acceptance: `contextful_acceptance::m13::m13_disclosure`
 Reach: The gate holds its resource budget, and the evaluation floors and every gate-tier target are measured on every change.
 
 Acceptance: `contextful_acceptance::m14::m14_assurance`
+
+## 15 — Point-in-time evaluation
+
+| Operations | Intent |
+| --- | --- |
+| `store.available-time` | The declared availability instant, its resolution at landing, and the `available_as_of` bound. |
+
+Reach: An earnings row landed in one commit with its period end and filing acceptance answers no `available_as_of` read between the two, and answers one after acceptance.
+
+Acceptance: `contextful_acceptance::m15::m15_point_in_time`

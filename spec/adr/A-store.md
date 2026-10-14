@@ -403,3 +403,22 @@ Decision: each replica pull writes `replica.json` beside `derived.sqlite`, namin
 | Probe the disk per query | Matches the disk | A read races a pull rewriting the files it probes. |
 
 Consequences: a replica's holdings read without opening a snapshot manifest.
+
+## Availability is a declared column resolved at landing
+
+**Status:** accepted
+
+Context: a backfill stamps `_ingested_at` with its commit instant, so a 2026 load of 2014 history answers an `as_of` read in 2014 with nothing and an unbounded read with values published after 2014. Criteria: the instant is the source's, not the engine's; `_commit_seq` stays monotonic; a landed row answers one way; enforcement holds the predicate.
+
+Decision: `available_time` names a declared `timestamptz` column. Landing resolves it, by a lag fill or a date's following midnight in the declared zone, and writes the instant; `available_as_of` compares that column alone, beneath enforcement.
+
+| Option | Lost on | Cost |
+| --- | --- | --- |
+| A declared column resolved at landing *(chosen)* | — | Each table declares the column or a lag. |
+| An engine-stamped third clock | The source's instant | The engine never observes when a source published a value. |
+| Overriding the transaction stamp | Monotonic `_commit_seq` | A backdated `_ingested_at` breaks commit order and `as_of` reproducibility. |
+| A basis resolved at read time | One answer per row | One row answers differently as lag rules change. |
+| Filtering in user SQL | Enforcement | Every tool and template restates the predicate, and one omission leaks. |
+
+Consequences: `as_of` freezes the corpus so an eval reproduces; `available_as_of` sets the simulated present.
+Revisit: a source publishing a per-row availability stamp the engine verifies.

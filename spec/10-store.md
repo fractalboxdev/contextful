@@ -9,6 +9,7 @@ owns:
   - fold
   - index
   - bound-time
+  - available-time
   - encrypt
   - endpoint
   - emit
@@ -408,9 +409,9 @@ unsettled: What resident bound replaces the stored-vector cap for a memory-mappe
 
 ## bound-time
 
-The two clocks a row carries, the parameter bounding each, and what a bounded read resolves to.
+The transaction and valid clocks a row carries, the parameter bounding each, and what a bounded read resolves to.
 
-- `two-clocks` — Transaction time is `_ingested_at`; valid time is a declared pair of the table's own columns. The engine infers no pair and stamps no second transaction clock.
+- `two-clocks` — Transaction time is `_ingested_at`; valid time and availability time are declared columns of the table. The engine infers neither and stamps no second transaction clock.
 - `valid-time-declaration` — `[pipeline.tables.valid_time]` declares `from` and an optional `to`; a table declaring `from` alone treats each row as valid from that instant onward.
 - `valid-time-type` — A declared valid-time column whose type is not a timestamp raises `StoreValidTimeNotTimestamp` at declaration.
   *P1*
@@ -432,6 +433,33 @@ The two clocks a row carries, the parameter bounding each, and what a bounded re
 - `interval-rows` — A key valid over several intervals holds one row per interval: a keyed table declaring `valid_time` dedupes on its primary key and `from`, so a fold keeps every interval.
   *A-store*
 - `echo` — A bounded read echoes `contextful.bounds` as `{as_of?, valid_as_of?, inclusive}`, each instant in RFC 3339 UTC with nine fractional digits and a `Z` suffix; an unbounded read omits it.
+
+## available-time
+
+Availability time: the declared instant each row's value became public, how landing resolves it, and the `available_as_of` bound a read compares against it.
+
+- `declaration` — `[pipeline.tables.available_time]` declares `column`, the `timestamptz` instant a row's value became public, and an optional `zone`, UTC by default; landing writes the resolved instant, and an availability bound compares that column alone.
+  *A-store*
+- `lag-fill` — A declared `available_time.lag` fills a null column at landing with valid-time `to`, else `from`, plus its `lag_class` duration, and the engine injects `_available_imputed` true on that row.
+  *because a filing becomes public a filer-class deadline after period end, 40 to 90 days for a 10-Q or 10-K*
+- `date-end` — A date-typed availability value resolves at landing to the start of the following day in the declared `zone`.
+  *because a date-only filing or headline can land after the close*
+- `live-since` — `available_time.live_since` names the instant a source began publishing live; the engine injects `_available_reconstructed` true on each row available before it, and a report slices on that column.
+  *because a vendor's point-in-time history before its live date was rebuilt after the fact*
+- `available-as-of` — `available_as_of` wraps the inner source with `<column> <= available_as_of` over the declared column, conjoined with {{store.bound-time.as-of}} and {{store.bound-time.valid-as-of}} where given.
+  *A-store*
+- `table-key` — Beyond {{store.declare.table-block}}, a table block may declare `available_time`, absent from the canonical serialization when unset.
+- `beneath-enforcement` — The `available_as_of` bound applies beneath enforcement as {{store.bound-time.beneath-enforcement}} applies the other two, narrowing what enforcement admits and widening nothing.
+  *P5*
+- `bound-echo` — A read carrying `available_as_of` adds `available_as_of` to the object {{store.bound-time.echo}} echoes, in the same instant form.
+- `undeclared` — An `available_as_of` read naming a table that declares no `available_time` raises `StoreAvailableTimeUndeclared`, naming the table.
+  *because falling back to `_ingested_at` hides a backfill and falling back to nothing leaks it*
+- `null` — Landing a row whose resolved availability instant is null raises `StoreAvailableTimeNull`, naming the table and the run.
+  *because a row without an availability instant is visible to every bound or to none, and either misstates what was public*
+
+#### Scenarios
+
+- `store.available-time.available-as-of`: WHEN a 2026 backfill lands 2014Q1 GDP with availability date `2014-04-30`, THEN `available_as_of` `2014-05-01` returns the row and `available_as_of` `2014-04-29` returns none.
 
 ## encrypt
 
