@@ -9,7 +9,7 @@ use contextful_core::run::ports::{BlobStore, JournalStore};
 use contextful_core::run::record::{Owner as RunOwner, Phase, RunRow, RunStatus};
 use contextful_core::run::suspend::{Awakeable, AwakeableState};
 use contextful_core::time::Instant;
-use contextful_d1::D1;
+use contextful_d1::{D1, RecoveryObject};
 use serde_json::json;
 use sha2::{Digest, Sha256};
 use std::io::{BufRead, BufReader};
@@ -129,6 +129,20 @@ fn a_replacement_refuses_a_missing_recorded_r2_object_before_execution() {
     db.verify_recovery("sample", "backup-generation").unwrap();
     db.delete_blob(&digest).unwrap();
     assert!(db.verify_recovery("sample", "backup-generation").is_err());
+}
+
+#[test]
+fn a_malformed_capture_keeps_the_recovery_identity_usable() {
+    let fixture = Fixture::start();
+    let db = D1::connect(&fixture.endpoint).unwrap();
+    db.initialize_recovery("sample", "backup-generation").unwrap();
+    let before = db.query("SELECT frontier_sha256 FROM contextful_recovery WHERE id = 1", vec![]).unwrap();
+    let original = before.rows[0]["frontier_sha256"].as_str().unwrap();
+    let invalid = RecoveryObject { key: "corpus/object".into(), sha256: "invalid".into() };
+    assert!(db.capture_recovery("sample", "backup-generation", &[invalid]).is_err());
+    let after = db.query("SELECT frontier_sha256 FROM contextful_recovery WHERE id = 1", vec![]).unwrap();
+    assert_eq!(after.rows[0]["frontier_sha256"], original);
+    db.verify_recovery("sample", "backup-generation").unwrap();
 }
 
 #[test]
