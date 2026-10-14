@@ -34,11 +34,45 @@ Take the keyed table `filings`, with `primary_key = ["document_id", "page"]` and
 
 - Node `ingest-a` resolves its node id once at start ({{store.lay-out.node-id-order}}), takes the pipeline's lease, and renews it ({{store.lease.renewal}}).
 - A run lands parts under `data/runs/<run-id>/ingest-a/`, and the engine injects `_ingested_at` and `_run_id` ({{store.reserve.injected}}). One batch sends `page` as a float; it refuses before any Parquet, because a key never widens ({{store.reconcile.key-widening}}).
-- The run commits under the lease fence. A second machine that paused, lost its lease and then woke up tries to commit; the higher fence beats it, and its run stays unreadable ({{store.lease.stale-fence}}).
+- The run commits under the lease fence. A paused machine that lost its lease then commits; the higher fence beats it, and its run stays unreadable ({{store.lease.stale-fence}}).
 - A query now gets the current snapshot plus the committed runs it omits, deduped per key ({{store.bound-time.unbounded-latest}}).
 - A fold trigger fires ({{store.fold.triggers}}). The pass holds the compaction lease and stamps its fence into the manifest and the pointer ({{store.fold.compaction-lease}}); the new snapshot's `includes_runs` names the folded runs ({{store.fold.includes-runs}}). The previous snapshot stays reachable to bounded reads ({{store.fold.supersedes}}) until retention collects it ({{store.fold.retention}}).
-- An auditor reads `filings` as of last week. The read resolves the newest snapshot at or before that instant plus the runs it omits ({{store.bound-time.as-of}}), so the answer is identical before and after the fold. An instant older than retained history refuses and names the oldest answerable instant ({{store.bound-time.as-of-unretained}}).
+- An auditor's read of `filings` as of last week resolves the snapshot then current ({{store.bound-time.as-of}}), so the fold changes no answer. An instant older than retained history refuses and names the oldest answerable instant ({{store.bound-time.as-of-unretained}}).
 - The node pushes, and a laptop replica refreshes. A query needing a sidecar the replica lacks refuses and names the refresh that supplies it ({{store.replicate.missing-index}}).
+
+## Clocks
+
+A backfill keeps the source's availability instant ({{run.backfill.available-instant}}); a revision lands as a vintage ({{store.available-time.vintage-rows}}).
+
+```mermaid
+flowchart LR
+  subgraph declared["Declared columns"]
+    V["valid time 2014Q1"]
+    A["availability time April 2014"]
+  end
+  subgraph stamped["Engine stamp"]
+    T["transaction time 2026"]
+  end
+  P(["GDP publisher"]) -->|"measures the quarter"| V
+  P -->|"releases first figure"| A
+  B["2026 backfill run"] -->|"commit writes"| T
+  B -->|"lands source rows"| G[("gdp")]
+  V -->|"valid_as_of compares"| G
+  A -->|"available_as_of compares"| G
+  T -->|"as_of compares"| G
+```
+
+```mermaid
+flowchart TD
+  P(["GDP publisher"]) -->|"releases revised figure"| H{"content hash unchanged?"}
+  H -->|"unchanged"| S["skipped re-pull"]
+  H -->|"changed"| G[("gdp")]
+  G -->|"read resolves vintage"| F{"first vintage requested?"}
+  F -->|"first"| E["earliest vintage"]
+  F -->|"default"| B{"availability bound given?"}
+  B -->|"bounded"| L["latest vintage before bound"]
+  B -->|"unbounded"| N["latest vintage"]
+```
 
 ## Where to look
 
@@ -46,5 +80,5 @@ Take the keyed table `filings`, with `primary_key = ["document_id", "page"]` and
 - How keys, ordering and write modes shape a read: `store.declare`.
 - How schemas merge: `store.reconcile`.
 - When a snapshot publishes: `store.fold`.
-- Time-bounded reads: `store.bound-time`.
+- Time-bounded reads and vintages: `store.bound-time`, `store.available-time`.
 - Bucket sync and single-writer exclusion: `store.endpoint`, `store.push`, `store.pull`, `store.merge`, `store.lease`.

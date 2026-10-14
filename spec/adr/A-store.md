@@ -422,3 +422,20 @@ Decision: `available_time` names a declared `timestamptz` column. Landing resolv
 
 Consequences: `as_of` freezes the corpus so an eval reproduces; `available_as_of` sets the simulated present.
 Revisit: a source publishing a per-row availability stamp the engine verifies.
+
+## A restatement is a vintage row
+
+**Status:** accepted
+
+Context: a statistics agency revises a figure after first release, and a filer restates a period. A keyed table keeps one survivor per key, so a restatement overwrites the value an earlier reader saw, and only a snapshot inside `retain_runs` still answers with it. Criteria: a past availability bound answers the same in every later year; one scan serves a bounded read; a re-pull adds nothing.
+
+Decision: a keyed table declaring `available_time` keys each row on its availability instant too. A read resolves one vintage per key and valid-time `from`; a declared content hash suppresses an unchanged re-pull, and a wall-clock row-age cutoff is refused.
+
+| Option | Lost on | Cost |
+| --- | --- | --- |
+| A vintage row in the table *(chosen)* | — | A revised series grows by one row per release. |
+| Raising `retain_runs` | Answers in every later year | Expiry still collects the snapshot holding the first release, and storage grows with every run. |
+| A separate vintage table | One scan | Every bounded read joins, and two tables commit apart. |
+
+Consequences: a fold and the expiry of `retain_runs` leave every vintage readable.
+Revisit: an estimate-revision source whose vintage rows outgrow the table's partition bounds.
