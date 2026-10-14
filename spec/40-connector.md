@@ -288,6 +288,8 @@ Model egress: the single endpoint, the data fence and the trust label of model o
   *because tuning adds knowledge after pre-training, and an estimated cutoff often falls before the reported one*
 - `logprobs` — A call to an endpoint exposing token log-probabilities lands them with the call record.
   *because probe-based leakage estimates read first-token probabilities*
+- `hosted-tools` — A model call under a credential carrying {{authority.grant.horizon}} that declares a provider-hosted tool, such as search, browse or fetch, raises `InferHostedToolUnderHorizon`, naming the tool, before any byte leaves.
+  *because search inside the provider never reaches the mediated client, so no hook sees it*
 
 The zone a call's declared locality maps onto belongs to the `authority` contract; a
 placement-filtered read consults that mapping, not the endpoint URL.

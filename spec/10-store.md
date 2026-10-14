@@ -47,7 +47,7 @@ flowchart LR
     RUNS[("run parts")]
     LOG[("commit log")]
     FOLD["fold pass"]
-    SNAP[("snapshot")]
+    SNAP[("table snapshot")]
     PTR[("_pointer.json")]
     SCHEMA[("schema.json")]
     DERIVED[("derived cache")]

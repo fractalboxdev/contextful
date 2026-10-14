@@ -425,6 +425,8 @@ The `[[model]]` block: a table defined by SQL over store tables, its contract, f
 - `build-id` — A build's id is the snapshot id it publishes.
   *A-run*
 - `watermark` — A build's watermark is `{at, inputs}`: per input table the snapshot id and the committed runs it omits, and `at` the newest commit instant among them.
+- `build-horizon` — `contextful build <model> --available-as-of <t>` reads every input at `available_as_of` equal to `t` and records `t` as the watermark's `horizon`; a build without the flag records a null horizon.
+  *because a build is reused across horizons only when its own bound is recorded beside it*
 - `hold-verb` — `build hold --for <n>[smhd] <model> <build>` commits a hold until now plus the duration and prints `Held`, or `Renewed` over an unexpired hold; `--json` prints the receipt as an object.
 - `status-verb` — `build status <model>` reports the last attempt separately from the published build; `--json` carries their ids, status, freshness and staleness computed at the requested instant.
 - `hold-unknown-build` — A hold naming a build no committed manifest of the model records raises `ModelBuildUnknown`.

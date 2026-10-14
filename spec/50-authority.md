@@ -172,6 +172,8 @@ What a credential says a holder does: actions, table patterns, tenant scope, the
   *A-read*
 - `byte-ceiling` — A response's `max_response_bytes` is the least of its grant, touched-table and request limits; an undeclared component imposes none, and no component declares a default.
   *A-read*
+- `horizon` — A grant may carry `horizon`, an instant bounding the availability time and `since` of every read its holder makes, under {{read.horizon.inherited-bound}} and {{read.horizon.exceeds-horizon}}; an absent horizon leaves availability unbounded.
+  *A-authority*
 - `aggregate` — An aggregate grant carries a minimum group size, a maximum single-contributor share, permitted functions, a groups-per-query ceiling and a row ceiling. A write-only or aggregate-only grant contributes no table to a raw read.
   *A-authority*
 - `group-ceiling` — An aggregate grant's groups-per-query ceiling is at least 1 entries; a query producing more groups than the ceiling is cut at it.
@@ -190,6 +192,8 @@ Deriving a narrower child offline, and the narrowing legality of each grant dime
 - `narrowing` — Every dimension of a child obeys the narrowing table in Shapes, checked by the deriving holder and again across the whole chain at admission.
   *A-authority*
 - `widens` — A child broader than its parent on actions, tables, templates or aggregate constraints raises `AttenuationWidens`, naming the dimension.
+  *A-authority*
+- `horizon-widens` — A child whose horizon falls later than its parent's is broader on `horizon` and refuses as {{authority.attenuate.widens}}, naming that dimension; a child naming no horizon inherits its parent's.
   *A-authority*
 - `expiry-extended` — A child whose expiry falls past its parent's raises `AttenuationExpiryExtended`.
   *A-authority*
@@ -545,6 +549,7 @@ max_rows              refused    admitted   admitted   inherits parent
 max_duration_ms       refused    admitted   admitted   inherits parent
 max_response_bytes    refused    admitted   admitted   inherits parent
 expiry         refused    admitted   admitted   inherits parent
+horizon        refused    admitted   admitted   inherits parent
 on_behalf_of   refused    admitted   refused    inherits parent
 incognito      refused    admitted   admitted   inherits parent
 ```

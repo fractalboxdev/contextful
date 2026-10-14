@@ -12,6 +12,7 @@ owns:
   - resolve-pin
   - embed
   - as-of-join
+  - horizon
 ---
 
 # The read face
@@ -465,6 +466,39 @@ The point-in-time join: an `ASOF JOIN` written in one read statement or template
 - `read.as-of-join.per-row-bound`: WHEN a point-in-time security master maps stable id `sec-1` to ticker `FB` available `2012-05-18` and to `META` available `2022-06-09`, THEN a trade of `sec-1` on `2021-03-01` joins `FB` and one on `2022-07-01` joins `META`.
 
 unsettled: Does an as-of join's `max_age` measure valid time or availability time? owner: read-path affects: read.as-of-join
+
+## horizon
+
+Reading under a credential's {{authority.grant.horizon}}: the bound every read inherits, the arguments it refuses, the stamps, statistics and columns it withholds, the egress it closes, and the indexes, embedders and builds it resolves.
+
+- `inherited-bound` — Under a credential carrying a horizon, every read tool reads at `available_as_of` equal to the horizon when the call supplies none, capping {{read.as-of-join.horizon-caps-row}}, and echoes it as {{store.available-time.bound-echo}}.
+  *because a per-call bound is a bound the agent can omit*
+- `exceeds-horizon` — A call supplying `available_as_of` or `since` later than its credential's horizon raises `ReadBoundExceedsHorizon`, naming the argument; `as_of`, `valid_as_of` and `observed_at` pass unbounded by it.
+  *because a cutoff the agent can widen is advisory, while a valid-time question about a known future effective date stays legitimate*
+- `recall-horizon` — Under a horizon, {{read.recall.keyed}} defaults an absent `observed_at` to the horizon and reads a claims table at `available_as_of` equal to it, so a table declaring no availability time refuses as {{store.available-time.undeclared}}.
+  *because a claim lands at its commit instant, and one concluded after the horizon otherwise answers inside it*
+- `engine-stamps` — Under a horizon, the projection carries none of the columns {{store.reserve.injected}}, {{store.reserve.row-seq}} and {{store.reserve.commit-seq}} inject, and `context.describe` computes row count, size, lexicon and example values over the horizon-bounded relation.
+  *because a load instant or a full-table row count discloses the present*
+- `late-columns` — Under a horizon, a column whose first landing in its table falls after the horizon is absent from the registered schema and from the describe payload.
+  *because a null still says the field exists*
+- `egress-hook` — A hop made under a credential carrying a horizon passes a pre-send hook refusing every host but the configured model endpoint, as {{connector.meter.hook-refusal}} with reason `horizon`.
+  *because one attachment point already sees every egress, so a per-tool list restates it*
+- `local-rank` — Under a horizon, `corpus.retrieve` ranks only stored rows through local indexes, and a search source reads its pinned {{store.snapshot.capture}} corpus; a live search reaches no host past {{read.horizon.egress-hook}}.
+  *because a live result order postdates the snapshot, and filtering it afterwards keeps the order*
+- `rank-statistics` — Under a horizon, lexical term statistics and vector neighbours come from the horizon-bounded relation; a ranking reaching a sidecar that indexes a row available after the horizon raises `ReadIndexBeyondHorizon`, naming the table.
+  *because corpus-wide term frequency and neighbourhoods encode later events*
+- `embedder-route` — Under a horizon, an embedder declaring a checkpoint family embeds with its newest checkpoint whose post-training cutoff, as {{connector.infer.cutoffs}} records it, precedes the horizon, and the response names that checkpoint.
+  *because an embedder trained after the horizon places documents by later events*
+- `build-resolution` — Under a horizon, a model table resolves to the newest build whose horizon, recorded under {{run.model.build-horizon}}, is at or before the credential's; a table holding none raises `ReadNoBuildWithinHorizon`, naming the table.
+  *because a build over current inputs carries later rows into every horizon*
+
+#### Scenarios
+
+- `read.horizon.exceeds-horizon`: WHEN a credential carries horizon `2014-05-01` and `corpus.retrieve` supplies `since: "2015-01-01"`, THEN the call raises `ReadBoundExceedsHorizon` naming `since`, and a call supplying `valid_as_of: "2015-01-01"` answers.
+
+unsettled: Does a sidecar indexing rows past the horizon fall back to the exact scan rather than refuse the ranking? owner: read-path affects: read.horizon
+
+unsettled: Where does the engine record the instant a column first landed in a table, for a schema that predates the record? owner: read-path affects: read.horizon
 
 ## Shapes
 

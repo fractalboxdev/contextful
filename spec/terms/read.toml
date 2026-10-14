@@ -18,6 +18,7 @@ revise         = {}
 recall         = {}
 resolve-entity = {}
 settle         = {}
+horizon        = {}
 
 [error]
 FilePreviewNotATable          = { clause = "read.register.file-preview-target", gloss = "A previewed path resolved to no table." }
@@ -55,6 +56,9 @@ MemoryEdgeEndpointUnresolved  = { clause = "read.resolve-entity.edge-endpoint", 
 OutcomeRegistrationInvalid    = { clause = "read.settle.registration", gloss = "A prediction registration breaks the one-form, one-source, comparator-iff-metric rule." }
 OutcomeSourceMismatch         = { clause = "read.settle.source-mismatch", gloss = "An observation's verdict carries no source or a source other than the registration's." }
 OutcomeCitationMissing        = { clause = "read.settle.settling-citation", gloss = "A judgment verdict carries no http or https settling citation." }
+ReadBoundExceedsHorizon       = { clause = "read.horizon.exceeds-horizon", gloss = "A call's `available_as_of` or `since` falls later than its credential's horizon." }
+ReadIndexBeyondHorizon        = { clause = "read.horizon.rank-statistics", gloss = "A ranking under a horizon reached a sidecar indexing rows available after it." }
+ReadNoBuildWithinHorizon      = { clause = "read.horizon.build-resolution", gloss = "A model table holds no build whose recorded horizon is at or before the credential's." }
 
 [limit]
 read-row-ceiling-overfetch   = { clause = "read.respond.row-ceiling", value = 1, unit = "rows", basis = "chosen", gloss = "Rows fetched past the row ceiling, whose presence sets `truncated`." }
