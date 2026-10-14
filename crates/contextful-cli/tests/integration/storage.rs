@@ -146,6 +146,23 @@ fn d1_storage_initialization_and_history_survive_a_new_cli_process() {
     let history = invoke(&["run", "history", "--project", "research"]);
     assert!(history.status.success(), "{}", String::from_utf8_lossy(&history.stderr));
     let db = contextful_d1::D1::connect(&format!("http://127.0.0.1:{d1_port}")).unwrap();
+    use sha2::{Digest, Sha256};
+    let corpus_key = "d1-test/corpus-object";
+    let corpus_bytes = b"recoverable corpus";
+    let corpus_digest = format!("{:x}", Sha256::digest(corpus_bytes));
+    let frontier = serde_json::to_vec(&serde_json::json!({
+        "project": "research", "generation": "generation",
+        "objects": [{"key": corpus_key, "sha256": corpus_digest}],
+    })).unwrap();
+    let frontier_digest = format!("{:x}", Sha256::digest(&frontier));
+    db.put_blob(&frontier_digest, &frontier).unwrap();
+    db.query("UPDATE contextful_recovery SET frontier_sha256 = ? WHERE id = 1", vec![serde_json::json!(frontier_digest)]).unwrap();
+    let missing = invoke(&["storage", "check", "--project", "research"]);
+    assert!(!missing.status.success(), "a missing recorded corpus object passed preflight");
+    assert!(String::from_utf8_lossy(&missing.stderr).contains("ExecutionRecoveryMismatch"));
+    s3.seed(corpus_key, corpus_bytes);
+    let recovered = invoke(&["storage", "check", "--project", "research"]);
+    assert!(recovered.status.success(), "{}", String::from_utf8_lossy(&recovered.stderr));
     let token = "a".repeat(64);
     db.query("INSERT INTO contextful_guard (scope, token, admitted_at) VALUES ('global', ?, 1)", vec![serde_json::json!(token)]).unwrap();
     let guarded = invoke(&["storage", "guard", "--project", "research"]);
