@@ -267,7 +267,7 @@ Resolution of one stored citation through the caller's registered relation, incl
 
 Candidate generation for a ranked read: content tokens, the relevance floor, per-table arms, dedup, snippet.
 
-- `ranked-call` — `corpus.retrieve({prefix, query, query_embedding?, filter?, kinds?, limit?, since?, min_score?, as_of?})` returns the top rows across the item and artifact genres under one prefix, each with a snippet and full provenance. It composes the query surface and memory recall, storing nothing.
+- `ranked-call` — `corpus.retrieve({prefix, query, query_embedding?, filter?, kinds?, limit?, since?, min_score?, as_of?, valid_as_of?})` returns the top rows across the item and artifact genres under one prefix, each with a snippet and full provenance. It composes the query surface and memory recall, storing nothing.
 - `relevance-floor` — A row reaches a caller when its lexical score is null, at least the floor, or its vector score is positive. The floor is 2 tokens for queries of 3 tokens or more, else 1 tokens; a caller minimum overrides.
 - `content-tokens` — The query text is lowercased and split on non-alphanumeric characters. Stop tokens drop, non-ASCII runs of two or more characters stay, and survivors deduplicate in order.
 - `token-length-floor` — An ASCII run shorter than 2 chars leaves the content-token set.
@@ -285,6 +285,7 @@ Candidate generation for a ranked read: content tokens, the relevance floor, per
 - `filter-values` — A filter value is a string, a number or a boolean, and a membership list is non-empty; a null, a nested object or list, or an empty list is a malformed condition.
 - `kinds` — `kinds` lists artifact kind strings and joins the filter as one membership condition on the `kind` column, so a table without that column drops its arm by {{read.retrieve.unsatisfiable-arm-drops}}.
 - `engine-resolved-date` — The engine resolves each table's publication column itself, outside the caller's filter.
+- `since` — `since` is the inclusive lower bound of the question's timeframe over the publication instant {{read.retrieve.engine-resolved-date}} resolves; the anchor is `as_of`, else the read's clock. A date-only value means midnight UTC, and omitting `since` leaves every row in window.
 - `filter-budget` — A filter holds at most 32 conditions, each membership list at most 256 entries, and its serialized JSON, `kinds` included, at most 16 KiB.
 - `filter-budget-refusal` — The budget is checked over the whole filter ahead of building any arm; an oversized or malformed condition raises `FilterBudgetExceeded` for the whole read.
   *A-read*
@@ -331,6 +332,10 @@ flowchart LR
   WIN -->|"above relevance floor"| DEDUP["row-key deduplicator"]
   DEDUP -->|"unique candidates"| RANK["ranker"]
 ```
+
+#### Scenarios
+
+- `read.retrieve.since`: WHEN `corpus.retrieve` carries `since: "2030-01-01"` and a matching row's publication column holds `2029-12-31`, THEN the row still returns, its in-window flag false, ordered below every in-window row.
 
 unsettled: Does the row id {{run.normalize.identity-columns}} injects serve as the row key of a table declaring no content-hash column? owner: read-path affects: read.retrieve
 
