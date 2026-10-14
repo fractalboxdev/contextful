@@ -5,15 +5,62 @@ use contextful_core::export::publication::{
     declarations, GroupState, PublicationDeclaration, PublicationPlan,
 };
 use contextful_core::run::record::RunRow;
-use contextful_sqlite::{PublicationLedger, SourcePublication};
+use contextful_core::export::publication::{GroupBatch, PublicationGroup, SourcePublication};
+use contextful_sqlite::PublicationLedger;
 
-fn ledger(store: &contextful_context::Store) -> Result<PublicationLedger> {
+/// The machine-local ledger, or D1 under the `cloudflare-d1` profile.
+enum Ledger {
+    Local(PublicationLedger),
+    #[cfg(feature = "d1-catalog")]
+    D1(Box<contextful_d1::D1PublicationLedger>),
+}
+
+macro_rules! each {
+    ($ledger:expr, $l:ident => $call:expr) => {
+        match $ledger {
+            Ledger::Local($l) => $call?,
+            #[cfg(feature = "d1-catalog")]
+            Ledger::D1($l) => $call?,
+        }
+    };
+}
+
+impl Ledger {
+    fn incarnation(&self, candidate: &str) -> Result<String> { Ok(each!(self, l => l.incarnation(candidate))) }
+    fn record_source(&self, name: &str, source: &SourcePublication) -> Result<()> { Ok(each!(self, l => l.record_source(name, source))) }
+    fn source(&self, name: &str) -> Result<Option<SourcePublication>> { Ok(each!(self, l => l.source(name))) }
+    fn active_namespace(&self, name: &str) -> Result<Option<String>> { Ok(each!(self, l => l.active_namespace(name))) }
+    fn active(&self, name: &str, namespace: &str) -> Result<Option<PublicationGroup>> { Ok(each!(self, l => l.active(name, namespace))) }
+    fn pending_identity(&self, name: &str, namespace: &str) -> Result<Option<String>> { Ok(each!(self, l => l.pending_identity(name, namespace))) }
+    fn stage(&mut self, plan: &PublicationPlan, states: &GroupState, identity: &str) -> Result<()> { Ok(each!(self, l => l.stage(plan, states, identity))) }
+    fn batch(&mut self, name: &str, namespace: &str) -> Result<Option<GroupBatch>> { Ok(each!(self, l => l.batch(name, namespace))) }
+    fn acknowledge(&mut self, name: &str, namespace: &str, group: &str, through: u64) -> Result<()> { Ok(each!(self, l => l.acknowledge(name, namespace, group, through))) }
+    fn checkpoint(&self, name: &str, namespace: &str) -> Result<Vec<u8>> { Ok(each!(self, l => l.checkpoint(name, namespace))) }
+    fn restore(&mut self, name: &str, namespace: &str, bytes: &[u8], incarnation: &str, identity: &str) -> Result<()> { Ok(each!(self, l => l.restore(name, namespace, bytes, incarnation, identity))) }
+}
+
+/// Under `cloudflare-d1` the publication's durable lease, not the machine file lock, fences writers.
+fn ledger(store: &contextful_context::Store, name: &str) -> Result<Ledger> {
     supported()?;
+    if let Some(crate::storage::Remote::D1 { endpoint, .. }) = crate::storage::remote()? {
+        #[cfg(feature = "d1-catalog")]
+        {
+            let holder = format!("{}:{}:{}", crate::run::boot_id(), std::process::id(), wall_clock()?.unix_nanos());
+            let mut ledger = contextful_d1::D1PublicationLedger::connect(&endpoint)?;
+            ledger.claim(name, &holder, contextful_core::coordinate::CADENCE_LEASE_TTL_SECS)?;
+            return Ok(Ledger::D1(Box::new(ledger)));
+        }
+        #[cfg(not(feature = "d1-catalog"))]
+        {
+            let _ = (endpoint, name);
+            anyhow::bail!("ProfileCapabilityAbsent: D1 publication state requires `d1-catalog`");
+        }
+    }
     let path = store.root().join(MACHINE_CATALOG_FILE);
-    Ok(match store.file_cipher() {
+    Ok(Ledger::Local(match store.file_cipher() {
         Some(cipher) => PublicationLedger::open_sealed(&path, cipher)?,
         None => PublicationLedger::open(&path)?,
-    })
+    }))
 }
 
 fn supported() -> Result<()> {
@@ -74,7 +121,7 @@ pub(crate) fn record_completion(
                 Ok((export.table.clone(), source_frontier(store, &export.table)?))
             })
             .collect::<Result<_>>()?;
-        ledger(store)?.record_source(
+        ledger(store, &group.name)?.record_source(
             &group.name,
             &SourcePublication {
                 run: run.into(),
@@ -165,6 +212,8 @@ pub(super) fn deliver(
 ) -> Result<()> {
     supported()?;
     let located = project.locate(declaration)?;
+    crate::storage::preflight(&located.project)?;
+    crate::sync::pull_before_run(&located)?;
     let text = std::fs::read_to_string(&located.declaration)?;
     let (declared, exports) = group(&text, name)?;
     let _held = lock(&located)?;
@@ -194,7 +243,7 @@ pub(super) fn deliver(
         )?;
     }
     let identity = identity(&face, &session, &authority, &exports)?;
-    let mut ledger = ledger(face.store())?;
+    let mut ledger = ledger(face.store(), name)?;
     let incarnation = ledger.incarnation(&format!(
         "{:x}",
         Sha256::digest(format!(
@@ -327,9 +376,11 @@ pub(super) fn checkpoint(
     declaration: Option<PathBuf>,
 ) -> Result<()> {
     let located = project.locate(declaration)?;
+    crate::storage::preflight(&located.project)?;
+    crate::sync::pull_before_run(&located)?;
     let _held = lock(&located)?;
     let face = face(&located)?;
-    let bytes = ledger(face.store())?.checkpoint(name, namespace)?;
+    let bytes = ledger(face.store(), name)?.checkpoint(name, namespace)?;
     face.store().metadata_files().replace(out, &bytes)?;
     Ok(())
 }

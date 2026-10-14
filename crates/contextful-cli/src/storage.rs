@@ -87,7 +87,7 @@ pub fn validate_environment() -> Result<bool> {
     }
 }
 
-fn remote() -> Result<Option<Remote>> {
+pub(crate) fn remote() -> Result<Option<Remote>> {
     if !validate_environment()? {
         return Ok(None);
     }
@@ -119,7 +119,7 @@ fn remote() -> Result<Option<Remote>> {
 fn validate_project(project: &Project, profile: &str) -> Result<()> {
     for manifest in contextful_context::project::manifests(&project.declaration())? {
         let value: toml::Value = toml::from_str(&manifest.text)?;
-        if value
+        if profile == POSTGRES && value
             .get("publication")
             .and_then(toml::Value::as_array)
             .is_some_and(|groups| !groups.is_empty())

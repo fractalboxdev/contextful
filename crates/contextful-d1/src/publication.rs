@@ -22,7 +22,7 @@ const WRITTEN: &str = "EXISTS (SELECT 1 FROM contextful_publication WHERE role =
 pub struct D1PublicationLedger {
     db: D1,
     catalog: D1Catalog,
-    leases: BTreeMap<String, Lease>,
+    leases: BTreeMap<String, (Lease, u64)>,
     offered: BTreeMap<(String, String), (String, u64)>,
 }
 
@@ -71,20 +71,21 @@ impl D1PublicationLedger {
                     format!("publication `{name}` has an active durable writer"),
                 )
             })?;
-        self.leases.insert(name.into(), lease);
+        self.leases.insert(name.into(), (lease, ttl_secs));
         Ok(())
     }
 
     pub fn release(&mut self) -> Result<(), Failure> {
-        for (_, lease) in std::mem::take(&mut self.leases) {
+        for (_, (lease, _)) in std::mem::take(&mut self.leases) {
             self.catalog.release(&lease)?;
         }
         Ok(())
     }
 
+    /// Every write renews the publication lease, or refuses once another writer holds it.
     fn lease(&self, name: &str) -> Result<&Lease, Failure> {
-        let lease = self.leases.get(name).ok_or_else(fenced)?;
-        if !self.catalog.lease_holds(lease)? {
+        let (lease, ttl_secs) = self.leases.get(name).ok_or_else(fenced)?;
+        if self.catalog.renew(lease, *ttl_secs)?.is_none() {
             return Err(fenced());
         }
         Ok(lease)
