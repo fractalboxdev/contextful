@@ -1,6 +1,6 @@
 # Cloudflare execution conformance
 
-The Worker binds one disposable D1 database and R2 bucket to a Container. The Container's `contextful.d1` outbound host resolves SQL and blob requests through those bindings. `POST /conformance` runs the packaged `contextful-conformance` suite against the packaged `contextful-full` binary; all other HTTP routes return `404`.
+The Worker binds one disposable D1 database and an R2 blob bucket to a Container; a second R2 bucket holds corpus objects. The Container's `contextful.d1` outbound host resolves SQL and blob requests through the Worker bindings, while the corpus uses the R2 S3 endpoint. `POST /conformance` runs the packaged `contextful-conformance` suite against the packaged `contextful-full` binary; all other HTTP routes return `404`.
 
 The image context contains the exact Linux release binaries. Generate it from the release archive, its `.release.json` metadata, and its `.cloudflare-d1.compatibility.json` report:
 
