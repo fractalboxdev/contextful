@@ -147,6 +147,17 @@ fn d1_storage_initialization_and_history_survive_a_new_cli_process() {
     assert!(history.status.success(), "{}", String::from_utf8_lossy(&history.stderr));
     let db = contextful_d1::D1::connect(&format!("http://127.0.0.1:{d1_port}")).unwrap();
     use sha2::{Digest, Sha256};
+    let captured_key = "d1-test/captured-object";
+    let captured_bytes = b"captured corpus";
+    s3.seed(captured_key, captured_bytes);
+    let captured = invoke(&["storage", "capture", "--project", "research"]);
+    assert!(captured.status.success(), "{}", String::from_utf8_lossy(&captured.stderr));
+    let identity = db.query("SELECT frontier_sha256 FROM contextful_recovery WHERE id = 1", vec![]).unwrap();
+    let digest = identity.rows[0]["frontier_sha256"].as_str().unwrap();
+    let marker = db.get_blob(digest).unwrap().unwrap();
+    let marker: serde_json::Value = serde_json::from_slice(&marker).unwrap();
+    assert_eq!(marker["objects"][0]["key"], captured_key);
+    assert_eq!(marker["objects"][0]["sha256"], format!("{:x}", Sha256::digest(captured_bytes)));
     let corpus_key = "d1-test/corpus-object";
     let corpus_bytes = b"recoverable corpus";
     let corpus_digest = format!("{:x}", Sha256::digest(corpus_bytes));
@@ -160,6 +171,10 @@ fn d1_storage_initialization_and_history_survive_a_new_cli_process() {
     let missing = invoke(&["storage", "check", "--project", "research"]);
     assert!(!missing.status.success(), "a missing recorded corpus object passed preflight");
     assert!(String::from_utf8_lossy(&missing.stderr).contains("ExecutionRecoveryMismatch"));
+    s3.seed(corpus_key, b"changed corpus");
+    let changed = invoke(&["storage", "check", "--project", "research"]);
+    assert!(!changed.status.success(), "a changed recorded corpus object passed preflight");
+    assert!(String::from_utf8_lossy(&changed.stderr).contains("ExecutionRecoveryMismatch"));
     s3.seed(corpus_key, corpus_bytes);
     let recovered = invoke(&["storage", "check", "--project", "research"]);
     assert!(recovered.status.success(), "{}", String::from_utf8_lossy(&recovered.stderr));
