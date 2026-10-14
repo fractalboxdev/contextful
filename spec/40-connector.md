@@ -284,7 +284,7 @@ Model egress: the single endpoint, the data fence and the trust label of model o
 - `empty-batch` — A call fencing no value renders an explicit no-data line, never an empty section.
 - `operator-template` — The operator's prompt template stays unfenced in the system role. The idempotency hash covers the template alone.
   *because hardening the fence leaves a dedup key intact*
-- `cutoffs` — A model endpoint capability declares a pinned snapshot id and pre-training and post-training cutoffs, each tagged `documented` or `estimated`. An undeclared cutoff compares as the call's own instant.
+- `cutoffs` — A model reference carries a pinned snapshot id and pre-training and post-training cutoffs, each tagged `documented` or `estimated`. An undeclared cutoff compares as the call's own instant.
   *because tuning adds knowledge after pre-training, and an estimated cutoff often falls before the reported one*
 - `logprobs` — A call to an endpoint exposing token log-probabilities lands them with the call record.
   *because probe-based leakage estimates read first-token probabilities*
@@ -296,7 +296,7 @@ unsettled: Does a call to an endpoint naming an alias rather than a pinned snaps
 
 #### Scenarios
 
-- `connector.infer.cutoffs`: WHEN a capability declares a pre-training cutoff and no post-training cutoff, THEN the post-training cutoff compares as the call's own instant.
+- `connector.infer.cutoffs`: WHEN a model reference carries a pre-training cutoff and no post-training cutoff, THEN the post-training cutoff compares as the call's own instant.
 - `connector.infer.logprobs`: WHEN an endpoint returns token log-probabilities, THEN the call record carries them beside the response.
 
 ## package
@@ -731,23 +731,6 @@ Authorization = "Bearer ${secret://vendor-token}"
 
 [bounds]
 memory_bytes = 268435456
-```
-
-A model endpoint capability, its snapshot pinned and each cutoff tagged:
-
-```toml
-[capabilities.model]
-endpoint = "https://models.example.internal/v1"
-snapshot = "reader-instruct-20250301"     # a pinned snapshot id, never an alias
-logprobs = true                           # the endpoint exposes token log-probabilities
-
-[capabilities.model.cutoff.pretrain]
-at    = "2024-10"
-basis = "documented"
-
-[capabilities.model.cutoff.posttrain]
-at    = "2025-03"
-basis = "estimated"                       # absent: compares as the call's own instant
 ```
 
 The world:
