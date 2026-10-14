@@ -11,6 +11,7 @@ rank           = {}
 cache          = {}
 resolve-pin    = {}
 embed          = {}
+as-of-join     = {}
 declare        = {}
 synthesize     = {}
 revise         = {}

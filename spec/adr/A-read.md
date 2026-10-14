@@ -258,3 +258,14 @@ A memory read's audit entry records the claim ids it returned under the caller's
 | Infer usage from citations | Observation | A claim can be read many times without another claim citing it. |
 | Return the newest owner only | Completeness | Joint ownership silently loses every older live attachment. |
 | Serve directly from a graph backend | Enforcement | Its grant, mask, zone and frontier rules become a second implementation. |
+
+## The as-of join matches on availability time, not valid time
+
+`read.as-of-join` matches a driving row to the right relation's latest row whose declared availability instant precedes the driving instant. Valid time says when a value held; availability time says when anyone could see it. A restated figure keeps its original valid time, and a renamed identifier's new ticker is announced before it takes effect, so a valid-time match hands a backtest a value published after its decision. The join runs inside one statement over registered relations, so restriction, masks and the three bounds compose as they do for any read; a right relation declaring no availability time refuses rather than falling back.
+
+| Option | Lost on | Cost |
+| --- | --- | --- |
+| Match on the declared availability instant *(chosen)* | — | Every right relation declares `available_time`; an undeclared one refuses. |
+| Match on valid time | Leakage | A restatement published after the event joins as if known then. |
+| Match on the transaction stamp | Backfill | A history landed in one commit joins nothing before that commit. |
+| A dedicated join tool | Composition | The tool restates each relation's restriction outside the statement guard. |
