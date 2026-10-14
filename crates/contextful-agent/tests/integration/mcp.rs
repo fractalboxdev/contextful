@@ -581,8 +581,8 @@ fn memory_reads_record_the_claim_ids_they_returned() {
     assert_eq!(first["contextful.read.at"], json!(at("2030-06-01T00:00:00Z").to_rfc3339()));
 }
 
-/// `corpus.retrieve({prefix, query, query_embedding?, filter?, kinds?, limit?, since?, min_score?, as_of?})` returns the top rows across the item and artifact genres under one prefix, each with a snippet and full provenance. It composes the query surface and memory recall, storing nothing.
-// spec: read.retrieve.ranked-call@ea39e5ac
+/// `corpus.retrieve({prefix, query, query_embedding?, filter?, kinds?, limit?, since?, min_score?, as_of?, valid_as_of?})` returns the top rows across the item and artifact genres under one prefix, each with a snippet and full provenance. It composes the query surface and memory recall, storing nothing.
+// spec: read.retrieve.ranked-call@13d751b7
 #[test]
 fn corpus_retrieve_takes_a_filter_and_kinds() {
     let f = fixture();
