@@ -26,7 +26,20 @@ Cloudflare Containers reach D1 and R2 through a Worker outbound handler. D1 hold
 | D1 pre-dispatch checks alone | Fencing | Owner transfer can race between the check and external call. |
 | Local SQLite with R2 sync | Replacement safety | A crash can lose a paid-call record or export checkpoint. |
 
-Consequences: D1 writes that move an owner or lease predicate on the absence of a guard. Guard acquisition checks the exact owner, active attempt and fence in the same D1 statement. A missing bridge, schema, recovery identity or R2 binding refuses admission. Coordinated publication refuses until its D1 outbox has an atomic activation path.
+Consequences: D1 writes that move an owner or lease predicate on the absence of a guard. Guard acquisition checks the exact owner, active attempt and fence in the same D1 statement. A missing bridge, schema, recovery identity or R2 binding refuses admission. Coordinated publication follows the next decision.
+
+## D1 coordinated groups commit through versioned sender rows
+
+A coordinated group under `cloudflare-d1` keeps the sender's state machine and changes only where it persists. Each group's producer frontier, per-namespace sender and active namespace are D1 rows carrying a version and the writer's lease. A write is one D1 batch: its first statement updates the sender under the prior version, lease and a fresh write token, and each later statement predicates on that token, so a lost race changes no row. Sender bodies past the inline row bound live in R2 under their SHA-256 before the row names them. The receiver contract is unchanged.
+
+| Option | Lost on | Cost |
+| --- | --- | --- |
+| Versioned sender rows, token-chained batch, R2 spill *(chosen)* | — | Every acknowledgement rewrites the whole sender; state past the staging bound refuses. |
+| One row per group across all namespaces | Write size | A rebuild doubles every acknowledgement's payload. |
+| One row per event in D1 | Statement count | A group's events exceed one batch's statements, so staging is no longer one commit. |
+| Machine-local SQLite ledger with R2 sync | Replacement safety | A crash between commit and sync forgets an acknowledged group. |
+
+Consequences: a replacement reads the pending outbox from D1 and reoffers identical bytes; the receiver's accepted-group record absorbs a lost acknowledgement. Recovery captures publication rows and their R2 bodies with the rest of the execution state.
 
 ## Registered bodies pin the executing host and public semantic dependencies
 

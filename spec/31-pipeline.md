@@ -321,8 +321,21 @@ The outbound copy of a landed table to an operator-declared target: the export b
   *A-run*
 - `group-incompatible` — Membership drift, incarnation mismatch, a changed pending read identity, an incompatible checkpoint, an incomplete producer frontier, or a predecessor/order mismatch raises `PublicationIncompatible` before delivery or activation.
   *A-run*
-- `group-storage` — A coordinated publication under `postgres` or `cloudflare-d1` raises `PublicationStorageUnsupported` naming the coordinated-group-outbox capability before execution, staging or delivery.
-  *because a machine-local outbox cannot coordinate replaced containers*
+- `group-storage` — A coordinated publication under `postgres` raises `PublicationStorageUnsupported` naming the coordinated-group-outbox capability before execution, staging or delivery; a `cloudflare-d1` sender state over 8 MiB raises it before staging.
+  *A-run*
+- `group-d1-state` — Under {{run.journal.d1-profile}}, D1 holds each group's producer frontier, sender outbox and active namespace; one D1 batch commits a completing acknowledgement with its promoted state and active namespace.
+  *A-run*
+- `group-d1-lease` — A `cloudflare-d1` group writer holds one durable D1 lease per publication, and every sender write predicates on that lease and the row's prior version.
+  *A-run*
+- `group-d1-spill` — A `cloudflare-d1` sender row over 1 MiB holds the SHA-256 of an R2 object written before the row commits; the blob sweep keeps every object a publication row references.
+  *because D1 bounds each row's size, and an R2 object reached only through a committed row is never half visible*
+- `group-d1-recovery` — After an empty-disk replacement, `contextful export group` resumes a staged or partially acknowledged `cloudflare-d1` group from D1, reoffering identical group and event identifiers before staging a later frontier.
+  *A-run*
+
+#### Scenarios
+
+- `run.export.group-d1-recovery`: WHEN the container stops after D1 commits a staged group and before any delivery, THEN its replacement delivers that group's exact bytes and the receiver activates every member together.
+- `run.export.group-d1-state`: WHEN a replacement loses the acknowledgement of the group-complete batch, THEN it reoffers that batch, and the receiver's accepted group absorbs the retry without a second activation.
 
 unsettled: Does the arm map a table onto the OTLP span or metric signal, and through which column declaration? owner: pipeline affects: run.export
 

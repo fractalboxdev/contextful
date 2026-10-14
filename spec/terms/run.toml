@@ -171,6 +171,8 @@ export-history-default     = { clause = "run.record.export-ceiling", value = 500
 export-history-ceiling     = { clause = "run.record.export-ceiling", value = 5000, unit = "rows", basis = "chosen", gloss = "Highest ceiling the export honors, per pipeline." }
 export-batch-rows          = { clause = "run.export.batch-rows", value = 500, unit = "rows", basis = "chosen", gloss = "Rows one OTLP delivery batch holds." }
 typed-export-request-bytes = { clause = "run.export.typed-byte-limit", value = 65536, unit = "B", basis = "chosen", gloss = "Largest typed export request body." }
+d1-group-state-bytes       = { clause = "run.export.group-storage", value = 8, unit = "MiB", basis = "chosen", gloss = "Largest coordinated sender state the D1 profile stages." }
+d1-group-row-bytes         = { clause = "run.export.group-d1-spill", value = 1, unit = "MiB", basis = "chosen", gloss = "Largest sender body one D1 row holds inline." }
 run-error-cap              = { clause = "run.record.error-cap", value = 2, unit = "KiB", basis = "chosen", gloss = "Size a recorded run error is clipped to." }
 projection-coalesce-window = { clause = "run.project.coalescing", value = 100, unit = "ms", basis = "chosen", gloss = "Window snapshot broadcasts collapse into." }
 run-metadata-bytes         = { clause = "run.project.metadata-too-large", value = 16384, unit = "B", basis = "chosen", gloss = "Serialized bound on snapshot application metadata." }
