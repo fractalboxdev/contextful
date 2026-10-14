@@ -409,9 +409,9 @@ unsettled: What resident bound replaces the stored-vector cap for a memory-mappe
 
 ## bound-time
 
-The transaction and valid clocks a row carries, the parameter bounding each, and what a bounded read resolves to.
+The two clocks a row carries, the parameter bounding each, and what a bounded read resolves to.
 
-- `two-clocks` — Transaction time is `_ingested_at`; valid time and availability time are declared columns of the table. The engine infers neither and stamps no second transaction clock.
+- `two-clocks` — Transaction time is `_ingested_at`; valid time is a declared pair of the table's own columns. The engine infers no pair and stamps no second transaction clock.
 - `valid-time-declaration` — `[pipeline.tables.valid_time]` declares `from` and an optional `to`; a table declaring `from` alone treats each row as valid from that instant onward.
 - `valid-time-type` — A declared valid-time column whose type is not a timestamp raises `StoreValidTimeNotTimestamp` at declaration.
   *P1*
@@ -438,13 +438,14 @@ The transaction and valid clocks a row carries, the parameter bounding each, and
 
 Availability time: the declared instant each row's value became public, how landing resolves it, and the `available_as_of` bound a read compares against it.
 
-- `declaration` — `[pipeline.tables.available_time]` declares `column`, the `timestamptz` instant a row's value became public, and an optional `zone`, UTC by default; landing writes the resolved instant, and an availability bound compares that column alone.
+- `declaration` — `[pipeline.tables.available_time]` declares `column`, the `timestamptz` instant a row's value became public, and an optional `zone`, UTC by default; landing writes the instant resolved from the source, never an engine stamp, and an availability bound compares that column alone.
   *A-store*
-- `lag-fill` — A declared `available_time.lag` fills a null column at landing with valid-time `to`, else `from`, plus its `lag_class` duration, and the engine injects `_available_imputed` true on that row.
+- `lag-fill` — A declared `available_time.lag` fills a null column at landing with valid-time `to`, else `from`, plus the duration {{store.available-time.lag-class}} assigns the row, and the engine injects `_available_imputed` true on that row.
   *because a filing becomes public a filer-class deadline after period end, 40 to 90 days for a 10-Q or 10-K*
+- `lag-class` — `available_time.lag = { class_column = "<column>", classes = { <class> = "<n>d" } }` maps each row's class to a duration; a row whose class names no entry resolves no instant and refuses as {{store.available-time.null}}.
 - `date-end` — A date-typed availability value resolves at landing to the start of the following day in the declared `zone`.
   *because a date-only filing or headline can land after the close*
-- `live-since` — `available_time.live_since` names the instant a source began publishing live; the engine injects `_available_reconstructed` true on each row available before it, and a report slices on that column.
+- `live-since` — `available_time.live_since` names the instant a source began publishing live; the engine injects `_available_reconstructed` true on each row available before it.
   *because a vendor's point-in-time history before its live date was rebuilt after the fact*
 - `available-as-of` — `available_as_of` wraps the inner source with `<column> <= available_as_of` over the declared column, conjoined with {{store.bound-time.as-of}} and {{store.bound-time.valid-as-of}} where given.
   *A-store*
