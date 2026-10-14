@@ -108,6 +108,33 @@ Chained derives follow
 {{run.select.derive-order}}, {{run.select.derive-failed-parent}} and {{run.select.parent-outcome}}; {{run.select.derive-cycle}}
 prevents circular chains. A conflicting `after` refuses under {{run.select.derive-after-conflict}}.
 
+A sweep follows {{run.sweep.origins}}, {{run.sweep.frozen-as-of}} and {{run.sweep.simulated-write}}:
+
+```mermaid
+flowchart LR
+  subgraph RUNC["run contract"]
+    SW["sweep declaration"]
+    FB["frozen transaction bound"]
+    O1["earlier origin"]
+    O2["later origin"]
+    ST{"carried state?"}
+    NS["no shared rows"]
+  end
+  subgraph STORE["store contract"]
+    H[("backfilled history table")]
+    OUT[("sweep output table")]
+  end
+  SW -->|"one run per step"| O1
+  SW -->|"one run per step"| O2
+  FB -->|"bounds every read"| H
+  H -->|"rows available by origin"| O1
+  H -->|"rows available by origin"| O2
+  O1 -->|"writes stamped at origin"| OUT
+  OUT -->|"read by later origin"| ST
+  ST -->|"carried: preceding commit"| O2
+  ST -->|"fresh: frozen bound"| NS
+```
+
 ## Worked example
 
 The `meta-ads` pipeline pulls ad insights incrementally. Its declaration names `updated_time`
@@ -118,9 +145,9 @@ With no pending owner, a fire receives a fresh execution id ({{run.own.retiremen
 the boundary instant ({{run.advance.inclusive-boundary}}); `insights` declares a
 `primary_key`, so those repeats are idempotent ({{run.advance.declared-key-required}}).
 
-The process dies after recording its first page.
+The process dies after its first page.
 
-On restart, startup marks the row `partial_failure` because its owner lease has expired
+On restart, startup marks the row `partial_failure`, its owner lease expired
 ({{run.record.orphan-reap}}). The next fire finds no commit marker newer than the cached
 position ({{run.own.marker-reconciles}}), sees the same plan hash, and replays. The
 journal hit hands the recorded page to the land path byte for byte
@@ -128,9 +155,8 @@ journal hit hands the recorded page to the land path byte for byte
 ({{connector.meter.replay-reservation}}). The remaining pages pull live and commit with the
 position, and `success` releases the owner ({{run.own.pin-release}}).
 
-Had the author renamed `updated_time` between the two fires, the open refuses before any
-request leaves the host ({{run.advance.field-rename}}); starting over is an explicit act
-({{run.advance.turning-incremental-on}}).
+A rename of `updated_time` between fires refuses the open ({{run.advance.field-rename}});
+restarting is explicit ({{run.advance.turning-incremental-on}}).
 
 ## Where to look
 
