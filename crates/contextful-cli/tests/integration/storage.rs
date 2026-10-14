@@ -201,8 +201,62 @@ fn d1_storage_initialization_and_history_survive_a_new_cli_process() {
     let unavailable = invoke(&["storage", "check", "--project", "research"]);
     assert!(!unavailable.status.success(), "an unreachable R2 bucket passed preflight");
     assert!(String::from_utf8_lossy(&unavailable.stderr).contains("StorageCapabilityMissing: R2 corpus bucket"));
+    std::fs::write(&config_path, &config).unwrap();
+    let blob = b"recorded callback value";
+    let blob_digest = format!("{:x}", Sha256::digest(blob));
+    db.put_blob(&blob_digest, blob).unwrap();
+    db.query("INSERT INTO contextful_blob (sha256, put_at) VALUES (?, 1)", vec![serde_json::json!(blob_digest)]).unwrap();
+    db.query("INSERT INTO contextful_run (run_id, pipeline_id, started_ns, row) VALUES ('backup-run', 'pipeline', '1791918353123456789', '{}')", vec![]).unwrap();
+    db.query("INSERT INTO contextful_awakeable (token, version, body) VALUES ('awake', 1, '{}')", vec![]).unwrap();
+    db.query("INSERT INTO contextful_export (name, version, body) VALUES ('receiver', 1, '{\"cursor\":\"delivery-1\"}')", vec![]).unwrap();
+    db.query("INSERT INTO contextful_guard (scope, token, admitted_at) VALUES ('backup-guard', ?, 2)", vec![serde_json::json!("b".repeat(64))]).unwrap();
+    db.query("INSERT INTO contextful_lease (key, holder, expires_us, fence) VALUES ('backup-lease', 'owner', 7, 3)", vec![]).unwrap();
+    let captured = invoke(&["storage", "capture", "--project", "research"]);
+    assert!(captured.status.success(), "{}", String::from_utf8_lossy(&captured.stderr));
     let _ = binding.kill();
     let _ = binding.wait();
+    let replacement = tempfile::tempdir().unwrap();
+    std::fs::copy(root.join("execution.sqlite"), replacement.path().join("execution.sqlite")).unwrap();
+    let replacement_blobs = replacement.path().join("blobs");
+    std::fs::create_dir_all(&replacement_blobs).unwrap();
+    for entry in std::fs::read_dir(root.join("blobs")).unwrap() {
+        let entry = entry.unwrap();
+        std::fs::copy(entry.path(), replacement_blobs.join(entry.file_name())).unwrap();
+    }
+    let replacement_s3 = S3Server::start("conformance");
+    for key in s3.keys() {
+        replacement_s3.seed(&key, &s3.object(&key).unwrap());
+    }
+    let replacement_store = replacement.path().join(".contextful/context/research");
+    std::fs::create_dir_all(&replacement_store).unwrap();
+    std::fs::write(replacement.path().join("contextful.toml"), "[[pipeline.tables]]\nname = 'filings'\n").unwrap();
+    std::fs::write(replacement_store.join("config.toml"), config.replace(&s3.endpoint, &replacement_s3.endpoint)).unwrap();
+    let mut replacement_binding = Command::new("node")
+        .arg(concat!(env!("CARGO_MANIFEST_DIR"), "/../contextful-d1/tests/fixture.mjs"))
+        .arg(replacement.path())
+        .stdout(Stdio::piped()).stderr(Stdio::null()).spawn().unwrap();
+    let mut line = String::new();
+    BufReader::new(replacement_binding.stdout.take().unwrap()).read_line(&mut line).unwrap();
+    let replacement_port: u16 = line.trim().parse().unwrap();
+    let replacement_invoke = |operation: &[&str]| command()
+        .args(operation).current_dir(replacement.path())
+        .env("CONTEXTFUL_STORAGE_PROFILE", "cloudflare-d1")
+        .env("CONTEXTFUL_D1_ENDPOINT", format!("http://127.0.0.1:{replacement_port}"))
+        .env("CONTEXTFUL_RECOVERY_ID", "generation")
+        .env("D1_TEST_ACCESS_KEY", ACCESS_KEY)
+        .env("D1_TEST_SECRET_KEY", SECRET_KEY)
+        .output().unwrap();
+    let restored = replacement_invoke(&["storage", "check", "--project", "research"]);
+    assert!(restored.status.success(), "{}", String::from_utf8_lossy(&restored.stderr));
+    let restored_db = contextful_d1::D1::connect(&format!("http://127.0.0.1:{replacement_port}")).unwrap();
+    assert_eq!(restored_db.get_blob(&blob_digest).unwrap().unwrap(), blob);
+    assert_eq!(restored_db.query("SELECT started_ns FROM contextful_run WHERE run_id = 'backup-run'", vec![]).unwrap().rows[0]["started_ns"], "1791918353123456789");
+    assert_eq!(restored_db.query("SELECT body FROM contextful_export WHERE name = 'receiver'", vec![]).unwrap().rows[0]["body"], "{\"cursor\":\"delivery-1\"}");
+    assert_eq!(restored_db.query("SELECT token FROM contextful_awakeable WHERE token = 'awake'", vec![]).unwrap().rows.len(), 1);
+    assert_eq!(restored_db.query("SELECT token FROM contextful_guard WHERE scope = 'backup-guard'", vec![]).unwrap().rows.len(), 1);
+    assert_eq!(restored_db.query("SELECT fence FROM contextful_lease WHERE key = 'backup-lease'", vec![]).unwrap().rows[0]["fence"], 3);
+    let _ = replacement_binding.kill();
+    let _ = replacement_binding.wait();
 }
 
 #[test]
