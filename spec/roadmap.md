@@ -198,6 +198,8 @@ Acceptance: `contextful_acceptance::m14::m14_assurance`
 | `run.sweep` | Walk-forward origins under one frozen `as_of`, carried or fresh state, and writes stamped available at their origin. |
 | `read.horizon` | The credential horizon every read inherits, the arguments it refuses, the stamps and statistics it withholds, and the builds and indexes it resolves. |
 | `store.snapshot` | The captured document corpus a case pins, and the standing of a capture after the horizon. |
+| `assurance.backtest` | Bounded cases routed to dated checkpoints, leakage stated against a reference, purged and embargoed splits, a trial ledger, planted leaks and a replayable trajectory. |
+| `assurance.forecast` | Forecast cases frozen before resolution, settled through the label join, scored on tracks that never pool. |
 
 Reach: An earnings row landed in one commit with its period end and filing acceptance answers no `available_as_of` read between the two, and answers one after acceptance.
 

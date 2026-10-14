@@ -14,6 +14,8 @@ build             = {}
 gate              = {}
 evaluate          = {}
 baseline          = {}
+backtest          = {}
+forecast          = {}
 measure           = {}
 release           = {}
 consumer          = {}
@@ -71,6 +73,9 @@ GoldenSetIngested                = { clause = "assurance.baseline.answer-key-in-
 GoldenRedactionFailed            = { clause = "assurance.baseline.generated-redaction", gloss = "A generated golden the write-time redaction pass cannot clear." }
 PublicCorpusDigestMismatch       = { clause = "assurance.baseline.public-corpora", gloss = "Fetched public benchmark bytes whose SHA-256 digest differs from the fetch manifest's." }
 TraceExportOutOfPerimeter        = { clause = "assurance.baseline.trace-export", gloss = "A hosted trace endpoint configured for a run touching a deployed store." }
+EvalLabelIntervalMissing         = { clause = "assurance.backtest.label-interval", gloss = "A bounded case declaring no label interval." }
+EvalExecutionUndeclared          = { clause = "assurance.backtest.execution-component", gloss = "A backtest report stamping no declared execution component." }
+EvalCaseResolvedBeforeFreeze     = { clause = "assurance.forecast.resolved-before-freeze", gloss = "A backtest forecast case resolved before its freeze instant." }
 MeasureEntryUnresolved           = { clause = "assurance.measure.unresolved-entry", gloss = "A ledger entry naming no clause, method or metric path." }
 MeasureRecordMissing             = { clause = "assurance.measure.record", gloss = "A gate-tier method finishing without writing its record." }
 MeasureSeedMismatch              = { clause = "assurance.measure.seed-mismatch", gloss = "A record carrying another seed than its ledger entry declares." }
@@ -110,6 +115,7 @@ assurance-rank-dead-band         = { clause = "assurance.baseline.rank-quality-d
 assurance-gated-mean-cases       = { clause = "assurance.baseline.unresolvable-path", value = 30, unit = "cases", basis = "chosen", gloss = "Fewest cases behind a gated mean." }
 assurance-interval-level         = { clause = "assurance.baseline.interval", value = 95, unit = "percent", basis = "chosen", gloss = "Confidence level of a judged figure's interval." }
 assurance-bootstrap-resamples    = { clause = "assurance.baseline.interval", value = 1000, unit = "resamples", basis = "chosen", gloss = "Bootstrap resamples behind a judged figure's interval." }
+assurance-forecast-coverage      = { clause = "assurance.forecast.coverage-floor", value = 95, unit = "percent", basis = "chosen", gloss = "Share of a round's cases a forecaster answers to be ranked." }
 assurance-test-first-base-run    = { clause = "assurance.test.base-run-bound", value = 300, unit = "s", basis = "chosen", gloss = "Wall clock one test-first execution against the base runs for, its build excluded." }
 assurance-timing-iterations      = { clause = "assurance.measure.timing-iterations", value = 200, unit = "repeats", basis = "chosen", gloss = "Warm repeats per timed batch." }
 assurance-timing-batches         = { clause = "assurance.measure.timing-batches", value = 5, unit = "repeats", basis = "chosen", gloss = "Batches behind a timed figure." }
