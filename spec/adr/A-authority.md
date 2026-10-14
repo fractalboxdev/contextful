@@ -289,3 +289,17 @@ Criteria: theft yield, then host compatibility; theft yield decided the order.
 
 Consequences: a key-holding local client keeps network-grade theft resistance; a credential with no confirmation claim is local-only. Accepted cost: on the fallback, a same-uid process reading the host's configuration acts with the credential locally.
 Revisit: stdio hosts sign per request, retiring the fallback; a portable call names the peer process.
+
+## The horizon is a grant dimension enforced through the existing egress hook
+
+An agent replaying a past instant must not see what became available after it. A cutoff the agent passes per call is one it can omit or widen, so the horizon rides the credential: every read inherits it, a later argument refuses, and a child narrows it like any other dimension. Tools beyond the read face reach the outside through the one mediated attachment point, so the horizon is an input to the pre-send hook rather than a second allowlist. Search hosted inside a model provider never reaches that client, and refuses at the call.
+
+| Option | Lost on | Cost |
+| --- | --- | --- |
+| Grant dimension, enforced by the read face and the pre-send hook *(chosen)* | — | Every read tool and every hop consults one more grant field; a provider-hosted tool is unavailable under a horizon. |
+| A per-call `available_as_of` the agent supplies | Enforcement | The agent omits or widens it, and the cutoff becomes advisory. |
+| A per-tool horizon list in the read contract | One home | It restates the attachment point every egress already passes, and a new tool slips past it. |
+| A prompt instruction naming the cutoff | Enforcement | Models recall facts they are told to ignore. |
+
+Consequences: a horizon read refuses a table declaring no availability time; build and index reuse needs a recorded bound.
+Revisit: a provider exposing hosted search through a client-side hook.

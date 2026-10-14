@@ -9,8 +9,7 @@ contract: authority
 Every row **Contextful** returns or lands answers to one question: who asked, on whose
 behalf, and what did they hold? The contract splits that question in two. Admission turns a
 presented credential into a verified value once; enforcement rewrites every read so that
-value decides which rows and cells survive. Nothing downstream trusts ambient state, a
-flag or a second secret.
+value decides which rows and cells survive.
 
 ## How it works
 
@@ -64,6 +63,35 @@ reader's assertion for that reader's short-lived credential
 A holder narrows a credential offline by appending a signed block
 ({{authority.attenuate.offline}}); every dimension obeys the narrowing table, checked at
 derivation and again over the whole chain ({{authority.attenuate.narrowing}}).
+
+A horizon on the credential ({{authority.grant.horizon}}) bounds every read
+({{read.horizon.inherited-bound}}) and every outbound hop ({{read.horizon.egress-hook}}):
+
+```mermaid
+flowchart LR
+  subgraph HOLD["holder"]
+    HC["horizon credential"]
+    HCH["sub-agent child"]
+  end
+  subgraph READF["read face"]
+    TOOLS["read tools"]
+  end
+  subgraph CONN["connector"]
+    HOOK["pre-send hook"]
+    D{"host is the model endpoint?"}
+    REFH["refused hop"]
+  end
+  ST[("store tables")]
+  MODEL(["model endpoint"])
+  HC -->|"same or earlier horizon"| HCH
+  HC -->|"inherited availability bound"| TOOLS
+  HCH -->|"inherited availability bound"| TOOLS
+  TOOLS -->|"bounded read"| ST
+  HC -->|"horizon"| HOOK
+  HOOK -->|"outbound intent"| D
+  D -->|"yes"| MODEL
+  D -->|"no"| REFH
+```
 
 A checkpoint holds public keys only and calls no service to admit
 ({{authority.verify.public-key-only}}). Each request under a key-bound credential proves possession of

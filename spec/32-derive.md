@@ -87,6 +87,8 @@ The derive source: its configuration, the outstanding set recomputed each tick, 
   *A-run*
 - `dry-run` — `pipeline run --dry-run` on a derive pipeline prints its eligible, already-derived and outstanding unit counts from one selection, calling no engine and landing no row.
   *A-run*
+- `available-select` — A derive run carrying `available_as_of` selects only parent rows {{store.available-time.available-as-of}} admits at that bound, and each derived row lands its parent row's availability instant.
+  *because a passage derived from a later filing otherwise answers an earlier horizon*
 
 
 #### Scenarios

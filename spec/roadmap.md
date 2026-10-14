@@ -193,16 +193,11 @@ Acceptance: `contextful_acceptance::m14::m14_assurance`
 
 | Operations | Intent |
 | --- | --- |
-<<<<<<< HEAD
-| `store.available-time` | The declared availability instant, its resolution at landing, and the `available_as_of` bound. |
-<<<<<<< HEAD
-| `read.as-of-join` | The point-in-time join matching each driving row to the right row available at its instant. |
-=======
-| `run.sweep` | Walk-forward origins under one frozen `as_of`, carried or fresh state, and writes stamped available at their origin. |
->>>>>>> c3c62c05 (run: walk origins under one frozen as_of in run.sweep)
-=======
 | `store.available-time` | The declared availability instant, its resolution at landing, vintages, and the `available_as_of` bound. |
->>>>>>> 7a0e38b8 (store: keep restatements as vintage rows and land backfills at the source's availability instant)
+| `read.as-of-join` | The point-in-time join matching each driving row to the right row available at its instant. |
+| `run.sweep` | Walk-forward origins under one frozen `as_of`, carried or fresh state, and writes stamped available at their origin. |
+| `read.horizon` | The credential horizon every read inherits, the arguments it refuses, the stamps and statistics it withholds, and the builds and indexes it resolves. |
+| `store.snapshot` | The captured document corpus a case pins, and the standing of a capture after the horizon. |
 
 Reach: An earnings row landed in one commit with its period end and filing acceptance answers no `available_as_of` read between the two, and answers one after acceptance.
 

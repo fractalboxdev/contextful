@@ -10,6 +10,7 @@ fold       = {}
 index      = {}
 bound-time = {}
 available-time = {}
+snapshot   = {}
 encrypt    = {}
 endpoint   = {}
 emit       = {}
