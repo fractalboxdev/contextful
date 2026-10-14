@@ -181,6 +181,8 @@ fn d1_storage_initialization_and_history_survive_a_new_cli_process() {
     let missing = invoke(&["storage", "check", "--project", "research"]);
     assert!(!missing.status.success(), "a missing recorded corpus object passed preflight");
     assert!(String::from_utf8_lossy(&missing.stderr).contains("ExecutionRecoveryMismatch"));
+    let missing_history = invoke(&["run", "history", "--project", "research"]);
+    assert!(!missing_history.status.success(), "a missing corpus object admitted ordinary preflight");
     s3.seed(corpus_key, b"changed corpus");
     let changed = invoke(&["storage", "check", "--project", "research"]);
     assert!(!changed.status.success(), "a changed recorded corpus object passed preflight");

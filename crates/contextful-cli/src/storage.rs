@@ -53,6 +53,9 @@ pub(crate) enum Remote {
     D1 { endpoint: String, recovery: String },
 }
 
+#[derive(Clone, Copy)]
+enum CorpusCheck { Presence, Content }
+
 impl Remote {
     pub(crate) fn profile(&self) -> &'static str {
         match self { Self::Postgres { .. } => POSTGRES, Self::D1 { .. } => CLOUDFLARE_D1 }
@@ -164,12 +167,12 @@ pub(crate) fn preflight(project: &Project) -> Result<Option<Remote>> {
         return Ok(None);
     };
     validate_project(project, remote.profile())?;
-    recovery(project, &remote, false)?;
+    recovery(project, &remote, false, CorpusCheck::Presence)?;
     Ok(Some(remote))
 }
 
-fn recovery(project: &Project, remote: &Remote, initialize: bool) -> Result<i64> {
-    let _ = (project, initialize);
+fn recovery(project: &Project, remote: &Remote, initialize: bool, check: CorpusCheck) -> Result<i64> {
+    let _ = (project, initialize, check);
     match remote {
         Remote::Postgres { url, recovery } => {
             #[cfg(feature = "pg-catalog")]
@@ -188,7 +191,7 @@ fn recovery(project: &Project, remote: &Remote, initialize: bool) -> Result<i64>
                 if initialize { db.initialize_recovery(&project.name, recovery).map_err(anyhow::Error::msg)? }
                 else { db.verify_recovery(&project.name, recovery).map_err(anyhow::Error::msg)? }
                 let objects = db.recovery_objects(&project.name, recovery).map_err(anyhow::Error::msg)?;
-                verify_corpus_frontier(project, &objects)?;
+                verify_corpus_frontier(project, &objects, check)?;
                 Ok(contextful_d1::EXECUTION_SCHEMA_VERSION)
             }
             #[cfg(not(feature = "d1-catalog"))]
@@ -198,7 +201,7 @@ fn recovery(project: &Project, remote: &Remote, initialize: bool) -> Result<i64>
 }
 
 #[cfg(feature = "d1-catalog")]
-fn verify_corpus_frontier(project: &Project, objects: &[contextful_d1::RecoveryObject]) -> Result<()> {
+fn verify_corpus_frontier(project: &Project, objects: &[contextful_d1::RecoveryObject], check: CorpusCheck) -> Result<()> {
     if objects.is_empty() { return Ok(()) }
     let path = project.store_root().join(contextful_core::store::lay_out::CONFIG_FILE);
     let text = std::fs::read_to_string(path)?;
@@ -206,16 +209,31 @@ fn verify_corpus_frontier(project: &Project, objects: &[contextful_d1::RecoveryO
     let sync = config.sync.context("StorageCapabilityMissing: durable corpus `[sync]` binding is required")?;
     let prefix = sync.resolve_prefix(variable)?;
     let bucket = crate::sync::bucket(&sync)?;
+    let root = if prefix.is_empty() { String::new() } else { format!("{prefix}/") };
     for object in objects {
-        if !prefix.is_empty() && !object.key.starts_with(&format!("{prefix}/")) {
+        if !object.key.starts_with(&root) {
             bail!("ExecutionRecoveryMismatch: corpus key outside the recovery prefix")
         }
-        let Some((bytes, _)) = bucket.get(&object.key)
-            .map_err(|error| anyhow::anyhow!("StorageCapabilityMissing: R2 corpus object: {error}"))?
-        else { bail!("ExecutionRecoveryMismatch: missing R2 corpus object `{}`", object.key) };
-        let digest = format!("{:x}", Sha256::digest(&bytes));
-        if digest != object.sha256 {
-            bail!("ExecutionRecoveryMismatch: R2 corpus object `{}` changed", object.key)
+    }
+    match check {
+        CorpusCheck::Presence => {
+            let present: std::collections::BTreeSet<_> = bucket.list(&root)
+                .map_err(|error| anyhow::anyhow!("StorageCapabilityMissing: R2 corpus bucket: {error}"))?
+                .into_iter().collect();
+            for object in objects {
+                if !present.contains(&object.key) {
+                    bail!("ExecutionRecoveryMismatch: missing R2 corpus object `{}`", object.key)
+                }
+            }
+        }
+        CorpusCheck::Content => for object in objects {
+            let Some((bytes, _)) = bucket.get(&object.key)
+                .map_err(|error| anyhow::anyhow!("StorageCapabilityMissing: R2 corpus object: {error}"))?
+            else { bail!("ExecutionRecoveryMismatch: missing R2 corpus object `{}`", object.key) };
+            let digest = format!("{:x}", Sha256::digest(&bytes));
+            if digest != object.sha256 {
+                bail!("ExecutionRecoveryMismatch: R2 corpus object `{}` changed", object.key)
+            }
         }
     }
     Ok(())
@@ -241,7 +259,7 @@ pub fn run(command: StorageCmd) -> Result<()> {
     };
     let project = args.locate(None)?.project;
     validate_project(&project, remote.profile())?;
-    let schema = recovery(&project, &remote, initialize)?;
+    let schema = recovery(&project, &remote, initialize, CorpusCheck::Content)?;
     println!(
         "{}",
         json!({ "profile":remote.profile(), "replacement_safe":true, "strict_execution_guards":true, "schema":schema, "project":project.name,
@@ -257,7 +275,7 @@ fn capture(args: ProjectArgs) -> Result<()> {
     };
     let project = args.locate(None)?.project;
     validate_project(&project, CLOUDFLARE_D1)?;
-    recovery(&project, &remote, false)?;
+    recovery(&project, &remote, false, CorpusCheck::Content)?;
     #[cfg(feature = "d1-catalog")]
     {
         let path = project.store_root().join(contextful_core::store::lay_out::CONFIG_FILE);
@@ -288,7 +306,7 @@ fn guard(args: ProjectArgs, reconciliation: Option<(String, String)>) -> Result<
     let Remote::D1 { endpoint, .. } = &remote else { bail!("StorageProfileUnsupported: callback guards require `{CLOUDFLARE_D1}`") };
     let project = args.locate(None)?.project;
     validate_project(&project, CLOUDFLARE_D1)?;
-    recovery(&project, &remote, false)?;
+    recovery(&project, &remote, false, CorpusCheck::Presence)?;
     #[cfg(feature = "d1-catalog")]
     {
         let catalog = contextful_d1::D1Catalog::connect(endpoint)?;
