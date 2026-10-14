@@ -164,6 +164,10 @@ fn d1_storage_initialization_and_history_survive_a_new_cli_process() {
     s3.seed(captured_key, captured_bytes);
     let intact_capture = invoke(&["storage", "check", "--project", "research"]);
     assert!(intact_capture.status.success(), "{}", String::from_utf8_lossy(&intact_capture.stderr));
+    let gets_before_history = s3.gets();
+    let history = invoke(&["run", "history", "--project", "research"]);
+    assert!(history.status.success(), "{}", String::from_utf8_lossy(&history.stderr));
+    assert_eq!(s3.gets(), gets_before_history, "ordinary preflight downloaded the captured corpus");
     let corpus_key = "d1-test/corpus-object";
     let corpus_bytes = b"recoverable corpus";
     let corpus_digest = format!("{:x}", Sha256::digest(corpus_bytes));
