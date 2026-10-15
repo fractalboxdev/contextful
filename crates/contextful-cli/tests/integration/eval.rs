@@ -989,3 +989,213 @@ fn commit_appends_approved_drafts_redacted_and_refuses_a_repeated_id() {
     let out = commit(&["gen-walk-none=reviewer-a"]);
     assert!(!out.status.success());
 }
+
+/// A research corpus: an earnings table and a returns table, each declaring the instant its
+/// rows became public.
+const RESEARCH: &str = r#"
+[[pipeline.tables]]
+name = "research/earnings"
+primary_key = ["filing_id"]
+
+[pipeline.tables.columns]
+accepted_at = "timestamp"
+
+[pipeline.tables.available_time]
+column = "accepted_at"
+
+[[pipeline.tables]]
+name = "research/returns"
+primary_key = ["ticker"]
+
+[pipeline.tables.columns]
+available_at = "timestamp"
+
+[pipeline.tables.available_time]
+column = "available_at"
+"#;
+
+fn research_rows() -> Vec<(&'static str, Value)> {
+    vec![
+        ("research/earnings", json!([
+            { "filing_id": "acme-q1", "ticker": "ACME", "eps": 1.23, "accepted_at": "2030-05-02T16:05:00Z" },
+            { "filing_id": "acme-q2", "ticker": "ACME", "eps": 1.41, "accepted_at": "2030-08-01T16:05:00Z" },
+        ])),
+        ("research/returns", json!([{ "ticker": "ACME", "ret": 0.02, "available_at": "2030-04-30T21:00:00Z" }])),
+    ]
+}
+
+const EARNINGS_SQL: &str = r#"SELECT filing_id, eps FROM "research/earnings" ORDER BY filing_id"#;
+const RETURNS_SQL: &str = r#"SELECT ticker, ret FROM "research/returns" ORDER BY ticker"#;
+
+fn bt_case(id: &str, sql: &[&str], extra: Value) -> Value {
+    let reads: Vec<Value> = sql.iter().map(|s| json!({ "tool": "context.query", "arguments": { "sql": s } })).collect();
+    let mut c = json!({ "id": id, "corpus": "corpus", "horizon": "2030-05-03T00:00:00Z",
+                        "label": { "t0": "2030-03-31T00:00:00Z", "t1": "2030-05-02T23:59:59Z" }, "reads": reads });
+    for (k, v) in extra.as_object().unwrap() {
+        c[k] = v.clone();
+    }
+    c
+}
+
+fn delisting() -> Value {
+    json!({ "delisting": { "table": "research/returns", "row": { "ticker": "ZZZ", "ret": -1.0, "available_at": "2030-04-20T21:00:00Z" } } })
+}
+
+fn forecast(observed_at: &str) -> Value {
+    json!({ "forecast": {
+        "resolution": "ACME's first-release Q2 EPS is at least 1.0",
+        "resolved_at": "2030-08-01T16:05:00Z", "outcome": 1.0,
+        "answer": { "probability": 0.8, "recorded": "2030-05-03T00:00:00Z" },
+        "no_evidence": { "probability": 0.5, "recorded": "2030-05-03T00:00:00Z" },
+        "observed_at": observed_at, "resolution_source": "metric", "comparator": "eps >= 1.0"
+    } })
+}
+
+impl Issuer {
+    /// A credential reading the research corpus.
+    fn mint_research(&self) -> String {
+        let args = ["token", "mint", "--issuer-key", ".contextful/issuer.seed", "--on-behalf-of", "user://ops@example.org",
+            "--agent", READER, "--zone", "on-prem:hq", "--ttl", "600", "--table", "research/*"];
+        stdout(&run(self.path(), &args, None))
+    }
+
+    /// `eval backtest` over `cases` into `out`, under a declared execution component.
+    fn backtest(&self, cases: &Path, out: &str, token: &str) -> (Output, Value) {
+        std::fs::write(self.path().join("execution.json"), json!({ "digest": "ab".repeat(32), "parameters": { "cost_bps": 5 } }).to_string()).unwrap();
+        let args = ["eval", "backtest", "--cases", cases.to_str().unwrap(), "--out", out, "--issuer-key", ".contextful/issuer.seed",
+            "--execution", "execution.json", "--public-key", &self.public, "--audience", AUD];
+        let o = run(self.path(), &args, Some(token));
+        let text = std::fs::read_to_string(self.path().join(out).join("report.json")).unwrap_or_else(|_| "null".into());
+        (o, serde_json::from_str(&text).unwrap())
+    }
+}
+
+/// Each bounded case plants a row available after its horizon in every table it reads; a planted row in the case's trajectory fails the case.
+// spec: assurance.backtest.planted-future@28f3fb09
+#[test]
+fn the_runner_plants_a_row_past_each_horizon_and_reads_without_it() {
+    let issuer = Issuer::new();
+    let cases = corpus(issuer.path(), RESEARCH, &research_rows(), &[bt_case("acme-q1", &[EARNINGS_SQL, RETURNS_SQL], json!({}))]);
+    let token = issuer.mint_research();
+    let (out, report) = issuer.backtest(&cases, "run-a", &token);
+    assert!(out.status.success(), "{}", stderr(&out));
+    assert_eq!(report["planted"]["acme-q1"], json!(["research/earnings", "research/returns"]));
+    let case = &report["cases"][0];
+    assert_eq!(case["verdict"], json!("pass"), "{report}");
+    assert_eq!(case["calls"], json!(2));
+    // Every call read under the horizon, recorded with its bound attributes.
+    let calls = std::fs::read_to_string(issuer.path().join("run-a/calls.jsonl")).unwrap();
+    let first: Value = serde_json::from_str(calls.lines().next().unwrap()).unwrap();
+    assert_eq!(first["arguments"]["available_as_of"], json!("2030-05-03T00:00:00.000000000Z"));
+    assert_eq!(first["answer"]["rows"], json!([["acme-q1", 1.23]]), "{first}");
+    assert!(!calls.contains("__planted__"), "no planted row reached the trajectory");
+}
+
+/// A universe case plants a member delisted inside its window; the case fails unless its trajectory holds that member's delisting return.
+// spec: assurance.backtest.planted-delisting@8fd87406
+#[test]
+fn a_universe_case_fails_unless_its_trajectory_holds_the_delisting_return() {
+    let issuer = Issuer::new();
+    let token = issuer.mint_research();
+    let held = corpus(issuer.path(), RESEARCH, &research_rows(), &[bt_case("universe", &[RETURNS_SQL], delisting())]);
+    let (out, report) = issuer.backtest(&held, "run-held", &token);
+    assert!(out.status.success(), "{}", stderr(&out));
+    assert_eq!(report["cases"][0]["verdict"], json!("pass"), "{report}");
+
+    let missed = corpus(issuer.path(), RESEARCH, &research_rows(), &[bt_case("survivors", &[EARNINGS_SQL], delisting())]);
+    let (out, report) = issuer.backtest(&missed, "run-missed", &token);
+    assert!(!out.status.success());
+    assert!(stderr(&out).contains("1 backtest case(s) failed"), "{}", stderr(&out));
+    assert_eq!(report["cases"][0]["verdict"], json!("fail"));
+    assert!(report["cases"][0]["failures"][0].as_str().unwrap().contains("delisting return"), "{report}");
+}
+
+/// A forecast case settles through the label join within {{read.settle.grace-window}}, and its scores report as {{read.settle.calibration-report}} groups them.
+// spec: assurance.forecast.settlement@4e293379
+#[test]
+fn a_forecast_case_settles_through_the_label_join() {
+    let issuer = Issuer::new();
+    let token = issuer.mint_research();
+    let cases = corpus(issuer.path(), RESEARCH, &research_rows(), &[
+        bt_case("settled", &[EARNINGS_SQL], forecast("2030-08-02T10:00:00Z")),
+        bt_case("too-late", &[EARNINGS_SQL], forecast("2030-08-03T00:00:00Z")),
+    ]);
+    let (out, report) = issuer.backtest(&cases, "run-f", &token);
+    assert!(out.status.success(), "{}", stderr(&out));
+    let f = &report["forecast"];
+    assert_eq!(f["unsettled"], json!(["too-late"]), "an observation past the deadline plus a day settles nothing: {f}");
+    let group = &f["calibration"][0];
+    assert_eq!((&group["shape"], &group["predicate"], &group["samples"]), (&json!("memory_facts"), &json!("forecast"), &json!(1)), "{f}");
+    assert!((group["brier"].as_f64().unwrap() - 0.04).abs() < 1e-9, "{group}");
+    assert!((group["ece"].as_f64().unwrap() - 0.2).abs() < 1e-9, "{group}");
+    assert_eq!(f["calibration"].as_array().unwrap().len(), 1);
+    let standing = &f["round"]["tracks"]["backtest"]["reader"];
+    assert_eq!(standing["answered"], json!(1));
+    assert!((standing["over_no_evidence"].as_f64().unwrap() - 0.21).abs() < 1e-9, "{standing}");
+}
+
+/// `contextful eval replay <run>` re-serves each recorded response without reading the store and reproduces the run report's digest.
+// spec: assurance.backtest.trajectory-replay@a65ba68c
+#[test]
+fn a_replay_reproduces_the_reports_digest_from_the_recording_alone() {
+    let issuer = Issuer::new();
+    let token = issuer.mint_research();
+    let cases = corpus(issuer.path(), RESEARCH, &research_rows(), &[
+        bt_case("acme-q1", &[EARNINGS_SQL, RETURNS_SQL], forecast("2030-08-02T10:00:00Z")),
+        bt_case("universe", &[RETURNS_SQL], delisting()),
+    ]);
+    let (out, report) = issuer.backtest(&cases, "run-r", &token);
+    assert!(out.status.success(), "{}", stderr(&out));
+    // The corpus is gone; the replay reads the run directory alone.
+    std::fs::remove_dir_all(issuer.path().join("corpus")).unwrap();
+    let replayed: Value = serde_json::from_str(&stdout(&run(issuer.path(), &["eval", "replay", "run-r"], None))).unwrap();
+    assert_eq!(replayed["digest"], report["digest"]);
+
+    // An edited answer moves the digest, and the replay refuses it.
+    let calls_path = issuer.path().join("run-r/calls.jsonl");
+    let calls = std::fs::read_to_string(&calls_path).unwrap();
+    std::fs::write(&calls_path, calls.replace("1.23", "9.99")).unwrap();
+    let out = run(issuer.path(), &["eval", "replay", "run-r"], None);
+    assert!(!out.status.success());
+    assert!(stderr(&out).contains("differs from the recorded"), "{}", stderr(&out));
+    std::fs::write(&calls_path, &calls).unwrap();
+    // A request the case file no longer makes diverges from the recording.
+    let cases_path = issuer.path().join("run-r/cases.jsonl");
+    let text = std::fs::read_to_string(&cases_path).unwrap();
+    std::fs::write(&cases_path, text.replace("ORDER BY ticker", "ORDER BY ret")).unwrap();
+    let out = run(issuer.path(), &["eval", "replay", "run-r"], None);
+    assert!(stderr(&out).contains("diverges from its recording"), "{}", stderr(&out));
+}
+
+/// A backtest run report carries the signed audit-chain root covering its run's {{disclosure.record.bound-entry}} entries.
+// spec: assurance.backtest.replay-root@e1626fa3
+#[test]
+fn the_report_carries_a_signed_root_over_the_runs_audit_chain() {
+    let issuer = Issuer::new();
+    let token = issuer.mint_research();
+    let cases = corpus(issuer.path(), RESEARCH, &research_rows(), &[bt_case("acme-q1", &[EARNINGS_SQL, RETURNS_SQL], json!({}))]);
+    let (out, report) = issuer.backtest(&cases, "run-s", &token);
+    assert!(out.status.success(), "{}", stderr(&out));
+    let root = &report["replay_root"];
+    assert_eq!(root["count"], json!(2), "{root}");
+    assert!(root["root"].as_str().unwrap().starts_with("sha256:"), "{root}");
+    assert!(root["key"].as_str().unwrap().starts_with("ed25519:"), "{root}");
+    assert!(root["signature"].as_str().is_some_and(|s| !s.is_empty()));
+    let audit = std::fs::read_dir(issuer.path().join("run-s/audit")).unwrap().count();
+    assert!(audit > 0);
+
+    // A forged signature fails the replay before any digest.
+    let path = issuer.path().join("run-s/report.json");
+    let mut forged = report.clone();
+    let sig = root["signature"].as_str().unwrap();
+    forged["replay_root"]["signature"] = json!(format!("{}{}", if sig.starts_with('0') { "1" } else { "0" }, &sig[1..]));
+    std::fs::write(&path, forged.to_string()).unwrap();
+    let out = run(issuer.path(), &["eval", "replay", "run-s"], None);
+    assert!(stderr(&out).contains("no valid signature"), "{}", stderr(&out));
+    // A root over fewer entries than the chain holds is refused too.
+    let mut short = report.clone();
+    short["replay_root"]["count"] = json!(1);
+    std::fs::write(&path, short.to_string()).unwrap();
+    let out = run(issuer.path(), &["eval", "replay", "run-s"], None);
+    assert!(!out.status.success());
+}

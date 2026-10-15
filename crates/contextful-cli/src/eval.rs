@@ -53,6 +53,8 @@ use std::collections::{BTreeMap, BTreeSet, HashMap};
 use std::io::Write as _;
 use std::path::{Path, PathBuf};
 
+mod backtest;
+
 /// The corpus manifest a corpus directory holds (`assurance.evaluate.corpus-layout`).
 const CORPUS_MANIFEST: &str = "contextful.toml";
 
@@ -85,6 +87,10 @@ pub enum EvalCmd {
     Draft(DraftArgs),
     /// Append approved drafts, redacted, to a case file.
     Commit(CommitArgs),
+    /// Run a backtest case file under each case's horizon into a signed recording and score it.
+    Backtest(backtest::BacktestArgs),
+    /// Re-serve a backtest run's recording and reproduce its report's digest.
+    Replay(backtest::ReplayArgs),
 }
 
 /// The evaluation tier a run reads and judges under.
@@ -418,6 +424,8 @@ pub fn run(cmd: EvalCmd) -> Result<()> {
         EvalCmd::Run(a) => run_cases(a),
         EvalCmd::Draft(a) => draft(a),
         EvalCmd::Commit(a) => commit(a),
+        EvalCmd::Backtest(a) => backtest::backtest(a),
+        EvalCmd::Replay(a) => backtest::replay(a),
     }
 }
 

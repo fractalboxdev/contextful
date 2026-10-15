@@ -5,7 +5,7 @@ An unpinned clause is `committed`; a pinned one is `performed` when its Rust, Le
 
 | Contract | Files | Operations | Clauses | Refusals | Limits | Unsettled | Performed | Broken | Floor |
 | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
-| `assurance` | 3 | 18 | 305 | 63 | 23 | 9 | 262 | 0 | 262 |
+| `assurance` | 3 | 18 | 305 | 63 | 23 | 9 | 267 | 0 | 267 |
 | `authority` | 2 | 16 | 295 | 79 | 29 | 9 | 222 | 0 | 222 |
 | `connector` | 2 | 14 | 356 | 90 | 21 | 16 | 231 | 0 | 231 |
 | `corpus` | 1 | 10 | 79 | 37 | 7 | 0 | 79 | 0 | 79 |
@@ -15,7 +15,7 @@ An unpinned clause is `committed`; a pinned one is `performed` when its Rust, Le
 | `store` | 3 | 19 | 287 | 65 | 14 | 13 | 273 | 0 | 273 |
 | `surface` | 2 | 20 | 137 | 59 | 22 | 0 | 98 | 0 | 98 |
 | `topology` | 1 | 6 | 79 | 25 | 5 | 3 | 72 | 0 | 72 |
-| **total** | 22 | 165 | 2434 | 637 | 202 | 71 | 1947 | 0 | |
+| **total** | 22 | 165 | 2434 | 637 | 202 | 71 | 1952 | 0 | |
 
 Decision records: 18.
 
@@ -40,7 +40,7 @@ A milestone reads `closed` when its acceptance test computes `passing` and every
 | 12 — The operator console | 12 | 56 | 25 | passing | open |
 | 13 — Disclosure | 5 | 33 | 13 | open | open |
 | 14 — Assurance | 7 | 156 | 126 | passing | closed |
-| 15 — Point-in-time evaluation | 7 | 76 | 44 | open | open |
+| 15 — Point-in-time evaluation | 7 | 76 | 49 | open | open |
 
 Unscheduled operations: 12.
 
@@ -76,11 +76,15 @@ Unscheduled operations: 12.
 | `assurance.backtest.fill-instant` | `tools/eval/tests/integration/backtest.rs::a_decision_fills_at_the_first_price_strictly_after_it` | performed |
 | `assurance.backtest.label-interval` | `tools/eval/tests/integration/backtest.rs::a_bounded_case_without_a_label_interval_is_refused` | performed |
 | `assurance.backtest.latest-arm` | `tools/eval/tests/integration/backtest.rs::the_report_states_the_latest_minus_routed_premium_over_paired_cases` | performed |
+| `assurance.backtest.planted-delisting` | `crates/contextful-cli/tests/integration/eval.rs::a_universe_case_fails_unless_its_trajectory_holds_the_delisting_return` | performed |
+| `assurance.backtest.planted-future` | `crates/contextful-cli/tests/integration/eval.rs::the_runner_plants_a_row_past_each_horizon_and_reads_without_it` | performed |
 | `assurance.backtest.query-finding` | `tools/eval/tests/integration/backtest.rs::a_query_naming_a_later_entity_lands_a_finding` | performed |
+| `assurance.backtest.replay-root` | `crates/contextful-cli/tests/integration/eval.rs::the_report_carries_a_signed_root_over_the_runs_audit_chain` | performed |
 | `assurance.backtest.run-stamp` | `tools/eval/tests/integration/backtest.rs::a_backtest_run_block_stamps_every_trial_dimension` | performed |
 | `assurance.backtest.seed-repeats` | `tools/eval/tests/integration/backtest.rs::a_configurations_repeats_are_one_trial_with_a_spread` | performed |
 | `assurance.backtest.split` | `tools/eval/tests/integration/backtest.rs::a_split_purges_overlapping_labels_and_embargoes_the_cases_after_the_fold` | performed |
 | `assurance.backtest.trajectory-check` | `tools/eval/tests/integration/backtest.rs::a_case_fails_on_an_unbounded_call_or_a_leaking_document` | performed |
+| `assurance.backtest.trajectory-replay` | `crates/contextful-cli/tests/integration/eval.rs::a_replay_reproduces_the_reports_digest_from_the_recording_alone` | performed |
 | `assurance.backtest.trial-ledger` | `tools/eval/tests/integration/backtest.rs::the_ledger_deflates_the_best_sharpe_by_every_trial` | performed |
 | `assurance.backtest.universe-table` | `tools/eval/tests/integration/backtest.rs::a_literal_universe_reports_apart_and_a_table_declares_both_clocks` | performed |
 | `assurance.baseline.answer-key-in-the-store` | `crates/contextful-connectors/tests/integration/file.rs::a_source_reaching_the_evaluation_directory_raises_golden_set_ingested` | performed |
@@ -196,6 +200,7 @@ Unscheduled operations: 12.
 | `assurance.forecast.market-context` | `tools/eval/tests/integration/forecast.rs::a_market_case_reports_each_forecasters_edge_over_the_freeze_price` | performed |
 | `assurance.forecast.no-evidence-baseline` | `tools/eval/tests/integration/forecast.rs::each_forecaster_reports_against_the_question_only_baseline` | performed |
 | `assurance.forecast.resolved-before-freeze` | `tools/eval/tests/integration/forecast.rs::a_case_resolved_before_its_freeze_is_refused` | performed |
+| `assurance.forecast.settlement` | `crates/contextful-cli/tests/integration/eval.rs::a_forecast_case_settles_through_the_label_join` | performed |
 | `assurance.forecast.tracks-separate` | `tools/eval/tests/integration/forecast.rs::a_round_report_keeps_each_track_apart` | performed |
 | `assurance.gate.budget-stage` | `tools/ci/tests/integration/image.rs::the_budget_stage_builds_every_profile_one_part_each_and_the_evaluate_stage_none` | performed |
 | `assurance.gate.crate-graph` | `tools/ci/tests/integration/topology.rs::the_crate_graph_stage_refuses_an_undeclared_crossing` | performed |

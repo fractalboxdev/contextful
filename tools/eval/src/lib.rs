@@ -10,6 +10,7 @@
 //! calls the read path is `contextful eval run`.
 
 pub mod backtest;
+pub mod backtest_run;
 pub mod baseline;
 pub mod case;
 pub mod checkpoint;

@@ -1,6 +1,7 @@
 //! The harness core's one integration binary.
 
 mod backtest;
+mod backtest_run;
 mod baseline;
 mod case;
 mod checkpoint;
