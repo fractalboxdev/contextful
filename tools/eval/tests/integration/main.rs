@@ -1,5 +1,6 @@
 //! The harness core's one integration binary.
 
+mod backtest;
 mod baseline;
 mod case;
 mod checkpoint;
@@ -7,6 +8,7 @@ mod convert;
 mod custody;
 mod embed;
 mod floors;
+mod forecast;
 mod golden;
 mod judge;
 mod ledger;

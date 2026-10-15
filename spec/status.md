@@ -5,17 +5,17 @@ An unpinned clause is `committed`; a pinned one is `performed` when its Rust, Le
 
 | Contract | Files | Operations | Clauses | Refusals | Limits | Unsettled | Performed | Broken | Floor |
 | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
-| `assurance` | 3 | 18 | 305 | 63 | 23 | 9 | 235 | 0 | 235 |
+| `assurance` | 3 | 18 | 305 | 63 | 23 | 9 | 262 | 0 | 262 |
 | `authority` | 2 | 16 | 295 | 79 | 29 | 9 | 222 | 0 | 222 |
-| `connector` | 2 | 14 | 356 | 90 | 21 | 16 | 229 | 0 | 229 |
+| `connector` | 2 | 14 | 356 | 90 | 21 | 16 | 231 | 0 | 231 |
 | `corpus` | 1 | 10 | 79 | 37 | 7 | 0 | 79 | 0 | 79 |
-| `disclosure` | 3 | 16 | 157 | 68 | 13 | 3 | 63 | 0 | 63 |
+| `disclosure` | 3 | 16 | 157 | 68 | 13 | 3 | 64 | 0 | 64 |
 | `read` | 2 | 18 | 238 | 38 | 24 | 4 | 214 | 0 | 214 |
 | `run` | 3 | 28 | 501 | 113 | 44 | 14 | 432 | 0 | 430 |
 | `store` | 3 | 19 | 287 | 65 | 14 | 13 | 273 | 0 | 273 |
 | `surface` | 2 | 20 | 137 | 59 | 22 | 0 | 98 | 0 | 98 |
 | `topology` | 1 | 6 | 79 | 25 | 5 | 3 | 72 | 0 | 72 |
-| **total** | 22 | 165 | 2434 | 637 | 202 | 71 | 1917 | 0 | |
+| **total** | 22 | 165 | 2434 | 637 | 202 | 71 | 1947 | 0 | |
 
 Decision records: 18.
 
@@ -29,18 +29,18 @@ A milestone reads `closed` when its acceptance test computes `passing` and every
 | 1 — The authority core | 14 | 244 | 223 | passing | closed |
 | 2 — The store | 9 | 181 | 170 | passing | closed |
 | 3 — The run path | 12 | 269 | 253 | passing | closed |
-| 4 — Ingest | 25 | 551 | 382 | passing | open |
+| 4 — Ingest | 25 | 551 | 384 | passing | open |
 | 5 — The read face under enforcement | 17 | 298 | 241 | passing | open |
 | 6 — Sync and replicas | 8 | 83 | 83 | passing | closed |
 | 7 — Memory | 6 | 55 | 54 | passing | closed |
-| 8 — Accountability | 5 | 83 | 47 | passing | open |
+| 8 — Accountability | 5 | 83 | 48 | passing | open |
 | 9 — Visibility | 6 | 41 | 3 | open | open |
 | 10 — Cadence and the operator plane | 11 | 93 | 79 | passing | open |
 | 11 — The derive tier | 7 | 94 | 92 | passing | closed |
 | 12 — The operator console | 12 | 56 | 25 | passing | open |
 | 13 — Disclosure | 5 | 33 | 13 | open | open |
-| 14 — Assurance | 7 | 156 | 123 | passing | closed |
-| 15 — Point-in-time evaluation | 7 | 76 | 20 | open | open |
+| 14 — Assurance | 7 | 156 | 126 | passing | closed |
+| 15 — Point-in-time evaluation | 7 | 76 | 44 | open | open |
 
 Unscheduled operations: 12.
 
@@ -67,9 +67,26 @@ Unscheduled operations: 12.
 | `assurance.automate.subcommand-surface` | `tools/ci/tests/integration/automate.rs::every_subcommand_has_generated_help_and_refuses_an_untyped_option` | performed |
 | `assurance.automate.typed-subcommand` | `tools/ci/tests/integration/automate.rs::every_automation_step_is_at_most_five_commands_without_a_branch_loop_or_retry` | performed |
 | `assurance.automate.unchecked-shell` | `tools/ci/tests/integration/shell.rs::a_shell_file_shellcheck_rejects_fails_the_toolchain_stage` | performed |
+| `assurance.backtest.answer-key-only` | `tools/eval/tests/integration/backtest.rs::a_case_resolved_inside_the_judges_knowledge_is_scored_by_answer_key_alone` | performed |
+| `assurance.backtest.bounded-case` | `tools/eval/tests/integration/backtest.rs::every_read_of_a_bounded_case_passes_its_horizon` | performed |
+| `assurance.backtest.checkpoint-route` | `tools/eval/tests/integration/backtest.rs::a_family_routes_each_case_to_its_newest_checkpoint_before_the_horizon` | performed |
+| `assurance.backtest.cutoff-sensitivity` | `tools/eval/tests/integration/backtest.rs::an_estimated_cutoff_is_moved_across_its_interval_and_the_report_states_the_mde` | performed |
+| `assurance.backtest.cutoff-slice` | `tools/eval/tests/integration/backtest.rs::a_report_places_each_case_relative_to_the_readers_cutoff` | performed |
+| `assurance.backtest.execution-component` | `tools/eval/tests/integration/backtest.rs::a_report_stamps_its_execution_component_or_refuses` | performed |
+| `assurance.backtest.fill-instant` | `tools/eval/tests/integration/backtest.rs::a_decision_fills_at_the_first_price_strictly_after_it` | performed |
+| `assurance.backtest.label-interval` | `tools/eval/tests/integration/backtest.rs::a_bounded_case_without_a_label_interval_is_refused` | performed |
+| `assurance.backtest.latest-arm` | `tools/eval/tests/integration/backtest.rs::the_report_states_the_latest_minus_routed_premium_over_paired_cases` | performed |
+| `assurance.backtest.query-finding` | `tools/eval/tests/integration/backtest.rs::a_query_naming_a_later_entity_lands_a_finding` | performed |
+| `assurance.backtest.run-stamp` | `tools/eval/tests/integration/backtest.rs::a_backtest_run_block_stamps_every_trial_dimension` | performed |
+| `assurance.backtest.seed-repeats` | `tools/eval/tests/integration/backtest.rs::a_configurations_repeats_are_one_trial_with_a_spread` | performed |
+| `assurance.backtest.split` | `tools/eval/tests/integration/backtest.rs::a_split_purges_overlapping_labels_and_embargoes_the_cases_after_the_fold` | performed |
+| `assurance.backtest.trajectory-check` | `tools/eval/tests/integration/backtest.rs::a_case_fails_on_an_unbounded_call_or_a_leaking_document` | performed |
+| `assurance.backtest.trial-ledger` | `tools/eval/tests/integration/backtest.rs::the_ledger_deflates_the_best_sharpe_by_every_trial` | performed |
+| `assurance.backtest.universe-table` | `tools/eval/tests/integration/backtest.rs::a_literal_universe_reports_apart_and_a_table_declares_both_clocks` | performed |
 | `assurance.baseline.answer-key-in-the-store` | `crates/contextful-connectors/tests/integration/file.rs::a_source_reaching_the_evaluation_directory_raises_golden_set_ingested` | performed |
 | `assurance.baseline.band-units` | `tools/eval/tests/integration/baseline.rs::latency_bands_in_milliseconds_and_counts_pin_at_zero` | performed |
 | `assurance.baseline.commit-command` | `crates/contextful-cli/tests/integration/eval.rs::commit_appends_approved_drafts_redacted_and_refuses_a_repeated_id` | performed |
+| `assurance.baseline.cutoff-block` | `tools/eval/tests/integration/baseline.rs::a_judged_baseline_refuses_a_changed_snapshot_or_cutoff` | performed |
 | `assurance.baseline.default-dead-band` | `tools/eval/tests/integration/baseline.rs::a_bare_rate_entry_gates_at_two_percent` | performed |
 | `assurance.baseline.draft-command` | `crates/contextful-cli/tests/integration/eval.rs::draft_writes_the_generators_candidates_from_the_store` | performed |
 | `assurance.baseline.file` | `tools/eval/tests/integration/baseline.rs::a_file_holds_a_run_block_and_bare_or_banded_entries` | performed |
@@ -146,6 +163,7 @@ Unscheduled operations: 12.
 | `assurance.evaluate.checkpoint` | `tools/eval/tests/integration/checkpoint.rs::a_killed_run_resumes_from_its_jsonl_and_reruns_only_the_in_flight_case` | performed |
 | `assurance.evaluate.converter` | `tools/eval/tests/integration/convert.rs::a_benchmark_converts_into_the_case_format_and_the_runner_reads_nothing_else` | performed |
 | `assurance.evaluate.corpus-layout` | `crates/contextful-cli/tests/integration/eval.rs::each_leg_calls_the_ranked_read_with_the_options_a_caller_passes` | performed |
+| `assurance.evaluate.cutoff-flags` | `crates/contextful-cli/tests/integration/eval.rs::the_reader_and_the_judge_name_their_own_snapshots_and_cutoffs` | performed |
 | `assurance.evaluate.deterministic-tier` | `tools/eval/tests/integration/report.rs::every_ranked_metric_reports_per_leg_and_per_slice` | performed |
 | `assurance.evaluate.distinct-top-k` | `tools/eval/tests/integration/metrics.rs::a_repeated_row_counts_once_in_the_top_k` | performed |
 | `assurance.evaluate.duplicate-row-rate` | `tools/eval/tests/integration/floors.rs::a_repeated_table_and_row_key_pair_breaches_the_floor` | performed |
@@ -153,6 +171,7 @@ Unscheduled operations: 12.
 | `assurance.evaluate.grounded-reader` | `tools/eval/tests/integration/judge.rs::the_reader_answers_from_retrieved_rows_alone` | performed |
 | `assurance.evaluate.in-window-rate` | `tools/eval/tests/integration/floors.rs::a_bounded_case_under_ninety_five_percent_in_window_breaches_the_floor` | performed |
 | `assurance.evaluate.judge` | `tools/eval/tests/integration/judge.rs::the_judge_is_pinned_and_called_once_per_item` | performed |
+| `assurance.evaluate.judged-cutoffs` | `crates/contextful-cli/tests/integration/eval.rs::a_judged_run_block_stamps_both_snapshots_and_their_cutoffs` | performed |
 | `assurance.evaluate.judged-dimensions` | `tools/eval/tests/integration/judge.rs::the_reading_stage_reports_four_judged_dimensions` | performed |
 | `assurance.evaluate.judged-run` | `crates/contextful-cli/tests/integration/eval.rs::the_judged_tier_reads_and_judges_through_the_named_endpoint` | performed |
 | `assurance.evaluate.legs` | `crates/contextful-cli/tests/integration/eval.rs::each_leg_calls_the_ranked_read_with_the_options_a_caller_passes` | performed |
@@ -170,6 +189,14 @@ Unscheduled operations: 12.
 | `assurance.evaluate.through-the-store` | `crates/contextful-cli/tests/integration/eval.rs::a_ranking_that_loses_its_sidecars_goes_red_against_the_baseline` | performed |
 | `assurance.evaluate.truth-per-surface` | `tools/eval/tests/integration/report.rs::artifact_and_edge_truth_score_their_own_surfaces` | performed |
 | `assurance.evaluate.unlabeled-corpus` | `crates/contextful-cli/tests/integration/eval.rs::an_unlabeled_corpus_refuses_without_a_local_zone` | performed |
+| `assurance.forecast.coverage-floor` | `tools/eval/tests/integration/forecast.rs::a_forecaster_below_the_coverage_floor_is_unranked` | performed |
+| `assurance.forecast.forecast-case` | `tools/eval/tests/integration/forecast.rs::a_backtest_forecast_case_is_bounded_at_its_freeze` | performed |
+| `assurance.forecast.imputed` | `tools/eval/tests/integration/forecast.rs::a_missing_answer_imputes_the_neutral_or_market_probability` | performed |
+| `assurance.forecast.lead-time` | `tools/eval/tests/integration/forecast.rs::a_late_answer_scores_on_its_own_track` | performed |
+| `assurance.forecast.market-context` | `tools/eval/tests/integration/forecast.rs::a_market_case_reports_each_forecasters_edge_over_the_freeze_price` | performed |
+| `assurance.forecast.no-evidence-baseline` | `tools/eval/tests/integration/forecast.rs::each_forecaster_reports_against_the_question_only_baseline` | performed |
+| `assurance.forecast.resolved-before-freeze` | `tools/eval/tests/integration/forecast.rs::a_case_resolved_before_its_freeze_is_refused` | performed |
+| `assurance.forecast.tracks-separate` | `tools/eval/tests/integration/forecast.rs::a_round_report_keeps_each_track_apart` | performed |
 | `assurance.gate.budget-stage` | `tools/ci/tests/integration/image.rs::the_budget_stage_builds_every_profile_one_part_each_and_the_evaluate_stage_none` | performed |
 | `assurance.gate.crate-graph` | `tools/ci/tests/integration/topology.rs::the_crate_graph_stage_refuses_an_undeclared_crossing` | performed |
 | `assurance.gate.deny-list` | `tools/ci/tests/integration/deny.rs::a_deny_list_drifting_from_the_refusals_is_refused` | performed |
@@ -538,10 +565,12 @@ Unscheduled operations: 12.
 | `connector.import.config-unclaimed` | `crates/contextful-wasm/tests/integration/import.rs::a_guest_table_for_a_guest_without_the_config_interface_is_refused` | performed |
 | `connector.import.empty-context` | `crates/contextful-wasm/tests/integration/import.rs::a_guest_standard_library_sees_no_environment_arguments_or_files` | performed |
 | `connector.import.forwarded-config` | `crates/contextful-wasm/tests/integration/import.rs::the_guest_table_arrives_once_ahead_of_discovery` | performed |
+| `connector.infer.cutoffs` | `crates/contextful-core/tests/integration/connector/model_ref.rs::a_model_reference_carries_tagged_cutoffs_and_an_undeclared_one_is_the_call_instant` | performed |
 | `connector.infer.data-fence` | `crates/contextful-core/tests/integration/connector/infer.rs::ordinary_rows_are_fenced_labelled_and_declared_data` | performed |
 | `connector.infer.empty-batch` | `crates/contextful-core/tests/integration/connector/infer.rs::an_empty_batch_says_so` | performed |
 | `connector.infer.fenced-value-hygiene` | `crates/contextful-core/tests/integration/connector/infer.rs::control_characters_are_stripped_and_newlines_survive` | performed |
 | `connector.infer.label-hygiene` | `crates/contextful-core/tests/integration/connector/infer.rs::a_label_cannot_smuggle_a_marker` | performed |
+| `connector.infer.logprobs` | `crates/contextful-outbound/tests/integration/infer.rs::an_endpoint_exposing_logprobs_lands_them_with_the_call_record` | performed |
 | `connector.infer.marker-derivation` | `crates/contextful-core/tests/integration/connector/infer.rs::a_fence_lookalike_in_content_cannot_close_its_own_block` | performed |
 | `connector.infer.mediated-call` | `crates/contextful-outbound/tests/integration/infer.rs::a_completion_passes_the_hook_and_the_address_check` | performed |
 | `connector.infer.output-taint` | `crates/contextful-memory/tests/integration/synthesize.rs::a_synthesized_claim_lands_under_the_label_of_its_inputs` | performed |
@@ -839,6 +868,7 @@ Unscheduled operations: 12.
 | `disclosure.explain.path` | `crates/contextful-policy/tests/integration/explain.rs::an_admitting_path_runs_role_grant_then_the_declared_steps_and_a_denial_ends_at_default_deny` | performed |
 | `disclosure.explain.replay` | `crates/contextful-cli/tests/integration/explain.rs::a_window_replays_the_subjects_reads_of_the_table_inside_it` | performed |
 | `disclosure.explain.unqualified-assurance` | `crates/contextful-policy/tests/integration/explain.rs::a_denial_without_coverage_is_refused_and_with_coverage_releases` | performed |
+| `disclosure.record.bound-entry` | `crates/contextful-agent/tests/integration/mcp.rs::a_bounded_reads_entry_carries_its_bounds_snapshot_query_and_digest` | performed |
 | `disclosure.record.chain-header` | `crates/contextful-policy/tests/integration/audit.rs::a_chain_header_fixes_the_digest_and_segment_size_and_roots_the_first_link` | performed |
 | `disclosure.record.entry-fields` | `crates/contextful-policy/tests/integration/audit.rs::an_entry_carrying_a_field_outside_its_digest_breaks_the_chain_at_that_entry` | performed |
 | `disclosure.record.entry-format` | `crates/contextful-policy/tests/integration/audit.rs::a_v1_entry_digests_the_rfc_8785_form_of_its_whole_entry` | performed |

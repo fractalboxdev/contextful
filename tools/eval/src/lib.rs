@@ -9,6 +9,7 @@
 //! endpoint through the port the host hands them. The runner that lands a corpus and
 //! calls the read path is `contextful eval run`.
 
+pub mod backtest;
 pub mod baseline;
 pub mod case;
 pub mod checkpoint;
@@ -16,6 +17,7 @@ pub mod convert;
 pub mod embed;
 mod error;
 pub mod floors;
+pub mod forecast;
 pub mod golden;
 pub mod judge;
 pub mod ledger;
