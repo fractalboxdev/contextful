@@ -239,15 +239,39 @@ fn s3_bucket(config: &SyncConfig, _url: &str, _region: &str) -> Result<Arc<dyn O
 /// a command starting on a cold disk reads what the other nodes pushed
 /// (`store.pull.before-run`). A store declaring no `[sync]` is left as it is.
 pub fn pull_before_run(l: &Located) -> Result<()> {
-    let (Some(config), _) = sync_config(l)? else { return Ok(()) };
-    if config.pull_before_run != Some(true) {
-        return Ok(());
+    match pending_pull(l)? {
+        Some(pull) => pull.run(),
+        None => Ok(()),
     }
-    let (s, decls) = open_with(l, config)?;
+}
+
+/// The pull `[sync] pull_before_run = true` declares, its bucket and credentials resolved
+/// now and its transfer run later; `None` for a store declaring no such pull.
+pub fn pending_pull(l: &Located) -> Result<Option<PendingPull>> {
+    let (Some(config), _) = sync_config(l)? else { return Ok(None) };
+    if config.pull_before_run != Some(true) {
+        return Ok(None);
+    }
+    let (syncer, decls) = open_with(l, config)?;
     let replicate_off = decls.iter().filter(|d| d.replicate == Some(false)).map(|d| d.name.clone()).collect();
-    let r = s.pull(&PullScope { tables: Vec::new(), replicate_off, generation: None }).context("`pull_before_run`")?;
-    eprintln!("pull_before_run: pulled {} objects and {} pointers", r.downloaded.len(), r.pointers.len());
-    Ok(())
+    Ok(Some(PendingPull { syncer, scope: PullScope { tables: Vec::new(), replicate_off, generation: None } }))
+}
+
+/// A resolved `pull_before_run` whose transfer has not run.
+pub struct PendingPull {
+    syncer: Syncer,
+    scope: PullScope,
+}
+
+impl PendingPull {
+    /// Transfer every table of the bucket into the store. The report line is best effort:
+    /// a closed stderr fails no pull.
+    pub fn run(self) -> Result<()> {
+        use std::io::Write;
+        let r = self.syncer.pull(&self.scope).context("`pull_before_run`")?;
+        let _ = writeln!(std::io::stderr(), "pull_before_run: pulled {} objects and {} pointers", r.downloaded.len(), r.pointers.len());
+        Ok(())
+    }
 }
 
 /// Push the store once a fire's runs close when `[sync] push_after_run = true`, on the

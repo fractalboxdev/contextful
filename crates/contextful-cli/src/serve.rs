@@ -1,11 +1,18 @@
 //! `contextful serve --http` — the tool server over MCP Streamable HTTP.
 //!
 //! A thin adapter: it checks the declared audience and in-flight ceiling and the issuer
-//! key, pulls the bucket when `[sync] pull_before_run = true`, opens the read face over
+//! key, resolves the bucket when `[sync] pull_before_run = true`, opens the read face over
 //! the project's store and manifest and the project's audit chain with optional startup custody
 //! (`disclosure.record.read-chain`), binds the listener, and hands every request to the
-//! network transport, which admits each one on its own credential. Every value is
+//! network transport, which admits each one on its own credential. Every declaration is
 //! resolved before the listener binds, so a process that cannot serve binds nothing.
+//!
+//! The face memory-maps the current snapshot set before it answers a read
+//! (`read.cache.hot-local-parquet`). A store already on local disk maps before the listener
+//! binds; one pulling its snapshot set binds warming (`read.cache.cold-start`), and a
+//! hydrator pulls the bucket, checks the face's declarations against the pulled schemas,
+//! maps the set and only then opens reads. A hydration that fails stops the process
+//! (`store.pull.before-run`).
 
 #[cfg(feature = "data-plane")]
 use crate::admit::AdmitArgs;
@@ -14,7 +21,7 @@ use crate::project::locate;
 use crate::root::root as project_root;
 use crate::clock::SystemClock;
 use anyhow::Result;
-use contextful_agent::http::{audience, ceiling, Admitting, HttpFace};
+use contextful_agent::http::{audience, ceiling, Admitting, HttpFace, Hydration};
 #[cfg(feature = "data-plane")]
 use contextful_agent::http::{HttpRequest, HttpResponse, APPLY_PATH, EDIT_PATH, RECORD_PATH, WORKFLOWS_PATH};
 #[cfg(feature = "data-plane")]
@@ -196,9 +203,9 @@ pub fn run(args: ServeArgs, tasks: &Tasks) -> Result<()> {
     // Every configured resource resolves inside the residency allow-set before the listener
     // binds (`surface.reside.region-mismatch`).
     crate::reside::enforce(&located, &text)?;
-    // A cold node pulls the bucket before the face opens; a failed pull binds nothing
-    // (`store.pull.before-run`).
-    crate::sync::pull_before_run(&located)?;
+    // The bucket and its credentials resolve before the listener binds; an unusable
+    // endpoint binds nothing (`store.pull.before-run`). The transfer runs once listening.
+    let pull = crate::sync::pending_pull(&located)?;
     let face = crate::admit::face_with_pins(&located, args.public_key.as_deref(), args.keyset.as_deref())?;
     let face = match args.result_cache_bytes {
         Some(budget) => face.with_result_cache(budget),
@@ -340,10 +347,13 @@ pub fn run(args: ServeArgs, tasks: &Tasks) -> Result<()> {
         let result = exchange_answer(exchange.as_ref(), &request.body, request.header("DPoP"), &proofs, issuance, &ctx);
         contextful_agent::http::HttpResponse::json(result.status, &result.body)
     };
+    let hydration = Hydration::warming();
+    let mapped = std::sync::OnceLock::new();
     let http = HttpFace::new(&face, &clock, &audit, admitting, Some(ceiling))
         .map_err(anyhow::Error::msg)?
         .with_exchange(&exchange_route, exchange.is_none())
-        .with_build(crate::build_identity());
+        .with_build(crate::build_identity())
+        .with_hydration(&hydration);
     #[cfg(feature = "data-plane")]
     let http = http.with_control(&control);
     #[cfg(feature = "data-plane")]
@@ -359,8 +369,54 @@ pub fn run(args: ServeArgs, tasks: &Tasks) -> Result<()> {
     let run_snapshot = |authority: &AdmittedAuthority, run_id: &str| crate::run::served_snapshot(&run_project, authority.grants(), run_id);
     #[cfg(feature = "data-plane")]
     let http = http.with_runs(contextful_agent::http::RunRoutes { stop: &run_stop, snapshot: &run_snapshot });
+    let hydrated = |set: contextful_context::read::MappedSnapshotSet| {
+        use std::io::Write;
+        let _ = writeln!(std::io::stderr(), "hydrated: snapshot set mapped (files: {}, bytes: {})", set.files().count(), set.bytes());
+        let _ = mapped.set(set);
+        hydration.finish();
+    };
+    // A store already on local disk maps before the listener binds; one pulling its
+    // snapshot set binds warming and hydrates behind the listener (`read.cache.cold-start`).
+    if pull.is_none() {
+        hydrated(face.map_snapshot_set()?);
+    }
     let listener = TcpListener::bind(&args.http)?;
     eprintln!("listening on http://{}/mcp", listener.local_addr()?);
-    http.serve(listener)?;
+    std::thread::scope(|scope| {
+        if let Some(pull) = pull {
+            scope.spawn(|| {
+                use std::io::Write;
+                // A hydrator that fails or panics stops the process rather than leave it warming.
+                let set = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+                    hydrate(pull, &located, &face, args.public_key.as_deref(), args.keyset.as_deref())
+                }));
+                match set {
+                    Ok(Ok(set)) => hydrated(set),
+                    Ok(Err(error)) => {
+                        let _ = writeln!(std::io::stderr(), "{error:#}");
+                        std::process::exit(1);
+                    }
+                    Err(_) => std::process::exit(1),
+                }
+            });
+        }
+        http.serve(listener)
+    })?;
     Ok(())
+}
+
+/// Pull the bucket, check the declarations against the pulled schemas as a face opening
+/// on them would (`read.guard.startup-time-check`), and map the snapshot set the face reads.
+fn hydrate(
+    pull: crate::sync::PendingPull,
+    located: &crate::project::Located,
+    face: &contextful_context::read::Face,
+    public_key: Option<&str>,
+    keyset: Option<&std::path::Path>,
+) -> Result<contextful_context::read::MappedSnapshotSet> {
+    pull.run()?;
+    let manifest = std::fs::read_to_string(&located.declaration)?;
+    let pepper = contextful_policy::enforce::mask::Pepper::resolve(|k| std::env::var(k).ok());
+    crate::project::open_face_with_pins(&located.project, &located.declaration, &manifest, pepper, public_key, keyset)?;
+    Ok(face.map_snapshot_set()?)
 }
