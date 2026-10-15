@@ -642,7 +642,10 @@ fn a_bound_store_encrypts_parquet_footers_and_seals_sidecars_and_ledgers_per_fil
     ledger::append(&store, "documents", "run-2", &node, std::slice::from_ref(&record)).unwrap();
     let ledgers: Vec<Vec<u8>> = ledger::files(&store, "documents").unwrap().iter().map(|p| std::fs::read(p).unwrap()).collect();
     assert_eq!(ledgers.len(), 2);
-    assert_ne!(ledgers[0][..32], ledgers[1][..32], "two ledger files share a data key");
+    // Bytes 12..72 hold the wrap nonce and the wrapped data key; the header is the AAD of both seals.
+    let mut spliced = ledgers[1].clone();
+    spliced[12..72].copy_from_slice(&ledgers[0][12..72]);
+    assert!(cipher.open(&spliced).is_err(), "two ledger files share a data key");
     for bytes in &ledgers {
         assert!(!bytes.is_empty(), "the exclusion below ranges over no element");
         assert!(!bytes.windows(CANARY.len()).any(|w| w == CANARY.as_bytes()));
@@ -667,6 +670,41 @@ fn a_bound_store_encrypts_parquet_footers_and_seals_sidecars_and_ledgers_per_fil
     assert!(FulltextSidecar::open(sidecars.path(), "passages", &entry, &Sealing::Sealed(&other)).is_err());
     let opened = FulltextSidecar::open(sidecars.path(), "passages", &entry, &Sealing::Sealed(cipher.as_ref())).unwrap();
     assert_eq!(opened.probe(&["zephyrine".into()], 1).unwrap().candidates[0].id, CANARY);
+
+    // Vector sidecar: the HNSW graph and every file beside it seal under the store cipher.
+    {
+        use arrow_array::builder::{FixedSizeListBuilder, Float32Builder};
+        use arrow_array::{ArrayRef, RecordBatch, StringArray};
+        use contextful_context::vector::{build, GRAPH_FILE};
+        use std::sync::Arc;
+        let ids: Vec<String> = (0..40).map(|i| if i == 17 { CANARY.to_string() } else { format!("passage-{i}") }).collect();
+        let mut vectors = FixedSizeListBuilder::new(Float32Builder::new(), 4);
+        for i in 0..40 {
+            let v = if i == 17 { [0.0, 0.0, 0.0, 1.0] } else { [1.0, i as f32 / 40.0, 0.5, 0.0] };
+            vectors.values().append_slice(&v);
+            vectors.append(true);
+        }
+        let rows = RecordBatch::try_from_iter([
+            ("passage_id", Arc::new(StringArray::from(ids)) as ArrayRef),
+            ("embedding", Arc::new(vectors.finish()) as ArrayRef),
+        ])
+        .unwrap();
+        let decl = TableDecl::parse_pipeline(
+            "[[pipeline.tables]]\nname = \"passages\"\nprimary_key = [\"passage_id\"]\n[[pipeline.tables.indexes]]\nkind = \"vector\"\ncolumn = \"embedding\"\nmodel = \"e5\"\ndim = 4\n",
+        )
+        .unwrap()
+        .remove(0);
+        let vectors_dir = tempfile::tempdir().unwrap();
+        build(vectors_dir.path(), &id, &rows, &decl, &decl.indexes()[0], &Sealing::Sealed(cipher.as_ref())).unwrap();
+        let files = tree(vectors_dir.path());
+        assert!(files.iter().any(|(p, _)| p.ends_with(GRAPH_FILE)), "the vector sidecar writes its graph file");
+        for (path, bytes) in &files {
+            assert!(!bytes.is_empty(), "the exclusion below ranges over no element");
+            assert!(!bytes.windows(CANARY.len()).any(|w| w == CANARY.as_bytes()), "{} holds plaintext", path.display());
+            assert!(cipher.open(bytes).is_ok(), "{} opens under the project key", path.display());
+            assert!(contextful_core::store::encrypt::FileCipher::open(&other, bytes).is_err());
+        }
+    }
 }
 
 #[test]

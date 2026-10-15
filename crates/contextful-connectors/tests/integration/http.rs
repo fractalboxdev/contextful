@@ -266,6 +266,41 @@ fn a_declared_format_selects_the_decoder_and_json_is_the_default() {
         assert!(walk(path, None).is_err(), "{path} decoded as json");
     }
     assert!(walk("/array", Some("json-object")).is_err());
+
+    // A declared `xlsx` body decodes through the workbook decoder.
+    let sheet = crate::workbook::book(r#"<row r="1"><c r="A1" t="s"><v>0</v></c></row><row r="2"><c r="A2" t="s"><v>1</v></c></row><row r="3"><c r="A3" t="s"><v>2</v></c></row>"#, &["id", "a", "b"]);
+    let books = Server::start(move |_| Response { status: 200, headers: vec![], body: sheet.clone() });
+    let rows = source(json!({"endpoint": books.url("/book.xlsx"), "format": "xlsx"}), vec![]).walk(&request(None), &Never).unwrap();
+    assert_eq!(ids(&rows), ["a", "b"]);
+
+    // An object source with no `format` infers it from the key's extension, a trailing `.gz` set aside.
+    {
+        use contextful_connectors::object::{ObjectConfig, ObjectSource};
+        let xlsx = crate::workbook::book(r#"<row r="1"><c r="A1" t="s"><v>0</v></c></row><row r="2"><c r="A2" t="s"><v>1</v></c></row>"#, &["id", "a"]);
+        let lines = crate::object::gz(b"{\"id\":\"a\"}\n{\"id\":\"b\"}\n");
+        let bucket = crate::object::MemBucket::with(&[("x.ndjson.gz", &lines), ("y.csv", b"id,n\na,1\nb,2\n"), ("z.xlsx", &xlsx), ("feed/1.csv", b"id\na\n"), ("feed/2.csv", b"id\nb\n")]);
+        let object = |config: Value| {
+            let mut s = ObjectSource::new(ObjectConfig::parse(&config).unwrap(), bucket.clone());
+            let pulled: Value = serde_json::from_slice(&s.pull(&request(None), &Never).unwrap()).unwrap();
+            pulled["rows"].as_array().unwrap().iter().map(|r| r.as_object().unwrap().clone()).collect::<Vec<_>>()
+        };
+        assert_eq!(ids(&object(json!({"bucket": "b", "key": "x.ndjson.gz"}))), ["a", "b"]);
+        assert_eq!(ids(&object(json!({"bucket": "b", "key": "y.csv"}))), ["a", "b"]);
+        assert_eq!(ids(&object(json!({"bucket": "b", "key": "z.xlsx"}))), ["a"]);
+        assert_eq!(ids(&object(json!({"bucket": "b", "prefix": "feed/", "suffix": ".csv"}))), ["a", "b"]);
+    }
+
+    // A file source reads no `format` key and selects each file's decoder by its extension.
+    {
+        use contextful_connectors::file::{FileConfig, FileSource};
+        let dir = tempfile::tempdir().unwrap();
+        std::fs::write(dir.path().join("a.md"), "# A\n\nBody.\n").unwrap();
+        std::fs::write(dir.path().join("b.txt"), "Plain.\n").unwrap();
+        let files = FileSource::new(FileConfig::parse(&json!({"root": "."})).unwrap(), dir.path(), None);
+        let rows = files.read(None, &Never).unwrap().rows;
+        let kinds: Vec<(&str, &str)> = rows.iter().map(|r| (r["path"].as_str().unwrap(), r["kind"].as_str().unwrap())).collect();
+        assert_eq!(kinds, [("a.md", "markdown"), ("b.txt", "text")]);
+    }
 }
 
 /// A declared non-UTF-8 label decodes CSV and rejects invalid bytes for that label.

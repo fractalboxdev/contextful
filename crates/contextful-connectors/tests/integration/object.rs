@@ -53,7 +53,7 @@ impl ObjectStore for MemBucket {
     }
 }
 
-fn gz(body: &[u8]) -> Vec<u8> {
+pub(crate) fn gz(body: &[u8]) -> Vec<u8> {
     let mut e = GzEncoder::new(Vec::new(), Compression::fast());
     e.write_all(body).unwrap();
     e.finish().unwrap()
