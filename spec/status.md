@@ -13,9 +13,9 @@ An unpinned clause is `committed`; a pinned one is `performed` when its Rust, Le
 | `read` | 2 | 19 | 276 | 45 | 28 | 13 | 233 | 0 | 233 |
 | `run` | 3 | 29 | 517 | 114 | 44 | 13 | 467 | 0 | 467 |
 | `store` | 3 | 19 | 290 | 64 | 14 | 11 | 280 | 0 | 280 |
-| `surface` | 2 | 21 | 159 | 63 | 23 | 0 | 132 | 0 | 132 |
+| `surface` | 2 | 21 | 160 | 63 | 23 | 0 | 133 | 0 | 133 |
 | `topology` | 1 | 6 | 79 | 25 | 5 | 3 | 74 | 0 | 74 |
-| **total** | 22 | 168 | 2537 | 651 | 208 | 76 | 2145 | 0 | |
+| **total** | 22 | 168 | 2538 | 651 | 208 | 76 | 2146 | 0 | |
 
 Decision records: 18.
 
@@ -35,7 +35,7 @@ A milestone reads `closed` when its acceptance test computes `passing` and every
 | 7 — Memory | 6 | 71 | 56 | passing | closed |
 | 8 — Accountability | 5 | 84 | 71 | passing | open |
 | 9 — Visibility | 6 | 42 | 14 | open | open |
-| 10 — Cadence and the operator plane | 11 | 99 | 85 | passing | open |
+| 10 — Cadence and the operator plane | 11 | 100 | 86 | passing | open |
 | 11 — The derive tier | 7 | 94 | 93 | passing | closed |
 | 12 — The operator console | 12 | 56 | 43 | passing | open |
 | 13 — Disclosure | 5 | 33 | 21 | open | open |
@@ -1990,6 +1990,7 @@ Unscheduled operations: 12.
 | `store.reserve.underscore-namespace` | `crates/contextful-core/tests/integration/store/reserve.rs::the_underscore_namespace_is_the_injected_and_optional_sets` | performed |
 | `store.snapshot.capture` | `crates/contextful-agent/tests/integration/point_in_time.rs::each_capture_commits_one_snapshot_a_read_pins_by_id` | performed |
 | `store.snapshot.post-horizon-capture` | `crates/contextful-agent/tests/integration/point_in_time.rs::a_capture_after_the_horizon_answers_only_at_a_leak_score_of_zero` | performed |
+| `surface.apply.adopt-before-claim` | `crates/contextful-cli/tests/integration/pipeline.rs::a_cold_synced_node_adopts_the_pulled_head_before_import_or_apply_claims` | performed |
 | `surface.apply.attestation-unavailable` | `crates/contextful-cli/tests/integration/pipeline.rs::a_synced_import_requires_admin_and_writes_a_verifiable_receipt` | performed |
 | `surface.apply.draft-absent` | `spec/pins.toml` | performed |
 | `surface.apply.draft-claim` | `spec/pins.toml` | performed |

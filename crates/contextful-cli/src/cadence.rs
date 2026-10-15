@@ -336,6 +336,18 @@ fn local_descends(snaps: &SnapshotDir, current: u64, bucket: &ControlHead, proje
     Ok(false)
 }
 
+/// A snapshot directory holding no version adopts the store's pulled control chain before
+/// import or apply claims one, so a host replacement converges onto the signed head instead
+/// of claiming a v1 that diverges from it (`surface.reconcile.pulled-control`). The pins are
+/// the verb's `--public-key`. True when a head was adopted.
+fn adopt_before_claim(snaps: &SnapshotDir, project: &Project, declaration: &Path, tasks: &Tasks, admit: &AdmitArgs) -> Result<bool> {
+    if snaps.current()?.is_some() || !project.store_root().join("control").join("head.json").exists() {
+        return Ok(false);
+    }
+    adopt_pulled(snaps, project, declaration, tasks, admit.public_key.as_deref())?;
+    Ok(snaps.current()?.is_some())
+}
+
 /// Adopt only a complete staged chain signed by a locally pinned issuer and matching
 /// this node's declarations. The snapshot directory publishes its pointer last.
 fn adopt_pulled(snaps: &SnapshotDir, project: &Project, declaration: &Path, tasks: &Tasks, issuer_pin: Option<&str>) -> Result<()> {
@@ -733,6 +745,10 @@ impl SyncAttestation {
 pub(crate) fn import(project: &ProjectArgs, declaration: Option<PathBuf>, tasks: &Tasks, bodies: &Bodies, admit: &AdmitArgs, issuer_key: Option<&Path>) -> Result<()> {
     let (l, declaration_text, control) = located(project, declaration)?;
     let snapshots = owner(&control)?;
+    if adopt_before_claim(snapshots, &l.project, &l.declaration, tasks, admit)? {
+        println!("adopted the pulled control head; import claims nothing");
+        return Ok(());
+    }
     let attestation = SyncAttestation::for_project(&l, project, admit, issuer_key)?;
     let declared = declared(&l.declaration)?;
     let jobs = job_blocks(&declaration_text, Some(bodies), &declared)?;
@@ -773,6 +789,7 @@ pub(crate) fn apply(project: &ProjectArgs, declaration: Option<PathBuf>, id: Opt
     let (l, declaration_text, control) = located(project, declaration)?;
     let snapshots = owner(&control)?;
     let attestation = SyncAttestation::for_project(&l, project, admit, issuer_key)?;
+    adopt_before_claim(snapshots, &l.project, &l.declaration, tasks, admit)?;
     snapshots.initialized()?;
     let source = &control.source;
     let declared = declared(&l.declaration)?;
