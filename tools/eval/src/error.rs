@@ -27,6 +27,14 @@ pub enum EvalError {
     /// Fetched public benchmark bytes under another digest than the manifest pins
     /// (`assurance.baseline.public-corpora`).
     PublicCorpusDigestMismatch { corpus: String, expected: String, actual: String },
+    /// A bounded case declaring no label interval (`assurance.backtest.label-interval`).
+    EvalLabelIntervalMissing { case: String },
+    /// A backtest report stamping no declared execution component
+    /// (`assurance.backtest.execution-component`).
+    EvalExecutionUndeclared { report: String },
+    /// A backtest forecast case resolved before its freeze instant
+    /// (`assurance.forecast.resolved-before-freeze`).
+    EvalCaseResolvedBeforeFreeze { case: String, resolved: String, frozen: String },
 }
 
 impl EvalError {
@@ -41,6 +49,9 @@ impl EvalError {
             EvalError::EvalCorpusUnlabeled { .. } => "EvalCorpusUnlabeled",
             EvalError::GoldenRedactionFailed { .. } => "GoldenRedactionFailed",
             EvalError::PublicCorpusDigestMismatch { .. } => "PublicCorpusDigestMismatch",
+            EvalError::EvalLabelIntervalMissing { .. } => "EvalLabelIntervalMissing",
+            EvalError::EvalExecutionUndeclared { .. } => "EvalExecutionUndeclared",
+            EvalError::EvalCaseResolvedBeforeFreeze { .. } => "EvalCaseResolvedBeforeFreeze",
         }
     }
 
@@ -90,6 +101,15 @@ impl fmt::Display for EvalError {
                 f,
                 "PublicCorpusDigestMismatch: `{corpus}`: the manifest pins sha256 {expected}; the fetched bytes hash to {actual}"
             ),
+            EvalError::EvalLabelIntervalMissing { case } => {
+                write!(f, "EvalLabelIntervalMissing: `{case}` declares no label interval [t0, t1]; purge and embargo need its span")
+            }
+            EvalError::EvalExecutionUndeclared { report } => {
+                write!(f, "EvalExecutionUndeclared: `{report}` stamps no execution component; costs, slippage, sizing and liquidity caps belong to one")
+            }
+            EvalError::EvalCaseResolvedBeforeFreeze { case, resolved, frozen } => {
+                write!(f, "EvalCaseResolvedBeforeFreeze: `{case}` resolved at {resolved}, before its freeze at {frozen}")
+            }
         }
     }
 }

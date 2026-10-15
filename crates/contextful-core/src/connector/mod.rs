@@ -10,6 +10,7 @@ pub mod error;
 pub mod infer;
 pub mod lease;
 pub mod meter;
+pub mod model_ref;
 pub mod package;
 pub mod probe;
 pub mod reference;

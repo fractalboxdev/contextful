@@ -5,7 +5,6 @@
 use super::engine::SqlEngine;
 use super::face::{admit_in, Face, ReadOptions};
 use super::fault::ReadFault;
-use crate::scan::scan;
 use contextful_core::read::respond::Response;
 use contextful_core::run::journal::sha256_hex;
 use contextful_core::store::bound_time::Bounds;
@@ -24,15 +23,23 @@ impl Face {
         let response = self.query_with(session, sql, &Map::new(), ReadOptions { bounds, ..ReadOptions::default() })?;
         let tree = SqlEngine::bare()?.serialize(sql)?;
         let admitted = admit_in(session, &tree)?;
-        let transaction = bounds.transaction();
-        let mut snapshots = BTreeMap::new();
-        for table in &admitted.relations {
-            let id = match self.store.try_schema(table)? {
-                Some(_) => sha256_hex(scan(&self.store, &self.decl(table), transaction)?.files.join("\n").as_bytes()),
-                None => EMPTY_SNAPSHOT.to_string(),
-            };
-            snapshots.insert(table.clone(), id);
-        }
+        let snapshots = self.snapshot_ids(session, admitted.relations.iter().map(String::as_str))?;
         Ok((response, snapshots))
+    }
+
+    /// Per table, the sha256 of the file list registered in `session`, or
+    /// [`EMPTY_SNAPSHOT`] for a table holding no schema: the snapshot a read reached
+    /// (`run.journal.store-input`, `disclosure.record.bound-entry`).
+    pub fn snapshot_ids<'t>(&self, session: &Session, tables: impl IntoIterator<Item = &'t str>) -> Result<BTreeMap<String, String>, ReadFault> {
+        let mut snapshots = BTreeMap::new();
+        for table in tables {
+            let id = match session.landed(table) {
+                Some(true) => sha256_hex(session.relation(table).expect("a landed source has a relation").files().join("\n").as_bytes()),
+                Some(false) => EMPTY_SNAPSHOT.to_string(),
+                None => return Err(contextful_core::enforce::EnforceError::UnknownRelation(format!("`{table}`")).into()),
+            };
+            snapshots.insert(table.to_string(), id);
+        }
+        Ok(snapshots)
     }
 }

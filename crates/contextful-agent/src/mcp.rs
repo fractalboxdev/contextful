@@ -18,6 +18,10 @@ use contextful_core::read::face::{read_backend, register_tool, require, BuildIde
 use contextful_core::read::guard::admit;
 use contextful_core::read::pin::{Pins, PIN_ARGUMENT};
 use contextful_core::read::template::READ_ARGUMENTS;
+use contextful_core::run::journal::sha256_hex;
+
+/// The block a bounded answer echoes its bounds under (`store.bound-time.echo`).
+const BOUNDS_BLOCK: &str = "contextful.bounds";
 use contextful_core::read::respond::Response;
 use contextful_core::read::Refusal;
 use contextful_core::store::bound_time::{Bound, Bounds, Vintage};
@@ -27,7 +31,7 @@ use contextful_core::ports::SigningPort;
 use contextful_core::AuthorityError;
 use contextful_policy::audit::{attr, AuditError, AuditLog};
 use contextful_policy::enforce::refuse::{payload, unpersisted};
-use contextful_policy::enforce::session::Request;
+use contextful_policy::enforce::session::{Request, Session};
 use contextful_policy::verify::AdmittedAuthority;
 use serde_json::{json, Map, Value};
 use std::io::{BufRead, Write};
@@ -232,6 +236,11 @@ fn answered(r: Response) -> (Value, u64) {
     (r.to_json(), rows)
 }
 
+fn answered_in(r: Response, session: Session) -> (Value, u64, Session) {
+    let (value, rows) = answered(r);
+    (value, rows, session)
+}
+
 /// A tool result: the structured value and its text rendering.
 fn result(value: Value) -> Value {
     json!({ "content": [{ "type": "text", "text": value.to_string() }], "structuredContent": value })
@@ -387,9 +396,18 @@ impl<'a> Tools<'a> {
         };
         match self.dispatch(caller, name, &args) {
             // The result leaves only once its entry is durable; otherwise no row does.
-            Ok(Ok((value, rows))) => match self.record.record(read_attributes(&read(rows, None, self.claims(name, &value)))) {
-                Ok(()) => Ok(result(value)),
-                Err(e) => Ok(unrecorded(&e)),
+            Ok(Ok((value, rows, session))) => match self.bound_entry(name, &args, &value, &session).map(|bound| {
+                let mut attributes = read_attributes(&read(rows, None, self.claims(name, &value)));
+                if let (Value::Object(a), Some(bound)) = (&mut attributes, bound) {
+                    a.extend(bound);
+                }
+                attributes
+            }) {
+                Err(fault) => Ok(json!({ "content": [{ "type": "text", "text": fault.to_string() }], "isError": true })),
+                Ok(attributes) => match self.record.record(attributes) {
+                    Ok(()) => Ok(result(value)),
+                    Err(e) => Ok(unrecorded(&e)),
+                },
             },
             // A refusal is recorded before it answers (`disclosure.record.refused-read`).
             Ok(Err(fault)) => match fault.refusal() {
@@ -401,6 +419,37 @@ impl<'a> Tools<'a> {
             },
             Err(protocol) => Err(protocol),
         }
+    }
+
+    /// A bounded read's added entry attributes (`disclosure.record.bound-entry`): the
+    /// echoed bounds, the snapshot id per relation the read names, its query text and the
+    /// SHA-256 of the answer it returns; `None` for an unbounded read.
+    fn bound_entry(&self, name: &str, args: &Map<String, Value>, value: &Value, session: &Session) -> Result<Option<Map<String, Value>>, ReadFault> {
+        let Some(echoed) = value.get(BOUNDS_BLOCK) else { return Ok(None) };
+        // A ranked read names no relation; the tables its rows came from are the ones it reached.
+        let mut tables = self.relations(name, args);
+        if tables.is_empty() {
+            let columns = value.get("columns").and_then(Value::as_array);
+            if let (Some(at), Some(rows)) = (columns.and_then(|c| c.iter().position(|c| c == "_table")), value.get("rows").and_then(Value::as_array)) {
+                tables = rows.iter().filter_map(|r| r.get(at).and_then(Value::as_str).map(str::to_string)).collect::<std::collections::BTreeSet<_>>().into_iter().collect();
+            }
+        }
+        let snapshots = self.face.snapshot_ids(session, tables.iter().map(String::as_str))?;
+        let template = |id: &str| self.face.templates().iter().find(|t| t.id == id).map(|t| t.sql.clone());
+        let query = match name {
+            "context.query" => string(args, "sql").ok().flatten(),
+            "context.execute_query" => args.get("id").and_then(Value::as_str).and_then(template),
+            "corpus.retrieve" => string(args, "query").ok().flatten(),
+            "context.file" => string(args, "path").ok().flatten(),
+            "context.describe" | "context.reference" => string(args, "table").ok().flatten(),
+            other => template(other),
+        };
+        let mut attributes = Map::new();
+        attributes.insert(BOUNDS_BLOCK.into(), echoed.clone());
+        attributes.insert("contextful.read.snapshots".into(), json!(snapshots));
+        attributes.insert("contextful.read.query".into(), json!(query));
+        attributes.insert("contextful.result.sha256".into(), json!(sha256_hex(&serde_json::to_vec(value).unwrap_or_default())));
+        Ok(Some(attributes))
     }
 
     /// The claim ids a memory read returned (`read.recall.usage-ledger`): every row's
@@ -438,7 +487,8 @@ impl<'a> Tools<'a> {
         let sql = match name {
             "context.query" => args.get("sql").and_then(Value::as_str).map(str::to_string),
             "context.execute_query" => args.get("id").and_then(Value::as_str).and_then(template),
-            "context.describe" | "memory.recall" => return args.get("table").and_then(Value::as_str).map(str::to_string).into_iter().collect(),
+            "context.describe" | "context.reference" | "memory.recall" => return args.get("table").and_then(Value::as_str).map(str::to_string).into_iter().collect(),
+            "context.file" => return args.get("path").and_then(Value::as_str).and_then(|path| contextful_context::read::face::preview_target(path).ok()).into_iter().collect(),
             other => template(other),
         };
         sql.and_then(|sql| self.face.serialize(&sql).ok())
@@ -448,7 +498,7 @@ impl<'a> Tools<'a> {
     }
 
     /// Run one tool: its structured result and the rows it returns.
-    fn dispatch(&self, caller: Caller<'_>, name: &str, args: &Map<String, Value>) -> Result<Result<(Value, u64), ReadFault>, Protocol> {
+    fn dispatch(&self, caller: Caller<'_>, name: &str, args: &Map<String, Value>) -> Result<Result<(Value, u64, Session), ReadFault>, Protocol> {
         let zone = string(args, "zone")?;
         let zone = zone.as_deref();
         // Every read tool admits a pin map (`read.resolve-pin.pin-parameter`).
@@ -462,7 +512,7 @@ impl<'a> Tools<'a> {
                 only(args, name, &["table", "internals"])?;
                 let table = string(args, "table")?;
                 let opts = options(args)?;
-                self.session(caller, zone, opts.bounds, pins).and_then(|s| self.face.describe_with_options(&s, table.as_deref(), opts)).map(|v| (v, 0))
+                self.session(caller, zone, opts.bounds, pins).and_then(|s| self.face.describe_with_options(&s, table.as_deref(), opts).map(|v| (v, 0, s)))
             }
             "context.query" => {
                 only(args, name, &["sql", "parameters", "limit", "max_duration_ms", "max_response_bytes", "internals"])?;
@@ -474,8 +524,7 @@ impl<'a> Tools<'a> {
                 };
                 let opts = options(args)?;
                 self.session(caller, zone, opts.bounds, pins)
-                    .and_then(|s| self.face.query_with(&s, &sql, &parameters, opts))
-                    .map(answered)
+                    .and_then(|s| self.face.query_with(&s, &sql, &parameters, opts).map(|r| answered_in(r, s)))
             }
             "context.execute_query" => {
                 only(args, name, &["id", "arguments", "limit", "max_duration_ms", "max_response_bytes", "internals"])?;
@@ -487,8 +536,7 @@ impl<'a> Tools<'a> {
                 };
                 let opts = options(args)?;
                 self.session(caller, zone, opts.bounds, pins)
-                    .and_then(|s| self.face.execute_template(&s, &id, &arguments, opts))
-                    .map(answered)
+                    .and_then(|s| self.face.execute_template(&s, &id, &arguments, opts).map(|r| answered_in(r, s)))
             }
             "context.reference" => {
                 only(args, name, &["table", "run", "seq", "max_duration_ms", "max_response_bytes", "internals"])?;
@@ -498,18 +546,18 @@ impl<'a> Tools<'a> {
                     .ok_or_else(|| invalid("`seq` is a non-negative integer"))?;
                 let opts = options(args)?;
                 self.session(caller, zone, opts.bounds, pins)
-                    .and_then(|session| self.face.reference(&session, &table, &run, seq, opts)).map(answered)
+                    .and_then(|s| self.face.reference(&s, &table, &run, seq, opts).map(|r| answered_in(r, s)))
             }
             "context.files" => {
                 only(args, name, &["internals"])?;
                 let opts = options(args)?;
-                self.session(caller, zone, opts.bounds, pins).and_then(|s| self.face.files_with_options(&s, opts)).map(answered)
+                self.session(caller, zone, opts.bounds, pins).and_then(|s| self.face.files_with_options(&s, opts).map(|r| answered_in(r, s)))
             }
             "context.file" => {
                 only(args, name, &["path", "limit", "max_duration_ms", "max_response_bytes", "internals"])?;
                 let path = required(args, "path")?;
                 let opts = options(args)?;
-                self.session(caller, zone, opts.bounds, pins).and_then(|s| self.face.file(&s, &path, opts)).map(answered)
+                self.session(caller, zone, opts.bounds, pins).and_then(|s| self.face.file(&s, &path, opts).map(|r| answered_in(r, s)))
             }
             "corpus.retrieve" => {
                 only(args, name, &["prefix", "query", "query_embedding", "filter", "kinds", "limit", "since", "min_score", "internals"])?;
@@ -550,7 +598,7 @@ impl<'a> Tools<'a> {
                         b.as_of.map_or_else(|| self.clock.now(), |a| a.at),
                     )
                 };
-                self.session(caller, zone, b, pins).and_then(|s| self.face.retrieve(&s, &request, b)).map(answered)
+                self.session(caller, zone, b, pins).and_then(|s| self.face.retrieve(&s, &request, b).map(|r| answered_in(r, s)))
             }
             "memory.recall" => {
                 only(args, name, &["table", "subject", "observed_at", "as_of_ingest", "limit", "internals"])?;
@@ -567,7 +615,7 @@ impl<'a> Tools<'a> {
                     internals: boolean(args, "internals")?,
                     ..RecallRequest::new(required(args, "table")?, required(args, "subject")?, self.clock.now())
                 };
-                self.session(caller, zone, request.bounds(), pins).and_then(|s| self.face.recall(&s, &request)).map(answered)
+                self.session(caller, zone, request.bounds(), pins).and_then(|s| self.face.recall(&s, &request).map(|r| answered_in(r, s)))
             }
             template if self.face.templates().iter().any(|t| t.id == template) => {
                 // No template parameter takes a read argument's name (`read.guard.template-reserved-parameter`).
@@ -581,8 +629,7 @@ impl<'a> Tools<'a> {
                 }
                 let opts = options(args)?;
                 self.session(caller, zone, opts.bounds, pins)
-                    .and_then(|s| self.face.execute_template(&s, template, &arguments, opts))
-                    .map(answered)
+                    .and_then(|s| self.face.execute_template(&s, template, &arguments, opts).map(|r| answered_in(r, s)))
             }
             other => return Err(invalid(format!("no tool `{other}`"))),
         })

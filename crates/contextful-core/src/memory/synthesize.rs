@@ -25,6 +25,21 @@ impl Message {
 /// answering a conversation with the assistant's content.
 pub trait Inference {
     fn complete(&self, messages: &[Message]) -> Result<String, String>;
+
+    /// One call and its record: the content and, from an endpoint exposing them, the
+    /// token log-probabilities (`connector.infer.logprobs`).
+    fn call(&self, messages: &[Message]) -> Result<CallRecord, String> {
+        Ok(CallRecord { content: self.complete(messages)?, logprobs: None })
+    }
+}
+
+/// What one model call lands: its content, and its token log-probabilities where the
+/// endpoint exposes them (`connector.infer.logprobs`).
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct CallRecord {
+    pub content: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub logprobs: Option<serde_json::Value>,
 }
 
 /// A reference from a claim to the landed row it rests on: the row's table and its

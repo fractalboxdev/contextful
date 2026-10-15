@@ -7,7 +7,7 @@ use crate::client::{Client, HeaderValue};
 use crate::egress::{PreSendHook, Transport};
 use contextful_core::connector::attach::Allowlist;
 use contextful_core::connector::reference::Hydrated;
-use contextful_core::memory::synthesize::{Inference, Message};
+use contextful_core::memory::synthesize::{CallRecord, Inference, Message};
 use serde_json::{json, Value};
 use std::sync::Arc;
 use std::time::Duration;
@@ -24,6 +24,8 @@ pub struct Endpoint {
     model: String,
     key: Option<Arc<Hydrated>>,
     client: Client,
+    /// Whether the endpoint exposes token log-probabilities, which each call then asks for.
+    logprobs: bool,
 }
 
 impl Endpoint {
@@ -39,12 +41,19 @@ impl Endpoint {
         let allow = Allowlist::parse(&[host]).map_err(|e| e.to_string())?;
         let client = Client::new(allow, completions.clone()).with_completion_timeout(COMPLETION_TIMEOUT).with_body_limit(MAX_COMPLETION_BYTES).framed("Content-Type", "application/json");
         let key = key.filter(|k| !k.is_empty()).map(|k| Arc::new(Hydrated::new(format!("Bearer {k}"))));
-        Ok(Endpoint { completions, model: model.to_string(), key, client })
+        Ok(Endpoint { completions, model: model.to_string(), key, client, logprobs: false })
     }
 
     /// The endpoint reaching the network through `transport`.
     pub fn with_transport(mut self, transport: Arc<dyn Transport>) -> Endpoint {
         self.client = self.client.with_transport(transport);
+        self
+    }
+
+    /// The endpoint exposing token log-probabilities: each call asks for them and lands
+    /// them with its record (`connector.infer.logprobs`).
+    pub fn with_logprobs(mut self) -> Endpoint {
+        self.logprobs = true;
         self
     }
 
@@ -57,7 +66,15 @@ impl Endpoint {
 
 impl Inference for Endpoint {
     fn complete(&self, messages: &[Message]) -> Result<String, String> {
-        let body = json!({ "model": self.model, "messages": messages, "temperature": 0 }).to_string();
+        self.call(messages).map(|r| r.content)
+    }
+
+    fn call(&self, messages: &[Message]) -> Result<CallRecord, String> {
+        let mut body = json!({ "model": self.model, "messages": messages, "temperature": 0 });
+        if self.logprobs {
+            body["logprobs"] = json!(true);
+        }
+        let body = body.to_string();
         // The configured key is the call's one declared header: without it the call keeps the system proxy.
         let headers: Vec<(String, HeaderValue)> = self.key.iter().map(|k| ("Authorization".to_string(), HeaderValue::Sensitive(k.clone()))).collect();
         let resp = self.client.send("POST", &self.completions, &headers, Some(body.as_bytes())).map_err(|f| f.message)?;
@@ -65,9 +82,11 @@ impl Inference for Endpoint {
             return Err(format!("the endpoint answered {}: {}", resp.status, String::from_utf8_lossy(&resp.body).chars().take(200).collect::<String>()));
         }
         let v: Value = serde_json::from_slice(&resp.body).map_err(|e| format!("the endpoint's answer is not JSON: {e}"))?;
-        v["choices"][0]["message"]["content"]
+        let content = v["choices"][0]["message"]["content"]
             .as_str()
             .map(str::to_string)
-            .ok_or_else(|| "the endpoint's answer carries no `choices[0].message.content`".to_string())
+            .ok_or_else(|| "the endpoint's answer carries no `choices[0].message.content`".to_string())?;
+        let logprobs = Some(v["choices"][0]["logprobs"].clone()).filter(|l| self.logprobs && !l.is_null());
+        Ok(CallRecord { content, logprobs })
     }
 }

@@ -21,6 +21,7 @@
 use std::collections::{BTreeMap, HashSet};
 
 use contextful_core::connector::infer::{fence, DataItem};
+use contextful_core::connector::model_ref::ModelRef;
 use contextful_core::memory::synthesize::{Inference, Message};
 use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
@@ -138,7 +139,7 @@ pub struct StubJudge;
 impl StubJudge {
     /// The deterministic run stamp at `k`.
     pub fn stamp(&self, k: usize) -> RunStamp {
-        RunStamp { k, tier: Tier::Deterministic, model: None, samples: JUDGE_SAMPLES }
+        RunStamp { k, tier: Tier::Deterministic, model: None, samples: JUDGE_SAMPLES, reader: None, judge: None }
     }
 }
 
@@ -255,7 +256,13 @@ impl<'a> ModelJudge<'a> {
     /// The judged run stamp at `k`: the pinned model at one sample per item. A baseline
     /// recorded under another model refuses this stamp (`assurance.baseline.run-stamp-drift`).
     pub fn stamp(&self, k: usize) -> RunStamp {
-        RunStamp { k, tier: Tier::Judged, model: Some(self.model.clone()), samples: JUDGE_SAMPLES }
+        RunStamp { k, tier: Tier::Judged, model: Some(self.model.clone()), samples: JUDGE_SAMPLES, reader: None, judge: None }
+    }
+
+    /// [`ModelJudge::stamp`] carrying the reader's and the judge's snapshots and cutoffs
+    /// (`assurance.evaluate.judged-cutoffs`); the judge's snapshot is the pinned model.
+    pub fn stamp_models(&self, k: usize, reader: ModelRef, judge: ModelRef) -> RunStamp {
+        RunStamp { model: Some(judge.snapshot.clone()), reader: Some(reader), judge: Some(judge), ..self.stamp(k) }
     }
 }
 

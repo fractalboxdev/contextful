@@ -203,7 +203,7 @@ fn the_judge_is_pinned_and_called_once_per_item() {
     let endpoint = Recording::new(&[]);
     let judge = ModelJudge::new(&endpoint, "open-instruct-7b@sha256:ab12");
     let stamp = judge.stamp(10);
-    assert_eq!(stamp, RunStamp { k: 10, tier: Tier::Judged, model: Some("open-instruct-7b@sha256:ab12".into()), samples: JUDGE_SAMPLES });
+    assert_eq!(stamp, RunStamp { k: 10, tier: Tier::Judged, model: Some("open-instruct-7b@sha256:ab12".into()), samples: JUDGE_SAMPLES, reader: None, judge: None });
     assert_eq!(JUDGE_SAMPLES, 1);
     assert_eq!(StubJudge.stamp(10).tier, Tier::Deterministic);
 
