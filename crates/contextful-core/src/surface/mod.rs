@@ -5,6 +5,7 @@
 
 pub mod arm;
 pub mod control;
+pub mod delegate;
 pub mod dispatch;
 pub mod edit;
 pub mod reside;
@@ -16,6 +17,15 @@ pub enum SurfaceError {
     /// (`surface.arm.unreadable-schedule`)
     #[error("ScheduleUnreadable: {0}")]
     ScheduleUnreadable(String),
+    /// (`surface.delegate.host`)
+    #[error("DelegateHostRefused: {0}")]
+    DelegateHostRefused(String),
+    /// (`surface.delegate.signed`)
+    #[error("DelegateAnswerRejected: {0}")]
+    DelegateAnswerRejected(String),
+    /// (`surface.delegate.call-timeout-ceiling`)
+    #[error("DelegateTimeoutRefused: {0}")]
+    DelegateTimeoutRefused(String),
     /// (`surface.reconcile.pointer-malformed`)
     #[error("ControlPointerMalformed: {0}")]
     ControlPointerMalformed(String),
@@ -117,6 +127,9 @@ impl SurfaceError {
             | SurfaceError::DispatchUnitNotAHead(_)
             | SurfaceError::StepResultRefused(_)
             | SurfaceError::StepToolError(_)
+            | SurfaceError::DelegateHostRefused(_)
+            | SurfaceError::DelegateAnswerRejected(_)
+            | SurfaceError::DelegateTimeoutRefused(_)
             | SurfaceError::Invalid(_) => 422,
         }
     }

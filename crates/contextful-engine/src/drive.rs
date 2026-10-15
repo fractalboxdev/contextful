@@ -7,7 +7,7 @@
 
 use crate::execution::{Close, Execution, Tally};
 use crate::runner::{Engine, EngineError};
-use contextful_core::run::drive::{row_label, CallEffect, Emitted, InputRow, InputSet, PreparedEmitted, RecordedRowCalls, RowBody, RowCalls, RowStop, StoreInput, Woken, INPUT_STEP};
+use contextful_core::run::drive::{row_label, CallEffect, Emitted, InputRow, InputSet, PreparedEmitted, RecordedRowCalls, RowBody, RowCalls, RowContext, RowStop, StoreInput, Woken, INPUT_STEP};
 use contextful_core::run::effect::{EffectAdmission, EffectScope, PreparedEmission, RecordedBodyPlan};
 use contextful_core::run::journal::EntryKey;
 use contextful_core::run::own::{OwnerPins, OwnerScope};
@@ -82,6 +82,8 @@ struct Calls<'x, 'e, J: JournalStore, B: BlobStore> {
     key: String,
     /// The refusal behind the last failed call, kept so the run closes on it.
     close: Mutex<Option<Close>>,
+    /// The resolved `as_of` the input set was read at.
+    as_of: String,
 }
 
 impl<J: JournalStore + Clone, B: BlobStore + Clone> Calls<'_, '_, J, B> {
@@ -136,6 +138,20 @@ impl<J: JournalStore + Clone, B: BlobStore + Clone> RecordedRowCalls for Prepare
 impl<J: JournalStore + Clone, B: BlobStore + Clone> RowCalls for Calls<'_, '_, J, B> {
     fn call(&self, label: &str, input: &[u8], effect: &mut CallEffect<'_>) -> Result<Vec<u8>, RowStop> {
         self.record(label, input, effect)
+    }
+
+    fn context(&self) -> RowContext {
+        let pins = match self.x.pins() {
+            OwnerPins::Plan(p) => p.identities.clone(),
+            OwnerPins::Build(_) => BTreeMap::new(),
+        };
+        RowContext {
+            execution_id: self.x.execution_id().to_string(),
+            as_of: self.as_of.clone(),
+            fence: self.x.lease().map(|lease| lease.fence),
+            now: self.x.now().map(|i| i.to_string()).unwrap_or_default(),
+            pins,
+        }
     }
 
     fn suspend(&self, label: &str, ttl_secs: u64) -> Result<String, RowStop> {
@@ -276,7 +292,7 @@ impl<J: JournalStore + Clone + Send + Sync, B: BlobStore + Clone + Send + Sync> 
         let mut emitted: BTreeMap<usize, Output<T>> = BTreeMap::new();
         let mut waiting = false;
         loop {
-            let pass = self.pass(x, drive, &rows, &pending, run);
+            let pass = self.pass(x, drive, &rows, &pending, run, &bounds.as_of);
             if let Some(close) = pass.failed {
                 return Err(close);
             }
@@ -310,7 +326,7 @@ impl<J: JournalStore + Clone + Send + Sync, B: BlobStore + Clone + Send + Sync> 
 
     /// Run the body over `indices`, at most `max_in_flight` rows at once; a failed row
     /// admits no further row.
-    fn pass<T: Send, F>(&self, x: &Execution<'_, J, B>, drive: &Drive<'_>, rows: &[InputRow], indices: &[usize], run: &F) -> Pass<T>
+    fn pass<T: Send, F>(&self, x: &Execution<'_, J, B>, drive: &Drive<'_>, rows: &[InputRow], indices: &[usize], run: &F, as_of: &str) -> Pass<T>
     where F: Fn(&InputRow, &Calls<'_, '_, J, B>) -> Result<Output<T>, RowStop> + Sync {
         let next = AtomicUsize::new(0);
         let state = Mutex::new(Pass::default());
@@ -324,7 +340,7 @@ impl<J: JournalStore + Clone + Send + Sync, B: BlobStore + Clone + Send + Sync> 
                     }
                     let Some(&i) = indices.get(next.fetch_add(1, Ordering::SeqCst)) else { return };
                     let row = &rows[i];
-                    let calls = Calls { x, key: row.key.clone(), close: Mutex::new(None) };
+                    let calls = Calls { x, key: row.key.clone(), close: Mutex::new(None), as_of: as_of.to_string() };
                     let result = run(row, &calls);
                     let mut st = lock();
                     match result {

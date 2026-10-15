@@ -37,6 +37,9 @@ pub enum JobError {
     /// A store-driven block naming a body the binary does not register. (`surface.fire.store-driven-body`)
     #[error("JobBodyUnregistered: {0}")]
     JobBodyUnregistered(String),
+    /// A store-driven `body = { delegate = "<name>" }` naming no bound delegate. (`surface.delegate.binding`)
+    #[error("JobDelegateUnbound: {0}")]
+    JobDelegateUnbound(String),
     /// A `fold` target naming no produced table, or a `build` target naming no declared model.
     /// (`surface.fire.target-unbound`)
     #[error("JobTargetUnbound: {0}")]
@@ -61,8 +64,9 @@ struct Block {
     target: Option<String>,
     #[serde(default)]
     after: Option<String>,
+    /// A registered body's name, or `{ delegate = "<name>" }` (`surface.delegate.binding`).
     #[serde(default)]
-    body: Option<String>,
+    body: Option<toml::Value>,
     #[serde(default)]
     statement: Option<String>,
     #[serde(default)]
@@ -232,10 +236,27 @@ fn store_driven(block: &Block, registered: &dyn Fn(&str) -> bool) -> Result<Stor
             return Err(JobError::JobConcurrencyUnset(format!("job `{name}` declares no `max_in_flight`; a store-driven job states its concurrency, and none defaults")));
         }
     };
-    let body = block.body.clone().filter(|b| !b.trim().is_empty()).ok_or_else(|| JobError::Invalid(format!("job `{name}` names no `body`")))?;
-    if !registered(&body) {
-        return Err(JobError::JobBodyUnregistered(format!("job `{name}` names body `{body}`, which this binary does not register")));
-    }
+    let body = match &block.body {
+        Some(toml::Value::String(body)) if !body.trim().is_empty() => {
+            if !registered(body) {
+                return Err(JobError::JobBodyUnregistered(format!("job `{name}` names body `{body}`, which this binary does not register")));
+            }
+            body.clone()
+        }
+        Some(toml::Value::Table(table)) => {
+            let delegate = table
+                .get("delegate")
+                .and_then(|v| v.as_str())
+                .filter(|d| !d.trim().is_empty() && table.len() == 1)
+                .ok_or_else(|| JobError::Invalid(format!("job `{name}`: `body` is a registered body's name or `{{ delegate = \"<name>\" }}`")))?;
+            let body = format!("{}{delegate}", crate::surface::delegate::BODY_PREFIX);
+            if !registered(&body) {
+                return Err(JobError::JobDelegateUnbound(format!("job `{name}` names delegate `{delegate}`, which `[control.delegates]` does not bind")));
+            }
+            body
+        }
+        _ => return Err(JobError::Invalid(format!("job `{name}` names no `body`"))),
+    };
     let statement = block.statement.clone().filter(|s| !s.trim().is_empty()).ok_or_else(|| JobError::Invalid(format!("job `{name}` declares no `statement`")))?;
     if let Some(as_of) = &block.as_of {
         crate::store::bound_time::Bound::parse(as_of).map_err(|e| JobError::Invalid(format!("job `{name}`: `as_of`: {e}")))?;

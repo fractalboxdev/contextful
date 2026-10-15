@@ -11,11 +11,11 @@ An unpinned clause is `committed`; a pinned one is `performed` when its Rust, Le
 | `corpus` | 1 | 10 | 79 | 37 | 7 | 0 | 79 | 0 | 79 |
 | `disclosure` | 3 | 16 | 158 | 68 | 13 | 5 | 72 | 0 | 72 |
 | `read` | 2 | 19 | 276 | 45 | 28 | 13 | 230 | 0 | 230 |
-| `run` | 3 | 28 | 508 | 114 | 44 | 11 | 457 | 0 | 457 |
+| `run` | 3 | 28 | 508 | 114 | 44 | 11 | 458 | 0 | 458 |
 | `store` | 3 | 19 | 288 | 64 | 14 | 11 | 278 | 0 | 278 |
-| `surface` | 2 | 21 | 159 | 63 | 23 | 0 | 118 | 0 | 118 |
+| `surface` | 2 | 21 | 159 | 63 | 23 | 0 | 129 | 0 | 129 |
 | `topology` | 1 | 6 | 79 | 25 | 5 | 3 | 74 | 0 | 74 |
-| **total** | 22 | 167 | 2519 | 649 | 208 | 75 | 2062 | 0 | |
+| **total** | 22 | 167 | 2519 | 649 | 208 | 75 | 2074 | 0 | |
 
 Decision records: 18.
 
@@ -28,7 +28,7 @@ A milestone reads `closed` when its acceptance test computes `passing` and every
 | 0 — The test-first gate | 2 | 22 | 19 | passing | closed |
 | 1 — The authority core | 14 | 244 | 225 | passing | closed |
 | 2 — The store | 9 | 181 | 171 | passing | closed |
-| 3 — The run path | 12 | 271 | 254 | passing | closed |
+| 3 — The run path | 12 | 271 | 255 | passing | closed |
 | 4 — Ingest | 25 | 563 | 426 | passing | closed |
 | 5 — The read face under enforcement | 17 | 308 | 242 | passing | open |
 | 6 — Sync and replicas | 8 | 83 | 83 | passing | closed |
@@ -42,7 +42,7 @@ A milestone reads `closed` when its acceptance test computes `passing` and every
 | 14 — Assurance | 7 | 165 | 128 | passing | closed |
 | 15 — Point-in-time evaluation | 7 | 78 | 77 | passing | closed |
 | 16 — Memory graph walk | 1 | 11 | 0 | absent | open |
-| 17 — Delegated bodies | 1 | 16 | 0 | open | open |
+| 17 — Delegated bodies | 1 | 16 | 11 | passing | closed |
 
 Unscheduled operations: 12.
 
@@ -1365,6 +1365,7 @@ Unscheduled operations: 12.
 | `run.guard-secrets.matchers` | `crates/contextful-core/tests/integration/pipeline/guard.rs::the_catalogue_holds_its_precision_and_recall_fixture` | performed |
 | `run.guard-secrets.placement` | `crates/contextful-engine/tests/integration/guard.rs::the_journal_records_the_masked_pull_and_a_replay_lands_it_masked` | performed |
 | `run.items.completion` | `spec/pins.toml` | performed |
+| `run.items.delegated-item` | `crates/contextful-cli/tests/integration/delegate.rs::a_call_delegate_takes_one_signed_envelope_per_item_and_a_later_fire_sends_nothing` | performed |
 | `run.items.entity-admission` | `spec/pins.toml` | performed |
 | `run.items.identity` | `spec/pins.toml` | performed |
 | `run.items.opt-in` | `spec/pins.toml` | performed |
@@ -1958,6 +1959,17 @@ Unscheduled operations: 12.
 | `surface.browse.file-gallery` | `apps/console/test/browse.test.ts::apps/console/test/browse.test.ts::a gallery preview uses context.file with the listing's snapshot bound` | performed |
 | `surface.browse.gallery-path-unlisted` | `apps/console/test/browse.test.ts::apps/console/test/browse.test.ts::a gallery preview refuses paths absent from the governed listing` | performed |
 | `surface.browse.insights-panel` | `apps/console/test/browse.test.ts::apps/console/test/browse.test.ts::insights show governed table row counts` | performed |
+| `surface.delegate.binding` | `crates/contextful-core/tests/integration/surface/delegate.rs::a_binding_reads_its_url_mode_and_timeout_and_names_its_body` | performed |
+| `surface.delegate.call-mode` | `crates/contextful-cli/tests/integration/delegate.rs::a_response_after_the_timeout_closes_the_attempt_transient_and_lands_nothing` | performed |
+| `surface.delegate.call-timeout` | `crates/contextful-core/tests/integration/surface/delegate.rs::a_call_timeout_defaults_to_300_s` | performed |
+| `surface.delegate.call-timeout-ceiling` | `crates/contextful-core/tests/integration/surface/delegate.rs::a_call_timeout_above_the_ceiling_raises_delegate_timeout_refused` | performed |
+| `surface.delegate.defer-parks` | `crates/contextful-cli/tests/integration/delegate.rs::a_defer_answer_parks_the_item_without_spending_an_attempt_until_its_retry_at` | performed |
+| `surface.delegate.envelope` | `crates/contextful-core/tests/integration/surface/delegate.rs::the_envelope_serializes_every_field_it_names` | performed |
+| `surface.delegate.host` | `crates/contextful-core/tests/integration/surface/delegate.rs::a_delegate_url_is_loopback_or_the_virtual_host_over_plain_http_without_a_credential` | performed |
+| `surface.delegate.outcome` | `crates/contextful-core/tests/integration/surface/delegate.rs::the_outcome_vocabulary_round_trips` | performed |
+| `surface.delegate.rejected` | `crates/contextful-core/tests/integration/surface/delegate.rs::an_answer_verifies_for_its_request_within_the_skew_and_inside_the_vocabulary` | performed |
+| `surface.delegate.signed` | `crates/contextful-core/tests/integration/surface/delegate.rs::a_request_signs_over_call_and_an_answer_over_answer_and_its_request_key` | performed |
+| `surface.delegate.status` | `crates/contextful-cli/tests/integration/delegate.rs::a_non_200_answer_spends_one_attempt_and_a_permanent_answer_writes_a_terminal_receipt` | performed |
 | `surface.dispatch.callback-rejected` | `crates/contextful-core/tests/integration/surface/worker.rs::a_superseded_or_skewed_callback_changes_no_step` | performed |
 | `surface.dispatch.callback-skew` | `crates/contextful-core/tests/integration/surface/worker.rs::the_relay_accepts_a_timestamp_within_the_skew` | performed |
 | `surface.dispatch.children-reaped` | `crates/contextful-cli/tests/integration/pipeline.rs::serve_ends_every_child_it_dispatched` | performed |

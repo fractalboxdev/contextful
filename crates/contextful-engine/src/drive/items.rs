@@ -426,6 +426,7 @@ impl<J: JournalStore + Clone + Send + Sync, B: BlobStore + Clone + Send + Sync> 
                                 x: &x,
                                 key: row.key.clone(),
                                 close: Mutex::new(None),
+                                as_of: set.bounds().as_of,
                             };
                             let result = run(row, &calls);
                             let outcome = match result {

@@ -144,6 +144,8 @@ impl Source {
 /// The `[control]` block of the project manifest.
 struct ControlConfig {
     bodies: BTreeSet<String>,
+    /// The delegates the daemon's own `[control.delegates]` binds (`surface.delegate.binding`).
+    delegates: BTreeMap<String, contextful_core::surface::delegate::Binding>,
     source: Source,
     pool: usize,
     poll: Schedule,
@@ -204,6 +206,8 @@ fn control_config(text: &str, project: &Project) -> Result<ControlConfig> {
     let value: toml::Value = if text.is_empty() { toml::Value::Table(Default::default()) } else { toml::from_str(text)? };
     let block = value.get("control").cloned().unwrap_or(toml::Value::Table(Default::default()));
     let block = block.as_table().context("`[control]` is a table")?;
+    // A binding outside its shape refuses at startup and arms nothing (`surface.delegate.host`).
+    let delegates = contextful_core::surface::delegate::bindings(block)?;
     let source = match (block.get("url"), block.get("snapshot_dir")) {
         (Some(_), Some(_)) => bail!("`[control]` names one source: `url` or `snapshot_dir`"),
         (Some(url), None) => Source::Url(ControlUrl::open(url.as_str().context("`[control] url` is a URL string")?)?),
@@ -220,7 +224,7 @@ fn control_config(text: &str, project: &Project) -> Result<ControlConfig> {
     let poll = block.get("poll").map(|v| v.as_str().context("`[control] poll` is a schedule string")).transpose()?;
     let (workers, relay) = worker_config(block)?;
     let trigger = block.get("trigger").map(|v| v.as_str().context("`[control] trigger` is a string")).transpose()?;
-    Ok(ControlConfig { bodies: BTreeSet::new(), source, pool, poll: poll_schedule(poll)?, trigger: Trigger::parse(trigger)?, workers, relay, issuer_pin: None })
+    Ok(ControlConfig { bodies: BTreeSet::new(), delegates, source, pool, poll: poll_schedule(poll)?, trigger: Trigger::parse(trigger)?, workers, relay, issuer_pin: None })
 }
 
 fn located(project: &ProjectArgs, declaration: Option<PathBuf>) -> Result<(Located, String, ControlConfig)> {
@@ -438,7 +442,9 @@ fn job_blocks(text: &str, bodies: Option<&Bodies>, specs: &BTreeMap<String, Pipe
 }
 
 fn parse_job_blocks(text: &str, bodies: Option<&Bodies>, specs: &BTreeMap<String, PipelineSpec>) -> Result<Vec<toml::Value>> {
-    let jobs = parse_jobs(text, &|name| bodies.is_none_or(|b| b.get(name).is_some()))?;
+    // A delegate binds in the daemon's own configuration, so apply and import admit any
+    // delegate name; arm and fire refuse an unbound one (`surface.delegate.binding`).
+    let jobs = parse_jobs(text, &|name| bodies.is_none_or(|b| b.get(name).is_some() || name.starts_with(contextful_core::surface::delegate::BODY_PREFIX)))?;
     contextful_core::job::dependent_jobs(&specs.values().cloned().collect::<Vec<_>>(), &jobs)?;
     for job in jobs {
         let id = format!("job:{}", job.name);
@@ -1075,7 +1081,9 @@ fn arm(scheduler: &mut Scheduler, control: &ControlConfig, project: &Project, de
     }
     let job_text = control.source.read(version)?;
     validate_build_jobs(&job_text).context("applied build plans are incomplete; reapply with a declared model and resolved SQL")?;
-    let jobs = parse_jobs(&job_text, &|name| control.bodies.contains(name))?;
+    let jobs = parse_jobs(&job_text, &|name| {
+        control.bodies.contains(name) || name.strip_prefix(contextful_core::surface::delegate::BODY_PREFIX).is_some_and(|d| control.delegates.contains_key(d))
+    })?;
     let runs = contextful_core::job::dependent_jobs(&specs.values().cloned().collect::<Vec<_>>(), &jobs)?;
     let mut entries = Vec::new();
     let mut unarmed = Vec::new();

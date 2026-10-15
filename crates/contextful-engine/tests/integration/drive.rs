@@ -744,3 +744,49 @@ fn changed_or_removed_structure_refuses_pending_raw_replay_before_read_body_or_l
     assert_eq!(resumed.rows, 1);
     assert_eq!(endpoint.served().len(), 1, "original structure replays the paid call");
 }
+
+/// A body learns the execution it runs under through its calls: the execution id, the resolved `as_of`, the
+/// engine's instant and, for an isolated item, the fence of the entity lease it holds; a batch row holds none
+/// (`surface.delegate.envelope`, `surface.delegate.currency`).
+#[test]
+fn a_body_reads_its_execution_bounds_fence_and_clock_through_its_calls() {
+    use contextful_core::run::drive::RowContext;
+    struct Seen(Mutex<Vec<RowContext>>);
+    impl RowBody for Seen {
+        fn run(&self, row: &InputRow, calls: &dyn RowCalls) -> Result<Emitted, RowStop> {
+            self.0.lock().unwrap().push(calls.context());
+            Ok(one("scores", json!({ "doc_id": doc_of(row) })))
+        }
+    }
+    let rig = Rig::new();
+    let seen = Seen(Mutex::default());
+    let landed = Mutex::new(Vec::new());
+    let mut read = |as_of: &str| Ok(set(as_of, docs(2)));
+    let row = rig.engine.drive(&fire(input("SELECT doc_id FROM documents", Some("2030-01-01T00:00:10Z")), &seen, 2, "fire-1"), &mut read, &mut keep(&landed)).unwrap();
+    assert_eq!(row.status, RunStatus::Success, "{row:?}");
+    let contexts = seen.0.lock().unwrap().clone();
+    assert_eq!(contexts.len(), 2);
+    for context in &contexts {
+        assert!(!context.execution_id.is_empty());
+        assert_eq!(context.as_of, "2030-01-01T00:00:10Z");
+        assert_eq!(context.now, T0, "the engine's instant, on the catalog's clock");
+        assert_eq!(context.fence, None, "a batch row holds no entity lease");
+        assert!(context.pins.contains_key("input") && context.pins.contains_key("body_type"), "the owner pins: {:?}", context.pins);
+    }
+    assert_eq!(contexts[0].execution_id, contexts[1].execution_id, "batch rows share the job's execution");
+
+    // An isolated item runs under its own execution and carries the fence of its entity lease.
+    let seen = Seen(Mutex::default());
+    let policy = contextful_engine::drive::ItemPolicy { logical_key: "doc_id".into(), entity_key: "doc_id".into(), entity_namespace: "documents".into(), max_attempts: 2 };
+    let mut read = |as_of: &str| Ok(set(as_of, docs(2)));
+    let mut land = |_: &str, out: &Emitted| Ok(Landed { rows: out.values().map(|r| r.len() as u64).sum(), bytes: 0 });
+    let report = rig.engine.drive_items(&fire(input("SELECT doc_id FROM documents", Some("2030-01-01T00:00:10Z")), &seen, 2, "fire-2"), &policy, &mut read, &mut land).unwrap();
+    assert!(report.succeeded(), "{report:?}");
+    let contexts = seen.0.lock().unwrap().clone();
+    assert_eq!(contexts.len(), 2);
+    for context in &contexts {
+        assert!(context.fence.is_some_and(|fence| fence > 0), "{context:?}");
+        assert_eq!((context.as_of.as_str(), context.now.as_str()), ("2030-01-01T00:00:10Z", T0));
+    }
+    assert_ne!(contexts[0].execution_id, contexts[1].execution_id, "each item runs under its own execution");
+}

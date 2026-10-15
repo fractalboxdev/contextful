@@ -34,7 +34,7 @@ const HEAD_MAX: usize = 16 * 1024;
 pub(crate) fn worker_key() -> Result<Vec<u8>> {
     match std::env::var(WORKER_KEY_VAR) {
         Ok(k) if !k.is_empty() => Ok(k.into_bytes()),
-        _ => bail!("`[control] workers` signs every heartbeat and callback under a key: set {WORKER_KEY_VAR}"),
+        _ => bail!("`[control] workers` and `[control.delegates]` sign every request, heartbeat and callback under a key: set {WORKER_KEY_VAR}"),
     }
 }
 
@@ -96,26 +96,30 @@ pub(crate) fn respond(mut stream: &TcpStream, status: u16, body: &serde_json::Va
 
 /// Send one request to `url` over the system transport, answering status and body.
 fn send(transport: &dyn Transport, method: &str, url: &Url, headers: Vec<(String, String)>, body: &[u8]) -> Result<(u16, Vec<u8>), String> {
+    send_with(transport, method, url, headers, body, HOP_TIMEOUT, 64 * 1024).map(|(status, _, body)| (status, body))
+}
+
+/// Send one request to `url`, held open up to `timeout`, answering status, headers and a
+/// body of at most `max_body` bytes.
+pub(crate) fn send_with(
+    transport: &dyn Transport,
+    method: &str,
+    url: &Url,
+    headers: Vec<(String, String)>,
+    body: &[u8],
+    timeout: Duration,
+    max_body: u64,
+) -> Result<(u16, Vec<(String, String)>, Vec<u8>), String> {
     let host = url.host_str().unwrap_or_default();
     let addrs = transport.resolve(host, url.port_or_known_default().unwrap_or(80))?;
     let headers: Vec<(String, HeaderValue)> = headers.into_iter().map(|(k, v)| (k, HeaderValue::Plain(v))).collect();
-    let request = Outbound {
-        method,
-        url,
-        addrs: &addrs,
-        headers: &headers,
-        body,
-        direct: true,
-        timeout: HOP_TIMEOUT,
-        max_body: 64 * 1024,
-        read_body: true,
-    };
+    let request = Outbound { method, url, addrs: &addrs, headers: &headers, body, direct: true, timeout, max_body, read_body: true };
     let answer = transport.send(&request).map_err(|e| format!("{e:?}"))?;
-    Ok((answer.status, answer.body))
+    Ok((answer.status, answer.headers, answer.body))
 }
 
 /// Seconds since the Unix epoch on the system clock.
-fn unix_now() -> i64 {
+pub(crate) fn unix_now() -> i64 {
     let now = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).map(|d| d.as_secs()).unwrap_or_default();
     i64::try_from(now).unwrap_or(i64::MAX)
 }

@@ -33,6 +33,8 @@ mod eval;
 mod export;
 mod formal;
 #[cfg(feature = "data-plane")]
+mod delegate;
+#[cfg(feature = "data-plane")]
 mod job;
 #[cfg(feature = "data-plane")]
 mod model_source;
