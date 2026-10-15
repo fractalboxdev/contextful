@@ -2,12 +2,100 @@
 //! source before the batch reconciles, and the flags only the engine sets.
 
 use crate::land::Batch;
+use crate::store::Store;
 use crate::{ContextError, Result};
 use contextful_core::store::declare::{AvailableTime, TableDecl};
 use contextful_core::store::reconcile::ColumnType;
 use contextful_core::store::reserve::{AVAILABILITY_FLAGS, AVAILABLE_IMPUTED, AVAILABLE_RECONSTRUCTED};
 use contextful_core::time::Instant;
 use serde_json::{Map, Value};
+use std::collections::BTreeMap;
+
+/// The latest available vintage for each key and valid-time line.
+pub(crate) struct VintageHistory {
+    latest: BTreeMap<String, (String, Value)>,
+    columns: Vec<String>,
+    valid_from: Option<String>,
+    available: String,
+    hash: String,
+}
+
+impl VintageHistory {
+    pub(crate) fn load(store: &Store, decl: &TableDecl, before_commit_seq: Option<i64>) -> Result<Option<Self>> {
+        if !decl.is_vintage() { return Ok(None) }
+        let available = decl.available_time.as_ref().expect("a vintage has availability time").column.clone();
+        let hash = decl.content_hash_column().expect("a vintage has a content hash").to_string();
+        let mut columns = decl.primary_key().to_vec();
+        columns.extend(decl.valid_time.as_ref().map(|valid| valid.from.clone()));
+        let valid_from = decl.valid_time.as_ref().map(|valid| valid.from.clone());
+        let mut history = Self { latest: BTreeMap::new(), columns, valid_from, available, hash };
+        let mut owned = history.columns.clone();
+        owned.extend([history.available.clone(), history.hash.clone(), "_commit_seq".into()]);
+        let names: Vec<&str> = owned.iter().map(String::as_str).collect();
+        for row in crate::rows::table_rows(store, decl, &names)? {
+            if before_commit_seq.is_some_and(|seq| row.get("_commit_seq").and_then(Value::as_i64).is_none_or(|held| held >= seq)) { continue }
+            history.observe(&row);
+        }
+        Ok(Some(history))
+    }
+
+    fn key(&self, row: &Map<String, Value>) -> String {
+        let values: Vec<Value> = self.columns.iter().map(|name| {
+            let value = row.get(name).cloned().unwrap_or(Value::Null);
+            if self.valid_from.as_deref() != Some(name.as_str()) { return value }
+            let Value::String(raw) = &value else { return value };
+            let text = if raw.len() == 10 { format!("{raw}T00:00:00Z") } else { raw.clone() };
+            Instant::parse(&text).map(|at| Value::String(at.to_rfc3339_nanos())).unwrap_or(value)
+        }).collect();
+        serde_json::to_string(&values).expect("key values serialize")
+    }
+
+    pub(crate) fn observe(&mut self, row: &Map<String, Value>) {
+        let (Some(Value::String(at)), Some(hash)) = (row.get(&self.available), row.get(&self.hash)) else { return };
+        let key = self.key(row);
+        if self.latest.get(&key).is_none_or(|(latest, _)| at >= latest) {
+            self.latest.insert(key, (at.clone(), hash.clone()));
+        }
+    }
+
+    pub(crate) fn observe_part(&mut self, store: &Store, path: &std::path::Path) -> Result<()> {
+        if !path.is_file() { return Ok(()) }
+        let mut owned = self.columns.clone();
+        owned.extend([self.available.clone(), self.hash.clone()]);
+        let names: Vec<&str> = owned.iter().map(String::as_str).collect();
+        for batch in store.read_parquet(path)? {
+            for row in crate::rows::batch_rows(&batch, &names)? { self.observe(&row) }
+        }
+        Ok(())
+    }
+
+    /// A repeated content hash adds no vintage even when its source date precedes the
+    /// currently latest availability instant.
+    pub(crate) fn mask(&mut self, rows: &[Map<String, Value>]) -> Vec<bool> {
+        let mut order: Vec<usize> = (0..rows.len()).collect();
+        order.sort_by_key(|&i| rows[i].get(&self.available).and_then(Value::as_str).unwrap_or("").to_string());
+        let mut keep = vec![true; rows.len()];
+        for i in order {
+            let row = &rows[i];
+            let key = self.key(row);
+            let same = self.latest.get(&key).is_some_and(|(_, hash)| row.get(&self.hash) == Some(hash));
+            if same { keep[i] = false } else { self.observe(row) }
+        }
+        keep
+    }
+
+    pub(crate) fn retain(&mut self, rows: &mut Vec<Map<String, Value>>) {
+        let keep = self.mask(rows);
+        let mut i = 0;
+        rows.retain(|_| { let accepted = keep[i]; i += 1; accepted });
+    }
+
+    pub(crate) fn projected_columns(&self) -> Vec<&str> {
+        let mut names: Vec<&str> = self.columns.iter().map(String::as_str).collect();
+        names.extend([self.available.as_str(), self.hash.as_str()]);
+        names
+    }
+}
 
 /// `batch` with each row's availability instant resolved and the availability flags set by
 /// the engine alone: a producer's own flags are dropped. A date-only value resolves to the

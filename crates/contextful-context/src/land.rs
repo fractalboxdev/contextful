@@ -543,25 +543,37 @@ fn commit_run(
     let bound = store.frontier_store()?;
     let store = &bound;
     // The writer rules hold producer batches; the engine's run record carries none.
-    let rewritten = if engine_owned(&decl.name) {
+    let mut rewritten = if engine_owned(&decl.name) {
         batches.to_vec()
     } else {
         batches.iter().map(|batch| crate::available::resolve(decl, store.rewrite_batch(&decl.name, batch)?)).collect::<Result<Vec<_>>>()?
     };
-    let batches = rewritten.as_slice();
-    let per_batch = batches.len() > 1 || position.pipeline_id.is_some();
+    for batch in &rewritten {
+        producer_columns(&rows_schema(batch.rows.iter(), &batch.types)?)?;
+    }
+    let per_batch = rewritten.len() > 1 || position.pipeline_id.is_some();
     let (node_dir, manifest_path) = run_dir(store, &decl.name, &ctx.node, &ctx.injection.run_id)?;
+    // The commit lock holds the vintage comparison beside the file-list commit.
+    let _commit_lock = store.lock_commit(&decl.name)?;
+    let before_commit_seq = if manifest_path.exists() {
+        let bytes = store.metadata().read(&manifest_path)?;
+        let held: RunManifest = serde_json::from_slice(&bytes)
+            .map_err(|e| StoreError::StoreManifestUnreadable(format!("{}: {e}", manifest_path.display())))?;
+        held.commit_seq
+    } else { None };
+    if let Some(mut history) = crate::available::VintageHistory::load(store, decl, before_commit_seq)? {
+        for batch in &mut rewritten { history.retain(&mut batch.rows) }
+    }
+    let batches = rewritten.as_slice();
     let types = column_types(store, decl, batches)?;
     if manifest_path.exists() {
         return replay(store, &manifest_path, &types, batches, ctx, position, per_batch);
     }
     let site = reconcile(store, decl, batches, &ctx.node, &ctx.injection, per_batch, None, true)?;
 
-    // From here to the commit point the table's commits serialize, the Parquet write
-    // included, so the readable runs always hold a prefix of its commit sequence; a
-    // landing on the table waits for another's write, and refuses past LOCK_WAIT_SECS
+    // The commit lock covers the vintage comparison, schema merge, Parquet write and
+    // manifest, so readers see a prefix of the table's commit sequence
     // (`store.reserve.commit-order`).
-    let _commit_lock = store.lock_commit(&decl.name)?;
     let _run_lock = take_run_lock(&node_dir)?;
     if manifest_path.exists() {
         return replay(store, &manifest_path, &types, batches, ctx, position, per_batch);
@@ -1009,9 +1021,14 @@ fn stage_prepared_part(store: &Store, decl: &TableDecl, batch: &Batch, node: &No
     }
     let (node_dir, manifest_path) = run_dir(store, &decl.name, node, &injection.run_id)?;
     let stage_dir = node_dir.join(STAGE_DIR);
+    let _commit_lock = store.lock_commit(&decl.name)?;
     let _run_lock = lock_run(&node_dir, &manifest_path, node, &injection.run_id)?;
     let earlier = read_staged_schema(store, &stage_dir)?;
-    let resolved = crate::available::resolve(decl, batch.clone())?;
+    let mut resolved = crate::available::resolve(decl, batch.clone())?;
+    if let Some(mut history) = crate::available::VintageHistory::load(store, decl, None)? {
+        for prior in 0..ordinal { history.observe_part(store, &stage_dir.join(stage_name(prior)))? }
+        history.retain(&mut resolved.rows);
+    }
     let batch = &resolved;
     let landing = reconcile(store, decl, std::slice::from_ref(batch), node, injection, true, earlier.as_ref(), false)?;
     // The staged schema lands before the part, so every part a commit names has its
@@ -1124,6 +1141,22 @@ fn commit_parts_inner(
         for name in parts {
             if !is_path_segment(name) || !stage_dir.join(name).is_file() {
                 return Err(ContextError::Invalid(format!("run `{}` commits part `{name}`, which no stage wrote on node `{}`", ctx.injection.run_id, ctx.node)));
+            }
+        }
+        if let Some(mut history) = crate::available::VintageHistory::load(store, decl, None)? {
+            for name in parts {
+                let path = stage_dir.join(name);
+                let batches = store.read_parquet(&path)?;
+                let Some(first) = batches.first() else { continue };
+                let combined = arrow_select::concat::concat_batches(&first.schema(), &batches)
+                    .map_err(|e| ContextError::Invalid(format!("staged vintage `{name}`: {e}")))?;
+                let rows = crate::rows::batch_rows(&combined, &history.projected_columns())?;
+                let keep = history.mask(&rows);
+                if keep.iter().any(|accepted| !accepted) {
+                    let kept = arrow_select::filter::filter_record_batch(&combined, &arrow_array::BooleanArray::from(keep))
+                        .map_err(|e| ContextError::Invalid(format!("staged vintage `{name}`: {e}")))?;
+                    write_batch(store, &path, &kept)?;
+                }
             }
         }
         let earlier = read_staged_schema(store, &stage_dir)?;

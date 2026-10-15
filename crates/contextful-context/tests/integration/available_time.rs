@@ -154,6 +154,19 @@ fn an_unchanged_re_pull_lands_no_new_vintage() {
 }
 
 #[cfg(feature = "read")]
+#[test]
+fn an_older_repull_of_the_latest_hash_keeps_the_first_vintage() {
+    use crate::support::s;
+    let (f, d) = gdp();
+    let older = json!([{ "series": "GDPC1", "period": "2030-01-01T00:00:00Z", "value": "101.5", "digest": "b", "released_at": "2030-04-01T12:30:00Z" }]);
+    f.land_typed(&d, "run-2", older.clone(), "2030-08-01T00:00:00Z", &GDP_TYPES).unwrap();
+    f.land_typed(&d, "run-2", older, "2030-08-01T00:00:00Z", &GDP_TYPES).unwrap();
+    assert_eq!(f.query(&d, first(Bounds::default()), RELEASE), [[s("100.0"), s("2030-04-28 12:30:00+00")]]);
+    let rows = contextful_context::rows::table_rows(&f.store, &d, &["series", "digest", "released_at"]).unwrap();
+    assert_eq!(rows.len(), 2, "unchanged re-pulls persist no additional vintage");
+}
+
+#[cfg(feature = "read")]
 /// A fold over a vintage table partitions as {{store.fold.valid-time-line}} or {{store.declare.dedup-view}} prescribes with the availability column added, and drops no vintage.
 // spec: store.available-time.vintage-fold-key@6315c6f3
 #[test]
@@ -260,6 +273,42 @@ fn a_backfill_of_old_history_answers_bounds_at_the_sources_instants() {
     let got = f.query(&d, Bounds::default(), "SELECT id, CAST(published AS VARCHAR), CAST(_ingested_at AS VARCHAR) FROM t ORDER BY id");
     assert_eq!(got, [[s("h1"), s("2014-03-02 14:00:00+00"), s("2026-06-01 00:00:00+00")], [s("h2"), s("2014-09-16 00:00:00+00"), s("2026-06-01 00:00:00+00")]]);
     assert_eq!(f.query(&d, available("2014-05-01"), "SELECT id FROM t"), [[s("h1")]]);
+}
+
+#[cfg(feature = "read")]
+#[test]
+fn staged_repulls_keep_only_changed_vintages() {
+    use crate::support::s;
+    use contextful_context::land::{commit_parts, stage_part, Position};
+    let f = Fixture::new();
+    let d = decl(GDP);
+    let ctx = staged("backfill-1", "2030-08-01T00:00:00Z");
+    let make = |value: &str, digest: &str, at: &str| {
+        let mut batch = rows(json!([{ "series": "GDPC1", "period": "2030-01-01T00:00:00Z", "value": value, "digest": digest, "released_at": at }]));
+        batch.types = GDP_TYPES.iter().map(|(name, ty)| ((*name).into(), ty.clone())).collect();
+        batch
+    };
+    let a = stage_part(&f.store, &d, &make("100.0", "a", "2030-04-28T12:30:00Z"), &ctx.node, &ctx.injection, 0, 0).unwrap();
+    let b = stage_part(&f.store, &d, &make("101.5", "b", "2030-05-29T12:30:00Z"), &ctx.node, &ctx.injection, 1, 1).unwrap();
+    let same = stage_part(&f.store, &d, &make("101.5", "b", "2030-04-01T12:30:00Z"), &ctx.node, &ctx.injection, 2, 2).unwrap();
+    commit_parts(&f.store, &d, &[a.name, b.name, same.name], &ctx, &Position::default(), &|| Ok(()), &|_| Ok(())).unwrap();
+    assert_eq!(f.query(&d, first(Bounds::default()), RELEASE), [[s("100.0"), s("2030-04-28 12:30:00+00")]]);
+    assert_eq!(contextful_context::rows::table_rows(&f.store, &d, &["series"]).unwrap().len(), 2);
+}
+
+#[cfg(feature = "read")]
+#[test]
+fn staged_repull_is_checked_against_commits_before_publication() {
+    use contextful_context::land::{commit_parts, stage_part, Position};
+    let f = Fixture::new();
+    let d = decl(GDP);
+    let ctx = staged("backfill-1", "2030-08-01T00:00:00Z");
+    let mut batch = rows(json!([{ "series": "GDPC1", "period": "2030-01-01T00:00:00Z", "value": "101.5", "digest": "b", "released_at": "2030-06-01T00:00:00Z" }]));
+    batch.types = GDP_TYPES.iter().map(|(name, ty)| ((*name).into(), ty.clone())).collect();
+    let part = stage_part(&f.store, &d, &batch, &ctx.node, &ctx.injection, 0, 0).unwrap();
+    f.land_typed(&d, "run-2", json!([{ "series": "GDPC1", "period": "2030-01-01T00:00:00Z", "value": "101.5", "digest": "b", "released_at": "2030-05-29T00:00:00Z" }]), "2030-07-01T00:00:00Z", &GDP_TYPES).unwrap();
+    commit_parts(&f.store, &d, &[part.name], &ctx, &Position::default(), &|| Ok(()), &|_| Ok(())).unwrap();
+    assert_eq!(contextful_context::rows::table_rows(&f.store, &d, &["series"]).unwrap().len(), 1);
 }
 
 #[cfg(feature = "read")]
