@@ -32,6 +32,7 @@ flowchart LR
   I -->|unlocks| M[13 Disclosure]
   A -->|unlocks| N[14 Assurance]
   D -->|unlocks| O[15 Point-in-time evaluation]
+  G -->|unlocks| P[16 Memory graph walk]
 ```
 
 ## 0 — The test-first gate
@@ -204,3 +205,13 @@ Acceptance: `contextful_acceptance::m14::m14_assurance`
 Reach: An earnings row landed in one commit with its period end and filing acceptance answers no `available_as_of` read between the two, and answers one after acceptance.
 
 Acceptance: `contextful_acceptance::m15::m15_point_in_time`
+
+## 16 — Memory graph walk
+
+| Operations | Intent |
+| --- | --- |
+| `read.traverse` | A bounded walk over admitted memory edges from a seed entity, under the caller's enforced session, the declared walkable relations and fixed hop, fan-out and frontier bounds. |
+
+Reach: An agent walks admitted edges from an entity and sees only what its credential can read.
+
+Acceptance: `contextful_acceptance::m16::m16_traverse`

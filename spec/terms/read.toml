@@ -18,6 +18,7 @@ revise         = {}
 recall         = {}
 resolve-entity = {}
 settle         = {}
+traverse       = {}
 horizon        = {}
 
 [error]
@@ -55,6 +56,8 @@ MemoryObservationOutOfOrder   = { clause = "read.revise.observed-order", gloss =
 MemoryRecallNotClaims         = { clause = "read.recall.keyed-not-claims", gloss = "A keyed recall named a table declaring no `memory_facts` shape." }
 MemoryEntityAmbiguous         = { clause = "read.resolve-entity.ambiguous-mention", gloss = "A mention resolves onto two identities with no separating key." }
 MemoryEdgeEndpointUnresolved  = { clause = "read.resolve-entity.edge-endpoint", gloss = "A candidate edge endpoint resolves to no identity." }
+MemoryTraverseRelationUnwalkable = { clause = "read.traverse.walkable", gloss = "A traversal named a relation its declaration does not mark walkable." }
+MemoryTraverseHopsExceeded    = { clause = "read.traverse.hop-bound", gloss = "A traversal asked for more hops than the bound." }
 OutcomeRegistrationInvalid    = { clause = "read.settle.registration", gloss = "A prediction registration breaks the one-form, one-source, comparator-iff-metric rule." }
 OutcomeSourceMismatch         = { clause = "read.settle.source-mismatch", gloss = "An observation's verdict carries no source or a source other than the registration's." }
 OutcomeCitationMissing        = { clause = "read.settle.settling-citation", gloss = "A judgment verdict carries no http or https settling citation." }
@@ -101,4 +104,7 @@ memory-prompt-bytes          = { clause = "read.synthesize.prompt-bound", value 
 memory-row-chars             = { clause = "read.synthesize.row-cap", value = 16384, unit = "chars", basis = "chosen", gloss = "Characters of one fenced row before the truncation mark cuts it." }
 memory-evidence-references   = { clause = "read.recall.evidence-references", value = 256, unit = "entries", basis = "chosen", gloss = "Evidence entries recall serves per claim; the rest count in `evidence_omitted`." }
 memory-evidence-gate         = { clause = "read.recall.evidence-gate-bound", value = 4096, unit = "entries", basis = "chosen", gloss = "Evidence entries one claim names before recall suppresses it." }
+memory-traverse-hops         = { clause = "read.traverse.hop-bound", value = 3, unit = "hops", basis = "chosen", gloss = "Hops one traversal follows from its seed." }
+memory-traverse-fan-out      = { clause = "read.traverse.fan-out", value = 64, unit = "memory-edges", basis = "chosen", gloss = "Edges one node expands within a traversal." }
+memory-traverse-frontier     = { clause = "read.traverse.frontier-cap", value = 512, unit = "memory-edges", basis = "chosen", gloss = "Edges one traversal reaches before it stops." }
 outcome-grace-window         = { clause = "read.settle.grace-window", value = 86400, unit = "s", basis = "chosen", gloss = "Inclusive window past a deadline within which an observation is scored." }

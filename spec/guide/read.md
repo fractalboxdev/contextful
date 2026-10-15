@@ -86,11 +86,13 @@ sequenceDiagram
   T-->>A: rows with the three bounds echoed
 ```
 
-Every transport serializes one projection ({{read.respond.one-projection}}). Internals carries bindings ({{read.respond.query-internals-parameters}}). Tools without SQL have no deadline ({{read.register.duration-no-statement}}). A deadline refuses without rows ({{read.respond.duration-ceiling}}); a byte bound preserves whole rows ({{read.respond.byte-ceiling}}). A row ceiling sets `truncated` through an over-fetched probe row ({{read.respond.truncation-is-exact}}); a byte cut also sets it, and each cut names its cause ({{read.respond.truncation-cause}}). Zero rows is a success ({{read.respond.zero-rows-is-success}}). A caller may pin tables to published builds, and a pin never silently widens to the latest state ({{read.resolve-pin.unknown-build}}).
+Every transport serializes one projection ({{read.respond.one-projection}}). Internals carries bindings ({{read.respond.query-internals-parameters}}). Tools without SQL have no deadline ({{read.register.duration-no-statement}}). A deadline refuses without rows ({{read.respond.duration-ceiling}}); a byte bound preserves whole rows ({{read.respond.byte-ceiling}}). A row ceiling sets `truncated` through an over-fetched probe row ({{read.respond.truncation-is-exact}}); a byte cut also sets it, and each cut names its cause ({{read.respond.truncation-cause}}). Zero rows is a success ({{read.respond.zero-rows-is-success}}). A pinned build never silently widens to the latest state ({{read.resolve-pin.unknown-build}}).
 
 Memory uses ordinary store tables ({{topology.compose.memory-substrate}}). Synthesis retries invalid extraction ({{read.synthesize.extract-attempts}}), then dead-letters with its cursor held ({{read.synthesize.dead-letter}}). Ambiguous mentions dead-letter ({{read.resolve-entity.ambiguous-mention}}). Recall gates evidence through the caller's session ({{read.recall.evidence-unresolved}}). The CLI shares keyed recall ({{read.recall.cli-verb}}). Settlement scores registered predictions ({{read.settle.registration}}).
 
-Memory's relation vocabulary, cadence and confidence follow {{read.declare.reserved-relations}}, {{read.synthesize.cadence}} and {{read.synthesize.confidence-calibration}}. Recall usage follows {{read.recall.usage-ledger}}.
+Relation vocabulary, cadence, confidence and recall usage follow {{read.declare.reserved-relations}}, {{read.synthesize.cadence}}, {{read.synthesize.confidence-calibration}} and {{read.recall.usage-ledger}}.
+
+An edge walk ({{read.traverse.call}}) crosses readable, cited edges ({{read.traverse.enforced-edges}}) within bounds ({{read.traverse.frontier-cap}}).
 
 Operator claims land through {{read.revise.served-write}} under credential-bound scope ({{read.revise.served-scope}}); browser requests refuse ({{read.revise.browser-request}}).
 
@@ -141,5 +143,5 @@ Stored citations share {{read.reference.call}}; {{read.reference.erased-verdict}
 - The envelope and its encodings: `read.respond`.
 - Candidates and order: `read.retrieve`, `read.rank`.
 - Build pins and time bounds: `read.resolve-pin`.
-- Memory writes and reads: `read.synthesize`, `read.revise`, `read.recall`, `read.resolve-entity`.
+- Memory writes and reads: `read.synthesize`, `read.revise`, `read.recall`, `read.resolve-entity`, `read.traverse`.
 - Predictions and outcomes: `read.settle`.
