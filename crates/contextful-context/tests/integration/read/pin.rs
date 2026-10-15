@@ -309,3 +309,75 @@ fn the_echo_names_the_registered_build_after_its_collection() {
     let listed = p.r.face.files(&s, Bounds::default()).unwrap().to_json();
     assert_eq!(resolved_build(&listed, DAILY), first.build_id);
 }
+
+const DATED: &str = r#"
+[[pipeline.tables]]
+name = "lab/events"
+
+[pipeline.tables.available_time]
+column = "at"
+"#;
+
+/// Under a horizon, a model table resolves to the newest build whose horizon, recorded under {{run.model.build-horizon}}, is at or before the credential's; a table holding none raises `ReadNoBuildWithinHorizon`, naming the table.
+// spec: read.horizon.build-resolution@40edc7e6
+#[test]
+fn a_model_table_under_a_horizon_reads_its_newest_build_within_it() {
+    use contextful_context::build::{build, BuildRequest};
+    use contextful_context::land::{land, Batch, RunContext};
+    use contextful_core::grant::Grant;
+    use contextful_core::pipeline::declare::{collect, ManifestFile};
+    use contextful_core::pipeline::model::collect_models;
+    use contextful_core::store::declare::TableDecl;
+    use contextful_core::store::lay_out::NodeId;
+    use contextful_core::store::reconcile::ColumnType;
+    use contextful_core::store::reserve::Injection;
+    use contextful_core::time::Instant;
+    let at = |s: &str| Instant::parse(s).unwrap();
+
+    let r = Reads::with_manifest(&format!("{MANIFEST}{DATED}{MODELS}"));
+    let events = TableDecl::parse_pipeline(DATED).unwrap().remove(0);
+    let rows = json!([{ "day": "d1", "at": "2014-06-01T00:00:00Z" }, { "day": "d2", "at": "2015-06-01T00:00:00Z" }]);
+    let ctx = RunContext {
+        node: NodeId::parse("ingest-a").unwrap(),
+        injection: Injection { run_id: "run-0001".into(), site_id: "site-a".into(), batch_seq: Some(0), authored_by: None, taint: None },
+        committed_at: at("2030-01-10T00:00:00Z"),
+    };
+    let rows = rows.as_array().unwrap().iter().map(|r| r.as_object().unwrap().clone()).collect();
+    land(&r.store, &events, &Batch { rows, types: [("at".to_string(), ColumnType::Timestamp)].into_iter().collect() }, &ctx).unwrap();
+
+    let files = [ManifestFile { path: "contextful.toml".into(), text: MODELS.to_string() }];
+    let spec = collect_models(&files, &collect(&files).unwrap()).unwrap().into_iter().find(|m| m.spec.id == DAILY).unwrap().spec;
+    let built = |now: &str, horizon: Option<&str>| {
+        let available_as_of = horizon.map(|h| Bound::parse(h).unwrap());
+        build(&r.face, &BuildRequest { model: &spec, site_id: "site-a", started_at: at(now), completed_at: at(now), available_as_of }).unwrap()
+    };
+    let in_2014 = built("2030-01-11T00:00:00Z", Some("2014-12-31T00:00:00Z"));
+    let in_2015 = built("2030-01-11T01:00:00Z", Some("2015-03-01T00:00:00Z"));
+    let current = built("2030-01-11T02:00:00Z", None);
+
+    let under = |horizon: Option<&str>| {
+        let grant = Grant { horizon: horizon.map(at), ..read(&["lab/*"], None) };
+        let authority = r.authority(loop_subject("agent://research-loop"), vec![grant]);
+        r.face.session_pinned(&authority, &Request::default(), Bounds::default(), &Pins::default()).unwrap()
+    };
+    let counts = |s: &Session| r.face.query(s, COUNTS, ReadOptions::default()).map(|v| v.to_json());
+
+    // A credential reaching 2015-06 reads the 2015-03 build, the newest at or before it.
+    let june = counts(&under(Some("2015-06-01T00:00:00Z"))).unwrap();
+    assert_eq!(resolved_build(&june, DAILY), in_2015.build_id);
+    assert_eq!(june["rows"], json!([["d1", "1"]]));
+    let january = counts(&under(Some("2015-01-01T00:00:00Z"))).unwrap();
+    assert_eq!(resolved_build(&january, DAILY), in_2014.build_id);
+    // The read tools inherit the horizon as `available_as_of`; the resolved build answers it whole.
+    let inherited = ReadOptions { bounds: Bounds { available_as_of: Some(Bound::parse("2015-06-01T00:00:00Z").unwrap()), ..Bounds::default() }, ..ReadOptions::default() };
+    let bounded = r.face.query(&under(Some("2015-06-01T00:00:00Z")), COUNTS, inherited).unwrap().to_json();
+    assert_eq!(resolved_build(&bounded, DAILY), in_2015.build_id);
+    // A build without a recorded horizon serves no horizon; without a horizon the latest answers.
+    assert_eq!(resolved_build(&counts(&under(None)).unwrap(), DAILY), current.build_id);
+
+    // Before every recorded horizon the model table refuses, naming it; another table still answers.
+    let early = under(Some("2014-01-01T00:00:00Z"));
+    let refused = refused_with(counts(&early), "ReadNoBuildWithinHorizon");
+    assert!(refused.contains(DAILY), "{refused}");
+    assert!(r.face.query(&early, r#"SELECT day FROM "lab/events""#, ReadOptions::default()).is_ok());
+}

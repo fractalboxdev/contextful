@@ -82,6 +82,7 @@ pub fn build(
         row_count: docs.len() as u64,
         term_count: layout.term_count as u64,
         key_version: sealing.key_version(),
+        available_through: crate::available::latest(decl, rows)?,
     };
     sealing.write(&dir.join(POSTINGS_FILE), &bytes)?;
     sealing.write(&dir.join(MANIFEST_FILE), &serde_json::to_vec_pretty(&entry).expect("an entry serializes"))?;

@@ -94,7 +94,7 @@ impl Face {
         let mut executed: Vec<String> = Vec::new();
         let table = request.table.as_str();
         let relation = session.relation(table).ok_or_else(|| EnforceError::UnknownRelation(format!("`{table}`")))?;
-        self.bind_bounds(&std::collections::BTreeSet::from([table.to_string()]), request.bounds())?;
+        self.bind_bounds(session, &std::collections::BTreeSet::from([table.to_string()]), request.bounds())?;
         if self.memory().table(table).is_none_or(|t| t.shape != Shape::Facts) {
             let why = format!("`{table}` declares no `{}` shape, so it holds no claim to recall", Shape::Facts.name());
             return Err(Refusal::from(MemoryError::RecallNotClaims(why)).into());

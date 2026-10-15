@@ -252,6 +252,29 @@ fn a_refused_intent_resolves_no_name_and_is_never_retried() {
     assert!(matches!(decide(&schedule, "fetch", 1, &f, 7), Decision::Fail { consumed_attempt: false, .. }));
 }
 
+/// A hop made under a credential carrying a horizon passes a pre-send hook refusing every host but the configured model endpoint, as {{connector.meter.hook-refusal}} with reason `horizon`.
+// spec: read.horizon.egress-hook@b4c7a2cb
+#[test]
+fn a_hop_under_a_horizon_reaches_the_model_endpoint_alone() {
+    let events: Arc<Mutex<Vec<String>>> = Arc::default();
+    let t = Recording::new(&[("api.vendor.example", "93.184.216.34:0")], vec![ok("{}")], events.clone());
+    let hook = Ledger::new(&[], events.clone());
+
+    // A vendor hop under a horizon refuses before the operator hook, any lookup or any send.
+    let f = vendor_client(t.clone()).with_hook(hook.clone()).under_horizon(None).send("GET", &url("https://api.vendor.example/v1"), &plain(), None).unwrap_err();
+    assert!(f.message.starts_with("ConnectorEgressRefused"), "{f}");
+    assert!(f.message.contains("api.vendor.example") && f.message.contains("horizon"), "{f}");
+    assert_eq!((t.lookups(), t.sends()), (0, 0));
+    assert!(hook.intents.lock().unwrap().is_empty(), "the horizon refuses ahead of the operator hook");
+    let schedule = Schedule::default();
+    assert!(matches!(decide(&schedule, "fetch", 1, &f, 7), Decision::Fail { consumed_attempt: false, .. }));
+
+    // The configured model endpoint passes, and the operator hook still sees it.
+    let endpoint = vendor_client(t.clone()).with_hook(hook.clone()).under_horizon(Some("api.vendor.example"));
+    assert_eq!(endpoint.send("GET", &url("https://api.vendor.example/v1"), &plain(), None).unwrap().status, 200);
+    assert_eq!(hook.intents.lock().unwrap().len(), 1);
+}
+
 /// The hook receives each admitted hop's outcome after the body read or the failure: the status or transport
 /// failure, the request body bytes sent, and the response body bytes the host read. A followed redirect is two
 /// intents.

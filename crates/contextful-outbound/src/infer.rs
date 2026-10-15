@@ -62,8 +62,13 @@ impl Endpoint {
 
     /// The endpoint serving a caller whose credential carries `horizon`
     /// (`connector.infer.hosted-tools`).
+    /// Its client reaches the endpoint host alone (`read.horizon.egress-hook`).
     pub fn under_horizon(mut self, horizon: Option<Instant>) -> Endpoint {
         self.horizon = horizon;
+        if horizon.is_some() {
+            let host = self.completions.host_str().map(str::to_string);
+            self.client = self.client.under_horizon(host.as_deref());
+        }
         self
     }
 

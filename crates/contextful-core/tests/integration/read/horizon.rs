@@ -70,3 +70,46 @@ fn a_bound_later_than_the_horizon_is_refused() {
     assert_eq!(inherited.valid_as_of, future.valid_as_of);
     assert_eq!(inherited.available_as_of, Some(Bound { at: at("2015-01-01T00:00:00Z"), inclusive: true }));
 }
+
+/// One checkpoint of an embedder family, embedding every text as its own marker vector.
+struct Checkpoint(&'static str);
+
+impl contextful_core::read::embed::Embedder for Checkpoint {
+    fn model(&self) -> &str {
+        self.0
+    }
+    fn dimensions(&self) -> usize {
+        1
+    }
+    fn embed(&self, _text: &str) -> Vec<f32> {
+        vec![1.0]
+    }
+}
+
+/// Under a horizon, an embedder declaring a checkpoint family embeds with its newest checkpoint whose post-training cutoff, as {{connector.infer.cutoffs}} records it, precedes the horizon, and the response names that checkpoint.
+// spec: read.horizon.embedder-route@1be3056f
+#[test]
+fn an_embedder_family_routes_to_its_newest_checkpoint_before_the_horizon() {
+    use contextful_core::connector::model_ref::{Cutoff, ModelRef};
+    use contextful_core::read::embed::{CheckpointFamily, Embedder};
+    let checkpoint = |name: &'static str, cutoff: Option<&str>| {
+        (ModelRef { snapshot: name.into(), pretrain_cutoff: None, posttrain_cutoff: cutoff.map(|c| Cutoff::parse(c).unwrap()) }, Checkpoint(name))
+    };
+    let family = CheckpointFamily::new(vec![
+        checkpoint("embed-2013", Some("2013-06:documented")),
+        checkpoint("embed-2014", Some("2014-11:documented")),
+        checkpoint("embed-2016", Some("2016-02:estimated")),
+        checkpoint("embed-live", None),
+    ]);
+    let now = at("2030-01-01T00:00:00Z");
+
+    // The 2014-11 cutoff ends on 1 December 2014, before the horizon; the 2016 one does not.
+    let routed = family.route(Some(at("2015-01-01T00:00:00Z")), now).unwrap();
+    assert_eq!(routed.model(), "embed-2014", "the vectors name the routed checkpoint");
+    assert_eq!(family.route(Some(at("2014-12-01T00:00:00Z")), now).unwrap().model(), "embed-2014", "a cutoff ending at the horizon precedes it");
+    assert_eq!(family.route(Some(at("2014-11-30T00:00:00Z")), now).unwrap().model(), "embed-2013");
+    // No checkpoint precedes a horizon before every cutoff; an undeclared cutoff ends at the call.
+    assert!(family.route(Some(at("2013-01-01T00:00:00Z")), now).is_none());
+    // Without a horizon the family embeds with its newest checkpoint.
+    assert_eq!(family.route(None, now).unwrap().model(), "embed-live");
+}

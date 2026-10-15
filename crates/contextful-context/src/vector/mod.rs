@@ -168,6 +168,7 @@ pub fn build(
         extensions: 0,
         row_count: kept_ids.len() as u64,
         key_version: sealing.key_version(),
+        available_through: crate::available::latest(decl, rows)?,
     };
     sealing.write(&dir.join(GRAPH_FILE), &bytes)?;
     sealing.write(&dir.join(MANIFEST_FILE), &manifest_bytes(&entry))?;

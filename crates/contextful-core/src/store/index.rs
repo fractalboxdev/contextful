@@ -303,6 +303,10 @@ pub struct FulltextEntry {
     pub term_count: u64,
     /// The key version sealing the sidecar's files; 0 for plaintext.
     pub key_version: u32,
+    /// The latest availability instant among the rows the postings hold, on a table
+    /// declaring `available_time` (`read.horizon.rank-statistics`).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub available_through: Option<crate::time::Instant>,
 }
 
 /// The entry a built vector sidecar records in its snapshot manifest's `indexes`, and
@@ -332,6 +336,10 @@ pub struct VectorEntry {
     pub row_count: u64,
     /// The key version sealing the sidecar's files; 0 for plaintext.
     pub key_version: u32,
+    /// The latest availability instant among the rows the graph holds, on a table
+    /// declaring `available_time` (`read.horizon.rank-statistics`).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub available_through: Option<crate::time::Instant>,
 }
 
 /// One entry of a snapshot manifest's `indexes`: a built sidecar of a kind this build
