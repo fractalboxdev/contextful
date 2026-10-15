@@ -58,7 +58,7 @@ fn a_store_driven_block_without_a_positive_max_in_flight_raises_job_concurrency_
 
 /// A `store-driven` block whose `body` names no body the embedding binary registers raises `JobBodyUnregistered`
 /// at validation.
-// spec: surface.fire.store-driven-body@c7d2b211
+// spec: surface.fire.store-driven-body@8e0dbcf5
 #[test]
 fn a_store_driven_block_naming_an_unregistered_body_raises_job_body_unregistered() {
     let block = store_driven("max_in_flight = 2\n").replace("body = \"score\"", "body = \"rank\"");

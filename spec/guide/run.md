@@ -39,8 +39,8 @@ pins the connector and plan ({{run.own.pinned-plan-changed}}); host jobs use the
 scope ({{run.own.host-scope}}).
 
 Bodies: {{run.own.body-implementation}}, {{run.own.body-dependencies}}, {{run.own.body-compatibility}}.
-Items follow {{run.items.opt-in}} and {{run.items.identity}}; a delegate's answer is
-recorded once ({{run.items.delegated-item}}).
+Items follow {{run.items.opt-in}} and {{run.items.identity}}; a delegate's answer records
+once ({{run.items.delegated-item}}).
 Outcomes follow {{run.items.completion}} and {{run.items.outcomes}};
 admission follows {{run.items.entity-admission}}, {{run.items.overlap}} and {{run.items.fence}}.
 Retries follow {{run.items.retry-budget}} and {{run.items.replay}}.

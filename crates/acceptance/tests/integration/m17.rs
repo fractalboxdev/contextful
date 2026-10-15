@@ -33,7 +33,7 @@ fn hmac_hex(key: &[u8], message: &[u8]) -> String {
 }
 
 /// The delegate's answer: `ok` rows for the job's one output table, signed under the
-/// deployment key over `answer\n<timestamp>\n` and the body.
+/// deployment key over `answer\n<idempotency_key>\n<timestamp>\n` and the body.
 fn answer(request: &Request) -> Response {
     let envelope: Value = serde_json::from_slice(&request.body).unwrap_or(Value::Null);
     let row = &envelope["row"];
@@ -43,7 +43,8 @@ fn answer(request: &Request) -> Response {
     })
     .to_string();
     let timestamp = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap().as_secs().to_string();
-    let signature = hmac_hex(KEY, format!("answer\n{timestamp}\n{body}").as_bytes());
+    let key = envelope["idempotency_key"].as_str().unwrap_or_default();
+    let signature = hmac_hex(KEY, format!("answer\n{key}\n{timestamp}\n{body}").as_bytes());
     let mut response = Response::json(200, &body);
     response.headers.push(("x-contextful-timestamp".into(), timestamp));
     response.headers.push(("x-contextful-signature".into(), signature));
@@ -99,9 +100,10 @@ fn m17_delegated() {
         assert_eq!(envelope["tables"], json!(["screen_result"]));
         assert_eq!(envelope["as_of"], "2030-01-01T00:00:10Z");
         assert_eq!(envelope["entity"]["namespace"], "entity");
-        for field in ["execution_id", "step", "input_hash", "attempt", "idempotency_key", "version", "deadline"] {
+        for field in ["execution_id", "step", "input_hash", "attempt", "idempotency_key", "deadline"] {
             assert!(!envelope[field].is_null(), "envelope carries `{field}`: {envelope}");
         }
+        assert!(envelope["version"].is_null(), "a fire from the local declaration names no applied version");
         assert!(envelope["entity"]["fence"].is_number() && envelope["pins"].is_object(), "{envelope}");
     }
     let landed: Value = serde_json::from_str(&ok(&p.run(&cf, &["query", "--json", "--project", "research", "SELECT entity_id, pass_id FROM screen_result ORDER BY pass_id"]))).unwrap();

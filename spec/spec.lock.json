@@ -8714,7 +8714,7 @@
       "operation": "items",
       "subject": "delegated-item",
       "kind": "behavior",
-      "statement": "Under a delegated body, an item's attempt is one request under {{surface.delegate.envelope}}, and the answer is recorded as the body output under the item's entry key, so a resume replays it and sends nothing.",
+      "statement": "Under a delegated body, each call ordinal is one request under {{surface.delegate.envelope}}, its `ok`, `defer` or `permanent` answer recorded under the item's entry key, so a resume replays every recorded answer and sends only the unrecorded call.",
       "why": "A-surface",
       "file": "spec/30-run.md",
       "line": 196
@@ -22994,7 +22994,7 @@
       "operation": "fire",
       "subject": "store-driven-body",
       "kind": "refusal",
-      "statement": "A `store-driven` block whose `body` names no body the embedding binary registers raises `JobBodyUnregistered` at validation.",
+      "statement": "A `store-driven` block whose `body` names no body the embedding binary registers and no delegate under {{surface.delegate.binding}} raises `JobBodyUnregistered` at validation.",
       "why": "A-surface",
       "file": "spec/70-control-plane.md",
       "line": 177
@@ -23005,7 +23005,7 @@
       "operation": "fire",
       "subject": "scheduled-body",
       "kind": "behavior",
-      "statement": "A scheduled `store-driven` job runs through the cadence lease and dispatch pool under `job:<name>`, using the embedding executable's registered body and the applied snapshot's job declaration.",
+      "statement": "A scheduled `store-driven` job runs through the cadence lease and dispatch pool under `job:<name>`, using the embedding executable's registered body or its bound delegate, and the applied snapshot's job declaration.",
       "why": "A-surface",
       "file": "spec/70-control-plane.md",
       "line": 179
@@ -23346,7 +23346,7 @@
       "operation": "delegate",
       "subject": "binding",
       "kind": "refusal",
-      "statement": "`[control.delegates.<name>]` binds a delegate by `url`, a `mode` of `call` or `submit`, and under `call` a `timeout`; a `store-driven` `body = { delegate = \"<name>\" }` naming no bound delegate raises `JobDelegateUnbound` at validation.",
+      "statement": "`[control.delegates.<name>]` binds a delegate by `url`, a `mode` of `call` or `submit`, and under `call` a `timeout`; a `store-driven` `body = { delegate = \"<name>\" }` naming no bound delegate raises `JobDelegateUnbound` at arm or fire.",
       "why": "A-surface",
       "file": "spec/70-control-plane.md",
       "line": 276
@@ -23371,7 +23371,7 @@
       "operation": "delegate",
       "subject": "envelope",
       "kind": "behavior",
-      "statement": "A delegate request carries job name, execution id, step label, input hash, {{run.journal.idempotency-key}}, the input row, entity namespace, key and fence, attempt, resolved `as_of`, applied version, owner pins, declared output tables and the item deadline.",
+      "statement": "A delegate request carries `job`, `execution_id`, `step`, `input_hash`, `idempotency_key` under {{run.journal.idempotency-key}}, `attempt`, `entity` with namespace, key and fence, `as_of`, `version` when fired from an applied snapshot, `pins`, `tables`, the input `row` and `deadline`.",
       "why": "because a delegate holds no state of its own, and a request naming its version and fence lets it refuse before a paid call",
       "file": "spec/70-control-plane.md",
       "line": 280
@@ -23381,11 +23381,22 @@
       "contract": "surface",
       "operation": "delegate",
       "subject": "signed",
-      "kind": "refusal",
-      "statement": "A request is signed as {{surface.dispatch.submit-signed}} signs a submission; an answer unsigned, skewed past {{surface.dispatch.callback-skew}}, outside {{surface.delegate.outcome}} or over {{surface.dispatch.step-result}} raises `DelegateAnswerRejected`, and the attempt closes `Transient`.",
-      "why": "because an unsigned answer lets any process on the loopback land rows, and a malformed one recorded as a value replays forever",
+      "kind": "behavior",
+      "statement": "A request is signed under the worker key over `call`, its timestamp and body, and an answer over `answer`, the request's `idempotency_key`, its timestamp and body, each as {{surface.dispatch.submit-signed}} signs a submission.",
+      "why": "because an answer bound to its request cannot be replayed onto another item's call",
       "file": "spec/70-control-plane.md",
       "line": 282
+    },
+    {
+      "id": "surface.delegate.rejected",
+      "contract": "surface",
+      "operation": "delegate",
+      "subject": "rejected",
+      "kind": "refusal",
+      "statement": "An answer unsigned or skewed past {{surface.dispatch.callback-skew}} raises `DelegateAnswerRejected` and closes the attempt `Transient`; one outside {{surface.delegate.outcome}} or over {{surface.dispatch.step-result}} raises it and closes the attempt `Permanent`.",
+      "why": "because an unsigned answer lets any process on the loopback land rows, and a malformed one cannot change on retry",
+      "file": "spec/70-control-plane.md",
+      "line": 284
     },
     {
       "id": "surface.delegate.call-mode",
@@ -23396,7 +23407,7 @@
       "statement": "Under `call`, one request per attempt holds its connection open and the response body is the attempt's answer; a response arriving after the delegate's `timeout` closes the attempt `Transient`, and its late body records nothing.",
       "why": "A-surface",
       "file": "spec/70-control-plane.md",
-      "line": 284,
+      "line": 286,
       "scenarios": [
         "WHEN a delegate answers `ok` with rows for one item and the daemon restarts before that item's landing commits, THEN the resumed item lands the recorded rows and the delegate receives no second request."
       ]
@@ -23407,10 +23418,10 @@
       "operation": "delegate",
       "subject": "status",
       "kind": "behavior",
-      "statement": "A `call` response with a status other than `200` closes the attempt `Transient`, whatever its body; only a signed `permanent` answer writes a terminal receipt.",
+      "statement": "A `call` response with a status other than `200` closes the attempt `Transient`, whatever its body; a terminal receipt follows a signed `permanent` answer, a `Permanent` rejection or an exhausted budget under {{run.items.retry-budget}}.",
       "why": "because a refusal before work is deployment drift an operator fixes, and a terminal receipt outlives the fix",
       "file": "spec/70-control-plane.md",
-      "line": 286
+      "line": 288
     },
     {
       "id": "surface.delegate.call-timeout",
@@ -23421,7 +23432,7 @@
       "statement": "A `call` delegate's `timeout` defaults to 300 s.",
       "why": "",
       "file": "spec/70-control-plane.md",
-      "line": 288
+      "line": 290
     },
     {
       "id": "surface.delegate.call-timeout-ceiling",
@@ -23432,7 +23443,7 @@
       "statement": "A `call` `timeout` above 3600 s raises `DelegateTimeoutRefused` at validation.",
       "why": "because an item holding a `max_in_flight` slot for over an hour is a stalled delegate, not a slow one",
       "file": "spec/70-control-plane.md",
-      "line": 289
+      "line": 291
     },
     {
       "id": "surface.delegate.submit-mode",
@@ -23443,7 +23454,7 @@
       "statement": "Under `submit`, the request is a {{surface.dispatch.worker-target}} submission answered at once; the delegate heartbeats under {{surface.dispatch.heartbeat-beat}}, posts its answer to the callback, and a lapse follows {{surface.dispatch.heartbeat-lapse}}.",
       "why": "A-surface",
       "file": "spec/70-control-plane.md",
-      "line": 291
+      "line": 293
     },
     {
       "id": "surface.delegate.outcome",
@@ -23454,7 +23465,7 @@
       "statement": "An answer is `ok` with rows per declared output table, `defer` with a `retry_at` instant, `transient`, or `permanent` with a reason; `ok` lands as {{run.items.completion}}, `defer` parks, and `transient` and `permanent` follow {{run.items.retry-budget}}.",
       "why": "A-surface",
       "file": "spec/70-control-plane.md",
-      "line": 293
+      "line": 295
     },
     {
       "id": "surface.delegate.defer-parks",
@@ -23462,10 +23473,10 @@
       "operation": "delegate",
       "subject": "defer-parks",
       "kind": "behavior",
-      "statement": "A `defer` parks the item until its `retry_at`, consuming no failed attempt; the first fire after that instant re-admits it under {{run.items.replay}}, and no run sleeps on it.",
+      "statement": "A `defer` parks the item until its `retry_at` under {{run.items.retry-budget}}; the first fire after that instant re-admits it under {{run.items.replay}}, no run sleeps on it, and a row of a job without `isolated_items` closes `Transient` instead.",
       "why": "because a provider budget clears on the provider's clock, and a slot held through the wait starves every other entity",
       "file": "spec/70-control-plane.md",
-      "line": 295,
+      "line": 297,
       "scenarios": [
         "WHEN a delegate answers `defer` with a `retry_at` ten minutes ahead, THEN the item's failed-attempt count is unchanged and the first fire after that instant sends the request again."
       ]
@@ -23479,7 +23490,7 @@
       "statement": "The fence in {{surface.delegate.envelope}} is checked immediately before the request under {{run.items.fence}}; under `submit`, the heartbeat `GET` answers the current attempt and fence, so a delegate learns before a paid call whether it is superseded.",
       "why": "because a delegate that pays after its owner was replaced spends a call whose answer nothing records",
       "file": "spec/70-control-plane.md",
-      "line": 297
+      "line": 299
     },
     {
       "id": "surface.delegate.version",
@@ -23490,7 +23501,29 @@
       "statement": "A binding's optional `version` joins the item's owner pins as a body dependency, so a changed version opens a fresh execution identity and a pending item under the old one refuses as {{run.own.pinned-plan-changed}}.",
       "why": "because a prompt or model change inside a delegate otherwise resumes recorded work under new semantics",
       "file": "spec/70-control-plane.md",
-      "line": 299
+      "line": 301
+    },
+    {
+      "id": "surface.delegate.clocks",
+      "contract": "surface",
+      "operation": "delegate",
+      "subject": "clocks",
+      "kind": "behavior",
+      "statement": "Signature timestamps on a request and an answer ride each side's system clock; the `deadline` and a `defer` wait ride the engine's instant.",
+      "why": "because the engine's instant is injectable while a delegate shares only wall time, and a wait measured on two clocks never fires",
+      "file": "spec/70-control-plane.md",
+      "line": 303
+    },
+    {
+      "id": "surface.delegate.submit-relay",
+      "contract": "surface",
+      "operation": "delegate",
+      "subject": "submit-relay",
+      "kind": "behavior",
+      "statement": "A `submit` binding on a daemon declaring no `[control] relay` or holding no worker key refuses at startup, as {{surface.dispatch.worker-key}} refuses a worker list.",
+      "why": "because a submit delegate posts its answer to the awakeable route the relay binds",
+      "file": "spec/70-control-plane.md",
+      "line": 305
     },
     {
       "id": "surface.edit.secret-in-document",
@@ -23501,7 +23534,7 @@
       "statement": "A credential value typed into a configuration field raises `SecretMaterialInDocument`; the document holds references and the backend holds material.",
       "why": "because a value in the document reaches every daemon and replica that reads a snapshot",
       "file": "spec/70-control-plane.md",
-      "line": 334
+      "line": 340
     },
     {
       "id": "surface.edit.connector-upload",
@@ -23512,7 +23545,7 @@
       "statement": "An artifact uploaded through the operator surface raises `ConnectorUploadRefused`; the surface references registered connectors by id and version.",
       "why": "because publishing into the registry runs a separate signed path",
       "file": "spec/70-control-plane.md",
-      "line": 336
+      "line": 342
     },
     {
       "id": "surface.edit.store-draft",
@@ -23523,7 +23556,7 @@
       "statement": "An Admin edit validates a complete control document and saves one store-scoped draft bound to its applied version, verified operator and random nonce, leaving the applied pointer unchanged.",
       "why": "A-surface",
       "file": "spec/70-control-plane.md",
-      "line": 338
+      "line": 344
     },
     {
       "id": "surface.apply.version-race",
@@ -23534,7 +23567,7 @@
       "statement": "An apply whose compare-and-swap loses raises `ManifestVersionConflict`, reloads the winning version and reapplies its pending edits onto it, overwriting no applied version.",
       "why": "A-surface",
       "file": "spec/70-control-plane.md",
-      "line": 345
+      "line": 351
     },
     {
       "id": "surface.apply.validation",
@@ -23545,7 +23578,7 @@
       "statement": "A document failing engine validation raises `ApplyValidationRefused` and claims no version.",
       "why": "because a snapshot store holding a version daemons refuse to arm stalls every daemon reading it",
       "file": "spec/70-control-plane.md",
-      "line": 347
+      "line": 353
     },
     {
       "id": "surface.apply.owner-unconfigured",
@@ -23556,7 +23589,7 @@
       "statement": "An owner with no storage configured or no credential raises `ConfigOwnerUnconfigured`, answered `503`; no local writer substitutes for the store-scoped API.",
       "why": "P3",
       "file": "spec/70-control-plane.md",
-      "line": 349
+      "line": 355
     },
     {
       "id": "surface.apply.weak-conditional-backend",
@@ -23567,7 +23600,7 @@
       "statement": "A configuration owner or catalog backend whose conditional replacement is not linearizable raises `ConditionalWriteUnsupported` at startup or open.",
       "why": "A-surface",
       "file": "spec/70-control-plane.md",
-      "line": 351
+      "line": 357
     },
     {
       "id": "surface.apply.uninitialized-store",
@@ -23578,7 +23611,7 @@
       "statement": "An edit or apply against a store that has taken no explicit guarded import, an empty store included, raises `StoreNotInitialized`, answered `409`.",
       "why": "P3",
       "file": "spec/70-control-plane.md",
-      "line": 353
+      "line": 359
     },
     {
       "id": "surface.apply.local-claim",
@@ -23589,7 +23622,7 @@
       "statement": "A local control plane validates and claims `manifest@v<N>.toml` in its snapshot directory, `.contextful/control/<project>/` unless `[control] snapshot_dir` names one, on its own; `contextful pipeline apply` is that apply, and no hosted plane sits on its path.",
       "why": "because {{topology.coordinate.air-gap}} holds a single-node deployment to reach no process outside itself",
       "file": "spec/70-control-plane.md",
-      "line": 355
+      "line": 361
     },
     {
       "id": "surface.apply.synced-attestation",
@@ -23600,7 +23633,7 @@
       "statement": "In a project with `[sync]`, import and apply admit an admin capability, then sign a receipt over the project, version, predecessor receipt digest and snapshot digest through {{authority.issue.signing-port}}.",
       "why": "A-surface",
       "file": "spec/70-control-plane.md",
-      "line": 357
+      "line": 363
     },
     {
       "id": "surface.apply.receipt-message",
@@ -23611,7 +23644,7 @@
       "statement": "A JSON control receipt carries `format: 1`, signer public key and signature over UTF-8 `contextful-control-v1\\n<project>\\n<version>\\n<parent-or-minus>\\n<snapshot-sha256>\\n<signer>\\n`; its parent is `-` only for the first version.",
       "why": "A-surface",
       "file": "spec/70-control-plane.md",
-      "line": 359,
+      "line": 365,
       "scenarios": [
         "WHEN a receipt's parent or snapshot digest changes after signing, THEN its signature does not verify."
       ]
@@ -23625,7 +23658,7 @@
       "statement": "A predecessor and the bucket head name the lowercase SHA-256 hex digest of a receipt's RFC 8785 canonical JSON bytes.",
       "why": "A-surface",
       "file": "spec/70-control-plane.md",
-      "line": 361
+      "line": 367
     },
     {
       "id": "surface.apply.receipt-file",
@@ -23636,7 +23669,7 @@
       "statement": "A synced claim writes immutable `receipt@v<N>.json` beside its snapshot before advancing the applied pointer.",
       "why": "A-surface",
       "file": "spec/70-control-plane.md",
-      "line": 363,
+      "line": 369,
       "scenarios": [
         "WHEN signing fails during a synced import, THEN neither the snapshot nor the pointer names the version."
       ]
@@ -23650,7 +23683,7 @@
       "statement": "A synced import or apply lacking an admitted admin capability or issuer signing port raises `ControlAttestationUnavailable` and claims no version.",
       "why": "A-surface",
       "file": "spec/70-control-plane.md",
-      "line": 365,
+      "line": 371,
       "scenarios": [
         "WHEN a synced apply presents no admin capability, THEN no version or receipt is claimed."
       ]
@@ -23664,7 +23697,7 @@
       "statement": "`contextful pipeline import` claims v1 from the declared pipelines while the snapshot directory holds no version; a second import claims nothing.",
       "why": "",
       "file": "spec/70-control-plane.md",
-      "line": 367
+      "line": 373
     },
     {
       "id": "surface.apply.draft-claim",
@@ -23675,7 +23708,7 @@
       "statement": "An Admin apply rechecks the configured store owner, validates its saved draft again, and claims that draft through the owner's version compare-and-swap.",
       "why": "A-surface",
       "file": "spec/70-control-plane.md",
-      "line": 368
+      "line": 374
     },
     {
       "id": "surface.apply.operator-attestation",
@@ -23686,7 +23719,7 @@
       "statement": "An Admin mutation lacking a fresh console signature over its verified operator, route and body, or reusing a nonce held in store control state across restarts, raises `ControlOperatorAttestationInvalid` before changing the document.",
       "why": "because a shared store capability cannot identify the person who used the console",
       "file": "spec/70-control-plane.md",
-      "line": 370
+      "line": 376
     },
     {
       "id": "surface.apply.draft-table-contracts",
@@ -23697,7 +23730,7 @@
       "statement": "Pipeline editing preserves standalone table metadata from the draft's expected immutable version; apply regenerates that metadata and refuses an altered saved draft under {{surface.apply.validation}} before advancing the pointer.",
       "why": "A-surface",
       "file": "spec/70-control-plane.md",
-      "line": 372
+      "line": 378
     },
     {
       "id": "surface.apply.draft-absent",
@@ -23708,7 +23741,7 @@
       "statement": "An Admin apply finding no validated store draft raises `ControlDraftAbsent` and changes no applied version.",
       "why": "because an absent draft supplies no document for the version claim",
       "file": "spec/70-control-plane.md",
-      "line": 374
+      "line": 380
     },
     {
       "id": "surface.apply.served-admin-grant",
@@ -23719,7 +23752,7 @@
       "statement": "A served `/control/*` request whose admitted credential holds no Admin grant over `*` without a tenant scope raises `ControlAdminGrantMissing`, answered `403`, before its handler runs.",
       "why": "because the control document arms work over every table and tenant of the store",
       "file": "spec/70-control-plane.md",
-      "line": 376
+      "line": 382
     },
     {
       "id": "surface.apply.served-malformed",
@@ -23730,7 +23763,7 @@
       "statement": "A served Admin edit or apply whose body is not a JSON object holding exactly its route's fields raises `ControlRequestMalformed`, answered `400`, and changes nothing.",
       "why": "because an absent or extra field leaves the operator's intended version or draft ambiguous",
       "file": "spec/70-control-plane.md",
-      "line": 378
+      "line": 384
     },
     {
       "id": "surface.apply.served-unavailable",
@@ -23741,7 +23774,7 @@
       "statement": "A served control request failing with no authority or surface refusal raises `ControlUnavailable`, answered `503`, and returns no internal error text.",
       "why": "because a storage or owner fault message can disclose paths and endpoints to the console",
       "file": "spec/70-control-plane.md",
-      "line": 380
+      "line": 386
     },
     {
       "id": "surface.reside.region-entries",
@@ -23752,7 +23785,7 @@
       "statement": "A residency allow-set holds at most 16 entries.",
       "why": "",
       "file": "spec/70-control-plane.md",
-      "line": 423
+      "line": 429
     },
     {
       "id": "surface.reside.region-mismatch",
@@ -23763,7 +23796,7 @@
       "statement": "A configured resource resolving to a region the policy omits raises `EnforceRegionMismatch` at startup, and the runtime serves nothing.",
       "why": "P3",
       "file": "spec/70-control-plane.md",
-      "line": 424
+      "line": 430
     },
     {
       "id": "surface.reside.site-regions",
@@ -23774,7 +23807,7 @@
       "statement": "A push records the pushing site's residency allow-set in the bucket manifest; a push finding a differing set another site recorded, an absent one included, raises `ResidencySitesDiverge` and commits nothing.",
       "why": "A-surface",
       "file": "spec/70-control-plane.md",
-      "line": 426
+      "line": 432
     },
     {
       "id": "surface.open-console.page-routes",
@@ -30283,6 +30316,10 @@
       "authority.verify.pin-source"
     ],
     [
+      "surface.fire.store-driven-body",
+      "surface.delegate.binding"
+    ],
+    [
       "surface.fire.scheduled-history",
       "run.journal.input-pin"
     ],
@@ -30327,16 +30364,20 @@
       "surface.dispatch.submit-signed"
     ],
     [
-      "surface.delegate.signed",
+      "surface.delegate.rejected",
       "surface.dispatch.callback-skew"
     ],
     [
-      "surface.delegate.signed",
+      "surface.delegate.rejected",
       "surface.delegate.outcome"
     ],
     [
-      "surface.delegate.signed",
+      "surface.delegate.rejected",
       "surface.dispatch.step-result"
+    ],
+    [
+      "surface.delegate.status",
+      "run.items.retry-budget"
     ],
     [
       "surface.delegate.submit-mode",
@@ -30360,6 +30401,10 @@
     ],
     [
       "surface.delegate.defer-parks",
+      "run.items.retry-budget"
+    ],
+    [
+      "surface.delegate.defer-parks",
       "run.items.replay"
     ],
     [
@@ -30373,6 +30418,10 @@
     [
       "surface.delegate.version",
       "run.own.pinned-plan-changed"
+    ],
+    [
+      "surface.delegate.submit-relay",
+      "surface.dispatch.worker-key"
     ],
     [
       "surface.apply.synced-attestation",
@@ -35799,8 +35848,8 @@
             "gloss": "A control source that does not resolve under one-shot evaluation."
           },
           "DelegateAnswerRejected": {
-            "clause": "surface.delegate.signed",
-            "gloss": "A delegate answer unsigned, skewed, outside the outcome vocabulary or over the step-result cap."
+            "clause": "surface.delegate.rejected",
+            "gloss": "A delegate answer unsigned, skewed, outside the outcome vocabulary, naming an undeclared table or over the step-result cap."
           },
           "DelegateHostRefused": {
             "clause": "surface.delegate.host",
@@ -35920,20 +35969,6 @@
           }
         },
         "limit": {
-          "delegate-call-ceiling": {
-            "clause": "surface.delegate.call-timeout-ceiling",
-            "value": 3600,
-            "unit": "s",
-            "basis": "chosen",
-            "gloss": "Longest call-mode timeout a delegate binding may declare."
-          },
-          "delegate-call-timeout": {
-            "clause": "surface.delegate.call-timeout",
-            "value": 300,
-            "unit": "s",
-            "basis": "chosen",
-            "gloss": "Default time a call-mode request stays open before the attempt closes."
-          },
           "surface-articles-per-subject": {
             "clause": "surface.brief.articles-per-subject",
             "value": 3,
@@ -35982,6 +36017,20 @@
             "unit": "s",
             "basis": "chosen",
             "gloss": "Wall time of the code path."
+          },
+          "surface-delegate-call-ceiling": {
+            "clause": "surface.delegate.call-timeout-ceiling",
+            "value": 3600,
+            "unit": "s",
+            "basis": "chosen",
+            "gloss": "Longest call-mode timeout a delegate binding declares."
+          },
+          "surface-delegate-call-timeout": {
+            "clause": "surface.delegate.call-timeout",
+            "value": 300,
+            "unit": "s",
+            "basis": "chosen",
+            "gloss": "Default time a call-mode request stays open before the attempt closes."
           },
           "surface-fire-pool": {
             "clause": "surface.dispatch.pool-bound",

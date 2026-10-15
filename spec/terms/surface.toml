@@ -46,7 +46,7 @@ DispatchCallbackRejected      = { clause = "surface.dispatch.callback-rejected",
 DispatchSubmitRejected        = { clause = "surface.dispatch.submit-signed", gloss = "A worker submission unsigned, skewed, or naming a callback off the worker's relay." }
 JobDelegateUnbound            = { clause = "surface.delegate.binding", gloss = "A store-driven body naming a delegate the daemon's configuration does not bind." }
 DelegateHostRefused           = { clause = "surface.delegate.host", gloss = "A delegate URL that is not plain HTTP to a loopback host or the delegate virtual host, or carries a credential." }
-DelegateAnswerRejected        = { clause = "surface.delegate.signed", gloss = "A delegate answer unsigned, skewed, outside the outcome vocabulary or over the step-result cap." }
+DelegateAnswerRejected        = { clause = "surface.delegate.rejected", gloss = "A delegate answer unsigned, skewed, outside the outcome vocabulary, naming an undeclared table or over the step-result cap." }
 DelegateTimeoutRefused        = { clause = "surface.delegate.call-timeout-ceiling", gloss = "A call delegate's timeout declared above the ceiling." }
 SecretMaterialInDocument      = { clause = "surface.edit.secret-in-document", gloss = "A credential value written into the configuration document." }
 ConnectorUploadRefused        = { clause = "surface.edit.connector-upload", gloss = "A connector artifact offered through the operator surface." }
@@ -92,8 +92,8 @@ VisibilityAskerlessAudience   = { clause = "surface.publish-answer.askerless-aud
 surface-wake-answer        = { clause = "surface.arm.wake-answer", value = 25, unit = "s", basis = "chosen", gloss = "Longest a wake holds its request before answering." }
 surface-tick-interval      = { clause = "surface.arm.tick-interval", value = 500, unit = "ms", basis = "chosen", gloss = "In-process evaluation interval." }
 surface-poll-interval      = { clause = "surface.reconcile.poll-cadence", value = 30, unit = "s", basis = "chosen", gloss = "Default control poll cadence." }
-delegate-call-timeout      = { clause = "surface.delegate.call-timeout", value = 300, unit = "s", basis = "chosen", gloss = "Default time a call-mode request stays open before the attempt closes." }
-delegate-call-ceiling      = { clause = "surface.delegate.call-timeout-ceiling", value = 3600, unit = "s", basis = "chosen", gloss = "Longest call-mode timeout a delegate binding may declare." }
+surface-delegate-call-timeout = { clause = "surface.delegate.call-timeout", value = 300, unit = "s", basis = "chosen", gloss = "Default time a call-mode request stays open before the attempt closes." }
+surface-delegate-call-ceiling = { clause = "surface.delegate.call-timeout-ceiling", value = 3600, unit = "s", basis = "chosen", gloss = "Longest call-mode timeout a delegate binding declares." }
 surface-step-result        = { clause = "surface.dispatch.step-result", value = 1, unit = "MiB", basis = "chosen", gloss = "Largest checkpointed step result." }
 surface-callback-skew      = { clause = "surface.dispatch.callback-skew", value = 300, unit = "s", basis = "chosen", gloss = "Largest callback timestamp skew the relay accepts." }
 surface-heartbeat-beat     = { clause = "surface.dispatch.heartbeat-beat", value = 15, unit = "s", basis = "chosen", gloss = "Interval between worker heartbeats." }
