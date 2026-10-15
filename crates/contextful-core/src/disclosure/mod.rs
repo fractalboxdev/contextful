@@ -10,6 +10,7 @@ pub mod declare;
 pub mod error;
 pub mod erase;
 pub mod noise;
+pub mod pack;
 pub mod release;
 pub mod suppress;
 pub mod sweep;

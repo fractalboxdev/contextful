@@ -79,6 +79,23 @@ pub(crate) fn pipeline_files(declaration: &Path) -> Result<Vec<ManifestFile>> {
     Ok(contextful_context::project::pipeline_files(declaration)?)
 }
 
+/// The serving guardrail a face runs at start (`disclosure.mirror.unbound-table`): when the
+/// declaration declares the project's faces organization-wide
+/// (`disclosure.mirror.face-scope`), every table of its declaration set carries a visibility
+/// block. A project or declaration that does not resolve is left for the command to report.
+pub(crate) fn face_guardrail(project: Option<&str>, declaration: Option<&Path>) -> Result<()> {
+    let Ok(located) = locate(project, declaration.map(Path::to_path_buf)) else { return Ok(()) };
+    let Ok(text) = std::fs::read_to_string(&located.declaration) else { return Ok(()) };
+    let scope = contextful_core::read::face::FaceScope::declared(&text).with_context(|| format!("`{}`", located.declaration.display()))?;
+    if scope == contextful_core::read::face::FaceScope::Personal {
+        return Ok(());
+    }
+    let tables = contextful_core::store::declare::TableDecl::parse_declaration_set(&text, &pipeline_files(&located.declaration)?)
+        .with_context(|| format!("`{}`", located.declaration.display()))?;
+    contextful_core::disclosure::declare::check_unbound(scope, &tables)?;
+    Ok(())
+}
+
 /// Open the read face over the project's store, the declaration's text and the
 /// `pipelines/` files beside it (`read.register.declaration-set`).
 pub(crate) fn open_face(project: &Project, declaration: &Path, manifest: &str, pepper: Pepper) -> Result<Face> {

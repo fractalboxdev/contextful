@@ -177,3 +177,15 @@ pub fn parse_budget(table: &str, text: &str) -> Result<u64, VisibilityError> {
     }
     n.checked_mul(unit).ok_or_else(malformed)
 }
+
+/// Refuse, on an organization-wide face, the first of `tables` that carries no visibility
+/// block (`disclosure.mirror.unbound-table`). A personal face serves unbound tables.
+pub fn check_unbound<'a>(scope: crate::read::face::FaceScope, tables: impl IntoIterator<Item = &'a TableDecl>) -> Result<(), VisibilityError> {
+    if scope == crate::read::face::FaceScope::Personal {
+        return Ok(());
+    }
+    match tables.into_iter().find(|t| t.visibility.is_none()) {
+        Some(t) => Err(VisibilityError::UnboundTable { table: t.name.clone() }),
+        None => Ok(()),
+    }
+}

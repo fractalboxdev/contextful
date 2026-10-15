@@ -188,3 +188,128 @@ fn pipeline_validate_refuses_a_servable_binding_without_a_sweep_or_a_budget() {
     std::fs::write(dir.path().join("contextful.toml"), MANIFEST).unwrap();
     ok(&cf(dir.path(), &["pipeline", "validate"]));
 }
+
+fn land_pages(d: &Path, ids: &[&str]) {
+    let rows: Vec<serde_json::Value> = ids.iter().map(|id| json!({"page_id": id})).collect();
+    std::fs::write(d.join("pages.jsonl"), lines(&rows)).unwrap();
+    ok(&cf(d, &["context", "land", "wiki/pages", "--project", "wiki", "--rows", "pages.jsonl", "--run-id", "run-0001", "--site-id", "site-a"]));
+}
+
+/// The `watermark_at` a sweep's summary line reports.
+fn watermark(out: &str) -> String {
+    out.rsplit("watermark_at ").next().unwrap().trim().to_string()
+}
+
+/// A full sweep whose grants file marks a governed resource unread refuses with
+/// `VisibilityWatermarkUncovered` and commits nothing; the next run finds the watermark where
+/// the last covering run left it.
+#[test]
+fn an_unread_resource_refuses_a_full_sweep_and_the_watermark_holds() {
+    let dir = tempfile::tempdir().unwrap();
+    let d = dir.path();
+    std::fs::write(d.join("contextful.toml"), MANIFEST).unwrap();
+    land_pages(d, &["p1", "p2"]);
+    let grant = |r: &str| json!({"resource_id": r, "principal": "dana", "principal_kind": "user", "level": "viewer"});
+    std::fs::write(d.join("grants.jsonl"), lines(&[grant("p1"), grant("p2")])).unwrap();
+    let first = ok(&sweep(d, "full"));
+    let held = watermark(&first);
+    assert_ne!(held, "unset");
+
+    std::fs::write(d.join("grants.jsonl"), lines(&[grant("p1"), json!({"resource_id": "p2", "unread": true})])).unwrap();
+    let refused = sweep(d, "full");
+    assert!(!refused.status.success());
+    let stderr = String::from_utf8_lossy(&refused.stderr);
+    assert!(stderr.contains("VisibilityWatermarkUncovered") && stderr.contains("`p2`"), "{stderr}");
+
+    // The incremental run reading the same partial file commits epoch 2 over the first run's watermark.
+    let inc = ok(&sweep(d, "incremental"));
+    assert!(inc.contains("epoch 2"), "{inc}");
+    assert_eq!(watermark(&inc), held);
+}
+
+const EVENTS: &str = "events      = { stream = \"wiki.permissions\", gap_detectable = true }\n";
+
+/// `visibility sweep --kind webhook` applies a delivery of a gap-detectable stream and moves
+/// the watermark; a source whose stream is not declared gap-detectable refuses.
+#[test]
+fn a_webhook_sweep_needs_a_gap_detectable_stream() {
+    let dir = tempfile::tempdir().unwrap();
+    let d = dir.path();
+    std::fs::write(d.join("contextful.toml"), MANIFEST).unwrap();
+    land_pages(d, &["p1", "p2"]);
+    let grant = |r: &str, p: &str| json!({"resource_id": r, "principal": p, "principal_kind": "user", "level": "viewer"});
+    std::fs::write(d.join("grants.jsonl"), lines(&[grant("p1", "dana"), grant("p2", "dana")])).unwrap();
+    ok(&sweep(d, "full"));
+
+    std::fs::write(d.join("grants.jsonl"), lines(&[grant("p2", "erin")])).unwrap();
+    let refused = sweep(d, "webhook");
+    assert!(!refused.status.success());
+    let stderr = String::from_utf8_lossy(&refused.stderr);
+    assert!(stderr.contains("VisibilityUngappedStream") && stderr.contains("wiki"), "{stderr}");
+
+    std::fs::write(d.join("contextful.toml"), format!("{MANIFEST}{EVENTS}")).unwrap();
+    let out = ok(&sweep(d, "webhook"));
+    assert!(out.contains("webhook sweep") && out.contains("epoch 2") && out.contains("2 grants") && out.contains("1 tombstones"), "{out}");
+}
+
+const PACK: &str = r#"
+[pack.wiki]
+tables   = ["wiki/pages", "wiki/comments"]
+excluded = []
+
+[pack.wiki.access."wiki/pages"]
+resource_key   = "page_id"
+resource_kind  = "page"
+family         = "item-exception"
+fidelity       = "mirrored"
+principal_kind = { user = "user", group = "group" }
+level          = { viewer = "read" }
+"#;
+
+/// `pipeline validate` loads each pack and diagnoses the tables it lands.
+#[test]
+fn pipeline_validate_refuses_a_pack_table_with_no_mapping_or_exclusion() {
+    let dir = tempfile::tempdir().unwrap();
+    std::fs::write(dir.path().join("contextful.toml"), format!("{MANIFEST}{PACK}")).unwrap();
+    let out = cf(dir.path(), &["pipeline", "validate"]);
+    assert!(!out.status.success());
+    let stderr = String::from_utf8_lossy(&out.stderr);
+    assert!(stderr.contains("VisibilityMappingAbsent") && stderr.contains("wiki") && stderr.contains("wiki/comments"), "{stderr}");
+
+    std::fs::write(dir.path().join("contextful.toml"), format!("{MANIFEST}{}", PACK.replace("excluded = []", "excluded = [\"wiki/comments\"]"))).unwrap();
+    ok(&cf(dir.path(), &["pipeline", "validate"]));
+    std::fs::write(dir.path().join("contextful.toml"), format!("{MANIFEST}{}", PACK.replace("excluded = []", "excluded = []\nevaluate_audience = \"all\""))).unwrap();
+    let out = cf(dir.path(), &["pipeline", "validate"]);
+    let stderr = String::from_utf8_lossy(&out.stderr);
+    assert!(!out.status.success() && stderr.contains("VisibilityPackAssertsAccess") && stderr.contains("evaluate_audience"), "{stderr}");
+}
+
+const ORG: &str = "[project]\nname = \"wiki\"\nface_scope = \"organization\"\n";
+
+/// On an organization-wide face, a table with no visibility block raises `VisibilityUnboundTable` from diagnose and from the serving guardrail at start, naming the table.
+// spec: disclosure.mirror.unbound-table@ac94893a
+#[test]
+fn an_unbound_table_on_an_organization_wide_face_refuses_diagnose_and_start() {
+    let dir = tempfile::tempdir().unwrap();
+    let d = dir.path();
+    let unbound = format!("{MANIFEST}\n[[pipeline.tables]]\nname = \"wiki/notes\"\n\n{ORG}");
+    std::fs::write(d.join("contextful.toml"), &unbound).unwrap();
+    for out in [
+        cf(d, &["pipeline", "validate"]),
+        cf(d, &["mcp"]),
+        cf(d, &["serve", "--http", "127.0.0.1:0", "--max-in-flight", "4", "--audience", "contextful://wiki"]),
+    ] {
+        assert!(!out.status.success());
+        assert!(out.stdout.is_empty());
+        let stderr = String::from_utf8_lossy(&out.stderr);
+        assert!(stderr.contains("VisibilityUnboundTable") && stderr.contains("wiki/notes") && !stderr.contains("`wiki/pages`"), "{stderr}");
+    }
+    // A personal face serves the same declarations, and binding the table clears diagnose.
+    std::fs::write(d.join("contextful.toml"), unbound.replace("face_scope = \"organization\"", "face_scope = \"personal\"")).unwrap();
+    ok(&cf(d, &["pipeline", "validate"]));
+    std::fs::write(d.join("contextful.toml"), format!("{MANIFEST}\n{ORG}")).unwrap();
+    ok(&cf(d, &["pipeline", "validate"]));
+    std::fs::write(d.join("contextful.toml"), format!("{MANIFEST}\n[project]\nname = \"wiki\"\nface_scope = \"team\"\n")).unwrap();
+    let out = cf(d, &["pipeline", "validate"]);
+    assert!(!out.status.success() && String::from_utf8_lossy(&out.stderr).contains("face_scope"), "{}", String::from_utf8_lossy(&out.stderr));
+}

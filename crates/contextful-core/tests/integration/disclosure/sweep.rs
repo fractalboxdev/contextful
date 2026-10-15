@@ -2,7 +2,7 @@
 //! run commits over a source's current state.
 
 use contextful_core::disclosure::sweep::{
-    commit, parse_grants, Commit, GrantLine, Governed, Observation, SourceState, SweepBlock, SweepError, SweepKind,
+    commit, parse_grants, parse_read, Commit, Events, GrantLine, GrantsRead, Governed, Observation, SourceState, SweepBlock, SweepError, SweepKind,
 };
 use contextful_core::disclosure::VisibilityError;
 use contextful_core::time::Instant;
@@ -92,8 +92,8 @@ fn a_cadence_outside_the_budget_grammar_is_refused() {
     }
 }
 
-/// A `--grants` file is the run's read of every resource `enumerate` names: one JSON object per line with `resource_id`, `principal`, `principal_kind` and `level`; a resource with no line holds no grant.
-// spec: disclosure.sweep.grants-file@97a29157
+/// A `--grants` file is the run's read of every resource `enumerate` names: one JSON object per line, a grant carrying `resource_id`, `principal`, `principal_kind` and `level`, or `resource_id` with `"unread": true`; an unmarked resource with no grant line holds none.
+// spec: disclosure.sweep.grants-file@924214b9
 #[test]
 fn a_grants_file_is_the_read_of_every_governed_resource() {
     let text = "{\"resource_id\":\"p1\",\"principal\":\"dana@acme.example\",\"principal_kind\":\"user\",\"level\":\"viewer\"}\n\n{\"resource_id\":\"p1\",\"principal\":\"eng\",\"principal_kind\":\"group\",\"level\":\"editor\"}\n";
@@ -121,6 +121,27 @@ fn a_grants_file_is_the_read_of_every_governed_resource() {
     assert_eq!(c.grants.len(), 2);
     assert!(c.grants.iter().all(|g| g.resource_id == "p1"));
     assert_eq!(c.freshness.watermark_at, Some(at("2030-01-01T00:00:00Z")));
+
+    // An unread marker takes its resource out of the run's read.
+    let text = "{\"resource_id\":\"p1\",\"principal\":\"dana\",\"principal_kind\":\"user\",\"level\":\"viewer\"}\n{\"resource_id\":\"p2\",\"unread\":true}\n";
+    let read = parse_read(text).unwrap();
+    assert_eq!(read.grants.len(), 1);
+    assert_eq!(read.unread, BTreeSet::from(["p2".to_string()]));
+    let obs = Observation::from_read("wiki", SweepKind::Incremental, "s2", at("2030-01-01T00:05:00Z"), governed(&["p1", "p2"]), read);
+    assert_eq!(obs.read, BTreeSet::from(["p1".to_string()]));
+    // `parse_grants` reads grant lines alone.
+    assert!(matches!(parse_grants(text), Err(SweepError::GrantLine { line: 2, .. })));
+    for (bad, line) in [
+        ("{\"resource_id\":\"p2\",\"unread\":false}", 1),
+        ("{\"resource_id\":\"\",\"unread\":true}", 1),
+        ("{\"resource_id\":\"p2\",\"unread\":true,\"level\":\"viewer\"}", 1),
+        ("{\"resource_id\":\"p2\",\"unread\":true}\n{\"resource_id\":\"p2\",\"principal\":\"dana\",\"principal_kind\":\"user\",\"level\":\"viewer\"}", 2),
+    ] {
+        match parse_read(bad) {
+            Err(SweepError::GrantLine { line: l, .. }) => assert_eq!(l, line, "{bad}"),
+            other => panic!("{bad}: {other:?}"),
+        }
+    }
 }
 
 /// A full run replaces the source's resource and grant rows with those it read, writes a tombstone per grant it no longer observes, and sets `last_full_sweep_at`.
@@ -208,8 +229,8 @@ fn each_committed_run_advances_the_source_epoch_by_one() {
     }
 }
 
-/// A full run that read only part of its governed resources is refused with
-/// `VisibilityWatermarkUncovered`.
+/// A sweep run that failed or skipped any governed resource of its source and advances `watermark_at` raises `VisibilityWatermarkUncovered`, and the watermark stays where it stood.
+// spec: disclosure.sweep.coverage-watermark@294031f6
 #[test]
 fn a_full_run_missing_a_governed_resource_is_refused_and_the_watermark_holds() {
     let full = commit(&SourceState::default(), &run(SweepKind::Full, "s1", "2030-01-01T00:00:00Z", &["p1", "p2", "p3"], vec![grant("p1", "dana")])).unwrap();
@@ -223,6 +244,74 @@ fn a_full_run_missing_a_governed_resource_is_refused_and_the_watermark_holds() {
             assert!(shown.starts_with("VisibilityWatermarkUncovered") && shown.contains("wiki") && shown.contains("2 governed") && shown.contains("`p2`"), "{shown}");
         }
         other => panic!("{other:?}"),
+    }
+
+    // A grants file marking p3 unread is that same partial read.
+    let read = GrantsRead { grants: vec![grant("p1", "dana")], unread: BTreeSet::from(["p3".to_string()]) };
+    let marked = Observation::from_read("wiki", SweepKind::Full, "s3", at("2030-01-01T02:00:00Z"), governed(&["p1", "p2", "p3"]), read.clone());
+    assert!(matches!(commit(&state, &marked), Err(VisibilityError::WatermarkUncovered { missed: 1, .. })));
+
+    // A webhook run always advances the watermark, so an unread resource it names refuses too.
+    let mut hook = Observation::from_read("wiki", SweepKind::Webhook, "s4", at("2030-01-01T02:00:00Z"), governed(&["p1", "p2", "p3"]), read);
+    hook.events = Some(Events { stream: "wiki.permissions".into(), gap_detectable: true });
+    assert!(matches!(commit(&state, &hook), Err(VisibilityError::WatermarkUncovered { missed: 1, .. })));
+
+    // An incremental run moves no watermark, so its partial read commits and the watermark holds.
+    let read = GrantsRead { grants: vec![grant("p1", "dana")], unread: BTreeSet::from(["p3".to_string()]) };
+    let inc = commit(&state, &Observation::from_read("wiki", SweepKind::Incremental, "s5", at("2030-01-01T02:00:00Z"), governed(&["p1", "p2", "p3"]), read)).unwrap();
+    assert_eq!(inc.freshness.watermark_at, Some(at("2030-01-01T00:00:00Z")));
+}
+
+fn hook(id: &str, began: &str, resources: &[&str], grants: Vec<GrantLine>, gap_detectable: Option<bool>) -> Observation {
+    let mut obs = Observation::from_read("wiki", SweepKind::Webhook, id, at(began), governed(resources), GrantsRead { grants, unread: BTreeSet::new() });
+    obs.events = gap_detectable.map(|gap_detectable| Events { stream: "wiki.permissions".into(), gap_detectable });
+    obs
+}
+
+/// A webhook run applies one delivery of the source's `events` stream: it replaces the grants of each resource its file names, leaves every other resource standing, and moves `watermark_at` to the instant it began reading.
+// spec: disclosure.sweep.webhook-run@35cac212
+#[test]
+fn a_webhook_run_replaces_the_grants_of_the_resources_it_names() {
+    let full = commit(&SourceState::default(), &run(SweepKind::Full, "s1", "2030-01-01T00:00:00Z", &["p1", "p2", "p3"], vec![grant("p1", "dana"), grant("p2", "dana"), grant("p3", "eli")])).unwrap();
+    // The delivery names p2 alone: dana's grant there gives way to fay's.
+    let c = commit(&after(&full), &hook("s2", "2030-01-01T00:07:00Z", &["p1", "p2", "p3"], vec![grant("p2", "fay")], Some(true))).unwrap();
+    assert_eq!(grant_keys(&c), [("p1".into(), "dana".into()), ("p2".into(), "fay".into()), ("p3".into(), "eli".into())]);
+    let p2 = c.grants.iter().find(|g| g.resource_id == "p2").unwrap();
+    assert_eq!((p2.sweep_kind.as_str(), p2.sweep_id.as_str()), ("webhook", "s2"));
+    let p1 = c.grants.iter().find(|g| g.resource_id == "p1").unwrap();
+    assert_eq!(p1.sweep_id, "s1");
+    assert_eq!(c.resources.len(), 3);
+    assert_eq!(c.tombstones.len(), 1);
+    assert_eq!((c.tombstones[0].resource_id.as_str(), c.tombstones[0].principal.as_deref()), ("p2", Some("dana")));
+    assert_eq!(c.freshness.watermark_at, Some(at("2030-01-01T00:07:00Z")));
+    assert_eq!(c.freshness.sweep_kind, "webhook");
+    assert_eq!(c.freshness.last_full_sweep_at, Some(at("2030-01-01T00:00:00Z")));
+    assert_eq!(c.freshness.last_incremental_at, None);
+    assert_eq!(c.freshness.epoch, 2);
+
+    // A grant on a resource the source does not govern has no row.
+    assert!(matches!(commit(&after(&c), &hook("s3", "2030-01-01T00:08:00Z", &["p1", "p2", "p3"], vec![grant("p9", "fay")], Some(true))), Err(VisibilityError::OrphanGrant { .. })));
+    assert_eq!(SweepKind::parse("webhook"), Some(SweepKind::Webhook));
+    assert_eq!(SweepKind::Webhook.as_str(), "webhook");
+}
+
+/// Advancing `watermark_at` from an event stream the mapping has not declared gap-detectable raises `VisibilityUngappedStream`.
+// spec: disclosure.sweep.ungapped-stream@45bd8bc7
+#[test]
+fn a_webhook_run_from_a_stream_not_declared_gap_detectable_is_refused() {
+    let full = commit(&SourceState::default(), &run(SweepKind::Full, "s1", "2030-01-01T00:00:00Z", &["p1", "p2"], vec![grant("p1", "dana")])).unwrap();
+    for gap_detectable in [Some(false), None] {
+        match commit(&after(&full), &hook("s2", "2030-01-01T00:07:00Z", &["p1", "p2"], vec![grant("p2", "fay")], gap_detectable)) {
+            Err(e @ VisibilityError::UngappedStream { .. }) => {
+                assert_eq!(e.identifier(), "VisibilityUngappedStream");
+                let shown = e.to_string();
+                assert!(shown.starts_with("VisibilityUngappedStream") && shown.contains("wiki"), "{shown}");
+                if gap_detectable.is_some() {
+                    assert!(shown.contains("wiki.permissions"), "{shown}");
+                }
+            }
+            other => panic!("{gap_detectable:?}: {other:?}"),
+        }
     }
 }
 

@@ -41,12 +41,14 @@ pub enum SweepError {
     DirectoryLine { line: usize, reason: String },
 }
 
-/// The two scheduled sweep kinds.
+/// The sweep kinds: the two scheduled ones and a delivery of the source's event stream.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Deserialize)]
 #[serde(rename_all = "lowercase")]
 pub enum SweepKind {
     Full,
     Incremental,
+    /// One delivery of the `events` stream (`disclosure.sweep.webhook-run`).
+    Webhook,
 }
 
 impl SweepKind {
@@ -54,6 +56,7 @@ impl SweepKind {
         match self {
             SweepKind::Full => "full",
             SweepKind::Incremental => "incremental",
+            SweepKind::Webhook => "webhook",
         }
     }
 
@@ -61,6 +64,7 @@ impl SweepKind {
         match text {
             "full" => Some(SweepKind::Full),
             "incremental" => Some(SweepKind::Incremental),
+            "webhook" => Some(SweepKind::Webhook),
             _ => None,
         }
     }
@@ -209,6 +213,67 @@ pub fn parse_grants(text: &str) -> Result<Vec<GrantLine>, SweepError> {
             }
         }
         out.push(g);
+    }
+    Ok(out)
+}
+
+/// A `--grants` file read: its grant lines and the resources it marks unread
+/// (`disclosure.sweep.grants-file`).
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+pub struct GrantsRead {
+    pub grants: Vec<GrantLine>,
+    /// The resources the read failed or skipped.
+    pub unread: BTreeSet<String>,
+}
+
+#[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
+struct UnreadLine {
+    resource_id: String,
+    unread: bool,
+}
+
+#[derive(Deserialize)]
+#[serde(untagged)]
+enum ReadLine {
+    Grant(GrantLine),
+    Unread(UnreadLine),
+}
+
+/// Parse a `--grants` file holding grant lines and unread markers: a grant as
+/// [`parse_grants`] reads it, or `{"resource_id": <id>, "unread": true}` naming a resource
+/// the read failed or skipped. A resource both marked unread and granted refuses.
+pub fn parse_read(text: &str) -> Result<GrantsRead, SweepError> {
+    let mut out = GrantsRead::default();
+    for (i, line) in text.lines().enumerate().filter(|(_, l)| !l.trim().is_empty()) {
+        let bad = |reason: String| SweepError::GrantLine { line: i + 1, reason };
+        let parsed: ReadLine = serde_json::from_str(line)
+            .map_err(|_| bad("neither a grant (`resource_id`, `principal`, `principal_kind`, `level`) nor an unread marker (`resource_id`, `\"unread\": true`)".into()))?;
+        match parsed {
+            ReadLine::Grant(g) => {
+                for (k, v) in [("resource_id", &g.resource_id), ("principal", &g.principal), ("principal_kind", &g.principal_kind), ("level", &g.level)] {
+                    if v.is_empty() {
+                        return Err(bad(format!("`{k}` is empty")));
+                    }
+                }
+                if out.unread.contains(&g.resource_id) {
+                    return Err(bad(format!("resource `{}` is marked unread and carries a grant", g.resource_id)));
+                }
+                out.grants.push(g);
+            }
+            ReadLine::Unread(u) => {
+                if !u.unread {
+                    return Err(bad("an unread marker carries `\"unread\": true`".into()));
+                }
+                if u.resource_id.is_empty() {
+                    return Err(bad("`resource_id` is empty".into()));
+                }
+                if out.grants.iter().any(|g| g.resource_id == u.resource_id) {
+                    return Err(bad(format!("resource `{}` is marked unread and carries a grant", u.resource_id)));
+                }
+                out.unread.insert(u.resource_id);
+            }
+        }
     }
     Ok(out)
 }
@@ -410,6 +475,8 @@ pub struct Observation {
     /// The directory read, when the run was given one; absent, the current links and
     /// memberships stand.
     pub directory: Option<Directory>,
+    /// The source's declared event stream, which a webhook run advances the watermark from.
+    pub events: Option<Events>,
 }
 
 impl Observation {
@@ -417,7 +484,24 @@ impl Observation {
     /// (`disclosure.sweep.grants-file`).
     pub fn from_grants_file(source: &str, kind: SweepKind, sweep_id: &str, began_at: Instant, governed: Vec<Governed>, grants: Vec<GrantLine>) -> Observation {
         let read = governed.iter().map(|g| g.resource_id.clone()).collect();
-        Observation { source: source.into(), kind, sweep_id: sweep_id.into(), began_at, governed, read, grants, budget_seconds: None, directory: None }
+        Observation { source: source.into(), kind, sweep_id: sweep_id.into(), began_at, governed, read, grants, budget_seconds: None, directory: None, events: None }
+    }
+
+    /// A run from a `--grants` read carrying unread markers. A full or incremental run read
+    /// every governed resource but those marked unread (`disclosure.sweep.grants-file`). A
+    /// webhook run governs only the resources its file names, and read those not marked
+    /// unread (`disclosure.sweep.webhook-run`).
+    pub fn from_read(source: &str, kind: SweepKind, sweep_id: &str, began_at: Instant, governed: Vec<Governed>, read: GrantsRead) -> Observation {
+        let governed: Vec<Governed> = match kind {
+            SweepKind::Full | SweepKind::Incremental => governed,
+            SweepKind::Webhook => {
+                let named: BTreeSet<&str> = read.grants.iter().map(|g| g.resource_id.as_str()).chain(read.unread.iter().map(String::as_str)).collect();
+                governed.into_iter().filter(|g| named.contains(g.resource_id.as_str())).collect()
+            }
+        };
+        let mut obs = Observation::from_grants_file(source, kind, sweep_id, began_at, governed, read.grants);
+        obs.read.retain(|id| !read.unread.contains(id));
+        obs
     }
 }
 
@@ -449,12 +533,22 @@ pub struct Commit {
 pub fn commit(prior: &SourceState, obs: &Observation) -> Result<Commit, VisibilityError> {
     let missed: Vec<&str> = obs.governed.iter().map(|g| g.resource_id.as_str()).filter(|id| !obs.read.contains(*id)).collect();
     let covered = missed.is_empty();
-    if obs.kind == SweepKind::Full && !covered {
+    // A full or webhook run always moves the watermark, so a miss refuses it.
+    if matches!(obs.kind, SweepKind::Full | SweepKind::Webhook) && !covered {
         return Err(VisibilityError::WatermarkUncovered {
             origin: obs.source.clone(),
             missed: missed.len(),
             first: missed[0].to_string(),
         });
+    }
+    if obs.kind == SweepKind::Webhook {
+        match &obs.events {
+            Some(e) if e.gap_detectable => {}
+            Some(e) => {
+                return Err(VisibilityError::UngappedStream { origin: obs.source.clone(), stream: format!("stream `{}` is not declared gap-detectable", e.stream) })
+            }
+            None => return Err(VisibilityError::UngappedStream { origin: obs.source.clone(), stream: "the sweep declares no `events` stream".into() }),
+        }
     }
     let kind = obs.kind.as_str().to_string();
     let observed = |g: &Governed| ResourceRow {
@@ -472,7 +566,7 @@ pub fn commit(prior: &SourceState, obs: &Observation) -> Result<Commit, Visibili
     // replaces those it read and keeps the rest.
     let mut resources: BTreeMap<String, ResourceRow> = match obs.kind {
         SweepKind::Full => BTreeMap::new(),
-        SweepKind::Incremental => prior.resources.iter().map(|r| (r.resource_id.clone(), r.clone())).collect(),
+        SweepKind::Incremental | SweepKind::Webhook => prior.resources.iter().map(|r| (r.resource_id.clone(), r.clone())).collect(),
     };
     for (id, row) in &read_rows {
         resources.insert(id.to_string(), row.clone());

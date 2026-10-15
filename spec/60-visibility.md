@@ -58,6 +58,8 @@ The three-way conjunction, the access tables as store data, and the binding that
 
 - `unbound-table` — On an organization-wide face, a table with no visibility block raises `VisibilityUnboundTable` from diagnose and from the serving guardrail at start, naming the table.
   *P5*
+- `face-scope` — `[project] face_scope = "organization"` makes every face the project serves organization-wide; absent or `"personal"`, its faces are personal, and another value does not load.
+  *because a local store serves its owner first, so the organization-wide guardrails bind where a project declares an organization audience*
 - `incomplete-binding` — A binding at a servable level lacking a declared sweep for its source or a `max_acl_staleness` raises `VisibilityBindingIncomplete`.
   *P5*
 - `binding-keys` — A table's `visibility` block names its `source`, the `resource_key` column holding each row's `resource_id`, its `resource_kind`, `fidelity`, `family`, `max_acl_staleness`, and `on_stale` of `refuse`, the default, or `public_only`.
@@ -65,8 +67,6 @@ The three-way conjunction, the access tables as store data, and the binding that
   *A-disclosure*
 - `unmirrorable-opening` — A resource whose access list the sweep could not mirror opens only through a grant row the store owner lands carrying `expires_at`; the row confers nothing past that instant, and no manifest key opens a resource.
   *A-disclosure*
-
-unsettled: Which declaration marks a served face organization-wide, so the serving guardrail refuses an unbound table there and not on a personal face? owner: disclosure affects: disclosure.mirror
 
 ## sweep
 
@@ -80,11 +80,13 @@ Observation of one source's permission state: sweep kinds, the observation clock
   *P5*
 - `sweep-block` — An `[[acl_sweep]]` block declares one source's sweep: `source`, the `enumerate` table whose rows are its governed resources, `full` and `incremental` cadences as `{ every = <budget> }`, and optional `credential` and `events`.
 - `cadence-grammar` — A sweep cadence's `every` takes the grammar of {{disclosure.bound-staleness.budget-grammar}}.
-- `sweep-verb` — `visibility sweep --source <s> --kind full|incremental [--grants <file>] [--directory <file>]` runs one sweep of a declared source, reading its permission endpoint under `credential`, or the file when `--grants` is given, and commits as one run.
-- `grants-file` — A `--grants` file is the run's read of every resource `enumerate` names: one JSON object per line with `resource_id`, `principal`, `principal_kind` and `level`; a resource with no line holds no grant.
+- `sweep-verb` — `visibility sweep --source <s> --kind full|incremental|webhook [--grants <file>] [--directory <file>]` runs one sweep of a declared source, reading its permission endpoint under `credential`, or the file when `--grants` is given, and commits as one run.
+- `grants-file` — A `--grants` file is the run's read of every resource `enumerate` names: one JSON object per line, a grant carrying `resource_id`, `principal`, `principal_kind` and `level`, or `resource_id` with `"unread": true`; an unmarked resource with no grant line holds none.
 - `directory-file` — A `--directory` file is the identity provider's directory read, one JSON object per line: a link carrying `source_principal`, `subject`, `method` and `confidence`, or a membership carrying `group`, `member` and `member_kind`; a run without one keeps the current rows.
 - `full-run` — A full run replaces the source's resource and grant rows with those it read, writes a tombstone per grant it no longer observes, and sets `last_full_sweep_at`.
 - `incremental-run` — An incremental run replaces the grants of each resource it read, tombstoning those withdrawn, leaves every other resource's grants standing, and sets `last_incremental_at`.
+- `webhook-run` — A webhook run applies one delivery of the source's `events` stream: it replaces the grants of each resource its file names, leaves every other resource standing, and moves `watermark_at` to the instant it began reading.
+- `superseded-run` — Before it lands, a run collects every run of its source's `resources`, `grants`, `principals`, `group_members` and `identity_links` but the current one, so each of those tables holds at most two runs.
 - `watermark-advance` — A run reading every governed resource sets the source's `watermark_at` to the instant it began reading; lag is now minus `watermark_at`.
 - `sweep-epoch` — A committed run advances its source's epoch by one.
   *A-disclosure*
@@ -166,6 +168,8 @@ The reviewed unit landing one source: a manifest fragment plus a connector pin, 
   *P1*
 - `unsupported-coarse` — Declaring `coarse` where the source emits no container or workspace signal raises `VisibilityUnsupportedCoarse`.
   *A-disclosure*
+- `pack-block` — A `[pack.<name>]` block names the `tables` it lands, its `excluded` tables, one `access.<table>` mapping per mapped table, and an optional container `allowlist` of `containers` with `evaluate = "all-of"`.
+- `mapping-keys` — An access mapping holds `resource_key`, `resource_kind`, `family`, `fidelity`, `container_key`, `principal_kind` and `level`, and no other key.
 
 ## Shapes
 
@@ -254,6 +258,11 @@ enumerate     = "pages"
 full          = { every = "1h" }
 incremental   = { every = "5m" }
 events        = { stream = "wiki.permissions", gap_detectable = true }
+
+[pack.wiki]
+tables         = ["pages", "drafts"]
+excluded       = ["drafts"]
+allowlist      = { containers = ["eng", "ops"], evaluate = "all-of" }
 
 [pack.wiki.access.pages]
 resource_key   = "page_id"

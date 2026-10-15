@@ -238,3 +238,39 @@ fn a_subject_with_no_link_reaches_nothing_from_the_source() {
     // A source with no committed run reaches nothing either.
     assert!(reach(&d.f.store, "wiki", &reader("user://dana@acme.example")).unwrap().is_empty());
 }
+
+/// The run directories `table` holds.
+fn run_dirs(f: &Fixture, table: &str) -> Vec<String> {
+    let dir = f.table_dir(table).join("data/runs");
+    let mut out: Vec<String> = std::fs::read_dir(&dir).map(|d| d.map(|e| e.unwrap().file_name().to_string_lossy().to_string()).collect()).unwrap_or_default();
+    out.sort();
+    out
+}
+
+/// Before it lands, a run collects every run of its source's `resources`, `grants`, `principals`, `group_members` and `identity_links` but the current one, so each of those tables holds at most two runs.
+// spec: disclosure.sweep.superseded-run@74a31809
+#[test]
+fn a_run_collects_every_superseded_run_of_the_current_state_tables() {
+    let d = drive();
+    let mut sweeps = Vec::new();
+    for (n, began) in ["2030-01-01T00:10:00Z", "2030-01-01T00:20:00Z", "2030-01-01T00:30:00Z", "2030-01-01T00:40:00Z"].into_iter().enumerate() {
+        let directory = (n == 0).then_some(DIRECTORY);
+        let c = d.sweep(SweepKind::Full, vec![drive_grant("f1", "g-finance", "group"), drive_grant("f2", "u-1002", "user")], directory, began);
+        sweeps.push(c.freshness.sweep_id);
+    }
+    let (previous, current) = (&sweeps[2], &sweeps[3]);
+    for t in ["resources", "grants", "principals", "group_members", "identity_links"] {
+        assert_eq!(run_dirs(&d.f, &format!("_visibility/drive/{t}")), [previous.clone(), current.clone()].into_iter().collect::<std::collections::BTreeSet<_>>().into_iter().collect::<Vec<_>>(), "{t}");
+    }
+    // Tombstones and freshness accumulate across committed runs.
+    assert_eq!(run_dirs(&d.f, "_visibility/drive/freshness").len(), 4);
+
+    // The current rows read whole after collection, the carried directory rows among them.
+    let held = state(&d.f.store, "drive").unwrap();
+    assert_eq!(held.freshness.as_ref().map(|f| f.epoch), Some(4));
+    assert_eq!(held.grants.len(), 2);
+    assert_eq!(held.resources.len(), 3);
+    assert_eq!(identity_links(&d.f.store, "drive").unwrap().len(), 2);
+    assert_eq!(group_members(&d.f.store, "drive").unwrap().len(), 1);
+    assert_eq!(reach(&d.f.store, "drive", &reader("user://dana@acme.example")).unwrap().into_iter().collect::<Vec<_>>(), ["f1"]);
+}

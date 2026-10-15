@@ -19,8 +19,8 @@ pub enum VisibilityError {
     /// (`disclosure.declare-fidelity.family-undeclared`)
     #[error("VisibilityFamilyUndeclared: table `{table}` names no family")]
     FamilyUndeclared { table: String },
-    /// A full sweep run missed a governed resource of its source and would have advanced
-    /// the watermark. (`disclosure.sweep.coverage-watermark`)
+    /// A full or webhook run missed a governed resource of its source and would have
+    /// advanced the watermark. (`disclosure.sweep.coverage-watermark`)
     #[error("VisibilityWatermarkUncovered: source `{origin}`: the run did not read {missed} governed resource(s), first `{first}`; watermark_at stays where it stood")]
     WatermarkUncovered { origin: String, missed: usize, first: String },
     /// A grant landed with no resource row, or on an unknown-class resource.
@@ -31,6 +31,29 @@ pub enum VisibilityError {
     /// (`disclosure.mirror.incomplete-binding`)
     #[error("VisibilityBindingIncomplete: table `{table}` binds source `{origin}` at `{fidelity}` with {missing}")]
     BindingIncomplete { table: String, origin: String, fidelity: &'static str, missing: &'static str },
+    /// A table on an organization-wide face carries no visibility block.
+    /// (`disclosure.mirror.unbound-table`)
+    #[error("VisibilityUnboundTable: table `{table}` carries no visibility block, and this project's faces are organization-wide")]
+    UnboundTable { table: String },
+    /// A run advanced the watermark from an event stream not declared gap-detectable.
+    /// (`disclosure.sweep.ungapped-stream`)
+    #[error("VisibilityUngappedStream: source `{origin}`: {stream}; a webhook run moves watermark_at only from a stream declaring `gap_detectable = true`")]
+    UngappedStream { origin: String, stream: String },
+    /// A pack lands a table with neither an access mapping nor an exclusion.
+    /// (`disclosure.pack.mapping-absent`)
+    #[error("VisibilityMappingAbsent: pack `{pack}` lands table `{table}` with neither an access mapping nor `excluded`")]
+    MappingAbsent { pack: String, table: String },
+    /// A pack carries an access-shaped key the mapping schema lacks.
+    /// (`disclosure.pack.asserts-access`)
+    #[error("VisibilityPackAssertsAccess: pack `{pack}`: key `{key}` asserts access outside the mapping schema")]
+    PackAssertsAccess { pack: String, key: String },
+    /// A container allowlist is evaluated as any-of. (`disclosure.pack.any-of-allowlist`)
+    #[error("VisibilityAllowlistAnyOf: pack `{pack}`: a container allowlist evaluates all-of; `any-of` widens every entry into an opening")]
+    AllowlistAnyOf { pack: String },
+    /// A table declared coarse where its source emits no container signal.
+    /// (`disclosure.pack.unsupported-coarse`)
+    #[error("VisibilityUnsupportedCoarse: pack `{pack}`: table `{table}` declares `coarse` and names no `container_key`")]
+    UnsupportedCoarse { pack: String, table: String },
     /// An explanation returned content from the resource it decides about.
     /// (`disclosure.explain.no-row`)
     #[error("VisibilityDiagnosticRow: {0}")]
@@ -59,6 +82,12 @@ impl VisibilityError {
             VisibilityError::WatermarkUncovered { .. } => "VisibilityWatermarkUncovered",
             VisibilityError::OrphanGrant { .. } => "VisibilityOrphanGrant",
             VisibilityError::BindingIncomplete { .. } => "VisibilityBindingIncomplete",
+            VisibilityError::UnboundTable { .. } => "VisibilityUnboundTable",
+            VisibilityError::UngappedStream { .. } => "VisibilityUngappedStream",
+            VisibilityError::MappingAbsent { .. } => "VisibilityMappingAbsent",
+            VisibilityError::PackAssertsAccess { .. } => "VisibilityPackAssertsAccess",
+            VisibilityError::AllowlistAnyOf { .. } => "VisibilityAllowlistAnyOf",
+            VisibilityError::UnsupportedCoarse { .. } => "VisibilityUnsupportedCoarse",
             VisibilityError::DiagnosticRow(_) => "VisibilityDiagnosticRow",
             VisibilityError::NoObservations(_) => "VisibilityNoObservations",
             VisibilityError::UnqualifiedAssurance(_) => "VisibilityUnqualifiedAssurance",

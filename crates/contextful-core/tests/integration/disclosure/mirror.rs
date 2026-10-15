@@ -182,3 +182,35 @@ fn a_servable_binding_without_a_sweep_or_a_budget_is_incomplete() {
         check_bindings(&[binding(&format!("fidelity = \"{fidelity}\""))], &[]).unwrap();
     }
 }
+
+/// `[project] face_scope = "organization"` makes every face the project serves organization-wide; absent or `"personal"`, its faces are personal, and another value does not load.
+// spec: disclosure.mirror.face-scope@deca51d2
+#[test]
+fn the_project_declares_its_faces_organization_wide() {
+    use contextful_core::read::face::FaceScope;
+    assert_eq!(FaceScope::declared("[project]\nname = \"wiki\"\nface_scope = \"organization\"\n").unwrap(), FaceScope::Organization);
+    assert_eq!(FaceScope::declared("[project]\nname = \"wiki\"\nface_scope = \"personal\"\n").unwrap(), FaceScope::Personal);
+    assert_eq!(FaceScope::declared("[project]\nname = \"wiki\"\n").unwrap(), FaceScope::Personal);
+    assert_eq!(FaceScope::declared("").unwrap(), FaceScope::Personal);
+    for bad in ["[project]\nface_scope = \"team\"\n", "[project]\nface_scope = true\n", "[project\n"] {
+        assert!(FaceScope::declared(bad).is_err(), "{bad}");
+    }
+}
+
+/// On an organization-wide face, a table with no visibility block raises `VisibilityUnboundTable` from diagnose and from the serving guardrail at start, naming the table.
+#[test]
+fn an_unbound_table_on_an_organization_wide_face_is_refused() {
+    use contextful_core::disclosure::declare::check_unbound;
+    use contextful_core::read::face::FaceScope;
+    let tables = TableDecl::parse_pipeline("[[pipeline.tables]]\nname = \"drive/files\"\n[pipeline.tables.visibility]\nsource = \"drive\"\nresource_key = \"file_id\"\nfamily = \"item-exception\"\nfidelity = \"excluded\"\n\n[[pipeline.tables]]\nname = \"notes\"\n").unwrap();
+    match check_unbound(FaceScope::Organization, &tables) {
+        Err(e @ VisibilityError::UnboundTable { .. }) => {
+            assert_eq!(e.identifier(), "VisibilityUnboundTable");
+            let shown = e.to_string();
+            assert!(shown.starts_with("VisibilityUnboundTable") && shown.contains("`notes`") && !shown.contains("drive/files"), "{shown}");
+        }
+        other => panic!("{other:?}"),
+    }
+    check_unbound(FaceScope::Personal, &tables).unwrap();
+    check_unbound(FaceScope::Organization, &tables[..1]).unwrap();
+}

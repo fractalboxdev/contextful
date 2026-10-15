@@ -36,6 +36,7 @@ pub struct McpArgs {
 }
 
 pub fn run(args: McpArgs) -> Result<()> {
+    crate::project::face_guardrail(args.project.as_deref(), args.declaration.as_deref())?;
     let (authority, revocation) = args.admit.admit(args.project.as_deref(), "the tool server")?;
     if args.project.is_none() {
         let cwd = std::env::current_dir()?;

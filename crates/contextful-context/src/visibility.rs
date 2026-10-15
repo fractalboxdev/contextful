@@ -7,6 +7,10 @@
 //! and `identity_links` rows are current; `tombstones` accumulate across committed runs alone. A row whose `_run_id`
 //! names no committed run joins nothing, so a run that stops before `freshness` lands
 //! changes nothing a reader resolves, and its retry lands its tombstones once.
+//!
+//! Each run carries its source's complete current state, so before it lands a run collects
+//! every run of the current-state tables but the current one
+//! (`disclosure.sweep.superseded-run`); `tombstones` and `freshness` keep every run.
 
 use crate::error::{ContextError, Result};
 use crate::land::{land_engine_owned, Batch, RunContext};
@@ -15,8 +19,8 @@ use crate::scan::scan;
 use crate::store::Store;
 use contextful_core::disclosure::declare::Binding;
 use contextful_core::disclosure::sweep::{
-    self, commit, Commit, Directory, Freshness, GrantLine, GrantRow, Governed, MemberRow, Observation, PrincipalRow, ResourceRow, SourceState, SweepBlock, SweepKind,
-    Tombstone,
+    self, commit, Commit, Directory, Freshness, GrantLine, GrantRow, GrantsRead, Governed, MemberRow, Observation, PrincipalRow, ResourceRow, SourceState, SweepBlock,
+    SweepKind, Tombstone,
 };
 use contextful_core::identify::{IdentityLink, LinkMethod, NormalizedSubject};
 use contextful_core::store::bound_time::Bounds;
@@ -383,10 +387,7 @@ pub fn sweep_grants(
     sweep_run(store, at, block, bindings, kind, grants, None, began_at, committed_at)
 }
 
-/// Run one sweep of `block`'s source from a `--grants` read and an optional `--directory`
-/// read, under the source's write lock: read the governed resources and the current rows,
-/// compute the commit, and land each non-empty access table as run `<sweep id>`,
-/// `freshness` last. A refusal lands nothing.
+/// [`sweep_read`] over grant lines alone, every governed resource read.
 #[allow(clippy::too_many_arguments)]
 pub fn sweep_run(
     store: &Store,
@@ -399,6 +400,55 @@ pub fn sweep_run(
     began_at: Instant,
     committed_at: Instant,
 ) -> Result<Commit> {
+    sweep_read(store, at, block, bindings, kind, GrantsRead { grants, unread: BTreeSet::new() }, directory, began_at, committed_at)
+}
+
+/// The access tables holding only the current run's rows; `tombstones` and `freshness`
+/// accumulate across runs.
+const CURRENT_STATE: [&str; 5] = ["resources", "grants", "principals", "group_members", "identity_links"];
+
+/// Collect every run of `source`'s current-state tables other than `current`
+/// (`disclosure.sweep.superseded-run`), returning the run directories removed.
+fn retire(store: &Store, source: &str, current: &str) -> Result<Vec<String>> {
+    let mut removed = Vec::new();
+    for name in CURRENT_STATE {
+        let table = sweep::table(source, name);
+        if store.try_schema(&table)?.is_none() {
+            continue;
+        }
+        let runs_dir = store.table_dir(&table)?.join(RUNS_DIR);
+        for r in store.committed_runs(&table)?.into_iter().filter(|r| r.run_id != current) {
+            let dir = runs_dir.join(&r.run_id);
+            let node = dir.join(&r.node_id);
+            if node.exists() {
+                std::fs::remove_dir_all(&node).map_err(|source| ContextError::Io { path: node.clone(), source })?;
+                removed.push(format!("{table}/{RUNS_DIR}/{}/{}", r.run_id, r.node_id));
+            }
+            if std::fs::read_dir(&dir).is_ok_and(|mut d| d.next().is_none()) {
+                std::fs::remove_dir(&dir).map_err(|source| ContextError::Io { path: dir.clone(), source })?;
+            }
+        }
+    }
+    Ok(removed)
+}
+
+/// Run one sweep of `block`'s source from a `--grants` read and an optional `--directory`
+/// read, under the source's write lock: read the governed resources and the current rows,
+/// compute the commit, collect the runs the current one superseded, and land each
+/// non-empty access table as run `<sweep id>`, `freshness` last. A refusal lands and
+/// collects nothing.
+#[allow(clippy::too_many_arguments)]
+pub fn sweep_read(
+    store: &Store,
+    at: &Landing,
+    block: &SweepBlock,
+    bindings: &[Binding],
+    kind: SweepKind,
+    read: GrantsRead,
+    directory: Option<Directory>,
+    began_at: Instant,
+    committed_at: Instant,
+) -> Result<Commit> {
     store.check_writable("visibility sweep")?;
     let enumerated = block.enumerated(bindings).map_err(|e| ContextError::Invalid(e.to_string()))?;
     let _lock = store.lock_commit(&format!("{}/{}", sweep::NAMESPACE, block.source))?;
@@ -407,10 +457,14 @@ pub fn sweep_run(
     let mut nonce = [0u8; 4];
     getrandom::fill(&mut nonce).map_err(|e| ContextError::Invalid(format!("sweep nonce: {e}")))?;
     let sweep_id = format!("sweep-{epoch}-{}-{}", began_at.unix_nanos(), crate::store::hex(&nonce));
-    let mut obs = Observation::from_grants_file(&block.source, kind, &sweep_id, began_at, governed(store, enumerated)?, grants);
+    let mut obs = Observation::from_read(&block.source, kind, &sweep_id, began_at, governed(store, enumerated)?, read);
     obs.directory = directory;
+    obs.events = block.events.clone();
     obs.budget_seconds = bindings.iter().filter(|b| b.source == block.source).filter_map(|b| b.max_acl_staleness_secs).min();
     let c = commit(&prior, &obs)?;
+    if let Some(current) = &prior.freshness {
+        retire(store, &block.source, &current.sweep_id)?;
+    }
     for (name, batch) in batches(&block.source, &c, committed_at) {
         if batch.rows.is_empty() {
             continue;
