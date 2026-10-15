@@ -1,6 +1,7 @@
 //! `contextful-ci` — the gate's stages as typed subcommands. A contributor and the
 //! FlareDispatch gate invoke the identical command.
 
+mod capability;
 mod deny;
 mod egress;
 mod e2e;
@@ -103,7 +104,7 @@ enum Cmd {
     },
     /// Hold every key in a git-tracked `.env*` file to ciphertext under a scope comment.
     Secrets,
-    /// Resolve every `mirrors:` comment under crates/, tools/ and apps/ to a clause id.
+    /// Resolve every `mirrors:` comment under crates/, tools/, apps/ and packages/ to a clause id.
     Mirrors,
     /// Refuse subject claims formatted into SQL text in runtime crates.
     SourceLint,
@@ -892,21 +893,16 @@ fn file_name(path: &str) -> &str {
 // ---------------------------------------------------------------- mirrors
 
 const LOCK_FILE: &str = "spec/spec.lock.json";
-const MIRROR_TAG: &str = "mirrors:";
-const MIRROR_ROOTS: [&str; 3] = ["crates/", "tools/", "apps/"];
 
 /// `assurance.structure-tree.mirror-unresolved`: a comment line whose text opens with the
 /// tag names a clause id the lock file carries.
 fn mirrors(root: &Path) -> Result<()> {
     let mut sites = Vec::new();
-    for file in tracked(root)?.into_iter().filter(|p| MIRROR_ROOTS.iter().any(|r| p.starts_with(r))) {
+    for file in tracked(root)?.into_iter().filter(|p| capability::ROOTS.iter().any(|r| p.starts_with(r))) {
         let Ok(text) = std::fs::read_to_string(root.join(&file)) else { continue };
         for (n, line) in text.lines().enumerate() {
-            let code = line.trim_start();
-            let body = code.trim_start_matches(['/', '#', '-', '*']).trim_start();
-            if body.len() < code.len() && body.starts_with(MIRROR_TAG) {
-                let id = body[MIRROR_TAG.len()..].split_whitespace().next().unwrap_or("").to_string();
-                sites.push((format!("{file}:{}", n + 1), id));
+            if let Some(id) = capability::mirror_tag(line) {
+                sites.push((format!("{file}:{}", n + 1), id.to_string()));
             }
         }
     }

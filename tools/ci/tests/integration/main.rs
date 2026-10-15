@@ -5,6 +5,7 @@ mod acceptance_surface;
 mod allowlist;
 mod artifact;
 mod automate;
+mod capability;
 mod cli_parts;
 mod dependency_versions;
 mod deny;

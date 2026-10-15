@@ -5,7 +5,7 @@ An unpinned clause is `committed`; a pinned one is `performed` when its Rust, Le
 
 | Contract | Files | Operations | Clauses | Refusals | Limits | Unsettled | Performed | Broken | Floor |
 | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
-| `assurance` | 3 | 18 | 314 | 63 | 24 | 8 | 270 | 0 | 270 |
+| `assurance` | 3 | 18 | 316 | 64 | 24 | 8 | 276 | 0 | 276 |
 | `authority` | 2 | 16 | 295 | 79 | 29 | 9 | 224 | 0 | 224 |
 | `connector` | 2 | 14 | 363 | 91 | 21 | 15 | 260 | 0 | 260 |
 | `corpus` | 1 | 10 | 79 | 37 | 7 | 0 | 79 | 0 | 79 |
@@ -15,7 +15,7 @@ An unpinned clause is `committed`; a pinned one is `performed` when its Rust, Le
 | `store` | 3 | 19 | 290 | 64 | 14 | 11 | 280 | 0 | 280 |
 | `surface` | 2 | 21 | 159 | 63 | 23 | 0 | 132 | 0 | 132 |
 | `topology` | 1 | 6 | 79 | 25 | 5 | 3 | 74 | 0 | 74 |
-| **total** | 22 | 168 | 2528 | 649 | 208 | 79 | 2118 | 0 | |
+| **total** | 22 | 168 | 2530 | 650 | 208 | 79 | 2124 | 0 | |
 
 Decision records: 18.
 
@@ -39,7 +39,7 @@ A milestone reads `closed` when its acceptance test computes `passing` and every
 | 11 — The derive tier | 7 | 94 | 93 | passing | closed |
 | 12 — The operator console | 12 | 56 | 43 | passing | open |
 | 13 — Disclosure | 5 | 33 | 21 | open | open |
-| 14 — Assurance | 7 | 165 | 128 | passing | closed |
+| 14 — Assurance | 7 | 167 | 134 | passing | closed |
 | 15 — Point-in-time evaluation | 7 | 78 | 77 | passing | closed |
 | 16 — Memory graph walk | 1 | 11 | 0 | absent | open |
 | 17 — Delegated bodies | 1 | 16 | 12 | passing | closed |
@@ -304,9 +304,15 @@ Unscheduled operations: 12.
 | `assurance.scope-claim.trusted-dependencies` | `crates/contextful-cli/tests/integration/formal.rs::the_claim_trusts_the_delegation_library_and_the_translator` | performed |
 | `assurance.scope-claim.unnamed-dependency` | `crates/contextful-cli/tests/integration/formal.rs::a_claim_resting_on_an_unnamed_component_is_refused` | performed |
 | `assurance.scope-claim.unstated-chain` | `crates/contextful-cli/tests/integration/formal.rs::a_translated_theorem_without_its_chain_is_refused` | performed |
+| `assurance.structure-tree.adapter` | `tools/ci/tests/integration/capability.rs::an_adapter_implementing_an_engine_port_passes_where_a_restatement_is_refused` | performed |
+| `assurance.structure-tree.capability-registry` | `tools/ci/tests/integration/capability.rs::a_registry_resolving_to_no_home_is_refused` | performed |
+| `assurance.structure-tree.cross-language` | `tools/ci/tests/integration/capability.rs::definitions_match_by_folded_name_in_every_scanned_language` | performed |
 | `assurance.structure-tree.decision-module` | `crates/contextful-cli/tests/integration/differential.rs::the_native_and_webassembly_builds_agree_with_the_reference_over_the_seeded_budget` | performed |
 | `assurance.structure-tree.derivation-check` | `tools/ci/tests/integration/stages.rs::declared_derived_artifact_is_checked_by_schema_stage` | performed |
+| `assurance.structure-tree.duplicated-capability` | `tools/ci/tests/integration/capability.rs::a_second_implementation_and_a_copied_constant_name_both_sites` | performed |
+| `assurance.structure-tree.mirror-exemption` | `tools/ci/tests/integration/capability.rs::a_mirrored_restatement_is_admitted_and_an_unannotated_one_is_refused` | performed |
 | `assurance.structure-tree.mirror-unresolved` | `spec/pins.toml` | performed |
+| `assurance.structure-tree.one-home` | `tools/ci/tests/integration/capability.rs::a_surface_reaching_the_one_home_through_the_engine_passes` | performed |
 | `assurance.test.acceptance-surface` | `spec/pins.toml` | performed |
 | `assurance.test.base-run-bound` | `tools/ci/tests/integration/test_first.rs::a_base_run_past_its_bound_is_killed_and_counts_red` | performed |
 | `assurance.test.base-unrunnable` | `tools/ci/tests/integration/test_first.rs::an_unloadable_base_fails_the_stage_instead_of_reading_red` | performed |

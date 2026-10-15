@@ -334,6 +334,24 @@ Decision: `assurance.structure-tree.derivation-check` exports the committed tree
 
 Consequences: a generator must produce stable bytes; nondeterministic output reds the schema stage.
 
+## Duplicated capabilities match registered symbols and home constants by folded name
+
+**Status:** accepted
+
+Context: a second implementation of an engine capability can sit in a TypeScript gateway, a Python script or another crate, so no compiler sees both. Criteria: the lint names both sites, passes on the current tree, and needs no per-language parser beyond Rust.
+
+Decision: `assurance.structure-tree.capability-registry` holds one home per capability with distinctive defining symbols, beside `spec/spec.lock.json`. `assurance.structure-tree.cross-language` folds names to lowercase without separators, so `singleStatement` meets `single_statement`; a constant matches on name and literal value together. Test, fixture, benchmark and vendored directories, `#[cfg(test)]` items, TypeScript type aliases and interfaces define nothing. Script class methods count as functions; bodiless signatures do not. Integer arithmetic over literals folds, and numbers take one spelling. A method of a Rust implementation of a trait declared under a registered port path is an adapter. A comment line opening with `mirrors:` among the annotation lines directly above admits a site, and `contextful-ci mirrors` resolves those lines.
+
+| Option | Lost on | Cost |
+| --- | --- | --- |
+| Registered symbols and home constants, folded names *(chosen)* | — | The registry is maintained by hand; a renamed copy or a constant with another name passes. |
+| Every public engine name | Precision | Generic names such as `resolve` collide across unrelated modules. |
+| Structural similarity over syntax trees | Explainability | A per-language parser and a threshold that flags refactors. |
+| Constant values alone | Precision | Small integers and common strings recur in unrelated code. |
+
+Consequences: a registry symbol renamed away from its home raises `CapabilityHomeUnresolved` rather than leaving the check vacuous.
+Revisit: a copy under another name escapes to production.
+
 ## Backtests estimate leakage against a reference, and their tracks never pool
 
 **Status:** accepted
