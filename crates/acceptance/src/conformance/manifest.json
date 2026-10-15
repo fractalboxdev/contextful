@@ -1,5 +1,5 @@
 {
-  "suite_revision": "consumer-v1",
+  "suite_revision": "consumer-v2",
   "scenarios": [
     {"id":"pagination-checkpoint","requirement":"run,query"},
     {"id":"hard-crash-replay","requirement":"run,query,exec"},
@@ -7,6 +7,7 @@
     {"id":"empty-replacement","requirement":"pipeline,query"},
     {"id":"applied-scheduling","requirement":"pipeline,build,query,token"},
     {"id":"public-identity-masking","requirement":"pipeline,query"},
-    {"id":"typed-export-acknowledgement","requirement":"export,query,token"}
+    {"id":"typed-export-acknowledgement","requirement":"export,query,token"},
+    {"id":"coordinated-group-publication","requirement":"build,export,token"}
   ]
 }

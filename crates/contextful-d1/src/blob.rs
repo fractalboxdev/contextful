@@ -66,6 +66,7 @@ impl D1BlobStore {
         for sql in [
             "SELECT 1 FROM contextful_journal WHERE kind = 'recorded' AND json_extract(body, '$.value.sha256') = ? LIMIT 1",
             "SELECT 1 FROM contextful_awakeable WHERE json_extract(body, '$.payload.sha256') = ? LIMIT 1",
+            "SELECT 1 FROM contextful_publication WHERE blob = ? LIMIT 1",
         ] {
             if !self.db.query(sql, vec![json!(sha256)]).map_err(failure)?.rows.is_empty() { return Ok(true) }
         }

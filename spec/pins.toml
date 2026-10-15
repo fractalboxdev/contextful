@@ -99,6 +99,10 @@
 "run.export.group-rebuild" = { test = "crates/contextful-cli/tests/integration/job.rs::coordinated_job_exports_and_rebuilds_include_a_quiet_empty_member" }
 "run.export.group-incompatible" = { test = "crates/contextful-sqlite/tests/integration/export.rs::coordinated_outbox_retries_identical_bytes_and_checkpoint_rejects_incompatibility" }
 "run.export.group-storage" = { test = "crates/contextful-cli/tests/integration/export.rs::coordinated_exports_require_a_completed_producer_and_rebuild_full_state" }
+"run.export.group-d1-state" = { test = "crates/contextful-d1/tests/integration/publication.rs::a_lost_group_acknowledgement_reoffers_the_committed_batch_after_replacement" }
+"run.export.group-d1-lease" = { test = "crates/contextful-d1/tests/integration/publication.rs::a_transferred_group_lease_fences_the_prior_writer" }
+"run.export.group-d1-spill" = { test = "crates/contextful-d1/tests/integration/publication.rs::a_large_sender_spills_to_r2_and_survives_the_blob_sweep" }
+"run.export.group-d1-recovery" = { test = "crates/contextful-d1/tests/integration/publication.rs::a_group_staged_before_a_crash_redelivers_identical_bytes_after_replacement" }
 "read.revise.served-write" = { test = "contextful_cli::serve::served_claim_write_is_durable_actor_bound_and_outside_read_mcp" }
 "read.revise.served-scope" = { test = "contextful_cli::serve::served_claim_write_is_durable_actor_bound_and_outside_read_mcp" }
 "read.revise.browser-request" = { test = "contextful_cli::serve::served_claim_write_is_durable_actor_bound_and_outside_read_mcp" }
@@ -202,7 +206,7 @@ connector = 229
 corpus = 79
 disclosure = 63
 read = 211
-run = 426
+run = 430
 store = 253
 surface = 98
 topology = 72

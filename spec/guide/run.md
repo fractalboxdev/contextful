@@ -164,7 +164,9 @@ For downstream projections, follow {{run.export.group-block}} to the producer co
 ({{run.export.group-source}}), delivery barrier ({{run.export.group-delivery}}) and
 receiver activation ({{run.export.group-activation}}). Recovery follows
 {{run.export.group-checkpoint}} or {{run.export.group-rebuild}}; profile admission
-follows {{run.export.group-storage}}.
+follows {{run.export.group-storage}}; Cloudflare groups follow
+{{run.export.group-d1-state}}, {{run.export.group-d1-lease}}, {{run.export.group-d1-spill}}
+and {{run.export.group-d1-recovery}}.
 
 | Question | Operation |
 | --- | --- |

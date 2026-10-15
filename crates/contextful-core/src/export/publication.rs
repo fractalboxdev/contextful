@@ -293,6 +293,190 @@ pub fn batch(publication: &GroupBatch, offset: usize) -> Result<Option<GroupBatc
     Ok(Some(result))
 }
 
+/// A producer completion pinning its input frontier and every declared output frontier.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct SourcePublication {
+    pub run: String,
+    pub input: Value,
+    pub frontiers: BTreeMap<String, String>,
+}
+
+impl SourcePublication {
+    /// A producer run records one frontier; a second record must carry identical bytes.
+    pub fn check_history(&self, prior: Option<&SourcePublication>) -> Result<(), ExportError> {
+        if prior.is_some_and(|prior| prior != self) {
+            return Err(invalid("producer run carries different frontier bytes"));
+        }
+        Ok(())
+    }
+}
+
+/// One namespace's sender: the active group, its acknowledged state and the staged outbox.
+#[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
+pub struct GroupSender {
+    identity: String,
+    incarnation: String,
+    active: Option<PublicationGroup>,
+    state: GroupState,
+    pending: Option<GroupBatch>,
+    next_state: GroupState,
+    offset: usize,
+}
+
+impl GroupSender {
+    pub fn active(&self) -> Option<&PublicationGroup> {
+        self.active.as_ref()
+    }
+
+    pub fn pending_identity(&self) -> Option<&str> {
+        self.pending.as_ref().map(|_| self.identity.as_str())
+    }
+
+    /// Returns whether the sender changed; a pending outbox stays immutable until acknowledged.
+    pub fn stage(
+        &mut self,
+        plan: &PublicationPlan,
+        states: &GroupState,
+        identity: &str,
+    ) -> Result<bool, ExportError> {
+        if plan.read_identity != identity {
+            return Err(invalid(
+                "group read identity differs from its admitted binding",
+            ));
+        }
+        if !self.incarnation.is_empty() && self.incarnation != plan.incarnation {
+            return Err(invalid("store incarnation differs"));
+        }
+        if let Some(active) = &self.active {
+            if active.plan.destination != plan.destination {
+                return Err(invalid("target changed; use a fresh namespace rebuild"));
+            }
+            if active.plan.members != plan.members {
+                return Err(invalid("active membership changed"));
+            }
+        }
+        if let Some(pending) = &self.pending {
+            if pending.group.plan.members != plan.members
+                || pending.group.plan.destination != plan.destination
+                || self.identity != identity
+            {
+                return Err(invalid(
+                    "pending membership, target or read identity differs",
+                ));
+            }
+            return Ok(false);
+        }
+        if self.active.as_ref().map(|g| &g.id) != plan.base.as_ref()
+            || self
+                .active
+                .as_ref()
+                .map_or(Some(1), |g| g.plan.order.checked_add(1))
+                != Some(plan.order)
+        {
+            return Err(invalid("sender predecessor or order differs"));
+        }
+        if self
+            .active
+            .as_ref()
+            .is_some_and(|g| g.plan.input == plan.input && g.plan.members == plan.members)
+            && self.identity == identity
+            && self.state == *states
+        {
+            return Ok(false);
+        }
+        self.pending = Some(publication(plan.clone(), &self.state, states)?);
+        self.identity = identity.into();
+        self.incarnation = plan.incarnation.clone();
+        self.next_state = states.clone();
+        self.offset = 0;
+        Ok(true)
+    }
+
+    /// The next request prefix of the pending outbox.
+    pub fn batch(&self) -> Result<Option<GroupBatch>, ExportError> {
+        self.pending
+            .as_ref()
+            .map(|p| batch(p, self.offset))
+            .transpose()
+            .map(Option::flatten)
+    }
+
+    /// Returns whether the acknowledgement completed the group and promoted its state.
+    pub fn acknowledge(&mut self, group: &str, through: u64) -> Result<bool, ExportError> {
+        let offered = self
+            .batch()?
+            .ok_or_else(|| invalid("acknowledgement names no pending batch"))?;
+        if offered.group.id != group || offered.events.last().map(|e| e.sequence) != Some(through) {
+            return Err(invalid("concurrent acknowledgement differs"));
+        }
+        self.offset += offered.events.len();
+        let pending = self
+            .pending
+            .as_ref()
+            .expect("offered batch has a pending group");
+        if self.offset < pending.events.len() {
+            return Ok(false);
+        }
+        self.active = self.pending.take().map(|p| p.group);
+        self.state = std::mem::take(&mut self.next_state);
+        self.offset = 0;
+        Ok(true)
+    }
+
+    pub fn checkpoint(&self, name: &str, namespace: &str) -> Result<Vec<u8>, ExportError> {
+        serde_json::to_vec(&(1, name, namespace, self)).map_err(|e| invalid(e.to_string()))
+    }
+
+    /// A checkpoint replays only byte-identical delivery under the current binding.
+    pub fn restore(
+        bytes: &[u8],
+        name: &str,
+        namespace: &str,
+        incarnation: &str,
+        identity: &str,
+        current: Option<&GroupSender>,
+    ) -> Result<Self, ExportError> {
+        let (version, saved_name, saved_namespace, sender): (u32, String, String, GroupSender) =
+            serde_json::from_slice(bytes).map_err(|e| invalid(e.to_string()))?;
+        if version != 1
+            || saved_name != name
+            || saved_namespace != namespace
+            || sender.incarnation != incarnation
+            || sender.identity != identity
+        {
+            return Err(invalid(
+                "checkpoint name, namespace, incarnation or read identity differs",
+            ));
+        }
+        if let Some(pending) = &sender.pending {
+            let canonical = publication(
+                pending.group.plan.clone(),
+                &sender.state,
+                &sender.next_state,
+            )?;
+            if canonical != *pending || sender.offset >= pending.events.len() {
+                return Err(invalid("checkpoint changes immutable delivery bytes"));
+            }
+        }
+        if let Some(current) = current {
+            if current.incarnation != incarnation
+                || current.identity != identity
+                || current.members() != sender.members()
+            {
+                return Err(invalid("checkpoint binding differs"));
+            }
+        }
+        Ok(sender)
+    }
+
+    fn members(&self) -> Option<&BTreeMap<String, String>> {
+        self.active
+            .as_ref()
+            .map(|g| &g.plan.members)
+            .or_else(|| self.pending.as_ref().map(|g| &g.group.plan.members))
+    }
+}
+
 /// Receiver state persists accepted bytes and staged rows before acknowledging delivery.
 #[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
 pub struct ReceiverState {
