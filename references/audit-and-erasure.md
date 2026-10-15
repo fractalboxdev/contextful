@@ -70,6 +70,34 @@ Delete-Aware LSM Engine." *SIGMOD*, 2020. <https://dl.acm.org/doi/10.1145/331846
   delete-persistence latency; the receipt's claim scope depends on the same bound,
   stated as a limit.
 
+### Ghost Vectors
+
+Chakraborttii, C., García Alvarado, J., Abdulofizova, S., Dwivedi, S. "Ghost
+Vectors: Soft-Deleted Embeddings Remain Reconstructible in HNSW Vector Databases."
+arXiv:2606.18497, 2026. <https://arxiv.org/abs/2606.18497>
+
+- **Priority:** must-read
+- **Informs:** `disclosure.erase`, `disclosure.receipt`, `store.index`
+- **Question:** Does a deleted row leave its vector behind? An HNSW delete marks the
+  node and keeps the embedding in the index files, from which inversion recovers
+  25.5% of exact person names and 46.4% of locations. An erasure receipt holds only
+  when every vector sidecar is rebuilt from the surviving rows, never tombstoned.
+  Open for the decision: should the extraction cache and dead-letter rows holding the
+  erased row be collected in the same window? The paper's epoch key rotation is crypto-shredding, which forced
+  rewrite already answers; its results belong on that decision's Revisit line.
+
+### Text Embeddings Reveal (Almost) As Much As Text
+
+Morris, J. X., Kuleshov, V., Shmatikov, V., Rush, A. M. "Text Embeddings Reveal
+(Almost) As Much As Text." *EMNLP*, 2023. <https://arxiv.org/abs/2310.06816>
+
+- **Priority:** should-read
+- **Informs:** `disclosure.erase`, `authority.mask`, `read.embed`
+- **Question:** Is an embedding personal data? vec2text inverts an embedding back to
+  its text, recovering 92% of 32-token inputs exactly, so a vector is erased and
+  masked as the text it encodes. A vector computed over a masked or erased value
+  discloses that value to anyone who reads the vector.
+
 ### Provenance Semirings
 
 Green, T. J., Karvounarakis, G., Tannen, V. "Provenance Semirings." *PODS*,

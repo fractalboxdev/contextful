@@ -2,7 +2,9 @@
 
 Third-party text reaches a model through connector inference, the console's store
 overlay and its web supplement. Enforcement sits below the prompt; these sources
-state how much the prompt-level defenses leave over. Memory poisoning lives in
+state how much the prompt-level defenses leave over. *MINJA* and *PoisonedRAG*
+cover injection into memory and the retrieval corpus through ordinary writes;
+trigger-optimized memory poisoning lives in
 [retrieval-and-memory.md](./retrieval-and-memory.md) under *AgentPoison*.
 
 ### Spotlighting
@@ -45,3 +47,33 @@ Indirect Prompt Injection." *AISec*, 2023. <https://arxiv.org/abs/2302.12173>
 - **Question:** Which threats does resistance defend against? The taxonomy — data
   theft, worming, ecosystem contamination — replaces restated threat prose with one
   named model.
+
+### MINJA
+
+Dong, S., Xu, S., He, P., Li, Y., Tang, J., Liu, T., Liu, H., Xiang, Z. "Memory
+Injection Attacks on LLM Agents via Query-Only Interaction." arXiv:2503.03704, 2025.
+<https://arxiv.org/abs/2503.03704>
+
+- **Priority:** must-read
+- **Informs:** `read.revise`, `read.declare`, `read.recall`, `read.synthesize`
+- **Question:** Can an attacker with no write access poison memory? MINJA plants
+  malicious records through ordinary queries and observed outputs alone, at a 98.2%
+  average injection success rate. Open for the decision: should a write a model chose
+  stand below `curated`, so that an agent member on the credential, or third-party
+  taint on a cited row, stamps `derived` where `read.revise` stamps a direct write
+  `curated`, and should a claims table declare a minimum serving taint? What binds an
+  asserted agent member to the writer is open too.
+
+### PoisonedRAG
+
+Zou, W., Geng, R., Wang, B., Jia, J. "PoisonedRAG: Knowledge Corruption Attacks to
+Retrieval-Augmented Generation of Large Language Models." *USENIX Security*, 2025.
+<https://arxiv.org/abs/2402.07867>
+
+- **Priority:** should-read
+- **Informs:** `read.declare`, `read.revise`, `read.retrieve`, `authority.resist`
+- **Question:** How few injected texts corrupt a retrieval corpus? Five texts per
+  target question reach a 90% attack success rate in a knowledge database of millions
+  of texts. Rank cannot separate them from honest rows, so third-party taint follows
+  every claim extracted from such rows. Open for the decision: should a claims table
+  declare the taint floor it serves?
