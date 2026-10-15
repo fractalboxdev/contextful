@@ -58,11 +58,11 @@ Injection Attacks on LLM Agents via Query-Only Interaction." arXiv:2503.03704, 2
 - **Informs:** `read.revise`, `read.declare`, `read.recall`, `read.synthesize`
 - **Question:** Can an attacker with no write access poison memory? MINJA plants
   malicious records through ordinary queries and observed outputs alone, at a 98.2%
-  average injection success rate. The attack settles that a write a model chose
-  stands below `curated`: an agent member on the credential, or third-party taint on
-  a cited row, stamps `derived`, and a claims table's minimum serving taint withholds
-  what falls below it. Provenance tier, not source count, decides what grounds an
-  answer; what binds an asserted agent member to the writer stays open.
+  average injection success rate. Open for the decision: should a write a model chose
+  stand below `curated`, so that an agent member on the credential, or third-party
+  taint on a cited row, stamps `derived` where `read.revise` stamps a direct write
+  `curated`, and should a claims table declare a minimum serving taint? What binds an
+  asserted agent member to the writer is open too.
 
 ### PoisonedRAG
 
@@ -75,5 +75,5 @@ Retrieval-Augmented Generation of Large Language Models." *USENIX Security*, 202
 - **Question:** How few injected texts corrupt a retrieval corpus? Five texts per
   target question reach a 90% attack success rate in a knowledge database of millions
   of texts. Rank cannot separate them from honest rows, so third-party taint follows
-  every claim extracted from such rows, and a claims table declares the taint floor
-  it serves.
+  every claim extracted from such rows. Open for the decision: should a claims table
+  declare the taint floor it serves?

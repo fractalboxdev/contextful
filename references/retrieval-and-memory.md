@@ -77,10 +77,11 @@ Microsoft. "Configuration: settings.yaml." *GraphRAG documentation*.
 - **Question:** What do gleaning and an LLM call cache cost and buy in extraction?
   Gleaning re-prompts a batch for entities the first pass omitted, with
   `max_gleanings = 1` as the default, and the cache keeps every model response so a
-  re-run makes no new call. A declared, single, optional pass bounds the first; a
-  cache keyed on the fenced batch bytes, template and model, held as an enforced
-  table, keeps the second inside the store's visibility and erasure. Community
-  summaries carry no per-sentence citation and are not adopted.
+  re-run makes no new call. Open for the decision: whether a declared, single,
+  optional pass bounds the first, and whether a cache keyed on the fenced batch bytes,
+  template and model, held as an enforced table, keeps the second inside the store's
+  visibility and erasure. Community summaries carry no per-sentence citation and are
+  not adopted.
 
 ### LightRAG
 
@@ -92,9 +93,10 @@ Retrieval-Augmented Generation." arXiv:2410.05779, 2024.
 - **Informs:** `read.synthesize`, `disclosure.erase`
 - **Question:** How does an extracted graph recover after a source document is
   deleted? LightRAG rebuilds the affected entities and relations from the indexing
-  LLM cache instead of re-extracting the corpus. Restaging the claims that survive an
-  erasure reuses cached responses for untouched batches the same way, and the cache
-  entries keyed on the erased row are collected with it.
+  LLM cache instead of re-extracting the corpus. Open for the decision: should
+  restaging the claims that survive an erasure reuse cached responses for untouched
+  batches the same way, with the cache entries keyed on the erased row collected with
+  it?
 
 ### HippoRAG 2
 
@@ -136,10 +138,9 @@ Knowledge Graph Architecture for Agent Memory." arXiv:2501.13956, 2025.
 - **Informs:** `read.synthesize`, `read.revise`, `read.declare`, `read.resolve-entity`, `read.recall`
 - **Question:** How does a new edge retire the one it contradicts? Zep stores edges
   with validity intervals and invalidates the loser by time instead of deleting it.
-  A relation that declares its cardinality settles the case: under a one-cardinality
-  relation, a new edge from one source ends the prior live edge at its own
-  `valid_from` and names it as successor, where an undeclared predicate cannot hold
-  several true objects at once. Graphiti's newest-wins rule ignores tier and is not
+  Open for the decision: should a one-cardinality relation let a new edge from one
+  source end the prior live edge at its own `valid_from` and name it as successor,
+  since an undeclared predicate cannot tell one true object from several? Graphiti's newest-wins rule ignores tier and is not
   adopted.
 
 ### MemTX
@@ -183,9 +184,10 @@ Benchmarking Chat Assistants on Long-Term Interactive Memory." *ICLR*, 2025.
 - **Informs:** `assurance.evaluate`, `assurance.baseline`, `read.revise`, `read.recall`, `store.bound-time`
 - **Question:** What does a memory evaluation suite measure beyond retrieval? Five
   abilities — extraction, multi-session reasoning, temporal reasoning, knowledge
-  update, abstention. Knowledge update becomes supersession correctness, the rate of
-  superseded claims served at their successor's anchor; temporal reasoning reads at
-  `observed_at`; abstention meets the recall evidence gate. A converted public set
+  update, abstention. Temporal reasoning reads at `observed_at`; abstention meets the
+  recall evidence gate. Open for the decision: should knowledge update become a
+  supersession-correctness measure, the rate of superseded claims served at their
+  successor's anchor? A converted public set
   is reported and decides nothing beside the native cases.
 
 ### MemoryAgentBench
@@ -212,10 +214,10 @@ via Poisoning Memory or Knowledge Bases." *NeurIPS*, 2024.
 - **Informs:** `read.synthesize`, `read.revise`, `read.declare`, `read.recall`, `authority.resist`, `surface.learn`
 - **Question:** Should provenance tier be a hard gate on recall rather than a ranking
   signal? Extraction turns ingested third-party text into durable claims that later
-  ground answers, which is exactly the path trigger-optimized poisoning targets. A
-  claims table that declares a minimum serving taint withholds claims below it, and
-  a claim's provenance tier outweighs how many sources agree, since agreement fails
-  once an attacker controls volume. The same concern covers distillation: a
+  ground answers, which is exactly the path trigger-optimized poisoning targets. Open
+  for the decision: should a claims table declare a minimum serving taint and withhold
+  claims below it? A claim's provenance tier outweighs how many sources agree, since
+  agreement fails once an attacker controls volume. The same concern covers distillation: a
   conclusion drawn from one reader's rows carries those rows' labels to any later
   reader. Query-only injection lives in [prompt-injection.md](./prompt-injection.md)
   under *MINJA*.

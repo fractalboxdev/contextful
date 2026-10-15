@@ -81,9 +81,9 @@ arXiv:2606.18497, 2026. <https://arxiv.org/abs/2606.18497>
 - **Question:** Does a deleted row leave its vector behind? An HNSW delete marks the
   node and keeps the embedding in the index files, from which inversion recovers
   25.5% of exact person names and 46.4% of locations. An erasure receipt holds only
-  when every vector sidecar is rebuilt from the surviving rows, never tombstoned, and
-  the extraction cache and dead-letter rows holding the erased row are collected in
-  the same window. The paper's epoch key rotation is crypto-shredding, which forced
+  when every vector sidecar is rebuilt from the surviving rows, never tombstoned.
+  Open for the decision: should the extraction cache and dead-letter rows holding the
+  erased row be collected in the same window? The paper's epoch key rotation is crypto-shredding, which forced
   rewrite already answers; its results belong on that decision's Revisit line.
 
 ### Text Embeddings Reveal (Almost) As Much As Text
