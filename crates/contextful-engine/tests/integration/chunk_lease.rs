@@ -210,13 +210,13 @@ fn only_a_done_row_commits_a_path_and_the_sweep_collects_paths_without_one() {
 
     // Past it, A's path goes: it exists on disk but no done row names it. B's done path and C's live one stay.
     let cutoff = SystemTime::now() + Duration::from_secs(60);
-    assert_eq!(backfill.collect(PIPELINE, TABLE, RUN, &root, cutoff).unwrap(), [stale.clone()]);
+    assert_eq!(backfill.collect(PIPELINE, TABLE, RUN, &root, cutoff).unwrap(), std::slice::from_ref(&stale));
     assert!(!stale.exists());
     assert!(committed.join("part-0.parquet").exists());
     assert!(live.join("part-0.parquet").exists());
 
     // Once C's lease lapses unrenewed and uncommitted, its path is collected too.
     rig.clock.advance(CHUNK_LEASE_TTL_SECS as i64);
-    assert_eq!(backfill.collect(PIPELINE, TABLE, RUN, &root, cutoff).unwrap(), [live.clone()]);
+    assert_eq!(backfill.collect(PIPELINE, TABLE, RUN, &root, cutoff).unwrap(), std::slice::from_ref(&live));
     assert!(committed.exists());
 }
