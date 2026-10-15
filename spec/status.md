@@ -11,11 +11,11 @@ An unpinned clause is `committed`; a pinned one is `performed` when its Rust, Le
 | `corpus` | 1 | 10 | 79 | 37 | 7 | 0 | 79 | 0 | 79 |
 | `disclosure` | 3 | 16 | 158 | 68 | 13 | 7 | 103 | 0 | 103 |
 | `read` | 2 | 19 | 276 | 45 | 28 | 13 | 231 | 0 | 231 |
-| `run` | 3 | 29 | 515 | 114 | 44 | 13 | 465 | 0 | 465 |
+| `run` | 3 | 29 | 517 | 114 | 44 | 13 | 467 | 0 | 465 |
 | `store` | 3 | 19 | 290 | 64 | 14 | 11 | 280 | 0 | 280 |
 | `surface` | 2 | 21 | 159 | 63 | 23 | 0 | 132 | 0 | 132 |
 | `topology` | 1 | 6 | 79 | 25 | 5 | 3 | 74 | 0 | 74 |
-| **total** | 22 | 168 | 2530 | 650 | 208 | 79 | 2124 | 0 | |
+| **total** | 22 | 168 | 2532 | 650 | 208 | 79 | 2126 | 0 | |
 
 Decision records: 18.
 
@@ -29,7 +29,7 @@ A milestone reads `closed` when its acceptance test computes `passing` and every
 | 1 — The authority core | 14 | 244 | 225 | passing | closed |
 | 2 — The store | 9 | 183 | 173 | passing | closed |
 | 3 — The run path | 12 | 271 | 255 | passing | closed |
-| 4 — Ingest | 25 | 564 | 433 | passing | closed |
+| 4 — Ingest | 25 | 566 | 435 | passing | closed |
 | 5 — The read face under enforcement | 17 | 308 | 242 | passing | open |
 | 6 — Sync and replicas | 8 | 83 | 83 | passing | closed |
 | 7 — Memory | 6 | 71 | 56 | passing | closed |
@@ -1470,6 +1470,8 @@ Unscheduled operations: 12.
 | `run.land.parse-crashed` | `crates/contextful-connectors/tests/integration/boundary.rs::a_crashed_decode_is_named_and_a_refusal_crosses_intact` | performed |
 | `run.land.partial-parse` | `crates/contextful-decode/tests/integration/pdf.rs::a_page_that_fails_to_render_refuses_the_whole_document` | performed |
 | `run.land.session` | `crates/contextful-context/tests/integration/session.rs::a_session_commits_each_micro_batch_as_its_own_run` | performed |
+| `run.land.session-input` | `crates/contextful-cli/tests/integration/context.rs::a_session_land_commits_each_stdin_batch_as_its_own_run` | performed |
+| `run.land.session-schema` | `crates/contextful-context/tests/integration/session.rs::a_session_reads_schema_json_once_while_its_version_holds` | performed |
 | `run.land.stage-order` | `crates/contextful-cli/tests/integration/pipeline.rs::a_batch_is_guarded_before_recording_and_redacted_before_shredding` | performed |
 | `run.land.table-failed` | `crates/contextful-cli/tests/integration/pipeline.rs::a_failing_table_is_named_with_its_kind_and_run` | performed |
 | `run.land.typed-pull` | `crates/contextful-cli/tests/integration/run.rs::a_pulled_type_lands_its_column_in_that_type` | performed |
