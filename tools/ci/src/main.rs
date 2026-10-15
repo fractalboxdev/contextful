@@ -2,12 +2,14 @@
 //! FlareDispatch gate invoke the identical command.
 
 mod deny;
+mod egress;
 mod e2e;
 mod allowlist;
 mod measure;
 mod release;
 mod layout;
 mod shell;
+mod row_token;
 mod source_lint;
 mod vacuous;
 mod probe;
