@@ -27,6 +27,10 @@ pub enum VisibilityError {
     /// (`disclosure.sweep.orphan-grant`)
     #[error("VisibilityOrphanGrant: source `{origin}`: grant on resource `{resource_id}` names {reason}; the run commits nothing")]
     OrphanGrant { origin: String, resource_id: String, reason: &'static str },
+    /// A servable binding lacks a declared sweep or a staleness budget.
+    /// (`disclosure.mirror.incomplete-binding`)
+    #[error("VisibilityBindingIncomplete: table `{table}` binds source `{origin}` at `{fidelity}` with {missing}")]
+    BindingIncomplete { table: String, origin: String, fidelity: &'static str, missing: &'static str },
     /// An explanation returned content from the resource it decides about.
     /// (`disclosure.explain.no-row`)
     #[error("VisibilityDiagnosticRow: {0}")]
@@ -54,6 +58,7 @@ impl VisibilityError {
             VisibilityError::FamilyUndeclared { .. } => "VisibilityFamilyUndeclared",
             VisibilityError::WatermarkUncovered { .. } => "VisibilityWatermarkUncovered",
             VisibilityError::OrphanGrant { .. } => "VisibilityOrphanGrant",
+            VisibilityError::BindingIncomplete { .. } => "VisibilityBindingIncomplete",
             VisibilityError::DiagnosticRow(_) => "VisibilityDiagnosticRow",
             VisibilityError::NoObservations(_) => "VisibilityNoObservations",
             VisibilityError::UnqualifiedAssurance(_) => "VisibilityUnqualifiedAssurance",

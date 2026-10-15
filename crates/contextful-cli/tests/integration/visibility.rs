@@ -119,3 +119,72 @@ fn a_sweep_block_under_pipelines_is_one_validate_and_sweep_both_read() {
         assert!(stderr.contains("second sweep") && stderr.contains("wiki"), "{stderr}");
     }
 }
+
+/// `visibility sweep --directory <file>` lands the identity provider's links and memberships
+/// in the same run as the grants, and a later run without the flag keeps them.
+#[test]
+fn a_directory_file_lands_identity_links_and_group_members_in_the_run() {
+    let dir = tempfile::tempdir().unwrap();
+    let d = dir.path();
+    std::fs::write(d.join("contextful.toml"), MANIFEST).unwrap();
+    std::fs::write(d.join("pages.jsonl"), lines(&[json!({"page_id": "p1"})])).unwrap();
+    ok(&cf(d, &["context", "land", "wiki/pages", "--project", "wiki", "--rows", "pages.jsonl", "--run-id", "run-0001", "--site-id", "site-a"]));
+    std::fs::write(d.join("grants.jsonl"), lines(&[json!({"resource_id": "p1", "principal": "g-eng", "principal_kind": "group", "level": "viewer"})])).unwrap();
+    std::fs::write(
+        d.join("directory.jsonl"),
+        lines(&[
+            json!({"source_principal": "w-17", "subject": "user://dana@acme.example", "method": "scim_email", "confidence": 1.0}),
+            json!({"group": "g-eng", "member": "w-17", "member_kind": "user"}),
+        ]),
+    )
+    .unwrap();
+    let swept = |extra: &[&str]| {
+        let mut args = vec!["visibility", "sweep", "--project", "wiki", "--source", "wiki", "--kind", "full", "--grants", "grants.jsonl"];
+        args.extend_from_slice(extra);
+        cf(d, &args)
+    };
+    let out = ok(&swept(&["--directory", "directory.jsonl"]));
+    assert!(out.contains("1 group members") && out.contains("1 identity links"), "{out}");
+
+    let files = |t: &str| ok(&cf(d, &["context", "files", t, "--project", "wiki"]));
+    let run_of = |listing: &str| listing.lines().next().and_then(|l| l.split('/').find(|s| s.starts_with("sweep-"))).map(str::to_string);
+    let run = run_of(&files("_visibility/wiki/freshness")).expect("freshness run");
+    for t in ["group_members", "identity_links"] {
+        assert_eq!(run_of(&files(&format!("_visibility/wiki/{t}"))).as_deref(), Some(run.as_str()), "{t}");
+    }
+
+    let out = ok(&swept(&[]));
+    assert!(out.contains("epoch 2") && out.contains("1 group members") && out.contains("1 identity links"), "{out}");
+
+    std::fs::write(d.join("directory.jsonl"), lines(&[json!({"source_principal": "w-17", "subject": "user://dana@acme.example", "method": "scim_email"})])).unwrap();
+    let bad = swept(&["--directory", "directory.jsonl"]);
+    assert!(!bad.status.success());
+    let stderr = String::from_utf8_lossy(&bad.stderr);
+    assert!(stderr.contains("directory file line 1"), "{stderr}");
+}
+
+/// A binding at a servable level lacking a declared sweep for its source or a `max_acl_staleness` raises `VisibilityBindingIncomplete`.
+// spec: disclosure.mirror.incomplete-binding@8ffc1120
+#[test]
+fn pipeline_validate_refuses_a_servable_binding_without_a_sweep_or_a_budget() {
+    let (root, _) = MANIFEST.split_once("[[acl_sweep]]").unwrap();
+    for (manifest, missing) in [
+        (root.to_string(), "no `[[acl_sweep]]` block"),
+        (MANIFEST.replace("max_acl_staleness = \"15m\"\n", ""), "no `max_acl_staleness`"),
+        (format!("{root}{SWEEP}").replace("fidelity          = \"mirrored\"", "fidelity          = \"coarse\"").replace("max_acl_staleness = \"15m\"\n", ""), "no `max_acl_staleness`"),
+    ] {
+        let dir = tempfile::tempdir().unwrap();
+        std::fs::write(dir.path().join("contextful.toml"), &manifest).unwrap();
+        let out = cf(dir.path(), &["pipeline", "validate"]);
+        assert!(!out.status.success(), "{manifest}");
+        let stderr = String::from_utf8_lossy(&out.stderr);
+        assert!(stderr.contains("VisibilityBindingIncomplete") && stderr.contains("wiki/pages") && stderr.contains(missing), "{stderr}");
+    }
+    // A federated binding is served from no store and needs neither.
+    let dir = tempfile::tempdir().unwrap();
+    std::fs::write(dir.path().join("contextful.toml"), root.replace("\"mirrored\"", "\"federated\"").replace("max_acl_staleness = \"15m\"\n", "")).unwrap();
+    ok(&cf(dir.path(), &["pipeline", "validate"]));
+    let dir = tempfile::tempdir().unwrap();
+    std::fs::write(dir.path().join("contextful.toml"), MANIFEST).unwrap();
+    ok(&cf(dir.path(), &["pipeline", "validate"]));
+}

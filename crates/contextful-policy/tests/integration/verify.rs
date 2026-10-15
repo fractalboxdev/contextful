@@ -456,3 +456,41 @@ fn a_credential_binding_no_key_admits_nothing_off_its_local_transport_over_a_see
     contextful_eval::record::emit("bearer-transport-bound", admitted as f64, attempts, OFF_TRANSPORT_SEED);
     assert_eq!(admitted, 0, "{admitted} of {attempts} off-transport presentations admitted");
 }
+
+/// A subject is a tuple of agent, host, `on_behalf_of` principal, task scope, inference zone and incognito flag. A credential binds the subset it names and admits under that combination alone.
+// spec: authority.identify.subject-tuple@89c82ac9
+#[test]
+fn a_credential_binds_the_members_it_names_and_admits_under_that_combination_alone() {
+    use contextful_core::identify::{Member, Subject};
+    let signer = issuer();
+    let full = Subject {
+        on_behalf_of: Some("user://dana@acme.example".into()),
+        agent: Some("agent://research-loop".into()),
+        host: Some("host://laptop-7".into()),
+        task: Some("task://q3-review".into()),
+        zone: Some("on-prem:eu".into()),
+        incognito: true,
+    };
+    let reads = vec![grant(&[Action::Read], &["research/*"])];
+    let admitted = admit(&contextful_policy::issue::mint(&plan_for(&signer, full.clone(), reads), &MintClaims::default(), &signer).unwrap(), &signer, DURING).unwrap();
+    assert_eq!(admitted.subject().to_subject(), full);
+    assert_eq!(admitted.subject().attestations().len(), 5);
+
+    // A credential naming two members binds those two; the others stay absent at admission.
+    let credential = minted(&signer);
+    let pair = admit(&credential, &signer, DURING).unwrap();
+    assert_eq!(pair.subject().attestations().into_keys().collect::<Vec<_>>(), [Member::OnBehalfOf, Member::Agent]);
+    for absent in [Member::Host, Member::Task, Member::Zone] {
+        assert_eq!(pair.subject().get(absent), None, "{absent:?}");
+    }
+    assert!(!pair.subject().incognito());
+
+    // The bound combination does not move at presentation: the same credential with its agent
+    // rewritten, under the original signature, admits nothing.
+    use base64::Engine;
+    let mut bytes = base64::engine::general_purpose::URL_SAFE.decode(&credential).unwrap();
+    let (from, to) = (&b"agent://research-loop"[..], &b"agent://billings-loop"[..]);
+    let at_agent = bytes.windows(from.len()).position(|w| w == from).expect("the credential carries the agent");
+    bytes[at_agent..at_agent + from.len()].copy_from_slice(to);
+    refused(admit(&base64_url(&bytes), &signer, DURING), "SignatureInvalid");
+}

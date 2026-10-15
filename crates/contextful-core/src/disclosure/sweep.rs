@@ -1,14 +1,17 @@
 //! `disclosure.sweep` and `disclosure.mirror`: the `[[acl_sweep]]` block, a `--grants`
-//! file read, and the rows one sweep run commits under `_visibility/<source>/`.
+//! file read, a `--directory` file read, and the rows one sweep run commits under
+//! `_visibility/<source>/`.
 //!
 //! [`commit`] is pure: given the source's current rows and one run's observation, it
 //! returns every row the run lands, or the refusal that commits none of them.
 
 use super::declare::{parse_budget, Binding, Fidelity};
 use super::VisibilityError;
+use crate::identify::{check_value, resolve_link, IdentityLink, LinkMethod, Member, NormalizedSubject};
 use crate::pipeline::declare::ManifestFile;
 use crate::store::declare::DeclarationMalformed;
 use crate::time::Instant;
+use crate::AuthorityError;
 use serde::Deserialize;
 use std::collections::{BTreeMap, BTreeSet};
 
@@ -17,7 +20,7 @@ pub const NAMESPACE: &str = "_visibility";
 
 /// The access tables a sweep run lands, in landing order; `freshness` lands last and names
 /// the run whose `resources` and `grants` rows are current.
-pub const TABLES: [&str; 6] = ["resources", "grants", "principals", "group_members", "tombstones", "freshness"];
+pub const TABLES: [&str; 7] = ["resources", "grants", "principals", "group_members", "identity_links", "tombstones", "freshness"];
 
 /// The store path of `source`'s access table `name`.
 pub fn table(source: &str, name: &str) -> String {
@@ -33,6 +36,9 @@ pub enum SweepError {
     /// A `--grants` line that is not a grant object.
     #[error("grants file line {line}: {reason}")]
     GrantLine { line: usize, reason: String },
+    /// A `--directory` line that is neither a link nor a membership object.
+    #[error("directory file line {line}: {reason}")]
+    DirectoryLine { line: usize, reason: String },
 }
 
 /// The two scheduled sweep kinds.
@@ -165,6 +171,21 @@ impl SweepBlock {
     }
 }
 
+/// Refuse a binding at a servable level whose source declares no `[[acl_sweep]]` block or
+/// which declares no `max_acl_staleness` (`disclosure.mirror.incomplete-binding`).
+pub fn check_bindings(bindings: &[Binding], sweeps: &[SweepBlock]) -> Result<(), VisibilityError> {
+    for b in bindings.iter().filter(|b| b.fidelity.is_servable()) {
+        let missing = match (sweeps.iter().any(|s| s.source == b.source), b.max_acl_staleness_secs.is_some()) {
+            (true, true) => continue,
+            (false, true) => "no `[[acl_sweep]]` block for its source",
+            (true, false) => "no `max_acl_staleness`",
+            (false, false) => "no `[[acl_sweep]]` block for its source and no `max_acl_staleness`",
+        };
+        return Err(VisibilityError::BindingIncomplete { table: b.table.clone(), origin: b.source.clone(), fidelity: b.fidelity.as_str(), missing });
+    }
+    Ok(())
+}
+
 /// One line of a `--grants` file (`disclosure.sweep.grants-file`).
 #[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Deserialize)]
 #[serde(deny_unknown_fields)]
@@ -188,6 +209,84 @@ pub fn parse_grants(text: &str) -> Result<Vec<GrantLine>, SweepError> {
             }
         }
         out.push(g);
+    }
+    Ok(out)
+}
+
+/// A group membership a directory read holds: `member`, of `member_kind`, belongs to `group`.
+#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct Membership {
+    pub group: String,
+    pub member: String,
+    pub member_kind: String,
+}
+
+/// A row of `_visibility/<source>/group_members`: a membership and the instant the run that
+/// read it began.
+#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord)]
+pub struct MemberRow {
+    pub group: String,
+    pub member: String,
+    pub member_kind: String,
+    pub observed_at: Instant,
+}
+
+#[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
+struct LinkLine {
+    source_principal: String,
+    subject: String,
+    method: LinkMethod,
+    confidence: f64,
+}
+
+#[derive(Deserialize)]
+#[serde(untagged)]
+enum DirectoryLine {
+    Link(LinkLine),
+    Member(Membership),
+}
+
+/// The identity provider's directory read of one source: the links its provisioning wrote
+/// and the group memberships it holds (`authority.identify.directory-link`).
+#[derive(Debug, Clone, Default, PartialEq)]
+pub struct Directory {
+    pub links: Vec<IdentityLink>,
+    pub members: Vec<Membership>,
+}
+
+/// Parse a `--directory` file of `source` (`disclosure.sweep.directory-file`): one JSON
+/// object per non-blank line, a link carrying `source_principal`, `subject`, `method` and
+/// `confidence`, or a membership carrying `group`, `member` and `member_kind`. Every
+/// string is non-empty, `confidence` lies in `[0, 1]`, and `subject`, the `on_behalf_of`
+/// principal the link maps onto, passes mint hygiene (`authority.identify.value-hygiene`).
+pub fn parse_directory(source: &str, text: &str) -> Result<Directory, SweepError> {
+    let mut out = Directory::default();
+    for (i, line) in text.lines().enumerate().filter(|(_, l)| !l.trim().is_empty()) {
+        let bad = |reason: String| SweepError::DirectoryLine { line: i + 1, reason };
+        let parsed: DirectoryLine = serde_json::from_str(line)
+            .map_err(|_| bad("neither a link (`source_principal`, `subject`, `method`, `confidence`) nor a membership (`group`, `member`, `member_kind`)".into()))?;
+        match parsed {
+            DirectoryLine::Link(l) => {
+                if l.source_principal.is_empty() {
+                    return Err(bad("`source_principal` is empty".into()));
+                }
+                check_value(Member::OnBehalfOf, &l.subject).map_err(|e| bad(e.to_string()))?;
+                if !(0.0..=1.0).contains(&l.confidence) {
+                    return Err(bad(format!("`confidence` {} lies outside [0, 1]", l.confidence)));
+                }
+                out.links.push(IdentityLink { source: source.into(), source_principal: l.source_principal, on_behalf_of: l.subject, method: l.method, confidence: l.confidence });
+            }
+            DirectoryLine::Member(m) => {
+                for (k, v) in [("group", &m.group), ("member", &m.member), ("member_kind", &m.member_kind)] {
+                    if v.is_empty() {
+                        return Err(bad(format!("`{k}` is empty")));
+                    }
+                }
+                out.members.push(m);
+            }
+        }
     }
     Ok(out)
 }
@@ -276,10 +375,12 @@ impl Freshness {
 }
 
 /// A source's current mirrored state: the rows the latest committed run named current.
-#[derive(Debug, Clone, Default, PartialEq, Eq)]
+#[derive(Debug, Clone, Default, PartialEq)]
 pub struct SourceState {
     pub resources: Vec<ResourceRow>,
     pub grants: Vec<GrantRow>,
+    pub members: Vec<MemberRow>,
+    pub links: Vec<IdentityLink>,
     pub freshness: Option<Freshness>,
 }
 
@@ -292,7 +393,7 @@ pub struct Governed {
 }
 
 /// What one run observed of its source.
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq)]
 pub struct Observation {
     pub source: String,
     pub kind: SweepKind,
@@ -306,6 +407,9 @@ pub struct Observation {
     pub grants: Vec<GrantLine>,
     /// The tightest `max_acl_staleness` among the source's bound tables.
     pub budget_seconds: Option<u64>,
+    /// The directory read, when the run was given one; absent, the current links and
+    /// memberships stand.
+    pub directory: Option<Directory>,
 }
 
 impl Observation {
@@ -313,16 +417,18 @@ impl Observation {
     /// (`disclosure.sweep.grants-file`).
     pub fn from_grants_file(source: &str, kind: SweepKind, sweep_id: &str, began_at: Instant, governed: Vec<Governed>, grants: Vec<GrantLine>) -> Observation {
         let read = governed.iter().map(|g| g.resource_id.clone()).collect();
-        Observation { source: source.into(), kind, sweep_id: sweep_id.into(), began_at, governed, read, grants, budget_seconds: None }
+        Observation { source: source.into(), kind, sweep_id: sweep_id.into(), began_at, governed, read, grants, budget_seconds: None, directory: None }
     }
 }
 
 /// Every row one committed run lands.
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq)]
 pub struct Commit {
     pub resources: Vec<ResourceRow>,
     pub grants: Vec<GrantRow>,
     pub principals: Vec<PrincipalRow>,
+    pub members: Vec<MemberRow>,
+    pub links: Vec<IdentityLink>,
     pub tombstones: Vec<Tombstone>,
     pub freshness: Freshness,
 }
@@ -337,7 +443,9 @@ pub struct Commit {
 /// withdrawn grant and each dropped resource leaves a tombstone. The watermark moves to
 /// `began_at` only when the run read every governed resource
 /// (`disclosure.sweep.watermark-advance`), and the epoch rises by one
-/// (`disclosure.sweep.sweep-epoch`).
+/// (`disclosure.sweep.sweep-epoch`). The run's directory read replaces the source's links
+/// and memberships; a run given none carries the current ones forward
+/// (`disclosure.sweep.directory-file`).
 pub fn commit(prior: &SourceState, obs: &Observation) -> Result<Commit, VisibilityError> {
     let missed: Vec<&str> = obs.governed.iter().map(|g| g.resource_id.as_str()).filter(|id| !obs.read.contains(*id)).collect();
     let covered = missed.is_empty();
@@ -448,5 +556,54 @@ pub fn commit(prior: &SourceState, obs: &Observation) -> Result<Commit, Visibili
         last_incremental_at: if obs.kind == SweepKind::Incremental { Some(obs.began_at) } else { before.and_then(|f| f.last_incremental_at) },
         budget_seconds: obs.budget_seconds,
     };
-    Ok(Commit { resources: resources.into_values().collect(), grants, principals: principals.into_iter().collect(), tombstones, freshness })
+    let (mut members, mut links) = match &obs.directory {
+        Some(d) => (
+            d.members
+                .iter()
+                .map(|m| MemberRow { group: m.group.clone(), member: m.member.clone(), member_kind: m.member_kind.clone(), observed_at: obs.began_at })
+                .collect(),
+            d.links.clone(),
+        ),
+        None => (prior.members.clone(), prior.links.clone()),
+    };
+    members.sort();
+    members.dedup();
+    links.sort_by(|a, b| (&a.source_principal, &a.on_behalf_of, a.method.as_str()).cmp(&(&b.source_principal, &b.on_behalf_of, b.method.as_str())));
+    links.dedup_by(|a, b| (&a.source_principal, &a.on_behalf_of, a.method) == (&b.source_principal, &b.on_behalf_of, b.method));
+    Ok(Commit { resources: resources.into_values().collect(), grants, principals: principals.into_iter().collect(), members, links, tombstones, freshness })
+}
+
+/// The resources of one source `subject` reaches through its current rows.
+///
+/// The reader's identity is the verified `on_behalf_of` (`authority.identify.on-behalf-of`):
+/// `user://<p>` reaches the `user` principal spelled `<p>` and each `user` source principal a
+/// verified link maps onto it, then every `group` those principals belong to, walked with a
+/// visited set. A membership and a grant match on kind and name together. A source
+/// principal no link maps onto the subject reaches nothing
+/// (`authority.identify.unlinked-principal`), and a principal linked through
+/// `operator_asserted` links alone refuses (`authority.identify.unverified-link`).
+pub fn reachable(subject: &NormalizedSubject, state: &SourceState) -> Result<BTreeSet<String>, AuthorityError> {
+    let Some(identity) = subject.identity() else { return Ok(BTreeSet::new()) };
+    // A principal is a `(kind, name)` pair: a name alone never crosses kinds.
+    let mut principals: BTreeSet<(String, String)> = BTreeSet::new();
+    if let Some(p) = identity.strip_prefix("user://") {
+        principals.insert(("user".to_string(), p.to_string()));
+    }
+    let mapped: Vec<IdentityLink> = state.links.iter().filter(|l| l.on_behalf_of == identity).cloned().collect();
+    let linked: BTreeSet<(&str, &str)> = mapped.iter().map(|l| (l.source.as_str(), l.source_principal.as_str())).collect();
+    for (source, source_principal) in linked {
+        if resolve_link(&mapped, source, source_principal)?.is_some() {
+            principals.insert(("user".to_string(), source_principal.to_string()));
+        }
+    }
+    let mut frontier: Vec<(String, String)> = principals.iter().cloned().collect();
+    while let Some((kind, name)) = frontier.pop() {
+        for m in state.members.iter().filter(|m| m.member_kind == kind && m.member == name) {
+            let group = ("group".to_string(), m.group.clone());
+            if principals.insert(group.clone()) {
+                frontier.push(group);
+            }
+        }
+    }
+    Ok(state.grants.iter().filter(|g| principals.contains(&(g.principal_kind.clone(), g.principal.clone()))).map(|g| g.resource_id.clone()).collect())
 }

@@ -26,7 +26,7 @@ fn run(kind: SweepKind, id: &str, began: &str, resources: &[&str], grants: Vec<G
 
 /// The state a committed run leaves for the next one.
 fn after(c: &Commit) -> SourceState {
-    SourceState { resources: c.resources.clone(), grants: c.grants.clone(), freshness: Some(c.freshness.clone()) }
+    SourceState { resources: c.resources.clone(), grants: c.grants.clone(), members: c.members.clone(), links: c.links.clone(), freshness: Some(c.freshness.clone()) }
 }
 
 fn grant_keys(c: &Commit) -> Vec<(String, String)> {

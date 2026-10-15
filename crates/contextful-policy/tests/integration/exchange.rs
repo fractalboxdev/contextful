@@ -602,3 +602,34 @@ fn an_invalid_holder_proof_is_refused_and_mints_nothing() {
         assert!(a.body.get("token").is_none(), "{why}: {}", a.body);
     }
 }
+
+/// `on_behalf_of` is verified at the mint against the issuing identity provider, and admission carries it forward as the reader's identity.
+// spec: authority.identify.on-behalf-of@4c143217
+#[test]
+fn on_behalf_of_comes_from_the_verified_assertion_and_admission_carries_it_as_identity() {
+    use contextful_core::identify::{Attestation, Member};
+    use contextful_policy::verify::{verify_inherited_pipe, Admission};
+    let signer = SeedSigner::generate(SignatureAlgorithm::Ed25519);
+    let x = exchange(SECRET);
+    let a = answer_at(Some(&x), &request(&hs256(&claims("dana@acme.example"), SECRET)), &signer, now());
+    assert_eq!(a.status, 200, "{}", a.body);
+    let revocation = crate::support::no_revocation();
+    let admitted = verify_inherited_pipe(
+        a.body["token"].as_str().unwrap(),
+        &crate::support::keys(&signer),
+        &Admission::new(now(), &revocation).expecting("contextful://acme-research"),
+    )
+    .unwrap();
+    assert_eq!(admitted.subject().identity(), Some("user://dana@acme.example"));
+    assert_eq!(admitted.subject().attestations().get(&Member::OnBehalfOf), Some(&Attestation::Verified));
+
+    // An assertion the identity provider did not sign, or from another issuer, mints no principal.
+    let forged = answer_at(Some(&x), &request(&hs256(&claims("mallory@acme.example"), b"another-secret")), &signer, now());
+    assert_ne!(forged.status, 200, "{}", forged.body);
+    assert!(forged.body.get("token").is_none(), "{}", forged.body);
+    let mut foreign = claims("mallory@acme.example");
+    foreign["iss"] = json!("https://evil.example/");
+    let refused = answer_at(Some(&x), &request(&hs256(&foreign, SECRET)), &signer, now());
+    assert_eq!(identifier(&refused), "ExchangeAssertionInvalid", "{}", refused.body);
+    assert!(refused.body.get("token").is_none());
+}
