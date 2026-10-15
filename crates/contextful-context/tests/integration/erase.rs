@@ -115,7 +115,7 @@ fn partitioned_erasure_paths(key_set: bool, all_erased: bool, initial_empty: boo
 #[test]
 #[cfg(feature = "read")]
 fn erasure_refuses_missing_or_foreign_canonical_audit_keys_before_signed_intent() {
-    canonical_audit_key_refusal(false);
+    for missing in [false, true] { canonical_audit_key_refusal(missing); }
 }
 
 #[test]
@@ -415,8 +415,6 @@ fn signed_retirement_fixture(store: &contextful_context::Store, table: &str, cha
     (store.with_erasure_verifier(audit_dir, vec![key.clone()]).unwrap(), working, key)
 }
 
-/// Query, file, retrieval and cache responses resolve one erasure frontier and revalidate it before releasing bytes; an obsolete frontier releases no rows or files.
-// spec: disclosure.erase.reader-frontier@136f24a8
 #[test]
 #[cfg(feature = "read")]
 fn a_live_erasure_verifier_refuses_a_key_retired_after_opening() {
@@ -912,16 +910,21 @@ fn keyset_erasure_uses_the_same_signed_publication_and_retains_other_keys() {
     let declarations = [table.clone()]; let tables = ["notes".to_string()];
     let signer = std::sync::Arc::new(SeedSigner::generate(SignatureAlgorithm::Ed25519));
     let clock = FixedClock(now);
-    let request = || EraseRequest { declarations:&declarations, tables:&tables,
-        selector:EraseSelector::KeySet { subject_hash:&subject_hash, keys:&keys }, admission:&admission,
+    let undeclared = std::collections::BTreeMap::from([("notes".into(), vec![json!({"text":"private"}).as_object().unwrap().clone()])]);
+    let request_for = |keys| EraseRequest { declarations:&declarations, tables:&tables,
+        selector:EraseSelector::KeySet { subject_hash:&subject_hash, keys }, admission:&admission,
         signer:Some(signer.clone()), audit_dir:&audit_dir,
         audit_key:&audit_key, boundary:&boundary, clock:&clock };
+    let request = || request_for(&keys);
+    let configured = fixture.store.with_erasure_verifier(audit_dir.clone(), vec![contextful_policy::issue::SignerKey::of(signer.as_ref())]).unwrap();
+    let unbound = erase(&configured, request_for(&undeclared)).err().expect("a selector on an undeclared key erases").to_string();
+    assert!(unbound.starts_with("ErasureScopeUnsupported"), "{unbound}");
+    assert!(!fixture.store.root().join("_erasure_frontier.json").exists());
     let other = SeedSigner::generate(SignatureAlgorithm::Ed25519);
     let wrong = fixture.store.with_erasure_verifier(audit_dir.clone(), vec![contextful_policy::issue::SignerKey::of(&other)]).unwrap();
     let refused = erase(&wrong, request());
     assert!(refused.is_err(), "the private signer replaces independently configured trust");
     assert!(!fixture.store.root().join("_erasure_frontier.json").exists());
-    let configured = fixture.store.with_erasure_verifier(audit_dir.clone(), vec![contextful_policy::issue::SignerKey::of(signer.as_ref())]).unwrap();
     let result = erase(&configured, request()).unwrap();
     assert_eq!(result.subject_hash, subject_hash);
     let rows = contextful_context::rows::table_rows(&result.store, &table, &["id"]).unwrap();
@@ -989,7 +992,7 @@ fn column_erasure_admits_composite_members_through_the_built_surface() {
 }
 
 /// Two subject tables holding `alice` and `bob`, an admitted Forget authority, and one erasure of
-/// `subject` under a verifier pinned to `signer` or, with `foreign_verifier`, to another key.
+/// `subject` whose live Forget boundary admits its first `admitted` checks and refuses the rest.
 #[cfg(feature = "read")]
 struct TwoTableErasure {
     fixture: Fixture,
@@ -1015,7 +1018,7 @@ impl TwoTableErasure {
         TwoTableErasure { fixture, tables, audit_dir: project.audit_dir(), audit_key }
     }
 
-    fn erase(&self, subject: &str, foreign_verifier: bool) -> contextful_context::Result<contextful_context::erase::Erased> {
+    fn erase(&self, subject: &str, admitted: usize) -> contextful_context::Result<contextful_context::erase::Erased> {
         use contextful_context::erase::{erase, EraseRequest, EraseSelector};
         use contextful_core::{grant::Action, issue::SignatureAlgorithm, ports::FixedClock};
         use contextful_policy::{enforce::erase::ForgetAdmission, issue::{SeedSigner, SignerKey}, revoke::RevocationState, verify::{effect_boundary, Admission}};
@@ -1024,11 +1027,14 @@ impl TwoTableErasure {
         let authority = reads.authority(crate::read::loop_subject("agent://eraser"), vec![grant]);
         let admission = ForgetAdmission::admit(&authority, &["notes", "events"]).unwrap();
         let now = crate::read::at("2030-01-01T00:05:00Z"); let revocation = RevocationState::default();
-        let boundary = |authority: &contextful_policy::verify::AdmittedAuthority| effect_boundary(authority, &Admission::new(now, &revocation));
+        let checks = std::sync::atomic::AtomicUsize::new(0);
+        let boundary = |authority: &contextful_policy::verify::AdmittedAuthority| {
+            if checks.fetch_add(1, std::sync::atomic::Ordering::SeqCst) >= admitted { return Err(contextful_core::AuthorityError::AuthorityRevoked("the Forget boundary refuses this check".into())); }
+            effect_boundary(authority, &Admission::new(now, &revocation))
+        };
         let names = ["notes".to_string(), "events".to_string()];
         let signer = std::sync::Arc::new(SeedSigner::generate(SignatureAlgorithm::Ed25519));
-        let pinned = if foreign_verifier { SignerKey::of(&SeedSigner::generate(SignatureAlgorithm::Ed25519)) } else { SignerKey::of(signer.as_ref()) };
-        let store = self.fixture.store.with_erasure_verifier(self.audit_dir.clone(), vec![pinned]).unwrap();
+        let store = self.fixture.store.with_erasure_verifier(self.audit_dir.clone(), vec![SignerKey::of(signer.as_ref())]).unwrap();
         erase(&store, EraseRequest { declarations:&self.tables, tables:&names, selector:EraseSelector::Subject(subject), admission:&admission, signer:Some(signer), audit_dir:&self.audit_dir, audit_key:&self.audit_key, boundary:&boundary, clock:&FixedClock(now) })
     }
 
@@ -1042,12 +1048,18 @@ impl TwoTableErasure {
 #[test]
 #[cfg(feature = "read")]
 fn subject_erasure_publishes_every_affected_table_under_one_frontier_and_a_failed_one_exposes_none() {
+    // The third boundary check follows staging both tables; the fourth follows the committed
+    // rename and the working copies but precedes the frontier.
+    for admitted in [2, 3] {
+        let failed = TwoTableErasure::new();
+        assert!(failed.erase("alice", admitted).is_err(), "an erasure refused at check {} commits", admitted + 1);
+        let root = failed.fixture.store.root();
+        assert!(root.join("_erasure/staging").is_dir() || root.join("_erasure/committed").is_dir(), "check {} fails before staging a replacement", admitted + 1);
+        assert!(!root.join("_erasure_frontier.json").exists(), "a failed transaction publishes a frontier");
+        for table in 0..2 { assert_eq!(failed.ids(&failed.fixture.store, table), [json!("a"), json!("b")], "a failed transaction exposes a staged replacement"); }
+    }
     let erasure = TwoTableErasure::new();
-    assert!(erasure.erase("alice", true).is_err(), "an erasure under an unpinned signer commits");
-    assert!(!erasure.fixture.store.root().join("_erasure_frontier.json").exists(), "a failed transaction publishes a frontier");
-    assert!(!erasure.fixture.store.root().join("_erasure/committed").exists(), "a failed transaction commits a replacement");
-    for table in 0..2 { assert_eq!(erasure.ids(&erasure.fixture.store, table), [json!("a"), json!("b")], "a failed transaction exposes a staged replacement"); }
-    let erased = erasure.erase("alice", false).unwrap();
+    let erased = erasure.erase("alice", usize::MAX).unwrap();
     let frontier: serde_json::Value = serde_json::from_slice(&std::fs::read(erased.store.root().join("_erasure_frontier.json")).unwrap()).unwrap();
     assert_eq!(frontier["transaction_id"], json!(erased.transaction_id));
     let published = frontier["tables"].as_object().unwrap();
@@ -1065,7 +1077,7 @@ fn subject_erasure_publishes_every_affected_table_under_one_frontier_and_a_faile
 #[cfg(feature = "read")]
 fn the_subject_hash_is_a_domain_separated_hmac_under_the_project_audit_key() {
     let erasure = TwoTableErasure::new();
-    let erased = erasure.erase("alice", false).unwrap();
+    let erased = erasure.erase("alice", usize::MAX).unwrap();
     assert_eq!(erased.subject_hash, contextful_policy::audit::query_digest(&erasure.audit_key, "contextful.erasure.subject\nalice"));
     assert_ne!(erased.subject_hash, contextful_policy::audit::query_digest(&erasure.audit_key, "alice"), "the subject hash carries no domain");
     let audit = serde_json::to_string(&contextful_policy::audit::entries(&erasure.audit_dir).unwrap()).unwrap();
@@ -1094,7 +1106,7 @@ fn the_subject_hash_is_a_domain_separated_hmac_under_the_project_audit_key() {
 fn the_signed_erasure_entry_binds_transaction_pseudonym_counts_and_replacement_inventory() {
     use sha2::{Digest, Sha256};
     let erasure = TwoTableErasure::new();
-    let erased = erasure.erase("alice", false).unwrap();
+    let erased = erasure.erase("alice", usize::MAX).unwrap();
     let entries = contextful_policy::audit::entries(&erasure.audit_dir).unwrap();
     let entry = entries.iter().find(|entry| entry.attributes["operation"] == "erasure").expect("the erasure appends no audit entry");
     assert_eq!(entry.attributes["transaction_id"], json!(erased.transaction_id));

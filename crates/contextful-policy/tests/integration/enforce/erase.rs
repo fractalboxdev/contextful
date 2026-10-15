@@ -12,7 +12,7 @@ fn forget_admission_requires_distinct_authority_for_every_requested_table() {
         let token = mint(&plan_for(&signer, dana(), vec![grant(actions, &["research/*"])]), &MintClaims::default(), &signer).unwrap();
         admit(&token, &signer, DURING).unwrap()
     };
-    for actions in [vec![Action::Read], vec![Action::Write], vec![Action::Execute], vec![Action::Read, Action::Write, Action::Execute]] {
+    for actions in [vec![Action::Read], vec![Action::Write], vec![Action::Execute], vec![Action::Read, Action::Write, Action::Execute], vec![Action::Admin], vec![Action::Read, Action::Write, Action::Execute, Action::Admin]] {
         let authority = authority(&actions);
         let refusal = ForgetAdmission::admit(&authority, &["research/notes"]).unwrap_err();
         assert!(refusal.to_string().starts_with("ErasureUngranted"), "{refusal}");

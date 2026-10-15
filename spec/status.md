@@ -9,13 +9,13 @@ An unpinned clause is `committed`; a pinned one is `performed` when its Rust, Le
 | `authority` | 2 | 16 | 295 | 79 | 29 | 9 | 224 | 0 | 224 |
 | `connector` | 2 | 14 | 363 | 91 | 21 | 15 | 260 | 0 | 260 |
 | `corpus` | 1 | 10 | 79 | 37 | 7 | 0 | 79 | 0 | 79 |
-| `disclosure` | 3 | 16 | 158 | 68 | 13 | 6 | 80 | 0 | 80 |
-| `read` | 2 | 19 | 276 | 45 | 28 | 13 | 230 | 0 | 230 |
+| `disclosure` | 3 | 16 | 158 | 68 | 13 | 7 | 103 | 0 | 103 |
+| `read` | 2 | 19 | 276 | 45 | 28 | 13 | 231 | 0 | 231 |
 | `run` | 3 | 28 | 509 | 114 | 44 | 11 | 459 | 0 | 459 |
 | `store` | 3 | 19 | 290 | 64 | 14 | 11 | 280 | 0 | 280 |
 | `surface` | 2 | 21 | 159 | 63 | 23 | 0 | 129 | 0 | 129 |
 | `topology` | 1 | 6 | 79 | 25 | 5 | 3 | 74 | 0 | 74 |
-| **total** | 22 | 167 | 2522 | 649 | 208 | 76 | 2085 | 0 | |
+| **total** | 22 | 167 | 2522 | 649 | 208 | 77 | 2109 | 0 | |
 
 Decision records: 18.
 
@@ -33,7 +33,7 @@ A milestone reads `closed` when its acceptance test computes `passing` and every
 | 5 — The read face under enforcement | 17 | 308 | 242 | passing | open |
 | 6 — Sync and replicas | 8 | 83 | 83 | passing | closed |
 | 7 — Memory | 6 | 71 | 56 | passing | closed |
-| 8 — Accountability | 5 | 84 | 48 | passing | open |
+| 8 — Accountability | 5 | 84 | 71 | passing | open |
 | 9 — Visibility | 6 | 41 | 11 | open | open |
 | 10 — Cadence and the operator plane | 11 | 99 | 85 | passing | open |
 | 11 — The derive tier | 7 | 94 | 93 | passing | closed |
@@ -900,6 +900,28 @@ Unscheduled operations: 12.
 | `disclosure.bound-staleness.budget-grammar` | `crates/contextful-core/tests/integration/disclosure/declare.rs::a_budget_outside_the_grammar_is_refused_naming_table_and_text` | performed |
 | `disclosure.declare-fidelity.family-bound` | `crates/contextful-core/tests/integration/disclosure/declare.rs::a_level_the_family_does_not_permit_is_refused` | performed |
 | `disclosure.declare-fidelity.family-undeclared` | `crates/contextful-core/tests/integration/disclosure/declare.rs::a_block_naming_no_family_is_refused` | performed |
+| `disclosure.erase.atomic-publication` | `crates/contextful-context/tests/integration/erase.rs::subject_erasure_publishes_every_affected_table_under_one_frontier_and_a_failed_one_exposes_none` | performed |
+| `disclosure.erase.canonical-audit-key` | `crates/contextful-context/tests/integration/erase.rs::erasure_refuses_missing_or_foreign_canonical_audit_keys_before_signed_intent` | performed |
+| `disclosure.erase.cascade` | `crates/contextful-core/tests/integration/disclosure/erase.rs::the_cascade_reaches_an_exclusively_referenced_fact_16_hops_away` | performed |
+| `disclosure.erase.cascade-unbounded` | `crates/contextful-core/tests/integration/disclosure/erase.rs::a_cascade_deeper_than_16_hops_raises_erasure_cascade_unbounded` | performed |
+| `disclosure.erase.column-key-set` | `crates/contextful-cli/tests/integration/erase.rs::column_keyset_erases_every_declaring_table_without_subject_identity` | performed |
+| `disclosure.erase.key-set` | `crates/contextful-context/tests/integration/erase.rs::keyset_erasure_uses_the_same_signed_publication_and_retains_other_keys` | performed |
+| `disclosure.erase.privilege` | `crates/contextful-policy/tests/integration/enforce/erase.rs::forget_admission_requires_distinct_authority_for_every_requested_table` | performed |
+| `disclosure.erase.reader-frontier` | `crates/contextful-context/tests/integration/read/respond.rs::a_live_session_and_cached_response_refuse_an_incomplete_erasure_frontier` | performed |
+| `disclosure.erase.recovery` | `crates/contextful-context/tests/integration/erase.rs::recovery_completes_a_committed_frontier_discards_uncommitted_replacements_and_refuses_a_disagreeing_record` | performed |
+| `disclosure.erase.recovery-verb` | `crates/contextful-cli/tests/integration/erase.rs::signed_frontier_recovery_replays_without_signer_and_preserves_the_key_lifecycle` | performed |
+| `disclosure.erase.retirement-inventory` | `crates/contextful-context/tests/integration/erase.rs::opaque_retirement_recovery_binds_store_transaction_directory_path_and_canonical_key` | performed |
+| `disclosure.erase.row-free-audit` | `crates/contextful-context/tests/integration/erase.rs::the_signed_erasure_entry_binds_transaction_pseudonym_counts_and_replacement_inventory` | performed |
+| `disclosure.erase.shared-references` | `crates/contextful-core/tests/integration/disclosure/erase.rs::a_shared_digest_survives_while_a_surviving_reference_names_it` | performed |
+| `disclosure.erase.signer-binding` | `crates/contextful-context/tests/integration/erase.rs::a_frontier_cannot_choose_its_own_signer_or_an_unconfigured_verifier` | performed |
+| `disclosure.erase.store-binding` | `crates/contextful-context/tests/integration/erase.rs::a_signed_frontier_cannot_replay_into_a_recreated_store_identity` | performed |
+| `disclosure.erase.subject-column` | `crates/contextful-core/tests/integration/disclosure/erase.rs::a_subject_erasure_against_a_table_without_a_subject_column_raises_erasure_subject_undeclared` | performed |
+| `disclosure.erase.subject-pseudonym` | `crates/contextful-context/tests/integration/erase.rs::the_subject_hash_is_a_domain_separated_hmac_under_the_project_audit_key` | performed |
+| `disclosure.erase.surviving-citations` | `crates/contextful-core/tests/integration/disclosure/erase.rs::a_survival_table_keeps_rows_whose_references_reach_erased_rows` | performed |
+| `disclosure.erase.survivor-names` | `crates/contextful-context/tests/integration/erase.rs::partitioned_erasure_removes_designated_values_from_signed_paths_and_survivor_names` | performed |
+| `disclosure.erase.unsigned-recovery` | `crates/contextful-cli/tests/integration/erase.rs::unpublished_recovery_requires_complete_scope_and_preserves_live_rows` | performed |
+| `disclosure.erase.unsupported-scope` | `crates/contextful-policy/tests/integration/enforce/erase.rs::unsupported_forget_narrowing_and_empty_target_sets_refuse_before_store_access` | performed |
+| `disclosure.erase.working-publication` | `crates/contextful-context/tests/integration/erase.rs::an_erased_store_accepts_normal_append_fold_and_recovery_without_a_signer` | performed |
 | `disclosure.explain.audience` | `crates/contextful-cli/tests/integration/explain.rs::the_audience_names_roles_and_counts_principal_classes_without_naming_one` | performed |
 | `disclosure.explain.coverage` | `crates/contextful-cli/tests/integration/explain.rs::coverage_counts_the_chain_and_names_unreached_spans_and_the_binding` | performed |
 | `disclosure.explain.decision` | `crates/contextful-policy/tests/integration/explain.rs::a_role_grant_reading_the_table_admits_and_a_write_grant_or_the_default_set_does_not` | performed |
@@ -909,6 +931,7 @@ Unscheduled operations: 12.
 | `disclosure.explain.path` | `crates/contextful-policy/tests/integration/explain.rs::an_admitting_path_runs_role_grant_then_the_declared_steps_and_a_denial_ends_at_default_deny` | performed |
 | `disclosure.explain.replay` | `crates/contextful-cli/tests/integration/explain.rs::a_window_replays_the_subjects_reads_of_the_table_inside_it` | performed |
 | `disclosure.explain.unqualified-assurance` | `crates/contextful-policy/tests/integration/explain.rs::a_denial_without_coverage_is_refused_and_with_coverage_releases` | performed |
+| `disclosure.record.audit-key` | `crates/contextful-context/tests/integration/erase.rs::the_project_audit_key_has_one_stable_private_creation_and_refuses_bad_files` | performed |
 | `disclosure.record.bound-entry` | `crates/contextful-agent/tests/integration/mcp.rs::a_bounded_reads_entry_carries_its_bounds_snapshot_query_and_digest` | performed |
 | `disclosure.record.chain-header` | `crates/contextful-policy/tests/integration/audit.rs::a_chain_header_fixes_the_digest_and_segment_size_and_roots_the_first_link` | performed |
 | `disclosure.record.entry-fields` | `crates/contextful-policy/tests/integration/audit.rs::an_entry_carrying_a_field_outside_its_digest_breaks_the_chain_at_that_entry` | performed |
@@ -1059,6 +1082,7 @@ Unscheduled operations: 12.
 | `read.recall.stale-revision` | `crates/contextful-memory/tests/integration/evidence.rs::a_stale_claim_stays_gated_until_a_new_source_row_resynthesizes_it` | performed |
 | `read.recall.suppression-count` | `crates/contextful-memory/tests/integration/synthesize.rs::a_suppressed_claim_is_counted_and_never_named` | performed |
 | `read.recall.usage-ledger` | `crates/contextful-agent/tests/integration/mcp.rs::memory_reads_record_the_claim_ids_they_returned` | performed |
+| `read.reference.erased-verdict` | `crates/contextful-context/tests/integration/erase.rs::subject_erasure_publishes_survivors_and_collects_original_retained_parts` | performed |
 | `read.register.admission-refused` | `crates/contextful-agent/tests/integration/http.rs::a_refused_admission_answers_401_with_its_identifier` | performed |
 | `read.register.advertised-is-enforced` | `crates/contextful-context/tests/integration/read/register.rs::the_published_limit_is_the_applied_one` | performed |
 | `read.register.available-bound-argument` | `crates/contextful-agent/tests/integration/mcp.rs::available_as_of_wraps_only_the_tables_a_read_touches` | performed |

@@ -210,16 +210,17 @@ referenced_by = [{ table = "missing", column = "blob" }]
     assert!(!error.to_string().contains("alice"));
 }
 
-/// A subject table and a chain of `depth` derived tables, each row referenced only by its parent.
+/// A subject table and a chain of `depth` derived tables, each holding one row on alice's chain and
+/// one on bob's, each row referenced only by its parent.
 fn cascade_chain(depth: usize) -> (Vec<TableDecl>, RetainedRows) {
     use contextful_core::store::declare::ErasureReference;
     let mut declarations = vec![TableDecl { name: "notes".into(), subject_id: Some("subject".into()), ..TableDecl::default() }];
-    let mut rows: RetainedRows = BTreeMap::from([("notes".into(), objects(json!([{"subject":"alice","reference":"k0"},{"subject":"bob","reference":"kept"}])))]);
+    let mut rows: RetainedRows = BTreeMap::from([("notes".into(), objects(json!([{"subject":"alice","reference":"k0"},{"subject":"bob","reference":"kept0"}])))]);
     for hop in 1..=depth {
         let parent = if hop == 1 { "notes".into() } else { format!("d{}", hop - 1) };
         let name = format!("d{hop}");
         declarations.push(TableDecl { name: name.clone(), erasure_key: Some("key".into()), referenced_by: Some(vec![ErasureReference { table: parent, column: "reference".into() }]), ..TableDecl::default() });
-        rows.insert(name, objects(json!([{"key":format!("k{}", hop - 1),"reference":format!("k{hop}")}])));
+        rows.insert(name, objects(json!([{"key":format!("k{}", hop - 1),"reference":format!("k{hop}")},{"key":format!("kept{}", hop - 1),"reference":format!("kept{hop}")}])));
     }
     (declarations, rows)
 }
@@ -232,7 +233,7 @@ fn the_cascade_reaches_an_exclusively_referenced_fact_16_hops_away() {
     let selected = select_subject(&declarations, &rows, &["notes".into()], "alice").unwrap();
     assert_eq!(selected.removes("notes"), &[true, false]);
     for hop in 1..=16 {
-        assert_eq!(selected.removes(&format!("d{hop}")), &[true], "the cascade stops before hop {hop}");
+        assert_eq!(selected.removes(&format!("d{hop}")), &[true, false], "the cascade stops before hop {hop} or leaves its provenance");
     }
 }
 

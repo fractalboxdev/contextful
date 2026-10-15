@@ -294,7 +294,6 @@ sequenceDiagram
     box Contextful
         participant P as purge
         participant S as store files
-        participant T as transaction record
         participant L as audit chain
     end
     participant V as verifier
@@ -302,13 +301,14 @@ sequenceDiagram
     P->>S: rewrite run files, snapshots, builds, memory mirror
     P->>P: hash tenant with fresh salt, sign payload
     P->>L: append the receipt entry under request_id
-    P->>T: commit the frontier naming that entry
     P-->>O: receipt with prior_request_id
     O->>V: receipt and the tenant identifier
     V->>V: recompute hashes, check the signature
 ```
 
 unsettled: Does the replication bucket fall inside the receipt claim once the object interface gains a delete? owner: disclosure affects: disclosure.receipt
+
+unsettled: Which record holds a purge's `request_id` so a repeat purge returns it as `prior_request_id`? owner: disclosure affects: disclosure.receipt
 
 ## Shapes
 
@@ -325,10 +325,10 @@ The audit segment and the erasure transaction records:
     chain.held              signed {seq, entry_hash} where the issuer first held the log
     audit.lock              held by the one append group writing
   audit.key                 the 32-byte project audit key
-  forget/
-    <subject_hash>.stale    {subject_hash, executed_at}
   context/<project>/
     _erasure_frontier.json  {transaction_id, audit_hash, audit_seq, tables}
+    forget/
+      <subject_hash>.stale  {subject_hash, executed_at}
     _erasure/
       staging/<id>/         uncommitted replacements, discarded on recovery
       committed/<id>/       signed survivor baselines and certificates
