@@ -9,13 +9,13 @@ An unpinned clause is `committed`; a pinned one is `performed` when its Rust, Le
 | `authority` | 2 | 16 | 295 | 79 | 29 | 9 | 224 | 0 | 224 |
 | `connector` | 2 | 14 | 363 | 91 | 21 | 15 | 260 | 0 | 260 |
 | `corpus` | 1 | 10 | 79 | 37 | 7 | 0 | 79 | 0 | 79 |
-| `disclosure` | 3 | 16 | 158 | 68 | 13 | 5 | 72 | 0 | 72 |
+| `disclosure` | 3 | 16 | 158 | 68 | 13 | 6 | 80 | 0 | 80 |
 | `read` | 2 | 19 | 276 | 45 | 28 | 13 | 230 | 0 | 230 |
 | `run` | 3 | 28 | 509 | 114 | 44 | 11 | 459 | 0 | 459 |
 | `store` | 3 | 19 | 290 | 64 | 14 | 11 | 280 | 0 | 280 |
 | `surface` | 2 | 21 | 159 | 63 | 23 | 0 | 129 | 0 | 129 |
 | `topology` | 1 | 6 | 79 | 25 | 5 | 3 | 74 | 0 | 74 |
-| **total** | 22 | 167 | 2522 | 649 | 208 | 75 | 2077 | 0 | |
+| **total** | 22 | 167 | 2522 | 649 | 208 | 76 | 2085 | 0 | |
 
 Decision records: 18.
 
@@ -38,7 +38,7 @@ A milestone reads `closed` when its acceptance test computes `passing` and every
 | 10 — Cadence and the operator plane | 11 | 99 | 85 | passing | open |
 | 11 — The derive tier | 7 | 94 | 93 | passing | closed |
 | 12 — The operator console | 12 | 56 | 41 | passing | open |
-| 13 — Disclosure | 5 | 33 | 13 | open | open |
+| 13 — Disclosure | 5 | 33 | 21 | open | open |
 | 14 — Assurance | 7 | 165 | 128 | passing | closed |
 | 15 — Point-in-time evaluation | 7 | 78 | 77 | passing | closed |
 | 16 — Memory graph walk | 1 | 11 | 0 | absent | open |
@@ -934,6 +934,14 @@ Unscheduled operations: 12.
 | `disclosure.record.unpersisted-wire` | `crates/contextful-agent/tests/integration/audit.rs::a_read_whose_entry_does_not_sync_releases_no_rows` | performed |
 | `disclosure.record.unsigned-tip` | `crates/contextful-policy/tests/integration/audit.rs::a_held_open_over_an_unsigned_tip_refuses_until_the_key_holder_anchors_it` | performed |
 | `disclosure.record.v0-chain` | `crates/contextful-policy/tests/integration/audit.rs::a_v0_chain_verifies_and_appends_under_v0_rules` | performed |
+| `disclosure.release.budget-reservation` | `crates/contextful-sqlite/tests/integration/budget.rs::concurrent_releases_over_one_unit_never_overspend_its_cap` | performed |
+| `disclosure.release.contributor-key` | `crates/contextful-core/tests/integration/disclosure/release.rs::a_statement_without_the_contributor_key_raises_contributor_key_absent` | performed |
+| `disclosure.release.duplicate-grain` | `crates/contextful-core/tests/integration/disclosure/release.rs::a_carried_column_varying_within_its_group_raises_duplicate_grain` | performed |
+| `disclosure.release.forbidden-column` | `crates/contextful-core/tests/integration/disclosure/release.rs::a_published_forbidden_column_raises_and_the_contributor_key_does_not` | performed |
+| `disclosure.release.group-key` | `crates/contextful-core/tests/integration/disclosure/release.rs::a_group_key_outside_the_allowlist_raises_group_key_not_permitted` | performed |
+| `disclosure.release.metric-bounds` | `crates/contextful-core/tests/integration/disclosure/release.rs::a_sum_folds_clips_and_quantizes_each_contributor_and_refuses_without_bounds` | performed |
+| `disclosure.release.noise-mechanism` | `crates/contextful-core/tests/integration/disclosure/release.rs::noise_is_two_sided_geometric_at_sensitivity_over_the_divided_epsilon` | performed |
+| `disclosure.release.release-envelope` | `crates/contextful-core/tests/integration/disclosure/release.rs::the_envelope_reports_table_hash_spend_suppression_and_rows_and_no_contributor` | performed |
 | `disclosure.set-mode.aggregate-shape` | `crates/contextful-context/tests/integration/read/guard.rs::aggregate_shape_follows_the_engine_parse` | performed |
 | `disclosure.set-mode.check-verb` | `crates/contextful-cli/tests/integration/disclosure.rs::check_reports_each_published_model_refusal_by_name` | performed |
 | `disclosure.set-mode.model-unreadable` | `crates/contextful-cli/tests/integration/disclosure.rs::check_reads_sql_file_relative_to_its_manifest` | performed |

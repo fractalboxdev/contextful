@@ -81,6 +81,8 @@ The ordered statistics release, the write-time disclosure policy, and the per-un
 - `forbidden-column` — A contract declaring a forbidden column, or a materialization producing one, raises `DisclosureForbiddenColumnPublished`. The check runs after the contributor key leaves the published columns.
   *A-disclosure*
 
+unsettled: Which declaration carries a release's per-run spend and each unit's lifetime cap, and where in a project does the budget ledger live? owner: disclosure affects: disclosure.release
+
 ## suppress
 
 The group-size floor, the contributor-share ceiling, and the single signal a withheld group leaves.

@@ -1,6 +1,8 @@
 //! The SQLite adapter's one integration binary: `machine.sqlite` behind the `Catalog`
-//! port and the run storage ports, `derived.sqlite` behind the `DerivedCatalog` port.
+//! port and the run storage ports, `derived.sqlite` behind the `DerivedCatalog` port, and
+//! the disclosure budget behind the `BudgetLedger` port.
 
+mod budget;
 mod derived;
 mod export;
 mod machine;
