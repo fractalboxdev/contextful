@@ -384,9 +384,12 @@ impl Face {
                 let mut base = self.adjusted(&decl, s.relation, bounds)?;
                 let mut columns = s.columns;
                 if let Some(h) = horizon {
+                    let before: Vec<String> = columns.iter().map(|c| c.name.clone()).collect();
                     (base, columns) = under_horizon(&decl, base, columns, &self.store.schema(table)?, h);
-                    // A withheld column leaves the registered schema, and a mask on it masks nothing.
-                    policy.columns.retain(|name, _| columns.iter().any(|c| &c.name == name));
+                    // A withheld column leaves the registered schema, and a policy on it governs
+                    // nothing; a policy naming a column the table never carried still refuses.
+                    let withheld: Vec<String> = before.into_iter().filter(|name| !columns.iter().any(|c| &c.name == name)).collect();
+                    policy.columns.retain(|name, _| !withheld.contains(name));
                 }
                 TableSource { decl, policy, base, files, columns, landed: true, ledger, resolved }
             }

@@ -81,8 +81,8 @@ fn a_horizon_read_withholds_load_stamps_and_keeps_citation_stamps() {
     let (s, _) = server(&bounded);
     let answer = call(&s, "context.query", json!({ "sql": sql }));
     let seen = columns(&answer);
-    assert!(!seen.iter().any(|c| c == "_ingested_at" || c == "_commit_seq"), "{seen:?}");
     assert!(seen.iter().any(|c| c == "_run_id") && seen.iter().any(|c| c == "_row_seq"), "{seen:?}");
+    assert!(!seen.iter().any(|c| c == "_ingested_at" || c == "_commit_seq"), "{seen:?}");
     assert_eq!(ok(&answer)["rows"].as_array().unwrap().len(), 1, "{answer}");
     let text = refused(&call(&s, "context.query", json!({ "sql": r#"SELECT "_ingested_at" FROM "research/earnings""# })));
     assert!(text.contains("_ingested_at"), "{text}");
@@ -95,6 +95,7 @@ fn a_horizon_read_withholds_load_stamps_and_keeps_citation_stamps() {
     let description = call(&s, "context.describe", json!({ "table": "research/earnings" }));
     assert_eq!(ok(&description)["row_count"], json!("1"), "{description}");
     let listed = described(&description);
+    assert!(listed.iter().any(|c| c == "_run_id"), "{listed:?}");
     assert!(!listed.iter().any(|c| c == "_ingested_at" || c == "_commit_seq"), "{listed:?}");
 
     // Ranking orders without the load stamp.
@@ -239,7 +240,9 @@ fn a_horizon_ranking_reads_the_pinned_capture() {
     // The first capture alone answers when pinned, though a later capture holds more pages.
     let (answer, found) = ranked(&ids[0]);
     assert_eq!(found, ["https://a.example/rates", "https://b.example/jobs"], "{answer}");
-    assert!(ok(&answer)["rows"].as_array().unwrap().iter().all(|r| r[1]["digest"] != json!("a2")), "{answer}");
+    let digests: Vec<&Value> = ok(&answer)["rows"].as_array().unwrap().iter().map(|r| &r[1]["digest"]).collect();
+    assert_eq!(digests.len(), 2, "{answer}");
+    assert!(digests.iter().all(|d| **d != json!("a2")), "{answer}");
     // The later capture answers within the horizon only where its leak score is 0.
     let (_, found) = ranked(&ids[1]);
     assert_eq!(found, ["https://a.example/rates", "https://b.example/jobs"]);
