@@ -125,27 +125,27 @@ mod release {
     use anyhow::{Context, Result};
     use contextful_context::build::{build_released, BuildRequest, OsEntropy};
     use contextful_core::disclosure::error::DisclosureError;
-    use contextful_core::disclosure::noise::Spend;
+    use contextful_core::disclosure::noise::{Entropy, Spend};
     use contextful_core::disclosure::release::{release, spend_of, Breakdown, BudgetLedger, ReleaseError, ReleaseOutput, ReleaseRequest};
     use contextful_core::pipeline::model::project_disclosure;
     use contextful_policy::enforce::mask::Pepper;
     use contextful_sqlite::SqliteBudgetLedger;
-    use sha2::{Digest, Sha256};
     use std::cell::RefCell;
     use std::collections::BTreeSet;
     use std::path::{Path, PathBuf};
 
     /// The project ledger under the declared cap: each unit is recorded under its key's
-    /// SHA-256 digest and granted the cap before its spend is reserved
-    /// (`disclosure.release.lifetime-cap`, `disclosure.release.budget-ledger`).
+    /// keyed digest under the project's pepper and granted the cap before its spend is
+    /// reserved (`disclosure.release.lifetime-cap`, `disclosure.release.budget-ledger`).
     struct DeclaredLedger {
         ledger: SqliteBudgetLedger,
         cap: u64,
+        pepper: Pepper,
     }
 
     impl BudgetLedger for DeclaredLedger {
         fn reserve(&self, release_id: &str, units: &BTreeSet<String>, spend: Spend) -> std::result::Result<(), ReleaseError> {
-            let digests: BTreeSet<String> = units.iter().map(|u| format!("{:x}", Sha256::digest(u.as_bytes()))).collect();
+            let digests: BTreeSet<String> = units.iter().map(|u| self.pepper.digest(u)).collect();
             for digest in &digests {
                 self.ledger.grant(digest, self.cap).map_err(ReleaseError::Ledger)?;
             }
@@ -169,6 +169,8 @@ mod release {
         let files = crate::pipeline::manifests(&l.declaration)?;
         let cap = project_disclosure(&files)?.cap_micros();
         let text = if l.declaration.exists() { std::fs::read_to_string(&l.declaration)? } else { String::new() };
+        let grouped = crate::export::publication::validate_job(&text, id, &[id.to_string()])?;
+        let _publication = if grouped { Some(crate::export::publication::lock(&l)?) } else { None };
         let site_id = site_id_for(&text, &l.declaration, site_id, site_id_env)?;
         let started_at = crate::build::now(&project.now)?;
         let completed_at = match &project.now {
@@ -177,17 +179,27 @@ mod release {
         };
         let face = open_face(&l.project, &l.declaration, &text, Pepper::resolve(|k| std::env::var(k).ok()))
             .with_context(|| format!("opening the read face over `{}`", l.declaration.display()))?;
-        let ledger = DeclaredLedger { ledger: SqliteBudgetLedger::open(&ledger_path(&l.project.dir, &l.project.name))?, cap };
+        let ledger = DeclaredLedger {
+            ledger: SqliteBudgetLedger::open(&ledger_path(&l.project.dir, &l.project.name))?,
+            cap,
+            pepper: Pepper::resolve(|k| std::env::var(k).ok()),
+        };
         let entropy = RefCell::new(OsEntropy::new()?);
         let outcome = RefCell::new(None);
-        let step = |release_id: &str, breakdown: Breakdown| {
-            let request = ReleaseRequest { release_id: release_id.to_string(), table: spec.id.clone(), spend };
+        // The ledger is project-wide and a build id is unique only within one model's chain,
+        // so each invocation reserves under a fresh nonce: no release replays another's.
+        let step = |build_id: &str, breakdown: Breakdown| {
+            let nonce = entropy.borrow_mut().next_u64();
+            let request = ReleaseRequest { release_id: format!("{}/{build_id}/{nonce:016x}", spec.id), table: spec.id.clone(), spend };
             let released = release(&policy, &breakdown, &request, &ledger, &mut *entropy.borrow_mut())?;
             let table = released.table.clone();
             *outcome.borrow_mut() = Some(released);
             Ok(table)
         };
-        build_released(&face, &BuildRequest { model: &spec, site_id: &site_id, started_at, completed_at, available_as_of: None }, &step)?;
+        let built = build_released(&face, &BuildRequest { model: &spec, site_id: &site_id, started_at, completed_at, available_as_of: None }, &step)?;
+        if grouped {
+            crate::export::publication::record_completion(face.store(), &text, id, &built.build_id, serde_json::to_value(&built.watermark)?)?;
+        }
         let released = outcome.into_inner().context("the release step ran")?;
         println!(
             "{}",

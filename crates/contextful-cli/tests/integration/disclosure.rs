@@ -141,8 +141,11 @@ revenue = { lower = 0, upper = 10000, quantum = 1 }
 
 const CAP: &str = "\n[disclosure]\nunit_lifetime_cap = 1500\n";
 
+/// The pepper every released project resolves; the ledger keys units under it.
+const PEPPER: &str = "release-test-pepper";
+
 fn cli(dir: &std::path::Path, args: &[&str]) -> std::process::Output {
-    Command::new(env!("CARGO_BIN_EXE_contextful")).current_dir(dir).env_remove("CONTEXTFUL_NODE_ID").args(args).output().unwrap()
+    Command::new(env!("CARGO_BIN_EXE_contextful")).current_dir(dir).env_remove("CONTEXTFUL_NODE_ID").env("CONTEXTFUL_PEPPER", PEPPER).args(args).output().unwrap()
 }
 
 /// A project declaring `manifest`, with `energy` balanced across three tenants and `retail`
@@ -238,8 +241,8 @@ fn release_spends_against_the_declared_lifetime_cap() {
     assert!(release(dir.path(), &[]).status.success(), "the raised cap covers a second release");
 }
 
-/// A project's budget ledger is `.contextful/disclosure/<project>/budget.sqlite`, outside the synced store root, and records each contributing unit under the SHA-256 digest of its key.
-// spec: disclosure.release.budget-ledger@775f89b7
+/// A project's budget ledger is `.contextful/disclosure/<project>/budget.sqlite`, outside the synced store root, and records each contributing unit under the keyed digest of its key under the project's pepper.
+// spec: disclosure.release.budget-ledger@425f6b34
 #[test]
 fn release_keeps_the_ledger_outside_the_store_root_under_unit_digests() {
     let dir = benchmark(&format!("{RELEASED}{CAP}"));
@@ -249,7 +252,8 @@ fn release_keeps_the_ledger_outside_the_store_root_under_unit_digests() {
     let ledger = contextful_sqlite::SqliteBudgetLedger::open(&path).unwrap();
     for tenant in ["t1", "t2", "t3", "t4", "t5", "t6"] {
         assert!(ledger.budget(tenant).unwrap().is_none(), "{tenant} is recorded in plaintext");
-        let digest = sha2_hex(tenant);
+        assert!(ledger.budget(&sha2_hex(tenant)).unwrap().is_none(), "{tenant} is recorded under an unkeyed digest");
+        let digest = contextful_policy::enforce::mask::Pepper::resolve(|_| Some(PEPPER.to_string())).digest(tenant);
         assert_eq!(ledger.budget(&digest).unwrap().map(|b| b.spent), Some(1_000_000_000), "{tenant}");
     }
     assert!(!dir.path().join(".contextful/context/benchmark/budget.sqlite").exists());
@@ -258,4 +262,29 @@ fn release_keeps_the_ledger_outside_the_store_root_under_unit_digests() {
 fn sha2_hex(text: &str) -> String {
     use sha2::Digest;
     format!("{:x}", sha2::Sha256::digest(text.as_bytes()))
+}
+
+/// Two governed models over the same tenants, released at one instant, each reserve from
+/// every unit: the second release under a cap covering one raises `DisclosureUnitBudgetExhausted`.
+#[test]
+fn releases_of_two_models_at_one_instant_each_charge_the_shared_units() {
+    let second = RELEASED.split("[[model]]").nth(1).unwrap().replace("id = \"revenue_by_industry\"", "id = \"revenue_by_industry_b\"");
+    let dir = benchmark(&format!("{RELEASED}\n[[model]]{second}{CAP}"));
+    let now = ["--now", "2030-01-01T00:00:00Z"];
+    let out = release(dir.path(), &now);
+    assert!(out.status.success(), "{}", String::from_utf8_lossy(&out.stderr));
+    let out = cli(dir.path(), &["disclosure", "release", "revenue_by_industry_b", "--project", "benchmark", "--now", "2030-01-01T00:00:00Z"]);
+    assert!(String::from_utf8_lossy(&out.stderr).starts_with("DisclosureUnitBudgetExhausted:"), "{}", String::from_utf8_lossy(&out.stderr));
+}
+
+/// A governed model named as a publication group's job records the group's completion on release.
+#[test]
+fn a_release_of_a_publication_job_records_the_group_completion() {
+    let group = "\n[[export]]\nname='industry-copy'\ntable='revenue_by_industry'\nendpoint='http://127.0.0.1:1/events'\nformat='changes-v1'\nkey=['industry']\nschedule='every 30s'\n[[publication]]\nname='industry-projection'\njob='revenue_by_industry'\nmembers=['industry-copy']\n";
+    let dir = benchmark(&format!("{RELEASED}{CAP}{group}"));
+    let out = release(dir.path(), &[]);
+    assert!(out.status.success(), "{}", String::from_utf8_lossy(&out.stderr));
+    let ledger = contextful_sqlite::PublicationLedger::open(&dir.path().join(".contextful/context/benchmark/machine.sqlite")).unwrap();
+    let source = ledger.source("industry-projection").unwrap().expect("the release records the group's completion");
+    assert_eq!(source.frontiers.len(), 1);
 }

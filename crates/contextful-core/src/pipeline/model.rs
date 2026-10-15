@@ -207,7 +207,8 @@ impl ProjectDisclosureDecl {
 }
 
 /// The `[disclosure]` block the manifest files declare; at most one file declares it, and
-/// a cap that is negative or not finite refuses as `PipelineSpecInvalid`.
+/// a cap that is negative, not finite, or beyond the micro-epsilon range refuses as
+/// `PipelineSpecInvalid`.
 pub fn project_disclosure(files: &[ManifestFile]) -> Result<ProjectDisclosureDecl, RunError> {
     let mut found: Option<(&str, ProjectDisclosureDecl)> = None;
     for file in files {
@@ -217,6 +218,9 @@ pub fn project_disclosure(files: &[ManifestFile]) -> Result<ProjectDisclosureDec
             block.clone().try_into().map_err(|e| RunError::PipelineSpecInvalid(format!("{}: `[disclosure]`: {e}", file.path)))?;
         if decl.unit_lifetime_cap.is_some_and(|cap| !(cap.is_finite() && cap >= 0.0)) {
             return Err(RunError::PipelineSpecInvalid(format!("{}: `[disclosure]` `unit_lifetime_cap` is not a finite epsilon at least 0", file.path)));
+        }
+        if decl.unit_lifetime_cap.is_some_and(|cap| (cap * crate::disclosure::noise::MICROS_PER_EPSILON as f64).round() >= u64::MAX as f64) {
+            return Err(RunError::PipelineSpecInvalid(format!("{}: `[disclosure]` `unit_lifetime_cap` exceeds the micro-epsilon range", file.path)));
         }
         if let Some((first, _)) = found {
             return Err(RunError::PipelineSpecInvalid(format!("`[disclosure]` is declared in both {first} and {}", file.path)));

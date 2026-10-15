@@ -76,7 +76,7 @@ The ordered statistics release, the write-time disclosure policy, and the per-un
   *A-disclosure*
 - `lifetime-cap` — A project manifest's top-level `[disclosure]` block declares `unit_lifetime_cap`, the epsilon each contributing unit spends across every release; a release grants it to each unit it reserves from, and an undeclared cap is zero.
   *A-disclosure*
-- `budget-ledger` — A project's budget ledger is `.contextful/disclosure/<project>/budget.sqlite`, outside the synced store root, and records each contributing unit under the SHA-256 digest of its key.
+- `budget-ledger` — A project's budget ledger is `.contextful/disclosure/<project>/budget.sqlite`, outside the synced store root, and records each contributing unit under the keyed digest of its key under the project's pepper.
   *A-disclosure*
 - `duplicate-grain` — A non-numeric, non-grain column rides the grouping, and one not constant within its group raises `DisclosureDuplicateGrain`.
   *A-disclosure*

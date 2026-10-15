@@ -435,7 +435,7 @@ fn a_project_declares_each_units_lifetime_cap_in_its_disclosure_block() {
     check_blocks("contextful.toml", &toml::from_str(text).unwrap()).unwrap();
     assert_eq!(project_disclosure(&files(text)).unwrap().cap_micros(), 3_000_000);
     assert_eq!(project_disclosure(&files("[project]\nname = \"p\"\n")).unwrap().cap_micros(), 0);
-    for bad in ["[disclosure]\nunit_lifetime_cap = -1\n", "[disclosure]\nunit_lifetime_cap = nan\n", "[disclosure]\nunit_cap = 1\n"] {
+    for bad in ["[disclosure]\nunit_lifetime_cap = -1\n", "[disclosure]\nunit_lifetime_cap = nan\n", "[disclosure]\nunit_lifetime_cap = 1e14\n", "[disclosure]\nunit_cap = 1\n"] {
         match project_disclosure(&files(bad)) {
             Err(RunError::PipelineSpecInvalid(m)) => assert!(m.contains("contextful.toml"), "{m}"),
             other => panic!("{bad}: {other:?}"),

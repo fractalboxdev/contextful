@@ -85,7 +85,7 @@ Consequences: a release with no metric bounds refuses before publication; a budg
 **Status:** accepted
 
 Context: a release charges every contributing unit; its spend, each unit's cap and the balances each need one home.
-Decision: `[model.disclosure]` declares `per_run_spend` (`disclosure.release.spend-declaration`); the project manifest's `[disclosure]` block declares `unit_lifetime_cap` (`disclosure.release.lifetime-cap`). The ledger is a SQLite file beside the audit chain, outside the synced store root, keyed by unit digest (`disclosure.release.budget-ledger`).
+Decision: `[model.disclosure]` declares `per_run_spend` (`disclosure.release.spend-declaration`); the project manifest's `[disclosure]` block declares `unit_lifetime_cap` (`disclosure.release.lifetime-cap`). The ledger is a SQLite file beside the audit chain, outside the synced store root, keyed by each unit's pepper-keyed digest (`disclosure.release.budget-ledger`).
 
 | Option | Lost on | Cost |
 | --- | --- | --- |
