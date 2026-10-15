@@ -382,16 +382,18 @@ Ordering of a candidate set: the three legs, their fusion, the question's timefr
 - `widened-window-statistics` — Lexical term statistics come from the widened candidate window, so an accelerated arm can order rows differently from the exact path.
 - `calibration-gate` — A lexical-leg calibration replaces the one {{read.rank.fusion}} names only when the native evaluation scores it at or above that one on every tracked measure.
   *A-read*
-- `reranker-admission` — A reranker joins the declared set only on the terms of {{read.rank.calibration-gate}}, scoring at or above fused order on every tracked measure.
+- `reranker-admission` — A reranker joins the declared set only when it meets {{read.rank.calibration-gate}} against fused order.
   *A-read*
-- `rerank` — A call naming `rerank_with` reorders the first 50 rows of fused, post-authority order by reranker score within each tier of {{read.rank.question-window-is-a-tier}}; later rows keep fused order, and the retrieval block names the reranker and its build.
+- `rerank` — A call naming `rerank_with` reorders the first 50 rows past authority, before `limit` truncates, of the ordering {{read.rank.question-window-is-a-tier}} leads, by reranker score within each tier; later rows keep their order, and the retrieval block names the reranker and its build.
   *A-read*
 - `rerank-input` — A reranker scores each candidate apart from the others, reading only its {{read.retrieve.snippet}} after masking and never a raw cell.
   *because a listwise prompt lets one poisoned candidate promote itself*
-- `rerank-absent` — A `rerank_with` naming no reranker the build links or the deployment declares raises `ReadRerankerAbsent`.
+- `rerank-absent` — A `rerank_with` naming no reranker in the set {{read.rank.reranker-admission}} admits raises `ReadRerankerAbsent`.
   *because a silent fallback to fused order hides a ranking change*
 - `rerank-horizon` — Under a horizon, a reranker declaring a checkpoint family scores with the checkpoint {{read.horizon.embedder-route}} selects, and a remote reranker's call passes {{read.horizon.egress-hook}}.
   *A-read*
+- `rerank-cutoff` — Under a horizon, a named reranker holding no checkpoint whose post-training cutoff precedes the horizon raises `ReadRerankerBeyondHorizon` rather than scoring; a reranker declaring no checkpoint family holds no such checkpoint.
+  *because a trained reranker can order rows by events it learned after the horizon*
 
 The ranking legs, their fallback, and the ordering they feed:
 
@@ -406,7 +408,7 @@ flowchart LR
   TF -->|"token scores"| ORD
   ORD -->|"ordered rows"| RR{"rerank_with named?"}
   RR -->|"no"| OUT(["token caller"])
-  RR -->|"yes, first 50 rows"| RER["pointwise reranker"]
+  RR -->|"yes, 50 rows pre-limit"| RER["pointwise reranker"]
   RER -->|"retrieval block"| OUT
 ```
 

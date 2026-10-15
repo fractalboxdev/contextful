@@ -86,7 +86,7 @@ Revisit: a corpus where reciprocal rank loses a tracked measure to another calib
 ## A reranker reorders a masked post-authority window
 
 Context: fused order scores a cosine leg and a reciprocal-rank lexical leg; a cross-encoder reading query and candidate together orders the leading rows better, at the price of a model call per candidate.
-Decision: `read.rank` reranks only on a call naming `rerank_with`, over the first 50 rows of fused order after authority has cut and masked them. The reranker reads each masked snippet alone and scores it pointwise; rows past the window keep fused order. A reranker enters the declared set through the same native-evaluation gate a lexical calibration meets. A remote reranker is egress through `connector.infer.model-endpoint`, and a horizon routes it as it routes an embedder. An undeclared name refuses.
+Decision: `read.rank` reranks only on a call naming `rerank_with`, over the first 50 rows of fused order after authority has cut and masked them. The reranker reads each masked snippet alone and scores it pointwise; rows past the window keep fused order. A reranker enters the declared set through the same native-evaluation gate a lexical calibration meets. A remote reranker is egress through `connector.infer.model-endpoint`, and a horizon routes it as it routes an embedder; a reranker with no checkpoint cut off before the horizon refuses. An undeclared name refuses.
 
 | Option | Lost on | Cost |
 | --- | --- | --- |
