@@ -11,11 +11,11 @@ An unpinned clause is `committed`; a pinned one is `performed` when its Rust, Le
 | `corpus` | 1 | 10 | 79 | 37 | 7 | 0 | 79 | 0 | 79 |
 | `disclosure` | 3 | 16 | 158 | 68 | 13 | 5 | 72 | 0 | 72 |
 | `read` | 2 | 19 | 276 | 45 | 28 | 13 | 230 | 0 | 230 |
-| `run` | 3 | 28 | 508 | 114 | 44 | 11 | 458 | 0 | 458 |
-| `store` | 3 | 19 | 288 | 64 | 14 | 11 | 278 | 0 | 278 |
+| `run` | 3 | 28 | 509 | 114 | 44 | 11 | 459 | 0 | 459 |
+| `store` | 3 | 19 | 290 | 64 | 14 | 11 | 280 | 0 | 280 |
 | `surface` | 2 | 21 | 159 | 63 | 23 | 0 | 129 | 0 | 129 |
 | `topology` | 1 | 6 | 79 | 25 | 5 | 3 | 74 | 0 | 74 |
-| **total** | 22 | 167 | 2519 | 649 | 208 | 75 | 2074 | 0 | |
+| **total** | 22 | 167 | 2522 | 649 | 208 | 75 | 2077 | 0 | |
 
 Decision records: 18.
 
@@ -27,9 +27,9 @@ A milestone reads `closed` when its acceptance test computes `passing` and every
 | --- | --- | --- | --- | --- | --- |
 | 0 — The test-first gate | 2 | 22 | 19 | passing | closed |
 | 1 — The authority core | 14 | 244 | 225 | passing | closed |
-| 2 — The store | 9 | 181 | 171 | passing | closed |
+| 2 — The store | 9 | 183 | 173 | passing | closed |
 | 3 — The run path | 12 | 271 | 255 | passing | closed |
-| 4 — Ingest | 25 | 563 | 426 | passing | closed |
+| 4 — Ingest | 25 | 564 | 427 | passing | closed |
 | 5 — The read face under enforcement | 17 | 308 | 242 | passing | open |
 | 6 — Sync and replicas | 8 | 83 | 83 | passing | closed |
 | 7 — Memory | 6 | 71 | 56 | passing | closed |
@@ -1430,6 +1430,7 @@ Unscheduled operations: 12.
 | `run.land.parse-boundary` | `crates/contextful-connectors/tests/integration/boundary.rs::a_decode_runs_in_a_child_the_parent_kills_at_its_deadline` | performed |
 | `run.land.parse-crashed` | `crates/contextful-connectors/tests/integration/boundary.rs::a_crashed_decode_is_named_and_a_refusal_crosses_intact` | performed |
 | `run.land.partial-parse` | `crates/contextful-decode/tests/integration/pdf.rs::a_page_that_fails_to_render_refuses_the_whole_document` | performed |
+| `run.land.session` | `crates/contextful-context/tests/integration/session.rs::a_session_commits_each_micro_batch_as_its_own_run` | performed |
 | `run.land.stage-order` | `crates/contextful-cli/tests/integration/pipeline.rs::a_batch_is_guarded_before_recording_and_redacted_before_shredding` | performed |
 | `run.land.table-failed` | `crates/contextful-cli/tests/integration/pipeline.rs::a_failing_table_is_named_with_its_kind_and_run` | performed |
 | `run.land.typed-pull` | `crates/contextful-cli/tests/integration/run.rs::a_pulled_type_lands_its_column_in_that_type` | performed |
@@ -1718,6 +1719,7 @@ Unscheduled operations: 12.
 | `store.endpoint.unsupported-scheme` | `crates/contextful-core/tests/integration/store/sync.rs::an_endpoint_no_adapter_answers_is_refused_by_name` | performed |
 | `store.fold.collection-failed` | `crates/contextful-context/tests/integration/fold.rs::a_failed_collection_does_not_unpublish_the_snapshot` | performed |
 | `store.fold.compaction-lease` | `crates/contextful-cli/tests/integration/sync/catalogs.rs::a_compaction_stamps_its_lease_fence_into_the_snapshot_manifest_and_the_pointer` | performed |
+| `store.fold.declared-trigger` | `crates/contextful-context/tests/integration/session.rs::a_scheduled_pass_fires_at_the_declared_run_count` | performed |
 | `store.fold.includes-runs` | `crates/contextful-context/tests/integration/fold.rs::a_snapshot_names_the_runs_it_folded` | performed |
 | `store.fold.lost-pointer` | `crates/contextful-context/tests/integration/fold.rs::a_pass_losing_the_pointer_publishes_nothing` | performed |
 | `store.fold.non-blocking` | `crates/contextful-context/tests/integration/fold.rs::a_statement_started_during_a_pass_reads_the_snapshot_named_at_its_start` | performed |
@@ -1728,6 +1730,7 @@ Unscheduled operations: 12.
 | `store.fold.retention` | `crates/contextful-context/tests/integration/fold.rs::folded_runs_and_superseded_snapshots_are_collected_after_seven_days` | performed |
 | `store.fold.row-retention` | `spec/pins.toml` | performed |
 | `store.fold.row-retention-report` | `spec/pins.toml` | performed |
+| `store.fold.session-trigger` | `crates/contextful-context/tests/integration/session.rs::a_session_counts_runs_another_writer_commits_or_folds` | performed |
 | `store.fold.staging-collected` | `crates/contextful-context/tests/integration/fold.rs::the_next_pass_collects_staging_and_unreachable_snapshots` | performed |
 | `store.fold.supersedes` | `crates/contextful-context/tests/integration/fold.rs::a_new_snapshot_supersedes_without_deleting` | performed |
 | `store.fold.triggers` | `crates/contextful-core/tests/integration/store/fold.rs::a_pass_fires_at_fifty_runs_or_six_hours` | performed |
