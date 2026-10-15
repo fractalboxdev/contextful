@@ -8,6 +8,7 @@ use contextful_core::run::RunError;
 
 fn grant(action: Action, table: &str) -> Grant {
     Grant {
+        horizon: None,
         actions: vec![action],
         tables: vec![TablePattern::parse(table).unwrap()],
         tenant: None,

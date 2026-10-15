@@ -9,6 +9,7 @@ const EXP: i64 = 1_770_000_900;
 
 fn grant(actions: &[Action], tables: &[&str]) -> Grant {
     Grant {
+        horizon: None,
         actions: actions.to_vec(),
         tables: tables.iter().map(|t| TablePattern::parse(t).unwrap()).collect(),
         tenant: None,

@@ -37,6 +37,7 @@ fn policy(max_lifetime_secs: u64) -> IssuancePolicy {
 
 fn grant(actions: &[Action]) -> Grant {
     Grant {
+        horizon: None,
         actions: actions.to_vec(),
         tables: vec![TablePattern::Prefix("research/".into())],
         tenant: None,

@@ -202,6 +202,10 @@ pub struct Grant {
     pub max_duration_ms: Option<u64>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub max_response_bytes: Option<u64>,
+    /// The instant bounding the availability time and `since` of every read the holder
+    /// makes (`authority.grant.horizon`); absent leaves availability unbounded.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub horizon: Option<crate::time::Instant>,
 }
 
 /// The allowlist entry authorizing every declared template.

@@ -49,7 +49,7 @@ fn revocation_between_retirements_stops_later_unlink_and_authorized_replay_compl
     let issuer = SeedSigner::generate(SignatureAlgorithm::Ed25519);
     let policy = IssuancePolicy::parse("default_audience = \"recovery-fixture\"\nmax_lifetime_secs = 3600\n").unwrap();
     let now = contextful_core::time::Instant::parse("2030-01-01T00:00:00Z").unwrap();
-    let grant = Grant { actions:vec![Action::Forget], tables:vec![TablePattern::parse("*").unwrap()], tenant:None, aggregate:None, templates:None, max_rows:None, max_duration_ms:None, max_response_bytes:None };
+    let grant = Grant { actions:vec![Action::Forget], tables:vec![TablePattern::parse("*").unwrap()], tenant:None, aggregate:None, templates:None, max_rows:None, max_duration_ms:None, max_response_bytes:None, horizon: None };
     let mut request = MintRequest::custody(Subject { on_behalf_of:Some("user://fixture".into()), agent:Some("agent://fixture".into()), zone:Some("on-prem:fixture".into()), ..Subject::default() }, vec![grant]);
     request.lifetime = Lifetime::Requested(900);
     let plan = policy.check(&request, &MintContext { node:NodeRole::Primary, signer:&issuer, clock:&FixedClock(now) }).unwrap();

@@ -74,6 +74,7 @@ pub(crate) fn fixture_over(manifest: &str, seed: impl FnOnce(&Store)) -> Fixture
         ..Subject::default()
     };
     let grant = Grant {
+        horizon: None,
         actions: vec![Action::Read],
         tables: vec![TablePattern::parse("research/*").unwrap()],
         tenant: None,

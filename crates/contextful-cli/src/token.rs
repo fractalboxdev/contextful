@@ -283,6 +283,7 @@ pub fn run(cmd: TokenCmd) -> Result<()> {
         } => {
             let subject = Subject { on_behalf_of, agent, host, task, zone, incognito };
             let grant = Grant {
+                horizon: None,
                 actions: parse_actions(&actions)?,
                 tables: parse_tables(&tables)?,
                 tenant: tenant.as_deref().map(parse_tenant).transpose()?,
