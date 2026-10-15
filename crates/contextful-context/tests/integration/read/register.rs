@@ -67,6 +67,17 @@ fn describe_returns_the_whole_payload() {
     assert!(d["columns"].as_array().unwrap().iter().any(|c| c["name"] == "note_id"));
 }
 
+#[test]
+fn snapshot_ids_name_the_files_registered_at_session_open() {
+    let r = Reads::new();
+    let session = r.session(&["research/notes"], None, None);
+    let before = r.face.snapshot_ids(&session, ["research/notes"]).unwrap();
+    land_rows(&r.store, "research/notes", "run-0002", json!([{ "note_id": "n5", "tenant": "acme", "title": "Later note" }]));
+    assert_eq!(r.face.snapshot_ids(&session, ["research/notes"]).unwrap(), before);
+    let newer = r.session(&["research/notes"], None, None);
+    assert_ne!(r.face.snapshot_ids(&newer, ["research/notes"]).unwrap(), before);
+}
+
 /// `context.describe` reports `bytes`, the serialized JSON length of the caller's restricted rows, and `estimated_tokens`, one per 4 B of that length, rounded up.
 // spec: read.register.size-estimate@8b53fbbc
 #[test]

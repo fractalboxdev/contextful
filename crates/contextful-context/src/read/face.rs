@@ -1107,7 +1107,7 @@ fn respond_with_deadline(engine: &SqlEngine, sql: &str, parameters: &Bindings, c
 const PREVIEW_RELATION: &str = "__contextful_preview";
 
 /// The table a run file's store-root-relative path belongs to.
-fn preview_target(path: &str) -> Result<String, ReadError> {
+pub fn preview_target(path: &str) -> Result<String, ReadError> {
     let refuse = |why: &str| ReadError::FilePreviewNotATable(format!("`{path}` {why}"));
     if path.starts_with('/') || path.contains('\\') || path.split('/').any(|s| s == ".." || s == "." || s.is_empty()) {
         return Err(refuse("is not a store-root-relative path"));

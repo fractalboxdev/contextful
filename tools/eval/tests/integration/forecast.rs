@@ -39,6 +39,8 @@ fn a_backtest_forecast_case_is_bounded_at_its_freeze() {
     let bounded = c.backtest().unwrap();
     assert_eq!(bounded.horizon, c.freeze);
     assert_eq!(bounded.id, "gdp");
+    assert_eq!(bounded.label_interval().unwrap().t0, c.freeze);
+    assert_eq!(bounded.label_interval().unwrap().t1, c.resolved_at);
 }
 
 /// A backtest forecast case whose resolution instant precedes its freeze instant raises `EvalCaseResolvedBeforeFreeze`.

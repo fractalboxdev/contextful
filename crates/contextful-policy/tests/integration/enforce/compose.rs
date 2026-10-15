@@ -63,3 +63,16 @@ fn a_named_ledger_counts_toward_the_relation_set() {
     let over = full.ledgers_named(&names(&["research/t0000__requests"]));
     assert!(matches!(over, Err(PolicyError::Malformed(ref m)) if m.0.contains("1024")), "{over:?}");
 }
+
+#[test]
+fn session_records_whether_each_registered_table_had_landed() {
+    let signer = issuer();
+    let token = mint(&plan_for(&signer, dana(), vec![grant(&[Action::Read], &["research/*"])]), &MintClaims::default(), &signer).unwrap();
+    let authority = admit(&token, &signer, DURING).unwrap();
+    let mut quiet = source("research/quiet");
+    quiet.landed = false;
+    let session = Session::open(&authority, &Request::default(), vec![source("research/notes"), quiet], &Pepper::resolve(|_| None)).unwrap();
+    assert_eq!(session.landed("research/notes"), Some(true));
+    assert_eq!(session.landed("research/quiet"), Some(false));
+    assert_eq!(session.landed("hr/salaries"), None);
+}

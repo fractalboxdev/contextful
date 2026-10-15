@@ -7,7 +7,7 @@ use std::collections::BTreeMap;
 use contextful_core::time::Instant;
 use serde::Serialize;
 
-use crate::backtest::BoundedCase;
+use crate::backtest::{BoundedCase, LabelInterval};
 use crate::error::EvalError;
 
 /// Share of a round's cases a forecaster answers to be ranked, in percent
@@ -49,7 +49,12 @@ impl ForecastCase {
                 frozen: self.freeze.to_rfc3339(),
             });
         }
-        Ok(BoundedCase { id: self.id.clone(), horizon: self.freeze, label: None, trajectory: Vec::new() })
+        Ok(BoundedCase {
+            id: self.id.clone(),
+            horizon: self.freeze,
+            label: Some(LabelInterval { t0: self.freeze, t1: self.resolved_at }),
+            trajectory: Vec::new(),
+        })
     }
 
     /// The probability a missing answer scores as (`assurance.forecast.imputed`).

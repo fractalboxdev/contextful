@@ -375,6 +375,11 @@ impl Session {
         self.relations.get(table)
     }
 
+    /// Whether the registered table had a landed schema when this session opened.
+    pub fn landed(&self, table: &str) -> Option<bool> {
+        self.sources.get(table).map(|source| source.landed)
+    }
+
     pub fn relations(&self) -> impl Iterator<Item = &RegisteredRelation> {
         self.relations.values()
     }

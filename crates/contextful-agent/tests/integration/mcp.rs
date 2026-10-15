@@ -125,6 +125,10 @@ fn reference_dispatch_is_read_admitted_bounded_and_audited() {
     let entries = contextful_policy::audit::entries(&fixture.dir.path().join("audit")).unwrap();
     assert_eq!(entries.len(), 3);
     assert_eq!(entries[0].attributes["contextful.tool"], json!("context.reference"));
+    let bounded = call(&server, "context.reference", json!({ "table":"research/notes", "run":"run-0001", "seq":0, "as_of":"2030-01-01T00:05:00Z" }));
+    assert_eq!(bounded["result"]["isError"], Value::Null, "{bounded}");
+    let entries = contextful_policy::audit::entries(&fixture.dir.path().join("audit")).unwrap();
+    assert!(entries[3].attributes["contextful.read.snapshots"]["research/notes"].is_string(), "{:?}", entries[3].attributes);
 }
 
 /// The face exposes a closed tool set: `context.describe`, `context.query`, `context.execute_query` for templates, `context.files` and `context.file` over committed data files, `corpus.retrieve` for ranked reads across a prefix, and `memory.recall` for keyed claim reads.
@@ -503,6 +507,18 @@ fn a_bounded_reads_entry_carries_its_bounds_snapshot_query_and_digest() {
     assert_eq!(entries[3].attributes["contextful.bounds"]["valid_as_of"], json!("2030-01-10T00:00:00.000000000Z"));
     assert!(entries[3].attributes["contextful.read.snapshots"].get("research/rates").is_some(), "{:?}", entries[3].attributes);
     let _ = retrieved;
+}
+
+#[test]
+fn a_sessions_snapshot_id_survives_a_later_commit() {
+    use contextful_policy::enforce::session::Request;
+    let f = fixture();
+    let session = f.face.session(&f.authority, &Request { zone: None }, Default::default()).unwrap();
+    let before = f.face.snapshot_ids(&session, ["research/notes"]).unwrap();
+    put(f.face.store(), &TableDecl::named("research/notes"), "run-0002", "2030-01-02T00:00:00Z", json!([{ "note_id": "n3", "title": "Later note" }]), &[]);
+    assert_eq!(f.face.snapshot_ids(&session, ["research/notes"]).unwrap(), before);
+    let newer = f.face.session(&f.authority, &Request { zone: None }, Default::default()).unwrap();
+    assert_ne!(f.face.snapshot_ids(&newer, ["research/notes"]).unwrap(), before);
 }
 
 /// Every read tool {{read.register.bound-arguments}} names also admits `available_as_of` and echoes it under {{store.available-time.bound-echo}}; {{store.available-time.available-as-of}} wraps only the tables the read touches.
