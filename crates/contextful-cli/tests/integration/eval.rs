@@ -996,6 +996,7 @@ const RESEARCH: &str = r#"
 [[pipeline.tables]]
 name = "research/earnings"
 primary_key = ["filing_id"]
+content_hash_column = "content_hash"
 
 [pipeline.tables.columns]
 accepted_at = "timestamp"
@@ -1006,6 +1007,7 @@ column = "accepted_at"
 [[pipeline.tables]]
 name = "research/returns"
 primary_key = ["ticker"]
+content_hash_column = "content_hash"
 
 [pipeline.tables.columns]
 available_at = "timestamp"
@@ -1017,10 +1019,10 @@ column = "available_at"
 fn research_rows() -> Vec<(&'static str, Value)> {
     vec![
         ("research/earnings", json!([
-            { "filing_id": "acme-q1", "ticker": "ACME", "eps": 1.23, "accepted_at": "2030-05-02T16:05:00Z" },
-            { "filing_id": "acme-q2", "ticker": "ACME", "eps": 1.41, "accepted_at": "2030-08-01T16:05:00Z" },
+            { "filing_id": "acme-q1", "ticker": "ACME", "eps": 1.23, "accepted_at": "2030-05-02T16:05:00Z", "content_hash": "acme-q1-earnings" },
+            { "filing_id": "acme-q2", "ticker": "ACME", "eps": 1.41, "accepted_at": "2030-08-01T16:05:00Z", "content_hash": "acme-q2-earnings" },
         ])),
-        ("research/returns", json!([{ "ticker": "ACME", "ret": 0.02, "available_at": "2030-04-30T21:00:00Z" }])),
+        ("research/returns", json!([{ "ticker": "ACME", "ret": 0.02, "available_at": "2030-04-30T21:00:00Z", "content_hash": "acme-return" }])),
     ]
 }
 

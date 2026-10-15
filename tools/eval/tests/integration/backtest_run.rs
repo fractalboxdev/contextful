@@ -7,7 +7,7 @@ use contextful_core::store::declare::TableDecl;
 use contextful_eval::backtest_run::*;
 use serde_json::{json, Map, Value};
 
-const EARNINGS: &str = "[[pipeline.tables]]\nname = \"research/earnings\"\nprimary_key = [\"filing_id\"]\n[pipeline.tables.available_time]\ncolumn = \"accepted_at\"\n\n[[pipeline.tables]]\nname = \"research/prices\"\nprimary_key = [\"ticker\"]\n";
+const EARNINGS: &str = "[[pipeline.tables]]\nname = \"research/earnings\"\nprimary_key = [\"filing_id\"]\ncontent_hash_column = \"content_hash\"\n[pipeline.tables.available_time]\ncolumn = \"accepted_at\"\n\n[[pipeline.tables]]\nname = \"research/prices\"\nprimary_key = [\"ticker\"]\n";
 
 fn spec(extra: Value) -> CaseSpec {
     let mut c = json!({ "id": "q1", "corpus": "corpus", "horizon": "2030-05-03T00:00:00Z",
@@ -27,7 +27,7 @@ fn object(v: Value) -> Map<String, Value> {
 fn a_planted_row_carries_the_marker_and_becomes_available_after_the_horizon() {
     let decls = TableDecl::parse_pipeline(EARNINGS).unwrap();
     let case = spec(json!({}));
-    let template = object(json!({ "filing_id": "acme-q1", "ticker": "ACME", "eps": 1.23, "accepted_at": "2030-05-02T16:05:00Z" }));
+    let template = object(json!({ "filing_id": "acme-q1", "ticker": "ACME", "eps": 1.23, "accepted_at": "2030-05-02T16:05:00Z", "content_hash": "acme-q1-earnings" }));
     let row = planted_row(&decls[0], &template, &case).unwrap();
     assert_eq!(row["filing_id"], json!("__planted__/q1"));
     assert_eq!(row["ticker"], json!("__planted__/q1"));
