@@ -3,13 +3,13 @@
 
 use contextful_core::pipeline::declare::{collect, read_manifest, ManifestFile};
 use contextful_core::pipeline::model::{
-    build_entries, collect_models, contract_history, duration_secs, regenerate, BuildStatus, HoldRecord, InputFrontier, Materialized,
-    ModelSpec, PublishSection, Watermark, FINGERPRINT_RECIPE, SEMANTICS_VERSION,
+    build_entries, collect_models, contract_history, duration_secs, model_cycle, regenerate, waiting_runs, BuildStatus, HoldRecord,
+    InputFrontier, Materialized, ModelSpec, PublishSection, Watermark, FINGERPRINT_RECIPE, SEMANTICS_VERSION,
 };
 use contextful_core::run::RunError;
-use contextful_core::store::lay_out::{SnapshotId, SnapshotManifest};
+use contextful_core::store::lay_out::{RunManifest, SnapshotId, SnapshotManifest};
 use contextful_core::time::Instant;
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, BTreeSet};
 
 fn at(s: &str) -> Instant {
     Instant::parse(s).unwrap_or_else(|e| panic!("{s}: {e}"))
@@ -280,10 +280,10 @@ fn the_schema_fingerprint_moves_with_columns_types_and_grain_alone() {
     assert_eq!(model("[[model]]\nid = \"d\"\nsql = \"SELECT 1\"\npublish = false\n").schema_fingerprint(), None);
 }
 
-/// Freshness carries the newest publishing build id, its watermark, `max_lag`, the last build status and a withheld-cells flag; staleness is derived from watermark against `max_lag` and never stored.
-// spec: run.publish.freshness@1cf4dc36
+/// Freshness carries the newest publishing build id, its watermark, `max_lag`, the last build status and a withheld-cells flag; staleness follows `run.publish.staleness` and is never stored.
+// spec: run.publish.freshness@913523e1
 #[test]
-fn staleness_is_derived_from_the_watermark_and_max_lag() {
+fn freshness_reads_off_the_section_and_no_field_records_staleness() {
     let mut s = section("snapshot-1", "1.0.0", "f", "2030-01-01T06:00:00Z");
     s.max_lag = Some("1h".into());
     s.watermark = Watermark {
@@ -294,17 +294,65 @@ fn staleness_is_derived_from_the_watermark_and_max_lag() {
     let f = s.freshness();
     assert_eq!(f.build_id, "snapshot-1");
     assert_eq!(f.watermark, s.watermark);
+    assert_eq!(f.max_lag.as_deref(), Some("1h"));
     assert_eq!(f.last_build_status, BuildStatus::Published);
     assert!(!f.withheld_cells);
-    assert!(!f.stale(at("2030-01-01T06:00:00Z")));
-    assert!(f.stale(at("2030-01-01T06:00:01Z")));
-    // No field of the section records staleness.
     let v = serde_json::to_value(&s).unwrap();
     assert!(!v.as_object().unwrap().is_empty(), "the exclusion below ranges over no element");
     assert!(v.as_object().unwrap().keys().all(|k| !k.contains("stale")), "{v}");
-    // Inputs with no commit leave nothing to measure the lag from.
-    s.watermark.at = None;
-    assert!(s.freshness().stale(at("2030-01-01T05:00:00Z")));
+}
+
+fn run_manifest(run: &str, committed: &str) -> RunManifest {
+    serde_json::from_value(serde_json::json!({"run_id": run, "table": "events", "node_id": "n", "committed_at": committed})).unwrap()
+}
+
+/// Staleness counts, per input, the committed runs the build did not include (`run.publish.staleness`).
+#[test]
+fn a_build_is_stale_only_by_an_unread_landing_past_max_lag() {
+    let mut s = section("snapshot-1", "1.0.0", "f", "2030-01-01T06:00:00Z");
+    s.max_lag = Some("1h".into());
+    let f = s.freshness();
+    let none = BTreeSet::new();
+    let read = BTreeSet::from(["r1/n".to_string()]);
+    let r1 = run_manifest("r1", "2030-01-01T05:00:00Z");
+    let r2 = run_manifest("r2", "2030-01-01T07:00:00Z");
+    let waiting = |included: &BTreeSet<String>, runs: &[RunManifest], folded: &BTreeSet<String>| {
+        BTreeMap::from([("events".to_string(), waiting_runs(included, runs, folded))])
+    };
+    // A quiet input never ages a build.
+    let quiet = waiting(&read, std::slice::from_ref(&r1), &none);
+    assert_eq!(quiet["events"], Vec::<Option<Instant>>::new());
+    assert!(f.stale_inputs(&quiet, at("2030-04-11T06:00:00Z")).is_empty());
+    // A run the build did not read ages it once `max_lag` passes.
+    let landed = waiting(&read, &[r1.clone(), r2.clone()], &none);
+    assert!(f.stale_inputs(&landed, at("2030-01-01T07:59:59Z")).is_empty());
+    assert_eq!(f.stale_inputs(&landed, at("2030-01-01T08:00:01Z")), vec!["events".to_string()]);
+    // A fold of the runs the build read changes nothing.
+    let refolded = waiting(&read, std::slice::from_ref(&r1), &read);
+    assert!(f.stale_inputs(&refolded, at("2030-02-01T00:00:00Z")).is_empty());
+    // A folded run whose commit instant is gone counts as past the lag.
+    let unreadable = waiting(&read, std::slice::from_ref(&r1), &BTreeSet::from(["r9/n".to_string()]));
+    assert_eq!(unreadable["events"], vec![None]);
+    assert_eq!(f.stale_inputs(&unreadable, at("2030-01-01T06:00:00Z")), vec!["events".to_string()]);
+    // A model declaring no `max_lag` is never stale.
+    s.max_lag = None;
+    assert!(s.freshness().stale_inputs(&landed, at("2031-01-01T00:00:00Z")).is_empty());
+}
+
+/// The model graph refuses a cycle through two or more models (`run.model.model-cycle`).
+#[test]
+fn a_model_cycle_names_every_member() {
+    let edges = |pairs: &[(&str, &[&str])]| -> BTreeMap<String, BTreeSet<String>> {
+        pairs.iter().map(|(m, reads)| (m.to_string(), reads.iter().map(|r| r.to_string()).collect())).collect()
+    };
+    let e = model_cycle(&edges(&[("b", &["a"]), ("a", &["b"])])).unwrap_err();
+    assert!(matches!(e, RunError::ModelCycle(_)), "{e}");
+    assert!(e.to_string().contains("`a`, `b`"), "{e}");
+    let e = model_cycle(&edges(&[("c", &["a"]), ("a", &["b"]), ("b", &["c"]), ("d", &["a"])])).unwrap_err();
+    assert!(e.to_string().contains("`a`, `b`, `c`") && !e.to_string().contains("`d`"), "{e}");
+    model_cycle(&edges(&[("a", &["b", "c"]), ("b", &["c"]), ("c", &[])])).unwrap();
+    // A self-read stays with `run.model.validate-statements`.
+    model_cycle(&edges(&[("a", &["a"])])).unwrap();
 }
 
 /// The manifest section carries `{contract_version, schema_fingerprint, build_id, build_started_at, last_built_at, watermark, max_lag, last_build_status, withheld_cells, disclosure_digest, partitions_failed?, semantics_version?, fingerprint_recipe?}` of the newest publishing build; `watermark` maps each input table to its snapshot and omitted runs.

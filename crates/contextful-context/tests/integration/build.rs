@@ -3,7 +3,7 @@
 #![cfg(feature = "read")]
 
 use crate::support::{at, decl, Fixture};
-use contextful_context::build::{build, current_section, hold, holds, manifests, BuildRequest, Built};
+use contextful_context::build::{build, current_section, hold, holds, manifests, status, BuildRequest, Built};
 use contextful_context::read::{Face, ReadFault};
 use contextful_core::pipeline::declare::{collect, ManifestFile};
 use contextful_core::pipeline::model::{
@@ -291,6 +291,24 @@ fn the_watermark_names_each_input_frontier() {
 
 /// A hold records build id, placing principal and expiry; collection skips a held build, and a hold confers no other authority.
 // spec: run.publish.hold@f4fa4cd4
+#[test]
+fn a_fold_after_the_build_leaves_it_fresh() {
+    let p = Project::new();
+    p.land("r2", json!([{"day": "d3", "v": 4}]), "2030-01-01T00:10:00Z");
+    p.build(MODEL, "2030-01-01T01:00:00Z").unwrap();
+    // The fold moves both runs the build read into a snapshot its watermark never named.
+    contextful_context::fold::fold(&p.fx.store, &decl("name = \"events\""), at("2030-01-02T00:00:00Z")).unwrap();
+    let fresh = status(&p.fx.store, "daily", at("2030-03-01T00:00:00Z")).unwrap();
+    assert_eq!(fresh["stale"], false, "{fresh}");
+    assert_eq!(fresh["stale_inputs"], json!([]));
+    // A run the build did not read ages it once `max_lag` passes.
+    p.land("r3", json!([{"day": "d4", "v": 5}]), "2030-03-01T00:00:00Z");
+    assert_eq!(status(&p.fx.store, "daily", at("2030-03-01T23:59:59Z")).unwrap()["stale"], false);
+    let stale = status(&p.fx.store, "daily", at("2030-03-02T00:00:01Z")).unwrap();
+    assert_eq!(stale["stale"], true);
+    assert_eq!(stale["stale_inputs"], json!(["events"]));
+}
+
 #[test]
 fn collection_skips_a_held_build() {
     let p = Project::new();
