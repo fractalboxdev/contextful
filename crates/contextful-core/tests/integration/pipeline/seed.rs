@@ -166,3 +166,40 @@ fn a_missing_column_or_an_off_scale_stamp_is_unevaluable() {
         assert!(matches!(numeric.check("t", &rows(&[stamp])), Err(RunError::PipelineSeedCeilingUnevaluable(_))));
     }
 }
+
+/// A differing fingerprint raises `PipelineSeedSourceChanged` naming both values; an equal one skips the load, and
+/// an unavailable one skips with a warning.
+#[test]
+fn a_moved_fingerprint_refuses_an_equal_one_skips_and_an_absent_one_warns() {
+    use contextful_core::pipeline::seed::{probe, SeedProbe};
+    assert_eq!(probe("orders_items", None, Some("size=10;mtime=1")).unwrap(), SeedProbe::Load, "an uncommitted seed loads");
+    assert_eq!(probe("orders_items", None, None).unwrap(), SeedProbe::Load);
+    assert_eq!(probe("orders_items", Some(Some("size=10;mtime=1")), Some("size=10;mtime=1")).unwrap(), SeedProbe::Unchanged);
+    match probe("orders_items", Some(Some("size=10;mtime=1")), Some("size=12;mtime=2")) {
+        Err(RunError::PipelineSeedSourceChanged(m)) => {
+            assert!(m.contains("orders_items") && m.contains("size=10;mtime=1") && m.contains("size=12;mtime=2"), "{m}");
+        }
+        other => panic!("{other:?}"),
+    }
+    for (stamped, observed) in [(Some("size=10;mtime=1"), None), (None, Some("size=10;mtime=1")), (None, None)] {
+        match probe("orders_items", Some(stamped), observed) {
+            Ok(SeedProbe::Unavailable(warning)) => assert!(warning.contains("orders_items"), "{warning}"),
+            other => panic!("{stamped:?} {observed:?}: {other:?}"),
+        }
+    }
+}
+
+/// On seed commit, an unset `monotonic` live position takes the ceiling when `below` parses as an integer; under the
+/// other cursor kinds the live position stays unset.
+#[test]
+fn an_integer_ceiling_binds_an_unset_monotonic_position() {
+    use contextful_core::run::advance::CursorKind;
+    let integer = Ceiling::from_value(&json!(1_700_000_000)).unwrap();
+    assert_eq!(integer.live_position(CursorKind::Monotonic, "updated_at"), Some(json!({"field": "updated_at", "at": 1_700_000_000})));
+    for kind in [CursorKind::OpaqueToken, CursorKind::SnapshotId] {
+        assert_eq!(integer.live_position(kind, "updated_at"), None, "{kind:?}");
+    }
+    for below in [json!(1_700_000_000.5), json!("2030-01-01T00:00:00Z")] {
+        assert_eq!(Ceiling::from_value(&below).unwrap().live_position(CursorKind::Monotonic, "updated_at"), None, "{below}");
+    }
+}

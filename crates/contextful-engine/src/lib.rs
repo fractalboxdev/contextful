@@ -16,6 +16,7 @@ pub mod nodes;
 pub mod project;
 pub mod runner;
 pub mod scheduler;
+pub mod seed;
 pub mod stop;
 pub mod stores;
 pub mod worker;

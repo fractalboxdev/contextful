@@ -246,6 +246,9 @@ pub enum RunError {
     /// A seeded table no scheduled, enabled fold covers. (`run.seed.compaction-cadence`)
     #[error("PipelineSeedCompactionMissing: {0}")]
     PipelineSeedCompactionMissing(String),
+    /// A seed source whose fingerprint differs from the committed one. (`run.seed.source-changed`)
+    #[error("PipelineSeedSourceChanged: {0}")]
+    PipelineSeedSourceChanged(String),
     /// A validation that read no manifest file. (`run.declare.manifest-missing`)
     #[error("PipelineManifestMissing: {0}")]
     PipelineManifestMissing(String),
