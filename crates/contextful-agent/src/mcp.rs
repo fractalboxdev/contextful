@@ -18,6 +18,10 @@ use contextful_core::read::face::{read_backend, register_tool, require, BuildIde
 use contextful_core::read::guard::admit;
 use contextful_core::read::pin::{Pins, PIN_ARGUMENT};
 use contextful_core::read::template::READ_ARGUMENTS;
+use contextful_core::run::journal::sha256_hex;
+
+/// The block a bounded answer echoes its bounds under (`store.bound-time.echo`).
+const BOUNDS_BLOCK: &str = "contextful.bounds";
 use contextful_core::read::respond::Response;
 use contextful_core::read::Refusal;
 use contextful_core::store::bound_time::{Bound, Bounds, Vintage};
@@ -387,9 +391,18 @@ impl<'a> Tools<'a> {
         };
         match self.dispatch(caller, name, &args) {
             // The result leaves only once its entry is durable; otherwise no row does.
-            Ok(Ok((value, rows))) => match self.record.record(read_attributes(&read(rows, None, self.claims(name, &value)))) {
-                Ok(()) => Ok(result(value)),
-                Err(e) => Ok(unrecorded(&e)),
+            Ok(Ok((value, rows))) => match self.bound_entry(name, &args, &value).map(|bound| {
+                let mut attributes = read_attributes(&read(rows, None, self.claims(name, &value)));
+                if let (Value::Object(a), Some(bound)) = (&mut attributes, bound) {
+                    a.extend(bound);
+                }
+                attributes
+            }) {
+                Err(fault) => Ok(json!({ "content": [{ "type": "text", "text": fault.to_string() }], "isError": true })),
+                Ok(attributes) => match self.record.record(attributes) {
+                    Ok(()) => Ok(result(value)),
+                    Err(e) => Ok(unrecorded(&e)),
+                },
             },
             // A refusal is recorded before it answers (`disclosure.record.refused-read`).
             Ok(Err(fault)) => match fault.refusal() {
@@ -401,6 +414,38 @@ impl<'a> Tools<'a> {
             },
             Err(protocol) => Err(protocol),
         }
+    }
+
+    /// A bounded read's added entry attributes (`disclosure.record.bound-entry`): the
+    /// echoed bounds, the snapshot id per relation the read names, its query text and the
+    /// SHA-256 of the answer it returns; `None` for an unbounded read.
+    fn bound_entry(&self, name: &str, args: &Map<String, Value>, value: &Value) -> Result<Option<Map<String, Value>>, ReadFault> {
+        let Some(echoed) = value.get(BOUNDS_BLOCK) else { return Ok(None) };
+        // A ranked read names no relation; the tables its rows came from are the ones it reached.
+        let mut tables = self.relations(name, args);
+        if tables.is_empty() {
+            let columns = value.get("columns").and_then(Value::as_array);
+            if let (Some(at), Some(rows)) = (columns.and_then(|c| c.iter().position(|c| c == "_table")), value.get("rows").and_then(Value::as_array)) {
+                tables = rows.iter().filter_map(|r| r.get(at).and_then(Value::as_str).map(str::to_string)).collect::<std::collections::BTreeSet<_>>().into_iter().collect();
+            }
+        }
+        let bounds = bounds(args).unwrap_or_default();
+        let snapshots = self.face.snapshot_ids(tables.iter().map(String::as_str), bounds)?;
+        let template = |id: &str| self.face.templates().iter().find(|t| t.id == id).map(|t| t.sql.clone());
+        let query = match name {
+            "context.query" => string(args, "sql").ok().flatten(),
+            "context.execute_query" => args.get("id").and_then(Value::as_str).and_then(template),
+            "corpus.retrieve" => string(args, "query").ok().flatten(),
+            "context.file" => string(args, "path").ok().flatten(),
+            "context.describe" | "context.reference" => string(args, "table").ok().flatten(),
+            other => template(other),
+        };
+        let mut attributes = Map::new();
+        attributes.insert(BOUNDS_BLOCK.into(), echoed.clone());
+        attributes.insert("contextful.read.snapshots".into(), json!(snapshots));
+        attributes.insert("contextful.read.query".into(), json!(query));
+        attributes.insert("contextful.result.sha256".into(), json!(sha256_hex(&serde_json::to_vec(value).unwrap_or_default())));
+        Ok(Some(attributes))
     }
 
     /// The claim ids a memory read returned (`read.recall.usage-ledger`): every row's

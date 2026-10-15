@@ -463,6 +463,48 @@ fn available() -> Fixture {
     })
 }
 
+/// A bounded read's {{disclosure.record.read-attributes}} entry adds `contextful.bounds` as {{store.bound-time.echo}} echoes it, the snapshot id the read resolved, the query text and the response's SHA-256 digest.
+// spec: disclosure.record.bound-entry@81906c4f
+#[test]
+fn a_bounded_reads_entry_carries_its_bounds_snapshot_query_and_digest() {
+    use contextful_core::run::journal::sha256_hex;
+    let f = bounded();
+    let clock = FixedClock(at("2030-01-01T04:00:00Z"));
+    let server = Server::new(&f.face, f.authority.clone(), &current, &clock, &f.audit).unwrap();
+    let sql = r#"SELECT CAST(v AS VARCHAR) AS v FROM "research/filings""#;
+
+    let unbounded = call(&server, "context.query", json!({ "sql": sql }));
+    let old = call(&server, "context.query", json!({ "sql": sql, "as_of": "2030-01-01T01:00:00Z" }));
+    let later = call(&server, "context.query", json!({ "sql": sql, "as_of": "2030-01-01T02:30:00Z" }));
+    let retrieved = call(&server, "corpus.retrieve", json!({ "prefix": "research/rates", "query": "eur", "valid_as_of": "2030-01-10T00:00:00Z" }));
+    let entries = contextful_policy::audit::entries(&f.dir.path().join("audit")).unwrap();
+    assert_eq!(entries.len(), 4);
+
+    // An unbounded read's entry carries none of the four.
+    for key in ["contextful.bounds", "contextful.read.snapshots", "contextful.read.query", "contextful.result.sha256"] {
+        assert!(entries[0].attributes.get(key).is_none(), "{key}: {:?}", entries[0].attributes);
+    }
+    let _ = unbounded;
+
+    let bounded_entry = &entries[1].attributes;
+    assert_eq!(bounded_entry["contextful.bounds"], json!({ "as_of": "2030-01-01T01:00:00.000000000Z", "inclusive": true }));
+    assert_eq!(bounded_entry["contextful.read.query"], json!(sql));
+    let structured = serde_json::to_vec(&old["result"]["structuredContent"]).unwrap();
+    assert_eq!(bounded_entry["contextful.result.sha256"], json!(sha256_hex(&structured)));
+    let snapshot = bounded_entry["contextful.read.snapshots"]["research/filings"].as_str().unwrap().to_string();
+    assert_eq!(snapshot.len(), 64, "{bounded_entry:?}");
+    // Another `as_of` resolves another committed file set, so another snapshot id.
+    assert_ne!(entries[2].attributes["contextful.read.snapshots"]["research/filings"], json!(snapshot));
+    assert_ne!(entries[2].attributes["contextful.result.sha256"], bounded_entry["contextful.result.sha256"]);
+    let _ = later;
+
+    // A ranked read records its query string under its valid-time bound.
+    assert_eq!(entries[3].attributes["contextful.read.query"], json!("eur"));
+    assert_eq!(entries[3].attributes["contextful.bounds"]["valid_as_of"], json!("2030-01-10T00:00:00.000000000Z"));
+    assert!(entries[3].attributes["contextful.read.snapshots"].get("research/rates").is_some(), "{:?}", entries[3].attributes);
+    let _ = retrieved;
+}
+
 /// Every read tool {{read.register.bound-arguments}} names also admits `available_as_of` and echoes it under {{store.available-time.bound-echo}}; {{store.available-time.available-as-of}} wraps only the tables the read touches.
 // spec: read.register.available-bound-argument@8d2ed6a1
 #[test]
