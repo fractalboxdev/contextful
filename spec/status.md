@@ -6,16 +6,16 @@ An unpinned clause is `committed`; a pinned one is `performed` when its Rust, Le
 | Contract | Files | Operations | Clauses | Refusals | Limits | Unsettled | Performed | Broken | Floor |
 | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
 | `assurance` | 3 | 18 | 305 | 63 | 23 | 9 | 267 | 0 | 267 |
-| `authority` | 2 | 16 | 295 | 79 | 29 | 9 | 222 | 0 | 222 |
-| `connector` | 2 | 14 | 356 | 90 | 21 | 16 | 231 | 0 | 231 |
+| `authority` | 2 | 16 | 295 | 79 | 29 | 9 | 224 | 0 | 224 |
+| `connector` | 2 | 14 | 356 | 90 | 21 | 16 | 232 | 0 | 232 |
 | `corpus` | 1 | 10 | 79 | 37 | 7 | 0 | 79 | 0 | 79 |
 | `disclosure` | 3 | 16 | 157 | 68 | 13 | 3 | 64 | 0 | 64 |
-| `read` | 2 | 18 | 238 | 38 | 24 | 4 | 214 | 0 | 214 |
-| `run` | 3 | 28 | 501 | 113 | 44 | 14 | 432 | 0 | 430 |
+| `read` | 2 | 18 | 238 | 38 | 24 | 4 | 220 | 0 | 220 |
+| `run` | 3 | 28 | 501 | 113 | 44 | 14 | 432 | 0 | 432 |
 | `store` | 3 | 19 | 287 | 65 | 14 | 13 | 273 | 0 | 273 |
 | `surface` | 2 | 20 | 137 | 59 | 22 | 0 | 98 | 0 | 98 |
 | `topology` | 1 | 6 | 79 | 25 | 5 | 3 | 72 | 0 | 72 |
-| **total** | 22 | 165 | 2434 | 637 | 202 | 71 | 1952 | 0 | |
+| **total** | 22 | 165 | 2434 | 637 | 202 | 71 | 1961 | 0 | |
 
 Decision records: 18.
 
@@ -26,10 +26,10 @@ A milestone reads `closed` when its acceptance test computes `passing` and every
 | Milestone | Operations | Clauses | Performed | Acceptance | Closed |
 | --- | --- | --- | --- | --- | --- |
 | 0 — The test-first gate | 2 | 22 | 19 | passing | closed |
-| 1 — The authority core | 14 | 244 | 223 | passing | closed |
+| 1 — The authority core | 14 | 244 | 225 | passing | closed |
 | 2 — The store | 9 | 181 | 170 | passing | closed |
 | 3 — The run path | 12 | 269 | 253 | passing | closed |
-| 4 — Ingest | 25 | 551 | 384 | passing | open |
+| 4 — Ingest | 25 | 551 | 385 | passing | open |
 | 5 — The read face under enforcement | 17 | 298 | 241 | passing | open |
 | 6 — Sync and replicas | 8 | 83 | 83 | passing | closed |
 | 7 — Memory | 6 | 55 | 54 | passing | closed |
@@ -40,7 +40,7 @@ A milestone reads `closed` when its acceptance test computes `passing` and every
 | 12 — The operator console | 12 | 56 | 25 | passing | open |
 | 13 — Disclosure | 5 | 33 | 13 | open | open |
 | 14 — Assurance | 7 | 156 | 126 | passing | closed |
-| 15 — Point-in-time evaluation | 7 | 76 | 49 | open | open |
+| 15 — Point-in-time evaluation | 7 | 76 | 55 | open | open |
 
 Unscheduled operations: 12.
 
@@ -316,6 +316,7 @@ Unscheduled operations: 12.
 | `assurance.test.test-first-scope` | `tools/ci/tests/integration/test_first.rs::only_the_changes_test_modules_run_against_the_base` | performed |
 | `assurance.test.vacuous-exclusion` | `tools/ci/tests/integration/vacuous.rs::an_exclusion_over_a_collection_never_shown_non_empty_fails_the_test_first_stage` | performed |
 | `authority.attenuate.expiry-extended` | `crates/contextful-core/tests/integration/attenuate.rs::expiry_extended` | performed |
+| `authority.attenuate.horizon-widens` | `crates/contextful-core/tests/integration/attenuate.rs::a_later_horizon_widens_and_an_absent_one_inherits` | performed |
 | `authority.attenuate.narrowing` | `crates/contextful-core/tests/integration/attenuate.rs::narrowing` | performed |
 | `authority.attenuate.offline` | `crates/contextful-policy/tests/integration/attenuate.rs::a_holder_derives_a_child_offline_and_the_parent_stays_intact` | performed |
 | `authority.attenuate.per-sub-agent` | `crates/contextful-policy/tests/integration/attenuate.rs::each_sub_agent_child_binds_that_sub_agents_own_key` | performed |
@@ -363,6 +364,7 @@ Unscheduled operations: 12.
 | `authority.grant.duration-ceiling` | `crates/contextful-context/tests/integration/read/respond.rs::a_duration_ceiling_interrupts_one_statement_and_the_next_read_answers` | performed |
 | `authority.grant.fields` | `crates/contextful-core/tests/integration/grant.rs::fields` | performed |
 | `authority.grant.group-ceiling` | `crates/contextful-core/tests/integration/grant.rs::group_ceiling` | performed |
+| `authority.grant.horizon` | `crates/contextful-core/tests/integration/read/horizon.rs::a_grant_carries_a_horizon_and_an_absent_one_bounds_nothing` | performed |
 | `authority.grant.malformed-pattern` | `crates/contextful-core/tests/integration/grant.rs::malformed_pattern` | performed |
 | `authority.grant.pattern-forms` | `crates/contextful-core/tests/integration/grant.rs::pattern_forms` | performed |
 | `authority.grant.pipeline-not-covered` | `crates/contextful-cli/tests/integration/run.rs::run_history_lists_covered_pipelines_and_refuses_an_uncovered_one` | performed |
@@ -574,6 +576,7 @@ Unscheduled operations: 12.
 | `connector.infer.data-fence` | `crates/contextful-core/tests/integration/connector/infer.rs::ordinary_rows_are_fenced_labelled_and_declared_data` | performed |
 | `connector.infer.empty-batch` | `crates/contextful-core/tests/integration/connector/infer.rs::an_empty_batch_says_so` | performed |
 | `connector.infer.fenced-value-hygiene` | `crates/contextful-core/tests/integration/connector/infer.rs::control_characters_are_stripped_and_newlines_survive` | performed |
+| `connector.infer.hosted-tools` | `crates/contextful-outbound/tests/integration/infer.rs::a_hosted_tool_under_a_horizon_is_refused_before_any_byte_leaves` | performed |
 | `connector.infer.label-hygiene` | `crates/contextful-core/tests/integration/connector/infer.rs::a_label_cannot_smuggle_a_marker` | performed |
 | `connector.infer.logprobs` | `crates/contextful-outbound/tests/integration/infer.rs::an_endpoint_exposing_logprobs_lands_them_with_the_call_record` | performed |
 | `connector.infer.marker-derivation` | `crates/contextful-core/tests/integration/connector/infer.rs::a_fence_lookalike_in_content_cannot_close_its_own_block` | performed |
@@ -911,6 +914,9 @@ Unscheduled operations: 12.
 | `disclosure.suppress.min-group-size` | `crates/contextful-core/tests/integration/disclosure/suppress.rs::min_group_size` | performed |
 | `disclosure.template.overfetch` | `crates/contextful-context/tests/integration/read/register.rs::a_capped_template_reads_one_probe_row_for_truncation` | performed |
 | `disclosure.template.single-statement` | `crates/contextful-context/tests/integration/read/guard.rs::a_template_with_two_statements_refuses_at_startup` | performed |
+| `read.as-of-join.horizon-caps-row` | `crates/contextful-agent/tests/integration/mcp.rs::an_availability_bound_caps_each_driving_rows_instant` | performed |
+| `read.as-of-join.join-undeclared` | `crates/contextful-agent/tests/integration/mcp.rs::an_as_of_join_onto_an_undeclaring_relation_is_refused` | performed |
+| `read.as-of-join.per-row-bound` | `crates/contextful-agent/tests/integration/mcp.rs::an_as_of_join_matches_each_row_to_the_right_row_available_at_its_instant` | performed |
 | `read.cache.budget` | `crates/contextful-context/tests/integration/read/result_cache.rs::filling_past_the_budget_evicts_the_least_recently_used` | performed |
 | `read.cache.cache-is-opt-in` | `crates/contextful-context/tests/integration/read/result_cache.rs::only_opted_in_tables_that_are_not_private_cache_and_entries_expire` | performed |
 | `read.cache.change-misses` | `crates/contextful-context/tests/integration/read/pool.rs::every_change_to_the_whole_key_misses_and_reads_the_new_state` | performed |
@@ -945,6 +951,9 @@ Unscheduled operations: 12.
 | `read.guard.template-reserved-parameter` | `crates/contextful-core/tests/integration/read/template.rs::a_parameter_named_for_a_read_argument_refuses_the_manifest` | performed |
 | `read.guard.unregistered-relation` | `crates/contextful-context/tests/integration/read/guard.rs::an_unregistered_relation_echoes_the_statements_spelling` | performed |
 | `read.guard.whole-tree-walk` | `crates/contextful-context/tests/integration/read/guard.rs::the_walk_covers_every_subtree` | performed |
+| `read.horizon.exceeds-horizon` | `crates/contextful-core/tests/integration/read/horizon.rs::a_bound_later_than_the_horizon_is_refused` | performed |
+| `read.horizon.inherited-bound` | `crates/contextful-agent/tests/integration/mcp.rs::every_read_tool_called_unbounded_reads_at_the_horizon` | performed |
+| `read.horizon.recall-horizon` | `crates/contextful-agent/tests/integration/mcp.rs::recall_under_a_horizon_reads_the_claims_table_at_it` | performed |
 | `read.query.declaration-default` | `crates/contextful-cli/tests/integration/query.rs::a_declaration_path_supplies_the_manifest` | performed |
 | `read.query.discovered-project` | `crates/contextful-cli/tests/integration/query.rs::a_discovered_project_registers_its_tables` | performed |
 | `read.query.engine-fault` | `crates/contextful-cli/tests/integration/query.rs::a_rejected_statement_prints_nothing` | performed |
