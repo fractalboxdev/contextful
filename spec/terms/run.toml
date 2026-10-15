@@ -11,6 +11,7 @@ cancel        = {}
 record        = {}
 project       = {}
 sweep         = {}
+orchestrate   = {}
 declare       = {}
 compile       = {}
 transform     = {}
@@ -56,6 +57,7 @@ HistoryBoundSpelling           = { clause = "run.record.bound-spelling", gloss =
 RunMetadataTooLarge            = { clause = "run.project.metadata-too-large", gloss = "A snapshot metadata write past its serialized bound." }
 RunStreamUnauthorized          = { clause = "run.project.unauthenticated-upgrade", gloss = "A run-stream request with no valid credential before the upgrade." }
 RunSweepOriginAfterOpen        = { clause = "run.sweep.origin-after-open", gloss = "A sweep whose last origin falls after the transaction-time bound every origin reads at." }
+OrchestratorBoundExceeded      = { clause = "run.orchestrate.provider-limit", gloss = "A run reaching a provider filler's step count, step return size or retention ceiling recorded in its target profile." }
 PipelineManifestMissing        = { clause = "run.declare.manifest-missing", gloss = "A validation that read no manifest file." }
 PipelineDuplicateId            = { clause = "run.declare.duplicate-id", gloss = "One pipeline id declared twice." }
 PipelineSpecInvalid            = { clause = "run.declare.spec-invalid", gloss = "A manifest file the canonical type cannot deserialize." }

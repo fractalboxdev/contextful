@@ -28,11 +28,11 @@ flowchart LR
   R -->|"status"| P
 ```
 
-A pipeline specification ({{run.declare.pipeline-spec}}) is identified by a content hash
+A pipeline specification ({{run.declare.pipeline-spec}}) hashes by content,
 ignoring no-op edits ({{run.declare.content-hash}}). It compiles into a flat node list ({{run.compile.plan-node}})
 carrying no script: branching is declared, never computed from data
 ({{run.compile.control-flow}}), and the plan lowers onto one substrate interface
-({{run.journal.substrate-port}}).
+({{run.journal.substrate-port}}) a target's orchestrator fills ({{run.orchestrate.role}}).
 
 The record opens before the first pull ({{run.record.row-at-open}}). An execution owner
 pins the connector and plan ({{run.own.pinned-plan-changed}}); host jobs use their own
@@ -93,7 +93,7 @@ A deployment declares its writing site once in `contextful.toml`
 ({{run.record.writing-site}}); `--site-id` replaces it for one run
 ({{run.record.site-id-unresolved}}).
 
-Every run closes on a shared status ({{run.record.status-set}}); live progress is
+Every run closes on one status ({{run.record.status-set}}); live progress is
 a best-effort projection the runner never reads ({{run.project.best-effort}}).
 
 A backfill splits history into leased chunks whose commits are fenced against a stale holder ({{run.backfill.fenced-commit}}); a seed bulk-loads
@@ -144,13 +144,13 @@ The `meta-ads` pipeline pulls ad insights incrementally. Its declaration names `
 as the stream clock ({{run.declare.incremental-field}}), so the source reports a monotonic
 cursor that stores the field name beside the value ({{run.advance.watermark-shape}}).
 
-With no pending owner, a fire receives a fresh execution id ({{run.own.retirement}}). The pull admits rows at or after the stored position, re-landing
+Without a pending owner, a fire receives a fresh execution id ({{run.own.retirement}}). The pull admits rows at or after the stored position, re-landing
 the boundary instant ({{run.advance.inclusive-boundary}}); `insights` declares a
 `primary_key`, so those repeats are idempotent ({{run.advance.declared-key-required}}).
 
 The process dies after its first page.
 
-On restart, startup marks the row `partial_failure`, its owner lease expired
+On restart, startup marks the row `partial_failure`, its lease expired
 ({{run.record.orphan-reap}}). The next fire finds no commit marker newer than the cached
 position ({{run.own.marker-reconciles}}), sees the same plan hash, and replays. The
 journal hit hands the recorded page to the land path byte for byte
