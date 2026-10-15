@@ -102,6 +102,9 @@ pub struct Client {
     read_body: bool,
     /// The operator hook every hop passes ahead of the reservation.
     hook: Option<Arc<dyn PreSendHook>>,
+    /// Under a credential's horizon, the one host a hop may reach, the configured model
+    /// endpoint, or none (`read.horizon.egress-hook`).
+    horizon: Option<Option<String>>,
     /// The reservation every hop takes, when the connector declares a limiter.
     reserve: Option<Arc<dyn Reserve>>,
     /// The traffic class and run id each intent carries.
@@ -133,6 +136,7 @@ impl Client {
             max_body: MAX_BODY_BYTES,
             read_body: true,
             hook: None,
+            horizon: None,
             reserve: None,
             class: None,
             run_id: None,
@@ -151,6 +155,14 @@ impl Client {
     /// reservation (`connector.meter.hook-composition`).
     pub fn with_hook(mut self, hook: Arc<dyn PreSendHook>) -> Client {
         self.hook = Some(hook);
+        self
+    }
+
+    /// The client serving a credential that carries a horizon: every hop but one to
+    /// `model_host`, the configured model endpoint, refuses as a hook refusal with reason
+    /// `horizon`, ahead of the operator hook (`read.horizon.egress-hook`).
+    pub fn under_horizon(mut self, model_host: Option<&str>) -> Client {
+        self.horizon = Some(model_host.map(str::to_string));
         self
     }
 
@@ -244,6 +256,12 @@ impl Client {
     /// The pre-send hook: the operator hook, then the reservation
     /// (`connector.meter.pre-send-hook`). Answers whether the operator hook admitted.
     fn admit(&self, intent: &Intent) -> Result<(), (Failure, bool)> {
+        if let Some(model_host) = &self.horizon {
+            if model_host.as_deref() != Some(intent.host.as_str()) {
+                let refused = ConnectorError::ConnectorEgressRefused(format!("`{}`: horizon", intent.host));
+                return Err((Failure::deterministic(FailureTag::Config, refused.to_string()), false));
+            }
+        }
         if let Some(hook) = &self.hook {
             hook.admit(intent).map_err(|why| {
                 let refused = ConnectorError::ConnectorEgressRefused(format!("`{}`: {why}", intent.host));
