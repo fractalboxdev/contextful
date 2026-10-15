@@ -136,6 +136,7 @@ The declaration-scoped lease provider at the head of the chain: endpoint, expiry
 - `retirement-margin` — An entry retires 10 percent of its window ahead of expiry, the margin capped at 30 s.
   *because a request sent near the boundary still lands inside the grant*
 - `endpoint` — The provider answers `POST <provider-url>/leases` carrying a bearer mint credential and body `{ "scope": "<lease scope>" }`.
+  *because a batched answer ties one scope's refusal to every name in it and mints material no request has asked for*
 - `response` — A success carries `value` plus one expiry — `expires_in` seconds, `expires_at` epoch seconds, or an RFC 3339 instant — at the top level or under `lease`.
 - `unknown-scope` — A `404` raises `SecretLeaseScopeUnknown` as a configuration fault; a declared name never falls through to a stored credential.
   *A-connector*
@@ -191,8 +192,6 @@ sequenceDiagram
   end
 ```
 
-unsettled: Does one mint call answer several scopes at once for a run that binds many leased names? owner: connector affects: connector.lease
-
 ## attach
 
 Host mediation of an outbound request: the transport port, the bound host, address vetting, header templates, origin pinning and URL scrubbing.
@@ -235,8 +234,12 @@ Host mediation of an outbound request: the transport port, the bound host, addre
 - `typed-url-edit` — Metered vendor traffic and control-plane traffic each dispatch through one client whose error mapping clears the URL as a typed edit; a URL arriving otherwise is scrubbed as text.
 - `credential-in-a-url` — A configured endpoint carrying userinfo raises `SecretCredentialInUrl` at validation, naming the source.
   *A-authority*
-- `mediation-covers-every-egress` — A built-in source, a guest connector, a model call, a limiter call and an exec step all attach through the mediated path. No second attachment point exists.
+- `mediation-covers-every-egress` — A built-in source, a guest connector, a model call and a limiter call each attach through the one mediated client; {{connector.attach.exec-environment}} names the one attachment outside it.
   *A-connector*
+- `exec-environment` — An exec step's env template hydrates through its source's resolver at spawn into the child's cleared environment, the one attachment outside host mediation, and enters {{connector.record.provider-attribution}}.
+  *because the derive driver hands a vendor child its own credential, and a loopback attaching proxy remains an open design*
+
+unsettled: Does an exec step's vendor traffic pass a host-run loopback proxy that attaches its credential, so no child holds material? owner: connector affects: connector.attach
 
 ## rotate
 
@@ -246,11 +249,15 @@ The division of labor on credential turnover and the rotation mechanisms.
   *A-connector*
 - `expiry-hint` — The host may store an opaque `expires_at` hint beside the ciphertext for cache invalidation.
 - `static-key` — A static key in a customer manager turns over with no engine step: a run hydrates the current version at its next cache miss.
-- `oauth-credential` — An OAuth credential refreshes ahead of its declared expiry, writes the new version to the customer's manager, and clears that name's cache entry in the same step.
+  *because the 300 s cache bound already caps staleness, and a per-manager change feed adds a listener and failure domain to every adapter*
+- `oauth-credential` — An OAuth credential refreshes at the point {{connector.lease.retirement-margin}} computes from its declared expiry, puts the new version to the adapter that answered its name, conditioned on the hydrated version, then clears that name's cache entry.
+  *A-connector*
 - `operator-entered` — A development or keychain secret is re-entered by an operator re-pointing the reference.
 - `leased-credential` — A leased credential re-mints ahead of its window with no write-back, and a failed re-mint leaves the source with no credential rather than an older one.
   *P4*
-- `write-back-denied` — A manager refusing the versioned put raises `SecretRotationWriteDenied`, and the run fails closed.
+- `write-back-denied` — A refused put, or an answering adapter with no write half, raises `SecretRotationWriteDenied`; the refreshed token is dropped unserved and the run fails closed.
+  *A-connector*
+- `conditional-put` — A put losing to a version another writer stored re-hydrates that version and raises nothing.
   *A-connector*
 - `connector-owns-meaning` — Token lifetime, exchange rules, refresh endpoint and scopes, expired-token codes and rate-limit headers live in the connector's `[auth]`, `[rate_limit]` and `[retry]` blocks, pinned by connector id and version.
   *A-connector*
@@ -258,7 +265,10 @@ The division of labor on credential turnover and the rotation mechanisms.
   *A-connector*
 - `turnover-preserves-the-name` — Every rotation mechanism keeps the logical name, touching no declaration and no pinned connector artifact.
 
-unsettled: How does a resolver learn of a rotation performed outside the engine, short of polling a version per name? owner: connector affects: connector.rotate
+#### Scenarios
+
+- `connector.rotate.write-back-denied`: WHEN the answering adapter refuses the put of a refreshed token, THEN the run fails and no request carries the refreshed token.
+- `connector.rotate.conditional-put`: WHEN another writer stored a newer version first, THEN the next hydration returns that version and the rotation raises nothing.
 
 ## record
 
@@ -281,7 +291,15 @@ Optional operator metadata, provider observations, the inventory of configured b
 - `expiry-unknown` — An absent expiry is unknown; `no expiry` requires an explicit assertion or observation, and days remaining is computed only for a dated expiry, retaining its provenance.
 - `expiry-warning` — The inventory marks each dated expiry falling within 30 d and each elapsed expiry, retaining the expiry's provenance.
 - `configured-is-not-observed` — A configured adapter identifies a binding's configuration; only {{connector.record.provider-attribution}} identifies the adapter that answered a run's reference.
-- `provider-attribution` — A run's audit records which adapter answered each reference, by logical name and adapter.
+- `provider-attribution` — A run's commit-phase row, and its row on the failure arm, carry `credential_providers`: each logical name the run hydrated mapped to the adapter that answered it, names only.
+- `record-table` — An operator record is a `[secret.<name>]` table in the discovered `contextful.toml`, keyed `description`, `account`, `grants`, `surfaces`, `rotate`, `created` and `expires`, each optional; `expires = "never"` is the one explicit no-expiry assertion.
+  *A-connector*
+- `record-rejected` — A `[secret.<name>]` table naming no configured binding, or carrying an unknown key, a mistyped value or a credential-shaped string, raises `SecretRecordRejected` at declaration read, naming the file, the name and the key path, never the value.
+  *because a misspelled name otherwise describes nothing while the real binding reads undescribed, and an echoed value carries a pasted token into CI logs*
+- `record-is-inert` — Resolution, attachment, rotation and a pipeline's content hash read no operator record; editing one changes no plan, run or hydrated value.
+- `observe-port` — An adapter's observe half answers a name with presence, version, creation and expiry, or unavailable with a reason, and holds no hydrated value; the inventory holds observe halves only.
+  *A-connector*
+- `inventory-output` — `secrets list` exits 0 whatever its marks; `--json` prints one object per binding per line: name, configured adapters, latest answered adapter with run id and instant, operator fields, and observations with adapter and time.
 
 #### Scenarios
 
@@ -292,8 +310,9 @@ Optional operator metadata, provider observations, the inventory of configured b
 - `connector.record.observation-unavailable`: WHEN a provider denies metadata access, THEN inventory reports the reason without reading a credential value.
 - `connector.record.expiry-unknown`: WHEN neither operator nor provider supplies an expiry, THEN inventory reports unknown expiry and no days remaining.
 - `connector.record.configured-is-not-observed`: WHEN a binding configures several adapters and has no run attribution, THEN inventory reports configuration without asserting an answering adapter.
-
-unsettled: Which operator-record serialization and metadata-only adapter interface supply the inventory fields? owner: connector affects: connector.record
+- `connector.record.record-rejected`: WHEN `contextful.toml` holds `[secret.vendor-tokne]` beside a binding named `vendor-token`, THEN the declaration read refuses and the message carries no record value.
+- `connector.record.observe-port`: WHEN a lease-served binding is listed, THEN its lease observation reads unsupported and the mint endpoint receives 0 requests.
+- `connector.record.record-is-inert`: WHEN an operator record's description changes, THEN the pipeline's content hash is unchanged.
 
 ## Shapes
 
@@ -311,11 +330,14 @@ format   = "json"
 Authorization = "Bearer ${secret://vendor-token}"
 ```
 
-An operator record:
+An operator record in `contextful.toml`, holding no value and no ciphertext:
 
-```sh
-# vendor-token — Vendor API key · account: acct-4471 (orders tenancy)
-# grants: orders.read, orders.export · created <date> · expires <date>
-# rotate: console.vendor.example/settings/api-keys
-VENDOR_TOKEN="encrypted:BExampleCiphertext..."
+```toml
+[secret.vendor-token]
+description = "Vendor API key"
+account     = "acct-4471 (orders tenancy)"
+grants      = ["orders.read", "orders.export"]
+surfaces    = [{ surface = "orders pipeline", binding = "Authorization header" }]
+rotate      = "console.vendor.example/settings/api-keys"
+expires     = "never"
 ```

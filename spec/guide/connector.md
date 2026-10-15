@@ -44,7 +44,8 @@ widening review ({{connector.widen.narrowing}}); additional access reaches opera
 ({{connector.widen.host-witness}}).
 
 Every outbound request uses the host's mediated client
-({{connector.attach.mediation-covers-every-egress}}). Each hop passes the allowlist and
+({{connector.attach.mediation-covers-every-egress}}); an exec child alone holds its credential
+({{connector.attach.exec-environment}}). Each hop passes the allowlist and
 one pre-send hook ({{connector.meter.pre-send-hook}}) before host resolution
 ({{connector.attach.resolve-half}}). The transport connects to the vetted address
 ({{connector.attach.resolve-once}}), refuses internal ranges
@@ -56,10 +57,12 @@ Credentials use `secret://<name>` references ({{connector.reference.credential-p
 The provider chain answers a name once ({{connector.resolve.first-hit-wins}}) and refuses
 shadowing ({{connector.resolve.shadowed-name}}). Material hydrates per read
 ({{connector.resolve.hydration-is-just-in-time}}); rotation keeps the name
-({{connector.rotate.turnover-preserves-the-name}}). Optional operator descriptions follow
-{{connector.record.operator-record}}; provider custody follows
+({{connector.rotate.turnover-preserves-the-name}}). An outside rotation reaches a run within
+{{connector.resolve.cache-ttl}}. Optional operator descriptions follow
+{{connector.record.operator-record}} ({{connector.record.record-table}}); provider custody follows
 {{connector.record.provider-custody}}. The inventory starts from configured bindings
-({{connector.record.inventory}}), distinguishes assertions from observations
+({{connector.record.inventory}}), reads metadata through value-free observe halves
+({{connector.record.observe-port}}), distinguishes assertions from observations
 ({{connector.record.observation-provenance}}), and exposes missing expiry through
 {{connector.record.expiry-unknown}}. Runtime attribution follows
 {{connector.record.provider-attribution}}.
