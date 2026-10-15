@@ -10,12 +10,12 @@ An unpinned clause is `committed`; a pinned one is `performed` when its Rust, Le
 | `connector` | 2 | 14 | 356 | 90 | 21 | 16 | 233 | 0 | 233 |
 | `corpus` | 1 | 10 | 79 | 37 | 7 | 0 | 79 | 0 | 79 |
 | `disclosure` | 3 | 16 | 158 | 68 | 13 | 5 | 64 | 0 | 64 |
-| `read` | 2 | 18 | 260 | 43 | 26 | 12 | 230 | 0 | 230 |
+| `read` | 2 | 19 | 276 | 45 | 28 | 13 | 230 | 0 | 230 |
 | `run` | 3 | 28 | 502 | 113 | 44 | 14 | 445 | 0 | 445 |
-| `store` | 3 | 19 | 289 | 65 | 14 | 12 | 278 | 0 | 278 |
+| `store` | 3 | 19 | 290 | 65 | 14 | 12 | 278 | 0 | 278 |
 | `surface` | 2 | 20 | 143 | 59 | 22 | 0 | 118 | 0 | 118 |
 | `topology` | 1 | 6 | 79 | 25 | 5 | 3 | 74 | 0 | 74 |
-| **total** | 22 | 165 | 2466 | 642 | 204 | 79 | 2015 | 0 | |
+| **total** | 22 | 166 | 2483 | 644 | 206 | 80 | 2015 | 0 | |
 
 Decision records: 18.
 
@@ -27,12 +27,12 @@ A milestone reads `closed` when its acceptance test computes `passing` and every
 | --- | --- | --- | --- | --- | --- |
 | 0 — The test-first gate | 2 | 22 | 19 | passing | closed |
 | 1 — The authority core | 14 | 244 | 225 | passing | closed |
-| 2 — The store | 9 | 182 | 171 | passing | closed |
+| 2 — The store | 9 | 183 | 171 | passing | closed |
 | 3 — The run path | 12 | 270 | 254 | passing | closed |
 | 4 — Ingest | 25 | 551 | 387 | passing | open |
 | 5 — The read face under enforcement | 17 | 308 | 242 | passing | open |
 | 6 — Sync and replicas | 8 | 83 | 83 | passing | closed |
-| 7 — Memory | 6 | 67 | 56 | passing | closed |
+| 7 — Memory | 6 | 71 | 56 | passing | closed |
 | 8 — Accountability | 5 | 84 | 48 | passing | open |
 | 9 — Visibility | 6 | 41 | 3 | open | open |
 | 10 — Cadence and the operator plane | 11 | 99 | 85 | passing | open |
@@ -40,7 +40,8 @@ A milestone reads `closed` when its acceptance test computes `passing` and every
 | 12 — The operator console | 12 | 56 | 41 | passing | open |
 | 13 — Disclosure | 5 | 33 | 13 | open | open |
 | 14 — Assurance | 7 | 156 | 128 | passing | closed |
-| 15 — Point-in-time evaluation | 7 | 77 | 77 | passing | closed |
+| 15 — Point-in-time evaluation | 7 | 78 | 77 | passing | closed |
+| 16 — Memory graph walk | 1 | 11 | 0 | absent | open |
 
 Unscheduled operations: 12.
 

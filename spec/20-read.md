@@ -506,6 +506,8 @@ Reading under a credential's {{authority.grant.horizon}}: the bound every read i
   *because a cutoff the agent can widen is advisory, while a valid-time question about a known future effective date stays legitimate*
 - `recall-horizon` — Under a horizon, {{read.recall.keyed}} defaults an absent `observed_at` to the horizon and reads a claims table at `available_as_of` equal to it, so a table declaring no availability time refuses as {{store.available-time.undeclared}}.
   *because a claim lands at its commit instant, and one concluded after the horizon otherwise answers inside it*
+- `traverse-horizon` — Under a horizon, {{read.traverse.call}} defaults an absent `observed_at` to the horizon.
+  *because an edge live at the call's instant otherwise answers a walk the horizon dates earlier*
 - `engine-stamps` — Under a horizon, the projection carries neither `_ingested_at` nor `_commit_seq` and keeps `_run_id` and `_row_seq`, which cite a row; `context.describe` computes row count, size, lexicon and example values over the horizon-bounded relation.
   *A-read*
 - `late-columns` — Under a horizon, a column whose `first_landed_at` in `schema.json` — set once by its first merge, to that batch's earliest availability instant, else the commit instant — falls after the horizon is absent from the registered schema and describe payload.

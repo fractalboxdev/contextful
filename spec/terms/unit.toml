@@ -25,7 +25,8 @@ tokens   = { gloss = "model tokens" }
 entries  = { gloss = "registry or index entries" }
 conditions = { gloss = "filter conditions" }
 connections = { gloss = "embedded engine connections" }
-hops     = { gloss = "delegation hops" }
+hops     = { gloss = "delegation or traversal hops" }
+memory-edges = { gloss = "memory edges" }
 attempts = { gloss = "retry attempts" }
 passes   = { gloss = "extra extraction passes over one batch" }
 rounds   = { gloss = "repeated probe rounds" }

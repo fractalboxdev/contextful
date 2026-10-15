@@ -7,6 +7,7 @@ owns:
   - recall
   - resolve-entity
   - settle
+  - traverse
 ---
 
 # Synthesized memory
@@ -41,6 +42,7 @@ flowchart LR
   SYN -->|"failed batch"| DL
   APP -->|"write claims directly"| FACTS
   FACTS -->|"recall with evidence"| FACE
+  EDGES -->|"bounded walk"| FACE
   FACE -->|"grounded turn"| APP
   APP -->|"register prediction"| PRED
   APP -->|"observe outcome"| OUT
@@ -62,6 +64,10 @@ The five memory table shapes, their canonical columns, tier and scope, and the r
   *A-read*
 - `serving-taint` — A claims table's `serving_taint` names a minimum label under {{connector.infer.provenance-order}}; a claim without `_taint` ranks as `operator`, and a claim ranking below the minimum is suppressed, raising `MemoryClaimTaintBelowFloor`.
   *A-read*
+- `relation-traits` — Each relation in `[relation].declared` carries `direction` (`directed` or `undirected`), `cardinality` (`one` or `many` edges per source) and `walkable`; the reserved core carries the traits the reserved-traits table under Shapes states.
+  *A-read*
+- `relation-string` — A bare string entry in `[relation].declared` declares a `directed`, `many`, non-walkable relation.
+  *because declarations naming relations as strings keep loading, and a walk crosses only a relation its author opted in*
 
 
 ## synthesize
@@ -137,6 +143,8 @@ Supersession within one validity line, confidence decay, the direct write and it
   *because retiring the later claim at the earlier instant ends it before it starts, and it then answers at no instant*
 - `citation-live` — A direct write citing a keyed table's row that reads through the writer's session as a version its key has since replaced raises `MemoryCitationNotLive`, and nothing lands.
   *because such a claim rests on a replaced version from its first read, while a citation no readable row carries lands undigested and recall withholds it*
+- `edge-supersede` — A new edge from a source under a relation declaring `cardinality = one` ends that source's live edge of the relation at the new edge's `valid_from`, and the ended edge names the new one in `superseded_by`.
+  *A-read*
 - `unscoped-collision` — Direct writes with no scope, equal subject, predicate and valid-from, and different objects record both claim ids in the dead-letter table; neither claim retires the other until an explicit revision resolves the conflict.
   *A-read*
 - `retention-default` — Claims retain their recorded validity until explicit expiry or erasure; a claims table declaring `decay_half_life` halves a claim's ranked score per half-life since its `valid_from`, never deleting a claim or changing its validity.
@@ -230,6 +238,8 @@ Mention-to-entity matching, aliases, the knowledge card, place identity and near
   *A-read*
 - `ownership-answer` — An artifact's ownership answer returns the target of every `owned_by` edge from it visible to the caller, newest `_ingested_at` first, with principal id breaking equal-instant ties.
   *A-read*
+- `ownership-live` — The ownership answer omits an `owned_by` edge whose `valid_to` falls at or before the anchor.
+  *because an ended edge records a past owner, and returning it names that owner as current*
 
 unsettled: Which edges carry aliases and nearness's parent closure, and what fields form the knowledge card? owner: read-path affects: read.resolve-entity
 
@@ -263,6 +273,48 @@ flowchart LR
   OUT -->|"joined within grace"| LAB
 ```
 
+## traverse
+
+A bounded walk over admitted memory edges from a seed entity, under one frozen anchor and the caller's enforced session.
+
+- `call` — `memory.traverse` takes `table`, `seed`, `rel_types`, `hops`, `as_of_ingest`, `observed_at` and `available_as_of`, and returns the reached edges whose `valid_from` and `valid_to` cover `observed_at`, under one frozen anchor, as {{read.respond.one-projection}}.
+- `clocks` — An absent `as_of_ingest` reads the latest committed state, an absent `observed_at` the call's instant, and an absent `hops` 1; `contextful.bounds` echoes each supplied bound as {{read.recall.keyed-clocks}} does.
+- `cli-verb` — The `contextful memory traverse` verb passes its arguments through {{read.traverse.call}} and prints the same JSON response.
+- `enforced-edges` — Every edge reads through the caller's enforced session, and each edge's citations pass {{read.recall.evidence-unresolved}}; an edge failing either is neither returned nor walked through.
+  *because walking through a hidden edge reveals the node beyond it*
+- `engine` — An engine-backed walk answers through {{read.resolve-entity.graph-index}}.
+- `walkable` — A `rel_types` entry whose declared relation is not walkable raises `MemoryTraverseRelationUnwalkable`.
+  *A-read*
+- `hop-bound` — A walk follows at most 3 hops; a larger `hops` raises `MemoryTraverseHopsExceeded`.
+  *A-read*
+- `fan-out` — A node expands at most 64 memory-edges, ordered by `valid_from` newest first then edge id; the rest count in `edges_omitted`.
+  *A-read*
+- `frontier-cap` — A walk stops at 512 memory-edges and counts unexpanded edges in `edges_omitted`; a non-zero `edges_omitted` marks the walk incomplete, and `truncated` stays with {{read.respond.truncation-cause}}.
+  *A-read*
+- `omitted-readable` — `edges_omitted` counts only edges the caller's session reads.
+  *because a count of hidden edges discloses their existence, as {{read.recall.suppression-count}} avoids naming claims*
+- `cycle` — A visited node is never expanded again; the walk proceeds breadth-first by hop.
+  *because a revisited node adds no edge and a cycle otherwise exhausts {{read.traverse.frontier-cap}}*
+
+One walk, from the caller's seed to the reached edges:
+
+```mermaid
+flowchart LR
+  APP(["agent"]) -->|"seed and relation types"| REL{"relations walkable?"}
+  REL -->|"no: MemoryTraverseRelationUnwalkable"| APP
+  REL -->|"yes"| HOP{"hops within bound?"}
+  HOP -->|"no: MemoryTraverseHopsExceeded"| APP
+  HOP -->|"yes, expand seed"| EDGES[("memory_edges")]
+  EDGES -->|"edges at hop"| GATE{"edge readable and cited?"}
+  GATE -->|"no, neither returned nor walked"| HIDDEN["hidden edge"]
+  GATE -->|"yes"| CAP{"within fan-out and frontier?"}
+  CAP -->|"no, counted in edges_omitted"| OMIT["omitted edge count"]
+  CAP -->|"yes"| REACHED["reached edges"]
+  REACHED -->|"unvisited targets, next hop"| EDGES
+  REACHED -->|"one projection"| APP
+```
+
+unsettled: Does a graph arm seeded by the query's resolved entities fuse into {{read.rank.fusion}} as a third leg, and at what weight? owner: read-path affects: read.traverse
 
 ## Shapes
 
@@ -273,9 +325,28 @@ A declaration naming a shape and its declared relation types:
 name  = "team_memory"
 shape = "memory_facts"
 
-[relation]
-declared = ["reports_to", "owns_service"]
+[[relation.declared]]
+name        = "reports_to"
+direction   = "directed"
+cardinality = "one"
+walkable    = true
+
+[[relation.declared]]
+name        = "owns_service"
+direction   = "directed"
+cardinality = "many"
+walkable    = true
 ```
+
+The reserved-traits table:
+
+| Relation | `direction` | `cardinality` | `walkable` |
+| --- | --- | --- | --- |
+| `supports` | `directed` | `many` | true |
+| `contradicts` | `undirected` | `many` | true |
+| `supersedes` | `directed` | `many` | true |
+| `about` | `directed` | `many` | false |
+| `derived_from` | `directed` | `many` | true |
 
 The label view:
 
