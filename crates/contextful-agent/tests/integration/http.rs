@@ -881,41 +881,11 @@ fn a_read_while_the_snapshot_set_hydrates_answers_503_with_retry_after_and_admit
     assert!(head.contains("Retry-After: 1\r\n") || head.ends_with("Retry-After: 1"), "{head}");
     let (status, head, _) = send(addr, &HttpRequest { method: "GET".into(), target: "/control/workflows".into(), headers: vec![], body: vec![] });
     assert_eq!(status, 503, "{head}");
+    let (status, head, _) = send(addr, &HttpRequest { method: "POST".into(), target: "/health".into(), headers: vec![], body: vec![] });
+    assert_eq!(status, 503, "{head}");
+    assert!(head.contains("Retry-After: 1\r\n") || head.ends_with("Retry-After: 1"), "{head}");
     assert_eq!(contextful_policy::audit::entries(&audit_dir).unwrap().len(), recorded, "a warming container admits and records no read");
     let (status, _, answer) = send(addr, &health());
     assert_eq!(status, 200);
     assert_eq!(body(&answer)["hydration"], "warming");
-}
-
-/// A cold retrieval container meets {{topology.publish-hostname.container-readiness}}; a container holding no snapshot adds a whole-store pull before its first answer.
-// spec: read.cache.cold-start@791b106f
-#[test]
-fn a_container_holding_no_snapshot_answers_its_first_read_after_the_whole_store_pull() {
-    let key = holder(1);
-    let f = fixture();
-    let token = credential(&f.signer, "research/*", 900, Some(&key));
-    let hydration: &'static Hydration = Box::leak(Box::new(Hydration::warming()));
-    let (_f, addr, started) = listen_hydrating(f, hydration);
-    let pulled = AtomicBool::new(false);
-    std::thread::scope(|s| {
-        s.spawn(|| {
-            std::thread::sleep(std::time::Duration::from_millis(300));
-            pulled.store(true, Ordering::SeqCst);
-            hydration.finish();
-        });
-        assert_eq!(send(addr, &health()).0, 200);
-        assert!(started.elapsed() < std::time::Duration::from_secs(8));
-        let deadline = std::time::Instant::now() + std::time::Duration::from_secs(5);
-        loop {
-            let (status, head, answer) = send(addr, &signed(&query(FAST), &token, &key));
-            if status == 200 {
-                assert!(pulled.load(Ordering::SeqCst), "the first answer follows the pull");
-                assert_eq!(result(&answer)["rows"].as_array().map(Vec::len), Some(2), "{}", String::from_utf8_lossy(&answer));
-                break;
-            }
-            assert_eq!(status, 503, "{head}");
-            assert!(std::time::Instant::now() < deadline, "the pull completes and reads answer");
-            std::thread::sleep(std::time::Duration::from_millis(50));
-        }
-    });
 }

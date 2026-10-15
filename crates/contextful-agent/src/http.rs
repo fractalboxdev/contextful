@@ -456,7 +456,7 @@ impl<'a, C: Clock + Sync> HttpFace<'a, C> {
     /// Answer one request under a slot already held.
     pub fn answer(&self, request: &HttpRequest) -> HttpResponse {
         let hydration = self.hydration.map_or("complete", Hydration::state);
-        if hydration == "warming" && request.path() != HEALTH_PATH {
+        if hydration == "warming" && !(request.path() == HEALTH_PATH && request.method == "GET") {
             return HttpResponse::unavailable("the snapshot set is hydrating; reads answer once it is local");
         }
         match (request.path(), request.method.as_str()) {

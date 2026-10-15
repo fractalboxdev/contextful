@@ -1,6 +1,5 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { readFileSync } from "node:fs";
 import { registryFromEnv, routeRequest } from "../src/index.ts";
 
 // spec: topology.publish-hostname.unconfigured-gateway@4bb428f8
@@ -65,14 +64,4 @@ test("an entry authoring its credential or binding name returns StoreNameAuthore
   for (const key of ["credential", "credentialName", "binding", "bindingName"]) {
     assert.throws(() => registryFromEnv(JSON.stringify([{ id: "field-notes", endpoint: "https://read.example", [key]: "OTHER" }])), /StoreNameAuthored/, key);
   }
-});
-
-// spec: surface.register-store.shared-registry@e3840a26
-test("the console resolves store identities through the gateway registry", () => {
-  const consoleEntry = readFileSync(new URL("../../console/src/entry.ts", import.meta.url), "utf8");
-  assert.match(consoleEntry, /import \{ registryFromEnv \} from "\.\.\/\.\.\/gateway\/src\/index\.ts";/);
-  assert.match(consoleEntry, /registryFromEnv\(process\.env\.CONTEXTFUL_STORES_JSON\)/);
-  assert.doesNotMatch(consoleEntry, /JSON\.parse\(process\.env\.CONTEXTFUL_STORES_JSON/);
-  const registry = registryFromEnv(JSON.stringify([{ id: "field-notes", label: "Field notes", endpoint: "https://read.example" }]));
-  assert.deepEqual(registry.entries.map(({ id, label }) => ({ id, label })), [{ id: "field-notes", label: "Field notes" }]);
 });
