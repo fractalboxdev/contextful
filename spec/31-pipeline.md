@@ -481,6 +481,10 @@ A published table's contract identity, build, freshness and holds, committed wit
 - `freshness` — Freshness carries the newest publishing build id, its watermark, `max_lag`, the last build status and a withheld-cells flag; staleness follows {{run.publish.staleness}} and is never stored.
 - `staleness` — A published model is stale at `t` when an input holds a committed run that neither its watermark snapshot nor listed runs include, committed before `t` minus `max_lag`; `build status --json` names each such input under `stale_inputs`.
   *A-run*
+- `staleness-model-input` — An input that is a model also waits on each of its published builds newer than the watermark snapshot, aged by that build's `created_at`.
+  *A-run*
+- `staleness-collected-run` — A waiting run whose manifest retention collected counts as committed before `t` minus `max_lag`.
+  *A-run*
 - `hold` — A hold records build id, placing principal and expiry; collection skips a held build, and a hold confers no other authority.
 - `manifest-section` — The manifest section carries `{contract_version, schema_fingerprint, build_id, build_started_at, last_built_at, watermark, max_lag, last_build_status, withheld_cells, disclosure_digest, partitions_failed?, semantics_version?, fingerprint_recipe?}` of the newest publishing build; `watermark` maps each input table to its snapshot and omitted runs.
 - `semantics-version` — `semantics_version` advances when the engine adds an injected column, and `fingerprint_recipe` names the fingerprint's inputs, that column included.
@@ -507,6 +511,7 @@ flowchart LR
 - `run.publish.staleness`: WHEN no input lands after a build and `max_lag` is `1h`, THEN `build status` at 100 days later reports `stale` false.
 - `run.publish.staleness`: WHEN `events` lands a run 1 second past the build and `max_lag` is `1h`, THEN status reports fresh at 1 hour after the landing and stale, `stale_inputs` `["events"]`, 1 second later.
 - `run.publish.staleness`: WHEN a fold folds the runs a build read into a new snapshot, THEN status still reports the build fresh.
+- `run.publish.staleness-model-input`: WHEN `daily` rebuilds after `weekly` read it and `max_lag` is `1d`, THEN `weekly` reports stale, `stale_inputs` `["daily"]`, 1 day after the rebuild.
 
 unsettled: Is a build with a non-null horizon stale by landings committed after its horizon? owner: pipeline affects: run.publish
 

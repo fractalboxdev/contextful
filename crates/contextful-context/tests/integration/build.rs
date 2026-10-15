@@ -289,8 +289,7 @@ fn the_watermark_names_each_input_frontier() {
     assert_eq!(next.watermark.at, Some(at("2030-01-01T02:00:00Z")));
 }
 
-/// A hold records build id, placing principal and expiry; collection skips a held build, and a hold confers no other authority.
-// spec: run.publish.hold@f4fa4cd4
+/// A published model is stale at `t` when an input holds a committed run that neither its watermark snapshot nor listed runs include, committed before `t` minus `max_lag`; `build status --json` names each such input under `stale_inputs`.
 #[test]
 fn a_fold_after_the_build_leaves_it_fresh() {
     let p = Project::new();
@@ -309,6 +308,62 @@ fn a_fold_after_the_build_leaves_it_fresh() {
     assert_eq!(stale["stale_inputs"], json!(["events"]));
 }
 
+/// Runs a build read through its watermark snapshot's chain count as included while their manifests stay.
+#[test]
+fn runs_in_the_watermark_snapshot_chain_count_as_read() {
+    let p = Project::new();
+    p.land("r2", json!([{"day": "d3", "v": 4}]), "2030-01-01T00:10:00Z");
+    contextful_context::fold::fold(&p.fx.store, &decl("name = \"events\""), at("2030-01-01T00:20:00Z")).unwrap();
+    let built = p.build(MODEL, "2030-01-01T01:00:00Z").unwrap();
+    let events = &built.watermark.inputs["events"];
+    assert!(events.snapshot_id.is_some() && events.runs.is_empty(), "{events:?}");
+    let runs = p.fx.store.committed_runs("events").unwrap();
+    assert_eq!(runs.len(), 2, "both folded runs keep their manifests");
+    let fresh = status(&p.fx.store, "daily", at("2030-03-01T00:00:00Z")).unwrap();
+    assert_eq!(fresh["stale_inputs"], json!([]), "{fresh}");
+    // A second fold parents on the first; only its new run waits.
+    p.land("r3", json!([{"day": "d4", "v": 5}]), "2030-03-01T00:00:00Z");
+    contextful_context::fold::fold(&p.fx.store, &decl("name = \"events\""), at("2030-03-01T00:30:00Z")).unwrap();
+    assert_eq!(status(&p.fx.store, "daily", at("2030-03-01T23:59:59Z")).unwrap()["stale_inputs"], json!([]));
+    assert_eq!(status(&p.fx.store, "daily", at("2030-03-02T00:00:01Z")).unwrap()["stale_inputs"], json!(["events"]));
+}
+
+const WEEKLY: &str = r#"
+[[model]]
+id = "weekly"
+sql = "SELECT day, n FROM daily"
+unique_key = ["day"]
+
+[model.contract]
+version = "1.0.0"
+columns = [{ name = "day", type = "utf8", nullable = false }, { name = "n", type = "int64", nullable = false }]
+
+[model.freshness]
+max_lag = "1d"
+"#;
+
+/// An input that is a model also waits on each of its published builds newer than the watermark snapshot, aged by that build's `created_at`.
+// spec: run.publish.staleness-model-input@42f56eee
+#[test]
+fn a_model_reading_a_model_ages_by_its_rebuilds() {
+    let p = Project::new();
+    p.build(MODEL, "2030-01-01T01:00:00Z").unwrap();
+    let weekly = p.build(WEEKLY, "2030-01-01T02:00:00Z").unwrap();
+    assert_eq!(weekly.watermark.inputs.keys().collect::<Vec<_>>(), ["daily"]);
+    assert_eq!(status(&p.fx.store, "weekly", at("2030-04-01T00:00:00Z")).unwrap()["stale_inputs"], json!([]));
+    // The upstream rebuild is a landing `weekly` has not read.
+    p.build(MODEL, "2030-04-01T00:00:00Z").unwrap();
+    assert_eq!(status(&p.fx.store, "weekly", at("2030-04-01T23:59:59Z")).unwrap()["stale_inputs"], json!([]));
+    let stale = status(&p.fx.store, "weekly", at("2030-04-02T00:00:01Z")).unwrap();
+    assert_eq!(stale["stale"], true, "{stale}");
+    assert_eq!(stale["stale_inputs"], json!(["daily"]));
+    // A rebuild over the current frontier clears it.
+    p.build(WEEKLY, "2030-04-02T01:00:00Z").unwrap();
+    assert_eq!(status(&p.fx.store, "weekly", at("2030-05-01T00:00:00Z")).unwrap()["stale_inputs"], json!([]));
+}
+
+/// A hold records build id, placing principal and expiry; collection skips a held build, and a hold confers no other authority.
+// spec: run.publish.hold@f4fa4cd4
 #[test]
 fn collection_skips_a_held_build() {
     let p = Project::new();

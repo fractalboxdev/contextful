@@ -83,7 +83,7 @@ The relations, tools and templates one connection sees, the engine executing aga
 - `describe-payload` — `context.describe` returns row count, {{read.register.size-estimate}}, schema fingerprint, description, {{read.register.column-hints}}, declared indexes, partition scheme, `limits.max_rows`, zone label, lexicon and example queries.
 - `size-estimate` — `context.describe` reports `bytes`, the serialized JSON length of the caller's restricted rows, and `estimated_tokens`, one per 4 B of that length, rounded up.
   *because a client choosing between a full-context read and a ranked one compares the corpus against its context window before reading it*
-- `join-route` — A cross-table join runs as one `context.query` statement over registered relations, or through an operator-defined view the describe payload lists; no tool joins on a caller's behalf.
+- `join-route` — A cross-table join runs as one `context.query` statement over registered relations, or through a published model the describe payload lists; no tool joins on a caller's behalf.
   *because a statement already composes each relation's restriction, and a join tool restates that composition outside the guard*
 - `column-hints` — A table's `column_hints` map supplies optional per-column hints; `context.describe` includes each hint only with a column the session registers.
   *because a hint for an absent column describes a relation the registered schema cannot query*

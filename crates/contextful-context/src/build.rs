@@ -152,8 +152,18 @@ fn waiting(store: &Store, watermark: &Watermark) -> Result<BTreeMap<String, Vec<
         }
         let runs = store.committed_runs(table)?;
         let (chain, _) = store.chain(table)?;
+        // A model input lands no run; each published build above the watermark snapshot waits
+        // instead (`run.publish.staleness-model-input`).
+        let rebuilds: Vec<Option<Instant>> = chain
+            .iter()
+            .take_while(|m| frontier.snapshot_id.as_deref() != Some(m.snapshot_id.to_string().as_str()))
+            .filter(|m| m.publish.is_some())
+            .map(|m| Some(m.created_at))
+            .collect();
         let folded: BTreeSet<String> = chain.into_iter().flat_map(|m| m.includes_runs).collect();
-        out.insert(table.clone(), waiting_runs(&included, &runs, &folded));
+        let mut waits = waiting_runs(&included, &runs, &folded);
+        waits.extend(rebuilds);
+        out.insert(table.clone(), waits);
     }
     Ok(out)
 }

@@ -307,7 +307,8 @@ fn run_manifest(run: &str, committed: &str) -> RunManifest {
     serde_json::from_value(serde_json::json!({"run_id": run, "table": "events", "node_id": "n", "committed_at": committed})).unwrap()
 }
 
-/// Staleness counts, per input, the committed runs the build did not include (`run.publish.staleness`).
+/// A waiting run whose manifest retention collected counts as committed before `t` minus `max_lag`.
+// spec: run.publish.staleness-collected-run@48e79ebe
 #[test]
 fn a_build_is_stale_only_by_an_unread_landing_past_max_lag() {
     let mut s = section("snapshot-1", "1.0.0", "f", "2030-01-01T06:00:00Z");

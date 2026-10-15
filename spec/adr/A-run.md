@@ -397,7 +397,7 @@ Consequences: an origin later than the frozen bound refuses.
 
 Context: a published model's reader asks whether its figures trail the corpus by more than `max_lag`. Comparing the newest input commit with the clock reads a quiet input as stale forever, and no rebuild clears it.
 
-Decision: a build includes a run when the run sits in its watermark snapshot's chain `includes_runs` or in the watermark's listed runs, so a later fold of those runs changes nothing. Per input table, every committed run, folded or not, that the build does not include waits; the build is stale when a waiting run committed more than `max_lag` before the asked instant. A waiting run whose commit instant can no longer be read counts as past the lag. `stale_inputs` names each input holding one.
+Decision: a build includes a run in its watermark snapshot's chain `includes_runs` or in the watermark's listed runs, so a later fold of those runs changes nothing. Per input, every committed run the build does not include waits, and so does each published build of a model input newer than the watermark snapshot, since a model build lands no run. The build is stale when a waiting landing is older than `max_lag`; one whose instant retention collected counts as older. `stale_inputs` names each input holding one.
 
 Criteria: a rebuild over the current frontier always clears staleness, which decided it.
 
@@ -405,8 +405,8 @@ Criteria: a rebuild over the current frontier always clears staleness, which dec
 | --- | --- | --- |
 | An uncovered run per input *(chosen)* | — | Status reads every input's committed runs and the watermark snapshot's chain. |
 | The newest commit instant against the clock | Clearable | A quiet input reads stale, and no rebuild fixes it. |
-| The oldest omitted run's instant | Meaning | The listed runs are ones the build read, so it measures fold backlog. |
 | A single-instant watermark | Comparability | Two writers commit out of stamp order, so an instant names no landing set. |
+| Runs alone for a model input | Chained models | A model build lands no run, so a model reading a model never ages. |
 | The maximum across inputs | Attribution | One input that never reaches a build hides behind fresher ones. |
 
 Consequences: the watermark and manifest shapes stay as they are, and `watermark.at` is informational.
