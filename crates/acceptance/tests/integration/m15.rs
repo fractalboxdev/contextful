@@ -149,3 +149,60 @@ fn m15_gdp_vintages() {
     ok(&p.run(&cf, &["context", "compact", "research/gdp", "--project", "research", "--now", "2030-07-02T00:00:00Z"]));
     assert_eq!(answers(), before, "a fold drops no vintage");
 }
+
+const NEWS: &str = r#"authoring_posture = "per_request"
+[[pipeline.tables]]
+name = "research/news"
+primary_key = ["story_id"]
+content_hash_column = "digest"
+
+[pipeline.tables.available_time]
+column = "published_at"
+"#;
+
+#[test]
+#[ignore = "milestone 15 is open"]
+fn m15_horizon() {
+    let cf = bin("contextful");
+    let p = GitRepo::init();
+    p.write(".contextful/issuance.toml", &format!("default_audience = \"{AUD}\"\nmax_lifetime_secs = 3600\n"));
+    p.write("contextful.toml", NEWS);
+    // One story published before the horizon, and one planted in June 2015, after it.
+    let stories = [
+        json!({ "story_id": "s-2014", "digest": "a", "headline": "acme widens margin", "published_at": "2014-11-01T00:00:00Z" }),
+        json!({ "story_id": "s-2015", "digest": "b", "headline": "acme widens margin again", "published_at": "2015-06-01T00:00:00Z" }),
+    ];
+    p.write("news.jsonl", &stories.iter().map(Value::to_string).collect::<Vec<_>>().join("\n"));
+    ok(&p.run(&cf, &[
+        "context", "land", "research/news", "--project", "research", "--rows", "news.jsonl", "--run-id", "run-0001", "--site-id", "site-a",
+        "--type", "published_at=timestamp", "--now", "2030-06-01T00:00:00Z",
+    ]));
+    p.commit("two stories, one past the horizon");
+
+    let public = ok(&p.run(&cf, &["token", "keygen", "--out", ".contextful/issuer.seed"]));
+    let reader = ok(&p.run(&cf, &[
+        "token", "mint", "--issuer-key", ".contextful/issuer.seed", "--on-behalf-of", "user://dana@acme.example", "--agent", "agent://backtest",
+        "--zone", "on-prem:hq", "--action", "read", "--table", "research/*", "--horizon", "2015-01-01T00:00:00Z", "--ttl", "3600",
+    ]));
+
+    // No derivation extends the horizon.
+    let widened = p.run(&cf, &["token", "attenuate", "--token", &reader, "--horizon", "2016-01-01T00:00:00Z"]);
+    assert!(!widened.status.success());
+    let err = String::from_utf8_lossy(&widened.stderr);
+    assert!(err.contains("AttenuationWidens") && err.contains("horizon"), "{err}");
+
+    // Every read tool, called with no bound, reads at the horizon and omits the planted story.
+    let read = |tool: &str, arguments: Value| call(&cf, &p, &public, &reader, tool, arguments);
+    let queried = read("context.query", json!({ "sql": r#"SELECT story_id FROM "research/news""# }));
+    assert_eq!(rows(&queried), &json!([["s-2014"]]), "{queried}");
+    assert_eq!(queried["result"]["structuredContent"]["contextful.bounds"]["available_as_of"], json!("2015-01-01T00:00:00.000000000Z"), "{queried}");
+    let described = read("context.describe", json!({ "table": "research/news" }));
+    assert_eq!(described["result"]["structuredContent"]["row_count"], json!("1"), "{described}");
+    let retrieved = read("corpus.retrieve", json!({ "prefix": "research/news", "query": "acme margin" }));
+    let ids: Vec<String> = rows(&retrieved).as_array().unwrap().iter().map(|r| r.to_string()).collect();
+    assert!(!ids.is_empty() && ids.iter().all(|r| !r.contains("s-2015")), "{retrieved}");
+    let listed = read("context.files", json!({}));
+    let part = rows(&listed).as_array().unwrap()[0][1].clone();
+    let previewed = read("context.file", json!({ "path": part }));
+    assert_eq!(rows(&previewed).as_array().unwrap().len(), 1, "{previewed}");
+}
