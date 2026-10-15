@@ -10,12 +10,12 @@ An unpinned clause is `committed`; a pinned one is `performed` when its Rust, Le
 | `connector` | 2 | 14 | 356 | 90 | 21 | 16 | 229 | 0 | 229 |
 | `corpus` | 1 | 10 | 79 | 37 | 7 | 0 | 79 | 0 | 79 |
 | `disclosure` | 3 | 16 | 157 | 68 | 13 | 3 | 63 | 0 | 63 |
-| `read` | 2 | 18 | 238 | 38 | 24 | 4 | 211 | 0 | 211 |
+| `read` | 2 | 18 | 238 | 38 | 24 | 4 | 214 | 0 | 214 |
 | `run` | 3 | 28 | 501 | 113 | 44 | 14 | 430 | 0 | 430 |
-| `store` | 3 | 19 | 287 | 65 | 14 | 13 | 253 | 0 | 253 |
+| `store` | 3 | 19 | 287 | 65 | 14 | 13 | 259 | 0 | 259 |
 | `surface` | 2 | 20 | 137 | 59 | 22 | 0 | 98 | 0 | 98 |
 | `topology` | 1 | 6 | 79 | 25 | 5 | 3 | 72 | 0 | 72 |
-| **total** | 22 | 165 | 2434 | 637 | 202 | 71 | 1892 | 0 | |
+| **total** | 22 | 165 | 2434 | 637 | 202 | 71 | 1901 | 0 | |
 
 Decision records: 18.
 
@@ -30,7 +30,7 @@ A milestone reads `closed` when its acceptance test computes `passing` and every
 | 2 — The store | 9 | 181 | 170 | passing | closed |
 | 3 — The run path | 12 | 269 | 253 | passing | closed |
 | 4 — Ingest | 25 | 551 | 380 | passing | open |
-| 5 — The read face under enforcement | 17 | 298 | 238 | passing | open |
+| 5 — The read face under enforcement | 17 | 298 | 241 | passing | open |
 | 6 — Sync and replicas | 8 | 83 | 83 | passing | closed |
 | 7 — Memory | 6 | 55 | 54 | passing | closed |
 | 8 — Accountability | 5 | 83 | 47 | passing | open |
@@ -40,7 +40,7 @@ A milestone reads `closed` when its acceptance test computes `passing` and every
 | 12 — The operator console | 12 | 56 | 25 | passing | open |
 | 13 — Disclosure | 5 | 33 | 13 | open | open |
 | 14 — Assurance | 7 | 156 | 123 | passing | closed |
-| 15 — Point-in-time evaluation | 7 | 76 | 0 | open | open |
+| 15 — Point-in-time evaluation | 7 | 76 | 6 | open | open |
 
 Unscheduled operations: 12.
 
@@ -895,6 +895,7 @@ Unscheduled operations: 12.
 | `read.embed.default-embedder-reach` | `crates/contextful-core/tests/integration/read/embed.rs::a_paraphrase_is_orthogonal_under_the_default` | performed |
 | `read.embed.model-identifier` | `crates/contextful-context/tests/integration/index.rs::the_fold_builds_each_declared_sidecar_over_identified_nonzero_vectors_of_its_model` | performed |
 | `read.embed.required-face` | `crates/contextful-core/tests/integration/read/face.rs::a_requirement_outside_the_reported_set_is_refused` | performed |
+| `read.guard.available-reserved-parameter` | `crates/contextful-core/tests/integration/store/available_time.rs::a_template_parameter_named_available_as_of_refuses_the_manifest` | performed |
 | `read.guard.engine-own-parse` | `crates/contextful-context/tests/integration/read/guard.rs::read_only_ness_is_a_property_of_the_engines_tree` | performed |
 | `read.guard.query-binding` | `crates/contextful-context/tests/integration/read/guard.rs::query_parameters_bind_by_declared_type` | performed |
 | `read.guard.quoted-identifiers` | `crates/contextful-context/tests/integration/read/guard.rs::vendor_field_names_render_as_identifiers` | performed |
@@ -957,6 +958,8 @@ Unscheduled operations: 12.
 | `read.recall.usage-ledger` | `crates/contextful-agent/tests/integration/mcp.rs::memory_reads_record_the_claim_ids_they_returned` | performed |
 | `read.register.admission-refused` | `crates/contextful-agent/tests/integration/http.rs::a_refused_admission_answers_401_with_its_identifier` | performed |
 | `read.register.advertised-is-enforced` | `crates/contextful-context/tests/integration/read/register.rs::the_published_limit_is_the_applied_one` | performed |
+| `read.register.available-bound-argument` | `crates/contextful-agent/tests/integration/mcp.rs::available_as_of_wraps_only_the_tables_a_read_touches` | performed |
+| `read.register.available-bound-listing` | `crates/contextful-agent/tests/integration/mcp.rs::a_listing_ignores_available_as_of` | performed |
 | `read.register.bare-name` | `crates/contextful-context/tests/integration/read/register.rs::every_bare_name_resolves_to_the_callers_relation` | performed |
 | `read.register.bound-arguments` | `crates/contextful-agent/tests/integration/mcp.rs::valid_as_of_wraps_only_the_tables_a_read_touches` | performed |
 | `read.register.bound-listing` | `crates/contextful-agent/tests/integration/mcp.rs::a_listing_ignores_valid_as_of_and_echoes_only_as_of` | performed |
@@ -1517,6 +1520,12 @@ Unscheduled operations: 12.
 | `run.transform.projection` | `crates/contextful-core/tests/integration/pipeline/transform.rs::select_fixes_the_column_set_and_rename_maps_a_name` | performed |
 | `run.transform.type-carry` | `crates/contextful-core/tests/integration/pipeline/transform.rs::a_pulled_type_follows_a_rename_and_leaves_with_a_select_or_a_scalar_cast` | performed |
 | `run.transform.typed-cast` | `crates/contextful-core/tests/integration/pipeline/transform.rs::a_cast_to_a_binary_or_vector_type_keeps_readable_values_and_types_the_column` | performed |
+| `store.available-time.available-as-of` | `crates/contextful-context/tests/integration/available_time.rs::a_row_answers_from_its_availability_instant_onward` | performed |
+| `store.available-time.bound-echo` | `crates/contextful-core/tests/integration/store/available_time.rs::an_availability_bound_joins_the_echo` | performed |
+| `store.available-time.declaration` | `crates/contextful-core/tests/integration/store/available_time.rs::an_available_time_block_declares_its_column_and_zone` | performed |
+| `store.available-time.null` | `crates/contextful-context/tests/integration/available_time.rs::landing_a_row_without_an_availability_instant_is_refused` | performed |
+| `store.available-time.table-key` | `crates/contextful-core/tests/integration/store/available_time.rs::an_unset_available_time_is_absent_from_the_canonical_serialization` | performed |
+| `store.available-time.undeclared` | `crates/contextful-core/tests/integration/store/available_time.rs::available_as_of_on_a_table_declaring_no_availability_time_is_refused` | performed |
 | `store.bound-time.as-of` | `crates/contextful-core/tests/integration/store/bound_time.rs::as_of_resolves_to_the_newest_snapshot_at_or_before_it_plus_omitted_runs` | performed |
 | `store.bound-time.as-of-unretained` | `crates/contextful-core/tests/integration/store/bound_time.rs::an_as_of_before_collected_history_is_unretained` | performed |
 | `store.bound-time.beneath-enforcement` | `crates/contextful-context/tests/integration/read/register.rs::historical_retrieval_keeps_row_and_column_enforcement` | performed |

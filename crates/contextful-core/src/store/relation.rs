@@ -1,7 +1,7 @@
 //! The SQL relation a table registers as: `read_parquet` over the explicit file list,
 //! the key's dedup view, and the valid-time wrap.
 
-use super::bound_time::Bound;
+use super::bound_time::{Bound, Bounds};
 use super::declare::TableDecl;
 use super::reconcile::Column;
 use super::StoreError;
@@ -48,6 +48,20 @@ pub fn relation_with_encryption(
     valid_as_of: Option<Bound>,
     encryption_key: Option<&str>,
 ) -> Result<String, StoreError> {
+    relation_bounded(decl, files, schema_columns, absent, Bounds { valid_as_of, ..Bounds::default() }, encryption_key)
+}
+
+/// The relation under the row-narrowing bounds: `valid_as_of` over the declared pair and
+/// `available_as_of` over the declared availability column. `as_of` selects `files`
+/// before this point and is ignored here.
+pub fn relation_bounded(
+    decl: &TableDecl,
+    files: &[String],
+    schema_columns: &[Column],
+    absent: &[Column],
+    bounds: Bounds,
+    encryption_key: Option<&str>,
+) -> Result<String, StoreError> {
     let mut base = if files.is_empty() {
         zero_row(schema_columns)
     } else {
@@ -71,6 +85,15 @@ pub fn relation_with_encryption(
     };
     if !files.is_empty() && !absent.is_empty() {
         base = format!("{base} UNION ALL BY NAME {}", zero_row(absent));
+    }
+    // The availability filter sits beneath the key's dedup, so a key resolves among the
+    // rows public at the bound (`store.available-time.available-as-of`).
+    if let Some(b) = bounds.available_as_of {
+        let available = decl.available_time.as_ref().ok_or_else(|| {
+            StoreError::StoreAvailableTimeUndeclared(format!("table `{}` declares no `available_time`", decl.name))
+        })?;
+        let cmp = if b.inclusive { "<=" } else { "<" };
+        base = format!("SELECT * FROM ({base}) WHERE {} {cmp} TIMESTAMPTZ {}", ident(&available.column), literal(&b.at.to_rfc3339_nanos()));
     }
     let mut rel = if decl.is_keyed() {
         // A table declaring valid time keeps one row per key and valid-time line, as the fold does.
@@ -103,7 +126,7 @@ pub fn relation_with_encryption(
         );
     }
 
-    if let Some(b) = valid_as_of {
+    if let Some(b) = bounds.valid_as_of {
         let vt = decl.valid_time.as_ref().ok_or_else(|| {
             StoreError::StoreValidTimeUndeclared(format!("table `{}` declares no valid-time pair", decl.name))
         })?;

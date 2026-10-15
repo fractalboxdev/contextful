@@ -102,6 +102,12 @@ pub enum StoreError {
     /// A valid-time-bounded read names a table declaring no pair. (`store.bound-time.valid-time-undeclared`)
     #[error("StoreValidTimeUndeclared: {0}")]
     StoreValidTimeUndeclared(String),
+    /// An availability-bounded read names a table declaring no availability time. (`store.available-time.undeclared`)
+    #[error("StoreAvailableTimeUndeclared: {0}")]
+    StoreAvailableTimeUndeclared(String),
+    /// A landing row resolves to a null availability instant. (`store.available-time.null`)
+    #[error("StoreAvailableTimeNull: {0}")]
+    StoreAvailableTimeNull(String),
     /// A cursor whose kind takes no lease reached `cursors/`. (`store.lease.cursor-kind`)
     #[error("LeaseCursorKindMismatch: {0}")]
     LeaseCursorKindMismatch(String),

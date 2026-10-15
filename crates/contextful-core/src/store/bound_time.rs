@@ -1,5 +1,6 @@
 //! `store.bound-time` and `store.available-time`: the bounds a read carries and their echo.
 
+use crate::store::declare::TableDecl;
 use crate::time::Instant;
 use crate::AuthorityError;
 use serde_json::{json, Value};
@@ -50,10 +51,22 @@ impl Bounds {
         Bounds { as_of: self.as_of, ..Bounds::default() }
     }
 
+    /// The bounds `decl`'s relation compiles under: valid and availability time only where
+    /// it declares them, so a session registering every granted table refuses no read that
+    /// never names an undeclaring one (`read.register.available-bound-argument`).
+    pub fn for_table(&self, decl: &TableDecl) -> Bounds {
+        Bounds {
+            as_of: self.as_of,
+            valid_as_of: self.valid_as_of.filter(|_| decl.valid_time.is_some()),
+            available_as_of: self.available_as_of.filter(|_| decl.available_time.is_some()),
+        }
+    }
+
     /// `contextful.bounds` as a bounded read echoes it, or `None` for an unbounded read
     /// (`store.bound-time.echo`).
     pub fn echo(&self) -> Option<Value> {
-        if self.as_of.is_none() && self.valid_as_of.is_none() {
+        let given: Vec<Bound> = [self.as_of, self.valid_as_of, self.available_as_of].into_iter().flatten().collect();
+        if given.is_empty() {
             return None;
         }
         let mut v = json!({});
@@ -63,7 +76,11 @@ impl Bounds {
         if let Some(b) = self.valid_as_of {
             v["valid_as_of"] = json!(b.at.to_rfc3339_nanos());
         }
-        let inclusive = self.as_of.iter().chain(self.valid_as_of.iter()).all(|b| b.inclusive);
+        // `store.available-time.bound-echo`
+        if let Some(b) = self.available_as_of {
+            v["available_as_of"] = json!(b.at.to_rfc3339_nanos());
+        }
+        let inclusive = given.iter().all(|b| b.inclusive);
         v["inclusive"] = json!(inclusive);
         Some(v)
     }

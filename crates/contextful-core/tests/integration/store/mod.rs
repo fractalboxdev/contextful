@@ -1,5 +1,6 @@
 //! The `store` contract's pure domain, one module per operation.
 
+mod available_time;
 mod bound_time;
 mod declare;
 mod fold;
