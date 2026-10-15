@@ -296,6 +296,8 @@ A delegate is deploy-bound code outside the binary that runs a store-driven item
   *because a provider budget clears on the provider's clock, and a slot held through the wait starves every other entity*
 - `currency` — The fence in {{surface.delegate.envelope}} is checked immediately before the request under {{run.items.fence}}; under `submit`, the heartbeat `GET` answers the current attempt and fence, so a delegate learns before a paid call whether it is superseded.
   *because a delegate that pays after its owner was replaced spends a call whose answer nothing records*
+- `version` — A binding's optional `version` joins the item's owner pins as a body dependency, so a changed version opens a fresh execution identity and a pending item under the old one refuses as {{run.own.pinned-plan-changed}}.
+  *because a prompt or model change inside a delegate otherwise resumes recorded work under new semantics*
 
 One item on a `call` delegate, from the fence check to the recorded answer:
 
@@ -439,6 +441,7 @@ trigger      = "in-process"                         # or "external", with `pipel
 url     = "http://127.0.0.1:9005/stage/screen"     # loopback, or http://contextful.delegate/stages
 mode    = "call"                                   # or "submit", the worker protocol
 timeout = "300s"
+version = "2026-10-stage-prompts-v3"               # rotated when the delegate's semantics change
 
 [residency]
 regions = ["eu-west-1", "eu-central-1"]

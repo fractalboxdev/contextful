@@ -13,9 +13,9 @@ An unpinned clause is `committed`; a pinned one is `performed` when its Rust, Le
 | `read` | 2 | 19 | 276 | 45 | 28 | 13 | 230 | 0 | 230 |
 | `run` | 3 | 28 | 508 | 114 | 44 | 11 | 457 | 0 | 457 |
 | `store` | 3 | 19 | 288 | 64 | 14 | 11 | 278 | 0 | 278 |
-| `surface` | 2 | 21 | 155 | 63 | 23 | 0 | 118 | 0 | 118 |
+| `surface` | 2 | 21 | 156 | 63 | 23 | 0 | 118 | 0 | 118 |
 | `topology` | 1 | 6 | 79 | 25 | 5 | 3 | 74 | 0 | 74 |
-| **total** | 22 | 167 | 2508 | 648 | 208 | 76 | 2035 | 0 | |
+| **total** | 22 | 167 | 2509 | 648 | 208 | 76 | 2035 | 0 | |
 
 Decision records: 18.
 
@@ -42,7 +42,7 @@ A milestone reads `closed` when its acceptance test computes `passing` and every
 | 14 — Assurance | 7 | 165 | 128 | passing | closed |
 | 15 — Point-in-time evaluation | 7 | 78 | 77 | passing | closed |
 | 16 — Memory graph walk | 1 | 11 | 0 | absent | open |
-| 17 — Delegated bodies | 1 | 12 | 0 | open | open |
+| 17 — Delegated bodies | 1 | 13 | 0 | open | open |
 
 Unscheduled operations: 12.
 
