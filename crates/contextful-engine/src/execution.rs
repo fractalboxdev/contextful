@@ -273,6 +273,11 @@ impl<'e, J: JournalStore, B: BlobStore> Execution<'e, J, B> {
 
     /// The instant the execution opened: its owner's first claim, identical across resumes.
     /// `None` before [`Execution::claim`].
+    /// The engine's current instant, on the catalog's clock.
+    pub(crate) fn now(&self) -> Result<Instant, Failure> {
+        self.engine.catalog.now()
+    }
+
     pub fn opened_at(&self) -> Option<Instant> {
         self.opened_at
     }

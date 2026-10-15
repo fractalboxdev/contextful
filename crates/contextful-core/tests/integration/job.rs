@@ -56,6 +56,23 @@ fn a_store_driven_block_without_a_positive_max_in_flight_raises_job_concurrency_
     }
 }
 
+/// A `store-driven` `body = { delegate = "<name>" }` resolves to `delegate:<name>` when a binding registers it,
+/// and an unbound name raises `JobDelegateUnbound` at validation.
+#[test]
+fn a_store_driven_body_names_a_bound_delegate_or_raises_job_delegate_unbound() {
+    let bound = |name: &str| name == "delegate:stages";
+    let block = |delegate: &str| format!("[[job]]\nname = \"stage\"\nkind = \"store-driven\"\nbody = {{ delegate = \"{delegate}\" }}\nstatement = \"SELECT entity_id FROM due\"\ntables = [\"out\"]\nmax_in_flight = 2\n");
+    let jobs = parse_jobs(&block("stages"), &bound).unwrap();
+    let JobKind::StoreDriven(d) = &jobs[0].kind else { panic!("{:?}", jobs[0].kind) };
+    assert_eq!(d.input.body, "delegate:stages");
+    match parse_jobs(&block("unbound"), &bound) {
+        Err(JobError::JobDelegateUnbound(m)) => assert!(m.contains("`unbound`") && m.contains("[control.delegates]"), "{m}"),
+        other => panic!("expected JobDelegateUnbound, got {other:?}"),
+    }
+    let malformed = "[[job]]\nname = \"stage\"\nkind = \"store-driven\"\nbody = { delegate = \"stages\", extra = 1 }\nstatement = \"SELECT 1\"\ntables = [\"out\"]\nmax_in_flight = 2\n";
+    assert!(matches!(parse_jobs(malformed, &bound), Err(JobError::Invalid(_))));
+}
+
 /// A `store-driven` block whose `body` names no body the embedding binary registers raises `JobBodyUnregistered`
 /// at validation.
 // spec: surface.fire.store-driven-body@8e0dbcf5

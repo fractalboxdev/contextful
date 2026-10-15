@@ -204,6 +204,8 @@ fn control_config(text: &str, project: &Project) -> Result<ControlConfig> {
     let value: toml::Value = if text.is_empty() { toml::Value::Table(Default::default()) } else { toml::from_str(text)? };
     let block = value.get("control").cloned().unwrap_or(toml::Value::Table(Default::default()));
     let block = block.as_table().context("`[control]` is a table")?;
+    // A binding outside its shape refuses at startup and arms nothing (`surface.delegate.host`).
+    contextful_core::surface::delegate::bindings(block)?;
     let source = match (block.get("url"), block.get("snapshot_dir")) {
         (Some(_), Some(_)) => bail!("`[control]` names one source: `url` or `snapshot_dir`"),
         (Some(url), None) => Source::Url(ControlUrl::open(url.as_str().context("`[control] url` is a URL string")?)?),

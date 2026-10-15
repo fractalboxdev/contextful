@@ -17,7 +17,10 @@ use contextful_core::job::{bind_targets, parse_jobs, Job, JobKind, PlanJob, Stor
 use contextful_core::run::nodes::NodePlan;
 use contextful_engine::nodes::{CommandConnectors, PlanFire};
 use contextful_core::run::advance::CursorKind;
-use contextful_core::run::drive::{Bodies, Emitted, InputSet};
+use contextful_core::run::drive::{Bodies, Emitted, InputSet, RowBody};
+use contextful_core::run::own::OwnerPins;
+use contextful_core::surface::delegate::BODY_PREFIX;
+use std::sync::Arc;
 use contextful_core::run::effect::{EffectAdmission, EffectScope, EmissionSummary, RecordedBodyPlan, RecordedEffect};
 use contextful_core::run::journal::sha256_hex;
 use contextful_core::run::plan::{ConnectorSpec, CursorSpec, Plan, PlanSpec, NATIVE_WORLD};
@@ -139,10 +142,11 @@ fn land_tables(driven: &StoreDriven, name: &str, run_id: &str, site_id: &str, mu
 }
 
 pub fn run(cmd: JobCmd, bodies: &Bodies) -> Result<()> {
-    let registered = |name: &str| bodies.get(name).is_some();
     match cmd {
         JobCmd::Validate { declaration } => {
             let text = std::fs::read_to_string(&declaration).with_context(|| format!("reading the declaration `{}`", declaration.display()))?;
+            let delegates = crate::delegate::declared(&text).with_context(|| declaration.display().to_string())?;
+            let registered = |name: &str| bodies.get(name).is_some() || name.strip_prefix(BODY_PREFIX).is_some_and(|d| delegates.contains_key(d));
             let jobs = parse_jobs(&text, &registered).with_context(|| declaration.display().to_string())?;
             bind(&jobs, &declaration)?;
             for job in jobs {
@@ -164,6 +168,9 @@ pub fn run(cmd: JobCmd, bodies: &Bodies) -> Result<()> {
             let l = project.locate(declaration)?;
             let text = std::fs::read_to_string(&l.declaration).with_context(|| format!("reading the declaration `{}`", l.declaration.display()))?;
             let effective = crate::effective::Effective::resolve(&l, &text, applied)?;
+            // Delegates bind in the daemon's own declaration, never the applied snapshot.
+            let delegates = crate::delegate::declared(&text).with_context(|| l.declaration.display().to_string())?;
+            let registered = |name: &str| bodies.get(name).is_some() || name.strip_prefix(BODY_PREFIX).is_some_and(|d| delegates.contains_key(d));
             let jobs = parse_jobs(&effective.main, &registered).with_context(|| l.declaration.display().to_string())?;
             let mut job = jobs.into_iter().find(|j| j.name == name).with_context(|| format!("no job `{name}` is declared"))?;
             if job.kind_name() == "build" {
@@ -186,7 +193,26 @@ pub fn run(cmd: JobCmd, bodies: &Bodies) -> Result<()> {
             // Delivery bindings stay local; the applied job supplies the output table set.
             let grouped = crate::export::publication::validate_job(&text,&name,&driven.tables)?;
             let _publication = if grouped {Some(crate::export::publication::lock(&l)?)} else {None};
-            let body = bodies.get(&driven.input.body).context("a validated body is registered")?;
+            let body: Arc<dyn RowBody> = match driven.input.body.strip_prefix(BODY_PREFIX) {
+                Some(delegate) => {
+                    let binding = delegates.get(delegate).cloned().context("a validated delegate is bound")?;
+                    let pins = match driven.input.pins() {
+                        OwnerPins::Plan(p) => p.identities,
+                        OwnerPins::Build(_) => Default::default(),
+                    };
+                    Arc::new(crate::delegate::DelegateBody {
+                        binding,
+                        job: name.clone(),
+                        tables: driven.tables.clone(),
+                        version: applied.unwrap_or(0),
+                        pins,
+                        entity: driven.isolated_items.as_ref().map(|p| (p.entity_namespace.clone(), p.entity_key.clone())),
+                        transport: contextful_outbound::egress::system(),
+                        key: crate::worker::worker_key()?,
+                    })
+                }
+                None => bodies.get(&driven.input.body).context("a validated body is registered")?,
+            };
             let site_id = site_id_for(&text, &l.declaration, site_id, site_id_env)?;
             let (authority, _) = admit.admit(project.project.as_deref(), "a store-driven job")?;
             let store = crate::project::with_erasure_keys(Store::open_declared(&l.project.dir, &l.project.name, &l.declaration)?, &l.project, admit.public_key.as_deref(), admit.keyset.as_deref())?;

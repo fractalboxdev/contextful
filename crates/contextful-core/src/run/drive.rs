@@ -61,6 +61,23 @@ impl BodyDependencies {
         ])}
     }
     pub fn identities(&self)->&BTreeMap<String,String>{&self.identities}
+    /// Dependencies the host names directly, each already a public digest or version.
+    pub fn from_identities(identities: BTreeMap<String, String>) -> Self {
+        Self { identities }
+    }
+}
+
+/// What a body learns about the execution its row runs under, for a request that names it
+/// (`surface.delegate.envelope`).
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+pub struct RowContext {
+    pub execution_id: String,
+    /// The resolved `as_of` the input was read at.
+    pub as_of: String,
+    /// The fence of the entity lease an isolated item holds.
+    pub fence: Option<u64>,
+    /// The engine's current instant, RFC 3339 UTC; empty when the host supplies none.
+    pub now: String,
 }
 
 /// Explicit independent-item admission; keys name non-null input columns.
@@ -252,6 +269,10 @@ pub trait RowCalls {
     /// The outcome of the awakeable `token` minted under `label`: `Parked` while it is
     /// unresolved, else the value recorded the first time it resolved or timed out.
     fn awaited(&self, label: &str, token: &str) -> Result<Woken, RowStop>;
+    /// The execution, bounds and fence this row runs under.
+    fn context(&self) -> RowContext {
+        RowContext::default()
+    }
 }
 
 /// Compiled per-row work an embedding binary registers by name. Configuration names it and

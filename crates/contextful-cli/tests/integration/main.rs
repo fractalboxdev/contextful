@@ -44,6 +44,7 @@ mod holder;
 mod init;
 #[cfg(feature = "data-plane")]
 mod job;
+mod delegate;
 #[cfg(feature = "data-plane")]
 mod mcp;
 #[cfg(feature = "data-plane")]

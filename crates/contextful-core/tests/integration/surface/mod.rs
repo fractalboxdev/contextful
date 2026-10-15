@@ -3,6 +3,7 @@
 
 mod arm;
 mod control;
+mod delegate;
 mod dispatch;
 mod edit;
 mod reside;

@@ -63,7 +63,6 @@ fn config(delegate: &str) -> String {
 }
 
 #[test]
-#[ignore]
 fn m17_delegated() {
     let cf = bin("contextful");
     let delegate = Server::start(answer);
