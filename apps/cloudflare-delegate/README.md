@@ -51,9 +51,9 @@ isolated_items = { logical_key = "pass_id", entity_key = "entity_id", entity_nam
 | `transient()` | spends one failed attempt; the next fire asks again |
 | `permanent(reason)` | writes a terminal receipt |
 | a thrown error, or any non-200 | spends one failed attempt (`surface.delegate.status`) |
-| rows for a table outside `tables` | never leave the Worker: `respond` refuses with 500 |
+| rows for a table outside `tables`, a malformed `retry_at`, or a body over 1 MiB | never leave the Worker as such: a deterministic handler bug goes back as a signed `permanent` naming it, so the item ends on its first attempt instead of paying the handler `max_attempts` times; fix the handler and rotate the binding's `version` |
 
-One request per item attempt: the engine runs no retry inside an attempt, so the item budget `max_attempts` is the only retry layer. Signature timestamps ride each side's system clock within 300 s; the deadline and a deferral ride the engine's instant, which can sit years from the wall clock under an injected `--now`. Budget a model call with `timeToDeadline(envelope)`, which measures the deadline against the envelope's own `as_of` and clamps the result to what a timer takes, never `deadline - Date.now()`.
+One request per item attempt: the engine runs no retry inside an attempt, so the item budget `max_attempts` is the only retry layer. Signature timestamps ride each side's system clock within 300 s; the deadline and a deferral ride the engine's instant, which can sit years from the wall clock under an injected `--now`. Budget a model call with `timeToDeadline(envelope)`: it measures the deadline against this side's clock, or an instant you pass, and clamps the result to what a timer takes, so a far engine clock never overflows a timer. The handler receives the request with its body unread; the package verifies a clone.
 
 ## Running the handler in-process during tests
 
