@@ -3,6 +3,7 @@
 mod declare;
 mod erase;
 mod mirror;
+mod pack;
 mod release;
 mod suppress;
 mod sweep;

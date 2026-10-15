@@ -9,13 +9,13 @@ An unpinned clause is `committed`; a pinned one is `performed` when its Rust, Le
 | `authority` | 2 | 16 | 295 | 79 | 29 | 9 | 229 | 0 | 229 |
 | `connector` | 2 | 14 | 367 | 92 | 21 | 11 | 269 | 0 | 269 |
 | `corpus` | 1 | 10 | 79 | 37 | 7 | 0 | 79 | 0 | 79 |
-| `disclosure` | 3 | 16 | 159 | 68 | 13 | 8 | 106 | 0 | 106 |
+| `disclosure` | 3 | 16 | 167 | 68 | 13 | 7 | 121 | 0 | 121 |
 | `read` | 2 | 19 | 276 | 45 | 28 | 13 | 233 | 0 | 233 |
 | `run` | 3 | 29 | 517 | 114 | 44 | 13 | 467 | 0 | 467 |
 | `store` | 3 | 19 | 290 | 64 | 14 | 11 | 280 | 0 | 280 |
 | `surface` | 2 | 21 | 160 | 63 | 23 | 0 | 133 | 0 | 133 |
 | `topology` | 1 | 6 | 79 | 25 | 5 | 3 | 74 | 0 | 74 |
-| **total** | 22 | 168 | 2538 | 651 | 208 | 76 | 2146 | 0 | |
+| **total** | 22 | 168 | 2546 | 651 | 208 | 75 | 2161 | 0 | |
 
 Decision records: 18.
 
@@ -34,7 +34,7 @@ A milestone reads `closed` when its acceptance test computes `passing` and every
 | 6 — Sync and replicas | 8 | 83 | 83 | passing | closed |
 | 7 — Memory | 6 | 71 | 56 | passing | closed |
 | 8 — Accountability | 5 | 84 | 71 | passing | open |
-| 9 — Visibility | 6 | 42 | 14 | open | open |
+| 9 — Visibility | 6 | 50 | 29 | open | open |
 | 10 — Cadence and the operator plane | 11 | 100 | 86 | passing | open |
 | 11 — The derive tier | 7 | 94 | 93 | passing | closed |
 | 12 — The operator console | 12 | 56 | 43 | passing | open |
@@ -952,8 +952,17 @@ Unscheduled operations: 12.
 | `disclosure.explain.path` | `crates/contextful-policy/tests/integration/explain.rs::an_admitting_path_runs_role_grant_then_the_declared_steps_and_a_denial_ends_at_default_deny` | performed |
 | `disclosure.explain.replay` | `crates/contextful-cli/tests/integration/explain.rs::a_window_replays_the_subjects_reads_of_the_table_inside_it` | performed |
 | `disclosure.explain.unqualified-assurance` | `crates/contextful-policy/tests/integration/explain.rs::a_denial_without_coverage_is_refused_and_with_coverage_releases` | performed |
+| `disclosure.mirror.face-scope` | `crates/contextful-core/tests/integration/disclosure/mirror.rs::the_project_declares_its_faces_organization_wide` | performed |
 | `disclosure.mirror.grants-table` | `crates/contextful-context/tests/integration/visibility.rs::a_sweep_lands_all_seven_access_tables_as_ordinary_rows` | performed |
 | `disclosure.mirror.incomplete-binding` | `crates/contextful-cli/tests/integration/visibility.rs::pipeline_validate_refuses_a_servable_binding_without_a_sweep_or_a_budget` | performed |
+| `disclosure.mirror.memory-binding` | `crates/contextful-core/tests/integration/disclosure/mirror.rs::a_memory_table_takes_a_visibility_block` | performed |
+| `disclosure.mirror.unbound-table` | `crates/contextful-cli/tests/integration/visibility.rs::an_unbound_table_on_an_organization_wide_face_refuses_diagnose_and_start` | performed |
+| `disclosure.pack.any-of-allowlist` | `crates/contextful-core/tests/integration/disclosure/pack.rs::an_allowlist_evaluated_as_any_of_is_refused_at_load` | performed |
+| `disclosure.pack.asserts-access` | `crates/contextful-core/tests/integration/disclosure/pack.rs::an_access_shaped_key_outside_the_mapping_schema_is_refused_by_name` | performed |
+| `disclosure.pack.mapping-absent` | `crates/contextful-core/tests/integration/disclosure/pack.rs::a_landed_table_with_no_mapping_and_no_exclusion_is_refused_at_diagnose` | performed |
+| `disclosure.pack.mapping-keys` | `crates/contextful-core/tests/integration/disclosure/pack.rs::an_access_mapping_holds_the_schema_keys_alone` | performed |
+| `disclosure.pack.pack-block` | `crates/contextful-core/tests/integration/disclosure/pack.rs::a_pack_block_names_its_tables_mappings_and_allowlist` | performed |
+| `disclosure.pack.unsupported-coarse` | `crates/contextful-core/tests/integration/disclosure/pack.rs::coarse_without_a_container_signal_is_refused` | performed |
 | `disclosure.record.audit-key` | `crates/contextful-context/tests/integration/erase.rs::the_project_audit_key_has_one_stable_private_creation_and_refuses_bad_files` | performed |
 | `disclosure.record.bound-entry` | `crates/contextful-agent/tests/integration/mcp.rs::a_bounded_reads_entry_carries_its_bounds_snapshot_query_and_digest` | performed |
 | `disclosure.record.chain-header` | `crates/contextful-policy/tests/integration/audit.rs::a_chain_header_fixes_the_digest_and_segment_size_and_roots_the_first_link` | performed |
@@ -999,15 +1008,21 @@ Unscheduled operations: 12.
 | `disclosure.suppress.empty-policy` | `crates/contextful-core/tests/integration/disclosure/suppress.rs::empty_policy` | performed |
 | `disclosure.suppress.grouping-allowlist` | `crates/contextful-cli/tests/integration/disclosure.rs::check_rejects_empty_grouping_allowlist` | performed |
 | `disclosure.suppress.min-group-size` | `crates/contextful-core/tests/integration/disclosure/suppress.rs::min_group_size` | performed |
+| `disclosure.sweep.bare-resource` | `crates/contextful-core/tests/integration/disclosure/sweep.rs::a_bare_resource_line_withdraws_every_grant_a_webhook_names` | performed |
 | `disclosure.sweep.cadence-grammar` | `crates/contextful-core/tests/integration/disclosure/sweep.rs::a_cadence_outside_the_budget_grammar_is_refused` | performed |
+| `disclosure.sweep.coverage-watermark` | `crates/contextful-core/tests/integration/disclosure/sweep.rs::a_full_run_missing_a_governed_resource_is_refused_and_the_watermark_holds` | performed |
 | `disclosure.sweep.directory-file` | `crates/contextful-core/tests/integration/disclosure/mirror.rs::a_directory_file_carries_links_and_memberships_and_a_run_without_one_keeps_them` | performed |
+| `disclosure.sweep.empty-delivery` | `crates/contextful-context/tests/integration/visibility.rs::an_empty_webhook_delivery_lands_nothing_and_holds_the_watermark` | performed |
 | `disclosure.sweep.full-run` | `crates/contextful-core/tests/integration/disclosure/sweep.rs::a_full_run_replaces_resources_and_grants_and_tombstones_the_withdrawn` | performed |
 | `disclosure.sweep.grants-file` | `crates/contextful-core/tests/integration/disclosure/sweep.rs::a_grants_file_is_the_read_of_every_governed_resource` | performed |
 | `disclosure.sweep.incremental-run` | `crates/contextful-core/tests/integration/disclosure/sweep.rs::an_incremental_run_replaces_only_the_grants_of_resources_it_read` | performed |
 | `disclosure.sweep.orphan-grant` | `crates/contextful-core/tests/integration/disclosure/sweep.rs::a_grant_with_no_resource_row_or_of_the_unknown_class_is_refused` | performed |
+| `disclosure.sweep.superseded-run` | `crates/contextful-context/tests/integration/visibility.rs::a_run_collects_every_superseded_run_of_the_current_state_tables` | performed |
 | `disclosure.sweep.sweep-block` | `crates/contextful-core/tests/integration/disclosure/sweep.rs::an_acl_sweep_block_declares_one_sources_sweep` | performed |
 | `disclosure.sweep.sweep-epoch` | `crates/contextful-core/tests/integration/disclosure/sweep.rs::each_committed_run_advances_the_source_epoch_by_one` | performed |
+| `disclosure.sweep.ungapped-stream` | `crates/contextful-core/tests/integration/disclosure/sweep.rs::a_webhook_run_from_a_stream_not_declared_gap_detectable_is_refused` | performed |
 | `disclosure.sweep.watermark-advance` | `crates/contextful-core/tests/integration/disclosure/sweep.rs::a_run_reading_every_governed_resource_moves_the_watermark_to_its_start` | performed |
+| `disclosure.sweep.webhook-run` | `crates/contextful-core/tests/integration/disclosure/sweep.rs::a_webhook_run_replaces_the_grants_of_the_resources_it_names` | performed |
 | `disclosure.template.overfetch` | `crates/contextful-context/tests/integration/read/register.rs::a_capped_template_reads_one_probe_row_for_truncation` | performed |
 | `disclosure.template.single-statement` | `crates/contextful-context/tests/integration/read/guard.rs::a_template_with_two_statements_refuses_at_startup` | performed |
 | `read.as-of-join.horizon-caps-row` | `crates/contextful-agent/tests/integration/mcp.rs::an_availability_bound_caps_each_driving_rows_instant` | performed |

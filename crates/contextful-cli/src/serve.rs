@@ -179,6 +179,7 @@ pub fn run(args: ServeArgs, tasks: &Tasks) -> Result<()> {
     #[cfg(not(feature = "data-plane"))]
     let _ = tasks;
     let clock = SystemClock;
+    crate::project::face_guardrail(args.project.as_deref(), args.declaration.as_deref())?;
     // The declarations are checked before anything opens (`read.register.serve-declaration`).
     let audience = audience(args.audience.as_deref()).map_err(anyhow::Error::msg)?;
     let ceiling = ceiling(args.max_in_flight).map_err(anyhow::Error::msg)?;

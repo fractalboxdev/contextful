@@ -327,7 +327,13 @@ impl DeclarationSet {
                 return Err(DeclarationSetError::Pipeline(DeclarationMalformed(format!("table `{}` is declared more than once", table.name)).into()));
             }
         }
-        tables.extend(memory.tables.iter().map(|table| table.table_decl()));
+        let memory_decls: Vec<TableDecl> = memory.tables.iter().map(|table| table.table_decl()).collect();
+        // A memory table's visibility block parses as a pipeline table's does
+        // (`disclosure.mirror.memory-binding`).
+        for t in &memory_decls {
+            crate::disclosure::declare::Binding::of(t)?;
+        }
+        tables.extend(memory_decls);
         let mut pack = Self::from_tables(&tables);
         for table in &memory.tables {
             pack.columns.entry(table.name.clone()).or_default().extend(table.columns.iter().cloned());

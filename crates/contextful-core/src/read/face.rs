@@ -82,6 +82,24 @@ pub enum FaceScope {
     Organization,
 }
 
+impl FaceScope {
+    /// The scope `[project] face_scope` declares for every face the project serves:
+    /// `"organization"`, else `"personal"`, the default when the key is absent. Another value
+    /// does not load (`disclosure.mirror.face-scope`).
+    pub fn declared(manifest: &str) -> Result<FaceScope, crate::store::declare::DeclarationMalformed> {
+        use crate::store::declare::DeclarationMalformed;
+        let value: toml::Value = toml::from_str(manifest).map_err(|e| DeclarationMalformed(e.to_string()))?;
+        match value.get("project").and_then(|p| p.get("face_scope")) {
+            None => Ok(FaceScope::Personal),
+            Some(v) => match v.as_str() {
+                Some("personal") => Ok(FaceScope::Personal),
+                Some("organization") => Ok(FaceScope::Organization),
+                _ => Err(DeclarationMalformed(format!("`[project] face_scope` is `\"organization\"` or `\"personal\"`, not {v}"))),
+            },
+        }
+    }
+}
+
 /// Whether a tool reads or writes.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum ToolKind {

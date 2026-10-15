@@ -182,3 +182,60 @@ fn a_servable_binding_without_a_sweep_or_a_budget_is_incomplete() {
         check_bindings(&[binding(&format!("fidelity = \"{fidelity}\""))], &[]).unwrap();
     }
 }
+
+/// `[project] face_scope = "organization"` makes every face the project serves organization-wide; absent or `"personal"`, its faces are personal, and another value does not load.
+// spec: disclosure.mirror.face-scope@deca51d2
+#[test]
+fn the_project_declares_its_faces_organization_wide() {
+    use contextful_core::read::face::FaceScope;
+    assert_eq!(FaceScope::declared("[project]\nname = \"wiki\"\nface_scope = \"organization\"\n").unwrap(), FaceScope::Organization);
+    assert_eq!(FaceScope::declared("[project]\nname = \"wiki\"\nface_scope = \"personal\"\n").unwrap(), FaceScope::Personal);
+    assert_eq!(FaceScope::declared("[project]\nname = \"wiki\"\n").unwrap(), FaceScope::Personal);
+    assert_eq!(FaceScope::declared("").unwrap(), FaceScope::Personal);
+    for bad in ["[project]\nface_scope = \"team\"\n", "[project]\nface_scope = true\n", "[project\n"] {
+        assert!(FaceScope::declared(bad).is_err(), "{bad}");
+    }
+}
+
+/// On an organization-wide face, a table with no visibility block raises `VisibilityUnboundTable` from diagnose and from the serving guardrail at start, naming the table.
+#[test]
+fn an_unbound_table_on_an_organization_wide_face_is_refused() {
+    use contextful_core::disclosure::declare::check_unbound;
+    use contextful_core::read::face::FaceScope;
+    let tables = TableDecl::parse_pipeline("[[pipeline.tables]]\nname = \"drive/files\"\n[pipeline.tables.visibility]\nsource = \"drive\"\nresource_key = \"file_id\"\nfamily = \"item-exception\"\nfidelity = \"excluded\"\n\n[[pipeline.tables]]\nname = \"notes\"\n").unwrap();
+    match check_unbound(FaceScope::Organization, &tables) {
+        Err(e @ VisibilityError::UnboundTable { .. }) => {
+            assert_eq!(e.identifier(), "VisibilityUnboundTable");
+            let shown = e.to_string();
+            assert!(shown.starts_with("VisibilityUnboundTable") && shown.contains("`notes`") && !shown.contains("drive/files"), "{shown}");
+        }
+        other => panic!("{other:?}"),
+    }
+    check_unbound(FaceScope::Personal, &tables).unwrap();
+    check_unbound(FaceScope::Organization, &tables[..1]).unwrap();
+}
+
+const MEMORY: &str = "[[table]]\nname = \"team_memory\"\nshape = \"memory_facts\"\ncolumns = [\"claim_id\", \"subject\", \"predicate\", \"object\", \"scope\", \"tier\", \"confidence\", \"valid_from\", \"valid_to\", \"evidence\", \"superseded_by\", \"grant_id\", \"agent\"]\n";
+
+/// A memory `[[table]]` takes the visibility block of {{disclosure.mirror.binding-keys}}, so an organization-wide face serves it bound.
+// spec: disclosure.mirror.memory-binding@a7245bea
+#[test]
+fn a_memory_table_takes_a_visibility_block() {
+    use contextful_core::disclosure::declare::check_unbound;
+    use contextful_core::read::face::FaceScope;
+    // Unbound, the memory table refuses on an organization-wide face by name.
+    let tables = TableDecl::parse_declaration_set(MEMORY, &[]).unwrap();
+    match check_unbound(FaceScope::Organization, &tables) {
+        Err(e @ VisibilityError::UnboundTable { .. }) => assert!(e.to_string().contains("`team_memory`"), "{e}"),
+        other => panic!("{other:?}"),
+    }
+    // Bound, it carries a binding and the face serves it.
+    let bound = format!("{MEMORY}[table.visibility]\nsource = \"wiki\"\nresource_key = \"claim_id\"\nfamily = \"item-exception\"\nfidelity = \"excluded\"\n");
+    let tables = TableDecl::parse_declaration_set(&bound, &[]).unwrap();
+    check_unbound(FaceScope::Organization, &tables).unwrap();
+    let binding = Binding::of(&tables[0]).unwrap().unwrap();
+    assert_eq!((binding.table.as_str(), binding.source.as_str()), ("team_memory", "wiki"));
+    // A block outside the binding keys refuses as a pipeline table's does.
+    let bad = format!("{MEMORY}[table.visibility]\nsource = \"wiki\"\nresource_key = \"claim_id\"\nfamily = \"item-exception\"\nfidelity = \"excluded\"\nmax_acl_staleness = \"soon\"\n");
+    assert!(TableDecl::parse_declaration_set(&bad, &[]).is_err());
+}

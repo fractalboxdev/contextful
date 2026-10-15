@@ -729,6 +729,9 @@ pub fn run(cmd: PipelineCmd, tasks: &Tasks, bodies: &contextful_core::run::drive
             // Each `[[acl_sweep]]` block parses, its cadences under the budget grammar
             // (`disclosure.sweep.cadence-grammar`), and no source declares two across files.
             let sweeps = contextful_core::disclosure::sweep::SweepBlock::parse_set(&files)?;
+            // Each pack loads: no key asserting access outside its mapping schema, no any-of
+            // allowlist, no `coarse` without a container signal (`disclosure.pack`).
+            let packs = contextful_core::disclosure::pack::Pack::parse_set(&files)?;
             crate::secrets::check_records(&declaration, &files)?;
             let coverage = fold_coverage(&files)?;
             let declared = collect(&files)?;
@@ -774,6 +777,16 @@ pub fn run(cmd: PipelineCmd, tasks: &Tasks, bodies: &contextful_core::run::drive
                 bindings.extend(contextful_core::disclosure::declare::Binding::of(t)?);
             }
             contextful_core::disclosure::sweep::check_bindings(&bindings, &sweeps)?;
+            // Each table a pack lands carries a mapping or an exclusion (`disclosure.pack.mapping-absent`).
+            for p in &packs {
+                p.diagnose()?;
+            }
+            // On an organization-wide face every table carries a visibility block
+            // (`disclosure.mirror.unbound-table`).
+            if let Some(root) = files.iter().find(|f| Path::new(&f.path) == declaration.as_path()) {
+                let scope = contextful_core::read::face::FaceScope::declared(&root.text).with_context(|| root.path.clone())?;
+                contextful_core::disclosure::declare::check_unbound(scope, tables.values())?;
+            }
             for t in tables.values().filter(|t| t.is_keyed() && !coverage.covers(&t.name)) {
                 eprintln!(
                     "warning: table `{}` declares a primary key and no enabled `[[job]]` of kind `fold` with a `schedule` covers it",
