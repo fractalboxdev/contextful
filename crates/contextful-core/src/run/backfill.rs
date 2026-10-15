@@ -84,7 +84,7 @@ impl ChunkPlan {
         let chunks = (0..count as i64)
             .map(|i| {
                 let start = floor + i * size;
-                (format!("c{i}"), Window { start: Bound::Int(start), end: Bound::Int((start + size).min(upto)) })
+                (format!("c{i}"), Window { start: Bound::Int(start), end: Bound::Int(start.saturating_add(size).min(upto)) })
             })
             .collect();
         Ok(ChunkPlan { sequential: kind == CursorKind::SnapshotId, chunks })
@@ -98,6 +98,14 @@ pub struct ChunkLease {
     /// The chunk's attempt count the claim raised it to; the commit fences on it.
     pub attempt: u32,
     pub expires_at: Instant,
+}
+
+impl ChunkLease {
+    /// Whether the holder owes a renewal at `now`: [`CHUNK_LEASE_RENEWAL_SECS`] after the
+    /// lease was taken or last renewed (`run.backfill.chunk-lease`).
+    pub fn renew_due(&self, now: Instant) -> bool {
+        now.plus_secs(CHUNK_LEASE_TTL_SECS - CHUNK_LEASE_RENEWAL_SECS) >= self.expires_at
+    }
 }
 
 /// `s` as one path segment: `%` and `/` escaped.
@@ -280,9 +288,12 @@ impl ChunkRow {
     }
 
     /// The fenced commit of `attempt`: it applies only while `attempt = :mine AND status !=
-    /// 'done'`, marking the chunk done. Answers whether it applied (`run.backfill.fenced-commit`).
+    /// 'done'` and the running chunk's lease is that attempt's, marking the chunk done. A
+    /// rewind or settle clears the lease, so a commit from before it applies nothing.
+    /// Answers whether it applied (`run.backfill.fenced-commit`).
     pub fn commit_fenced(&mut self, attempt: u32, now: Instant) -> bool {
-        if self.attempts != attempt || self.status == ChunkStatus::Done {
+        let held = self.status == ChunkStatus::Running && self.lease.as_ref().is_some_and(|l| l.attempt == attempt);
+        if self.attempts != attempt || !held {
             return false;
         }
         self.complete(now);
@@ -296,9 +307,10 @@ impl ChunkRow {
         Some(chunk_path(run_id, &lease.node, &self.chunk, lease.attempt))
     }
 
-    /// Whether `attempt` holds an unexpired lease on the running chunk at `now`.
-    pub fn live_attempt(&self, attempt: u32, now: Instant) -> bool {
-        self.status == ChunkStatus::Running && self.lease.as_ref().is_some_and(|l| l.attempt == attempt && l.expires_at > now)
+    /// Whether `attempt` is the running chunk's current attempt, which may still commit
+    /// whether or not its lease expired, until a later attempt supersedes it.
+    pub fn current_attempt(&self, attempt: u32) -> bool {
+        self.status == ChunkStatus::Running && self.attempts == attempt
     }
 
     /// Settle a running chunk on the status its run closed on. A stopped chunk returns to
@@ -311,14 +323,16 @@ impl ChunkRow {
         match status {
             RunStatus::Canceled => self.status = ChunkStatus::Pending,
             RunStatus::Failed | RunStatus::PartialFailure => self.status = ChunkStatus::Failed,
-            RunStatus::Success | RunStatus::Pending | RunStatus::Running | RunStatus::Waiting => {}
+            RunStatus::Success | RunStatus::Pending | RunStatus::Running | RunStatus::Waiting => return,
         }
+        self.lease = None;
     }
 
-    /// A rewind: the chunk returns to pending and its committed position no longer counts
-    /// (`run.backfill.rewind`).
+    /// A rewind: the chunk returns to pending, its committed position no longer counts, and
+    /// its lease clears so no earlier attempt commits (`run.backfill.rewind`).
     pub fn rewind(&mut self) {
         self.status = ChunkStatus::Pending;
+        self.lease = None;
         self.completed_at = None;
         self.cursor_committed = false;
     }

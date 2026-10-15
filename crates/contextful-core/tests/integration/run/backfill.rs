@@ -91,6 +91,8 @@ fn a_backfill_block_declares_a_chunk_bound_a_width_and_a_floor_defaulting_to_zer
     let plan = ChunkPlan::of(CursorKind::Monotonic, &declared, 40).unwrap();
     assert_eq!(spans(&plan), [("c0".into(), 5, 15), ("c1".into(), 15, 25), ("c2".into(), 25, 35), ("c3".into(), 35, 40)]);
     assert!(matches!(ChunkPlan::of(CursorKind::Monotonic, &declared, 46), Err(RunError::PipelineSpecInvalid(_))), "five chunks pass a bound of four");
+    let widest = BackfillBlock { max_chunks: Some(4), chunk_size: Some(i64::MAX), start_from: 1 };
+    assert_eq!(spans(&ChunkPlan::of(CursorKind::Monotonic, &widest, 10).unwrap()), [("c0".into(), 1, 10)], "a width past the range ends at the range");
     for partial in [json!({"max_chunks": 4}), json!({"chunk_size": 10}), json!({"max_chunks": 4, "chunk_size": 0})] {
         assert!(matches!(ChunkPlan::of(CursorKind::Monotonic, &block(partial.clone()), 40), Err(RunError::PipelineSpecInvalid(_))), "{partial}");
     }

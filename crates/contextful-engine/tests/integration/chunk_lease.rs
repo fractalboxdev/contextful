@@ -110,9 +110,16 @@ fn a_chunk_lease_records_its_node_and_attempt_lives_300_s_and_renews_every_60_s(
     assert_eq!(row(&rig, TABLE, "c0").lease, Some(recorded));
     assert_eq!(hold.path(), PathBuf::from("bf-1/node-a/c0/1"));
 
-    // Renewed every 60 s, the lease outlives its first 300 s.
+    // A renewal falls due 60 s after the lease was taken or last renewed.
+    assert!(!hold.lease.renew_due(at(T0).plus_secs(59)));
+    assert!(hold.lease.renew_due(at(T0).plus_secs(60)));
+
+    // Renewed whenever due, the lease outlives its first 300 s.
     for _ in 0..6 {
-        rig.clock.advance(60);
+        rig.clock.advance(59);
+        assert!(!hold.lease.renew_due(rig.catalog().now().unwrap()));
+        rig.clock.advance(1);
+        assert!(hold.lease.renew_due(rig.catalog().now().unwrap()));
         assert!(backfill.renew(&mut hold).unwrap());
         assert!(lease(&rig, TABLE, "node-b").is_none(), "a renewed lease admits no second holder");
     }
@@ -215,8 +222,40 @@ fn only_a_done_row_commits_a_path_and_the_sweep_collects_paths_without_one() {
     assert!(committed.join("part-0.parquet").exists());
     assert!(live.join("part-0.parquet").exists());
 
-    // Once C's lease lapses unrenewed and uncommitted, its path is collected too.
+    // C's lease lapses, but no successor holds c1: C may still commit, so its path stays.
     rig.clock.advance(CHUNK_LEASE_TTL_SECS as i64);
+    assert!(backfill.collect(PIPELINE, TABLE, RUN, &root, cutoff).unwrap().is_empty());
+    assert!(live.join("part-0.parquet").exists());
+
+    // Once node-d re-leases c1, C's attempt is superseded: its path is collected and its commit refused.
+    let d = lease(&rig, TABLE, "node-d").unwrap();
+    assert_eq!((d.chunk.as_str(), d.lease.attempt), ("c1", 2));
     assert_eq!(backfill.collect(PIPELINE, TABLE, RUN, &root, cutoff).unwrap(), std::slice::from_ref(&live));
+    assert!(!backfill.commit(&c).unwrap());
     assert!(committed.exists());
+}
+
+/// A rewind clears the chunk's lease, so a commit from the attempt it rewound applies nothing.
+#[test]
+fn a_rewound_chunk_refuses_the_commit_of_the_attempt_it_rewound() {
+    let rig = Rig::new();
+    let backfill = rig.engine.backfill();
+    backfill.plan_range(PIPELINE, TABLE, CursorKind::Monotonic, &block(8, 10, 0), 20).unwrap();
+
+    // A holds c0 when an operator rewinds it: A's late commit applies nothing.
+    let a = lease(&rig, TABLE, "node-a").unwrap();
+    assert_eq!(a.chunk, "c0");
+    backfill.rewind(PIPELINE, TABLE, &window(0, 10)).unwrap();
+    assert!(!backfill.commit(&a).unwrap());
+    let pending = row(&rig, TABLE, "c0");
+    assert_eq!((pending.status, pending.lease), (ChunkStatus::Pending, None));
+
+    // B commits c0, it is rewound, and B's retried commit applies nothing.
+    let b = lease(&rig, TABLE, "node-b").unwrap();
+    assert_eq!((b.chunk.as_str(), b.lease.attempt), ("c0", 2));
+    assert!(backfill.commit(&b).unwrap());
+    backfill.rewind(PIPELINE, TABLE, &window(0, 10)).unwrap();
+    assert!(!backfill.commit(&b).unwrap());
+    let rewound = row(&rig, TABLE, "c0");
+    assert_eq!((rewound.status, rewound.committed_path(RUN)), (ChunkStatus::Pending, None));
 }

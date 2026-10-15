@@ -133,10 +133,9 @@ impl<'e, J: JournalStore, B: BlobStore> Backfill<'e, J, B> {
     }
 
     /// Remove every attempt path of `run_id` under `root` for the plan's chunks that no done
-    /// row commits and no live lease holds, last modified at or before `cutoff`, the edge of
+    /// row commits and that is not a running chunk's current attempt, live or lapsed, last modified at or before `cutoff`, the edge of
     /// the retention window. Answers the removed paths in order (`run.backfill.commit-signal`).
     pub fn collect(&self, pipeline_id: &str, table: &str, run_id: &str, root: &Path, cutoff: SystemTime) -> Result<Vec<PathBuf>, EngineError> {
-        let now = self.engine.catalog.now()?;
         let plan = self.engine.catalog.chunks(pipeline_id, table)?;
         let mut removed = Vec::new();
         for node_dir in dirs(&root.join(path_segment(run_id)))? {
@@ -144,7 +143,7 @@ impl<'e, J: JournalStore, B: BlobStore> Backfill<'e, J, B> {
                 let committed = chunk.committed_path(run_id).map(|c| root.join(c));
                 for at in dirs(&node_dir.join(path_segment(&chunk.chunk)))? {
                     let Some(attempt) = at.file_name().and_then(|a| a.to_str()).and_then(|a| a.parse::<u32>().ok()) else { continue };
-                    if committed.as_ref() == Some(&at) || chunk.live_attempt(attempt, now) {
+                    if committed.as_ref() == Some(&at) || chunk.current_attempt(attempt) {
                         continue;
                     }
                     let modified = std::fs::metadata(&at).and_then(|m| m.modified()).map_err(|e| storage(&at, e))?;
