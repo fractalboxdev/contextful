@@ -327,18 +327,18 @@ A memory read's audit entry records the claim ids it returned under the caller's
 
 | Option | Lost on | Cost |
 | --- | --- | --- |
-| Bounded breadth-first walk through the enforced session *(chosen)* | — | A dense neighbourhood returns truncated; every walk resolves each reached edge's citations. |
+| Bounded breadth-first walk through the enforced session *(chosen)* | — | A dense neighbourhood returns incomplete; every walk resolves each reached edge's citations. |
 | Serve the walk from the graph engine | Enforcement | Its grant, mask, zone and frontier rules become a second implementation. |
 | Unbounded walk cut by the byte ceiling | Resource ceiling | A hub entity expands the whole graph before the cut. |
 | A caller-chosen hop count with no ceiling | Predictability | One call's cost follows the caller, not the declaration. |
 | Personalized PageRank over every entity | Explanation | A score over all edges reflects hidden structure and names no path. |
 
-Consequences: a multi-hop question answers from edges the caller reads, and a truncated walk says so through `truncated` and its omitted count.
+Consequences: a multi-hop question answers from edges the caller reads, and a walk cut by fan-out or frontier reports a non-zero `edges_omitted`, the walk's incompleteness signal.
 Revisit: a graph arm seeded from the query's entities earns a place in fusion; truncation dominates native multi-hop cases.
 
 ## Edges supersede under one-cardinality relations
 
-Each declared relation carries a direction, a cardinality of `one` or `many` edges per source, and a walkable flag; the engine fixes the traits of the reserved core. Under a `one` relation, a new edge from a source ends that source's live edge at the new edge's valid-from instant and names it as successor, so `reports_to` answers one manager at any instant while the prior edge keeps its interval. A `many` relation accumulates edges. Edge validity is engine-stamped, so a walk at an observed instant reads the edge live then.
+Each declared relation carries a direction, a cardinality of `one` or `many` edges per source, and a walkable flag; the engine fixes the traits of the reserved core. Under a `one` relation, a new edge from a source ends that source's live edge at the new edge's valid-from instant and names it as successor, so `reports_to` answers one manager at any instant while the prior edge keeps its interval. A `many` relation accumulates edges. A producer's valid-from stands, so a backfilled edge keeps its history; an absent one takes the row's availability instant, else its commit instant.
 
 | Option | Lost on | Cost |
 | --- | --- | --- |

@@ -240,7 +240,7 @@ The column and table namespaces the engine holds, the provenance columns it inje
 - `modality` — `_modality` takes one of text, image, audio, structured or mixed; another value fails validation of its batch.
 - `lang-and-provenance` — `_lang` carries a BCP-47 tag; `_provenance` carries the evidence rows the row derives from, addressed by the identity the source table keys on.
 - `prompt-hash` — `_prompt_hash` is `sha256:<hex>` over the prompt template, not the rendered prompt.
-- `edge-validity` — The engine stamps `valid_from` and `valid_to` on every `memory_edges` row, replacing any producer value; `valid_to` stays null until {{read.revise.edge-supersede}} ends the edge.
+- `edge-validity` — A `memory_edges` row carries `valid_from`, `valid_to` and `superseded_by`; a producer's `valid_from` stands, an absent one takes the row's declared availability instant, else its commit instant, and only {{read.revise.edge-supersede}} writes the other two.
   *A-read*
 - `column-name` — A producer column inside the `_` namespace and outside the optional set raises `StoreReservedColumnName` at reconciliation, before any Parquet.
   *P1*
