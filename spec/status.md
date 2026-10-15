@@ -11,11 +11,11 @@ An unpinned clause is `committed`; a pinned one is `performed` when its Rust, Le
 | `corpus` | 1 | 10 | 79 | 37 | 7 | 0 | 79 | 0 | 79 |
 | `disclosure` | 3 | 16 | 158 | 68 | 13 | 7 | 103 | 0 | 103 |
 | `read` | 2 | 19 | 276 | 45 | 28 | 13 | 231 | 0 | 231 |
-| `run` | 3 | 29 | 515 | 114 | 44 | 13 | 459 | 0 | 459 |
+| `run` | 3 | 29 | 515 | 114 | 44 | 13 | 465 | 0 | 465 |
 | `store` | 3 | 19 | 290 | 64 | 14 | 11 | 280 | 0 | 280 |
 | `surface` | 2 | 21 | 159 | 63 | 23 | 0 | 132 | 0 | 132 |
 | `topology` | 1 | 6 | 79 | 25 | 5 | 3 | 74 | 0 | 74 |
-| **total** | 22 | 168 | 2528 | 649 | 208 | 79 | 2112 | 0 | |
+| **total** | 22 | 168 | 2528 | 649 | 208 | 79 | 2118 | 0 | |
 
 Decision records: 18.
 
@@ -29,7 +29,7 @@ A milestone reads `closed` when its acceptance test computes `passing` and every
 | 1 — The authority core | 14 | 244 | 225 | passing | closed |
 | 2 — The store | 9 | 183 | 173 | passing | closed |
 | 3 — The run path | 12 | 271 | 255 | passing | closed |
-| 4 — Ingest | 25 | 564 | 427 | passing | closed |
+| 4 — Ingest | 25 | 564 | 433 | passing | closed |
 | 5 — The read face under enforcement | 17 | 308 | 242 | passing | open |
 | 6 — Sync and replicas | 8 | 83 | 83 | passing | closed |
 | 7 — Memory | 6 | 71 | 56 | passing | closed |
@@ -1620,9 +1620,15 @@ Unscheduled operations: 12.
 | `run.retry.unretryable-tag` | `crates/contextful-core/tests/integration/run/retry.rs::retry_on_naming_an_unretryable_tag_is_refused_at_compile` | performed |
 | `run.seed.available-instant` | `crates/contextful-context/tests/integration/available_time.rs::a_seeded_row_lands_its_sources_instant_beside_the_commit_instant` | performed |
 | `run.seed.block` | `crates/contextful-core/tests/integration/pipeline/seed.rs::a_seed_block_names_a_source_and_a_ceiling_on_the_ordering_scale` | performed |
+| `run.seed.ceiling-binding` | `crates/contextful-engine/tests/integration/seed.rs::an_integer_ceiling_becomes_the_unset_live_position` | performed |
+| `run.seed.ceiling-breached` | `crates/contextful-engine/tests/integration/seed.rs::a_stamp_reaching_the_ceiling_fails_its_chunk_and_lands_nothing` | performed |
+| `run.seed.ceiling-point` | `crates/contextful-engine/tests/integration/seed.rs::the_ceiling_reads_the_batch_the_chain_answers` | performed |
 | `run.seed.ceiling-unevaluable` | `crates/contextful-core/tests/integration/pipeline/seed.rs::a_missing_column_or_an_off_scale_stamp_is_unevaluable` | performed |
 | `run.seed.compaction-cadence` | `crates/contextful-cli/tests/integration/pipeline.rs::a_seeded_table_no_fold_job_covers_is_refused` | performed |
 | `run.seed.declaration-missing` | `crates/contextful-core/tests/integration/pipeline/seed.rs::a_seeded_table_needs_a_key_and_an_event_time_ordering` | performed |
+| `run.seed.fingerprint` | `crates/contextful-engine/tests/integration/seed.rs::every_run_compares_the_probed_fingerprint_with_the_committed_one` | performed |
+| `run.seed.scope` | `crates/contextful-engine/tests/integration/seed.rs::seed_chunks_and_positions_live_under_the_seed_scope` | performed |
+| `run.seed.source-changed` | `crates/contextful-engine/tests/integration/seed.rs::a_moved_fingerprint_refuses_and_an_absent_one_skips_with_a_warning` | performed |
 | `run.select.anti-join` | `crates/contextful-core/tests/integration/run/derive.rs::the_outstanding_set_is_every_parent_without_passages_or_a_settled_marker` | performed |
 | `run.select.attempts-per-unit` | `crates/contextful-core/tests/integration/run/derive.rs::a_unit_receives_3_attempts_by_default` | performed |
 | `run.select.available-select` | `crates/contextful-connectors/tests/integration/derive.rs::a_bounded_derive_selects_parents_available_by_it_and_stamps_their_instant` | performed |
