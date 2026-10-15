@@ -415,6 +415,7 @@ fn run_row(id: &str) -> RunRow {
         plan_ref: None,
         input: None,
         failed_branches: vec![],
+        credential_providers: Default::default(),
     }
 }
 

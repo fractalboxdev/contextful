@@ -36,4 +36,8 @@ impl<S: Source> Source for Guarded<S> {
     fn settle(&mut self) -> Result<(), Failure> {
         self.inner.settle()
     }
+
+    fn credential_providers(&self) -> std::collections::BTreeMap<String, String> {
+        self.inner.credential_providers()
+    }
 }

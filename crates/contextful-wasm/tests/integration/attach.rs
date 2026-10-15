@@ -116,7 +116,7 @@ impl Provider for Rotating {
     fn answer(&self, name: &SecretName) -> Result<Option<Answer>, Failure> {
         if name.as_str() != "vendor-token" { return Ok(None); }
         self.calls.fetch_add(1, Ordering::SeqCst);
-        Ok(Some(Answer { value: Hydrated::new(format!("token-{}", self.version.load(Ordering::SeqCst))), expires_at: None }))
+        Ok(Some(Answer { value: Hydrated::new(format!("token-{}", self.version.load(Ordering::SeqCst))), expires_at: None, version: None }))
     }
 }
 

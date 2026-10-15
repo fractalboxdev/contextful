@@ -51,6 +51,8 @@ mod reside;
 #[cfg(feature = "data-plane")]
 mod run;
 mod root;
+#[cfg(feature = "data-plane")]
+mod secrets;
 #[cfg(feature = "read-plane")]
 mod serve;
 #[cfg(feature = "read-plane")]
@@ -122,7 +124,7 @@ const READ_PLANE: [&str; 4] = ["sync", "query", "mcp", "serve"];
 /// The run-path subcommands, which a build without the run path, the read replica
 /// included, answers with `ProfileCapabilityAbsent` (`topology.package.edge-profile`).
 #[cfg(not(feature = "data-plane"))]
-const RUN_PLANE: [&str; 12] = ["init", "context", "derive", "build", "pipeline", "export", "job", "run", "memory", "eval", "connector", "visibility"];
+const RUN_PLANE: [&str; 13] = ["init", "context", "derive", "build", "pipeline", "export", "job", "run", "memory", "eval", "connector", "visibility", "secrets"];
 
 /// The refusal of a subcommand this build's profile does not link. `Display` begins with
 /// the identifier.
@@ -183,6 +185,10 @@ enum Cmd {
     #[cfg(feature = "data-plane")]
     #[command(subcommand)]
     Connector(connector::ConnectorCmd),
+    /// Inventory the configured credential bindings, their records and observations.
+    #[cfg(feature = "data-plane")]
+    #[command(subcommand)]
+    Secrets(secrets::SecretsCmd),
     /// Push, pull, lease and compact against the store's bucket.
     #[cfg(feature = "read-plane")]
     #[command(subcommand)]
@@ -281,6 +287,8 @@ pub fn main_host(host: Host) {
         Cmd::Pipeline(c) => pipeline::run(c, &tasks, &bodies),
         #[cfg(feature = "data-plane")]
         Cmd::Connector(c) => connector::run(c),
+        #[cfg(feature = "data-plane")]
+        Cmd::Secrets(c) => secrets::run(c),
         #[cfg(feature = "data-plane")]
         Cmd::Build(c) => build::run(c),
         #[cfg(feature = "data-plane")]

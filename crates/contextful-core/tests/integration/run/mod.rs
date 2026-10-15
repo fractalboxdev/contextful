@@ -57,5 +57,6 @@ pub fn row(run_id: &str, started: &str) -> RunRow {
         plan_ref: None,
         input: None,
         failed_branches: Vec::new(),
+        credential_providers: Default::default(),
     }
 }

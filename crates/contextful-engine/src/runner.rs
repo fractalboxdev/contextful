@@ -353,6 +353,7 @@ impl<J: JournalStore, B: BlobStore> Engine<J, B> {
             // discard leaves joins no file list.
             let _ = dest.discard(&plan.spec.table, &spec.run_id);
         }
+        execution.record_credentials(source.credential_providers());
         execution.close_with(outcome)
     }
 

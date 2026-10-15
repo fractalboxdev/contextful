@@ -563,3 +563,29 @@ fn a_content_table_left_without_rows_stops_answering_the_earlier_key() {
         assert!(passages(t).is_empty(), "{t} after fold: {:?}", passages(t));
     }
 }
+
+/// An exec step's env template hydrates through the source's resolver at spawn into the
+/// child's environment, and the run's attribution names it.
+// spec: connector.attach.exec-environment@65aa88d9
+#[test]
+fn an_exec_steps_credential_hydrates_at_spawn_and_enters_the_attribution() {
+    let sentinel = "sentinel-speech-key-41";
+    let dir = transcribe_project("env = { SPEECH_API_KEY = \"${secret://speech-vendor}\" }\n");
+    std::fs::write(dir.path().join("engine.sh"), "test -n \"$SPEECH_API_KEY\" && test -z \"$SPEECH_VENDOR\" && echo \"keyed $1\" >&2\nprintf '1\\n00:00:01,000 --> 00:00:02,000\\n'\ncat \"$1\"\n").unwrap();
+    let fire = |dir: &std::path::Path| {
+        Command::new(env!("CARGO_BIN_EXE_contextful"))
+            .args(["pipeline", "run", "doc-text", "--project", "research", "--site-id", "site", "--now", "2030-01-01T01:00:00Z", "--run-id", "derive-1"])
+            .current_dir(dir)
+            .env_remove("CONTEXTFUL_SECRETS_BACKEND")
+            .env("SPEECH_VENDOR", sentinel)
+            .env("CONTEXTFUL_SECRETS_ALLOW_ENV_TEMPLATES", "1")
+            .output()
+            .unwrap()
+    };
+    ok(&fire(dir.path()));
+    let history = ok(&cf(dir.path(), &["run", "history", "--project", "research", "--export"]));
+    let run: serde_json::Value = history.lines().skip(1).map(|line| serde_json::from_str::<serde_json::Value>(line).unwrap()).find(|r| r["run_id"] == "derive-1").unwrap();
+    assert_eq!(run["credential_providers"], serde_json::json!({ "speech-vendor": "env" }), "{run}");
+    assert!(run["audit"][0].as_str().unwrap().contains("keyed "), "{run}");
+    assert!(!history.contains(sentinel));
+}

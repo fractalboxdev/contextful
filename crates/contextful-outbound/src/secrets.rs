@@ -4,8 +4,10 @@
 use crate::client::{Client, HeaderValue};
 use contextful_core::connector::attach::{is_loopback_host, scrub, Allowlist};
 use contextful_core::connector::lease::{classify, read_response, retires_at, Scopes};
+use contextful_core::connector::record::{Expiry, Observation, Observe, Unavailable};
 use contextful_core::connector::reference::{Hydrated, SecretName, Template};
 use contextful_core::connector::resolve::{Answer, Provider};
+use contextful_core::connector::rotate::{PutError, VersionedStore};
 use contextful_core::connector::ConnectorError;
 use contextful_core::ports::Clock;
 use contextful_core::run::{Failure, FailureTag};
@@ -57,12 +59,23 @@ impl Provider for EnvProvider {
     }
 
     fn answer(&self, name: &SecretName) -> Result<Option<Answer>, Failure> {
-        Ok(self.vars.get(&env_var(name)).map(|v| Answer { value: Hydrated::new(v.clone()), expires_at: None }))
+        Ok(self.vars.get(&env_var(name)).map(|v| Answer { value: Hydrated::new(v.clone()), expires_at: None, version: None }))
     }
 
     /// Template hydration treats the environment as a miss (`connector.reference.environment-is-a-miss`).
     fn serves_templates(&self) -> bool {
         false
+    }
+}
+
+/// The environment's observe half: presence by variable name, with no value built.
+impl Observe for EnvProvider {
+    fn adapter(&self) -> &str {
+        "env"
+    }
+
+    fn observe(&self, name: &SecretName, at: Instant) -> Observation {
+        Observation::Observed { adapter: "env".into(), at, present: self.vars.contains_key(&env_var(name)), version: None, created: None, expires: Expiry::Unknown }
     }
 }
 
@@ -129,12 +142,29 @@ impl Provider for LeaseProvider {
             return Err(classify(resp.status, retry_after, name));
         }
         let lease = read_response(&resp.body, self.clock.now())?;
-        Ok(Some(Answer { value: lease.value, expires_at: Some(lease.expires_at) }))
+        Ok(Some(Answer { value: lease.value, expires_at: Some(lease.expires_at), version: None }))
+    }
+}
+
+/// The lease provider's observe half: observing a leased name would mint one, so it
+/// answers unsupported and sends the mint endpoint nothing (`connector.record.observe-port`).
+impl Observe for LeaseProvider {
+    fn adapter(&self) -> &str {
+        "lease"
+    }
+
+    fn observe(&self, _name: &SecretName, at: Instant) -> Observation {
+        Observation::Unavailable { adapter: "lease".into(), at, reason: Unavailable::Unsupported("observing a leased name mints a credential".into()) }
+    }
+
+    fn covers(&self, name: &SecretName) -> bool {
+        self.scopes.scope(name).is_some()
     }
 }
 
 struct Cached {
     value: Arc<Hydrated>,
+    version: Option<String>,
     retires_at: Instant,
 }
 
@@ -161,6 +191,17 @@ impl Resolver {
     /// Which adapter answered each name, by logical name (`connector.record.provider-attribution`).
     pub fn attribution(&self) -> BTreeMap<String, String> {
         self.answered_by.lock().map(|m| m.clone()).unwrap_or_default()
+    }
+
+    /// The store version of `name`'s cached value, when its adapter versions it.
+    pub fn hydrated_version(&self, name: &SecretName) -> Option<String> {
+        let cache = self.cache.lock().unwrap_or_else(|e| e.into_inner());
+        cache.get(name).and_then(|c| c.version.clone())
+    }
+
+    /// Clear `name`'s cache entry, so its next hydration reads the current version.
+    fn forget(&self, name: &SecretName) {
+        self.cache.lock().unwrap_or_else(|e| e.into_inner()).remove(name);
     }
 
     fn gate(&self, name: &SecretName) -> Arc<Mutex<()>> {
@@ -202,7 +243,7 @@ impl Resolver {
             self.answered_by.lock().unwrap_or_else(|e| e.into_inner()).insert(name.to_string(), p.name().to_string());
             let retires = retires_at(now, answer.expires_at);
             let value = Arc::new(answer.value);
-            self.cache.lock().unwrap_or_else(|e| e.into_inner()).insert(name.clone(), Cached { value: value.clone(), retires_at: retires });
+            self.cache.lock().unwrap_or_else(|e| e.into_inner()).insert(name.clone(), Cached { value: value.clone(), version: answer.version, retires_at: retires });
             return Ok(value);
         }
         Err(config(ConnectorError::SecretUnresolvedReference(format!("no assembled adapter answers `secret://{name}`"))))
@@ -244,14 +285,45 @@ impl Resolver {
     }
 }
 
+/// The three views one backend selection builds from the same adapter instances: the
+/// answer chain, the observe halves, and the write halves by adapter name.
+pub struct Assembly {
+    pub resolver: Resolver,
+    /// Observe halves in chain order (`connector.record.observe-port`).
+    pub observers: Vec<Arc<dyn Observe>>,
+    /// Write halves by adapter name; the environment and lease adapters have none.
+    pub writers: BTreeMap<String, Arc<dyn VersionedStore>>,
+    /// The mint reference's logical name, when the lease backend is selected.
+    pub bootstrap: Option<SecretName>,
+}
+
+impl Assembly {
+    /// The adapters configured to serve `name`, in chain order.
+    pub fn configured(&self, name: &SecretName) -> Vec<String> {
+        self.observers.iter().filter(|o| o.covers(name)).map(|o| o.adapter().to_string()).collect()
+    }
+}
+
 /// Assemble the chain from the process environment `vars`: `CONTEXTFUL_SECRETS_BACKEND`
 /// names the adapters, `env` when unset; `lease` joins at the head.
 pub fn assemble(vars: &BTreeMap<String, String>, clock: Arc<dyn Clock + Send + Sync>) -> Result<Resolver, Failure> {
+    assemble_all(vars, clock).map(|a| a.resolver)
+}
+
+/// Assemble the answer chain, its observe halves and its write halves from one backend
+/// match, so `CONTEXTFUL_SECRETS_BACKEND` selects all three.
+pub fn assemble_all(vars: &BTreeMap<String, String>, clock: Arc<dyn Clock + Send + Sync>) -> Result<Assembly, Failure> {
     let backends: Vec<String> = vars.get(BACKEND).map_or(vec!["env".to_string()], |b| b.split(',').map(|s| s.trim().to_string()).filter(|s| !s.is_empty()).collect());
     let mut behind: Vec<Arc<dyn Provider>> = Vec::new();
+    let mut observers: Vec<Arc<dyn Observe>> = Vec::new();
+    let writers: BTreeMap<String, Arc<dyn VersionedStore>> = BTreeMap::new();
     for b in &backends {
         match b.as_str() {
-            "env" => behind.push(Arc::new(EnvProvider::new(vars.clone()))),
+            "env" => {
+                let env = Arc::new(EnvProvider::new(vars.clone()));
+                behind.push(env.clone());
+                observers.push(env);
+            }
             "lease" => {}
             other => {
                 return Err(Failure::deterministic(FailureTag::Config, format!("`{BACKEND}` names `{other}`; this build links the `lease` and `env` adapters")))
@@ -259,15 +331,64 @@ pub fn assemble(vars: &BTreeMap<String, String>, clock: Arc<dyn Clock + Send + S
         }
     }
     let mut chain: Vec<Arc<dyn Provider>> = Vec::new();
+    let mut bootstrap_name = None;
     if backends.iter().any(|b| b == "lease") {
         let scopes = Scopes::parse(vars.get(LEASE_SCOPES).map(String::as_str).unwrap_or_default()).map_err(config)?;
         let bootstrap = SecretName::parse(vars.get(LEASE_BOOTSTRAP).map(String::as_str).unwrap_or("lease-mint")).map_err(config)?;
         let base = vars
             .get(LEASE_PROVIDER_URL)
             .ok_or_else(|| Failure::deterministic(FailureTag::Config, format!("the lease backend is selected and `{LEASE_PROVIDER_URL}` is unset")))?;
-        chain.push(Arc::new(LeaseProvider::new(base, scopes, bootstrap, behind.clone(), clock.clone())?));
+        bootstrap_name = Some(bootstrap.clone());
+        let lease = Arc::new(LeaseProvider::new(base, scopes, bootstrap, behind.clone(), clock.clone())?);
+        chain.push(lease.clone());
+        observers.insert(0, lease);
     }
     chain.extend(behind);
     let allow = vars.get(ALLOW_ENV_TEMPLATES).is_some_and(|v| v == "1");
-    Ok(Resolver::new(chain, allow, clock))
+    Ok(Assembly { resolver: Resolver::new(chain, allow, clock), observers, writers, bootstrap: bootstrap_name })
+}
+
+/// Turnover of a refreshed credential: the new version is put to the adapter that answered
+/// its name, conditioned on the version the run hydrated, and the name's cache entry clears
+/// (`connector.rotate.oauth-credential`).
+pub struct Rotator {
+    resolver: Arc<Resolver>,
+    writers: BTreeMap<String, Arc<dyn VersionedStore>>,
+}
+
+impl Rotator {
+    pub fn new(resolver: Arc<Resolver>, writers: BTreeMap<String, Arc<dyn VersionedStore>>) -> Rotator {
+        Rotator { resolver, writers }
+    }
+
+    /// Refresh `name` through `refresh`, which receives the current material and returns
+    /// the new material and its expiry. A refused put, or an answering adapter with no
+    /// write half, fails closed with the refreshed token dropped unserved
+    /// (`connector.rotate.write-back-denied`); a put losing to another writer re-hydrates
+    /// the stored version (`connector.rotate.conditional-put`).
+    pub fn rotate(&self, name: &SecretName, refresh: impl FnOnce(&Hydrated) -> Result<(Hydrated, Option<Instant>), Failure>) -> Result<(), Failure> {
+        let denied = |m: String| Failure::deterministic(FailureTag::Permanent, ConnectorError::SecretRotationWriteDenied(m).to_string());
+        let answered = || self.resolver.attribution().get(name.as_str()).cloned();
+        let adapter = match answered() {
+            Some(a) => a,
+            None => {
+                self.resolver.hydrate(name)?;
+                answered().unwrap_or_default()
+            }
+        };
+        let Some(writer) = self.writers.get(&adapter) else {
+            return Err(denied(format!("`secret://{name}` is answered by `{adapter}`, which has no write half")));
+        };
+        let current = self.resolver.hydrate(name)?;
+        let if_version = self.resolver.hydrated_version(name);
+        let (fresh, expires_hint) = refresh(&current)?;
+        match writer.put(name, &fresh, if_version.as_deref(), expires_hint) {
+            Ok(_) | Err(PutError::Conflict(_)) => {
+                self.resolver.forget(name);
+                Ok(())
+            }
+            Err(PutError::Denied(reason)) => Err(denied(format!("`{adapter}` refused the put for `secret://{name}`: {reason}"))),
+            Err(PutError::Failed(reason)) => Err(Failure::new(FailureTag::Transient, format!("the put for `secret://{name}` to `{adapter}` failed: {reason}"))),
+        }
+    }
 }

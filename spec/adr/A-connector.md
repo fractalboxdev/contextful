@@ -112,9 +112,23 @@ The selected provider owns values, versions and rotation state. `connector.recor
 | Mandatory encrypted entries and comments in Git | Backend independence | External managers need duplicate ciphertext; automated rotation needs commits; comments cannot establish runtime state. |
 | Provider enumeration as the entire inventory | Binding coverage | Listing permissions and metadata differ by provider; unresolvable configured names disappear. |
 
-Consequences: repository policy in `assurance.gate` checks dotenv files when tracked. That policy governs the repository's chosen file workflow, while runtime credentials use any configured provider. Inventory never obtains metadata by reading credential values. Record serialization and adapter metadata capabilities remain explicit questions in the operation.
+Consequences: repository policy in `assurance.gate` checks dotenv files when tracked; runtime credentials use any configured provider. The record is a typed `[secret.<name>]` table refused when it describes no binding; observation is a separate port holding no hydrated value, so inventory never reads credential values. An outside rotation keeps the prior version valid for 300 s, or accepts auth failures for up to that long.
 
 Revisit: a shared provider metadata protocol supplies complete observations without value access or broader listing permissions.
+
+## Rotation writes forward to the answering adapter
+
+A refreshed OAuth token is put to the adapter the run's attribution names for its logical name, through a write half separate from the provider port, conditioned on the version the run hydrated. `connector.rotate` refreshes at the lease retirement margin, drops the token unserved when the put is refused or the adapter has no write half, and re-hydrates the winner when another writer stored first. The environment, keychain and lease adapters have no write half, so operator-entered and leased credentials never write back.
+
+| Option | Lost on | Cost |
+| --- | --- | --- |
+| Conditional put to the attributed adapter *(chosen)* | — | A read-only manager fails the run on every refresh; a lost race costs one extra hydration. |
+| First writable adapter in the chain | Name join | A shadowing adapter in front hides the stored version. |
+| Serve the token from memory on a refused put | Provider custody | A vendor rotating refresh tokens leaves the manager's copy dead, with nothing recording it. |
+| Unconditional put | Atomic turnover | A slower replica overwrites a newer token, a torn credential state. |
+
+Consequences: the write-forward path runs against a manager adapter only.
+Revisit: a manager offers no conditional write; two resolvers share one cache across runs.
 
 ## Egress passes one transport port and one pre-send hook ahead of resolution
 

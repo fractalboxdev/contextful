@@ -647,6 +647,7 @@ impl contextful_core::connector::resolve::Provider for Minting {
         Ok(Some(contextful_core::connector::resolve::Answer {
             value: contextful_core::connector::reference::Hydrated::new(format!("lease-{n}")),
             expires_at: Some(now.plus_secs(20)),
+            version: None,
         }))
     }
 }

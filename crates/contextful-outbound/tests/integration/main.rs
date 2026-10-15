@@ -6,7 +6,9 @@ mod infer;
 mod lease;
 mod meter;
 mod probe;
+mod record;
 mod resolve;
+mod rotate;
 mod support;
 
 /// The process's proxy environment: shared by every test that builds an HTTP client, held
