@@ -83,6 +83,22 @@ Criteria: no measured regression, fixed; then calibration across corpora.
 
 Revisit: a corpus where reciprocal rank loses a tracked measure to another calibration.
 
+## A reranker reorders a masked post-authority window
+
+Context: fused order scores a cosine leg and a reciprocal-rank lexical leg; a cross-encoder reading query and candidate together orders the leading rows better, at the price of a model call per candidate.
+Decision: `read.rank` reranks only on a call naming `rerank_with`, over the first 50 rows of fused order after authority has cut and masked them. The reranker reads each masked snippet alone and scores it pointwise; rows past the window keep fused order. A reranker enters the declared set through the same native-evaluation gate a lexical calibration meets. A remote reranker is egress through `connector.infer.model-endpoint`, and a horizon routes it as it routes an embedder; a reranker with no checkpoint cut off before the horizon refuses. An undeclared name refuses.
+
+| Option | Lost on | Cost |
+| --- | --- | --- |
+| Pointwise rerank of a masked 50-row window, on request *(chosen)* | — | A reranked read costs up to 50 model scores and depends on the reranker's build. |
+| Rerank every ranked read by default | Determinism | Every answer changes with a model build the caller never named. |
+| Listwise reranking in one prompt | Injection resistance | One poisoned candidate can instruct the model to promote itself. |
+| Rerank before authority | Enforcement | Hidden rows reach a model, and their scores shape what the caller sees. |
+| Fall back to fused order on an unknown name | Distinguishability | A ranking change passes silently. |
+
+Consequences: the result cache keys on the reranker's identity and build, and the retrieval block names both.
+Revisit: the native evaluation measuring no gain for a declared reranker over fused order.
+
 ## A zone-withheld relation is named, with one whole-relation count
 
 `read.respond` names each touched relation the session's zone excludes or column-masks in a restriction block that every transport serializes; `context.describe` states the session zone and whether each table admits it. `authority.place` counts the rows the zone step removes over the whole relation, after the tenant and row-policy steps, never over the caller's statement. `authority.compose.before-the-cut` holds: the count is a property of the relation, so no ranked position, filter or requested size moves it.

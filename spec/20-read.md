@@ -276,6 +276,8 @@ Resolution of one stored citation through the caller's registered relation, incl
 Candidate generation for a ranked read: content tokens, the relevance floor, per-table arms, dedup, snippet.
 
 - `ranked-call` — `corpus.retrieve({prefix, query, query_embedding?, filter?, kinds?, limit?, since?, min_score?, as_of?, valid_as_of?})` returns the top rows across the item and artifact genres under one prefix, each with a snippet and full provenance. It composes the query surface and memory recall, storing nothing.
+- `rerank-argument` — The ranked call also takes `query_embedding_model?`, naming the model behind `query_embedding`, and `rerank_with?`, naming the reranker {{read.rank.rerank}} applies.
+  *because a caller-supplied vector and a reranked order are each meaningful only with the model that produced them*
 - `relevance-floor` — A row reaches a caller when its lexical score is null, at least the floor, or its vector score is positive. The floor is 2 tokens for queries of 3 tokens or more, else 1 tokens; a caller minimum overrides.
 - `content-tokens` — The query text is lowercased and split on non-alphanumeric characters. Stop tokens drop, non-ASCII runs of two or more characters stay, and survivors deduplicate in order.
 - `token-length-floor` — An ASCII run shorter than 2 chars leaves the content-token set.
@@ -347,9 +349,13 @@ flowchart LR
 
 unsettled: Does the row id {{run.normalize.identity-columns}} injects serve as the row key of a table declaring no content-hash column? owner: read-path affects: read.retrieve
 
+unsettled: Does restriction get the statistics treatment {{read.horizon.rank-statistics}} gives the horizon, so BM25 document frequency on {{read.retrieve.fulltext-probe}} excludes restricted rows? owner: authority affects: read.retrieve
+
+unsettled: Does predicate-aware graph traversal replace {{read.retrieve.adaptive-over-fetch}} under selective restrictions? owner: read-path affects: read.retrieve
+
 ## rank
 
-Ordering of a candidate set: the three legs, their fusion, the question's timeframe, reported confidence.
+Ordering of a candidate set: the three legs, their fusion, the question's timeframe, an optional reranker over the leading window, reported confidence.
 
 - `three-legs` — Ranking runs exact cosine similarity over the candidate set, BM25 over a full-text index, and a weighted fusion of the two.
 - `fusion` — Fusion computes `w_vec · clamp(cosine, 0, 1) + w_lex · rrf(bm25)`, weights 60 percent and 40 percent, `rrf` scoring BM25 rank `r` as `61 / (60 + r)`. A document absent from a leg scores zero; ties break by identifier.
@@ -376,6 +382,18 @@ Ordering of a candidate set: the three legs, their fusion, the question's timefr
 - `widened-window-statistics` — Lexical term statistics come from the widened candidate window, so an accelerated arm can order rows differently from the exact path.
 - `calibration-gate` — A lexical-leg calibration replaces the one {{read.rank.fusion}} names only when the native evaluation scores it at or above that one on every tracked measure.
   *A-read*
+- `reranker-admission` — A reranker joins the declared set only when it meets {{read.rank.calibration-gate}} against fused order.
+  *A-read*
+- `rerank` — A call naming `rerank_with` reorders the first 50 rows past authority, before `limit` truncates, of the ordering {{read.rank.question-window-is-a-tier}} leads, by reranker score within each tier; later rows keep their order, and the retrieval block names the reranker and its build.
+  *A-read*
+- `rerank-input` — A reranker scores each candidate apart from the others, reading only its {{read.retrieve.snippet}} after masking and never a raw cell.
+  *because a listwise prompt lets one poisoned candidate promote itself*
+- `rerank-absent` — A `rerank_with` naming no reranker in the set {{read.rank.reranker-admission}} admits raises `ReadRerankerAbsent`.
+  *because a silent fallback to fused order hides a ranking change*
+- `rerank-horizon` — Under a horizon, a reranker declaring a checkpoint family scores with the checkpoint {{read.horizon.embedder-route}} selects, and a remote reranker's call passes {{read.horizon.egress-hook}}.
+  *A-read*
+- `rerank-cutoff` — Under a horizon, a named reranker holding no checkpoint whose post-training cutoff precedes the horizon raises `ReadRerankerBeyondHorizon` rather than scoring; a reranker declaring no checkpoint family holds no such checkpoint.
+  *because a trained reranker can order rows by events it learned after the horizon*
 
 The ranking legs, their fallback, and the ordering they feed:
 
@@ -388,8 +406,13 @@ flowchart LR
   B -->|"BM25, weight 0.4"| FU
   FU -->|"fused scores"| ORD["window-first ordering"]
   TF -->|"token scores"| ORD
-  ORD -->|"retrieval block"| OUT(["token caller"])
+  ORD -->|"ordered rows"| RR{"rerank_with named?"}
+  RR -->|"no"| OUT(["token caller"])
+  RR -->|"yes, 50 rows pre-limit"| RER["pointwise reranker"]
+  RER -->|"retrieval block"| OUT
 ```
+
+unsettled: Does a convex combination over min-max-normalized scores, its weight fitted per domain on settled judgments, replace {{read.rank.fusion}}? owner: read-path affects: read.rank
 
 ## cache
 
@@ -401,6 +424,8 @@ Locality of the bytes a read touches, reuse of a resolved session and its connec
   *because a container ready before hydration completes otherwise answers a read from a partial snapshot set*
 - `result-key` — A cached result keys on the token's id, revocation epoch, grants and subject, the session zone and incognito state, each touched relation and the files it reads, the bounds, the statement, its parameter values and the applied row ceiling.
   *A-read*
+- `reranker-key` — A reranked result's key adds the reranker's identity and build to {{read.cache.result-key}}.
+  *because a new reranker build orders the same rows differently under an otherwise unchanged key*
 - `cache-is-opt-in` — A statement's result caches only when every table it touches declares `result_cache`, a time to live, and none declares `private = true`; an entry expires at the least time to live among them.
   *A-read*
 - `volatile-bypasses` — A statement calling a function the engine marks other than consistent across queries, such as `now()`, `current_timestamp` or `random()`, or a macro reaching one, executes uncached.
@@ -441,11 +466,13 @@ Resolution of a named published-model build at read time, and the state each res
 
 ## embed
 
-The embedding port and its default, the model identifier beside each vector, the linked-backend identity a handshake reports, and refusals on an absent backend.
+The embedding port and its default, the model identifier beside each vector, the model check on a caller's query embedding, the linked-backend identity a handshake reports, and refusals on an absent backend.
 
 - `default-embedder` — The embedding capability is a port whose default is deterministic and I/O-free: it hashes token term frequencies into an L2-normalized vector, needing no download, key or network call.
 - `default-embedder-reach` — The default is a lexical-vector baseline: a paraphrase is orthogonal under it and cross-lingual recall is undefined. Semantic reach comes from the learned in-process model or a caller-supplied query embedding.
 - `model-identifier` — Every stored vector lands in a {{store.reconcile.binary-and-vector}} column beside an `embedding_model` column naming the model that produced it; index identity and provenance resolve from the rows alone.
+- `query-model` — A ranked call whose `query_embedding_model` differs from the `embedding_model` beside the vectors it scores raises `ReadEmbeddingModelMismatch`, naming both models.
+  *because cosine across two models compares unrelated spaces*
 - `build-identity` — The handshake reports the linked retrieval backends (`duckdb`, `fts`, `hnsw`), connector families (`m365`, `s3`, `wasm`) and faces (`http`, `eval`, `otlp`), composed from the same feature declarations the version output reads.
   *P3*
 - `required-face` — A client passing `require: [...]` is refused ahead of its first read with `RequiredFaceAbsent` for any name outside the reported set. An engine reporting no set satisfies no requirement.
