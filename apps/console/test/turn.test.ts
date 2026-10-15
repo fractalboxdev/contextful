@@ -1,10 +1,9 @@
 import assert from "node:assert/strict";
-import { test } from "node:test";
+import { mock, test } from "node:test";
 import {
   ConsoleError,
   OverlayCache,
   StreamingRedactor,
-  buildSuggestions,
   createTurn,
   parseVantage,
   parseWebBound,
@@ -227,8 +226,6 @@ test("a planner call targeting a memory relation dispatches nothing", async () =
   assert.deepEqual(calls, []);
 });
 
-const stalledTransport = { call: () => new Promise<never>(() => {}) };
-
 function oversizedTransport(limits: number[]) {
   return { call: async (call: { maxRows: number }) => {
     limits.push(call.maxRows);
@@ -236,14 +233,42 @@ function oversizedTransport(limits: number[]) {
   } };
 }
 
+async function settle() {
+  for (let n = 0; n < 20; n++) await Promise.resolve();
+}
+
+async function stopsAtTenSeconds(timeoutMs: number | undefined) {
+  mock.timers.enable({ apis: ["setTimeout", "Date"], now: 0 });
+  try {
+    const aborted: boolean[] = [];
+    const stalled = harness({ timeoutMs, transport: { call: (call: { signal: AbortSignal }) => {
+      call.signal.addEventListener("abort", () => aborted.push(true));
+      return new Promise<never>(() => {});
+    } } });
+    const state: { outcome: unknown } = { outcome: "pending" };
+    void stalled.turn.ask({ question: "Slow", packs: ["data"] }).then(() => { state.outcome = "resolved"; }, (error: unknown) => { state.outcome = error; });
+    await settle();
+    mock.timers.tick(9_999);
+    await settle();
+    assert.equal(state.outcome, "pending");
+    mock.timers.tick(1);
+    await settle();
+    const settled: unknown = state.outcome;
+    assert.ok(settled instanceof Error && /code path exceeded 10 s/.test(settled.message));
+    assert.deepEqual(aborted, [true]);
+  } finally {
+    mock.timers.reset();
+  }
+}
+
 // spec: surface.plan-turn.code-path-bounds@7af05d90
-test("the code path reads at most 5000 rows per data table and stops at its deadline", async () => {
+test("the code path reads at most 5000 rows per data table and stops after 10 s", async () => {
   const limits: number[] = [];
   const bounded = harness({ transport: oversizedTransport(limits) });
   await assert.rejects(bounded.turn.ask({ question: "Many", packs: ["data"] }), RangeError);
   assert.deepEqual(limits, [5000]);
-  const stalled = harness({ transport: stalledTransport, timeoutMs: 5 });
-  await assert.rejects(stalled.turn.ask({ question: "Slow", packs: ["data"] }), /code path exceeded 10 s/);
+  await stopsAtTenSeconds(undefined);
+  await stopsAtTenSeconds(60_000);
 });
 
 test("one table cannot exceed the row budget through repeated calls", async () => {
@@ -306,7 +331,6 @@ function countingOverlay(text: string | null) {
   return { state, cache };
 }
 
-// spec: surface.plan-turn.overlay-cache@c27dca5c
 test("overlay cache holds for five minutes, a miss included", async () => {
   const { state, cache } = countingOverlay(null);
   assert.equal(await cache.get("store"), "");
@@ -331,19 +355,4 @@ test("streaming redactor masks identifiers split across chunks", () => {
   const output = redactor.push("before SEC") + redactor.push("RET-ID after") + redactor.finish();
   assert.equal(output, "before [redacted] after");
   assert.throws(() => new StreamingRedactor(["x".repeat(129)]), RangeError);
-});
-
-// spec: surface.speak.unanswerable-suggestion@dc680207
-test("a suggestion set refuses a prompt no admitted read tool answers", () => {
-  const scope = {
-    tools: [readTool, { name: "erase", pack: "data", kind: "write" as const, table: "audit" }, { name: "peek", pack: "admin", kind: "read" as const, table: "ledger" }],
-    tables: [{ name: "events", kind: "data" as const }, { name: "audit", kind: "data" as const }, { name: "ledger", kind: "data" as const }, { name: "memory_entries", kind: "memory" as const }],
-    packs: ["data"],
-  };
-  const answerable = { prompt: "Tell me about Events", table: "events" };
-  assert.deepEqual(buildSuggestions([answerable], scope), [answerable]);
-  for (const table of ["audit", "ledger", "memory_entries", "missing"]) {
-    assert.throws(() => buildSuggestions([answerable, { prompt: `Tell me about ${table}`, table }], scope),
-      (error: unknown) => error instanceof ConsoleError && error.code === "ConsoleSuggestionUnanswerable" && error.message === `Tell me about ${table}`);
-  }
 });

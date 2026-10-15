@@ -23,16 +23,19 @@ test("brief requires a turnless present-time session and live matched arrivals",
   assert.equal(await deriveBrief({ ...input, arrivals: [] }), null);
 });
 
-function crowdedBrief() {
+function crowdedBrief(extra: typeof row[] = []) {
   const conclusions = Array.from({ length: 5 }, (_, n) => ({ subject: `Acme${n}`, text: `Acme${n} filings need review`, live: true }));
   const arrivals = conclusions.flatMap((c, n) => Array.from({ length: 5 }, (_, m) => ({ id: `${n}-${m}`, label: `${c.subject} filing`, topics: ["filings"], arrivedAt: "2026-01-08T11:00:00Z" })));
-  return deriveBrief({ session: { turns: 0, vantage: "present" }, conclusions, arrivals, now, windowDays: 100, budgetMs: 1000 });
+  return deriveBrief({ session: { turns: 0, vantage: "present" }, conclusions, arrivals: [...extra, ...arrivals], now, windowDays: 100, budgetMs: 1000 });
 }
 
 // spec: surface.brief.catchup-window@5445a060
 test("brief caps the requested window at seven days", async () => {
-  const card = await crowdedBrief();
+  const stale = { id: "stale", label: "Acme0 filing", topics: ["filings"], arrivedAt: new Date(now - 8 * 86_400_000).toISOString() };
+  const card = await crowdedBrief([stale]);
   assert.equal(card?.windowDays, 7);
+  assert.ok(card?.subjects.every((subject) => subject.articles.every((article) => article.id !== "stale")));
+  assert.equal(card?.subjects[0].articles.length, 3);
 });
 
 // spec: surface.brief.card-subjects@1c18a15b
