@@ -22011,7 +22011,7 @@
       "operation": "release",
       "subject": "budget-ledger",
       "kind": "behavior",
-      "statement": "A project's budget ledger is `.contextful/disclosure/<project>/budget.sqlite`, outside the synced store root, and records each contributing unit under the SHA-256 digest of its key.",
+      "statement": "A project's budget ledger is `.contextful/disclosure/<project>/budget.sqlite`, outside the synced store root, and records each contributing unit under the keyed digest of its key under the project's pepper.",
       "why": "A-disclosure",
       "file": "spec/61-disclosure.md",
       "line": 79
