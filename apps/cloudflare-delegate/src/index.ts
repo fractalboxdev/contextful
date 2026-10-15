@@ -6,7 +6,8 @@
 /** The entity an isolated item runs under, with the fence its lease holds. */
 export type Entity = { namespace: string; key: string; fence: number };
 
-/** What one delegate request carries (`surface.delegate.envelope`). */
+// mirrors: surface.delegate.envelope
+/** What one delegate request carries. */
 export type Envelope = {
   job: string;
   execution_id: string;
@@ -25,27 +26,44 @@ export type Envelope = {
   deadline: string;
 };
 
-/** One row of one output table, as the engine lands it. */
+/** One row of one output table, as the engine lands it: a plain object of columns. */
 export type Row = Record<string, unknown>;
 
-/** A delegate's answer (`surface.delegate.outcome`). */
+// mirrors: surface.delegate.outcome
+/** A delegate's answer. */
 export type Answer =
   | { outcome: "ok"; rows: Record<string, Row[]> }
   | { outcome: "defer"; retry_at: string; reason?: string }
   | { outcome: "transient"; reason?: string }
   | { outcome: "permanent"; reason?: string };
 
-/** An RFC 3339 UTC instant ending in `Z`, the one spelling the engine reads. */
-const INSTANT = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(\.\d{1,9})?Z$/;
+/**
+ * An RFC 3339 instant as the engine reads it: date, `T`, time, optional fraction, then `Z`
+ * or an offset. The package re-emits it in `Z` form.
+ */
+const INSTANT = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(\.\d{1,9})?(Z|[+-]\d{2}:\d{2})$/;
 
-const instant = (at: Date): string => at.toISOString().replace(/\.\d{3}Z$/, "Z");
+/** `text` as the engine's `Z` spelling, or `null` when it is no instant. */
+function instant(text: string): string | null {
+  if (!INSTANT.test(text)) return null;
+  const at = Date.parse(text);
+  if (Number.isNaN(at)) return null;
+  return new Date(at).toISOString().replace(/\.000Z$/, "Z");
+}
 
 export const ok = (rows: Record<string, Row[]>): Answer => ({ outcome: "ok", rows });
-export const defer = (retryAt: Date | string, reason?: string): Answer => ({
-  outcome: "defer",
-  retry_at: typeof retryAt === "string" ? retryAt : instant(retryAt),
-  ...(reason === undefined ? {} : { reason }),
-});
+
+/**
+ * Park the item until `retryAt`. An invalid `Date` or an unreadable string is a handler
+ * bug and raises `DelegateAnswerInvalid`, which the fetch handler answers as a signed
+ * `permanent`.
+ */
+export const defer = (retryAt: Date | string, reason?: string): Answer => {
+  const text = typeof retryAt === "string" ? retryAt : Number.isNaN(retryAt.getTime()) ? "invalid Date" : retryAt.toISOString();
+  const at = instant(text);
+  if (at === null) throw new DelegateAnswerInvalid(`\`retry_at\` \`${text}\` is no RFC 3339 instant`);
+  return { outcome: "defer", retry_at: at, ...(reason === undefined ? {} : { reason }) };
+};
 export const transient = (reason?: string): Answer => ({ outcome: "transient", ...(reason === undefined ? {} : { reason }) });
 export const permanent = (reason?: string): Answer => ({ outcome: "permanent", ...(reason === undefined ? {} : { reason }) });
 
@@ -61,11 +79,14 @@ export const SKEW_SECS = 300;
 /** Largest answer body the engine admits, in bytes. */
 export const ANSWER_CAP = 1024 * 1024;
 
+/** Longest fault text a fallback `permanent` carries, so it never passes the cap. */
+const REASON_CAP = 512;
+
 /** Why a request was refused before the handler ran. */
 export class DelegateRequestRejected extends Error {
   readonly status: 401 | 422;
   constructor(status: 401 | 422, message: string) {
-    super(`DelegateRequestRejected: ${message}`);
+    super(message);
     this.name = "DelegateRequestRejected";
     this.status = status;
   }
@@ -74,7 +95,7 @@ export class DelegateRequestRejected extends Error {
 /** Why an answer the handler produced cannot be sent: a deterministic handler bug. */
 export class DelegateAnswerInvalid extends Error {
   constructor(message: string) {
-    super(`DelegateAnswerInvalid: ${message}`);
+    super(message);
     this.name = "DelegateAnswerInvalid";
   }
 }
@@ -83,17 +104,22 @@ const encoder = new TextEncoder();
 
 type Key = string | Uint8Array;
 
-const imported = new Map<string, Promise<CryptoKey>>();
+const importedStrings = new Map<string, Promise<CryptoKey>>();
+const importedBytes = new WeakMap<Uint8Array, Promise<CryptoKey>>();
 
-/** The HMAC key for `key`, imported once per distinct key material. */
+/** The HMAC key for `key`, imported once per key value; a failed import is not kept. */
 function cryptoKey(key: Key): Promise<CryptoKey> {
   const raw = typeof key === "string" ? encoder.encode(key) : key;
   if (raw.length === 0) throw new TypeError("the deployment key is empty");
-  const id = Array.from(raw, (b) => b.toString(16).padStart(2, "0")).join("");
-  let pending = imported.get(id);
-  if (pending === undefined) {
-    pending = crypto.subtle.importKey("raw", raw as BufferSource, { name: "HMAC", hash: "SHA-256" }, false, ["sign"]);
-    imported.set(id, pending);
+  const cached = typeof key === "string" ? importedStrings.get(key) : importedBytes.get(key);
+  if (cached !== undefined) return cached;
+  const pending = crypto.subtle.importKey("raw", raw as BufferSource, { name: "HMAC", hash: "SHA-256" }, false, ["sign"]);
+  if (typeof key === "string") {
+    importedStrings.set(key, pending);
+    pending.catch(() => importedStrings.delete(key));
+  } else {
+    importedBytes.set(key, pending);
+    pending.catch(() => importedBytes.delete(key));
   }
   return pending;
 }
@@ -151,15 +177,25 @@ export const systemNow = (): number => Math.floor(Date.now() / 1000);
 const TIMER_MAX_MS = 2 ** 31 - 1;
 
 /**
- * Milliseconds from `reference` (this side's wall clock unless given) to the engine's
- * `deadline`, clamped to `[0, 2^31 - 1]` so a timer never overflows. The deadline is the
- * engine's instant at send plus the binding's timeout; under real clocks that is the
- * handler's budget, and under an injected engine clock the envelope carries no instant to
- * measure from, so the clamp is the only safe reading.
+ * Milliseconds from the daemon's send instant to the engine's `deadline`, clamped to
+ * `[0, 2^31 - 1]` so a timer never overflows. The send instant is the request's signature
+ * timestamp, this side's reading of the daemon's wall clock; pass the request, that
+ * timestamp in Unix seconds, or an instant. Under an injected engine clock (`--now`) the
+ * deadline sits on another clock than the timestamp, so the clamp is the only safe reading.
  */
-export function timeToDeadline(envelope: Envelope, reference: Date | string = new Date()): number {
+export function timeToDeadline(envelope: Envelope, sentAt: Request | number | Date | string): number {
   const deadline = Date.parse(envelope.deadline);
-  const from = typeof reference === "string" ? Date.parse(reference) : reference.getTime();
+  let from: number;
+  if (sentAt instanceof Request) {
+    const header = Number(sentAt.headers.get(TIMESTAMP_HEADER));
+    from = Number.isInteger(header) ? header * 1000 : Number.NaN;
+  } else if (typeof sentAt === "number") {
+    from = sentAt * 1000;
+  } else if (typeof sentAt === "string") {
+    from = Date.parse(sentAt);
+  } else {
+    from = sentAt.getTime();
+  }
   if (Number.isNaN(deadline) || Number.isNaN(from)) return 0;
   return Math.min(Math.max(deadline - from, 0), TIMER_MAX_MS);
 }
@@ -198,23 +234,29 @@ export async function verifyRequest(request: Request, key: Key, now: () => numbe
   return envelopeOf(parsed);
 }
 
-const isObject = (value: unknown): value is Record<string, unknown> => typeof value === "object" && value !== null && !Array.isArray(value);
+/** A plain object: one created by a literal or `Object.create(null)`, no `Map`, `Date` or instance. */
+function isPlain(value: unknown): value is Record<string, unknown> {
+  if (typeof value !== "object" || value === null) return false;
+  const proto = Object.getPrototypeOf(value);
+  return proto === Object.prototype || proto === null;
+}
 
+// mirrors: surface.delegate.envelope
 function envelopeOf(value: unknown): Envelope {
   const malformed = (what: string) => new DelegateRequestRejected(422, `the body is no envelope: ${what}`);
-  if (!isObject(value)) throw malformed("not an object");
+  if (!isPlain(value)) throw malformed("not an object");
   const e = value;
   for (const field of ["job", "execution_id", "step", "input_hash", "idempotency_key", "as_of", "deadline"]) {
     if (typeof e[field] !== "string") throw malformed(`\`${field}\` is a string`);
   }
   if (!Number.isInteger(e.attempt)) throw malformed("`attempt` is an integer");
   if (e.version !== undefined && !Number.isInteger(e.version)) throw malformed("`version` is an integer when present");
-  if (!isObject(e.pins) || !Object.values(e.pins).every((v) => typeof v === "string")) throw malformed("`pins` maps names to strings");
+  if (!isPlain(e.pins) || !Object.values(e.pins).every((v) => typeof v === "string")) throw malformed("`pins` maps names to strings");
   if (!Array.isArray(e.tables) || !e.tables.every((t) => typeof t === "string")) throw malformed("`tables` is a list of names");
-  if (!isObject(e.row)) throw malformed("`row` is an object");
+  if (!isPlain(e.row)) throw malformed("`row` is an object");
   if (e.entity !== undefined) {
     const entity = e.entity;
-    if (!isObject(entity) || typeof entity.namespace !== "string" || typeof entity.key !== "string" || !Number.isInteger(entity.fence)) {
+    if (!isPlain(entity) || typeof entity.namespace !== "string" || typeof entity.key !== "string" || !Number.isInteger(entity.fence)) {
       throw malformed("`entity` carries namespace, key and fence");
     }
   }
@@ -222,26 +264,27 @@ function envelopeOf(value: unknown): Envelope {
 }
 
 // mirrors: surface.delegate.outcome
-function checkAnswer(envelope: Envelope, answer: Answer): void {
-  if (!isObject(answer)) throw new DelegateAnswerInvalid("an answer is an object");
+/** The answer as it leaves: in the vocabulary, rows for declared tables, `retry_at` in `Z` form. */
+function checked(envelope: Envelope, answer: Answer): Answer {
+  if (!isPlain(answer)) throw new DelegateAnswerInvalid("an answer is an object");
   switch (answer.outcome) {
     case "ok":
-      if (!isObject(answer.rows)) throw new DelegateAnswerInvalid("`rows` maps each table to its rows");
+      if (!isPlain(answer.rows)) throw new DelegateAnswerInvalid("`rows` maps each table to its rows");
       for (const [table, rows] of Object.entries(answer.rows)) {
         if (!envelope.tables.includes(table)) {
           throw new DelegateAnswerInvalid(`rows for \`${table}\`, which the job does not declare in \`tables\` (${envelope.tables.join(", ")})`);
         }
-        if (!Array.isArray(rows) || !rows.every(isObject)) throw new DelegateAnswerInvalid(`\`rows.${table}\` is a list of row objects`);
+        if (!Array.isArray(rows) || !rows.every(isPlain)) throw new DelegateAnswerInvalid(`\`rows.${table}\` is a list of plain row objects`);
       }
-      return;
-    case "defer":
-      if (typeof answer.retry_at !== "string" || !INSTANT.test(answer.retry_at)) {
-        throw new DelegateAnswerInvalid(`\`retry_at\` \`${String(answer.retry_at)}\` is an RFC 3339 UTC instant ending in Z`);
-      }
-      return;
+      return answer;
+    case "defer": {
+      const at = typeof answer.retry_at === "string" ? instant(answer.retry_at) : null;
+      if (at === null) throw new DelegateAnswerInvalid(`\`retry_at\` \`${String(answer.retry_at)}\` is no RFC 3339 instant`);
+      return { ...answer, retry_at: at };
+    }
     case "transient":
     case "permanent":
-      return;
+      return answer;
     default:
       throw new DelegateAnswerInvalid("outcome is `ok`, `defer`, `transient` or `permanent`");
   }
@@ -253,10 +296,10 @@ function checkAnswer(envelope: Envelope, answer: Answer): void {
  * before it leaves.
  */
 export async function respond(envelope: Envelope, answer: Answer, key: Key, now: () => number = systemNow): Promise<Response> {
-  checkAnswer(envelope, answer);
+  const sent = checked(envelope, answer);
   let text: string;
   try {
-    text = JSON.stringify(answer);
+    text = JSON.stringify(sent);
   } catch (error) {
     throw new DelegateAnswerInvalid(`the answer does not serialize: ${describe(error)}`);
   }
@@ -264,7 +307,7 @@ export async function respond(envelope: Envelope, answer: Answer, key: Key, now:
   if (body.length > ANSWER_CAP) {
     throw new DelegateAnswerInvalid(`an answer of ${body.length} B exceeds the ${ANSWER_CAP} B cap`);
   }
-  const timestamp = now();
+  const timestamp = Math.floor(now());
   return new Response(body, {
     status: 200,
     headers: {
@@ -276,7 +319,7 @@ export async function respond(envelope: Envelope, answer: Answer, key: Key, now:
 }
 
 /** What a delegate handler does with one item: answer in the vocabulary. */
-export type Handler<Env = unknown> = (envelope: Envelope, env: Env, request: Request) => Promise<Answer> | Answer;
+export type Handler<Env = unknown, Ctx = unknown> = (envelope: Envelope, env: Env, request: Request, ctx: Ctx) => Promise<Answer> | Answer;
 
 export type DelegateOptions<Env> = {
   /** The deployment key, or how to read it from the Worker's environment. */
@@ -293,9 +336,12 @@ export type DelegateOptions<Env> = {
  * back as a signed `permanent` naming the fault, and the item ends until the binding's
  * `version` rotates.
  */
-export function delegate<Env = unknown>(handler: Handler<Env>, options: DelegateOptions<Env>): (request: Request, env: Env) => Promise<Response> {
+export function delegate<Env = unknown, Ctx = unknown>(
+  handler: Handler<Env, Ctx>,
+  options: DelegateOptions<Env>,
+): (request: Request, env: Env, ctx: Ctx) => Promise<Response> {
   const now = options.now ?? systemNow;
-  return async (request, env) => {
+  return async (request, env, ctx) => {
     const key = typeof options.key === "function" ? options.key(env) : options.key;
     if (key === undefined || key.length === 0) {
       return problem(500, "the deployment key is unset: bind the worker key the daemon signs under");
@@ -312,19 +358,28 @@ export function delegate<Env = unknown>(handler: Handler<Env>, options: Delegate
     }
     let answer: Answer;
     try {
-      answer = await handler(envelope, env, request);
+      answer = await handler(envelope, env, request, ctx);
     } catch (error) {
+      if (error instanceof DelegateAnswerInvalid) return fault(envelope, error, key, now);
       return problem(500, `the handler failed: ${describe(error)}`);
     }
     try {
       return await respond(envelope, answer, key, now);
     } catch (error) {
-      if (error instanceof DelegateAnswerInvalid) {
-        return respond(envelope, permanent(error.message), key, now);
-      }
+      if (error instanceof DelegateAnswerInvalid) return fault(envelope, error, key, now);
       return problem(500, `the answer could not be signed: ${describe(error)}`);
     }
   };
+}
+
+/** A signed `permanent` naming a deterministic handler bug, its reason bounded so it always leaves. */
+async function fault(envelope: Envelope, error: DelegateAnswerInvalid, key: Key, now: () => number): Promise<Response> {
+  const reason = `${error.name}: ${error.message}`.slice(0, REASON_CAP);
+  try {
+    return await respond(envelope, permanent(reason), key, now);
+  } catch (inner) {
+    return problem(500, `the fault could not be signed: ${describe(inner)}`);
+  }
 }
 
 function describe(error: unknown): string {
