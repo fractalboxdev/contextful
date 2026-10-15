@@ -184,7 +184,7 @@ Criteria: no response crosses a mask or tenant, fixed; then repeated model spend
 
 | Option | Lost on | Cost |
 | --- | --- | --- |
-| Enforced table keyed on fenced bytes, template and model *(chosen)* | — | Cached responses occupy store space and fall under erasure like any row. |
+| Enforced table keyed on fenced bytes, template and model *(chosen)* | — | Cached responses occupy store space, and each entry's provenance must name its batch's rows for an erasure to reach it. |
 | Key on source row identity | Containment | Two sessions masking one row differently share a response one of them never saw. |
 | A side file outside the store | Enforcement | Its bytes escape grants, masks, replication rules and erasure. |
 | No cache | Model spend | Every re-run repays every call. |
@@ -206,7 +206,7 @@ Consequences: a re-run over unchanged batches makes no model call; a changed tem
 ## Agent and third-party writes stand derived
 
 Context: a direct write stamps `curated`, and recall puts curated claims first. An agent writing through ordinary calls, or a claim citing third-party rows, then outranks synthesis on the strength of the write path alone, which lets injected text become a top-ranked belief.
-Decision: `read.revise` stamps a direct write `derived` when its credential carries an agent member or a cited row carries `ingested:third-party`; promotion to `curated` stays a human act, as "Claim standing is one derived tier, and revision is scoped to a validity line" decides. `read.declare` lets a claims table withhold claims below a minimum serving taint.
+Decision: `read.revise` stamps a direct write `derived` when its credential carries an agent member or a cited row reads `ingested:third-party`, an unlabelled row included; promotion to `curated` stays a human act, as "Claim standing is one derived tier, and revision is scoped to a validity line" decides. `read.declare` lets a claims table withhold claims below a minimum serving taint.
 Criteria: no model-chosen claim outranks a principal's, fixed; then recall order.
 
 | Option | Lost on | Cost |
