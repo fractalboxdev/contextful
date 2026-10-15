@@ -50,3 +50,27 @@ pub(crate) fn resolved<'t>(session: &Session, touched: impl IntoIterator<Item = 
         touched.into_iter().filter_map(|table| session.resolved(table).map(|r| (table.to_string(), r.clone()))).collect();
     resolved_block(&entries)
 }
+
+/// Under `horizon`, the build `table` resolves to: `None` for a table publishing no build,
+/// else the newest published build whose recorded horizon is at or before it, or
+/// `Some(None)` when none is (`read.horizon.build-resolution`). A build recording no
+/// horizon read current inputs and serves no horizon.
+pub(crate) fn within_horizon(store: &Store, table: &str, horizon: contextful_core::time::Instant) -> Result<Option<Option<String>>, ReadFault> {
+    let published: Vec<SnapshotManifest> = crate::build::manifests(store, table)?.into_iter().filter(|m| m.publish.is_some()).collect();
+    if published.is_empty() {
+        return Ok(None);
+    }
+    Ok(Some(
+        published
+            .iter()
+            .filter_map(|m| m.publish.as_ref())
+            .filter(|p| p.watermark.horizon.is_some_and(|h| h <= horizon))
+            .max_by_key(|p| (p.watermark.horizon, p.build_started_at))
+            .map(|p| p.build_id.clone()),
+    ))
+}
+
+/// The refusal of a read touching `table` under a horizon no build of it falls within.
+pub(crate) fn no_build_within(table: &str, horizon: contextful_core::time::Instant) -> ReadFault {
+    ReadError::ReadNoBuildWithinHorizon(format!("table `{table}` holds no build whose horizon is at or before {}", horizon.to_rfc3339_nanos())).into()
+}

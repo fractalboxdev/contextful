@@ -335,7 +335,7 @@ impl Face {
         let frontier = self.read_frontier(session)?;
         self.registered(session, table)?;
         let touched = BTreeSet::from([table.to_string()]);
-        self.bind_bounds(&touched, opts.bounds)?;
+        self.bind_bounds(session, &touched, opts.bounds)?;
         let reference = contextful_core::memory::synthesize::EvidenceRef { table:table.to_string(), run:run.to_string(), seq, key_digest:None };
         let engine = self.pool.engine(session, self.store.parquet_key())?;
         let verdict = self.evidence_read(&engine, session, &reference, &touched, opts.max_duration_ms)?;
@@ -468,10 +468,21 @@ impl Face {
             principal = Sha256::new().chain_update(principal).chain_update(format!("{carried:?}").as_bytes()).finalize().into();
         }
         let state = pool::store_state(&self.store, &tables, &granted)?;
+        // Under a horizon an unpinned model table reads its newest build within it
+        // (`read.horizon.build-resolution`); one with none refuses only a read naming it.
+        let horizon = contextful_core::read::horizon::horizon(authority.grants());
+        let mut within: BTreeMap<String, String> = BTreeMap::new();
+        if let Some(h) = horizon {
+            for t in granted.iter().filter(|t| pins.build(t).is_none()) {
+                if let Some(Some(build)) = super::pin::within_horizon(&self.store, t, h)? {
+                    within.insert(t.clone(), build);
+                }
+            }
+        }
         self.pool.session(principal, state, || {
             let sources = granted
                 .iter()
-                .map(|t| self.source(t, carried_bounds(bounds, carried, t).for_table(&self.decl(t)), pins.build(t)))
+                .map(|t| self.source(t, carried_bounds(bounds, carried, t).for_table(&self.decl(t)), pins.build(t).or(within.get(t).map(String::as_str))))
                 .collect::<Result<Vec<_>, _>>()?;
             Ok(Session::open(authority, request, sources, &self.pepper)?)
         })
@@ -487,13 +498,27 @@ impl Face {
     /// one that declares no availability time (`store.available-time.undeclared`). The
     /// session already compiles every declaring table under its bound, so a pooled
     /// connection is never re-registered.
-    pub(crate) fn bind_bounds(&self, touched: &BTreeSet<String>, bounds: Bounds) -> Result<(), ReadFault> {
+    ///
+    /// Under the session's horizon a touched model table holding no build within it
+    /// refuses (`read.horizon.build-resolution`), and one holding such a build reads it
+    /// whole: its inputs already read at that build's horizon, so the availability bound
+    /// asks no column of it.
+    pub(crate) fn bind_bounds(&self, session: &Session, touched: &BTreeSet<String>, bounds: Bounds) -> Result<(), ReadFault> {
+        let horizon = contextful_core::read::horizon::horizon(session.grants());
         for table in touched {
+            let mut built_within = false;
+            if let Some(h) = horizon {
+                match super::pin::within_horizon(&self.store, table, h)? {
+                    Some(None) => return Err(super::pin::no_build_within(table, h)),
+                    Some(Some(_)) => built_within = true,
+                    None => {}
+                }
+            }
             let decl = self.decl(table);
             if bounds.valid_as_of.is_some() && decl.valid_time.is_none() {
                 return Err(StoreError::StoreValidTimeUndeclared(format!("table `{table}` declares no valid-time pair")).into());
             }
-            if bounds.available_as_of.is_some() && decl.available_time.is_none() {
+            if bounds.available_as_of.is_some() && decl.available_time.is_none() && !built_within {
                 return Err(StoreError::StoreAvailableTimeUndeclared(format!("table `{table}` declares no `available_time`")).into());
             }
         }
@@ -669,7 +694,7 @@ impl Face {
         let bindings = bind_query(parameters, &admitted.placeholders)?;
         scope::guard(&tree, session, &bindings)?;
         engine.register_ledgers(&self.store, session, &admitted.relations)?;
-        self.bind_bounds(&admitted.relations, opts.bounds)?;
+        self.bind_bounds(session, &admitted.relations, opts.bounds)?;
         self.bind_as_of_join(&admitted.as_of_joined)?;
         let ceiling = self.ceiling(session, &admitted.relations, opts.limit, None);
         let mut response = self.answer(&engine, session, &admitted.relations, sql, &bindings, ceiling, opts, &tree)?;
@@ -697,7 +722,7 @@ impl Face {
         let parameters = template.bindings(values, &admitted.placeholders);
         scope::guard(&tree, session, &parameters)?;
         engine.register_ledgers(&self.store, session, &admitted.relations)?;
-        self.bind_bounds(&admitted.relations, opts.bounds)?;
+        self.bind_bounds(session, &admitted.relations, opts.bounds)?;
         self.bind_as_of_join(&admitted.as_of_joined)?;
         let ceiling = self.ceiling(session, &admitted.relations, opts.limit, template.max_rows);
         let response = self.answer(&engine, session, &admitted.relations, &template.sql, &parameters, ceiling, opts, &tree)?;
@@ -762,7 +787,7 @@ impl Face {
             return self.publish_read(Some(session), &frontier, echo(json!({ "session_zone": session.zone().label(), "tables": tables }), bounds.transaction()));
         };
         let r = self.registered(session, table)?;
-        self.bind_bounds(&BTreeSet::from([table.to_string()]), bounds)?;
+        self.bind_bounds(session, &BTreeSet::from([table.to_string()]), bounds)?;
         let engine = self.pool.engine(session, self.store.parquet_key())?;
         // The row count beside the serialized JSON length of the caller's restricted rows
         // (`read.register.size-estimate`).

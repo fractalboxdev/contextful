@@ -64,6 +64,9 @@ pub enum ReadError {
     /// A call's `available_as_of` or `since` falls later than its credential's horizon. (`read.horizon.exceeds-horizon`)
     #[error("ReadBoundExceedsHorizon: {0}")]
     ReadBoundExceedsHorizon(String),
+    /// A model table holds no build whose recorded horizon is at or before the credential's. (`read.horizon.build-resolution`)
+    #[error("ReadNoBuildWithinHorizon: {0}")]
+    ReadNoBuildWithinHorizon(String),
     /// A read reached for a query-engine extension the binary does not link. (`assurance.build.runtime-extension-load`)
     #[error("ExtensionAutoloadRefused: {0}")]
     ExtensionAutoloadRefused(String),
@@ -92,6 +95,7 @@ impl ReadError {
             ReadError::HttpCredentialMissing(_) => "HttpCredentialMissing",
             ReadError::ExtensionAutoloadRefused(_) => "ExtensionAutoloadRefused",
             ReadError::ReadBoundExceedsHorizon(_) => "ReadBoundExceedsHorizon",
+            ReadError::ReadNoBuildWithinHorizon(_) => "ReadNoBuildWithinHorizon",
         }
     }
 }
