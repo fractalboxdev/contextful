@@ -97,6 +97,75 @@ fn a_scheduled_pass_skips_a_table_whose_trigger_has_not_fired() {
     assert!(report.starts_with("filings: folded"), "{report}");
 }
 
+/// `contextful context land --session` reads one JSON object per stdin line — `run_id`, `rows`, optional `now` — lands each as its own run through one landing session, and prints that run's outcome before reading the next line.
+// spec: run.land.session-input@1795c1dd
+#[test]
+fn a_session_land_commits_each_stdin_batch_as_its_own_run() {
+    use std::io::Write;
+    let p = project();
+    let manifest = p.path().join("contextful.toml");
+    let declared = std::fs::read_to_string(&manifest).unwrap().replace("name = \"events\"\n", "name = \"events\"\nfold_max_unfolded_runs = 3\n");
+    std::fs::write(&manifest, declared).unwrap();
+    let mut child = Command::new(env!("CARGO_BIN_EXE_contextful"))
+        .args(["context", "land", "events", "--project", "research", "--session", "--site-id", "s"])
+        .current_dir(p.path())
+        .env_remove("CONTEXTFUL_NODE_ID")
+        .stdin(std::process::Stdio::piped())
+        .stdout(std::process::Stdio::piped())
+        .stderr(std::process::Stdio::piped())
+        .spawn()
+        .unwrap();
+    let input = [
+        r#"{"run_id":"run-1","now":"2030-01-01T00:00:00Z","rows":[{"e":1},{"e":2}]}"#,
+        r#"{"run_id":"run-2","now":"2030-01-01T00:00:01Z","rows":[{"e":3}]}"#,
+        "",
+        r#"{"run_id":"run-1","now":"2030-01-01T00:00:02Z","rows":[{"e":1},{"e":2}]}"#,
+        r#"{"run_id":"run-3","now":"2030-01-01T00:00:03Z","rows":[{"e":4}]}"#,
+    ];
+    let expected: [Option<&str>; 5] = [
+        Some("events: committed run-1 on ingest-a (1 parts, 2 rows)"),
+        Some("events: committed run-2 on ingest-a (1 parts, 1 rows)"),
+        None,
+        Some("events: replayed run-1 on ingest-a (1 parts, 2 rows)"),
+        Some("events: committed run-3 on ingest-a (1 parts, 1 rows); folded snapshot-"),
+    ];
+    // Each outcome arrives while stdin stays open, before the next line is written.
+    let mut stdin = child.stdin.take().unwrap();
+    let mut reader = std::io::BufReader::new(child.stdout.take().unwrap());
+    for (line, want) in input.iter().zip(expected) {
+        stdin.write_all(format!("{line}\n").as_bytes()).unwrap();
+        stdin.flush().unwrap();
+        let Some(want) = want else { continue };
+        let mut got = String::new();
+        std::io::BufRead::read_line(&mut reader, &mut got).unwrap();
+        assert!(got.trim_end().starts_with(want), "{got}");
+        if !want.contains("folded") {
+            assert_eq!(got.trim_end(), want);
+        }
+    }
+    drop(stdin);
+    let mut rest = String::new();
+    std::io::Read::read_to_string(&mut reader, &mut rest).unwrap();
+    assert_eq!(rest, "", "every outcome printed before end of input");
+    assert!(child.wait().unwrap().success());
+
+    // A line that is not a batch stops the session, naming its line number.
+    let mut child = Command::new(env!("CARGO_BIN_EXE_contextful"))
+        .args(["context", "land", "events", "--project", "research", "--session", "--site-id", "s"])
+        .current_dir(p.path())
+        .env_remove("CONTEXTFUL_NODE_ID")
+        .stdin(std::process::Stdio::piped())
+        .stdout(std::process::Stdio::piped())
+        .stderr(std::process::Stdio::piped())
+        .spawn()
+        .unwrap();
+    child.stdin.take().unwrap().write_all(b"{\"run_id\":\"run-4\",\"rows\":[{\"e\":5}]}\nnot json\n").unwrap();
+    let out = child.wait_with_output().unwrap();
+    assert!(!out.status.success());
+    assert!(String::from_utf8_lossy(&out.stdout).contains("committed run-4"));
+    assert!(String::from_utf8_lossy(&out.stderr).contains("line 2"), "{}", String::from_utf8_lossy(&out.stderr));
+}
+
 /// A table's declared `fold_max_unfolded_runs` fires the scheduled pass of `context compact`.
 #[test]
 fn a_scheduled_pass_fires_at_the_declared_unfolded_run_count() {

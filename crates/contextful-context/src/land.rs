@@ -720,9 +720,6 @@ fn reconcile(
             }
         }
     }
-    // The schema lock spans the read-merge-replace of `schema.json` alone.
-    let schema_lock = store.lock_schema(table)?;
-    let stored = store.try_schema(table)?.unwrap_or_default();
     let mut schema_injection = injection.clone();
     if per_batch {
         schema_injection.batch_seq = Some(0);
@@ -741,45 +738,57 @@ fn reconcile(
         None => arriving.clone(),
     };
     first_landings(decl, all_rows(), &mut run_columns, committed_at);
-    let mut merged = stored
-        .merge(&run_columns, decl.primary_key())?
-        .merge(&Schema { columns: injected, ..Default::default() }, decl.primary_key())?;
-    // A column joining a non-empty schema merges as nullable; these are in every file.
-    for c in merged.columns.iter_mut().filter(|c| ALWAYS_INJECTED.contains(&c.name.as_str())) {
-        c.nullable = false;
-    }
-    // Only a column this merge adds takes a first landing; a stored column predating the
-    // record keeps none, so it reads as always present (`read.horizon.late-columns`).
-    merged.first_landed = stored.first_landed.clone();
-    for c in merged.columns.iter().filter(|c| stored.get(&c.name).is_none()) {
-        if let Some(at) = run_columns.first_landed.get(&c.name) {
-            merged.first_landed.insert(c.name.clone(), *at);
+    // Every refusal fires against the schema as read; a merge adding nothing replaces no
+    // `schema.json` and takes no schema lock (`run.land.session-schema`).
+    let merge = |stored: &Schema| -> Result<Schema> {
+        let mut merged = stored
+            .merge(&run_columns, decl.primary_key())?
+            .merge(&Schema { columns: injected.clone(), ..Default::default() }, decl.primary_key())?;
+        // A column joining a non-empty schema merges as nullable; these are in every file.
+        for c in merged.columns.iter_mut().filter(|c| ALWAYS_INJECTED.contains(&c.name.as_str())) {
+            c.nullable = false;
+        }
+        // Only a column this merge adds takes a first landing; a stored column predating the
+        // record keeps none, so it reads as always present (`read.horizon.late-columns`).
+        merged.first_landed = stored.first_landed.clone();
+        for c in merged.columns.iter().filter(|c| stored.get(&c.name).is_none()) {
+            if let Some(at) = run_columns.first_landed.get(&c.name) {
+                merged.first_landed.insert(c.name.clone(), *at);
+            }
+        }
+        decl.validate(&merged)?;
+        if let Some(retention) = &decl.retain_rows {
+            if retention.column != INGESTED_AT && all_rows().any(|row| row.get(&retention.column).is_none_or(Value::is_null)) {
+                return Err(StoreError::StoreRetentionColumnInvalid(format!(
+                    "table `{table}` retains rows by `{}`, which each landed row must carry as non-null",
+                    retention.column
+                )).into());
+            }
+        }
+        if let Some(available) = &decl.available_time {
+            if all_rows().any(|row| row.get(&available.column).is_none_or(Value::is_null)) {
+                return Err(StoreError::StoreAvailableTimeNull(format!(
+                    "table `{table}`, run `{}`: a row carries no `{}` availability instant",
+                    injection.run_id, available.column
+                )).into());
+            }
+        }
+        decl.validate_index_types(&merged)?;
+        Ok(merged)
+    };
+    let stored = store.try_schema(table)?.unwrap_or_default();
+    let merged = merge(&stored)?;
+    if write && merged != stored {
+        // The schema lock spans the read-merge-replace of `schema.json` alone. The schema
+        // commits before the manifest, so a fold reading a run finds its columns in the
+        // schema it reads after.
+        let _schema_lock = store.lock_schema(table)?;
+        let stored = store.try_schema(table)?.unwrap_or_default();
+        let merged = merge(&stored)?;
+        if merged != stored {
+            store.write_schema(table, &merged)?;
         }
     }
-    decl.validate(&merged)?;
-    if let Some(retention) = &decl.retain_rows {
-        if retention.column != INGESTED_AT && all_rows().any(|row| row.get(&retention.column).is_none_or(Value::is_null)) {
-            return Err(StoreError::StoreRetentionColumnInvalid(format!(
-                "table `{table}` retains rows by `{}`, which each landed row must carry as non-null",
-                retention.column
-            )).into());
-        }
-    }
-    if let Some(available) = &decl.available_time {
-        if all_rows().any(|row| row.get(&available.column).is_none_or(Value::is_null)) {
-            return Err(StoreError::StoreAvailableTimeNull(format!(
-                "table `{table}`, run `{}`: a row carries no `{}` availability instant",
-                injection.run_id, available.column
-            )).into());
-        }
-    }
-    decl.validate_index_types(&merged)?;
-    // Every refusal of the batch has fired. The schema commits before the manifest, so
-    // a fold reading a run finds its columns in the schema it reads after.
-    if write {
-        store.write_schema(table, &merged)?;
-    }
-    drop(schema_lock);
     Ok(RunSite { node_dir, arriving, run_columns })
 }
 
@@ -1247,9 +1256,11 @@ pub fn discard_staged(store: &Store, table: &str, node: &NodeId, run_id: &str) -
 /// (`run.land.session`). The count opens from the table's manifests and then moves per
 /// commit; a land recounts from the manifests only when the pointer or the committed-run
 /// listing moved past its own commit, and a land that fires the table's trigger runs a
-/// pass before it returns (`store.fold.session-trigger`).
+/// pass before it returns (`store.fold.session-trigger`). The session holds `schema.json`
+/// parsed until its version moves (`run.land.session-schema`).
 pub struct LandSession<'a> {
-    store: &'a Store,
+    store: Store,
+    opened: std::marker::PhantomData<&'a Store>,
     decl: TableDecl,
     node: NodeId,
     unfolded: usize,
@@ -1273,7 +1284,8 @@ impl<'a> LandSession<'a> {
     /// Open a session landing `decl`'s table as `node`, counting the runs its current
     /// snapshot omits.
     pub fn open(store: &'a Store, decl: TableDecl, node: NodeId) -> Result<LandSession<'a>> {
-        let mut session = LandSession { store, decl, node, unfolded: 0, since: None, seen: (String::new(), 0) };
+        let store = store.with_schema_cache();
+        let mut session = LandSession { store, opened: std::marker::PhantomData, decl, node, unfolded: 0, since: None, seen: (String::new(), 0) };
         session.recount()?;
         Ok(session)
     }
@@ -1281,6 +1293,11 @@ impl<'a> LandSession<'a> {
     /// The runs the table's current snapshot omits, as this session counts them.
     pub fn unfolded(&self) -> usize {
         self.unfolded
+    }
+
+    /// How many times this session parsed the table's `schema.json`.
+    pub fn schema_reads(&self) -> usize {
+        self.store.schema_reads()
     }
 
     /// Land `batch` as run `injection.run_id`, committed at `committed_at` with the source
@@ -1295,7 +1312,7 @@ impl<'a> LandSession<'a> {
         precommit: &dyn Fn() -> Result<()>,
     ) -> Result<SessionLanding> {
         let ctx = RunContext { node: self.node.clone(), injection, committed_at };
-        let landing = land_run(self.store, &self.decl, std::slice::from_ref(batch), &ctx, position, precommit)?;
+        let landing = land_run(&self.store, &self.decl, std::slice::from_ref(batch), &ctx, position, precommit)?;
         if landing.replay {
             return Ok(SessionLanding { manifest: landing.manifest, replay: true, fold: None });
         }
@@ -1316,7 +1333,7 @@ impl<'a> LandSession<'a> {
         }
         let fired = contextful_core::store::fold::trigger_fired(self.unfolded, self.since, committed_at, self.decl.fold_run_count());
         let fold = if fired {
-            let outcome = crate::fold::fold(self.store, &self.decl, committed_at)?;
+            let outcome = crate::fold::fold(&self.store, &self.decl, committed_at)?;
             self.recount()?;
             Some(outcome)
         } else {

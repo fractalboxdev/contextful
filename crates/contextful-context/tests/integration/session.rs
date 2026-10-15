@@ -166,3 +166,52 @@ fn a_scheduled_pass_fires_at_the_declared_run_count() {
         assert!(contextful_core::store::declare::TableDecl::parse_pipeline(&text).is_err(), "{invalid}");
     }
 }
+
+/// The file version a reader compares: length, modification instant and file identity.
+fn schema_version(f: &Fixture, table: &str) -> (u64, std::time::SystemTime, u64) {
+    use std::os::unix::fs::MetadataExt;
+    let meta = std::fs::metadata(f.table_dir(table).join("schema.json")).unwrap();
+    (meta.len(), meta.modified().unwrap(), meta.ino())
+}
+
+/// A landing session parses `schema.json` again only when its version — length, modification instant, file identity — moves; a land adding no column or type replaces no `schema.json` and takes no schema lock.
+// spec: run.land.session-schema@732545f1
+#[test]
+fn a_session_reads_schema_json_once_while_its_version_holds() {
+    let f = Fixture::new();
+    let d = decl("name = \"events\"");
+    f.land(&d, "pre-0", json!([{ "id": -1 }]), "2029-12-31T23:59:00Z").unwrap();
+    let held = schema_version(&f, "events");
+    let mut session = LandSession::open(&f.store, d.clone(), NodeId::parse("ingest-a").unwrap()).unwrap();
+    // A held schema lock stalls any land that takes it for the 30-second wait and fails it.
+    let held_lock = f.store.lock_schema("events").unwrap();
+    for i in 0..300 {
+        session.land(&single_row(i), injection(&format!("run-{i}")), tick(i), &Position::default(), &|| Ok(())).unwrap();
+    }
+    assert_eq!(session.schema_reads(), 1, "300 runs and six passes under one schema version");
+    assert_eq!(schema_version(&f, "events"), held, "no land replaced schema.json");
+    drop(held_lock);
+
+    // Another writer adds a column; the session's next land reads the new version once.
+    f.land_on(&d, "other-0", "ingest-b", json!([{ "id": 5000, "note": "x" }]), "2030-01-02T00:00:00Z", &[]).unwrap();
+    assert_ne!(schema_version(&f, "events"), held);
+    for i in 300..310 {
+        session.land(&single_row(i), injection(&format!("run-{i}")), tick(i), &Position::default(), &|| Ok(())).unwrap();
+    }
+    assert_eq!(session.schema_reads(), 2);
+    let columns: Vec<String> = f.store.try_schema("events").unwrap().unwrap().columns.into_iter().map(|c| c.name).collect();
+    assert!(columns.contains(&"note".to_string()), "{columns:?}");
+}
+
+/// A one-shot land whose batch carries no new column leaves `schema.json` untouched.
+#[test]
+fn a_land_merging_no_new_column_replaces_no_schema_file() {
+    let f = Fixture::new();
+    let d = decl("name = \"events\"");
+    f.land(&d, "run-0", json!([{ "id": 0 }]), "2030-01-01T00:00:00Z").unwrap();
+    let held = schema_version(&f, "events");
+    f.land(&d, "run-1", json!([{ "id": 1 }]), "2030-01-01T00:01:00Z").unwrap();
+    assert_eq!(schema_version(&f, "events"), held);
+    f.land(&d, "run-2", json!([{ "id": 2, "note": "x" }]), "2030-01-01T00:02:00Z").unwrap();
+    assert_ne!(schema_version(&f, "events"), held, "a new column replaces schema.json");
+}

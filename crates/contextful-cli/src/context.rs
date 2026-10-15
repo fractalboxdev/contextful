@@ -9,7 +9,7 @@ use anyhow::{bail, Context, Result};
 use clap::Subcommand;
 use contextful_context::catalog::rebuild;
 use contextful_context::fold::fold;
-use contextful_context::land::{land_run, Batch, Position, RunContext};
+use contextful_context::land::{land_run, Batch, LandSession, Position, RunContext};
 use contextful_context::scan::scan;
 use contextful_context::{node, run_record, ContextError, Store};
 use contextful_core::ports::Clock;
@@ -88,16 +88,20 @@ pub enum ContextCmd {
         #[arg(long)]
         json: bool,
     },
-    /// Land a JSON Lines batch into a table as one committed run.
+    /// Land a JSON Lines batch into a table as one committed run, or, with `--session`,
+    /// each stdin line's batch as its own run through one landing session.
     Land {
         table: String,
         #[command(flatten)]
         store: StoreArgs,
         /// JSON Lines, one object per row.
+        #[arg(long, required_unless_present = "session", conflicts_with = "session")]
+        rows: Option<PathBuf>,
+        #[arg(long, required_unless_present = "session", conflicts_with = "session")]
+        run_id: Option<String>,
+        /// Read one batch per stdin line, `{"run_id", "rows", "now"?}`, until end of input.
         #[arg(long)]
-        rows: PathBuf,
-        #[arg(long)]
-        run_id: String,
+        session: bool,
         #[arg(long)]
         site_id: String,
         /// Repeatable `<column>=<type>`, fixing a column's type instead of reading it off the values.
@@ -190,6 +194,53 @@ pub(crate) fn read_rows(path: &Path) -> Result<Vec<serde_json::Map<String, serde
         }
     }
     Ok(rows)
+}
+
+/// One stdin line of `context land --session`: a run id, its rows and an optional commit
+/// instant (`run.land.session-input`).
+#[derive(serde::Deserialize)]
+#[serde(deny_unknown_fields)]
+struct SessionBatch {
+    run_id: String,
+    rows: Vec<serde_json::Map<String, serde_json::Value>>,
+    #[serde(default)]
+    now: Option<String>,
+}
+
+/// Land each stdin line's batch as its own run through one landing session, printing that
+/// run's outcome before reading the next line. A line that is not a batch, or a refused
+/// land, ends the session non-zero, naming the line.
+fn land_session(
+    store: &Store,
+    decl: TableDecl,
+    node: contextful_core::store::lay_out::NodeId,
+    types: HashMap<String, ColumnType>,
+    at: Option<String>,
+    injection: &dyn Fn(String) -> Injection,
+    precommit: &dyn Fn() -> std::result::Result<(), ContextError>,
+) -> Result<()> {
+    use std::io::{BufRead, Write};
+    let table = decl.name.clone();
+    let mut session = LandSession::open(store, decl, node)?;
+    let mut out = std::io::stdout().lock();
+    for (i, line) in std::io::stdin().lock().lines().enumerate() {
+        let line = line.context("reading stdin")?;
+        if line.trim().is_empty() {
+            continue;
+        }
+        let n = i + 1;
+        let batch: SessionBatch = serde_json::from_str(&line).with_context(|| format!("stdin line {n}: not a batch"))?;
+        let committed_at = now(batch.now.or_else(|| at.clone())).with_context(|| format!("stdin line {n}"))?;
+        let rows = batch.rows.len();
+        let landing = session
+            .land(&Batch { rows: batch.rows, types: types.clone() }, injection(batch.run_id), committed_at, &Position::default(), precommit)
+            .with_context(|| format!("stdin line {n}"))?;
+        let (m, verb) = (&landing.manifest, if landing.replay { "replayed" } else { "committed" });
+        let folded = landing.fold.map(|f| format!("; {f}")).unwrap_or_default();
+        writeln!(out, "{table}: {verb} {} on {} ({} parts, {rows} rows){folded}", m.run_id, m.node_id, m.parts.len())?;
+        out.flush()?;
+    }
+    Ok(())
 }
 
 fn bound(flag: Option<String>) -> Result<Option<Bound>> {
@@ -312,7 +363,7 @@ pub fn run(cmd: ContextCmd) -> Result<()> {
             if recover { run_erasure_recovery(&store, &admit, json) }
             else { run_erasure(&store, subject.as_deref(), keyset_file.as_deref(), &tables, issuer_key.as_deref().context("erasure has no explicit signing port")?, &admit, json) }
         }
-        ContextCmd::Land { table, store, rows, run_id, site_id, types, now: at, admit } => {
+        ContextCmd::Land { table, store, rows, run_id, session, site_id, types, now: at, admit } => {
             let o = Opened::open(&store)?;
             let author = admit.author(None, &o.manifest, &[&table])?;
             let (node, _) = node::resolve(&o.store, |k| std::env::var(k).ok())?;
@@ -322,16 +373,23 @@ pub fn run(cmd: ContextCmd) -> Result<()> {
                 let ty = ColumnType::parse(ty).with_context(|| format!("`--type {t}`: unknown type `{ty}`"))?;
                 fixed.insert(col.to_string(), ty);
             }
-            let batch = Batch { rows: read_rows(&rows)?, types: fixed };
-            let ctx = RunContext {
-                node,
-                injection: Injection { run_id, site_id, batch_seq: Some(0), authored_by: author.as_ref().and_then(Author::on_behalf_of), taint: None },
-                committed_at: now(at)?,
-            };
             let precommit = || match &author {
                 Some(a) => a.boundary().map_err(|e| ContextError::Invalid(format!("{e:#}"))),
                 None => Ok(()),
             };
+            let injection = |run_id: String| Injection {
+                run_id,
+                site_id: site_id.clone(),
+                batch_seq: Some(0),
+                authored_by: author.as_ref().and_then(Author::on_behalf_of),
+                taint: None,
+            };
+            if session {
+                return land_session(&o.store, o.decl(&table), node, fixed, at, &injection, &precommit);
+            }
+            let (rows, run_id) = (rows.context("`--rows` names the batch")?, run_id.context("`--run-id` names the run")?);
+            let batch = Batch { rows: read_rows(&rows)?, types: fixed };
+            let ctx = RunContext { node, injection: injection(run_id), committed_at: now(at)? };
             let l = land_run(&o.store, &o.decl(&table), std::slice::from_ref(&batch), &ctx, &Position::default(), &precommit)?;
             let (m, verb) = (&l.manifest, if l.replay { "replayed" } else { "committed" });
             println!("{table}: {verb} {} on {} ({} parts, {} rows)", m.run_id, m.node_id, m.parts.len(), batch.rows.len());

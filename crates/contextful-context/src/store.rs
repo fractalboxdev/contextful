@@ -33,8 +33,40 @@ pub struct Store {
     encryption: Option<Arc<ProjectEncryption>>,
     writer: crate::redaction::Writer,
     frontier: Option<FrontierLease>,
+    schema_cache: Option<Arc<SchemaCache>>,
     #[cfg(feature = "read")]
     pub(crate) erasure_verifier: Option<Arc<crate::erasure_frontier::Verifier>>,
+}
+
+/// The `schema.json` versions a long-lived writer holds parsed, keyed by table: a read
+/// whose file version still matches answers from memory (`run.land.session-schema`).
+#[derive(Debug, Default)]
+pub(crate) struct SchemaCache {
+    held: std::sync::Mutex<std::collections::HashMap<String, (FileVersion, Schema)>>,
+    reads: std::sync::atomic::AtomicUsize,
+}
+
+/// A file's version as one stat reports it: length, modification instant and file
+/// identity. A replace through [`replace_file`] renames a new file into place, so it moves
+/// the identity even when the length and instant repeat.
+#[derive(Debug, Clone, PartialEq, Eq)]
+struct FileVersion {
+    len: u64,
+    modified: Option<std::time::SystemTime>,
+    identity: u64,
+}
+
+fn file_version(path: &Path) -> Result<Option<FileVersion>> {
+    let meta = match fs::metadata(path) {
+        Ok(meta) => meta,
+        Err(e) if e.kind() == std::io::ErrorKind::NotFound => return Ok(None),
+        Err(e) => return Err(ContextError::Io { path: path.to_path_buf(), source: e }),
+    };
+    #[cfg(unix)]
+    let identity = std::os::unix::fs::MetadataExt::ino(&meta);
+    #[cfg(not(unix))]
+    let identity = 0;
+    Ok(Some(FileVersion { len: meta.len(), modified: meta.modified().ok(), identity }))
 }
 
 /// One project publication fence, acquired before table/schema/run locks. Clones keep
@@ -69,6 +101,7 @@ impl Store {
             require_connector_pin: config.connector.is_some_and(|c| c.require_pin),
             encryption,
             frontier: None,
+            schema_cache: None,
             #[cfg(feature = "read")]
             erasure_verifier: None,
         })
@@ -371,10 +404,39 @@ impl Store {
         })
     }
 
+    /// This store holding each `schema.json` it parses until the file's version moves, for
+    /// one long-lived writer (`run.land.session-schema`). Clones share the cache.
+    pub fn with_schema_cache(&self) -> Store {
+        Store { schema_cache: Some(Arc::new(SchemaCache::default())), ..self.clone() }
+    }
+
+    /// How many times this store's schema cache parsed a `schema.json`; zero without one.
+    pub fn schema_reads(&self) -> usize {
+        self.schema_cache.as_ref().map_or(0, |c| c.reads.load(std::sync::atomic::Ordering::Relaxed))
+    }
+
     /// The table's merged schema, or `None` before its first batch.
     pub fn try_schema(&self, table: &str) -> Result<Option<Schema>> {
         let path = self.table_dir(table)?.join(SCHEMA_FILE);
-        let Some(bytes) = self.metadata().read_optional(&path)? else { return Ok(None) };
+        let Some(cache) = &self.schema_cache else { return self.read_schema(table, &path) };
+        // The version is taken before the read, so a replace racing it moves the version
+        // and the next read parses again.
+        let Some(version) = file_version(&path)? else { return Ok(None) };
+        if let Some((held, schema)) = cache.held.lock().expect("the schema cache is not poisoned").get(table) {
+            if *held == version {
+                return Ok(Some(schema.clone()));
+            }
+        }
+        let schema = self.read_schema(table, &path)?;
+        if let Some(schema) = &schema {
+            cache.reads.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+            cache.held.lock().expect("the schema cache is not poisoned").insert(table.to_string(), (version, schema.clone()));
+        }
+        Ok(schema)
+    }
+
+    fn read_schema(&self, table: &str, path: &Path) -> Result<Option<Schema>> {
+        let Some(bytes) = self.metadata().read_optional(path)? else { return Ok(None) };
         let schema = serde_json::from_slice::<Schema>(&bytes).map_err(|e| {
             StoreError::StoreManifestUnreadable(format!("table `{table}`: file `{}`: {e}", path.display()))
         })?;
@@ -451,6 +513,9 @@ impl Store {
         let dir = self.table_dir(table)?;
         fs::create_dir_all(&dir).at(&dir)?;
         let text = serde_json::to_string_pretty(schema).expect("a schema serializes");
+        if let Some(cache) = &self.schema_cache {
+            cache.held.lock().expect("the schema cache is not poisoned").remove(table);
+        }
         self.metadata().replace(&dir.join(SCHEMA_FILE), text.as_bytes())
     }
 

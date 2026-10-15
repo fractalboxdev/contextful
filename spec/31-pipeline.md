@@ -198,6 +198,10 @@ The stage order from pull to commit, the one destination, the ingest tally and c
 - `commit-visibility` — A commit makes a run's rows visible for one table in one step; a crash before it leaves a recoverable partial run.
 - `session` — A landing session holds one store, node and table declaration across runs and commits each micro-batch as its own run; a later run rewrites no earlier run's parts or manifest.
   *because a writer flushing every second otherwise pays a process start, a store open and a node resolution per batch*
+- `session-input` — `contextful context land --session` reads one JSON object per stdin line — `run_id`, `rows`, optional `now` — lands each as its own run through one landing session, and prints that run's outcome before reading the next line.
+  *because a host running no serving process still needs one session across its batches*
+- `session-schema` — A landing session parses `schema.json` again only when its version — length, modification instant, file identity — moves; a land adding no column or type replaces no `schema.json` and takes no schema lock.
+  *because a land per second otherwise rereads and rewrites the schema under the lock every writer of the table waits on*
 - `ingest-tally` — A fire reports `fetched`, `kept`, `skipped`, `failed` and `dropped_low_quality`, the rows its declared `filter` operations drop, in total and per table; a non-zero `failed` exits non-zero.
   *because a fire pulls one declared source through its tables, and a `filter` is the one stage that drops a fetched row*
 - `unreadable-input` — Input a parser cannot read raises `PipelineUnreadableInput`, naming the path and the position inside it, permanent against the retry schedule and failing one table's pull.
@@ -245,6 +249,8 @@ flowchart LR
 - `run.land.parse-deadline`: WHEN a decoder holds its output pipe past 60 s, THEN its process group dies and that input fails by name.
 - `run.land.parse-memory`: WHEN a decoder exceeds 512 MiB, THEN that input fails and the serving process continues.
 - `run.land.observed-schema`: WHEN a source exposes no schema before its first batch, THEN planning succeeds and staging checks that batch against the declared table columns.
+- `run.land.session-input`: WHEN stdin carries `run-1`, `run-2` and `run-1` again, THEN the session prints two commits and one replay, one line each.
+- `run.land.session-schema`: WHEN a session lands 300 single-row runs under one schema, THEN it parses `schema.json` once and leaves the file's bytes and identity unchanged.
 
 ## export
 
