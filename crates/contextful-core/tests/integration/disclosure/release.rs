@@ -87,8 +87,8 @@ fn refused(r: Result<impl std::fmt::Debug, ReleaseError>) -> DisclosureError {
     }
 }
 
-/// Before computing, a release reserves each contributing unit's declared per-run spend against its lifetime cap in one catalog transaction. A failed reservation raises `DisclosureUnitBudgetExhausted`, and the release publishes nothing.
-// spec: disclosure.release.budget-reservation@3333631a
+/// The in-process ledger reserves every unit's spend or none; the clause's transactional
+/// half is pinned to the SQLite ledger's concurrent test.
 #[test]
 fn a_release_reserves_every_units_spend_or_none_and_publishes_nothing_on_refusal() {
     let l = ledger(&TENANTS, EPSILON);
