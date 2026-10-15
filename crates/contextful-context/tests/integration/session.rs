@@ -183,11 +183,14 @@ fn a_session_reads_schema_json_once_while_its_version_holds() {
     f.land(&d, "pre-0", json!([{ "id": -1 }]), "2029-12-31T23:59:00Z").unwrap();
     let held = schema_version(&f, "events");
     let mut session = LandSession::open(&f.store, d.clone(), NodeId::parse("ingest-a").unwrap()).unwrap();
+    // A held schema lock stalls any land that takes it for the 30-second wait and fails it.
+    let held_lock = f.store.lock_schema("events").unwrap();
     for i in 0..300 {
         session.land(&single_row(i), injection(&format!("run-{i}")), tick(i), &Position::default(), &|| Ok(())).unwrap();
     }
     assert_eq!(session.schema_reads(), 1, "300 runs and six passes under one schema version");
     assert_eq!(schema_version(&f, "events"), held, "no land replaced schema.json");
+    drop(held_lock);
 
     // Another writer adds a column; the session's next land reads the new version once.
     f.land_on(&d, "other-0", "ingest-b", json!([{ "id": 5000, "note": "x" }]), "2030-01-02T00:00:00Z", &[]).unwrap();

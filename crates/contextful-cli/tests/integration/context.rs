@@ -122,15 +122,32 @@ fn a_session_land_commits_each_stdin_batch_as_its_own_run() {
         r#"{"run_id":"run-1","now":"2030-01-01T00:00:02Z","rows":[{"e":1},{"e":2}]}"#,
         r#"{"run_id":"run-3","now":"2030-01-01T00:00:03Z","rows":[{"e":4}]}"#,
     ];
-    child.stdin.take().unwrap().write_all((input.join("\n") + "\n").as_bytes()).unwrap();
-    let out = child.wait_with_output().unwrap();
-    let text = stdout(&out);
-    let lines: Vec<&str> = text.lines().collect();
-    assert_eq!(lines.len(), 4, "{text}");
-    assert_eq!(lines[0], "events: committed run-1 on ingest-a (1 parts, 2 rows)");
-    assert_eq!(lines[1], "events: committed run-2 on ingest-a (1 parts, 1 rows)");
-    assert_eq!(lines[2], "events: replayed run-1 on ingest-a (1 parts, 2 rows)");
-    assert!(lines[3].starts_with("events: committed run-3 on ingest-a (1 parts, 1 rows); folded snapshot-"), "{text}");
+    let expected: [Option<&str>; 5] = [
+        Some("events: committed run-1 on ingest-a (1 parts, 2 rows)"),
+        Some("events: committed run-2 on ingest-a (1 parts, 1 rows)"),
+        None,
+        Some("events: replayed run-1 on ingest-a (1 parts, 2 rows)"),
+        Some("events: committed run-3 on ingest-a (1 parts, 1 rows); folded snapshot-"),
+    ];
+    // Each outcome arrives while stdin stays open, before the next line is written.
+    let mut stdin = child.stdin.take().unwrap();
+    let mut reader = std::io::BufReader::new(child.stdout.take().unwrap());
+    for (line, want) in input.iter().zip(expected) {
+        stdin.write_all(format!("{line}\n").as_bytes()).unwrap();
+        stdin.flush().unwrap();
+        let Some(want) = want else { continue };
+        let mut got = String::new();
+        std::io::BufRead::read_line(&mut reader, &mut got).unwrap();
+        assert!(got.trim_end().starts_with(want), "{got}");
+        if !want.contains("folded") {
+            assert_eq!(got.trim_end(), want);
+        }
+    }
+    drop(stdin);
+    let mut rest = String::new();
+    std::io::Read::read_to_string(&mut reader, &mut rest).unwrap();
+    assert_eq!(rest, "", "every outcome printed before end of input");
+    assert!(child.wait().unwrap().success());
 
     // A line that is not a batch stops the session, naming its line number.
     let mut child = Command::new(env!("CARGO_BIN_EXE_contextful"))
