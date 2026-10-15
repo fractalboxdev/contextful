@@ -229,6 +229,7 @@ impl contextful_wasm::Hydrate for Unresolvable {
 
 /// A read failing under `auth-expired`, or during which the host failed to hydrate or lease a credential, fails
 /// unattributed; the host discards the guest's failure attribution for that session.
+// spec: connector.export.shared-failure@d3dd61a3
 #[test]
 fn a_credential_failure_discards_the_guests_failure_attribution() {
     // The vendor rejects a credential that hydrated fine, and the guest reports `auth-expired`.

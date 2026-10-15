@@ -105,6 +105,7 @@ fn the_stand_in_runtime_passes_shellcheck() {
 
 /// `contextful connector pin <manifest>` builds the guest in a digest-pinned container on one fixed platform and writes
 /// the artifact and its digest. `--verify` rebuilds and compares without writing.
+// spec: connector.package.pin-verb@5d347de1
 #[test]
 fn pin_builds_on_the_fixed_platform_and_writes_the_artifact_and_digest() {
     assert!(PLATFORM.image.contains("@sha256:") && PLATFORM.image.rsplit('@').next().unwrap().len() == 71, "{}", PLATFORM.image);
@@ -151,6 +152,7 @@ fn verify_on_drift_names_both_digests_and_writes_nothing() {
 
 /// `--local` builds with the host toolchain and prints a host-local digest; writing a pin from a host build raises
 /// `ConnectorHostPinRefused`.
+// spec: connector.package.host-built-pin@34b9cb88
 #[test]
 fn pin_without_a_container_runtime_refuses_and_never_builds_on_the_host() {
     let f = fixture(MANIFEST);
@@ -167,6 +169,7 @@ fn pin_without_a_container_runtime_refuses_and_never_builds_on_the_host() {
 /// A manifest's `build.source` is its only build input; the fixed builder platform holds image, target, compiler,
 /// package manager and command, and a `build.source` leaving the manifest directory refuses under
 /// {{connector.package.manifest-keys}}.
+// spec: connector.package.build-source@315fe073
 #[test]
 fn a_build_source_outside_the_manifest_directory_builds_nothing() {
     let f = fixture(&MANIFEST.replace("source = \"guest\"", "source = \"../guest\""));
@@ -196,6 +199,7 @@ fn contains(haystack: &[u8], needle: &[u8]) -> bool {
 }
 
 /// Every build remaps the source root and the package cache, so checkout location is not a digest input.
+// spec: connector.package.path-remap@e20095d9
 #[test]
 fn a_local_build_from_two_checkouts_prints_one_digest_and_writes_nothing() {
     let roots = [tempfile::tempdir().unwrap(), tempfile::tempdir().unwrap()];

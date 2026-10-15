@@ -444,6 +444,7 @@ fn the_interpreted_target_is_selected_by_flag_or_environment() {
 
 /// A component source naming no `manifest`, or a manifest carrying an unread key, refuses by name before anything
 /// loads or runs.
+// spec: connector.package.manifest-keys@6d98ce13
 #[test]
 fn a_component_source_without_a_manifest_or_with_an_unread_key_refuses() {
     let dir = project(&bare("connectors/probe.wasm", &["items"], ""));
@@ -466,6 +467,8 @@ fn a_component_source_without_a_manifest_or_with_an_unread_key_refuses() {
 
 /// A connector reaching for access its manifest does not list fails to load, raising `ConnectorUndeclaredAccess` naming
 /// that access.
+// spec: connector.declare-capability.declared-grant@5ddfed27
+// spec: connector.declare-capability.undeclared-access@5d9044eb
 #[test]
 fn a_wall_clock_import_without_the_clock_grant_fails_to_load() {
     let dir = project(&manifest("connectors/probe.wasm", &["items"], ""));
@@ -483,6 +486,7 @@ fn a_wall_clock_import_without_the_clock_grant_fails_to_load() {
 
 /// A manifest may declare an identity endpoint, the response header carrying granted scopes, and the grant it expects.
 /// The host calls it with the bound credential ahead of the first read.
+// spec: connector.declare-capability.scope-probe@058eafc8
 #[test]
 fn a_component_scope_probe_refuses_an_exceeded_grant_before_any_vendor_request() {
     let identity = Vendor::answering("HTTP/1.1 200 OK\r\nX-Granted-Scopes: reports.read, admin\r\nContent-Length: 2\r\nConnection: close\r\n\r\n{}");
