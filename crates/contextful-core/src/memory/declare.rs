@@ -66,13 +66,16 @@ pub struct MemoryTable {
     /// A claims table's settled-outcome table, whose `prediction_id` names a `claim_id`
     /// and whose `verdict` settles it (`read.recall.confidence-label`).
     pub labels: Option<String>,
+    /// The table's visibility block, under the keys a pipeline table's block takes
+    /// (`disclosure.mirror.memory-binding`).
+    pub visibility: Option<serde_json::Value>,
 }
 
 impl MemoryTable {
     /// The table as the store declares it: keyed on its shape's key, so a later version of
     /// a row replaces the earlier one on read.
     pub fn table_decl(&self) -> TableDecl {
-        TableDecl { primary_key: Some(vec![self.shape.key().to_string()]), ..TableDecl::named(&self.name) }
+        TableDecl { primary_key: Some(vec![self.shape.key().to_string()]), visibility: self.visibility.clone(), ..TableDecl::named(&self.name) }
     }
 }
 
@@ -93,6 +96,8 @@ struct RawTable {
     decay_half_life: Option<String>,
     #[serde(default)]
     labels: Option<String>,
+    #[serde(default)]
+    visibility: Option<serde_json::Value>,
 }
 
 #[derive(Deserialize, Default)]
@@ -160,7 +165,7 @@ impl MemoryDeclarations {
             if t.labels.is_some() && shape != Shape::Facts {
                 return Err(DeclarationMalformed(format!("table `{}`: only a `{}` table declares `labels`", t.name, Shape::Facts.name())).into());
             }
-            tables.push(MemoryTable { name: t.name, shape, columns: t.columns, decay_half_life_secs, labels: t.labels });
+            tables.push(MemoryTable { name: t.name, shape, columns: t.columns, decay_half_life_secs, labels: t.labels, visibility: t.visibility });
         }
         Ok(MemoryDeclarations { tables, declared_relations: raw.relation.unwrap_or_default().declared })
     }

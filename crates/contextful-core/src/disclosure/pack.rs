@@ -26,17 +26,41 @@ pub const MAPPING_KEYS: [&str; 7] = ["resource_key", "resource_kind", "family", 
 /// The keys a pack block holds beside its fetch inputs (`disclosure.pack.pack-block`).
 pub const PACK_KEYS: [&str; 4] = ["tables", "excluded", "access", "allowlist"];
 
-/// The name segments that make a key access-shaped: a key naming who reads, shares or owns
-/// a resource (`disclosure.pack.asserts-access`).
+/// The name roots that make a key access-shaped: a key naming who reads, shares or owns a
+/// resource (`disclosure.pack.asserts-access`). A segment matches a root as written or with
+/// one trailing `s`.
 pub const ACCESS_SEGMENTS: [&str; 27] = [
-    "access", "acl", "acls", "allow", "audience", "audiences", "deny", "grant", "grants", "member", "members", "owner", "owners", "permission",
-    "permissions", "private", "public", "reader", "readers", "role", "roles", "share", "shared", "sharing", "viewers", "visibility", "visible",
+    "access", "acl", "admin", "allow", "anyone", "audience", "collaborator", "deny", "editor", "everyone", "grant", "guest", "invitee", "member", "owner",
+    "permission", "private", "public", "reader", "role", "share", "shared", "sharing", "viewer", "visibility", "visible", "writer",
 ];
 
-/// Whether `key` is access-shaped: one of its `_`- or `-`-separated segments, lowercased,
-/// is an [`ACCESS_SEGMENTS`] entry.
+/// The lowercased segments of `key`: split at `_`, `-` and each lowercase-to-uppercase
+/// boundary, so `shared_with`, `shared-with` and `sharedWith` read alike.
+fn segments(key: &str) -> Vec<String> {
+    let mut out = Vec::new();
+    let mut cur = String::new();
+    let mut prev_lower = false;
+    for c in key.chars() {
+        if c == '_' || c == '-' {
+            out.push(std::mem::take(&mut cur));
+            prev_lower = false;
+            continue;
+        }
+        if c.is_ascii_uppercase() && prev_lower {
+            out.push(std::mem::take(&mut cur));
+        }
+        prev_lower = c.is_ascii_lowercase() || c.is_ascii_digit();
+        cur.push(c.to_ascii_lowercase());
+    }
+    out.push(cur);
+    out.retain(|s| !s.is_empty());
+    out
+}
+
+/// Whether `key` is access-shaped: one of its segments, as [`segments`] splits it, is an
+/// [`ACCESS_SEGMENTS`] root, as written or with one trailing `s`.
 pub fn access_shaped(key: &str) -> bool {
-    key.split(['_', '-']).any(|seg| ACCESS_SEGMENTS.contains(&seg.to_ascii_lowercase().as_str()))
+    segments(key).iter().any(|seg| ACCESS_SEGMENTS.contains(&seg.as_str()) || seg.strip_suffix('s').is_some_and(|root| ACCESS_SEGMENTS.contains(&root)))
 }
 
 /// How an allowlist composes its entries with the access mapping.

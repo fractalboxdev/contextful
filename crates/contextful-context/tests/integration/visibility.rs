@@ -2,10 +2,10 @@
 //! through the land path.
 
 use crate::support::{at, decl, Fixture};
-use contextful_context::visibility::{committed, group_members, identity_links, principals, reach, state, sweep_grants, sweep_run, tombstones, Landing};
+use contextful_context::visibility::{committed, group_members, identity_links, principals, reach, state, sweep_grants, sweep_read, sweep_run, tombstones, Landing};
 use contextful_context::ContextError;
 use contextful_core::disclosure::declare::Binding;
-use contextful_core::disclosure::sweep::{parse_directory, GrantLine, SweepBlock, SweepKind};
+use contextful_core::disclosure::sweep::{parse_directory, parse_read, GrantLine, SweepBlock, SweepKind};
 use contextful_core::identify::{LinkMethod, NormalizedSubject, Subject};
 use contextful_core::disclosure::VisibilityError;
 use contextful_core::store::lay_out::NodeId;
@@ -273,4 +273,50 @@ fn a_run_collects_every_superseded_run_of_the_current_state_tables() {
     assert_eq!(identity_links(&d.f.store, "drive").unwrap().len(), 2);
     assert_eq!(group_members(&d.f.store, "drive").unwrap().len(), 1);
     assert_eq!(reach(&d.f.store, "drive", &reader("user://dana@acme.example")).unwrap().into_iter().collect::<Vec<_>>(), ["f1"]);
+}
+
+/// A first committed run collects the runs that stopped before `freshness` ahead of it.
+#[test]
+fn a_first_committed_run_collects_every_stopped_run_before_it() {
+    let f = Fixture::new();
+    let pages = pages();
+    f.land(&pages, "run-0001", json!([{"page_id": "p1"}]), "2030-01-01T00:00:00Z").unwrap();
+    let block = SweepBlock::parse_manifest(MANIFEST).unwrap().remove(0);
+    let bindings = vec![Binding::of(&pages).unwrap().unwrap()];
+    // Two first runs land their rows and stop before `freshness`.
+    for began in ["2030-01-01T00:10:00Z", "2030-01-01T00:20:00Z"] {
+        let stopped = sweep_grants(&f.store, &landing(), &block, &bindings, SweepKind::Full, vec![grant("p1", "dana")], at(began), at(began)).unwrap();
+        std::fs::remove_dir_all(f.table_dir("_visibility/wiki/freshness").join("data/runs").join(&stopped.freshness.sweep_id)).unwrap();
+        assert!(state(&f.store, "wiki").unwrap().freshness.is_none());
+    }
+    // The second stopped run collected the first.
+    assert_eq!(run_dirs(&f, "_visibility/wiki/resources").len(), 1);
+    let first = sweep_grants(&f.store, &landing(), &block, &bindings, SweepKind::Full, vec![grant("p1", "dana")], at("2030-01-01T00:30:00Z"), at("2030-01-01T00:30:01Z")).unwrap();
+    for t in ["resources", "grants", "principals"] {
+        assert_eq!(run_dirs(&f, &format!("_visibility/wiki/{t}")), std::slice::from_ref(&first.freshness.sweep_id), "{t}");
+    }
+    assert_eq!(state(&f.store, "wiki").unwrap().grants.len(), 1);
+}
+
+/// A webhook run whose file names no resource lands nothing, and `watermark_at` stays where it stood.
+// spec: disclosure.sweep.empty-delivery@1dba1906
+#[test]
+fn an_empty_webhook_delivery_lands_nothing_and_holds_the_watermark() {
+    let f = Fixture::new();
+    let pages = pages();
+    f.land(&pages, "run-0001", json!([{"page_id": "p1"}]), "2030-01-01T00:00:00Z").unwrap();
+    let manifest = MANIFEST.replace("[[acl_sweep]]\n", "[[acl_sweep]]\nevents = { stream = \"wiki.permissions\", gap_detectable = true }\n");
+    let block = SweepBlock::parse_manifest(&manifest).unwrap().remove(0);
+    let bindings = vec![Binding::of(&pages).unwrap().unwrap()];
+    let full = sweep_grants(&f.store, &landing(), &block, &bindings, SweepKind::Full, vec![grant("p1", "dana")], at("2030-01-01T00:10:00Z"), at("2030-01-01T00:10:01Z")).unwrap();
+    match sweep_read(&f.store, &landing(), &block, &bindings, SweepKind::Webhook, parse_read("").unwrap(), None, at("2030-01-01T00:20:00Z"), at("2030-01-01T00:20:01Z")) {
+        Err(ContextError::Invalid(m)) => assert!(m.contains("wiki") && m.contains("names no resource"), "{m}"),
+        other => panic!("{other:?}"),
+    }
+    let held = state(&f.store, "wiki").unwrap().freshness.unwrap();
+    assert_eq!((held.sweep_id, held.epoch, held.watermark_at), (full.freshness.sweep_id, 1, Some(at("2030-01-01T00:10:00Z"))));
+    // A delivery naming p1 bare applies and moves the watermark.
+    let hook = sweep_read(&f.store, &landing(), &block, &bindings, SweepKind::Webhook, parse_read("{\"resource_id\":\"p1\"}").unwrap(), None, at("2030-01-01T00:30:00Z"), at("2030-01-01T00:30:01Z")).unwrap();
+    assert_eq!(hook.freshness.watermark_at, Some(at("2030-01-01T00:30:00Z")));
+    assert!(state(&f.store, "wiki").unwrap().grants.is_empty());
 }

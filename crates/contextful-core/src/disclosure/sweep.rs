@@ -224,6 +224,15 @@ pub struct GrantsRead {
     pub grants: Vec<GrantLine>,
     /// The resources the read failed or skipped.
     pub unread: BTreeSet<String>,
+    /// The resources the read reached holding no grant (`disclosure.sweep.bare-resource`).
+    pub bare: BTreeSet<String>,
+}
+
+impl GrantsRead {
+    /// Every resource the read names: granted, marked unread, or bare.
+    pub fn named(&self) -> BTreeSet<&str> {
+        self.grants.iter().map(|g| g.resource_id.as_str()).chain(self.unread.iter().map(String::as_str)).chain(self.bare.iter().map(String::as_str)).collect()
+    }
 }
 
 #[derive(Deserialize)]
@@ -234,21 +243,29 @@ struct UnreadLine {
 }
 
 #[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
+struct BareLine {
+    resource_id: String,
+}
+
+#[derive(Deserialize)]
 #[serde(untagged)]
 enum ReadLine {
     Grant(GrantLine),
     Unread(UnreadLine),
+    Bare(BareLine),
 }
 
-/// Parse a `--grants` file holding grant lines and unread markers: a grant as
-/// [`parse_grants`] reads it, or `{"resource_id": <id>, "unread": true}` naming a resource
-/// the read failed or skipped. A resource both marked unread and granted refuses.
+/// Parse a `--grants` file holding grant lines, unread markers and bare resources: a grant as
+/// [`parse_grants`] reads it, `{"resource_id": <id>, "unread": true}` naming a resource the
+/// read failed or skipped, or `{"resource_id": <id>}` naming a resource read holding no
+/// grant. A resource carrying two of those refuses.
 pub fn parse_read(text: &str) -> Result<GrantsRead, SweepError> {
     let mut out = GrantsRead::default();
     for (i, line) in text.lines().enumerate().filter(|(_, l)| !l.trim().is_empty()) {
         let bad = |reason: String| SweepError::GrantLine { line: i + 1, reason };
         let parsed: ReadLine = serde_json::from_str(line)
-            .map_err(|_| bad("neither a grant (`resource_id`, `principal`, `principal_kind`, `level`) nor an unread marker (`resource_id`, `\"unread\": true`)".into()))?;
+            .map_err(|_| bad("neither a grant (`resource_id`, `principal`, `principal_kind`, `level`), an unread marker (`resource_id`, `\"unread\": true`) nor a bare resource (`resource_id`)".into()))?;
         match parsed {
             ReadLine::Grant(g) => {
                 for (k, v) in [("resource_id", &g.resource_id), ("principal", &g.principal), ("principal_kind", &g.principal_kind), ("level", &g.level)] {
@@ -258,6 +275,9 @@ pub fn parse_read(text: &str) -> Result<GrantsRead, SweepError> {
                 }
                 if out.unread.contains(&g.resource_id) {
                     return Err(bad(format!("resource `{}` is marked unread and carries a grant", g.resource_id)));
+                }
+                if out.bare.contains(&g.resource_id) {
+                    return Err(bad(format!("resource `{}` is named bare and carries a grant", g.resource_id)));
                 }
                 out.grants.push(g);
             }
@@ -271,7 +291,22 @@ pub fn parse_read(text: &str) -> Result<GrantsRead, SweepError> {
                 if out.grants.iter().any(|g| g.resource_id == u.resource_id) {
                     return Err(bad(format!("resource `{}` is marked unread and carries a grant", u.resource_id)));
                 }
+                if out.bare.contains(&u.resource_id) {
+                    return Err(bad(format!("resource `{}` is named bare and marked unread", u.resource_id)));
+                }
                 out.unread.insert(u.resource_id);
+            }
+            ReadLine::Bare(b) => {
+                if b.resource_id.is_empty() {
+                    return Err(bad("`resource_id` is empty".into()));
+                }
+                if out.grants.iter().any(|g| g.resource_id == b.resource_id) {
+                    return Err(bad(format!("resource `{}` is named bare and carries a grant", b.resource_id)));
+                }
+                if out.unread.contains(&b.resource_id) {
+                    return Err(bad(format!("resource `{}` is named bare and marked unread", b.resource_id)));
+                }
+                out.bare.insert(b.resource_id);
             }
         }
     }
@@ -489,13 +524,13 @@ impl Observation {
 
     /// A run from a `--grants` read carrying unread markers. A full or incremental run read
     /// every governed resource but those marked unread (`disclosure.sweep.grants-file`). A
-    /// webhook run governs only the resources its file names, and read those not marked
-    /// unread (`disclosure.sweep.webhook-run`).
+    /// webhook run governs only the resources its file names, a bare one among them, and read
+    /// those not marked unread (`disclosure.sweep.webhook-run`).
     pub fn from_read(source: &str, kind: SweepKind, sweep_id: &str, began_at: Instant, governed: Vec<Governed>, read: GrantsRead) -> Observation {
         let governed: Vec<Governed> = match kind {
             SweepKind::Full | SweepKind::Incremental => governed,
             SweepKind::Webhook => {
-                let named: BTreeSet<&str> = read.grants.iter().map(|g| g.resource_id.as_str()).chain(read.unread.iter().map(String::as_str)).collect();
+                let named = read.named();
                 governed.into_iter().filter(|g| named.contains(g.resource_id.as_str())).collect()
             }
         };

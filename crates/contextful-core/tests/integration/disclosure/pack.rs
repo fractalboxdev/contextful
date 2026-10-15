@@ -122,6 +122,11 @@ fn an_access_shaped_key_outside_the_mapping_schema_is_refused_by_name() {
         ("acl", "acl = { pages = \"public\" }\n", "base_url"),
         ("readers", "readers = [\"dana\"]\n", "level          ="),
         ("public", "public = true\n", "level          ="),
+        ("viewer", "viewer = \"anyone\"\n", "base_url"),
+        ("editors", "editors = [\"eng\"]\n", "base_url"),
+        ("sharedWith", "sharedWith = \"org\"\n", "base_url"),
+        ("collaborators", "collaborators = [\"eng\"]\n", "base_url"),
+        ("adminUsers", "adminUsers = [\"dana\"]\n", "base_url"),
     ] {
         let text = PACK.replacen(at, &format!("{line}{at}"), 1);
         refused(&visibility(&text), "VisibilityPackAssertsAccess", &["wiki", key]);

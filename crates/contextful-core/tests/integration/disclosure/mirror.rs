@@ -214,3 +214,28 @@ fn an_unbound_table_on_an_organization_wide_face_is_refused() {
     check_unbound(FaceScope::Personal, &tables).unwrap();
     check_unbound(FaceScope::Organization, &tables[..1]).unwrap();
 }
+
+const MEMORY: &str = "[[table]]\nname = \"team_memory\"\nshape = \"memory_facts\"\ncolumns = [\"claim_id\", \"subject\", \"predicate\", \"object\", \"scope\", \"tier\", \"confidence\", \"valid_from\", \"valid_to\", \"evidence\", \"superseded_by\", \"grant_id\", \"agent\"]\n";
+
+/// A memory `[[table]]` takes the visibility block of {{disclosure.mirror.binding-keys}}, so an organization-wide face serves it bound.
+// spec: disclosure.mirror.memory-binding@a7245bea
+#[test]
+fn a_memory_table_takes_a_visibility_block() {
+    use contextful_core::disclosure::declare::check_unbound;
+    use contextful_core::read::face::FaceScope;
+    // Unbound, the memory table refuses on an organization-wide face by name.
+    let tables = TableDecl::parse_declaration_set(MEMORY, &[]).unwrap();
+    match check_unbound(FaceScope::Organization, &tables) {
+        Err(e @ VisibilityError::UnboundTable { .. }) => assert!(e.to_string().contains("`team_memory`"), "{e}"),
+        other => panic!("{other:?}"),
+    }
+    // Bound, it carries a binding and the face serves it.
+    let bound = format!("{MEMORY}[table.visibility]\nsource = \"wiki\"\nresource_key = \"claim_id\"\nfamily = \"item-exception\"\nfidelity = \"excluded\"\n");
+    let tables = TableDecl::parse_declaration_set(&bound, &[]).unwrap();
+    check_unbound(FaceScope::Organization, &tables).unwrap();
+    let binding = Binding::of(&tables[0]).unwrap().unwrap();
+    assert_eq!((binding.table.as_str(), binding.source.as_str()), ("team_memory", "wiki"));
+    // A block outside the binding keys refuses as a pipeline table's does.
+    let bad = format!("{MEMORY}[table.visibility]\nsource = \"wiki\"\nresource_key = \"claim_id\"\nfamily = \"item-exception\"\nfidelity = \"excluded\"\nmax_acl_staleness = \"soon\"\n");
+    assert!(TableDecl::parse_declaration_set(&bad, &[]).is_err());
+}

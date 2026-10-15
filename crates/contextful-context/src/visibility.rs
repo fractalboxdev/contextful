@@ -400,7 +400,7 @@ pub fn sweep_run(
     began_at: Instant,
     committed_at: Instant,
 ) -> Result<Commit> {
-    sweep_read(store, at, block, bindings, kind, GrantsRead { grants, unread: BTreeSet::new() }, directory, began_at, committed_at)
+    sweep_read(store, at, block, bindings, kind, GrantsRead { grants, ..GrantsRead::default() }, directory, began_at, committed_at)
 }
 
 /// The access tables holding only the current run's rows; `tombstones` and `freshness`
@@ -409,7 +409,7 @@ const CURRENT_STATE: [&str; 5] = ["resources", "grants", "principals", "group_me
 
 /// Collect every run of `source`'s current-state tables other than `current`
 /// (`disclosure.sweep.superseded-run`), returning the run directories removed.
-fn retire(store: &Store, source: &str, current: &str) -> Result<Vec<String>> {
+fn retire(store: &Store, source: &str, current: Option<&str>) -> Result<Vec<String>> {
     let mut removed = Vec::new();
     for name in CURRENT_STATE {
         let table = sweep::table(source, name);
@@ -417,7 +417,7 @@ fn retire(store: &Store, source: &str, current: &str) -> Result<Vec<String>> {
             continue;
         }
         let runs_dir = store.table_dir(&table)?.join(RUNS_DIR);
-        for r in store.committed_runs(&table)?.into_iter().filter(|r| r.run_id != current) {
+        for r in store.committed_runs(&table)?.into_iter().filter(|r| Some(r.run_id.as_str()) != current) {
             let dir = runs_dir.join(&r.run_id);
             let node = dir.join(&r.node_id);
             if node.exists() {
@@ -451,6 +451,11 @@ pub fn sweep_read(
 ) -> Result<Commit> {
     store.check_writable("visibility sweep")?;
     let enumerated = block.enumerated(bindings).map_err(|e| ContextError::Invalid(e.to_string()))?;
+    // A webhook delivery naming no resource applies nothing and moves no watermark
+    // (`disclosure.sweep.empty-delivery`).
+    if kind == SweepKind::Webhook && read.named().is_empty() {
+        return Err(ContextError::Invalid(format!("webhook sweep of `{}`: the delivery names no resource", block.source)));
+    }
     let _lock = store.lock_commit(&format!("{}/{}", sweep::NAMESPACE, block.source))?;
     let prior = state(store, &block.source)?;
     let epoch = prior.freshness.as_ref().map_or(0, |f| f.epoch) + 1;
@@ -462,9 +467,7 @@ pub fn sweep_read(
     obs.events = block.events.clone();
     obs.budget_seconds = bindings.iter().filter(|b| b.source == block.source).filter_map(|b| b.max_acl_staleness_secs).min();
     let c = commit(&prior, &obs)?;
-    if let Some(current) = &prior.freshness {
-        retire(store, &block.source, &current.sweep_id)?;
-    }
+    retire(store, &block.source, prior.freshness.as_ref().map(|f| f.sweep_id.as_str()))?;
     for (name, batch) in batches(&block.source, &c, committed_at) {
         if batch.rows.is_empty() {
             continue;

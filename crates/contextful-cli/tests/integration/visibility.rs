@@ -309,6 +309,15 @@ fn an_unbound_table_on_an_organization_wide_face_refuses_diagnose_and_start() {
     ok(&cf(d, &["pipeline", "validate"]));
     std::fs::write(d.join("contextful.toml"), format!("{MANIFEST}\n{ORG}")).unwrap();
     ok(&cf(d, &["pipeline", "validate"]));
+    // A memory table refuses unbound, and its own visibility block clears diagnose.
+    let memory = "[[table]]\nname = \"team_memory\"\nshape = \"memory_facts\"\ncolumns = [\"claim_id\", \"subject\", \"predicate\", \"object\", \"scope\", \"tier\", \"confidence\", \"valid_from\", \"valid_to\", \"evidence\", \"superseded_by\", \"grant_id\", \"agent\"]\n";
+    std::fs::write(d.join("contextful.toml"), format!("{MANIFEST}\n{memory}\n{ORG}")).unwrap();
+    let out = cf(d, &["pipeline", "validate"]);
+    let stderr = String::from_utf8_lossy(&out.stderr);
+    assert!(!out.status.success() && stderr.contains("VisibilityUnboundTable") && stderr.contains("team_memory"), "{stderr}");
+    let bound = format!("{memory}[table.visibility]\nsource = \"wiki\"\nresource_key = \"claim_id\"\nfamily = \"item-exception\"\nfidelity = \"excluded\"\n");
+    std::fs::write(d.join("contextful.toml"), format!("{MANIFEST}\n{bound}\n{ORG}")).unwrap();
+    ok(&cf(d, &["pipeline", "validate"]));
     std::fs::write(d.join("contextful.toml"), format!("{MANIFEST}\n[project]\nname = \"wiki\"\nface_scope = \"team\"\n")).unwrap();
     let out = cf(d, &["pipeline", "validate"]);
     assert!(!out.status.success() && String::from_utf8_lossy(&out.stderr).contains("face_scope"), "{}", String::from_utf8_lossy(&out.stderr));
