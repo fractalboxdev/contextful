@@ -258,3 +258,16 @@ Consequences: audit publication failure leaves the original frontier selected. A
 
 Consequences: replicas and the replication bucket sit outside the claim; the receipt's `tenant_hash` is salted SHA-256.
 Revisit: the substrate gains a delete; 72 h request-to-last-replica erasure becomes an engine bound.
+
+## Re-synthesis after erasure replays the extraction cache
+
+An erased row reaches derived state through three copies: the claims synthesized from it, the extraction-cache entry for the batch that held it, and a dead-letter row holding a failed response. `disclosure.erase.physical-removal` collects the cache entry and the dead-letter row inside the file deadline, so neither returns the row's content to a later pass.
+
+The restaging gate stands until re-synthesis restores the facts the cascade invalidated. A batch holding no erased row replays its stored response without a model call only when repacked at its original boundaries under an unchanged template, model and cutoffs; any other batch re-extracts. The pass runs under the writing credential, so attribution stamps the same grant, and its report names each restored claim, which lets an operator confirm the gate cleared on content rather than on elapsed time.
+
+| Option | Lost on | Cost |
+| --- | --- | --- |
+| Collect affected cache and dead-letter entries; replay untouched batches *(chosen)* | — | Collection and replay need each batch's recorded membership; without it, restaging re-extracts from the first erased row onward. |
+| Flush the whole cache on any erasure | Cost | Every restaging re-extracts the full table through the model. |
+| Leave cache and dead-letter rows to their own retention | Physical removal | A model response quoting the erased row outlives the deadline. |
+| Restage under the erasing credential | Attribution | Restored claims carry the forget grant instead of the writer's. |

@@ -114,11 +114,13 @@ Asked why Bo cannot see it, explain decides from current grants
 audience ({{disclosure.explain.audience}}), and returns no page content
 ({{disclosure.explain.no-row}}).
 
-Ada leaves and is erased. The caller holds the forget grant ({{disclosure.erase.privilege}});
-the cascade invalidates facts derived from her rows ({{disclosure.erase.cascade}}) or
-commits nothing ({{disclosure.erase.cascade-unbounded}}); files holding her rows are
-rewritten or collected ({{disclosure.erase.physical-removal}}). A tenant purge returns a signed receipt naming a salted pseudonym ({{disclosure.receipt.pseudonym}})
-and claiming no more than its version covers ({{disclosure.receipt.widened-claim}}).
+Ada leaves and is erased under the forget grant ({{disclosure.erase.privilege}}). The
+cascade invalidates facts derived from her rows ({{disclosure.erase.cascade}}) or commits
+nothing ({{disclosure.erase.cascade-unbounded}}); files and cached copies of her rows are
+collected ({{disclosure.erase.physical-removal}}); re-synthesis replays untouched
+batches through the cache ({{disclosure.erase.restage-cache}}). A tenant purge signs a receipt
+naming a salted pseudonym ({{disclosure.receipt.pseudonym}}) within its version's claim
+({{disclosure.receipt.widened-claim}}).
 
 ## Where to look
 

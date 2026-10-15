@@ -107,4 +107,4 @@ telemetry-projection-window   = { clause = "disclosure.record.projection", value
 telemetry-projection-latency  = { clause = "disclosure.record.projection", value = 1, unit = "s", basis = "chosen", gloss = "Response time of a projection lookup." }
 audit-root-cadence            = { clause = "disclosure.attest.root-replication", value = 10, unit = "min", basis = "chosen", gloss = "Cadence at which signed roots reach the replication bucket." }
 erasure-cascade-depth         = { clause = "disclosure.erase.cascade", value = 16, unit = "hops", basis = "chosen", gloss = "Deepest provenance chain an erasure cascade follows." }
-erasure-physical-removal      = { clause = "disclosure.erase.physical-removal", value = 24, unit = "h", basis = "chosen", gloss = "Commit of an erasure to rewrite or collection of every file holding an erased row." }
+erasure-physical-removal      = { clause = "disclosure.erase.physical-removal", value = 24, unit = "h", basis = "chosen", gloss = "Commit of an erasure to rewrite or collection of every file, extraction-cache entry and dead-letter row holding an erased row." }
