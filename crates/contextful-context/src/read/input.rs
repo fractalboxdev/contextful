@@ -24,15 +24,23 @@ impl Face {
         let response = self.query_with(session, sql, &Map::new(), ReadOptions { bounds, ..ReadOptions::default() })?;
         let tree = SqlEngine::bare()?.serialize(sql)?;
         let admitted = admit_in(session, &tree)?;
+        let snapshots = self.snapshot_ids(admitted.relations.iter().map(String::as_str), bounds)?;
+        Ok((response, snapshots))
+    }
+
+    /// Per table, the sha256 of the committed file list `bounds` resolves, or
+    /// [`EMPTY_SNAPSHOT`] for a table holding no schema: the snapshot a read reached
+    /// (`run.journal.store-input`, `disclosure.record.bound-entry`).
+    pub fn snapshot_ids<'t>(&self, tables: impl IntoIterator<Item = &'t str>, bounds: Bounds) -> Result<BTreeMap<String, String>, ReadFault> {
         let transaction = bounds.transaction();
         let mut snapshots = BTreeMap::new();
-        for table in &admitted.relations {
+        for table in tables {
             let id = match self.store.try_schema(table)? {
                 Some(_) => sha256_hex(scan(&self.store, &self.decl(table), transaction)?.files.join("\n").as_bytes()),
                 None => EMPTY_SNAPSHOT.to_string(),
             };
-            snapshots.insert(table.clone(), id);
+            snapshots.insert(table.to_string(), id);
         }
-        Ok((response, snapshots))
+        Ok(snapshots)
     }
 }
