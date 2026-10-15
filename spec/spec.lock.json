@@ -18065,7 +18065,7 @@
       "subject": "unlinked-principal",
       "kind": "behavior",
       "statement": "A subject whose source principal resolves to no link reads nothing from that source.",
-      "why": "P2",
+      "why": "because a source principal is the source's spelling; the `user` principal {{disclosure.reach.subject-principals}} spells is the subject's own and needs no link",
       "file": "spec/50-authority.md",
       "line": 83
     },
