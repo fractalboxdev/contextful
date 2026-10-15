@@ -3,6 +3,7 @@ import { test } from "node:test";
 import { createLiveAnswer } from "../src/answer_live.ts";
 import { deriveBrief } from "../src/brief.ts";
 import { createConsole, issueCognitoSession } from "../src/index.ts";
+import { ConsoleError } from "../src/turn.ts";
 import type { StoreEntry } from "../../gateway/src/index.ts";
 
 const now = Date.parse("2030-01-08T12:00:00Z");
@@ -94,4 +95,17 @@ test("long reader assertions and minted credentials preserve governed Query", as
   const answer = await live.turn({ operator: { subject: "alice", grants: new Set(["query"]), assertion },
     store: store.id, question: "Which Northwind filing arrived?" });
   assert.match(answer.answer, /filing-1/);
+});
+
+test("the live brief offers only subjects whose prompt the live turn resolves to a table", async () => {
+  const { live } = fixture();
+  const input = await live.brief({ subject: "carol", grants: new Set(["query"]), assertion: "carol-session" }, store.id);
+  const unanswerable = (error: unknown) => error instanceof ConsoleError && error.code === "ConsoleSuggestionUnanswerable";
+  await assert.rejects(Promise.resolve(input.suggest("What changed for Globex?")), unanswerable);
+  await input.suggest("What changed for Northwind?");
+  const card = await deriveBrief({ ...input, loadArrivals: undefined, budgetMs: 1000,
+    conclusions: [{ subject: "Northwind", text: "Northwind filings need review", live: true }, { subject: "Globex", text: "Globex filings need review", live: true }],
+    arrivals: [{ id: "n", label: "Northwind filing", topics: ["filings"], arrivedAt: "2030-01-08T11:00:00Z" },
+      { id: "g", label: "Globex filing", topics: ["filings"], arrivedAt: "2030-01-08T11:00:00Z" }] });
+  assert.deepEqual(card?.subjects.map((subject) => subject.subject), ["Northwind"]);
 });

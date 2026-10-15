@@ -80,11 +80,12 @@ export function createBrowse(transport: ReadTransport) {
         const count = descriptions[index].row_count;
         return [table.table, typeof count === "number" ? count : undefined];
       }));
+      const columnsByTable = Object.fromEntries(tables.map((table, index) => [table.table, descriptions[index].columns]));
       const chips = tables.flatMap((table) => {
         const label = humanizeLabel(table.table);
         const prompt = chipPrompt(label);
         try {
-          assertSuggestion(prompt, listing, rowCounts);
+          assertSuggestion(prompt, listing, rowCounts, columnsByTable);
         } catch (error) {
           if (isUnanswerable(error)) return [];
           throw error;

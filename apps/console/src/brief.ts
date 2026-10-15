@@ -24,6 +24,7 @@ export type BriefInput = {
   now: number;
   windowDays?: number;
   budgetMs: number;
+  /** Raises `ConsoleSuggestionUnanswerable` for a prompt the live turn would decline; the hosted route requires it. */
   suggest?: (prompt: string) => void | Promise<void>;
 };
 

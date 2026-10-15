@@ -186,10 +186,8 @@ export function createLiveTurn(options: LiveOptions): (input: TurnInput & { reca
             url: citation.url && !denylist.some((entry) => entry && citation.url!.includes(entry)) ? citation.url : undefined })),
         };
       } },
-      overlayCache: { get: (id) => overlays.get(id, async () => {
-        const listing = await call("context.describe", {});
-        return typeof listing.prompt_overlay === "string" && listing.prompt_overlay.trim() ? listing.prompt_overlay : null;
-      }) },
+      overlayCache: { get: (id) => overlays.get(id, async () =>
+        typeof description.prompt_overlay === "string" && description.prompt_overlay.trim() ? description.prompt_overlay : null) },
       synthesize: async function* ({ question, results, sources, overlay }) {
         const response = await fetcher(new URL("chat/completions", `${modelEndpoint.replace(/\/$/, "")}/`), {
           method: "POST", headers: { "Content-Type": "application/json" },

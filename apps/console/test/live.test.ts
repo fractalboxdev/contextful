@@ -87,31 +87,40 @@ test("Query reads governed rows under the exchanged reader credential and cites 
   assert.equal(modelCalls(), 1);
   assert.equal(calls.find((call) => call.url.endsWith("/auth/exchange"))?.body.jwt, "verified-access-jwt");
   assert.equal(calls.find((call) => (call.body.params as Record<string, unknown> | undefined)?.name === "context.query")?.authorization, "Bearer reader-token");
-  assert.deepEqual(calls.filter((call) => call.url.endsWith("/mcp")).map((call) => (call.body.params as Record<string, unknown>).name), ["context.describe", "context.query", "context.describe"]);
+  assert.deepEqual(calls.filter((call) => call.url.endsWith("/mcp")).map((call) => (call.body.params as Record<string, unknown>).name), ["context.describe", "context.query"]);
 });
 
 function overlayAsker(overlay?: string) {
   const clock = { now: 0 };
-  const harness = fixture({ overlay, clock: () => clock.now });
+  const options: { overlay?: string; clock: () => number } = { overlay, clock: () => clock.now };
+  const harness = fixture(options);
   const ask = () => harness.turn({ operator: { subject: "reader", grants: new Set(["query"]), assertion: "verified-access-jwt" },
     store: "field-notes", question: "Which filing arrived?" });
   const describes = () => harness.calls.filter((call) => (call.body.params as Record<string, unknown> | undefined)?.name === "context.describe").length;
   const sentOverlay = () => (JSON.parse(((harness.modelBody()?.messages as Array<{ content: string }>)[1]).content) as Record<string, unknown>).overlay;
-  return { clock, ask, describes, sentOverlay };
+  return { clock, options, ask, describes, sentOverlay };
 }
 
 // spec: surface.plan-turn.overlay-cache@c27dca5c
 test("one store overlay read serves every question for five minutes", async () => {
   const voiced = overlayAsker("Answer in the desk's voice.");
-  const silent = overlayAsker();
-  assert.equal((await voiced.ask(), voiced.describes()), 2);
+  await voiced.ask();
+  assert.equal(voiced.describes(), 1, "the overlay comes from the turn's own listing");
   assert.equal(voiced.sentOverlay(), "Answer in the desk's voice.");
+  voiced.options.overlay = "Answer tersely.";
   voiced.clock.now = 299_999;
-  assert.equal((await voiced.ask(), voiced.describes()), 3);
+  await voiced.ask();
+  assert.equal(voiced.sentOverlay(), "Answer in the desk's voice.");
   voiced.clock.now = 300_000;
-  assert.equal((await voiced.ask(), voiced.describes()), 5);
-  assert.equal((await silent.ask(), await silent.ask(), silent.describes()), 3);
+  await voiced.ask();
+  assert.equal(voiced.sentOverlay(), "Answer tersely.");
+  const silent = overlayAsker();
+  await silent.ask();
   assert.equal(silent.sentOverlay(), null);
+  silent.options.overlay = "Answer tersely.";
+  silent.clock.now = 299_999;
+  await silent.ask();
+  assert.equal(silent.sentOverlay(), null, "a miss is pinned for five minutes too");
 });
 
 // spec: surface.ground.mint-refused@1ca62976

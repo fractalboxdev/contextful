@@ -77,35 +77,38 @@ test("human labels handle separators and acronyms without adding prompts", () =>
 });
 
 function suggestionFixture() {
+  // The engine's top-level listing carries no columns; each table's own describe does.
   const tables = [
-    { table: "research/vendor_filings", kind: "data", zone_admitted: true, description: "Filed reports",
-      columns: [{ name: "filing_id", type: "VARCHAR" }, { name: "title", type: "VARCHAR" }] },
-    { table: "metrics/daily_totals", kind: "data", zone_admitted: true,
-      columns: [{ name: "day", type: "DATE" }, { name: "total", type: "BIGINT" }] },
-    { table: "research/empty_notes", kind: "data", zone_admitted: true,
-      columns: [{ name: "note_id", type: "VARCHAR" }, { name: "body", type: "VARCHAR" }] },
+    { table: "research/vendor_filings", kind: "data", zone_admitted: true, description: "Filed reports" },
+    { table: "metrics/daily_totals", kind: "data", zone_admitted: true },
+    { table: "research/empty_notes", kind: "data", zone_admitted: true },
   ];
+  const columns: Record<string, Array<{ name: string; type: string }>> = {
+    "research/vendor_filings": [{ name: "filing_id", type: "VARCHAR" }, { name: "title", type: "VARCHAR" }],
+    "metrics/daily_totals": [{ name: "day", type: "DATE" }, { name: "total", type: "BIGINT" }],
+    "research/empty_notes": [{ name: "note_id", type: "VARCHAR" }, { name: "body", type: "VARCHAR" }],
+  };
   const counts: Record<string, number> = { "research/vendor_filings": 3, "metrics/daily_totals": 9, "research/empty_notes": 0 };
   const browse = createBrowse({
     async call(tool: string, args: Record<string, unknown>) {
       if (tool === "context.describe" && !args.table) return { structuredContent: { tables } };
-      if (tool === "context.describe") return { structuredContent: { table: args.table, row_count: counts[args.table as string] } };
+      if (tool === "context.describe") return { structuredContent: { table: args.table, row_count: counts[args.table as string], columns: columns[args.table as string] } };
       if (tool === "context.files") return { structuredContent: { columns: ["table", "path"], rows: [] } };
       throw new Error(`unexpected tool ${tool}`);
     },
   });
-  return { browse, tables, counts };
+  return { browse, tables, counts, columns };
 }
 
 const unanswerable = (error: unknown) => error instanceof ConsoleError && error.code === "ConsoleSuggestionUnanswerable";
 
 // spec: surface.speak.unanswerable-suggestion@dc680207
 test("a suggestion the live turn would decline raises ConsoleSuggestionUnanswerable and leaves the chip set", async () => {
-  const { browse, tables, counts } = suggestionFixture();
-  assert.throws(() => assertSuggestion("Tell me about Daily Totals", tables, counts), unanswerable);
-  assert.throws(() => assertSuggestion("Tell me about Empty Notes", tables, counts), unanswerable);
-  assert.throws(() => assertSuggestion("Tell me about 2030", tables.slice(1, 2), counts), unanswerable);
-  assert.doesNotThrow(() => assertSuggestion("Tell me about Vendor Filings", tables, counts));
+  const { browse, tables, counts, columns } = suggestionFixture();
+  assert.throws(() => assertSuggestion("Tell me about Daily Totals", tables, counts, columns), unanswerable);
+  assert.throws(() => assertSuggestion("Tell me about Empty Notes", tables, counts, columns), unanswerable);
+  assert.throws(() => assertSuggestion("Tell me about 2030", tables.slice(1, 2), counts, columns), unanswerable);
+  assert.doesNotThrow(() => assertSuggestion("Tell me about Vendor Filings", tables, counts, columns));
   const result = await browse.discover({});
   assert.deepEqual(result.chips.map((chip) => chip.prompt), ["Tell me about Vendor Filings"]);
   assert.deepEqual(result.insights.map((insight) => insight.table), ["research/vendor_filings", "metrics/daily_totals", "research/empty_notes"]);
