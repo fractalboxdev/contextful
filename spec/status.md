@@ -13,9 +13,9 @@ An unpinned clause is `committed`; a pinned one is `performed` when its Rust, Le
 | `read` | 2 | 19 | 276 | 45 | 28 | 13 | 231 | 0 | 231 |
 | `run` | 3 | 28 | 509 | 114 | 44 | 11 | 459 | 0 | 459 |
 | `store` | 3 | 19 | 290 | 64 | 14 | 11 | 280 | 0 | 280 |
-| `surface` | 2 | 21 | 159 | 63 | 23 | 0 | 131 | 0 | 131 |
+| `surface` | 2 | 21 | 159 | 63 | 23 | 0 | 132 | 0 | 132 |
 | `topology` | 1 | 6 | 79 | 25 | 5 | 3 | 74 | 0 | 74 |
-| **total** | 22 | 167 | 2522 | 649 | 208 | 77 | 2111 | 0 | |
+| **total** | 22 | 167 | 2522 | 649 | 208 | 77 | 2112 | 0 | |
 
 Decision records: 18.
 
@@ -42,7 +42,7 @@ A milestone reads `closed` when its acceptance test computes `passing` and every
 | 14 — Assurance | 7 | 165 | 128 | passing | closed |
 | 15 — Point-in-time evaluation | 7 | 78 | 77 | passing | closed |
 | 16 — Memory graph walk | 1 | 11 | 0 | absent | open |
-| 17 — Delegated bodies | 1 | 16 | 11 | passing | closed |
+| 17 — Delegated bodies | 1 | 16 | 12 | passing | closed |
 
 Unscheduled operations: 12.
 
@@ -1998,6 +1998,7 @@ Unscheduled operations: 12.
 | `surface.delegate.call-mode` | `crates/contextful-cli/tests/integration/delegate.rs::a_response_after_the_timeout_closes_the_attempt_transient_and_lands_nothing` | performed |
 | `surface.delegate.call-timeout` | `crates/contextful-core/tests/integration/surface/delegate.rs::a_call_timeout_defaults_to_300_s` | performed |
 | `surface.delegate.call-timeout-ceiling` | `crates/contextful-core/tests/integration/surface/delegate.rs::a_call_timeout_above_the_ceiling_raises_delegate_timeout_refused` | performed |
+| `surface.delegate.clocks` | `apps/cloudflare-delegate/test/delegate.test.ts::apps/cloudflare-delegate/test/delegate.test.ts::signature timestamps ride this side's system clock, not the envelope's deadline` | performed |
 | `surface.delegate.defer-parks` | `crates/contextful-cli/tests/integration/delegate.rs::a_defer_answer_parks_the_item_without_spending_an_attempt_until_its_retry_at` | performed |
 | `surface.delegate.envelope` | `crates/contextful-core/tests/integration/surface/delegate.rs::the_envelope_serializes_every_field_it_names` | performed |
 | `surface.delegate.host` | `crates/contextful-core/tests/integration/surface/delegate.rs::a_delegate_url_is_loopback_or_the_virtual_host_over_plain_http_without_a_credential` | performed |
