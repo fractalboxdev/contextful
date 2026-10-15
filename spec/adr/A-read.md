@@ -269,3 +269,13 @@ A memory read's audit entry records the claim ids it returned under the caller's
 | Match on valid time | Leakage | A restatement published after the event joins as if known then. |
 | Match on the transaction stamp | Backfill | A history landed in one commit joins nothing before that commit. |
 | A dedicated join tool | Composition | The tool restates each relation's restriction outside the statement guard. |
+
+## A horizon withholds load stamps and keeps citation stamps
+
+Under a horizon `read.horizon.engine-stamps` drops `_ingested_at` and `_commit_seq` from the projection: each dates a row's load, and a 2026 backfill read under a 2014 horizon would reveal the present. `_run_id` and `_row_seq` stay, because `context.reference` cites a row by them and neither orders rows in time across runs.
+
+| Option | Lost on | Cost |
+| --- | --- | --- |
+| Drop load stamps, keep citation stamps *(chosen)* | — | A run identifier can still name its date when an operator spells it so. |
+| Drop every engine stamp | Citation | A horizon read returns rows no reference can name. |
+| Drop every stamp and add an opaque citation token | Simplicity | A second identity scheme beside the one the store already records. |
