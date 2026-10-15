@@ -472,21 +472,25 @@ fn a_credential_binds_the_members_it_names_and_admits_under_that_combination_alo
         incognito: true,
     };
     let reads = vec![grant(&[Action::Read], &["research/*"])];
-    let admitted = admit(&contextful_policy::issue::mint(&plan_for(&signer, full.clone(), reads.clone()), &MintClaims::default(), &signer).unwrap(), &signer, DURING).unwrap();
+    let admitted = admit(&contextful_policy::issue::mint(&plan_for(&signer, full.clone(), reads), &MintClaims::default(), &signer).unwrap(), &signer, DURING).unwrap();
     assert_eq!(admitted.subject().to_subject(), full);
     assert_eq!(admitted.subject().attestations().len(), 5);
 
     // A credential naming two members binds those two; the others stay absent at admission.
-    let pair = admit(&minted(&signer), &signer, DURING).unwrap();
+    let credential = minted(&signer);
+    let pair = admit(&credential, &signer, DURING).unwrap();
     assert_eq!(pair.subject().attestations().into_keys().collect::<Vec<_>>(), [Member::OnBehalfOf, Member::Agent]);
     for absent in [Member::Host, Member::Task, Member::Zone] {
         assert_eq!(pair.subject().get(absent), None, "{absent:?}");
     }
     assert!(!pair.subject().incognito());
 
-    // Another agent for the same principal is another combination.
-    let other = Subject { agent: Some("agent://billing-loop".into()), ..dana() };
-    let billing = admit(&contextful_policy::issue::mint(&plan_for(&signer, other, reads), &MintClaims::default(), &signer).unwrap(), &signer, DURING).unwrap();
-    assert_eq!(billing.subject().identity(), pair.subject().identity());
-    assert_ne!(billing.subject(), pair.subject());
+    // The bound combination does not move at presentation: the same credential with its agent
+    // rewritten, under the original signature, admits nothing.
+    use base64::Engine;
+    let mut bytes = base64::engine::general_purpose::URL_SAFE.decode(&credential).unwrap();
+    let (from, to) = (&b"agent://research-loop"[..], &b"agent://billings-loop"[..]);
+    let at_agent = bytes.windows(from.len()).position(|w| w == from).expect("the credential carries the agent");
+    bytes[at_agent..at_agent + from.len()].copy_from_slice(to);
+    refused(admit(&base64_url(&bytes), &signer, DURING), "SignatureInvalid");
 }

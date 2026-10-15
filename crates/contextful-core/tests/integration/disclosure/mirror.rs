@@ -122,6 +122,7 @@ fn a_subject_reaches_through_its_links_and_their_groups() {
             member("g-finance", "u-1001", "user"),
             member("g-all", "g-finance", "group"),
             member("g-finance", "g-all", "group"),
+            member("g-shadow", "dana@acme.example", "group"),
         ],
         ..SourceState::default()
     };
@@ -130,11 +131,18 @@ fn a_subject_reaches_through_its_links_and_their_groups() {
         SweepKind::Full,
         "s1",
         at("2030-01-01T00:00:00Z"),
-        governed(&["f1", "f2", "f3"]),
-        vec![grant("f1", "u-1001", "user"), grant("f2", "g-all", "group"), grant("f3", "u-1002", "user")],
+        governed(&["f1", "f2", "f3", "f4", "f5"]),
+        vec![
+            grant("f1", "u-1001", "user"),
+            grant("f2", "g-all", "group"),
+            grant("f3", "u-1002", "user"),
+            grant("f4", "dana@acme.example", "group"),
+            grant("f5", "g-shadow", "group"),
+        ],
     );
     s.grants = commit(&SourceState::default(), &obs).unwrap().grants;
-    // The group cycle ends at the visited set.
+    // The group cycle ends at the visited set. A principal is a kind and a name: the group
+    // spelled like dana's user principal, and a group it belongs to, reach her nothing.
     assert_eq!(reachable(&subject("user://dana@acme.example"), &s).unwrap().into_iter().collect::<Vec<_>>(), ["f1", "f2"]);
     assert_eq!(reachable(&subject("user://erin@acme.example"), &s).unwrap().into_iter().collect::<Vec<_>>(), ["f3"]);
     // No on_behalf_of: no identity, no reach.

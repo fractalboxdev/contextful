@@ -576,32 +576,34 @@ pub fn commit(prior: &SourceState, obs: &Observation) -> Result<Commit, Visibili
 /// The resources of one source `subject` reaches through its current rows.
 ///
 /// The reader's identity is the verified `on_behalf_of` (`authority.identify.on-behalf-of`):
-/// `user://<p>` reaches the principal spelled `<p>` and each source principal a verified
-/// link maps onto it, then every group those principals belong to, walked with a visited
-/// set. A source principal no link maps onto the subject reaches nothing
+/// `user://<p>` reaches the `user` principal spelled `<p>` and each `user` source principal a
+/// verified link maps onto it, then every `group` those principals belong to, walked with a
+/// visited set. A membership and a grant match on kind and name together. A source
+/// principal no link maps onto the subject reaches nothing
 /// (`authority.identify.unlinked-principal`), and a principal linked through
 /// `operator_asserted` links alone refuses (`authority.identify.unverified-link`).
 pub fn reachable(subject: &NormalizedSubject, state: &SourceState) -> Result<BTreeSet<String>, AuthorityError> {
     let Some(identity) = subject.identity() else { return Ok(BTreeSet::new()) };
-    let mut principals: BTreeSet<String> = BTreeSet::new();
+    // A principal is a `(kind, name)` pair: a name alone never crosses kinds.
+    let mut principals: BTreeSet<(String, String)> = BTreeSet::new();
     if let Some(p) = identity.strip_prefix("user://") {
-        principals.insert(p.to_string());
+        principals.insert(("user".to_string(), p.to_string()));
     }
-    let linked: BTreeSet<(&str, &str)> =
-        state.links.iter().filter(|l| l.on_behalf_of == identity).map(|l| (l.source.as_str(), l.source_principal.as_str())).collect();
+    let mapped: Vec<IdentityLink> = state.links.iter().filter(|l| l.on_behalf_of == identity).cloned().collect();
+    let linked: BTreeSet<(&str, &str)> = mapped.iter().map(|l| (l.source.as_str(), l.source_principal.as_str())).collect();
     for (source, source_principal) in linked {
-        let mapped: Vec<IdentityLink> = state.links.iter().filter(|l| l.on_behalf_of == identity).cloned().collect();
         if resolve_link(&mapped, source, source_principal)?.is_some() {
-            principals.insert(source_principal.to_string());
+            principals.insert(("user".to_string(), source_principal.to_string()));
         }
     }
-    let mut frontier: Vec<String> = principals.iter().cloned().collect();
-    while let Some(p) = frontier.pop() {
-        for m in state.members.iter().filter(|m| m.member == p) {
-            if principals.insert(m.group.clone()) {
-                frontier.push(m.group.clone());
+    let mut frontier: Vec<(String, String)> = principals.iter().cloned().collect();
+    while let Some((kind, name)) = frontier.pop() {
+        for m in state.members.iter().filter(|m| m.member_kind == kind && m.member == name) {
+            let group = ("group".to_string(), m.group.clone());
+            if principals.insert(group.clone()) {
+                frontier.push(group);
             }
         }
     }
-    Ok(state.grants.iter().filter(|g| principals.contains(&g.principal)).map(|g| g.resource_id.clone()).collect())
+    Ok(state.grants.iter().filter(|g| principals.contains(&(g.principal_kind.clone(), g.principal.clone()))).map(|g| g.resource_id.clone()).collect())
 }

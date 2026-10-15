@@ -206,11 +206,12 @@ fn a_sweep_lands_all_seven_access_tables_as_ordinary_rows() {
 #[test]
 fn links_come_from_the_directory_read_alone() {
     let d = drive();
-    // A grants read names principals; none of them becomes a link, whatever it spells.
+    // A grants read names principals and writes no link. Dana reaches f1 through the `user`
+    // principal her subject spells, which needs no link, and not f2 through the unlinked `u-1001`.
     d.sweep(SweepKind::Full, vec![drive_grant("f1", "dana@acme.example", "user"), drive_grant("f2", "u-1001", "user")], None, "2030-01-01T00:10:00Z");
     assert_eq!(principals(&d.f.store, "drive").unwrap().len(), 2);
     assert!(identity_links(&d.f.store, "drive").unwrap().is_empty());
-    assert!(!reach(&d.f.store, "drive", &reader("user://dana@acme.example")).unwrap().contains("f2"));
+    assert_eq!(reach(&d.f.store, "drive", &reader("user://dana@acme.example")).unwrap().into_iter().collect::<Vec<_>>(), ["f1"]);
 
     // The directory read writes the links, and a later run given none keeps them.
     d.sweep(SweepKind::Full, vec![drive_grant("f2", "u-1001", "user")], Some(DIRECTORY), "2030-01-01T00:20:00Z");
