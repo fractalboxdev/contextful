@@ -997,7 +997,7 @@ fn build_titles(store: &Store, now: &str) -> String {
     let files = [ManifestFile { path: "contextful.toml".into(), text: PINNED.to_string() }];
     let spec = collect_models(&files, &collect(&files).unwrap()).unwrap().remove(0).spec;
     let face = Face::open(store.clone(), PINNED, Pepper::resolve(|_| None)).unwrap();
-    build(&face, &BuildRequest { model: &spec, site_id: "site-a", started_at: at(now), completed_at: at(now) }).unwrap().build_id
+    build(&face, &BuildRequest { model: &spec, site_id: "site-a", started_at: at(now), completed_at: at(now), available_as_of: None }).unwrap().build_id
 }
 
 /// Every read tool declares and admits `pin`; each answer touching the pinned model reads

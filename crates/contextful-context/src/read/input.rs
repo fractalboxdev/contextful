@@ -18,7 +18,9 @@ pub const EMPTY_SNAPSHOT: &str = "empty";
 impl Face {
     /// Run `sql` as a store-driven input through the guard, under `session` and `bounds`,
     /// answering the response and, per touched table, the sha256 of the committed file list
-    /// the bound resolves: the snapshot the rows came from.
+    /// the bound resolves: the snapshot the rows came from. A session
+    /// [`Face::session_carried`] opened registers each carried table at its carried
+    /// `as_of`, so its snapshot id is the one that origin read.
     pub fn input(&self, session: &Session, sql: &str, bounds: Bounds) -> Result<(Response, BTreeMap<String, String>), ReadFault> {
         let response = self.query_with(session, sql, &Map::new(), ReadOptions { bounds, ..ReadOptions::default() })?;
         let tree = SqlEngine::bare()?.serialize(sql)?;

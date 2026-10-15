@@ -21,6 +21,7 @@ use std::sync::Mutex;
 use std::time::Duration;
 mod items;
 mod identity;
+pub mod sweep;
 use identity::{body_pins,projection_pins};
 pub use items::{entity_lease_key, ItemOutcome, ItemPolicy, ItemReport, ItemStatus};
 
@@ -257,7 +258,14 @@ impl<J: JournalStore + Clone + Send + Sync, B: BlobStore + Clone + Send + Sync> 
             read(&as_of).map(|set| set.encode())
         })?;
         let input = InputSet::decode(recorded.bytes())?;
-        let bounds = input.bounds();
+        let mut bounds = input.bounds();
+        // A sweep origin's row names the availability bound it read under, the sweep and
+        // the origin (`run.record.sweep-bounds`).
+        if let Some(pin) = &drive.input.sweep {
+            bounds.available_as_of = Some(pin.origin.clone());
+            bounds.sweep_id = Some(pin.sweep_id.clone());
+            bounds.origin = Some(pin.origin.clone());
+        }
         self.catalog.update_run(x.run_id(), &mut |r| {
             r.input = Some(bounds.clone());
             Ok(())

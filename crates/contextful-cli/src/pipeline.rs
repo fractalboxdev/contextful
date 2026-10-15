@@ -13,6 +13,7 @@ use crate::component::{self, ComponentTarget};
 use crate::run::{boot_id, wire_at, ProjectArgs, StoreDestination};
 use anyhow::{bail, Context, Result};
 use clap::Subcommand;
+use contextful_core::run::derive::available::AvailableSelect;
 use contextful_connectors::derive::{DeriveSource, HostDerive, Staged};
 use contextful_connectors::file::{FileConfig, FileSource};
 use contextful_connectors::http::{HttpConfig, HttpSource, Mediation};
@@ -148,6 +149,9 @@ pub enum PipelineCmd {
         /// from one selection, calling no engine and landing no row.
         #[arg(long)]
         dry_run: bool,
+        /// Select only the derive parents available at this bound (`run.select.available-select`).
+        #[arg(long)]
+        available_as_of: Option<String>,
     },
     /// Check every declared pipeline and model without network I/O; a local component artifact loads and runs discovery.
     Validate {
@@ -353,7 +357,7 @@ fn source_zones(declaration: &Path, table: &str) -> Result<contextful_core::plac
 
 /// Print one derive selection's unit counts, calling no engine and landing no row
 /// (`run.select.dry-run`).
-fn dry_run_counts(spec: &PipelineSpec, checked: &Checked, l: &crate::project::Located, text: &str, author: Option<&crate::admit::Author>, resolver: Arc<contextful_outbound::Resolver>) -> Result<()> {
+fn dry_run_counts(spec: &PipelineSpec, checked: &Checked, l: &crate::project::Located, text: &str, author: Option<&crate::admit::Author>, resolver: Arc<contextful_outbound::Resolver>, available: Option<AvailableSelect>) -> Result<()> {
     let decls: Vec<TableDecl> = spec.tables.iter().map(|t| spec.destination_decl(t)).collect();
     let reader = Box::new(StoreReader::open(l, text, decls.clone(), author)?);
     let counts = match checked {
@@ -371,6 +375,7 @@ fn dry_run_counts(spec: &PipelineSpec, checked: &Checked, l: &crate::project::Lo
                 store_root: Some(Store::open(&l.project.dir, &l.project.name)?.root().to_path_buf()),
                 cwd: l.project.dir.clone(),
                 unsettled: None,
+                available,
             };
             source.plan()
         }
@@ -381,6 +386,7 @@ fn dry_run_counts(spec: &PipelineSpec, checked: &Checked, l: &crate::project::Lo
             tables: host.tables.clone(),
             retention_columns: spec.tables.iter().filter_map(|t| t.decl().retain_rows.map(|r| (t.name().to_string(), r.column))).collect(),
             reader,
+            available,
         }
         .plan(),
         _ => bail!("pipeline `{}` reads source `{}`; a dry run counts a derive pipeline's units", spec.id, spec.source.name),
@@ -388,6 +394,28 @@ fn dry_run_counts(spec: &PipelineSpec, checked: &Checked, l: &crate::project::Lo
     .map_err(|f| anyhow::anyhow!("pipeline `{}`: {f}", spec.id))?;
     println!("{}", serde_json::json!({ "pipeline": spec.id, "eligible": counts.eligible, "derived": counts.derived, "outstanding": counts.outstanding }));
     Ok(())
+}
+
+/// The availability select of a derive pipeline whose parent table declares `available_time`;
+/// a bound over a parent declaring none raises `StoreAvailableTimeUndeclared`
+/// (`run.select.available-select`).
+fn available_select(spec: &PipelineSpec, config: &contextful_core::run::derive::config::DeriveConfig, files: &[contextful_core::pipeline::declare::ManifestFile], bound: Option<contextful_core::store::bound_time::Bound>) -> Result<Option<AvailableSelect>> {
+    let mut declared: Vec<TableDecl> = Vec::new();
+    for file in files {
+        declared.extend(TableDecl::parse_pipeline(&file.text).unwrap_or_default());
+    }
+    for d in collect(files)? {
+        declared.extend(d.spec.tables.iter().map(|t| d.spec.destination_decl(t)));
+    }
+    let parent = declared.iter().find(|d| d.name == config.source_table);
+    let Some(time) = parent.and_then(|d| d.available_time.as_ref()) else {
+        if bound.is_some() {
+            return Err(contextful_core::store::StoreError::StoreAvailableTimeUndeclared(format!("pipeline `{}` derives from table `{}`, which declares no `available_time`", spec.id, config.source_table)).into());
+        }
+        return Ok(None);
+    };
+    let outputs = spec.tables.iter().map(|t| spec.destination_decl(t)).filter_map(|d| d.available_time.map(|a| (d.name.clone(), a.column))).collect();
+    Ok(Some(AvailableSelect { bound, parent_column: time.column.clone(), outputs }))
 }
 
 /// A host task's staging runs outside any execution, so nothing stops it.
@@ -749,7 +777,7 @@ pub fn run(cmd: PipelineCmd, tasks: &Tasks, bodies: &contextful_core::run::drive
         }
         PipelineCmd::Serve { project, declaration, cycle, http, public_key } => crate::cadence::serve(&project, declaration, cycle, http.as_deref(), public_key.as_deref(), tasks, bodies),
         PipelineCmd::Worker { project, declaration, listen } => crate::worker::serve_worker(&project, declaration, &listen),
-        PipelineCmd::Run { id, project, declaration, run_id, site_id, site_id_env, component_target, admit, applied, dry_run } => {
+        PipelineCmd::Run { id, project, declaration, run_id, site_id, site_id_env, component_target, admit, applied, dry_run, available_as_of } => {
             let l = project.locate(declaration)?;
             crate::sync::pull_before_run(&l)?;
             let declaration = l.declaration.clone();
@@ -781,8 +809,15 @@ pub fn run(cmd: PipelineCmd, tasks: &Tasks, bodies: &contextful_core::run::drive
                 #[cfg(feature = "s3-sync")]
                 Checked::Object(config) => resolver.preflight(config.credentials())?,
             }
+            let bound = available_as_of.as_deref().map(contextful_core::store::bound_time::Bound::parse).transpose()?;
+            let available = match &checked {
+                Checked::Derive(pair) => available_select(&spec, &pair.0, &files, bound)?,
+                Checked::Host(host) => available_select(&spec, &host.config, &files, bound)?,
+                _ if bound.is_some() => bail!("pipeline `{}` reads source `{}`; an availability bound selects a derive pipeline's parents", spec.id, spec.source.name),
+                _ => None,
+            };
             if dry_run {
-                return dry_run_counts(&spec, &checked, &l, &text, author.as_ref(), resolver);
+                return dry_run_counts(&spec, &checked, &l, &text, author.as_ref(), resolver, available);
             }
 
             // A declaration's relative paths resolve against the project directory
@@ -837,6 +872,7 @@ pub fn run(cmd: PipelineCmd, tasks: &Tasks, bodies: &contextful_core::run::drive
                         t.decl().retain_rows.map(|r| (t.name().to_string(), r.column))
                     }).collect(),
                     reader: Box::new(StoreReader::open(&l, &text, dest.decls.clone(), dest.author.as_ref())?),
+                    available: available.clone(),
                 };
                 let (landing, skipped) = derive.stage(&Uncanceled).map_err(|f| anyhow::anyhow!("pipeline `{}`: {f}", spec.id))?;
                 derive_skipped = skipped;
@@ -916,6 +952,7 @@ pub fn run(cmd: PipelineCmd, tasks: &Tasks, bodies: &contextful_core::run::drive
                                 store_root: Some(dest.store.root().to_path_buf()),
                                 cwd: base.clone(),
                                 unsettled: None,
+                                available: available.clone(),
                             })
                         }
                         Checked::Component(decl) => match recorded.as_ref().or(loaded.as_ref()) {

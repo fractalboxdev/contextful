@@ -11,11 +11,11 @@ An unpinned clause is `committed`; a pinned one is `performed` when its Rust, Le
 | `corpus` | 1 | 10 | 79 | 37 | 7 | 0 | 79 | 0 | 79 |
 | `disclosure` | 3 | 16 | 157 | 68 | 13 | 3 | 64 | 0 | 64 |
 | `read` | 2 | 18 | 238 | 38 | 24 | 4 | 220 | 0 | 220 |
-| `run` | 3 | 28 | 501 | 113 | 44 | 14 | 432 | 0 | 432 |
+| `run` | 3 | 28 | 501 | 113 | 44 | 14 | 445 | 0 | 445 |
 | `store` | 3 | 19 | 287 | 65 | 14 | 13 | 273 | 0 | 273 |
 | `surface` | 2 | 20 | 137 | 59 | 22 | 0 | 98 | 0 | 98 |
 | `topology` | 1 | 6 | 79 | 25 | 5 | 3 | 72 | 0 | 72 |
-| **total** | 22 | 165 | 2434 | 637 | 202 | 71 | 1961 | 0 | |
+| **total** | 22 | 165 | 2434 | 637 | 202 | 71 | 1974 | 0 | |
 
 Decision records: 18.
 
@@ -28,19 +28,19 @@ A milestone reads `closed` when its acceptance test computes `passing` and every
 | 0 — The test-first gate | 2 | 22 | 19 | passing | closed |
 | 1 — The authority core | 14 | 244 | 225 | passing | closed |
 | 2 — The store | 9 | 181 | 170 | passing | closed |
-| 3 — The run path | 12 | 269 | 253 | passing | closed |
-| 4 — Ingest | 25 | 551 | 385 | passing | open |
+| 3 — The run path | 12 | 269 | 254 | passing | closed |
+| 4 — Ingest | 25 | 551 | 386 | passing | open |
 | 5 — The read face under enforcement | 17 | 298 | 241 | passing | open |
 | 6 — Sync and replicas | 8 | 83 | 83 | passing | closed |
 | 7 — Memory | 6 | 55 | 54 | passing | closed |
 | 8 — Accountability | 5 | 83 | 48 | passing | open |
 | 9 — Visibility | 6 | 41 | 3 | open | open |
 | 10 — Cadence and the operator plane | 11 | 93 | 79 | passing | open |
-| 11 — The derive tier | 7 | 94 | 92 | passing | closed |
+| 11 — The derive tier | 7 | 94 | 93 | passing | closed |
 | 12 — The operator console | 12 | 56 | 25 | passing | open |
 | 13 — Disclosure | 5 | 33 | 13 | open | open |
 | 14 — Assurance | 7 | 156 | 126 | passing | closed |
-| 15 — Point-in-time evaluation | 7 | 76 | 55 | open | open |
+| 15 — Point-in-time evaluation | 7 | 76 | 65 | open | open |
 
 Unscheduled operations: 12.
 
@@ -1377,6 +1377,7 @@ Unscheduled operations: 12.
 | `run.land.unknown-destination` | `crates/contextful-cli/tests/integration/pipeline.rs::another_destination_is_refused_before_any_request` | performed |
 | `run.land.unreadable-input` | `crates/contextful-connectors/tests/integration/http.rs::an_unreadable_body_refuses_naming_path_and_position` | performed |
 | `run.model.build-boundary` | `spec/pins.toml` | performed |
+| `run.model.build-horizon` | `crates/contextful-cli/tests/integration/build.rs::a_build_at_a_horizon_reads_inputs_available_by_it_and_records_it` | performed |
 | `run.model.build-id` | `crates/contextful-context/tests/integration/build.rs::a_build_id_is_the_snapshot_id` | performed |
 | `run.model.build-verb` | `crates/contextful-cli/tests/integration/build.rs::build_publishes_a_model_and_prints_its_receipt` | performed |
 | `run.model.contract-block` | `crates/contextful-core/tests/integration/pipeline/model.rs::a_contract_declares_a_semantic_version_and_typed_columns` | performed |
@@ -1500,6 +1501,7 @@ Unscheduled operations: 12.
 | `run.record.site-id-unresolved` | `crates/contextful-core/tests/integration/run/record.rs::a_site_id_resolves_from_exactly_one_bound_source` | performed |
 | `run.record.skipped-count` | `crates/contextful-engine/tests/integration/runner.rs::the_run_row_sums_the_skipped_count_of_every_pull` | performed |
 | `run.record.status-set` | `crates/contextful-core/tests/integration/run/record.rs::seven_statuses_spelled_once_for_record_and_wire` | performed |
+| `run.record.sweep-bounds` | `crates/contextful-engine/tests/integration/sweep.rs::an_origin_row_names_its_bounds_sweep_and_origin` | performed |
 | `run.record.time-travel` | `crates/contextful-context/tests/integration/run_record.rs::an_as_of_bound_rewinds_run_history_with_every_other_table` | performed |
 | `run.record.truncation-flag` | `crates/contextful-core/tests/integration/run/record.rs::history_echoes_its_window_and_flags_truncation` | performed |
 | `run.record.writing-site` | `crates/contextful-cli/tests/integration/run.rs::every_landed_row_names_the_site_that_wrote_it` | performed |
@@ -1525,6 +1527,7 @@ Unscheduled operations: 12.
 | `run.seed.declaration-missing` | `crates/contextful-core/tests/integration/pipeline/seed.rs::a_seeded_table_needs_a_key_and_an_event_time_ordering` | performed |
 | `run.select.anti-join` | `crates/contextful-core/tests/integration/run/derive.rs::the_outstanding_set_is_every_parent_without_passages_or_a_settled_marker` | performed |
 | `run.select.attempts-per-unit` | `crates/contextful-core/tests/integration/run/derive.rs::a_unit_receives_3_attempts_by_default` | performed |
+| `run.select.available-select` | `crates/contextful-connectors/tests/integration/derive.rs::a_bounded_derive_selects_parents_available_by_it_and_stamps_their_instant` | performed |
 | `run.select.derive-after-conflict` | `crates/contextful-core/tests/integration/pipeline/declare.rs::a_derive_child_cannot_name_another_predecessor` | performed |
 | `run.select.derive-cycle` | `crates/contextful-core/tests/integration/pipeline/declare.rs::a_derived_source_cycle_names_every_member_at_build` | performed |
 | `run.select.derive-failed-parent` | `crates/contextful-cli/tests/integration/derive.rs::a_child_reads_committed_parent_rows_after_its_parent_fails` | performed |
@@ -1556,6 +1559,16 @@ Unscheduled operations: 12.
 | `run.suspend.survives-restart` | `crates/contextful-engine/tests/integration/suspend.rs::a_restart_keeps_every_pending_callback` | performed |
 | `run.suspend.timeout-is-sticky` | `crates/contextful-core/tests/integration/run/suspend.rs::a_timeout_sticks_under_any_later_instant` | performed |
 | `run.suspend.unknown-token` | `crates/contextful-engine/tests/integration/suspend.rs::an_unknown_token_is_refused_and_writes_nothing` | performed |
+| `run.sweep.cache-key` | `crates/contextful-engine/tests/integration/sweep.rs::each_origin_runs_under_its_own_execution_id_and_bound` | performed |
+| `run.sweep.carried-state` | `crates/contextful-engine/tests/integration/sweep.rs::a_carried_origin_reads_outputs_at_the_preceding_commit` | performed |
+| `run.sweep.fresh-state` | `crates/contextful-engine/tests/integration/sweep.rs::a_fresh_origin_reads_every_table_at_the_sweeps_as_of` | performed |
+| `run.sweep.frozen-as-of` | `crates/contextful-engine/tests/integration/sweep.rs::every_origin_reads_one_frozen_as_of_across_a_resume` | performed |
+| `run.sweep.no-collapse` | `crates/contextful-engine/tests/integration/sweep.rs::every_origin_runs_and_a_failed_carried_origin_stops_the_rest` | performed |
+| `run.sweep.origin-after-open` | `crates/contextful-engine/tests/integration/sweep.rs::a_sweep_ending_after_its_open_instant_opens_no_origin` | performed |
+| `run.sweep.origin-pin` | `crates/contextful-engine/tests/integration/sweep.rs::a_resume_under_a_changed_sweep_meets_a_pin_mismatch` | performed |
+| `run.sweep.origins` | `crates/contextful-engine/tests/integration/sweep.rs::a_sweep_opens_one_run_per_origin_each_bounded_by_its_origin` | performed |
+| `run.sweep.simulated-write` | `crates/contextful-core/tests/integration/run/sweep.rs::an_origins_write_carries_the_origin_as_its_availability_instant` | performed |
+| `run.sweep.sweep-id` | `crates/contextful-engine/tests/integration/sweep.rs::every_origin_records_the_sweeps_execution_id` | performed |
 | `run.test-engine.unsupported-driver` | `crates/contextful-cli/tests/integration/derive.rs::the_verb_refuses_a_fetch_engine_and_runs_a_transcriber_over_one_file` | performed |
 | `run.transform.arity` | `crates/contextful-core/tests/integration/pipeline/transform.rs::an_operation_emitting_more_rows_than_it_consumed_is_refused` | performed |
 | `run.transform.cast` | `crates/contextful-core/tests/integration/pipeline/transform.rs::a_cast_rewrites_the_type_in_place` | performed |

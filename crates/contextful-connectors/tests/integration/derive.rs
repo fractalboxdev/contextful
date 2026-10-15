@@ -211,6 +211,7 @@ fn source(dir: &Path, parents: Value, engine_toml: &str) -> DeriveSource {
         store_root: Some(dir.to_path_buf()),
         cwd: dir.to_path_buf(),
         unsettled: None,
+        available: None,
     }
 }
 
@@ -884,4 +885,41 @@ fn a_link_preview_settles_its_request_ledger_through_settle_not_inside_the_pull(
     assert_eq!(*ledger.finished.lock().unwrap(), [Some(0)], "the settle carries the produced batch's ordinal");
     source.settle().unwrap();
     assert_eq!(ledger.finished.lock().unwrap().len(), 1, "a second settle finds nothing unsettled");
+}
+
+/// A derive run carrying `available_as_of` selects only parent rows {{store.available-time.available-as-of}} admits at that bound, and each derived row lands its parent row's availability instant.
+// spec: run.select.available-select@4a45e931
+#[test]
+fn a_bounded_derive_selects_parents_available_by_it_and_stamps_their_instant() {
+    use contextful_core::run::derive::available::AvailableSelect;
+    use contextful_core::store::bound_time::Bound;
+    let dir = tempfile::tempdir().unwrap();
+    std::fs::write(dir.path().join("q1.txt"), "First quarter.\n").unwrap();
+    std::fs::write(dir.path().join("q2.txt"), "Second quarter.\n").unwrap();
+    let parents = json!([
+        {"doc_id": "q1", "path": "q1.txt", "accepted_at": "2030-05-02T16:05:00Z"},
+        {"doc_id": "q2", "path": "q2.txt", "accepted_at": "2030-08-01T16:05:00Z"},
+        {"doc_id": "undated", "path": "q1.txt", "accepted_at": null},
+    ]);
+    let select = |bound: Option<&str>| AvailableSelect {
+        bound: bound.map(|b| Bound::parse(b).unwrap()),
+        parent_column: "accepted_at".into(),
+        outputs: [("doc_text_passages".to_string(), "available_at".to_string())].into_iter().collect(),
+    };
+
+    let mut june = source(dir.path(), parents.clone(), SRT_ENGINE);
+    june.available = Some(select(Some("2030-06-01T00:00:00Z")));
+    let rows = pulled(&mut june);
+    assert!(!rows.is_empty(), "the exclusion below ranges over no row");
+    assert!(rows.iter().all(|r| r["unit_ref"] == "q1"), "only the parent public by June derives: {rows:?}");
+    assert!(rows.iter().all(|r| r["available_at"] == "2030-05-02T16:05:00Z"), "{rows:?}");
+    assert_eq!(june.plan().unwrap().eligible, 1);
+
+    // Without a bound every complete parent derives, each row still landing its parent's instant.
+    let mut open = source(dir.path(), parents, SRT_ENGINE);
+    open.available = Some(select(None));
+    let rows = pulled(&mut open);
+    let units: std::collections::BTreeSet<&str> = rows.iter().map(|r| r["unit_ref"].as_str().unwrap()).collect();
+    assert_eq!(units, ["q1", "q2", "undated"].into_iter().collect());
+    assert!(rows.iter().filter(|r| r["unit_ref"] == "q2").all(|r| r["available_at"] == "2030-08-01T16:05:00Z"), "{rows:?}");
 }

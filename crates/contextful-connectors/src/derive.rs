@@ -6,6 +6,7 @@
 use contextful_core::connector::attach::{scrub, Allowlist};
 use contextful_core::connector::meter::LimiterDeclaration;
 use contextful_core::connector::reference::Template;
+use contextful_core::run::derive::available::{AvailableSelect, Instants};
 use contextful_core::run::derive::config::{Binding, DeriveConfig, OutputFormat, StepSpec, Task, PARENT_SCAN_ROWS};
 use contextful_core::run::derive::cues::{parse, passages};
 use contextful_core::run::derive::emit::{
@@ -509,6 +510,8 @@ pub struct DeriveSource {
     /// The last pull's ledger scope awaiting [`Source::settle`]: its batch ordinal, or `None`
     /// when it produced no batch. `None` here when nothing awaits settlement.
     pub unsettled: Option<Option<i32>>,
+    /// The parent's availability time and the run's bound (`run.select.available-select`).
+    pub available: Option<AvailableSelect>,
 }
 
 impl DeriveSource {
@@ -686,11 +689,17 @@ fn scan_parents(reader: &dyn TableReader, table: &str, columns: &[&str], each: &
 
 impl DeriveSource {
     /// This tick's selection, its parents scanned per {{run.select.parent-scan}}.
-    fn selection(&self, derivation: &Derivation) -> Result<Selection, Failure> {
+    fn selection(&self, derivation: &Derivation) -> Result<(Selection, Instants), Failure> {
         let derived = self.reader.rows(&self.output_table, &OUTPUT_COLUMNS)?;
         let mut selector = Selector::new(&derived, &self.config, derivation);
-        let columns = [self.config.parent_id_column.as_str(), self.config.media_column.as_str(), DERIVATION_KEY];
-        scan_parents(self.reader.as_ref(), &self.config.source_table, &columns, &mut |mut parents| {
+        let mut columns = vec![self.config.parent_id_column.as_str(), self.config.media_column.as_str(), DERIVATION_KEY];
+        columns.extend(self.available.as_ref().map(|a| a.parent_column.as_str()));
+        let mut instants = Instants::new();
+        scan_parents(self.reader.as_ref(), &self.config.source_table, &columns, &mut |parents| {
+            let mut parents = match &self.available {
+                Some(available) => available.admit(parents, &self.config.parent_id_column, &mut instants),
+                None => parents,
+            };
             if matches!(self.config.task, Task::Transcribe) {
                 for parent in &mut parents {
                     let Some(media) = parent.get(&self.config.media_column).and_then(serde_json::Value::as_str) else { continue };
@@ -703,14 +712,14 @@ impl DeriveSource {
             selector.feed(&parents);
             Ok(())
         })?;
-        Ok(selector.finish())
+        Ok((selector.finish(), instants))
     }
 
     /// The unit counts one selection yields, calling no engine and landing no row
     /// (`run.select.dry-run`).
     pub fn plan(&self) -> Result<Counts, Failure> {
         let derivation = self.derivation().map_err(refused)?;
-        Ok(self.selection(&derivation)?.counts)
+        Ok(self.selection(&derivation)?.0.counts)
     }
 
     fn pull_once(&self, cancel: &dyn Cancellation) -> Result<(Vec<u8>, bool), Failure> {
@@ -730,7 +739,7 @@ impl DeriveSource {
             Some(chain) => self.derivation_of(chain),
             None => self.derivation().map_err(refused)?,
         };
-        let sel = self.selection(&derivation)?;
+        let (sel, instants) = self.selection(&derivation)?;
         for e in &sel.incomplete {
             eprintln!("{}: {e}", self.pipeline_id);
         }
@@ -766,6 +775,9 @@ impl DeriveSource {
                 Some(e) => eprintln!("{}: {e}", self.pipeline_id),
                 None => rows.extend(unit_rows),
             }
+        }
+        if let Some(available) = &self.available {
+            available.stamp(&self.output_table, &mut rows, &instants);
         }
         for row in &rows {
             check_last_error(row).map_err(refused)?;
@@ -811,16 +823,27 @@ pub struct HostDerive {
     /// A content or marker table's custom retention column, named in its parent row.
     pub retention_columns: BTreeMap<String, String>,
     pub reader: Box<dyn TableReader>,
+    /// The parent's availability time and the run's bound (`run.select.available-select`).
+    pub available: Option<AvailableSelect>,
 }
 
 impl HostDerive {
     /// This tick's host selection, its parents scanned per {{run.select.parent-scan}}: each
     /// batch selects within the row budget the earlier batches left.
-    fn selection(&self, columns: &[&str], marker_table: &str) -> Result<HostSelection, Failure> {
+    fn selection(&self, columns: &[&str], marker_table: &str) -> Result<(HostSelection, Instants), Failure> {
         let markers = self.reader.rows(marker_table, &OUTPUT_COLUMNS)?;
         let mut sel = HostSelection::default();
         let mut seen = std::collections::BTreeSet::new();
-        scan_parents(self.reader.as_ref(), &self.config.source_table, columns, &mut |parents| {
+        let mut columns = columns.to_vec();
+        if let Some(available) = self.available.as_ref().filter(|a| !columns.contains(&a.parent_column.as_str())) {
+            columns.push(available.parent_column.as_str());
+        }
+        let mut instants = Instants::new();
+        scan_parents(self.reader.as_ref(), &self.config.source_table, &columns, &mut |parents| {
+            let parents = match &self.available {
+                Some(available) => available.admit(parents, &self.config.parent_id_column, &mut instants),
+                None => parents,
+            };
             let fresh: Vec<Row> = parents
                 .into_iter()
                 .filter(|r| r.get(&self.config.parent_id_column).map(|k| seen.insert(k.to_string())).unwrap_or(true))
@@ -834,14 +857,14 @@ impl HostDerive {
             sel.counts.outstanding += batch.counts.outstanding;
             Ok(())
         })?;
-        Ok(sel)
+        Ok((sel, instants))
     }
 
     /// The unit counts one host selection yields, deriving nothing (`run.select.dry-run`).
     pub fn plan(&self) -> Result<Counts, Failure> {
         let (columns, marker_table) = self.wanted();
         let wanted: Vec<&str> = columns.iter().map(String::as_str).collect();
-        Ok(self.selection(&wanted, &marker_table)?.counts)
+        Ok(self.selection(&wanted, &marker_table)?.0.counts)
     }
 
     /// The parent columns a unit reads and the store table its markers land in.
@@ -868,7 +891,7 @@ impl HostDerive {
         let name = self.config.task.name().to_string();
         let (columns, marker_table) = self.wanted();
         let wanted: Vec<&str> = columns.iter().map(String::as_str).collect();
-        let sel = self.selection(&wanted, &marker_table)?;
+        let (sel, instants) = self.selection(&wanted, &marker_table)?;
         for e in &sel.incomplete {
             eprintln!("{}: {e}", self.pipeline_id);
         }
@@ -912,7 +935,17 @@ impl HostDerive {
                 per_table.entry(table).or_default().extend(rows);
             }
         }
-        let tables = landing_order(task).into_iter().map(|t| (self.store_table(&t), per_table.remove(&t).unwrap_or_default())).collect();
+        let tables = landing_order(task)
+            .into_iter()
+            .map(|t| {
+                let table = self.store_table(&t);
+                let mut rows = per_table.remove(&t).unwrap_or_default();
+                if let Some(available) = &self.available {
+                    available.stamp(&table, &mut rows, &instants);
+                }
+                (table, rows)
+            })
+            .collect();
         Ok((tables, sel.incomplete.len() as u64))
     }
 }

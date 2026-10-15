@@ -43,6 +43,7 @@ fn fire<'a>(body: &'a dyn RowBody, id: &str) -> Drive<'a> {
             body: "score".into(),
             statement: "select * from docs".into(),
             as_of: None,
+            sweep: None,
         },
         body,
         max_in_flight: 1,

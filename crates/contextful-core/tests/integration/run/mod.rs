@@ -16,6 +16,7 @@ mod project;
 mod record;
 mod retry;
 mod suspend;
+mod sweep;
 
 use contextful_core::run::record::{Phase, RunRow, RunStatus};
 use contextful_core::time::Instant;

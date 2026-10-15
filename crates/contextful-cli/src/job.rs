@@ -28,6 +28,11 @@ use contextful_core::run::{Failure, FailureTag};
 use contextful_core::store::bound_time::{Bound, Bounds};
 use contextful_core::store::declare::TableDecl;
 use contextful_engine::drive::{Drive, PARKED_POLL};
+use contextful_engine::drive::sweep::SweepFire;
+use contextful_context::read::face::Carried;
+use contextful_core::run::drive::StoreInput;
+use contextful_core::run::sweep::stamp_origin;
+use contextful_core::time::Instant;
 use contextful_engine::RunSpec;
 use contextful_policy::enforce::session::Request;
 use std::path::PathBuf;
@@ -218,6 +223,53 @@ pub fn run(cmd: JobCmd, bodies: &Bodies) -> Result<()> {
                 job: name.clone(), input: driven.input.clone(), body: body.as_ref(), max_in_flight: driven.max_in_flight,
                 run_id: run_id.clone(), site_id: site_id.clone(), pid: std::process::id(), boot_id: boot_id(), schedule: Schedule::default(), poll: PARKED_POLL,
             };
+            if let Some(sweep) = &driven.sweep {
+                if recorded_plan.is_some() {
+                    bail!("job `{name}` declares a sweep, and a sweep runs a body without a recorded result projection");
+                }
+                let fire = SweepFire { drive, sweep: (**sweep).clone() };
+                let mut read_origin = |input: &StoreInput, as_of: &str, carried_at: Option<Instant>| -> Result<InputSet, Failure> {
+                    let refused = |e: &dyn std::fmt::Display| Failure::deterministic(FailureTag::Permanent, e.to_string());
+                    let origin = input.sweep.as_ref().map(|pin| pin.origin.as_str()).ok_or_else(|| refused(&"a sweep origin carries its pin"))?;
+                    // Each origin reads with `available_as_of` equal to itself (`run.sweep.origins`).
+                    let bounds = Bounds { as_of: Some(Bound::parse(as_of).map_err(|e| refused(&e))?), available_as_of: Some(Bound::parse(origin).map_err(|e| refused(&e))?), ..Bounds::default() };
+                    let carried: Carried = carried_at.map(|at| driven.tables.iter().map(|t| (t.clone(), Bound { at, inclusive: true })).collect()).unwrap_or_default();
+                    let session = face.session_carried(&authority, &Request { zone: None }, bounds, &carried).map_err(|e| refused(&e))?;
+                    let (response, snapshots) = face.input(&session, &input.statement, bounds).map_err(|e| refused(&e))?;
+                    InputSet::from_response(as_of, snapshots, &response.columns, response.rows, response.truncated).map_err(|e| refused(&e))
+                };
+                let mut land_origin = |input: &StoreInput, origin_run: &str, emitted: &Emitted| -> Result<Landed, Failure> {
+                    if let Some(table) = emitted.keys().find(|t| !driven.tables.contains(t)) {
+                        return Err(Failure::deterministic(FailureTag::Permanent, format!("body `{}` emitted rows for `{table}`, which job `{name}` does not declare in `tables`", driven.input.body)));
+                    }
+                    let origin = input.sweep.as_ref().map(|pin| pin.origin.clone()).unwrap_or_default();
+                    let mut stamped = emitted.clone();
+                    for (table, rows) in stamped.iter_mut() {
+                        if let Some(decl) = dest.decls.iter().find(|d| &d.name == table) {
+                            stamp_origin(decl, rows, &origin);
+                        }
+                    }
+                    land_tables(driven, &name, origin_run, &site_id, |table, spec| {
+                        dest.store.validate_writer_plan(&spec.plan, dest.normalize).map_err(|e| Failure::deterministic(FailureTag::Permanent, e.to_string()))?;
+                        let mut source: Box<dyn Source> = Box::new(Staged(stamped.get(table).cloned().unwrap_or_default(), 0));
+                        engine.run_with(spec, &mut source, &Unshaped, &mut dest).map_err(|e| Failure::new(FailureTag::Storage, e.to_string()))
+                    })
+                };
+                let swept = engine.sweep(&fire, &mut read_origin, &mut land_origin)?;
+                for row in &swept.origins {
+                    let input = row.input.clone().unwrap_or_default();
+                    println!(
+                        "{name}: origin {} {} {} · {} rows landed from {} input rows",
+                        input.origin.unwrap_or_default(), row.run_id, row.status, row.rows, input.rows
+                    );
+                }
+                let summary = format!("{name}: sweep {} {} · {} origins", swept.sweep.execution_id, swept.sweep.status, swept.origins.len());
+                if swept.sweep.status != RunStatus::Success {
+                    bail!("{summary} — {}", swept.sweep.error_message.unwrap_or_default());
+                }
+                println!("{summary}");
+                return Ok(());
+            }
             if let Some(policy) = &driven.isolated_items {
                 let mut complete = |row:&contextful_core::run::record::RunRow| {
                     if grouped {

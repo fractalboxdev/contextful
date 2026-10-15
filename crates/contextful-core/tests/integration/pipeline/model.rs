@@ -289,6 +289,7 @@ fn staleness_is_derived_from_the_watermark_and_max_lag() {
     s.watermark = Watermark {
         at: Some(at("2030-01-01T05:00:00Z")),
         inputs: BTreeMap::from([("events".into(), InputFrontier { snapshot_id: None, runs: vec!["r1/ingest-a".into()] })]),
+        horizon: None,
     };
     let f = s.freshness();
     assert_eq!(f.build_id, "snapshot-1");
