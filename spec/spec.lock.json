@@ -10433,12 +10433,12 @@
       "line": 579
     },
     {
-      "id": "run.orchestrate.unit-grain",
+      "id": "run.orchestrate.provider-step",
       "contract": "run",
       "operation": "orchestrate",
-      "subject": "unit-grain",
+      "subject": "provider-step",
       "kind": "behavior",
-      "statement": "A provider filler drives the engine at the grain of one recorded step per table pull or backfill chunk, each step's recorded value a pointer under the cap {{surface.dispatch.step-result}} states; the page-grain entries of {{run.journal.entry-key}} stay inside the step.",
+      "statement": "A provider filler drives the engine as one provider step per table pull or backfill chunk, whose recorded value is that table's or chunk's commit pointer; the engine's journal entries of {{run.journal.entry-key}} live inside the provider step.",
       "why": "A-run",
       "file": "spec/30-run.md",
       "line": 581
@@ -10449,37 +10449,37 @@
       "operation": "orchestrate",
       "subject": "semantics",
       "kind": "behavior",
-      "statement": "Every clause of `run.journal`, `run.retry`, `run.suspend` and `run.cancel` holds under a provider filler, which passes a conformance suite over the substrate verbs, one per filler as {{run.journal.storage-ports}} demands one per adapter, before a target profile names it.",
+      "statement": "Every clause of `run.journal`, `run.retry`, `run.suspend` and `run.cancel` holds inside a provider step, and a filler's conformance suite demonstrates them before a target profile names the filler.",
       "why": "A-run",
       "file": "spec/30-run.md",
       "line": 583
     },
     {
-      "id": "run.orchestrate.replay-identity",
+      "id": "run.orchestrate.resume",
       "contract": "run",
       "operation": "orchestrate",
-      "subject": "replay-identity",
+      "subject": "resume",
       "kind": "behavior",
-      "statement": "A step a provider filler records replays under the engine's entry key, so a resume under either filler lands bytes identical to an uninterrupted run under {{run.journal.replay-lands}}; the filler's suite crashes and resumes a step and compares the parts.",
-      "why": "because a replay the provider owns lands per-target bytes, and the proofs over the journal then cover no managed target",
+      "statement": "A provider replay of a completed step returns its recorded commit pointer and re-enters nothing; a crash inside a step resumes under the engine's entry keys, so the parts land byte-identical to an uninterrupted run under {{run.journal.replay-lands}}.",
+      "why": "because a replay the provider owns below the commit pointer lands per-target bytes, and the proofs over the journal then cover no managed target",
       "file": "spec/30-run.md",
       "line": 585,
       "scenarios": [
-        "WHEN a backfill chunk resumes once under the engine runner and once under a provider filler after the same crash point, THEN both land parts whose bytes match the uninterrupted run's."
+        "WHEN a backfill chunk's provider step crashes after half its pages and the provider replays the step, THEN the engine resumes from its recorded pages and the chunk's parts match the uninterrupted run's bytes."
       ]
     },
     {
-      "id": "run.orchestrate.provider-limit",
+      "id": "run.orchestrate.one-retry-layer",
       "contract": "run",
       "operation": "orchestrate",
-      "subject": "provider-limit",
-      "kind": "refusal",
-      "statement": "A provider filler whose instance cannot hold a workload class excludes it in the target profile, as {{topology.deploy.wall-clock-cap}} excludes; dispatching an excluded class raises `OrchestratorBoundExceeded` naming the class, before any step pays.",
-      "why": "because a backfill that pulls thousands of chunks and then meets a provider ceiling repeats paid work on its next fire",
+      "subject": "one-retry-layer",
+      "kind": "behavior",
+      "statement": "A provider's own per-step retry stays off under a filler: the schedule of {{run.retry.one-layer}} inside the step is the only retry layer, and a step that fails closes its table or chunk as the engine closes it.",
+      "why": "because a provider retry around an engine schedule multiplies attempts against a shared quota",
       "file": "spec/30-run.md",
       "line": 587,
       "scenarios": [
-        "WHEN a target profile excludes `first-time-backfill` because its instance cannot hold the chunk steps, THEN a first-time backfill's dispatch refuses naming the class and no chunk pulls."
+        "WHEN a provider step's pull meets a throttle, THEN the engine's schedule retries inside the step and the provider records one step attempt."
       ]
     },
     {
@@ -10488,8 +10488,8 @@
       "operation": "orchestrate",
       "subject": "delegate-inside",
       "kind": "behavior",
-      "statement": "A delegate under {{surface.delegate.binding}} is a body inside a recorded step, whatever fills the orchestrator role; no filler dispatches a delegate on its own.",
-      "why": "because a delegate reached outside the step escapes the entry key, the fence and the item budget",
+      "statement": "A delegate under {{surface.delegate.binding}} is a body inside the engine's journaled step within a provider step, whatever fills the role; no filler dispatches a delegate as a provider step of its own.",
+      "why": "because a delegate reached outside the engine's step escapes the entry key, the fence and the item budget",
       "file": "spec/30-run.md",
       "line": 589
     },
@@ -28569,7 +28569,7 @@
     "run.land": "The stage order from pull to commit, the one destination, the ingest tally and containment of unreadable input.",
     "run.model": "The `[[model]]` block: a table defined by SQL over store tables, its contract, freshness and tests, and the `build` verbs that materialize, publish and hold it.",
     "run.normalize": "Canonical nested form, late relational shredding, injected identity columns and recursion depth.",
-    "run.orchestrate": "The durable orchestrator role a deployment target fills: what a filler provides, the grain it drives the engine at, the semantics it keeps, and how a provider's own limits are recorded.",
+    "run.orchestrate": "The durable orchestrator role a deployment target fills: what a filler provides, the grain it drives the engine at, the semantics it keeps inside each of its steps, and what stays open until a provider filler exists.",
     "run.own": "The execution owner a scope holds and the connector build it pins while pending.",
     "run.parse-cues": "Reading a caption document into passages: one grammar, defect accounting, coalescing and rolling display.",
     "run.project": "The best-effort live view of a run and the subscription that carries it off the machine.",
@@ -29623,24 +29623,16 @@
       "run.journal.storage-ports"
     ],
     [
-      "run.orchestrate.unit-grain",
-      "surface.dispatch.step-result"
-    ],
-    [
-      "run.orchestrate.unit-grain",
+      "run.orchestrate.provider-step",
       "run.journal.entry-key"
     ],
     [
-      "run.orchestrate.semantics",
-      "run.journal.storage-ports"
-    ],
-    [
-      "run.orchestrate.replay-identity",
+      "run.orchestrate.resume",
       "run.journal.replay-lands"
     ],
     [
-      "run.orchestrate.provider-limit",
-      "topology.deploy.wall-clock-cap"
+      "run.orchestrate.one-retry-layer",
+      "run.retry.one-layer"
     ],
     [
       "run.orchestrate.delegate-inside",
@@ -34848,10 +34840,6 @@
           "ModelUndeclared": {
             "clause": "run.model.unknown-model",
             "gloss": "A build naming no declared model."
-          },
-          "OrchestratorBoundExceeded": {
-            "clause": "run.orchestrate.provider-limit",
-            "gloss": "A dispatch of a workload class the target profile excludes because the provider filler's instance cannot hold it."
           },
           "PipelineChunkParallelism": {
             "clause": "run.backfill.chunk-parallelism",

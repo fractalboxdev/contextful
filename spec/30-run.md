@@ -574,20 +574,20 @@ unsettled: Does a carried-state sweep resume from the last committed origin or r
 
 ## orchestrate
 
-The durable orchestrator role a deployment target fills: what a filler provides, the grain it drives the engine at, the semantics it keeps, and how a provider's own limits are recorded.
+The durable orchestrator role a deployment target fills: what a filler provides, the grain it drives the engine at, the semantics it keeps inside each of its steps, and what stays open until a provider filler exists.
 
 - `role` — A target's orchestrator role fills {{run.journal.substrate-port}}, every verb it names; the engine's runner over {{run.journal.storage-ports}} is the reference filler.
   *A-run*
-- `unit-grain` — A provider filler drives the engine at the grain of one recorded step per table pull or backfill chunk, each step's recorded value a pointer under the cap {{surface.dispatch.step-result}} states; the page-grain entries of {{run.journal.entry-key}} stay inside the step.
+- `provider-step` — A provider filler drives the engine as one provider step per table pull or backfill chunk, whose recorded value is that table's or chunk's commit pointer; the engine's journal entries of {{run.journal.entry-key}} live inside the provider step.
   *A-run*
-- `semantics` — Every clause of `run.journal`, `run.retry`, `run.suspend` and `run.cancel` holds under a provider filler, which passes a conformance suite over the substrate verbs, one per filler as {{run.journal.storage-ports}} demands one per adapter, before a target profile names it.
+- `semantics` — Every clause of `run.journal`, `run.retry`, `run.suspend` and `run.cancel` holds inside a provider step, and a filler's conformance suite demonstrates them before a target profile names the filler.
   *A-run*
-- `replay-identity` — A step a provider filler records replays under the engine's entry key, so a resume under either filler lands bytes identical to an uninterrupted run under {{run.journal.replay-lands}}; the filler's suite crashes and resumes a step and compares the parts.
-  *because a replay the provider owns lands per-target bytes, and the proofs over the journal then cover no managed target*
-- `provider-limit` — A provider filler whose instance cannot hold a workload class excludes it in the target profile, as {{topology.deploy.wall-clock-cap}} excludes; dispatching an excluded class raises `OrchestratorBoundExceeded` naming the class, before any step pays.
-  *because a backfill that pulls thousands of chunks and then meets a provider ceiling repeats paid work on its next fire*
-- `delegate-inside` — A delegate under {{surface.delegate.binding}} is a body inside a recorded step, whatever fills the orchestrator role; no filler dispatches a delegate on its own.
-  *because a delegate reached outside the step escapes the entry key, the fence and the item budget*
+- `resume` — A provider replay of a completed step returns its recorded commit pointer and re-enters nothing; a crash inside a step resumes under the engine's entry keys, so the parts land byte-identical to an uninterrupted run under {{run.journal.replay-lands}}.
+  *because a replay the provider owns below the commit pointer lands per-target bytes, and the proofs over the journal then cover no managed target*
+- `one-retry-layer` — A provider's own per-step retry stays off under a filler: the schedule of {{run.retry.one-layer}} inside the step is the only retry layer, and a step that fails closes its table or chunk as the engine closes it.
+  *because a provider retry around an engine schedule multiplies attempts against a shared quota*
+- `delegate-inside` — A delegate under {{surface.delegate.binding}} is a body inside the engine's journaled step within a provider step, whatever fills the role; no filler dispatches a delegate as a provider step of its own.
+  *because a delegate reached outside the engine's step escapes the entry key, the fence and the item budget*
 
 Two fillers of one role, the engine's own runner and a provider's workflow engine, over one journal contract:
 
@@ -597,26 +597,30 @@ flowchart LR
     PORT["substrate port"]
     RUNNER["engine runner"]
     J[("run journal")]
-    STEP["recorded unit step"]
-    PAGES[("page-grain entries")]
+    STEP["provider step"]
+    PTR["commit pointer"]
+    ENTRIES[("journal entries")]
   end
   subgraph provider["managed provider"]
     WF["workflow engine"]
-    LIMITS["instance ceilings"]
   end
-  TP["target profile exclusions"]
   RUNNER -->|"reference filler"| PORT
   WF -->|"provider filler"| PORT
   PORT -->|"record, commit, suspend"| J
-  WF -->|"one step per unit"| STEP
-  STEP -->|"holds"| PAGES
-  LIMITS -->|"exclude a workload class"| TP
+  WF -->|"one per pull or chunk"| STEP
+  STEP -->|"records"| PTR
+  STEP -->|"holds"| ENTRIES
+  ENTRIES -->|"replay inside the step"| J
 ```
 
 #### Scenarios
 
-- `run.orchestrate.replay-identity`: WHEN a backfill chunk resumes once under the engine runner and once under a provider filler after the same crash point, THEN both land parts whose bytes match the uninterrupted run's.
-- `run.orchestrate.provider-limit`: WHEN a target profile excludes `first-time-backfill` because its instance cannot hold the chunk steps, THEN a first-time backfill's dispatch refuses naming the class and no chunk pulls.
+- `run.orchestrate.resume`: WHEN a backfill chunk's provider step crashes after half its pages and the provider replays the step, THEN the engine resumes from its recorded pages and the chunk's parts match the uninterrupted run's bytes.
+- `run.orchestrate.one-retry-layer`: WHEN a provider step's pull meets a throttle, THEN the engine's schedule retries inside the step and the provider records one step attempt.
+
+unsettled: Who renews the execution's owner lease between two provider steps, when no engine process runs? owner: run-path affects: run.orchestrate
+
+unsettled: Where does a target profile record a provider's step ceiling, so a backfill whose chunk plan passes it refuses at planning? owner: topology affects: run.orchestrate
 
 ## Shapes
 

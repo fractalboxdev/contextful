@@ -415,16 +415,16 @@ Consequences: the watermark and manifest shapes stay as they are, and `watermark
 
 **Status:** accepted; narrows the three-storage-ports decision above: a provider adapter may fill the substrate itself.
 
-Context: a managed target names a provider orchestrator while the engine's runner fills the role too, so a step crosses two engines. Criteria: one definition of a run's semantics, proven once, holding on managed targets; no stacked retry.
+Context: a managed target names a provider orchestrator while the engine's runner fills the role too, so a step crosses two engines. Criteria: one semantics, proven once; proofs holding on managed targets; the provider's primitives orchestrating; no stacked retry.
 
-Decision: `run.orchestrate` names the role as the substrate port's verbs. A provider filler drives the engine one recorded step per table pull or chunk, the page-grain journal inside that step. The engine's clauses stay normative; a filler conforms through its own suite over the verbs, excludes the workload classes its instance cannot hold, and dispatches no delegate itself.
+Decision: `run.orchestrate` names the role as the substrate port's verbs. A provider filler drives the engine one provider step per table pull or chunk, recording the commit pointer, journal entries inside. The engine's clauses stay normative inside a step; a filler conforms through its own suite, keeps its per-step retry off, and dispatches no delegate itself.
 
 | Option | Lost on | Cost |
 | --- | --- | --- |
-| Port at the substrate, provider fills at the unit grain *(chosen)* | — | Two fillers to conform; a step pays a provider round trip; ceilings become exclusions. |
-| The engine's runner alone, provider stores beneath it | Provider primitives | A step crosses container, Worker and store; the provider's retry idles. |
-| The provider owns replay | One semantics | Replay differs per target and the journal proofs cover the laptop alone. |
-| One step per page | Provider ceilings | A backfill of tens of thousands of pages overflows an instance. |
+| Port at the substrate, one provider step per pull or chunk *(chosen)* | — | Two fillers to conform; a step pays a provider round trip; lease and ceiling between steps stay unsettled. |
+| The engine's runner alone, provider stores beneath it | The provider's primitives orchestrating | A step crosses container, Worker and store; the provider's replay idles. |
+| The provider owns replay below the commit pointer | One semantics | Replay differs per target and the journal proofs cover the laptop alone. |
+| One provider step per page | Proofs holding on managed targets | A backfill of tens of thousands of pages overflows an instance. |
 
-Consequences: a Workflows filler on Workers Paid meets a 10,000-step default cap and a 1 MiB step return, so a shape excludes `first-time-backfill` past the cap; the run record lives in the store, so retention binds nothing; storage-port adapters keep their suites.
-Revisit: a provider offering a sub-unit grain.
+Consequences: a Workflows filler meets the provider's ceilings at the pull or chunk grain; the run record lives in the store, so retention binds nothing; storage-port adapters keep their suites.
+Revisit: a provider offering a sub-chunk grain.

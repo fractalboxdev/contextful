@@ -230,8 +230,8 @@ Acceptance: `contextful_acceptance::m17::m17_delegated`
 
 | Operations | Intent |
 | --- | --- |
-| `run.orchestrate` | The orchestrator role as a port: a provider's workflow engine drives the engine one recorded step per table pull or chunk, keeps every journal, retry, suspend and cancel clause, and excludes the workload classes its instance cannot hold. |
+| `run.orchestrate` | The orchestrator role as a port: a provider's workflow engine drives the engine one provider step per table pull or chunk, keeps every journal, retry, suspend and cancel clause inside the step, and runs no retry of its own. |
 
-Reach: A backfill chunk crashed mid-step resumes under a provider filler and lands parts byte-identical to the engine runner's.
+Reach: A backfill chunk's provider step crashed after half its pages resumes under an in-tree test filler and lands parts byte-identical to the engine runner's.
 
 Acceptance: `contextful_acceptance::m18::m18_orchestrate`
