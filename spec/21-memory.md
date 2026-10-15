@@ -152,7 +152,7 @@ Supersession within one validity line, confidence decay, the direct write and it
 - `served-fault` — A served claim write whose store effect refuses raises `MemoryClaimWriteRefused` and lands nothing.
   *A-read*
 
-unsettled: Does a principal-only credential an agent presents stamp curated, and what binds the agent member to the writer? owner: authority affects: read.revise
+unsettled: What binds the asserted agent member to the writer? owner: authority affects: read.revise
 
 unsettled: What declared bound expires a researched claim, and which served write promotes a claim to curated? owner: read-path affects: read.revise
 
