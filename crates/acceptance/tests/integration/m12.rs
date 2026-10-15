@@ -55,6 +55,15 @@ fn listening(mut child: Child, suffix: &str) -> (Listener, String) {
         let mut line = String::new();
         assert!(stderr.read_line(&mut line).unwrap() > 0, "listener exited before announcing its address: {diagnostics}");
         if let Some(address) = line.trim().strip_prefix("listening on http://").and_then(|s| s.strip_suffix(suffix)) {
+            // A read face binds warming and answers reads once its snapshot set is mapped.
+            while suffix == "/mcp" {
+                let mut line = String::new();
+                assert!(stderr.read_line(&mut line).unwrap() > 0, "read face exited before hydrating: {diagnostics}");
+                if line.starts_with("hydrated:") {
+                    break;
+                }
+                diagnostics.push_str(&line);
+            }
             return (listener, address.to_owned());
         }
         diagnostics.push_str(&line);

@@ -160,7 +160,16 @@ fn serve_binary(binary: &Path, dir: &Path, args: &[&str]) -> (Listener, String) 
     let mut line = String::new();
     while err.read_line(&mut line).unwrap() > 0 {
         if let Some(addr) = line.trim().strip_prefix("listening on http://").and_then(|a| a.strip_suffix("/mcp")) {
-            return (listener, addr.to_string());
+            // The face binds warming and answers reads once its snapshot set is mapped.
+            let addr = addr.to_string();
+            line.clear();
+            while err.read_line(&mut line).unwrap() > 0 {
+                if line.starts_with("hydrated:") {
+                    return (listener, addr);
+                }
+                line.clear();
+            }
+            panic!("the face never hydrated");
         }
         line.clear();
     }
