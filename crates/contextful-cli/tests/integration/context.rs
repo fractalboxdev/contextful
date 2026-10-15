@@ -97,6 +97,23 @@ fn a_scheduled_pass_skips_a_table_whose_trigger_has_not_fired() {
     assert!(report.starts_with("filings: folded"), "{report}");
 }
 
+/// A table's declared `fold_max_unfolded_runs` fires the scheduled pass of `context compact`.
+#[test]
+fn a_scheduled_pass_fires_at_the_declared_unfolded_run_count() {
+    let p = project();
+    let manifest = p.path().join("contextful.toml");
+    let declared = std::fs::read_to_string(&manifest).unwrap().replace("name = \"events\"\n", "name = \"events\"\nfold_max_unfolded_runs = 3\n");
+    std::fs::write(&manifest, declared).unwrap();
+    land(p.path(), "events", "run-1", "2030-01-01T00:00:00Z");
+    land(p.path(), "events", "run-2", "2030-01-01T00:01:00Z");
+    let compact = || stdout(&run(p.path(), &["context", "compact", "--project", "research", "--now", "2030-01-01T01:00:00Z"]));
+    let report = compact();
+    assert!(report.lines().any(|l| l == "events: not due"), "{report}");
+    land(p.path(), "events", "run-3", "2030-01-01T00:02:00Z");
+    let report = compact();
+    assert!(report.lines().any(|l| l.starts_with("events: folded snapshot-") && l.contains("(3 runs")), "{report}");
+}
+
 /// `contextful context scan` prints the file list, the relation and the bounds a read echoes.
 #[test]
 fn scan_prints_files_relation_and_bounds() {
