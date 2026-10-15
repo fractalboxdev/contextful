@@ -110,7 +110,7 @@ fn a_change_to_any_statement_part_of_the_key_misses() {
     assert_eq!((counts(&face).hits, counts(&face).misses), (1, 4));
 
     // Other bounds.
-    let bounded = ReadOptions { bounds: Bounds { as_of: Some(contextful_core::store::bound_time::Bound::parse("2031-01-01T00:00:00Z").unwrap()), valid_as_of: None }, ..ReadOptions::default() };
+    let bounded = ReadOptions { bounds: Bounds { as_of: Some(contextful_core::store::bound_time::Bound::parse("2031-01-01T00:00:00Z").unwrap()), valid_as_of: None, available_as_of: None }, ..ReadOptions::default() };
     let bounded_rows = ask(&face, &authority, EVENTS, &Map::new(), bounded);
     assert!(bounded_rows.blocks.contains_key("contextful.bounds"));
     assert_eq!((counts(&face).hits, counts(&face).misses), (1, 5));

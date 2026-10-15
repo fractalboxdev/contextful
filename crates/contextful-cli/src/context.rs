@@ -339,7 +339,7 @@ pub fn run(cmd: ContextCmd) -> Result<()> {
         }
         ContextCmd::Files { table, store, as_of } => {
             let o = Opened::open(&store)?;
-            let s = scan(&o.store, &o.decl(&table), Bounds { as_of: bound(as_of)?, valid_as_of: None })?;
+            let s = scan(&o.store, &o.decl(&table), Bounds { as_of: bound(as_of)?, valid_as_of: None, available_as_of: None })?;
             for f in s.files {
                 println!("{f}");
             }
@@ -347,7 +347,7 @@ pub fn run(cmd: ContextCmd) -> Result<()> {
         }
         ContextCmd::Scan { table, store, as_of, valid_as_of } => {
             let o = Opened::open(&store)?;
-            let s = scan(&o.store, &o.decl(&table), Bounds { as_of: bound(as_of)?, valid_as_of: bound(valid_as_of)? })?;
+            let s = scan(&o.store, &o.decl(&table), Bounds { as_of: bound(as_of)?, valid_as_of: bound(valid_as_of)?, available_as_of: None })?;
             // Column count and file list; a row count is a count query, never a stored field
             // (`read.respond.operator-metadata`).
             let column_count = o.store.try_schema(&table)?.map_or(0, |schema| schema.columns.len());

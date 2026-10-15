@@ -26,7 +26,7 @@ fn row(run_id: &str, status: RunStatus, phase: Phase, started_at: &str) -> RunRo
 }
 
 fn as_of(v: &str) -> Bounds {
-    Bounds { as_of: Some(Bound::parse(v).unwrap()), valid_as_of: None }
+    Bounds { as_of: Some(Bound::parse(v).unwrap()), valid_as_of: None, available_as_of: None }
 }
 
 fn statuses(rows: &[RunRow]) -> Vec<(String, RunStatus)> {

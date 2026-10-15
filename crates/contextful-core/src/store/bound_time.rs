@@ -1,4 +1,4 @@
-//! `store.bound-time`: the two bounds a read carries and their echo.
+//! `store.bound-time` and `store.available-time`: the bounds a read carries and their echo.
 
 use crate::time::Instant;
 use crate::AuthorityError;
@@ -40,9 +40,16 @@ impl Bound {
 pub struct Bounds {
     pub as_of: Option<Bound>,
     pub valid_as_of: Option<Bound>,
+    pub available_as_of: Option<Bound>,
 }
 
 impl Bounds {
+    /// The bounds selecting committed files: `as_of` alone, since valid and availability
+    /// time narrow rows and never the file list.
+    pub fn transaction(&self) -> Bounds {
+        Bounds { as_of: self.as_of, ..Bounds::default() }
+    }
+
     /// `contextful.bounds` as a bounded read echoes it, or `None` for an unbounded read
     /// (`store.bound-time.echo`).
     pub fn echo(&self) -> Option<Value> {

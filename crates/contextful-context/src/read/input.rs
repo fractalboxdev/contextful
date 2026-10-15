@@ -24,7 +24,7 @@ impl Face {
         let response = self.query_with(session, sql, &Map::new(), ReadOptions { bounds, ..ReadOptions::default() })?;
         let tree = SqlEngine::bare()?.serialize(sql)?;
         let admitted = admit_in(session, &tree)?;
-        let transaction = Bounds { valid_as_of: None, ..bounds };
+        let transaction = bounds.transaction();
         let mut snapshots = BTreeMap::new();
         for table in &admitted.relations {
             let id = match self.store.try_schema(table)? {

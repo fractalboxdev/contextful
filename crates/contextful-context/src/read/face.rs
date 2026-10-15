@@ -453,7 +453,7 @@ impl Face {
         }
         let principal = pool::principal(authority, request, bounds, pins);
         let state = pool::store_state(&self.store, &tables, &granted)?;
-        let transaction = Bounds { valid_as_of: None, ..bounds };
+        let transaction = bounds.transaction();
         self.pool.session(principal, state, || {
             let sources = granted
                 .iter()
@@ -731,7 +731,7 @@ impl Face {
                     })
                 })
                 .collect();
-            return self.publish_read(Some(session), &frontier, echo(json!({ "session_zone": session.zone().label(), "tables": tables }), Bounds { valid_as_of: None, ..bounds }));
+            return self.publish_read(Some(session), &frontier, echo(json!({ "session_zone": session.zone().label(), "tables": tables }), bounds.transaction()));
         };
         let r = self.registered(session, table)?;
         self.bind_valid_time(&BTreeSet::from([table.to_string()]), bounds)?;
@@ -833,7 +833,7 @@ impl Face {
     pub fn files_with_options(&self, session: &Session, opts: ReadOptions) -> Result<Response, ReadFault> {
         let started = std::time::Instant::now();
         let frontier = self.read_frontier(session)?;
-        let transaction = Bounds { valid_as_of: None, ..opts.bounds };
+        let transaction = opts.bounds.transaction();
         let touched: BTreeSet<String> = session.relations().map(|r| r.name().to_string()).collect();
         let ceiling = contextful_core::read::respond::FACE_ROW_CEILING;
         let mut rows = Vec::new();
@@ -879,7 +879,7 @@ impl Face {
         let table = preview_target(path)?;
         self.registered(session, &table)?;
         let decl = self.decl(&table);
-        let transaction = Bounds { valid_as_of: None, ..opts.bounds };
+        let transaction = opts.bounds.transaction();
         if !scan(&self.store, &decl, transaction)?.files.iter().any(|f| f == path) {
             return Err(ReadError::FilePreviewNotATable(format!("`{path}` is no committed data file of `{table}`")).into());
         }
