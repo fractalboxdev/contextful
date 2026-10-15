@@ -267,7 +267,7 @@ impl Face {
         // Deduplication runs where the relevance floor does; a browse-shaped read, with no
         // content token, skips it (`read.retrieve.dedup-is-gated`).
         let deduplicating = floor.is_some();
-        self.bind_valid_time(&touched, bounds)?;
+        self.bind_bounds(&touched, bounds)?;
         let engine = self.pool.engine(session, self.store.parquet_key())?;
         let anchor = request.anchor;
         let memory_tables: Vec<String> = self.memory().tables.iter().map(|t| t.name.clone()).collect();

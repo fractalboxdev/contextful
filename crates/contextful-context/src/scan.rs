@@ -8,7 +8,7 @@ use contextful_core::store::bound_time::Bounds;
 use contextful_core::store::declare::TableDecl;
 use contextful_core::store::lay_out::SnapshotManifest;
 use contextful_core::store::reconcile::{Column, Schema};
-use contextful_core::store::relation::relation_with_encryption;
+use contextful_core::store::relation::relation_bounded;
 use contextful_core::store::resolve::Resolution;
 use serde_json::Value;
 use std::collections::BTreeSet;
@@ -38,8 +38,8 @@ pub fn scan(store: &Store, decl: &TableDecl, bounds: Bounds) -> Result<Scan> {
 
 /// Resolve `decl`'s table to `snapshot`'s parts alone where one is given — a pinned
 /// build's committed manifest (`read.resolve-pin.pin-parameter`), read under the columns
-/// its own parts carry — and under `bounds` otherwise; `valid_as_of` wraps the relation
-/// either way.
+/// its own parts carry — and under `bounds` otherwise; `valid_as_of` and
+/// `available_as_of` wrap the relation either way.
 pub fn scan_at(store: &Store, decl: &TableDecl, bounds: Bounds, snapshot: Option<&SnapshotManifest>) -> Result<Scan> {
     let table = decl.name.as_str();
     let state;
@@ -83,6 +83,6 @@ pub fn scan_at(store: &Store, decl: &TableDecl, bounds: Bounds, snapshot: Option
     }
     let absent: Vec<Column> = schema.columns.iter().filter(|c| !carried.contains(&c.name)).cloned().collect();
     let key_name = store.parquet_key().map(|_| crate::encrypt::PARQUET_KEY_NAME);
-    let relation = relation_with_encryption(decl, &absolute, &schema.columns, &absent, bounds.valid_as_of, key_name)?;
+    let relation = relation_bounded(decl, &absolute, &schema.columns, &absent, bounds, key_name)?;
     Ok(Scan { files, relation, columns: schema.columns, bounds: bounds.echo(), publish })
 }

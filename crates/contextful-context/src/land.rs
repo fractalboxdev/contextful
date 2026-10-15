@@ -735,6 +735,14 @@ fn reconcile(
             )).into());
         }
     }
+    if let Some(available) = &decl.available_time {
+        if all_rows().any(|row| row.get(&available.column).is_none_or(Value::is_null)) {
+            return Err(StoreError::StoreAvailableTimeNull(format!(
+                "table `{table}`, run `{}`: a row carries no `{}` availability instant",
+                injection.run_id, available.column
+            )).into());
+        }
+    }
     decl.validate_index_types(&merged)?;
     // Every refusal of the batch has fired. The schema commits before the manifest, so
     // a fold reading a run finds its columns in the schema it reads after.

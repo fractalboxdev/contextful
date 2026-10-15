@@ -40,6 +40,16 @@ pub struct ValidTime {
     pub to: Option<String>,
 }
 
+/// The declared instant each row's value became public (`store.available-time.declaration`).
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct AvailableTime {
+    pub column: String,
+    /// The zone a date-typed value resolves in; UTC when unset.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub zone: Option<String>,
+}
+
 /// The timestamp and age limiting rows of a table (`store.declare.retain-rows`).
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
@@ -80,6 +90,9 @@ pub struct TableDecl {
     pub visibility: Option<Value>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub valid_time: Option<ValidTime>,
+    /// The availability instant an `available_as_of` read compares (`store.available-time.table-key`).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub available_time: Option<AvailableTime>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub cluster_by: Option<Vec<String>>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -289,6 +302,7 @@ impl TableDecl {
             names.insert(time.from.as_str());
             if let Some(to) = &time.to { names.insert(to.as_str()); }
         }
+        if let Some(time) = &self.available_time { names.insert(time.column.as_str()); }
         if let Some(retention) = &self.retain_rows { names.insert(retention.column.as_str()); }
         for index in self.indexes.iter().flatten() {
             names.insert(index.column.as_str());

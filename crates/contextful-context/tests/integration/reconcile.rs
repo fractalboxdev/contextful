@@ -208,7 +208,7 @@ fn a_scan_invents_no_column() {
     assert_eq!(f.query(&d, Bounds::default(), "SELECT doc, pages FROM t ORDER BY doc"), [[s("a"), None], [s("b"), s("3")]]);
 
     // Bounded to before the column existed, no listed file carries it: it enters through a zero-row branch.
-    let bound = Bounds { as_of: Some(contextful_core::store::bound_time::Bound::parse("2030-01-01T00:00:30Z").unwrap()), valid_as_of: None };
+    let bound = Bounds { as_of: Some(contextful_core::store::bound_time::Bound::parse("2030-01-01T00:00:30Z").unwrap()), valid_as_of: None, available_as_of: None };
     let rel = f.scan(&d, bound).unwrap().relation;
     assert!(rel.contains("UNION ALL BY NAME SELECT CAST(NULL AS BIGINT) AS \"pages\" WHERE false"), "{rel}");
     assert_eq!(f.query(&d, bound, "SELECT doc, pages FROM t"), [[s("a"), None]]);
@@ -465,7 +465,7 @@ fn half_floats_store_at_half_width_and_read_as_float_arrays() {
     let types = f.query(&d, Bounds::default(), "SELECT typeof(embedding), typeof(digest), count(*) FROM t GROUP BY ALL");
     assert_eq!(types, [[s("FLOAT[3]"), s("BLOB"), s("2")]]);
     // Bounded to before any run, the table is a zero-row relation over the same engine types.
-    let bound = Bounds { as_of: Some(contextful_core::store::bound_time::Bound::parse("2029-12-31T00:00:00Z").unwrap()), valid_as_of: None };
+    let bound = Bounds { as_of: Some(contextful_core::store::bound_time::Bound::parse("2029-12-31T00:00:00Z").unwrap()), valid_as_of: None, available_as_of: None };
     let rel = f.scan(&d, bound).unwrap().relation;
     assert!(rel.contains("CAST(NULL AS FLOAT[3]) AS \"embedding\"") && rel.contains("CAST(NULL AS BLOB) AS \"digest\""), "{rel}");
 }

@@ -2,6 +2,7 @@
 //! through SQL runs only in the build linking `read`; the rest run in both.
 #![cfg_attr(not(feature = "read"), allow(unused_imports, dead_code))]
 
+mod available_time;
 mod bound_time;
 mod build;
 mod catalog;

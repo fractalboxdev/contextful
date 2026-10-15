@@ -429,6 +429,109 @@ fn a_listing_ignores_valid_as_of_and_echoes_only_as_of() {
     assert_eq!(echoed(&tables), &echo, "{tables}");
 }
 
+const AVAILABLE: &str = r#"[[pipeline.tables]]
+name = "research/filings"
+primary_key = ["doc"]
+
+[[pipeline.tables]]
+name = "research/earnings"
+primary_key = ["filing_id"]
+
+[pipeline.tables.available_time]
+column = "accepted_at"
+
+[[query_templates]]
+id = "earnings"
+sql = "SELECT filing_id FROM \"research/earnings\" WHERE ticker = ? ORDER BY filing_id"
+parameters = ["ticker:string"]
+"#;
+
+/// Two quarters' earnings, each accepted after its quarter closes and both landed on 1 September,
+/// beside a keyed table declaring no availability time.
+fn available() -> Fixture {
+    let decls = TableDecl::parse_pipeline(AVAILABLE).unwrap();
+    let decl = |name: &str| decls.iter().find(|d| d.name == name).unwrap().clone();
+    fixture_over(AVAILABLE, |store| {
+        put(store, &decl("research/filings"), "run-1", "2030-01-01T00:00:00Z", json!([{ "doc": "a", "v": 1 }]), &[]);
+        let earnings = json!([
+            { "filing_id": "acme-q1", "ticker": "ACME", "accepted_at": "2030-05-02T16:05:00Z" },
+            { "filing_id": "acme-q2", "ticker": "ACME", "accepted_at": "2030-08-01T16:05:00Z" },
+        ]);
+        put(store, &decl("research/earnings"), "run-1", "2030-09-01T00:00:00Z", earnings, &[("accepted_at", ColumnType::Timestamp)]);
+    })
+}
+
+/// Every read tool {{read.register.bound-arguments}} names also admits `available_as_of` and echoes it under {{store.available-time.bound-echo}}; {{store.available-time.available-as-of}} wraps only the tables the read touches.
+// spec: read.register.available-bound-argument@8d2ed6a1
+#[test]
+fn available_as_of_wraps_only_the_tables_a_read_touches() {
+    let f = available();
+    let clock = FixedClock(at("2030-09-02T00:00:00Z"));
+    let server = Server::new(&f.face, f.authority.clone(), &current, &clock, &f.audit).unwrap();
+    let when = "2030-06-01T00:00:00Z";
+    let echo = json!({ "available_as_of": "2030-06-01T00:00:00.000000000Z", "inclusive": true });
+    let sql = r#"SELECT filing_id FROM "research/earnings" ORDER BY filing_id"#;
+
+    // `research/filings` declares no availability time and sits in the session; the statement touches `research/earnings` alone.
+    let june = call(&server, "context.query", json!({ "sql": sql, "available_as_of": when }));
+    assert_eq!(rows(&june), &json!([["acme-q1"]]));
+    assert_eq!(echoed(&june), &echo);
+    let september = call(&server, "context.query", json!({ "sql": sql, "available_as_of": "2030-09-01" }));
+    assert_eq!(rows(&september), &json!([["acme-q1"], ["acme-q2"]]));
+    let april = call(&server, "context.query", json!({ "sql": sql, "available_as_of": "2030-04-30T00:00:00Z" }));
+    assert_eq!(rows(&april), &json!([]));
+
+    let executed = call(&server, "context.execute_query", json!({ "id": "earnings", "arguments": { "ticker": "ACME" }, "available_as_of": when }));
+    assert_eq!(rows(&executed), &json!([["acme-q1"]]));
+    assert_eq!(echoed(&executed), &echo);
+    let template = call(&server, "earnings", json!({ "ticker": "ACME", "available_as_of": when }));
+    assert_eq!(rows(&template), &json!([["acme-q1"]]));
+    assert_eq!(echoed(&template), &echo);
+
+    let undeclared = call(&server, "context.query", json!({ "sql": r#"SELECT v FROM "research/filings""#, "available_as_of": when }));
+    assert_eq!(undeclared["result"]["isError"], json!(true), "{undeclared}");
+    let text = undeclared["result"]["content"][0]["text"].as_str().unwrap();
+    assert!(text.contains("StoreAvailableTimeUndeclared") && text.contains("research/filings"), "{undeclared}");
+
+    let described = call(&server, "context.describe", json!({ "table": "research/earnings", "available_as_of": when }));
+    assert_eq!(described["result"]["structuredContent"]["row_count"], json!("1"), "{described}");
+    assert_eq!(echoed(&described), &echo);
+
+    let listed = call(&server, "context.files", json!({}));
+    let part = rows(&listed).as_array().unwrap().iter().find(|r| r[0] == json!("research/earnings")).unwrap()[1].clone();
+    let preview = call(&server, "context.file", json!({ "path": part, "available_as_of": when }));
+    assert_eq!(rows(&preview).as_array().unwrap().len(), 1, "{preview}");
+    assert_eq!(echoed(&preview), &echo);
+
+    let retrieved = call(&server, "corpus.retrieve", json!({ "prefix": "research/earnings", "query": "acme", "available_as_of": when }));
+    assert_eq!(rows(&retrieved).as_array().unwrap().len(), 1, "{retrieved}");
+    assert_eq!(echoed(&retrieved), &echo);
+
+    let recalled = call(&server, "memory.recall", json!({ "table": "research/earnings", "subject": "acme", "available_as_of": when }));
+    assert!(recalled.get("error").is_some() || recalled["result"]["isError"] == json!(true), "{recalled}");
+}
+
+/// A listing {{read.register.bound-listing}} names ignores `available_as_of` and echoes no `available_as_of` part.
+// spec: read.register.available-bound-listing@5895d568
+#[test]
+fn a_listing_ignores_available_as_of() {
+    let f = available();
+    let clock = FixedClock(at("2030-09-02T00:00:00Z"));
+    let server = Server::new(&f.face, f.authority.clone(), &current, &clock, &f.audit).unwrap();
+    let when = "2030-06-01T00:00:00Z";
+
+    let unbounded = call(&server, "context.files", json!({}));
+    let available_only = call(&server, "context.files", json!({ "available_as_of": when }));
+    assert_eq!(rows(&available_only), rows(&unbounded));
+    assert!(available_only["result"]["structuredContent"].get("contextful.bounds").is_none(), "{available_only}");
+    let both = call(&server, "context.files", json!({ "as_of": "2030-09-02T00:00:00Z", "available_as_of": when }));
+    assert_eq!(echoed(&both), &json!({ "as_of": "2030-09-02T00:00:00.000000000Z", "inclusive": true }));
+
+    let tables = call(&server, "context.describe", json!({ "available_as_of": when }));
+    assert!(tables["result"]["structuredContent"].get("contextful.bounds").is_none(), "{tables}");
+    assert_eq!(tables["result"]["structuredContent"]["tables"].as_array().unwrap().len(), 2, "{tables}");
+}
+
 #[test]
 fn every_read_tool_declares_both_bounds() {
     let f = bounded();
@@ -440,9 +543,9 @@ fn every_read_tool_declares_both_bounds() {
     for tool in tools {
         let properties = &tool["inputSchema"]["properties"];
         let (present, absent) = if tool["name"] == json!("memory.recall") {
-            (["observed_at", "as_of_ingest"], ["as_of", "valid_as_of"])
+            (vec!["observed_at", "as_of_ingest"], vec!["as_of", "valid_as_of", "available_as_of"])
         } else {
-            (["as_of", "valid_as_of"], ["observed_at", "as_of_ingest"])
+            (vec!["as_of", "valid_as_of", "available_as_of"], vec!["observed_at", "as_of_ingest"])
         };
         for bound in present {
             assert_eq!(properties[bound]["type"], json!("string"), "{} lacks `{bound}`", tool["name"]);

@@ -108,9 +108,9 @@ fn bounds_compare_instants_and_a_date_resolves_to_the_next_day_exclusive() {
 #[test]
 fn a_bounded_read_echoes_its_bounds() {
     assert_eq!(Bounds::default().echo(), None);
-    let b = Bounds { as_of: Some(Bound::parse("2030-01-01T01:00:00+01:00").unwrap()), valid_as_of: None };
+    let b = Bounds { as_of: Some(Bound::parse("2030-01-01T01:00:00+01:00").unwrap()), valid_as_of: None, available_as_of: None };
     assert_eq!(b.echo().unwrap(), serde_json::json!({"as_of": "2030-01-01T00:00:00.000000000Z", "inclusive": true}));
-    let b = Bounds { as_of: None, valid_as_of: Some(Bound::parse("2030-01-01").unwrap()) };
+    let b = Bounds { as_of: None, valid_as_of: Some(Bound::parse("2030-01-01").unwrap()), available_as_of: None };
     assert_eq!(b.echo().unwrap(), serde_json::json!({"valid_as_of": "2030-01-02T00:00:00.000000000Z", "inclusive": false}));
 }
 

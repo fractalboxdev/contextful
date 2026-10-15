@@ -23,7 +23,7 @@ use contextful_core::store::bound_time::Bounds;
 use contextful_core::store::StoreError;
 use contextful_core::store::declare::{DeclarationMalformed, TableDecl};
 use contextful_core::store::reconcile::{Column, ColumnType};
-use contextful_core::store::relation::{ident, relation, relation_with_encryption};
+use contextful_core::store::relation::{ident, relation, relation_bounded};
 use contextful_core::store::reserve::{COMMIT_SEQ, INGESTED_AT, ROW_SEQ, RUN_ID, SITE_ID};
 use contextful_policy::enforce::mask::Pepper;
 use contextful_policy::enforce::policy::TablePolicy;
@@ -335,7 +335,7 @@ impl Face {
         let frontier = self.read_frontier(session)?;
         self.registered(session, table)?;
         let touched = BTreeSet::from([table.to_string()]);
-        self.bind_valid_time(&touched, opts.bounds)?;
+        self.bind_bounds(&touched, opts.bounds)?;
         let reference = contextful_core::memory::synthesize::EvidenceRef { table:table.to_string(), run:run.to_string(), seq, key_digest:None };
         let engine = self.pool.engine(session, self.store.parquet_key())?;
         let verdict = self.evidence_read(&engine, session, &reference, &touched, opts.max_duration_ms)?;
@@ -429,9 +429,10 @@ impl Face {
 
     /// Open a session for an admitted authority: one relation per table its read grants
     /// cover, compiled under the request's zone and bounds. A `valid_as_of` wraps only the
-    /// tables declaring a valid-time pair (`store.bound-time.valid-as-of`); a table
-    /// declaring none compiles under `as_of` alone and refuses only a read that names it
-    /// ([`Face::bind_valid_time`]). A session pooled under the same whole key is reused;
+    /// tables declaring a valid-time pair (`store.bound-time.valid-as-of`) and an
+    /// `available_as_of` only those declaring an availability time
+    /// (`read.register.available-bound-argument`); a table declaring neither compiles
+    /// under `as_of` alone and refuses only a read that names it ([`Face::bind_bounds`]). A session pooled under the same whole key is reused;
     /// the key is computed before any resolution, so a commit racing the resolution lands
     /// under a key no later call computes (`read.cache.session-pool`).
     pub fn session(&self, authority: &AdmittedAuthority, request: &Request<'_>, bounds: Bounds) -> Result<Session, ReadFault> {
@@ -453,11 +454,10 @@ impl Face {
         }
         let principal = pool::principal(authority, request, bounds, pins);
         let state = pool::store_state(&self.store, &tables, &granted)?;
-        let transaction = Bounds { valid_as_of: None, ..bounds };
         self.pool.session(principal, state, || {
             let sources = granted
                 .iter()
-                .map(|t| self.source(t, if self.decl(t).valid_time.is_some() { bounds } else { transaction }, pins.build(t)))
+                .map(|t| self.source(t, bounds.for_table(&self.decl(t)), pins.build(t)))
                 .collect::<Result<Vec<_>, _>>()?;
             Ok(Session::open(authority, request, sources, &self.pepper)?)
         })
@@ -469,15 +469,18 @@ impl Face {
     }
 
     /// Refuse a `valid_as_of` read touching a table that declares no valid-time pair
-    /// (`store.bound-time.valid-time-undeclared`). The session already compiles every
-    /// declaring table under `valid_as_of`, so a pooled connection is never re-registered.
-    pub(crate) fn bind_valid_time(&self, touched: &BTreeSet<String>, bounds: Bounds) -> Result<(), ReadFault> {
-        if bounds.valid_as_of.is_none() {
-            return Ok(());
-        }
+    /// (`store.bound-time.valid-time-undeclared`), and an `available_as_of` read touching
+    /// one that declares no availability time (`store.available-time.undeclared`). The
+    /// session already compiles every declaring table under its bound, so a pooled
+    /// connection is never re-registered.
+    pub(crate) fn bind_bounds(&self, touched: &BTreeSet<String>, bounds: Bounds) -> Result<(), ReadFault> {
         for table in touched {
-            if self.decl(table).valid_time.is_none() {
+            let decl = self.decl(table);
+            if bounds.valid_as_of.is_some() && decl.valid_time.is_none() {
                 return Err(StoreError::StoreValidTimeUndeclared(format!("table `{table}` declares no valid-time pair")).into());
+            }
+            if bounds.available_as_of.is_some() && decl.available_time.is_none() {
+                return Err(StoreError::StoreAvailableTimeUndeclared(format!("table `{table}` declares no `available_time`")).into());
             }
         }
         Ok(())
@@ -643,7 +646,7 @@ impl Face {
         let bindings = bind_query(parameters, &admitted.placeholders)?;
         scope::guard(&tree, session, &bindings)?;
         engine.register_ledgers(&self.store, session, &admitted.relations)?;
-        self.bind_valid_time(&admitted.relations, opts.bounds)?;
+        self.bind_bounds(&admitted.relations, opts.bounds)?;
         let ceiling = self.ceiling(session, &admitted.relations, opts.limit, None);
         let mut response = self.answer(&engine, session, &admitted.relations, sql, &bindings, ceiling, opts, &tree)?;
         if opts.internals {
@@ -670,7 +673,7 @@ impl Face {
         let parameters = template.bindings(values, &admitted.placeholders);
         scope::guard(&tree, session, &parameters)?;
         engine.register_ledgers(&self.store, session, &admitted.relations)?;
-        self.bind_valid_time(&admitted.relations, opts.bounds)?;
+        self.bind_bounds(&admitted.relations, opts.bounds)?;
         let ceiling = self.ceiling(session, &admitted.relations, opts.limit, template.max_rows);
         let response = self.answer(&engine, session, &admitted.relations, &template.sql, &parameters, ceiling, opts, &tree)?;
         let response = self.finish_budget(session, &admitted.relations, opts, template.max_rows, ceiling, response)?;
@@ -731,10 +734,10 @@ impl Face {
                     })
                 })
                 .collect();
-            return self.publish_read(Some(session), &frontier, echo(json!({ "session_zone": session.zone().label(), "tables": tables }), Bounds { valid_as_of: None, ..bounds }));
+            return self.publish_read(Some(session), &frontier, echo(json!({ "session_zone": session.zone().label(), "tables": tables }), bounds.transaction()));
         };
         let r = self.registered(session, table)?;
-        self.bind_valid_time(&BTreeSet::from([table.to_string()]), bounds)?;
+        self.bind_bounds(&BTreeSet::from([table.to_string()]), bounds)?;
         let engine = self.pool.engine(session, self.store.parquet_key())?;
         // The row count beside the serialized JSON length of the caller's restricted rows
         // (`read.register.size-estimate`).
@@ -833,7 +836,7 @@ impl Face {
     pub fn files_with_options(&self, session: &Session, opts: ReadOptions) -> Result<Response, ReadFault> {
         let started = std::time::Instant::now();
         let frontier = self.read_frontier(session)?;
-        let transaction = Bounds { valid_as_of: None, ..opts.bounds };
+        let transaction = opts.bounds.transaction();
         let touched: BTreeSet<String> = session.relations().map(|r| r.name().to_string()).collect();
         let ceiling = contextful_core::read::respond::FACE_ROW_CEILING;
         let mut rows = Vec::new();
@@ -879,7 +882,7 @@ impl Face {
         let table = preview_target(path)?;
         self.registered(session, &table)?;
         let decl = self.decl(&table);
-        let transaction = Bounds { valid_as_of: None, ..opts.bounds };
+        let transaction = opts.bounds.transaction();
         if !scan(&self.store, &decl, transaction)?.files.iter().any(|f| f == path) {
             return Err(ReadError::FilePreviewNotATable(format!("`{path}` is no committed data file of `{table}`")).into());
         }
@@ -888,7 +891,7 @@ impl Face {
         let carried = self.store.parquet_columns(std::path::Path::new(&file))?;
         let absent: Vec<Column> = schema.columns.iter().filter(|c| !carried.contains(&c.name)).cloned().collect();
         let key_name = self.store.parquet_key().map(|_| crate::encrypt::PARQUET_KEY_NAME);
-        let base = relation_with_encryption(&decl, std::slice::from_ref(&file), &schema.columns, &absent, opts.bounds.valid_as_of, key_name)?;
+        let base = relation_bounded(&decl, std::slice::from_ref(&file), &schema.columns, &absent, opts.bounds, key_name)?;
         let preview = session.relation_over(&table, &base, vec![file]).expect("a registered table carries its source");
         let engine = SqlEngine::open(session, self.store.parquet_key())?;
         engine.register(PREVIEW_RELATION, preview.sql())?;
@@ -1222,11 +1225,11 @@ fn builtin_tool(name: &str) -> Value {
 /// How a bound argument's literal reads (`store.bound-time.instant-comparison`).
 const INSTANT_LITERAL: &str = "An RFC 3339 instant, or a YYYY-MM-DD date read as the start of the next day, exclusive.";
 
-/// The two bound arguments every read tool but `memory.recall` declares
-/// (`read.register.bound-arguments`).
-fn bound_properties() -> [(String, Value); 2] {
+/// The bound arguments every read tool but `memory.recall` declares
+/// (`read.register.bound-arguments`, `read.register.available-bound-argument`).
+fn bound_properties() -> [(String, Value); 3] {
     let instant = || json!({ "type": "string", "description": INSTANT_LITERAL });
-    [("as_of".into(), instant()), ("valid_as_of".into(), instant())]
+    [("as_of".into(), instant()), ("valid_as_of".into(), instant()), ("available_as_of".into(), instant())]
 }
 
 /// The `pin` argument every read tool declares (`read.resolve-pin.pin-parameter`).

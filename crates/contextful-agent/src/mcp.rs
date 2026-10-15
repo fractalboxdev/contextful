@@ -188,11 +188,11 @@ fn bound(args: &Map<String, Value>, name: &str) -> Result<Option<Bound>, Protoco
 }
 
 fn bounds(args: &Map<String, Value>) -> Result<Bounds, Protocol> {
-    Ok(Bounds { as_of: bound(args, "as_of")?, valid_as_of: bound(args, "valid_as_of")? })
+    Ok(Bounds { as_of: bound(args, "as_of")?, valid_as_of: bound(args, "valid_as_of")?, available_as_of: bound(args, "available_as_of")? })
 }
 
-/// Refuse an argument a tool does not declare; every read tool declares both bounds and `zone`
-/// (`read.register.bound-arguments`).
+/// Refuse an argument a tool does not declare; every read tool declares the bounds and `zone`
+/// (`read.register.bound-arguments`, `read.register.available-bound-argument`).
 fn only(args: &Map<String, Value>, tool: &str, known: &[&str]) -> Result<(), Protocol> {
     match args.keys().find(|k| !known.contains(&k.as_str()) && !READ_ARGUMENTS.contains(&k.as_str())) {
         Some(k) => Err(invalid(format!("`{tool}` takes no argument `{k}`"))),
@@ -542,7 +542,7 @@ impl<'a> Tools<'a> {
             "memory.recall" => {
                 only(args, name, &["table", "subject", "observed_at", "as_of_ingest", "limit", "internals"])?;
                 // The keyed read names its two clocks itself (`read.register.bound-arguments`).
-                if let Some(k) = ["as_of", "valid_as_of"].into_iter().find(|k| args.contains_key(*k)) {
+                if let Some(k) = ["as_of", "valid_as_of", "available_as_of"].into_iter().find(|k| args.contains_key(*k)) {
                     return Err(invalid(format!("`{name}` takes no argument `{k}`; it reads `observed_at` and `as_of_ingest`")));
                 }
                 let request = RecallRequest {

@@ -118,6 +118,7 @@ fn old_rows_are_hidden_before_fold_and_inside_an_older_snapshot() {
     let past = Bounds {
         as_of: Some(Bound::parse("2200-01-01T12:00:00Z").unwrap()),
         valid_as_of: None,
+        available_as_of: None,
     };
     assert_eq!(
         f.query(&d, past, "SELECT id FROM t ORDER BY id"),
@@ -138,7 +139,7 @@ fn a_superseded_snapshot_does_not_restore_a_now_expired_row() {
     fold(&f.store, &d, first_fold).unwrap();
     f.land(&d, "fresh", json!([{"id": "fresh"}]), &now.minus_secs(2 * 86_400).to_rfc3339()).unwrap();
     fold(&f.store, &d, now.minus_secs(86_400)).unwrap();
-    let past = Bounds { as_of: Some(Bound { at: first_fold.plus_secs(3600), inclusive: true }), valid_as_of: None };
+    let past = Bounds { as_of: Some(Bound { at: first_fold.plus_secs(3600), inclusive: true }), valid_as_of: None, available_as_of: None };
     assert!(f.query(&d, past, "SELECT id FROM t").is_empty());
     assert_eq!(f.query(&d, Bounds::default(), "SELECT id FROM t"), [[s("fresh")]]);
 }
