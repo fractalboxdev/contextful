@@ -26,3 +26,15 @@ fn success_and_an_empty_failure_release_every_other_status_holds() {
         assert!(!releases(s, 2), "{s}");
     }
 }
+
+/// A seeding scope is a table or chunk scope whose table segment carries `#seed`; the live table's scopes and a host
+/// scope are not.
+#[test]
+fn a_seeding_scope_is_named_by_its_seed_table_segment() {
+    use contextful_core::run::own::OwnerScope;
+    assert!(OwnerScope::seed("feed", "filings").seeding());
+    assert!(OwnerScope::chunk("feed", "filings#seed", "c0").seeding());
+    assert!(!OwnerScope::table("feed", "filings").seeding());
+    assert!(!OwnerScope::chunk("feed", "filings", "c0").seeding());
+    assert!(!OwnerScope::host("job:seed#seed").seeding());
+}

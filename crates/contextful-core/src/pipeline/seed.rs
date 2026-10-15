@@ -46,7 +46,8 @@ impl Ceiling {
         }
     }
 
-    fn render(&self) -> String {
+    /// The ceiling as declared: the instant in RFC 3339 at nanosecond width, or the number.
+    pub fn render(&self) -> String {
         match self {
             Ceiling::Instant { at, .. } => at.to_rfc3339_nanos(),
             Ceiling::Number(n) => n.to_string(),

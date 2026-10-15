@@ -354,6 +354,38 @@ fn a_chunk_commit_marks_its_row_done_in_the_retiring_transaction_and_a_rewind_re
     assert_eq!(c.update_chunk(&OwnerScope::chunk("feed", "filings", "c9"), None, &mut ChunkRow::rewind).unwrap(), None);
 }
 
+/// Deleting a table's chunk plan removes every chunk scope of that table, its plan row, cursor and owner, in one
+/// transaction, and leaves every other table's plan and the live table's scope.
+#[test]
+fn deleting_a_chunk_plan_removes_each_chunk_scope_of_the_table_alone() {
+    for sealed in [false, true] {
+        let dir = tempfile::tempdir().unwrap();
+        let clock = SetClock::new();
+        let c = if sealed { sealed_catalog(&dir, &clock, 7) } else { catalog(&dir, &clock) };
+        let window = |s: i64| Window::new(Bound::Int(s), Bound::Int(s + 10)).unwrap();
+        for (table, chunk, ordinal) in [("filings#seed", "c1", 1), ("filings#seed", "c0", 0), ("orders", "c0", 0)] {
+            c.put_chunk(&ChunkRow::planned("feed", table, chunk, ordinal, window(10 * ordinal as i64))).unwrap();
+        }
+        let at0 = OwnerScope::chunk("feed", "filings#seed", "c0");
+        let mut held = owner("x-c0");
+        held.scope = at0.clone();
+        c.put_owner(&held).unwrap();
+        assert_eq!(c.cursor_cas_at(&at0, 0, cursor("p1"), None).unwrap(), Cas::Applied);
+        let live = OwnerScope::table("feed", "filings#seed");
+        assert_eq!(c.cursor_cas_at(&live, 0, cursor("stamp"), None).unwrap(), Cas::Applied);
+
+        let removed = c.delete_chunks("feed", "filings#seed").unwrap();
+        assert_eq!(removed.iter().map(|r| r.chunk.as_str()).collect::<Vec<_>>(), ["c0", "c1"], "the removed rows answer in plan order");
+        assert!(c.chunks("feed", "filings#seed").unwrap().is_empty());
+        assert_eq!(c.chunk_at(&at0).unwrap(), None);
+        assert_eq!(c.owner_at(&at0).unwrap(), None);
+        assert_eq!(c.cursor_at(&at0).unwrap(), CursorRow::default(), "the chunk scope's cursor goes with its row");
+        assert_eq!(c.chunks("feed", "orders").unwrap().len(), 1, "another table's plan stays");
+        assert_eq!(c.cursor_at(&live).unwrap().position, Some(json!("stamp")), "the table scope stays");
+        assert!(c.delete_chunks("feed", "filings#seed").unwrap().is_empty());
+    }
+}
+
 #[test]
 fn run_rows_list_by_pipeline_and_a_refused_update_writes_nothing() {
     let dir = tempfile::tempdir().unwrap();

@@ -51,6 +51,7 @@ pub fn row(run_id: &str, started: &str) -> RunRow {
         connector_hash: "h".into(),
         trace_id: None,
         phase: Phase::Plan,
+        pipeline_phase: None,
         execution_id: "x-1".into(),
         stop: None,
         host_scope: None,

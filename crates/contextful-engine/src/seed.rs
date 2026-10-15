@@ -122,6 +122,32 @@ impl<J: JournalStore, B: BlobStore> Seeding<'_, J, B> {
         Ok(SeedState { chunks, fingerprint })
     }
 
+    /// Clear the seed of `pipeline_id`'s `table`: every chunk scope under `<table>#seed`, the
+    /// journals of their pending owners, and the commit stamp, so the next run plans and loads
+    /// the seed anew (`run.seed.commands`). Rows the seed landed stay. Answers the removed chunks.
+    pub fn reset(&self, pipeline_id: &str, table: &str) -> Result<Vec<ChunkRow>, EngineError> {
+        let catalog = &self.engine.catalog;
+        let seeded = seed_table(table);
+        let mut pending = Vec::new();
+        for chunk in catalog.chunks(pipeline_id, &seeded)? {
+            pending.extend(catalog.owner_at(&chunk.scope())?.map(|o| o.execution_id));
+        }
+        let removed = catalog.delete_chunks(pipeline_id, &seeded)?;
+        for execution_id in pending {
+            self.engine.journal.collect(&execution_id)?;
+        }
+        let scope = OwnerScope::seed(pipeline_id, table);
+        let held = catalog.cursor_at(&scope)?;
+        if held.position.is_some() {
+            match catalog.cursor_cas_at(&scope, held.version, CursorRow::default(), None)? {
+                Cas::Applied => {}
+                Cas::VersionMoved => return Err(Failure::new(FailureTag::Transient, format!("the seed stamp of {scope} moved under its reset")).into()),
+                Cas::Fenced(e) => return Err(Failure::new(FailureTag::Storage, e.to_string()).into()),
+            }
+        }
+        Ok(removed)
+    }
+
     /// Probe the seed source through `fingerprint`, then run the seed's next claimable chunk
     /// as `spec.run_id`. A committed seed compares the probed fingerprint with its stamp and
     /// runs nothing (`run.seed.source-changed`). A chunk passes `shape` and then the ceiling

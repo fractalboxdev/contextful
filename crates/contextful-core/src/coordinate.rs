@@ -245,6 +245,12 @@ pub trait Catalog {
     fn put_chunk(&self, row: &ChunkRow) -> Result<(), Failure> {
         Err(Failure::new(FailureTag::Permanent, format!("this catalog keeps no chunk plan; chunk `{}` of `{}`/`{}` has no home", row.chunk, row.pipeline_id, row.table)))
     }
+    /// Remove every chunk scope of a pipeline's table, its plan row, cursor, owner and last
+    /// retirement, answering the removed plan rows in plan order. A catalog keeping no chunk
+    /// plans holds none to remove.
+    fn delete_chunks(&self, _pipeline_id: &str, _table: &str) -> Result<Vec<ChunkRow>, Failure> {
+        Ok(Vec::new())
+    }
     /// Apply `f` to the chunk row of `scope` and, given an execution id, retire the scope's
     /// owner while it holds that id, in one transaction; `None` when no row exists.
     fn update_chunk(&self, scope: &OwnerScope, _retire: Option<&str>, _f: &mut dyn FnMut(&mut ChunkRow)) -> Result<Option<ChunkRow>, Failure> {

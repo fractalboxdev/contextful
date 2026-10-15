@@ -1034,3 +1034,27 @@ fn json_object_page_number_pagination_refuses_before_io() {
     }
     assert!(vendor.requests.lock().unwrap().is_empty());
 }
+
+/// A seed source's fingerprint is one HEAD of its table URL under the declared headers: it reads no body and spells
+/// the answer's `ETag`, `Last-Modified` and `Content-Length`; a failed or bare answer yields none.
+#[test]
+fn a_fingerprint_is_one_head_spelling_the_validators_and_reads_no_body() {
+    let server = Server::start(|r| match r.path() {
+        "/exports/items" => Response {
+            status: 200,
+            headers: vec![("ETag".into(), "\"v1\"".into()), ("Last-Modified".into(), "Wed, 01 Jan 2030 00:00:00 GMT".into())],
+            body: b"[{\"id\":1}]".to_vec(),
+        },
+        "/exports/bare" => Response { status: 200, headers: vec![], body: Vec::new() },
+        _ => Response::json(404, "{}"),
+    });
+    let config = |path: &str| json!({ "endpoint": server.url(path), "headers": { "X-Export": "nightly" } });
+    let head = source(config("/exports/items"), vec![]);
+    assert_eq!(head.fingerprint().as_deref(), Some("etag=\"v1\";last-modified=Wed, 01 Jan 2030 00:00:00 GMT;length=10"));
+    let seen = server.received("/exports/items");
+    assert_eq!(seen.iter().map(|r| r.method.as_str()).collect::<Vec<_>>(), ["HEAD"], "the probe issues one HEAD and no GET");
+    assert_eq!(seen[0].header("X-Export"), Some("nightly"), "the HEAD carries the declared headers");
+
+    assert_eq!(source(config("/exports/bare"), vec![]).fingerprint().as_deref(), Some("length=0"), "a bare answer still spells its length");
+    assert_eq!(source(config("/exports/missing"), vec![]).fingerprint(), None, "an answer outside 2xx yields no fingerprint");
+}

@@ -281,6 +281,17 @@ fn chunk_row(tx: &Transaction, at: &OwnerScope, fail: Fail) -> Result<Option<Chu
     text.map(|t| from_text(&t, fail)).transpose()
 }
 
+/// Every plan row of a pipeline's table, in plan order.
+fn chunk_rows(tx: &Transaction, pipeline_id: &str, table: &str, fail: Fail) -> Result<Vec<ChunkRow>, Failure> {
+    let mut stmt = tx.prepare("SELECT row FROM chunk WHERE pipeline_id = ?1 AND tbl = ?2 ORDER BY ordinal, part").map_err(|e| fail(&e))?;
+    let texts = stmt
+        .query_map(params![pipeline_id, table], |r| r.get::<_, String>(0))
+        .map_err(|e| fail(&e))?
+        .collect::<Result<Vec<_>, _>>()
+        .map_err(|e| fail(&e))?;
+    texts.iter().map(|t| from_text(t, fail)).collect()
+}
+
 fn put_chunk_row(tx: &Transaction, row: &ChunkRow, fail: Fail) -> Result<(), Failure> {
     let text = to_text(row, fail)?;
     tx.execute(
@@ -418,14 +429,15 @@ impl Catalog for MachineCatalog {
     }
 
     fn chunks(&self, pipeline_id: &str, table: &str) -> Result<Vec<ChunkRow>, Failure> {
-        self.with(false, |tx, fail| {
-            let mut stmt = tx.prepare("SELECT row FROM chunk WHERE pipeline_id = ?1 AND tbl = ?2 ORDER BY ordinal, part").map_err(|e| fail(&e))?;
-            let texts = stmt
-                .query_map(params![pipeline_id, table], |r| r.get::<_, String>(0))
-                .map_err(|e| fail(&e))?
-                .collect::<Result<Vec<_>, _>>()
-                .map_err(|e| fail(&e))?;
-            texts.iter().map(|t| from_text(t, fail)).collect()
+        self.with(false, |tx, fail| chunk_rows(tx, pipeline_id, table, fail))
+    }
+
+    fn delete_chunks(&self, pipeline_id: &str, table: &str) -> Result<Vec<ChunkRow>, Failure> {
+        self.with(true, |tx, fail| {
+            let removed = chunk_rows(tx, pipeline_id, table, fail)?;
+            tx.execute("DELETE FROM chunk WHERE pipeline_id = ?1 AND tbl = ?2", params![pipeline_id, table]).map_err(|e| fail(&e))?;
+            tx.execute("DELETE FROM scope WHERE pipeline_id = ?1 AND tbl = ?2 AND kind = 'chunk'", params![pipeline_id, table]).map_err(|e| fail(&e))?;
+            Ok(removed)
         })
     }
 

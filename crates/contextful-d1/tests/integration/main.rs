@@ -409,6 +409,7 @@ fn run_row(id: &str) -> RunRow {
         connector_hash: "hash".into(),
         trace_id: None,
         phase: Phase::Plan,
+        pipeline_phase: None,
         execution_id: "execution".into(),
         stop: None,
         host_scope: None,

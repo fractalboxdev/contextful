@@ -13,6 +13,29 @@ use serde_json::Value;
 use std::cmp::Ordering;
 use std::path::PathBuf;
 
+/// The phase a pipeline runs under (`run.backfill.phase`): `planning` computes the chunk
+/// plan, `seeding` loads consumer-held history, `backfilling` runs chunks across ticks,
+/// `streaming` pulls the incremental delta.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum PipelinePhase {
+    Planning,
+    Seeding,
+    Backfilling,
+    Streaming,
+}
+
+impl PipelinePhase {
+    pub fn name(self) -> &'static str {
+        match self {
+            PipelinePhase::Planning => "planning",
+            PipelinePhase::Seeding => "seeding",
+            PipelinePhase::Backfilling => "backfilling",
+            PipelinePhase::Streaming => "streaming",
+        }
+    }
+}
+
 /// Life of an unrenewed chunk lease, in seconds (`run.backfill.chunk-lease`).
 pub const CHUNK_LEASE_TTL_SECS: u64 = 300;
 

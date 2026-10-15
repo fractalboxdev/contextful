@@ -47,6 +47,11 @@ impl OwnerScope {
         OwnerScope::table(pipeline_id, &format!("{table}{SEED_SUFFIX}"))
     }
 
+    /// Whether the scope is a seeding scope: a table or chunk scope whose table segment is
+    /// `<table>#seed` (`run.seed.scope`).
+    pub fn seeding(&self) -> bool {
+        self.pipeline_table().is_some_and(|(_, table)| table.ends_with(SEED_SUFFIX))
+    }
 
     /// The pipeline and table a table or chunk scope names; `None` for a host scope.
     pub fn pipeline_table(&self) -> Option<(&str, &str)> {

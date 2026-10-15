@@ -257,3 +257,21 @@ fn old_run_records_decode_without_a_plan_identity() {
     let decoded:contextful_core::run::record::RunRow=serde_json::from_value(value).unwrap();
     assert_eq!(decoded.plan_ref,None);
 }
+
+/// A run row records the pipeline phase it ran under as its snake-case name, and a row without one serializes and
+/// reads back with the field absent.
+#[test]
+fn a_run_row_records_its_pipeline_phase_by_name() {
+    use contextful_core::run::backfill::PipelinePhase;
+    let mut r = row("run-1", "2030-01-01T00:00:00Z");
+    assert!(serde_json::to_value(&r).unwrap().get("pipeline_phase").is_none());
+    r.pipeline_phase = Some(PipelinePhase::Seeding);
+    let record = serde_json::to_value(&r).unwrap();
+    assert_eq!(record["pipeline_phase"], serde_json::json!("seeding"));
+    assert_eq!(serde_json::from_value::<contextful_core::run::record::RunRow>(record).unwrap(), r);
+    let names: Vec<&str> = [PipelinePhase::Planning, PipelinePhase::Seeding, PipelinePhase::Backfilling, PipelinePhase::Streaming].iter().map(|p| p.name()).collect();
+    assert_eq!(names, ["planning", "seeding", "backfilling", "streaming"]);
+    for p in [PipelinePhase::Planning, PipelinePhase::Seeding, PipelinePhase::Backfilling, PipelinePhase::Streaming] {
+        assert_eq!(serde_json::to_value(p).unwrap(), serde_json::json!(p.name()));
+    }
+}

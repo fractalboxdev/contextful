@@ -101,6 +101,12 @@ impl Catalog for Chunks {
         f(row);
         Ok(Some(row.clone()))
     }
+    fn delete_chunks(&self, pipeline_id: &str, table: &str) -> Result<Vec<ChunkRow>, Failure> {
+        let mut rows = self.0.lock().unwrap();
+        let (removed, kept): (Vec<ChunkRow>, Vec<ChunkRow>) = rows.drain(..).partition(|r| r.pipeline_id == pipeline_id && r.table == table);
+        *rows = kept;
+        Ok(removed)
+    }
     fn retired_at(&self, scope: &OwnerScope) -> Result<Option<String>, Failure> {
         Ok(Some(format!("retired under {scope}")))
     }
@@ -171,6 +177,9 @@ fn the_recorded_catalog_keeps_the_wrapped_catalogs_chunk_plan() {
     let claimed = recorded.update_chunk(&scope, None, &mut |r| r.status = ChunkStatus::Running).unwrap();
     assert_eq!(claimed.map(|r| r.status), Some(ChunkStatus::Running));
     assert_eq!(inner.0.lock().unwrap()[0].status, ChunkStatus::Running);
+    let removed = recorded.delete_chunks("feed", "filings").unwrap();
+    assert_eq!(removed.iter().map(|r| r.chunk.as_str()).collect::<Vec<_>>(), ["c0"], "a plan delete reaches the wrapped catalog");
+    assert!(inner.0.lock().unwrap().is_empty());
 }
 
 /// The recording catalog reads a scope's last retirement from the catalog it wraps.

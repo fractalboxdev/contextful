@@ -55,6 +55,8 @@ mod run;
 mod root;
 #[cfg(feature = "data-plane")]
 mod secrets;
+#[cfg(feature = "data-plane")]
+mod seed;
 #[cfg(feature = "read-plane")]
 mod serve;
 #[cfg(feature = "read-plane")]
@@ -183,6 +185,10 @@ enum Cmd {
     #[cfg(feature = "data-plane")]
     #[command(subcommand)]
     Pipeline(pipeline::PipelineCmd),
+    /// Read and reset declared seeds: each seeded table's ceiling, commit state and fingerprint.
+    #[cfg(feature = "data-plane")]
+    #[command(subcommand)]
+    Seed(seed::SeedCmd),
     /// Inspect a connector artifact's local content digest.
     #[cfg(feature = "data-plane")]
     #[command(subcommand)]
@@ -287,6 +293,8 @@ pub fn main_host(host: Host) {
         Cmd::Sync(c) => sync::run(c),
         #[cfg(feature = "data-plane")]
         Cmd::Pipeline(c) => pipeline::run(c, &tasks, &bodies),
+        #[cfg(feature = "data-plane")]
+        Cmd::Seed(c) => seed::run(c),
         #[cfg(feature = "data-plane")]
         Cmd::Connector(c) => connector::run(c),
         #[cfg(feature = "data-plane")]

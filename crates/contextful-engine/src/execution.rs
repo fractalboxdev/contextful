@@ -8,7 +8,7 @@ use crate::journal::{Resolved, StepError};
 use crate::runner::{Engine, EngineError};
 use crate::stores::{FileBlobStore, FileJournalStore};
 use contextful_core::coordinate::{Cas, CursorRow, Lease};
-use contextful_core::run::backfill::ChunkStatus;
+use contextful_core::run::backfill::{ChunkStatus, PipelinePhase};
 use contextful_core::run::journal::{sha256_hex, EntryKey};
 use contextful_core::run::own::{releases, ExecutionOwner, OwnerPins, OwnerScope};
 use contextful_core::run::plan::NATIVE_WORLD;
@@ -201,6 +201,7 @@ impl<J: JournalStore, B: BlobStore> Engine<J, B> {
             connector_hash: connector.hash,
             trace_id: open.trace_id.clone(),
             phase: Phase::Plan,
+            pipeline_phase: open.scope.seeding().then_some(PipelinePhase::Seeding),
             execution_id: execution_id.clone(),
             plan_ref: Some(open.pins.plan_ref().to_string()),
             stop: None,
@@ -402,8 +403,18 @@ impl<'e, J: JournalStore, B: BlobStore> Execution<'e, J, B> {
         let mut owner = match self.pending.clone() {
             Some(owner) => {
                 self.refuse_a_live_attempt(&owner)?;
-                owner.check_pins(&self.pins)?;
-                owner
+                // A seeding owner takes the build now asked for in place of a refusal; each
+                // attempt's row records the connector it ran as provenance (`run.seed.connector-pin`).
+                if self.scope.seeding() {
+                    let mut owner = owner;
+                    if owner.check_pins(&self.pins).is_err() {
+                        owner.pins = self.pins.clone();
+                    }
+                    owner
+                } else {
+                    owner.check_pins(&self.pins)?;
+                    owner
+                }
             }
             None => ExecutionOwner {
                 execution_id: self.execution_id.clone(),

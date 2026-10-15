@@ -620,7 +620,7 @@ fn store_failure(table: &str, e: ContextError) -> Failure {
 }
 
 /// Build one source block of `spec` as a compiled-in source and bind every table to it.
-fn build_source(spec: &PipelineSpec, role: &str, source: &SourceBlock) -> Result<HttpConfig> {
+pub(crate) fn build_source(spec: &PipelineSpec, role: &str, source: &SourceBlock) -> Result<HttpConfig> {
     if source.name != contextful_connectors::http::NAME {
         bail!(
             "pipeline `{}` names {role} `{}`; the compiled-in sources are {}",
@@ -650,7 +650,7 @@ fn built_in(spec: &PipelineSpec) -> ConnectorSpec {
 }
 
 /// The plan one table of `spec` runs against, pinning `connector`.
-fn plan(spec: &PipelineSpec, table: &str, connector: ConnectorSpec) -> Result<Plan> {
+pub(crate) fn plan(spec: &PipelineSpec, table: &str, connector: ConnectorSpec) -> Result<Plan> {
     let cursor_kind = if spec.incremental.is_some() { CursorKind::Monotonic } else { CursorKind::OpaqueToken };
     let plan = Plan {
         spec: PlanSpec {
@@ -908,6 +908,7 @@ pub fn run(cmd: PipelineCmd, tasks: &Tasks, bodies: &contextful_core::run::drive
                 staged = landing.into_iter().collect();
             }
             let stop_on_failure = matches!(checked, Checked::Host(_)) || spec.on_table_error() == contextful_core::pipeline::declare::OnTableError::Abort;
+            let seed = spec.seed_block()?;
             let mut failed: Vec<String> = Vec::new();
             let mut tallies: Vec<(String, IngestTally)> = Vec::new();
             let mut attempted: Vec<String> = Vec::new();
@@ -915,6 +916,26 @@ pub fn run(cmd: PipelineCmd, tasks: &Tasks, bodies: &contextful_core::run::drive
                 let table = spec.table_name(t.name());
                 // The destination name is path-safe, so a run id built from it is too.
                 let run_id = if spec.tables.len() == 1 { base_run.clone() } else { format!("{base_run}.{table}") };
+                // A declared seed loads before the table's live pull, and a seed another worker
+                // holds defers that pull (`run.seed.one-land-path`).
+                if let Some(seed) = &seed {
+                    match crate::seed::drive(&w.engine, &spec, seed, t, &run_id, &site_id, &resolver, &mut dest, &mut attempted) {
+                        Ok(true) => {}
+                        Ok(false) => {
+                            println!("{table}: the seed's chunk runs elsewhere; the live pull waits for its commit");
+                            continue;
+                        }
+                        Err(e) => {
+                            eprintln!("{}", RunError::PipelineTableFailed(format!("table `{table}` failed seeding in run `{run_id}`: {e:#}")));
+                            tallies.push((table.clone(), IngestTally { failed: 1, ..IngestTally::default() }));
+                            failed.push(run_id);
+                            if stop_on_failure {
+                                break;
+                            }
+                            continue;
+                        }
+                    }
+                }
                 attempted.push(run_id.clone());
                 // A table that cannot open is a failed table like one whose run fails, so
                 // `continue` lands the others.

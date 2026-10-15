@@ -167,6 +167,10 @@ pub struct RunRow {
     #[serde(default)]
     pub trace_id: Option<String>,
     pub phase: Phase,
+    /// The pipeline phase the run ran under; a seed chunk's run records `seeding`, its only
+    /// attribution beside the load id (`run.seed.one-land-path`). Absent for every other run.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub pipeline_phase: Option<super::backfill::PipelinePhase>,
     /// The execution whose journal this attempt resolves against (`run.own.execution-id-keys-the-journal`).
     pub execution_id: String,
     /// Immutable plan identity admitted at this attempt's open, retained after retirement.
