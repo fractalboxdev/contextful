@@ -175,9 +175,9 @@ CREATE TABLE resources (
   resource_kind     VARCHAR NOT NULL,
   container_id      VARCHAR,
   visibility_class  VARCHAR NOT NULL,   -- mirrored | coarse | federated | unknown
-  _acl_observed_at  TIMESTAMP NOT NULL,
-  _acl_sweep_kind   VARCHAR NOT NULL,   -- full | incremental | webhook
-  _acl_sweep_id     VARCHAR NOT NULL
+  acl_observed_at   TIMESTAMP NOT NULL,
+  acl_sweep_kind    VARCHAR NOT NULL,   -- full | incremental | webhook
+  acl_sweep_id      VARCHAR NOT NULL
 );
 
 CREATE TABLE grants (
@@ -186,9 +186,9 @@ CREATE TABLE grants (
   principal_kind    VARCHAR NOT NULL,   -- user | group | team | channel | org | public
   level             VARCHAR NOT NULL,   -- source spelling, projected by the mapping
   expires_at        TIMESTAMP,          -- set on an operator-landed opening
-  _acl_observed_at  TIMESTAMP NOT NULL,
-  _acl_sweep_kind   VARCHAR NOT NULL,
-  _acl_sweep_id     VARCHAR NOT NULL
+  acl_observed_at   TIMESTAMP NOT NULL,
+  acl_sweep_kind    VARCHAR NOT NULL,
+  acl_sweep_id      VARCHAR NOT NULL
 );
 
 CREATE TABLE principals (
@@ -201,7 +201,7 @@ CREATE TABLE group_members (
   "group"           VARCHAR NOT NULL,
   member            VARCHAR NOT NULL,
   member_kind       VARCHAR NOT NULL,
-  _acl_observed_at  TIMESTAMP NOT NULL
+  acl_observed_at   TIMESTAMP NOT NULL
 );
 
 CREATE TABLE identity_links (
@@ -221,8 +221,10 @@ CREATE TABLE tombstones (
 
 CREATE TABLE freshness (
   source              VARCHAR NOT NULL,
+  epoch               BIGINT NOT NULL,      -- one per committed run
+  sweep_id            VARCHAR NOT NULL,     -- the run whose resources and grants rows are current
   sweep_kind          VARCHAR NOT NULL,
-  watermark_at        TIMESTAMP NOT NULL,
+  watermark_at        TIMESTAMP,            -- null until a run reads every governed resource
   last_full_sweep_at  TIMESTAMP,
   last_incremental_at TIMESTAMP,
   lag_seconds         BIGINT,

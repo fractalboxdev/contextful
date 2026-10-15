@@ -726,6 +726,11 @@ pub fn run(cmd: PipelineCmd, tasks: &Tasks, bodies: &contextful_core::run::drive
                     tables.entry(t.name.clone()).or_insert_with(|| t.table_decl());
                 }
             }
+            // Each `[[acl_sweep]]` block parses, its cadences under the budget grammar
+            // (`disclosure.sweep.cadence-grammar`).
+            for f in files.iter().filter(|f| f.path.ends_with(".toml")) {
+                contextful_core::disclosure::sweep::SweepBlock::parse_manifest(&f.text).with_context(|| f.path.clone())?;
+            }
             let coverage = fold_coverage(&files)?;
             let declared = collect(&files)?;
             for d in &declared {

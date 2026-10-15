@@ -578,10 +578,11 @@ impl TableDecl {
     }
 
     /// Hold the declaration to the table's reconciled schema, before any Parquet lands.
-    /// The engine's own run record reads and folds as any table; the land path alone
-    /// refuses a producer writing it (`store.reserve.table-name`).
+    /// The engine's own tables — the run record and the mirrored access tables — read and
+    /// fold as any table; the land path alone refuses a producer writing them
+    /// (`store.reserve.table-name`).
     pub fn validate(&self, schema: &Schema) -> Result<(), StoreError> {
-        if self.name != super::reserve::RUN_RECORD_TABLE {
+        if !super::reserve::is_engine_table(&self.name) {
             check_table_name(&self.name)?;
         }
         if self.is_vintage() && self.content_hash_column.is_none() {

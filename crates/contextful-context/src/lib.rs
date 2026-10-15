@@ -27,6 +27,7 @@ pub mod scan;
 pub mod store;
 mod redaction;
 pub mod vector;
+pub mod visibility;
 
 pub use error::{ContextError, Result};
 pub use store::Store;

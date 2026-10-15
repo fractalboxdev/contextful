@@ -9,5 +9,6 @@ pub mod declare;
 pub mod error;
 pub mod erase;
 pub mod suppress;
+pub mod sweep;
 
 pub use error::{DisclosureError, VisibilityError};

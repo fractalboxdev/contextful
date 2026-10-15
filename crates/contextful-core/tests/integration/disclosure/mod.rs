@@ -3,4 +3,5 @@
 mod declare;
 mod erase;
 mod suppress;
+mod sweep;
 mod template;

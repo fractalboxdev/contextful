@@ -59,6 +59,8 @@ mod sync;
 pub mod storage;
 mod token;
 #[cfg(feature = "data-plane")]
+mod visibility;
+#[cfg(feature = "data-plane")]
 mod worker;
 
 use clap::{CommandFactory, FromArgMatches, Parser, Subcommand};
@@ -120,7 +122,7 @@ const READ_PLANE: [&str; 4] = ["sync", "query", "mcp", "serve"];
 /// The run-path subcommands, which a build without the run path, the read replica
 /// included, answers with `ProfileCapabilityAbsent` (`topology.package.edge-profile`).
 #[cfg(not(feature = "data-plane"))]
-const RUN_PLANE: [&str; 11] = ["init", "context", "derive", "build", "pipeline", "export", "job", "run", "memory", "eval", "connector"];
+const RUN_PLANE: [&str; 12] = ["init", "context", "derive", "build", "pipeline", "export", "job", "run", "memory", "eval", "connector", "visibility"];
 
 /// The refusal of a subcommand this build's profile does not link. `Display` begins with
 /// the identifier.
@@ -169,6 +171,10 @@ enum Cmd {
     #[cfg(feature = "data-plane")]
     #[command(subcommand)]
     Disclosure(disclosure::DisclosureCmd),
+    /// Sweep a declared source's permission state into its mirrored access tables.
+    #[cfg(feature = "data-plane")]
+    #[command(subcommand)]
+    Visibility(visibility::VisibilityCmd),
     /// Validate and fire declared pipelines.
     #[cfg(feature = "data-plane")]
     #[command(subcommand)]
@@ -279,6 +285,8 @@ pub fn main_host(host: Host) {
         Cmd::Build(c) => build::run(c),
         #[cfg(feature = "data-plane")]
         Cmd::Disclosure(c) => disclosure::run(c),
+        #[cfg(feature = "data-plane")]
+        Cmd::Visibility(c) => visibility::run(c),
         #[cfg(feature = "read-plane")]
         Cmd::Query(c) => query::run(c),
         #[cfg(feature = "read-plane")]

@@ -8,7 +8,8 @@
 pub enum VisibilityError {
     /// A staleness budget is compound, bare, or carries an unknown suffix.
     /// (`disclosure.bound-staleness.budget-grammar`)
-    #[error("VisibilityBudgetMalformed: table `{table}`: max_acl_staleness `{text}` is not a positive integer with one suffix from s, m, h, d")]
+    /// `table` names the table, or the sweep cadence, whose budget text was read.
+    #[error("VisibilityBudgetMalformed: {table}: `{text}` is not a positive integer with one suffix from s, m, h, d")]
     BudgetMalformed { table: String, text: String },
     /// A table declared a level its source family does not permit.
     /// (`disclosure.declare-fidelity.family-bound`)
@@ -18,6 +19,14 @@ pub enum VisibilityError {
     /// (`disclosure.declare-fidelity.family-undeclared`)
     #[error("VisibilityFamilyUndeclared: table `{table}` names no family")]
     FamilyUndeclared { table: String },
+    /// A full sweep run missed a governed resource of its source and would have advanced
+    /// the watermark. (`disclosure.sweep.coverage-watermark`)
+    #[error("VisibilityWatermarkUncovered: source `{origin}`: the run did not read {missed} governed resource(s), first `{first}`; watermark_at stays where it stood")]
+    WatermarkUncovered { origin: String, missed: usize, first: String },
+    /// A grant landed with no resource row, or on an unknown-class resource.
+    /// (`disclosure.sweep.orphan-grant`)
+    #[error("VisibilityOrphanGrant: source `{origin}`: grant on resource `{resource_id}` names {reason}; the run commits nothing")]
+    OrphanGrant { origin: String, resource_id: String, reason: &'static str },
     /// An explanation returned content from the resource it decides about.
     /// (`disclosure.explain.no-row`)
     #[error("VisibilityDiagnosticRow: {0}")]
@@ -43,6 +52,8 @@ impl VisibilityError {
             VisibilityError::BudgetMalformed { .. } => "VisibilityBudgetMalformed",
             VisibilityError::FamilyBound { .. } => "VisibilityFamilyBound",
             VisibilityError::FamilyUndeclared { .. } => "VisibilityFamilyUndeclared",
+            VisibilityError::WatermarkUncovered { .. } => "VisibilityWatermarkUncovered",
+            VisibilityError::OrphanGrant { .. } => "VisibilityOrphanGrant",
             VisibilityError::DiagnosticRow(_) => "VisibilityDiagnosticRow",
             VisibilityError::NoObservations(_) => "VisibilityNoObservations",
             VisibilityError::UnqualifiedAssurance(_) => "VisibilityUnqualifiedAssurance",
