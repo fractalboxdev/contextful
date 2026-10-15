@@ -28,6 +28,7 @@ mod retire;
 mod writers;
 mod runner;
 mod scheduler;
+mod seed;
 mod stores;
 mod support;
 mod suspend;

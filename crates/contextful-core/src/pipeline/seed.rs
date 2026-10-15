@@ -12,6 +12,7 @@
 //! store's `ORDER BY` while the instants still sort, and the gate refuses it.
 
 use super::declare::{PipelineSpec, SourceBlock};
+use crate::run::advance::{watermark, CursorKind};
 use crate::run::ports::Row;
 use crate::run::RunError;
 use crate::store::declare::FoldCoverage;
@@ -50,6 +51,50 @@ impl Ceiling {
             Ceiling::Instant { at, .. } => at.to_rfc3339_nanos(),
             Ceiling::Number(n) => n.to_string(),
         }
+    }
+
+    /// The live position a seed commit binds when the live table holds none
+    /// (`run.seed.ceiling-binding`): the ceiling as a `field` watermark under a `monotonic`
+    /// cursor when `below` is an integer. Every other kind, and a fractional or instant
+    /// ceiling, binds nothing, so the live pull starts from the source's beginning.
+    pub fn live_position(&self, kind: CursorKind, field: &str) -> Option<Value> {
+        match (self, kind) {
+            (Ceiling::Number(n), CursorKind::Monotonic) if n.is_i64() || n.is_u64() => Some(watermark(field, Value::Number(n.clone()))),
+            _ => None,
+        }
+    }
+}
+
+/// What a run does with a seed after probing its source (`run.seed.source-changed`).
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum SeedProbe {
+    /// No seed is committed: the load proceeds.
+    Load,
+    /// The committed fingerprint equals the probed one: the load is skipped.
+    Unchanged,
+    /// The committed or the probed fingerprint is absent: the load is skipped, and the
+    /// warning says a top-up to the source goes unnoticed.
+    Unavailable(String),
+}
+
+/// Compare the fingerprint `observed` on the seed source of `table` with the one stamped at
+/// commit. `committed` is `None` while no seed is committed, and `Some(None)` for a seed
+/// committed without one. A differing pair raises `PipelineSeedSourceChanged` naming both:
+/// reloading would spend the export's whole cost, so the operator resets the seed instead.
+pub fn probe(table: &str, committed: Option<Option<&str>>, observed: Option<&str>) -> Result<SeedProbe, RunError> {
+    let Some(committed) = committed else { return Ok(SeedProbe::Load) };
+    match (committed, observed) {
+        (Some(stamped), Some(seen)) if stamped == seen => Ok(SeedProbe::Unchanged),
+        (Some(stamped), Some(seen)) => Err(RunError::PipelineSeedSourceChanged(format!(
+            "table `{table}`: the seed source fingerprint moved from `{stamped}` at commit to `{seen}`; `seed reset` clears the seed to reload it"
+        ))),
+        (stamped, seen) => Ok(SeedProbe::Unavailable(format!(
+            "table `{table}`: the seed source {} no fingerprint, so the load is skipped and a top-up to the source goes unnoticed",
+            match (stamped, seen) {
+                (None, _) => "committed with",
+                _ => "answers",
+            }
+        ))),
     }
 }
 

@@ -237,13 +237,19 @@ impl<J: JournalStore, B: BlobStore> Engine<J, B> {
 
     /// Execute one run, passing each recorded batch through `shape` before it lands.
     pub fn run_with(&self, spec: &RunSpec, source: &mut dyn Source, shape: &dyn Shape, dest: &mut dyn Destination) -> Result<RunRow, EngineError> {
-        self.run_input(spec, source, shape, dest, None, None)
+        self.run_input(spec, None, source, shape, dest, None, None)
+    }
+
+    /// Execute one run under `scope` in place of the plan's table scope: a seed chunk runs
+    /// the one land path while its owner, cursor and chunk row stay under `<table>#seed`.
+    pub(crate) fn run_scoped(&self, spec: &RunSpec, scope: OwnerScope, source: &mut dyn Source, shape: &dyn Shape, dest: &mut dyn Destination) -> Result<RunRow, EngineError> {
+        self.run_input(spec, Some(scope), source, shape, dest, None, None)
     }
 
     /// Raw item rows retain their originating owner's entity fence through commit.
     pub fn run_body_rows(&self,spec:&RunSpec,owner:&crate::drive::BodyOwner,source:&mut dyn Source,dest:&mut dyn Destination)->Result<RunRow,EngineError> {
         self.validate_body_owner(owner)?;
-        self.run_input(spec,source,&Unshaped,dest,None,Some(owner))
+        self.run_input(spec,None,source,&Unshaped,dest,None,Some(owner))
     }
 
     /// Land admitted body groups through the ordinary lease/stage/commit/discard machine.
@@ -266,7 +272,7 @@ impl<J: JournalStore, B: BlobStore> Engine<J, B> {
                 Err(Failure::deterministic(FailureTag::Permanent, "prepared body landing has no source"))
             }
         }
-        self.run_input(spec, &mut NoSource, &Unshaped, dest, Some(&EmissionInput { owner, frames:emissions }),Some(owner))
+        self.run_input(spec, None, &mut NoSource, &Unshaped, dest, Some(&EmissionInput { owner, frames:emissions }),Some(owner))
     }
 
     pub(crate) fn validate_body_owner(&self, owner: &crate::drive::BodyOwner) -> Result<(), Failure> {
@@ -296,7 +302,8 @@ impl<J: JournalStore, B: BlobStore> Engine<J, B> {
         Ok(())
     }
 
-    fn run_input(&self, spec: &RunSpec, source: &mut dyn Source, shape: &dyn Shape, dest: &mut dyn Destination, emissions: Option<&EmissionInput<'_>>,parent:Option<&crate::drive::BodyOwner>) -> Result<RunRow, EngineError> {
+    #[allow(clippy::too_many_arguments)]
+    fn run_input(&self, spec: &RunSpec, scope: Option<OwnerScope>, source: &mut dyn Source, shape: &dyn Shape, dest: &mut dyn Destination, emissions: Option<&EmissionInput<'_>>,parent:Option<&crate::drive::BodyOwner>) -> Result<RunRow, EngineError> {
         let plan = &spec.plan;
         plan.validate()?;
         if !self.capabilities().hosts(&plan.spec.connector.world) {
@@ -328,7 +335,7 @@ impl<J: JournalStore, B: BlobStore> Engine<J, B> {
         }
         self.reconcile(pipeline_id, table, dest)?;
         let open = OpenExecution {
-            scope: OwnerScope::table(pipeline_id, table),
+            scope: scope.unwrap_or_else(|| OwnerScope::table(pipeline_id, table)),
             pins: Pins { connector: spec.connector.clone(), content_hash: authority.clone().unwrap_or_else(|| plan.content_hash.clone()), input_hash:String::new() }.into(),
             run_id: spec.run_id.clone(),
             site_id: spec.site_id.clone(),
