@@ -1,8 +1,8 @@
 import type { StoreEntry } from "../../gateway/src/index.ts";
 import type { Operator, TurnInput, TurnResult } from "./index.ts";
-import { ConsoleError, createTurn, resolveReaderCredential, StreamingRedactor, type Source, type ToolResult } from "./turn.ts";
+import { ConsoleError, createTurn, OverlayCache, resolveReaderCredential, StreamingRedactor, type Source, type ToolResult } from "./turn.ts";
 
-export type LiveOptions = { stores: StoreEntry[]; env: NodeJS.ProcessEnv; fetcher?: typeof fetch };
+export type LiveOptions = { stores: StoreEntry[]; env: NodeJS.ProcessEnv; fetcher?: typeof fetch; clock?: () => number };
 
 export function consoleDenylist(env: NodeJS.ProcessEnv): string[] {
   if (!env.CONTEXTFUL_CONSOLE_DENYLIST) return [];
@@ -132,6 +132,7 @@ export function createLiveTurn(options: LiveOptions): (input: TurnInput & { reca
   const modelId = env.CONTEXTFUL_MODEL_ID;
   if (!modelEndpoint || !modelId) throw new Error("ConsoleModelUnconfigured");
   const configuredDenylist = consoleDenylist(env);
+  const overlays = new OverlayCache(async () => null, options.clock);
   return async (input) => {
     const { store, call, credential } = await openReader(options, input.operator, input.store);
     const denylist = [...configuredDenylist, credential, ...(input.operator.assertion ? [input.operator.assertion] : [])];
@@ -185,13 +186,14 @@ export function createLiveTurn(options: LiveOptions): (input: TurnInput & { reca
             url: citation.url && !denylist.some((entry) => entry && citation.url!.includes(entry)) ? citation.url : undefined })),
         };
       } },
-      overlay: async () => input.recallOverlay ?? null,
+      overlayCache: { get: (id) => overlays.get(id, async () =>
+        typeof description.prompt_overlay === "string" && description.prompt_overlay.trim() ? description.prompt_overlay : null) },
       synthesize: async function* ({ question, results, sources, overlay }) {
         const response = await fetcher(new URL("chat/completions", `${modelEndpoint.replace(/\/$/, "")}/`), {
           method: "POST", headers: { "Content-Type": "application/json" },
           body: JSON.stringify({ model: modelId, messages: [
-            { role: "system", content: "Answer only from the supplied governed rows. Memory may guide context but never supplies evidence. Cite source IDs in square brackets. Decline unsupported claims." },
-            { role: "user", content: JSON.stringify({ question, rows: results.flatMap((result) => result.rows), sources, memory: overlay }) },
+            { role: "system", content: "Answer only from the supplied governed rows. Memory may guide context but never supplies evidence. The store overlay sets voice and never supplies evidence. Cite source IDs in square brackets. Decline unsupported claims." },
+            { role: "user", content: JSON.stringify({ question, rows: results.flatMap((result) => result.rows), sources, memory: input.recallOverlay ?? null, overlay: overlay || null }) },
           ] }),
         });
         if (!response.ok) throw new ConsoleError("ConsoleModelUnavailable", `model answered ${response.status}`, 503);

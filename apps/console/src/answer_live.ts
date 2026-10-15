@@ -3,6 +3,7 @@ import type { Operator, TurnInput } from "./index.ts";
 import type { Arrival, Conclusion } from "./brief.ts";
 import { learnAfterAnswer, type Learning } from "./learn.ts";
 import { consoleDenylist, createLiveTurn, openReader, redactText, selectTable, type LiveOptions } from "./live.ts";
+import { createSuggestionCheck } from "./suggest.ts";
 import { ConsoleError } from "./turn.ts";
 
 type AnswerOptions = LiveOptions & { clock?: () => number };
@@ -158,12 +159,14 @@ export function createLiveAnswer(options: AnswerOptions) {
     const durable = await readMemory(operator, store);
     const entries = durable?.entries ?? [];
     const conclusions: Conclusion[] = entries.map((entry) => ({ subject: entry.subject, text: entry.learning, live: true }));
+    let reader: ReturnType<typeof openReader> | undefined;
+    const call = async (name: string, args: Record<string, unknown>) => (await (reader ??= openReader(options, operator, store))).call(name, args);
     return {
       session: { turns: turns.get(sessionScope(operator, store)) ?? 0, vantage: "present" },
       conclusions,
       now: clock(),
+      suggest: createSuggestionCheck(call),
       loadArrivals: async (): Promise<Arrival[]> => {
-        const { call } = await openReader(options, operator, store);
         const description = await call("context.describe", {});
         const question = entries.map((entry) => `${entry.subject} ${entry.key} ${entry.learning}`).join(" ");
         const table = selectTable(question, description.tables);

@@ -43,7 +43,7 @@ export type ConsoleAdapters = {
   stores: Store[];
   adminCapability?: string;
   turn: (input: TurnInput) => Promise<TurnResult>;
-  brief?: (operator: Operator, store: string) => Promise<Omit<BriefInput, "budgetMs">>;
+  brief?: (operator: Operator, store: string) => Promise<Omit<BriefInput, "budgetMs"> & Required<Pick<BriefInput, "suggest">>>;
   briefBudgetMs?: number;
   redactView?: (operator: Operator, value: string) => string;
   read: { list: (operator: Operator) => Promise<Store[]> };

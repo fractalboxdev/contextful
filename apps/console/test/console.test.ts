@@ -443,7 +443,7 @@ test("Query brief derives a private card only from a turnless present-time sessi
     stores: [{ id: "field-notes", label: "Field notes" }],
     turn: async () => ({ answer: "", sources: [], widgets: [] }),
     briefBudgetMs: 1000,
-    brief: async () => ({ session: { turns: 0, vantage: "present" }, now,
+    brief: async () => ({ session: { turns: 0, vantage: "present" }, now, suggest: () => {},
       conclusions: [{ subject: "Acme", text: "Acme filings need review", live: true }],
       arrivals: [{ id: "a", label: "Acme filing", topics: ["filings"], arrivedAt: "2026-01-08T11:00:00Z" }],
     }),
@@ -483,7 +483,7 @@ test("Query brief discards a card after synchronous adapter work exceeds its bud
     brief: async () => {
       const until = performance.now() + 25;
       while (performance.now() < until) { /* synchronous adapter work */ }
-      return { session: { turns: 0, vantage: "present" }, now,
+      return { session: { turns: 0, vantage: "present" }, now, suggest: () => {},
         conclusions: [{ subject: "Acme", text: "Acme filings need review", live: true }],
         arrivals: [{ id: "a", label: "Acme filing", topics: ["filings"], arrivedAt: "2026-01-08T11:00:00Z" }],
       };

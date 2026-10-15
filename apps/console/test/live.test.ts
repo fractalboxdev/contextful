@@ -40,7 +40,7 @@ const store: StoreEntry = {
   bindingName: "FIELD_NOTES",
 };
 
-function fixture(options: { exchange?: boolean; exchangeStatus?: number; emptyToken?: boolean; shared?: string; rows?: unknown[][]; tables?: Array<Record<string, unknown>>; rowsFor?: (sql: string) => unknown[][] } = {}) {
+function fixture(options: { exchange?: boolean; exchangeStatus?: number; emptyToken?: boolean; shared?: string; rows?: unknown[][]; tables?: Array<Record<string, unknown>>; rowsFor?: (sql: string) => unknown[][]; overlay?: string; clock?: () => number } = {}) {
   const calls: Array<{ url: string; authorization: string | null; body: Record<string, unknown> }> = [];
   let modelCalls = 0;
   let modelBody: Record<string, unknown> | null = null;
@@ -56,6 +56,7 @@ function fixture(options: { exchange?: boolean; exchangeStatus?: number; emptyTo
       const params = body.params as Record<string, unknown>;
       if (params.name === "context.describe") return Response.json({ jsonrpc: "2.0", id: body.id, result: { structuredContent: {
         tables: options.tables ?? [{ table: "filings", kind: "data" }],
+        ...(options.overlay === undefined ? {} : { prompt_overlay: options.overlay }),
       } } });
       assert.equal(params.name, "context.query");
       return Response.json({ jsonrpc: "2.0", id: body.id, result: { structuredContent: {
@@ -73,7 +74,7 @@ function fixture(options: { exchange?: boolean; exchangeStatus?: number; emptyTo
   const turn = createLiveTurn({ stores: [store], env: {
     CONTEXTFUL_MODEL_ENDPOINT: "https://model.example/v1", CONTEXTFUL_MODEL_ID: "fixture",
     ...(options.shared ? { FIELD_NOTES_QUERY_TOKEN: options.shared } : {}),
-  }, fetcher });
+  }, fetcher, clock: options.clock });
   return { turn, calls, modelCalls: () => modelCalls, modelBody: () => modelBody };
 }
 
@@ -87,6 +88,39 @@ test("Query reads governed rows under the exchanged reader credential and cites 
   assert.equal(calls.find((call) => call.url.endsWith("/auth/exchange"))?.body.jwt, "verified-access-jwt");
   assert.equal(calls.find((call) => (call.body.params as Record<string, unknown> | undefined)?.name === "context.query")?.authorization, "Bearer reader-token");
   assert.deepEqual(calls.filter((call) => call.url.endsWith("/mcp")).map((call) => (call.body.params as Record<string, unknown>).name), ["context.describe", "context.query"]);
+});
+
+function overlayAsker(overlay?: string) {
+  const clock = { now: 0 };
+  const options: { overlay?: string; clock: () => number } = { overlay, clock: () => clock.now };
+  const harness = fixture(options);
+  const ask = () => harness.turn({ operator: { subject: "reader", grants: new Set(["query"]), assertion: "verified-access-jwt" },
+    store: "field-notes", question: "Which filing arrived?" });
+  const describes = () => harness.calls.filter((call) => (call.body.params as Record<string, unknown> | undefined)?.name === "context.describe").length;
+  const sentOverlay = () => (JSON.parse(((harness.modelBody()?.messages as Array<{ content: string }>)[1]).content) as Record<string, unknown>).overlay;
+  return { clock, options, ask, describes, sentOverlay };
+}
+
+// spec: surface.plan-turn.overlay-cache@c27dca5c
+test("one store overlay read serves every question for five minutes", async () => {
+  const voiced = overlayAsker("Answer in the desk's voice.");
+  await voiced.ask();
+  assert.equal(voiced.describes(), 1, "the overlay comes from the turn's own listing");
+  assert.equal(voiced.sentOverlay(), "Answer in the desk's voice.");
+  voiced.options.overlay = "Answer tersely.";
+  voiced.clock.now = 299_999;
+  await voiced.ask();
+  assert.equal(voiced.sentOverlay(), "Answer in the desk's voice.");
+  voiced.clock.now = 300_000;
+  await voiced.ask();
+  assert.equal(voiced.sentOverlay(), "Answer tersely.");
+  const silent = overlayAsker();
+  await silent.ask();
+  assert.equal(silent.sentOverlay(), null);
+  silent.options.overlay = "Answer tersely.";
+  silent.clock.now = 299_999;
+  await silent.ask();
+  assert.equal(silent.sentOverlay(), null, "a miss is pinned for five minutes too");
 });
 
 // spec: surface.ground.mint-refused@1ca62976

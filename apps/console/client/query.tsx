@@ -11,11 +11,11 @@ type Source = { id?: string; label?: string; title?: string; url?: string };
 type Turn = { id: number; role: "user" | "assistant"; text: string; sources?: Source[]; widgets?: Widget[]; status: "pending" | "done" | "error" };
 type Session = { id: string; store: string; title: string; turns: Turn[]; updatedAt: number };
 type Browse = {
-  chips: Array<{ table: string; label: string; description?: string }>;
+  chips: Array<{ table: string; label: string; description?: string; prompt: string }>;
   insights: Array<{ table: string; label: string; rows: number }>;
   files: Array<{ table: string; path: string; label: string }>;
 };
-type Brief = { windowDays: number; subjects: Array<{ subject: string; articles: Array<{ id: string; label: string }> }> };
+type Brief = { windowDays: number; subjects: Array<{ subject: string; prompt: string; articles: Array<{ id: string; label: string }> }> };
 
 // Tab-scoped and operator-scoped: transcripts carry answer rows, and a shared browser must
 // not hand one operator's answers to the next.
@@ -294,7 +294,7 @@ function BriefCard({ brief, onPick }: { brief: Brief | null; onPick: (prompt: st
       <ul id="brief-body" className="mt-2 space-y-1.5">
         {brief.subjects.map((subject) => (
           <li key={subject.subject}>
-            <button type="button" onClick={() => onPick(`What changed for ${subject.subject}?`)}
+            <button type="button" onClick={() => onPick(subject.prompt)}
               className="w-full rounded-lg border border-transparent px-2 py-1.5 text-left transition hover:border-primary/30 hover:bg-primary/10">
               <span className="flex items-baseline gap-2">
                 <span className="font-medium text-foreground">{subject.subject}</span>
@@ -346,7 +346,7 @@ function BrowsePanel({ store, asOf, busy, onPick }: { store: string; asOf: strin
         <div id="chips" className="flex flex-wrap gap-1.5">
           {data === null && !status ? <span className="shimmer text-xs font-medium">Reading the store…</span> : data?.chips.map((chip) => (
             <Button key={chip.table} type="button" variant="outline" size="sm" disabled={busy} title={chip.description}
-              onClick={() => onPick(`Tell me about ${chip.label}`)} className="rounded-full text-muted-foreground">
+              onClick={() => onPick(chip.prompt)} className="rounded-full text-muted-foreground">
               {chip.label}
             </Button>
           ))}

@@ -1,6 +1,8 @@
+import { briefPrompt, isUnanswerable } from "./suggest.ts";
+
 export type Conclusion = { subject: string; text: string; live: boolean };
 export type Arrival = { id: string; label: string; topics: string[]; arrivedAt: string };
-export type Brief = { windowDays: number; subjects: Array<{ subject: string; articles: Arrival[] }> };
+export type Brief = { windowDays: number; subjects: Array<{ subject: string; prompt: string; articles: Arrival[] }> };
 
 function tokens(text: string): Set<string> {
   return new Set((text.toLowerCase().match(/[\p{L}\p{N}]+/gu) ?? []).map((word) => word.length > 4 && word.endsWith("s") ? word.slice(0, -1) : word));
@@ -22,6 +24,8 @@ export type BriefInput = {
   now: number;
   windowDays?: number;
   budgetMs: number;
+  /** Raises `ConsoleSuggestionUnanswerable` for a prompt the live turn would decline; the hosted route requires it. */
+  suggest?: (prompt: string) => void | Promise<void>;
 };
 
 export async function withinBriefBudget<T>(budgetMs: number, action: (checkDeadline: () => void) => Promise<T>): Promise<T> {
@@ -61,8 +65,20 @@ export async function deriveBrief(input: BriefInput): Promise<Brief | null> {
         const arrived = Date.parse(row.arrivedAt);
         return Number.isFinite(arrived) && arrived >= since && arrived <= input.now;
       });
-      const subjects = live.map((entry) => ({ subject: entry.subject, articles: recent.filter((row) => { checkDeadline(); return topicMatch(entry, row); }).slice(0, 3) }))
-        .filter((entry) => entry.articles.length > 0).slice(0, 3);
+      const matched = live.map((entry) => ({ subject: entry.subject, prompt: briefPrompt(entry.subject),
+        articles: recent.filter((row) => { checkDeadline(); return topicMatch(entry, row); }).slice(0, 3) }))
+        .filter((entry) => entry.articles.length > 0);
+      const subjects: Brief["subjects"] = [];
+      for (const entry of matched) {
+        if (subjects.length === 3) break;
+        try {
+          await input.suggest?.(entry.prompt);
+        } catch (error) {
+          if (isUnanswerable(error)) continue;
+          throw error;
+        }
+        subjects.push(entry);
+      }
       return subjects.length ? { windowDays, subjects } : null;
     });
   } catch {

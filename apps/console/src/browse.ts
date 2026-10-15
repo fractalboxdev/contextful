@@ -1,3 +1,5 @@
+import { assertSuggestion, chipPrompt, isUnanswerable } from "./suggest.ts";
+
 type ToolResult = {
   structuredContent?: unknown;
   isError?: boolean;
@@ -56,7 +58,7 @@ export function createBrowse(transport: ReadTransport) {
     return object(result.structuredContent);
   }
 
-  async function listed(request: BrowseRequest): Promise<{ tables: TableEntry[]; files: FileEntry[] }> {
+  async function listed(request: BrowseRequest): Promise<{ tables: TableEntry[]; files: FileEntry[]; listing: unknown[] }> {
     const listing = await read("context.describe", bounds(request));
     if (!Array.isArray(listing.tables)) throw new BrowseError("ConsoleBrowseResponseMalformed");
     const tables = listing.tables.map((item) => object(item)).filter((item) => item.zone_admitted === true && item.kind !== "memory" && typeof item.table === "string")
@@ -67,14 +69,29 @@ export function createBrowse(transport: ReadTransport) {
     const files = fileListing.rows.filter((row): row is [string, string] =>
       Array.isArray(row) && typeof row[0] === "string" && typeof row[1] === "string" && names.has(row[0]))
       .slice(0, MAX_FILES).map(([table, path]) => ({ table, path, label: humanizeLabel(path) }));
-    return { tables, files };
+    return { tables, files, listing: listing.tables };
   }
 
   return {
     async discover(request: BrowseRequest) {
-      const { tables, files } = await listed(request);
-      const chips = tables.map((table) => ({ table: table.table, label: humanizeLabel(table.table), description: table.description }));
+      const { tables, files, listing } = await listed(request);
       const descriptions = await Promise.all(tables.map((table) => read("context.describe", { table: table.table, ...bounds(request) })));
+      const rowCounts = Object.fromEntries(tables.map((table, index) => {
+        const count = descriptions[index].row_count;
+        return [table.table, typeof count === "number" ? count : undefined];
+      }));
+      const columnsByTable = Object.fromEntries(tables.map((table, index) => [table.table, descriptions[index].columns]));
+      const chips = tables.flatMap((table) => {
+        const label = humanizeLabel(table.table);
+        const prompt = chipPrompt(label);
+        try {
+          assertSuggestion(prompt, listing, rowCounts, columnsByTable);
+        } catch (error) {
+          if (isUnanswerable(error)) return [];
+          throw error;
+        }
+        return [{ table: table.table, label, description: table.description, prompt }];
+      });
       const insights = tables.flatMap((table, index) => {
         const count = descriptions[index].row_count;
         return typeof count === "number" && Number.isFinite(count) && count >= 0
