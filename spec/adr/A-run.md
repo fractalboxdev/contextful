@@ -410,3 +410,21 @@ Criteria: a rebuild over the current frontier always clears staleness, which dec
 | The maximum across inputs | Attribution | One input that never reaches a build hides behind fresher ones. |
 
 Consequences: the watermark and manifest shapes stay as they are, and `watermark.at` is informational.
+
+## The orchestrator role is a port, and a provider's workflow engine fills it at the unit grain
+
+**Status:** accepted; narrows the three-storage-ports decision above: a provider adapter may fill the substrate itself.
+
+Context: a managed target names a provider orchestrator while the engine's runner fills the role too, so a step crosses two engines. Criteria: one semantics, proven once; proofs holding on managed targets; the provider's primitives orchestrating; no stacked retry.
+
+Decision: `run.orchestrate` names the role as the substrate port's verbs. A provider filler drives the engine one provider step per table pull or chunk, recording the commit pointer, journal entries inside. The engine's clauses stay normative inside a step; a filler conforms through its own suite, keeps its per-step retry off, and dispatches no delegate itself.
+
+| Option | Lost on | Cost |
+| --- | --- | --- |
+| Port at the substrate, one provider step per pull or chunk *(chosen)* | — | Two fillers to conform; a step pays a provider round trip; lease and ceiling between steps stay unsettled. |
+| The engine's runner alone, provider stores beneath it | The provider's primitives orchestrating | A step crosses container, Worker and store; the provider's replay idles. |
+| The provider owns replay below the commit pointer | One semantics | Replay differs per target and the journal proofs cover the laptop alone. |
+| One provider step per page | Proofs holding on managed targets | A backfill of tens of thousands of pages overflows an instance. |
+
+Consequences: a Workflows filler meets the provider's ceilings at the pull or chunk grain; the run record lives in the store, so retention binds nothing; storage-port adapters keep their suites.
+Revisit: a provider offering a sub-chunk grain.

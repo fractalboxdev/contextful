@@ -11,6 +11,7 @@ cancel        = {}
 record        = {}
 project       = {}
 sweep         = {}
+orchestrate   = {}
 declare       = {}
 compile       = {}
 transform     = {}

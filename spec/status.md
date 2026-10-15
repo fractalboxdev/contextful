@@ -11,11 +11,11 @@ An unpinned clause is `committed`; a pinned one is `performed` when its Rust, Le
 | `corpus` | 1 | 10 | 79 | 37 | 7 | 0 | 79 | 0 | 79 |
 | `disclosure` | 3 | 16 | 158 | 68 | 13 | 7 | 103 | 0 | 103 |
 | `read` | 2 | 19 | 276 | 45 | 28 | 13 | 231 | 0 | 231 |
-| `run` | 3 | 28 | 509 | 114 | 44 | 11 | 459 | 0 | 459 |
+| `run` | 3 | 29 | 515 | 114 | 44 | 13 | 459 | 0 | 459 |
 | `store` | 3 | 19 | 290 | 64 | 14 | 11 | 280 | 0 | 280 |
 | `surface` | 2 | 21 | 159 | 63 | 23 | 0 | 132 | 0 | 132 |
 | `topology` | 1 | 6 | 79 | 25 | 5 | 3 | 74 | 0 | 74 |
-| **total** | 22 | 167 | 2522 | 649 | 208 | 77 | 2112 | 0 | |
+| **total** | 22 | 168 | 2528 | 649 | 208 | 79 | 2112 | 0 | |
 
 Decision records: 18.
 
@@ -43,6 +43,7 @@ A milestone reads `closed` when its acceptance test computes `passing` and every
 | 15 — Point-in-time evaluation | 7 | 78 | 77 | passing | closed |
 | 16 — Memory graph walk | 1 | 11 | 0 | absent | open |
 | 17 — Delegated bodies | 1 | 16 | 12 | passing | closed |
+| 18 — Provider orchestrators | 1 | 6 | 0 | absent | open |
 
 Unscheduled operations: 12.
 
