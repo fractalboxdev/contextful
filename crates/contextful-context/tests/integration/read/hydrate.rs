@@ -49,3 +49,46 @@ fn the_face_maps_exactly_the_current_snapshot_set_it_reads() {
     std::fs::remove_file(&files[0]).unwrap();
     assert_eq!(mapped.files().next().unwrap().1, first.as_slice());
 }
+
+/// Paths of `/proc/self/maps` entries naming a deleted file; empty off Linux.
+fn deleted_mappings() -> Vec<String> {
+    std::fs::read_to_string("/proc/self/maps")
+        .map(|maps| maps.lines().filter(|l| l.ends_with("(deleted)")).map(str::to_string).collect())
+        .unwrap_or_default()
+}
+
+/// A refresh follows the set a read resolves against: a fold drops the runs it folded, a
+/// land adds its run, and a collected file's mapping is released with its inode.
+#[test]
+fn a_refresh_unmaps_what_left_the_set_and_maps_what_joined_it() {
+    let r = Reads::new();
+    let decl = TableDecl::parse_pipeline(MANIFEST).unwrap().into_iter().find(|d| d.name == "research/notes").unwrap();
+    let mut mapped = r.face.map_snapshot_set().unwrap();
+    let run = r.store.table_dir("research/notes").unwrap().join("data/runs/run-0001/ingest-a/part-00000.parquet");
+    assert!(mapped.files().any(|(p, _)| p == run), "the unfolded run maps");
+
+    fold(&r.store, &decl, at("2030-01-11T00:00:00Z")).unwrap();
+    land_rows(&r.store, "research/notes", "run-0002", json!([{ "note_id": "n5", "tenant": "acme", "title": "Later note" }]));
+    let refreshed = r.face.refresh_snapshot_set(&mut mapped).unwrap();
+    let files: Vec<PathBuf> = mapped.files().map(|(p, _)| p.to_path_buf()).collect();
+    let mut expected: Vec<PathBuf> = r.face.tables().unwrap().iter().flat_map(|t| read_set(&r, t)).collect();
+    expected.sort();
+    assert_eq!(files, expected, "the refreshed set is the set a read resolves against");
+    assert!(!files.contains(&run), "the folded run is unmapped");
+    assert!(files.iter().any(|f| f.to_string_lossy().contains("/run-0002/")), "the landed run maps");
+    assert!(refreshed.released >= 1 && refreshed.mapped >= 2, "{refreshed:?}");
+
+    // A file collected from disk is released at the next refresh, its inode with it.
+    let before = deleted_mappings();
+    let gone = files.iter().find(|f| f.to_string_lossy().contains("/run-0002/")).unwrap().clone();
+    std::fs::remove_file(&gone).unwrap();
+    let with_deleted = deleted_mappings();
+    if cfg!(target_os = "linux") {
+        assert!(with_deleted.iter().any(|l| l.contains(&*gone.to_string_lossy())), "the unlinked file stays mapped until the refresh");
+    }
+    let refreshed = r.face.refresh_snapshot_set(&mut mapped);
+    // The pointer still names the removed run, so the refresh refuses to map it.
+    assert!(refreshed.is_err(), "a resolved file missing from disk refuses the refresh");
+    assert!(!mapped.files().any(|(p, _)| p == gone), "the removed file's mapping is released");
+    assert_eq!(deleted_mappings(), before, "no mapping of a deleted file survives the refresh");
+}

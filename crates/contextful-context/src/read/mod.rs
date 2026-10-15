@@ -20,7 +20,7 @@ pub use audit::{audit_reads, AUDIT_READS};
 pub use engine::ENGINE;
 pub use face::{operator_query, Face, ReadOptions};
 pub use fault::ReadFault;
-pub use hydrate::MappedSnapshotSet;
+pub use hydrate::{MappedSnapshotSet, Refreshed};
 pub use pool::{PoolCounts, SessionPool};
 pub use recall::RecallRequest;
 pub use results::{ResultCache, ResultCounts};

@@ -8,11 +8,11 @@
 //! resolved before the listener binds, so a process that cannot serve binds nothing.
 //!
 //! The face memory-maps the current snapshot set before it answers a read
-//! (`read.cache.hot-local-parquet`). A store already on local disk maps before the listener
-//! binds; one pulling its snapshot set binds warming (`read.cache.cold-start`), and a
-//! hydrator pulls the bucket, checks the face's declarations against the pulled schemas,
-//! maps the set and only then opens reads. A hydration that fails stops the process
-//! (`store.pull.before-run`).
+//! (`read.cache.hot-local-parquet`). The listener binds warming (`read.cache.cold-start`),
+//! and a hydrator pulls the bucket when the store declares it, checks the face's
+//! declarations against the pulled schemas, maps the set and only then opens reads. A
+//! hydration that fails stops the process (`store.pull.before-run`). Once hydrated, the
+//! mappings are reconciled with the current set every 30 s.
 
 #[cfg(feature = "data-plane")]
 use crate::admit::AdmitArgs;
@@ -348,7 +348,7 @@ pub fn run(args: ServeArgs, tasks: &Tasks) -> Result<()> {
         contextful_agent::http::HttpResponse::json(result.status, &result.body)
     };
     let hydration = Hydration::warming();
-    let mapped = std::sync::OnceLock::new();
+    let mapped = std::sync::Mutex::new(None);
     let http = HttpFace::new(&face, &clock, &audit, admitting, Some(ceiling))
         .map_err(anyhow::Error::msg)?
         .with_exchange(&exchange_route, exchange.is_none())
@@ -372,48 +372,76 @@ pub fn run(args: ServeArgs, tasks: &Tasks) -> Result<()> {
     let hydrated = |set: contextful_context::read::MappedSnapshotSet| {
         use std::io::Write;
         let _ = writeln!(std::io::stderr(), "hydrated: snapshot set mapped (files: {}, bytes: {})", set.files().count(), set.bytes());
-        let _ = mapped.set(set);
+        *mapped.lock().unwrap_or_else(std::sync::PoisonError::into_inner) = Some(set);
         hydration.finish();
     };
-    // A store already on local disk maps before the listener binds; one pulling its
-    // snapshot set binds warming and hydrates behind the listener (`read.cache.cold-start`).
-    if pull.is_none() {
-        hydrated(face.map_snapshot_set()?);
-    }
+    // The listener binds warming whether or not the store pulls; mapping touches every page
+    // of the set, so it runs behind the listener (`read.cache.cold-start`).
     let listener = TcpListener::bind(&args.http)?;
     eprintln!("listening on http://{}/mcp", listener.local_addr()?);
+    let stopped = std::sync::atomic::AtomicBool::new(false);
     std::thread::scope(|scope| {
-        if let Some(pull) = pull {
-            scope.spawn(|| {
-                use std::io::Write;
-                // A hydrator that fails or panics stops the process rather than leave it warming.
-                let set = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
-                    hydrate(pull, &located, &face, args.public_key.as_deref(), args.keyset.as_deref())
-                }));
-                match set {
-                    Ok(Ok(set)) => hydrated(set),
-                    Ok(Err(error)) => {
-                        let _ = writeln!(std::io::stderr(), "{error:#}");
-                        std::process::exit(1);
-                    }
-                    Err(_) => std::process::exit(1),
+        scope.spawn(|| {
+            use std::io::Write;
+            // A hydrator that fails or panics stops the process rather than leave it warming.
+            let set = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+                hydrate(pull, &located, &face, args.public_key.as_deref(), args.keyset.as_deref())
+            }));
+            match set {
+                Ok(Ok(set)) => hydrated(set),
+                Ok(Err(error)) => {
+                    let _ = writeln!(std::io::stderr(), "{error:#}");
+                    std::process::exit(1);
                 }
-            });
-        }
-        http.serve(listener)
+                Err(_) => std::process::exit(1),
+            }
+            // The mappings follow the set a read resolves against, so a file a land, fold,
+            // erasure or retention collection takes out of it is unmapped within one
+            // interval and keeps no inode alive (`disclosure.erase.physical-removal`).
+            let mut since = std::time::Instant::now();
+            while !stopped.load(std::sync::atomic::Ordering::Relaxed) {
+                std::thread::sleep(STOP_POLL);
+                if since.elapsed() < REMAP_INTERVAL {
+                    continue;
+                }
+                since = std::time::Instant::now();
+                let mut held = mapped.lock().unwrap_or_else(std::sync::PoisonError::into_inner);
+                if let Some(set) = held.as_mut() {
+                    match face.refresh_snapshot_set(set) {
+                        Ok(r) if r.mapped + r.released > 0 => {
+                            let _ = writeln!(std::io::stderr(), "remapped: snapshot set (mapped: {}, released: {})", r.mapped, r.released);
+                        }
+                        Ok(_) => {}
+                        Err(error) => {
+                            let _ = writeln!(std::io::stderr(), "remap: {error}");
+                        }
+                    }
+                }
+            }
+        });
+        let served = http.serve(listener);
+        stopped.store(true, std::sync::atomic::Ordering::Relaxed);
+        served
     })?;
     Ok(())
 }
 
-/// Pull the bucket, check the declarations against the pulled schemas as a face opening
-/// on them would (`read.guard.startup-time-check`), and map the snapshot set the face reads.
+/// How often a hydrated server reconciles its mappings with the current snapshot set.
+const REMAP_INTERVAL: std::time::Duration = std::time::Duration::from_secs(30);
+/// How often the reconciler checks whether the listener has stopped.
+const STOP_POLL: std::time::Duration = std::time::Duration::from_millis(250);
+
+/// Map the snapshot set; a store declaring `pull_before_run` first pulls the bucket and
+/// checks the declarations against the pulled schemas as a face opening
+/// on them would (`read.guard.startup-time-check`).
 fn hydrate(
-    pull: crate::sync::PendingPull,
+    pull: Option<crate::sync::PendingPull>,
     located: &crate::project::Located,
     face: &contextful_context::read::Face,
     public_key: Option<&str>,
     keyset: Option<&std::path::Path>,
 ) -> Result<contextful_context::read::MappedSnapshotSet> {
+    let Some(pull) = pull else { return Ok(face.map_snapshot_set()?) };
     pull.run()?;
     let manifest = std::fs::read_to_string(&located.declaration)?;
     let pepper = contextful_policy::enforce::mask::Pepper::resolve(|k| std::env::var(k).ok());

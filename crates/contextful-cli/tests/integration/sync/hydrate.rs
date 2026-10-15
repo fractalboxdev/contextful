@@ -141,3 +141,57 @@ fn a_cold_http_server_is_ready_within_8_s_and_answers_once_its_pull_lands() {
     assert_eq!(status, 200, "{body}");
     assert_eq!(serde_json::from_str::<Value>(&body).unwrap()["result"]["structuredContent"]["rows"], json!([["1"]]), "{body}");
 }
+
+/// A server whose store is already on local disk still binds before it maps: a data file
+/// that cannot be read yet holds hydration, not readiness.
+#[test]
+fn a_local_store_is_ready_within_8_s_while_its_mapping_waits_on_the_disk() {
+    let bucket = tempfile::tempdir().unwrap();
+    let local = seed(&file_sync(bucket.path(), ""), &[]);
+    // The landed data file becomes a pipe, so mapping it holds until the test opens it.
+    let part = objects(&local.path().join(super::STORE)).into_iter().find(|p| p.extension().is_some_and(|e| e == "parquet")).expect("a landed data file");
+    std::fs::remove_file(&part).unwrap();
+    assert!(Command::new("mkfifo").arg(&part).status().unwrap().success());
+
+    let (public, _token) = issue(local.path());
+    let started = Instant::now();
+    let served = serve_within(local.path(), &public, Duration::from_secs(8));
+    assert!(started.elapsed() < Duration::from_secs(8), "readiness took {:?}", started.elapsed());
+    assert_eq!(hydration(&served.addr), "warming");
+
+    // Opening the pipe's write end lets the mapping finish.
+    drop(std::fs::OpenOptions::new().write(true).open(&part).unwrap());
+    served.line("hydrated:", Duration::from_secs(60)).expect("the hydrator reports the mapped snapshot set");
+    assert_eq!(hydration(&served.addr), "complete");
+}
+
+/// A pull whose endpoint resolves but whose transfer fails stops the listening server.
+#[test]
+fn a_failed_transfer_after_listening_stops_the_server() {
+    let bucket = tempfile::tempdir().unwrap();
+    let _a = seed(&file_sync(bucket.path(), ""), &[]);
+    // The bucket's data object becomes a directory, which no transfer can read.
+    let part = objects(bucket.path()).into_iter().find(|p| p.extension().is_some_and(|e| e == "parquet")).expect("a pushed data object");
+    std::fs::remove_file(&part).unwrap();
+    std::fs::create_dir(&part).unwrap();
+
+    let cold = project("ingest-h", &file_sync(bucket.path(), "pull_before_run = true\n"));
+    let (public, _token) = issue(cold.path());
+    let mut served = serve_within(cold.path(), &public, Duration::from_secs(8));
+
+    let deadline = Instant::now() + Duration::from_secs(30);
+    let status = loop {
+        if let Some(status) = served.child.try_wait().unwrap() {
+            break status;
+        }
+        assert!(Instant::now() < deadline, "the server kept running after its transfer failed");
+        std::thread::sleep(Duration::from_millis(50));
+    };
+    assert!(!status.success(), "a failed transfer exits nonzero: {status}");
+    let mut rest = Vec::new();
+    while let Ok(line) = served.lines.recv_timeout(Duration::from_secs(1)) {
+        rest.push(line);
+    }
+    assert!(!rest.iter().any(|l| l.starts_with("hydrated:")), "a failed transfer never completes hydration: {rest:?}");
+    assert!(rest.iter().any(|l| l.contains("pull_before_run")), "the failure names the pull: {rest:?}");
+}

@@ -1,6 +1,9 @@
 //! The current snapshot set held in memory (`read.cache.hot-local-parquet`): every data
 //! file a read resolves against, mapped read-only and faulted in once, so a statement
-//! reads local pages and never waits on object storage or a cold disk.
+//! reads local pages and never waits on object storage or a cold disk. A refresh
+//! reconciles the mappings with the set a read resolves against now: it maps what a land
+//! or fold added and unmaps every file that left the set, so a file an erasure or a
+//! retention collection removes keeps no inode or page alive past the next refresh.
 
 use super::{Face, ReadFault};
 use crate::error::ContextError;
@@ -33,10 +36,57 @@ impl MappedSnapshotSet {
     }
 }
 
+/// What one refresh changed: files newly mapped and mappings released.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct Refreshed {
+    pub mapped: usize,
+    pub released: usize,
+}
+
 impl Face {
     /// Map every data file a read of each table resolves against now — the snapshot the
     /// pointer names and the runs it has not folded — and touch each page once.
     pub fn map_snapshot_set(&self) -> Result<MappedSnapshotSet, ReadFault> {
+        let files = self.resolved_paths()?.into_iter().map(map_file).collect::<Result<_, _>>()?;
+        Ok(MappedSnapshotSet { files })
+    }
+
+    /// Reconcile `set` with the snapshot set a read resolves against now: keep each mapping
+    /// still in it, map each file it gained, and unmap each file it lost or whose path has
+    /// left the disk.
+    pub fn refresh_snapshot_set(&self, set: &mut MappedSnapshotSet) -> Result<Refreshed, ReadFault> {
+        let current = self.resolved_paths()?;
+        let mut held: std::collections::BTreeMap<PathBuf, Mapped> =
+            std::mem::take(&mut set.files).into_iter().map(|m| (m.path.clone(), m)).collect();
+        let mut files = Vec::with_capacity(current.len());
+        let mut mapped = 0;
+        let mut failed = None;
+        for path in current {
+            match held.remove(&path) {
+                Some(kept) if path.exists() => files.push(kept),
+                _ => match map_file(path) {
+                    Ok(m) => {
+                        mapped += 1;
+                        files.push(m);
+                    }
+                    Err(fault) => {
+                        failed = Some(fault);
+                        break;
+                    }
+                },
+            }
+        }
+        // A mapping whose file left the set is dropped here, unmapping it.
+        let released = held.len();
+        drop(held);
+        set.files = files;
+        match failed {
+            Some(fault) => Err(fault),
+            None => Ok(Refreshed { mapped, released }),
+        }
+    }
+
+    fn resolved_paths(&self) -> Result<Vec<PathBuf>, ReadFault> {
         let mut paths = Vec::new();
         for table in self.tables()? {
             let state = self.store.state(&self.decl(&table))?;
@@ -45,8 +95,7 @@ impl Face {
             paths.extend(resolved.files().iter().map(|f| dir.join(f)));
         }
         paths.sort();
-        let files = paths.into_iter().map(map_file).collect::<Result<_, _>>()?;
-        Ok(MappedSnapshotSet { files })
+        Ok(paths)
     }
 }
 
