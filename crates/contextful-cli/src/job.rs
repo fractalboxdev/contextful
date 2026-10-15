@@ -204,7 +204,7 @@ pub fn run(cmd: JobCmd, bodies: &Bodies) -> Result<()> {
             let mut read = |as_of: &str| -> Result<InputSet, Failure> {
                 let refused = |e: &dyn std::fmt::Display| Failure::deterministic(FailureTag::Permanent, e.to_string());
                 let bound = Bound::parse(as_of).map_err(|e| refused(&e))?;
-                let bounds = Bounds { as_of: Some(bound), valid_as_of: None, available_as_of: None };
+                let bounds = Bounds { as_of: Some(bound), valid_as_of: None, available_as_of: None, ..Bounds::default() };
                 let session = face.session(&authority, &Request { zone: None }, bounds).map_err(|e| refused(&e))?;
                 let (response, snapshots) = face.input(&session, &statement, bounds).map_err(|e| refused(&e))?;
                 InputSet::from_response(as_of, snapshots, &response.columns, response.rows, response.truncated).map_err(|e| refused(&e))

@@ -70,7 +70,7 @@ fn statements_under_one_key_share_one_resolved_session_and_one_engine() {
     // Another zone or other bounds is another key.
     let zoned = r.face.session(&authority, &Request { zone: Some("on-prem:hq") }, Bounds::default()).unwrap();
     r.face.query(&zoned, COUNT, ReadOptions::default()).unwrap();
-    let bounded = Bounds { as_of: Some(Bound::parse("2031-01-01T00:00:00Z").unwrap()), valid_as_of: None, available_as_of: None };
+    let bounded = Bounds { as_of: Some(Bound::parse("2031-01-01T00:00:00Z").unwrap()), valid_as_of: None, available_as_of: None, ..Bounds::default() };
     let s = r.face.session(&authority, &Request::default(), bounded).unwrap();
     r.face.query(&s, COUNT, ReadOptions::default()).unwrap();
     assert_eq!(counts(&r), (1, 3, 3));

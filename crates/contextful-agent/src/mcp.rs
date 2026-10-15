@@ -188,7 +188,7 @@ fn bound(args: &Map<String, Value>, name: &str) -> Result<Option<Bound>, Protoco
 }
 
 fn bounds(args: &Map<String, Value>) -> Result<Bounds, Protocol> {
-    Ok(Bounds { as_of: bound(args, "as_of")?, valid_as_of: bound(args, "valid_as_of")?, available_as_of: bound(args, "available_as_of")? })
+    Ok(Bounds { as_of: bound(args, "as_of")?, valid_as_of: bound(args, "valid_as_of")?, available_as_of: bound(args, "available_as_of")?, ..Bounds::default() })
 }
 
 /// Refuse an argument a tool does not declare; every read tool declares the bounds and `zone`

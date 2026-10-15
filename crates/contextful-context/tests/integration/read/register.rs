@@ -186,7 +186,7 @@ fn historical_retrieval_keeps_row_and_column_enforcement() {
     let r = Reads::new();
     let grant = read(&["research/contacts"], Some(("research/contacts", "acme")));
     let authority = r.authority(loop_subject("agent://research-loop"), vec![grant]);
-    let bounds = Bounds { as_of: Some(contextful_core::store::bound_time::Bound::parse("2030-01-11T00:00:00Z").unwrap()), valid_as_of: None, available_as_of: None };
+    let bounds = Bounds { as_of: Some(contextful_core::store::bound_time::Bound::parse("2030-01-11T00:00:00Z").unwrap()), valid_as_of: None, available_as_of: None, ..Bounds::default() };
     let session = r.face.session(&authority, &contextful_policy::enforce::session::Request::default(), bounds).unwrap();
     let request = contextful_context::read::RetrieveRequest::new("research/contacts", "", at("2030-02-01T00:00:00Z"));
     let response = r.face.retrieve(&session, &request, bounds).unwrap();
