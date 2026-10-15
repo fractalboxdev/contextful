@@ -5,7 +5,8 @@
 use crate::run::ProjectArgs;
 use anyhow::Result;
 use clap::Subcommand;
-use contextful_core::connector::record::{bound_names, inventory_row, read_records, Answered, Expiry, Mark, Observation, OperatorRecord, Row, Unavailable};
+use contextful_core::connector::record::{bound_names, inventory_row, read_records, Answered, Expiry, Mark, Observation, OperatorRecord, Row, Unavailable, RECORD_BLOCK};
+use contextful_core::connector::ConnectorError;
 use contextful_core::connector::reference::SecretName;
 use contextful_core::pipeline::declare::ManifestFile;
 use contextful_core::ports::Clock;
@@ -30,8 +31,8 @@ pub enum SecretsCmd {
     },
 }
 
-/// Every logical name the manifests in `files` bind, plus `extra`.
-pub(crate) fn configured(files: &[ManifestFile], extra: Option<&SecretName>) -> Result<BTreeSet<String>> {
+/// Every logical name the manifests in `files` bind.
+pub(crate) fn configured(files: &[ManifestFile]) -> Result<BTreeSet<String>> {
     let mut bound = BTreeSet::new();
     for f in files {
         let value: toml::Value = if f.path.ends_with(".json") {
@@ -42,32 +43,30 @@ pub(crate) fn configured(files: &[ManifestFile], extra: Option<&SecretName>) -> 
         };
         bound.extend(bound_names(&value));
     }
-    bound.extend(extra.map(|n| n.as_str().to_string()));
     Ok(bound)
 }
 
-/// Read the operator records of the declaration in `files`, refusing a record that
-/// describes no configured binding (`connector.record.record-rejected`).
-pub(crate) fn records(declaration: &Path, files: &[ManifestFile], bootstrap: Option<&SecretName>) -> Result<(BTreeSet<String>, BTreeMap<String, OperatorRecord>)> {
-    let bound = configured(files, bootstrap)?;
+/// Read the operator records of the declaration in `files` against the names the manifests
+/// bind, whatever backend the environment selects. A record naming no bound name, or a
+/// `[secret.<name>]` table in any other manifest, refuses (`connector.record.record-rejected`).
+pub(crate) fn records(declaration: &Path, files: &[ManifestFile]) -> Result<(BTreeSet<String>, BTreeMap<String, OperatorRecord>)> {
+    let bound = configured(files)?;
     let path = declaration.display().to_string();
-    let Some(file) = files.iter().find(|f| f.path == path && f.path.ends_with(".toml")) else { return Ok((bound, BTreeMap::new())) };
-    let value: toml::Value = toml::from_str(&file.text).map_err(|e| anyhow::anyhow!("{path}: {e}"))?;
-    let records = read_records(&path, &value, &bound)?;
+    let mut records = BTreeMap::new();
+    for f in files.iter().filter(|f| f.path.ends_with(".toml")) {
+        let value: toml::Value = toml::from_str(&f.text).map_err(|e| anyhow::anyhow!("{}: {e}", f.path))?;
+        if f.path == path {
+            records = read_records(&path, &value, &bound)?;
+        } else if value.get(RECORD_BLOCK).is_some() {
+            return Err(ConnectorError::SecretRecordRejected(format!("{}: `{RECORD_BLOCK}` records live in the declaration {path}, not a pipeline manifest", f.path)).into());
+        }
+    }
     Ok((bound, records))
 }
 
-/// Validate the declaration's operator records under the invoking environment's backend.
+/// Validate the declaration's operator records.
 pub(crate) fn check_records(declaration: &Path, files: &[ManifestFile]) -> Result<()> {
-    let vars: BTreeMap<String, String> = std::env::vars().collect();
-    let bootstrap = bootstrap_name(&vars);
-    records(declaration, files, bootstrap.as_ref()).map(|_| ())
-}
-
-/// The mint reference's logical name, when the lease backend is selected.
-fn bootstrap_name(vars: &BTreeMap<String, String>) -> Option<SecretName> {
-    let selected = vars.get(contextful_outbound::secrets::BACKEND).is_some_and(|b| b.split(',').any(|s| s.trim() == "lease"));
-    selected.then(|| SecretName::parse(vars.get(contextful_outbound::secrets::LEASE_BOOTSTRAP).map(String::as_str).unwrap_or("lease-mint")).ok()).flatten()
+    records(declaration, files).map(|_| ())
 }
 
 /// The adapter that answered each name in the latest recorded run naming it.
@@ -96,7 +95,8 @@ pub fn run(cmd: SecretsCmd) -> Result<()> {
             let vars: BTreeMap<String, String> = std::env::vars().collect();
             let clock: Arc<dyn Clock + Send + Sync> = crate::run::clock(&project.now)?;
             let assembly = contextful_outbound::secrets::assemble_all(&vars, clock.clone())?;
-            let (bound, mut records) = records(&located.declaration, &files, assembly.bootstrap.as_ref())?;
+            let (mut bound, mut records) = records(&located.declaration, &files)?;
+            bound.extend(assembly.bootstrap.as_ref().map(|n| n.as_str().to_string()));
             let answered = latest_answered(&located, &project.now)?;
             let now = clock.now();
             for name in &bound {

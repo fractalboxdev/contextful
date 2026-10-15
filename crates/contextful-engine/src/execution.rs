@@ -282,13 +282,13 @@ impl<'e, J: JournalStore, B: BlobStore> Execution<'e, J, B> {
         self.pending.is_some()
     }
 
-    /// The token the keeper fires on a stop.
     /// Record the run's provider attribution: each logical name it hydrated mapped to the
     /// answering adapter. The closing row carries it on success and on failure.
     pub fn record_credentials(&mut self, providers: std::collections::BTreeMap<String, String>) {
         self.credentials = providers;
     }
 
+    /// The token the keeper fires on a stop.
     pub fn token(&self) -> &CancelToken {
         &self.token
     }

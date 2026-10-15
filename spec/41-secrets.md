@@ -236,7 +236,7 @@ Host mediation of an outbound request: the transport port, the bound host, addre
   *A-authority*
 - `mediation-covers-every-egress` — A built-in source, a guest connector, a model call and a limiter call each attach through the one mediated client; {{connector.attach.exec-environment}} names the one attachment outside it.
   *A-connector*
-- `exec-environment` — An exec step's env template hydrates through its source's resolver at spawn into the child's cleared environment, the one attachment outside host mediation, and enters {{connector.record.provider-attribution}}.
+- `exec-environment` — An exec step's env template hydrates through its source's resolver at spawn into the environment {{run.exec.no-shell}} clears, the one attachment outside host mediation, and enters {{connector.record.provider-attribution}}.
   *because the derive driver hands a vendor child its own credential, and a loopback attaching proxy remains an open design*
 
 unsettled: Does an exec step's vendor traffic pass a host-run loopback proxy that attaches its credential, so no child holds material? owner: connector affects: connector.attach
@@ -264,6 +264,8 @@ The division of labor on credential turnover and the rotation mechanisms.
 - `no-master-key` — The engine holds references, and no single encryption key exists whose theft with a database copy yields every credential.
   *A-connector*
 - `turnover-preserves-the-name` — Every rotation mechanism keeps the logical name, touching no declaration and no pinned connector artifact.
+
+unsettled: Does a process-wide gate serialize refreshes of one name across resolvers? owner: connector affects: connector.rotate
 
 #### Scenarios
 
@@ -294,7 +296,7 @@ Optional operator metadata, provider observations, the inventory of configured b
 - `provider-attribution` — A run's commit-phase row, and its row on the failure arm, carry `credential_providers`: each logical name the run hydrated mapped to the adapter that answered it, names only.
 - `record-table` — An operator record is a `[secret.<name>]` table in the discovered `contextful.toml`, keyed `description`, `account`, `grants`, `surfaces`, `rotate`, `created` and `expires`, each optional; `expires = "never"` is the one explicit no-expiry assertion.
   *A-connector*
-- `record-rejected` — A `[secret.<name>]` table naming no configured binding, or carrying an unknown key, a mistyped value or a credential-shaped string, raises `SecretRecordRejected` at declaration read, naming the file, the name and the key path, never the value.
+- `record-rejected` — A `[secret.<name>]` table outside the discovered `contextful.toml`, naming no `secret://` name a manifest binds, or holding an unknown key, mistyped value or credential-shaped string raises `SecretRecordRejected` at declaration read, naming file, name and key path, never the value.
   *because a misspelled name otherwise describes nothing while the real binding reads undescribed, and an echoed value carries a pasted token into CI logs*
 - `record-is-inert` — Resolution, attachment, rotation and a pipeline's content hash read no operator record; editing one changes no plan, run or hydrated value.
 - `observe-port` — An adapter's observe half answers a name with presence, version, creation and expiry, or unavailable with a reason, and holds no hydrated value; the inventory holds observe halves only.

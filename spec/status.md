@@ -7,7 +7,7 @@ An unpinned clause is `committed`; a pinned one is `performed` when its Rust, Le
 | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
 | `assurance` | 3 | 18 | 314 | 63 | 24 | 8 | 270 | 0 | 270 |
 | `authority` | 2 | 16 | 295 | 79 | 29 | 9 | 224 | 0 | 224 |
-| `connector` | 2 | 14 | 356 | 90 | 21 | 16 | 233 | 0 | 233 |
+| `connector` | 2 | 14 | 363 | 91 | 21 | 15 | 260 | 0 | 260 |
 | `corpus` | 1 | 10 | 79 | 37 | 7 | 0 | 79 | 0 | 79 |
 | `disclosure` | 3 | 16 | 158 | 68 | 13 | 5 | 72 | 0 | 72 |
 | `read` | 2 | 19 | 276 | 45 | 28 | 13 | 230 | 0 | 230 |
@@ -15,7 +15,7 @@ An unpinned clause is `committed`; a pinned one is `performed` when its Rust, Le
 | `store` | 3 | 19 | 288 | 64 | 14 | 11 | 278 | 0 | 278 |
 | `surface` | 2 | 21 | 159 | 63 | 23 | 0 | 118 | 0 | 118 |
 | `topology` | 1 | 6 | 79 | 25 | 5 | 3 | 74 | 0 | 74 |
-| **total** | 22 | 167 | 2512 | 648 | 208 | 76 | 2035 | 0 | |
+| **total** | 22 | 167 | 2519 | 649 | 208 | 75 | 2062 | 0 | |
 
 Decision records: 18.
 
@@ -29,7 +29,7 @@ A milestone reads `closed` when its acceptance test computes `passing` and every
 | 1 — The authority core | 14 | 244 | 225 | passing | closed |
 | 2 — The store | 9 | 181 | 171 | passing | closed |
 | 3 — The run path | 12 | 271 | 254 | passing | closed |
-| 4 — Ingest | 25 | 556 | 399 | passing | open |
+| 4 — Ingest | 25 | 563 | 426 | passing | closed |
 | 5 — The read face under enforcement | 17 | 308 | 242 | passing | open |
 | 6 — Sync and replicas | 8 | 83 | 83 | passing | closed |
 | 7 — Memory | 6 | 71 | 56 | passing | closed |
@@ -547,6 +547,7 @@ Unscheduled operations: 12.
 | `connector.attach.bound-host` | `crates/contextful-connectors/tests/integration/http.rs::a_credentialed_endpoint_host_is_never_bound_from_a_table_name` | performed |
 | `connector.attach.cleartext-endpoint` | `crates/contextful-outbound/tests/integration/attach.rs::a_credential_never_travels_in_cleartext_outside_loopback` | performed |
 | `connector.attach.credential-in-a-url` | `crates/contextful-core/tests/integration/connector/attach.rs::an_endpoint_carrying_userinfo_is_refused` | performed |
+| `connector.attach.exec-environment` | `crates/contextful-cli/tests/integration/derive.rs::an_exec_steps_credential_hydrates_at_spawn_and_enters_the_attribution` | performed |
 | `connector.attach.landed-origin` | `crates/contextful-outbound/tests/integration/attach.rs::the_body_that_lands_comes_from_the_configured_origin` | performed |
 | `connector.attach.literal-attach-value` | `crates/contextful-core/tests/integration/connector/component.rs::an_attach_value_embedding_no_reference_is_refused` | performed |
 | `connector.attach.no-material-to-a-guest` | `crates/contextful-wasm/tests/integration/attach.rs::the_host_attaches_the_credential_and_the_guest_sees_only_the_response` | performed |
@@ -655,10 +656,29 @@ Unscheduled operations: 12.
 | `connector.package.remote-unpinned` | `crates/contextful-core/tests/integration/connector/package.rs::a_remote_artifact_without_a_64_hex_pin_is_refused_at_parse` | performed |
 | `connector.package.request-body` | `crates/contextful-wasm/tests/integration/package.rs::an_outbound_body_past_8_mib_fails_the_call_before_the_vendor` | performed |
 | `connector.package.session-budget` | `crates/contextful-wasm/tests/integration/package.rs::a_session_logs_within_1_mib_and_holds_8_requests_outbound` | performed |
+| `connector.record.configured-is-not-observed` | `crates/contextful-cli/tests/integration/secrets.rs::the_latest_run_attribution_shows_apart_from_configuration` | performed |
+| `connector.record.expiry-unknown` | `crates/contextful-core/tests/integration/connector/record.rs::an_absent_expiry_is_unknown_and_carries_no_days_remaining` | performed |
+| `connector.record.expiry-warning` | `crates/contextful-core/tests/integration/connector/record.rs::an_expiry_within_30_d_and_an_elapsed_one_are_marked` | performed |
+| `connector.record.inventory` | `crates/contextful-cli/tests/integration/secrets.rs::the_inventory_lists_configured_bindings_and_never_a_value` | performed |
+| `connector.record.inventory-output` | `crates/contextful-cli/tests/integration/secrets.rs::the_json_listing_prints_one_object_per_binding_and_exits_zero_on_marks` | performed |
+| `connector.record.metadata-storage` | `crates/contextful-core/tests/integration/connector/record.rs::a_record_holds_metadata_and_never_a_value` | performed |
+| `connector.record.observation-provenance` | `crates/contextful-core/tests/integration/connector/record.rs::operator_and_observed_expiries_are_listed_with_their_provenance` | performed |
+| `connector.record.observation-unavailable` | `crates/contextful-outbound/tests/integration/record.rs::an_unavailable_read_reports_its_reason_and_no_operator_assertion_replaces_it` | performed |
+| `connector.record.observe-port` | `crates/contextful-outbound/tests/integration/record.rs::observe_halves_answer_metadata_and_never_hydrate` | performed |
+| `connector.record.operator-record` | `crates/contextful-core/tests/integration/connector/record.rs::an_operator_record_describes_grants_account_surfaces_and_rotation` | performed |
+| `connector.record.optional-record` | `crates/contextful-core/tests/integration/connector/record.rs::a_binding_without_a_record_lists_with_unknown_fields` | performed |
+| `connector.record.provider-attribution` | `crates/contextful-engine/tests/integration/credentials.rs::the_closing_row_maps_each_hydrated_name_to_its_answering_adapter` | performed |
+| `connector.record.provider-custody` | `crates/contextful-outbound/tests/integration/rotate.rs::a_refresh_puts_forward_to_the_answering_adapter_conditioned_on_the_hydrated_version` | performed |
+| `connector.record.record-is-inert` | `crates/contextful-cli/tests/integration/secrets.rs::an_edited_record_leaves_the_content_hash_unchanged` | performed |
+| `connector.record.record-rejected` | `crates/contextful-core/tests/integration/connector/record.rs::a_record_describing_nothing_or_holding_a_bad_key_is_refused_without_its_value` | performed |
+| `connector.record.record-table` | `crates/contextful-core/tests/integration/connector/record.rs::a_secret_table_carries_the_seven_optional_record_keys` | performed |
+| `connector.record.surface-of-consumption` | `crates/contextful-core/tests/integration/connector/record.rs::a_record_names_each_consuming_surface_and_its_binding` | performed |
+| `connector.record.unverified-scope-is-marked` | `crates/contextful-core/tests/integration/connector/record.rs::an_absent_grants_key_reads_as_unknown` | performed |
 | `connector.reference.environment-is-a-miss` | `crates/contextful-outbound/tests/integration/resolve.rs::the_environment_answers_no_template` | performed |
 | `connector.reference.foreign-placeholder` | `crates/contextful-core/tests/integration/connector/reference.rs::an_environment_or_bare_placeholder_is_foreign` | performed |
 | `connector.reference.malformed-placeholder` | `crates/contextful-core/tests/integration/connector/reference.rs::an_unclosed_empty_or_nested_placeholder_is_malformed` | performed |
 | `connector.reference.material-in-a-declaration` | `crates/contextful-core/tests/integration/connector/reference.rs::a_credential_literal_in_a_declaration_is_refused` | performed |
+| `connector.reference.name-is-the-join` | `crates/contextful-outbound/tests/integration/rotate.rs::the_logical_name_joins_attribution_cache_and_put` | performed |
 | `connector.reference.reference-scheme` | `crates/contextful-core/tests/integration/connector/reference.rs::a_reference_is_a_lowercase_logical_name_of_at_most_128_chars` | performed |
 | `connector.reference.value-template` | `crates/contextful-core/tests/integration/connector/reference.rs::a_template_is_literal_text_and_secret_placeholders` | performed |
 | `connector.reference.whole-value-reference` | `crates/contextful-outbound/tests/integration/resolve.rs::a_whole_value_reference_consults_the_environment` | performed |
@@ -670,6 +690,13 @@ Unscheduled operations: 12.
 | `connector.resolve.shadowed-name` | `crates/contextful-outbound/tests/integration/resolve.rs::a_name_two_adapters_answer_is_refused_at_first_hydration` | performed |
 | `connector.resolve.unresolved-name` | `crates/contextful-outbound/tests/integration/resolve.rs::an_unanswered_reference_refuses_at_preflight_and_at_the_call` | performed |
 | `connector.resolve.wiped-on-drop` | `crates/contextful-core/tests/integration/connector/reference.rs::a_hydrated_value_zeroes_its_bytes_on_drop` | performed |
+| `connector.rotate.conditional-put` | `crates/contextful-outbound/tests/integration/rotate.rs::a_put_losing_to_another_writer_adopts_its_version` | performed |
+| `connector.rotate.division-of-labor` | `crates/contextful-outbound/tests/integration/rotate.rs::the_host_drives_the_refresh_and_the_store_only_stores` | performed |
+| `connector.rotate.expiry-hint` | `crates/contextful-outbound/tests/integration/rotate.rs::the_put_carries_the_refreshed_expiry_as_a_hint` | performed |
+| `connector.rotate.leased-credential` | `crates/contextful-outbound/tests/integration/rotate.rs::a_lease_re_mints_without_write_back_and_a_failed_mint_leaves_nothing` | performed |
+| `connector.rotate.operator-entered` | `crates/contextful-outbound/tests/integration/rotate.rs::an_environment_secret_turns_over_only_by_re_entry` | performed |
+| `connector.rotate.static-key` | `crates/contextful-outbound/tests/integration/rotate.rs::a_static_key_turns_over_at_the_next_cache_miss` | performed |
+| `connector.rotate.turnover-preserves-the-name` | `crates/contextful-outbound/tests/integration/rotate.rs::a_rotation_keeps_the_name_and_the_template` | performed |
 | `connector.source.body-format` | `crates/contextful-connectors/tests/integration/http.rs::a_declared_format_selects_the_decoder_and_json_is_the_default` | performed |
 | `connector.source.bound-column-occupied` | `crates/contextful-connectors/tests/integration/bound.rs::a_fetched_row_already_carrying_a_bound_column_refuses_the_read` | performed |
 | `connector.source.bound-columns` | `crates/contextful-connectors/tests/integration/bound.rs::every_fetched_row_carries_its_bound_columns` | performed |

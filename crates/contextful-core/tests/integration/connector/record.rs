@@ -92,7 +92,7 @@ fn an_absent_grants_key_reads_as_unknown() {
 
 /// A misspelled name, an unknown key, a mistyped value and a credential-shaped string each
 /// refuse, naming the file, the name and the key path, never the value.
-// spec: connector.record.record-rejected@d06f2826
+// spec: connector.record.record-rejected@eb295f64
 #[test]
 fn a_record_describing_nothing_or_holding_a_bad_key_is_refused_without_its_value() {
     let sentinel = "sentinel-value-0042";

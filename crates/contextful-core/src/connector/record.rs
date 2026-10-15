@@ -152,7 +152,8 @@ pub fn read_records(file: &str, manifest: &toml::Value, bound: &BTreeSet<String>
 }
 
 /// Every logical name a `secret://` reference in `manifest` binds, outside the record block:
-/// templates, whole-value references and every block that carries them.
+/// templates, whole-value references and every block that carries them. A string root is
+/// a JSON manifest's text, scanned whole.
 pub fn bound_names(manifest: &toml::Value) -> BTreeSet<String> {
     fn walk(v: &toml::Value, out: &mut BTreeSet<String>) {
         match v {
@@ -173,12 +174,11 @@ pub fn bound_names(manifest: &toml::Value) -> BTreeSet<String> {
         }
     }
     let mut out = BTreeSet::new();
-    if let Some(t) = manifest.as_table() {
-        for (k, v) in t {
-            if k != RECORD_BLOCK {
-                walk(v, &mut out);
-            }
-        }
+    match manifest {
+        toml::Value::Table(t) => t.iter().filter(|(k, _)| k.as_str() != RECORD_BLOCK).for_each(|(_, v)| walk(v, &mut out)),
+        // A JSON manifest's text, whose string values hold each reference verbatim.
+        toml::Value::String(_) => walk(manifest, &mut out),
+        _ => {}
     }
     out
 }

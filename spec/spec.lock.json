@@ -17444,7 +17444,7 @@
       "operation": "attach",
       "subject": "exec-environment",
       "kind": "behavior",
-      "statement": "An exec step's env template hydrates through its source's resolver at spawn into the child's cleared environment, the one attachment outside host mediation, and enters {{connector.record.provider-attribution}}.",
+      "statement": "An exec step's env template hydrates through its source's resolver at spawn into the environment {{run.exec.no-shell}} clears, the one attachment outside host mediation, and enters {{connector.record.provider-attribution}}.",
       "why": "because the derive driver hands a vendor child its own credential, and a loopback attaching proxy remains an open design",
       "file": "spec/41-secrets.md",
       "line": 239
@@ -17585,7 +17585,7 @@
       "statement": "An optional operator record describes one logical name's intended grants, account or tenancy, consuming surfaces and rotation location; supplied creation and expiry assertions remain operator metadata.",
       "why": "A-connector",
       "file": "spec/41-secrets.md",
-      "line": 277
+      "line": 279
     },
     {
       "id": "connector.record.metadata-storage",
@@ -17596,7 +17596,7 @@
       "statement": "A committed operator record contains descriptive metadata only; neither a credential value nor a decryption key is required to record a binding.",
       "why": "A-connector",
       "file": "spec/41-secrets.md",
-      "line": 279
+      "line": 281
     },
     {
       "id": "connector.record.provider-custody",
@@ -17607,7 +17607,7 @@
       "statement": "The selected provider owns credential values, versions and rotation state; an external-manager binding requires no ciphertext copy in the repository.",
       "why": "A-connector",
       "file": "spec/41-secrets.md",
-      "line": 281,
+      "line": 283,
       "scenarios": [
         "WHEN a binding selects an external manager with no encrypted repository entry, THEN the manager remains the sole owner of its value and versions."
       ]
@@ -17621,7 +17621,7 @@
       "statement": "An operator record identifies each documented consuming surface and its credential binding name.",
       "why": "",
       "file": "spec/41-secrets.md",
-      "line": 283
+      "line": 285
     },
     {
       "id": "connector.record.optional-record",
@@ -17632,7 +17632,7 @@
       "statement": "A binding without an operator record remains resolvable and appears in inventory with unknown descriptive fields.",
       "why": "",
       "file": "spec/41-secrets.md",
-      "line": 284,
+      "line": 286,
       "scenarios": [
         "WHEN a configured binding has no operator record, THEN inventory includes the binding with unknown descriptive fields."
       ]
@@ -17646,7 +17646,7 @@
       "statement": "Grants an operator has not established are recorded as unknown.",
       "why": "",
       "file": "spec/41-secrets.md",
-      "line": 285
+      "line": 287
     },
     {
       "id": "connector.record.rotation-record",
@@ -17657,7 +17657,7 @@
       "statement": "A rotation follows {{connector.rotate.turnover-preserves-the-name}} without requiring a repository commit; operator metadata changes only when its assertions change.",
       "why": "A-connector",
       "file": "spec/41-secrets.md",
-      "line": 286,
+      "line": 288,
       "scenarios": [
         "WHEN a manager rotates a credential, THEN no repository commit is required."
       ]
@@ -17671,7 +17671,7 @@
       "statement": "`contextful secrets list` enumerates configured logical bindings and displays their configured adapters, operator metadata and available provider observations; it reads no credential values and claims no complete inventory of a provider's secrets.",
       "why": "",
       "file": "spec/41-secrets.md",
-      "line": 288
+      "line": 290
     },
     {
       "id": "connector.record.observation-provenance",
@@ -17682,7 +17682,7 @@
       "statement": "Each provider-observed field names its adapter and observation time; operator assertions remain separately labelled, including when they disagree with provider observations.",
       "why": "",
       "file": "spec/41-secrets.md",
-      "line": 289,
+      "line": 291,
       "scenarios": [
         "WHEN an operator expiry differs from an observed expiry, THEN inventory shows both with their distinct provenance."
       ]
@@ -17696,7 +17696,7 @@
       "statement": "Unsupported, denied or failed metadata reads appear as unavailable with their reason; inventory never substitutes an operator assertion for a provider observation or hydrates a value to obtain metadata.",
       "why": "",
       "file": "spec/41-secrets.md",
-      "line": 290,
+      "line": 292,
       "scenarios": [
         "WHEN a provider denies metadata access, THEN inventory reports the reason without reading a credential value."
       ]
@@ -17710,7 +17710,7 @@
       "statement": "An absent expiry is unknown; `no expiry` requires an explicit assertion or observation, and days remaining is computed only for a dated expiry, retaining its provenance.",
       "why": "",
       "file": "spec/41-secrets.md",
-      "line": 291,
+      "line": 293,
       "scenarios": [
         "WHEN neither operator nor provider supplies an expiry, THEN inventory reports unknown expiry and no days remaining."
       ]
@@ -17724,7 +17724,7 @@
       "statement": "The inventory marks each dated expiry falling within 30 d and each elapsed expiry, retaining the expiry's provenance.",
       "why": "",
       "file": "spec/41-secrets.md",
-      "line": 292
+      "line": 294
     },
     {
       "id": "connector.record.configured-is-not-observed",
@@ -17735,7 +17735,7 @@
       "statement": "A configured adapter identifies a binding's configuration; only {{connector.record.provider-attribution}} identifies the adapter that answered a run's reference.",
       "why": "",
       "file": "spec/41-secrets.md",
-      "line": 293,
+      "line": 295,
       "scenarios": [
         "WHEN a binding configures several adapters and has no run attribution, THEN inventory reports configuration without asserting an answering adapter."
       ]
@@ -17749,7 +17749,7 @@
       "statement": "A run's commit-phase row, and its row on the failure arm, carry `credential_providers`: each logical name the run hydrated mapped to the adapter that answered it, names only.",
       "why": "",
       "file": "spec/41-secrets.md",
-      "line": 294
+      "line": 296
     },
     {
       "id": "connector.record.record-table",
@@ -17760,7 +17760,7 @@
       "statement": "An operator record is a `[secret.<name>]` table in the discovered `contextful.toml`, keyed `description`, `account`, `grants`, `surfaces`, `rotate`, `created` and `expires`, each optional; `expires = \"never\"` is the one explicit no-expiry assertion.",
       "why": "A-connector",
       "file": "spec/41-secrets.md",
-      "line": 295
+      "line": 297
     },
     {
       "id": "connector.record.record-rejected",
@@ -17768,10 +17768,10 @@
       "operation": "record",
       "subject": "record-rejected",
       "kind": "refusal",
-      "statement": "A `[secret.<name>]` table naming no configured binding, or carrying an unknown key, a mistyped value or a credential-shaped string, raises `SecretRecordRejected` at declaration read, naming the file, the name and the key path, never the value.",
+      "statement": "A `[secret.<name>]` table outside the discovered `contextful.toml`, naming no `secret://` name a manifest binds, or holding an unknown key, mistyped value or credential-shaped string raises `SecretRecordRejected` at declaration read, naming file, name and key path, never the value.",
       "why": "because a misspelled name otherwise describes nothing while the real binding reads undescribed, and an echoed value carries a pasted token into CI logs",
       "file": "spec/41-secrets.md",
-      "line": 297,
+      "line": 299,
       "scenarios": [
         "WHEN `contextful.toml` holds `[secret.vendor-tokne]` beside a binding named `vendor-token`, THEN the declaration read refuses and the message carries no record value."
       ]
@@ -17785,7 +17785,7 @@
       "statement": "Resolution, attachment, rotation and a pipeline's content hash read no operator record; editing one changes no plan, run or hydrated value.",
       "why": "",
       "file": "spec/41-secrets.md",
-      "line": 299,
+      "line": 301,
       "scenarios": [
         "WHEN an operator record's description changes, THEN the pipeline's content hash is unchanged."
       ]
@@ -17799,7 +17799,7 @@
       "statement": "An adapter's observe half answers a name with presence, version, creation and expiry, or unavailable with a reason, and holds no hydrated value; the inventory holds observe halves only.",
       "why": "A-connector",
       "file": "spec/41-secrets.md",
-      "line": 300,
+      "line": 302,
       "scenarios": [
         "WHEN a lease-served binding is listed, THEN its lease observation reads unsupported and the mint endpoint receives 0 requests."
       ]
@@ -17813,7 +17813,7 @@
       "statement": "`secrets list` exits 0 whatever its marks; `--json` prints one object per binding per line: name, configured adapters, latest answered adapter with run id and instant, operator fields, and observations with adapter and time.",
       "why": "",
       "file": "spec/41-secrets.md",
-      "line": 302
+      "line": 304
     },
     {
       "id": "authority.identify.subject-tuple",
@@ -29950,6 +29950,10 @@
     [
       "connector.attach.mediation-covers-every-egress",
       "connector.attach.exec-environment"
+    ],
+    [
+      "connector.attach.exec-environment",
+      "run.exec.no-shell"
     ],
     [
       "connector.attach.exec-environment",

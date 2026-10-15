@@ -127,3 +127,51 @@ fn the_latest_run_attribution_shows_apart_from_configuration() {
     assert!(history.contains("\"credential_providers\":{\"vendor-token\":\"env\"}"), "{history}");
     assert!(!history.contains(SENTINEL));
 }
+
+/// A binding a `pipelines/*.json` pipeline declares lists, and its record validates.
+#[test]
+fn a_json_pipelines_binding_lists_and_takes_a_record() {
+    let dir = project(RECORD);
+    std::fs::create_dir_all(dir.path().join("pipelines")).unwrap();
+    std::fs::write(
+        dir.path().join("pipelines/orders.json"),
+        r#"{"id": "orders", "tables": ["items"], "source": {"name": "http", "config": {"endpoint": "https://api.vendor.example/v1/orders", "headers": {"Authorization": "Bearer ${secret://vendor-token}"}}}}"#,
+    )
+    .unwrap();
+    let rows = lines(&cf(dir.path(), &[], &["secrets", "list", "--project", "research", "--json"]));
+    let names: Vec<&str> = rows.iter().map(|r| r["name"].as_str().unwrap()).collect();
+    assert_eq!(names, ["vendor-token"]);
+    assert_eq!(rows[0]["operator"]["account"], "acct-4471");
+    let validated = ok(&cf(dir.path(), &[], &["pipeline", "validate"]));
+    assert!(validated.contains("orders: valid"), "{validated}");
+}
+
+/// A `[secret.<name>]` table outside the discovered `contextful.toml` refuses, so a
+/// misspelled record in `pipelines/` never passes unseen.
+#[test]
+fn a_record_outside_the_declaration_refuses() {
+    for record in [format!("[secret.vendor-tokne]\ndescription = \"{SENTINEL}\"\n"), RECORD.to_string()] {
+        let dir = project(&manifest("https://api.vendor.example/v1/orders", ""));
+        std::fs::create_dir_all(dir.path().join("pipelines")).unwrap();
+        std::fs::write(dir.path().join("pipelines/orders.toml"), &record).unwrap();
+        for args in [&["secrets", "list", "--project", "research"][..], &["pipeline", "validate"][..]] {
+            let out = cf(dir.path(), &[], args);
+            let err = String::from_utf8_lossy(&out.stderr);
+            assert!(!out.status.success() && err.contains("SecretRecordRejected") && err.contains("pipelines/orders.toml"), "{args:?}: {err}");
+            assert!(!err.contains(SENTINEL), "{err}");
+        }
+    }
+}
+
+/// A record's validity does not depend on the invoking environment: a record for the lease
+/// mint name, which no declaration binds, refuses with and without the lease backend.
+#[test]
+fn record_validity_ignores_the_selected_backend() {
+    let dir = project(&manifest("https://api.vendor.example/v1/orders", "[secret.lease-mint]\ndescription = \"mint\"\n"));
+    let lease = [("CONTEXTFUL_SECRETS_BACKEND", "lease,env"), ("CONTEXTFUL_LEASE_SCOPES", "vendor-token"), ("CONTEXTFUL_LEASE_PROVIDER_URL", "https://mint.invalid/"), ("LEASE_MINT", "mint")];
+    for envs in [&[][..], &lease[..]] {
+        let out = cf(dir.path(), envs, &["pipeline", "validate"]);
+        let err = String::from_utf8_lossy(&out.stderr);
+        assert!(!out.status.success() && err.contains("SecretRecordRejected") && err.contains("secret.lease-mint"), "{envs:?}: {err}");
+    }
+}

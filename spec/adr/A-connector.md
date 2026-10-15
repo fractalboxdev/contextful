@@ -127,7 +127,7 @@ A refreshed OAuth token is put to the adapter the run's attribution names for it
 | Serve the token from memory on a refused put | Provider custody | A vendor rotating refresh tokens leaves the manager's copy dead, with nothing recording it. |
 | Unconditional put | Atomic turnover | A slower replica overwrites a newer token, a torn credential state. |
 
-Consequences: the write-forward path runs against a manager adapter only, and a process-wide refresh gate waits for the first refresh trigger reachable in a build.
+Consequences: the write-forward path runs against a manager adapter only.
 Revisit: a manager offers no conditional write; two resolvers share one cache across runs.
 
 ## Egress passes one transport port and one pre-send hook ahead of resolution

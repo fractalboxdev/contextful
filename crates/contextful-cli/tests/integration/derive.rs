@@ -566,12 +566,12 @@ fn a_content_table_left_without_rows_stops_answering_the_earlier_key() {
 
 /// An exec step's env template hydrates through the source's resolver at spawn into the
 /// child's environment, and the run's attribution names it.
-// spec: connector.attach.exec-environment@516a4f48
+// spec: connector.attach.exec-environment@65aa88d9
 #[test]
 fn an_exec_steps_credential_hydrates_at_spawn_and_enters_the_attribution() {
     let sentinel = "sentinel-speech-key-41";
     let dir = transcribe_project("env = { SPEECH_API_KEY = \"${secret://speech-vendor}\" }\n");
-    std::fs::write(dir.path().join("engine.sh"), "test -n \"$SPEECH_API_KEY\" && echo \"keyed $1\" >&2\nprintf '1\\n00:00:01,000 --> 00:00:02,000\\n'\ncat \"$1\"\n").unwrap();
+    std::fs::write(dir.path().join("engine.sh"), "test -n \"$SPEECH_API_KEY\" && test -z \"$SPEECH_VENDOR\" && echo \"keyed $1\" >&2\nprintf '1\\n00:00:01,000 --> 00:00:02,000\\n'\ncat \"$1\"\n").unwrap();
     let fire = |dir: &std::path::Path| {
         Command::new(env!("CARGO_BIN_EXE_contextful"))
             .args(["pipeline", "run", "doc-text", "--project", "research", "--site-id", "site", "--now", "2030-01-01T01:00:00Z", "--run-id", "derive-1"])
