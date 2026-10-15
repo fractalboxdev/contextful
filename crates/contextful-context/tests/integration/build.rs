@@ -543,3 +543,63 @@ fn a_build_publication_boundary_refusal_preserves_rows_and_watermark() {
     assert_eq!(section.watermark, old.watermark);
     assert_eq!(p.rows("SELECT day,n FROM daily ORDER BY day"), rows);
 }
+
+const GOVERNED: &str = r#"
+[[model]]
+id = "daily"
+sql = "SELECT day, CAST(v AS VARCHAR) AS who, CAST(count(*) AS BIGINT) AS n FROM events GROUP BY day, v"
+unique_key = ["day", "who"]
+
+[model.contract]
+version = "1.0.0"
+columns = [{ name = "day", type = "utf8", nullable = false }, { name = "who", type = "utf8", nullable = false }, { name = "n", type = "int64", nullable = false }]
+
+[model.disclosure]
+grouping_allowlist = ["day"]
+contributor_key = "who"
+min_group_size = 2
+"#;
+
+/// A released build hands the release step the statement's per-contributor rows under the
+/// build's id, and publishes the rows the step returns, without the contributor key.
+#[test]
+fn a_released_build_publishes_the_release_steps_rows_without_the_contributor_key() {
+    use contextful_core::disclosure::release::DerivedTable;
+    let p = Project::new();
+    let spec = model_over(TABLES, GOVERNED);
+    let face = p.face(GOVERNED);
+    let seen = std::cell::RefCell::new(None);
+    let step = |release_id: &str, breakdown: contextful_core::disclosure::release::Breakdown| {
+        assert_eq!(breakdown.columns, ["day", "who", "n"]);
+        assert_eq!(breakdown.grain, ["day", "who"]);
+        assert_eq!(breakdown.rows.len(), 3);
+        *seen.borrow_mut() = Some(release_id.to_string());
+        Ok(DerivedTable {
+            name: "daily".into(),
+            columns: vec!["day".into(), "n".into()],
+            rows: vec![json!({"day": "d1", "n": 2}).as_object().unwrap().clone(), json!({"day": "__suppressed__", "n": null}).as_object().unwrap().clone()],
+        })
+    };
+    let req = BuildRequest { model: &spec, site_id: "site-a", started_at: at("2030-01-01T01:00:00Z"), completed_at: at("2030-01-01T01:00:00Z"), available_as_of: None };
+    let built = contextful_context::build::build_released(&face, &req, &step).unwrap();
+    assert_eq!(seen.borrow().as_deref(), Some(built.build_id.as_str()));
+    assert_eq!(built.rows, 2);
+    assert_eq!(p.rows("SELECT day, n FROM daily ORDER BY day"), [[json!("__suppressed__"), Value::Null], [json!("d1"), json!("2")]]);
+    let columns: Vec<String> = p.fx.store.try_schema("daily").unwrap().unwrap().columns.iter().map(|c| c.name.clone()).collect();
+    assert_eq!(columns.iter().filter(|c| !c.starts_with('_')).collect::<Vec<_>>(), ["day", "n"], "the contributor key is not published");
+}
+
+/// A refused release step publishes nothing and names its refusal.
+#[test]
+fn a_refused_release_step_publishes_nothing() {
+    use contextful_core::disclosure::release::ReleaseError;
+    use contextful_core::disclosure::DisclosureError;
+    let p = Project::new();
+    let spec = model_over(TABLES, GOVERNED);
+    let face = p.face(GOVERNED);
+    let step = |_: &str, _: contextful_core::disclosure::release::Breakdown| Err(ReleaseError::Refused(DisclosureError::UnitBudgetExhausted("3 of 3 units".into())));
+    let req = BuildRequest { model: &spec, site_id: "site-a", started_at: at("2030-01-01T01:00:00Z"), completed_at: at("2030-01-01T01:00:00Z"), available_as_of: None };
+    refused(contextful_context::build::build_released(&face, &req, &step), "DisclosureUnitBudgetExhausted");
+    assert!(current_section(&p.fx.store, "daily").unwrap().is_none(), "nothing was published");
+    assert!(!p.dir().join(POINTER_FILE).exists());
+}

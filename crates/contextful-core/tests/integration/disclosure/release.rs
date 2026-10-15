@@ -2,10 +2,12 @@
 //! noisy partition selection and the envelope.
 
 use contextful_core::disclosure::noise::{discrete_laplace, statistic_noise, Entropy, Spend};
-use contextful_core::disclosure::release::{release, Breakdown, MemoryLedger, ReleaseError, ReleaseRequest, UnitBudget};
+use contextful_core::disclosure::release::{release, spend_of, Breakdown, MemoryLedger, ReleaseError, ReleaseOutput, ReleaseRequest, UnitBudget};
 use contextful_core::disclosure::suppress::DISCLOSURE_SENTINEL;
 use contextful_core::disclosure::DisclosureError;
-use contextful_core::pipeline::model::DisclosureDecl;
+use contextful_core::pipeline::declare::ManifestFile;
+use contextful_core::pipeline::model::{check_blocks, project_disclosure, DisclosureDecl};
+use contextful_core::run::RunError;
 use serde_json::{json, Map, Value};
 use std::collections::BTreeMap;
 
@@ -401,4 +403,51 @@ fn a_published_forbidden_column_raises_and_the_contributor_key_does_not() {
     assert_eq!(e.identifier(), "DisclosureForbiddenColumnPublished");
     assert!(e.to_string().contains("account_email"), "{e}");
     assert_eq!(l.budget("t1").unwrap().spent, 0);
+}
+
+/// `[model.disclosure]` declares `per_run_spend`, the positive epsilon one release reserves from each contributing unit; a release whose policy declares none raises `DisclosureSpendUndeclared` and publishes nothing.
+// spec: disclosure.release.spend-declaration@fce863ef
+#[test]
+fn a_policy_without_a_positive_per_run_spend_raises_spend_undeclared() {
+    let e = spend_of(&policy()).unwrap_err();
+    assert_eq!(e.identifier(), "DisclosureSpendUndeclared");
+    assert!(e.to_string().starts_with("DisclosureSpendUndeclared:"), "{e}");
+    for bad in [0.0, -1.0, f64::NAN, f64::INFINITY, 1.0e-9] {
+        let mut p = policy();
+        p.per_run_spend = Some(bad);
+        assert_eq!(spend_of(&p).unwrap_err().identifier(), "DisclosureSpendUndeclared", "{bad}");
+    }
+    let mut p = policy();
+    p.per_run_spend = Some(0.5);
+    assert_eq!(spend_of(&p).unwrap().micros(), 500_000);
+    let declared: DisclosureDecl = toml::from_str("contributor_key = \"tenant_id\"\nper_run_spend = 2\n").unwrap();
+    assert_eq!(spend_of(&declared).unwrap().micros(), 2_000_000);
+}
+
+fn files(text: &str) -> Vec<ManifestFile> {
+    vec![ManifestFile { path: "contextful.toml".into(), text: text.into() }]
+}
+
+/// A project manifest's top-level `[disclosure]` block declares `unit_lifetime_cap`, the epsilon each contributing unit spends across every release; a release grants it to each unit it reserves from, and an undeclared cap is zero.
+#[test]
+fn a_project_declares_each_units_lifetime_cap_in_its_disclosure_block() {
+    let text = "[disclosure]\nunit_lifetime_cap = 3\n";
+    check_blocks("contextful.toml", &toml::from_str(text).unwrap()).unwrap();
+    assert_eq!(project_disclosure(&files(text)).unwrap().cap_micros(), 3_000_000);
+    assert_eq!(project_disclosure(&files("[project]\nname = \"p\"\n")).unwrap().cap_micros(), 0);
+    for bad in ["[disclosure]\nunit_lifetime_cap = -1\n", "[disclosure]\nunit_lifetime_cap = nan\n", "[disclosure]\nunit_cap = 1\n"] {
+        match project_disclosure(&files(bad)) {
+            Err(RunError::PipelineSpecInvalid(m)) => assert!(m.contains("contextful.toml"), "{m}"),
+            other => panic!("{bad}: {other:?}"),
+        }
+    }
+}
+
+/// A release requesting an activation handle or lookalike segment refuses before any unit is charged.
+#[test]
+fn an_activation_or_lookalike_output_raises_lookalike_unsupported() {
+    ReleaseOutput::Table.admit().unwrap();
+    for output in [ReleaseOutput::ActivationHandle, ReleaseOutput::LookalikeSegment] {
+        assert_eq!(output.admit().unwrap_err().identifier(), "DisclosureLookalikeUnsupported");
+    }
 }

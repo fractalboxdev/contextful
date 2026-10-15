@@ -103,7 +103,7 @@ fn rows_schema<'a>(rows: impl Iterator<Item = &'a Map<String, Value>>, types: &H
     Ok(Schema { columns, ..Default::default() })
 }
 
-fn column_array(c: &Column, rows: &[Map<String, Value>]) -> Result<ArrayRef> {
+pub(crate) fn column_array(c: &Column, rows: &[Map<String, Value>]) -> Result<ArrayRef> {
     let vals: Vec<Option<&Value>> = rows.iter().map(|r| r.get(&c.name)).collect();
     typed_array(&c.name, &c.ty, &vals)
 }

@@ -80,6 +80,25 @@ Decision: `disclosure.release.noise-mechanism` draws two-sided geometric noise w
 
 Consequences: a release with no metric bounds refuses before publication; a budget accounts for every published statistic. Revisit: a consent and readback contract admits activation handles.
 
+## The model declares the spend, the project the cap, and the ledger stays on the machine
+
+**Status:** accepted
+
+Context: a release charges every contributing unit; its spend, each unit's cap and the balances each need one home.
+Decision: `[model.disclosure]` declares `per_run_spend` (`disclosure.release.spend-declaration`); the project manifest's `[disclosure]` block declares `unit_lifetime_cap` (`disclosure.release.lifetime-cap`). The ledger is a SQLite file beside the audit chain, outside the synced store root, keyed by unit digest (`disclosure.release.budget-ledger`).
+
+| Option | Lost on | Cost |
+| --- | --- | --- |
+| Spend on the model, cap on the project, machine-local ledger *(chosen)* | — | Two machines releasing one project each hold a full cap; a cap edit applies at the next release. |
+| A cap per model | One cap per unit | A unit named by two models spends two lifetimes. |
+| A default spend when none is declared | Author intent | Every unit pays a budget nobody chose. |
+| The ledger inside the store root | Replica safety | A push carries per-contributor balances to every replica. |
+| Plaintext unit keys in the ledger | Pseudonymity | The ledger file lists every contributor. |
+
+Criteria: one cap per unit decided it; no undeclared spend; no contributor key at rest outside the store.
+Consequences: raising `unit_lifetime_cap` is the explicit grant edit; lowering it below a unit's spend exhausts that unit.
+Revisit: a project releases from more than one machine.
+
 ## A cross-owner release runs only when the boundary is enforced below the engine
 
 `disclosure.set-mode` requires of a cross-owner store per-owner signed manifest subtrees, per-owner write prefixes enforced by the object store's access policy, and per-owner signing keys, else `DisclosureCleanRoomPreconditionUnmet`. A hashed join keys on a per-pair escrowed pepper rotated per join; a static pepper raises `DisclosureStaticPepper`. `disclosure.set-mode.pepper-version` admits matching current-version rows after both owners re-land their keys.

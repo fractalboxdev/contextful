@@ -59,17 +59,18 @@ Every served table carries a visibility block ({{disclosure.mirror.unbound-table
 ({{disclosure.mirror.incomplete-binding}}), and a read past that budget refuses
 ({{disclosure.bound-staleness.access-stale}}).
 
-Fidelity states how closely a table follows its source. The source family caps the claim
+Fidelity states how closely a table follows its source. The family caps the claim
 ({{disclosure.declare-fidelity.family-bound}}), and a source that computes access with its
 own sharing engine is queried live rather than mirrored
 ({{disclosure.declare-fidelity.computed-inputs}}).
 
 The local diagnostic ({{disclosure.set-mode.check-verb}}) checks {{disclosure.set-mode.aggregate-shape}},
 {{disclosure.set-mode.policy-absent}} and {{disclosure.set-mode.model-unreadable}}.
-A release ({{disclosure.release.release-verb}}) reserves each unit's budget before computing
-({{disclosure.release.budget-reservation}}), groups only on permitted keys
+A release ({{disclosure.release.release-verb}}) reserves budget before computing
+({{disclosure.release.budget-reservation}}, {{disclosure.release.spend-declaration}},
+{{disclosure.release.lifetime-cap}}, {{disclosure.release.budget-ledger}}), groups only on permitted keys
 ({{disclosure.release.group-key}}), draws bounded noise
-({{disclosure.release.noise-mechanism}}, {{disclosure.release.metric-bounds}}), then withholds small groups
+({{disclosure.release.noise-mechanism}}, {{disclosure.release.metric-bounds}}), withholds small groups
 ({{disclosure.suppress.min-group-size}}) and dominated ones
 ({{disclosure.suppress.contributor-share}}) behind one sentinel row
 ({{disclosure.suppress.sentinel-row}}). A cohort table never

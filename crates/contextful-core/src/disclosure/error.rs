@@ -125,6 +125,12 @@ pub enum DisclosureError {
     /// A contributing unit's reservation failed; nothing is published. (`disclosure.release.budget-reservation`)
     #[error("DisclosureUnitBudgetExhausted: {0}")]
     UnitBudgetExhausted(String),
+    /// A released model's policy declares no positive per-run spend. (`disclosure.release.spend-declaration`)
+    #[error("DisclosureSpendUndeclared: {0}")]
+    SpendUndeclared(String),
+    /// A release requests an activation handle or lookalike segment. (`disclosure.release.lookalike-refusal`)
+    #[error("DisclosureLookalikeUnsupported: {0}")]
+    LookalikeUnsupported(String),
     /// A noised sum has no finite bounds or positive quantum. (`disclosure.release.metric-bounds`)
     #[error("DisclosureMetricBoundsAbsent: {0}")]
     MetricBoundsAbsent(String),
@@ -155,6 +161,8 @@ impl DisclosureError {
             DisclosureError::PolicySuppressesNothing(_) => "DisclosurePolicySuppressesNothing",
             DisclosureError::ShareOutOfRange(_) => "DisclosureShareOutOfRange",
             DisclosureError::UnitBudgetExhausted(_) => "DisclosureUnitBudgetExhausted",
+            DisclosureError::SpendUndeclared(_) => "DisclosureSpendUndeclared",
+            DisclosureError::LookalikeUnsupported(_) => "DisclosureLookalikeUnsupported",
             DisclosureError::MetricBoundsAbsent(_) => "DisclosureMetricBoundsAbsent",
             DisclosureError::DuplicateGrain(_) => "DisclosureDuplicateGrain",
             DisclosureError::GroupKeyNotPermitted(_) => "DisclosureGroupKeyNotPermitted",

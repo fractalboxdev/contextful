@@ -17,8 +17,31 @@ use std::collections::{BTreeMap, BTreeSet};
 use std::fs;
 use std::path::{Path, PathBuf};
 
+/// Uniform words from the operating system's generator: the noise source a release draws
+/// from (`disclosure.release.noise-mechanism`).
+pub struct OsEntropy(());
+
+impl OsEntropy {
+    /// Refuses when the operating system yields no randomness.
+    pub fn new() -> Result<OsEntropy> {
+        let mut probe = [0u8; 8];
+        getrandom::fill(&mut probe).map_err(|e| ContextError::Invalid(format!("release noise entropy is unavailable: {e}")))?;
+        Ok(OsEntropy(()))
+    }
+}
+
+impl contextful_core::disclosure::noise::Entropy for OsEntropy {
+    fn next_u64(&mut self) -> u64 {
+        let mut word = [0u8; 8];
+        // A source that answered at `new` and fails now halts the release rather than
+        // drawing predictable noise.
+        getrandom::fill(&mut word).expect("the operating system's generator stopped yielding randomness");
+        u64::from_le_bytes(word)
+    }
+}
+
 #[cfg(feature = "read")]
-pub use materialize::{admit_statements, build, build_guarded, model_edges, BuildRequest, Built};
+pub use materialize::{admit_statements, build, build_guarded, build_released, model_edges, BuildRequest, Built, ReleaseStep};
 
 /// The section of the snapshot the model's pointer names, when that build published one.
 pub fn current_section(store: &Store, model: &str) -> Result<Option<PublishSection>> {
@@ -322,6 +345,7 @@ mod materialize {
     use contextful_core::pipeline::model::{
         disclosure_digest, withholds_cells, BuildStatus, InputFrontier, ModelSpec, Watermark, FINGERPRINT_RECIPE, SEMANTICS_VERSION,
     };
+    use contextful_core::disclosure::release::{Breakdown, DerivedTable, ReleaseError};
     use contextful_core::read::guard::{admit, Admitted};
     use contextful_core::read::template::Bindings;
     use contextful_core::store::declare::TableDecl;
@@ -594,6 +618,54 @@ mod materialize {
     /// Admit publication under the caller's execution boundary after staging, before
     /// changing persistent schema or the published pointer. This is not host fencing.
     pub fn build_guarded(face: &Face, req: &BuildRequest<'_>, boundary: &dyn Fn() -> Result<()>) -> std::result::Result<Built, ReadFault> {
+        build_inner(face, req, boundary, None)
+    }
+
+    /// The release step a governed model's build runs (`disclosure.release.release-verb`):
+    /// it takes the build id as the release id and the statement's per-contributor rows,
+    /// and returns the derived table the build publishes in their place.
+    pub type ReleaseStep<'a> = dyn Fn(&str, Breakdown) -> std::result::Result<DerivedTable, ReleaseError> + 'a;
+
+    /// Build one governed model through `release`: the statement's rows pass the contract,
+    /// then the step's derived table, less the contributor key, is staged, tested and
+    /// published under the model's id. A refused step publishes nothing.
+    pub fn build_released(face: &Face, req: &BuildRequest<'_>, release: &ReleaseStep<'_>) -> std::result::Result<Built, ReadFault> {
+        build_inner(face, req, &|| Ok(()), Some(release))
+    }
+
+    /// The step's derived table as the columns and batch the build stages: each published
+    /// column keeps its statement type and admits null, which the sentinel row carries.
+    fn released(spec: &ModelSpec, cols: &[Column], rows: &RecordBatch, release_id: &str, step: &ReleaseStep<'_>) -> std::result::Result<(Vec<Column>, RecordBatch), ReadFault> {
+        let names: Vec<&str> = cols.iter().map(|c| c.name.as_str()).collect();
+        let breakdown = Breakdown {
+            columns: names.iter().map(|n| n.to_string()).collect(),
+            grain: spec.grain().to_vec(),
+            rows: crate::rows::batch_rows(rows, &names)?,
+        };
+        let table = step(release_id, breakdown).map_err(|e| match e {
+            ReleaseError::Refused(refusal) => ContextError::Disclosure(refusal),
+            ReleaseError::Ledger(failure) => ContextError::Catalog(failure),
+        })?;
+        let published = table
+            .columns
+            .iter()
+            .map(|name| match cols.iter().find(|c| &c.name == name) {
+                Some(c) => Ok(Column { nullable: true, ..c.clone() }),
+                None => Err(invalid(format!("model `{}`: the release publishes column `{name}`, which its statement does not emit", spec.id))),
+            })
+            .collect::<std::result::Result<Vec<_>, _>>()?;
+        let arrays = published.iter().map(|c| crate::land::column_array(c, &table.rows)).collect::<Result<Vec<_>>>()?;
+        let schema = Arc::new(ArrowSchema::new(published.iter().map(|c| Field::new(&c.name, parquet_io::data_type(&c.ty), true)).collect::<Vec<_>>()));
+        let batch = if published.is_empty() {
+            RecordBatch::try_new_with_options(schema, arrays, &arrow_array::RecordBatchOptions::new().with_row_count(Some(table.rows.len())))
+        } else {
+            RecordBatch::try_new(schema, arrays)
+        }
+        .map_err(|e| invalid(format!("model `{}`: {e}", spec.id)))?;
+        Ok((published, batch))
+    }
+
+    fn build_inner(face: &Face, req: &BuildRequest<'_>, boundary: &dyn Fn() -> Result<()>, release: Option<&ReleaseStep<'_>>) -> std::result::Result<Built, ReadFault> {
         let store = face.store();
         let spec = req.model;
         store.check_writable("build")?;
@@ -692,6 +764,10 @@ mod materialize {
             let batches: Vec<RecordBatch> = source.iter().map(|b| parquet_io::conform(b, &loose)).collect::<Result<_>>()?;
             let rows = arrow_select::concat::concat_batches(&loose, &batches).map_err(|e| invalid(format!("model `{}`: {e}", spec.id)))?;
             check_rows(spec, &cols, &rows)?;
+            let (cols, rows) = match release {
+                Some(step) => released(spec, &cols, &rows, &build_id, step)?,
+                None => (cols.clone(), rows),
+            };
 
             let n = rows.num_rows();
             let mut schema = Schema { columns: cols.clone(), ..Default::default() };
@@ -754,7 +830,10 @@ mod materialize {
                 table: spec.id.clone(),
                 created_at: req.started_at,
                 includes_runs: Vec::new(),
-                primary_key: spec.grain().to_vec(),
+                primary_key: match release {
+                    Some(_) => spec.grain().iter().filter(|c| cols.iter().any(|col| &col.name == *c)).cloned().collect(),
+                    None => spec.grain().to_vec(),
+                },
                 order_by: None,
                 row_count: n as u64,
                 valid_time: None,

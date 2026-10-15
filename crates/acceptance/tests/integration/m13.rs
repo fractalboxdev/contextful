@@ -7,6 +7,7 @@ use serde_json::json;
 use std::process::Output;
 
 const POLICY: &str = r#"authoring_posture = "per_request"
+site_id = "benchmark"
 [[model]]
 id = "revenue_by_industry"
 sql = "SELECT industry, tenant_id, SUM(revenue) AS revenue FROM revenue GROUP BY industry, tenant_id"
@@ -21,8 +22,11 @@ min_group_size = 3
 max_contributor_share = 0.4
 emit_sentinel = true
 forbidden_columns = ["tenant_id"]
+per_run_spend = 1000
 [model.disclosure.metric_bounds]
 revenue = { lower = 0, upper = 10000, quantum = 1 }
+[disclosure]
+unit_lifetime_cap = 1000
 "#;
 
 fn ok(out: &Output) -> String {
@@ -31,7 +35,6 @@ fn ok(out: &Output) -> String {
 }
 
 #[test]
-#[ignore = "milestone 13 is open: no surface releases a derived table"]
 fn m13_disclosure() {
     let cf = bin("contextful");
     let r = GitRepo::init();

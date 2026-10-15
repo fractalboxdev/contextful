@@ -16,6 +16,9 @@ pub enum ContextError {
     Authority(#[from] contextful_core::AuthorityError),
     #[error(transparent)]
     Erasure(#[from] contextful_core::disclosure::erase::ErasureError),
+    /// A registered `disclosure` aggregate refusal: a release's.
+    #[error(transparent)]
+    Disclosure(#[from] contextful_core::disclosure::DisclosureError),
     /// A registered `run` refusal: a model build's or hold's.
     #[error(transparent)]
     Run(#[from] contextful_core::run::RunError),

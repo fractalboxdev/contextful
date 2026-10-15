@@ -70,7 +70,13 @@ The ordered statistics release, the write-time disclosure policy, and the per-un
   *A-disclosure*
 - `release-envelope` — A release reports its published table, policy hash, reserved per-run spend, suppressed-group presence and row count without carrying a contributor key.
   *A-disclosure*
-- `lookalike-refusal` — A release requesting an activation handle or lookalike segment raises `DisclosureLookalikeUnsupported` and publishes nothing.
+- `lookalike-refusal` — A release requesting an activation handle or lookalike segment, as `--output activation-handle` or `--output lookalike-segment`, raises `DisclosureLookalikeUnsupported` and publishes nothing.
+  *A-disclosure*
+- `spend-declaration` — `[model.disclosure]` declares `per_run_spend`, the positive epsilon one release reserves from each contributing unit; a release whose policy declares none raises `DisclosureSpendUndeclared` and publishes nothing.
+  *A-disclosure*
+- `lifetime-cap` — A project manifest's top-level `[disclosure]` block declares `unit_lifetime_cap`, the epsilon each contributing unit spends across every release; a release grants it to each unit it reserves from, and an undeclared cap is zero.
+  *A-disclosure*
+- `budget-ledger` — A project's budget ledger is `.contextful/disclosure/<project>/budget.sqlite`, outside the synced store root, and records each contributing unit under the SHA-256 digest of its key.
   *A-disclosure*
 - `duplicate-grain` — A non-numeric, non-grain column rides the grouping, and one not constant within its group raises `DisclosureDuplicateGrain`.
   *A-disclosure*
@@ -81,7 +87,6 @@ The ordered statistics release, the write-time disclosure policy, and the per-un
 - `forbidden-column` — A contract declaring a forbidden column, or a materialization producing one, raises `DisclosureForbiddenColumnPublished`. The check runs after the contributor key leaves the published columns.
   *A-disclosure*
 
-unsettled: Which declaration carries a release's per-run spend and each unit's lifetime cap, and where in a project does the budget ledger live? owner: disclosure affects: disclosure.release
 
 ## suppress
 
@@ -151,9 +156,13 @@ max_contributor_share = 0.4
 emit_sentinel         = true
 figures               = "noised"   # the default; "exact" only on a cohort table
 forbidden_columns     = ["tenant_id", "subject_id", "account_email"]
+per_run_spend         = 0.5        # epsilon reserved from each contributing unit per release
 
 [model.disclosure.metric_bounds]
 revenue = { lower = 0, upper = 1000000, quantum = 1 }
+
+[disclosure]
+unit_lifetime_cap = 10             # epsilon each contributing unit spends across every release
 ```
 
 The breakdown a governed statement emits, and the rows published from it:
