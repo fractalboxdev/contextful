@@ -19,6 +19,7 @@ fn an_annotation_naming_no_clause_is_refused() {
     r.write("spec/spec.lock.json", LOCK);
     r.write("apps/web/src/check.ts", "export const x = 1;\n// mirrors: assurance.gate.nowhere\nexport const y = 2;\n");
     r.write("tools/lint/check.sh", "#!/bin/sh\n# mirrors:\ntrue\n");
+    r.write("packages/client/src/limits.ts", "// mirrors: assurance.gate.elsewhere\nexport const x = 1;\n");
     r.commit("mirrors");
     let o = mirrors(&r);
     assert!(!o.status.success());
@@ -26,6 +27,7 @@ fn an_annotation_naming_no_clause_is_refused() {
     assert!(err.contains("MirrorUnresolved"), "{err}");
     assert!(err.contains("apps/web/src/check.ts:2"), "{err}");
     assert!(err.contains("tools/lint/check.sh:2"), "{err}");
+    assert!(err.contains("packages/client/src/limits.ts:1"), "{err}");
 }
 
 // spec: topology.bound-application.restated-case@16b746a9

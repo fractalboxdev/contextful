@@ -39,7 +39,7 @@ fn engine() -> Repo {
     r.write("spec/capabilities.toml", REGISTRY);
     r.write(
         "crates/contextful-policy/src/enforce/mask.rs",
-        "pub const MASK_CROWD_FLOOR: u64 = 1_000;\npub struct TablePolicy;\n",
+        "pub const MASK_CROWD_FLOOR: u64 = 1_000;\npub const PREDICATE_SIZE: usize = 4 * 1024;\npub const NOISE_SCALE: f64 = 2.50;\npub struct TablePolicy;\n",
     );
     r.write("crates/contextful-control/src/lib.rs", "pub struct ConfigDoc;\n");
     r.write("crates/contextful-outbound/src/secrets.rs", "pub fn assemble_all() {}\n");
@@ -98,9 +98,21 @@ fn definitions_match_by_folded_name_in_every_scanned_language() {
     r.write("tools/audit/check.py", "import os\n\ndef visibility_class(f):\n    return f\n");
     r.write("packages/client/src/config.mjs", "export class ConfigDoc {}\n");
     r.write("apps/gateway/src/secrets.js", "const assembleAll = (vars) => vars;\n");
+    r.write(
+        "apps/gateway/src/guard.ts",
+        "export abstract class Guard {\n  abstract check(sql: string): void;\n  static async singleStatement(sql: string): Promise<string> {\n    return sql;\n  }\n}\nexport abstract class TablePolicy {}\n",
+    );
+    r.write(
+        "apps/console/src/guard.ts",
+        "class Console {\n  private readonly singleStatement = (sql: string) => sql;\n  render() {\n    if (ok) {\n      singleStatement(sql);\n    }\n  }\n}\n",
+    );
 
     let err = refused(&lint(&r), "CapabilityDuplicated");
+    assert!(!err.contains("apps/console/src/guard.ts:5"), "a call is no definition: {err}");
     for site in [
+        "apps/gateway/src/guard.ts:3",
+        "apps/gateway/src/guard.ts:7",
+        "apps/console/src/guard.ts:2",
         "crates/demo/src/policy.rs:1",
         "tools/audit/check.py:3",
         "packages/client/src/config.mjs:1",
@@ -120,6 +132,21 @@ fn a_constant_matches_on_name_and_value_together() {
     r.write("tools/audit/limits.py", "MASK_CROWD_FLOOR = 1_000\n");
     let err = refused(&lint(&r), "CapabilityDuplicated");
     assert!(err.contains("tools/audit/limits.py:1"), "{err}");
+}
+
+#[test]
+fn a_constant_written_as_arithmetic_or_a_float_matches_its_value() {
+    let r = engine();
+    r.write("apps/console/src/limits.ts", "export const PREDICATE_SIZE = 4096;\nexport const NOISE_SCALE = 2.5;\n");
+    r.write("tools/audit/limits.py", "NOISE_SCALE = 2.50\n");
+    let err = refused(&lint(&r), "CapabilityDuplicated");
+    for site in ["apps/console/src/limits.ts:1", "apps/console/src/limits.ts:2", "tools/audit/limits.py:1"] {
+        assert!(err.contains(site), "{site} missing: {err}");
+    }
+
+    r.write("apps/console/src/limits.ts", "export const PREDICATE_SIZE = 4095;\nexport const NOISE_SCALE = 2.25;\n");
+    r.write("tools/audit/limits.py", "NOISE_SCALE = 3\n");
+    passed(&lint(&r));
 }
 
 #[test]
@@ -150,8 +177,8 @@ fn a_surface_reaching_the_one_home_through_the_engine_passes() {
     assert!(String::from_utf8_lossy(&out.stdout).contains("capabilities: 5 homes"), "{}", String::from_utf8_lossy(&out.stdout));
 }
 
-/// `spec/capabilities.toml` names each capability of {{assurance.structure-tree.one-home}} with one home path and its defining symbols; an absent registry, a missing or doubled capability, an absent home or an undefined symbol raises `CapabilityHomeUnresolved`.
-// spec: assurance.structure-tree.capability-registry@ffb5a6fc
+/// `spec/capabilities.toml` names each capability of {{assurance.structure-tree.one-home}} with one home path and one or more defining symbols; an absent registry, a missing or doubled capability, an absent home or an undefined symbol raises `CapabilityHomeUnresolved`.
+// spec: assurance.structure-tree.capability-registry@38d6b6ea
 #[test]
 fn a_registry_resolving_to_no_home_is_refused() {
     let r = engine();
@@ -165,6 +192,14 @@ fn a_registry_resolving_to_no_home_is_refused() {
     assert!(err.contains("crates/contextful-gone/src"), "{err}");
     assert!(err.contains("`visibility` names no home"), "{err}");
     assert!(err.contains("`enforcement` names 2 homes"), "{err}");
+
+    r.write("spec/capabilities.toml", &REGISTRY.replace("symbols = [\"ConfigDoc\"]", "symbols = []"));
+    let err = refused(&lint(&r), "CapabilityHomeUnresolved");
+    assert!(err.contains("`control-plane state` names no symbol"), "{err}");
+
+    r.write("spec/capabilities.toml", &REGISTRY.replace("symbols = [\"ConfigDoc\"]", "symbol = [\"ConfigDoc\"]"));
+    let err = stderr(&lint(&r));
+    assert!(err.contains("unknown field `symbol`"), "{err}");
 
     std::fs::remove_file(r.root.join("spec/capabilities.toml")).unwrap();
     passed(&lint(&r));
@@ -201,13 +236,16 @@ fn a_mirrored_restatement_is_admitted_and_an_unannotated_one_is_refused() {
         "apps/console/src/limits.ts",
         "// mirrors: assurance.structure-tree.one-home\n// The console previews the crowd floor before submit.\nexport const MASK_CROWD_FLOOR = 1000;\n",
     );
-    r.write("tools/audit/guard.py", "def single_statement(sql):  # mirrors: assurance.structure-tree.one-home\n    return sql\n");
+    r.write("tools/audit/guard.py", "@cache\n# mirrors: assurance.structure-tree.one-home\ndef single_statement(sql):\n    return sql\n");
     passed(&lint(&r));
 
     r.write("apps/console/src/limits.ts", "// The console previews the crowd floor before submit.\nexport const MASK_CROWD_FLOOR = 1000;\n");
+    r.write("tools/audit/guard.py", "def single_statement(sql):  # mirrors: assurance.structure-tree.one-home\n    return sql\n");
+    r.write("apps/gateway/src/guard.ts", "// see mirrors: assurance.structure-tree.one-home\nexport function singleStatement(sql: string) {\n  return sql;\n}\n");
     let err = refused(&lint(&r), "CapabilityDuplicated");
-    assert!(err.contains("apps/console/src/limits.ts:2"), "{err}");
-    assert!(!err.contains("tools/audit/guard.py"), "{err}");
+    for site in ["apps/console/src/limits.ts:2", "tools/audit/guard.py:1", "apps/gateway/src/guard.ts:2"] {
+        assert!(err.contains(site), "{site} missing: {err}");
+    }
 }
 
 #[test]

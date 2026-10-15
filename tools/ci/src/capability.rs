@@ -5,7 +5,9 @@
 //! `CapabilityDuplicated` (`assurance.structure-tree.duplicated-capability`) in Rust,
 //! TypeScript, JavaScript or Python (`assurance.structure-tree.cross-language`). A Rust
 //! implementation of a port trait is an adapter (`assurance.structure-tree.adapter`); a
-//! site under a `mirrors:` comment is admitted (`assurance.structure-tree.mirror-exemption`).
+//! site under a comment line opening with the mirror tag is admitted
+//! (`assurance.structure-tree.mirror-exemption`); `contextful-ci mirrors` resolves the
+//! same lines through [`mirror_tag`].
 
 use anyhow::{Context, Result};
 use proc_macro2::Span;
@@ -29,11 +31,13 @@ const CAPABILITIES: [&str; 5] = [
 /// A tree carrying the corpus lock carries the registry beside it.
 const CORPUS_MARK: &str = "spec/spec.lock.json";
 
-const ROOTS: [&str; 4] = ["crates/", "apps/", "tools/", "packages/"];
+/// Trees the capability check scans and the mirror check resolves.
+pub const ROOTS: [&str; 4] = ["crates/", "apps/", "tools/", "packages/"];
 const SKIPPED_SEGMENTS: [&str; 7] = ["tests", "test", "__tests__", "fixtures", "vendor", "benches", "node_modules"];
 const SCRIPT: [&str; 7] = ["ts", "tsx", "mts", "cts", "js", "mjs", "cjs"];
 
 #[derive(serde::Deserialize)]
+#[serde(deny_unknown_fields)]
 struct Registry {
     #[serde(default)]
     ports: Vec<String>,
@@ -42,6 +46,7 @@ struct Registry {
 }
 
 #[derive(serde::Deserialize)]
+#[serde(deny_unknown_fields)]
 struct Capability {
     name: String,
     home: String,
@@ -108,6 +113,9 @@ pub fn check(root: &Path) -> Result<()> {
         if !root.join(&c.home).exists() {
             unresolved.push(format!("capability `{}` names home {}, absent from the tree", c.name, c.home));
             continue;
+        }
+        if c.symbols.is_empty() {
+            unresolved.push(format!("capability `{}` names no symbol", c.name));
         }
         for symbol in &c.symbols {
             if !defs.iter().any(|d| under(&d.file, &c.home) && fold(&d.name) == fold(symbol)) {
@@ -219,22 +227,28 @@ fn definitions(root: &Path, file: &str, ports: &BTreeSet<String>) -> Result<Vec<
 
 type Raw = (usize, String, Kind, Option<String>);
 
-/// Whether the definition at 1-based `line` carries a `mirrors:` comment on its line or in
-/// the comment, attribute and decorator lines directly above it.
+const MIRROR_TAG: &str = "mirrors:";
+
+/// The clause id of a comment line whose body opens with the mirror tag, empty when the
+/// tag names none. A tag after code or inside comment prose is no annotation.
+pub fn mirror_tag(line: &str) -> Option<&str> {
+    let code = line.trim_start();
+    let body = code.trim_start_matches(['/', '#', '-', '*']).trim_start();
+    let rest = body.strip_prefix(MIRROR_TAG).filter(|_| body.len() < code.len())?;
+    Some(rest.split_whitespace().next().unwrap_or(""))
+}
+
+/// Whether a comment, attribute or decorator line directly above the definition at
+/// 1-based `line` is a mirror annotation.
 fn mirrored(lines: &[&str], line: usize) -> bool {
-    let tagged = |l: &str| l.contains("mirrors:");
-    if lines.get(line.wrapping_sub(1)).is_some_and(|l| tagged(l)) {
-        return true;
-    }
-    let mut at = line.wrapping_sub(1);
+    let mut at = line.saturating_sub(1).min(lines.len());
     while at > 0 {
         at -= 1;
         let l = lines[at].trim_start();
-        let annotation = ["//", "#", "/*", "*", "@"].iter().any(|p| l.starts_with(p));
-        if !annotation {
+        if !["//", "#", "/*", "*", "@"].iter().any(|p| l.starts_with(p)) {
             return false;
         }
-        if tagged(l) {
+        if mirror_tag(l).is_some() {
             return true;
         }
     }
@@ -295,16 +309,80 @@ fn rust_literal(expr: &syn::Expr) -> Option<String> {
     match expr {
         syn::Expr::Lit(l) => match &l.lit {
             syn::Lit::Str(s) => Some(format!("s:{}", s.value())),
-            syn::Lit::Int(i) => Some(format!("n:{}", i.base10_digits())),
-            syn::Lit::Float(f) => Some(format!("n:{}", f.base10_digits())),
             syn::Lit::Bool(b) => Some(format!("b:{}", b.value)),
-            _ => None,
+            _ => rust_number(expr).map(number_text),
         },
-        syn::Expr::Unary(u) if matches!(u.op, syn::UnOp::Neg(_)) => rust_literal(&u.expr).map(|v| v.replacen("n:", "n:-", 1)),
         syn::Expr::Paren(p) => rust_literal(&p.expr),
         syn::Expr::Group(g) => rust_literal(&g.expr),
+        _ => rust_number(expr).map(number_text),
+    }
+}
+
+#[derive(Clone, Copy)]
+enum Number {
+    Int(i128),
+    Float(f64),
+}
+
+/// A numeric literal, or integer `*`, `+`, `-` and `<<` over numeric literals, evaluated.
+fn rust_number(expr: &syn::Expr) -> Option<Number> {
+    use syn::{BinOp, Expr, Lit};
+    match expr {
+        Expr::Lit(l) => match &l.lit {
+            Lit::Int(i) => i.base10_digits().parse().ok().map(Number::Int),
+            Lit::Float(f) => f.base10_digits().parse().ok().map(Number::Float),
+            _ => None,
+        },
+        Expr::Unary(u) if matches!(u.op, syn::UnOp::Neg(_)) => match rust_number(&u.expr)? {
+            Number::Int(i) => i.checked_neg().map(Number::Int),
+            Number::Float(f) => Some(Number::Float(-f)),
+        },
+        Expr::Paren(p) => rust_number(&p.expr),
+        Expr::Group(g) => rust_number(&g.expr),
+        Expr::Binary(b) => {
+            let (Number::Int(l), Number::Int(r)) = (rust_number(&b.left)?, rust_number(&b.right)?) else { return None };
+            match b.op {
+                BinOp::Mul(_) => l.checked_mul(r),
+                BinOp::Add(_) => l.checked_add(r),
+                BinOp::Sub(_) => l.checked_sub(r),
+                BinOp::Shl(_) => u32::try_from(r).ok().and_then(|r| l.checked_shl(r)),
+                _ => None,
+            }
+            .map(Number::Int)
+        }
         _ => None,
     }
+}
+
+/// A number in one canonical spelling across languages: `4096`, `4 * 1024` and `4096.0`
+/// meet, as do `2.50` and `2.5`.
+fn number_text(n: Number) -> String {
+    match n {
+        Number::Int(i) => format!("n:{i}"),
+        Number::Float(f) if f.fract() == 0.0 && f.abs() < 1e18 => format!("n:{}", f as i128),
+        Number::Float(f) => format!("n:{f}"),
+    }
+}
+
+/// A script or Python numeric literal: decimal, `0x`, `0o` or `0b`, with `_` separators and
+/// an optional BigInt `n` suffix.
+fn script_number(text: &str) -> Option<Number> {
+    let text = text.replace('_', "");
+    let (negative, unsigned) = text.strip_prefix('-').map_or((false, text.as_str()), |u| (true, u));
+    let sign = |i: i128| if negative { -i } else { i };
+    let radix = [("0x", 16), ("0X", 16), ("0o", 8), ("0O", 8), ("0b", 2), ("0B", 2)]
+        .iter()
+        .find_map(|(p, r)| unsigned.strip_prefix(p).map(|d| (d, *r)));
+    if let Some((digits, radix)) = radix {
+        return i128::from_str_radix(digits.trim_end_matches('n'), radix).ok().map(|i| Number::Int(sign(i)));
+    }
+    if !unsigned.starts_with(|c: char| c.is_ascii_digit()) {
+        return None;
+    }
+    if let Ok(i) = unsigned.trim_end_matches('n').parse::<i128>() {
+        return Some(Number::Int(sign(i)));
+    }
+    unsigned.parse::<f64>().ok().filter(|f| f.is_finite()).map(|f| Number::Float(if negative { -f } else { f }))
 }
 
 /// The literal at the head of `text` in script syntax, normalized as [`rust_literal`] does.
@@ -321,13 +399,7 @@ fn script_literal(text: &str) -> Option<String> {
     if text == "true" || text == "false" || text == "True" || text == "False" {
         return Some(format!("b:{}", text.to_ascii_lowercase()));
     }
-    let digits = text.trim_end_matches('n').replace('_', "");
-    let unsigned = digits.strip_prefix('-').unwrap_or(&digits);
-    if !unsigned.is_empty() && unsigned.chars().all(|c| c.is_ascii_digit() || c == '.') && unsigned.chars().next().is_some_and(|c| c.is_ascii_digit()) {
-        let trimmed = if digits.contains('.') { digits.trim_end_matches('0').trim_end_matches('.').to_string() } else { digits };
-        return Some(format!("n:{trimmed}"));
-    }
-    None
+    script_number(text).map(number_text)
 }
 
 fn identifier(text: &str) -> Option<(&str, &str)> {
@@ -335,10 +407,14 @@ fn identifier(text: &str) -> Option<(&str, &str)> {
     (end > 0 && !text.as_bytes()[0].is_ascii_digit()).then(|| (&text[..end], &text[end..]))
 }
 
-/// TypeScript and JavaScript definitions: functions, classes, enums and `const`, `let` or
-/// `var` bindings. Type aliases and interfaces declare shapes and define nothing.
+/// TypeScript and JavaScript definitions: functions, classes, enums, `const`, `let` or
+/// `var` bindings, and class methods and function-valued class fields. Type aliases,
+/// interfaces and bodiless method signatures declare shapes and define nothing.
 fn script(lines: &[&str], out: &mut Vec<Raw>) {
     let mut in_block = false;
+    let mut depth = 0i32;
+    // Brace depth of each open class body, innermost last.
+    let mut classes: Vec<i32> = Vec::new();
     for (n, raw) in lines.iter().enumerate() {
         let mut l = raw.trim();
         if in_block {
@@ -357,29 +433,115 @@ fn script(lines: &[&str], out: &mut Vec<Raw>) {
         if l.starts_with("//") || l.starts_with('*') {
             continue;
         }
-        for prefix in ["export ", "default ", "declare ", "async "] {
-            l = l.strip_prefix(prefix).unwrap_or(l).trim_start();
-        }
         let line = n + 1;
-        if let Some(rest) = l.strip_prefix("function").map(|r| r.trim_start_matches('*').trim_start()) {
-            if let Some((name, _)) = identifier(rest) {
-                out.push((line, name.to_string(), Kind::Item, None));
+        let (opened, closed) = braces(l);
+        if classes.last() == Some(&depth) {
+            script_member(l, line, out);
+        } else {
+            let declared = script_declaration(l, line, out);
+            if declared {
+                classes.push(depth + 1);
             }
-        } else if let Some(rest) = l.strip_prefix("class ").or_else(|| l.strip_prefix("enum ")).or_else(|| l.strip_prefix("const enum ")) {
-            if let Some((name, _)) = identifier(rest.trim_start()) {
-                out.push((line, name.to_string(), Kind::Item, None));
-            }
-        } else if let Some((immutable, rest)) =
-            l.strip_prefix("const ").map(|r| (true, r)).or_else(|| l.strip_prefix("let ").or_else(|| l.strip_prefix("var ")).map(|r| (false, r)))
-        {
-            let Some((name, after)) = identifier(rest.trim_start()) else { continue };
-            let after = after.trim_start();
-            let after = if after.starts_with(':') { after.split_once('=').map_or("", |(_, v)| v) } else { after.strip_prefix('=').unwrap_or("") };
-            let value = if immutable { script_literal(after) } else { None };
-            let kind = if value.is_some() { Kind::Constant } else { Kind::Item };
-            out.push((line, name.to_string(), kind, value));
+        }
+        depth += opened - closed;
+        while closed > 0 && classes.last().is_some_and(|body| depth < *body) {
+            classes.pop();
         }
     }
+}
+
+/// Records a top-level-style script definition on `l`; true when it opens a class.
+fn script_declaration(l: &str, line: usize, out: &mut Vec<Raw>) -> bool {
+    let mut l = l;
+    loop {
+        let before = l;
+        for prefix in ["export ", "default ", "declare ", "abstract ", "async "] {
+            l = l.strip_prefix(prefix).unwrap_or(l).trim_start();
+        }
+        if l == before {
+            break;
+        }
+    }
+    if let Some(rest) = l.strip_prefix("function").map(|r| r.trim_start_matches('*').trim_start()) {
+        if let Some((name, _)) = identifier(rest) {
+            out.push((line, name.to_string(), Kind::Item, None));
+        }
+    } else if let Some(rest) = l.strip_prefix("class ") {
+        if let Some((name, _)) = identifier(rest.trim_start()) {
+            out.push((line, name.to_string(), Kind::Item, None));
+        }
+        return true;
+    } else if let Some(rest) = l.strip_prefix("enum ").or_else(|| l.strip_prefix("const enum ")) {
+        if let Some((name, _)) = identifier(rest.trim_start()) {
+            out.push((line, name.to_string(), Kind::Item, None));
+        }
+    } else if let Some((immutable, rest)) =
+        l.strip_prefix("const ").map(|r| (true, r)).or_else(|| l.strip_prefix("let ").or_else(|| l.strip_prefix("var ")).map(|r| (false, r)))
+    {
+        let Some((name, after)) = identifier(rest.trim_start()) else { return false };
+        let after = after.trim_start();
+        let after = if after.starts_with(':') { after.split_once('=').map_or("", |(_, v)| v) } else { after.strip_prefix('=').unwrap_or("") };
+        let value = if immutable { script_literal(after) } else { None };
+        let kind = if value.is_some() { Kind::Constant } else { Kind::Item };
+        out.push((line, name.to_string(), kind, value));
+    }
+    false
+}
+
+const MEMBER_MODIFIERS: [&str; 11] =
+    ["static ", "async ", "public ", "private ", "protected ", "readonly ", "override ", "abstract ", "declare ", "get ", "set "];
+
+/// Records a class member on `l` that carries a body: a method `name(…) {` or a field
+/// holding a function, `name = (…) =>`.
+fn script_member(l: &str, line: usize, out: &mut Vec<Raw>) {
+    let mut l = l;
+    loop {
+        let before = l;
+        for prefix in MEMBER_MODIFIERS {
+            l = l.strip_prefix(prefix).unwrap_or(l).trim_start();
+        }
+        if l == before {
+            break;
+        }
+    }
+    let l = l.trim_start_matches('*').trim_start_matches('#');
+    let Some((name, after)) = identifier(l) else { return };
+    if name == "constructor" {
+        return;
+    }
+    let after = after.trim_start();
+    let method = (after.starts_with('(') || after.starts_with('<')) && !l.trim_end().ends_with(';');
+    let field = after.strip_prefix('=').filter(|v| !v.starts_with(['=', '>'])).is_some_and(|v| {
+        let v = v.trim_start();
+        v.starts_with('(') || v.starts_with("async") || v.starts_with("function")
+    });
+    if method || field {
+        out.push((line, name.to_string(), Kind::Item, None));
+    }
+}
+
+/// Counts of `{` and `}` on a script line outside string literals and a trailing `//` comment.
+fn braces(l: &str) -> (i32, i32) {
+    let (mut opened, mut closed) = (0, 0);
+    let mut quote: Option<char> = None;
+    let mut chars = l.chars().peekable();
+    while let Some(c) = chars.next() {
+        match quote {
+            Some(_) if c == '\\' => {
+                chars.next();
+            }
+            Some(q) if c == q => quote = None,
+            Some(_) => {}
+            None => match c {
+                '"' | '\'' | '`' => quote = Some(c),
+                '/' if chars.peek() == Some(&'/') => break,
+                '{' => opened += 1,
+                '}' => closed += 1,
+                _ => {}
+            },
+        }
+    }
+    (opened, closed)
 }
 
 /// Python definitions: `def` and `class` at any depth, and module-level uppercase

@@ -25631,7 +25631,7 @@
       "operation": "structure-tree",
       "subject": "capability-registry",
       "kind": "refusal",
-      "statement": "`spec/capabilities.toml` names each capability of {{assurance.structure-tree.one-home}} with one home path and its defining symbols; an absent registry, a missing or doubled capability, an absent home or an undefined symbol raises `CapabilityHomeUnresolved`.",
+      "statement": "`spec/capabilities.toml` names each capability of {{assurance.structure-tree.one-home}} with one home path and one or more defining symbols; an absent registry, a missing or doubled capability, an absent home or an undefined symbol raises `CapabilityHomeUnresolved`.",
       "why": "A-assurance",
       "file": "spec/81-engineering.md",
       "line": 53
