@@ -16,12 +16,12 @@ Every connector implements one trait, as a sandboxed component or a compiled-in 
 and dispatch never branches on which ({{connector.export.authoring-path}}). A component
 imports outgoing HTTP, logging and a wall clock and nothing else
 ({{connector.import.three-imports}}), and no connector receives a store handle
-({{connector.export.store-blindness}}). It hands the runner batches and an opaque position.
+({{connector.export.store-blindness}}).
 
 A connector resolves from one of four forms ({{connector.package.distribution-form}}). A
 remote artifact carries a content pin ({{connector.package.remote-unpinned}}), the host
-re-hashes the bytes ({{connector.package.digest-mismatch}}), reuses compatible host output ({{connector.package.artifact-cache}}), and a run keeps the
-build it was admitted with, so a rebuild reaches only later runs ({{run.own.admission-pin}}).
+re-hashes the bytes ({{connector.package.digest-mismatch}}), reuses compatible host output ({{connector.package.artifact-cache}}), and a run keeps its
+admitted build ({{run.own.admission-pin}}).
 HTTPS and OCI artifact requests use a client restricted to the reference authority
 ({{connector.package.remote-transport}}).
 An OCI reference selects one component layer ({{connector.package.oci-component-layer}}),
@@ -30,6 +30,12 @@ registry bearer from the project's credential binding ({{connector.package.oci-r
 Admitted bytes enter a digest-keyed project cache ({{connector.package.remote-cache}});
 damaged cached bytes refuse instead of reaching the component host
 ({{connector.package.remote-cache-corrupt}}).
+
+A manifest names its keys and one build input ({{connector.package.manifest-keys}},
+{{connector.package.build-source}}). `connector pin --local` prints a digest it never writes
+({{connector.package.host-built-pin}}); `connector pin` writes the pin from the fixed
+platform ({{connector.package.pin-verb}}), and a reviewer reruns it with `--verify`
+({{connector.package.path-remap}}).
 
 Host access is declared, not requested. The manifest lists hosts, environment names and the
 clock, and the host decides the grant at load ({{connector.declare-capability.declared-grant}});

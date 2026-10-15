@@ -68,6 +68,8 @@ The calls a connector offers across the boundary: the shared types, the source a
 - `partition-attribution` — A guest exporting failure attribution answers with the byte-exact values of the outermost partition column a failed read belongs to. The host reads it on failure and success alike; an empty list keeps the unattributed refusal.
   *because a read holding one partition back and landing the rest returns success*
 - `attribution-budget` — Failure attribution carries at most 512 entries per session, each value at most 512 B.
+- `shared-failure` — A read failing under `auth-expired`, or during which the host failed to hydrate or lease a credential, fails unattributed; the host discards the guest's failure attribution for that session.
+  *because every attach binding is session-wide, so a credential failure belongs to every partition the read could reach*
 - `native-read` — A native source reads a table from a position, returning batches each paired with the position after it. A source unable to bound a half-open chunk range falls back to the unbounded read.
   *because an overlapping read is recoverable and a mis-bounded chunk is not*
 - `native-extra` — A native source may offer a content fingerprint from a stat or a head request, never a download, plus its connector identity, audit entries, and a declared reason its vendor traffic runs unmetered.
@@ -75,15 +77,20 @@ The calls a connector offers across the boundary: the shared types, the source a
   *P5*
 - `world-authorship` — Bindings are emitted from a host-owned template over the input specification and the connector name. An author writes method bodies alone: authentication, paging and the cursor-kind declaration.
 
-A connector failure crosses as a variant of {{run.retry.failure-taxonomy}}.
+A connector failure crosses as a variant of {{run.retry.failure-taxonomy}}. Failure
+attribution narrows a failure the guest saw for one partition, such as a per-resource
+`403` or `404`.
 
-unsettled: How does a guest name the partitions a failed read belongs to when the failure is a shared credential rather than a per-tenant one? owner: connector affects: connector.export
+#### Scenarios
+
+- `connector.export.shared-failure`: WHEN an attributing guest fails a read with `auth-expired` while naming two partitions, THEN the session answers no failed partition and the read fails whole.
+- `connector.export.shared-failure`: WHEN an attach header fails to hydrate during a read, THEN the session answers no failed partition and the read fails whole.
 
 ## import
 
 What crosses inward: the three host imports and the forwarded guest configuration table.
 
-- `three-imports` — Both worlds import outgoing HTTP, logging and a wall clock, and nothing else. There is no filesystem import and no socket import.
+- `three-imports` — Both worlds import the WASI 0.2 outgoing HTTP and wall-clock interfaces and the logging interface, and nothing else; every export is a synchronous call. There is no filesystem import and no socket import.
   *A-connector*
 - `empty-context` — A guest standard library pulling broader interfaces links against an empty context: no preopens, no environment, no arguments.
 - `wait-primitive` — Neither world carries a monotonic clock or a sleep primitive, so a guest holds no call open across a wait.
@@ -146,7 +153,10 @@ flowchart LR
   SC -->|"yes"| SESS
 ```
 
-unsettled: Does a community-distributed connector need a signing and transparency layer above the content pin, and who runs the log? owner: connector affects: connector.declare-capability
+#### Scenarios
+
+- `connector.declare-capability.undeclared-access`: WHEN a component importing `wasi:clocks/wall-clock` loads under a manifest without `clock = true`, THEN the load raises `ConnectorUndeclaredAccess` naming the interface and writes no run row.
+- `connector.declare-capability.scope-probe`: WHEN the identity endpoint grants a scope outside the manifest's expectation, THEN the session refuses before discovery and the vendor receives no request.
 
 ## widen
 
@@ -336,6 +346,8 @@ Distribution form, digest pinning, per-connector resource bounds and world versi
 - `manifest-posture` — A manifest is adopted, carrying a digest built on the fixed builder platform, or a template, carrying the requirement plus a placeholder. A template parses cleanly and refuses at load.
 - `posture-undeclared` — A manifest carrying neither a digest nor both template markers raises `ConnectorPostureUndeclared` at merge.
   *A-connector*
+- `build-source` — A manifest's `build.source` is its only build input; the fixed builder platform holds image, target, compiler, package manager and command, and a `build.source` leaving the manifest directory refuses under {{connector.package.manifest-keys}}.
+  *A-connector*
 - `pin-verb` — `contextful connector pin <manifest>` builds the guest in a digest-pinned container on one fixed platform and writes the artifact and its digest. `--verify` rebuilds and compares without writing.
   *A-connector*
 - `host-built-pin` — `--local` builds with the host toolchain and prints a host-local digest; writing a pin from a host build raises `ConnectorHostPinRefused`.
@@ -346,6 +358,8 @@ Distribution form, digest pinning, per-connector resource bounds and world versi
   *because a hardened runtime refusing writable-then-executable pages loads no compiled guest, and interpretation trades throughput for loading there*
 - `interpreted-target-absent` — A host built without the `pulley` feature refuses the interpreted target at construction, naming the feature, before any component compiles.
 - `component-source` — A pipeline source named by an artifact path, HTTPS URL or OCI reference runs as a component, its config reading `sha256`, `allow`, `attach`, `guest`, `memory_bytes`, `manifest` and `require_pin`, the manifest flag of {{connector.package.pin-requirement}}.
+- `manifest-keys` — A component source's manifest reads only `name`, `version`, `world`, `wasm`, `wasm_sha256`, `require_wasm_pin`, `build` and `capabilities`. An absent manifest, another key at any depth, or a value off its shape raises `ConnectorManifestRejected` naming the key.
+  *P1*
 - `manifest-host-grant` — A component source's `manifest` names a project-relative TOML file; at load, each `allow` host must fit its `[capabilities] allow_hosts` declaration or refuses under {{connector.declare-capability.undeclared-access}}, naming the excess host.
   *because an operator grant cannot extend past the connector's declared host access*
 - `component-load` — `pipeline run` resolves a component source, admits it against its pin and loads it once per fire, before any run row, and records its {{connector.import.config-hashing}} content hash as each run's connector hash.
@@ -397,12 +411,9 @@ flowchart LR
 - `connector.package.remote-cache`: WHEN a second fire names a cached pin, THEN it loads matching bytes without a registry or HTTPS request.
 - `connector.package.remote-cache-corrupt`: WHEN cached bytes disagree with their key, THEN the run raises `ConnectorArtifactCacheCorrupt` without fetching or compiling.
 - `connector.package.remote-fetch-failure`: WHEN a remote endpoint refuses a required fetch, THEN the run raises `ConnectorArtifactFetchFailed` and writes no run row.
-
-unsettled: Does `connector pin` record a precompiled artifact per target under its own digest, so a hardened build links no compiler and deserializes only pinned bytes? owner: connector affects: connector.package
-
-unsettled: Which manifest field names the build source, command and toolchain inputs for `connector pin`? owner: connector affects: connector.package
-
-unsettled: Which generation of the sandbox interface does the guest world target, and what does native async change about the per-call deadline and the reservation bridge? owner: connector affects: connector.package
+- `connector.package.manifest-keys`: WHEN a component source names no `manifest`, THEN validation raises `ConnectorManifestRejected` naming `manifest`.
+- `connector.package.manifest-keys`: WHEN a manifest carries `[capabilities.limiter] burst = 4`, THEN the load raises `ConnectorManifestRejected` naming `capabilities.limiter.burst`.
+- `connector.package.build-source`: WHEN a manifest declares `[build] source = "../guest"`, THEN `connector pin` raises `ConnectorManifestRejected` naming `build.source` and builds nothing.
 
 ## source
 
@@ -713,8 +724,11 @@ wasm             = "vendor-metrics.wasm"
 wasm_sha256      = "9f2c1b7ad0e4…"         # 64 hex, written by `connector pin`
 require_wasm_pin = true
 
+[build]
+source = "guest"                          # the guest crate and its lockfile, beside this file
+
 [capabilities]
-allow_hosts = ["api.vendor.example"]      # one exact host: [attach] binds a credential
+allow_hosts = ["api.vendor.example"]      # one exact host: the pipeline's attach binds a credential
 env         = ["VENDOR_ACCOUNT_ID"]
 clock       = true
 
@@ -727,12 +741,6 @@ expect        = ["reports.read", "accounts.read"]
 quota         = "vendor-app-shared"
 class         = "batch-read"
 usage_headers = ["X-RateLimit-Remaining", "X-RateLimit-Reset"]
-
-[attach]
-Authorization = "Bearer ${secret://vendor-token}"
-
-[bounds]
-memory_bytes = 268435456
 ```
 
 The world:

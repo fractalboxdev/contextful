@@ -47,6 +47,7 @@ ConnectorDigestMismatch         = { clause = "connector.package.digest-mismatch"
 ConnectorLocalUnpinned          = { clause = "connector.package.local-unpinned", gloss = "An unpinned local artifact under a set pin requirement." }
 ConnectorPostureUndeclared      = { clause = "connector.package.posture-undeclared", gloss = "A manifest carrying neither a digest nor both template markers." }
 ConnectorPositionOwned          = { clause = "connector.package.component-position", gloss = "An `incremental` field declared beside a component source, whose position the guest owns." }
+ConnectorManifestRejected       = { clause = "connector.package.manifest-keys", gloss = "A component source with no manifest, or a manifest carrying an unread key or a value off its shape." }
 ConnectorHostPinRefused         = { clause = "connector.package.host-built-pin", gloss = "A pin written from a host-toolchain build." }
 ConnectorHotReload              = { clause = "connector.package.live-reresolution", gloss = "Re-resolving or reloading a connector a journaled run holds live." }
 ConnectorFormatKeyRejected      = { clause = "connector.source.format-key-mismatch", gloss = "A record path, pagination shape or decode key the chosen format does not read." }
