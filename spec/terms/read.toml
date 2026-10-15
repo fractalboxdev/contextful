@@ -40,6 +40,8 @@ ServeDeclarationMissing       = { clause = "read.register.serve-declaration", gl
 HttpCredentialMissing         = { clause = "read.register.credential-missing", gloss = "A network transport request carried no credential." }
 MemoryShapeColumnMissing      = { clause = "read.declare.canonical-column", gloss = "A table naming a memory shape omits a canonical column." }
 MemoryUndeclaredRelation      = { clause = "read.declare.undeclared-relation", gloss = "A candidate edge carries an undeclared relation type." }
+MemoryGleaningsInvalid        = { clause = "read.declare.gleanings", gloss = "A claims table declares `gleanings` other than 0 or 1." }
+MemoryClaimTaintBelowFloor    = { clause = "read.declare.serving-taint", gloss = "A claim's taint ranks below its table's `serving_taint`." }
 MemoryExtractExhausted        = { clause = "read.synthesize.dead-letter", gloss = "An extract batch exhausted its attempts and was dead-lettered." }
 MemoryDirectWriteShapeRefused = { clause = "read.revise.direct-write", gloss = "A direct write targeted a memory shape other than claims." }
 MemoryCitationNotLive         = { clause = "read.revise.citation-live", gloss = "A direct write cites a keyed row that is not its key's live version." }
@@ -94,6 +96,7 @@ read-session-pool-connections = { clause = "read.cache.pool-connections", value 
 read-http-retry-after        = { clause = "read.register.past-ceiling", value = 1, unit = "s", basis = "chosen", gloss = "The `Retry-After` a request shed past the in-flight ceiling carries." }
 read-http-request-body       = { clause = "read.register.request-body", value = 1, unit = "MiB", basis = "chosen", gloss = "Largest request body the network transport reads." }
 memory-extract-attempts      = { clause = "read.synthesize.extract-attempts", value = 3, unit = "attempts", basis = "chosen", gloss = "Extract attempts per batch, feedback included." }
+memory-gleanings            = { clause = "read.declare.gleanings", value = 1, unit = "passes", basis = "chosen", gloss = "Most gleaning passes one extraction batch runs." }
 memory-prompt-bytes          = { clause = "read.synthesize.prompt-bound", value = 32, unit = "KiB", basis = "chosen", gloss = "Fenced row bytes one extraction batch packs." }
 memory-row-chars             = { clause = "read.synthesize.row-cap", value = 16384, unit = "chars", basis = "chosen", gloss = "Characters of one fenced row before the truncation mark cuts it." }
 memory-evidence-references   = { clause = "read.recall.evidence-references", value = 256, unit = "entries", basis = "chosen", gloss = "Evidence entries recall serves per claim; the rest count in `evidence_omitted`." }

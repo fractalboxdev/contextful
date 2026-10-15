@@ -58,6 +58,10 @@ The five memory table shapes, their canonical columns, tier and scope, and the r
   *A-read*
 - `reserved-relations` — The reserved relation core contains `supports`, `contradicts`, `supersedes`, `about` and `derived_from`; a deployment extends it through `[relation].declared`, and `contextful memory relations rename` rewrites stored edges before removing an old name.
   *A-read*
+- `gleanings` — A claims table's `gleanings` declares at most 1 passes over each batch, 0 by default; any other value raises `MemoryGleaningsInvalid` when the declaration loads.
+  *A-read*
+- `serving-taint` — A claims table's `serving_taint` names a minimum label under {{connector.infer.provenance-order}}; a claim without `_taint` ranks as `operator`, and a claim ranking below the minimum is suppressed, raising `MemoryClaimTaintBelowFloor`.
+  *A-read*
 
 
 ## synthesize
@@ -80,6 +84,18 @@ Extract, Resolve and Consolidate; the dedup key, evidence support, the audit rec
   *A-read*
 - `confidence-calibration` — A model-emitted confidence is labelled `uncalibrated` until a shape-and-predicate isotonic map trained on settled outcomes lowers held-out Brier score; a validated map supplies the reported calibrated confidence.
   *A-read*
+- `gleaning` — A table declaring gleaning under {{read.declare.gleanings}} re-prompts each schema-valid batch for omitted claims, up to its declared passes; gleaned and first-pass claims commit together in the batch's one commit, and gleaned claims carry `_pass = 'glean'`.
+  *A-read*
+- `gleaning-attempt` — A gleaning response gets one attempt and no re-prompt; {{read.synthesize.extract-attempts}} does not apply to it.
+  *A-read*
+- `gleaning-invalid` — A schema-invalid gleaning response discards the gleaned claims, commits the first-pass claims alone, advances the cursor, and the pass report counts the batch in `glean_failed`.
+  *A-read*
+- `extract-cache` — A schema-valid response is kept in an enforced, tenant-scoped cache table keyed on the fenced batch bytes' digest, template hash, model identifier and {{connector.infer.cutoffs}}; an identical key reuses it without a model call.
+  *A-read*
+- `cache-provenance` — A cache entry carries `_provenance` naming its batch's fenced rows, so {{disclosure.erase.cascade}} invalidates the entry when an erasure reaches any of them.
+  *A-read*
+- `cache-attribution` — A cache hit copies claims only; {{read.synthesize.attribution}} stamps `grant_id`, `agent` and `_authored_by` fresh, and the pass report counts the batch in `cached`.
+  *A-read*
 
 One synthesis batch, from landed rows to a committed claim or the dead-letter table:
 
@@ -97,12 +113,18 @@ flowchart LR
   REL -->|"yes, consolidate and commit"| FACTS[("memory_facts")]
 ```
 
+unsettled: Does the gleaning prompt, the batch plus its first response, count against {{read.synthesize.prompt-bound}}? owner: read-path affects: read.synthesize
+
+unsettled: Which consolidation merges two claims of one dedup key, and what record does a coverage gap leave? owner: read-path affects: read.synthesize
+
 
 ## revise
 
 Supersession within one validity line, confidence decay, the direct write and its anchor, expiry, retention, promotion.
 
 - `tier` — `tier` is stamped from the write path and grounding, never the payload: a synthesis pass stamps `derived`, a direct write `curated`, a fetched result `researched`, and mixed grounding takes the lowest.
+  *A-read*
+- `direct-tier` — A direct write stamps `derived` in place of the `curated` of {{read.revise.tier}} when its credential carries an agent member or a cited row's label, read as {{read.synthesize.claim-taint}} reads it, is `ingested:third-party`.
   *A-read*
 - `supersede` — A claim of equal or higher tier retires a live prior on its subject, predicate and scope when both are open-ended or share a valid-from instant, except {{read.revise.unscoped-collision}}; the prior ends at the successor's start and names it.
   *A-read*
@@ -131,6 +153,10 @@ Supersession within one validity line, confidence decay, the direct write and it
   *A-read*
 - `served-fault` — A served claim write whose store effect refuses raises `MemoryClaimWriteRefused` and lands nothing.
   *A-read*
+
+unsettled: What binds the asserted agent member to the writer? owner: authority affects: read.revise
+
+unsettled: What declared bound expires a researched claim, and which served write promotes a claim to curated? owner: read-path affects: read.revise
 
 ## recall
 
@@ -171,6 +197,8 @@ Serving memory: the ranked arm at the read's anchor, the keyed read at an observ
   *A-read*
 - `usage-ledger` — A `memory.recall` read, and a `corpus.retrieve` read returning `memory_facts` rows, records the returned claim ids as `contextful.memory.claims` in its read entry, beside the caller's credential, subject and read instant.
   *A-read*
+- `ranked-order` — Within one in-window flag value of {{read.rank.question-window-is-a-tier}}, claims order by tier, `curated`, then `derived`, then `researched`; claims of one tier keep {{read.rank.fusion}} order.
+  *A-read*
 
 The evidence check a claim passes on its way to a grounded turn:
 
@@ -202,6 +230,8 @@ Mention-to-entity matching, aliases, the knowledge card, place identity and near
   *A-read*
 - `ownership-answer` — An artifact's ownership answer returns the target of every `owned_by` edge from it visible to the caller, newest `_ingested_at` first, with principal id breaking equal-instant ties.
   *A-read*
+
+unsettled: Which edges carry aliases and nearness's parent closure, and what fields form the knowledge card? owner: read-path affects: read.resolve-entity
 
 
 ## settle
