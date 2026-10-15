@@ -3,6 +3,8 @@ use contextful_core::grant::{Action, TenantScope};
 use contextful_policy::enforce::erase::ForgetAdmission;
 use contextful_policy::issue::{mint, MintClaims};
 
+/// Erasure sits outside the default grant set, and a caller without the forget grant raises `ErasureUngranted`.
+// spec: disclosure.erase.privilege@243a0c01
 #[test]
 fn forget_admission_requires_distinct_authority_for_every_requested_table() {
     let signer = issuer();
@@ -22,6 +24,8 @@ fn forget_admission_requires_distinct_authority_for_every_requested_table() {
     assert!(ForgetAdmission::admit(&authority, &["research/notes", "hr/salaries"]).unwrap_err().to_string().starts_with("ErasureUngranted"));
 }
 
+/// An empty target set or erasure admitted only by narrowed grants raises `ErasureScopeUnsupported` before store access; supported erasure admits every requested table explicitly.
+// spec: disclosure.erase.unsupported-scope@bc2f2104
 #[test]
 fn unsupported_forget_narrowing_and_empty_target_sets_refuse_before_store_access() {
     let signer = issuer();

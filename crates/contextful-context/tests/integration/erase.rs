@@ -2,6 +2,8 @@ use crate::support::{decl, Fixture};
 use contextful_core::store::bound_time::Bounds;
 use serde_json::json;
 
+/// Erasure survivor snapshots use row-independent part names, preserve admitted surviving rows, record rewritten part key versions, and rebuild declared indexes through {{store.index.vector-by-fold}} and {{store.index.fulltext-by-fold}}.
+// spec: disclosure.erase.survivor-names@e9bee1c8
 #[test]
 #[cfg(feature = "read")]
 fn partitioned_erasure_removes_designated_values_from_signed_paths_and_survivor_names() {
@@ -108,6 +110,8 @@ fn partitioned_erasure_paths(key_set: bool, all_erased: bool, initial_empty: boo
     }
 }
 
+/// Erasure and keyed retirement recovery require the persisted canonical {{disclosure.record.audit-key}}; caller-supplied keys equal it, and absent or mismatched keys follow {{disclosure.erase.recovery}} before content access, signed intent, staging or collection.
+// spec: disclosure.erase.canonical-audit-key@61aea884
 #[test]
 #[cfg(feature = "read")]
 fn erasure_refuses_missing_or_foreign_canonical_audit_keys_before_signed_intent() {
@@ -153,6 +157,8 @@ fn canonical_audit_key_refusal(missing: bool) {
     }
 }
 
+/// Signed retirement inventories bind regular paths through domain-separated HMAC under {{disclosure.record.audit-key}} and their file digests; recovery admits missing files as completed collection, validates all remaining files before deletion, and rejects changes through {{disclosure.erase.recovery}}.
+// spec: disclosure.erase.retirement-inventory@fb95fd28
 #[test]
 #[cfg(feature = "read")]
 fn opaque_retirement_recovery_binds_store_transaction_directory_path_and_canonical_key() {
@@ -202,6 +208,8 @@ fn opaque_retirement_recovery_binds_store_transaction_directory_path_and_canonic
     }
 }
 
+/// Explicit erasure resolves one independently random, durable 32-byte project audit key at `.contextful/audit.key`; concurrent creation preserves one key. Malformed, substituted or unreadable key files follow {{disclosure.erase.recovery}}; Unix creation excludes group and other permissions.
+// spec: disclosure.record.audit-key@5979481e
 #[test]
 #[cfg(feature = "read")]
 fn the_project_audit_key_has_one_stable_private_creation_and_refuses_bad_files() {
@@ -407,6 +415,8 @@ fn signed_retirement_fixture(store: &contextful_context::Store, table: &str, cha
     (store.with_erasure_verifier(audit_dir, vec![key.clone()]).unwrap(), working, key)
 }
 
+/// Query, file, retrieval and cache responses resolve one erasure frontier and revalidate it before releasing bytes; an obsolete frontier releases no rows or files.
+// spec: disclosure.erase.reader-frontier@136f24a8
 #[test]
 #[cfg(feature = "read")]
 fn a_live_erasure_verifier_refuses_a_key_retired_after_opening() {
@@ -449,6 +459,8 @@ fn a_signed_erasure_frontier_refuses_a_substituted_replacement_file() {
     assert!(store.table_dir("notes").unwrap_err().to_string().starts_with("ErasureTransactionIncomplete"));
 }
 
+/// Erasure signs through the configured issuer or node's {{authority.issue.signing-port}}; readers verify the canonical audit chain under configured public-key pins, independently of transaction artifacts. Missing signing or verifier configuration follows {{disclosure.erase.recovery}}.
+// spec: disclosure.erase.signer-binding@2d4a1ca7
 #[test]
 #[cfg(feature = "read")]
 fn a_frontier_cannot_choose_its_own_signer_or_an_unconfigured_verifier() {
@@ -465,6 +477,8 @@ fn a_frontier_cannot_choose_its_own_signer_or_an_unconfigured_verifier() {
     assert!(wrong.table_dir("notes").unwrap_err().to_string().starts_with("ErasureTransactionIncomplete"));
 }
 
+/// The signed erasure entry binds {{store.init.store-identity}}; readers reject a frontier whose signed store identity differs from the receiving store, following {{disclosure.erase.recovery}}.
+// spec: disclosure.erase.store-binding@64505a1b
 #[test]
 #[cfg(feature = "read")]
 fn a_signed_frontier_cannot_replay_into_a_recreated_store_identity() {
@@ -701,6 +715,8 @@ fn recovery_refuses_changed_retired_content_without_deleting_it() {
     assert!(replacement.is_dir());
 }
 
+/// Erasure preserves an immutable signed survivor baseline and selects independent working copies under the ordinary table layout; normal append and fold advance working publication without changing the baseline or requiring another erasure signature.
+// spec: disclosure.erase.working-publication@442b4e36
 #[test]
 #[cfg(feature = "read")]
 fn an_erased_store_accepts_normal_append_fold_and_recovery_without_a_signer() {
@@ -753,6 +769,8 @@ fn normal_publication_waits_for_the_erasure_frontier_before_mutating_working_fil
     assert_eq!(contextful_context::rows::table_rows(&fixture.store, &table, &["id"]).unwrap().len(), 2);
 }
 
+/// An admitted reference recorded in the independently verified cumulative erasure index returns `available: false` with `reason: erased`; an absent reference outside that index returns `reason: missing` and exposes no source payload.
+// spec: read.reference.erased-verdict@b3af4c7f
 #[test]
 #[cfg(feature = "read")]
 fn subject_erasure_publishes_survivors_and_collects_original_retained_parts() {
@@ -867,6 +885,8 @@ fn subject_erasure_publishes_survivors_and_collects_original_retained_parts() {
     assert_eq!(face.reference(&session, "notes", "run-0001", 0, Default::default()).unwrap().to_json()["rows"], json!([[false, "erased"]]));
 }
 
+/// A key-set request binds its selectors to the declared keys of {{store.declare.erasure-metadata}} and carries an opaque subject hash instead of a raw subject identity.
+// spec: disclosure.erase.key-set@67748128
 #[test]
 #[cfg(feature = "read")]
 fn keyset_erasure_uses_the_same_signed_publication_and_retains_other_keys() {
@@ -966,4 +986,161 @@ fn column_erasure_admits_composite_members_through_the_built_surface() {
     assert!(output.status.success(), "{}", String::from_utf8_lossy(&output.stderr));
     let result: serde_json::Value = serde_json::from_slice(&output.stdout).unwrap();
     assert_eq!(result["rows"], serde_json::json!([["b"]]));
+}
+
+/// Two subject tables holding `alice` and `bob`, an admitted Forget authority, and one erasure of
+/// `subject` under a verifier pinned to `signer` or, with `foreign_verifier`, to another key.
+#[cfg(feature = "read")]
+struct TwoTableErasure {
+    fixture: Fixture,
+    tables: [contextful_core::store::declare::TableDecl; 2],
+    audit_dir: std::path::PathBuf,
+    audit_key: [u8; 32],
+}
+
+#[cfg(feature = "read")]
+impl TwoTableErasure {
+    fn new() -> Self {
+        let fixture = Fixture::new();
+        let tables = [
+            decl("name = \"notes\"\nprimary_key = [\"id\"]\nsubject_id = \"subject\""),
+            decl("name = \"events\"\nprimary_key = [\"id\"]\nsubject_id = \"subject\""),
+        ];
+        for table in &tables {
+            fixture.land(table, "run-0001", json!([{ "id":"a", "subject":"alice", "text":"private-canary" }, { "id":"b", "subject":"bob", "text":"retained" }]), "2030-01-01T00:00:00Z").unwrap();
+        }
+        contextful_context::project::ensure_store_id(fixture.store.root()).unwrap();
+        let project = contextful_context::project::Project { dir:fixture.store.root().ancestors().nth(3).unwrap().to_path_buf(), name:"research".into() };
+        let audit_key = contextful_context::project::audit_key(&fixture.store, &project).unwrap();
+        TwoTableErasure { fixture, tables, audit_dir: project.audit_dir(), audit_key }
+    }
+
+    fn erase(&self, subject: &str, foreign_verifier: bool) -> contextful_context::Result<contextful_context::erase::Erased> {
+        use contextful_context::erase::{erase, EraseRequest, EraseSelector};
+        use contextful_core::{grant::Action, issue::SignatureAlgorithm, ports::FixedClock};
+        use contextful_policy::{enforce::erase::ForgetAdmission, issue::{SeedSigner, SignerKey}, revoke::RevocationState, verify::{effect_boundary, Admission}};
+        let reads = crate::read::Reads::new();
+        let mut grant = crate::read::read(&["*"], None); grant.actions = vec![Action::Forget];
+        let authority = reads.authority(crate::read::loop_subject("agent://eraser"), vec![grant]);
+        let admission = ForgetAdmission::admit(&authority, &["notes", "events"]).unwrap();
+        let now = crate::read::at("2030-01-01T00:05:00Z"); let revocation = RevocationState::default();
+        let boundary = |authority: &contextful_policy::verify::AdmittedAuthority| effect_boundary(authority, &Admission::new(now, &revocation));
+        let names = ["notes".to_string(), "events".to_string()];
+        let signer = std::sync::Arc::new(SeedSigner::generate(SignatureAlgorithm::Ed25519));
+        let pinned = if foreign_verifier { SignerKey::of(&SeedSigner::generate(SignatureAlgorithm::Ed25519)) } else { SignerKey::of(signer.as_ref()) };
+        let store = self.fixture.store.with_erasure_verifier(self.audit_dir.clone(), vec![pinned]).unwrap();
+        erase(&store, EraseRequest { declarations:&self.tables, tables:&names, selector:EraseSelector::Subject(subject), admission:&admission, signer:Some(signer), audit_dir:&self.audit_dir, audit_key:&self.audit_key, boundary:&boundary, clock:&FixedClock(now) })
+    }
+
+    fn ids(&self, store: &contextful_context::Store, table: usize) -> Vec<serde_json::Value> {
+        contextful_context::rows::table_rows(store, &self.tables[table], &["id"]).unwrap().into_iter().map(|row| row["id"].clone()).collect()
+    }
+}
+
+/// Subject and key-set erasure select one committed frontier across every affected table; a failed transaction exposes none of its staged replacements.
+// spec: disclosure.erase.atomic-publication@3d8caa3c
+#[test]
+#[cfg(feature = "read")]
+fn subject_erasure_publishes_every_affected_table_under_one_frontier_and_a_failed_one_exposes_none() {
+    let erasure = TwoTableErasure::new();
+    assert!(erasure.erase("alice", true).is_err(), "an erasure under an unpinned signer commits");
+    assert!(!erasure.fixture.store.root().join("_erasure_frontier.json").exists(), "a failed transaction publishes a frontier");
+    assert!(!erasure.fixture.store.root().join("_erasure/committed").exists(), "a failed transaction commits a replacement");
+    for table in 0..2 { assert_eq!(erasure.ids(&erasure.fixture.store, table), [json!("a"), json!("b")], "a failed transaction exposes a staged replacement"); }
+    let erased = erasure.erase("alice", false).unwrap();
+    let frontier: serde_json::Value = serde_json::from_slice(&std::fs::read(erased.store.root().join("_erasure_frontier.json")).unwrap()).unwrap();
+    assert_eq!(frontier["transaction_id"], json!(erased.transaction_id));
+    let published = frontier["tables"].as_object().unwrap();
+    assert_eq!(published.keys().collect::<Vec<_>>(), ["events", "notes"]);
+    for (name, table) in published {
+        assert!(table["directory"].as_str().unwrap().contains(&erased.transaction_id), "{name} publishes outside the erasure's frontier");
+        assert!(erased.store.table_dir(name).unwrap().to_string_lossy().contains(&erased.transaction_id));
+    }
+    for table in 0..2 { assert_eq!(erasure.ids(&erased.store, table), [json!("b")]); }
+}
+
+/// Subject erasure computes its subject hash as a domain-separated HMAC-SHA-256 under the configured project audit key; no transaction or audit artifact carries raw subject identities or erased key values.
+// spec: disclosure.erase.subject-pseudonym@3443d470
+#[test]
+#[cfg(feature = "read")]
+fn the_subject_hash_is_a_domain_separated_hmac_under_the_project_audit_key() {
+    let erasure = TwoTableErasure::new();
+    let erased = erasure.erase("alice", false).unwrap();
+    assert_eq!(erased.subject_hash, contextful_policy::audit::query_digest(&erasure.audit_key, "contextful.erasure.subject\nalice"));
+    assert_ne!(erased.subject_hash, contextful_policy::audit::query_digest(&erasure.audit_key, "alice"), "the subject hash carries no domain");
+    let audit = serde_json::to_string(&contextful_policy::audit::entries(&erasure.audit_dir).unwrap()).unwrap();
+    assert!(audit.contains(&erased.subject_hash));
+    fn no_identity(directory: &std::path::Path) {
+        for entry in std::fs::read_dir(directory).unwrap() {
+            let path = entry.unwrap().path();
+            assert!(!path.to_string_lossy().contains("alice"));
+            if path.is_dir() { no_identity(&path); }
+            else if path.extension().is_some_and(|extension| extension == "json") {
+                let text = std::fs::read_to_string(&path).unwrap();
+                assert!(!text.contains("alice") && !text.contains("private-canary"), "a transaction artifact carries the subject: {}", path.display());
+            }
+        }
+    }
+    no_identity(&erased.store.root().join("_erasure"));
+    for record in [audit.as_str(), &std::fs::read_to_string(erased.store.root().join("_erasure_frontier.json")).unwrap()] {
+        assert!(!record.contains("alice") && !record.contains("private-canary"));
+    }
+}
+
+/// The signed audit chain binds the committed transaction, {{disclosure.erase.subject-pseudonym}} and affected counts to the exact replacement-file inventory.
+// spec: disclosure.erase.row-free-audit@b37a0116
+#[test]
+#[cfg(feature = "read")]
+fn the_signed_erasure_entry_binds_transaction_pseudonym_counts_and_replacement_inventory() {
+    use sha2::{Digest, Sha256};
+    let erasure = TwoTableErasure::new();
+    let erased = erasure.erase("alice", false).unwrap();
+    let entries = contextful_policy::audit::entries(&erasure.audit_dir).unwrap();
+    let entry = entries.iter().find(|entry| entry.attributes["operation"] == "erasure").expect("the erasure appends no audit entry");
+    assert_eq!(entry.attributes["transaction_id"], json!(erased.transaction_id));
+    assert_eq!(entry.attributes["subject_hash"], json!(erased.subject_hash));
+    assert_eq!(entry.attributes["affected_counts"], json!({"events":1, "notes":1}));
+    let frontier: serde_json::Value = serde_json::from_slice(&std::fs::read(erased.store.root().join("_erasure_frontier.json")).unwrap()).unwrap();
+    assert_eq!(frontier["audit_hash"], json!(entry.entry_hash), "the frontier names another audit entry");
+    for name in ["notes", "events"] {
+        let baseline = erased.store.root().join(format!("_erasure/committed/{}/tables/{name}", erased.transaction_id));
+        let certificate: serde_json::Value = serde_json::from_slice(&std::fs::read(baseline.join("_erasure_certificate.json")).unwrap()).unwrap();
+        let files: std::collections::BTreeMap<String, String> = serde_json::from_value(certificate["files"].clone()).unwrap();
+        assert!(!files.is_empty());
+        for (path, digest) in &files {
+            let bytes = std::fs::read(baseline.join(path)).unwrap();
+            assert_eq!(digest, &Sha256::digest(&bytes).iter().map(|byte| format!("{byte:02x}")).collect::<String>(), "{name}/{path} differs from its inventory");
+        }
+        let inventory = Sha256::digest(serde_json::to_vec(&files).unwrap()).iter().map(|byte| format!("{byte:02x}")).collect::<String>();
+        assert_eq!(entry.attributes["replacement_hashes"][name], json!(inventory), "the signed entry does not bind {name}'s replacement inventory");
+    }
+    let encoded = serde_json::to_string(&entry.attributes).unwrap();
+    assert!(!encoded.contains("alice") && !encoded.contains("private-canary") && !encoded.contains("retained"), "the audit entry carries row content");
+}
+
+/// Recovery completes collection for a committed frontier and discards uncommitted replacements; an incomplete or disagreeing transaction record raises `ErasureTransactionIncomplete` before releasing store content.
+// spec: disclosure.erase.recovery@ca924dd1
+#[test]
+#[cfg(feature = "read")]
+fn recovery_completes_a_committed_frontier_discards_uncommitted_replacements_and_refuses_a_disagreeing_record() {
+    let fixture = Fixture::new();
+    let table = decl("name = \"notes\"\nprimary_key = [\"id\"]");
+    fixture.land(&table, "run-0001", json!([{ "id":"erased", "text":"private" }]), "2030-01-01T00:00:00Z").unwrap();
+    let (bound, replacement) = select_signed_store_replacement(&fixture.store, "notes");
+    let staged = bound.root().join("_erasure/staging").join("c".repeat(64));
+    std::fs::create_dir_all(staged.join("tables/notes")).unwrap();
+    std::fs::write(staged.join("tables/notes/partial"), b"uncommitted replacement").unwrap();
+    contextful_context::erase::recover_committed_erasure(&bound).unwrap();
+    assert!(!fixture.store.root().join("tables/notes").exists(), "recovery leaves the committed frontier's retired table");
+    assert!(!staged.exists(), "recovery keeps an uncommitted replacement");
+    assert_eq!(bound.table_dir("notes").unwrap(), replacement);
+    let frontier = bound.root().join("_erasure_frontier.json");
+    let mut record: serde_json::Value = serde_json::from_slice(&std::fs::read(&frontier).unwrap()).unwrap();
+    record["tables"]["notes"]["certificate_sha256"] = json!("0".repeat(64));
+    std::fs::write(&frontier, record.to_string()).unwrap();
+    let refusal = contextful_context::erase::recover_committed_erasure(&bound).unwrap_err();
+    assert!(refusal.to_string().starts_with("ErasureTransactionIncomplete"), "{refusal}");
+    assert!(replacement.is_dir(), "a disagreeing record collects the selected replacement");
+    let read = contextful_context::rows::table_rows(&bound, &table, &["id"]);
+    assert!(read.unwrap_err().to_string().starts_with("ErasureTransactionIncomplete"), "a disagreeing record releases store content");
 }

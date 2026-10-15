@@ -131,8 +131,14 @@ columns = { id = "utf8", trace_id = "utf8" }
     }
 }
 
+fn objects(value: serde_json::Value) -> Vec<serde_json::Map<String, serde_json::Value>> {
+    value.as_array().unwrap().iter().map(|v| v.as_object().unwrap().clone()).collect()
+}
+
+/// A shared digest survives while any surviving declared reference names it; erasure collects a digest only after its last surviving reference disappears.
+// spec: disclosure.erase.shared-references@e6601f5f
 #[test]
-fn subject_erasure_keeps_shared_references_and_surviving_citations() {
+fn a_shared_digest_survives_while_a_surviving_reference_names_it() {
     let declarations = TableDecl::parse_pipeline(r#"
 [[pipeline.tables]]
 name = "notes"
@@ -142,25 +148,49 @@ erasure_key = "id"
 name = "blobs"
 erasure_key = "digest"
 referenced_by = [{ table = "notes", column = "blob" }]
-[[pipeline.tables]]
-name = "citations"
-on_erase = "survive"
 "#).unwrap();
-    let mut rows: RetainedRows = BTreeMap::new();
-    let objects = |value: serde_json::Value| value.as_array().unwrap().iter().map(|v| v.as_object().unwrap().clone()).collect();
-    rows.insert("notes".into(), objects(json!([
-        {"id":"a1","subject":"alice","blob":"shared"},
-        {"id":"a2","subject":"alice","blob":"unique"},
-        {"id":"b1","subject":"bob","blob":"shared"}
-    ])));
-    rows.insert("blobs".into(), objects(json!([{"digest":"shared"},{"digest":"unique"}])));
-    rows.insert("citations".into(), objects(json!([{"id":"c1","source_key":"a2"}])));
+    let rows: RetainedRows = BTreeMap::from([
+        ("notes".into(), objects(json!([
+            {"id":"a1","subject":"alice","blob":"shared"},
+            {"id":"a2","subject":"alice","blob":"unique"},
+            {"id":"b1","subject":"bob","blob":"shared"}
+        ]))),
+        ("blobs".into(), objects(json!([{"digest":"shared"},{"digest":"unique"}]))),
+    ]);
     let selected = select_subject(&declarations, &rows, &["notes".to_string()], "alice").unwrap();
     assert_eq!(selected.removes("notes"), &[true, true, false]);
-    assert_eq!(selected.removes("blobs"), &[false, true]);
-    assert_eq!(selected.removes("citations"), &[false]);
+    assert_eq!(selected.removes("blobs"), &[false, true], "a digest a surviving row names is collected, or an orphaned one survives");
     assert_eq!(selected.affected_tables().collect::<Vec<_>>(), vec!["blobs", "notes"]);
     assert!(!format!("{selected:?}").contains("alice"));
+    let selected = select_subject(&declarations, &rows, &["notes".to_string()], "bob").unwrap();
+    assert_eq!(selected.removes("blobs"), &[false, false], "a digest alice's rows still name is collected");
+}
+
+/// A citing table carrying the survival declaration of {{store.declare.erasure-metadata}} retains its rows; its references resolve through {{read.reference.erased-verdict}}.
+// spec: disclosure.erase.surviving-citations@c7d94ad8
+#[test]
+fn a_survival_table_keeps_rows_whose_references_reach_erased_rows() {
+    let declaration = |survival: &str| TableDecl::parse_pipeline(&format!(r#"
+[[pipeline.tables]]
+name = "notes"
+subject_id = "subject"
+erasure_key = "id"
+[[pipeline.tables]]
+name = "citations"
+erasure_key = "id"
+referenced_by = [{{ table = "notes", column = "citation" }}]
+{survival}
+"#)).unwrap();
+    let rows: RetainedRows = BTreeMap::from([
+        ("notes".into(), objects(json!([{"id":"a1","subject":"alice","citation":"c1"},{"id":"b1","subject":"bob","citation":"c2"}]))),
+        ("citations".into(), objects(json!([{"id":"c1","score":0.9},{"id":"c2","score":0.4}]))),
+    ]);
+    let collected = select_subject(&declaration(""), &rows, &["notes".to_string()], "alice").unwrap();
+    assert_eq!(collected.removes("citations"), &[true, false], "the fixture's citation is not exclusively reached by the erased row");
+    let survived = select_subject(&declaration("on_erase = \"survive\""), &rows, &["notes".to_string()], "alice").unwrap();
+    assert_eq!(survived.removes("notes"), &[true, false]);
+    assert_eq!(survived.removes("citations"), &[false, false], "a survival declaration still cascades");
+    assert_eq!(survived.affected_tables().collect::<Vec<_>>(), vec!["notes"]);
 }
 
 #[test]
@@ -180,24 +210,53 @@ referenced_by = [{ table = "missing", column = "blob" }]
     assert!(!error.to_string().contains("alice"));
 }
 
-#[test]
-fn erasure_selection_refuses_an_undeclared_subject_and_a_cascade_beyond_the_bound() {
+/// A subject table and a chain of `depth` derived tables, each row referenced only by its parent.
+fn cascade_chain(depth: usize) -> (Vec<TableDecl>, RetainedRows) {
     use contextful_core::store::declare::ErasureReference;
     let mut declarations = vec![TableDecl { name: "notes".into(), subject_id: Some("subject".into()), ..TableDecl::default() }];
-    let mut rows = BTreeMap::from([("notes".into(), vec![json!({"subject":"alice","reference":"k0"}).as_object().unwrap().clone()])]);
-    for depth in 1..=17 {
-        let parent = if depth == 1 { "notes".into() } else { format!("d{}", depth-1) };
-        let name = format!("d{depth}");
+    let mut rows: RetainedRows = BTreeMap::from([("notes".into(), objects(json!([{"subject":"alice","reference":"k0"},{"subject":"bob","reference":"kept"}])))]);
+    for hop in 1..=depth {
+        let parent = if hop == 1 { "notes".into() } else { format!("d{}", hop - 1) };
+        let name = format!("d{hop}");
         declarations.push(TableDecl { name: name.clone(), erasure_key: Some("key".into()), referenced_by: Some(vec![ErasureReference { table: parent, column: "reference".into() }]), ..TableDecl::default() });
-        rows.insert(name, vec![json!({"key":format!("k{}",depth-1),"reference":format!("k{depth}")}).as_object().unwrap().clone()]);
+        rows.insert(name, objects(json!([{"key":format!("k{}", hop - 1),"reference":format!("k{hop}")}])));
     }
+    (declarations, rows)
+}
+
+/// In the same operation the cascade invalidates every derived fact whose provenance reaches the subject key or a tombstoned identifier within 16 hops.
+// spec: disclosure.erase.cascade@562ca33f
+#[test]
+fn the_cascade_reaches_an_exclusively_referenced_fact_16_hops_away() {
+    let (declarations, rows) = cascade_chain(16);
+    let selected = select_subject(&declarations, &rows, &["notes".into()], "alice").unwrap();
+    assert_eq!(selected.removes("notes"), &[true, false]);
+    for hop in 1..=16 {
+        assert_eq!(selected.removes(&format!("d{hop}")), &[true], "the cascade stops before hop {hop}");
+    }
+}
+
+/// A provenance chain deeper than the cascade bound raises `ErasureCascadeUnbounded`, and the erasure commits nothing.
+// spec: disclosure.erase.cascade-unbounded@48200744
+#[test]
+fn a_cascade_deeper_than_16_hops_raises_erasure_cascade_unbounded() {
+    let (declarations, rows) = cascade_chain(17);
     let error = select_subject(&declarations, &rows, &["notes".into()], "alice").unwrap_err();
     assert!(error.to_string().starts_with("ErasureCascadeUnbounded"), "{error}");
-    declarations.pop(); rows.remove("d17");
-    assert!(select_subject(&declarations, &rows, &["notes".into()], "alice").unwrap().removes("d16")[0]);
-    declarations[0].subject_id = None;
-    let error = select_subject(&declarations, &rows, &["notes".into()], "alice").unwrap_err();
+    assert!(!error.to_string().contains("alice"));
+}
+
+/// A table names its subject column as `subject_id = "<column>"` under `[[pipeline.tables]]`. A subject erasure against a table without one raises `ErasureSubjectUndeclared`, naming the table.
+// spec: disclosure.erase.subject-column@5265feaf
+#[test]
+fn a_subject_erasure_against_a_table_without_a_subject_column_raises_erasure_subject_undeclared() {
+    let declarations = TableDecl::parse_pipeline("[[pipeline.tables]]\nname = \"notes\"\nsubject_id = \"subject\"\n[[pipeline.tables]]\nname = \"events\"\n").unwrap();
+    let rows: RetainedRows = BTreeMap::from([("notes".into(), objects(json!([{"subject":"alice"}]))), ("events".into(), objects(json!([{"subject":"alice"}])))]);
+    assert!(select_subject(&declarations, &rows, &["notes".into()], "alice").unwrap().removes("notes")[0]);
+    let error = select_subject(&declarations, &rows, &["notes".into(), "events".into()], "alice").unwrap_err();
     assert!(error.to_string().starts_with("ErasureSubjectUndeclared"), "{error}");
+    assert!(error.to_string().contains("`events`"), "the refusal omits the undeclared table: {error}");
+    assert!(!error.to_string().contains("alice"));
 }
 
 #[test]
