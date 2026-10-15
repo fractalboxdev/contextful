@@ -16,7 +16,7 @@ use contextful_core::store::lay_out::{is_path_segment, part_name, NodeId, PartEn
 use contextful_core::store::reconcile::{decode_binary, supertype, Column, ColumnType, FloatItem, Schema, LIST_ITEM, VECTOR_ITEM};
 use contextful_core::store::reserve::{
     optional_value_problem, producer_columns, Injection, ALWAYS_INJECTED, AUTHORED_BY, BATCH_SEQ, COMMIT_SEQ, INGESTED_AT, ROW_SEQ, TAINT,
-    RUN_ID, RUN_RECORD_TABLE, SITE_ID,
+    RUN_ID, SITE_ID,
 };
 use contextful_core::store::StoreError;
 use contextful_core::time::Instant;
@@ -620,13 +620,14 @@ thread_local! {
     static ENGINE_OWNED: std::cell::Cell<bool> = const { std::cell::Cell::new(false) };
 }
 
-/// Whether this thread is the engine appending to its run record `table`.
+/// Whether this thread is the engine appending to its run record or to a source's mirrored
+/// access tables under `_visibility/` (`disclosure.mirror.grants-table`).
 fn engine_owned(table: &str) -> bool {
-    table == RUN_RECORD_TABLE && ENGINE_OWNED.with(std::cell::Cell::get)
+    contextful_core::store::reserve::is_engine_table(table) && ENGINE_OWNED.with(std::cell::Cell::get)
 }
 
-/// Land `batch` into the engine's run record, which every producer landing refuses as
-/// `StoreReservedTableName`.
+/// Land `batch` into a table of an engine-held namespace, which every producer landing
+/// refuses as `StoreReservedTableName`.
 pub(crate) fn land_engine_owned(store: &Store, decl: &TableDecl, batch: &Batch, ctx: &RunContext) -> Result<RunManifest> {
     struct Reset;
     impl Drop for Reset {

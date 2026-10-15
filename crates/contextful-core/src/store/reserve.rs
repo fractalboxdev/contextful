@@ -115,6 +115,13 @@ pub fn producer_columns(schema: &Schema) -> Result<Schema, StoreError> {
     Ok(Schema { columns: kept, ..Default::default() })
 }
 
+/// Whether `table` is one the engine alone writes: the run record, or a source's mirrored
+/// access table under `_visibility/` (`disclosure.mirror.grants-table`). It reads and folds
+/// as any table; the land path refuses a producer writing it.
+pub fn is_engine_table(table: &str) -> bool {
+    table == RUN_RECORD_TABLE || table.strip_prefix("_visibility/").is_some_and(|rest| !rest.is_empty())
+}
+
 /// Refuse a table name inside a reserved namespace (`store.reserve.table-name`).
 pub fn check_table_name(table: &str) -> Result<(), StoreError> {
     if table.ends_with(crate::store::ledger::LEDGER_RELATION_SUFFIX) {

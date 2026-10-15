@@ -8,6 +8,9 @@ use std::path::PathBuf;
 pub enum ContextError {
     #[error(transparent)]
     Store(#[from] StoreError),
+    /// A registered `disclosure` visibility refusal: a sweep's.
+    #[error(transparent)]
+    Visibility(#[from] contextful_core::disclosure::VisibilityError),
     #[error(transparent)]
     Erasure(#[from] contextful_core::disclosure::erase::ErasureError),
     /// A registered `run` refusal: a model build's or hold's.
