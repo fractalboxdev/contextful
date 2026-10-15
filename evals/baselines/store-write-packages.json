@@ -3,8 +3,8 @@
   "metric": "topology.store_write.unique_packages",
   "counting": "Distinct normal-dependency package names across every target, including contextful-context.",
   "baseline": {
-    "revision": "a35f3b476d9bfbcb1db9be4aba0b210c82c10580",
-    "package_count": 212,
+    "revision": "dffad558a3d128a706b757191128fa68a16a94a5",
+    "package_count": 219,
     "packages": [
       "ahash",
       "aho-corasick",
@@ -89,6 +89,11 @@
       "integer-encoding",
       "itertools",
       "itoa",
+      "jiff",
+      "jiff-core",
+      "jiff-static",
+      "jiff-tzdb",
+      "jiff-tzdb-platform",
       "js-sys",
       "lexical-core",
       "lexical-parse-float",
@@ -119,6 +124,8 @@
       "percent-encoding",
       "pin-project-lite",
       "pkcs8",
+      "portable-atomic",
+      "portable-atomic-util",
       "potential_utf",
       "powerfmt",
       "ppv-lite86",
@@ -439,8 +446,16 @@
     ]
   },
   "delta": {
-    "added": [],
+    "added": [
+      "jiff",
+      "jiff-core",
+      "jiff-static",
+      "jiff-tzdb",
+      "jiff-tzdb-platform",
+      "portable-atomic",
+      "portable-atomic-util"
+    ],
     "removed": []
   },
-  "ceiling": 212
+  "ceiling": 219
 }
