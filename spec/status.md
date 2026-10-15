@@ -9,13 +9,13 @@ An unpinned clause is `committed`; a pinned one is `performed` when its Rust, Le
 | `authority` | 2 | 16 | 295 | 79 | 29 | 9 | 224 | 0 | 224 |
 | `connector` | 2 | 14 | 356 | 90 | 21 | 16 | 233 | 0 | 233 |
 | `corpus` | 1 | 10 | 79 | 37 | 7 | 0 | 79 | 0 | 79 |
-| `disclosure` | 3 | 16 | 158 | 68 | 13 | 5 | 64 | 0 | 64 |
+| `disclosure` | 3 | 16 | 158 | 68 | 13 | 5 | 72 | 0 | 72 |
 | `read` | 2 | 19 | 276 | 45 | 28 | 13 | 230 | 0 | 230 |
 | `run` | 3 | 28 | 502 | 113 | 44 | 14 | 445 | 0 | 445 |
 | `store` | 3 | 19 | 290 | 65 | 14 | 12 | 278 | 0 | 278 |
 | `surface` | 2 | 20 | 143 | 59 | 22 | 0 | 118 | 0 | 118 |
 | `topology` | 1 | 6 | 79 | 25 | 5 | 3 | 74 | 0 | 74 |
-| **total** | 22 | 166 | 2483 | 644 | 206 | 80 | 2015 | 0 | |
+| **total** | 22 | 166 | 2483 | 644 | 206 | 80 | 2023 | 0 | |
 
 Decision records: 18.
 
@@ -34,7 +34,7 @@ A milestone reads `closed` when its acceptance test computes `passing` and every
 | 6 — Sync and replicas | 8 | 83 | 83 | passing | closed |
 | 7 — Memory | 6 | 71 | 56 | passing | closed |
 | 8 — Accountability | 5 | 84 | 48 | passing | open |
-| 9 — Visibility | 6 | 41 | 3 | open | open |
+| 9 — Visibility | 6 | 41 | 11 | open | open |
 | 10 — Cadence and the operator plane | 11 | 99 | 85 | passing | open |
 | 11 — The derive tier | 7 | 94 | 93 | passing | closed |
 | 12 — The operator console | 12 | 56 | 41 | passing | open |
@@ -917,6 +917,14 @@ Unscheduled operations: 12.
 | `disclosure.suppress.empty-policy` | `crates/contextful-core/tests/integration/disclosure/suppress.rs::empty_policy` | performed |
 | `disclosure.suppress.grouping-allowlist` | `crates/contextful-cli/tests/integration/disclosure.rs::check_rejects_empty_grouping_allowlist` | performed |
 | `disclosure.suppress.min-group-size` | `crates/contextful-core/tests/integration/disclosure/suppress.rs::min_group_size` | performed |
+| `disclosure.sweep.cadence-grammar` | `crates/contextful-core/tests/integration/disclosure/sweep.rs::a_cadence_outside_the_budget_grammar_is_refused` | performed |
+| `disclosure.sweep.full-run` | `crates/contextful-core/tests/integration/disclosure/sweep.rs::a_full_run_replaces_resources_and_grants_and_tombstones_the_withdrawn` | performed |
+| `disclosure.sweep.grants-file` | `crates/contextful-core/tests/integration/disclosure/sweep.rs::a_grants_file_is_the_read_of_every_governed_resource` | performed |
+| `disclosure.sweep.incremental-run` | `crates/contextful-core/tests/integration/disclosure/sweep.rs::an_incremental_run_replaces_only_the_grants_of_resources_it_read` | performed |
+| `disclosure.sweep.orphan-grant` | `crates/contextful-core/tests/integration/disclosure/sweep.rs::a_grant_with_no_resource_row_or_of_the_unknown_class_is_refused` | performed |
+| `disclosure.sweep.sweep-block` | `crates/contextful-core/tests/integration/disclosure/sweep.rs::an_acl_sweep_block_declares_one_sources_sweep` | performed |
+| `disclosure.sweep.sweep-epoch` | `crates/contextful-core/tests/integration/disclosure/sweep.rs::each_committed_run_advances_the_source_epoch_by_one` | performed |
+| `disclosure.sweep.watermark-advance` | `crates/contextful-core/tests/integration/disclosure/sweep.rs::a_run_reading_every_governed_resource_moves_the_watermark_to_its_start` | performed |
 | `disclosure.template.overfetch` | `crates/contextful-context/tests/integration/read/register.rs::a_capped_template_reads_one_probe_row_for_truncation` | performed |
 | `disclosure.template.single-statement` | `crates/contextful-context/tests/integration/read/guard.rs::a_template_with_two_statements_refuses_at_startup` | performed |
 | `read.as-of-join.horizon-caps-row` | `crates/contextful-agent/tests/integration/mcp.rs::an_availability_bound_caps_each_driving_rows_instant` | performed |
