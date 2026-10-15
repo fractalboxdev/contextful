@@ -3,9 +3,13 @@
 use super::synthesize::EvidenceRef;
 use super::MemoryError;
 
-/// Evidence references one claim names before recall suppresses it
+/// Evidence entries recall serves per claim; the rest are counted in `evidence_omitted`
 /// (`read.recall.evidence-references`).
 pub const EVIDENCE_REFERENCES: usize = 256;
+
+/// Evidence entries one claim names before recall suppresses it
+/// (`read.recall.evidence-gate-bound`).
+pub const EVIDENCE_GATE: usize = 4096;
 
 /// How one evidence row reads through the caller's own session.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -33,6 +37,17 @@ pub enum Grounding {
     Stale,
 }
 
+/// A claim the gate admits: what it rests on, the evidence entries it serves and the
+/// count of entries past the served cap.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Admission {
+    pub grounding: Grounding,
+    /// At most [`EVIDENCE_REFERENCES`] entries, in cited table, run and sequence order.
+    pub served: Vec<EvidenceRef>,
+    /// Entries past the served cap (`read.recall.evidence-references`).
+    pub omitted: u64,
+}
+
 /// Parse a claim's stored evidence list; text that is not a list of references is
 /// malformed lineage.
 pub fn parse_evidence(text: Option<&str>) -> Result<Vec<EvidenceRef>, MemoryError> {
@@ -48,8 +63,8 @@ pub fn withheld(evidence: Option<&str>, registers: impl Fn(&str) -> bool) -> u64
 }
 
 /// Gate one claim: every evidence row reads, unmasked, through the caller's session. A
-/// list past 256 references is suppressed as an overflow
-/// (`read.recall.evidence-references`); an unreadable or masked row, an unknown table, a
+/// list past 4096 references is suppressed as an overflow
+/// (`read.recall.evidence-gate-bound`); an unreadable or masked row, an unknown table, a
 /// reference into a memory table or malformed lineage suppresses it as unresolved
 /// (`read.recall.evidence-unresolved`). The refusal names no evidence row. A claim one
 /// of whose rows resolves only through its key passes as [`Grounding::Stale`].
@@ -58,10 +73,21 @@ pub fn gate(
     memory_tables: &[String],
     read: impl Fn(&EvidenceRef) -> EvidenceRead,
 ) -> Result<Grounding, MemoryError> {
-    let refs = parse_evidence(evidence)?;
-    if refs.len() > EVIDENCE_REFERENCES {
+    admit(evidence, memory_tables, read).map(|a| a.grounding)
+}
+
+/// [`gate`], returning the admitted claim's first [`EVIDENCE_REFERENCES`] entries in cited
+/// table, run and sequence order and the count of the rest; every entry, served or
+/// omitted, passes the gate (`read.recall.keyed-gate`).
+pub fn admit(
+    evidence: Option<&str>,
+    memory_tables: &[String],
+    read: impl Fn(&EvidenceRef) -> EvidenceRead,
+) -> Result<Admission, MemoryError> {
+    let mut refs = parse_evidence(evidence)?;
+    if refs.len() > EVIDENCE_GATE {
         return Err(MemoryError::EvidenceOverflow(format!(
-            "the claim names {} evidence references; the bound is {EVIDENCE_REFERENCES}",
+            "the claim names {} evidence references; the bound is {EVIDENCE_GATE}",
             refs.len()
         )));
     }
@@ -83,5 +109,8 @@ pub fn gate(
             }
         }
     }
-    Ok(grounding)
+    refs.sort_by(|a, b| (&a.table, &a.run, a.seq).cmp(&(&b.table, &b.run, b.seq)));
+    let omitted = refs.len().saturating_sub(EVIDENCE_REFERENCES) as u64;
+    refs.truncate(EVIDENCE_REFERENCES);
+    Ok(Admission { grounding, served: refs, omitted })
 }

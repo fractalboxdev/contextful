@@ -7,7 +7,7 @@ use super::fault::ReadFault;
 use contextful_core::enforce::EnforceError;
 use contextful_core::memory::calibrate::{Calibration, Confidence, Settled};
 use contextful_core::memory::declare::Shape;
-use contextful_core::memory::recall::{gate, withheld, EvidenceRead, Grounding};
+use contextful_core::memory::recall::{admit, withheld, Admission, EvidenceRead, Grounding};
 use contextful_core::memory::synthesize::EvidenceRef;
 use contextful_core::memory::revise::Tier;
 use contextful_core::memory::MemoryError;
@@ -144,8 +144,13 @@ impl Face {
                     if let Some(error) = fault.into_inner() {
                         return Err(error);
                     }
-                    if admitted {
-                        kept.push(row.iter().map(Cell::to_json).collect());
+                    if let Some(admission) = admitted {
+                        let mut served: Vec<Value> = row.iter().map(Cell::to_json).collect();
+                        if let Some(capped) = served_evidence(&admission) {
+                            served[evidence_at] = capped;
+                        }
+                        served.push(json!(admission.omitted));
+                        kept.push(served);
                     }
                 }
                 offset += page;
@@ -167,6 +172,7 @@ impl Face {
             row.push(json!(reported.map_or("uncalibrated", Confidence::label)));
         }
         let mut columns = columns;
+        columns.push(EVIDENCE_OMITTED.to_string());
         columns.push(CONFIDENCE_LABEL.to_string());
         let mut response = Response::cut(columns, kept, Some(ceiling));
         if let Some(b) = request.echo() {
@@ -181,6 +187,17 @@ impl Face {
             response
         })
     }
+}
+
+/// The column counting a served claim's evidence entries past the served cap
+/// (`read.recall.evidence-references`), projected null outside memory on the ranked arm
+/// (`read.recall.evidence-omitted-column`).
+pub const EVIDENCE_OMITTED: &str = "evidence_omitted";
+
+/// A capped claim's served evidence list, as stored text; `None` where nothing was
+/// omitted and the stored list serves as written (`read.recall.evidence-references`).
+pub(crate) fn served_evidence(admission: &Admission) -> Option<Value> {
+    (admission.omitted > 0).then(|| json!(serde_json::to_string(&admission.served).expect("evidence references serialize")))
 }
 
 /// The keyed response's column labelling each claim's confidence
@@ -245,22 +262,22 @@ pub(crate) struct RecallTally {
 
 impl RecallTally {
     /// Gate one claim through `read`, counting its references into tables `session` does
-    /// not register; true where the claim is served.
-    pub(crate) fn gate(&mut self, evidence: Option<&str>, memory_tables: &[String], session: &Session, read: impl Fn(&EvidenceRef) -> EvidenceRead) -> bool {
+    /// not register; the admission where the claim is served.
+    pub(crate) fn gate(&mut self, evidence: Option<&str>, memory_tables: &[String], session: &Session, read: impl Fn(&EvidenceRef) -> EvidenceRead) -> Option<Admission> {
         self.withheld += withheld(evidence, |t| session.relation(t).is_some());
-        self.admit(gate(evidence, memory_tables, read))
+        self.admit(admit(evidence, memory_tables, read))
     }
 
-    /// Count one gate outcome; true where the claim is served.
-    fn admit(&mut self, outcome: Result<Grounding, MemoryError>) -> bool {
+    /// Count one gate outcome; the admission where the claim is served.
+    fn admit(&mut self, outcome: Result<Admission, MemoryError>) -> Option<Admission> {
         match outcome {
-            Ok(grounding) => {
-                self.stale += u64::from(grounding == Grounding::Stale);
-                true
+            Ok(admission) => {
+                self.stale += u64::from(admission.grounding == Grounding::Stale);
+                Some(admission)
             }
             Err(e) => {
                 *self.suppressed.entry(e.identifier()).or_insert(0) += 1;
-                false
+                None
             }
         }
     }
