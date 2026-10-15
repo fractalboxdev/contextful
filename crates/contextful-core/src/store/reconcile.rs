@@ -559,10 +559,14 @@ impl Column {
 }
 
 /// A table's current shape: an ordered column list. Reconciliation keeps this alone and
-/// no history of how it was reached (`store.reconcile.no-history`).
+/// no history of how it was reached (`store.reconcile.no-history`), beside the instant each
+/// column first landed (`read.horizon.late-columns`).
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
 pub struct Schema {
     pub columns: Vec<Column>,
+    /// The commit instant whose merge first added each column; a column absent here
+    /// predates the record.
+    pub first_landed: std::collections::BTreeMap<String, crate::time::Instant>,
 }
 
 /// The Arrow field metadata key naming an extension type.
@@ -641,7 +645,12 @@ impl Schema {
             .iter()
             .map(|c| field_json(&c.name, &c.ty, c.nullable))
             .collect();
-        json!({ "fields": fields })
+        let mut v = json!({ "fields": fields });
+        if !self.first_landed.is_empty() {
+            let landed: serde_json::Map<String, Value> = self.first_landed.iter().map(|(c, at)| (c.clone(), json!(at.to_rfc3339_nanos()))).collect();
+            v["first_landed_at"] = Value::Object(landed);
+        }
+        v
     }
 
     /// Decode the Arrow JSON form; `None` names a malformed document.
@@ -651,7 +660,13 @@ impl Schema {
             let (name, ty, nullable) = field_from_json(f)?;
             columns.push(Column { name, ty, nullable });
         }
-        Some(Schema { columns })
+        let mut first_landed = std::collections::BTreeMap::new();
+        if let Some(landed) = v.get("first_landed_at") {
+            for (column, at) in landed.as_object()? {
+                first_landed.insert(column.clone(), crate::time::Instant::parse(at.as_str()?).ok()?);
+            }
+        }
+        Some(Schema { columns, first_landed })
     }
 }
 

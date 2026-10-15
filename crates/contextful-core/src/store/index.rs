@@ -568,6 +568,7 @@ impl TableDecl {
                 .into_iter()
                 .map(|(name, ty)| super::reconcile::Column { name, ty, nullable: true })
                 .collect(),
+            ..Default::default()
         };
         self.check_indexes(&declared, false)
     }

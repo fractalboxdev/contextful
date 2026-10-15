@@ -11,6 +11,7 @@ fn s(cols: &[(&str, ColumnType)]) -> Schema {
             .iter()
             .map(|(n, t)| Column::new(*n, t.clone(), true))
             .collect(),
+        ..Default::default()
     }
 }
 
@@ -74,8 +75,8 @@ fn a_key_column_takes_no_float_promotion() {
 // spec: store.reconcile.additive@6b1c6570
 #[test]
 fn an_unseen_column_joins_nullable() {
-    let stored = Schema { columns: vec![Column::new("id", Utf8, false)] };
-    let merged = stored.merge(&Schema { columns: vec![Column::new("pages", Int64, false)] }, &[]).unwrap();
+    let stored = Schema { columns: vec![Column::new("id", Utf8, false)] , ..Default::default() };
+    let merged = stored.merge(&Schema { columns: vec![Column::new("pages", Int64, false)] , ..Default::default() }, &[]).unwrap();
     assert_eq!(merged.columns.iter().map(|c| c.name.as_str()).collect::<Vec<_>>(), ["id", "pages"]);
     assert!(merged.get("pages").unwrap().nullable);
 }
@@ -163,6 +164,7 @@ fn the_arrow_json_form_round_trips_binary_and_vector_types() {
             Column::new("embedding", FixedSizeList(FloatItem::Float16, 384), true),
             Column::new("wide", FixedSizeList(FloatItem::Float32, 3), true),
         ],
+        ..Default::default()
     };
     let doc = typed.to_arrow_json();
     assert_eq!(doc["fields"][0]["type"], serde_json::json!({"name": "binary"}));
@@ -343,6 +345,7 @@ fn the_arrow_json_form_round_trips_nested_types() {
                 true,
             ),
         ],
+        ..Default::default()
     };
     let doc = nested.to_arrow_json();
     assert_eq!(doc["fields"][0]["type"], json!({"name": "list"}));

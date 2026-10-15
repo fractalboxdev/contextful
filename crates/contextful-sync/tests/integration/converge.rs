@@ -30,8 +30,8 @@ fn encrypted_schema_merge_keeps_both_columns_without_plaintext() {
     let key = AesGcmFileCipher::new([0x37; 32], 1);
     let codec = MetadataFiles::sealed(&key);
     let path = std::path::Path::new("schema.json");
-    let first = serde_json::to_vec(&Schema { columns: vec![Column::new("metadata-canary-5f1e", ColumnType::Utf8, true)] }).unwrap();
-    let second = serde_json::to_vec(&Schema { columns: vec![Column::new("pages", ColumnType::Int64, true)] }).unwrap();
+    let first = serde_json::to_vec(&Schema { columns: vec![Column::new("metadata-canary-5f1e", ColumnType::Utf8, true)] , ..Default::default() }).unwrap();
+    let second = serde_json::to_vec(&Schema { columns: vec![Column::new("pages", ColumnType::Int64, true)] , ..Default::default() }).unwrap();
     let mine = codec.seal_bytes(path, &first).unwrap();
     let theirs = codec.seal_bytes(path, &second).unwrap();
     let merged = merge_schema_bytes(&codec, path, &mine, &theirs).unwrap();

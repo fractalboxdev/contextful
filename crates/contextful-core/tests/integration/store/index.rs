@@ -17,7 +17,7 @@ fn table(block: &str) -> TableDecl {
 }
 
 fn schema(columns: &[(&str, ColumnType)]) -> Schema {
-    Schema { columns: columns.iter().map(|(n, ty)| Column { name: n.to_string(), ty: ty.clone(), nullable: true }).collect() }
+    Schema { columns: columns.iter().map(|(n, ty)| Column { name: n.to_string(), ty: ty.clone(), nullable: true }).collect(), ..Default::default() }
 }
 
 /// Manifest validation of a pipeline whose one table carries `block`.

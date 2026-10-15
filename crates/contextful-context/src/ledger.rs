@@ -209,7 +209,7 @@ fn encode_with(path: &Path, rows: &[(String, RequestRecord)], committed: Option<
     if committed.is_some() {
         ledger.push(Column::new(COMMITTED_AT, ColumnType::Timestamp, false));
     }
-    let schema = parquet_io::arrow_schema(&Schema { columns: ledger });
+    let schema = parquet_io::arrow_schema(&Schema { columns: ledger, ..Default::default() });
     let text = |f: &dyn Fn(&(String, RequestRecord)) -> Option<String>| -> ArrayRef { Arc::new(rows.iter().map(f).collect::<StringArray>()) };
     let columns: Vec<ArrayRef> = vec![
         text(&|(run, _)| Some(run.clone())),

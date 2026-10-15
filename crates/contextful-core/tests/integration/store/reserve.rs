@@ -7,7 +7,7 @@ use contextful_core::store::reserve::{
 use contextful_core::store::StoreError;
 
 fn schema(names: &[&str]) -> Schema {
-    Schema { columns: names.iter().map(|n| Column::new(*n, ColumnType::Utf8, true)).collect() }
+    Schema { columns: names.iter().map(|n| Column::new(*n, ColumnType::Utf8, true)).collect() , ..Default::default() }
 }
 
 /// Column names beginning `_` belong to the engine; the injected set and the reserved optional set are its whole content.

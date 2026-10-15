@@ -100,7 +100,7 @@ fn rows_schema<'a>(rows: impl Iterator<Item = &'a Map<String, Value>>, types: &H
             }
         }
     }
-    Ok(Schema { columns })
+    Ok(Schema { columns, ..Default::default() })
 }
 
 fn column_array(c: &Column, rows: &[Map<String, Value>]) -> Result<ArrayRef> {
@@ -733,7 +733,7 @@ fn reconcile(
     };
     let mut merged = stored
         .merge(&run_columns, decl.primary_key())?
-        .merge(&Schema { columns: injected }, decl.primary_key())?;
+        .merge(&Schema { columns: injected, ..Default::default() }, decl.primary_key())?;
     // A column joining a non-empty schema merges as nullable; these are in every file.
     for c in merged.columns.iter_mut().filter(|c| ALWAYS_INJECTED.contains(&c.name.as_str())) {
         c.nullable = false;
@@ -817,7 +817,7 @@ fn part_batch(arriving: &Schema, rows: &[Map<String, Value>], injection: &Inject
         cols.push(c);
         arrays.push(array);
     }
-    RecordBatch::try_new(parquet_io::arrow_schema(&Schema { columns: cols }), arrays).map_err(|e| ContextError::Invalid(e.to_string()))
+    RecordBatch::try_new(parquet_io::arrow_schema(&Schema { columns: cols, ..Default::default() }), arrays).map_err(|e| ContextError::Invalid(e.to_string()))
 }
 
 /// Write `rb` as the Parquet file `path`, replacing a file a lost landing left there.
