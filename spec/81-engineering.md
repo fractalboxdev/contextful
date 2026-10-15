@@ -337,6 +337,17 @@ The read-path quality harness: case format, deterministic metrics and floors, ju
 - `in-window-rate` — A case declaring a recency bound holds its in-window rate at or above 95 percent.
 - `abstention` — A must-abstain case returns zero rows.
 - `truth-per-surface` — Expected artifacts score the artifact retriever and expected edges score the edge retriever, reported apart; edge truth with no edge surface configured counts in an unscored tally.
+- `memory-legs` — Beside {{assurance.evaluate.legs}}, a run declaring a reranker adds a reranked leg through that reranker, and a memory case adds a keyed leg calling {{read.recall.keyed}} at its time anchor.
+- `edge-surface` — The edge retriever of {{assurance.evaluate.truth-per-surface}} is {{read.traverse.call}}, seeded with the case's expected entities; a case's expected edges score the edges the walk returns.
+- `memory-tags` — A memory case carries one or more tags of `knowledge-update`, `temporal-reasoning`, `abstention` and `selective-forgetting`; a temporal case anchors at `observed_at`, and a forgetting case erases its subject under {{disclosure.erase.privilege}} before reading.
+- `supersession-correctness` — A run reports, per leg, the rate of memory cases serving a superseded claim at its successor's anchor.
+- `supersession-floor` — A native memory case serving a superseded claim at its successor's anchor holds that rate at 0 percent.
+  *because a retired belief served beside its successor is the distractor memory exists to remove*
+- `recall-under-suppression` — A memory case reports recall@k with the claims {{read.recall.suppression-count}} counts excluded from its judged relevant set.
+- `evidence-cap-rate` — A memory case reports the share of its served claims whose response reports omitted evidence above 0.
+- `memory-converters` — Beside {{assurance.evaluate.converter}}, LongMemEval and MemoryAgentBench each convert into tagged memory cases, and their scores report beside the native set as {{assurance.baseline.native-gate}} holds.
+- `filtered-recall` — Each run reports restricted recall@k against an exact scan at three restriction selectivities drawn from the zone and row-policy labels of {{assurance.evaluate.policy-labels}}.
+  *because an approximate index loses recall as a filter narrows, and one unfiltered figure hides that loss*
 - `judged-dimensions` — The reading stage adds four judged dimensions: answer accuracy; abstention, as correct-refusal and hallucination-on-unknown rates; citation faithfulness; and temporal correctness against the bitemporal columns.
 - `grounded-reader` — The harness reader answers from retrieved rows alone, and the deterministic tier substitutes a stub reader.
 - `model-endpoint` — The judge and the reader reach a model through {{connector.infer.model-endpoint}}, and the harness holds no credential.

@@ -110,6 +110,7 @@ assurance-precision-floor        = { clause = "assurance.evaluate.precision-floo
 assurance-forbidden-row-rate     = { clause = "assurance.evaluate.forbidden-row-rate", value = 0, unit = "percent", basis = "chosen", gloss = "Returned rows named in a must-not-retrieve set." }
 assurance-duplicate-row-rate     = { clause = "assurance.evaluate.duplicate-row-rate", value = 0, unit = "percent", basis = "chosen", gloss = "Ranking entries repeating a table-and-row-key pair." }
 assurance-in-window-rate         = { clause = "assurance.evaluate.in-window-rate", value = 95, unit = "percent", basis = "chosen", gloss = "In-window rate floor on a case declaring a recency bound." }
+assurance-supersession-floor     = { clause = "assurance.evaluate.supersession-floor", value = 0, unit = "percent", basis = "chosen", gloss = "Native memory cases serving a superseded claim at its successor's anchor." }
 assurance-default-dead-band      = { clause = "assurance.baseline.default-dead-band", value = 2, unit = "percent", basis = "chosen", gloss = "Dead band of a rate entry with no override." }
 assurance-rank-dead-band         = { clause = "assurance.baseline.rank-quality-dead-band", value = 3, unit = "percent", basis = "chosen", gloss = "Dead band of the ranked-quality entry." }
 assurance-gated-mean-cases       = { clause = "assurance.baseline.unresolvable-path", value = 30, unit = "cases", basis = "chosen", gloss = "Fewest cases behind a gated mean." }
