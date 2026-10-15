@@ -231,6 +231,43 @@ fn expansion_filters_rfc_6901_clock_fields() {
     assert!(vendor.received("/old").is_empty());
 }
 
+/// `format` selects the decoder for an HTTP body, `json` when undeclared, and the same bytes
+/// under another declared format decode by that format or refuse.
+// spec: connector.source.body-format@8770ca6b
+#[test]
+fn a_declared_format_selects_the_decoder_and_json_is_the_default() {
+    const FEED: &str = r#"<rss version="2.0"><channel><title>n</title>
+<item><guid>a</guid><title>First</title></item><item><guid>b</guid><title>Second</title></item>
+</channel></rss>"#;
+    let vendor = Server::start(|r| match r.path() {
+        "/array" => Response::json(200, "[{\"id\":\"a\"},{\"id\":\"b\"}]"),
+        "/object" => Response::json(200, "{\"id\":\"a\",\"items\":[]}"),
+        "/lines" => Response::json(200, "{\"id\":\"a\"}\n{\"id\":\"b\"}\n"),
+        "/table" => Response::json(200, "id,n\na,1\nb,2\n"),
+        _ => Response { status: 200, headers: vec![("Content-Type".into(), "application/rss+xml".into())], body: FEED.as_bytes().to_vec() },
+    });
+    let walk = |path: &str, format: Option<&str>| {
+        let mut config = json!({"endpoint": vendor.url(path)});
+        if let Some(format) = format { config["format"] = json!(format); }
+        source(config, vec![]).walk(&request(None), &Never)
+    };
+    assert_eq!(ids(&walk("/array", None).unwrap()), ["a", "b"]);
+    assert_eq!(ids(&walk("/array", Some("json")).unwrap()), ["a", "b"]);
+    let object = walk("/object", Some("json-object")).unwrap();
+    assert_eq!((object.len(), object[0]["items"].clone()), (1, json!([])));
+    assert_eq!(ids(&walk("/lines", Some("jsonl")).unwrap()), ["a", "b"]);
+    let table = walk("/table", Some("csv")).unwrap();
+    assert_eq!((ids(&table), table[1]["n"].clone()), (vec!["a".to_string(), "b".to_string()], json!("2")));
+    let feed = walk("/feed", Some("feed")).unwrap();
+    let entries: Vec<&str> = feed.iter().map(|r| r["entry_id"].as_str().unwrap()).collect();
+    assert_eq!(entries, ["a", "b"]);
+    // The default decoder reads JSON, so a JSONL, CSV or feed body undeclared does not decode.
+    for path in ["/lines", "/table", "/feed"] {
+        assert!(walk(path, None).is_err(), "{path} decoded as json");
+    }
+    assert!(walk("/array", Some("json-object")).is_err());
+}
+
 /// A declared non-UTF-8 label decodes CSV and rejects invalid bytes for that label.
 // spec: connector.source.declared-encoding@0914dae0
 #[test]
