@@ -45,6 +45,7 @@ RefinementScopeExceeded          = { clause = "assurance.scope-claim.refinement-
 ReferenceModelDrift              = { clause = "assurance.differential-test.disagreement", gloss = "The reference model and the engine's decision function disagree on a case." }
 CounterexampleDiscarded          = { clause = "assurance.differential-test.discarded-counterexample", gloss = "A run reported a disagreement and wrote no corpus entry." }
 CapabilityDuplicated             = { clause = "assurance.structure-tree.duplicated-capability", gloss = "A second implementation of an engine capability, or a hand-written copy of an engine constant." }
+CapabilityHomeUnresolved         = { clause = "assurance.structure-tree.capability-registry", gloss = "A capability registry entry resolving to no home or symbol in the tree." }
 MirrorUnresolved                 = { clause = "assurance.structure-tree.mirror-unresolved", gloss = "A mirrors annotation naming no clause of the lock file." }
 ShellCheckFailed                 = { clause = "assurance.automate.unchecked-shell", gloss = "A shell file in the tree that the shell linter rejects." }
 VacuousAssertion                 = { clause = "assurance.test.vacuous-exclusion", gloss = "An exclusion assertion evaluated over an empty collection." }

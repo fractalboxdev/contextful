@@ -1,6 +1,7 @@
 //! `contextful-ci` — the gate's stages as typed subcommands. A contributor and the
 //! FlareDispatch gate invoke the identical command.
 
+mod capability;
 mod deny;
 mod egress;
 mod e2e;

@@ -1,5 +1,6 @@
 //! Source-level refusals over runtime crates: interpolated subject claims
-//! (`assurance.gate.interpolated-claim`), row paths without the enforcement token
+//! (`assurance.gate.interpolated-claim`), duplicated capabilities
+//! (`assurance.structure-tree.duplicated-capability`), row paths without the enforcement token
 //! (`assurance.gate.row-token`) and unconfigured egress (`assurance.gate.unconfigured-egress`).
 
 use anyhow::{Context, Result};
@@ -11,12 +12,13 @@ use syn::spanned::Spanned;
 use syn::visit::Visit;
 use syn::{Expr, Lit, Macro, Token};
 
-use crate::{egress, refuse, row_token};
+use crate::{capability, egress, refuse, row_token};
 
 pub fn check(root: &Path) -> Result<()> {
     interpolated(root)?;
     row_token::check(root)?;
-    egress::check(root)
+    egress::check(root)?;
+    capability::check(root)
 }
 
 fn interpolated(root: &Path) -> Result<()> {

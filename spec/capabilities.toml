@@ -1,0 +1,31 @@
+# One home per capability (`assurance.structure-tree.capability-registry`).
+# `contextful-ci source-lint` and the crate-graph stage read this file.
+
+# Traits declared under these paths are the engine's ports; a Rust implementation of one is
+# an adapter (`assurance.structure-tree.adapter`).
+ports = ["crates/contextful-core/src"]
+
+[[capability]]
+name = "enforcement"
+home = "crates/contextful-policy/src/enforce"
+symbols = ["TablePolicy", "RowPolicy", "truncation_ceiling"]
+
+[[capability]]
+name = "control-plane state"
+home = "crates/contextful-control/src"
+symbols = ["ConfigDoc"]
+
+[[capability]]
+name = "credential resolution"
+home = "crates/contextful-outbound/src/secrets.rs"
+symbols = ["EnvProvider", "LeaseProvider", "assemble_all"]
+
+[[capability]]
+name = "statement guarding"
+home = "crates/contextful-core/src/read/guard.rs"
+symbols = ["single_statement", "named_relations"]
+
+[[capability]]
+name = "visibility"
+home = "crates/contextful-core/src/disclosure"
+symbols = ["visibility_class"]

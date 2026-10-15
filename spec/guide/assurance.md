@@ -73,7 +73,9 @@ specifications and trusted dependencies ({{assurance.scope-claim.trusted-depende
 Refinement reaches pure decision functions only ({{assurance.scope-claim.refinement-scope}}).
 
 Beneath the proofs sit the engineering rules: one implementation per capability
-({{assurance.structure-tree.one-home}}), a failing test before a source change
+({{assurance.structure-tree.one-home}}), each home registered
+({{assurance.structure-tree.capability-registry}}) and its copies matched across languages
+({{assurance.structure-tree.cross-language}}), a failing test before a source change
 ({{assurance.test.test-first}}), and ordered gate stages
 ({{assurance.gate.stage-sequence}}), each a remote check
 ({{assurance.gate.remote-check}}). The quality harness
