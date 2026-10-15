@@ -161,6 +161,36 @@ Integration: `CONTEXTFUL_CONSOLE_MEMORY_SESSION_CLAIM` names a stable signed cla
 | Evaluate metric rules with an embedded expression engine | Attack surface | Anyone registering a prediction reaches the evaluator. |
 | Exclude self-rated outcomes in each reader | Repetition | The first reader that forgets the filter inflates calibration. |
 
+## Gleaning is a declared, single extra pass
+
+Context: one extraction pass over a batch omits claims the batch supports, and a second prompt asking for what the first missed recovers some of them.
+Decision: `read.declare` admits `gleanings` of 0 or 1, off by default. `read.synthesize` re-prompts a schema-valid batch once, gives the gleaning response one attempt, and commits gleaned and first-pass claims in the batch's one commit; a gleaned claim carries `_pass = 'glean'`. A schema-invalid gleaning response discards only the gleaned claims and is counted.
+Criteria: bounded model spend per batch, fixed; then recall of supported claims.
+
+| Option | Lost on | Cost |
+| --- | --- | --- |
+| Declared, off by default, one pass *(chosen)* | — | A table opting in spends one more model call per batch, and its claims vary with the extra prompt. |
+| Always on | Model spend | Every deployment pays a second call per batch whether its sources need one or not. |
+| Unbounded passes until no new claim | Bounded work | A model that keeps emitting claims holds the cursor and spends without limit. |
+
+Consequences: a failed gleaning never dead-letters a batch or holds its cursor.
+Revisit: gleaned claims superseded or contradicted at a rate above first-pass claims.
+
+## An extraction cache keys responses on fenced bytes, template and model
+
+Context: re-running synthesis over unchanged rows, after a rebuild or an erasure's restaging, repeats model calls whose answer is already known.
+Decision: `read.synthesize` keeps each schema-valid response in an enforced, tenant-scoped table keyed on the fenced batch bytes' digest, the template hash, the model identifier and its cutoffs. Keying on fenced bytes keeps two credentials with different masks apart. A hit copies claims and stamps attribution fresh. The cache is a table, never a side file, under "The store holds nothing a user could not see". It holds model responses and never evidence verdicts, because "Resolve evidence once at write time and cache it" stays rejected.
+Criteria: no response crosses a mask or tenant, fixed; then repeated model spend.
+
+| Option | Lost on | Cost |
+| --- | --- | --- |
+| Enforced table keyed on fenced bytes, template and model *(chosen)* | — | Cached responses occupy store space and fall under erasure like any row. |
+| Key on source row identity | Containment | Two sessions masking one row differently share a response one of them never saw. |
+| A side file outside the store | Enforcement | Its bytes escape grants, masks, replication rules and erasure. |
+| No cache | Model spend | Every re-run repays every call. |
+
+Consequences: a re-run over unchanged batches makes no model call; a changed template or model misses.
+
 ## Claim standing is one derived tier, and revision is scoped to a validity line
 
 `read.synthesize` stamps `tier` — `curated`, `derived` or `researched` — from the writing grant and the run's source, never the payload; mixed grounding takes the lowest tier. `read.recall` orders by tier, then score. `read.revise` lets a claim retire a prior of equal or higher standing; a lower-standing contradiction lands with a bounded validity end, and two claims revise each other only when both are open-ended or anchor to the same instant. Promotion is a human act, stamped beside the synthesizing agent. A fetched result's contributor key is its registrable domain; a coverage gap closes only on a declared source. Only `researched` claims expire, by stamping a validity end, not deleting.
@@ -172,6 +202,22 @@ Integration: `CONTEXTFUL_CONSOLE_MEMORY_SESSION_CLAIM` names a stable signed cla
 | A separate store for self-directed conclusions | Recall coherence | Every reader merges two stores under its own rule. |
 | A confidence ceiling per tier | Ordering | Scores across sources are incomparable, so ceilings leak. |
 | Retire on subject, predicate and scope alone | History | A past-anchored belief retires the present one. |
+
+## Agent and third-party writes stand derived
+
+Context: a direct write stamps `curated`, and recall puts curated claims first. An agent writing through ordinary calls, or a claim citing third-party rows, then outranks synthesis on the strength of the write path alone, which lets injected text become a top-ranked belief.
+Decision: `read.revise` stamps a direct write `derived` when its credential carries an agent member or a cited row carries `ingested:third-party`; promotion to `curated` stays a human act, as "Claim standing is one derived tier, and revision is scoped to a validity line" decides. `read.declare` lets a claims table withhold claims below a minimum serving taint.
+Criteria: no model-chosen claim outranks a principal's, fixed; then recall order.
+
+| Option | Lost on | Cost |
+| --- | --- | --- |
+| Agent and third-party writes stand derived *(chosen)* | — | An agent's correct claim waits for a human promotion to rank as curated. |
+| Keep every direct write curated | Poisoning | One injected instruction lands a claim that leads recall. |
+| Trust a claim agreed by several sources | Volume | An attacker controlling volume supplies the agreement. |
+| Refuse agent direct writes | Reach | Agents lose the write path memory exists to serve. |
+
+Consequences: the agent member is asserted, never verified, so a principal-only credential an agent presents still stamps curated.
+Revisit: a verified binding between the agent member and the writer.
 
 ## Memory access follows evidence grants, and forgetting is a separate privilege
 
