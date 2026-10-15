@@ -18,7 +18,6 @@ use contextful_core::run::nodes::NodePlan;
 use contextful_engine::nodes::{CommandConnectors, PlanFire};
 use contextful_core::run::advance::CursorKind;
 use contextful_core::run::drive::{Bodies, Emitted, InputSet, RowBody};
-use contextful_core::run::own::OwnerPins;
 use contextful_core::surface::delegate::BODY_PREFIX;
 use std::sync::Arc;
 use contextful_core::run::effect::{EffectAdmission, EffectScope, EmissionSummary, RecordedBodyPlan, RecordedEffect};
@@ -195,17 +194,17 @@ pub fn run(cmd: JobCmd, bodies: &Bodies) -> Result<()> {
             let _publication = if grouped {Some(crate::export::publication::lock(&l)?)} else {None};
             let body: Arc<dyn RowBody> = match driven.input.body.strip_prefix(BODY_PREFIX) {
                 Some(delegate) => {
-                    let binding = delegates.get(delegate).cloned().context("a validated delegate is bound")?;
-                    let pins = match driven.input.pins() {
-                        OwnerPins::Plan(p) => p.identities,
-                        OwnerPins::Build(_) => Default::default(),
-                    };
+                    let binding = delegates.get(delegate).cloned().with_context(|| format!("JobDelegateUnbound: job `{name}` names delegate `{delegate}`, which `[control.delegates]` does not bind"))?;
+                    // Submit mode refuses before any execution opens, so no item receives a
+                    // receipt for a mode this build does not dispatch.
+                    if binding.mode == contextful_core::surface::delegate::Mode::Submit {
+                        bail!("delegate `{delegate}` binds `mode = \"submit\"`, which this build does not dispatch; bind `call`");
+                    }
                     Arc::new(crate::delegate::DelegateBody {
                         binding,
                         job: name.clone(),
                         tables: driven.tables.clone(),
-                        version: applied.unwrap_or(0),
-                        pins,
+                        version: applied,
                         entity: driven.isolated_items.as_ref().map(|p| (p.entity_namespace.clone(), p.entity_key.clone())),
                         transport: contextful_outbound::egress::system(),
                         key: crate::worker::worker_key()?,
@@ -213,6 +212,9 @@ pub fn run(cmd: JobCmd, bodies: &Bodies) -> Result<()> {
                 }
                 None => bodies.get(&driven.input.body).context("a validated body is registered")?,
             };
+            // A delegate takes one request per item attempt; the item budget is the only
+            // retry layer (`surface.delegate.call-mode`, `run.items.retry-budget`).
+            let delegated = driven.input.body.starts_with(BODY_PREFIX);
             let site_id = site_id_for(&text, &l.declaration, site_id, site_id_env)?;
             let (authority, _) = admit.admit(project.project.as_deref(), "a store-driven job")?;
             let store = crate::project::with_erasure_keys(Store::open_declared(&l.project.dir, &l.project.name, &l.declaration)?, &l.project, admit.public_key.as_deref(), admit.keyset.as_deref())?;
@@ -246,7 +248,7 @@ pub fn run(cmd: JobCmd, bodies: &Bodies) -> Result<()> {
             let engine = &w.engine;
             let drive = Drive {
                 job: name.clone(), input: driven.input.clone(), body: body.as_ref(), max_in_flight: driven.max_in_flight,
-                run_id: run_id.clone(), site_id: site_id.clone(), pid: std::process::id(), boot_id: boot_id(), schedule: Schedule::default(), poll: PARKED_POLL,
+                run_id: run_id.clone(), site_id: site_id.clone(), pid: std::process::id(), boot_id: boot_id(), schedule: if delegated { Schedule::single_attempt() } else { Schedule::default() }, poll: PARKED_POLL,
             };
             if let Some(sweep) = &driven.sweep {
                 if recorded_plan.is_some() {

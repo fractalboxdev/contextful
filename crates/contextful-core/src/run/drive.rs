@@ -78,6 +78,8 @@ pub struct RowContext {
     pub fence: Option<u64>,
     /// The engine's current instant, RFC 3339 UTC; empty when the host supplies none.
     pub now: String,
+    /// The execution's owner pins, as the engine compares them at admission.
+    pub pins: BTreeMap<String, String>,
 }
 
 /// Explicit independent-item admission; keys name non-null input columns.

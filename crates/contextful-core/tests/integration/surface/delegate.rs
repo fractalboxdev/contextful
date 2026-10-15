@@ -1,16 +1,22 @@
 //! `surface.delegate`: the binding, the envelope, signed answers and the outcome vocabulary.
 
-use contextful_core::surface::delegate::{bindings, sign_answer, Answer, Binding, BindingError, Envelope, Mode, CALL_TIMEOUT_SECS, verify_answer};
-use contextful_core::surface::worker::{SIGNATURE_HEADER, TIMESTAMP_HEADER};
+use contextful_core::surface::delegate::{bindings, sign_answer, sign_request, verify_answer, Answer, Binding, BindingError, Envelope, Mode, CALL_TIMEOUT_SECS};
+use contextful_core::surface::worker::{sign_submission, SIGNATURE_HEADER, TIMESTAMP_HEADER};
 use contextful_core::surface::SurfaceError;
 use contextful_core::time::Instant;
 use serde_json::json;
 
 const KEY: &[u8] = b"a-deployment-worker-key";
+const IDEMPOTENCY: &str = "9e2b-item-key";
 
 fn control(delegates: &str) -> toml::value::Table {
     let value: toml::Value = toml::from_str(&format!("[control]\npool = 2\n{delegates}")).unwrap();
     value["control"].as_table().unwrap().clone()
+}
+
+fn binding(table: &str) -> Result<Binding, BindingError> {
+    let control = control(&format!("[control.delegates.d]\n{table}"));
+    Binding::parse("d", control["delegates"]["d"].as_table().unwrap())
 }
 
 fn tables() -> Vec<String> {
@@ -19,8 +25,8 @@ fn tables() -> Vec<String> {
 
 /// `[control.delegates.<name>]` binds a delegate by `url`, a `mode` of `call` or `submit`, and under
 /// `call` a `timeout`; a `store-driven` `body = { delegate = "<name>" }` naming no bound delegate raises
-/// `JobDelegateUnbound` at validation.
-// spec: surface.delegate.binding@2f877eb8
+/// `JobDelegateUnbound` at arm or fire.
+// spec: surface.delegate.binding@ad98c205
 #[test]
 fn a_binding_reads_its_url_mode_and_timeout_and_names_its_body() {
     let bound = bindings(&control("[control.delegates.stages]\nurl = \"http://127.0.0.1:9005/stage\"\nmode = \"call\"\ntimeout = \"30s\"\nversion = \"v7\"\n")).unwrap();
@@ -32,8 +38,10 @@ fn a_binding_reads_its_url_mode_and_timeout_and_names_its_body() {
     let submit = bindings(&control("[control.delegates.long]\nurl = \"http://contextful.delegate/long\"\nmode = \"submit\"\n")).unwrap();
     assert_eq!(submit["long"].mode, Mode::Submit);
     assert!(bindings(&control("")).unwrap().is_empty());
-    assert!(matches!(bindings(&control("[control.delegates.x]\nmode = \"call\"\n")), Err(BindingError::Invalid(m)) if m.contains("`url`")));
-    assert!(matches!(bindings(&control("[control.delegates.x]\nurl = \"http://127.0.0.1:1\"\nmode = \"poll\"\n")), Err(BindingError::Invalid(m)) if m.contains("`mode`")));
+    assert!(matches!(binding("mode = \"call\"\n"), Err(BindingError::Invalid(m)) if m.contains("`url`")));
+    assert!(matches!(binding("url = \"http://127.0.0.1:1\"\nmode = \"poll\"\n"), Err(BindingError::Invalid(m)) if m.contains("`mode`")));
+    assert!(matches!(binding("url = \"http://127.0.0.1:1\"\ntimeout = \"0s\"\n"), Err(BindingError::Invalid(m)) if m.contains("at least 1 s")));
+    assert!(matches!(binding("url = \"http://127.0.0.1:1\"\nretries = 3\n"), Err(BindingError::Invalid(m)) if m.contains("`retries`")));
 }
 
 /// A delegate `url` is `http` to a loopback host or the `contextful.delegate` virtual host, carrying no
@@ -42,10 +50,18 @@ fn a_binding_reads_its_url_mode_and_timeout_and_names_its_body() {
 #[test]
 fn a_delegate_url_is_loopback_or_the_virtual_host_over_plain_http_without_a_credential() {
     for ok in ["http://127.0.0.1:9005/stage", "http://localhost:9005", "http://[::1]:9005/x", "http://contextful.delegate/stages"] {
-        Binding::parse("d", control(&format!("[control.delegates.d]\nurl = \"{ok}\"\n"))["delegates"]["d"].as_table().unwrap()).unwrap_or_else(|e| panic!("{ok}: {e}"));
+        binding(&format!("url = \"{ok}\"\n")).unwrap_or_else(|e| panic!("{ok}: {e}"));
     }
-    for refused in ["https://127.0.0.1:9005/stage", "http://delegates.example.org/stage", "http://10.0.0.7:9005", "http://user:pw@127.0.0.1:9005", "not a url"] {
-        match Binding::parse("d", control(&format!("[control.delegates.d]\nurl = \"{refused}\"\n"))["delegates"]["d"].as_table().unwrap()) {
+    for refused in [
+        "https://127.0.0.1:9005/stage",
+        "http://delegates.example.org/stage",
+        "http://10.0.0.7:9005",
+        "http://user:pw@127.0.0.1:9005",
+        "http://127.0.0.1:9005/stage?api_key=sk-live",
+        "http://127.0.0.1:9005/stage#token",
+        "not a url",
+    ] {
+        match binding(&format!("url = \"{refused}\"\n")) {
             Err(BindingError::Refused(SurfaceError::DelegateHostRefused(m))) => assert!(m.contains("[control.delegates.d]"), "{m}"),
             other => panic!("{refused}: expected DelegateHostRefused, got {other:?}"),
         }
@@ -56,30 +72,42 @@ fn a_delegate_url_is_loopback_or_the_virtual_host_over_plain_http_without_a_cred
 // spec: surface.delegate.call-timeout@bede4158
 #[test]
 fn a_call_timeout_defaults_to_300_s() {
-    let bound = bindings(&control("[control.delegates.d]\nurl = \"http://127.0.0.1:1\"\n")).unwrap();
-    assert_eq!((bound["d"].timeout_secs, CALL_TIMEOUT_SECS), (300, 300));
-    assert_eq!(bindings(&control("[control.delegates.d]\nurl = \"http://127.0.0.1:1\"\ntimeout = \"5m\"\n")).unwrap()["d"].timeout_secs, 300);
+    assert_eq!((binding("url = \"http://127.0.0.1:1\"\n").unwrap().timeout_secs, CALL_TIMEOUT_SECS), (300, 300));
+    assert_eq!(binding("url = \"http://127.0.0.1:1\"\ntimeout = \"5m\"\n").unwrap().timeout_secs, 300);
 }
 
 /// A `call` `timeout` above 3600 s raises `DelegateTimeoutRefused` at validation.
 // spec: surface.delegate.call-timeout-ceiling@0b22103f
 #[test]
 fn a_call_timeout_above_the_ceiling_raises_delegate_timeout_refused() {
-    assert_eq!(bindings(&control("[control.delegates.d]\nurl = \"http://127.0.0.1:1\"\ntimeout = \"1h\"\n")).unwrap()["d"].timeout_secs, 3600);
-    for over in ["3601s", "61m", "2h"] {
-        match bindings(&control(&format!("[control.delegates.d]\nurl = \"http://127.0.0.1:1\"\ntimeout = \"{over}\"\n"))) {
+    assert_eq!(binding("url = \"http://127.0.0.1:1\"\ntimeout = \"1h\"\n").unwrap().timeout_secs, 3600);
+    for over in ["3601s", "61m", "2h", "1d"] {
+        match binding(&format!("url = \"http://127.0.0.1:1\"\ntimeout = \"{over}\"\n")) {
             Err(BindingError::Refused(SurfaceError::DelegateTimeoutRefused(m))) => assert!(m.contains("3600"), "{m}"),
             other => panic!("{over}: expected DelegateTimeoutRefused, got {other:?}"),
         }
     }
 }
 
-/// A request is signed as `submit-signed` signs a submission; an answer unsigned, skewed past the callback
-/// skew, outside the outcome vocabulary or over the step-result cap raises `DelegateAnswerRejected`, and the
-/// attempt closes `Transient`.
-// spec: surface.delegate.signed@53c9c992
+/// A request is signed under the worker key over `call`, its timestamp and body, and an answer over `answer`,
+/// the request's `idempotency_key`, its timestamp and body, each as `submit-signed` signs a submission.
+// spec: surface.delegate.signed@f406d001
 #[test]
-fn an_answer_verifies_under_the_key_within_the_skew_and_inside_the_vocabulary() {
+fn a_request_signs_over_call_and_an_answer_over_answer_and_its_request_key() {
+    let body = b"{\"outcome\":\"transient\"}";
+    assert_ne!(sign_request(KEY, 7, body), sign_submission(KEY, 7, body), "a request is no submission");
+    assert_ne!(sign_request(KEY, 7, body), sign_answer(KEY, IDEMPOTENCY, 7, body), "an answer is no request");
+    assert_ne!(sign_answer(KEY, IDEMPOTENCY, 7, body), sign_answer(KEY, "another-key", 7, body), "an answer binds its request");
+    assert_ne!(sign_answer(KEY, IDEMPOTENCY, 7, body), sign_answer(KEY, IDEMPOTENCY, 8, body), "and its timestamp");
+    assert_eq!(sign_answer(KEY, IDEMPOTENCY, 7, body).len(), 64, "lowercase hex of HMAC-SHA256");
+}
+
+/// An answer unsigned or skewed past the callback skew raises `DelegateAnswerRejected` and closes the attempt
+/// `Transient`; one outside the outcome vocabulary or over the step-result cap raises it and closes the attempt
+/// `Permanent`.
+// spec: surface.delegate.rejected@45da8170
+#[test]
+fn an_answer_verifies_for_its_request_within_the_skew_and_inside_the_vocabulary() {
     let now = Instant::parse("2030-01-01T00:00:00Z").unwrap();
     let body = Answer::Ok { rows: [("screen_result".to_string(), vec![json!({"entity_id": "e-1"}).as_object().unwrap().clone()])].into() }.encode();
     let headers = |timestamp: i64, signature: String| move |name: &str| match name {
@@ -87,14 +115,16 @@ fn an_answer_verifies_under_the_key_within_the_skew_and_inside_the_vocabulary() 
         SIGNATURE_HEADER => Some(signature.clone()),
         _ => None,
     };
-    verify_answer(KEY, headers(now.unix_secs(), sign_answer(KEY, now.unix_secs(), &body)), &body, now).unwrap();
-    verify_answer(KEY, headers(now.unix_secs() - 300, sign_answer(KEY, now.unix_secs() - 300, &body)), &body, now).unwrap();
+    let at = now.unix_secs();
+    verify_answer(KEY, IDEMPOTENCY, headers(at, sign_answer(KEY, IDEMPOTENCY, at, &body)), &body, now).unwrap();
+    verify_answer(KEY, IDEMPOTENCY, headers(at - 300, sign_answer(KEY, IDEMPOTENCY, at - 300, &body)), &body, now).unwrap();
 
     let rejected = |r: Result<(), SurfaceError>| matches!(r, Err(SurfaceError::DelegateAnswerRejected(_)));
-    assert!(rejected(verify_answer(KEY, headers(now.unix_secs(), sign_answer(b"another-key", now.unix_secs(), &body)), &body, now)), "wrong key");
-    assert!(rejected(verify_answer(KEY, headers(now.unix_secs() - 301, sign_answer(KEY, now.unix_secs() - 301, &body)), &body, now)), "skew");
-    assert!(rejected(verify_answer(KEY, |_| None, &body, now)), "unsigned");
-    assert!(rejected(verify_answer(KEY, headers(now.unix_secs(), sign_answer(KEY, now.unix_secs(), b"other")), &body, now)), "body differs");
+    assert!(rejected(verify_answer(KEY, IDEMPOTENCY, headers(at, sign_answer(b"another-key", IDEMPOTENCY, at, &body)), &body, now)), "wrong key");
+    assert!(rejected(verify_answer(KEY, IDEMPOTENCY, headers(at, sign_answer(KEY, "another-item", at, &body)), &body, now)), "another item's answer");
+    assert!(rejected(verify_answer(KEY, IDEMPOTENCY, headers(at - 301, sign_answer(KEY, IDEMPOTENCY, at - 301, &body)), &body, now)), "skew");
+    assert!(rejected(verify_answer(KEY, IDEMPOTENCY, |_| None, &body, now)), "unsigned");
+    assert!(rejected(verify_answer(KEY, IDEMPOTENCY, headers(at, sign_answer(KEY, IDEMPOTENCY, at, b"other")), &body, now)), "body differs");
 
     let decoded = |text: &str| Answer::decode(text.as_bytes(), &tables());
     assert!(matches!(decoded("{\"outcome\":\"retry\"}"), Err(SurfaceError::DelegateAnswerRejected(_))), "outside the vocabulary");
@@ -122,31 +152,36 @@ fn the_outcome_vocabulary_round_trips() {
     assert_eq!(text, json!({"outcome": "transient"}));
 }
 
-/// A delegate request carries job name, execution id, step label, input hash, the idempotency key, the input
-/// row, entity namespace, key and fence, attempt, resolved `as_of`, applied version, owner pins, declared
-/// output tables and the item deadline.
-// spec: surface.delegate.envelope@fe98cf00
+/// A delegate request carries `job`, `execution_id`, `step`, `input_hash`, `idempotency_key`, `attempt`,
+/// `entity` with namespace, key and fence, `as_of`, `version` when fired from an applied snapshot, `pins`,
+/// `tables`, the input `row` and `deadline`.
+// spec: surface.delegate.envelope@3785b9f1
 #[test]
 fn the_envelope_serializes_every_field_it_names() {
-    let envelope = Envelope {
+    let mut envelope = Envelope {
         job: "stage-screen".into(),
         execution_id: "x-1".into(),
         step: "row/p-1/delegate/1".into(),
         input_hash: "ab".repeat(32),
         attempt: 1,
-        idempotency_key: "k".into(),
+        idempotency_key: IDEMPOTENCY.into(),
         entity: Some(contextful_core::surface::delegate::Entity { namespace: "entity".into(), key: "e-1".into(), fence: 4 }),
         as_of: "2030-01-01T00:00:10Z".into(),
-        version: 3,
+        version: Some(3),
         pins: [("input".to_string(), "cd".repeat(32))].into(),
         tables: tables(),
         row: json!({"entity_id": "e-1", "pass_id": "p-1"}).as_object().unwrap().clone(),
         deadline: "2030-01-01T00:05:10Z".into(),
     };
     let value: serde_json::Value = serde_json::to_value(&envelope).unwrap();
-    for field in ["job", "execution_id", "step", "input_hash", "attempt", "idempotency_key", "entity", "as_of", "version", "pins", "tables", "row", "deadline"] {
+    for field in ["job", "execution_id", "step", "input_hash", "idempotency_key", "attempt", "entity", "as_of", "version", "pins", "tables", "row", "deadline"] {
         assert!(!value[field].is_null(), "{field}");
     }
     assert_eq!(value["entity"]["fence"], 4);
     assert_eq!(serde_json::from_value::<Envelope>(value).unwrap(), envelope);
+
+    // A fire from the local declaration names no applied version, and the key is absent.
+    envelope.version = None;
+    let value: serde_json::Value = serde_json::to_value(&envelope).unwrap();
+    assert!(value.get("version").is_none(), "{value}");
 }

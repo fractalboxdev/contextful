@@ -33,16 +33,18 @@ fn unix_now() -> i64 {
     i64::try_from(std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap().as_secs()).unwrap()
 }
 
-/// `answer`, signed under the deployment key over `answer\n<timestamp>\n` and its body.
-fn signed(answer: &Answer) -> Response {
+/// `answer` to the request carrying `envelope`, signed under the deployment key over
+/// `answer\n<idempotency_key>\n<timestamp>\n` and its body.
+fn signed(answer: &Answer, envelope: &Value) -> Response {
     let body = answer.encode();
     let timestamp = unix_now();
+    let key = envelope["idempotency_key"].as_str().expect("the envelope carries the idempotency key");
     Response {
         status: 200,
         headers: vec![
             ("Content-Type".into(), "application/json".into()),
             (TIMESTAMP_HEADER.into(), timestamp.to_string()),
-            (SIGNATURE_HEADER.into(), sign_answer(KEY, timestamp, &body)),
+            (SIGNATURE_HEADER.into(), sign_answer(KEY, key, timestamp, &body)),
         ],
         body,
     }
@@ -67,7 +69,7 @@ fn rows_for(envelope: &Value) -> Answer {
 
 fn manifest(url: &str, timeout: &str, max_attempts: u32) -> String {
     format!(
-        "authoring_posture = \"per_request\"\n\n[control.delegates.stages]\nurl = \"{url}\"\nmode = \"call\"\ntimeout = \"{timeout}\"\n\n\
+        "authoring_posture = \"per_request\"\n\n[control.delegates.stages]\nurl = \"{url}\"\nmode = \"call\"\ntimeout = \"{timeout}\"\nversion = \"stage-v7\"\n\n\
          [[job]]\nname = \"stage-screen\"\nkind = \"store-driven\"\nbody = {{ delegate = \"stages\" }}\n\
          statement = \"SELECT entity_id, pass_id FROM due_items ORDER BY pass_id\"\nas_of = \"2030-01-01T00:00:10Z\"\n\
          max_in_flight = 2\ntables = [\"screen_result\"]\n\
@@ -109,12 +111,16 @@ fn select(p: &Path, sql: &str) -> Vec<Vec<String>> {
     v["rows"].as_array().unwrap().iter().map(|r| r.as_array().unwrap().iter().map(|c| c.as_str().map(str::to_string).unwrap_or_else(|| c.to_string())).collect()).collect()
 }
 
-/// Under a delegated body, an item's attempt is one request under the envelope, and the answer is recorded as
-/// the body output under the item's entry key, so a resume replays it and sends nothing.
-// spec: run.items.delegated-item@00026c2f
+/// Under a delegated body, each call ordinal is one request under the envelope, its `ok`, `defer` or
+/// `permanent` answer recorded under the item's entry key, so a resume replays every recorded answer and sends
+/// only the unrecorded call.
+// spec: run.items.delegated-item@680ef9d2
 #[test]
 fn a_call_delegate_takes_one_signed_envelope_per_item_and_a_later_fire_sends_nothing() {
-    let delegate = Server::start(|request| signed(&rows_for(&verified(request))));
+    let delegate = Server::start(|request| {
+        let envelope = verified(request);
+        signed(&rows_for(&envelope), &envelope)
+    });
     let (dir, public, token) = project(&manifest(&delegate.url(ROUTE), "30s", 3));
     let p = dir.path();
     ok(&fire(p, &public, &token, "fire-1", "2030-01-01T00:01:00Z"));
@@ -129,7 +135,10 @@ fn a_call_delegate_takes_one_signed_envelope_per_item_and_a_later_fire_sends_not
         assert_eq!(envelope["attempt"], 1);
         assert_eq!(envelope["entity"]["namespace"], "entity");
         assert_eq!(envelope["entity"]["key"], envelope["row"]["entity_id"]);
-        assert!(envelope["entity"]["fence"].is_u64() && envelope["pins"].is_object() && envelope["version"].is_u64(), "{envelope}");
+        assert!(envelope["entity"]["fence"].is_u64(), "{envelope}");
+        assert!(envelope["version"].is_null(), "a fire from the local declaration names no applied version: {envelope}");
+        assert_eq!(envelope["pins"]["body_dependency_delegate"], "stages", "the owner pins, as the engine compares them: {envelope}");
+        assert_eq!(envelope["pins"]["body_dependency_delegate_version"], "stage-v7", "{envelope}");
         assert!(envelope["step"].as_str().unwrap().starts_with("row/") && envelope["step"].as_str().unwrap().ends_with("/delegate/1"), "{envelope}");
         assert_eq!(envelope["input_hash"].as_str().unwrap().len(), 64);
         assert!(!envelope["execution_id"].as_str().unwrap().is_empty() && !envelope["idempotency_key"].as_str().unwrap().is_empty(), "{envelope}");
@@ -143,9 +152,10 @@ fn a_call_delegate_takes_one_signed_envelope_per_item_and_a_later_fire_sends_not
     assert_eq!(select(p, "SELECT entity_id FROM screen_result").len(), 2);
 }
 
-/// A `defer` parks the item until its `retry_at`, consuming no failed attempt; the first fire after that
-/// instant re-admits it under the item's retained journal, and no run sleeps on it.
-// spec: surface.delegate.defer-parks@7b5e9381
+/// A `defer` parks the item until its `retry_at` under the item budget; the first fire after that instant
+/// re-admits it under the item's retained journal, no run sleeps on it, and a row of a job without
+/// `isolated_items` closes `Transient` instead.
+// spec: surface.delegate.defer-parks@f7db1d6c
 #[test]
 fn a_defer_answer_parks_the_item_without_spending_an_attempt_until_its_retry_at() {
     let seen: Arc<Mutex<BTreeMap<String, u32>>> = Arc::default();
@@ -160,9 +170,9 @@ fn a_defer_answer_parks_the_item_without_spending_an_attempt_until_its_retry_at(
                 seen[&key]
             };
             if n == 1 {
-                signed(&Answer::Defer { retry_at: "2030-01-01T00:01:03Z".into(), reason: Some("budget".into()) })
+                signed(&Answer::Defer { retry_at: "2030-01-01T00:01:03Z".into(), reason: Some("budget".into()) }, &envelope)
             } else {
-                signed(&rows_for(&envelope))
+                signed(&rows_for(&envelope), &envelope)
             }
         }
     });
@@ -186,9 +196,10 @@ fn a_defer_answer_parks_the_item_without_spending_an_attempt_until_its_retry_at(
     assert_eq!(select(p, "SELECT entity_id FROM screen_result ORDER BY entity_id"), [["e-1"], ["e-2"]]);
 }
 
-/// A `call` response with a status other than `200` closes the attempt `Transient`, whatever its body; only a
-/// signed `permanent` answer writes a terminal receipt.
-// spec: surface.delegate.status@689099b4
+/// A `call` response with a status other than `200` closes the attempt `Transient`, whatever its body; a
+/// terminal receipt follows a signed `permanent` answer, a `Permanent` rejection or an exhausted budget under
+/// the item budget.
+// spec: surface.delegate.status@8db41978
 #[test]
 fn a_non_200_answer_spends_one_attempt_and_a_permanent_answer_writes_a_terminal_receipt() {
     let delegate = Server::start(|request| {
@@ -197,7 +208,7 @@ fn a_non_200_answer_spends_one_attempt_and_a_permanent_answer_writes_a_terminal_
             // A `permanent` body under a 503 is still transient.
             Response::json(503, "{\"outcome\":\"permanent\",\"reason\":\"down\"}")
         } else {
-            signed(&Answer::Permanent { reason: Some("subject withdrawn".into()) })
+            signed(&Answer::Permanent { reason: Some("subject withdrawn".into()) }, &envelope)
         }
     });
     let (dir, public, token) = project(&manifest(&delegate.url(ROUTE), "30s", 2));
@@ -206,18 +217,33 @@ fn a_non_200_answer_spends_one_attempt_and_a_permanent_answer_writes_a_terminal_
 
     let first = text(&fire(p, &public, &token, "fire-1", "2030-01-01T00:01:00Z"));
     assert!(first.contains("2 failed"), "{first}");
-    let (e1, e2) = (count("e-1"), count("e-2"));
-    assert!(e1 >= 1 && e2 == 1, "{e1} {e2}");
+    assert_eq!((count("e-1"), count("e-2")), (1, 1), "one request per item attempt, with no in-step retry");
 
     // The transient item is asked again on its second attempt; the terminal one is not.
     text(&fire(p, &public, &token, "fire-2", "2030-01-01T00:02:00Z"));
-    assert!(count("e-1") > e1, "a transient failure spends one attempt, not the budget");
+    assert_eq!(count("e-1"), 2, "a transient failure spends one attempt, not the budget");
     assert_eq!(count("e-2"), 1, "a permanent answer writes a terminal receipt");
 
     // Two failed attempts spend the budget; a third fire asks nothing.
-    let e1 = count("e-1");
     text(&fire(p, &public, &token, "fire-3", "2030-01-01T00:03:00Z"));
-    assert_eq!((count("e-1"), count("e-2")), (e1, 1));
+    assert_eq!((count("e-1"), count("e-2")), (2, 1));
+}
+
+/// A malformed answer closes the attempt `Permanent`: the budget is not spent on a call that cannot change.
+#[test]
+fn a_malformed_answer_closes_the_attempt_permanent_after_one_request() {
+    let delegate = Server::start(|request| {
+        let envelope = verified(request);
+        // Rows for a table the job does not declare.
+        signed(&Answer::Ok { rows: [("other".to_string(), vec![json!({"x": 1}).as_object().unwrap().clone()])].into() }, &envelope)
+    });
+    let (dir, public, token) = project(&manifest(&delegate.url(ROUTE), "30s", 3));
+    let p = dir.path();
+    let first = text(&fire(p, &public, &token, "fire-1", "2030-01-01T00:01:00Z"));
+    assert!(first.contains("2 failed"), "{first}");
+    assert_eq!(delegate.received(ROUTE).len(), 2);
+    text(&fire(p, &public, &token, "fire-2", "2030-01-01T00:02:00Z"));
+    assert_eq!(delegate.received(ROUTE).len(), 2, "a Permanent rejection writes a terminal receipt");
 }
 
 /// Under `call`, one request per attempt holds its connection open and the response body is the attempt's
@@ -229,17 +255,18 @@ fn a_response_after_the_timeout_closes_the_attempt_transient_and_lands_nothing()
     let delegate = Server::start(|request| {
         let envelope = verified(request);
         std::thread::sleep(std::time::Duration::from_secs(3));
-        signed(&rows_for(&envelope))
+        signed(&rows_for(&envelope), &envelope)
     });
     let (dir, public, token) = project(&manifest(&delegate.url(ROUTE), "1s", 1));
     let p = dir.path();
     let first = text(&fire(p, &public, &token, "fire-1", "2030-01-01T00:01:00Z"));
     assert!(first.contains("2 failed"), "{first}");
-    assert!(delegate.received(ROUTE).len() >= 2);
-    assert!(text(&cf(p, &["query", "--json", "--project", "research", "SELECT entity_id FROM screen_result"], &[])).contains("screen_result"), "no row landed from the late body");
+    std::thread::sleep(std::time::Duration::from_secs(4));
+    assert_eq!(delegate.received(ROUTE).len(), 2, "one request per item attempt");
+    let landed = text(&cf(p, &["query", "--json", "--project", "research", "SELECT entity_id FROM screen_result"], &[]));
+    assert!(!landed.contains("\"rows\":[["), "no row landed from the late body: {landed}");
 
     // The one-attempt budget is spent: a later fire sends nothing.
-    std::thread::sleep(std::time::Duration::from_secs(4));
     let sent = delegate.received(ROUTE).len();
     let second = text(&fire(p, &public, &token, "fire-2", "2030-01-01T00:02:00Z"));
     assert_eq!(delegate.received(ROUTE).len(), sent, "first fire:\n{first}\nsecond fire:\n{second}");

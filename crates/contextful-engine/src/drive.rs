@@ -141,11 +141,16 @@ impl<J: JournalStore + Clone, B: BlobStore + Clone> RowCalls for Calls<'_, '_, J
     }
 
     fn context(&self) -> RowContext {
+        let pins = match self.x.pins() {
+            OwnerPins::Plan(p) => p.identities.clone(),
+            OwnerPins::Build(_) => BTreeMap::new(),
+        };
         RowContext {
             execution_id: self.x.execution_id().to_string(),
             as_of: self.as_of.clone(),
             fence: self.x.lease().map(|lease| lease.fence),
             now: self.x.now().map(|i| i.to_string()).unwrap_or_default(),
+            pins,
         }
     }
 

@@ -771,6 +771,7 @@ fn a_body_reads_its_execution_bounds_fence_and_clock_through_its_calls() {
         assert_eq!(context.as_of, "2030-01-01T00:00:10Z");
         assert_eq!(context.now, T0, "the engine's instant, on the catalog's clock");
         assert_eq!(context.fence, None, "a batch row holds no entity lease");
+        assert!(context.pins.contains_key("input") && context.pins.contains_key("body_type"), "the owner pins: {:?}", context.pins);
     }
     assert_eq!(contexts[0].execution_id, contexts[1].execution_id, "batch rows share the job's execution");
 
