@@ -479,7 +479,7 @@ Reading under a credential's {{authority.grant.horizon}}: the bound every read i
   *because a claim lands at its commit instant, and one concluded after the horizon otherwise answers inside it*
 - `engine-stamps` — Under a horizon, the projection carries neither `_ingested_at` nor `_commit_seq` and keeps `_run_id` and `_row_seq`, which cite a row; `context.describe` computes row count, size, lexicon and example values over the horizon-bounded relation.
   *A-read*
-- `late-columns` — Under a horizon, a column whose `first_landed_at` in `schema.json`, set once by the commit whose merge first adds it, falls after the horizon is absent from the registered schema and describe payload.
+- `late-columns` — Under a horizon, a column whose `first_landed_at` in `schema.json` — set once by its first merge, to that batch's earliest availability instant, else the commit instant — falls after the horizon is absent from the registered schema and describe payload.
   *A-store*
 - `egress-hook` — A hop made under a credential carrying a horizon passes a pre-send hook refusing every host but the configured model endpoint, as {{connector.meter.hook-refusal}} with reason `horizon`.
   *because one attachment point already sees every egress, so a per-tool list restates it*

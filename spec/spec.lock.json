@@ -6904,7 +6904,7 @@
       "operation": "horizon",
       "subject": "late-columns",
       "kind": "behavior",
-      "statement": "Under a horizon, a column whose `first_landed_at` in `schema.json`, set once by the commit whose merge first adds it, falls after the horizon is absent from the registered schema and describe payload.",
+      "statement": "Under a horizon, a column whose `first_landed_at` in `schema.json` — set once by its first merge, to that batch's earliest availability instant, else the commit instant — falls after the horizon is absent from the registered schema and describe payload.",
       "why": "A-store",
       "file": "spec/20-read.md",
       "line": 482

@@ -442,11 +442,12 @@ Revisit: an estimate-revision source whose vintage rows outgrow the table's part
 
 ## A column records the commit that first landed it
 
-`schema.json` carries `first_landed_at` per column, set once by the commit whose schema merge first adds the column and never moved by a later merge; bucket sync carries it with the schema. `read.horizon.late-columns` drops a column first landed after the horizon, since its mere presence says a later source added the field.
+`schema.json` carries `first_landed_at` per column, set once by the merge that first adds the column and never moved by a later merge; bucket sync carries it with the schema. On a table declaring `available_time` the instant is the earliest availability among that batch's rows carrying the column, so a backfill landed years later keeps its fields visible at the horizons its rows answer; elsewhere it is the commit instant. `read.horizon.late-columns` drops a column first landed after the horizon.
 
 | Option | Lost on | Cost |
 | --- | --- | --- |
-| A per-column instant in `schema.json` *(chosen)* | — | A schema written before the field exists reads every column as landed at the epoch. |
+| A per-column availability instant in `schema.json` *(chosen)* | — | A schema written before the field exists reads every column as always present. |
+| The commit instant alone | Backfill | A 2026 backfill hides every column of its 2014 rows. |
 | A separate append-only column log per table | One home | A second file the schema merge and sync must keep in step. |
 | Scan the earliest run carrying the column | Cost | Every horizon session reads run manifests to find a schema fact. |
 
