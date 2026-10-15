@@ -23,6 +23,9 @@ pub struct Admitted {
     /// Identifiers of the distinct placeholders the statement carries: `1`, `2`, … for
     /// positional ones, the name for `$name`.
     pub placeholders: BTreeSet<String>,
+    /// The registered relations standing as the right side of an `ASOF JOIN`
+    /// (`read.as-of-join.join-undeclared`).
+    pub as_of_joined: BTreeSet<String>,
 }
 
 /// The one statement of a serialization, or `StatementNotReadOnly`
@@ -112,6 +115,14 @@ fn walk(
                     }
                 }
                 _ => {}
+            }
+            if o.get("type").and_then(Value::as_str) == Some("JOIN") && o.get("ref_type").and_then(Value::as_str) == Some("ASOF") {
+                let right = &o["right"];
+                if right["type"] == "BASE_TABLE" {
+                    if let Some(name) = right["table_name"].as_str().filter(|n| !scope.contains(*n) && qualifier(right.as_object().expect("a base table is an object")).is_none()) {
+                        admitted.as_of_joined.insert(name.to_string());
+                    }
+                }
             }
             if o.get("class").and_then(Value::as_str) == Some("PARAMETER") {
                 parameters.insert(o.get("identifier").and_then(Value::as_str).unwrap_or_default().to_string());

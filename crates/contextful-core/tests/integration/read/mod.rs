@@ -2,6 +2,7 @@
 
 mod embed;
 mod face;
+mod horizon;
 mod rank;
 mod respond;
 mod retrieve;

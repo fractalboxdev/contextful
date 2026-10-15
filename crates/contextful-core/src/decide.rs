@@ -226,5 +226,5 @@ fn grant(v: &Value) -> Decoded<Grant> {
     let tables = tables.iter().map(|t| TablePattern::parse(t)).collect::<Result<Vec<_>, _>>()?;
     let max_duration_ms = optional(obj, "max_duration_ms", unsigned)?;
     let max_response_bytes = optional(obj, "max_response_bytes", unsigned)?;
-    Ok(Grant { actions, tables, tenant, aggregate, templates, max_rows, max_duration_ms, max_response_bytes })
+    Ok(Grant { actions, tables, tenant, aggregate, templates, max_rows, max_duration_ms, max_response_bytes, horizon: None })
 }

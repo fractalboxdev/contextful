@@ -9,6 +9,7 @@ const EXP: i64 = 1_770_000_900;
 
 fn grant(actions: &[Action], tables: &[&str]) -> Grant {
     Grant {
+        horizon: None,
         actions: actions.to_vec(),
         tables: tables.iter().map(|t| TablePattern::parse(t).unwrap()).collect(),
         tenant: None,
@@ -181,4 +182,30 @@ fn group_ceiling_narrows_by_effective_ceiling() {
     assert!(under(0, 0).is_ok());
     assert!(matches!(under(0, 2), Err(AuthorityError::AttenuationWidens(_))));
     assert!(matches!(under(5, 6), Err(AuthorityError::AttenuationWidens(_))));
+}
+
+fn at(s: &str) -> contextful_core::time::Instant {
+    contextful_core::time::Instant::parse(s).unwrap()
+}
+
+/// A child whose horizon falls later than its parent's is broader on `horizon` and refuses as {{authority.attenuate.widens}}, naming that dimension; a child naming no horizon inherits its parent's.
+// spec: authority.attenuate.horizon-widens@89f05d6c
+#[test]
+fn a_later_horizon_widens_and_an_absent_one_inherits() {
+    let read = |horizon: Option<&str>| Grant { horizon: horizon.map(at), ..grant(&[Action::Read], &["research/*"]) };
+    let p = parent(vec![read(Some("2015-01-01T00:00:00Z"))]);
+
+    assert!(widened(&p, &child(vec![read(Some("2016-01-01T00:00:00Z"))])).starts_with("horizon:"));
+    let inherited = attenuate(&p, &child(vec![read(None)])).unwrap();
+    assert_eq!(inherited.grants[0].horizon, Some(at("2015-01-01T00:00:00Z")));
+    let earlier = attenuate(&p, &child(vec![read(Some("2014-06-01T00:00:00Z"))])).unwrap();
+    assert_eq!(earlier.grants[0].horizon, Some(at("2014-06-01T00:00:00Z")));
+
+    // An unbounded parent admits any horizon; the chain check holds every hop.
+    let open = parent(vec![read(None)]);
+    let hops = [child(vec![read(Some("2015-01-01T00:00:00Z"))]), child(vec![read(Some("2016-01-01T00:00:00Z"))])];
+    match check_chain(&open, &hops) {
+        Err(AuthorityError::AttenuationWidens(m)) => assert!(m.starts_with("horizon:"), "{m}"),
+        other => panic!("expected AttenuationWidens, got {other:?}"),
+    }
 }

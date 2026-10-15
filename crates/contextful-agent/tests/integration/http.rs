@@ -112,6 +112,7 @@ fn credential_scoped(signer: &SeedSigner, action: Action, tables: &str, tenant: 
     let policy = IssuancePolicy::parse(&format!("default_audience = \"{AUD}\"\nmax_lifetime_secs = 86400\n")).unwrap();
     let subject = Subject { on_behalf_of: Some("user://dana@acme.example".into()), zone: Some("on-prem:hq".into()), ..Subject::default() };
     let grant = Grant {
+        horizon: None,
         actions: vec![action],
         tables: vec![TablePattern::parse(tables).unwrap()],
         tenant,

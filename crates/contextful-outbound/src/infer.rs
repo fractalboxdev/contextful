@@ -6,6 +6,8 @@
 use crate::client::{Client, HeaderValue};
 use crate::egress::{PreSendHook, Transport};
 use contextful_core::connector::attach::Allowlist;
+use contextful_core::connector::error::ConnectorError;
+use contextful_core::time::Instant;
 use contextful_core::connector::reference::Hydrated;
 use contextful_core::memory::synthesize::{CallRecord, Inference, Message};
 use serde_json::{json, Value};
@@ -24,6 +26,8 @@ pub struct Endpoint {
     model: String,
     key: Option<Arc<Hydrated>>,
     client: Client,
+    hosted_tools: Vec<String>,
+    horizon: Option<Instant>,
     /// Whether the endpoint exposes token log-probabilities, which each call then asks for.
     logprobs: bool,
 }
@@ -41,12 +45,25 @@ impl Endpoint {
         let allow = Allowlist::parse(&[host]).map_err(|e| e.to_string())?;
         let client = Client::new(allow, completions.clone()).with_completion_timeout(COMPLETION_TIMEOUT).with_body_limit(MAX_COMPLETION_BYTES).framed("Content-Type", "application/json");
         let key = key.filter(|k| !k.is_empty()).map(|k| Arc::new(Hydrated::new(format!("Bearer {k}"))));
-        Ok(Endpoint { completions, model: model.to_string(), key, client, logprobs: false })
+        Ok(Endpoint { completions, model: model.to_string(), key, client, hosted_tools: Vec::new(), horizon: None, logprobs: false })
     }
 
     /// The endpoint reaching the network through `transport`.
     pub fn with_transport(mut self, transport: Arc<dyn Transport>) -> Endpoint {
         self.client = self.client.with_transport(transport);
+        self
+    }
+
+    /// The endpoint declaring provider-hosted `tools`, such as `web_search`, on each completion.
+    pub fn with_hosted_tools(mut self, tools: Vec<String>) -> Endpoint {
+        self.hosted_tools = tools;
+        self
+    }
+
+    /// The endpoint serving a caller whose credential carries `horizon`
+    /// (`connector.infer.hosted-tools`).
+    pub fn under_horizon(mut self, horizon: Option<Instant>) -> Endpoint {
+        self.horizon = horizon;
         self
     }
 
@@ -70,7 +87,15 @@ impl Inference for Endpoint {
     }
 
     fn call(&self, messages: &[Message]) -> Result<CallRecord, String> {
+        // A hosted tool reaches the network inside the provider, past every hook, so a
+        // horizon refuses it before any byte leaves.
+        if let (Some(horizon), Some(tool)) = (self.horizon, self.hosted_tools.first()) {
+            return Err(ConnectorError::InferHostedToolUnderHorizon(format!("the call declares the provider-hosted tool `{tool}` under the horizon {horizon}")).to_string());
+        }
         let mut body = json!({ "model": self.model, "messages": messages, "temperature": 0 });
+        if !self.hosted_tools.is_empty() {
+            body["tools"] = Value::Array(self.hosted_tools.iter().map(|t| json!({ "type": t })).collect());
+        }
         if self.logprobs {
             body["logprobs"] = json!(true);
         }

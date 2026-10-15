@@ -251,6 +251,7 @@ struct RawGrant {
 impl RawGrant {
     fn into_grant(self) -> Result<Grant, PolicyError> {
         Ok(Grant {
+            horizon: None,
             actions: self.actions.iter().map(|a| Action::parse(a)).collect::<Result<_, _>>()?,
             tables: self.tables.iter().map(|t| TablePattern::parse(t)).collect::<Result<_, _>>()?,
             tenant: None,

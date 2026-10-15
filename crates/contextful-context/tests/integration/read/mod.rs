@@ -268,6 +268,7 @@ pub fn loop_subject(agent: &str) -> Subject {
 
 pub fn read(tables: &[&str], tenant: Option<(&str, &str)>) -> Grant {
     Grant {
+        horizon: None,
         actions: vec![Action::Read],
         tables: tables.iter().map(|t| TablePattern::parse(t).unwrap()).collect(),
         tenant: tenant.map(|(table, value)| TenantScope { table: table.into(), value: value.into() }),

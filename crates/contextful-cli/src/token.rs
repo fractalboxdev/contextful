@@ -118,6 +118,10 @@ pub enum TokenCmd {
         /// Optional serialized response ceiling in bytes for this grant's tables.
         #[arg(long)]
         max_response_bytes: Option<u64>,
+        /// The instant bounding the availability time of every read (RFC 3339)
+        /// (`authority.grant.horizon`); absent leaves availability unbounded.
+        #[arg(long)]
+        horizon: Option<String>,
         /// Lifetime in seconds; absent takes the persisted ceiling.
         #[arg(long)]
         ttl: Option<u64>,
@@ -147,6 +151,10 @@ pub enum TokenCmd {
         /// Child expiry (RFC 3339); absent inherits the parent's.
         #[arg(long)]
         expires: Option<String>,
+        /// Each child grant's horizon (RFC 3339); absent inherits the parent's
+        /// (`authority.attenuate.horizon-widens`).
+        #[arg(long)]
+        horizon: Option<String>,
         /// Turn incognito on; a derivation never turns it off.
         #[arg(long)]
         incognito: bool,
@@ -275,6 +283,7 @@ pub fn run(cmd: TokenCmd) -> Result<()> {
             max_rows,
             max_duration_ms,
             max_response_bytes,
+            horizon,
             ttl,
             audience,
             holder,
@@ -283,6 +292,7 @@ pub fn run(cmd: TokenCmd) -> Result<()> {
         } => {
             let subject = Subject { on_behalf_of, agent, host, task, zone, incognito };
             let grant = Grant {
+                horizon: horizon.as_deref().map(Instant::parse).transpose()?,
                 actions: parse_actions(&actions)?,
                 tables: parse_tables(&tables)?,
                 tenant: tenant.as_deref().map(parse_tenant).transpose()?,
@@ -297,7 +307,7 @@ pub fn run(cmd: TokenCmd) -> Result<()> {
             println!("{token}");
             Ok(())
         }
-        TokenCmd::Attenuate { token, actions, tables, expires, incognito } => {
+        TokenCmd::Attenuate { token, actions, tables, expires, horizon, incognito } => {
             let parent = introspect(&token)?;
             let grants = parent.blocks.iter().rev().find_map(|h| h.grants.clone()).unwrap_or(parent.authority.grants);
             let actions = parse_actions(&actions)?;
@@ -308,6 +318,11 @@ pub fn run(cmd: TokenCmd) -> Result<()> {
                 (!tables.is_empty()).then_some(tables.as_slice()),
             );
             derivation.expires_at = expires.as_deref().map(Instant::parse).transpose()?;
+            if let Some(horizon) = horizon.as_deref().map(Instant::parse).transpose()? {
+                for g in derivation.grants.iter_mut().flatten() {
+                    g.horizon = Some(horizon);
+                }
+            }
             if incognito {
                 derivation.subject.incognito = Some(true);
             }

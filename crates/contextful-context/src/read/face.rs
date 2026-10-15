@@ -486,6 +486,15 @@ impl Face {
         Ok(())
     }
 
+    /// Refuse an `ASOF JOIN` whose right relation declares no availability time, bounded
+    /// or not (`read.as-of-join.join-undeclared`).
+    pub(crate) fn bind_as_of_join(&self, joined: &BTreeSet<String>) -> Result<(), ReadFault> {
+        match joined.iter().find(|t| self.decl(t).available_time.is_none()) {
+            Some(table) => Err(StoreError::StoreAvailableTimeUndeclared(format!("table `{table}` stands as an `ASOF JOIN`'s right relation and declares no `available_time`")).into()),
+            None => Ok(()),
+        }
+    }
+
     /// The engine's serialization of a statement; no row is read.
     pub fn serialize(&self, sql: &str) -> Result<Value, ReadFault> {
         SqlEngine::bare()?.serialize(sql)
@@ -647,6 +656,7 @@ impl Face {
         scope::guard(&tree, session, &bindings)?;
         engine.register_ledgers(&self.store, session, &admitted.relations)?;
         self.bind_bounds(&admitted.relations, opts.bounds)?;
+        self.bind_as_of_join(&admitted.as_of_joined)?;
         let ceiling = self.ceiling(session, &admitted.relations, opts.limit, None);
         let mut response = self.answer(&engine, session, &admitted.relations, sql, &bindings, ceiling, opts, &tree)?;
         if opts.internals {
@@ -674,6 +684,7 @@ impl Face {
         scope::guard(&tree, session, &parameters)?;
         engine.register_ledgers(&self.store, session, &admitted.relations)?;
         self.bind_bounds(&admitted.relations, opts.bounds)?;
+        self.bind_as_of_join(&admitted.as_of_joined)?;
         let ceiling = self.ceiling(session, &admitted.relations, opts.limit, template.max_rows);
         let response = self.answer(&engine, session, &admitted.relations, &template.sql, &parameters, ceiling, opts, &tree)?;
         let response = self.finish_budget(session, &admitted.relations, opts, template.max_rows, ceiling, response)?;

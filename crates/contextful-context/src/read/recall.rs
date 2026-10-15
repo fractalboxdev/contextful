@@ -36,6 +36,8 @@ pub struct RecallRequest {
     pub observed_at: Option<Bound>,
     /// The transaction-time bound; `None` reads the latest committed state.
     pub as_of_ingest: Option<Bound>,
+    /// The availability bound a credential's horizon imposes (`read.horizon.recall-horizon`).
+    pub available_as_of: Option<Bound>,
     pub limit: Option<u64>,
     pub max_duration_ms: Option<u64>,
     pub max_response_bytes: Option<u64>,
@@ -48,20 +50,21 @@ pub struct RecallRequest {
 impl RecallRequest {
     /// A keyed recall of `subject` in `table`, asked at `anchor`, with every option unset.
     pub fn new(table: impl Into<String>, subject: impl Into<String>, anchor: Instant) -> RecallRequest {
-        RecallRequest { table: table.into(), subject: subject.into(), observed_at: None, as_of_ingest: None, limit: None, max_duration_ms: None, max_response_bytes: None, anchor, internals: false }
+        RecallRequest { table: table.into(), subject: subject.into(), observed_at: None, as_of_ingest: None, available_as_of: None, limit: None, max_duration_ms: None, max_response_bytes: None, anchor, internals: false }
     }
 
     /// The bounds the session serving this recall opens under: `as_of_ingest` as its
-    /// `as_of` (`read.recall.keyed-clocks`). Valid time narrows inside the recall itself.
+    /// `as_of` (`read.recall.keyed-clocks`) beside any availability bound. Valid time
+    /// narrows inside the recall itself.
     pub fn bounds(&self) -> Bounds {
-        Bounds { as_of: self.as_of_ingest, valid_as_of: None, available_as_of: None, ..Bounds::default() }
+        Bounds { as_of: self.as_of_ingest, valid_as_of: None, available_as_of: self.available_as_of, ..Bounds::default() }
     }
 
     /// The `contextful.bounds` echo: each supplied bound under its argument name, written
     /// as `store.bound-time.echo` writes an instant, beside an `inclusive` map keyed the
     /// same way (`read.recall.keyed-clocks`).
     pub fn echo(&self) -> Option<Value> {
-        let supplied: Vec<(&str, Bound)> = [("as_of_ingest", self.as_of_ingest), ("observed_at", self.observed_at)]
+        let supplied: Vec<(&str, Bound)> = [("as_of_ingest", self.as_of_ingest), ("observed_at", self.observed_at), ("available_as_of", self.available_as_of)]
             .into_iter()
             .filter_map(|(k, b)| b.map(|b| (k, b)))
             .collect();
@@ -91,6 +94,7 @@ impl Face {
         let mut executed: Vec<String> = Vec::new();
         let table = request.table.as_str();
         let relation = session.relation(table).ok_or_else(|| EnforceError::UnknownRelation(format!("`{table}`")))?;
+        self.bind_bounds(&std::collections::BTreeSet::from([table.to_string()]), request.bounds())?;
         if self.memory().table(table).is_none_or(|t| t.shape != Shape::Facts) {
             let why = format!("`{table}` declares no `{}` shape, so it holds no claim to recall", Shape::Facts.name());
             return Err(Refusal::from(MemoryError::RecallNotClaims(why)).into());

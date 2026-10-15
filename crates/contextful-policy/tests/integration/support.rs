@@ -36,6 +36,7 @@ pub fn keys(signer: &SeedSigner) -> KeySet {
 
 pub fn grant(actions: &[Action], tables: &[&str]) -> Grant {
     Grant {
+        horizon: None,
         actions: actions.to_vec(),
         tables: tables.iter().map(|t| TablePattern::parse(t).unwrap()).collect(),
         tenant: None,

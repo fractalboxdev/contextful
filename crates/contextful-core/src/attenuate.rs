@@ -31,6 +31,7 @@ pub enum Dimension {
     Tables,
     Templates,
     Aggregate,
+    Horizon,
 }
 
 impl Dimension {
@@ -40,6 +41,7 @@ impl Dimension {
             Dimension::Tables => "tables",
             Dimension::Templates => "templates",
             Dimension::Aggregate => "aggregate",
+            Dimension::Horizon => "horizon",
         }
     }
 }
@@ -59,6 +61,12 @@ fn widened(child: &Grant, parent: &Grant) -> Vec<Dimension> {
     if let (Some(c), Some(p)) = (&child.aggregate, &parent.aggregate) {
         if !aggregate_within(c, p) {
             out.push(Dimension::Aggregate);
+        }
+    }
+    // A later horizon reads later rows; an absent one inherits (`authority.attenuate.horizon-widens`).
+    if let (Some(c), Some(p)) = (child.horizon, parent.horizon) {
+        if c > p {
+            out.push(Dimension::Horizon);
         }
     }
     out
@@ -87,7 +95,7 @@ fn tenant_kept(child: &Grant, parent: &Grant) -> bool {
 }
 
 /// The child grant as it takes effect under `parent`: an absent aggregate inherits the
-/// parent's, and the row ceiling is the lesser of the two.
+/// parent's, and the row ceiling and the horizon are the lesser of the two.
 fn effective(child: &Grant, parent: &Grant) -> Grant {
     let mut g = child.clone();
     if g.aggregate.is_none() {
@@ -98,6 +106,7 @@ fn effective(child: &Grant, parent: &Grant) -> Grant {
     g.max_rows = [child.max_rows, parent.max_rows].into_iter().flatten().min();
     g.max_duration_ms = [child.max_duration_ms, parent.max_duration_ms].into_iter().flatten().min();
     g.max_response_bytes = [child.max_response_bytes, parent.max_response_bytes].into_iter().flatten().min();
+    g.horizon = [child.horizon, parent.horizon].into_iter().flatten().min();
     g
 }
 

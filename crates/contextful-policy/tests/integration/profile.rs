@@ -2,7 +2,7 @@
 //! evaluator bound, restrictions, introspection and the scoped session.
 
 use crate::support::*;
-use contextful_core::grant::{Action, AggregateGrant};
+use contextful_core::grant::{Action, AggregateGrant, Grant};
 use contextful_core::issue::SignatureAlgorithm;
 use contextful_policy::attenuate::{attenuate, Derivation};
 use contextful_policy::issue::{mint, MintClaims};
@@ -265,4 +265,22 @@ fn a_profile_version_outside_the_supported_set_is_refused() {
     let revocation = RevocationState::default();
     let widened = Admission { profiles: &[1, 3], ..Admission::new(at(DURING), &revocation) };
     assert_eq!(verify_inherited_pipe(&v3, &keys(&signer), &widened).unwrap().profile(), 3);
+}
+
+#[test]
+fn a_grant_horizon_survives_the_chain_and_no_hop_extends_it() {
+    let signer = issuer();
+    let bounded = Grant { horizon: Some(at("2015-01-01T00:00:00Z")), ..grant(&[Action::Read], &["research/*"]) };
+    let parent = mint(&plan_for(&signer, dana(), vec![bounded.clone()]), &MintClaims::default(), &signer).unwrap();
+    assert_eq!(admit(&parent, &signer, DURING).unwrap().grants()[0].horizon, Some(at("2015-01-01T00:00:00Z")));
+
+    // A hop naming a later horizon is refused at admission, whoever derived it.
+    let later = Grant { horizon: Some(at("2016-01-01T00:00:00Z")), ..bounded.clone() };
+    let widened = attenuate(&parent, &Derivation { grants: Some(vec![later]), ..Derivation::default() });
+    let err = match widened {
+        Err(e) => e,
+        Ok(child) => admit(&child, &signer, DURING).unwrap_err(),
+    };
+    assert_eq!(err_name(&err), "AttenuationWidens", "{err}");
+    assert!(err.to_string().contains("horizon"), "{err}");
 }

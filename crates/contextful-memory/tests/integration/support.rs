@@ -114,6 +114,7 @@ impl Fixture {
             ..Subject::default()
         };
         let grant = Grant {
+            horizon: None,
             actions: actions.to_vec(),
             tables: tables.iter().map(|t| TablePattern::parse(t).unwrap()).collect(),
             tenant: None,

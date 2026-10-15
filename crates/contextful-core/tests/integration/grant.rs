@@ -15,6 +15,7 @@ fn pattern(s: &str) -> TablePattern {
 
 fn grant(actions: &[Action], tables: &[&str]) -> Grant {
     Grant {
+        horizon: None,
         actions: actions.to_vec(),
         tables: tables.iter().map(|t| pattern(t)).collect(),
         tenant: None,

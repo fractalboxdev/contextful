@@ -22,6 +22,27 @@ fn a_completion_posts_the_conversation_and_returns_the_content() {
     assert_eq!(body["messages"], json!([{ "role": "system", "content": "rules" }, { "role": "user", "content": "data" }]));
 }
 
+/// A model call under a credential carrying {{authority.grant.horizon}} that declares a provider-hosted tool, such as search, browse or fetch, raises `InferHostedToolUnderHorizon`, naming the tool, before any byte leaves.
+// spec: connector.infer.hosted-tools@c42993b6
+#[test]
+fn a_hosted_tool_under_a_horizon_is_refused_before_any_byte_leaves() {
+    let _env = proxy_env();
+    let server = Server::start(|_| Response::json(200, &json!({ "choices": [{ "message": { "role": "assistant", "content": "ok" } }] }).to_string()));
+    let horizon = Some(contextful_core::time::Instant::parse("2015-01-01T00:00:00Z").unwrap());
+    let searching = || Endpoint::new(&server.url("/v1"), "m", None).unwrap().with_hosted_tools(vec!["web_search".into()]);
+
+    let err = searching().under_horizon(horizon).complete(&[Message::new("user", "x")]).unwrap_err();
+    assert!(err.starts_with("InferHostedToolUnderHorizon") && err.contains("web_search"), "{err}");
+    assert!(server.received("/v1/chat/completions").is_empty());
+
+    // Without a horizon the tool is declared on the wire; a horizon without one sends as before.
+    assert_eq!(searching().complete(&[Message::new("user", "x")]).unwrap(), "ok");
+    let body: Value = serde_json::from_slice(&server.received("/v1/chat/completions")[0].body).unwrap();
+    assert_eq!(body["tools"], json!([{ "type": "web_search" }]));
+    let plain = Endpoint::new(&server.url("/v1"), "m", None).unwrap().under_horizon(horizon);
+    assert_eq!(plain.complete(&[Message::new("user", "x")]).unwrap(), "ok");
+}
+
 #[test]
 fn a_failed_or_malformed_answer_is_an_error() {
     let _env = proxy_env();
