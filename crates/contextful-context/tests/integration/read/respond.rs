@@ -393,8 +393,8 @@ fn coverage_counts_the_whole_table_past_the_ranked_window() {
     assert_eq!(column(&subject, "n"), [json!("1")]);
 }
 
-/// A cross-table join runs as one `context.query` statement over registered relations, or through an operator-defined view the describe payload lists; no tool joins on a caller's behalf.
-// spec: read.register.join-route@0e31c09c
+/// A cross-table join runs as one `context.query` statement over registered relations, or through a published model the describe payload lists; no tool joins on a caller's behalf.
+// spec: read.register.join-route@a388d840
 #[test]
 fn a_join_is_one_statement_over_registered_relations() {
     let r = Reads::new();

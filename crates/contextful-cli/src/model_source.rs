@@ -35,8 +35,16 @@ pub(crate) fn collect(files: &[contextful_core::pipeline::declare::ManifestFile]
         contextful_context::build::admit_statements(&spec, |_| None).map_err(|(what, e)| anyhow::anyhow!("{what}: {e}"))?;
         models.push(spec);
     }
+    refuse_cycle(&models)?;
     models.sort_by(|a, b| a.id.cmp(&b.id));
     Ok(models)
+}
+
+/// Refuse a cycle among resolved models (`run.model.model-cycle`).
+pub(crate) fn refuse_cycle(models: &[ModelSpec]) -> anyhow::Result<()> {
+    let edges = contextful_context::build::model_edges(models).map_err(|(what, e)| anyhow::anyhow!("{what}: {e}"))?;
+    contextful_core::pipeline::model::model_cycle(&edges)?;
+    Ok(())
 }
 
 /// Applied models must be self contained, never resolving a path from a live draft.

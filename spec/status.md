@@ -11,11 +11,11 @@ An unpinned clause is `committed`; a pinned one is `performed` when its Rust, Le
 | `corpus` | 1 | 10 | 79 | 37 | 7 | 0 | 79 | 0 | 79 |
 | `disclosure` | 3 | 16 | 158 | 68 | 13 | 5 | 72 | 0 | 72 |
 | `read` | 2 | 19 | 276 | 45 | 28 | 13 | 230 | 0 | 230 |
-| `run` | 3 | 28 | 502 | 113 | 44 | 14 | 445 | 0 | 445 |
-| `store` | 3 | 19 | 290 | 65 | 14 | 12 | 278 | 0 | 278 |
+| `run` | 3 | 28 | 507 | 114 | 44 | 11 | 450 | 0 | 450 |
+| `store` | 3 | 19 | 288 | 64 | 14 | 11 | 278 | 0 | 278 |
 | `surface` | 2 | 20 | 143 | 59 | 22 | 0 | 118 | 0 | 118 |
 | `topology` | 1 | 6 | 79 | 25 | 5 | 3 | 74 | 0 | 74 |
-| **total** | 22 | 166 | 2492 | 644 | 207 | 80 | 2023 | 0 | |
+| **total** | 22 | 166 | 2495 | 644 | 207 | 76 | 2028 | 0 | |
 
 Decision records: 18.
 
@@ -27,9 +27,9 @@ A milestone reads `closed` when its acceptance test computes `passing` and every
 | --- | --- | --- | --- | --- | --- |
 | 0 — The test-first gate | 2 | 22 | 19 | passing | closed |
 | 1 — The authority core | 14 | 244 | 225 | passing | closed |
-| 2 — The store | 9 | 183 | 171 | passing | closed |
+| 2 — The store | 9 | 181 | 171 | passing | closed |
 | 3 — The run path | 12 | 270 | 254 | passing | closed |
-| 4 — Ingest | 25 | 551 | 387 | passing | open |
+| 4 — Ingest | 25 | 556 | 392 | passing | open |
 | 5 — The read face under enforcement | 17 | 308 | 242 | passing | open |
 | 6 — Sync and replicas | 8 | 83 | 83 | passing | closed |
 | 7 — Memory | 6 | 71 | 56 | passing | closed |
@@ -1400,6 +1400,7 @@ Unscheduled operations: 12.
 | `run.land.unknown-destination` | `crates/contextful-cli/tests/integration/pipeline.rs::another_destination_is_refused_before_any_request` | performed |
 | `run.land.unreadable-input` | `crates/contextful-connectors/tests/integration/http.rs::an_unreadable_body_refuses_naming_path_and_position` | performed |
 | `run.model.build-boundary` | `spec/pins.toml` | performed |
+| `run.model.build-frontier` | `crates/contextful-cli/tests/integration/build.rs::build_fires_no_pipeline_and_reads_the_committed_frontier` | performed |
 | `run.model.build-horizon` | `crates/contextful-cli/tests/integration/build.rs::a_build_at_a_horizon_reads_inputs_available_by_it_and_records_it` | performed |
 | `run.model.build-id` | `crates/contextful-context/tests/integration/build.rs::a_build_id_is_the_snapshot_id` | performed |
 | `run.model.build-verb` | `crates/contextful-cli/tests/integration/build.rs::build_publishes_a_model_and_prints_its_receipt` | performed |
@@ -1414,6 +1415,7 @@ Unscheduled operations: 12.
 | `run.model.log-regeneration` | `crates/contextful-context/tests/integration/build.rs::a_tampered_log_is_rewritten_and_collected_history_kept` | performed |
 | `run.model.materialized` | `crates/contextful-core/tests/integration/pipeline/model.rs::a_model_materializes_as_a_table_and_nothing_else` | performed |
 | `run.model.model-block` | `crates/contextful-core/tests/integration/pipeline/model.rs::a_model_block_carries_its_keys_and_refuses_an_unknown_one` | performed |
+| `run.model.model-cycle` | `crates/contextful-cli/tests/integration/build.rs::validate_apply_and_build_refuse_a_two_model_cycle` | performed |
 | `run.model.model-id` | `crates/contextful-context/tests/integration/build.rs::a_model_id_naming_a_landed_table_is_refused` | performed |
 | `run.model.restricted-input` | `crates/contextful-context/tests/integration/build.rs::a_build_over_a_restricted_input_is_refused` | performed |
 | `run.model.sql` | `crates/contextful-context/tests/integration/build.rs::model_sql_is_admitted_over_store_tables` | performed |
@@ -1495,13 +1497,16 @@ Unscheduled operations: 12.
 | `run.publish.contract-mismatch` | `crates/contextful-context/tests/integration/build.rs::rows_missing_the_contract_are_refused_naming_the_column` | performed |
 | `run.publish.disclosure-digest` | `crates/contextful-context/tests/integration/build.rs::the_disclosure_digest_covers_the_policy_the_model_table_reads_under` | performed |
 | `run.publish.failed-attempt` | `crates/contextful-cli/tests/integration/build.rs::a_killed_build_reports_failed_and_keeps_the_published_build` | performed |
-| `run.publish.freshness` | `crates/contextful-core/tests/integration/pipeline/model.rs::staleness_is_derived_from_the_watermark_and_max_lag` | performed |
+| `run.publish.freshness` | `crates/contextful-core/tests/integration/pipeline/model.rs::freshness_reads_off_the_section_and_no_field_records_staleness` | performed |
 | `run.publish.history-logs` | `crates/contextful-core/tests/integration/pipeline/model.rs::a_log_is_regenerated_from_committed_manifests_and_keeps_collected_history` | performed |
 | `run.publish.hold` | `crates/contextful-context/tests/integration/build.rs::collection_skips_a_held_build` | performed |
 | `run.publish.manifest-commit` | `crates/contextful-context/tests/integration/build.rs::a_build_publishes_its_section_in_the_snapshot_manifest_the_pointer_names` | performed |
 | `run.publish.manifest-section` | `crates/contextful-core/tests/integration/pipeline/model.rs::the_manifest_section_carries_its_keys_and_omits_an_absent_optional_one` | performed |
 | `run.publish.semantics-version` | `crates/contextful-core/tests/integration/pipeline/model.rs::the_recipe_names_every_injected_column_the_semantics_version_counts` | performed |
 | `run.publish.staging` | `crates/contextful-context/tests/integration/build.rs::a_refused_build_leaves_the_last_published_state_serving` | performed |
+| `run.publish.staleness` | `crates/contextful-cli/tests/integration/build.rs::model_status_derives_freshness_on_both_sides_of_max_lag` | performed |
+| `run.publish.staleness-collected-run` | `crates/contextful-core/tests/integration/pipeline/model.rs::a_build_is_stale_only_by_an_unread_landing_past_max_lag` | performed |
+| `run.publish.staleness-model-input` | `crates/contextful-context/tests/integration/build.rs::a_model_reading_a_model_ages_by_its_rebuilds` | performed |
 | `run.record.bound-spelling` | `crates/contextful-core/tests/integration/run/record.rs::a_bound_is_a_date_or_a_zulu_instant` | performed |
 | `run.record.columns` | `crates/contextful-core/tests/integration/run/record.rs::a_run_row_carries_every_column` | performed |
 | `run.record.counts-at-destination` | `crates/contextful-engine/tests/integration/runner.rs::counts_come_from_the_destination` | performed |

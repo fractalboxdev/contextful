@@ -5,20 +5,20 @@
 use crate::error::{ContextError, IoPath, Result};
 use crate::store::{sorted_dirs, FileLock, Store, LOCK_WAIT_SECS};
 use contextful_core::pipeline::model::{
-    build_entries, contract_history, regenerate, BuildEntry, ContractHistoryEntry, HoldRecord, PublishSection, Receipt,
-    BUILDS_LOG, CONTRACT_HISTORY_LOG, HOLDS_DIR, HOLDS_LOG,
+    build_entries, contract_history, regenerate, waiting_runs, BuildEntry, ContractHistoryEntry, HoldRecord, PublishSection, Receipt,
+    Watermark, BUILDS_LOG, CONTRACT_HISTORY_LOG, HOLDS_DIR, HOLDS_LOG,
 };
 use contextful_core::run::RunError;
-use contextful_core::store::lay_out::{SnapshotManifest, MANIFEST_FILE, STAGING_SUFFIX};
+use contextful_core::store::lay_out::{SnapshotId, SnapshotManifest, MANIFEST_FILE, STAGING_SUFFIX};
 use contextful_core::time::Instant;
 use serde::de::DeserializeOwned;
 use serde::{Deserialize, Serialize};
-use std::collections::BTreeSet;
+use std::collections::{BTreeMap, BTreeSet};
 use std::fs;
 use std::path::{Path, PathBuf};
 
 #[cfg(feature = "read")]
-pub use materialize::{admit_statements, build, build_guarded, BuildRequest, Built};
+pub use materialize::{admit_statements, build, build_guarded, model_edges, BuildRequest, Built};
 
 /// The section of the snapshot the model's pointer names, when that build published one.
 pub fn current_section(store: &Store, model: &str) -> Result<Option<PublishSection>> {
@@ -117,14 +117,55 @@ pub fn status(store: &Store, model: &str, now: Instant) -> Result<serde_json::Va
         Some(attempt) => (Some(attempt.build_id), "failed"),
         None => (section.as_ref().map(|s| s.build_id.clone()), if section.is_some() { "published" } else { "absent" }),
     };
+    let stale_inputs = match &section {
+        Some(s) => Some(s.freshness().stale_inputs(&waiting(store, &s.watermark)?, now)),
+        None => None,
+    };
     Ok(serde_json::json!({
         "model": model,
         "last_build_id": last_build_id,
         "last_build_status": last_build_status,
         "published_build_id": section.as_ref().map(|s| &s.build_id),
         "freshness": section.as_ref().map(PublishSection::freshness),
-        "stale": section.as_ref().map(|s| s.freshness().stale(now)),
+        "stale": stale_inputs.as_ref().map(|t| !t.is_empty()),
+        "stale_inputs": stale_inputs,
     }))
+}
+
+/// Per watermark input, the commit instants of the runs the build did not include
+/// (`run.publish.staleness`): included runs are the watermark snapshot chain's
+/// `includes_runs` and the watermark's listed runs.
+fn waiting(store: &Store, watermark: &Watermark) -> Result<BTreeMap<String, Vec<Option<Instant>>>> {
+    let mut out = BTreeMap::new();
+    for (table, frontier) in &watermark.inputs {
+        if store.try_schema(table)?.is_none() {
+            out.insert(table.clone(), Vec::new());
+            continue;
+        }
+        let mut included: BTreeSet<String> = frontier.runs.iter().cloned().collect();
+        if let Some(id) = &frontier.snapshot_id {
+            let id = SnapshotId::try_from(id.clone()).map_err(ContextError::Invalid)?;
+            if store.snapshot_dir(table, &id)?.join(MANIFEST_FILE).exists() {
+                let (chain, _) = store.chain_from(table, id)?;
+                included.extend(chain.into_iter().flat_map(|m| m.includes_runs));
+            }
+        }
+        let runs = store.committed_runs(table)?;
+        let (chain, _) = store.chain(table)?;
+        // A model input lands no run; each published build above the watermark snapshot waits
+        // instead (`run.publish.staleness-model-input`).
+        let rebuilds: Vec<Option<Instant>> = chain
+            .iter()
+            .take_while(|m| frontier.snapshot_id.as_deref() != Some(m.snapshot_id.to_string().as_str()))
+            .filter(|m| m.publish.is_some())
+            .map(|m| Some(m.created_at))
+            .collect();
+        let folded: BTreeSet<String> = chain.into_iter().flat_map(|m| m.includes_runs).collect();
+        let mut waits = waiting_runs(&included, &runs, &folded);
+        waits.extend(rebuilds);
+        out.insert(table.clone(), waits);
+    }
+    Ok(out)
 }
 
 /// Every snapshot manifest on disk for the model, staging excluded, oldest first: the
@@ -524,6 +565,21 @@ mod materialize {
             reads.extend(checked.relations.into_iter().filter(|name| name != &spec.id));
         }
         Ok(reads)
+    }
+
+    /// Each model's reads of the other declared models its `sql` names
+    /// (`run.model.model-cycle`); a test's statement adds no edge.
+    pub fn model_edges(specs: &[ModelSpec]) -> std::result::Result<BTreeMap<String, BTreeSet<String>>, (String, ReadFault)> {
+        let ids: BTreeSet<&str> = specs.iter().map(|m| m.id.as_str()).collect();
+        let engine = SqlEngine::raw().map_err(|e| ("model graph".to_string(), e))?;
+        specs
+            .iter()
+            .map(|spec| {
+                let admitted = admit_sql(&engine, spec, |_| true).map_err(|e| (format!("model `{}`", spec.id), e))?;
+                let reads = admitted.relations.into_iter().filter(|r| r != &spec.id && ids.contains(r.as_str())).collect();
+                Ok((spec.id.clone(), reads))
+            })
+            .collect()
     }
 
     /// Build one model (`run.model.build-verb`): admit its SQL over the store's tables,

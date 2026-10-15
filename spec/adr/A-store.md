@@ -203,23 +203,6 @@ Decision: a `variant` column is a Struct of per-kind fields `str`, `int`, `doubl
 
 Consequences: a mixed-kind source lands without widening the lattice, and an `Int64` past the exact float range keeps its value. The accepted cost is a wider stored schema and a variant column that takes no promotion.
 
-## A view is a SQL model the engine builds, published with a per-input frontier
-
-**Status:** accepted; amends `run.publish.manifest-section` and `read.resolve-pin.resolved-echo`, whose watermark becomes a per-input frontier.
-
-Context: `view` is a table key no package reads, so a derived relation reaches a caller only as SQL sent with every statement, and every read pays the rollup. Criteria: two figures compare only when their builds saw the same landings; a view never publishes a row a reader's restriction withholds; a refused build removes nothing.
-
-Decision: `view` holds one `SELECT` over store tables and other views, admitted by `read.guard` at declaration. The engine builds it and publishes it as a model; a refused build keeps the prior build serving. Its watermark is a per-input frontier: per input table, the snapshot id and the committed runs that snapshot omits. A view over a table carrying a row policy or masks declares its own `policy`, else `ViewPolicyUndeclared`.
-
-| Option | Lost on | Cost |
-| --- | --- | --- |
-| Engine-built model, per-input frontier, own policy *(chosen)* | — | Each build rescans its inputs, and a view author writes a policy for every restricted input. |
-| SQL prepended to each statement | Read cost | Every panel pays the full rollup and version selection. |
-| A single-instant watermark | Comparability | Two writers commit out of stamp order, so an instant names no landing set. |
-| Input policies inherited by the view | Soundness | A join or aggregate changes which rows a restriction reaches. |
-
-Consequences: `contextful.resolved` names the landings behind each figure. A build reads as the operator, so the declared policy is the only restriction a view carries.
-
 ## The SQLite link rule reads normal dependencies alone
 
 **Status:** accepted; narrows the catalog-port decision above, whose link rule named no dependency kind.

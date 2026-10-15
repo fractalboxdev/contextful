@@ -574,10 +574,16 @@ impl Store {
     /// fails to parse refuses the table, as does one whose `parent` returns to a
     /// snapshot the walk already passed.
     pub fn chain(&self, table: &str) -> Result<(Vec<SnapshotManifest>, bool)> {
+        let Some((ptr, _)) = self.pointer(table)? else { return Ok((Vec::new(), false)) };
+        self.chain_from(table, ptr.snapshot_id)
+    }
+
+    /// The snapshot `start` and its `parent` chain, newest first, read as [`Store::chain`]
+    /// reads the pointer's.
+    pub fn chain_from(&self, table: &str, start: SnapshotId) -> Result<(Vec<SnapshotManifest>, bool)> {
         let mut chain = Vec::new();
-        let Some((ptr, _)) = self.pointer(table)? else { return Ok((chain, false)) };
         let mut seen = std::collections::BTreeSet::new();
-        let mut next = Some(ptr.snapshot_id);
+        let mut next = Some(start);
         while let Some(id) = next {
             if !seen.insert(id.to_string()) {
                 return Err(StoreError::StoreManifestUnreadable(format!(

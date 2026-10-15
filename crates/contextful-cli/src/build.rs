@@ -108,6 +108,21 @@ fn model(declaration: &Path, id: &str) -> Result<ModelSpec> {
     }
 }
 
+/// The declared model `id`, refused while the declared models hold a cycle
+/// (`run.model.model-cycle`), before any store is read.
+fn buildable(declaration: &Path, id: &str) -> Result<ModelSpec> {
+    let spec = model(declaration, id)?;
+    let files = manifests(declaration)?;
+    let mut specs = Vec::new();
+    for m in collect_models(&files, &collect(&files)?)? {
+        let mut declared = m.spec;
+        crate::model_source::resolve(&mut declared, &m.file)?;
+        specs.push(declared);
+    }
+    crate::model_source::refuse_cycle(&specs)?;
+    Ok(spec)
+}
+
 pub fn run(args: BuildArgs) -> Result<()> {
     match args.cmd {
         Some(BuildCmd::Status { model: id, project, declaration, json }) => {
@@ -157,7 +172,7 @@ pub fn run(args: BuildArgs) -> Result<()> {
         None => {
             let id = args.model.expect("clap requires a model without a subcommand");
             let l = args.project.locate(args.declaration)?;
-            let spec = model(&l.declaration, &id)?;
+            let spec = buildable(&l.declaration, &id)?;
             let text = if l.declaration.exists() { std::fs::read_to_string(&l.declaration)? } else { String::new() };
             let grouped = crate::export::publication::validate_job(&text,&id,std::slice::from_ref(&id))?;
             let _publication = if grouped {Some(crate::export::publication::lock(&l)?)} else {None};

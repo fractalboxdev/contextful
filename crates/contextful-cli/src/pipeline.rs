@@ -752,6 +752,7 @@ pub fn run(cmd: PipelineCmd, tasks: &Tasks, bodies: &contextful_core::run::drive
             }
             let models = contextful_core::pipeline::model::collect_models(&files, &declared)?;
             let model_ids: std::collections::BTreeSet<&str> = models.iter().map(|m| m.spec.id.as_str()).collect();
+            let mut resolved = Vec::new();
             for m in &models {
                 let mut spec = m.spec.clone();
                 crate::model_source::resolve(&mut spec, &m.file).with_context(|| format!("{}:{}", m.file, m.line))?;
@@ -762,7 +763,9 @@ pub fn run(cmd: PipelineCmd, tasks: &Tasks, bodies: &contextful_core::run::drive
                     eprintln!("model `{}` reads `{relation}`, which no manifest declares; `build` resolves it against the store", m.spec.id);
                 }
                 println!("{}: valid model ({} tests)", m.spec.id, m.spec.tests.len());
+                resolved.push(spec);
             }
+            crate::model_source::refuse_cycle(&resolved)?;
             for t in tables.values().filter(|t| t.is_keyed() && !coverage.covers(&t.name)) {
                 eprintln!(
                     "warning: table `{}` declares a primary key and no enabled `[[job]]` of kind `fold` with a `schedule` covers it",

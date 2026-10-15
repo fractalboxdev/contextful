@@ -141,6 +141,7 @@ fn a_killed_build_reports_failed_and_keeps_the_published_build() {
 }
 
 // spec: run.model.status-verb@dd4c16d2
+// spec: run.publish.staleness@3b5b8197
 #[test]
 fn model_status_derives_freshness_on_both_sides_of_max_lag() {
     let dir = project();
@@ -150,11 +151,82 @@ fn model_status_derives_freshness_on_both_sides_of_max_lag() {
     let status = |at| -> Value {
         serde_json::from_str(&stdout(&run(p, &["build", "status", "daily", "--now", at, "--json"]))).unwrap()
     };
-    let fresh = status("2030-01-01T01:00:00Z");
-    assert_eq!(fresh["published_build_id"], built["build_id"]);
-    assert_eq!(fresh["stale"], false);
-    assert_eq!(fresh["freshness"]["max_lag"], "1h");
-    assert_eq!(status("2030-01-01T01:00:01Z")["stale"], true);
+    // No landing after the build leaves it fresh past `max_lag`.
+    let quiet = status("2030-01-03T00:30:00Z");
+    assert_eq!(quiet["published_build_id"], built["build_id"]);
+    assert_eq!(quiet["stale"], false);
+    assert_eq!(quiet["stale_inputs"], serde_json::json!([]));
+    assert_eq!(quiet["freshness"]["max_lag"], "1h");
+    stdout(&run(p, &["context", "land", "events", "--rows", "events.jsonl", "--run-id", "r2", "--site-id", "site-a", "--now", "2030-01-04T00:00:00Z"]));
+    assert_eq!(status("2030-01-04T00:59:59Z")["stale"], false);
+    let stale = status("2030-01-04T01:00:01Z");
+    assert_eq!(stale["stale"], true);
+    assert_eq!(stale["stale_inputs"], serde_json::json!(["events"]));
+    build(p, "2030-01-04T02:00:00Z");
+    let rebuilt = status("2030-01-04T02:00:00Z");
+    assert_eq!(rebuilt["stale"], false);
+    assert_eq!(rebuilt["stale_inputs"], serde_json::json!([]));
+}
+
+const CYCLE: &str = r#"authoring_posture = "per_request"
+site_id = "site-a"
+
+[project]
+name = "research"
+
+[[pipeline.tables]]
+name = "events"
+
+[[model]]
+id = "a"
+sql = "SELECT day FROM b"
+publish = false
+
+[[model]]
+id = "b"
+sql = "SELECT day FROM a"
+publish = false
+"#;
+
+fn cycle_refused(out: &Output) {
+    assert!(!out.status.success(), "expected ModelCycle, got: {}", String::from_utf8_lossy(&out.stdout));
+    let stderr = String::from_utf8_lossy(&out.stderr);
+    assert!(stderr.contains("ModelCycle") && stderr.contains("`a`, `b`"), "{stderr}");
+}
+
+// spec: run.model.model-cycle@470bd0b1
+#[test]
+fn validate_apply_and_build_refuse_a_two_model_cycle() {
+    let dir = project();
+    let p = dir.path();
+    std::fs::write(p.join("contextful.toml"), CYCLE).unwrap();
+    cycle_refused(&run(p, &["pipeline", "validate"]));
+    cycle_refused(&run(p, &["pipeline", "import", "--project", "research"]));
+    cycle_refused(&run(p, &["build", "a", "--site-id", "site-a", "--now", "2030-01-01T01:00:00Z"]));
+    assert!(!p.join(".contextful/context/research/tables/a").exists());
+    let acyclic = CYCLE.replace("SELECT day FROM a", "SELECT day FROM events");
+    std::fs::write(p.join("contextful.toml"), &acyclic).unwrap();
+    stdout(&run(p, &["pipeline", "import", "--project", "research"]));
+    std::fs::write(p.join("contextful.toml"), CYCLE).unwrap();
+    cycle_refused(&run(p, &["pipeline", "apply", "--project", "research"]));
+}
+
+// spec: run.model.build-frontier@3cc993c1
+#[test]
+fn build_fires_no_pipeline_and_reads_the_committed_frontier() {
+    let dir = project();
+    let p = dir.path();
+    let fed = DECLARATION.replace(
+        "[[pipeline.tables]]\nname = \"events\"\n",
+        "[[pipeline]]\nid = \"feed\"\ntables = [\"events\"]\n\n[pipeline.source]\nname = \"http\"\nconfig = { endpoint = \"http://127.0.0.1:1/events\" }\n",
+    );
+    std::fs::write(p.join("contextful.toml"), fed).unwrap();
+    let built = build(p, "2030-01-01T01:00:00Z");
+    let runs = built["watermark"]["inputs"]["events"]["runs"].as_array().unwrap().clone();
+    assert_eq!(runs.len(), 1, "{built}");
+    assert!(runs[0].as_str().unwrap().starts_with("r1/"), "{built}");
+    let landed = std::fs::read_dir(p.join(".contextful/context/research/tables/events/data/runs")).unwrap().count();
+    assert_eq!(landed, 1, "a build records no run of its feeder");
 }
 
 #[test]
