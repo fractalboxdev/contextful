@@ -53,7 +53,8 @@ impl Face {
 
     /// Reconcile `set` with the snapshot set a read resolves against now: keep each mapping
     /// still in it, map each file it gained, and unmap each file it lost or whose path has
-    /// left the disk.
+    /// left the disk. A file that fails to map stays unmapped and the first such fault
+    /// returns once every other file is reconciled.
     pub fn refresh_snapshot_set(&self, set: &mut MappedSnapshotSet) -> Result<Refreshed, ReadFault> {
         let current = self.resolved_paths()?;
         let mut held: std::collections::BTreeMap<PathBuf, Mapped> =
@@ -70,8 +71,7 @@ impl Face {
                         files.push(m);
                     }
                     Err(fault) => {
-                        failed = Some(fault);
-                        break;
+                        failed.get_or_insert(fault);
                     }
                 },
             }

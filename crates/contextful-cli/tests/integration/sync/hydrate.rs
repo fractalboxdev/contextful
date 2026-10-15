@@ -192,6 +192,6 @@ fn a_failed_transfer_after_listening_stops_the_server() {
     while let Ok(line) = served.lines.recv_timeout(Duration::from_secs(1)) {
         rest.push(line);
     }
-    assert!(!rest.iter().any(|l| l.starts_with("hydrated:")), "a failed transfer never completes hydration: {rest:?}");
     assert!(rest.iter().any(|l| l.contains("pull_before_run")), "the failure names the pull: {rest:?}");
+    assert!(!rest.iter().any(|l| l.starts_with("hydrated:")), "a failed transfer never completes hydration: {rest:?}");
 }

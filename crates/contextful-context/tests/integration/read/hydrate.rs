@@ -89,6 +89,8 @@ fn a_refresh_unmaps_what_left_the_set_and_maps_what_joined_it() {
     let refreshed = r.face.refresh_snapshot_set(&mut mapped);
     // The pointer still names the removed run, so the refresh refuses to map it.
     assert!(refreshed.is_err(), "a resolved file missing from disk refuses the refresh");
-    assert!(!mapped.files().any(|(p, _)| p == gone), "the removed file's mapping is released");
+    let after: Vec<PathBuf> = mapped.files().map(|(p, _)| p.to_path_buf()).collect();
+    assert_eq!(after.len(), files.len() - 1, "every other file stays mapped: {after:?}");
+    assert!(!after.contains(&gone), "the removed file's mapping is released");
     assert_eq!(deleted_mappings(), before, "no mapping of a deleted file survives the refresh");
 }
