@@ -20,9 +20,6 @@ pub struct TableState {
     /// Retention has collected history: the chain ends at a parent no longer on disk,
     /// or a run the chain folded is gone.
     pub history_collected: bool,
-    /// The unfolded run count that fires the table's pass, from its declaration; `None`
-    /// is 50 (`store.fold.declared-trigger`).
-    pub fold_run_count: Option<usize>,
 }
 
 /// The snapshot and runs one read covers.

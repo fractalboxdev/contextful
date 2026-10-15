@@ -372,7 +372,7 @@ pub fn run(cmd: ContextCmd) -> Result<()> {
             let mut failed = 0;
             for t in tables {
                 let decl = o.decl(&t);
-                let outcome = match table.is_none().then(|| o.store.state(&decl).map(|s| scheduled(&s, at))) {
+                let outcome = match table.is_none().then(|| o.store.state(&decl).map(|s| scheduled(&s, &decl, at))) {
                     Some(Ok(false)) => {
                         println!("{t}: not due");
                         continue;

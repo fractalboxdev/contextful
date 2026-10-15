@@ -1,5 +1,6 @@
 //! `store.fold`: when a pass fires, and what it reports per table.
 
+use super::declare::TableDecl;
 use super::resolve::TableState;
 use crate::time::Instant;
 
@@ -19,15 +20,15 @@ pub const COMPACTION_RUN_COUNT: usize = 50;
 pub const COMPACTION_INTERVAL_SECS: u64 = 6 * 60 * 60;
 
 /// Whether a table's trigger has fired: it holds committed runs its current snapshot
-/// omits, and either as many as its run count — [`COMPACTION_RUN_COUNT`] unless the table
-/// declares one (`store.fold.declared-trigger`) — or [`COMPACTION_INTERVAL_SECS`] have
+/// omits, and either as many as `decl`'s run count — [`COMPACTION_RUN_COUNT`] unless the
+/// table declares one (`store.fold.declared-trigger`) — or [`COMPACTION_INTERVAL_SECS`] have
 /// passed since its previous pass published — or, before its first pass, since its oldest
 /// unfolded run committed. An explicit `contextful context compact <table>` fires
 /// regardless.
-pub fn due(state: &TableState, now: Instant) -> bool {
+pub fn due(state: &TableState, decl: &TableDecl, now: Instant) -> bool {
     let unfolded = state.unfolded_runs();
     let since = state.chain.first().map(|s| s.created_at).or_else(|| unfolded.first().map(|r| r.committed_at));
-    trigger_fired(unfolded.len(), since, now, state.fold_run_count.unwrap_or(COMPACTION_RUN_COUNT))
+    trigger_fired(unfolded.len(), since, now, decl.fold_run_count())
 }
 
 /// [`due`] from its inputs alone: `unfolded` runs, the instant the interval runs from, and
@@ -43,8 +44,8 @@ pub fn trigger_fired(unfolded: usize, since: Option<Instant>, now: Instant, run_
 /// Whether a scheduled pass visits a table: its trigger fired, or it holds nothing to
 /// fold, and the pass reports it nothing-landed and collects what retention allows, since
 /// retention ages from the fold (`store.fold.retention`).
-pub fn scheduled(state: &TableState, now: Instant) -> bool {
-    state.unfolded_runs().is_empty() || due(state, now)
+pub fn scheduled(state: &TableState, decl: &TableDecl, now: Instant) -> bool {
+    state.unfolded_runs().is_empty() || due(state, decl, now)
 }
 
 /// A pass's outcome for one table (`store.fold.result`).

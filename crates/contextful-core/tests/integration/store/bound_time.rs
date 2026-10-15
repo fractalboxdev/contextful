@@ -22,7 +22,6 @@ fn state() -> TableState {
         ],
         chain: vec![s1, s0],
         history_collected: false,
-        fold_run_count: None,
     }
 }
 

@@ -23,12 +23,12 @@ fn a_pass_fires_at_fifty_runs_or_six_hours() {
     let (early, later) = ("2030-01-01T00:00:00Z", "2030-01-01T00:00:01Z");
     assert_eq!(COMPACTION_RUN_COUNT, 50);
     assert_eq!(COMPACTION_INTERVAL_SECS, 6 * 3600);
-    assert!(!due(&state(49, later, Some(early)), t0.plus_secs(60)));
-    assert!(due(&state(50, later, Some(early)), t0.plus_secs(60)));
-    assert!(!due(&state(1, later, Some(early)), t0.plus_secs(6 * 3600 - 1)));
-    assert!(due(&state(1, later, Some(early)), t0.plus_secs(6 * 3600)));
+    assert!(!due(&state(49, later, Some(early)), &TableDecl::named("filings"), t0.plus_secs(60)));
+    assert!(due(&state(50, later, Some(early)), &TableDecl::named("filings"), t0.plus_secs(60)));
+    assert!(!due(&state(1, later, Some(early)), &TableDecl::named("filings"), t0.plus_secs(6 * 3600 - 1)));
+    assert!(due(&state(1, later, Some(early)), &TableDecl::named("filings"), t0.plus_secs(6 * 3600)));
     // Nothing to fold never fires.
-    assert!(!due(&state(0, later, Some(early)), t0.plus_secs(7 * 3600)));
+    assert!(!due(&state(0, later, Some(early)), &TableDecl::named("filings"), t0.plus_secs(7 * 3600)));
 }
 
 /// A table never folded measures the interval from its oldest unfolded run, so a
@@ -36,8 +36,8 @@ fn a_pass_fires_at_fifty_runs_or_six_hours() {
 #[test]
 fn a_never_folded_table_is_due_six_hours_after_its_oldest_run() {
     let t0 = at("2030-01-01T00:00:00Z");
-    assert!(!due(&state(1, "2030-01-01T00:00:00Z", None), t0.plus_secs(6 * 3600 - 1)));
-    assert!(due(&state(1, "2030-01-01T00:00:00Z", None), t0.plus_secs(6 * 3600)));
+    assert!(!due(&state(1, "2030-01-01T00:00:00Z", None), &TableDecl::named("filings"), t0.plus_secs(6 * 3600 - 1)));
+    assert!(due(&state(1, "2030-01-01T00:00:00Z", None), &TableDecl::named("filings"), t0.plus_secs(6 * 3600)));
 }
 
 /// A scheduled pass visits a table whose trigger fired and one with nothing to fold, which
@@ -45,13 +45,12 @@ fn a_never_folded_table_is_due_six_hours_after_its_oldest_run() {
 #[test]
 fn a_scheduled_pass_visits_due_and_idle_tables() {
     let t0 = at("2030-01-01T00:00:00Z");
-    assert!(scheduled(&state(0, "2030-01-01T00:00:00Z", Some("2030-01-01T00:00:00Z")), t0.plus_secs(60)));
-    assert!(!scheduled(&state(1, "2030-01-01T00:00:00Z", None), t0.plus_secs(60)));
-    assert!(scheduled(&state(1, "2030-01-01T00:00:00Z", None), t0.plus_secs(7 * 3600)));
+    assert!(scheduled(&state(0, "2030-01-01T00:00:00Z", Some("2030-01-01T00:00:00Z")), &TableDecl::named("filings"), t0.plus_secs(60)));
+    assert!(!scheduled(&state(1, "2030-01-01T00:00:00Z", None), &TableDecl::named("filings"), t0.plus_secs(60)));
+    assert!(scheduled(&state(1, "2030-01-01T00:00:00Z", None), &TableDecl::named("filings"), t0.plus_secs(7 * 3600)));
 }
 
-/// A table declaring `fold_max_unfolded_runs`, a positive integer, fires its pass at that many unfolded runs in place of the 50-run count; zero refuses the declaration at parse.
-// spec: store.fold.declared-trigger@9f908b42
+/// A declared run count replaces the 50-run count in `due`; parsing refuses zero.
 #[test]
 fn a_declared_run_count_replaces_the_fifty_run_trigger() {
     let t0 = at("2030-01-01T00:00:00Z");
@@ -60,13 +59,10 @@ fn a_declared_run_count_replaces_the_fifty_run_trigger() {
     assert_eq!(declared.fold_run_count(), 200);
     assert_eq!(TableDecl::named("events").fold_run_count(), COMPACTION_RUN_COUNT);
     let mut s = state(199, later, Some(early));
-    s.fold_run_count = Some(declared.fold_run_count());
-    assert!(!due(&s, t0.plus_secs(60)));
+    assert!(!due(&s, &declared, t0.plus_secs(60)));
     s.runs.push(super::run("run-199", later, 1));
-    assert!(due(&s, t0.plus_secs(60)));
-    let mut small = state(50, later, Some(early));
-    small.fold_run_count = Some(200);
-    assert!(!due(&small, t0.plus_secs(60)), "a declared count above 50 holds a pass back at 50 runs");
+    assert!(due(&s, &declared, t0.plus_secs(60)));
+    assert!(!due(&state(50, later, Some(early)), &declared, t0.plus_secs(60)), "a declared count above 50 holds a pass back at 50 runs");
     for invalid in ["0", "-1"] {
         let text = format!("[[pipeline.tables]]\nname = \"events\"\nfold_max_unfolded_runs = {invalid}\n");
         assert!(TableDecl::parse_pipeline(&text).is_err(), "{invalid}");
