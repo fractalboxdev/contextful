@@ -24000,6 +24000,20 @@
       "line": 373
     },
     {
+      "id": "surface.apply.adopt-before-claim",
+      "contract": "surface",
+      "operation": "apply",
+      "subject": "adopt-before-claim",
+      "kind": "behavior",
+      "statement": "Import or apply over a snapshot directory holding no version first adopts a pulled control head under {{surface.reconcile.pulled-control}}, pinning the verb's `--public-key`; an import that adopts claims nothing.",
+      "why": "because a replacement host claiming a fresh v1 diverges from the bucket's signed head, and its next push is refused",
+      "file": "spec/70-control-plane.md",
+      "line": 374,
+      "scenarios": [
+        "WHEN a cold node pulls a signed bucket head and runs import, THEN import claims nothing, and apply of one added pipeline claims the head's successor and pushes."
+      ]
+    },
+    {
       "id": "surface.apply.draft-claim",
       "contract": "surface",
       "operation": "apply",
@@ -24008,7 +24022,7 @@
       "statement": "An Admin apply rechecks the configured store owner, validates its saved draft again, and claims that draft through the owner's version compare-and-swap.",
       "why": "A-surface",
       "file": "spec/70-control-plane.md",
-      "line": 374
+      "line": 376
     },
     {
       "id": "surface.apply.operator-attestation",
@@ -24019,7 +24033,7 @@
       "statement": "An Admin mutation lacking a fresh console signature over its verified operator, route and body, or reusing a nonce held in store control state across restarts, raises `ControlOperatorAttestationInvalid` before changing the document.",
       "why": "because a shared store capability cannot identify the person who used the console",
       "file": "spec/70-control-plane.md",
-      "line": 376
+      "line": 378
     },
     {
       "id": "surface.apply.draft-table-contracts",
@@ -24030,7 +24044,7 @@
       "statement": "Pipeline editing preserves standalone table metadata from the draft's expected immutable version; apply regenerates that metadata and refuses an altered saved draft under {{surface.apply.validation}} before advancing the pointer.",
       "why": "A-surface",
       "file": "spec/70-control-plane.md",
-      "line": 378
+      "line": 380
     },
     {
       "id": "surface.apply.draft-absent",
@@ -24041,7 +24055,7 @@
       "statement": "An Admin apply finding no validated store draft raises `ControlDraftAbsent` and changes no applied version.",
       "why": "because an absent draft supplies no document for the version claim",
       "file": "spec/70-control-plane.md",
-      "line": 380
+      "line": 382
     },
     {
       "id": "surface.apply.served-admin-grant",
@@ -24052,7 +24066,7 @@
       "statement": "A served `/control/*` request whose admitted credential holds no Admin grant over `*` without a tenant scope raises `ControlAdminGrantMissing`, answered `403`, before its handler runs.",
       "why": "because the control document arms work over every table and tenant of the store",
       "file": "spec/70-control-plane.md",
-      "line": 382
+      "line": 384
     },
     {
       "id": "surface.apply.served-malformed",
@@ -24063,7 +24077,7 @@
       "statement": "A served Admin edit or apply whose body is not a JSON object holding exactly its route's fields raises `ControlRequestMalformed`, answered `400`, and changes nothing.",
       "why": "because an absent or extra field leaves the operator's intended version or draft ambiguous",
       "file": "spec/70-control-plane.md",
-      "line": 384
+      "line": 386
     },
     {
       "id": "surface.apply.served-unavailable",
@@ -24074,7 +24088,7 @@
       "statement": "A served control request failing with no authority or surface refusal raises `ControlUnavailable`, answered `503`, and returns no internal error text.",
       "why": "because a storage or owner fault message can disclose paths and endpoints to the console",
       "file": "spec/70-control-plane.md",
-      "line": 386
+      "line": 388
     },
     {
       "id": "surface.reside.region-entries",
@@ -24085,7 +24099,7 @@
       "statement": "A residency allow-set holds at most 16 entries.",
       "why": "",
       "file": "spec/70-control-plane.md",
-      "line": 429
+      "line": 432
     },
     {
       "id": "surface.reside.region-mismatch",
@@ -24096,7 +24110,7 @@
       "statement": "A configured resource resolving to a region the policy omits raises `EnforceRegionMismatch` at startup, and the runtime serves nothing.",
       "why": "P3",
       "file": "spec/70-control-plane.md",
-      "line": 430
+      "line": 433
     },
     {
       "id": "surface.reside.site-regions",
@@ -24107,7 +24121,7 @@
       "statement": "A push records the pushing site's residency allow-set in the bucket manifest; a push finding a differing set another site recorded, an absent one included, raises `ResidencySitesDiverge` and commits nothing.",
       "why": "A-surface",
       "file": "spec/70-control-plane.md",
-      "line": 432
+      "line": 435
     },
     {
       "id": "surface.open-console.page-routes",
@@ -30798,6 +30812,10 @@
     [
       "surface.apply.synced-attestation",
       "authority.issue.signing-port"
+    ],
+    [
+      "surface.apply.adopt-before-claim",
+      "surface.reconcile.pulled-control"
     ],
     [
       "surface.apply.draft-table-contracts",

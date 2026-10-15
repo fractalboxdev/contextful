@@ -248,6 +248,56 @@ fn a_pulled_successor_extends_the_local_head_and_a_broken_parent_keeps_it() {
     }
 }
 
+/// A replacement host adopts the bucket's signed head before import or apply claims a version, so its
+/// next push extends that head.
+// spec: surface.apply.adopt-before-claim@ccbaa02a
+#[test]
+fn a_cold_synced_node_adopts_the_pulled_head_before_import_or_apply_claims() {
+    let bucket = tempfile::tempdir().unwrap();
+    let issuer = tempfile::tempdir().unwrap();
+    let public = ok(&cf(issuer.path(), &["token", "keygen", "--out", "issuer.seed"]));
+    let node = |prefix: &str, ids: &[&str]| {
+        let declared: Vec<String> = ids.iter().map(|id| pipeline(id, "https://api.vendor.example/v1", "schedule = \"every 1h\"", &format!("tables = [\"{id}\"]"))).collect();
+        let dir = project(&format!("site_id = \"site-a\"\n\n{}", declared.join("\n")));
+        std::fs::copy(issuer.path().join("issuer.seed"), dir.path().join(".contextful/issuer.seed")).unwrap();
+        std::fs::write(dir.path().join(".contextful/issuance.toml"),
+            "default_audience = \"contextful://research\"\nmax_lifetime_secs = 3600\n").unwrap();
+        std::fs::write(dir.path().join(".contextful/context/research/config.toml"), format!(
+            "[node]\nid = \"ingest-a\"\n[sync]\nendpoint = \"file://{}\"\nbucket = \"control-test\"\nprefix = \"{prefix}\"\ncoordination = \"cas\"\n",
+            bucket.path().display()
+        )).unwrap();
+        dir
+    };
+    let signed = |dir: &Path, verb: &str| {
+        let token = ok(&cf(dir, &["token", "mint", "--issuer-key", ".contextful/issuer.seed",
+            "--on-behalf-of", "user://dana@example.test", "--ttl", "600", "--action", "admin", "--table", "*"]));
+        Command::new(env!("CARGO_BIN_EXE_contextful"))
+            .args(["pipeline", verb, "--project", "research", "--issuer-key", ".contextful/issuer.seed",
+                "--public-key", &public, "--audience", "contextful://research"])
+            .current_dir(dir).env("CONTEXTFUL_TOKEN", token).env_remove("CONTEXTFUL_ISSUER_PUBKEY").output().unwrap()
+    };
+
+    let first = node("team", &["orders"]);
+    assert!(ok(&signed(first.path(), "import")).contains("imported v1"));
+    ok(&cf(first.path(), &["sync", "push", "--project", "research"]));
+
+    let replacement = node("team", &["orders", "returns"]);
+    ok(&cf(replacement.path(), &["sync", "pull", "--project", "research"]));
+    let imported = ok(&signed(replacement.path(), "import"));
+    assert!(imported.contains("import claims nothing") && !imported.contains("imported v1"), "{imported}");
+    let control = replacement.path().join(CONTROL);
+    assert_eq!(std::fs::read_to_string(control.join("manifest@current")).unwrap(), "1\n");
+    assert!(!control.join("manifest@v2.toml").exists());
+    assert!(ok(&signed(replacement.path(), "apply")).contains("applied v2"));
+    let pushed = cf(replacement.path(), &["sync", "push", "--project", "research"]);
+    assert!(pushed.status.success() && !stderr(&pushed).contains("SyncControlDiverged"), "{}", stderr(&pushed));
+
+    // A prefix holding no control head leaves nothing to adopt, and import claims v1.
+    let fresh = node("empty", &["orders"]);
+    ok(&cf(fresh.path(), &["sync", "pull", "--project", "research"]));
+    assert!(ok(&signed(fresh.path(), "import")).contains("imported v1"));
+}
+
 pub(crate) fn cf(dir: &Path, args: &[&str]) -> Output {
     Command::new(env!("CARGO_BIN_EXE_contextful"))
         .args(args)
