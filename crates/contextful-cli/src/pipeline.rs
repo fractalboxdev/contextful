@@ -203,6 +203,26 @@ pub enum PipelineCmd {
         #[arg(long)]
         issuer_key: Option<PathBuf>,
     },
+    /// Land one delivered batch of a `receive` pipeline from stdin: one JSON object per line,
+    /// `table` and `row`. The answer follows every touched table's commit and names the run id.
+    Receive {
+        id: String,
+        /// The batch key: a resend under it replays the tables that committed and lands the rest.
+        #[arg(long)]
+        key: String,
+        #[command(flatten)]
+        project: ProjectArgs,
+        #[arg(long)]
+        declaration: Option<PathBuf>,
+        /// The site id of this batch; replaces the manifest's `site_id` or `site_id_env`.
+        #[arg(long)]
+        site_id: Option<String>,
+        /// The environment variable holding this batch's site id.
+        #[arg(long)]
+        site_id_env: Option<String>,
+        #[command(flatten)]
+        admit: Box<AdmitArgs>,
+    },
     /// Dispatch applied pipelines and registered store-driven jobs under the cadence lease.
     Serve {
         #[command(flatten)]
@@ -256,6 +276,8 @@ pub(crate) enum Checked {
     Derive(Box<(DeriveConfig, Binding, Option<LimiterBinding>)>),
     Component(Box<ComponentSource>),
     Host(Box<HostChecked>),
+    /// A source whose rows a sender delivers through `pipeline receive`.
+    Receive(contextful_connectors::receive::ReceiveConfig),
 }
 
 /// A registered host task, with the store table each of its tables lands in.
@@ -309,6 +331,17 @@ pub(crate) fn check(spec: &PipelineSpec, declaration: &Path, tasks: &Tasks) -> R
             check_object(spec)
         }
         contextful_connectors::file::NAME => check_file(spec),
+        contextful_connectors::receive::NAME => {
+            let config = contextful_connectors::receive::ReceiveConfig::parse(&spec.source.config).with_context(|| format!("pipeline `{}` source", spec.id))?;
+            if let Some(field) = &spec.incremental {
+                return Err(ConnectorError::ConnectorPositionOwned(format!(
+                    "pipeline `{}` declares `incremental = \"{field}\"` beside the `receive` source, whose batch key is its position",
+                    spec.id
+                ))
+                .into());
+            }
+            Ok(Checked::Receive(config))
+        }
         contextful_connectors::image::NAME => {
             let config = ImageConfig::parse(&spec.source.config)?;
             for table in &spec.tables { config.table(table.name())?; }
@@ -648,7 +681,7 @@ pub(crate) fn build_source(spec: &PipelineSpec, role: &str, source: &SourceBlock
 }
 
 /// The connector a built-in source's run pins.
-fn built_in(spec: &PipelineSpec) -> ConnectorSpec {
+pub(crate) fn built_in(spec: &PipelineSpec) -> ConnectorSpec {
     ConnectorSpec {
         id: spec.source.name.clone(),
         version: env!("CARGO_PKG_VERSION").to_string(),
@@ -811,6 +844,9 @@ pub fn run(cmd: PipelineCmd, tasks: &Tasks, bodies: &contextful_core::run::drive
             crate::cadence::import(&project, declaration, tasks, bodies, &admit, issuer_key.as_deref())
         }
         PipelineCmd::Serve { project, declaration, cycle, http, public_key } => crate::cadence::serve(&project, declaration, cycle, http.as_deref(), public_key.as_deref(), tasks, bodies),
+        PipelineCmd::Receive { id, key, project, declaration, site_id, site_id_env, admit } => {
+            crate::receive::receive(crate::receive::Receive { id, key, project, declaration, site_id, site_id_env, admit: &admit }, tasks)
+        }
         PipelineCmd::Worker { project, declaration, listen } => crate::worker::serve_worker(&project, declaration, &listen),
         PipelineCmd::Run { id, project, declaration, run_id, site_id, site_id_env, component_target, admit, applied, dry_run, available_as_of } => {
             let l = project.locate(declaration)?;
@@ -830,6 +866,9 @@ pub fn run(cmd: PipelineCmd, tasks: &Tasks, bodies: &contextful_core::run::drive
             })?;
             let spec = d.spec;
             let checked = check(&spec, &declaration, tasks)?;
+            if let Checked::Receive(_) = checked {
+                bail!("pipeline `{}` reads a `receive` source, whose rows a sender delivers through `pipeline receive`", spec.id);
+            }
             let destinations: Vec<String> = spec.tables.iter().map(|t| spec.table_name(t.name())).collect();
             let author = admit.author(project.project.as_deref(), &text, &destinations.iter().map(String::as_str).collect::<Vec<_>>())?;
             check_compaction(&spec, &fold_coverage(&manifests(&declaration)?)?)?;
@@ -841,7 +880,7 @@ pub fn run(cmd: PipelineCmd, tasks: &Tasks, bodies: &contextful_core::run::drive
                 Checked::Component(decl) => resolver.preflight(decl.attach.iter().map(|(_, t)| t))?,
                 #[cfg(feature = "drive")]
                 Checked::Drive(config) => resolver.preflight(config.templates())?,
-                Checked::Derive(_) | Checked::Host(_) | Checked::File(_) | Checked::Image(_) => {}
+                Checked::Derive(_) | Checked::Host(_) | Checked::File(_) | Checked::Image(_) | Checked::Receive(_) => {}
                 #[cfg(feature = "s3-sync")]
                 Checked::Object(config) => resolver.preflight(config.credentials())?,
             }
@@ -1018,6 +1057,7 @@ pub fn run(cmd: PipelineCmd, tasks: &Tasks, bodies: &contextful_core::run::drive
                             None => bail!("pipeline `{}`: component source `{}` did not load", spec.id, spec.source.name),
                         },
                         Checked::Host(_) => Box::new(Staged(staged.get(&table).cloned().unwrap_or_default(), derive_skipped)),
+                        Checked::Receive(_) => bail!("pipeline `{}`: a `receive` source lands only delivered batches", spec.id),
                     };
                     // The closing row carries the names this fire hydrated and their adapters
                     // (`connector.record.provider-attribution`).

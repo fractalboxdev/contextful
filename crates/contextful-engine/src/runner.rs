@@ -240,6 +240,14 @@ impl<J: JournalStore, B: BlobStore> Engine<J, B> {
         self.run_input(spec, None, source, shape, dest, None, None)
     }
 
+    /// Execute one run of a delivered batch under the owner scope its batch `key` fixes, so a
+    /// resend under the key resumes that owner's recorded pull and no other key's
+    /// (`run.land.receive-batch-key`).
+    pub fn run_receive(&self, spec: &RunSpec, key: &str, source: &mut dyn Source, shape: &dyn Shape, dest: &mut dyn Destination) -> Result<RunRow, EngineError> {
+        let scope = OwnerScope::receive(&spec.plan.spec.pipeline, &spec.plan.spec.table, key);
+        self.run_input(spec, Some(scope), source, shape, dest, None, None)
+    }
+
     /// Execute one run under `scope` in place of the plan's table scope: a seed chunk runs
     /// the one land path while its owner, cursor and chunk row stay under `<table>#seed`.
     pub(crate) fn run_scoped(&self, spec: &RunSpec, scope: OwnerScope, source: &mut dyn Source, shape: &dyn Shape, dest: &mut dyn Destination) -> Result<RunRow, EngineError> {

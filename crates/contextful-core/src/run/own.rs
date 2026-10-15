@@ -10,6 +10,16 @@ use std::collections::BTreeMap;
 
 /// The suffix naming a table's seeding scope.
 pub const SEED_SUFFIX: &str = "#seed";
+/// The infix naming a table's receive scope for one batch key.
+pub const RECEIVE_INFIX: &str = "#receive-";
+
+/// The 16 hex characters a batch key of `pipeline_id` names its runs and scopes by.
+pub fn receive_digest(pipeline_id: &str, key: &str) -> String {
+    let mut bytes = pipeline_id.as_bytes().to_vec();
+    bytes.push(0);
+    bytes.extend_from_slice(key.as_bytes());
+    crate::run::journal::sha256_hex(&bytes)[..16].to_string()
+}
 
 /// What an execution owner is keyed on (`run.own.execution-owner`, `run.own.host-scope`).
 ///
@@ -52,6 +62,15 @@ impl OwnerScope {
     pub fn seeding(&self) -> bool {
         self.pipeline_table().is_some_and(|(_, table)| table.ends_with(SEED_SUFFIX))
     }
+
+    /// The scope one delivered batch lands a table under: `<table>#receive-<digest>`, the
+    /// digest a SHA-256 prefix of the batch key, so a resend under the key resumes its own
+    /// pending owner and no other key's (`run.land.receive-batch-key`). The segment carries
+    /// no byte of the sender's key.
+    pub fn receive(pipeline_id: &str, table: &str, key: &str) -> OwnerScope {
+        OwnerScope::table(pipeline_id, &format!("{table}{RECEIVE_INFIX}{}", receive_digest(pipeline_id, key)))
+    }
+
 
     /// The pipeline and table a table or chunk scope names; `None` for a host scope.
     pub fn pipeline_table(&self) -> Option<(&str, &str)> {

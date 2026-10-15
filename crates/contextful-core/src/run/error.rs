@@ -261,6 +261,12 @@ pub enum RunError {
     /// One table's pull failing inside a fire. (`run.land.table-failed`)
     #[error("PipelineTableFailed: {0}")]
     PipelineTableFailed(String),
+    /// A delivered body past its source's `max_batch_bytes`. (`run.land.receive-batch-too-large`)
+    #[error("ReceiveBatchTooLarge: {0}")]
+    ReceiveBatchTooLarge(String),
+    /// A delivered batch arriving while every queue slot of its pipeline is held. (`run.land.receive-backpressure`)
+    #[error("ReceiveBackpressure: {0}")]
+    ReceiveBackpressure(String),
     /// A non-zero exit or fatal signal from the decode process. (`run.land.parse-crashed`)
     #[error("PipelineParseCrashed: {0}")]
     PipelineParseCrashed(String),

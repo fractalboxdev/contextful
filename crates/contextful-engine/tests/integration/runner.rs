@@ -1070,3 +1070,43 @@ fn a_position_round_trips_untouched_and_each_table_keeps_its_own() {
     assert_eq!(rig.catalog().cursor("feed", "filings").unwrap().position, Some(token));
     assert_eq!(rig.catalog().cursor("feed", "returns").unwrap().position, Some(json!("other-1")));
 }
+
+/// A delivered batch runs under the owner scope its batch key fixes: a resend under the key resumes that owner's
+/// recorded pull, and another key's batch runs under a fresh execution that leaves it pending.
+#[test]
+fn a_receive_batch_key_resumes_its_own_owner_and_no_other_keys() {
+    use contextful_core::run::own::OwnerScope;
+    use contextful_core::run::ports::Unshaped;
+    let rig = Rig::new();
+    let spec = |run_id: &str| contextful_engine::RunSpec {
+        connector: opaque().connector_pin("artifact-1"),
+        plan: opaque(),
+        run_id: run_id.into(),
+        site_id: "site-a".into(),
+        pid: 4242,
+        boot_id: "boot-a".into(),
+        trace_id: None,
+    };
+    let mut first = Pages::new(three_pages());
+    first.die_after = Some(1);
+    let mut sink = Sink::default();
+    let died = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| rig.engine.run_receive(&spec("k1.a"), "k1", &mut first, &Unshaped, &mut sink)));
+    assert!(died.is_err(), "the run was expected to die");
+    rig.clock.advance(60);
+    assert!(rig.catalog().owner("feed", "filings").unwrap().is_none(), "a receive owner leaves the table scope free");
+    let pending = rig.catalog().owner_at(&OwnerScope::receive("feed", "filings", "k1")).unwrap().unwrap();
+    assert_eq!(pending.attempts, ["k1.a"]);
+
+    let mut other = Pages::new(vec![vec![json!({ "id": "x1" })]]);
+    let row = rig.engine.run_receive(&spec("k2.a"), "k2", &mut other, &Unshaped, &mut sink).unwrap();
+    assert_eq!(row.status, RunStatus::Success);
+    assert_ne!(row.execution_id, pending.execution_id, "another key runs under a fresh execution");
+    assert!(rig.catalog().owner_at(&OwnerScope::receive("feed", "filings", "k1")).unwrap().is_some(), "another key leaves the pending owner");
+
+    let row = rig.engine.run_receive(&spec("k1.b"), "k1", &mut first, &Unshaped, &mut sink).unwrap();
+    assert_eq!(row.status, RunStatus::Success);
+    assert_eq!(row.execution_id, pending.execution_id, "the resend resumes the key's owner");
+    let firsts = first.calls().into_iter().filter(|(p, _)| p.is_none()).count();
+    assert_eq!(firsts, 1, "the recorded first pull resolves for the resend without a call");
+    assert_eq!(ids(sink.commits.last().unwrap()), [vec!["d1", "d2"], vec!["d3"], vec!["d4"]]);
+}
