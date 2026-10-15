@@ -42,8 +42,7 @@ fn sweep(dir: &Path, kind: &str) -> Output {
     cf(dir, &["visibility", "sweep", "--project", "wiki", "--source", "wiki", "--kind", kind, "--grants", "grants.jsonl"])
 }
 
-/// `visibility sweep --source <s> --kind full|incremental [--grants <file>]` runs one sweep of a declared source, reading its permission endpoint under `credential`, or the file when `--grants` is given, and commits as one run.
-// spec: disclosure.sweep.sweep-verb@fc45ff45
+/// `visibility sweep --grants <file>` commits the file's read of a declared source as one run.
 #[test]
 fn a_sweep_of_a_declared_source_commits_the_grants_file_as_one_run() {
     let dir = tempfile::tempdir().unwrap();
@@ -91,4 +90,32 @@ fn pipeline_validate_refuses_a_malformed_cadence() {
     assert!(!out.status.success());
     let stderr = String::from_utf8_lossy(&out.stderr);
     assert!(stderr.contains("VisibilityBudgetMalformed") && stderr.contains("5m30s"), "{stderr}");
+}
+
+const SWEEP: &str = "[[acl_sweep]]\nsource = \"wiki\"\nenumerate = \"pages\"\nfull = { every = \"1h\" }\nincremental = { every = \"5m\" }\n";
+
+/// A sweep block under `pipelines/` is the sweep both commands see; a source declared in two
+/// files refuses in both.
+#[test]
+fn a_sweep_block_under_pipelines_is_one_validate_and_sweep_both_read() {
+    let dir = tempfile::tempdir().unwrap();
+    let d = dir.path();
+    let (root, block) = MANIFEST.split_once("[[acl_sweep]]").unwrap();
+    assert!(block.contains("enumerate"));
+    std::fs::write(d.join("contextful.toml"), root).unwrap();
+    std::fs::create_dir(d.join("pipelines")).unwrap();
+    std::fs::write(d.join("pipelines/wiki.toml"), SWEEP).unwrap();
+    ok(&cf(d, &["pipeline", "validate"]));
+    std::fs::write(d.join("pages.jsonl"), lines(&[json!({"page_id": "p1"})])).unwrap();
+    ok(&cf(d, &["context", "land", "wiki/pages", "--project", "wiki", "--rows", "pages.jsonl", "--run-id", "run-0001", "--site-id", "site-a"]));
+    std::fs::write(d.join("grants.jsonl"), lines(&[json!({"resource_id": "p1", "principal": "dana", "principal_kind": "user", "level": "viewer"})])).unwrap();
+    let out = ok(&sweep(d, "full"));
+    assert!(out.contains("epoch 1"), "{out}");
+
+    std::fs::write(d.join("pipelines/drive.toml"), SWEEP).unwrap();
+    for out in [cf(d, &["pipeline", "validate"]), sweep(d, "full")] {
+        assert!(!out.status.success());
+        let stderr = String::from_utf8_lossy(&out.stderr);
+        assert!(stderr.contains("second sweep") && stderr.contains("wiki"), "{stderr}");
+    }
 }

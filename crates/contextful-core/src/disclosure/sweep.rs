@@ -6,6 +6,7 @@
 
 use super::declare::{parse_budget, Binding, Fidelity};
 use super::VisibilityError;
+use crate::pipeline::declare::ManifestFile;
 use crate::store::declare::DeclarationMalformed;
 use crate::time::Instant;
 use serde::Deserialize;
@@ -122,6 +123,27 @@ impl SweepBlock {
                 credential: raw.credential,
                 events: raw.events,
             });
+        }
+        Ok(out)
+    }
+
+    /// Every `[[acl_sweep]]` block across a declaration set's `.toml` files — the root
+    /// manifest and each `pipelines/*.toml` beside it. A source declared in two files
+    /// refuses as a second sweep does within one.
+    pub fn parse_set(files: &[ManifestFile]) -> Result<Vec<SweepBlock>, SweepError> {
+        let mut out: Vec<SweepBlock> = Vec::new();
+        let mut homes: BTreeMap<String, &str> = BTreeMap::new();
+        for f in files.iter().filter(|f| f.path.ends_with(".toml")) {
+            let blocks = SweepBlock::parse_manifest(&f.text).map_err(|e| match e {
+                SweepError::Malformed(m) => SweepError::Malformed(DeclarationMalformed(format!("{}: {}", f.path, m.0))),
+                other => other,
+            })?;
+            for b in blocks {
+                if let Some(first) = homes.insert(b.source.clone(), &f.path) {
+                    return Err(DeclarationMalformed(format!("{}: acl_sweep source `{}` declares a second sweep (first in {first})", f.path, b.source)).into());
+                }
+                out.push(b);
+            }
         }
         Ok(out)
     }

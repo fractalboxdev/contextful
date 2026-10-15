@@ -2,9 +2,11 @@
 //! read against its current rows under `_visibility/<source>/`, then landed through the
 //! land path as engine-owned runs, `freshness` last.
 //!
-//! The `freshness` row with the greatest epoch names the run whose `resources` and `grants`
-//! rows are current, so a run that stops before `freshness` lands changes nothing a reader
-//! resolves. `tombstones` accumulate across runs.
+//! A run is committed once its `freshness` row lands. The `freshness` row with the
+//! greatest epoch names the run whose `resources`, `grants` and `principals` rows are
+//! current; `tombstones` accumulate across committed runs alone. A row whose `_run_id`
+//! names no committed run joins nothing, so a run that stops before `freshness` lands
+//! changes nothing a reader resolves, and its retry lands its tombstones once.
 
 use crate::error::{ContextError, Result};
 use crate::land::{land_engine_owned, Batch, RunContext};
@@ -13,11 +15,11 @@ use crate::scan::scan;
 use crate::store::Store;
 use contextful_core::disclosure::declare::Binding;
 use contextful_core::disclosure::sweep::{
-    self, commit, Commit, Freshness, GrantLine, GrantRow, Governed, Observation, ResourceRow, SourceState, SweepBlock, SweepKind,
+    self, commit, Commit, Freshness, GrantLine, GrantRow, Governed, Observation, PrincipalRow, ResourceRow, SourceState, SweepBlock, SweepKind, Tombstone,
 };
 use contextful_core::store::bound_time::Bounds;
 use contextful_core::store::declare::TableDecl;
-use contextful_core::store::lay_out::NodeId;
+use contextful_core::store::lay_out::{NodeId, RUNS_DIR};
 use contextful_core::store::reconcile::ColumnType;
 use contextful_core::store::reserve::{Injection, RUN_ID};
 use contextful_core::time::Instant;
@@ -31,20 +33,41 @@ pub struct Landing {
     pub site_id: String,
 }
 
-/// Every row of `table` the store holds, each with its `_run_id`; an absent table holds none.
-fn rows(store: &Store, table: &str, columns: &[&str]) -> Result<Vec<Map<String, Value>>> {
+/// The rows of `table` the store holds, each with its `_run_id`; an absent table holds none.
+/// With `runs`, only rows of those runs: a run's own files are read and other runs' skipped,
+/// and a folded file is read and filtered by `_run_id`.
+fn rows_of(store: &Store, table: &str, columns: &[&str], runs: Option<&BTreeSet<String>>) -> Result<Vec<Map<String, Value>>> {
     if store.try_schema(table)?.is_none() {
         return Ok(Vec::new());
     }
     let mut wanted: Vec<&str> = columns.to_vec();
     wanted.push(RUN_ID);
+    let runs_dir = format!("/{RUNS_DIR}/");
     let mut out = Vec::new();
     for f in scan(store, &TableDecl::named(table), Bounds::default())?.files {
+        if let Some(runs) = runs {
+            let run = f.split_once(&runs_dir).and_then(|(_, rest)| rest.split('/').next());
+            if run.is_some_and(|r| !runs.contains(r)) {
+                continue;
+            }
+        }
         for batch in store.read_parquet(&store.logical_path(&f)?)? {
             out.extend(batch_rows(&batch, &wanted)?);
         }
     }
+    if let Some(runs) = runs {
+        out.retain(|r| r.get(RUN_ID).and_then(Value::as_str).is_some_and(|id| runs.contains(id)));
+    }
     Ok(out)
+}
+
+fn rows(store: &Store, table: &str, columns: &[&str]) -> Result<Vec<Map<String, Value>>> {
+    rows_of(store, table, columns, None)
+}
+
+/// The sweep ids of `source`'s committed runs: each one a `freshness` row names.
+pub fn committed(store: &Store, source: &str) -> Result<BTreeSet<String>> {
+    rows(store, &sweep::table(source, "freshness"), &["sweep_id"])?.iter().map(|r| text(r, "sweep_id")).collect()
 }
 
 fn text(row: &Map<String, Value>, column: &str) -> Result<String> {
@@ -90,12 +113,9 @@ pub fn freshness(store: &Store, source: &str) -> Result<Option<Freshness>> {
 /// rows that row's run landed.
 pub fn state(store: &Store, source: &str) -> Result<SourceState> {
     let Some(fresh) = freshness(store, source)? else { return Ok(SourceState::default()) };
-    let current = |r: &Map<String, Value>| r.get(RUN_ID).and_then(Value::as_str) == Some(fresh.sweep_id.as_str());
+    let current = BTreeSet::from([fresh.sweep_id.clone()]);
     let mut resources = Vec::new();
-    for r in rows(store, &sweep::table(source, "resources"), &["resource_id", "resource_kind", "visibility_class", "acl_observed_at", "acl_sweep_kind", "acl_sweep_id"])? {
-        if !current(&r) {
-            continue;
-        }
+    for r in rows_of(store, &sweep::table(source, "resources"), &["resource_id", "resource_kind", "visibility_class", "acl_observed_at", "acl_sweep_kind", "acl_sweep_id"], Some(&current))? {
         resources.push(ResourceRow {
             resource_id: text(&r, "resource_id")?,
             resource_kind: text(&r, "resource_kind")?,
@@ -106,10 +126,7 @@ pub fn state(store: &Store, source: &str) -> Result<SourceState> {
         });
     }
     let mut grants = Vec::new();
-    for r in rows(store, &sweep::table(source, "grants"), &["resource_id", "principal", "principal_kind", "level", "acl_observed_at", "acl_sweep_kind", "acl_sweep_id"])? {
-        if !current(&r) {
-            continue;
-        }
+    for r in rows_of(store, &sweep::table(source, "grants"), &["resource_id", "principal", "principal_kind", "level", "acl_observed_at", "acl_sweep_kind", "acl_sweep_id"], Some(&current))? {
         grants.push(GrantRow {
             resource_id: text(&r, "resource_id")?,
             principal: text(&r, "principal")?,
@@ -121,6 +138,38 @@ pub fn state(store: &Store, source: &str) -> Result<SourceState> {
         });
     }
     Ok(SourceState { resources, grants, freshness: Some(fresh) })
+}
+
+/// The principals of `source`'s current run.
+pub fn principals(store: &Store, source: &str) -> Result<Vec<PrincipalRow>> {
+    let Some(fresh) = freshness(store, source)? else { return Ok(Vec::new()) };
+    let current = BTreeSet::from([fresh.sweep_id]);
+    let mut out: Vec<PrincipalRow> = rows_of(store, &sweep::table(source, "principals"), &["principal", "principal_kind"], Some(&current))?
+        .iter()
+        .map(|r| Ok(PrincipalRow { principal: text(r, "principal")?, principal_kind: text(r, "principal_kind")? }))
+        .collect::<Result<_>>()?;
+    out.sort();
+    Ok(out)
+}
+
+/// Every tombstone `source`'s committed runs landed, in revocation order.
+pub fn tombstones(store: &Store, source: &str) -> Result<Vec<Tombstone>> {
+    let runs = committed(store, source)?;
+    if runs.is_empty() {
+        return Ok(Vec::new());
+    }
+    let mut out = Vec::new();
+    for r in rows_of(store, &sweep::table(source, "tombstones"), &["scope", "resource_id", "principal", "level", "revoked_at"], Some(&runs))? {
+        let scope = match text(&r, "scope")?.as_str() {
+            "grant" => "grant",
+            "resource" => "resource",
+            other => return Err(ContextError::Invalid(format!("tombstone scope `{other}`"))),
+        };
+        let opt = |c: &str| r.get(c).and_then(Value::as_str).map(str::to_string);
+        out.push(Tombstone { scope, resource_id: text(&r, "resource_id")?, principal: opt("principal"), level: opt("level"), revoked_at: required(&r, "revoked_at")? });
+    }
+    out.sort_by(|a, b| (a.revoked_at, &a.resource_id, &a.principal).cmp(&(b.revoked_at, &b.resource_id, &b.principal)));
+    Ok(out)
 }
 
 /// The governed resources of `binding`'s table: each distinct `resource_key` value its rows

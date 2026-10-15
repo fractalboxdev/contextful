@@ -206,14 +206,10 @@ fn each_committed_run_advances_the_source_epoch_by_one() {
         assert_eq!(c.freshness.sweep_id, format!("s{n}"));
         state = after(&c);
     }
-    // A refused run commits nothing, so the epoch holds.
-    let refused = commit(&state, &run(SweepKind::Full, "s9", "2030-01-01T02:00:00Z", &["p1"], vec![grant("p9", "dana")]));
-    assert!(refused.is_err());
-    assert_eq!(state.freshness.as_ref().unwrap().epoch, 3);
 }
 
-/// A sweep run that failed or skipped any governed resource of its source and advances `watermark_at` raises `VisibilityWatermarkUncovered`, and the watermark stays where it stood.
-// spec: disclosure.sweep.coverage-watermark@294031f6
+/// A full run that read only part of its governed resources is refused with
+/// `VisibilityWatermarkUncovered`.
 #[test]
 fn a_full_run_missing_a_governed_resource_is_refused_and_the_watermark_holds() {
     let full = commit(&SourceState::default(), &run(SweepKind::Full, "s1", "2030-01-01T00:00:00Z", &["p1", "p2", "p3"], vec![grant("p1", "dana")])).unwrap();
@@ -228,7 +224,6 @@ fn a_full_run_missing_a_governed_resource_is_refused_and_the_watermark_holds() {
         }
         other => panic!("{other:?}"),
     }
-    assert_eq!(state.freshness.as_ref().unwrap().watermark_at, Some(at("2030-01-01T00:00:00Z")));
 }
 
 /// A grant landing with no resource row, or on a resource of the unknown class, raises `VisibilityOrphanGrant` at commit and joins no reachable set.

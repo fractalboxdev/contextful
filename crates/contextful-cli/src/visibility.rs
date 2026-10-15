@@ -1,7 +1,7 @@
 //! `contextful visibility` — the mirrored permission state of a declared source
 //! (`disclosure.sweep.sweep-verb`).
 //!
-//! A thin adapter: it reads the manifest's visibility blocks and `[[acl_sweep]]` blocks,
+//! A thin adapter: it reads the declaration set's visibility blocks and `[[acl_sweep]]` blocks,
 //! the `--grants` file, and calls the store adapter, which computes and lands the run.
 
 use crate::clock::SystemClock;
@@ -25,7 +25,8 @@ pub enum VisibilityCmd {
         /// directory; absent, the nearest `contextful.toml` upward names it.
         #[arg(long)]
         project: Option<String>,
-        /// The manifest holding the `[[acl_sweep]]` block; absent, the project's `contextful.toml`.
+        /// The declaration whose set (it and `pipelines/*.toml` beside it) holds the
+        /// `[[acl_sweep]]` block; absent, the project's `contextful.toml`.
         #[arg(long)]
         declaration: Option<PathBuf>,
         /// The `source` of an `[[acl_sweep]]` block.
@@ -49,9 +50,9 @@ pub fn run(cmd: VisibilityCmd) -> Result<()> {
             let kind = SweepKind::parse(&kind).context("`--kind` is `full` or `incremental`")?;
             let l = locate(project.as_deref(), declaration)?;
             let text = std::fs::read_to_string(&l.declaration).with_context(|| format!("reading the declaration `{}`", l.declaration.display()))?;
-            let blocks = SweepBlock::parse_manifest(&text).with_context(|| format!("`{}`", l.declaration.display()))?;
+            let blocks = SweepBlock::parse_set(&crate::project::manifests(&l.declaration)?)?;
             let Some(block) = blocks.into_iter().find(|b| b.source == source) else {
-                bail!("`{}` declares no `[[acl_sweep]]` block for source `{source}`", l.declaration.display());
+                bail!("`{}` and its `pipelines/` declare no `[[acl_sweep]]` block for source `{source}`", l.declaration.display());
             };
             let Some(grants) = grants else {
                 bail!("source `{source}`: reading the permission endpoint under `credential` takes a connector; pass `--grants <file>`");
