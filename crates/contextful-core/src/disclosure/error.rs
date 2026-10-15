@@ -88,6 +88,24 @@ pub enum DisclosureError {
     /// A declared `max_contributor_share` lies outside `(0, 1]`. (`disclosure.suppress.contributor-share`)
     #[error("DisclosureShareOutOfRange: {0}")]
     ShareOutOfRange(String),
+    /// A contributing unit's reservation failed; nothing is published. (`disclosure.release.budget-reservation`)
+    #[error("DisclosureUnitBudgetExhausted: {0}")]
+    UnitBudgetExhausted(String),
+    /// A noised sum has no finite bounds or positive quantum. (`disclosure.release.metric-bounds`)
+    #[error("DisclosureMetricBoundsAbsent: {0}")]
+    MetricBoundsAbsent(String),
+    /// A carried non-grain column is not constant within its group. (`disclosure.release.duplicate-grain`)
+    #[error("DisclosureDuplicateGrain: {0}")]
+    DuplicateGrain(String),
+    /// A group key is not a subset of the permitted grouping columns. (`disclosure.release.group-key`)
+    #[error("DisclosureGroupKeyNotPermitted: {0}")]
+    GroupKeyNotPermitted(String),
+    /// A governed statement omits the contributor key. (`disclosure.release.contributor-key`)
+    #[error("DisclosureContributorKeyAbsent: {0}")]
+    ContributorKeyAbsent(String),
+    /// A published column is forbidden. (`disclosure.release.forbidden-column`)
+    #[error("DisclosureForbiddenColumnPublished: {0}")]
+    ForbiddenColumnPublished(String),
 }
 
 impl DisclosureError {
@@ -102,6 +120,12 @@ impl DisclosureError {
             DisclosureError::MinGroupSizeBelowFloor(_) => "DisclosureMinGroupSizeBelowFloor",
             DisclosureError::PolicySuppressesNothing(_) => "DisclosurePolicySuppressesNothing",
             DisclosureError::ShareOutOfRange(_) => "DisclosureShareOutOfRange",
+            DisclosureError::UnitBudgetExhausted(_) => "DisclosureUnitBudgetExhausted",
+            DisclosureError::MetricBoundsAbsent(_) => "DisclosureMetricBoundsAbsent",
+            DisclosureError::DuplicateGrain(_) => "DisclosureDuplicateGrain",
+            DisclosureError::GroupKeyNotPermitted(_) => "DisclosureGroupKeyNotPermitted",
+            DisclosureError::ContributorKeyAbsent(_) => "DisclosureContributorKeyAbsent",
+            DisclosureError::ForbiddenColumnPublished(_) => "DisclosureForbiddenColumnPublished",
         }
     }
 }

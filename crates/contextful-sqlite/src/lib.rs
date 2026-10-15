@@ -2,11 +2,13 @@
 //! the run path's storage ports (`run.journal.sqlite-stores`): [`MachineCatalog`] serves
 //! the `Catalog` port from `machine.sqlite`, [`DerivedSqlite`] serves the `DerivedCatalog`
 //! port from `derived.sqlite`, and [`SqliteRunStores`] serves the journal, blob and
-//! awakeable stores from one file.
+//! awakeable stores from one file, and [`SqliteBudgetLedger`] serves the disclosure
+//! `BudgetLedger` port.
 //!
 //! The package links whichever SQLite build the host resolves for `libsqlite3-sys`; its
 //! `bundled` feature, off by default, compiles one in (`topology.package.sqlite-adapter`).
 
+mod budget;
 mod derived;
 mod export;
 mod publication;
@@ -14,6 +16,7 @@ mod machine;
 mod sealed;
 mod stores;
 
+pub use budget::SqliteBudgetLedger;
 pub use derived::DerivedSqlite;
 pub use export::{ExportLedger, ExportPosition, ExportPublication};
 pub use publication::{PublicationLedger, PublicationReceiver, SourcePublication};
