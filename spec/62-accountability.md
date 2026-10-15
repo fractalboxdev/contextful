@@ -37,7 +37,7 @@ flowchart LR
   EXPLAINER["decision explainer"]
   OPS(["operator"])
   ERASER["erasure cascade"]
-  LEDGER[("forget_requests ledger")]
+  TXN[("erasure transaction record")]
   RD -->|"span, hash-linked"| ENTRY
   RD -->|"span"| TEL
   ENTRY -->|"4096 per signed root"| SEG
@@ -46,10 +46,10 @@ flowchart LR
   ACC -->|"grants behind a decision"| EXPLAINER
   SEG -->|"window replay"| EXPLAINER
   EXPLAINER -->|"admit or deny, with coverage"| OPS
-  ERASER -->|"forget request"| LEDGER
-  ERASER -->|"tombstones"| SNAP
-  ERASER -->|"erasure entry"| ENTRY
-  LEDGER -->|"signed purge receipt"| VER
+  ERASER -->|"signed erasure entry"| ENTRY
+  ERASER -->|"survivor replacements"| TXN
+  TXN -->|"committed frontier"| SNAP
+  ERASER -->|"signed purge receipt"| OPS
 ```
 
 ## record
@@ -249,18 +249,20 @@ A subject erasure:
 
 ```mermaid
 flowchart LR
-  REQ(["requester"]) -->|"forget --subject"| G{"forget grant?"}
+  REQ(["requester"]) -->|"context erase --subject"| G{"forget grant over every table?"}
   G -->|"no: ErasureUngranted"| REQ
-  G -->|"yes, pseudonymize subject"| LEDGER[("forget_requests ledger")]
-  LEDGER -->|"open request"| CASC["erasure cascade"]
-  CASC -->|"tombstoned direct rows"| C{"provenance within 16 hops?"}
-  C -->|"no, nothing commits: ErasureCascadeUnbounded"| REQ
-  C -->|"yes, derived facts marked"| SNAP[("local snapshot")]
-  SNAP -->|"chain entry"| CHAINLOG[("audit chain")]
-  SNAP -->|"rewritten within 24 h"| FILES[("run files")]
-  SNAP -.->|"best-effort push"| BKT[("replication bucket")]
-  SNAP -->|"--fail-closed"| MARK["restaging marker"]
-  FILES -->|"refreshed copies"| REP[("replicas")]
+  G -->|"yes, HMAC the subject"| CASC["erasure cascade"]
+  CASC -->|"selected row versions"| C{"provenance within 16 hops?"}
+  C -->|"no: ErasureCascadeUnbounded"| REQ
+  C -->|"yes, survivor rows"| STAGE[("staged replacement")]
+  STAGE -->|"signed erasure entry"| CHAINLOG[("audit chain")]
+  CHAINLOG -->|"entry hash"| CERT[("transaction certificate")]
+  CERT -->|"commit"| FRONT[("erasure frontier")]
+  FRONT -->|"working copies"| TABLES[("table directories")]
+  FRONT -->|"collected within 24 h"| FILES[("retired run files")]
+  FRONT -.->|"best-effort push"| BKT[("replication bucket")]
+  FRONT -->|"--fail-closed"| MARK["restaging marker"]
+  BKT -->|"refreshed copies"| REP[("replicas")]
 ```
 
 unsettled: Is request-to-last-replica erasure within 72 h an engine bound or an operator objective, given the engine schedules no replica refresh? owner: disclosure affects: disclosure.erase
@@ -292,13 +294,13 @@ sequenceDiagram
     box Contextful
         participant P as purge
         participant S as store files
-        participant L as forget_requests ledger
+        participant L as audit chain
     end
     participant V as verifier
     O->>P: forget --tenant, no capability token
     P->>S: rewrite run files, snapshots, builds, memory mirror
     P->>P: hash tenant with fresh salt, sign payload
-    P->>L: store the receipt against request_id
+    P->>L: append the receipt entry under request_id
     P-->>O: receipt with prior_request_id
     O->>V: receipt and the tenant identifier
     V->>V: recompute hashes, check the signature
@@ -306,9 +308,11 @@ sequenceDiagram
 
 unsettled: Does the replication bucket fall inside the receipt claim once the object interface gains a delete? owner: disclosure affects: disclosure.receipt
 
+unsettled: Which record holds a purge's `request_id` so a repeat purge returns it as `prior_request_id`? owner: disclosure affects: disclosure.receipt
+
 ## Shapes
 
-The audit segment and the ledger:
+The audit segment and the erasure transaction records:
 
 ```
 .contextful/
@@ -320,11 +324,15 @@ The audit segment and the ledger:
     chain.tip               last accepted {seq, entry_hash}
     chain.held              signed {seq, entry_hash} where the issuer first held the log
     audit.lock              held by the one append group writing
-  forget/
-    <subject_hash>.stale    {subject_hash, executed_at}
-  catalog.db
-    forget_requests         request_id, tenant_hash, subject_hash,
-                            requested_at, completed_at
+  audit.key                 the 32-byte project audit key
+  context/<project>/
+    _erasure_frontier.json  {transaction_id, audit_hash, audit_seq, tables}
+    forget/
+      <subject_hash>.stale  {subject_hash, executed_at}
+    _erasure/
+      staging/<id>/         uncommitted replacements, discarded on recovery
+      committed/<id>/       signed survivor baselines and certificates
+      working/<id>/         working copies that append and fold advance
 ```
 
 A chain header:

@@ -91,6 +91,8 @@ fn ok(output: Output) -> String {
     String::from_utf8(output.stdout).unwrap().trim().to_string()
 }
 
+/// A column-scoped {{disclosure.erase.key-set}} carries a declared column and non-null scalar keys; canonical declarations select every table naming that column, including tables without subject metadata. Caller table subsets and malformed selectors follow {{disclosure.erase.unsupported-scope}}.
+// spec: disclosure.erase.column-key-set@86b72e18
 #[test]
 fn column_keyset_erases_every_declaring_table_without_subject_identity() {
     let directory = tempfile::tempdir().unwrap(); let root = directory.path();
@@ -189,6 +191,8 @@ indexes = [{kind = "fulltext", column = "trace_id"}]
     assert_eq!(serde_json::from_str::<serde_json::Value>(&ok(run(root, &query, None, Some(&pins)))).unwrap()["rows"], serde_json::json!([["0","1","1"]]));
 }
 
+/// Uncommitted staging origins resolve against canonical stored tables and require Forget over the complete store scope; signed-only recovery admits the complete authenticated frontier. Uncommitted recovery returns no transaction identity.
+// spec: disclosure.erase.unsigned-recovery@98961f73
 #[test]
 fn unpublished_recovery_requires_complete_scope_and_preserves_live_rows() {
     let directory = tempfile::tempdir().unwrap(); let root = directory.path();
@@ -273,6 +277,8 @@ fn signed_only_scope_cannot_collect_an_unrelated_unsigned_stage() {
     }
 }
 
+/// `context erase --recover --project <project>` resumes {{disclosure.erase.recovery}} under {{disclosure.erase.privilege}} and {{authority.verify.effect-boundary}} before collection; selectors and signing ports are absent.
+// spec: disclosure.erase.recovery-verb@eb5194d5
 #[test]
 fn signed_frontier_recovery_replays_without_signer_and_preserves_the_key_lifecycle() {
     let directory = tempfile::tempdir().unwrap(); let root = directory.path();

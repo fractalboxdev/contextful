@@ -22796,7 +22796,7 @@
       "statement": "`tenant_hash` is SHA-256 over a random per-receipt `salt` and the tenant identifier. A receipt carrying the identifier in cleartext raises `ReceiptIdentifierLeak` before signing.",
       "why": "A-disclosure",
       "file": "spec/62-accountability.md",
-      "line": 278
+      "line": 280
     },
     {
       "id": "disclosure.receipt.widened-claim",
@@ -22807,7 +22807,7 @@
       "statement": "A coverage block naming a scope broader than its `receipt_version` declares raises `ReceiptClaimWidened`.",
       "why": "A-disclosure",
       "file": "spec/62-accountability.md",
-      "line": 280
+      "line": 282
     },
     {
       "id": "disclosure.receipt.replayed",
@@ -22818,7 +22818,7 @@
       "statement": "Returning the byte-identical earlier artifact in place of a freshly signed one raises `ReceiptReplayed`.",
       "why": "A-disclosure",
       "file": "spec/62-accountability.md",
-      "line": 282
+      "line": 284
     },
     {
       "id": "disclosure.receipt.no-rewrite-engine",
@@ -22829,7 +22829,7 @@
       "statement": "A purge where the columnar rewrite engine is unavailable raises `ReceiptWithoutRewrite` and signs nothing.",
       "why": "because a receipt over a rewrite that did not run states a false claim",
       "file": "spec/62-accountability.md",
-      "line": 284
+      "line": 286
     },
     {
       "id": "surface.arm.unreadable-schedule",

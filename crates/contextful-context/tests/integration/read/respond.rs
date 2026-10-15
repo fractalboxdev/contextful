@@ -9,6 +9,8 @@ use serde_json::json;
 
 const VENDOR_FILE: &str = "tables/research/vendor/data/runs/run-0001/ingest-a/part-00000.parquet";
 
+/// Query, file, retrieval and cache responses resolve one erasure frontier and revalidate it before releasing bytes; an obsolete frontier releases no rows or files.
+// spec: disclosure.erase.reader-frontier@136f24a8
 #[test]
 fn a_live_session_and_cached_response_refuse_an_incomplete_erasure_frontier() {
     let manifest = MANIFEST.replace("name = \"research/notes\"", "name = \"research/notes\"\nresult_cache = \"1h\"");
@@ -19,10 +21,21 @@ fn a_live_session_and_cached_response_refuse_an_incomplete_erasure_frontier() {
     assert_eq!(r.query(&session, sql).unwrap().rows.len(), 3);
     assert_eq!(r.query(&session, sql).unwrap().rows.len(), 3);
     assert_eq!(r.face.results().unwrap().counts().hits, 1, "the retained response is a real cache hit");
+    let retrieval = RetrieveRequest::new("research/", "solar battery storage", at("2030-02-01T00:00:00Z"));
+    let listing = r.face.files(&session, Bounds::default()).unwrap();
+    let path = listing.rows[0][1].as_str().unwrap().to_string();
+    r.face.file(&session, &path, ReadOptions::default()).unwrap();
+    r.face.retrieve(&session, &retrieval, Bounds::default()).unwrap();
     std::fs::write(r.store.root().join("_erasure_frontier.json"), b"{truncated").unwrap();
     let answer = r.query(&session, sql);
     assert!(answer.is_err(), "a pre-erasure session releases rows after a disagreeing publication: {answer:?}");
     assert!(answer.unwrap_err().to_string().starts_with("ErasureTransactionIncomplete"));
+    let files = r.face.files(&session, Bounds::default());
+    assert!(files.as_ref().is_err_and(|error| error.to_string().starts_with("ErasureTransactionIncomplete")), "a file listing releases names after a disagreeing publication: {files:?}");
+    let file = r.face.file(&session, &path, ReadOptions::default());
+    assert!(file.as_ref().is_err_and(|error| error.to_string().starts_with("ErasureTransactionIncomplete")), "a file preview releases bytes after a disagreeing publication: {file:?}");
+    let ranked = r.face.retrieve(&session, &retrieval, Bounds::default());
+    assert!(ranked.as_ref().is_err_and(|error| error.to_string().starts_with("ErasureTransactionIncomplete")), "a retrieval releases rows after a disagreeing publication: {ranked:?}");
 }
 
 #[test]
