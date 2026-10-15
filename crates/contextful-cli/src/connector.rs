@@ -64,6 +64,8 @@ fn pin(path: &Path, local: bool, verify: bool) -> Result<()> {
         };
         if pinned != digest {
             eprintln!("digest drift: `{}` pins {pinned} and the rebuild produced {digest}", path.display());
+            // `exit` runs no destructor, so the build directory goes first.
+            drop(out);
             std::process::exit(DRIFT_STATUS);
         }
         println!("{digest}");

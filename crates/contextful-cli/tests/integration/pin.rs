@@ -150,6 +150,25 @@ fn verify_on_drift_names_both_digests_and_writes_nothing() {
     assert_eq!(std::fs::read(f.connector().join("probe.wasm")).unwrap(), std::fs::read(PROBE).unwrap());
 }
 
+#[test]
+fn verify_on_drift_leaves_no_build_directory_behind() {
+    let f = fixture(MANIFEST);
+    assert!(f.pin(&f.with_runtime(), PROBE, &[]).status.success());
+    let tmp = f.dir.path().join("tmp");
+    std::fs::create_dir_all(&tmp).unwrap();
+    let out = Command::new(env!("CARGO_BIN_EXE_contextful"))
+        .args(["connector", "pin", "connector.toml", "--verify"])
+        .current_dir(f.connector())
+        .env("PATH", f.with_runtime())
+        .env("TMPDIR", &tmp)
+        .env("FAKE_DOCKER_RECORD", &f.record)
+        .env("FAKE_DOCKER_WASM", PROBE_BASE)
+        .output()
+        .unwrap();
+    assert_eq!(out.status.code(), Some(3), "{}", stderr(&out));
+    assert_eq!(std::fs::read_dir(&tmp).unwrap().count(), 0, "the build directory outlived the drift exit");
+}
+
 /// `--local` builds with the host toolchain and prints a host-local digest; writing a pin from a host build raises
 /// `ConnectorHostPinRefused`.
 // spec: connector.package.host-built-pin@34b9cb88
