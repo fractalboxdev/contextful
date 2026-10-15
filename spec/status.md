@@ -11,11 +11,11 @@ An unpinned clause is `committed`; a pinned one is `performed` when its Rust, Le
 | `corpus` | 1 | 10 | 79 | 37 | 7 | 0 | 79 | 0 | 79 |
 | `disclosure` | 3 | 16 | 158 | 68 | 13 | 5 | 72 | 0 | 72 |
 | `read` | 2 | 19 | 276 | 45 | 28 | 13 | 230 | 0 | 230 |
-| `run` | 3 | 28 | 507 | 114 | 44 | 11 | 450 | 0 | 450 |
+| `run` | 3 | 28 | 507 | 114 | 44 | 11 | 457 | 0 | 457 |
 | `store` | 3 | 19 | 288 | 64 | 14 | 11 | 278 | 0 | 278 |
 | `surface` | 2 | 20 | 143 | 59 | 22 | 0 | 118 | 0 | 118 |
 | `topology` | 1 | 6 | 79 | 25 | 5 | 3 | 74 | 0 | 74 |
-| **total** | 22 | 166 | 2495 | 644 | 207 | 76 | 2028 | 0 | |
+| **total** | 22 | 166 | 2495 | 644 | 207 | 76 | 2035 | 0 | |
 
 Decision records: 18.
 
@@ -29,7 +29,7 @@ A milestone reads `closed` when its acceptance test computes `passing` and every
 | 1 — The authority core | 14 | 244 | 225 | passing | closed |
 | 2 — The store | 9 | 181 | 171 | passing | closed |
 | 3 — The run path | 12 | 270 | 254 | passing | closed |
-| 4 — Ingest | 25 | 556 | 392 | passing | open |
+| 4 — Ingest | 25 | 556 | 399 | passing | open |
 | 5 — The read face under enforcement | 17 | 308 | 242 | passing | open |
 | 6 — Sync and replicas | 8 | 83 | 83 | passing | closed |
 | 7 — Memory | 6 | 71 | 56 | passing | closed |
@@ -1173,7 +1173,14 @@ Unscheduled operations: 12.
 | `run.advance.unorderable-position` | `crates/contextful-core/tests/integration/run/advance.rs::an_unorderable_clock_value_refuses_the_pull` | performed |
 | `run.advance.watermark-shape` | `crates/contextful-core/tests/integration/run/advance.rs::a_watermark_names_its_field` | performed |
 | `run.advance.zero-row-commit` | `crates/contextful-cli/tests/integration/empty_replace.rs::a_complete_empty_snapshot_replaces_but_a_skip_and_failed_pull_do_not` | performed |
+| `run.backfill.attempt-isolation` | `crates/contextful-engine/tests/integration/chunk_lease.rs::an_expired_lease_lets_a_second_worker_claim_the_next_attempt_under_its_own_path` | performed |
 | `run.backfill.available-instant` | `crates/contextful-context/tests/integration/available_time.rs::a_backfill_of_old_history_answers_bounds_at_the_sources_instants` | performed |
+| `run.backfill.block` | `crates/contextful-core/tests/integration/run/backfill.rs::a_backfill_block_declares_a_chunk_bound_a_width_and_a_floor_defaulting_to_zero` | performed |
+| `run.backfill.chunk` | `crates/contextful-engine/tests/integration/chunk_lease.rs::a_chunk_row_records_its_completion_and_a_replanned_backfill_resumes_past_it` | performed |
+| `run.backfill.chunk-lease` | `crates/contextful-engine/tests/integration/chunk_lease.rs::a_chunk_lease_records_its_node_and_attempt_lives_300_s_and_renews_every_60_s` | performed |
+| `run.backfill.chunk-plan` | `crates/contextful-engine/tests/integration/chunk_lease.rs::a_plans_shape_follows_its_cursor_kind_and_a_sequential_plan_leases_one_chunk_at_a_time` | performed |
+| `run.backfill.commit-signal` | `crates/contextful-engine/tests/integration/chunk_lease.rs::only_a_done_row_commits_a_path_and_the_sweep_collects_paths_without_one` | performed |
+| `run.backfill.fenced-commit` | `crates/contextful-engine/tests/integration/chunk_lease.rs::two_workers_racing_one_chunk_commit_exactly_one_attempts_files` | performed |
 | `run.backfill.rewind-invalid` | `crates/contextful-engine/tests/integration/backfill.rs::an_inverted_empty_or_off_scale_window_is_refused_and_a_window_past_the_plan_rewinds_nothing` | performed |
 | `run.bind.advisory-zone` | `crates/contextful-core/tests/integration/run/derive.rs::a_row_zone_copied_from_the_advisory_key_refuses` | performed |
 | `run.bind.command-in-manifest` | `crates/contextful-core/tests/integration/run/derive.rs::an_executable_key_in_the_manifest_refuses` | performed |
