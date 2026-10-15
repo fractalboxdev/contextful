@@ -148,6 +148,7 @@ fn pin_builds_on_the_fixed_platform_and_writes_the_artifact_and_digest() {
     }
     let cache = |argv: &Vec<String>| argv.windows(2).find(|w| w[0] == "--volume" && w[1].ends_with(":/cargo")).map(|w| w[1].clone());
     assert_eq!(cache(fetch), cache(build), "the build reads the cache the fetch filled");
+    assert!(fetch.iter().any(|a| a == PLATFORM.image), "{fetch:?}");
     assert!(!fetch.windows(2).any(|w| w == ["--network", "none"]), "the fetch reaches the registry: {fetch:?}");
     let image = fetch.iter().position(|a| a == PLATFORM.image).expect("the platform image");
     assert_eq!(fetch[image + 1..], PLATFORM.fetch.iter().map(|s| s.to_string()).collect::<Vec<_>>()[..]);
