@@ -4,7 +4,7 @@
 //! per-request admission of short-lived bearers and of holder-bound credentials, each
 //! request under its own proof, the in-flight ceiling and concurrency.
 
-use contextful_agent::http::{audience, ceiling, read_request, Admitting, HttpFace, HttpRequest, HttpResponse, Revocation};
+use contextful_agent::http::{audience, ceiling, read_request, Admitting, HttpFace, HttpRequest, HttpResponse, Hydration, Revocation};
 use contextful_agent::mcp::Server;
 use contextful_context::land::{land, Batch, RunContext};
 use contextful_context::read::Face;
@@ -824,4 +824,98 @@ fn the_stop_route_admits_its_credential_before_the_stop() {
     let (status, head, _) = send(addr, &HttpRequest { method: "GET".into(), target: "/runs/run-a/stop".into(), headers: vec![], body: vec![] });
     assert_eq!(status, 405);
     assert!(head.contains("Allow: POST"), "{head}");
+}
+
+/// A listener serving `f` behind `hydration`, for the rest of the test process, and the
+/// instant its face was built: the cold start the readiness bound measures from.
+fn listen_hydrating(f: Fixture, hydration: &'static Hydration) -> (&'static Fixture, SocketAddr, std::time::Instant) {
+    let started = std::time::Instant::now();
+    let f: &'static Fixture = Box::leak(Box::new(f));
+    let clock: &'static FixedClock = Box::leak(Box::new(FixedClock(at(NOW))));
+    let admitting = Admitting { checkpoint: &f.checkpoint, audience: AUD, revocation: &no_revocation };
+    let face = Box::leak(Box::new(HttpFace::new(&f.face, clock, &f.audit, admitting, Some(4)).unwrap().with_hydration(hydration)));
+    let listener = TcpListener::bind("127.0.0.1:0").unwrap();
+    let addr = listener.local_addr().unwrap();
+    std::thread::spawn(move || face.serve(listener));
+    (f, addr, started)
+}
+
+fn health() -> HttpRequest {
+    HttpRequest { method: "GET".into(), target: "/health".into(), headers: vec![], body: vec![] }
+}
+
+/// A retrieval container reaches readiness within 8 s of a cold start, before its snapshot-set hydration completes.
+// spec: topology.publish-hostname.container-readiness@7bb583d9
+#[test]
+fn a_cold_container_reports_ready_within_8_s_while_its_snapshot_set_hydrates() {
+    let hydration: &'static Hydration = Box::leak(Box::new(Hydration::warming()));
+    let (release, pulled) = std::sync::mpsc::channel::<()>();
+    let hydrator = std::thread::spawn(move || {
+        pulled.recv().unwrap();
+        hydration.finish();
+    });
+    let (_f, addr, started) = listen_hydrating(fixture(), hydration);
+    let (status, head, answer) = send(addr, &health());
+    assert!(started.elapsed() < std::time::Duration::from_secs(8), "readiness took {:?}", started.elapsed());
+    assert_eq!(status, 200, "{head}");
+    assert_eq!(body(&answer)["hydration"], "warming");
+    assert!(!hydration.is_complete() && !hydrator.is_finished(), "readiness waits on no hydration");
+    release.send(()).unwrap();
+    hydrator.join().unwrap();
+    assert_eq!(body(&send(addr, &health()).2)["hydration"], "complete");
+}
+
+/// A request other than `GET /health` reaching a retrieval container whose snapshot-set hydration is incomplete answers as {{read.register.past-ceiling}}; `/health` names the hydration state.
+// spec: read.cache.warming-read@65c86a98
+#[test]
+fn a_read_while_the_snapshot_set_hydrates_answers_503_with_retry_after_and_admits_nothing() {
+    let key = holder(1);
+    let f = fixture();
+    let token = credential(&f.signer, "research/*", 900, Some(&key));
+    let audit_dir = f.dir.path().join("audit");
+    let recorded = contextful_policy::audit::entries(&audit_dir).unwrap().len();
+    let hydration: &'static Hydration = Box::leak(Box::new(Hydration::warming()));
+    let (_f, addr, _) = listen_hydrating(f, hydration);
+    let (status, head, _) = send(addr, &signed(&query(FAST), &token, &key));
+    assert_eq!(status, 503, "{head}");
+    assert!(head.contains("Retry-After: 1\r\n") || head.ends_with("Retry-After: 1"), "{head}");
+    let (status, head, _) = send(addr, &HttpRequest { method: "GET".into(), target: "/control/workflows".into(), headers: vec![], body: vec![] });
+    assert_eq!(status, 503, "{head}");
+    assert_eq!(contextful_policy::audit::entries(&audit_dir).unwrap().len(), recorded, "a warming container admits and records no read");
+    let (status, _, answer) = send(addr, &health());
+    assert_eq!(status, 200);
+    assert_eq!(body(&answer)["hydration"], "warming");
+}
+
+/// A cold retrieval container meets {{topology.publish-hostname.container-readiness}}; a container holding no snapshot adds a whole-store pull before its first answer.
+// spec: read.cache.cold-start@791b106f
+#[test]
+fn a_container_holding_no_snapshot_answers_its_first_read_after_the_whole_store_pull() {
+    let key = holder(1);
+    let f = fixture();
+    let token = credential(&f.signer, "research/*", 900, Some(&key));
+    let hydration: &'static Hydration = Box::leak(Box::new(Hydration::warming()));
+    let (_f, addr, started) = listen_hydrating(f, hydration);
+    let pulled = AtomicBool::new(false);
+    std::thread::scope(|s| {
+        s.spawn(|| {
+            std::thread::sleep(std::time::Duration::from_millis(300));
+            pulled.store(true, Ordering::SeqCst);
+            hydration.finish();
+        });
+        assert_eq!(send(addr, &health()).0, 200);
+        assert!(started.elapsed() < std::time::Duration::from_secs(8));
+        let deadline = std::time::Instant::now() + std::time::Duration::from_secs(5);
+        loop {
+            let (status, head, answer) = send(addr, &signed(&query(FAST), &token, &key));
+            if status == 200 {
+                assert!(pulled.load(Ordering::SeqCst), "the first answer follows the pull");
+                assert_eq!(result(&answer)["rows"].as_array().map(Vec::len), Some(2), "{}", String::from_utf8_lossy(&answer));
+                break;
+            }
+            assert_eq!(status, 503, "{head}");
+            assert!(std::time::Instant::now() < deadline, "the pull completes and reads answer");
+            std::thread::sleep(std::time::Duration::from_millis(50));
+        }
+    });
 }
