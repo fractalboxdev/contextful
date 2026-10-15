@@ -185,7 +185,7 @@ Job declaration, the closed kind union, same-tick order, the fire watermark, and
   *A-surface*
 - `standalone-snapshot` — Import and full apply retain standalone table contracts in immutable snapshot metadata; pipeline-only apply preserves that metadata, including absent metadata.
   *A-surface*
-- `applied-data-contract` — Applied store-driven and build jobs resolve table declarations and models from their snapshot; unapplied structural edits change neither input selection nor output landing contracts.
+- `applied-data-contract` — Applied store-driven and build jobs resolve standalone and pipeline table declarations and models from their snapshot; unapplied edits to them change neither input selection nor output landing contracts.
   *A-surface*
 - `applied-current-authority` — Before opening an applied job execution, differing current table authority or model disclosure refuses under {{surface.apply.validation}}; current writer admission remains authoritative.
   *because a pinned read structure must not preserve authority the live declaration has changed*

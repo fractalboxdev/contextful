@@ -181,8 +181,8 @@ Native builds open the existing host execution scope and record starts and outco
 ## Applied jobs retain structure and check current authority
 
 An applied job carries its input and output table contracts alongside resolved models.
-Standalone declarations occupy internal snapshot metadata; public memory tables keep their
-existing grammar. Pipeline-only changes preserve metadata from their expected version.
+Standalone declarations occupy internal snapshot metadata; memory tables resolve from the
+current declaration. Pipeline-only changes preserve metadata from their expected version.
 Missing contract metadata requires a full apply rather than reconstruction from mutable files.
 
 The read face uses applied structure. Before an attempt opens, current table authority and
@@ -191,8 +191,8 @@ policy. This check occurs at attempt startup, not continuously within a running 
 
 The native execution pin includes executable declarations and output membership. A pending
 execution under changed structure refuses, including after reapply. Restoring its original
-contract permits replay; no automatic rewind repeats paid work. Hosts omitting the optional
-structural identity retain their previous encoding.
+contract permits replay; no automatic rewind repeats paid work. Hosts omitting the structural
+identity pin body, statement and `as_of` alone.
 
 | Option | Lost on | Cost |
 | --- | --- | --- |

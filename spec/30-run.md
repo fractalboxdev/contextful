@@ -140,7 +140,7 @@ Recording a step's value once, resolving it on replay, and collecting what a rep
 - `open-as-of` — A store-driven job declaring no `as_of` resolves it to the instant its execution opens, recorded in the input step, so every resume reads that instant.
 - `input-pin` — A store-driven run's plan reference hashes its body name, statement and declared `as_of`, so a resume under a changed one meets {{run.own.pinned-plan-changed}} before any step replays.
   *A-surface*
-- `host-structure-pin` — A host-supplied structural identity participates in the input plan and owner pins through {{run.own.pinned-plan-changed}}; absent identity preserves the existing plan encoding and owner identities.
+- `host-structure-pin` — A host-supplied structural identity joins the input plan and owner pins through {{run.own.pinned-plan-changed}}; without one, the plan reference hashes body, statement and `as_of` alone, as {{run.journal.input-pin}} states.
   *A-surface*
 - `input-truncated` — An input statement whose response the face truncates at its row ceiling raises `RunInputTruncated` before any row runs.
   *because a silently shortened input set closes `success` as though every row ran*

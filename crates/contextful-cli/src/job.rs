@@ -189,7 +189,7 @@ pub fn run(cmd: JobCmd, bodies: &Bodies) -> Result<()> {
             let body = bodies.get(&driven.input.body).context("a validated body is registered")?;
             let site_id = site_id_for(&text, &l.declaration, site_id, site_id_env)?;
             let (authority, _) = admit.admit(project.project.as_deref(), "a store-driven job")?;
-            let store = Store::open_declared(&l.project.dir, &l.project.name, &l.declaration)?;
+            let store = crate::project::with_erasure_keys(Store::open_declared(&l.project.dir, &l.project.name, &l.declaration)?, &l.project, admit.public_key.as_deref(), admit.keyset.as_deref())?;
             let recorded_plan = body.recorded().map(|body| RecordedBodyPlan::compile(body.effects(), &driven.tables)).transpose()?;
             let effects = StoreEffects(store.clone());
             if let Some(plan) = &recorded_plan {
@@ -197,7 +197,7 @@ pub fn run(cmd: JobCmd, bodies: &Bodies) -> Result<()> {
             } else {
                 for table in &driven.tables { store.validate_writer_recording(table, None)?; }
             }
-            let face = effective.face(&l, &text)?;
+            let face = effective.face(&l, &text, admit.public_key.as_deref(), admit.keyset.as_deref())?;
             let w = wire_at(&l.project, &project.now)?;
             for reaped in w.engine.reap_orphans()? {
                 eprintln!("{reaped}: reaped as partial_failure, its owner lease lapsed");

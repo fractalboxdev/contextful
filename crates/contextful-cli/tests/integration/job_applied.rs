@@ -134,3 +134,34 @@ fn legacy_snapshot_requires_full_apply_before_job_fire() {
     ok(&applied_fire(p, &public, &token, "3", "full-upgrade", &env));
     assert_eq!(std::fs::read_to_string(ledger).unwrap().lines().count(), 3);
 }
+
+#[test]
+fn store_driven_fires_read_through_the_erasure_verifier_live_and_applied() {
+    let declaration = declaration().replacen("primary_key=[\"doc_id\"]\n", "primary_key=[\"doc_id\"]\nsubject_id=\"doc_id\"\nerasure_key=\"doc_id\"\n", 1);
+    let (dir, public, token) = project(&declaration);
+    let p = dir.path();
+    std::fs::write(p.join(".contextful/context/research/store-id"), "4b1f6c2e-8d3a-4f5b-9c7e-1a2b3c4d5e6f\n").unwrap();
+    std::fs::write(p.join("scores.jsonl"), "{\"doc_id\":\"prior\",\"score\":9}\n").unwrap();
+    ok(&cf(p, &["context", "land", "scores", "--project", "research", "--rows", "scores.jsonl", "--run-id", "prior-scores", "--site-id", "site", "--now", "2030-01-01T00:00:00Z"]));
+    ok(&scheduled_host(p, &public, &token, &["pipeline", "import", "--project", "research"], &[]));
+    let forget = ok(&cf(p, &["token", "mint", "--issuer-key", ".contextful/issuer.seed", "--on-behalf-of", "svc://scoring", "--zone", "on-prem:hq", "--action", "forget", "--table", "*", "--ttl", "600"]));
+    ok(&scheduled_host(p, &public, &forget, &["context", "erase", "--project", "research", "--subject", "d1", "--tables", "documents", "--issuer-key", ".contextful/issuer.seed", "--public-key", &public, "--audience", AUD, "--json"], &[]));
+    let live = p.join("live.txt");
+    ok(&scheduled_host(p, &public, &token, &["job", "fire", "score-documents", "--project", "research", "--run-id", "live-after-erase", "--site-id", "site", "--now", "2030-01-01T00:02:00Z"], &[("SCORE_LEDGER", live.to_str().unwrap())]));
+    assert_eq!(std::fs::read_to_string(live).unwrap().lines().count(), 2, "the erased subject is no input row");
+    let applied = p.join("applied.txt");
+    ok(&applied_fire(p, &public, &token, "1", "applied-after-erase", &[("SCORE_LEDGER", applied.to_str().unwrap())]));
+    assert_eq!(std::fs::read_to_string(applied).unwrap().lines().count(), 2, "the erased subject is no applied input row");
+}
+
+#[test]
+fn a_live_descriptive_edit_leaves_an_applied_fire_running() {
+    let declaration = declaration();
+    let (dir, public, token) = project(&declaration);
+    let p = dir.path();
+    ok(&scheduled_host(p, &public, &token, &["pipeline", "import", "--project", "research"], &[]));
+    write_manifest(p, &declaration.replacen("name=\"documents\"\n", "name=\"documents\"\nagent_hint=\"source documents\"\n", 1));
+    let ledger = p.join("paid.txt");
+    ok(&applied_fire(p, &public, &token, "1", "after-hint", &[("SCORE_LEDGER", ledger.to_str().unwrap())]));
+    assert_eq!(std::fs::read_to_string(ledger).unwrap().lines().count(), 3);
+}

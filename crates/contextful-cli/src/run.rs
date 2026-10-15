@@ -177,7 +177,8 @@ pub(crate) fn wire(args: &ProjectArgs) -> Result<Wired> {
 /// Wire the engine to a located project's run state and machine catalog.
 pub(crate) fn wire_at(project: &Project, now: &Option<String>) -> Result<Wired> {
     let remote = crate::storage::preflight(project)?;
-    let store = Store::open(&project.dir, &project.name)?;
+    // The run record reads past a published erasure frontier under the configured pins.
+    let store = crate::project::open_store(project, None, None)?;
     let root = project.run_dir();
     let clock = clock(now)?;
     let catalog_path = project.store_root().join(MACHINE_CATALOG_FILE);

@@ -211,7 +211,7 @@ pub(crate) fn fire_job(
     // Publication bindings belong to local delivery, independently of the applied model.
     let grouped = crate::export::publication::validate_job(local,&job.name,std::slice::from_ref(&spec.id))?;
     let _publication = if grouped {Some(crate::export::publication::lock(located)?)} else {None};
-    let face = effective.face(located, local)?;
+    let face = effective.face(located, local, None, None)?;
     let structure = effective.structural_identity(std::slice::from_ref(&spec.id))?;
     let site = site_id_for(local, &located.declaration, site_id, site_id_env)?;
     let wire = crate::run::wire_at(&located.project, &project.now)?;

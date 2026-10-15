@@ -1,7 +1,7 @@
 //! Applied executable declarations, separate from live runtime and writer authority.
 
 use anyhow::{Context, Result};
-use contextful_context::{read::Face, Store};
+use contextful_context::read::Face;
 use contextful_core::memory::declare::MemoryDeclarations;
 use contextful_core::pipeline::declare::{collect, ManifestFile, PipelineSpec};
 use contextful_core::pipeline::model::{collect_models, ModelSpec};
@@ -11,8 +11,9 @@ use contextful_core::surface::SurfaceError;
 use contextful_policy::enforce::mask::Pepper;
 use serde::Deserialize;
 use std::collections::{BTreeMap, BTreeSet};
+use std::path::Path;
 
-/// Private snapshot field; public declarations retain their existing table syntax.
+/// The private snapshot field; public declarations use the `[[pipeline.tables]]` syntax.
 pub(crate) fn snapshot_tables(text: &str) -> Result<Option<Vec<TableDecl>>> {
     #[derive(Deserialize)]
     struct Snapshot { standalone_tables: Option<Vec<TableDecl>> }
@@ -30,7 +31,7 @@ pub(crate) fn public_manifest(mut file: ManifestFile) -> Result<ManifestFile> {
     Ok(file)
 }
 
-/// Standalone legacy declarations are independent of named source specifications.
+/// Standalone table declarations, independent of named source specifications.
 pub(crate) fn standalone_tables(files: &[ManifestFile]) -> Result<Vec<TableDecl>> {
     let mut tables = Vec::new();
     for file in files.iter().filter(|f| !f.path.ends_with(".json")) {
@@ -119,10 +120,16 @@ impl Effective {
     }
 
     /// Current authority must agree before an applied structure can serve a new attempt.
-    pub fn face(&self, located: &crate::project::Located, local: &str) -> Result<Face> {
+    /// The store carries the erasure verifier the issuer pins configure, so a fire reads
+    /// past a published erasure frontier.
+    pub fn face(&self, located: &crate::project::Located, local: &str, public_key: Option<&str>, keyset: Option<&Path>) -> Result<Face> {
         let pepper = || Pepper::resolve(|k| std::env::var(k).ok());
-        let store = Store::open(&located.project.dir, &located.project.name)?;
-        let face = Face::open_declared(store.clone(), &self.main, &self.files, pepper())?;
+        let store = crate::project::open_store(&located.project, public_key, keyset)?;
+        let resolved = pepper();
+        if let Some(signal) = resolved.signal() {
+            eprintln!("{signal}");
+        }
+        let face = Face::open_declared(store.clone(), &self.main, &self.files, resolved)?;
         if self.applied {
             let live_files = crate::project::pipeline_files(&located.declaration)?;
             let live = Face::open_declared(store, local, &live_files, pepper())?;
@@ -149,10 +156,12 @@ impl Effective {
     }
 }
 
-/// Unknown future fields remain checked; only these executable structure fields may drift.
+/// The read and erasure authority fields of a declaration; descriptive and structural
+/// fields drift freely between an apply and a fire.
+const AUTHORITY: [&str; 10] = ["class", "policy", "redaction", "visibility", "private", "subject_id", "erasure_key", "referenced_by", "on_erase", "replicate"];
+
 fn authority(declaration: &TableDecl) -> Result<serde_json::Value> {
-    let mut value = serde_json::to_value(declaration)?;
-    let table = value.as_object_mut().context("table declaration serializes as an object")?;
-    for key in ["primary_key", "order_by", "write_mode", "columns"] { table.remove(key); }
-    Ok(value)
+    let value = serde_json::to_value(declaration)?;
+    let table = value.as_object().context("table declaration serializes as an object")?;
+    Ok(serde_json::Value::Object(AUTHORITY.iter().filter_map(|key| table.get(*key).map(|v| (key.to_string(), v.clone()))).collect()))
 }
