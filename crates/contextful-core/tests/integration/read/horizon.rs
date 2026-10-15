@@ -63,6 +63,7 @@ fn a_bound_later_than_the_horizon_is_refused() {
         as_of: Some(Bound::parse("2030-01-01T00:00:00Z").unwrap()),
         valid_as_of: Some(Bound::parse("2031-01-01T00:00:00Z").unwrap()),
         available_as_of: None,
+        ..Bounds::default()
     };
     let inherited = inherit(h, future).unwrap();
     assert_eq!(inherited.as_of, future.as_of);
