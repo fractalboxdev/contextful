@@ -4,10 +4,10 @@
 //! answers no `available_as_of` read between the two, and answers one after acceptance.
 
 use contextful_acceptance::stdio::Session;
-use contextful_acceptance::{bin, GitRepo};
+use contextful_acceptance::{bin, workspace_root, GitRepo};
 use serde_json::{json, Value};
 use std::path::Path;
-use std::process::Output;
+use std::process::{Command, Output};
 
 const AUD: &str = "contextful://acme-research";
 
@@ -205,4 +205,66 @@ fn m15_horizon() {
     let part = rows(&listed).as_array().unwrap()[0][1].clone();
     let previewed = read("context.file", json!({ "path": part }));
     assert_eq!(rows(&previewed).as_array().unwrap().len(), 1, "{previewed}");
+}
+
+const SWEEP: &str = r#"authoring_posture = "per_request"
+[[pipeline.tables]]
+name = "filings"
+columns = { accepted_at = "timestamp" }
+
+[pipeline.tables.available_time]
+column = "accepted_at"
+
+[[pipeline.tables]]
+name = "scores"
+
+[[job]]
+name = "score-filings"
+kind = "store-driven"
+body = "score"
+statement = "SELECT doc_id, body FROM filings ORDER BY doc_id"
+as_of = "2030-02-01T00:00:00Z"
+tables = ["scores"]
+max_in_flight = 1
+sweep = { start = "2030-01-01T00:00:00Z", end = "2030-01-12T00:00:00Z", step = "1d" }
+"#;
+
+#[test]
+#[ignore = "milestone 15 is open"]
+fn m15_sweep_reads_a_backfilled_row_from_its_availability_origin() {
+    let cf = bin("contextful");
+    let status = Command::new(env!("CARGO")).args(["build", "--locked", "-q", "-p", "contextful-cli", "--example", "store_driven"]).current_dir(workspace_root()).status().unwrap();
+    assert!(status.success());
+    let host = cf.parent().unwrap().join("examples/store_driven").with_extension(std::env::consts::EXE_EXTENSION);
+    let p = GitRepo::init();
+    p.write(".contextful/context/research/config.toml", "[node]\nid = 'body-a'\n");
+    p.write(".contextful/issuance.toml", &format!("default_audience = \"{AUD}\"\nmax_lifetime_secs = 3600\n"));
+    p.write("contextful.toml", SWEEP);
+
+    // Three filings public since December and one planted filing accepted on 7 January, all
+    // backfilled in one landing on 20 January, after every origin.
+    let rows = [("f1", "2029-12-01T00:00:00Z"), ("f2", "2029-12-02T00:00:00Z"), ("f3", "2029-12-03T00:00:00Z"), ("planted", "2030-01-07T00:00:00Z")];
+    let lines: Vec<String> = rows.iter().map(|(id, at)| json!({ "doc_id": id, "body": "public filing", "accepted_at": at }).to_string()).collect();
+    p.write("filings.jsonl", &lines.join("\n"));
+    ok(&p.run(&cf, &["context", "land", "filings", "--project", "research", "--rows", "filings.jsonl", "--run-id", "backfill", "--site-id", "site-a", "--now", "2030-01-20T00:00:00Z"]));
+    let public = ok(&p.run(&cf, &["token", "keygen", "--out", ".contextful/issuer.seed"]));
+    let token = ok(&p.run(&cf, &["token", "mint", "--issuer-key", ".contextful/issuer.seed", "--on-behalf-of", "svc://sweep", "--zone", "on-prem:hq", "--table", "filings", "--ttl", "600"]));
+
+    let fired = ok(&p.run_env(&host, &["job", "fire", "score-filings", "--project", "research", "--run-id", "sweep-1", "--site-id", "site-a", "--now", "2030-02-02T00:00:00Z", "--public-key", &public, "--audience", AUD], &[("CONTEXTFUL_TOKEN", &token)]));
+    let origins: Vec<(String, u64)> = fired
+        .lines()
+        .filter_map(|l| {
+            let rest = l.strip_prefix("score-filings: origin ")?;
+            let origin = rest.split_whitespace().next()?.to_string();
+            let input = rest.split(" from ").nth(1)?.split_whitespace().next()?.parse().ok()?;
+            Some((origin, input))
+        })
+        .collect();
+    assert_eq!(origins.len(), 12, "{fired}");
+    let first = origins.iter().find(|(_, n)| *n == 4).unwrap_or_else(|| panic!("{fired}"));
+    assert_eq!(first.0, "2030-01-07T00:00:00.000000000Z", "the planted row first shows at the origin where it becomes available: {fired}");
+    let before: Vec<&(String, u64)> = origins.iter().take_while(|(o, _)| o != &first.0).collect();
+    assert_eq!(before.len(), 6, "{fired}");
+    assert!(!before.is_empty() && before.iter().all(|(_, n)| *n == 3), "{fired}");
+    assert!(fired.lines().last().unwrap().contains("sweep") && fired.contains("12 origins"), "{fired}");
 }

@@ -29,6 +29,7 @@ mod scheduler;
 mod stores;
 mod support;
 mod suspend;
+mod sweep;
 
 use contextful_core::run::record::{Phase, RunRow, RunStatus};
 

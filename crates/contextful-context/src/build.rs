@@ -284,6 +284,8 @@ mod materialize {
     use contextful_core::read::guard::{admit, Admitted};
     use contextful_core::read::template::Bindings;
     use contextful_core::store::declare::TableDecl;
+    use contextful_core::store::bound_time::Bounds;
+    use contextful_core::store::StoreError;
     use contextful_core::store::lay_out::{part_name, PartEntry, SnapshotId};
     use contextful_core::store::reconcile::{Column, ColumnType, FloatItem, Schema};
     use contextful_core::store::relation::{ident, literal};
@@ -300,6 +302,8 @@ mod materialize {
         pub started_at: Instant,
         /// The instant the build commits as `last_built_at`.
         pub completed_at: Instant,
+        /// The availability bound every input reads at (`run.model.build-horizon`).
+        pub available_as_of: Option<contextful_core::store::bound_time::Bound>,
     }
 
     /// What a published build committed.
@@ -558,13 +562,18 @@ mod materialize {
         let own = face.decl(&spec.id);
 
         let engine = SqlEngine::raw_with_key(store.parquet_key())?;
-        let tables = face.register_operator(&engine)?;
+        let bounds = Bounds { available_as_of: req.available_as_of, ..Bounds::default() };
+        let tables = face.register_operator(&engine, bounds)?;
         let sql = spec.sql.trim().trim_end_matches(';');
         let admitted = admit_sql(&engine, spec, |n| tables.iter().any(|t| t == n))?;
         for t in &admitted.relations {
             check_unrestricted(&spec.id, &face.decl(t))?;
+            // Every input reads at the horizon, so one declaring no availability time refuses.
+            if req.available_as_of.is_some() && face.decl(t).available_time.is_none() {
+                return Err(StoreError::StoreAvailableTimeUndeclared(format!("model `{}` reads table `{t}`, which declares no `available_time`", spec.id)).into());
+            }
         }
-        let mut watermark = Watermark::default();
+        let mut watermark = Watermark { horizon: req.available_as_of.map(|b| b.at), ..Watermark::default() };
         for t in &admitted.relations {
             let (f, at) = frontier(store, &face.decl(t))?;
             watermark.at = watermark.at.max(at);

@@ -20,6 +20,7 @@ pub mod project;
 pub mod record;
 pub mod retry;
 pub mod suspend;
+pub mod sweep;
 
 pub use error::RunError;
 pub use failure::{Failure, FailureTag};

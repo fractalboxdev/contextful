@@ -90,12 +90,20 @@ pub struct StoreInput {
     pub body: String,
     pub statement: String,
     pub as_of: Option<String>,
+    /// The sweep origin this run reads at, when the job declares a sweep.
+    pub sweep: Option<super::sweep::OriginPin>,
 }
 
 impl StoreInput {
     /// The content hash of the body name, statement and declared `as_of`.
+    /// A sweep origin's reference also hashes the sweep declaration and its origin
+    /// (`run.sweep.origin-pin`).
     pub fn plan_ref(&self) -> String {
-        let canonical = json!({ "kind": "store-driven", "body": self.body, "statement": self.statement, "as_of": self.as_of });
+        let mut canonical = json!({ "kind": "store-driven", "body": self.body, "statement": self.statement, "as_of": self.as_of });
+        if let Some(pin) = &self.sweep {
+            canonical["sweep"] = json!(pin.declaration);
+            canonical["origin"] = json!(pin.origin);
+        }
         sha256_hex(canonical.to_string().as_bytes())
     }
 
@@ -104,6 +112,10 @@ impl StoreInput {
     pub fn pins(&self) -> OwnerPins {
         let mut identities = BTreeMap::from([("body".to_string(), self.body.clone()), ("statement".to_string(), sha256_hex(self.statement.as_bytes()))]);
         identities.insert("as_of".to_string(), self.as_of.clone().unwrap_or_else(|| "open".to_string()));
+        if let Some(pin) = &self.sweep {
+            identities.insert("sweep".to_string(), sha256_hex(pin.declaration.as_bytes()));
+            identities.insert("origin".to_string(), pin.origin.clone());
+        }
         PlanPins { plan_ref: self.plan_ref(), identities }.into()
     }
 }
@@ -140,7 +152,7 @@ impl InputSet {
 
     /// The bounds the run row carries (`run.record.input-bounds`).
     pub fn bounds(&self) -> InputBounds {
-        InputBounds { as_of: self.as_of.clone(), snapshots: self.snapshots.clone(), rows: self.rows.len() as u64 }
+        InputBounds { as_of: self.as_of.clone(), snapshots: self.snapshots.clone(), rows: self.rows.len() as u64, ..InputBounds::default() }
     }
 
     /// Every input row under its row key, in recorded order.

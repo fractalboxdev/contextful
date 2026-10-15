@@ -3,6 +3,7 @@
 #![cfg(feature = "read")]
 
 mod audit;
+mod carried;
 mod enforce;
 mod extension;
 mod fulltext;
@@ -140,7 +141,7 @@ pub fn build_model(face: &Face, models: &str, id: &str, now: &str) -> contextful
     use contextful_core::pipeline::model::collect_models;
     let files = [ManifestFile { path: "contextful.toml".into(), text: models.to_string() }];
     let spec = collect_models(&files, &collect(&files).unwrap()).unwrap().into_iter().find(|m| m.spec.id == id).unwrap().spec;
-    build(face, &BuildRequest { model: &spec, site_id: "site-a", started_at: at(now), completed_at: at(now) }).unwrap()
+    build(face, &BuildRequest { model: &spec, site_id: "site-a", started_at: at(now), completed_at: at(now), available_as_of: None }).unwrap()
 }
 
 pub fn land_rows(store: &Store, table: &str, run: &str, rows: Value) {

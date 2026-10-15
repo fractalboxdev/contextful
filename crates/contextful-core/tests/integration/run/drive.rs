@@ -31,7 +31,7 @@ fn a_truncated_input_response_refuses_and_a_whole_one_keys_each_row() {
 
 #[test]
 fn the_plan_reference_moves_with_the_body_statement_and_as_of_and_labels_scope_to_the_row() {
-    let base = StoreInput { body: "score".into(), statement: "SELECT 1".into(), as_of: None };
+    let base = StoreInput { body: "score".into(), statement: "SELECT 1".into(), as_of: None, sweep: None };
     let moved = [
         StoreInput { body: "rank".into(), ..base.clone() },
         StoreInput { statement: "SELECT 2".into(), ..base.clone() },

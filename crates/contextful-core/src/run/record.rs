@@ -189,11 +189,19 @@ pub struct RunRow {
 
 /// The input a store-driven run read: the resolved `as_of`, the snapshot id per table the
 /// statement touched, and the row count (`run.record.input-bounds`).
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
 pub struct InputBounds {
     pub as_of: String,
     pub snapshots: std::collections::BTreeMap<String, String>,
     pub rows: u64,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub available_as_of: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub valid_as_of: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub sweep_id: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub origin: Option<String>,
 }
 
 fn is_zero(n: &u64) -> bool {

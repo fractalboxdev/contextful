@@ -304,3 +304,37 @@ fn refused_at(out: &Output, error: &str) -> String {
     assert!(stderr.contains(&format!(": {error}:")), "expected {error}, got: {stderr}");
     stderr
 }
+
+/// `contextful build <model> --available-as-of <t>` reads every input at `available_as_of` equal to `t` and records `t` as the watermark's `horizon`; a build without the flag records a null horizon.
+// spec: run.model.build-horizon@d3d41c05
+#[test]
+fn a_build_at_a_horizon_reads_inputs_available_by_it_and_records_it() {
+    let dir = tempfile::tempdir().unwrap();
+    let p = dir.path();
+    let declaration = DECLARATION.replace("name = \"events\"\n", "name = \"events\"\ncolumns = { published_at = \"timestamp\" }\n\n[pipeline.tables.available_time]\ncolumn = \"published_at\"\n");
+    std::fs::write(p.join("contextful.toml"), &declaration).unwrap();
+    // Three events backfilled in one landing, published on three days.
+    std::fs::write(
+        p.join("events.jsonl"),
+        "{\"day\":\"d1\",\"published_at\":\"2029-12-01T00:00:00Z\"}\n{\"day\":\"d1\",\"published_at\":\"2029-12-10T00:00:00Z\"}\n{\"day\":\"d2\",\"published_at\":\"2029-12-20T00:00:00Z\"}\n",
+    )
+    .unwrap();
+    stdout(&run(p, &["context", "land", "events", "--rows", "events.jsonl", "--run-id", "r1", "--site-id", "site-a", "--now", "2030-01-01T00:00:00Z"]));
+
+    let bounded: Value = serde_json::from_str(&stdout(&run(p, &["build", "daily", "--site-id", "site-a", "--now", "2030-01-01T01:00:00Z", "--available-as-of", "2029-12-15T00:00:00Z", "--json"]))).unwrap();
+    assert_eq!(bounded["rows"], 1, "{bounded}");
+    assert_eq!(bounded["watermark"]["horizon"], "2029-12-15T00:00:00Z", "{bounded}");
+    let read: Value = serde_json::from_str(&stdout(&run(p, &["query", "--json", "--project", "research", "SELECT day, n FROM daily ORDER BY day"]))).unwrap();
+    assert_eq!(read["rows"], serde_json::json!([["d1", "2"]]));
+
+    let open = build(p, "2030-01-01T02:00:00Z");
+    assert_eq!(open["rows"], 2);
+    assert_eq!(open["watermark"]["horizon"], Value::Null, "{open}");
+    assert!(open["watermark"].as_object().unwrap().contains_key("horizon"), "a build without the flag records a null horizon");
+
+    // An input declaring no availability time refuses the bound rather than reading past it.
+    let plain = project();
+    let out = run(plain.path(), &["build", "daily", "--site-id", "site-a", "--now", "2030-01-01T01:00:00Z", "--available-as-of", "2029-12-15T00:00:00Z"]);
+    assert!(!out.status.success());
+    assert!(String::from_utf8_lossy(&out.stderr).contains("StoreAvailableTimeUndeclared"), "{}", String::from_utf8_lossy(&out.stderr));
+}

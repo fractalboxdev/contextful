@@ -4,6 +4,7 @@
 
 use crate::pipeline::declare::PipelineSpec;
 use crate::run::drive::{ItemPolicy, StoreInput};
+use crate::run::sweep::Sweep;
 use serde::Deserialize;
 use std::collections::BTreeMap;
 
@@ -73,6 +74,8 @@ struct Block {
     #[serde(default)]
     isolated_items: Option<ItemPolicy>,
     #[serde(default)]
+    sweep: Option<Sweep>,
+    #[serde(default)]
     source: Option<String>,
     #[serde(default)]
     endpoint: Option<String>,
@@ -98,6 +101,8 @@ pub struct StoreDriven {
     /// The tables the body's rows land in.
     pub tables: Vec<String>,
     pub isolated_items: Option<ItemPolicy>,
+    /// One run per origin (`run.sweep.origins`).
+    pub sweep: Option<Box<Sweep>>,
 }
 
 /// A synthesize job's declaration: the source table a pass reads and the inference
@@ -196,6 +201,9 @@ fn check(value: toml::Value, registered: &dyn Fn(&str) -> bool) -> Result<Job, J
     if !matches!(kind, JobKind::StoreDriven(_)) && block.isolated_items.is_some() {
         return Err(JobError::Invalid(format!("job `{name}` carries unknown key `isolated_items`")));
     }
+    if !matches!(kind, JobKind::StoreDriven(_)) && block.sweep.is_some() {
+        return Err(JobError::Invalid(format!("job `{name}` carries unknown key `sweep`")));
+    }
     if let Some(key) = block.other.keys().next() {
         return Err(JobError::Invalid(format!("job `{name}` carries unknown key `{key}`")));
     }
@@ -236,7 +244,19 @@ fn store_driven(block: &Block, registered: &dyn Fn(&str) -> bool) -> Result<Stor
         return Err(JobError::Invalid(format!("job `{name}` declares no output `tables`")));
     }
     if let Some(policy) = &block.isolated_items { policy.validate().map_err(|e| JobError::Invalid(e.to_string()))?; }
-    Ok(StoreDriven { input: StoreInput { body, statement, as_of: block.as_of.clone() }, max_in_flight, tables: block.tables.clone(), isolated_items:block.isolated_items.clone() })
+    if let Some(sweep) = &block.sweep {
+        if block.isolated_items.is_some() {
+            return Err(JobError::Invalid(format!("job `{name}` declares both `sweep` and `isolated_items`")));
+        }
+        // A declared `as_of` holds the sweep's end at validation (`run.sweep.origin-after-open`).
+        let declared = block.as_of.as_deref().map(crate::time::Instant::parse).transpose().map_err(|e| JobError::Invalid(format!("job `{name}`: `as_of`: {e}")))?;
+        match declared {
+            Some(as_of) => sweep.origins_at(as_of).map(drop),
+            None => sweep.origins().map(drop),
+        }
+        .map_err(|e| JobError::Invalid(format!("{e} (job `{name}`)")))?;
+    }
+    Ok(StoreDriven { input: StoreInput { body, statement, as_of: block.as_of.clone(), sweep: None }, max_in_flight, tables: block.tables.clone(), isolated_items:block.isolated_items.clone(), sweep: block.sweep.clone().map(Box::new) })
 }
 
 /// The tables a manifest's jobs may target: every destination table its pipelines and

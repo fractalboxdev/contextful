@@ -387,6 +387,10 @@ pub struct InputFrontier {
 pub struct Watermark {
     pub at: Option<Instant>,
     pub inputs: BTreeMap<String, InputFrontier>,
+    /// The `available_as_of` every input read at, null for a build without one
+    /// (`run.model.build-horizon`).
+    #[serde(default)]
+    pub horizon: Option<Instant>,
 }
 
 /// The section a published build commits in its snapshot manifest

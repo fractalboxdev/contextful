@@ -447,17 +447,31 @@ impl Face {
     /// credential cannot read, and the pin never widens to the latest state
     /// (`read.resolve-pin.unknown-build`).
     pub fn session_pinned(&self, authority: &AdmittedAuthority, request: &Request<'_>, bounds: Bounds, pins: &Pins) -> Result<Session, ReadFault> {
+        self.session_with(authority, request, bounds, pins, &Carried::new())
+    }
+
+    /// [`Face::session`] with each table `carried` names resolved at its own `as_of`: a
+    /// carried sweep reads the job's output tables at the preceding origin's commit and every
+    /// other table at the sweep's `as_of` (`run.sweep.carried-state`). The map joins the pool key.
+    pub fn session_carried(&self, authority: &AdmittedAuthority, request: &Request<'_>, bounds: Bounds, carried: &Carried) -> Result<Session, ReadFault> {
+        self.session_with(authority, request, bounds, &Pins::default(), carried)
+    }
+
+    fn session_with(&self, authority: &AdmittedAuthority, request: &Request<'_>, bounds: Bounds, pins: &Pins, carried: &Carried) -> Result<Session, ReadFault> {
         let tables = self.tables()?;
         let granted: Vec<String> = tables.iter().filter(|t| raw_read_covers(authority.grants(), t)).cloned().collect();
         if let Some((table, build)) = pins.iter().find(|(t, _)| !granted.iter().any(|g| g == t)) {
             return Err(super::pin::unavailable(table, build, None));
         }
-        let principal = pool::principal(authority, request, bounds, pins);
+        let mut principal = pool::principal(authority, request, bounds, pins);
+        if !carried.is_empty() {
+            principal = Sha256::new().chain_update(principal).chain_update(format!("{carried:?}").as_bytes()).finalize().into();
+        }
         let state = pool::store_state(&self.store, &tables, &granted)?;
         self.pool.session(principal, state, || {
             let sources = granted
                 .iter()
-                .map(|t| self.source(t, bounds.for_table(&self.decl(t)), pins.build(t)))
+                .map(|t| self.source(t, carried_bounds(bounds, carried, t).for_table(&self.decl(t)), pins.build(t)))
                 .collect::<Result<Vec<_>, _>>()?;
             Ok(Session::open(authority, request, sources, &self.pepper)?)
         })
@@ -626,11 +640,11 @@ impl Face {
 
     /// Register every table on `engine` under its bare name as its unrestricted base
     /// relation at the latest committed state, as [`Face::operator_query`] does, and return
-    /// the registered names.
-    pub(crate) fn register_operator(&self, engine: &SqlEngine) -> Result<Vec<String>, ReadFault> {
+    /// the registered names; a table declaring a clock `bounds` bounds compiles under it.
+    pub(crate) fn register_operator(&self, engine: &SqlEngine, bounds: Bounds) -> Result<Vec<String>, ReadFault> {
         let tables = self.tables()?;
         for t in &tables {
-            engine.register(t, &self.source(t, Bounds::default(), None)?.base)?;
+            engine.register(t, &self.source(t, bounds.for_table(&self.decl(t)), None)?.base)?;
         }
         Ok(tables)
     }
@@ -1235,6 +1249,17 @@ fn builtin_tool(name: &str) -> Value {
 
 /// How a bound argument's literal reads (`store.bound-time.instant-comparison`).
 const INSTANT_LITERAL: &str = "An RFC 3339 instant, or a YYYY-MM-DD date read as the start of the next day, exclusive.";
+
+/// Per-table `as_of` overrides a carried sweep origin reads under (`run.sweep.carried-state`).
+pub type Carried = BTreeMap<String, contextful_core::store::bound_time::Bound>;
+
+/// `bounds` with `table`'s `as_of` replaced by its carried bound, where `carried` names it.
+pub(crate) fn carried_bounds(bounds: Bounds, carried: &Carried, table: &str) -> Bounds {
+    match carried.get(table) {
+        Some(at) => Bounds { as_of: Some(*at), ..bounds },
+        None => bounds,
+    }
+}
 
 /// The bound arguments every read tool but `memory.recall` declares, and the vintage a
 /// vintage table resolves (`read.register.bound-arguments`,

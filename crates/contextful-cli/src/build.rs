@@ -39,6 +39,9 @@ pub struct BuildArgs {
     /// Print the receipt as JSON: model, build id, row count, watermark.
     #[arg(long)]
     json: bool,
+    /// Read every input at this availability bound and record it as the watermark's `horizon`.
+    #[arg(long)]
+    available_as_of: Option<String>,
 }
 
 #[derive(clap::Subcommand)]
@@ -167,7 +170,8 @@ pub fn run(args: BuildArgs) -> Result<()> {
                 Some(_) => started_at,
                 None => now(&None)?.max(started_at),
             };
-            let built = build(&face, &BuildRequest { model: &spec, site_id: &site_id, started_at, completed_at })?;
+            let available_as_of = args.available_as_of.as_deref().map(contextful_core::store::bound_time::Bound::parse).transpose()?;
+            let built = build(&face, &BuildRequest { model: &spec, site_id: &site_id, started_at, completed_at, available_as_of })?;
             if grouped {
                 if built.section.is_none() {anyhow::bail!("PublicationIncompatible: a publication member is a materialized build");}
                 crate::export::publication::record_completion(face.store(),&text,&id,&built.build_id,serde_json::to_value(&built.watermark)?)?;
@@ -241,7 +245,7 @@ pub(crate) fn fire_job(
         } else {
             open_face(&located.project, &located.declaration, local, Pepper::resolve(|k| std::env::var(k).ok()))?
         };
-        Ok(contextful_context::build::build_guarded(&face, &BuildRequest { model: spec, site_id: &site, started_at, completed_at: now(&project.now)?.max(started_at) }, &|| {
+        Ok(contextful_context::build::build_guarded(&face, &BuildRequest { model: spec, site_id: &site, started_at, completed_at: now(&project.now)?.max(started_at), available_as_of: None }, &|| {
             contextful_engine::cancel::poll(wire.engine.catalog.as_ref(), execution.run_id(), execution.token());
             if execution.token().requested() {
                 Err(contextful_context::ContextError::Catalog(contextful_core::run::Failure::new(contextful_core::run::FailureTag::Canceled, "build execution stopped before publication")))

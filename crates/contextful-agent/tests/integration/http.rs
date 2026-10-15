@@ -657,7 +657,7 @@ fn build_titles(face: &Face, now: &str) -> String {
     use contextful_core::pipeline::model::collect_models;
     let files = [ManifestFile { path: "contextful.toml".into(), text: PINNED.to_string() }];
     let spec = collect_models(&files, &collect(&files).unwrap()).unwrap().remove(0).spec;
-    build(face, &BuildRequest { model: &spec, site_id: "site-a", started_at: at(now), completed_at: at(now) }).unwrap().build_id
+    build(face, &BuildRequest { model: &spec, site_id: "site-a", started_at: at(now), completed_at: at(now), available_as_of: None }).unwrap().build_id
 }
 
 /// `POST /mcp` carries `pin` to the read tools: a pinned query answers the pinned build's

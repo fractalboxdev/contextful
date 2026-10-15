@@ -23,7 +23,7 @@ use std::time::Duration;
 const JOB: &str = "score";
 
 fn input(statement: &str, as_of: Option<&str>) -> StoreInput {
-    StoreInput { body: "score".into(), statement: statement.into(), as_of: as_of.map(str::to_string) }
+    StoreInput { body: "score".into(), statement: statement.into(), as_of: as_of.map(str::to_string), sweep: None }
 }
 
 fn fire<'a>(input: StoreInput, body: &'a dyn RowBody, max_in_flight: usize, run_id: &str) -> Drive<'a> {

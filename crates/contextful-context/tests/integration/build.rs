@@ -63,7 +63,7 @@ impl Project {
     fn build_over(&self, tables: &str, manifest: &str, now: &str) -> Result<Built, ReadFault> {
         let spec = model_over(tables, manifest);
         let face = Face::open(self.fx.store.clone(), &format!("{tables}{manifest}"), Pepper::resolve(|_| None)).unwrap();
-        build(&face, &BuildRequest { model: &spec, site_id: "site-a", started_at: at(now), completed_at: at(now) })
+        build(&face, &BuildRequest { model: &spec, site_id: "site-a", started_at: at(now), completed_at: at(now), available_as_of: None })
     }
 
     fn rows(&self, sql: &str) -> Vec<Vec<Value>> {
@@ -461,7 +461,7 @@ fn a_build_publication_boundary_refusal_preserves_rows_and_watermark() {
     let spec = model_over(TABLES, &changed);
     let face = p.face(&changed);
     let result = contextful_context::build::build_guarded(&face, &BuildRequest {
-        model: &spec, site_id: "site-a", started_at: at("2030-01-01T03:00:00Z"), completed_at: at("2030-01-01T03:00:00Z"),
+        model: &spec, site_id: "site-a", started_at: at("2030-01-01T03:00:00Z"), completed_at: at("2030-01-01T03:00:00Z"), available_as_of: None,
     }, &|| Err(contextful_context::ContextError::Catalog(contextful_core::run::Failure::new(contextful_core::run::FailureTag::Canceled, "execution stopped"))));
     assert!(result.unwrap_err().to_string().contains("execution stopped"));
     let section = current_section(&p.fx.store, "daily").unwrap().unwrap();

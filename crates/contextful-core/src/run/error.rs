@@ -288,6 +288,9 @@ pub enum RunError {
     /// A store-driven input statement the read face truncated at its row ceiling. (`run.journal.input-truncated`)
     #[error("RunInputTruncated: {0}")]
     RunInputTruncated(String),
+    /// A sweep whose last origin falls after the transaction-time bound every origin reads at. (`run.sweep.origin-after-open`)
+    #[error("RunSweepOriginAfterOpen: {0}")]
+    RunSweepOriginAfterOpen(String),
     /// A `retry_on` naming a tag outside the two retryable ones. (`run.retry.unretryable-tag`)
     #[error("RunRetryTagUnretryable: {0}")]
     RunRetryTagUnretryable(String),

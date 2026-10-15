@@ -3,6 +3,7 @@
 //! that runs a chain is `contextful-connectors`. A host task is compiled code the embedding
 //! binary registers under a name before build.
 
+pub mod available;
 pub mod config;
 pub mod cues;
 pub mod emit;
