@@ -134,6 +134,7 @@ fn free_row_returning_store_function_without_the_token_is_refused() {
 #[test]
 fn token_taking_crate_private_and_foreign_row_functions_pass() {
     let r = Repo::init();
+    r.write(TOKEN_HOME, SESSION);
     r.write(
         "crates/contextful-context/src/read/face.rs",
         "use contextful_core::read::respond::Response;\nuse contextful_policy::enforce::Session;\npub struct Face;\nimpl Face {\n    pub fn rows(&self, session: &Session, table: &str) -> Result<Response, String> {\n        unimplemented!(\"{table}\")\n    }\n    pub(crate) fn respond(&self) -> Response {\n        unimplemented!()\n    }\n}\n",
@@ -221,4 +222,146 @@ fn a_registered_operator_path_masks_no_later_row_function() {
         err.contains("crates/contextful-context/src/read/face.rs::dump"),
         "{err}"
     );
+}
+
+/// A private-field admission value whose one public constructor takes an admitted authority.
+const SESSION: &str = "pub struct AdmittedAuthority;\npub struct Session {\n    grants: Vec<String>,\n}\nimpl Session {\n    pub fn open(authority: &AdmittedAuthority) -> Result<Session, String> {\n        let _ = authority;\n        Ok(Session { grants: Vec::new() })\n    }\n    pub fn grants(&self) -> &[String] {\n        &self.grants\n    }\n}\n";
+const TOKEN_HOME: &str = "crates/contextful-policy/src/enforce/session.rs";
+
+#[test]
+fn stored_row_readers_without_the_token_are_refused() {
+    let r = Repo::init();
+    r.write(TOKEN_HOME, SESSION);
+    r.write(
+        "crates/contextful-context/src/rows.rs",
+        "use serde_json::{Map, Value};\npub fn dump_rows(table: &str) -> Vec<Map<String, Value>> {\n    let _ = table;\n    Vec::new()\n}\n",
+    );
+    let err = refused(&r.run_ci(&["source-lint"]), "EnforceUnmediatedPath");
+    assert!(err.contains("crates/contextful-context/src/rows.rs::dump_rows"), "{err}");
+
+    r.write(
+        "crates/contextful-context/src/rows.rs",
+        "pub fn batches(each: &mut dyn FnMut(Vec<serde_json::Map<String, serde_json::Value>>)) {\n    let _ = each;\n}\n",
+    );
+    let err = refused(&r.run_ci(&["source-lint"]), "EnforceUnmediatedPath");
+    assert!(err.contains("crates/contextful-context/src/rows.rs::batches"), "{err}");
+
+    r.write(
+        "crates/contextful-context/src/rows.rs",
+        "pub fn read_parts(path: &str) -> Result<Vec<arrow::record_batch::RecordBatch>, String> {\n    Err(path.into())\n}\n",
+    );
+    let err = refused(&r.run_ci(&["source-lint"]), "EnforceUnmediatedPath");
+    assert!(err.contains("crates/contextful-context/src/rows.rs::read_parts"), "{err}");
+}
+
+#[test]
+fn an_optional_token_is_not_the_token() {
+    let r = Repo::init();
+    r.write(TOKEN_HOME, SESSION);
+    r.write(
+        "crates/contextful-context/src/read/face.rs",
+        "use contextful_core::read::respond::Response;\nuse contextful_policy::enforce::Session;\npub struct Face;\nimpl Face {\n    pub fn rows(&self, session: Option<&Session>, table: &str) -> Response {\n        unimplemented!(\"{table}\")\n    }\n}\n",
+    );
+
+    let err = refused(&r.run_ci(&["source-lint"]), "EnforceUnmediatedPath");
+    assert!(err.contains("crates/contextful-context/src/read/face.rs::Face::rows"), "{err}");
+}
+
+#[test]
+fn a_constructor_outside_the_admitted_authority_is_refused() {
+    let r = Repo::init();
+    r.write("crates/contextful-context/src/lib.rs", "pub fn double(x: i32) -> i32 { x * 2 }\n");
+    r.write(TOKEN_HOME, SESSION);
+    passes(&r.run_ci(&["source-lint"]));
+
+    for extra in [
+        "impl Session {\n    pub fn blank() -> Self {\n        Session { grants: Vec::new() }\n    }\n}\n",
+        "impl Default for Session {\n    fn default() -> Self {\n        Session { grants: Vec::new() }\n    }\n}\n",
+        "impl From<Vec<String>> for Session {\n    fn from(grants: Vec<String>) -> Self {\n        Session { grants }\n    }\n}\n",
+    ] {
+        r.write(TOKEN_HOME, &format!("{SESSION}{extra}"));
+        let err = refused(&r.run_ci(&["source-lint"]), "EnforceUnmediatedPath");
+        assert!(err.contains("Session"), "{err}");
+    }
+}
+
+#[test]
+fn a_missing_token_home_is_refused() {
+    let r = Repo::init();
+    r.write(
+        "crates/contextful-context/Cargo.toml",
+        "[package]\nname = \"contextful-context\"\nversion = \"0.1.0\"\nedition = \"2021\"\n\n[dependencies]\ncontextful-policy = { path = \"../contextful-policy\" }\n",
+    );
+    r.write("crates/contextful-context/src/lib.rs", "pub fn double(x: i32) -> i32 { x * 2 }\n");
+
+    let err = refused(&r.run_ci(&["source-lint"]), "EnforceUnmediatedPath");
+    assert!(err.contains(TOKEN_HOME), "{err}");
+
+    r.write(TOKEN_HOME, "pub struct Admission {\n    grants: Vec<String>,\n}\n");
+    let err = refused(&r.run_ci(&["source-lint"]), "EnforceUnmediatedPath");
+    assert!(err.contains(TOKEN_HOME), "{err}");
+}
+
+#[test]
+fn a_client_named_in_any_position_is_an_outbound_call() {
+    let r = Repo::init();
+    for (source, line) in [
+        ("pub fn ping() {\n    let c: reqwest::blocking::Client = Default::default();\n    let _ = c;\n}\n", 2),
+        ("pub fn ping() {\n    let _ = <ureq::Agent as Default>::default();\n}\n", 2),
+        ("use {ureq::Agent};\npub fn ping() {}\n", 1),
+        ("extern crate ureq as http;\npub fn ping() {}\n", 1),
+    ] {
+        r.write("crates/demo/src/ping.rs", source);
+        let err = refused(&r.run_ci(&["source-lint"]), "UnconfiguredEgress");
+        assert!(err.contains(&format!("crates/demo/src/ping.rs:{line}")), "{err}");
+    }
+}
+
+#[test]
+fn a_renamed_client_dependency_is_an_outbound_call() {
+    let r = Repo::init();
+    r.write(
+        "crates/demo/Cargo.toml",
+        "[package]\nname = \"demo\"\nversion = \"0.1.0\"\nedition = \"2021\"\n\n[dependencies]\nhttp = { package = \"ureq\", version = \"2\" }\n",
+    );
+    r.write("crates/demo/src/ping.rs", "pub fn ping() {\n    let _ = http::get(\"https://usage.example\");\n}\n");
+
+    let err = refused(&r.run_ci(&["source-lint"]), "UnconfiguredEgress");
+    assert!(err.contains("crates/demo/src/ping.rs:2"), "{err}");
+}
+
+#[test]
+fn database_clients_and_raw_component_requests_are_outbound_calls() {
+    let r = Repo::init();
+    r.write(
+        "crates/demo/src/telemetry.rs",
+        "pub fn report() {\n    let _ = postgres::Client::connect(\"host=telemetry.example\", postgres::NoTls);\n}\n",
+    );
+    let err = refused(&r.run_ci(&["source-lint"]), "UnconfiguredEgress");
+    assert!(err.contains("crates/demo/src/telemetry.rs:2"), "{err}");
+
+    r.write(
+        "crates/demo/src/telemetry.rs",
+        "pub fn report(request: R, config: C) {\n    let _ = wasmtime_wasi_http::p2::default_send_request(request, config);\n}\n",
+    );
+    let err = refused(&r.run_ci(&["source-lint"]), "UnconfiguredEgress");
+    assert!(err.contains("crates/demo/src/telemetry.rs:2"), "{err}");
+
+    r.write("crates/demo/src/telemetry.rs", "pub fn report() {}\n");
+    r.write(
+        "crates/contextful-pg/src/lib.rs",
+        "pub fn open(dsn: &str) {\n    let _ = postgres::Client::connect(dsn, postgres::NoTls);\n}\n",
+    );
+    passes(&r.run_ci(&["source-lint"]));
+}
+
+#[test]
+fn test_only_items_pass_the_egress_lint() {
+    let r = Repo::init();
+    r.write(
+        "crates/demo/src/serve.rs",
+        "#[cfg(test)]\nuse ureq::Agent;\n#[cfg(test)]\nconst PROBE: &str = ureq::VERSION;\n#[cfg(test)]\nimpl Probe {\n    fn dial() {\n        let _ = std::net::TcpStream::connect(\"127.0.0.1:1\");\n    }\n}\npub struct Probe;\n",
+    );
+
+    passes(&r.run_ci(&["source-lint"]));
 }
