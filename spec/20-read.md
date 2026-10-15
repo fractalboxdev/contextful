@@ -477,10 +477,10 @@ Reading under a credential's {{authority.grant.horizon}}: the bound every read i
   *because a cutoff the agent can widen is advisory, while a valid-time question about a known future effective date stays legitimate*
 - `recall-horizon` — Under a horizon, {{read.recall.keyed}} defaults an absent `observed_at` to the horizon and reads a claims table at `available_as_of` equal to it, so a table declaring no availability time refuses as {{store.available-time.undeclared}}.
   *because a claim lands at its commit instant, and one concluded after the horizon otherwise answers inside it*
-- `engine-stamps` — Under a horizon, the projection carries none of the columns {{store.reserve.injected}}, {{store.reserve.row-seq}} and {{store.reserve.commit-seq}} inject, and `context.describe` computes row count, size, lexicon and example values over the horizon-bounded relation.
-  *because a load instant or a full-table row count discloses the present*
-- `late-columns` — Under a horizon, a column whose first landing in its table falls after the horizon is absent from the registered schema and from the describe payload.
-  *because a null still says the field exists*
+- `engine-stamps` — Under a horizon, the projection carries neither `_ingested_at` nor `_commit_seq` and keeps `_run_id` and `_row_seq`, which cite a row; `context.describe` computes row count, size, lexicon and example values over the horizon-bounded relation.
+  *A-read*
+- `late-columns` — Under a horizon, a column whose `first_landed_at` in `schema.json` — set once by its first merge, to that batch's earliest availability instant, else the commit instant — falls after the horizon is absent from the registered schema and describe payload.
+  *A-store*
 - `egress-hook` — A hop made under a credential carrying a horizon passes a pre-send hook refusing every host but the configured model endpoint, as {{connector.meter.hook-refusal}} with reason `horizon`.
   *because one attachment point already sees every egress, so a per-tool list restates it*
 - `local-rank` — Under a horizon, `corpus.retrieve` ranks only stored rows through local indexes, and a search source reads its pinned {{store.snapshot.capture}} corpus; a live search reaches no host past {{read.horizon.egress-hook}}.

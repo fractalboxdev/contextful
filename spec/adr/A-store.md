@@ -439,3 +439,34 @@ Decision: a keyed table declaring `available_time` keys each row on its availabi
 
 Consequences: a fold and the expiry of `retain_runs` leave every vintage readable.
 Revisit: an estimate-revision source whose vintage rows outgrow the table's partition bounds.
+
+## A column records the commit that first landed it
+
+`schema.json` carries `first_landed_at` per column, set once by the merge that first adds the column and never moved by a later merge; bucket sync carries it with the schema. On a table declaring `available_time` the instant is the earliest availability among that batch's rows carrying the column, so a backfill landed years later keeps its fields visible at the horizons its rows answer; elsewhere it is the commit instant. `read.horizon.late-columns` drops a column first landed after the horizon.
+
+| Option | Lost on | Cost |
+| --- | --- | --- |
+| A per-column availability instant in `schema.json` *(chosen)* | — | A schema written before the field exists reads every column as always present. |
+| The commit instant alone | Backfill | A 2026 backfill hides every column of its 2014 rows. |
+| A separate append-only column log per table | One home | A second file the schema merge and sync must keep in step. |
+| Scan the earliest run carrying the column | Cost | Every horizon session reads run manifests to find a schema fact. |
+
+## A snapshot corpus is a declared table pinned by snapshot id
+
+`[pipeline.tables.snapshot]` names the corpus's `url`, `captured_at`, `digest` and `source` columns and an optional `leak_score` column. A capture lands through the ordinary write path and commits as one store snapshot; an evaluation case pins it by that `snapshot` id. A document captured after the horizon answers a horizon read only while its `leak_score` holds 0, so an unscored late capture never answers.
+
+| Option | Lost on | Cost |
+| --- | --- | --- |
+| Declared columns, pinned snapshot, zero threshold *(chosen)* | — | A late capture needs a judged score of 0 before any horizon read sees it. |
+| A per-case leak threshold | Default safety | A case author can admit a partly leaked page. |
+| Consumer-landed leak rows beside the corpus | One home | The read joins a second table to decide admission. |
+
+## Adjustment factors apply at read time, back from each factor's effective date
+
+A price table keeps raw values. Under `available_as_of` each listed numeric column multiplies by the product of the factor table's vintages available by the bound that agree on the factor table's key and take effect after the row's valid-time `from`. An unbounded read returns raw values. A re-pull matching its key's latest content hash stays on disk and drops at read.
+
+| Option | Lost on | Cost |
+| --- | --- | --- |
+| Raw storage, factors applied per read *(chosen)* | — | Each bounded read joins the factor table. |
+| Store back-adjusted prices | Point-in-time | A 2014 price encodes a split announced in 2020. |
+| One adjusted copy per factor vintage | Storage | Every split rewrites the price history. |

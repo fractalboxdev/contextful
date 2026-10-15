@@ -40,7 +40,7 @@ fn report(case: &CaseSpec, answer: Value, entry: Value) -> Value {
     let decls: BTreeMap<String, Vec<TableDecl>> = [("corpus".to_string(), TableDecl::parse_pipeline(EARNINGS).unwrap())].into();
     let call = RecordedCall { case: case.id.clone(), index: 0, tool: "context.query".into(), arguments: Map::new(), answer, seq: Some(1) };
     let entries: BTreeMap<u64, Value> = [(1, entry)].into();
-    assess(&Recording { cases: std::slice::from_ref(case), decls: &decls, calls: &[call], entries: &entries }).unwrap()
+    assess(&Recording { cases: std::slice::from_ref(case), decls: &decls, calls: &[call], entries: &entries, judge: &contextful_eval::leak::StubLeakJudge }).unwrap()
 }
 
 fn bound_entry(answer: &Value) -> Value {

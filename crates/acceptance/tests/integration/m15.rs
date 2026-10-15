@@ -50,7 +50,6 @@ fn rows(answer: &Value) -> &Value {
 }
 
 #[test]
-#[ignore = "milestone 15 is open: no read surface admits `available_as_of`"]
 fn m15_point_in_time() {
     let cf = bin("contextful");
     let p = GitRepo::init();
@@ -111,7 +110,6 @@ column = "released_at"
 /// An ALFRED-style series: one quarter's real GDP released three times, each vintage
 /// answering at its release date, the first under `vintage = "first"`, and alike after a fold.
 #[test]
-#[ignore = "milestone 15 is open: horizons, sweeps and backtests land later"]
 fn m15_gdp_vintages() {
     let cf = bin("contextful");
     let p = GitRepo::init();
@@ -161,7 +159,6 @@ column = "published_at"
 "#;
 
 #[test]
-#[ignore = "milestone 15 is open"]
 fn m15_horizon() {
     let cf = bin("contextful");
     let p = GitRepo::init();
@@ -230,7 +227,6 @@ sweep = { start = "2030-01-01T00:00:00Z", end = "2030-01-12T00:00:00Z", step = "
 "#;
 
 #[test]
-#[ignore = "milestone 15 is open"]
 fn m15_sweep_reads_a_backfilled_row_from_its_availability_origin() {
     let cf = bin("contextful");
     let status = Command::new(env!("CARGO")).args(["build", "--locked", "-q", "-p", "contextful-cli", "--example", "store_driven"]).current_dir(workspace_root()).status().unwrap();

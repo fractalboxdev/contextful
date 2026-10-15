@@ -92,7 +92,7 @@ fn a_template_parameter_named_available_as_of_refuses_the_manifest() {
 const VINTAGES: &str = "[[pipeline.tables]]\nname = \"gdp\"\nprimary_key = [\"series\"]\ncontent_hash_column = \"digest\"\n\n[pipeline.tables.valid_time]\nfrom = \"period\"\n\n[pipeline.tables.available_time]\ncolumn = \"released_at\"\n";
 
 fn schema(columns: &[(&str, ColumnType)]) -> Schema {
-    Schema { columns: columns.iter().map(|(n, t)| Column::new(*n, t.clone(), true)).collect() }
+    Schema { columns: columns.iter().map(|(n, t)| Column::new(*n, t.clone(), true)).collect() , ..Default::default() }
 }
 
 /// A vintage table declaring no `content_hash_column` raises `StoreVintageHashUndeclared` at validation, naming the table.

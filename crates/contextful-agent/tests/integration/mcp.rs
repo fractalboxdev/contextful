@@ -40,7 +40,7 @@ pub(crate) struct Fixture {
 }
 
 /// Land one batch of `rows` into `decl`'s table as run `run`, committed at `now`.
-fn put(store: &Store, decl: &TableDecl, run: &str, now: &str, rows: Value, types: &[(&str, ColumnType)]) {
+pub(crate) fn put(store: &Store, decl: &TableDecl, run: &str, now: &str, rows: Value, types: &[(&str, ColumnType)]) {
     let rows = rows.as_array().unwrap().iter().map(|r| r.as_object().unwrap().clone()).collect();
     let ctx = RunContext {
         node: NodeId::parse("ingest-a").unwrap(),

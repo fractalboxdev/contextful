@@ -473,7 +473,7 @@ fn rebuild_snapshots(store: &Store, decl: &TableDecl, directory: &Path) -> Resul
 
 fn empty_part(store: &Store, path: &Path) -> Result<RecordBatch> {
     let columns = store.parquet_schema(path)?;
-    let schema = contextful_core::store::reconcile::Schema { columns };
+    let schema = contextful_core::store::reconcile::Schema { columns, ..Default::default() };
     Ok(RecordBatch::new_empty(crate::parquet_io::arrow_schema(&schema)))
 }
 

@@ -5,17 +5,17 @@ An unpinned clause is `committed`; a pinned one is `performed` when its Rust, Le
 
 | Contract | Files | Operations | Clauses | Refusals | Limits | Unsettled | Performed | Broken | Floor |
 | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
-| `assurance` | 3 | 18 | 305 | 63 | 23 | 9 | 267 | 0 | 267 |
+| `assurance` | 3 | 18 | 305 | 63 | 23 | 8 | 268 | 0 | 268 |
 | `authority` | 2 | 16 | 295 | 79 | 29 | 9 | 224 | 0 | 224 |
 | `connector` | 2 | 14 | 356 | 90 | 21 | 16 | 232 | 0 | 232 |
 | `corpus` | 1 | 10 | 79 | 37 | 7 | 0 | 79 | 0 | 79 |
 | `disclosure` | 3 | 16 | 157 | 68 | 13 | 3 | 64 | 0 | 64 |
-| `read` | 2 | 18 | 238 | 38 | 24 | 4 | 224 | 0 | 224 |
+| `read` | 2 | 18 | 238 | 38 | 24 | 4 | 227 | 0 | 227 |
 | `run` | 3 | 28 | 501 | 113 | 44 | 14 | 445 | 0 | 445 |
-| `store` | 3 | 19 | 287 | 65 | 14 | 13 | 273 | 0 | 273 |
+| `store` | 3 | 19 | 288 | 65 | 14 | 12 | 277 | 0 | 277 |
 | `surface` | 2 | 20 | 137 | 59 | 22 | 0 | 98 | 0 | 98 |
 | `topology` | 1 | 6 | 79 | 25 | 5 | 3 | 72 | 0 | 72 |
-| **total** | 22 | 165 | 2434 | 637 | 202 | 71 | 1978 | 0 | |
+| **total** | 22 | 165 | 2435 | 637 | 202 | 69 | 1986 | 0 | |
 
 Decision records: 18.
 
@@ -40,7 +40,7 @@ A milestone reads `closed` when its acceptance test computes `passing` and every
 | 12 — The operator console | 12 | 56 | 25 | passing | open |
 | 13 — Disclosure | 5 | 33 | 13 | open | open |
 | 14 — Assurance | 7 | 156 | 126 | passing | closed |
-| 15 — Point-in-time evaluation | 7 | 76 | 69 | open | open |
+| 15 — Point-in-time evaluation | 7 | 77 | 77 | passing | closed |
 
 Unscheduled operations: 12.
 
@@ -76,6 +76,7 @@ Unscheduled operations: 12.
 | `assurance.backtest.fill-instant` | `tools/eval/tests/integration/backtest.rs::a_decision_fills_at_the_first_price_strictly_after_it` | performed |
 | `assurance.backtest.label-interval` | `tools/eval/tests/integration/backtest.rs::a_bounded_case_without_a_label_interval_is_refused` | performed |
 | `assurance.backtest.latest-arm` | `tools/eval/tests/integration/backtest.rs::the_report_states_the_latest_minus_routed_premium_over_paired_cases` | performed |
+| `assurance.backtest.leak-score` | `tools/eval/tests/integration/leak.rs::each_retrieved_document_lands_one_score_and_the_report_gives_brier_per_tier` | performed |
 | `assurance.backtest.planted-delisting` | `crates/contextful-cli/tests/integration/eval.rs::a_universe_case_fails_unless_its_trajectory_holds_the_delisting_return` | performed |
 | `assurance.backtest.planted-future` | `crates/contextful-cli/tests/integration/eval.rs::the_runner_plants_a_row_past_each_horizon_and_reads_without_it` | performed |
 | `assurance.backtest.query-finding` | `tools/eval/tests/integration/backtest.rs::a_query_naming_a_later_entity_lands_a_finding` | performed |
@@ -954,8 +955,11 @@ Unscheduled operations: 12.
 | `read.horizon.build-resolution` | `crates/contextful-context/tests/integration/read/pin.rs::a_model_table_under_a_horizon_reads_its_newest_build_within_it` | performed |
 | `read.horizon.egress-hook` | `crates/contextful-outbound/tests/integration/egress.rs::a_hop_under_a_horizon_reaches_the_model_endpoint_alone` | performed |
 | `read.horizon.embedder-route` | `crates/contextful-core/tests/integration/read/horizon.rs::an_embedder_family_routes_to_its_newest_checkpoint_before_the_horizon` | performed |
+| `read.horizon.engine-stamps` | `crates/contextful-agent/tests/integration/point_in_time.rs::a_horizon_read_withholds_load_stamps_and_keeps_citation_stamps` | performed |
 | `read.horizon.exceeds-horizon` | `crates/contextful-core/tests/integration/read/horizon.rs::a_bound_later_than_the_horizon_is_refused` | performed |
 | `read.horizon.inherited-bound` | `crates/contextful-agent/tests/integration/mcp.rs::every_read_tool_called_unbounded_reads_at_the_horizon` | performed |
+| `read.horizon.late-columns` | `crates/contextful-agent/tests/integration/point_in_time.rs::a_column_first_available_after_the_horizon_is_absent` | performed |
+| `read.horizon.local-rank` | `crates/contextful-agent/tests/integration/point_in_time.rs::a_horizon_ranking_reads_the_pinned_capture` | performed |
 | `read.horizon.rank-statistics` | `crates/contextful-context/tests/integration/read/fulltext.rs::a_ranking_under_a_horizon_refuses_a_sidecar_indexing_later_rows` | performed |
 | `read.horizon.recall-horizon` | `crates/contextful-agent/tests/integration/mcp.rs::recall_under_a_horizon_reads_the_claims_table_at_it` | performed |
 | `read.query.declaration-default` | `crates/contextful-cli/tests/integration/query.rs::a_declaration_path_supplies_the_manifest` | performed |
@@ -1583,6 +1587,8 @@ Unscheduled operations: 12.
 | `run.transform.projection` | `crates/contextful-core/tests/integration/pipeline/transform.rs::select_fixes_the_column_set_and_rename_maps_a_name` | performed |
 | `run.transform.type-carry` | `crates/contextful-core/tests/integration/pipeline/transform.rs::a_pulled_type_follows_a_rename_and_leaves_with_a_select_or_a_scalar_cast` | performed |
 | `run.transform.typed-cast` | `crates/contextful-core/tests/integration/pipeline/transform.rs::a_cast_to_a_binary_or_vector_type_keeps_readable_values_and_types_the_column` | performed |
+| `store.available-time.adjustment-factors` | `crates/contextful-agent/tests/integration/point_in_time.rs::a_bounded_read_applies_only_factors_announced_by_the_bound` | performed |
+| `store.available-time.adjustment-join` | `crates/contextful-agent/tests/integration/point_in_time.rs::a_factor_applies_to_its_own_key_before_its_effective_date` | performed |
 | `store.available-time.available-as-of` | `crates/contextful-context/tests/integration/available_time.rs::a_row_answers_from_its_availability_instant_onward` | performed |
 | `store.available-time.beneath-enforcement` | `crates/contextful-context/tests/integration/read/register.rs::an_availability_bound_narrows_the_tenant_restricted_rows` | performed |
 | `store.available-time.bound-echo` | `crates/contextful-core/tests/integration/store/available_time.rs::an_availability_bound_joins_the_echo` | performed |
@@ -1856,6 +1862,8 @@ Unscheduled operations: 12.
 | `store.reserve.table-namespaces` | `crates/contextful-core/tests/integration/store/reserve.rs::the_visibility_namespace_holds_each_sources_access_tables` | performed |
 | `store.reserve.taint` | `crates/contextful-context/tests/integration/reserve.rs::a_model_output_row_carries_the_engine_taint_and_no_other_row_does` | performed |
 | `store.reserve.underscore-namespace` | `crates/contextful-core/tests/integration/store/reserve.rs::the_underscore_namespace_is_the_injected_and_optional_sets` | performed |
+| `store.snapshot.capture` | `crates/contextful-agent/tests/integration/point_in_time.rs::each_capture_commits_one_snapshot_a_read_pins_by_id` | performed |
+| `store.snapshot.post-horizon-capture` | `crates/contextful-agent/tests/integration/point_in_time.rs::a_capture_after_the_horizon_answers_only_at_a_leak_score_of_zero` | performed |
 | `surface.apply.attestation-unavailable` | `crates/contextful-cli/tests/integration/pipeline.rs::a_synced_import_requires_admin_and_writes_a_verifiable_receipt` | performed |
 | `surface.apply.draft-absent` | `spec/pins.toml` | performed |
 | `surface.apply.draft-claim` | `spec/pins.toml` | performed |

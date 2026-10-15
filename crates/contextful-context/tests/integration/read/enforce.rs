@@ -417,6 +417,33 @@ fn an_incognito_session_serves_under_the_fail_closed_pair() {
     refused_with(r.face.session(&wide, &Request::default(), Bounds::default()), "EnforceIncognitoWidening");
 }
 
+/// Under a horizon a mask on a withheld column governs nothing, and the session opens; a mask
+/// naming a column the table never carried still refuses.
+#[test]
+fn a_horizon_session_skips_masks_on_withheld_columns_and_refuses_undeclared_ones() {
+    let mut r = Reads::new();
+    let under = |r: &Reads| {
+        let grant = Grant { horizon: Some(Instant::parse("2014-01-01T00:00:00Z").unwrap()), ..read(&["lab/*"], None) };
+        r.face.session(&r.authority(loop_subject("agent://research-loop"), vec![grant]), &Request::default(), Bounds::default())
+    };
+    // Every `lab/masks` column first landed after 2014, so each masked column is withheld.
+    let s = under(&r).unwrap();
+    let counted = r.query(&s, r#"SELECT count(*) FROM "lab/masks""#).unwrap();
+    assert_eq!(counted.rows.len(), 1);
+    assert!(r.query(&s, r#"SELECT b FROM "lab/masks""#).is_err(), "the withheld column stays absent");
+
+    let manifest = MANIFEST.replace("dn = { strategy = \"drop\" }", "dn = { strategy = \"drop\" }\nzz = { strategy = \"drop\" }");
+    assert_ne!(manifest, MANIFEST);
+    let refused = match Face::open(r.store.clone(), &manifest, pepper()) {
+        Err(e) => format!("{e:?}"),
+        Ok(face) => {
+            r.face = face;
+            format!("{:?}", under(&r).unwrap_err())
+        }
+    };
+    assert!(refused.contains("MaskOnAbsentColumn") && refused.contains("zz"), "{refused}");
+}
+
 /// Regression: every strategy yields one value in both layers — the write layer's
 /// application and the query layer's projection agree cell for cell, nulls and
 /// unparseable numbers included.

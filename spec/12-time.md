@@ -79,8 +79,10 @@ Availability time: the declared instant each row's value became public, how land
   *A-store*
 - `vintage-fold-key` — A fold over a vintage table partitions as {{store.fold.valid-time-line}} or {{store.declare.dedup-view}} prescribes with the availability column added, and drops no vintage.
   *A-store*
-- `adjustment-factors` — `available_time.adjustment = { table = "<name>", factor_column = "<column>" }` keeps a price table's values raw; an `available_as_of` read applies only factor vintages of that table available at or before the bound.
+- `adjustment-factors` — `available_time.adjustment = { table = "<name>", factor_column = "<column>", adjust_columns = [...] }` keeps values raw; an `available_as_of` read multiplies each listed numeric column by the product of factor vintages available by the bound.
   *because a back-adjusted 2014 price encodes splits announced after 2014*
+- `adjustment-join` — A factor row applies to each row agreeing on every factor-table `primary_key` column whose valid-time `from` precedes the factor row's valid-time `from`.
+  *A-store*
 
 #### Scenarios
 

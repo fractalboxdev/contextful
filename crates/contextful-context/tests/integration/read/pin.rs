@@ -379,5 +379,6 @@ fn a_model_table_under_a_horizon_reads_its_newest_build_within_it() {
     let early = under(Some("2014-01-01T00:00:00Z"));
     let refused = refused_with(counts(&early), "ReadNoBuildWithinHorizon");
     assert!(refused.contains(DAILY), "{refused}");
-    assert!(r.face.query(&early, r#"SELECT day FROM "lab/events""#, ReadOptions::default()).is_ok());
+    // Its columns first landed after the horizon, so it answers a count alone (`read.horizon.late-columns`).
+    assert!(r.face.query(&early, r#"SELECT count(*) FROM "lab/events""#, ReadOptions::default()).is_ok());
 }

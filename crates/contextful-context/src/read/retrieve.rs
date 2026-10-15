@@ -63,19 +63,23 @@ const ROW_RANK: &str = "_row_rank";
 /// widened by a `ROW_NUMBER` over its row key, newest ingestion first, and null for a null
 /// key (`read.retrieve.row-key-dedup`). The window function spans the whole relation, so a
 /// row's position ignores the recency window's cut and the relevance floor.
-fn arm_source(table: &str, row_key: Option<&str>, live: &str) -> String {
+fn arm_source(table: &str, row_key: Option<&str>, live: &str, newest: &str) -> String {
     match row_key {
         None => format!("{}{live}", ident(table)),
         Some(key) => format!(
-            "(SELECT *, CASE WHEN {k} IS NULL THEN NULL ELSE ROW_NUMBER() OVER (PARTITION BY {k} ORDER BY {} DESC, {} DESC, {} DESC) END AS {rr} FROM {}{live})",
-            ident(INGESTED_AT),
-            ident(RUN_ID),
-            ident(ROW_SEQ),
+            "(SELECT *, CASE WHEN {k} IS NULL THEN NULL ELSE ROW_NUMBER() OVER (PARTITION BY {k} ORDER BY {newest}) END AS {rr} FROM {}{live})",
             ident(table),
             k = ident(key),
             rr = ident(ROW_RANK),
         ),
     }
+}
+
+/// Newest-first order over a relation: `_ingested_at`, `_run_id`, `_row_seq`, or the last two
+/// alone where a horizon withholds the load stamp (`read.horizon.engine-stamps`).
+fn newest_first(stamped: bool) -> String {
+    let order: &[&str] = if stamped { &[INGESTED_AT, RUN_ID, ROW_SEQ] } else { &[RUN_ID, ROW_SEQ] };
+    order.iter().map(|c| format!("{} DESC", ident(c))).collect::<Vec<_>>().join(", ")
 }
 
 /// Drop every candidate that is not the newest copy under its `(table, row key)`, whether
@@ -289,7 +293,13 @@ impl Face {
                     continue;
                 }
             }
-            let schema = self.store.try_schema(table)?.map(|s| s.columns).unwrap_or_default();
+            // The registered columns: a horizon withholds load stamps and late columns.
+            let schema = match session.columns(table) {
+                Some(columns) => columns.to_vec(),
+                None => self.store.try_schema(table)?.map(|s| s.columns).unwrap_or_default(),
+            };
+            let stamped = schema.iter().any(|c| c.name == INGESTED_AT);
+            let newest = newest_first(stamped);
             let policy = session.policy(table);
             let text: Vec<&str> = schema.iter().filter(|c| c.ty == ColumnType::Utf8).map(|c| c.name.as_str()).collect();
             let decl = self.decl(table);
@@ -300,8 +310,9 @@ impl Face {
             let basis = PUBLICATION_COLUMNS
                 .iter()
                 .find(|p| schema.iter().any(|c| c.name == **p && matches!(c.ty, ColumnType::Timestamp | ColumnType::Utf8)))
-                .map_or(INGESTED_AT, |p| *p)
-                .to_string();
+                .map(|p| p.to_string())
+                .or_else(|| (!stamped).then(|| self.decl(table).available_time.map(|a| a.column)).flatten())
+                .unwrap_or_else(|| INGESTED_AT.to_string());
             // The row key is the declared content-hash column; a table declaring none, or
             // lacking the column, keys every row null (`read.retrieve.row-key-dedup`), and so
             // does a session mask that merges distinct hashes (`read.retrieve.row-key-under-mask`).
@@ -334,11 +345,8 @@ impl Face {
             let (mut kept, mut offset) = (0u64, 0u64);
             loop {
                 let sql = format!(
-                    "SELECT * FROM {} ORDER BY {} DESC, {} DESC, {} DESC LIMIT {window} OFFSET {offset}",
-                    arm_source(table, row_key.as_deref(), &live),
-                    ident(INGESTED_AT),
-                    ident(RUN_ID),
-                    ident(ROW_SEQ)
+                    "SELECT * FROM {} ORDER BY {newest} LIMIT {window} OFFSET {offset}",
+                    arm_source(table, row_key.as_deref(), &live, &newest),
                 );
                 let (columns, values) = engine.run_values_timed(&sql, &parameters, None, deadline)?;
                 executed.push(sql);
@@ -429,7 +437,7 @@ impl Face {
                                 predicate.as_ref().map_or((String::new(), Vec::new()), |(sql, v)| (format!(" AND {sql}"), v.clone()));
                             let sql = format!(
                                 "SELECT * FROM {} WHERE CAST({} AS VARCHAR) IN ({marks}){filtered}",
-                                arm_source(table, row_key.as_deref(), ""),
+                                arm_source(table, row_key.as_deref(), "", &newest),
                                 ident(&id_column)
                             );
                             let parameters = Bindings::positional(chunk.iter().map(|id| Bound::Text(id.clone())).chain(values));
@@ -495,10 +503,13 @@ impl Face {
         // One probe row past the ceiling sets `truncated` (`read.respond.truncation-is-exact`).
         ranked.truncate(usize::try_from(limit).unwrap_or(usize::MAX).saturating_add(1));
 
+        // A horizon withholds the load stamp from the projection (`read.horizon.engine-stamps`).
+        let withheld = contextful_core::read::horizon::horizon(session.grants()).is_some();
         let columns: Vec<String> = [
             "_table", "_row", "_snippet", "_score", "_vscore", "_in_window", "_date_basis", "_run_id", "_ingested_at", "_authored_by",
         ]
         .iter()
+        .filter(|c| !(withheld && **c == INGESTED_AT))
         .map(|s| s.to_string())
         .chain(RESERVED_PROJECTED.iter().map(|(out, _)| out.to_string()))
         .collect();
@@ -526,9 +537,11 @@ impl Face {
                     ranking["_in_window"].clone(),
                     ranking["_date_basis"].clone(),
                     field(RUN_ID),
-                    field(INGESTED_AT),
-                    field(AUTHORED_BY),
                 ];
+                if !withheld {
+                    row.push(field(INGESTED_AT));
+                }
+                row.push(field(AUTHORED_BY));
                 row.extend(RESERVED_PROJECTED.iter().map(|(_, source)| field(source)));
                 row
             })

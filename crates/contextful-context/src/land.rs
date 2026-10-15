@@ -100,7 +100,7 @@ fn rows_schema<'a>(rows: impl Iterator<Item = &'a Map<String, Value>>, types: &H
             }
         }
     }
-    Ok(Schema { columns })
+    Ok(Schema { columns, ..Default::default() })
 }
 
 fn column_array(c: &Column, rows: &[Map<String, Value>]) -> Result<ArrayRef> {
@@ -504,7 +504,13 @@ pub fn land_run(
     position: &Position,
     precommit: &dyn Fn() -> Result<()>,
 ) -> Result<Landing> {
-    commit_run(store, decl, batches, ctx, position, precommit, &|_| Ok(()))
+    let landing = commit_run(store, decl, batches, ctx, position, precommit, &|_| Ok(()))?;
+    // Each capture of a snapshot corpus commits as one store snapshot, the id an
+    // evaluation case pins (`store.snapshot.capture`).
+    if decl.snapshot.is_some() && !landing.replay {
+        crate::fold::fold(store, decl, ctx.committed_at)?;
+    }
+    Ok(landing)
 }
 
 /// A run's landing: the committed manifest, and whether this landing replayed it
@@ -569,7 +575,7 @@ fn commit_run(
     if manifest_path.exists() {
         return replay(store, &manifest_path, &types, batches, ctx, position, per_batch);
     }
-    let site = reconcile(store, decl, batches, &ctx.node, &ctx.injection, per_batch, None, true)?;
+    let site = reconcile(store, decl, batches, &ctx.node, &ctx.injection, per_batch, None, Some(ctx.committed_at))?;
 
     // The commit lock covers the vintage comparison, schema merge, Parquet write and
     // manifest, so readers see a prefix of the table's commit sequence
@@ -681,8 +687,10 @@ fn reconcile(
     injection: &Injection,
     per_batch: bool,
     earlier: Option<&Schema>,
-    write: bool,
+    committed_at: Option<Instant>,
 ) -> Result<RunSite> {
+    // A staged part writes no schema; its commit does.
+    let write = committed_at.is_some();
     store.check_writable("land")?;
     let all_rows = || batches.iter().flat_map(|b| b.rows.iter());
     let table = decl.name.as_str();
@@ -727,16 +735,25 @@ fn reconcile(
             c
         })
         .collect();
-    let run_columns = match earlier {
+    let mut run_columns = match earlier {
         Some(e) => e.merge(&arriving, decl.primary_key())?,
         None => arriving.clone(),
     };
+    first_landings(decl, all_rows(), &mut run_columns, committed_at);
     let mut merged = stored
         .merge(&run_columns, decl.primary_key())?
-        .merge(&Schema { columns: injected }, decl.primary_key())?;
+        .merge(&Schema { columns: injected, ..Default::default() }, decl.primary_key())?;
     // A column joining a non-empty schema merges as nullable; these are in every file.
     for c in merged.columns.iter_mut().filter(|c| ALWAYS_INJECTED.contains(&c.name.as_str())) {
         c.nullable = false;
+    }
+    // Only a column this merge adds takes a first landing; a stored column predating the
+    // record keeps none, so it reads as always present (`read.horizon.late-columns`).
+    merged.first_landed = stored.first_landed.clone();
+    for c in merged.columns.iter().filter(|c| stored.get(&c.name).is_none()) {
+        if let Some(at) = run_columns.first_landed.get(&c.name) {
+            merged.first_landed.insert(c.name.clone(), *at);
+        }
     }
     decl.validate(&merged)?;
     if let Some(retention) = &decl.retain_rows {
@@ -763,6 +780,25 @@ fn reconcile(
     }
     drop(schema_lock);
     Ok(RunSite { node_dir, arriving, run_columns })
+}
+
+/// Record in `schema` each producer column's first landing it lacks: on a table declaring
+/// `available_time`, the earliest availability among the rows carrying the column; else
+/// `committed_at`, unknown while a part is only staged (`read.horizon.late-columns`).
+fn first_landings<'a>(decl: &TableDecl, rows: impl Iterator<Item = &'a Map<String, Value>> + Clone, schema: &mut Schema, committed_at: Option<Instant>) {
+    let available = decl.available_time.as_ref().map(|a| a.column.as_str());
+    let pending: Vec<String> = schema.columns.iter().filter(|c| !c.name.starts_with('_') && !schema.first_landed.contains_key(&c.name)).map(|c| c.name.clone()).collect();
+    for name in pending {
+        let earliest = available.and_then(|column| {
+            rows.clone()
+                .filter(|row| row.get(&name).is_some_and(|v| !v.is_null()))
+                .filter_map(|row| row.get(column)?.as_str().and_then(|t| Instant::parse(t).ok()))
+                .min()
+        });
+        if let Some(at) = earliest.or(committed_at) {
+            schema.first_landed.insert(name, at);
+        }
+    }
 }
 
 /// The run's manifest lock on its node. A part carries the name the manifest names, so two
@@ -817,7 +853,7 @@ fn part_batch(arriving: &Schema, rows: &[Map<String, Value>], injection: &Inject
         cols.push(c);
         arrays.push(array);
     }
-    RecordBatch::try_new(parquet_io::arrow_schema(&Schema { columns: cols }), arrays).map_err(|e| ContextError::Invalid(e.to_string()))
+    RecordBatch::try_new(parquet_io::arrow_schema(&Schema { columns: cols, ..Default::default() }), arrays).map_err(|e| ContextError::Invalid(e.to_string()))
 }
 
 /// Write `rb` as the Parquet file `path`, replacing a file a lost landing left there.
@@ -1030,7 +1066,7 @@ fn stage_prepared_part(store: &Store, decl: &TableDecl, batch: &Batch, node: &No
         history.retain(&mut resolved.rows);
     }
     let batch = &resolved;
-    let landing = reconcile(store, decl, std::slice::from_ref(batch), node, injection, true, earlier.as_ref(), false)?;
+    let landing = reconcile(store, decl, std::slice::from_ref(batch), node, injection, true, earlier.as_ref(), None)?;
     // The staged schema lands before the part, so every part a commit names has its
     // columns in the schema that commit merges.
     std::fs::create_dir_all(&stage_dir).at(&stage_dir)?;
@@ -1160,7 +1196,7 @@ fn commit_parts_inner(
             }
         }
         let earlier = read_staged_schema(store, &stage_dir)?;
-        let landing = reconcile(store, decl, &[], &ctx.node, &ctx.injection, true, earlier.as_ref(), true)?;
+        let landing = reconcile(store, decl, &[], &ctx.node, &ctx.injection, true, earlier.as_ref(), Some(ctx.committed_at))?;
         let commit_seq = store.assign_commit_seq(&decl.name)?;
         let inserts = [
             parquet_io::Insert {

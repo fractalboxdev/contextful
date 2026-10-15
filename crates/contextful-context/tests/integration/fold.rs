@@ -326,7 +326,7 @@ fn conforming_never_drops_a_column() {
     use arrow_array::{ArrayRef, Int64Array, RecordBatch};
     use contextful_core::store::reconcile::{Column, ColumnType, Schema};
     use std::sync::Arc;
-    let target = contextful_context::parquet_io::arrow_schema(&Schema { columns: vec![Column::new("a", ColumnType::Int64, true)] });
+    let target = contextful_context::parquet_io::arrow_schema(&Schema { columns: vec![Column::new("a", ColumnType::Int64, true)] , ..Default::default() });
     let wide = RecordBatch::try_from_iter([
         ("a", Arc::new(Int64Array::from(vec![1])) as ArrayRef),
         ("c", Arc::new(Int64Array::from(vec![2])) as ArrayRef),

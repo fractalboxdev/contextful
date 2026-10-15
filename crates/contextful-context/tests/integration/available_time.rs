@@ -340,3 +340,46 @@ fn a_row_available_before_live_since_is_marked_reconstructed() {
     let got = f.query(&d, Bounds::default(), "SELECT id, _available_reconstructed FROM t ORDER BY id");
     assert_eq!(got, [[s("live"), None], [s("old"), s("true")]]);
 }
+
+#[test]
+fn landing_records_each_columns_first_availability_once() {
+    let f = Fixture::new();
+    let d = decl(EARNINGS);
+    let q1 = json!([{ "filing_id": "acme-q1", "eps": "1.23", "digest": "q1", "period_end": "2030-03-31T00:00:00Z", "accepted_at": "2030-05-02T16:05:00Z" }]);
+    f.land_typed(&d, "run-1", q1, "2030-09-01T00:00:00Z", &TYPES).unwrap();
+    let q2 = json!([
+        { "filing_id": "acme-q2", "eps": "1.31", "guidance": "raised", "digest": "q2", "period_end": "2030-06-30T00:00:00Z", "accepted_at": "2030-08-01T16:05:00Z" },
+        { "filing_id": "acme-q0", "eps": "1.01", "digest": "q0", "period_end": "2029-12-31T00:00:00Z", "accepted_at": "2030-02-01T16:05:00Z" },
+    ]);
+    f.land_typed(&d, "run-2", q2, "2030-09-02T00:00:00Z", &TYPES).unwrap();
+    let landed = f.store.schema("earnings").unwrap().first_landed;
+    // `eps` keeps the instant its first merge set, though a later batch carries an earlier row.
+    assert_eq!(landed["eps"], crate::support::at("2030-05-02T16:05:00Z"));
+    // `guidance` dates from the earliest row carrying it, not from the batch's earliest row.
+    assert_eq!(landed["guidance"], crate::support::at("2030-08-01T16:05:00Z"));
+    assert!(!landed.contains_key("_ingested_at"), "an engine stamp takes no first landing");
+
+    // A table declaring no availability time dates a column by its commit.
+    let plain = decl("name = \"notes\"");
+    f.land(&plain, "run-1", json!([{ "note": "a" }]), "2030-01-01T00:00:00Z").unwrap();
+    assert_eq!(f.store.schema("notes").unwrap().first_landed["note"], crate::support::at("2030-01-01T00:00:00Z"));
+}
+
+#[test]
+fn each_capture_of_a_snapshot_corpus_commits_one_snapshot() {
+    let f = Fixture::new();
+    let d = decl("name = \"pages\"\nprimary_key = [\"url\"]\ncontent_hash_column = \"digest\"\n[pipeline.tables.available_time]\ncolumn = \"published_at\"\n[pipeline.tables.snapshot]\nurl = \"url\"\ncaptured_at = \"captured_at\"\ndigest = \"digest\"\nsource = \"source\"");
+    let types = [("published_at", ColumnType::Timestamp), ("captured_at", ColumnType::Timestamp)];
+    let page = |digest: &str, captured: &str| json!([{ "url": "https://a.example", "digest": digest, "source": "crawl", "published_at": "2014-03-02T00:00:00Z", "captured_at": captured }]);
+    f.land_typed(&d, "capture-1", page("a1", "2014-03-03T00:00:00Z"), "2014-03-04T00:00:00Z", &types).unwrap();
+    f.land_typed(&d, "capture-2", page("a2", "2019-06-10T00:00:00Z"), "2019-06-11T00:00:00Z", &types).unwrap();
+    let snapshots = contextful_context::build::manifests(&f.store, "pages").unwrap();
+    assert_eq!(snapshots.len(), 2);
+    assert_eq!(snapshots[0].includes_runs.len(), 1, "{:?}", snapshots[0].includes_runs);
+    // A capture after the page became available is flagged reconstructed.
+    #[cfg(feature = "read")]
+    {
+        let flags = f.query(&d, Bounds::default(), "SELECT digest, _available_reconstructed FROM t ORDER BY digest");
+        assert_eq!(flags.last().unwrap()[1], crate::support::s("true"));
+    }
+}

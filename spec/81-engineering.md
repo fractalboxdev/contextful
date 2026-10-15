@@ -433,8 +433,8 @@ Look-ahead-free backtests: the bounded case, model-knowledge controls, label int
   *because a planted row proves the bound held on the path the case took, not only in its configuration*
 - `planted-delisting` — A universe case plants a member delisted inside its window; the case fails unless its trajectory holds that member's delisting return.
   *because survivorship shows as a missing delisting return, which no aggregate figure reveals*
-- `leak-score` — Each retrieved document lands one leak-score row per document and case horizon on a 0 to 4 scale, and the report gives the Brier score per leak tier.
-  *because leaked page content passes every bound, so only the document's own content can show it*
+- `leak-score` — The case's judge model scores each retrieved document 0 to 4 against a reference answer from rows available before the horizon, landing one row per document and case horizon; the report gives Brier per leak tier.
+  *A-assurance*
 - `trajectory-check` — A bounded case fails when a call in its trajectory lacks the {{disclosure.record.bound-entry}} attributes, or a retrieved document scores at or above the case's declared leak threshold.
   *because a bound proves the configuration, and leaked page content passes the bound*
 - `query-finding` — A recorded query naming an entity first available after the case's horizon lands a finding naming the call.
@@ -448,8 +448,6 @@ Look-ahead-free backtests: the bounded case, model-knowledge controls, label int
 
 - `assurance.backtest.label-interval`: WHEN a bounded case declares a horizon and no label interval, THEN the run raises `EvalLabelIntervalMissing` and reads nothing for that case.
 - `assurance.backtest.planted-future`: WHEN a bounded case's trajectory returns the row planted one day after its horizon, THEN the case fails and the report names the call that returned it.
-
-unsettled: Does the leak-score judge run in the platform or arrive as consumer-landed rows? owner: eval affects: assurance.backtest
 
 ## forecast
 

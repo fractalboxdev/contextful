@@ -238,12 +238,34 @@ pub fn settle(case: &CaseSpec, answer: &AnswerSpec) -> Result<Option<Settled>, S
 }
 
 /// What a run's report computes from: the cases, each table's declaration, the recorded
-/// calls and the audit attributes by entry seq.
+/// calls, the audit attributes by entry seq, and the case's leak judge.
 pub struct Recording<'a> {
     pub cases: &'a [CaseSpec],
     pub decls: &'a BTreeMap<String, Vec<TableDecl>>,
     pub calls: &'a [RecordedCall],
     pub entries: &'a BTreeMap<u64, Value>,
+    pub judge: &'a dyn crate::leak::LeakJudge,
+}
+
+/// Each answer row of `calls` as text, and the documents among them: a `corpus.retrieve`
+/// row's `_row` object. Every row came from a read bounded at the case's horizon.
+fn trajectory_texts(calls: &[&RecordedCall]) -> (Vec<String>, Vec<String>) {
+    let (mut texts, mut documents) = (Vec::new(), Vec::new());
+    for c in calls {
+        let columns: Vec<&str> = c.answer["columns"].as_array().map(|a| a.iter().filter_map(Value::as_str).collect()).unwrap_or_default();
+        let document_at = (c.tool == "corpus.retrieve").then(|| columns.iter().position(|n| *n == "_row")).flatten();
+        for row in c.answer["rows"].as_array().into_iter().flatten() {
+            match document_at.and_then(|i| row.get(i)) {
+                Some(document) => {
+                    let text = document.to_string();
+                    texts.push(text.clone());
+                    documents.push(text);
+                }
+                None => texts.push(row.to_string()),
+            }
+        }
+    }
+    (texts, documents)
 }
 
 /// A forecast case beside the reader's and the no-evidence forecaster's answers.
@@ -255,12 +277,23 @@ pub fn assess(r: &Recording<'_>) -> Result<Value, String> {
     let mut forecasts: Vec<Answered> = Vec::new();
     let mut settled = Vec::new();
     let mut unsettled = Vec::new();
+    let mut leak_rows = Vec::new();
+    let mut tiered = Vec::new();
     for spec in r.cases {
         let bounded = spec.bounded().map_err(|e| e.to_string())?;
         let calls: Vec<&RecordedCall> = r.calls.iter().filter(|c| c.case == spec.id).collect();
         let answers: Vec<&Value> = calls.iter().map(|c| &c.answer).collect();
         let entries: Vec<Value> = calls.iter().map(|c| c.seq.and_then(|s| r.entries.get(&s)).cloned().unwrap_or(Value::Null)).collect();
-        let mut failures = backtest::trajectory_check(&entries, &BTreeMap::new(), u8::MAX);
+        // Each retrieved document's leak score (`assurance.backtest.leak-score`).
+        let (texts, documents) = trajectory_texts(&calls);
+        let scored = crate::leak::score_case(r.judge, &spec.id, spec.horizon, &documents, &texts)?;
+        let tier = scored.iter().map(|row| row.score).max().unwrap_or(0);
+        if let Some(a) = spec.forecast.as_ref().and_then(|f| f.answer.map(|a| (a.probability, f.outcome))) {
+            tiered.push((tier, a.0, a.1));
+        }
+        let scores: BTreeMap<String, u8> = scored.iter().map(|row| (row.document.clone(), row.score)).collect();
+        leak_rows.extend(scored);
+        let mut failures = backtest::trajectory_check(&entries, &scores, u8::MAX);
         // Each answer is the one its signed entry digested (`disclosure.record.bound-entry`).
         let digests: Vec<String> = calls.iter().map(|c| sha256_hex(&serde_json::to_vec(&c.answer).expect("an answer serializes"))).collect();
         for ((c, entry), d) in calls.iter().zip(&entries).zip(&digests) {
@@ -317,6 +350,11 @@ pub fn assess(r: &Recording<'_>) -> Result<Value, String> {
         }
     }
     let mut report = json!({ "cases": cases });
+    let tiers: serde_json::Map<String, Value> = crate::leak::brier_by_tier(&tiered)
+        .into_iter()
+        .map(|(tier, (n, brier))| (tier.to_string(), json!({ "cases": n, "brier": brier })))
+        .collect();
+    report["leak"] = json!({ "rows": leak_rows, "brier_by_tier": tiers });
     if !forecasts.is_empty() || !unsettled.is_empty() {
         let fcs: Vec<ForecastCase> = forecasts.iter().map(|(c, _, _)| c.clone()).collect();
         let answers = |pick: fn(&Answered) -> Option<AnswerSpec>| -> BTreeMap<String, Answer> {

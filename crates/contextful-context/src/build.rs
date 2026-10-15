@@ -638,7 +638,7 @@ mod materialize {
             check_rows(spec, &cols, &rows)?;
 
             let n = rows.num_rows();
-            let mut schema = Schema { columns: cols.clone() };
+            let mut schema = Schema { columns: cols.clone(), ..Default::default() };
             schema.columns.extend(injected_columns());
             let mut arrays: Vec<ArrayRef> = rows.columns().to_vec();
             let nanos = i64::try_from(req.started_at.unix_nanos()).map_err(|e| invalid(format!("the build instant: {e}")))?;

@@ -112,7 +112,7 @@ pub fn producer_columns(schema: &Schema) -> Result<Schema, StoreError> {
         }
         kept.push(c.clone());
     }
-    Ok(Schema { columns: kept })
+    Ok(Schema { columns: kept, ..Default::default() })
 }
 
 /// Refuse a table name inside a reserved namespace (`store.reserve.table-name`).

@@ -351,3 +351,13 @@ Decision: `assurance.backtest.cutoff-slice` states leakage against a declared re
 | Platform decoding corrections | Consumer choice | One correction fixed for every model and question. |
 
 Consequences: a report without a reference or an execution component refuses; a consumer correcting decoding reads the landed log-probabilities.
+
+## The case's judge scores leakage against a pre-horizon reference
+
+`assurance.backtest.leak-score` runs in the platform: the case's own judge model scores each retrieved document 0 to 4 against a reference answer drawn from rows available before the horizon, and the run lands one row per document and horizon. The score feeds the Brier-per-tier report and the zero threshold a late snapshot capture answers under.
+
+| Option | Lost on | Cost |
+| --- | --- | --- |
+| The case's judge against a pre-horizon reference *(chosen)* | — | One judge call per retrieved document. |
+| Consumer-landed scores | Comparability | Two runs of one case score leakage by different rules. |
+| A fixed classifier | Domain | A generic classifier misses domain-specific outcomes. |

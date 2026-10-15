@@ -71,7 +71,7 @@ pub fn scan_at(store: &Store, decl: &TableDecl, bounds: Bounds, snapshot: Option
                     }
                 }
             }
-            Schema { columns }
+            Schema { columns, ..Default::default() }
         }
         _ => store.schema(table)?,
     };

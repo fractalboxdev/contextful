@@ -54,6 +54,34 @@ pub struct AvailableTime {
     /// The instant the source began publishing live (`store.available-time.live-since`).
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub live_since: Option<String>,
+    /// The factor table a bounded read multiplies listed columns by
+    /// (`store.available-time.adjustment-factors`).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub adjustment: Option<Adjustment>,
+}
+
+/// A factor table and the numeric columns its factors multiply
+/// (`store.available-time.adjustment-factors`).
+#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct Adjustment {
+    pub table: String,
+    pub factor_column: String,
+    pub adjust_columns: Vec<String>,
+}
+
+/// The columns a snapshot corpus records per document (`store.snapshot.capture`).
+#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct SnapshotDecl {
+    pub url: String,
+    pub captured_at: String,
+    pub digest: String,
+    pub source: String,
+    /// The judged leak score a capture after the horizon answers under
+    /// (`store.snapshot.post-horizon-capture`).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub leak_score: Option<String>,
 }
 
 /// A duration per row class, read from `class_column` (`store.available-time.lag-class`).
@@ -118,6 +146,9 @@ pub struct TableDecl {
     /// The availability instant an `available_as_of` read compares (`store.available-time.table-key`).
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub available_time: Option<AvailableTime>,
+    /// A snapshot corpus's capture columns (`store.snapshot.capture`).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub snapshot: Option<SnapshotDecl>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub cluster_by: Option<Vec<String>>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -328,6 +359,10 @@ impl TableDecl {
             if let Some(to) = &time.to { names.insert(to.as_str()); }
         }
         if let Some(time) = &self.available_time { names.insert(time.column.as_str()); }
+        if let Some(snapshot) = &self.snapshot {
+            names.extend([&snapshot.url, &snapshot.captured_at, &snapshot.digest, &snapshot.source].map(String::as_str));
+            if let Some(score) = &snapshot.leak_score { names.insert(score.as_str()); }
+        }
         if let Some(retention) = &self.retain_rows { names.insert(retention.column.as_str()); }
         for index in self.indexes.iter().flatten() {
             names.insert(index.column.as_str());

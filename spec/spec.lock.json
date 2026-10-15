@@ -4504,7 +4504,7 @@
       "operation": "snapshot",
       "subject": "capture",
       "kind": "behavior",
-      "statement": "A snapshot corpus table records per document its URL, capture instant, content digest and capture source; each capture commits as one store snapshot, and an evaluation case pins one snapshot id.",
+      "statement": "`[pipeline.tables.snapshot]` names the `url`, `captured_at`, `digest` and `source` columns a snapshot corpus records per document; each capture commits as one store snapshot, and an evaluation case pins it by `snapshot` id.",
       "why": "because a corpus re-captured between two runs of one case answers each run from different pages",
       "file": "spec/11-snapshot.md",
       "line": 17
@@ -4515,12 +4515,12 @@
       "operation": "snapshot",
       "subject": "post-horizon-capture",
       "kind": "behavior",
-      "statement": "A document captured after the reading horizon carries `_available_reconstructed` true, as {{store.available-time.live-since}} injects it, and a horizon read admits it only below the case's declared leak threshold.",
-      "why": "because a later capture shows the page as updated, not as published",
+      "statement": "A document captured after the reading horizon carries `_available_reconstructed` true, as {{store.available-time.live-since}} injects it, and a horizon read admits it only where the block's `leak_score` column holds 0.",
+      "why": "A-store",
       "file": "spec/11-snapshot.md",
       "line": 19,
       "scenarios": [
-        "WHEN a page published `2014-03-02` is captured `2019-06-10` and read under horizon `2014-05-01`, THEN the row carries `_available_reconstructed` true and answers only below the case's leak threshold."
+        "WHEN a page published `2014-03-02` is captured `2019-06-10` and read under horizon `2014-05-01`, THEN the row carries `_available_reconstructed` true and answers only while its `leak_score` is 0."
       ]
     },
     {
@@ -4926,10 +4926,21 @@
       "operation": "available-time",
       "subject": "adjustment-factors",
       "kind": "behavior",
-      "statement": "`available_time.adjustment = { table = \"<name>\", factor_column = \"<column>\" }` keeps a price table's values raw; an `available_as_of` read applies only factor vintages of that table available at or before the bound.",
+      "statement": "`available_time.adjustment = { table = \"<name>\", factor_column = \"<column>\", adjust_columns = [...] }` keeps values raw; an `available_as_of` read multiplies each listed numeric column by the product of factor vintages available by the bound.",
       "why": "because a back-adjusted 2014 price encodes splits announced after 2014",
       "file": "spec/12-time.md",
       "line": 82
+    },
+    {
+      "id": "store.available-time.adjustment-join",
+      "contract": "store",
+      "operation": "available-time",
+      "subject": "adjustment-join",
+      "kind": "behavior",
+      "statement": "A factor row applies to each row agreeing on every factor-table `primary_key` column whose valid-time `from` precedes the factor row's valid-time `from`.",
+      "why": "A-store",
+      "file": "spec/12-time.md",
+      "line": 84
     },
     {
       "id": "read.register.connection-views",
@@ -6882,8 +6893,8 @@
       "operation": "horizon",
       "subject": "engine-stamps",
       "kind": "behavior",
-      "statement": "Under a horizon, the projection carries none of the columns {{store.reserve.injected}}, {{store.reserve.row-seq}} and {{store.reserve.commit-seq}} inject, and `context.describe` computes row count, size, lexicon and example values over the horizon-bounded relation.",
-      "why": "because a load instant or a full-table row count discloses the present",
+      "statement": "Under a horizon, the projection carries neither `_ingested_at` nor `_commit_seq` and keeps `_run_id` and `_row_seq`, which cite a row; `context.describe` computes row count, size, lexicon and example values over the horizon-bounded relation.",
+      "why": "A-read",
       "file": "spec/20-read.md",
       "line": 480
     },
@@ -6893,8 +6904,8 @@
       "operation": "horizon",
       "subject": "late-columns",
       "kind": "behavior",
-      "statement": "Under a horizon, a column whose first landing in its table falls after the horizon is absent from the registered schema and from the describe payload.",
-      "why": "because a null still says the field exists",
+      "statement": "Under a horizon, a column whose `first_landed_at` in `schema.json` — set once by its first merge, to that batch's earliest availability instant, else the commit instant — falls after the horizon is absent from the registered schema and describe payload.",
+      "why": "A-store",
       "file": "spec/20-read.md",
       "line": 482
     },
@@ -26504,8 +26515,8 @@
       "operation": "backtest",
       "subject": "leak-score",
       "kind": "behavior",
-      "statement": "Each retrieved document lands one leak-score row per document and case horizon on a 0 to 4 scale, and the report gives the Brier score per leak tier.",
-      "why": "because leaked page content passes every bound, so only the document's own content can show it",
+      "statement": "The case's judge model scores each retrieved document 0 to 4 against a reference answer from rows available before the horizon, landing one row per document and case horizon; the report gives Brier per leak tier.",
+      "why": "A-assurance",
       "file": "spec/81-engineering.md",
       "line": 436
     },
@@ -26562,7 +26573,7 @@
       "statement": "A forecast case carries a freeze instant, a resolution statement naming its vintage, a resolution instant and a probability answer; a backtest forecast case is a {{assurance.backtest.bounded-case}} whose horizon is its freeze instant.",
       "why": "",
       "file": "spec/81-engineering.md",
-      "line": 458
+      "line": 456
     },
     {
       "id": "assurance.forecast.resolved-before-freeze",
@@ -26573,7 +26584,7 @@
       "statement": "A backtest forecast case whose resolution instant precedes its freeze instant raises `EvalCaseResolvedBeforeFreeze`.",
       "why": "because a question picked after its answer is known leaks through its own existence",
       "file": "spec/81-engineering.md",
-      "line": 459,
+      "line": 457,
       "scenarios": [
         "WHEN a backtest forecast case freezes on `2014-06-01` and resolved on `2014-05-20`, THEN the run raises `EvalCaseResolvedBeforeFreeze` before reading the case."
       ]
@@ -26587,7 +26598,7 @@
       "statement": "A forecast case settles through the label join within {{read.settle.grace-window}}, and its scores report as {{read.settle.calibration-report}} groups them.",
       "why": "because one settlement path keeps a forecast's Brier score comparable with an application's calibration",
       "file": "spec/81-engineering.md",
-      "line": 461
+      "line": 459
     },
     {
       "id": "assurance.forecast.lead-time",
@@ -26598,7 +26609,7 @@
       "statement": "An answer recorded less than the case's declared minimum lead before resolution scores on a separate track.",
       "why": "because an answer given near resolution reads the outcome rather than forecasting it",
       "file": "spec/81-engineering.md",
-      "line": 463
+      "line": 461
     },
     {
       "id": "assurance.forecast.market-context",
@@ -26609,7 +26620,7 @@
       "statement": "A market case carries the freeze-instant market price as an available row, and the report shows each forecaster's edge over it.",
       "why": "",
       "file": "spec/81-engineering.md",
-      "line": 465
+      "line": 463
     },
     {
       "id": "assurance.forecast.imputed",
@@ -26620,7 +26631,7 @@
       "statement": "A missing answer scores as probability 0.5 on a dataset case and as the freeze-instant market price on a market case.",
       "why": "because dropping a missing answer rewards abstaining on hard questions",
       "file": "spec/81-engineering.md",
-      "line": 466
+      "line": 464
     },
     {
       "id": "assurance.forecast.coverage-floor",
@@ -26631,7 +26642,7 @@
       "statement": "A forecaster answering below 95 percent of a round's cases is reported unranked.",
       "why": "because imputation alone still lets a forecaster pick its questions",
       "file": "spec/81-engineering.md",
-      "line": 468
+      "line": 466
     },
     {
       "id": "assurance.forecast.no-evidence-baseline",
@@ -26642,7 +26653,7 @@
       "statement": "Each round also scores a forecaster given the question text alone, and the report subtracts its Brier score from each forecaster's.",
       "why": "because which questions exist can reveal their answers without any retrieval",
       "file": "spec/81-engineering.md",
-      "line": 470
+      "line": 468
     },
     {
       "id": "assurance.forecast.tracks-separate",
@@ -26653,7 +26664,7 @@
       "statement": "Backtest, prospective, tool-free and tool-using scores never pool into one figure.",
       "why": "A-assurance",
       "file": "spec/81-engineering.md",
-      "line": 472
+      "line": 470
     },
     {
       "id": "assurance.measure.ledger",
@@ -26664,7 +26675,7 @@
       "statement": "`evals/ledger.toml` holds one entry per tracked target: an id, an owning clause id, a run-report metric path, a tier, a method naming one integration test, case set or probe, and a threshold.",
       "why": "",
       "file": "spec/81-engineering.md",
-      "line": 485
+      "line": 483
     },
     {
       "id": "assurance.measure.unresolved-entry",
@@ -26675,7 +26686,7 @@
       "statement": "An entry whose owning clause, method or metric path resolves to nothing raises `MeasureEntryUnresolved` before any measure runs.",
       "why": "P7",
       "file": "spec/81-engineering.md",
-      "line": 486,
+      "line": 484,
       "scenarios": [
         "WHEN an entry names `run.journal.entry-keys`, THEN the run raises `MeasureEntryUnresolved` and no test runs."
       ]
@@ -26689,7 +26700,7 @@
       "statement": "An entry naming an issue in place of a method reports open and gates nothing, and `evals/ledger.md` carries every entry's computed status.",
       "why": "",
       "file": "spec/81-engineering.md",
-      "line": 488,
+      "line": 486,
       "scenarios": [
         "WHEN an entry's method is `{ issue = 43 }`, THEN `evals/ledger.md` lists it open and the evaluate stage ignores it."
       ]
@@ -26703,7 +26714,7 @@
       "statement": "A gate-tier entry decides the evaluate stage, a trend-tier entry is measured on the default-branch run and decides nothing, and a scheduled-tier entry runs on the scheduled job alone.",
       "why": "",
       "file": "spec/81-engineering.md",
-      "line": 489
+      "line": 487
     },
     {
       "id": "assurance.measure.judged-tier",
@@ -26714,7 +26725,7 @@
       "statement": "An entry whose metric names a judged figure is scheduled-tier; on another tier it resolves to nothing under {{assurance.measure.unresolved-entry}}.",
       "why": "because a judged figure costs a model call per item and moves with the judge, not with the change",
       "file": "spec/81-engineering.md",
-      "line": 490
+      "line": 488
     },
     {
       "id": "assurance.measure.count-first",
@@ -26725,7 +26736,7 @@
       "statement": "A gate-tier entry measures a count, a ratio within one run or a size under a locked resolve; a wall-clock or resident-memory figure is trend-tier.",
       "why": "because a shared container moves wall-clock figures past any band narrow enough to catch a regression",
       "file": "spec/81-engineering.md",
-      "line": 492
+      "line": 490
     },
     {
       "id": "assurance.measure.record",
@@ -26736,7 +26747,7 @@
       "statement": "A measure writes one JSON record carrying its entry id, value, sample count, seed and run stamp; a gate-tier method finishing without one raises `MeasureRecordMissing`.",
       "why": "P7",
       "file": "spec/81-engineering.md",
-      "line": 494
+      "line": 492
     },
     {
       "id": "assurance.measure.seeded",
@@ -26747,7 +26758,7 @@
       "statement": "Every generated fixture and randomized schedule derives from the record's seed, and replaying that seed reproduces a count-valued entry's value.",
       "why": "because a failure that cannot replay cannot be fixed",
       "file": "spec/81-engineering.md",
-      "line": 496
+      "line": 494
     },
     {
       "id": "assurance.measure.seed-mismatch",
@@ -26758,7 +26769,7 @@
       "statement": "A gate or scheduled record whose seed differs from its entry's declared seed raises `MeasureSeedMismatch` and counts as red; a trend mismatch leaves no comparable record.",
       "why": "because a figure measured under another seed replays nothing the ledger names",
       "file": "spec/81-engineering.md",
-      "line": 498
+      "line": 496
     },
     {
       "id": "assurance.measure.timing-iterations",
@@ -26769,7 +26780,7 @@
       "statement": "A timed batch reports p50 and p95 over 200 repeats of its operation, each after warm-up.",
       "why": "",
       "file": "spec/81-engineering.md",
-      "line": 500
+      "line": 498
     },
     {
       "id": "assurance.measure.timing-batches",
@@ -26780,7 +26791,7 @@
       "statement": "A timed figure is the median of 5 repeats of its timed batch.",
       "why": "",
       "file": "spec/81-engineering.md",
-      "line": 501
+      "line": 499
     },
     {
       "id": "assurance.measure.trend-direction",
@@ -26791,7 +26802,7 @@
       "statement": "Each trend-tier ledger entry declares `higher_is_better` or `lower_is_better` for its metric.",
       "why": "A-assurance",
       "file": "spec/81-engineering.md",
-      "line": 502
+      "line": 500
     },
     {
       "id": "assurance.measure.trend-baseline",
@@ -26802,7 +26813,7 @@
       "statement": "A trend figure compares with the newest earlier successful default-branch report for the same entry and seed under {{assurance.measure.runner-stamp}}; absent matching history yields no annotation.",
       "why": "A-assurance",
       "file": "spec/81-engineering.md",
-      "line": 504,
+      "line": 502,
       "scenarios": [
         "WHEN a newer failed report follows two successful matches, THEN the trend compares with the newer successful match and the stage passes."
       ]
@@ -26816,7 +26827,7 @@
       "statement": "A trend figure more than 25 percent worse than its baseline annotates the run report and fails no stage.",
       "why": "",
       "file": "spec/81-engineering.md",
-      "line": 506,
+      "line": 504,
       "scenarios": [
         "WHEN a trend p95 moves from 40 ms to 52 ms on a matching runner stamp, THEN the report carries a +30 percent annotation and the stage passes."
       ]
@@ -26830,7 +26841,7 @@
       "statement": "The run block carries the runner's processor model, processor count and memory limit, and a trend figure compares only against a baseline with the same stamp.",
       "why": "",
       "file": "spec/81-engineering.md",
-      "line": 507
+      "line": 505
     },
     {
       "id": "assurance.measure.absolute-threshold",
@@ -26841,7 +26852,7 @@
       "statement": "A threshold is an absolute figure of this system's own measure, and it tightens only through {{assurance.baseline.raise-only}}.",
       "why": "",
       "file": "spec/81-engineering.md",
-      "line": 508
+      "line": 506
     },
     {
       "id": "assurance.measure.history",
@@ -26852,7 +26863,7 @@
       "statement": "A run on the default branch attaches its run report to the measured commit under `refs/notes/measures`, and no verdict reads a note.",
       "why": "A-assurance",
       "file": "spec/81-engineering.md",
-      "line": 509
+      "line": 507
     },
     {
       "id": "assurance.measure.scheduled",
@@ -26863,7 +26874,7 @@
       "statement": "The FlareDispatch nightly run executes every tier against the default-branch head and reports one check per run.",
       "why": "",
       "file": "spec/81-engineering.md",
-      "line": 511
+      "line": 509
     },
     {
       "id": "assurance.measure.measured-basis",
@@ -26874,7 +26885,7 @@
       "statement": "A bound with a measured basis names a trend-tier or scheduled-tier ledger entry id as its benchmark.",
       "why": "",
       "file": "spec/81-engineering.md",
-      "line": 512
+      "line": 510
     },
     {
       "id": "assurance.release.version",
@@ -26885,7 +26896,7 @@
       "statement": "A release tag is `v0.<closed>.<patch>`: `<closed>` counts the milestones computing `closed` in the tagged commit's `spec/status.md`, and `<patch>` counts the existing tags `v0.<closed>.*`.",
       "why": "A-assurance",
       "file": "spec/81-engineering.md",
-      "line": 542,
+      "line": 540,
       "scenarios": [
         "WHEN milestones 0 to 7 and 11 compute `closed` and `v0.9.0` exists, THEN the computed version is `v0.9.1`."
       ]
@@ -26899,7 +26910,7 @@
       "statement": "`contextful-ci tag` creates a signed annotated tag on `HEAD` naming the closed milestones once every refusal of this operation clears, and never moves or replaces an existing tag.",
       "why": "A-assurance",
       "file": "spec/81-engineering.md",
-      "line": 544
+      "line": 542
     },
     {
       "id": "assurance.release.dirty-tree",
@@ -26910,7 +26921,7 @@
       "statement": "A working tree or index differing from `HEAD` raises `TagTreeDirty`.",
       "why": "because the gate then judges files the tagged commit does not hold",
       "file": "spec/81-engineering.md",
-      "line": 546
+      "line": 544
     },
     {
       "id": "assurance.release.off-branch",
@@ -26921,7 +26932,7 @@
       "statement": "A `HEAD` unreachable from the default branch, `origin/HEAD` unless `--branch` names another, raises `TagOffDefaultBranch`.",
       "why": "A-assurance",
       "file": "spec/81-engineering.md",
-      "line": 548
+      "line": 546
     },
     {
       "id": "assurance.release.version-regressed",
@@ -26932,7 +26943,7 @@
       "statement": "A computed version below the highest existing `v<major>.<minor>.<patch>` tag raises `TagVersionRegressed`, naming both.",
       "why": "A-assurance",
       "file": "spec/81-engineering.md",
-      "line": 550,
+      "line": 548,
       "scenarios": [
         "WHEN milestone 11 reopens after `v0.9.0`, THEN the computed `v0.8.0` raises `TagVersionRegressed`."
       ]
@@ -26946,7 +26957,7 @@
       "statement": "A `[workspace.package]` version in `HEAD`'s `Cargo.toml` that is absent or differs from the computed version raises `TagWorkspaceVersionMismatch`, naming both.",
       "why": "A-assurance",
       "file": "spec/81-engineering.md",
-      "line": 552
+      "line": 550
     },
     {
       "id": "assurance.release.gate-failed",
@@ -26957,7 +26968,7 @@
       "statement": "Once the other refusals clear, every gate stage runs against `HEAD` with `HEAD~1` as base; a failing stage raises `TagGateFailed`, naming the stage's refusal, and no tag is created.",
       "why": "A-assurance",
       "file": "spec/81-engineering.md",
-      "line": 554
+      "line": 552
     },
     {
       "id": "assurance.release.release-run",
@@ -26968,7 +26979,7 @@
       "statement": "A `v*` tag at a default-branch commit starts FlareDispatch `contextful-release`, with one `contextful-release-cell` child per {{assurance.build.targets}} matrix cell and one `contextful-release-formula` child for their metadata.",
       "why": "because distributed builds and formula generation share one tag identity",
       "file": "spec/81-engineering.md",
-      "line": 556
+      "line": 554
     },
     {
       "id": "assurance.release.release-dry-run",
@@ -26979,7 +26990,7 @@
       "statement": "A manual `contextful-release` dry run builds the release assets and publishes neither a GitHub release nor container images.",
       "why": "because a packaging rehearsal must not claim a released version",
       "file": "spec/81-engineering.md",
-      "line": 558
+      "line": 556
     },
     {
       "id": "assurance.consumer.suite",
@@ -28117,18 +28128,6 @@
     [
       "read.horizon.recall-horizon",
       "store.available-time.undeclared"
-    ],
-    [
-      "read.horizon.engine-stamps",
-      "store.reserve.injected"
-    ],
-    [
-      "read.horizon.engine-stamps",
-      "store.reserve.row-seq"
-    ],
-    [
-      "read.horizon.engine-stamps",
-      "store.reserve.commit-seq"
     ],
     [
       "read.horizon.egress-hook",

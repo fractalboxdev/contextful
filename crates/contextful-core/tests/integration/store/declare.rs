@@ -132,7 +132,7 @@ fn order_by_defaults_to_ingested_at() {
 // spec: store.declare.order-by-unknown@374f5264
 #[test]
 fn an_order_by_naming_no_column_is_refused() {
-    let schema = Schema { columns: vec![Column::new("revised_at", ColumnType::Int64, true)] };
+    let schema = Schema { columns: vec![Column::new("revised_at", ColumnType::Int64, true)] , ..Default::default() };
     let mut t = TableDecl::named("filings");
     t.order_by = Some("revised_on".into());
     match t.validate(&schema) {
@@ -285,6 +285,7 @@ fn a_nested_column_in_a_key_or_ordering_role_is_refused() {
                 Column::new("id", ColumnType::Utf8, true),
                 Column::new("v", ty.clone(), true),
             ],
+            ..Default::default()
         };
         for block in blocks {
             let t = TableDecl::parse_pipeline(&format!(
@@ -318,6 +319,7 @@ fn a_nested_column_in_a_key_or_ordering_role_is_refused() {
             Column::new("id", ColumnType::Utf8, true),
             Column::new("v", nested[0].clone(), true),
         ],
+        ..Default::default()
     };
     TableDecl::parse_pipeline("[[pipeline.tables]]\nname = \"spans\"\nprimary_key = [\"id\"]\n")
         .unwrap()

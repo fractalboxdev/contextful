@@ -127,7 +127,10 @@ pub(crate) fn resolve(decl: &TableDecl, mut batch: Batch) -> Result<Batch> {
         };
         let Some(at) = instant else { continue };
         row.insert(available.column.clone(), Value::String(at.to_rfc3339_nanos()));
-        if live_since.is_some_and(|live| at < live) {
+        // A snapshot document captured after it became available shows the page as later
+        // updated, not as published (`store.snapshot.post-horizon-capture`).
+        let captured_later = decl.snapshot.as_ref().and_then(|s| row.get(&s.captured_at)).and_then(Value::as_str).and_then(|t| Instant::parse(t).ok()).is_some_and(|captured| captured > at);
+        if live_since.is_some_and(|live| at < live) || captured_later {
             row.insert(AVAILABLE_RECONSTRUCTED.into(), Value::Bool(true));
         }
     }

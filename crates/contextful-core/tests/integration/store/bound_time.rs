@@ -122,6 +122,7 @@ fn a_valid_time_column_not_timestamp_typed_is_refused() {
     t.valid_time = Some(ValidTime { from: "effective_from".into(), to: Some("effective_to".into()) });
     let schema = |to: ColumnType| Schema {
         columns: vec![Column::new("effective_from", ColumnType::Timestamp, true), Column::new("effective_to", to, true)],
+        ..Default::default()
     };
     t.validate(&schema(ColumnType::Timestamp)).unwrap();
     match t.validate(&schema(ColumnType::Utf8)) {

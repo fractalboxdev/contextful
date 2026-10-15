@@ -12,6 +12,7 @@ mod floors;
 mod forecast;
 mod golden;
 mod judge;
+mod leak;
 mod ledger;
 mod metrics;
 mod record;
