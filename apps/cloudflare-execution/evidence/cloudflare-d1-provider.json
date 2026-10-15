@@ -1,12 +1,12 @@
 {
   "schema_version": 1,
-  "suite_revision": "consumer-v1",
+  "suite_revision": "consumer-v2",
   "suite_version": "0.5.0",
-  "artifact_digest": "42b68d2f217449033caa3e9fc7824fe31d08f10130adbd70954a53917c1c8240",
+  "artifact_digest": "48afb165cfcd10d4e1e931bb8add329eaeb807639789a6cfab23c9614e9e5486",
   "reported_version": "contextful 0.5.0 contextful-full",
   "feature_profile": "contextful-full",
   "storage_profile": "cloudflare-d1",
-  "source_commit": "60374e4c0f8eb633df0af40199291d756118e0b8",
+  "source_commit": "51882bb54e6ea108786d40300e67a3f07e03ecbb",
   "scenarios": [
     {
       "id": "pagination-checkpoint",
@@ -55,6 +55,13 @@
       "required": true,
       "outcome": "passed",
       "requirement": "export,query,token",
+      "diagnostic": null
+    },
+    {
+      "id": "coordinated-group-publication",
+      "required": true,
+      "outcome": "passed",
+      "requirement": "build,export,token",
       "diagnostic": null
     }
   ],
