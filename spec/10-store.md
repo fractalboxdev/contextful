@@ -207,14 +207,8 @@ A table's declaration block: its key, ordering column and write mode, and what a
 - `declaration-set` — A project's table blocks are the declaration's and those of every `pipelines/*.toml` and `pipelines/*.json` beside it — a `[pipeline]` table's as named, each specification's under {{run.declare.table-name}}. The read face and every `sync` verb read this set.
   *because a key or `replicate` declared only where `pipeline run` reads it leaves reads, pulls and folds treating the table as unkeyed and replicated*
 - `read-side-keys` — A declaration key changes what a read returns and rewrites no committed part; a key added after rows land applies from the next read.
-- `view-definition` — `view` holds one `SELECT` naming store tables and other views, admitted by {{read.guard.single-read-only-statement}} at validation; the engine builds it into staging and publishes it as a model through {{run.publish.staging}}.
-  *A-store*
-- `view-policy` — A `view` reading a table that carries a row policy or column masks declares its own `policy`; one declaring none raises `ViewPolicyUndeclared` at validation.
-  *A-store*
 
 unsettled: What retires a key a source stops serving under `append`, given the source-side deletion is invisible in the tree? owner: store affects: store.declare
-
-unsettled: Does a view build fire on input commits since the last build, on an interval, or on either, and what refuses a cycle among views (issue 94)? owner: store affects: store.declare
 
 ## reserve
 

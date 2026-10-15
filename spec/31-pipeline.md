@@ -435,6 +435,10 @@ The `[[model]]` block: a table defined by SQL over store tables, its contract, f
   *because a stopped execution must not publish its staged model*
 - `unknown-model` — `build` naming no declared model raises `ModelUndeclared`, naming the declared models.
   *because a build of a misspelled id otherwise reports nothing to do*
+- `build-frontier` — `build` reads each input at its committed frontier and fires no pipeline; a build ordered after a landing is a `build` job naming that pipeline in `after`, under {{surface.fire.build-dependency}}.
+  *because `after` already orders builds behind pipelines, and a verb firing sources needs their credentials and quota, and repeats paid calls on every retry*
+- `model-cycle` — A model whose `sql` reaches its own id through one or more other models raises `ModelCycle` at `pipeline validate`, import, apply and `build`, before any store is read, naming every model on the cycle.
+  *because no member of a cycle has a first build, and once one exists each build folds in the other's previous output*
 - `build-id` — A build's id is the snapshot id it publishes.
   *A-run*
 - `watermark` — A build's watermark is `{at, inputs}`: per input table the snapshot id and the committed runs it omits, and `at` the newest commit instant among them.
@@ -450,18 +454,14 @@ The `[[model]]` block: a table defined by SQL over store tables, its contract, f
 
 unsettled: Does a model materialize incrementally, merging each build into its prior one on `unique_key`? owner: pipeline affects: run.model
 
-unsettled: Does `build` run the pipelines feeding a model's inputs first? owner: pipeline affects: run.model
-
 unsettled: Does a model over a restricted table declare its own policy, or inherit the strictest policy among its inputs? owner: pipeline affects: run.model
-
-unsettled: Does `pipeline validate` refuse a model relation that names no declared table or model, before any store is read? owner: pipeline affects: run.model
-
-unsettled: Does a validation verb refuse a cycle among models before any build reaches one? owner: pipeline affects: run.model
 
 #### Scenarios
 
 - `run.model.test-failed`: WHEN a test `SELECT * FROM daily WHERE n < 0` returns 2 rows, THEN the build raises `ModelTestFailed` naming the test and 2, and `daily` reads its prior build.
 - `run.model.hold-verb`: WHEN `build hold --for 7d daily <build>` runs twice, THEN the first prints `Held` and the second `Renewed`, each with the new expiry.
+- `run.model.model-cycle`: WHEN model `a` reads `b` and `b` reads `a`, THEN `pipeline validate` raises `ModelCycle` naming `a`, `b`, and `build a` reads no row.
+- `run.model.build-frontier`: WHEN the `http` pipeline feeding a model's input points at an unreachable endpoint, THEN `build` succeeds, records no new run, and its watermark names only runs already committed.
 
 ## publish
 
@@ -478,7 +478,9 @@ A published table's contract identity, build, freshness and holds, committed wit
 - `build-entry` — A build entry carries build id, start and completion instants, a status of published, refused, partial or failed, the contract identity, and the partition values it left unfilled.
 - `failed-attempt` — A published model records an attempt before materialization; a dead attempt without a committed manifest reports `failed`, keeps the prior published build serving, and contributes a failed build entry.
   *because a process killed before publication cannot write its own failure, while its attempt record and released lock survive*
-- `freshness` — Freshness carries the newest publishing build id, its watermark, `max_lag`, the last build status and a withheld-cells flag; staleness is derived from watermark against `max_lag` and never stored.
+- `freshness` — Freshness carries the newest publishing build id, its watermark, `max_lag`, the last build status and a withheld-cells flag; staleness follows {{run.publish.staleness}} and is never stored.
+- `staleness` — A published model is stale at `t` when an input holds a committed run that neither its watermark snapshot nor listed runs include, committed before `t` minus `max_lag`; `build status --json` names each such input under `stale_inputs`.
+  *A-run*
 - `hold` — A hold records build id, placing principal and expiry; collection skips a held build, and a hold confers no other authority.
 - `manifest-section` — The manifest section carries `{contract_version, schema_fingerprint, build_id, build_started_at, last_built_at, watermark, max_lag, last_build_status, withheld_cells, disclosure_digest, partitions_failed?, semantics_version?, fingerprint_recipe?}` of the newest publishing build; `watermark` maps each input table to its snapshot and omitted runs.
 - `semantics-version` — `semantics_version` advances when the engine adds an injected column, and `fingerprint_recipe` names the fingerprint's inputs, that column included.
@@ -500,7 +502,13 @@ flowchart LR
   HOLD -.->|"collection skips"| MC
 ```
 
-unsettled: How does staleness compare a per-input frontier watermark against `max_lag`: by the oldest omitted run's commit instant, or per input table (issue 94)? owner: pipeline affects: run.publish
+#### Scenarios
+
+- `run.publish.staleness`: WHEN no input lands after a build and `max_lag` is `1h`, THEN `build status` at 100 days later reports `stale` false.
+- `run.publish.staleness`: WHEN `events` lands a run 1 second past the build and `max_lag` is `1h`, THEN status reports fresh at 1 hour after the landing and stale, `stale_inputs` `["events"]`, 1 second later.
+- `run.publish.staleness`: WHEN a fold folds the runs a build read into a new snapshot, THEN status still reports the build fresh.
+
+unsettled: Is a build with a non-null horizon stale by landings committed after its horizon? owner: pipeline affects: run.publish
 
 ## Shapes
 

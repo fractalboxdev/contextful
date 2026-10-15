@@ -29,7 +29,7 @@ flowchart LR
 ```
 
 A pipeline specification ({{run.declare.pipeline-spec}}) is identified by a content hash
-that ignores no-op edits ({{run.declare.content-hash}}). It compiles into a flat node list ({{run.compile.plan-node}})
+ignoring no-op edits ({{run.declare.content-hash}}). It compiles into a flat node list ({{run.compile.plan-node}})
 carrying no script: branching is declared, never computed from data
 ({{run.compile.control-flow}}), and the plan lowers onto one substrate interface
 ({{run.journal.substrate-port}}).
@@ -45,8 +45,8 @@ admission follows {{run.items.entity-admission}}, {{run.items.overlap}} and {{ru
 Retries follow {{run.items.retry-budget}} and {{run.items.replay}}.
 
 Each pull records its value once ({{run.journal.step-output}}); outbound requests carry
-idempotency keys ({{run.journal.idempotency-key}}). Journal state persists through store
-ports with file and SQLite adapters ({{run.journal.storage-ports}},
+idempotency keys ({{run.journal.idempotency-key}}). Journal state persists through file and SQLite store
+ports ({{run.journal.storage-ports}},
 {{run.journal.sqlite-stores}}). A batch follows {{run.land.stage-order}}.
 Initialize {{run.journal.execution-recovery}} under {{run.journal.container-profile}}:
 
@@ -74,8 +74,8 @@ Stop writers, capture {{run.journal.execution-backup}}, restore
 {{run.export.writer-fenced}}.
 Cloudflare recovery follows {{run.journal.d1-profile}}, {{run.journal.d1-guard}},
 {{run.journal.d1-backup}} and {{run.export.d1-state}}.
-The stage types its observed batch ({{run.land.observed-schema}}) and preserves nested
-columns or projects them into parent and child rows ({{run.normalize.mode}}). A downgrade
+The stage types its observed batch ({{run.land.observed-schema}}) and keeps nested
+columns or projects them into child rows ({{run.normalize.mode}}). A downgrade
 travels with its table's commit ({{run.record.schema-diff-home}}). The secret guard's
 catalogue and mask-only posture are fixed by {{run.guard-secrets.matchers}} and
 {{run.guard-secrets.mask-only}}. A decode that can die runs in a bounded child
@@ -84,9 +84,9 @@ catalogue and mask-only posture are fixed by {{run.guard-secrets.matchers}} and
 Failures cross every port as one tagged type ({{run.retry.failure-taxonomy}}). Only the
 transient and rate-limited tags retry ({{run.retry.retryable-classes}}), under the step's
 schedule, the only retry layer ({{run.retry.one-layer}}). A stop is a mark on the
-run row that every await observes through one token ({{run.cancel.one-token}}), and landing
-is never cut mid-write ({{run.cancel.land-path-uncut}}). A run waiting on an outside party
-suspends durably until its single-use token is posted back ({{run.suspend.awakeable}}).
+run row every await observes through one token ({{run.cancel.one-token}}), and landing
+never stops mid-write ({{run.cancel.land-path-uncut}}). An awaiting run
+suspends durably until its single-use token returns ({{run.suspend.awakeable}}).
 
 A deployment declares its writing site ({{run.record.writing-site}}) once in `contextful.toml`,
 as `site_id` or `site_id_env`; `--site-id` replaces it for one run
@@ -97,7 +97,9 @@ a best-effort projection the runner never reads back ({{run.project.best-effort}
 
 A backfill splits history into leased chunks whose commits are fenced against a stale holder ({{run.backfill.fenced-commit}}); a seed bulk-loads
 consumer-held history below a ceiling through the same land path ({{run.seed.one-land-path}}).
-A model ({{run.model.statement-source}}) builds in staging ({{run.publish.staging}}).
+A model ({{run.model.statement-source}}) builds in staging ({{run.publish.staging}}) over
+committed inputs ({{run.model.build-frontier}}), refuses cycles ({{run.model.model-cycle}}),
+and stales by unread landings ({{run.publish.staleness}}).
 Derive anti-joins output ({{run.select.rows-per-run}}), runs a machine-bound engine
 ({{run.bind.command-in-manifest}}), records unit fate and key
 ({{run.emit.unit-status}}, {{run.emit.derivation-key}}), and keeps rows until replacement

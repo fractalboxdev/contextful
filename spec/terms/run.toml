@@ -98,6 +98,7 @@ ModelInputRestricted           = { clause = "run.model.restricted-input", gloss 
 ModelTestFailed                = { clause = "run.model.test-failed", gloss = "A model test returning a row." }
 ModelUndeclared                = { clause = "run.model.unknown-model", gloss = "A build naming no declared model." }
 ModelBuildUnknown              = { clause = "run.model.hold-unknown-build", gloss = "A hold naming a build no committed manifest records." }
+ModelCycle                     = { clause = "run.model.model-cycle", gloss = "Model statements returning to a model through other models." }
 DeriveConfigKeyMissing         = { clause = "run.select.required-key", gloss = "A required derive config key absent or blank." }
 DeriveCycle                    = { clause = "run.select.derive-cycle", gloss = "Derive source-table dependencies returning to a pipeline." }
 DeriveAfterConflict            = { clause = "run.select.derive-after-conflict", gloss = "A derive child whose explicit predecessor differs from its source-table parent." }
