@@ -26,7 +26,7 @@ use contextful_policy::verify::{effect_boundary, verify_network, Admission, Admi
 use serde_json::{json, Value};
 use std::io::{Read, Write};
 use std::net::{TcpListener, TcpStream};
-use std::sync::atomic::{AtomicUsize, Ordering};
+use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
 use std::time::Duration;
 
 /// The `Retry-After` a request shed past the in-flight ceiling carries, in seconds
@@ -237,6 +237,36 @@ pub struct Admitting<'a, C> {
     pub revocation: &'a Revocation<'a>,
 }
 
+/// A retrieval container's snapshot-set hydration as its face sees it: warming until the
+/// hydrator marks it complete. The face reports ready throughout
+/// (`topology.publish-hostname.container-readiness`) and answers every route but
+/// `GET /health` with `503` and `Retry-After` while warming (`read.cache.warming-read`).
+#[derive(Debug, Default)]
+pub struct Hydration {
+    complete: AtomicBool,
+}
+
+impl Hydration {
+    /// Hydration under way: the snapshot set is not yet local.
+    pub fn warming() -> Hydration {
+        Hydration { complete: AtomicBool::new(false) }
+    }
+
+    /// Mark the snapshot set local; reads answer from it from now on.
+    pub fn finish(&self) {
+        self.complete.store(true, Ordering::SeqCst);
+    }
+
+    /// Whether the snapshot set is local.
+    pub fn is_complete(&self) -> bool {
+        self.complete.load(Ordering::SeqCst)
+    }
+
+    fn state(&self) -> &'static str {
+        if self.is_complete() { "complete" } else { "warming" }
+    }
+}
+
 /// The network transport over one read face.
 pub struct HttpFace<'a, C> {
     tools: Tools<'a>,
@@ -248,6 +278,7 @@ pub struct HttpFace<'a, C> {
     exchange_unconfigured: bool,
     claim_write: Option<&'a (dyn Fn(&HttpRequest, &AdmittedAuthority, &dyn Fn() -> Result<(), AuthorityError>) -> HttpResponse + Sync)>,
     runs: Option<RunRoutes<'a>>,
+    hydration: Option<&'a Hydration>,
 }
 
 /// What the run routes answer from, both called only under an admitted credential: a
@@ -302,7 +333,7 @@ impl<'a, C: Clock + Sync> HttpFace<'a, C> {
         let ceiling = ceiling(max_in_flight)?;
         audience(Some(admitting.audience))?;
         let tools = Tools::new(face, clock, record)?;
-        Ok(HttpFace { tools, admitting, control: None, ceiling, in_flight: AtomicUsize::new(0), exchange: None, exchange_unconfigured: false, claim_write: None, runs: None })
+        Ok(HttpFace { tools, admitting, control: None, ceiling, in_flight: AtomicUsize::new(0), exchange: None, exchange_unconfigured: false, claim_write: None, runs: None, hydration: None })
     }
 
     /// Report `build` at the handshake and `/health` in place of this package's linked
@@ -329,6 +360,12 @@ impl<'a, C: Clock + Sync> HttpFace<'a, C> {
     /// The binary owns the claim writer; this route never joins the read MCP tool set.
     pub fn with_claim_write(mut self, write: &'a (dyn Fn(&HttpRequest, &AdmittedAuthority, &dyn Fn() -> Result<(), AuthorityError>) -> HttpResponse + Sync)) -> Self {
         self.claim_write = Some(write);
+        self
+    }
+
+    /// Gate every route but `GET /health` on `hydration`; a face with none serves from start.
+    pub fn with_hydration(mut self, hydration: &'a Hydration) -> Self {
+        self.hydration = Some(hydration);
         self
     }
 
@@ -418,8 +455,12 @@ impl<'a, C: Clock + Sync> HttpFace<'a, C> {
 
     /// Answer one request under a slot already held.
     pub fn answer(&self, request: &HttpRequest) -> HttpResponse {
+        let hydration = self.hydration.map_or("complete", Hydration::state);
+        if hydration == "warming" && !(request.path() == HEALTH_PATH && request.method == "GET") {
+            return HttpResponse::unavailable("the snapshot set is hydrating; reads answer once it is local");
+        }
         match (request.path(), request.method.as_str()) {
-            (HEALTH_PATH, "GET") => HttpResponse::json(200, &json!({ "contextful.build": self.tools.build() })),
+            (HEALTH_PATH, "GET") => HttpResponse::json(200, &json!({ "contextful.build": self.tools.build(), "hydration": hydration })),
             (HEALTH_PATH, _) => HttpResponse::message(405, "`/health` answers GET").with("Allow", "GET"),
             (MCP_PATH, "POST") => self.message(request),
             (MCP_PATH, _) => {

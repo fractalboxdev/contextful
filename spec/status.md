@@ -10,12 +10,12 @@ An unpinned clause is `committed`; a pinned one is `performed` when its Rust, Le
 | `connector` | 2 | 14 | 356 | 90 | 21 | 16 | 233 | 0 | 233 |
 | `corpus` | 1 | 10 | 79 | 37 | 7 | 0 | 79 | 0 | 79 |
 | `disclosure` | 3 | 16 | 157 | 68 | 13 | 3 | 64 | 0 | 64 |
-| `read` | 2 | 18 | 238 | 38 | 24 | 4 | 227 | 0 | 227 |
+| `read` | 2 | 18 | 239 | 38 | 24 | 4 | 228 | 0 | 228 |
 | `run` | 3 | 28 | 501 | 113 | 44 | 14 | 445 | 0 | 445 |
 | `store` | 3 | 19 | 288 | 65 | 14 | 12 | 278 | 0 | 278 |
-| `surface` | 2 | 20 | 137 | 59 | 22 | 0 | 114 | 0 | 114 |
-| `topology` | 1 | 6 | 79 | 25 | 5 | 3 | 72 | 0 | 72 |
-| **total** | 22 | 165 | 2435 | 637 | 202 | 69 | 2004 | 0 | |
+| `surface` | 2 | 20 | 137 | 59 | 22 | 0 | 118 | 0 | 118 |
+| `topology` | 1 | 6 | 79 | 25 | 5 | 3 | 74 | 0 | 74 |
+| **total** | 22 | 165 | 2436 | 637 | 202 | 69 | 2011 | 0 | |
 
 Decision records: 18.
 
@@ -30,12 +30,12 @@ A milestone reads `closed` when its acceptance test computes `passing` and every
 | 2 — The store | 9 | 181 | 171 | passing | closed |
 | 3 — The run path | 12 | 269 | 254 | passing | closed |
 | 4 — Ingest | 25 | 551 | 387 | passing | open |
-| 5 — The read face under enforcement | 17 | 298 | 241 | passing | open |
+| 5 — The read face under enforcement | 17 | 299 | 242 | passing | open |
 | 6 — Sync and replicas | 8 | 83 | 83 | passing | closed |
 | 7 — Memory | 6 | 55 | 54 | passing | closed |
 | 8 — Accountability | 5 | 83 | 48 | passing | open |
 | 9 — Visibility | 6 | 41 | 3 | open | open |
-| 10 — Cadence and the operator plane | 11 | 93 | 79 | passing | open |
+| 10 — Cadence and the operator plane | 11 | 93 | 85 | passing | open |
 | 11 — The derive tier | 7 | 94 | 93 | passing | closed |
 | 12 — The operator console | 12 | 56 | 41 | passing | open |
 | 13 — Disclosure | 5 | 33 | 13 | open | open |
@@ -929,6 +929,7 @@ Unscheduled operations: 12.
 | `read.cache.result-key` | `crates/contextful-context/tests/integration/read/result_cache.rs::one_credential_id_under_another_principal_misses` | performed |
 | `read.cache.session-pool` | `crates/contextful-context/tests/integration/read/pool.rs::statements_under_one_key_share_one_resolved_session_and_one_engine` | performed |
 | `read.cache.volatile-bypasses` | `crates/contextful-context/tests/integration/read/result_cache.rs::a_statement_calling_a_volatile_function_executes_each_time` | performed |
+| `read.cache.warming-read` | `crates/contextful-agent/tests/integration/http.rs::a_read_while_the_snapshot_set_hydrates_answers_503_with_retry_after_and_admits_nothing` | performed |
 | `read.declare.canonical-column` | `crates/contextful-core/tests/integration/memory/declare.rs::a_shaped_table_omitting_a_canonical_column_is_refused` | performed |
 | `read.declare.reserved-relations` | `crates/contextful-cli/tests/integration/memory.rs::relation_rename_rewrites_stored_edges_before_the_old_name_is_removed` | performed |
 | `read.declare.undeclared-relation` | `crates/contextful-core/tests/integration/memory/declare.rs::an_edge_outside_the_relation_union_is_refused` | performed |
@@ -1969,6 +1970,10 @@ Unscheduled operations: 12.
 | `surface.reconcile.pulled-control` | `crates/contextful-cli/tests/integration/pipeline.rs::a_cold_node_adopts_a_pinned_pulled_control_snapshot_after_local_validation` | performed |
 | `surface.reconcile.pulled-control-untrusted` | `crates/contextful-cli/tests/integration/pipeline.rs::a_bad_signature_or_local_declaration_refuses_pulled_control_without_arming` | performed |
 | `surface.reconcile.url-layout` | `crates/contextful-cli/tests/integration/pipeline.rs::a_loopback_control_url_serves_the_applied_snapshot` | performed |
+| `surface.register-store.authored-name` | `apps/gateway/test/gateway.test.ts::apps/gateway/test/gateway.test.ts::an entry authoring its credential or binding name returns StoreNameAuthored` | performed |
+| `surface.register-store.malformed-entry` | `apps/gateway/test/gateway.test.ts::apps/gateway/test/gateway.test.ts::an invalid optional field is isolated with its entry` | performed |
+| `surface.register-store.registry-unreadable` | `apps/gateway/test/gateway.test.ts::apps/gateway/test/gateway.test.ts::an unreadable registry returns StoreRegistryUnreadable` | performed |
+| `surface.register-store.reserved-id` | `apps/gateway/test/gateway.test.ts::apps/gateway/test/gateway.test.ts::an entry claiming a built-in id returns StoreIdReserved` | performed |
 | `surface.render.client-authored-view` | `apps/console/test/render.test.ts::apps/console/test/render.test.ts::client and model view specifications never become widgets` | performed |
 | `surface.render.component-choice` | `apps/console/test/render.test.ts::apps/console/test/render.test.ts::server result shape chooses metric, line, or table with a bar option` | performed |
 | `surface.render.older-transcript` | `apps/console/test/render.test.ts::apps/console/test/render.test.ts::older transcripts render an unknown component as a table` | performed |
@@ -2047,8 +2052,10 @@ Unscheduled operations: 12.
 | `topology.package.store-write-engine-free` | `tools/ci/tests/integration/topology.rs::a_store_adapter_linking_the_sql_engine_without_read_is_refused` | performed |
 | `topology.package.transport-optional` | `tools/ci/tests/integration/topology.rs::an_outbound_crate_linking_an_http_stack_without_its_transport_feature_is_refused` | performed |
 | `topology.package.version-profile` | `crates/contextful-cli/tests/integration/profile.rs::the_version_names_the_workspace_version_and_the_profile` | performed |
+| `topology.publish-hostname.container-readiness` | `crates/contextful-agent/tests/integration/http.rs::a_cold_container_reports_ready_within_8_s_while_its_snapshot_set_hydrates` | performed |
 | `topology.publish-hostname.empty-probe` | `tools/ci/tests/integration/probe.rs::a_probe_with_nothing_to_check_is_refused` | performed |
 | `topology.publish-hostname.issuer-key` | `crates/contextful-cli/tests/integration/serve.rs::serve_refuses_to_start_without_its_declarations_or_an_issuer_key` | performed |
 | `topology.publish-hostname.posture-mismatch` | `tools/ci/tests/integration/probe.rs::an_answer_outside_the_declared_gate_or_an_unreachable_hostname_fails_the_probe` | performed |
 | `topology.publish-hostname.probe-table` | `tools/ci/tests/integration/probe.rs::a_probe_table_and_descriptor_set_that_differ_are_refused_before_any_probe` | performed |
+| `topology.publish-hostname.unconfigured-gateway` | `apps/gateway/test/gateway.test.ts::apps/gateway/test/gateway.test.ts::an empty registry returns GatewayUnconfigured on every route` | performed |
 | `topology.publish-hostname.unknown-field` | `tools/ci/tests/integration/probe.rs::a_descriptor_carrying_an_unmodelled_key_is_refused` | performed |

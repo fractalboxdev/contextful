@@ -6530,6 +6530,17 @@
       "line": 399
     },
     {
+      "id": "read.cache.warming-read",
+      "contract": "read",
+      "operation": "cache",
+      "subject": "warming-read",
+      "kind": "behavior",
+      "statement": "A request other than `GET /health` reaching a retrieval container whose snapshot-set hydration is incomplete answers as {{read.register.past-ceiling}}; `/health` names the hydration state.",
+      "why": "because a container ready before hydration completes otherwise answers a read from a partial snapshot set",
+      "file": "spec/20-read.md",
+      "line": 400
+    },
+    {
       "id": "read.cache.result-key",
       "contract": "read",
       "operation": "cache",
@@ -6538,7 +6549,7 @@
       "statement": "A cached result keys on the token's id, revocation epoch, grants and subject, the session zone and incognito state, each touched relation and the files it reads, the bounds, the statement, its parameter values and the applied row ceiling.",
       "why": "A-read",
       "file": "spec/20-read.md",
-      "line": 400
+      "line": 402
     },
     {
       "id": "read.cache.cache-is-opt-in",
@@ -6549,7 +6560,7 @@
       "statement": "A statement's result caches only when every table it touches declares `result_cache`, a time to live, and none declares `private = true`; an entry expires at the least time to live among them.",
       "why": "A-read",
       "file": "spec/20-read.md",
-      "line": 402
+      "line": 404
     },
     {
       "id": "read.cache.volatile-bypasses",
@@ -6560,7 +6571,7 @@
       "statement": "A statement calling a function the engine marks other than consistent across queries, such as `now()`, `current_timestamp` or `random()`, or a macro reaching one, executes uncached.",
       "why": "because such a call answers differently under an unchanged key, and a hit returns its first answer frozen until the entry expires",
       "file": "spec/20-read.md",
-      "line": 404
+      "line": 406
     },
     {
       "id": "read.cache.frontier-invalidates",
@@ -6571,7 +6582,7 @@
       "statement": "A commit, fold or request-ledger append on a touched table moves its read frontier, the snapshot and runs its relation reads, so an entry filled before it stops matching. A statement in flight during a fold reads {{store.fold.non-blocking}}.",
       "why": "P4",
       "file": "spec/20-read.md",
-      "line": 406
+      "line": 408
     },
     {
       "id": "read.cache.budget",
@@ -6582,7 +6593,7 @@
       "statement": "The result cache holds at most the byte budget its process declares, the least recently used entry evicted first; a face declaring no budget caches nothing.",
       "why": "A-read",
       "file": "spec/20-read.md",
-      "line": 408
+      "line": 410
     },
     {
       "id": "read.cache.hit-identical",
@@ -6593,7 +6604,7 @@
       "statement": "A hit returns the response byte-identical to the miss that filled it, restriction block included; under `internals: true` the internals object carries `cache` as `hit` or `miss`.",
       "why": "because a reused answer differing from a computed one is a second projection a caller must reconcile",
       "file": "spec/20-read.md",
-      "line": 410
+      "line": 412
     },
     {
       "id": "read.cache.keep-warm-is-per-deployment",
@@ -6604,7 +6615,7 @@
       "statement": "A deployment with active traffic keeps its retrieval container warm; one declining keep-warm takes a cold first read.",
       "why": "",
       "file": "spec/20-read.md",
-      "line": 412
+      "line": 414
     },
     {
       "id": "read.cache.session-pool",
@@ -6615,7 +6626,7 @@
       "statement": "`Face` reuses a resolved session and its connections while the whole key holds: admitted authority, token id, revocation epoch, request zone, bounds, pin map, table set, and per granted table its schema digest, pointer, run set and ledger files.",
       "why": "A-read",
       "file": "spec/20-read.md",
-      "line": 413
+      "line": 415
     },
     {
       "id": "read.cache.change-misses",
@@ -6626,7 +6637,7 @@
       "statement": "A committed run, snapshot, schema edit, new table, request-ledger file or token under another id or epoch misses the pool, and the next statement reads the new state on a new connection.",
       "why": "A-read",
       "file": "spec/20-read.md",
-      "line": 415
+      "line": 417
     },
     {
       "id": "read.cache.pool-entries",
@@ -6637,7 +6648,7 @@
       "statement": "The pool holds at most 16 entries, oldest evicted first; a miss evicts the same principal's entries under an older store state.",
       "why": "because connections hold memory per authority, and an entry under a superseded store state is never hit again",
       "file": "spec/20-read.md",
-      "line": 417
+      "line": 419
     },
     {
       "id": "read.cache.pool-connections",
@@ -6648,7 +6659,7 @@
       "statement": "One pool entry keeps at most 4 connections idle; a concurrent statement past them opens its own and closes it afterwards.",
       "why": "because concurrency on one session is bursty, and an idle connection holds its footer cache in memory",
       "file": "spec/20-read.md",
-      "line": 419
+      "line": 421
     },
     {
       "id": "read.resolve-pin.pin-parameter",
@@ -6659,7 +6670,7 @@
       "statement": "Every read tool admits `pin`, mapping a table name to a build identifier, and resolves that table to the files its build's committed manifest names. An unnamed table resolves to the latest published state.",
       "why": "",
       "file": "spec/20-read.md",
-      "line": 426
+      "line": 428
     },
     {
       "id": "read.resolve-pin.pinned-schema",
@@ -6670,7 +6681,7 @@
       "statement": "A pinned table registers under the columns its build's parts carry, so a later build's contract neither adds, drops nor retypes a column of the pinned read or its description.",
       "why": "",
       "file": "spec/20-read.md",
-      "line": 427
+      "line": 429
     },
     {
       "id": "read.resolve-pin.null-pin",
@@ -6681,7 +6692,7 @@
       "statement": "A table `pin` maps to `null` resolves as an unnamed table, and a pin map differing from another only by such entries is the same map.",
       "why": "",
       "file": "spec/20-read.md",
-      "line": 428
+      "line": 430
     },
     {
       "id": "read.resolve-pin.unknown-build",
@@ -6692,7 +6703,7 @@
       "statement": "An unknown or collected build identifier raises `PinnedBuildUnavailable`, naming the oldest identifier still pinnable. A pin never widens to the latest state.",
       "why": "because a substituted build applied to every remaining query passes the consumer's cross-query comparison and stitches two states",
       "file": "spec/20-read.md",
-      "line": 429
+      "line": 431
     },
     {
       "id": "read.resolve-pin.unregistered-pin",
@@ -6703,7 +6714,7 @@
       "statement": "A pin on a table the session registers no relation for, absent or outside the grants, refuses as {{read.resolve-pin.unknown-build}} on a table publishing no build, in one text for both.",
       "why": "because an answer differing between an absent and an ungranted table discloses the ungranted table's existence",
       "file": "spec/20-read.md",
-      "line": 431
+      "line": 433
     },
     {
       "id": "read.resolve-pin.earlier-bound-wins",
@@ -6714,7 +6725,7 @@
       "statement": "A pin and the store's transaction-time bound are upper bounds on one clock; a table named by both resolves to the earlier.",
       "why": "",
       "file": "spec/20-read.md",
-      "line": 433
+      "line": 435
     },
     {
       "id": "read.resolve-pin.resolved-echo",
@@ -6725,7 +6736,7 @@
       "statement": "A response touching a published model carries `contextful.resolved`, mapping each such table to `{build_id, watermark}`, pinned or not and zero rows included; the watermark names, per input table, the snapshot id and the committed runs it omits.",
       "why": "",
       "file": "spec/20-read.md",
-      "line": 434
+      "line": 436
     },
     {
       "id": "read.resolve-pin.absent-watermark",
@@ -6736,7 +6747,7 @@
       "statement": "The watermark is null for a materialization carrying none, distinct from a watermark of zero.",
       "why": "P4",
       "file": "spec/20-read.md",
-      "line": 435
+      "line": 437
     },
     {
       "id": "read.resolve-pin.consumer-comparison",
@@ -6747,7 +6758,7 @@
       "statement": "A consumer compares resolved build identifiers across every query of one derivation and fails the derivation where two differ.",
       "why": "P4",
       "file": "spec/20-read.md",
-      "line": 437
+      "line": 439
     },
     {
       "id": "read.embed.default-embedder",
@@ -6758,7 +6769,7 @@
       "statement": "The embedding capability is a port whose default is deterministic and I/O-free: it hashes token term frequencies into an L2-normalized vector, needing no download, key or network call.",
       "why": "",
       "file": "spec/20-read.md",
-      "line": 444
+      "line": 446
     },
     {
       "id": "read.embed.default-embedder-reach",
@@ -6769,7 +6780,7 @@
       "statement": "The default is a lexical-vector baseline: a paraphrase is orthogonal under it and cross-lingual recall is undefined. Semantic reach comes from the learned in-process model or a caller-supplied query embedding.",
       "why": "",
       "file": "spec/20-read.md",
-      "line": 445
+      "line": 447
     },
     {
       "id": "read.embed.model-identifier",
@@ -6780,7 +6791,7 @@
       "statement": "Every stored vector lands in a {{store.reconcile.binary-and-vector}} column beside an `embedding_model` column naming the model that produced it; index identity and provenance resolve from the rows alone.",
       "why": "",
       "file": "spec/20-read.md",
-      "line": 446
+      "line": 448
     },
     {
       "id": "read.embed.build-identity",
@@ -6791,7 +6802,7 @@
       "statement": "The handshake reports the linked retrieval backends (`duckdb`, `fts`, `hnsw`), connector families (`m365`, `s3`, `wasm`) and faces (`http`, `eval`, `otlp`), composed from the same feature declarations the version output reads.",
       "why": "P3",
       "file": "spec/20-read.md",
-      "line": 447
+      "line": 449
     },
     {
       "id": "read.embed.required-face",
@@ -6802,7 +6813,7 @@
       "statement": "A client passing `require: [...]` is refused ahead of its first read with `RequiredFaceAbsent` for any name outside the reported set. An engine reporting no set satisfies no requirement.",
       "why": "A-topology",
       "file": "spec/20-read.md",
-      "line": 449
+      "line": 451
     },
     {
       "id": "read.embed.absent-read-backend",
@@ -6813,7 +6824,7 @@
       "statement": "Without the embedded SQL engine linked, every read tool raises `ReadBackendAbsent` rather than answering from a narrower path.",
       "why": "A-topology",
       "file": "spec/20-read.md",
-      "line": 451
+      "line": 453
     },
     {
       "id": "read.as-of-join.per-row-bound",
@@ -6824,7 +6835,7 @@
       "statement": "An `ASOF JOIN` matches each driving row, per equality key, to the right relation's row whose declared availability instant is the latest at or before the driving instant its inequality names, its valid-time `from` within `max_age` when given.",
       "why": "A-read",
       "file": "spec/20-read.md",
-      "line": 458,
+      "line": 460,
       "scenarios": [
         "WHEN a point-in-time security master maps stable id `sec-1` to ticker `FB` available `2012-05-18` and to `META` available `2022-06-09`, THEN a trade of `sec-1` on `2021-03-01` joins `FB` and one on `2022-07-01` joins `META`."
       ]
@@ -6838,7 +6849,7 @@
       "statement": "Under `available_as_of`, each driving row's instant is the earlier of the instant its inequality names and `available_as_of`, so no right row past the bound joins.",
       "why": "",
       "file": "spec/20-read.md",
-      "line": 460
+      "line": 462
     },
     {
       "id": "read.as-of-join.join-undeclared",
@@ -6849,7 +6860,7 @@
       "statement": "An `ASOF JOIN` whose right relation declares no `available_time` refuses as {{store.available-time.undeclared}} does, naming the table, whether or not the read carries `available_as_of`.",
       "why": "because joining on valid time picks a restatement published after the event",
       "file": "spec/20-read.md",
-      "line": 461
+      "line": 463
     },
     {
       "id": "read.horizon.inherited-bound",
@@ -6860,7 +6871,7 @@
       "statement": "Under a credential carrying a horizon, every read tool reads at `available_as_of` equal to the horizon when the call supplies none, capping {{read.as-of-join.horizon-caps-row}}, and echoes it as {{store.available-time.bound-echo}}.",
       "why": "because a per-call bound is a bound the agent can omit",
       "file": "spec/20-read.md",
-      "line": 474
+      "line": 476
     },
     {
       "id": "read.horizon.exceeds-horizon",
@@ -6871,7 +6882,7 @@
       "statement": "A call supplying `available_as_of` or `since` later than its credential's horizon raises `ReadBoundExceedsHorizon`, naming the argument; `as_of`, `valid_as_of` and `observed_at` pass unbounded by it.",
       "why": "because a cutoff the agent can widen is advisory, while a valid-time question about a known future effective date stays legitimate",
       "file": "spec/20-read.md",
-      "line": 476,
+      "line": 478,
       "scenarios": [
         "WHEN a credential carries horizon `2014-05-01` and `corpus.retrieve` supplies `since: \"2015-01-01\"`, THEN the call raises `ReadBoundExceedsHorizon` naming `since`, and a call supplying `valid_as_of: \"2015-01-01\"` answers."
       ]
@@ -6885,7 +6896,7 @@
       "statement": "Under a horizon, {{read.recall.keyed}} defaults an absent `observed_at` to the horizon and reads a claims table at `available_as_of` equal to it, so a table declaring no availability time refuses as {{store.available-time.undeclared}}.",
       "why": "because a claim lands at its commit instant, and one concluded after the horizon otherwise answers inside it",
       "file": "spec/20-read.md",
-      "line": 478
+      "line": 480
     },
     {
       "id": "read.horizon.engine-stamps",
@@ -6896,7 +6907,7 @@
       "statement": "Under a horizon, the projection carries neither `_ingested_at` nor `_commit_seq` and keeps `_run_id` and `_row_seq`, which cite a row; `context.describe` computes row count, size, lexicon and example values over the horizon-bounded relation.",
       "why": "A-read",
       "file": "spec/20-read.md",
-      "line": 480
+      "line": 482
     },
     {
       "id": "read.horizon.late-columns",
@@ -6907,7 +6918,7 @@
       "statement": "Under a horizon, a column whose `first_landed_at` in `schema.json` — set once by its first merge, to that batch's earliest availability instant, else the commit instant — falls after the horizon is absent from the registered schema and describe payload.",
       "why": "A-store",
       "file": "spec/20-read.md",
-      "line": 482
+      "line": 484
     },
     {
       "id": "read.horizon.egress-hook",
@@ -6918,7 +6929,7 @@
       "statement": "A hop made under a credential carrying a horizon passes a pre-send hook refusing every host but the configured model endpoint, as {{connector.meter.hook-refusal}} with reason `horizon`.",
       "why": "because one attachment point already sees every egress, so a per-tool list restates it",
       "file": "spec/20-read.md",
-      "line": 484
+      "line": 486
     },
     {
       "id": "read.horizon.local-rank",
@@ -6929,7 +6940,7 @@
       "statement": "Under a horizon, `corpus.retrieve` ranks only stored rows through local indexes, and a search source reads its pinned {{store.snapshot.capture}} corpus; a live search reaches no host past {{read.horizon.egress-hook}}.",
       "why": "because a live result order postdates the snapshot, and filtering it afterwards keeps the order",
       "file": "spec/20-read.md",
-      "line": 486
+      "line": 488
     },
     {
       "id": "read.horizon.rank-statistics",
@@ -6940,7 +6951,7 @@
       "statement": "Under a horizon, lexical term statistics and vector neighbours come from the horizon-bounded relation; a ranking reaching a sidecar that indexes a row available after the horizon raises `ReadIndexBeyondHorizon`, naming the table.",
       "why": "because corpus-wide term frequency and neighbourhoods encode later events",
       "file": "spec/20-read.md",
-      "line": 488
+      "line": 490
     },
     {
       "id": "read.horizon.embedder-route",
@@ -6951,7 +6962,7 @@
       "statement": "Under a horizon, an embedder declaring a checkpoint family embeds with its newest checkpoint whose post-training cutoff, as {{connector.infer.cutoffs}} records it, precedes the horizon, and the response names that checkpoint.",
       "why": "because an embedder trained after the horizon places documents by later events",
       "file": "spec/20-read.md",
-      "line": 490
+      "line": 492
     },
     {
       "id": "read.horizon.build-resolution",
@@ -6962,7 +6973,7 @@
       "statement": "Under a horizon, a model table resolves to the newest build whose horizon, recorded under {{run.model.build-horizon}}, is at or before the credential's; a table holding none raises `ReadNoBuildWithinHorizon`, naming the table.",
       "why": "because a build over current inputs carries later rows into every horizon",
       "file": "spec/20-read.md",
-      "line": 492
+      "line": 494
     },
     {
       "id": "read.declare.canonical-column",
@@ -28096,6 +28107,10 @@
     [
       "read.cache.cold-start",
       "topology.publish-hostname.container-readiness"
+    ],
+    [
+      "read.cache.warming-read",
+      "read.register.past-ceiling"
     ],
     [
       "read.cache.frontier-invalidates",
