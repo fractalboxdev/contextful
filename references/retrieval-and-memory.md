@@ -1,8 +1,8 @@
 # Retrieval and memory
 
-Hybrid lexical and vector ranking under access restriction, and a synthesized
-memory of claims that revise, decay and ground answers. Evaluation of both runs
-through `assurance.evaluate`.
+Hybrid lexical and vector ranking under access restriction, graph retrieval over
+extracted entities, and a synthesized memory of claims that revise, decay and
+ground answers. Evaluation of all three runs through `assurance.evaluate`.
 
 ## Retrieval
 
@@ -13,11 +13,13 @@ Retrieval." *ACM TOIS* 42(1), Article 20, 2023. <https://arxiv.org/abs/2210.1193
 
 - **Priority:** must-read
 - **Informs:** `read.rank`, `read.retrieve`, `assurance.evaluate`
-- **Question:** Does a min-max convex combination with fixed 0.6 vector / 0.4 lexical
-  weights beat reciprocal rank fusion on this corpus? Convex combination wins only
-  with weights tuned per domain, and normalization matters less than tuning; the
-  fixed default is a hypothesis until the evaluation harness reports it against RRF
-  on labeled cases.
+- **Question:** Does a convex combination over min-max-normalized scores, its weight
+  fitted per domain on settled judgments, beat the fused score of `read.rank`, which
+  adds a clamped raw cosine to a reciprocal-rank score of the BM25 leg at fixed 60/40
+  weights? Convex combination wins only with weights tuned per domain, and
+  normalization matters less than tuning; a sum of a raw score and a rank score is
+  neither scheme, so the evaluation harness settles the choice against both on
+  labeled cases.
 
 ### Reciprocal Rank Fusion
 
@@ -30,6 +32,20 @@ Condorcet and individual rank learning methods." *SIGIR*, pp. 758–759, 2009.
 - **Question:** What baseline needs no calibration? RRF uses ranks only, so it needs
   no score normalization and no special case for a flat score window.
 
+### Contextual Retrieval
+
+Anthropic. "Introducing Contextual Retrieval." *Anthropic news*, 2024.
+<https://www.anthropic.com/news/contextual-retrieval>
+
+- **Priority:** should-read
+- **Informs:** `read.rank`, `read.retrieve`, `read.cache`, `assurance.evaluate`
+- **Question:** What does a second-stage reranker buy over hybrid retrieval? Top-20
+  retrieval failures fall from 2.9% with contextual embeddings plus contextual BM25 to
+  1.9% once a reranker reorders the fused candidates. A reranker that reads only the
+  masked snippet of a post-authority window keeps that gain without reading hidden
+  cells; contextual chunk headers written over rows of mixed authority encode hidden
+  content into a visible vector.
+
 ### ACORN
 
 Patel, L., Kraft, P., Guestrin, C., Zaharia, M. "ACORN: Performant and
@@ -37,10 +53,76 @@ Predicate-Agnostic Search Over Vector Embeddings and Structured Data." *SIGMOD*,
 2024. <https://arxiv.org/abs/2403.04871>
 
 - **Priority:** optional
-- **Informs:** `read.retrieve`, `store.index`
-- **Question:** What replaces a fixed over-fetch multiplier under row restriction?
-  Predicate-aware graph search keeps recall when the filter is selective, where a
-  constant over-fetch either wastes work or returns short.
+- **Informs:** `read.retrieve`, `store.index`, `assurance.evaluate`
+- **Question:** Does predicate-aware graph traversal replace the doubling over-fetch
+  of `read.retrieve`, at most 4 rounds, under a selective restriction? Predicate
+  subgraph search keeps recall when the filter is selective, where a fixed over-fetch
+  either wastes work or returns short; restricted recall@k against the exact path at
+  three restriction selectivities settles the replacement.
+
+## Graph retrieval
+
+### GraphRAG
+
+Edge, D., Trinh, H., Cheng, N., Bradley, J., Chao, A., Mody, A., Truitt, S.,
+Metropolitansky, D., Ness, R. O., Larson, J. "From Local to Global: A Graph RAG
+Approach to Query-Focused Summarization." arXiv:2404.16130, 2024.
+<https://arxiv.org/abs/2404.16130>
+
+Microsoft. "Configuration: settings.yaml." *GraphRAG documentation*.
+<https://microsoft.github.io/graphrag/config/yaml/>
+
+- **Priority:** should-read
+- **Informs:** `read.synthesize`, `read.declare`, `disclosure.erase`
+- **Question:** What do gleaning and an LLM call cache cost and buy in extraction?
+  Gleaning re-prompts a batch for entities the first pass omitted, with
+  `max_gleanings = 1` as the default, and the cache keeps every model response so a
+  re-run makes no new call. A declared, single, optional pass bounds the first; a
+  cache keyed on the fenced batch bytes, template and model, held as an enforced
+  table, keeps the second inside the store's visibility and erasure. Community
+  summaries carry no per-sentence citation and are not adopted.
+
+### LightRAG
+
+Guo, Z., Xia, L., Yu, Y., Ao, T., Huang, C. "LightRAG: Simple and Fast
+Retrieval-Augmented Generation." arXiv:2410.05779, 2024.
+<https://arxiv.org/abs/2410.05779> · <https://github.com/HKUDS/LightRAG>
+
+- **Priority:** should-read
+- **Informs:** `read.synthesize`, `disclosure.erase`
+- **Question:** How does an extracted graph recover after a source document is
+  deleted? LightRAG rebuilds the affected entities and relations from the indexing
+  LLM cache instead of re-extracting the corpus. Restaging the claims that survive an
+  erasure reuses cached responses for untouched batches the same way, and the cache
+  entries keyed on the erased row are collected with it.
+
+### HippoRAG 2
+
+Jiménez Gutiérrez, B., Shu, Y., Qi, W., Zhou, S., Su, Y. "From RAG to Memory:
+Non-Parametric Continual Learning for Large Language Models." *ICML*, 2025.
+<https://arxiv.org/abs/2502.14802>
+
+- **Priority:** should-read
+- **Informs:** `read.resolve-entity`, `read.rank`, `read.retrieve`
+- **Question:** What is the cheapest graph retrieval that wins on multi-hop questions?
+  Personalized PageRank seeded from the query's resolved entities over an
+  entity-passage graph. Whether such a graph arm fuses as a third leg beside the
+  lexical and vector legs, and at what weight, is the question a bounded walk over
+  admitted memory edges leaves open.
+
+### GraphRAG-Bench
+
+Xiang, Z., Wu, C., Zhang, Q., Chen, S., Hong, Z., Huang, X., Su, J. "When to use
+Graphs in RAG: A Comprehensive Analysis for Graph Retrieval-Augmented Generation."
+arXiv:2506.05690, 2025. <https://arxiv.org/abs/2506.05690>
+
+- **Priority:** should-read
+- **Informs:** `assurance.evaluate`, `read.rank`
+- **Question:** When does graph retrieval pay for itself? Only on multi-hop and
+  summarization tasks: Personalized PageRank costs about 1,008 prompt tokens per query
+  against 879 for plain RAG, while community-summary global search costs 38k to 331k.
+  A graph walk earns its place by bounded hops and edges per call, measured per task
+  level rather than as one average.
 
 ## Memory
 
@@ -51,13 +133,29 @@ Knowledge Graph Architecture for Agent Memory." arXiv:2501.13956, 2025.
 <https://arxiv.org/abs/2501.13956>
 
 - **Priority:** must-read
-- **Informs:** `read.synthesize`, `read.revise`, `read.resolve-entity`, `read.recall`
-- **Question:** How are multi-valued predicates and edge invalidation handled? Zep is
-  the closest published design — episodes as a lossless source, extracted entities
-  and edges, bitemporal invalidation. A supersession rule without declared predicate
-  cardinality cannot represent a predicate with several true objects, a dedup key
-  that omits the object conflates them, and a fixed 0.5 confidence decay has no
-  measurement behind it where Zep invalidates by time.
+- **Informs:** `read.synthesize`, `read.revise`, `read.declare`, `read.resolve-entity`, `read.recall`
+- **Question:** How does a new edge retire the one it contradicts? Zep stores edges
+  with validity intervals and invalidates the loser by time instead of deleting it.
+  A relation that declares its cardinality settles the case: under a one-cardinality
+  relation, a new edge from one source ends the prior live edge at its own
+  `valid_from` and names it as successor, where an undeclared predicate cannot hold
+  several true objects at once. Graphiti's newest-wins rule ignores tier and is not
+  adopted.
+
+### MemTX
+
+Li, X., Wang, Y., Lu, H., Chen, Z., Li, M., Song, P., Zheng, M., Cai, T. "MemTX:
+Transactional Belief Commit for Stateful Agent Memory." arXiv:2607.23929, 2026.
+<https://arxiv.org/abs/2607.23929>
+
+- **Priority:** must-read
+- **Informs:** `read.revise`, `read.synthesize`, `read.recall`, `disclosure.erase`
+- **Question:** When does a memory write become a belief? MemTX stages writes and
+  admits them through validate-and-commit: a higher-authority candidate supersedes,
+  a lower one aborts, and equal authority from different sources is quarantined for
+  review. A retraction walks the derivation graph and invalidates the summaries and
+  index entries built on it, which is the cascade an erasure takes through claims and
+  sidecars.
 
 ### MemGPT and Generative Agents
 
@@ -82,11 +180,27 @@ Benchmarking Chat Assistants on Long-Term Interactive Memory." *ICLR*, 2025.
 <https://arxiv.org/abs/2410.10813>
 
 - **Priority:** should-read
-- **Informs:** `assurance.evaluate`, `read.revise`, `read.recall`, `store.bound-time`
+- **Informs:** `assurance.evaluate`, `assurance.baseline`, `read.revise`, `read.recall`, `store.bound-time`
 - **Question:** What does a memory evaluation suite measure beyond retrieval? Five
   abilities — extraction, multi-session reasoning, temporal reasoning, knowledge
-  update, abstention — of which the last three map onto revision, time bounds and the
-  recall evidence gate.
+  update, abstention. Knowledge update becomes supersession correctness, the rate of
+  superseded claims served at their successor's anchor; temporal reasoning reads at
+  `observed_at`; abstention meets the recall evidence gate. A converted public set
+  is reported and decides nothing beside the native cases.
+
+### MemoryAgentBench
+
+Hu, Y., Wang, Y., McAuley, J. "Evaluating Memory in LLM Agents via Incremental
+Multi-Turn Interactions." arXiv:2507.05257, 2025.
+<https://arxiv.org/abs/2507.05257>
+
+- **Priority:** should-read
+- **Informs:** `assurance.evaluate`, `read.revise`, `disclosure.erase`
+- **Question:** Which memory competencies does a long-conversation benchmark miss?
+  Accurate retrieval, test-time learning, long-range understanding and selective
+  forgetting, with fact-consolidation tasks where a later fact overrides an earlier
+  one. Its conflict-resolution and forgetting cases test supersession and erasure
+  more directly than single-score benchmarks, and convert into tagged cases.
 
 ### AgentPoison
 
@@ -95,9 +209,40 @@ via Poisoning Memory or Knowledge Bases." *NeurIPS*, 2024.
 <https://arxiv.org/abs/2407.12784>
 
 - **Priority:** should-read
-- **Informs:** `read.synthesize`, `read.recall`, `authority.resist`, `surface.learn`
+- **Informs:** `read.synthesize`, `read.revise`, `read.declare`, `read.recall`, `authority.resist`, `surface.learn`
 - **Question:** Should provenance tier be a hard gate on recall rather than a ranking
   signal? Extraction turns ingested third-party text into durable claims that later
-  ground answers, which is exactly the path trigger-optimized poisoning targets.
-  The same concern covers distillation: a conclusion drawn from one reader's rows
-  carries those rows' labels to any later reader.
+  ground answers, which is exactly the path trigger-optimized poisoning targets. A
+  claims table that declares a minimum serving taint withholds claims below it, and
+  a claim's provenance tier outweighs how many sources agree, since agreement fails
+  once an attacker controls volume. The same concern covers distillation: a
+  conclusion drawn from one reader's rows carries those rows' labels to any later
+  reader. Query-only injection lives in [prompt-injection.md](./prompt-injection.md)
+  under *MINJA*.
+
+## Grounding
+
+### Self-RAG
+
+Asai, A., Wu, Z., Wang, Y., Sil, A., Hajishirzi, H. "Self-RAG: Learning to Retrieve,
+Generate, and Critique through Self-Reflection." *ICLR*, 2024.
+<https://arxiv.org/abs/2310.11511>
+
+- **Priority:** optional
+- **Informs:** `read.recall`, `surface.ground`
+- **Question:** Is support for a claim binary? Self-RAG grades it three ways — fully
+  supported, partially supported, no support — which backs serving a claim with a
+  graded verdict on its evidence rather than hiding it. It says nothing on how much
+  evidence a claim may carry.
+
+### ALCE
+
+Gao, T., Yen, H., Yu, J., Chen, D. "Enabling Large Language Models to Generate Text
+with Citations." *EMNLP*, 2023. <https://arxiv.org/abs/2305.14627>
+
+- **Priority:** should-read
+- **Informs:** `read.recall`, `surface.ground`, `assurance.evaluate`
+- **Question:** How is a citation judged to support a statement? ALCE scores citation
+  recall and precision by NLI entailment between the cited passages and the
+  statement, a per-claim measure that fits claims citing evidence rows better than
+  answer-level scores. It does not address capping the evidence a claim serves.
