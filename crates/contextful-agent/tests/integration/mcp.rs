@@ -694,6 +694,85 @@ fn recall_under_a_horizon_reads_the_claims_table_at_it() {
     assert_eq!(rows(&answered).as_array().unwrap().len(), 1, "{answered}");
 }
 
+const AS_OF_JOIN: &str = r#"[[pipeline.tables]]
+name = "research/master"
+
+[pipeline.tables.available_time]
+column = "available_at"
+
+[[pipeline.tables]]
+name = "research/trades"
+
+[pipeline.tables.available_time]
+column = "booked_at"
+
+[[pipeline.tables]]
+name = "research/tickers"
+"#;
+
+/// A point-in-time security master renaming `sec-1` from `FB` to `META`, two trades of
+/// it, and a ticker table declaring no availability time.
+fn as_of_join() -> Fixture {
+    let decls = TableDecl::parse_pipeline(AS_OF_JOIN).unwrap();
+    let decl = |name: &str| decls.iter().find(|d| d.name == name).unwrap().clone();
+    fixture_over(AS_OF_JOIN, |store| {
+        let master = json!([
+            { "sec_id": "sec-1", "ticker": "FB", "available_at": "2012-05-18T00:00:00Z" },
+            { "sec_id": "sec-1", "ticker": "META", "available_at": "2022-06-09T00:00:00Z" },
+        ]);
+        put(store, &decl("research/master"), "run-1", "2030-01-01T00:00:00Z", master, &[("available_at", ColumnType::Timestamp)]);
+        let trades = json!([
+            { "trade_id": "t1", "sec_id": "sec-1", "traded_at": "2021-03-01T00:00:00Z", "booked_at": "2021-03-01T00:00:00Z" },
+            { "trade_id": "t2", "sec_id": "sec-1", "traded_at": "2022-07-01T00:00:00Z", "booked_at": "2021-12-01T00:00:00Z" },
+        ]);
+        let ts = [("traded_at", ColumnType::Timestamp), ("booked_at", ColumnType::Timestamp)];
+        put(store, &decl("research/trades"), "run-1", "2030-01-01T00:00:00Z", trades, &ts);
+        put(store, &decl("research/tickers"), "run-1", "2030-01-01T00:00:00Z", json!([{ "sec_id": "sec-1", "ticker": "META" }]), &[]);
+    })
+}
+
+const JOINED: &str = r#"SELECT t.trade_id, m.ticker FROM "research/trades" t ASOF JOIN "research/master" m ON t.sec_id = m.sec_id AND t.traded_at >= m.available_at ORDER BY t.trade_id"#;
+
+/// An `ASOF JOIN` matches each driving row, per equality key, to the right relation's row whose declared availability instant is the latest at or before the driving instant its inequality names, its valid-time `from` within `max_age` when given.
+// spec: read.as-of-join.per-row-bound@11522cb8
+#[test]
+fn an_as_of_join_matches_each_row_to_the_right_row_available_at_its_instant() {
+    let f = as_of_join();
+    let clock = FixedClock(at("2030-01-02T00:00:00Z"));
+    let server = Server::new(&f.face, f.authority.clone(), &current, &clock, &f.audit).unwrap();
+    let joined = call(&server, "context.query", json!({ "sql": JOINED }));
+    assert_eq!(rows(&joined), &json!([["t1", "FB"], ["t2", "META"]]));
+}
+
+/// Under `available_as_of`, each driving row's instant is the earlier of the instant its inequality names and `available_as_of`, so no right row past the bound joins.
+// spec: read.as-of-join.horizon-caps-row@1a2b0e44
+#[test]
+fn an_availability_bound_caps_each_driving_rows_instant() {
+    let f = as_of_join();
+    let clock = FixedClock(at("2030-01-02T00:00:00Z"));
+    let server = Server::new(&f.face, f.authority.clone(), &current, &clock, &f.audit).unwrap();
+    // Trade t2, booked in December 2021 and dated July 2022, joins the name public on 1 January 2022.
+    let bounded = call(&server, "context.query", json!({ "sql": JOINED, "available_as_of": "2022-01-01T00:00:00Z" }));
+    assert_eq!(rows(&bounded), &json!([["t1", "FB"], ["t2", "FB"]]));
+}
+
+/// An `ASOF JOIN` whose right relation declares no `available_time` refuses as {{store.available-time.undeclared}} does, naming the table, whether or not the read carries `available_as_of`.
+// spec: read.as-of-join.join-undeclared@ad07026c
+#[test]
+fn an_as_of_join_onto_an_undeclaring_relation_is_refused() {
+    let f = as_of_join();
+    let clock = FixedClock(at("2030-01-02T00:00:00Z"));
+    let server = Server::new(&f.face, f.authority.clone(), &current, &clock, &f.audit).unwrap();
+    let sql = r#"SELECT t.trade_id, k.ticker FROM "research/trades" t ASOF JOIN "research/tickers" k ON t.sec_id = k.sec_id AND t.traded_at >= t.booked_at"#;
+    let refused = call(&server, "context.query", json!({ "sql": sql }));
+    assert_eq!(refused["result"]["isError"], json!(true), "{refused}");
+    let text = refused["result"]["content"][0]["text"].as_str().unwrap();
+    assert!(text.contains("StoreAvailableTimeUndeclared") && text.contains("research/tickers"), "{refused}");
+    // An ordinary join onto the same relation reads.
+    let plain = call(&server, "context.query", json!({ "sql": r#"SELECT k.ticker FROM "research/trades" t JOIN "research/tickers" k ON t.sec_id = k.sec_id LIMIT 1"# }));
+    assert_eq!(rows(&plain), &json!([["META"]]));
+}
+
 #[test]
 fn every_read_tool_declares_both_bounds() {
     let f = bounded();
