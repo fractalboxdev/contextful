@@ -10427,7 +10427,7 @@
       "operation": "orchestrate",
       "subject": "role",
       "kind": "behavior",
-      "statement": "A target's orchestrator role fills {{run.journal.substrate-port}}: open or resume an execution under a scope, record a step, commit a cursor, suspend with a timeout, attach a retry schedule; the engine's runner over {{run.journal.storage-ports}} is the reference filler.",
+      "statement": "A target's orchestrator role fills {{run.journal.substrate-port}}, every verb it names; the engine's runner over {{run.journal.storage-ports}} is the reference filler.",
       "why": "A-run",
       "file": "spec/30-run.md",
       "line": 579
@@ -10438,7 +10438,7 @@
       "operation": "orchestrate",
       "subject": "unit-grain",
       "kind": "behavior",
-      "statement": "A provider filler drives the engine at the unit grain, one recorded step per pull, land and commit of a table or backfill chunk under {{surface.dispatch.step-result}}; the page-grain entries of {{run.journal.entry-key}} stay inside the step.",
+      "statement": "A provider filler drives the engine at the grain of one recorded step per table pull or backfill chunk, each step's recorded value a pointer under the cap {{surface.dispatch.step-result}} states; the page-grain entries of {{run.journal.entry-key}} stay inside the step.",
       "why": "A-run",
       "file": "spec/30-run.md",
       "line": 581
@@ -10449,7 +10449,7 @@
       "operation": "orchestrate",
       "subject": "semantics",
       "kind": "behavior",
-      "statement": "Every clause of `run.journal`, `run.retry`, `run.suspend` and `run.cancel` holds under a provider filler, which passes the conformance suite {{run.journal.storage-ports}} demands of an adapter before a target profile names it.",
+      "statement": "Every clause of `run.journal`, `run.retry`, `run.suspend` and `run.cancel` holds under a provider filler, which passes a conformance suite over the substrate verbs, one per filler as {{run.journal.storage-ports}} demands one per adapter, before a target profile names it.",
       "why": "A-run",
       "file": "spec/30-run.md",
       "line": 583
@@ -10460,7 +10460,7 @@
       "operation": "orchestrate",
       "subject": "replay-identity",
       "kind": "behavior",
-      "statement": "A step a provider filler records replays under the engine's entry key, so a run resumed by either filler lands bytes identical to an uninterrupted one under {{run.journal.replay-lands}}, which {{topology.deploy.parity}} compares.",
+      "statement": "A step a provider filler records replays under the engine's entry key, so a resume under either filler lands bytes identical to an uninterrupted run under {{run.journal.replay-lands}}; the filler's suite crashes and resumes a step and compares the parts.",
       "why": "because a replay the provider owns lands per-target bytes, and the proofs over the journal then cover no managed target",
       "file": "spec/30-run.md",
       "line": 585,
@@ -10474,12 +10474,12 @@
       "operation": "orchestrate",
       "subject": "provider-limit",
       "kind": "refusal",
-      "statement": "A provider filler's step count, step return size or instance retention below an engine bound is recorded in the target profile; a run reaching it raises `OrchestratorBoundExceeded` naming the bound and closes `failed`, never a truncated step.",
-      "why": "because a step silently dropped at a provider ceiling reads as a run that completed",
+      "statement": "A provider filler whose instance cannot hold a workload class excludes it in the target profile, as {{topology.deploy.wall-clock-cap}} excludes; dispatching an excluded class raises `OrchestratorBoundExceeded` naming the class, before any step pays.",
+      "why": "because a backfill that pulls thousands of chunks and then meets a provider ceiling repeats paid work on its next fire",
       "file": "spec/30-run.md",
       "line": 587,
       "scenarios": [
-        "WHEN a provider caps an instance below the steps a backfill needs, THEN the run closes `failed` naming the step cap and no chunk commits short."
+        "WHEN a target profile excludes `first-time-backfill` because its instance cannot hold the chunk steps, THEN a first-time backfill's dispatch refuses naming the class and no chunk pulls."
       ]
     },
     {
@@ -29639,8 +29639,8 @@
       "run.journal.replay-lands"
     ],
     [
-      "run.orchestrate.replay-identity",
-      "topology.deploy.parity"
+      "run.orchestrate.provider-limit",
+      "topology.deploy.wall-clock-cap"
     ],
     [
       "run.orchestrate.delegate-inside",
@@ -34851,7 +34851,7 @@
           },
           "OrchestratorBoundExceeded": {
             "clause": "run.orchestrate.provider-limit",
-            "gloss": "A run reaching a provider filler's step count, step return size or retention ceiling recorded in its target profile."
+            "gloss": "A dispatch of a workload class the target profile excludes because the provider filler's instance cannot hold it."
           },
           "PipelineChunkParallelism": {
             "clause": "run.backfill.chunk-parallelism",

@@ -413,18 +413,18 @@ Consequences: the watermark and manifest shapes stay as they are, and `watermark
 
 ## The orchestrator role is a port, and a provider's workflow engine fills it at the unit grain
 
-**Status:** accepted; narrows the three-storage-ports decision above: a provider adapter may fill the substrate, not only the stores beneath the engine's runner.
+**Status:** accepted; narrows the three-storage-ports decision above: a provider adapter may fill the substrate itself.
 
-Context: every managed target names a provider orchestrator, yet every durable primitive runs again inside the container through a proxied store, so a step crosses two engines and the provider's replay idles. Criteria: one definition of a run's semantics, proven once and holding on managed targets; no paid work repeated by a stacked retry.
+Context: a managed target names a provider orchestrator while the engine's runner fills the role too, so a step crosses two engines. Criteria: one definition of a run's semantics, proven once, holding on managed targets; no stacked retry.
 
-Decision: `run.orchestrate` names the role as the substrate port's verbs. A provider filler drives the engine one recorded step per unit, and the page-grain journal lives inside that step. The engine's clauses stay normative; a filler conforms through the adapter suite, records its ceilings as target exclusions, and dispatches no delegate itself.
+Decision: `run.orchestrate` names the role as the substrate port's verbs. A provider filler drives the engine one recorded step per table pull or chunk, the page-grain journal inside that step. The engine's clauses stay normative; a filler conforms through its own suite over the verbs, excludes the workload classes its instance cannot hold, and dispatches no delegate itself.
 
 | Option | Lost on | Cost |
 | --- | --- | --- |
-| Port at the substrate, provider fills at the unit grain *(chosen)* | — | Two fillers to conform; a unit step pays a provider round trip; ceilings become exclusions. |
+| Port at the substrate, provider fills at the unit grain *(chosen)* | — | Two fillers to conform; a step pays a provider round trip; ceilings become exclusions. |
 | The engine's runner alone, provider stores beneath it | Provider primitives | A step crosses container, Worker and store; the provider's retry idles. |
 | The provider owns replay | One semantics | Replay differs per target and the journal proofs cover the laptop alone. |
 | One step per page | Provider ceilings | A backfill of tens of thousands of pages overflows an instance. |
 
-Consequences: a Workflows filler meets a 10,000-step default cap, a 1 MiB step return and a 30-day completed-instance retention against `run.record.time-travel`; the storage-port adapters keep their suites.
+Consequences: a Workflows filler on Workers Paid meets a 10,000-step default cap and a 1 MiB step return, so a shape excludes `first-time-backfill` past the cap; the run record lives in the store, so retention binds nothing; storage-port adapters keep their suites.
 Revisit: a provider offering a sub-unit grain.
