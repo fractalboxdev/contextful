@@ -197,7 +197,7 @@ fn a_keyed_claim_passes_the_evidence_gate() {
 }
 
 /// `evidence_omitted` is a reserved projected column of {{read.recall.ranked-arm}}, null for a table outside memory under {{read.retrieve.reserved-columns-project-null}}.
-// spec: read.recall.evidence-omitted-column@e30a5f60
+// spec: read.recall.evidence-omitted-column@83b7803c
 #[test]
 fn the_ranked_arm_projects_evidence_omitted() {
     let f = Fixture::new();

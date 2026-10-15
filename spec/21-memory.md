@@ -140,7 +140,7 @@ Serving memory: the ranked arm at the read's anchor, the keyed read at an observ
   *A-read*
 - `evidence-references` — A claim naming more than 256 entries of evidence serves its first 256 in cited table, run and sequence order, and reports the count of the rest in its `evidence_omitted` field.
   *A-read*
-- `evidence-omitted-column` — `evidence_omitted` is a reserved projected column of {{read.recall.ranked-arm}}, null for a table outside memory under {{read.retrieve.reserved-columns-project-null}}.
+- `evidence-omitted-column` — `evidence_omitted` is a reserved projected column of {{read.recall.ranked-arm}}, null for a row outside a `memory_facts` table under {{read.retrieve.reserved-columns-project-null}}.
 - `evidence-gate-bound` — A claim naming more than 4096 entries of evidence is suppressed unresolved, raising `MemoryEvidenceOverflow`.
   *A-read*
 - `evidence-key` — The write landing a claim stamps each citation into a keyed table with a pepper-keyed digest of the cited row's key; recall resolves a citation whose row no longer reads through the digest's live version.
@@ -178,7 +178,7 @@ The evidence check a claim passes on its way to a grounded turn:
 flowchart LR
   FACTS[("memory_facts")] -->|"live claim"| COUNT{"evidence entries per claim?"}
   COUNT -->|"up to 256"| EV{"evidence readable in session?"}
-  COUNT -->|"over 256: capped"| EV
+  COUNT -->|"257 to 4096: capped"| EV
   COUNT -->|"over 4096: MemoryEvidenceOverflow"| HELD["withheld claim"]
   EV -->|"yes, grounded turn"| APP(["application"])
   EV -->|"unreadable: MemoryEvidenceUnresolved"| HELD
