@@ -15,7 +15,9 @@
 use contextful_context::read::{Face, ReadFault, ReadOptions, RecallRequest, RetrieveRequest};
 use contextful_core::memory::declare::Shape;
 use contextful_core::read::face::{read_backend, register_tool, require, BuildIdentity, FaceScope, ToolKind, TOOLS};
+use contextful_core::read::error::ReadError;
 use contextful_core::read::guard::admit;
+use contextful_core::read::horizon::{horizon, inherit, within};
 use contextful_core::read::pin::{Pins, PIN_ARGUMENT};
 use contextful_core::read::template::READ_ARGUMENTS;
 use contextful_core::run::journal::sha256_hex;
@@ -224,6 +226,24 @@ fn instant(args: &Map<String, Value>, name: &str) -> Result<Option<Instant>, Pro
             Instant::parse(&s).map_err(|e| invalid(e.to_string()))
         })
         .transpose()
+}
+
+/// `args` under the credential's horizon: `since` and `available_as_of` hold within it
+/// (`read.horizon.exceeds-horizon`), and an absent `available_as_of` reads at it
+/// (`read.horizon.inherited-bound`).
+fn inherit_horizon(args: &Map<String, Value>, horizon: Option<Instant>) -> Result<Result<Map<String, Value>, ReadError>, Protocol> {
+    if let Err(refused) = within(horizon, "since", instant(args, "since")?) {
+        return Ok(Err(refused));
+    }
+    let bounds = match inherit(horizon, bounds(args)?) {
+        Ok(b) => b,
+        Err(refused) => return Ok(Err(refused)),
+    };
+    let mut args = args.clone();
+    if let (false, Some(b)) = (args.contains_key("available_as_of"), bounds.available_as_of) {
+        args.insert("available_as_of".into(), json!(b.at.to_rfc3339_nanos()));
+    }
+    Ok(Ok(args))
 }
 
 fn options(args: &Map<String, Value>) -> Result<ReadOptions, Protocol> {
@@ -507,6 +527,19 @@ impl<'a> Tools<'a> {
         if let Err(absent) = read_backend(&self.build, name) {
             return Ok(Err(absent.into()));
         }
+        let horizon = horizon(caller.authority.grants());
+        let inherited;
+        let args = match horizon {
+            // `memory.recall` names its own clocks and reads the horizon below.
+            Some(_) if name != "memory.recall" => match inherit_horizon(args, horizon)? {
+                Ok(a) => {
+                    inherited = a;
+                    &inherited
+                }
+                Err(refused) => return Ok(Err(refused.into())),
+            },
+            _ => args,
+        };
         Ok(match name {
             "context.describe" => {
                 only(args, name, &["table", "internals"])?;
@@ -606,8 +639,12 @@ impl<'a> Tools<'a> {
                 if let Some(k) = ["as_of", "valid_as_of", "available_as_of", VINTAGE].into_iter().find(|k| args.contains_key(*k)) {
                     return Err(invalid(format!("`{name}` takes no argument `{k}`; it reads `observed_at` and `as_of_ingest`")));
                 }
+                // Under a horizon an absent `observed_at` reads at it, and the claims table at
+                // `available_as_of` equal to it (`read.horizon.recall-horizon`).
+                let at_horizon = horizon.map(|at| Bound { at, inclusive: true });
                 let request = RecallRequest {
-                    observed_at: bound(args, "observed_at")?,
+                    observed_at: bound(args, "observed_at")?.or(at_horizon),
+                    available_as_of: at_horizon,
                     as_of_ingest: bound(args, "as_of_ingest")?,
                     limit: integer(args, "limit")?,
                     max_duration_ms: integer(args, "max_duration_ms")?,

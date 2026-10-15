@@ -61,6 +61,11 @@ pub(crate) fn fixture() -> Fixture {
 }
 
 pub(crate) fn fixture_over(manifest: &str, seed: impl FnOnce(&Store)) -> Fixture {
+    fixture_bounded(manifest, None, seed)
+}
+
+/// [`fixture_over`] with the credential's one grant carrying `horizon`.
+pub(crate) fn fixture_bounded(manifest: &str, horizon: Option<&str>, seed: impl FnOnce(&Store)) -> Fixture {
     let dir = tempfile::tempdir().unwrap();
     let store = Store::open(dir.path(), "research").unwrap();
     seed(&store);
@@ -74,7 +79,7 @@ pub(crate) fn fixture_over(manifest: &str, seed: impl FnOnce(&Store)) -> Fixture
         ..Subject::default()
     };
     let grant = Grant {
-        horizon: None,
+        horizon: horizon.map(at),
         actions: vec![Action::Read],
         tables: vec![TablePattern::parse("research/*").unwrap()],
         tenant: None,
@@ -455,9 +460,14 @@ parameters = ["ticker:string"]
 /// Two quarters' earnings, each accepted after its quarter closes, and a restatement of the
 /// first, all landed on 1 September, beside a keyed table declaring no availability time.
 fn available() -> Fixture {
+    available_under(None)
+}
+
+/// [`available`] read by a credential carrying `horizon`.
+fn available_under(horizon: Option<&str>) -> Fixture {
     let decls = TableDecl::parse_pipeline(AVAILABLE).unwrap();
     let decl = |name: &str| decls.iter().find(|d| d.name == name).unwrap().clone();
-    fixture_over(AVAILABLE, |store| {
+    fixture_bounded(AVAILABLE, horizon, |store| {
         put(store, &decl("research/filings"), "run-1", "2030-01-01T00:00:00Z", json!([{ "doc": "a", "v": 1 }]), &[]);
         let earnings = json!([
             { "filing_id": "acme-q1", "ticker": "ACME", "eps": "1.23", "digest": "q1", "accepted_at": "2030-05-02T16:05:00Z" },
@@ -610,6 +620,80 @@ fn a_listing_ignores_available_as_of() {
     assert_eq!(tables["result"]["structuredContent"]["tables"].as_array().unwrap().len(), 2, "{tables}");
 }
 
+/// Under a credential carrying a horizon, every read tool reads at `available_as_of` equal to the horizon when the call supplies none, capping {{read.as-of-join.horizon-caps-row}}, and echoes it as {{store.available-time.bound-echo}}.
+// spec: read.horizon.inherited-bound@62351825
+#[test]
+fn every_read_tool_called_unbounded_reads_at_the_horizon() {
+    let f = available_under(Some("2030-06-01T00:00:00Z"));
+    let clock = FixedClock(at("2030-09-02T00:00:00Z"));
+    let server = Server::new(&f.face, f.authority.clone(), &current, &clock, &f.audit).unwrap();
+    let echo = json!({ "available_as_of": "2030-06-01T00:00:00.000000000Z", "inclusive": true });
+
+    // The second quarter, accepted on 1 August, lies past the horizon on every tool.
+    let query = call(&server, "context.query", json!({ "sql": r#"SELECT filing_id FROM "research/earnings" ORDER BY filing_id"# }));
+    assert_eq!(rows(&query), &json!([["acme-q1"]]));
+    assert_eq!(echoed(&query), &echo);
+    let executed = call(&server, "context.execute_query", json!({ "id": "earnings", "arguments": { "ticker": "ACME" } }));
+    assert_eq!(rows(&executed), &json!([["acme-q1"]]));
+    assert_eq!(echoed(&executed), &echo);
+    let template = call(&server, "earnings", json!({ "ticker": "ACME" }));
+    assert_eq!(rows(&template), &json!([["acme-q1"]]));
+    let described = call(&server, "context.describe", json!({ "table": "research/earnings" }));
+    assert_eq!(described["result"]["structuredContent"]["row_count"], json!("1"), "{described}");
+    assert_eq!(echoed(&described), &echo);
+    let listed = call(&server, "context.files", json!({}));
+    let part = rows(&listed).as_array().unwrap().iter().find(|r| r[0] == json!("research/earnings")).unwrap()[1].clone();
+    let preview = call(&server, "context.file", json!({ "path": part }));
+    assert_eq!(rows(&preview).as_array().unwrap().len(), 1, "{preview}");
+    let retrieved = call(&server, "corpus.retrieve", json!({ "prefix": "research/earnings", "query": "acme" }));
+    assert_eq!(rows(&retrieved).as_array().unwrap().len(), 1, "{retrieved}");
+    assert_eq!(echoed(&retrieved), &echo);
+
+    // An earlier bound narrows further; a table declaring no availability time refuses.
+    let april = call(&server, "context.query", json!({ "sql": r#"SELECT filing_id FROM "research/earnings""#, "available_as_of": "2030-04-30T00:00:00Z" }));
+    assert_eq!(rows(&april), &json!([]));
+    let undeclared = call(&server, "context.query", json!({ "sql": r#"SELECT v FROM "research/filings""# }));
+    assert!(undeclared["result"]["content"][0]["text"].as_str().unwrap().contains("StoreAvailableTimeUndeclared"), "{undeclared}");
+}
+
+#[test]
+fn a_call_reaching_past_the_horizon_is_refused_naming_its_argument() {
+    let f = available_under(Some("2030-06-01T00:00:00Z"));
+    let clock = FixedClock(at("2030-09-02T00:00:00Z"));
+    let server = Server::new(&f.face, f.authority.clone(), &current, &clock, &f.audit).unwrap();
+    let identifier = |answer: &Value| answer["result"]["structuredContent"]["error"]["identifier"].clone();
+
+    let later = call(&server, "context.query", json!({ "sql": r#"SELECT filing_id FROM "research/earnings""#, "available_as_of": "2030-09-01T00:00:00Z" }));
+    assert_eq!(identifier(&later), json!("ReadBoundExceedsHorizon"), "{later}");
+    assert!(later["result"]["content"][0]["text"].as_str().unwrap().contains("available_as_of"), "{later}");
+    let since = call(&server, "corpus.retrieve", json!({ "prefix": "research/earnings", "query": "acme", "since": "2030-07-01T00:00:00Z" }));
+    assert_eq!(identifier(&since), json!("ReadBoundExceedsHorizon"), "{since}");
+    assert!(since["result"]["content"][0]["text"].as_str().unwrap().contains("since"), "{since}");
+
+    // `as_of` passes beyond the horizon; the availability bound still holds the row back.
+    let as_of = call(&server, "context.query", json!({ "sql": r#"SELECT filing_id FROM "research/earnings" ORDER BY filing_id"#, "as_of": "2031-01-01T00:00:00Z" }));
+    assert_eq!(rows(&as_of), &json!([["acme-q1"]]));
+}
+
+/// Under a horizon, {{read.recall.keyed}} defaults an absent `observed_at` to the horizon and reads a claims table at `available_as_of` equal to it, so a table declaring no availability time refuses as {{store.available-time.undeclared}}.
+// spec: read.horizon.recall-horizon@d4fc8ee7
+#[test]
+fn recall_under_a_horizon_reads_the_claims_table_at_it() {
+    let f = fixture_bounded(CLAIMS, Some("2030-02-01T00:00:00Z"), seed_claims);
+    let clock = FixedClock(at("2030-04-01T00:00:00Z"));
+    let server = Server::new(&f.face, f.authority.clone(), &current, &clock, &f.audit).unwrap();
+    let refused = call(&server, "memory.recall", json!({ "table": "research/facts", "subject": "acme" }));
+    assert_eq!(refused["result"]["isError"], json!(true), "{refused}");
+    let text = refused["result"]["content"][0]["text"].as_str().unwrap();
+    assert!(text.contains("StoreAvailableTimeUndeclared") && text.contains("research/facts"), "{refused}");
+
+    // Unbounded by a horizon, the same recall answers at the call's instant.
+    let f = claims();
+    let server = Server::new(&f.face, f.authority.clone(), &current, &clock, &f.audit).unwrap();
+    let answered = call(&server, "memory.recall", json!({ "table": "research/facts", "subject": "acme" }));
+    assert_eq!(rows(&answered).as_array().unwrap().len(), 1, "{answered}");
+}
+
 #[test]
 fn every_read_tool_declares_both_bounds() {
     let f = bounded();
@@ -645,7 +729,11 @@ columns = ["claim_id", "subject", "predicate", "object", "scope", "tier", "confi
 
 /// Dana holds from 2030-01-01 until Lee's 2030-03-01 start retires her.
 fn claims() -> Fixture {
-    fixture_over(CLAIMS, |store| {
+    fixture_over(CLAIMS, seed_claims)
+}
+
+fn seed_claims(store: &Store) {
+    {
         put(store, &TableDecl::named("research/notes"), "run-0001", "2030-01-01T00:00:00Z", json!([{ "note_id": "n1" }]), &[]);
         let evidence = r#"[{"table":"research/notes","run":"run-0001","seq":0}]"#;
         let claim = |id: &str, object: &str, from: &str, to: Option<&str>, by: Option<&str>| {
@@ -667,7 +755,7 @@ fn claims() -> Fixture {
         ];
         let decl = TableDecl { primary_key: Some(vec!["claim_id".into()]), ..TableDecl::named("research/facts") };
         put(store, &decl, "memory-1", "2030-01-02T00:00:00Z", rows, &ts);
-    })
+    }
 }
 
 /// Executed SQL, engine name, applied limit, row count and elapsed milliseconds ride a separate object returned only under `internals: true`, on every read tool and the HTTP face.

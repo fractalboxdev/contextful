@@ -114,6 +114,21 @@ fn introspection_reports_declared_scope_and_the_chain_final_revocation_id() {
 }
 
 #[test]
+fn a_horizon_mints_onto_the_grant_and_no_child_extends_it() {
+    let p = project();
+    keygen(p.path());
+    let parent = stdout(&mint(p.path(), &["--on-behalf-of", "user://dana@acme.example", "--table", "research/*", "--horizon", "2015-01-01T00:00:00Z"]));
+    let text = stdout(&run(p.path(), &["token", "introspect", "--token", &parent]));
+    let json: serde_json::Value = serde_json::from_str(&text).unwrap();
+    assert_eq!(json["authority"]["grants"][0]["horizon"], serde_json::json!("2015-01-01T00:00:00Z"), "{text}");
+
+    let err = stderr(&run(p.path(), &["token", "attenuate", "--token", &parent, "--horizon", "2016-01-01T00:00:00Z"]));
+    assert!(err.contains("AttenuationWidens") && err.contains("horizon"), "{err}");
+    stdout(&run(p.path(), &["token", "attenuate", "--token", &parent, "--horizon", "2014-06-01T00:00:00Z"]));
+    stdout(&run(p.path(), &["token", "attenuate", "--token", &parent, "--table", "research/filings"]));
+}
+
+#[test]
 fn a_mint_carries_a_tenant_scope_on_its_grant() {
     let p = project();
     keygen(p.path());
