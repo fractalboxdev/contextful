@@ -11,6 +11,9 @@ pub enum ContextError {
     /// A registered `disclosure` visibility refusal: a sweep's.
     #[error(transparent)]
     Visibility(#[from] contextful_core::disclosure::VisibilityError),
+    /// A registered `authority` refusal: an identity link's.
+    #[error(transparent)]
+    Authority(#[from] contextful_core::AuthorityError),
     #[error(transparent)]
     Erasure(#[from] contextful_core::disclosure::erase::ErasureError),
     /// A registered `run` refusal: a model build's or hold's.

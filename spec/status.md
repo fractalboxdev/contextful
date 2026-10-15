@@ -6,16 +6,16 @@ An unpinned clause is `committed`; a pinned one is `performed` when its Rust, Le
 | Contract | Files | Operations | Clauses | Refusals | Limits | Unsettled | Performed | Broken | Floor |
 | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
 | `assurance` | 3 | 18 | 316 | 64 | 24 | 8 | 276 | 0 | 276 |
-| `authority` | 2 | 16 | 295 | 79 | 29 | 9 | 224 | 0 | 224 |
+| `authority` | 2 | 16 | 295 | 79 | 29 | 9 | 229 | 0 | 224 |
 | `connector` | 2 | 14 | 363 | 91 | 21 | 15 | 260 | 0 | 260 |
 | `corpus` | 1 | 10 | 79 | 37 | 7 | 0 | 79 | 0 | 79 |
-| `disclosure` | 3 | 16 | 158 | 68 | 13 | 7 | 103 | 0 | 103 |
+| `disclosure` | 3 | 16 | 159 | 68 | 13 | 8 | 106 | 0 | 106 |
 | `read` | 2 | 19 | 276 | 45 | 28 | 13 | 231 | 0 | 231 |
 | `run` | 3 | 29 | 517 | 114 | 44 | 13 | 467 | 0 | 467 |
 | `store` | 3 | 19 | 290 | 64 | 14 | 11 | 280 | 0 | 280 |
 | `surface` | 2 | 21 | 159 | 63 | 23 | 0 | 132 | 0 | 132 |
 | `topology` | 1 | 6 | 79 | 25 | 5 | 3 | 74 | 0 | 74 |
-| **total** | 22 | 168 | 2532 | 650 | 208 | 79 | 2126 | 0 | |
+| **total** | 22 | 168 | 2533 | 650 | 208 | 80 | 2134 | 0 | |
 
 Decision records: 18.
 
@@ -26,7 +26,7 @@ A milestone reads `closed` when its acceptance test computes `passing` and every
 | Milestone | Operations | Clauses | Performed | Acceptance | Closed |
 | --- | --- | --- | --- | --- | --- |
 | 0 — The test-first gate | 2 | 22 | 19 | passing | closed |
-| 1 — The authority core | 14 | 244 | 225 | passing | closed |
+| 1 — The authority core | 14 | 244 | 230 | passing | closed |
 | 2 — The store | 9 | 183 | 173 | passing | closed |
 | 3 — The run path | 12 | 271 | 255 | passing | closed |
 | 4 — Ingest | 25 | 566 | 435 | passing | closed |
@@ -34,7 +34,7 @@ A milestone reads `closed` when its acceptance test computes `passing` and every
 | 6 — Sync and replicas | 8 | 83 | 83 | passing | closed |
 | 7 — Memory | 6 | 71 | 56 | passing | closed |
 | 8 — Accountability | 5 | 84 | 71 | passing | open |
-| 9 — Visibility | 6 | 41 | 11 | open | open |
+| 9 — Visibility | 6 | 42 | 14 | open | open |
 | 10 — Cadence and the operator plane | 11 | 99 | 85 | passing | open |
 | 11 — The derive tier | 7 | 94 | 93 | passing | closed |
 | 12 — The operator console | 12 | 56 | 43 | passing | open |
@@ -391,11 +391,16 @@ Unscheduled operations: 12.
 | `authority.grant.unknown-action` | `crates/contextful-core/tests/integration/grant.rs::unknown_action` | performed |
 | `authority.grant.write-not-covered` | `crates/contextful-cli/tests/integration/author.rs::a_credential_without_a_write_grant_lands_nothing` | performed |
 | `authority.identify.attestation` | `crates/contextful-core/tests/integration/identify.rs::attestation` | performed |
+| `authority.identify.directory-link` | `crates/contextful-context/tests/integration/visibility.rs::links_come_from_the_directory_read_alone` | performed |
+| `authority.identify.identity-link` | `crates/contextful-core/tests/integration/disclosure/mirror.rs::an_identity_link_records_method_and_confidence_and_confidence_relaxes_nothing` | performed |
 | `authority.identify.incognito` | `crates/contextful-core/tests/integration/identify.rs::incognito` | performed |
 | `authority.identify.malformed-value` | `crates/contextful-core/tests/integration/identify.rs::malformed_value` | performed |
 | `authority.identify.normalization` | `crates/contextful-core/tests/integration/identify.rs::normalization` | performed |
+| `authority.identify.on-behalf-of` | `crates/contextful-policy/tests/integration/exchange.rs::on_behalf_of_comes_from_the_verified_assertion_and_admission_carries_it_as_identity` | performed |
 | `authority.identify.subject-missing` | `crates/contextful-core/tests/integration/identify.rs::subject_missing` | performed |
 | `authority.identify.subject-rebound` | `crates/contextful-core/tests/integration/identify.rs::subject_rebound` | performed |
+| `authority.identify.subject-tuple` | `crates/contextful-policy/tests/integration/verify.rs::a_credential_binds_the_members_it_names_and_admits_under_that_combination_alone` | performed |
+| `authority.identify.unlinked-principal` | `crates/contextful-context/tests/integration/visibility.rs::a_subject_with_no_link_reaches_nothing_from_the_source` | performed |
 | `authority.identify.unverified-link` | `crates/contextful-core/tests/integration/identify.rs::unverified_link` | performed |
 | `authority.identify.value-hygiene` | `crates/contextful-core/tests/integration/identify.rs::value_hygiene` | performed |
 | `authority.issue.above-ceiling` | `crates/contextful-core/tests/integration/issue.rs::an_explicit_lifetime_above_the_ceiling_refuses_and_an_exchange_lifetime_clamps` | performed |
@@ -938,6 +943,8 @@ Unscheduled operations: 12.
 | `disclosure.explain.path` | `crates/contextful-policy/tests/integration/explain.rs::an_admitting_path_runs_role_grant_then_the_declared_steps_and_a_denial_ends_at_default_deny` | performed |
 | `disclosure.explain.replay` | `crates/contextful-cli/tests/integration/explain.rs::a_window_replays_the_subjects_reads_of_the_table_inside_it` | performed |
 | `disclosure.explain.unqualified-assurance` | `crates/contextful-policy/tests/integration/explain.rs::a_denial_without_coverage_is_refused_and_with_coverage_releases` | performed |
+| `disclosure.mirror.grants-table` | `crates/contextful-context/tests/integration/visibility.rs::a_sweep_lands_all_seven_access_tables_as_ordinary_rows` | performed |
+| `disclosure.mirror.incomplete-binding` | `crates/contextful-cli/tests/integration/visibility.rs::pipeline_validate_refuses_a_servable_binding_without_a_sweep_or_a_budget` | performed |
 | `disclosure.record.audit-key` | `crates/contextful-context/tests/integration/erase.rs::the_project_audit_key_has_one_stable_private_creation_and_refuses_bad_files` | performed |
 | `disclosure.record.bound-entry` | `crates/contextful-agent/tests/integration/mcp.rs::a_bounded_reads_entry_carries_its_bounds_snapshot_query_and_digest` | performed |
 | `disclosure.record.chain-header` | `crates/contextful-policy/tests/integration/audit.rs::a_chain_header_fixes_the_digest_and_segment_size_and_roots_the_first_link` | performed |
@@ -984,6 +991,7 @@ Unscheduled operations: 12.
 | `disclosure.suppress.grouping-allowlist` | `crates/contextful-cli/tests/integration/disclosure.rs::check_rejects_empty_grouping_allowlist` | performed |
 | `disclosure.suppress.min-group-size` | `crates/contextful-core/tests/integration/disclosure/suppress.rs::min_group_size` | performed |
 | `disclosure.sweep.cadence-grammar` | `crates/contextful-core/tests/integration/disclosure/sweep.rs::a_cadence_outside_the_budget_grammar_is_refused` | performed |
+| `disclosure.sweep.directory-file` | `crates/contextful-core/tests/integration/disclosure/mirror.rs::a_directory_file_carries_links_and_memberships_and_a_run_without_one_keeps_them` | performed |
 | `disclosure.sweep.full-run` | `crates/contextful-core/tests/integration/disclosure/sweep.rs::a_full_run_replaces_resources_and_grants_and_tombstones_the_withdrawn` | performed |
 | `disclosure.sweep.grants-file` | `crates/contextful-core/tests/integration/disclosure/sweep.rs::a_grants_file_is_the_read_of_every_governed_resource` | performed |
 | `disclosure.sweep.incremental-run` | `crates/contextful-core/tests/integration/disclosure/sweep.rs::an_incremental_run_replaces_only_the_grants_of_resources_it_read` | performed |

@@ -2,16 +2,17 @@
 //! (`disclosure.sweep.sweep-verb`).
 //!
 //! A thin adapter: it reads the declaration set's visibility blocks and `[[acl_sweep]]` blocks,
-//! the `--grants` file, and calls the store adapter, which computes and lands the run.
+//! the `--grants` file and the `--directory` file, and calls the store adapter, which computes
+//! and lands the run.
 
 use crate::clock::SystemClock;
 use crate::project::locate;
 use anyhow::{bail, Context, Result};
 use clap::Subcommand;
-use contextful_context::visibility::{sweep_grants, Landing};
+use contextful_context::visibility::{sweep_run, Landing};
 use contextful_context::{node, Store};
 use contextful_core::disclosure::declare::Binding;
-use contextful_core::disclosure::sweep::{parse_grants, SweepBlock, SweepKind};
+use contextful_core::disclosure::sweep::{parse_directory, parse_grants, SweepBlock, SweepKind};
 use contextful_core::ports::Clock;
 use contextful_core::run::record::SiteIdSources;
 use contextful_core::store::declare::TableDecl;
@@ -38,6 +39,10 @@ pub enum VisibilityCmd {
         /// JSON Lines, one grant per line: the run's read of every governed resource.
         #[arg(long)]
         grants: Option<PathBuf>,
+        /// JSON Lines from the identity provider's directory: identity links and group
+        /// memberships, replacing the source's current ones; absent, they stand.
+        #[arg(long)]
+        directory: Option<PathBuf>,
         /// The site id the run carries; absent, the manifest's, else the node id.
         #[arg(long)]
         site_id: Option<String>,
@@ -46,7 +51,7 @@ pub enum VisibilityCmd {
 
 pub fn run(cmd: VisibilityCmd) -> Result<()> {
     match cmd {
-        VisibilityCmd::Sweep { project, declaration, source, kind, grants, site_id } => {
+        VisibilityCmd::Sweep { project, declaration, source, kind, grants, directory, site_id } => {
             let kind = SweepKind::parse(&kind).context("`--kind` is `full` or `incremental`")?;
             let l = locate(project.as_deref(), declaration)?;
             let text = std::fs::read_to_string(&l.declaration).with_context(|| format!("reading the declaration `{}`", l.declaration.display()))?;
@@ -78,15 +83,24 @@ pub fn run(cmd: VisibilityCmd) -> Result<()> {
             let began_at = SystemClock.now();
             let lines = std::fs::read_to_string(&grants).with_context(|| format!("reading `{}`", grants.display()))?;
             let lines = parse_grants(&lines).with_context(|| format!("`{}`", grants.display()))?;
-            let c = sweep_grants(&store, &Landing { node, site_id }, &block, &bindings, kind, lines, began_at, SystemClock.now())?;
+            let directory = match directory {
+                Some(path) => {
+                    let text = std::fs::read_to_string(&path).with_context(|| format!("reading `{}`", path.display()))?;
+                    Some(parse_directory(&source, &text).with_context(|| format!("`{}`", path.display()))?)
+                }
+                None => None,
+            };
+            let c = sweep_run(&store, &Landing { node, site_id }, &block, &bindings, kind, lines, directory, began_at, SystemClock.now())?;
             let f = &c.freshness;
             println!(
-                "{source}: {} sweep {} committed epoch {} ({} resources, {} grants, {} tombstones); watermark_at {}",
+                "{source}: {} sweep {} committed epoch {} ({} resources, {} grants, {} group members, {} identity links, {} tombstones); watermark_at {}",
                 kind.as_str(),
                 f.sweep_id,
                 f.epoch,
                 c.resources.len(),
                 c.grants.len(),
+                c.members.len(),
+                c.links.len(),
                 c.tombstones.len(),
                 f.watermark_at.map_or_else(|| "unset".to_string(), |w| w.to_rfc3339())
             );

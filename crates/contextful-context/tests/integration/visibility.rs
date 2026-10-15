@@ -2,10 +2,11 @@
 //! through the land path.
 
 use crate::support::{at, decl, Fixture};
-use contextful_context::visibility::{committed, principals, state, sweep_grants, tombstones, Landing};
+use contextful_context::visibility::{committed, group_members, identity_links, principals, reach, state, sweep_grants, sweep_run, tombstones, Landing};
 use contextful_context::ContextError;
 use contextful_core::disclosure::declare::Binding;
-use contextful_core::disclosure::sweep::{GrantLine, SweepBlock, SweepKind};
+use contextful_core::disclosure::sweep::{parse_directory, GrantLine, SweepBlock, SweepKind};
+use contextful_core::identify::{LinkMethod, NormalizedSubject, Subject};
 use contextful_core::disclosure::VisibilityError;
 use contextful_core::store::lay_out::NodeId;
 use contextful_core::store::StoreError;
@@ -122,4 +123,117 @@ fn a_run_stopped_before_freshness_revokes_nothing() {
     let revoked = tombstones(&f.store, "wiki").unwrap();
     assert_eq!(revoked.iter().map(|t| (t.resource_id.as_str(), t.principal.as_deref())).collect::<Vec<_>>(), [("p2", Some("erin"))]);
     assert_eq!(state(&f.store, "wiki").unwrap().grants.len(), 1);
+}
+
+const DRIVE: &str = "[[acl_sweep]]\nsource = \"drive\"\nenumerate = \"files\"\nfull = { every = \"1h\" }\nincremental = { every = \"5m\" }\n";
+
+fn files() -> contextful_core::store::declare::TableDecl {
+    decl("name = \"drive/files\"\n[pipeline.tables.visibility]\nsource = \"drive\"\nresource_key = \"file_id\"\nresource_kind = \"file\"\nfidelity = \"mirrored\"\nfamily = \"item-exception\"\nmax_acl_staleness = \"15m\"")
+}
+
+fn drive_grant(resource: &str, principal: &str, kind: &str) -> GrantLine {
+    GrantLine { resource_id: resource.into(), principal: principal.into(), principal_kind: kind.into(), level: "reader".into() }
+}
+
+fn reader(on_behalf_of: &str) -> NormalizedSubject {
+    Subject { on_behalf_of: Some(on_behalf_of.into()), agent: Some("agent://drive-loop".into()), ..Subject::default() }.normalize()
+}
+
+/// The identity provider's directory export for the drive source: dana's account `u-1001` by
+/// SCIM email, erin's `u-1002` by OIDC subject, and `u-1001` in the finance group.
+const DIRECTORY: &str = r#"{"source_principal": "u-1001", "subject": "user://dana@acme.example", "method": "scim_email", "confidence": 0.9}
+{"source_principal": "u-1002", "subject": "user://erin@acme.example", "method": "oidc_sub", "confidence": 0.7}
+{"group": "g-finance", "member": "u-1001", "member_kind": "user"}"#;
+
+struct Drive {
+    f: Fixture,
+    block: SweepBlock,
+    bindings: Vec<Binding>,
+}
+
+fn drive() -> Drive {
+    let f = Fixture::new();
+    let files = files();
+    f.land(&files, "run-0001", json!([{"file_id": "f1", "title": "Budget"}, {"file_id": "f2", "title": "Roadmap"}, {"file_id": "f3", "title": "Offsite"}]), "2030-01-01T00:00:00Z").unwrap();
+    Drive { f, block: SweepBlock::parse_manifest(DRIVE).unwrap().remove(0), bindings: vec![Binding::of(&files).unwrap().unwrap()] }
+}
+
+impl Drive {
+    fn sweep(&self, kind: SweepKind, grants: Vec<GrantLine>, directory: Option<&str>, began: &str) -> contextful_core::disclosure::sweep::Commit {
+        let directory = directory.map(|d| parse_directory("drive", d).unwrap());
+        sweep_run(&self.f.store, &landing(), &self.block, &self.bindings, kind, grants, directory, at(began), at(began)).unwrap()
+    }
+}
+
+/// A sweep lands a source's access data as ordinary rows of `_visibility/<source>/resources`, `grants`, `principals`, `group_members`, `identity_links`, `tombstones` and `freshness`, through the land path and its write lock.
+// spec: disclosure.mirror.grants-table@2f7e28a8
+#[test]
+fn a_sweep_lands_all_seven_access_tables_as_ordinary_rows() {
+    let d = drive();
+    let grants = vec![drive_grant("f1", "g-finance", "group"), drive_grant("f2", "u-1002", "user"), drive_grant("f3", "u-1002", "user")];
+    let first = d.sweep(SweepKind::Full, grants, Some(DIRECTORY), "2030-01-01T00:10:00Z");
+    d.sweep(SweepKind::Full, vec![drive_grant("f1", "g-finance", "group"), drive_grant("f2", "u-1002", "user")], None, "2030-01-01T00:20:00Z");
+
+    let tables = d.f.store.tables().unwrap();
+    for t in ["resources", "grants", "principals", "group_members", "identity_links", "tombstones", "freshness"] {
+        let name = format!("_visibility/drive/{t}");
+        assert!(tables.contains(&name), "{t}: {tables:?}");
+        // Each scans like any other table, its runs named by sweep id.
+        let scanned = d.f.scan(&decl(&format!("name = \"{name}\"")), Default::default()).unwrap();
+        assert!(scanned.files.iter().any(|f| f.contains("sweep-")), "{t}: {:?}", scanned.files);
+    }
+    assert!(d.f.scan(&decl("name = \"_visibility/drive/identity_links\""), Default::default()).unwrap().files.iter().any(|f| f.contains(&first.freshness.sweep_id)));
+
+    let links = identity_links(&d.f.store, "drive").unwrap();
+    assert_eq!(
+        links.iter().map(|l| (l.source_principal.as_str(), l.on_behalf_of.as_str(), l.method, l.confidence)).collect::<Vec<_>>(),
+        [("u-1001", "user://dana@acme.example", LinkMethod::ScimEmail, 0.9), ("u-1002", "user://erin@acme.example", LinkMethod::OidcSub, 0.7)]
+    );
+    let members = group_members(&d.f.store, "drive").unwrap();
+    assert_eq!(members.iter().map(|m| (m.group.as_str(), m.member.as_str(), m.member_kind.as_str())).collect::<Vec<_>>(), [("g-finance", "u-1001", "user")]);
+    assert_eq!(members[0].observed_at, at("2030-01-01T00:10:00Z"), "a carried membership keeps the instant its read began");
+    assert_eq!(tombstones(&d.f.store, "drive").unwrap().len(), 1);
+
+    // A producer landing a link is refused; the sweep is the namespace's one writer.
+    match d.f.land(&decl("name = \"_visibility/drive/identity_links\""), "run-0002", json!([{"source_principal": "u-9", "subject": "user://mallory@acme.example"}]), "2030-01-01T00:30:00Z") {
+        Err(ContextError::Store(StoreError::StoreReservedTableName(_))) => {}
+        other => panic!("{other:?}"),
+    }
+}
+
+/// Directory provisioning from the identity provider writes source-account links. A value a source's profile interface returns at request time is data, not a link.
+// spec: authority.identify.directory-link@c4344cda
+#[test]
+fn links_come_from_the_directory_read_alone() {
+    let d = drive();
+    // A grants read names principals; none of them becomes a link, whatever it spells.
+    d.sweep(SweepKind::Full, vec![drive_grant("f1", "dana@acme.example", "user"), drive_grant("f2", "u-1001", "user")], None, "2030-01-01T00:10:00Z");
+    assert_eq!(principals(&d.f.store, "drive").unwrap().len(), 2);
+    assert!(identity_links(&d.f.store, "drive").unwrap().is_empty());
+    assert!(!reach(&d.f.store, "drive", &reader("user://dana@acme.example")).unwrap().contains("f2"));
+
+    // The directory read writes the links, and a later run given none keeps them.
+    d.sweep(SweepKind::Full, vec![drive_grant("f2", "u-1001", "user")], Some(DIRECTORY), "2030-01-01T00:20:00Z");
+    d.sweep(SweepKind::Incremental, vec![drive_grant("f2", "u-1001", "user")], None, "2030-01-01T00:25:00Z");
+    assert_eq!(identity_links(&d.f.store, "drive").unwrap().len(), 2);
+    assert_eq!(reach(&d.f.store, "drive", &reader("user://dana@acme.example")).unwrap().into_iter().collect::<Vec<_>>(), ["f2"]);
+
+    // A directory read without dana's account withdraws her link and her reach with it.
+    d.sweep(SweepKind::Incremental, vec![drive_grant("f2", "u-1001", "user")], Some(r#"{"source_principal": "u-1002", "subject": "user://erin@acme.example", "method": "oidc_sub", "confidence": 0.7}"#), "2030-01-01T00:30:00Z");
+    assert!(reach(&d.f.store, "drive", &reader("user://dana@acme.example")).unwrap().is_empty());
+}
+
+/// A subject whose source principal resolves to no link reads nothing from that source.
+// spec: authority.identify.unlinked-principal@3f9b6d5d
+#[test]
+fn a_subject_with_no_link_reaches_nothing_from_the_source() {
+    let d = drive();
+    let grants = vec![drive_grant("f1", "g-finance", "group"), drive_grant("f2", "u-1002", "user"), drive_grant("f3", "u-1003", "user")];
+    d.sweep(SweepKind::Full, grants, Some(DIRECTORY), "2030-01-01T00:10:00Z");
+    assert_eq!(reach(&d.f.store, "drive", &reader("user://dana@acme.example")).unwrap().into_iter().collect::<Vec<_>>(), ["f1"]);
+    assert_eq!(reach(&d.f.store, "drive", &reader("user://erin@acme.example")).unwrap().into_iter().collect::<Vec<_>>(), ["f2"]);
+    // `u-1003` holds a grant on f3, and no link maps it onto fay: she reaches nothing.
+    assert!(reach(&d.f.store, "drive", &reader("user://fay@acme.example")).unwrap().is_empty());
+    // A source with no committed run reaches nothing either.
+    assert!(reach(&d.f.store, "wiki", &reader("user://dana@acme.example")).unwrap().is_empty());
 }

@@ -3,8 +3,8 @@
 //! land path as engine-owned runs, `freshness` last.
 //!
 //! A run is committed once its `freshness` row lands. The `freshness` row with the
-//! greatest epoch names the run whose `resources`, `grants` and `principals` rows are
-//! current; `tombstones` accumulate across committed runs alone. A row whose `_run_id`
+//! greatest epoch names the run whose `resources`, `grants`, `principals`, `group_members`
+//! and `identity_links` rows are current; `tombstones` accumulate across committed runs alone. A row whose `_run_id`
 //! names no committed run joins nothing, so a run that stops before `freshness` lands
 //! changes nothing a reader resolves, and its retry lands its tombstones once.
 
@@ -15,8 +15,10 @@ use crate::scan::scan;
 use crate::store::Store;
 use contextful_core::disclosure::declare::Binding;
 use contextful_core::disclosure::sweep::{
-    self, commit, Commit, Freshness, GrantLine, GrantRow, Governed, Observation, PrincipalRow, ResourceRow, SourceState, SweepBlock, SweepKind, Tombstone,
+    self, commit, Commit, Directory, Freshness, GrantLine, GrantRow, Governed, MemberRow, Observation, PrincipalRow, ResourceRow, SourceState, SweepBlock, SweepKind,
+    Tombstone,
 };
+use contextful_core::identify::{IdentityLink, LinkMethod, NormalizedSubject};
 use contextful_core::store::bound_time::Bounds;
 use contextful_core::store::declare::TableDecl;
 use contextful_core::store::lay_out::{NodeId, RUNS_DIR};
@@ -137,7 +139,40 @@ pub fn state(store: &Store, source: &str) -> Result<SourceState> {
             sweep_id: text(&r, "acl_sweep_id")?,
         });
     }
-    Ok(SourceState { resources, grants, freshness: Some(fresh) })
+    let mut members = Vec::new();
+    for r in rows_of(store, &sweep::table(source, "group_members"), &["group", "member", "member_kind", "acl_observed_at"], Some(&current))? {
+        members.push(MemberRow { group: text(&r, "group")?, member: text(&r, "member")?, member_kind: text(&r, "member_kind")?, observed_at: required(&r, "acl_observed_at")? });
+    }
+    members.sort();
+    let mut links = Vec::new();
+    for r in rows_of(store, &sweep::table(source, "identity_links"), &["source_principal", "subject", "method", "confidence"], Some(&current))? {
+        let method = match text(&r, "method")?.as_str() {
+            "scim_email" => LinkMethod::ScimEmail,
+            "oidc_sub" => LinkMethod::OidcSub,
+            "operator_asserted" => LinkMethod::OperatorAsserted,
+            other => return Err(ContextError::Invalid(format!("identity link method `{other}`"))),
+        };
+        let confidence = r.get("confidence").and_then(Value::as_f64).ok_or_else(|| ContextError::Invalid("identity link lacks `confidence`".into()))?;
+        links.push(IdentityLink { source: source.to_string(), source_principal: text(&r, "source_principal")?, on_behalf_of: text(&r, "subject")?, method, confidence });
+    }
+    links.sort_by(|a, b| (&a.source_principal, &a.on_behalf_of, a.method.as_str()).cmp(&(&b.source_principal, &b.on_behalf_of, b.method.as_str())));
+    Ok(SourceState { resources, grants, members, links, freshness: Some(fresh) })
+}
+
+/// The identity links of `source`'s current run (`authority.identify.directory-link`).
+pub fn identity_links(store: &Store, source: &str) -> Result<Vec<IdentityLink>> {
+    Ok(state(store, source)?.links)
+}
+
+/// The group memberships of `source`'s current run.
+pub fn group_members(store: &Store, source: &str) -> Result<Vec<MemberRow>> {
+    Ok(state(store, source)?.members)
+}
+
+/// The resource ids of `source` that `subject` reaches through the source's current rows
+/// (`authority.identify.unlinked-principal`); see [`sweep::reachable`].
+pub fn reach(store: &Store, source: &str, subject: &NormalizedSubject) -> Result<BTreeSet<String>> {
+    Ok(sweep::reachable(subject, &state(store, source)?)?)
 }
 
 /// The principals of `source`'s current run.
@@ -210,7 +245,7 @@ fn object(pairs: Vec<(&str, Value)>) -> Map<String, Value> {
 
 /// The batches one commit lands, in [`sweep::TABLES`] order; an empty table lands no run.
 fn batches(source: &str, c: &Commit, now: Instant) -> Vec<(&'static str, Batch)> {
-    use ColumnType::{Int64, Timestamp, Utf8};
+    use ColumnType::{Float64, Int64, Timestamp, Utf8};
     let typed = |cols: &[(&str, ColumnType)]| cols.iter().map(|(c, t)| (c.to_string(), t.clone())).collect::<HashMap<_, _>>();
     let observed = [("acl_observed_at", Timestamp), ("acl_sweep_kind", Utf8), ("acl_sweep_id", Utf8)];
     let resources = c
@@ -250,6 +285,30 @@ fn batches(source: &str, c: &Commit, now: Instant) -> Vec<(&'static str, Batch)>
         .iter()
         .map(|p| object(vec![("principal", p.principal.clone().into()), ("principal_kind", p.principal_kind.clone().into()), ("source_label", Value::Null)]))
         .collect();
+    let members = c
+        .members
+        .iter()
+        .map(|m| {
+            object(vec![
+                ("group", m.group.clone().into()),
+                ("member", m.member.clone().into()),
+                ("member_kind", m.member_kind.clone().into()),
+                ("acl_observed_at", ts(m.observed_at)),
+            ])
+        })
+        .collect();
+    let links = c
+        .links
+        .iter()
+        .map(|l| {
+            object(vec![
+                ("source_principal", l.source_principal.clone().into()),
+                ("subject", l.on_behalf_of.clone().into()),
+                ("method", l.method.as_str().into()),
+                ("confidence", Value::from(l.confidence)),
+            ])
+        })
+        .collect();
     let tombstones = c
         .tombstones
         .iter()
@@ -283,7 +342,11 @@ fn batches(source: &str, c: &Commit, now: Instant) -> Vec<(&'static str, Batch)>
         ("resources", Batch { rows: resources, types: typed(&resource_types) }),
         ("grants", Batch { rows: grants, types: typed(&grant_types) }),
         ("principals", Batch { rows: principals, types: typed(&[("principal", Utf8), ("principal_kind", Utf8), ("source_label", Utf8)]) }),
-        ("group_members", Batch { rows: Vec::new(), types: HashMap::new() }),
+        ("group_members", Batch { rows: members, types: typed(&[("group", Utf8), ("member", Utf8), ("member_kind", Utf8), ("acl_observed_at", Timestamp)]) }),
+        (
+            "identity_links",
+            Batch { rows: links, types: typed(&[("source_principal", Utf8), ("subject", Utf8), ("method", Utf8), ("confidence", Float64)]) },
+        ),
         ("tombstones", Batch { rows: tombstones, types: typed(&[("scope", Utf8), ("resource_id", Utf8), ("principal", Utf8), ("level", Utf8), ("revoked_at", Timestamp)]) }),
         (
             "freshness",
@@ -305,9 +368,7 @@ fn batches(source: &str, c: &Commit, now: Instant) -> Vec<(&'static str, Batch)>
     ]
 }
 
-/// Run one sweep of `block`'s source from a `--grants` read, under the source's write lock:
-/// read the governed resources and the current rows, compute the commit, and land each
-/// non-empty access table as run `<sweep id>`, `freshness` last. A refusal lands nothing.
+/// Run one sweep of `block`'s source from a `--grants` read; see [`sweep`].
 #[allow(clippy::too_many_arguments)]
 pub fn sweep_grants(
     store: &Store,
@@ -316,6 +377,25 @@ pub fn sweep_grants(
     bindings: &[Binding],
     kind: SweepKind,
     grants: Vec<GrantLine>,
+    began_at: Instant,
+    committed_at: Instant,
+) -> Result<Commit> {
+    sweep_run(store, at, block, bindings, kind, grants, None, began_at, committed_at)
+}
+
+/// Run one sweep of `block`'s source from a `--grants` read and an optional `--directory`
+/// read, under the source's write lock: read the governed resources and the current rows,
+/// compute the commit, and land each non-empty access table as run `<sweep id>`,
+/// `freshness` last. A refusal lands nothing.
+#[allow(clippy::too_many_arguments)]
+pub fn sweep_run(
+    store: &Store,
+    at: &Landing,
+    block: &SweepBlock,
+    bindings: &[Binding],
+    kind: SweepKind,
+    grants: Vec<GrantLine>,
+    directory: Option<Directory>,
     began_at: Instant,
     committed_at: Instant,
 ) -> Result<Commit> {
@@ -328,6 +408,7 @@ pub fn sweep_grants(
     getrandom::fill(&mut nonce).map_err(|e| ContextError::Invalid(format!("sweep nonce: {e}")))?;
     let sweep_id = format!("sweep-{epoch}-{}-{}", began_at.unix_nanos(), crate::store::hex(&nonce));
     let mut obs = Observation::from_grants_file(&block.source, kind, &sweep_id, began_at, governed(store, enumerated)?, grants);
+    obs.directory = directory;
     obs.budget_seconds = bindings.iter().filter(|b| b.source == block.source).filter_map(|b| b.max_acl_staleness_secs).min();
     let c = commit(&prior, &obs)?;
     for (name, batch) in batches(&block.source, &c, committed_at) {

@@ -456,3 +456,37 @@ fn a_credential_binding_no_key_admits_nothing_off_its_local_transport_over_a_see
     contextful_eval::record::emit("bearer-transport-bound", admitted as f64, attempts, OFF_TRANSPORT_SEED);
     assert_eq!(admitted, 0, "{admitted} of {attempts} off-transport presentations admitted");
 }
+
+/// A subject is a tuple of agent, host, `on_behalf_of` principal, task scope, inference zone and incognito flag. A credential binds the subset it names and admits under that combination alone.
+// spec: authority.identify.subject-tuple@89c82ac9
+#[test]
+fn a_credential_binds_the_members_it_names_and_admits_under_that_combination_alone() {
+    use contextful_core::identify::{Member, Subject};
+    let signer = issuer();
+    let full = Subject {
+        on_behalf_of: Some("user://dana@acme.example".into()),
+        agent: Some("agent://research-loop".into()),
+        host: Some("host://laptop-7".into()),
+        task: Some("task://q3-review".into()),
+        zone: Some("on-prem:eu".into()),
+        incognito: true,
+    };
+    let reads = vec![grant(&[Action::Read], &["research/*"])];
+    let admitted = admit(&contextful_policy::issue::mint(&plan_for(&signer, full.clone(), reads.clone()), &MintClaims::default(), &signer).unwrap(), &signer, DURING).unwrap();
+    assert_eq!(admitted.subject().to_subject(), full);
+    assert_eq!(admitted.subject().attestations().len(), 5);
+
+    // A credential naming two members binds those two; the others stay absent at admission.
+    let pair = admit(&minted(&signer), &signer, DURING).unwrap();
+    assert_eq!(pair.subject().attestations().into_keys().collect::<Vec<_>>(), [Member::OnBehalfOf, Member::Agent]);
+    for absent in [Member::Host, Member::Task, Member::Zone] {
+        assert_eq!(pair.subject().get(absent), None, "{absent:?}");
+    }
+    assert!(!pair.subject().incognito());
+
+    // Another agent for the same principal is another combination.
+    let other = Subject { agent: Some("agent://billing-loop".into()), ..dana() };
+    let billing = admit(&contextful_policy::issue::mint(&plan_for(&signer, other, reads), &MintClaims::default(), &signer).unwrap(), &signer, DURING).unwrap();
+    assert_eq!(billing.subject().identity(), pair.subject().identity());
+    assert_ne!(billing.subject(), pair.subject());
+}

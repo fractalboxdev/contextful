@@ -728,7 +728,7 @@ pub fn run(cmd: PipelineCmd, tasks: &Tasks, bodies: &contextful_core::run::drive
             }
             // Each `[[acl_sweep]]` block parses, its cadences under the budget grammar
             // (`disclosure.sweep.cadence-grammar`), and no source declares two across files.
-            contextful_core::disclosure::sweep::SweepBlock::parse_set(&files)?;
+            let sweeps = contextful_core::disclosure::sweep::SweepBlock::parse_set(&files)?;
             crate::secrets::check_records(&declaration, &files)?;
             let coverage = fold_coverage(&files)?;
             let declared = collect(&files)?;
@@ -767,6 +767,13 @@ pub fn run(cmd: PipelineCmd, tasks: &Tasks, bodies: &contextful_core::run::drive
                 resolved.push(spec);
             }
             crate::model_source::refuse_cycle(&resolved)?;
+            // A binding at a servable level names a declared sweep and a staleness budget
+            // (`disclosure.mirror.incomplete-binding`).
+            let mut bindings = Vec::new();
+            for t in tables.values() {
+                bindings.extend(contextful_core::disclosure::declare::Binding::of(t)?);
+            }
+            contextful_core::disclosure::sweep::check_bindings(&bindings, &sweeps)?;
             for t in tables.values().filter(|t| t.is_keyed() && !coverage.covers(&t.name)) {
                 eprintln!(
                     "warning: table `{}` declares a primary key and no enabled `[[job]]` of kind `fold` with a `schedule` covers it",

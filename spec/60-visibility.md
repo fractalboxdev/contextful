@@ -66,6 +66,8 @@ The three-way conjunction, the access tables as store data, and the binding that
 - `unmirrorable-opening` — A resource whose access list the sweep could not mirror opens only through a grant row the store owner lands carrying `expires_at`; the row confers nothing past that instant, and no manifest key opens a resource.
   *A-disclosure*
 
+unsettled: Which declaration marks a served face organization-wide, so the serving guardrail refuses an unbound table there and not on a personal face? owner: disclosure affects: disclosure.mirror
+
 ## sweep
 
 Observation of one source's permission state: sweep kinds, the observation clock, the coverage watermark, tombstones and revocation.
@@ -78,8 +80,9 @@ Observation of one source's permission state: sweep kinds, the observation clock
   *P5*
 - `sweep-block` — An `[[acl_sweep]]` block declares one source's sweep: `source`, the `enumerate` table whose rows are its governed resources, `full` and `incremental` cadences as `{ every = <budget> }`, and optional `credential` and `events`.
 - `cadence-grammar` — A sweep cadence's `every` takes the grammar of {{disclosure.bound-staleness.budget-grammar}}.
-- `sweep-verb` — `visibility sweep --source <s> --kind full|incremental [--grants <file>]` runs one sweep of a declared source, reading its permission endpoint under `credential`, or the file when `--grants` is given, and commits as one run.
+- `sweep-verb` — `visibility sweep --source <s> --kind full|incremental [--grants <file>] [--directory <file>]` runs one sweep of a declared source, reading its permission endpoint under `credential`, or the file when `--grants` is given, and commits as one run.
 - `grants-file` — A `--grants` file is the run's read of every resource `enumerate` names: one JSON object per line with `resource_id`, `principal`, `principal_kind` and `level`; a resource with no line holds no grant.
+- `directory-file` — A `--directory` file is the identity provider's directory read, one JSON object per line: a link carrying `source_principal`, `subject`, `method` and `confidence`, or a membership carrying `group`, `member` and `member_kind`; a run without one keeps the current rows.
 - `full-run` — A full run replaces the source's resource and grant rows with those it read, writes a tombstone per grant it no longer observes, and sets `last_full_sweep_at`.
 - `incremental-run` — An incremental run replaces the grants of each resource it read, tombstoning those withdrawn, leaves every other resource's grants standing, and sets `last_incremental_at`.
 - `watermark-advance` — A run reading every governed resource sets the source's `watermark_at` to the instant it began reading; lag is now minus `watermark_at`.
