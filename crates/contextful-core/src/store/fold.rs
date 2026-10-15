@@ -19,18 +19,25 @@ pub const COMPACTION_RUN_COUNT: usize = 50;
 pub const COMPACTION_INTERVAL_SECS: u64 = 6 * 60 * 60;
 
 /// Whether a table's trigger has fired: it holds committed runs its current snapshot
-/// omits, and either as many as [`COMPACTION_RUN_COUNT`] or [`COMPACTION_INTERVAL_SECS`]
-/// have passed since its previous pass published — or, before its first pass, since its
-/// oldest unfolded run committed. An explicit `contextful context compact <table>` fires
+/// omits, and either as many as its run count — [`COMPACTION_RUN_COUNT`] unless the table
+/// declares one (`store.fold.declared-trigger`) — or [`COMPACTION_INTERVAL_SECS`] have
+/// passed since its previous pass published — or, before its first pass, since its oldest
+/// unfolded run committed. An explicit `contextful context compact <table>` fires
 /// regardless.
 pub fn due(state: &TableState, now: Instant) -> bool {
     let unfolded = state.unfolded_runs();
-    let Some(oldest) = unfolded.first() else { return false };
-    if unfolded.len() >= COMPACTION_RUN_COUNT {
-        return true;
+    let since = state.chain.first().map(|s| s.created_at).or_else(|| unfolded.first().map(|r| r.committed_at));
+    trigger_fired(unfolded.len(), since, now, state.fold_run_count.unwrap_or(COMPACTION_RUN_COUNT))
+}
+
+/// [`due`] from its inputs alone: `unfolded` runs, the instant the interval runs from, and
+/// the run count that fires. A landing session decides a pass from the count it keeps,
+/// reading no manifest (`store.fold.session-trigger`).
+pub fn trigger_fired(unfolded: usize, since: Option<Instant>, now: Instant, run_count: usize) -> bool {
+    if unfolded == 0 {
+        return false;
     }
-    let since = state.chain.first().map_or(oldest.committed_at, |s| s.created_at);
-    since.secs_until(now) >= COMPACTION_INTERVAL_SECS
+    unfolded >= run_count || since.is_some_and(|s| s.secs_until(now) >= COMPACTION_INTERVAL_SECS)
 }
 
 /// Whether a scheduled pass visits a table: its trigger fired, or it holds nothing to

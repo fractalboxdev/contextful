@@ -622,6 +622,7 @@ impl Store {
             runs,
             chain,
             history_collected: parent_collected || run_collected,
+            fold_run_count: decl.fold_max_unfolded_runs.map(|n| n.get() as usize),
         })
     }
 }

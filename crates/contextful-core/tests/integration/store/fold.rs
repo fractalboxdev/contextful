@@ -1,7 +1,8 @@
 //! `store.fold`: when a scheduled pass fires.
 
 use super::{at, run, snapshot};
-use contextful_core::store::fold::{due, scheduled, COMPACTION_INTERVAL_SECS, COMPACTION_RUN_COUNT};
+use contextful_core::store::declare::TableDecl;
+use contextful_core::store::fold::{due, scheduled, trigger_fired, COMPACTION_INTERVAL_SECS, COMPACTION_RUN_COUNT};
 use contextful_core::store::resolve::TableState;
 
 fn state(runs: usize, committed: &str, previous_pass: Option<&str>) -> TableState {
@@ -47,4 +48,38 @@ fn a_scheduled_pass_visits_due_and_idle_tables() {
     assert!(scheduled(&state(0, "2030-01-01T00:00:00Z", Some("2030-01-01T00:00:00Z")), t0.plus_secs(60)));
     assert!(!scheduled(&state(1, "2030-01-01T00:00:00Z", None), t0.plus_secs(60)));
     assert!(scheduled(&state(1, "2030-01-01T00:00:00Z", None), t0.plus_secs(7 * 3600)));
+}
+
+/// A table declaring `fold_max_unfolded_runs`, a positive integer, fires its pass at that many unfolded runs in place of the 50-run count; zero refuses the declaration at parse.
+// spec: store.fold.declared-trigger@9f908b42
+#[test]
+fn a_declared_run_count_replaces_the_fifty_run_trigger() {
+    let t0 = at("2030-01-01T00:00:00Z");
+    let (early, later) = ("2030-01-01T00:00:00Z", "2030-01-01T00:00:01Z");
+    let declared = TableDecl::parse_pipeline("[[pipeline.tables]]\nname = \"events\"\nfold_max_unfolded_runs = 200\n").unwrap().remove(0);
+    assert_eq!(declared.fold_run_count(), 200);
+    assert_eq!(TableDecl::named("events").fold_run_count(), COMPACTION_RUN_COUNT);
+    let mut s = state(199, later, Some(early));
+    s.fold_run_count = Some(declared.fold_run_count());
+    assert!(!due(&s, t0.plus_secs(60)));
+    s.runs.push(super::run("run-199", later, 1));
+    assert!(due(&s, t0.plus_secs(60)));
+    let mut small = state(50, later, Some(early));
+    small.fold_run_count = Some(200);
+    assert!(!due(&small, t0.plus_secs(60)), "a declared count above 50 holds a pass back at 50 runs");
+    for invalid in ["0", "-1"] {
+        let text = format!("[[pipeline.tables]]\nname = \"events\"\nfold_max_unfolded_runs = {invalid}\n");
+        assert!(TableDecl::parse_pipeline(&text).is_err(), "{invalid}");
+    }
+}
+
+/// The trigger reads from an unfolded count and the instant the interval runs from, so a
+/// writer counting its own commits decides a pass without reading the table's manifests.
+#[test]
+fn the_trigger_decides_from_a_count_and_an_instant() {
+    let t0 = at("2030-01-01T00:00:00Z");
+    assert!(!trigger_fired(0, Some(t0), t0.plus_secs(7 * 3600), 5));
+    assert!(!trigger_fired(4, Some(t0), t0.plus_secs(60), 5));
+    assert!(trigger_fired(5, Some(t0), t0.plus_secs(60), 5));
+    assert!(trigger_fired(1, Some(t0), t0.plus_secs(COMPACTION_INTERVAL_SECS), 5));
 }

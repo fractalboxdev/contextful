@@ -1241,3 +1241,77 @@ pub fn discard_staged(store: &Store, table: &str, node: &NodeId, run_id: &str) -
         _ => Ok(()),
     }
 }
+
+/// One long-lived writer's hold on a table: the store opened and the node resolved once,
+/// each micro-batch committed as its own run, and the unfolded-run count kept across them
+/// (`run.land.session`). The count opens from the table's manifests and then moves per
+/// commit, so a land reads no earlier run's manifest; a land that fires the table's
+/// trigger runs a pass before it returns (`store.fold.session-trigger`).
+pub struct LandSession<'a> {
+    store: &'a Store,
+    decl: TableDecl,
+    node: NodeId,
+    unfolded: usize,
+    /// The instant the 6 h interval runs from: the previous pass, else the oldest
+    /// unfolded run.
+    since: Option<Instant>,
+}
+
+/// One session landing: the committed manifest, whether it replayed a run already
+/// committed, and the outcome of the pass it fired.
+#[derive(Debug, Clone, PartialEq)]
+pub struct SessionLanding {
+    pub manifest: RunManifest,
+    pub replay: bool,
+    pub fold: Option<contextful_core::store::fold::FoldOutcome>,
+}
+
+impl<'a> LandSession<'a> {
+    /// Open a session landing `decl`'s table as `node`, counting the runs its current
+    /// snapshot omits.
+    pub fn open(store: &'a Store, decl: TableDecl, node: NodeId) -> Result<LandSession<'a>> {
+        let mut session = LandSession { store, decl, node, unfolded: 0, since: None };
+        session.recount()?;
+        Ok(session)
+    }
+
+    /// The runs the table's current snapshot omits, as this session counts them.
+    pub fn unfolded(&self) -> usize {
+        self.unfolded
+    }
+
+    /// Land `batch` as run `injection.run_id`, committed at `committed_at`, then run a pass
+    /// when the table's trigger fires.
+    pub fn land(&mut self, batch: &Batch, injection: Injection, committed_at: Instant) -> Result<SessionLanding> {
+        let ctx = RunContext { node: self.node.clone(), injection, committed_at };
+        let landing = land_run(self.store, &self.decl, std::slice::from_ref(batch), &ctx, &Position::default(), &|| Ok(()))?;
+        if landing.replay {
+            return Ok(SessionLanding { manifest: landing.manifest, replay: true, fold: None });
+        }
+        // A snapshot corpus folds each capture as it lands (`store.snapshot.capture`).
+        if self.decl.snapshot.is_some() {
+            self.recount()?;
+            return Ok(SessionLanding { manifest: landing.manifest, replay: false, fold: None });
+        }
+        self.unfolded += 1;
+        self.since.get_or_insert(committed_at);
+        let fired = contextful_core::store::fold::trigger_fired(self.unfolded, self.since, committed_at, self.decl.fold_run_count());
+        let fold = if fired {
+            let outcome = crate::fold::fold(self.store, &self.decl, committed_at)?;
+            self.recount()?;
+            Some(outcome)
+        } else {
+            None
+        };
+        Ok(SessionLanding { manifest: landing.manifest, replay: false, fold })
+    }
+
+    /// Read the count and the interval's start from the table's pointer and manifests.
+    fn recount(&mut self) -> Result<()> {
+        let state = self.store.state(&self.decl)?;
+        let unfolded = state.unfolded_runs();
+        self.unfolded = unfolded.len();
+        self.since = state.chain.first().map(|s| s.created_at).or_else(|| unfolded.first().map(|r| r.committed_at));
+        Ok(())
+    }
+}

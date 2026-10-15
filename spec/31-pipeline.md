@@ -196,6 +196,8 @@ The stage order from pull to commit, the one destination, the ingest tally and c
   *because that batch's part already holds the column in its inferred type, and a staged part is immutable*
 - `irreconcilable-schema` — An arriving schema the store cannot reconcile fails the batch as {{store.reconcile.incompatible}}.
 - `commit-visibility` — A commit makes a run's rows visible for one table in one step; a crash before it leaves a recoverable partial run.
+- `session` — A landing session holds one store, node and table declaration across runs and commits each micro-batch as its own run; a later run rewrites no earlier run's parts or manifest.
+  *because a writer flushing every second otherwise pays a process start, a store open and a node resolution per batch*
 - `ingest-tally` — A fire reports `fetched`, `kept`, `skipped`, `failed` and `dropped_low_quality`, the rows its declared `filter` operations drop, in total and per table; a non-zero `failed` exits non-zero.
   *because a fire pulls one declared source through its tables, and a `filter` is the one stage that drops a fetched row*
 - `unreadable-input` — Input a parser cannot read raises `PipelineUnreadableInput`, naming the path and the position inside it, permanent against the retry schedule and failing one table's pull.
