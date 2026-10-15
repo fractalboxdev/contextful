@@ -1,4 +1,6 @@
-//! Source-level refusals over runtime crates (`assurance.gate.interpolated-claim`).
+//! Source-level refusals over runtime crates: interpolated subject claims
+//! (`assurance.gate.interpolated-claim`), row paths without the enforcement token
+//! (`assurance.gate.row-token`) and unconfigured egress (`assurance.gate.unconfigured-egress`).
 
 use anyhow::{Context, Result};
 use proc_macro2::Span;
@@ -9,9 +11,15 @@ use syn::spanned::Spanned;
 use syn::visit::Visit;
 use syn::{Expr, Lit, Macro, Token};
 
-use crate::refuse;
+use crate::{egress, refuse, row_token};
 
 pub fn check(root: &Path) -> Result<()> {
+    interpolated(root)?;
+    row_token::check(root)?;
+    egress::check(root)
+}
+
+fn interpolated(root: &Path) -> Result<()> {
     let crates = root.join("crates");
     if !crates.exists() {
         return Ok(());
@@ -48,13 +56,20 @@ fn check_tree(root: &Path, dir: &Path) -> Result<()> {
     Ok(())
 }
 
-fn children(dir: &Path) -> Result<Vec<PathBuf>> {
+pub(crate) fn children(dir: &Path) -> Result<Vec<PathBuf>> {
     let mut out = fs::read_dir(dir)
         .with_context(|| format!("read {}", dir.display()))?
         .map(|entry| entry.map(|entry| entry.path()))
         .collect::<std::io::Result<Vec<_>>>()?;
     out.sort();
     Ok(out)
+}
+
+/// Whether `attrs` hold `#[cfg(test)]`.
+pub(crate) fn cfg_test(attrs: &[syn::Attribute]) -> bool {
+    attrs.iter().any(|a| {
+        a.path().is_ident("cfg") && a.parse_args::<syn::Meta>().is_ok_and(|m| m.path().is_ident("test"))
+    })
 }
 
 #[derive(Default)]

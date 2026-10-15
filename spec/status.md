@@ -5,7 +5,7 @@ An unpinned clause is `committed`; a pinned one is `performed` when its Rust, Le
 
 | Contract | Files | Operations | Clauses | Refusals | Limits | Unsettled | Performed | Broken | Floor |
 | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
-| `assurance` | 3 | 18 | 305 | 63 | 23 | 8 | 268 | 0 | 268 |
+| `assurance` | 3 | 18 | 305 | 63 | 23 | 8 | 270 | 0 | 270 |
 | `authority` | 2 | 16 | 295 | 79 | 29 | 9 | 224 | 0 | 224 |
 | `connector` | 2 | 14 | 356 | 90 | 21 | 16 | 233 | 0 | 233 |
 | `corpus` | 1 | 10 | 79 | 37 | 7 | 0 | 79 | 0 | 79 |
@@ -15,7 +15,7 @@ An unpinned clause is `committed`; a pinned one is `performed` when its Rust, Le
 | `store` | 3 | 19 | 288 | 65 | 14 | 12 | 278 | 0 | 278 |
 | `surface` | 2 | 20 | 143 | 59 | 22 | 0 | 118 | 0 | 118 |
 | `topology` | 1 | 6 | 79 | 25 | 5 | 3 | 74 | 0 | 74 |
-| **total** | 22 | 165 | 2452 | 640 | 203 | 72 | 2011 | 0 | |
+| **total** | 22 | 165 | 2452 | 640 | 203 | 72 | 2013 | 0 | |
 
 Decision records: 18.
 
@@ -39,7 +39,7 @@ A milestone reads `closed` when its acceptance test computes `passing` and every
 | 11 — The derive tier | 7 | 94 | 93 | passing | closed |
 | 12 — The operator console | 12 | 56 | 41 | passing | open |
 | 13 — Disclosure | 5 | 33 | 13 | open | open |
-| 14 — Assurance | 7 | 156 | 126 | passing | closed |
+| 14 — Assurance | 7 | 156 | 128 | passing | closed |
 | 15 — Point-in-time evaluation | 7 | 77 | 77 | passing | closed |
 
 Unscheduled operations: 12.
@@ -217,6 +217,7 @@ Unscheduled operations: 12.
 | `assurance.gate.locked-resolve` | `tools/ci/tests/integration/topology.rs::a_lock_file_behind_its_manifests_stops_the_crate_graph` | performed |
 | `assurance.gate.native-test-files` | `spec/pins.toml` | performed |
 | `assurance.gate.pins-stage` | `tools/ci/tests/integration/stages.rs::the_pins_stage_records_every_pin_fetches_the_locked_crates_and_refuses_a_floating_one` | performed |
+| `assurance.gate.row-token` | `tools/ci/tests/integration/source_lint.rs::row_returning_store_function_without_the_token_names_the_function` | performed |
 | `assurance.gate.schema-stage` | `tools/ci/tests/integration/stages.rs::the_schema_stage_regenerates_into_scratch_and_refuses_a_stale_committed_copy` | performed |
 | `assurance.gate.secret-ciphertext` | `spec/pins.toml` | performed |
 | `assurance.gate.secret-scope` | `spec/pins.toml` | performed |
@@ -226,6 +227,7 @@ Unscheduled operations: 12.
 | `assurance.gate.surface-check-failed` | `tools/ci/tests/integration/stages.rs::a_failing_surface_check_is_refused_naming_the_surface_and_the_script` | performed |
 | `assurance.gate.test-first-parts` | `tools/ci/tests/integration/test_first.rs::a_source_package_requires_its_own_changed_test_when_another_package_is_red` | performed |
 | `assurance.gate.typescript-surfaces` | `tools/ci/tests/integration/stages.rs::the_surfaces_stage_installs_then_runs_each_declared_check` | performed |
+| `assurance.gate.unconfigured-egress` | `tools/ci/tests/integration/source_lint.rs::outbound_call_outside_a_configured_adapter_names_the_call_site` | performed |
 | `assurance.gate.workspace-parts` | `tools/ci/tests/integration/target_dirs.rs::remote_workspace_parts_compile_the_union_and_run_each_package_suite` | performed |
 | `assurance.measure.absolute-threshold` | `tools/eval/tests/integration/ledger.rs::a_threshold_is_a_finite_absolute_figure` | performed |
 | `assurance.measure.count-first` | `tools/eval/tests/integration/ledger.rs::a_timing_or_resident_set_figure_decides_no_gate` | performed |
