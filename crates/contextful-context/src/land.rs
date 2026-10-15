@@ -1021,7 +1021,7 @@ fn stage_prepared_part(store: &Store, decl: &TableDecl, batch: &Batch, node: &No
     }
     let (node_dir, manifest_path) = run_dir(store, &decl.name, node, &injection.run_id)?;
     let stage_dir = node_dir.join(STAGE_DIR);
-    let _commit_lock = store.lock_commit(&decl.name)?;
+    let _commit_lock = if decl.available_time.is_some() { Some(store.lock_commit(&decl.name)?) } else { None };
     let _run_lock = lock_run(&node_dir, &manifest_path, node, &injection.run_id)?;
     let earlier = read_staged_schema(store, &stage_dir)?;
     let mut resolved = crate::available::resolve(decl, batch.clone())?;
