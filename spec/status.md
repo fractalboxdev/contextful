@@ -10,12 +10,12 @@ An unpinned clause is `committed`; a pinned one is `performed` when its Rust, Le
 | `connector` | 2 | 14 | 356 | 90 | 21 | 16 | 233 | 0 | 233 |
 | `corpus` | 1 | 10 | 79 | 37 | 7 | 0 | 79 | 0 | 79 |
 | `disclosure` | 3 | 16 | 157 | 68 | 13 | 3 | 64 | 0 | 64 |
-| `read` | 2 | 18 | 248 | 41 | 25 | 7 | 228 | 0 | 228 |
+| `read` | 2 | 18 | 250 | 41 | 26 | 7 | 230 | 0 | 230 |
 | `run` | 3 | 28 | 502 | 113 | 44 | 14 | 445 | 0 | 445 |
 | `store` | 3 | 19 | 288 | 65 | 14 | 12 | 278 | 0 | 278 |
 | `surface` | 2 | 20 | 143 | 59 | 22 | 0 | 118 | 0 | 118 |
 | `topology` | 1 | 6 | 79 | 25 | 5 | 3 | 74 | 0 | 74 |
-| **total** | 22 | 165 | 2452 | 640 | 203 | 72 | 2013 | 0 | |
+| **total** | 22 | 165 | 2454 | 640 | 204 | 72 | 2015 | 0 | |
 
 Decision records: 18.
 
@@ -32,7 +32,7 @@ A milestone reads `closed` when its acceptance test computes `passing` and every
 | 4 — Ingest | 25 | 551 | 387 | passing | open |
 | 5 — The read face under enforcement | 17 | 308 | 242 | passing | open |
 | 6 — Sync and replicas | 8 | 83 | 83 | passing | closed |
-| 7 — Memory | 6 | 55 | 54 | passing | closed |
+| 7 — Memory | 6 | 57 | 56 | passing | closed |
 | 8 — Accountability | 5 | 83 | 48 | passing | open |
 | 9 — Visibility | 6 | 41 | 3 | open | open |
 | 10 — Cadence and the operator plane | 11 | 99 | 85 | passing | open |
@@ -995,10 +995,12 @@ Unscheduled operations: 12.
 | `read.rank.window-anchor-tolerance` | `crates/contextful-core/tests/integration/read/rank.rs::the_anchor_tolerates_24_hours_and_names_the_basis` | performed |
 | `read.recall.cli-verb` | `crates/contextful-cli/tests/integration/memory.rs::recall_cli_answers_historical_and_current_claims_as_json` | performed |
 | `read.recall.confidence-label` | `crates/contextful-memory/tests/integration/calibration.rs::recall_labels_confidence_from_the_declared_outcome_table` | performed |
+| `read.recall.evidence-gate-bound` | `crates/contextful-core/tests/integration/memory/recall.rs::recall_suppresses_claim_over_4096_entries` | performed |
 | `read.recall.evidence-key` | `crates/contextful-memory/tests/integration/evidence.rs::a_fold_superseding_the_cited_version_keeps_the_claim` | performed |
 | `read.recall.evidence-key-masked` | `crates/contextful-memory/tests/integration/evidence.rs::a_writer_zone_nulling_a_non_key_column_still_stamps_the_key` | performed |
 | `read.recall.evidence-no-value` | `crates/contextful-memory/tests/integration/evidence.rs::a_memory_reader_reads_no_source_key_value` | performed |
-| `read.recall.evidence-references` | `crates/contextful-core/tests/integration/memory/recall.rs::evidence_past_256_references_overflows` | performed |
+| `read.recall.evidence-omitted-column` | `crates/contextful-memory/tests/integration/recall.rs::the_ranked_arm_projects_evidence_omitted` | performed |
+| `read.recall.evidence-references` | `crates/contextful-core/tests/integration/memory/recall.rs::recall_caps_evidence_at_256_and_counts_omitted` | performed |
 | `read.recall.evidence-stale` | `crates/contextful-memory/tests/integration/evidence.rs::a_claim_served_past_its_cited_version_counts_stale` | performed |
 | `read.recall.evidence-unresolved` | `crates/contextful-core/tests/integration/memory/recall.rs::unresolvable_evidence_suppresses_the_claim` | performed |
 | `read.recall.keyed` | `crates/contextful-memory/tests/integration/recall.rs::a_keyed_recall_returns_the_subjects_claims_valid_at_the_observed_instant` | performed |
