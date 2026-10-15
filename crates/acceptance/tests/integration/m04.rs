@@ -185,10 +185,11 @@ fn m04_component_guest() {
     p.write(&format!("{STORE}/config.toml"), "[node]\nid = \"ingest-a\"\n");
     std::fs::create_dir_all(p.root.join("connectors")).unwrap();
     std::fs::write(p.root.join("connectors/vendor.wasm"), &wasm).unwrap();
+    p.write("connectors/vendor.toml", "name = \"vendor\"\n[capabilities]\nallow_hosts = [\"127.0.0.1\"]\nclock = true\n");
     let declaration = |pin: &str, tables: &str| {
         format!(
             "authoring_posture = \"per_request\"\n[[pipeline]]\nid = \"vendor\"\ntables = [{tables}]\n\n[pipeline.source]\nname = \"connectors/vendor.wasm\"\n\n\
-             [pipeline.source.config]\nsha256 = \"{pin}\"\nallow = [\"127.0.0.1\"]\n"
+             [pipeline.source.config]\nsha256 = \"{pin}\"\nmanifest = \"connectors/vendor.toml\"\nallow = [\"127.0.0.1\"]\n"
         )
     };
     let fire = |run: &str| p.run(&cf, &["pipeline", "run", "vendor", "--project", "research", "--run-id", run, "--site-id", "site-a"]);

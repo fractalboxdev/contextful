@@ -738,7 +738,7 @@ pub fn run(cmd: PipelineCmd, tasks: &Tasks, bodies: &contextful_core::run::drive
                 check_compaction(&d.spec, &coverage).with_context(at)?;
                 let mut discovered = String::new();
                 if let Checked::Component(decl) = &checked {
-                    crate::connector::admit_hosts(decl, &base).with_context(at)?;
+                    crate::connector::admit(decl, &base).with_context(at)?;
                     if component::is_local(decl) {
                         let loaded = component::load(&d.spec.source.name, decl, &base, "", None, component_target, store_pin).with_context(at)?;
                         let names = loaded.discover(decl).with_context(at)?;

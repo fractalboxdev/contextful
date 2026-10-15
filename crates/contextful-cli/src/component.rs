@@ -29,6 +29,7 @@ mod hosted {
     use anyhow::{anyhow, bail, Context, Result};
     use contextful_core::connector::component::ComponentSource;
     use contextful_core::connector::attach::{scrub, Allowlist};
+    use contextful_core::connector::manifest::Declared;
     use contextful_core::connector::package::{content_hash, Digest, Form, OciReference};
     use contextful_core::connector::reference::Template;
     use contextful_core::connector::ConnectorError;
@@ -84,6 +85,8 @@ mod hosted {
         name: String,
         host: ComponentHost,
         connector: Connector,
+        /// The host access the connector's manifest declares.
+        declared: Declared,
         limits: Limits,
         content_hash: String,
         /// The admitted bytes, kept for the admission store a replay resolves its pin from.
@@ -253,7 +256,7 @@ mod hosted {
     /// `store_pin`. Bytes off their pin never reach the compiler
     /// (`connector.package.digest-mismatch`).
     pub fn load(name: &str, decl: &ComponentSource, base: &Path, project: &str, resolver: Option<&Resolver>, target: ComponentTarget, store_pin: bool) -> Result<Loaded> {
-        crate::connector::admit_hosts(decl, base)?;
+        let declared = crate::connector::admit(decl, base)?.declared;
         let limits = limits(decl)?;
         let target = match target {
             ComponentTarget::Native => Target::Native,
@@ -262,8 +265,9 @@ mod hosted {
         let wasm = resolve(name, decl, base, project, resolver)?;
         let host = ComponentHost::with_cache_dir(target, base.join(".contextful/cache/components")).map_err(failure)?;
         let (connector, digest) = host.load_artifact(&decl.artifact, &wasm, decl.requirement(store_pin)).map_err(failure)?;
+        connector.admit(&declared).map_err(failure)?;
         let content_hash = content_hash(&digest, decl.guest.as_ref());
-        Ok(Loaded { name: name.to_string(), host, connector, limits, content_hash, wasm })
+        Ok(Loaded { name: name.to_string(), host, connector, declared, limits, content_hash, wasm })
     }
 
     impl Loaded {
@@ -300,8 +304,9 @@ mod hosted {
             };
             let host = ComponentHost::with_cache_dir(target, base.join(".contextful/cache/components")).map_err(failure)?;
             let (connector, digest) = host.load_artifact(&pinned.artifact, wasm, pinned.requirement(store_pin)).map_err(failure)?;
+            connector.admit(&self.declared).map_err(failure)?;
             let content_hash = content_hash(&digest, decl.guest.as_ref());
-            Ok(Loaded { name: self.name.clone(), host, connector, limits: limits(decl)?, content_hash, wasm: wasm.to_vec() })
+            Ok(Loaded { name: self.name.clone(), host, connector, declared: self.declared.clone(), limits: limits(decl)?, content_hash, wasm: wasm.to_vec() })
         }
 
         /// The connector a run of this component pins.
@@ -320,13 +325,23 @@ mod hosted {
         }
 
         /// A session reading `table` for `run_id`, each `attach` header hydrated from
-        /// `resolver` per request, while the request is built.
+        /// `resolver` per request, while the request is built. A manifest declaring a scope
+        /// probe has it called with the first attach header before the session opens
+        /// (`connector.declare-capability.scope-probe`).
         pub fn source(&self, decl: &ComponentSource, table: &str, resolver: &Arc<Resolver>, run_id: &str) -> Result<Box<dyn Source>> {
-            let hydrate = decl
+            let hydrate: Vec<(String, Arc<dyn Hydrate>)> = decl
                 .attach
                 .iter()
                 .map(|(header, t)| (header.clone(), Arc::new(Rendered { resolver: resolver.clone(), template: t.clone() }) as Arc<dyn Hydrate>))
                 .collect();
+            if let Some(probe) = &self.declared.scope_probe {
+                let Some((name, template)) = decl.attach.iter().find(|(_, t)| t.has_reference()) else {
+                    bail!("connector `{}` declares a scope probe and its source binds no credential to probe with", self.name);
+                };
+                let credential = resolver.render(template).map_err(failure)?;
+                let client = Client::new(decl.allow.clone(), probe.endpoint.clone()).without_body();
+                contextful_outbound::probe::probe_through(&client, &decl.allow, probe, (name.as_str(), credential)).map_err(failure)?;
+            }
             Ok(Box::new(GuestSource::new(self.open(decl, hydrate, Some(run_id.to_string()))?, table)))
         }
 

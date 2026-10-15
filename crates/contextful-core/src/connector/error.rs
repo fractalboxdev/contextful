@@ -57,6 +57,12 @@ pub enum ConnectorError {
     /// An unpinned local artifact under a set pin requirement. (`connector.package.local-unpinned`)
     #[error("ConnectorLocalUnpinned: {0}")]
     ConnectorLocalUnpinned(String),
+    /// A component source with no manifest, or a manifest carrying an unread key or a value off its shape. (`connector.package.manifest-keys`)
+    #[error("ConnectorManifestRejected: {0}")]
+    ConnectorManifestRejected(String),
+    /// A pin written from a host-toolchain build. (`connector.package.host-built-pin`)
+    #[error("ConnectorHostPinRefused: {0}")]
+    ConnectorHostPinRefused(String),
     /// A remote artifact reference with no 64-hex content pin. (`connector.package.remote-unpinned`)
     #[error("ConnectorRemoteUnpinned: {0}")]
     ConnectorRemoteUnpinned(String),

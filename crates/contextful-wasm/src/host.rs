@@ -13,6 +13,7 @@ use crate::limits::{Limits, ATTRIBUTION_ENTRIES, ATTRIBUTION_VALUE_BYTES, EPOCH_
 use crate::mediate::{Mediator, Reserve, Traffic};
 use contextful_outbound::egress::{PreSendHook, Transport};
 use contextful_core::connector::attach::Allowlist;
+use contextful_core::connector::manifest::Declared;
 use contextful_core::connector::package::{guest_config, Artifact, Digest, PinRequirement};
 use contextful_core::connector::ConnectorError;
 use contextful_core::run::{Failure, FailureTag};
@@ -293,6 +294,35 @@ impl Drop for Ticker {
 /// A compiled and linked component, reusable across sessions.
 pub struct Connector {
     pre: InstancePre<Ctx>,
+    /// The component's import names, as `<package>/<interface>@<version>`.
+    imports: Vec<String>,
+}
+
+/// The wall-clock interface a manifest grants by `clock = true`, at any version.
+const WALL_CLOCK: &str = "wasi:clocks/wall-clock";
+
+impl Connector {
+    fn linked(engine: &Engine, linker: &Linker<Ctx>, component: &Component) -> Result<Connector, Failure> {
+        let imports = component.component_type().imports(engine).map(|(name, _)| name.to_string()).collect();
+        Ok(Connector { pre: linker.instantiate_pre(component).map_err(load_failure)?, imports })
+    }
+
+    /// The component's import names.
+    pub fn imports(&self) -> &[String] {
+        &self.imports
+    }
+
+    /// Hold the component's imports to its manifest's grant before any instance exists: an
+    /// import of the wall clock under a manifest without `clock` fails the load
+    /// (`connector.declare-capability.undeclared-access`).
+    pub fn admit(&self, declared: &Declared) -> Result<(), Failure> {
+        if !declared.clock {
+            if let Some(name) = self.imports.iter().find(|name| name.split('@').next() == Some(WALL_CLOCK)) {
+                return Err(refuse(ConnectorError::ConnectorUndeclaredAccess(format!("the component imports `{name}` and its manifest declares no `clock`"))));
+            }
+        }
+        Ok(())
+    }
 }
 
 /// The engine every session of the process runs on.
@@ -415,7 +445,7 @@ impl ComponentHost {
     /// bytes and imports the host does not offer refuse.
     pub fn load(&self, wasm: &[u8]) -> Result<Connector, Failure> {
         let component = Component::new(&self.engine, wasm).map_err(load_failure)?;
-        Ok(Connector { pre: self.linker.instantiate_pre(&component).map_err(load_failure)? })
+        Connector::linked(&self.engine, &self.linker, &component)
     }
 
     /// Admit resolved artifact bytes against their reference's pin, then compile them.
@@ -435,18 +465,18 @@ impl ComponentHost {
             self.engine.precompile_compatibility_hash().hash(&mut compatibility);
             let name = format!("{}-{:016x}.cwasm", digest.as_str(), compatibility.finish());
             if let Some(component) = read_cached(&self.engine, dir, &name) {
-                let pre = self.linker.instantiate_pre(&component).map_err(load_failure)?;
+                let connector = Connector::linked(&self.engine, &self.linker, &component)?;
                 self.cache_hits.fetch_add(1, Ordering::Relaxed);
-                return Ok((Connector { pre }, digest));
+                return Ok((connector, digest));
             }
             let compiled = self.engine.precompile_component(wasm).map_err(load_failure)?;
             // SAFETY: `compiled` is the unmodified output of this engine's precompiler.
             let component = unsafe { Component::deserialize(&self.engine, &compiled) }.map_err(load_failure)?;
-            let pre = self.linker.instantiate_pre(&component).map_err(load_failure)?;
+            let connector = Connector::linked(&self.engine, &self.linker, &component)?;
             self.cache_compilations.fetch_add(1, Ordering::Relaxed);
             // A cache write failure leaves the admitted, linked component usable.
             let _ = write_cached(dir, &name, &compiled);
-            Ok((Connector { pre }, digest))
+            Ok((connector, digest))
         }
     }
 
@@ -470,6 +500,7 @@ impl ComponentHost {
             instance,
             handle: None,
             poisoned: false,
+            credential_failed: false,
             limits: limits.clone(),
             _ticker: self.ticker.clone(),
         };
@@ -710,6 +741,10 @@ pub struct Session {
     instance: Instance,
     handle: Option<ResourceAny>,
     poisoned: bool,
+    /// Whether a call of the session failed on a credential: the guest reported
+    /// `auth-expired`, or the host failed to hydrate or lease a header
+    /// (`connector.export.shared-failure`).
+    credential_failed: bool,
     limits: Limits,
     _ticker: Arc<Ticker>,
 }
@@ -756,12 +791,24 @@ impl Session {
             return Err(Failure::deterministic(FailureTag::Config, why.clone()));
         }
         if let Some(failure) = after.unhydrated.get(before.unhydrated.len()) {
+            self.credential_failed = true;
             return Err(failure.clone());
         }
         if let Some(why) = after.held_back.get(before.held_back.len()) {
             return Err(Failure::new(FailureTag::Transient, ConnectorError::ConnectorUnmetered(format!("a request went unreserved: {why}")).to_string()));
         }
         Ok(out)
+    }
+
+    /// Map a guest's own failure, noting a credential the vendor rejected.
+    fn reported<T>(&mut self, out: Result<T, wit::Error>) -> Result<T, Failure> {
+        out.map_err(|e| {
+            let failure = guest_error(e);
+            if failure.tag == FailureTag::AuthExpired {
+                self.credential_failed = true;
+            }
+            failure
+        })
     }
 
     /// Deliver the guest table, when one is declared, to the current instance.
@@ -777,7 +824,8 @@ impl Session {
         let d = self.limits.discovery_deadline;
         let before = self.begin(d)?;
         let out = bounded(d, "configuration", configure.call_async(&mut self.store, (table,)));
-        self.finish(before, out)?.0.map_err(guest_error)
+        let out = self.finish(before, out)?.0;
+        self.reported(out)
     }
 
     fn config_func(&mut self) -> Option<ConfigFunc> {
@@ -815,7 +863,8 @@ impl Session {
         let d = self.limits.discovery_deadline;
         let before = self.begin(d)?;
         let out = bounded(d, "a call", self.guest.contextful_connector_source().call_discover(&mut self.store));
-        let schemas = self.finish(before, out)?.map_err(guest_error)?;
+        let out = self.finish(before, out)?;
+        let schemas = self.reported(out)?;
         Ok(schemas
             .into_iter()
             .map(|s| Schema {
@@ -833,7 +882,8 @@ impl Session {
         let d = self.limits.read_deadline;
         let before = self.begin(d)?;
         let out = bounded(d, "a call", self.guest.contextful_connector_source().call_open(&mut self.store, table, from.as_ref()));
-        let handle = self.finish(before, out)?.map_err(guest_error)?;
+        let out = self.finish(before, out)?;
+        let handle = self.reported(out)?;
         self.handle = Some(handle);
         Ok(())
     }
@@ -849,7 +899,8 @@ impl Session {
         let d = self.limits.read_deadline;
         let before = self.begin(d)?;
         let out = bounded(d, "a call", self.guest.contextful_connector_source().read_handle().call_next(&mut self.store, handle));
-        self.finish(before, out)?.map_err(guest_error)
+        let out = self.finish(before, out)?;
+        self.reported(out)
     }
 
     /// Where the open read stands after the last batch.
@@ -865,7 +916,12 @@ impl Session {
     /// The partition values the session's failed reads belong to, empty for a guest
     /// exporting no attribution. A value over [`ATTRIBUTION_VALUE_BYTES`] and entries past
     /// [`ATTRIBUTION_ENTRIES`] are dropped and stay unattributed; the rest keep their bytes.
+    /// After a credential failure the session answers no partition, whatever the guest
+    /// names, so the read fails whole (`connector.export.shared-failure`).
     pub fn failed_partitions(&mut self) -> Result<Vec<String>, Failure> {
+        if self.credential_failed {
+            return Ok(Vec::new());
+        }
         let d = self.limits.read_deadline;
         let before = self.begin(d)?;
         let Some(func) = self.attribution_func() else {
