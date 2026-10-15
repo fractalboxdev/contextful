@@ -28,6 +28,8 @@ fn micros(n: u64) -> Spend {
     Spend::from_micros(n).unwrap()
 }
 
+/// Before computing, a release reserves each contributing unit's declared per-run spend against its lifetime cap in one catalog transaction. A failed reservation raises `DisclosureUnitBudgetExhausted`, and the release publishes nothing.
+// spec: disclosure.release.budget-reservation@3333631a
 #[test]
 fn concurrent_releases_over_one_unit_never_overspend_its_cap() {
     let dir = tempfile::tempdir().unwrap();
@@ -102,4 +104,20 @@ fn a_reservation_charges_every_unit_or_none_and_a_grant_raises_the_cap() {
     drop(ledger);
     let reopened = SqliteBudgetLedger::open(&dir.path().join("budget.sqlite")).unwrap();
     assert_eq!(reopened.budget("b").unwrap(), Some(UnitBudget { cap: 300, spent: 200 }));
+}
+
+#[test]
+fn a_retried_release_id_charges_nothing_a_second_time() {
+    let dir = tempfile::tempdir().unwrap();
+    let ledger = SqliteBudgetLedger::open(&dir.path().join("budget.sqlite")).unwrap();
+    ledger.grant("a", 500).unwrap();
+    ledger.reserve("r-1", &units(&["a"]), micros(200)).unwrap();
+    ledger.reserve("r-1", &units(&["a"]), micros(200)).unwrap();
+    assert_eq!(ledger.budget("a").unwrap(), Some(UnitBudget { cap: 500, spent: 200 }));
+
+    // A refused release id holds no reservation, so its retry is evaluated afresh.
+    assert!(ledger.reserve("r-2", &units(&["a"]), micros(400)).is_err());
+    ledger.grant("a", 600).unwrap();
+    ledger.reserve("r-2", &units(&["a"]), micros(400)).unwrap();
+    assert_eq!(ledger.budget("a").unwrap(), Some(UnitBudget { cap: 600, spent: 600 }));
 }

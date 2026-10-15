@@ -82,6 +82,12 @@ impl BudgetLedger for SqliteBudgetLedger {
         let mut conn = self.conn.lock().unwrap_or_else(|e| e.into_inner());
         let ledger = |e: rusqlite::Error| ReleaseError::Ledger(self.fail(e));
         let tx = conn.transaction_with_behavior(TransactionBehavior::Immediate).map_err(ledger)?;
+        // A release id already holding a reservation is a retry: it charges nothing.
+        let seen: Option<i64> =
+            tx.query_row("SELECT 1 FROM disclosure_reservation WHERE release_id = ?1 LIMIT 1", params![release_id], |r| r.get(0)).optional().map_err(ledger)?;
+        if seen.is_some() {
+            return tx.commit().map_err(ledger);
+        }
         let mut balances = BTreeMap::new();
         {
             let mut read = tx.prepare("SELECT cap, spent FROM disclosure_budget WHERE unit = ?1").map_err(ledger)?;

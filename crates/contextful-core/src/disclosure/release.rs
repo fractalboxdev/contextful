@@ -69,6 +69,10 @@ pub fn reserve_all(balances: &mut BTreeMap<String, UnitBudget>, units: &BTreeSet
 /// The per-unit budget ledger. An adapter applies [`reserve_all`] to the balances it
 /// reads inside one transaction and writes them back in that transaction, so two
 /// concurrent releases never both spend the same remaining budget.
+///
+/// A `release_id` that already holds a reservation returns `Ok` and charges nothing, so
+/// a caller retrying after a lost acknowledgement never pays twice. A refused
+/// reservation records nothing, so its retry is evaluated afresh.
 pub trait BudgetLedger {
     fn reserve(&self, release_id: &str, units: &BTreeSet<String>, spend: Spend) -> Result<(), ReleaseError>;
 }
@@ -76,24 +80,35 @@ pub trait BudgetLedger {
 /// A ledger in process memory, one lock around every balance.
 #[derive(Debug, Default)]
 pub struct MemoryLedger {
-    balances: Mutex<BTreeMap<String, UnitBudget>>,
+    state: Mutex<MemoryState>,
+}
+
+#[derive(Debug, Default)]
+struct MemoryState {
+    balances: BTreeMap<String, UnitBudget>,
+    releases: BTreeSet<String>,
 }
 
 impl MemoryLedger {
     /// Sets `unit`'s lifetime cap to `cap` micro-epsilon, keeping its reserved spend.
     pub fn grant(&self, unit: &str, cap: u64) {
-        self.balances.lock().unwrap_or_else(|e| e.into_inner()).entry(unit.to_string()).or_default().cap = cap;
+        self.state.lock().unwrap_or_else(|e| e.into_inner()).balances.entry(unit.to_string()).or_default().cap = cap;
     }
 
     pub fn budget(&self, unit: &str) -> Option<UnitBudget> {
-        self.balances.lock().unwrap_or_else(|e| e.into_inner()).get(unit).copied()
+        self.state.lock().unwrap_or_else(|e| e.into_inner()).balances.get(unit).copied()
     }
 }
 
 impl BudgetLedger for MemoryLedger {
-    fn reserve(&self, _release_id: &str, units: &BTreeSet<String>, spend: Spend) -> Result<(), ReleaseError> {
-        let mut balances = self.balances.lock().unwrap_or_else(|e| e.into_inner());
-        Ok(reserve_all(&mut balances, units, spend)?)
+    fn reserve(&self, release_id: &str, units: &BTreeSet<String>, spend: Spend) -> Result<(), ReleaseError> {
+        let mut state = self.state.lock().unwrap_or_else(|e| e.into_inner());
+        if state.releases.contains(release_id) {
+            return Ok(());
+        }
+        reserve_all(&mut state.balances, units, spend)?;
+        state.releases.insert(release_id.to_string());
+        Ok(())
     }
 }
 
@@ -254,8 +269,14 @@ pub fn release(
 
     ledger.reserve(&request.release_id, &units, request.spend)?;
 
-    // The count and every metric share the per-run spend.
-    let statistics = 1 + metrics.len() as u64;
+    // The count and every metric share the per-run spend, once per group a unit reaches:
+    // a unit in g groups enters g counts and g sums, so each draws at ε / ((1 + m) · g).
+    let mut reach: HashMap<&str, u64> = HashMap::new();
+    for unit in groups.iter().flat_map(|g| g.contributors.keys()) {
+        *reach.entry(unit.as_str()).or_default() += 1;
+    }
+    let g_max = reach.values().copied().max().unwrap_or(1);
+    let statistics = (1 + metrics.len() as u64).saturating_mul(g_max);
     let mut candidates = Vec::new();
     for group in groups {
         let exact = group.contributors.len() as i64;
@@ -285,9 +306,11 @@ pub fn release(
     }
     let suppressed_present = outcome.sentinel.is_some();
     if suppressed_present && policy.emit_sentinel {
+        // The sentinel marks the group-key columns; with no group key, the first column.
         let mut row = Map::new();
         for (i, c) in published.iter().enumerate() {
-            row.insert(c.clone(), if i == 0 { Value::from(DISCLOSURE_SENTINEL) } else { Value::Null });
+            let marked = if group_key.is_empty() { i == 0 } else { group_key.contains(&c) };
+            row.insert(c.clone(), if marked { Value::from(DISCLOSURE_SENTINEL) } else { Value::Null });
         }
         rows.push(row);
     }

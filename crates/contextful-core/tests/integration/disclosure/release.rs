@@ -7,6 +7,7 @@ use contextful_core::disclosure::suppress::DISCLOSURE_SENTINEL;
 use contextful_core::disclosure::DisclosureError;
 use contextful_core::pipeline::model::DisclosureDecl;
 use serde_json::{json, Map, Value};
+use std::collections::BTreeMap;
 
 /// A seeded xorshift source, so every draw replays.
 struct Seeded(u64);
@@ -72,7 +73,11 @@ fn ledger(units: &[&str], cap: u64) -> MemoryLedger {
 const TENANTS: [&str; 6] = ["t1", "t2", "t3", "t4", "t5", "t6"];
 
 fn request(epsilon_micros: u64) -> ReleaseRequest {
-    ReleaseRequest { release_id: "r-1".into(), table: "revenue_by_industry".into(), spend: Spend::from_micros(epsilon_micros).unwrap() }
+    request_as("r-1", epsilon_micros)
+}
+
+fn request_as(release_id: &str, epsilon_micros: u64) -> ReleaseRequest {
+    ReleaseRequest { release_id: release_id.into(), table: "revenue_by_industry".into(), spend: Spend::from_micros(epsilon_micros).unwrap() }
 }
 
 fn refused(r: Result<impl std::fmt::Debug, ReleaseError>) -> DisclosureError {
@@ -93,8 +98,14 @@ fn a_release_reserves_every_units_spend_or_none_and_publishes_nothing_on_refusal
         assert_eq!(l.budget(t), Some(UnitBudget { cap: EPSILON, spent: 600_000 }), "{t}");
     }
 
+    // A retry under the same release id charges nothing a second time.
+    release(&policy(), &benchmark(), &request(600_000), &l, &mut rng).unwrap();
+    for t in TENANTS {
+        assert_eq!(l.budget(t).unwrap().spent, 600_000, "{t}");
+    }
+
     // A second release overruns every cap: it refuses, and no unit is charged.
-    let e = refused(release(&policy(), &benchmark(), &request(600_000), &l, &mut rng));
+    let e = refused(release(&policy(), &benchmark(), &request_as("r-2", 600_000), &l, &mut rng));
     assert_eq!(e.identifier(), "DisclosureUnitBudgetExhausted");
     assert!(!e.to_string().contains("t1"), "the refusal names no unit: {e}");
     for t in TENANTS {
@@ -146,6 +157,70 @@ fn noise_is_two_sided_geometric_at_sensitivity_over_the_divided_epsilon() {
     // The sampler is integer-only and symmetric: the scale 1/3 draw has P(0) = (1 - e^-3) / (1 + e^-3).
     let (tight, _, _) = frequencies(|r| discrete_laplace(r, 1, 3));
     assert!((tight - p0(3.0)).abs() < 0.01, "P(0) at scale 1/3 = {tight}");
+    // A release at ε = 1 with one sum bounded to [0, 2] splits ε over two statistics: the
+    // count draws at a = 1/2, so a three-contributor group clears a floor of 3 with
+    // probability (1 + p0(1/2)) / 2, and the sum draws at a = 1/2 / 2.
+    let (selected, exact) = release_frequencies(&bounded_policy(), &bounded(&[("t1", "energy"), ("t2", "energy"), ("t3", "energy")]));
+    assert!((selected - (1.0 + p0(0.5)) / 2.0).abs() < 0.03, "P(selected) = {selected}");
+    assert!((exact - p0(0.25)).abs() < 0.03, "P(sum exact) = {exact}");
+}
+
+/// A policy with one sum bounded to `[0, 2]` at quantum 1 and a floor of 3.
+fn bounded_policy() -> DisclosureDecl {
+    let mut p = policy();
+    p.max_contributor_share = None;
+    let m = p.metric_bounds.get_mut("revenue").unwrap();
+    (m.lower, m.upper, m.quantum) = (0.0, 2.0, 1.0);
+    p
+}
+
+/// Each `(tenant, industry)` row contributes revenue 1.
+fn bounded(cells: &[(&str, &str)]) -> Breakdown {
+    Breakdown { rows: cells.iter().map(|(t, i)| json!({"industry": i, "tenant_id": t, "revenue": 1}).as_object().unwrap().clone()).collect(), ..benchmark() }
+}
+
+/// Over 4000 releases at ε = 1 from one entropy stream: the share of groups published,
+/// and the share of published sums equal to their exact value.
+fn release_frequencies(p: &DisclosureDecl, b: &Breakdown) -> (f64, f64) {
+    let mut exact_sums: BTreeMap<String, i64> = BTreeMap::new();
+    for r in &b.rows {
+        *exact_sums.entry(r["industry"].as_str().unwrap().into()).or_default() += 1;
+    }
+    let groups = exact_sums.len();
+    let l = ledger(&[], 0);
+    for r in &b.rows {
+        l.grant(r["tenant_id"].as_str().unwrap(), u64::MAX);
+    }
+    let mut rng = Seeded(0x9e37_79b9_7f4a_7c15);
+    let n = 4_000;
+    let (mut published, mut exact) = (0u32, 0u32);
+    for i in 0..n {
+        let out = release(p, b, &request_as(&format!("r-{i}"), EPSILON), &l, &mut rng).unwrap();
+        for row in out.table.rows.iter().filter(|r| r["industry"] != json!(DISCLOSURE_SENTINEL)) {
+            published += 1;
+            exact += (row["revenue"] == json!(exact_sums[row["industry"].as_str().unwrap()])) as u32;
+        }
+    }
+    (published as f64 / (n * groups) as f64, exact as f64 / published as f64)
+}
+
+#[test]
+fn a_unit_in_several_groups_divides_epsilon_by_its_group_count() {
+    // t1 contributes to both groups, so each statistic draws at ε / (2 · 2).
+    let p0 = |a: f64| (1.0 - (-a).exp()) / (1.0 + (-a).exp());
+    let b = bounded(&[("t1", "energy"), ("t2", "energy"), ("t3", "energy"), ("t1", "retail"), ("t5", "retail"), ("t6", "retail")]);
+    let (selected, exact) = release_frequencies(&bounded_policy(), &b);
+    assert!((selected - (1.0 + p0(0.25)) / 2.0).abs() < 0.03, "P(selected) = {selected}");
+    assert!((exact - p0(0.125)).abs() < 0.025, "P(sum exact) = {exact}");
+}
+
+#[test]
+fn the_sentinel_lands_in_the_group_key_when_a_metric_column_comes_first() {
+    let mut b = benchmark();
+    b.columns = vec!["revenue".into(), "industry".into(), "tenant_id".into()];
+    let out = release(&policy(), &b, &request(10_000_000 * EPSILON), &ledger(&TENANTS, u64::MAX), &mut Seeded(5)).unwrap();
+    let sentinel = out.table.rows.iter().find(|r| r["industry"] == json!(DISCLOSURE_SENTINEL)).expect("a sentinel row");
+    assert_eq!(sentinel["revenue"], Value::Null);
 }
 
 /// A noised sum folds each contributor to one value, clips that total to declared finite bounds and rounds it to a positive quantum; absent bounds or quantum raise `DisclosureMetricBoundsAbsent`.
