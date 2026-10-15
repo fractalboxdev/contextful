@@ -508,6 +508,8 @@ The target ledger: each tracked target, the clause it serves, how it is measured
   *A-assurance*
 - `scheduled` — The FlareDispatch nightly run executes every tier against the default-branch head and reports one check per run.
 - `measured-basis` — A bound with a measured basis names a trend-tier or scheduled-tier ledger entry id as its benchmark.
+- `recall-evidence-latency` — A trend-tier, `lower_is_better` ledger entry times keyed `memory.recall` over a full {{read.recall.keyed-window}} of claims, each citing evidence at the {{read.recall.evidence-gate-bound}} limit.
+  *because the gate bound sets worst-case evidence resolution per claim, and the keyed window bounds claims, not entries*
 
 A ledger entry's path from the tree to a verdict:
 
