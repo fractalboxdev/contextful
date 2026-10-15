@@ -1,4 +1,8 @@
-//! `read.embed`: the embedding port, its deterministic default, and cosine similarity.
+//! `read.embed`: the embedding port, its deterministic default, cosine similarity, and
+//! the checkpoint a horizon routes a family to.
+
+use crate::connector::model_ref::ModelRef;
+use crate::time::Instant;
 
 /// The embedding capability. An adapter reaching a model through the one inference
 /// endpoint implements it beside the default.
@@ -66,4 +70,28 @@ pub fn cosine(a: &[f32], b: &[f32]) -> Option<f64> {
     let na: f64 = a.iter().map(|x| f64::from(*x).powi(2)).sum::<f64>().sqrt();
     let nb: f64 = b.iter().map(|x| f64::from(*x).powi(2)).sum::<f64>().sqrt();
     (na > 0.0 && nb > 0.0).then(|| dot / (na * nb))
+}
+
+/// An embedder declaring a checkpoint family: each checkpoint beside the model reference
+/// recording its cutoffs (`connector.infer.cutoffs`).
+pub struct CheckpointFamily<E> {
+    checkpoints: Vec<(ModelRef, E)>,
+}
+
+impl<E: Embedder> CheckpointFamily<E> {
+    pub fn new(checkpoints: Vec<(ModelRef, E)>) -> CheckpointFamily<E> {
+        CheckpointFamily { checkpoints }
+    }
+
+    /// The checkpoint a read under `horizon` embeds with, for a call at `now`: the newest
+    /// whose post-training cutoff ends at or before the horizon, or the newest of all
+    /// without one; `None` when no checkpoint precedes the horizon. The routed embedder's
+    /// [`Embedder::model`] names the checkpoint beside every vector (`read.horizon.embedder-route`).
+    pub fn route(&self, horizon: Option<Instant>, now: Instant) -> Option<&E> {
+        self.checkpoints
+            .iter()
+            .filter(|(m, _)| horizon.is_none_or(|h| m.posttrain_end(now) <= h))
+            .max_by_key(|(m, _)| m.posttrain_end(now))
+            .map(|(_, e)| e)
+    }
 }
