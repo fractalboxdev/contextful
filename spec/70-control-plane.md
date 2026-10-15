@@ -5,6 +5,7 @@ owns:
   - reconcile
   - fire
   - dispatch
+  - delegate
   - edit
   - apply
   - reside
@@ -173,9 +174,9 @@ Job declaration, the closed kind union, same-tick order, the fire watermark, and
   *P3*
 - `store-driven-concurrency` — A `store-driven` block declaring no positive integer `max_in_flight` raises `JobConcurrencyUnset` at validation; no default applies.
   *A-surface*
-- `store-driven-body` — A `store-driven` block whose `body` names no body the embedding binary registers raises `JobBodyUnregistered` at validation.
+- `store-driven-body` — A `store-driven` block whose `body` names no body the embedding binary registers and no delegate under {{surface.delegate.binding}} raises `JobBodyUnregistered` at validation.
   *A-surface*
-- `scheduled-body` — A scheduled `store-driven` job runs through the cadence lease and dispatch pool under `job:<name>`, using the embedding executable's registered body and the applied snapshot's job declaration.
+- `scheduled-body` — A scheduled `store-driven` job runs through the cadence lease and dispatch pool under `job:<name>`, using the embedding executable's registered body or its bound delegate, and the applied snapshot's job declaration.
   *A-surface*
 - `scheduled-history` — A scheduled `store-driven` job computes its next fire from its host execution's recorded start, including failed attempts; a restarted daemon resumes pending execution through {{run.journal.input-pin}}.
   *A-surface*
@@ -267,6 +268,70 @@ sequenceDiagram
     RC->>RC: reschedule onto another matching worker, attempt n+1
   end
 ```
+
+## delegate
+
+A delegate is deploy-bound code outside the binary that runs a store-driven item's body over one signed HTTP request, in a synchronous `call` mode or the asynchronous `submit` mode, and answers with a closed outcome vocabulary.
+
+- `binding` — `[control.delegates.<name>]` binds a delegate by `url`, a `mode` of `call` or `submit`, and under `call` a `timeout`; a `store-driven` `body = { delegate = "<name>" }` naming no bound delegate raises `JobDelegateUnbound` at arm or fire.
+  *A-surface*
+- `host` — A delegate `url` is `http` to a loopback host or the `contextful.delegate` virtual host, carrying no credential; any other spelling raises `DelegateHostRefused` at startup and arms nothing.
+  *because the stock container reaches a delegate only through a loopback relay or the deploy's outbound interception, and a public URL turns daemon configuration into egress*
+- `envelope` — A delegate request carries `job`, `execution_id`, `step`, `input_hash`, `idempotency_key` under {{run.journal.idempotency-key}}, `attempt`, `entity` with namespace, key and fence, `as_of`, `version` when fired from an applied snapshot, `pins`, `tables`, the input `row` and `deadline`.
+  *because a delegate holds no state of its own, and a request naming its version and fence lets it refuse before a paid call*
+- `signed` — A request is signed under the worker key over `call`, its timestamp and body, and an answer over `answer`, the request's `idempotency_key`, its timestamp and body, each as {{surface.dispatch.submit-signed}} signs a submission.
+  *because an answer bound to its request cannot be replayed onto another item's call*
+- `rejected` — An answer unsigned or skewed past {{surface.dispatch.callback-skew}} raises `DelegateAnswerRejected` and closes the attempt `Transient`; one outside {{surface.delegate.outcome}} or over {{surface.dispatch.step-result}} raises it and closes the attempt `Permanent`.
+  *because an unsigned answer lets any process on the loopback land rows, and a malformed one cannot change on retry*
+- `call-mode` — Under `call`, one request per attempt holds its connection open and the response body is the attempt's answer; a response arriving after the delegate's `timeout` closes the attempt `Transient`, and its late body records nothing.
+  *A-surface*
+- `status` — A `call` response with a status other than `200` closes the attempt `Transient`, whatever its body; a terminal receipt follows a signed `permanent` answer, a `Permanent` rejection or an exhausted budget under {{run.items.retry-budget}}.
+  *because a refusal before work is deployment drift an operator fixes, and a terminal receipt outlives the fix*
+- `call-timeout` — A `call` delegate's `timeout` defaults to 300 s.
+- `call-timeout-ceiling` — A `call` `timeout` above 3600 s raises `DelegateTimeoutRefused` at validation.
+  *because an item holding a `max_in_flight` slot for over an hour is a stalled delegate, not a slow one*
+- `submit-mode` — Under `submit`, the request is a {{surface.dispatch.worker-target}} submission answered at once; the delegate heartbeats under {{surface.dispatch.heartbeat-beat}}, posts its answer to the callback, and a lapse follows {{surface.dispatch.heartbeat-lapse}}.
+  *A-surface*
+- `outcome` — An answer is `ok` with rows per declared output table, `defer` with a `retry_at` instant, `transient`, or `permanent` with a reason; `ok` lands as {{run.items.completion}}, `defer` parks, and `transient` and `permanent` follow {{run.items.retry-budget}}.
+  *A-surface*
+- `defer-parks` — A `defer` parks the item until its `retry_at` under {{run.items.retry-budget}}; the first fire after that instant re-admits it under {{run.items.replay}}, no run sleeps on it, and a row of a job without `isolated_items` closes `Transient` instead.
+  *because a provider budget clears on the provider's clock, and a slot held through the wait starves every other entity*
+- `currency` — The fence in {{surface.delegate.envelope}} is checked immediately before the request under {{run.items.fence}}; under `submit`, the heartbeat `GET` answers the current attempt and fence, so a delegate learns before a paid call whether it is superseded.
+  *because a delegate that pays after its owner was replaced spends a call whose answer nothing records*
+- `version` — A binding's optional `version` joins the item's owner pins as a body dependency, so a changed version opens a fresh execution identity and a pending item under the old one refuses as {{run.own.pinned-plan-changed}}.
+  *because a prompt or model change inside a delegate otherwise resumes recorded work under new semantics*
+- `clocks` — Signature timestamps on a request and an answer ride each side's system clock; the `deadline` and a `defer` wait ride the engine's instant.
+  *because the engine's instant is injectable while a delegate shares only wall time, and a wait measured on two clocks never fires*
+- `submit-relay` — A `submit` binding on a daemon declaring no `[control] relay` or holding no worker key refuses at startup, as {{surface.dispatch.worker-key}} refuses a worker list.
+  *because a submit delegate posts its answer to the awakeable route the relay binds*
+
+One item on a `call` delegate, from the fence check to the recorded answer:
+
+```mermaid
+sequenceDiagram
+  box engine
+    participant I as item
+    participant J as journal
+  end
+  box delegate
+    participant D as delegate
+  end
+  I->>J: check owner and fence
+  I->>D: signed request with the envelope
+  alt answer within the timeout
+    D-->>I: signed answer
+    I->>J: record the answer under the entry key
+  else past the timeout
+    I->>J: close the attempt Transient
+  end
+  Note over I,D: a resume replays the recorded answer and sends nothing
+```
+
+#### Scenarios
+
+- `surface.delegate.call-mode`: WHEN a delegate answers `ok` with rows for one item and the daemon restarts before that item's landing commits, THEN the resumed item lands the recorded rows and the delegate receives no second request.
+- `surface.delegate.host`: WHEN a delegate `url` names a host that is neither loopback nor the virtual host, THEN startup refuses and arms nothing.
+- `surface.delegate.defer-parks`: WHEN a delegate answers `defer` with a `retry_at` ten minutes ahead, THEN the item's failed-attempt count is unchanged and the first fire after that instant sends the request again.
 
 ## edit
 
@@ -378,6 +443,12 @@ poll         = "every 30s"
 pool         = 4
 trigger      = "in-process"                         # or "external", with `pipeline serve --http`
 
+[control.delegates.stages]
+url     = "http://127.0.0.1:9005/stage/screen"     # loopback, or http://contextful.delegate/stages
+mode    = "call"                                   # or "submit", the worker protocol
+timeout = "300s"
+version = "stage-prompts-v3"                       # rotated when the delegate's semantics change
+
 [residency]
 regions = ["eu-west-1", "eu-central-1"]
 
@@ -401,6 +472,33 @@ statement     = "SELECT doc_id, body FROM documents ORDER BY doc_id"
 as_of         = "2030-01-01T00:00:00Z" # absent, the instant the execution opens
 max_in_flight = 4
 tables        = ["scores"]
+
+[[job]]
+name           = "stage-screen"
+schedule       = "every 15m"
+kind           = "store-driven"
+body           = { delegate = "stages" }   # deploy-bound code outside the binary
+statement      = "SELECT entity_id, pass_id FROM due_items"
+max_in_flight  = 5
+tables         = ["screen_result"]
+isolated_items = { logical_key = "pass_id", entity_key = "entity_id", entity_namespace = "entity", max_attempts = 3 }
+```
+
+The envelope one `call` request carries, signed over `call`, its timestamp and this body:
+
+```json
+{"job": "stage-screen", "execution_id": "x-7f3a", "step": "row/p-7/delegate/1", "input_hash": "c1d9…",
+ "idempotency_key": "9e2b…", "attempt": 1, "entity": {"namespace": "entity", "key": "e-1", "fence": 4},
+ "as_of": "2030-01-01T00:00:10Z", "version": 3, "pins": {"input": "ab12…", "body_dependency_delegate": "stages"},
+ "tables": ["screen_result"], "row": {"entity_id": "e-1", "pass_id": "p-7"}, "deadline": "2030-01-01T00:05:10Z"}
+```
+
+A delegate's answers, one per line, each signed over `answer`, the request's idempotency key, a timestamp and the body:
+
+```json
+{"outcome": "ok", "rows": {"screen_result": [{"entity_id": "e-1", "pass_id": "p-7", "proceed": true}]}}
+{"outcome": "defer", "retry_at": "2030-01-01T00:10:00Z"}
+{"outcome": "permanent", "reason": "subject withdrawn"}
 ```
 
 The wake route's answer:
