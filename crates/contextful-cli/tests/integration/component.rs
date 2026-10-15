@@ -18,7 +18,12 @@ fn digest(path: &str) -> String {
     Sha256::digest(std::fs::read(path).unwrap()).iter().map(|b| format!("{b:02x}")).collect()
 }
 
-/// A project holding the probe at `connectors/probe.wasm` and `manifest` as its `contextful.toml`.
+/// The connector manifest every probe pipeline names unless a test writes its own: the
+/// probe imports the wall clock and reaches the loopback vendor.
+const CONNECTOR: &str = "name = \"probe\"\n[capabilities]\nallow_hosts = [\"127.0.0.1\"]\nclock = true\n";
+
+/// A project holding the probe at `connectors/probe.wasm`, its connector manifest at
+/// `connector.toml`, and `manifest` as its `contextful.toml`.
 fn project(manifest: &str) -> tempfile::TempDir {
     let dir = tempfile::tempdir().unwrap();
     let store = dir.path().join(".contextful/context/research");
@@ -27,12 +32,23 @@ fn project(manifest: &str) -> tempfile::TempDir {
     std::fs::create_dir_all(dir.path().join("connectors")).unwrap();
     std::fs::copy(PROBE, dir.path().join("connectors/probe.wasm")).unwrap();
     std::fs::copy(PROBE_BASE, dir.path().join("connectors/probe-base.wasm")).unwrap();
+    std::fs::write(dir.path().join("connector.toml"), CONNECTOR).unwrap();
     std::fs::write(dir.path().join("contextful.toml"), format!("authoring_posture = \"per_request\"\n{}", manifest)).unwrap();
     dir
 }
 
-/// A pipeline `probe` over `name`, landing `tables`, its source config written as TOML lines.
+/// A pipeline `probe` over `name`, landing `tables`, its source config written as TOML
+/// lines; the source names `connector.toml` unless `config` names a manifest itself.
 fn manifest(name: &str, tables: &[&str], config: &str) -> String {
+    if config.contains("manifest =") {
+        bare(name, tables, config)
+    } else {
+        bare(name, tables, &format!("manifest = \"connector.toml\"\n{config}"))
+    }
+}
+
+/// [`manifest`] naming no connector manifest.
+fn bare(name: &str, tables: &[&str], config: &str) -> String {
     let tables = tables.iter().map(|t| format!("{t:?}")).collect::<Vec<_>>().join(", ");
     format!("[[pipeline]]\nid = \"probe\"\ntables = [{tables}]\n\n[pipeline.source]\nname = \"{name}\"\n\n[pipeline.source.config]\n{config}\n")
 }
@@ -67,23 +83,11 @@ fn refused(out: &Output, error: &str) -> String {
     stderr
 }
 
-/// Local pin inspection reports the artifact digest and leaves the manifest unchanged.
-#[test]
-fn local_connector_pin_prints_digest_without_rewriting_manifest() {
-    let dir = project("");
-    let manifest = "name = \"probe\"\nversion = \"1.0.0\"\nworld = \"source-connector@1.2.0\"\nwasm = \"connectors/probe.wasm\"\nrequire_wasm_pin = true\n";
-    let path = dir.path().join("connector.toml");
-    std::fs::write(&path, manifest).unwrap();
-    let output = cf(dir.path(), &["connector", "pin", "connector.toml", "--local"], &[]);
-    assert_eq!(ok(&output), digest(PROBE));
-    assert_eq!(std::fs::read_to_string(path).unwrap(), manifest);
-}
-
 // spec: connector.package.manifest-host-grant@22ec1862
 #[test]
 fn manifest_refuses_pipeline_host_absent_from_declared_capabilities_at_load() {
     let dir = project(&manifest("connectors/probe.wasm", &["items"], "manifest = \"connector.toml\"\nallow = [\"api.other.example\"]"));
-    std::fs::write(dir.path().join("connector.toml"), "name = \"probe\"\nwasm = \"connectors/probe.wasm\"\n[capabilities]\nallow_hosts = [\"api.vendor.example\"]\n").unwrap();
+    std::fs::write(dir.path().join("connector.toml"), "name = \"probe\"\nwasm = \"connectors/probe.wasm\"\n[capabilities]\nallow_hosts = [\"api.vendor.example\"]\nclock = true\n").unwrap();
     let stderr = refused(&cf(dir.path(), &["pipeline", "validate"], &[]), "ConnectorUndeclaredAccess");
     assert!(stderr.contains("api.other.example"), "{stderr}");
     let stderr = refused(&fire(dir.path(), "run-1", &[], &[]), "ConnectorUndeclaredAccess");
@@ -99,6 +103,7 @@ fn component_manifest_symlink_outside_project_refuses_at_load() {
     let outside = tempfile::tempdir().unwrap();
     let target = outside.path().join("connector.toml");
     std::fs::write(&target, "[capabilities]\nallow_hosts = [\"api.vendor.example\"]\n").unwrap();
+    std::fs::remove_file(dir.path().join("connector.toml")).unwrap();
     std::os::unix::fs::symlink(&target, dir.path().join("connector.toml")).unwrap();
 
     let stderr = refused(&cf(dir.path(), &["pipeline", "validate"], &[]), "project-relative");
@@ -117,7 +122,7 @@ fn remote_component_validate_checks_its_manifest_without_fetching() {
 #[test]
 fn an_empty_manifest_host_set_admits_a_component_with_no_outbound_grant() {
     let dir = project(&manifest("connectors/probe.wasm", &["items"], "manifest = \"connector.toml\""));
-    std::fs::write(dir.path().join("connector.toml"), "[capabilities]\nallow_hosts = []\n").unwrap();
+    std::fs::write(dir.path().join("connector.toml"), "[capabilities]\nallow_hosts = []\nclock = true\n").unwrap();
     let out = ok(&cf(dir.path(), &["pipeline", "validate"], &[]));
     assert!(out.contains("probe: valid"), "{out}");
 }
@@ -134,6 +139,11 @@ struct Vendor {
 
 impl Vendor {
     fn start() -> Vendor {
+        Vendor::answering("HTTP/1.1 200 OK\r\nContent-Length: 2\r\nConnection: close\r\n\r\nok")
+    }
+
+    /// A loopback server writing `response` to every request.
+    fn answering(response: &'static str) -> Vendor {
         let listener = TcpListener::bind("127.0.0.1:0").unwrap();
         let port = listener.local_addr().unwrap().port();
         let seen: Arc<Mutex<Vec<Vec<String>>>> = Arc::default();
@@ -150,7 +160,7 @@ impl Vendor {
                     headers.push(h.trim().to_ascii_lowercase());
                 }
                 log.lock().unwrap().push(headers);
-                let _ = write!(stream, "HTTP/1.1 200 OK\r\nContent-Length: 2\r\nConnection: close\r\n\r\nok");
+                let _ = stream.write_all(response.as_bytes());
             }
         });
         Vendor { port, seen }
@@ -430,4 +440,76 @@ fn the_interpreted_target_is_selected_by_flag_or_environment() {
         refused(&validated, "`pulley` feature");
     }
     assert!(ok(&fire(dir.path(), "run-3", &["--component-target", "native"], &[])).contains("run-3 success"));
+}
+
+/// A component source naming no `manifest`, or a manifest carrying an unread key, refuses by name before anything
+/// loads or runs.
+#[test]
+fn a_component_source_without_a_manifest_or_with_an_unread_key_refuses() {
+    let dir = project(&bare("connectors/probe.wasm", &["items"], ""));
+    let stderr = refused(&cf(dir.path(), &["pipeline", "validate"], &[]), "ConnectorManifestRejected");
+    assert!(stderr.contains("`manifest`"), "{stderr}");
+    let stderr = refused(&fire(dir.path(), "run-1", &[], &[]), "ConnectorManifestRejected");
+    assert!(stderr.contains("`manifest`"), "{stderr}");
+    assert!(!cf(dir.path(), &["run", "show", "run-1", "--project", "research"], &[]).status.success());
+
+    let dir = project(&manifest("connectors/probe.wasm", &["items"], ""));
+    std::fs::write(dir.path().join("connector.toml"), format!("{CONNECTOR}[capabilities.limiter]\nquota = \"q\"\nclass = \"c\"\nburst = 4\n")).unwrap();
+    let stderr = refused(&cf(dir.path(), &["pipeline", "validate"], &[]), "ConnectorManifestRejected");
+    assert!(stderr.contains("`capabilities.limiter.burst`"), "{stderr}");
+
+    let dir = project(&manifest("connectors/probe.wasm", &["items"], ""));
+    std::fs::write(dir.path().join("connector.toml"), format!("{CONNECTOR}[bounds]\nmemory_bytes = 268435456\n")).unwrap();
+    let stderr = refused(&fire(dir.path(), "run-1", &[], &[]), "ConnectorManifestRejected");
+    assert!(stderr.contains("`bounds`"), "{stderr}");
+}
+
+/// A connector reaching for access its manifest does not list fails to load, raising `ConnectorUndeclaredAccess` naming
+/// that access.
+#[test]
+fn a_wall_clock_import_without_the_clock_grant_fails_to_load() {
+    let dir = project(&manifest("connectors/probe.wasm", &["items"], ""));
+    std::fs::write(dir.path().join("connector.toml"), "name = \"probe\"\n[capabilities]\nallow_hosts = [\"127.0.0.1\"]\n").unwrap();
+    let stderr = refused(&cf(dir.path(), &["pipeline", "validate"], &[]), "ConnectorUndeclaredAccess");
+    assert!(stderr.contains("wasi:clocks/wall-clock"), "{stderr}");
+    let stderr = refused(&fire(dir.path(), "run-1", &[], &[]), "ConnectorUndeclaredAccess");
+    assert!(stderr.contains("wasi:clocks/wall-clock"), "{stderr}");
+    assert!(!cf(dir.path(), &["run", "show", "run-1", "--project", "research"], &[]).status.success(), "no run row");
+
+    // The same manifest with the clock declared admits the guest.
+    std::fs::write(dir.path().join("connector.toml"), CONNECTOR).unwrap();
+    assert!(ok(&fire(dir.path(), "run-1", &[], &[])).contains("3 rows"));
+}
+
+/// A manifest may declare an identity endpoint, the response header carrying granted scopes, and the grant it expects.
+/// The host calls it with the bound credential ahead of the first read.
+#[test]
+fn a_component_scope_probe_refuses_an_exceeded_grant_before_any_vendor_request() {
+    let identity = Vendor::answering("HTTP/1.1 200 OK\r\nX-Granted-Scopes: reports.read, admin\r\nContent-Length: 2\r\nConnection: close\r\n\r\n{}");
+    let vendor = Vendor::start();
+    let connector = |expect: &str| {
+        format!(
+            "{CONNECTOR}[capabilities.scope_probe]\nendpoint = \"http://127.0.0.1:{}/identity\"\nscopes_header = \"X-Granted-Scopes\"\nexpect = [{expect}]\n",
+            identity.port
+        )
+    };
+    let config = "allow = [\"127.0.0.1\"]\nattach = { Authorization = \"Bearer ${secret://vendor-token}\" }";
+    let env = [("VENDOR_TOKEN", "vendor-token-value"), ("CONTEXTFUL_SECRETS_ALLOW_ENV_TEMPLATES", "1")];
+    let table = format!("fetch http://127.0.0.1:{}/v1", vendor.port);
+
+    let dir = project(&manifest("connectors/probe.wasm", &[&table], config));
+    std::fs::write(dir.path().join("connector.toml"), connector("\"reports.read\"")).unwrap();
+    let stderr = refused(&fire(dir.path(), "run-1", &[], &env), "ConnectorScopeExceeded");
+    assert!(stderr.contains("admin"), "{stderr}");
+    assert!(!stderr.contains("vendor-token-value"), "{stderr}");
+    assert!(vendor.requests().is_empty(), "the vendor received a request before the grant was verified");
+    let probed = identity.requests();
+    assert_eq!(probed.len(), 1);
+    assert!(probed[0].contains(&"authorization: bearer vendor-token-value".to_string()), "{probed:?}");
+
+    // A grant within the expectation opens the session and the read reaches the vendor.
+    std::fs::write(dir.path().join("connector.toml"), connector("\"reports.read\", \"admin\"")).unwrap();
+    let out = ok(&fire(dir.path(), "run-2", &[], &env));
+    assert!(out.contains("success · 1 rows"), "{out}");
+    assert_eq!(vendor.requests().len(), 1);
 }

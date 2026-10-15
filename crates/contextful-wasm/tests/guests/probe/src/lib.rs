@@ -261,6 +261,7 @@ impl Guest for Probe {
                 Mode::Burst(n, words.next().unwrap_or_default().to_string())
             }
             "fail" => return Err(Error::Transient("simulated".into())),
+            "expired" => return Err(Error::AuthExpired("simulated: the vendor rejected the credential".into())),
             other => return Err(Error::Permanent(format!("no table `{other}`"))),
         };
         Ok(ReadHandle::new(Handle { mode: RefCell::new(mode) }))
