@@ -10,12 +10,12 @@ An unpinned clause is `committed`; a pinned one is `performed` when its Rust, Le
 | `connector` | 2 | 14 | 356 | 90 | 21 | 16 | 232 | 0 | 232 |
 | `corpus` | 1 | 10 | 79 | 37 | 7 | 0 | 79 | 0 | 79 |
 | `disclosure` | 3 | 16 | 157 | 68 | 13 | 3 | 64 | 0 | 64 |
-| `read` | 2 | 18 | 238 | 38 | 24 | 4 | 220 | 0 | 220 |
+| `read` | 2 | 18 | 238 | 38 | 24 | 4 | 224 | 0 | 224 |
 | `run` | 3 | 28 | 501 | 113 | 44 | 14 | 445 | 0 | 445 |
 | `store` | 3 | 19 | 287 | 65 | 14 | 13 | 273 | 0 | 273 |
 | `surface` | 2 | 20 | 137 | 59 | 22 | 0 | 98 | 0 | 98 |
 | `topology` | 1 | 6 | 79 | 25 | 5 | 3 | 72 | 0 | 72 |
-| **total** | 22 | 165 | 2434 | 637 | 202 | 71 | 1974 | 0 | |
+| **total** | 22 | 165 | 2434 | 637 | 202 | 71 | 1978 | 0 | |
 
 Decision records: 18.
 
@@ -40,7 +40,7 @@ A milestone reads `closed` when its acceptance test computes `passing` and every
 | 12 — The operator console | 12 | 56 | 25 | passing | open |
 | 13 — Disclosure | 5 | 33 | 13 | open | open |
 | 14 — Assurance | 7 | 156 | 126 | passing | closed |
-| 15 — Point-in-time evaluation | 7 | 76 | 65 | open | open |
+| 15 — Point-in-time evaluation | 7 | 76 | 69 | open | open |
 
 Unscheduled operations: 12.
 
@@ -951,8 +951,12 @@ Unscheduled operations: 12.
 | `read.guard.template-reserved-parameter` | `crates/contextful-core/tests/integration/read/template.rs::a_parameter_named_for_a_read_argument_refuses_the_manifest` | performed |
 | `read.guard.unregistered-relation` | `crates/contextful-context/tests/integration/read/guard.rs::an_unregistered_relation_echoes_the_statements_spelling` | performed |
 | `read.guard.whole-tree-walk` | `crates/contextful-context/tests/integration/read/guard.rs::the_walk_covers_every_subtree` | performed |
+| `read.horizon.build-resolution` | `crates/contextful-context/tests/integration/read/pin.rs::a_model_table_under_a_horizon_reads_its_newest_build_within_it` | performed |
+| `read.horizon.egress-hook` | `crates/contextful-outbound/tests/integration/egress.rs::a_hop_under_a_horizon_reaches_the_model_endpoint_alone` | performed |
+| `read.horizon.embedder-route` | `crates/contextful-core/tests/integration/read/horizon.rs::an_embedder_family_routes_to_its_newest_checkpoint_before_the_horizon` | performed |
 | `read.horizon.exceeds-horizon` | `crates/contextful-core/tests/integration/read/horizon.rs::a_bound_later_than_the_horizon_is_refused` | performed |
 | `read.horizon.inherited-bound` | `crates/contextful-agent/tests/integration/mcp.rs::every_read_tool_called_unbounded_reads_at_the_horizon` | performed |
+| `read.horizon.rank-statistics` | `crates/contextful-context/tests/integration/read/fulltext.rs::a_ranking_under_a_horizon_refuses_a_sidecar_indexing_later_rows` | performed |
 | `read.horizon.recall-horizon` | `crates/contextful-agent/tests/integration/mcp.rs::recall_under_a_horizon_reads_the_claims_table_at_it` | performed |
 | `read.query.declaration-default` | `crates/contextful-cli/tests/integration/query.rs::a_declaration_path_supplies_the_manifest` | performed |
 | `read.query.discovered-project` | `crates/contextful-cli/tests/integration/query.rs::a_discovered_project_registers_its_tables` | performed |
