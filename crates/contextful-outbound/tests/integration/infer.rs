@@ -2,7 +2,7 @@
 
 use crate::egress::{ok, Ledger, Recording};
 use crate::support::{proxy_env, Response, Server};
-use contextful_core::memory::synthesize::{Inference, Message};
+use contextful_core::memory::synthesize::{CallRecord, Inference, Message};
 use contextful_outbound::infer::Endpoint;
 use serde_json::{json, Value};
 
@@ -73,4 +73,26 @@ fn a_completion_keeps_the_proxy_unless_a_key_is_configured() {
         assert_eq!(endpoint.complete(&[Message::new("user", "x")]).unwrap(), "ok");
         assert_eq!(*t.directs.lock().unwrap(), [direct], "key {key:?}");
     }
+}
+
+/// A call to an endpoint exposing token log-probabilities lands them with the call record.
+// spec: connector.infer.logprobs@9eefec74
+#[test]
+fn an_endpoint_exposing_logprobs_lands_them_with_the_call_record() {
+    let _env = proxy_env();
+    let logprobs = json!({ "content": [{ "token": "Yes", "logprob": -0.02, "top_logprobs": [] }] });
+    let reply = json!({ "choices": [{ "message": { "content": "Yes" }, "logprobs": logprobs }] }).to_string();
+    let server = Server::start(move |_| Response::json(200, &reply));
+    let exposing = Endpoint::new(&server.url("/v1"), "m", None).unwrap().with_logprobs();
+    let record = exposing.call(&[Message::new("user", "Did it close above 40?")]).unwrap();
+    assert_eq!(record, CallRecord { content: "Yes".into(), logprobs: Some(logprobs.clone()) });
+    let sent: Value = serde_json::from_slice(&server.received("/v1/chat/completions")[0].body).unwrap();
+    assert_eq!(sent["logprobs"], json!(true));
+    assert_eq!(serde_json::to_value(&record).unwrap()["logprobs"], logprobs);
+
+    // An endpoint not declared as exposing them asks for none and lands none.
+    let plain = Endpoint::new(&server.url("/v1"), "m", None).unwrap();
+    assert_eq!(plain.call(&[Message::new("user", "x")]).unwrap().logprobs, None);
+    let sent: Value = serde_json::from_slice(&server.received("/v1/chat/completions")[1].body).unwrap();
+    assert!(sent.get("logprobs").is_none(), "{sent}");
 }
