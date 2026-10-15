@@ -110,7 +110,7 @@ The outer source configuration follows {{run.declare.config-key}}.
 
 The manifest's statement of host access and the scope probe judging a bound credential's grant.
 
-- `declared-grant` — A manifest lists the host access its code reaches for — outbound hosts, environment names, the wall clock — and the host decides the grant at load. There is no run-time permission request and no escalation path.
+- `declared-grant` — A manifest lists the host access its code reaches for — outbound hosts and the wall clock — and the host decides the grant at load. There is no run-time permission request and no escalation path.
   *A-connector*
 - `undeclared-access` — A connector reaching for access its manifest does not list fails to load, raising `ConnectorUndeclaredAccess` naming that access.
   *A-connector*
@@ -152,6 +152,8 @@ flowchart LR
   SC -->|"exceeded: ConnectorScopeExceeded"| NOSESS
   SC -->|"yes"| SESS
 ```
+
+unsettled: Which manifest keys declare environment names and a shared quota, and how does a component load bind each to the operator's reference and `[limiters.<quota>]` table? owner: connector affects: connector.declare-capability
 
 #### Scenarios
 
@@ -340,7 +342,7 @@ Distribution form, digest pinning, per-connector resource bounds and world versi
   *A-connector*
 - `artifact-cache` — On Unix, after {{connector.package.digest-mismatch}} admission, the host caches precompiled components by artifact digest and engine compatibility hash; an intact host-written entry deserializes, while a missing, stale or altered entry recompiles.
   *A-connector*
-- `pin-requirement` — Two switches require a pin on a local artifact, composed by disjunction: the store-wide key `[connector] require_pin` in the store's `config.toml`, and a per-connector manifest flag.
+- `pin-requirement` — Two switches require a pin on a local artifact, composed by disjunction: the store-wide key `[connector] require_pin` in the store's `config.toml`, and the connector manifest's `require_wasm_pin`.
 - `local-unpinned` — With either switch set, an unpinned local artifact raises `ConnectorLocalUnpinned` at build, carrying the digest of the bytes found.
   *A-connector*
 - `manifest-posture` — A manifest is adopted, carrying a digest built on the fixed builder platform, or a template, carrying the requirement plus a placeholder. A template parses cleanly and refuses at load.
@@ -357,9 +359,11 @@ Distribution form, digest pinning, per-connector resource bounds and world versi
 - `interpreted-target` — A host built with the `pulley` feature runs components on the interpreted target as portable bytecode, mapping no executable memory, under the same deadlines and mediated client; the compiled native target stays the default.
   *because a hardened runtime refusing writable-then-executable pages loads no compiled guest, and interpretation trades throughput for loading there*
 - `interpreted-target-absent` — A host built without the `pulley` feature refuses the interpreted target at construction, naming the feature, before any component compiles.
-- `component-source` — A pipeline source named by an artifact path, HTTPS URL or OCI reference runs as a component, its config reading `sha256`, `allow`, `attach`, `guest`, `memory_bytes`, `manifest` and `require_pin`, the manifest flag of {{connector.package.pin-requirement}}.
-- `manifest-keys` — A component source's manifest reads only `name`, `version`, `world`, `wasm`, `wasm_sha256`, `require_wasm_pin`, `build` and `capabilities`. An absent manifest, another key at any depth, or a value off its shape raises `ConnectorManifestRejected` naming the key.
+- `component-source` — A pipeline source named by an artifact path, HTTPS URL or OCI reference runs as a component, its config reading `sha256`, `allow`, `attach`, `guest`, `memory_bytes` and `manifest`.
+- `manifest-keys` — A component source's manifest reads only `name`, `version`, `world`, `wasm`, `wasm_sha256`, `require_wasm_pin`, `build`, and `capabilities` holding `allow_hosts`, `clock` and `scope_probe`. An absent manifest, another key at any depth, or a value off its shape raises `ConnectorManifestRejected` naming the key.
   *P1*
+- `manifest-pin` — A manifest's `wasm_sha256` pins the artifact its component source loads; a source `sha256` differing from it refuses under {{connector.package.manifest-keys}} before the artifact loads.
+  *because one artifact admitted against two pins holds no single reviewed digest*
 - `manifest-host-grant` — A component source's `manifest` names a project-relative TOML file; at load, each `allow` host must fit its `[capabilities] allow_hosts` declaration or refuses under {{connector.declare-capability.undeclared-access}}, naming the excess host.
   *because an operator grant cannot extend past the connector's declared host access*
 - `component-load` — `pipeline run` resolves a component source, admits it against its pin and loads it once per fire, before any run row, and records its {{connector.import.config-hashing}} content hash as each run's connector hash.
@@ -412,7 +416,8 @@ flowchart LR
 - `connector.package.remote-cache-corrupt`: WHEN cached bytes disagree with their key, THEN the run raises `ConnectorArtifactCacheCorrupt` without fetching or compiling.
 - `connector.package.remote-fetch-failure`: WHEN a remote endpoint refuses a required fetch, THEN the run raises `ConnectorArtifactFetchFailed` and writes no run row.
 - `connector.package.manifest-keys`: WHEN a component source names no `manifest`, THEN validation raises `ConnectorManifestRejected` naming `manifest`.
-- `connector.package.manifest-keys`: WHEN a manifest carries `[capabilities.limiter] burst = 4`, THEN the load raises `ConnectorManifestRejected` naming `capabilities.limiter.burst`.
+- `connector.package.manifest-keys`: WHEN a manifest declares `[capabilities.limiter]`, THEN the load raises `ConnectorManifestRejected` naming `capabilities.limiter`, and the guest never runs unmetered.
+- `connector.package.manifest-pin`: WHEN a manifest pins one digest and the component source's `sha256` another, THEN the load raises `ConnectorManifestRejected` naming `wasm_sha256` and writes no run row.
 - `connector.package.build-source`: WHEN a manifest declares `[build] source = "../guest"`, THEN `connector pin` raises `ConnectorManifestRejected` naming `build.source` and builds nothing.
 
 ## source
@@ -729,18 +734,12 @@ source = "guest"                          # the guest crate and its lockfile, be
 
 [capabilities]
 allow_hosts = ["api.vendor.example"]      # one exact host: the pipeline's attach binds a credential
-env         = ["VENDOR_ACCOUNT_ID"]
 clock       = true
 
 [capabilities.scope_probe]
 endpoint      = "https://api.vendor.example/v1/identity"
 scopes_header = "X-Granted-Scopes"
 expect        = ["reports.read", "accounts.read"]
-
-[capabilities.limiter]
-quota         = "vendor-app-shared"
-class         = "batch-read"
-usage_headers = ["X-RateLimit-Remaining", "X-RateLimit-Reset"]
 ```
 
 The world:

@@ -7,7 +7,7 @@ An unpinned clause is `committed`; a pinned one is `performed` when its Rust, Le
 | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
 | `assurance` | 3 | 18 | 316 | 64 | 24 | 8 | 276 | 0 | 276 |
 | `authority` | 2 | 16 | 295 | 79 | 29 | 9 | 229 | 0 | 229 |
-| `connector` | 2 | 14 | 366 | 92 | 21 | 10 | 269 | 0 | 269 |
+| `connector` | 2 | 14 | 367 | 92 | 21 | 11 | 269 | 0 | 269 |
 | `corpus` | 1 | 10 | 79 | 37 | 7 | 0 | 79 | 0 | 79 |
 | `disclosure` | 3 | 16 | 159 | 68 | 13 | 8 | 106 | 0 | 106 |
 | `read` | 2 | 19 | 276 | 45 | 28 | 13 | 233 | 0 | 233 |
@@ -15,7 +15,7 @@ An unpinned clause is `committed`; a pinned one is `performed` when its Rust, Le
 | `store` | 3 | 19 | 290 | 64 | 14 | 11 | 280 | 0 | 280 |
 | `surface` | 2 | 21 | 159 | 63 | 23 | 0 | 132 | 0 | 132 |
 | `topology` | 1 | 6 | 79 | 25 | 5 | 3 | 74 | 0 | 74 |
-| **total** | 22 | 168 | 2536 | 651 | 208 | 75 | 2145 | 0 | |
+| **total** | 22 | 168 | 2537 | 651 | 208 | 76 | 2145 | 0 | |
 
 Decision records: 18.
 
@@ -29,7 +29,7 @@ A milestone reads `closed` when its acceptance test computes `passing` and every
 | 1 — The authority core | 14 | 244 | 230 | passing | closed |
 | 2 — The store | 9 | 183 | 173 | passing | closed |
 | 3 — The run path | 12 | 271 | 255 | passing | closed |
-| 4 — Ingest | 25 | 569 | 444 | passing | closed |
+| 4 — Ingest | 25 | 570 | 444 | passing | closed |
 | 5 — The read face under enforcement | 17 | 308 | 244 | passing | open |
 | 6 — Sync and replicas | 8 | 83 | 83 | passing | closed |
 | 7 — Memory | 6 | 71 | 56 | passing | closed |
@@ -663,13 +663,13 @@ Unscheduled operations: 12.
 | `connector.package.local-unpinned` | `crates/contextful-cli/tests/integration/component.rs::an_unpinned_local_artifact_under_either_switch_is_refused_with_its_digest` | performed |
 | `connector.package.manifest-host-grant` | `crates/contextful-cli/tests/integration/component.rs::manifest_refuses_pipeline_host_absent_from_declared_capabilities_at_load` | performed |
 | `connector.package.manifest-keys` | `crates/contextful-cli/tests/integration/component.rs::a_component_source_without_a_manifest_or_with_an_unread_key_refuses` | performed |
+| `connector.package.manifest-pin` | `crates/contextful-cli/tests/integration/component.rs::the_manifest_pin_admits_the_local_artifact_and_a_disagreeing_source_pin_refuses` | performed |
 | `connector.package.oci-component-layer` | `crates/contextful-cli/src/component.rs::oci_manifest_requires_one_component_layer_with_a_sha256_descriptor` | performed |
 | `connector.package.oci-layer-integrity` | `crates/contextful-cli/src/component.rs::oci_fetch_checks_the_layer_and_caches_only_admitted_bytes` | performed |
 | `connector.package.oci-reference` | `crates/contextful-cli/tests/integration/component.rs::malformed_oci_reference_is_refused_without_a_request` | performed |
 | `connector.package.oci-registry-bearer` | `crates/contextful-cli/src/component.rs::oci_fetch_checks_the_layer_and_caches_only_admitted_bytes` | performed |
 | `connector.package.path-remap` | `crates/contextful-cli/tests/integration/pin.rs::a_local_build_from_two_checkouts_prints_one_digest_and_writes_nothing` | performed |
 | `connector.package.pin-requirement` | `crates/contextful-core/tests/integration/connector/package.rs::either_switch_requires_a_local_pin` | performed |
-| `connector.package.pin-verb` | `crates/contextful-cli/tests/integration/pin.rs::pin_builds_on_the_fixed_platform_and_writes_the_artifact_and_digest` | performed |
 | `connector.package.remote-cache` | `crates/contextful-cli/tests/integration/component.rs::a_pinned_remote_artifact_uses_the_project_cache_before_network` | performed |
 | `connector.package.remote-cache-corrupt` | `crates/contextful-cli/tests/integration/component.rs::a_pinned_remote_artifact_uses_the_project_cache_before_network` | performed |
 | `connector.package.remote-fetch-failure` | `crates/contextful-cli/tests/integration/component.rs::remote_fetch_failure_writes_no_run_row` | performed |

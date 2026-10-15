@@ -30,13 +30,13 @@ registry bearer from the project's credential binding ({{connector.package.oci-r
 Admitted bytes enter a digest-keyed project cache ({{connector.package.remote-cache}});
 damaged cached bytes refuse ({{connector.package.remote-cache-corrupt}}).
 
-A manifest names its keys and one build input ({{connector.package.manifest-keys}},
+A manifest names its keys, its artifact pin and one build input
+({{connector.package.manifest-keys}}, {{connector.package.manifest-pin}},
 {{connector.package.build-source}}). `connector pin` writes the pin from the fixed platform
 ({{connector.package.pin-verb}}); `--local` writes nothing ({{connector.package.host-built-pin}}),
 and `--verify` reproduces ({{connector.package.path-remap}}).
 
-Host access is declared, not requested. The manifest lists hosts, environment names and the
-clock, and the host decides the grant at load ({{connector.declare-capability.declared-grant}});
+Host access is declared, not requested. The manifest lists hosts and the clock, and the host decides the grant at load ({{connector.declare-capability.declared-grant}});
 code reaching past it fails to load ({{connector.declare-capability.undeclared-access}}). An
 optional scope probe checks the bound credential's grant before the first read
 ({{connector.declare-capability.scope-probe}}).

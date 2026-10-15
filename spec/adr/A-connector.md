@@ -45,7 +45,7 @@ Revisit: a public registry distributes connectors to operators who neither build
 
 ## The pin builder runs one fixed platform
 
-A pin reproduces from one builder platform, defined once as `PLATFORM` in `contextful-core::connector::package`: a digest-pinned image, the `wasm32-wasip2` target, pinned rustc and cargo, the argv `cargo build --release --locked --target wasm32-wasip2`, and the remap targets `/src`, `/cargo` and `/rustup`. The container runs under `--platform linux/amd64` and `--network none`, mounts the source read-only and clears the environment to `PATH` and `HOME`. A manifest names one build input, `[build] source`; `connector.package` refuses every other unread key, so attach headers and memory bounds stay in the pipeline's component source.
+A pin reproduces from one builder platform, defined once as `PLATFORM` in `contextful-core::connector::package`: a digest-pinned image carrying the toolchain, the `wasm32-wasip2` target, the fetch `cargo fetch --locked`, the argv `cargo build --release --locked --target wasm32-wasip2`, and the remap targets `/src`, `/cargo` and `/rustup`. Both runs use `--platform linux/amd64` and the invoking user's uid and gid, mount the source read-only and a per-build package cache at `/cargo`; the fetch reaches the registry, and the build adds `--offline` under `--network none`. A manifest names one build input, `[build] source`; `connector.package` refuses every other unread key, so attach headers and memory bounds stay in the pipeline's component source.
 
 | Option | Lost on | Cost |
 | --- | --- | --- |
