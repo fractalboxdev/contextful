@@ -200,3 +200,21 @@ identity pin body, statement and `as_of` alone.
 | Resolve output contracts from live files | Replay identity | Unapplied edits alter deduplication, types and landing semantics. |
 | Replay entirely under historical authority | Revocation | An applied snapshot can retain access the current declaration removed. |
 | Rewind pending owners automatically | Recorded effects | A structural edit can repeat paid calls. |
+
+## A delegated body is deploy-bound code reached in two modes
+
+**Status:** accepted; amends the store-driven decision above: a body resolves to registered code or to a delegate the daemon's own configuration binds.
+
+Context: a consumer whose domain code is not Rust has no body to register, so its paid work runs outside the journal, the meter and the run record. Criteria: configuration reaches only deploy-bound code; one request per attempt, recorded once; a Worker-class delegate needs no inbound route.
+
+Decision: `surface.delegate` binds a name to a loopback or virtual-host URL in the daemon's configuration, never the applied manifest; a store-driven `body` names it. `call` mode holds one signed request open and records its response; `submit` mode is the worker protocol with heartbeat and callback. The envelope carries fence, idempotency key, version and pins, so a delegate refuses before it pays; answers form a closed vocabulary.
+
+| Option | Lost on | Cost |
+| --- | --- | --- |
+| Named delegate, two modes, closed outcomes *(chosen)* | — | A second body path, and the operator binds every delegate per deployment. |
+| Registered bodies only | Consumer reach | Domain code in another language runs outside the record. |
+| A URL in the manifest | Trust boundary | A manifest writer gains egress with the store's credentials. |
+| Submit mode alone | Worker-class delegates | A delegate with no inbound route and a bounded post-response window cannot call back. |
+| Call mode alone | Long work | A model call outliving its connection has no home. |
+
+Consequences: a consumer's stage is an item of a run with its receipt, budget and fence; a hanging `call` delegate holds its slot until the timeout.

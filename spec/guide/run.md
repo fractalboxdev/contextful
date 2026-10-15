@@ -39,7 +39,8 @@ pins the connector and plan ({{run.own.pinned-plan-changed}}); host jobs use the
 scope ({{run.own.host-scope}}).
 
 Bodies: {{run.own.body-implementation}}, {{run.own.body-dependencies}}, {{run.own.body-compatibility}}.
-Items follow {{run.items.opt-in}} and {{run.items.identity}}.
+Items follow {{run.items.opt-in}} and {{run.items.identity}}; a delegate's answer is
+recorded once ({{run.items.delegated-item}}).
 Outcomes follow {{run.items.completion}} and {{run.items.outcomes}};
 admission follows {{run.items.entity-admission}}, {{run.items.overlap}} and {{run.items.fence}}.
 Retries follow {{run.items.retry-budget}} and {{run.items.replay}}.
@@ -69,7 +70,7 @@ secret_access_key = "env://CORPUS_SECRET_ACCESS_KEY"
 ```
 
 Stop writers, capture {{run.journal.execution-backup}}, restore
-{{run.journal.execution-recovery}}, and restart. Replacement uses
+{{run.journal.execution-recovery}}, restart. Replacement uses
 {{run.journal.postgres-stores}}; exports follow {{run.export.remote-state}} and
 {{run.export.writer-fenced}}.
 Cloudflare recovery follows {{run.journal.d1-profile}}, {{run.journal.d1-guard}},
@@ -88,12 +89,12 @@ run row every await observes through one token ({{run.cancel.one-token}}), and l
 never stops mid-write ({{run.cancel.land-path-uncut}}). An awaiting run
 suspends durably until its single-use token returns ({{run.suspend.awakeable}}).
 
-A deployment declares its writing site ({{run.record.writing-site}}) once in `contextful.toml`,
-as `site_id` or `site_id_env`; `--site-id` replaces it for one run
+A deployment declares its writing site once in `contextful.toml`
+({{run.record.writing-site}}); `--site-id` replaces it for one run
 ({{run.record.site-id-unresolved}}).
 
 Every run closes on a shared status ({{run.record.status-set}}); live progress is
-a best-effort projection the runner never reads back ({{run.project.best-effort}}).
+a best-effort projection the runner never reads ({{run.project.best-effort}}).
 
 A backfill splits history into leased chunks whose commits are fenced against a stale holder ({{run.backfill.fenced-commit}}); a seed bulk-loads
 consumer-held history below a ceiling through the same land path ({{run.seed.one-land-path}}).

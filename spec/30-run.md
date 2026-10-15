@@ -193,10 +193,14 @@ Independent store-driven items, their durable receipts, bounded retries and enti
 - `overlap` — An active entity lease returns a deferred item outcome through the scheduler's failed fire report; its next scheduled fire rechecks admission.
 - `fence` — Recorded effects and output publication check their execution owner and entity fence immediately before dispatch; a superseded owner sends no provider request and publishes no output.
   *because an owner that resumes after transfer cannot authorize another effect*
+- `delegated-item` — Under a delegated body, an item's attempt is one request under {{surface.delegate.envelope}}, and the answer is recorded as the body output under the item's entry key, so a resume replays it and sends nothing.
+  *A-surface*
 
 #### Scenarios
 
 - `run.items.completion`: WHEN one input fails permanently among three isolated items, THEN both healthy items land and reordering a later fire repeats neither completed body.
+- `run.items.fence`: WHEN a newer owner takes an entity's lease while an earlier job's item resumes, THEN that resume sends no delegate request and publishes nothing.
+- `run.items.entity-admission`: WHEN three store-driven jobs declare one entity namespace and key column and two fire in one window, THEN at most one item per key enters a body and the later job's item reports deferred.
 - `run.items.entity-admission`: WHEN two jobs target one entity under different plans, THEN one enters its body and the other reports deferred while unrelated entities proceed.
 - `run.items.fence`: WHEN an entity lease transfers before a paid call, THEN the earlier attempt invokes no provider.
 

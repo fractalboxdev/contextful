@@ -215,3 +215,13 @@ Acceptance: `contextful_acceptance::m15::m15_point_in_time`
 Reach: An agent walks admitted edges from an entity and sees only what its credential can read.
 
 Acceptance: `contextful_acceptance::m16::m16_traverse`
+
+## 17 — Delegated bodies
+
+| Operations | Intent |
+| --- | --- |
+| `surface.delegate` | A store-driven item's body on deploy-bound code outside the binary: the binding, the envelope, signed answers, call and submit modes, and the outcome vocabulary. |
+
+Reach: A store-driven item runs its paid call on a loopback delegate, its answer lands as the item's rows, and a resume after a restart sends no second request.
+
+Acceptance: `contextful_acceptance::m17::m17_delegated`

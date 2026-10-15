@@ -63,20 +63,21 @@ armed set running ({{surface.reconcile.fail-static}}). Arm holds back an unreada
 alone ({{surface.arm.unreadable-schedule}}) and evaluates due-ness from an in-process tick
 ({{surface.arm.tick-interval}}) or an external wake ({{surface.arm.wake-answer}}). Fire runs
 only the closed kind union ({{surface.fire.job-kind-unknown}}), and dispatch fences worker
-callbacks by attempt ({{surface.dispatch.callback-rejected}}). Reside refuses to serve from
-a region the policy omits ({{surface.reside.region-mismatch}}).
+callbacks by attempt ({{surface.dispatch.callback-rejected}}). An item can run on a bound
+delegate ({{surface.delegate.binding}}), its answer landing as rows
+({{surface.delegate.outcome}}). Reside refuses to serve from a region the policy omits
+({{surface.reside.region-mismatch}}).
 
 Synced apply records an admin-attested snapshot ({{surface.apply.synced-attestation}}). Cold reconciliation verifies receipts under locally pinned issuer keys ({{surface.reconcile.issuer-pin}}) and checks local declarations ({{surface.reconcile.pulled-control}}); refusals name their reason ({{surface.reconcile.pulled-control-untrusted}}).
 
-Each page and API route verifies the operator's Access assertion or Cognito session and that page's grant
+Each page and API route verifies the operator's identity assertion and that page's grant
 ({{surface.open-console.page-routes}}, {{surface.open-console.wrong-page}}).
 Admin edit and apply also require the server's admin capability
 ({{surface.open-console.admin-grant}}). The Admin canvas projects pipelines, schedules,
-steps and run outcomes; its edits reach the same
-control document that the reconciler reads.
+steps and run outcomes; its edits reach the control document the reconciler reads.
 
 Query turns one question into one answer ({{surface.plan-turn.turn-flow}}). The server, never the client, chooses
-every capability the turn exercises: tools come from the turn's admitted packs
+every capability a turn exercises: tools come from the turn's admitted packs
 ({{surface.ground.unadmitted-tool}}), the query endpoint reaches no write
 ({{surface.ground.mutating-tool}}), and views are built server-side
 ({{surface.render.client-authored-view}}). Prose exists only over a tool result
@@ -88,14 +89,14 @@ every capability the turn exercises: tools come from the turn's admitted packs
 Admin displays the pipeline, schedule, steps and latest run. The operator applies a nightly `fold` targeting `meta_ads_insights`. The
 target resolves to a produced table ({{surface.fire.target-unbound}}), so validation
 passes. A second operator applied a minute earlier; the compare-and-swap loses, and the
-operator surface reloads the winner and reapplies the pending edit onto it. The next poll arms the
+surface reloads the winner and reapplies the pending edit. The next poll arms the
 job, and at its instant dispatch starts one instance. A worker running the fold goes
 silent; after the lapse its work moves to another worker under the next attempt
 ({{surface.dispatch.heartbeat-lapse}}), and the silent worker's late callback changes
 nothing.
 
-Next morning the operator opens Query on the `field-notes` store. Its registry entry
-carries no credential name of its own; the name derives from the id
+The operator opens Query on the `field-notes` store. Its registry entry
+carries no credential name; the name derives from the id
 ({{surface.register-store.authored-name}}). The server re-verifies the perimeter assertion
 and mints a per-reader credential, falling back or refusing as
 {{surface.ground.mint-refused}} states.
