@@ -23,19 +23,40 @@ test("brief requires a turnless present-time session and live matched arrivals",
   assert.equal(await deriveBrief({ ...input, arrivals: [] }), null);
 });
 
-test("brief caps window at seven days, subjects at three, and articles at three", async () => {
+function crowdedBrief() {
   const conclusions = Array.from({ length: 5 }, (_, n) => ({ subject: `Acme${n}`, text: `Acme${n} filings need review`, live: true }));
   const arrivals = conclusions.flatMap((c, n) => Array.from({ length: 5 }, (_, m) => ({ id: `${n}-${m}`, label: `${c.subject} filing`, topics: ["filings"], arrivedAt: "2026-01-08T11:00:00Z" })));
-  const card = await deriveBrief({ session: { turns: 0, vantage: "present" }, conclusions, arrivals, now, windowDays: 100, budgetMs: 1000 });
+  return deriveBrief({ session: { turns: 0, vantage: "present" }, conclusions, arrivals, now, windowDays: 100, budgetMs: 1000 });
+}
+
+// spec: surface.brief.catchup-window@5445a060
+test("brief caps the requested window at seven days", async () => {
+  const card = await crowdedBrief();
   assert.equal(card?.windowDays, 7);
-  assert.equal(card?.subjects.length, 3);
-  assert.ok(card?.subjects.every((subject) => subject.articles.length === 3));
 });
 
+// spec: surface.brief.card-subjects@1c18a15b
+test("brief carries at most three subjects", async () => {
+  const card = await crowdedBrief();
+  assert.equal(card?.subjects.length, 3);
+});
+
+// spec: surface.brief.articles-per-subject@89bcce7f
+test("brief carries at most three articles per subject", async () => {
+  const card = await crowdedBrief();
+  assert.deepEqual(card?.subjects.map((subject) => subject.articles.length), [3, 3, 3]);
+});
+
+const failingArrivals = async () => { throw new Error("unavailable"); };
+const stalledArrivals = () => new Promise<never>(() => {});
+
+// spec: surface.brief.absence-is-earned@0777ef8f
 test("brief reports derivation failure and timeout without a card", async () => {
   const base = { session: { turns: 0, vantage: "present" }, conclusions: [conclusion], now, budgetMs: 1000 };
-  await assert.rejects(deriveBrief({ ...base, loadArrivals: async () => { throw new Error("unavailable"); } }), /ConsoleBriefUnavailable/);
-  await assert.rejects(deriveBrief({ ...base, loadArrivals: () => new Promise(() => {}), budgetMs: 5 }), /ConsoleBriefUnavailable/);
+  await assert.rejects(deriveBrief({ ...base, loadArrivals: failingArrivals }), /ConsoleBriefUnavailable/);
+  await assert.rejects(deriveBrief({ ...base, loadArrivals: stalledArrivals, budgetMs: 5 }), /ConsoleBriefUnavailable/);
+  assert.equal(await deriveBrief({ ...base, arrivals: [row], session: { turns: 1, vantage: "present" } }), null);
+  assert.equal(await deriveBrief({ ...base, arrivals: [row], conclusions: [{ ...conclusion, live: false }] }), null);
 });
 
 test("brief refuses a missing derivation budget before loading arrivals", async () => {

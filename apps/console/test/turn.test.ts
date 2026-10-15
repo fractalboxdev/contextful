@@ -4,6 +4,7 @@ import {
   ConsoleError,
   OverlayCache,
   StreamingRedactor,
+  buildSuggestions,
   createTurn,
   parseVantage,
   parseWebBound,
@@ -32,6 +33,7 @@ function harness(overrides: Record<string, unknown> = {}) {
   return { turn, calls };
 }
 
+// spec: surface.ground.sources-block@b0ecb88b
 test("a grounded turn cites only governed tool results", async () => {
   const { turn, calls } = harness({ synthesize: async function* () { yield "Three rows [row-1]."; } });
   const answer = await turn.ask({ question: "How many?", packs: ["data"] });
@@ -42,25 +44,31 @@ test("a grounded turn cites only governed tool results", async () => {
   assert.deepEqual(answer.sources.map((source: { id: string }) => source.id), ["source-1"]);
 });
 
+const emptyTransport = { call: async () => ({ rows: [], sources: [] }) };
+
+// spec: surface.ground.ungrounded-answer@ec85da5c
 test("a turn with no tool result refuses model prose", async () => {
-  const { turn } = harness({
-    transport: { call: async () => ({ rows: [], sources: [] }) },
-  });
+  const { turn } = harness({ transport: emptyTransport });
   await assert.rejects(turn.ask({ question: "Guess", packs: ["data"] }),
     (error: unknown) => error instanceof ConsoleError && error.code === "ConsoleUngroundedAnswer");
 });
 
-test("unadmitted and mutating calls dispatch nothing", async () => {
-  const { turn, calls } = harness({
-    planner: async () => [{ tool: "query", arguments: {} }],
-  });
+const erasePlanner = async () => [{ tool: "erase", arguments: {} }];
+
+// spec: surface.ground.unadmitted-tool@4490b1e4
+test("a call outside the turn's packs dispatches nothing", async () => {
+  const { turn, calls } = harness();
   await assert.rejects(turn.ask({ question: "Read", packs: [] }),
     (error: unknown) => error instanceof ConsoleError && error.code === "ConsoleToolNotAdmitted");
   assert.deepEqual(calls, []);
-  const write = harness({ tools: [{ name: "erase", pack: "data", kind: "write" }], planner: async () => [{ tool: "erase", arguments: {} }] });
-  await assert.rejects(write.turn.ask({ question: "Erase", packs: ["data"] }),
+});
+
+// spec: surface.ground.mutating-tool@581400de
+test("a client-reachable write call dispatches nothing", async () => {
+  const { turn, calls } = harness({ tools: [{ name: "erase", pack: "data", kind: "write" }], planner: erasePlanner });
+  await assert.rejects(turn.ask({ question: "Erase", packs: ["data"] }),
     (error: unknown) => error instanceof ConsoleError && error.code === "ConsoleMutatingToolRequested");
-  assert.deepEqual(write.calls, []);
+  assert.deepEqual(calls, []);
 });
 
 // spec: surface.ground.org-face-read-only@030074cb
@@ -77,9 +85,13 @@ test("direct file table functions refuse before dispatch", async () => {
   assert.deepEqual(calls, []);
 });
 
+const tenSources = Array.from({ length: 10 }, (_, i) => ({ id: `s${i}`, label: `Source ${i}` }));
+const tenSourceTransport = { call: async () => ({ rows: [{ value: 1 }], sources: tenSources }) };
+
+// spec: surface.ground.sources-per-turn@a3c4b7b6
 test("source list caps at eight and excludes synthetic citations", async () => {
   const { turn } = harness({
-    transport: { call: async () => ({ rows: [{ value: 1 }], sources: Array.from({ length: 10 }, (_, i) => ({ id: `s${i}`, label: `Source ${i}` })) }) },
+    transport: tenSourceTransport,
     synthesize: async function* () { yield "Answer [invented]."; },
   });
   const answer = await turn.ask({ question: "List", packs: ["data"] });
@@ -98,39 +110,70 @@ test("source identifiers returned to Query never expose denylisted material", as
   assert.match(answer.sources[0].id, /^source-\d+$/);
 });
 
+async function* splitSecret() { yield "Filed by SEC"; yield "RET-ID today."; }
+
+// spec: surface.speak.stream-redaction@28e3f060
+test("each streamed model chunk is redacted before Query receives prose", async () => {
+  const { turn } = harness({ denylist: ["SECRET-ID"], synthesize: splitSecret });
+  const answer = await turn.ask({ question: "Who filed?", packs: ["data"] });
+  assert.match(answer.text, /^Filed by \[redacted\] today\./);
+  assert.doesNotMatch(answer.text, /SECRET-ID|SEC\b/);
+});
+
 test("rows without governed provenance cannot become answer prose", async () => {
   const { turn } = harness({ transport: { call: async () => ({ rows: [{ value: 1 }], sources: [] }) } });
   await assert.rejects(turn.ask({ question: "Explain", packs: ["data"] }),
     (error: unknown) => error instanceof ConsoleError && error.code === "ConsoleUngroundedAnswer");
 });
 
+const undatedWebPlanner = async () => [{ tool: "web", arguments: {}, publicationBound: "no-date" }];
+
+// spec: surface.set-vantage.web-bound-unparseable@3b66b2d5
 test("a web leg with an invalid publication bound fails before dispatch", async () => {
+  assert.throws(() => parseWebBound("unknown"),
+    (error: unknown) => error instanceof ConsoleError && error.code === "ConsoleWebBoundUnparseable");
   const { turn, calls } = harness({
     tools: [{ name: "web", pack: "web", kind: "read", leg: "web" }],
-    planner: async () => [{ tool: "web", arguments: {}, publicationBound: "no-date" }],
+    planner: undatedWebPlanner,
   });
   await assert.rejects(turn.ask({ question: "Search", packs: ["web"] }),
     (error: unknown) => error instanceof ConsoleError && error.code === "ConsoleWebBoundUnparseable");
   assert.deepEqual(calls, []);
 });
 
-test("a failed first round replans once and the overlay reaches synthesis alone", async () => {
+test("a failed first round replans once", async () => {
   const plannerInputs: unknown[] = [];
-  const synthesisInputs: unknown[] = [];
   let reads = 0;
   const { turn } = harness({
     planner: async (input: unknown) => { plannerInputs.push(input); return [{ tool: "query", arguments: {} }]; },
     transport: { call: async () => (++reads === 1 ? { rows: [], sources: [] } : { rows: [{ value: 1 }], sources: [{ id: "one", label: "One" }] }) },
-    overlay: async () => "Operator voice",
-    synthesize: async function* (input: unknown) { synthesisInputs.push(input); yield "One."; },
   });
   await turn.ask({ question: "Find", packs: ["data"] });
   assert.equal(plannerInputs.length, 2);
   assert.equal(reads, 2);
+});
+
+function overlayHarness() {
+  const plannerInputs: unknown[] = [];
+  const synthesisInputs: unknown[] = [];
+  const { turn } = harness({
+    planner: async (input: unknown) => { plannerInputs.push(input); return [{ tool: "query", arguments: {} }]; },
+    overlay: async () => "Operator voice",
+    synthesize: async function* (input: unknown) { synthesisInputs.push(input); yield "One."; },
+  });
+  return { turn, plannerInputs, synthesisInputs };
+}
+
+// spec: surface.plan-turn.overlay-audience@b474dae0
+test("a store's overlay reaches synthesis and stays outside the planner", async () => {
+  const { turn, plannerInputs, synthesisInputs } = overlayHarness();
+  assert.ok(await turn.ask({ question: "Find", packs: ["data"], store: "store" }));
+  assert.equal(plannerInputs.length, 1);
   assert.doesNotMatch(JSON.stringify(plannerInputs), /Operator voice/);
   assert.match(JSON.stringify(synthesisInputs), /Operator voice/);
 });
 
+// spec: surface.set-vantage.unparseable@880c59a2
 test("vantage accepts calendar days and instants, and rejects invalid dates", () => {
   assert.equal(parseVantage("2026-10-06"), "2026-10-06");
   assert.equal(parseVantage("2026-10-06T12:30:00Z"), "2026-10-06T12:30:00Z");
@@ -138,8 +181,8 @@ test("vantage accepts calendar days and instants, and rejects invalid dates", ()
     (error: unknown) => error instanceof ConsoleError && error.code === "ConsoleVantageUnparseable" && error.status === 400);
   assert.throws(() => parseVantage("2026-02-30T12:30:00Z"),
     (error: unknown) => error instanceof ConsoleError && error.code === "ConsoleVantageUnparseable");
-  assert.throws(() => parseWebBound("unknown"),
-    (error: unknown) => error instanceof ConsoleError && error.code === "ConsoleWebBoundUnparseable");
+  assert.throws(() => parseVantage("tomorrow"),
+    (error: unknown) => error instanceof ConsoleError && error.code === "ConsoleVantageUnparseable" && error.status === 400);
 });
 
 test("refused per-reader mint falls back only to an installed shared credential", async () => {
@@ -184,23 +227,23 @@ test("a planner call targeting a memory relation dispatches nothing", async () =
   assert.deepEqual(calls, []);
 });
 
-test("the code path refuses an unresponsive transport within ten seconds", async () => {
-  const { turn } = harness({
-    transport: { call: async () => new Promise(() => {}) },
-    timeoutMs: 5,
-  });
-  await assert.rejects(turn.ask({ question: "Slow", packs: ["data"] }),
-    /code path exceeded 10 s/);
-});
+const stalledTransport = { call: () => new Promise<never>(() => {}) };
 
-test("the transport receives a bounded read and cannot return more than 5000 rows", async () => {
-  let maxRows = 0;
-  const { turn } = harness({ transport: { call: async (call: { maxRows: number }) => {
-    maxRows = call.maxRows;
+function oversizedTransport(limits: number[]) {
+  return { call: async (call: { maxRows: number }) => {
+    limits.push(call.maxRows);
     return { rows: Array.from({ length: 5001 }, () => ({})), sources: [] };
-  } } });
-  await assert.rejects(turn.ask({ question: "Many", packs: ["data"] }), RangeError);
-  assert.equal(maxRows, 5000);
+  } };
+}
+
+// spec: surface.plan-turn.code-path-bounds@7af05d90
+test("the code path reads at most 5000 rows per data table and stops at its deadline", async () => {
+  const limits: number[] = [];
+  const bounded = harness({ transport: oversizedTransport(limits) });
+  await assert.rejects(bounded.turn.ask({ question: "Many", packs: ["data"] }), RangeError);
+  assert.deepEqual(limits, [5000]);
+  const stalled = harness({ transport: stalledTransport, timeoutMs: 5 });
+  await assert.rejects(stalled.turn.ask({ question: "Slow", packs: ["data"] }), /code path exceeded 10 s/);
 });
 
 test("one table cannot exceed the row budget through repeated calls", async () => {
@@ -257,17 +300,29 @@ test("a table contributes at most three sampled arrival labels", () => {
     [{ table: "events", labels: ["a", "b", "c"] }]);
 });
 
-test("overlay cache includes misses, expires after five minutes and truncates at 8000 chars", async () => {
-  let now = 0;
-  let reads = 0;
-  const cache = new OverlayCache(async () => { reads++; return "x".repeat(9000); }, () => now);
+function countingOverlay(text: string | null) {
+  const state = { now: 0, reads: 0 };
+  const cache = new OverlayCache(async () => { state.reads++; return text; }, () => state.now);
+  return { state, cache };
+}
+
+// spec: surface.plan-turn.overlay-cache@c27dca5c
+test("overlay cache holds for five minutes, a miss included", async () => {
+  const { state, cache } = countingOverlay(null);
+  assert.equal(await cache.get("store"), "");
+  state.now = 299_999;
+  await cache.get("store");
+  assert.equal(state.reads, 1);
+  state.now = 300_000;
+  await cache.get("store");
+  assert.equal(state.reads, 2);
+});
+
+// spec: surface.plan-turn.overlay-length@b5904473
+test("an overlay truncates at 8000 chars", async () => {
+  const { cache } = countingOverlay("x".repeat(9000));
   assert.equal((await cache.get("store")).length, 8000);
-  now = 299_999;
-  await cache.get("store");
-  assert.equal(reads, 1);
-  now = 300_000;
-  await cache.get("store");
-  assert.equal(reads, 2);
+  assert.equal((await countingOverlay("y".repeat(8000)).cache.get("store")).length, 8000);
 });
 
 // spec: surface.speak.redactor-lookahead@2d3a1762
@@ -276,4 +331,19 @@ test("streaming redactor masks identifiers split across chunks", () => {
   const output = redactor.push("before SEC") + redactor.push("RET-ID after") + redactor.finish();
   assert.equal(output, "before [redacted] after");
   assert.throws(() => new StreamingRedactor(["x".repeat(129)]), RangeError);
+});
+
+// spec: surface.speak.unanswerable-suggestion@dc680207
+test("a suggestion set refuses a prompt no admitted read tool answers", () => {
+  const scope = {
+    tools: [readTool, { name: "erase", pack: "data", kind: "write" as const, table: "audit" }, { name: "peek", pack: "admin", kind: "read" as const, table: "ledger" }],
+    tables: [{ name: "events", kind: "data" as const }, { name: "audit", kind: "data" as const }, { name: "ledger", kind: "data" as const }, { name: "memory_entries", kind: "memory" as const }],
+    packs: ["data"],
+  };
+  const answerable = { prompt: "Tell me about Events", table: "events" };
+  assert.deepEqual(buildSuggestions([answerable], scope), [answerable]);
+  for (const table of ["audit", "ledger", "memory_entries", "missing"]) {
+    assert.throws(() => buildSuggestions([answerable, { prompt: `Tell me about ${table}`, table }], scope),
+      (error: unknown) => error instanceof ConsoleError && error.code === "ConsoleSuggestionUnanswerable" && error.message === `Tell me about ${table}`);
+  }
 });

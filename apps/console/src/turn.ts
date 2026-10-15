@@ -58,6 +58,21 @@ export function parseWebBound(value: string): string {
   catch { throw new ConsoleError("ConsoleWebBoundUnparseable", value); }
 }
 
+export type Suggestion = { prompt: string; table: string };
+
+export function buildSuggestions(
+  suggestions: Suggestion[],
+  scope: { tools: Tool[]; tables: DataTable[]; packs: string[] },
+): Suggestion[] {
+  for (const suggestion of suggestions) {
+    const data = scope.tables.some((table) => table.kind === "data" && table.name === suggestion.table);
+    const reader = scope.tools.some((tool) => scope.packs.includes(tool.pack) && tool.kind === "read"
+      && tool.leg !== "web" && tool.access !== "direct-file" && tool.table === suggestion.table);
+    if (!data || !reader) throw new ConsoleError("ConsoleSuggestionUnanswerable", suggestion.prompt);
+  }
+  return suggestions;
+}
+
 export function sampleArrivals(arrivals: Array<{ table: string; labels: string[] }>) {
   return arrivals.map((arrival) => ({ table: arrival.table, labels: arrival.labels.slice(0, 3) }));
 }
