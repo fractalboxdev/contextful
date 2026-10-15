@@ -7,15 +7,15 @@ An unpinned clause is `committed`; a pinned one is `performed` when its Rust, Le
 | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
 | `assurance` | 3 | 18 | 305 | 63 | 23 | 8 | 268 | 0 | 268 |
 | `authority` | 2 | 16 | 295 | 79 | 29 | 9 | 224 | 0 | 224 |
-| `connector` | 2 | 14 | 356 | 90 | 21 | 16 | 232 | 0 | 232 |
+| `connector` | 2 | 14 | 356 | 90 | 21 | 16 | 233 | 0 | 233 |
 | `corpus` | 1 | 10 | 79 | 37 | 7 | 0 | 79 | 0 | 79 |
 | `disclosure` | 3 | 16 | 157 | 68 | 13 | 3 | 64 | 0 | 64 |
 | `read` | 2 | 18 | 238 | 38 | 24 | 4 | 227 | 0 | 227 |
 | `run` | 3 | 28 | 501 | 113 | 44 | 14 | 445 | 0 | 445 |
-| `store` | 3 | 19 | 288 | 65 | 14 | 12 | 277 | 0 | 277 |
+| `store` | 3 | 19 | 288 | 65 | 14 | 12 | 278 | 0 | 278 |
 | `surface` | 2 | 20 | 137 | 59 | 22 | 0 | 114 | 0 | 114 |
 | `topology` | 1 | 6 | 79 | 25 | 5 | 3 | 72 | 0 | 72 |
-| **total** | 22 | 165 | 2435 | 637 | 202 | 69 | 2002 | 0 | |
+| **total** | 22 | 165 | 2435 | 637 | 202 | 69 | 2004 | 0 | |
 
 Decision records: 18.
 
@@ -27,9 +27,9 @@ A milestone reads `closed` when its acceptance test computes `passing` and every
 | --- | --- | --- | --- | --- | --- |
 | 0 — The test-first gate | 2 | 22 | 19 | passing | closed |
 | 1 — The authority core | 14 | 244 | 225 | passing | closed |
-| 2 — The store | 9 | 181 | 170 | passing | closed |
+| 2 — The store | 9 | 181 | 171 | passing | closed |
 | 3 — The run path | 12 | 269 | 254 | passing | closed |
-| 4 — Ingest | 25 | 551 | 386 | passing | open |
+| 4 — Ingest | 25 | 551 | 387 | passing | open |
 | 5 — The read face under enforcement | 17 | 298 | 241 | passing | open |
 | 6 — Sync and replicas | 8 | 83 | 83 | passing | closed |
 | 7 — Memory | 6 | 55 | 54 | passing | closed |
@@ -666,6 +666,7 @@ Unscheduled operations: 12.
 | `connector.resolve.shadowed-name` | `crates/contextful-outbound/tests/integration/resolve.rs::a_name_two_adapters_answer_is_refused_at_first_hydration` | performed |
 | `connector.resolve.unresolved-name` | `crates/contextful-outbound/tests/integration/resolve.rs::an_unanswered_reference_refuses_at_preflight_and_at_the_call` | performed |
 | `connector.resolve.wiped-on-drop` | `crates/contextful-core/tests/integration/connector/reference.rs::a_hydrated_value_zeroes_its_bytes_on_drop` | performed |
+| `connector.source.body-format` | `crates/contextful-connectors/tests/integration/http.rs::a_declared_format_selects_the_decoder_and_json_is_the_default` | performed |
 | `connector.source.bound-column-occupied` | `crates/contextful-connectors/tests/integration/bound.rs::a_fetched_row_already_carrying_a_bound_column_refuses_the_read` | performed |
 | `connector.source.bound-columns` | `crates/contextful-connectors/tests/integration/bound.rs::every_fetched_row_carries_its_bound_columns` | performed |
 | `connector.source.cell-out-of-range` | `crates/contextful-decode/tests/integration/workbook.rs::a_cell_past_the_header_width_is_refused_rather_than_dropped` | performed |
@@ -1646,6 +1647,7 @@ Unscheduled operations: 12.
 | `store.declare.write-mode` | `crates/contextful-core/tests/integration/store/declare.rs::write_mode_is_append_by_default_or_replace` | performed |
 | `store.emit.plan` | `crates/contextful-sync/tests/integration/generation.rs::an_emitted_plan_lists_what_the_push_commits_and_touches_no_bucket` | performed |
 | `store.emit.plan-scope` | `crates/contextful-sync/tests/integration/generation.rs::a_plan_leaves_out_keys_another_node_owns` | performed |
+| `store.encrypt.cipher` | `crates/contextful-context/tests/integration/encrypt.rs::a_bound_store_encrypts_parquet_footers_and_seals_sidecars_and_ledgers_per_file` | performed |
 | `store.encrypt.key-unbound` | `crates/contextful-context/tests/integration/encrypt.rs::an_unbound_key_source_refuses_to_open_the_store` | performed |
 | `store.encrypt.machine-catalog-sealing` | `crates/contextful-sqlite/tests/integration/machine.rs::sealed_machine_catalog_persists_lease_cursor_and_run_without_plaintext` | performed |
 | `store.encrypt.run-state-envelope` | `crates/contextful-sync/tests/integration/run_state.rs::a_bound_run_state_stays_sealed_across_record_and_read` | performed |

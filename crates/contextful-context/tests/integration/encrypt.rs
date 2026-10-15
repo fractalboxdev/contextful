@@ -590,6 +590,123 @@ fn a_bound_store_seals_its_request_ledger() {
     assert!(written(&dir.path().join(".contextful/context/research")).iter().all(|p| !std::fs::read(p).unwrap().windows(canary.len()).any(|part| part == canary.as_bytes())));
 }
 
+/// A bound store writes Parquet under an encrypted footer and seals each sidecar and ledger file
+/// under its own data key, opened by the project key alone.
+// spec: store.encrypt.cipher@64698cff
+#[test]
+fn a_bound_store_encrypts_parquet_footers_and_seals_sidecars_and_ledgers_per_file() {
+    use contextful_context::encrypt::AesGcmFileCipher;
+    use contextful_context::fulltext::{build, FulltextSidecar};
+    use contextful_context::land::{land, Batch, RunContext};
+    use contextful_context::ledger;
+    use contextful_context::vector::Sealing;
+    use contextful_core::store::declare::TableDecl;
+    use contextful_core::store::lay_out::{NodeId, SnapshotId};
+    use contextful_core::store::ledger::RequestRecord;
+    use contextful_core::store::reserve::Injection;
+    use contextful_core::time::Instant;
+    use serde_json::json;
+
+    const CANARY: &str = "cipher-canary-74-5f1e";
+    let key_var = "CONTEXTFUL_TEST_KEY_74_CIPHER";
+    // This unique variable is read only by this test's store; no other test changes it.
+    unsafe { std::env::set_var(key_var, "0123456789abcdef0123456789abcdef") };
+    let (dir, opened) = store_with(&format!("[encryption]\nkey_source = \"env:{key_var}\"\n"));
+    let store = opened.unwrap();
+    let root = dir.path().join(".contextful/context/research");
+    let cipher = store.file_cipher().unwrap();
+    let other = AesGcmFileCipher::new([0x42; 32], cipher.key_version());
+
+    // Parquet: modular encryption with the footer encrypted, so no `PAR1` magic and no plaintext.
+    let decl = TableDecl::parse_pipeline("[[pipeline.tables]]\nname = \"documents\"\n").unwrap().remove(0);
+    let node = NodeId::parse("ingest-a").unwrap();
+    let at = Instant::parse("2030-01-01T00:00:00Z").unwrap();
+    let batch = Batch { rows: vec![json!({"doc_id": "d1", "body": CANARY}).as_object().unwrap().clone()], types: Default::default() };
+    let injection = Injection { run_id: "run-1".into(), site_id: "site-a".into(), batch_seq: Some(0), authored_by: None, taint: None };
+    land(&store, &decl, &batch, &RunContext { node: node.clone(), injection, committed_at: at }).unwrap();
+    let parts: Vec<_> = tree(&root).into_iter().filter(|(p, _)| p.extension().is_some_and(|e| e == "parquet")).collect();
+    assert!(!parts.is_empty(), "the exclusion below ranges over no element");
+    for (path, bytes) in &parts {
+        assert!(bytes.starts_with(b"PARE") && bytes.ends_with(b"PARE"), "{} carries a plaintext footer", path.display());
+        assert!(!bytes.is_empty(), "the exclusion below ranges over no element");
+        assert!(!bytes.windows(CANARY.len()).any(|w| w == CANARY.as_bytes()), "{} holds plaintext", path.display());
+    }
+
+    // Ledger: each file seals under a fresh data key; the project key opens it and another key does not.
+    let record = RequestRecord {
+        request_id: CANARY.into(), vendor_request_id: None, connector: "source".into(),
+        method: "GET".into(), url_host: "example.invalid".into(), status_code: Some(200),
+        started_at: at, duration_ms: 1, batch_seq: Some(0),
+    };
+    ledger::append(&store, "documents", "run-1", &node, std::slice::from_ref(&record)).unwrap();
+    ledger::append(&store, "documents", "run-2", &node, std::slice::from_ref(&record)).unwrap();
+    let ledgers: Vec<Vec<u8>> = ledger::files(&store, "documents").unwrap().iter().map(|p| std::fs::read(p).unwrap()).collect();
+    assert_eq!(ledgers.len(), 2);
+    // Bytes 12..72 hold the wrap nonce and the wrapped data key; the header is the AAD of both seals.
+    let mut spliced = ledgers[1].clone();
+    spliced[12..72].copy_from_slice(&ledgers[0][12..72]);
+    assert!(cipher.open(&spliced).is_err(), "two ledger files share a data key");
+    for bytes in &ledgers {
+        assert!(!bytes.is_empty(), "the exclusion below ranges over no element");
+        assert!(!bytes.windows(CANARY.len()).any(|w| w == CANARY.as_bytes()));
+        assert!(cipher.open(bytes).is_ok());
+        assert!(contextful_core::store::encrypt::FileCipher::open(&other, bytes).is_err());
+    }
+
+    // Sidecar: every file the full-text builder writes seals under the store cipher.
+    let (rows, sidecar_decl) = fulltext_rows(CANARY);
+    let sidecars = tempfile::tempdir().unwrap();
+    let id = SnapshotId::next(at, None);
+    let entry = build(sidecars.path(), &id, &rows, &sidecar_decl, &sidecar_decl.indexes()[0], &Sealing::Sealed(cipher.as_ref())).unwrap();
+    let files = tree(sidecars.path());
+    assert!(!files.is_empty(), "the exclusion below ranges over no element");
+    for (path, bytes) in &files {
+        assert!(!bytes.is_empty(), "the exclusion below ranges over no element");
+        assert!(!bytes.windows(CANARY.len()).any(|w| w == CANARY.as_bytes()), "{} holds plaintext", path.display());
+        assert!(cipher.open(bytes).is_ok(), "{} opens under the project key", path.display());
+        assert!(contextful_core::store::encrypt::FileCipher::open(&other, bytes).is_err());
+    }
+    let entry = contextful_core::store::index::IndexEntry::from(entry);
+    assert!(FulltextSidecar::open(sidecars.path(), "passages", &entry, &Sealing::Sealed(&other)).is_err());
+    let opened = FulltextSidecar::open(sidecars.path(), "passages", &entry, &Sealing::Sealed(cipher.as_ref())).unwrap();
+    assert_eq!(opened.probe(&["zephyrine".into()], 1).unwrap().candidates[0].id, CANARY);
+
+    // Vector sidecar: the HNSW graph and every file beside it seal under the store cipher.
+    {
+        use arrow_array::builder::{FixedSizeListBuilder, Float32Builder};
+        use arrow_array::{ArrayRef, RecordBatch, StringArray};
+        use contextful_context::vector::{build, GRAPH_FILE};
+        use std::sync::Arc;
+        let ids: Vec<String> = (0..40).map(|i| if i == 17 { CANARY.to_string() } else { format!("passage-{i}") }).collect();
+        let mut vectors = FixedSizeListBuilder::new(Float32Builder::new(), 4);
+        for i in 0..40 {
+            let v = if i == 17 { [0.0, 0.0, 0.0, 1.0] } else { [1.0, i as f32 / 40.0, 0.5, 0.0] };
+            vectors.values().append_slice(&v);
+            vectors.append(true);
+        }
+        let rows = RecordBatch::try_from_iter([
+            ("passage_id", Arc::new(StringArray::from(ids)) as ArrayRef),
+            ("embedding", Arc::new(vectors.finish()) as ArrayRef),
+        ])
+        .unwrap();
+        let decl = TableDecl::parse_pipeline(
+            "[[pipeline.tables]]\nname = \"passages\"\nprimary_key = [\"passage_id\"]\n[[pipeline.tables.indexes]]\nkind = \"vector\"\ncolumn = \"embedding\"\nmodel = \"e5\"\ndim = 4\n",
+        )
+        .unwrap()
+        .remove(0);
+        let vectors_dir = tempfile::tempdir().unwrap();
+        build(vectors_dir.path(), &id, &rows, &decl, &decl.indexes()[0], &Sealing::Sealed(cipher.as_ref())).unwrap();
+        let files = tree(vectors_dir.path());
+        assert!(files.iter().any(|(p, _)| p.ends_with(GRAPH_FILE)), "the vector sidecar writes its graph file");
+        for (path, bytes) in &files {
+            assert!(!bytes.is_empty(), "the exclusion below ranges over no element");
+            assert!(!bytes.windows(CANARY.len()).any(|w| w == CANARY.as_bytes()), "{} holds plaintext", path.display());
+            assert!(cipher.open(bytes).is_ok(), "{} opens under the project key", path.display());
+            assert!(contextful_core::store::encrypt::FileCipher::open(&other, bytes).is_err());
+        }
+    }
+}
+
 #[test]
 fn a_bound_store_seals_landed_blob_bytes() {
     use sha2::Digest;

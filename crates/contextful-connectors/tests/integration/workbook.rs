@@ -11,7 +11,7 @@ const SS: &str = "http://schemas.openxmlformats.org/spreadsheetml/2006/main";
 const REL_NS: &str = "http://schemas.openxmlformats.org/officeDocument/2006/relationships";
 
 /// A one-sheet workbook named `Data` holding `sheet` rows over `shared` strings.
-fn book(sheet: &str, shared: &[&str]) -> Vec<u8> {
+pub(crate) fn book(sheet: &str, shared: &[&str]) -> Vec<u8> {
     let wb = format!(r#"<?xml version="1.0"?><workbook xmlns="{SS}" xmlns:r="{REL_NS}"><sheets><sheet name="Data" sheetId="1" r:id="rId1"/></sheets></workbook>"#);
     let rels = format!(
         r#"<?xml version="1.0"?><Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships"><Relationship Id="rId1" Type="{REL_NS}/worksheet" Target="worksheets/sheet1.xml"/></Relationships>"#
