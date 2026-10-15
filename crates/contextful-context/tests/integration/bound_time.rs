@@ -7,11 +7,11 @@ use contextful_core::store::reconcile::ColumnType;
 use serde_json::json;
 
 fn as_of(v: &str) -> Bounds {
-    Bounds { as_of: Some(Bound::parse(v).unwrap()), valid_as_of: None, available_as_of: None }
+    Bounds { as_of: Some(Bound::parse(v).unwrap()), valid_as_of: None, available_as_of: None, ..Bounds::default() }
 }
 
 fn valid_as_of(v: &str) -> Bounds {
-    Bounds { as_of: None, valid_as_of: Some(Bound::parse(v).unwrap()), available_as_of: None }
+    Bounds { as_of: None, valid_as_of: Some(Bound::parse(v).unwrap()), available_as_of: None, ..Bounds::default() }
 }
 
 #[cfg(feature = "read")]

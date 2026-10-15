@@ -3,6 +3,7 @@
 use contextful_core::read::template::parse_templates;
 use contextful_core::store::bound_time::{Bound, Bounds};
 use contextful_core::store::declare::{AvailableTime, TableDecl, ValidTime};
+use contextful_core::store::reconcile::{Column, ColumnType, Schema};
 use contextful_core::store::relation::relation_bounded;
 use contextful_core::store::StoreError;
 
@@ -17,7 +18,7 @@ fn available(s: &str) -> Bounds {
 #[test]
 fn an_available_time_block_declares_its_column_and_zone() {
     let t = TableDecl::parse_pipeline(EARNINGS).unwrap().remove(0);
-    assert_eq!(t.available_time, Some(AvailableTime { column: "accepted_at".into(), zone: None }));
+    assert_eq!(t.available_time, Some(AvailableTime { column: "accepted_at".into(), ..AvailableTime::default() }));
     let zoned = TableDecl::parse_pipeline(&format!("{EARNINGS}zone = \"America/New_York\"\n")).unwrap().remove(0);
     assert_eq!(zoned.available_time.unwrap().zone.as_deref(), Some("America/New_York"));
     assert!(TableDecl::parse_pipeline(&format!("{EARNINGS}lag_days = 3\n")).is_err(), "an unknown key refuses the block");
@@ -86,4 +87,81 @@ fn a_template_parameter_named_available_as_of_refuses_the_manifest() {
     let manifest = "[[query_templates]]\nid = \"x\"\nsql = \"SELECT 1 WHERE ? IS NOT NULL\"\nparameters = [\"available_as_of:timestamp\"]\n";
     let refused = parse_templates(manifest).unwrap_err();
     assert!(refused.0.contains("available_as_of"), "{refused:?}");
+}
+
+const VINTAGES: &str = "[[pipeline.tables]]\nname = \"gdp\"\nprimary_key = [\"series\"]\ncontent_hash_column = \"digest\"\n\n[pipeline.tables.valid_time]\nfrom = \"period\"\n\n[pipeline.tables.available_time]\ncolumn = \"released_at\"\n";
+
+fn schema(columns: &[(&str, ColumnType)]) -> Schema {
+    Schema { columns: columns.iter().map(|(n, t)| Column::new(*n, t.clone(), true)).collect() }
+}
+
+/// A vintage table declaring no `content_hash_column` raises `StoreVintageHashUndeclared` at validation, naming the table.
+// spec: store.available-time.vintage-hash-undeclared@56bcb6bc
+#[test]
+fn a_vintage_table_without_a_content_hash_is_refused() {
+    let columns = schema(&[("filing_id", ColumnType::Utf8), ("accepted_at", ColumnType::Timestamp)]);
+    let t = TableDecl::parse_pipeline(EARNINGS).unwrap().remove(0);
+    match t.validate(&columns) {
+        Err(StoreError::StoreVintageHashUndeclared(m)) => assert!(m.contains("earnings"), "{m}"),
+        other => panic!("expected StoreVintageHashUndeclared, got {other:?}"),
+    }
+    // An unkeyed table keeps every row and is no vintage table.
+    let unkeyed = TableDecl::parse_pipeline(&EARNINGS.replace("primary_key = [\"filing_id\"]\n", "")).unwrap().remove(0);
+    unkeyed.validate(&columns).unwrap();
+}
+
+/// A vintage table declaring {{store.declare.retain-rows}} raises `StoreVintageRetainRows` at validation, naming the table.
+// spec: store.available-time.vintage-retain-rows@b01a1bfc
+#[test]
+fn a_vintage_table_retaining_rows_by_age_is_refused() {
+    let declared = VINTAGES.replace("content_hash_column = \"digest\"\n", "content_hash_column = \"digest\"\nretain_rows = { column = \"_ingested_at\", age = \"30d\" }\n");
+    let t = TableDecl::parse_pipeline(&declared).unwrap().remove(0);
+    let columns = schema(&[
+        ("series", ColumnType::Utf8),
+        ("period", ColumnType::Timestamp),
+        ("released_at", ColumnType::Timestamp),
+        ("digest", ColumnType::Utf8),
+        ("_ingested_at", ColumnType::Timestamp),
+    ]);
+    match t.validate(&columns) {
+        Err(StoreError::StoreVintageRetainRows(m)) => assert!(m.contains("gdp"), "{m}"),
+        other => panic!("expected StoreVintageRetainRows, got {other:?}"),
+    }
+}
+
+/// A vintage table reads through {{store.declare.dedup-view}} with the availability column appended to its partition key, then resolves one row per {{store.available-time.vintage-resolution}}.
+// spec: store.available-time.vintage-dedup-key@f1788c35
+#[test]
+fn a_vintage_table_dedupes_per_availability_instant_then_resolves() {
+    let t = TableDecl::parse_pipeline(&VINTAGES.replace("[pipeline.tables.valid_time]\nfrom = \"period\"\n\n", "")).unwrap().remove(0);
+    let rel = relation_bounded(&t, &["/s/a.parquet".into()], &[], &[], Bounds::default(), None).unwrap();
+    let dedup = rel.find("PARTITION BY \"series\", \"released_at\" ORDER BY \"_ingested_at\" DESC").unwrap_or_else(|| panic!("{rel}"));
+    let resolve = rel.find("PARTITION BY \"series\" ORDER BY \"released_at\" DESC").unwrap_or_else(|| panic!("{rel}"));
+    // The resolution wraps the dedup, so the dedup renders inside it.
+    assert!(resolve < dedup, "{rel}");
+}
+
+/// A vintage table declaring `valid_time` dedupes as {{store.bound-time.interval-rows}} with the availability column added to the key, so every interval keeps every vintage.
+// spec: store.available-time.vintage-interval-key@f03493c7
+#[test]
+fn a_vintage_table_with_valid_time_keys_on_interval_and_vintage() {
+    let t = TableDecl::parse_pipeline(VINTAGES).unwrap().remove(0);
+    assert_eq!(t.dedup_line(), ["series", "period", "released_at"]);
+    let rel = relation_bounded(&t, &["/s/a.parquet".into()], &[], &[], Bounds::default(), None).unwrap();
+    assert!(rel.contains("PARTITION BY \"series\", \"period\", \"released_at\" ORDER BY"), "{rel}");
+    assert!(rel.contains("PARTITION BY \"series\", \"period\" ORDER BY \"released_at\" DESC"), "{rel}");
+}
+
+/// The lag block parses its class column, a duration per class and `live_since`.
+#[test]
+fn a_lag_declares_a_class_column_and_a_duration_per_class() {
+    let declared = format!("{EARNINGS}live_since = \"2020-01-01T00:00:00Z\"\nlag = {{ class_column = \"form\", classes = {{ \"10-Q\" = \"40d\", \"10-K\" = \"60d\" }} }}\n");
+    let t = TableDecl::parse_pipeline(&declared).unwrap().remove(0);
+    let available = t.available_time.unwrap();
+    assert_eq!(available.lag.as_ref().unwrap().class_column, "form");
+    assert_eq!(available.lag_secs("10-K").unwrap(), Some(60 * 86_400));
+    assert_eq!(available.lag_secs("8-K").unwrap(), None);
+    assert_eq!(available.live_since.as_deref(), Some("2020-01-01T00:00:00Z"));
+    let malformed = format!("{EARNINGS}lag = {{ class_column = \"form\", classes = {{ \"10-Q\" = \"forty\" }} }}\n");
+    assert!(TableDecl::parse_pipeline(&malformed).unwrap().remove(0).available_time.unwrap().lag_secs("10-Q").is_err());
 }

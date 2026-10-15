@@ -36,12 +36,24 @@ impl Bound {
     }
 }
 
+/// Which vintage a read of a vintage table resolves per key
+/// (`store.available-time.vintage-resolution`, `store.available-time.vintage-first`).
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Hash)]
+pub enum Vintage {
+    /// The vintage with the latest availability instant the read admits.
+    #[default]
+    Latest,
+    /// The vintage with the earliest availability instant the read admits.
+    First,
+}
+
 /// The bounds one read carries.
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
 pub struct Bounds {
     pub as_of: Option<Bound>,
     pub valid_as_of: Option<Bound>,
     pub available_as_of: Option<Bound>,
+    pub vintage: Vintage,
 }
 
 impl Bounds {
@@ -59,6 +71,7 @@ impl Bounds {
             as_of: self.as_of,
             valid_as_of: self.valid_as_of.filter(|_| decl.valid_time.is_some()),
             available_as_of: self.available_as_of.filter(|_| decl.available_time.is_some()),
+            vintage: self.vintage,
         }
     }
 

@@ -217,6 +217,15 @@ fn staged_parts_join_the_file_list_only_at_their_commit() {
     assert_eq!(rows, [row("d1", "1.0", "0", "0"), row("d2", "2.0", "0", "1"), row("d3", "2.5", "1", "2")]);
 }
 
+#[test]
+fn a_non_vintage_part_stages_while_its_table_commit_lock_is_held() {
+    let f = Fixture::new();
+    let d = decl("name = \"filings\"");
+    let _commit_lock = f.store.lock_commit("filings").unwrap();
+    let part = stage(&f, &d, &batch(json!([{"id": "d1"}])), &staging("run-s", "2030-01-01T00:01:00Z"), 0, 0).unwrap();
+    assert_eq!(part.rows, 1);
+}
+
 /// A staged part carries no `_commit_seq`: the commit assigns it under the table's commit lock and writes it into
 /// every part it names, so a run committing between a stage and its commit takes the lower value.
 // spec: run.own.stage-commit-seq@a75bdfd0

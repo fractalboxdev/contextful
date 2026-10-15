@@ -20,7 +20,7 @@ use contextful_core::read::pin::{Pins, PIN_ARGUMENT};
 use contextful_core::read::template::READ_ARGUMENTS;
 use contextful_core::read::respond::Response;
 use contextful_core::read::Refusal;
-use contextful_core::store::bound_time::{Bound, Bounds};
+use contextful_core::store::bound_time::{Bound, Bounds, Vintage};
 use contextful_core::ports::Clock;
 use contextful_core::time::Instant;
 use contextful_core::ports::SigningPort;
@@ -188,13 +188,26 @@ fn bound(args: &Map<String, Value>, name: &str) -> Result<Option<Bound>, Protoco
 }
 
 fn bounds(args: &Map<String, Value>) -> Result<Bounds, Protocol> {
-    Ok(Bounds { as_of: bound(args, "as_of")?, valid_as_of: bound(args, "valid_as_of")?, available_as_of: bound(args, "available_as_of")? })
+    Ok(Bounds { as_of: bound(args, "as_of")?, valid_as_of: bound(args, "valid_as_of")?, available_as_of: bound(args, "available_as_of")?, vintage: vintage(args)? })
+}
+
+/// The read argument choosing a vintage table's resolution.
+const VINTAGE: &str = "vintage";
+
+/// The vintage a read resolves on a vintage table: `first`, or `latest` by default
+/// (`store.available-time.vintage-first`).
+fn vintage(args: &Map<String, Value>) -> Result<Vintage, Protocol> {
+    match string(args, VINTAGE)?.as_deref() {
+        None | Some("latest") => Ok(Vintage::Latest),
+        Some("first") => Ok(Vintage::First),
+        Some(other) => Err(invalid(format!("`{VINTAGE}` is `first` or `latest`, not `{other}`"))),
+    }
 }
 
 /// Refuse an argument a tool does not declare; every read tool declares the bounds and `zone`
 /// (`read.register.bound-arguments`, `read.register.available-bound-argument`).
 fn only(args: &Map<String, Value>, tool: &str, known: &[&str]) -> Result<(), Protocol> {
-    match args.keys().find(|k| !known.contains(&k.as_str()) && !READ_ARGUMENTS.contains(&k.as_str())) {
+    match args.keys().find(|k| !known.contains(&k.as_str()) && !READ_ARGUMENTS.contains(&k.as_str()) && k.as_str() != VINTAGE) {
         Some(k) => Err(invalid(format!("`{tool}` takes no argument `{k}`"))),
         None => Ok(()),
     }
@@ -542,7 +555,7 @@ impl<'a> Tools<'a> {
             "memory.recall" => {
                 only(args, name, &["table", "subject", "observed_at", "as_of_ingest", "limit", "internals"])?;
                 // The keyed read names its two clocks itself (`read.register.bound-arguments`).
-                if let Some(k) = ["as_of", "valid_as_of", "available_as_of"].into_iter().find(|k| args.contains_key(*k)) {
+                if let Some(k) = ["as_of", "valid_as_of", "available_as_of", VINTAGE].into_iter().find(|k| args.contains_key(*k)) {
                     return Err(invalid(format!("`{name}` takes no argument `{k}`; it reads `observed_at` and `as_of_ingest`")));
                 }
                 let request = RecallRequest {
@@ -561,6 +574,10 @@ impl<'a> Tools<'a> {
                 let mut arguments = args.clone();
                 for key in READ_ARGUMENTS {
                     arguments.remove(key);
+                }
+                // `vintage` is no reserved name: a template declaring that parameter keeps it.
+                if !self.face.templates().iter().any(|t| t.id == template && t.parameters.iter().any(|p| p.name == VINTAGE)) {
+                    arguments.remove(VINTAGE);
                 }
                 let opts = options(args)?;
                 self.session(caller, zone, opts.bounds, pins)

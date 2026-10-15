@@ -70,7 +70,7 @@ fn an_ownership_answer_returns_every_attached_principal_newest_first() {
 #[test]
 fn an_ownership_answer_reads_enforced_rows_at_the_frontier() {
     let f = fixture();
-    let before = Bounds { as_of: Some(Bound { at: at("2030-01-01T12:00:00Z"), inclusive: true }), valid_as_of: None, available_as_of: None };
+    let before = Bounds { as_of: Some(Bound { at: at("2030-01-01T12:00:00Z"), inclusive: true }), valid_as_of: None, available_as_of: None, ..Bounds::default() };
     assert_eq!(answer(&f, &reader(&f), before).unwrap(), ["user://bea"], "an attachment committed past the frontier is absent");
     let outsider = f.authority("agent://outsider", &[Action::Read], &["research/*"]);
     assert!(answer(&f, &outsider, Bounds::default()).is_err(), "a caller the edges table is not granted to reads no owner");

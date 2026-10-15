@@ -30,6 +30,8 @@ bytes = "1"
 duckdb = { version = "1.10500", features = ["bundled", "parquet", "json", "vscalar"], optional = true }
 getrandom = "0.3"
 half = "2"
+# The zone a date-only availability instant resolves in (`store.available-time.date-end`).
+jiff = "0.2"
 # Read-only mapping of a plaintext vector sidecar (`store.encrypt.sidecar-reader`).
 memmap2 = "0.9"
 parquet = { version = "58", default-features = false, features = ["arrow", "zstd", "encryption"] }

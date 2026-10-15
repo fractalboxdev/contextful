@@ -108,6 +108,12 @@ pub enum StoreError {
     /// A landing row resolves to a null availability instant. (`store.available-time.null`)
     #[error("StoreAvailableTimeNull: {0}")]
     StoreAvailableTimeNull(String),
+    /// A vintage table declares no `content_hash_column`. (`store.available-time.vintage-hash-undeclared`)
+    #[error("StoreVintageHashUndeclared: {0}")]
+    StoreVintageHashUndeclared(String),
+    /// A vintage table declares a row-age retention cutoff. (`store.available-time.vintage-retain-rows`)
+    #[error("StoreVintageRetainRows: {0}")]
+    StoreVintageRetainRows(String),
     /// A cursor whose kind takes no lease reached `cursors/`. (`store.lease.cursor-kind`)
     #[error("LeaseCursorKindMismatch: {0}")]
     LeaseCursorKindMismatch(String),

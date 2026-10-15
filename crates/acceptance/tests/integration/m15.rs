@@ -15,6 +15,7 @@ const CONFIG: &str = r#"authoring_posture = "per_request"
 [[pipeline.tables]]
 name = "research/earnings"
 primary_key = ["filing_id"]
+content_hash_column = "digest"
 
 [pipeline.tables.valid_time]
 from = "period_end"
@@ -60,7 +61,7 @@ fn m15_point_in_time() {
     // 2 May. Both instants land together, in one commit, long after either.
     p.write(
         "earnings.jsonl",
-        &json!({ "filing_id": "acme-2030q1", "ticker": "ACME", "eps": 1.23, "period_end": "2030-03-31T00:00:00Z", "accepted_at": "2030-05-02T16:05:00Z" }).to_string(),
+        &json!({ "filing_id": "acme-2030q1", "ticker": "ACME", "eps": 1.23, "digest": "q1", "period_end": "2030-03-31T00:00:00Z", "accepted_at": "2030-05-02T16:05:00Z" }).to_string(),
     );
     ok(&p.run(&cf, &[
         "context", "land", "research/earnings", "--project", "research", "--rows", "earnings.jsonl", "--run-id", "run-0001", "--site-id", "site-a",
@@ -92,4 +93,59 @@ fn m15_point_in_time() {
     assert_eq!(undeclared["result"]["isError"], json!(true), "{undeclared}");
     let text = undeclared["result"]["content"][0]["text"].as_str().unwrap_or_default();
     assert!(text.contains("StoreAvailableTimeUndeclared") && text.contains("research/prices"), "{undeclared}");
+}
+
+const GDP: &str = r#"authoring_posture = "per_request"
+[[pipeline.tables]]
+name = "research/gdp"
+primary_key = ["series"]
+content_hash_column = "digest"
+
+[pipeline.tables.valid_time]
+from = "period"
+
+[pipeline.tables.available_time]
+column = "released_at"
+"#;
+
+/// An ALFRED-style series: one quarter's real GDP released three times, each vintage
+/// answering at its release date, the first under `vintage = "first"`, and alike after a fold.
+#[test]
+#[ignore = "milestone 15 is open: horizons, sweeps and backtests land later"]
+fn m15_gdp_vintages() {
+    let cf = bin("contextful");
+    let p = GitRepo::init();
+    p.write(".contextful/issuance.toml", &format!("default_audience = \"{AUD}\"\nmax_lifetime_secs = 3600\n"));
+    p.write("contextful.toml", GDP);
+    let releases = [("100.0", "a", "2030-04-28T12:30:00Z"), ("101.5", "b", "2030-05-29T12:30:00Z"), ("101.9", "c", "2030-06-26T12:30:00Z")];
+    let lines: Vec<String> = releases
+        .iter()
+        .map(|(value, digest, released)| json!({ "series": "GDPC1", "period": "2030-01-01T00:00:00Z", "value": value, "digest": digest, "released_at": released }).to_string())
+        .collect();
+    p.write("gdp.jsonl", &lines.join("\n"));
+    ok(&p.run(&cf, &[
+        "context", "land", "research/gdp", "--project", "research", "--rows", "gdp.jsonl", "--run-id", "run-0001", "--site-id", "site-a",
+        "--type", "period=timestamp", "--type", "released_at=timestamp", "--now", "2030-07-01T00:00:00Z",
+    ]));
+    p.commit("three releases of one quarter's GDP");
+
+    let public = ok(&p.run(&cf, &["token", "keygen", "--out", ".contextful/issuer.seed"]));
+    let reader = ok(&p.run(&cf, &[
+        "token", "mint", "--issuer-key", ".contextful/issuer.seed", "--on-behalf-of", "user://dana@acme.example", "--agent", "agent://backtest",
+        "--zone", "on-prem:hq", "--action", "read", "--table", "research/*", "--ttl", "3600",
+    ]));
+    let sql = r#"SELECT value FROM "research/gdp""#;
+    let answers = || -> Vec<Value> {
+        let mut out: Vec<Value> = ["2030-05-01", "2030-06-01", "2030-07-01"]
+            .iter()
+            .map(|at| rows(&call(&cf, &p, &public, &reader, "context.query", json!({ "sql": sql, "available_as_of": at }))).clone())
+            .collect();
+        out.push(rows(&call(&cf, &p, &public, &reader, "context.query", json!({ "sql": sql, "vintage": "first" }))).clone());
+        out
+    };
+    let before = answers();
+    assert_eq!(before, [json!([["100.0"]]), json!([["101.5"]]), json!([["101.9"]]), json!([["100.0"]])]);
+
+    ok(&p.run(&cf, &["context", "compact", "research/gdp", "--project", "research", "--now", "2030-07-02T00:00:00Z"]));
+    assert_eq!(answers(), before, "a fold drops no vintage");
 }

@@ -107,7 +107,7 @@ fn folded_runs_and_superseded_snapshots_are_collected_after_seven_days() {
     fold(&f.store, &d, at("2030-01-09T01:00:00Z")).unwrap();
     assert!(!first_dir.exists());
     assert_eq!(f.query(&d, Bounds::default(), "SELECT count(*) FROM t"), [[s("4")]]);
-    let bound = Bounds { as_of: Some(Bound::parse("2030-01-01T12:00:00Z").unwrap()), valid_as_of: None, available_as_of: None };
+    let bound = Bounds { as_of: Some(Bound::parse("2030-01-01T12:00:00Z").unwrap()), valid_as_of: None, available_as_of: None, ..Bounds::default() };
     match f.scan(&d, bound).unwrap_err().store() {
         Some(StoreError::StoreAsOfUnretained(_)) => {}
         other => panic!("expected StoreAsOfUnretained, got {other:?}"),
@@ -299,7 +299,7 @@ fn a_new_snapshot_supersedes_without_deleting() {
     let (chain, _) = f.store.chain("events").unwrap();
     assert_eq!(chain.len(), 2);
     assert!(f.store.snapshot_dir("events", &chain[1].snapshot_id).unwrap().is_dir());
-    let old = Bounds { as_of: Some(Bound::parse("2030-01-01T01:30:00Z").unwrap()), valid_as_of: None, available_as_of: None };
+    let old = Bounds { as_of: Some(Bound::parse("2030-01-01T01:30:00Z").unwrap()), valid_as_of: None, available_as_of: None, ..Bounds::default() };
     assert!(f.scan(&d, old).unwrap().files[0].contains(&chain[1].snapshot_id.to_string()));
     assert_eq!(f.query(&d, old, "SELECT v FROM t"), [[s("1")]]);
     assert_eq!(f.query(&d, Bounds::default(), "SELECT v FROM t"), [[s("2")]]);

@@ -54,7 +54,7 @@ impl RecallRequest {
     /// The bounds the session serving this recall opens under: `as_of_ingest` as its
     /// `as_of` (`read.recall.keyed-clocks`). Valid time narrows inside the recall itself.
     pub fn bounds(&self) -> Bounds {
-        Bounds { as_of: self.as_of_ingest, valid_as_of: None, available_as_of: None }
+        Bounds { as_of: self.as_of_ingest, valid_as_of: None, available_as_of: None, ..Bounds::default() }
     }
 
     /// The `contextful.bounds` echo: each supplied bound under its argument name, written

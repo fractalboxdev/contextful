@@ -151,7 +151,7 @@ fn a_pin_and_as_of_resolve_to_the_earlier_bound() {
     let first = p.build(DAILY, "2030-01-11T00:00:00Z");
     land_rows(&p.r.store, EVENTS, "run-0002", json!([{ "day": "d3" }]));
     let second = p.build(DAILY, "2030-01-11T02:00:00Z");
-    let as_of = |s: &str| Bounds { as_of: Some(Bound::parse(s).unwrap()), valid_as_of: None, available_as_of: None };
+    let as_of = |s: &str| Bounds { as_of: Some(Bound::parse(s).unwrap()), valid_as_of: None, available_as_of: None, ..Bounds::default() };
 
     // The bound precedes the pinned build: the bound wins.
     let s = p.session(as_of("2030-01-11T01:00:00Z"), &Pins::default().with(DAILY, &second.build_id));

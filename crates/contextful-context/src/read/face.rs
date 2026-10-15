@@ -1225,11 +1225,13 @@ fn builtin_tool(name: &str) -> Value {
 /// How a bound argument's literal reads (`store.bound-time.instant-comparison`).
 const INSTANT_LITERAL: &str = "An RFC 3339 instant, or a YYYY-MM-DD date read as the start of the next day, exclusive.";
 
-/// The bound arguments every read tool but `memory.recall` declares
-/// (`read.register.bound-arguments`, `read.register.available-bound-argument`).
-fn bound_properties() -> [(String, Value); 3] {
+/// The bound arguments every read tool but `memory.recall` declares, and the vintage a
+/// vintage table resolves (`read.register.bound-arguments`,
+/// `read.register.available-bound-argument`, `store.available-time.vintage-first`).
+fn bound_properties() -> [(String, Value); 4] {
     let instant = || json!({ "type": "string", "description": INSTANT_LITERAL });
-    [("as_of".into(), instant()), ("valid_as_of".into(), instant()), ("available_as_of".into(), instant())]
+    let vintage = json!({ "type": "string", "enum": ["latest", "first"], "description": "Which release of a vintage table answers per key: the latest the bounds admit, or the first." });
+    [("as_of".into(), instant()), ("valid_as_of".into(), instant()), ("available_as_of".into(), instant()), ("vintage".into(), vintage)]
 }
 
 /// The `pin` argument every read tool declares (`read.resolve-pin.pin-parameter`).
