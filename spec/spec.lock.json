@@ -22355,7 +22355,7 @@
       "operation": "erase",
       "subject": "physical-removal",
       "kind": "limit",
-      "statement": "Every file holding an erased row, a superseded snapshot still inside {{store.fold.retention}} included, is rewritten or collected within 24 h of the erasure's commit.",
+      "statement": "Within 24 h of the erasure's commit, every file holding an erased row — superseded snapshots inside {{store.fold.retention}} included — every {{read.synthesize.extract-cache}} entry whose batch held it, and every {{read.synthesize.dead-letter}} row holding its content is rewritten or collected.",
       "why": "A-disclosure",
       "file": "spec/62-accountability.md",
       "line": 235
@@ -22372,6 +22372,17 @@
       "line": 237
     },
     {
+      "id": "disclosure.erase.restage-cache",
+      "contract": "disclosure",
+      "operation": "erase",
+      "subject": "restage-cache",
+      "kind": "behavior",
+      "statement": "The re-synthesis that clears {{disclosure.erase.restaging-gate}} runs through the writing credential of {{read.synthesize.pass-cursor}}, replays each batch holding no erased row through {{read.synthesize.extract-cache}}, and its pass report names each restored claim.",
+      "why": "A-disclosure",
+      "file": "spec/62-accountability.md",
+      "line": 239
+    },
+    {
       "id": "disclosure.erase.tenant-column-type",
       "contract": "disclosure",
       "operation": "erase",
@@ -22380,7 +22391,7 @@
       "statement": "A tenant column of a non-string type raises `PurgeTenantColumnType`.",
       "why": "A-disclosure",
       "file": "spec/62-accountability.md",
-      "line": 239
+      "line": 241
     },
     {
       "id": "disclosure.erase.tenant-undeclared",
@@ -22391,7 +22402,7 @@
       "statement": "A purge finding no model declaring an outermost partition key raises `PurgeTenantUndeclared`.",
       "why": "A-disclosure",
       "file": "spec/62-accountability.md",
-      "line": 241
+      "line": 243
     },
     {
       "id": "disclosure.erase.owner-only",
@@ -22402,7 +22413,7 @@
       "statement": "A purge presented with a capability token raises `PurgeRequiresOwner`, evaluated before anything reveals store contents.",
       "why": "A-disclosure",
       "file": "spec/62-accountability.md",
-      "line": 243
+      "line": 245
     },
     {
       "id": "disclosure.receipt.pseudonym",
@@ -22413,7 +22424,7 @@
       "statement": "`tenant_hash` is SHA-256 over a random per-receipt `salt` and the tenant identifier. A receipt carrying the identifier in cleartext raises `ReceiptIdentifierLeak` before signing.",
       "why": "A-disclosure",
       "file": "spec/62-accountability.md",
-      "line": 272
+      "line": 278
     },
     {
       "id": "disclosure.receipt.widened-claim",
@@ -22424,7 +22435,7 @@
       "statement": "A coverage block naming a scope broader than its `receipt_version` declares raises `ReceiptClaimWidened`.",
       "why": "A-disclosure",
       "file": "spec/62-accountability.md",
-      "line": 274
+      "line": 280
     },
     {
       "id": "disclosure.receipt.replayed",
@@ -22435,7 +22446,7 @@
       "statement": "Returning the byte-identical earlier artifact in place of a freshly signed one raises `ReceiptReplayed`.",
       "why": "A-disclosure",
       "file": "spec/62-accountability.md",
-      "line": 276
+      "line": 282
     },
     {
       "id": "disclosure.receipt.no-rewrite-engine",
@@ -22446,7 +22457,7 @@
       "statement": "A purge where the columnar rewrite engine is unavailable raises `ReceiptWithoutRewrite` and signs nothing.",
       "why": "because a receipt over a rewrite that did not run states a false claim",
       "file": "spec/62-accountability.md",
-      "line": 278
+      "line": 284
     },
     {
       "id": "surface.arm.unreadable-schedule",
@@ -29694,6 +29705,26 @@
       "store.fold.retention"
     ],
     [
+      "disclosure.erase.physical-removal",
+      "read.synthesize.extract-cache"
+    ],
+    [
+      "disclosure.erase.physical-removal",
+      "read.synthesize.dead-letter"
+    ],
+    [
+      "disclosure.erase.restage-cache",
+      "disclosure.erase.restaging-gate"
+    ],
+    [
+      "disclosure.erase.restage-cache",
+      "read.synthesize.pass-cursor"
+    ],
+    [
+      "disclosure.erase.restage-cache",
+      "read.synthesize.extract-cache"
+    ],
+    [
       "surface.arm.pulled-history",
       "store.push.run-state"
     ],
@@ -32859,7 +32890,7 @@
             "value": 24,
             "unit": "h",
             "basis": "chosen",
-            "gloss": "Commit of an erasure to rewrite or collection of every file holding an erased row."
+            "gloss": "Commit of an erasure to rewrite or collection of every file, extraction-cache entry and dead-letter row holding an erased row."
           },
           "min-group-size-floor": {
             "clause": "disclosure.suppress.min-group-size",

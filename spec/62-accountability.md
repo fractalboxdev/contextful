@@ -232,9 +232,11 @@ The one erasure verb: subject tombstones, the bounded provenance cascade, the re
   *A-disclosure*
 - `cascade-unbounded` — A provenance chain deeper than the cascade bound raises `ErasureCascadeUnbounded`, and the erasure commits nothing.
   *A-disclosure*
-- `physical-removal` — Every file holding an erased row, a superseded snapshot still inside {{store.fold.retention}} included, is rewritten or collected within 24 h of the erasure's commit.
+- `physical-removal` — Within 24 h of the erasure's commit, every file holding an erased row — superseded snapshots inside {{store.fold.retention}} included — every {{read.synthesize.extract-cache}} entry whose batch held it, and every {{read.synthesize.dead-letter}} row holding its content is rewritten or collected.
   *A-disclosure*
 - `restaging-gate` — `--fail-closed` writes a row-free `{subject_hash, executed_at}` marker at the store root after the cascade. While it stands, every fact read raises `ErasureRestagingRequired`, naming the owed re-synthesis and the clearing verb.
+  *A-disclosure*
+- `restage-cache` — The re-synthesis that clears {{disclosure.erase.restaging-gate}} runs through the writing credential of {{read.synthesize.pass-cursor}}, replays each batch holding no erased row through {{read.synthesize.extract-cache}}, and its pass report names each restored claim.
   *A-disclosure*
 - `tenant-column-type` — A tenant column of a non-string type raises `PurgeTenantColumnType`.
   *A-disclosure*
@@ -264,6 +266,10 @@ flowchart LR
 unsettled: Is request-to-last-replica erasure within 72 h an engine bound or an operator objective, given the engine schedules no replica refresh? owner: disclosure affects: disclosure.erase
 
 unsettled: Does the free-form statement face fall under the restaging gate as a fact read does? owner: disclosure affects: disclosure.erase
+
+unsettled: Which record of a committed batch's member rows lets erasure find its cache entries and restaging repack untouched batches at their original boundaries? owner: read-path affects: disclosure.erase
+
+unsettled: Which credential restages a pass whose writing credential has since been revoked? owner: disclosure affects: disclosure.erase
 
 ## receipt
 
