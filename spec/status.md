@@ -13,9 +13,9 @@ An unpinned clause is `committed`; a pinned one is `performed` when its Rust, Le
 | `read` | 2 | 18 | 238 | 38 | 24 | 4 | 227 | 0 | 227 |
 | `run` | 3 | 28 | 501 | 113 | 44 | 14 | 445 | 0 | 445 |
 | `store` | 3 | 19 | 288 | 65 | 14 | 12 | 277 | 0 | 277 |
-| `surface` | 2 | 20 | 137 | 59 | 22 | 0 | 98 | 0 | 98 |
+| `surface` | 2 | 20 | 137 | 59 | 22 | 0 | 114 | 0 | 114 |
 | `topology` | 1 | 6 | 79 | 25 | 5 | 3 | 72 | 0 | 72 |
-| **total** | 22 | 165 | 2435 | 637 | 202 | 69 | 1986 | 0 | |
+| **total** | 22 | 165 | 2435 | 637 | 202 | 69 | 2002 | 0 | |
 
 Decision records: 18.
 
@@ -37,7 +37,7 @@ A milestone reads `closed` when its acceptance test computes `passing` and every
 | 9 — Visibility | 6 | 41 | 3 | open | open |
 | 10 — Cadence and the operator plane | 11 | 93 | 79 | passing | open |
 | 11 — The derive tier | 7 | 94 | 93 | passing | closed |
-| 12 — The operator console | 12 | 56 | 25 | passing | open |
+| 12 — The operator console | 12 | 56 | 41 | passing | open |
 | 13 — Disclosure | 5 | 33 | 13 | open | open |
 | 14 — Assurance | 7 | 156 | 126 | passing | closed |
 | 15 — Point-in-time evaluation | 7 | 77 | 77 | passing | closed |
@@ -1892,6 +1892,10 @@ Unscheduled operations: 12.
 | `surface.arm.unknown-trigger` | `crates/contextful-cli/tests/integration/pipeline.rs::an_unknown_trigger_arms_nothing` | performed |
 | `surface.arm.unreadable-schedule` | `crates/contextful-core/tests/integration/surface/arm.rs::an_unreadable_schedule_names_its_diagnostic` | performed |
 | `surface.arm.wake-answer` | `crates/contextful-cli/tests/integration/pipeline.rs::a_wake_answers_within_its_bound_naming_what_still_runs` | performed |
+| `surface.brief.absence-is-earned` | `apps/console/test/brief.test.ts::apps/console/test/brief.test.ts::brief reports derivation failure and timeout without a card` | performed |
+| `surface.brief.articles-per-subject` | `apps/console/test/brief.test.ts::apps/console/test/brief.test.ts::brief carries at most three articles per subject` | performed |
+| `surface.brief.card-subjects` | `apps/console/test/brief.test.ts::apps/console/test/brief.test.ts::brief carries at most three subjects` | performed |
+| `surface.brief.catchup-window` | `apps/console/test/brief.test.ts::apps/console/test/brief.test.ts::brief caps the requested window at seven days` | performed |
 | `surface.brief.greeting` | `apps/console/test/brief.test.ts::apps/console/test/brief.test.ts::brief requires a turnless present-time session and live matched arrivals` | performed |
 | `surface.brief.topic-tier` | `apps/console/test/brief.test.ts::apps/console/test/brief.test.ts::topic tier needs two shared tokens including the subject` | performed |
 | `surface.browse.discovered-chips` | `apps/console/test/browse.test.ts::apps/console/test/browse.test.ts::browse advertises admitted tables as humanized chips` | performed |
@@ -1933,7 +1937,13 @@ Unscheduled operations: 12.
 | `surface.fire.target-unbound` | `crates/contextful-cli/tests/integration/job.rs::a_job_target_naming_nothing_produced_is_refused_at_validation` | performed |
 | `surface.ground.direct-file-read` | `apps/console/test/turn.test.ts::apps/console/test/turn.test.ts::direct file table functions refuse before dispatch` | performed |
 | `surface.ground.mint-refused` | `apps/console/test/live.test.ts::apps/console/test/live.test.ts::Query falls back to a configured shared credential only after exchange refusal` | performed |
+| `surface.ground.mutating-tool` | `apps/console/test/turn.test.ts::apps/console/test/turn.test.ts::a client-reachable write call dispatches nothing` | performed |
 | `surface.ground.org-face-read-only` | `apps/console/test/turn.test.ts::apps/console/test/turn.test.ts::organization packs refuse writes at startup` | performed |
+| `surface.ground.sources-block` | `apps/console/test/turn.test.ts::apps/console/test/turn.test.ts::a grounded turn cites only governed tool results` | performed |
+| `surface.ground.sources-per-turn` | `apps/console/test/turn.test.ts::apps/console/test/turn.test.ts::source list caps at eight and excludes synthetic citations` | performed |
+| `surface.ground.unadmitted-tool` | `apps/console/test/turn.test.ts::apps/console/test/turn.test.ts::a call outside the turn's packs dispatches nothing` | performed |
+| `surface.ground.ungrounded-answer` | `apps/console/test/turn.test.ts::apps/console/test/turn.test.ts::a turn with no tool result refuses model prose` | performed |
+| `surface.learn.distillation` | `apps/console/test/learn.test.ts::apps/console/test/learn.test.ts::distillation runs after streaming and lands at most three scoped conclusions` | performed |
 | `surface.learn.unscoped` | `apps/console/test/learn.test.ts::apps/console/test/learn.test.ts::unscoped learning refuses before distillation or landing` | performed |
 | `surface.learn.write-refused` | `apps/console/test/answer_memory.test.ts::apps/console/test/answer_memory.test.ts::hosted Query reports a served learning refusal without exposing its credential` | performed |
 | `surface.open-console.narrow-sidebar` | `apps/console/test/transcripts.test.ts::apps/console/test/transcripts.test.ts::Query keeps chat controls reachable below the sidebar breakpoint` | performed |
@@ -1941,6 +1951,9 @@ Unscheduled operations: 12.
 | `surface.package.owner-flag` | `crates/contextful-cli/tests/integration/mcp.rs::explicit_owner_requires_a_signed_credential_for_the_selected_store` | performed |
 | `surface.package.stdio-credential` | `crates/contextful-cli/tests/integration/mcp.rs::a_server_with_no_credential_raises_stdio_credential_missing` | performed |
 | `surface.package.store-selector` | `crates/contextful-cli/tests/integration/mcp.rs::a_spawned_server_without_a_project_manifest_refuses_before_framing` | performed |
+| `surface.plan-turn.code-path-bounds` | `apps/console/test/turn.test.ts::apps/console/test/turn.test.ts::the code path reads at most 5000 rows per data table and stops after 10 s` | performed |
+| `surface.plan-turn.overlay-audience` | `apps/console/test/turn.test.ts::apps/console/test/turn.test.ts::a store's overlay reaches synthesis and stays outside the planner` | performed |
+| `surface.plan-turn.overlay-length` | `apps/console/test/turn.test.ts::apps/console/test/turn.test.ts::an overlay truncates at 8000 chars` | performed |
 | `surface.plan-turn.planner-reached-memory` | `apps/console/test/turn.test.ts::apps/console/test/turn.test.ts::a planner call targeting a memory relation dispatches nothing` | performed |
 | `surface.plan-turn.turn-flow` | `apps/console/test/live.test.ts::apps/console/test/live.test.ts::Query replans once with a text search after the matched table returns no rows` | performed |
 | `surface.publish-answer.askerless-audience` | `apps/console/test/publish.test.ts::apps/console/test/publish.test.ts::a scheduled service post refuses an audience and names its destination` | performed |
@@ -1961,7 +1974,10 @@ Unscheduled operations: 12.
 | `surface.reside.region-mismatch` | `crates/contextful-cli/tests/integration/pipeline.rs::a_resource_outside_the_residency_allow_set_serves_nothing` | performed |
 | `surface.reside.site-regions` | `crates/contextful-cli/tests/integration/sync/mod.rs::two_sites_declaring_different_residency_diverge_at_push` | performed |
 | `surface.set-vantage.sample-labels` | `apps/console/test/turn.test.ts::apps/console/test/turn.test.ts::a table contributes at most three sampled arrival labels` | performed |
+| `surface.set-vantage.unparseable` | `apps/console/test/turn.test.ts::apps/console/test/turn.test.ts::vantage accepts calendar days and instants, and rejects invalid dates` | performed |
+| `surface.set-vantage.web-bound-unparseable` | `apps/console/test/turn.test.ts::apps/console/test/turn.test.ts::a web leg with an invalid publication bound fails before dispatch` | performed |
 | `surface.speak.redactor-lookahead` | `apps/console/test/turn.test.ts::apps/console/test/turn.test.ts::streaming redactor masks identifiers split across chunks` | performed |
+| `surface.speak.stream-redaction` | `apps/console/test/turn.test.ts::apps/console/test/turn.test.ts::each streamed model chunk is redacted before Query receives prose` | performed |
 | `topology.bound-application.restated-case` | `tools/ci/tests/integration/mirrors.rs::an_annotation_naming_a_clause_passes` | performed |
 | `topology.compose.cli-binary` | `spec/pins.toml` | performed |
 | `topology.compose.connector-pillar` | `spec/pins.toml` | performed |
