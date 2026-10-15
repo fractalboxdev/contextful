@@ -10,7 +10,7 @@ use serde_json::{json, Value};
 use crate::EPS;
 
 fn stamp() -> RunStamp {
-    RunStamp { k: 3, tier: Tier::Deterministic, model: None, samples: 1 }
+    RunStamp { k: 3, tier: Tier::Deterministic, model: None, samples: 1, reader: None, judge: None }
 }
 
 fn cases() -> Vec<Case> {

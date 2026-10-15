@@ -11,6 +11,7 @@ use serde::{Deserialize, Serialize};
 use serde_json::{Map, Value};
 
 use crate::error::EvalError;
+use contextful_core::connector::model_ref::ModelRef;
 use crate::floors::{self, FloorVerdict};
 use crate::metrics::{LEGS, RANKED_METRICS, RELEVANCE_METRICS};
 
@@ -73,6 +74,12 @@ pub struct RunStamp {
     pub model: Option<String>,
     /// Judge calls per judged item.
     pub samples: usize,
+    /// The reader's snapshot and cutoffs; set on a judged run (`assurance.evaluate.judged-cutoffs`).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub reader: Option<ModelRef>,
+    /// The judge's snapshot and cutoffs; set on a judged run (`assurance.evaluate.judged-cutoffs`).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub judge: Option<ModelRef>,
 }
 
 impl std::fmt::Display for RunStamp {
@@ -81,7 +88,17 @@ impl std::fmt::Display for RunStamp {
             Tier::Deterministic => "deterministic",
             Tier::Judged => "judged",
         };
-        write!(f, "k={}, tier={tier}, model={}, samples={}", self.k, self.model.as_deref().unwrap_or("none"), self.samples)
+        write!(f, "k={}, tier={tier}, model={}, samples={}", self.k, self.model.as_deref().unwrap_or("none"), self.samples)?;
+        // A changed snapshot or cutoff is a drift the message names (`assurance.baseline.cutoff-block`).
+        for (role, m) in [("reader", &self.reader), ("judge", &self.judge)] {
+            if let Some(m) = m {
+                write!(f, ", {role}={}", m.snapshot)?;
+                for (name, c) in [("pretrain", m.pretrain_cutoff), ("posttrain", m.posttrain_cutoff)] {
+                    write!(f, " {name}={}", c.map_or_else(|| "undeclared".to_string(), |c| c.to_string()))?;
+                }
+            }
+        }
+        Ok(())
     }
 }
 

@@ -29,6 +29,7 @@ use contextful_core::store::relation::ident;
 use contextful_core::store::reconcile::{ColumnType, FloatItem};
 use contextful_core::store::reserve::Injection;
 use contextful_core::time::Instant;
+use contextful_core::connector::model_ref::{Cutoff, ModelRef};
 use contextful_eval::baseline::{self, Baselines, Outcome, RunStamp, Tier};
 use contextful_eval::case::{self, Case, KEY_SEPARATOR};
 use contextful_eval::checkpoint::{CaseResult, Checkpoint, Header};
@@ -144,9 +145,28 @@ pub struct RunArgs {
     /// and judges through it.
     #[arg(long, required_if_eq("tier", "judged"))]
     endpoint: Option<String>,
-    /// The pinned model the endpoint serves the reader and judge, stamped in the run block.
-    #[arg(long, required_if_eq("tier", "judged"))]
+    /// The pinned model the endpoint serves the reader and judge, stamped in the run block;
+    /// `--snapshot` and `--judge-snapshot` override it for one role.
+    #[arg(long)]
     model: Option<String>,
+    /// The reader's pinned snapshot id (`assurance.evaluate.cutoff-flags`).
+    #[arg(long)]
+    snapshot: Option<String>,
+    /// The reader's pre-training cutoff, a month and its tag, as `2024-10:documented`.
+    #[arg(long, value_parser = Cutoff::parse)]
+    pretrain_cutoff: Option<Cutoff>,
+    /// The reader's post-training cutoff, a month and its tag.
+    #[arg(long, value_parser = Cutoff::parse)]
+    posttrain_cutoff: Option<Cutoff>,
+    /// The judge's pinned snapshot id.
+    #[arg(long)]
+    judge_snapshot: Option<String>,
+    /// The judge's pre-training cutoff, a month and its tag.
+    #[arg(long, value_parser = Cutoff::parse)]
+    judge_pretrain_cutoff: Option<Cutoff>,
+    /// The judge's post-training cutoff, a month and its tag.
+    #[arg(long, value_parser = Cutoff::parse)]
+    judge_posttrain_cutoff: Option<Cutoff>,
     /// The lexical leg's calibration under evaluation: `reciprocal-rank`, the ranked read's,
     /// or `min-max`, the one it replaced (`read.rank.calibration-gate`).
     #[arg(long, default_value = "reciprocal-rank", value_parser = parse_fusion)]
@@ -406,21 +426,30 @@ fn run_cases(a: RunArgs) -> Result<()> {
     let cases = case::load(&text).map_err(|e| anyhow::anyhow!("`{}`: {e}", a.goldens.display()))?;
     // The judged tier reaches the operator's endpoint; the host holds its key
     // (`assurance.evaluate.model-endpoint`).
-    let endpoint = match (a.tier, &a.endpoint, &a.model) {
-        (RunTier::Judged, Some(url), Some(model)) => {
-            Some((Endpoint::new(url, model, std::env::var(INFERENCE_KEY_VAR).ok()).map_err(anyhow::Error::msg)?, model.clone()))
+    // The reader and the judge each name a snapshot, `--model` standing in for either
+    // (`assurance.evaluate.cutoff-flags`).
+    let models = match (a.tier, &a.endpoint) {
+        (RunTier::Judged, Some(url)) => {
+            let named = |own: &Option<String>, flag: &str| {
+                own.clone().or_else(|| a.model.clone()).ok_or_else(|| anyhow::anyhow!("the judged tier names the {flag} model: pass `--model` or `--{flag}`"))
+            };
+            let reader = ModelRef { snapshot: named(&a.snapshot, "snapshot")?, pretrain_cutoff: a.pretrain_cutoff, posttrain_cutoff: a.posttrain_cutoff };
+            let judge = ModelRef { snapshot: named(&a.judge_snapshot, "judge-snapshot")?, pretrain_cutoff: a.judge_pretrain_cutoff, posttrain_cutoff: a.judge_posttrain_cutoff };
+            let key = std::env::var(INFERENCE_KEY_VAR).ok();
+            let reach = |m: &ModelRef| Endpoint::new(url, &m.snapshot, key.clone()).map_err(anyhow::Error::msg);
+            Some((reach(&reader)?, reach(&judge)?, reader, judge))
         }
         _ => None,
     };
-    let (reader, judge, stamp): (Box<dyn Reader + '_>, Box<dyn Judge + '_>, RunStamp) = match &endpoint {
-        Some((e, model)) => {
-            let judge = ModelJudge::new(e, model.clone());
-            let stamp = judge.stamp(a.k);
-            (Box::new(ModelReader::new(e)), Box::new(judge), stamp)
+    let (reader, judge, stamp): (Box<dyn Reader + '_>, Box<dyn Judge + '_>, RunStamp) = match &models {
+        Some((reads, judges, reader, judge_ref)) => {
+            let judge = ModelJudge::new(judges, judge_ref.snapshot.clone());
+            let stamp = judge.stamp_models(a.k, reader.clone(), judge_ref.clone());
+            (Box::new(ModelReader::new(reads)), Box::new(judge), stamp)
         }
         None => (Box::new(StubReader), Box::new(StubJudge), StubJudge.stamp(a.k)),
     };
-    debug_assert!(stamp.tier == if endpoint.is_some() { Tier::Judged } else { Tier::Deterministic });
+    debug_assert!(stamp.tier == if models.is_some() { Tier::Judged } else { Tier::Deterministic });
     // Every baseline refusal needing no report lands before any corpus does.
     let baselines = match &a.baseline {
         Some(path) => {

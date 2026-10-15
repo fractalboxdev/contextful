@@ -795,7 +795,11 @@ fn the_judged_tier_reads_and_judges_through_the_named_endpoint() {
     let args = ["--tier", "judged", "--endpoint", url.as_str(), "--model", "open-instruct-7b"];
     let (out, report) = issuer.eval(&goldens, &token, &args);
     assert!(out.status.success(), "{}", stderr(&out));
-    assert_eq!(report["run"], json!({ "k": 5, "tier": "judged", "model": "open-instruct-7b", "samples": 1 }));
+    assert_eq!(
+        report["run"],
+        json!({ "k": 5, "tier": "judged", "model": "open-instruct-7b", "samples": 1,
+                "reader": { "snapshot": "open-instruct-7b" }, "judge": { "snapshot": "open-instruct-7b" } })
+    );
     let calls = report["judge"]["judge_calls"].as_u64().unwrap() as usize;
     let bodies = model.bodies.lock().unwrap().clone();
     assert!(calls >= 3, "{}", report["judge"]);
@@ -813,6 +817,60 @@ fn the_judged_tier_reads_and_judges_through_the_named_endpoint() {
     assert!(!out.status.success());
     assert!(stderr(&out).contains("--endpoint"), "{}", stderr(&out));
     assert_eq!(report, Value::Null);
+}
+
+/// The judged replies of [`the_judged_tier_reads_and_judges_through_the_named_endpoint`].
+const JUDGED_REPLIES: [&str; 7] = ["pressure valve manual [lab/plain#a,1]", "1", "1", "forklift battery charging [lab/plain#b,1]", "0.5", "1", "REFUSED"];
+
+/// `contextful eval run` takes `--snapshot`, `--pretrain-cutoff` and `--posttrain-cutoff` for the reader and `--judge-snapshot`, `--judge-pretrain-cutoff` and `--judge-posttrain-cutoff` for the judge, each cutoff value a month and its tag, as `2024-10:documented`.
+// spec: assurance.evaluate.cutoff-flags@79338be2
+#[test]
+fn the_reader_and_the_judge_name_their_own_snapshots_and_cutoffs() {
+    let issuer = Issuer::new();
+    let goldens = corpus(issuer.path(), LAB, &lab_rows(), &judged_cases());
+    let token = issuer.mint(READER, "on-prem:hq");
+    let model = Model::start(&JUDGED_REPLIES);
+    let url = model.url();
+    let args = [
+        "--tier", "judged", "--endpoint", url.as_str(),
+        "--snapshot", "reader-8b", "--pretrain-cutoff", "2024-10:documented",
+        "--judge-snapshot", "judge-7b", "--judge-pretrain-cutoff", "2024-06:documented", "--judge-posttrain-cutoff", "2025-03:estimated",
+    ];
+    let (out, report) = issuer.eval(&goldens, &token, &args);
+    assert!(out.status.success(), "{}", stderr(&out));
+    // The reader names no post-training cutoff, so it compares as each call's own instant: the block omits it.
+    assert_eq!(report["run"]["reader"], json!({ "snapshot": "reader-8b", "pretrain_cutoff": "2024-10:documented" }));
+    // Each role reaches its own snapshot: the first body is the reader's, the second the judge's.
+    let bodies = model.bodies.lock().unwrap().clone();
+    assert_eq!(bodies[0]["model"], json!("reader-8b"));
+    assert_eq!(bodies[1]["model"], json!("judge-7b"));
+    assert!(bodies.iter().all(|b| b["model"] == json!("reader-8b") || b["model"] == json!("judge-7b")));
+
+    // A cutoff spelled without its tag refuses before any call.
+    let (out, _) = issuer.eval(&goldens, &token, &["--tier", "judged", "--endpoint", url.as_str(), "--model", "m", "--pretrain-cutoff", "2024-10"]);
+    assert!(!out.status.success());
+    assert!(stderr(&out).contains("2024-10:documented"), "{}", stderr(&out));
+    // With neither `--model` nor both snapshots, the judged tier refuses.
+    let (out, _) = issuer.eval(&goldens, &token, &["--tier", "judged", "--endpoint", url.as_str(), "--snapshot", "reader-8b"]);
+    assert!(!out.status.success());
+    assert!(stderr(&out).contains("--judge-snapshot"), "{}", stderr(&out));
+}
+
+/// A judged run block stamps the reader's and the judge's snapshot ids and their {{connector.infer.cutoffs}}.
+// spec: assurance.evaluate.judged-cutoffs@1efb84f9
+#[test]
+fn a_judged_run_block_stamps_both_snapshots_and_their_cutoffs() {
+    let issuer = Issuer::new();
+    let goldens = corpus(issuer.path(), LAB, &lab_rows(), &judged_cases());
+    let token = issuer.mint(READER, "on-prem:hq");
+    let model = Model::start(&JUDGED_REPLIES);
+    let url = model.url();
+    let args = ["--tier", "judged", "--endpoint", url.as_str(), "--model", "open-instruct-7b", "--judge-posttrain-cutoff", "2025-03:estimated"];
+    let (out, report) = issuer.eval(&goldens, &token, &args);
+    assert!(out.status.success(), "{}", stderr(&out));
+    assert_eq!(report["run"]["judge"], json!({ "snapshot": "open-instruct-7b", "posttrain_cutoff": "2025-03:estimated" }));
+    assert_eq!(report["run"]["reader"], json!({ "snapshot": "open-instruct-7b" }));
+    assert_eq!(report["run"]["model"], json!("open-instruct-7b"));
 }
 
 /// A project store holding entity, fact and edge tables in the memory shapes' columns.

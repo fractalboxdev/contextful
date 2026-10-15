@@ -7,6 +7,7 @@ mod compile;
 mod infer;
 mod lease;
 mod meter;
+mod model_ref;
 mod package;
 mod probe;
 mod reference;

@@ -58,7 +58,7 @@ fn unresolved(r: Result<Baselines, EvalError>) -> String {
 #[test]
 fn a_file_holds_a_run_block_and_bare_or_banded_entries() {
     let b = Baselines::parse(FILE).unwrap();
-    assert_eq!(b.run, RunStamp { k: 10, tier: Tier::Deterministic, model: None, samples: 1 });
+    assert_eq!(b.run, RunStamp { k: 10, tier: Tier::Deterministic, model: None, samples: 1, reader: None, judge: None });
     assert_eq!(b.entries.len(), 8);
     assert_eq!(b.entries["retrieval.hybrid.recall_at_k"], Entry { value: 0.71, band: None });
     assert_eq!(b.entries["latency_ms"], Entry { value: 480.0, band: Some(60.0) });
@@ -260,7 +260,7 @@ fn an_entry_naming_nothing_or_under_thirty_cases_refuses_the_whole_gate() {
 #[test]
 fn a_run_configured_unlike_the_baseline_is_refused_from_its_configuration_alone() {
     let b = Baselines::parse(FILE).unwrap();
-    let same = RunStamp { k: 10, tier: Tier::Deterministic, model: None, samples: 1 };
+    let same = RunStamp { k: 10, tier: Tier::Deterministic, model: None, samples: 1, reader: None, judge: None };
     assert!(b.check_run(&same).is_ok());
     // The configuration alone decides it: no report exists yet.
     for drift in [
@@ -278,6 +278,36 @@ fn a_run_configured_unlike_the_baseline_is_refused_from_its_configuration_alone(
     assert_eq!(gate(&r, &b).unwrap_err().code(), "BaselineRunStampMismatch");
     r.as_object_mut().unwrap().remove("run");
     assert_eq!(gate(&r, &b).unwrap_err().code(), "BaselineRunStampMismatch");
+}
+
+/// A judged baseline's run block carries the reader's and the judge's snapshot ids and {{connector.infer.cutoffs}}, so {{assurance.baseline.run-stamp-drift}} refuses a run under a changed snapshot or cutoff.
+// spec: assurance.baseline.cutoff-block@ec5b9fe5
+#[test]
+fn a_judged_baseline_refuses_a_changed_snapshot_or_cutoff() {
+    use contextful_core::connector::model_ref::{Cutoff, ModelRef};
+    let raw = r#"{
+  "_run": {
+    "k": 10, "tier": "judged", "model": "judge-7b", "samples": 1,
+    "reader": { "snapshot": "reader-8b", "pretrain_cutoff": "2024-06:documented", "posttrain_cutoff": "2024-10:estimated" },
+    "judge": { "snapshot": "judge-7b", "posttrain_cutoff": "2025-03:estimated" }
+  },
+  "n_cases": 40
+}"#;
+    let b = Baselines::parse(raw).unwrap();
+    let reader = ModelRef { snapshot: "reader-8b".into(), pretrain_cutoff: Some(Cutoff::parse("2024-06:documented").unwrap()), posttrain_cutoff: Some(Cutoff::parse("2024-10:estimated").unwrap()) };
+    let judge = ModelRef { snapshot: "judge-7b".into(), pretrain_cutoff: None, posttrain_cutoff: Some(Cutoff::parse("2025-03:estimated").unwrap()) };
+    let same = RunStamp { k: 10, tier: Tier::Judged, model: Some("judge-7b".into()), samples: 1, reader: Some(reader.clone()), judge: Some(judge.clone()) };
+    assert!(b.check_run(&same).is_ok());
+    assert!(Baselines::parse(&b.to_json()).unwrap().check_run(&same).is_ok(), "the block round-trips");
+    for drift in [
+        RunStamp { reader: Some(ModelRef { snapshot: "reader-8b-0125".into(), ..reader.clone() }), ..same.clone() },
+        RunStamp { reader: Some(ModelRef { posttrain_cutoff: Some(Cutoff::parse("2024-10:documented").unwrap()), ..reader.clone() }), ..same.clone() },
+        RunStamp { judge: Some(ModelRef { posttrain_cutoff: None, ..judge.clone() }), ..same.clone() },
+    ] {
+        let e = b.check_run(&drift).unwrap_err();
+        assert_eq!(e.code(), "BaselineRunStampMismatch", "{drift}");
+        assert!(e.to_string().contains("judge=judge-7b"), "{e}");
+    }
 }
 
 /// A baseline update runs after every gate and floor passes, moves each improved entry to its measured value,

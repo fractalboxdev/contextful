@@ -5,7 +5,7 @@ use contextful_eval::checkpoint::{CaseResult, Checkpoint, CheckpointError, Heade
 use contextful_eval::metrics::{Returned, RowRef};
 
 fn header(seed: u64) -> Header {
-    Header { run: RunStamp { k: 5, tier: Tier::Deterministic, model: None, samples: 1 }, seed }
+    Header { run: RunStamp { k: 5, tier: Tier::Deterministic, model: None, samples: 1, reader: None, judge: None }, seed }
 }
 
 fn result(id: &str, key: &str) -> CaseResult {
