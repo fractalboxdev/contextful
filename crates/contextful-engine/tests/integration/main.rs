@@ -6,6 +6,7 @@ mod backfill;
 mod binding;
 mod body_identity;
 mod cancel;
+mod chunk_lease;
 #[cfg(unix)]
 mod command;
 #[cfg(windows)]
