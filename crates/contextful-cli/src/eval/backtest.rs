@@ -25,6 +25,7 @@ use contextful_core::time::Instant;
 use contextful_eval::backtest::{execution_block, BacktestStamp, ExecutionComponent};
 use contextful_eval::backtest_run::{self, assess, planted_row, CaseSpec, RecordedCall, Recording};
 use contextful_eval::embed::{StubEmbedder, DEFAULT_SEED};
+use contextful_eval::leak::StubLeakJudge;
 use contextful_policy::audit::{self, AuditLog, SignedRoot};
 use contextful_policy::enforce::mask::Pepper;
 use contextful_policy::issue::{SeedSigner, SignerKey};
@@ -192,7 +193,7 @@ pub fn backtest(a: BacktestArgs) -> Result<()> {
     let manifests: BTreeMap<String, String> = corpora.iter().map(|(k, c)| (k.clone(), c.manifest.clone())).collect();
     let decls: BTreeMap<String, Vec<TableDecl>> = corpora.into_iter().map(|(k, c)| (k, c.decls)).collect();
     let by_seq: BTreeMap<u64, Value> = entries.into_iter().map(|e| (e.seq, e.attributes)).collect();
-    let mut report = assess(&Recording { cases: &cases, decls: &decls, calls: &calls, entries: &by_seq }).map_err(anyhow::Error::msg)?;
+    let mut report = assess(&Recording { cases: &cases, decls: &decls, calls: &calls, entries: &by_seq, judge: &StubLeakJudge }).map_err(anyhow::Error::msg)?;
     report["run"] = serde_json::to_value(stamp(a.seed))?;
     report["execution"] = execution;
     report["planted"] = json!(planted);
@@ -258,7 +259,7 @@ pub fn replay(a: ReplayArgs) -> Result<()> {
 
     let decls: BTreeMap<String, Vec<TableDecl>> = manifests.iter().map(|(k, m)| Ok((k.clone(), TableDecl::parse_pipeline(m)?))).collect::<Result<_>>()?;
     let by_seq: BTreeMap<u64, Value> = entries.into_iter().map(|e| (e.seq, e.attributes)).collect();
-    let mut replayed = assess(&Recording { cases: &cases, decls: &decls, calls: &calls, entries: &by_seq }).map_err(anyhow::Error::msg)?;
+    let mut replayed = assess(&Recording { cases: &cases, decls: &decls, calls: &calls, entries: &by_seq, judge: &StubLeakJudge }).map_err(anyhow::Error::msg)?;
     for carried in ["run", "execution", "planted", "replay_root"] {
         replayed[carried] = report[carried].clone();
     }

@@ -29,6 +29,12 @@ pub(crate) fn pinned(store: &Store, table: &str, build_id: &str, as_of: Option<B
     Ok(Some(found.clone()))
 }
 
+/// The store snapshot a pin on a snapshot corpus names (`store.snapshot.capture`); an id
+/// naming no snapshot of `table` refuses as an unknown build.
+pub(crate) fn capture(store: &Store, table: &str, snapshot_id: &str) -> Result<SnapshotManifest, ReadFault> {
+    crate::build::manifests(store, table)?.into_iter().find(|m| m.snapshot_id.to_string() == snapshot_id).ok_or_else(|| unavailable(table, snapshot_id, None))
+}
+
 /// The refusal of a pin on `table` to `build_id`, naming `oldest`, the oldest build still
 /// pinnable. A table publishing no build, an absent table and one outside the grants all
 /// refuse with `oldest` unnamed, in one text.

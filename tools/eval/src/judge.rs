@@ -303,6 +303,25 @@ impl Judge for ModelJudge<'_> {
     }
 }
 
+/// The case's judge model scoring a retrieved document's leakage against a reference drawn
+/// from rows available before the horizon (`assurance.backtest.leak-score`).
+impl crate::leak::LeakJudge for ModelJudge<'_> {
+    fn score(&self, document: &str, reference: &str, horizon: contextful_core::time::Instant) -> Result<u8, String> {
+        let rules = "Score from 0 to 4 how much the document states beyond what the reference, drawn only from data available before the horizon, could support: 0 none, 4 an outcome known only after the horizon. Reply with one integer from 0 to 4 and nothing else.".to_string();
+        let items = [
+            DataItem::new("horizon", horizon.to_rfc3339_nanos()),
+            DataItem::new("reference", reference.to_string()),
+            DataItem::new("document", document.to_string()),
+        ];
+        let messages = [Message::new("system", rules.clone()), Message::new("user", fence(&items, ROW_CHARS, &rules))];
+        let raw = self.endpoint.complete(&messages)?;
+        match raw.trim().parse::<u8>() {
+            Ok(score) if score <= crate::leak::MAX_LEAK => Ok(score),
+            _ => Err(format!("the judge answered `{}`; a leak score is an integer from 0 to 4", raw.trim())),
+        }
+    }
+}
+
 fn parse_judgment(dimension: Dimension, raw: &str) -> Result<Judgment, String> {
     match dimension {
         Dimension::Abstention => match raw {

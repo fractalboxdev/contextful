@@ -635,6 +635,10 @@ impl Schema {
                 }
             }
         }
+        // A column's first landing is set once: the stored instant stands (`read.horizon.late-columns`).
+        for (column, at) in &arriving.first_landed {
+            merged.first_landed.entry(column.clone()).or_insert(*at);
+        }
         Ok(merged)
     }
 

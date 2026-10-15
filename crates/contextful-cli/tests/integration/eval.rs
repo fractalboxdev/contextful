@@ -1169,6 +1169,22 @@ fn a_replay_reproduces_the_reports_digest_from_the_recording_alone() {
     assert!(stderr(&out).contains("diverges from its recording"), "{}", stderr(&out));
 }
 
+#[test]
+fn a_backtest_report_scores_leakage_and_gives_brier_per_tier() {
+    let issuer = Issuer::new();
+    let token = issuer.mint_research();
+    let cases = corpus(issuer.path(), RESEARCH, &research_rows(), &[bt_case("acme-q1", &[EARNINGS_SQL], forecast("2030-08-02T10:00:00Z"))]);
+    let (out, report) = issuer.backtest(&cases, "run-l", &token);
+    assert!(out.status.success(), "{}", stderr(&out));
+    // The case reads no retrieved document, so it lands no leak row and sits in tier 0.
+    assert_eq!(report["leak"]["rows"], json!([]), "{report}");
+    assert_eq!(report["leak"]["brier_by_tier"]["0"]["cases"], json!(1), "{report}");
+    assert!((report["leak"]["brier_by_tier"]["0"]["brier"].as_f64().unwrap() - 0.04).abs() < 1e-9, "{report}");
+    // The replay scores leakage alike, so the digest covering the leak block reproduces.
+    let replayed: Value = serde_json::from_str(&stdout(&run(issuer.path(), &["eval", "replay", "run-l"], None))).unwrap();
+    assert_eq!(replayed["digest"], report["digest"]);
+}
+
 /// A backtest run report carries the signed audit-chain root covering its run's {{disclosure.record.bound-entry}} entries.
 // spec: assurance.backtest.replay-root@e1626fa3
 #[test]

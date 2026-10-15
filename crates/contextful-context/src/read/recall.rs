@@ -204,13 +204,18 @@ impl Face {
         }
         let sql = format!(
             "SELECT f.{predicate}, CAST(f.{confidence} AS DOUBLE), CAST(o.{verdict} AS BOOLEAN) FROM {facts} f JOIN {outcomes} o ON o.{prediction} = f.{claim} \
-             WHERE o.{verdict} IS NOT NULL ORDER BY o.{ingested}, o.{prediction}",
+             WHERE o.{verdict} IS NOT NULL ORDER BY {settled}o.{prediction}",
             predicate = ident("predicate"),
             confidence = ident("confidence"),
             verdict = ident("verdict"),
             prediction = ident("prediction_id"),
             claim = ident("claim_id"),
-            ingested = ident(contextful_core::store::reserve::INGESTED_AT),
+            // A horizon withholds the load stamp; settlement order then falls to the label id
+            // (`read.horizon.engine-stamps`).
+            settled = match session.columns(labels).is_some_and(|c| c.iter().any(|c| c.name == contextful_core::store::reserve::INGESTED_AT)) {
+                true => format!("o.{}, ", ident(contextful_core::store::reserve::INGESTED_AT)),
+                false => String::new(),
+            },
             facts = ident(facts.name()),
             outcomes = ident(outcomes.name()),
         );

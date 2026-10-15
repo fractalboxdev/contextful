@@ -363,9 +363,9 @@ impl Face {
     /// one and `as_of` is not the earlier bound (`read.resolve-pin.earlier-bound-wins`). A
     /// table no batch has landed in registers as a zero-row relation over the injected
     /// columns (`read.register.quiet-table`).
-    fn source(&self, table: &str, bounds: Bounds, pin: Option<&str>) -> Result<TableSource, ReadFault> {
+    fn source(&self, table: &str, bounds: Bounds, pin: Option<&str>, horizon: Option<contextful_core::time::Instant>) -> Result<TableSource, ReadFault> {
         let decl = self.decl(table);
-        let policy = match self.policies.get(table) {
+        let mut policy = match self.policies.get(table) {
             Some(p) => p.clone(),
             None => TablePolicy::from_decl(&decl)?,
         };
@@ -373,13 +373,22 @@ impl Face {
         Ok(match self.store.try_schema(table)? {
             Some(_) => {
                 let pinned = match pin {
+                    // A snapshot corpus pins a capture by its store snapshot id (`store.snapshot.capture`).
+                    Some(capture) if decl.snapshot.is_some() => Some(super::pin::capture(&self.store, table, capture)?),
                     Some(build) => super::pin::pinned(&self.store, table, build, bounds.as_of)?,
                     None => None,
                 };
                 let s = scan_at(&self.store, &decl, bounds, pinned.as_ref())?;
                 let files = s.files.iter().map(|f| self.absolute(f)).collect::<Result<Vec<_>, _>>()?;
                 let resolved = s.publish.as_ref().map(Resolved::of);
-                TableSource { decl, policy, base: s.relation, files, columns: s.columns, landed: true, ledger, resolved }
+                let mut base = self.adjusted(&decl, s.relation, bounds)?;
+                let mut columns = s.columns;
+                if let Some(h) = horizon {
+                    (base, columns) = under_horizon(&decl, base, columns, &self.store.schema(table)?, h);
+                    // A withheld column leaves the registered schema, and a mask on it masks nothing.
+                    policy.columns.retain(|name, _| columns.iter().any(|c| &c.name == name));
+                }
+                TableSource { decl, policy, base, files, columns, landed: true, ledger, resolved }
             }
             None => {
                 // A pin on a table holding no build names no committed manifest.
@@ -391,6 +400,29 @@ impl Face {
                 TableSource { decl, policy, base, files: Vec::new(), columns, landed: false, ledger, resolved: None }
             }
         })
+    }
+
+    /// `base` with each column the table's adjustment lists multiplied, under
+    /// `available_as_of`, by the product of the factor vintages available by the bound that
+    /// agree on the factor table's key and take effect after the row's valid-time `from`
+    /// (`store.available-time.adjustment-factors`, `store.available-time.adjustment-join`).
+    /// An unbounded read keeps raw values.
+    fn adjusted(&self, decl: &TableDecl, base: String, bounds: Bounds) -> Result<String, ReadFault> {
+        let (Some(adjustment), Some(_)) = (decl.available_time.as_ref().and_then(|a| a.adjustment.as_ref()), bounds.available_as_of) else { return Ok(base) };
+        if adjustment.adjust_columns.is_empty() || self.store.try_schema(&adjustment.table)?.is_none() {
+            return Ok(base);
+        }
+        let factors = self.decl(&adjustment.table);
+        let within = Bounds { as_of: bounds.as_of, available_as_of: bounds.available_as_of, ..Bounds::default() }.for_table(&factors);
+        let relation = scan(&self.store, &factors, within)?.relation;
+        let mut join: Vec<String> = factors.primary_key().iter().map(|k| format!("__f.{0} IS NOT DISTINCT FROM __p.{0}", ident(k))).collect();
+        if let (Some(f), Some(p)) = (&factors.valid_time, &decl.valid_time) {
+            join.push(format!("__f.{} > __p.{}", ident(&f.from), ident(&p.from)));
+        }
+        let condition = if join.is_empty() { "true".to_string() } else { join.join(" AND ") };
+        let product = format!("coalesce((SELECT product(CAST(__f.{} AS DOUBLE)) FROM ({relation}) __f WHERE {condition}), 1)", ident(&adjustment.factor_column));
+        let replaced: Vec<String> = adjustment.adjust_columns.iter().map(|c| format!("CAST(__p.{0} AS DOUBLE) * {product} AS {0}", ident(c))).collect();
+        Ok(format!("SELECT __p.* REPLACE ({}) FROM ({base}) __p", replaced.join(", ")))
     }
 
     /// A store-root-relative path as the absolute path a relation reads.
@@ -482,7 +514,7 @@ impl Face {
         self.pool.session(principal, state, || {
             let sources = granted
                 .iter()
-                .map(|t| self.source(t, carried_bounds(bounds, carried, t).for_table(&self.decl(t)), pins.build(t).or(within.get(t).map(String::as_str))))
+                .map(|t| self.source(t, carried_bounds(bounds, carried, t).for_table(&self.decl(t)), pins.build(t).or(within.get(t).map(String::as_str)), horizon))
                 .collect::<Result<Vec<_>, _>>()?;
             Ok(Session::open(authority, request, sources, &self.pepper)?)
         })
@@ -652,7 +684,7 @@ impl Face {
         one_statement(sql)?;
         let engine = SqlEngine::raw_with_key(self.store.parquet_key())?;
         for t in self.tables()? {
-            engine.register(&t, &self.source(&t, Bounds::default(), None)?.base)?;
+            engine.register(&t, &self.source(&t, Bounds::default(), None, None)?.base)?;
         }
         // The least published row ceiling among the relations the statement names, beside
         // `--limit` (`read.query.raw-row-ceiling`).
@@ -669,7 +701,7 @@ impl Face {
     pub(crate) fn register_operator(&self, engine: &SqlEngine, bounds: Bounds) -> Result<Vec<String>, ReadFault> {
         let tables = self.tables()?;
         for t in &tables {
-            engine.register(t, &self.source(t, bounds.for_table(&self.decl(t)), None)?.base)?;
+            engine.register(t, &self.source(t, bounds.for_table(&self.decl(t)), None, None)?.base)?;
         }
         Ok(tables)
     }
@@ -1284,6 +1316,28 @@ pub(crate) fn carried_bounds(bounds: Bounds, carried: &Carried, table: &str) -> 
         Some(at) => Bounds { as_of: Some(*at), ..bounds },
         None => bounds,
     }
+}
+
+/// `base` and `columns` as a read under horizon `h` registers them: a snapshot document
+/// captured after `h` answers only at a `leak_score` of 0 (`store.snapshot.post-horizon-capture`);
+/// `_ingested_at` and `_commit_seq` leave the projection (`read.horizon.engine-stamps`); and
+/// a column first landed after `h` is absent (`read.horizon.late-columns`).
+fn under_horizon(decl: &TableDecl, mut base: String, columns: Vec<Column>, schema: &contextful_core::store::reconcile::Schema, h: contextful_core::time::Instant) -> (String, Vec<Column>) {
+    let at = format!("TIMESTAMPTZ {}", contextful_core::store::relation::literal(&h.to_rfc3339_nanos()));
+    if let Some(snapshot) = &decl.snapshot {
+        let scored = match &snapshot.leak_score {
+            Some(score) => format!(" OR {} = 0", ident(score)),
+            None => String::new(),
+        };
+        base = format!("SELECT * FROM ({base}) WHERE {} <= {at}{scored}", ident(&snapshot.captured_at));
+    }
+    let late = |c: &Column| schema.first_landed.get(&c.name).is_some_and(|landed| *landed > h);
+    let withheld = |c: &Column| [INGESTED_AT, COMMIT_SEQ].contains(&c.name.as_str()) || late(c);
+    let dropped: Vec<String> = columns.iter().filter(|c| withheld(c)).map(|c| ident(&c.name)).collect();
+    if !dropped.is_empty() {
+        base = format!("SELECT * EXCLUDE ({}) FROM ({base})", dropped.join(", "));
+    }
+    (base, columns.into_iter().filter(|c| !withheld(c)).collect())
 }
 
 /// The bound arguments every read tool but `memory.recall` declares, and the vintage a

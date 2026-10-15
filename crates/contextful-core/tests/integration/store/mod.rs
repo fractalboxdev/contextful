@@ -9,6 +9,7 @@ mod lay_out;
 mod reconcile;
 mod reserve;
 mod shapes;
+mod snapshot;
 mod sync;
 
 use contextful_core::store::lay_out::{PartEntry, RunManifest, SnapshotId, SnapshotManifest};
