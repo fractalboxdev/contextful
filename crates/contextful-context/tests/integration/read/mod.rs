@@ -4,6 +4,7 @@
 
 mod audit;
 mod carried;
+mod cold;
 mod enforce;
 mod extension;
 mod fulltext;

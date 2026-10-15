@@ -44,6 +44,7 @@ fn fire<'a>(body: &'a dyn RowBody, id: &str) -> Drive<'a> {
             statement: "select * from docs".into(),
             as_of: None,
             sweep: None,
+            structural_identity: None,
         },
         body,
         max_in_flight: 1,

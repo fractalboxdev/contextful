@@ -50,6 +50,10 @@ impl SweepFire<'_> {
             ("as_of".to_string(), self.drive.input.as_of.clone().unwrap_or_else(|| "open".to_string())),
             ("sweep".to_string(), sha256_hex(declaration.as_bytes())),
         ]);
+        let mut identities = identities;
+        if let Some(identity) = &self.drive.input.structural_identity {
+            identities.insert("structural_identity".to_string(), identity.clone());
+        }
         (plan_ref.clone(), PlanPins { plan_ref, identities }.into())
     }
 }

@@ -92,29 +92,39 @@ pub struct StoreInput {
     pub as_of: Option<String>,
     /// The sweep origin this run reads at, when the job declares a sweep.
     pub sweep: Option<super::sweep::OriginPin>,
+    /// An optional identity of executable structure resolved by the host, never a job key.
+    /// Without it, the plan reference and owner identities hash body, statement, `as_of`
+    /// and any sweep origin alone.
+    pub structural_identity: Option<String>,
 }
 
 impl StoreInput {
     /// The content hash of the body name, statement and declared `as_of`.
     /// A sweep origin's reference also hashes the sweep declaration and its origin
-    /// (`run.sweep.origin-pin`).
+    /// (`run.sweep.origin-pin`); a host-resolved structural identity joins the hash.
     pub fn plan_ref(&self) -> String {
         let mut canonical = json!({ "kind": "store-driven", "body": self.body, "statement": self.statement, "as_of": self.as_of });
         if let Some(pin) = &self.sweep {
             canonical["sweep"] = json!(pin.declaration);
             canonical["origin"] = json!(pin.origin);
         }
+        if let Some(identity) = &self.structural_identity {
+            canonical["structural_identity"] = json!(identity);
+        }
         sha256_hex(canonical.to_string().as_bytes())
     }
 
     /// The pins a host owner holds while the job's execution is pending; a resume under a
-    /// changed statement or `as_of` refuses with `ExecutionPinMismatch`.
+    /// changed input or host-resolved structure refuses with `ExecutionPinMismatch`.
     pub fn pins(&self) -> OwnerPins {
         let mut identities = BTreeMap::from([("body".to_string(), self.body.clone()), ("statement".to_string(), sha256_hex(self.statement.as_bytes()))]);
         identities.insert("as_of".to_string(), self.as_of.clone().unwrap_or_else(|| "open".to_string()));
         if let Some(pin) = &self.sweep {
             identities.insert("sweep".to_string(), sha256_hex(pin.declaration.as_bytes()));
             identities.insert("origin".to_string(), pin.origin.clone());
+        }
+        if let Some(identity) = &self.structural_identity {
+            identities.insert("structural_identity".to_string(), identity.clone());
         }
         PlanPins { plan_ref: self.plan_ref(), identities }.into()
     }

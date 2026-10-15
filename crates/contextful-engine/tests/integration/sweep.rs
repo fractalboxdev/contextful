@@ -22,7 +22,7 @@ fn twelve(state: SweepState) -> Sweep {
 }
 
 fn input(as_of: Option<&str>) -> StoreInput {
-    StoreInput { body: "echo".into(), statement: "SELECT doc_id FROM documents".into(), as_of: as_of.map(str::to_string), sweep: None }
+    StoreInput { body: "echo".into(), statement: "SELECT doc_id FROM documents".into(), as_of: as_of.map(str::to_string), sweep: None, structural_identity: None }
 }
 
 fn fire<'a>(body: &'a dyn RowBody, sweep: Sweep, as_of: Option<&str>, run_id: &str) -> SweepFire<'a> {
@@ -279,4 +279,37 @@ fn a_resume_under_a_changed_sweep_meets_a_pin_mismatch() {
     assert_ne!(base.plan_ref(), pin("b", "2029-11-20").plan_ref());
     assert_ne!(base.plan_ref(), pin("a", "2029-11-21").plan_ref());
     assert_eq!(base.plan_ref(), StoreInput { sweep: Some(contextful_core::run::sweep::OriginPin { sweep_id: "other".into(), ..base.sweep.clone().unwrap() }), ..base.clone() }.plan_ref(), "the sweep id is no pin");
+}
+
+#[test]
+fn a_resume_under_a_changed_structural_identity_refuses_before_any_origin_reads() {
+    let rig = Rig::new();
+    let pinned = |body: &'static Echo, identity: Option<&str>, run_id: &str| {
+        let mut f = fire(body, twelve(SweepState::Fresh), None, run_id);
+        f.drive.input.structural_identity = identity.map(str::to_string);
+        f
+    };
+    let dying: &'static Echo = Box::leak(Box::new(Echo { dies_at: Some("2029-11-22T00:00:00.000000000Z".into()), ..Echo::default() }));
+    let carried = Mutex::new(Vec::new());
+    let died = std::panic::catch_unwind(AssertUnwindSafe(|| {
+        let mut read = |input: &StoreInput, as_of: &str, _: Option<Instant>| -> Result<InputSet, Failure> {
+            carried.lock().unwrap().push(input.structural_identity.clone());
+            let row: Row = json!({ "origin": input.sweep.as_ref().unwrap().origin }).as_object().cloned().unwrap();
+            Ok(InputSet { as_of: as_of.into(), snapshots: BTreeMap::new(), rows: vec![row] })
+        };
+        let mut land = |_: &StoreInput, _: &str, e: &Emitted| -> Result<Landed, Failure> { Ok(Landed { rows: e.values().map(|r| r.len() as u64).sum(), bytes: 0 }) };
+        rig.engine.sweep(&pinned(dying, Some("structure-a"), "sweep-1"), &mut read, &mut land)
+    }));
+    assert!(died.is_err());
+    assert!(!carried.lock().unwrap().is_empty() && carried.lock().unwrap().iter().all(|i| i.as_deref() == Some("structure-a")), "every origin carries the pinned structure");
+    rig.clock.advance(86_400);
+    let body: &'static Echo = Box::leak(Box::default());
+    for (i, identity) in [Some("structure-b"), None].into_iter().enumerate() {
+        let mut read = |_: &StoreInput, _: &str, _: Option<Instant>| -> Result<InputSet, Failure> { panic!("a refused resume reads nothing") };
+        let mut land = |_: &StoreInput, _: &str, _: &Emitted| -> Result<Landed, Failure> { unreachable!() };
+        let refused = rig.engine.sweep(&pinned(body, identity, &format!("sweep-refused-{i}")), &mut read, &mut land).unwrap_err();
+        assert!(refused.to_string().contains("ExecutionPinMismatch"), "{refused}");
+    }
+    let resumed = run(&rig, &pinned(body, Some("structure-a"), "sweep-resumed"), &Mutex::default());
+    assert_eq!(resumed.sweep.status, RunStatus::Success);
 }

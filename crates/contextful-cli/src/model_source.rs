@@ -41,6 +41,8 @@ pub(crate) fn collect(files: &[contextful_core::pipeline::declare::ManifestFile]
 
 /// Applied models must be self contained, never resolving a path from a live draft.
 pub(crate) fn applied(file: &contextful_core::pipeline::declare::ManifestFile) -> anyhow::Result<Vec<ModelSpec>> {
+    let public = crate::effective::public_manifest(file.clone())?;
+    let file = &public;
     let models = contextful_core::pipeline::model::collect_models(std::slice::from_ref(file), &contextful_core::pipeline::declare::collect(std::slice::from_ref(file))?)?;
     if models.iter().any(|m| m.spec.sql_file.is_some()) { anyhow::bail!("applied model SQL must be inline"); }
     collect(std::slice::from_ref(file))
