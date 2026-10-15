@@ -158,6 +158,10 @@ pub struct TableDecl {
     pub bloom_filter: Option<Vec<String>>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub retain_runs: Option<String>,
+    /// The unfolded run count that fires the table's pass in place of 50
+    /// (`store.fold.declared-trigger`); zero refuses the block.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub fold_max_unfolded_runs: Option<std::num::NonZeroU32>,
     /// The window a `monotonic` poll of this table re-reads behind its stored position,
     /// spelled as a span (`run.advance.allowed-lateness`).
     #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -508,6 +512,12 @@ impl TableDecl {
     /// The declared column types (`store.declare.column-types`).
     pub fn column_types(&self) -> BTreeMap<String, ColumnType> {
         self.columns.iter().flatten().filter_map(|(c, t)| Some((c.clone(), ColumnType::parse(t)?))).collect()
+    }
+
+    /// The unfolded run count that fires the table's pass: its declared
+    /// `fold_max_unfolded_runs`, else 50 (`store.fold.declared-trigger`).
+    pub fn fold_run_count(&self) -> usize {
+        self.fold_max_unfolded_runs.map_or(super::fold::COMPACTION_RUN_COUNT, |n| n.get() as usize)
     }
 
     /// The `retain_runs` window in seconds: `<n>d`, `<n>h`, `<n>m` or `<n>s`.

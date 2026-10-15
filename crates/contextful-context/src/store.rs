@@ -489,6 +489,21 @@ impl Store {
     /// (`store.lay-out.uncommitted-run`); a manifest that fails to parse, or whose
     /// `run_id`, `node_id` or `table` disagrees with its path, refuses the table
     /// (`store.lay-out.manifest-unreadable`).
+    /// How many `<run>/<node>` directories of `table` hold a `_manifest.json`, from a
+    /// listing alone: no manifest is read or parsed.
+    pub fn manifest_count(&self, table: &str) -> Result<usize> {
+        let runs_dir = self.table_dir(table)?.join(contextful_core::store::lay_out::RUNS_DIR);
+        let mut count = 0;
+        for run_dir in sorted_dirs(&runs_dir)? {
+            for node_dir in sorted_dirs(&run_dir)? {
+                if node_dir.join(MANIFEST_FILE).is_file() {
+                    count += 1;
+                }
+            }
+        }
+        Ok(count)
+    }
+
     pub fn committed_runs(&self, table: &str) -> Result<Vec<RunManifest>> {
         let runs_dir = self.table_dir(table)?.join(contextful_core::store::lay_out::RUNS_DIR);
         let mut out = Vec::new();

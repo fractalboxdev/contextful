@@ -298,6 +298,9 @@ Compaction: pass order, triggers, retention, the compaction lease, and the point
 - `valid-time-line` — A keyed table declaring `valid_time` partitions on the key together with the valid-time line and keeps one row per line.
 - `includes-runs` — A snapshot's `includes_runs` names each run it folded as `<run-id>/<node-id>`, the run's own directory; a run committed afterwards reads on top of it.
 - `triggers` — A pass fires at 50 runs committed on a table, 6 h after the table's previous pass, or on `contextful context compact <table>`.
+- `declared-trigger` — A table declaring `fold_max_unfolded_runs`, a positive integer, fires its pass at that many unfolded runs in place of {{store.fold.triggers}}'s run count; zero refuses the declaration at parse.
+- `session-trigger` — A landing session counts its table's unfolded runs at open and per commit, recounting when another writer commits or folds, and runs a pass before the land returns once the table's trigger fires.
+  *because a trigger read only by a scheduled job lets a continuous writer accrue thousands of unfolded runs between passes*
 - `retention` — `retain_runs` defaults to 7 d; a folded run, a superseded snapshot and its sidecars are collected once older than the window.
 - `row-retention` — A fold removes expired rows from its snapshot and sidecars after keyed winner selection and derived supersession; unkeyed partitions whose footer maximum precedes the cutoff skip row reads, and idle passes publish on expiry under {{store.declare.retain-rows}}.
   *because a time partition follows the sender's clock while the retention clock follows arrival*

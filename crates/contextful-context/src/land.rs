@@ -1241,3 +1241,106 @@ pub fn discard_staged(store: &Store, table: &str, node: &NodeId, run_id: &str) -
         _ => Ok(()),
     }
 }
+
+/// One long-lived writer's hold on a table: the store opened and the node resolved once,
+/// each micro-batch committed as its own run, and the unfolded-run count kept across them
+/// (`run.land.session`). The count opens from the table's manifests and then moves per
+/// commit; a land recounts from the manifests only when the pointer or the committed-run
+/// listing moved past its own commit, and a land that fires the table's trigger runs a
+/// pass before it returns (`store.fold.session-trigger`).
+pub struct LandSession<'a> {
+    store: &'a Store,
+    decl: TableDecl,
+    node: NodeId,
+    unfolded: usize,
+    /// The instant the 6 h interval runs from: the previous pass, else the oldest
+    /// unfolded run.
+    since: Option<Instant>,
+    /// The pointer's ETag and the committed-run listing's size as of the last count.
+    seen: (String, usize),
+}
+
+/// One session landing: the committed manifest, whether it replayed a run already
+/// committed, and the outcome of the pass it fired.
+#[derive(Debug, Clone, PartialEq)]
+pub struct SessionLanding {
+    pub manifest: RunManifest,
+    pub replay: bool,
+    pub fold: Option<contextful_core::store::fold::FoldOutcome>,
+}
+
+impl<'a> LandSession<'a> {
+    /// Open a session landing `decl`'s table as `node`, counting the runs its current
+    /// snapshot omits.
+    pub fn open(store: &'a Store, decl: TableDecl, node: NodeId) -> Result<LandSession<'a>> {
+        let mut session = LandSession { store, decl, node, unfolded: 0, since: None, seen: (String::new(), 0) };
+        session.recount()?;
+        Ok(session)
+    }
+
+    /// The runs the table's current snapshot omits, as this session counts them.
+    pub fn unfolded(&self) -> usize {
+        self.unfolded
+    }
+
+    /// Land `batch` as run `injection.run_id`, committed at `committed_at` with the source
+    /// cursor `position`, then run a pass when the table's trigger fires. `precommit` runs
+    /// before the commit, as it does for [`land_run`].
+    pub fn land(
+        &mut self,
+        batch: &Batch,
+        injection: Injection,
+        committed_at: Instant,
+        position: &Position,
+        precommit: &dyn Fn() -> Result<()>,
+    ) -> Result<SessionLanding> {
+        let ctx = RunContext { node: self.node.clone(), injection, committed_at };
+        let landing = land_run(self.store, &self.decl, std::slice::from_ref(batch), &ctx, position, precommit)?;
+        if landing.replay {
+            return Ok(SessionLanding { manifest: landing.manifest, replay: true, fold: None });
+        }
+        // A snapshot corpus folds each capture as it lands (`store.snapshot.capture`).
+        if self.decl.snapshot.is_some() {
+            self.recount()?;
+            return Ok(SessionLanding { manifest: landing.manifest, replay: false, fold: None });
+        }
+        let observed = self.observe()?;
+        if observed == (self.seen.0.clone(), self.seen.1 + 1) {
+            // Only this commit moved the table.
+            self.unfolded += 1;
+            self.since.get_or_insert(committed_at);
+            self.seen = observed;
+        } else {
+            // Another writer committed or folded since the last count.
+            self.recount()?;
+        }
+        let fired = contextful_core::store::fold::trigger_fired(self.unfolded, self.since, committed_at, self.decl.fold_run_count());
+        let fold = if fired {
+            let outcome = crate::fold::fold(self.store, &self.decl, committed_at)?;
+            self.recount()?;
+            Some(outcome)
+        } else {
+            None
+        };
+        Ok(SessionLanding { manifest: landing.manifest, replay: false, fold })
+    }
+
+    /// The pointer's ETag and the committed-run listing's size, reading no manifest.
+    fn observe(&self) -> Result<(String, usize)> {
+        let table = self.decl.name.as_str();
+        Ok((self.store.pointer_etag(table)?, self.store.manifest_count(table)?))
+    }
+
+    /// Read the count and the interval's start from the table's pointer and manifests. The
+    /// listing is observed first, so a commit racing the read moves it and the next land
+    /// recounts.
+    fn recount(&mut self) -> Result<()> {
+        let observed = self.observe()?;
+        let state = self.store.state(&self.decl)?;
+        let unfolded = state.unfolded_runs();
+        self.unfolded = unfolded.len();
+        self.since = state.chain.first().map(|s| s.created_at).or_else(|| unfolded.first().map(|r| r.committed_at));
+        self.seen = observed;
+        Ok(())
+    }
+}
