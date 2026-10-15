@@ -13,7 +13,9 @@ pub mod meter;
 pub mod model_ref;
 pub mod package;
 pub mod probe;
+pub mod record;
 pub mod reference;
 pub mod resolve;
+pub mod rotate;
 
 pub use error::ConnectorError;

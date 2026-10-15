@@ -132,7 +132,7 @@ impl Provider for Fixed {
     }
 
     fn answer(&self, name: &SecretName) -> Result<Option<Answer>, Failure> {
-        Ok(self.0.iter().find(|(n, _)| *n == name.as_str()).map(|(_, v)| Answer { value: Hydrated::new(*v), expires_at: None }))
+        Ok(self.0.iter().find(|(n, _)| *n == name.as_str()).map(|(_, v)| Answer { value: Hydrated::new(*v), expires_at: None, version: None }))
     }
 }
 

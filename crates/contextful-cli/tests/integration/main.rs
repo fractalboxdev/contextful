@@ -60,6 +60,8 @@ mod query;
 #[cfg(feature = "data-plane")]
 mod run;
 #[cfg(feature = "data-plane")]
+mod secrets;
+#[cfg(feature = "data-plane")]
 mod serve;
 #[cfg(feature = "data-plane")]
 mod sync;

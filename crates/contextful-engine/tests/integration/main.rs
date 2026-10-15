@@ -13,6 +13,7 @@ mod command;
 mod command_windows;
 mod command_admission;
 mod coordinate;
+mod credentials;
 mod drive;
 mod items;
 mod execution;
@@ -66,6 +67,7 @@ pub fn support_row(run_id: &str, status: RunStatus) -> RunRow {
         plan_ref: None,
         input: None,
         failed_branches: Vec::new(),
+        credential_providers: Default::default(),
     }
 }
 mod worker;

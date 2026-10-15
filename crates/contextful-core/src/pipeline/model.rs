@@ -609,7 +609,7 @@ pub fn regenerate<T: Clone>(existing: &[T], derived: &[T], key: impl Fn(&T) -> S
 }
 
 /// The top-level keys a manifest file holds (`run.model.top-level-block`).
-pub const MANIFEST_BLOCKS: [&str; 24] = [
+pub const MANIFEST_BLOCKS: [&str; 25] = [
     "acl_sweep",
     "authoring_posture",
     "capabilities",
@@ -630,6 +630,7 @@ pub const MANIFEST_BLOCKS: [&str; 24] = [
     "relation",
     "residency",
     "role_grants",
+    "secret",
     "site_id",
     "site_id_env",
     "subject_map",

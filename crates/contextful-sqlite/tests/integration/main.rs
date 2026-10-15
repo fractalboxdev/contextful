@@ -71,6 +71,7 @@ pub fn run_row(run_id: &str, pipeline: &str, status: RunStatus) -> RunRow {
         plan_ref: None,
         input: None,
         failed_branches: Vec::new(),
+        credential_providers: Default::default(),
     }
 }
 

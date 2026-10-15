@@ -216,7 +216,7 @@ impl Provider for Fixed {
     fn answer(&self, name: &SecretName) -> Result<Option<Answer>, Failure> {
         self.calls.fetch_add(1, Ordering::SeqCst);
         std::thread::sleep(std::time::Duration::from_millis(self.delay_ms));
-        Ok(self.values.lock().unwrap().iter().find(|(k, _)| k == name.as_str()).map(|(_, v)| Answer { value: Hydrated::new(v.clone()), expires_at: None }))
+        Ok(self.values.lock().unwrap().iter().find(|(k, _)| k == name.as_str()).map(|(_, v)| Answer { value: Hydrated::new(v.clone()), expires_at: None, version: None }))
     }
 }
 

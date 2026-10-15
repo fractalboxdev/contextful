@@ -129,6 +129,9 @@ pub struct Execution<'e, J: JournalStore = FileJournalStore, B: BlobStore = File
     /// Whether the failure it closes on replays identically, so closing retires the owner
     /// whatever the journal holds.
     discarded: bool,
+    /// Each logical name the run hydrated and the adapter that answered it, copied onto the
+    /// closing row (`connector.record.provider-attribution`).
+    credentials: std::collections::BTreeMap<String, String>,
 }
 
 impl<J: JournalStore, B: BlobStore> Engine<J, B> {
@@ -204,6 +207,7 @@ impl<J: JournalStore, B: BlobStore> Engine<J, B> {
             host_scope: open.scope.host_id().map(str::to_string),
             input: None,
             failed_branches: Vec::new(),
+            credential_providers: Default::default(),
         };
         self.catalog.put_run(&row)?;
         let token = CancelToken::default();
@@ -225,6 +229,7 @@ impl<J: JournalStore, B: BlobStore> Engine<J, B> {
             owned: false,
             retired: false,
             discarded: false,
+            credentials: Default::default(),
         };
         execution.emit(Change::Status { status: RunStatus::Running, at: Some(now), error: None });
         execution.registration = Some(self.keeper.register(self.catalog.clone(), &open.run_id, token, held));
@@ -278,6 +283,12 @@ impl<'e, J: JournalStore, B: BlobStore> Execution<'e, J, B> {
     }
 
     /// The token the keeper fires on a stop.
+    /// Record the run's provider attribution: each logical name it hydrated mapped to the
+    /// answering adapter. The closing row carries it on success and on failure.
+    pub fn record_credentials(&mut self, providers: std::collections::BTreeMap<String, String>) {
+        self.credentials = providers;
+    }
+
     pub fn token(&self) -> &CancelToken {
         &self.token
     }
@@ -536,10 +547,14 @@ impl<'e, J: JournalStore, B: BlobStore> Execution<'e, J, B> {
         }
 
         let now = engine.catalog.now()?;
+        let credentials = std::mem::take(&mut self.credentials);
         let closed = engine.catalog.update_run(&self.run_id, &mut |r| {
             r.ended_at = Some(now);
             r.phase = Phase::Commit;
             r.owner = None;
+            if !credentials.is_empty() {
+                r.credential_providers = credentials.clone();
+            }
             match &outcome {
                 Ok((landed, tally)) => {
                     r.status = RunStatus::Success;

@@ -211,9 +211,15 @@ pub enum ConnectorError {
     /// A logical name answered by two assembled adapters. (`connector.resolve.shadowed-name`)
     #[error("SecretNameShadowed: {0}")]
     SecretNameShadowed(String),
+    /// An operator record naming no configured binding, or carrying an unknown key, mistyped value or credential-shaped string. (`connector.record.record-rejected`)
+    #[error("SecretRecordRejected: {0}")]
+    SecretRecordRejected(String),
     /// A hop or next link weakening the transport or leaving the configured host and port. (`connector.attach.weakened-hop`)
     #[error("SecretRedirectOffOrigin: {0}")]
     SecretRedirectOffOrigin(String),
+    /// A refused put of a refreshed token, or an answering adapter with no write half. (`connector.rotate.write-back-denied`)
+    #[error("SecretRotationWriteDenied: {0}")]
+    SecretRotationWriteDenied(String),
     /// A request to a host the declaration does not cover. (`connector.attach.unpermitted-request`)
     #[error("SecretUnpermittedRequest: {0}")]
     SecretUnpermittedRequest(String),

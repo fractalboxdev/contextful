@@ -336,3 +336,16 @@ fn a_provider_named_localhost_mints_over_loopback() {
     assert_eq!(r.hydrate(&name("vendor-token")).unwrap().reveal(), "leased-value");
     assert_eq!(mints(&server), 1);
 }
+
+/// One mint call answers one scope: two leased names send two calls, each body naming one scope.
+#[test]
+fn each_leased_name_mints_alone() {
+    let _env = proxy_env();
+    let server = leased(600);
+    let clock = SetClock::new();
+    let r = resolver(&server, "vendor-token,speech-vendor=speech", &clock);
+    r.hydrate(&name("vendor-token")).unwrap();
+    r.hydrate(&name("speech-vendor")).unwrap();
+    let bodies: Vec<serde_json::Value> = server.received("/leases").iter().map(|q| serde_json::from_slice(&q.body).unwrap()).collect();
+    assert_eq!(bodies, vec![serde_json::json!({ "scope": "vendor-token" }), serde_json::json!({ "scope": "speech" })]);
+}

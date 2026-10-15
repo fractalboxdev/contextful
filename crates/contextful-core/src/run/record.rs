@@ -185,6 +185,11 @@ pub struct RunRow {
     /// label and failure tag (`run.journal.fan-out-join`).
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub failed_branches: Vec<super::join::FailedBranch>,
+    /// Each logical name the run hydrated, mapped to the adapter that answered it, names
+    /// only; a row recorded without the field decodes as empty
+    /// (`connector.record.provider-attribution`).
+    #[serde(default, skip_serializing_if = "std::collections::BTreeMap::is_empty")]
+    pub credential_providers: std::collections::BTreeMap<String, String>,
 }
 
 /// The input a store-driven run read: the resolved `as_of`, the snapshot id per table the

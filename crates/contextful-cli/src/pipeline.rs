@@ -729,6 +729,7 @@ pub fn run(cmd: PipelineCmd, tasks: &Tasks, bodies: &contextful_core::run::drive
             // Each `[[acl_sweep]]` block parses, its cadences under the budget grammar
             // (`disclosure.sweep.cadence-grammar`), and no source declares two across files.
             contextful_core::disclosure::sweep::SweepBlock::parse_set(&files)?;
+            crate::secrets::check_records(&declaration, &files)?;
             let coverage = fold_coverage(&files)?;
             let declared = collect(&files)?;
             for d in &declared {
@@ -793,6 +794,7 @@ pub fn run(cmd: PipelineCmd, tasks: &Tasks, bodies: &contextful_core::run::drive
                 Some(version) => vec![crate::effective::public_manifest(crate::cadence::snapshot_manifest(&l.project, &text, version)?)?],
                 None => manifests(&declaration)?,
             };
+            crate::secrets::check_records(&declaration, &files)?;
             let declared: Vec<Declared> = collect(&files)?;
             let d = declared.into_iter().find(|d| d.spec.id == id).with_context(|| match applied {
                 Some(v) => format!("applied version v{v} holds no pipeline `{id}`"),
@@ -920,7 +922,7 @@ pub fn run(cmd: PipelineCmd, tasks: &Tasks, bodies: &contextful_core::run::drive
                     };
                     let run = RunSpec { plan, connector, run_id: run_id.clone(), site_id: site_id.clone(), pid: std::process::id(), boot_id: boot_id(), trace_id: None };
                     let shape = Chain { ops: spec.transforms.clone(), table: table.clone() };
-                    let mut source: Box<dyn Source> = match &checked {
+                    let source: Box<dyn Source> = match &checked {
                         Checked::Http(config, binding) => {
                             let limiter = binding.clone().map(|b| contextful_outbound::Limiter::new(b, resolver.clone(), &run_id, w.clock.clone()).map(Arc::new)).transpose()?;
                             limiters.extend(limiter.clone());
@@ -967,6 +969,9 @@ pub fn run(cmd: PipelineCmd, tasks: &Tasks, bodies: &contextful_core::run::drive
                         },
                         Checked::Host(_) => Box::new(Staged(staged.get(&table).cloned().unwrap_or_default(), derive_skipped)),
                     };
+                    // The closing row carries the names this fire hydrated and their adapters
+                    // (`connector.record.provider-attribution`).
+                    let mut source = Attributed { inner: source, resolver: resolver.clone() };
                     Ok(w.engine.run_with(&run, &mut source, &shape, &mut dest)?)
                 })();
                 // The run's reports surrender every unspent permit (`connector.meter.report-delivery`).
@@ -1067,5 +1072,25 @@ impl std::fmt::Display for IngestTally {
             "fetched {} · kept {} · skipped {} · failed {} · dropped_low_quality {}",
             self.fetched, self.kept, self.skipped, self.failed, self.dropped_low_quality
         )
+    }
+}
+
+/// A source reporting its fire's provider attribution from the resolver every credential
+/// of the fire hydrates through, exec-step environments included
+/// (`connector.attach.exec-environment`).
+struct Attributed {
+    inner: Box<dyn Source>,
+    resolver: Arc<contextful_outbound::Resolver>,
+}
+
+impl Source for Attributed {
+    fn pull(&mut self, request: &contextful_core::run::ports::PullRequest, cancel: &dyn contextful_core::run::ports::Cancellation) -> Result<Vec<u8>, contextful_core::run::Failure> {
+        self.inner.pull(request, cancel)
+    }
+    fn settle(&mut self) -> Result<(), contextful_core::run::Failure> {
+        self.inner.settle()
+    }
+    fn credential_providers(&self) -> BTreeMap<String, String> {
+        self.resolver.attribution()
     }
 }

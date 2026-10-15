@@ -93,6 +93,12 @@ pub trait Source {
     fn settle(&mut self) -> Result<(), Failure> {
         Ok(())
     }
+
+    /// Each logical name this source hydrated, mapped to the adapter that answered it
+    /// (`connector.record.provider-attribution`). A source binding no credential reports none.
+    fn credential_providers(&self) -> std::collections::BTreeMap<String, String> {
+        std::collections::BTreeMap::new()
+    }
 }
 
 impl<S: Source + ?Sized> Source for Box<S> {
@@ -102,6 +108,9 @@ impl<S: Source + ?Sized> Source for Box<S> {
     fn settle(&mut self) -> Result<(), Failure> {
         (**self).settle()
     }
+    fn credential_providers(&self) -> std::collections::BTreeMap<String, String> {
+        (**self).credential_providers()
+    }
 }
 
 impl<S: Source + ?Sized> Source for &mut S {
@@ -110,6 +119,9 @@ impl<S: Source + ?Sized> Source for &mut S {
     }
     fn settle(&mut self) -> Result<(), Failure> {
         (**self).settle()
+    }
+    fn credential_providers(&self) -> std::collections::BTreeMap<String, String> {
+        (**self).credential_providers()
     }
 }
 
