@@ -628,6 +628,7 @@ fn a_bound_store_encrypts_parquet_footers_and_seals_sidecars_and_ledgers_per_fil
     assert!(!parts.is_empty(), "the exclusion below ranges over no element");
     for (path, bytes) in &parts {
         assert!(bytes.starts_with(b"PARE") && bytes.ends_with(b"PARE"), "{} carries a plaintext footer", path.display());
+        assert!(!bytes.is_empty(), "the exclusion below ranges over no element");
         assert!(!bytes.windows(CANARY.len()).any(|w| w == CANARY.as_bytes()), "{} holds plaintext", path.display());
     }
 
@@ -643,6 +644,7 @@ fn a_bound_store_encrypts_parquet_footers_and_seals_sidecars_and_ledgers_per_fil
     assert_eq!(ledgers.len(), 2);
     assert_ne!(ledgers[0][..32], ledgers[1][..32], "two ledger files share a data key");
     for bytes in &ledgers {
+        assert!(!bytes.is_empty(), "the exclusion below ranges over no element");
         assert!(!bytes.windows(CANARY.len()).any(|w| w == CANARY.as_bytes()));
         assert!(cipher.open(bytes).is_ok());
         assert!(contextful_core::store::encrypt::FileCipher::open(&other, bytes).is_err());
@@ -656,6 +658,7 @@ fn a_bound_store_encrypts_parquet_footers_and_seals_sidecars_and_ledgers_per_fil
     let files = tree(sidecars.path());
     assert!(!files.is_empty(), "the exclusion below ranges over no element");
     for (path, bytes) in &files {
+        assert!(!bytes.is_empty(), "the exclusion below ranges over no element");
         assert!(!bytes.windows(CANARY.len()).any(|w| w == CANARY.as_bytes()), "{} holds plaintext", path.display());
         assert!(cipher.open(bytes).is_ok(), "{} opens under the project key", path.display());
         assert!(contextful_core::store::encrypt::FileCipher::open(&other, bytes).is_err());
