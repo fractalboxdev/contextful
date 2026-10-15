@@ -13,9 +13,9 @@ An unpinned clause is `committed`; a pinned one is `performed` when its Rust, Le
 | `read` | 2 | 19 | 276 | 45 | 28 | 13 | 231 | 0 | 231 |
 | `run` | 3 | 28 | 509 | 114 | 44 | 11 | 459 | 0 | 459 |
 | `store` | 3 | 19 | 290 | 64 | 14 | 11 | 280 | 0 | 280 |
-| `surface` | 2 | 21 | 159 | 63 | 23 | 0 | 129 | 0 | 129 |
+| `surface` | 2 | 21 | 159 | 63 | 23 | 0 | 131 | 0 | 131 |
 | `topology` | 1 | 6 | 79 | 25 | 5 | 3 | 74 | 0 | 74 |
-| **total** | 22 | 167 | 2522 | 649 | 208 | 77 | 2109 | 0 | |
+| **total** | 22 | 167 | 2522 | 649 | 208 | 77 | 2111 | 0 | |
 
 Decision records: 18.
 
@@ -37,7 +37,7 @@ A milestone reads `closed` when its acceptance test computes `passing` and every
 | 9 — Visibility | 6 | 41 | 11 | open | open |
 | 10 — Cadence and the operator plane | 11 | 99 | 85 | passing | open |
 | 11 — The derive tier | 7 | 94 | 93 | passing | closed |
-| 12 — The operator console | 12 | 56 | 41 | passing | open |
+| 12 — The operator console | 12 | 56 | 43 | passing | open |
 | 13 — Disclosure | 5 | 33 | 21 | open | open |
 | 14 — Assurance | 7 | 165 | 128 | passing | closed |
 | 15 — Point-in-time evaluation | 7 | 78 | 77 | passing | closed |
@@ -2056,6 +2056,7 @@ Unscheduled operations: 12.
 | `surface.package.store-selector` | `crates/contextful-cli/tests/integration/mcp.rs::a_spawned_server_without_a_project_manifest_refuses_before_framing` | performed |
 | `surface.plan-turn.code-path-bounds` | `apps/console/test/turn.test.ts::apps/console/test/turn.test.ts::the code path reads at most 5000 rows per data table and stops after 10 s` | performed |
 | `surface.plan-turn.overlay-audience` | `apps/console/test/turn.test.ts::apps/console/test/turn.test.ts::a store's overlay reaches synthesis and stays outside the planner` | performed |
+| `surface.plan-turn.overlay-cache` | `apps/console/test/live.test.ts::apps/console/test/live.test.ts::one store overlay read serves every question for five minutes` | performed |
 | `surface.plan-turn.overlay-length` | `apps/console/test/turn.test.ts::apps/console/test/turn.test.ts::an overlay truncates at 8000 chars` | performed |
 | `surface.plan-turn.planner-reached-memory` | `apps/console/test/turn.test.ts::apps/console/test/turn.test.ts::a planner call targeting a memory relation dispatches nothing` | performed |
 | `surface.plan-turn.turn-flow` | `apps/console/test/live.test.ts::apps/console/test/live.test.ts::Query replans once with a text search after the matched table returns no rows` | performed |
@@ -2085,6 +2086,7 @@ Unscheduled operations: 12.
 | `surface.set-vantage.web-bound-unparseable` | `apps/console/test/turn.test.ts::apps/console/test/turn.test.ts::a web leg with an invalid publication bound fails before dispatch` | performed |
 | `surface.speak.redactor-lookahead` | `apps/console/test/turn.test.ts::apps/console/test/turn.test.ts::streaming redactor masks identifiers split across chunks` | performed |
 | `surface.speak.stream-redaction` | `apps/console/test/turn.test.ts::apps/console/test/turn.test.ts::each streamed model chunk is redacted before Query receives prose` | performed |
+| `surface.speak.unanswerable-suggestion` | `apps/console/test/browse.test.ts::apps/console/test/browse.test.ts::a suggestion the live turn would decline raises ConsoleSuggestionUnanswerable and leaves the chip set` | performed |
 | `topology.bound-application.restated-case` | `tools/ci/tests/integration/mirrors.rs::an_annotation_naming_a_clause_passes` | performed |
 | `topology.compose.cli-binary` | `spec/pins.toml` | performed |
 | `topology.compose.connector-pillar` | `spec/pins.toml` | performed |

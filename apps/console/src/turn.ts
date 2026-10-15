@@ -90,10 +90,10 @@ export class OverlayCache {
     this.clock = clock;
   }
 
-  async get(store: string): Promise<string> {
+  async get(store: string, read: (store: string) => Promise<string | null> = this.read): Promise<string> {
     const cached = this.entries.get(store);
     if (cached && this.clock() < cached.until) return cached.value ?? "";
-    const value = (await this.read(store))?.slice(0, 8000) ?? null;
+    const value = (await read(store))?.slice(0, 8000) ?? null;
     this.entries.set(store, { until: this.clock() + 300_000, value });
     return value ?? "";
   }
@@ -158,6 +158,7 @@ export type TurnOptions = {
   transport: { call: (call: ToolCall & { vantage?: string; maxRows: number; signal: AbortSignal }) => Promise<ToolResult> };
   synthesize: (input: SynthesisInput) => AsyncIterable<string>;
   overlay?: (store: string) => Promise<string | null>;
+  overlayCache?: { get(store: string): Promise<string> };
   denylist?: string[];
   clock?: () => number;
   timeoutMs?: number;
@@ -165,7 +166,7 @@ export type TurnOptions = {
 
 export function createTurn(options: TurnOptions) {
   options.packs?.forEach(validatePack);
-  const overlay = new OverlayCache(options.overlay ?? (async () => null), options.clock);
+  const overlay = options.overlayCache ?? new OverlayCache(options.overlay ?? (async () => null), options.clock);
 
   return {
     async ask(request: TurnRequest): Promise<{ text: string; sources: Source[] }> {

@@ -1,6 +1,8 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 import { BrowseError, createBrowse, humanizeLabel } from "../src/browse.ts";
+import { assertSuggestion } from "../src/suggest.ts";
+import { ConsoleError } from "../src/turn.ts";
 
 function fixture() {
   const calls: Array<{ tool: string; arguments: Record<string, unknown> }> = [];
@@ -9,8 +11,8 @@ function fixture() {
       calls.push({ tool, arguments: args });
       if (tool === "context.describe" && !args.table) return { structuredContent: {
         tables: [
-          { table: "research/vendor_filings", description: "Filed reports", zone_admitted: true },
-          { table: "research/private_payroll", description: "Restricted", zone_admitted: false },
+          { table: "research/vendor_filings", kind: "data", description: "Filed reports", zone_admitted: true },
+          { table: "research/private_payroll", kind: "data", description: "Restricted", zone_admitted: false },
         ],
       } };
       if (tool === "context.describe") return { structuredContent: { table: args.table, row_count: 3 } };
@@ -32,7 +34,7 @@ function fixture() {
 test("browse advertises admitted tables as humanized chips", async () => {
   const { browse, calls } = fixture();
   const result = await browse.discover({ asOf: "2030-01-01T00:00:00Z" });
-  assert.deepEqual(result.chips, [{ table: "research/vendor_filings", label: "Vendor Filings", description: "Filed reports" }]);
+  assert.deepEqual(result.chips, [{ table: "research/vendor_filings", label: "Vendor Filings", description: "Filed reports", prompt: "Tell me about Vendor Filings" }]);
   assert.deepEqual(result.files, [{ table: "research/vendor_filings", path: "research/vendor_filings/runs/run-1/report.parquet", label: "Report" }]);
   assert.equal(calls[0].tool, "context.describe");
   assert.equal(calls[0].arguments.as_of, "2030-01-01T00:00:00Z");
@@ -72,4 +74,39 @@ test("in-band read refusals remain errors", async () => {
 test("human labels handle separators and acronyms without adding prompts", () => {
   assert.equal(humanizeLabel("reports/q3_sec_filings"), "Q3 SEC Filings");
   assert.equal(humanizeLabel("customer-orders"), "Customer Orders");
+});
+
+function suggestionFixture() {
+  const tables = [
+    { table: "research/vendor_filings", kind: "data", zone_admitted: true, description: "Filed reports",
+      columns: [{ name: "filing_id", type: "VARCHAR" }, { name: "title", type: "VARCHAR" }] },
+    { table: "metrics/daily_totals", kind: "data", zone_admitted: true,
+      columns: [{ name: "day", type: "DATE" }, { name: "total", type: "BIGINT" }] },
+    { table: "research/empty_notes", kind: "data", zone_admitted: true,
+      columns: [{ name: "note_id", type: "VARCHAR" }, { name: "body", type: "VARCHAR" }] },
+  ];
+  const counts: Record<string, number> = { "research/vendor_filings": 3, "metrics/daily_totals": 9, "research/empty_notes": 0 };
+  const browse = createBrowse({
+    async call(tool: string, args: Record<string, unknown>) {
+      if (tool === "context.describe" && !args.table) return { structuredContent: { tables } };
+      if (tool === "context.describe") return { structuredContent: { table: args.table, row_count: counts[args.table as string] } };
+      if (tool === "context.files") return { structuredContent: { columns: ["table", "path"], rows: [] } };
+      throw new Error(`unexpected tool ${tool}`);
+    },
+  });
+  return { browse, tables, counts };
+}
+
+const unanswerable = (error: unknown) => error instanceof ConsoleError && error.code === "ConsoleSuggestionUnanswerable";
+
+// spec: surface.speak.unanswerable-suggestion@dc680207
+test("a suggestion the live turn would decline raises ConsoleSuggestionUnanswerable and leaves the chip set", async () => {
+  const { browse, tables, counts } = suggestionFixture();
+  assert.throws(() => assertSuggestion("Tell me about Daily Totals", tables, counts), unanswerable);
+  assert.throws(() => assertSuggestion("Tell me about Empty Notes", tables, counts), unanswerable);
+  assert.throws(() => assertSuggestion("Tell me about 2030", tables.slice(1, 2), counts), unanswerable);
+  assert.doesNotThrow(() => assertSuggestion("Tell me about Vendor Filings", tables, counts));
+  const result = await browse.discover({});
+  assert.deepEqual(result.chips.map((chip) => chip.prompt), ["Tell me about Vendor Filings"]);
+  assert.deepEqual(result.insights.map((insight) => insight.table), ["research/vendor_filings", "metrics/daily_totals", "research/empty_notes"]);
 });

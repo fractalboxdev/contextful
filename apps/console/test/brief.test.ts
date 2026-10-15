@@ -1,6 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import { deriveBrief, topicMatch } from "../src/brief.ts";
+import { ConsoleError } from "../src/turn.ts";
 
 const now = Date.parse("2026-01-08T12:00:00Z");
 const conclusion = { subject: "Acme", text: "Acme filings need review", live: true };
@@ -69,4 +70,17 @@ test("brief refuses a missing derivation budget before loading arrivals", async 
     assert.rejects(pending, /ConsoleBriefUnavailable/),
     new Promise<never>((_, reject) => setTimeout(() => reject(new Error("budget missing hung")), 50)),
   ]);
+});
+
+test("brief prompts pass the suggestion check before the card carries them", async () => {
+  const conclusions = [conclusion, { subject: "Globex", text: "Globex filings need review", live: true }];
+  const arrivals = [row, { id: "g", label: "Globex filing", topics: ["filings"], arrivedAt: "2026-01-08T11:00:00Z" }];
+  const checked: string[] = [];
+  const card = await deriveBrief({ session: { turns: 0, vantage: "present" }, conclusions, arrivals, now, budgetMs: 1000,
+    suggest: (prompt) => {
+      checked.push(prompt);
+      if (prompt.includes("Globex")) throw new ConsoleError("ConsoleSuggestionUnanswerable", prompt);
+    } });
+  assert.deepEqual(checked, ["What changed for Acme?", "What changed for Globex?"]);
+  assert.deepEqual(card?.subjects.map((subject) => [subject.subject, subject.prompt]), [["Acme", "What changed for Acme?"]]);
 });
