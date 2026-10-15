@@ -20,10 +20,9 @@ pub struct Platform {
     pub platform: &'static str,
     /// The compilation target.
     pub target: &'static str,
-    /// The compiler and package manager versions the image carries.
-    pub rustc: &'static str,
-    pub cargo: &'static str,
-    /// The build command, run in the source root.
+    /// The package fetch, run with network into the per-build package cache.
+    pub fetch: &'static [&'static str],
+    /// The build command, run in the source root; the container build appends `--offline`.
     pub argv: &'static [&'static str],
     /// Where the source root, the package cache and the toolchain remap to
     /// (`connector.package.path-remap`).
@@ -37,13 +36,12 @@ pub struct Platform {
 
 /// The fixed builder platform. The image digest names the published builder image carrying
 /// the `wasm32-wasip2` target; the all-zero digest names no image, so a container build
-/// refuses at pull until the operator records the published digest here.
+/// refuses at pull until the published digest is recorded here.
 pub const PLATFORM: Platform = Platform {
-    image: "contextful-connector-builder@sha256:0000000000000000000000000000000000000000000000000000000000000000",
+    image: "ghcr.io/fractalboxdev/contextful-connector-builder@sha256:0000000000000000000000000000000000000000000000000000000000000000",
     platform: "linux/amd64",
     target: "wasm32-wasip2",
-    rustc: "1.97.0",
-    cargo: "1.97.0",
+    fetch: &["cargo", "fetch", "--locked", "--target", "wasm32-wasip2"],
     argv: &["cargo", "build", "--release", "--locked", "--target", "wasm32-wasip2"],
     remap_source: "/src",
     remap_cargo: "/cargo",

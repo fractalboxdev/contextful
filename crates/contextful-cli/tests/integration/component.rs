@@ -269,10 +269,12 @@ fn bytes_off_their_pin_refuse_before_any_run_row() {
 // spec: connector.package.local-unpinned@c59e312a
 #[test]
 fn an_unpinned_local_artifact_under_either_switch_is_refused_with_its_digest() {
-    // The per-connector manifest flag.
-    let dir = project(&manifest("connectors/probe.wasm", &["items"], "require_pin = true"));
+    // The per-connector manifest flag, in the connector manifest.
+    let dir = project(&manifest("connectors/probe.wasm", &["items"], ""));
+    std::fs::write(dir.path().join("connector.toml"), format!("require_wasm_pin = true\n{CONNECTOR}")).unwrap();
     let stderr = refused(&fire(dir.path(), "run-1", &[], &[]), "ConnectorLocalUnpinned");
     assert!(stderr.contains(&digest(PROBE)), "{stderr}");
+    refused(&cf(dir.path(), &["pipeline", "validate", "--project", "research"], &[]), "ConnectorLocalUnpinned");
 
     // The store-wide policy key, with the manifest flag unset.
     let dir = project(&manifest("connectors/probe.wasm", &["items"], ""));
@@ -444,7 +446,7 @@ fn the_interpreted_target_is_selected_by_flag_or_environment() {
 
 /// A component source naming no `manifest`, or a manifest carrying an unread key, refuses by name before anything
 /// loads or runs.
-// spec: connector.package.manifest-keys@6d98ce13
+// spec: connector.package.manifest-keys@5ef98ed0
 #[test]
 fn a_component_source_without_a_manifest_or_with_an_unread_key_refuses() {
     let dir = project(&bare("connectors/probe.wasm", &["items"], ""));
@@ -455,9 +457,14 @@ fn a_component_source_without_a_manifest_or_with_an_unread_key_refuses() {
     assert!(!cf(dir.path(), &["run", "show", "run-1", "--project", "research"], &[]).status.success());
 
     let dir = project(&manifest("connectors/probe.wasm", &["items"], ""));
-    std::fs::write(dir.path().join("connector.toml"), format!("{CONNECTOR}[capabilities.limiter]\nquota = \"q\"\nclass = \"c\"\nburst = 4\n")).unwrap();
+    std::fs::write(dir.path().join("connector.toml"), format!("{CONNECTOR}[capabilities.limiter]\nquota = \"q\"\nclass = \"c\"\n")).unwrap();
     let stderr = refused(&cf(dir.path(), &["pipeline", "validate"], &[]), "ConnectorManifestRejected");
-    assert!(stderr.contains("`capabilities.limiter.burst`"), "{stderr}");
+    assert!(stderr.contains("`capabilities.limiter`"), "{stderr}");
+
+    let dir = project(&manifest("connectors/probe.wasm", &["items"], ""));
+    std::fs::write(dir.path().join("connector.toml"), CONNECTOR.replace("clock = true", "clock = true\nenv = [\"VENDOR_ACCOUNT_ID\"]")).unwrap();
+    let stderr = refused(&fire(dir.path(), "run-1", &[], &[]), "ConnectorManifestRejected");
+    assert!(stderr.contains("`capabilities.env`"), "{stderr}");
 
     let dir = project(&manifest("connectors/probe.wasm", &["items"], ""));
     std::fs::write(dir.path().join("connector.toml"), format!("{CONNECTOR}[bounds]\nmemory_bytes = 268435456\n")).unwrap();
@@ -465,9 +472,32 @@ fn a_component_source_without_a_manifest_or_with_an_unread_key_refuses() {
     assert!(stderr.contains("`bounds`"), "{stderr}");
 }
 
+/// A manifest's `wasm_sha256` pins the artifact its component source loads; a source `sha256` differing from it
+/// refuses under {{connector.package.manifest-keys}} before the artifact loads.
+// spec: connector.package.manifest-pin@fcbd6310
+#[test]
+fn the_manifest_pin_admits_the_local_artifact_and_a_disagreeing_source_pin_refuses() {
+    let pin = digest(PROBE);
+    let other = digest(PROBE_BASE);
+    let dir = project(&manifest("connectors/probe.wasm", &["items"], ""));
+    let write = |text: String| std::fs::write(dir.path().join("connector.toml"), text).unwrap();
+
+    write(format!("wasm_sha256 = \"{other}\"\n{CONNECTOR}"));
+    refused(&fire(dir.path(), "run-1", &[], &[]), "ConnectorDigestMismatch");
+    assert!(!cf(dir.path(), &["run", "show", "run-1", "--project", "research"], &[]).status.success(), "no run row");
+
+    write(format!("wasm_sha256 = \"{pin}\"\nrequire_wasm_pin = true\n{CONNECTOR}"));
+    ok(&cf(dir.path(), &["pipeline", "validate", "--project", "research"], &[]));
+    assert!(ok(&fire(dir.path(), "run-1", &[], &[])).contains("3 rows"));
+
+    std::fs::write(dir.path().join("contextful.toml"), format!("authoring_posture = \"per_request\"\n{}", manifest("connectors/probe.wasm", &["items"], &format!("sha256 = \"{other}\"")))).unwrap();
+    let stderr = refused(&fire(dir.path(), "run-2", &[], &[]), "ConnectorManifestRejected");
+    assert!(stderr.contains("`wasm_sha256`"), "{stderr}");
+}
+
 /// A connector reaching for access its manifest does not list fails to load, raising `ConnectorUndeclaredAccess` naming
 /// that access.
-// spec: connector.declare-capability.declared-grant@5ddfed27
+// spec: connector.declare-capability.declared-grant@08a2d774
 // spec: connector.declare-capability.undeclared-access@5d9044eb
 #[test]
 fn a_wall_clock_import_without_the_clock_grant_fails_to_load() {

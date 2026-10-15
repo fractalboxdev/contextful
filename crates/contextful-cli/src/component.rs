@@ -30,7 +30,7 @@ mod hosted {
     use contextful_core::connector::component::ComponentSource;
     use contextful_core::connector::attach::{scrub, Allowlist};
     use contextful_core::connector::manifest::Declared;
-    use contextful_core::connector::package::{content_hash, Digest, Form, OciReference};
+    use contextful_core::connector::package::{content_hash, Digest, Form, OciReference, PinRequirement};
     use contextful_core::connector::reference::Template;
     use contextful_core::connector::ConnectorError;
     use contextful_core::run::plan::ConnectorSpec;
@@ -87,6 +87,8 @@ mod hosted {
         connector: Connector,
         /// The host access the connector's manifest declares.
         declared: Declared,
+        /// The manifest's `require_wasm_pin`.
+        require_pin: bool,
         limits: Limits,
         content_hash: String,
         /// The admitted bytes, kept for the admission store a replay resolves its pin from.
@@ -226,7 +228,7 @@ mod hosted {
             }
             _ => unreachable!("remote handles remote forms"),
         };
-        decl.artifact.admit(&bytes, decl.requirement(false)).map_err(artifact_error)?;
+        decl.artifact.admit(&bytes, PinRequirement::default()).map_err(artifact_error)?;
         std::fs::create_dir_all(&cache).with_context(|| format!("creating artifact cache `{}`", cache.display()))?;
         let mut temporary = tempfile::NamedTempFile::new_in(&cache)?;
         temporary.write_all(&bytes)?;
@@ -256,7 +258,18 @@ mod hosted {
     /// `store_pin`. Bytes off their pin never reach the compiler
     /// (`connector.package.digest-mismatch`).
     pub fn load(name: &str, decl: &ComponentSource, base: &Path, project: &str, resolver: Option<&Resolver>, target: ComponentTarget, store_pin: bool) -> Result<Loaded> {
-        let declared = crate::connector::admit(decl, base)?.declared;
+        let manifest = crate::connector::admit(decl, base)?;
+        let mut pinned = decl.clone();
+        if let Some(pin) = manifest.pin()? {
+            match &decl.artifact.pin {
+                Some(source) if *source != pin => {
+                    return Err(ConnectorError::ConnectorManifestRejected(format!("`wasm_sha256` pins {pin} and the source `sha256` pins {source}")).into());
+                }
+                _ => pinned.artifact.pin = Some(pin),
+            }
+        }
+        let decl = &pinned;
+        let (declared, require_pin) = (manifest.declared, manifest.require_wasm_pin);
         let limits = limits(decl)?;
         let target = match target {
             ComponentTarget::Native => Target::Native,
@@ -264,10 +277,10 @@ mod hosted {
         };
         let wasm = resolve(name, decl, base, project, resolver)?;
         let host = ComponentHost::with_cache_dir(target, base.join(".contextful/cache/components")).map_err(failure)?;
-        let (connector, digest) = host.load_artifact(&decl.artifact, &wasm, decl.requirement(store_pin)).map_err(failure)?;
+        let (connector, digest) = host.load_artifact(&decl.artifact, &wasm, PinRequirement { store: store_pin, manifest: require_pin }).map_err(failure)?;
         connector.admit(&declared).map_err(failure)?;
         let content_hash = content_hash(&digest, decl.guest.as_ref());
-        Ok(Loaded { name: name.to_string(), host, connector, declared, limits, content_hash, wasm })
+        Ok(Loaded { name: name.to_string(), host, connector, declared, require_pin, limits, content_hash, wasm })
     }
 
     impl Loaded {
@@ -303,10 +316,11 @@ mod hosted {
                 ComponentTarget::Pulley => Target::Pulley,
             };
             let host = ComponentHost::with_cache_dir(target, base.join(".contextful/cache/components")).map_err(failure)?;
-            let (connector, digest) = host.load_artifact(&pinned.artifact, wasm, pinned.requirement(store_pin)).map_err(failure)?;
+            let requirement = PinRequirement { store: store_pin, manifest: self.require_pin };
+            let (connector, digest) = host.load_artifact(&pinned.artifact, wasm, requirement).map_err(failure)?;
             connector.admit(&self.declared).map_err(failure)?;
             let content_hash = content_hash(&digest, decl.guest.as_ref());
-            Ok(Loaded { name: self.name.clone(), host, connector, declared: self.declared.clone(), limits: limits(decl)?, content_hash, wasm: wasm.to_vec() })
+            Ok(Loaded { name: self.name.clone(), host, connector, declared: self.declared.clone(), require_pin: self.require_pin, limits: limits(decl)?, content_hash, wasm: wasm.to_vec() })
         }
 
         /// The connector a run of this component pins.
@@ -424,7 +438,7 @@ mod hosted {
             let resolver = assemble(&BTreeMap::new(), clock).unwrap();
             let bytes = remote(name, &decl, dir.path(), "research", &resolver, Some(Arc::new(ArtifactTransport { body: probe.to_vec() }))).unwrap();
             let host = contextful_wasm::ComponentHost::with_target(contextful_wasm::Target::Native).unwrap();
-            let (connector, digest) = host.load_artifact(&decl.artifact, &bytes, decl.requirement(false)).unwrap();
+            let (connector, digest) = host.load_artifact(&decl.artifact, &bytes, Default::default()).unwrap();
             assert_eq!(digest, pin);
             let grant = contextful_wasm::Grant { allow: Allowlist::parse(&["127.0.0.1"]).unwrap(), attach: Vec::new(), hydrate: Vec::new(), gate: None, hook: None, class: None, run_id: None, transport: None };
             let mut session = host.open(&connector, grant, &contextful_wasm::Limits::default(), None).unwrap();
@@ -472,7 +486,7 @@ mod hosted {
             let fetched = remote(name, &decl, dir.path(), "research", &resolver, Some(transport.clone())).unwrap();
             assert_eq!(fetched, layer);
             let host = contextful_wasm::ComponentHost::with_target(contextful_wasm::Target::Native).unwrap();
-            let (connector, digest) = host.load_artifact(&decl.artifact, &fetched, decl.requirement(false)).unwrap();
+            let (connector, digest) = host.load_artifact(&decl.artifact, &fetched, Default::default()).unwrap();
             assert_eq!(digest, pin);
             let grant = contextful_wasm::Grant { allow: Allowlist::parse(&["127.0.0.1"]).unwrap(), attach: Vec::new(), hydrate: Vec::new(), gate: None, hook: None, class: None, run_id: None, transport: None };
             let mut session = host.open(&connector, grant, &contextful_wasm::Limits::default(), None).unwrap();

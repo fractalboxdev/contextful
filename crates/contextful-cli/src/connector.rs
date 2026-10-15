@@ -47,6 +47,10 @@ fn pin(path: &Path, local: bool, verify: bool) -> Result<()> {
         bail!("connector manifest `{}` declares no `[build] source` to build", path.display());
     };
     let source = std::fs::canonicalize(&source).with_context(|| format!("reading build source `{}`", source.display()))?;
+    let root = std::fs::canonicalize(path.parent().filter(|p| !p.as_os_str().is_empty()).unwrap_or_else(|| Path::new(".")))?;
+    if !source.starts_with(&root) {
+        return Err(ConnectorError::ConnectorManifestRejected(format!("`build.source` resolves to `{}`, outside the manifest directory", source.display())).into());
+    }
     let out = tempfile::tempdir().context("creating a build directory")?;
     let out_dir = std::fs::canonicalize(out.path())?;
     if local {
@@ -104,6 +108,13 @@ fn replace(path: &Path, bytes: &[u8]) -> Result<()> {
     let dir = path.parent().filter(|p| !p.as_os_str().is_empty()).unwrap_or_else(|| Path::new("."));
     let mut temporary = tempfile::NamedTempFile::new_in(dir)?;
     temporary.write_all(bytes)?;
+    // The temporary file is created 0600; the result keeps the target's mode, or 0644 when new.
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::PermissionsExt;
+        let mode = std::fs::metadata(path).map(|m| m.permissions().mode() & 0o7777).unwrap_or(0o644);
+        temporary.as_file().set_permissions(std::fs::Permissions::from_mode(mode))?;
+    }
     temporary.persist(path).map_err(|e| e.error).with_context(|| format!("writing `{}`", path.display()))?;
     Ok(())
 }
@@ -124,8 +135,10 @@ fn artifact(out: &Path) -> Result<Vec<u8>> {
     }
 }
 
-/// Build in the platform's container: no network, the source mounted read-only, the package
-/// cache and toolchain remapped. No answering runtime refuses rather than building on the host.
+/// Build in the platform's container as the invoking user, in two runs: `cargo fetch` with
+/// network fills a per-build package cache, then the offline build reads it with no network.
+/// The source mounts read-only and the package cache and toolchain remap. No answering
+/// runtime refuses rather than building on the host.
 fn build_container(source: &Path, out: &Path) -> Result<Vec<u8>> {
     let answered = Command::new(RUNTIME).arg("version").stdout(Stdio::null()).stderr(Stdio::null()).status();
     if !answered.is_ok_and(|status| status.success()) {
@@ -134,26 +147,52 @@ fn build_container(source: &Path, out: &Path) -> Result<Vec<u8>> {
         ))
         .into());
     }
+    let target = out.join("target");
+    let cache = out.join("cargo");
+    std::fs::create_dir_all(&target)?;
+    std::fs::create_dir_all(&cache)?;
     let remap = [(PLATFORM.image_cargo_home, PLATFORM.remap_cargo), (PLATFORM.image_rustup_home, PLATFORM.remap_rustup)]
         .iter()
         .map(|(from, to)| format!("--remap-path-prefix={from}={to}"))
         .collect::<Vec<_>>()
         .join(" ");
-    let status = Command::new(RUNTIME)
-        .args(["run", "--rm", "--platform", PLATFORM.platform, "--network", "none", "--volume"])
-        .arg(format!("{}:{}:ro", source.display(), PLATFORM.remap_source))
-        .arg("--volume")
-        .arg(format!("{}:/out", out.display()))
-        .args(["--workdir", PLATFORM.remap_source, "--env", "CARGO_TARGET_DIR=/out", "--env"])
-        .arg(format!("RUSTFLAGS={remap}"))
-        .arg(PLATFORM.image)
-        .args(PLATFORM.argv)
-        .status()
-        .with_context(|| format!("running `{RUNTIME}`"))?;
-    if !status.success() {
-        bail!("the container build exited with {status}");
-    }
-    artifact(out)
+    let run = |offline: bool| -> Result<()> {
+        let mut command = Command::new(RUNTIME);
+        command.args(["run", "--rm", "--platform", PLATFORM.platform]);
+        #[cfg(unix)]
+        {
+            use std::os::unix::fs::MetadataExt;
+            let owner = std::fs::metadata(out)?;
+            command.arg("--user").arg(format!("{}:{}", owner.uid(), owner.gid()));
+        }
+        command
+            .arg("--volume")
+            .arg(format!("{}:{}:ro", source.display(), PLATFORM.remap_source))
+            .arg("--volume")
+            .arg(format!("{}:{}", cache.display(), PLATFORM.remap_cargo))
+            .args(["--workdir", PLATFORM.remap_source, "--env"])
+            .arg(format!("CARGO_HOME={}", PLATFORM.remap_cargo));
+        if offline {
+            command
+                .args(["--network", "none", "--volume"])
+                .arg(format!("{}:/out", target.display()))
+                .args(["--env", "CARGO_TARGET_DIR=/out", "--env"])
+                .arg(format!("RUSTFLAGS={remap}"))
+                .arg(PLATFORM.image)
+                .args(PLATFORM.argv)
+                .arg("--offline");
+        } else {
+            command.arg(PLATFORM.image).args(PLATFORM.fetch);
+        }
+        let status = command.status().with_context(|| format!("running `{RUNTIME}`"))?;
+        if !status.success() {
+            bail!("the container {} exited with {status}", if offline { "build" } else { "package fetch" });
+        }
+        Ok(())
+    };
+    run(false)?;
+    run(true)?;
+    artifact(&target)
 }
 
 /// Build with the host toolchain under the platform's argv and remap, the environment

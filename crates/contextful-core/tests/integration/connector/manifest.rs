@@ -19,18 +19,12 @@ source = "guest"
 
 [capabilities]
 allow_hosts = ["api.vendor.example"]
-env         = ["VENDOR_ACCOUNT_ID"]
 clock       = true
 
 [capabilities.scope_probe]
 endpoint      = "https://api.vendor.example/v1/identity"
 scopes_header = "X-Granted-Scopes"
 expect        = ["reports.read", "accounts.read"]
-
-[capabilities.limiter]
-quota         = "vendor-app-shared"
-class         = "batch-read"
-usage_headers = ["X-RateLimit-Remaining", "X-RateLimit-Reset"]
 "#;
 
 /// The refusal for `text`, which must be `ConnectorManifestRejected`.
@@ -50,33 +44,39 @@ fn the_adopted_manifest_reads_every_declared_capability() {
     assert_eq!(m.build.as_ref().unwrap().source, Path::new("guest"));
     let d = &m.declared;
     assert!(d.hosts.permits("api.vendor.example") && !d.hosts.permits("other.example"));
-    assert_eq!(d.env, ["VENDOR_ACCOUNT_ID"]);
     assert!(d.clock);
     let probe = d.scope_probe.as_ref().unwrap();
     assert_eq!(probe.scopes_header, "X-Granted-Scopes");
     assert_eq!(probe.expect, ["reports.read", "accounts.read"]);
-    let limiter = d.limiter.as_ref().unwrap();
-    assert_eq!(limiter.quota, "vendor-app-shared");
-    assert!(limiter.forwards("x-ratelimit-reset"));
 }
 
 #[test]
 fn a_manifest_with_no_capabilities_declares_nothing() {
     let m = Manifest::parse("name = \"probe\"\n").unwrap();
-    assert!(m.declared.hosts.0.is_empty() && m.declared.env.is_empty() && !m.declared.clock);
-    assert!(m.declared.scope_probe.is_none() && m.declared.limiter.is_none() && m.build.is_none());
+    assert!(m.declared.hosts.0.is_empty() && !m.declared.clock);
+    assert!(m.declared.scope_probe.is_none() && m.build.is_none());
 }
 
 #[test]
 fn an_unread_key_at_any_depth_refuses_naming_the_key() {
-    let nested = rejected("[capabilities.limiter]\nquota = \"q\"\nclass = \"c\"\nburst = 4\n");
-    assert!(nested.contains("`capabilities.limiter.burst`"), "{nested}");
+    let nested = rejected("[capabilities.scope_probe]\nendpoint = \"https://a.example/id\"\nscopes_header = \"X-S\"\nburst = 4\n");
+    assert!(nested.contains("`capabilities.scope_probe.burst`"), "{nested}");
     let attach = rejected("[attach]\nAuthorization = \"Bearer ${secret://vendor-token}\"\n");
     assert!(attach.contains("`attach`"), "{attach}");
     let bounds = rejected("[bounds]\nmemory_bytes = 268435456\n");
     assert!(bounds.contains("`bounds`"), "{bounds}");
     let build = rejected("[build]\nsource = \"guest\"\nimage = \"rust:1\"\n");
     assert!(build.contains("`build.image`"), "{build}");
+}
+
+/// A declaration the load binds nothing to refuses rather than reading as granted: an
+/// environment name and a shared quota.
+#[test]
+fn an_environment_name_or_a_shared_quota_refuses_naming_the_key() {
+    let env = rejected("[capabilities]\nenv = [\"VENDOR_ACCOUNT_ID\"]\n");
+    assert!(env.contains("`capabilities.env`"), "{env}");
+    let limiter = rejected("[capabilities.limiter]\nquota = \"q\"\nclass = \"c\"\n");
+    assert!(limiter.contains("`capabilities.limiter`"), "{limiter}");
 }
 
 #[test]

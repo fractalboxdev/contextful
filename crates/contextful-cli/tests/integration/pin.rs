@@ -13,13 +13,14 @@ const PROBE: &str = concat!(env!("CARGO_MANIFEST_DIR"), "/../contextful-wasm/tes
 /// The probe guest exporting the base world alone.
 const PROBE_BASE: &str = concat!(env!("CARGO_MANIFEST_DIR"), "/../contextful-wasm/tests/fixtures/probe-base.wasm");
 
-/// A stand-in container runtime: answers `version`, records its argument vector, and
-/// copies `$FAKE_DOCKER_WASM` into the output directory mounted at `/out`.
+/// A stand-in container runtime: answers `version`, appends each invocation's argument
+/// vector to `$FAKE_DOCKER_RECORD` followed by an `--end--` line, and on the invocation
+/// mounting `/out` copies `$FAKE_DOCKER_WASM` into that output directory.
 const FAKE_DOCKER: &str = r#"#!/bin/sh
 if [ "$1" = "version" ]; then
   exit 0
 fi
-printf '%s\n' "$@" > "$FAKE_DOCKER_RECORD"
+printf '%s\n' "$@" --end-- >> "$FAKE_DOCKER_RECORD"
 out=""
 prev=""
 for arg in "$@"; do
@@ -30,8 +31,10 @@ for arg in "$@"; do
   fi
   prev="$arg"
 done
-mkdir -p "$out/wasm32-wasip2/release"
-cp "$FAKE_DOCKER_WASM" "$out/wasm32-wasip2/release/guest.wasm"
+if [ -n "$out" ]; then
+  mkdir -p "$out/wasm32-wasip2/release"
+  cp "$FAKE_DOCKER_WASM" "$out/wasm32-wasip2/release/guest.wasm"
+fi
 "#;
 
 const MANIFEST: &str = "# The vendor connector.\nname = \"probe\"\nwasm = \"probe.wasm\" # written by `connector pin`\n\n[build]\nsource = \"guest\"\n\n[capabilities]\nclock = true\n";
@@ -85,8 +88,19 @@ impl Fixture {
         format!("{}:/bin:/usr/bin", self.bin.display())
     }
 
-    fn argv(&self) -> Vec<String> {
-        std::fs::read_to_string(&self.record).unwrap().lines().map(str::to_string).collect()
+    /// Each runtime invocation's argument vector, in order.
+    fn invocations(&self) -> Vec<Vec<String>> {
+        let text = std::fs::read_to_string(&self.record).unwrap();
+        let mut out = vec![Vec::new()];
+        for line in text.lines() {
+            if line == "--end--" {
+                out.push(Vec::new());
+            } else {
+                out.last_mut().unwrap().push(line.to_string());
+            }
+        }
+        out.pop();
+        out
     }
 }
 
@@ -103,38 +117,74 @@ fn the_stand_in_runtime_passes_shellcheck() {
     assert!(out.status.success(), "{}", String::from_utf8_lossy(&out.stdout));
 }
 
-/// `contextful connector pin <manifest>` builds the guest in a digest-pinned container on one fixed platform and writes
-/// the artifact and its digest. `--verify` rebuilds and compares without writing.
-// spec: connector.package.pin-verb@5d347de1
+/// `contextful connector pin <manifest>` fetches the guest's packages into a per-build
+/// cache, builds offline with no network as the invoking user, and writes the artifact and
+/// its digest, every file readable as before.
 #[test]
 fn pin_builds_on_the_fixed_platform_and_writes_the_artifact_and_digest() {
     assert!(PLATFORM.image.contains("@sha256:") && PLATFORM.image.rsplit('@').next().unwrap().len() == 71, "{}", PLATFORM.image);
+    assert!(PLATFORM.image.split('/').next().unwrap().contains('.'), "the image names its registry: {}", PLATFORM.image);
     let f = fixture(MANIFEST);
+    let manifest = f.connector().join("connector.toml");
+    std::fs::set_permissions(&manifest, std::fs::Permissions::from_mode(0o644)).unwrap();
     let out = f.pin(&f.with_runtime(), PROBE, &[]);
     assert!(out.status.success(), "{}", stderr(&out));
     let pin = digest(&std::fs::read(PROBE).unwrap());
     assert!(String::from_utf8_lossy(&out.stdout).contains(&pin));
 
-    let argv = f.argv();
+    let runs = f.invocations();
+    assert_eq!(runs.len(), 2, "a fetch and a build: {runs:?}");
+    let (fetch, build) = (&runs[0], &runs[1]);
     let source = std::fs::canonicalize(f.connector().join("guest")).unwrap();
-    assert_eq!(argv[0], "run");
-    for pair in [["--platform", "linux/amd64"], ["--network", "none"]] {
-        assert!(argv.windows(2).any(|w| w == pair), "{pair:?} in {argv:?}");
+    let meta = std::fs::metadata(f.dir.path()).unwrap();
+    let user = format!("{}:{}", std::os::unix::fs::MetadataExt::uid(&meta), std::os::unix::fs::MetadataExt::gid(&meta));
+    for argv in [fetch, build] {
+        assert_eq!(argv[0], "run");
+        for pair in [["--platform", "linux/amd64"], ["--user", user.as_str()], ["--env", "CARGO_HOME=/cargo"]] {
+            assert!(argv.windows(2).any(|w| w == pair), "{pair:?} in {argv:?}");
+        }
+        assert!(argv.windows(2).any(|w| w[0] == "--volume" && w[1] == format!("{}:/src:ro", source.display())), "{argv:?}");
+        assert!(argv.windows(2).any(|w| w[0] == "--volume" && w[1].ends_with(":/cargo")), "the per-build cache: {argv:?}");
     }
-    assert!(argv.windows(2).any(|w| w[0] == "--volume" && w[1] == format!("{}:/src:ro", source.display())), "{argv:?}");
-    let image = argv.iter().position(|a| a == PLATFORM.image).expect("the platform image");
-    assert_eq!(argv[image + 1..], PLATFORM.argv.iter().map(|s| s.to_string()).collect::<Vec<_>>()[..]);
+    let cache = |argv: &Vec<String>| argv.windows(2).find(|w| w[0] == "--volume" && w[1].ends_with(":/cargo")).map(|w| w[1].clone());
+    assert_eq!(cache(fetch), cache(build), "the build reads the cache the fetch filled");
+    assert!(!fetch.windows(2).any(|w| w == ["--network", "none"]), "the fetch reaches the registry: {fetch:?}");
+    let image = fetch.iter().position(|a| a == PLATFORM.image).expect("the platform image");
+    assert_eq!(fetch[image + 1..], PLATFORM.fetch.iter().map(|s| s.to_string()).collect::<Vec<_>>()[..]);
+    assert!(build.windows(2).any(|w| w == ["--network", "none"]), "{build:?}");
+    let image = build.iter().position(|a| a == PLATFORM.image).expect("the platform image");
+    let mut argv: Vec<String> = PLATFORM.argv.iter().map(|s| s.to_string()).collect();
+    argv.push("--offline".into());
+    assert_eq!(build[image + 1..], argv[..]);
 
-    let written = std::fs::read_to_string(f.connector().join("connector.toml")).unwrap();
+    let written = std::fs::read_to_string(&manifest).unwrap();
     assert!(written.contains(&format!("wasm_sha256 = \"{pin}\"")), "{written}");
     assert!(written.contains("# The vendor connector.") && written.contains("# written by `connector pin`"), "comments survive: {written}");
     assert_eq!(std::fs::read(f.connector().join("probe.wasm")).unwrap(), std::fs::read(PROBE).unwrap());
+    let mode = |p: &Path| std::fs::metadata(p).unwrap().permissions().mode() & 0o777;
+    assert_eq!(mode(&manifest), 0o644, "the manifest keeps its mode");
+    assert_eq!(mode(&f.connector().join("probe.wasm")), 0o644, "a new artifact is world-readable");
 
     // `--verify` against the same build writes nothing and succeeds.
-    let before = std::fs::read(f.connector().join("connector.toml")).unwrap();
+    let before = std::fs::read(&manifest).unwrap();
     let out = f.pin(&f.with_runtime(), PROBE, &["--verify"]);
     assert!(out.status.success(), "{}", stderr(&out));
-    assert_eq!(std::fs::read(f.connector().join("connector.toml")).unwrap(), before);
+    assert_eq!(std::fs::read(&manifest).unwrap(), before);
+}
+
+/// A `build.source` reaching outside the manifest directory through a symlink refuses
+/// before the runtime runs.
+#[test]
+fn a_build_source_symlinked_outside_the_manifest_directory_builds_nothing() {
+    let f = fixture(MANIFEST);
+    let outside = f.dir.path().join("elsewhere");
+    std::fs::rename(f.connector().join("guest"), &outside).unwrap();
+    std::os::unix::fs::symlink(&outside, f.connector().join("guest")).unwrap();
+    let out = f.pin(&f.with_runtime(), PROBE, &[]);
+    let text = stderr(&out);
+    assert!(!out.status.success());
+    assert!(text.contains("ConnectorManifestRejected") && text.contains("`build.source`"), "{text}");
+    assert!(!f.record.exists(), "the runtime was invoked");
 }
 
 #[test]

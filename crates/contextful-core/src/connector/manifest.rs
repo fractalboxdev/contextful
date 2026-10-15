@@ -3,8 +3,8 @@
 //! input (`connector.package.build-source`).
 
 use super::attach::Allowlist;
-use super::meter::LimiterDeclaration;
 use super::probe::ScopeProbe;
+use super::package::Digest;
 use super::ConnectorError;
 use serde::Deserialize;
 use std::path::{Component, Path, PathBuf};
@@ -31,17 +31,16 @@ struct RawBuild {
     source: String,
 }
 
+/// `env` and `limiter` are absent: a load binds neither, so declaring one refuses rather
+/// than reading as granted (P1).
 #[derive(Debug, Default, Deserialize)]
 #[serde(deny_unknown_fields)]
 struct RawCapabilities {
     #[serde(default)]
     allow_hosts: Vec<String>,
     #[serde(default)]
-    env: Vec<String>,
-    #[serde(default)]
     clock: bool,
     scope_probe: Option<RawProbe>,
-    limiter: Option<RawLimiter>,
 }
 
 #[derive(Debug, Deserialize)]
@@ -53,26 +52,14 @@ struct RawProbe {
     expect: Vec<String>,
 }
 
-#[derive(Debug, Deserialize)]
-#[serde(deny_unknown_fields)]
-struct RawLimiter {
-    quota: String,
-    class: String,
-    #[serde(default)]
-    usage_headers: Vec<String>,
-}
-
 /// The host access a manifest declares, decided at load.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Declared {
     /// `[capabilities] allow_hosts`; empty when the connector reaches no host.
     pub hosts: Allowlist,
-    /// `[capabilities] env`: names an operator binds, never ambient access.
-    pub env: Vec<String>,
     /// `[capabilities] clock`: the wall-clock grant.
     pub clock: bool,
     pub scope_probe: Option<ScopeProbe>,
-    pub limiter: Option<LimiterDeclaration>,
 }
 
 /// The one build input: a directory relative to the manifest holding the guest crate.
@@ -89,7 +76,9 @@ pub struct Manifest {
     pub world: Option<String>,
     /// The artifact path, relative to the manifest, `connector pin` writes.
     pub wasm: Option<String>,
+    /// The artifact's content pin as written by `connector pin`; [`Manifest::pin`] reads it at load.
     pub wasm_sha256: Option<String>,
+    /// The per-connector switch of `connector.package.pin-requirement`.
     pub require_wasm_pin: bool,
     pub build: Option<Build>,
     pub declared: Declared,
@@ -126,7 +115,6 @@ impl Manifest {
         let caps = raw.capabilities;
         let hosts = if caps.allow_hosts.is_empty() { Allowlist(Vec::new()) } else { Allowlist::parse(&caps.allow_hosts)? };
         let scope_probe = caps.scope_probe.map(|p| ScopeProbe::new(&p.endpoint, &p.scopes_header, &p.expect)).transpose()?;
-        let limiter = caps.limiter.map(|l| LimiterDeclaration::new(&l.quota, &l.class, &l.usage_headers)).transpose()?;
         Ok(Manifest {
             name: raw.name,
             version: raw.version,
@@ -135,7 +123,7 @@ impl Manifest {
             wasm_sha256: raw.wasm_sha256,
             require_wasm_pin: raw.require_wasm_pin,
             build,
-            declared: Declared { hosts, env: caps.env, clock: caps.clock, scope_probe, limiter },
+            declared: Declared { hosts, clock: caps.clock, scope_probe },
         })
     }
 
@@ -143,6 +131,15 @@ impl Manifest {
     pub fn load(path: &Path) -> Result<Manifest, ConnectorError> {
         let text = std::fs::read_to_string(path).map_err(|e| rejected("manifest", format_args!("at `{}` is unreadable: {e}", path.display())))?;
         Manifest::parse(&text)
+    }
+
+    /// The artifact pin a load admits against: `wasm_sha256`, read at load so a template's
+    /// placeholder parses cleanly and refuses here.
+    pub fn pin(&self) -> Result<Option<Digest>, ConnectorError> {
+        match &self.wasm_sha256 {
+            None => Ok(None),
+            Some(hex) => Digest::parse(hex).map(Some).ok_or_else(|| rejected("wasm_sha256", format_args!("`{hex}` is not 64 hex characters"))),
+        }
     }
 
     /// The build source resolved against the directory holding `manifest_path`.
