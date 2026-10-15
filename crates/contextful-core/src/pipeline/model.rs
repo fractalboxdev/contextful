@@ -7,13 +7,13 @@ use super::declare::{Declared, ManifestFile};
 use crate::run::journal::sha256_hex;
 use crate::run::RunError;
 use crate::store::declare::TableDecl;
-use crate::store::lay_out::SnapshotManifest;
+use crate::store::lay_out::{RunManifest, SnapshotManifest};
 use crate::store::reconcile::ColumnType;
 use crate::store::reserve::{check_table_name, ALWAYS_INJECTED};
 use crate::time::Instant;
 use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, BTreeSet};
 use std::path::Path;
 
 /// The engine's injected-column semantics a published build carries; it advances when
@@ -440,15 +440,65 @@ pub struct Freshness {
 }
 
 impl Freshness {
-    /// Whether the watermark trails `now` by more than `max_lag`. A table declaring no
-    /// `max_lag` is never stale; one whose inputs hold no commit is stale under any lag.
-    pub fn stale(&self, now: Instant) -> bool {
-        let Some(lag) = self.max_lag.as_deref().and_then(duration_secs) else { return false };
-        match self.watermark.at {
-            Some(at) => at.plus_secs(lag) < now,
-            None => true,
+    /// The inputs holding a waiting run committed more than `max_lag` before `now`, a run
+    /// whose instant is unreadable counting as past it (`run.publish.staleness`). A table
+    /// declaring no `max_lag` is never stale.
+    pub fn stale_inputs(&self, waiting: &BTreeMap<String, Vec<Option<Instant>>>, now: Instant) -> Vec<String> {
+        let Some(lag) = self.max_lag.as_deref().and_then(duration_secs) else { return Vec::new() };
+        waiting
+            .iter()
+            .filter(|(_, runs)| runs.iter().any(|at| at.is_none_or(|at| at.plus_secs(lag) < now)))
+            .map(|(table, _)| table.clone())
+            .collect()
+    }
+}
+
+/// The commit instants of an input's runs a build did not include (`run.publish.staleness`):
+/// each committed run outside `included`, then each run `folded` into the input's current
+/// chain that is outside `included` and whose manifest is gone, as `None`.
+pub fn waiting_runs(included: &BTreeSet<String>, runs: &[RunManifest], folded: &BTreeSet<String>) -> Vec<Option<Instant>> {
+    let present: BTreeSet<String> = runs.iter().map(RunManifest::key).collect();
+    let mut out: Vec<Option<Instant>> = runs.iter().filter(|r| !included.contains(&r.key())).map(|r| Some(r.committed_at)).collect();
+    out.extend(folded.iter().filter(|k| !included.contains(*k) && !present.contains(*k)).map(|_| None));
+    out
+}
+
+/// Refuse a cycle among models (`run.model.model-cycle`). `reads` maps each model to the
+/// declared models its `sql` names; a self-read is left to `run.model.validate-statements`.
+pub fn model_cycle(reads: &BTreeMap<String, BTreeSet<String>>) -> Result<(), RunError> {
+    fn walk<'a>(
+        node: &'a str,
+        reads: &'a BTreeMap<String, BTreeSet<String>>,
+        path: &mut Vec<&'a str>,
+        done: &mut BTreeSet<&'a str>,
+    ) -> Option<Vec<&'a str>> {
+        if let Some(start) = path.iter().position(|n| *n == node) {
+            return Some(path[start..].to_vec());
+        }
+        if done.contains(node) {
+            return None;
+        }
+        path.push(node);
+        for next in reads.get(node).into_iter().flatten().filter(|n| n.as_str() != node) {
+            if let Some(cycle) = walk(next, reads, path, done) {
+                return Some(cycle);
+            }
+        }
+        path.pop();
+        done.insert(node);
+        None
+    }
+    let mut done = BTreeSet::new();
+    for model in reads.keys() {
+        if let Some(mut members) = walk(model, reads, &mut Vec::new(), &mut done) {
+            members.sort_unstable();
+            return Err(RunError::ModelCycle(format!(
+                "model statements return through {}; no member of a cycle has a first build",
+                members.iter().map(|n| format!("`{n}`")).collect::<Vec<_>>().join(", ")
+            )));
         }
     }
+    Ok(())
 }
 
 /// One `builds.jsonl` entry (`run.publish.build-entry`).

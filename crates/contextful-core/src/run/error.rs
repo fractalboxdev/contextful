@@ -201,6 +201,9 @@ pub enum RunError {
     /// A model test returning a row. (`run.model.test-failed`)
     #[error("ModelTestFailed: {0}")]
     ModelTestFailed(String),
+    /// Model statements returning to a model through other models. (`run.model.model-cycle`)
+    #[error("ModelCycle: {0}")]
+    ModelCycle(String),
     /// A build naming no declared model. (`run.model.unknown-model`)
     #[error("ModelUndeclared: {0}")]
     ModelUndeclared(String),

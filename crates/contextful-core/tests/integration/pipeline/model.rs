@@ -249,7 +249,8 @@ fn freshness_declares_a_max_lag_in_four_units() {
     assert!(matches!(&e, RunError::PipelineSpecInvalid(m) if m.contains("max_lag")), "{e}");
     let undeclared = section("b", "1.0.0", "f", "2030-01-01T00:00:00Z").freshness();
     assert_eq!(undeclared.max_lag, None);
-    assert!(!undeclared.stale(at("2099-01-01T00:00:00Z")));
+    let waiting = BTreeMap::from([("events".to_string(), vec![None])]);
+    assert!(undeclared.stale_inputs(&waiting, at("2099-01-01T00:00:00Z")).is_empty());
 }
 
 /// A published table's identity is `contract_version` beside `schema_fingerprint`, taken over the declared columns, their types and the grain.
