@@ -207,12 +207,12 @@ fn the_ranked_arm_projects_evidence_omitted() {
     let ranked = |prefix: &str| {
         f.face.retrieve(&s, &RetrieveRequest::new(prefix, "acme cfo", at("2030-02-01T00:00:00Z")), contextful_core::store::bound_time::Bounds::default()).unwrap()
     };
-    let memory = ranked("memory/");
-    assert!(!memory.rows.is_empty());
-    assert!(column(&memory, "evidence_omitted").iter().all(|v| v == &json!(0)), "{:?}", memory.rows);
-    let notes = ranked("research/");
-    assert!(!notes.rows.is_empty());
-    assert!(column(&notes, "evidence_omitted").iter().all(Value::is_null), "{:?}", notes.rows);
+    let claims = column(&ranked("memory/"), "evidence_omitted");
+    assert!(!claims.is_empty());
+    assert!(claims.iter().all(|v| v == &json!(0)), "{claims:?}");
+    let notes = column(&ranked("research/"), "evidence_omitted");
+    assert!(!notes.is_empty());
+    assert!(notes.iter().all(Value::is_null), "{notes:?}");
 }
 
 /// The keyed read gates claims in order and stops once it keeps one claim past the row ceiling, so the suppression count covers the claims gated before that stop.
