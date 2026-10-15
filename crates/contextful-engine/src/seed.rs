@@ -5,10 +5,12 @@
 //! A seed chunk's owner, cursor and chunk row key on `<table>#seed`, while its rows land in
 //! the live table. The commit marker the live table reads therefore carries the live
 //! position, never the seed's: a seed commit leaves an existing live position as it stood
-//! and binds an unset one only through [`Ceiling::live_position`].
+//! and binds an unset one only through [`Ceiling::live_position`] on the commit completing
+//! the plan.
 
 use crate::runner::{Engine, EngineError, RunSpec};
 use contextful_core::coordinate::{Cas, Catalog, CursorRow};
+use contextful_core::pipeline::normalize::{relational_tables, Mode, Normalize};
 use contextful_core::pipeline::seed::{probe, SeedCeiling, SeedProbe};
 use contextful_core::run::advance::CursorKind;
 use contextful_core::run::backfill::{ChunkRow, ChunkStatus, Window};
@@ -20,20 +22,22 @@ use contextful_core::run::record::{RunRow, RunStatus};
 use contextful_core::run::{Failure, FailureTag, RunError};
 use serde_json::{json, Value};
 use std::collections::BTreeSet;
-use std::path::Path;
+use std::path::{Path, PathBuf};
 
 /// The table segment a seed's chunks and cursor key on: `<table>#seed` (`run.seed.scope`).
 pub fn seed_table(table: &str) -> String {
     format!("{table}{SEED_SUFFIX}")
 }
 
-/// One seed load's bounds: the ceiling every seeded stamp sorts below, and the live table's
-/// cursor kind and field a commit binds.
+/// One seed load's bounds: the ceiling every seeded stamp sorts below, the live table's
+/// cursor kind and field a commit binds, and the pipeline's normalize declaration the
+/// ceiling reads the root batch through.
 #[derive(Debug, Clone, PartialEq)]
 pub struct SeedLoad {
     pub ceiling: SeedCeiling,
     pub live_kind: CursorKind,
     pub live_field: Option<String>,
+    pub normalize: Option<Normalize>,
 }
 
 /// What one call of [`Seeding::run_next`] did.
@@ -45,7 +49,9 @@ pub enum SeedOutcome {
     Unchanged,
     /// The committed seed's source answers no fingerprint, or committed none; nothing ran.
     Unavailable(String),
-    /// No chunk is claimable and the seed is not committed: every remaining chunk runs elsewhere.
+    /// Every chunk was done and the seed unstamped; this run stamped the probed fingerprint.
+    Committed,
+    /// No chunk is claimable and some chunk is not done: every remaining chunk runs elsewhere.
     Idle,
 }
 
@@ -61,6 +67,22 @@ impl SeedState {
     /// Whether the seed committed: every chunk done and the fingerprint stamped.
     pub fn committed(&self) -> bool {
         self.fingerprint.is_some()
+    }
+}
+
+/// A cheap probe of a seed source's fingerprint: a stat or a HEAD, never a download
+/// (`run.seed.fingerprint`). `None` when the source answers none.
+pub trait FingerprintProbe {
+    fn fingerprint(&self) -> Option<String>;
+}
+
+/// The probe of a seed file: [`file_fingerprint`] of its path.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct FileStat(pub PathBuf);
+
+impl FingerprintProbe for FileStat {
+    fn fingerprint(&self) -> Option<String> {
+        file_fingerprint(&self.0)
     }
 }
 
@@ -100,12 +122,15 @@ impl<J: JournalStore, B: BlobStore> Seeding<'_, J, B> {
         Ok(SeedState { chunks, fingerprint })
     }
 
-    /// Probe, then run the seed's next claimable chunk as `spec.run_id`. A committed seed
-    /// compares `observed` with its stamp and runs nothing (`run.seed.source-changed`). A chunk
-    /// passes `shape` and then the ceiling on the root batch before the write
-    /// (`run.seed.ceiling-point`); the chunk completing the plan stamps `observed`.
-    pub fn run_next(&self, load: &SeedLoad, spec: &RunSpec, source: &mut dyn Source, shape: &dyn Shape, dest: &mut dyn Destination, observed: Option<&str>) -> Result<SeedOutcome, EngineError> {
+    /// Probe the seed source through `fingerprint`, then run the seed's next claimable chunk
+    /// as `spec.run_id`. A committed seed compares the probed fingerprint with its stamp and
+    /// runs nothing (`run.seed.source-changed`). A chunk passes `shape` and then the ceiling
+    /// on the normalized root batch before the write (`run.seed.ceiling-point`); the chunk
+    /// completing the plan, or a run finding every chunk done, stamps the probed fingerprint.
+    pub fn run_next(&self, load: &SeedLoad, spec: &RunSpec, source: &mut dyn Source, shape: &dyn Shape, dest: &mut dyn Destination, fingerprint: &dyn FingerprintProbe) -> Result<SeedOutcome, EngineError> {
         let (pipeline_id, table) = (spec.plan.spec.pipeline.as_str(), spec.plan.spec.table.as_str());
+        let probed = fingerprint.fingerprint();
+        let observed = probed.as_deref();
         let state = self.state(pipeline_id, table)?;
         match probe(table, state.fingerprint.as_ref().map(Option::as_deref), observed)? {
             SeedProbe::Unchanged => return Ok(SeedOutcome::Unchanged),
@@ -113,16 +138,20 @@ impl<J: JournalStore, B: BlobStore> Seeding<'_, J, B> {
             SeedProbe::Load => {}
         }
         let Some(chunk) = self.engine.backfill().next(pipeline_id, &seed_table(table))? else {
+            if plan_done(&state.chunks, None) {
+                self.stamp(pipeline_id, table, observed)?;
+                return Ok(SeedOutcome::Committed);
+            }
             return Ok(SeedOutcome::Idle);
         };
-        let shaped = Ceilinged { inner: shape, ceiling: &load.ceiling, table };
-        let mut bound = LiveBound { inner: &mut *dest, catalog: self.engine.catalog.as_ref(), load, pipeline_id, table };
+        let shaped = Ceilinged { inner: shape, ceiling: &load.ceiling, normalize: load.normalize, table, load_id: &spec.run_id };
+        let mut bound = LiveBound { inner: &mut *dest, catalog: self.engine.catalog.as_ref(), load, pipeline_id, table, chunk: &chunk.chunk };
         let row = self.engine.run_scoped(spec, chunk.scope(), source, &shaped, &mut bound)?;
         if row.status == RunStatus::Success {
             // The live cursor caches the marker the seed commit wrote.
             self.engine.reconcile(pipeline_id, table, &*dest)?;
             let after = self.engine.catalog.chunks(pipeline_id, &seed_table(table))?;
-            if !after.is_empty() && after.iter().all(|c| c.status == ChunkStatus::Done) {
+            if plan_done(&after, None) {
                 self.stamp(pipeline_id, table, observed)?;
             }
         }
@@ -143,12 +172,20 @@ impl<J: JournalStore, B: BlobStore> Seeding<'_, J, B> {
     }
 }
 
-/// The caller's shape followed by the seed ceiling: the gate reads the batch normalize and
-/// the chain answer, and refuses it before any write (`run.seed.ceiling-point`).
+/// Whether a non-empty plan holds every chunk done, `except` the named one.
+fn plan_done(plan: &[ChunkRow], except: Option<&str>) -> bool {
+    !plan.is_empty() && plan.iter().all(|c| c.status == ChunkStatus::Done || Some(c.chunk.as_str()) == except)
+}
+
+/// The caller's shape followed by the seed ceiling: the gate reads the root batch as
+/// normalize would land it after the chain, and refuses it before any write
+/// (`run.seed.ceiling-point`). The rows pass on as the chain answered them.
 struct Ceilinged<'a> {
     inner: &'a dyn Shape,
     ceiling: &'a SeedCeiling,
+    normalize: Option<Normalize>,
     table: &'a str,
+    load_id: &'a str,
 }
 
 impl Shape for Ceilinged<'_> {
@@ -162,7 +199,13 @@ impl Shape for Ceilinged<'_> {
 
     fn shape(&self, rows: Vec<Row>) -> Result<Vec<Row>, RunError> {
         let rows = self.inner.shape(rows)?;
-        self.ceiling.check(self.table, &rows)?;
+        match self.normalize.filter(|n| n.mode == Mode::Relational) {
+            Some(n) => {
+                let root = relational_tables(rows.clone(), self.table, self.load_id, n.depth).remove(self.table).unwrap_or_default();
+                self.ceiling.check(self.table, &root)?;
+            }
+            None => self.ceiling.check(self.table, &rows)?,
+        }
         Ok(rows)
     }
 
@@ -179,17 +222,22 @@ struct LiveBound<'a> {
     load: &'a SeedLoad,
     pipeline_id: &'a str,
     table: &'a str,
+    /// The chunk this run lands; its commit is the seed commit once every other chunk is done.
+    chunk: &'a str,
 }
 
 impl LiveBound<'_> {
     /// The live position the newest marker carries, else the catalog's; an unset one takes
-    /// the ceiling where it binds.
+    /// the ceiling where it binds, and only on the seed commit: the commit completing the plan.
     fn live_position(&self) -> Result<Option<Value>, Failure> {
         let held = match self.inner.newest_marker(self.pipeline_id, self.table)? {
             Some(marker) => marker.cursor,
             None => self.catalog.cursor(self.pipeline_id, self.table)?.position,
         };
-        Ok(held.or_else(|| self.load.live_field.as_deref().and_then(|field| self.load.ceiling.below.live_position(self.load.live_kind, field))))
+        if held.is_some() || !plan_done(&self.catalog.chunks(self.pipeline_id, &seed_table(self.table))?, Some(self.chunk)) {
+            return Ok(held);
+        }
+        Ok(self.load.live_field.as_deref().and_then(|field| self.load.ceiling.below.live_position(self.load.live_kind, field)))
     }
 }
 
