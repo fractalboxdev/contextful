@@ -175,18 +175,18 @@ Integration: `CONTEXTFUL_CONSOLE_MEMORY_SESSION_CLAIM` names a stable signed cla
 
 ## Memory access follows evidence grants, and forgetting is a separate privilege
 
-`read.recall` serves a claim only when every evidence row resolves through the caller's own enforced session; otherwise the claim is suppressed with `MemoryEvidenceUnresolved`, and a claim naming more than 256 evidence entries with `MemoryEvidenceOverflow`, without failing the recall. `disclosure.erase` sits outside the default grant set and raises `ErasureUngranted` without the forget grant; tombstones and cascade markers commit in one local snapshot before the verb returns.
+`read.recall` serves a claim only when every evidence row resolves through the caller's enforced session; otherwise the claim is suppressed with `MemoryEvidenceUnresolved`, without failing the recall. A claim serves at most 256 evidence entries and counts the rest in `evidence_omitted`; every entry, served or omitted, resolves, and a claim naming more than 4096 entries is suppressed with `MemoryEvidenceOverflow`. `disclosure.erase` sits outside the default grant set and raises `ErasureUngranted` without the forget grant; tombstones and cascade markers commit in one local snapshot before the verb returns.
 
 | Option | Lost on | Cost |
 | --- | --- | --- |
-| Per-row resolution at recall, 256 cap, separate forget grant, same-commit markers *(chosen)* | — | A claim whose source table is renamed goes silent; erasure needs a second credential and a heavier commit. |
+| Resolution of every entry, 256 served, 4096 gate bound, `evidence_omitted` count, separate forget grant, same-commit markers *(chosen)* | — | A claim whose source table is renamed goes silent; erasure needs a second credential and a heavier commit. |
+| Suppress past 256 | Recall | A well-supported conclusion goes silent. |
 | Serve the claim with an unresolved-evidence marker | Containment | The marker discloses the conclusion the gate holds. |
 | Resolve evidence once at write time and cache it | Revocation latency | Later masks, grants and erasures never reach the cached verdict. |
-| Forget inside the write grant | Blast radius | A routine synthesis credential erases curated claims. |
-| Markers on the next ordinary commit | Marker durability | A replica pulling in between resurrects forgotten rows. |
+| Forget inside the write grant, markers on the next ordinary commit | Blast radius and marker durability | A routine synthesis credential erases curated claims; a replica pulling in between resurrects forgotten rows. |
 
-Consequences: revocation takes effect on the next recall with no invalidation sweep; total recall cost of the evidence join is unmeasured.
-Revisit: recall latency dominated by the evidence join; a suppression channel that names a withheld claim without its content; evidence lists clustering at the 256 cap.
+Consequences: revocation takes effect on the next recall with no invalidation sweep; recall cost of the evidence join is unmeasured.
+Revisit: recall latency dominated by the evidence join at 4096; a suppression channel that names a withheld claim without its content; evidence lists clustering at the 256 cap.
 
 ## A citation into a keyed table resolves through a pepper-keyed digest of its key
 

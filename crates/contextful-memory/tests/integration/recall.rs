@@ -2,7 +2,7 @@
 //! through the evidence gate.
 
 use super::support::*;
-use contextful_context::read::{ReadFault, RecallRequest};
+use contextful_context::read::{ReadFault, RecallRequest, RetrieveRequest};
 use contextful_core::grant::Action;
 use contextful_core::memory::revise::{Claim, Tier};
 use contextful_core::memory::synthesize::{CandidateClaim, EvidenceRef};
@@ -140,8 +140,8 @@ fn a_retired_claim_answers_inside_its_interval() {
     assert_eq!(column(&got, "valid_to"), [json!("2030-03-01T00:00:00Z")]);
 }
 
-/// Every keyed claim passes {{read.recall.evidence-unresolved}} and {{read.recall.evidence-references}}, and the response carries {{read.recall.suppression-count}}.
-// spec: read.recall.keyed-gate@184d7022
+/// Every keyed claim passes {{read.recall.evidence-gate-bound}}, and every evidence entry, served or omitted, passes {{read.recall.evidence-unresolved}}; the response carries {{read.recall.suppression-count}}.
+// spec: read.recall.keyed-gate@9e852804
 #[test]
 fn a_keyed_claim_passes_the_evidence_gate() {
     let f = Fixture::new();
@@ -156,6 +156,63 @@ fn a_keyed_claim_passes_the_evidence_gate() {
     assert!(!serde_json::to_string(&withheld.to_json()).unwrap().contains("Dana"));
     let seen = recall(&f, &reader(&f), &keyed("memory/facts", "acme", Some("2030-02-01T00:00:00Z"))).unwrap();
     assert_eq!(seen.blocks["contextful.recall"]["suppressed"]["MemoryEvidenceUnresolved"], json!(0));
+    // An unreadable entry past the served 256 suppresses its claim; a claim past the gate
+    // bound overflows; a claim of 300 readable entries serves 256 and counts 44 omitted.
+    let w = Writer::of(&f.writer());
+    let node = NodeId::parse("memory-a").unwrap();
+    land_rows(&f.face, "research/notes", "run-0300", json!((0..300).map(|i| json!({ "note_id": format!("g{i}"), "text": "Globex filing." })).collect::<Vec<_>>()));
+    let cites = |n: i64| (0..n).map(|i| EvidenceRef::row("research/notes", "run-0300", i)).collect::<Vec<_>>();
+    let mut gated = cites(299);
+    gated.push(EvidenceRef::row("research/notes", "run-0300", 900));
+    let overflowing: Vec<EvidenceRef> = (0..4097).map(|i| EvidenceRef::row("research/notes", "run-0300", i % 300)).collect();
+    let claim = |id: &str, object: &str, evidence: Vec<EvidenceRef>| Claim {
+        claim_id: id.into(),
+        subject: "globex".into(),
+        predicate: "cfo".into(),
+        object: object.into(),
+        scope: None,
+        tier: Tier::Derived,
+        confidence: 0.6,
+        valid_from: at("2030-01-05T00:00:00Z"),
+        valid_to: None,
+        evidence,
+        superseded_by: None,
+        grant_id: w.grant_id.clone(),
+        agent: w.agent.clone(),
+    };
+    let claims = [claim("g-capped", "Ada", cites(300)), claim("g-gated", "Bo", gated), claim("g-over", "Cy", overflowing)];
+    Landing { node: &node, at: at("2030-01-13T00:00:00Z"), writer: &w, run_id: "memory-globex".into(), boundary: &super::synthesize::admit, taint: None }
+        .commit(&f.face, "memory/facts", &claims, &[])
+        .unwrap();
+    let got = recall(&f, &reader(&f), &keyed("memory/facts", "globex", Some("2030-02-01T00:00:00Z"))).unwrap();
+    assert_eq!(column(&got, "object"), [json!("Ada")]);
+    assert_eq!(column(&got, "evidence_omitted"), [json!(44)]);
+    let served: Vec<Value> = serde_json::from_str(column(&got, "evidence")[0].as_str().unwrap()).unwrap();
+    assert_eq!(served.len(), 256);
+    assert_eq!(served[255]["seq"], json!(255));
+    assert_eq!(
+        got.blocks["contextful.recall"]["suppressed"],
+        json!({ "MemoryEvidenceUnresolved": 1, "MemoryEvidenceOverflow": 1 })
+    );
+}
+
+/// `evidence_omitted` is a reserved projected column of {{read.recall.ranked-arm}}, null for a table outside memory under {{read.retrieve.reserved-columns-project-null}}.
+// spec: read.recall.evidence-omitted-column@83b7803c
+#[test]
+fn the_ranked_arm_projects_evidence_omitted() {
+    let f = Fixture::new();
+    history(&f);
+    let r = reader(&f);
+    let s = f.face.session(&r, &Request::default(), contextful_core::store::bound_time::Bounds::default()).unwrap();
+    let ranked = |prefix: &str| {
+        f.face.retrieve(&s, &RetrieveRequest::new(prefix, "acme cfo", at("2030-02-01T00:00:00Z")), contextful_core::store::bound_time::Bounds::default()).unwrap()
+    };
+    let claims = column(&ranked("memory/"), "evidence_omitted");
+    assert!(!claims.is_empty());
+    assert!(claims.iter().all(|v| v == &json!(0)), "{claims:?}");
+    let notes = column(&ranked("research/"), "evidence_omitted");
+    assert!(!notes.is_empty());
+    assert!(notes.iter().all(Value::is_null), "{notes:?}");
 }
 
 /// The keyed read gates claims in order and stops once it keeps one claim past the row ceiling, so the suppression count covers the claims gated before that stop.

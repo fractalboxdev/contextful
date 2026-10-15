@@ -99,6 +99,18 @@ fn reserved_columns_project_null_for_a_table_lacking_them() {
     }
 }
 
+/// `evidence_omitted` projects on every ranked row and reads null for a table outside
+/// memory (`read.recall.evidence-omitted-column`).
+#[test]
+fn evidence_omitted_projects_null_outside_memory() {
+    let r = Reads::new();
+    let s = r.session(&["research/notes"], Some(("research/notes", "acme")), None);
+    let ranked = r.face.retrieve(&s, &ask("research/", "solar battery storage"), Bounds::default()).unwrap();
+    let omitted = column(&ranked, "evidence_omitted");
+    assert_eq!(omitted.len(), 2);
+    assert!(omitted.iter().all(|v| v.is_null()), "{omitted:?}");
+}
+
 /// A producer sets any of `_modality`, `_lang`, `_provenance` and `_prompt_hash`, and each surfaces in the provenance envelope where present.
 // spec: store.reserve.optional@acdb41f5
 #[test]

@@ -138,7 +138,10 @@ Serving memory: the ranked arm at the read's anchor, the keyed read at an observ
 
 - `evidence-unresolved` — An unreadable or masked source row, an unknown table, a reference into another memory row, or malformed lineage suppresses the claim and raises `MemoryEvidenceUnresolved`.
   *A-read*
-- `evidence-references` — A claim naming more than 256 entries of evidence is suppressed unresolved, raising `MemoryEvidenceOverflow`.
+- `evidence-references` — A claim naming more than 256 entries of evidence serves its first 256 in cited table, run and sequence order, and reports the count of the rest in its `evidence_omitted` field.
+  *A-read*
+- `evidence-omitted-column` — `evidence_omitted` is a reserved projected column of {{read.recall.ranked-arm}}, null for a row outside a `memory_facts` table under {{read.retrieve.reserved-columns-project-null}}.
+- `evidence-gate-bound` — A claim naming more than 4096 entries of evidence is suppressed unresolved, raising `MemoryEvidenceOverflow`.
   *A-read*
 - `evidence-key` — The write landing a claim stamps each citation into a keyed table with a pepper-keyed digest of the cited row's key; recall resolves a citation whose row no longer reads through the digest's live version.
   *A-read*
@@ -156,7 +159,7 @@ Serving memory: the ranked arm at the read's anchor, the keyed read at an observ
 - `keyed-clocks` — `as_of_ingest` bounds the read as {{store.bound-time.as-of}} does; absent, the read takes the latest committed state, and an absent `observed_at` the call's instant. `contextful.bounds` echoes each supplied bound under its argument name, with a per-name `inclusive` map.
 - `keyed-history` — A claim a successor retired still answers an `observed_at` inside its validity; the keyed read filters on validity alone, never on `superseded_by`.
   *because the question is what held at that instant, and the retired claim is the answer its interval records*
-- `keyed-gate` — Every keyed claim passes {{read.recall.evidence-unresolved}} and {{read.recall.evidence-references}}, and the response carries {{read.recall.suppression-count}}.
+- `keyed-gate` — Every keyed claim passes {{read.recall.evidence-gate-bound}}, and every evidence entry, served or omitted, passes {{read.recall.evidence-unresolved}}; the response carries {{read.recall.suppression-count}}.
 - `keyed-window` — The keyed read gates claims in order and stops once it keeps one claim past the row ceiling, so the suppression count covers the claims gated before that stop.
   *because a one-row recall over a subject with thousands of claims otherwise resolves every claim's evidence*
 - `keyed-order` — Keyed claims order by tier, `curated` first, then `valid_from`, newest first, then `claim_id`; `limit` and the table's ceilings bound them under {{read.respond.row-ceiling}}.
@@ -173,11 +176,18 @@ The evidence check a claim passes on its way to a grounded turn:
 
 ```mermaid
 flowchart LR
-  FACTS[("memory_facts")] -->|"live claim"| EV{"evidence readable in session?"}
+  FACTS[("memory_facts")] -->|"live claim"| COUNT{"evidence entries per claim?"}
+  COUNT -->|"up to 256"| EV{"evidence readable in session?"}
+  COUNT -->|"257 to 4096: capped"| EV
+  COUNT -->|"over 4096: MemoryEvidenceOverflow"| HELD["withheld claim"]
   EV -->|"yes, grounded turn"| APP(["application"])
-  EV -->|"overflow: MemoryEvidenceOverflow"| HELD["withheld claim"]
   EV -->|"unreadable: MemoryEvidenceUnresolved"| HELD
 ```
+
+#### Scenarios
+
+- `read.recall.evidence-references`: WHEN a claim cites 300 readable rows, THEN recall serves 256 entries with `evidence_omitted = 44`.
+- `read.recall.evidence-unresolved`: WHEN entry 290 of 300 reads masked, THEN the claim is suppressed with `MemoryEvidenceUnresolved`.
 
 
 ## resolve-entity

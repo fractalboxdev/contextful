@@ -1,6 +1,6 @@
 //! `read.recall`: the evidence gate.
 
-use contextful_core::memory::recall::{gate, EvidenceRead, Grounding, EVIDENCE_REFERENCES};
+use contextful_core::memory::recall::{admit, gate, EvidenceRead, Grounding, EVIDENCE_GATE, EVIDENCE_REFERENCES};
 use contextful_core::memory::MemoryError;
 use serde_json::json;
 
@@ -33,11 +33,41 @@ fn unresolvable_evidence_suppresses_the_claim() {
     assert_eq!(admitted, 0, "{outcomes:?}");
 }
 
-/// A claim naming more than 256 entries of evidence is suppressed unresolved, raising `MemoryEvidenceOverflow`.
-// spec: read.recall.evidence-references@d078cc96
+/// A claim naming more than 256 entries of evidence serves its first 256 in cited table, run and sequence order, and reports the count of the rest in its `evidence_omitted` field.
+// spec: read.recall.evidence-references@4cf54486
 #[test]
-fn evidence_past_256_references_overflows() {
+fn recall_caps_evidence_at_256_and_counts_omitted() {
     assert_eq!(EVIDENCE_REFERENCES, 256);
-    assert_eq!(gate(Some(&refs(256, "research/notes")), &[], readable), Ok(Grounding::Cited));
-    assert!(matches!(gate(Some(&refs(257, "research/notes")), &[], readable), Err(MemoryError::EvidenceOverflow(_))));
+    let full = admit(Some(&refs(256, "research/notes")), &[], readable).unwrap();
+    assert_eq!((full.served.len(), full.omitted), (256, 0));
+    // Cited out of order across two tables: the served prefix follows table, run, sequence.
+    let mut cited: Vec<serde_json::Value> = (0..300).rev().map(|i| json!({ "table": "research/notes", "run": "run-0001", "seq": i })).collect();
+    cited.push(json!({ "table": "a/first", "run": "run-0009", "seq": 7 }));
+    let capped = admit(Some(&json!(cited).to_string()), &[], readable).unwrap();
+    assert_eq!((capped.served.len(), capped.omitted), (256, 45));
+    assert_eq!((capped.served[0].table.as_str(), capped.served[0].seq), ("a/first", 7));
+    assert_eq!((capped.served[1].table.as_str(), capped.served[1].seq), ("research/notes", 0));
+    assert_eq!(capped.served[255].seq, 254);
+    let three_hundred = admit(Some(&refs(300, "research/notes")), &[], readable).unwrap();
+    assert_eq!((three_hundred.served.len(), three_hundred.omitted, three_hundred.grounding), (256, 44, Grounding::Cited));
+}
+
+/// Every entry, served or omitted, passes the evidence gate: entry 290 of 300 reading masked
+/// suppresses the claim.
+#[test]
+fn recall_gates_omitted_entries() {
+    let masked_at = |n: i64| move |r: &contextful_core::memory::synthesize::EvidenceRef| if r.seq == n { EvidenceRead::Masked } else { EvidenceRead::Readable };
+    assert!(matches!(admit(Some(&refs(300, "research/notes")), &[], masked_at(290)), Err(MemoryError::EvidenceUnresolved(_))));
+    assert!(matches!(gate(Some(&refs(300, "research/notes")), &[], |r| if r.seq == 299 { EvidenceRead::Unreadable } else { EvidenceRead::Readable }), Err(MemoryError::EvidenceUnresolved(_))));
+    assert!(matches!(admit(Some(&refs(300, "research/notes")), &[], |r| if r.seq == 280 { EvidenceRead::Stale } else { EvidenceRead::Readable }), Ok(a) if a.grounding == Grounding::Stale));
+}
+
+/// A claim naming more than 4096 entries of evidence is suppressed unresolved, raising `MemoryEvidenceOverflow`.
+// spec: read.recall.evidence-gate-bound@a016c179
+#[test]
+fn recall_suppresses_claim_over_4096_entries() {
+    assert_eq!(EVIDENCE_GATE, 4096);
+    let at_bound = admit(Some(&refs(4096, "research/notes")), &[], readable).unwrap();
+    assert_eq!((at_bound.served.len(), at_bound.omitted), (256, 3840));
+    assert!(matches!(gate(Some(&refs(4097, "research/notes")), &[], readable), Err(MemoryError::EvidenceOverflow(_))));
 }

@@ -173,6 +173,9 @@ struct Row {
     /// The row's newest-first position under its row key, where the arm deduplicates and
     /// the key is non-null.
     row_rank: Option<i128>,
+    /// A claim's evidence entries past the served cap; `None` outside memory
+    /// (`read.recall.evidence-omitted-column`).
+    evidence_omitted: Option<u64>,
 }
 
 fn text_of(v: &Engine) -> Option<String> {
@@ -512,6 +515,7 @@ impl Face {
         .filter(|c| !(withheld && **c == INGESTED_AT))
         .map(|s| s.to_string())
         .chain(RESERVED_PROJECTED.iter().map(|(out, _)| out.to_string()))
+        .chain(std::iter::once(super::recall::EVIDENCE_OMITTED.to_string()))
         .collect();
         let in_window = ranked.iter().take(usize::try_from(limit).unwrap_or(usize::MAX)).filter(|(c, _)| c.in_window).count() as u64;
         let out_rows: Vec<Vec<Value>> = ranked
@@ -543,6 +547,7 @@ impl Face {
                 }
                 row.push(field(AUTHORED_BY));
                 row.extend(RESERVED_PROJECTED.iter().map(|(_, source)| field(source)));
+                row.push(r.evidence_omitted.map_or(Value::Null, |n| json!(n)));
                 row
             })
             .collect();
@@ -729,6 +734,7 @@ impl Face {
                 break;
             }
             let get = |name: &str| at(name).map(|i| &v[i]);
+            let mut claim = None;
             if cx.claims {
                 // Recall serves a claim only while live, and only when every evidence
                 // row reads through this session (`read.recall.ranked-arm`).
@@ -759,9 +765,8 @@ impl Face {
                 if let Some(error) = fault.into_inner() {
                     return Err(error);
                 }
-                if !admitted {
-                    continue;
-                }
+                let Some(admission) = admitted else { continue };
+                claim = Some(admission);
             }
             let snippet_text: Vec<String> = cx.snippet.iter().filter_map(|c| get(c).and_then(text_of)).collect();
             let snippet_text = (!cx.snippet.is_empty()).then(|| snippet_text.join(" — "));
@@ -792,7 +797,12 @@ impl Face {
                 Cell::Integer { value, .. } => Some(value),
                 _ => None,
             });
-            let values = columns.iter().zip(&v).map(|(c, x)| (c.clone(), cell(x.clone()).to_json())).collect();
+            let mut values: Vec<(String, Value)> = columns.iter().zip(&v).map(|(c, x)| (c.clone(), cell(x.clone()).to_json())).collect();
+            if let Some(capped) = claim.as_ref().and_then(super::recall::served_evidence) {
+                if let Some(slot) = values.iter_mut().find(|(c, _)| c == "evidence") {
+                    slot.1 = capped;
+                }
+            }
             *kept += 1;
             rows.push(Row {
                 table: cx.table.to_string(),
@@ -805,6 +815,7 @@ impl Face {
                 ingested,
                 values,
                 row_rank,
+                evidence_omitted: claim.map(|a| a.omitted),
             });
         }
         Ok(())

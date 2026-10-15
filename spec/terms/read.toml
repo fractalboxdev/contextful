@@ -48,7 +48,7 @@ MemoryClaimBrowserRefused      = { clause = "read.revise.browser-request", gloss
 MemoryClaimMalformed           = { clause = "read.revise.malformed-request", gloss = "A served claim write holds a malformed or client-scoped body." }
 MemoryClaimWriteRefused        = { clause = "read.revise.served-fault", gloss = "A served claim write's store effect refused." }
 MemoryEvidenceUnresolved      = { clause = "read.recall.evidence-unresolved", gloss = "A claim's evidence does not resolve through the caller's session." }
-MemoryEvidenceOverflow        = { clause = "read.recall.evidence-references", gloss = "A claim names more evidence references than the bound." }
+MemoryEvidenceOverflow        = { clause = "read.recall.evidence-gate-bound", gloss = "A claim names more evidence entries than the gate bound." }
 MemoryObservationOutOfOrder   = { clause = "read.revise.observed-order", gloss = "A claim was observed before a live contradicting claim of its line." }
 MemoryRecallNotClaims         = { clause = "read.recall.keyed-not-claims", gloss = "A keyed recall named a table declaring no `memory_facts` shape." }
 MemoryEntityAmbiguous         = { clause = "read.resolve-entity.ambiguous-mention", gloss = "A mention resolves onto two identities with no separating key." }
@@ -96,5 +96,6 @@ read-http-request-body       = { clause = "read.register.request-body", value = 
 memory-extract-attempts      = { clause = "read.synthesize.extract-attempts", value = 3, unit = "attempts", basis = "chosen", gloss = "Extract attempts per batch, feedback included." }
 memory-prompt-bytes          = { clause = "read.synthesize.prompt-bound", value = 32, unit = "KiB", basis = "chosen", gloss = "Fenced row bytes one extraction batch packs." }
 memory-row-chars             = { clause = "read.synthesize.row-cap", value = 16384, unit = "chars", basis = "chosen", gloss = "Characters of one fenced row before the truncation mark cuts it." }
-memory-evidence-references   = { clause = "read.recall.evidence-references", value = 256, unit = "entries", basis = "chosen", gloss = "Evidence references one claim names before recall suppresses it." }
+memory-evidence-references   = { clause = "read.recall.evidence-references", value = 256, unit = "entries", basis = "chosen", gloss = "Evidence entries recall serves per claim; the rest count in `evidence_omitted`." }
+memory-evidence-gate         = { clause = "read.recall.evidence-gate-bound", value = 4096, unit = "entries", basis = "chosen", gloss = "Evidence entries one claim names before recall suppresses it." }
 outcome-grace-window         = { clause = "read.settle.grace-window", value = 86400, unit = "s", basis = "chosen", gloss = "Inclusive window past a deadline within which an observation is scored." }

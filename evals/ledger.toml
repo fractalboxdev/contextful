@@ -595,6 +595,14 @@ tier   = "gate"
 method = { test = "contextful_memory::synthesize::a_ranked_arm_over_claims_serves_live_claims_alone" }
 target = { op = "==", value = 0 }
 
+[entry.recall-evidence-latency]
+clause = "read.recall.evidence-gate-bound"
+metric = "recall.keyed.evidence_gate_p99_us"
+kind   = "bench"
+tier   = "trend"
+direction = "lower_is_better"
+method = { issue = 517 }
+
 # ---------------------------------------------------------------- assurance
 
 [entry.eval-absolute-floors]
