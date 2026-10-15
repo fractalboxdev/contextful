@@ -268,6 +268,11 @@ impl Face {
         // content token, skips it (`read.retrieve.dedup-is-gated`).
         let deduplicating = floor.is_some();
         self.bind_bounds(session, &touched, bounds)?;
+        if let Some(h) = contextful_core::read::horizon::horizon(session.grants()) {
+            for table in &arms {
+                self.index_within_horizon(table, request, !tokens.is_empty(), h)?;
+            }
+        }
         let engine = self.pool.engine(session, self.store.parquet_key())?;
         let anchor = request.anchor;
         let memory_tables: Vec<String> = self.memory().tables.iter().map(|t| t.name.clone()).collect();
@@ -566,6 +571,36 @@ impl Face {
     /// the table, since it sees none of the restriction (`read.retrieve.sidecar-oversampling`).
     pub fn sidecar_candidates(&self, session: &Session, table: &str, query: &[f32], limit: u64) -> Result<(String, Vec<String>), Fallback> {
         self.sidecar_probe(session, table, query, limit, 0).map(|(column, ids, _)| (column, ids))
+    }
+
+    /// Refuse a ranking under `horizon` that would probe a sidecar of `table` indexing a
+    /// row available after it: its term statistics and neighbourhoods encode later rows
+    /// (`read.horizon.rank-statistics`). A lexical query reaches the full-text sidecars, a
+    /// query vector the vector sidecar.
+    fn index_within_horizon(&self, table: &str, request: &RetrieveRequest, lexical: bool, horizon: contextful_core::time::Instant) -> Result<(), ReadFault> {
+        let mut through = Vec::new();
+        if lexical {
+            if let Ok((_, _, entries)) = fulltext::current_entries(&self.store, table) {
+                through.extend(entries.iter().filter_map(|e| match e {
+                    IndexEntry::Fulltext(f) => f.available_through,
+                    _ => None,
+                }));
+            }
+        }
+        if let Some(query) = &request.query_embedding {
+            if let Ok((_, IndexEntry::Vector(v))) = vector::current_entry(&self.store, table, EMBEDDING_COLUMN, query.len()) {
+                through.extend(v.available_through);
+            }
+        }
+        match through.into_iter().max().filter(|at| *at > horizon) {
+            Some(at) => Err(contextful_core::read::ReadError::ReadIndexBeyondHorizon(format!(
+                "table `{table}`: a sidecar indexes a row available at {}, after the horizon {}",
+                at.to_rfc3339_nanos(),
+                horizon.to_rfc3339_nanos()
+            ))
+            .into()),
+            None => Ok(()),
+        }
     }
 
     /// One round of the vector arm's probe: the identifiers and the probe size, which

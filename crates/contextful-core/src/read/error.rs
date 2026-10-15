@@ -67,6 +67,9 @@ pub enum ReadError {
     /// A model table holds no build whose recorded horizon is at or before the credential's. (`read.horizon.build-resolution`)
     #[error("ReadNoBuildWithinHorizon: {0}")]
     ReadNoBuildWithinHorizon(String),
+    /// A ranking under a horizon reached a sidecar indexing rows available after it. (`read.horizon.rank-statistics`)
+    #[error("ReadIndexBeyondHorizon: {0}")]
+    ReadIndexBeyondHorizon(String),
     /// A read reached for a query-engine extension the binary does not link. (`assurance.build.runtime-extension-load`)
     #[error("ExtensionAutoloadRefused: {0}")]
     ExtensionAutoloadRefused(String),
@@ -96,6 +99,7 @@ impl ReadError {
             ReadError::ExtensionAutoloadRefused(_) => "ExtensionAutoloadRefused",
             ReadError::ReadBoundExceedsHorizon(_) => "ReadBoundExceedsHorizon",
             ReadError::ReadNoBuildWithinHorizon(_) => "ReadNoBuildWithinHorizon",
+            ReadError::ReadIndexBeyondHorizon(_) => "ReadIndexBeyondHorizon",
         }
     }
 }

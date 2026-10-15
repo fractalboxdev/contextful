@@ -170,3 +170,18 @@ fn lagged(decl: &TableDecl, available: &AvailableTime, row: &Map<String, Value>)
     let base = Instant::parse(&base).map_err(|e| format!("valid-time instant `{base}`: {e}"))?;
     Ok(Some(base.plus_secs(secs)))
 }
+
+/// The latest availability instant among `rows`, on a table declaring `available_time`:
+/// what a sidecar built over them records as `available_through`
+/// (`read.horizon.rank-statistics`). `None` where the table declares none or no row
+/// carries an instant.
+pub(crate) fn latest(decl: &TableDecl, rows: &arrow_array::RecordBatch) -> Result<Option<Instant>> {
+    use arrow_array::Array;
+    let Some(available) = &decl.available_time else { return Ok(None) };
+    let Some(column) = rows.column_by_name(&available.column) else { return Ok(None) };
+    let nanos = arrow_cast::cast(column, &arrow_schema::DataType::Timestamp(arrow_schema::TimeUnit::Nanosecond, None))
+        .map_err(|e| ContextError::Invalid(format!("table `{}`: `{}` holds no instant: {e}", decl.name, available.column)))?;
+    let nanos = nanos.as_any().downcast_ref::<arrow_array::TimestampNanosecondArray>().expect("a cast to nanoseconds yields nanoseconds");
+    let latest = (0..nanos.len()).filter(|i| !nanos.is_null(*i)).map(|i| nanos.value(i)).max();
+    latest.map(|n| Instant::from_unix_nanos(i128::from(n)).map_err(|e| ContextError::Invalid(e.to_string()))).transpose()
+}
