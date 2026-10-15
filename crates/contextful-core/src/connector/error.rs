@@ -160,6 +160,9 @@ pub enum ConnectorError {
     /// An outbound hop the pre-send hook refused before name resolution. (`connector.meter.hook-refusal`)
     #[error("ConnectorEgressRefused: {0}")]
     ConnectorEgressRefused(String),
+    /// A model call under a credential horizon declares a provider-hosted tool. (`connector.infer.hosted-tools`)
+    #[error("InferHostedToolUnderHorizon: {0}")]
+    InferHostedToolUnderHorizon(String),
     /// A vendor request without a granted reservation under a declared limiter. (`connector.meter.unmetered-request`)
     #[error("ConnectorUnmetered: {0}")]
     ConnectorUnmetered(String),
