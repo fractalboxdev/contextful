@@ -37,6 +37,15 @@ fn serve(cf: &std::path::Path, p: &GitRepo, public: &str) -> (Listener, String) 
         }
         heard.push_str(&line);
     };
+    // The face binds warming and answers reads once its snapshot set is mapped.
+    loop {
+        let mut line = String::new();
+        assert!(err.read_line(&mut line).unwrap() > 0, "the HTTP read face never hydrated: {heard}");
+        if line.starts_with("hydrated:") {
+            break;
+        }
+        heard.push_str(&line);
+    }
     (listener, address)
 }
 

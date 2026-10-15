@@ -3,6 +3,7 @@
 #![cfg(feature = "data-plane")]
 
 mod catalogs;
+mod hydrate;
 mod run_state;
 mod node_id;
 mod s3;
@@ -239,7 +240,7 @@ fn a_cold_node_pulls_the_bucket_before_its_run_reads() {
     refused(&out, "SyncEndpointUnsupported");
     assert!(out.stdout.is_empty(), "a server whose pull fails writes no framing");
 
-    a_cold_http_server_pulls_before_it_listens(bucket.path());
+    a_cold_http_server_pulls_before_it_answers(bucket.path());
 }
 
 /// Start `contextful serve --http` on `dir`; its address once it listens, or its exit
@@ -283,6 +284,24 @@ fn issue(dir: &Path) -> (String, String) {
     (public, token)
 }
 
+/// Wait until `GET /health` names the snapshot set's hydration complete.
+fn hydrated(addr: &str) {
+    use std::io::Read;
+    let deadline = std::time::Instant::now() + std::time::Duration::from_secs(60);
+    loop {
+        let mut s = std::net::TcpStream::connect(addr).unwrap();
+        write!(s, "GET /health HTTP/1.1\r\nContent-Length: 0\r\n\r\n").unwrap();
+        let mut raw = String::new();
+        s.read_to_string(&mut raw).unwrap();
+        let health: Value = serde_json::from_str(raw.split_once("\r\n\r\n").unwrap().1).unwrap();
+        if health["hydration"] == "complete" {
+            return;
+        }
+        assert!(std::time::Instant::now() < deadline, "hydration never completed: {health}");
+        std::thread::sleep(std::time::Duration::from_millis(50));
+    }
+}
+
 /// `POST /mcp` carrying one `context.query` over `filings` under a bare bearer.
 fn http_query(addr: &str, token: &str) -> Value {
     use std::io::Read;
@@ -294,13 +313,14 @@ fn http_query(addr: &str, token: &str) -> Value {
     serde_json::from_str(raw.split_once("\r\n\r\n").unwrap().1).unwrap()
 }
 
-/// A cold `serve --http` declaring `pull_before_run` answers from the bucket's rows, and
-/// one whose pull fails binds no listener.
-fn a_cold_http_server_pulls_before_it_listens(bucket: &Path) {
+/// A cold `serve --http` declaring `pull_before_run` answers from the bucket's rows once
+/// its hydration completes, and one whose bucket is unusable binds no listener.
+fn a_cold_http_server_pulls_before_it_answers(bucket: &Path) {
     // A cold network face answers its first query from the bucket's rows.
     let cold = project("ingest-h", &file_sync(bucket, "pull_before_run = true\n"));
     let (public, token) = issue(cold.path());
     let (mut child, addr) = serve(cold.path(), &public).unwrap_or_else(|out| panic!("{}", String::from_utf8_lossy(&out.stderr)));
+    hydrated(&addr);
     let answer = http_query(&addr, &token);
     let _ = child.kill();
     let _ = child.wait();

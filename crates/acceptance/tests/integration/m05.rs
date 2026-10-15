@@ -424,6 +424,15 @@ fn m05_http_face() {
             break a.to_string();
         }
     };
+    // The face binds warming and answers reads once its snapshot set is mapped.
+    loop {
+        let mut line = String::new();
+        assert!(err.read_line(&mut line).unwrap() > 0, "the face never hydrated: {startup}");
+        startup.push_str(&line);
+        if line.starts_with("hydrated:") {
+            break;
+        }
+    }
     let parse = |b: &[u8]| -> Value { serde_json::from_slice(b).unwrap() };
     let call = |sql: &str| json!({ "jsonrpc": "2.0", "id": 1, "method": "tools/call", "params": { "name": "context.query", "arguments": { "sql": sql } } });
     let fast = call(r#"SELECT note_id FROM "research/notes" ORDER BY note_id"#);

@@ -9,6 +9,7 @@ mod enforce;
 mod extension;
 mod fulltext;
 mod guard;
+mod hydrate;
 mod latency;
 mod nested;
 mod native_rows;
