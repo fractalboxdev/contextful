@@ -10,12 +10,12 @@ An unpinned clause is `committed`; a pinned one is `performed` when its Rust, Le
 | `connector` | 2 | 14 | 363 | 91 | 21 | 15 | 260 | 0 | 260 |
 | `corpus` | 1 | 10 | 79 | 37 | 7 | 0 | 79 | 0 | 79 |
 | `disclosure` | 3 | 16 | 159 | 68 | 13 | 8 | 106 | 0 | 106 |
-| `read` | 2 | 19 | 276 | 45 | 28 | 13 | 231 | 0 | 231 |
+| `read` | 2 | 19 | 276 | 45 | 28 | 13 | 233 | 0 | 233 |
 | `run` | 3 | 29 | 517 | 114 | 44 | 13 | 467 | 0 | 467 |
 | `store` | 3 | 19 | 290 | 64 | 14 | 11 | 280 | 0 | 280 |
 | `surface` | 2 | 21 | 159 | 63 | 23 | 0 | 132 | 0 | 132 |
 | `topology` | 1 | 6 | 79 | 25 | 5 | 3 | 74 | 0 | 74 |
-| **total** | 22 | 168 | 2533 | 650 | 208 | 80 | 2134 | 0 | |
+| **total** | 22 | 168 | 2533 | 650 | 208 | 80 | 2136 | 0 | |
 
 Decision records: 18.
 
@@ -30,7 +30,7 @@ A milestone reads `closed` when its acceptance test computes `passing` and every
 | 2 — The store | 9 | 183 | 173 | passing | closed |
 | 3 — The run path | 12 | 271 | 255 | passing | closed |
 | 4 — Ingest | 25 | 566 | 435 | passing | closed |
-| 5 — The read face under enforcement | 17 | 308 | 242 | passing | open |
+| 5 — The read face under enforcement | 17 | 308 | 244 | passing | open |
 | 6 — Sync and replicas | 8 | 83 | 83 | passing | closed |
 | 7 — Memory | 6 | 71 | 56 | passing | closed |
 | 8 — Accountability | 5 | 84 | 71 | passing | open |
@@ -1007,8 +1007,10 @@ Unscheduled operations: 12.
 | `read.cache.budget` | `crates/contextful-context/tests/integration/read/result_cache.rs::filling_past_the_budget_evicts_the_least_recently_used` | performed |
 | `read.cache.cache-is-opt-in` | `crates/contextful-context/tests/integration/read/result_cache.rs::only_opted_in_tables_that_are_not_private_cache_and_entries_expire` | performed |
 | `read.cache.change-misses` | `crates/contextful-context/tests/integration/read/pool.rs::every_change_to_the_whole_key_misses_and_reads_the_new_state` | performed |
+| `read.cache.cold-start` | `crates/contextful-cli/tests/integration/sync/hydrate.rs::a_cold_http_server_is_ready_within_8_s_and_answers_once_its_pull_lands` | performed |
 | `read.cache.frontier-invalidates` | `crates/contextful-context/tests/integration/read/result_cache.rs::a_landed_run_or_ledger_append_misses_and_reads_the_new_state` | performed |
 | `read.cache.hit-identical` | `crates/contextful-context/tests/integration/read/result_cache.rs::a_hit_is_byte_identical_to_the_miss_and_internals_name_it` | performed |
+| `read.cache.hot-local-parquet` | `crates/contextful-context/tests/integration/read/hydrate.rs::the_face_maps_exactly_the_current_snapshot_set_it_reads` | performed |
 | `read.cache.pool-connections` | `crates/contextful-context/tests/integration/read/pool.rs::an_entry_keeps_at_most_four_idle_connections` | performed |
 | `read.cache.pool-entries` | `crates/contextful-context/tests/integration/read/pool.rs::the_pool_holds_sixteen_entries_and_evicts_the_oldest` | performed |
 | `read.cache.result-key` | `crates/contextful-context/tests/integration/read/result_cache.rs::one_credential_id_under_another_principal_misses` | performed |
