@@ -79,7 +79,8 @@ fn a_resent_key_replays_committed_tables_and_lands_the_rest() {
     assert!(again.status.success(), "{}", stderr(&again));
     let again = answer(&again);
     assert_eq!(again["run_id"], first["run_id"]);
-    assert!(again["tables"].as_array().unwrap().iter().all(|t| t["outcome"] == "replayed"), "{again}");
+    let outcomes: Vec<(&str, &str)> = again["tables"].as_array().unwrap().iter().map(|t| (t["table"].as_str().unwrap(), t["outcome"].as_str().unwrap())).collect();
+    assert_eq!(outcomes, [("otel_spans", "replayed"), ("otel_events", "replayed")]);
     assert_eq!(rows(dir.path(), "SELECT id FROM otel_spans"), serde_json::json!([["s1"]]));
     assert_eq!(rows(dir.path(), "SELECT id FROM otel_events"), serde_json::json!([["e1"]]));
 
@@ -112,13 +113,19 @@ fn a_delivered_credential_lands_masked_and_no_stored_byte_holds_it() {
     assert!(out.status.success(), "{}", stderr(&out));
     assert_eq!(rows(dir.path(), "SELECT note FROM otel_spans"), serde_json::json!([["x-api-key: [REDACTED:secret]"]]));
     let mut pending = vec![dir.path().join(".contextful")];
+    let (mut files, mut holding) = (0, Vec::new());
     while let Some(path) = pending.pop() {
         if path.is_dir() {
             pending.extend(std::fs::read_dir(&path).unwrap().map(|e| e.unwrap().path()));
         } else {
-            assert!(!std::fs::read(&path).unwrap().windows(KEY.len()).any(|w| w == KEY.as_bytes()), "{} holds the credential", path.display());
+            files += 1;
+            if std::fs::read(&path).unwrap().windows(KEY.len()).any(|w| w == KEY.as_bytes()) {
+                holding.push(path);
+            }
         }
     }
+    assert!(files > 0, "the batch landed files");
+    assert_eq!(holding, Vec::<std::path::PathBuf>::new(), "no stored byte holds the credential");
 }
 
 /// A body past `max_batch_bytes` raises `ReceiveBatchTooLarge`, non-retryable, and no table lands.
