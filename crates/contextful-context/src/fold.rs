@@ -198,11 +198,9 @@ pub fn prepare_under(store: &Store, decl: &TableDecl, now: Instant, fence: Optio
     let invalid = |e: arrow_schema::ArrowError| ContextError::Invalid(format!("table `{table}`: {e}"));
     let mut rows = concat_batches(&target, &batches).map_err(invalid)?;
     if decl.is_keyed() {
-        let mut line: Vec<String> = decl.primary_key().to_vec();
-        if let Some(vt) = &decl.valid_time {
-            line.push(vt.from.clone());
-        }
-        rows = dedupe(&rows, &line, decl.order_by()).map_err(invalid)?;
+        // One row per key and valid-time line, and per availability instant on a vintage
+        // table, so the fold drops no vintage (`store.available-time.vintage-fold-key`).
+        rows = dedupe(&rows, &decl.dedup_line(), decl.order_by()).map_err(invalid)?;
     }
     if is_derive_key(decl.primary_key()) {
         rows = supersede(&rows, decl.retain_versions == Some(true))?;

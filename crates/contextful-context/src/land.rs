@@ -546,7 +546,7 @@ fn commit_run(
     let rewritten = if engine_owned(&decl.name) {
         batches.to_vec()
     } else {
-        batches.iter().map(|batch| store.rewrite_batch(&decl.name, batch)).collect::<Result<Vec<_>>>()?
+        batches.iter().map(|batch| crate::available::resolve(decl, store.rewrite_batch(&decl.name, batch)?)).collect::<Result<Vec<_>>>()?
     };
     let batches = rewritten.as_slice();
     let per_batch = batches.len() > 1 || position.pipeline_id.is_some();
@@ -1011,6 +1011,8 @@ fn stage_prepared_part(store: &Store, decl: &TableDecl, batch: &Batch, node: &No
     let stage_dir = node_dir.join(STAGE_DIR);
     let _run_lock = lock_run(&node_dir, &manifest_path, node, &injection.run_id)?;
     let earlier = read_staged_schema(store, &stage_dir)?;
+    let resolved = crate::available::resolve(decl, batch.clone())?;
+    let batch = &resolved;
     let landing = reconcile(store, decl, std::slice::from_ref(batch), node, injection, true, earlier.as_ref(), false)?;
     // The staged schema lands before the part, so every part a commit names has its
     // columns in the schema that commit merges.

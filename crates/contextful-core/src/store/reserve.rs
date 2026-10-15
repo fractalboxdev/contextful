@@ -25,6 +25,13 @@ pub const ALWAYS_INJECTED: [&str; 5] = [INGESTED_AT, RUN_ID, ROW_SEQ, COMMIT_SEQ
 /// Columns a producer may set inside the `_` namespace (`store.reserve.optional`).
 pub const OPTIONAL: [&str; 4] = ["_modality", "_lang", "_provenance", "_prompt_hash"];
 
+/// A row whose availability instant the declared lag filled (`store.available-time.lag-fill`).
+pub const AVAILABLE_IMPUTED: &str = "_available_imputed";
+/// A row available before its source published live (`store.available-time.live-since`).
+pub const AVAILABLE_RECONSTRUCTED: &str = "_available_reconstructed";
+/// The flags landing alone sets: it strips any a producer sends, then injects its own.
+pub const AVAILABILITY_FLAGS: [&str; 2] = [AVAILABLE_IMPUTED, AVAILABLE_RECONSTRUCTED];
+
 /// The values `_modality` takes (`store.reserve.modality`).
 pub const MODALITIES: [&str; 5] = ["text", "image", "audio", "structured", "mixed"];
 
@@ -96,7 +103,7 @@ pub fn producer_columns(schema: &Schema) -> Result<Schema, StoreError> {
         if is_injected(&c.name) {
             continue;
         }
-        if c.name.starts_with('_') && !OPTIONAL.contains(&c.name.as_str()) {
+        if c.name.starts_with('_') && !OPTIONAL.contains(&c.name.as_str()) && !AVAILABILITY_FLAGS.contains(&c.name.as_str()) {
             return Err(StoreError::StoreReservedColumnName(format!(
                 "column `{}` is inside the engine's `_` namespace; a producer sets only {}",
                 c.name,

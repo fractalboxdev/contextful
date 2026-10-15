@@ -436,6 +436,7 @@ primary_key = ["doc"]
 [[pipeline.tables]]
 name = "research/earnings"
 primary_key = ["filing_id"]
+content_hash_column = "digest"
 
 [pipeline.tables.available_time]
 column = "accepted_at"
@@ -446,16 +447,17 @@ sql = "SELECT filing_id FROM \"research/earnings\" WHERE ticker = ? ORDER BY fil
 parameters = ["ticker:string"]
 "#;
 
-/// Two quarters' earnings, each accepted after its quarter closes and both landed on 1 September,
-/// beside a keyed table declaring no availability time.
+/// Two quarters' earnings, each accepted after its quarter closes, and a restatement of the
+/// first, all landed on 1 September, beside a keyed table declaring no availability time.
 fn available() -> Fixture {
     let decls = TableDecl::parse_pipeline(AVAILABLE).unwrap();
     let decl = |name: &str| decls.iter().find(|d| d.name == name).unwrap().clone();
     fixture_over(AVAILABLE, |store| {
         put(store, &decl("research/filings"), "run-1", "2030-01-01T00:00:00Z", json!([{ "doc": "a", "v": 1 }]), &[]);
         let earnings = json!([
-            { "filing_id": "acme-q1", "ticker": "ACME", "accepted_at": "2030-05-02T16:05:00Z" },
-            { "filing_id": "acme-q2", "ticker": "ACME", "accepted_at": "2030-08-01T16:05:00Z" },
+            { "filing_id": "acme-q1", "ticker": "ACME", "eps": "1.23", "digest": "q1", "accepted_at": "2030-05-02T16:05:00Z" },
+            { "filing_id": "acme-q2", "ticker": "ACME", "eps": "1.31", "digest": "q2", "accepted_at": "2030-08-01T16:05:00Z" },
+            { "filing_id": "acme-q1", "ticker": "ACME", "eps": "1.19", "digest": "q1r", "accepted_at": "2030-08-15T16:05:00Z" },
         ]);
         put(store, &decl("research/earnings"), "run-1", "2030-09-01T00:00:00Z", earnings, &[("accepted_at", ColumnType::Timestamp)]);
     })
@@ -511,6 +513,23 @@ fn available_as_of_wraps_only_the_tables_a_read_touches() {
     assert!(recalled.get("error").is_some() || recalled["result"]["isError"] == json!(true), "{recalled}");
 }
 
+/// A read tool resolves a vintage table to its latest release, or to its first under `vintage = "first"`.
+#[test]
+fn every_read_tool_resolves_the_vintage_it_is_asked_for() {
+    let f = available();
+    let clock = FixedClock(at("2030-09-02T00:00:00Z"));
+    let server = Server::new(&f.face, f.authority.clone(), &current, &clock, &f.audit).unwrap();
+    let sql = r#"SELECT CAST(eps AS VARCHAR) FROM "research/earnings" WHERE filing_id = 'acme-q1'"#;
+    assert_eq!(rows(&call(&server, "context.query", json!({ "sql": sql }))), &json!([["1.19"]]));
+    assert_eq!(rows(&call(&server, "context.query", json!({ "sql": sql, "available_as_of": "2030-08-01" }))), &json!([["1.23"]]));
+    assert_eq!(rows(&call(&server, "context.query", json!({ "sql": sql, "vintage": "first" }))), &json!([["1.23"]]));
+    assert_eq!(rows(&call(&server, "context.query", json!({ "sql": sql, "vintage": "latest" }))), &json!([["1.19"]]));
+    let template = call(&server, "earnings", json!({ "ticker": "ACME", "vintage": "first" }));
+    assert_eq!(rows(&template), &json!([["acme-q1"], ["acme-q2"]]));
+    let refused = call(&server, "context.query", json!({ "sql": sql, "vintage": "second" }));
+    assert!(refused.get("error").is_some() || refused["result"]["isError"] == json!(true), "{refused}");
+}
+
 /// A listing {{read.register.bound-listing}} names ignores `available_as_of` and echoes no `available_as_of` part.
 // spec: read.register.available-bound-listing@5895d568
 #[test]
@@ -543,9 +562,9 @@ fn every_read_tool_declares_both_bounds() {
     for tool in tools {
         let properties = &tool["inputSchema"]["properties"];
         let (present, absent) = if tool["name"] == json!("memory.recall") {
-            (vec!["observed_at", "as_of_ingest"], vec!["as_of", "valid_as_of", "available_as_of"])
+            (vec!["observed_at", "as_of_ingest"], vec!["as_of", "valid_as_of", "available_as_of", "vintage"])
         } else {
-            (vec!["as_of", "valid_as_of", "available_as_of"], vec!["observed_at", "as_of_ingest"])
+            (vec!["as_of", "valid_as_of", "available_as_of", "vintage"], vec!["observed_at", "as_of_ingest"])
         };
         for bound in present {
             assert_eq!(properties[bound]["type"], json!("string"), "{} lacks `{bound}`", tool["name"]);

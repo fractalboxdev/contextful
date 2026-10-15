@@ -41,13 +41,38 @@ pub struct ValidTime {
 }
 
 /// The declared instant each row's value became public (`store.available-time.declaration`).
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct AvailableTime {
     pub column: String,
-    /// The zone a date-typed value resolves in; UTC when unset.
+    /// The zone a date-typed value resolves in; UTC when unset (`store.available-time.date-end`).
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub zone: Option<String>,
+    /// The duration filling a null instant from valid time (`store.available-time.lag-fill`).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub lag: Option<AvailableLag>,
+    /// The instant the source began publishing live (`store.available-time.live-since`).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub live_since: Option<String>,
+}
+
+/// A duration per row class, read from `class_column` (`store.available-time.lag-class`).
+#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct AvailableLag {
+    pub class_column: String,
+    pub classes: BTreeMap<String, String>,
+}
+
+impl AvailableTime {
+    /// The lag `class` maps to in seconds, or `None` when the lag names no such class.
+    pub fn lag_secs(&self, class: &str) -> Result<Option<u64>, DeclarationMalformed> {
+        let Some(span) = self.lag.as_ref().and_then(|lag| lag.classes.get(class)) else { return Ok(None) };
+        if !span.ends_with('d') {
+            return Err(DeclarationMalformed(format!("available_time lag `{span}` for class `{class}` is not <n>d")));
+        }
+        crate::time::duration_secs(span).map(Some).ok_or_else(|| DeclarationMalformed(format!("available_time lag `{span}` for class `{class}` is not <n>d")))
+    }
 }
 
 /// The timestamp and age limiting rows of a table (`store.declare.retain-rows`).
@@ -405,6 +430,24 @@ impl TableDecl {
         !self.primary_key().is_empty()
     }
 
+    /// Whether the table keeps one row per key and availability instant
+    /// (`store.available-time.vintage-rows`).
+    pub fn is_vintage(&self) -> bool {
+        self.is_keyed() && self.available_time.is_some()
+    }
+
+    /// The columns a keyed table keeps one row per: the key, valid-time `from` where
+    /// declared, and the availability column on a vintage table
+    /// (`store.available-time.vintage-dedup-key`, `store.available-time.vintage-interval-key`).
+    pub fn dedup_line(&self) -> Vec<String> {
+        let mut line = self.primary_key().to_vec();
+        line.extend(self.valid_time.as_ref().map(|vt| vt.from.clone()));
+        if self.is_vintage() {
+            line.extend(self.available_time.as_ref().map(|at| at.column.clone()));
+        }
+        line
+    }
+
     /// The column picking the surviving row per key (`store.declare.order-by-default`).
     pub fn order_by(&self) -> &str {
         self.order_by.as_deref().unwrap_or(INGESTED_AT)
@@ -505,6 +548,15 @@ impl TableDecl {
     pub fn validate(&self, schema: &Schema) -> Result<(), StoreError> {
         if self.name != super::reserve::RUN_RECORD_TABLE {
             check_table_name(&self.name)?;
+        }
+        if self.is_vintage() && self.content_hash_column.is_none() {
+            return Err(StoreError::StoreVintageHashUndeclared(format!(
+                "table `{}` keeps vintages and declares no `content_hash_column`",
+                self.name
+            )));
+        }
+        if self.is_vintage() && self.retain_rows.is_some() {
+            return Err(StoreError::StoreVintageRetainRows(format!("table `{}` keeps vintages and declares `retain_rows`", self.name)));
         }
         self.retain_rows_secs().map_err(|e| StoreError::StoreRetentionColumnInvalid(e.to_string()))?;
         if let Some(retention) = &self.retain_rows {

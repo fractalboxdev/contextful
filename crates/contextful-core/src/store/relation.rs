@@ -1,7 +1,7 @@
 //! The SQL relation a table registers as: `read_parquet` over the explicit file list,
 //! the key's dedup view, and the valid-time wrap.
 
-use super::bound_time::{Bound, Bounds};
+use super::bound_time::{Bound, Bounds, Vintage};
 use super::declare::TableDecl;
 use super::reconcile::Column;
 use super::StoreError;
@@ -96,20 +96,22 @@ pub fn relation_bounded(
         base = format!("SELECT * FROM ({base}) WHERE {} {cmp} TIMESTAMPTZ {}", ident(&available.column), literal(&b.at.to_rfc3339_nanos()));
     }
     let mut rel = if decl.is_keyed() {
-        // A table declaring valid time keeps one row per key and valid-time line, as the fold does.
-        let mut pk: Vec<String> = decl.primary_key().iter().map(|k| ident(k)).collect();
-        if let Some(vt) = &decl.valid_time {
-            pk.push(ident(&vt.from));
-        }
+        // A table declaring valid time keeps one row per key and valid-time line, and a
+        // vintage table one per availability instant beside them, as the fold does.
+        let pk: Vec<String> = decl.dedup_line().iter().map(|k| ident(k)).collect();
         let mut order = vec![format!("{} DESC", ident(decl.order_by()))];
         for c in super::reserve::TIEBREAK.into_iter().filter(|c| *c != decl.order_by()) {
             order.push(format!("{} DESC", ident(c)));
         }
-        format!(
+        let deduped = format!(
             "SELECT * EXCLUDE (__contextful_rn) FROM (SELECT *, ROW_NUMBER() OVER (PARTITION BY {} ORDER BY {}) AS __contextful_rn FROM ({base})) WHERE __contextful_rn = 1",
             pk.join(", "),
             order.join(", ")
-        )
+        );
+        match (&decl.available_time, decl.content_hash_column()) {
+            (Some(available), Some(hash)) => vintage(decl, &deduped, &available.column, hash, bounds.vintage),
+            _ => deduped,
+        }
     } else {
         base
     };
@@ -141,6 +143,29 @@ pub fn relation_bounded(
         rel = format!("SELECT * FROM ({rel}) WHERE {pred}");
     }
     Ok(rel)
+}
+
+/// One vintage per key and valid-time line out of `deduped`, which holds one row per
+/// availability instant. A vintage whose content hash equals its predecessor's is no
+/// restatement and drops out (`store.available-time.vintage-hash`); of the rest, the
+/// latest instant answers, or the earliest under `vintage = "first"`
+/// (`store.available-time.vintage-resolution`, `store.available-time.vintage-first`).
+fn vintage(decl: &TableDecl, deduped: &str, available: &str, hash: &str, which: Vintage) -> String {
+    let mut line: Vec<String> = decl.primary_key().iter().map(|k| ident(k)).collect();
+    line.extend(decl.valid_time.as_ref().map(|vt| ident(&vt.from)));
+    let line = line.join(", ");
+    let (available, hash) = (ident(available), ident(hash));
+    let restated = format!(
+        "SELECT * EXCLUDE (__contextful_prior) FROM (SELECT *, LAG({hash}) OVER (PARTITION BY {line} ORDER BY {available}) AS __contextful_prior FROM ({deduped})) \
+         WHERE __contextful_prior IS NULL OR __contextful_prior IS DISTINCT FROM {hash}"
+    );
+    let direction = match which {
+        Vintage::Latest => "DESC",
+        Vintage::First => "ASC",
+    };
+    format!(
+        "SELECT * EXCLUDE (__contextful_vintage) FROM (SELECT *, ROW_NUMBER() OVER (PARTITION BY {line} ORDER BY {available} {direction}) AS __contextful_vintage FROM ({restated})) WHERE __contextful_vintage = 1"
+    )
 }
 
 /// `rel` less a derive table's superseded rows: each unit's rows landed under another key

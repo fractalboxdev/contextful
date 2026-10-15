@@ -539,3 +539,37 @@ fn reference_is_a_bounded_read_tool_over_registered_relations() {
     assert!(tool["inputSchema"]["properties"].get("max_duration_ms").is_some());
     assert!(tool["inputSchema"]["properties"].get("max_response_bytes").is_some());
 }
+
+/// The `available_as_of` bound applies beneath enforcement as {{store.bound-time.beneath-enforcement}} applies the other two, narrowing what enforcement admits and widening nothing.
+// spec: store.available-time.beneath-enforcement@bd0782cd
+#[test]
+fn an_availability_bound_narrows_the_tenant_restricted_rows() {
+    const FILINGS: &str = "\n[[pipeline.tables]]\nname = \"research/filings\"\nprimary_key = [\"filing_id\"]\npartition_by = [\"tenant\"]\ncontent_hash_column = \"digest\"\n\n[pipeline.tables.policy.columns]\nanalyst = { strategy = \"drop\" }\n\n[pipeline.tables.available_time]\ncolumn = \"accepted_at\"\n";
+    let r = Reads::with_manifest(&format!("{MANIFEST}{FILINGS}"));
+    let decl = TableDecl::parse_pipeline(FILINGS).unwrap().remove(0);
+    let rows = json!([
+        { "filing_id": "a1", "tenant": "acme", "analyst": "dana", "digest": "1", "accepted_at": "2030-02-01T00:00:00Z" },
+        { "filing_id": "a2", "tenant": "acme", "analyst": "dana", "digest": "2", "accepted_at": "2030-04-01T00:00:00Z" },
+        { "filing_id": "g1", "tenant": "globex", "analyst": "ray", "digest": "3", "accepted_at": "2030-02-01T00:00:00Z" },
+    ]);
+    let ctx = RunContext {
+        node: NodeId::parse("ingest-a").unwrap(),
+        injection: Injection { run_id: "run-0001".into(), site_id: "site-a".into(), batch_seq: Some(0), authored_by: None, taint: None },
+        committed_at: at("2030-05-01T00:00:00Z"),
+    };
+    land(&r.store, &decl, &Batch { rows: rows.as_array().unwrap().iter().map(|v| v.as_object().unwrap().clone()).collect(), types: HashMap::new() }, &ctx).unwrap();
+
+    let authority = r.authority(loop_subject("agent://research-loop"), vec![read(&["research/filings"], Some(("research/filings", "acme")))]);
+    let bounds = Bounds { available_as_of: Some(contextful_core::store::bound_time::Bound::parse("2030-03-01T00:00:00Z").unwrap()), ..Bounds::default() };
+    let session = r.face.session(&authority, &Request::default(), bounds).unwrap();
+    let sql = r#"SELECT * FROM "research/filings""#;
+    let bounded = r.face.query(&session, sql, ReadOptions { bounds, ..ReadOptions::default() }).unwrap();
+    assert_eq!(column(&bounded, "filing_id"), [json!("a1")]);
+    assert_eq!(column(&bounded, "analyst"), [json!("")], "the column mask still applies");
+
+    // Unbounded, the same credential still reads its own tenant alone.
+    let unbounded = r.session_for(loop_subject("agent://research-loop"), vec![read(&["research/filings"], Some(("research/filings", "acme")))], None);
+    let mut all: Vec<Value> = column(&r.query(&unbounded, sql).unwrap(), "filing_id");
+    all.sort_by_key(|v| v.to_string());
+    assert_eq!(all, [json!("a1"), json!("a2")]);
+}
