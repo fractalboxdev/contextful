@@ -28,14 +28,12 @@ An OCI reference selects one component layer ({{connector.package.oci-component-
 checks its descriptor ({{connector.package.oci-layer-integrity}}), and takes an optional
 registry bearer from the project's credential binding ({{connector.package.oci-registry-bearer}}).
 Admitted bytes enter a digest-keyed project cache ({{connector.package.remote-cache}});
-damaged cached bytes refuse instead of reaching the component host
-({{connector.package.remote-cache-corrupt}}).
+damaged cached bytes refuse ({{connector.package.remote-cache-corrupt}}).
 
 A manifest names its keys and one build input ({{connector.package.manifest-keys}},
-{{connector.package.build-source}}). `connector pin --local` prints a digest it never writes
-({{connector.package.host-built-pin}}); `connector pin` writes the pin from the fixed
-platform ({{connector.package.pin-verb}}), and a reviewer reruns it with `--verify`
-({{connector.package.path-remap}}).
+{{connector.package.build-source}}). `connector pin` writes the pin from the fixed platform
+({{connector.package.pin-verb}}); `--local` writes nothing ({{connector.package.host-built-pin}}),
+and `--verify` reproduces ({{connector.package.path-remap}}).
 
 Host access is declared, not requested. The manifest lists hosts, environment names and the
 clock, and the host decides the grant at load ({{connector.declare-capability.declared-grant}});
@@ -46,7 +44,7 @@ optional scope probe checks the bound credential's grant before the first read
 A reload compares complete declarations ({{connector.widen.comparison}}). Narrowing needs no
 widening review ({{connector.widen.narrowing}}); additional access reaches operator approval
 ({{connector.widen.approval-required}}), bound to both manifests
-({{connector.widen.approval-binding}}). A host witness is a request both matchers can replay
+({{connector.widen.approval-binding}}). A host witness is a request both matchers replay
 ({{connector.widen.host-witness}}).
 
 Every outbound request uses the host's mediated client
@@ -85,16 +83,16 @@ the deployment lists as a leased scope ({{connector.lease.scope-declaration}}). 
 binds a credential, its allowlist holds one exact host, `api.vendor.example`
 ({{connector.attach.bound-host}}).
 
-The host re-hashes its pinned artifact, checks the allowlist
+The host re-hashes the artifact, checks the allowlist
 ({{connector.declare-capability.allowlist-shape}}) and quota binding
 ({{connector.meter.limiter-binding}}), and opens the session. The first read gets a permit,
 resolves a public address, and hydrates the `Authorization` template from a lease
 ({{connector.lease.head-of-chain}}, {{connector.lease.lease}}). The vendor's quota headers
 ride the next usage report ({{connector.meter.report}}).
 
-Midway through, the limiter denies a permit. The guest sees an ordinary throttle response
-({{connector.meter.synthesized-throttle}}), which the run retries under its schedule. Later
-the lease lapses while the mint endpoint is down: the run sends the vendor nothing
+Midway, the limiter denies a permit. The guest sees an ordinary throttle response
+({{connector.meter.synthesized-throttle}}), which the run retries. Later
+the lease lapses with the mint endpoint down: the run sends the vendor nothing
 ({{connector.lease.vendor-requests-on-failure}}), and the transient failure goes back to the
 step's schedule.
 
