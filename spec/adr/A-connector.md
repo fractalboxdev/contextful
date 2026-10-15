@@ -29,6 +29,34 @@ The content pin names component bytes rather than a mutable URL, tag or manifest
 
 Consequences: a registry that only accepts a challenge-based token exchange refuses a fetch until it has a directly bound bearer credential. Revisit: a required registry exposes no directly bound bearer; a package needs several blobs or an OCI index.
 
+## The content pin is the only trust root
+
+Admission trusts the 64-hex pin alone. A reviewer binds review to bytes by rebuilding with `connector pin --verify` and comparing digests, not by trusting a publisher. `connector.package` refuses an unpinned remote artifact, re-hashes resolved bytes and checks an OCI layer against its descriptor and the pin; no signature, key or log takes part in admission.
+
+| Option | Lost on | Cost |
+| --- | --- | --- |
+| Pin plus reproducible rebuild *(chosen)* | — | A reviewer needs the source and the builder image; an operator who neither builds nor reviews trusts whoever handed over the pin. |
+| Publisher signature plus transparency log | Replay availability | Every admission depends on a key custodian, a log operator and a network round trip; a signature names who published, not which bytes were reviewed. |
+| Signature without a log, or trust on first use of a publisher key | Review binding | A stolen or rotated key signs bytes no reviewer saw, and nothing records that it did. |
+| Optional signature checked when present | Failure direction | An absent signature reads like a valid one, a degraded answer that must be a denial. |
+
+Consequences: no registry, key or log runs for connectors; distribution is whatever channel carries the pin.
+Revisit: a public registry distributes connectors to operators who neither build nor review them.
+
+## The pin builder runs one fixed platform
+
+A pin reproduces from one builder platform, defined once as `PLATFORM` in `contextful-core::connector::package`: a digest-pinned image carrying the toolchain, the `wasm32-wasip2` target, the fetch `cargo fetch --locked`, the argv `cargo build --release --locked --target wasm32-wasip2`, and the remap targets `/src`, `/cargo` and `/rustup`. Both runs use `--platform linux/amd64` and the invoking user's uid and gid, mount the source read-only and a per-build package cache at `/cargo`; the fetch reaches the registry, and the build adds `--offline` under `--network none`. A manifest names one build input, `[build] source`; `connector.package` refuses every other unread key, so attach headers and memory bounds stay in the pipeline's component source.
+
+| Option | Lost on | Cost |
+| --- | --- | --- |
+| One fixed platform, one manifest build input *(chosen)* | — | Every connector builds with one Rust toolchain; a toolchain bump re-pins every connector at once. |
+| Per-manifest image and argv | Reproducibility | Each digest reproduces only on its own image, and native verification has no single set of constants to check. |
+| Per-manifest toolchain version fields | One home per fact | The toolchain is stated in the manifest and again in the image. |
+| Per-connector Dockerfile | Reviewability | Build inputs hide in a second file a reviewer must read as code. |
+
+Consequences: `connector pin` without a container runtime refuses and never falls back to a host build; a guest in another language needs a second platform.
+Revisit: a guest language other than Rust needs first-class pinning.
+
 ## Precompiled components reuse only compatible host output
 
 A cache key joins the admitted artifact digest with the engine's precompile compatibility hash. The host writes compiled output into a private cache directory and verifies its recorded digest before deserialization. An absent, altered or incompatible entry compiles from the admitted source bytes. Pulley output stays separate from native output through the engine hash.
@@ -39,8 +67,21 @@ A cache key joins the admitted artifact digest with the engine's precompile comp
 | Recompile on every process start | Startup latency | Every guest pays compilation again. |
 | Deserialize any file named by the artifact digest | Input integrity | A stale engine build or altered file reaches unsafe deserialization. |
 
-Consequences: a hardened host still links a compiler for cache misses; the Pulley target runs without executable mappings. Windows compiles each fire until the host verifies a private cache ACL.
+Consequences: a hardened host still links a compiler for cache misses; the Pulley target runs without executable mappings. A pin names component bytes alone; precompiled output never travels with a pin. Windows compiles each fire until the host verifies a private cache ACL.
 Revisit: a pinned precompile artifact and a compiler-free host build exist for every deployment target.
+
+## The guest world targets synchronous WASI 0.2
+
+Both worlds import WASI 0.2 interfaces, and every export is a synchronous call. `connector.package` bounds a call by epoch interruption, a session reserves at one pre-send hook per request, and `connector.import` gives a guest no wait primitive; each holds because a guest call runs to completion on one stack.
+
+| Option | Lost on | Cost |
+| --- | --- | --- |
+| WASI 0.2 with synchronous exports *(chosen)* | — | A guest overlaps requests only through outgoing-handler futures; no guest awaits a timer. |
+| WASI 0.3 native async | Runtime maturity | The host runtime gates the 0.3 interfaces as experimental, and three performed clauses change meaning at once. |
+| Both worlds side by side | One implementation per capability | Dispatch branches on the world, which `connector.export.authoring-path` forbids. |
+
+Consequences: native async changes the meaning of `call-deadline` (a task and its subtasks), `session-budget` (concurrent requests reserving at the one pre-send hook) and `wait-primitive` (a guest can await), so adopting 0.3 is a major world bump under `connector.package.world-drain`.
+Revisit: the host runtime ships the 0.3 interfaces without an experimental gate.
 
 ## Untrusted input decodes off-process and fails whole
 

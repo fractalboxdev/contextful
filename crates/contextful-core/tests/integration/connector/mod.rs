@@ -6,6 +6,7 @@ mod component;
 mod compile;
 mod infer;
 mod lease;
+mod manifest;
 mod meter;
 mod model_ref;
 mod package;

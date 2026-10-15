@@ -217,3 +217,38 @@ fn the_host_binds_the_source_world_and_no_world_it_hosts_reaches_the_destination
     }
     assert!(worlds.iter().any(|(n, _)| *n == "configurable-source-connector"));
 }
+
+/// A header whose provider cannot answer: the request goes nowhere and the call fails.
+struct Unresolvable;
+
+impl contextful_wasm::Hydrate for Unresolvable {
+    fn hydrate(&self) -> Result<contextful_outbound::client::HeaderValue, contextful_core::run::Failure> {
+        Err(contextful_core::run::Failure::new(FailureTag::Transient, "the secret provider is unreachable"))
+    }
+}
+
+/// A read failing under `auth-expired`, or during which the host failed to hydrate or lease a credential, fails
+/// unattributed; the host discards the guest's failure attribution for that session.
+// spec: connector.export.shared-failure@d3dd61a3
+#[test]
+fn a_credential_failure_discards_the_guests_failure_attribution() {
+    // The vendor rejects a credential that hydrated fine, and the guest reports `auth-expired`.
+    let mut expired = open();
+    assert_eq!(expired.failed_partitions().unwrap(), ["tenant-a", "Tenant-A "], "an attributing guest names partitions");
+    let failure = expired.open("expired", None).unwrap_err();
+    assert_eq!(failure.tag, FailureTag::AuthExpired);
+    assert_eq!(expired.failed_partitions().unwrap(), Vec::<String>::new(), "the read fails whole");
+
+    // The host cannot hydrate the attach header, so the request never leaves.
+    let grant = contextful_wasm::Grant { hydrate: vec![("Authorization".into(), std::sync::Arc::new(Unresolvable) as _)], ..loopback() };
+    let mut unhydrated = open_with(grant, &Limits::default(), None).unwrap();
+    unhydrated.open("fetch http://127.0.0.1:9/v1", None).unwrap();
+    assert!(unhydrated.next().is_err(), "a failed hydration fails the call");
+    assert!(unhydrated.traffic().sent.is_empty());
+    assert_eq!(unhydrated.failed_partitions().unwrap(), Vec::<String>::new(), "the read fails whole");
+
+    // A guest failure carrying no credential keeps its attribution.
+    let mut transient = open();
+    assert!(transient.open("fail", None).is_err());
+    assert_eq!(transient.failed_partitions().unwrap(), ["tenant-a", "Tenant-A "]);
+}

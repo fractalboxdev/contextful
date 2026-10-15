@@ -19,9 +19,8 @@ fn an_in_tree_name_is_no_component() {
 }
 
 /// A pipeline source named by an artifact path, HTTPS URL or OCI reference runs as a component, its config reading
-/// `sha256`, `allow`, `attach`, `guest`, `memory_bytes`, `manifest` and `require_pin`, the flag of
-/// {{connector.package.pin-requirement}} as its manifest flag.
-// spec: connector.package.component-source@54b9a610
+/// `sha256`, `allow`, `attach`, `guest`, `memory_bytes` and `manifest`.
+// spec: connector.package.component-source@af780a25
 #[test]
 fn a_component_source_reads_its_pin_grant_guest_table_and_bounds() {
     let c = parse(
@@ -33,7 +32,6 @@ fn a_component_source_reads_its_pin_grant_guest_table_and_bounds() {
             "guest": { "region": "eu" },
             "memory_bytes": 536870912u64,
             "manifest": "connectors/vendor.toml",
-            "require_pin": true,
         }),
     )
     .unwrap()
@@ -47,7 +45,6 @@ fn a_component_source_reads_its_pin_grant_guest_table_and_bounds() {
     assert_eq!(c.guest, Some(json!({ "region": "eu" })));
     assert_eq!(c.memory_bytes, Some(536_870_912));
     assert_eq!(c.manifest.as_deref(), Some("connectors/vendor.toml"));
-    assert!(c.requirement(false).manifest);
 
     let https = parse("https://dl.vendor.example/vendor.wasm", json!({ "sha256": PIN })).unwrap().unwrap();
     assert!(matches!(https.artifact.form, Form::Https(_)));
@@ -55,8 +52,6 @@ fn a_component_source_reads_its_pin_grant_guest_table_and_bounds() {
     assert!(bare.allow.0.is_empty(), "no `allow` reaches no host");
     assert!(!bare.allow.permits("api.vendor.example"));
     assert!(bare.attach.is_empty() && bare.guest.is_none() && bare.memory_bytes.is_none() && bare.manifest.is_none());
-    assert!(!bare.requirement(false).required());
-    assert!(bare.requirement(true).required(), "the store-wide key requires a pin without the manifest flag");
 }
 
 #[test]
@@ -70,6 +65,16 @@ fn a_key_outside_the_component_set_is_refused_naming_the_accepted_keys() {
     }
 }
 
+/// The per-connector pin flag lives in the connector manifest alone.
+#[test]
+fn a_component_source_reads_no_pin_flag_of_its_own() {
+    assert!(!KEYS.contains(&"require_pin"));
+    match parse("vendor.wasm", json!({ "require_pin": true })) {
+        Err(SourceError::Run(RunError::PipelineUnknownConfigKey(m))) => assert!(m.contains("`require_pin`"), "{m}"),
+        other => panic!("{other:?}"),
+    }
+}
+
 #[test]
 fn the_pin_and_the_guest_table_refuse_at_parse() {
     assert!(matches!(parse("https://dl.vendor.example/v.wasm", json!({})), Err(SourceError::Connector(ConnectorError::ConnectorRemoteUnpinned(_)))));
@@ -79,7 +84,7 @@ fn the_pin_and_the_guest_table_refuse_at_parse() {
         Err(SourceError::Connector(ConnectorError::ConnectorConfigRejected(_)))
     ));
     assert!(matches!(parse("vendor.wasm", json!({ "allow": [] })), Err(SourceError::Connector(ConnectorError::ConnectorAllowlistRejected(_)))));
-    for bad in [json!({ "memory_bytes": "big" }), json!({ "require_pin": "yes" }), json!({ "allow": "api.vendor.example" }), json!({ "attach": ["x"] })] {
+    for bad in [json!({ "memory_bytes": "big" }), json!({ "allow": "api.vendor.example" }), json!({ "attach": ["x"] })] {
         assert!(matches!(parse("vendor.wasm", bad.clone()), Err(SourceError::Run(RunError::Invalid(_)))), "{bad}");
     }
 }

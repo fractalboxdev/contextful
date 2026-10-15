@@ -10,6 +10,46 @@ use url::Url;
 /// Largest serialized guest configuration table: 64 KiB (`connector.import.config-shape`).
 pub const GUEST_CONFIG_BYTES: usize = 64 * 1024;
 
+/// The one builder platform every pin reproduces from (`connector.package.pin-verb`,
+/// `connector.package.build-source`): no manifest names an image, toolchain or command.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct Platform {
+    /// The builder image, pinned by digest.
+    pub image: &'static str,
+    /// The container platform the image runs under.
+    pub platform: &'static str,
+    /// The compilation target.
+    pub target: &'static str,
+    /// The package fetch, run with network into the per-build package cache.
+    pub fetch: &'static [&'static str],
+    /// The build command, run in the source root; the container build appends `--offline`.
+    pub argv: &'static [&'static str],
+    /// Where the source root, the package cache and the toolchain remap to
+    /// (`connector.package.path-remap`).
+    pub remap_source: &'static str,
+    pub remap_cargo: &'static str,
+    pub remap_rustup: &'static str,
+    /// The package cache and toolchain directories inside the image.
+    pub image_cargo_home: &'static str,
+    pub image_rustup_home: &'static str,
+}
+
+/// The fixed builder platform. The image digest names the published builder image carrying
+/// the `wasm32-wasip2` target; the all-zero digest names no image, so a container build
+/// refuses at pull until the published digest is recorded here.
+pub const PLATFORM: Platform = Platform {
+    image: "ghcr.io/fractalboxdev/contextful-connector-builder@sha256:0000000000000000000000000000000000000000000000000000000000000000",
+    platform: "linux/amd64",
+    target: "wasm32-wasip2",
+    fetch: &["cargo", "fetch", "--locked", "--target", "wasm32-wasip2"],
+    argv: &["cargo", "build", "--release", "--locked", "--target", "wasm32-wasip2"],
+    remap_source: "/src",
+    remap_cargo: "/cargo",
+    remap_rustup: "/rustup",
+    image_cargo_home: "/usr/local/cargo",
+    image_rustup_home: "/usr/local/rustup",
+};
+
 /// A SHA-256 content pin, held as 64 lowercase hex characters.
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub struct Digest(String);

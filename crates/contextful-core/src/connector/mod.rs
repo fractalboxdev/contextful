@@ -9,6 +9,7 @@ pub mod component;
 pub mod error;
 pub mod infer;
 pub mod lease;
+pub mod manifest;
 pub mod meter;
 pub mod model_ref;
 pub mod package;

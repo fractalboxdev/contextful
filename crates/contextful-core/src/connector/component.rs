@@ -3,14 +3,14 @@
 //! guest table and the linear-memory override, all checked before any I/O.
 
 use super::attach::Allowlist;
-use super::package::{guest_config, Artifact, Form, PinRequirement};
+use super::package::{guest_config, Artifact, Form};
 use super::reference::{check_material, Template};
 use super::ConnectorError;
 use crate::run::RunError;
 use serde_json::{Map, Value};
 
 /// The configuration keys a component source reads (`run.declare.config-key`).
-pub const KEYS: [&str; 7] = ["sha256", "allow", "attach", "guest", "memory_bytes", "manifest", "require_pin"];
+pub const KEYS: [&str; 6] = ["sha256", "allow", "attach", "guest", "memory_bytes", "manifest"];
 
 /// Why a component declaration refuses: the pipeline's rules, or the connector's.
 #[derive(Debug, Clone, PartialEq, Eq, thiserror::Error)]
@@ -47,8 +47,6 @@ pub struct ComponentSource {
     pub memory_bytes: Option<u64>,
     /// The project-relative capability manifest checked before an artifact loads.
     pub manifest: Option<String>,
-    /// The manifest flag of `connector.package.pin-requirement`.
-    pub require_pin: bool,
 }
 
 fn invalid(k: &str, shape: &str, found: &Value) -> SourceError {
@@ -119,17 +117,6 @@ impl ComponentSource {
             Some(Value::String(path)) if !path.is_empty() => Some(path.clone()),
             Some(other) => return Err(invalid("manifest", "a nonempty path", other)),
         };
-        let require_pin = match cfg.get("require_pin") {
-            None => false,
-            Some(Value::Bool(b)) => *b,
-            Some(other) => return Err(invalid("require_pin", "a boolean", other)),
-        };
-        Ok(Some(ComponentSource { artifact, allow, attach, guest, memory_bytes, manifest, require_pin }))
-    }
-
-    /// The pin requirement on this artifact under the store-wide policy key `store`, composed
-    /// with the manifest flag by disjunction.
-    pub fn requirement(&self, store: bool) -> PinRequirement {
-        PinRequirement { store, manifest: self.require_pin }
+        Ok(Some(ComponentSource { artifact, allow, attach, guest, memory_bytes, manifest }))
     }
 }

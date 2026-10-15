@@ -54,6 +54,8 @@ mod object;
 #[cfg(feature = "data-plane")]
 mod object_absent;
 #[cfg(feature = "data-plane")]
+mod pin;
+#[cfg(feature = "data-plane")]
 mod pipeline;
 mod profile;
 #[cfg(feature = "data-plane")]
