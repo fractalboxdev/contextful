@@ -6,7 +6,7 @@ use contextful_core::grant::{Action, AggregateGrant, Grant};
 use contextful_core::issue::SignatureAlgorithm;
 use contextful_policy::attenuate::{attenuate, Derivation};
 use contextful_policy::issue::{mint, MintClaims};
-use contextful_policy::profile::{authority_facts, ENGINE_FACTS, EVALUATOR_FACT_CEILING, OWNER_PROFILE_VERSION, PROFILE_VERSION, SUPPORTED_PROFILE_VERSIONS};
+use contextful_policy::profile::{authority_facts, evaluate, evaluator_limits, ENGINE_FACTS, EVALUATOR_FACT_CEILING, EVALUATOR_ITERATION_CEILING, OWNER_PROFILE_VERSION, PROFILE_VERSION, SUPPORTED_PROFILE_VERSIONS};
 
 /// Profile 2 permits a signed owner store identity only in the root authority block; profile 1 and attenuation blocks reject it, and activation requires an unrestricted read grant over the selected store.
 // spec: authority.profile.owner-claim@0b9f49b2
@@ -129,6 +129,26 @@ fn one_authorization_holds_at_most_1000_facts() {
     assert_eq!(ENGINE_FACTS, 1);
     assert!(admit(&append_raw(&parent, &grants(room)), &signer, DURING).is_ok());
     refused(admit(&append_raw(&parent, &grants(room + 1)), &signer, DURING), "ProfileEvaluationBudget");
+}
+
+/// One authorization runs at most 100 iterations of the evaluator.
+// spec: authority.profile.iteration-ceiling@fd57e02f
+#[test]
+fn one_authorization_runs_at_most_100_evaluator_iterations() {
+    assert_eq!(EVALUATOR_ITERATION_CEILING, 100);
+    assert_eq!(evaluator_limits().max_iterations, EVALUATOR_ITERATION_CEILING);
+    // A chain of `n` rules derives one new fact per iteration, so it needs `n` iterations
+    // and one more to reach its fixpoint. The engine's evaluator runs it under its limits.
+    let root = biscuit_auth::KeyPair::new();
+    let chain = |n: usize| {
+        let rules: String = (0..n).map(|i| format!("p{}($x) <- p{i}($x);", i + 1)).collect();
+        biscuit_auth::Biscuit::builder().code(format!("p0(1);{rules}")).unwrap().build(&root).unwrap()
+    };
+    let now = at(DURING);
+    let within = (1..200).take_while(|n| evaluate(&chain(*n), now).is_ok()).last().unwrap();
+    assert!(within < EVALUATOR_ITERATION_CEILING as usize, "{within}");
+    assert!(within + 2 >= EVALUATOR_ITERATION_CEILING as usize, "{within}");
+    refused(evaluate(&chain(within + 1), now), "ProfileEvaluationBudget");
 }
 
 /// `n` copies of the parent's grant, as one block's facts.

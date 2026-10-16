@@ -67,7 +67,10 @@ impl<'a> Admission<'a> {
 /// (`authority.verify.no-bypass-constructor`):
 ///
 /// ```compile_fail
-/// let forged = contextful_policy::verify::AdmittedAuthority { grants: Vec::new() };
+/// use contextful_policy::verify::AdmittedAuthority;
+/// fn forge(a: &AdmittedAuthority) -> AdmittedAuthority {
+///     AdmittedAuthority { grants: Vec::new(), ..a.clone() }
+/// }
 /// ```
 #[derive(Debug, Clone, PartialEq)]
 pub struct AdmittedAuthority {

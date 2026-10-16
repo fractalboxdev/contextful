@@ -18692,6 +18692,17 @@
       "line": 122
     },
     {
+      "id": "authority.profile.introspection-surface",
+      "contract": "authority",
+      "operation": "profile",
+      "subject": "introspection-surface",
+      "kind": "behavior",
+      "statement": "Introspection runs on the command line alone, as `contextful token introspect`; no serving face answers an introspection request.",
+      "why": "because an introspection route on a serving face tells any presenter which credentials verify and what each declares",
+      "file": "spec/50-authority.md",
+      "line": 124
+    },
+    {
       "id": "authority.grant.fields",
       "contract": "authority",
       "operation": "grant",
@@ -18802,6 +18813,17 @@
       "line": 149
     },
     {
+      "id": "authority.grant.unpartitioned",
+      "contract": "authority",
+      "operation": "grant",
+      "subject": "unpartitioned",
+      "kind": "behavior",
+      "statement": "A consumer needing a per-tenant scope over a table declaring no partition key declares a bare outermost partition column; no other grant dimension scopes rows by tenant.",
+      "why": "because a tenant value matched against an arbitrary column is a row restriction, and a scoped-looking grant over an unbound table reads every tenant",
+      "file": "spec/50-authority.md",
+      "line": 151
+    },
+    {
       "id": "authority.grant.tenant-child-lifetime",
       "contract": "authority",
       "operation": "grant",
@@ -18810,7 +18832,7 @@
       "statement": "A tenant-scoped child credential is derived per query with a lifetime of 15 min.",
       "why": "A-authority",
       "file": "spec/50-authority.md",
-      "line": 151
+      "line": 153
     },
     {
       "id": "authority.grant.held-parent",
@@ -18821,7 +18843,7 @@
       "statement": "A consumer's service holds one broader parent and derives each per-query child locally. A durable run step derives its child afresh from a parent the run owner holds, never from a persisted child.",
       "why": "A-authority",
       "file": "spec/50-authority.md",
-      "line": 153
+      "line": 155
     },
     {
       "id": "authority.grant.template-allowlist",
@@ -18832,7 +18854,7 @@
       "statement": "A template allowlist denies by default: absent authorizes none, `*` authorizes every template the manifest declares, and a child names only identifiers its parent named or covered.",
       "why": "A-authority",
       "file": "spec/50-authority.md",
-      "line": 155
+      "line": 157
     },
     {
       "id": "authority.grant.template-tables",
@@ -18843,7 +18865,7 @@
       "statement": "A covered template reads the tables its statement names inside that template's session, under every other layer; its coverage adds no table to a raw read.",
       "why": "A-authority",
       "file": "spec/50-authority.md",
-      "line": 157
+      "line": 159
     },
     {
       "id": "authority.grant.template-not-allowed",
@@ -18854,7 +18876,7 @@
       "statement": "Invoking a template outside the allowlist raises `GrantTemplateNotAllowed`, and an uncovered template is absent from the projected tool listing.",
       "why": "A-authority",
       "file": "spec/50-authority.md",
-      "line": 159
+      "line": 161
     },
     {
       "id": "authority.grant.pipeline-resource",
@@ -18865,7 +18887,7 @@
       "statement": "A pipeline identifier is a read resource: listing it, describing it and tracing its runs each need a read grant covering it. A grant over its landed tables confers none.",
       "why": "P2",
       "file": "spec/50-authority.md",
-      "line": 161
+      "line": 163
     },
     {
       "id": "authority.grant.pipeline-not-covered",
@@ -18876,7 +18898,7 @@
       "statement": "Describing an uncovered pipeline raises `GrantPipelineNotCovered`, naming it. Listing filters to covered identifiers and raises it when none is covered; a project declaring no pipelines lists empty.",
       "why": "P2",
       "file": "spec/50-authority.md",
-      "line": 163
+      "line": 165
     },
     {
       "id": "authority.grant.run-trace-denied",
@@ -18887,7 +18909,7 @@
       "statement": "Tracing a run gates on the pipeline resolved from the run record and raises `GrantRunTraceDenied` without naming that pipeline.",
       "why": "P2",
       "file": "spec/50-authority.md",
-      "line": 165
+      "line": 167
     },
     {
       "id": "authority.grant.write-not-covered",
@@ -18898,7 +18920,7 @@
       "statement": "A credentialed table write whose grants carry no `write` over a destination table raises `GrantWriteNotCovered`, naming the table, before its first effect.",
       "why": "because a write grant names the tables a principal authors, and a row landed outside them carries a principal who never authorized it",
       "file": "spec/50-authority.md",
-      "line": 167
+      "line": 169
     },
     {
       "id": "authority.grant.row-ceiling",
@@ -18909,7 +18931,7 @@
       "statement": "A read's row ceiling is the least of the grant's, the request's, the template's, each touched table's published ceiling and {{read.respond.face-ceiling}}; an undeclared component imposes none, and the face ceiling is always declared.",
       "why": "A-authority",
       "file": "spec/50-authority.md",
-      "line": 169
+      "line": 171
     },
     {
       "id": "authority.grant.duration-ceiling",
@@ -18920,7 +18942,7 @@
       "statement": "A statement's `max_duration_ms` is the least of its grant, touched-table and request limits; an undeclared component imposes none, and no component declares a default.",
       "why": "A-read",
       "file": "spec/50-authority.md",
-      "line": 171
+      "line": 173
     },
     {
       "id": "authority.grant.byte-ceiling",
@@ -18931,7 +18953,7 @@
       "statement": "A response's `max_response_bytes` is the least of its grant, touched-table and request limits; an undeclared component imposes none, and no component declares a default.",
       "why": "A-read",
       "file": "spec/50-authority.md",
-      "line": 173
+      "line": 175
     },
     {
       "id": "authority.grant.horizon",
@@ -18942,7 +18964,7 @@
       "statement": "A grant may carry `horizon`, an instant bounding the availability time and `since` of every read its holder makes, under {{read.horizon.inherited-bound}} and {{read.horizon.exceeds-horizon}}; an absent horizon leaves availability unbounded.",
       "why": "A-authority",
       "file": "spec/50-authority.md",
-      "line": 175
+      "line": 177
     },
     {
       "id": "authority.grant.aggregate",
@@ -18953,7 +18975,7 @@
       "statement": "An aggregate grant carries a minimum group size, a maximum single-contributor share, permitted functions, a groups-per-query ceiling and a row ceiling. A write-only or aggregate-only grant contributes no table to a raw read.",
       "why": "A-authority",
       "file": "spec/50-authority.md",
-      "line": 177
+      "line": 179
     },
     {
       "id": "authority.grant.group-ceiling",
@@ -18964,7 +18986,7 @@
       "statement": "An aggregate grant's groups-per-query ceiling is at least 1 entries; a query producing more groups than the ceiling is cut at it.",
       "why": "A-authority",
       "file": "spec/50-authority.md",
-      "line": 179
+      "line": 181
     },
     {
       "id": "authority.attenuate.offline",

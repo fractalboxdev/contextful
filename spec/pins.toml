@@ -43,6 +43,7 @@
 "authority.redact.compiled-pattern-size" = { test = "contextful_core::redaction::source_and_expanded_automaton_limits_refuse_before_matching" }
 "authority.redact.in-value" = { test = "contextful_core::redaction::a_rewritten_span_leaves_no_matched_byte_of_its_leftmost_match" }
 "authority.redact.every-land-entry" = { test = "contextful_context::redaction::a_staged_part_contains_the_same_removed_form_before_commit" }
+"authority.verify.no-bypass-constructor" = { item = "contextful_policy::verify::AdmittedAuthority" }
 "authority.redact.rewritten-identities" = { test = "contextful_context::redaction::independently_declared_child_rules_precede_all_persisted_group_identities" }
 "authority.redact.child-selector-lineage" = { test = "contextful_context::redaction::a_child_row_selector_without_typed_sibling_lineage_refuses_before_files" }
 "authority.redact.canonical-journal" = { test = "contextful_cli::run::omitting_caller_rules_cannot_omit_canonical_source_preparation" }
@@ -202,7 +203,7 @@
 
 [floor]
 assurance = 278
-authority = 242
+authority = 254
 connector = 278
 corpus = 80
 disclosure = 154

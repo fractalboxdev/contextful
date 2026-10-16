@@ -121,8 +121,8 @@ The versioned delegation profile over the attenuable-credential library: admitte
   *A-authority*
 - `version-unsupported` — A checkpoint reading a profile version outside its supported set raises `ProfileVersionUnsupported`. Widening the profile mints a new version.
   *P1*
-
-unsettled: Does introspection of an admitted credential belong on the serving face, or on the command line alone? owner: authority affects: authority.profile
+- `introspection-surface` — Introspection runs on the command line alone, as `contextful token introspect`; no serving face answers an introspection request.
+  *because an introspection route on a serving face tells any presenter which credentials verify and what each declares*
 
 ## grant
 
@@ -148,6 +148,8 @@ What a credential says a holder does: actions, table patterns, tenant scope, the
   *A-authority*
 - `tenant-unbindable` — A tenant-scoped grant on a table declaring no bare outermost partition column raises `GrantTenantUnbindable` at admission.
   *A-authority*
+- `unpartitioned` — A consumer needing a per-tenant scope over a table declaring no partition key declares a bare outermost partition column; no other grant dimension scopes rows by tenant.
+  *because a tenant value matched against an arbitrary column is a row restriction, and a scoped-looking grant over an unbound table reads every tenant*
 - `tenant-child-lifetime` — A tenant-scoped child credential is derived per query with a lifetime of 15 min.
   *A-authority*
 - `held-parent` — A consumer's service holds one broader parent and derives each per-query child locally. A durable run step derives its child afresh from a parent the run owner holds, never from a persisted child.
@@ -178,8 +180,6 @@ What a credential says a holder does: actions, table patterns, tenant scope, the
   *A-authority*
 - `group-ceiling` — An aggregate grant's groups-per-query ceiling is at least 1 entries; a query producing more groups than the ceiling is cut at it.
   *A-authority*
-
-unsettled: When a table declares no partition key, how does a consumer with a per-tenant need express the scope? owner: authority affects: authority.grant
 
 unsettled: Does a credentialed `run start` or `pipeline run` also need `execute` over its pipeline beside `write` over its tables? owner: authority affects: authority.grant
 

@@ -578,6 +578,49 @@ fn served_exchange_without_policy_returns_the_unconfigured_refusal() {
     assert!(raw.starts_with("HTTP/1.1 404"), "{raw}");
 }
 
+/// Introspection runs on the command line alone, as `contextful token introspect`; no serving face answers an introspection request.
+// spec: authority.profile.introspection-surface@0e3623e6
+#[test]
+fn introspection_answers_on_the_command_line_and_on_no_served_route() {
+    let (dir, public) = project();
+    let p = dir.path();
+    let token = mint(p, "read", "research/*");
+    let card: Value = serde_json::from_str(&stdout(&run(p, &["token", "introspect", "--token", &token]))).unwrap();
+    assert_eq!(card["authority"]["grants"][0]["tables"], json!(["research/*"]), "{card}");
+    let (_listener, addr) = serve(p, &["serve", "--http", "127.0.0.1:0", "--audience", AUD,
+        "--max-in-flight", "2", "--project", "research", "--public-key", &public]);
+    let body = json!({ "token": token }).to_string();
+    for path in ["/auth/introspect", "/introspect", "/oauth/introspect"] {
+        let (status, answer) = control_headers(&addr, "POST", path, Some(&token), &body, "");
+        assert_eq!(status, 404, "{path}: {answer}");
+    }
+    let listing = json!({ "jsonrpc": "2.0", "id": 1, "method": "tools/list" });
+    let (status, tools) = post(&addr, &listing, &token, None);
+    assert_eq!(status, 200, "{tools}");
+    let names: Vec<&str> = tools["result"]["tools"].as_array().unwrap().iter().map(|t| t["name"].as_str().unwrap()).collect();
+    assert!(!names.is_empty(), "{tools}");
+    assert!(!names.iter().any(|n| n.contains("introspect")), "{names:?}");
+}
+
+/// A face configured with no issuer key raises `IssuerKeyMissing`, prints the command that fixes it, and binds no port.
+// spec: authority.issue.missing-key@23a8173f
+#[test]
+fn a_minting_face_with_no_issuer_key_names_the_keygen_command_and_binds_nothing() {
+    let (dir, public) = project();
+    let p = dir.path();
+    std::fs::create_dir_all(p.join(".contextful/exchange")).unwrap();
+    std::fs::write(p.join(".contextful/exchange/policy.toml"),
+        "expected_iss = \"https://login.example.test/\"\nrole_claim = \"roles\"\n[[role_grants.reader]]\nactions = [\"read\"]\ntables = [\"research/*\"]\n").unwrap();
+    std::fs::write(p.join(".contextful/exchange/verify.key"), "exchange-secret").unwrap();
+    std::fs::remove_file(p.join(".contextful/issuer.seed")).unwrap();
+    let out = run(p, &["serve", "--http", "127.0.0.1:0", "--audience", AUD, "--max-in-flight", "2", "--project", "research", "--public-key", &public]);
+    let err = String::from_utf8_lossy(&out.stderr);
+    assert!(!out.status.success(), "{err}");
+    assert!(err.contains("IssuerKeyMissing") && err.contains("contextful token keygen"), "{err}");
+    assert!(!err.contains("listening on"), "{err}");
+    assert!(!p.join(".contextful/issuer.seed").exists(), "no key is fabricated");
+}
+
 #[test]
 fn served_exchange_mints_a_reader_credential_for_the_read_face() {
     let (dir, public) = project();

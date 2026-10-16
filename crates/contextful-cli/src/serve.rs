@@ -298,7 +298,10 @@ pub fn run(args: ServeArgs, tasks: &Tasks) -> Result<()> {
     let mint_material = if exchange.is_some() {
         let policy = std::fs::read_to_string(root.join(IssuancePolicy::PATH))?;
         let issuance = IssuancePolicy::parse(&policy).map_err(|e| anyhow::anyhow!("{e:?}"))?;
-        let signer = SeedSigner::resolve(Some(&root.join(DEFAULT_SEED_PATH)))?;
+        // No seed at the default path is no configured key: `IssuerKeyMissing` names the
+        // command that writes one, before the listener binds (`authority.issue.missing-key`).
+        let seed = root.join(DEFAULT_SEED_PATH);
+        let signer = SeedSigner::resolve(seed.exists().then_some(seed.as_path()))?;
         Some((issuance, signer))
     } else {
         None

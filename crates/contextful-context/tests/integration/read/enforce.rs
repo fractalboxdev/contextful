@@ -505,3 +505,27 @@ fn a_mask_exception_unmasks_for_its_subject_alone() {
     let sql = auditor.relation("research/contacts").unwrap().sql();
     assert!(sql.contains("CASE WHEN ((SELECT \"agent\" FROM \"__contextful_subject\")"), "{sql}");
 }
+
+/// A consumer needing a per-tenant scope over a table declaring no partition key declares a bare outermost partition column; no other grant dimension scopes rows by tenant.
+// spec: authority.grant.unpartitioned@3e65c555
+#[test]
+fn a_tenant_scope_over_an_unpartitioned_table_reads_nothing_until_the_table_declares_one() {
+    let r = Reads::new();
+    // `research/vendor` declares no partition key: the scope binds to nothing and refuses.
+    let authority = r.authority(loop_subject("agent://research-loop"), vec![read(&["research/*"], Some(("research/vendor", "acme")))]);
+    let refused = r.face.session(&authority, &Request::default(), Bounds::default()).map(|_| ());
+    let message = format!("{refused:?}");
+    assert!(message.contains("GrantTenantUnbindable") && message.contains("research/vendor"), "{message}");
+    // Declared with one, the same scope binds and reads its tenant's rows alone.
+    let partitioned = Reads::with_manifest(&MANIFEST.replace(
+        "[[pipeline.tables]]\nname = \"research/vendor\"\n",
+        "[[pipeline.tables]]\nname = \"research/vendor\"\npartition_by = [\"item_id\"]\n",
+    ));
+    let s = partitioned.session_for(loop_subject("agent://research-loop"), vec![read(&["research/*"], Some(("research/vendor", "v1")))], Some("public-cloud:us-east-1"));
+    let rows = partitioned.query(&s, r#"SELECT item_id FROM "research/vendor""#).unwrap();
+    assert_eq!(column(&rows, "item_id"), [json!("v1")]);
+    // A tenant holding no rows reads none of them.
+    let s = partitioned.session_for(loop_subject("agent://research-loop"), vec![read(&["research/*"], Some(("research/vendor", "v9")))], Some("public-cloud:us-east-1"));
+    let rows = partitioned.query(&s, r#"SELECT item_id FROM "research/vendor""#).unwrap();
+    assert!(column(&rows, "item_id").is_empty(), "{rows:?}");
+}

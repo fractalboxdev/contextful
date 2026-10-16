@@ -238,6 +238,30 @@ fn lower_ceiling_records_the_previous_value_and_rotation_grace_answers_to_it() {
     stdout(&rotate("2030-01-02T00:00:00Z"));
 }
 
+/// Ceiling enforcement binds a mint run inside the project tree; a mint run outside it is bounded at the checkpoint by rotation-grace validation.
+// spec: authority.issue.out-of-tree-mint@84028ac9
+#[test]
+fn a_mint_outside_the_tree_stops_verifying_when_the_rotation_grace_lapses() {
+    let p = project();
+    let old = stdout(&run(p.path(), &["token", "keygen", "--now", "2029-01-01T00:00:00Z"]));
+    // Inside the tree the 1 h ceiling refuses a 24 h lifetime.
+    assert!(stderr(&mint(p.path(), &["--on-behalf-of", "user://dana@acme.example", "--table", "t", "--ttl", "86400"])).contains("IssuanceLifetimeAboveCeiling"));
+    // Outside it, the same issuer seed under another policy signs a 24 h credential.
+    let outside = tempfile::tempdir().unwrap();
+    std::fs::create_dir_all(outside.path().join(".contextful")).unwrap();
+    std::fs::write(outside.path().join(".contextful/issuance.toml"), format!("default_audience = \"{AUD}\"\nmax_lifetime_secs = 86400\n")).unwrap();
+    std::fs::copy(p.path().join(".contextful/issuer.seed"), outside.path().join("issuer.seed")).unwrap();
+    let args = ["token", "mint", "--issuer-key", "issuer.seed", "--on-behalf-of", "user://dana@acme.example", "--table", "t", "--ttl", "86400", "--now", MINTED];
+    let long = stdout(&run(outside.path(), &args));
+    // The project rotates with a grace of the ceiling: the credential verifies until the grace lapses, then not, inside its claimed 24 h.
+    let new = stdout(&run(p.path(), &["token", "rotate", "--grace-secs", "3600", "--now", "2030-01-01T00:01:00Z"]));
+    let pins = format!("{old},{new}");
+    stdout(&verify_at(p.path(), &pins, "2030-01-01T01:00:59Z", &long));
+    let err = stderr(&verify_at(p.path(), &pins, "2030-01-01T01:01:00Z", &long));
+    assert!(err.contains("SignatureInvalid"), "{err}");
+    stdout(&verify_at(outside.path(), &old, "2030-01-01T01:01:00Z", &long));
+}
+
 /// The issuer signing key rotates every 90 d, and at once on suspected compromise.
 // spec: authority.issue.key-rotation@1080980b
 #[test]
