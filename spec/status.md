@@ -7,11 +7,11 @@ An unpinned clause is `committed`; a pinned one is `performed` when its Rust, Le
 | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
 | `assurance` | 3 | 18 | 316 | 64 | 24 | 8 | 276 | 0 | 276 |
 | `authority` | 2 | 16 | 295 | 79 | 29 | 9 | 230 | 0 | 230 |
-| `connector` | 2 | 14 | 373 | 92 | 22 | 12 | 275 | 0 | 274 |
+| `connector` | 2 | 14 | 373 | 92 | 22 | 12 | 275 | 0 | 275 |
 | `corpus` | 1 | 10 | 79 | 37 | 7 | 0 | 79 | 0 | 79 |
 | `disclosure` | 3 | 16 | 173 | 69 | 13 | 5 | 147 | 0 | 147 |
 | `read` | 2 | 19 | 276 | 45 | 28 | 13 | 233 | 0 | 233 |
-| `run` | 3 | 29 | 527 | 116 | 45 | 13 | 495 | 0 | 488 |
+| `run` | 3 | 29 | 527 | 116 | 45 | 13 | 495 | 0 | 495 |
 | `store` | 3 | 19 | 290 | 64 | 14 | 11 | 280 | 0 | 280 |
 | `surface` | 2 | 21 | 160 | 63 | 23 | 0 | 133 | 0 | 133 |
 | `topology` | 1 | 6 | 79 | 25 | 5 | 3 | 74 | 0 | 74 |
@@ -1340,7 +1340,7 @@ Unscheduled operations: 12.
 | `run.cancel.keeper-panic` | `crates/contextful-engine/tests/integration/cancel.rs::a_panicking_keeper_job_leaves_the_keeper_running` | performed |
 | `run.cancel.land-path-uncut` | `crates/contextful-engine/tests/integration/cancel.rs::a_stop_arriving_once_the_last_batch_is_home_lets_it_land_and_records_the_stop` | performed |
 | `run.cancel.not-in-flight` | `crates/contextful-cli/tests/integration/serve.rs::a_stop_on_a_finished_run_answers_409_and_exits_non_zero` | performed |
-| `run.cancel.one-token` | `crates/contextful-engine/tests/integration/cancel.rs::one_stop_ends_the_retry_sleep_and_the_subprocess_wait_of_its_run` | performed |
+| `run.cancel.one-token` | `crates/contextful-engine/tests/integration/cancel.rs::one_stop_ends_the_awakeable_wait_and_the_subprocess_wait_of_its_run` | performed |
 | `run.cancel.poll-interval` | `crates/contextful-engine/tests/integration/cancel.rs::the_token_reads_the_catalog_before_the_first_await_and_every_500_ms` | performed |
 | `run.cancel.re-mark` | `crates/contextful-core/tests/integration/run/cancel.rs::a_second_mark_overwrites_the_first` | performed |
 | `run.cancel.resumable-remains` | `crates/contextful-engine/tests/integration/backfill.rs::a_stopped_chunk_returns_to_pending_keeping_a_recorded_pull_and_its_position` | performed |
