@@ -235,21 +235,98 @@ fn an_unpublished_model_commits_rows_without_a_section() {
     assert!(e.starts_with("ModelBuildUnknown:"), "{e}");
 }
 
-/// A build whose schema fingerprint differs from the last published build's under an unchanged major version refuses as {{run.publish.contract-mismatch}}, naming the version to bump.
-// spec: run.model.contract-major@8c9debed
+/// The `MODEL` contract at `version`, with the column list `columns` and the select list `select`.
+fn reshaped(version: &str, select: &str, columns: &str) -> String {
+    MODEL
+        .replace("\"1.0.0\"", &format!("\"{version}\""))
+        .replace("day, CAST(count(*) AS BIGINT) AS n", select)
+        .replace(r#"{ name = "day", type = "utf8", nullable = false }, { name = "n", type = "int64", nullable = false }"#, columns)
+        .replace("SELECT * FROM daily WHERE n <= 0", "SELECT * FROM daily WHERE day IS NULL")
+}
+
+/// Under the published build's major, a contract that drops or retypes a published column, makes a non-null one nullable, adds a non-null column or changes the grain refuses as {{run.publish.contract-mismatch}}, naming the column and the major to bump.
+// spec: run.model.contract-major@4949f27a
 #[test]
-fn a_fingerprint_moving_under_one_major_is_refused_until_the_major_moves() {
+fn a_breaking_change_under_one_major_is_refused_naming_the_column_until_the_major_moves() {
     let p = Project::new();
-    p.build(MODEL, "2030-01-01T01:00:00Z").unwrap();
-    let widened = MODEL.replace("CAST(count(*) AS BIGINT)", "CAST(count(*) AS DOUBLE)").replace("type = \"int64\"", "type = \"float64\"");
-    let e = refused(p.build(&widened.replace("\"1.0.0\"", "\"1.1.0\""), "2030-01-01T02:00:00Z"), "PipelineContractMismatch");
-    assert!(e.contains("under major version 1") && e.contains("2.0.0"), "{e}");
-    p.build(&widened.replace("\"1.0.0\"", "\"2.0.0\""), "2030-01-01T03:00:00Z").unwrap();
+    let first = p.build(MODEL, "2030-01-01T01:00:00Z").unwrap().build_id;
+    let day = r#"{ name = "day", type = "utf8", nullable = false }"#;
+    // The contract itself drops `n`, under a minor bump.
+    let dropped = reshaped("1.1.0", "day", day);
+    let e = refused(p.build(&dropped, "2030-01-01T02:00:00Z"), "PipelineContractMismatch");
+    assert!(e.contains("`n`") && e.contains("under major version 1") && e.contains("2.0.0"), "{e}");
+    // A retyped column names itself.
+    let retyped = reshaped("1.1.0", "day, CAST(count(*) AS DOUBLE) AS n", &format!(r#"{day}, {{ name = "n", type = "float64", nullable = false }}"#));
+    let e = refused(p.build(&retyped, "2030-01-01T02:00:00Z"), "PipelineContractMismatch");
+    assert!(e.contains("`n`") && e.contains("float64") && e.contains("2.0.0"), "{e}");
+    // An added column a reader cannot find null in breaks the old readers' inserts and joins alike.
+    let required = reshaped(
+        "1.1.0",
+        "day, CAST(count(*) AS BIGINT) AS n, 'x' AS tag",
+        &format!(r#"{day}, {{ name = "n", type = "int64", nullable = false }}, {{ name = "tag", type = "utf8", nullable = false }}"#),
+    );
+    let e = refused(p.build(&required, "2030-01-01T02:00:00Z"), "PipelineContractMismatch");
+    assert!(e.contains("`tag`") && e.contains("2.0.0"), "{e}");
+    // A non-null column made nullable lets a reader meet a null it never handled.
+    let loosened = reshaped("1.1.0", "day, CAST(count(*) AS BIGINT) AS n", &format!(r#"{day}, {{ name = "n", type = "int64", nullable = true }}"#));
+    let e = refused(p.build(&loosened, "2030-01-01T02:00:00Z"), "PipelineContractMismatch");
+    assert!(e.contains("`n`") && e.contains("nullable") && e.contains("2.0.0"), "{e}");
+    // A moved grain changes what one row means.
+    let regrained = MODEL.replace("\"1.0.0\"", "\"1.1.0\"").replace(r#"unique_key = ["day"]"#, r#"unique_key = ["day", "n"]"#);
+    let e = refused(p.build(&regrained, "2030-01-01T02:00:00Z"), "PipelineContractMismatch");
+    assert!(e.contains("grain") && e.contains("2.0.0"), "{e}");
+    // The last published build keeps serving.
+    assert_eq!(current_section(&p.fx.store, "daily").unwrap().unwrap().build_id, first);
+    assert_eq!(p.rows("SELECT day, n FROM daily ORDER BY day"), [[json!("d1"), json!("2")], [json!("d2"), json!("1")]]);
+    p.build(&dropped.replace("\"1.1.0\"", "\"2.0.0\""), "2030-01-01T03:00:00Z").unwrap();
     let history: Vec<ContractHistoryEntry> = p.log(CONTRACT_HISTORY_LOG);
     assert_eq!(history.iter().map(|h| h.contract_version.as_str()).collect::<Vec<_>>(), ["1.0.0", "2.0.0"]);
-    // A minor bump over an unchanged fingerprint publishes; the version change is a new identity entry.
-    p.build(&widened.replace("\"1.0.0\"", "\"2.1.0\""), "2030-01-01T04:00:00Z").unwrap();
-    assert_eq!(p.log::<ContractHistoryEntry>(CONTRACT_HISTORY_LOG).len(), 3, "a version change is a new identity entry");
+    // A released build's grain, less the contributor key, holds to the same rule.
+    let g = Project::new();
+    build_governed(&g, GOVERNED, "2030-01-01T01:00:00Z").unwrap();
+    let regrained = GOVERNED.replace("\"1.0.0\"", "\"1.1.0\"").replace(r#"unique_key = ["day", "who"]"#, r#"unique_key = ["day", "n", "who"]"#);
+    let e = refused(build_governed(&g, &regrained, "2030-01-01T02:00:00Z"), "PipelineContractMismatch");
+    assert!(e.contains("grain") && e.contains("2.0.0"), "{e}");
+}
+
+/// Under the published build's major, a contract that only adds nullable columns or makes nullable ones non-null publishes once its minor exceeds the published one, else refuses as {{run.publish.contract-mismatch}}, naming the added or tightened column and the bumped minor.
+// spec: run.model.contract-minor@c6510d6d
+#[test]
+fn a_nullable_column_added_under_a_minor_bump_publishes_its_new_identity() {
+    let p = Project::new();
+    p.build(MODEL, "2030-01-01T01:00:00Z").unwrap();
+    let columns = r#"{ name = "day", type = "utf8", nullable = false }, { name = "n", type = "int64", nullable = false }, { name = "tag", type = "utf8" }"#;
+    let added = |version: &str| reshaped(version, "day, CAST(count(*) AS BIGINT) AS n, NULL::VARCHAR AS tag", columns);
+    // The same version over a moved fingerprint names the minor to bump.
+    let e = refused(p.build(&added("1.0.0"), "2030-01-01T02:00:00Z"), "PipelineContractMismatch");
+    assert!(e.contains("`tag`") && e.contains("1.1.0"), "{e}");
+    let built = p.build(&added("1.1.0"), "2030-01-01T03:00:00Z").unwrap();
+    let section = built.section.unwrap();
+    assert_eq!(section.contract_version, "1.1.0");
+    assert_eq!(Some(section.schema_fingerprint.clone()), model_over(TABLES, &added("1.1.0")).schema_fingerprint());
+    let committed = current_section(&p.fx.store, "daily").unwrap().unwrap();
+    assert_eq!((committed.contract_version, committed.schema_fingerprint), ("1.1.0".to_string(), section.schema_fingerprint));
+    assert_eq!(p.rows("SELECT day, n, tag FROM daily ORDER BY day"), [[json!("d1"), json!("2"), Value::Null], [json!("d2"), json!("1"), Value::Null]]);
+    let history: Vec<ContractHistoryEntry> = p.log(CONTRACT_HISTORY_LOG);
+    assert_eq!(history.iter().map(|h| h.contract_version.as_str()).collect::<Vec<_>>(), ["1.0.0", "1.1.0"]);
+    // Tightening `tag` to non-null is additive and names the column.
+    let tight = r#"{ name = "day", type = "utf8", nullable = false }, { name = "n", type = "int64", nullable = false }, { name = "tag", type = "utf8", nullable = false }"#;
+    let tightened = |version: &str| reshaped(version, "day, CAST(count(*) AS BIGINT) AS n, 'x' AS tag", tight);
+    let e = refused(p.build(&tightened("1.1.0"), "2030-01-01T04:00:00Z"), "PipelineContractMismatch");
+    assert!(e.contains("`tag`") && e.contains("non-null") && e.contains("1.2.0"), "{e}");
+    assert_eq!(p.build(&tightened("1.2.0"), "2030-01-01T05:00:00Z").unwrap().section.unwrap().contract_version, "1.2.0");
+    // Reordering the columns alone names the reorder.
+    let reordered = reshaped("1.2.0", "day, CAST(count(*) AS BIGINT) AS n, 'x' AS tag", r#"{ name = "tag", type = "utf8", nullable = false }, { name = "day", type = "utf8", nullable = false }, { name = "n", type = "int64", nullable = false }"#);
+    let e = refused(p.build(&reordered, "2030-01-01T06:00:00Z"), "PipelineContractMismatch");
+    assert!(e.contains("reorders") && e.contains("1.3.0"), "{e}");
+    // A released build, whose published schema omits the contributor key, takes the same minor bump.
+    let g = Project::new();
+    build_governed(&g, GOVERNED, "2030-01-01T01:00:00Z").unwrap();
+    let tagged = GOVERNED
+        .replace("\"1.0.0\"", "\"1.1.0\"")
+        .replace("CAST(count(*) AS BIGINT) AS n FROM", "CAST(count(*) AS BIGINT) AS n, NULL::VARCHAR AS tag FROM")
+        .replace(r#"{ name = "n", type = "int64", nullable = false }]"#, r#"{ name = "n", type = "int64", nullable = false }, { name = "tag", type = "utf8" }]"#);
+    assert_eq!(build_governed(&g, &tagged, "2030-01-01T02:00:00Z").unwrap().section.unwrap().contract_version, "1.1.0");
 }
 
 /// A build lands `_ingested_at` as its start instant, `_run_id` as its build id, `_row_seq` as the row's position, `_commit_seq` as its commit's value and `_site_id`, replacing any injected column the SQL selects; `semantics_version` is 2.
@@ -559,6 +636,27 @@ grouping_allowlist = ["day"]
 contributor_key = "who"
 min_group_size = 2
 "#;
+
+/// Build `manifest` through a release step that publishes the statement's rows less the contributor key `who`.
+fn build_governed(p: &Project, manifest: &str, now: &str) -> Result<Built, ReadFault> {
+    use contextful_core::disclosure::release::{Breakdown, DerivedTable};
+    let spec = model_over(TABLES, manifest);
+    let face = p.face(manifest);
+    let step = |_: &str, b: Breakdown| {
+        let columns = b.columns.into_iter().filter(|c| c != "who").collect();
+        let rows = b
+            .rows
+            .into_iter()
+            .map(|mut r| {
+                r.remove("who");
+                r
+            })
+            .collect();
+        Ok(DerivedTable { name: "daily".into(), columns, rows })
+    };
+    let req = BuildRequest { model: &spec, site_id: "site-a", started_at: at(now), completed_at: at(now), available_as_of: None };
+    contextful_context::build::build_released(&face, &req, &step)
+}
 
 /// A released build hands the release step the statement's per-contributor rows under the
 /// build's id, and publishes the rows the step returns, without the contributor key.

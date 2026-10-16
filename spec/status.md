@@ -11,11 +11,11 @@ An unpinned clause is `committed`; a pinned one is `performed` when its Rust, Le
 | `corpus` | 1 | 10 | 80 | 37 | 7 | 0 | 80 | 0 | 80 |
 | `disclosure` | 3 | 16 | 179 | 69 | 14 | 4 | 156 | 0 | 156 |
 | `read` | 2 | 20 | 287 | 46 | 29 | 15 | 245 | 0 | 245 |
-| `run` | 3 | 29 | 534 | 118 | 45 | 16 | 502 | 0 | 502 |
+| `run` | 3 | 29 | 535 | 118 | 45 | 16 | 503 | 0 | 503 |
 | `store` | 3 | 19 | 290 | 64 | 14 | 10 | 280 | 0 | 280 |
 | `surface` | 2 | 21 | 160 | 63 | 23 | 0 | 133 | 0 | 133 |
 | `topology` | 1 | 6 | 79 | 25 | 5 | 3 | 76 | 0 | 76 |
-| **total** | 22 | 169 | 2604 | 657 | 212 | 73 | 2310 | 0 | |
+| **total** | 22 | 169 | 2605 | 657 | 212 | 73 | 2311 | 0 | |
 
 Decision records: 18.
 
@@ -29,7 +29,7 @@ A milestone reads `closed` when its acceptance test computes `passing` and every
 | 1 — The authority core | 14 | 248 | 245 | passing | closed |
 | 2 — The store | 9 | 183 | 173 | passing | closed |
 | 3 — The run path | 12 | 276 | 265 | passing | closed |
-| 4 — Ingest | 25 | 586 | 488 | passing | closed |
+| 4 — Ingest | 25 | 587 | 489 | passing | closed |
 | 5 — The read face under enforcement | 17 | 309 | 269 | passing | closed |
 | 6 — Sync and replicas | 8 | 83 | 83 | passing | closed |
 | 7 — Memory | 6 | 72 | 57 | passing | closed |
@@ -1649,7 +1649,8 @@ Unscheduled operations: 13.
 | `run.model.build-id` | `crates/contextful-context/tests/integration/build.rs::a_build_id_is_the_snapshot_id` | performed |
 | `run.model.build-verb` | `crates/contextful-cli/tests/integration/build.rs::build_publishes_a_model_and_prints_its_receipt` | performed |
 | `run.model.contract-block` | `crates/contextful-core/tests/integration/pipeline/model.rs::a_contract_declares_a_semantic_version_and_typed_columns` | performed |
-| `run.model.contract-major` | `crates/contextful-context/tests/integration/build.rs::a_fingerprint_moving_under_one_major_is_refused_until_the_major_moves` | performed |
+| `run.model.contract-major` | `crates/contextful-context/tests/integration/build.rs::a_breaking_change_under_one_major_is_refused_naming_the_column_until_the_major_moves` | performed |
+| `run.model.contract-minor` | `crates/contextful-context/tests/integration/build.rs::a_nullable_column_added_under_a_minor_bump_publishes_its_new_identity` | performed |
 | `run.model.contract-required` | `crates/contextful-core/tests/integration/pipeline/model.rs::a_published_model_without_a_contract_is_refused` | performed |
 | `run.model.freshness-block` | `crates/contextful-core/tests/integration/pipeline/model.rs::freshness_declares_a_max_lag_in_four_units` | performed |
 | `run.model.hold-manifest` | `crates/contextful-context/tests/integration/build.rs::a_hold_commits_one_manifest_per_build` | performed |

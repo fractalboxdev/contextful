@@ -2395,6 +2395,33 @@ fn native_model_schedule_pins_sql_refreshes_and_preserves_restart_cadence() {
 }
 
 #[test]
+fn a_build_job_after_a_pipeline_records_the_landed_run_in_its_watermark() {
+    let vendor = Vendor::start(|_| (200, "[{\"id\":\"a\"}]".into()));
+    let declaration = format!("site_id = \"site-a\"\n{}{}", scheduled("orders", &vendor.url("/orders"), "every 1m"), inventory_model_job("after = \"orders\""));
+    let dir = project(&declaration);
+    let p = dir.path();
+    std::fs::write(p.join("inventory.sql"), "SELECT id, CAST(count(*) AS BIGINT) AS n FROM orders_items GROUP BY id").unwrap();
+    ok(&cf(p, &["pipeline", "import", "--project", "research"]));
+    let status = || json(&cf(p, &["build", "status", "inventory", "--project", "research", "--json"]));
+    let landed = |history: &[serde_json::Value]| -> Vec<String> {
+        history.iter().filter(|r| r["pipeline_id"] == "orders" && r["status"] == "success").map(|r| r["run_id"].as_str().unwrap().to_string()).collect()
+    };
+    let named = |status: &serde_json::Value| -> Vec<String> {
+        let runs = status["freshness"]["watermark"]["inputs"]["orders_items"]["runs"].as_array().cloned().unwrap_or_default();
+        runs.iter().map(|r| r.as_str().unwrap().split('/').next().unwrap().to_string()).collect()
+    };
+    for (cycle, at) in ["2030-01-01T00:01:00Z", "2030-01-01T00:02:00Z"].into_iter().enumerate() {
+        ok(&cf(p, &["pipeline", "serve", "--cycle", "--project", "research", "--now", at]));
+        let runs = landed(&history(p));
+        assert_eq!(runs.len(), cycle + 1, "{:?}", history(p));
+        let built = status();
+        // The build the job fired in this cycle read the run the same cycle landed.
+        assert!(named(&built).contains(runs.last().unwrap()), "{built}");
+        assert_eq!(built["stale"], serde_json::json!(false), "{built}");
+    }
+}
+
+#[test]
 fn standalone_model_schedule_uses_durable_job_starts() {
     let vendor = Vendor::start(|_| (200, "[{\"id\":\"a\"}]".into()));
     let declaration = format!("site_id = \"site-a\"\n{}{}", scheduled("orders", &vendor.url("/orders"), "every 1m"), inventory_model_job("schedule = \"every 1m\""));
