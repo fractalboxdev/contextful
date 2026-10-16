@@ -11,7 +11,7 @@ use contextful_core::time::Instant;
 use std::sync::{Arc, Mutex};
 use contextful_core::store::bound_time::{Bound, Bounds};
 use contextful_core::store::lay_out::NodeId;
-use contextful_core::store::reserve::RUN_RECORD_TABLE;
+use contextful_core::store::reserve::{ITEM_RECORD_TABLE, RUN_RECORD_TABLE};
 use contextful_core::store::StoreError;
 use serde_json::json;
 
@@ -111,7 +111,7 @@ impl Catalog for Chunks {
         Ok(Some(format!("retired under {scope}")))
     }
     fn now(&self) -> Result<Instant, Failure> {
-        unimplemented!()
+        Ok(at("2030-01-01T00:05:00Z"))
     }
     fn acquire(&self, _: &LeaseKey, _: &str, _: u64) -> Result<Option<Lease>, Failure> {
         unimplemented!()
@@ -140,14 +140,15 @@ impl Catalog for Chunks {
     fn put_owner(&self, _: &ExecutionOwner) -> Result<(), Failure> {
         unimplemented!()
     }
-    fn retire_at(&self, _: &OwnerScope, _: &str, _: Option<(CursorRow, u64)>, _: Option<&Lease>) -> Result<Cas, Failure> {
-        unimplemented!()
+    /// A retirement by the execution `fenced` moves no row; any other applies.
+    fn retire_at(&self, _: &OwnerScope, execution_id: &str, _: Option<(CursorRow, u64)>, _: Option<&Lease>) -> Result<Cas, Failure> {
+        Ok(if execution_id == "fenced" { Cas::VersionMoved } else { Cas::Applied })
     }
     fn put_run(&self, _: &RunRow) -> Result<(), Failure> {
         unimplemented!()
     }
-    fn run(&self, _: &str) -> Result<Option<RunRow>, Failure> {
-        unimplemented!()
+    fn run(&self, run_id: &str) -> Result<Option<RunRow>, Failure> {
+        Ok(Some(row(run_id, RunStatus::Running, Phase::Plan, "2030-01-01T00:00:00Z")))
     }
     fn runs(&self, _: Option<&str>) -> Result<Vec<RunRow>, Failure> {
         unimplemented!()
@@ -214,4 +215,40 @@ fn a_producer_cannot_land_into_the_run_record() {
     let err = f.land(&decl(&format!("name = \"{RUN_RECORD_TABLE}\"")), "forged", json!([{"run_id": "r9"}]), "2030-01-01T00:01:00Z").unwrap_err();
     assert!(matches!(err.store(), Some(StoreError::StoreReservedTableName(_))), "{err}");
     assert_eq!(history(&f.store, Bounds::default()).unwrap().len(), 1);
+}
+
+/// A terminal item receipt the wrapped catalog applies appends one item record row; a refused
+/// retirement, a receipt naming no item and a scope outside `item:` append none.
+#[cfg(feature = "read")]
+#[test]
+fn an_applied_item_receipt_appends_one_item_record_row() {
+    use contextful_core::run::drive::{ItemIdentity, ItemReceipt, ItemTerminal};
+    let f = Fixture::new();
+    let recorded = RecordedCatalog::new(Arc::new(Chunks::default()), f.store.clone(), Box::new(|_| Ok(NodeId::parse("ingest-a").unwrap())));
+    let receipt = |outcome: ItemTerminal, failure: Option<Failure>, named: bool| {
+        let item = ItemIdentity { job: "score".into(), logical_key: json!("doc-1"), entity_namespace: "documents".into(), entity_key: json!(42), attempts: 3, outcome };
+        let receipt = ItemReceipt { run_id: "fire-1:item:x1".into(), rows: 0, bytes: 0, failure, item: named.then_some(item) };
+        (CursorRow { position: Some(serde_json::to_value(receipt).unwrap()), ..CursorRow::default() }, 0)
+    };
+    let exhausted = Failure::new(contextful_core::run::FailureTag::RateLimited, "token=sk-live-abcdef0123456789 throttled");
+    let item = OwnerScope::host("item:x1");
+    assert_eq!(recorded.retire_at(&item, "fenced", Some(receipt(ItemTerminal::Succeeded, None, true)), None).unwrap(), Cas::VersionMoved);
+    recorded.retire_at(&item, "x1", Some(receipt(ItemTerminal::Succeeded, None, false)), None).unwrap();
+    recorded.retire_at(&OwnerScope::host("job:x1"), "x1", Some(receipt(ItemTerminal::Succeeded, None, true)), None).unwrap();
+    assert!(f.store.try_schema(ITEM_RECORD_TABLE).unwrap().is_none(), "no row lands before an applied, named item receipt");
+
+    assert_eq!(recorded.retire_at(&item, "x1", Some(receipt(ItemTerminal::Exhausted, Some(exhausted), true)), None).unwrap(), Cas::Applied);
+    let rows = f.query(
+        &contextful_context::item_record::decl(),
+        Bounds::default(),
+        "SELECT job, logical_key, entity_namespace, entity_key, attempts, outcome, run_id, execution_id, _site_id FROM t",
+    );
+    assert_eq!(rows, [["score", "doc-1", "documents", "42", "3", "exhausted", "fire-1:item:x1", "x1", "site-a"].map(|c| Some(c.to_string()))]);
+    let reason = f.query(&contextful_context::item_record::decl(), Bounds::default(), "SELECT reason FROM t");
+    let reason = reason[0][0].clone().unwrap();
+    assert!(reason.starts_with("RateLimited: ") && reason.contains("throttled") && !reason.contains("sk-live-abcdef0123456789"), "{reason}");
+
+    // Only the engine appends to the item record.
+    let err = f.land(&decl(&format!("name = \"{ITEM_RECORD_TABLE}\"")), "forged", json!([{"job": "score"}]), "2030-01-01T00:01:00Z").unwrap_err();
+    assert!(matches!(err.store(), Some(StoreError::StoreReservedTableName(_))), "{err}");
 }

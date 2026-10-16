@@ -32,6 +32,9 @@ impl RowBody for Body {
         if id == "parked" {
             return Err(RowStop::Parked);
         }
+        if id == "flaky" {
+            return Err(Failure::new(FailureTag::Transient, "provider unavailable").into());
+        }
         Ok(BTreeMap::from([("output".into(), vec![row.row.clone()])]))
     }
 }
@@ -134,6 +137,89 @@ fn item_failures_commit_healthy_siblings_and_reordered_retry_skips_paid_work() {
             .collect::<BTreeMap<_, _>>()
     };
     assert_eq!(ids(&first), ids(&next));
+}
+
+/// Each terminal receipt names its job, keys, attempts and outcome; a retryable failure
+/// stays receiptless until the attempt that spends the budget.
+#[test]
+fn terminal_receipts_name_the_job_entity_attempts_and_outcome() {
+    use contextful_core::run::drive::{ItemReceipt, ItemTerminal};
+    use contextful_core::run::own::OwnerScope;
+    let rig = Rig::new();
+    let body = Body {
+        calls: Mutex::default(),
+        entered: AtomicUsize::new(0),
+    };
+    let receipts = |report: &contextful_engine::drive::ItemReport| {
+        report
+            .items
+            .iter()
+            .map(|i| {
+                let scope = OwnerScope::host(&format!("item:{}", i.execution_id));
+                let position = rig.engine.catalog.cursor_at(&scope).unwrap().position;
+                position.map(|p| serde_json::from_value::<ItemReceipt>(p).unwrap())
+            })
+            .collect::<Vec<_>>()
+    };
+    let ids = ["good", "bad", "flaky"];
+    let mut land = |_: &str, _: &Emitted| Ok(Landed { rows: 1, bytes: 1 });
+    let first = rig
+        .engine
+        .drive_items(
+            &fire(&body, "first"),
+            &policy(),
+            &mut |_| Ok(input(&ids)),
+            &mut land,
+        )
+        .unwrap();
+    let held = receipts(&first);
+    assert_eq!(held.iter().filter(|r| r.is_some()).count(), 2, "{held:?}");
+    let second = rig
+        .engine
+        .drive_items(
+            &fire(&body, "second"),
+            &policy(),
+            &mut |_| Ok(input(&ids)),
+            &mut land,
+        )
+        .unwrap();
+    let mut named: Vec<_> = receipts(&second)
+        .into_iter()
+        .map(|r| {
+            let r = r.expect("every item holds a terminal receipt");
+            let item = r.item.expect("a terminal receipt names its item");
+            assert_eq!(
+                (item.job.as_str(), item.entity_namespace.as_str()),
+                ("score", "documents")
+            );
+            assert_eq!(item.logical_key, item.entity_key);
+            (
+                item.entity_key.as_str().unwrap().to_string(),
+                item.attempts,
+                item.outcome,
+                r.failure.map(|f| f.tag),
+            )
+        })
+        .collect();
+    named.sort_by(|a, b| a.0.cmp(&b.0));
+    assert_eq!(
+        named,
+        [
+            (
+                "bad".to_string(),
+                1,
+                ItemTerminal::Failed,
+                Some(FailureTag::Permanent)
+            ),
+            (
+                "flaky".to_string(),
+                2,
+                ItemTerminal::Exhausted,
+                Some(FailureTag::Transient)
+            ),
+            ("good".to_string(), 1, ItemTerminal::Succeeded, None),
+        ]
+    );
 }
 
 #[test]
