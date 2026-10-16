@@ -165,6 +165,7 @@ fn serve_binary(binary: &Path, dir: &Path, args: &[&str]) -> (Listener, String) 
             line.clear();
             while err.read_line(&mut line).unwrap() > 0 {
                 if line.starts_with("hydrated:") {
+                    ready(&addr);
                     return (listener, addr);
                 }
                 line.clear();
@@ -174,6 +175,20 @@ fn serve_binary(binary: &Path, dir: &Path, args: &[&str]) -> (Listener, String) 
         line.clear();
     }
     panic!("the face never listened")
+}
+
+/// Poll `GET /health` until the face reports its hydration complete: the `hydrated:` line
+/// can reach standard error before the face leaves warming.
+fn ready(addr: &str) {
+    let deadline = std::time::Instant::now() + std::time::Duration::from_secs(30);
+    loop {
+        let (status, health) = control(addr, "GET", "/health", None, "");
+        if status == 200 && health["hydration"] == "complete" {
+            return;
+        }
+        assert!(std::time::Instant::now() < deadline, "the face never left warming: {status} {health}");
+        std::thread::sleep(std::time::Duration::from_millis(20));
+    }
 }
 
 #[test]

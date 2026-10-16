@@ -98,10 +98,11 @@ fn a_bound_table_admits_only_rows_the_reachable_set_names() {
     assert!(w.pages(&w.authority("user://kim@acme.example")).unwrap().is_empty());
 
     // The ids reach the engine as parameters: the relation text names the column and the
-    // reach relation, and no resource id.
+    // reach relation, and no resource id as a string literal. The text also carries the
+    // store's temporary path, whose random name can hold `p1` unquoted.
     let session = w.reads.face.session(&dana, &Request::default(), Bounds::default()).unwrap();
     let sql = session.relation("wiki/pages").unwrap().sql().to_string();
-    assert!(sql.contains("\"page_id\"") && sql.contains("__contextful_reach") && !sql.contains("p1"), "{sql}");
+    assert!(sql.contains("\"page_id\"") && sql.contains("__contextful_reach") && !sql.contains("'p1'"), "{sql}");
     // A table with no visibility block carries no semi-join.
     assert!(!session.relation("wiki/notes").unwrap().sql().contains("__contextful_reach"));
 
