@@ -1,4 +1,4 @@
-//! Synthesized memory's pure domain: the five table shapes and the relation vocabulary,
+//! Synthesized memory's pure domain: the seven table shapes and the relation vocabulary,
 //! extraction validation and its attempt budget, entity resolution, claim standing and
 //! revision, the recall evidence gate, and settled outcomes.
 

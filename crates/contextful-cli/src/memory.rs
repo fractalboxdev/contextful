@@ -1,4 +1,4 @@
-//! `contextful memory` — synthesis, direct write and keyed recall.
+//! `contextful memory` — synthesis, direct write, keyed recall and settlement.
 //!
 //! The adapter admits a credential, opens the read face, wires the inference endpoint
 //! for synthesis, and prints the selected command's result. No memory rule lives here.
@@ -10,6 +10,8 @@ use anyhow::{Context, Result};
 use clap::Subcommand;
 use contextful_context::node;
 use contextful_context::read::RecallRequest;
+use contextful_core::memory::declare::Shape;
+use contextful_core::memory::settle::{Observation as SettleObservation, RawRegistration};
 use contextful_core::memory::synthesize::CandidateClaim;
 use contextful_core::ports::Clock;
 use contextful_policy::verify::{effect_boundary, Admission};
@@ -17,6 +19,7 @@ use contextful_memory::synthesize::Pass;
 use contextful_memory::relations;
 use contextful_core::time::Instant;
 use contextful_core::store::bound_time::Bound;
+use contextful_memory::settle;
 use contextful_memory::write::{write_observed, Observation};
 use contextful_outbound::infer::Endpoint;
 use contextful_policy::enforce::session::Request;
@@ -96,6 +99,52 @@ pub enum MemoryCmd {
         #[arg(long)]
         dedup_key: Option<String>,
     },
+    /// Register one prediction, given as JSON, into a `predictions` table.
+    Predict {
+        #[command(flatten)]
+        project: Project,
+        /// The `predictions` table the registration lands in.
+        #[arg(long)]
+        into: String,
+        /// The registration: `prediction_id`, `subject`, `predicted_at`, one of
+        /// `horizon_secs`, `deadline_at` or `watch`, `resolution_source` and, for a
+        /// `metric` source, `comparator`.
+        #[arg(long)]
+        registration: String,
+    },
+    /// Observe one registered prediction's outcome, given as JSON, into an `outcomes` table.
+    Observe {
+        #[command(flatten)]
+        project: Project,
+        /// The `outcomes` table the observation lands in.
+        #[arg(long)]
+        into: String,
+        /// The `predictions` table holding the registration; absent, the first the
+        /// manifest declares.
+        #[arg(long)]
+        predictions: Option<String>,
+        /// The observation: `prediction_id`, `observed_at`, and optionally `verdict`,
+        /// `resolution_source`, `signal` and `settling_citation`.
+        #[arg(long)]
+        observation: String,
+    },
+    /// Report how well a claims table's emitted confidence held on settled predictions.
+    Calibration {
+        #[command(flatten)]
+        project: Project,
+        /// The `memory_facts` table whose claims the predictions score.
+        #[arg(long)]
+        table: String,
+        /// The `predictions` table; absent, the first the manifest declares.
+        #[arg(long)]
+        predictions: Option<String>,
+        /// The `outcomes` table; absent, the first the manifest declares.
+        #[arg(long)]
+        outcomes: Option<String>,
+        /// Print the report as JSON.
+        #[arg(long)]
+        json: bool,
+    },
 }
 
 #[derive(Subcommand)]
@@ -150,6 +199,58 @@ pub fn run(cmd: MemoryCmd) -> Result<()> {
             match written.claim {
                 Some(c) => println!("{into}: landed {} ({}), retired {}", c.claim_id, c.tier.name(), written.retired.len()),
                 None => println!("{into}: restates a claim the table holds; nothing landed"),
+            }
+            Ok(())
+        }
+        MemoryCmd::Predict { project, into, registration } => {
+            let raw: RawRegistration = serde_json::from_str(&registration).context("`--registration` is one registration as JSON")?;
+            let (authority, revocation) = project.admit.admit(project.project.as_deref(), "a prediction registration")?;
+            let boundary = || effect_boundary(&authority, &Admission::new(SystemClock.now(), &revocation));
+            let face = face(&locate(project.project.as_deref(), project.declaration.clone())?)?;
+            let (node, _) = node::resolve(face.store(), |k| std::env::var(k).ok())?;
+            let settled = settle::predict(&face, &authority, &into, raw, &node, SystemClock.now(), &boundary)?;
+            println!("prediction_id: {}", settled.prediction_id);
+            Ok(())
+        }
+        MemoryCmd::Observe { project, into, predictions, observation } => {
+            let observation: SettleObservation = serde_json::from_str(&observation).context("`--observation` is one observation as JSON")?;
+            let (authority, revocation) = project.admit.admit(project.project.as_deref(), "an outcome observation")?;
+            let boundary = || effect_boundary(&authority, &Admission::new(SystemClock.now(), &revocation));
+            let face = face(&locate(project.project.as_deref(), project.declaration.clone())?)?;
+            let (node, _) = node::resolve(face.store(), |k| std::env::var(k).ok())?;
+            let settled = settle::observe(&face, &authority, &into, predictions.as_deref(), observation, &node, SystemClock.now(), &boundary)?;
+            // The label row reads after the landing, through a fresh session.
+            let predictions = settle::shaped(&face, predictions.as_deref(), Shape::Predictions)?;
+            let session = face.session(&authority, &Request::default(), Default::default())?;
+            let label = settle::labels(&face, &session, predictions, &into, Some(&settled.prediction_id))?;
+            println!("{}", serde_json::to_string(&label.to_json())?);
+            Ok(())
+        }
+        MemoryCmd::Calibration { project, table, predictions, outcomes, json } => {
+            let (authority, _) = project.admit.admit(project.project.as_deref(), "a calibration report")?;
+            let face = face(&locate(project.project.as_deref(), project.declaration.clone())?)?;
+            let predictions = settle::shaped(&face, predictions.as_deref(), Shape::Predictions)?;
+            let outcomes = settle::shaped(&face, outcomes.as_deref(), Shape::Outcomes)?;
+            let session = face.session(&authority, &Request::default(), Default::default())?;
+            let groups = settle::calibration(&face, &session, &table, predictions, outcomes)?;
+            if json {
+                let report: Vec<serde_json::Value> = groups.iter().map(settle::report_json).collect();
+                println!("{}", serde_json::to_string(&report)?);
+            } else if groups.is_empty() {
+                println!("{table}: no settled prediction");
+            } else {
+                for g in &groups {
+                    let held_out = g.held_out_brier.map_or("none".to_string(), |b| format!("{b:.4}"));
+                    println!(
+                        "{} {}: {} samples, brier {:.4}, ece {:.4}, held-out brier {held_out}, {}",
+                        g.shape.name(),
+                        g.predicate,
+                        g.samples,
+                        g.brier,
+                        g.ece,
+                        if g.calibrated { "calibrated" } else { "uncalibrated" }
+                    );
+                }
             }
             Ok(())
         }

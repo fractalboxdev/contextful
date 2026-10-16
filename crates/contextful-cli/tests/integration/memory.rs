@@ -266,3 +266,130 @@ fn a_scheduled_synthesize_job_replaces_the_operator_triggered_pass() {
     assert_eq!(again["fired"], json!(["job:synth-facts"]), "{again}");
     assert_eq!(endpoint.bodies.lock().unwrap().len(), 1, "no run past the cursor, no model call");
 }
+
+const SETTLEMENT: &str = "\n[[table]]\nname = \"memory/predictions\"\nshape = \"predictions\"\ncolumns = [\"prediction_id\", \"subject\", \"predicted_at\", \"horizon_secs\", \"deadline_at\", \"resolution_source\", \"comparator\"]\n\n[[table]]\nname = \"memory/outcomes\"\nshape = \"outcomes\"\ncolumns = [\"prediction_id\", \"observed_at\", \"verdict\", \"resolution_source\", \"signal\", \"settling_citation\"]\n";
+
+/// A project declaring a `predictions` and an `outcomes` table, admitting a minted token.
+struct Settling {
+    dir: tempfile::TempDir,
+    public: String,
+    token: String,
+}
+
+impl Settling {
+    fn new() -> Settling {
+        let (dir, public, token) = project();
+        let manifest = dir.path().join("contextful.toml");
+        let declaration = format!("{}{SETTLEMENT}", std::fs::read_to_string(&manifest).unwrap());
+        std::fs::write(&manifest, declaration).unwrap();
+        Settling { dir, public, token }
+    }
+
+    /// `contextful memory <args>` under the minted token.
+    fn memory(&self, args: &[&str]) -> Output {
+        let mut all = vec!["memory"];
+        all.extend_from_slice(args);
+        all.extend(["--project", "research", "--public-key", &self.public, "--audience", AUD]);
+        run(self.dir.path(), &all, &[("CONTEXTFUL_TOKEN", &self.token)])
+    }
+
+    fn refused(&self, args: &[&str], identifier: &str) {
+        let out = self.memory(args);
+        assert!(!out.status.success());
+        let stderr = String::from_utf8_lossy(&out.stderr);
+        assert!(stderr.contains(identifier), "{stderr}");
+    }
+
+    /// A written claim whose id a prediction registers twice and an observation settles;
+    /// a conflicting re-use of the id refuses. Returns the claim id.
+    fn settled_claim(&self) -> String {
+        let written = stdout(&self.memory(&["write", "--into", "memory/facts", "--claim", &one("Dana")]));
+        let claim_id = written.split_whitespace().nth(2).unwrap().to_string();
+        let registration = json!({ "prediction_id": claim_id, "subject": "acme", "predicted_at": "2030-01-01T00:00:00Z", "horizon_secs": 86400,
+            "resolution_source": "adjudicator" })
+        .to_string();
+        for _ in 0..2 {
+            let printed = stdout(&self.memory(&["predict", "--into", "memory/predictions", "--registration", &registration]));
+            assert_eq!(printed, format!("prediction_id: {claim_id}"));
+        }
+        let conflicting = registration.replace("adjudicator", "manual");
+        self.refused(&["predict", "--into", "memory/predictions", "--registration", &conflicting], "OutcomeRegistrationConflict");
+        let observation = json!({ "prediction_id": claim_id, "observed_at": "2030-01-01T12:00:00Z", "verdict": true, "resolution_source": "adjudicator",
+            "settling_citation": "https://example.org/filing" })
+        .to_string();
+        stdout(&self.memory(&["observe", "--into", "memory/outcomes", "--observation", &observation]));
+        claim_id
+    }
+
+    fn owner_rows(&self, sql: &str) -> Value {
+        let out: Value = serde_json::from_str(&stdout(&run(self.dir.path(), &["query", "--json", "--project", "research", sql], &[]))).unwrap();
+        out["rows"].clone()
+    }
+}
+
+/// `contextful memory predict --into <table> --registration <json>` checks {{read.settle.registration}} and lands the registration in that `predictions` table under the admitted credential's write grant, then prints `prediction_id: <id>`.
+// spec: read.settle.predict-verb@df18be6f
+#[test]
+fn predict_lands_a_registration_and_prints_its_id() {
+    let s = Settling::new();
+    let claim_id = s.settled_claim();
+    assert_eq!(s.owner_rows("SELECT prediction_id, resolution_source, CAST(deadline_at AS VARCHAR) FROM \"memory/predictions\""), json!([[claim_id, "adjudicator", "2030-01-02 00:00:00+00"]]));
+    let unformed = json!({ "prediction_id": "p3", "subject": "acme", "predicted_at": "2030-01-01T00:00:00Z", "watch": true, "horizon_secs": 60, "resolution_source": "manual" });
+    s.refused(&["predict", "--into", "memory/predictions", "--registration", &unformed.to_string()], "OutcomeRegistrationInvalid");
+}
+
+/// `contextful memory observe --into <table> --observation <json>` reads the prediction's stored registration through the writer's session, checks {{read.settle.source-mismatch}} and {{read.settle.settling-citation}}, lands it in that `outcomes` table, and prints its label row.
+// spec: read.settle.observe-verb@6cb371e1
+#[test]
+fn observe_checks_against_the_stored_registration_and_prints_the_label_row() {
+    let s = Settling::new();
+    let registration = json!({ "prediction_id": "p2", "subject": "acme", "predicted_at": "2030-01-01T00:00:00Z", "horizon_secs": 86400, "resolution_source": "adjudicator" });
+    stdout(&s.memory(&["predict", "--into", "memory/predictions", "--registration", &registration.to_string()]));
+    let observe = |observation: Value| vec!["observe".to_string(), "--into".into(), "memory/outcomes".into(), "--observation".into(), observation.to_string()];
+    let refused = |observation: Value, identifier: &str| {
+        let args = observe(observation);
+        s.refused(&args.iter().map(String::as_str).collect::<Vec<_>>(), identifier);
+    };
+    refused(json!({ "prediction_id": "p2", "observed_at": "2030-01-01T12:00:00Z", "verdict": true, "resolution_source": "metric" }), "OutcomeSourceMismatch");
+    refused(json!({ "prediction_id": "p2", "observed_at": "2030-01-01T12:00:00Z", "verdict": true, "resolution_source": "adjudicator" }), "OutcomeCitationMissing");
+    refused(json!({ "prediction_id": "p9", "observed_at": "2030-01-01T12:00:00Z" }), "OutcomePredictionUnregistered");
+    let settled = json!({ "prediction_id": "p2", "observed_at": "2030-01-01T12:00:00Z", "verdict": false, "resolution_source": "adjudicator",
+        "settling_citation": "https://example.org/ruling" });
+    let args = observe(settled);
+    let args: Vec<&str> = args.iter().map(String::as_str).collect();
+    let label: Value = serde_json::from_str(&stdout(&s.memory(&args))).unwrap();
+    let col = |n: &str| label["columns"].as_array().unwrap().iter().position(|c| c == n).unwrap();
+    assert_eq!(label["rows"].as_array().unwrap().len(), 1, "{label}");
+    assert_eq!(label["rows"][0][col("verdict")], json!(false));
+    assert_eq!(label["rows"][0][col("settling_citation")], json!("https://example.org/ruling"));
+    assert_eq!(label["rows"][0][col("lead_time_s")].as_f64(), Some(43_200.0));
+    // An identical observation restates: nothing new lands and the same label prints.
+    let again: Value = serde_json::from_str(&stdout(&s.memory(&args))).unwrap();
+    assert_eq!(again["rows"], label["rows"]);
+    assert_eq!(s.owner_rows("SELECT CAST(count(DISTINCT _run_id) AS INTEGER) FROM \"memory/outcomes\""), json!([[1]]));
+}
+
+/// Both verbs admit a capability token as `contextful memory write` does, and each landed row carries `_authored_by` from its subject under {{store.reserve.injected}}.
+// spec: read.settle.verb-attribution@49aa703d
+#[test]
+fn settlement_rows_carry_the_token_subject() {
+    let s = Settling::new();
+    s.settled_claim();
+    for table in ["memory/predictions", "memory/outcomes"] {
+        assert_eq!(s.owner_rows(&format!("SELECT DISTINCT _authored_by FROM \"{table}\"")), json!([["user://dana@acme.example"]]), "{table}");
+    }
+}
+
+/// `contextful memory calibration --table <claims>` joins label rows carrying a verdict to that claims table on `prediction_id` equal to `claim_id`, through the caller's session, and prints {{read.settle.calibration-report}}, as JSON under `--json`.
+// spec: read.settle.calibration-verb@70b31710
+#[test]
+fn calibration_reports_the_settled_claims_of_a_table() {
+    let s = Settling::new();
+    s.settled_claim();
+    let report: Value = serde_json::from_str(&stdout(&s.memory(&["calibration", "--table", "memory/facts", "--json"]))).unwrap();
+    assert_eq!(report.as_array().unwrap().len(), 1, "{report}");
+    assert_eq!((&report[0]["shape"], &report[0]["predicate"], &report[0]["samples"]), (&json!("memory_facts"), &json!("cfo"), &json!(1)));
+    assert_eq!(report[0]["brier"], json!(0.0), "a claim at confidence 1.0 that held");
+    let text = stdout(&s.memory(&["calibration", "--table", "memory/facts"]));
+    assert!(text.contains("memory_facts cfo: 1 samples"), "{text}");
+}

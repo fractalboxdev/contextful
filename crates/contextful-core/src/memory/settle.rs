@@ -8,14 +8,39 @@ use serde::Deserialize;
 /// (`read.settle.grace-window`).
 pub const GRACE_WINDOW_SECS: u64 = 86_400;
 
-/// The label view (`read.settle.grace-window`).
-pub const LABEL_VIEW: &str = "CREATE VIEW outcome_labels AS \
-SELECT p.prediction_id, p.subject, p.resolution_source, o.verdict, o.signal, o.settling_citation, \
-epoch(CAST(o.observed_at AS TIMESTAMPTZ)) - epoch(CAST(p.predicted_at AS TIMESTAMPTZ)) AS lead_time_s \
+// One text for both the join body and the view statement.
+macro_rules! label_select {
+    () => {
+        "SELECT p.prediction_id, p.subject, p.resolution_source, o.verdict, o.signal, o.settling_citation, \
+epoch(CAST(o.observed_at AS TIMESTAMP)) - epoch(CAST(p.predicted_at AS TIMESTAMP)) AS lead_time_s \
 FROM predictions p JOIN outcomes o ON o.prediction_id = p.prediction_id \
 WHERE o.observed_at IS NOT NULL AND o.signal IS DISTINCT FROM 'self-rated' \
-AND epoch(CAST(o.observed_at AS TIMESTAMPTZ)) >= epoch(CAST(p.predicted_at AS TIMESTAMPTZ)) \
-AND epoch(CAST(o.observed_at AS TIMESTAMPTZ)) <= epoch(CAST(p.deadline_at AS TIMESTAMPTZ)) + 86400";
+AND epoch(CAST(o.observed_at AS TIMESTAMP)) >= epoch(CAST(p.predicted_at AS TIMESTAMP)) \
+AND epoch(CAST(o.observed_at AS TIMESTAMP)) <= epoch(CAST(p.deadline_at AS TIMESTAMP)) + 86400"
+    };
+}
+
+/// The label join's body over relations named `predictions` and `outcomes`
+/// (`read.settle.grace-window`).
+pub const LABEL_SELECT: &str = label_select!();
+
+/// The label view (`read.settle.grace-window`).
+pub const LABEL_VIEW: &str = concat!("CREATE VIEW outcome_labels AS ", label_select!());
+
+/// The label view's name.
+pub const LABEL_VIEW_NAME: &str = "outcome_labels";
+
+/// The label view as common table expressions over a declared `predictions` and
+/// `outcomes` relation pair, each rendered as a quoted identifier, ahead of `then`
+/// (`read.settle.label-join`).
+pub fn label_join(predictions: &str, outcomes: &str, then: &str) -> String {
+    let quote = |name: &str| format!("\"{}\"", name.replace('"', "\"\""));
+    format!(
+        "WITH predictions AS (SELECT * FROM {}), outcomes AS (SELECT * FROM {}), {LABEL_VIEW_NAME} AS ({LABEL_SELECT}) {then}",
+        quote(predictions),
+        quote(outcomes)
+    )
+}
 
 /// When a prediction resolves.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -34,6 +59,14 @@ pub enum Source {
 }
 
 impl Source {
+    pub fn name(self) -> &'static str {
+        match self {
+            Source::Metric => "metric",
+            Source::Adjudicator => "adjudicator",
+            Source::Manual => "manual",
+        }
+    }
+
     fn parse(s: &str) -> Option<Source> {
         Some(match s {
             "metric" => Source::Metric,
@@ -45,7 +78,7 @@ impl Source {
 }
 
 /// A registration as submitted.
-#[derive(Debug, Clone, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct RawRegistration {
     pub prediction_id: String,
@@ -105,6 +138,26 @@ impl Registration {
         })
     }
 
+    /// The registration as submitted: the inverse of [`Registration::check`].
+    pub fn raw(&self) -> RawRegistration {
+        RawRegistration {
+            prediction_id: self.prediction_id.clone(),
+            subject: self.subject.clone(),
+            predicted_at: self.predicted_at,
+            horizon_secs: match self.form {
+                Form::Horizon(secs) => Some(secs),
+                _ => None,
+            },
+            deadline_at: match self.form {
+                Form::Deadline(at) => Some(at),
+                _ => None,
+            },
+            watch: self.form == Form::Watch,
+            resolution_source: Some(self.source.name().to_string()),
+            comparator: self.comparator.clone(),
+        }
+    }
+
     /// The deadline a label is scored against; an open watch has none.
     pub fn deadline(&self) -> Option<Instant> {
         match self.form {
@@ -116,7 +169,7 @@ impl Registration {
 }
 
 /// An observation as submitted.
-#[derive(Debug, Clone, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct Observation {
     pub prediction_id: String,

@@ -63,6 +63,9 @@ MemoryTraverseHopsExceeded    = { clause = "read.traverse.hop-bound", gloss = "A
 OutcomeRegistrationInvalid    = { clause = "read.settle.registration", gloss = "A prediction registration breaks the one-form, one-source, comparator-iff-metric rule." }
 OutcomeSourceMismatch         = { clause = "read.settle.source-mismatch", gloss = "An observation's verdict carries no source or a source other than the registration's." }
 OutcomeCitationMissing        = { clause = "read.settle.settling-citation", gloss = "A judgment verdict carries no http or https settling citation." }
+OutcomePredictionUnregistered = { clause = "read.settle.prediction-unregistered", gloss = "An observation names a prediction no stored registration the writer reads carries." }
+OutcomeRegistrationConflict   = { clause = "read.settle.registration-conflict", gloss = "A registration reuses a stored prediction id with different fields." }
+OutcomeAlreadySettled         = { clause = "read.settle.outcome-settled", gloss = "An observation differs from a stored outcome that already carries a verdict." }
 ReadBoundExceedsHorizon       = { clause = "read.horizon.exceeds-horizon", gloss = "A call's `available_as_of` or `since` falls later than its credential's horizon." }
 ReadIndexBeyondHorizon        = { clause = "read.horizon.rank-statistics", gloss = "A ranking under a horizon reached a sidecar indexing rows available after it." }
 ReadNoBuildWithinHorizon      = { clause = "read.horizon.build-resolution", gloss = "A model table holds no build whose recorded horizon is at or before the credential's." }

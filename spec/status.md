@@ -10,12 +10,12 @@ An unpinned clause is `committed`; a pinned one is `performed` when its Rust, Le
 | `connector` | 2 | 14 | 375 | 92 | 22 | 12 | 292 | 0 | 292 |
 | `corpus` | 1 | 10 | 80 | 37 | 7 | 0 | 80 | 0 | 80 |
 | `disclosure` | 3 | 16 | 184 | 69 | 14 | 5 | 162 | 0 | 162 |
-| `read` | 2 | 20 | 294 | 48 | 29 | 15 | 252 | 0 | 252 |
+| `read` | 2 | 20 | 304 | 51 | 29 | 15 | 262 | 0 | 258 |
 | `run` | 3 | 29 | 551 | 126 | 45 | 16 | 519 | 0 | 519 |
 | `store` | 3 | 19 | 295 | 64 | 15 | 10 | 284 | 0 | 284 |
 | `surface` | 2 | 21 | 161 | 63 | 23 | 0 | 134 | 0 | 134 |
 | `topology` | 1 | 6 | 79 | 25 | 5 | 3 | 76 | 0 | 76 |
-| **total** | 22 | 169 | 2640 | 668 | 213 | 74 | 2351 | 0 | |
+| **total** | 22 | 169 | 2650 | 671 | 213 | 74 | 2361 | 0 | |
 
 Decision records: 18.
 
@@ -32,7 +32,7 @@ A milestone reads `closed` when its acceptance test computes `passing` and every
 | 4 — Ingest | 25 | 593 | 495 | passing | closed |
 | 5 — The read face under enforcement | 17 | 312 | 275 | passing | closed |
 | 6 — Sync and replicas | 8 | 88 | 87 | passing | closed |
-| 7 — Memory | 6 | 73 | 58 | passing | closed |
+| 7 — Memory | 6 | 83 | 68 | passing | closed |
 | 8 — Accountability | 5 | 93 | 86 | passing | closed |
 | 9 — Visibility | 6 | 55 | 46 | passing | closed |
 | 10 — Cadence and the operator plane | 11 | 101 | 89 | passing | closed |
@@ -1155,6 +1155,7 @@ Unscheduled operations: 13.
 | `read.cache.warming-read` | `crates/contextful-agent/tests/integration/http.rs::a_read_while_the_snapshot_set_hydrates_answers_503_with_retry_after_and_admits_nothing` | performed |
 | `read.declare.canonical-column` | `crates/contextful-core/tests/integration/memory/declare.rs::a_shaped_table_omitting_a_canonical_column_is_refused` | performed |
 | `read.declare.reserved-relations` | `crates/contextful-cli/tests/integration/memory.rs::relation_rename_rewrites_stored_edges_before_the_old_name_is_removed` | performed |
+| `read.declare.settlement-shapes` | `crates/contextful-core/tests/integration/memory/declare.rs::predictions_and_outcomes_are_shapes_keyed_on_the_prediction` | performed |
 | `read.declare.undeclared-relation` | `crates/contextful-core/tests/integration/memory/declare.rs::an_edge_outside_the_relation_union_is_refused` | performed |
 | `read.embed.absent-read-backend` | `crates/contextful-core/tests/integration/read/face.rs::a_build_without_the_sql_engine_refuses_every_read_tool` | performed |
 | `read.embed.build-identity` | `crates/contextful-cli/tests/integration/mcp.rs::the_handshake_reports_what_this_build_links` | performed |
@@ -1363,10 +1364,19 @@ Unscheduled operations: 13.
 | `read.revise.tier` | `crates/contextful-core/tests/integration/memory/revise.rs::tier_follows_the_write_path_and_the_lowest_grounding` | performed |
 | `read.revise.unscoped-collision` | `crates/contextful-memory/tests/integration/write.rs::unscoped_writers_at_one_instant_record_a_conflict_without_retirement` | performed |
 | `read.settle.calibration-report` | `crates/contextful-core/tests/integration/memory/calibrate.rs::the_report_names_count_brier_ece_and_held_out_score_per_shape_and_predicate` | performed |
+| `read.settle.calibration-verb` | `crates/contextful-cli/tests/integration/memory.rs::calibration_reports_the_settled_claims_of_a_table` | performed |
 | `read.settle.grace-window` | `crates/contextful-core/tests/integration/memory/settle.rs::the_label_window_runs_through_the_deadline_plus_a_day` | performed |
+| `read.settle.label-join` | `crates/contextful-memory/tests/integration/settle.rs::the_label_join_reads_a_settled_prediction_through_the_session` | performed |
+| `read.settle.observe-verb` | `crates/contextful-cli/tests/integration/memory.rs::observe_checks_against_the_stored_registration_and_prints_the_label_row` | performed |
+| `read.settle.outcome-settled` | `crates/contextful-memory/tests/integration/settle.rs::a_settled_verdict_is_not_rewritten_but_an_open_outcome_is_replaced` | performed |
+| `read.settle.predict-verb` | `crates/contextful-cli/tests/integration/memory.rs::predict_lands_a_registration_and_prints_its_id` | performed |
+| `read.settle.prediction-unregistered` | `crates/contextful-memory/tests/integration/settle.rs::an_observation_of_an_unregistered_prediction_refuses` | performed |
 | `read.settle.registration` | `crates/contextful-core/tests/integration/memory/settle.rs::a_registration_names_one_form_one_source_and_a_metric_comparator` | performed |
+| `read.settle.registration-conflict` | `crates/contextful-memory/tests/integration/settle.rs::a_reused_prediction_id_with_other_fields_refuses` | performed |
+| `read.settle.restated-landing` | `crates/contextful-memory/tests/integration/settle.rs::a_restated_registration_or_observation_lands_nothing` | performed |
 | `read.settle.settling-citation` | `crates/contextful-core/tests/integration/memory/settle.rs::a_judged_verdict_carries_a_web_citation` | performed |
 | `read.settle.source-mismatch` | `crates/contextful-core/tests/integration/memory/settle.rs::a_verdict_from_another_source_is_refused` | performed |
+| `read.settle.verb-attribution` | `crates/contextful-cli/tests/integration/memory.rs::settlement_rows_carry_the_token_subject` | performed |
 | `read.subscribe.after-commit` | `crates/contextful-context/tests/integration/subscribe.rs::a_logged_run_absent_from_its_commit_log_never_notifies` | performed |
 | `read.subscribe.commit-order` | `crates/contextful-core/tests/integration/read/subscribe.rs::notifications_arrive_in_commit_order_once_each` | performed |
 | `read.subscribe.durable-source` | `crates/contextful-cli/tests/integration/context.rs::a_following_subscriber_receives_a_run_another_process_lands` | performed |

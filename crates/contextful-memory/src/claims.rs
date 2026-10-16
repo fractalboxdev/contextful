@@ -149,14 +149,28 @@ impl Landing<'_> {
     /// after re-reading the writer's authority (`authority.verify.effect-boundary`).
     pub fn commit(&self, face: &Face, table: &str, claims: &[Claim], dead: &[Value]) -> Result<(), MemoryFault> {
         (self.boundary)()?;
-        if !claims.is_empty() && !self.committed(face, table)? {
-            let batch = Batch { rows: claims.iter().map(row).collect(), types: claim_types() };
-            land(face.store(), &face.decl(table), &batch, &self.context())?;
-        }
+        self.land_rows(face, table, claims.iter().map(row).collect(), claim_types())?;
         let letters = dead_letter_table(table);
         if !dead.is_empty() && !self.committed(face, &letters)? {
             let rows = dead.iter().filter_map(|v| v.as_object().cloned()).collect();
             land(face.store(), &face.decl(&letters), &Batch { rows, types: HashMap::new() }, &self.context())?;
+        }
+        Ok(())
+    }
+}
+
+impl Landing<'_> {
+    /// Land rows that are no claims into `table` as this commit's run, after re-reading
+    /// the writer's authority (`authority.verify.effect-boundary`). No rows, or a table
+    /// already holding the run, land nothing.
+    pub fn commit_rows(&self, face: &Face, table: &str, rows: Vec<Map<String, Value>>, types: HashMap<String, ColumnType>) -> Result<(), MemoryFault> {
+        (self.boundary)()?;
+        self.land_rows(face, table, rows, types)
+    }
+
+    fn land_rows(&self, face: &Face, table: &str, rows: Vec<Map<String, Value>>, types: HashMap<String, ColumnType>) -> Result<(), MemoryFault> {
+        if !rows.is_empty() && !self.committed(face, table)? {
+            land(face.store(), &face.decl(table), &Batch { rows, types }, &self.context())?;
         }
         Ok(())
     }

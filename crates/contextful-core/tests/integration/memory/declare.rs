@@ -34,6 +34,24 @@ fn a_shaped_table_omitting_a_canonical_column_is_refused() {
     assert!(matches!(MemoryDeclarations::parse(&manifest("memory_notes", FACT_COLUMNS)), Err(DeclareError::Malformed(_))));
 }
 
+/// The `predictions` and `outcomes` shapes carry the columns the label join reads, each keyed on `prediction_id`.
+// spec: read.declare.settlement-shapes@a358ca53
+#[test]
+fn predictions_and_outcomes_are_shapes_keyed_on_the_prediction() {
+    let predictions = ["prediction_id", "subject", "predicted_at", "horizon_secs", "deadline_at", "resolution_source", "comparator"];
+    let outcomes = ["prediction_id", "observed_at", "verdict", "resolution_source", "signal", "settling_citation"];
+    for (name, columns) in [("predictions", &predictions[..]), ("outcomes", &outcomes[..])] {
+        let d = MemoryDeclarations::parse(&manifest(name, &format!("{columns:?}"))).unwrap();
+        assert_eq!(d.tables[0].shape.name(), name);
+        assert_eq!(d.tables[0].shape.canonical_columns(), columns);
+        assert_eq!(d.tables[0].table_decl().primary_key, Some(vec!["prediction_id".to_string()]));
+    }
+    for column in ["predicted_at", "deadline_at", "resolution_source"] {
+        assert!(contextful_core::memory::settle::LABEL_VIEW.contains(&format!("p.{column}")), "{column}");
+    }
+    assert!(contextful_core::memory::settle::LABEL_VIEW.contains("o.observed_at"));
+}
+
 /// A candidate edge whose `rel_type` falls outside the union lands in the dead-letter table and raises `MemoryUndeclaredRelation`; no row is written under the unknown type.
 // spec: read.declare.undeclared-relation@101bc556
 #[test]
