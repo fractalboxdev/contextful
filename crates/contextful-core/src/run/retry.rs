@@ -65,7 +65,8 @@ impl Schedule {
 }
 
 /// A schedule as a plan declares it; every field absent takes the default's value.
-#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize, schemars::JsonSchema)]
+#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(feature = "schema", derive(schemars::JsonSchema))]
 #[serde(deny_unknown_fields)]
 pub struct ScheduleSpec {
     /// `fixed` or `exponential`.

@@ -20,7 +20,7 @@ contextful-connectors = { path = "../contextful-connectors", optional = true }
 # The control plane, linked by the control profile alone (`topology.package.control-profile`).
 contextful-control = { path = "../contextful-control", optional = true }
 contextful-context = { path = "../contextful-context", default-features = false, optional = true }
-contextful-core = { path = "../contextful-core" }
+contextful-core = { path = "../contextful-core", features = ["schema"] }
 contextful-d1 = { path = "../contextful-d1", optional = true }
 contextful-engine = { path = "../contextful-engine", optional = true }
 # The harness core: case loader, stub embedder, metrics, report, floors and baseline gate.

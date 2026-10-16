@@ -1,7 +1,9 @@
 //! `run.declare`: the specification, manifest reading, the content hash and table names.
 
 use contextful_core::pipeline::canonical::canonical_json;
-use contextful_core::pipeline::declare::{collect, dependent_runs, pipeline_schema, read_manifest, table_name, ManifestFile, OnTableError, PipelineSpec, TableEntry};
+use contextful_core::pipeline::declare::{collect, dependent_runs, read_manifest, table_name, ManifestFile, OnTableError, PipelineSpec, TableEntry};
+#[cfg(feature = "schema")]
+use contextful_core::pipeline::declare::pipeline_schema;
 use contextful_core::run::RunError;
 use contextful_core::store::declare::{TableDecl, WriteMode};
 use serde_json::json;
@@ -265,6 +267,7 @@ fn the_journal_default_reads_the_one_opt_out_constant() {
 }
 
 /// TOML and JSON read into one specification, and its JSON Schema derives from that type.
+#[cfg(feature = "schema")]
 #[test]
 fn toml_and_json_read_into_one_specification_whose_schema_is_derived_from_it() {
     let toml = "id = \"shop\"\nincremental = \"updated_at\"\non_table_error = \"continue\"\ntables = [\"orders\", { name = \"items\", primary_key = [\"id\"], write_mode = \"replace\" }]\n[source]\nname = \"http\"\nconfig = { endpoint = \"https://vendor.test/{table}\" }\n";

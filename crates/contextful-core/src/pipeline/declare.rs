@@ -12,7 +12,8 @@ use serde_json::Value;
 use std::collections::BTreeMap;
 
 /// A connector name beside its free-form configuration object (`run.declare.source-block`).
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, schemars::JsonSchema)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[cfg_attr(feature = "schema", derive(schemars::JsonSchema))]
 #[serde(deny_unknown_fields)]
 pub struct SourceBlock {
     pub name: String,
@@ -46,7 +47,8 @@ fn canonical_index(index: &mut IndexDecl) {
 pub const STORE_DESTINATION: &str = "store";
 
 /// A `tables` entry: a bare name or a table block (`run.declare.table-entry`).
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, schemars::JsonSchema)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[cfg_attr(feature = "schema", derive(schemars::JsonSchema))]
 #[serde(untagged)]
 pub enum TableEntry {
     Name(String),
@@ -71,7 +73,8 @@ impl TableEntry {
 }
 
 /// How a fire answers one failing table (`run.declare.table-error`).
-#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize, schemars::JsonSchema)]
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(feature = "schema", derive(schemars::JsonSchema))]
 #[serde(rename_all = "lowercase")]
 pub enum OnTableError {
     #[default]
@@ -80,7 +83,8 @@ pub enum OnTableError {
 }
 
 /// One pipeline specification (`run.declare.pipeline-spec`).
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, schemars::JsonSchema)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[cfg_attr(feature = "schema", derive(schemars::JsonSchema))]
 #[serde(deny_unknown_fields)]
 pub struct PipelineSpec {
     pub id: String,
@@ -117,6 +121,7 @@ pub struct PipelineSpec {
 
 /// The JSON Schema of one pipeline specification, derived from [`PipelineSpec`], the type
 /// TOML and JSON manifests deserialize into (`run.declare.serialization`).
+#[cfg(feature = "schema")]
 pub fn pipeline_schema() -> Value {
     serde_json::to_value(schemars::schema_for!(PipelineSpec)).unwrap_or(Value::Null)
 }
