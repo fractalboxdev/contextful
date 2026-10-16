@@ -480,6 +480,7 @@ Uploading the store to a bucket: the wire format, the bucket manifest, prefix co
   *because a reader rewriting a manifest it parses only in part drops the fields a newer writer added*
 - `generation` — Each manifest commit carries `generation` per {{store.push.generation-floor}} and the project's table pointers as read before it; the push then creates `<prefix>/manifests/gen-<N>.json` holding the committed bytes under `If-None-Match`.
   *because a restore or a pre-push gate names one committed state, and the live manifest and pointers move on*
+- `commit-stamp` — Each manifest commit records `committed_at`, the push's instant, and `committed_by`, the pushing node id; a plan carries neither.
 - `generation-floor` — A commit's `generation` is one past the greater of the read manifest's `generation`, absent reading as 0, and the newest `gen-<N>.json` under the prefix.
   *because a format-1 writer predating the field drops `generation`, and reusing a taken number collides with its immutable copy*
 - `generation-heal` — Before each manifest commit, a push finding no `gen-<N>.json` for the generation of the manifest it read creates it from the bytes it read.
@@ -569,6 +570,8 @@ Fetching a bucket into a store: the digest diff, the parallel download, and the 
 - `before-run` — With `[sync] pull_before_run = true`, `run start`, `pipeline run`, `mcp` and `serve` pull every table of the bucket into the store before their first read, and a failed pull stops the command.
   *because a container starting on an empty disk otherwise serves and folds against a store missing every other node's runs*
 - `generation` — `contextful sync pull --generation <N>` reads `gen-<N>.json` in place of the bucket manifest, downloads each listed key in scope at its listed digest, and writes exactly that generation's pointers, whatever their fence.
+- `generation-list` — `contextful sync generations` lists each `gen-<N>.json` the bucket holds, ascending, with its `committed_at`, `committed_by` and the project's entry and tombstone counts, printing `-` for a stamp the manifest lacks.
+  *because choosing a generation to restore needs the last commit before an unwanted tombstone, and generation numbers alone carry no time*
 - `generation-absent` — A generation the bucket holds no `gen-<N>.json` for raises `SyncGenerationAbsent`, naming N and the newest generation, and writes nothing.
   *because a restore falling back to another generation reads a state nobody named*
 - `generation-diverged` — A generation pull into a store holding a syncable file in scope that the generation does not list raises `SyncGenerationDiverged`, naming the file, and writes nothing.
