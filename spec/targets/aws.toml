@@ -5,6 +5,7 @@
 provider = "aws"
 title    = "AWS"
 serves   = "VPC-bound and regulated deployments, and teams already operating on AWS."
+primitives = ["functions", "containers", "workflows", "scheduler", "managed-postgres", "object-store", "secret-store"]
 
 [[shape]]
 name     = "lambda-fargate"
@@ -12,6 +13,7 @@ default  = true
 kind     = "orchestrated"
 profiles = ["full"]
 excludes = []
+uses     = ["functions", "containers", "workflows", "scheduler", "managed-postgres", "object-store", "secret-store"]
 
 [shape.roles]
 cron_tick    = "EventBridge Scheduler"
@@ -30,6 +32,7 @@ kind = "function"
 profiles = ["edge"]
 wall_clock_cap_min = 15
 excludes = ["first-time-backfill", "component-connector"]
+uses     = ["functions", "workflows", "scheduler", "managed-postgres", "object-store", "secret-store"]
 
 [shape.roles]
 cron_tick    = "EventBridge Scheduler"
@@ -46,6 +49,7 @@ name     = "fargate-daemon"
 kind     = "daemon"
 profiles = ["full"]
 excludes = []
+uses     = ["containers", "managed-postgres", "object-store", "secret-store"]
 
 [shape.roles]
 cron_tick    = "in-process scheduler"

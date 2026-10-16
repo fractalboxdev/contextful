@@ -793,6 +793,17 @@
       "line": 238
     },
     {
+      "id": "corpus.targets.primitives",
+      "contract": "corpus",
+      "operation": "targets",
+      "subject": "primitives",
+      "kind": "behavior",
+      "statement": "A target file lists the primitives its provider offers, and each shape lists the primitives it uses; {{topology.deploy.unsupported-shape}} refuses a shape using one outside that list.",
+      "why": "because a shape's roles name products, and only a primitive list makes a missing one checkable",
+      "file": "spec/00-corpus.md",
+      "line": 239
+    },
+    {
       "id": "corpus.targets.incomplete",
       "contract": "corpus",
       "operation": "targets",
@@ -801,7 +812,7 @@
       "statement": "A shape leaving a role unfilled, or a target file marking other than one default shape, raises `SpecTargetIncomplete`, naming the provider, the shape and the role.",
       "why": "because an unfilled role surfaces only when a deploy reaches it, on someone else's account",
       "file": "spec/00-corpus.md",
-      "line": 239
+      "line": 241
     },
     {
       "id": "corpus.targets.cap-unrecorded",
@@ -812,7 +823,7 @@
       "statement": "A shape whose cap sits at or below the {{topology.deploy.wall-clock-cap}} bound and whose exclusions omit `first-time-backfill` or `component-connector` raises `SpecTargetCapUnrecorded`.",
       "why": "because the exclusion is the difference between a refused dispatch and a job killed mid-run",
       "file": "spec/00-corpus.md",
-      "line": 241
+      "line": 243
     },
     {
       "id": "corpus.targets.function-profile",
@@ -823,7 +834,7 @@
       "statement": "A function-class shape listing a profile other than `edge` raises `SpecTargetFunctionProfile`, naming the provider and the shape.",
       "why": "because {{topology.package.edge-eligibility}} admits the edge profile alone on a function-class target",
       "file": "spec/00-corpus.md",
-      "line": 243
+      "line": 245
     },
     {
       "id": "corpus.targets.page",
@@ -834,7 +845,7 @@
       "statement": "`contextful-spec state` renders `spec/targets.md` from the target files: per provider, a role table across its shapes and a diagram of its default shape.",
       "why": "because a diagram drawn by hand beside the data it shows drifts from it",
       "file": "spec/00-corpus.md",
-      "line": 245
+      "line": 247
     },
     {
       "id": "corpus.guide.file",
@@ -845,7 +856,7 @@
       "statement": "Each contract has one guide, `spec/guide/<contract>.md`: front matter `contract`, one `# ` title equal to the contract's registry title, then prose of at most 700 words outside diagrams.",
       "why": "A-corpus",
       "file": "spec/00-corpus.md",
-      "line": 252
+      "line": 254
     },
     {
       "id": "corpus.guide.non-normative",
@@ -856,7 +867,7 @@
       "statement": "A guide holds no clause item and names no registered error; it reaches a rule by `{{id}}`. No contract file links a guide.",
       "why": "because a rule restated in teaching prose is a second home that drifts from the first",
       "file": "spec/00-corpus.md",
-      "line": 254
+      "line": 256
     },
     {
       "id": "corpus.guide.bad-guide",
@@ -867,7 +878,7 @@
       "statement": "A contract without a guide, a guide breaking its shape or length, a guide holding a clause item or an error name, and a contract file linking a guide raise `SpecGuide`.",
       "why": "P8",
       "file": "spec/00-corpus.md",
-      "line": 256
+      "line": 258
     },
     {
       "id": "topology.compose.workspace",
@@ -29242,6 +29253,10 @@
     [
       "corpus.state.lean-tag",
       "corpus.state.tag-pin"
+    ],
+    [
+      "corpus.targets.primitives",
+      "topology.deploy.unsupported-shape"
     ],
     [
       "corpus.targets.cap-unrecorded",
