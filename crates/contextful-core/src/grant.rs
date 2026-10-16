@@ -244,6 +244,13 @@ pub fn raw_read_covers(grants: &[Grant], table: &str) -> bool {
     grants.iter().any(|g| g.aggregate.is_none() && g.covers(Action::Read, table))
 }
 
+/// Whether `grant` covers a read of `table` inside template `id`'s session: a read grant
+/// carrying no aggregate constraint whose allowlist authorizes `id`, over a table its
+/// statement names (`authority.grant.template-tables`).
+pub fn template_read_covers(grant: &Grant, id: &str, declared: &[String], tables: &std::collections::BTreeSet<String>, table: &str) -> bool {
+    grant.aggregate.is_none() && grant.actions.contains(&Action::Read) && tables.contains(table) && grant.allows_template(id, declared)
+}
+
 /// Invoke a template (`authority.grant.template-not-allowed`).
 pub fn authorize_template(grants: &[Grant], id: &str, declared: &[String]) -> Result<(), AuthorityError> {
     if grants.iter().any(|g| g.allows_template(id, declared)) {

@@ -15,7 +15,7 @@ use super::predicate::{SUBJECT_FIELDS, SUBJECT_RELATION};
 use super::zone::{session_zone, Zone};
 use super::PolicyError;
 use crate::verify::AdmittedAuthority;
-use contextful_core::grant::{raw_read_covers, Grant};
+use contextful_core::grant::{raw_read_covers, template_read_covers, Grant};
 use contextful_core::identify::Member;
 use contextful_core::read::pin::Resolved;
 use contextful_core::store::declare::{DeclarationMalformed, TableDecl};
@@ -571,5 +571,5 @@ fn is_bare(c: &str) -> bool {
 /// `template` over a table its statement names (`authority.grant.template-tables`).
 fn covers(grant: &Grant, template: Option<&TemplateScope>, table: &str) -> bool {
     raw_read_covers(std::slice::from_ref(grant), table)
-        || template.is_some_and(|t| t.tables.contains(table) && grant.allows_template(&t.id, &t.declared))
+        || template.is_some_and(|t| template_read_covers(grant, &t.id, &t.declared, &t.tables, table))
 }

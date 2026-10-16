@@ -8,7 +8,7 @@ use super::pool::{self, SessionPool};
 use super::results::{self, ResultCache};
 use crate::scan::{scan, scan_at};
 use crate::store::Store;
-use contextful_core::grant::{authorize_template, least_row_ceiling, list_templates, raw_read_covers, Grant};
+use contextful_core::grant::{authorize_template, least_row_ceiling, list_templates, raw_read_covers, template_read_covers, Grant};
 use contextful_core::read::face::{estimated_tokens, TOOLS};
 use contextful_core::read::guard::{admit, named_relations, Admitted};
 use contextful_core::read::pin::{Pins, Resolved, PIN_ARGUMENT, RESOLVED_BLOCK};
@@ -626,7 +626,7 @@ impl Face {
     ) -> Result<Session, ReadFault> {
         let tables = self.tables()?;
         let templated = |t: &String| {
-            template.as_ref().is_some_and(|s| s.tables.contains(t) && authority.grants().iter().any(|g| g.allows_template(&s.id, &s.declared)))
+            template.as_ref().is_some_and(|s| authority.grants().iter().any(|g| template_read_covers(g, &s.id, &s.declared, &s.tables, t)))
         };
         let granted: Vec<String> = tables.iter().filter(|t| raw_read_covers(authority.grants(), t) || templated(t)).cloned().collect();
         if let Some((table, build)) = pins.iter().find(|(t, _)| !granted.iter().any(|g| g == t)) {
@@ -986,6 +986,10 @@ impl Face {
     /// (`read.guard.query-binding`), the scope guard over its tenant literals and bound
     /// values, then execution under the least row ceiling.
     pub fn query_with(&self, session: &Session, sql: &str, parameters: &Map<String, Value>, opts: ReadOptions) -> Result<Response, ReadFault> {
+        // Template coverage adds no table to a raw read (`authority.grant.template-tables`).
+        if let Some(t) = session.template() {
+            return Err(EnforceError::UnknownRelation(format!("a session opened for template `{}` admits no caller-written SQL", t.id)).into());
+        }
         let frontier = self.read_frontier(session)?;
         let engine = self.pool.engine(session, self.store.parquet_key())?;
         let tree = engine.serialize(sql)?;
@@ -1017,6 +1021,10 @@ impl Face {
         let frontier = self.read_frontier(session)?;
         let declared: Vec<String> = self.templates.iter().map(|t| t.id.clone()).collect();
         authorize_template(session.grants(), id, &declared)?;
+        // A template's extra tables belong to its own session (`authority.grant.template-tables`).
+        if let Some(t) = session.template().filter(|t| t.id != id) {
+            return Err(EnforceError::UnknownRelation(format!("a session opened for template `{}` cannot run template `{id}`", t.id)).into());
+        }
         let template = self.templates.iter().find(|t| t.id == id).expect("an authorized template is declared");
         let values = template.bind(arguments)?;
         let engine = self.pool.engine(session, self.store.parquet_key())?;

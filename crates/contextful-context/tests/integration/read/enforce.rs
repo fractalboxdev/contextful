@@ -351,6 +351,7 @@ fn a_covered_template_reads_its_tables_in_its_own_session_alone() {
     refused_with(r.face.execute_template(&raw, "notes_for", &args("acme"), ReadOptions::default()), "EnforceUnknownRelation");
     let templated = r.face.template_session(&authority, &Request::default(), Bounds::default(), &Pins::default(), "notes_for").unwrap();
     assert_eq!(r.face.execute_template(&templated, "notes_for", &args("acme"), ReadOptions::default()).unwrap().rows.len(), 3);
+    refused_with(r.query(&templated, r#"SELECT * FROM "research/notes""#), "EnforceUnknownRelation");
     let raw = r.face.session(&authority, &Request::default(), Bounds::default()).unwrap();
     refused_with(r.query(&raw, r#"SELECT * FROM "research/notes""#), "EnforceUnknownRelation");
 
