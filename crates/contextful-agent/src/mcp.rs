@@ -509,6 +509,7 @@ impl<'a> Tools<'a> {
             "context.execute_query" => args.get("id").and_then(Value::as_str).and_then(template),
             "context.describe" | "context.reference" | "memory.recall" => return args.get("table").and_then(Value::as_str).map(str::to_string).into_iter().collect(),
             "context.file" => return args.get("path").and_then(Value::as_str).and_then(|path| contextful_context::read::face::preview_target(path).ok()).into_iter().collect(),
+            "context.subscribe" => return args.get("tables").and_then(Value::as_array).map(|ts| ts.iter().filter_map(Value::as_str).map(str::to_string).collect()).unwrap_or_default(),
             other => template(other),
         };
         sql.and_then(|sql| self.face.serialize(&sql).ok())
@@ -530,8 +531,9 @@ impl<'a> Tools<'a> {
         let horizon = horizon(caller.authority.grants());
         let inherited;
         let args = match horizon {
-            // `memory.recall` names its own clocks and reads the horizon below.
-            Some(_) if name != "memory.recall" => match inherit_horizon(args, horizon)? {
+            // `memory.recall` names its own clocks and reads the horizon below; a
+            // subscription takes no bound.
+            Some(_) if name != "memory.recall" && name != "context.subscribe" => match inherit_horizon(args, horizon)? {
                 Ok(a) => {
                     inherited = a;
                     &inherited
@@ -591,6 +593,34 @@ impl<'a> Tools<'a> {
                 let path = required(args, "path")?;
                 let opts = options(args)?;
                 self.session(caller, zone, opts.bounds, pins).and_then(|s| self.face.file(&s, &path, opts).map(|r| answered_in(r, s)))
+            }
+            "context.subscribe" => {
+                // A subscription reads the commit record, never rows under a bound
+                // (`read.register.bound-arguments`).
+                if let Some(k) = args.keys().find(|k| !["tables", "after", "zone", PIN_ARGUMENT].contains(&k.as_str())) {
+                    return Err(invalid(format!("`{name}` takes no argument `{k}`")));
+                }
+                let tables = match arg(args, "tables") {
+                    Some(Value::Array(xs)) if !xs.is_empty() => xs
+                        .iter()
+                        .map(|x| x.as_str().map(str::to_string).ok_or_else(|| invalid("`tables` lists strings")))
+                        .collect::<Result<Vec<String>, _>>()?,
+                    _ => return Err(invalid("`tables` is a non-empty list of strings")),
+                };
+                let after = match arg(args, "after") {
+                    None => std::collections::BTreeMap::new(),
+                    Some(Value::Object(m)) => m
+                        .iter()
+                        .filter(|(_, v)| !v.is_null())
+                        .map(|(t, v)| v.as_str().map(|p| (t.clone(), p.to_string())).ok_or_else(|| invalid("`after` maps a table to a `<run-id>/<node-id>` string")))
+                        .collect::<Result<_, _>>()?,
+                    Some(_) => return Err(invalid("`after` is an object")),
+                };
+                self.session(caller, zone, Bounds::default(), pins).and_then(|s| {
+                    let page = self.face.subscribe(&s, &tables, &after)?;
+                    let sent = page["messages"].as_array().map_or(0, |m| m.len() as u64);
+                    Ok((page, sent, s))
+                })
             }
             "corpus.retrieve" => {
                 only(args, name, &["prefix", "query", "query_embedding", "filter", "kinds", "limit", "since", "min_score", "internals"])?;

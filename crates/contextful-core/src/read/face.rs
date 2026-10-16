@@ -6,13 +6,14 @@ use crate::enforce::EnforceError;
 use serde::Serialize;
 
 /// The closed tool set (`read.register.tool-set`).
-pub const TOOLS: [&str; 8] = [
+pub const TOOLS: [&str; 9] = [
     "context.describe",
     "context.query",
     "context.reference",
     "context.execute_query",
     "context.files",
     "context.file",
+    "context.subscribe",
     "corpus.retrieve",
     "memory.recall",
 ];

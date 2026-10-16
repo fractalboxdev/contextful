@@ -5047,7 +5047,7 @@
       "operation": "register",
       "subject": "tool-set",
       "kind": "behavior",
-      "statement": "The face exposes `context.describe`, `context.query`, `context.reference`, `context.execute_query` for templates, `context.files`, `context.file`, `corpus.retrieve` and `memory.recall` as its closed tool set.",
+      "statement": "The face exposes `context.describe`, `context.query`, `context.reference`, `context.execute_query` for templates, `context.files`, `context.file`, `context.subscribe`, `corpus.retrieve` and `memory.recall` as its closed tool set.",
       "why": "A-read",
       "file": "spec/20-read.md",
       "line": 74
@@ -5058,7 +5058,7 @@
       "operation": "register",
       "subject": "bound-arguments",
       "kind": "behavior",
-      "statement": "Every read tool but `memory.recall`, each template tool included, admits `as_of` and `valid_as_of` and echoes {{store.bound-time.echo}}; {{store.bound-time.valid-as-of}} wraps only the tables the read touches.",
+      "statement": "Every read tool but `memory.recall` and `context.subscribe`, each template tool included, admits `as_of` and `valid_as_of` and echoes {{store.bound-time.echo}}; {{store.bound-time.valid-as-of}} wraps only the tables the read touches.",
       "why": "because a session registers every granted table, and wrapping one declaring no pair refuses reads that never name it",
       "file": "spec/20-read.md",
       "line": 76
@@ -5168,7 +5168,7 @@
       "operation": "register",
       "subject": "budget-arguments",
       "kind": "behavior",
-      "statement": "Every read tool accepts optional `max_duration_ms` and `max_response_bytes` request fields, each with no default.",
+      "statement": "Every read tool but `context.subscribe`, which {{read.subscribe.overrun}} bounds, accepts optional `max_duration_ms` and `max_response_bytes` request fields, each with no default.",
       "why": "",
       "file": "spec/20-read.md",
       "line": 95
@@ -7247,6 +7247,28 @@
       "why": "",
       "file": "spec/20-read.md",
       "line": 557
+    },
+    {
+      "id": "read.subscribe.tool-poll",
+      "contract": "read",
+      "operation": "subscribe",
+      "subject": "tool-poll",
+      "kind": "behavior",
+      "statement": "`context.subscribe` takes `tables` and an optional `after` map and answers one page: `messages`, what {{read.subscribe.resume}} sends under {{read.subscribe.overrun}}, and `after`, each table's last delivered position for the next call.",
+      "why": "because the tool protocol's request and response hold no stream, and a returned position resumes a poll exactly as it resumes a stream",
+      "file": "spec/20-read.md",
+      "line": 558
+    },
+    {
+      "id": "read.subscribe.ungranted-table",
+      "contract": "read",
+      "operation": "subscribe",
+      "subject": "ungranted-table",
+      "kind": "behavior",
+      "statement": "On the tool protocol, a subscription naming a table outside the session's relations, existing or not, is refused by {{authority.refuse.ungranted-table}} before any `after` position resolves.",
+      "why": "because a position refusal or a notification on an ungranted table discloses that the table exists and commits",
+      "file": "spec/20-read.md",
+      "line": 560
     },
     {
       "id": "read.declare.canonical-column",
@@ -29968,6 +29990,10 @@
       "read.register.column-hints"
     ],
     [
+      "read.register.budget-arguments",
+      "read.subscribe.overrun"
+    ],
+    [
       "read.register.duration-no-statement",
       "read.respond.duration-ceiling"
     ],
@@ -30230,6 +30256,18 @@
     [
       "read.subscribe.commit-order",
       "store.reserve.commit-order"
+    ],
+    [
+      "read.subscribe.tool-poll",
+      "read.subscribe.resume"
+    ],
+    [
+      "read.subscribe.tool-poll",
+      "read.subscribe.overrun"
+    ],
+    [
+      "read.subscribe.ungranted-table",
+      "authority.refuse.ungranted-table"
     ],
     [
       "read.declare.serving-taint",

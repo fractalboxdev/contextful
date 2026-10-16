@@ -71,9 +71,9 @@ The relations, tools and templates one connection sees, the engine executing aga
   *P4*
 - `bare-name` — A bare table name in any read — a caller statement, a template body, a ranking arm, a file preview — resolves to the caller's registered relation, which carries the caller's restriction.
   *P5*
-- `tool-set` — The face exposes `context.describe`, `context.query`, `context.reference`, `context.execute_query` for templates, `context.files`, `context.file`, `corpus.retrieve` and `memory.recall` as its closed tool set.
+- `tool-set` — The face exposes `context.describe`, `context.query`, `context.reference`, `context.execute_query` for templates, `context.files`, `context.file`, `context.subscribe`, `corpus.retrieve` and `memory.recall` as its closed tool set.
   *A-read*
-- `bound-arguments` — Every read tool but `memory.recall`, each template tool included, admits `as_of` and `valid_as_of` and echoes {{store.bound-time.echo}}; {{store.bound-time.valid-as-of}} wraps only the tables the read touches.
+- `bound-arguments` — Every read tool but `memory.recall` and `context.subscribe`, each template tool included, admits `as_of` and `valid_as_of` and echoes {{store.bound-time.echo}}; {{store.bound-time.valid-as-of}} wraps only the tables the read touches.
   *because a session registers every granted table, and wrapping one declaring no pair refuses reads that never name it*
 - `bound-listing` — `context.files` and a `context.describe` naming no table select under `as_of` alone; each ignores `valid_as_of` and echoes only its `as_of` part.
   *because valid time narrows rows, and a listing returns files and table names, never rows*
@@ -92,7 +92,7 @@ The relations, tools and templates one connection sees, the engine executing aga
   *A-read*
 - `advertised-is-enforced` — A table's published `limits` block lists a bound exactly when the engine applies it.
   *because a published number and a delivered guarantee cannot disagree when one derives from the other*
-- `budget-arguments` — Every read tool accepts optional `max_duration_ms` and `max_response_bytes` request fields, each with no default.
+- `budget-arguments` — Every read tool but `context.subscribe`, which {{read.subscribe.overrun}} bounds, accepts optional `max_duration_ms` and `max_response_bytes` request fields, each with no default.
 - `duration-no-statement` — A read tool running no SQL statement accepts `max_duration_ms` without triggering {{read.respond.duration-ceiling}}.
   *because no connection executes a statement for its deadline to interrupt*
 - `budget-advertisement` — `context.describe` lists a table's `limits.max_duration_ms` and `limits.max_response_bytes` under {{read.register.advertised-is-enforced}} and omits each undeclared limit.
@@ -555,6 +555,10 @@ The stream of one notification per committed run of each named table, read from 
 - `overrun` — A subscription holding more than 1000 notifications undelivered sends 1000, then a terminal `overrun` message naming each table's last delivered position, and ends.
   *because a bounded queue never drops a notification silently, and the terminal position resumes the stream*
 - `operator-verb` — `contextful context subscribe <table>... [--after <table>=<run-id>/<node-id>] [--follow]` prints one JSON notification per line; without `--follow` it ends once the replay is sent.
+- `tool-poll` — `context.subscribe` takes `tables` and an optional `after` map and answers one page: `messages`, what {{read.subscribe.resume}} sends under {{read.subscribe.overrun}}, and `after`, each table's last delivered position for the next call.
+  *because the tool protocol's request and response hold no stream, and a returned position resumes a poll exactly as it resumes a stream*
+- `ungranted-table` — On the tool protocol, a subscription naming a table outside the session's relations, existing or not, is refused by {{authority.refuse.ungranted-table}} before any `after` position resolves.
+  *because a position refusal or a notification on an ungranted table discloses that the table exists and commits*
 
 #### Scenarios
 
@@ -562,9 +566,9 @@ The stream of one notification per committed run of each named table, read from 
 - `read.subscribe.after-commit`: WHEN a leased pipeline's run writes its manifest and its commit-log entry is absent, THEN no subscription notifies it.
 - `read.subscribe.commit-order`: WHEN a relational run commits `events` at `commit_seq` 5 before its group marker lands and a plain run commits at 6, THEN a subscription sends neither until the marker lands, then 5 before 6.
 
-unsettled: Does `context.subscribe` ride the tool protocol as a paged poll returning the next position, or as server notifications over a held stream? owner: read-path affects: read.subscribe
+unsettled: Does a subscription under a credential horizon withhold runs committed after it, or refuse? owner: read-path affects: read.subscribe
 
-unsettled: Does a subscription over a table outside the credential's grant refuse by {{authority.refuse.ungranted-table}} on the tool protocol? owner: read-path affects: read.subscribe
+unsettled: Does the networked transport carry `context.subscribe` as server notifications over a held stream? owner: read-path affects: read.subscribe
 
 ## Shapes
 

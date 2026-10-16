@@ -931,6 +931,23 @@ impl Face {
         session.relation(table).ok_or_else(|| EnforceError::UnknownRelation(format!("`{table}`")).into())
     }
 
+    /// One page of a subscription over `tables`, resumed after each table's `after`
+    /// position: its messages and each table's last delivered position
+    /// (`read.subscribe.tool-poll`). A table outside the session refuses as unknown before
+    /// any position resolves (`read.subscribe.ungranted-table`).
+    pub fn subscribe(&self, session: &Session, tables: &[String], after: &BTreeMap<String, String>) -> Result<Value, ReadFault> {
+        for table in tables {
+            self.registered(session, table)?;
+        }
+        let refusal = |e: crate::ContextError| match e {
+            crate::ContextError::Read(e) => ReadFault::from(e),
+            other => ReadFault::Store(other),
+        };
+        let mut subscription = crate::subscribe::Subscription::open(&self.store, tables, after).map_err(refusal)?;
+        let messages = subscription.poll().map_err(refusal)?;
+        Ok(json!({ "messages": messages, "after": subscription.positions() }))
+    }
+
     /// Describe one table the session reads, or list them all. A table outside the
     /// session is absent from the listing and refused by name
     /// (`authority.refuse.ungranted-table`). `limits.max_rows` appears exactly when the
@@ -1355,6 +1372,26 @@ pub fn preview_target(path: &str) -> Result<String, ReadError> {
 
 /// A built-in tool's definition.
 fn builtin_tool(name: &str) -> Value {
+    // A subscription reads the commit record, never rows under a bound
+    // (`read.register.bound-arguments`, `read.subscribe.tool-poll`).
+    if name == "context.subscribe" {
+        let mut tool = json!({
+            "name": name,
+            "description": "One page of notifications, one per committed run of each named table, after each table's `after` position; pass the returned `after` to the next call.",
+            "inputSchema": {
+                "type": "object",
+                "properties": {
+                    "tables": { "type": "array", "items": { "type": "string" }, "minItems": 1 },
+                    "after": { "type": "object", "description": "Each table to the `<run-id>/<node-id>` position it resumes after.", "additionalProperties": { "type": ["string", "null"] } },
+                    "zone": { "type": "string" }
+                },
+                "required": ["tables"],
+                "additionalProperties": false
+            },
+        });
+        tool["inputSchema"]["properties"][PIN_ARGUMENT] = pin_property();
+        return tool;
+    }
     let instant = |about: &str| json!({ "type": "string", "description": format!("{about} {INSTANT_LITERAL}") });
     let (description, mut properties, required): (&str, Value, Vec<&str>) = match name {
         "context.describe" => (
