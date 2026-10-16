@@ -112,7 +112,7 @@ The theorem inventory: layer composition, placement, the evidence floor, the pro
   *A-assurance*
 - `effective-policy` — An effective policy computed from two allow-sets is included in both.
 - `proof-targets` — The authority mapping of {{authority.profile.delegation-profile}} carries four proof targets: inclusion; narrowing, where an attenuated child's permission implies its parent's; profile meaning, where permission holds exactly when the audience matches and every block admits; and {{assurance.prove.restriction-preservation}}.
-  *because all four are pure decision functions over a verified credential; scoped-session execution after the decision answers to the mediation relation instead*
+  *because all four are pure decision functions over a verified credential; the mediation relation covers read-path releases, and the rest of scoped-session execution stays unproved*
 - `restriction-preservation` — `attenuateAll_permits_every_parent_block`: every block of a credential admits each request that any chain of attenuations of that credential permits, under one trusted environment.
   *A-assurance*
 - `mediation-relation` — `statement_reach_released_rows_pass_session_layers`: the mediation induction ranges over the read path's statement execution, and every row a reachable state has released passed every layer of the session.

@@ -202,13 +202,11 @@ fn every_parent_block_admits_what_an_attenuation_chain_permits() {
     }
     assert_eq!(permitted, 3 + 2 + 1, "the parent reads three of the tables, the middle two, the leaf one");
     // The middle block's restriction binds every descendant: a leaf naming a table the
-    // authority block covers and the middle block excludes is refused.
-    let past_middle = attenuate(&middle, &Derivation { grants: Some(vec![grant(&[Action::Read], &["research/contacts"])]), ..Derivation::default() });
-    let err = match past_middle {
-        Err(e) => e,
-        Ok(child) => admit(&child, &signer, DURING).unwrap_err(),
-    };
-    assert_eq!(err_name(&err), "AttenuationWidens", "{err}");
+    // authority block covers and the middle block excludes is refused at derivation, and
+    // a block appended past the holder check is refused at admission.
+    refused(attenuate(&middle, &Derivation { grants: Some(vec![grant(&[Action::Read], &["research/contacts"])]), ..Derivation::default() }), "AttenuationWidens");
+    let past_middle = append_raw(&middle, r#"grant(0, "{\"actions\":[\"read\"],\"tables\":[\"research/contacts\"]}");"#);
+    refused(admit(&past_middle, &signer, DURING), "AttenuationWidens");
 }
 
 /// A grant carrying a row restriction or aggregate bound with no read evaluator raises `ProfileRestrictionUnevaluated` at the mint, at derivation on parent and child, and at admission.

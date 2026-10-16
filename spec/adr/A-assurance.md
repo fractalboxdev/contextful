@@ -61,7 +61,7 @@ Consequences: a zero in a report is a retrieval fact; spans never outlive the ro
 
 ## The model specifies the profile-to-effective-authority mapping, each target bound to one query path
 
-`assurance.model` specifies the mapping from the delegation profile to effective authority. `assurance.prove` carries four targets: inclusion, narrowing, profile meaning and restriction preservation; scoped-session execution answers to the mediation relation. `assurance.prove` decides placement inclusion symbolically; deciding over sample values raises `ZoneInclusionSampled`. An unmodelled manifest category raises `UnmodelledConstructor`; a target bound to no authenticated query path raises `ProofTargetUnbound`.
+`assurance.model` specifies the mapping from the delegation profile to effective authority. `assurance.prove` carries four targets: inclusion, narrowing, profile meaning and restriction preservation; read-path releases answer to the mediation relation; the rest of scoped-session execution stays outside every theorem. `assurance.prove` decides placement inclusion symbolically; deciding over sample values raises `ZoneInclusionSampled`. An unmodelled manifest category raises `UnmodelledConstructor`; a target bound to no authenticated query path raises `ProofTargetUnbound`.
 
 | Option | Lost on | Cost |
 | --- | --- | --- |

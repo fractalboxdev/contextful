@@ -7,8 +7,8 @@ The execution relation the mediation induction ranges over: the read path's stat
 execution under one session. A state holds the rows the statement has still to scan and
 the rows it has released. One step takes the next pending row, evaluates the session's
 fold over it, and releases the row when the fold admits it or drops it otherwise. No
-step releases a row by any other route, so every function releasing a stored row takes
-the session's admission value.
+step releases a row by any other route; the engine holds the same shape as
+`topology.compose.mediation`, which the model assumes and does not prove.
 
 Engine run steps lie outside this relation: a run step that reads stored rows does so
 through a read-path statement, and its effects answer to the protocol model's fences
