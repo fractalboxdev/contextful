@@ -13,8 +13,8 @@ fn feed(body: &[u8]) -> Vec<Value> {
 }
 
 /// `format = "feed"` decodes an RSS or Atom document into one row per item or entry carrying `entry_id`, `title`,
-/// `link`, `published_at`, `summary` and `author`, each null where the entry holds none.
-// spec: connector.source.feed-format@56103434
+/// `link`, `published_at`, `summary`, `author` and `categories`, each null where the entry holds none.
+// spec: connector.source.feed-format@d6a2260e
 #[test]
 fn an_atom_and_an_rss_document_land_one_row_per_entry() {
     assert_eq!(Format::parse("feed").unwrap(), Format::Feed);
@@ -31,6 +31,7 @@ fn an_atom_and_an_rss_document_land_one_row_per_entry() {
             "published_at": "2011-01-26T19:06:08Z",
             "summary": "<pre style='white-space:pre-wrap;width:81ex'>first commit</pre>",
             "author": "Cameron423698",
+            "categories": null,
         })
     );
 
@@ -45,6 +46,7 @@ fn an_atom_and_an_rss_document_land_one_row_per_entry() {
             "published_at": "2026-03-03T08:30:00Z",
             "summary": "<p>Adds <b>feeds</b> &amp; fixes.</p>",
             "author": "Release Bot",
+            "categories": null,
         })
     );
     assert_eq!(rss[1]["title"], json!("v2.0.1 & notes"));
@@ -102,4 +104,34 @@ fn an_empty_or_href_bearing_child_leaves_the_rss_fields_to_their_text() {
     assert_eq!(rows[0]["link"], json!("https://x.test/1"), "an href-bearing link carries no link text");
     assert_eq!(rows[0]["entry_id"], json!("https://x.test/1"), "no guid: the RSS link identifies the item");
     assert_eq!(rows[0]["title"], json!("Real"), "an empty child leaves the field to the next one");
+}
+
+/// `categories` is JSON array text of `domain` and `term` objects in document order: each RSS `category` text and its
+/// `domain`, or Atom `term` and `scheme`; an absent domain is null, an empty term skipped.
+// spec: connector.source.feed-categories@e16108a1
+#[test]
+fn categories_land_as_a_json_array_with_their_domain_or_scheme() {
+    let rss = br#"<rss version="2.0"><channel><item><guid>g1</guid>
+<category domain="badge-slug">breaking-news</category><category domain="channel"><![CDATA[business]]></category>
+<category>plain</category><category domain="empty">  </category></item>
+<item><guid>g2</guid><title>none</title></item></channel></rss>"#;
+    let rows = feed(rss);
+    let categories: Value = serde_json::from_str(rows[0]["categories"].as_str().expect("categories is JSON text")).unwrap();
+    assert_eq!(
+        categories,
+        json!([
+            {"domain": "badge-slug", "term": "breaking-news"},
+            {"domain": "channel", "term": "business"},
+            {"domain": null, "term": "plain"},
+        ]),
+        "document order; an empty category is skipped"
+    );
+    assert_eq!(rows[1]["categories"], Value::Null, "an item with no category lands null");
+
+    let atom = br#"<feed xmlns="http://www.w3.org/2005/Atom"><entry><id>urn:e:1</id>
+<category term="release" scheme="https://x.test/kinds"/><category term="rust" label="Rust"></category><category scheme="s"/></entry></feed>"#;
+    let rows = feed(atom);
+    let categories: Value = serde_json::from_str(rows[0]["categories"].as_str().unwrap()).unwrap();
+    assert_eq!(categories, json!([{"domain": "https://x.test/kinds", "term": "release"}, {"domain": null, "term": "rust"}]));
+    assert_eq!(rows[0]["title"], Value::Null, "a category is no field");
 }
