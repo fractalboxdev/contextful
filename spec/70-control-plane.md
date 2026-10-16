@@ -371,8 +371,10 @@ Validation, the immutable version claim, the pointer advance, the owner's storag
 - `attestation-unavailable` — A synced import or apply lacking an admitted admin capability or issuer signing port raises `ControlAttestationUnavailable` and claims no version.
   *A-surface*
 - `guarded-import` — `contextful pipeline import` claims v1 from the declared pipelines while the snapshot directory holds no version; a second import claims nothing.
-- `adopt-before-claim` — Import or apply over a snapshot directory holding no version first adopts a pulled control head under {{surface.reconcile.pulled-control}}, pinning the verb's `--public-key`; an import that adopts claims nothing.
-  *because a replacement host claiming a fresh v1 diverges from the bucket's signed head, and its next push is refused*
+- `adopt-before-claim` — Import or apply over a snapshot directory holding no version first adopts a pulled head verified under {{surface.reconcile.issuer-pin}} against the verb's `--public-key` and meeting {{surface.apply.self-valid}}, though the declarations drop its pipelines or jobs; an import that adopts claims nothing.
+  *because a replacement host claiming a fresh v1 diverges from the bucket's signed head, and the claim that follows removes what a release dropped*
+- `self-valid` — Import, apply and adoption validate a snapshot's document, build plans and each job's `after` against that snapshot's own pipelines, so apply signs no head its adoption refuses.
+  *because a signed head failing its own adoption refuses every cold start until a reset*
 - `draft-claim` — An Admin apply rechecks the configured store owner, validates its saved draft again, and claims that draft through the owner's version compare-and-swap.
   *A-surface*
 - `operator-attestation` — An Admin mutation lacking a fresh console signature over its verified operator, route and body, or reusing a nonce held in store control state across restarts, raises `ControlOperatorAttestationInvalid` before changing the document.
@@ -424,6 +426,7 @@ sequenceDiagram
 - `surface.apply.receipt-message`: WHEN a receipt's parent or snapshot digest changes after signing, THEN its signature does not verify.
 - `surface.apply.receipt-file`: WHEN signing fails during a synced import, THEN neither the snapshot nor the pointer names the version.
 - `surface.apply.adopt-before-claim`: WHEN a cold node pulls a signed bucket head and runs import, THEN import claims nothing, and apply of one added pipeline claims the head's successor and pushes.
+- `surface.apply.adopt-before-claim`: WHEN a release removes a pipeline with the build job whose `after` names it, THEN a cold node adopts the old head, apply claims its successor, and the next cold node adopts that.
 
 ## reside
 

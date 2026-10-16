@@ -250,7 +250,7 @@ fn a_pulled_successor_extends_the_local_head_and_a_broken_parent_keeps_it() {
 
 /// A replacement host adopts the bucket's signed head before import or apply claims a version, so its
 /// next push extends that head.
-// spec: surface.apply.adopt-before-claim@ccbaa02a
+// spec: surface.apply.adopt-before-claim@7ed005d2
 #[test]
 fn a_cold_synced_node_adopts_the_pulled_head_before_import_or_apply_claims() {
     let bucket = tempfile::tempdir().unwrap();
@@ -296,6 +296,57 @@ fn a_cold_synced_node_adopts_the_pulled_head_before_import_or_apply_claims() {
     let fresh = node("empty", &["orders"]);
     ok(&cf(fresh.path(), &["sync", "pull", "--project", "research"]));
     assert!(ok(&signed(fresh.path(), "import")).contains("imported v1"));
+}
+
+/// A release removing a pipeline with its model and the build job whose `after` names it
+/// converges on a cold node, and every later cold node adopts the pushed head.
+// spec: surface.apply.self-valid@b70f15c4
+#[test]
+fn a_cold_node_adopts_a_head_after_a_release_removes_a_pipeline_and_its_dependent_job() {
+    let bucket = tempfile::tempdir().unwrap();
+    let issuer = tempfile::tempdir().unwrap();
+    let public = ok(&cf(issuer.path(), &["token", "keygen", "--out", "issuer.seed"]));
+    let assignment = format!("{}\n[[model]]\nid = \"assignment_view\"\nsql = \"SELECT id FROM assignment\"\nunique_key = [\"id\"]\n[model.contract]\nversion = \"1.0.0\"\ncolumns = [{{ name = \"id\", type = \"utf8\", nullable = false }}]\n[[job]]\nname = \"refresh-assignment-0\"\nkind = \"build\"\ntarget = \"assignment_view\"\nafter = \"assignment\"\n",
+        pipeline("assignment", "https://api.vendor.example/v1", "schedule = \"every 1h\"", "tables = [\"assignment\"]"));
+    let orders = pipeline("orders", "https://api.vendor.example/v1", "schedule = \"every 1h\"", "tables = [\"orders\"]");
+    let node = |declaration: &str| {
+        let dir = project(&format!("site_id = \"site-a\"\n\n{declaration}"));
+        std::fs::copy(issuer.path().join("issuer.seed"), dir.path().join(".contextful/issuer.seed")).unwrap();
+        std::fs::write(dir.path().join(".contextful/issuance.toml"),
+            "default_audience = \"contextful://research\"\nmax_lifetime_secs = 3600\n").unwrap();
+        std::fs::write(dir.path().join(".contextful/context/research/config.toml"), format!(
+            "[node]\nid = \"ingest-a\"\n[sync]\nendpoint = \"file://{}\"\nbucket = \"control-test\"\nprefix = \"team\"\ncoordination = \"cas\"\n",
+            bucket.path().display()
+        )).unwrap();
+        dir
+    };
+    let signed = |dir: &Path, verb: &str| {
+        let token = ok(&cf(dir, &["token", "mint", "--issuer-key", ".contextful/issuer.seed",
+            "--on-behalf-of", "user://dana@example.test", "--ttl", "600", "--action", "admin", "--table", "*"]));
+        Command::new(env!("CARGO_BIN_EXE_contextful"))
+            .args(["pipeline", verb, "--project", "research", "--issuer-key", ".contextful/issuer.seed",
+                "--public-key", &public, "--audience", "contextful://research"])
+            .current_dir(dir).env("CONTEXTFUL_TOKEN", token).env_remove("CONTEXTFUL_ISSUER_PUBKEY").output().unwrap()
+    };
+    // A container start: pull, import, apply, push on a node holding no local state.
+    let start = |declaration: &str| {
+        let dir = node(declaration);
+        ok(&cf(dir.path(), &["sync", "pull", "--project", "research"]));
+        ok(&signed(dir.path(), "import"));
+        let applied = ok(&signed(dir.path(), "apply"));
+        ok(&cf(dir.path(), &["sync", "push", "--project", "research"]));
+        (dir, applied)
+    };
+
+    let (_, first) = start(&format!("{orders}{assignment}"));
+    assert!(!first.contains("applied v2"), "{first}");
+    let (released, applied) = start(&orders);
+    assert!(applied.contains("- assignment") && applied.contains("- job:refresh-assignment-0") && applied.contains("applied v2"), "{applied}");
+    let head = std::fs::read_to_string(released.path().join(CONTROL).join("manifest@v2.toml")).unwrap();
+    assert!(!head.contains("assignment"), "{head}");
+
+    let (_, later) = start(&orders);
+    assert!(later.contains("unchanged at v2"), "{later}");
 }
 
 pub(crate) fn cf(dir: &Path, args: &[&str]) -> Output {
