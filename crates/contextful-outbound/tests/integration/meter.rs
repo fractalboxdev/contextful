@@ -398,3 +398,40 @@ fn a_refused_request_never_reaches_the_limiter() {
     limiter.finish();
     assert!(l.requests.lock().unwrap().is_empty(), "no acquire and no report");
 }
+
+/// Each limiter call is bounded at 5 s, and a reservation never sleeps: a denial returns at once as `RateLimited`,
+/// and the wait it names is the run's retry sleep.
+// spec: connector.meter.acquire-call@e94be5b0
+#[test]
+fn a_limiter_call_is_bounded_and_a_denial_returns_without_waiting() {
+    use contextful_outbound::limiter::LIMITER_TIMEOUT;
+    let _env = proxy_env();
+    assert_eq!(LIMITER_TIMEOUT, Duration::from_secs(5));
+    let clock = SetClock::new();
+
+    // A denial naming a 300 s wait answers at once; the wait is the caller's to perform.
+    let denying = Server::start(|r| match r.path() {
+        "/acquire" => Response::json(200, "{\"decision\":\"denied\",\"retry_after_secs\":300}"),
+        _ => Response::json(204, ""),
+    });
+    let v = vendor();
+    let started = Instant::now();
+    let f = get(&metered(&v, &limiter_at(&denying.url(""), 8, &clock)), &v, "/v1").unwrap_err();
+    assert_eq!((f.tag, f.retry_after_secs), (FailureTag::RateLimited, Some(300)), "{f}");
+    assert!(started.elapsed() < Duration::from_secs(2), "a denial slept {:?} inside the reservation", started.elapsed());
+
+    // A stalled limiter holds a request at most one bounded call, whatever longer timeout is asked for.
+    let stalled = Server::start(|_| {
+        std::thread::sleep(Duration::from_secs(20));
+        Response::json(200, "{\"permits\":1,\"ttl_secs\":10}")
+    });
+    let binding = LimiterBinding::parse("graph-app", &stalled.url(""), "secret://limiter-token", Some(1)).unwrap();
+    let limiter = Arc::new(Limiter::new(binding, resolver(&clock), RUN, Arc::new(clock.clone())).unwrap().with_timeout(Duration::from_secs(60)));
+    let v = vendor();
+    let started = Instant::now();
+    let f = get(&metered(&v, &limiter), &v, "/v1").unwrap_err();
+    let waited = started.elapsed();
+    assert_eq!(f.tag, FailureTag::Transient, "{f}");
+    assert!(waited >= Duration::from_secs(4) && waited < Duration::from_secs(10), "the limiter call took {waited:?}");
+    assert_eq!(vendor_hits(&v), 0);
+}

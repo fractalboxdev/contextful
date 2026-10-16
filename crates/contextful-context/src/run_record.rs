@@ -14,7 +14,7 @@ use contextful_core::coordinate::{Cas, Catalog, CursorRow, Lease, LeaseKey, Leas
 use contextful_core::run::backfill::ChunkRow;
 use contextful_core::run::failure::FailureTag;
 use contextful_core::run::own::{ExecutionOwner, OwnerScope};
-use contextful_core::run::record::{Phase, RunRow};
+use contextful_core::run::record::{HistoryPage, Phase, RunRow, Window};
 use contextful_core::run::{Failure, RunError};
 use contextful_core::store::bound_time::Bounds;
 use contextful_core::store::declare::TableDecl;
@@ -216,6 +216,9 @@ impl Catalog for RecordedCatalog {
     }
     fn runs(&self, pipeline_id: Option<&str>) -> std::result::Result<Vec<RunRow>, Failure> {
         self.inner.runs(pipeline_id)
+    }
+    fn history(&self, pipeline_id: Option<&str>, window: &Window) -> std::result::Result<HistoryPage, Failure> {
+        self.inner.history(pipeline_id, window)
     }
     fn last_run_start(&self, pipeline_id: &str) -> std::result::Result<Option<Instant>, Failure> {
         self.inner.last_run_start(pipeline_id)

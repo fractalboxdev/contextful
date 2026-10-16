@@ -938,6 +938,17 @@ fn mint(root: &Path, action: &str, table: &str) -> String {
     stdout(&run(root, &["token", "mint", "--issuer-key", ".contextful/issuer.seed", "--on-behalf-of", "user://dana@acme.example", "--zone", "on-prem:hq", "--action", action, "--table", table, "--ttl", "900"]))
 }
 
+/// The project's awakeable registry over its run directory, the one `serve` resolves through.
+fn registry(root: &Path) -> contextful_engine::awake::Registry {
+    let dir = root.join(".contextful/run/research");
+    contextful_engine::awake::Registry::open(&dir, contextful_engine::Journal::open(&dir))
+}
+
+/// A credential of `subject`, admitted for reads of every table.
+fn mint_for(root: &Path, subject: &str) -> String {
+    stdout(&run(root, &["token", "mint", "--issuer-key", ".contextful/issuer.seed", "--on-behalf-of", subject, "--zone", "on-prem:hq", "--action", "read", "--table", "*", "--ttl", "900"]))
+}
+
 /// A websocket upgrade to `path`, writing `frame` after the request; the answer's head and the bytes after it.
 fn upgrade(addr: &str, path: &str, token: Option<&str>, frame: &[u8]) -> (String, Vec<u8>) {
     let mut stream = TcpStream::connect(addr).unwrap();
@@ -1059,4 +1070,67 @@ fn the_served_run_stream_carries_the_snapshot_and_takes_no_stop() {
     let (status, _) = control(&addr, "POST", "/runs/live-a/stop", Some(&mint(root, "execute", "feed-a")), "");
     assert_eq!(status, 200);
     assert!(stop_mark(root, "live-a").is_some());
+}
+
+/// `POST /awake/:token` on the served face answers `200` with the recorded payload, `404` for an unknown token, `409`
+/// for a conflicting resolution and `410` past the deadline; `GET /awake/:token` reports state without resuming.
+// spec: run.suspend.resume-route@4da5f97c
+#[test]
+fn the_served_resume_route_answers_the_recorded_payload_and_each_refusal() {
+    use contextful_engine::awake::Awaited;
+    let (dir, public) = project();
+    let root = dir.path();
+    let pending = registry(root).suspend("x-approval", "approval", "2030-01-01T00:00:00Z", 3600).unwrap();
+    let expired = registry(root).suspend("x-approval", "late", "2020-01-01T00:00:00Z", 60).unwrap();
+    let dana = mint_for(root, "user://dana@acme.example");
+    let (_listener, addr) = serve(root, &["serve", "--http", "127.0.0.1:0", "--audience", AUD, "--max-in-flight", "2", "--project", "research", "--public-key", &public]);
+    let path = format!("/awake/{}", pending.token);
+    let payload = json!({ "approved": true }).to_string();
+
+    assert_eq!(control(&addr, "POST", &path, None, &payload).0, 401, "a resume admits a credential first");
+    let (status, state) = control(&addr, "GET", &path, Some(&dana), "");
+    assert_eq!((status, state["state"].as_str()), (200, Some("pending")), "{state}");
+    let (status, recorded) = control(&addr, "POST", &path, Some(&dana), &payload);
+    assert_eq!((status, recorded), (200, json!({ "approved": true })));
+    assert_eq!(control(&addr, "POST", &path, Some(&dana), &payload), (200, json!({ "approved": true })), "an identical repeat answers the recorded payload");
+    let (status, refused) = control(&addr, "POST", &path, Some(&dana), &json!({ "approved": false }).to_string());
+    assert_eq!((status, refused["error"]["identifier"].as_str()), (409, Some("AwakeableAlreadyResolved")), "{refused}");
+    let (status, state) = control(&addr, "GET", &path, Some(&dana), "");
+    assert_eq!((status, state["state"].as_str()), (200, Some("resolved")), "{state}");
+
+    let (status, refused) = control(&addr, "POST", "/awake/00000000000000000000000000000000", Some(&dana), &payload);
+    assert_eq!((status, refused["error"]["identifier"].as_str()), (404, Some("AwakeableUnknown")), "{refused}");
+    let (status, refused) = control(&addr, "POST", &format!("/awake/{}", expired.token), Some(&dana), &payload);
+    assert_eq!((status, refused["error"]["identifier"].as_str()), (410, Some("AwakeableTimedOut")), "{refused}");
+
+    let now = Instant::parse("2030-01-01T00:01:00Z").unwrap();
+    assert_eq!(registry(root).awaited("x-approval", &pending.token, now).unwrap(), Awaited::Resumed(payload.into_bytes()), "the payload is the awaited step's output");
+}
+
+/// An awakeable may bind a verified caller subject at mint; resolving it then takes the token and a credential for
+/// that subject, and any other caller answers as an unknown token.
+// spec: run.suspend.caller-binding@32d5c652
+#[test]
+fn a_bound_token_answers_unknown_to_every_other_subject() {
+    let (dir, public) = project();
+    let root = dir.path();
+    let bound = registry(root).suspend_for("x-approval", "approval", "2030-01-01T00:00:00Z", 3600, Some("user://dana@acme.example")).unwrap();
+    let dana = mint_for(root, "user://dana@acme.example");
+    let eve = mint_for(root, "user://eve@acme.example");
+    let (_listener, addr) = serve(root, &["serve", "--http", "127.0.0.1:0", "--audience", AUD, "--max-in-flight", "2", "--project", "research", "--public-key", &public]);
+    let path = format!("/awake/{}", bound.token);
+    let payload = json!({ "approved": true }).to_string();
+
+    let (_, unknown) = control(&addr, "POST", "/awake/00000000000000000000000000000000", Some(&eve), &payload);
+    for method in ["GET", "POST"] {
+        let (status, refused) = control(&addr, method, &path, Some(&eve), &payload);
+        assert_eq!((status, refused["error"]["identifier"].as_str()), (404, Some("AwakeableUnknown")), "{refused}");
+        assert_eq!(refused.to_string().replace(&bound.token, "T"), unknown.to_string().replace("00000000000000000000000000000000", "T"), "a bound token discloses nothing past an unknown one");
+    }
+    let now = Instant::parse("2030-01-01T00:01:00Z").unwrap();
+    assert_eq!(registry(root).state_as(&bound.token, Some("user://dana@acme.example"), now).unwrap().state, contextful_core::run::suspend::AwakeableState::Pending, "another subject changes nothing");
+    let (status, state) = control(&addr, "GET", &path, Some(&dana), "");
+    assert_eq!(status, 200, "{state}");
+    assert!(state.get("caller").is_none(), "the route never echoes the binding: {state}");
+    assert_eq!(control(&addr, "POST", &path, Some(&dana), &payload), (200, json!({ "approved": true })));
 }

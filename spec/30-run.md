@@ -256,7 +256,10 @@ Durable suspension on an external callback, its deadline and its resumption.
   *A-run*
 - `unknown-token` — A token with no row raises `AwakeableUnknown` and allocates no state.
   *P2*
-- `resume-route` — `POST /awake/:token` answers `200` with the recorded payload, `404` for {{run.suspend.unknown-token}}, `409` for {{run.suspend.conflicting-resolution}} and `410` for {{run.suspend.expired-token}}. `GET /awake/:token` reports state without resuming. Both authenticate before touching the registry.
+- `resume-route` — `POST /awake/:token` on the served face answers `200` with the recorded payload, `404` for {{run.suspend.unknown-token}}, `409` for {{run.suspend.conflicting-resolution}} and `410` for {{run.suspend.expired-token}}. `GET /awake/:token` reports state without resuming.
+  *A-run*
+- `resume-authenticates` — The resume route admits the request's credential before reading the registry, answering `401` without one, and passes the credential's verified `on_behalf_of` as the caller subject.
+  *A-run*
 - `caller-binding` — An awakeable may bind a verified caller subject at mint; resolving it then takes the token and a credential for that subject, and any other caller answers as {{run.suspend.unknown-token}}. An unbound token is its whole authority.
   *because a token leaked through a log otherwise resumes a run, and answering unknown discloses nothing to the wrong holder*
 - `payload-offload` — A payload above {{run.journal.inline-cutoff}} lands in the journal's blob store, and the pending row references it.
@@ -322,7 +325,10 @@ Classifying a failure, the single retry layer, and the delay before the next att
 - `attempt-counter` — An in-flight schedule's attempt counter persists on its step's journal row, so a crash mid-backoff resumes the remaining budget instead of restarting it.
   *because a budget restarting at each crash retries a failing vendor without bound*
 - `pressure-is-local` — Rate-limit pressure against one source paces only that source's runs.
-- `bound-hit-is-transient` — A connector striking one of its declared resource bounds answers `Transient`, and every bound decision is recorded on the run record.
+- `bound-hit-is-transient` — A connector striking {{connector.package.linear-memory}} or {{connector.package.call-deadline}} fails the attempt `Transient`, the failure naming the bound it struck.
+  *A-run*
+- `bound-hit-recorded` — The run record lists every bound hit with its step label, attempt and bound, a hit a later attempt recovered from included.
+  *A-run*
 
 ## own
 
@@ -411,7 +417,7 @@ Stopping work in flight at either grain, the one token every await observes, and
 - `catalog-channel` — A stop is written onto the run row as a requested-at instant, a scope and an optional reason; the catalog is the only channel.
 - `two-grains` — A `run`-scoped stop halts one run and the fire continues; a `pipeline`-scoped stop halts every in-flight run of the pipeline and every table or chunk the fire had left. An unrecognized stored scope reads as `run`.
 - `host-grain` — A `pipeline`-scoped stop on a host execution's run halts every in-flight run under the same host-declared scope and no run of another scope.
-- `one-token` — Each run holds one cancellation token that every await selects on: the pull, a retry sleep, an awakeable wait, a meter acquire and a subprocess wait.
+- `one-token` — Each run holds one cancellation token that every await selects on: the pull, a retry sleep, an awakeable wait and a subprocess wait. A meter reservation holds no wait of its own, under {{connector.meter.acquire-call}}.
   *because a stop observed only at the pull leaves sleeps and child processes running after the record reads canceled*
 - `poll-interval` — The token is fed by one catalog read before the run's first await and then one every 500 ms, the cancellation arm evaluated ahead of the work arm.
 - `engine-keeper` — One keeper per engine renews every registered execution's owner lease and feeds its token, sleeping until the earliest deadline; opening an execution registers it, and close or drop deregisters it.
@@ -486,7 +492,8 @@ The durable run record, its statuses, its owner lease and windowed history over 
   *because it is interpolated into run directories and request-ledger filenames*
 - `site-id-unresolved` — A site id comes from the manifest's `site_id`, or the variable its `site_id_env` names, and a run's `--site-id` or `--site-id-env` replaces that declaration; no declaration, both keys in one place, or an unset variable raises `SiteIdUnresolved` at startup.
   *P3*
-- `history-window` — History is read through a window, an inclusive start-instant lower bound plus a row ceiling, both applied in the storage adapter's `WHERE` clause, newest first.
+- `history-window` — History is read through a window, an inclusive start-instant lower bound plus a row ceiling, newest first; a SQL catalog applies the bound in its `WHERE` over an indexed start column and the ceiling as its `LIMIT`.
+  *because filtering after the read scans every run a pipeline ever recorded, so a describe call grows with history rather than with its window*
 - `describe-window` — The describe surface answers with 5 rows by default and clamps a caller's ceiling at 500 rows.
 - `bound-spelling` — A window lower bound is `YYYY-MM-DD` or a UTC RFC3339 instant ending `Z`; any other spelling raises `HistoryBoundSpelling` at every caller-facing surface.
   *because a bound read under a guessed zone silently moves the window*

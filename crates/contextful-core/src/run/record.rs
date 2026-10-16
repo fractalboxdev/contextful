@@ -194,6 +194,20 @@ pub struct RunRow {
     /// (`connector.record.provider-attribution`).
     #[serde(default, skip_serializing_if = "std::collections::BTreeMap::is_empty")]
     pub credential_providers: std::collections::BTreeMap<String, String>,
+    /// Every declared resource bound a connector struck, in the order struck, a hit a later
+    /// attempt recovered from included; a row recorded without the list decodes as empty
+    /// (`run.retry.bound-hit-recorded`).
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub bound_hits: Vec<BoundHit>,
+}
+
+/// One bound hit: the step whose attempt struck it, that attempt, and the bound
+/// (`run.retry.bound-hit-recorded`).
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct BoundHit {
+    pub step: String,
+    pub attempt: u32,
+    pub bound: String,
 }
 
 /// The input a store-driven run read: the resolved `as_of`, the snapshot id per table the

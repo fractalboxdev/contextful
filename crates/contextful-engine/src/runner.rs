@@ -19,7 +19,7 @@ use contextful_core::run::ports::{
     AwakeableStore, BlobStore, Cancellation, Commit, Destination, JournalStore, Landed, OpenExecution, Part, Pull, PullRequest, Shape, Source, Stage, Types, Unshaped,
     STAGED_BYTES_PER_RUN,
 };
-use contextful_core::run::record::{select_history, HistoryPage, RunRow, RunStatus, Window, OWNER_LEASE_TTL_SECS};
+use contextful_core::run::record::{HistoryPage, RunRow, RunStatus, Window, OWNER_LEASE_TTL_SECS};
 use contextful_core::run::{Failure, FailureTag, RunError};
 use contextful_core::store::reconcile::ColumnType;
 use contextful_core::topology::TopologyError;
@@ -696,7 +696,7 @@ impl<J: JournalStore, B: BlobStore> Engine<J, B> {
 
     /// A pipeline's history through `window`, newest first.
     pub fn history(&self, pipeline_id: Option<&str>, window: &Window) -> Result<HistoryPage, Failure> {
-        Ok(select_history(self.catalog.runs(pipeline_id)?, window))
+        self.catalog.history(pipeline_id, window)
     }
 }
 

@@ -152,6 +152,10 @@ impl Catalog for Chunks {
     fn runs(&self, _: Option<&str>) -> Result<Vec<RunRow>, Failure> {
         unimplemented!()
     }
+    fn history(&self, pipeline_id: Option<&str>, window: &contextful_core::run::record::Window) -> Result<contextful_core::run::record::HistoryPage, Failure> {
+        let run = row(&format!("windowed-{}", pipeline_id.unwrap_or("all")), RunStatus::Success, Phase::Commit, "2030-01-01T00:00:00Z");
+        Ok(contextful_core::run::record::HistoryPage { window: window.clone(), runs: vec![run], truncated: true })
+    }
     fn update_run(&self, _: &str, _: &mut dyn FnMut(&mut RunRow) -> Result<(), RunError>) -> Result<Option<Result<RunRow, RunError>>, Failure> {
         unimplemented!()
     }
@@ -189,6 +193,17 @@ fn the_recorded_catalog_reads_the_wrapped_catalogs_last_retirement() {
     let recorded = RecordedCatalog::new(Arc::new(Chunks::default()), f.store.clone(), Box::new(|_| Ok(NodeId::parse("ingest-a").unwrap())));
     let scope = OwnerScope::table("feed", "filings");
     assert_eq!(recorded.retired_at(&scope).unwrap(), Some(format!("retired under {scope}")));
+}
+
+/// The recording catalog reads a history window through the catalog it wraps, so the window reaches that
+/// catalog's `WHERE` rather than a filter over every run.
+#[test]
+fn the_recorded_catalog_reads_history_through_the_wrapped_catalogs_window() {
+    let f = Fixture::new();
+    let recorded = RecordedCatalog::new(Arc::new(Chunks::default()), f.store.clone(), Box::new(|_| Ok(NodeId::parse("ingest-a").unwrap())));
+    let window = contextful_core::run::record::Window { since: Some(at("2030-01-01T00:00:00Z")), ceiling: 1 };
+    let page = recorded.history(Some("feed"), &window).unwrap();
+    assert_eq!((page.runs[0].run_id.as_str(), page.truncated, page.window), ("windowed-feed", true, window));
 }
 
 /// A producer landing into the run record still refuses; only the engine appends to it.

@@ -208,6 +208,8 @@ Reservation against a shared vendor quota and the one pre-send hook it implement
   *because one call issues any number of requests for paging, retries and token refresh*
 - `permit-batch` — An acquire may grant a batch of permits under a short TTL. Each request spends one, and the next report surrenders the unspent.
 - `acquire` — Acquire is an authenticated POST of quota, class and permit count, answered granted with permits and a TTL, or denied with a retry-after. A bare `429` with `Retry-After`, and a zero-permit grant, read as denials.
+- `acquire-call` — Each limiter call is bounded at 5 s, and a reservation never sleeps: a denial returns at once as `RateLimited`, and the wait it names is the run's retry sleep.
+  *A-run*
 - `unreadable-answer` — A limiter response the engine cannot read raises `ConnectorLimiterUnreadable` and grants nothing.
   *A-connector*
 - `denial-ceiling` — A limiter wait, whether a retry-after or a zero-permit grant's TTL, reads as at most the ceiling of {{run.retry.retry-after}}.

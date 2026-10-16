@@ -71,11 +71,20 @@ pub struct Failure {
     /// A refusal whose check is pure over static input (`run.retry.deterministic-verdict`).
     #[serde(default, skip_serializing_if = "std::ops::Not::not")]
     pub deterministic: bool,
+    /// The declared resource bound a connector struck, [`LINEAR_MEMORY`] or
+    /// [`CALL_DEADLINE`] (`run.retry.bound-hit-is-transient`).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub bound: Option<String>,
 }
+
+/// The bound a guest strikes on its linear-memory cap (`connector.package.linear-memory`).
+pub const LINEAR_MEMORY: &str = "linear-memory";
+/// The bound a guest strikes past its call deadline (`connector.package.call-deadline`).
+pub const CALL_DEADLINE: &str = "call-deadline";
 
 impl Failure {
     pub fn new(tag: FailureTag, message: impl Into<String>) -> Failure {
-        Failure { tag, message: message.into(), retry_after_secs: None, deterministic: false }
+        Failure { tag, message: message.into(), retry_after_secs: None, deterministic: false, bound: None }
     }
 
     /// A refusal decided by a pure check over static input.
@@ -89,6 +98,12 @@ impl Failure {
 
     pub fn with_retry_after(mut self, secs: u64) -> Failure {
         self.retry_after_secs = Some(secs);
+        self
+    }
+
+    /// This failure as a hit on the declared resource bound `bound`.
+    pub fn with_bound(mut self, bound: &str) -> Failure {
+        self.bound = Some(bound.to_string());
         self
     }
 }

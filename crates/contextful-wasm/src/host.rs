@@ -16,6 +16,7 @@ use contextful_core::connector::attach::Allowlist;
 use contextful_core::connector::manifest::Declared;
 use contextful_core::connector::package::{guest_config, Artifact, Digest, PinRequirement};
 use contextful_core::connector::ConnectorError;
+use contextful_core::run::failure::{CALL_DEADLINE, LINEAR_MEMORY};
 use contextful_core::run::{Failure, FailureTag};
 use contextful_outbound::client::HeaderValue;
 use std::future::Future;
@@ -149,6 +150,22 @@ pub struct LogLine {
     pub message: String,
 }
 
+/// A growth refused at the connector's linear-memory cap: the bound a trap carrying it
+/// struck (`run.retry.bound-hit-is-transient`).
+#[derive(Debug)]
+struct MemoryCapStruck {
+    total: usize,
+    cap: usize,
+}
+
+impl std::fmt::Display for MemoryCapStruck {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "the connector's linear memory would reach {} bytes, over its {} byte cap", self.total, self.cap)
+    }
+}
+
+impl std::error::Error for MemoryCapStruck {}
+
 /// The store's resource budget. Linear memory is one budget across every memory the
 /// component instantiates (`connector.package.linear-memory`), so a component splitting
 /// its heap over several memories or core instances gets no more than one would.
@@ -171,7 +188,7 @@ impl ResourceLimiter for Budget {
         let grow = desired.saturating_sub(current);
         let total = self.memory_used.saturating_add(grow);
         if total > self.memory_cap {
-            wasmtime::bail!("the connector's linear memory would reach {total} bytes, over its {} byte cap", self.memory_cap);
+            return Err(wasmtime::Error::new(MemoryCapStruck { total, cap: self.memory_cap }));
         }
         self.memory_used = total;
         self.memory_pending = grow;
@@ -669,14 +686,17 @@ fn bounded<T>(deadline: Duration, during: &str, call: impl Future<Output = wasmt
 }
 
 fn overran(during: &str) -> Failure {
-    Failure::new(FailureTag::Transient, format!("the guest ran past its call deadline during {during}"))
+    Failure::new(FailureTag::Transient, format!("the guest ran past its call deadline during {during}")).with_bound(CALL_DEADLINE)
 }
 
-/// A trap is a bound hit or a guest fault, and either is transient
-/// (`run.retry.bound-hit-is-transient`).
+/// A trap is a bound hit or a guest fault, and either is transient; a bound hit names the
+/// bound it struck (`run.retry.bound-hit-is-transient`).
 fn trapped(e: wasmtime::Error, during: &str) -> Failure {
     if matches!(e.downcast_ref::<Trap>(), Some(Trap::Interrupt)) {
         return overran(during);
+    }
+    if let Some(struck) = e.chain().find_map(|c| c.downcast_ref::<MemoryCapStruck>()) {
+        return Failure::new(FailureTag::Transient, format!("the guest trapped: {struck} during {during}")).with_bound(LINEAR_MEMORY);
     }
     let why = match e.downcast_ref::<Trap>() {
         Some(other) => format!("{other}"),

@@ -569,3 +569,69 @@ fn scheduled_host_starts_survive_restart_without_output_runs() {
     assert!(plan.iter().any(|step| step.contains("MULTI-INDEX OR")), "{plan:?}");
     assert!(!plan.iter().any(|step| step.contains("SCAN")), "{plan:?}");
 }
+
+/// History reads through a window, newest first; the catalog applies the bound in its `WHERE` over an indexed
+/// start column and the ceiling as its `LIMIT`, and a catalog predating the column gains it filled.
+// spec: run.record.history-window@75b26b5a
+#[test]
+fn history_selects_its_window_over_an_indexed_start_column() {
+    use contextful_core::run::record::Window as History;
+    let dir = tempfile::tempdir().unwrap();
+    let path = dir.path().join(MACHINE_CATALOG_FILE);
+    // A catalog written before the start column: its run rows carry the instant in JSON alone.
+    {
+        let old = rusqlite::Connection::open(&path).unwrap();
+        old.execute_batch("CREATE TABLE run (run_id TEXT PRIMARY KEY, pipeline_id TEXT NOT NULL, row TEXT NOT NULL);").unwrap();
+        let mut early = run_row("run-0", "feed", RunStatus::Success);
+        early.started_at = at("2029-12-31T00:00:00Z");
+        old.execute("INSERT INTO run (run_id, pipeline_id, row) VALUES (?1, ?2, ?3)", rusqlite::params![early.run_id, early.pipeline_id, serde_json::to_string(&early).unwrap()]).unwrap();
+    }
+    let clock = SetClock::new();
+    let c = MachineCatalog::open(&path, Arc::new(clock)).unwrap();
+    for (id, pipeline, start) in [
+        ("run-1", "feed", "2030-01-01T00:00:00Z"),
+        ("run-2", "feed", "2030-01-02T00:00:00.5Z"),
+        ("run-3", "feed", "2030-01-03T00:00:00Z"),
+        ("run-4", "other", "2030-01-04T00:00:00Z"),
+        ("run-5", "feed", "2030-01-03T00:00:00Z"),
+    ] {
+        let mut r = run_row(id, pipeline, RunStatus::Success);
+        r.started_at = at(start);
+        c.put_run(&r).unwrap();
+    }
+    let ids = |page: &contextful_core::run::record::HistoryPage| page.runs.iter().map(|r| r.run_id.clone()).collect::<Vec<_>>();
+
+    let page = c.history(Some("feed"), &History { since: Some(at("2030-01-01T00:00:00Z")), ceiling: 2 }).unwrap();
+    assert_eq!((ids(&page), page.truncated), (vec!["run-5".to_string(), "run-3".into()], true), "newest first, ties by run id");
+    let page = c.history(Some("feed"), &History { since: Some(at("2030-01-02T00:00:00.5Z")), ceiling: 10 }).unwrap();
+    assert_eq!((ids(&page), page.truncated), (vec!["run-5".to_string(), "run-3".into(), "run-2".into()], false), "the bound is inclusive to the nanosecond");
+    let page = c.history(Some("feed"), &History { since: None, ceiling: 10 }).unwrap();
+    assert_eq!(ids(&page).last().map(String::as_str), Some("run-0"), "a row predating the column is filled and read");
+    let page = c.history(None, &History { since: Some(at("2030-01-03T00:00:00Z")), ceiling: 10 }).unwrap();
+    assert_eq!(ids(&page), ["run-4", "run-5", "run-3"]);
+    let page = c.history(Some("feed"), &History { since: Some(at("2031-01-01T00:00:00Z")), ceiling: 10 }).unwrap();
+    assert!(page.runs.is_empty() && !page.truncated);
+    drop(c);
+
+    // A binary predating the column writes a row after the migration: its start stays NULL until the next open.
+    {
+        let older = rusqlite::Connection::open(&path).unwrap();
+        let mut late = run_row("run-6", "feed", RunStatus::Success);
+        late.started_at = at("2030-01-05T00:00:00Z");
+        older.execute("INSERT INTO run (run_id, pipeline_id, row) VALUES (?1, ?2, ?3)", rusqlite::params![late.run_id, late.pipeline_id, serde_json::to_string(&late).unwrap()]).unwrap();
+    }
+    let c = MachineCatalog::open(&path, Arc::new(SetClock::new())).unwrap();
+    let page = c.history(Some("feed"), &History { since: Some(at("2030-01-04T00:00:00Z")), ceiling: 10 }).unwrap();
+    assert_eq!(ids(&page), ["run-6"], "a row written without the column is filled on the next open");
+    drop(c);
+
+    let db = rusqlite::Connection::open(&path).unwrap();
+    let plan: Vec<String> = db
+        .prepare("EXPLAIN QUERY PLAN SELECT row FROM run WHERE pipeline_id = 'feed' AND started_ns >= 0 ORDER BY started_ns DESC, run_id DESC LIMIT 3")
+        .unwrap()
+        .query_map([], |r| r.get::<_, String>(3))
+        .unwrap()
+        .collect::<Result<_, _>>()
+        .unwrap();
+    assert!(plan.iter().any(|step| step.contains("USING INDEX run_by_pipeline_start")), "{plan:?}");
+}

@@ -692,6 +692,56 @@ pub fn run(cmd: RunCmd) -> Result<()> {
     }
 }
 
+/// What the served resume route answers: the recorded payload of a resolution, or the
+/// state of an awakeable read without resuming it.
+pub(crate) enum Awoken {
+    Payload(Vec<u8>),
+    State(serde_json::Value),
+}
+
+/// `POST /awake/:token` with `payload`, or `GET` with none, for `caller`, the subject the
+/// admitted credential verifies (`run.suspend.resume-route`, `run.suspend.caller-binding`):
+/// `404` for an unknown token or one bound to another subject, `409` for a conflicting
+/// resolution and `410` past the deadline.
+pub(crate) fn served_awake(project: &ProjectArgs, caller: Option<&str>, token: &str, payload: Option<&[u8]>) -> Result<Awoken, (u16, serde_json::Value)> {
+    let w = wire(project).map_err(|e| awake_refusal(500, "", format!("{e:#}")))?;
+    let now = w.clock.now();
+    match payload {
+        Some(bytes) => w.registry.resolve_as(token, caller, bytes, now).map(Awoken::Payload).map_err(registry_refusal),
+        None => {
+            let row = w.registry.state_as(token, caller, now).map_err(registry_refusal)?;
+            // The caller binding is the registry's to compare; the route never echoes it.
+            let mut state = serde_json::to_value(&row).map_err(|e| awake_refusal(500, "", e.to_string()))?;
+            if let Some(fields) = state.as_object_mut() {
+                fields.remove("caller");
+            }
+            Ok(Awoken::State(state))
+        }
+    }
+}
+
+/// A registry refusal as the resume route's status and error body.
+fn registry_refusal(e: AwakeError) -> (u16, serde_json::Value) {
+    use contextful_core::run::RunError;
+    match e {
+        AwakeError::Refused(r) => {
+            let status = match r {
+                RunError::AwakeableUnknown(_) => 404,
+                RunError::AwakeableAlreadyResolved(_) => 409,
+                RunError::AwakeableTimedOut(_) => 410,
+                _ => 500,
+            };
+            let text = r.to_string();
+            awake_refusal(status, text.split_once(':').map_or("", |(id, _)| id).trim(), text.clone())
+        }
+        AwakeError::Storage(f) => awake_refusal(500, "", f.to_string()),
+    }
+}
+
+fn awake_refusal(status: u16, identifier: &str, message: String) -> (u16, serde_json::Value) {
+    (status, serde_json::json!({ "error": { "http": status, "identifier": identifier, "message": message } }))
+}
+
 /// Write a stop onto `run_id`, authorized against the pipeline its run record holds when
 /// `grants` accompany it; the local owner presenting none stops as the catalog's owner
 /// (`run.cancel.stop-unauthorized`, `run.cancel.authority-from-the-record`).

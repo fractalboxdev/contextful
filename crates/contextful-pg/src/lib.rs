@@ -10,7 +10,7 @@
 
 use contextful_core::coordinate::{Cas, Catalog, CursorRow, Lease, LeaseKey, LeaseRow};
 use contextful_core::run::own::{ExecutionOwner, OwnerScope};
-use contextful_core::run::record::RunRow;
+use contextful_core::run::record::{select_history, HistoryPage, RunRow, Window};
 use contextful_core::run::{Failure, FailureTag, RunError};
 use contextful_core::store::StoreError;
 use contextful_core::time::Instant;
@@ -52,6 +52,8 @@ CREATE TABLE IF NOT EXISTS contextful_run (
     row         TEXT NOT NULL
 );
 CREATE INDEX IF NOT EXISTS contextful_run_by_pipeline ON contextful_run (pipeline_id);
+CREATE INDEX IF NOT EXISTS contextful_run_by_pipeline_start ON contextful_run (pipeline_id, started_ns);
+CREATE INDEX IF NOT EXISTS contextful_run_by_start ON contextful_run (started_ns);
 CREATE INDEX IF NOT EXISTS contextful_run_by_host_scope ON contextful_run (host_scope) WHERE host_scope IS NOT NULL;
 ";
 
@@ -437,6 +439,28 @@ impl Catalog for PgCatalog {
             .map_err(|e| fail(&e))?;
             rows.iter().map(|r| from_text(r.get::<_, &str>(0), fail)).collect()
         })
+    }
+
+    fn history(&self, pipeline_id: Option<&str>, window: &Window) -> Result<HistoryPage, Failure> {
+        let since = window.since.map_or(i64::MIN, |s| {
+            let ns = s.unix_nanos();
+            i64::try_from(ns).unwrap_or(if ns < 0 { i64::MIN } else { i64::MAX })
+        });
+        // One row past the ceiling tells a truncated window from a full one
+        // (`run.record.history-window`).
+        let limit = i64::try_from(window.ceiling.saturating_add(1)).unwrap_or(i64::MAX);
+        let rows = self.with(|tx, fail| {
+            let rows = match pipeline_id {
+                Some(p) => tx.query(
+                    "SELECT row FROM contextful_run WHERE pipeline_id = $1 AND started_ns >= $2 ORDER BY started_ns DESC, run_id COLLATE \"C\" DESC LIMIT $3",
+                    &[&p, &since, &limit],
+                ),
+                None => tx.query("SELECT row FROM contextful_run WHERE started_ns >= $1 ORDER BY started_ns DESC, run_id COLLATE \"C\" DESC LIMIT $2", &[&since, &limit]),
+            }
+            .map_err(|e| fail(&e))?;
+            rows.iter().map(|r| from_text::<RunRow>(r.get::<_, &str>(0), fail)).collect::<Result<Vec<_>, _>>()
+        })?;
+        Ok(select_history(rows, window))
     }
 
     fn last_run_start(&self, pipeline_id: &str) -> Result<Option<Instant>, Failure> {

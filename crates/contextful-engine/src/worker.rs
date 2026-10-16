@@ -111,7 +111,7 @@ impl Relay {
 
     /// Read and verify the signed fields of a message on `token`'s route. The signature
     /// verifies before the token is looked up, so an unauthenticated caller learns nothing
-    /// of which tokens the relay holds (`run.suspend.resume-route`).
+    /// of which tokens the relay holds (`surface.dispatch.callback-rejected`).
     fn verified(&self, state: &State, token: &str, header: &dyn Fn(&str) -> Option<String>) -> Result<Signed, RelayRefusal> {
         let unsigned = |why: &str| RelayRefusal::Refused(SurfaceError::DispatchCallbackRejected(format!("a message on `/awake/{token}`: {why}")));
         let (signed, signature) = Signed::from_headers(header).ok_or_else(|| unsigned("a signed field is absent or malformed"))?;

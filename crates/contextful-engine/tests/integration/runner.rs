@@ -1112,3 +1112,27 @@ fn a_receive_batch_key_resumes_its_own_owner_and_no_other_keys() {
     assert_eq!(firsts, 1, "the recorded first pull resolves for the resend without a call");
     assert_eq!(ids(sink.commits.last().unwrap()), [vec!["d1", "d2"], vec!["d3"], vec!["d4"]]);
 }
+
+/// The run record lists every bound hit with its step label, attempt and bound, a hit a later attempt recovered
+/// from included.
+// spec: run.retry.bound-hit-recorded@a6e7216b
+#[test]
+fn every_bound_hit_lands_on_the_run_record_even_when_a_retry_recovers() {
+    use contextful_core::run::failure::{CALL_DEADLINE, LINEAR_MEMORY};
+    let rig = Rig::new();
+    let quick = plan("kind = \"opaque-token\"", "[retry]\nbackoff = \"fixed\"\nbase_ms = 1\njitter_ms = 0\nattempts = 5");
+    let mut source = Pages::new(three_pages());
+    source.fail = vec![
+        Failure::new(FailureTag::Transient, "the guest trapped").with_bound(LINEAR_MEMORY),
+        Failure::new(FailureTag::Transient, "reset"),
+        Failure::new(FailureTag::Transient, "the guest ran past its call deadline").with_bound(CALL_DEADLINE),
+    ];
+    let row = rig.run(&quick, "1.0.0", "run-1", &mut source, &mut Sink::default()).unwrap();
+    assert_eq!(row.status, RunStatus::Success);
+    let hits: Vec<(u32, &str)> = row.bound_hits.iter().map(|h| (h.attempt, h.bound.as_str())).collect();
+    assert_eq!(hits, [(1, LINEAR_MEMORY), (3, CALL_DEADLINE)], "a hit a later attempt recovered from stays listed; an unbounded failure adds none");
+    assert_eq!(row.bound_hits.len(), 2);
+    assert!(!row.bound_hits[0].step.is_empty());
+    assert_eq!(row.bound_hits[0].step, row.bound_hits[1].step, "both hits struck the one pull step");
+    assert_eq!(rig.catalog().run("run-1").unwrap().unwrap().bound_hits, row.bound_hits);
+}
