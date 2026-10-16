@@ -494,10 +494,19 @@ impl<'de> Deserialize<'de> for IndexEntry {
 }
 
 impl VectorEntry {
-    /// The bytes of stored vectors the graph holds, the figure the read path's size cap
-    /// compares (`read.retrieve.sidecar-size-cap`).
+    /// The bytes of stored vectors the graph holds.
     pub fn stored_vector_bytes(&self) -> u64 {
         self.row_count.saturating_mul(u64::from(self.dim)).saturating_mul(4)
+    }
+
+    /// The resident bytes the read path's size cap compares: the probe marks, one per node,
+    /// plus, for a sealed graph, its sealed graph file, which bounds the decrypted bytes that
+    /// open whole into process memory; a mapped plaintext graph adds nothing
+    /// (`read.retrieve.sidecar-size-cap`).
+    pub fn resident_bytes(&self, sealed_graph_file_bytes: Option<u64>) -> u64 {
+        self.row_count
+            .saturating_mul(crate::read::rank::SIDECAR_NODE_MARK_BYTES)
+            .saturating_add(sealed_graph_file_bytes.unwrap_or(0))
     }
 }
 

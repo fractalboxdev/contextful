@@ -563,24 +563,151 @@ fn every_failed_precondition_falls_back_to_the_exact_scan() {
     assert!(r.face.sidecar_candidates(&s, "lab/indexed", &q, 10).is_ok());
 }
 
-/// A sidecar holding more than 64 MiB of stored vectors stays unloaded and the arm takes the exact scan.
-// spec: read.retrieve.sidecar-size-cap@8e042b8e
+/// A vector sidecar past 64 MiB of resident bytes stays unloaded and the arm takes the exact scan: a sealed sidecar's stored vectors, or a mapped plaintext one's 4 B probe mark per graph node.
+// spec: read.retrieve.sidecar-size-cap@6eca0df3
 #[test]
-fn a_sidecar_past_64_mib_of_vectors_stays_unloaded() {
-    use contextful_context::vector::Fallback;
-    use contextful_core::read::rank::{sidecar_over_cap, SIDECAR_SIZE_CAP_BYTES};
+fn a_sidecar_past_64_mib_of_resident_bytes_stays_unloaded() {
+    use arrow_array::builder::{FixedSizeListBuilder, Float32Builder};
+    use arrow_array::{ArrayRef, RecordBatch, StringArray};
+    use contextful_context::vector::{build, graph::MAGIC, Fallback, Sealing, VectorSidecar, GRAPH_FILE};
+    use contextful_core::read::rank::{sidecar_over_cap, SIDECAR_NODE_MARK_BYTES, SIDECAR_SIZE_CAP_BYTES};
+    use contextful_core::store::declare::TableDecl;
+    use contextful_core::store::encrypt::{FileCipher, SealError};
+    use contextful_core::store::index::{IndexEntry, VectorEntry};
+    use contextful_core::store::lay_out::{SnapshotId, MANIFEST_FILE};
+    use contextful_core::time::Instant;
+    use std::path::Path;
+    use std::sync::Arc;
+
     assert_eq!(SIDECAR_SIZE_CAP_BYTES, 64 * 1024 * 1024);
+    assert_eq!(SIDECAR_NODE_MARK_BYTES, 4);
     assert!(!sidecar_over_cap(SIDECAR_SIZE_CAP_BYTES) && sidecar_over_cap(SIDECAR_SIZE_CAP_BYTES + 1));
 
+    struct Xor;
+    impl FileCipher for Xor {
+        fn key_version(&self) -> u32 {
+            7
+        }
+        fn seal(&self, plaintext: &[u8]) -> Result<Vec<u8>, SealError> {
+            Ok(plaintext.iter().map(|b| b ^ 0x5a).collect())
+        }
+        fn open(&self, sealed: &[u8]) -> Result<Vec<u8>, SealError> {
+            self.seal(sealed)
+        }
+    }
+
+    // A two-row sidecar over 1024-wide vectors supplies the entry the larger graph restamps.
+    const DIM: usize = 1024;
+    let mut vectors = FixedSizeListBuilder::new(Float32Builder::new(), DIM as i32);
+    for i in 0..2 {
+        let mut v = vec![0.0f32; DIM];
+        v[i] = 1.0;
+        vectors.values().append_slice(&v);
+        vectors.append(true);
+    }
+    let rows = RecordBatch::try_from_iter([
+        ("passage_id", Arc::new(StringArray::from(vec!["seed-0", "seed-1"])) as ArrayRef),
+        ("embedding", Arc::new(vectors.finish()) as ArrayRef),
+    ])
+    .unwrap();
+    let decl = TableDecl::parse_pipeline(&format!(
+        "[[pipeline.tables]]\nname = \"passages\"\nprimary_key = [\"passage_id\"]\n[[pipeline.tables.indexes]]\nkind = \"vector\"\ncolumn = \"embedding\"\nmodel = \"e5\"\ndim = {DIM}\n"
+    ))
+    .unwrap()
+    .remove(0);
+    let id = SnapshotId::next(Instant::parse("2030-01-01T00:00:00Z").unwrap(), None);
+    let plain = tempfile::tempdir().unwrap();
+    let mut entry = build(plain.path(), &id, &rows, &decl, &decl.indexes()[0], &Sealing::Plaintext).unwrap();
+
+    // One row past 64 MiB of stored vectors: every node holds e0 save the last, e1, and
+    // layer 0 links each node to its two ring neighbours.
+    let count = (SIDECAR_SIZE_CAP_BYTES as usize) / (DIM * 4) + 1;
+    let m = entry.m as usize;
+    let mut graph = MAGIC.to_vec();
+    for v in [DIM, count, m, 0, 0, 0] {
+        graph.extend((v as u32).to_le_bytes());
+    }
+    for n in 0..count {
+        let hot = if n == count - 1 { 1 } else { 0 };
+        for d in 0..DIM {
+            graph.extend((if d == hot { 1.0f32 } else { 0.0 }).to_le_bytes());
+        }
+    }
+    graph.resize(graph.len() + count.next_multiple_of(4), 0);
+    for n in 0..count {
+        let mut slots = vec![2u32, ((n + 1) % count) as u32, ((n + count - 1) % count) as u32];
+        slots.resize(1 + 2 * m, 0);
+        slots.iter().for_each(|s| graph.extend(s.to_le_bytes()));
+    }
+    let names: Vec<String> = (0..count).map(|n| format!("row-{n}")).collect();
+    let mut offset = 0u64;
+    graph.extend(offset.to_le_bytes());
+    for name in &names {
+        offset += name.len() as u64;
+        graph.extend(offset.to_le_bytes());
+    }
+    names.iter().for_each(|n| graph.extend(n.as_bytes()));
+    entry.row_count = count as u64;
+    assert!(entry.stored_vector_bytes() > SIDECAR_SIZE_CAP_BYTES);
+    assert_eq!(entry.resident_bytes(None), count as u64 * SIDECAR_NODE_MARK_BYTES);
+
+    let lay = |root: &Path, entry: &VectorEntry, sealing: &Sealing<'_>| {
+        let dir = root.join(&entry.path);
+        let seal = |b: &[u8]| match sealing {
+            Sealing::Plaintext => b.to_vec(),
+            Sealing::Sealed(c) => c.seal(b).unwrap(),
+        };
+        std::fs::create_dir_all(&dir).unwrap();
+        std::fs::write(dir.join(GRAPH_FILE), seal(&graph)).unwrap();
+        std::fs::write(dir.join(MANIFEST_FILE), seal(&serde_json::to_vec_pretty(entry).unwrap())).unwrap();
+    };
+    let mut query = vec![0.0f32; DIM];
+    query[1] = 1.0;
+
+    // Plaintext: mapped, counted at its probe marks, and answering past the stored-vector cap.
+    lay(plain.path(), &entry, &Sealing::Plaintext);
+    let sidecar = VectorSidecar::open(plain.path(), "passages", &IndexEntry::Vector(entry.clone()), &Sealing::Plaintext).unwrap();
+    assert!(sidecar.is_mapped());
+    let found = sidecar.probe(&query, 1).unwrap();
+    assert_eq!(found[0].id, format!("row-{}", count - 1));
+    assert!((found[0].similarity - 1.0).abs() < 1e-6);
+
+    // Sealed: a graph decrypts whole into memory, so its sealed file counts beside its
+    // marks. Stored vectors of 4 MiB fit; a file one byte past the rest of the bound does
+    // not. The file is sparse zeros that open as no graph, so OverCap proves it is unread.
+    let sealed = tempfile::tempdir().unwrap();
+    let mut sealed_entry = entry.clone();
+    sealed_entry.key_version = Xor.key_version();
+    sealed_entry.row_count = 1024;
+    assert!(sealed_entry.stored_vector_bytes() < SIDECAR_SIZE_CAP_BYTES / 8);
+    let sealed_dir = sealed.path().join(&sealed_entry.path);
+    std::fs::create_dir_all(&sealed_dir).unwrap();
+    std::fs::write(sealed_dir.join(MANIFEST_FILE), Xor.seal(&serde_json::to_vec_pretty(&sealed_entry).unwrap()).unwrap()).unwrap();
+    let file_len = SIDECAR_SIZE_CAP_BYTES - sealed_entry.row_count * SIDECAR_NODE_MARK_BYTES + 1;
+    std::fs::File::create(sealed_dir.join(GRAPH_FILE)).unwrap().set_len(file_len).unwrap();
+    assert_eq!(sealed_entry.resident_bytes(Some(file_len)), SIDECAR_SIZE_CAP_BYTES + 1);
+    let opened = VectorSidecar::open(sealed.path(), "passages", &IndexEntry::Vector(sealed_entry.clone()), &Sealing::Sealed(&Xor));
+    assert_eq!(opened.err(), Some(Fallback::OverCap));
+    // A sealed sidecar with no graph file has nothing to measure and is unreadable.
+    std::fs::remove_file(sealed_dir.join(GRAPH_FILE)).unwrap();
+    let opened = VectorSidecar::open(sealed.path(), "passages", &IndexEntry::Vector(sealed_entry), &Sealing::Sealed(&Xor));
+    assert_eq!(opened.err(), Some(Fallback::Unreadable));
+
+    // A mapped graph one node past the resident bound stays unloaded; its graph is never read.
+    let mut past = entry.clone();
+    past.row_count = SIDECAR_SIZE_CAP_BYTES / SIDECAR_NODE_MARK_BYTES + 1;
+    lay(plain.path(), &past, &Sealing::Plaintext);
+    std::fs::remove_file(plain.path().join(&past.path).join(GRAPH_FILE)).unwrap();
+    assert_eq!(VectorSidecar::open(plain.path(), "passages", &IndexEntry::Vector(past), &Sealing::Plaintext).err(), Some(Fallback::OverCap));
+
+    // Through the read face, the arm past the bound takes the exact scan.
     let r = sidecar_reads("");
     let s = r.session(&["lab/*"], None, None);
     let exact = ids(&r.face.retrieve(&s, &battery("lab/plain"), Bounds::default()).unwrap(), "passage_id");
-    // Both manifests claim a graph one row past the cap at dim 3; the graph file is never read.
     let (snapshot, dir) = sidecar_dirs(&r, "lab/indexed");
-    let over = SIDECAR_SIZE_CAP_BYTES / 12 + 1;
-    for (path, entry) in [(snapshot.join("_manifest.json"), "/indexes/0"), (dir.join("_manifest.json"), "")] {
+    for (path, at) in [(snapshot.join("_manifest.json"), "/indexes/0"), (dir.join("_manifest.json"), "")] {
         let mut v: Value = serde_json::from_slice(&std::fs::read(&path).unwrap()).unwrap();
-        *v.pointer_mut(&format!("{entry}/row_count")).unwrap() = json!(over);
+        *v.pointer_mut(&format!("{at}/row_count")).unwrap() = json!(SIDECAR_SIZE_CAP_BYTES / SIDECAR_NODE_MARK_BYTES + 1);
         std::fs::write(&path, serde_json::to_vec_pretty(&v).unwrap()).unwrap();
     }
     std::fs::remove_file(dir.join("graph.bin")).unwrap();

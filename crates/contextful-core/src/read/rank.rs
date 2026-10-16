@@ -66,9 +66,13 @@ pub const SIDECAR_PROBE_FLOOR: u64 = 64;
 /// (`read.retrieve.sidecar-oversampling`).
 pub const SIDECAR_RESTRICTED_FACTOR: u64 = 4;
 
-/// Stored-vector bytes past which a sidecar stays unloaded: 64 MiB
+/// Resident bytes past which a vector sidecar stays unloaded: 64 MiB
 /// (`read.retrieve.sidecar-size-cap`).
 pub const SIDECAR_SIZE_CAP_BYTES: u64 = 64 * 1024 * 1024;
+
+/// Resident bytes a vector sidecar counts per graph node: the visited mark one probe holds
+/// for it (`read.retrieve.sidecar-size-cap`).
+pub const SIDECAR_NODE_MARK_BYTES: u64 = 4;
 
 /// Candidates one sidecar probe requests: the larger of 4 times the limit and 64 rows,
 /// times 4 again where the request carries restriction context, since the probe sees none
@@ -82,10 +86,10 @@ pub fn sidecar_probe_size(limit: u64, restricted: bool) -> u64 {
     }
 }
 
-/// Whether a sidecar holding `stored_vector_bytes` stays unloaded, the arm taking the
-/// exact scan (`read.retrieve.sidecar-size-cap`).
-pub fn sidecar_over_cap(stored_vector_bytes: u64) -> bool {
-    stored_vector_bytes > SIDECAR_SIZE_CAP_BYTES
+/// Whether a sidecar counting `resident_bytes` stays unloaded, the arm taking the exact
+/// scan (`read.retrieve.sidecar-size-cap`).
+pub fn sidecar_over_cap(resident_bytes: u64) -> bool {
+    resident_bytes > SIDECAR_SIZE_CAP_BYTES
 }
 
 /// Whether the ranking saw a recency-ordered slice: the candidates fill the window.

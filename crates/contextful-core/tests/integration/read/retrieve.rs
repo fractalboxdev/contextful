@@ -158,6 +158,38 @@ fn a_probe_oversamples_the_limit_and_widens_under_restriction() {
     assert_eq!(sidecar_probe_size(u64::MAX, true), u64::MAX, "saturates");
 }
 
+/// A mapped plaintext vector sidecar counts 4 B per graph node against the 64 MiB resident
+/// bound, and a sealed one adds its sealed graph file, so the mapped graph of 1024-wide
+/// vectors one row past 64 MiB of stored vectors loads, and a sealed graph whose file and
+/// marks pass 64 MiB stays unloaded though its stored vectors fit.
+#[test]
+fn a_mapped_sidecar_counts_its_probe_marks_and_a_sealed_one_its_graph_file() {
+    use contextful_core::read::rank::{sidecar_over_cap, SIDECAR_NODE_MARK_BYTES, SIDECAR_SIZE_CAP_BYTES};
+    use contextful_core::store::index::VectorEntry;
+    assert_eq!((SIDECAR_SIZE_CAP_BYTES, SIDECAR_NODE_MARK_BYTES), (64 * 1024 * 1024, 4));
+    let rows = SIDECAR_SIZE_CAP_BYTES / 4096 + 1;
+    let entry: VectorEntry = serde_json::from_value(serde_json::json!({
+        "kind": "vector", "path": "indexes/vec-embedding-e5", "table": "passages", "snapshot_id": "s",
+        "column": "embedding", "id_column": "passage_id", "model": "e5", "dim": 1024, "metric": "cosine",
+        "m": 16, "ef_construction": 200, "builder": "b", "builder_version": 1, "row_count": rows, "key_version": 0,
+    }))
+    .unwrap();
+    assert_eq!(entry.stored_vector_bytes(), rows * 4096);
+    let marks = rows * SIDECAR_NODE_MARK_BYTES;
+    assert_eq!(entry.resident_bytes(None), marks);
+    assert!(!sidecar_over_cap(entry.resident_bytes(None)) && sidecar_over_cap(entry.resident_bytes(Some(entry.stored_vector_bytes()))));
+    let small = VectorEntry { row_count: 1024, dim: 32, ..entry.clone() };
+    let fits = SIDECAR_SIZE_CAP_BYTES - small.row_count * SIDECAR_NODE_MARK_BYTES;
+    assert!(small.stored_vector_bytes() < fits);
+    assert_eq!(small.resident_bytes(Some(fits)), SIDECAR_SIZE_CAP_BYTES);
+    assert!(!sidecar_over_cap(small.resident_bytes(Some(fits))) && sidecar_over_cap(small.resident_bytes(Some(fits + 1))));
+    let past = VectorEntry { row_count: SIDECAR_SIZE_CAP_BYTES / SIDECAR_NODE_MARK_BYTES + 1, ..entry };
+    assert!(sidecar_over_cap(past.resident_bytes(None)));
+    let saturated = VectorEntry { row_count: u64::MAX, ..past };
+    assert_eq!(saturated.resident_bytes(None), u64::MAX, "saturates");
+    assert_eq!(saturated.resident_bytes(Some(1)), u64::MAX, "saturates");
+}
+
 /// An under-filling arm doubles its probe for at most 4 rounds, and stops once the reader's
 /// visible rows fill the limit or a probe comes back short of its size.
 #[test]
