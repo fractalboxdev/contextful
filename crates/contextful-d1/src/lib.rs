@@ -272,6 +272,7 @@ impl D1 {
         Ok(())
     }
 
+    // Every answer reads past ureq's 10 MiB default: no store bound caps a blob or a result.
     pub fn query(&self, sql: &str, params: Vec<Value>) -> Result<QueryResult, String> {
         let body = serde_json::to_vec(&Statement { sql, params })
             .map_err(|_| "StorageBindingRequestInvalid")?;
@@ -286,6 +287,8 @@ impl D1 {
         }
         let bytes = response
             .body_mut()
+            .with_config()
+            .limit(u64::MAX)
             .read_to_vec()
             .map_err(|_| "StorageBindingUnreadable")?;
         serde_json::from_slice(&bytes).map_err(|_| "StorageBindingMalformed".into())
@@ -304,6 +307,8 @@ impl D1 {
         }
         let bytes = response
             .body_mut()
+            .with_config()
+            .limit(u64::MAX)
             .read_to_vec()
             .map_err(|_| "StorageBindingUnreadable")?;
         serde_json::from_slice(&bytes).map_err(|_| "StorageBindingMalformed".into())
@@ -331,6 +336,8 @@ impl D1 {
         }
         let bytes = response
             .body_mut()
+            .with_config()
+            .limit(u64::MAX)
             .read_to_vec()
             .map_err(|_| "StorageBindingUnreadable")?;
         Self::digest(sha256, &bytes)?;
