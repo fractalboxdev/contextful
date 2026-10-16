@@ -370,6 +370,8 @@ Sidecar index kinds and identity, clustering, partitioning and the tenant partit
   *A-store*
 - `rebuild` — A pass over a table whose current sidecar records another builder or builder version than this build's rebuilds it in full into a new snapshot of unchanged rows; readers keep the prior snapshot until the pointer moves.
   *A-store*
+- `declared-unbuilt` — A pass over a table whose current snapshot lacks a declared sidecar, or holds it under another `id_column` or builder parameters, builds it over that snapshot's rows into a new snapshot, though no run landed.
+  *because an index declared over rows already landed otherwise waits for a landing the store may never receive*
 - `graph-format` — The vector graph's byte layout is no committed format: a reader opens a sidecar only under its own builder and builder version, and any other meets {{read.retrieve.sidecar-falls-back}}.
   *A-store*
 - `graph-extensions` — A vector entry records `extensions`, the passes since its last full build that extended its graph in place; a pass finding 16 extensions rebuilds the graph in full and records 0.

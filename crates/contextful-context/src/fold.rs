@@ -147,13 +147,19 @@ pub fn prepare_under(store: &Store, decl: &TableDecl, now: Instant, fence: Optio
 
     let unfolded_runs = state.unfolded_runs();
     let unfolded: Vec<String> = unfolded_runs.iter().map(|r| r.key()).collect();
-    // A declared sidecar another builder wrote, or a graph past its extensions, rebuilds in
-    // full though nothing landed (`store.index.rebuild`, `store.index.graph-extensions`).
-    let declared: BTreeSet<String> = decl.indexes().iter().map(|i| i.path(escape)).collect();
-    let rebuild = state
-        .chain
-        .first()
-        .is_some_and(|s| s.indexes.iter().any(|e| e.path().is_some_and(|p| declared.contains(p)) && e.needs_rebuild()));
+    // A declared sidecar the current snapshot lacks or holds under another declaration, one
+    // another builder wrote, or a graph past its extensions, builds in full though nothing
+    // landed (`store.index.declared-unbuilt`, `store.index.rebuild`, `store.index.graph-extensions`).
+    let id_column = decl.id_column()?.unwrap_or_default();
+    let rebuild = state.chain.first().is_some_and(|s| {
+        decl.indexes().iter().any(|i| {
+            let path = i.path(escape);
+            s.indexes
+                .iter()
+                .find(|e| e.path() == Some(path.as_str()))
+                .is_none_or(|e| e.needs_rebuild() || !e.built_as(i, id_column))
+        })
+    });
     if unfolded.is_empty() && decl.retain_rows.is_none() && !rebuild {
         return Ok(Prepared::NothingLanded);
     }

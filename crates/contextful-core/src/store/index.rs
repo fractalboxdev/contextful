@@ -426,6 +426,21 @@ impl IndexEntry {
         }
     }
 
+    /// Whether this entry was built under `decl` sharing `id_column`: the same identifier and
+    /// builder parameters, the path already naming the column, model and tokenizer
+    /// (`store.index.declared-unbuilt`). An unrecognised entry is left as written.
+    pub fn built_as(&self, decl: &IndexDecl, id_column: &str) -> bool {
+        match self {
+            IndexEntry::Vector(e) => {
+                decl.kind == IndexKind::Vector
+                    && e.id_column == id_column
+                    && (e.dim, e.metric, e.m, e.ef_construction) == (decl.dim(), decl.metric(), decl.m(), decl.ef_construction())
+            }
+            IndexEntry::Fulltext(e) => decl.kind == IndexKind::Fulltext && e.id_column == id_column && e.tokenizer == decl.tokenizer(),
+            IndexEntry::Unrecognized(_) => true,
+        }
+    }
+
     /// The kind of a recognised entry.
     pub fn kind(&self) -> Option<IndexKind> {
         match self {
