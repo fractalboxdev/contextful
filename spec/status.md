@@ -10,12 +10,12 @@ An unpinned clause is `committed`; a pinned one is `performed` when its Rust, Le
 | `connector` | 2 | 14 | 375 | 92 | 22 | 12 | 292 | 0 | 292 |
 | `corpus` | 1 | 10 | 80 | 37 | 7 | 0 | 80 | 0 | 80 |
 | `disclosure` | 3 | 16 | 184 | 69 | 14 | 5 | 162 | 0 | 162 |
-| `read` | 2 | 20 | 291 | 48 | 29 | 15 | 249 | 0 | 249 |
+| `read` | 2 | 20 | 292 | 48 | 29 | 15 | 250 | 0 | 250 |
 | `run` | 3 | 29 | 551 | 126 | 45 | 16 | 519 | 0 | 519 |
 | `store` | 3 | 19 | 295 | 64 | 15 | 10 | 284 | 0 | 284 |
 | `surface` | 2 | 21 | 161 | 63 | 23 | 0 | 134 | 0 | 134 |
 | `topology` | 1 | 6 | 79 | 25 | 5 | 3 | 76 | 0 | 76 |
-| **total** | 22 | 169 | 2637 | 668 | 213 | 74 | 2348 | 0 | |
+| **total** | 22 | 169 | 2638 | 668 | 213 | 74 | 2349 | 0 | |
 
 Decision records: 18.
 
@@ -32,7 +32,7 @@ A milestone reads `closed` when its acceptance test computes `passing` and every
 | 4 — Ingest | 25 | 593 | 495 | passing | closed |
 | 5 — The read face under enforcement | 17 | 310 | 273 | passing | closed |
 | 6 — Sync and replicas | 8 | 88 | 87 | passing | closed |
-| 7 — Memory | 6 | 72 | 57 | passing | closed |
+| 7 — Memory | 6 | 73 | 58 | passing | closed |
 | 8 — Accountability | 5 | 93 | 86 | passing | closed |
 | 9 — Visibility | 6 | 55 | 46 | passing | closed |
 | 10 — Cadence and the operator plane | 11 | 101 | 89 | passing | closed |
@@ -1233,6 +1233,7 @@ Unscheduled operations: 13.
 | `read.recall.keyed-order` | `crates/contextful-memory/tests/integration/recall.rs::keyed_claims_order_tier_first_and_meet_the_limit` | performed |
 | `read.recall.keyed-window` | `crates/contextful-memory/tests/integration/recall.rs::the_keyed_read_stops_gating_one_claim_past_the_ceiling` | performed |
 | `read.recall.ranked-arm` | `crates/contextful-memory/tests/integration/synthesize.rs::a_ranked_arm_over_claims_serves_live_claims_alone` | performed |
+| `read.recall.recall-block-presence` | `crates/contextful-agent/tests/integration/mcp.rs::the_recall_block_rides_a_ranked_read_exactly_when_a_claim_arm_runs` | performed |
 | `read.recall.stale-revision` | `crates/contextful-memory/tests/integration/evidence.rs::a_stale_claim_stays_gated_until_a_new_source_row_resynthesizes_it` | performed |
 | `read.recall.suppression-count` | `crates/contextful-memory/tests/integration/synthesize.rs::a_suppressed_claim_is_counted_and_never_named` | performed |
 | `read.recall.usage-ledger` | `crates/contextful-agent/tests/integration/mcp.rs::memory_reads_record_the_claim_ids_they_returned` | performed |

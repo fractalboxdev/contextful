@@ -278,5 +278,8 @@ fn a_table_list_intersects_the_prefix_and_refuses_a_name_outside_the_relations()
     assert_eq!(arms(relations.iter().copied(), "research/", Some(&listed)), Ok(strings(&["research/news", "research/transcripts"])));
     let refused = arms(relations.iter().copied(), "", Some(&strings(&["research/news", "hr/salaries"]))).unwrap_err();
     assert_eq!(refused.identifier(), "RetrieveTableUnavailable");
-    assert_eq!(refused, ReadError::RetrieveTableUnavailable("`hr/salaries` is not a table this read can list".into()));
+    assert_eq!(refused, ReadError::RetrieveTableUnavailable("not tables this read can list: `hr/salaries`".into()));
+    // Every name outside the relations, once each, in list order.
+    let several = arms(relations.iter().copied(), "", Some(&strings(&["zz/last", "research/news", "aa/first", "zz/last"]))).unwrap_err();
+    assert_eq!(several, ReadError::RetrieveTableUnavailable("not tables this read can list: `zz/last`, `aa/first`".into()));
 }

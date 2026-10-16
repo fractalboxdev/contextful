@@ -1604,7 +1604,12 @@ fn builtin_tool(name: &str) -> Value {
                     }
                 },
                 "kinds": { "type": "array", "items": { "type": "string" }, "minItems": 1 },
-                "tables": { "type": "array", "items": { "type": "string" }, "minItems": 1 },
+                "tables": {
+                    "type": "array",
+                    "items": { "type": "string" },
+                    "minItems": 1,
+                    "description": "Table names to search, intersected with `prefix`. A name this credential cannot read refuses the call, naming it, whether or not the table exists."
+                },
                 "limit": { "type": "integer" }, "as_of": { "type": "string" }, "since": { "type": "string" },
                 "min_score": { "type": "integer" }, "internals": { "type": "boolean" }, "zone": { "type": "string" }
             }),
