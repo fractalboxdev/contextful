@@ -183,6 +183,7 @@
 "assurance.consumer.scenarios" = { test = "crates/acceptance/tests/integration/conformance.rs::the_distributed_suite_runs_outside_the_checkout_and_reports_actual_execution" }
 "assurance.consumer.mutation-controls" = { test = "crates/acceptance/tests/integration/conformance.rs::consumer_scenarios_reject_cursor_skips_duplicate_identity_and_premature_acknowledgement" }
 "assurance.consumer.report" = { test = "crates/acceptance/tests/integration/conformance.rs::the_distributed_suite_runs_outside_the_checkout_and_reports_actual_execution" }
+"assurance.consumer.command-diagnostic" = { test = "crates/acceptance/tests/integration/conformance.rs::a_failed_command_names_its_error_identifier_and_withholds_its_message" }
 "assurance.consumer.provenance" = { test = "crates/acceptance/tests/integration/conformance.rs::missing_capability_reports_unsupported_without_admitting_work" }
 "assurance.consumer.release-distribution" = { test = "tools/ci/tests/integration/artifact.rs::release_archives_carry_the_consumer_suite_and_digest_bound_compatibility_evidence" }
 "assurance.consumer.foreign-target" = { test = "tools/ci/tests/integration/artifact.rs::release_archives_carry_the_consumer_suite_and_digest_bound_compatibility_evidence" }
@@ -200,7 +201,7 @@
 # its live performed count, and a live count below its floor raises SpecCoverageRegression.
 
 [floor]
-assurance = 276
+assurance = 277
 authority = 242
 connector = 277
 corpus = 80

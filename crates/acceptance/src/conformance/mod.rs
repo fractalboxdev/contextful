@@ -378,10 +378,12 @@ impl Fixture {
     fn ok(&self, args: &[&str], env: &[(&str, &str)]) -> Result<String> {
         let out = self.invoke(args, env)?;
         if !out.status.success() {
-            return Err(format!(
-                "ConformanceCommandFailed:{}",
-                args.first().copied().unwrap_or("version")
-            ));
+            let verb = args.first().copied().unwrap_or("version");
+            // Only the first error identifier leaves stderr; message text may carry credentials.
+            return Err(match error_identifier(&out.stderr) {
+                Some(code) => format!("ConformanceCommandFailed:{verb}:{code}"),
+                None => format!("ConformanceCommandFailed:{verb}"),
+            });
         }
         Ok(out.stdout.trim().into())
     }
@@ -390,6 +392,19 @@ impl Fixture {
         serde_json::from_str(&self.ok(&["query", "--json", "--project", "research", sql], &[])?)
             .map_err(|_| "ConformanceQueryMalformed".into())
     }
+}
+
+/// The first `UpperCamelCase:` word of a failed command's stderr, at most 64 characters.
+fn error_identifier(stderr: &str) -> Option<&str> {
+    stderr.split_ascii_whitespace().find_map(|word| {
+        let code = word.strip_suffix(':')?;
+        let camel = code.starts_with(|c: char| c.is_ascii_uppercase())
+            && code.len() <= 64
+            && code.chars().all(|c| c.is_ascii_alphanumeric())
+            && code.chars().any(|c| c.is_ascii_lowercase())
+            && code.chars().skip(1).any(|c| c.is_ascii_uppercase());
+        camel.then_some(code)
+    })
 }
 
 struct Running {

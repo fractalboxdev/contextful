@@ -5,7 +5,7 @@ An unpinned clause is `committed`; a pinned one is `performed` when its Rust, Le
 
 | Contract | Files | Operations | Clauses | Refusals | Limits | Unsettled | Performed | Broken | Floor |
 | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
-| `assurance` | 3 | 18 | 316 | 64 | 24 | 8 | 276 | 0 | 276 |
+| `assurance` | 3 | 18 | 317 | 64 | 24 | 8 | 277 | 0 | 277 |
 | `authority` | 2 | 16 | 295 | 79 | 29 | 10 | 242 | 0 | 242 |
 | `connector` | 2 | 14 | 375 | 92 | 22 | 12 | 277 | 0 | 277 |
 | `corpus` | 1 | 10 | 80 | 37 | 7 | 0 | 80 | 0 | 80 |
@@ -15,7 +15,7 @@ An unpinned clause is `committed`; a pinned one is `performed` when its Rust, Le
 | `store` | 3 | 19 | 290 | 64 | 14 | 10 | 280 | 0 | 280 |
 | `surface` | 2 | 21 | 160 | 63 | 23 | 0 | 133 | 0 | 133 |
 | `topology` | 1 | 6 | 79 | 25 | 5 | 3 | 76 | 0 | 76 |
-| **total** | 22 | 169 | 2588 | 655 | 212 | 77 | 2257 | 0 | |
+| **total** | 22 | 169 | 2589 | 655 | 212 | 77 | 2258 | 0 | |
 
 Decision records: 18.
 
@@ -136,6 +136,7 @@ Unscheduled operations: 13.
 | `assurance.build.target-dir-per-stage` | `tools/ci/tests/integration/target_dirs.rs::each_cargo_stage_builds_in_its_own_target_directory_reclaimed_on_pass` | performed |
 | `assurance.build.targets` | `tools/ci/tests/integration/artifact.rs::the_release_matrix_is_every_profile_on_musl_and_edge_and_full_on_darwin` | performed |
 | `assurance.build.wasi-probe` | `tools/ci/tests/integration/artifact.rs::the_edge_profile_probes_wasm32_wasip2_against_its_footprint_budget` | performed |
+| `assurance.consumer.command-diagnostic` | `spec/pins.toml` | performed |
 | `assurance.consumer.credential-isolation` | `spec/pins.toml` | performed |
 | `assurance.consumer.d1-profile` | `spec/pins.toml` | performed |
 | `assurance.consumer.d1-release` | `spec/pins.toml` | performed |

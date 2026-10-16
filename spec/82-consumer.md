@@ -22,6 +22,8 @@ Artifact compatibility: source-independent execution, required capabilities, sce
 - `mutation-controls` — Planted cursor skips, duplicate public identities, repeated in-window scheduling and acknowledgement before receiver commit each fail their owning scenario.
   *because a scenario that accepts its motivating defect proves no compatibility*
 - `report` — Evidence records the suite revision and version, supplied binary SHA-256 digest, reported version, feature profile, storage profile and every scenario outcome, requirement and diagnostic.
+- `command-diagnostic` — A failed artifact command's diagnostic names its verb and the first error identifier its stderr carries; no other stderr text enters the report.
+  *because a provider failure must name its cause while stderr may carry binding credentials*
 - `provenance` — Unknown source correspondence remains null; a reported version or successful scenario never supplies a source commit.
   *because source correspondence requires evidence beyond behavior and a version string*
 - `artifact-stability` — The suite verifies the supplied artifact's digest before and after execution; changed bytes refuse a compatibility verdict.
@@ -41,5 +43,6 @@ Artifact compatibility: source-independent execution, required capabilities, sce
 
 - `assurance.consumer.requirements`: WHEN a read-only artifact receives a required replay scenario, THEN evidence names the missing run capability and the suite exits unsuccessfully.
 - `assurance.consumer.verdict`: WHEN a required scenario is skipped, THEN the aggregate compatibility verdict fails.
+- `assurance.consumer.command-diagnostic`: WHEN a command fails with a credential in its stderr, THEN the diagnostic names the verb and error identifier, and the report omits the credential.
 - `assurance.consumer.provenance`: WHEN a binary reports a version without source evidence, THEN source correspondence remains null.
 - `assurance.consumer.mutation-controls`: WHEN a native source advances past an unserved page, THEN the pagination scenario fails.
