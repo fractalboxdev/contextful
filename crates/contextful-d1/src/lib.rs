@@ -53,6 +53,10 @@ pub struct D1 {
 /// Total attempts of a request whose repetition changes nothing (`run.journal.d1-transport`).
 const TRANSPORT_ATTEMPTS: u32 = 3;
 
+/// Wall clock of one attempt, transfer included: 3 attempts and their backoff end within
+/// 46 s, inside a caller's 60 s process deadline (`run.journal.d1-transport`).
+const REQUEST_TIMEOUT: Duration = Duration::from_secs(15);
+
 /// Whether a statement only reads, so a resend after a lost answer changes nothing.
 fn reads(sql: &str) -> bool {
     sql.trim_start().get(..6).is_some_and(|word| word.eq_ignore_ascii_case("select"))
@@ -106,7 +110,7 @@ impl D1 {
         let agent = ureq::Agent::config_builder()
             .http_status_as_error(false)
             .max_redirects(0)
-            .timeout_global(Some(Duration::from_secs(30)))
+            .timeout_global(Some(REQUEST_TIMEOUT))
             .build()
             .new_agent();
         Ok(Self {
