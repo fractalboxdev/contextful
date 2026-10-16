@@ -46,6 +46,28 @@ fn missing_capability_reports_unsupported_without_admitting_work() {
 
 #[test]
 #[cfg(unix)]
+fn a_failed_command_names_its_error_identifier_and_withholds_its_message() {
+    let dir = tempfile::tempdir().unwrap();
+    let binary = dir.path().join("contextful");
+    executable(&binary, "#!/bin/sh\ncase \"$1 $2\" in\n'--version ') printf 'contextful fixture contextful-full\\n';;\n*' --help') ;;\n*) printf 'recovery binding: ExecutionRecoveryMismatch: key secret-material\\n' >&2; exit 1;;\nesac\n");
+    let report = conformance::run(&Options {
+        binary,
+        storage_profile: "local".into(),
+        required: vec!["empty-replacement".into()],
+        timeout_seconds: 30,
+    })
+    .unwrap();
+    let result = report.scenarios.iter().find(|s| s.id == "empty-replacement").unwrap();
+    assert_eq!(result.outcome, Outcome::Failed);
+    assert_eq!(
+        result.diagnostic.as_deref(),
+        Some("ConformanceCommandFailed:pipeline:ExecutionRecoveryMismatch")
+    );
+    assert!(!serde_json::to_string(&report).unwrap().contains("secret-material"));
+}
+
+#[test]
+#[cfg(unix)]
 fn artifact_runs_with_an_empty_provider_environment() {
     let _guard = super::CONFORMANCE_ENV.lock().unwrap();
     let dir = tempfile::tempdir().unwrap();

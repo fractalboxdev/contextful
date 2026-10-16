@@ -28873,6 +28873,20 @@
       "line": 24
     },
     {
+      "id": "assurance.consumer.command-diagnostic",
+      "contract": "assurance",
+      "operation": "consumer",
+      "subject": "command-diagnostic",
+      "kind": "behavior",
+      "statement": "A failed artifact command's diagnostic names its verb and the first error identifier its stderr carries; no other stderr text enters the report.",
+      "why": "because a provider failure must name its cause while stderr may carry binding credentials",
+      "file": "spec/82-consumer.md",
+      "line": 25,
+      "scenarios": [
+        "WHEN a command fails with a credential in its stderr, THEN the diagnostic names the verb and error identifier, and the report omits the credential."
+      ]
+    },
+    {
       "id": "assurance.consumer.provenance",
       "contract": "assurance",
       "operation": "consumer",
@@ -28881,7 +28895,7 @@
       "statement": "Unknown source correspondence remains null; a reported version or successful scenario never supplies a source commit.",
       "why": "because source correspondence requires evidence beyond behavior and a version string",
       "file": "spec/82-consumer.md",
-      "line": 25,
+      "line": 27,
       "scenarios": [
         "WHEN a binary reports a version without source evidence, THEN source correspondence remains null."
       ]
@@ -28895,7 +28909,7 @@
       "statement": "The suite verifies the supplied artifact's digest before and after execution; changed bytes refuse a compatibility verdict.",
       "why": "",
       "file": "spec/82-consumer.md",
-      "line": 27
+      "line": 29
     },
     {
       "id": "assurance.consumer.release-distribution",
@@ -28906,7 +28920,7 @@
       "statement": "Each release archive carries the matching-target suite and compatibility report; release metadata names the report and binary digest, preserving failed and skipped outcomes.",
       "why": "A-assurance",
       "file": "spec/82-consumer.md",
-      "line": 28
+      "line": 30
     },
     {
       "id": "assurance.consumer.foreign-target",
@@ -28917,7 +28931,7 @@
       "statement": "A release target unavailable to its packaging host records explicit skipped scenarios with a target diagnostic; its report supplies no execution pass.",
       "why": "because a cross compilation cannot demonstrate the produced artifact's behavior",
       "file": "spec/82-consumer.md",
-      "line": 30
+      "line": 32
     },
     {
       "id": "assurance.consumer.storage-profile",
@@ -28928,7 +28942,7 @@
       "statement": "The local profile uses isolated filesystem state; `postgres` uses synthetic PostgreSQL and signed S3 services. An unavailable fixture records its named requirement through {{assurance.consumer.requirements}}.",
       "why": "",
       "file": "spec/82-consumer.md",
-      "line": 32
+      "line": 34
     },
     {
       "id": "assurance.consumer.d1-profile",
@@ -28939,7 +28953,7 @@
       "statement": "A `cloudflare-d1` verdict runs the supplied `contextful-full` artifact against D1 and R2 bindings, replaces its local disk, and records every required outcome independently of the local and PostgreSQL profiles.",
       "why": "A-assurance",
       "file": "spec/82-consumer.md",
-      "line": 33
+      "line": 35
     },
     {
       "id": "assurance.consumer.d1-release",
@@ -28950,7 +28964,7 @@
       "statement": "Release evidence binds a `cloudflare-d1` report to the artifact digest, source revision, suite revision and storage profile; a required failure, unsupported case, skip or unverified binding supplies no compatibility verdict.",
       "why": "A-assurance",
       "file": "spec/82-consumer.md",
-      "line": 35
+      "line": 37
     },
     {
       "id": "assurance.consumer.d1-deployment",
@@ -28961,7 +28975,7 @@
       "statement": "Deployment readiness requires a replacement run against Cloudflare D1 and R2, with the same artifact digest and source revision as its release report.",
       "why": "A-assurance",
       "file": "spec/82-consumer.md",
-      "line": 37
+      "line": 39
     }
   ],
   "owns": {
