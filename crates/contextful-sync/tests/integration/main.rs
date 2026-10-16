@@ -5,6 +5,7 @@ mod converge;
 mod generation;
 mod pull;
 mod push;
+mod redistribute;
 mod run_state;
 mod s3;
 mod support;

@@ -6,7 +6,7 @@ An unpinned clause is `committed`; a pinned one is `performed` when its Rust, Le
 | Contract | Files | Operations | Clauses | Refusals | Limits | Unsettled | Performed | Broken | Floor |
 | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
 | `assurance` | 3 | 18 | 322 | 64 | 24 | 5 | 280 | 0 | 280 |
-| `authority` | 2 | 16 | 297 | 79 | 29 | 8 | 254 | 0 | 254 |
+| `authority` | 2 | 16 | 297 | 79 | 29 | 8 | 264 | 0 | 264 |
 | `connector` | 2 | 14 | 375 | 92 | 22 | 12 | 278 | 0 | 278 |
 | `corpus` | 1 | 10 | 80 | 37 | 7 | 0 | 80 | 0 | 80 |
 | `disclosure` | 3 | 16 | 177 | 69 | 14 | 5 | 154 | 0 | 154 |
@@ -15,7 +15,7 @@ An unpinned clause is `committed`; a pinned one is `performed` when its Rust, Le
 | `store` | 3 | 19 | 290 | 64 | 14 | 10 | 280 | 0 | 280 |
 | `surface` | 2 | 21 | 160 | 63 | 23 | 0 | 133 | 0 | 133 |
 | `topology` | 1 | 6 | 79 | 25 | 5 | 3 | 76 | 0 | 76 |
-| **total** | 22 | 169 | 2597 | 656 | 212 | 72 | 2278 | 0 | |
+| **total** | 22 | 169 | 2597 | 656 | 212 | 72 | 2288 | 0 | |
 
 Decision records: 18.
 
@@ -30,7 +30,7 @@ A milestone reads `closed` when its acceptance test computes `passing` and every
 | 2 — The store | 9 | 183 | 173 | passing | closed |
 | 3 — The run path | 12 | 276 | 265 | passing | closed |
 | 4 — Ingest | 25 | 586 | 474 | passing | closed |
-| 5 — The read face under enforcement | 17 | 308 | 257 | passing | open |
+| 5 — The read face under enforcement | 17 | 308 | 267 | passing | closed |
 | 6 — Sync and replicas | 8 | 83 | 83 | passing | closed |
 | 7 — Memory | 6 | 72 | 57 | passing | closed |
 | 8 — Accountability | 5 | 91 | 84 | passing | closed |
@@ -340,6 +340,16 @@ Unscheduled operations: 13.
 | `authority.attenuate.tenant-dropped` | `crates/contextful-core/tests/integration/attenuate.rs::tenant_dropped` | performed |
 | `authority.attenuate.truncation` | `crates/contextful-policy/tests/integration/attenuate.rs::a_chain_truncated_to_a_broader_prefix_verifies_as_nothing` | performed |
 | `authority.attenuate.widens` | `crates/contextful-core/tests/integration/attenuate.rs::widens` | performed |
+| `authority.bound-redistribution.before-diff` | `crates/contextful-sync/tests/integration/redistribute.rs::a_withheld_table_ships_no_object_and_no_manifest_name` | performed |
+| `authority.bound-redistribution.envelopes` | `crates/contextful-sync/tests/integration/redistribute.rs::a_withheld_table_ships_no_object_and_no_manifest_name` | performed |
+| `authority.bound-redistribution.left-behind` | `crates/contextful-sync/tests/integration/redistribute.rs::clearing_the_flag_after_a_push_refuses_and_deletes_nothing` | performed |
+| `authority.bound-redistribution.manifest-is-an-index` | `crates/contextful-sync/tests/integration/redistribute.rs::an_object_the_manifest_never_named_still_refuses` | performed |
+| `authority.bound-redistribution.outranks-grants` | `crates/contextful-sync/tests/integration/redistribute.rs::a_withheld_table_ships_no_object_and_no_manifest_name` | performed |
+| `authority.bound-redistribution.report` | `crates/contextful-sync/tests/integration/redistribute.rs::a_left_behind_report_names_100_objects_and_the_total` | performed |
+| `authority.bound-redistribution.root-allowlist` | `crates/contextful-sync/tests/integration/redistribute.rs::a_root_object_ships_beside_a_withheld_table_only_from_the_allowlist` | performed |
+| `authority.bound-redistribution.root-not-allowlisted` | `crates/contextful-sync/tests/integration/redistribute.rs::a_root_object_ships_beside_a_withheld_table_only_from_the_allowlist` | performed |
+| `authority.bound-redistribution.two-checks` | `crates/contextful-sync/tests/integration/redistribute.rs::the_left_behind_check_runs_again_after_the_upload_loop` | performed |
+| `authority.bound-redistribution.withhold` | `crates/contextful-sync/tests/integration/redistribute.rs::a_withheld_table_ships_no_object_and_no_manifest_name` | performed |
 | `authority.compose.before-the-cut` | `crates/contextful-context/tests/integration/read/retrieve.rs::restriction_completes_before_the_cut` | performed |
 | `authority.compose.complete-mediation` | `crates/contextful-context/tests/integration/read/enforce.rs::every_row_path_takes_the_session` | performed |
 | `authority.compose.conjunctive-narrowing` | `crates/contextful-context/tests/integration/read/enforce.rs::each_added_step_only_removes_rows` | performed |

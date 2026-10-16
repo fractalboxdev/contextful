@@ -11,7 +11,7 @@ use contextful_core::time::Instant;
 use contextful_core::issue::SignatureAlgorithm;
 use contextful_core::revoke::KeySetLedger;
 use contextful_policy::issue::SeedSigner;
-use contextful_sync::{FsBucket, Syncer, VolumeClass};
+use contextful_sync::{FsBucket, Redistribution, Syncer, VolumeClass};
 use std::sync::{Arc, Mutex};
 
 pub fn at(s: &str) -> Instant {
@@ -55,6 +55,7 @@ pub fn node_in(project: &str, id: &str, bucket: Arc<dyn ObjectStore>, extra_conf
         control_dir: Some(dir.path().join(".contextful/control").join(project)),
         signer: Some(signer.clone()),
         key_set: Some(dir.path().join(KeySetLedger::PATH)),
+        redistribution: Redistribution::default(),
     };
     Node { _dir: dir, syncer, signer }
 }

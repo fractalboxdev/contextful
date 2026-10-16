@@ -6,6 +6,7 @@ mod catalogs;
 mod hydrate;
 mod run_state;
 mod node_id;
+mod redistribute;
 mod s3;
 mod without_s3;
 
