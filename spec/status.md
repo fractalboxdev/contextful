@@ -10,12 +10,12 @@ An unpinned clause is `committed`; a pinned one is `performed` when its Rust, Le
 | `connector` | 2 | 14 | 373 | 92 | 22 | 12 | 275 | 0 | 275 |
 | `corpus` | 1 | 10 | 79 | 37 | 7 | 0 | 79 | 0 | 79 |
 | `disclosure` | 3 | 16 | 173 | 69 | 13 | 5 | 147 | 0 | 147 |
-| `read` | 2 | 19 | 276 | 45 | 28 | 13 | 233 | 0 | 233 |
+| `read` | 2 | 19 | 277 | 45 | 28 | 13 | 234 | 0 | 234 |
 | `run` | 3 | 29 | 527 | 116 | 45 | 13 | 495 | 0 | 495 |
 | `store` | 3 | 19 | 290 | 64 | 14 | 11 | 280 | 0 | 280 |
 | `surface` | 2 | 21 | 160 | 63 | 23 | 0 | 133 | 0 | 133 |
 | `topology` | 1 | 6 | 79 | 25 | 5 | 3 | 74 | 0 | 74 |
-| **total** | 22 | 168 | 2568 | 654 | 210 | 74 | 2222 | 0 | |
+| **total** | 22 | 168 | 2569 | 654 | 210 | 74 | 2223 | 0 | |
 
 Decision records: 18.
 
@@ -32,7 +32,7 @@ A milestone reads `closed` when its acceptance test computes `passing` and every
 | 4 — Ingest | 25 | 584 | 471 | passing | closed |
 | 5 — The read face under enforcement | 17 | 308 | 244 | passing | open |
 | 6 — Sync and replicas | 8 | 83 | 83 | passing | closed |
-| 7 — Memory | 6 | 71 | 56 | passing | closed |
+| 7 — Memory | 6 | 72 | 57 | passing | closed |
 | 8 — Accountability | 5 | 87 | 80 | passing | closed |
 | 9 — Visibility | 6 | 50 | 40 | passing | closed |
 | 10 — Cadence and the operator plane | 11 | 100 | 86 | passing | open |
@@ -1147,6 +1147,7 @@ Unscheduled operations: 12.
 | `read.recall.evidence-unresolved` | `crates/contextful-core/tests/integration/memory/recall.rs::unresolvable_evidence_suppresses_the_claim` | performed |
 | `read.recall.keyed` | `crates/contextful-memory/tests/integration/recall.rs::a_keyed_recall_returns_the_subjects_claims_valid_at_the_observed_instant` | performed |
 | `read.recall.keyed-clocks` | `crates/contextful-memory/tests/integration/recall.rs::as_of_ingest_reads_what_was_known_then` | performed |
+| `read.recall.keyed-evidence-batch` | `crates/contextful-context/tests/integration/read/recall.rs::a_claims_citations_into_one_run_resolve_in_one_statement` | performed |
 | `read.recall.keyed-gate` | `crates/contextful-memory/tests/integration/recall.rs::a_keyed_claim_passes_the_evidence_gate` | performed |
 | `read.recall.keyed-history` | `crates/contextful-memory/tests/integration/recall.rs::a_retired_claim_answers_inside_its_interval` | performed |
 | `read.recall.keyed-not-claims` | `crates/contextful-memory/tests/integration/recall.rs::a_keyed_recall_over_a_table_holding_no_claims_refuses` | performed |
