@@ -127,9 +127,10 @@ impl Manifest {
         })
     }
 
-    /// Read and parse the manifest at `path`; an unreadable file refuses as a malformed one.
-    pub fn load(path: &Path) -> Result<Manifest, ConnectorError> {
-        let text = std::fs::read_to_string(path).map_err(|e| rejected("manifest", format_args!("at `{}` is unreadable: {e}", path.display())))?;
+    /// Parse the outcome of reading the manifest at `path`; the adapter performs the read,
+    /// and an unreadable file refuses as a malformed one.
+    pub fn from_read(path: &Path, read: std::io::Result<String>) -> Result<Manifest, ConnectorError> {
+        let text = read.map_err(|e| rejected("manifest", format_args!("at `{}` is unreadable: {e}", path.display())))?;
         Manifest::parse(&text)
     }
 
