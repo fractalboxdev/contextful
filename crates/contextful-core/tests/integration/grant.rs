@@ -70,6 +70,26 @@ fn forget_round_trips_as_a_separate_action_and_confers_no_read() {
     assert!(!raw_read_covers(&[g], "research/filings"));
 }
 
+/// The action vocabulary is `read` for every row-returning surface, `write` to land rows, `execute` to fire a run, `admin` to mint, and `forget` to erase subject data.
+// spec: authority.grant.actions@9e95003d
+#[test]
+fn actions() {
+    let vocabulary = [("read", Action::Read), ("write", Action::Write), ("execute", Action::Execute), ("admin", Action::Admin), ("forget", Action::Forget)];
+    for (word, action) in vocabulary {
+        assert_eq!(Action::parse(word).unwrap(), action);
+        assert_eq!(serde_json::to_string(&action).unwrap(), format!("\"{word}\""));
+        // Only `read` confers a row-returning read; each other action names its own effect.
+        assert_eq!(raw_read_covers(&[grant(&[action], &["*"])], "research/filings"), action == Action::Read, "{word}");
+    }
+    // `read` alone reaches pipelines and runs as read resources.
+    let reader = [grant(&[Action::Read], &["feed"])];
+    assert!(describe_pipeline(&reader, "feed").is_ok());
+    assert!(trace_run(&reader, "feed").is_ok());
+    for action in [Action::Write, Action::Execute, Action::Admin, Action::Forget] {
+        assert!(describe_pipeline(&[grant(&[action], &["feed"])], "feed").is_err(), "{action:?}");
+    }
+}
+
 /// A table pattern is `*`, covering every table; a prefix ending in `*`, covering every name beginning with that prefix; or any other string, matched exactly. A concrete pattern never covers `*`.
 // spec: authority.grant.pattern-forms@8bb6d690
 #[test]
@@ -131,6 +151,24 @@ fn fields() {
         authorize_template(std::slice::from_ref(&g), "quarterly_rollup", &declared),
         Err(AuthorityError::GrantTemplateNotAllowed(_))
     ));
+}
+
+/// A tenant scope pairs a table with an opaque byte string bound to that table's outermost partition column.
+// spec: authority.grant.tenant-scope@4c9d2fc8
+#[test]
+fn tenant_scope() {
+    let g: Grant = serde_json::from_str(
+        r#"{"actions":["read"],"tables":["research/*"],"tenant":{"table":"research/filings","value":"Acme EU/01"}}"#,
+    )
+    .unwrap();
+    let scope = g.tenant.clone().expect("the grant carries its tenant scope");
+    // One table, one opaque value carried byte for byte.
+    assert_eq!(scope, TenantScope { table: "research/filings".to_string(), value: "Acme EU/01".to_string() });
+    assert_eq!(serde_json::to_value(&g).unwrap()["tenant"], serde_json::json!({ "table": "research/filings", "value": "Acme EU/01" }));
+    // The scope binds to the outermost partition column its table declares.
+    let bound = scope.bind(Some("region")).unwrap();
+    assert_eq!((bound.table, bound.column, bound.value), ("research/filings", "region", "Acme EU/01"));
+    assert!(scope.admits(b"Acme EU/01"));
 }
 
 /// The grant's tenant value, the partition key on disk and the consumer's tenant identifier are identical bytes, compared by bound-parameter equality with no trimming, case folding, collation or Unicode normalization.

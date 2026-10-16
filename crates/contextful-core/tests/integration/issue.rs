@@ -7,6 +7,7 @@ use contextful_core::issue::{
     SignatureAlgorithm, SignatureEncoding, ISSUANCE_LIFETIME_CEILING_SECS, ISSUER_KEY_ROTATION_CADENCE_SECS,
 };
 use contextful_core::ports::{Clock, FixedClock, SigningPort};
+use contextful_core::revoke::{KeySetLedger, RotationPolicy};
 use contextful_core::time::Instant;
 use contextful_core::AuthorityError;
 
@@ -110,6 +111,35 @@ fn an_explicit_lifetime_above_the_ceiling_refuses_and_an_exchange_lifetime_clamp
     let plan = check(&p, &req).unwrap();
     assert_eq!(plan.lifetime_secs, 3600);
     assert_eq!(plan.expires_at, at("2030-01-01T01:00:00Z"));
+}
+
+/// Ceiling enforcement binds a mint run inside the project tree; a mint run outside it is bounded at the checkpoint by rotation-grace validation.
+// spec: authority.issue.out-of-tree-mint@84028ac9
+#[test]
+fn a_mint_outside_the_tree_is_bounded_by_the_grace_window_validated_against_the_ceiling() {
+    // Inside the tree, the persisted ceiling refuses a longer lifetime at the mint.
+    let p = policy(3600);
+    let mut req = MintRequest::custody(dana(), vec![grant(&[Action::Read])]);
+    req.lifetime = Lifetime::Requested(86_400);
+    assert!(matches!(check(&p, &req), Err(AuthorityError::IssuanceLifetimeAboveCeiling(_))));
+
+    // Outside it, nothing reads the policy: a credential signed under the issuer key may
+    // claim 24 h. The checkpoint's grace window, held to at least the ceiling, cuts it once
+    // its key version retires.
+    let short = RotationPolicy::default().with_grace(1800);
+    assert!(matches!(short.validate(&p, at(NOW)), Err(AuthorityError::RotationGraceTooShort(_))));
+    let rotation = RotationPolicy::default().with_grace(3600);
+    rotation.validate(&p, at(NOW)).unwrap();
+    let key = "ed25519/0707";
+    let signed_at = at(NOW);
+    let claimed_expiry = signed_at.plus_secs(86_400);
+    let mut ledger = KeySetLedger::default();
+    ledger.record(key, signed_at);
+    let retiring = signed_at.plus_secs(60);
+    ledger.retire_after_grace(key, retiring, &rotation);
+    assert!(ledger.verifies(key, retiring.plus_secs(3599)));
+    assert!(!ledger.verifies(key, retiring.plus_secs(3600)));
+    assert!(retiring.plus_secs(3600) < claimed_expiry, "the grace window, not the claimed lifetime, ends verification");
 }
 
 /// Lowering the ceiling records the previous value and its instant; rotation-grace validation uses the recorded value until the last credential minted under it lapses.

@@ -8,6 +8,7 @@ mod enforce;
 #[cfg(feature = "exchange")]
 mod exchange;
 mod explain;
+mod grant;
 mod issue;
 mod keyset;
 mod possession;

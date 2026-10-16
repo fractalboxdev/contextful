@@ -129,3 +129,30 @@ fn a_credential_binding_no_key_is_asked_for_no_possession_proof() {
     let r = verify_network(&minted(&signer), &keys(&signer), &admission, |_| -> Result<(), ProofRefusal> { panic!("no key to prove") });
     assert!(matches!(&r, Ok(a) if a.confirmation().is_none()), "{r:?}");
 }
+
+/// Derivation proves the chain and not the new holder's identity. A hop authenticating its new actor runs through the exchange.
+// spec: authority.attenuate.bearer@68e77394
+#[test]
+fn a_derived_hop_proves_its_chain_and_attests_no_new_holder() {
+    let signer = issuer();
+    let parent = minted(&signer);
+    // The holder names a sub-agent and binds no key: the child is a bearer of the chain.
+    let derivation = Derivation {
+        subject: contextful_core::identify::SubjectDerivation { agent: Some("agent://sub-agent".into()), ..Default::default() },
+        ..Derivation::default()
+    };
+    let child = attenuate(&parent, &derivation).unwrap();
+    let admitted = admit(&child, &signer, DURING).unwrap();
+    assert_eq!(admitted.confirmation(), None, "no hop proves who holds the child");
+    let subject = admitted.subject();
+    assert_eq!(subject.agent(), Some("agent://sub-agent"));
+    let attested = subject.attestations();
+    assert_eq!(attested.get(&contextful_core::identify::Member::Agent), Some(&contextful_core::identify::Attestation::Asserted));
+    // The verified principal is the parent's; a derivation cannot authenticate another one.
+    assert_eq!(subject.on_behalf_of(), Some("user://dana@acme.example"));
+    let rebound = Derivation {
+        subject: contextful_core::identify::SubjectDerivation { on_behalf_of: Some("user://lee@acme.example".into()), ..Default::default() },
+        ..Derivation::default()
+    };
+    refused(attenuate(&parent, &rebound), "AuthoritySubjectRebound");
+}

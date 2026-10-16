@@ -196,6 +196,23 @@ fn a_per_request_write_accompanied_by_a_credential_is_authored_by_it() {
     assert_eq!(authors(dir.path()), Some(vec![serde_json::json!(DANA)]));
 }
 
+/// An absent authorship value on a landed row means no credential authorized the write: the uncredentialed owner or a timer-fired run.
+// spec: authority.issue.absent-author@3b12ea3e
+#[test]
+fn a_row_no_credential_authorized_carries_no_author() {
+    let dir = project("authoring_posture = \"per_request\"");
+    let (public, token) = credential(dir.path(), &["write"]);
+    ok(&cf(dir.path(), &land(&["--public-key", &public, "--audience", AUD]), Some(&token)));
+    // The owner's uncredentialed land and run land beside it with no author.
+    let owner = ["context", "land", "filings", "--project", "research", "--rows", "rows.jsonl", "--run-id", "run-4", "--site-id", "s"];
+    ok(&cf(dir.path(), &owner, None));
+    ok(&cf(dir.path(), &start(&[]), None));
+    assert_eq!(authors(dir.path()), Some(vec![serde_json::json!(DANA), serde_json::Value::Null]));
+    let q = "SELECT count(*) FROM filings WHERE _authored_by IS NULL";
+    let r: serde_json::Value = serde_json::from_str(&ok(&cf(dir.path(), &["query", "--json", "--project", "research", q], None))).unwrap();
+    assert_eq!(r["rows"][0][0].to_string().trim_matches('"'), "2", "{r}");
+}
+
 /// A credential revoked between admission and commit commits nothing.
 #[test]
 fn a_revocation_after_admission_stops_the_commit() {

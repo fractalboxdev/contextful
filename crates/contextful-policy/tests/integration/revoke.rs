@@ -48,3 +48,20 @@ fn a_withdrawn_format_is_refused_from_its_cutover() {
     assert!(verify_inherited_pipe(&credential, &keys(&signer), &Admission::new(at(DURING), &state)).is_ok());
     refused(verify_inherited_pipe(&credential, &keys(&signer), &Admission::new(at("2030-01-01T00:10:00Z"), &state)), "CredentialFormatWithdrawn");
 }
+
+/// A short lifetime is the primary withdrawal: a credential's remaining lifetime bounds its exposure after a provider sign-out or before a denylist entry propagates.
+// spec: authority.revoke.short-lifetime@99e440b1
+#[test]
+fn a_credential_withdraws_itself_at_expiry_with_no_denylist_entry() {
+    let signer = issuer();
+    let credential = minted(&signer);
+    // With nothing denied and no epoch bumped, the credential admits until its expiry and
+    // never after: its remaining lifetime is its whole exposure.
+    let admitted = admit(&credential, &signer, DURING).unwrap();
+    assert_eq!(admitted.expires_at(), at(MINTED).plus_secs(TTL));
+    assert!(admit(&credential, &signer, "2030-01-01T00:14:59Z").is_ok());
+    refused(admit(&credential, &signer, "2030-01-01T00:15:01Z"), "AuthorityExpired");
+    // A child never outlives it, so withdrawing the parent's lifetime withdraws every hop.
+    let child = contextful_policy::attenuate::attenuate(&credential, &contextful_policy::attenuate::Derivation::default()).unwrap();
+    refused(admit(&child, &signer, "2030-01-01T00:15:01Z"), "AuthorityExpired");
+}
