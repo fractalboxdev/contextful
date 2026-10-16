@@ -38,15 +38,21 @@ pub const MODALITIES: [&str; 5] = ["text", "image", "audio", "structured", "mixe
 /// Age at which a request-ledger row is collected: 365 d (`store.reserve.ledger-retention`).
 pub const LEDGER_RETENTION_SECS: u64 = 365 * 24 * 60 * 60;
 
-/// The two table namespaces the engine holds (`store.reserve.table-namespaces`): the
-/// durable run record, and `_visibility`, under which each source's mirrored access
-/// tables land (`disclosure.mirror.grants-table`).
-pub const RESERVED_TABLE_NAMESPACES: [(&str, &str); 2] =
-    [(RUN_RECORD_TABLE, "the durable run record"), ("_visibility", "the mirrored access tables")];
+/// The three table namespaces the engine holds (`store.reserve.table-namespaces`): the
+/// durable run record, the item record, and `_visibility`, under which each source's
+/// mirrored access tables land (`disclosure.mirror.grants-table`).
+pub const RESERVED_TABLE_NAMESPACES: [(&str, &str); 3] = [
+    (RUN_RECORD_TABLE, "the durable run record"),
+    (ITEM_RECORD_TABLE, "the isolated-item outcome record"),
+    ("_visibility", "the mirrored access tables"),
+];
 
 /// The table holding the durable run record (`run.record.reserved-table`). The engine
 /// alone appends to it; every reader reads it as any other table.
 pub const RUN_RECORD_TABLE: &str = "_runs";
+
+/// The table holding one row per terminal isolated item (`run.items.outcome-record`).
+pub const ITEM_RECORD_TABLE: &str = "_items";
 
 /// What a write path knows about the batch it lands. A path with no batch scope or no
 /// authenticated subject omits that column (`store.reserve.no-placeholder`).
@@ -115,11 +121,11 @@ pub fn producer_columns(schema: &Schema) -> Result<Schema, StoreError> {
     Ok(Schema { columns: kept, ..Default::default() })
 }
 
-/// Whether `table` is one the engine alone writes: the run record, or a source's mirrored
-/// access table under `_visibility/` (`disclosure.mirror.grants-table`). It reads and folds
-/// as any table; the land path refuses a producer writing it.
+/// Whether `table` is one the engine alone writes: the run record, the item record, or a
+/// source's mirrored access table under `_visibility/` (`disclosure.mirror.grants-table`).
+/// It reads and folds as any table; the land path refuses a producer writing it.
 pub fn is_engine_table(table: &str) -> bool {
-    table == RUN_RECORD_TABLE || table.strip_prefix("_visibility/").is_some_and(|rest| !rest.is_empty())
+    table == RUN_RECORD_TABLE || table == ITEM_RECORD_TABLE || table.strip_prefix("_visibility/").is_some_and(|rest| !rest.is_empty())
 }
 
 /// Refuse a table name inside a reserved namespace (`store.reserve.table-name`).

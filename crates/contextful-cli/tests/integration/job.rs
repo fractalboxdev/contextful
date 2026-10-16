@@ -27,6 +27,55 @@ fn isolated_items_skip_completed_paid_calls_and_outputs_on_later_fires() {
     }
 }
 
+/// One exhausted and two succeeded items each read back from the item record with their
+/// job, keys, attempt count and outcome; a later fire holding their receipts adds no row.
+// spec: run.items.outcome-record@3702f38d
+// spec: run.items.terminal-outcome@8b1abe1a
+#[test]
+fn terminal_items_read_back_from_the_item_record_by_job_and_entity() {
+    let (dir, public, token) = project(&job("max_in_flight=1\n[job.isolated_items]\nlogical_key='doc_id'\nentity_key='doc_id'\nentity_namespace='documents'\nmax_attempts=1\n"));
+    let p = dir.path();
+    let failed = err(&fire(p, &public, &token, "first", "2030-01-01T00:00:30Z", &[("SCORE_TRANSIENT", "be")]));
+    assert!(failed.contains("2 successful items, 1 failed"), "{failed}");
+    let sql = "SELECT job, logical_key, entity_namespace, entity_key, attempts, outcome, reason IS NULL, ended_at IS NOT NULL FROM _items ORDER BY entity_key";
+    let rows = select(p, sql);
+    assert_eq!(
+        rows,
+        [
+            ["score-documents", "d1", "documents", "d1", "1", "succeeded", "true", "true"],
+            ["score-documents", "d2", "documents", "d2", "1", "exhausted", "false", "true"],
+            ["score-documents", "d3", "documents", "d3", "1", "succeeded", "true", "true"],
+        ]
+    );
+    let reason = select(p, "SELECT reason FROM _items WHERE outcome = 'exhausted'");
+    assert!(reason[0][0].starts_with("Transient: ") && reason[0][0].contains("provider unavailable"), "{reason:?}");
+
+    // The terminal receipts skip every body, and the record keeps one row per item.
+    err(&fire(p, &public, &token, "second", "2030-01-01T00:00:40Z", &[]));
+    assert_eq!(select(p, sql), rows);
+}
+
+/// An entity key its source masks lands in the item record as the masked value.
+// spec: run.items.served-key@f3cb5be5
+#[test]
+fn a_masked_entity_key_lands_in_the_item_record_masked() {
+    let masked = format!("[[pipeline.tables]]\nname='documents'\n[pipeline.tables.policy.columns]\ndoc_id={{strategy='hash'}}\n{}", job("max_in_flight=1\n[job.isolated_items]\nlogical_key='doc_id'\nentity_key='doc_id'\nentity_namespace='documents'\nmax_attempts=1\n"));
+    let (dir, public, token) = project(&masked);
+    let p = dir.path();
+    ok(&fire(p, &public, &token, "masked", "2030-01-01T00:00:30Z", &[]));
+    let rows = select(p, "SELECT logical_key, entity_key, outcome FROM _items ORDER BY entity_key");
+    assert_eq!(rows.len(), 3, "{rows:?}");
+    for row in &rows {
+        assert_eq!(row[0], row[1]);
+        assert!(row[1].len() == 32 && row[1].bytes().all(|b| b.is_ascii_hexdigit()), "{row:?}");
+        assert_eq!(row[2], "succeeded");
+    }
+    let everything = select(p, "SELECT * FROM _items");
+    for clear in ["d1", "d2", "d3"] {
+        assert!(everything.iter().flatten().all(|cell| cell != clear && !cell.contains(&format!("\"{clear}\""))), "{clear} in the clear: {everything:?}");
+    }
+}
+
 #[path = "job_applied.rs"]
 mod applied;
 

@@ -8,7 +8,8 @@ use crate::execution::{Close, Tally};
 use crate::runner::{Engine, EngineError};
 pub use contextful_core::run::drive::ItemPolicy;
 use contextful_core::run::drive::{
-    Emitted, InputRow, InputSet, PreparedEmitted, RowStop, INPUT_STEP,
+    Emitted, InputRow, InputSet, ItemIdentity, ItemReceipt, ItemTerminal, PreparedEmitted, RowStop,
+    INPUT_STEP, ITEM_SCOPE_PREFIX,
 };
 use contextful_core::run::effect::{
     EffectAdmission, EffectScope, PreparedEmission, RecordedBodyPlan,
@@ -18,7 +19,6 @@ use contextful_core::run::own::{OwnerPins, OwnerScope};
 use contextful_core::run::ports::{BlobStore, JournalStore, Landed, OpenExecution};
 use contextful_core::run::record::{RunRow, RunStatus};
 use contextful_core::run::{Failure, FailureTag};
-use serde::{Deserialize, Serialize};
 use std::collections::BTreeSet;
 use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::Mutex;
@@ -51,14 +51,6 @@ impl ItemReport {
             .iter()
             .all(|i| matches!(i.status, ItemStatus::Succeeded(_)))
     }
-}
-
-#[derive(Deserialize, Serialize)]
-struct ItemReceipt {
-    run_id: String,
-    rows: u64,
-    bytes: u64,
-    failure: Option<Failure>,
 }
 
 fn receipt_outcome(
@@ -362,7 +354,7 @@ impl<J: JournalStore + Clone + Send + Sync, B: BlobStore + Clone + Send + Sync> 
                         rows.get(next.fetch_add(1, Ordering::SeqCst))
                     {
                         let result = (|| {
-                            let scope = OwnerScope::host(&format!("item:{id}"));
+                            let scope = OwnerScope::host(&format!("{ITEM_SCOPE_PREFIX}{id}"));
                             if let Some(receipt) = self.catalog.cursor_at(&scope)?.position {
                                 return receipt_outcome(&row.key, id, receipt)
                                     .map_err(EngineError::from);
@@ -499,35 +491,42 @@ impl<J: JournalStore + Clone + Send + Sync, B: BlobStore + Clone + Send + Sync> 
                                 .count()
                                 + 1;
                             let terminal = match &status {
-                                ItemStatus::Succeeded(_) => true,
-                                ItemStatus::Failed(f) => {
-                                    !matches!(
-                                        f.tag,
-                                        FailureTag::Transient
-                                            | FailureTag::RateLimited
-                                            | FailureTag::Storage
-                                            | FailureTag::Canceled
-                                    ) || failures >= policy.max_attempts as usize
+                                ItemStatus::Succeeded(_) => Some(ItemTerminal::Succeeded),
+                                ItemStatus::Failed(f) if !ItemTerminal::retryable(f.tag) => {
+                                    Some(ItemTerminal::Failed)
                                 }
-                                _ => false,
+                                ItemStatus::Failed(_)
+                                    if failures >= policy.max_attempts as usize =>
+                                {
+                                    Some(ItemTerminal::Exhausted)
+                                }
+                                _ => None,
                             };
-                            if terminal {
+                            if let Some(terminal) = terminal {
                                 x.assert_publication_current()?;
                                 let cached = x.cursor_row()?;
-                                let receipt = match &status {
-                                    ItemStatus::Succeeded(l) => ItemReceipt {
-                                        run_id: attempt.clone(),
-                                        rows: l.rows,
-                                        bytes: l.bytes,
-                                        failure: None,
-                                    },
-                                    ItemStatus::Failed(f) => ItemReceipt {
-                                        run_id: attempt.clone(),
-                                        rows: 0,
-                                        bytes: 0,
-                                        failure: Some(f.clone()),
-                                    },
+                                let (rows, bytes, failure) = match &status {
+                                    ItemStatus::Succeeded(l) => (l.rows, l.bytes, None),
+                                    ItemStatus::Failed(f) => (0, 0, Some(f.clone())),
                                     _ => unreachable!(),
+                                };
+                                let receipt = ItemReceipt {
+                                    run_id: attempt.clone(),
+                                    rows,
+                                    bytes,
+                                    failure,
+                                    item: Some(ItemIdentity {
+                                        job: drive.job.clone(),
+                                        logical_key: row
+                                            .row
+                                            .get(&policy.logical_key)
+                                            .cloned()
+                                            .unwrap_or_default(),
+                                        entity_namespace: policy.entity_namespace.clone(),
+                                        entity_key: entity.clone(),
+                                        attempts: u32::try_from(failures).unwrap_or(u32::MAX),
+                                        outcome: terminal,
+                                    }),
                                 };
                                 let next = contextful_core::coordinate::CursorRow {
                                     position: Some(serde_json::to_value(receipt).map_err(|e| {
@@ -608,7 +607,10 @@ impl<J: JournalStore + Clone + Send + Sync, B: BlobStore + Clone + Send + Sync> 
                 ItemStatus::Succeeded(_) => true,
                 ItemStatus::Failed(_) => self
                     .catalog
-                    .cursor_at(&OwnerScope::host(&format!("item:{}", item.execution_id)))?
+                    .cursor_at(&OwnerScope::host(&format!(
+                        "{ITEM_SCOPE_PREFIX}{}",
+                        item.execution_id
+                    )))?
                     .position
                     .is_some(),
                 ItemStatus::Parked | ItemStatus::Deferred => false,

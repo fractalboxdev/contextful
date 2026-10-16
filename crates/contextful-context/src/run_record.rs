@@ -3,7 +3,8 @@
 //! run and phase wins, and the machine catalog is a cache in front of the table: a
 //! [`RecordedCatalog`] appends as it caches, and [`restore`] refills an empty catalog
 //! (`run.record.rebuild-restores-history`). The table reads under the store's bounds
-//! like any other (`run.record.time-travel`).
+//! like any other (`run.record.time-travel`). A terminal item receipt the catalog applies
+//! appends its row to the item record (`run.items.outcome-record`).
 
 use crate::error::{ContextError, Result};
 use crate::land::{land_engine_owned, Batch, RunContext};
@@ -12,6 +13,7 @@ use crate::scan::scan;
 use crate::store::Store;
 use contextful_core::coordinate::{Cas, Catalog, CursorRow, Lease, LeaseKey, LeaseRow};
 use contextful_core::run::backfill::ChunkRow;
+use contextful_core::run::drive::{ItemReceipt, ITEM_SCOPE_PREFIX};
 use contextful_core::run::failure::FailureTag;
 use contextful_core::run::own::{ExecutionOwner, OwnerScope};
 use contextful_core::run::record::{HistoryPage, Phase, RunRow, Window};
@@ -134,21 +136,42 @@ impl RecordedCatalog {
         RecordedCatalog { inner, store, resolve, node: Mutex::new(None) }
     }
 
-    fn record(&self, row: &RunRow) -> std::result::Result<(), Failure> {
-        let node = {
-            let mut held = self.node.lock().unwrap_or_else(|p| p.into_inner());
-            match &*held {
-                Some(n) => n.clone(),
-                None => {
-                    let n = (self.resolve)(&self.store).map_err(storage)?;
-                    *held = Some(n.clone());
-                    n
-                }
+    fn node(&self) -> std::result::Result<NodeId, Failure> {
+        let mut held = self.node.lock().unwrap_or_else(|p| p.into_inner());
+        match &*held {
+            Some(n) => Ok(n.clone()),
+            None => {
+                let n = (self.resolve)(&self.store).map_err(storage)?;
+                *held = Some(n.clone());
+                Ok(n)
             }
-        };
+        }
+    }
+
+    fn record(&self, row: &RunRow) -> std::result::Result<(), Failure> {
+        let node = self.node()?;
         let at = self.inner.now()?;
         append(&self.store, &node, row, at).map(|_| ()).map_err(storage)
     }
+
+    /// Append the item record's row for the terminal receipt `item` just committed under.
+    fn record_item(&self, item: &str, receipt: &ItemReceipt) -> std::result::Result<(), Failure> {
+        let site_id = self
+            .inner
+            .run(&receipt.run_id)?
+            .map(|r| r.site_id)
+            .ok_or_else(|| Failure::new(FailureTag::Storage, format!("item record: attempt run `{}` is absent", receipt.run_id)))?;
+        let (node, at) = (self.node()?, self.inner.now()?);
+        crate::item_record::append(&self.store, &node, &site_id, item, receipt, at).map(|_| ()).map_err(storage)
+    }
+}
+
+/// The terminal receipt a retirement of an isolated item's scope commits, with the item's
+/// execution id, when that receipt names its item (`run.items.outcome-record`).
+fn item_receipt(scope: &OwnerScope, cursor: Option<&(CursorRow, u64)>) -> Option<(String, ItemReceipt)> {
+    let item = scope.host_id()?.strip_prefix(ITEM_SCOPE_PREFIX)?;
+    let receipt: ItemReceipt = serde_json::from_value(cursor?.0.position.clone()?).ok()?;
+    receipt.item.is_some().then(|| (item.to_string(), receipt))
 }
 
 impl Catalog for RecordedCatalog {
@@ -186,8 +209,14 @@ impl Catalog for RecordedCatalog {
     fn put_owner(&self, owner: &ExecutionOwner) -> std::result::Result<(), Failure> {
         self.inner.put_owner(owner)
     }
+    /// A terminal item receipt appends its item record row once the catalog applies it.
     fn retire_at(&self, scope: &OwnerScope, execution_id: &str, cursor: Option<(CursorRow, u64)>, fence: Option<&Lease>) -> std::result::Result<Cas, Failure> {
-        self.inner.retire_at(scope, execution_id, cursor, fence)
+        let item = item_receipt(scope, cursor.as_ref());
+        let cas = self.inner.retire_at(scope, execution_id, cursor, fence)?;
+        if let (Cas::Applied, Some((item, receipt))) = (&cas, item) {
+            self.record_item(&item, &receipt)?;
+        }
+        Ok(cas)
     }
     fn retired_at(&self, scope: &OwnerScope) -> std::result::Result<Option<String>, Failure> {
         self.inner.retired_at(scope)

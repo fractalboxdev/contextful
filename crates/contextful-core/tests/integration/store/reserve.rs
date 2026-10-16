@@ -81,18 +81,19 @@ fn prompt_hash_is_a_prefixed_sha256() {
     assert!(optional_value_problem("_prompt_hash", "sha256:abc").is_some());
 }
 
-/// The engine reserves two table namespaces: `_runs`, the durable run record, and `_visibility`, under which
-/// {{disclosure.mirror.grants-table}} lands each source's mirrored access tables.
-// spec: store.reserve.table-namespaces@3198fc8b
+/// The engine reserves three table namespaces: `_runs`, the durable run record, `_items`, the item record of
+/// {{run.items.outcome-record}}, and `_visibility`, under which {{disclosure.mirror.grants-table}} lands each
+/// source's mirrored access tables.
+// spec: store.reserve.table-namespaces@37b138a2
 #[test]
 fn the_visibility_namespace_holds_each_sources_access_tables() {
-    for bad in ["_visibility", "_visibility/wiki/grants", "_visibility/drive/resources", "_runs"] {
+    for bad in ["_visibility", "_visibility/wiki/grants", "_visibility/drive/resources", "_runs", "_items", "_items/archive"] {
         match check_table_name(bad) {
             Err(StoreError::StoreReservedTableName(m)) => assert!(m.contains("reserved for"), "{m}"),
             other => panic!("{bad}: expected StoreReservedTableName, got {other:?}"),
         }
     }
-    for ok in ["_visibilityx", "access/grants", "visibility/grants", "access_grants"] {
+    for ok in ["_visibilityx", "access/grants", "visibility/grants", "access_grants", "_itemsx", "items"] {
         check_table_name(ok).unwrap();
     }
 }

@@ -512,3 +512,16 @@ Decision: a `receive` source declares `key_retention_secs`, required and undefau
 | Keys answer forever | Bounded promise | Every key ever sent stays an answerable deduplication record. |
 | A late key lands as a fresh batch | No row lands twice | A resend after the window duplicates committed tables. |
 | A default window | Sender choice | The engine picks a retry horizon it cannot know. |
+
+## A terminal item's outcome is a row of a reserved relation
+
+Context: an isolated item's attempt runs under a host scope, so its `_runs` row names no job, and its run and execution ids are digests no reader inverts to an entity. Its terminal receipt sits in a coordination-catalog cursor no read face exposes. Criteria: a model answers per-job, per-entity questions through an ordinary read; `_runs` stays one row per run phase; a masked key stays masked.
+
+Decision: a terminal receipt names its job, keys, attempts and outcome, and the catalog in front of the store appends one `_items` row once it applies that receipt, as it appends a run's commit row. The keys are the values the job's input relation served, so the source's masks bind them.
+
+| Option | Lost on | Cost |
+| --- | --- | --- |
+| Reserved `_items` relation appended on receipt commit *(chosen)* | — | A crash between the receipt commit and the append leaves that item without a row. |
+| Job and entity fields on the attempt's `_runs` row | One row per run phase | A per-entity question folds plan and commit rows of every attempt, failed retries included. |
+| Append before the receipt commits | No false terminal | A refused commit leaves a row claiming an outcome the item never reached. |
+| A relation over the catalog's cursor positions | Complete mediation | A read reaches catalog state outside the store's registered relations. |

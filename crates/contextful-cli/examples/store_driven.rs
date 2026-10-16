@@ -3,7 +3,8 @@
 //! `scores` row carrying the row's `doc_id` and the length of its `body`.
 //! With `SCORE_AUDIT` set, each row also lands one `audits` row carrying its `doc_id`.
 //! `SCORE_LEDGER` names a file each served call appends `<doc_id> <idempotency key>` to;
-//! `SCORE_DIE_AFTER` ends the process inside the call past that many served calls.
+//! `SCORE_DIE_AFTER` ends the process inside the call past that many served calls;
+//! `SCORE_TRANSIENT` names a `body` whose call fails as transient.
 
 use contextful_core::run::drive::{Bodies, Emitted, InputRow, PreparedEmitted, RecordedRowBody, RecordedRowCalls, RowBody, RowCalls, RowStop};
 use contextful_core::run::effect::RecordedEffect;
@@ -25,6 +26,9 @@ impl Score {
         let mut served = self.served.lock().unwrap_or_else(|e| e.into_inner());
         if self.die_after.is_some_and(|n| *served >= n) {
             std::process::exit(9);
+        }
+        if std::env::var("SCORE_TRANSIENT").is_ok_and(|b| b == body) {
+            return Err(Failure::new(FailureTag::Transient, format!("provider unavailable for `{body}`")));
         }
         if let Some(path) = &self.ledger {
             let mut f = std::fs::OpenOptions::new().create(true).append(true).open(path).map_err(|e| Failure::new(FailureTag::Transient, e.to_string()))?;
