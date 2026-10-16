@@ -358,6 +358,18 @@ fn a_pipeline_file_keeps_a_replicate_off_table_off_the_pull() {
     refused(&cf(replica.path(), &["context", "files", "filings", "--project", "research"], &[]), "StoreUnknownTable");
 }
 
+/// `sync pull --table` takes a grant table pattern: a prefix pulls every table it begins, and
+/// a star before the final position refuses before any transfer.
+#[test]
+fn a_pull_table_flag_selects_through_the_grant_pattern_matcher() {
+    let bucket = tempfile::tempdir().unwrap();
+    let _a = seed(&file_sync(bucket.path(), ""), &[]);
+    let replica = project("replica-p", &file_sync(bucket.path(), "\n[replica]\nof = \"team/research\"\n"));
+    refused(&cf(replica.path(), &["sync", "pull", "--project", "research", "--table", "fi*ings"], &[]), "GrantPatternMalformed");
+    ok(&cf(replica.path(), &["sync", "pull", "--project", "research", "--table", "fil*"], &[]));
+    assert_eq!(files(replica.path()), [LANDED]);
+}
+
 /// A push records the pushing site's residency allow-set in the bucket manifest; a push finding a set another site
 /// recorded that differs from its own raises `ResidencySitesDiverge` and commits nothing.
 // spec: surface.reside.site-regions@64018045
