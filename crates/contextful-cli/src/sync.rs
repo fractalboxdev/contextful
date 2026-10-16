@@ -20,7 +20,8 @@ use contextful_core::time::Instant;
 use contextful_core::store::catalog::MACHINE_CATALOG_FILE;
 #[cfg(feature = "data-plane")]
 use contextful_sync::{run_state, RunState};
-use contextful_sync::{FsBucket, PullScope, SiteResidency, Syncer};
+use contextful_policy::enforce::policy::TablePolicy;
+use contextful_sync::{FsBucket, PullScope, Redistribution, SiteResidency, Syncer};
 use std::path::PathBuf;
 use std::sync::Arc;
 
@@ -151,7 +152,7 @@ fn open_with(l: &Located, config: SyncConfig) -> Result<(Syncer, Vec<TableDecl>)
         Err(e) => return Err(e).with_context(|| format!("reading `{}`", seed.display())),
     };
     let key_set = Some(l.project.dir.join(contextful_core::revoke::KeySetLedger::PATH));
-    let redistribution = contextful_sync::Redistribution { withheld: decls.iter().filter(|d| withheld(d)).map(|d| d.name.clone()).collect() };
+    let redistribution = Redistribution { withheld: replicate_off(&decls)?.into_iter().collect() };
     let syncer = Syncer {
         store,
         bucket,
@@ -168,11 +169,17 @@ fn open_with(l: &Located, config: SyncConfig) -> Result<(Syncer, Vec<TableDecl>)
     Ok((syncer, decls))
 }
 
-/// Whether a table's redistribution flag is cleared: `replicate = false` on the table block
-/// or under its `policy.redistribution` (`authority.bound-redistribution.withhold`).
-fn withheld(decl: &TableDecl) -> bool {
-    let policy = decl.policy.as_ref().and_then(|p| p.get("redistribution")).and_then(|r| r.get("replicate")).and_then(serde_json::Value::as_bool);
-    decl.replicate == Some(false) || policy == Some(false)
+/// The tables whose redistribution flag is cleared: `replicate = false` on the table block or
+/// under its compiled `policy.redistribution`. A push withholds them
+/// (`authority.bound-redistribution.withhold`) and a replica pull leaves them behind.
+fn replicate_off(decls: &[TableDecl]) -> Result<Vec<String>> {
+    let mut off = Vec::new();
+    for d in decls {
+        if d.replicate == Some(false) || TablePolicy::from_decl(d)?.replicate == Some(false) {
+            off.push(d.name.clone());
+        }
+    }
+    Ok(off)
 }
 
 fn control_dir(text: &str, project_dir: &std::path::Path, project: &str) -> Result<Option<PathBuf>> {
@@ -262,7 +269,7 @@ pub fn pending_pull(l: &Located) -> Result<Option<PendingPull>> {
         return Ok(None);
     }
     let (syncer, decls) = open_with(l, config)?;
-    let replicate_off = decls.iter().filter(|d| d.replicate == Some(false)).map(|d| d.name.clone()).collect();
+    let replicate_off = replicate_off(&decls)?;
     Ok(Some(PendingPull { syncer, scope: PullScope { tables: Vec::new(), replicate_off, generation: None } }))
 }
 
@@ -309,12 +316,16 @@ pub fn root_bucket(l: &Located) -> Result<Option<RootBucket>> {
     Ok(Some(RootBucket::new(bucket, format!("{base}/"))))
 }
 
-/// The store, project and node a push plan reads: no `[sync]` and no bucket.
-fn open_local(args: &SyncArgs) -> Result<(Store, String, String)> {
+/// The store, project, node and redistribution bound a push plan reads: no `[sync]` and no
+/// bucket.
+fn open_local(args: &SyncArgs) -> Result<(Store, String, String, Redistribution)> {
     let l = locate(args.project.as_deref(), args.declaration.clone())?;
     let store = Store::open(&l.project.dir, &l.project.name)?;
     let (node_id, _) = node::resolve(&store, |k| std::env::var(k).ok())?;
-    Ok((store, l.project.name, node_id.to_string()))
+    let text = std::fs::read_to_string(&l.declaration).unwrap_or_default();
+    let decls = TableDecl::parse_declaration_set(&text, &pipeline_files(&l.declaration)?)?;
+    let bound = Redistribution { withheld: replicate_off(&decls)?.into_iter().collect() };
+    Ok((store, l.project.name, node_id.to_string(), bound))
 }
 
 /// Write this node's run state into the store root from its machine catalog, so the push
@@ -345,9 +356,11 @@ fn push(s: &Syncer, at: Instant) -> Result<contextful_sync::sync::PushReport> {
 pub fn run(cmd: SyncCmd) -> Result<()> {
     match cmd {
         SyncCmd::Manifest { args, emit: _ } => {
-            let (store, project, node_id) = open_local(&args)?;
+            let (store, project, node_id, bound) = open_local(&args)?;
             record_run_state(&store, &project, &node_id)?;
-            let plan = contextful_sync::plan_manifest(&store, &project, &node_id)?;
+            // The emitted plan holds the bound a push of the store holds (`store.emit.plan`).
+            let mut plan = contextful_sync::plan_manifest(&store, &project, &node_id)?;
+            plan.withhold(&bound, &project);
             println!("{}", serde_json::to_string_pretty(&plan.manifest())?);
             Ok(())
         }
@@ -390,8 +403,7 @@ pub fn run(cmd: SyncCmd) -> Result<()> {
         }
         SyncCmd::Pull { args, tables, generation } => {
             let (s, decls) = open(&args)?;
-            let replicate_off = decls.iter().filter(|d| d.replicate == Some(false)).map(|d| d.name.clone()).collect();
-            let r = s.pull(&PullScope { tables, replicate_off, generation })?;
+            let r = s.pull(&PullScope { tables, replicate_off: replicate_off(&decls)?, generation })?;
             for refusal in &r.unverified {
                 eprintln!("warning: {refusal}");
             }

@@ -492,6 +492,8 @@ The root-object allowlist while a table is withheld:
 ```text
 tables/<withheld>/    withheld: no object, no manifest entry
 access/               ships: mirrored permission tables
+nodes/                ships: per-node run state, no rows
+control/              ships: the applied control chain, no rows
 stale_memory.idx      ships
 manifest.json         ships, naming no withheld table
 catalog.db            withheld

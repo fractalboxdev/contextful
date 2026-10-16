@@ -152,9 +152,13 @@ fn project_table(project: &str, key: &str) -> Option<String> {
 
 /// Root-level directories whose objects ship while a table is withheld, each free of row
 /// data (`authority.bound-redistribution.root-allowlist`).
-const ROOT_ALLOWLIST_DIRS: [&str; 1] = ["access/"];
+const ROOT_ALLOWLIST_DIRS: [&str; 3] = ["access/", "nodes/", "control/"];
 /// Root-level files that ship while a table is withheld.
 const ROOT_ALLOWLIST_FILES: [&str; 1] = ["stale_memory.idx"];
+/// Root-level directories whose objects stay off the bucket while a table is withheld.
+const ROOT_WITHHELD_DIRS: [&str; 1] = ["records/"];
+/// Root-level files that stay off the bucket while a table is withheld.
+const ROOT_WITHHELD_FILES: [&str; 2] = ["catalog.db", "memory.db"];
 /// Objects a left-behind report names (`authority.bound-redistribution.report`).
 const STALE_OBJECT_REPORT: usize = 100;
 
@@ -166,16 +170,33 @@ pub struct Redistribution {
     pub withheld: BTreeSet<String>,
 }
 
+/// The path of a root-level `key` below `project`, outside `tables/`.
+fn root_rest<'k>(project: &str, key: &'k str) -> Option<&'k str> {
+    key.strip_prefix(project)?.strip_prefix('/').filter(|rest| !rest.starts_with("tables/"))
+}
+
 impl Redistribution {
     /// Whether `key`, under `project`, belongs to a withheld table.
     fn withholds(&self, project: &str, key: &str) -> bool {
         project_table(project, key).is_some_and(|t| self.withheld.contains(&t))
     }
 
-    /// Whether `key`, under `project`, sits at the project root outside the allowlist.
+    /// Whether `key`, under `project`, is a root-level object Shapes withholds.
+    fn root_withheld(project: &str, key: &str) -> bool {
+        root_rest(project, key).is_some_and(|rest| ROOT_WITHHELD_DIRS.iter().any(|d| rest.starts_with(d)) || ROOT_WITHHELD_FILES.contains(&rest))
+    }
+
+    /// Whether `key`, under `project`, sits at the project root and neither the allowlist nor
+    /// the withheld list names it.
     fn root_refused(project: &str, key: &str) -> bool {
-        let Some(rest) = key.strip_prefix(project).and_then(|r| r.strip_prefix('/')) else { return false };
-        !rest.starts_with("tables/") && !ROOT_ALLOWLIST_DIRS.iter().any(|d| rest.starts_with(d)) && !ROOT_ALLOWLIST_FILES.contains(&rest)
+        let Some(rest) = root_rest(project, key) else { return false };
+        !ROOT_ALLOWLIST_DIRS.iter().any(|d| rest.starts_with(d)) && !ROOT_ALLOWLIST_FILES.contains(&rest) && !Redistribution::root_withheld(project, key)
+    }
+
+    /// Whether the bound drops `key`, under `project`, from a push: a withheld table's
+    /// object, or a root-level object Shapes withholds while any table is withheld.
+    fn drops(&self, project: &str, key: &str) -> bool {
+        !self.withheld.is_empty() && (self.withholds(project, key) || Redistribution::root_withheld(project, key))
     }
 }
 
@@ -239,13 +260,13 @@ impl ManifestPlan {
         manifest
     }
 
-    /// Drop every key of a withheld table, before any diff against the bucket
-    /// (`authority.bound-redistribution.before-diff`).
-    fn withhold(&mut self, bound: &Redistribution, project: &str) {
+    /// Drop every key of a withheld table, and the root-level objects Shapes withholds,
+    /// before any diff against the bucket (`authority.bound-redistribution.before-diff`).
+    pub fn withhold(&mut self, bound: &Redistribution, project: &str) {
         if bound.withheld.is_empty() {
             return;
         }
-        let keep = |k: &String| !bound.withholds(project, k);
+        let keep = |k: &String| !bound.drops(project, k);
         self.mine.retain(|k, _| keep(k));
         self.shared.retain(|k, _| keep(k));
         self.foreign.retain(|k, _| keep(k));
@@ -805,7 +826,7 @@ impl Syncer {
         if let Some(r) = &self.residency {
             r.check(&remote)?;
         }
-        self.check_left_behind(&remote)?;
+        self.check_left_behind()?;
         self.check_root_objects(&plan, &remote)?;
         let mut report = PushReport::default();
         // A copy of a key another node owns is never pushed; a shared mergeable key commits by its merge.
@@ -830,7 +851,7 @@ impl Syncer {
             }
         }
         // An object a concurrent writer uploaded for a withheld table refuses before the commit (`authority.bound-redistribution.two-checks`).
-        self.check_left_behind(&self.manifest()?.0)?;
+        self.check_left_behind()?;
         // A table under a standing compaction lease is the holder's to publish (`store.push.pointer-leased`).
         let mut locals = Vec::new();
         for local in local_pointers(&self.store, &self.project)? {
@@ -866,17 +887,17 @@ impl Syncer {
         Ok(report)
     }
 
-    /// Refuse while the bucket holds or the manifest names an object of a withheld table,
-    /// naming at most 100 and the total, and deleting none
-    /// (`authority.bound-redistribution.left-behind`, `authority.bound-redistribution.report`).
-    /// The bucket's listing is read as well as the manifest: an object stays fetchable by
-    /// its key whatever the manifest names (`authority.bound-redistribution.manifest-is-an-index`).
-    fn check_left_behind(&self, remote: &BucketManifest) -> Result<()> {
+    /// Refuse while the bucket holds an object of a withheld table, naming at most 100 and
+    /// the total, and deleting none (`authority.bound-redistribution.left-behind`,
+    /// `authority.bound-redistribution.report`). The bucket's listing is the evidence: an
+    /// object stays fetchable by its key whatever the manifest names, and a manifest name
+    /// whose object is gone fetches nothing (`authority.bound-redistribution.manifest-is-an-index`).
+    fn check_left_behind(&self) -> Result<()> {
         let bound = &self.redistribution;
         if bound.withheld.is_empty() {
             return Ok(());
         }
-        let mut found: BTreeSet<String> = remote.entries.keys().chain(remote.pointers.keys()).filter(|k| bound.withholds(&self.project, k)).cloned().collect();
+        let mut found = BTreeSet::new();
         let strip = format!("{}/", self.prefix);
         for table in &bound.withheld {
             for bucket_key in self.bucket.list(&self.key(&format!("{}/tables/{table}/", self.project))?)? {
@@ -918,7 +939,7 @@ impl Syncer {
             return Ok(());
         }
         Err(EnforceError::RootObjectNotAllowlisted(format!(
-            "while `{}` is withheld, a root-level object ships only under `{}` or as `{}`, and the push plans {}: {}; this push uploaded nothing",
+            "while `{}` is withheld, a root-level object ships only under `{}` or as `{}`, and the push plans {} the allowlist does not name: {}; this push uploaded nothing",
             self.redistribution.withheld.iter().map(String::as_str).collect::<Vec<_>>().join("`, `"),
             ROOT_ALLOWLIST_DIRS.join("`, `"),
             ROOT_ALLOWLIST_FILES.join("`, `"),
@@ -969,6 +990,9 @@ impl Syncer {
             let verify = |key: &str, t: &Tombstone| verify_tombstone(ledger.as_ref(), key, t);
             let merged = merge_verified(&remote, &entries, &self.node, now, &verify)?;
             let mut committed = merged.manifest;
+            // The committed manifest names no withheld table, whatever the manifest it merged named (`authority.bound-redistribution.withhold`).
+            committed.entries.retain(|k, _| !self.redistribution.withholds(&self.project, k));
+            committed.tombstones.retain(|k, _| !self.redistribution.withholds(&self.project, k));
             self.sign_tombstones(&mut committed)?;
             if let Some(head) = &plan.control_head {
                 committed.control_heads.insert(self.project.clone(), head.clone());

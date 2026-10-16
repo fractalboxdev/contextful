@@ -63,8 +63,9 @@ fn a_withheld_table_ships_no_object_and_no_manifest_name() {
     assert!(!b.list("team/research/tables/filings_public/").unwrap().is_empty());
 }
 
-/// While a table is withheld, a root-level object outside the allowlist refuses the push before
-/// any upload; the mirrored permission tables and the stale-memory index ship.
+/// While a table is withheld, a root-level object neither list in Shapes names refuses the push
+/// before any upload; the mirrored permission tables, the stale-memory index, the node run
+/// state and the control chain ship, and the verbatim pull records and catalogs are withheld.
 // spec: authority.bound-redistribution.root-allowlist@9a218c3c
 // spec: authority.bound-redistribution.root-not-allowlisted@1f7d0d39
 #[test]
@@ -76,25 +77,70 @@ fn a_root_object_ships_beside_a_withheld_table_only_from_the_allowlist() {
     a.land_into("public", "run-1", json!([{"id": 2}]), LANDED);
     write(&a, "access/grants.parquet", b"mirrored permissions");
     write(&a, "stale_memory.idx", b"stale-memory index");
+    write(&a, "nodes/ingest-a/run-state.json", br#"{"node_id":"ingest-a"}"#);
     write(&a, "records/run-1.json", b"a verbatim record");
+    write(&a, "catalog.db", b"catalog");
+    write(&a, "memory.db", b"memory");
+    write(&a, "notes/run-1.txt", b"an unlisted root object");
     withhold(&mut a, "filings");
 
     let e = a.syncer.push(at(NOW)).unwrap_err().to_string();
     assert!(e.starts_with("EnforceRootObjectNotAllowlisted"), "{e}");
-    assert!(e.contains("records/run-1.json"), "{e}");
-    assert!(!e.contains("research/access/grants.parquet") && !e.contains("research/stale_memory.idx"), "{e}");
+    assert!(e.contains("notes/run-1.txt"), "{e}");
+    for shipped in ["research/access/grants.parquet", "research/stale_memory.idx", "research/nodes/", "research/records/", "research/catalog.db", "research/memory.db"] {
+        assert!(!e.contains(shipped), "{shipped} refused: {e}");
+    }
     assert_eq!(b.list("team/research/").unwrap(), Vec::<String>::new(), "a refused push uploads nothing");
 
-    std::fs::remove_dir_all(a.root().join("records")).unwrap();
+    std::fs::remove_dir_all(a.root().join("notes")).unwrap();
+    let plan = a.syncer.plan_manifest().unwrap().manifest();
     a.syncer.push(at(NOW)).unwrap();
     let entries = manifest(b.as_ref()).entries;
-    assert!(entries.contains_key("research/access/grants.parquet") && entries.contains_key("research/stale_memory.idx"), "{:?}", entries.keys());
+    for shipped in ["research/access/grants.parquet", "research/stale_memory.idx", "research/nodes/ingest-a/run-state.json"] {
+        assert!(entries.contains_key(shipped), "{shipped}: {:?}", entries.keys());
+    }
+    let listed = b.list("team/research/").unwrap();
+    for withheld in ["research/records/run-1.json", "research/catalog.db", "research/memory.db"] {
+        assert!(!plan.entries.contains_key(withheld), "{withheld} planned: {:?}", plan.entries.keys());
+        assert!(!entries.contains_key(withheld), "{withheld} committed: {:?}", entries.keys());
+        assert!(!listed.contains(&format!("team/{withheld}")), "{withheld} uploaded: {listed:?}");
+    }
 
     // With no table withheld, a root-level object ships unlisted.
     let other = tempfile::tempdir().unwrap();
     let open = node("ingest-b", bucket(other.path()), "");
     write(&open, "records/run-1.json", b"a verbatim record");
     assert!(open.syncer.push(at(NOW)).unwrap().uploaded.contains(&"research/records/run-1.json".to_string()));
+}
+
+/// Deleting a withheld table's objects from the bucket clears the refusal: the next push
+/// commits a manifest naming the table in no entry, tombstone or pointer, though the
+/// manifest it read named them.
+#[test]
+fn deleting_the_left_behind_objects_clears_the_refusal() {
+    let dir = tempfile::tempdir().unwrap();
+    let b = bucket(dir.path());
+    let mut a = node("ingest-a", b.clone(), "");
+    a.land_into("filings", "run-1", json!([{"id": 1}]), LANDED);
+    a.land_into("public", "run-1", json!([{"id": 2}]), LANDED);
+    a.syncer.push(at(NOW)).unwrap();
+    assert!(serde_json::to_string(&manifest(b.as_ref())).unwrap().contains("tables/filings/"));
+
+    withhold(&mut a, "filings");
+    let e = a.syncer.push(at(NOW)).unwrap_err().to_string();
+    assert!(e.starts_with("EnforceStaleRedistributedObjects"), "{e}");
+    for key in b.list("team/research/tables/filings/").unwrap() {
+        b.delete(&key).unwrap();
+    }
+
+    a.syncer.push(at(NOW)).unwrap();
+    let committed = manifest(b.as_ref());
+    let named = serde_json::to_string(&committed).unwrap();
+    assert!(named.contains("tables/public/"), "{named}");
+    assert!(!named.contains("filings"), "{named}");
+    assert_eq!(b.list("team/research/tables/filings/").unwrap(), Vec::<String>::new());
+    a.syncer.push(at(NOW)).unwrap();
+    assert!(!serde_json::to_string(&manifest(b.as_ref())).unwrap().contains("filings"));
 }
 
 /// Clearing the flag over a table an earlier push uploaded refuses the next push, naming each
