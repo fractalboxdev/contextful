@@ -6,7 +6,8 @@ use anyhow::{Context, Result};
 use clap::Subcommand;
 use std::path::{Path, PathBuf};
 
-/// Where `export` writes, relative to the working directory, absent `--out`.
+/// Where `export` writes absent `--out`, under the nearest directory upward holding
+/// `contextful.toml`, else the working directory.
 pub const SCHEMA_DIR: &str = ".contextful/schema";
 
 #[derive(Subcommand)]
@@ -14,15 +15,19 @@ pub enum SchemaCmd {
     /// Write `pipeline.json` and `plan.json`, each a JSON Schema derived from the type the
     /// manifest reader and the run path deserialize into.
     Export {
-        /// The directory receiving the schemas.
-        #[arg(long, default_value = SCHEMA_DIR)]
-        out: PathBuf,
+        /// The directory receiving the schemas; absent, `.contextful/schema` under the project root.
+        #[arg(long)]
+        out: Option<PathBuf>,
     },
 }
 
 pub fn run(cmd: SchemaCmd) -> Result<()> {
     match cmd {
         SchemaCmd::Export { out } => {
+            let out = match out {
+                Some(out) => out,
+                None => crate::root::root(None)?.join(SCHEMA_DIR),
+            };
             std::fs::create_dir_all(&out).with_context(|| format!("creating {}", out.display()))?;
             for (name, schema) in [("pipeline.json", contextful_core::pipeline::declare::pipeline_schema()), ("plan.json", contextful_core::run::nodes::plan_schema())] {
                 let path = out.join(name);

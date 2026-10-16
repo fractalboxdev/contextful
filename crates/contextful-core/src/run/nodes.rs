@@ -181,6 +181,11 @@ impl NodePlan {
     fn check(&mut self) -> Result<(), RunError> {
         let ids: BTreeSet<&str> = self.nodes.iter().map(|n| n.id.as_str()).collect();
         let known = |from: &str, to: &str, edge: &str| -> Result<(), RunError> {
+            if to == from && matches!(edge, "predecessor" | "arm") {
+                return Err(RunError::PipelineUndeclaredControlFlow(format!(
+                    "node `{from}` loops onto itself as its {edge}; a plan declares branching as `branch` and fan-out as `parallel`"
+                )));
+            }
             if to == from {
                 return Err(invalid(format!("node `{from}` names itself as its {edge}")));
             }

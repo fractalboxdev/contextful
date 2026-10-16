@@ -175,6 +175,7 @@ pub struct TableDecl {
     /// Column types every landing reads (`store.declare.column-types`), spelled as
     /// [`ColumnType::parse`] reads them; an unreadable spelling refuses the block.
     #[serde(default, skip_serializing_if = "Option::is_none", deserialize_with = "spelled_types")]
+    #[schemars(with = "BTreeMap<String, String>")]
     pub columns: Option<BTreeMap<String, String>>,
     /// Sidecar declarations (`store.index.declaration`).
     #[serde(default, skip_serializing_if = "Option::is_none")]

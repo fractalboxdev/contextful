@@ -639,13 +639,13 @@ fn a_plan_compiles_at_validate_to_a_content_hashed_version_and_no_profile_links_
     let dir = tempfile::tempdir().unwrap();
     let p = dir.path();
     std::fs::create_dir_all(p.join("plans")).unwrap();
-    let plan = r#"{"id":"pull","nodes":[{"id":"fetch","kind":"step","connector":{"id":"vendor","version":"1","command":["sh","fetch.sh"]}}]}"#;
+    let plan = r#"{"id":"pull","nodes":[{"id":"fetch","kind":"step","connector":{"id":"vendor","version":"1","command":["sh","-c","touch ran"]}}]}"#;
     std::fs::write(p.join("plans/pull.json"), plan).unwrap();
     std::fs::write(p.join("contextful.toml"), "[[job]]\nname = \"pull\"\nkind = \"plan\"\nplan = \"plans/pull.json\"\n").unwrap();
     let version = contextful_core::run::nodes::NodePlan::compile(plan.as_bytes()).unwrap().version;
     let valid = ok(&cf(p, &["job", "validate"]));
     assert!(valid.contains(&format!("plan pull version {version}, 1 nodes")), "{valid}");
-    assert!(!p.join("fetch.sh").exists() && !p.join(".contextful").exists(), "validate compiles and runs nothing");
+    assert!(!p.join("ran").exists() && !p.join(".contextful").exists(), "validate compiles and runs nothing");
 
     // A step body written as code never reaches the engine.
     std::fs::write(p.join("plans/pull.json"), r#"{"id":"pull","nodes":[{"id":"fetch","kind":"step","script":"fetch('https://vendor.test')"}]}"#).unwrap();

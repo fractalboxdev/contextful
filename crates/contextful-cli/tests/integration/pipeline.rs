@@ -2779,4 +2779,25 @@ fn schema_export_writes_the_pipeline_and_plan_schemas_under_the_project() {
     let before = std::fs::read(dir.path().join(".contextful/schema/pipeline.json")).unwrap();
     ok(&cf(dir.path(), &["schema", "export"]));
     assert_eq!(std::fs::read(dir.path().join(".contextful/schema/pipeline.json")).unwrap(), before);
+
+    // The pipeline schema is the specification's contract: its title, its required keys and no stray key.
+    assert_eq!(pipeline["title"], "PipelineSpec");
+    assert_eq!(pipeline["additionalProperties"], serde_json::json!(false));
+    assert_eq!(pipeline["required"], serde_json::json!(["id", "source", "tables"]));
+    assert_eq!(pipeline["$defs"]["TableDecl"]["properties"]["columns"]["type"], "object", "`columns` admits no null the reader refuses");
+
+    // TOML and JSON both read into that one specification.
+    let project = project("");
+    let p = project.path();
+    std::fs::create_dir_all(p.join("pipelines")).unwrap();
+    std::fs::write(p.join("pipelines/a.toml"), "id = \"a\"\ntables = [\"orders\"]\n[source]\nname = \"http\"\nconfig = { endpoint = \"https://vendor.test\" }\n").unwrap();
+    std::fs::write(p.join("pipelines/b.json"), r#"{"id":"b","tables":["orders"],"source":{"name":"http","config":{"endpoint":"https://vendor.test"}}}"#).unwrap();
+    let valid = ok(&cf(p, &["pipeline", "validate"]));
+    assert!(valid.contains('a') && valid.contains('b'), "{valid}");
+
+    // Run from a subdirectory, the export lands under the project root.
+    std::fs::create_dir_all(p.join("sub")).unwrap();
+    ok(&cf(&p.join("sub"), &["schema", "export"]));
+    assert!(p.join(".contextful/schema/pipeline.json").is_file() && p.join(".contextful/schema/plan.json").is_file());
+    assert!(!p.join("sub/.contextful").exists(), "the export writes under the project root, not the working directory");
 }

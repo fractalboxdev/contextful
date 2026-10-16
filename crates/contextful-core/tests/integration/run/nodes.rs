@@ -107,6 +107,9 @@ fn a_conditional_or_a_loop_in_a_plan_raises_pipeline_undeclared_control_flow() {
         { "id": "wait", "kind": "sleep", "duration": "1m", "after": ["fetch"] },
     ]);
     refused(looped, "fetch, wait");
+    // A one-node loop: a node after itself, and a branch whose arm names the branch.
+    refused(json!([{ "id": "fetch", "kind": "step", "connector": { "id": "v", "version": "1", "command": ["v"] }, "after": ["fetch"] }]), "`fetch`");
+    refused(json!([step("fetch"), { "id": "pick", "kind": "branch", "predicate": "fetch", "arms": { "again": "pick" }, "after": ["fetch"] }]), "`pick`");
     // A guard on data, on a step or any other node.
     refused(json!([step("fetch"), { "id": "wait", "kind": "sleep", "duration": "1m", "after": ["fetch"], "if": "fetch.rows > 0" }]), "`wait`");
     let mut guarded = step("fetch");
