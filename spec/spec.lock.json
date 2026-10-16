@@ -3068,7 +3068,7 @@
       "operation": "fold",
       "subject": "result",
       "kind": "behavior",
-      "statement": "A pass reports each table as folded, nothing-landed or failed, and a nothing-landed table does not stop the pass.",
+      "statement": "A pass reports each table on one line: folded, `indexes-built` naming each sidecar it built with no run folded, nothing-landed once no run waits and every declared sidecar is current, or failed; a nothing-landed table does not stop the pass.",
       "why": "",
       "file": "spec/10-store.md",
       "line": 309

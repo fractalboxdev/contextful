@@ -12,7 +12,7 @@ use arrow_select::filter::filter_record_batch;
 use arrow_select::take::take_record_batch;
 use contextful_core::store::declare::{TableDecl, WriteMode};
 use contextful_core::store::fold::{FoldOutcome, RetentionReport};
-use contextful_core::store::index::{IndexEntry, IndexKind};
+use contextful_core::store::index::{IndexEntry, IndexKind, INDEXES_DIR};
 pub use contextful_core::store::lay_out::escape;
 use contextful_core::store::lay_out::{
     part_name, PartEntry, Pointer, RunManifest, SnapshotId, SnapshotManifest, MANIFEST_FILE, POINTER_FILE, STAGING_SUFFIX,
@@ -49,6 +49,9 @@ pub struct Staged {
     pub retention: Option<RetentionReport>,
     /// What the partition plan warns about (`store.index.partition-warnings`).
     pub warnings: Vec<String>,
+    /// The declared sidecars the pass builds because the prior snapshot lacked them or held
+    /// them stale (`store.index.declared-unbuilt`).
+    pub built: Vec<String>,
     /// Held for the pass's life, so a concurrent pass's collection reads this staging
     /// directory as in flight rather than as one an earlier pass abandoned.
     pub(crate) _in_flight: Option<std::sync::Arc<FileLock>>,
@@ -98,6 +101,7 @@ pub fn fold_under(store: &Store, decl: &TableDecl, now: Instant, fence: Option<u
             let runs = staged.runs;
             let retention = staged.retention.clone();
             let warnings = staged.warnings.clone();
+            let built = staged.built.clone();
             match commit(store, *staged)? {
                 Committed::Published(m) => {
                     let collected = merge_ledgers(store, decl, now).and_then(|_| collect(store, decl, now));
@@ -109,6 +113,7 @@ pub fn fold_under(store: &Store, decl: &TableDecl, now: Instant, fence: Option<u
                     collected: collected.as_ref().cloned().unwrap_or_default(),
                     collection: collected.err().map(|e| e.to_string()),
                     warnings,
+                    built,
                 })},
                 Committed::Lost => Ok(FoldOutcome::Failed("the pointer moved during the pass; nothing was published".into())),
             }
@@ -151,15 +156,20 @@ pub fn prepare_under(store: &Store, decl: &TableDecl, now: Instant, fence: Optio
     // another builder wrote, or a graph past its extensions, builds in full though nothing
     // landed (`store.index.declared-unbuilt`, `store.index.rebuild`, `store.index.graph-extensions`).
     let id_column = decl.id_column()?.unwrap_or_default();
-    let rebuild = state.chain.first().is_some_and(|s| {
-        decl.indexes().iter().any(|i| {
-            let path = i.path(escape);
-            s.indexes
-                .iter()
-                .find(|e| e.path() == Some(path.as_str()))
-                .is_none_or(|e| e.needs_rebuild() || !e.built_as(i, id_column))
-        })
-    });
+    let built: Vec<String> = match state.chain.first() {
+        None => Vec::new(),
+        Some(s) => decl
+            .indexes()
+            .iter()
+            .map(|i| i.path(escape))
+            .zip(decl.indexes())
+            .filter(|(path, i)| {
+                s.indexes.iter().find(|e| e.path() == Some(path.as_str())).is_none_or(|e| e.needs_rebuild() || !e.built_as(i, id_column))
+            })
+            .map(|(path, _)| path.strip_prefix(&format!("{INDEXES_DIR}/")).map(str::to_string).unwrap_or(path))
+            .collect(),
+    };
+    let rebuild = !built.is_empty();
     if unfolded.is_empty() && decl.retain_rows.is_none() && !rebuild {
         return Ok(Prepared::NothingLanded);
     }
@@ -294,6 +304,7 @@ pub fn prepare_under(store: &Store, decl: &TableDecl, now: Instant, fence: Optio
         runs: unfolded.len(),
         retention,
         warnings,
+        built,
         _in_flight: Some(std::sync::Arc::new(in_flight)),
     })))
 }

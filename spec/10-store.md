@@ -306,7 +306,7 @@ Compaction: pass order, triggers, retention, the compaction lease, and the point
   *because a time partition follows the sender's clock while the retention clock follows arrival*
 - `row-retention-report` — A pass reports the row-age cutoff, expired row count, dropped partition count and directories collected per table; `collect` returns the removed directory paths.
   *because an operator needs evidence of both logical expiry and physical collection*
-- `result` — A pass reports each table as folded, nothing-landed or failed, and a nothing-landed table does not stop the pass.
+- `result` — A pass reports each table on one line: folded, `indexes-built` naming each sidecar it built with no run folded, nothing-landed once no run waits and every declared sidecar is current, or failed; a nothing-landed table does not stop the pass.
 - `collection-failed` — A collection that fails reports its failure: beside `folded` when the pass published, since the snapshot stays published, and as `failed` otherwise; either way the command exits non-zero.
 - `unknown-table` — A pass naming a table no `schema.json` declares halts the command with {{store.lay-out.unknown-table}}.
   *P1*

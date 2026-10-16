@@ -58,8 +58,8 @@ fn a_retried_land_acknowledges_the_replay_and_refuses_other_rows() {
     assert!(String::from_utf8_lossy(&out.stderr).contains("StoreRunConflict"), "{}", String::from_utf8_lossy(&out.stderr));
 }
 
-/// A pass reports each table as folded, nothing-landed or failed, and a nothing-landed table does not stop the pass.
-// spec: store.fold.result@e2b72226
+/// A pass reports each table on one line: folded, `indexes-built` naming each sidecar it built with no run folded, nothing-landed once no run waits and every declared sidecar is current, or failed; a nothing-landed table does not stop the pass.
+// spec: store.fold.result@440444a7
 #[test]
 fn a_scheduled_pass_reports_every_table_and_continues_past_nothing_landed() {
     let p = project();
@@ -84,6 +84,26 @@ fn a_scheduled_pass_reports_every_table_and_continues_past_nothing_landed() {
     let report = String::from_utf8_lossy(&out.stdout);
     assert!(report.contains("events: failed: StoreManifestUnreadable"), "{report}");
     assert!(report.contains("filings: folded"), "{report}");
+
+    // An index declared over rows already landed: the pass builds it with no run folded and
+    // names it, and once every declared sidecar is current the table reports nothing-landed.
+    let p = project();
+    std::fs::write(p.path().join("rows.jsonl"), "{\"doc\":\"a\",\"body\":\"Overdue invoices\"}\n{\"doc\":\"b\",\"body\":\"routine\"}\n").unwrap();
+    land(p.path(), "filings", "run-1", "2030-01-01T00:00:00Z");
+    let report = stdout(&run(p.path(), &["context", "compact", "filings", "--project", "research", "--now", "2030-01-01T01:00:00Z"]));
+    assert!(report.starts_with("filings: folded snapshot-") && report.contains("(1 runs, 2 rows)"), "{report}");
+    let manifest = p.path().join("contextful.toml");
+    let declared = std::fs::read_to_string(&manifest).unwrap().replace(
+        "primary_key = [\"doc\"]\n",
+        "primary_key = [\"doc\"]\n\n[[pipeline.tables.indexes]]\nkind = \"fulltext\"\ncolumn = \"body\"\n\n[[pipeline.tables.indexes]]\nkind = \"fulltext\"\ncolumn = \"body\"\ntokenizer = \"cjk\"\n",
+    );
+    std::fs::write(&manifest, declared).unwrap();
+    let report = stdout(&run(p.path(), &["context", "compact", "filings", "--project", "research", "--now", "2030-01-01T02:00:00Z"]));
+    assert_eq!(report, "filings: indexes-built (fts-body-unicode, fts-body-cjk)");
+    let report = stdout(&run(p.path(), &["context", "compact", "filings", "--project", "research", "--now", "2030-01-01T03:00:00Z"]));
+    assert_eq!(report, "filings: nothing-landed");
+    let report = stdout(&run(p.path(), &["context", "compact", "--project", "research", "--now", "2030-01-01T04:00:00Z"]));
+    assert_eq!(report.lines().collect::<Vec<_>>(), ["filings: nothing-landed"], "{report}");
 }
 
 /// A pass fires at 50 runs committed on a table, 6 h after the table's previous pass, or on `contextful context compact <table>`.

@@ -12,10 +12,10 @@ An unpinned clause is `committed`; a pinned one is `performed` when its Rust, Le
 | `disclosure` | 3 | 16 | 187 | 69 | 14 | 5 | 165 | 0 | 165 |
 | `read` | 2 | 20 | 314 | 54 | 29 | 15 | 272 | 0 | 272 |
 | `run` | 3 | 29 | 554 | 126 | 45 | 17 | 522 | 0 | 522 |
-| `store` | 3 | 19 | 295 | 64 | 15 | 10 | 284 | 0 | 284 |
+| `store` | 3 | 19 | 296 | 64 | 15 | 10 | 285 | 0 | 285 |
 | `surface` | 2 | 21 | 161 | 63 | 23 | 0 | 134 | 0 | 134 |
 | `topology` | 1 | 6 | 79 | 25 | 5 | 3 | 76 | 0 | 76 |
-| **total** | 22 | 169 | 2667 | 675 | 213 | 75 | 2380 | 0 | |
+| **total** | 22 | 169 | 2668 | 675 | 213 | 75 | 2381 | 0 | |
 
 Decision records: 18.
 
@@ -27,7 +27,7 @@ A milestone reads `closed` when its acceptance test computes `passing` and every
 | --- | --- | --- | --- | --- | --- |
 | 0 — The test-first gate | 2 | 22 | 19 | passing | closed |
 | 1 — The authority core | 14 | 248 | 247 | passing | closed |
-| 2 — The store | 9 | 183 | 173 | passing | closed |
+| 2 — The store | 9 | 184 | 174 | passing | closed |
 | 3 — The run path | 12 | 289 | 278 | passing | closed |
 | 4 — Ingest | 25 | 593 | 495 | passing | closed |
 | 5 — The read face under enforcement | 17 | 314 | 279 | passing | closed |
@@ -2035,6 +2035,7 @@ Unscheduled operations: 13.
 | `store.index.column-absent` | `crates/contextful-core/tests/integration/store/index.rs::an_index_or_identifier_the_schema_lacks_is_refused` | performed |
 | `store.index.column-type` | `crates/contextful-core/tests/integration/store/index.rs::a_vector_of_another_width_or_an_unreadable_identifier_is_refused` | performed |
 | `store.index.declaration` | `crates/contextful-core/tests/integration/store/index.rs::each_sidecar_kind_declares_its_column_identifier_and_builder_parameters` | performed |
+| `store.index.declared-unbuilt` | `crates/contextful-context/tests/integration/read/fulltext.rs::a_pass_builds_a_sidecar_declared_over_rows_already_landed` | performed |
 | `store.index.dies-with-snapshot` | `crates/contextful-context/tests/integration/index.rs::collecting_a_snapshot_collects_its_sidecars` | performed |
 | `store.index.filter-copies` | `crates/contextful-context/tests/integration/index.rs::a_sidecar_copies_no_other_column_value` | performed |
 | `store.index.fulltext-by-fold` | `crates/contextful-context/tests/integration/index.rs::the_fold_builds_each_full_text_sidecar_over_identified_rows_with_terms` | performed |
