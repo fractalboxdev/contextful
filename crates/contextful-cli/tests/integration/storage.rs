@@ -206,7 +206,13 @@ fn d1_storage_initialization_and_history_survive_a_new_cli_process() {
     std::fs::write(&config_path, config.replace(&s3.endpoint, "http://127.0.0.1:1")).unwrap();
     let unavailable = invoke(&["storage", "check", "--project", "research"]);
     assert!(!unavailable.status.success(), "an unreachable R2 bucket passed preflight");
-    assert!(String::from_utf8_lossy(&unavailable.stderr).contains("StorageCapabilityMissing: R2 corpus bucket"));
+    // An unanswered bucket is no answered absence: the preflight names it apart.
+    let stderr = String::from_utf8_lossy(&unavailable.stderr);
+    assert!(stderr.contains("StorageCorpusUnavailable: R2 corpus bucket") && !stderr.contains("StorageCapabilityMissing"), "{stderr}");
+    std::fs::write(&config_path, config.replace("bucket = 'conformance'", "bucket = 'absent-bucket'")).unwrap();
+    let absent = invoke(&["storage", "check", "--project", "research"]);
+    assert!(!absent.status.success(), "an absent R2 bucket passed preflight");
+    assert!(String::from_utf8_lossy(&absent.stderr).contains("StorageCapabilityMissing: R2 corpus bucket"));
     std::fs::write(&config_path, &config).unwrap();
     let blob = b"recorded callback value";
     let blob_digest = format!("{:x}", Sha256::digest(blob));

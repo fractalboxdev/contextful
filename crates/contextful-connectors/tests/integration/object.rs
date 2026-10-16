@@ -260,3 +260,31 @@ fn an_object_source_explicitly_reads_one_json_object() {
     let mut inferred = source(json!({"bucket":"b","key":"snapshot.json"}), bucket);
     assert!(inferred.pull(&request(None), &Never).unwrap_err().message.contains("PipelineUnreadableInput"));
 }
+
+/// A bucket that leaves every request unanswered.
+struct UnansweredBucket;
+
+impl ObjectStore for UnansweredBucket {
+    fn get(&self, key: &str) -> Result<Option<(Vec<u8>, String)>, ObjectError> {
+        Err(ObjectError::Unavailable(format!("GET `{key}`: io: Connection refused")))
+    }
+    fn put(&self, key: &str, _: &[u8], _: Condition) -> Result<Put, ObjectError> {
+        Err(ObjectError::Unavailable(format!("PUT `{key}`: io: Connection refused")))
+    }
+    fn delete(&self, key: &str) -> Result<(), ObjectError> {
+        Err(ObjectError::Unavailable(format!("DELETE `{key}`: io: Connection refused")))
+    }
+    fn list(&self, prefix: &str) -> Result<Vec<String>, ObjectError> {
+        Err(ObjectError::Unavailable(format!("LIST `{prefix}`: io: Connection refused")))
+    }
+}
+
+/// An unanswered bucket is a transient read failure, retried like any transport loss.
+#[test]
+fn an_unanswered_bucket_fails_the_read_as_transient() {
+    let config = ObjectConfig::parse(&json!({"bucket": "lake", "prefix": "d/", "format": "jsonl"})).unwrap();
+    let mut s = ObjectSource::new(config, Arc::new(UnansweredBucket));
+    let f = s.pull(&request(None), &Never).unwrap_err();
+    assert_eq!(f.tag, contextful_core::run::failure::FailureTag::Transient, "{f}");
+    assert!(f.message.contains("s3://lake/") && f.message.contains("Connection refused"), "{f}");
+}

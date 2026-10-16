@@ -28,6 +28,9 @@ pub enum ObjectError {
     Unsupported(String),
     /// The backend refused the credential.
     Forbidden(String),
+    /// The backend left the request unanswered within its attempts, or answered a server
+    /// error: no answer says what the bucket holds (`store.endpoint.unavailable`).
+    Unavailable(String),
     Transport(String),
 }
 
@@ -36,6 +39,7 @@ impl std::fmt::Display for ObjectError {
         match self {
             ObjectError::Unsupported(m) => write!(f, "unsupported: {m}"),
             ObjectError::Forbidden(m) => write!(f, "forbidden: {m}"),
+            ObjectError::Unavailable(m) => write!(f, "unavailable: {m}"),
             ObjectError::Transport(m) => write!(f, "transport: {m}"),
         }
     }

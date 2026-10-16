@@ -262,7 +262,7 @@ fn object_failure(input: &str, e: ObjectError) -> Failure {
     match e {
         ObjectError::Forbidden(m) => Failure::new(FailureTag::AuthExpired, format!("`{input}`: the bucket refused the credential: {m}")),
         ObjectError::Unsupported(m) => Failure::deterministic(FailureTag::Permanent, format!("`{input}`: {m}")),
-        ObjectError::Transport(m) => Failure::new(FailureTag::Transient, format!("`{input}`: {m}")),
+        ObjectError::Transport(m) | ObjectError::Unavailable(m) => Failure::new(FailureTag::Transient, format!("`{input}`: {m}")),
     }
 }
 

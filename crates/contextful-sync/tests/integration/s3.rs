@@ -288,6 +288,16 @@ mod transport {
     }
 
     #[test]
+    fn an_unanswered_or_server_failed_request_fails_as_unavailable() {
+        use contextful_core::store::object::ObjectError;
+        let endpoint = Endpoint::start(vec![Answer::Drop; 3]);
+        assert!(matches!(endpoint.bucket().list("corpus/"), Err(ObjectError::Unavailable(m)) if m.contains("LIST")));
+        let endpoint = Endpoint::start(vec![Answer::Status(503, "<Error><Code>SlowDown</Code></Error>")]);
+        assert!(matches!(endpoint.bucket().get("a"), Err(ObjectError::Unavailable(m)) if m.contains("503 SlowDown")));
+        assert_eq!(endpoint.requests(), ["GET"], "an answered status never resends");
+    }
+
+    #[test]
     fn an_unconditional_put_resends_and_a_conditional_put_goes_once() {
         let endpoint = Endpoint::start(vec![Answer::Drop, Answer::Status(200, "")]);
         assert_eq!(endpoint.bucket().put("a", b"x", Condition::None).unwrap(), Put::Applied("\"e1\"".into()));

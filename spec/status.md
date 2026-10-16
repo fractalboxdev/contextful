@@ -11,11 +11,11 @@ An unpinned clause is `committed`; a pinned one is `performed` when its Rust, Le
 | `corpus` | 1 | 10 | 80 | 37 | 7 | 0 | 80 | 0 | 80 |
 | `disclosure` | 3 | 16 | 184 | 69 | 14 | 5 | 162 | 0 | 162 |
 | `read` | 2 | 20 | 290 | 47 | 29 | 15 | 248 | 0 | 248 |
-| `run` | 3 | 29 | 542 | 122 | 45 | 16 | 510 | 0 | 510 |
-| `store` | 3 | 19 | 294 | 64 | 15 | 10 | 284 | 0 | 284 |
+| `run` | 3 | 29 | 543 | 123 | 45 | 16 | 511 | 0 | 511 |
+| `store` | 3 | 19 | 295 | 64 | 15 | 10 | 284 | 0 | 284 |
 | `surface` | 2 | 21 | 161 | 63 | 23 | 0 | 134 | 0 | 134 |
 | `topology` | 1 | 6 | 79 | 25 | 5 | 3 | 76 | 0 | 76 |
-| **total** | 22 | 169 | 2626 | 663 | 213 | 74 | 2338 | 0 | |
+| **total** | 22 | 169 | 2628 | 664 | 213 | 74 | 2339 | 0 | |
 
 Decision records: 18.
 
@@ -28,10 +28,10 @@ A milestone reads `closed` when its acceptance test computes `passing` and every
 | 0 — The test-first gate | 2 | 22 | 19 | passing | closed |
 | 1 — The authority core | 14 | 248 | 247 | passing | closed |
 | 2 — The store | 9 | 183 | 173 | passing | closed |
-| 3 — The run path | 12 | 277 | 266 | passing | closed |
+| 3 — The run path | 12 | 278 | 267 | passing | closed |
 | 4 — Ingest | 25 | 593 | 495 | passing | closed |
 | 5 — The read face under enforcement | 17 | 309 | 272 | passing | closed |
-| 6 — Sync and replicas | 8 | 87 | 87 | passing | closed |
+| 6 — Sync and replicas | 8 | 88 | 87 | passing | closed |
 | 7 — Memory | 6 | 72 | 57 | passing | closed |
 | 8 — Accountability | 5 | 93 | 86 | passing | closed |
 | 9 — Visibility | 6 | 55 | 46 | passing | closed |
@@ -1589,6 +1589,7 @@ Unscheduled operations: 13.
 | `run.journal.body-projection` | `crates/contextful-engine/tests/integration/drive.rs::protected_body_effects_record_rewritten_results_and_resume_without_another_paid_call` | performed |
 | `run.journal.claim-takeover` | `crates/contextful-engine/tests/integration/journal.rs::a_claim_whose_holder_lapsed_is_taken_over` | performed |
 | `run.journal.collection` | `crates/contextful-engine/tests/integration/runner.rs::retirement_collects_the_executions_journal` | performed |
+| `run.journal.corpus-unavailable` | `spec/pins.toml` | performed |
 | `run.journal.current-owner` | `spec/pins.toml` | performed |
 | `run.journal.d1-atomicity` | `spec/pins.toml` | performed |
 | `run.journal.d1-backup` | `spec/pins.toml` | performed |

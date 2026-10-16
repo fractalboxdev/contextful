@@ -52,6 +52,11 @@ fn unexpected_storage_initialization_errors_fail_without_exporting_credentials()
             "ConformanceStorageInitializeFailed:StorageBindingUnavailable",
         ),
         (
+            "StorageCorpusUnavailable: R2 corpus bucket: unavailable: LIST `consumer/`",
+            Outcome::Failed,
+            "ConformanceStorageInitializeFailed:StorageCorpusUnavailable",
+        ),
+        (
             "ProfileCapabilityAbsent: pg-catalog",
             Outcome::Unsupported,
             "ConformanceCapabilityMissing:postgres",
