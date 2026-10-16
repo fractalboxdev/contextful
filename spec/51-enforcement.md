@@ -344,6 +344,8 @@ Inference zones: grammar, composition across grains, floors, incognito, and the 
   *P1*
 - `narrowest-grain` — A column's set narrows its table's; a principal's set narrows both.
   *A-authority*
+- `row-zone-column` — A table's `policy.zone.column` names a column whose value, one allow-set entry, narrows its row's set as a column's set narrows its table's; a null keeps the table's set, and an unparsed value admits no zone.
+  *because the store owner declares the column in the table's policy and its value only narrows, unlike the binding's advisory key {{run.bind.advisory-zone}} refuses*
 - `excluded-row` — Where the table's effective set omits the session's zone, the row leaves the result.
   *A-authority*
 - `excluded-cell` — A cell whose effective set omits the session's zone arrives null, a mask exception notwithstanding.

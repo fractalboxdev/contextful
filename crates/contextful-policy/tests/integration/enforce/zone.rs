@@ -159,6 +159,20 @@ fn the_narrowest_grain_wins() {
     assert!(cell.within(&table) && cell.within(&column) && cell.within(&principal));
 }
 
+/// `policy.zone.column` names the row-grain zone column; without `allow` the table keeps the
+/// fail-closed pair, and an empty name refuses.
+#[test]
+fn a_zone_column_declaration_parses_beside_the_allow_set() {
+    let with = |zone: &str| format!("[[pipeline.tables]]\nname = \"zoned\"\n[pipeline.tables.policy.zone]\n{zone}\n");
+    let t = TablePolicy::from_decl(&decl(&with("allow = [\"on-prem:*\"]\ncolumn = \"placement\""))).unwrap();
+    assert_eq!(t.zone_column.as_deref(), Some("placement"));
+    assert_eq!(t.placement.effective(), set(&["on-prem:*"]));
+    let bare = TablePolicy::from_decl(&decl(&with("column = \"placement\""))).unwrap();
+    assert_eq!(bare.placement.effective(), AllowSet::fail_closed());
+    assert!(matches!(TablePolicy::from_decl(&decl(&with("column = \" \""))), Err(PolicyError::Malformed(_))));
+    assert_eq!(TablePolicy::from_decl(&decl(&with("allow = [\"*\"]"))).unwrap().zone_column, None);
+}
+
 /// A synthesized row declaring a set wider than the intersection of its evidence tables' sets raises `EnforceEvidenceFloorExceeded` and resolves to that intersection.
 // spec: authority.place.evidence-floor@1b790706
 #[test]

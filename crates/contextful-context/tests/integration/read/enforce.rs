@@ -525,6 +525,49 @@ fn a_pipeline_landed_row_keeps_its_table_set() {
     assert!(r.query(&cloud, r#"SELECT id FROM "research/authored""#).unwrap().rows.is_empty());
 }
 
+/// A table's `policy.zone.column` names a column whose value, one allow-set entry, narrows its row's set as a column's set narrows its table's; a null keeps the table's set, and an unparsed value admits no zone.
+// spec: authority.place.row-zone-column@a5dc3d9e
+#[test]
+fn a_row_zone_entry_narrows_its_row_and_never_widens_the_table() {
+    let manifest = format!(
+        "{MANIFEST}\n[[pipeline.tables]]\nname = \"research/zoned\"\n\n[pipeline.tables.policy.zone]\n\
+         allow = [\"on-prem:*\", \"public-cloud:*\"]\ncolumn = \"placement\"\n"
+    );
+    let r = Reads::with_manifest(&manifest);
+    land_rows(
+        &r.store,
+        "research/zoned",
+        "run-z1",
+        json!([
+            { "id": "z1-null", "placement": null },
+            { "id": "z2-on-prem", "placement": "on-prem:*" },
+            { "id": "z3-hq", "placement": "on-prem:hq" },
+            { "id": "z4-ward", "placement": "on-prem:ward-3" },
+            { "id": "z5-cloud", "placement": "public-cloud:*" },
+            { "id": "z6-any", "placement": "*" },
+            { "id": "z7-unparsed", "placement": "moon:base" },
+            { "id": "z8-padded", "placement": " on-prem:hq " },
+        ]),
+    );
+    let r = Reads { face: Face::open(r.store.clone(), &manifest, pepper()).unwrap(), ..r };
+    let ids = |zone: &str| {
+        let s = r.session(&["research/*"], None, Some(zone));
+        let rows = r.query(&s, r#"SELECT id FROM "research/zoned" ORDER BY id"#).unwrap();
+        (column(&rows, "id"), rows)
+    };
+    let (hq, _) = ids("on-prem:hq");
+    assert_eq!(hq, [json!("z1-null"), json!("z2-on-prem"), json!("z3-hq"), json!("z6-any"), json!("z8-padded")]);
+    let (cloud, _) = ids("public-cloud:us-east-1");
+    assert_eq!(cloud, [json!("z1-null"), json!("z5-cloud"), json!("z6-any")]);
+    // A row's `*` never admits a zone its table's set omits.
+    let (vpc, _) = ids("private-cloud:vpc-7");
+    assert!(vpc.is_empty(), "{vpc:?}");
+    // The restriction block counts the withheld rows over the whole relation.
+    let s = r.session(&["research/*"], None, Some("on-prem:hq"));
+    let one = r.query(&s, r#"SELECT id FROM "research/zoned" WHERE id = 'z3-hq'"#).unwrap();
+    assert_eq!(one.blocks["contextful.restriction"]["tables"], json!([{ "table": "research/zoned", "excluded": false, "rows_dropped": 3, "columns_masked": [] }]));
+}
+
 // An incognito session with no zone serves under `local:device`, and one signing a zone
 // outside the fail-closed pair refuses.
 #[test]

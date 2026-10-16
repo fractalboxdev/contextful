@@ -6,7 +6,7 @@ An unpinned clause is `committed`; a pinned one is `performed` when its Rust, Le
 | Contract | Files | Operations | Clauses | Refusals | Limits | Unsettled | Performed | Broken | Floor |
 | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
 | `assurance` | 3 | 18 | 323 | 65 | 24 | 5 | 281 | 0 | 281 |
-| `authority` | 2 | 16 | 300 | 80 | 29 | 8 | 276 | 0 | 276 |
+| `authority` | 2 | 16 | 301 | 80 | 29 | 8 | 277 | 0 | 276 |
 | `connector` | 2 | 14 | 375 | 92 | 22 | 12 | 292 | 0 | 292 |
 | `corpus` | 1 | 10 | 80 | 37 | 7 | 0 | 80 | 0 | 80 |
 | `disclosure` | 3 | 16 | 187 | 69 | 14 | 5 | 165 | 0 | 165 |
@@ -15,7 +15,7 @@ An unpinned clause is `committed`; a pinned one is `performed` when its Rust, Le
 | `store` | 3 | 19 | 297 | 64 | 15 | 10 | 286 | 0 | 286 |
 | `surface` | 2 | 21 | 161 | 63 | 23 | 0 | 134 | 0 | 134 |
 | `topology` | 1 | 6 | 79 | 25 | 5 | 3 | 76 | 0 | 76 |
-| **total** | 22 | 169 | 2670 | 675 | 213 | 75 | 2384 | 0 | |
+| **total** | 22 | 169 | 2671 | 675 | 213 | 75 | 2385 | 0 | |
 
 Decision records: 18.
 
@@ -30,7 +30,7 @@ A milestone reads `closed` when its acceptance test computes `passing` and every
 | 2 — The store | 9 | 185 | 175 | passing | closed |
 | 3 — The run path | 12 | 289 | 278 | passing | closed |
 | 4 — Ingest | 25 | 593 | 495 | passing | closed |
-| 5 — The read face under enforcement | 17 | 315 | 281 | passing | closed |
+| 5 — The read face under enforcement | 17 | 316 | 282 | passing | closed |
 | 6 — Sync and replicas | 8 | 88 | 87 | passing | closed |
 | 7 — Memory | 6 | 92 | 77 | passing | closed |
 | 8 — Accountability | 5 | 96 | 89 | passing | closed |
@@ -513,6 +513,7 @@ Unscheduled operations: 13.
 | `authority.place.per-principal` | `crates/contextful-context/tests/integration/read/enforce.rs::a_listed_principal_withholds_the_rows_it_authors_outside_its_set` | performed |
 | `authority.place.protected-floor` | `crates/contextful-policy/tests/integration/enforce/zone.rs::a_protected_surface_resolves_down_to_its_floor` | performed |
 | `authority.place.removal-with-public-cloud` | `crates/contextful-policy/tests/integration/enforce/zone.rs::write_time_removal_beside_a_public_cloud_is_refused` | performed |
+| `authority.place.row-zone-column` | `crates/contextful-context/tests/integration/read/enforce.rs::a_row_zone_entry_narrows_its_row_and_never_widens_the_table` | performed |
 | `authority.place.serve-outcome` | `crates/contextful-policy/tests/integration/enforce/zone.rs::serving_a_row_yields_a_drop_flag_and_masked_columns` | performed |
 | `authority.place.symbolic-inclusion` | `crates/contextful-policy/tests/integration/enforce/zone.rs::inclusion_is_decided_over_constructors_and_identifiers` | performed |
 | `authority.place.team-default` | `crates/contextful-cli/tests/integration/token.rs::a_mint_naming_no_zone_signs_the_project_default` | performed |

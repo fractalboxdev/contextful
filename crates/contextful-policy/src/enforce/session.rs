@@ -318,9 +318,7 @@ impl Session {
         if !self.zone_admits(t) {
             conjuncts.push("false".to_string());
         }
-        if let Some(authored) = self.authored_by_withheld(t) {
-            conjuncts.push(format!("NOT {authored}"));
-        }
+        conjuncts.extend(self.row_zone_steps(t));
         let projection: Vec<String> = t
             .columns
             .iter()
@@ -384,6 +382,38 @@ impl Session {
         Some(format!("({})", arms.join(" OR ")))
     }
 
+    /// The row-grain zone steps, each a conjunct a kept row meets: no withheld principal
+    /// authored it (`authority.place.per-principal`), and its zone column's entry, where it
+    /// carries one, matches the session zone (`authority.place.row-zone-column`).
+    fn row_zone_steps(&self, t: &TableSource) -> Vec<String> {
+        let mut steps = Vec::new();
+        if let Some(authored) = self.authored_by_withheld(t) {
+            steps.push(format!("NOT {authored}"));
+        }
+        if let Some(column) = t.policy.zone_column.as_deref().filter(|c| t.columns.iter().any(|s| s.name == *c)) {
+            // The entries matching the session zone, decided over its constructor: `*`, its
+            // category's bare entry, and the zone itself. An undeclared zone matches `*` alone.
+            let mut admitting = vec!["*".to_string()];
+            match &self.zone {
+                Zone::LocalDevice => admitting.push("local:device".to_string()),
+                z @ Zone::In(..) => {
+                    let label = z.label();
+                    let category = label.split_once(':').map_or(label.as_str(), |(c, _)| c);
+                    admitting.push(format!("{category}:*"));
+                    admitting.push(label.clone());
+                }
+                Zone::Undeclared => {}
+            }
+            let listed: Vec<String> = admitting.iter().map(|e| literal(e)).collect();
+            steps.push(format!(
+                "({c} IS NULL OR trim(CAST({c} AS VARCHAR)) IN ({}))",
+                listed.join(", "),
+                c = ident(column)
+            ));
+        }
+        steps
+    }
+
     /// The relation's steps ahead of the zone step: the mirrored-permission semi-join, tenant
     /// equality, then the table policy.
     fn steps_before_zone(&self, t: &TableSource) -> Vec<String> {
@@ -437,11 +467,13 @@ impl Session {
         }
         let columns_masked: Vec<String> =
             t.columns.iter().filter(|c| !t.policy.column_set(&c.name).admits(&self.zone)).map(|c| c.name.clone()).collect();
-        // The rows a withheld principal authored leave the relation; the count reads them under
-        // every earlier step (`authority.place.excluded-disclosed`).
-        let dropped_sql = self.authored_by_withheld(t).map(|authored| {
+        // The rows a withheld principal authored or the row's own entry withholds leave the
+        // relation; the count reads them under every earlier step
+        // (`authority.place.excluded-disclosed`).
+        let row_steps = self.row_zone_steps(t);
+        let dropped_sql = (!row_steps.is_empty()).then(|| {
             let mut steps = self.steps_before_zone(t);
-            steps.push(authored);
+            steps.push(format!("NOT ({})", row_steps.join(" AND ")));
             format!("SELECT count(*) FROM ({}) AS \"__contextful_base\" WHERE {}", t.base, filter(&steps))
         });
         (!columns_masked.is_empty() || dropped_sql.is_some())
