@@ -159,7 +159,7 @@ fn a_traced_call_records_a_gen_ai_span_its_request_names() {
     let server = Server::start(move |_| Response::json(200, &reply));
     let caller = TraceContext::parse("00-4bf92f3577b34da6a3ce929d0e0e4736-00f067aa0ba902b7-01", Some("vendor=1")).unwrap();
     let spans = Arc::new(Spans::default());
-    let endpoint = Endpoint::new(&server.url("/v1"), "m", None).unwrap().traced(caller.clone(), spans.clone());
+    let endpoint = Endpoint::new(&server.url("/v1"), "m", None).unwrap().traced(caller.clone(), Some(caller.span_id), spans.clone());
     endpoint.call(&[Message::new("system", "secret rules"), Message::new("user", "private data")]).unwrap();
 
     let recorded = spans.0.lock().unwrap().clone();
@@ -190,12 +190,20 @@ fn a_traced_call_records_a_gen_ai_span_its_request_names() {
     // A failed call still records its span, typed by the failure.
     let failing = Server::start(|_| Response::json(503, "{}"));
     let spans = Arc::new(Spans::default());
-    let endpoint = Endpoint::new(&failing.url("/v1"), "m", None).unwrap().traced(caller, spans.clone());
+    let endpoint = Endpoint::new(&failing.url("/v1"), "m", None).unwrap().traced(caller.clone(), Some(caller.span_id), spans.clone());
     assert!(endpoint.call(&[Message::new("user", "x")]).is_err());
     let recorded = spans.0.lock().unwrap().clone();
     assert_eq!(recorded.len(), 1);
     assert!(recorded[0].attribute("error.type").is_some() && recorded[0].error.is_some());
     assert!(recorded[0].attribute("gen_ai.usage.input_tokens").is_none());
+
+    // With no caller, the call's span roots its own trace and names no parent.
+    let root = contextful_outbound::telemetry::fresh_trace();
+    let spans = Arc::new(Spans::default());
+    let endpoint = Endpoint::new(&server.url("/v1"), "m", None).unwrap().traced(root.clone(), None, spans.clone());
+    endpoint.call(&[Message::new("user", "x")]).unwrap();
+    let recorded = spans.0.lock().unwrap().clone();
+    assert_eq!((recorded[0].trace_id, recorded[0].parent), (root.trace_id, None));
 }
 
 /// The trace carriers the host adds select no client: a traced call with no configured key keeps the system proxy.
@@ -204,7 +212,16 @@ fn trace_carriers_keep_the_proxy() {
     let answer = json!({ "choices": [{ "message": { "content": "ok" } }] }).to_string();
     let t = Recording::new(&[("models.example", "93.184.216.34:0")], vec![ok(&answer)], std::sync::Arc::default());
     let caller = TraceContext::parse("00-4bf92f3577b34da6a3ce929d0e0e4736-00f067aa0ba902b7-01", None).unwrap();
-    let endpoint = Endpoint::new("https://models.example/v1", "m", None).unwrap().with_transport(t.clone()).traced(caller, Arc::new(Spans::default()));
+    let endpoint = Endpoint::new("https://models.example/v1", "m", None).unwrap().with_transport(t.clone()).traced(caller.clone(), Some(caller.span_id), Arc::new(Spans::default()));
     assert_eq!(endpoint.complete(&[Message::new("user", "x")]).unwrap(), "ok");
     assert_eq!(*t.directs.lock().unwrap(), [false]);
+
+    // A header a caller declares selects the hardened client whatever its name.
+    let t = Recording::new(&[("models.example", "93.184.216.34:0")], vec![ok(&answer)], std::sync::Arc::default());
+    let url = url::Url::parse("https://models.example/v1/chat/completions").unwrap();
+    let allow = contextful_core::connector::attach::Allowlist::parse(&["models.example".to_string()]).unwrap();
+    let client = contextful_outbound::client::Client::new(allow, url.clone()).with_transport(t.clone());
+    let declared = [("traceparent".to_string(), contextful_outbound::client::HeaderValue::Plain(caller.traceparent()))];
+    client.send("POST", &url, &declared, Some(b"{}")).unwrap();
+    assert_eq!(*t.directs.lock().unwrap(), [true]);
 }

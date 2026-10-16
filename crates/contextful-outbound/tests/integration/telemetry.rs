@@ -56,6 +56,11 @@ fn spans_leave_as_otlp_json_to_the_configured_collector() {
     exporter.shutdown(Duration::from_secs(10));
     assert_eq!(collector.received("/exact").len(), 1);
     assert!(collector.received("/ignored/v1/traces").is_empty());
+
+    // Headers carry credentials, so a cleartext collector off loopback refuses the exporter at construction.
+    let err = SpanExporter::new("http://collector.example/v1/traces", vec![("a".into(), "b".into())], "svc").err().expect("a cleartext collector with headers builds no exporter");
+    assert!(err.starts_with("SecretCleartextEndpoint"), "{err}");
+    assert!(SpanExporter::new("http://collector.example/v1/traces", Vec::new(), "svc").is_ok());
 }
 
 /// With neither endpoint set, no exporter exists: no span leaves the process and telemetry opens no socket.
@@ -93,9 +98,11 @@ fn a_collector_that_never_answers_adds_no_latency_and_drops_count() {
     }
     let spent = started.elapsed();
     assert!(spent < Duration::from_secs(1), "recording {total} spans took {spent:?}");
-    // The worker holds at most one batch of 512 spans; the queue holds the cap; the rest are counted.
-    let floor = (total - SPAN_QUEUE - 512) as u64;
-    assert!(exporter.dropped() >= floor, "dropped {} of {total}, at least {floor} expected", exporter.dropped());
+    // The queue refuses only when full, so it accepts at least its 2048; the worker holds at most one batch of 512
+    // more; the rest are counted.
+    assert_eq!(SPAN_QUEUE, 2048);
+    let (floor, ceiling) = ((total - 2048 - 512) as u64, (total - 2048) as u64);
+    assert!((floor..=ceiling).contains(&exporter.dropped()), "dropped {} of {total}, {floor}..={ceiling} expected", exporter.dropped());
     assert_eq!(exporter.exported(), 0);
 
     // An unreachable collector loses its batch, counted.

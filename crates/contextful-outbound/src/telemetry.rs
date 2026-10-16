@@ -87,6 +87,11 @@ impl SpanExporter {
         if !matches!(url.scheme(), "http" | "https") {
             return Err(format!("the OTLP endpoint speaks http or https, not `{}`", url.scheme()));
         }
+        // Each header may carry a credential, so a cleartext collector off loopback refuses here
+        // rather than drop every batch at send.
+        for (name, _) in &headers {
+            contextful_core::connector::attach::check_transport(&url, name).map_err(|e| e.to_string())?;
+        }
         let allow = Allowlist::parse(&[url.host_str().unwrap_or_default().to_string()]).map_err(|e| e.to_string())?;
         // The collector is the operator's own, so an internal address is admitted for it alone.
         let client = Client::new(allow, url.clone()).with_timeout(EXPORT_TIMEOUT).with_body_limit(64 * 1024).framed("Content-Type", "application/json").admitting_internal();

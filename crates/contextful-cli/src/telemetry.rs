@@ -15,6 +15,8 @@ const DRAIN: Duration = Duration::from_secs(5);
 
 struct Telemetry {
     caller: Option<TraceContext>,
+    /// The trace model calls join: the caller's, or one fresh trace for the whole process.
+    root: TraceContext,
     exporter: Option<Arc<SpanExporter>>,
 }
 
@@ -31,7 +33,8 @@ fn telemetry() -> &'static Telemetry {
                 None
             }
         };
-        Telemetry { caller, exporter }
+        let root = caller.clone().unwrap_or_else(fresh_trace);
+        Telemetry { caller, root, exporter }
     })
 }
 
@@ -40,14 +43,15 @@ pub fn sink() -> Option<Arc<dyn SpanSink>> {
     telemetry().exporter.clone().map(|e| e as Arc<dyn SpanSink>)
 }
 
-/// The context a model call parents under: the caller's, or a fresh trace when only an
-/// exporter is configured; `None` when neither is (`connector.infer.model-span`).
-pub fn model_parent() -> Option<(TraceContext, Arc<dyn SpanSink>)> {
+/// The trace a model call joins and the span it parents under: the caller's, or the
+/// process's one fresh trace as a root when only an exporter is configured; `None` when
+/// neither is (`connector.infer.model-span`).
+pub fn model_parent() -> Option<(TraceContext, Option<[u8; 8]>, Arc<dyn SpanSink>)> {
     let t = telemetry();
-    let parent = t.caller.clone().unwrap_or_else(fresh_trace);
+    let parent = t.caller.as_ref().map(|c| c.span_id);
     match (&t.caller, sink()) {
-        (_, Some(sink)) => Some((parent, sink)),
-        (Some(_), None) => Some((parent, Arc::new(Discard))),
+        (_, Some(sink)) => Some((t.root.clone(), parent, sink)),
+        (Some(_), None) => Some((t.root.clone(), parent, Arc::new(Discard))),
         (None, None) => None,
     }
 }
@@ -55,7 +59,7 @@ pub fn model_parent() -> Option<(TraceContext, Arc<dyn SpanSink>)> {
 /// `endpoint` recording each call's span under [`model_parent`].
 pub fn traced(endpoint: contextful_outbound::infer::Endpoint) -> contextful_outbound::infer::Endpoint {
     match model_parent() {
-        Some((parent, sink)) => endpoint.traced(parent, sink),
+        Some((context, parent, sink)) => endpoint.traced(context, parent, sink),
         None => endpoint,
     }
 }

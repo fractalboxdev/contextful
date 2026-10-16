@@ -478,7 +478,7 @@ The durable run record, its statuses, its owner lease and windowed history over 
 
 - `reserved-table` — The durable run record is a reserved store table holding two append-only rows per run, one at plan and one at commit; the latest row per run and phase wins. The local catalog is a cache in front of it.
 - `columns` — A run row carries run id, pipeline id, site id, status, owner, start and end instants, row and byte counts, error kind and message, connector id, version and hash, trace id and phase.
-- `trace-context` — A run's trace id is the trace of the caller's `traceparent`, read on the command line from `TRACEPARENT` and `TRACESTATE`, or a fresh trace; both run rows carry it.
+- `trace-context` — A run a command opens takes as trace id the trace of the caller's `traceparent`, read from `TRACEPARENT` and `TRACESTATE`, or a fresh trace; both run rows carry it.
 - `run-span` — With an exporter configured, a run exports one span, child of the caller's span, carrying run id, pipeline, table, status, row and byte counts, and the failure tag.
 - `status-set` — A run status is `pending`, `running`, `waiting`, `success`, `partial_failure`, `failed` or `canceled`, spelled identically on the record and the wire snapshot; every surface classifying a run covers all seven.
   *because two vocabularies for one lifecycle leave a suspended or partly failed run without a reading*
@@ -517,6 +517,8 @@ The durable run record, its statuses, its owner lease and windowed history over 
   *A-run*
 - `schema-diff-shape` — Each downgrade event names the table, column path, source type, landed type and reason; a stage that does not commit contributes none.
   *A-run*
+
+unsettled: Does a run the engine drives for a job continue the trace of the job's submitter, or start a fresh one? owner: run-path affects: run.record
 
 #### Scenarios
 

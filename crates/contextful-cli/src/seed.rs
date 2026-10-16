@@ -156,11 +156,15 @@ where
             let run = format!("{run_id}.seed-{n}");
             let limiter = metered.limiter(&run)?;
             let mut source = seed_source(spec, seed, t, metered, Some(&run), limiter.clone())?;
-            let spec_run = RunSpec { connector: plan.connector_pin(&artifact), plan: plan.clone(), run_id: run.clone(), site_id: site_id.to_string(), pid: std::process::id(), boot_id: boot_id(), trace_id: None };
+            let trace = crate::telemetry::RunTrace::open();
+            let spec_run = RunSpec { connector: plan.connector_pin(&artifact), plan: plan.clone(), run_id: run.clone(), site_id: site_id.to_string(), pid: std::process::id(), boot_id: boot_id(), trace_id: Some(trace.trace_id()) };
             let opened = engine.catalog.run(&run)?.is_none();
             let outcome = seeding.run_next(&load, &spec_run, &mut source, &shape, dest, &head);
             finish(&table, limiter.as_ref());
             let outcome = outcome?;
+            if let SeedOutcome::Ran(row) = &outcome {
+                trace.close(row);
+            }
             if opened && engine.catalog.run(&run)?.is_some() {
                 attempted.push(run.clone());
             }

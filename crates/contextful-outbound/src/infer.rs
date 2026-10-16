@@ -31,8 +31,9 @@ pub struct Endpoint {
     horizon: Option<Instant>,
     /// Whether the endpoint exposes token log-probabilities, which each call then asks for.
     logprobs: bool,
-    /// The span each call parents under, and where its span goes (`connector.infer.model-span`).
-    trace: Option<(TraceContext, Arc<dyn SpanSink>)>,
+    /// The trace each call joins, the span it parents under (none for a call no caller
+    /// traced), and where its span goes (`connector.infer.model-span`).
+    trace: Option<(TraceContext, Option<[u8; 8]>, Arc<dyn SpanSink>)>,
 }
 
 impl Endpoint {
@@ -82,10 +83,11 @@ impl Endpoint {
         self
     }
 
-    /// The endpoint recording each call as a child span of `parent` into `sink`, its request
-    /// carrying a `traceparent` naming that span (`connector.infer.model-span`).
-    pub fn traced(mut self, parent: TraceContext, sink: Arc<dyn SpanSink>) -> Endpoint {
-        self.trace = Some((parent, sink));
+    /// The endpoint recording each call as a span in `context`'s trace into `sink`, child of
+    /// `parent` or a root when no caller traced it, its request carrying a `traceparent`
+    /// naming that span (`connector.infer.model-span`).
+    pub fn traced(mut self, context: TraceContext, parent: Option<[u8; 8]>, sink: Arc<dyn SpanSink>) -> Endpoint {
+        self.trace = Some((context, parent, sink));
         self
     }
 
@@ -102,11 +104,11 @@ impl Inference for Endpoint {
     }
 
     fn call(&self, messages: &[Message]) -> Result<CallRecord, String> {
-        let Some((parent, sink)) = &self.trace else { return self.exchange(messages, None).map(|(r, _)| r) };
-        let context = parent.child(crate::telemetry::span_id());
+        let Some((trace, parent, sink)) = &self.trace else { return self.exchange(messages, None).map(|(r, _)| r) };
+        let context = trace.child(crate::telemetry::span_id());
         let start = crate::telemetry::now_unix_nanos();
         let outcome = self.exchange(messages, Some(&context));
-        let mut span = Span::at(&context, Some(parent.span_id), &format!("chat {}", self.model), SpanKind::Client)
+        let mut span = Span::at(&context, *parent, &format!("chat {}", self.model), SpanKind::Client)
             .with("gen_ai.operation.name", "chat")
             .with("gen_ai.request.model", self.model.as_str())
             .with("server.address", self.completions.host_str().unwrap_or_default());
@@ -155,8 +157,8 @@ impl Endpoint {
         // The configured key is the call's one declared header: without it the call keeps the system proxy.
         let mut headers: Vec<(String, HeaderValue)> = self.key.iter().map(|k| ("Authorization".to_string(), HeaderValue::Sensitive(k.clone()))).collect();
         if let Some(context) = context {
-            headers.push((TRACEPARENT.to_string(), HeaderValue::Plain(context.traceparent())));
-            headers.extend(context.state.clone().map(|state| (TRACESTATE.to_string(), HeaderValue::Plain(state))));
+            headers.push((TRACEPARENT.to_string(), HeaderValue::Carrier(context.traceparent())));
+            headers.extend(context.state.clone().map(|state| (TRACESTATE.to_string(), HeaderValue::Carrier(state))));
         }
         let resp = self.client.send("POST", &self.completions, &headers, Some(body.as_bytes())).map_err(|f| f.message)?;
         if !(200..300).contains(&resp.status) {

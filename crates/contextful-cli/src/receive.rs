@@ -160,15 +160,19 @@ pub(crate) fn receive(args: Receive<'_>, tasks: &Tasks) -> Result<()> {
             }
             Err(next) => next,
         };
+        let trace = crate::telemetry::RunTrace::open();
         let outcome = (|| -> Result<RunRow> {
             let plan = plan(&spec, t.name(), built_in(&spec))?;
             dest.store.validate_source_plan(&plan, dest.normalize)?;
             let connector = plan.connector_pin(&artifact);
-            let run = RunSpec { plan, connector, run_id: next.clone(), site_id: site_id.clone(), pid: std::process::id(), boot_id: boot_id(), trace_id: None };
+            let run = RunSpec { plan, connector, run_id: next.clone(), site_id: site_id.clone(), pid: std::process::id(), boot_id: boot_id(), trace_id: Some(trace.trace_id()) };
             let shape = Chain { ops: spec.transforms.clone(), table: table.clone() };
             Ok(w.engine.run_receive(&run, &key, &mut Delivered(rows), &shape, &mut dest)?)
         })();
         opened |= w.engine.catalog.run(&next).ok().flatten().is_some();
+        if let Ok(row) = &outcome {
+            trace.close(row);
+        }
         match outcome {
             Ok(row) if row.status == RunStatus::Success => {
                 tables.push(json!({ "table": table, "run_id": row.run_id, "outcome": "committed", "rows": row.rows }));

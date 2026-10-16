@@ -6,7 +6,7 @@ use serde_json::Value;
 use std::io::{BufRead, BufReader, Read, Write};
 use std::net::TcpListener;
 use std::path::Path;
-use std::process::{Command, Output};
+use std::process::{Command, Output, Stdio};
 use std::sync::{Arc, Mutex};
 
 const TRACE: &str = "4bf92f3577b34da6a3ce929d0e0e4736";
@@ -101,9 +101,9 @@ fn trace_of(dir: &Path, run: &str) -> Value {
     shown["trace_id"].clone()
 }
 
-/// A run's trace id is the trace of the caller's `traceparent`, read on the command line from `TRACEPARENT` and
+/// A run a command opens takes as trace id the trace of the caller's `traceparent`, read from `TRACEPARENT` and
 /// `TRACESTATE`, or a fresh trace; both run rows carry it.
-// spec: run.record.trace-context@75b1da01
+// spec: run.record.trace-context@307606cc
 #[test]
 fn a_run_records_the_callers_trace_or_a_fresh_one() {
     let vendor = Vendor::start(|_| (200, "[{\"id\":\"a\"}]".into()));
@@ -121,6 +121,25 @@ fn a_run_records_the_callers_trace_or_a_fresh_one() {
         assert!(id.len() == 32 && id.bytes().all(|b| b.is_ascii_hexdigit()) && id != TRACE, "{id}");
     }
     assert_ne!(fresh, malformed);
+
+    // A pushed batch's run continues the caller's trace too.
+    let dir = project("[[pipeline]]\nid = \"otel\"\ntables = [\"spans\"]\n[pipeline.source]\nname = \"receive\"\nconfig = { format = \"jsonl\", max_batch_bytes = 4096, max_queue_depth = 2 }\n");
+    let mut cmd = Command::new(env!("CARGO_BIN_EXE_contextful"));
+    cmd.args(["pipeline", "receive", "otel", "--key", "k1", "--project", "research", "--site-id", "site-a", "--now", "2030-01-01T00:00:00Z"])
+        .current_dir(dir.path())
+        .env_remove("CONTEXTFUL_NODE_ID")
+        .env_remove("CONTEXTFUL_SECRETS_BACKEND")
+        .env_remove("OTEL_EXPORTER_OTLP_ENDPOINT")
+        .env_remove("OTEL_EXPORTER_OTLP_TRACES_ENDPOINT")
+        .env("TRACEPARENT", &parent)
+        .stdin(Stdio::piped())
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped());
+    let mut child = cmd.spawn().unwrap();
+    child.stdin.take().unwrap().write_all(b"{\"table\":\"spans\",\"row\":{\"id\":\"s1\"}}\n").unwrap();
+    let ack: Value = serde_json::from_str(&ok(&child.wait_with_output().unwrap())).unwrap();
+    let run = ack["tables"][0]["run_id"].as_str().unwrap().to_string();
+    assert_eq!(trace_of(dir.path(), &run), Value::from(TRACE));
 }
 
 /// With an exporter configured, a run exports one span, child of the caller's span, carrying run id, pipeline, table,
