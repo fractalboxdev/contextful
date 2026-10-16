@@ -5,6 +5,7 @@ pub mod audit;
 mod deadline;
 pub(crate) mod engine;
 pub mod evidence;
+pub mod explain;
 pub mod face;
 pub mod fault;
 pub mod hydrate;
@@ -17,6 +18,7 @@ pub mod retrieve;
 mod shape;
 
 pub use audit::{audit_reads, AUDIT_READS};
+pub use explain::EntityRecord;
 pub use engine::ENGINE;
 pub use face::{operator_query, Face, ReadOptions};
 pub use fault::ReadFault;
