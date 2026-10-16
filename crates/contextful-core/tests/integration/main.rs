@@ -14,6 +14,7 @@ mod pipeline;
 mod place;
 mod read;
 mod redaction;
+mod redistribute;
 mod revoke;
 mod run;
 mod store;
