@@ -448,11 +448,13 @@ The declared behavior of each source compiled into the engine.
   *P1*
 - `clock-column-spelling` — A delimited clock column other than an RFC 3339 instant or a fixed-width digit stamp raises `ConnectorClockColumnRejected`.
   *because the watermark compares text*
-- `feed-format` — `format = "feed"` decodes an RSS or Atom document into one row per item or entry carrying `entry_id`, `title`, `link`, `published_at`, `summary` and `author`, each null where the entry holds none.
+- `feed-format` — `format = "feed"` decodes an RSS or Atom document into one row per item or entry carrying `entry_id`, `title`, `link`, `published_at`, `summary`, `author` and `categories`, each null where the entry holds none.
 - `feed-entry-id` — A feed row's `entry_id` is the Atom `id` or the RSS `guid`, else the entry's link; an entry carrying neither is unreadable input under {{run.land.unreadable-input}}.
   *because a primary key over `entry_id` then collapses every re-fetched entry onto one row*
 - `feed-published-at` — `published_at` is the Atom `published`, else `updated`, or the RSS `pubDate`, folded to an RFC 3339 instant in UTC; a date that is neither RFC 3339 nor RFC 2822 is unreadable input.
   *because a watermark over `published_at` then orders instants, whatever offset the feed spells*
+- `feed-categories` — `categories` is JSON array text of `domain` and `term` objects in document order: each RSS `category` text and its `domain`, or Atom `term` and `scheme`; an absent domain is null, an empty term skipped.
+  *because a model then selects items by a facet through `json_extract` over one declared column*
 - `conditional-get` — `conditional = true` sends the position's `etag` as `If-None-Match` and `last_modified` as `If-Modified-Since`. A `304` lands no rows and holds the position; a `2xx` commits the validators it serves.
 - `conditional-position` — A conditional pull issues one request, and the validators are its whole position: no page token or watermark rides beside them, and the pull reports no further page.
 - `conditional-rejected` — `conditional` beside a pagination shape or a declared `incremental` raises `ConnectorConditionalRejected` at build.

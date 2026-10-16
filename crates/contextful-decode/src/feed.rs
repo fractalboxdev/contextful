@@ -15,7 +15,7 @@ use time::format_description::well_known::{Rfc2822, Rfc3339};
 use time::{OffsetDateTime, UtcOffset};
 
 /// The columns every feed row carries, `null` where the entry has no value.
-pub const COLUMNS: [&str; 6] = ["entry_id", "title", "link", "published_at", "summary", "author"];
+pub const COLUMNS: [&str; 7] = ["entry_id", "title", "link", "published_at", "summary", "author", "categories"];
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum Kind {
@@ -24,12 +24,13 @@ enum Kind {
 }
 
 /// One item or entry as read: the first non-empty text of each direct child, the `href` links it
-/// declares with their `rel`, and an Atom author's name.
+/// declares with their `rel`, an Atom author's name, and its categories as `(domain, term)` in document order.
 #[derive(Default)]
 struct Entry {
     fields: BTreeMap<String, String>,
     links: Vec<(Option<String>, String)>,
     author_name: Option<String>,
+    categories: Vec<(Option<String>, String)>,
 }
 
 impl Entry {
@@ -43,6 +44,12 @@ impl Entry {
         self.field(&["link"]).or_else(|| {
             self.links.iter().find(|(rel, _)| rel.as_deref().is_none_or(|r| r == "alternate")).map(|(_, href)| href.trim().to_string()).filter(|h| !h.is_empty())
         })
+    }
+
+    /// The categories as JSON array text of `{"domain", "term"}` objects, absent when the entry holds none.
+    fn categories(&self) -> Option<String> {
+        let list: Vec<Value> = self.categories.iter().map(|(domain, term)| serde_json::json!({ "domain": domain, "term": term })).collect();
+        (!list.is_empty()).then(|| Value::Array(list).to_string())
     }
 
     fn row(self, kind: Kind, ordinal: usize, input: &str) -> Result<Row, Failure> {
@@ -69,7 +76,7 @@ impl Entry {
             Kind::Atom => self.author_name.as_ref().map(|a| a.trim().to_string()).filter(|a| !a.is_empty()),
             Kind::Rss => self.field(&["creator", "author"]),
         };
-        let values = [Some(entry_id), self.field(&["title"]), link, published_at, summary, author];
+        let values = [Some(entry_id), self.field(&["title"]), link, published_at, summary, author, self.categories()];
         Ok(COLUMNS.iter().zip(values).map(|(c, v)| (c.to_string(), v.map_or(Value::Null, Value::String))).collect())
     }
 }
@@ -86,17 +93,25 @@ fn local(e: &BytesStart<'_>) -> String {
 
 /// The `rel` and `href` of a link element, when it carries an `href`.
 fn href(e: &BytesStart<'_>) -> Option<(Option<String>, String)> {
-    let mut rel = None;
-    let mut href = None;
+    let [rel, href] = attributes(e, ["rel", "href"]);
+    href.map(|h| (rel, h))
+}
+
+/// The value of each attribute named in `names`, by local name, in the order given.
+fn attributes<const N: usize>(e: &BytesStart<'_>, names: [&str; N]) -> [Option<String>; N] {
+    let mut out = [const { None }; N];
     for a in e.attributes().flatten() {
-        let value = a.unescape_value().map(|v| v.into_owned()).unwrap_or_else(|_| String::from_utf8_lossy(&a.value).into_owned());
-        match a.key.local_name().as_ref() {
-            b"rel" => rel = Some(value),
-            b"href" => href = Some(value),
-            _ => {}
+        if let Some(i) = names.iter().position(|n| n.as_bytes() == a.key.local_name().as_ref()) {
+            out[i] = Some(a.unescape_value().map(|v| v.into_owned()).unwrap_or_else(|_| String::from_utf8_lossy(&a.value).into_owned()));
         }
     }
-    href.map(|h| (rel, h))
+    out
+}
+
+/// A term, trimmed, and its domain, when the term is non-empty.
+fn category(domain: Option<String>, term: &str) -> Option<(Option<String>, String)> {
+    let term = term.trim();
+    (!term.is_empty()).then(|| (domain, term.to_string()))
 }
 
 /// Decode a feed document into one row per item or entry, in document order.
@@ -109,6 +124,8 @@ pub fn rows(body: &[u8], input: &str) -> Result<Vec<Row>, Failure> {
     let mut entry: Option<(usize, Entry)> = None;
     let mut child: Option<(String, String)> = None;
     let mut name: Option<String> = None;
+    // The `domain` of the RSS `category` child being read.
+    let mut domain: Option<String> = None;
     let mut out = Vec::new();
     loop {
         let position = reader.buffer_position();
@@ -125,7 +142,20 @@ pub fn rows(body: &[u8], input: &str) -> Result<Vec<Row>, Failure> {
                         other => return Err(unreadable(input, "the root element".into(), format!("`{other}` is neither an RSS nor an Atom document"))),
                     });
                 } else if let Some((d, current)) = entry.as_mut() {
-                    if at == *d + 1 {
+                    if at == *d + 1 && tag == "category" {
+                        // An Atom category names its term in an attribute; an RSS category in its text.
+                        match kind {
+                            Some(Kind::Atom) => {
+                                let [term, scheme] = attributes(e, ["term", "scheme"]);
+                                current.categories.extend(term.and_then(|t| category(scheme, &t)));
+                            }
+                            _ if !empty => {
+                                [domain] = attributes(e, ["domain"]);
+                                child = Some((tag, String::new()));
+                            }
+                            _ => {}
+                        }
+                    } else if at == *d + 1 {
                         // An `href`-bearing link, such as an RSS item's `atom:link`, carries no link text.
                         let linked = tag == "link" && href(e).inspect(|l| current.links.push(l.clone())).is_some();
                         if !empty && !linked {
@@ -160,7 +190,9 @@ pub fn rows(body: &[u8], input: &str) -> Result<Vec<Row>, Failure> {
                     } else if depth == d + 1 {
                         // The first non-empty text of each child names the field.
                         if let (Some((tag, value)), Some((_, current))) = (child.take(), entry.as_mut()) {
-                            if !value.trim().is_empty() {
+                            if tag == "category" {
+                                current.categories.extend(category(domain.take(), &value));
+                            } else if !value.trim().is_empty() {
                                 current.fields.entry(tag).or_insert(value);
                             }
                         }

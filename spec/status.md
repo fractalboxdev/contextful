@@ -7,7 +7,7 @@ An unpinned clause is `committed`; a pinned one is `performed` when its Rust, Le
 | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
 | `assurance` | 3 | 18 | 316 | 64 | 24 | 8 | 276 | 0 | 276 |
 | `authority` | 2 | 16 | 295 | 79 | 29 | 9 | 229 | 0 | 229 |
-| `connector` | 2 | 14 | 371 | 92 | 21 | 12 | 273 | 0 | 273 |
+| `connector` | 2 | 14 | 372 | 92 | 21 | 12 | 274 | 0 | 274 |
 | `corpus` | 1 | 10 | 79 | 37 | 7 | 0 | 79 | 0 | 79 |
 | `disclosure` | 3 | 16 | 170 | 69 | 13 | 6 | 127 | 0 | 127 |
 | `read` | 2 | 19 | 276 | 45 | 28 | 13 | 233 | 0 | 233 |
@@ -15,7 +15,7 @@ An unpinned clause is `committed`; a pinned one is `performed` when its Rust, Le
 | `store` | 3 | 19 | 290 | 64 | 14 | 11 | 280 | 0 | 280 |
 | `surface` | 2 | 21 | 160 | 63 | 23 | 0 | 133 | 0 | 133 |
 | `topology` | 1 | 6 | 79 | 25 | 5 | 3 | 74 | 0 | 74 |
-| **total** | 22 | 168 | 2561 | 654 | 209 | 75 | 2182 | 0 | |
+| **total** | 22 | 168 | 2562 | 654 | 209 | 75 | 2183 | 0 | |
 
 Decision records: 18.
 
@@ -29,7 +29,7 @@ A milestone reads `closed` when its acceptance test computes `passing` and every
 | 1 — The authority core | 14 | 244 | 230 | passing | closed |
 | 2 — The store | 9 | 183 | 173 | passing | closed |
 | 3 — The run path | 12 | 271 | 255 | passing | closed |
-| 4 — Ingest | 25 | 582 | 459 | passing | closed |
+| 4 — Ingest | 25 | 583 | 460 | passing | closed |
 | 5 — The read face under enforcement | 17 | 308 | 244 | passing | open |
 | 6 — Sync and replicas | 8 | 83 | 83 | passing | closed |
 | 7 — Memory | 6 | 71 | 56 | passing | closed |
@@ -770,6 +770,7 @@ Unscheduled operations: 12.
 | `connector.source.expansion-budget` | `crates/contextful-connectors/src/http.rs::an_expanding_read_counts_index_detail_and_elapsed_budgets` | performed |
 | `connector.source.expansion-order` | `crates/contextful-connectors/tests/integration/http.rs::expansion_runs_after_the_watermark_filter` | performed |
 | `connector.source.external-reference` | `crates/contextful-decode/tests/integration/workbook.rs::every_form_of_external_reference_is_refused` | performed |
+| `connector.source.feed-categories` | `crates/contextful-decode/tests/integration/feed.rs::categories_land_as_a_json_array_with_their_domain_or_scheme` | performed |
 | `connector.source.feed-entry-id` | `crates/contextful-decode/tests/integration/feed.rs::an_entry_id_falls_back_to_the_link_and_an_entry_with_neither_refuses` | performed |
 | `connector.source.feed-format` | `crates/contextful-decode/tests/integration/feed.rs::an_atom_and_an_rss_document_land_one_row_per_entry` | performed |
 | `connector.source.feed-published-at` | `crates/contextful-decode/tests/integration/feed.rs::published_at_lands_as_a_utc_instant_or_null_and_an_unreadable_date_refuses` | performed |
