@@ -75,6 +75,11 @@ fn a_verdict_from_another_source_is_refused() {
         Err(MemoryError::OutcomeSourceMismatch(why)) => assert!(why.contains("metrics/revenue:acme-q3"), "{why}"),
         other => panic!("a verdict states the series it read: {other:?}"),
     }
+    let manual = Observation { resolution_source: Some("manual".into()), settling_citation: Some("https://example.org/r".into()), ..on(None) };
+    match observe(&series, &manual) {
+        Err(MemoryError::OutcomeSourceMismatch(why)) => assert!(why.contains("settles by `metric`; the verdict names `manual`"), "the source is checked before the series: {why}"),
+        other => panic!("{other:?}"),
+    }
     let open = Observation { verdict: None, resolution_source: None, ..on(None) };
     assert_eq!(observe(&series, &open), Ok(()), "an observation without a verdict settles nothing");
     let elsewhere = Observation { verdict: None, resolution_source: None, ..on(Some("metrics/revenue:acme-q4")) };

@@ -238,6 +238,19 @@ pub struct Observation {
 /// differs refuses (`read.settle.source-mismatch`); an `adjudicator` or `manual` verdict
 /// carries an `http` or `https` settling citation (`read.settle.settling-citation`).
 pub fn observe(registration: &Registration, obs: &Observation) -> Result<(), MemoryError> {
+    // The source is checked first: a verdict from another source fails on its source,
+    // whatever series it names.
+    if obs.verdict.is_some() {
+        let source = obs.resolution_source.as_deref().and_then(Source::parse);
+        if source != Some(registration.source) {
+            return Err(MemoryError::OutcomeSourceMismatch(format!(
+                "prediction `{}` settles by `{}`; the verdict names {}",
+                registration.prediction_id,
+                registration.source.name(),
+                obs.resolution_source.as_deref().map_or("no source".to_string(), |s| format!("`{s}`"))
+            )));
+        }
+    }
     // A verdict states the series it read; an observation never names another one.
     if let Some(registered) = &registration.metric {
         let named = match &obs.metric {
@@ -254,15 +267,6 @@ pub fn observe(registration: &Registration, obs: &Observation) -> Result<(), Mem
     }
     if obs.verdict.is_none() {
         return Ok(());
-    }
-    let source = obs.resolution_source.as_deref().and_then(Source::parse);
-    if source != Some(registration.source) {
-        return Err(MemoryError::OutcomeSourceMismatch(format!(
-            "prediction `{}` settles by `{}`; the verdict names {}",
-            registration.prediction_id,
-            registration.source.name(),
-            obs.resolution_source.as_deref().map_or("no source".to_string(), |s| format!("`{s}`"))
-        )));
     }
     if matches!(registration.source, Source::Adjudicator | Source::Manual) {
         let cited = obs.settling_citation.as_deref().is_some_and(|c| c.starts_with("https://") || c.starts_with("http://"));
