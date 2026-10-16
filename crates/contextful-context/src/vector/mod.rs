@@ -194,8 +194,8 @@ pub enum Fallback {
     DimensionMismatch,
     /// The sidecar's own manifest, table or identity disagrees with the snapshot's entry.
     ManifestMismatch,
-    /// The sidecar holds more stored-vector bytes, or a sealed full-text file more bytes,
-    /// than the read path loads.
+    /// The sidecar counts more resident bytes, or a sealed full-text file more bytes, than
+    /// the read path loads.
     OverCap,
     /// A sidecar file is missing, fails to open or decrypt, or holds no laid-out graph.
     Unreadable,
@@ -242,8 +242,9 @@ impl VectorSidecar {
             return Err(Fallback::ManifestMismatch);
         }
         // Checked before any sidecar byte is read, so an oversized graph is never loaded to
-        // learn it is oversized.
-        if sidecar_over_cap(entry.stored_vector_bytes()) {
+        // learn it is oversized. A plaintext graph is mapped and counts its probe marks; a
+        // sealed one opens whole into memory and counts its stored vectors.
+        if sidecar_over_cap(entry.resident_bytes(matches!(sealing, Sealing::Plaintext))) {
             return Err(Fallback::OverCap);
         }
         // A manifest path that leaves the snapshot directory names no sidecar of it.

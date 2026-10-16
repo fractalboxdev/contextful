@@ -404,8 +404,6 @@ Sidecar index kinds and identity, clustering, partitioning and the tenant partit
 - `tenant-verbatim` — Land checks a tenant value against no canonical form; it is written and compared byte for byte, with no trimming, case folding or Unicode normalization, and a percent-escaped directory name is representation alone.
   *A-store*
 
-unsettled: What resident bound replaces the stored-vector cap for a memory-mapped plaintext sidecar, and what counts toward it? owner: store affects: read.retrieve
-
 ## encrypt
 
 At-rest encryption of Parquet, sidecars, ledgers, metadata, machine catalogs and node run-state files, with key derivation and forward key rotation.

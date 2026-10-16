@@ -494,10 +494,20 @@ impl<'de> Deserialize<'de> for IndexEntry {
 }
 
 impl VectorEntry {
-    /// The bytes of stored vectors the graph holds, the figure the read path's size cap
-    /// compares (`read.retrieve.sidecar-size-cap`).
+    /// The bytes of stored vectors the graph holds.
     pub fn stored_vector_bytes(&self) -> u64 {
         self.row_count.saturating_mul(u64::from(self.dim)).saturating_mul(4)
+    }
+
+    /// The resident bytes the read path's size cap compares: a mapped plaintext graph's
+    /// probe marks, one per node, or a sealed graph's stored vectors, which open whole into
+    /// process memory (`read.retrieve.sidecar-size-cap`).
+    pub fn resident_bytes(&self, mapped: bool) -> u64 {
+        if mapped {
+            self.row_count.saturating_mul(crate::read::rank::SIDECAR_NODE_MARK_BYTES)
+        } else {
+            self.stored_vector_bytes()
+        }
     }
 }
 
