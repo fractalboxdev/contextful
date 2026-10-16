@@ -5,7 +5,7 @@ An unpinned clause is `committed`; a pinned one is `performed` when its Rust, Le
 
 | Contract | Files | Operations | Clauses | Refusals | Limits | Unsettled | Performed | Broken | Floor |
 | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
-| `assurance` | 3 | 18 | 322 | 64 | 24 | 5 | 280 | 0 | 280 |
+| `assurance` | 3 | 18 | 323 | 65 | 24 | 5 | 281 | 0 | 281 |
 | `authority` | 2 | 16 | 298 | 79 | 29 | 8 | 271 | 0 | 271 |
 | `connector` | 2 | 14 | 375 | 92 | 22 | 12 | 292 | 0 | 292 |
 | `corpus` | 1 | 10 | 80 | 37 | 7 | 0 | 80 | 0 | 80 |
@@ -15,7 +15,7 @@ An unpinned clause is `committed`; a pinned one is `performed` when its Rust, Le
 | `store` | 3 | 19 | 293 | 64 | 14 | 10 | 283 | 0 | 283 |
 | `surface` | 2 | 21 | 161 | 63 | 23 | 0 | 134 | 0 | 134 |
 | `topology` | 1 | 6 | 79 | 25 | 5 | 3 | 76 | 0 | 76 |
-| **total** | 22 | 169 | 2624 | 662 | 212 | 74 | 2336 | 0 | |
+| **total** | 22 | 169 | 2625 | 663 | 212 | 74 | 2337 | 0 | |
 
 Decision records: 18.
 
@@ -138,6 +138,7 @@ Unscheduled operations: 13.
 | `assurance.build.wasi-probe` | `tools/ci/tests/integration/artifact.rs::the_edge_profile_probes_wasm32_wasip2_against_its_footprint_budget` | performed |
 | `assurance.consumer.command-diagnostic` | `spec/pins.toml` | performed |
 | `assurance.consumer.credential-isolation` | `spec/pins.toml` | performed |
+| `assurance.consumer.d1-admission` | `spec/pins.toml` | performed |
 | `assurance.consumer.d1-profile` | `spec/pins.toml` | performed |
 | `assurance.consumer.d1-release` | `spec/pins.toml` | performed |
 | `assurance.consumer.foreign-target` | `spec/pins.toml` | performed |

@@ -137,6 +137,79 @@ fn a_d1_consumer_run_requires_its_real_bindings_before_a_verdict() {
 
 #[test]
 #[cfg(unix)]
+fn a_live_d1_admission_lease_refuses_a_second_suite_before_any_reset() {
+    use std::io::{BufRead, BufReader};
+    use std::process::{Command, Stdio};
+    let _guard = super::CONFORMANCE_ENV.lock().unwrap();
+    let root = tempfile::tempdir().unwrap();
+    let mut bridge = Command::new("node")
+        .arg(Path::new(env!("CARGO_MANIFEST_DIR")).join("../contextful-d1/tests/fixture.mjs"))
+        .arg(root.path())
+        .stdout(Stdio::piped())
+        .stderr(Stdio::null())
+        .spawn().unwrap();
+    let mut port = String::new();
+    BufReader::new(bridge.stdout.take().unwrap()).read_line(&mut port).unwrap();
+    let endpoint = format!("http://127.0.0.1:{}", port.trim());
+    let settings = [
+        ("CONTEXTFUL_CONFORMANCE_D1_ENDPOINT", endpoint.clone()),
+        ("CONTEXTFUL_CONFORMANCE_R2_ENDPOINT", "http://127.0.0.1:9".into()),
+        ("CONTEXTFUL_CONFORMANCE_R2_BUCKET", "conformance".into()),
+        ("CONTEXTFUL_CONFORMANCE_R2_ACCESS_KEY_ID", "synthetic".into()),
+        ("CONTEXTFUL_CONFORMANCE_R2_SECRET_ACCESS_KEY", "synthetic".into()),
+        ("CONTEXTFUL_CONFORMANCE_RECOVERY_ID", "synthetic-admission".into()),
+        ("CONTEXTFUL_CONFORMANCE_D1_DISPOSABLE", "1".into()),
+    ];
+    for (key, value) in &settings { std::env::set_var(key, value); }
+    let sql = |statement: &str| {
+        let body = serde_json::json!({"sql":statement,"params":[]}).to_string();
+        let mut response = ureq::post(&format!("{endpoint}/sql"))
+            .header("content-type", "application/json")
+            .send(body.as_bytes()).unwrap();
+        assert_eq!(response.status(), 200);
+        serde_json::from_slice::<serde_json::Value>(&response.body_mut().read_to_vec().unwrap()).unwrap()
+    };
+    // A marked, bound database whose reset would empty every execution table.
+    for table in ["contextful_guard", "contextful_reconciliation", "contextful_export", "contextful_awakeable", "contextful_sweep", "contextful_blob", "contextful_journal", "contextful_run", "contextful_scope", "contextful_lease"] {
+        sql(&format!("CREATE TABLE {table} (x)"));
+    }
+    sql("CREATE TABLE contextful_recovery (id INTEGER PRIMARY KEY, project TEXT, generation TEXT)");
+    sql("INSERT INTO contextful_recovery VALUES (1, 'research', 'synthetic-admission')");
+    sql("CREATE TABLE contextful_conformance (id INTEGER PRIMARY KEY, generation TEXT)");
+    sql("INSERT INTO contextful_conformance VALUES (1, 'synthetic-admission')");
+    sql("INSERT INTO contextful_scope VALUES ('protected-sentinel')");
+    let dir = tempfile::tempdir().unwrap();
+    let binary = dir.path().join("contextful");
+    executable(&binary, "#!/bin/sh\ncase \"$1 $2\" in\n'--version ') printf 'contextful fixture contextful-full\\n';;\n*' --help') ;;\n*) printf 'StorageBindingUnavailable\\n' >&2; exit 1;;\nesac\n");
+    let suite = |required: &str| conformance::run(&Options {
+        binary: binary.clone(),
+        storage_profile: "cloudflare-d1".into(),
+        required: vec![required.into()],
+        timeout_seconds: 30,
+    }).unwrap();
+    // Another container's suite holds the lease and renews it.
+    sql("CREATE TABLE conformance_admission (id INTEGER PRIMARY KEY CHECK (id = 1), holder TEXT NOT NULL, expires_at INTEGER NOT NULL)");
+    sql("INSERT INTO conformance_admission VALUES (1, 'another-suite', unixepoch() + 120)");
+    let refused = suite("empty-replacement");
+    let scenario = refused.scenarios.iter().find(|s| s.required).unwrap();
+    assert_eq!(scenario.outcome, Outcome::Failed);
+    assert_eq!(scenario.diagnostic.as_deref(), Some("ConformanceAlreadyRunning"));
+    assert_eq!(sql("SELECT COUNT(*) AS n FROM contextful_scope")["rows"][0]["n"], 1, "a refused suite reset the database");
+    assert_eq!(sql("SELECT holder FROM conformance_admission")["rows"][0]["holder"], "another-suite");
+    // A crashed holder's lease lapses; the next suite admits, resets and releases.
+    sql("UPDATE conformance_admission SET expires_at = unixepoch() - 1");
+    let admitted = suite("empty-replacement");
+    let scenario = admitted.scenarios.iter().find(|s| s.required).unwrap();
+    assert_ne!(scenario.diagnostic.as_deref(), Some("ConformanceAlreadyRunning"), "{admitted:?}");
+    assert_eq!(sql("SELECT COUNT(*) AS n FROM contextful_scope")["rows"][0]["n"], 0);
+    assert_eq!(sql("SELECT COUNT(*) AS n FROM conformance_admission")["rows"][0]["n"], 0, "the suite kept its lease");
+    for (key, _) in &settings { std::env::remove_var(key); }
+    let _ = bridge.kill();
+    let _ = bridge.wait();
+}
+
+#[test]
+#[cfg(unix)]
 fn a_d1_consumer_replays_after_empty_disk_replacement() {
     use std::io::{BufRead, BufReader};
     use std::process::{Command, Stdio};

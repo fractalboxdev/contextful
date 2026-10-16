@@ -21,6 +21,7 @@ release           = {}
 consumer          = {}
 
 [error]
+ConformanceAlreadyRunning        = { clause = "assurance.consumer.d1-admission", gloss = "Another suite holds a live admission lease on the bound D1 database." }
 FormalPackageDependency          = { clause = "assurance.model.declared-dependency", gloss = "The Lean package manifest declares an external library." }
 ProofToolchainDrift              = { clause = "assurance.model.toolchain-drift", gloss = "The resolved toolchain release string differs from the pinned one." }
 UnmodelledConstructor            = { clause = "assurance.model.unmodelled-constructor", gloss = "A placement category the manifest admits has no case in the model's inductive." }
@@ -88,6 +89,7 @@ TagWorkspaceVersionMismatch      = { clause = "assurance.release.workspace-versi
 TagGateFailed                    = { clause = "assurance.release.gate-failed", gloss = "A gate stage failing on the commit a tag names." }
 
 [limit]
+assurance-d1-admission-lease     = { clause = "assurance.consumer.d1-admission", value = 120, unit = "s", basis = "chosen", gloss = "Life of a suite's D1 admission lease past its last renewal." }
 assurance-formal-build-time      = { clause = "assurance.model.build-cost", value = 60, unit = "s", basis = "chosen", gloss = "Cold elaboration of the Lean package." }
 assurance-formal-build-artifacts = { clause = "assurance.model.build-cost", value = 2048, unit = "KiB", basis = "chosen", gloss = "Artifacts a full elaboration writes." }
 assurance-assumption-allowlist        = { clause = "assurance.audit-assumptions.allowlist", value = 2, unit = "entries", basis = "chosen", gloss = "Assumptions a required constant's footprint may reach." }
