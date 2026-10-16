@@ -6,8 +6,9 @@ use contextful_core::read::face::{read_backend, register_tool, require, BuildIde
 use contextful_core::read::ReadError;
 
 #[test]
-fn citation_resolution_belongs_to_the_closed_read_tool_set() {
+fn citation_resolution_and_subscription_belong_to_the_closed_read_tool_set() {
     assert!(contextful_core::read::face::TOOLS.contains(&"context.reference"));
+    assert!(contextful_core::read::face::TOOLS.contains(&"context.subscribe"));
     assert_eq!(register_tool(FaceScope::Organization, "context.reference", ToolKind::Read), Ok(()));
 }
 

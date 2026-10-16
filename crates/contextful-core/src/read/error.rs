@@ -73,6 +73,9 @@ pub enum ReadError {
     /// A subscription's `after` position names no committed run of its table. (`read.subscribe.position-unavailable`)
     #[error("SubscriptionPositionUnavailable: {0}")]
     SubscriptionPositionUnavailable(String),
+    /// A tool-protocol subscription arrived under a credential carrying a horizon. (`read.subscribe.horizon-refusal`)
+    #[error("SubscriptionUnderHorizon: {0}")]
+    SubscriptionUnderHorizon(String),
     /// A read reached for a query-engine extension the binary does not link. (`assurance.build.runtime-extension-load`)
     #[error("ExtensionAutoloadRefused: {0}")]
     ExtensionAutoloadRefused(String),
@@ -104,6 +107,7 @@ impl ReadError {
             ReadError::ReadNoBuildWithinHorizon(_) => "ReadNoBuildWithinHorizon",
             ReadError::ReadIndexBeyondHorizon(_) => "ReadIndexBeyondHorizon",
             ReadError::SubscriptionPositionUnavailable(_) => "SubscriptionPositionUnavailable",
+            ReadError::SubscriptionUnderHorizon(_) => "SubscriptionUnderHorizon",
         }
     }
 }

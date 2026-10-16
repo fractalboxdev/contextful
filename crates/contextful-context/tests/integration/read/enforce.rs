@@ -301,6 +301,23 @@ fn an_ungranted_relation_is_unknown_everywhere() {
     assert!(names.contains(&"research/notes") && !names.iter().any(|n| n.starts_with("hr/")), "{names:?}");
 }
 
+/// A subscription naming a table outside the session's relations, existing or not, refuses
+/// as an unknown relation before any `after` position resolves; a granted table pages.
+#[test]
+fn a_subscription_to_an_ungranted_table_is_unknown() {
+    let r = Reads::new();
+    let s = r.session(&["research/*"], None, None);
+    let none = std::collections::BTreeMap::new();
+    let tables = |ts: &[&str]| ts.iter().map(|t| t.to_string()).collect::<Vec<_>>();
+    refused_with(r.face.subscribe(&s, &tables(&["hr/salaries"]), &none), "EnforceUnknownRelation");
+    refused_with(r.face.subscribe(&s, &tables(&["hr/nothing"]), &none), "EnforceUnknownRelation");
+    let positioned = [("hr/salaries".to_string(), "run-9999/ingest-a".to_string())].into_iter().collect();
+    refused_with(r.face.subscribe(&s, &tables(&["hr/salaries"]), &positioned), "EnforceUnknownRelation");
+    let page = r.face.subscribe(&s, &tables(&["research/notes"]), &none).unwrap();
+    assert!(!page["messages"].as_array().unwrap().is_empty(), "{page}");
+    assert!(page["after"]["research/notes"].is_string(), "{page}");
+}
+
 /// The scope guard walks the engine's parse once, deciding literal equalities and membership lists over the tenant column and bound template parameters destined for it.
 // spec: authority.refuse.scope-guard@fce154e6
 #[test]

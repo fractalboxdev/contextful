@@ -68,6 +68,7 @@ ReadNoBuildWithinHorizon      = { clause = "read.horizon.build-resolution", glos
 ReadRerankerAbsent            = { clause = "read.rank.rerank-absent", gloss = "A `rerank_with` named no reranker the admission gate admits." }
 ReadRerankerBeyondHorizon     = { clause = "read.rank.rerank-cutoff", gloss = "Under a horizon, the named reranker holds no checkpoint whose cutoff precedes it." }
 SubscriptionPositionUnavailable = { clause = "read.subscribe.position-unavailable", gloss = "A subscription's `after` position names no committed run of its table." }
+SubscriptionUnderHorizon      = { clause = "read.subscribe.horizon-refusal", gloss = "A tool-protocol subscription arrived under a credential carrying a horizon." }
 ReadEmbeddingModelMismatch    = { clause = "read.embed.query-model", gloss = "A query embedding's declared model differs from the stored vectors' model." }
 
 [limit]

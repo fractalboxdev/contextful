@@ -138,7 +138,7 @@ fn reference_dispatch_is_read_admitted_bounded_and_audited() {
 }
 
 /// The face exposes a closed tool set: `context.describe`, `context.query`, `context.execute_query` for templates, `context.files` and `context.file` over committed data files, `corpus.retrieve` for ranked reads across a prefix, and `memory.recall` for keyed claim reads.
-// spec: read.register.tool-set@3b79e223
+// spec: read.register.tool-set@ec1eab57
 #[test]
 fn the_tool_list_is_the_closed_read_set() {
     let f = fixture();
@@ -146,7 +146,7 @@ fn the_tool_list_is_the_closed_read_set() {
     let server = Server::new(&f.face, f.authority.clone(), &current, &clock, &f.audit).unwrap();
     let tools = ask(&server, 1, "tools/list", json!({}));
     let names: Vec<&str> = tools["result"]["tools"].as_array().unwrap().iter().map(|t| t["name"].as_str().unwrap()).collect();
-    assert_eq!(names, ["context.describe", "context.query", "context.reference", "context.execute_query", "context.files", "context.file", "corpus.retrieve", "memory.recall"]);
+    assert_eq!(names, ["context.describe", "context.query", "context.reference", "context.execute_query", "context.files", "context.file", "context.subscribe", "corpus.retrieve", "memory.recall"]);
     let unknown = call(&server, "memory.write", json!({}));
     assert_eq!(unknown["error"]["code"], json!(-32602), "{unknown}");
 }
@@ -190,7 +190,7 @@ fn context_query_binds_typed_parameters() {
     assert_eq!(malformed["error"]["code"], json!(-32602), "{malformed}");
 }
 
-// spec: read.register.budget-arguments@7d71066c
+// spec: read.register.budget-arguments@5528cc89
 // spec: read.register.duration-no-statement@68942eca
 #[test]
 fn read_tools_advertise_and_enforce_request_budgets() {
@@ -200,9 +200,15 @@ fn read_tools_advertise_and_enforce_request_budgets() {
     let tools = ask(&server, 1, "tools/list", json!({}));
     for tool in tools["result"]["tools"].as_array().unwrap() {
         let properties = &tool["inputSchema"]["properties"];
+        if tool["name"] == json!("context.subscribe") {
+            assert!(properties.get("max_duration_ms").is_none() && properties.get("max_response_bytes").is_none(), "{tool}");
+            continue;
+        }
         assert_eq!(properties["max_duration_ms"]["type"], json!("integer"), "{tool}");
         assert_eq!(properties["max_response_bytes"]["type"], json!("integer"), "{tool}");
     }
+    let page = call(&server, "context.subscribe", json!({ "tables": ["research/notes"], "max_response_bytes": 10 }));
+    assert_eq!(page["error"]["code"], json!(-32602), "{page}");
     let sql = "SELECT note_id FROM \"research/notes\"";
     let duration = call(&server, "context.query", json!({ "sql": sql, "max_duration_ms": 0 }));
     assert_eq!(duration["result"]["structuredContent"]["error"]["identifier"], json!("ReadDurationExceeded"), "{duration}");
@@ -370,8 +376,8 @@ fn as_of_on_every_read_tool_returns_the_pre_fold_row() {
     assert_eq!(refused["result"]["isError"], json!(true), "{refused}");
 }
 
-/// Every read tool but `memory.recall`, each template tool included, admits `as_of` and `valid_as_of` and echoes {{store.bound-time.echo}}; {{store.bound-time.valid-as-of}} wraps only the tables the read touches.
-// spec: read.register.bound-arguments@8d3edd37
+/// Every read tool but `memory.recall` and `context.subscribe`, each template tool included, admits `as_of` and `valid_as_of` and echoes {{store.bound-time.echo}}; {{store.bound-time.valid-as-of}} wraps only the tables the read touches.
+// spec: read.register.bound-arguments@0ce7bf68
 #[test]
 fn valid_as_of_wraps_only_the_tables_a_read_touches() {
     let f = bounded();
@@ -408,6 +414,10 @@ fn valid_as_of_wraps_only_the_tables_a_read_touches() {
     let preview = call(&server, "context.file", json!({ "path": part, "valid_as_of": when }));
     assert_eq!(rows(&preview).as_array().unwrap().len(), 1, "{preview}");
     assert_eq!(echoed(&preview), &echo);
+
+    // A subscription reads the commit record, never rows under a bound.
+    let subscribed = call(&server, "context.subscribe", json!({ "tables": ["research/rates"], "valid_as_of": when }));
+    assert_eq!(subscribed["error"]["code"], json!(-32602), "{subscribed}");
 
     let retrieved = call(&server, "corpus.retrieve", json!({ "prefix": "research/rates", "query": "eur gbp", "valid_as_of": when }));
     assert_eq!(rows(&retrieved).as_array().unwrap().len(), 1, "{retrieved}");
@@ -464,7 +474,7 @@ fn available() -> Fixture {
 }
 
 /// [`available`] read by a credential carrying `horizon`.
-fn available_under(horizon: Option<&str>) -> Fixture {
+pub(crate) fn available_under(horizon: Option<&str>) -> Fixture {
     let decls = TableDecl::parse_pipeline(AVAILABLE).unwrap();
     let decl = |name: &str| decls.iter().find(|d| d.name == name).unwrap().clone();
     fixture_bounded(AVAILABLE, horizon, |store| {
@@ -620,8 +630,8 @@ fn a_listing_ignores_available_as_of() {
     assert_eq!(tables["result"]["structuredContent"]["tables"].as_array().unwrap().len(), 2, "{tables}");
 }
 
-/// Under a credential carrying a horizon, every read tool reads at `available_as_of` equal to the horizon when the call supplies none, capping {{read.as-of-join.horizon-caps-row}}, and echoes it as {{store.available-time.bound-echo}}.
-// spec: read.horizon.inherited-bound@62351825
+/// Under a credential carrying a horizon, every read tool but `context.subscribe`, which {{read.subscribe.horizon-refusal}} refuses, reads at `available_as_of` equal to the horizon when the call supplies none, capping {{read.as-of-join.horizon-caps-row}}, and echoes it as {{store.available-time.bound-echo}}.
+// spec: read.horizon.inherited-bound@5177ce81
 #[test]
 fn every_read_tool_called_unbounded_reads_at_the_horizon() {
     let f = available_under(Some("2030-06-01T00:00:00Z"));
@@ -648,6 +658,9 @@ fn every_read_tool_called_unbounded_reads_at_the_horizon() {
     let retrieved = call(&server, "corpus.retrieve", json!({ "prefix": "research/earnings", "query": "acme" }));
     assert_eq!(rows(&retrieved).as_array().unwrap().len(), 1, "{retrieved}");
     assert_eq!(echoed(&retrieved), &echo);
+    // A subscription reads no rows at a bound; it refuses under the horizon.
+    let subscribed = call(&server, "context.subscribe", json!({ "tables": ["research/earnings"] }));
+    assert_eq!(subscribed["result"]["structuredContent"]["error"]["identifier"], json!("SubscriptionUnderHorizon"), "{subscribed}");
 
     // An earlier bound narrows further; a table declaring no availability time refuses.
     let april = call(&server, "context.query", json!({ "sql": r#"SELECT filing_id FROM "research/earnings""#, "available_as_of": "2030-04-30T00:00:00Z" }));
@@ -785,6 +798,8 @@ fn every_read_tool_declares_both_bounds() {
         let properties = &tool["inputSchema"]["properties"];
         let (present, absent) = if tool["name"] == json!("memory.recall") {
             (vec!["observed_at", "as_of_ingest"], vec!["as_of", "valid_as_of", "available_as_of", "vintage"])
+        } else if tool["name"] == json!("context.subscribe") {
+            (vec![], vec!["as_of", "valid_as_of", "available_as_of", "vintage", "observed_at", "as_of_ingest"])
         } else {
             (vec!["as_of", "valid_as_of", "available_as_of", "vintage"], vec!["observed_at", "as_of_ingest"])
         };
