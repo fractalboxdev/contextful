@@ -11,6 +11,8 @@ use std::sync::{Arc, Mutex};
 enum Answer {
     Ok,
     Drop,
+    /// Hold the connection open and never answer.
+    Stall,
     Body(String),
 }
 
@@ -71,8 +73,13 @@ fn serve(
         let mut body = vec![0; length];
         reader.read_exact(&mut body).unwrap();
         log.lock().unwrap().push((connection, line.trim().to_string()));
-        match script.lock().unwrap().next().unwrap_or(Answer::Ok) {
+        let answer = script.lock().unwrap().next().unwrap_or(Answer::Ok);
+        match answer {
             Answer::Drop => return,
+            Answer::Stall => {
+                std::thread::sleep(std::time::Duration::from_secs(120));
+                return;
+            }
             answer => {
                 let body = match answer {
                     Answer::Body(body) => body,
@@ -104,6 +111,28 @@ fn a_read_dropped_on_every_attempt_stops_after_its_bound() {
     let db = D1::connect(&binding.endpoint).unwrap();
     assert_eq!(db.query("SELECT 1 AS ready", vec![]).unwrap_err(), "StorageBindingUnavailable");
     assert_eq!(binding.log().len(), 3);
+}
+
+#[test]
+fn a_stalled_read_gives_up_its_attempt_within_the_request_bound_and_resends() {
+    let binding = Binding::start(vec![Answer::Stall]);
+    let db = D1::connect(&binding.endpoint).unwrap();
+    let started = std::time::Instant::now();
+    db.query("SELECT 1 AS ready", vec![]).unwrap();
+    // 3 attempts at this bound, with their backoff, fit inside a 60 s process deadline.
+    assert!(started.elapsed() < std::time::Duration::from_secs(18), "{:?}", started.elapsed());
+    assert_eq!(binding.log().len(), 2);
+}
+
+#[test]
+fn a_stalled_write_raises_within_the_request_bound() {
+    let binding = Binding::start(vec![Answer::Stall]);
+    let db = D1::connect(&binding.endpoint).unwrap();
+    let started = std::time::Instant::now();
+    let write = db.query("UPDATE contextful_lease SET holder = NULL WHERE key = ?", vec![json!("cadence")]);
+    assert_eq!(write.unwrap_err(), "StorageBindingUnavailable");
+    assert!(started.elapsed() < std::time::Duration::from_secs(18), "{:?}", started.elapsed());
+    assert_eq!(binding.log().len(), 1);
 }
 
 #[test]

@@ -110,7 +110,7 @@ Recording a step's value once, resolving it on replay, and collecting what a rep
   *A-run*
 - `d1-blob` — D1 stores each blob digest, whose R2 object key is `blobs/<sha256>`; the R2 write precedes its D1 reference, and a read verifies the content digest.
   *A-run*
-- `d1-transport` — A D1 read, health probe or content-addressed blob request left without an HTTP answer resends, within 3 attempts; a writing statement outside {{run.journal.d1-initialize}} goes once over a fresh connection and raises `StorageBindingUnavailable`.
+- `d1-transport` — A D1 read, health probe or content-addressed blob request left without an HTTP answer resends, within 3 attempts of at most 15 s each; a writing statement outside {{run.journal.d1-initialize}} goes once over a fresh connection and raises `StorageBindingUnavailable`.
   *because a write whose answer is lost may have committed, and resending it could apply it twice*
 - `d1-initialize` — Storage initialization's D1 batch, every statement `IF NOT EXISTS` DDL or an insert or update guarded to apply once, resends after a lost answer as a read does under {{run.journal.d1-transport}}.
   *because a second application of that batch leaves the state its first application left*
