@@ -205,21 +205,6 @@ pub fn latest_survivors(decl: &TableDecl, rows: &[Map<String, Value>]) -> Vec<us
     kept
 }
 
-/// Every row of `decl`'s table as its keyed read shows it, holding the named columns.
-/// `None` for a table with no `schema.json`.
-pub fn table_rows_latest(store: &Store, decl: &TableDecl, columns: &[&str]) -> Result<Option<Vec<Map<String, Value>>>> {
-    if store.try_schema(&decl.name)?.is_none() {
-        return Ok(None);
-    }
-    let read = latest_columns(decl, columns);
-    let mut rows = table_rows(store, decl, &read.iter().map(String::as_str).collect::<Vec<_>>())?;
-    Ok(Some(latest_survivors(decl, &rows).into_iter().map(|i| {
-        let mut row = std::mem::take(&mut rows[i]);
-        row.retain(|c, _| columns.contains(&c.as_str()));
-        row
-    }).collect()))
-}
-
 /// The columns ranking rows sharing a dedup line, most significant first.
 fn rank(decl: &TableDecl) -> Vec<&str> {
     std::iter::once(decl.order_by()).chain(contextful_core::store::reserve::TIEBREAK).collect()

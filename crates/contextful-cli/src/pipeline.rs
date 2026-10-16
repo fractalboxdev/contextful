@@ -666,9 +666,20 @@ impl TableReader for StoreReader {
             return self.rows(table, columns);
         }
         let decl = self.decls.iter().chain(&self.declared).find(|d| d.name == table).cloned().unwrap_or_else(|| TableDecl::named(table));
-        contextful_context::rows::table_rows_latest(&self.store, &decl, columns)
-            .map_err(|e| store_failure(table, e))?
-            .ok_or_else(|| Failure::deterministic(FailureTag::Config, format!("joined table `{table}` holds no schema; the store has landed no row in it")))
+        if self.store.try_schema(table).map_err(|e| store_failure(table, e))?.is_none() {
+            return Err(Failure::deterministic(FailureTag::Config, format!("joined table `{table}` holds no schema; the store has landed no row in it")));
+        }
+        let read = contextful_context::rows::latest_columns(&decl, columns);
+        let read: Vec<&str> = read.iter().map(String::as_str).collect();
+        let mut rows = contextful_context::rows::table_rows(&self.store, &decl, &read).map_err(|e| store_failure(table, e))?;
+        Ok(contextful_context::rows::latest_survivors(&decl, &rows)
+            .into_iter()
+            .map(|i| {
+                let mut row = std::mem::take(&mut rows[i]);
+                row.retain(|c, _| columns.contains(&c.as_str()));
+                row
+            })
+            .collect())
     }
 }
 
