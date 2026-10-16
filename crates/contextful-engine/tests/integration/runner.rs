@@ -1131,6 +1131,8 @@ fn every_bound_hit_lands_on_the_run_record_even_when_a_retry_recovers() {
     assert_eq!(row.status, RunStatus::Success);
     let hits: Vec<(u32, &str)> = row.bound_hits.iter().map(|h| (h.attempt, h.bound.as_str())).collect();
     assert_eq!(hits, [(1, LINEAR_MEMORY), (3, CALL_DEADLINE)], "a hit a later attempt recovered from stays listed; an unbounded failure adds none");
-    assert!(row.bound_hits.iter().all(|h| h.step == row.bound_hits[0].step && !h.step.is_empty()));
+    assert_eq!(row.bound_hits.len(), 2);
+    assert!(!row.bound_hits[0].step.is_empty());
+    assert_eq!(row.bound_hits[0].step, row.bound_hits[1].step, "both hits struck the one pull step");
     assert_eq!(rig.catalog().run("run-1").unwrap().unwrap().bound_hits, row.bound_hits);
 }
