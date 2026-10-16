@@ -359,7 +359,23 @@ The execution owner a scope holds and the connector build it pins while pending.
   *because a crash between marker and catalog otherwise replays a recorded pull into rows already committed*
 - `pinned-plan-changed` — While an owner is pending, a changed pin — connector identity, component world, pipeline `content_hash`, or a host's plan reference or identities — raises `ExecutionPinMismatch` before replay, terminal and non-retryable, naming the scope and both pin sets.
   *A-connector*
-- `pin-recovery` — Restoring the recorded build and resuming to completion clears a pending owner; an explicit chunk rewind retires the owners its window covers.
+- `pin-recovery` — Restoring the recorded build and resuming to completion clears a pending owner; {{run.own.rewind}} retires a host or table owner, and an explicit chunk rewind retires the owners its window covers.
+- `pin-mismatch-recovery` — The {{run.own.pinned-plan-changed}} refusal names restoring the recorded build or plan and, under a host or table scope, {{run.own.rewind}} with the pending execution id; it names no recovery the command line lacks.
+  *because an operator acts on the refusal's text, and a recovery no verb provides leaves the scope refusing every fire*
+- `rewind` — `contextful run rewind <execution-id> --reason <text>` retires the pending host or table owner holding that execution and leaves the scope's committed position alone, so the scope's next fire claims a fresh execution.
+  *A-run*
+- `rewind-record` — A retirement under {{run.own.rewind}} or {{run.own.apply-retires-superseded}} writes one `canceled` run row under the scope carrying the retired execution id, its pinned plan reference and the reason, started at the owner's open.
+  *because a row started at the retirement reads as the job's latest start and postpones its next due fire*
+- `rewind-not-pending` — A rewind naming an execution no pending host or table owner holds raises `ExecutionRewindNotPending`.
+  *because a completed or retired execution holds nothing to release, and a chunk owner retires through its window's rewind*
+- `rewind-plan-current` — A rewind of an owner under which no attempt or refused open asked another plan reference raises `ExecutionRewindPlanCurrent` unless `--force` is given.
+  *because such an owner resumes on its next fire, and retiring it discards its recorded work*
+- `rewind-unsafe` — Retiring an owner with an attempt on an unexpired {{run.record.owner-lease}}, a `waiting` attempt, or an awakeable pending before its deadline raises `ExecutionRewindUnsafe` naming it; `--force` overrides none.
+  *A-run*
+- `apply-retires-superseded` — A claimed `pipeline apply` retires each build or sweepless store-driven job's pending owner whose declared plan reference — a verified body's `input` identity, else its plan reference — the applied snapshot no longer produces.
+  *A-run*
+- `apply-retire-refused` — An applied retirement meeting {{run.own.rewind-unsafe}} leaves the owner pending and the snapshot claimed, and the apply names the execution and {{run.own.rewind}} on standard error.
+  *A-run*
 - `scope-independence` — A finishing table releases nothing another table's unfinished execution holds, and a seeding scope carries its own source identity.
 - `unclosed-execution` — An execution handle dropped without close records no status; its owner stays pending, and the next open under its scope resumes it once {{run.record.owner-lease}} lapses.
   *A-run*
@@ -406,6 +422,8 @@ flowchart LR
 - `run.own.unclosed-execution`: WHEN a host execution records two steps and its process dies mid-third, THEN the next open under its scope after the lease lapses replays both steps without running their effects.
 - `run.own.live-owner`: WHEN attempt `job-a` holds host scope `index-42` open and `job-b` opens under it, THEN `job-b` fails `Transient` naming `job-a`, and `job-a` alone holds the owner.
 - `run.own.pinned-plan-changed`: WHEN a host scope's pending owner pins plan reference `plan-a` and an open asks for `plan-b`, THEN the open refuses with `ExecutionPinMismatch` and its run row closes `failed`.
+- `run.own.rewind`: WHEN job `score`'s pending owner pins `plan-a`, a fire asking `plan-b` refuses, and an operator rewinds that execution, THEN the next fire claims a fresh execution under `plan-b` and completes.
+- `run.own.apply-retires-superseded`: WHEN applied v2 changes the model a build job targets while its pending owner pins v1's plan reference, THEN the apply retires that owner and the job's next fire completes.
 - `run.own.backpressure`: WHEN a source serves three pages, THEN the destination stages part 0 after the first pull, part 1 after the second and part 2 after the third, and one commit names all three.
 - `run.own.staged-bytes`: WHEN each of three pulls stages a 400 MiB part, THEN the third stage fails the run `Permanent` with `RunStagedBytesExceeded`, the cursor stays where it stood, and the next fire pulls all three pages under a fresh execution.
 - `run.own.stage-schema`: WHEN run `run-s` stages `ts` as text and fails, THEN a later run lands `ts` as a timestamp, and `run-s`'s commit refuses with `StoreSchemaIncompatible`.

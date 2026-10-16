@@ -66,3 +66,39 @@ fn receive_refusals_name_their_identifiers() {
     assert!(RunError::ReceiveBatchKeyMissing("x".into()).to_string().starts_with("ReceiveBatchKeyMissing: "));
     assert!(RunError::ReceivePipelineUnknown("x".into()).to_string().starts_with("ReceivePipelineUnknown: "));
 }
+
+/// The {{run.own.pinned-plan-changed}} refusal names restoring the recorded build or plan and, under a host or table scope,
+/// {{run.own.rewind}} with the pending execution id; it names no recovery the command line lacks.
+// spec: run.own.pin-mismatch-recovery@fabd7b09
+#[test]
+fn a_pin_mismatch_names_only_recoveries_the_command_line_provides() {
+    use contextful_core::run::own::{ConnectorPin, ExecutionOwner, OwnerPins, OwnerScope, Pins, PlanPins};
+    use contextful_core::run::RunError;
+    use contextful_core::time::Instant;
+    let plan = |r: &str| -> OwnerPins { PlanPins { plan_ref: r.into(), identities: Default::default() }.into() };
+    let build = |hash: &str| -> OwnerPins {
+        Pins { connector: ConnectorPin { id: "vendor".into(), version: "1".into(), world: "native".into(), hash: "artifact".into() }, content_hash: hash.into(), input_hash: String::new() }.into()
+    };
+    let owner = |scope: OwnerScope, pins: OwnerPins| ExecutionOwner { execution_id: "x-1".into(), scope, pins, attempts: Vec::new(), opened_at: Instant::from_unix_secs(0).unwrap() };
+    let message = |owner: ExecutionOwner, asked: OwnerPins| match owner.check_pins(&asked) {
+        Err(RunError::ExecutionPinMismatch(m)) => m,
+        other => panic!("expected ExecutionPinMismatch, got {other:?}"),
+    };
+    let rewind = "or retire it with `contextful run rewind x-1 --reason <text>`";
+    let host = message(owner(OwnerScope::host("job:score"), plan("plan-a")), plan("plan-b"));
+    assert!(host.ends_with(&format!("Restore the recorded plan and resume, {rewind}")), "{host}");
+    let table = message(owner(OwnerScope::table("feed", "filings"), build("hash-a")), build("hash-b"));
+    assert!(table.ends_with(&format!("Restore the recorded build and resume, {rewind}")), "{table}");
+    let chunk = message(owner(OwnerScope::chunk("feed", "filings", "c0"), build("hash-a")), build("hash-b"));
+    assert!(chunk.ends_with("Restore the recorded build and resume"), "{chunk}");
+}
+
+/// The reference a declaration alone determines: a verified body owner's `input` identity, else its plan reference.
+#[test]
+fn the_declared_reference_is_the_input_identity_else_the_plan_reference() {
+    use contextful_core::run::own::{OwnerPins, PlanPins};
+    let bare: OwnerPins = PlanPins { plan_ref: "plan-a".into(), identities: Default::default() }.into();
+    assert_eq!(bare.declared_ref(), "plan-a");
+    let verified: OwnerPins = PlanPins { plan_ref: "owner-a".into(), identities: [("input".to_string(), "input-a".to_string())].into() }.into();
+    assert_eq!(verified.declared_ref(), "input-a");
+}

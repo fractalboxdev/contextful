@@ -100,6 +100,18 @@ pub enum RunCmd {
         #[command(flatten)]
         admit: AdmitArgs,
     },
+    /// Retire a pending execution pinned to a superseded plan, recording the reason, so its scope's next fire plans fresh.
+    Rewind {
+        execution_id: String,
+        #[command(flatten)]
+        project: ProjectArgs,
+        /// Why the execution retires; the retirement's run row records it.
+        #[arg(long)]
+        reason: String,
+        /// Retire an execution no attempt has asked another plan reference of.
+        #[arg(long)]
+        force: bool,
+    },
     /// Print run history through a window, newest first.
     History {
         #[command(flatten)]
@@ -619,6 +631,11 @@ pub fn run(cmd: RunCmd) -> Result<()> {
             for id in stop(&wire(&project)?, grants.as_deref(), &run_id, scope, reason)? {
                 println!("{id}: stop requested");
             }
+            Ok(())
+        }
+        RunCmd::Rewind { execution_id, project, reason, force } => {
+            let row = wire(&project)?.engine.rewind(&execution_id, &reason, force)?;
+            println!("{execution_id}: rewound as {} · plan reference {}", row.run_id, row.plan_ref.unwrap_or_default());
             Ok(())
         }
         RunCmd::History { project, pipelines, since, limit, export, admit } => {

@@ -141,7 +141,7 @@ fn table_scope() -> OwnerScope {
 
 /// Restoring the recorded build and resuming to completion clears a pending owner; an explicit chunk rewind retires
 /// the owners its window covers.
-// spec: run.own.pin-recovery@9d05ee6c
+// spec: run.own.pin-recovery@39ea45ce
 #[test]
 fn a_restored_build_resumes_to_completion_and_a_rewind_retires_the_owners_it_covers() {
     let rig = Rig::new();

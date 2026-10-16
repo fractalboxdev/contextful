@@ -310,6 +310,21 @@ Criteria: one implementation of owner claim, pin mismatch and retirement, which 
 
 Consequences: `ExecutionPinMismatch` under a host scope names the plan reference in place of the pipeline hash.
 
+## A superseded owner retires by operator verb or applied declaration, never at open
+
+Status: accepted. A pending owner pinned to a plan reference no later declaration produces refuses every fire, and the only other recovery re-releases the superseded declaration. `contextful run rewind` retires one owner with a recorded reason; without `--force` it needs evidence that a fire asked another plan reference. `pipeline apply` retires each job owner whose declared reference the claimed snapshot no longer produces. Both refuse an owner a live attempt, a waiting attempt or a pending awakeable holds, since a callback guard or external party may still act on it.
+
+Criteria: no recorded work is discarded without an operator decision or a declaration that cannot resume it, which decided it; recovery needs no revert.
+
+| Option | Lost on | Cost |
+| --- | --- | --- |
+| Operator verb plus applied retirement of superseded owners *(chosen)* | — | Apply reads the run catalog; plan and sweep jobs recover through the verb alone. |
+| Re-release the superseded declaration | Recovery without a revert | Every declaration change waits on interrupted executions. |
+| Retire at open on any pin mismatch | Operator decision | A transient pin drift discards recorded paid calls. |
+| Apply retires every pending job owner | Resumable work | Owners whose plan still holds lose their recorded steps. |
+
+Consequences: the retirement is one `canceled` run row started at the owner's open, so cadence and history read it beside the attempts.
+
 ## An unclosed execution recovers by lease takeover, and one keeper per engine renews leases
 
 Status: accepted. A crashed process runs no destructor, so a status written when a handle drops covers only the clean exit, and one event reads two ways. Dropping an `Execution` unclosed records nothing: its keeper registration ends, the owner lease lapses and the next open under the scope resumes the pending owner, taking over pending claims. One keeper thread per engine holds a deadline heap of registered executions, renews each lease, feeds each token its poll and sleeps until the earliest deadline; open registers, close or drop deregisters.

@@ -882,6 +882,10 @@ pub(crate) fn apply(project: &ProjectArgs, declaration: Option<PathBuf>, id: Opt
                     println!("{} {}", sigil(c.action), c.id);
                 }
                 println!("applied v{v}");
+                // The claim stands whatever retirement meets; the fire's refusal still names the verb.
+                if let Err(e) = crate::job::retire_superseded(&l, project, &declaration_text, v, bodies) {
+                    eprintln!("warning: v{v} is applied, and retiring its superseded executions failed: {e:#}");
+                }
                 return Ok(());
             }
             Err(ControlError::Surface(e @ SurfaceError::ManifestVersionConflict(_))) => eprintln!("{e}"),

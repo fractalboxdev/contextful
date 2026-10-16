@@ -211,6 +211,13 @@ pub fn run(args: BuildArgs) -> Result<()> {
 }
 
 
+/// The plan reference a build job's execution pins: the job, its target model and the
+/// declaration's structure (`run.own.apply-retires-superseded`).
+pub(crate) fn job_plan_ref(job: &str, spec: &ModelSpec, effective: &crate::effective::Effective) -> Result<String> {
+    let structure = effective.structural_identity(std::slice::from_ref(&spec.id))?;
+    Ok(contextful_core::run::journal::sha256_hex(&serde_json::to_vec(&("build-structure-v1", job, spec, structure))?))
+}
+
 /// The native maintenance adapter uses the same execution owner and durable history
 /// as other host jobs. The model publisher remains the sole materialization path.
 pub(crate) fn fire_job(
@@ -227,13 +234,12 @@ pub(crate) fn fire_job(
     let grouped = crate::export::publication::validate_job(local,&job.name,std::slice::from_ref(&spec.id))?;
     let _publication = if grouped {Some(crate::export::publication::lock(located)?)} else {None};
     let face = effective.face(located, local, None, None)?;
-    let structure = effective.structural_identity(std::slice::from_ref(&spec.id))?;
     let site = site_id_for(local, &located.declaration, site_id, site_id_env)?;
     let wire = crate::run::wire_at(&located.project, &project.now)?;
     wire.engine.reap_orphans()?;
     let started_at = wire.engine.catalog.now()?;
     let run_id = run_id.unwrap_or_else(|| format!("build-job-{}", &sha256_hex(format!("{}:{}:{}", job.name, started_at, std::process::id()).as_bytes())[..20]));
-    let pin = sha256_hex(&serde_json::to_vec(&("build-structure-v1", &job.name, spec, structure))?);
+    let pin = job_plan_ref(&job.name, spec, effective)?;
     let execution = wire.engine.open_execution(&OpenExecution {
         scope: contextful_engine::drive::job_scope(&job.name),
         pins: PlanPins { plan_ref: pin, identities: Default::default() }.into(),

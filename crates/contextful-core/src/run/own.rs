@@ -220,6 +220,15 @@ impl OwnerPins {
             OwnerPins::Plan(p) => &p.plan_ref,
         }
     }
+
+    /// The reference the declaration alone determines: a verified body owner's `input`
+    /// identity, else the plan reference (`run.own.apply-retires-superseded`).
+    pub fn declared_ref(&self) -> &str {
+        match self {
+            OwnerPins::Plan(p) => p.identities.get("input").unwrap_or(&p.plan_ref),
+            OwnerPins::Build(p) => &p.content_hash,
+        }
+    }
 }
 
 impl std::fmt::Display for OwnerPins {
@@ -260,8 +269,14 @@ impl ExecutionOwner {
             OwnerPins::Build(_) => ("build", "run"),
             OwnerPins::Plan(_) => ("plan", "execution"),
         };
+        // A chunk owner is no rewind target, so its refusal names the restore alone
+        // (`run.own.pin-recovery`).
+        let rewind = match self.scope {
+            OwnerScope::Chunk { .. } => String::new(),
+            _ => format!(", or retire it with `contextful run rewind {} --reason <text>`", self.execution_id),
+        };
         Err(RunError::ExecutionPinMismatch(format!(
-            "{} has a pending execution `{}` pinned to {}; this {asks} asks for {now}. Restore the recorded {restore} and resume, or rewind",
+            "{} has a pending execution `{}` pinned to {}; this {asks} asks for {now}. Restore the recorded {restore} and resume{rewind}",
             self.scope, self.execution_id, self.pins
         )))
     }
