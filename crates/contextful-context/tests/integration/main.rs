@@ -29,5 +29,6 @@ mod rows;
 mod run_commit;
 mod run_record;
 mod session;
+mod subscribe;
 mod support;
 mod visibility;

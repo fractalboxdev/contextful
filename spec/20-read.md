@@ -13,6 +13,7 @@ owns:
   - embed
   - as-of-join
   - horizon
+  - subscribe
 ---
 
 # The read face
@@ -531,6 +532,38 @@ Reading under a credential's {{authority.grant.horizon}}: the bound every read i
 unsettled: Does a sidecar indexing rows past the horizon fall back to the exact scan rather than refuse the ranking? owner: read-path affects: read.horizon
 
 unsettled: Where does the engine record the instant a column first landed in a table, for a schema that predates the record? owner: read-path affects: read.horizon
+
+## subscribe
+
+The stream of one notification per committed run of each named table, read from the store's durable commit record, resumable from a run position, and the operator verb carrying it.
+
+- `durable-source` — A subscription reads run manifests and commit logs on disk, never the {{run.project.emission-never-blocks}} channel, so a run one process commits reaches a subscriber in another.
+  *because an in-process hub ties every reader to the landing process and loses its state on restart*
+- `after-commit` — A run notifies only once {{store.lay-out.uncommitted-run}} no longer holds it: a run with no manifest, or a logged run absent from its node's commit log, never notifies.
+  *P4*
+- `notification` — A notification carries `table`, `run_id`, `node_id`, `committed_at` and `frontier`, the pair `{as_of, commit_seq}`: the run's commit instant and the `_commit_seq` value its rows carry.
+- `frontier-covers-run` — A read of the table bounded `as_of` a notification's frontier covers the notified run's files.
+  *P4*
+- `commit-order` — Notifications of one table arrive in ascending `commit_seq`, the order {{store.reserve.commit-order}} makes runs readable, and each committed run notifies exactly once per subscription.
+  *because a subscriber applying notifications in order rebuilds the table's commit sequence*
+- `no-content` — A notification carries no row content and no row count.
+  *because a count over a table under row policy or tenant scope discloses rows the reader cannot see*
+- `resume` — `after` maps a table to a `<run-id>/<node-id>` position; the subscription replays every later committed run of that table once, then continues live, a fold between leaving the replay unchanged.
+  *because a fold leaves run manifests in place until retention collects them*
+- `position-unavailable` — An `after` position naming no committed run of its table raises `SubscriptionPositionUnavailable`, naming the table's oldest resolvable position.
+  *because a replay from a collected position cannot tell which later runs retention also removed*
+- `overrun` — A subscription holding more than 1000 notifications undelivered sends 1000, then a terminal `overrun` message naming each table's last delivered position, and ends.
+  *because a bounded queue never drops a notification silently, and the terminal position resumes the stream*
+- `operator-verb` — `contextful context subscribe <table>... [--after <table>=<run-id>/<node-id>] [--follow]` prints one JSON notification per line; without `--follow` it ends once the replay is sent.
+
+#### Scenarios
+
+- `read.subscribe.resume`: WHEN runs `r1`, `r2` and `r3` commit to `events` and a subscription names `after` `events=r1/ingest-a`, THEN it sends `r2` then `r3`, and a fold before the call changes neither.
+- `read.subscribe.after-commit`: WHEN a leased pipeline's run writes its manifest and its commit-log entry is absent, THEN no subscription notifies it.
+
+unsettled: Does `context.subscribe` ride the tool protocol as a paged poll returning the next position, or as server notifications over a held stream? owner: read-path affects: read.subscribe
+
+unsettled: Does a subscription over a table outside the credential's grant refuse by {{authority.refuse.ungranted-table}} on the tool protocol? owner: read-path affects: read.subscribe
 
 ## Shapes
 

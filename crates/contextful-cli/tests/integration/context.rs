@@ -273,3 +273,65 @@ fn an_encrypted_catalog_selection_keeps_derived_rows_in_memory() {
     plain.replace(&rows).unwrap();
     assert!(path.exists());
 }
+
+fn subscribed(lines: &str) -> Vec<String> {
+    lines
+        .lines()
+        .map(|l| {
+            let v: serde_json::Value = serde_json::from_str(l).unwrap_or_else(|e| panic!("{l}: {e}"));
+            format!("{}:{}/{}", v["table"].as_str().unwrap(), v["run_id"].as_str().unwrap(), v["node_id"].as_str().unwrap())
+        })
+        .collect()
+}
+
+/// `contextful context subscribe <table>... [--after <table>=<run-id>/<node-id>] [--follow]` prints one JSON notification per line; without `--follow` it ends once the replay is sent.
+// spec: read.subscribe.operator-verb@6e2840be
+#[test]
+fn subscribe_prints_the_replay_after_a_position_and_ends() {
+    let p = project();
+    land(p.path(), "events", "run-1", "2030-01-01T00:00:00Z");
+    land(p.path(), "events", "run-2", "2030-01-01T00:01:00Z");
+    land(p.path(), "filings", "run-1", "2030-01-01T00:02:00Z");
+    let all = stdout(&run(p.path(), &["context", "subscribe", "events", "filings", "--project", "research"]));
+    assert_eq!(subscribed(&all), ["events:run-1/ingest-a", "events:run-2/ingest-a", "filings:run-1/ingest-a"]);
+    let first: serde_json::Value = serde_json::from_str(all.lines().next().unwrap()).unwrap();
+    assert_eq!(first["type"], "notification");
+    assert_eq!(first["frontier"]["as_of"], first["committed_at"]);
+    let resumed = stdout(&run(p.path(), &["context", "subscribe", "events", "--project", "research", "--after", "events=run-1/ingest-a"]));
+    assert_eq!(subscribed(&resumed), ["events:run-2/ingest-a"]);
+    let gone = run(p.path(), &["context", "subscribe", "events", "--project", "research", "--after", "events=run-0/ingest-a"]);
+    assert!(!gone.status.success());
+    let stderr = String::from_utf8_lossy(&gone.stderr);
+    assert!(stderr.contains("SubscriptionPositionUnavailable") && stderr.contains("run-1/ingest-a"), "{stderr}");
+}
+
+/// A subscription reads run manifests and commit logs on disk, never the {{run.project.emission-never-blocks}} channel, so a run one process commits reaches a subscriber in another.
+// spec: read.subscribe.durable-source@a8b2ce59
+#[test]
+fn a_following_subscriber_receives_a_run_another_process_lands() {
+    use std::io::{BufRead, BufReader};
+    let p = project();
+    land(p.path(), "events", "run-1", "2030-01-01T00:00:00Z");
+    let mut child = Command::new(env!("CARGO_BIN_EXE_contextful"))
+        .args(["context", "subscribe", "events", "--project", "research", "--after", "events=run-1/ingest-a", "--follow", "--poll-ms", "50"])
+        .current_dir(p.path())
+        .env_remove("CONTEXTFUL_NODE_ID")
+        .stdout(std::process::Stdio::piped())
+        .spawn()
+        .unwrap();
+    let (tx, rx) = std::sync::mpsc::channel();
+    let out = child.stdout.take().unwrap();
+    std::thread::spawn(move || {
+        for line in BufReader::new(out).lines().map_while(Result::ok) {
+            if tx.send(line).is_err() {
+                break;
+            }
+        }
+    });
+    land(p.path(), "events", "run-2", "2030-01-01T00:01:00Z");
+    let line = rx.recv_timeout(std::time::Duration::from_secs(30));
+    child.kill().unwrap();
+    child.wait().unwrap();
+    let line = line.expect("the follower prints the run another process landed");
+    assert_eq!(subscribed(&line), ["events:run-2/ingest-a"]);
+}

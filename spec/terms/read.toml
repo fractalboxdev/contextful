@@ -20,6 +20,7 @@ resolve-entity = {}
 settle         = {}
 traverse       = {}
 horizon        = {}
+subscribe      = {}
 
 [error]
 FilePreviewNotATable          = { clause = "read.register.file-preview-target", gloss = "A previewed path resolved to no table." }
@@ -66,6 +67,7 @@ ReadIndexBeyondHorizon        = { clause = "read.horizon.rank-statistics", gloss
 ReadNoBuildWithinHorizon      = { clause = "read.horizon.build-resolution", gloss = "A model table holds no build whose recorded horizon is at or before the credential's." }
 ReadRerankerAbsent            = { clause = "read.rank.rerank-absent", gloss = "A `rerank_with` named no reranker the admission gate admits." }
 ReadRerankerBeyondHorizon     = { clause = "read.rank.rerank-cutoff", gloss = "Under a horizon, the named reranker holds no checkpoint whose cutoff precedes it." }
+SubscriptionPositionUnavailable = { clause = "read.subscribe.position-unavailable", gloss = "A subscription's `after` position names no committed run of its table." }
 ReadEmbeddingModelMismatch    = { clause = "read.embed.query-model", gloss = "A query embedding's declared model differs from the stored vectors' model." }
 
 [limit]
@@ -109,3 +111,4 @@ memory-traverse-hops         = { clause = "read.traverse.hop-bound", value = 3, 
 memory-traverse-fan-out      = { clause = "read.traverse.fan-out", value = 64, unit = "memory-edges", basis = "chosen", gloss = "Edges one node expands within a traversal." }
 memory-traverse-frontier     = { clause = "read.traverse.frontier-cap", value = 512, unit = "memory-edges", basis = "chosen", gloss = "Edges one traversal reaches before it stops." }
 outcome-grace-window         = { clause = "read.settle.grace-window", value = 86400, unit = "s", basis = "chosen", gloss = "Inclusive window past a deadline within which an observation is scored." }
+read-subscribe-queue         = { clause = "read.subscribe.overrun", value = 1000, unit = "notifications", basis = "chosen", gloss = "Most notifications a subscription holds undelivered before its terminal overrun message." }

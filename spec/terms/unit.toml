@@ -50,3 +50,4 @@ edges    = { gloss = "flowchart edges" }
 levels   = { gloss = "nesting levels" }
 participants = { gloss = "sequence diagram participants" }
 messages = { gloss = "sequence diagram messages" }
+notifications = { gloss = "subscription notifications" }
