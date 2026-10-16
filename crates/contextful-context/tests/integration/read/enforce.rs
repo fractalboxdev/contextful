@@ -524,4 +524,8 @@ fn a_tenant_scope_over_an_unpartitioned_table_reads_nothing_until_the_table_decl
     let s = partitioned.session_for(loop_subject("agent://research-loop"), vec![read(&["research/*"], Some(("research/vendor", "v1")))], Some("public-cloud:us-east-1"));
     let rows = partitioned.query(&s, r#"SELECT item_id FROM "research/vendor""#).unwrap();
     assert_eq!(column(&rows, "item_id"), [json!("v1")]);
+    // A tenant holding no rows reads none of them.
+    let s = partitioned.session_for(loop_subject("agent://research-loop"), vec![read(&["research/*"], Some(("research/vendor", "v9")))], Some("public-cloud:us-east-1"));
+    let rows = partitioned.query(&s, r#"SELECT item_id FROM "research/vendor""#).unwrap();
+    assert!(column(&rows, "item_id").is_empty(), "{rows:?}");
 }
