@@ -585,3 +585,22 @@ fn a_generation_names_no_pointer_the_bucket_declined() {
     let live = manifest(inner.as_ref()).pointers.get("research/tables/filings/_pointer.json").and_then(|p| p.snapshot_id.clone());
     assert_ne!(live, Some(snapshot), "the live manifest names no pointer the bucket declined");
 }
+
+/// Each commit stamps its instant and pushing node, and the generation listing summarizes every
+/// generation with that stamp and the project's entry and tombstone counts.
+#[test]
+fn each_commit_stamps_its_instant_and_node_and_the_listing_counts_tombstones() {
+    let dir = tempfile::tempdir().unwrap();
+    let b = bucket(dir.path());
+    let a = node("ingest-a", b.clone(), "");
+    a.land("run-1", json!([{"id": 1}]), "2030-01-01T00:00:00Z");
+    a.syncer.push(at("2030-01-01T01:00:00Z")).unwrap();
+    std::fs::remove_dir_all(a.root().join("tables/filings/data/runs/run-1")).unwrap();
+    a.syncer.push(at("2030-01-02T01:00:00Z")).unwrap();
+    assert_eq!(generation(b.as_ref(), 2).committed_by.as_deref(), Some("ingest-a"));
+    let listed = a.syncer.generation_list().unwrap();
+    assert_eq!(listed.iter().map(|g| (g.generation, g.committed_at)).collect::<Vec<_>>(),
+        [(1, Some(at("2030-01-01T01:00:00Z"))), (2, Some(at("2030-01-02T01:00:00Z")))]);
+    assert_eq!(listed[0].tombstones, 0);
+    assert!(listed[1].tombstones >= 2 && listed[1].entries < listed[0].entries, "{listed:?}");
+}

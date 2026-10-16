@@ -359,3 +359,14 @@ fn push_after_run_is_an_optional_sync_key() {
     let undeclared: SyncConfig = toml::from_str("endpoint = \"file:///tmp/b\"\nbucket = \"b\"\n").unwrap();
     assert_eq!(undeclared.push_after_run, None);
 }
+
+/// A manifest carries its commit stamp through a round trip, and one predecessing the stamp reads none.
+#[test]
+fn a_manifest_carries_its_commit_stamp_and_a_legacy_one_reads_none() {
+    let legacy: BucketManifest = serde_json::from_str(r#"{"format":1,"generation":3,"entries":{}}"#).unwrap();
+    assert_eq!((legacy.committed_at, legacy.committed_by.as_deref()), (None, None));
+    let stamped = BucketManifest { committed_at: Some(at("2030-01-01T01:00:00Z")), committed_by: Some("ingest-a".into()), ..legacy };
+    let text = serde_json::to_string(&stamped).unwrap();
+    assert!(text.contains("\"committed_at\":\"2030-01-01T01:00:00Z\"") && text.contains("\"committed_by\":\"ingest-a\""), "{text}");
+    assert_eq!(serde_json::from_str::<BucketManifest>(&text).unwrap(), stamped);
+}
