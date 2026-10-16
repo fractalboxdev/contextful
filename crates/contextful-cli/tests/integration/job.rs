@@ -630,3 +630,32 @@ fn a_fired_plan_rejoins_its_fan_out_and_a_partial_join_records_the_failed_branch
     assert_eq!((&row["status"], &row["error_kind"]), (&serde_json::json!("failed"), &serde_json::json!("Permanent")), "{row}");
     assert!(row.get("failed_branches").is_none(), "a failed run records no partial result: {row}");
 }
+
+/// The authoring surface runs at build time only and emits a content-hashed plan; nothing from it executes where the
+/// engine serves, and no build profile embeds a scripting runtime.
+// spec: run.compile.authoring-surface@9426a5eb
+#[test]
+fn a_plan_compiles_at_validate_to_a_content_hashed_version_and_no_profile_links_a_script_runtime() {
+    let dir = tempfile::tempdir().unwrap();
+    let p = dir.path();
+    std::fs::create_dir_all(p.join("plans")).unwrap();
+    let plan = r#"{"id":"pull","nodes":[{"id":"fetch","kind":"step","connector":{"id":"vendor","version":"1","command":["sh","fetch.sh"]}}]}"#;
+    std::fs::write(p.join("plans/pull.json"), plan).unwrap();
+    std::fs::write(p.join("contextful.toml"), "[[job]]\nname = \"pull\"\nkind = \"plan\"\nplan = \"plans/pull.json\"\n").unwrap();
+    let version = contextful_core::run::nodes::NodePlan::compile(plan.as_bytes()).unwrap().version;
+    let valid = ok(&cf(p, &["job", "validate"]));
+    assert!(valid.contains(&format!("plan pull version {version}, 1 nodes")), "{valid}");
+    assert!(!p.join("fetch.sh").exists() && !p.join(".contextful").exists(), "validate compiles and runs nothing");
+
+    // A step body written as code never reaches the engine.
+    std::fs::write(p.join("plans/pull.json"), r#"{"id":"pull","nodes":[{"id":"fetch","kind":"step","script":"fetch('https://vendor.test')"}]}"#).unwrap();
+    assert!(err(&cf(p, &["job", "validate"])).contains("PipelineInlineStepBody"));
+
+    let lock = std::fs::read_to_string(Path::new(env!("CARGO_MANIFEST_DIR")).join("../../Cargo.lock")).unwrap();
+    let packages: Vec<&str> = lock.lines().filter_map(|l| l.strip_prefix("name = \"")).map(|n| n.trim_end_matches('"')).collect();
+    assert!(packages.contains(&"contextful-cli"), "the exclusion below ranges over the workspace graph");
+    for runtime in ["deno_core", "deno_runtime", "v8", "rusty_v8", "boa_engine", "rquickjs", "js-sandbox", "mozjs", "mlua", "rhai", "pyo3"] {
+        assert!(!packages.contains(&runtime), "the workspace graph resolves `{runtime}`");
+    }
+    assert!(!packages.iter().any(|n| n.starts_with("quickjs")), "the workspace graph resolves a QuickJS binding");
+}

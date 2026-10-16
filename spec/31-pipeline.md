@@ -82,7 +82,7 @@ The pipeline specification, its serializations, manifest discovery, the content 
 - `lifecycle-verbs` — `plan` diffs desired state against the store with no side effect, `--json` emitting a structured diff; `apply` converges every pipeline or one; `run` fires one pipeline once; `serve` reconciles continuously.
 - `apply-fires-nothing` — Applying a manifest fires nothing of itself; a second `apply` over unchanged sources is a no-op modulo elapsed schedules.
 - `table-error` — `on_table_error` is abort, the default, halting the fire at the first failing table, or continue, landing every other table and reporting the failed run ids through {{run.declare.table-error-exit}}.
-- `table-error-exit` — Under continue, `run` exits non-zero naming the failed runs, `apply` prints a partial line, and a scheduled fire appends its failure count to its log line.
+- `table-error-exit` — Under continue, `run` exits non-zero naming the failed runs, and a scheduled fire appends its failure count to its log line.
 - `chunked-load` — `on_table_error` governs the single-pass live pull alone; a seed or backfill chunk plan halts the fire on failure under either setting.
 - `incremental-field` — `incremental = "<field>"` names the stream clock on the pipeline. Declared, the source reports a `monotonic` cursor committing {{run.advance.watermark-shape}}; undeclared, it refetches in full.
 - `incremental-pointer` — An `incremental` value opening with `/` is an RFC 6901 pointer read from each fetched row, so a nested clock such as `/commit/committer/date` orders the stream and names its watermark.

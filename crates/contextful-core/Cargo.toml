@@ -14,6 +14,7 @@ publish = false
 base64 = "0.22"
 regex-automata = "0.4"
 regex-syntax = "0.8"
+schemars = "1"
 serde = { version = "1", features = ["derive"] }
 # The decision module parses a case with the same float reader native and on
 # `wasm32-unknown-unknown`, where no other package unifies the feature in.

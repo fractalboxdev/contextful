@@ -12,7 +12,7 @@ use serde_json::Value;
 use std::collections::BTreeMap;
 
 /// A connector name beside its free-form configuration object (`run.declare.source-block`).
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, schemars::JsonSchema)]
 #[serde(deny_unknown_fields)]
 pub struct SourceBlock {
     pub name: String,
@@ -46,7 +46,7 @@ fn canonical_index(index: &mut IndexDecl) {
 pub const STORE_DESTINATION: &str = "store";
 
 /// A `tables` entry: a bare name or a table block (`run.declare.table-entry`).
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, schemars::JsonSchema)]
 #[serde(untagged)]
 pub enum TableEntry {
     Name(String),
@@ -71,7 +71,7 @@ impl TableEntry {
 }
 
 /// How a fire answers one failing table (`run.declare.table-error`).
-#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize, schemars::JsonSchema)]
 #[serde(rename_all = "lowercase")]
 pub enum OnTableError {
     #[default]
@@ -80,7 +80,7 @@ pub enum OnTableError {
 }
 
 /// One pipeline specification (`run.declare.pipeline-spec`).
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, schemars::JsonSchema)]
 #[serde(deny_unknown_fields)]
 pub struct PipelineSpec {
     pub id: String,
@@ -113,6 +113,12 @@ pub struct PipelineSpec {
     pub queries: Option<Value>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub on_table_error: Option<OnTableError>,
+}
+
+/// The JSON Schema of one pipeline specification, derived from [`PipelineSpec`], the type
+/// TOML and JSON manifests deserialize into (`run.declare.serialization`).
+pub fn pipeline_schema() -> Value {
+    serde_json::to_value(schemars::schema_for!(PipelineSpec)).unwrap_or(Value::Null)
 }
 
 /// The sources that journal no pull by default, each with why its replay needs no

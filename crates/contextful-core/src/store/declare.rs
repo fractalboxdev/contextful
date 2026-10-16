@@ -21,7 +21,7 @@ fn spelled_types<'de, D: serde::Deserializer<'de>>(d: D) -> Result<Option<BTreeM
 pub const DEFAULT_RETAIN_RUNS_SECS: u64 = 7 * 24 * 60 * 60;
 
 /// How a run's rows relate to the rows before it (`store.declare.write-mode`).
-#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize, schemars::JsonSchema)]
 #[serde(rename_all = "lowercase")]
 pub enum WriteMode {
     /// Keep the last write per key and retire no key.
@@ -32,7 +32,7 @@ pub enum WriteMode {
 }
 
 /// A declared valid-time pair of the table's own columns (`store.bound-time.valid-time-declaration`).
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, schemars::JsonSchema)]
 #[serde(deny_unknown_fields)]
 pub struct ValidTime {
     pub from: String,
@@ -41,7 +41,7 @@ pub struct ValidTime {
 }
 
 /// The declared instant each row's value became public (`store.available-time.declaration`).
-#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize, schemars::JsonSchema)]
 #[serde(deny_unknown_fields)]
 pub struct AvailableTime {
     pub column: String,
@@ -62,7 +62,7 @@ pub struct AvailableTime {
 
 /// A factor table and the numeric columns its factors multiply
 /// (`store.available-time.adjustment-factors`).
-#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize, schemars::JsonSchema)]
 #[serde(deny_unknown_fields)]
 pub struct Adjustment {
     pub table: String,
@@ -71,7 +71,7 @@ pub struct Adjustment {
 }
 
 /// The columns a snapshot corpus records per document (`store.snapshot.capture`).
-#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize, schemars::JsonSchema)]
 #[serde(deny_unknown_fields)]
 pub struct SnapshotDecl {
     pub url: String,
@@ -85,7 +85,7 @@ pub struct SnapshotDecl {
 }
 
 /// A duration per row class, read from `class_column` (`store.available-time.lag-class`).
-#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize, schemars::JsonSchema)]
 #[serde(deny_unknown_fields)]
 pub struct AvailableLag {
     pub class_column: String,
@@ -104,7 +104,7 @@ impl AvailableTime {
 }
 
 /// The timestamp and age limiting rows of a table (`store.declare.retain-rows`).
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, schemars::JsonSchema)]
 #[serde(deny_unknown_fields)]
 pub struct RetainRows {
     pub column: String,
@@ -113,7 +113,7 @@ pub struct RetainRows {
 
 /// One `[[pipeline.tables]]` block (`store.declare.table-block`). An unset key is absent
 /// from the canonical serialization; an unknown key refuses to parse.
-#[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
+#[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize, schemars::JsonSchema)]
 #[serde(deny_unknown_fields)]
 pub struct TableDecl {
     pub name: String,
@@ -202,7 +202,7 @@ pub struct TableDecl {
 }
 
 /// A declared incoming reference to the table's erasure key.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, schemars::JsonSchema)]
 #[serde(deny_unknown_fields)]
 pub struct ErasureReference {
     pub table: String,
@@ -210,7 +210,7 @@ pub struct ErasureReference {
 }
 
 /// A citing table retains its rows while its erased source becomes unavailable.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, schemars::JsonSchema)]
 #[serde(rename_all = "lowercase")]
 pub enum ErasureSurvival {
     Survive,

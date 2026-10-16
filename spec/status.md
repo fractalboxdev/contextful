@@ -11,11 +11,11 @@ An unpinned clause is `committed`; a pinned one is `performed` when its Rust, Le
 | `corpus` | 1 | 10 | 79 | 37 | 7 | 0 | 79 | 0 | 79 |
 | `disclosure` | 3 | 16 | 173 | 69 | 13 | 5 | 147 | 0 | 147 |
 | `read` | 2 | 19 | 276 | 45 | 28 | 13 | 233 | 0 | 233 |
-| `run` | 3 | 29 | 525 | 116 | 45 | 13 | 478 | 0 | 478 |
+| `run` | 3 | 29 | 525 | 116 | 45 | 13 | 488 | 0 | 488 |
 | `store` | 3 | 19 | 290 | 64 | 14 | 11 | 280 | 0 | 280 |
 | `surface` | 2 | 21 | 160 | 63 | 23 | 0 | 133 | 0 | 133 |
 | `topology` | 1 | 6 | 79 | 25 | 5 | 3 | 74 | 0 | 74 |
-| **total** | 22 | 168 | 2565 | 654 | 209 | 74 | 2204 | 0 | |
+| **total** | 22 | 168 | 2565 | 654 | 209 | 74 | 2214 | 0 | |
 
 Decision records: 18.
 
@@ -29,7 +29,7 @@ A milestone reads `closed` when its acceptance test computes `passing` and every
 | 1 — The authority core | 14 | 244 | 231 | passing | closed |
 | 2 — The store | 9 | 183 | 173 | passing | closed |
 | 3 — The run path | 12 | 271 | 255 | passing | closed |
-| 4 — Ingest | 25 | 583 | 460 | passing | closed |
+| 4 — Ingest | 25 | 583 | 470 | passing | closed |
 | 5 — The read face under enforcement | 17 | 308 | 244 | passing | open |
 | 6 — Sync and replicas | 8 | 83 | 83 | passing | closed |
 | 7 — Memory | 6 | 71 | 56 | passing | closed |
@@ -1346,31 +1346,40 @@ Unscheduled operations: 12.
 | `run.cancel.stop-unauthorized` | `crates/contextful-core/tests/integration/run/cancel.rs::a_stop_needs_execute_over_the_recorded_pipeline_and_names_none` | performed |
 | `run.cancel.storage-blip` | `crates/contextful-engine/tests/integration/cancel.rs::a_failed_poll_keeps_polling` | performed |
 | `run.cancel.two-grains` | `spec/pins.toml` | performed |
+| `run.compile.authoring-surface` | `crates/contextful-cli/tests/integration/job.rs::a_plan_compiles_at_validate_to_a_content_hashed_version_and_no_profile_links_a_script_runtime` | performed |
 | `run.compile.branch-arm` | `crates/contextful-engine/tests/integration/nodes.rs::a_branch_records_its_arm_and_a_resume_takes_the_same_one` | performed |
 | `run.compile.branch-scope` | `crates/contextful-engine/tests/integration/nodes.rs::fan_out_bodies_run_under_labels_scoped_to_their_parallel_node` | performed |
+| `run.compile.control-flow` | `crates/contextful-core/tests/integration/run/nodes.rs::a_conditional_or_a_loop_in_a_plan_raises_pipeline_undeclared_control_flow` | performed |
 | `run.compile.inline-step-body` | `crates/contextful-core/tests/integration/run/nodes.rs::a_step_body_other_than_a_connector_reference_raises_pipeline_inline_step_body` | performed |
 | `run.compile.lowering` | `spec/pins.toml` | performed |
 | `run.compile.node-id-collision` | `crates/contextful-core/tests/integration/run/nodes.rs::a_repeated_node_id_raises_pipeline_node_id_collision` | performed |
 | `run.compile.plan-node` | `spec/pins.toml` | performed |
+| `run.compile.plan-schema` | `crates/contextful-core/tests/integration/run/nodes.rs::the_plan_json_schema_derives_from_the_types_compile_deserializes` | performed |
 | `run.compile.plan-version` | `crates/contextful-core/tests/integration/run/nodes.rs::a_plan_version_hashes_the_canonical_json_of_id_and_nodes` | performed |
 | `run.compile.unjoined-parallel` | `crates/contextful-core/tests/integration/run/nodes.rs::a_parallel_node_without_its_join_raises_pipeline_parallel_unjoined` | performed |
 | `run.declare.apply-fires-nothing` | `crates/contextful-cli/tests/integration/pipeline.rs::apply_fires_nothing_and_a_second_apply_is_a_no_op` | performed |
+| `run.declare.chunked-load` | `crates/contextful-cli/tests/integration/seed.rs::a_failed_seed_chunk_halts_the_fire_under_continue` | performed |
 | `run.declare.config-key` | `crates/contextful-connectors/tests/integration/http.rs::an_unknown_config_key_is_refused_naming_the_accepted_keys` | performed |
 | `run.declare.content-hash` | `crates/contextful-core/tests/integration/pipeline/declare.rs::an_explicit_default_hashes_as_its_absence` | performed |
 | `run.declare.duplicate-id` | `crates/contextful-cli/tests/integration/pipeline.rs::one_id_declared_twice_names_both_declarations` | performed |
+| `run.declare.incremental-field` | `crates/contextful-cli/tests/integration/pipeline.rs::a_declared_clock_resumes_past_its_watermark_and_an_undeclared_one_refetches_in_full` | performed |
 | `run.declare.incremental-pointer` | `crates/contextful-engine/tests/integration/runner.rs::a_pointer_clock_reads_a_nested_value_from_each_row` | performed |
 | `run.declare.lifecycle-verbs` | `crates/contextful-cli/tests/integration/pipeline.rs::serve_reconciles_continuously_and_rearms_each_applied_version` | performed |
 | `run.declare.manifest-file` | `crates/contextful-cli/tests/integration/pipeline.rs::specifications_come_from_the_project_manifest_then_the_pipelines_directory` | performed |
 | `run.declare.manifest-missing` | `crates/contextful-cli/tests/integration/pipeline.rs::validate_over_no_manifest_is_refused` | performed |
+| `run.declare.order-by-default` | `crates/contextful-cli/tests/integration/pipeline.rs::order_by_defaults_to_the_ingest_stamp_and_a_keyless_table_keeps_every_row` | performed |
 | `run.declare.pipeline-spec` | `crates/contextful-core/tests/integration/pipeline/declare.rs::a_specification_carries_three_required_and_eleven_optional_keys` | performed |
 | `run.declare.replace-unsupported` | `crates/contextful-core/tests/integration/pipeline/declare.rs::replace_beside_a_windowed_load_is_refused` | performed |
+| `run.declare.serialization` | `crates/contextful-cli/tests/integration/pipeline.rs::schema_export_writes_the_pipeline_and_plan_schemas_under_the_project` | performed |
 | `run.declare.source-block` | `crates/contextful-core/tests/integration/pipeline/declare.rs::source_and_destination_are_a_name_and_a_config_object` | performed |
 | `run.declare.spec-invalid` | `crates/contextful-core/tests/integration/pipeline/declare.rs::an_undeserializable_manifest_names_file_key_path_and_value` | performed |
 | `run.declare.table-entry` | `crates/contextful-core/tests/integration/pipeline/declare.rs::bare_names_and_table_blocks_mix` | performed |
 | `run.declare.table-error` | `crates/contextful-cli/tests/integration/pipeline.rs::abort_halts_at_the_first_failure_and_continue_runs_the_rest` | performed |
+| `run.declare.table-error-exit` | `crates/contextful-cli/tests/integration/pipeline.rs::a_continued_fire_with_a_failed_table_exits_non_zero_and_its_scheduled_line_counts_the_failures` | performed |
 | `run.declare.table-name` | `crates/contextful-core/tests/integration/pipeline/declare.rs::a_destination_table_folds_the_pipeline_and_table_names` | performed |
 | `run.declare.table-name-collision` | `crates/contextful-core/tests/integration/pipeline/declare.rs::tables_folding_to_one_destination_name_are_refused` | performed |
 | `run.declare.unbound-table-name` | `crates/contextful-core/tests/integration/job.rs::a_misspelled_target_names_the_produced_spelling` | performed |
+| `run.declare.write-mode` | `crates/contextful-cli/tests/integration/pipeline.rs::append_retires_no_key_and_replace_lands_the_whole_current_state` | performed |
 | `run.emit.attempts` | `crates/contextful-core/tests/integration/run/derive.rs::attempts_count_up_from_the_prior_and_an_empty_unit_takes_one` | performed |
 | `run.emit.canceled-unit` | `crates/contextful-connectors/tests/integration/derive.rs::a_stopped_chain_lands_no_row_and_the_pull_ends_canceled` | performed |
 | `run.emit.content-empty` | `crates/contextful-cli/tests/integration/derive.rs::a_content_table_left_without_rows_stops_answering_the_earlier_key` | performed |
@@ -1764,6 +1773,7 @@ Unscheduled operations: 12.
 | `run.transform.chain` | `crates/contextful-core/tests/integration/pipeline/transform.rs::the_chain_runs_its_five_operations_in_order` | performed |
 | `run.transform.column-missing` | `crates/contextful-core/tests/integration/pipeline/transform.rs::a_filter_or_cast_over_an_absent_column_is_refused` | performed |
 | `run.transform.extract` | `crates/contextful-core/tests/integration/pipeline/transform.rs::extract_copies_the_value_at_a_pointer_into_a_column` | performed |
+| `run.transform.filter` | `crates/contextful-cli/tests/integration/pipeline.rs::a_filtered_root_row_lands_none_of_its_nested_children` | performed |
 | `run.transform.presence-filter` | `crates/contextful-core/tests/integration/pipeline/transform.rs::a_presence_filter_keeps_rows_by_whether_a_column_holds_a_value` | performed |
 | `run.transform.projection` | `crates/contextful-core/tests/integration/pipeline/transform.rs::select_fixes_the_column_set_and_rename_maps_a_name` | performed |
 | `run.transform.type-carry` | `crates/contextful-core/tests/integration/pipeline/transform.rs::a_pulled_type_follows_a_rename_and_leaves_with_a_select_or_a_scalar_cast` | performed |

@@ -983,13 +983,12 @@ pub fn run(cmd: PipelineCmd, tasks: &Tasks, bodies: &contextful_core::run::drive
                             continue;
                         }
                         Err(e) => {
+                            // A failed chunk halts the fire under either `on_table_error`
+                            // (`run.declare.chunked-load`).
                             eprintln!("{}", RunError::PipelineTableFailed(format!("table `{table}` failed seeding in run `{run_id}`: {e:#}")));
                             tallies.push((table.clone(), IngestTally { failed: 1, ..IngestTally::default() }));
                             failed.push(run_id);
-                            if stop_on_failure {
-                                break;
-                            }
-                            continue;
+                            break;
                         }
                     }
                 }

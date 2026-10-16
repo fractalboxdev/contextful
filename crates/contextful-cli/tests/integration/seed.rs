@@ -214,3 +214,28 @@ fn a_seed_source_meters_against_its_bound_quota() {
     let err = stderr(&cf(unbound.path(), &["pipeline", "validate"]));
     assert!(err.contains("ConnectorQuotaUnbound") && err.contains("vendor-app"), "{err}");
 }
+
+/// `on_table_error` governs the single-pass live pull alone; a seed or backfill chunk plan halts the fire on failure under either setting.
+// spec: run.declare.chunked-load@b87198f8
+#[test]
+fn a_failed_seed_chunk_halts_the_fire_under_continue() {
+    let vendor = Exports::start();
+    let dir = project(&format!(
+        "[[pipeline]]\nid = \"orders\"\non_table_error = \"continue\"\n\
+         [[pipeline.tables]]\nname = \"items\"\nprimary_key = [\"id\"]\norder_by = \"updated_at\"\n\
+         [[pipeline.tables]]\nname = \"parts\"\nprimary_key = [\"id\"]\norder_by = \"updated_at\"\n\
+         [pipeline.source]\nname = \"http\"\nconfig = {{ endpoint = \"{}\" }}\n\
+         [pipeline.seed]\nbelow = 15\n[pipeline.seed.source]\nname = \"http\"\nconfig = {{ endpoint = \"{}\" }}\n\
+         \n[[job]]\nname = \"fold-items\"\nschedule = \"0 3 * * *\"\nkind = \"fold\"\ntarget = \"orders_items\"\n\
+         \n[[job]]\nname = \"fold-parts\"\nschedule = \"0 3 * * *\"\nkind = \"fold\"\ntarget = \"orders_parts\"\n",
+        vendor.url("/v1/{table}"),
+        vendor.url("/exports/{table}"),
+    ));
+    let out = fire(dir.path(), "r1");
+    assert!(!out.status.success());
+    let err = stderr(&out);
+    assert!(err.contains("PipelineTableFailed") && err.contains("orders_items") && err.contains("seeding"), "{err}");
+    let requests = vendor.take();
+    assert!(!requests.is_empty(), "the exclusion below ranges over no element");
+    assert!(requests.iter().all(|r| r.ends_with("/exports/items")), "the failed chunk halts the fire before any other table: {requests:?}");
+}
