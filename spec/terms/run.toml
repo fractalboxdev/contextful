@@ -116,6 +116,7 @@ DeriveEngineUnbound            = { clause = "run.bind.unbound-engine", gloss = "
 DeriveCommandInManifest        = { clause = "run.bind.command-in-manifest", gloss = "An executable key on the request side of the binding split." }
 DeriveUnknownTask              = { clause = "run.bind.unknown-task", gloss = "A `task` naming neither a built-in nor a registered task." }
 DeriveTaskNameTaken            = { clause = "run.bind.host-task", gloss = "A host task registered under a name already taken." }
+DeriveJoinRepeated             = { clause = "run.bind.join-repeated", gloss = "A host task whose joins name one table twice." }
 DeriveDriverMismatch           = { clause = "run.bind.driver-mismatch", gloss = "A driver and task pairing the tier does not serve." }
 DeriveEndpointHostNotBare      = { clause = "run.bind.endpoint-host-bare", gloss = "An engine host carrying more than a host." }
 DeriveRemoteUrlUnsupported     = { clause = "run.bind.remote-url-unsupported", gloss = "A remote address handed to an engine that declines them." }

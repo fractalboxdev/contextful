@@ -16,7 +16,7 @@ use contextful_core::run::derive::engine::{bound_confidence, check_advisory_zone
 use contextful_core::run::derive::exec::{
     engine_id, excerpt, expand, is_url, vendor_deadline, ChainAudit, Condition, StepFiles, CAPTURED_OUTPUT_BYTES, CHAIN_DEADLINE_SECS,
 };
-use contextful_core::run::derive::task::{host_revived, host_rows, landing_order, select_host, DeriveTask, Derived, HostSelection, HostUnit};
+use contextful_core::run::derive::task::{host_revived, host_rows, join_units, landing_order, select_host, DeriveTask, Derived, HostSelection, HostUnit};
 use contextful_core::run::journal::sha256_hex;
 use contextful_core::run::ports::{Cancellation, PullRequest, Row, Source, TableReader};
 use contextful_core::run::{Failure, FailureTag, RunError};
@@ -880,6 +880,31 @@ impl HostDerive {
         (columns, self.store_table(&task.marker_table()))
     }
 
+    /// Read each table the task joins once, after the driving table's selection and before
+    /// the first unit derives, through its keyed read, keeping the rows whose join column
+    /// holds an outstanding unit's key (`run.select.unit-parents`, `run.select.join-keyed`);
+    /// a joined table the store holds no schema for fails the tick (`run.select.join-absent`).
+    fn join(&self, units: &mut [HostUnit]) -> Result<(), Failure> {
+        if units.is_empty() {
+            return Ok(());
+        }
+        let keys: std::collections::BTreeSet<String> = units.iter().map(|u| u.key.clone()).collect();
+        for join in self.task.joins() {
+            let kept: Vec<Row> = self
+                .reader
+                .latest_rows(&join.table, &join.read_columns())?
+                .into_iter()
+                .filter(|r| match r.get(&join.key_column) {
+                    Some(serde_json::Value::String(k)) => keys.contains(k),
+                    Some(serde_json::Value::Number(n)) => keys.contains(&n.to_string()),
+                    _ => false,
+                })
+                .collect();
+            join_units(units, &join, kept);
+        }
+        Ok(())
+    }
+
     fn store_table(&self, table: &str) -> String {
         self.tables.get(table).cloned().unwrap_or_else(|| table.to_string())
     }
@@ -891,10 +916,11 @@ impl HostDerive {
         let name = self.config.task.name().to_string();
         let (columns, marker_table) = self.wanted();
         let wanted: Vec<&str> = columns.iter().map(String::as_str).collect();
-        let (sel, instants) = self.selection(&wanted, &marker_table)?;
+        let (mut sel, instants) = self.selection(&wanted, &marker_table)?;
         for e in &sel.incomplete {
             eprintln!("{}: {e}", self.pipeline_id);
         }
+        self.join(&mut sel.outstanding)?;
         let started = Instant::now();
         let budget = self.config.max_seconds_per_run.map(Duration::from_secs);
         let mut derived: Vec<(&HostUnit, Derived)> = Vec::new();

@@ -589,3 +589,77 @@ fn an_exec_steps_credential_hydrates_at_spawn_and_enters_the_attribution() {
     assert!(run["audit"][0].as_str().unwrap().contains("keyed "), "{run}");
     assert!(!history.contains(sentinel));
 }
+
+/// A host task's unit carries, per table the task joins, every row whose join column equals the unit's key, each
+/// joined table read once after selection and before the first unit derives, so a row landing later is absent.
+#[test]
+fn a_host_unit_joins_the_rows_of_two_tables_sharing_its_key() {
+    let host = host_binary();
+    let manifest = "[[pipeline]]\nid = \"split\"\ntables = [\n  \
+        { name = \"digests\", primary_key = [\"unit_ref\", \"derivation_key\"] },\n  \
+        { name = \"units\", primary_key = [\"unit_ref\", \"derivation_key\", \"cue_seq\"] },\n]\n\
+        [pipeline.source]\nname = \"derive\"\n\
+        config = { task = \"doc-join\", source_table = \"documents\", parent_id_column = \"doc_id\" }\n";
+    let dir = host_project_with_rows(manifest, "{\"doc_id\":\"d1\",\"body\":\"alpha\"}\n{\"doc_id\":\"d2\",\"body\":\"beta\"}\n");
+    let p = dir.path();
+    let land = |table: &str, rows: &str| {
+        std::fs::write(p.join(format!("{table}.jsonl")), rows).unwrap();
+        ok(&cf(p, &["context", "land", table, "--project", "research", "--rows", &format!("{table}.jsonl"), "--run-id", &format!("load-{table}"), "--site-id", "site", "--now", "2030-01-01T00:10:00Z"]));
+    };
+    land("notes", "{\"note_id\":\"n1\",\"doc_id\":\"d1\",\"note\":\"first\"}\n{\"note_id\":\"n2\",\"doc_id\":\"d1\",\"note\":\"second\"}\n{\"note_id\":\"n3\",\"doc_id\":\"d9\",\"note\":\"stray\"}\n");
+    land("tags", "{\"tag_id\":\"t1\",\"doc_id\":\"d2\",\"tag\":\"red\"}\n{\"tag_id\":\"t2\",\"doc_id\":\"d1\",\"tag\":\"blue\"}\n");
+    ok(&fire(&host, p, "split-1", "2030-01-01T01:00:00Z", &[]));
+    assert_eq!(
+        select(p, "SELECT unit_ref, notes, tags FROM split_digests WHERE kind = 'passage' ORDER BY unit_ref"),
+        [["d1", "first,second", "blue"], ["d2", "", "red"]]
+    );
+    assert_eq!(select(p, "SELECT unit_ref, unit_status FROM split_units ORDER BY unit_ref"), [["d1", "ok"], ["d2", "ok"]]);
+}
+
+/// A `doc-join` project whose `notes` table is `src_notes`, keyed on `note_id`, declared by a
+/// pipeline the test never runs.
+fn keyed_notes_project() -> tempfile::TempDir {
+    let manifest = "[[pipeline]]\nid = \"split\"\ntables = [\n  \
+        { name = \"digests\", primary_key = [\"unit_ref\", \"derivation_key\"] },\n  \
+        { name = \"units\", primary_key = [\"unit_ref\", \"derivation_key\", \"cue_seq\"] },\n]\n\
+        [pipeline.source]\nname = \"derive\"\n\
+        config = { task = \"doc-join\", source_table = \"documents\", parent_id_column = \"doc_id\" }\n\
+        [[pipeline]]\nid = \"src\"\ntables = [{ name = \"notes\", primary_key = [\"note_id\"] }]\n\
+        [pipeline.source]\nname = \"http\"\nconfig = { endpoint = \"http://127.0.0.1:1/notes\" }\n";
+    host_project_with_rows(manifest, "{\"doc_id\":\"d1\",\"body\":\"alpha\"}\n")
+}
+
+fn land_at(p: &std::path::Path, table: &str, run: &str, now: &str, rows: &str) {
+    std::fs::write(p.join(format!("{run}.jsonl")), rows).unwrap();
+    ok(&cf(p, &["context", "land", table, "--project", "research", "--rows", &format!("{run}.jsonl"), "--run-id", run, "--site-id", "site", "--now", now]));
+}
+
+/// A joined table declaring `primary_key` reads through its keyed view, so a unit joins one survivor per key.
+// spec: run.select.join-keyed@cfadfdfa
+#[test]
+fn a_host_unit_joins_the_latest_version_of_a_keyed_row() {
+    let host = host_binary();
+    let dir = keyed_notes_project();
+    let p = dir.path();
+    land_at(p, "src_notes", "notes-1", "2030-01-01T00:10:00Z", "{\"note_id\":\"n1\",\"doc_id\":\"d1\",\"note\":\"first\"}\n{\"note_id\":\"n2\",\"doc_id\":\"d1\",\"note\":\"second\"}\n");
+    land_at(p, "src_notes", "notes-2", "2030-01-01T00:20:00Z", "{\"note_id\":\"n1\",\"doc_id\":\"d1\",\"note\":\"edited\"}\n");
+    land_at(p, "tags", "tags-1", "2030-01-01T00:20:00Z", "{\"tag_id\":\"t1\",\"doc_id\":\"d1\",\"tag\":\"blue\"}\n");
+    ok(&fire(&host, p, "split-1", "2030-01-01T01:00:00Z", &[("DOC_JOIN_NOTES", "src_notes")]));
+    assert_eq!(select(p, "SELECT unit_ref, notes, tags FROM split_digests WHERE kind = 'passage'"), [["d1", "edited,second", "blue"]]);
+}
+
+/// A joined table holding no schema fails the tick with a `Config` failure and settles no unit.
+// spec: run.select.join-absent@391e9f6d
+#[test]
+fn a_joined_table_never_landed_fails_the_tick_and_settles_no_unit() {
+    let host = host_binary();
+    let dir = keyed_notes_project();
+    let p = dir.path();
+    land_at(p, "src_notes", "notes-1", "2030-01-01T00:10:00Z", "{\"note_id\":\"n1\",\"doc_id\":\"d1\",\"note\":\"first\"}\n");
+    let out = fire(&host, p, "split-1", "2030-01-01T01:00:00Z", &[("DOC_JOIN_NOTES", "src_notes")]);
+    assert!(!out.status.success(), "{}", String::from_utf8_lossy(&out.stdout));
+    assert!(String::from_utf8_lossy(&out.stderr).contains("`tags`"), "{}", String::from_utf8_lossy(&out.stderr));
+    land_at(p, "tags", "tags-1", "2030-01-01T01:10:00Z", "{\"tag_id\":\"t1\",\"doc_id\":\"d1\",\"tag\":\"blue\"}\n");
+    ok(&fire(&host, p, "split-2", "2030-01-01T02:00:00Z", &[("DOC_JOIN_NOTES", "src_notes")]));
+    assert_eq!(select(p, "SELECT unit_ref, notes, tags FROM split_digests WHERE kind = 'passage'"), [["d1", "first", "blue"]]);
+}

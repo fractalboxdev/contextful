@@ -590,6 +590,9 @@ fn object_source(config: ObjectConfig, resolver: Arc<contextful_outbound::Resolv
 struct StoreReader {
     store: Store,
     decls: Vec<TableDecl>,
+    /// Every table the declaration set declares, so a joined table another pipeline owns
+    /// reads under its own key.
+    declared: Vec<TableDecl>,
     admitted: Option<(contextful_context::read::Face, crate::admit::Author)>,
 }
 
@@ -599,7 +602,9 @@ impl StoreReader {
             let pepper = contextful_policy::enforce::mask::Pepper::resolve(|k| std::env::var(k).ok());
             crate::project::open_face(&located.project, &located.declaration, manifest, pepper).map(|face| (face, author.clone()))
         }).transpose()?;
-        Ok(StoreReader { store: Store::open(&located.project.dir, &located.project.name)?, decls, admitted })
+        let declared = TableDecl::parse_declaration_set(manifest, &crate::project::pipeline_files(&located.declaration)?)
+            .with_context(|| format!("`{}`", located.declaration.display()))?;
+        Ok(StoreReader { store: Store::open(&located.project.dir, &located.project.name)?, decls, declared, admitted })
     }
 }
 
@@ -651,6 +656,19 @@ impl TableReader for StoreReader {
             (Err(e), None) => Err(store_failure(table, e)),
             (Ok(()), None) => Ok(()),
         }
+    }
+
+    /// An admitted read answers through the read face's keyed relation; the store read
+    /// keeps one survivor per key and refuses a table with no schema
+    /// (`run.select.join-keyed`, `run.select.join-absent`).
+    fn latest_rows(&self, table: &str, columns: &[&str]) -> Result<Vec<Row>, Failure> {
+        if self.admitted.is_some() {
+            return self.rows(table, columns);
+        }
+        let decl = self.decls.iter().chain(&self.declared).find(|d| d.name == table).cloned().unwrap_or_else(|| TableDecl::named(table));
+        contextful_context::rows::table_rows_latest(&self.store, &decl, columns)
+            .map_err(|e| store_failure(table, e))?
+            .ok_or_else(|| Failure::deterministic(FailureTag::Config, format!("joined table `{table}` holds no schema; the store has landed no row in it")))
     }
 }
 

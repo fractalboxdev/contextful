@@ -23,15 +23,36 @@ pub const TASK_VERSION: &str = "task_version";
 pub type Derived = BTreeMap<String, Vec<Row>>;
 
 /// One unit of a host task: the parent row's key and the columns the task declares.
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, Default, PartialEq)]
 pub struct HostUnit {
     pub key: String,
     /// The parent row, holding the task's declared columns.
     pub row: Row,
+    /// Per table the task joins, every row whose join column holds the unit's key
+    /// (`run.select.unit-parents`).
+    pub joined: BTreeMap<String, Vec<Row>>,
     /// Attempts its marker under `derivation_key` records so far.
     pub prior_attempts: i64,
     /// The key its rows land under.
     pub derivation_key: String,
+}
+
+/// A table a host unit joins beside its driving row: every row whose `key_column` holds the
+/// unit's key, carrying `columns` (`run.select.unit-parents`).
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Join {
+    pub table: String,
+    pub key_column: String,
+    pub columns: Vec<String>,
+}
+
+impl Join {
+    /// The columns a read of the joined table names: its key column, then `columns`.
+    pub fn read_columns(&self) -> Vec<&str> {
+        let mut columns = vec![self.key_column.as_str()];
+        columns.extend(self.columns.iter().map(String::as_str).filter(|c| *c != self.key_column));
+        columns
+    }
 }
 
 /// A derive task compiled into the embedding binary. Configuration names it; it never
@@ -41,6 +62,10 @@ pub trait DeriveTask: Send + Sync {
     fn version(&self) -> &str;
     /// The parent-table columns a unit carries besides its key column.
     fn columns(&self) -> Vec<String>;
+    /// The tables a unit joins beside its driving row; none by default.
+    fn joins(&self) -> Vec<Join> {
+        Vec::new()
+    }
     /// The table its markers land in, the anti-join's side.
     fn marker_table(&self) -> String;
     /// The tables its content rows land in, in landing order.
@@ -62,7 +87,8 @@ impl std::fmt::Debug for Tasks {
 }
 
 impl Tasks {
-    /// Register `task` under `name`; a built-in or already registered name refuses.
+    /// Register `task` under `name`; a built-in or already registered name refuses, and so
+    /// does a task whose joins name one table twice (`run.bind.join-repeated`).
     pub fn register(&mut self, name: &str, task: Arc<dyn DeriveTask>) -> Result<(), RunError> {
         if name.trim().is_empty() || BUILT_IN_TASKS.contains(&name) || self.tasks.contains_key(name)
         {
@@ -75,6 +101,15 @@ impl Tasks {
                     .collect::<Vec<_>>()
                     .join(", ")
             )));
+        }
+        let joins = task.joins();
+        for (i, join) in joins.iter().enumerate() {
+            if let Some(again) = joins[..i].iter().find(|j| j.table == join.table) {
+                return Err(RunError::DeriveJoinRepeated(format!(
+                    "task `{name}` joins `{}` on `{}` and again on `{}`; a unit holds one joined list per table",
+                    join.table, again.key_column, join.key_column
+                )));
+            }
         }
         self.tasks.insert(name.to_string(), task);
         Ok(())
@@ -169,6 +204,7 @@ pub fn select_host(
         sel.outstanding.push(HostUnit {
             key,
             row: r.clone(),
+            joined: BTreeMap::new(),
             prior_attempts: prior,
             derivation_key,
         });
@@ -176,6 +212,22 @@ pub fn select_host(
     sel.outstanding
         .truncate(usize::try_from(config.max_rows_per_run).unwrap_or(usize::MAX));
     sel
+}
+
+/// Hand each unit the rows of `join`'s table whose join column holds its key, an empty list
+/// where none does; a row whose join column is null or blank joins no unit
+/// (`run.select.unit-parents`).
+pub fn join_units(units: &mut [HostUnit], join: &Join, rows: Vec<Row>) {
+    let mut by_key: BTreeMap<String, Vec<Row>> = BTreeMap::new();
+    for r in rows {
+        if let Some(key) = text(r.get(&join.key_column)) {
+            by_key.entry(key).or_default().push(r);
+        }
+    }
+    for unit in units {
+        let rows = by_key.get(&unit.key).cloned().unwrap_or_default();
+        unit.joined.insert(join.table.clone(), rows);
+    }
 }
 
 /// Whether the marker table already holds `unit` settled under its key, as a concurrent
