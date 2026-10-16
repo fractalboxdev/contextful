@@ -198,13 +198,14 @@
 "run.journal.d1-backup" = { test = "crates/contextful-cli/tests/integration/storage.rs::d1_storage_initialization_and_history_survive_a_new_cli_process" }
 "run.export.d1-state" = { test = "crates/contextful-d1/tests/integration/main.rs::a_lost_sink_acknowledgement_reoffers_the_same_d1_event_identity" }
 "assurance.consumer.d1-profile" = { test = "crates/acceptance/tests/integration/conformance.rs::a_d1_consumer_replays_after_empty_disk_replacement" }
+"assurance.consumer.d1-admission" = { test = "crates/acceptance/tests/integration/conformance.rs::a_live_d1_admission_lease_refuses_a_second_suite_before_any_reset" }
 "assurance.consumer.d1-release" = { test = "tools/ci/tests/integration/artifact.rs::release_archives_carry_the_consumer_suite_and_digest_bound_compatibility_evidence" }
 
 # The floor is machine-maintained: `contextful-spec pins` sets each contract's entry to
 # its live performed count, and a live count below its floor raises SpecCoverageRegression.
 
 [floor]
-assurance = 280
+assurance = 281
 authority = 271
 connector = 292
 corpus = 80

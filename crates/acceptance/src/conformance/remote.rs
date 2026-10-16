@@ -5,6 +5,8 @@ use crate::s3::{S3Server, ACCESS_KEY, SECRET_KEY};
 use std::net::{TcpListener, TcpStream};
 use std::path::{Path, PathBuf};
 use std::process::{Command, Stdio};
+use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::{Arc, Condvar, Mutex};
 use std::time::{Duration, Instant};
 
 pub(super) struct Remote {
@@ -65,6 +67,114 @@ fn command(binary: &Path, root: &Path) -> Command {
         command.process_group(0);
     }
     command
+}
+
+/// The D1 and R2 bindings a `cloudflare-d1` run names, each validated before any request.
+pub(super) struct D1Bindings {
+    pub endpoint: String,
+    r2_endpoint: String,
+    bucket: String,
+    access: String,
+    secret: String,
+    recovery: String,
+}
+
+impl D1Bindings {
+    pub fn from_environment() -> Result<Self> {
+        let required = |name: &str| std::env::var(name).ok().filter(|v| !v.is_empty()).ok_or_else(|| "ConformanceCapabilityMissing:cloudflare-d1".to_string());
+        let endpoint = required("CONTEXTFUL_CONFORMANCE_D1_ENDPOINT")?;
+        let url = url::Url::parse(&endpoint).map_err(|_| "ConformanceCapabilityMissing:cloudflare-d1")?;
+        let host = url.host_str().ok_or("ConformanceCapabilityMissing:cloudflare-d1")?;
+        if url.scheme() != "http" || !(host == "contextful.d1" || host == "localhost" || host.parse::<std::net::IpAddr>().is_ok_and(|ip| ip.is_loopback())) || url.path() != "/" || url.query().is_some() || url.fragment().is_some() {
+            return Err("ConformanceCapabilityMissing:cloudflare-d1".into());
+        }
+        let bindings = Self {
+            endpoint: endpoint.trim_end_matches('/').into(),
+            r2_endpoint: required("CONTEXTFUL_CONFORMANCE_R2_ENDPOINT")?,
+            bucket: required("CONTEXTFUL_CONFORMANCE_R2_BUCKET")?,
+            access: required("CONTEXTFUL_CONFORMANCE_R2_ACCESS_KEY_ID")?,
+            secret: required("CONTEXTFUL_CONFORMANCE_R2_SECRET_ACCESS_KEY")?,
+            recovery: required("CONTEXTFUL_CONFORMANCE_RECOVERY_ID")?,
+        };
+        if required("CONTEXTFUL_CONFORMANCE_D1_DISPOSABLE")?.as_str() != "1" {
+            return Err("ConformanceCapabilityMissing:disposable-d1-binding".into());
+        }
+        Ok(bindings)
+    }
+}
+
+/// Seconds a suite's D1 admission lease outlives its last renewal (`assurance.consumer.d1-admission`).
+const ADMISSION_TTL_SECS: u64 = 120;
+const ADMISSION_RENEWAL: Duration = Duration::from_secs(20);
+
+/// One suite's lease on a shared D1 database, renewed while it lives and released on drop,
+/// so a suite in any other container refuses before resetting the rows this one drives.
+pub(super) struct Admission {
+    endpoint: String,
+    holder: String,
+    lost: Arc<AtomicBool>,
+    stop: Arc<(Mutex<bool>, Condvar)>,
+    renewal: Option<std::thread::JoinHandle<()>>,
+}
+
+fn d1_sql(endpoint: &str, sql: &str, params: Vec<serde_json::Value>) -> Result<serde_json::Value> {
+    let bytes = serde_json::to_vec(&serde_json::json!({"sql":sql,"params":params})).map_err(|_| "ConformanceD1BindingUnreadable")?;
+    // A bounded request keeps a stalled renewal from holding the suite's exit.
+    let agent = ureq::Agent::config_builder().timeout_global(Some(Duration::from_secs(30))).build().new_agent();
+    let mut response = agent.post(&format!("{endpoint}/sql")).header("content-type", "application/json")
+        .send(bytes.as_slice()).map_err(|_| "ConformanceD1BindingUnavailable")?;
+    if response.status() != 200 { return Err("ConformanceD1BindingUnavailable".into()) }
+    let body = response.body_mut().read_to_vec().map_err(|_| "ConformanceD1BindingUnreadable")?;
+    serde_json::from_slice(&body).map_err(|_| "ConformanceD1BindingUnreadable".into())
+}
+
+impl Admission {
+    /// Take the lease, or refuse with `ConformanceAlreadyRunning` while another holder's lives.
+    pub fn acquire(endpoint: &str) -> Result<Self> {
+        let nanos = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).map_or(0, |d| d.as_nanos());
+        let holder = format!("{}-{nanos}", std::process::id());
+        // The table sits outside the `contextful_` prefix every recovery check enumerates.
+        d1_sql(endpoint, "CREATE TABLE IF NOT EXISTS conformance_admission (id INTEGER PRIMARY KEY CHECK (id = 1), holder TEXT NOT NULL, expires_at INTEGER NOT NULL)", vec![])?;
+        let taken = d1_sql(endpoint, "INSERT INTO conformance_admission (id, holder, expires_at) VALUES (1, ?, unixepoch() + ?) ON CONFLICT (id) DO UPDATE SET holder = excluded.holder, expires_at = excluded.expires_at WHERE conformance_admission.expires_at <= unixepoch()",
+            vec![serde_json::json!(holder), serde_json::json!(ADMISSION_TTL_SECS)])?;
+        if taken["changes"] != 1 {
+            return Err("ConformanceAlreadyRunning".into());
+        }
+        let lost = Arc::new(AtomicBool::new(false));
+        let stop = Arc::new((Mutex::new(false), Condvar::new()));
+        let renewal = {
+            let (endpoint, holder, lost, stop) = (endpoint.to_owned(), holder.clone(), lost.clone(), stop.clone());
+            std::thread::spawn(move || {
+                let (stopped, wake) = &*stop;
+                loop {
+                    if *wake.wait_timeout(stopped.lock().unwrap(), ADMISSION_RENEWAL).unwrap().0 { return }
+                    let renewed = d1_sql(&endpoint, "UPDATE conformance_admission SET expires_at = unixepoch() + ? WHERE id = 1 AND holder = ?",
+                        vec![serde_json::json!(ADMISSION_TTL_SECS), serde_json::json!(holder)]);
+                    // A failed request retries at the next renewal; a lease another holder took is lost.
+                    if renewed.is_ok_and(|answer| answer["changes"] == 0) {
+                        lost.store(true, Ordering::SeqCst);
+                    }
+                }
+            })
+        };
+        Ok(Self { endpoint: endpoint.into(), holder, lost, stop, renewal: Some(renewal) })
+    }
+
+    /// Whether this suite still holds the lease.
+    pub fn held(&self) -> bool {
+        !self.lost.load(Ordering::SeqCst)
+    }
+}
+
+impl Drop for Admission {
+    fn drop(&mut self) {
+        *self.stop.0.lock().unwrap() = true;
+        self.stop.1.notify_all();
+        if let Some(renewal) = self.renewal.take() {
+            let _ = renewal.join();
+        }
+        let _ = d1_sql(&self.endpoint, "DELETE FROM conformance_admission WHERE id = 1 AND holder = ?", vec![serde_json::json!(self.holder)]);
+    }
 }
 
 impl Remote {
@@ -167,22 +277,8 @@ impl Remote {
 
     /// A disposable D1 binding and an R2 bucket supply one replacement scenario.
     pub fn start_d1(root: &Path) -> Result<Self> {
-        let required = |name: &str| std::env::var(name).ok().filter(|v| !v.is_empty()).ok_or_else(|| "ConformanceCapabilityMissing:cloudflare-d1".to_string());
-        let endpoint = required("CONTEXTFUL_CONFORMANCE_D1_ENDPOINT")?;
-        let url = url::Url::parse(&endpoint).map_err(|_| "ConformanceCapabilityMissing:cloudflare-d1")?;
-        let host = url.host_str().ok_or("ConformanceCapabilityMissing:cloudflare-d1")?;
-        if url.scheme() != "http" || !(host == "contextful.d1" || host == "localhost" || host.parse::<std::net::IpAddr>().is_ok_and(|ip| ip.is_loopback())) || url.path() != "/" || url.query().is_some() || url.fragment().is_some() {
-            return Err("ConformanceCapabilityMissing:cloudflare-d1".into());
-        }
-        let r2_endpoint = required("CONTEXTFUL_CONFORMANCE_R2_ENDPOINT")?;
-        let bucket = required("CONTEXTFUL_CONFORMANCE_R2_BUCKET")?;
-        let access = required("CONTEXTFUL_CONFORMANCE_R2_ACCESS_KEY_ID")?;
-        let secret = required("CONTEXTFUL_CONFORMANCE_R2_SECRET_ACCESS_KEY")?;
-        let recovery = required("CONTEXTFUL_CONFORMANCE_RECOVERY_ID")?;
-        if required("CONTEXTFUL_CONFORMANCE_D1_DISPOSABLE")?.as_str() != "1" {
-            return Err("ConformanceCapabilityMissing:disposable-d1-binding".into());
-        }
-        let endpoint = endpoint.trim_end_matches('/');
+        let D1Bindings { endpoint, r2_endpoint, bucket, access, secret, recovery } = D1Bindings::from_environment()?;
+        let endpoint = endpoint.as_str();
         let query = |sql: &str| -> Result<serde_json::Value> {
             let payload = serde_json::json!({"sql":sql,"params":[]});
             let bytes = serde_json::to_vec(&payload).map_err(|_| "ConformanceD1BindingUnreadable")?;

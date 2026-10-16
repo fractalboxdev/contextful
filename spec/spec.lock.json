@@ -29365,6 +29365,17 @@
       "line": 35
     },
     {
+      "id": "assurance.consumer.d1-admission",
+      "contract": "assurance",
+      "operation": "consumer",
+      "subject": "d1-admission",
+      "kind": "refusal",
+      "statement": "A `cloudflare-d1` suite holds a lease row in the bound D1 from before its first reset until it ends, lapsing 120 s after its last renewal; a suite meeting a live lease refuses each required scenario with `ConformanceAlreadyRunning`.",
+      "why": "because a process check inside one container misses a suite another container runs against the same database",
+      "file": "spec/82-consumer.md",
+      "line": 37
+    },
+    {
       "id": "assurance.consumer.d1-release",
       "contract": "assurance",
       "operation": "consumer",
@@ -29373,7 +29384,7 @@
       "statement": "Release evidence binds a `cloudflare-d1` report to the artifact digest, source revision, suite revision and storage profile; a required failure, unsupported case, skip or unverified binding supplies no compatibility verdict.",
       "why": "A-assurance",
       "file": "spec/82-consumer.md",
-      "line": 37
+      "line": 39
     },
     {
       "id": "assurance.consumer.d1-deployment",
@@ -29384,7 +29395,7 @@
       "statement": "Deployment readiness requires a replacement run against Cloudflare D1 and R2, with the same artifact digest and source revision as its release report.",
       "why": "A-assurance",
       "file": "spec/82-consumer.md",
-      "line": 39
+      "line": 41
     }
   ],
   "owns": {
@@ -32669,6 +32680,10 @@
             "clause": "assurance.prove.commutation-claim",
             "gloss": "Order-independence asserted over stages whose order the composition theorem fixes."
           },
+          "ConformanceAlreadyRunning": {
+            "clause": "assurance.consumer.d1-admission",
+            "gloss": "Another suite holds a live admission lease on the bound D1 database."
+          },
           "CounterexampleDiscarded": {
             "clause": "assurance.differential-test.discarded-counterexample",
             "gloss": "A run reported a disagreement and wrote no corpus entry."
@@ -32949,6 +32964,13 @@
             "unit": "entries",
             "basis": "chosen",
             "gloss": "Minimized disagreements the corpus retains."
+          },
+          "assurance-d1-admission-lease": {
+            "clause": "assurance.consumer.d1-admission",
+            "value": 120,
+            "unit": "s",
+            "basis": "chosen",
+            "gloss": "Life of a suite's D1 admission lease past its last renewal."
           },
           "assurance-default-dead-band": {
             "clause": "assurance.baseline.default-dead-band",

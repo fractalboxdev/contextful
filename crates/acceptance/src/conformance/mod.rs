@@ -133,6 +133,12 @@ pub fn run(options: &Options) -> Result<Report> {
             report.feature_profile = text.split_whitespace().nth(2).map(str::to_owned);
         }
     }
+    // One lease on the shared D1 database spans every scenario's reset; bindings that fail
+    // validation leave each scenario to report its missing capability.
+    let admission = (options.storage_profile == "cloudflare-d1")
+        .then(remote::D1Bindings::from_environment)
+        .and_then(Result::ok)
+        .map(|bindings| remote::Admission::acquire(&bindings.endpoint));
     for name in &options.required {
         if !manifest()
             .scenarios
@@ -174,6 +180,13 @@ pub fn run(options: &Options) -> Result<Report> {
                     .clone()
                     .unwrap_or_else(|| "ConformanceVersionUnavailable".into()),
             );
+        } else if let Some(refusal) = match &admission {
+            Some(Err(error)) => Some(error.clone()),
+            Some(Ok(lease)) if !lease.held() => Some("ConformanceAlreadyRunning".into()),
+            _ => None,
+        } {
+            result.outcome = Outcome::Failed;
+            result.diagnostic = Some(refusal);
         } else {
             let mut unavailable = None;
             let mut probe_error = None;
