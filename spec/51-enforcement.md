@@ -399,12 +399,14 @@ unsettled: Does the restriction block also carry the rows a row predicate remove
 
 The paths that stay closed to an injected instruction.
 
-- `credential-shaped-value` — The write path raises `EnforceCredentialShapedValue` on a value matching a credential shape, before it reaches storage.
+- `credential-shaped-value` — A claim write, direct or synthesized, raises `EnforceCredentialShapedValue` on a field matching a credential shape, before it reaches storage.
   *A-read*
 - `read-only-face` — An organization-wide face serves the read subset of the tool surface; conversational writes are server-authored.
   *A-surface*
 - `write-tool` — Registering a write tool on an organization-wide face raises `EnforceWriteOnReadOnlyFace`.
   *A-surface*
+
+unsettled: Does a source writer refuse a credential-shaped value per value, landing the surrounding rows, and which operator-declared exemption admits a source carrying such text? owner: authority affects: authority.resist
 
 ## Shapes
 

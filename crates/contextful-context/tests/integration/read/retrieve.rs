@@ -504,6 +504,7 @@ fn the_accelerated_arm_returns_every_exact_row_and_readers_can_differ() {
 
 /// A sidecar yields candidate `id_column` values, not rows; they re-join through the enforced relation on that column before a top-K is final.
 // spec: store.index.candidate-ids@0d53be8f
+// spec: authority.compose.vector-arm@d98fead5
 #[test]
 fn sidecar_candidates_are_identifier_values_rejoined_through_the_relation() {
     let r = sidecar_reads("[pipeline.tables.policy.rows]\npredicate = \"owner = subject.agent\"\n");

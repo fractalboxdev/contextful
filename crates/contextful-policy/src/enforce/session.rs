@@ -194,7 +194,7 @@ impl Session {
             if t.landed {
                 t.policy.check_schema(&t.decl.name, &t.columns)?;
             }
-            let relation = session.compile(&t, &t.base, t.files.clone());
+            let relation = session.compile(&t, &t.base, t.files.clone())?;
             session.relations.insert(t.decl.name.clone(), relation);
             session.policies.insert(t.decl.name.clone(), t.policy.clone());
             session.sources.insert(t.decl.name.clone(), t);
@@ -207,6 +207,9 @@ impl Session {
                 .map(|t| session.ledger(t))
                 .filter(|l| !session.relations.contains_key(&l.name))
                 .collect();
+            for l in &ledgers {
+                pepper.guard(&l.name, &l.sql)?;
+            }
             session.ledgers = ledgers.into_iter().map(|l| (l.name.clone(), l)).collect();
         }
         Ok(session)
@@ -241,7 +244,10 @@ impl Session {
     /// (`authority.compose.relation-order`) — each a conjunct of one `WHERE`, so a step
     /// removes rows and adds none (`authority.compose.conjunctive-narrowing`). Protection
     /// is this rewrite (`authority.compose.protection-is-a-rewrite`).
-    fn compile(&self, t: &TableSource, base: &str, files: Vec<String>) -> RegisteredRelation {
+    ///
+    /// The relation text is the session catalog entry a connection registers, so one key
+    /// state check here holds both, on every path that compiles (`authority.mask.key-material`).
+    fn compile(&self, t: &TableSource, base: &str, files: Vec<String>) -> Result<RegisteredRelation, PolicyError> {
         let name = &t.decl.name;
         let mut conjuncts = self.steps_before_zone(t);
         if !self.zone_admits(t) {
@@ -261,7 +267,9 @@ impl Session {
             })
             .collect();
         let projection = if projection.is_empty() { "*".to_string() } else { projection.join(", ") };
-        RegisteredRelation { name: name.clone(), sql: format!("SELECT {projection} FROM ({base}) AS \"__contextful_base\" WHERE {}", filter(&conjuncts)), files }
+        let relation = RegisteredRelation { name: name.clone(), sql: format!("SELECT {projection} FROM ({base}) AS \"__contextful_base\" WHERE {}", filter(&conjuncts)), files };
+        self.pepper.guard(&relation.name, &relation.sql)?;
+        Ok(relation)
     }
 
     /// Whether the table's effective set admits the session zone
@@ -402,8 +410,8 @@ impl Session {
 
     /// The table's relation compiled over another FROM-source of the same table — one of
     /// its committed files — under every step its registered relation applies.
-    pub fn relation_over(&self, table: &str, base: &str, files: Vec<String>) -> Option<RegisteredRelation> {
-        self.sources.get(table).map(|t| self.compile(t, base, files))
+    pub fn relation_over(&self, table: &str, base: &str, files: Vec<String>) -> Result<Option<RegisteredRelation>, PolicyError> {
+        self.sources.get(table).map(|t| self.compile(t, base, files)).transpose()
     }
 
     /// Whether a table has a registered relation in this session.

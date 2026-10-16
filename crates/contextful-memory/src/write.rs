@@ -7,7 +7,7 @@ use contextful_context::read::Face;
 use contextful_core::grant::Action;
 use contextful_core::memory::MemoryError;
 use contextful_core::memory::revise::{claim_id, direct_write, keyed_claim_id, observed_order, revise, tier, Claim, Tier, WritePath};
-use contextful_core::memory::synthesize::{validate_claim, CandidateClaim};
+use contextful_core::memory::synthesize::{credential_free, validate_claim, CandidateClaim};
 use contextful_core::store::bound_time::Bounds;
 use contextful_core::store::lay_out::NodeId;
 use contextful_core::time::Instant;
@@ -70,6 +70,7 @@ pub fn write_observed(
         .ok_or_else(|| MemoryFault::Undeclared(format!("`{into}` is no memory table the manifest declares")))?;
     direct_write(into, table.shape)?;
     validate_claim(&candidate).map_err(|why| MemoryFault::Invalid(format!("the claim does not validate: {why}")))?;
+    credential_free(&candidate)?;
     require(authority, Action::Write, into)?;
     let writer = Writer::of(authority);
     let session = face.session(authority, &Request::default(), Bounds::default())?;

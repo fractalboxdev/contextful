@@ -245,3 +245,46 @@ fn a_zone_identifier_holds_at_most_128_chars() {
     assert!(Entry::parse(&format!("on-prem:{at}")).is_ok());
     assert!(matches!(Entry::parse(&format!("on-prem:{over}")), Err(EnforceError::ZonePatternUnparsed(_))));
 }
+
+/// A surface declaring write-time removal on a column and an allow-set admitting a public cloud raises `EnforceRemovalWithPublicCloud`.
+// spec: authority.place.removal-with-public-cloud@0769a8a9
+#[test]
+fn write_time_removal_beside_a_public_cloud_is_refused() {
+    let with = |allow: &str| {
+        decl(&format!(
+            "[[pipeline.tables]]\nname = \"notes\"\nredaction = [{{ table = \"notes\", column = \"body\", operation = \"drop\" }}]\n\
+             [pipeline.tables.policy.zone]\nallow = [{allow}]\n"
+        ))
+    };
+    for allow in ["\"*\"", "\"public-cloud:*\"", "\"on-prem:*\", \"public-cloud:us-east-1\""] {
+        match TablePolicy::from_decl(&with(allow)) {
+            Err(PolicyError::Enforce(EnforceError::RemovalWithPublicCloud(why))) => {
+                assert!(why.contains("notes") && why.contains("body"), "{why}");
+                assert!(why.starts_with("table `notes`"), "{why}");
+            }
+            other => panic!("{allow}: {other:?}"),
+        }
+    }
+    // A set closed to every public cloud, or no declared set, stands beside removal.
+    for allow in ["\"on-prem:*\"", "\"local:device\", \"private-cloud:vpc\""] {
+        assert!(TablePolicy::from_decl(&with(allow)).is_ok(), "{allow}");
+    }
+    let undeclared = decl("[[pipeline.tables]]\nname = \"notes\"\nredaction = [{ table = \"notes\", column = \"body\", operation = \"drop\" }]\n");
+    assert!(TablePolicy::from_decl(&undeclared).is_ok());
+    // A public cloud with no removal declared stands too.
+    assert!(TablePolicy::from_decl(&decl("[[pipeline.tables]]\nname = \"notes\"\n[pipeline.tables.policy.zone]\nallow = [\"public-cloud:*\"]\n")).is_ok());
+    // A pipeline-wide removal rule reaches the table it names, in the declaration and in a manifest file.
+    let spec = "[[pipeline]]\nid = \"feed\"\ntables = [{ name = \"notes\", policy = { zone = { allow = [\"public-cloud:*\"] } } }]\n\
+                redaction = [{ table = \"notes\", column = \"body\", operation = \"drop\" }]\n\
+                [pipeline.source]\nname = \"http\"\nconfig = { endpoint = \"https://example.test/notes\" }\n";
+    let from_declaration = TableDecl::parse_pipeline(spec).unwrap();
+    let manifest = contextful_core::pipeline::declare::ManifestFile { path: "contextful.toml".into(), text: spec.into() };
+    let from_manifest = TableDecl::parse_declaration_set("", &[manifest]).unwrap();
+    for tables in [from_declaration, from_manifest] {
+        let notes = tables.iter().find(|t| t.name == "feed_notes").expect("the destination table");
+        match TablePolicy::from_decl(notes) {
+            Err(PolicyError::Enforce(EnforceError::RemovalWithPublicCloud(why))) => assert!(why.contains("feed_notes") && why.contains("body"), "{why}"),
+            other => panic!("{other:?}"),
+        }
+    }
+}

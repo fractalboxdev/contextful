@@ -8,6 +8,9 @@
 pub enum EnforceError {
     #[error("EnforceRedactionInvalid: {0}")]
     RedactionInvalid(String),
+    /// A value matching a credential shape on the write path. (`authority.resist.credential-shaped-value`)
+    #[error("EnforceCredentialShapedValue: {0}")]
+    CredentialShapedValue(String),
     /// A combine leaving its primary's digest output unchanged. (`authority.mask.combine-generalizes`)
     #[error("EnforceCombineWithoutGeneralization: {0}")]
     CombineWithoutGeneralization(String),
@@ -23,6 +26,9 @@ pub enum EnforceError {
     /// A session asserting a zone wider than the incognito pin. (`authority.place.incognito-widening`)
     #[error("EnforceIncognitoWidening: {0}")]
     IncognitoWidening(String),
+    /// Pepper-derived key state in relation text, a plan or the session catalog. (`authority.mask.key-material`)
+    #[error("EnforceKeyMaterialInRelation: {0}")]
+    KeyMaterialInRelation(String),
     /// A mask naming a column the schema omits. (`authority.mask.absent-column`)
     #[error("EnforceMaskOnAbsentColumn: {0}")]
     MaskOnAbsentColumn(String),
@@ -35,6 +41,9 @@ pub enum EnforceError {
     /// A protected-class surface widened past its floor with no override. (`authority.place.floor-widened`)
     #[error("EnforceProtectedFloorWidened: {0}")]
     ProtectedFloorWidened(String),
+    /// Write-time removal on a surface whose allow-set admits a public cloud. (`authority.place.removal-with-public-cloud`)
+    #[error("EnforceRemovalWithPublicCloud: {0}")]
+    RemovalWithPublicCloud(String),
     /// A read of another tenant's rows on a granted table. (`authority.refuse.scope-denied`)
     #[error("EnforceScopeDenied: {0}")]
     ScopeDenied(String),
@@ -69,15 +78,18 @@ impl EnforceError {
     pub fn identifier(&self) -> &'static str {
         match self {
             EnforceError::RedactionInvalid(_) => "EnforceRedactionInvalid",
+            EnforceError::CredentialShapedValue(_) => "EnforceCredentialShapedValue",
             EnforceError::CombineWithoutGeneralization(_) => "EnforceCombineWithoutGeneralization",
             EnforceError::DigestAloneOnExhaustibleClass(_) => "EnforceDigestAloneOnExhaustibleClass",
             EnforceError::EvidenceFloorExceeded(_) => "EnforceEvidenceFloorExceeded",
             EnforceError::EvidenceListEmpty(_) => "EnforceEvidenceListEmpty",
             EnforceError::IncognitoWidening(_) => "EnforceIncognitoWidening",
+            EnforceError::KeyMaterialInRelation(_) => "EnforceKeyMaterialInRelation",
             EnforceError::MaskOnAbsentColumn(_) => "EnforceMaskOnAbsentColumn",
             EnforceError::PermissiveZoneDefault(_) => "EnforcePermissiveZoneDefault",
             EnforceError::PredicateOutsideGrammar(_) => "EnforcePredicateOutsideGrammar",
             EnforceError::ProtectedFloorWidened(_) => "EnforceProtectedFloorWidened",
+            EnforceError::RemovalWithPublicCloud(_) => "EnforceRemovalWithPublicCloud",
             EnforceError::ScopeDenied(_) => "EnforceScopeDenied",
             EnforceError::StrategyOutsideType(_) => "EnforceStrategyOutsideType",
             EnforceError::TruncationCutsNothing(_) => "EnforceTruncationCutsNothing",

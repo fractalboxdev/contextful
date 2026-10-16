@@ -6,7 +6,7 @@ An unpinned clause is `committed`; a pinned one is `performed` when its Rust, Le
 | Contract | Files | Operations | Clauses | Refusals | Limits | Unsettled | Performed | Broken | Floor |
 | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
 | `assurance` | 3 | 18 | 316 | 64 | 24 | 8 | 276 | 0 | 276 |
-| `authority` | 2 | 16 | 295 | 79 | 29 | 9 | 230 | 0 | 230 |
+| `authority` | 2 | 16 | 295 | 79 | 29 | 10 | 242 | 0 | 242 |
 | `connector` | 2 | 14 | 375 | 92 | 22 | 12 | 277 | 0 | 277 |
 | `corpus` | 1 | 10 | 79 | 37 | 7 | 0 | 79 | 0 | 79 |
 | `disclosure` | 3 | 16 | 177 | 69 | 14 | 5 | 151 | 0 | 151 |
@@ -15,7 +15,7 @@ An unpinned clause is `committed`; a pinned one is `performed` when its Rust, Le
 | `store` | 3 | 19 | 290 | 64 | 14 | 11 | 280 | 0 | 280 |
 | `surface` | 2 | 21 | 160 | 63 | 23 | 0 | 133 | 0 | 133 |
 | `topology` | 1 | 6 | 79 | 25 | 5 | 3 | 74 | 0 | 74 |
-| **total** | 22 | 168 | 2577 | 654 | 211 | 75 | 2231 | 0 | |
+| **total** | 22 | 168 | 2577 | 654 | 211 | 76 | 2243 | 0 | |
 
 Decision records: 18.
 
@@ -30,7 +30,7 @@ A milestone reads `closed` when its acceptance test computes `passing` and every
 | 2 — The store | 9 | 183 | 173 | passing | closed |
 | 3 — The run path | 12 | 275 | 264 | passing | closed |
 | 4 — Ingest | 25 | 586 | 473 | passing | closed |
-| 5 — The read face under enforcement | 17 | 308 | 244 | passing | open |
+| 5 — The read face under enforcement | 17 | 308 | 256 | passing | open |
 | 6 — Sync and replicas | 8 | 83 | 83 | passing | closed |
 | 7 — Memory | 6 | 72 | 57 | passing | closed |
 | 8 — Accountability | 5 | 91 | 84 | passing | closed |
@@ -338,8 +338,10 @@ Unscheduled operations: 12.
 | `authority.compose.before-the-cut` | `crates/contextful-context/tests/integration/read/retrieve.rs::restriction_completes_before_the_cut` | performed |
 | `authority.compose.complete-mediation` | `crates/contextful-context/tests/integration/read/enforce.rs::every_row_path_takes_the_session` | performed |
 | `authority.compose.conjunctive-narrowing` | `crates/contextful-context/tests/integration/read/enforce.rs::each_added_step_only_removes_rows` | performed |
+| `authority.compose.protection-is-a-rewrite` | `crates/contextful-context/tests/integration/read/enforce.rs::protection_is_compiled_into_the_relation` | performed |
 | `authority.compose.registered-relation` | `crates/contextful-context/tests/integration/read/retrieve.rs::one_relation_per_granted_table_and_every_arm_reads_it` | performed |
 | `authority.compose.relations-per-session` | `crates/contextful-policy/tests/integration/enforce/compose.rs::a_session_holds_at_most_1024_relations` | performed |
+| `authority.compose.vector-arm` | `crates/contextful-context/tests/integration/read/retrieve.rs::sidecar_candidates_are_identifier_values_rejoined_through_the_relation` | performed |
 | `authority.exchange.assertion-invalid` | `crates/contextful-policy/tests/integration/exchange.rs::a_signed_assertion_failing_any_check_is_invalid_and_mints_nothing` | performed |
 | `authority.exchange.audience` | `crates/contextful-core/tests/integration/exchange.rs::the_minted_audience_falls_back_to_the_persisted_default` | performed |
 | `authority.exchange.bearer-mint` | `crates/contextful-policy/tests/integration/exchange.rs::an_exchange_without_a_proof_mints_a_short_lived_bearer` | performed |
@@ -447,11 +449,18 @@ Unscheduled operations: 12.
 | `authority.mask.hash-width` | `crates/contextful-policy/tests/integration/enforce/mask.rs::a_digest_is_32_hex_chars` | performed |
 | `authority.mask.high-entropy` | `crates/contextful-policy/tests/integration/enforce/mask.rs::a_classless_identifier_takes_a_bare_hash` | performed |
 | `authority.mask.in-place` | `crates/contextful-context/tests/integration/read/enforce.rs::masks_substitute_columns_where_they_stand` | performed |
+| `authority.mask.key-material` | `crates/contextful-policy/tests/integration/enforce/compose.rs::a_relation_carrying_key_state_is_refused` | performed |
 | `authority.mask.masks-per-table` | `crates/contextful-policy/tests/integration/enforce/mask.rs::a_table_carries_at_most_128_masks` | performed |
+| `authority.mask.native-digest` | `crates/contextful-context/tests/integration/read/enforce.rs::a_digest_from_either_layer_joins_the_other` | performed |
+| `authority.mask.one-value` | `crates/contextful-context/tests/integration/read/enforce.rs::a_mask_applies_primary_and_combine_together_in_both_layers` | performed |
+| `authority.mask.pepper` | `crates/contextful-context/tests/integration/read/enforce.rs::one_resolved_pepper_keys_both_layers` | performed |
 | `authority.mask.pseudonymous` | `crates/contextful-policy/tests/integration/enforce/mask.rs::the_digest_is_an_hmac_under_the_pepper` | performed |
 | `authority.mask.row-class` | `spec/pins.toml` | performed |
 | `authority.mask.row-class-fallback` | `spec/pins.toml` | performed |
 | `authority.mask.row-class-selector` | `spec/pins.toml` | performed |
+| `authority.mask.strategies` | `crates/contextful-context/tests/integration/read/enforce.rs::each_strategy_yields_one_value_in_both_layers` | performed |
+| `authority.mask.subject-exception` | `crates/contextful-policy/tests/integration/enforce/mask.rs::a_mask_exception_is_a_subject_condition_bound_through_the_subject_relation` | performed |
+| `authority.mask.summarize-only` | `crates/contextful-policy/tests/integration/enforce/mask.rs::summarize_only_leaves_the_value_legible` | performed |
 | `authority.mask.token-width` | `crates/contextful-policy/tests/integration/enforce/mask.rs::a_token_is_20_chars` | performed |
 | `authority.mask.truncation-ceiling` | `crates/contextful-policy/tests/integration/enforce/mask.rs::a_truncation_past_the_class_ceiling_is_refused` | performed |
 | `authority.mask.typed-strategy` | `crates/contextful-policy/tests/integration/enforce/mask.rs::binary_vector_and_nested_columns_admit_their_strategies_alone` | performed |
@@ -462,6 +471,7 @@ Unscheduled operations: 12.
 | `authority.place.caller-zone` | `crates/contextful-context/tests/integration/read/enforce.rs::the_zone_is_declared_per_request` | performed |
 | `authority.place.disjunctive` | `crates/contextful-policy/tests/integration/enforce/zone.rs::any_matching_entry_admits_the_zone` | performed |
 | `authority.place.empty-evidence` | `crates/contextful-core/tests/integration/place.rs::a_row_naming_no_evidence_resolves_fail_closed` | performed |
+| `authority.place.envelope` | `crates/contextful-context/tests/integration/read/respond.rs::a_zone_excluded_relation_is_named_beside_its_empty_rows` | performed |
 | `authority.place.evidence-floor` | `crates/contextful-policy/tests/integration/enforce/zone.rs::a_synthesized_row_resolves_to_its_evidence_intersection` | performed |
 | `authority.place.excluded-cell` | `crates/contextful-context/tests/integration/read/enforce.rs::a_cell_outside_its_column_set_arrives_null` | performed |
 | `authority.place.excluded-disclosed` | `crates/contextful-context/tests/integration/read/respond.rs::rows_dropped_counts_the_relation_never_the_statement` | performed |
@@ -472,6 +482,7 @@ Unscheduled operations: 12.
 | `authority.place.incognito-widening` | `crates/contextful-policy/tests/integration/enforce/zone.rs::incognito_refuses_a_wider_zone_and_pins_an_absent_one` | performed |
 | `authority.place.narrowest-grain` | `crates/contextful-policy/tests/integration/enforce/zone.rs::the_narrowest_grain_wins` | performed |
 | `authority.place.protected-floor` | `crates/contextful-policy/tests/integration/enforce/zone.rs::a_protected_surface_resolves_down_to_its_floor` | performed |
+| `authority.place.removal-with-public-cloud` | `crates/contextful-policy/tests/integration/enforce/zone.rs::write_time_removal_beside_a_public_cloud_is_refused` | performed |
 | `authority.place.serve-outcome` | `crates/contextful-policy/tests/integration/enforce/zone.rs::serving_a_row_yields_a_drop_flag_and_masked_columns` | performed |
 | `authority.place.symbolic-inclusion` | `crates/contextful-policy/tests/integration/enforce/zone.rs::inclusion_is_decided_over_constructors_and_identifiers` | performed |
 | `authority.place.undeclared` | `crates/contextful-policy/tests/integration/enforce/zone.rs::only_the_wildcard_admits_an_undeclared_zone` | performed |
@@ -510,6 +521,7 @@ Unscheduled operations: 12.
 | `authority.refuse.top-level` | `crates/contextful-context/tests/integration/read/enforce.rs::the_guard_reads_top_level_conjuncts_alone` | performed |
 | `authority.refuse.undecidable` | `crates/contextful-context/tests/integration/read/enforce.rs::an_unsettled_constraint_composes_and_the_equality_isolates` | performed |
 | `authority.refuse.ungranted-table` | `crates/contextful-context/tests/integration/read/enforce.rs::an_ungranted_relation_is_unknown_everywhere` | performed |
+| `authority.resist.credential-shaped-value` | `crates/contextful-memory/tests/integration/write.rs::a_credential_shaped_value_is_refused_before_it_lands` | performed |
 | `authority.resist.read-only-face` | `crates/contextful-core/tests/integration/read/face.rs::an_organization_face_registers_read_tools` | performed |
 | `authority.resist.write-tool` | `crates/contextful-core/tests/integration/read/face.rs::a_write_tool_on_an_organization_face_is_refused` | performed |
 | `authority.revoke.compromise` | `crates/contextful-cli/tests/integration/serve.rs::a_running_face_drops_a_key_retired_by_compromise_from_the_next_request` | performed |

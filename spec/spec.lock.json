@@ -21482,7 +21482,7 @@
       "operation": "resist",
       "subject": "credential-shaped-value",
       "kind": "refusal",
-      "statement": "The write path raises `EnforceCredentialShapedValue` on a value matching a credential shape, before it reaches storage.",
+      "statement": "A claim write, direct or synthesized, raises `EnforceCredentialShapedValue` on a field matching a credential shape, before it reaches storage.",
       "why": "A-read",
       "file": "spec/51-enforcement.md",
       "line": 402

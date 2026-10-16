@@ -4,7 +4,7 @@
 
 use super::mask::{ColumnPolicy, RawColumnPolicy, MASKS_PER_TABLE};
 use super::predicate::Predicate;
-use super::zone::{AllowSet, Placement};
+use super::zone::{AllowSet, Category, Placement};
 use super::PolicyError;
 use contextful_core::enforce::EnforceError;
 use contextful_core::store::declare::{DeclarationMalformed, TableDecl};
@@ -140,6 +140,17 @@ impl TablePolicy {
         let protected_override = table_class.is_some_and(|c| overrides.iter().any(|o| o == c.name));
         let placement = Placement { declared, protected: table_class.is_some_and(|c| c.protected()), protected_override };
         placement.check(&format!("table {}", decl.name))?;
+        if let (Some(set), Some(rule)) = (&placement.declared, decl.redaction.iter().flatten().next()) {
+            if set.reaches(Category::PublicCloud) {
+                return Err(EnforceError::RemovalWithPublicCloud(format!(
+                    "table `{}` removes `{}` at write time and its allow-set [{}] admits a public cloud",
+                    decl.name,
+                    rule.column,
+                    set.labels().join(", ")
+                ))
+                .into());
+            }
+        }
         let rows = raw
             .rows
             .map(|r| -> Result<RowPolicy, EnforceError> {

@@ -518,6 +518,10 @@ fn served_claim_write_is_durable_actor_bound_and_outside_read_mcp() {
     client_scope["claim"]["scope"] = json!("shared");
     assert_eq!(post_claim(&addr, &alice, &client_scope, false).0, 400, "the caller cannot set claim scope");
     assert_eq!(post_claim(&addr, &alice, &claim, true).0, 403, "a browser origin cannot reach the write");
+    let mut shaped = claim.clone();
+    shaped["claim"]["object"] = json!("AKIAIOSFODNN7EXAMPLE");
+    let (status, refused) = post_claim(&addr, &alice, &shaped, false);
+    assert_eq!((status, refused["error"]["identifier"].clone()), (400, json!("EnforceCredentialShapedValue")), "{refused}");
     let (status, first) = post_claim(&addr, &alice, &claim, false);
     assert_eq!(status, 200, "{first}");
     assert_eq!(first["landed"], true);

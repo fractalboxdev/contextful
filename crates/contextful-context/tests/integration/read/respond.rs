@@ -220,6 +220,7 @@ fn a_byte_cut_reports_the_delivered_row_count_in_internals() {
 
 /// The restriction block carries the session zone, the incognito flag and one entry per touched relation the zone excludes or column-masks: `table`, `excluded`, `rows_dropped` and `columns_masked`. A read withholding no touched relation omits the block.
 // spec: read.respond.restriction-block@ccb9c983
+// spec: authority.place.envelope@6377ef1d
 #[test]
 fn a_zone_excluded_relation_is_named_beside_its_empty_rows() {
     let r = Reads::new();
@@ -245,6 +246,9 @@ fn a_zone_excluded_relation_is_named_beside_its_empty_rows() {
         restriction(&visits)["tables"],
         json!([{ "table": "research/visits", "excluded": false, "rows_dropped": 0, "columns_masked": ["case_notes"] }])
     );
+    // The block names what the zone removed and carries no removed value.
+    assert!(!restriction(&visits).to_string().contains("chest pain"), "{}", restriction(&visits));
+    assert!(!restriction(&vendor).to_string().contains("Solar battery"), "{}", restriction(&vendor));
     // A template, a file preview and an engine-composed read carry the same block.
     let preview = r.face.file(&s, VENDOR_FILE, ReadOptions::default()).unwrap();
     assert_eq!(restriction(&preview)["tables"][0]["table"], json!("research/vendor"));

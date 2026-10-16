@@ -1119,7 +1119,7 @@ impl Face {
         let absent: Vec<Column> = schema.columns.iter().filter(|c| !carried.contains(&c.name)).cloned().collect();
         let key_name = self.store.parquet_key().map(|_| crate::encrypt::PARQUET_KEY_NAME);
         let base = relation_bounded(&decl, std::slice::from_ref(&file), &schema.columns, &absent, opts.bounds, key_name)?;
-        let preview = session.relation_over(&table, &base, vec![file]).expect("a registered table carries its source");
+        let preview = session.relation_over(&table, &base, vec![file])?.expect("a registered table carries its source");
         let engine = SqlEngine::open(session, self.store.parquet_key())?;
         engine.register(PREVIEW_RELATION, preview.sql())?;
         let touched = BTreeSet::from([table]);

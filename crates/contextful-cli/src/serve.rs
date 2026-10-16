@@ -70,6 +70,7 @@ fn claim_write_error(error: MemoryFault) -> contextful_agent::http::HttpResponse
         MemoryFault::Authority(why) => (401, why.to_string().split(':').next().unwrap_or("AuthorityRevoked").to_owned()),
         MemoryFault::Invalid(_) => (400, "MemoryClaimMalformed".into()),
         MemoryFault::Memory(why) => (400, why.identifier().into()),
+        MemoryFault::Enforce(why) => (400, why.identifier().into()),
         _ => (503, "MemoryClaimWriteRefused".into()),
     };
     contextful_agent::http::HttpResponse::json(status, &serde_json::json!({

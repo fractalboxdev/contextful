@@ -303,3 +303,51 @@ fn a_binary_hash_digests_the_bytes() {
     assert_eq!(drop.sql("v", &ColumnType::FixedSizeBinary(5)), "CAST(NULL AS BLOB)");
     assert_eq!(drop.sql("v", &ColumnType::list(ColumnType::Utf8)), "CAST(NULL AS VARCHAR[])");
 }
+
+/// A mask carries exceptions, each a subject condition in the row-predicate grammar bound through the subject relation.
+// spec: authority.mask.subject-exception@79d1c61f
+#[test]
+fn a_mask_exception_is_a_subject_condition_bound_through_the_subject_relation() {
+    let p = policy(
+        "handle = { strategy = \"hash\", exceptions = [\"subject.agent = 'agent://auditor'\", \"subject.task = 'review'\"] }\n\
+         age = { strategy = \"drop\", exceptions = [\"subject.agent = 'agent://auditor'\"] }",
+    )
+    .unwrap();
+    let handle = p.columns["handle"].sql("handle", &ColumnType::Utf8).unwrap();
+    assert!(handle.starts_with("CASE WHEN ("), "{handle}");
+    // Subject claims are read from the subject relation, never spliced into the text.
+    assert_eq!(handle.matches("(SELECT \"agent\" FROM \"__contextful_subject\")").count(), 1, "{handle}");
+    assert_eq!(handle.matches("(SELECT \"task\" FROM \"__contextful_subject\")").count(), 1, "{handle}");
+    assert!(handle.contains(") OR ("), "conditions are alternatives: {handle}");
+    assert!(handle.ends_with("THEN CAST(\"handle\" AS VARCHAR) ELSE contextful_mask_hash(CAST(\"handle\" AS VARCHAR)) END"), "{handle}");
+    // `drop` keeps the column's type in both arms.
+    let age = p.columns["age"].sql("age", &ColumnType::Int64).unwrap();
+    assert!(age.ends_with("THEN \"age\" ELSE CAST(NULL AS BIGINT) END"), "{age}");
+    // An undeclared exception leaves the masked projection as it stands.
+    let bare = policy("handle = { strategy = \"hash\" }").unwrap();
+    assert_eq!(bare.columns["handle"].sql("handle", &ColumnType::Utf8).unwrap(), "contextful_mask_hash(CAST(\"handle\" AS VARCHAR))");
+
+    // A condition reading a column is outside the subject grammar.
+    match refused("handle = { strategy = \"hash\", exceptions = [\"owner = subject.agent\"] }") {
+        EnforceError::PredicateOutsideGrammar(why) => assert!(why.contains("handle") && why.contains("owner"), "{why}"),
+        other => panic!("{other:?}"),
+    }
+    match refused("handle = { strategy = \"hash\", exceptions = [\"subject.agent = \"] }") {
+        EnforceError::PredicateOutsideGrammar(_) => {}
+        other => panic!("{other:?}"),
+    }
+    // An exception lifts a mask; a column with no strategy has none to lift.
+    assert!(matches!(policy("handle = { class = \"phi\", exceptions = [\"subject.agent = 'a'\"] }"), Err(PolicyError::Malformed(_))));
+}
+
+/// `summarize_only` is a flag, not a strategy: the value stays legible to grounding and citation.
+// spec: authority.mask.summarize-only@14114be2
+#[test]
+fn summarize_only_leaves_the_value_legible() {
+    let p = policy("case_notes = { class = \"phi\", summarize_only = true }").unwrap();
+    let notes = &p.columns["case_notes"];
+    assert!(notes.summarize_only);
+    assert!(notes.mask.is_none(), "the flag compiles no strategy");
+    assert_eq!(notes.sql("case_notes", &ColumnType::Utf8), None, "the relation projects the stored value");
+    assert!(matches!(policy("case_notes = { strategy = \"summarize_only\" }"), Err(PolicyError::Malformed(_))), "it is no strategy");
+}

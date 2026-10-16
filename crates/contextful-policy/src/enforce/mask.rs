@@ -1,6 +1,7 @@
 //! `authority.mask`: the class registry, column policies and their manifest checks, the
 //! pepper, the keyed digest and token, and the masked projection a relation carries.
 
+use super::predicate::Predicate;
 use super::PolicyError;
 use contextful_core::enforce::EnforceError;
 use contextful_core::store::declare::DeclarationMalformed;
@@ -139,6 +140,9 @@ pub struct ColumnPolicy {
     pub crowd: u64,
     pub summarize_only: bool,
     selected: Option<RowSelected>,
+    /// Subject conditions under which the column serves unmasked
+    /// (`authority.mask.subject-exception`).
+    exceptions: Vec<Predicate>,
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -166,6 +170,8 @@ pub struct RawColumnPolicy {
     strategies: Option<BTreeMap<String, String>>,
     #[serde(default)]
     fallback: Option<String>,
+    #[serde(default)]
+    exceptions: Vec<String>,
 }
 
 impl ColumnPolicy {
@@ -179,15 +185,16 @@ impl ColumnPolicy {
             let strategies = raw.strategies.as_ref().filter(|s| !s.is_empty()).ok_or_else(|| DeclarationMalformed(at("a row-selected class names a nonempty strategy map".into())))?;
             let mut masks = BTreeMap::new();
             for (name, strategy) in strategies {
-                let branch = Self::parse(column, RawColumnPolicy { class:Some(ClassSelector::Static(name.clone())), strategy:Some(strategy.clone()), combine:raw.combine.clone(), crowd:raw.crowd, summarize_only:raw.summarize_only, strategies:None, fallback:None })?;
+                let branch = Self::parse(column, RawColumnPolicy { class:Some(ClassSelector::Static(name.clone())), strategy:Some(strategy.clone()), combine:raw.combine.clone(), crowd:raw.crowd, summarize_only:raw.summarize_only, strategies:None, fallback:None, exceptions:Vec::new() })?;
                 masks.insert(name.clone(), branch.mask.expect("a named strategy compiles its mask"));
             }
-            let fallback = Self::parse(column, RawColumnPolicy { class:None, strategy:Some("drop".into()), combine:None, crowd:raw.crowd, summarize_only:raw.summarize_only, strategies:None, fallback:None })?;
+            let fallback = Self::parse(column, RawColumnPolicy { class:None, strategy:Some("drop".into()), combine:None, crowd:raw.crowd, summarize_only:raw.summarize_only, strategies:None, fallback:None, exceptions:raw.exceptions })?;
             return Ok(Self { selected:Some(RowSelected { column:from_column.clone(), masks }), ..fallback });
         }
         if raw.strategies.is_some() || raw.fallback.is_some() {
             return Err(DeclarationMalformed(at("a strategy map and fallback require a row-selected class".into())).into());
         }
+        let exceptions = Self::exceptions(column, &raw.exceptions, raw.strategy.is_some())?;
         let class = match &raw.class {
             Some(ClassSelector::Static(name)) => Some(class(name)?),
             None => None,
@@ -248,7 +255,30 @@ impl ColumnPolicy {
             crowd,
             summarize_only: raw.summarize_only.unwrap_or(false),
             selected: None,
+            exceptions,
         })
+    }
+
+    /// Parse a mask's exceptions: each a condition in the row-predicate grammar over
+    /// subject fields alone, bound through the subject relation; one reading a column
+    /// refuses, and exceptions on a column with no mask are malformed
+    /// (`authority.mask.subject-exception`).
+    fn exceptions(column: &str, raw: &[String], masked: bool) -> Result<Vec<Predicate>, PolicyError> {
+        if !raw.is_empty() && !masked {
+            return Err(DeclarationMalformed(format!("column `{column}`: exceptions lift a mask, and the column declares no strategy")).into());
+        }
+        raw.iter()
+            .map(|condition| {
+                let when = Predicate::parse(condition)?;
+                if !when.subject_only() {
+                    return Err(EnforceError::PredicateOutsideGrammar(format!(
+                        "column `{column}`: mask exception `{condition}` reads a column; it is over subject fields alone"
+                    ))
+                    .into());
+                }
+                Ok(when)
+            })
+            .collect()
     }
 
     pub fn selector_column(&self) -> Option<&str> { self.selected.as_ref().map(|s| s.column.as_str()) }
@@ -267,10 +297,28 @@ impl ColumnPolicy {
     }
 
     pub fn sql(&self, column: &str, ty: &ColumnType) -> Option<String> {
-        let fallback = self.mask.as_ref()?.sql(column, ty);
-        let Some(selected) = &self.selected else { return Some(fallback) };
-        let cases: String = selected.masks.iter().map(|(name, mask)| format!(" WHEN '{}' THEN {}", name.replace('\'', "''"), mask.sql(column, ty))).collect();
-        Some(format!("CASE {}{cases} ELSE {fallback} END", ident(&selected.column)))
+        let mask = self.mask.as_ref()?;
+        let fallback = mask.sql(column, ty);
+        let masked = match &self.selected {
+            None => fallback,
+            Some(selected) => {
+                let cases: String = selected.masks.iter().map(|(name, mask)| format!(" WHEN '{}' THEN {}", name.replace('\'', "''"), mask.sql(column, ty))).collect();
+                format!("CASE {}{cases} ELSE {fallback} END", ident(&selected.column))
+            }
+        };
+        if self.exceptions.is_empty() {
+            return Some(masked);
+        }
+        // A matching subject reads the stored value, typed as the masked projection is so
+        // both arms share one type: `drop` keeps the column's type, every other strategy
+        // yields text.
+        let unmasked = if self.selected.is_none() && mask.primary == Strategy::Drop && *ty != ColumnType::Utf8 {
+            ident(column)
+        } else {
+            format!("CAST({} AS VARCHAR)", ident(column))
+        };
+        let when: Vec<String> = self.exceptions.iter().map(|e| format!("({})", e.sql())).collect();
+        Some(format!("CASE WHEN {} THEN {unmasked} ELSE {masked} END", when.join(" OR ")))
     }
 }
 
@@ -320,6 +368,44 @@ impl Pepper {
         self.development.then(|| {
             format!("{PEPPER_VAR} is unset: masked values are keyed by the development pepper in the source tree")
         })
+    }
+
+    /// The spellings of the pepper's key state a text could carry: the key as text, its
+    /// hexadecimal, and the hexadecimal of the HMAC's inner and outer padded key blocks.
+    /// A spelling shorter than 16 chars is too common to attribute to the key and is not
+    /// held.
+    fn key_state(&self) -> Vec<String> {
+        let hex = |bytes: &[u8]| bytes.iter().map(|b| format!("{b:02x}")).collect::<String>();
+        let mut block = [0u8; 64];
+        if self.key.len() > block.len() {
+            block[..32].copy_from_slice(&Sha256::digest(&self.key));
+        } else {
+            block[..self.key.len()].copy_from_slice(&self.key);
+        }
+        let pad = |byte: u8| block.iter().map(|b| b ^ byte).collect::<Vec<u8>>();
+        let mut forms = vec![hex(&self.key), hex(&pad(0x36)), hex(&pad(0x5c))];
+        if let Ok(text) = std::str::from_utf8(&self.key) {
+            forms.push(text.to_string());
+        }
+        if self.key.len() > block.len() {
+            forms.push(hex(&block[..32]));
+        }
+        forms.retain(|f| f.len() >= 16);
+        forms
+    }
+
+    /// Refuse a compiled relation or session catalog entry carrying the
+    /// pepper's key state; the query layer reaches the key only through the scalar
+    /// functions holding it in process memory (`authority.mask.key-material`). The
+    /// refusal names the relation, never the key.
+    pub fn guard(&self, relation: &str, text: &str) -> Result<(), EnforceError> {
+        let lower = text.to_ascii_lowercase();
+        if self.key_state().iter().any(|form| text.contains(form.as_str()) || lower.contains(&form.to_ascii_lowercase())) {
+            return Err(EnforceError::KeyMaterialInRelation(format!(
+                "`{relation}` carries key state derived from the pepper; a mask reaches the key through its scalar function alone"
+            )));
+        }
+        Ok(())
     }
 
     fn mac(&self, label: &str, value: &[u8]) -> [u8; 32] {

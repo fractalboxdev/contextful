@@ -409,12 +409,23 @@ impl TableDecl {
                 let mut out = Vec::new();
                 for spec in specs {
                     let id = spec.get("id").and_then(toml::Value::as_str).ok_or_else(|| DeclarationMalformed("a `[[pipeline]]` block carries no `id`".into()))?;
+                    // Pipeline-wide removal rules bind the table they name, as `PipelineSpec::destination_decl` binds them.
+                    let wide: Vec<crate::redaction::Rule> = match spec.get("redaction") {
+                        Some(rules) => rules.clone().try_into().map_err(|e: toml::de::Error| DeclarationMalformed(e.to_string()))?,
+                        None => Vec::new(),
+                    };
                     for entry in spec.get("tables").and_then(toml::Value::as_array).into_iter().flatten() {
                         let mut decl = match entry {
                             toml::Value::String(name) => TableDecl::named(name.clone()),
                             other => other.clone().try_into().map_err(|e: toml::de::Error| DeclarationMalformed(e.to_string()))?,
                         };
+                        let mut rules = decl.redaction.take().unwrap_or_default();
+                        rules.extend(wide.iter().filter(|rule| rule.table == decl.name).cloned());
                         decl.name = crate::pipeline::declare::table_name(id, &decl.name);
+                        for rule in &mut rules {
+                            rule.table = decl.name.clone();
+                        }
+                        decl.redaction = (!rules.is_empty()).then_some(rules);
                         out.push(decl);
                     }
                 }
@@ -451,7 +462,7 @@ impl TableDecl {
                 }
             }
             for d in crate::pipeline::declare::read_manifest(f).map_err(|e| DeclarationMalformed(e.to_string()))? {
-                declared.extend(d.spec.tables.iter().map(|t| TableDecl { name: d.spec.table_name(t.name()), ..t.decl() }));
+                declared.extend(d.spec.tables.iter().map(|t| d.spec.destination_decl(t)));
             }
         }
         tables.extend(checked(declared)?);
