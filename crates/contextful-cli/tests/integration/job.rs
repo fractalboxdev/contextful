@@ -71,6 +71,7 @@ fn a_masked_entity_key_lands_in_the_item_record_masked() {
         assert_eq!(row[2], "succeeded");
     }
     let everything = select(p, "SELECT * FROM _items");
+    assert_eq!(everything.len(), 3, "{everything:?}");
     for clear in ["d1", "d2", "d3"] {
         assert!(everything.iter().flatten().all(|cell| cell != clear && !cell.contains(&format!("\"{clear}\""))), "{clear} in the clear: {everything:?}");
     }
