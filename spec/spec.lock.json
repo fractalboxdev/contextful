@@ -24763,6 +24763,7 @@
       "line": 375,
       "scenarios": [
         "WHEN a cold node pulls a signed bucket head and runs import, THEN import claims nothing, and apply of one added pipeline claims the head's successor and pushes.",
+        "WHEN a release changes only the schedules of pipelines a build job runs `after`, THEN a cold node adopts the old head and apply claims its successor.",
         "WHEN a release removes a pipeline with the build job whose `after` names it, THEN a cold node adopts the old head, apply claims its successor, and the next cold node adopts that."
       ]
     },
@@ -24863,7 +24864,7 @@
       "statement": "A residency allow-set holds at most 16 entries.",
       "why": "",
       "file": "spec/70-control-plane.md",
-      "line": 437
+      "line": 438
     },
     {
       "id": "surface.reside.region-mismatch",
@@ -24874,7 +24875,7 @@
       "statement": "A configured resource resolving to a region the policy omits raises `EnforceRegionMismatch` at startup, and the runtime serves nothing.",
       "why": "P3",
       "file": "spec/70-control-plane.md",
-      "line": 438
+      "line": 439
     },
     {
       "id": "surface.reside.site-regions",
@@ -24885,7 +24886,7 @@
       "statement": "A push records the pushing site's residency allow-set in the bucket manifest; a push finding a differing set another site recorded, an absent one included, raises `ResidencySitesDiverge` and commits nothing.",
       "why": "A-surface",
       "file": "spec/70-control-plane.md",
-      "line": 440
+      "line": 441
     },
     {
       "id": "surface.open-console.page-routes",

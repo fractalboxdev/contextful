@@ -335,17 +335,19 @@ fn a_warm_synced_restart_imports_again_without_claiming() {
     assert!(!dir.path().join(CONTROL).join("manifest@v2.toml").exists());
 }
 
-/// A release removing a pipeline with its model and the build job whose `after` names it
-/// converges on a cold node, and every later cold node adopts the pushed head.
+/// A release changing only schedules, then one removing a pipeline with its model and the build
+/// job whose `after` names it, each converge on a cold node, and every later cold node adopts the
+/// pushed head.
 // spec: surface.apply.self-valid@b70f15c4
 #[test]
-fn a_cold_node_adopts_a_head_after_a_release_removes_a_pipeline_and_its_dependent_job() {
+fn a_cold_node_adopts_a_head_after_a_release_reschedules_or_removes_a_pipeline_and_its_dependent_job() {
     let bucket = tempfile::tempdir().unwrap();
     let issuer = tempfile::tempdir().unwrap();
     let public = ok(&cf(issuer.path(), &["token", "keygen", "--out", "issuer.seed"]));
-    let assignment = format!("{}\n[[model]]\nid = \"assignment_view\"\nsql = \"SELECT id FROM assignment\"\nunique_key = [\"id\"]\n[model.contract]\nversion = \"1.0.0\"\ncolumns = [{{ name = \"id\", type = \"utf8\", nullable = false }}]\n[[job]]\nname = \"refresh-assignment-0\"\nkind = \"build\"\ntarget = \"assignment_view\"\nafter = \"assignment\"\n",
-        pipeline("assignment", "https://api.vendor.example/v1", "schedule = \"every 1h\"", "tables = [\"assignment\"]"));
-    let orders = pipeline("orders", "https://api.vendor.example/v1", "schedule = \"every 1h\"", "tables = [\"orders\"]");
+    let assignment = |every: &str| format!("{}\n[[model]]\nid = \"assignment_view\"\nsql = \"SELECT id FROM assignment\"\nunique_key = [\"id\"]\n[model.contract]\nversion = \"1.0.0\"\ncolumns = [{{ name = \"id\", type = \"utf8\", nullable = false }}]\n[[job]]\nname = \"refresh-assignment-0\"\nkind = \"build\"\ntarget = \"assignment_view\"\nafter = \"assignment\"\n",
+        pipeline("assignment", "https://api.vendor.example/v1", &format!("schedule = \"{every}\""), "tables = [\"assignment\"]"));
+    let orders_every = |every: &str| pipeline("orders", "https://api.vendor.example/v1", &format!("schedule = \"{every}\""), "tables = [\"orders\"]");
+    let orders = orders_every("every 1h");
     let node = |declaration: &str| {
         let dir = project(&format!("site_id = \"site-a\"\n\n{declaration}"));
         std::fs::copy(issuer.path().join("issuer.seed"), dir.path().join(".contextful/issuer.seed")).unwrap();
@@ -375,15 +377,17 @@ fn a_cold_node_adopts_a_head_after_a_release_removes_a_pipeline_and_its_dependen
         (dir, applied)
     };
 
-    let (_, first) = start(&format!("{orders}{assignment}"));
+    let (_, first) = start(&format!("{orders}{}", assignment("every 1h")));
     assert!(!first.contains("applied v2"), "{first}");
+    let (_, rescheduled) = start(&format!("{}{}", orders_every("every 2h"), assignment("every 2h")));
+    assert!(rescheduled.contains("~ orders") && rescheduled.contains("~ assignment") && rescheduled.contains("applied v2"), "{rescheduled}");
     let (released, applied) = start(&orders);
-    assert!(applied.contains("- assignment") && applied.contains("- job:refresh-assignment-0") && applied.contains("applied v2"), "{applied}");
-    let head = std::fs::read_to_string(released.path().join(CONTROL).join("manifest@v2.toml")).unwrap();
+    assert!(applied.contains("- assignment") && applied.contains("- job:refresh-assignment-0") && applied.contains("applied v3"), "{applied}");
+    let head = std::fs::read_to_string(released.path().join(CONTROL).join("manifest@v3.toml")).unwrap();
     assert!(!head.contains("assignment"), "{head}");
 
     let (_, later) = start(&orders);
-    assert!(later.contains("unchanged at v2"), "{later}");
+    assert!(later.contains("unchanged at v3"), "{later}");
 }
 
 pub(crate) fn cf(dir: &Path, args: &[&str]) -> Output {
