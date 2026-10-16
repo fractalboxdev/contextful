@@ -3,11 +3,12 @@
 
 use super::engine::SqlEngine;
 use super::face::Face;
+use super::evidence::ReadableRows;
 use super::fault::ReadFault;
 use contextful_core::enforce::EnforceError;
 use contextful_core::memory::calibrate::{Calibration, Confidence, Settled};
 use contextful_core::memory::declare::Shape;
-use contextful_core::memory::recall::{admit, parse_evidence, withheld, Admission, EvidenceRead, Grounding, EVIDENCE_GATE};
+use contextful_core::memory::recall::{admit, parse_evidence, withheld, Admission, EvidenceRead, Grounding};
 use contextful_core::memory::synthesize::EvidenceRef;
 use contextful_core::memory::revise::Tier;
 use contextful_core::memory::MemoryError;
@@ -91,7 +92,7 @@ impl Face {
     /// first under the least row ceiling (`read.recall.keyed-order`).
     pub fn recall(&self, session: &Session, request: &RecallRequest) -> Result<Response, ReadFault> {
         let started = std::time::Instant::now();
-        let mut executed: Vec<String> = Vec::new();
+        let executed: std::cell::RefCell<Vec<String>> = Default::default();
         let table = request.table.as_str();
         let relation = session.relation(table).ok_or_else(|| EnforceError::UnknownRelation(format!("`{table}`")))?;
         self.bind_bounds(session, &std::collections::BTreeSet::from([table.to_string()]), request.bounds())?;
@@ -123,7 +124,7 @@ impl Face {
                     Some((ms, source)) => engine.run_timed(&sql, &parameters, None, ms, source)?,
                     None => engine.run(&sql, &parameters, None)?,
                 };
-                executed.push(sql);
+                executed.borrow_mut().push(sql);
                 let read = rows.len() as u64;
                 for row in rows {
                     if full(&kept) {
@@ -134,21 +135,27 @@ impl Face {
                         _ => None,
                     };
                     // The claim's citations resolve one statement per cited table and run
-                    // (`read.recall.keyed-evidence-batch`); a claim the gate refuses before
-                    // reading any row resolves none.
+                    // (`read.recall.keyed-evidence-batch`), on the first citation the gate
+                    // reaches there, so a claim the gate stops early runs none past it.
                     let refs = parse_evidence(evidence).unwrap_or_default();
-                    let readable = if (1..=EVIDENCE_GATE).contains(&refs.len()) && !refs.iter().any(|r| memory_tables.contains(&r.table)) {
-                        self.readable_rows(&engine, session, &refs, &touched, request.max_duration_ms, &mut executed)?
-                    } else {
-                        Default::default()
+                    let readable: std::cell::RefCell<ReadableRows> = Default::default();
+                    let row_read = |r: &EvidenceRef| -> Result<Option<bool>, ReadFault> {
+                        let key = (r.table.clone(), r.run.clone());
+                        if !readable.borrow().contains_key(&key) {
+                            let seqs: BTreeSet<i64> = refs.iter().filter(|c| c.table == r.table && c.run == r.run).map(|c| c.seq).collect();
+                            let Some(found) = self.readable_run(&engine, session, &r.table, &r.run, &seqs, &touched, request.max_duration_ms, &mut executed.borrow_mut())? else { return Ok(None) };
+                            readable.borrow_mut().insert(key.clone(), found);
+                        }
+                        Ok(readable.borrow().get(&key).map(|seqs| seqs.contains(&r.seq)))
                     };
                     let fault = std::cell::RefCell::new(None);
-                    let row_read = |r: &EvidenceRef| readable.get(&(r.table.clone(), r.run.clone())).map(|seqs| seqs.contains(&r.seq));
-                    let admitted = tally.gate(evidence, &memory_tables, session, |r| match self.evidence_read_given(&engine, session, r, &touched, request.max_duration_ms, row_read(r)) {
-                        Ok(read) => read,
-                        Err(error) => {
-                            *fault.borrow_mut() = Some(error);
-                            EvidenceRead::Unreadable
+                    let admitted = tally.gate(evidence, &memory_tables, session, |r| {
+                        match row_read(r).and_then(|given| self.evidence_read_given(&engine, session, r, &touched, request.max_duration_ms, given, &mut executed.borrow_mut())) {
+                            Ok(read) => read,
+                            Err(error) => {
+                                *fault.borrow_mut() = Some(error);
+                                EvidenceRead::Unreadable
+                            }
                         }
                     });
                     if let Some(error) = fault.into_inner() {
@@ -192,7 +199,7 @@ impl Face {
         let response = self.finish_budget(session, &touched, ReadOptions { limit: request.limit, max_duration_ms: request.max_duration_ms, max_response_bytes: request.max_response_bytes, ..ReadOptions::default() }, None, ceiling, response.with_block("recall", tally.block()))?;
         Ok(if request.internals {
             let rows = response.rows.len() as u64;
-            response.with_block("internals", super::face::internals_block(&executed, Some(ceiling), rows, started))
+            response.with_block("internals", super::face::internals_block(&executed.borrow(), Some(ceiling), rows, started))
         } else {
             response
         })

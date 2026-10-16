@@ -143,7 +143,7 @@ impl Face {
     /// Whether a live row of the citation's key reads through `relation`, matched by its
     /// digest; false where the citation carries no digest. A statement fault reads as no
     /// row, so the claim is withheld rather than served.
-    pub(crate) fn key_reads(&self, engine: &SqlEngine, session: &Session, relation: &str, r: &EvidenceRef, deadline: Option<(u64, &'static str)>) -> Result<bool, ReadFault> {
+    pub(crate) fn key_reads(&self, engine: &SqlEngine, session: &Session, relation: &str, r: &EvidenceRef, deadline: Option<(u64, &'static str)>, executed: &mut Vec<String>) -> Result<bool, ReadFault> {
         let Some(digest) = r.key_digest.as_ref() else { return Ok(false) };
         let cols = self.key_columns(&r.table);
         if cols.is_empty() {
@@ -151,18 +151,22 @@ impl Face {
         }
         let secret = session.pepper().evidence_secret(&r.table, &cols);
         let sql = format!("SELECT count(*) FROM {} WHERE {} = ?", ident(relation), digest_sql(&cols));
-        evidence_count(engine, &sql, &Bindings::positional([Bound::Text(secret), Bound::Text(digest.clone())]), deadline)
+        let read = evidence_count(engine, &sql, &Bindings::positional([Bound::Text(secret), Bound::Text(digest.clone())]), deadline);
+        executed.push(sql);
+        read
     }
 
     /// How one evidence row reads through the caller's session: its table registered, the
     /// cited row visible through the relation or, failing that, a live row of its key
     /// (`read.recall.evidence-key`), and no cell of the table masked or nulled by zone.
     pub(crate) fn evidence_read(&self, engine: &SqlEngine, session: &Session, r: &EvidenceRef, outer: &BTreeSet<String>, request: Option<u64>) -> Result<EvidenceRead, ReadFault> {
-        self.evidence_read_given(engine, session, r, outer, request, None)
+        self.evidence_read_given(engine, session, r, outer, request, None, &mut Vec::new())
     }
 
     /// [`Face::evidence_read`], with `row_read` answering whether the cited run and
-    /// sequence reads where a batched statement already resolved it.
+    /// sequence reads where a batched statement already resolved it, and every statement
+    /// it runs appended to `executed`.
+    #[allow(clippy::too_many_arguments)]
     pub(crate) fn evidence_read_given(
         &self,
         engine: &SqlEngine,
@@ -171,6 +175,7 @@ impl Face {
         outer: &BTreeSet<String>,
         request: Option<u64>,
         row_read: Option<bool>,
+        executed: &mut Vec<String>,
     ) -> Result<EvidenceRead, ReadFault> {
         let Some(relation) = session.relation(&r.table) else { return Ok(EvidenceRead::UnknownTable) };
         let mut touched = outer.clone();
@@ -178,11 +183,11 @@ impl Face {
         let deadline = self.duration_budget(session, &touched, request);
         let row_read = match row_read {
             Some(read) => read,
-            None => self.row_reads(engine, relation.name(), r, deadline)?,
+            None => self.row_reads(engine, relation.name(), r, deadline, executed)?,
         };
         let read = if row_read {
             EvidenceRead::Readable
-        } else if self.key_reads(engine, session, relation.name(), r, deadline)? {
+        } else if self.key_reads(engine, session, relation.name(), r, deadline, executed)? {
             EvidenceRead::Stale
         } else {
             return Ok(EvidenceRead::Unreadable);
@@ -194,66 +199,62 @@ impl Face {
         })
     }
 
-    /// The cited sequences of `refs` that read through `session`, keyed by cited table and
-    /// run, each table and run resolved with one statement appended to `executed`
-    /// (`read.recall.keyed-evidence-batch`). A table the session does not register
-    /// resolves nothing; a statement fault other than the duration ceiling resolves no
-    /// sequence of its run, which the per-citation read then answers.
-    pub(crate) fn readable_rows(
+    /// Which of `seqs`, cited into `table` and `run`, read through `session`, resolved
+    /// with one statement appended to `executed` (`read.recall.keyed-evidence-batch`);
+    /// `None` where the session does not register `table`. A statement fault other than
+    /// the duration ceiling reads as no row, as [`Face::row_reads`] reads it.
+    #[allow(clippy::too_many_arguments)]
+    pub(crate) fn readable_run(
         &self,
         engine: &SqlEngine,
         session: &Session,
-        refs: &[EvidenceRef],
+        table: &str,
+        run: &str,
+        seqs: &BTreeSet<i64>,
         outer: &BTreeSet<String>,
         request: Option<u64>,
         executed: &mut Vec<String>,
-    ) -> Result<ReadableRows, ReadFault> {
-        let mut cited: BTreeMap<(String, String), BTreeSet<i64>> = BTreeMap::new();
-        for r in refs {
-            cited.entry((r.table.clone(), r.run.clone())).or_default().insert(r.seq);
-        }
-        let mut readable = ReadableRows::new();
-        for ((table, run), seqs) in cited {
-            let Some(relation) = session.relation(&table) else { continue };
-            let mut touched = outer.clone();
-            touched.insert(table.clone());
-            let deadline = self.duration_budget(session, &touched, request);
-            let listed: Vec<String> = seqs.iter().map(i64::to_string).collect();
-            let sql = format!(
-                "SELECT DISTINCT {} FROM {} WHERE {} = ? AND {} IN ({})",
-                ident(ROW_SEQ),
-                ident(relation.name()),
-                ident(RUN_ID),
-                ident(ROW_SEQ),
-                listed.join(", ")
-            );
-            let parameters = Bindings::positional([Bound::Text(run.clone())]);
-            let result = match deadline {
-                Some((ms, source)) => engine.run_timed(&sql, &parameters, None, ms, source),
-                None => engine.run(&sql, &parameters, None),
-            };
-            executed.push(sql);
-            let rows = match result {
-                Ok((_, rows)) => rows,
-                Err(error) if error.refusal().is_some_and(|r| r.identifier() == "ReadDurationExceeded") => return Err(error),
-                Err(_) => continue,
-            };
-            let found: BTreeSet<i64> = rows
-                .iter()
+    ) -> Result<Option<BTreeSet<i64>>, ReadFault> {
+        let Some(relation) = session.relation(table) else { return Ok(None) };
+        let mut touched = outer.clone();
+        touched.insert(table.to_string());
+        let deadline = self.duration_budget(session, &touched, request);
+        let listed: Vec<String> = seqs.iter().map(i64::to_string).collect();
+        let sql = format!(
+            "SELECT DISTINCT {} FROM {} WHERE {} = ? AND {} IN ({})",
+            ident(ROW_SEQ),
+            ident(relation.name()),
+            ident(RUN_ID),
+            ident(ROW_SEQ),
+            listed.join(", ")
+        );
+        let parameters = Bindings::positional([Bound::Text(run.to_string())]);
+        let result = match deadline {
+            Some((ms, source)) => engine.run_timed(&sql, &parameters, None, ms, source),
+            None => engine.run(&sql, &parameters, None),
+        };
+        executed.push(sql);
+        let rows = match result {
+            Ok((_, rows)) => rows,
+            Err(error) if error.refusal().is_some_and(|r| r.identifier() == "ReadDurationExceeded") => return Err(error),
+            Err(_) => return Ok(Some(BTreeSet::new())),
+        };
+        Ok(Some(
+            rows.iter()
                 .filter_map(|row| match row.first() {
                     Some(Cell::Integer { value, .. }) => i64::try_from(*value).ok(),
                     _ => None,
                 })
-                .collect();
-            readable.insert((table, run), found);
-        }
-        Ok(readable)
+                .collect(),
+        ))
     }
 
     /// Whether the row a citation's run and sequence name reads through `relation`.
-    fn row_reads(&self, engine: &SqlEngine, relation: &str, r: &EvidenceRef, deadline: Option<(u64, &'static str)>) -> Result<bool, ReadFault> {
+    fn row_reads(&self, engine: &SqlEngine, relation: &str, r: &EvidenceRef, deadline: Option<(u64, &'static str)>, executed: &mut Vec<String>) -> Result<bool, ReadFault> {
         let sql = row_reads_sql(relation);
-        evidence_count(engine, &sql, &Bindings::positional([Bound::Text(r.run.clone()), Bound::Integer(r.seq)]), deadline)
+        let read = evidence_count(engine, &sql, &Bindings::positional([Bound::Text(r.run.clone()), Bound::Integer(r.seq)]), deadline);
+        executed.push(sql);
+        read
     }
 }
 

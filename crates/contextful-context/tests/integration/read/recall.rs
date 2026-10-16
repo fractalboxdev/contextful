@@ -45,10 +45,11 @@ fn a_claims_citations_into_one_run_resolve_in_one_statement() {
     let r = Reads::with_manifest(&format!("{MANIFEST}\n{FACTS}"));
     land_rows(&r.store, "research/sources", "src-1", Value::Array((0..300).map(|i| json!({ "source_id": format!("s{i}") })).collect()));
     land_rows(&r.store, "research/sources", "src-2", json!([{ "source_id": "t0" }, { "source_id": "t1" }]));
-    // `a` cites every row of two runs; `b` cites a sequence its run never landed.
+    // `a` cites every row of two runs; `b` first cites a sequence its run never landed,
+    // so the gate stops there and `b`'s citation into `src-1` resolves no statement.
     let mut a: Vec<Value> = (0..300).map(|i| cite("src-1", i)).collect();
     a.extend([cite("src-2", 0), cite("src-2", 1)]);
-    land_claims(&r, &[("a", a), ("b", vec![cite("src-2", 7)])]);
+    land_claims(&r, &[("a", a), ("b", vec![cite("src-2", 7), cite("src-1", 0)])]);
     let s = r.session(&["research/*"], None, None);
     let request = RecallRequest {
         observed_at: Some(Bound::parse("2030-02-01T00:00:00Z").unwrap()),
@@ -61,6 +62,8 @@ fn a_claims_citations_into_one_run_resolve_in_one_statement() {
     assert_eq!(got.blocks["contextful.recall"]["suppressed"]["MemoryEvidenceUnresolved"], json!(1));
     let sql = got.blocks["contextful.internals"]["sql"].as_str().unwrap_or_default().to_string();
     let evidence: Vec<&str> = sql.lines().filter(|l| l.contains("\"_row_seq\"")).collect();
-    // Two runs behind `a`, one behind `b`.
+    // Two runs behind `a`, one behind `b`, each one batched statement; no citation reads alone.
     assert_eq!(evidence.len(), 3, "{sql}");
+    assert!(evidence.iter().all(|l| l.contains("\"_row_seq\" IN (")), "{sql}");
+    assert!(!sql.contains("\"_row_seq\" = ?"), "{sql}");
 }
