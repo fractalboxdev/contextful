@@ -946,3 +946,66 @@ fn a_read_while_the_snapshot_set_hydrates_answers_503_with_retry_after_and_admit
     assert_eq!(status, 200);
     assert_eq!(body(&answer)["hydration"], "warming");
 }
+
+/// The receive route admits the credential on the request head and calls its handler before any body byte is read;
+/// the body reader refuses a body past the handler's bound unread, and checks a holder proof against the body it reads.
+#[test]
+fn the_receive_route_admits_on_the_head_and_checks_the_proof_against_the_body() {
+    let f: &'static Fixture = Box::leak(Box::new(fixture()));
+    let clock: &'static FixedClock = Box::leak(Box::new(FixedClock(at(NOW))));
+    let admitting = Admitting { checkpoint: &f.checkpoint, audience: AUD, revocation: &no_revocation };
+    let calls: &'static AtomicU64 = Box::leak(Box::new(AtomicU64::new(0)));
+    let receive = |head: &HttpRequest, authority: &AdmittedAuthority, pipeline: &str, read: &mut contextful_agent::http::BodyReader<'_>| {
+        calls.fetch_add(1, Ordering::SeqCst);
+        let bound = head.header("X-Bound").and_then(|b| b.parse().ok()).unwrap_or(1024);
+        match read(bound) {
+            Ok(Some(body)) => HttpResponse::json(200, &json!({ "pipeline": pipeline, "bytes": body.len(), "actor": authority.subject().on_behalf_of() })),
+            Ok(None) => HttpResponse::json(413, &json!({ "bound": bound })),
+            Err(refused) => refused,
+        }
+    };
+    let receive: &'static _ = Box::leak(Box::new(receive));
+    let face = Box::leak(Box::new(HttpFace::new(&f.face, clock, &f.audit, admitting, Some(4)).unwrap().with_receive(receive)));
+    let listener = TcpListener::bind("127.0.0.1:0").unwrap();
+    let addr = listener.local_addr().unwrap();
+    std::thread::spawn(move || face.serve(listener));
+    let key = holder(7);
+    let token = credential_with_action(&f.signer, Action::Write, "otel_*", 900, Some(&key));
+    let batch = b"{\"table\":\"spans\",\"row\":{\"id\":\"s1\"}}\n".to_vec();
+
+    let (status, _, answer) = send(addr, &proven("POST", "/receive/otel", batch.clone(), &token, &key));
+    assert_eq!((status, body(&answer)), (200, json!({ "pipeline": "otel", "bytes": batch.len(), "actor": "user://dana@acme.example" })));
+
+    // A proof signed over other bytes admits the head and is refused once the body arrives.
+    let mut forged = proven("POST", "/receive/otel", b"other".to_vec(), &token, &key);
+    forged.body = batch.clone();
+    let (status, _, _) = send(addr, &forged);
+    assert_eq!(status, 401, "the proof covers the body the reader reads");
+
+    let mut bounded = proven("POST", "/receive/otel", batch.clone(), &token, &key);
+    bounded.headers.push(("X-Bound".into(), "8".into()));
+    let (status, _, answer) = send(addr, &bounded);
+    assert_eq!((status, body(&answer)), (413, json!({ "bound": 8 })));
+
+    let before = calls.load(Ordering::SeqCst);
+    let mut anonymous = proven("POST", "/receive/otel", batch.clone(), &token, &key);
+    anonymous.headers.retain(|(k, _)| k != "Authorization");
+    let (status, _, _) = send(addr, &anonymous);
+    assert_eq!(status, 401);
+    assert_eq!(calls.load(Ordering::SeqCst), before, "an unadmitted delivery reaches no handler");
+
+    // Every part of a proof but its body digest verifies on the head: a garbage proof, or one signed for another
+    // route, reaches no handler.
+    let mut garbage = proven("POST", "/receive/otel", batch.clone(), &token, &key);
+    garbage.headers.retain(|(k, _)| k != "DPoP");
+    garbage.headers.push(("DPoP".into(), "not.a.proof".into()));
+    let (status, _, answer) = send(addr, &garbage);
+    assert_eq!((status, body(&answer)["error"]["identifier"].as_str()), (401, Some("PossessionProofInvalid")), "{}", body(&answer));
+    let mut elsewhere = proven("POST", "/receive/other", batch.clone(), &token, &key);
+    elsewhere.target = "/receive/otel".into();
+    assert_eq!(send(addr, &elsewhere).0, 401);
+    assert_eq!(calls.load(Ordering::SeqCst), before, "an unverified proof reaches no handler");
+    let mut fetched = proven("GET", "/receive/otel", Vec::new(), &token, &key);
+    fetched.body.clear();
+    assert_eq!(send(addr, &fetched).0, 405);
+}

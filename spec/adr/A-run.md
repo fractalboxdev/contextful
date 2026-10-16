@@ -484,3 +484,16 @@ Decision: each limiter call is bounded, and a reservation never sleeps. A denial
 | A bounded call, the wait in the retry sleep *(chosen)* | — | A stop waits out at most the owed report and one acquire. |
 | An interruptible transport selecting on the token | Blocking transport | An async client inside a blocking adapter, saving at most one call. |
 | A sleep on denial inside the reservation | One wait per retry | A second sleep for the token to reach, stacked on the schedule. |
+
+## A batch key answers within a declared retention window
+
+Context: a `receive` batch key fixes each table's run id, so a resend replays committed tables and resumes the rest. A key answering forever promises deduplication the store cannot bound, and a pending owner under an abandoned key holds its recorded pull indefinitely. Criteria: no committed row lands twice; the sender learns the bound; no default chooses a window for the sender.
+
+Decision: a `receive` source declares `key_retention_secs`, required and undefaulted. Within the window from a key's first attempt, a resend replays or resumes. Past it, the batch is refused as `ReceiveBatchKeyExpired`, non-retryable, before its body is read, and lands nothing. A sender holding unacknowledged rows past its window sends them under a new key, where row-level deduplication stays the table's `primary_key`.
+
+| Option | Lost on | Cost |
+| --- | --- | --- |
+| A declared window, a late key refused *(chosen)* | — | A key's runs stay on the record; a late resend needs a new key. |
+| Keys answer forever | Bounded promise | Every key ever sent stays an answerable deduplication record. |
+| A late key lands as a fresh batch | No row lands twice | A resend after the window duplicates committed tables. |
+| A default window | Sender choice | The engine picks a retry horizon it cannot know. |

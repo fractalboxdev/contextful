@@ -380,6 +380,11 @@ mod wired {
 
     #[cfg(feature = "data-plane")]
     impl Author {
+        /// The author of a served request, admitted on its own credential.
+        pub(crate) fn served(authority: AdmittedAuthority, denylist: Option<PathBuf>, ledger: Arc<LedgerFile>) -> Author {
+            Author { authority, denylist, ledger }
+        }
+
         /// The verified authority a derived source reads under.
         pub(crate) fn authority(&self) -> &AdmittedAuthority {
             &self.authority

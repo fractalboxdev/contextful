@@ -11,11 +11,11 @@ An unpinned clause is `committed`; a pinned one is `performed` when its Rust, Le
 | `corpus` | 1 | 10 | 80 | 37 | 7 | 0 | 80 | 0 | 80 |
 | `disclosure` | 3 | 16 | 184 | 69 | 14 | 5 | 162 | 0 | 162 |
 | `read` | 2 | 20 | 290 | 47 | 29 | 15 | 248 | 0 | 248 |
-| `run` | 3 | 29 | 536 | 118 | 45 | 16 | 504 | 0 | 504 |
+| `run` | 3 | 29 | 542 | 122 | 45 | 16 | 510 | 0 | 510 |
 | `store` | 3 | 19 | 293 | 64 | 14 | 10 | 283 | 0 | 283 |
 | `surface` | 2 | 21 | 161 | 63 | 23 | 0 | 134 | 0 | 134 |
 | `topology` | 1 | 6 | 79 | 25 | 5 | 3 | 76 | 0 | 76 |
-| **total** | 22 | 169 | 2618 | 658 | 212 | 74 | 2330 | 0 | |
+| **total** | 22 | 169 | 2624 | 662 | 212 | 74 | 2336 | 0 | |
 
 Decision records: 18.
 
@@ -29,7 +29,7 @@ A milestone reads `closed` when its acceptance test computes `passing` and every
 | 1 — The authority core | 14 | 248 | 247 | passing | closed |
 | 2 — The store | 9 | 183 | 173 | passing | closed |
 | 3 — The run path | 12 | 277 | 266 | passing | closed |
-| 4 — Ingest | 25 | 587 | 489 | passing | closed |
+| 4 — Ingest | 25 | 593 | 495 | passing | closed |
 | 5 — The read face under enforcement | 17 | 309 | 272 | passing | closed |
 | 6 — Sync and replicas | 8 | 86 | 86 | passing | closed |
 | 7 — Memory | 6 | 72 | 57 | passing | closed |
@@ -1646,10 +1646,16 @@ Unscheduled operations: 13.
 | `run.land.receive-backpressure` | `crates/contextful-cli/tests/integration/receive.rs::a_third_batch_past_two_held_slots_is_told_to_retry_after_one_second` | performed |
 | `run.land.receive-batch-key` | `crates/contextful-cli/tests/integration/receive.rs::a_resent_key_replays_committed_tables_and_lands_the_rest` | performed |
 | `run.land.receive-batch-too-large` | `crates/contextful-cli/tests/integration/receive.rs::a_body_one_byte_past_the_bound_lands_nothing` | performed |
+| `run.land.receive-endpoint` | `crates/contextful-cli/tests/integration/serve.rs::the_receive_route_admits_before_the_body_and_answers_after_both_tables_commit` | performed |
+| `run.land.receive-endpoint-status` | `crates/contextful-cli/tests/integration/serve.rs::the_receive_route_maps_each_refusal_to_its_status` | performed |
 | `run.land.receive-entry` | `crates/contextful-cli/tests/integration/receive.rs::a_delivered_credential_lands_masked_and_no_stored_byte_holds_it` | performed |
+| `run.land.receive-key-expired` | `crates/contextful-cli/tests/integration/receive.rs::a_resend_past_the_key_retention_window_is_refused_and_lands_nothing` | performed |
+| `run.land.receive-key-missing` | `crates/contextful-cli/tests/integration/serve.rs::the_receive_route_refuses_a_delivery_without_a_batch_key` | performed |
+| `run.land.receive-pipeline-unknown` | `crates/contextful-cli/tests/integration/serve.rs::the_receive_route_answers_404_for_a_pipeline_that_receives_nothing` | performed |
 | `run.land.receive-queue` | `crates/contextful-cli/tests/integration/receive.rs::a_batch_waits_for_the_land_lock_another_batch_holds` | performed |
-| `run.land.receive-resume` | `crates/contextful-engine/tests/integration/runner.rs::a_receive_batch_key_resumes_its_own_owner_and_no_other_keys` | performed |
+| `run.land.receive-resume` | `crates/contextful-cli/tests/integration/receive.rs::a_resend_after_the_receiver_dies_lands_what_the_uninterrupted_run_lands` | performed |
 | `run.land.receive-retry-after` | `crates/contextful-cli/tests/integration/receive.rs::a_third_batch_past_two_held_slots_is_told_to_retry_after_one_second` | performed |
+| `run.land.receive-write-not-granted` | `crates/contextful-cli/tests/integration/receive.rs::a_token_without_write_on_one_table_is_refused_before_the_body_is_read` | performed |
 | `run.land.session` | `crates/contextful-context/tests/integration/session.rs::a_session_commits_each_micro_batch_as_its_own_run` | performed |
 | `run.land.session-input` | `crates/contextful-cli/tests/integration/context.rs::a_session_land_commits_each_stdin_batch_as_its_own_run` | performed |
 | `run.land.session-schema` | `crates/contextful-context/tests/integration/session.rs::a_session_reads_schema_json_once_while_its_version_holds` | performed |

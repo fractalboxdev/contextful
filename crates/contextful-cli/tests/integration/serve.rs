@@ -1220,3 +1220,207 @@ fn a_bound_token_answers_unknown_to_every_other_subject() {
     assert!(state.get("caller").is_none(), "the route never echoes the binding: {state}");
     assert_eq!(control(&addr, "POST", &path, Some(&dana), &payload), (200, json!({ "approved": true })));
 }
+
+/// A project declaring a `receive` pipeline over two tables, its body bound 512 B and its queue 2 deep; the
+/// issuer's public key.
+fn receiving_face() -> (tempfile::TempDir, String) {
+    let dir = tempfile::tempdir().unwrap();
+    let p = dir.path();
+    std::fs::create_dir_all(p.join(".contextful/context/research")).unwrap();
+    std::fs::write(p.join(".contextful/context/research/config.toml"), "[node]\nid = \"ingest-a\"\n").unwrap();
+    std::fs::write(p.join(".contextful/issuance.toml"), format!("default_audience = \"{AUD}\"\nmax_lifetime_secs = 86400\n")).unwrap();
+    std::fs::write(p.join("contextful.toml"), "authoring_posture = \"per_request\"\nsite_id = \"site-a\"\n[[pipeline]]\nid = \"otel\"\ntables = [\"spans\", { name = \"events\", columns = { id = \"Utf8\", n = \"Int64\" } }]\n[pipeline.source]\nname = \"receive\"\nconfig = { format = \"jsonl\", max_batch_bytes = 512, max_queue_depth = 2, key_retention_secs = 3600 }\n").unwrap();
+    let public = stdout(&run(p, &["token", "keygen", "--out", ".contextful/issuer.seed"]));
+    (dir, public)
+}
+
+/// `POST /receive/:pipeline` carrying `key` and `token`, its head announcing `length` body bytes of which only
+/// `body` is sent; the status, the head and the JSON answer.
+fn deliver(addr: &str, token: Option<&str>, key: Option<&str>, length: usize, body: &str) -> (u16, String, Value) {
+    deliver_to(addr, "otel", token, key, length, body)
+}
+
+/// [`deliver`] addressed to `pipeline`.
+fn deliver_to(addr: &str, pipeline: &str, token: Option<&str>, key: Option<&str>, length: usize, body: &str) -> (u16, String, Value) {
+    let mut stream = TcpStream::connect(addr).unwrap();
+    let auth = token.map(|token| format!("Authorization: Bearer {token}\r\n")).unwrap_or_default();
+    let key = key.map(|key| format!("Contextful-Batch-Key: {key}\r\n")).unwrap_or_default();
+    write!(stream, "POST /receive/{pipeline} HTTP/1.1\r\n{auth}{key}Content-Type: application/x-ndjson\r\nContent-Length: {length}\r\n\r\n{body}").unwrap();
+    let mut raw = String::new();
+    stream.read_to_string(&mut raw).unwrap();
+    let (head, answer) = raw.split_once("\r\n\r\n").unwrap_or_else(|| panic!("no answer head: {raw:?}"));
+    let status = head.split(' ').nth(1).and_then(|s| s.parse().ok()).unwrap_or_else(|| panic!("no status: {raw:?}"));
+    (status, head.to_string(), serde_json::from_str(answer).unwrap_or_else(|e| panic!("{e}: {raw}")))
+}
+
+fn delivered(table: &str, row: Value) -> String {
+    format!("{}\n", json!({ "table": table, "row": row }))
+}
+
+fn receive_rows(root: &Path, sql: &str) -> Value {
+    let out: Value = serde_json::from_str(&stdout(&run(root, &["query", "--json", "--project", "research", sql]))).unwrap();
+    out["rows"].clone()
+}
+
+fn mint_write(root: &Path, table: &str) -> String {
+    stdout(&run(root, &["token", "mint", "--issuer-key", ".contextful/issuer.seed", "--on-behalf-of", "user://dana@acme.example", "--action", "write", "--table", table, "--ttl", "900"]))
+}
+
+/// The served receive route admits the credential and its `write` grant over every table before reading the body,
+/// and answers `200` with the receive answer once both tables commit; a resend under the key replays it.
+// spec: run.land.receive-endpoint@9651966d
+#[test]
+fn the_receive_route_admits_before_the_body_and_answers_after_both_tables_commit() {
+    let (dir, public) = receiving_face();
+    let root = dir.path();
+    let spans = mint_write(root, "otel_spans");
+    let both = mint_write(root, "otel_*");
+    let (_listener, addr) = serve(root, &["serve", "--http", "127.0.0.1:0", "--audience", AUD, "--max-in-flight", "4", "--project", "research", "--public-key", &public]);
+
+    // Each refusal answers on the head alone: the announced body never arrives.
+    let (status, head, _) = deliver(&addr, None, Some("flush-1"), 4096, "");
+    assert_eq!(status, 401, "{head}");
+    let (status, _, refused) = deliver(&addr, Some(&spans), Some("flush-1"), 100, "");
+    assert_eq!((status, refused["error"]["identifier"].as_str()), (403, Some("ReceiveWriteNotGranted")), "{refused}");
+    let (status, _, refused) = deliver(&addr, Some(&both), None, 100, "");
+    assert_eq!((status, refused["error"]["identifier"].as_str()), (400, Some("ReceiveBatchKeyMissing")), "a delivery names its batch key: {refused}");
+
+    let body = format!("{}{}{}", delivered("events", json!({ "id": "e1" })), delivered("spans", json!({ "id": "s1" })), delivered("spans", json!({ "id": "s2" })));
+    let (status, _, ack) = deliver(&addr, Some(&both), Some("flush-1"), body.len(), &body);
+    assert_eq!(status, 200, "{ack}");
+    assert_eq!(ack["committed"], true, "{ack}");
+    let run_id = ack["run_id"].as_str().unwrap().to_string();
+    assert!(run_id.starts_with("receive-"), "{ack}");
+    let outcomes: Vec<(&str, &str)> = ack["tables"].as_array().unwrap().iter().map(|t| (t["table"].as_str().unwrap(), t["outcome"].as_str().unwrap())).collect();
+    assert_eq!(outcomes, [("otel_spans", "committed"), ("otel_events", "committed")], "{ack}");
+    assert_eq!(receive_rows(root, "SELECT id FROM otel_spans ORDER BY id"), json!([["s1"], ["s2"]]));
+    assert_eq!(receive_rows(root, "SELECT id FROM otel_events"), json!([["e1"]]));
+
+    let (status, _, again) = deliver(&addr, Some(&both), Some("flush-1"), body.len(), &body);
+    assert_eq!((status, again["run_id"].as_str()), (200, Some(run_id.as_str())), "{again}");
+    let outcomes: Vec<&str> = again["tables"].as_array().unwrap().iter().map(|t| t["outcome"].as_str().unwrap()).collect();
+    assert_eq!(outcomes, ["replayed", "replayed"], "{again}");
+    assert_eq!(receive_rows(root, "SELECT id FROM otel_spans ORDER BY id"), json!([["s1"], ["s2"]]), "a resend lands no row");
+}
+
+/// A delivery without a batch key answers `400` before its body is read, and no table lands.
+// spec: run.land.receive-key-missing@5071178c
+#[test]
+fn the_receive_route_refuses_a_delivery_without_a_batch_key() {
+    let (dir, public) = receiving_face();
+    let root = dir.path();
+    let both = mint_write(root, "otel_*");
+    let (_listener, addr) = serve(root, &["serve", "--http", "127.0.0.1:0", "--audience", AUD, "--max-in-flight", "4", "--project", "research", "--public-key", &public]);
+    for key in [None, Some(" ")] {
+        let (status, _, refused) = deliver(&addr, Some(&both), key, 100, "");
+        assert_eq!((status, refused["error"]["identifier"].as_str()), (400, Some("ReceiveBatchKeyMissing")), "{refused}");
+    }
+    assert!(!root.join(".contextful/context/research/tables/otel_spans").exists(), "no table lands");
+}
+
+/// A delivery to an undeclared pipeline id, or to a pipeline whose source is not `receive`, answers `404` before
+/// its body is read.
+// spec: run.land.receive-pipeline-unknown@6a44cff6
+#[test]
+fn the_receive_route_answers_404_for_a_pipeline_that_receives_nothing() {
+    let (dir, public) = receiving_face();
+    let root = dir.path();
+    let manifest = std::fs::read_to_string(root.join("contextful.toml")).unwrap();
+    std::fs::write(root.join("contextful.toml"), format!("{manifest}[[pipeline]]\nid = \"pulled\"\ntables = [\"docs\"]\n[pipeline.source]\nname = \"http\"\nconfig = {{ endpoint = \"http://127.0.0.1:9/v1\" }}\n")).unwrap();
+    let both = mint_write(root, "*");
+    let (_listener, addr) = serve(root, &["serve", "--http", "127.0.0.1:0", "--audience", AUD, "--max-in-flight", "4", "--project", "research", "--public-key", &public]);
+    for pipeline in ["nope", "pulled"] {
+        let (status, _, refused) = deliver_to(&addr, pipeline, Some(&both), Some("flush-1"), 100, "");
+        assert_eq!((status, refused["error"]["identifier"].as_str()), (404, Some("ReceivePipelineUnknown")), "{pipeline}: {refused}");
+    }
+}
+
+/// The receive route answers `413` past `max_batch_bytes`, `503` with `Retry-After` while every queue slot is
+/// held, `410` for a key past its retention and `422` for a batch failing a table on a non-retryable class.
+// spec: run.land.receive-endpoint-status@12760ef0
+#[test]
+fn the_receive_route_maps_each_refusal_to_its_status() {
+    let (dir, public) = receiving_face();
+    let root = dir.path();
+    let both = mint_write(root, "otel_*");
+    // A key whose first attempt landed long before the face's clock.
+    let mut early = Command::new(env!("CARGO_BIN_EXE_contextful"))
+        .args(["pipeline", "receive", "otel", "--key", "flush-old", "--project", "research", "--now", "2020-01-01T00:00:00Z"])
+        .current_dir(root)
+        .stdin(Stdio::piped())
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped())
+        .spawn()
+        .unwrap();
+    early.stdin.take().unwrap().write_all(delivered("spans", json!({ "id": "s0" })).as_bytes()).unwrap();
+    let early = early.wait_with_output().unwrap();
+    assert!(early.status.success(), "{}", String::from_utf8_lossy(&early.stderr));
+    let (_listener, addr) = serve(root, &["serve", "--http", "127.0.0.1:0", "--audience", AUD, "--max-in-flight", "4", "--project", "research", "--public-key", &public]);
+
+    let (status, _, refused) = deliver(&addr, Some(&both), Some("flush-1"), 513, "");
+    assert_eq!((status, refused["error"]["identifier"].as_str()), (413, Some("ReceiveBatchTooLarge")), "{refused}");
+    assert_eq!(refused["retryable"], false, "{refused}");
+
+    let line = delivered("spans", json!({ "id": "s1" }));
+    let (status, _, refused) = deliver(&addr, Some(&both), Some("flush-old"), line.len(), &line);
+    assert_eq!((status, refused["error"]["identifier"].as_str()), (410, Some("ReceiveBatchKeyExpired")), "{refused}");
+
+    let queue = root.join(".contextful/run/research/receive/otel");
+    let held: Vec<std::fs::File> = (0..2)
+        .map(|n| {
+            let slot = std::fs::File::options().read(true).write(true).create(true).truncate(false).open(queue.join(format!("slot-{n}.lock"))).unwrap();
+            slot.lock().unwrap();
+            slot
+        })
+        .collect();
+    let (status, head, refused) = deliver(&addr, Some(&both), Some("flush-1"), line.len(), &line);
+    assert_eq!((status, refused["error"]["identifier"].as_str()), (503, Some("ReceiveBackpressure")), "{refused}");
+    assert!(head.lines().any(|h| h.eq_ignore_ascii_case("retry-after: 1")), "{head}");
+    drop(held);
+
+    let broken = delivered("events", json!({ "id": "e1", "n": "many" }));
+    let (status, _, failed) = deliver(&addr, Some(&both), Some("flush-2"), broken.len(), &broken);
+    assert_eq!((status, failed["committed"].clone(), failed["retryable"].clone()), (422, json!(false), json!(false)), "{failed}");
+    assert_eq!(receive_rows(root, "SELECT id FROM otel_spans"), json!([["s0"]]), "no refused batch lands");
+
+    // A receiver killed while it waits on the held commit lock leaves the table's cursor lease live, so the
+    // next delivery fails `otel_spans` on the `Transient` class.
+    let table = root.join(".contextful/context/research/tables/otel_spans");
+    let commit = std::fs::File::options().read(true).write(true).create(true).truncate(false).open(table.join("commit.lock")).unwrap();
+    commit.lock().unwrap();
+    let mut stalled = Command::new(env!("CARGO_BIN_EXE_contextful"))
+        .args(["pipeline", "receive", "otel", "--key", "flush-3", "--project", "research"])
+        .current_dir(root)
+        .stdin(Stdio::piped())
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped())
+        .spawn()
+        .unwrap();
+    stalled.stdin.take().unwrap().write_all(line.as_bytes()).unwrap();
+    let staged_parts = || {
+        let mut n = 0;
+        let mut pending = vec![table.clone()];
+        while let Some(path) = pending.pop() {
+            if path.is_dir() {
+                pending.extend(std::fs::read_dir(&path).unwrap().map(|e| e.unwrap().path()));
+            } else if path.extension().is_some_and(|e| e == "parquet") {
+                n += 1;
+            }
+        }
+        n
+    };
+    let landed = staged_parts();
+    let deadline = std::time::Instant::now() + std::time::Duration::from_secs(25);
+    while staged_parts() <= landed {
+        assert!(std::time::Instant::now() < deadline, "the stalled receiver never staged");
+        assert!(stalled.try_wait().unwrap().is_none(), "the stalled receiver ended before its commit");
+        std::thread::sleep(std::time::Duration::from_millis(20));
+    }
+    stalled.kill().unwrap();
+    stalled.wait().unwrap();
+    commit.unlock().unwrap();
+    drop(commit);
+    let (status, head, failed) = deliver(&addr, Some(&both), Some("flush-4"), line.len(), &line);
+    assert_eq!((status, failed["committed"].clone(), failed["retryable"].clone()), (503, json!(false), json!(true)), "{failed}");
+    assert!(head.lines().any(|h| h.eq_ignore_ascii_case("retry-after: 1")), "a retryable failed table carries the retry interval: {head}");
+}

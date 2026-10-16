@@ -335,6 +335,13 @@ impl<C: Clock> KeyCheckpoint<C> {
         let mut nonces = self.nonces.lock().unwrap_or_else(|e| e.into_inner());
         verify_proof(cnf_jkt, proof, request, &self.clock, &mut nonces)
     }
+
+    /// Admit a proof on a request head whose body has not arrived, answering the body
+    /// digest it covers (`authority.verify.possession-binding`).
+    pub fn verify_head(&self, cnf_jkt: &str, proof: &str, method: &str, target: &str) -> Result<String, ProofRefusal> {
+        let mut nonces = self.nonces.lock().unwrap_or_else(|e| e.into_inner());
+        crate::possession::verify_proof_head(cnf_jkt, proof, method, target, &self.clock, &mut nonces)
+    }
 }
 
 impl<C: Clock> crate::possession::ProofVerifier for KeyCheckpoint<C> {

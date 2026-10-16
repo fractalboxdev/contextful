@@ -10,14 +10,18 @@ const NOW: &str = "2030-01-01T00:00:00Z";
 
 fn receiving(bytes: u64, depth: u32) -> tempfile::TempDir {
     project(&format!(
-        "[[pipeline]]\nid = \"otel\"\ntables = [\"spans\", {{ name = \"events\", columns = {{ id = \"Utf8\", n = \"Int64\" }} }}]\n[pipeline.source]\nname = \"receive\"\nconfig = {{ format = \"jsonl\", max_batch_bytes = {bytes}, max_queue_depth = {depth} }}\n"
+        "[[pipeline]]\nid = \"otel\"\ntables = [\"spans\", {{ name = \"events\", columns = {{ id = \"Utf8\", n = \"Int64\" }} }}]\n[pipeline.source]\nname = \"receive\"\nconfig = {{ format = \"jsonl\", max_batch_bytes = {bytes}, max_queue_depth = {depth}, key_retention_secs = 3600 }}\n"
     ))
 }
 
 fn receiver(dir: &Path, key: &str) -> Command {
+    receiver_at(dir, key, NOW)
+}
+
+fn receiver_at(dir: &Path, key: &str, now: &str) -> Command {
     let mut command = Command::new(env!("CARGO_BIN_EXE_contextful"));
     command
-        .args(["pipeline", "receive", "otel", "--key", key, "--project", "research", "--site-id", "site-a", "--now", NOW])
+        .args(["pipeline", "receive", "otel", "--key", key, "--project", "research", "--site-id", "site-a", "--now", now])
         .current_dir(dir)
         .env_remove("CONTEXTFUL_NODE_ID")
         .env_remove("CONTEXTFUL_SECRETS_BACKEND");
@@ -25,7 +29,11 @@ fn receiver(dir: &Path, key: &str) -> Command {
 }
 
 fn receive(dir: &Path, key: &str, body: &str) -> Output {
-    let mut child = receiver(dir, key).stdin(Stdio::piped()).stdout(Stdio::piped()).stderr(Stdio::piped()).spawn().unwrap();
+    send(receiver(dir, key), body)
+}
+
+fn send(mut command: Command, body: &str) -> Output {
+    let mut child = command.stdin(Stdio::piped()).stdout(Stdio::piped()).stderr(Stdio::piped()).spawn().unwrap();
     // A refused sender may close its stdin before reading every byte.
     let _ = child.stdin.take().unwrap().write_all(body.as_bytes());
     child.wait_with_output().unwrap()
@@ -206,8 +214,122 @@ fn a_batch_waits_for_the_land_lock_another_batch_holds() {
 // spec: connector.source.receive-unscheduled@0e261316
 #[test]
 fn a_scheduled_receive_pipeline_fails_validation() {
-    let dir = project("[[pipeline]]\nid = \"otel\"\nschedule = \"every 1h\"\ntables = [\"spans\"]\n[pipeline.source]\nname = \"receive\"\nconfig = { format = \"jsonl\", max_batch_bytes = 4096, max_queue_depth = 2 }\n");
+    let dir = project("[[pipeline]]\nid = \"otel\"\nschedule = \"every 1h\"\ntables = [\"spans\"]\n[pipeline.source]\nname = \"receive\"\nconfig = { format = \"jsonl\", max_batch_bytes = 4096, max_queue_depth = 2, key_retention_secs = 3600 }\n");
     let out = cf(dir.path(), &["pipeline", "validate"]);
     assert!(!out.status.success(), "a scheduled receive pipeline validates");
     assert!(stderr(&out).contains("schedule"), "{}", stderr(&out));
+}
+
+/// A batch key replays only within the source's `key_retention_secs` of its first attempt; a later batch under it
+/// raises `ReceiveBatchKeyExpired`, non-retryable, and no row lands.
+// spec: run.land.receive-key-expired@89a7069a
+#[test]
+fn a_resend_past_the_key_retention_window_is_refused_and_lands_nothing() {
+    let dir = receiving(4096, 2);
+    let body = line("spans", serde_json::json!({ "id": "s1" }));
+    let first = receive(dir.path(), "flush-1", &body);
+    assert!(first.status.success(), "{}", stderr(&first));
+    let within = send(receiver_at(dir.path(), "flush-1", "2030-01-01T01:00:00Z"), &body);
+    assert!(within.status.success(), "{}", stderr(&within));
+    assert_eq!(answer(&within)["tables"][0]["outcome"], "replayed", "a resend at the window's edge replays");
+    let late = send(receiver_at(dir.path(), "flush-1", "2030-01-01T01:00:01Z"), &line("spans", serde_json::json!({ "id": "s2" })));
+    assert!(!late.status.success(), "{}", String::from_utf8_lossy(&late.stdout));
+    assert!(stderr(&late).contains("ReceiveBatchKeyExpired"), "{}", stderr(&late));
+    let refused = answer(&late);
+    assert_eq!((refused["committed"].clone(), refused["retryable"].clone()), (serde_json::json!(false), serde_json::json!(false)), "{refused}");
+    assert_eq!(rows(dir.path(), "SELECT id FROM otel_spans"), serde_json::json!([["s1"]]));
+    let fresh = send(receiver_at(dir.path(), "flush-2", "2030-01-01T01:00:01Z"), &line("spans", serde_json::json!({ "id": "s2" })));
+    assert!(fresh.status.success(), "a new key lands: {}", stderr(&fresh));
+    assert_eq!(rows(dir.path(), "SELECT id FROM otel_spans ORDER BY id"), serde_json::json!([["s1"], ["s2"]]));
+}
+
+/// A credential lacking `write` over one declared table of the pipeline raises `ReceiveWriteNotGranted` before the
+/// body is read: the receiver exits while its stdin stays open, and no table lands.
+// spec: run.land.receive-write-not-granted@51a4ea13
+#[test]
+fn a_token_without_write_on_one_table_is_refused_before_the_body_is_read() {
+    let dir = receiving(4096, 2);
+    std::fs::write(dir.path().join(".contextful/issuance.toml"), "default_audience = \"contextful://research\"\nmax_lifetime_secs = 3600\n").unwrap();
+    let public = ok(&cf(dir.path(), &["token", "keygen", "--out", ".contextful/issuer.seed"]));
+    let mint = |table: &str| {
+        ok(&cf(dir.path(), &["token", "mint", "--issuer-key", ".contextful/issuer.seed", "--on-behalf-of", "user://dana@example.test", "--ttl", "600", "--action", "write", "--table", table]))
+    };
+    let admitted = |token: &str| {
+        let mut command = receiver(dir.path(), "flush-1");
+        command.args(["--public-key", &public, "--audience", "contextful://research"]).env("CONTEXTFUL_TOKEN", token);
+        command
+    };
+    let mut child = admitted(&mint("otel_spans")).stdin(Stdio::piped()).stdout(Stdio::piped()).stderr(Stdio::piped()).spawn().unwrap();
+    let open = child.stdin.take().unwrap();
+    let deadline = std::time::Instant::now() + std::time::Duration::from_secs(60);
+    while child.try_wait().unwrap().is_none() {
+        assert!(std::time::Instant::now() < deadline, "the receiver waits on a body it should refuse before reading");
+        std::thread::sleep(std::time::Duration::from_millis(50));
+    }
+    let out = child.wait_with_output().unwrap();
+    drop(open);
+    assert!(!out.status.success());
+    assert!(stderr(&out).contains("ReceiveWriteNotGranted") && stderr(&out).contains("otel_events"), "{}", stderr(&out));
+    assert_eq!(answer(&out)["retryable"], false);
+    assert!(!dir.path().join(".contextful/context/research/tables/otel_spans").exists(), "no table lands");
+    let granted = send(admitted(&mint("otel_*")), &line("spans", serde_json::json!({ "id": "s1" })));
+    assert!(granted.status.success(), "{}", stderr(&granted));
+    assert_eq!(rows(dir.path(), "SELECT id FROM otel_spans"), serde_json::json!([["s1"]]));
+}
+
+/// A receiver killed after recording a delivered batch leaves it pending; the resend under the key resumes the
+/// recorded pull, and every landed cell but the run id matches the uninterrupted run's, the credential masked.
+// spec: run.land.receive-resume@94ee920e
+#[test]
+fn a_resend_after_the_receiver_dies_lands_what_the_uninterrupted_run_lands() {
+    let body = format!("{}{}", line("spans", serde_json::json!({ "id": "s1", "note": "x-api-key: zK9s8d7f6g5h" })), line("spans", serde_json::json!({ "id": "s2", "note": "plain" })));
+    // Both runs land at one instant, so the ingest time agrees and only the attempt's run id differs.
+    const LATER: &str = "2030-01-01T00:01:00Z";
+    let whole = receiving(4096, 2);
+    let out = send(receiver_at(whole.path(), "flush-1", LATER), &body);
+    assert!(out.status.success(), "{}", stderr(&out));
+
+    let resumed = receiving(4096, 2);
+    let table = resumed.path().join(".contextful/context/research/tables/otel_spans");
+    std::fs::create_dir_all(&table).unwrap();
+    let commit = std::fs::File::options().read(true).write(true).create(true).truncate(false).open(table.join("commit.lock")).unwrap();
+    commit.lock().unwrap();
+    let mut child = receiver(resumed.path(), "flush-1").stdin(Stdio::piped()).stdout(Stdio::piped()).stderr(Stdio::piped()).spawn().unwrap();
+    child.stdin.take().unwrap().write_all(body.as_bytes()).unwrap();
+    // The run stages its parts after the recorded pull and then waits on the held commit lock.
+    let deadline = std::time::Instant::now() + std::time::Duration::from_secs(25);
+    let staged = || {
+        let mut pending = vec![table.clone()];
+        while let Some(path) = pending.pop() {
+            if path.is_dir() {
+                pending.extend(std::fs::read_dir(&path).unwrap().map(|e| e.unwrap().path()));
+            } else if path.extension().is_some_and(|e| e == "parquet") {
+                return true;
+            }
+        }
+        false
+    };
+    while !staged() {
+        assert!(std::time::Instant::now() < deadline, "the run never staged");
+        assert!(child.try_wait().unwrap().is_none(), "the receiver ended before its commit");
+        std::thread::sleep(std::time::Duration::from_millis(20));
+    }
+    child.kill().unwrap();
+    child.wait().unwrap();
+    commit.unlock().unwrap();
+    drop(commit);
+
+    // The resend arrives once the dead receiver's 30 s owner lease has lapsed.
+    // The resend carries other bytes: the recorded pull, not the resent body, is what lands.
+    let resent = body.replace("plain", "resent");
+    let out = send(receiver_at(resumed.path(), "flush-1", LATER), &resent);
+    assert!(out.status.success(), "{}", stderr(&out));
+    let ack = answer(&out);
+    assert_eq!(ack["tables"][0]["outcome"], "committed", "{ack}");
+    assert_eq!(ack["run_id"], answer(&send(receiver_at(whole.path(), "flush-1", LATER), &body))["run_id"]);
+    let sql = "SELECT * EXCLUDE (_run_id) FROM otel_spans ORDER BY id";
+    let landed = rows(resumed.path(), sql);
+    assert_eq!(landed.as_array().map(Vec::len), Some(2), "{landed}");
+    assert_eq!(landed, rows(whole.path(), sql), "the resumed run lands the uninterrupted run's cells");
+    assert_eq!(rows(resumed.path(), "SELECT note FROM otel_spans ORDER BY id"), serde_json::json!([["x-api-key: [REDACTED:secret]"], ["plain"]]));
 }

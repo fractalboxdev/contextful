@@ -13,15 +13,18 @@ pub const NAME: &str = "receive";
 pub const FORMAT: &str = "jsonl";
 /// The retry interval a backpressured sender waits (`run.land.receive-retry-after`).
 pub const RETRY_AFTER_MS: u64 = 1_000;
-const KEYS: [&str; 3] = ["format", "max_batch_bytes", "max_queue_depth"];
+const KEYS: [&str; 4] = ["format", "max_batch_bytes", "max_queue_depth", "key_retention_secs"];
 
-/// A `receive` source's declared ceilings; neither carries a default.
+/// A `receive` source's declared ceilings and key retention; none carries a default.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct ReceiveConfig {
     /// Largest body one batch carries (`run.land.receive-batch-too-large`).
     pub max_batch_bytes: u64,
     /// Batches of the pipeline holding a queue slot at once (`run.land.receive-queue`).
     pub max_queue_depth: u32,
+    /// Seconds from a batch key's first attempt during which a resend under it replays or
+    /// resumes (`run.land.receive-key-expired`).
+    pub key_retention_secs: u64,
 }
 
 impl ReceiveConfig {
@@ -45,7 +48,8 @@ impl ReceiveConfig {
         let max_batch_bytes = positive("max_batch_bytes")?;
         let max_queue_depth = u32::try_from(positive("max_queue_depth")?)
             .map_err(|_| RunError::Invalid(format!("the `{NAME}` source's `max_queue_depth` fits in 32 bits")))?;
-        Ok(ReceiveConfig { max_batch_bytes, max_queue_depth })
+        let key_retention_secs = positive("key_retention_secs")?;
+        Ok(ReceiveConfig { max_batch_bytes, max_queue_depth, key_retention_secs })
     }
 }
 
