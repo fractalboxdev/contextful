@@ -59,6 +59,15 @@ source      = "wiki"
 enumerate   = "pages"
 full        = { every = "1h" }
 incremental = { every = "5m" }
+
+[pack.wiki]
+tables = ["wiki/pages"]
+
+[pack.wiki.access."wiki/pages"]
+resource_key  = "page_id"
+resource_kind = "page"
+family        = "item-exception"
+level         = { viewer = "read", editor = "write" }
 "#,
     );
     p.write("pages.jsonl", &[json!({"page_id": "p1", "title": "Roadmap"}), json!({"page_id": "p2", "title": "Payroll"})].map(|r| r.to_string()).join("\n"));

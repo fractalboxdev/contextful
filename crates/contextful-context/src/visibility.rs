@@ -132,12 +132,13 @@ pub fn state(store: &Store, source: &str) -> Result<SourceState> {
         });
     }
     let mut grants = Vec::new();
-    for r in rows_of(store, &sweep::table(source, "grants"), &["resource_id", "principal", "principal_kind", "level", "acl_observed_at", "acl_sweep_kind", "acl_sweep_id"], Some(&current))? {
+    for r in rows_of(store, &sweep::table(source, "grants"), &["resource_id", "principal", "principal_kind", "level", "expires_at", "acl_observed_at", "acl_sweep_kind", "acl_sweep_id"], Some(&current))? {
         grants.push(GrantRow {
             resource_id: text(&r, "resource_id")?,
             principal: text(&r, "principal")?,
             principal_kind: text(&r, "principal_kind")?,
             level: text(&r, "level")?,
+            expires_at: instant(&r, "expires_at")?,
             observed_at: required(&r, "acl_observed_at")?,
             sweep_kind: text(&r, "acl_sweep_kind")?,
             sweep_id: text(&r, "acl_sweep_id")?,
@@ -173,13 +174,14 @@ pub fn group_members(store: &Store, source: &str) -> Result<Vec<MemberRow>> {
     Ok(state(store, source)?.members)
 }
 
-/// The resource ids of `source` that `subject` reaches through the source's current rows
-/// (`authority.identify.unlinked-principal`), resolved as a read resolves them; see
+/// The resource ids of `source` on which a current grant reaches `subject` through the
+/// source's current rows (`authority.identify.unlinked-principal`), resolved as a read
+/// resolves them before the semi-join's level and expiry filter; see
 /// [`reach::resolve`](contextful_core::disclosure::reach::resolve).
 pub fn reach(store: &Store, source: &str, subject: &NormalizedSubject) -> Result<BTreeSet<String>> {
     use contextful_core::disclosure::reach::{resolve, ClosureBound, ReachError};
     match resolve(source, subject, &state(store, source)?, ClosureBound::default()) {
-        Ok(set) => Ok(set.resources),
+        Ok(set) => Ok(set.held.into_keys().collect()),
         Err(ReachError::Authority(a)) => Err(a.into()),
         Err(ReachError::Visibility(v)) => Err(v.into()),
     }
@@ -283,7 +285,7 @@ fn batches(source: &str, c: &Commit, now: Instant) -> Vec<(&'static str, Batch)>
                 ("principal", g.principal.clone().into()),
                 ("principal_kind", g.principal_kind.clone().into()),
                 ("level", g.level.clone().into()),
-                ("expires_at", Value::Null),
+                ("expires_at", opt_ts(g.expires_at)),
                 ("acl_observed_at", ts(g.observed_at)),
                 ("acl_sweep_kind", g.sweep_kind.clone().into()),
                 ("acl_sweep_id", g.sweep_id.clone().into()),

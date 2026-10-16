@@ -3,9 +3,9 @@
 //! budget refuses.
 
 use super::*;
-use contextful_context::visibility::{sweep_grants, sweep_run, Landing};
+use contextful_context::visibility::{sweep_grants, sweep_read, sweep_run, Landing};
 use contextful_core::disclosure::declare::Binding;
-use contextful_core::disclosure::sweep::{Directory, GrantLine, Membership, SweepBlock, SweepKind};
+use contextful_core::disclosure::sweep::{Directory, GrantLine, GrantsRead, Membership, SweepBlock, SweepKind};
 use std::sync::{Arc, Mutex};
 
 const WIKI: &str = r#"
@@ -28,6 +28,15 @@ source      = "wiki"
 enumerate   = "pages"
 full        = { every = "1h" }
 incremental = { every = "5m" }
+
+[pack.wiki]
+tables = ["wiki/pages"]
+
+[pack.wiki.access."wiki/pages"]
+resource_key   = "page_id"
+resource_kind  = "page"
+family         = "item-exception"
+level          = { viewer = "read", editor = "write", lister = "list" }
 "#;
 
 const PAGES: &str = r#"SELECT page_id FROM "wiki/pages" ORDER BY page_id"#;
@@ -40,22 +49,44 @@ struct Wiki {
 }
 
 fn grant(resource: &str, principal: &str) -> GrantLine {
-    GrantLine { resource_id: resource.into(), principal: principal.into(), principal_kind: "user".into(), level: "viewer".into() }
+    graded(resource, principal, "user", "viewer")
+}
+
+fn graded(resource: &str, principal: &str, kind: &str, level: &str) -> GrantLine {
+    GrantLine { resource_id: resource.into(), principal: principal.into(), principal_kind: kind.into(), level: level.into() }
 }
 
 impl Wiki {
     /// The fixture store holding `wiki/pages` p1–p3 and `wiki/notes`, its face reading now
     /// from a clock the test moves.
     fn new() -> Wiki {
-        let mut reads = Reads::with_manifest(WIKI);
+        Wiki::declared(WIKI)
+    }
+
+    /// [`Wiki::new`] under `manifest`.
+    fn declared(manifest: &str) -> Wiki {
+        let mut reads = Reads::with_manifest(manifest);
         land_rows(&reads.store, "wiki/pages", "run-0001", json!([{ "page_id": "p1" }, { "page_id": "p2" }, { "page_id": "p3" }]));
         land_rows(&reads.store, "wiki/notes", "run-0001", json!([{ "note": "n1" }]));
         let now = Arc::new(Mutex::new(at("2030-01-01T00:00:00Z")));
         let clock = now.clone();
-        reads.face = Face::open(reads.store.clone(), WIKI, pepper()).unwrap().with_clock(move || *clock.lock().unwrap());
-        let block = SweepBlock::parse_manifest(WIKI).unwrap().remove(0);
-        let bindings = TableDecl::parse_pipeline(WIKI).unwrap().iter().filter_map(|d| Binding::of(d).unwrap()).collect();
+        reads.face = Face::open(reads.store.clone(), manifest, pepper()).unwrap().with_clock(move || *clock.lock().unwrap());
+        let block = SweepBlock::parse_manifest(manifest).unwrap().remove(0);
+        let bindings = TableDecl::parse_pipeline(manifest).unwrap().iter().filter_map(|d| Binding::of(d).unwrap()).collect();
         Wiki { reads, now, block, bindings }
+    }
+
+    /// An incremental run reading only `read`, every other governed resource unread.
+    fn sweep_only(&self, began: &str, read: &[&str], grants: Vec<GrantLine>) {
+        let landing = Landing { node: NodeId::parse("ingest-a").unwrap(), site_id: "site-a".into() };
+        let unread = ["p1", "p2", "p3"].iter().filter(|r| !read.contains(r)).map(|r| r.to_string()).collect();
+        let grants = GrantsRead { grants, unread, ..GrantsRead::default() };
+        sweep_read(&self.reads.store, &landing, &self.block, &self.bindings, SweepKind::Incremental, grants, None, at(began), at(began)).unwrap();
+    }
+
+    fn page_read(&self, authority: &AdmittedAuthority) -> Result<Response, ReadFault> {
+        let session = self.reads.face.session(authority, &Request::default(), Bounds::default())?;
+        self.reads.query(&session, PAGES)
     }
 
     fn sweep(&self, kind: SweepKind, began: &str, grants: Vec<GrantLine>) {
@@ -243,4 +274,69 @@ fn every_agent_acting_for_a_principal_reaches_that_principal_set_and_no_more() {
     let narrow = w.reads.authority(Subject { on_behalf_of: Some("user://dana@acme.example".into()), ..loop_subject("agent://wiki-helper") }, vec![read(&["wiki/notes"], None)]);
     let session = w.reads.face.session(&narrow, &Request::default(), Bounds::default()).unwrap();
     assert!(session.relation("wiki/pages").is_none());
+}
+
+/// The semi-join admits a resource through a grant whose level the table's pack mapping
+/// projects onto read, write or admin, and through a grant to the `public` principal.
+#[test]
+fn a_bound_table_admits_rows_by_mapped_level_and_public_grant() {
+    let w = Wiki::new();
+    w.sweep(
+        SweepKind::Full,
+        "2030-01-01T00:00:00Z",
+        vec![graded("p1", "dana@acme.example", "user", "editor"), graded("p2", "dana@acme.example", "user", "lister"), graded("p3", "anyone", "public", "viewer")],
+    );
+    w.at("2030-01-01T00:05:00Z");
+    // dana's `lister` grant on p2 confers no read; the public p3 reads for everyone.
+    assert_eq!(w.pages(&w.authority("user://dana@acme.example")).unwrap(), [json!("p1"), json!("p3")]);
+    assert_eq!(w.pages(&w.authority("user://kim@acme.example")).unwrap(), [json!("p3")]);
+
+    // With no pack mapping the table, a level reads verbatim: `viewer` confers nothing,
+    // `read` does.
+    let unmapped = WIKI.split("[pack.wiki]").next().unwrap().to_string();
+    let w = Wiki::declared(&unmapped);
+    w.sweep(SweepKind::Full, "2030-01-01T00:00:00Z", vec![graded("p1", "dana@acme.example", "user", "viewer"), graded("p2", "dana@acme.example", "user", "read")]);
+    w.at("2030-01-01T00:05:00Z");
+    assert_eq!(w.pages(&w.authority("user://dana@acme.example")).unwrap(), [json!("p2")]);
+}
+
+/// A read touching a table served under {{disclosure.bound-staleness.public-only}} answers with a `contextful.visibility` block holding `degraded` true and the narrowed tables under `narrowed`.
+// spec: disclosure.bound-staleness.degraded-block@19246301
+#[test]
+fn a_public_only_table_past_its_budget_serves_its_public_rows_marked_degraded() {
+    let manifest = WIKI.replace("max_acl_staleness = \"15m\"", "max_acl_staleness = \"15m\"\non_stale          = \"public_only\"");
+    let w = Wiki::declared(&manifest);
+    let grants = || vec![graded("p1", "anyone", "public", "viewer"), grant("p2", "dana@acme.example"), grant("p3", "erin@acme.example")];
+    w.sweep(SweepKind::Full, "2030-01-01T00:00:00Z", grants());
+    let dana = w.authority("user://dana@acme.example");
+    w.at("2030-01-01T00:10:00Z");
+    let whole = w.page_read(&dana).unwrap();
+    assert_eq!(column(&whole, "page_id"), [json!("p1"), json!("p2")]);
+    assert!(!whole.blocks.contains_key("contextful.visibility"), "{:?}", whole.blocks);
+
+    // An incremental run re-observes the public p1 alone; the watermark holds at midnight.
+    w.sweep_only("2030-01-01T00:12:00Z", &["p1"], vec![graded("p1", "anyone", "public", "viewer")]);
+    // Past the budget, with p1 observed 8 minutes ago, the read narrows to the public rows.
+    w.at("2030-01-01T00:20:00Z");
+    let narrowed = w.page_read(&dana).unwrap();
+    assert_eq!(column(&narrowed, "page_id"), [json!("p1")]);
+    assert_eq!(narrowed.blocks.get("contextful.visibility"), Some(&json!({ "degraded": true, "narrowed": ["wiki/pages"] })));
+    // A read touching no narrowed table carries no block.
+    let session = w.reads.face.session(&dana, &Request::default(), Bounds::default()).unwrap();
+    let notes = w.reads.query(&session, r#"SELECT note FROM "wiki/notes""#).unwrap();
+    assert!(!notes.blocks.contains_key("contextful.visibility"));
+    // A whole-table read narrows alike.
+    let rows = w.reads.face.rows(&session, "wiki/pages", None).unwrap();
+    assert_eq!(column(&rows, "page_id"), [json!("p1")]);
+    assert_eq!(rows.blocks.get("contextful.visibility"), Some(&json!({ "degraded": true, "narrowed": ["wiki/pages"] })));
+
+    // Once the public-status watermark passes the budget, the read refuses.
+    w.at("2030-01-01T00:27:01Z");
+    let message = refused_with(w.page_read(&dana), "VisibilityAccessStale");
+    assert!(message.contains("public-status watermark"), "{message}");
+    // A sweep inside the budget restores the whole read, unmarked.
+    w.sweep(SweepKind::Incremental, "2030-01-01T00:27:30Z", grants());
+    let restored = w.page_read(&dana).unwrap();
+    assert_eq!(column(&restored, "page_id"), [json!("p1"), json!("p2")]);
+    assert!(!restored.blocks.contains_key("contextful.visibility"));
 }

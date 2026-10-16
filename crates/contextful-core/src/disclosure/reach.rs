@@ -3,13 +3,17 @@
 //!
 //! [`resolve`] is pure: the subject's seed principals, the group closure walked breadth-first
 //! with a visited set under a [`ClosureBound`], then each known-class resource a current
-//! grant names one of those principals on. A closure past its bound returns no set.
+//! grant names one of those principals, or the `public` principal, on, with the level and
+//! expiry of each such grant. A closure past its bound returns no set. [`ReachSet::admitted`]
+//! applies the semi-join's level and expiry filter at the instant a read reads as now.
 
 use super::sweep::{self, MemberRow, SourceState, UNKNOWN_CLASS};
 use super::VisibilityError;
 use crate::identify::NormalizedSubject;
+use crate::time::Instant;
 use crate::AuthorityError;
 use std::collections::{BTreeMap, BTreeSet, HashMap};
+use std::sync::Arc;
 
 /// Default depth of the group-closure walk, in hops (`disclosure.reach.closure-walk`).
 pub const MAX_GROUP_DEPTH: usize = 8;
@@ -93,28 +97,98 @@ pub fn closure(
     Ok(visited)
 }
 
-/// One resolved reachable set, and whether it was produced past a budget or under the
-/// narrowing posture.
+/// The principal kind a grant open to anyone names (`disclosure.reach.public-grant`).
+pub const PUBLIC_KIND: &str = "public";
+
+/// The levels a pack mapping projects onto that confer read (`disclosure.reach.read-level`).
+pub const READ_LEVELS: [&str; 3] = ["read", "write", "admin"];
+
+/// Whether a grant at `level` confers read: its projection through `levels`, the `level`
+/// table of the pack mapping its table, or the level verbatim where no pack maps that table,
+/// is `read`, `write` or `admin` (`disclosure.reach.read-level`).
+pub fn confers_read(level: &str, levels: Option<&BTreeMap<String, String>>) -> bool {
+    let projected = match levels {
+        Some(map) => map.get(level).map(String::as_str),
+        None => Some(level),
+    };
+    projected.is_some_and(|l| READ_LEVELS.contains(&l))
+}
+
+/// One grant a reached resource holds: its source level and, on an opening, its expiry.
+#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Hash)]
+pub struct Held {
+    pub level: String,
+    pub expires_at: Option<Instant>,
+}
+
+impl Held {
+    /// Whether this grant reads at `now`: read-conferring under `levels` and unexpired
+    /// (`disclosure.reach.semi-join`).
+    pub fn reads(&self, levels: Option<&BTreeMap<String, String>>, now: Instant) -> bool {
+        confers_read(&self.level, levels) && self.expires_at.is_none_or(|e| now < e)
+    }
+}
+
+/// One resolved reachable set — each reached resource with the grants reaching it — and
+/// whether it was produced past a budget or under the narrowing posture.
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
 pub struct ReachSet {
-    pub resources: BTreeSet<String>,
+    pub held: BTreeMap<String, BTreeSet<Held>>,
     pub degraded: bool,
+}
+
+impl ReachSet {
+    /// Every reached resource, whatever its grants' levels and expiry.
+    pub fn resources(&self) -> BTreeSet<&str> {
+        self.held.keys().map(String::as_str).collect()
+    }
+
+    /// The resources the semi-join admits at `now`: each holding a read-conferring,
+    /// unexpired grant (`disclosure.reach.semi-join`). Withdrawn grants are absent from the
+    /// current rows, so a tombstoned grant admits nothing.
+    pub fn admitted(&self, levels: Option<&BTreeMap<String, String>>, now: Instant) -> BTreeSet<String> {
+        self.held.iter().filter(|(_, grants)| grants.iter().any(|g| g.reads(levels, now))).map(|(r, _)| r.clone()).collect()
+    }
+
+    /// How many held grants have expired at `now`. It rises exactly when an opening lapses,
+    /// so a session keyed on it retires with the opening.
+    pub fn expired(&self, now: Instant) -> usize {
+        self.held.values().flatten().filter(|g| g.expires_at.is_some_and(|e| e <= now)).count()
+    }
 }
 
 /// The resources of `origin` that `subject` reaches through its current rows: the seed
 /// principals (`disclosure.reach.subject-principals`), their bounded group closure, then
-/// each resource of a known class a current grant names a closure principal on. A grant
-/// the run withdrew is absent from the current rows, so it confers nothing.
+/// each resource of a known class a current grant names a closure principal, or the
+/// `public` principal, on (`disclosure.reach.public-grant`). A grant the run withdrew is
+/// absent from the current rows, so it confers nothing.
 pub fn resolve(origin: &str, subject: &NormalizedSubject, state: &SourceState, bound: ClosureBound) -> Result<ReachSet, ReachError> {
     let principals = closure(origin, subject, sweep::seeds(subject, state)?, &state.members, bound)?;
     let known: BTreeSet<&str> = state.resources.iter().filter(|r| r.visibility_class != UNKNOWN_CLASS).map(|r| r.resource_id.as_str()).collect();
-    let resources = state
+    let mut held: BTreeMap<String, BTreeSet<Held>> = BTreeMap::new();
+    for g in state.grants.iter().filter(|g| known.contains(g.resource_id.as_str())) {
+        if g.principal_kind == PUBLIC_KIND || principals.contains(&(g.principal_kind.clone(), g.principal.clone())) {
+            held.entry(g.resource_id.clone()).or_default().insert(Held { level: g.level.clone(), expires_at: g.expires_at });
+        }
+    }
+    Ok(ReachSet { held, degraded: false })
+}
+
+/// The resources of a known class holding a read-conferring grant to the `public`
+/// principal that is unexpired at `now`, each with the instant the sweep observed it.
+pub fn public_resources(state: &SourceState, levels: Option<&BTreeMap<String, String>>, now: Instant) -> BTreeMap<String, Instant> {
+    let public: BTreeSet<&str> = state
         .grants
         .iter()
-        .filter(|g| known.contains(g.resource_id.as_str()) && principals.contains(&(g.principal_kind.clone(), g.principal.clone())))
-        .map(|g| g.resource_id.clone())
+        .filter(|g| g.principal_kind == PUBLIC_KIND && Held { level: g.level.clone(), expires_at: g.expires_at }.reads(levels, now))
+        .map(|g| g.resource_id.as_str())
         .collect();
-    Ok(ReachSet { resources, degraded: false })
+    state
+        .resources
+        .iter()
+        .filter(|r| r.visibility_class != UNKNOWN_CLASS && public.contains(r.resource_id.as_str()))
+        .map(|r| (r.resource_id.clone(), r.observed_at))
+        .collect()
 }
 
 /// The key a reachable set is cached under: the subject, the directory epoch, and the epoch
@@ -134,7 +208,7 @@ pub struct ReachKey {
 pub struct ReachCache {
     capacity: usize,
     tick: u64,
-    entries: HashMap<ReachKey, (u64, BTreeSet<String>)>,
+    entries: HashMap<ReachKey, (u64, Arc<ReachSet>)>,
     recency: BTreeMap<u64, ReachKey>,
 }
 
@@ -168,7 +242,7 @@ impl ReachCache {
     }
 
     /// The set cached under `key`, marking it the most recently used.
-    pub fn get(&mut self, key: &ReachKey) -> Option<BTreeSet<String>> {
+    pub fn get(&mut self, key: &ReachKey) -> Option<Arc<ReachSet>> {
         if !self.entries.contains_key(key) {
             return None;
         }
@@ -176,10 +250,10 @@ impl ReachCache {
         self.entries.get(key).map(|(_, set)| set.clone())
     }
 
-    /// Retain `set` under `key`, evicting the least recently used entry past capacity. A
-    /// degraded set raises `VisibilityDegradedCached` and is not retained
-    /// (`disclosure.reach.degraded-uncached`).
-    pub fn insert(&mut self, key: ReachKey, set: ReachSet) -> Result<(), VisibilityError> {
+    /// Retain `set` under `key`, evicting the least recently used entry past capacity, and
+    /// return the retained set. A degraded set raises `VisibilityDegradedCached` and is not
+    /// retained (`disclosure.reach.degraded-uncached`).
+    pub fn insert(&mut self, key: ReachKey, set: ReachSet) -> Result<Arc<ReachSet>, VisibilityError> {
         if set.degraded {
             return Err(VisibilityError::DegradedCached { what: format!("the reachable set of `{}`", key.subject) });
         }
@@ -192,7 +266,8 @@ impl ReachCache {
         }
         self.tick += 1;
         self.recency.insert(self.tick, key.clone());
-        self.entries.insert(key, (self.tick, set.resources));
-        Ok(())
+        let set = Arc::new(set);
+        self.entries.insert(key, (self.tick, set.clone()));
+        Ok(set)
     }
 }

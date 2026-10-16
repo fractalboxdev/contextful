@@ -2,9 +2,9 @@
 //! reachable set over a source's current rows, and the reachable-set cache.
 
 use contextful_core::disclosure::reach::{
-    closure, resolve, ClosureBound, ReachCache, ReachError, ReachKey, ReachSet, MAX_CLOSURE_NODES, MAX_GROUP_DEPTH, REACH_CACHE_ENTRIES,
+    closure, confers_read, resolve, ClosureBound, Held, ReachCache, ReachError, ReachKey, ReachSet, MAX_CLOSURE_NODES, MAX_GROUP_DEPTH, REACH_CACHE_ENTRIES,
 };
-use contextful_core::disclosure::sweep::{parse_directory, GrantRow, MemberRow, ResourceRow, SourceState};
+use contextful_core::disclosure::sweep::{commit, parse_directory, Governed, GrantRow, MemberRow, Observation, ResourceRow, SourceState, SweepKind};
 use contextful_core::disclosure::VisibilityError;
 use contextful_core::identify::{NormalizedSubject, Subject};
 use contextful_core::time::Instant;
@@ -39,6 +39,7 @@ fn grant(resource: &str, principal: &str, kind: &str) -> GrantRow {
         principal: principal.into(),
         principal_kind: kind.into(),
         level: "viewer".into(),
+        expires_at: None,
         observed_at: at("2030-01-01T00:00:00Z"),
         sweep_kind: "full".into(),
         sweep_id: "s1".into(),
@@ -46,7 +47,7 @@ fn grant(resource: &str, principal: &str, kind: &str) -> GrantRow {
 }
 
 fn ids(set: &ReachSet) -> Vec<&str> {
-    set.resources.iter().map(String::as_str).collect()
+    set.resources().into_iter().collect()
 }
 
 /// A chain `u -> g1 -> g2 -> ... -> g<n>` of `n` group edges.
@@ -68,7 +69,7 @@ fn a_subject_reaches_its_user_principal_its_linked_principals_and_their_groups()
     };
     assert_eq!(ids(&resolve("wiki", &subject("user://dana@acme.example"), &state, ClosureBound::default()).unwrap()), ["p1", "p2", "p3"]);
     // Another subject holds none of dana's principals.
-    assert!(resolve("wiki", &subject("user://erin@acme.example"), &state, ClosureBound::default()).unwrap().resources.is_empty());
+    assert!(resolve("wiki", &subject("user://erin@acme.example"), &state, ClosureBound::default()).unwrap().resources().is_empty());
 }
 
 /// The closure walks the group graph with a visited set, ending any cycle, to a depth of `max_group_depth`, default 8 hops, and a breadth of 10000 nodes.
@@ -133,7 +134,8 @@ fn key(subject: &str, sources: &[(&str, u64)]) -> ReachKey {
 }
 
 fn set(ids: &[&str]) -> ReachSet {
-    ReachSet { resources: ids.iter().map(|s| s.to_string()).collect(), degraded: false }
+    let held = BTreeSet::from([Held { level: "read".into(), expires_at: None }]);
+    ReachSet { held: ids.iter().map(|s| (s.to_string(), held.clone())).collect(), degraded: false }
 }
 
 /// The reachable-set cache holds at most 100000 entries and evicts the least recently used.
@@ -152,7 +154,7 @@ fn the_reachable_set_cache_holds_one_hundred_thousand_entries_evicting_the_least
     assert_eq!(cache.len(), REACH_CACHE_ENTRIES);
     assert!(cache.get(&key("user://u1", &[("wiki", 1)])).is_none());
     assert!(cache.get(&key("user://u0", &[("wiki", 1)])).is_some());
-    assert_eq!(cache.get(&key("user://extra", &[("wiki", 1)])).unwrap().into_iter().collect::<Vec<_>>(), ["p2"]);
+    assert_eq!(cache.get(&key("user://extra", &[("wiki", 1)])).unwrap().resources().into_iter().collect::<Vec<_>>(), ["p2"]);
 }
 
 /// Retaining a reachable set or result produced past a budget, or under the narrowing posture, raises `VisibilityDegradedCached`.
@@ -197,4 +199,90 @@ fn a_grant_on_an_unknown_class_or_absent_resource_reaches_nothing() {
         ..SourceState::default()
     };
     assert_eq!(ids(&resolve("wiki", &subject("user://dana@acme.example"), &state, ClosureBound::default()).unwrap()), ["p1"]);
+}
+
+fn levels() -> BTreeMap<String, String> {
+    [("viewer", "read"), ("editor", "write"), ("owner", "admin"), ("lister", "list")].iter().map(|(k, v)| (k.to_string(), v.to_string())).collect()
+}
+
+fn graded(resource: &str, principal: &str, kind: &str, level: &str, expires_at: Option<&str>) -> GrantRow {
+    GrantRow { level: level.into(), expires_at: expires_at.map(at), ..grant(resource, principal, kind) }
+}
+
+fn admitted(set: &ReachSet, levels: Option<&BTreeMap<String, String>>, now: &str) -> Vec<String> {
+    set.admitted(levels, at(now)).into_iter().collect()
+}
+
+/// The semi-join opening {{authority.compose.relation-order}} admits a row of a bound table when its `resource_key` value names a resource with a read-conferring, unexpired, untombstoned grant in the reader's reachable set.
+// spec: disclosure.reach.semi-join@6f8b5b64
+#[test]
+fn the_semi_join_admits_resources_holding_a_read_conferring_unexpired_current_grant() {
+    let dana = subject("user://dana@acme.example");
+    let prior = SourceState {
+        resources: ["p1", "p2", "p3", "p4", "p5", "p6"].iter().map(|r| resource(r, "mirrored")).collect(),
+        grants: vec![
+            graded("p1", "dana@acme.example", "user", "viewer", None),
+            graded("p2", "dana@acme.example", "user", "editor", None),
+            graded("p3", "dana@acme.example", "user", "owner", None),
+            graded("p4", "dana@acme.example", "user", "lister", None),
+            graded("p5", "dana@acme.example", "user", "viewer", Some("2030-01-01T11:00:00Z")),
+            graded("p6", "dana@acme.example", "user", "viewer", Some("2030-01-01T13:00:00Z")),
+        ],
+        ..SourceState::default()
+    };
+    let levels = levels();
+    let set = resolve("wiki", &dana, &prior, ClosureBound::default()).unwrap();
+    // Every held grant reaches; the level and the expiry decide what reads.
+    assert_eq!(ids(&set), ["p1", "p2", "p3", "p4", "p5", "p6"]);
+    assert_eq!(admitted(&set, Some(&levels), "2030-01-01T12:00:00Z"), ["p1", "p2", "p3", "p6"]);
+    assert_eq!(set.expired(at("2030-01-01T12:00:00Z")), 1);
+    // From the instant it expires, a grant confers nothing.
+    assert_eq!(admitted(&set, Some(&levels), "2030-01-01T13:00:00Z"), ["p1", "p2", "p3"]);
+    assert_eq!(set.expired(at("2030-01-01T13:00:00Z")), 2);
+
+    // An incremental run withdrawing p2's grant tombstones it; the opening on p6 stands.
+    let governed = vec![Governed { resource_id: "p2".into(), resource_kind: "page".into(), visibility_class: "mirrored".into() }];
+    let obs = Observation::from_grants_file("wiki", SweepKind::Incremental, "s2", at("2030-01-01T12:00:00Z"), governed, Vec::new());
+    let c = commit(&prior, &obs).unwrap();
+    assert!(c.tombstones.iter().any(|t| t.scope == "grant" && t.resource_id == "p2"));
+    let after = SourceState { resources: c.resources, grants: c.grants, ..SourceState::default() };
+    let set = resolve("wiki", &dana, &after, ClosureBound::default()).unwrap();
+    assert_eq!(admitted(&set, Some(&levels), "2030-01-01T12:30:00Z"), ["p1", "p3", "p6"]);
+}
+
+/// A grant confers read when its `level`, mapped through the `level` table of the pack mapping its table, or taken verbatim where no pack maps that table, is `read`, `write` or `admin`.
+// spec: disclosure.reach.read-level@7cd0479b
+#[test]
+fn a_level_confers_read_through_the_pack_mapping_or_verbatim() {
+    let levels = levels();
+    for level in ["viewer", "editor", "owner"] {
+        assert!(confers_read(level, Some(&levels)), "{level}");
+    }
+    // A level the mapping projects elsewhere, or does not name, confers nothing; the mapping
+    // governs a verbatim spelling too.
+    for level in ["lister", "commenter", "read"] {
+        assert!(!confers_read(level, Some(&levels)), "{level}");
+    }
+    // With no pack mapping the table, the level reads verbatim.
+    for level in ["read", "write", "admin"] {
+        assert!(confers_read(level, None), "{level}");
+    }
+    for level in ["viewer", "READ", ""] {
+        assert!(!confers_read(level, None), "{level}");
+    }
+}
+
+/// A grant to a `public` principal joins every subject's reachable set.
+// spec: disclosure.reach.public-grant@15b1f754
+#[test]
+fn a_public_grant_joins_every_subject_reachable_set() {
+    let state = SourceState {
+        resources: ["p1", "p2"].iter().map(|r| resource(r, "mirrored")).collect(),
+        grants: vec![graded("p1", "anyone", "public", "read", None), graded("p2", "dana@acme.example", "user", "read", None)],
+        ..SourceState::default()
+    };
+    let now = "2030-01-01T00:00:00Z";
+    let reach = |s: &str| admitted(&resolve("wiki", &subject(s), &state, ClosureBound::default()).unwrap(), None, now);
+    assert_eq!(reach("user://dana@acme.example"), ["p1", "p2"]);
+    assert_eq!(reach("user://erin@acme.example"), ["p1"]);
 }

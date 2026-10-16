@@ -2,10 +2,12 @@
 //! table's budget, the budget a source's sweep cadence cannot meet, and the clock offset a
 //! staleness check reads now through.
 
-use super::declare::Binding;
-use super::sweep::{Freshness, SweepBlock};
+use super::declare::{Binding, OnStale};
+use super::reach::public_resources;
+use super::sweep::{Freshness, SourceState, SweepBlock};
 use super::VisibilityError;
 use crate::time::Instant;
+use std::collections::BTreeMap;
 
 /// The variable moving the instant a staleness check reads as now
 /// (`disclosure.bound-staleness.clock-offset`).
@@ -50,6 +52,49 @@ pub fn check_fresh(binding: &Binding, freshness: Option<&Freshness>, now: Instan
         Some(lag) if lag > budget => Err(stale("lags past its budget", Some(lag), f.watermark_at)),
         Some(_) => Ok(()),
     }
+}
+
+/// How a read serves a bound table at one instant: whole, or narrowed to its public rows
+/// (`disclosure.bound-staleness.public-only`).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Posture {
+    Fresh,
+    Narrowed,
+}
+
+/// A table's public-status watermark at `now`: the oldest observation among its source's
+/// resources holding a read-conferring, unexpired `public` grant under `levels`, or `now`
+/// when none does (`disclosure.bound-staleness.public-watermark`).
+pub fn public_watermark(state: &SourceState, levels: Option<&BTreeMap<String, String>>, now: Instant) -> Instant {
+    public_resources(state, levels, now).into_values().min().unwrap_or(now)
+}
+
+/// The posture a read serves `binding`'s table under at `now`. Inside its budget the table
+/// reads whole. Past it, a `public_only` table whose source has a completed full run and a
+/// public-status watermark within the budget narrows (`disclosure.bound-staleness.public-only`);
+/// any other table refuses (`disclosure.bound-staleness.access-stale`).
+pub fn posture(binding: &Binding, state: &SourceState, levels: Option<&BTreeMap<String, String>>, now: Instant) -> Result<Posture, VisibilityError> {
+    let refused = match check_fresh(binding, state.freshness.as_ref(), now) {
+        Ok(()) => return Ok(Posture::Fresh),
+        Err(e) => e,
+    };
+    let (OnStale::PublicOnly, Some(budget), Some(f)) = (binding.on_stale, binding.max_acl_staleness_secs, state.freshness.as_ref()) else { return Err(refused) };
+    if f.last_full_sweep_at.is_none() {
+        return Err(refused);
+    }
+    let watermark = public_watermark(state, levels, now);
+    let lag = watermark.secs_until(now);
+    if lag > budget {
+        return Err(VisibilityError::AccessStale {
+            table: binding.table.clone(),
+            origin: binding.source.clone(),
+            reason: "has a public-status watermark past its budget",
+            lag: format!("{lag}s"),
+            budget,
+            last_observed: watermark.to_rfc3339(),
+        });
+    }
+    Ok(Posture::Narrowed)
 }
 
 /// Refuse a servable binding whose budget is tighter than the cadence its source's sweep

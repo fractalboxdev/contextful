@@ -36,12 +36,14 @@ pub const REACH_RELATION: &str = "__contextful_reach";
 /// The mirrored-permission semi-join of one bound table (`disclosure.reach.semi-join`): the
 /// column holding each row's `resource_id`, and the resources the reader's reachable set
 /// holds on the table's source. A set that did not resolve admits no row and carries its
-/// refusal, which a read touching the table raises.
+/// refusal, which a read touching the table raises. A narrowed filter holds the table's
+/// public resources alone (`disclosure.bound-staleness.public-only`).
 #[derive(Debug, Clone, Default, PartialEq)]
 pub struct ReachFilter {
     pub resource_key: String,
     pub resources: std::collections::BTreeSet<String>,
     pub refused: Option<contextful_core::disclosure::reach::ReachError>,
+    pub narrowed: bool,
 }
 
 /// One table as the store resolves it for this request: its declaration and policy, the
@@ -456,6 +458,12 @@ impl Session {
     /// bound table.
     pub fn reach_rows(&self) -> Vec<(String, String)> {
         self.reach.iter().flat_map(|(t, f)| f.resources.iter().map(move |r| (t.clone(), r.clone()))).collect()
+    }
+
+    /// Whether the session serves `table` narrowed to its public rows
+    /// (`disclosure.bound-staleness.public-only`).
+    pub fn narrowed(&self, table: &str) -> bool {
+        self.reach.get(table).is_some_and(|f| f.narrowed)
     }
 
     /// The refusal resolving `table`'s reachable set raised, where it did not resolve.

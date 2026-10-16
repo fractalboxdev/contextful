@@ -423,6 +423,9 @@ pub struct GrantRow {
     pub principal: String,
     pub principal_kind: String,
     pub level: String,
+    /// The instant an owner-landed opening stops conferring; a swept grant carries none
+    /// (`disclosure.mirror.unmirrorable-opening`).
+    pub expires_at: Option<Instant>,
     pub observed_at: Instant,
     pub sweep_kind: String,
     pub sweep_id: String,
@@ -644,6 +647,7 @@ pub fn commit(prior: &SourceState, obs: &Observation) -> Result<Commit, Visibili
             principal: g.principal.clone(),
             principal_kind: g.principal_kind.clone(),
             level: g.level.clone(),
+            expires_at: None,
             observed_at: obs.began_at,
             sweep_kind: kind.clone(),
             sweep_id: obs.sweep_id.clone(),
