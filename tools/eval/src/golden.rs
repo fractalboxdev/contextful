@@ -287,8 +287,9 @@ impl GoldenRedaction {
 }
 
 /// The substitute of one matched span: the class marker for `replace`, the span's prefix
-/// for `truncate`. A keyed substitute refuses: the harness holds no pepper. A numeric
-/// band refuses: free text holds no typed number.
+/// for `truncate`, the band `floor(v / n) * n` for `bucket` and `lo-(lo + n)` for `range`,
+/// as the writer computes them. A keyed substitute refuses: the harness holds no pepper. A
+/// band over a span that does not parse as a number refuses, as the writer does.
 fn substitute(rule: &Rule, matched: &str) -> Result<Option<String>, EnforceError> {
     match rule.operation {
         Operation::Drop => Ok(None),
@@ -304,10 +305,25 @@ fn substitute(rule: &Rule, matched: &str) -> Result<Option<String>, EnforceError
             "`{}.{}` rewrites under a keyed substitute, and the harness holds no pepper",
             rule.table, rule.column
         ))),
-        Operation::Bucket | Operation::Range => Err(EnforceError::RedactionInvalid(format!(
-            "`{}.{}` generalizes a typed number into a band, and a golden's free text carries none",
-            rule.table, rule.column
-        ))),
+        Operation::Bucket | Operation::Range => {
+            let n = rule.argument.as_ref().and_then(Value::as_u64).unwrap_or_default();
+            let lo = matched
+                .trim()
+                .parse::<f64>()
+                .ok()
+                .filter(|_| n > 0)
+                .map(|v| ((v / n as f64).floor() * n as f64) as i64)
+                .ok_or_else(|| {
+                    EnforceError::RedactionInvalid(format!(
+                        "`{}.{}` bands a matched span that does not parse as a number",
+                        rule.table, rule.column
+                    ))
+                })?;
+            Ok(Some(match rule.operation {
+                Operation::Bucket => lo.to_string(),
+                _ => format!("{lo}-{}", lo + n as i64),
+            }))
+        }
     }
 }
 
