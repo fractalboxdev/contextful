@@ -314,6 +314,7 @@ fn report_rows_stay_untyped_json_and_a_throttle_code_in_the_body_is_recognized()
     let (vendor, _log) = Vendor::new(vec![("a1", Script { pages: vec![page(0, 1, vec![row.clone()])], ..Script::default() })]);
     let mut source = ReportSource::new(config(&["a1"], json!({})), vendor, TODAY).unwrap();
     let batches = read(&mut source, None);
+    assert_eq!(batches.len(), 3, "the creation, the page and the closing pull");
     assert!(batches.iter().all(|b| b.get("types").is_none()), "no column types are declared");
     let landed = &rows(&batches)[0];
     assert_eq!(landed["actions"], row["actions"]);
