@@ -9,13 +9,13 @@ An unpinned clause is `committed`; a pinned one is `performed` when its Rust, Le
 | `authority` | 2 | 16 | 298 | 79 | 29 | 8 | 269 | 0 | 269 |
 | `connector` | 2 | 14 | 375 | 92 | 22 | 12 | 292 | 0 | 292 |
 | `corpus` | 1 | 10 | 80 | 37 | 7 | 0 | 80 | 0 | 80 |
-| `disclosure` | 3 | 16 | 179 | 69 | 14 | 4 | 156 | 0 | 156 |
+| `disclosure` | 3 | 16 | 184 | 69 | 14 | 5 | 162 | 0 | 162 |
 | `read` | 2 | 20 | 290 | 47 | 29 | 15 | 248 | 0 | 248 |
 | `run` | 3 | 29 | 536 | 118 | 45 | 16 | 504 | 0 | 504 |
 | `store` | 3 | 19 | 293 | 64 | 14 | 10 | 283 | 0 | 283 |
 | `surface` | 2 | 21 | 161 | 63 | 23 | 0 | 134 | 0 | 134 |
 | `topology` | 1 | 6 | 79 | 25 | 5 | 3 | 76 | 0 | 76 |
-| **total** | 22 | 169 | 2613 | 658 | 212 | 73 | 2322 | 0 | |
+| **total** | 22 | 169 | 2618 | 658 | 212 | 74 | 2328 | 0 | |
 
 Decision records: 18.
 
@@ -34,7 +34,7 @@ A milestone reads `closed` when its acceptance test computes `passing` and every
 | 6 — Sync and replicas | 8 | 86 | 86 | passing | closed |
 | 7 — Memory | 6 | 72 | 57 | passing | closed |
 | 8 — Accountability | 5 | 93 | 86 | passing | closed |
-| 9 — Visibility | 6 | 50 | 40 | passing | closed |
+| 9 — Visibility | 6 | 55 | 46 | passing | closed |
 | 10 — Cadence and the operator plane | 11 | 101 | 89 | passing | closed |
 | 11 — The derive tier | 7 | 98 | 97 | passing | closed |
 | 12 — The operator console | 12 | 56 | 43 | passing | open |
@@ -424,7 +424,7 @@ Unscheduled operations: 13.
 | `authority.identify.subject-missing` | `crates/contextful-core/tests/integration/identify.rs::subject_missing` | performed |
 | `authority.identify.subject-rebound` | `crates/contextful-core/tests/integration/identify.rs::subject_rebound` | performed |
 | `authority.identify.subject-tuple` | `crates/contextful-policy/tests/integration/verify.rs::a_credential_binds_the_members_it_names_and_admits_under_that_combination_alone` | performed |
-| `authority.identify.unlinked-principal` | `crates/contextful-context/tests/integration/visibility.rs::a_subject_with_no_link_reaches_nothing_from_the_source` | performed |
+| `authority.identify.unlinked-principal` | `crates/contextful-context/tests/integration/visibility.rs::a_subject_with_no_link_reaches_only_the_public_resources_of_the_source` | performed |
 | `authority.identify.unverified-link` | `crates/contextful-core/tests/integration/identify.rs::unverified_link` | performed |
 | `authority.identify.value-hygiene` | `crates/contextful-core/tests/integration/identify.rs::value_hygiene` | performed |
 | `authority.issue.above-ceiling` | `crates/contextful-core/tests/integration/issue.rs::an_explicit_lifetime_above_the_ceiling_refuses_and_an_exchange_lifetime_clamps` | performed |
@@ -990,7 +990,10 @@ Unscheduled operations: 13.
 | `disclosure.bound-staleness.budget-below-cadence` | `crates/contextful-core/tests/integration/disclosure/stale.rs::a_budget_tighter_than_the_sustained_cadence_is_refused_naming_both` | performed |
 | `disclosure.bound-staleness.budget-grammar` | `crates/contextful-core/tests/integration/disclosure/declare.rs::a_budget_outside_the_grammar_is_refused_naming_table_and_text` | performed |
 | `disclosure.bound-staleness.clock-offset` | `crates/contextful-core/tests/integration/disclosure/stale.rs::the_offset_moves_now_later_and_can_only_refuse` | performed |
+| `disclosure.bound-staleness.degraded-block` | `crates/contextful-context/tests/integration/read/visibility.rs::a_public_only_table_past_its_budget_serves_its_public_rows_marked_degraded` | performed |
 | `disclosure.bound-staleness.offset-malformed` | `crates/contextful-cli/tests/integration/visibility.rs::a_malformed_now_offset_stops_the_server_before_it_serves` | performed |
+| `disclosure.bound-staleness.public-only` | `crates/contextful-core/tests/integration/disclosure/stale.rs::a_public_only_table_past_its_budget_narrows_while_public_status_is_within_it` | performed |
+| `disclosure.bound-staleness.public-watermark` | `crates/contextful-core/tests/integration/disclosure/stale.rs::the_public_status_watermark_is_the_oldest_observation_of_a_public_resource` | performed |
 | `disclosure.declare-fidelity.family-bound` | `crates/contextful-core/tests/integration/disclosure/declare.rs::a_level_the_family_does_not_permit_is_refused` | performed |
 | `disclosure.declare-fidelity.family-undeclared` | `crates/contextful-core/tests/integration/disclosure/declare.rs::a_block_naming_no_family_is_refused` | performed |
 | `disclosure.declare-fidelity.federated-registered` | `crates/contextful-context/tests/integration/read/visibility.rs::a_federated_table_registers_on_no_read_face` | performed |
@@ -1045,6 +1048,9 @@ Unscheduled operations: 13.
 | `disclosure.reach.closure-overflow` | `crates/contextful-context/tests/integration/read/visibility.rs::a_closure_overflow_refuses_only_reads_of_its_table` | performed |
 | `disclosure.reach.closure-walk` | `crates/contextful-core/tests/integration/disclosure/reach.rs::the_closure_walks_eight_hops_and_ten_thousand_nodes_ending_cycles` | performed |
 | `disclosure.reach.degraded-uncached` | `crates/contextful-core/tests/integration/disclosure/reach.rs::a_degraded_reachable_set_is_refused_and_not_retained` | performed |
+| `disclosure.reach.public-grant` | `crates/contextful-core/tests/integration/disclosure/reach.rs::a_public_grant_joins_every_subject_reachable_set` | performed |
+| `disclosure.reach.read-level` | `crates/contextful-core/tests/integration/disclosure/reach.rs::a_level_confers_read_through_the_pack_mapping_or_verbatim` | performed |
+| `disclosure.reach.semi-join` | `crates/contextful-core/tests/integration/disclosure/reach.rs::the_semi_join_admits_resources_holding_a_read_conferring_unexpired_current_grant` | performed |
 | `disclosure.reach.subject-principals` | `crates/contextful-core/tests/integration/disclosure/reach.rs::a_subject_reaches_its_user_principal_its_linked_principals_and_their_groups` | performed |
 | `disclosure.receipt.chain-record` | `crates/contextful-context/tests/integration/erase.rs::a_tenant_purge_rewrites_the_tenant_out_of_every_table_and_returns_a_verifying_receipt` | performed |
 | `disclosure.receipt.coverage` | `crates/contextful-policy/tests/integration/receipt.rs::a_version_one_receipt_covers_the_canonical_store_and_excludes_replicas_and_the_bucket` | performed |
