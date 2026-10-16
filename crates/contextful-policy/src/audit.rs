@@ -1380,6 +1380,20 @@ impl<S: SigningPort + Send + Sync + 'static> AuditLog<S> {
         AuditLog::start(dir.into(), Custody::Held(signer), options, false)
     }
 
+    /// [`AuditLog::open`] over a chain an anchor has already held, and nothing else: a chain
+    /// carrying no `chain.held`, empty or not, raises `AuditLogUnanchored` and writes nothing,
+    /// so a signed read never anchors as a side effect (`disclosure.record.signed-read`).
+    pub fn open_anchored(dir: impl Into<PathBuf>, signer: S) -> Result<AuditLog<S>, AuditError> {
+        let dir = dir.into();
+        if read_held(&dir)?.is_none() {
+            return Err(AuditError::AuditLogUnanchored(format!(
+                "{}: no anchor holds this chain, and a signed read does not anchor one; run `contextful audit anchor --issuer-key <seed>` first",
+                dir.display()
+            )));
+        }
+        AuditLog::open(dir, signer)
+    }
+
     /// [`AuditLog::anchor_with`] under the default options.
     pub fn anchor(dir: impl Into<PathBuf>, signer: S) -> Result<AuditLog<S>, AuditError> {
         AuditLog::anchor_with(dir, signer, AuditOptions::default())

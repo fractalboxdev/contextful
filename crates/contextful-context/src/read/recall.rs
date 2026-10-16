@@ -106,9 +106,24 @@ impl Face {
     /// gate and suppressions are counted (`read.recall.keyed-gate`); claims order tier
     /// first under the least row ceiling (`read.recall.keyed-order`).
     pub fn recall(&self, session: &Session, request: &RecallRequest) -> Result<Response, ReadFault> {
+        self.recall_read(session, request).map(|(response, _)| response)
+    }
+
+    /// [`Face::recall`] beside every table the recall read under the session, in first-read
+    /// order: the claims table, each evidence table the gate read, and a calibration's
+    /// labels table. The read entry names them; the response never does
+    /// (`disclosure.attest.lineage-elision`).
+    pub fn recall_read(&self, session: &Session, request: &RecallRequest) -> Result<(Response, Vec<String>), ReadFault> {
         let started = std::time::Instant::now();
         let executed: std::cell::RefCell<Vec<String>> = Default::default();
         let table = request.table.as_str();
+        let read_tables = std::cell::RefCell::new(vec![table.to_string()]);
+        let note = |t: &str| {
+            let mut read = read_tables.borrow_mut();
+            if session.relation(t).is_some() && !read.iter().any(|r| r == t) {
+                read.push(t.to_string());
+            }
+        };
         let relation = session.relation(table).ok_or_else(|| EnforceError::UnknownRelation(format!("`{table}`")))?;
         self.bind_bounds(session, &std::collections::BTreeSet::from([table.to_string()]), request.bounds())?;
         if self.memory().table(table).is_none_or(|t| t.shape != Shape::Facts) {
@@ -165,6 +180,7 @@ impl Face {
                     };
                     let fault = std::cell::RefCell::new(None);
                     let admitted = tally.gate(evidence, &memory_tables, session, |r| {
+                        note(&r.table);
                         match row_read(r).and_then(|given| self.evidence_read_given(&engine, session, r, &touched, request.max_duration_ms, given, &mut executed.borrow_mut())) {
                             Ok(read) => read,
                             Err(error) => {
@@ -193,7 +209,7 @@ impl Face {
         }
         // Each claim's confidence is reported through the table's validated calibration
         // (`read.recall.confidence-label`).
-        let calibration = self.calibration(&engine, session, table, deadline)?;
+        let calibration = self.calibration(&engine, session, table, deadline, &note)?;
         let (confidence_at, predicate_at) = (position(&columns, "confidence"), position(&columns, "predicate"));
         for row in &mut kept {
             let emitted = row[confidence_at].as_f64();
@@ -212,12 +228,13 @@ impl Face {
         }
         response = self.restrict_timed(&engine, session, [table], response, deadline)?;
         let response = self.finish_budget(session, &touched, ReadOptions { limit: request.limit, max_duration_ms: request.max_duration_ms, max_response_bytes: request.max_response_bytes, ..ReadOptions::default() }, None, ceiling, response.with_block("recall", tally.block()))?;
-        Ok(if request.internals {
+        let response = if request.internals {
             let rows = response.rows.len() as u64;
             response.with_block("internals", super::face::internals_block(&executed.borrow(), Some(ceiling), rows, started))
         } else {
             response
-        })
+        };
+        Ok((response, read_tables.into_inner()))
     }
 }
 
@@ -245,12 +262,13 @@ impl Face {
     /// `prediction_id` = `claim_id`, read through `session` in settlement order. A table
     /// declaring none, or one the session does not register, fits nothing
     /// (`read.recall.confidence-label`).
-    fn calibration(&self, engine: &SqlEngine, session: &Session, table: &str, deadline: Option<(u64, &'static str)>) -> Result<Calibration, ReadFault> {
+    fn calibration(&self, engine: &SqlEngine, session: &Session, table: &str, deadline: Option<(u64, &'static str)>, read: &dyn Fn(&str)) -> Result<Calibration, ReadFault> {
         let Some(labels) = self.memory().table(table).and_then(|t| t.labels.as_deref()) else { return Ok(Calibration::default()) };
         let (Some(facts), Some(outcomes)) = (session.relation(table), session.relation(labels)) else { return Ok(Calibration::default()) };
         if self.store.try_schema(labels)?.is_none() || self.store.try_schema(table)?.is_none() {
             return Ok(Calibration::default());
         }
+        read(labels);
         let sql = format!(
             "SELECT f.{predicate}, CAST(f.{confidence} AS DOUBLE), CAST(o.{verdict} AS BOOLEAN) FROM {facts} f JOIN {outcomes} o ON o.{prediction} = f.{claim} \
              WHERE o.{verdict} IS NOT NULL ORDER BY {settled}o.{prediction}",

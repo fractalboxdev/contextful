@@ -183,12 +183,28 @@ fn query_answers_who_read_what_over_a_window() {
 
     let sql = "SELECT agent, policy, outcome, row_count FROM audit_reads WHERE outcome = 'refused'";
     let out: Value = serde_json::from_str(&stdout(&run(p, &["audit", "query", "--project", "research", "--sql", sql]))).unwrap();
-    assert_eq!(out["rows"], json!([["agent://research-loop", "rev-1", "refused", "0"]]), "{out}");
+    assert_eq!(out["rows"], json!([["agent://research-loop", "rev-1", "refused", 0]]), "{out}");
 
     // The claim ids a memory read returned select from the `claims` column.
     let sql = "SELECT on_behalf_of, unnest(CAST(claims AS VARCHAR[])) AS id FROM audit_reads WHERE claims IS NOT NULL ORDER BY id";
     let out: Value = serde_json::from_str(&stdout(&run(p, &["audit", "query", "--project", "research", "--sql", sql]))).unwrap();
     assert_eq!(out["rows"], json!([["user://bo@acme.example", "c-1"], ["user://bo@acme.example", "c-2"]]), "{out}");
+}
+
+/// In `audit_reads`, `row_count` is an integer, and `claims` lists the claim ids a read entry records, null where it records none.
+// spec: disclosure.record.reads-view-types@30128aed
+#[test]
+fn audit_reads_types_row_count_as_an_integer_and_claims_as_a_list() {
+    let (dir, _) = project();
+    let p = dir.path();
+    let mut recalled = read(Duration::from_secs(30), "user://bo@acme.example", &["memory/facts"], attr::SERVED, 2);
+    recalled["contextful.memory.claims"] = json!(["c-1", "c-2"]);
+    let mut empty = read(Duration::from_secs(20), "user://ada@acme.example", &["memory/facts"], attr::SERVED, 0);
+    empty["contextful.memory.claims"] = json!([]);
+    append(p, 4096, vec![recalled, empty, read(Duration::from_secs(10), "user://ada@acme.example", &["hr/salaries"], attr::SERVED, 4)]);
+    let sql = "SELECT row_count, claims FROM audit_reads ORDER BY read_at";
+    let out: Value = serde_json::from_str(&stdout(&run(p, &["audit", "query", "--project", "research", "--sql", sql]))).unwrap();
+    assert_eq!(out["rows"], json!([[2, ["c-1", "c-2"]], [0, null], [4, null]]), "{out}");
 }
 
 /// The projection reaches no file: a statement reading one raises rather than answering.

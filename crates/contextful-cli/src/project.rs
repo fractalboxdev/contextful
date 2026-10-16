@@ -179,7 +179,8 @@ pub(crate) fn read_audit(project: &Project, issuer_key: Option<&Path>, public_ke
     signer.validate()?;
     let custody = ReadSigner { signer:signer.signer.clone(), keys };
     custody.validate()?;
-    let log = contextful_policy::audit::AuditLog::anchor(project.audit_dir(), custody)?;
+    // A read verb opens a chain `audit anchor` holds and never anchors one (`disclosure.record.signed-read`).
+    let log = contextful_policy::audit::AuditLog::open_anchored(project.audit_dir(), custody)?;
     Ok(ReadAudit::Signed { log, signer })
 }
 

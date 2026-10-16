@@ -81,6 +81,13 @@ impl Face {
     /// registers the claims table (`read.resolve-entity.card-authorization`), read by keyed
     /// recall at the call instant (`read.resolve-entity.card-claims`).
     pub fn explain(&self, session: &Session, request: &ExplainRequest) -> Result<Value, ReadFault> {
+        self.explain_read(session, request).map(|(card, _)| card)
+    }
+
+    /// [`Face::explain`] beside every table the card read under the session: the entities
+    /// table, then each table [`Face::recall_read`] read for its claims. The read entry names
+    /// them (`disclosure.record.read-attributes`).
+    pub fn explain_read(&self, session: &Session, request: &ExplainRequest) -> Result<(Value, Vec<String>), ReadFault> {
         let started = std::time::Instant::now();
         let table = request.table.as_str();
         let Some(relation) = session.relation(table) else {
@@ -95,8 +102,8 @@ impl Face {
         let entities: Vec<Entity> = records.iter().map(|r| r.entity.clone()).collect();
         let id = match resolve(&request.reference, &entities) {
             Resolution::One(id) => id,
-            Resolution::Ambiguous(ids) => return Ok(with_internals(json!({ "entity": null, "candidates": ids }), request, &executed, None, started)),
-            Resolution::Unresolved => return Ok(with_internals(json!({ "entity": null, "candidates": [] }), request, &executed, None, started)),
+            Resolution::Ambiguous(ids) => return Ok((with_internals(json!({ "entity": null, "candidates": ids }), request, &executed, None, started), vec![table.to_string()])),
+            Resolution::Unresolved => return Ok((with_internals(json!({ "entity": null, "candidates": [] }), request, &executed, None, started), vec![table.to_string()])),
         };
         let record = records.iter().find(|r| r.entity.entity_id == id).expect("a resolved id names a read identity");
         let mut card = json!({
@@ -109,6 +116,7 @@ impl Face {
             "candidates": [],
         });
         let mut limit = None;
+        let mut tables = vec![table.to_string()];
         if let Some(claims) = request.claims.as_deref().filter(|c| session.relation(c).is_some()) {
             // Synthesis keys a resolved claim by canonical name, a direct write by whatever
             // subject it names; both keys reach the card (`read.resolve-entity.card-claims`).
@@ -121,14 +129,16 @@ impl Face {
                 internals: request.internals,
                 ..RecallRequest::new(claims, id.clone(), request.anchor)
             };
-            let mut answer = self.recall(session, &recall)?.to_json();
+            let (answer, read) = self.recall_read(session, &recall)?;
+            let mut answer = answer.to_json();
+            tables.extend(read);
             if let Some(Value::Object(internals)) = answer.as_object_mut().and_then(|a| a.remove(INTERNALS)) {
                 executed.extend(internals.get("sql").and_then(Value::as_str).map(str::to_string));
                 limit = internals.get("limit").and_then(Value::as_u64);
             }
             card["claims"] = answer;
         }
-        Ok(with_internals(card, request, &executed, limit, started))
+        Ok((with_internals(card, request, &executed, limit, started), tables))
     }
 
     /// Every row of `table` the session reads that carries an `entity_id` and a `name`.

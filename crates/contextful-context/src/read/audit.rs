@@ -30,7 +30,7 @@ struct Row<'e> {
     policy: Option<&'e str>,
     outcome: Option<&'e str>,
     row_count: Option<i64>,
-    /// The entry's claim ids as a JSON list; absent for a read recording none.
+    /// The entry's claim ids as a JSON list; absent for a read returning none.
     claims: Option<String>,
 }
 
@@ -48,7 +48,7 @@ fn project(entry: &AuditEntry) -> Vec<Row<'_>> {
         policy: text(attr::POLICY),
         outcome: text(attr::OUTCOME),
         row_count: a.get(attr::ROWS).and_then(Value::as_i64),
-        claims: a.get(MEMORY_CLAIMS).filter(|c| c.is_array()).map(Value::to_string),
+        claims: a.get(MEMORY_CLAIMS).filter(|c| c.as_array().is_some_and(|ids| !ids.is_empty())).map(Value::to_string),
     };
     let tables: Vec<&str> = a.get(attr::TABLES).and_then(Value::as_array).map(|t| t.iter().filter_map(Value::as_str).collect()).unwrap_or_default();
     if tables.is_empty() {
@@ -97,7 +97,7 @@ pub fn audit_reads(entries: &[AuditEntry], sql: &str, opts: ReadOptions) -> Resu
         &format!(
             "CREATE MACRO now() AS CAST(get_current_timestamp() AS TIMESTAMP); \
              CREATE TABLE {AUDIT_READS} AS SELECT CAST(CAST(read_at AS TIMESTAMPTZ) AS TIMESTAMP) AS read_at, on_behalf_of, agent, table_name, \
-             policy, outcome, CAST(row_count AS BIGINT) AS row_count, CAST(claims AS JSON) AS claims FROM {STAGING} WHERE kind = 'read'; \
+             policy, outcome, CAST(row_count AS INTEGER) AS row_count, CAST(CAST(claims AS JSON) AS VARCHAR[]) AS claims FROM {STAGING} WHERE kind = 'read'; \
              CREATE TABLE audit_erasures AS SELECT transaction_id, subject_hash, CAST(affected_counts AS JSON) AS affected_counts, \
              CAST(CAST(executed_at AS TIMESTAMPTZ) AS TIMESTAMP) AS executed_at FROM {STAGING} WHERE kind = 'erasure'; DROP TABLE {STAGING}"
         ),

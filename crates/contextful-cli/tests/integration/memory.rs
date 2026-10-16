@@ -228,7 +228,41 @@ fn recall_cli_answers_historical_and_current_claims_as_json() {
     // The three verb calls append an entry each, as the tool call does.
     let sql = "SELECT agent, CAST(count(*) AS VARCHAR), CAST(count(claims) AS VARCHAR) FROM audit_reads WHERE table_name = 'memory/facts' GROUP BY agent ORDER BY agent";
     let audited: Value = serde_json::from_str(&stdout(&run(dir.path(), &["audit", "query", "--project", "research", "--sql", sql], &[]))).unwrap();
-    assert_eq!(audited["rows"], json!([["agent://reader", "1", "1"], ["agent://synthesizer", "3", "3"]]), "{audited}");
+    assert_eq!(audited["rows"], json!([["agent://reader", "1", "0"], ["agent://synthesizer", "3", "3"]]), "{audited}");
+    // The evidence table the gate read is named; the reader, holding no grant on it, read none.
+    let sql = "SELECT agent, CAST(count(*) AS VARCHAR) FROM audit_reads WHERE table_name = 'research/notes' GROUP BY agent";
+    let evidence: Value = serde_json::from_str(&stdout(&run(dir.path(), &["audit", "query", "--project", "research", "--sql", sql], &[]))).unwrap();
+    assert_eq!(evidence["rows"], json!([["agent://synthesizer", "3"]]), "{evidence}");
+}
+
+/// A read verb's `--issuer-key` never anchors the chain: over an unanchored chain it refuses
+/// and appends nothing, unsigned reads go on, and once `audit anchor` holds the chain the
+/// same verb appends signed entries.
+// spec: disclosure.record.signed-read@e4226fd4
+#[test]
+fn a_signed_read_over_an_unanchored_chain_refuses_and_unsigned_reads_go_on() {
+    let (dir, public, token) = project();
+    let p = dir.path();
+    stdout(&run(p, &["memory", "write", "--project", "research", "--into", "memory/facts", "--claim", &one("Dana"), "--public-key", &public, "--audience", AUD], &[("CONTEXTFUL_TOKEN", &token)]));
+    let recall = ["memory", "recall", "--project", "research", "--table", "memory/facts", "--subject", "acme", "--public-key", &public, "--audience", AUD];
+    stdout(&run(p, &recall, &[("CONTEXTFUL_TOKEN", &token)]));
+    let entries = || contextful_policy::audit::entries(&p.join(".contextful/audit")).unwrap().len();
+    assert_eq!(entries(), 1);
+
+    let signed = ["memory", "explain", "--project", "research", "--table", "memory/facts", "--reference", "acme", "--issuer-key", ".contextful/issuer.seed", "--public-key", &public, "--audience", AUD];
+    let refused = run(p, &signed, &[("CONTEXTFUL_TOKEN", &token)]);
+    assert!(!refused.status.success());
+    let stderr = String::from_utf8_lossy(&refused.stderr);
+    assert!(stderr.contains("AuditLogUnanchored") && stderr.contains("audit anchor"), "{stderr}");
+    assert_eq!(entries(), 1, "a refused signed read appends nothing");
+    stdout(&run(p, &recall, &[("CONTEXTFUL_TOKEN", &token)]));
+    assert_eq!(entries(), 2, "an unsigned read still appends");
+
+    stdout(&run(p, &["audit", "anchor", "--project", "research", "--issuer-key", ".contextful/issuer.seed"], &[]));
+    let mut signed_recall = recall.to_vec();
+    signed_recall.extend(["--issuer-key", ".contextful/issuer.seed"]);
+    stdout(&run(p, &signed_recall, &[("CONTEXTFUL_TOKEN", &token)]));
+    assert_eq!(entries(), 3);
 }
 
 /// A claims table synthesizes when `contextful memory synthesize` runs; a `[[job]]` of kind `synthesize` targeting it with a `schedule` replaces that default, and each fire still advances only through {{read.synthesize.pass-cursor}}.
@@ -520,7 +554,7 @@ fn explain_cli_answers_one_card_candidates_or_the_identity_alone() {
         out["rows"].clone()
     };
     let per_table = audit("SELECT table_name, CAST(count(*) AS VARCHAR), CAST(count(claims) AS VARCHAR) FROM audit_reads GROUP BY table_name ORDER BY table_name");
-    assert_eq!(per_table, json!([["memory/entities", "4", "2"], ["memory/facts", "2", "2"]]));
+    assert_eq!(per_table, json!([["memory/entities", "4", "2"], ["memory/facts", "2", "2"], ["research/notes", "2", "2"]]));
     assert_eq!(audit("SELECT table_name FROM audit_reads WHERE agent = 'agent://reader'"), json!([["memory/entities"]]));
     let mut ids: Vec<Value> = card["claims"]["rows"].as_array().unwrap().iter().map(|r| json!([r[at("claim_id")]])).collect();
     ids.sort_by_key(Value::to_string);

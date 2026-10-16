@@ -897,7 +897,7 @@ fn memory_explain_answers_the_knowledge_card_over_the_tool_protocol() {
     assert_eq!(
         tables,
         [
-            &json!(["research/entities", "research/facts"]),
+            &json!(["research/entities", "research/facts", "research/notes"]),
             &json!(["research/entities"]),
             &json!(["research/entities"]),
             &json!(["research/entities"]),
@@ -1056,6 +1056,30 @@ fn memory_reads_record_the_claim_ids_they_returned() {
     assert_eq!(first["contextful.credential"], json!(f.authority.credential_id()));
     assert_eq!(first["contextful.subject.on_behalf_of"], json!("user://dana@acme.example"));
     assert_eq!(first["contextful.read.at"], json!(at("2030-06-01T00:00:00Z").to_rfc3339()));
+}
+
+/// A `memory.recall` or `memory.explain` entry's `contextful.tables` lists each relation the read ran a statement on under the caller's session: the entities, the claims, every evidence table its gate read, and a labels table.
+// spec: disclosure.record.memory-read-tables@8de98e86
+#[test]
+fn memory_reads_name_every_table_they_read_evidence_included() {
+    let f = entities();
+    let clock = FixedClock(at("2030-06-01T00:00:00Z"));
+    let server = Server::new(&f.face, f.authority.clone(), &current, &clock, &f.audit).unwrap();
+    call(&server, "memory.recall", json!({ "table": "research/facts", "subject": "acme", "observed_at": "2030-02-01T00:00:00Z" }));
+    call(&server, "memory.recall", json!({ "table": "research/facts", "subject": "nobody" }));
+    call(&server, "memory.explain", json!({ "table": "research/entities", "reference": "アクメ", "claims": "research/facts" }));
+    call(&server, "memory.explain", json!({ "table": "research/entities", "reference": "アクメ" }));
+    let entries = contextful_policy::audit::entries(&f.dir.path().join("audit")).unwrap();
+    let tables: Vec<&Value> = entries.iter().map(|e| &e.attributes["contextful.tables"]).collect();
+    assert_eq!(
+        tables,
+        [
+            &json!(["research/facts", "research/notes"]),
+            &json!(["research/facts"]),
+            &json!(["research/entities", "research/facts", "research/notes"]),
+            &json!(["research/entities"]),
+        ]
+    );
 }
 
 /// `corpus.retrieve({prefix, tables?, query, query_embedding?, filter?, kinds?, limit?, since?, min_score?, as_of?, valid_as_of?})` returns ranked rows across item and artifact genres under `prefix` and `tables`, each with a snippet and provenance, composing the query surface and memory recall, storing nothing.
