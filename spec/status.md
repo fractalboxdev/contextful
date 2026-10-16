@@ -8,14 +8,14 @@ An unpinned clause is `committed`; a pinned one is `performed` when its Rust, Le
 | `assurance` | 3 | 18 | 316 | 64 | 24 | 8 | 276 | 0 | 276 |
 | `authority` | 2 | 16 | 295 | 79 | 29 | 10 | 242 | 0 | 242 |
 | `connector` | 2 | 14 | 375 | 92 | 22 | 12 | 277 | 0 | 277 |
-| `corpus` | 1 | 10 | 79 | 37 | 7 | 0 | 79 | 0 | 79 |
+| `corpus` | 1 | 10 | 80 | 37 | 7 | 0 | 80 | 0 | 80 |
 | `disclosure` | 3 | 16 | 177 | 69 | 14 | 5 | 151 | 0 | 151 |
 | `read` | 2 | 20 | 287 | 46 | 29 | 15 | 245 | 0 | 245 |
 | `run` | 3 | 29 | 529 | 116 | 45 | 14 | 497 | 0 | 497 |
-| `store` | 3 | 19 | 290 | 64 | 14 | 11 | 280 | 0 | 280 |
+| `store` | 3 | 19 | 290 | 64 | 14 | 10 | 280 | 0 | 280 |
 | `surface` | 2 | 21 | 160 | 63 | 23 | 0 | 133 | 0 | 133 |
-| `topology` | 1 | 6 | 79 | 25 | 5 | 3 | 74 | 0 | 74 |
-| **total** | 22 | 169 | 2587 | 655 | 212 | 78 | 2254 | 0 | |
+| `topology` | 1 | 6 | 79 | 25 | 5 | 3 | 76 | 0 | 76 |
+| **total** | 22 | 169 | 2588 | 655 | 212 | 77 | 2257 | 0 | |
 
 Decision records: 18.
 
@@ -35,7 +35,7 @@ A milestone reads `closed` when its acceptance test computes `passing` and every
 | 7 — Memory | 6 | 72 | 57 | passing | closed |
 | 8 — Accountability | 5 | 91 | 84 | passing | closed |
 | 9 — Visibility | 6 | 50 | 40 | passing | closed |
-| 10 — Cadence and the operator plane | 11 | 100 | 86 | passing | open |
+| 10 — Cadence and the operator plane | 11 | 100 | 88 | passing | closed |
 | 11 — The derive tier | 7 | 94 | 93 | passing | closed |
 | 12 — The operator console | 12 | 56 | 43 | passing | open |
 | 13 — Disclosure | 5 | 36 | 27 | passing | open |
@@ -924,6 +924,7 @@ Unscheduled operations: 13.
 | `corpus.targets.function-profile` | `spec/pins.toml` | performed |
 | `corpus.targets.incomplete` | `spec/pins.toml` | performed |
 | `corpus.targets.page` | `spec/pins.toml` | performed |
+| `corpus.targets.primitives` | `tools/spec/tests/integration/targets.rs::a_target_file_lists_its_primitives_and_each_shape_the_ones_it_uses` | performed |
 | `corpus.targets.roles` | `tools/spec/tests/integration/targets.rs::a_shape_fills_eight_roles_and_may_fill_a_realtime_projection` | performed |
 | `disclosure.attest.anchor-verb` | `crates/contextful-cli/tests/integration/audit.rs::anchor_signs_an_unanchored_chain_so_it_verifies_under_the_issuer_pin` | performed |
 | `disclosure.attest.broken-chain` | `crates/contextful-policy/tests/integration/audit.rs::a_disagreeing_digest_a_gap_or_a_vanished_chain_raises_audit_chain_broken` | performed |
@@ -1277,7 +1278,7 @@ Unscheduled operations: 13.
 | `read.retrieve.sidecar-falls-back` | `crates/contextful-context/tests/integration/read/retrieve.rs::every_failed_precondition_falls_back_to_the_exact_scan` | performed |
 | `read.retrieve.sidecar-generates-candidates` | `crates/contextful-context/tests/integration/read/retrieve.rs::the_sidecar_adds_a_row_the_recency_window_misses_with_its_exact_scores` | performed |
 | `read.retrieve.sidecar-oversampling` | `crates/contextful-core/tests/integration/read/retrieve.rs::a_probe_oversamples_the_limit_and_widens_under_restriction` | performed |
-| `read.retrieve.sidecar-size-cap` | `crates/contextful-context/tests/integration/read/retrieve.rs::a_sidecar_past_64_mib_of_vectors_stays_unloaded` | performed |
+| `read.retrieve.sidecar-size-cap` | `crates/contextful-context/tests/integration/read/retrieve.rs::a_sidecar_past_64_mib_of_resident_bytes_stays_unloaded` | performed |
 | `read.retrieve.snippet` | `crates/contextful-context/tests/integration/read/retrieve.rs::a_snippet_leads_with_label_columns` | performed |
 | `read.retrieve.text-free-table-scores-null` | `crates/contextful-core/tests/integration/read/retrieve.rs::a_row_with_no_snippet_scores_null_and_passes_the_floor` | performed |
 | `read.retrieve.token-cap` | `crates/contextful-core/tests/integration/read/retrieve.rs::the_token_set_is_capped_and_an_empty_set_omits_the_floor` | performed |
@@ -2269,6 +2270,8 @@ Unscheduled operations: 13.
 | `topology.coordinate.no-clustered-catalog` | `tools/ci/tests/integration/topology.rs::the_catalog_port_has_exactly_the_known_implementors_and_postgres_alone_clusters` | performed |
 | `topology.coordinate.primitive` | `tools/ci/tests/integration/topology.rs::no_profile_links_a_queue_cache_consensus_or_coordination_client` | performed |
 | `topology.coordinate.weak-backend` | `spec/pins.toml` | performed |
+| `topology.deploy.parity-divergence` | `tools/ci/tests/integration/parity.rs::a_flipped_byte_names_the_target_the_table_and_the_first_differing_part` | performed |
+| `topology.deploy.unsupported-shape` | `tools/spec/tests/integration/targets.rs::a_shape_claiming_containers_on_a_provider_without_them_is_refused` | performed |
 | `topology.package.apply-home` | `tools/ci/tests/integration/topology.rs::the_snapshot_directory_has_one_home_both_callers_share` | performed |
 | `topology.package.canonical-toml` | `crates/contextful-control/tests/integration/plane.rs::apply_claims_canonical_toml_with_every_comment_kept` | performed |
 | `topology.package.capability-absent` | `crates/contextful-cli/tests/integration/profile.rs::a_data_plane_subcommand_on_a_build_without_it_is_refused_by_name` | performed |
