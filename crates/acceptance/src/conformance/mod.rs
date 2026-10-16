@@ -466,10 +466,26 @@ impl Running {
     }
 }
 
+/// Longer than a stopping serve's wait between `SIGTERM` and `SIGKILL` to the children it
+/// dispatched, each the leader of its own process group (`surface.dispatch.children-reaped`).
+const STOP_GRACE: Duration = Duration::from_secs(15);
+
 impl Drop for Running {
     fn drop(&mut self) {
         #[cfg(unix)]
         {
+            // A live process stops first, so a daemon ends the children its group kill misses.
+            if matches!(self.child.try_wait(), Ok(None)) {
+                let _ = Command::new("/bin/kill")
+                    .args(["-TERM", &format!("-{}", self.child.id())])
+                    .stdout(Stdio::null())
+                    .stderr(Stdio::null())
+                    .status();
+                let deadline = Instant::now() + STOP_GRACE;
+                while matches!(self.child.try_wait(), Ok(None)) && Instant::now() < deadline {
+                    std::thread::sleep(Duration::from_millis(20));
+                }
+            }
             let _ = Command::new("/bin/kill")
                 .args(["-KILL", &format!("-{}", self.child.id())])
                 .stdout(Stdio::null())
