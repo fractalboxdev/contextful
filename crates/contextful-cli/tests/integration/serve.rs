@@ -3,6 +3,7 @@
 //! `token mint --holder` under a proof on every request.
 #![cfg(feature = "data-plane")]
 
+use contextful_agent::http::Hydration;
 use contextful_core::time::Instant;
 use contextful_policy::possession::{jwk_thumbprint, sign_proof, ProofRequest};
 use ed25519_dalek::SigningKey;
@@ -210,6 +211,29 @@ fn control_apply_uses_the_host_registered_task_set() {
     let (status, state) = control(&addr, "POST", "/control/apply", Some(&admin), &apply);
     assert_eq!(status, 200, "{state}");
     assert_eq!(state["applied"], json!(2));
+}
+
+/// A sink asserting, on each write, that the face it reports on has left warming.
+struct AfterFinish<'a>(&'a Hydration);
+
+impl Write for AfterFinish<'_> {
+    fn write(&mut self, buf: &[u8]) -> std::io::Result<usize> {
+        assert!(self.0.is_complete(), "`{}` was written while the face still reported warming", String::from_utf8_lossy(buf).trim());
+        Ok(buf.len())
+    }
+
+    fn flush(&mut self) -> std::io::Result<()> {
+        Ok(())
+    }
+}
+
+/// The `hydrated:` line reaches its reader only once the face answers reads, so a client
+/// that waits on the line never meets `503` while warming.
+#[test]
+fn the_hydrated_line_is_written_after_the_face_leaves_warming() {
+    let hydration = Hydration::warming();
+    contextful_cli::announce_hydrated(&hydration, 3, 4096, &mut AfterFinish(&hydration));
+    assert!(hydration.is_complete());
 }
 
 static NONCE: AtomicU64 = AtomicU64::new(0);

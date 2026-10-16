@@ -62,6 +62,8 @@ mod secrets;
 mod seed;
 #[cfg(feature = "read-plane")]
 mod serve;
+#[cfg(feature = "read-plane")]
+pub use serve::announce_hydrated;
 #[cfg(feature = "data-plane")]
 mod telemetry;
 #[cfg(feature = "read-plane")]
