@@ -397,16 +397,27 @@ impl Fixture {
     }
 }
 
-/// The first `UpperCamelCase:` word of a failed command's stderr, at most 64 characters.
+/// The first error identifier of a failed command's stderr, at most 64 characters: an
+/// `UpperCamelCase:` word, or an `UpperCamelCase` word closing a line alone or after a
+/// colon, as the CLI prints a bare error under its contexts. A closing word holding a digit
+/// is withheld: a trailing credential is a likelier reading.
 fn error_identifier(stderr: &str) -> Option<&str> {
-    stderr.split_ascii_whitespace().find_map(|word| {
-        let code = word.strip_suffix(':')?;
-        let camel = code.starts_with(|c: char| c.is_ascii_uppercase())
+    let camel = |code: &str| {
+        code.starts_with(|c: char| c.is_ascii_uppercase())
             && code.len() <= 64
             && code.chars().all(|c| c.is_ascii_alphanumeric())
             && code.chars().any(|c| c.is_ascii_lowercase())
-            && code.chars().skip(1).any(|c| c.is_ascii_uppercase());
-        camel.then_some(code)
+            && code.chars().skip(1).any(|c| c.is_ascii_uppercase())
+    };
+    stderr.lines().find_map(|line| {
+        let words: Vec<&str> = line.split_ascii_whitespace().collect();
+        words.iter().enumerate().find_map(|(i, word)| {
+            if let Some(code) = word.strip_suffix(':').filter(|code| camel(code)) {
+                return Some(code);
+            }
+            let closing = i + 1 == words.len() && (i == 0 || words[i - 1].ends_with(':'));
+            (closing && !word.contains(|c: char| c.is_ascii_digit()) && camel(word)).then_some(*word)
+        })
     })
 }
 

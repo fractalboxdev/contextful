@@ -39,31 +39,7 @@ fn unexpected_storage_initialization_errors_fail_without_exporting_credentials()
     let _guard = super::CONFORMANCE_ENV.lock().unwrap();
     let dir = tempfile::tempdir().unwrap();
     let binary = dir.path().join("contextful");
-    let helpers = dir.path().join("helpers");
-    std::fs::create_dir(&helpers).unwrap();
-    std::fs::write(helpers.join("initdb"), "#!/bin/sh\nexit 0\n").unwrap();
-    // Classification stops at the artifact's initialize error, before any SQL request.
-    std::fs::write(helpers.join("postgres"), "#!/usr/bin/python3\nimport signal, socket, sys\nport = int(sys.argv[sys.argv.index('-p') + 1])\nsignal.signal(signal.SIGINT, lambda *_: sys.exit(0))\nwith socket.socket() as server:\n    server.bind(('127.0.0.1', port))\n    server.listen()\n    while True:\n        connection, _ = server.accept()\n        connection.close()\n").unwrap();
-    for helper in ["initdb", "postgres"] {
-        std::fs::set_permissions(helpers.join(helper), std::fs::Permissions::from_mode(0o700))
-            .unwrap();
-    }
-    let prior_path = std::env::var_os("PATH");
-    // Fixture tools resolve first while concurrent acceptance builds retain their toolchain.
-    let mut paths = vec![helpers];
-    paths.extend(prior_path.iter().flat_map(|path| std::env::split_paths(path)));
-    std::env::set_var("PATH", std::env::join_paths(paths).unwrap());
-    struct RestorePath(Option<std::ffi::OsString>);
-    impl Drop for RestorePath {
-        fn drop(&mut self) {
-            if let Some(path) = &self.0 {
-                std::env::set_var("PATH", path);
-            } else {
-                std::env::remove_var("PATH");
-            }
-        }
-    }
-    let _restore = RestorePath(prior_path);
+    let _restore = fixture_tools(dir.path());
     for (error, expected, diagnostic) in [
         (
             "database connection refused",
@@ -111,6 +87,77 @@ fn unexpected_storage_initialization_errors_fail_without_exporting_credentials()
         assert!(!serde_json::to_string(&report)
             .unwrap()
             .contains("credential-material"));
+    }
+}
+
+#[test]
+#[cfg(unix)]
+fn a_failed_storage_check_names_the_identifier_the_cli_prints_alone() {
+    use contextful_acceptance::conformance::Outcome;
+    use std::os::unix::fs::PermissionsExt;
+
+    let _guard = super::CONFORMANCE_ENV.lock().unwrap();
+    let dir = tempfile::tempdir().unwrap();
+    let binary = dir.path().join("contextful");
+    let _restore = fixture_tools(dir.path());
+    // The CLI prints its error chain as `{:#}`: a D1 failure is a bare identifier, alone
+    // or as the last segment under a context.
+    for (error, diagnostic) in [
+        ("StorageBindingUnavailable", "ConformanceCommandFailed:storage:StorageBindingUnavailable"),
+        ("private D1 binding: StorageBindingFailed", "ConformanceCommandFailed:storage:StorageBindingFailed"),
+        ("StorageCapabilityMissing: R2 corpus bucket: list: HTTP 500 InternalError", "ConformanceCommandFailed:storage:StorageCapabilityMissing"),
+        ("No such file or directory (os error 2)", "ConformanceCommandFailed:storage"),
+        ("R2 secret: CredentialMaterial0123", "ConformanceCommandFailed:storage"),
+    ] {
+        std::fs::write(&binary, format!("#!/bin/sh\nif [ \"$1\" = --version ]; then printf 'contextful fixture development\\n'; exit 0; fi\nif [ \"$2\" = --help ]; then exit 0; fi\nif [ \"$1 $2\" = 'storage initialize' ]; then exit 0; fi\nif [ \"$1 $2\" = 'storage check' ]; then printf '%s\\n' '{error}' 'endpoint credential-material' >&2; exit 1; fi\nexit 99\n")).unwrap();
+        std::fs::set_permissions(&binary, std::fs::Permissions::from_mode(0o700)).unwrap();
+        let report = conformance::run(&Options {
+            binary: binary.clone(),
+            storage_profile: "postgres".into(),
+            required: vec!["empty-replacement".into()],
+            timeout_seconds: 60,
+        })
+        .unwrap();
+        let scenario = report.scenarios.iter().find(|scenario| scenario.required).unwrap();
+        assert_eq!(scenario.outcome, Outcome::Failed, "{report:?}");
+        assert_eq!(scenario.diagnostic.as_deref(), Some(diagnostic));
+        let serialized = serde_json::to_string(&report).unwrap();
+        assert!(!serialized.contains("credential-material") && !serialized.contains("CredentialMaterial"));
+    }
+}
+
+/// Synthetic `initdb` and `postgres` resolve first on `PATH` until the guard drops; the
+/// server accepts and closes connections, so classification stops at the artifact's stderr.
+#[cfg(unix)]
+fn fixture_tools(dir: &std::path::Path) -> RestorePath {
+    use std::os::unix::fs::PermissionsExt;
+    let helpers = dir.join("helpers");
+    std::fs::create_dir(&helpers).unwrap();
+    std::fs::write(helpers.join("initdb"), "#!/bin/sh\nexit 0\n").unwrap();
+    std::fs::write(helpers.join("postgres"), "#!/usr/bin/python3\nimport signal, socket, sys\nport = int(sys.argv[sys.argv.index('-p') + 1])\nsignal.signal(signal.SIGINT, lambda *_: sys.exit(0))\nwith socket.socket() as server:\n    server.bind(('127.0.0.1', port))\n    server.listen()\n    while True:\n        connection, _ = server.accept()\n        connection.close()\n").unwrap();
+    for helper in ["initdb", "postgres"] {
+        std::fs::set_permissions(helpers.join(helper), std::fs::Permissions::from_mode(0o700))
+            .unwrap();
+    }
+    let prior_path = std::env::var_os("PATH");
+    // Fixture tools resolve first while concurrent acceptance builds retain their toolchain.
+    let mut paths = vec![helpers];
+    paths.extend(prior_path.iter().flat_map(|path| std::env::split_paths(path)));
+    std::env::set_var("PATH", std::env::join_paths(paths).unwrap());
+    RestorePath(prior_path)
+}
+
+#[cfg(unix)]
+struct RestorePath(Option<std::ffi::OsString>);
+
+#[cfg(unix)]
+impl Drop for RestorePath {
+    fn drop(&mut self) {
+        if let Some(path) = &self.0 {
+            std::env::set_var("PATH", path);
+        } else {
+            std::env::remove_var("PATH");
+        }
     }
 }
 
