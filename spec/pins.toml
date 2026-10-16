@@ -199,6 +199,7 @@
 "run.export.d1-state" = { test = "crates/contextful-d1/tests/integration/main.rs::a_lost_sink_acknowledgement_reoffers_the_same_d1_event_identity" }
 "assurance.consumer.d1-profile" = { test = "crates/acceptance/tests/integration/conformance.rs::a_d1_consumer_replays_after_empty_disk_replacement" }
 "assurance.consumer.d1-admission" = { test = "crates/acceptance/tests/integration/conformance.rs::a_live_d1_admission_lease_refuses_a_second_suite_before_any_reset" }
+"store.endpoint.transport" = { test = "crates/contextful-sync/tests/integration/s3.rs::transport::a_stalled_get_gives_up_its_attempt_within_the_answer_bound_and_resends" }
 "assurance.consumer.d1-release" = { test = "tools/ci/tests/integration/artifact.rs::release_archives_carry_the_consumer_suite_and_digest_bound_compatibility_evidence" }
 
 # The floor is machine-maintained: `contextful-spec pins` sets each contract's entry to
@@ -212,6 +213,6 @@ corpus = 80
 disclosure = 162
 read = 248
 run = 510
-store = 283
+store = 284
 surface = 134
 topology = 76

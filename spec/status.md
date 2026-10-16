@@ -12,10 +12,10 @@ An unpinned clause is `committed`; a pinned one is `performed` when its Rust, Le
 | `disclosure` | 3 | 16 | 184 | 69 | 14 | 5 | 162 | 0 | 162 |
 | `read` | 2 | 20 | 290 | 47 | 29 | 15 | 248 | 0 | 248 |
 | `run` | 3 | 29 | 542 | 122 | 45 | 16 | 510 | 0 | 510 |
-| `store` | 3 | 19 | 293 | 64 | 14 | 10 | 283 | 0 | 283 |
+| `store` | 3 | 19 | 294 | 64 | 15 | 10 | 284 | 0 | 284 |
 | `surface` | 2 | 21 | 161 | 63 | 23 | 0 | 134 | 0 | 134 |
 | `topology` | 1 | 6 | 79 | 25 | 5 | 3 | 76 | 0 | 76 |
-| **total** | 22 | 169 | 2625 | 663 | 212 | 74 | 2337 | 0 | |
+| **total** | 22 | 169 | 2626 | 663 | 213 | 74 | 2338 | 0 | |
 
 Decision records: 18.
 
@@ -31,7 +31,7 @@ A milestone reads `closed` when its acceptance test computes `passing` and every
 | 3 — The run path | 12 | 277 | 266 | passing | closed |
 | 4 — Ingest | 25 | 593 | 495 | passing | closed |
 | 5 — The read face under enforcement | 17 | 309 | 272 | passing | closed |
-| 6 — Sync and replicas | 8 | 86 | 86 | passing | closed |
+| 6 — Sync and replicas | 8 | 87 | 87 | passing | closed |
 | 7 — Memory | 6 | 72 | 57 | passing | closed |
 | 8 — Accountability | 5 | 93 | 86 | passing | closed |
 | 9 — Visibility | 6 | 55 | 46 | passing | closed |
@@ -1967,6 +1967,7 @@ Unscheduled operations: 13.
 | `store.endpoint.missing-bucket` | `crates/contextful-sync/tests/integration/s3.rs::a_missing_bucket_answers_no_absent_object` | performed |
 | `store.endpoint.plaintext` | `crates/contextful-core/tests/integration/store/sync.rs::plaintext_http_opens_on_loopback_alone` | performed |
 | `store.endpoint.schemes` | `crates/contextful-core/tests/integration/store/sync.rs::each_endpoint_scheme_resolves_its_adapter_address` | performed |
+| `store.endpoint.transport` | `spec/pins.toml` | performed |
 | `store.endpoint.unsupported-scheme` | `crates/contextful-core/tests/integration/store/sync.rs::an_endpoint_no_adapter_answers_is_refused_by_name` | performed |
 | `store.fold.collection-failed` | `crates/contextful-context/tests/integration/fold.rs::a_failed_collection_does_not_unpublish_the_snapshot` | performed |
 | `store.fold.compaction-lease` | `crates/contextful-cli/tests/integration/sync/catalogs.rs::a_compaction_stamps_its_lease_fence_into_the_snapshot_manifest_and_the_pointer` | performed |

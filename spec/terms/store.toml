@@ -89,6 +89,9 @@ ReplicaMissingIndex          = { clause = "store.replicate.missing-index", gloss
 ReplicaSensitiveTable        = { clause = "store.replicate.sensitive-refused", gloss = "A refresh requested a replicate-off table." }
 
 [limit]
+store-endpoint-attempts     = { clause = "store.endpoint.transport", value = 3, unit = "attempts", basis = "chosen", gloss = "Total attempts of an S3 request whose repetition changes nothing." }
+store-endpoint-connect      = { clause = "store.endpoint.transport", value = 5, unit = "s", basis = "chosen", gloss = "Longest an S3 request attempt waits to connect." }
+store-endpoint-answer       = { clause = "store.endpoint.transport", value = 10, unit = "s", basis = "chosen", gloss = "Longest a sent S3 request attempt waits for its answer to begin." }
 store-snapshot-id-width     = { clause = "store.lay-out.snapshot-id", value = 20, unit = "chars", basis = "chosen", gloss = "Width of the zero-padded nanosecond field of a snapshot id." }
 store-snapshot-ancestors    = { clause = "store.lay-out.ancestors", value = 256, unit = "entries", basis = "chosen", gloss = "Most ancestors a snapshot manifest records." }
 store-node-id-length        = { clause = "store.lay-out.node-id-shape", value = 64, unit = "chars", basis = "chosen", gloss = "Longest node id, which is interpolated into paths and keys." }

@@ -446,6 +446,8 @@ Opening a store's bucket: the endpoint schemes, the transport, request addressin
 - `conditional-answers` — A `412` or `409`, or a `404` naming `NoSuchKey` to an `If-Match` put, answers a failed condition; a `501` answers an unsupported method and a `403` a forbidden credential, both read by {{store.probe.inconclusive}}.
 - `missing-bucket` — A `404` naming any code but `NoSuchKey`, `NoSuchBucket` among them, answers no absent object and no failed condition: the get, put, delete or list fails as transport, naming the code.
   *because a mistyped or deleted bucket otherwise reads as an empty bucket, a free lease or a lost compare-and-set*
+- `transport` — An S3 get, head, list page or unconditional put left without a whole answer resends within 3 attempts, each connecting within 5 s and answered within 10 s; a conditional put goes once.
+  *because a resent conditional put whose lost answer applied reads its own write back as a failed condition*
 - `list-pages` — A list follows each continuation token until the backend reports the listing complete, and returns every key under the prefix sorted.
 
 unsettled: Does an S3 bucket whose `[sync]` binds no key sign with the instance or container role's credentials? owner: store affects: store.endpoint

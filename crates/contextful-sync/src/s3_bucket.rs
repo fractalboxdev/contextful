@@ -17,6 +17,15 @@ const SIGNATURE_TTL: Duration = Duration::from_secs(300);
 /// Wall-clock budget of one request, transfer included.
 const REQUEST_TIMEOUT: Duration = Duration::from_secs(600);
 
+/// Bounds on an attempt's connection and on the wait for its answer once sent: an attempt
+/// held open unanswered ends within 15 s, so 3 attempts and their backoff end within 46 s
+/// (`store.endpoint.transport`).
+const CONNECT_TIMEOUT: Duration = Duration::from_secs(5);
+const ANSWER_TIMEOUT: Duration = Duration::from_secs(10);
+
+/// Total attempts of a request whose repetition changes nothing (`store.endpoint.transport`).
+const TRANSPORT_ATTEMPTS: u32 = 3;
+
 /// Keys one list page asks for; a backend may answer fewer.
 const LIST_PAGE: usize = 1000;
 
@@ -90,6 +99,8 @@ impl S3Bucket {
             .http_status_as_error(false)
             .max_redirects(0)
             .timeout_global(Some(REQUEST_TIMEOUT))
+            .timeout_connect(Some(CONNECT_TIMEOUT))
+            .timeout_recv_response(Some(ANSWER_TIMEOUT))
             .build()
             .new_agent();
         Ok(S3Bucket { bucket, credentials, agent })
@@ -108,6 +119,22 @@ impl S3Bucket {
 
     fn transport(what: &str, e: ureq::Error) -> ObjectError {
         ObjectError::Transport(format!("{what}: {e}"))
+    }
+
+    /// Send a request whose repetition changes nothing, resending after a transport failure
+    /// that left no whole answer; an answered status never resends.
+    fn resend<T>(what: &str, send: impl Fn() -> Result<T, ureq::Error>) -> Result<T, ObjectError> {
+        let mut attempt = 1;
+        loop {
+            match send() {
+                Ok(answer) => return Ok(answer),
+                Err(_) if attempt < TRANSPORT_ATTEMPTS => {
+                    attempt += 1;
+                    std::thread::sleep(Duration::from_millis(50 * u64::from(attempt - 1)));
+                }
+                Err(e) => return Err(S3Bucket::transport(what, e)),
+            }
+        }
     }
 
     /// A presigned `GET` of `key`, for a caller sending through its own client.
@@ -144,7 +171,8 @@ impl S3Bucket {
     /// document tells a missing key from a missing bucket (`store.endpoint.missing-bucket`).
     pub fn head(&self, key: &str) -> Result<Option<String>, ObjectError> {
         let what = format!("HEAD `{key}`");
-        let mut response = self.agent.head(&self.presign_head(key)).call().map_err(|e| S3Bucket::transport(&what, e))?;
+        let url = self.presign_head(key);
+        let mut response = S3Bucket::resend(&what, || self.agent.head(&url).call())?;
         match response.status().as_u16() {
             200 => etag(&response).map(Some).ok_or_else(|| ObjectError::Transport(format!("{what}: the answer carries no ETag"))),
             404 => Ok(self.get(key)?.map(|(_, tag)| tag)),
@@ -160,9 +188,10 @@ impl S3Bucket {
         let mut token: Option<String> = None;
         loop {
             let url = self.presign_list(prefix, token.as_deref());
-            let mut response = self.agent.get(&url).call().map_err(|e| S3Bucket::transport(&what, e))?;
-            let status = response.status().as_u16();
-            let text = response.body_mut().with_config().limit(u64::MAX).read_to_string().map_err(|e| S3Bucket::transport(&what, e))?;
+            let (status, text) = S3Bucket::resend(&what, || {
+                let mut response = self.agent.get(&url).call()?;
+                Ok((response.status().as_u16(), response.body_mut().with_config().limit(u64::MAX).read_to_string()?))
+            })?;
             if status != 200 {
                 return Err(S3Bucket::failure(&what, status, &text));
             }
@@ -191,15 +220,19 @@ fn read_text(response: &mut ureq::http::Response<ureq::Body>) -> String {
 impl ObjectStore for S3Bucket {
     fn get(&self, key: &str) -> Result<Option<(Vec<u8>, String)>, ObjectError> {
         let what = format!("GET `{key}`");
-        let mut response = self.agent.get(&self.presign_get(key)).call().map_err(|e| S3Bucket::transport(&what, e))?;
-        match response.status().as_u16() {
+        let url = self.presign_get(key);
+        let (status, tag, bytes) = S3Bucket::resend(&what, || {
+            let mut response = self.agent.get(&url).call()?;
+            let tag = etag(&response);
+            Ok((response.status().as_u16(), tag, response.body_mut().with_config().limit(u64::MAX).read_to_vec()?))
+        })?;
+        match status {
             200 => {
-                let tag = etag(&response).ok_or_else(|| ObjectError::Transport(format!("{what}: the answer carries no ETag")))?;
-                let bytes = response.body_mut().with_config().limit(u64::MAX).read_to_vec().map_err(|e| S3Bucket::transport(&what, e))?;
+                let tag = tag.ok_or_else(|| ObjectError::Transport(format!("{what}: the answer carries no ETag")))?;
                 Ok(Some((bytes, tag)))
             }
             status => {
-                let body = read_text(&mut response);
+                let body = String::from_utf8_lossy(&bytes);
                 if status == 404 && absent_key(&body) {
                     return Ok(None);
                 }
@@ -220,11 +253,19 @@ impl ObjectStore for S3Bucket {
             action.headers_mut().insert(*name, value.clone());
         }
         let url = action.sign(SIGNATURE_TTL);
-        let mut request = self.agent.put(url.as_str());
-        if let Some((name, value)) = &header {
-            request = request.header(*name, value);
-        }
-        let mut response = request.send(bytes).map_err(|e| S3Bucket::transport(&what, e))?;
+        let send = || {
+            let mut request = self.agent.put(url.as_str());
+            if let Some((name, value)) = &header {
+                request = request.header(*name, value);
+            }
+            request.send(bytes)
+        };
+        // An unconditional put of the same bytes leaves the state its first landing left; a
+        // conditional put whose answer is lost may have applied, so it goes once.
+        let mut response = match condition {
+            Condition::None => S3Bucket::resend(&what, send)?,
+            _ => send().map_err(|e| S3Bucket::transport(&what, e))?,
+        };
         let status = response.status().as_u16();
         if status == 200 {
             return etag(&response).map(Put::Applied).ok_or_else(|| ObjectError::Transport(format!("{what}: the answer carries no ETag")));
