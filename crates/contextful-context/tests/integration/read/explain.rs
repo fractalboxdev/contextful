@@ -23,9 +23,17 @@ fn fixture() -> Reads {
     );
     land_rows(&r.store, "research/sources", "src-1", json!([{ "source_id": "s0" }]));
     let evidence = serde_json::to_string(&json!([{ "table": "research/sources", "run": "src-1", "seq": 0 }])).unwrap();
-    let row = json!({ "claim_id": "c-1", "subject": "e-acme", "predicate": "headquartered_in", "object": "Osaka", "scope": null,
-        "tier": "derived", "confidence": 0.8, "valid_from": "2030-01-05T00:00:00Z", "valid_to": null, "evidence": evidence,
-        "superseded_by": null, "grant_id": "g", "agent": null });
+    // `c-1` carries the id, as a direct write names it; `c-2` the canonical name, as synthesis
+    // keys a resolved claim; `c-3` an alias, which keys no claim to the identity.
+    let row = |id: &str, subject: &str, predicate: &str| {
+        json!({ "claim_id": id, "subject": subject, "predicate": predicate, "object": "Osaka", "scope": null,
+            "tier": "derived", "confidence": 0.8, "valid_from": "2030-01-05T00:00:00Z", "valid_to": null, "evidence": evidence,
+            "superseded_by": null, "grant_id": "g", "agent": null })
+        .as_object()
+        .unwrap()
+        .clone()
+    };
+    let rows = vec![row("c-1", "e-acme", "headquartered_in"), row("c-2", "Acme Holdings", "founded_in"), row("c-3", "ACME", "listed_in")];
     let types = [("valid_from", ColumnType::Timestamp), ("valid_to", ColumnType::Timestamp), ("confidence", ColumnType::Float64),
         ("scope", ColumnType::Utf8), ("superseded_by", ColumnType::Utf8), ("agent", ColumnType::Utf8)]
         .iter()
@@ -37,7 +45,7 @@ fn fixture() -> Reads {
         committed_at: at("2030-01-10T00:00:00Z"),
     };
     let decl = TableDecl { primary_key: Some(vec!["claim_id".into()]), ..TableDecl::named("memory/facts") };
-    land(&r.store, &decl, &Batch { rows: vec![row.as_object().unwrap().clone()], types }, &ctx).unwrap();
+    land(&r.store, &decl, &Batch { rows, types }, &ctx).unwrap();
     r
 }
 
@@ -58,18 +66,27 @@ fn an_alias_in_another_script_resolves_to_one_card() {
     assert_eq!(card(&r, &s, "acme")["entity"]["entity_id"], json!("e-acme"));
 }
 
-/// A card naming `claims` carries the claims {{read.recall.keyed}} returns for subject `entity_id` at the call instant, under {{read.recall.keyed-gate}}.
-// spec: read.resolve-entity.card-claims@17ad044e
+/// A card naming `claims` carries the claims {{read.recall.keyed}} returns at the call instant, under {{read.recall.keyed-gate}}, whose `subject` equals the identity's `entity_id` or its canonical `name`.
+// spec: read.resolve-entity.card-claims@e868f800
 #[test]
-fn a_card_carries_the_live_claims_about_its_identity() {
+fn a_card_carries_the_live_claims_keyed_by_its_id_or_canonical_name() {
     let r = fixture();
     let s = r.session(&["memory/*", "research/*"], None, None);
-    let got = card(&r, &s, "Acme Holdings");
+    let got = card(&r, &s, "アクメ");
     let claims = &got["claims"];
     let at = |c: &str| claims["columns"].as_array().unwrap().iter().position(|x| x == c).unwrap();
-    assert_eq!(claims["rows"].as_array().unwrap().len(), 1, "{got}");
-    assert_eq!(claims["rows"][0][at("claim_id")], json!("c-1"));
-    assert_eq!(claims["rows"][0][at("subject")], json!("e-acme"));
+    let mut keyed: Vec<(Value, Value)> = claims["rows"].as_array().unwrap().iter().map(|r| (r[at("claim_id")].clone(), r[at("subject")].clone())).collect();
+    keyed.sort_by_key(|(id, _)| id.to_string());
+    assert_eq!(keyed, [(json!("c-1"), json!("e-acme")), (json!("c-2"), json!("Acme Holdings"))], "{got}");
+    // Under `internals: true` the card lists the identity read and the claims read.
+    let request = ExplainRequest { claims: Some("memory/facts".into()), internals: true, ..ExplainRequest::new("memory/entities", "ACME", super::at("2030-06-01T00:00:00Z")) };
+    let traced = r.face.explain(&s, &request).unwrap();
+    let internals = &traced["contextful.internals"];
+    assert_eq!((internals["engine"].clone(), internals["row_count"].clone()), (json!("duckdb"), json!(3)), "{traced}");
+    let sql = internals["sql"].as_str().unwrap();
+    assert!(sql.contains("memory/entities") && sql.contains("memory/facts"), "{sql}");
+    assert!(traced["claims"].get("contextful.internals").is_none(), "{traced}");
+    assert!(card(&r, &s, "ACME").get("contextful.internals").is_none());
     // A caller who cannot read the cited row receives the identity and no claim from it.
     let memory_only = r.session(&["memory/*"], None, None);
     let gated = card(&r, &memory_only, "Acme Holdings");

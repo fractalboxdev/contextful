@@ -33,6 +33,9 @@ pub struct RecallRequest {
     pub table: String,
     /// The subject every returned claim carries exactly.
     pub subject: String,
+    /// Further exact subjects a claim may carry instead: a knowledge card's canonical name
+    /// beside its `entity_id` (`read.resolve-entity.card-claims`). Empty for `memory.recall`.
+    pub also_subjects: Vec<String>,
     /// The valid-time instant the claims cover; `None` reads at `anchor`.
     pub observed_at: Option<Bound>,
     /// The transaction-time bound; `None` reads the latest committed state.
@@ -51,7 +54,19 @@ pub struct RecallRequest {
 impl RecallRequest {
     /// A keyed recall of `subject` in `table`, asked at `anchor`, with every option unset.
     pub fn new(table: impl Into<String>, subject: impl Into<String>, anchor: Instant) -> RecallRequest {
-        RecallRequest { table: table.into(), subject: subject.into(), observed_at: None, as_of_ingest: None, available_as_of: None, limit: None, max_duration_ms: None, max_response_bytes: None, anchor, internals: false }
+        RecallRequest { table: table.into(), subject: subject.into(), also_subjects: Vec::new(), observed_at: None, as_of_ingest: None, available_as_of: None, limit: None, max_duration_ms: None, max_response_bytes: None, anchor, internals: false }
+    }
+
+    /// Every exact subject a returned claim may carry: `subject`, then `also_subjects`,
+    /// each once.
+    fn subjects(&self) -> Vec<&str> {
+        let mut subjects = vec![self.subject.as_str()];
+        for s in &self.also_subjects {
+            if !subjects.contains(&s.as_str()) {
+                subjects.push(s);
+            }
+        }
+        subjects
     }
 
     /// The bounds the session serving this recall opens under: `as_of_ingest` as its
@@ -119,7 +134,7 @@ impl Face {
             let evidence_at = columns.iter().position(|c| c == "evidence").expect("a claim carries evidence");
             let mut offset = 0u64;
             loop {
-                let (sql, parameters) = keyed_sql(relation.name(), &columns, &request.subject, observed, page, offset);
+                let (sql, parameters) = keyed_sql(relation.name(), &columns, &request.subjects(), observed, page, offset);
                 let (_, rows) = match deadline {
                     Some((ms, source)) => engine.run_timed(&sql, &parameters, None, ms, source)?,
                     None => engine.run(&sql, &parameters, None)?,
@@ -315,7 +330,7 @@ impl RecallTally {
 /// validity comparison `store.bound-time.valid-as-of` makes, and no `superseded_by`
 /// filter; ordered by tier, `curated` first, then `valid_from` newest first, then
 /// `claim_id`.
-fn keyed_sql(relation: &str, columns: &[String], subject: &str, observed: Bound, limit: u64, offset: u64) -> (String, Bindings) {
+fn keyed_sql(relation: &str, columns: &[String], subjects: &[&str], observed: Bound, limit: u64, offset: u64) -> (String, Bindings) {
     // mirrors: store.bound-time.valid-as-of
     // An exclusive bound asks about the instant just before it: a claim starting at the
     // bound is not yet valid, and a claim ending at it still is.
@@ -324,11 +339,12 @@ fn keyed_sql(relation: &str, columns: &[String], subject: &str, observed: Bound,
     // The highest standing ranks 0; a tier name the enum does not hold ranks last.
     let ranks: String = Tier::ALL.iter().rev().enumerate().map(|(i, t)| format!("WHEN '{}' THEN {i} ", t.name())).collect();
     let sql = format!(
-        "SELECT {} FROM {} WHERE {} = ? AND {} {from_cmp} ? AND ({} IS NULL OR {} {to_cmp} ?) \
+        "SELECT {} FROM {} WHERE {} IN ({}) AND {} {from_cmp} ? AND ({} IS NULL OR {} {to_cmp} ?) \
          ORDER BY CASE {} {ranks}ELSE {} END, {} DESC, {} LIMIT {limit} OFFSET {offset}",
         columns.iter().map(|c| ident(c)).collect::<Vec<_>>().join(", "),
         ident(relation),
         ident("subject"),
+        vec!["?"; subjects.len()].join(", "),
         at("valid_from"),
         ident("valid_to"),
         at("valid_to"),
@@ -337,10 +353,8 @@ fn keyed_sql(relation: &str, columns: &[String], subject: &str, observed: Bound,
         at("valid_from"),
         ident("claim_id"),
     );
-    let parameters = Bindings::positional([
-        Param::Text(subject.to_string()),
-        Param::Timestamp(observed.at),
-        Param::Timestamp(observed.at),
-    ]);
+    let parameters = Bindings::positional(
+        subjects.iter().map(|s| Param::Text(s.to_string())).chain([Param::Timestamp(observed.at), Param::Timestamp(observed.at)]),
+    );
     (sql, parameters)
 }

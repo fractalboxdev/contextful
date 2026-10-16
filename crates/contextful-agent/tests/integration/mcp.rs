@@ -951,7 +951,7 @@ fn the_recall_block_rides_a_ranked_read_exactly_when_a_claim_arm_runs() {
 // spec: read.respond.internals-opt-in@82ae2a18
 #[test]
 fn every_read_tool_returns_internals_only_on_request() {
-    let f = claims();
+    let f = entities();
     let clock = FixedClock(at("2030-06-01T00:00:00Z"));
     let server = Server::new(&f.face, f.authority.clone(), &current, &clock, &f.audit).unwrap();
     let listed = call(&server, "context.files", json!({}));
@@ -965,6 +965,7 @@ fn every_read_tool_returns_internals_only_on_request() {
         ("context.file", json!({ "path": path }), true),
         ("corpus.retrieve", json!({ "prefix": "research/", "query": "acme cfo" }), true),
         ("memory.recall", json!({ "table": "research/facts", "subject": "acme" }), true),
+        ("memory.explain", json!({ "table": "research/entities", "reference": "ACME", "claims": "research/facts" }), true),
     ];
     for (tool, arguments, runs_sql) in reads {
         let plain = call(&server, tool, arguments.clone());
@@ -1016,11 +1017,11 @@ fn memory_recall_answers_keyed_over_the_tool_protocol() {
     assert_eq!(notes["result"]["structuredContent"]["error"]["identifier"], json!("MemoryRecallNotClaims"), "{notes}");
 }
 
-/// A `memory.recall` read, and a `corpus.retrieve` read returning `memory_facts` rows, records the returned claim ids as `contextful.memory.claims` in its read entry, beside the caller's credential, subject and read instant.
-// spec: read.recall.usage-ledger@cbc45e6f
+/// A `memory.recall` read, a `memory.explain` read carrying claims, and a `corpus.retrieve` read returning `memory_facts` rows, records the returned claim ids as `contextful.memory.claims` in its read entry, beside the caller's credential, subject and read instant.
+// spec: read.recall.usage-ledger@db5cd279
 #[test]
 fn memory_reads_record_the_claim_ids_they_returned() {
-    let f = claims();
+    let f = entities();
     let clock = FixedClock(at("2030-06-01T00:00:00Z"));
     let server = Server::new(&f.face, f.authority.clone(), &current, &clock, &f.audit).unwrap();
     call(&server, "memory.recall", json!({ "table": "research/facts", "subject": "acme", "observed_at": "2030-02-01T00:00:00Z" }));
@@ -1029,10 +1030,12 @@ fn memory_reads_record_the_claim_ids_they_returned() {
     assert_eq!(rows(&ranked).as_array().map(Vec::len), Some(1), "{ranked}");
     call(&server, "corpus.retrieve", json!({ "prefix": "research/notes", "query": "n1" }));
     call(&server, "context.query", json!({ "sql": "SELECT claim_id FROM \"research/facts\"" }));
+    call(&server, "memory.explain", json!({ "table": "research/entities", "reference": "アクメ", "claims": "research/facts" }));
+    call(&server, "memory.explain", json!({ "table": "research/entities", "reference": "アクメ" }));
 
     let entries = contextful_policy::audit::entries(&f.dir.path().join("audit")).unwrap();
     let claims: Vec<&Value> = entries.iter().map(|e| &e.attributes["contextful.memory.claims"]).collect();
-    assert_eq!(claims, [&json!(["c-dana"]), &json!([]), &json!(["c-lee"]), &Value::Null, &Value::Null]);
+    assert_eq!(claims, [&json!(["c-dana"]), &json!([]), &json!(["c-lee"]), &Value::Null, &Value::Null, &json!(["c-lee"]), &Value::Null]);
     let first = &entries[0].attributes;
     assert_eq!(first["contextful.credential"], json!(f.authority.credential_id()));
     assert_eq!(first["contextful.subject.on_behalf_of"], json!("user://dana@acme.example"));

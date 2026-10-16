@@ -444,8 +444,9 @@ fn calibration_reports_the_settled_claims_of_a_table() {
 }
 
 /// `contextful memory explain` resolves an alias written in another script to one card with
-/// the live claims about its identity, lists the candidates an ambiguous alias matches, and
-/// returns the identity alone to a credential holding no grant on the claims table.
+/// the live claims about its identity, synthesized and written alike, lists the candidates
+/// an ambiguous alias matches, and returns the identity alone to a credential holding no
+/// grant on the claims table.
 #[test]
 fn explain_cli_answers_one_card_candidates_or_the_identity_alone() {
     let (dir, public, token) = project();
@@ -467,6 +468,18 @@ fn explain_cli_answers_one_card_candidates_or_the_identity_alone() {
         "evidence": [{ "table": "research/notes", "run": "run-0001", "seq": 0 }] })
     .to_string();
     stdout(&run(p, &["memory", "write", "--project", "research", "--into", "memory/facts", "--claim", &claim, "--public-key", &public, "--audience", AUD], &[("CONTEXTFUL_TOKEN", &token)]));
+    // Synthesis resolves the mention `ACME` and keys its claim by the canonical name.
+    let extracted = json!({ "claims": [{ "subject": "ACME", "predicate": "ceo", "object": "Lee", "confidence": 0.9,
+        "evidence": [{ "table": "research/notes", "run": "run-0001", "seq": 0 }] }] })
+    .to_string();
+    let endpoint = Endpoint::start(vec![extracted]);
+    let url = endpoint.url();
+    let synthesize = [
+        "memory", "synthesize", "--project", "research", "--source", "research/notes", "--into", "memory/facts", "--endpoint", &url,
+        "--model", "fixture", "--public-key", &public, "--audience", AUD,
+    ];
+    let report = stdout(&run(p, &synthesize, &[("CONTEXTFUL_TOKEN", &token), ("CONTEXTFUL_INFERENCE_KEY", "")]));
+    assert!(report.contains("1 landed"), "{report}");
 
     let explain = |reference: &str, token: &str| -> Value {
         let args = ["memory", "explain", "--project", "research", "--table", "memory/entities", "--reference", reference, "--claims", "memory/facts", "--public-key", &public, "--audience", AUD];
@@ -475,9 +488,10 @@ fn explain_cli_answers_one_card_candidates_or_the_identity_alone() {
     let identity = json!({ "entity_id": "e-acme", "kind": "company", "name": "Acme Holdings", "aliases": ["ACME", "アクメ"] });
     let card = explain("アクメ", &token);
     assert_eq!(card["entity"], identity, "{card}");
-    let object = card["claims"]["columns"].as_array().unwrap().iter().position(|c| c == "object").unwrap();
-    assert_eq!(card["claims"]["rows"][0][object], json!("Dana"), "{card}");
-    assert_eq!(card["claims"]["rows"].as_array().unwrap().len(), 1, "{card}");
+    let at = |c: &str| card["claims"]["columns"].as_array().unwrap().iter().position(|x| x == c).unwrap();
+    let mut keyed: Vec<(Value, Value)> = card["claims"]["rows"].as_array().unwrap().iter().map(|r| (r[at("subject")].clone(), r[at("object")].clone())).collect();
+    keyed.sort_by_key(|(subject, _)| subject.to_string());
+    assert_eq!(keyed, [(json!("Acme Holdings"), json!("Lee")), (json!("e-acme"), json!("Dana"))], "{card}");
 
     assert_eq!(explain("GX", &token), json!({ "entity": null, "candidates": ["e-globex", "e-gx"] }));
 

@@ -2,7 +2,7 @@
 //! `memory_entities` table to its canonical record, beside the claims recall serves about
 //! it. The declared identities a session reads are shared with synthesis's Resolve step.
 
-use super::face::Face;
+use super::face::{internals_block, Face};
 use super::fault::ReadFault;
 use super::recall::RecallRequest;
 use contextful_core::enforce::EnforceError;
@@ -12,6 +12,7 @@ use contextful_core::memory::MemoryError;
 use contextful_core::read::respond::Response;
 use contextful_core::read::Refusal;
 use contextful_core::store::bound_time::{Bound, Bounds};
+use contextful_core::store::relation::ident;
 use contextful_core::time::Instant;
 use contextful_policy::enforce::session::Session;
 use serde_json::{json, Map, Value};
@@ -32,12 +33,14 @@ pub struct ExplainRequest {
     /// The budgets the claims read runs under (`read.register.budget-arguments`).
     pub max_duration_ms: Option<u64>,
     pub max_response_bytes: Option<u64>,
+    /// Return the internals object (`read.respond.internals-opt-in`).
+    pub internals: bool,
 }
 
 impl ExplainRequest {
     /// A card for `reference` in `table`, asked at `anchor`, naming no claims table.
     pub fn new(table: impl Into<String>, reference: impl Into<String>, anchor: Instant) -> ExplainRequest {
-        ExplainRequest { table: table.into(), reference: reference.into(), claims: None, anchor, available_as_of: None, max_duration_ms: None, max_response_bytes: None }
+        ExplainRequest { table: table.into(), reference: reference.into(), claims: None, anchor, available_as_of: None, max_duration_ms: None, max_response_bytes: None, internals: false }
     }
 
     /// The bounds the session serving this card opens under.
@@ -53,6 +56,20 @@ pub struct EntityRecord {
     pub kind: Option<String>,
 }
 
+/// The block a read's internals ride under (`read.respond.internals-opt-in`).
+const INTERNALS: &str = "contextful.internals";
+
+/// `card` with the internals of the statements it ran, when the request asks for them: the
+/// identity read, then the claims read, under the claims read's ceiling. The row count
+/// counts the identity and each claim.
+fn with_internals(mut card: Value, request: &ExplainRequest, executed: &[String], limit: Option<u64>, started: std::time::Instant) -> Value {
+    if request.internals {
+        let rows = u64::from(!card["entity"].is_null()) + card["claims"]["rows"].as_array().map_or(0, |r| r.len() as u64);
+        card[INTERNALS] = internals_block(executed, limit, rows, started);
+    }
+    card
+}
+
 fn objects(r: &Response) -> Vec<Map<String, Value>> {
     r.rows.iter().map(|row| r.columns.iter().cloned().zip(row.iter().cloned()).collect()).collect()
 }
@@ -64,20 +81,22 @@ impl Face {
     /// registers the claims table (`read.resolve-entity.card-authorization`), read by keyed
     /// recall at the call instant (`read.resolve-entity.card-claims`).
     pub fn explain(&self, session: &Session, request: &ExplainRequest) -> Result<Value, ReadFault> {
+        let started = std::time::Instant::now();
         let table = request.table.as_str();
-        if session.relation(table).is_none() {
+        let Some(relation) = session.relation(table) else {
             return Err(EnforceError::UnknownRelation(format!("`{table}`")).into());
-        }
+        };
         if self.memory().table(table).is_none_or(|t| t.shape != Shape::Entities) {
             let why = format!("`{table}` declares no `{}` shape, so it holds no identity to explain", Shape::Entities.name());
             return Err(Refusal::from(MemoryError::ExplainNotEntities(why)).into());
         }
+        let mut executed = vec![format!("SELECT * FROM {}", ident(relation.name()))];
         let records = self.entities(session, table)?;
         let entities: Vec<Entity> = records.iter().map(|r| r.entity.clone()).collect();
         let id = match resolve(&request.reference, &entities) {
             Resolution::One(id) => id,
-            Resolution::Ambiguous(ids) => return Ok(json!({ "entity": null, "candidates": ids })),
-            Resolution::Unresolved => return Ok(json!({ "entity": null, "candidates": [] })),
+            Resolution::Ambiguous(ids) => return Ok(with_internals(json!({ "entity": null, "candidates": ids }), request, &executed, None, started)),
+            Resolution::Unresolved => return Ok(with_internals(json!({ "entity": null, "candidates": [] }), request, &executed, None, started)),
         };
         let record = records.iter().find(|r| r.entity.entity_id == id).expect("a resolved id names a read identity");
         let mut card = json!({
@@ -89,17 +108,27 @@ impl Face {
             },
             "candidates": [],
         });
+        let mut limit = None;
         if let Some(claims) = request.claims.as_deref().filter(|c| session.relation(c).is_some()) {
+            // Synthesis keys a resolved claim by canonical name, a direct write by whatever
+            // subject it names; both keys reach the card (`read.resolve-entity.card-claims`).
             let recall = RecallRequest {
+                also_subjects: vec![record.entity.name.clone()],
                 observed_at: request.available_as_of,
                 available_as_of: request.available_as_of,
                 max_duration_ms: request.max_duration_ms,
                 max_response_bytes: request.max_response_bytes,
-                ..RecallRequest::new(claims, id, request.anchor)
+                internals: request.internals,
+                ..RecallRequest::new(claims, id.clone(), request.anchor)
             };
-            card["claims"] = self.recall(session, &recall)?.to_json();
+            let mut answer = self.recall(session, &recall)?.to_json();
+            if let Some(Value::Object(internals)) = answer.as_object_mut().and_then(|a| a.remove(INTERNALS)) {
+                executed.extend(internals.get("sql").and_then(Value::as_str).map(str::to_string));
+                limit = internals.get("limit").and_then(Value::as_u64);
+            }
+            card["claims"] = answer;
         }
-        Ok(card)
+        Ok(with_internals(card, request, &executed, limit, started))
     }
 
     /// Every row of `table` the session reads that carries an `entity_id` and a `name`.

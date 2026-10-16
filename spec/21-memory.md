@@ -209,7 +209,7 @@ Serving memory: the ranked arm at the read's anchor, the keyed read at an observ
   *A-read*
 - `stale-revision` — A stale citation remains subject to {{read.recall.keyed-gate}}; only a newly committed source row advancing {{read.synthesize.pass-cursor}} starts synthesis against its live key version.
   *A-read*
-- `usage-ledger` — A `memory.recall` read, and a `corpus.retrieve` read returning `memory_facts` rows, records the returned claim ids as `contextful.memory.claims` in its read entry, beside the caller's credential, subject and read instant.
+- `usage-ledger` — A `memory.recall` read, a `memory.explain` read carrying claims, and a `corpus.retrieve` read returning `memory_facts` rows, records the returned claim ids as `contextful.memory.claims` in its read entry, beside the caller's credential, subject and read instant.
   *A-read*
 - `ranked-order` — Within one in-window flag value of {{read.rank.question-window-is-a-tier}}, claims order by tier, `curated`, then `derived`, then `researched`; claims of one tier keep {{read.rank.fusion}} order.
   *A-read*
@@ -248,8 +248,8 @@ Mention-to-entity matching, aliases, the knowledge card, place identity and near
   *because an ended edge records a past owner, and returning it names that owner as current*
 - `knowledge-card` — `memory.explain` takes `table`, `reference` and an optional `claims` table, resolves `reference` against the names and aliases of `table`, and returns that identity's `entity_id`, `kind`, `name` and `aliases`.
   *because a caller holding a name or an alias in any script needs the canonical record without knowing its opaque id*
-- `card-claims` — A card naming `claims` carries the claims {{read.recall.keyed}} returns for subject `entity_id` at the call instant, under {{read.recall.keyed-gate}}.
-  *because the card composes recall rather than restating which claims are live and which evidence a caller may see*
+- `card-claims` — A card naming `claims` carries the claims {{read.recall.keyed}} returns at the call instant, under {{read.recall.keyed-gate}}, whose `subject` equals the identity's `entity_id` or its canonical `name`.
+  *because synthesis keys a resolved claim by canonical name and `claim_id` hashes the subject, so re-keying stored claims by id re-identifies every one*
 - `card-candidates` — A `reference` matching two or more identities with no exact canonical name separating them returns their `entity_id`s as candidates and no identity; a `reference` matching none returns an empty card.
   *because naming one of several matches guesses on the caller's behalf, and an absent identity is an answer, not a fault*
 - `card-authorization` — The card reads `table` and `claims` through the caller's session; a session registering no `claims` relation receives the identity alone, with no claims and no mention of that table.

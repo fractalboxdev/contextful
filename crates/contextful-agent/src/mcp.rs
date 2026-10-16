@@ -480,9 +480,13 @@ impl<'a> Tools<'a> {
     }
 
     /// The claim ids a memory read returned (`read.recall.usage-ledger`): every row's
-    /// `claim_id` of a `memory.recall` answer, and each `memory_facts` row's of a
-    /// `corpus.retrieve` answer returning one. Any other read returns `None`.
+    /// `claim_id` of a `memory.recall` answer and of a knowledge card's claims, and each
+    /// `memory_facts` row's of a `corpus.retrieve` answer returning one. Any other read,
+    /// and a card that read no claims, returns `None`.
     fn claims(&self, name: &str, value: &Value) -> Option<Vec<String>> {
+        if name == "memory.explain" {
+            return self.claims("memory.recall", value.get("claims")?);
+        }
         let columns = value.get("columns")?.as_array()?;
         let at = |column: &str| columns.iter().position(|c| c == column);
         let rows = value.get("rows")?.as_array()?;
@@ -714,7 +718,7 @@ impl<'a> Tools<'a> {
                 self.session(caller, zone, request.bounds(), pins).and_then(|s| self.face.recall(&s, &request).map(|r| answered_in(r, s)))
             }
             "memory.explain" => {
-                only(args, name, &["table", "reference", "claims"])?;
+                only(args, name, &["table", "reference", "claims", "internals"])?;
                 // A knowledge card reads the latest state (`read.register.bound-arguments`).
                 if let Some(k) = ["as_of", "valid_as_of", "available_as_of", VINTAGE].into_iter().find(|k| args.contains_key(*k)) {
                     return Err(invalid(format!("`{name}` takes no argument `{k}`")));
@@ -724,6 +728,7 @@ impl<'a> Tools<'a> {
                     available_as_of: horizon.map(|at| Bound { at, inclusive: true }),
                     max_duration_ms: integer(args, "max_duration_ms")?,
                     max_response_bytes: integer(args, "max_response_bytes")?,
+                    internals: boolean(args, "internals")?,
                     ..ExplainRequest::new(required(args, "table")?, required(args, "reference")?, self.clock.now())
                 };
                 self.session(caller, zone, request.bounds(), pins).and_then(|s| {

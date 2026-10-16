@@ -8052,7 +8052,7 @@
       "operation": "recall",
       "subject": "usage-ledger",
       "kind": "behavior",
-      "statement": "A `memory.recall` read, and a `corpus.retrieve` read returning `memory_facts` rows, records the returned claim ids as `contextful.memory.claims` in its read entry, beside the caller's credential, subject and read instant.",
+      "statement": "A `memory.recall` read, a `memory.explain` read carrying claims, and a `corpus.retrieve` read returning `memory_facts` rows, records the returned claim ids as `contextful.memory.claims` in its read entry, beside the caller's credential, subject and read instant.",
       "why": "A-read",
       "file": "spec/21-memory.md",
       "line": 212
@@ -8143,8 +8143,8 @@
       "operation": "resolve-entity",
       "subject": "card-claims",
       "kind": "behavior",
-      "statement": "A card naming `claims` carries the claims {{read.recall.keyed}} returns for subject `entity_id` at the call instant, under {{read.recall.keyed-gate}}.",
-      "why": "because the card composes recall rather than restating which claims are live and which evidence a caller may see",
+      "statement": "A card naming `claims` carries the claims {{read.recall.keyed}} returns at the call instant, under {{read.recall.keyed-gate}}, whose `subject` equals the identity's `entity_id` or its canonical `name`.",
+      "why": "because synthesis keys a resolved claim by canonical name and `claim_id` hashes the subject, so re-keying stored claims by id re-identifies every one",
       "file": "spec/21-memory.md",
       "line": 251
     },

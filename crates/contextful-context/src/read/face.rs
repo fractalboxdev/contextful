@@ -1590,7 +1590,7 @@ fn builtin_tool(name: &str) -> Value {
         ),
         "memory.explain" => (
             "The canonical record a name or alias resolves to in an entities table, its candidates when several match, and the live claims about it from `claims`.",
-            json!({ "table": { "type": "string" }, "reference": { "type": "string" }, "claims": { "type": "string" }, "zone": { "type": "string" } }),
+            json!({ "table": { "type": "string" }, "reference": { "type": "string" }, "claims": { "type": "string" }, "internals": { "type": "boolean" }, "zone": { "type": "string" } }),
             vec!["table", "reference"],
         ),
         _ => (
