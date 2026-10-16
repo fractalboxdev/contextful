@@ -7,6 +7,7 @@ use contextful_core::store::fold::FoldOutcome;
 use contextful_core::store::object::{Condition, ObjectStore};
 use contextful_core::store::sync::{BucketManifest, Entry};
 use contextful_core::run::journal::sha256_hex;
+use contextful_core::grant::TablePattern;
 use contextful_core::store::StoreError;
 use contextful_sync::{PullScope, SyncError};
 use serde_json::json;
@@ -175,7 +176,7 @@ fn a_clone_keeps_the_store_uuid_and_an_independent_store_refuses_it() {
     assert_eq!(std::fs::read_to_string(clone.root().join("store-id")).unwrap(), identity);
 
     let scoped = node("ingest-d", b.clone(), "");
-    scoped.syncer.pull(&PullScope { tables: ["filings".to_string()].into(), ..PullScope::default() }).unwrap();
+    scoped.syncer.pull(&PullScope { tables: vec![pattern("filings")], ..PullScope::default() }).unwrap();
     assert_eq!(std::fs::read_to_string(scoped.root().join("store-id")).unwrap(), identity);
 
     let independent = node("ingest-c", b, "");
@@ -491,7 +492,7 @@ fn a_pass_merges_committed_ledgers_and_a_replica_carries_the_merge() {
 fn a_refresh_requesting_a_replicate_off_table_refuses() {
     let (_dir, b, _a) = pushed();
     let r = node("replica-1", b, "\n[replica]\nof = \"team/research\"\n");
-    let scope = PullScope { tables: vec!["filings".into()], replicate_off: vec!["filings".into()], ..PullScope::default() };
+    let scope = PullScope { tables: vec![pattern("filings")], replicate_off: vec!["filings".into()], ..PullScope::default() };
     match r.syncer.pull(&scope) {
         Err(SyncError::Store(StoreError::ReplicaSensitiveTable(m))) => assert!(m.contains("filings") && m.contains("proxying face"), "{m}"),
         other => panic!("{other:?}"),
@@ -499,6 +500,24 @@ fn a_refresh_requesting_a_replicate_off_table_refuses() {
     // An unscoped refresh takes every other table and leaves the replicate-off one behind.
     r.syncer.pull(&PullScope { tables: vec![], replicate_off: vec!["filings".into()], ..PullScope::default() }).unwrap();
     assert!(!r.root().join("tables/filings").exists());
+}
+
+/// A replica's refresh selects tables through the grant pattern matcher: a prefix pattern
+/// takes every table it begins, and a concrete name matches only itself.
+// spec: authority.grant.one-matcher@f787cc2d
+#[test]
+fn a_replica_refresh_selects_tables_through_the_grant_pattern_matcher() {
+    let (_dir, b, _a) = pushed();
+    let exact = node("replica-1", b.clone(), "\n[replica]\nof = \"team/research\"\n");
+    exact.syncer.pull(&PullScope { tables: vec![pattern("fil")], ..PullScope::default() }).unwrap();
+    assert!(!exact.root().join("tables/filings").exists());
+    let prefixed = node("replica-2", b, "\n[replica]\nof = \"team/research\"\n");
+    prefixed.syncer.pull(&PullScope { tables: vec![pattern("fil*")], ..PullScope::default() }).unwrap();
+    assert!(prefixed.root().join("tables/filings").exists());
+}
+
+fn pattern(s: &str) -> TablePattern {
+    TablePattern::parse(s).unwrap()
 }
 
 /// Seed of the interrupted-pull sampler.

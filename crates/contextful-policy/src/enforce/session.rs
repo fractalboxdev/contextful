@@ -15,7 +15,7 @@ use super::predicate::{SUBJECT_FIELDS, SUBJECT_RELATION};
 use super::zone::{session_zone, Zone};
 use super::PolicyError;
 use crate::verify::AdmittedAuthority;
-use contextful_core::grant::{raw_read_covers, Action, Grant};
+use contextful_core::grant::{raw_read_covers, template_read_covers, Grant};
 use contextful_core::identify::Member;
 use contextful_core::read::pin::Resolved;
 use contextful_core::store::declare::{DeclarationMalformed, TableDecl};
@@ -105,6 +105,15 @@ pub struct ZoneWithheld {
     pub dropped_sql: Option<String>,
 }
 
+/// A covered template's session scope: its identifier, the identifiers the manifest
+/// declares, and the tables its statement names (`authority.grant.template-tables`).
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+pub struct TemplateScope {
+    pub id: String,
+    pub declared: Vec<String>,
+    pub tables: std::collections::BTreeSet<String>,
+}
+
 /// What a request asserts beside its credential.
 #[derive(Debug, Clone, Default)]
 pub struct Request<'a> {
@@ -130,6 +139,7 @@ pub struct Session {
     policies: BTreeMap<String, TablePolicy>,
     sources: BTreeMap<String, TableSource>,
     pepper: Pepper,
+    template: Option<TemplateScope>,
 }
 
 impl Session {
@@ -149,6 +159,32 @@ impl Session {
         reach: BTreeMap<String, ReachFilter>,
         pepper: &Pepper,
     ) -> Result<Session, PolicyError> {
+        Session::open_scoped(authority, request, tables, reach, None, pepper)
+    }
+
+    /// [`Session::open_reaching`] for a covered template: each table its statement names
+    /// registers beside the raw-read tables, compiled under every other layer, and a grant
+    /// authorizing the template covers it (`authority.grant.template-tables`). A template no
+    /// grant authorizes registers no table.
+    pub fn open_template(
+        authority: &AdmittedAuthority,
+        request: &Request<'_>,
+        tables: Vec<TableSource>,
+        reach: BTreeMap<String, ReachFilter>,
+        template: TemplateScope,
+        pepper: &Pepper,
+    ) -> Result<Session, PolicyError> {
+        Session::open_scoped(authority, request, tables, reach, Some(template), pepper)
+    }
+
+    fn open_scoped(
+        authority: &AdmittedAuthority,
+        request: &Request<'_>,
+        tables: Vec<TableSource>,
+        reach: BTreeMap<String, ReachFilter>,
+        template: Option<TemplateScope>,
+        pepper: &Pepper,
+    ) -> Result<Session, PolicyError> {
         let subject = authority.subject();
         let zone = session_zone(request.zone, subject.zone(), subject.incognito())?;
         let subject_row = SUBJECT_FIELDS
@@ -165,7 +201,8 @@ impl Session {
             })
             .collect();
         let grants = authority.grants().to_vec();
-        let granted: Vec<TableSource> = tables.into_iter().filter(|t| raw_read_covers(&grants, &t.decl.name)).collect();
+        let granted: Vec<TableSource> =
+            tables.into_iter().filter(|t| grants.iter().any(|g| covers(g, template.as_ref(), &t.decl.name))).collect();
         if granted.len() > RELATIONS_PER_SESSION {
             return Err(DeclarationMalformed(format!(
                 "the credential reaches {} tables; a session holds at most {RELATIONS_PER_SESSION} relations",
@@ -187,6 +224,7 @@ impl Session {
             policies: BTreeMap::new(),
             sources: BTreeMap::new(),
             pepper: pepper.clone(),
+            template,
         };
         session.reach = reach.into_iter().filter(|(t, _)| granted.iter().any(|g| &g.decl.name == t)).collect();
         for t in granted {
@@ -223,7 +261,7 @@ impl Session {
         let covering: Vec<&Grant> = self
             .grants
             .iter()
-            .filter(|g| g.aggregate.is_none() && g.actions.contains(&Action::Read) && g.tables.iter().any(|p| p.covers_name(&decl.name)))
+            .filter(|g| self.covers(g, &decl.name))
             .collect();
         let mut values = Vec::new();
         let mut column = None;
@@ -239,6 +277,17 @@ impl Session {
             }
         }
         Ok(column.map(|c| (c, values)))
+    }
+
+    /// Whether `grant` covers a read of `table` in this session: a raw read grant, or, in a
+    /// template's session, a grant authorizing the template over a table its statement names.
+    pub fn covers(&self, grant: &Grant, table: &str) -> bool {
+        covers(grant, self.template.as_ref(), table)
+    }
+
+    /// The covered template this session serves, or `None` for a raw read's session.
+    pub fn template(&self) -> Option<&TemplateScope> {
+        self.template.as_ref()
     }
 
     /// Compile one granted table's relation. The steps apply in order — mirrored-permission
@@ -516,4 +565,11 @@ fn filter(conjuncts: &[String]) -> String {
 /// A bare column name: an identifier with no expression around it.
 fn is_bare(c: &str) -> bool {
     !c.is_empty() && c.chars().all(|ch| ch.is_alphanumeric() || ch == '_')
+}
+
+/// Whether `grant` covers a read of `table`: a raw read grant, or a grant authorizing
+/// `template` over a table its statement names (`authority.grant.template-tables`).
+fn covers(grant: &Grant, template: Option<&TemplateScope>, table: &str) -> bool {
+    raw_read_covers(std::slice::from_ref(grant), table)
+        || template.is_some_and(|t| template_read_covers(grant, &t.id, &t.declared, &t.tables, table))
 }

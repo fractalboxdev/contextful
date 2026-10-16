@@ -6,7 +6,7 @@ An unpinned clause is `committed`; a pinned one is `performed` when its Rust, Le
 | Contract | Files | Operations | Clauses | Refusals | Limits | Unsettled | Performed | Broken | Floor |
 | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
 | `assurance` | 3 | 18 | 322 | 64 | 24 | 5 | 280 | 0 | 280 |
-| `authority` | 2 | 16 | 298 | 79 | 29 | 8 | 269 | 0 | 269 |
+| `authority` | 2 | 16 | 298 | 79 | 29 | 8 | 271 | 0 | 271 |
 | `connector` | 2 | 14 | 375 | 92 | 22 | 12 | 292 | 0 | 292 |
 | `corpus` | 1 | 10 | 80 | 37 | 7 | 0 | 80 | 0 | 80 |
 | `disclosure` | 3 | 16 | 184 | 69 | 14 | 5 | 162 | 0 | 162 |
@@ -15,7 +15,7 @@ An unpinned clause is `committed`; a pinned one is `performed` when its Rust, Le
 | `store` | 3 | 19 | 293 | 64 | 14 | 10 | 283 | 0 | 283 |
 | `surface` | 2 | 21 | 161 | 63 | 23 | 0 | 134 | 0 | 134 |
 | `topology` | 1 | 6 | 79 | 25 | 5 | 3 | 76 | 0 | 76 |
-| **total** | 22 | 169 | 2618 | 658 | 212 | 74 | 2328 | 0 | |
+| **total** | 22 | 169 | 2618 | 658 | 212 | 74 | 2330 | 0 | |
 
 Decision records: 18.
 
@@ -26,7 +26,7 @@ A milestone reads `closed` when its acceptance test computes `passing` and every
 | Milestone | Operations | Clauses | Performed | Acceptance | Closed |
 | --- | --- | --- | --- | --- | --- |
 | 0 — The test-first gate | 2 | 22 | 19 | passing | closed |
-| 1 — The authority core | 14 | 248 | 245 | passing | closed |
+| 1 — The authority core | 14 | 248 | 247 | passing | closed |
 | 2 — The store | 9 | 183 | 173 | passing | closed |
 | 3 — The run path | 12 | 277 | 266 | passing | closed |
 | 4 — Ingest | 25 | 587 | 489 | passing | closed |
@@ -398,6 +398,7 @@ Unscheduled operations: 13.
 | `authority.grant.group-ceiling` | `crates/contextful-core/tests/integration/grant.rs::group_ceiling` | performed |
 | `authority.grant.horizon` | `crates/contextful-core/tests/integration/read/horizon.rs::a_grant_carries_a_horizon_and_an_absent_one_bounds_nothing` | performed |
 | `authority.grant.malformed-pattern` | `crates/contextful-core/tests/integration/grant.rs::malformed_pattern` | performed |
+| `authority.grant.one-matcher` | `crates/contextful-sync/tests/integration/pull.rs::a_replica_refresh_selects_tables_through_the_grant_pattern_matcher` | performed |
 | `authority.grant.pattern-forms` | `crates/contextful-core/tests/integration/grant.rs::pattern_forms` | performed |
 | `authority.grant.pipeline-not-covered` | `crates/contextful-cli/tests/integration/run.rs::run_history_lists_covered_pipelines_and_refuses_an_uncovered_one` | performed |
 | `authority.grant.pipeline-resource` | `crates/contextful-core/tests/integration/grant.rs::pipeline_resource` | performed |
@@ -406,6 +407,7 @@ Unscheduled operations: 13.
 | `authority.grant.star` | `crates/contextful-policy/tests/integration/grant.rs::a_star_grant_is_bounded_by_actions_audience_and_expiry_and_names_itself` | performed |
 | `authority.grant.template-allowlist` | `crates/contextful-core/tests/integration/grant.rs::template_allowlist` | performed |
 | `authority.grant.template-not-allowed` | `crates/contextful-core/tests/integration/grant.rs::template_not_allowed` | performed |
+| `authority.grant.template-tables` | `crates/contextful-context/tests/integration/read/enforce.rs::a_covered_template_reads_its_tables_in_its_own_session_alone` | performed |
 | `authority.grant.tenant-bytes` | `crates/contextful-core/tests/integration/grant.rs::tenant_bytes` | performed |
 | `authority.grant.tenant-child-lifetime` | `crates/contextful-core/tests/integration/grant.rs::tenant_child_lifetime` | performed |
 | `authority.grant.tenant-scope` | `crates/contextful-core/tests/integration/grant.rs::tenant_scope` | performed |

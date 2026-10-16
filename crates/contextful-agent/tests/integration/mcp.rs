@@ -327,6 +327,23 @@ fn echoed(answer: &Value) -> &Value {
     &answer["result"]["structuredContent"]["contextful.bounds"]
 }
 
+/// A covered template over a table outside the credential's raw read grants answers through
+/// both template tools, and a raw query of that table stays refused.
+#[test]
+fn a_template_reads_its_tables_through_the_server_while_a_raw_query_cannot() {
+    let manifest = format!("{MANIFEST}\n[[query_templates]]\nid = \"staff\"\nsql = \"SELECT employee FROM \\\"hr/salaries\\\" ORDER BY employee\"\n");
+    let f = fixture_over(&manifest, |store| {
+        let salaries = json!([{ "employee": "e1", "title": "Battery storage engineer" }]);
+        put(store, &TableDecl::named("hr/salaries"), "run-0001", "2030-01-01T00:00:00Z", salaries, &[]);
+    });
+    let clock = FixedClock(at("2030-01-01T00:06:00Z"));
+    let server = Server::new(&f.face, f.authority.clone(), &current, &clock, &f.audit).unwrap();
+    assert_eq!(rows(&call(&server, "context.execute_query", json!({ "id": "staff" }))), &json!([["e1"]]));
+    assert_eq!(rows(&call(&server, "staff", json!({}))), &json!([["e1"]]));
+    let raw = call(&server, "context.query", json!({ "sql": r#"SELECT employee FROM "hr/salaries""# }));
+    assert_eq!(raw["result"]["isError"], json!(true), "{raw}");
+}
+
 /// Over a keyed table folded after its second run, `as_of` on every read tool returns the pre-fold row and echoes the bound.
 #[test]
 fn as_of_on_every_read_tool_returns_the_pre_fold_row() {

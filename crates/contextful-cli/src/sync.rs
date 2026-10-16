@@ -64,9 +64,9 @@ pub enum SyncCmd {
     Pull {
         #[command(flatten)]
         args: SyncArgs,
-        /// Repeatable; absent pulls every table.
-        #[arg(long = "table")]
-        tables: Vec<String>,
+        /// A table pattern — `*`, a prefix ending in `*`, or a name; repeatable; absent pulls every table.
+        #[arg(long = "table", value_parser = parse_pattern)]
+        tables: Vec<contextful_core::grant::TablePattern>,
         /// Restore this generation's manifest and pointers in place of the bucket's current state.
         #[arg(long)]
         generation: Option<u64>,
@@ -106,6 +106,11 @@ pub enum LeaseCmd {
         #[command(flatten)]
         args: SyncArgs,
     },
+}
+
+/// Parse a `--table` pattern, refusing a misplaced star (`authority.grant.malformed-pattern`).
+fn parse_pattern(s: &str) -> std::result::Result<contextful_core::grant::TablePattern, String> {
+    contextful_core::grant::TablePattern::parse(s).map_err(|e| e.to_string())
 }
 
 fn now(flag: &Option<String>) -> Result<Instant> {

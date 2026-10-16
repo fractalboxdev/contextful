@@ -8,7 +8,7 @@ use super::pool::{self, SessionPool};
 use super::results::{self, ResultCache};
 use crate::scan::{scan, scan_at};
 use crate::store::Store;
-use contextful_core::grant::{authorize_template, least_row_ceiling, list_templates, raw_read_covers, Grant};
+use contextful_core::grant::{authorize_template, least_row_ceiling, list_templates, raw_read_covers, template_read_covers, Grant};
 use contextful_core::read::face::{estimated_tokens, TOOLS};
 use contextful_core::read::guard::{admit, named_relations, Admitted};
 use contextful_core::read::pin::{Pins, Resolved, PIN_ARGUMENT, RESOLVED_BLOCK};
@@ -31,7 +31,7 @@ use contextful_core::store::reserve::{producer_columns, COMMIT_SEQ, INGESTED_AT,
 use contextful_policy::enforce::mask::Pepper;
 use contextful_policy::enforce::policy::TablePolicy;
 use contextful_policy::enforce::scope;
-use contextful_policy::enforce::session::{ReachFilter, Request, Session, TableSource};
+use contextful_policy::enforce::session::{ReachFilter, Request, Session, TableSource, TemplateScope};
 use contextful_policy::verify::AdmittedAuthority;
 use serde::{Deserialize, Serialize};
 use serde_json::{json, Map, Value};
@@ -590,25 +590,54 @@ impl Face {
     /// credential cannot read, and the pin never widens to the latest state
     /// (`read.resolve-pin.unknown-build`).
     pub fn session_pinned(&self, authority: &AdmittedAuthority, request: &Request<'_>, bounds: Bounds, pins: &Pins) -> Result<Session, ReadFault> {
-        self.session_with(authority, request, bounds, pins, &Carried::new())
+        self.session_with(authority, request, bounds, pins, &Carried::new(), None)
+    }
+
+    /// The session a covered template runs in: the raw-read tables plus each declared table
+    /// the template's statement names, compiled under every other layer. The template
+    /// identifier and its tables join the pool key, so no raw read reuses it
+    /// (`authority.grant.template-tables`). A template outside the allowlist raises
+    /// `GrantTemplateNotAllowed`.
+    pub fn template_session(&self, authority: &AdmittedAuthority, request: &Request<'_>, bounds: Bounds, pins: &Pins, id: &str) -> Result<Session, ReadFault> {
+        let declared: Vec<String> = self.templates.iter().map(|t| t.id.clone()).collect();
+        authorize_template(authority.grants(), id, &declared)?;
+        let template = self.templates.iter().find(|t| t.id == id).expect("an authorized template is declared");
+        let tables = self.tables()?;
+        let named: BTreeSet<String> = named_relations(&self.serialize(&template.sql)?).into_iter().filter(|n| tables.contains(n)).collect();
+        let scope = TemplateScope { id: id.to_string(), declared, tables: named };
+        self.session_with(authority, request, bounds, pins, &Carried::new(), Some(scope))
     }
 
     /// [`Face::session`] with each table `carried` names resolved at its own `as_of`: a
     /// carried sweep reads the job's output tables at the preceding origin's commit and every
     /// other table at the sweep's `as_of` (`run.sweep.carried-state`). The map joins the pool key.
     pub fn session_carried(&self, authority: &AdmittedAuthority, request: &Request<'_>, bounds: Bounds, carried: &Carried) -> Result<Session, ReadFault> {
-        self.session_with(authority, request, bounds, &Pins::default(), carried)
+        self.session_with(authority, request, bounds, &Pins::default(), carried, None)
     }
 
-    fn session_with(&self, authority: &AdmittedAuthority, request: &Request<'_>, bounds: Bounds, pins: &Pins, carried: &Carried) -> Result<Session, ReadFault> {
+    fn session_with(
+        &self,
+        authority: &AdmittedAuthority,
+        request: &Request<'_>,
+        bounds: Bounds,
+        pins: &Pins,
+        carried: &Carried,
+        template: Option<TemplateScope>,
+    ) -> Result<Session, ReadFault> {
         let tables = self.tables()?;
-        let granted: Vec<String> = tables.iter().filter(|t| raw_read_covers(authority.grants(), t)).cloned().collect();
+        let templated = |t: &String| {
+            template.as_ref().is_some_and(|s| authority.grants().iter().any(|g| template_read_covers(g, &s.id, &s.declared, &s.tables, t)))
+        };
+        let granted: Vec<String> = tables.iter().filter(|t| raw_read_covers(authority.grants(), t) || templated(t)).cloned().collect();
         if let Some((table, build)) = pins.iter().find(|(t, _)| !granted.iter().any(|g| g == t)) {
             return Err(super::pin::unavailable(table, build, None));
         }
         let mut principal = pool::principal(authority, request, bounds, pins);
         if !carried.is_empty() {
             principal = Sha256::new().chain_update(principal).chain_update(format!("{carried:?}").as_bytes()).finalize().into();
+        }
+        if let Some(t) = &template {
+            principal = Sha256::new().chain_update(principal).chain_update(format!("template {:?} {:?}", t.id, t.tables).as_bytes()).finalize().into();
         }
         // A sweep advances its source's epoch, which joins the key, so no pooled session
         // keeps a reachable set its source has since replaced (`disclosure.reach.cache-epochs`).
@@ -637,7 +666,10 @@ impl Face {
                 .iter()
                 .map(|t| self.source(t, carried_bounds(bounds, carried, t).for_table(&self.decl(t)), pins.build(t).or(within.get(t).map(String::as_str)), horizon))
                 .collect::<Result<Vec<_>, _>>()?;
-            Ok(Session::open_reaching(authority, request, sources, reach, &self.pepper)?)
+            Ok(match template.clone() {
+                None => Session::open_reaching(authority, request, sources, reach, &self.pepper)?,
+                Some(t) => Session::open_template(authority, request, sources, reach, t, &self.pepper)?,
+            })
         })
     }
 
@@ -825,7 +857,7 @@ impl Face {
         session.grants().iter().filter(|grant| {
             touched.iter().any(|table| {
                 let owner = contextful_core::store::ledger::ledger_table(table).unwrap_or(table);
-                raw_read_covers(std::slice::from_ref(*grant), owner)
+                session.covers(grant, owner)
             })
         }).filter_map(field).min()
     }
@@ -954,6 +986,10 @@ impl Face {
     /// (`read.guard.query-binding`), the scope guard over its tenant literals and bound
     /// values, then execution under the least row ceiling.
     pub fn query_with(&self, session: &Session, sql: &str, parameters: &Map<String, Value>, opts: ReadOptions) -> Result<Response, ReadFault> {
+        // Template coverage adds no table to a raw read (`authority.grant.template-tables`).
+        if let Some(t) = session.template() {
+            return Err(EnforceError::UnknownRelation(format!("a session opened for template `{}` admits no caller-written SQL", t.id)).into());
+        }
         let frontier = self.read_frontier(session)?;
         let engine = self.pool.engine(session, self.store.parquet_key())?;
         let tree = engine.serialize(sql)?;
@@ -979,11 +1015,16 @@ impl Face {
 
     /// Run a declared template the credential's allowlist covers. Its body is operator
     /// text and runs unrewritten; each bare table name in it resolves to the caller's
-    /// registered relation (`read.register.bare-name`).
+    /// registered relation (`read.register.bare-name`). A session from
+    /// [`Face::template_session`] registers the tables the statement names.
     pub fn execute_template(&self, session: &Session, id: &str, arguments: &Map<String, Value>, opts: ReadOptions) -> Result<Response, ReadFault> {
         let frontier = self.read_frontier(session)?;
         let declared: Vec<String> = self.templates.iter().map(|t| t.id.clone()).collect();
         authorize_template(session.grants(), id, &declared)?;
+        // A template's extra tables belong to its own session (`authority.grant.template-tables`).
+        if let Some(t) = session.template().filter(|t| t.id != id) {
+            return Err(EnforceError::UnknownRelation(format!("a session opened for template `{}` cannot run template `{id}`", t.id)).into());
+        }
         let template = self.templates.iter().find(|t| t.id == id).expect("an authorized template is declared");
         let values = template.bind(arguments)?;
         let engine = self.pool.engine(session, self.store.parquet_key())?;

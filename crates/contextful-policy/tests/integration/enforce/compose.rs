@@ -1,14 +1,15 @@
 //! `authority.compose`: the session's relation set.
 
 use crate::support::{admit, grant, issuer, plan_for, dana, DURING};
-use contextful_core::grant::Action;
+use contextful_core::grant::{template_read_covers, Action, AggregateGrant, Grant};
 use contextful_core::store::declare::TableDecl;
 use contextful_core::store::reconcile::{Column, ColumnType};
 use contextful_policy::enforce::mask::Pepper;
 use contextful_policy::enforce::policy::TablePolicy;
-use contextful_policy::enforce::session::{ReachFilter, Request, Session, TableSource, RELATIONS_PER_SESSION, REACH_RELATION};
+use contextful_policy::enforce::session::{ReachFilter, Request, Session, TableSource, TemplateScope, RELATIONS_PER_SESSION, REACH_RELATION};
 use contextful_policy::enforce::PolicyError;
-use contextful_policy::issue::{mint, MintClaims};
+use contextful_policy::issue::{mint, MintClaims, SeedSigner};
+use contextful_policy::verify::AdmittedAuthority;
 
 fn source(name: &str) -> TableSource {
     let decl = TableDecl::named(name);
@@ -44,6 +45,54 @@ fn a_session_holds_at_most_1024_relations() {
 
     let over = Session::open(&authority, &Request::default(), tables(1025), &pepper);
     assert!(matches!(over, Err(PolicyError::Malformed(ref m)) if m.0.contains("1024")), "{over:?}");
+}
+
+/// A template's session registers the tables its statement names when a grant authorizes
+/// the template; a raw session, or a template no grant authorizes, registers none of them.
+fn authority_holding(signer: &SeedSigner, g: Grant) -> AdmittedAuthority {
+    let token = mint(&plan_for(signer, dana(), vec![g]), &MintClaims::default(), signer).unwrap();
+    admit(&token, signer, DURING).unwrap()
+}
+
+#[test]
+fn a_template_session_registers_the_tables_its_statement_names() {
+    let signer = issuer();
+    let mut g = grant(&[Action::Read], &["research/*"]);
+    g.templates = Some(vec!["staff".into()]);
+    let token = mint(&plan_for(&signer, dana(), vec![g.clone()]), &MintClaims::default(), &signer).unwrap();
+    let authority = admit(&token, &signer, DURING).unwrap();
+    let pepper = Pepper::resolve(|_| None);
+    let tables = || vec![source("research/notes"), source("hr/salaries")];
+    let scope = |id: &str| TemplateScope {
+        id: id.into(),
+        declared: vec!["staff".into(), "payroll".into()],
+        tables: ["hr/salaries".to_string()].into(),
+    };
+
+    let raw = Session::open(&authority, &Request::default(), tables(), &pepper).unwrap();
+    assert!(raw.reads("research/notes") && !raw.reads("hr/salaries"));
+    assert!(!raw.covers(&g, "hr/salaries"));
+
+    let staff = Session::open_template(&authority, &Request::default(), tables(), Default::default(), scope("staff"), &pepper).unwrap();
+    assert!(staff.reads("research/notes") && staff.reads("hr/salaries"));
+    assert!(staff.covers(&g, "hr/salaries"));
+
+    let payroll = Session::open_template(&authority, &Request::default(), tables(), Default::default(), scope("payroll"), &pepper).unwrap();
+    assert!(!payroll.reads("hr/salaries"));
+
+    // An allowlist on a grant that confers no raw read registers none of the template's tables.
+    let mut execute = grant(&[Action::Execute], &["ops/*"]);
+    execute.templates = Some(vec!["staff".into()]);
+    let mut aggregated = grant(&[Action::Read], &["hr/*"]);
+    aggregated.templates = Some(vec!["staff".into()]);
+    aggregated.aggregate = Some(AggregateGrant { min_group_size: 5, max_contributor_share: 0.5, functions: vec!["count".into()], max_groups: 10, max_rows: None });
+    let held = authority_holding(&signer, execute.clone());
+    let executing = Session::open_template(&held, &Request::default(), tables(), Default::default(), scope("staff"), &pepper).unwrap();
+    assert!(!executing.reads("hr/salaries"));
+    assert!(!executing.covers(&execute, "hr/salaries"));
+    // The mint refuses an aggregate grant outright; coverage refuses it too.
+    assert!(!staff.covers(&aggregated, "hr/salaries"));
+    assert!(!template_read_covers(&aggregated, "staff", &scope("staff").declared, &scope("staff").tables, "hr/salaries"));
 }
 
 #[test]

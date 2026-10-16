@@ -391,6 +391,12 @@ impl<'a> Tools<'a> {
         self.face.session_pinned(caller.authority, &Request { zone }, bounds, pins)
     }
 
+    /// The session a covered template runs in (`authority.grant.template-tables`).
+    fn template_session(&self, caller: Caller<'_>, zone: Option<&str>, bounds: Bounds, pins: &Pins, id: &str) -> Result<contextful_policy::enforce::session::Session, ReadFault> {
+        (caller.boundary)(caller.authority)?;
+        self.face.template_session(caller.authority, &Request { zone }, bounds, pins, id)
+    }
+
     fn list(&self, caller: Caller<'_>) -> Result<Value, Protocol> {
         match self.session(caller, None, Bounds::default(), &Pins::default()) {
             Ok(s) => Ok(json!({ "tools": self.face.tools(&s) })),
@@ -570,7 +576,7 @@ impl<'a> Tools<'a> {
                     Some(_) => return Err(invalid("`arguments` is an object")),
                 };
                 let opts = options(args)?;
-                self.session(caller, zone, opts.bounds, pins)
+                self.template_session(caller, zone, opts.bounds, pins, &id)
                     .and_then(|s| self.face.execute_template(&s, &id, &arguments, opts).map(|r| answered_in(r, s)))
             }
             "context.reference" => {
@@ -706,7 +712,7 @@ impl<'a> Tools<'a> {
                     arguments.remove(VINTAGE);
                 }
                 let opts = options(args)?;
-                self.session(caller, zone, opts.bounds, pins)
+                self.template_session(caller, zone, opts.bounds, pins, template)
                     .and_then(|s| self.face.execute_template(&s, template, &arguments, opts).map(|r| answered_in(r, s)))
             }
             other => return Err(invalid(format!("no tool `{other}`"))),

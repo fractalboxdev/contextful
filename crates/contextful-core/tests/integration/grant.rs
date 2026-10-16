@@ -3,6 +3,7 @@
 
 use contextful_core::grant::{
     authorize_template, describe_pipeline, least_row_ceiling, list_pipelines, list_templates, raw_read_covers,
+    template_read_covers,
     tenant_child_expiry, trace_run, AggregateGrant, Action, Grant, TablePattern, TenantScope,
     AGGREGATE_GROUP_CEILING_FLOOR, TENANT_CHILD_LIFETIME_MINUTES,
 };
@@ -327,4 +328,25 @@ fn group_ceiling() {
     let zero = AggregateGrant { max_groups: 0, ..aggregate() };
     assert_eq!(zero.group_ceiling(), AGGREGATE_GROUP_CEILING_FLOOR);
     assert_eq!(zero.cut_groups(vec!["a", "b"]), vec!["a"]);
+}
+
+/// Template coverage reaches a table its statement names only through a read grant
+/// carrying no aggregate constraint whose allowlist authorizes the template.
+#[test]
+fn template_coverage_requires_a_raw_read_grant_authorizing_the_template() {
+    let declared = vec!["staff".to_string(), "payroll".to_string()];
+    let tables: std::collections::BTreeSet<String> = ["hr/salaries".to_string()].into();
+    let allowing = |mut g: Grant| {
+        g.templates = Some(vec!["staff".into()]);
+        g
+    };
+    let read = allowing(grant(&[Action::Read], &["research/*"]));
+    assert!(template_read_covers(&read, "staff", &declared, &tables, "hr/salaries"));
+    assert!(!template_read_covers(&read, "payroll", &declared, &tables, "hr/salaries"));
+    assert!(!template_read_covers(&read, "staff", &declared, &tables, "hr/bonuses"));
+    let execute = allowing(grant(&[Action::Execute], &["ops/*"]));
+    assert!(!template_read_covers(&execute, "staff", &declared, &tables, "hr/salaries"));
+    let mut aggregated = allowing(grant(&[Action::Read], &["hr/*"]));
+    aggregated.aggregate = Some(aggregate());
+    assert!(!template_read_covers(&aggregated, "staff", &declared, &tables, "hr/salaries"));
 }

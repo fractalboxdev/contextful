@@ -2,7 +2,9 @@
 //! and tenant relations, masks in place, refusals and zone exclusion.
 
 use super::*;
+use contextful_core::grant::TenantScope;
 use contextful_core::identify::Subject;
+use contextful_core::read::pin::Pins;
 use contextful_core::store::bound_time::Bounds;
 use serde_json::json;
 
@@ -332,6 +334,32 @@ fn the_scope_guard_decides_literals_lists_and_template_parameters() {
     let args = |t: &str| [("tenant".to_string(), json!(t))].into_iter().collect::<serde_json::Map<_, _>>();
     refused_with(r.face.execute_template(&s, "notes_for", &args("globex"), ReadOptions::default()), "EnforceScopeDenied");
     assert_eq!(r.face.execute_template(&s, "notes_for", &args("acme"), ReadOptions::default()).unwrap().rows.len(), 3);
+}
+
+/// A covered template reads the tables its statement names inside its own session, under the
+/// tenant layer, while a raw read of the same credential names none of them.
+// spec: authority.grant.template-tables@c1f6ec14
+#[test]
+fn a_covered_template_reads_its_tables_in_its_own_session_alone() {
+    let r = Reads::new();
+    let args = |t: &str| [("tenant".to_string(), json!(t))].into_iter().collect::<serde_json::Map<_, _>>();
+    let mut grant = read(&["hr/*"], None);
+    grant.templates = Some(vec!["notes_for".into()]);
+    let authority = r.authority(loop_subject("agent://research-loop"), vec![grant.clone()]);
+    let raw = r.face.session(&authority, &Request::default(), Bounds::default()).unwrap();
+    refused_with(r.query(&raw, r#"SELECT * FROM "research/notes""#), "EnforceUnknownRelation");
+    refused_with(r.face.execute_template(&raw, "notes_for", &args("acme"), ReadOptions::default()), "EnforceUnknownRelation");
+    let templated = r.face.template_session(&authority, &Request::default(), Bounds::default(), &Pins::default(), "notes_for").unwrap();
+    assert_eq!(r.face.execute_template(&templated, "notes_for", &args("acme"), ReadOptions::default()).unwrap().rows.len(), 3);
+    refused_with(r.query(&templated, r#"SELECT * FROM "research/notes""#), "EnforceUnknownRelation");
+    let raw = r.face.session(&authority, &Request::default(), Bounds::default()).unwrap();
+    refused_with(r.query(&raw, r#"SELECT * FROM "research/notes""#), "EnforceUnknownRelation");
+
+    grant.tenant = Some(TenantScope { table: "research/notes".into(), value: "acme".into() });
+    let scoped = r.authority(loop_subject("agent://research-loop"), vec![grant]);
+    let templated = r.face.template_session(&scoped, &Request::default(), Bounds::default(), &Pins::default(), "notes_for").unwrap();
+    refused_with(r.face.execute_template(&templated, "notes_for", &args("globex"), ReadOptions::default()), "EnforceScopeDenied");
+    assert_eq!(r.face.execute_template(&templated, "notes_for", &args("acme"), ReadOptions::default()).unwrap().rows.len(), 3);
 }
 
 /// The guard reads top-level conjuncts of a statement whose own FROM names a scoped table.
