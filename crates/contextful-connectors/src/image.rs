@@ -118,6 +118,46 @@ impl ImageSource {
     }
 }
 
+/// Whether an image body is verbatim text extracted from the image or a model's reading of
+/// it (`connector.source.quotability-marker`).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Quotability {
+    Verbatim,
+    Reading,
+}
+
+impl Quotability {
+    /// The marker's spelling in the `quotability` column.
+    pub fn as_str(self) -> &'static str {
+        match self {
+            Quotability::Verbatim => "verbatim",
+            Quotability::Reading => "reading",
+        }
+    }
+}
+
+/// Fill an image row's body, recording its quotability marker beside it.
+pub fn fill_body(row: &mut Value, text: String, marker: Quotability) {
+    row["body"] = Value::String(text);
+    row["quotability"] = Value::String(marker.as_str().to_string());
+}
+
+/// An image row whose body and quotability marker are not null together, or whose marker
+/// is neither spelling, raises `ConnectorQuotabilityMismatch`
+/// (`connector.source.marker-body-pairing`).
+pub fn check_quotability(row: &Value) -> Result<(), ConnectorError> {
+    let body = row.get("body").filter(|v| !v.is_null());
+    let marker = row.get("quotability").filter(|v| !v.is_null());
+    let path = row.get("path").and_then(Value::as_str).unwrap_or("");
+    match (body, marker) {
+        (None, None) => Ok(()),
+        (Some(Value::String(_)), Some(Value::String(m))) if m == "verbatim" || m == "reading" => Ok(()),
+        (Some(_), Some(m)) => Err(ConnectorError::ConnectorQuotabilityMismatch(format!("`{path}` pairs its body with quotability marker {m}; a text body takes `verbatim` or `reading`"))),
+        (Some(_), None) => Err(ConnectorError::ConnectorQuotabilityMismatch(format!("`{path}` carries a body without its quotability marker"))),
+        (None, Some(_)) => Err(ConnectorError::ConnectorQuotabilityMismatch(format!("`{path}` carries a quotability marker without a body"))),
+    }
+}
+
 fn fault(path: &Path, error: std::io::Error) -> Failure {
     Failure::new(
         FailureTag::Permanent,

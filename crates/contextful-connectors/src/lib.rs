@@ -11,6 +11,7 @@ pub mod http;
 pub mod image;
 pub mod object;
 pub mod receive;
+pub mod report;
 
 /// The Google Drive source's name, listed whether or not the build compiles it in.
 pub const DRIVE: &str = "drive";
