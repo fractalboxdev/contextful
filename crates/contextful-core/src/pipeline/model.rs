@@ -18,11 +18,11 @@ use std::path::Path;
 
 /// The engine's injected-column semantics a published build carries; it advances when
 /// the engine adds an injected column (`run.publish.semantics-version`).
-pub const SEMANTICS_VERSION: u32 = 2;
+pub const SEMANTICS_VERSION: u32 = 3;
 
-/// The inputs of a schema fingerprint (`run.publish.semantics-version`).
-pub const FINGERPRINT_RECIPE: &str =
-    "sha256(jcs({columns: [{name, type, nullable}], grain, injected: [_ingested_at, _run_id, _row_seq, _commit_seq, _site_id]}))";
+/// The inputs of a schema fingerprint, then the injected columns a write carries only where
+/// their scope exists, which the hash leaves out (`run.publish.semantics-version`).
+pub const FINGERPRINT_RECIPE: &str = "sha256(jcs({columns: [{name, type, nullable}], grain, injected: [_ingested_at, _run_id, _row_seq, _commit_seq, _site_id]})); conditional, unhashed: [_batch_seq, _authored_by, _authored_agent, _taint]";
 
 /// The history logs a published model's table directory holds (`run.publish.history-logs`).
 pub const BUILDS_LOG: &str = "builds.jsonl";

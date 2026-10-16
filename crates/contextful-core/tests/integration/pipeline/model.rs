@@ -406,9 +406,15 @@ fn the_manifest_section_carries_its_keys_and_omits_an_absent_optional_one() {
 // spec: store.reconcile.reserved-set-versioned@3ef4472c
 #[test]
 fn the_recipe_names_every_injected_column_the_semantics_version_counts() {
-    assert_eq!(SEMANTICS_VERSION, 2);
+    // `_authored_agent` advanced the version from 2.
+    assert_eq!(SEMANTICS_VERSION, 3);
     for injected in contextful_core::store::reserve::ALWAYS_INJECTED {
         assert!(FINGERPRINT_RECIPE.contains(injected), "{injected}");
+    }
+    // A column injected only where its scope exists is named as conditional, outside the hash.
+    let (_, conditional) = FINGERPRINT_RECIPE.split_once("conditional").expect("the recipe names the conditional injected columns");
+    for injected in contextful_core::store::reserve::INJECTED.iter().filter(|c| !contextful_core::store::reserve::ALWAYS_INJECTED.contains(c)) {
+        assert!(conditional.contains(injected), "{injected}");
     }
     for input in ["name", "type", "nullable", "grain"] {
         assert!(FINGERPRINT_RECIPE.contains(input), "{input}");
