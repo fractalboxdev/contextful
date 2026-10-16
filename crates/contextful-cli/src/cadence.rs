@@ -772,6 +772,11 @@ pub(crate) fn import(project: &ProjectArgs, declaration: Option<PathBuf>, tasks:
         println!("adopted the pulled control head; import claims nothing");
         return Ok(());
     }
+    // A restart on a warm disk imports again; the version standing here answers it.
+    if let Some(v) = snapshots.current()? {
+        println!("v{v} stands; import claims nothing, and `contextful pipeline apply` edits it");
+        return Ok(());
+    }
     let attestation = SyncAttestation::for_project(&l, project, admit, issuer_key)?;
     let declared = declared(&l.declaration)?;
     let jobs = job_blocks(&declaration_text, Some(bodies), &declared)?;

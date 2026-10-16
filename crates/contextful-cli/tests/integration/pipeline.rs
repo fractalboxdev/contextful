@@ -298,6 +298,43 @@ fn a_cold_synced_node_adopts_the_pulled_head_before_import_or_apply_claims() {
     assert!(ok(&signed(fresh.path(), "import")).contains("imported v1"));
 }
 
+/// A restart on a warm synced disk runs pull, import, apply and push again; the second import
+/// claims nothing and succeeds, and apply finds the declarations unchanged.
+#[test]
+fn a_warm_synced_restart_imports_again_without_claiming() {
+    let bucket = tempfile::tempdir().unwrap();
+    let issuer = tempfile::tempdir().unwrap();
+    let public = ok(&cf(issuer.path(), &["token", "keygen", "--out", "issuer.seed"]));
+    let dir = project(&format!("site_id = \"site-a\"\n\n{}", pipeline("orders", "https://api.vendor.example/v1", "schedule = \"every 1h\"", "tables = [\"orders\"]")));
+    std::fs::copy(issuer.path().join("issuer.seed"), dir.path().join(".contextful/issuer.seed")).unwrap();
+    std::fs::write(dir.path().join(".contextful/issuance.toml"), "default_audience = \"contextful://research\"\nmax_lifetime_secs = 3600\n").unwrap();
+    std::fs::write(dir.path().join(".contextful/context/research/config.toml"), format!(
+        "[node]\nid = \"ingest-a\"\n[sync]\nendpoint = \"file://{}\"\nbucket = \"control-test\"\nprefix = \"team\"\ncoordination = \"cas\"\n",
+        bucket.path().display()
+    )).unwrap();
+    let signed = |verb: &str| {
+        let token = ok(&cf(dir.path(), &["token", "mint", "--issuer-key", ".contextful/issuer.seed",
+            "--on-behalf-of", "user://dana@example.test", "--ttl", "600", "--action", "admin", "--table", "*"]));
+        Command::new(env!("CARGO_BIN_EXE_contextful"))
+            .args(["pipeline", verb, "--project", "research", "--issuer-key", ".contextful/issuer.seed",
+                "--public-key", &public, "--audience", "contextful://research"])
+            .current_dir(dir.path()).env("CONTEXTFUL_TOKEN", token).env_remove("CONTEXTFUL_ISSUER_PUBKEY").output().unwrap()
+    };
+    let start = || {
+        ok(&cf(dir.path(), &["sync", "pull", "--project", "research"]));
+        let imported = ok(&signed("import"));
+        let applied = ok(&signed("apply"));
+        ok(&cf(dir.path(), &["sync", "push", "--project", "research"]));
+        (imported, applied)
+    };
+    let (imported, _) = start();
+    assert!(imported.contains("imported v1"), "{imported}");
+    let (imported, applied) = start();
+    assert!(imported.contains("import claims nothing") && !imported.contains("imported"), "{imported}");
+    assert!(applied.contains("unchanged at v1"), "{applied}");
+    assert!(!dir.path().join(CONTROL).join("manifest@v2.toml").exists());
+}
+
 /// A release removing a pipeline with its model and the build job whose `after` names it
 /// converges on a cold node, and every later cold node adopts the pushed head.
 // spec: surface.apply.self-valid@b70f15c4
@@ -1948,14 +1985,14 @@ fn a_wake_reads_the_applied_version_from_the_control_source() {
 
 /// `contextful pipeline import` claims v1 from the declared pipelines while the snapshot directory holds no
 /// version; a second import claims nothing.
-// spec: surface.apply.guarded-import@a21a37ba
+// spec: surface.apply.guarded-import@38abcd5e
 #[test]
 fn the_import_claims_the_first_version_once() {
     let dir = project(&format!("site_id = \"site-a\"\n\n{}", scheduled("orders", "https://api.vendor.example/v1", "every 1h")));
     let out = ok(&cf(dir.path(), &["pipeline", "import", "--project", "research"]));
     assert!(out.contains("+ orders") && out.contains("imported v1"), "{out}");
-    let again = cf(dir.path(), &["pipeline", "import", "--project", "research"]);
-    assert!(!again.status.success() && stderr(&again).contains("v1"), "{}", stderr(&again));
+    let again = ok(&cf(dir.path(), &["pipeline", "import", "--project", "research"]));
+    assert!(again.contains("import claims nothing") && again.contains("v1") && !again.contains("imported"), "{again}");
     assert!(!dir.path().join(CONTROL).join("manifest@v2.toml").exists());
     // An empty declaration imports an empty document, and the directory counts as imported.
     let empty = project("site_id = \"site-a\"\n");
