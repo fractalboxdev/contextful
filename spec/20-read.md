@@ -502,7 +502,7 @@ unsettled: Does an as-of join's `max_age` measure valid time or availability tim
 
 Reading under a credential's {{authority.grant.horizon}}: the bound every read inherits, the arguments it refuses, the stamps, statistics and columns it withholds, the egress it closes, and the indexes, embedders and builds it resolves.
 
-- `inherited-bound` — Under a credential carrying a horizon, every read tool reads at `available_as_of` equal to the horizon when the call supplies none, capping {{read.as-of-join.horizon-caps-row}}, and echoes it as {{store.available-time.bound-echo}}.
+- `inherited-bound` — Under a credential carrying a horizon, every read tool but `context.subscribe`, which {{read.subscribe.horizon-refusal}} refuses, reads at `available_as_of` equal to the horizon when the call supplies none, capping {{read.as-of-join.horizon-caps-row}}, and echoes it as {{store.available-time.bound-echo}}.
   *because a per-call bound is a bound the agent can omit*
 - `exceeds-horizon` — A call supplying `available_as_of` or `since` later than its credential's horizon raises `ReadBoundExceedsHorizon`, naming the argument; `as_of`, `valid_as_of` and `observed_at` pass unbounded by it.
   *because a cutoff the agent can widen is advisory, while a valid-time question about a known future effective date stays legitimate*
@@ -559,6 +559,8 @@ The stream of one notification per committed run of each named table, read from 
   *because the tool protocol's request and response hold no stream, and a returned position resumes a poll exactly as it resumes a stream*
 - `ungranted-table` — On the tool protocol, a subscription naming a table outside the session's relations, existing or not, is refused by {{authority.refuse.ungranted-table}} before any `after` position resolves.
   *because a position refusal or a notification on an ungranted table discloses that the table exists and commits*
+- `horizon-refusal` — On the tool protocol, a subscription under a credential carrying a horizon raises `SubscriptionUnderHorizon` before any table or `after` position resolves.
+  *because a notification carries the run's commit instant and sequence, which {{read.horizon.engine-stamps}} withholds, and runs committed after the horizon*
 
 #### Scenarios
 
@@ -566,7 +568,7 @@ The stream of one notification per committed run of each named table, read from 
 - `read.subscribe.after-commit`: WHEN a leased pipeline's run writes its manifest and its commit-log entry is absent, THEN no subscription notifies it.
 - `read.subscribe.commit-order`: WHEN a relational run commits `events` at `commit_seq` 5 before its group marker lands and a plain run commits at 6, THEN a subscription sends neither until the marker lands, then 5 before 6.
 
-unsettled: Does a subscription under a credential horizon withhold runs committed after it, or refuse? owner: read-path affects: read.subscribe
+unsettled: Does a subscription under a credential horizon withhold runs committed after it and their stamps rather than refuse? owner: read-path affects: read.subscribe
 
 unsettled: Does the networked transport carry `context.subscribe` as server notifications over a held stream? owner: read-path affects: read.subscribe
 

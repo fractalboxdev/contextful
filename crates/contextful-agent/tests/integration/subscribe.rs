@@ -1,7 +1,7 @@
 //! `context.subscribe` on the tool protocol: a paged poll over the committed runs of the
 //! tables the credential reads, resumed by the position each page returns.
 
-use crate::mcp::{call, current, fixture, put};
+use crate::mcp::{available_under, call, current, fixture, put};
 use contextful_agent::mcp::Server;
 use contextful_core::ports::FixedClock;
 use contextful_core::store::declare::TableDecl;
@@ -53,6 +53,31 @@ fn a_subscription_pages_committed_runs_from_the_returned_position() {
 
     let gone = call(&server, "context.subscribe", json!({ "tables": ["research/notes"], "after": { "research/notes": "run-9999/ingest-a" } }));
     assert_eq!(gone["result"]["structuredContent"]["error"]["identifier"], json!("SubscriptionPositionUnavailable"), "{gone}");
+
+    // A table listed twice, or an `after` key naming a table the call does not list, is a
+    // malformed argument.
+    let twice = call(&server, "context.subscribe", json!({ "tables": ["research/notes", "research/notes"] }));
+    assert_eq!(twice["error"]["code"], json!(-32602), "{twice}");
+    let stray = call(&server, "context.subscribe", json!({ "tables": ["research/notes"], "after": { "research/other": "run-0001/ingest-a" } }));
+    assert_eq!(stray["error"]["code"], json!(-32602), "{stray}");
+}
+
+/// Under a credential carrying a horizon, `context.subscribe` refuses before any table or
+/// position resolves, so no run committed after the horizon reaches the caller.
+// spec: read.subscribe.horizon-refusal@a5f94f8e
+#[test]
+fn a_subscription_under_a_horizon_is_refused() {
+    let f = available_under(Some("2030-06-01T00:00:00Z"));
+    let clock = FixedClock(at("2030-09-02T00:00:00Z"));
+    let server = Server::new(&f.face, f.authority.clone(), &current, &clock, &f.audit).unwrap();
+    for tables in [json!(["research/earnings"]), json!(["hr/salaries"])] {
+        let refused = call(&server, "context.subscribe", json!({ "tables": tables }));
+        assert_eq!(refused["result"]["isError"], json!(true), "{refused}");
+        assert_eq!(refused["result"]["structuredContent"]["error"]["identifier"], json!("SubscriptionUnderHorizon"), "{refused}");
+        assert!(refused["result"]["structuredContent"].get("messages").is_none(), "{refused}");
+    }
+    let entries = contextful_policy::audit::entries(&f.dir.path().join("audit")).unwrap();
+    assert_eq!(entries.last().unwrap().attributes["contextful.tool"], json!("context.subscribe"));
 }
 
 /// A subscription naming a table outside the credential's grant refuses as an unknown

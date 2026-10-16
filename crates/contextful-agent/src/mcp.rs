@@ -600,6 +600,11 @@ impl<'a> Tools<'a> {
                 if let Some(k) = args.keys().find(|k| !["tables", "after", "zone", PIN_ARGUMENT].contains(&k.as_str())) {
                     return Err(invalid(format!("`{name}` takes no argument `{k}`")));
                 }
+                // A notification names a commit instant and sequence the horizon withholds
+                // (`read.subscribe.horizon-refusal`).
+                if let Some(at) = horizon {
+                    return Ok(Err(ReadError::SubscriptionUnderHorizon(format!("`{name}` serves no credential carrying horizon {}", at.to_rfc3339_nanos())).into()));
+                }
                 let tables = match arg(args, "tables") {
                     Some(Value::Array(xs)) if !xs.is_empty() => xs
                         .iter()
@@ -616,6 +621,12 @@ impl<'a> Tools<'a> {
                         .collect::<Result<_, _>>()?,
                     Some(_) => return Err(invalid("`after` is an object")),
                 };
+                if let Some(t) = tables.iter().enumerate().find_map(|(i, t)| tables[..i].contains(t).then_some(t)) {
+                    return Err(invalid(format!("`tables` lists `{t}` twice")));
+                }
+                if let Some(t) = after.keys().find(|t| !tables.contains(t)) {
+                    return Err(invalid(format!("`after` names `{t}`, which `tables` does not list")));
+                }
                 self.session(caller, zone, Bounds::default(), pins).and_then(|s| {
                     let page = self.face.subscribe(&s, &tables, &after)?;
                     let sent = page["messages"].as_array().map_or(0, |m| m.len() as u64);

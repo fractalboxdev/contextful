@@ -1381,7 +1381,7 @@ fn builtin_tool(name: &str) -> Value {
             "inputSchema": {
                 "type": "object",
                 "properties": {
-                    "tables": { "type": "array", "items": { "type": "string" }, "minItems": 1 },
+                    "tables": { "type": "array", "items": { "type": "string" }, "minItems": 1, "uniqueItems": true },
                     "after": { "type": "object", "description": "Each table to the `<run-id>/<node-id>` position it resumes after.", "additionalProperties": { "type": ["string", "null"] } },
                     "zone": { "type": "string" }
                 },

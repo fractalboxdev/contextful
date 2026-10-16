@@ -7011,7 +7011,7 @@
       "operation": "horizon",
       "subject": "inherited-bound",
       "kind": "behavior",
-      "statement": "Under a credential carrying a horizon, every read tool reads at `available_as_of` equal to the horizon when the call supplies none, capping {{read.as-of-join.horizon-caps-row}}, and echoes it as {{store.available-time.bound-echo}}.",
+      "statement": "Under a credential carrying a horizon, every read tool but `context.subscribe`, which {{read.subscribe.horizon-refusal}} refuses, reads at `available_as_of` equal to the horizon when the call supplies none, capping {{read.as-of-join.horizon-caps-row}}, and echoes it as {{store.available-time.bound-echo}}.",
       "why": "because a per-call bound is a bound the agent can omit",
       "file": "spec/20-read.md",
       "line": 505
@@ -7269,6 +7269,17 @@
       "why": "because a position refusal or a notification on an ungranted table discloses that the table exists and commits",
       "file": "spec/20-read.md",
       "line": 560
+    },
+    {
+      "id": "read.subscribe.horizon-refusal",
+      "contract": "read",
+      "operation": "subscribe",
+      "subject": "horizon-refusal",
+      "kind": "refusal",
+      "statement": "On the tool protocol, a subscription under a credential carrying a horizon raises `SubscriptionUnderHorizon` before any table or `after` position resolves.",
+      "why": "because a notification carries the run's commit instant and sequence, which {{read.horizon.engine-stamps}} withholds, and runs committed after the horizon",
+      "file": "spec/20-read.md",
+      "line": 562
     },
     {
       "id": "read.declare.canonical-column",
@@ -30207,6 +30218,10 @@
     ],
     [
       "read.horizon.inherited-bound",
+      "read.subscribe.horizon-refusal"
+    ],
+    [
+      "read.horizon.inherited-bound",
       "read.as-of-join.horizon-caps-row"
     ],
     [
@@ -35252,6 +35267,10 @@
           "SubscriptionPositionUnavailable": {
             "clause": "read.subscribe.position-unavailable",
             "gloss": "A subscription's `after` position names no committed run of its table."
+          },
+          "SubscriptionUnderHorizon": {
+            "clause": "read.subscribe.horizon-refusal",
+            "gloss": "A tool-protocol subscription arrived under a credential carrying a horizon."
           },
           "TableFunctionRefused": {
             "clause": "read.guard.table-function",

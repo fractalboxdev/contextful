@@ -474,7 +474,7 @@ fn available() -> Fixture {
 }
 
 /// [`available`] read by a credential carrying `horizon`.
-fn available_under(horizon: Option<&str>) -> Fixture {
+pub(crate) fn available_under(horizon: Option<&str>) -> Fixture {
     let decls = TableDecl::parse_pipeline(AVAILABLE).unwrap();
     let decl = |name: &str| decls.iter().find(|d| d.name == name).unwrap().clone();
     fixture_bounded(AVAILABLE, horizon, |store| {
@@ -630,8 +630,8 @@ fn a_listing_ignores_available_as_of() {
     assert_eq!(tables["result"]["structuredContent"]["tables"].as_array().unwrap().len(), 2, "{tables}");
 }
 
-/// Under a credential carrying a horizon, every read tool reads at `available_as_of` equal to the horizon when the call supplies none, capping {{read.as-of-join.horizon-caps-row}}, and echoes it as {{store.available-time.bound-echo}}.
-// spec: read.horizon.inherited-bound@62351825
+/// Under a credential carrying a horizon, every read tool but `context.subscribe`, which {{read.subscribe.horizon-refusal}} refuses, reads at `available_as_of` equal to the horizon when the call supplies none, capping {{read.as-of-join.horizon-caps-row}}, and echoes it as {{store.available-time.bound-echo}}.
+// spec: read.horizon.inherited-bound@5177ce81
 #[test]
 fn every_read_tool_called_unbounded_reads_at_the_horizon() {
     let f = available_under(Some("2030-06-01T00:00:00Z"));
@@ -658,6 +658,9 @@ fn every_read_tool_called_unbounded_reads_at_the_horizon() {
     let retrieved = call(&server, "corpus.retrieve", json!({ "prefix": "research/earnings", "query": "acme" }));
     assert_eq!(rows(&retrieved).as_array().unwrap().len(), 1, "{retrieved}");
     assert_eq!(echoed(&retrieved), &echo);
+    // A subscription reads no rows at a bound; it refuses under the horizon.
+    let subscribed = call(&server, "context.subscribe", json!({ "tables": ["research/earnings"] }));
+    assert_eq!(subscribed["result"]["structuredContent"]["error"]["identifier"], json!("SubscriptionUnderHorizon"), "{subscribed}");
 
     // An earlier bound narrows further; a table declaring no availability time refuses.
     let april = call(&server, "context.query", json!({ "sql": r#"SELECT filing_id FROM "research/earnings""#, "available_as_of": "2030-04-30T00:00:00Z" }));
