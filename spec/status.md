@@ -5,7 +5,7 @@ An unpinned clause is `committed`; a pinned one is `performed` when its Rust, Le
 
 | Contract | Files | Operations | Clauses | Refusals | Limits | Unsettled | Performed | Broken | Floor |
 | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
-| `assurance` | 3 | 18 | 320 | 64 | 24 | 6 | 278 | 0 | 278 |
+| `assurance` | 3 | 18 | 322 | 64 | 24 | 5 | 280 | 0 | 280 |
 | `authority` | 2 | 16 | 297 | 79 | 29 | 8 | 254 | 0 | 254 |
 | `connector` | 2 | 14 | 375 | 92 | 22 | 12 | 278 | 0 | 278 |
 | `corpus` | 1 | 10 | 80 | 37 | 7 | 0 | 80 | 0 | 80 |
@@ -15,7 +15,7 @@ An unpinned clause is `committed`; a pinned one is `performed` when its Rust, Le
 | `store` | 3 | 19 | 290 | 64 | 14 | 10 | 280 | 0 | 280 |
 | `surface` | 2 | 21 | 160 | 63 | 23 | 0 | 133 | 0 | 133 |
 | `topology` | 1 | 6 | 79 | 25 | 5 | 3 | 76 | 0 | 76 |
-| **total** | 22 | 169 | 2595 | 656 | 212 | 73 | 2276 | 0 | |
+| **total** | 22 | 169 | 2597 | 656 | 212 | 72 | 2278 | 0 | |
 
 Decision records: 18.
 
@@ -26,7 +26,7 @@ A milestone reads `closed` when its acceptance test computes `passing` and every
 | Milestone | Operations | Clauses | Performed | Acceptance | Closed |
 | --- | --- | --- | --- | --- | --- |
 | 0 — The test-first gate | 2 | 22 | 19 | passing | closed |
-| 1 — The authority core | 14 | 246 | 243 | passing | closed |
+| 1 — The authority core | 14 | 248 | 245 | passing | closed |
 | 2 — The store | 9 | 183 | 173 | passing | closed |
 | 3 — The run path | 12 | 276 | 265 | passing | closed |
 | 4 — Ingest | 25 | 586 | 474 | passing | closed |
@@ -255,7 +255,7 @@ Unscheduled operations: 13.
 | `assurance.model.floor` | `formal/Contextful/Placement.lean::floor` | performed |
 | `assurance.model.from-the-spec` | `crates/contextful-cli/tests/integration/formal.rs::the_models_import_no_engine_source` | performed |
 | `assurance.model.layer` | `formal/Contextful/Layer.lean::composed` | performed |
-| `assurance.model.module-layout` | `crates/contextful-cli/tests/integration/formal.rs::the_library_root_re_exports_four_modules` | performed |
+| `assurance.model.module-layout` | `crates/contextful-cli/tests/integration/formal.rs::the_library_root_re_exports_five_modules` | performed |
 | `assurance.model.out-of-model` | `crates/contextful-cli/tests/integration/formal.rs::the_policy_package_reaches_no_process_state_or_bytes` | performed |
 | `assurance.model.package` | `crates/contextful-cli/tests/integration/formal.rs::the_policy_package_has_one_library_no_dependency_and_an_exact_toolchain` | performed |
 | `assurance.model.placement-inductive` | `formal/Contextful/Placement.lean::Placement` | performed |
@@ -275,13 +275,15 @@ Unscheduled operations: 13.
 | `assurance.prove.fail-closed` | `formal/Contextful/Placement.lean::failClosed_floor_rejects_cloud` | performed |
 | `assurance.prove.floor-no-downgrade` | `formal/Contextful/Placement.lean::floor_no_downgrade` | performed |
 | `assurance.prove.mediation-from-composition` | `crates/contextful-cli/tests/integration/formal.rs::a_composition_theorem_offered_as_mediation_is_refused` | performed |
+| `assurance.prove.mediation-relation` | `crates/contextful-cli/tests/integration/formal.rs::the_mediation_constant_ranges_over_reachable_statement_states`, `formal/Contextful/Mediation.lean::statement_reach_released_rows_pass_session_layers` | performed |
 | `assurance.prove.names-carry-reach` | `crates/contextful-cli/tests/integration/formal.rs::every_constant_name_carries_the_object_it_ranges_over` | performed |
 | `assurance.prove.narrowing` | `formal/Contextful/Layer.lean::composed_narrows` | performed |
 | `assurance.prove.negative-space` | `crates/contextful-cli/tests/integration/formal.rs::every_composition_theorem_states_what_it_leaves_open` | performed |
 | `assurance.prove.no-negative-space` | `crates/contextful-cli/tests/integration/formal.rs::a_row_without_negative_space_is_refused` | performed |
 | `assurance.prove.order-is-specified` | `formal/Contextful/Layer.lean::filter_then_mask_ne_mask_then_filter` | performed |
 | `assurance.prove.placement-is-a-layer` | `formal/Contextful/Placement.lean::zone_layer_sound` | performed |
-| `assurance.prove.proof-targets` | `formal/Contextful/Authority.lean::authorityMapping_inclusion_narrowing_meaning` | performed |
+| `assurance.prove.proof-targets` | `crates/contextful-cli/tests/integration/formal.rs::a_target_binds_a_module_path_and_a_test_in_the_tree`, `formal/Contextful/Authority.lean::authorityMapping_inclusion_narrowing_meaning_restriction` | performed |
+| `assurance.prove.restriction-preservation` | `crates/contextful-policy/tests/integration/profile.rs::every_parent_block_admits_what_an_attenuation_chain_permits`, `formal/Contextful/Authority.lean::attenuateAll_permits_every_parent_block` | performed |
 | `assurance.prove.sampled-inclusion` | `crates/contextful-cli/tests/integration/formal.rs::inclusion_over_sampled_placements_is_refused`, `formal/Contextful/Placement.lean::includedIn_not_decided_by_sample` | performed |
 | `assurance.prove.subsumption-exact` | `formal/Contextful/Placement.lean::includedIn_iff_placement_inclusion` | performed |
 | `assurance.prove.symbolic-inclusion` | `formal/Contextful/Placement.lean::includedIn_iff_placement_inclusion` | performed |

@@ -25779,7 +25779,7 @@
       "subject": "proof-targets",
       "kind": "behavior",
       "statement": "The authority mapping of {{authority.profile.delegation-profile}} carries four proof targets: inclusion; narrowing, where an attenuated child's permission implies its parent's; profile meaning, where permission holds exactly when the audience matches and every block admits; and {{assurance.prove.restriction-preservation}}.",
-      "why": "because all four are pure decision functions over a verified credential; scoped-session execution after the decision answers to the mediation relation instead",
+      "why": "because all four are pure decision functions over a verified credential; the mediation relation covers read-path releases, and the rest of scoped-session execution stays unproved",
       "file": "spec/80-formal.md",
       "line": 114
     },
