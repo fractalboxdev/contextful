@@ -2,10 +2,11 @@
 //! pulling credential a replica holding only the tables its grants cover.
 
 use crate::support::{at, bucket, node, Node};
-use contextful_core::grant::{Action, Grant, TablePattern, TenantScope};
+use contextful_core::grant::{Action, AggregateGrant, Grant, TablePattern, TenantScope};
 use contextful_core::store::object::{Condition, ObjectStore};
 use contextful_core::store::sync::BucketManifest;
-use contextful_sync::{PullScope, ServingEdge};
+use contextful_sync::{PullScope, ServingEdge, SyncError};
+use contextful_core::store::StoreError;
 use serde_json::json;
 use std::sync::Arc;
 
@@ -50,7 +51,11 @@ fn files(n: &Node) -> Vec<String> {
     out
 }
 
-/// A bucket holding two tables and a root-level verbatim record, pushed with no bound.
+const RUN_STATE: &str = "team/research/nodes/ingest-a/run-state.json";
+const CURSOR: &str = "team/research/cursors/filings-feed/ingest-a/00000000000000000001.json";
+
+/// A bucket holding two tables, a root-level verbatim record, a run state and a cursor commit
+/// log naming `filings`, pushed with no bound.
 fn pushed() -> (tempfile::TempDir, Arc<dyn ObjectStore>) {
     let dir = tempfile::tempdir().unwrap();
     let b = bucket(dir.path());
@@ -58,7 +63,16 @@ fn pushed() -> (tempfile::TempDir, Arc<dyn ObjectStore>) {
     a.land_into("filings", "run-1", json!([{"id": 1}]), LANDED);
     a.land_into("public", "run-1", json!([{"id": 2}]), LANDED);
     write(&a, "records/run-1.json", b"verbatim pull record");
+    let state = json!({
+        "format": 1,
+        "node_id": "ingest-a",
+        "runs": {"filings-feed": {"run_id": "run-1", "table": "filings", "status": "succeeded", "started_at": LANDED}},
+        "cursors": [{"pipeline_id": "filings-feed", "table": "filings", "position": 41, "run_id": "run-1", "committed_at": LANDED}]
+    });
+    write(&a, "nodes/ingest-a/run-state.json", state.to_string().as_bytes());
+    write(&a, "cursors/filings-feed/ingest-a/00000000000000000001.json", br#"{"table":"filings","position":41}"#);
     a.syncer.push(at(NOW)).unwrap();
+    assert!(b.get(RUN_STATE).unwrap().is_some() && b.get(CURSOR).unwrap().is_some());
     assert!(!b.list("team/research/tables/filings/").unwrap().is_empty());
     assert!(!b.list("team/research/records/").unwrap().is_empty());
     (dir, b)
@@ -76,7 +90,9 @@ fn a_pull_through_the_edge_lands_only_granted_tables() {
     let served: BucketManifest = serde_json::from_slice(&edge.get("team/manifest.json").unwrap().unwrap().0).unwrap();
     assert!(!served.entries.is_empty());
     assert!(served.entries.keys().any(|k| k.starts_with("research/tables/public/")), "{:?}", served.entries.keys());
-    assert!(!served.entries.keys().any(|k| k.contains("filings") || k.contains("/records/")), "{:?}", served.entries.keys());
+    assert!(!served.entries.keys().any(|k| k.contains("filings") || k.contains("/records/") || k.contains("/nodes/")), "{:?}", served.entries.keys());
+    assert_eq!(edge.get(RUN_STATE).unwrap(), None);
+    assert_eq!(edge.get(CURSOR).unwrap(), None);
 
     let filings = b.list("team/research/tables/filings/").unwrap();
     assert_eq!(edge.get(&filings[0]).unwrap(), None);
@@ -84,7 +100,7 @@ fn a_pull_through_the_edge_lands_only_granted_tables() {
     assert_eq!(edge.list("team/research/tables/filings/").unwrap(), Vec::<String>::new());
     let listed = edge.list("team/research/").unwrap();
     assert!(!listed.is_empty());
-    assert!(listed.iter().all(|k| !k.contains("filings") && !k.contains("/records/")), "{listed:?}");
+    assert!(listed.iter().all(|k| !k.contains("filings") && !k.contains("/records/") && !k.contains("/nodes/")), "{listed:?}");
     assert!(edge.put("team/research/tables/public/x", b"rows", Condition::IfNoneMatch).is_err());
     assert!(edge.delete(&filings[0]).is_err());
     assert!(b.get(&filings[0]).unwrap().is_some());
@@ -93,11 +109,29 @@ fn a_pull_through_the_edge_lands_only_granted_tables() {
     cold.syncer.pull(&PullScope::default()).unwrap();
     let landed = files(&cold);
     assert!(landed.iter().any(|f| f.starts_with("tables/public/data/")), "{landed:?}");
-    assert!(!landed.iter().any(|f| f.contains("filings") || f.starts_with("records/")), "{landed:?}");
+    assert!(!landed.iter().any(|f| f.contains("filings") || f.starts_with("records/") || f.starts_with("nodes/")), "{landed:?}");
 }
 
-/// A grant on `*` serves every table and the root objects; a tenant-scoped or aggregate grant
-/// serves none of its table's files, and a write-only grant serves nothing.
+/// A bucket manifest of a newer format reaches the puller as that format alone, so the pull
+/// refuses it as a pull from the bucket does, and the edge leaks none of its entries.
+#[test]
+fn a_newer_manifest_through_the_edge_refuses_as_an_unsupported_format() {
+    let (_dir, b) = pushed();
+    let mut manifest: serde_json::Value = serde_json::from_slice(&b.get("team/manifest.json").unwrap().unwrap().0).unwrap();
+    manifest["format"] = json!(2);
+    manifest["entries"] = json!(["a newer shape"]);
+    b.put("team/manifest.json", manifest.to_string().as_bytes(), Condition::None).unwrap();
+    let edge: Arc<dyn ObjectStore> = Arc::new(ServingEdge::new(b.clone(), "team", "research", &[read(&["public"])]));
+
+    let served: serde_json::Value = serde_json::from_slice(&edge.get("team/manifest.json").unwrap().unwrap().0).unwrap();
+    assert_eq!(served, json!({"format": 2}));
+    let cold = node("reader", edge, "");
+    let refused = cold.syncer.pull(&PullScope::default()).unwrap_err();
+    assert!(matches!(refused, SyncError::Store(StoreError::SyncManifestFormatUnsupported(_))), "{refused:?}");
+}
+
+/// A grant on `*` serves every table and the root objects; a tenant-scoped, aggregate or
+/// horizon-bound grant serves none of its table's files, and a write-only grant serves nothing.
 // spec: authority.bound-redistribution.edge-whole-table@febff83c
 #[test]
 fn only_a_whole_table_read_grant_opens_a_table_at_the_edge() {
@@ -117,10 +151,25 @@ fn only_a_whole_table_read_grant_opens_a_table_at_the_edge() {
     let scoped = ServingEdge::new(b.clone(), "team", "research", &[scoped]);
     assert_eq!(scoped.get(&filings[0]).unwrap(), None);
 
+    let mut aggregate = read(&["filings"]);
+    aggregate.aggregate = Some(AggregateGrant { min_group_size: 5, max_contributor_share: 0.5, functions: vec!["count".into()], max_groups: 100, max_rows: None });
+    let aggregate = ServingEdge::new(b.clone(), "team", "research", &[aggregate]);
+    assert_eq!(aggregate.get(&filings[0]).unwrap(), None);
+
+    let mut horizon = read(&["filings"]);
+    horizon.horizon = Some(at(LANDED));
+    let horizon = ServingEdge::new(b.clone(), "team", "research", &[horizon]);
+    assert_eq!(horizon.get(&filings[0]).unwrap(), None);
+
     let mut writer = read(&["*"]);
     writer.actions = vec![Action::Write];
     let writer = ServingEdge::new(b.clone(), "team", "research", &[writer]);
     assert_eq!(writer.get(&filings[0]).unwrap(), None);
+    assert_eq!(writer.get(RUN_STATE).unwrap(), None);
+    assert_eq!(writer.get(CURSOR).unwrap(), None);
+    assert!(everything.get(RUN_STATE).unwrap().is_some());
+    assert!(everything.get(CURSOR).unwrap().is_some());
+    assert_eq!(prefix.get(RUN_STATE).unwrap(), None);
     let served: BucketManifest = serde_json::from_slice(&writer.get("team/manifest.json").unwrap().unwrap().0).unwrap();
     assert_eq!(served.entries.keys().filter(|k| k.contains("/tables/")).count(), 0, "{:?}", served.entries.keys());
 }

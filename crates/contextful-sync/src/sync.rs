@@ -182,7 +182,7 @@ impl Redistribution {
     }
 
     /// Whether `key`, under `project`, is a root-level object Shapes withholds.
-    pub(crate) fn root_withheld(project: &str, key: &str) -> bool {
+    fn root_withheld(project: &str, key: &str) -> bool {
         root_rest(project, key).is_some_and(|rest| ROOT_WITHHELD_DIRS.iter().any(|d| rest.starts_with(d)) || ROOT_WITHHELD_FILES.contains(&rest))
     }
 

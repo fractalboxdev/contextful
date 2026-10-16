@@ -2,11 +2,16 @@
 //! credential a replica holding only the tables its grants cover
 //! (`authority.bound-redistribution.edge-filter`).
 
-use crate::sync::{project_table, Redistribution};
+use crate::sync::project_table;
 use contextful_core::grant::{Action, Grant, TablePattern};
 use contextful_core::store::object::{CasScope, Condition, ObjectError, ObjectStore, Put};
-use contextful_core::store::sync::{admit_format, generation_of, BucketManifest, MANIFEST_KEY};
+use contextful_core::store::sync::{generation_of, BucketManifest, MANIFEST_FORMAT, MANIFEST_KEY};
 use std::sync::Arc;
+
+/// Root-level directories the edge serves under any grant: neither names a table's contents.
+const OPEN_ROOT_DIRS: [&str; 2] = ["access/", "control/"];
+/// Root-level files the edge serves under any grant.
+const OPEN_ROOT_FILES: [&str; 1] = ["stale_memory.idx"];
 
 /// A bucket seen through one credential's grants. A manifest it serves names only the keys the
 /// grants reach; any other object reads as absent by its key and from a listing, so the edge
@@ -44,29 +49,33 @@ impl ServingEdge {
     }
 
     /// Whether the grants reach the project-relative key `rel`: a table's object under a grant
-    /// covering the table, a root object Shapes withholds under a grant on `*`, any other root
-    /// object of the project always, and nothing outside the project.
+    /// covering the table, an open root object always, any other root object (records, run
+    /// states, cursor logs, catalogs) under a grant on `*`, and nothing outside the project.
     fn reaches(&self, rel: &str) -> bool {
-        if !rel.starts_with(&format!("{}/", self.project)) {
-            return false;
-        }
+        let Some(rest) = rel.strip_prefix(self.project.as_str()).and_then(|r| r.strip_prefix('/')) else { return false };
         match project_table(&self.project, rel) {
             Some(table) => self.tables.iter().any(|p| p.covers_name(&table)),
-            None if Redistribution::root_withheld(&self.project, rel) => self.tables.contains(&TablePattern::All),
-            None => true,
+            None if OPEN_ROOT_DIRS.iter().any(|d| rest.starts_with(d)) || OPEN_ROOT_FILES.contains(&rest) => true,
+            None => self.tables.contains(&TablePattern::All),
         }
     }
 
-    /// `bytes`, a bucket or generation manifest, with every key the grants miss removed.
+    /// `bytes`, a bucket or generation manifest, with every key the grants miss removed. A
+    /// manifest of a format newer than this build parses reaches the puller as its format alone,
+    /// so the puller refuses it (`store.push.format-unsupported`) and learns no key.
     fn filter(&self, rel: &str, bytes: &[u8]) -> Result<Vec<u8>, ObjectError> {
-        let invalid = |e: String| ObjectError::Transport(format!("`{rel}` at the serving edge: {e}"));
-        let mut manifest: BucketManifest = serde_json::from_slice(bytes).map_err(|e| invalid(e.to_string()))?;
-        admit_format(rel, manifest.format).map_err(|e| invalid(e.to_string()))?;
+        let invalid = |e: serde_json::Error| ObjectError::Transport(format!("`{rel}` at the serving edge: {e}"));
+        let value: serde_json::Value = serde_json::from_slice(bytes).map_err(invalid)?;
+        let format = value.get("format").and_then(serde_json::Value::as_u64).unwrap_or(1);
+        if format > u64::from(MANIFEST_FORMAT) {
+            return serde_json::to_vec(&serde_json::json!({ "format": format })).map_err(invalid);
+        }
+        let mut manifest: BucketManifest = serde_json::from_value(value).map_err(invalid)?;
         manifest.entries.retain(|k, _| self.reaches(k));
         manifest.tombstones.retain(|k, _| self.reaches(k));
         manifest.pointers.retain(|k, _| self.reaches(k));
         manifest.control_heads.retain(|p, _| p == &self.project);
-        serde_json::to_vec_pretty(&manifest).map_err(|e| invalid(e.to_string()))
+        serde_json::to_vec_pretty(&manifest).map_err(invalid)
     }
 }
 
