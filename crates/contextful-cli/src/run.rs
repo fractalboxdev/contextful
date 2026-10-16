@@ -373,6 +373,7 @@ impl StoreDestination {
             site_id: site_id.to_string(),
             batch_seq: None,
             authored_by: self.author.as_ref().and_then(Author::on_behalf_of),
+            authored_agent: self.author.as_ref().and_then(Author::agent),
             taint: None,
         }
     }

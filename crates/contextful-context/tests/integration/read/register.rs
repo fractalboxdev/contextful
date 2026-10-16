@@ -289,7 +289,7 @@ fn a_preview_reads_the_named_file_alone() {
     };
     let ctx = RunContext {
         node: NodeId::parse("ingest-a").unwrap(),
-        injection: Injection { run_id: "run-0002".into(), site_id: "site-a".into(), batch_seq: Some(0), authored_by: None, taint: None },
+        injection: Injection { run_id: "run-0002".into(), site_id: "site-a".into(), batch_seq: Some(0), authored_by: None, authored_agent: None, taint: None },
         committed_at: at("2030-01-11T00:00:00Z"),
     };
     let decl = TableDecl::named("research/vendor");
@@ -565,7 +565,7 @@ fn an_availability_bound_narrows_the_tenant_restricted_rows() {
     ]);
     let ctx = RunContext {
         node: NodeId::parse("ingest-a").unwrap(),
-        injection: Injection { run_id: "run-0001".into(), site_id: "site-a".into(), batch_seq: Some(0), authored_by: None, taint: None },
+        injection: Injection { run_id: "run-0001".into(), site_id: "site-a".into(), batch_seq: Some(0), authored_by: None, authored_agent: None, taint: None },
         committed_at: at("2030-05-01T00:00:00Z"),
     };
     land(&r.store, &decl, &Batch { rows: rows.as_array().unwrap().iter().map(|v| v.as_object().unwrap().clone()).collect(), types: HashMap::new() }, &ctx).unwrap();
@@ -648,7 +648,7 @@ fn land_rows_with(store: &Store, decl: &TableDecl, rows: Value) {
     let rows = rows.as_array().unwrap().iter().map(|r| r.as_object().unwrap().clone()).collect();
     let ctx = RunContext {
         node: NodeId::parse("ingest-a").unwrap(),
-        injection: Injection { run_id: "run-0001".into(), site_id: "site-a".into(), batch_seq: Some(0), authored_by: None, taint: None },
+        injection: Injection { run_id: "run-0001".into(), site_id: "site-a".into(), batch_seq: Some(0), authored_by: None, authored_agent: None, taint: None },
         committed_at: at("2030-01-10T00:00:00Z"),
     };
     land(store, decl, &Batch { rows, types: HashMap::new() }, &ctx).unwrap();

@@ -652,6 +652,53 @@ pub fn regenerate<T: Clone>(existing: &[T], derived: &[T], key: impl Fn(&T) -> S
     out
 }
 
+/// One `[[principal]]` block: the identity a row's `_authored_agent` or `_authored_by`
+/// names, and the allow-set narrowing every row it authors
+/// (`authority.place.per-principal`).
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Principal {
+    pub id: String,
+    pub zone: crate::place::AllowSet,
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(deny_unknown_fields)]
+struct RawPrincipal {
+    id: String,
+    zone: RawPrincipalZone,
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(deny_unknown_fields)]
+struct RawPrincipalZone {
+    allow: Vec<String>,
+}
+
+#[derive(Debug, Deserialize)]
+struct PrincipalBlocks {
+    #[serde(default)]
+    principal: Vec<RawPrincipal>,
+}
+
+/// The `[[principal]]` blocks a manifest declares. A block missing `id` or `zone.allow`, an
+/// empty or repeated `id`, and an allow-set entry outside the grammar refuse.
+pub fn principals(manifest: &str) -> Result<Vec<Principal>, crate::place::PlaceError> {
+    use crate::store::declare::DeclarationMalformed;
+    let blocks: PrincipalBlocks = toml::from_str(manifest).map_err(|e| DeclarationMalformed(format!("[[principal]]: {}", e.message())))?;
+    let mut seen = BTreeSet::new();
+    let mut out = Vec::new();
+    for p in blocks.principal {
+        if p.id.trim().is_empty() {
+            return Err(DeclarationMalformed("a [[principal]] block names an empty `id`".to_string()).into());
+        }
+        if !seen.insert(p.id.clone()) {
+            return Err(DeclarationMalformed(format!("[[principal]] `{}` is declared more than once", p.id)).into());
+        }
+        out.push(Principal { zone: crate::place::AllowSet::parse(&p.zone.allow)?, id: p.id });
+    }
+    Ok(out)
+}
+
 /// The top-level keys a manifest file holds (`run.model.top-level-block`).
 pub const MANIFEST_BLOCKS: [&str; 26] = [
     "acl_sweep",

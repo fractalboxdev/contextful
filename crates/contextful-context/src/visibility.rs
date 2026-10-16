@@ -480,7 +480,7 @@ pub fn sweep_read(
         if batch.rows.is_empty() {
             continue;
         }
-        let injection = Injection { run_id: sweep_id.clone(), site_id: at.site_id.clone(), batch_seq: None, authored_by: None, taint: None };
+        let injection = Injection { run_id: sweep_id.clone(), site_id: at.site_id.clone(), batch_seq: None, authored_by: None, authored_agent: None, taint: None };
         land_engine_owned(store, &TableDecl::named(sweep::table(&block.source, name)), &batch, &RunContext { node: at.node.clone(), injection, committed_at })?;
     }
     Ok(c)

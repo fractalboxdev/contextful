@@ -66,7 +66,7 @@ fn put_run(store: &Store, table: &str, run: &str, rows: Vec<Value>) {
     let rows = rows.iter().map(|r| r.as_object().unwrap().clone()).collect();
     let ctx = RunContext {
         node: NodeId::parse("ingest-a").unwrap(),
-        injection: Injection { run_id: run.into(), site_id: "site-a".into(), batch_seq: Some(0), authored_by: None, taint: None },
+        injection: Injection { run_id: run.into(), site_id: "site-a".into(), batch_seq: Some(0), authored_by: None, authored_agent: None, taint: None },
         committed_at: at("2030-01-01T00:00:00Z"),
     };
     land(store, &TableDecl::named(table), &Batch { rows, types: Default::default() }, &ctx).unwrap();

@@ -6,16 +6,16 @@ An unpinned clause is `committed`; a pinned one is `performed` when its Rust, Le
 | Contract | Files | Operations | Clauses | Refusals | Limits | Unsettled | Performed | Broken | Floor |
 | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
 | `assurance` | 3 | 18 | 323 | 65 | 24 | 5 | 281 | 0 | 281 |
-| `authority` | 2 | 16 | 299 | 80 | 29 | 8 | 274 | 0 | 274 |
+| `authority` | 2 | 16 | 300 | 80 | 29 | 8 | 276 | 0 | 274 |
 | `connector` | 2 | 14 | 375 | 92 | 22 | 12 | 292 | 0 | 292 |
 | `corpus` | 1 | 10 | 80 | 37 | 7 | 0 | 80 | 0 | 80 |
 | `disclosure` | 3 | 16 | 187 | 69 | 14 | 5 | 165 | 0 | 165 |
 | `read` | 2 | 20 | 314 | 54 | 29 | 15 | 272 | 0 | 272 |
 | `run` | 3 | 29 | 554 | 126 | 45 | 17 | 522 | 0 | 522 |
-| `store` | 3 | 19 | 296 | 64 | 15 | 10 | 285 | 0 | 285 |
+| `store` | 3 | 19 | 297 | 64 | 15 | 10 | 286 | 0 | 285 |
 | `surface` | 2 | 21 | 161 | 63 | 23 | 0 | 134 | 0 | 134 |
 | `topology` | 1 | 6 | 79 | 25 | 5 | 3 | 76 | 0 | 76 |
-| **total** | 22 | 169 | 2668 | 675 | 213 | 75 | 2381 | 0 | |
+| **total** | 22 | 169 | 2670 | 675 | 213 | 75 | 2384 | 0 | |
 
 Decision records: 18.
 
@@ -27,10 +27,10 @@ A milestone reads `closed` when its acceptance test computes `passing` and every
 | --- | --- | --- | --- | --- | --- |
 | 0 — The test-first gate | 2 | 22 | 19 | passing | closed |
 | 1 — The authority core | 14 | 248 | 247 | passing | closed |
-| 2 — The store | 9 | 184 | 174 | passing | closed |
+| 2 — The store | 9 | 185 | 175 | passing | closed |
 | 3 — The run path | 12 | 289 | 278 | passing | closed |
 | 4 — Ingest | 25 | 593 | 495 | passing | closed |
-| 5 — The read face under enforcement | 17 | 314 | 279 | passing | closed |
+| 5 — The read face under enforcement | 17 | 315 | 281 | passing | closed |
 | 6 — Sync and replicas | 8 | 88 | 87 | passing | closed |
 | 7 — Memory | 6 | 92 | 77 | passing | closed |
 | 8 — Accountability | 5 | 96 | 89 | passing | closed |
@@ -510,11 +510,13 @@ Unscheduled operations: 13.
 | `authority.place.incognito` | `crates/contextful-cli/tests/integration/mcp.rs::an_incognito_server_pins_its_credential_to_the_fail_closed_pair` | performed |
 | `authority.place.incognito-widening` | `crates/contextful-policy/tests/integration/enforce/zone.rs::incognito_refuses_a_wider_zone_and_pins_an_absent_one` | performed |
 | `authority.place.narrowest-grain` | `crates/contextful-policy/tests/integration/enforce/zone.rs::the_narrowest_grain_wins` | performed |
+| `authority.place.per-principal` | `crates/contextful-context/tests/integration/read/enforce.rs::a_listed_principal_withholds_the_rows_it_authors_outside_its_set` | performed |
 | `authority.place.protected-floor` | `crates/contextful-policy/tests/integration/enforce/zone.rs::a_protected_surface_resolves_down_to_its_floor` | performed |
 | `authority.place.removal-with-public-cloud` | `crates/contextful-policy/tests/integration/enforce/zone.rs::write_time_removal_beside_a_public_cloud_is_refused` | performed |
 | `authority.place.serve-outcome` | `crates/contextful-policy/tests/integration/enforce/zone.rs::serving_a_row_yields_a_drop_flag_and_masked_columns` | performed |
 | `authority.place.symbolic-inclusion` | `crates/contextful-policy/tests/integration/enforce/zone.rs::inclusion_is_decided_over_constructors_and_identifiers` | performed |
 | `authority.place.team-default` | `crates/contextful-cli/tests/integration/token.rs::a_mint_naming_no_zone_signs_the_project_default` | performed |
+| `authority.place.unauthored-row` | `crates/contextful-context/tests/integration/read/enforce.rs::a_pipeline_landed_row_keeps_its_table_set` | performed |
 | `authority.place.undeclared` | `crates/contextful-policy/tests/integration/enforce/zone.rs::only_the_wildcard_admits_an_undeclared_zone` | performed |
 | `authority.place.unparsed-pattern` | `crates/contextful-policy/tests/integration/enforce/zone.rs::an_unparsed_entry_is_refused_by_name` | performed |
 | `authority.place.zone-string` | `crates/contextful-policy/tests/integration/enforce/zone.rs::zone_strings_parse_by_category_and_identifier` | performed |
@@ -2200,6 +2202,7 @@ Unscheduled operations: 13.
 | `store.replicate.partial-parquet` | `crates/contextful-sync/tests/integration/pull.rs::a_replica_missing_a_snapshot_part_refuses_and_leaves_it_unpublished` | performed |
 | `store.replicate.sensitive-refused` | `crates/contextful-sync/tests/integration/pull.rs::a_refresh_requesting_a_replicate_off_table_refuses` | performed |
 | `store.replicate.write-refused` | `crates/contextful-sync/tests/integration/pull.rs::a_replica_refuses_a_write_verb_naming_the_canonical_store` | performed |
+| `store.reserve.authored-agent` | `crates/contextful-context/tests/integration/reserve.rs::an_authored_write_carries_its_agent_beside_its_principal` | performed |
 | `store.reserve.column-name` | `crates/contextful-core/tests/integration/store/reserve.rs::a_producer_column_in_the_namespace_is_refused` | performed |
 | `store.reserve.commit-order` | `crates/contextful-context/tests/integration/reserve.rs::concurrent_commits_expose_a_prefix_of_the_commit_sequence_to_every_read` | performed |
 | `store.reserve.commit-seq` | `crates/contextful-context/tests/integration/reserve.rs::a_run_committing_after_a_read_carries_a_higher_commit_seq_whatever_its_stamp` | performed |

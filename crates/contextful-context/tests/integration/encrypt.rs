@@ -438,14 +438,14 @@ fn a_bound_store_lands_ciphertext_and_reads_its_row() {
     let batch = Batch { rows: vec![json!({"doc_id": "d1", "body": canary}).as_object().unwrap().clone()], types: Default::default() };
     let ctx = RunContext {
         node: NodeId::parse("ingest-a").unwrap(),
-        injection: Injection { run_id: "run-1".into(), site_id: "site-a".into(), batch_seq: Some(0), authored_by: None, taint: None },
+        injection: Injection { run_id: "run-1".into(), site_id: "site-a".into(), batch_seq: Some(0), authored_by: None, authored_agent: None, taint: None },
         committed_at: Instant::parse("2030-01-01T00:00:00Z").unwrap(),
     };
     contextful_context::land::land_run(&store, &decl, std::slice::from_ref(&batch), &ctx, &Default::default(), &|| Ok(())).unwrap();
     let next = Batch { rows: vec![json!({"doc_id": "d2", "body": canary, "extra": 99}).as_object().unwrap().clone()], types: [("extra".into(), contextful_core::store::reconcile::ColumnType::Float64)].into() };
     let next_ctx = RunContext {
         node: NodeId::parse("ingest-a").unwrap(),
-        injection: Injection { run_id: "run-2".into(), site_id: "site-a".into(), batch_seq: Some(0), authored_by: None, taint: None },
+        injection: Injection { run_id: "run-2".into(), site_id: "site-a".into(), batch_seq: Some(0), authored_by: None, authored_agent: None, taint: None },
         committed_at: Instant::parse("2030-01-02T00:00:00Z").unwrap(),
     };
     contextful_context::land::land_run(&store, &decl, std::slice::from_ref(&next), &next_ctx, &Default::default(), &|| Ok(())).unwrap();
@@ -531,7 +531,7 @@ fn a_fixed_seed_store_has_zero_plaintext_hits_and_decrypts_every_payload() {
     let batch = Batch { rows: vec![json!({"doc_id": "d1", "body": CANARY}).as_object().unwrap().clone()], types: Default::default() };
     let ctx = RunContext {
         node: node.clone(),
-        injection: Injection { run_id: CANARY.into(), site_id: "site-a".into(), batch_seq: Some(0), authored_by: None, taint: None },
+        injection: Injection { run_id: CANARY.into(), site_id: "site-a".into(), batch_seq: Some(0), authored_by: None, authored_agent: None, taint: None },
         committed_at: at,
     };
     land(&store, &decl, &batch, &ctx).unwrap();
@@ -622,7 +622,7 @@ fn a_bound_store_encrypts_parquet_footers_and_seals_sidecars_and_ledgers_per_fil
     let node = NodeId::parse("ingest-a").unwrap();
     let at = Instant::parse("2030-01-01T00:00:00Z").unwrap();
     let batch = Batch { rows: vec![json!({"doc_id": "d1", "body": CANARY}).as_object().unwrap().clone()], types: Default::default() };
-    let injection = Injection { run_id: "run-1".into(), site_id: "site-a".into(), batch_seq: Some(0), authored_by: None, taint: None };
+    let injection = Injection { run_id: "run-1".into(), site_id: "site-a".into(), batch_seq: Some(0), authored_by: None, authored_agent: None, taint: None };
     land(&store, &decl, &batch, &RunContext { node: node.clone(), injection, committed_at: at }).unwrap();
     let parts: Vec<_> = tree(&root).into_iter().filter(|(p, _)| p.extension().is_some_and(|e| e == "parquet")).collect();
     assert!(!parts.is_empty(), "the exclusion below ranges over no element");

@@ -244,7 +244,7 @@ fn a_date_only_instant_resolves_to_the_next_day_in_its_zone() {
 fn staged(run: &str, at: &str) -> contextful_context::land::RunContext {
     contextful_context::land::RunContext {
         node: contextful_core::store::lay_out::NodeId::parse("ingest-a").unwrap(),
-        injection: contextful_core::store::reserve::Injection { run_id: run.into(), site_id: "site-a".into(), batch_seq: None, authored_by: None, taint: None },
+        injection: contextful_core::store::reserve::Injection { run_id: run.into(), site_id: "site-a".into(), batch_seq: None, authored_by: None, authored_agent: None, taint: None },
         committed_at: crate::support::at(at),
     }
 }

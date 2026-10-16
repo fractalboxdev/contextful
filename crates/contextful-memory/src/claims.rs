@@ -135,6 +135,7 @@ impl Landing<'_> {
                 site_id: "memory".into(),
                 batch_seq: Some(0),
                 authored_by: self.writer.on_behalf_of.clone(),
+                authored_agent: self.writer.agent.clone(),
                 taint: self.taint,
             },
             committed_at: self.at,

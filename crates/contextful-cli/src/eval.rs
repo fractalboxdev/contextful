@@ -311,7 +311,7 @@ fn land_corpus(corpus: &Corpus, store: &Store, embedder: &StubEmbedder, at: Inst
         }
         let ctx = RunContext {
             node: node.clone(),
-            injection: Injection { run_id: "eval-0001".into(), site_id: "eval".into(), batch_seq: Some(0), authored_by: None, taint: None },
+            injection: Injection { run_id: "eval-0001".into(), site_id: "eval".into(), batch_seq: Some(0), authored_by: None, authored_agent: None, taint: None },
             committed_at: at,
         };
         land(store, &decl, &Batch { rows, types }, &ctx).with_context(|| format!("landing `{}`", path.display()))?;

@@ -202,3 +202,37 @@ fn a_session_records_the_tables_it_serves_narrowed() {
     assert!(!session.narrowed("research/notes"));
     assert!(!session.narrowed("research/absent"));
 }
+
+/// The principal step binds, per table carrying an author column, the listed principals whose
+/// narrowed set omits the session zone, decided at compile time; a table without the columns,
+/// and a principal whose set admits the zone, bind nothing.
+#[test]
+fn the_principal_step_binds_only_the_principals_the_zone_withholds() {
+    use contextful_core::pipeline::model::Principal;
+    use contextful_policy::enforce::session::PRINCIPAL_RELATION;
+    use contextful_policy::enforce::zone::AllowSet;
+    let signer = issuer();
+    let subject = contextful_core::identify::Subject { zone: Some("on-prem:hq".into()), ..dana() };
+    let token = mint(&plan_for(&signer, subject, vec![grant(&[Action::Read], &["research/*"])]), &MintClaims::default(), &signer).unwrap();
+    let authority = admit(&token, &signer, DURING).unwrap();
+    let set = |e: &str| AllowSet::parse(&[e.to_string()]).unwrap();
+    let principals = vec![
+        Principal { id: "agent://device-loop".into(), zone: set("local:device") },
+        Principal { id: "user://dana@acme.example".into(), zone: set("on-prem:*") },
+    ];
+    let with = |name: &str, columns: &[&str]| {
+        let mut t = source(name);
+        t.policy.principals = principals.clone();
+        t.columns.extend(columns.iter().map(|c| Column::new(*c, ColumnType::Utf8, false)));
+        t
+    };
+    let tables = vec![with("research/authored", &["_authored_by", "_authored_agent"]), with("research/plain", &[])];
+    let session = Session::open(&authority, &Request::default(), tables, &Pepper::resolve(|_| None)).unwrap();
+    assert_eq!(session.principal_rows(), [("research/authored".to_string(), "agent://device-loop".to_string())]);
+    let authored = session.relation("research/authored").unwrap().sql();
+    assert!(authored.contains(PRINCIPAL_RELATION) && authored.contains("\"_authored_agent\"") && !authored.contains("device-loop"), "{authored}");
+    assert!(!session.relation("research/plain").unwrap().sql().contains(PRINCIPAL_RELATION));
+    let withheld = session.zone_withheld("research/authored").unwrap();
+    assert!(!withheld.excluded && withheld.dropped_sql.is_some_and(|sql| sql.contains(PRINCIPAL_RELATION)));
+    assert!(session.zone_withheld("research/plain").is_none());
+}

@@ -49,7 +49,7 @@ fn a_logged_run_absent_from_its_commit_log_never_notifies() {
     contextful_context::commit_log::open_fence(&f.store, "feed", "ingest-a", "events", 1).unwrap();
     let ctx = RunContext {
         node: NodeId::parse("ingest-a").unwrap(),
-        injection: Injection { run_id: "leased".into(), site_id: "site-a".into(), batch_seq: None, authored_by: None, taint: None },
+        injection: Injection { run_id: "leased".into(), site_id: "site-a".into(), batch_seq: None, authored_by: None, authored_agent: None, taint: None },
         committed_at: at("2030-01-01T00:02:00Z"),
     };
     let position = Position { pipeline_id: Some("feed".into()), cursor: Some(json!("c1")), fence: Some(1), logged: true, replace_frontier: false };
@@ -133,7 +133,7 @@ fn a_run_committed_after_an_unpublished_group_waits_for_the_group() {
     land(&f, "r1", 1);
     let ctx = RunContext {
         node: NodeId::parse("ingest-a").unwrap(),
-        injection: Injection { run_id: "grouped".into(), site_id: "site-a".into(), batch_seq: None, authored_by: None, taint: None },
+        injection: Injection { run_id: "grouped".into(), site_id: "site-a".into(), batch_seq: None, authored_by: None, authored_agent: None, taint: None },
         committed_at: at("2030-01-01T00:02:00Z"),
     };
     let grouped = commit_parts_group(&f.store, &d, &[], &ctx, &Position::default(), "events", &[], &|| Ok(()), &|_| Ok(())).unwrap();

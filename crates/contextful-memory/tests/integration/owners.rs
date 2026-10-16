@@ -24,7 +24,7 @@ fn attach(f: &Fixture, run: &str, rel_type: &str, artifact: &str, principal: &st
     let row = json!({ "edge_id": run, "rel_type": rel_type, "source_id": artifact, "target_id": principal, "evidence": "[]" });
     let ctx = RunContext {
         node: NodeId::parse("memory-a").unwrap(),
-        injection: Injection { run_id: run.into(), site_id: "site-a".into(), batch_seq: Some(0), authored_by: None, taint: None },
+        injection: Injection { run_id: run.into(), site_id: "site-a".into(), batch_seq: Some(0), authored_by: None, authored_agent: None, taint: None },
         committed_at: at(when),
     };
     let decl = TableDecl { primary_key: Some(vec!["edge_id".into()]), ..TableDecl::named(EDGES) };

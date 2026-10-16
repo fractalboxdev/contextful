@@ -14,7 +14,7 @@ fn a_carried_table_resolves_at_its_own_as_of() {
     let row = json!({ "note_id": "n9", "tenant": "acme", "title": "Written by the preceding origin" }).as_object().cloned().unwrap();
     let ctx = RunContext {
         node: NodeId::parse("ingest-a").unwrap(),
-        injection: Injection { run_id: "run-0009".into(), site_id: "site-a".into(), batch_seq: Some(0), authored_by: None, taint: None },
+        injection: Injection { run_id: "run-0009".into(), site_id: "site-a".into(), batch_seq: Some(0), authored_by: None, authored_agent: None, taint: None },
         committed_at: at("2030-02-01T00:00:00Z"),
     };
     land(&r.store, &decl, &Batch { rows: vec![row], types: std::collections::HashMap::new() }, &ctx).unwrap();

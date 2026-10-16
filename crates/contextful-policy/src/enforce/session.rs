@@ -22,6 +22,7 @@ use contextful_core::store::declare::{DeclarationMalformed, TableDecl};
 use contextful_core::store::ledger::{ledger_relation, ledger_sql, ledger_table};
 use contextful_core::store::reconcile::Column;
 use contextful_core::store::relation::{ident, literal};
+use contextful_core::store::reserve::{AUTHORED_AGENT, AUTHORED_BY};
 use std::collections::BTreeMap;
 
 /// Registered relations one session holds (`authority.compose.relations-per-session`).
@@ -32,6 +33,10 @@ pub const TENANT_RELATION: &str = "__contextful_tenant";
 
 /// The session-scoped relation holding each bound table's reachable resource ids.
 pub const REACH_RELATION: &str = "__contextful_reach";
+
+/// The session-scoped relation holding, per table, each listed principal whose narrowed set
+/// omits the session zone (`authority.place.per-principal`).
+pub const PRINCIPAL_RELATION: &str = "__contextful_principal";
 
 /// The mirrored-permission semi-join of one bound table (`disclosure.reach.semi-join`): the
 /// column holding each row's `resource_id`, and the resources the reader's reachable set
@@ -134,6 +139,9 @@ pub struct Session {
     incognito: bool,
     tenants: BTreeMap<String, (String, Vec<String>)>,
     reach: BTreeMap<String, ReachFilter>,
+    /// Per table carrying an author column, the listed principals whose narrowed set omits
+    /// the session zone (`authority.place.per-principal`).
+    withheld_authors: BTreeMap<String, Vec<String>>,
     relations: BTreeMap<String, RegisteredRelation>,
     ledgers: BTreeMap<String, RegisteredRelation>,
     policies: BTreeMap<String, TablePolicy>,
@@ -219,6 +227,7 @@ impl Session {
             incognito: subject.incognito(),
             tenants: BTreeMap::new(),
             reach: BTreeMap::new(),
+            withheld_authors: BTreeMap::new(),
             relations: BTreeMap::new(),
             ledgers: BTreeMap::new(),
             policies: BTreeMap::new(),
@@ -233,6 +242,10 @@ impl Session {
             }
             if t.landed {
                 t.policy.check_schema(&t.decl.name, &t.columns)?;
+            }
+            let withheld = session.principals_withheld(&t);
+            if !withheld.is_empty() {
+                session.withheld_authors.insert(t.decl.name.clone(), withheld);
             }
             let relation = session.compile(&t, &t.base, t.files.clone())?;
             session.relations.insert(t.decl.name.clone(), relation);
@@ -291,7 +304,8 @@ impl Session {
     }
 
     /// Compile one granted table's relation. The steps apply in order — mirrored-permission
-    /// semi-join, tenant equality, table policy, table zone, then the projection carrying zone nulls and masks
+    /// semi-join, tenant equality, table policy, table zone, the authoring principal's zone, then
+    /// the projection carrying zone nulls and masks
     /// (`authority.compose.relation-order`) — each a conjunct of one `WHERE`, so a step
     /// removes rows and adds none (`authority.compose.conjunctive-narrowing`). Protection
     /// is this rewrite (`authority.compose.protection-is-a-rewrite`).
@@ -303,6 +317,9 @@ impl Session {
         let mut conjuncts = self.steps_before_zone(t);
         if !self.zone_admits(t) {
             conjuncts.push("false".to_string());
+        }
+        if let Some(authored) = self.authored_by_withheld(t) {
+            conjuncts.push(format!("NOT {authored}"));
         }
         let projection: Vec<String> = t
             .columns
@@ -327,6 +344,44 @@ impl Session {
     /// (`authority.place.excluded-row`).
     fn zone_admits(&self, t: &TableSource) -> bool {
         t.policy.placement.effective().admits(&self.zone)
+    }
+
+    /// The listed principals whose set, narrowing the table's effective set, omits the session
+    /// zone, decided here over the sets' constructors; empty for a table carrying no author
+    /// column (`authority.place.per-principal`).
+    fn principals_withheld(&self, t: &TableSource) -> Vec<String> {
+        if author_columns(t).is_empty() {
+            return Vec::new();
+        }
+        let table = t.policy.placement.effective();
+        t.policy
+            .principals
+            .iter()
+            .filter(|p| !super::zone::narrowest(&table, None, Some(&p.zone)).admits(&self.zone))
+            .map(|p| p.id.clone())
+            .collect()
+    }
+
+    /// The condition a row authored by a withheld principal meets: its `_authored_agent` or its
+    /// `_authored_by` is among them. A row carrying neither column's value, or naming an
+    /// unlisted author, never meets it and keeps the table's set
+    /// (`authority.place.unauthored-row`). The ids reach the engine as parameters into the
+    /// principal relation; the text names only the columns and the table.
+    fn authored_by_withheld(&self, t: &TableSource) -> Option<String> {
+        let name = &t.decl.name;
+        self.withheld_authors.get(name)?;
+        let arms: Vec<String> = author_columns(t)
+            .into_iter()
+            .map(|c| {
+                format!(
+                    "coalesce(CAST({} AS VARCHAR) IN (SELECT \"principal\" FROM {} WHERE \"table\" = {}), false)",
+                    ident(c),
+                    ident(PRINCIPAL_RELATION),
+                    literal(name)
+                )
+            })
+            .collect();
+        Some(format!("({})", arms.join(" OR ")))
     }
 
     /// The relation's steps ahead of the zone step: the mirrored-permission semi-join, tenant
@@ -382,7 +437,15 @@ impl Session {
         }
         let columns_masked: Vec<String> =
             t.columns.iter().filter(|c| !t.policy.column_set(&c.name).admits(&self.zone)).map(|c| c.name.clone()).collect();
-        (!columns_masked.is_empty()).then(|| ZoneWithheld { relation: name.to_string(), excluded: false, columns_masked, dropped_sql: None })
+        // The rows a withheld principal authored leave the relation; the count reads them under
+        // every earlier step (`authority.place.excluded-disclosed`).
+        let dropped_sql = self.authored_by_withheld(t).map(|authored| {
+            let mut steps = self.steps_before_zone(t);
+            steps.push(authored);
+            format!("SELECT count(*) FROM ({}) AS \"__contextful_base\" WHERE {}", t.base, filter(&steps))
+        });
+        (!columns_masked.is_empty() || dropped_sql.is_some())
+            .then(|| ZoneWithheld { relation: name.to_string(), excluded: false, columns_masked, dropped_sql })
     }
 
     /// The published build the table `name`'s relation reads, as the session registered
@@ -503,6 +566,12 @@ impl Session {
         self.tenants.iter().flat_map(|(t, (_, vs))| vs.iter().map(move |v| (t.clone(), v.clone()))).collect()
     }
 
+    /// Rows of the principal relation: `(table, principal)` per listed principal whose set
+    /// omits the session zone on each table carrying an author column.
+    pub fn principal_rows(&self) -> Vec<(String, String)> {
+        self.withheld_authors.iter().flat_map(|(t, ps)| ps.iter().map(move |p| (t.clone(), p.clone()))).collect()
+    }
+
     /// Rows of the reach relation: `(table, resource_id)` per reachable resource of each
     /// bound table.
     pub fn reach_rows(&self) -> Vec<(String, String)> {
@@ -560,6 +629,11 @@ fn filter(conjuncts: &[String]) -> String {
     } else {
         conjuncts.join(" AND ")
     }
+}
+
+/// The author columns a table's schema carries, `_authored_agent` then `_authored_by`.
+fn author_columns(t: &TableSource) -> Vec<&'static str> {
+    [AUTHORED_AGENT, AUTHORED_BY].into_iter().filter(|a| t.columns.iter().any(|c| c.name == *a)).collect()
 }
 
 /// A bare column name: an identifier with no expression around it.

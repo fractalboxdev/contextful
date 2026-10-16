@@ -12,11 +12,12 @@ pub const COMMIT_SEQ: &str = "_commit_seq";
 pub const BATCH_SEQ: &str = "_batch_seq";
 pub const SITE_ID: &str = "_site_id";
 pub const AUTHORED_BY: &str = "_authored_by";
+pub const AUTHORED_AGENT: &str = "_authored_agent";
 pub const TAINT: &str = "_taint";
 
 /// Columns the engine injects, replacing any producer value (`store.reserve.injected`,
-/// `store.reserve.commit-seq`, `store.reserve.taint`).
-pub const INJECTED: [&str; 8] = [INGESTED_AT, RUN_ID, ROW_SEQ, COMMIT_SEQ, BATCH_SEQ, SITE_ID, AUTHORED_BY, TAINT];
+/// `store.reserve.authored-agent`, `store.reserve.commit-seq`, `store.reserve.taint`).
+pub const INJECTED: [&str; 9] = [INGESTED_AT, RUN_ID, ROW_SEQ, COMMIT_SEQ, BATCH_SEQ, SITE_ID, AUTHORED_BY, AUTHORED_AGENT, TAINT];
 
 /// Injected columns every write path carries, so no file lacks them and each is non-null
 /// in the merged schema whichever landing created it.
@@ -62,6 +63,9 @@ pub struct Injection {
     pub site_id: String,
     pub batch_seq: Option<i32>,
     pub authored_by: Option<String>,
+    /// The authenticated subject's agent member, where it carries one
+    /// (`store.reserve.authored-agent`).
+    pub authored_agent: Option<String>,
     /// The label a model's output lands under; `None` for a row no model produced
     /// (`store.reserve.taint`).
     pub taint: Option<Provenance>,
@@ -82,6 +86,9 @@ impl Injection {
         cols.push(Column::new(SITE_ID, ColumnType::Utf8, false));
         if self.authored_by.is_some() {
             cols.push(Column::new(AUTHORED_BY, ColumnType::Utf8, false));
+        }
+        if self.authored_agent.is_some() {
+            cols.push(Column::new(AUTHORED_AGENT, ColumnType::Utf8, false));
         }
         if self.taint.is_some() {
             cols.push(Column::new(TAINT, ColumnType::Utf8, false));

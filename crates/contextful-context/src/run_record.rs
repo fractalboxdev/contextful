@@ -59,7 +59,7 @@ pub fn append(store: &Store, node: &NodeId, row: &RunRow, at: Instant) -> Result
     let mut nonce = [0u8; 4];
     getrandom::fill(&mut nonce).map_err(|e| ContextError::Invalid(format!("run record nonce: {e}")))?;
     let store_run = format!("{}-{}-{}", phase_name(row.phase), at.unix_nanos(), crate::store::hex(&nonce));
-    let injection = Injection { run_id: store_run, site_id: row.site_id.clone(), batch_seq: None, authored_by: None, taint: None };
+    let injection = Injection { run_id: store_run, site_id: row.site_id.clone(), batch_seq: None, authored_by: None, authored_agent: None, taint: None };
     land_engine_owned(store, &decl(), &batch, &RunContext { node: node.clone(), injection, committed_at: at })
 }
 

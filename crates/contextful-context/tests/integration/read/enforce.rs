@@ -452,6 +452,79 @@ fn a_cell_outside_its_column_set_arrives_null() {
     assert_eq!(column(&rows, "case_notes"), [json!("chest pain, stable")]);
 }
 
+/// Rows into `research/authored` under one run, authored as `by` on behalf of and `agent` as agent.
+fn land_authored(r: &Reads, run: &str, by: Option<&str>, agent: Option<&str>, rows: Value) {
+    use contextful_context::land::{land, Batch, RunContext};
+    let ctx = RunContext {
+        node: NodeId::parse("ingest-a").unwrap(),
+        injection: Injection {
+            run_id: run.into(),
+            site_id: "site-a".into(),
+            batch_seq: Some(0),
+            authored_by: by.map(str::to_string),
+            authored_agent: agent.map(str::to_string),
+            taint: None,
+        },
+        committed_at: at("2030-01-10T00:00:00Z"),
+    };
+    let rows = rows.as_array().unwrap().iter().map(|r| r.as_object().unwrap().clone()).collect();
+    land(&r.store, &TableDecl::named("research/authored"), &Batch { rows, types: HashMap::new() }, &ctx).unwrap();
+}
+
+/// A store whose manifest pins an agent and a person to `local:device` and admits another person on premises,
+/// holding one `research/authored` row per authorship case.
+fn authored() -> Reads {
+    let manifest = format!(
+        "{MANIFEST}\n[[principal]]\nid = \"agent://device-loop\"\nzone = {{ allow = [\"local:device\"] }}\n\n\
+         [[principal]]\nid = \"user://pat@acme.example\"\nzone = {{ allow = [\"local:device\"] }}\n\n\
+         [[principal]]\nid = \"user://dana@acme.example\"\nzone = {{ allow = [\"on-prem:*\"] }}\n"
+    );
+    let r = Reads::with_manifest(&manifest);
+    land_authored(&r, "run-a1", Some("user://dana@acme.example"), Some("agent://device-loop"), json!([{ "id": "by-device-agent" }]));
+    land_authored(&r, "run-a2", Some("user://pat@acme.example"), Some("agent://research-loop"), json!([{ "id": "for-device-person" }]));
+    land_authored(&r, "run-a3", Some("user://dana@acme.example"), Some("agent://research-loop"), json!([{ "id": "by-admitted" }]));
+    land_authored(&r, "run-a4", Some("user://lee@acme.example"), Some("agent://other-loop"), json!([{ "id": "by-unlisted" }]));
+    land_authored(&r, "run-a5", None, None, json!([{ "id": "pipeline-landed" }]));
+    Reads { face: Face::open(r.store.clone(), &manifest, pepper()).unwrap(), ..r }
+}
+
+/// A `[[principal]]` allow-set narrows every row whose `_authored_agent` or `_authored_by` equals its `id`, wherever the row lands; a row whose authors no principal lists keeps its table's set.
+// spec: authority.place.per-principal@107ed5fa
+#[test]
+fn a_listed_principal_withholds_the_rows_it_authors_outside_its_set() {
+    let r = authored();
+    let s = r.session(&["research/*"], None, Some("on-prem:hq"));
+    let rows = r.query(&s, r#"SELECT id FROM "research/authored" ORDER BY id"#).unwrap();
+    assert_eq!(column(&rows, "id"), [json!("by-admitted"), json!("by-unlisted"), json!("pipeline-landed")]);
+    // The block counts the two withheld rows over the whole relation and names no removed value.
+    let filtered = r.query(&s, r#"SELECT id FROM "research/authored" WHERE id = 'by-admitted'"#).unwrap();
+    let block = &filtered.blocks["contextful.restriction"];
+    assert_eq!(block["tables"], json!([{ "table": "research/authored", "excluded": false, "rows_dropped": 2, "columns_masked": [] }]));
+    assert!(!block.to_string().contains("device-loop") && !block.to_string().contains("by-device"), "{block}");
+    // The relation text names the principal relation, never a principal id.
+    let sql = s.relation("research/authored").unwrap().sql();
+    assert!(sql.contains("__contextful_principal") && !sql.contains("device-loop"), "{sql}");
+    // On the device every set admits the zone but the on-premises one, whose author's rows leave.
+    let device = r.session(&["research/*"], None, Some("local:device"));
+    let rows = r.query(&device, r#"SELECT id FROM "research/authored" ORDER BY id"#).unwrap();
+    assert_eq!(column(&rows, "id"), [json!("by-unlisted"), json!("for-device-person"), json!("pipeline-landed")]);
+}
+
+/// A row the engine landed with no authenticated subject takes its table's set; only a row whose author the engine cannot verify resolves as an undeclared zone.
+// spec: authority.place.unauthored-row@4c0f66ae
+#[test]
+fn a_pipeline_landed_row_keeps_its_table_set() {
+    let r = authored();
+    for zone in ["on-prem:hq", "local:device"] {
+        let s = r.session(&["research/*"], None, Some(zone));
+        let rows = r.query(&s, r#"SELECT id FROM "research/authored" WHERE _authored_by IS NULL"#).unwrap();
+        assert_eq!(column(&rows, "id"), [json!("pipeline-landed")], "{zone}");
+    }
+    // A zone outside the table's fail-closed pair withholds it with every other row.
+    let cloud = r.session(&["research/*"], None, Some("public-cloud:us-east-1"));
+    assert!(r.query(&cloud, r#"SELECT id FROM "research/authored""#).unwrap().rows.is_empty());
+}
+
 // An incognito session with no zone serves under `local:device`, and one signing a zone
 // outside the fail-closed pair refuses.
 #[test]

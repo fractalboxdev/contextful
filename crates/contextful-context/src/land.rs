@@ -15,7 +15,7 @@ use contextful_core::store::declare::{TableDecl, WriteMode};
 use contextful_core::store::lay_out::{is_path_segment, part_name, NodeId, PartEntry, RunManifest, MANIFEST_FILE};
 use contextful_core::store::reconcile::{decode_binary, supertype, Column, ColumnType, FloatItem, Schema, LIST_ITEM, VECTOR_ITEM};
 use contextful_core::store::reserve::{
-    optional_value_problem, producer_columns, Injection, ALWAYS_INJECTED, AUTHORED_BY, BATCH_SEQ, COMMIT_SEQ, INGESTED_AT, ROW_SEQ, TAINT,
+    optional_value_problem, producer_columns, Injection, ALWAYS_INJECTED, AUTHORED_AGENT, AUTHORED_BY, BATCH_SEQ, COMMIT_SEQ, INGESTED_AT, ROW_SEQ, TAINT,
     RUN_ID, SITE_ID,
 };
 use contextful_core::store::StoreError;
@@ -857,6 +857,7 @@ fn part_batch(arriving: &Schema, rows: &[Map<String, Value>], injection: &Inject
             (BATCH_SEQ, _) => Arc::new(arrow_array::Int32Array::from(vec![injection.batch_seq.unwrap_or_default(); n])),
             (SITE_ID, _) => Arc::new(arrow_array::StringArray::from(vec![injection.site_id.as_str(); n])),
             (AUTHORED_BY, _) => Arc::new(arrow_array::StringArray::from(vec![injection.authored_by.as_deref().unwrap_or_default(); n])),
+            (AUTHORED_AGENT, _) => Arc::new(arrow_array::StringArray::from(vec![injection.authored_agent.as_deref().unwrap_or_default(); n])),
             (TAINT, _) => Arc::new(arrow_array::StringArray::from(vec![injection.taint.map(|p| p.as_str()).unwrap_or_default(); n])),
             (other, _) => unreachable!("no injected column `{other}`"),
         };

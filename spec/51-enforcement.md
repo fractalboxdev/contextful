@@ -348,8 +348,10 @@ Inference zones: grammar, composition across grains, floors, incognito, and the 
   *A-authority*
 - `excluded-cell` — A cell whose effective set omits the session's zone arrives null, a mask exception notwithstanding.
   *A-authority*
-- `per-principal` — A principal's allow-set pins every row it authors wherever the row lands. A row with no verified author resolves as an undeclared zone.
+- `per-principal` — A `[[principal]]` allow-set narrows every row whose `_authored_agent` or `_authored_by` equals its `id`, wherever the row lands; a row whose authors no principal lists keeps its table's set.
   *A-authority*
+- `unauthored-row` — A row the engine landed with no authenticated subject takes its table's set; only a row whose author the engine cannot verify resolves as an undeclared zone.
+  *because a pipeline-landed row carries no author to narrow by, and treating it as undeclared withholds every such row from any table not admitting `*`*
 - `evidence-floor` — A synthesized row declaring a set wider than the intersection of its evidence tables' sets raises `EnforceEvidenceFloorExceeded` and resolves to that intersection.
   *A-authority*
 - `empty-evidence` — A synthesized row naming no evidence table raises `EnforceEvidenceListEmpty` and resolves to the fail-closed pair of {{authority.place.fail-closed}}.

@@ -31,7 +31,7 @@ fn a_producer_value_in_an_injected_column_is_dropped_for_the_engine_to_replace()
 // spec: store.reserve.no-placeholder@535d67e3
 #[test]
 fn a_missing_scope_omits_its_column() {
-    let full = Injection { run_id: "r".into(), site_id: "s".into(), batch_seq: Some(0), authored_by: Some("user://dana".into()), taint: None };
+    let full = Injection { run_id: "r".into(), site_id: "s".into(), batch_seq: Some(0), authored_by: Some("user://dana".into()), authored_agent: Some("agent://lander".into()), taint: None };
     let names = |i: &Injection| i.columns().into_iter().map(|c| (c.name, c.ty, c.nullable)).collect::<Vec<_>>();
     assert_eq!(
         names(&full),
@@ -43,9 +43,10 @@ fn a_missing_scope_omits_its_column() {
             ("_batch_seq".to_string(), ColumnType::Int32, false),
             ("_site_id".to_string(), ColumnType::Utf8, false),
             ("_authored_by".to_string(), ColumnType::Utf8, false),
+            ("_authored_agent".to_string(), ColumnType::Utf8, false),
         ]
     );
-    let bare = Injection { batch_seq: None, authored_by: None, ..full };
+    let bare = Injection { batch_seq: None, authored_by: None, authored_agent: None, ..full };
     let bare_names: Vec<String> = bare.columns().into_iter().map(|c| c.name).collect();
     assert_eq!(bare_names, ["_ingested_at", "_run_id", "_row_seq", "_commit_seq", "_site_id"]);
 }

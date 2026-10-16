@@ -46,7 +46,7 @@ fn land_both(r: &Reads, manifest: &str, bodies: &[String], run: &str, fold_at: &
         let decl = TableDecl::parse_pipeline(manifest).unwrap().into_iter().find(|d| d.name == table).unwrap();
         let ctx = RunContext {
             node: NodeId::parse("ingest-a").unwrap(),
-            injection: Injection { run_id: run.into(), site_id: "site-a".into(), batch_seq: Some(0), authored_by: None, taint: None },
+            injection: Injection { run_id: run.into(), site_id: "site-a".into(), batch_seq: Some(0), authored_by: None, authored_agent: None, taint: None },
             committed_at: at("2030-01-10T00:00:00Z"),
         };
         land(&r.store, &decl, &Batch { rows: rows.clone(), types: HashMap::new() }, &ctx).unwrap();
@@ -269,7 +269,7 @@ fn a_ranking_under_a_horizon_refuses_a_sidecar_indexing_later_rows() {
     let decl = TableDecl::parse_pipeline(&manifest).unwrap().into_iter().find(|d| d.name == "lab/news").unwrap();
     let ctx = RunContext {
         node: NodeId::parse("ingest-a").unwrap(),
-        injection: Injection { run_id: "run-0001".into(), site_id: "site-a".into(), batch_seq: Some(0), authored_by: None, taint: None },
+        injection: Injection { run_id: "run-0001".into(), site_id: "site-a".into(), batch_seq: Some(0), authored_by: None, authored_agent: None, taint: None },
         committed_at: at("2030-01-10T00:00:00Z"),
     };
     let rows = json!([

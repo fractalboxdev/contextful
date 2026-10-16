@@ -98,13 +98,14 @@ pub(crate) fn store_state(store: &Store, tables: &[String], granted: &[String]) 
 }
 
 /// Whether `a` and `b` build identical connections: [`SqlEngine::open`] writes the subject,
-/// tenant and reach rows and each relation's and ledger's name, statement and files, and nothing
+/// tenant, reach and principal rows and each relation's and ledger's name, statement and files, and nothing
 /// else of a session.
 pub(crate) fn same_setup(a: &Session, b: &Session) -> bool {
     a.subject_relation() == b.subject_relation()
         && a.subject_row() == b.subject_row()
         && a.tenant_rows() == b.tenant_rows()
         && a.reach_rows() == b.reach_rows()
+        && a.principal_rows() == b.principal_rows()
         && a.relations().chain(a.ledgers()).eq(b.relations().chain(b.ledgers()))
         && a.pepper().digest("connection setup") == b.pepper().digest("connection setup")
 }
