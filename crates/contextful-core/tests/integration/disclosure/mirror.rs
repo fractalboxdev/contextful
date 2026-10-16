@@ -4,8 +4,9 @@
 
 use contextful_core::disclosure::declare::Binding;
 use contextful_core::disclosure::sweep::{
-    check_bindings, commit, parse_directory, reachable, Commit, GrantLine, Governed, MemberRow, Membership, Observation, SourceState, SweepBlock, SweepError, SweepKind,
+    check_bindings, commit, parse_directory, Commit, GrantLine, Governed, MemberRow, Membership, Observation, SourceState, SweepBlock, SweepError, SweepKind,
 };
+use contextful_core::disclosure::reach::{resolve, ClosureBound, ReachError};
 use contextful_core::disclosure::VisibilityError;
 use contextful_core::identify::{LinkMethod, NormalizedSubject, Subject};
 use contextful_core::store::declare::TableDecl;
@@ -22,6 +23,11 @@ fn grant(resource: &str, principal: &str, kind: &str) -> GrantLine {
 
 fn governed(ids: &[&str]) -> Vec<Governed> {
     ids.iter().map(|id| Governed { resource_id: id.to_string(), resource_kind: "file".into(), visibility_class: "mirrored".into() }).collect()
+}
+
+/// The resources `subject` reaches through `state`, resolved as a read resolves them.
+fn reachable(subject: &NormalizedSubject, state: &SourceState) -> Result<std::collections::BTreeSet<String>, ReachError> {
+    resolve("drive", subject, state, ClosureBound::default()).map(|set| set.resources)
 }
 
 fn subject(on_behalf_of: &str) -> NormalizedSubject {
@@ -101,15 +107,14 @@ fn an_identity_link_records_method_and_confidence_and_confidence_relaxes_nothing
     }
 
     // A low-confidence verified link authorizes; a full-confidence operator-asserted one does not.
-    let state = |line: &str| SourceState {
-        grants: commit(&SourceState::default(), &Observation::from_grants_file("drive", SweepKind::Full, "s1", at("2030-01-01T00:00:00Z"), governed(&["f1"]), vec![grant("f1", "u-1001", "user")])).unwrap().grants,
-        links: parse_directory("drive", line).unwrap().links,
-        ..SourceState::default()
+    let state = |line: &str| {
+        let c = commit(&SourceState::default(), &Observation::from_grants_file("drive", SweepKind::Full, "s1", at("2030-01-01T00:00:00Z"), governed(&["f1"]), vec![grant("f1", "u-1001", "user")])).unwrap();
+        SourceState { resources: c.resources, grants: c.grants, links: parse_directory("drive", line).unwrap().links, ..SourceState::default() }
     };
     let low = state(r#"{"source_principal": "u-1001", "subject": "user://dana@acme.example", "method": "oidc_sub", "confidence": 0.1}"#);
     assert_eq!(reachable(&subject("user://dana@acme.example"), &low).unwrap().into_iter().collect::<Vec<_>>(), ["f1"]);
     let asserted = state(r#"{"source_principal": "u-1001", "subject": "user://dana@acme.example", "method": "operator_asserted", "confidence": 1.0}"#);
-    assert!(matches!(reachable(&subject("user://dana@acme.example"), &asserted), Err(AuthorityError::AuthorityLinkUnverified(_))));
+    assert!(matches!(reachable(&subject("user://dana@acme.example"), &asserted), Err(ReachError::Authority(AuthorityError::AuthorityLinkUnverified(_)))));
 }
 
 /// A subject reaches each resource granted to a principal a verified link maps onto it, and to
@@ -140,7 +145,8 @@ fn a_subject_reaches_through_its_links_and_their_groups() {
             grant("f5", "g-shadow", "group"),
         ],
     );
-    s.grants = commit(&SourceState::default(), &obs).unwrap().grants;
+    let c = commit(&SourceState::default(), &obs).unwrap();
+    (s.resources, s.grants) = (c.resources, c.grants);
     // The group cycle ends at the visited set. A principal is a kind and a name: the group
     // spelled like dana's user principal, and a group it belongs to, reach her nothing.
     assert_eq!(reachable(&subject("user://dana@acme.example"), &s).unwrap().into_iter().collect::<Vec<_>>(), ["f1", "f2"]);

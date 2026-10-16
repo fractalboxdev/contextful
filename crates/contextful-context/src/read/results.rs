@@ -179,6 +179,7 @@ pub(crate) fn key(session: &Session, statement: &Statement<'_>) -> Digest32 {
     field(&mut h, format!("{:?}", session.grants()).as_bytes());
     field(&mut h, format!("{:?}", session.subject_row()).as_bytes());
     field(&mut h, format!("{:?}", session.tenant_rows()).as_bytes());
+    field(&mut h, format!("{:?}", session.reach_rows()).as_bytes());
     field(&mut h, format!("{:?}", session.zone()).as_bytes());
     field(&mut h, &[u8::from(session.incognito())]);
     for name in statement.touched {

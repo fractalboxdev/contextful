@@ -6,7 +6,7 @@ use contextful_core::store::declare::TableDecl;
 use contextful_core::store::reconcile::{Column, ColumnType};
 use contextful_policy::enforce::mask::Pepper;
 use contextful_policy::enforce::policy::TablePolicy;
-use contextful_policy::enforce::session::{Request, Session, TableSource, RELATIONS_PER_SESSION};
+use contextful_policy::enforce::session::{ReachFilter, Request, Session, TableSource, RELATIONS_PER_SESSION, REACH_RELATION};
 use contextful_policy::enforce::PolicyError;
 use contextful_policy::issue::{mint, MintClaims};
 
@@ -75,4 +75,23 @@ fn session_records_whether_each_registered_table_had_landed() {
     assert_eq!(session.landed("research/notes"), Some(true));
     assert_eq!(session.landed("research/quiet"), Some(false));
     assert_eq!(session.landed("hr/salaries"), None);
+}
+
+/// The mirrored-permission semi-join opens a bound table's relation ahead of every other
+/// step, reads its ids from the reach relation by parameter, and binds no ungranted table.
+#[test]
+fn the_semi_join_opens_a_bound_relation_and_carries_its_ids_as_rows() {
+    let signer = issuer();
+    let token = mint(&plan_for(&signer, dana(), vec![grant(&[Action::Read], &["research/*"])]), &MintClaims::default(), &signer).unwrap();
+    let authority = admit(&token, &signer, DURING).unwrap();
+    let pepper = Pepper::resolve(|_| None);
+    let filter = |ids: &[&str]| ReachFilter { resource_key: "x".into(), resources: ids.iter().map(|s| s.to_string()).collect(), refused: None };
+    let reach = std::collections::BTreeMap::from([("research/pages".to_string(), filter(&["p1", "p2"])), ("hr/salaries".to_string(), filter(&["s1"]))]);
+    let session = Session::open_reaching(&authority, &Request::default(), vec![source("research/pages"), source("research/notes"), source("hr/salaries")], reach, &pepper).unwrap();
+    let sql = session.relation("research/pages").unwrap().sql().to_string();
+    let filter_at = sql.find(REACH_RELATION).unwrap_or_else(|| panic!("{sql}"));
+    assert!(sql[sql.find("WHERE").unwrap()..].starts_with("WHERE CAST(\"x\" AS VARCHAR) IN"), "{sql}");
+    assert!(filter_at > 0 && !sql.contains("p1"), "{sql}");
+    assert!(!session.relation("research/notes").unwrap().sql().contains(REACH_RELATION));
+    assert_eq!(session.reach_rows(), [("research/pages".to_string(), "p1".to_string()), ("research/pages".to_string(), "p2".to_string())]);
 }

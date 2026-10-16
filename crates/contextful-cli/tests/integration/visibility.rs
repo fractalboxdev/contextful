@@ -322,3 +322,32 @@ fn an_unbound_table_on_an_organization_wide_face_refuses_diagnose_and_start() {
     let out = cf(d, &["pipeline", "validate"]);
     assert!(!out.status.success() && String::from_utf8_lossy(&out.stderr).contains("face_scope"), "{}", String::from_utf8_lossy(&out.stderr));
 }
+
+/// A budget tighter than the sweep cadence its source sustains raises `VisibilityBudgetUnreachable` at diagnose, naming both figures.
+#[test]
+fn pipeline_validate_refuses_a_budget_tighter_than_the_sweep_cadence() {
+    let dir = tempfile::tempdir().unwrap();
+    std::fs::write(dir.path().join("contextful.toml"), MANIFEST.replace("max_acl_staleness = \"15m\"", "max_acl_staleness = \"2m\"")).unwrap();
+    let out = cf(dir.path(), &["pipeline", "validate"]);
+    assert!(!out.status.success());
+    let stderr = String::from_utf8_lossy(&out.stderr);
+    assert!(stderr.contains("VisibilityBudgetUnreachable") && stderr.contains("wiki/pages") && stderr.contains("120s") && stderr.contains("300s"), "{stderr}");
+}
+
+/// A `CONTEXTFUL_NOW_OFFSET_SECS` value other than a non-negative integer stops the process before it serves, naming the variable.
+// spec: disclosure.bound-staleness.offset-malformed@00e3ae52
+#[test]
+fn a_malformed_now_offset_stops_the_server_before_it_serves() {
+    let dir = tempfile::tempdir().unwrap();
+    let d = dir.path();
+    std::fs::write(d.join("contextful.toml"), MANIFEST).unwrap();
+    for bad in ["-60", "1h", "soon"] {
+        for args in [&["mcp"][..], &["serve", "--http", "127.0.0.1:0", "--max-in-flight", "4", "--audience", "contextful://wiki"][..]] {
+            let out = Command::new(env!("CARGO_BIN_EXE_contextful")).current_dir(d).args(args).env("CONTEXTFUL_NOW_OFFSET_SECS", bad).output().unwrap();
+            assert!(!out.status.success(), "{bad} {args:?}");
+            assert!(out.stdout.is_empty(), "{bad} {args:?}");
+            let stderr = String::from_utf8_lossy(&out.stderr);
+            assert!(stderr.contains("CONTEXTFUL_NOW_OFFSET_SECS") && stderr.contains(bad), "{stderr}");
+        }
+    }
+}

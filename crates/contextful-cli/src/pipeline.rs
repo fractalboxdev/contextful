@@ -825,6 +825,8 @@ pub fn run(cmd: PipelineCmd, tasks: &Tasks, bodies: &contextful_core::run::drive
                 bindings.extend(contextful_core::disclosure::declare::Binding::of(t)?);
             }
             contextful_core::disclosure::sweep::check_bindings(&bindings, &sweeps)?;
+            // A budget the source's sweep cadence cannot meet (`disclosure.bound-staleness.budget-below-cadence`).
+            contextful_core::disclosure::stale::check_cadence(&bindings, &sweeps)?;
             // Each table a pack lands carries a mapping or an exclusion (`disclosure.pack.mapping-absent`).
             for p in &packs {
                 p.diagnose()?;

@@ -30,6 +30,20 @@ pub const RELATIONS_PER_SESSION: usize = 1024;
 /// The session-scoped relation holding each tenant-scoped table's granted values.
 pub const TENANT_RELATION: &str = "__contextful_tenant";
 
+/// The session-scoped relation holding each bound table's reachable resource ids.
+pub const REACH_RELATION: &str = "__contextful_reach";
+
+/// The mirrored-permission semi-join of one bound table (`disclosure.reach.semi-join`): the
+/// column holding each row's `resource_id`, and the resources the reader's reachable set
+/// holds on the table's source. A set that did not resolve admits no row and carries its
+/// refusal, which a read touching the table raises.
+#[derive(Debug, Clone, Default, PartialEq)]
+pub struct ReachFilter {
+    pub resource_key: String,
+    pub resources: std::collections::BTreeSet<String>,
+    pub refused: Option<contextful_core::disclosure::reach::ReachError>,
+}
+
 /// One table as the store resolves it for this request: its declaration and policy, the
 /// FROM-source over its explicit file list, the files that list names, its schema, and
 /// whether any batch has landed.
@@ -108,6 +122,7 @@ pub struct Session {
     zone: Zone,
     incognito: bool,
     tenants: BTreeMap<String, (String, Vec<String>)>,
+    reach: BTreeMap<String, ReachFilter>,
     relations: BTreeMap<String, RegisteredRelation>,
     ledgers: BTreeMap<String, RegisteredRelation>,
     policies: BTreeMap<String, TablePolicy>,
@@ -120,6 +135,18 @@ impl Session {
     /// table no read grant covers registers no relation, so a read of it yields nothing
     /// and names nothing (`authority.filter-rows.default-deny`).
     pub fn open(authority: &AdmittedAuthority, request: &Request<'_>, tables: Vec<TableSource>, pepper: &Pepper) -> Result<Session, PolicyError> {
+        Session::open_reaching(authority, request, tables, BTreeMap::new(), pepper)
+    }
+
+    /// [`Session::open`] with the mirrored-permission semi-join of each table `reach` names
+    /// opening that table's relation (`disclosure.reach.semi-join`).
+    pub fn open_reaching(
+        authority: &AdmittedAuthority,
+        request: &Request<'_>,
+        tables: Vec<TableSource>,
+        reach: BTreeMap<String, ReachFilter>,
+        pepper: &Pepper,
+    ) -> Result<Session, PolicyError> {
         let subject = authority.subject();
         let zone = session_zone(request.zone, subject.zone(), subject.incognito())?;
         let subject_row = SUBJECT_FIELDS
@@ -152,12 +179,14 @@ impl Session {
             zone,
             incognito: subject.incognito(),
             tenants: BTreeMap::new(),
+            reach: BTreeMap::new(),
             relations: BTreeMap::new(),
             ledgers: BTreeMap::new(),
             policies: BTreeMap::new(),
             sources: BTreeMap::new(),
             pepper: pepper.clone(),
         };
+        session.reach = reach.into_iter().filter(|(t, _)| granted.iter().any(|g| &g.decl.name == t)).collect();
         for t in granted {
             if let Some(scope) = session.tenant_values(&t.decl)? {
                 session.tenants.insert(t.decl.name.clone(), scope);
@@ -207,8 +236,8 @@ impl Session {
         Ok(column.map(|c| (c, values)))
     }
 
-    /// Compile one granted table's relation. The steps apply in order — tenant equality,
-    /// table policy, table zone, then the projection carrying zone nulls and masks
+    /// Compile one granted table's relation. The steps apply in order — mirrored-permission
+    /// semi-join, tenant equality, table policy, table zone, then the projection carrying zone nulls and masks
     /// (`authority.compose.relation-order`) — each a conjunct of one `WHERE`, so a step
     /// removes rows and adds none (`authority.compose.conjunctive-narrowing`). Protection
     /// is this rewrite (`authority.compose.protection-is-a-rewrite`).
@@ -241,10 +270,21 @@ impl Session {
         t.policy.placement.effective().admits(&self.zone)
     }
 
-    /// The relation's steps ahead of the zone step: tenant equality, then the table policy.
+    /// The relation's steps ahead of the zone step: the mirrored-permission semi-join, tenant
+    /// equality, then the table policy.
     fn steps_before_zone(&self, t: &TableSource) -> Vec<String> {
         let name = &t.decl.name;
         let mut conjuncts = Vec::new();
+        if let Some(filter) = self.reach.get(name) {
+            // The reachable ids reach the engine as parameters into the reach relation; the
+            // text names only the column and the table (`disclosure.reach.semi-join`).
+            conjuncts.push(format!(
+                "CAST({} AS VARCHAR) IN (SELECT \"resource_id\" FROM {} WHERE \"table\" = {})",
+                ident(&filter.resource_key),
+                ident(REACH_RELATION),
+                literal(name)
+            ));
+        }
         if let Some((column, _)) = self.tenants.get(name) {
             // The values reach the engine as parameters into the tenant relation; the text
             // names only the column and the table (`authority.filter-rows.tenant-equality`).
@@ -402,6 +442,17 @@ impl Session {
     /// Rows of the tenant relation: `(table, value)` per granted tenant value.
     pub fn tenant_rows(&self) -> Vec<(String, String)> {
         self.tenants.iter().flat_map(|(t, (_, vs))| vs.iter().map(move |v| (t.clone(), v.clone()))).collect()
+    }
+
+    /// Rows of the reach relation: `(table, resource_id)` per reachable resource of each
+    /// bound table.
+    pub fn reach_rows(&self) -> Vec<(String, String)> {
+        self.reach.iter().flat_map(|(t, f)| f.resources.iter().map(move |r| (t.clone(), r.clone()))).collect()
+    }
+
+    /// The refusal resolving `table`'s reachable set raised, where it did not resolve.
+    pub fn reach_refusal(&self, table: &str) -> Option<&contextful_core::disclosure::reach::ReachError> {
+        self.reach.get(table).and_then(|f| f.refused.as_ref())
     }
 
     /// Tenant-scoped tables: table to its tenant column and granted values.

@@ -25,7 +25,6 @@ fn page_ids(answer: &Value) -> Vec<String> {
 }
 
 #[test]
-#[ignore = "milestone 9 is open: no sweep lands source permissions and no read joins them"]
 fn m09_visibility() {
     let cf = bin("contextful");
     let p = GitRepo::init();
@@ -75,7 +74,7 @@ incremental = { every = "5m" }
     let public = ok(&p.run(&cf, &["token", "keygen", "--out", ".contextful/issuer.seed"]));
     let token = ok(&p.run(
         &cf,
-        &["token", "mint", "--issuer-key", ".contextful/issuer.seed", "--on-behalf-of", "user://dana@acme.example", "--agent", "agent://wiki-loop", "--action", "read", "--table", "wiki/*", "--ttl", "3600"],
+        &["token", "mint", "--issuer-key", ".contextful/issuer.seed", "--on-behalf-of", "user://dana@acme.example", "--agent", "agent://wiki-loop", "--zone", "on-prem:hq", "--action", "read", "--table", "wiki/*", "--ttl", "3600"],
     ));
     let serve = || Session::spawn(&cf, &["mcp", "--project", "wiki", "--public-key", &public, "--audience", AUD], &p.root, &[("CONTEXTFUL_TOKEN", &token)]);
     let sql = r#"SELECT page_id FROM "wiki/pages" ORDER BY page_id"#;

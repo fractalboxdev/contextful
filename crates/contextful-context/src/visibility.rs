@@ -174,9 +174,15 @@ pub fn group_members(store: &Store, source: &str) -> Result<Vec<MemberRow>> {
 }
 
 /// The resource ids of `source` that `subject` reaches through the source's current rows
-/// (`authority.identify.unlinked-principal`); see [`sweep::reachable`].
+/// (`authority.identify.unlinked-principal`), resolved as a read resolves them; see
+/// [`reach::resolve`](contextful_core::disclosure::reach::resolve).
 pub fn reach(store: &Store, source: &str, subject: &NormalizedSubject) -> Result<BTreeSet<String>> {
-    Ok(sweep::reachable(subject, &state(store, source)?)?)
+    use contextful_core::disclosure::reach::{resolve, ClosureBound, ReachError};
+    match resolve(source, subject, &state(store, source)?, ClosureBound::default()) {
+        Ok(set) => Ok(set.resources),
+        Err(ReachError::Authority(a)) => Err(a.into()),
+        Err(ReachError::Visibility(v)) => Err(v.into()),
+    }
 }
 
 /// The principals of `source`'s current run.

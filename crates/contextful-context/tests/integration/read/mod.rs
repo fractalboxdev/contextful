@@ -20,6 +20,7 @@ mod respond;
 mod result_cache;
 mod retrieve;
 mod typed;
+mod visibility;
 
 use contextful_context::land::{land, Batch, RunContext};
 use contextful_context::read::{Face, ReadFault, ReadOptions};
