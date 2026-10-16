@@ -148,6 +148,7 @@ pub fn run(cmd: JobCmd, bodies: &Bodies) -> Result<()> {
             let registered = |name: &str| bodies.get(name).is_some() || name.strip_prefix(BODY_PREFIX).is_some_and(|d| delegates.contains_key(d));
             let jobs = parse_jobs(&text, &registered).with_context(|| declaration.display().to_string())?;
             bind(&jobs, &declaration)?;
+            crate::cadence::validate_externals(&text, &declaration, &jobs)?;
             for job in jobs {
                 match &job.kind {
                     JobKind::StoreDriven(d) => {

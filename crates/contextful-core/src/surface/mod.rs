@@ -8,6 +8,7 @@ pub mod control;
 pub mod delegate;
 pub mod dispatch;
 pub mod edit;
+pub mod external;
 pub mod reside;
 pub mod worker;
 
@@ -95,6 +96,12 @@ pub enum SurfaceError {
     /// (`surface.dispatch.submit-signed`)
     #[error("DispatchSubmitRejected: {0}")]
     DispatchSubmitRejected(String),
+    /// (`surface.visualize.external-unbound`)
+    #[error("ExternalStepUnbound: {0}")]
+    ExternalStepUnbound(String),
+    /// (`surface.visualize.external-collision`)
+    #[error("ExternalStepCollision: {0}")]
+    ExternalStepCollision(String),
     /// A `[control]` or `[residency]` block that does not parse, or a bound it exceeds.
     #[error("{0}")]
     Invalid(String),
@@ -130,6 +137,8 @@ impl SurfaceError {
             | SurfaceError::DelegateHostRefused(_)
             | SurfaceError::DelegateAnswerRejected(_)
             | SurfaceError::DelegateTimeoutRefused(_)
+            | SurfaceError::ExternalStepUnbound(_)
+            | SurfaceError::ExternalStepCollision(_)
             | SurfaceError::Invalid(_) => 422,
         }
     }

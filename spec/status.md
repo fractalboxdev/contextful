@@ -13,9 +13,9 @@ An unpinned clause is `committed`; a pinned one is `performed` when its Rust, Le
 | `read` | 2 | 20 | 314 | 54 | 29 | 15 | 272 | 0 | 272 |
 | `run` | 3 | 29 | 554 | 126 | 45 | 17 | 522 | 0 | 522 |
 | `store` | 3 | 19 | 297 | 64 | 15 | 10 | 286 | 0 | 286 |
-| `surface` | 2 | 21 | 161 | 63 | 23 | 0 | 134 | 0 | 134 |
+| `surface` | 2 | 21 | 167 | 65 | 23 | 0 | 141 | 0 | 141 |
 | `topology` | 1 | 6 | 79 | 25 | 5 | 3 | 76 | 0 | 76 |
-| **total** | 22 | 169 | 2671 | 675 | 213 | 75 | 2385 | 0 | |
+| **total** | 22 | 169 | 2677 | 677 | 213 | 75 | 2392 | 0 | |
 
 Decision records: 18.
 
@@ -35,9 +35,9 @@ A milestone reads `closed` when its acceptance test computes `passing` and every
 | 7 — Memory | 6 | 92 | 77 | passing | closed |
 | 8 — Accountability | 5 | 96 | 89 | passing | closed |
 | 9 — Visibility | 6 | 55 | 46 | passing | closed |
-| 10 — Cadence and the operator plane | 11 | 101 | 89 | passing | closed |
+| 10 — Cadence and the operator plane | 11 | 102 | 90 | passing | closed |
 | 11 — The derive tier | 7 | 98 | 97 | passing | closed |
-| 12 — The operator console | 12 | 56 | 43 | passing | open |
+| 12 — The operator console | 12 | 61 | 49 | passing | closed |
 | 13 — Disclosure | 5 | 36 | 30 | passing | open |
 | 14 — Assurance | 7 | 170 | 135 | passing | closed |
 | 15 — Point-in-time evaluation | 7 | 78 | 77 | passing | closed |
@@ -2230,6 +2230,7 @@ Unscheduled operations: 13.
 | `surface.apply.attestation-unavailable` | `crates/contextful-cli/tests/integration/pipeline.rs::a_synced_import_requires_admin_and_writes_a_verifiable_receipt` | performed |
 | `surface.apply.draft-absent` | `spec/pins.toml` | performed |
 | `surface.apply.draft-claim` | `spec/pins.toml` | performed |
+| `surface.apply.external-snapshot` | `crates/contextful-cli/tests/integration/serve.rs::a_pipeline_only_apply_preserves_external_steps_and_the_editor_refuses_them` | performed |
 | `surface.apply.guarded-import` | `crates/contextful-cli/tests/integration/pipeline.rs::the_import_claims_the_first_version_once` | performed |
 | `surface.apply.local-claim` | `crates/contextful-cli/tests/integration/pipeline.rs::apply_claims_a_version_in_the_local_snapshot_directory` | performed |
 | `surface.apply.operator-attestation` | `spec/pins.toml` | performed |
@@ -2360,6 +2361,12 @@ Unscheduled operations: 13.
 | `surface.speak.redactor-lookahead` | `apps/console/test/turn.test.ts::apps/console/test/turn.test.ts::streaming redactor masks identifiers split across chunks` | performed |
 | `surface.speak.stream-redaction` | `apps/console/test/turn.test.ts::apps/console/test/turn.test.ts::each streamed model chunk is redacted before Query receives prose` | performed |
 | `surface.speak.unanswerable-suggestion` | `apps/console/test/browse.test.ts::apps/console/test/browse.test.ts::a suggestion the live turn would decline raises ConsoleSuggestionUnanswerable and leaves the chip set` | performed |
+| `surface.visualize.dataflow-edges` | `crates/contextful-cli/tests/integration/serve.rs::published_workflow_is_a_typed_node_and_edge_graph_with_external_steps` | performed |
+| `surface.visualize.external-collision` | `crates/contextful-core/tests/integration/surface/external.rs::an_external_name_shared_with_another_step_collides` | performed |
+| `surface.visualize.external-shape` | `crates/contextful-core/tests/integration/surface/external.rs::an_external_step_carries_no_kind_command_or_schedule` | performed |
+| `surface.visualize.external-step` | `apps/console/test/workflow_graph.test.ts::apps/console/test/workflow_graph.test.ts::the canvas draws external steps as nodes marked outside the engine, with no run badge` | performed |
+| `surface.visualize.external-unbound` | `crates/contextful-core/tests/integration/surface/external.rs::an_external_reference_naming_nothing_declared_is_unbound` | performed |
+| `surface.visualize.workflow-canvas` | `crates/contextful-cli/tests/integration/serve.rs::published_workflow_is_a_typed_node_and_edge_graph_with_external_steps` | performed |
 | `topology.bound-application.restated-case` | `tools/ci/tests/integration/mirrors.rs::an_annotation_naming_a_clause_passes` | performed |
 | `topology.compose.cli-binary` | `spec/pins.toml` | performed |
 | `topology.compose.connector-pillar` | `spec/pins.toml` | performed |

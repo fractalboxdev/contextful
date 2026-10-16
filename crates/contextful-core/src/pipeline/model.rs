@@ -700,7 +700,7 @@ pub fn principals(manifest: &str) -> Result<Vec<Principal>, crate::place::PlaceE
 }
 
 /// The top-level keys a manifest file holds (`run.model.top-level-block`).
-pub const MANIFEST_BLOCKS: [&str; 26] = [
+pub const MANIFEST_BLOCKS: [&str; 27] = [
     "acl_sweep",
     "authoring_posture",
     "capabilities",
@@ -709,6 +709,7 @@ pub const MANIFEST_BLOCKS: [&str; 26] = [
     "derive",
     "disclosure",
     "export",
+    "external",
     "job",
     "limiters",
     "media_root",

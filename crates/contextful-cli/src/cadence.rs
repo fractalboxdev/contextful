@@ -29,6 +29,7 @@ use contextful_core::surface::arm::{Schedule, Trigger, TICK_INTERVAL_MS, WAKE_AN
 use contextful_core::surface::control::{admit_loopback, control_url, parse_pointer, poll_schedule, receipt_file, receipt_version, snapshot_file, source_file, POINTER_FILE};
 use contextful_core::store::sync::ControlHead;
 use contextful_core::surface::edit::check_document;
+use contextful_core::surface::external::{bind_externals, parse_externals, External, Known, Ref};
 use contextful_core::surface::dispatch::{CHILD_GRACE_SECS, DEFAULT_POOL};
 use contextful_core::surface::SurfaceError;
 use contextful_snapshot::{ControlError, Draft, SnapshotDir};
@@ -250,27 +251,32 @@ fn applied(snaps: &Source) -> Result<(Option<u64>, BTreeMap<String, PipelineSpec
     Ok((Some(version), specs.into_iter().map(|d| (d.spec.id.clone(), d.spec)).collect()))
 }
 
-/// The applied snapshot and recorded run outcomes the store publishes for Admin.
+/// The applied snapshot and recorded run outcomes the store publishes for Admin: pipelines,
+/// jobs, models, publications and external steps, joined by an explicit edge list
+/// (`surface.visualize.workflow-canvas`, `surface.visualize.dataflow-edges`).
 pub(crate) fn published(project: &Project, declaration: &Path) -> Result<Value> {
     let text = std::fs::read_to_string(declaration)?;
     let control = control_config(&text, project)?;
     let (version, pipelines) = applied(&control.source)?;
+    let snapshot = version.map(|v| control.source.read(v)).transpose()?.unwrap_or_default();
     let truncated = pipelines.len() > 1000;
     let pipelines: Vec<PipelineSpec> = pipelines.into_values().take(1000).collect();
-    let selected: BTreeSet<&str> = pipelines.iter().map(|spec| spec.id.as_str()).collect();
+    let jobs = parse_jobs(&snapshot, &|_| true)?;
+    let mut selected: BTreeSet<String> = pipelines.iter().map(|spec| spec.id.clone()).collect();
+    selected.extend(jobs.iter().map(|job| format!("job:{}", job.name)));
     let store = contextful_context::Store::open(&project.dir, &project.name)?;
     let states = contextful_sync::run_state::run_states(&store)?;
     let mut runs: BTreeMap<String, contextful_sync::RunMark> = BTreeMap::new();
     for state in states.into_values() {
         for (id, mark) in state.runs {
-            if selected.contains(id.as_str()) && runs.get(&id).is_none_or(|earlier| mark.started_at > earlier.started_at) {
+            if selected.contains(&id) && runs.get(&id).is_none_or(|earlier| mark.started_at > earlier.started_at) {
                 runs.insert(id, mark);
             }
         }
     }
     let wired = wire_at(project, &None)?;
     for row in wired.engine.catalog.runs(None)? {
-        if selected.contains(row.pipeline_id.as_str()) && runs.get(&row.pipeline_id).is_none_or(|earlier| row.started_at > earlier.started_at) {
+        if selected.contains(&row.pipeline_id) && runs.get(&row.pipeline_id).is_none_or(|earlier| row.started_at > earlier.started_at) {
             runs.insert(row.pipeline_id.clone(), contextful_sync::RunMark {
                 run_id: row.run_id,
                 table: row.table,
@@ -280,6 +286,10 @@ pub(crate) fn published(project: &Project, declaration: &Path) -> Result<Value> 
             });
         }
     }
+    let models = applied_models(&control.source, version)?;
+    let externals = parse_externals(&snapshot)?;
+    let publications = local_publications(&text)?;
+    let graph = Graph::of(&pipelines, &jobs, &models, &publications, &externals)?;
     let pipelines: Vec<Value> = pipelines.into_iter().map(|spec| json!({
         "id": spec.id,
         "schedule": spec.schedule,
@@ -294,7 +304,147 @@ pub(crate) fn published(project: &Project, declaration: &Path) -> Result<Value> 
             TransformOp::Extract { .. } => "extract",
         }).collect::<Vec<_>>(),
     })).collect();
-    Ok(json!({ "applied": version, "pipelines": pipelines, "runs": runs, "truncated": truncated, "declined": 0 }))
+    let jobs: Vec<Value> = jobs.iter().map(|job| json!({
+        "name": job.name,
+        "kind": job.kind_name(),
+        "schedule": job.schedule,
+        "after": job.after,
+        "target": job.target,
+    })).collect();
+    let models: Vec<Value> = models.iter().map(|model| json!({ "id": model.id, "publish": model.publishes() })).collect();
+    let publications: Vec<Value> = publications.iter().map(|(name, job, members)| json!({ "name": name, "job": job, "members": members })).collect();
+    Ok(json!({
+        "applied": version,
+        "pipelines": pipelines,
+        "jobs": jobs,
+        "models": models,
+        "publications": publications,
+        "externals": externals,
+        "tables": graph.tables,
+        "edges": graph.edges.iter().map(|(from, to, via)| json!({ "from": from, "to": to, "via": via })).collect::<Vec<_>>(),
+        "runs": runs,
+        "truncated": truncated,
+        "declined": 0,
+    }))
+}
+
+/// The local `[[publication]]` blocks as `(name, producer job, members)`; delivery
+/// validation belongs to `export group`, so the canvas reads the shape alone.
+fn local_publications(text: &str) -> Result<Vec<(String, String, Vec<String>)>> {
+    let document: toml::Value = if text.is_empty() { toml::Value::Table(Default::default()) } else { toml::from_str(text)? };
+    Ok(document.get("publication").and_then(toml::Value::as_array).into_iter().flatten().filter_map(|block| {
+        let name = block.get("name")?.as_str()?.to_string();
+        let job = block.get("job")?.as_str()?.to_string();
+        let members = block.get("members").and_then(toml::Value::as_array).into_iter().flatten().filter_map(|m| m.as_str().map(str::to_string)).collect();
+        Some((name, job, members))
+    }).collect())
+}
+
+/// The workflow graph's table nodes and its `(from, to, via)` edges between typed node ids
+/// (`surface.visualize.dataflow-edges`).
+struct Graph {
+    tables: BTreeSet<String>,
+    edges: BTreeSet<(String, String, &'static str)>,
+}
+
+impl Graph {
+    fn of(pipelines: &[PipelineSpec], jobs: &[contextful_core::job::Job], models: &[ModelSpec], publications: &[(String, String, Vec<String>)], externals: &[External]) -> Result<Graph> {
+        let model_ids: BTreeSet<&str> = models.iter().map(|m| m.id.as_str()).collect();
+        let pipeline_ids: BTreeSet<&str> = pipelines.iter().map(|p| p.id.as_str()).collect();
+        let job_names: BTreeSet<&str> = jobs.iter().map(|j| j.name.as_str()).collect();
+        let mut graph = Graph { tables: BTreeSet::new(), edges: BTreeSet::new() };
+        for spec in pipelines {
+            if let Some(after) = spec.after.as_deref().filter(|a| pipeline_ids.contains(a)) {
+                graph.edges.insert((format!("pipeline:{after}"), format!("pipeline:{}", spec.id), "after"));
+            }
+            for entry in &spec.tables {
+                let table = spec.table_name(&entry.decl().name);
+                graph.edges.insert((format!("pipeline:{}", spec.id), format!("table:{table}"), "lands"));
+                graph.tables.insert(table);
+            }
+        }
+        for job in jobs {
+            let id = format!("job:{}", job.name);
+            if let Some(after) = job.after.as_deref().filter(|a| pipeline_ids.contains(a)) {
+                graph.edges.insert((format!("pipeline:{after}"), id.clone(), "after"));
+            }
+            match &job.kind {
+                JobKind::StoreDriven(driven) => {
+                    for table in &driven.tables {
+                        graph.edges.insert((id.clone(), format!("table:{table}"), "writes"));
+                        graph.tables.insert(table.clone());
+                    }
+                }
+                JobKind::Synthesize(synthesis) => {
+                    if let Some(target) = &job.target {
+                        graph.edges.insert((id.clone(), format!("table:{target}"), "writes"));
+                        graph.tables.insert(target.clone());
+                    }
+                    graph.reading(&model_ids, &synthesis.source, &id);
+                }
+                _ if job.kind_name() == "build" => {
+                    if let Some(target) = job.target.as_deref().filter(|t| model_ids.contains(t)) {
+                        graph.edges.insert((id.clone(), format!("model:{target}"), "builds"));
+                    }
+                }
+                _ => {}
+            }
+        }
+        // A model's and a store-driven job's statements name the relations they read.
+        let mut statements: Vec<(String, ModelSpec)> = models.iter().map(|m| (format!("model:{}", m.id), m.clone())).collect();
+        for job in jobs {
+            if let JobKind::StoreDriven(driven) = &job.kind {
+                let spec: ModelSpec = serde_json::from_value(json!({ "id": format!("job:{}", job.name), "sql": driven.input.statement }))?;
+                statements.push((format!("job:{}", job.name), spec));
+            }
+        }
+        for (reader, spec) in statements {
+            let reads = contextful_context::build::admit_statements(&spec, |_| None).map_err(|(what, e)| anyhow::anyhow!("{what}: {e}"))?;
+            let known: Vec<&String> = reads.iter().filter(|r| model_ids.contains(r.as_str()) || graph.tables.contains(r.as_str())).collect();
+            for relation in known {
+                graph.reading(&model_ids, relation, &reader);
+            }
+        }
+        for (name, job, _) in publications {
+            if job_names.contains(job.as_str()) {
+                graph.edges.insert((format!("job:{job}"), format!("publication:{name}"), "publishes"));
+            }
+        }
+        for external in externals {
+            let id = format!("external:{}", external.name);
+            for input in external.input_refs()? {
+                let from = graph.node(&model_ids, &input);
+                graph.edges.insert((from, id.clone(), "input"));
+            }
+            for output in external.output_refs()? {
+                let to = graph.node(&model_ids, &output);
+                graph.edges.insert((id.clone(), to, "output"));
+            }
+        }
+        Ok(graph)
+    }
+
+    /// A `reads` edge from the node holding `relation`: a model by its id, otherwise a table.
+    fn reading(&mut self, models: &BTreeSet<&str>, relation: &str, reader: &str) {
+        let from = if models.contains(relation) { format!("model:{relation}") } else {
+            self.tables.insert(relation.to_string());
+            format!("table:{relation}")
+        };
+        self.edges.insert((from, reader.to_string(), "reads"));
+    }
+
+    /// The node a typed reference names; a table a model builds is that model's node.
+    fn node(&mut self, models: &BTreeSet<&str>, reference: &Ref) -> String {
+        match reference {
+            Ref::Table(name) if models.contains(name.as_str()) => format!("model:{name}"),
+            Ref::Table(name) => {
+                self.tables.insert(name.clone());
+                format!("table:{name}")
+            }
+            Ref::Pipeline(id) => format!("pipeline:{id}"),
+            Ref::Job(name) => format!("job:{name}"),
+        }
+    }
 }
 
 /// A locally applied descendant keeps precedence over an older bucket head after every
@@ -369,7 +519,67 @@ fn self_valid(text: &str) -> Result<BTreeMap<String, PipelineSpec>> {
     let specs: BTreeMap<String, PipelineSpec> = collect(&[crate::effective::public_manifest(ManifestFile { path: "applied snapshot".into(), text: text.to_string() })?])?
         .into_iter().map(|d| (d.spec.id.clone(), d.spec)).collect();
     job_blocks(text, None, &specs)?;
+    snapshot_externals(text, &specs)?;
     Ok(specs)
+}
+
+/// The `[[external]]` blocks of every declaration file, in shape
+/// (`surface.visualize.external-shape`); a malformed block fails apply validation.
+fn declared_externals(declaration: &Path) -> Result<Vec<External>> {
+    let mut externals = Vec::new();
+    for file in manifests(declaration)?.iter().filter(|f| !f.path.ends_with(".json")) {
+        externals.extend(parse_externals(&file.text).map_err(|e| match e {
+            SurfaceError::Invalid(why) => SurfaceError::ApplyValidationRefused(format!("{}: {why}", file.path)),
+            other => other,
+        })?);
+    }
+    Ok(externals)
+}
+
+/// What a snapshot declares that an external step may name: its pipelines, the tables they
+/// and its store-driven jobs produce, its standalone tables, its models and its jobs.
+fn snapshot_known(text: &str, specs: &BTreeMap<String, PipelineSpec>) -> Result<Known> {
+    let jobs = parse_jobs(text, &|_| true)?;
+    let document: toml::Value = toml::from_str(text)?;
+    let models: Vec<String> = document.get("model").and_then(toml::Value::as_array).into_iter().flatten()
+        .filter_map(|m| m.get("id").and_then(toml::Value::as_str).map(str::to_string)).collect();
+    let pipelines: Vec<PipelineSpec> = specs.values().cloned().collect();
+    let mut tables = contextful_core::job::Targets::new(&pipelines, &jobs, &[]).produced;
+    tables.extend(models);
+    tables.extend(crate::effective::snapshot_tables(text)?.unwrap_or_default().into_iter().map(|t| t.name));
+    Ok(Known { tables, pipelines: specs.keys().cloned().collect(), jobs: jobs.into_iter().map(|j| j.name).collect() })
+}
+
+/// Bind a snapshot's external steps against that snapshot's own declarations
+/// (`surface.visualize.external-unbound`, `surface.visualize.external-collision`).
+fn snapshot_externals(text: &str, specs: &BTreeMap<String, PipelineSpec>) -> Result<Vec<External>> {
+    let externals = parse_externals(text)?;
+    if !externals.is_empty() {
+        bind_externals(&externals, &snapshot_known(text, specs)?)?;
+    }
+    Ok(externals)
+}
+
+/// `job validate`: bind a declaration's external steps against its declared pipelines,
+/// produced and standalone tables, models and jobs.
+pub(crate) fn validate_externals(text: &str, declaration: &Path, jobs: &[contextful_core::job::Job]) -> Result<()> {
+    let externals = parse_externals(text)?;
+    if externals.is_empty() {
+        return Ok(());
+    }
+    let files = manifests(declaration)?;
+    let specs: Vec<PipelineSpec> = collect(&files)?.into_iter().map(|d| d.spec).collect();
+    let models = crate::model_source::collect(&files)?;
+    let mut tables = contextful_core::job::Targets::new(&specs, jobs, &models).produced;
+    tables.extend(models.into_iter().map(|m| m.id));
+    tables.extend(crate::effective::standalone_tables(&files)?.into_iter().map(|t| t.name));
+    let known = Known { tables, pipelines: specs.into_iter().map(|s| s.id).collect(), jobs: jobs.iter().map(|j| j.name.clone()).collect() };
+    bind_externals(&externals, &known)?;
+    Ok(())
+}
+
+fn applied_externals(source: &Source, version: Option<u64>) -> Result<Vec<External>> {
+    version.map(|v| parse_externals(&source.read(v)?).map_err(Into::into)).transpose().map(Option::unwrap_or_default)
 }
 
 /// Adopt only a complete staged chain signed by a locally pinned issuer whose head validates
@@ -501,25 +711,27 @@ fn applied_jobs(source: &Source, version: Option<u64>, specs: &BTreeMap<String, 
 /// A pipeline-only editor refuses a store whose applied snapshot carries jobs.
 fn refuse_job_edit(control: &ControlConfig) -> Result<()> {
     let (version, specs) = applied(&control.source)?;
-    if !applied_jobs(&control.source, version, &specs)?.is_empty() || !applied_models(&control.source, version)?.is_empty() {
-        return Err(SurfaceError::ApplyValidationRefused("the applied snapshot contains jobs or models; use the registered host's pipeline apply to edit them".into()).into());
+    if !applied_jobs(&control.source, version, &specs)?.is_empty() || !applied_models(&control.source, version)?.is_empty() || !applied_externals(&control.source, version)?.is_empty() {
+        return Err(SurfaceError::ApplyValidationRefused("the applied snapshot contains jobs, models or external steps; use the registered host's pipeline apply to edit them".into()).into());
     }
     Ok(())
 }
 
 /// The snapshot document: sorted pipeline specifications and validated job blocks.
-fn render(specs: &BTreeMap<String, PipelineSpec>, jobs: &[toml::Value], models: &[ModelSpec], tables: Option<&[TableDecl]>) -> Result<String> {
+fn render(specs: &BTreeMap<String, PipelineSpec>, jobs: &[toml::Value], models: &[ModelSpec], tables: Option<&[TableDecl]>, externals: &[External]) -> Result<String> {
     #[derive(Serialize)]
     struct Doc<'a> {
         pipeline: Vec<&'a PipelineSpec>,
         #[serde(skip_serializing_if = "<[toml::Value]>::is_empty")]
         job: &'a [toml::Value],
+        #[serde(skip_serializing_if = "<[External]>::is_empty")]
+        external: &'a [External],
         #[serde(skip_serializing_if = "<[ModelSpec]>::is_empty")]
         model: &'a [ModelSpec],
         #[serde(skip_serializing_if = "Option::is_none")]
         standalone_tables: Option<&'a [TableDecl]>,
     }
-    let body = toml::to_string(&Doc { pipeline: specs.values().collect(), job: jobs, model: models, standalone_tables: tables })
+    let body = toml::to_string(&Doc { pipeline: specs.values().collect(), job: jobs, external: externals, model: models, standalone_tables: tables })
         .map_err(|e| SurfaceError::ApplyValidationRefused(format!("a specification holds a value a snapshot cannot carry: {e}")))?;
     // The document carries references alone (`surface.edit.secret-in-document`,
     // `surface.edit.connector-upload`).
@@ -536,10 +748,13 @@ fn validated_draft(document: &str, declaration: &Path, tasks: &Tasks, tables: Op
         return Err(SurfaceError::ApplyValidationRefused("the pipeline editor does not edit jobs; use the registered host's pipeline apply".into()).into());
     }
     if !crate::model_source::applied(&ManifestFile { path: "draft".into(), text: document.into() })?.is_empty() { bail!("the pipeline editor does not edit models; use pipeline apply"); }
+    if !parse_externals(document)?.is_empty() {
+        return Err(SurfaceError::ApplyValidationRefused("the pipeline editor does not edit external steps; use pipeline apply".into()).into());
+    }
     if !crate::effective::snapshot_tables(document)?.unwrap_or_default().is_empty() || !crate::effective::standalone_tables(&[ManifestFile { path: "draft.toml".into(), text: document.into() }])?.is_empty() {
         return Err(SurfaceError::ApplyValidationRefused("the pipeline editor does not edit standalone tables; use pipeline apply".into()).into());
     }
-    let rendered = render(&specs, &[], &[], tables)?;
+    let rendered = render(&specs, &[], &[], tables, &[])?;
     for spec in specs.values() {
         if let Some(schedule) = spec.schedule.as_deref() {
             Schedule::parse(schedule).map_err(|e| SurfaceError::ApplyValidationRefused(format!("pipeline `{}`: {e}", spec.id)))?;
@@ -782,7 +997,9 @@ pub(crate) fn import(project: &ProjectArgs, declaration: Option<PathBuf>, tasks:
     let jobs = job_blocks(&declaration_text, Some(bodies), &declared)?;
     let models = crate::model_source::collect(&manifests(&l.declaration)?)?;
     let tables = crate::effective::standalone_tables(&manifests(&l.declaration)?)?;
-    let text = render(&declared, &jobs, &models, Some(&tables))?;
+    let externals = declared_externals(&l.declaration)?;
+    let text = render(&declared, &jobs, &models, Some(&tables), &externals)?;
+    snapshot_externals(&text, &declared)?;
     self_valid(&text).map_err(|e| SurfaceError::ApplyValidationRefused(format!("combined snapshot: {e:#}")))?;
     for spec in declared.values() {
         check(spec, &l.declaration, tasks).map_err(|e| SurfaceError::ApplyValidationRefused(format!("pipeline `{}`: {e:#}", spec.id)))?;
@@ -849,15 +1066,18 @@ pub(crate) fn apply(project: &ProjectArgs, declaration: Option<PathBuf>, id: Opt
         let models = if id.is_some() { prior_models.clone() } else { crate::model_source::collect(&manifests(&l.declaration)?)? };
         let prior_tables = applied_tables(source, version)?;
         let tables = if id.is_some() { prior_tables.clone() } else { Some(crate::effective::standalone_tables(&manifests(&l.declaration)?)?) };
-        let text = render(&target, &jobs, &models, tables.as_deref())?;
+        let prior_externals = applied_externals(source, version)?;
+        let externals = if id.is_some() { prior_externals.clone() } else { declared_externals(&l.declaration)? };
+        let text = render(&target, &jobs, &models, tables.as_deref(), &externals)?;
         job_blocks(&text, Some(bodies), &target)?;
+        snapshot_externals(&text, &target)?;
         self_valid(&text).map_err(|e| SurfaceError::ApplyValidationRefused(format!("combined snapshot: {e:#}")))?;
         for c in changes.iter().filter(|c| c.action != "remove") {
             let spec = &target[&c.id];
             check(spec, &l.declaration, tasks)
                 .map_err(|e| SurfaceError::ApplyValidationRefused(format!("pipeline `{}`: {e:#}", spec.id)))?;
         }
-        if changes.is_empty() && jobs == prior_jobs && models == prior_models && tables == prior_tables {
+        if changes.is_empty() && jobs == prior_jobs && models == prior_models && tables == prior_tables && externals == prior_externals {
             match version {
                 Some(v) => println!("unchanged at v{v}"),
                 None => println!("nothing declared to apply"),

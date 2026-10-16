@@ -1,11 +1,9 @@
 import { useEffect, useState } from "react";
-import { ArrowRightIcon, CalendarClockIcon, CheckIcon, FileCode2Icon, LoaderIcon, SaveIcon, WorkflowIcon } from "lucide-react";
+import { CheckIcon, FileCode2Icon, LoaderIcon, SaveIcon, WorkflowIcon } from "lucide-react";
 import { post, Shell, StoreSelect, TopNav, type Store } from "./shell.tsx";
-import { Badge, Button, Card, CardContent, CardHeader, CardTitle, Textarea } from "./ui.tsx";
+import { workflowGraph, type GraphNode, type NodeKind, type Workflows } from "./graph.ts";
+import { Badge, Button, Textarea, cn } from "./ui.tsx";
 
-type Run = { status?: string; run_id?: string };
-type Pipeline = { id: string; schedule?: string; steps?: string[] };
-type Workflows = { applied?: number | null; pipelines?: Pipeline[]; runs?: Record<string, Run> };
 type Loaded<T> = { store: string; value: T } | { store: string; error: string };
 
 function runVariant(status: string | undefined) {
@@ -64,19 +62,16 @@ export function AdminApp() {
         <div className="mx-auto flex w-full max-w-5xl flex-col gap-6 px-4 py-6">
           <div>
             <h1 className="text-xl font-semibold">Store operations</h1>
-            <p className="text-sm text-muted-foreground">Pipelines, schedules, steps and run outcomes come from the store.</p>
+            <p className="text-sm text-muted-foreground">Pipelines, jobs, models, publications and the steps around them, with run outcomes, come from the store.</p>
           </div>
           <section aria-labelledby="canvas-title" className="flex flex-col gap-3">
             <h2 id="canvas-title" className="flex items-center gap-1.5 text-[11px] font-medium tracking-wider text-muted-foreground uppercase">
               <WorkflowIcon className="size-3" /> Workflow canvas
             </h2>
-            <div id="canvas" className="grid gap-3 sm:grid-cols-2">
+            <div id="canvas">
               {workflows === null ? <span className="shimmer text-xs font-medium">Reading workflow state…</span> :
                 "error" in workflows ? <p className="text-sm text-destructive">{workflows.error}</p> :
-                (workflows.value.pipelines ?? []).length === 0 ? <p className="text-sm text-muted-foreground">No workflows are published.</p> :
-                workflows.value.pipelines!.map((pipeline) => (
-                  <PipelineCard key={pipeline.id} pipeline={pipeline} run={workflows.value.runs?.[pipeline.id]} />
-                ))}
+                <WorkflowGraph workflows={workflows.value} />}
             </div>
           </section>
           <section aria-labelledby="record-title" className="flex flex-col gap-3">
@@ -94,36 +89,79 @@ export function AdminApp() {
   );
 }
 
-function PipelineCard({ pipeline, run }: { pipeline: Pipeline; run?: Run }) {
+const NODE_W = 184;
+const NODE_H = 76;
+const GAP_X = 56;
+const GAP_Y = 16;
+
+const KIND_LABEL: Record<NodeKind, string> = {
+  pipeline: "Pipeline", table: "Table", model: "Model", job: "Job", publication: "Publication", external: "External step",
+};
+
+/** The store-published workflow as one node–edge graph; external steps are drawn, never run. */
+export function WorkflowGraph({ workflows }: { workflows: Workflows }) {
+  const graph = workflowGraph(workflows);
+  if (graph.nodes.length === 0) return <p className="text-sm text-muted-foreground">No workflows are published.</p>;
+  const at = (node: GraphNode) => ({ x: node.column * (NODE_W + GAP_X), y: node.row * (NODE_H + GAP_Y) });
+  const byId = new Map(graph.nodes.map((node) => [node.id, node]));
+  const width = graph.columns * (NODE_W + GAP_X) - GAP_X;
+  const height = graph.rows * (NODE_H + GAP_Y) - GAP_Y;
   return (
-    <Card className="node gap-3">
-      <CardHeader>
-        <CardTitle className="font-mono">{pipeline.id}</CardTitle>
-        {pipeline.schedule && (
-          <Badge variant="secondary" className="font-mono"><CalendarClockIcon /> {pipeline.schedule}</Badge>
-        )}
-      </CardHeader>
-      <CardContent className="flex flex-col gap-3">
-        {(pipeline.steps?.length ?? 0) > 0 && (
-          <ol className="flex flex-wrap items-center gap-1.5">
-            {pipeline.steps!.map((step, index) => (
-              <li key={`${step}-${index}`} className="flex items-center gap-1.5">
-                {index > 0 && <ArrowRightIcon className="size-3 text-muted-foreground" aria-hidden />}
-                <span className="rounded-md border border-border bg-muted/40 px-2 py-0.5 font-mono text-xs">{step}</span>
-              </li>
-            ))}
-          </ol>
-        )}
-        <div className="flex flex-wrap items-center gap-1.5 text-xs text-muted-foreground">
-          {run ? (
-            <>
-              <Badge variant={runVariant(run.status)}>{run.status ?? "unknown"}</Badge>
-              {run.run_id && <span className="font-mono">{run.run_id}</span>}
-            </>
-          ) : "No runs recorded"}
-        </div>
-      </CardContent>
-    </Card>
+    <div className="overflow-x-auto rounded-xl border border-border bg-card/40 p-4 scrollbar-thin">
+      <div className="relative" style={{ width, height }} data-graph-nodes={graph.nodes.length} data-graph-edges={graph.edges.length}>
+        <svg className="absolute inset-0 overflow-visible text-muted-foreground" width={width} height={height} aria-hidden>
+          <defs>
+            <marker id="edge-arrow" viewBox="0 0 8 8" refX="7" refY="4" markerWidth="6" markerHeight="6" orient="auto-start-reverse">
+              <path d="M0,0 L8,4 L0,8 z" fill="currentColor" />
+            </marker>
+          </defs>
+          {graph.edges.map((edge) => {
+            const from = at(byId.get(edge.from)!);
+            const to = at(byId.get(edge.to)!);
+            const [x1, y1] = [from.x + NODE_W, from.y + NODE_H / 2];
+            const [x2, y2] = [to.x, to.y + NODE_H / 2];
+            const bend = Math.max(24, (x2 - x1) / 2);
+            const external = edge.from.startsWith("external:") || edge.to.startsWith("external:");
+            return (
+              <path key={`${edge.from}>${edge.to}>${edge.via}`} className="edge" data-from={edge.from} data-to={edge.to} data-via={edge.via}
+                d={`M${x1},${y1} C${x1 + bend},${y1} ${x2 - bend},${y2} ${x2},${y2}`} fill="none" stroke="currentColor"
+                strokeOpacity={0.6} strokeWidth={1.25} strokeDasharray={external ? "4 3" : undefined} markerEnd="url(#edge-arrow)" />
+            );
+          })}
+        </svg>
+        {graph.nodes.map((node) => {
+          const { x, y } = at(node);
+          return <GraphNodeCard key={node.id} node={node} style={{ left: x, top: y, width: NODE_W, height: NODE_H }} />;
+        })}
+      </div>
+      <ul className="sr-only" aria-label="Dataflow">
+        {graph.edges.map((edge) => (
+          <li key={`${edge.from}>${edge.to}>${edge.via}`}>{byId.get(edge.from)!.label} {edge.via} {byId.get(edge.to)!.label}</li>
+        ))}
+      </ul>
+    </div>
+  );
+}
+
+function GraphNodeCard({ node, style }: { node: GraphNode; style: { left: number; top: number; width: number; height: number } }) {
+  return (
+    <div className={cn("node absolute flex flex-col justify-between gap-1 overflow-hidden rounded-lg border px-2.5 py-2 text-xs",
+      node.engine ? "border-border bg-card" : "border-dashed border-muted-foreground/50 bg-transparent")}
+      style={style} data-node={node.id} data-kind={node.kind} data-engine={node.engine ? "engine" : "external"}>
+      <div className="flex items-center justify-between gap-2">
+        <span className="text-[10px] font-medium tracking-wider text-muted-foreground uppercase">{KIND_LABEL[node.kind]}</span>
+        {node.detail && <span className="truncate font-mono text-[10px] text-muted-foreground">{node.detail}</span>}
+      </div>
+      <span className="truncate font-mono text-sm text-foreground" title={node.name}>{node.label}</span>
+      {node.engine ? (
+        (node.kind === "pipeline" || node.kind === "job") && (
+          <div className="flex items-center gap-1.5 text-muted-foreground">
+            {node.run ? <Badge variant={runVariant(node.run.status)} className="run">{node.run.status ?? "unknown"}</Badge> : "No runs recorded"}
+            {node.steps && node.steps.length > 0 && <span className="truncate font-mono text-[10px]">{node.steps.join(" → ")}</span>}
+          </div>
+        )
+      ) : <span className="text-muted-foreground italic">Runs outside the engine</span>}
+    </div>
   );
 }
 
