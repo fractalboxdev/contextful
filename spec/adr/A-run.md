@@ -411,6 +411,22 @@ Criteria: a rebuild over the current frontier always clears staleness, which dec
 
 Consequences: the watermark and manifest shapes stay as they are, and `watermark.at` is informational.
 
+## A minor contract bump admits only what an old reader still reads
+
+Context: a published model's reader pins `contract_version`. Refusing every fingerprint change under one major forces a major bump for a new nullable column; admitting any change under a minor bump breaks readers silently.
+
+Decision: under an unchanged major, the build compares its contract with the last published build's schema and grain. A dropped or retyped column, a non-null column made nullable, an added non-null column, or a moved grain is breaking and needs a major bump. Added nullable columns and nullable columns made non-null are additive and need a greater minor. The refusal names the offending column.
+
+Criteria: a reader written against an earlier minor of the same major reads every later build unchanged, which decided it.
+
+| Option | Lost on | Cost |
+| --- | --- | --- |
+| Semver over the column diff *(chosen)* | — | The check reads the prior schema, whose released columns already read as nullable. |
+| Any fingerprint change needs a major | Additive growth | A new nullable column breaks every reader's pin. |
+| Any change under a minor bump | Reader safety | A dropped column publishes and its readers fail at query time. |
+
+Consequences: the manifest section shape is unchanged; the prior schema file is the comparison's source.
+
 ## The orchestrator role is a port, and a provider's workflow engine fills it at the unit grain
 
 **Status:** accepted; narrows the three-storage-ports decision above: a provider adapter may fill the substrate itself.

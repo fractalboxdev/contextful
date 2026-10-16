@@ -343,7 +343,7 @@ mod materialize {
     use arrow_row::{RowConverter, SortField};
     use arrow_schema::{Field, Schema as ArrowSchema};
     use contextful_core::pipeline::model::{
-        disclosure_digest, withholds_cells, BuildStatus, InputFrontier, ModelSpec, Watermark, FINGERPRINT_RECIPE, SEMANTICS_VERSION,
+        disclosure_digest, withholds_cells, BuildStatus, ContractColumn, InputFrontier, ModelSpec, Watermark, FINGERPRINT_RECIPE, SEMANTICS_VERSION,
     };
     use contextful_core::disclosure::release::{Breakdown, DerivedTable, ReleaseError};
     use contextful_core::read::guard::{admit, Admitted};
@@ -487,6 +487,74 @@ mod materialize {
             }
         }
         Ok(out)
+    }
+
+    /// Hold a contract change under the published build's major to semver: a breaking change
+    /// needs a major bump (`run.model.contract-major`), an additive one a greater minor
+    /// (`run.model.contract-minor`). `released` marks a build whose release publishes every
+    /// column nullable and drops the contributor key from its columns and grain.
+    fn check_contract_change(store: &Store, spec: &ModelSpec, fp: &str, prior: &PublishSection, released: bool) -> std::result::Result<(), ReadFault> {
+        use contextful_core::pipeline::model::major as major_of;
+        let contract = spec.contract.as_ref().expect("a fingerprint comes from a declared contract");
+        let major = contract.version.major();
+        if major_of(&prior.contract_version) != Some(major) || prior.schema_fingerprint == fp {
+            return Ok(());
+        }
+        let (id, version, from) = (&spec.id, contract.version.as_str(), &prior.contract_version);
+        let breaking = |what: String| {
+            Err(mismatch(format!(
+                "model `{id}`: {what} under major version {major} (contract {from}, build {}); bump the contract to {}.0.0",
+                prior.build_id,
+                major + 1
+            )))
+        };
+        let Some(schema) = store.try_schema(id)? else {
+            return breaking(format!("the schema fingerprint moves from {} to {fp}", prior.schema_fingerprint));
+        };
+        let withheld = if released { spec.disclosure.as_ref().map(|d| d.contributor_key.as_str()) } else { None };
+        let columns: Vec<&ContractColumn> = contract.columns.iter().filter(|c| Some(c.name.as_str()) != withheld).collect();
+        let published: Vec<&Column> = schema.columns.iter().filter(|c| !is_injected(&c.name)).collect();
+        for p in &published {
+            match columns.iter().find(|c| c.name == p.name) {
+                None => return breaking(format!("contract {version} drops published column `{}` ({})", p.name, p.ty.spell())),
+                Some(c) if c.column_type() != p.ty => {
+                    return breaking(format!("contract {version} retypes column `{}` from {} to {}", p.name, p.ty.spell(), c.ty))
+                }
+                Some(c) if !p.nullable && c.nullable() => return breaking(format!("contract {version} makes non-null column `{}` nullable", p.name)),
+                Some(_) => {}
+            }
+        }
+        let added: Vec<&ContractColumn> = columns.iter().copied().filter(|c| !published.iter().any(|p| p.name == c.name)).collect();
+        if let Some(c) = added.iter().find(|c| !c.nullable()) {
+            return breaking(format!("contract {version} adds non-null column `{}` ({})", c.name, c.ty));
+        }
+        let grain: Vec<String> = spec.grain().iter().filter(|g| Some(g.as_str()) != withheld).cloned().collect();
+        let prior_grain = store.chain(id)?.0.into_iter().next().map(|m| m.primary_key).unwrap_or_default();
+        if prior_grain != grain {
+            return breaking(format!("contract {version} moves the grain from {prior_grain:?} to {grain:?}"));
+        }
+        if minor_of(version) <= minor_of(from) {
+            // A released schema reads every column as nullable, so it shows no tightening.
+            let tightened = published.iter().find(|p| !released && p.nullable && columns.iter().any(|c| c.name == p.name && !c.nullable()));
+            let kept = columns.iter().map(|c| &c.name).filter(|n| published.iter().any(|p| &p.name == *n));
+            let change = match (added.first(), tightened) {
+                (Some(c), _) => format!("adds nullable column `{}`", c.name),
+                (None, Some(p)) => format!("makes nullable column `{}` non-null", p.name),
+                (None, None) if published.iter().map(|p| &p.name).ne(kept) => "reorders its columns".to_string(),
+                (None, None) => "makes a column non-null".to_string(),
+            };
+            return Err(mismatch(format!(
+                "model `{id}`: contract {version} {change} over published contract {from} (build {}); bump the contract to {major}.{}.0",
+                prior.build_id,
+                minor_of(from).map_or(1, |m| m + 1)
+            )));
+        }
+        Ok(())
+    }
+
+    /// The minor component of a `<major>.<minor>.<patch>` version.
+    fn minor_of(version: &str) -> Option<u64> {
+        version.split('.').nth(1)?.parse().ok()
     }
 
     /// Refuse a model whose table a landing wrote: a committed run, or a snapshot folding
@@ -672,17 +740,8 @@ mod materialize {
         spec.validate().map_err(ContextError::from)?;
         let publishes = spec.publishes();
         let fingerprint = spec.schema_fingerprint();
-        if let (true, Some(contract), Some(fp), Some(prior)) = (publishes, &spec.contract, &fingerprint, current_section(store, &spec.id)?) {
-            let major = contract.version.major();
-            if contextful_core::pipeline::model::major(&prior.contract_version) == Some(major) && &prior.schema_fingerprint != fp {
-                return Err(mismatch(format!(
-                    "model `{}`: the schema fingerprint moves from {} (build {}) to {fp} under major version {major}; bump the contract to {}.0.0",
-                    spec.id,
-                    prior.schema_fingerprint,
-                    prior.build_id,
-                    major + 1
-                )));
-            }
+        if let (true, Some(fp), Some(prior)) = (publishes, &fingerprint, current_section(store, &spec.id)?) {
+            check_contract_change(store, spec, fp, &prior, release.is_some())?;
         }
 
         check_owned(store, &spec.id)?;
