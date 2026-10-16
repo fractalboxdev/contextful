@@ -166,42 +166,63 @@ pub fn table_rows(store: &Store, decl: &TableDecl, columns: &[&str]) -> Result<V
     Ok(out)
 }
 
-/// Every row of `decl`'s table as its keyed read shows it, holding the named columns: one
-/// survivor per dedup line, ranked by `order_by`, then `_ingested_at`, `_run_id` and
-/// `_row_seq`, each descending (`store.declare.dedup-view`); an unkeyed table reads every
-/// row. `None` for a table with no `schema.json`.
-pub fn table_rows_latest(store: &Store, decl: &TableDecl, columns: &[&str]) -> Result<Option<Vec<Map<String, Value>>>> {
-    if store.try_schema(&decl.name)?.is_none() {
-        return Ok(None);
-    }
-    let line = decl.dedup_line();
-    if line.is_empty() {
-        return table_rows(store, decl, columns).map(Some);
-    }
-    let rank: Vec<&str> = std::iter::once(decl.order_by()).chain(contextful_core::store::reserve::TIEBREAK).collect();
-    let mut read: Vec<&str> = columns.to_vec();
-    for c in line.iter().map(String::as_str).chain(rank.iter().copied()) {
+/// The columns a keyed read of `decl` reads: `columns`, then each dedup-line and rank
+/// column they lack (`store.declare.dedup-view`).
+pub fn latest_columns(decl: &TableDecl, columns: &[&str]) -> Vec<String> {
+    let mut read: Vec<String> = columns.iter().map(|c| (*c).to_string()).collect();
+    for c in decl.dedup_line().into_iter().chain(rank(decl).into_iter().map(str::to_string)) {
         if !read.contains(&c) {
             read.push(c);
         }
     }
-    let mut kept: Vec<Map<String, Value>> = Vec::new();
+    read
+}
+
+/// The positions in `rows` that `decl`'s keyed read keeps, in first-seen key order: one
+/// survivor per dedup line, ranked by `order_by`, then `_ingested_at`, `_run_id` and
+/// `_row_seq`, each descending, a tie keeping the row read later
+/// (`store.declare.dedup-view`). An unkeyed table keeps every position. Each row holds
+/// [`latest_columns`].
+pub fn latest_survivors(decl: &TableDecl, rows: &[Map<String, Value>]) -> Vec<usize> {
+    let line = decl.dedup_line();
+    if line.is_empty() {
+        return (0..rows.len()).collect();
+    }
+    let rank = rank(decl);
+    let mut kept: Vec<usize> = Vec::new();
     let mut at: std::collections::HashMap<String, usize> = std::collections::HashMap::new();
-    for row in table_rows(store, decl, &read)? {
+    for (i, row) in rows.iter().enumerate() {
         let key = Value::Array(line.iter().map(|c| row.get(c).cloned().unwrap_or(Value::Null)).collect()).to_string();
         match at.get(&key) {
-            Some(&i) if ranks_below(&row, &kept[i], &rank) => {}
-            Some(&i) => kept[i] = row,
+            Some(&slot) if ranks_below(row, &rows[kept[slot]], &rank) => {}
+            Some(&slot) => kept[slot] = i,
             None => {
                 at.insert(key, kept.len());
-                kept.push(row);
+                kept.push(i);
             }
         }
     }
-    Ok(Some(kept.into_iter().map(|mut row| {
+    kept
+}
+
+/// Every row of `decl`'s table as its keyed read shows it, holding the named columns.
+/// `None` for a table with no `schema.json`.
+pub fn table_rows_latest(store: &Store, decl: &TableDecl, columns: &[&str]) -> Result<Option<Vec<Map<String, Value>>>> {
+    if store.try_schema(&decl.name)?.is_none() {
+        return Ok(None);
+    }
+    let read = latest_columns(decl, columns);
+    let mut rows = table_rows(store, decl, &read.iter().map(String::as_str).collect::<Vec<_>>())?;
+    Ok(Some(latest_survivors(decl, &rows).into_iter().map(|i| {
+        let mut row = std::mem::take(&mut rows[i]);
         row.retain(|c, _| columns.contains(&c.as_str()));
         row
     }).collect()))
+}
+
+/// The columns ranking rows sharing a dedup line, most significant first.
+fn rank(decl: &TableDecl) -> Vec<&str> {
+    std::iter::once(decl.order_by()).chain(contextful_core::store::reserve::TIEBREAK).collect()
 }
 
 /// Whether `row` ranks strictly below `standing` on `rank`, compared column by column; a
