@@ -1,8 +1,9 @@
 //! Bucket push and pull: the filesystem and S3 object-store adapters, the manifest commit,
 //! fenced bucket leases and pointer publication, the conditional-write probe and replica
-//! refresh. The S3 adapter links under the `s3-sync` feature alone
+//! refresh, and the cross-owner store's boundary check. The S3 adapter links under the `s3-sync` feature alone
 //! (`topology.package.s3-sync-optional`).
 
+pub mod clean_room;
 pub mod fs_bucket;
 pub mod run_state;
 #[cfg(feature = "s3-sync")]

@@ -9,13 +9,13 @@ An unpinned clause is `committed`; a pinned one is `performed` when its Rust, Le
 | `authority` | 2 | 16 | 295 | 79 | 29 | 10 | 242 | 0 | 242 |
 | `connector` | 2 | 14 | 375 | 92 | 22 | 12 | 278 | 0 | 278 |
 | `corpus` | 1 | 10 | 80 | 37 | 7 | 0 | 80 | 0 | 80 |
-| `disclosure` | 3 | 16 | 177 | 69 | 14 | 5 | 151 | 0 | 151 |
+| `disclosure` | 3 | 16 | 177 | 69 | 14 | 5 | 154 | 0 | 154 |
 | `read` | 2 | 20 | 287 | 46 | 29 | 15 | 245 | 0 | 245 |
 | `run` | 3 | 29 | 529 | 116 | 45 | 14 | 497 | 0 | 497 |
 | `store` | 3 | 19 | 290 | 64 | 14 | 10 | 280 | 0 | 280 |
 | `surface` | 2 | 21 | 160 | 63 | 23 | 0 | 133 | 0 | 133 |
 | `topology` | 1 | 6 | 79 | 25 | 5 | 3 | 76 | 0 | 76 |
-| **total** | 22 | 169 | 2592 | 655 | 212 | 75 | 2260 | 0 | |
+| **total** | 22 | 169 | 2592 | 655 | 212 | 75 | 2263 | 0 | |
 
 Decision records: 18.
 
@@ -38,7 +38,7 @@ A milestone reads `closed` when its acceptance test computes `passing` and every
 | 10 — Cadence and the operator plane | 11 | 100 | 88 | passing | closed |
 | 11 — The derive tier | 7 | 94 | 93 | passing | closed |
 | 12 — The operator console | 12 | 56 | 43 | passing | open |
-| 13 — Disclosure | 5 | 36 | 27 | passing | open |
+| 13 — Disclosure | 5 | 36 | 30 | passing | open |
 | 14 — Assurance | 7 | 170 | 135 | passing | closed |
 | 15 — Point-in-time evaluation | 7 | 78 | 77 | passing | closed |
 | 16 — Memory graph walk | 1 | 11 | 0 | absent | open |
@@ -1054,9 +1054,12 @@ Unscheduled operations: 13.
 | `disclosure.release.spend-declaration` | `crates/contextful-core/tests/integration/disclosure/release.rs::a_policy_without_a_positive_per_run_spend_raises_spend_undeclared` | performed |
 | `disclosure.set-mode.aggregate-shape` | `crates/contextful-context/tests/integration/read/guard.rs::aggregate_shape_follows_the_engine_parse` | performed |
 | `disclosure.set-mode.check-verb` | `crates/contextful-cli/tests/integration/disclosure.rs::check_reports_each_published_model_refusal_by_name` | performed |
+| `disclosure.set-mode.clean-room-preconditions` | `crates/contextful-sync/tests/integration/clean_room.rs::open_refuses_when_one_owners_prefix_is_writable_by_the_other` | performed |
+| `disclosure.set-mode.hashed-join` | `crates/contextful-core/tests/integration/disclosure/join.rs::a_join_reusing_a_pepper_refuses` | performed |
 | `disclosure.set-mode.model-unreadable` | `crates/contextful-cli/tests/integration/disclosure.rs::check_reads_sql_file_relative_to_its_manifest` | performed |
 | `disclosure.set-mode.offline-diagnostic` | `crates/contextful-cli/tests/integration/disclosure.rs::check_issues_no_object_store_request` | performed |
 | `disclosure.set-mode.opt-out-record` | `crates/contextful-core/tests/integration/pipeline/model.rs::a_disclosure_opt_out_requires_a_reason_and_no_policy` | performed |
+| `disclosure.set-mode.pepper-version` | `crates/contextful-core/tests/integration/disclosure/join.rs::a_join_matches_only_rows_under_the_current_pepper_version` | performed |
 | `disclosure.set-mode.policy-absent` | `crates/contextful-cli/tests/integration/disclosure.rs::check_requires_policy_or_recorded_opt_out_for_aggregate_sql` | performed |
 | `disclosure.suppress.contributor-share` | `crates/contextful-core/tests/integration/disclosure/suppress.rs::contributor_share` | performed |
 | `disclosure.suppress.dominance-unverifiable` | `crates/contextful-core/tests/integration/disclosure/suppress.rs::dominance_unverifiable` | performed |

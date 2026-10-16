@@ -165,6 +165,23 @@ impl SignerKey {
         SignerKey { algorithm: port.algorithm(), public_key: port.public_key() }
     }
 
+    /// The key's one encoding per key: the 32 Ed25519 bytes, or the compressed SEC1 point
+    /// for ES256, so two encodings of one P-256 point compare equal. Bytes naming no point
+    /// stay as given.
+    pub fn canonical(&self) -> SignerKey {
+        let public_key = match self.algorithm {
+            SignatureAlgorithm::Ed25519 => self.public_key.clone(),
+            SignatureAlgorithm::Es256 => {
+                use p256::elliptic_curve::sec1::ToEncodedPoint;
+                match p256::PublicKey::from_sec1_bytes(&self.public_key) {
+                    Ok(point) => point.to_encoded_point(true).as_bytes().to_vec(),
+                    Err(_) => self.public_key.clone(),
+                }
+            }
+        };
+        SignerKey { algorithm: self.algorithm, public_key }
+    }
+
     /// Whether `signature`, in the stored encoding for the key's scheme (64 raw bytes, or
     /// DER), verifies over `message`.
     pub fn verifies(&self, message: &[u8], signature: &[u8]) -> bool {

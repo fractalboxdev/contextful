@@ -35,6 +35,8 @@ s3-sync = ["dep:rusty-s3", "dep:ureq"]
 contextful-acceptance = { path = "../acceptance" }
 # Ledger measures record their figures (`assurance.measure.record`).
 contextful-eval = { path = "../../tools/eval" }
+# Re-encodes one ES256 key as a compressed and an uncompressed SEC1 point.
+p256 = "0.13"
 tempfile = "3"
 
 [[test]]

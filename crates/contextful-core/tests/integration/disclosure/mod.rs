@@ -2,6 +2,7 @@
 
 mod declare;
 mod erase;
+mod join;
 mod mirror;
 mod pack;
 mod reach;

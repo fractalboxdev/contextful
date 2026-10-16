@@ -4,11 +4,12 @@
 //! it claims, the source family bounding that claim, and the staleness budget on its
 //! mirrored permission state. Aggregate disclosure: the per-unit budget a release reserves,
 //! the exact noise it draws, which groups of a derived result publish, and the one signal a
-//! withheld group leaves.
+//! withheld group leaves, and the cross-owner hashed join under a per-pair pepper.
 
 pub mod declare;
 pub mod error;
 pub mod erase;
+pub mod join;
 pub mod noise;
 pub mod pack;
 pub mod reach;
