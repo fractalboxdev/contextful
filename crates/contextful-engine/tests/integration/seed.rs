@@ -363,7 +363,6 @@ fn a_pending_seed_owner_resumes_under_a_moved_connector_and_records_it() {
     assert!(died.is_err(), "the seed run dies mid-chunk");
     let chunk = OwnerScope::chunk(PIPELINE, SEED_TABLE, "c0");
     let held = rig.catalog().owner_at(&chunk).unwrap().expect("the dead run leaves its owner pending");
-    rig.catalog().update_chunk(&chunk, None, &mut |c| c.status = ChunkStatus::Failed).unwrap();
     rig.clock.advance(400);
 
     let mut moved = spec(&seed_plan(), "seed-2");
@@ -374,6 +373,33 @@ fn a_pending_seed_owner_resumes_under_a_moved_connector_and_records_it() {
     assert_eq!((row.connector_id.as_str(), row.connector_version.as_str()), ("dump", "2.0.0"), "the row records the build it ran");
     assert_eq!(rig.row("seed-1").connector_version, "1.0.0", "the first attempt keeps its own provenance");
     assert!(rig.catalog().owner_at(&chunk).unwrap().is_none(), "the completed chunk retires its owner");
+}
+
+/// A chunk a killed seed run left running idles while that run's owner lease holds, then settles failed and runs
+/// to the seed commit once the lease lapses.
+#[test]
+fn a_chunk_a_dead_seed_run_left_running_is_retaken_once_its_lease_lapses() {
+    let rig = Rig::new();
+    chunks(&rig, 1);
+    let bound = load(json!(100), CursorKind::OpaqueToken);
+    let mut sink = Sink::default();
+    let mut source = Pages::new(vec![vec![stamped("a", 10)], vec![stamped("b", 20)]]);
+    source.die_after = Some(0);
+    let died = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+        rig.engine.seeding().run_next(&bound, &spec(&seed_plan(), "seed-1"), &mut source, &Unshaped, &mut sink, &probe(Some("f1")))
+    }));
+    assert!(died.is_err(), "the seed run dies mid-chunk");
+    let chunk = OwnerScope::chunk(PIPELINE, SEED_TABLE, "c0");
+    assert_eq!(rig.catalog().chunk_at(&chunk).unwrap().unwrap().status, ChunkStatus::Running, "the dead run leaves its chunk running");
+    let mut idle = Pages::new(vec![vec![stamped("z", 1)]]);
+    assert_eq!(rig.engine.seeding().run_next(&bound, &spec(&seed_plan(), "seed-2"), &mut idle, &Unshaped, &mut sink, &probe(Some("f1"))).unwrap(), SeedOutcome::Idle, "a held lease keeps the chunk");
+    assert!(idle.calls().is_empty());
+
+    rig.clock.advance(400);
+    let row = ran(rig.engine.seeding().run_next(&bound, &spec(&seed_plan(), "seed-3"), &mut source, &Unshaped, &mut sink, &probe(Some("f1"))));
+    assert_eq!(row.status, RunStatus::Success, "{:?}", row.error_message);
+    assert_eq!(rig.catalog().chunk_at(&chunk).unwrap().unwrap().status, ChunkStatus::Done);
+    assert!(rig.engine.seeding().state(PIPELINE, TABLE).unwrap().committed(), "the retaken chunk completes the seed");
 }
 
 /// `seed reset` clears the seed's chunk plan and commit stamp; the next run plans and loads the seed again, and rows

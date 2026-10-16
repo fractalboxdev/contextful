@@ -7,14 +7,16 @@
 //! each seed's ceiling, commit state and fingerprint match; `seed reset` clears a seed so the
 //! next fire loads it again.
 
-use crate::pipeline::{build_source, manifests, plan};
+use crate::pipeline::{build_source, manifests, plan, seed_binding};
 use crate::run::{boot_id, wire_at, ProjectArgs, StoreDestination};
 use anyhow::{bail, Context, Result};
 use clap::Subcommand;
 use contextful_connectors::http::{HttpSource, Mediation};
+use contextful_core::connector::meter::LimiterBinding;
 use contextful_core::pipeline::declare::{collect, PipelineSpec, TableEntry};
 use contextful_core::pipeline::seed::{probe, SeedBlock, SeedCeiling, SeedProbe};
 use contextful_core::pipeline::transform::Chain;
+use contextful_core::ports::Clock;
 use contextful_core::run::advance::CursorKind;
 use contextful_core::run::backfill::{Bound, Window};
 use contextful_core::run::journal::sha256_hex;
@@ -22,6 +24,7 @@ use contextful_core::run::plan::{ConnectorSpec, CursorSpec, Plan, NATIVE_WORLD};
 use contextful_core::run::record::RunStatus;
 use contextful_engine::seed::{FingerprintProbe, SeedLoad, SeedOutcome};
 use contextful_engine::{Engine, RunSpec};
+use contextful_outbound::Limiter;
 use std::path::PathBuf;
 use std::sync::Arc;
 
@@ -61,11 +64,37 @@ impl FingerprintProbe for HttpHead {
     }
 }
 
-/// The HTTP source the seed of `spec` reads for table `t`, its run tagged `run_id`.
-fn seed_source(spec: &PipelineSpec, seed: &SeedBlock, t: &TableEntry, resolver: &Arc<contextful_outbound::Resolver>, run_id: Option<&str>) -> Result<HttpSource> {
+/// What a seed source's requests pass: the resolver, and the limiter binding its declared
+/// quota names, metered against the same clock as the live source.
+pub(crate) struct Metered {
+    pub binding: Option<LimiterBinding>,
+    pub resolver: Arc<contextful_outbound::Resolver>,
+    pub clock: Arc<dyn Clock + Send + Sync>,
+}
+
+impl Metered {
+    /// The limiter for run `run_id`; `None` when the seed source declares no quota.
+    fn limiter(&self, run_id: &str) -> Result<Option<Arc<Limiter>>> {
+        Ok(self.binding.clone().map(|b| Limiter::new(b, self.resolver.clone(), run_id, self.clock.clone()).map(Arc::new)).transpose()?)
+    }
+}
+
+/// Surrender `limiter`'s unspent permits and print its events (`connector.meter.report-delivery`).
+fn finish(table: &str, limiter: Option<&Arc<Limiter>>) {
+    if let Some(limiter) = limiter {
+        limiter.finish();
+        for entry in limiter.audit() {
+            eprintln!("{table}: {entry}");
+        }
+    }
+}
+
+/// The HTTP source the seed of `spec` reads for table `t`, its run tagged `run_id` and its
+/// requests metered by `limiter`.
+fn seed_source(spec: &PipelineSpec, seed: &SeedBlock, t: &TableEntry, metered: &Metered, run_id: Option<&str>, limiter: Option<Arc<Limiter>>) -> Result<HttpSource> {
     let config = build_source(spec, "seed source", &seed.source)?;
-    let mediation = Mediation { run_id: run_id.map(str::to_string), ..Mediation::default() };
-    Ok(HttpSource::mediated(config, t.name(), resolver.clone(), mediation)?)
+    let mediation = Mediation { limiter, run_id: run_id.map(str::to_string), ..Mediation::default() };
+    Ok(HttpSource::mediated(config, t.name(), metered.resolver.clone(), mediation)?)
 }
 
 /// The plan a seed chunk of table `t` runs against: the live plan's pipeline, table and
@@ -96,7 +125,7 @@ pub(crate) fn drive<J, B>(
     t: &TableEntry,
     run_id: &str,
     site_id: &str,
-    resolver: &Arc<contextful_outbound::Resolver>,
+    metered: &Metered,
     dest: &mut StoreDestination,
     attempted: &mut Vec<String>,
 ) -> Result<bool>
@@ -119,38 +148,46 @@ where
         normalize: dest.normalize,
     };
     let artifact = sha256_hex(serde_json::to_string(&seed.source).unwrap_or_default().as_bytes());
-    let head = HttpHead(seed_source(spec, seed, t, resolver, None)?);
+    let probe_limiter = metered.limiter(&format!("{run_id}.seed-probe"))?;
+    let head = HttpHead(seed_source(spec, seed, t, metered, None, probe_limiter.clone())?);
     let shape = Chain { ops: spec.transforms.clone(), table: table.clone() };
-    for n in 0..=seeding.state(&spec.id, &table)?.chunks.len() {
-        let run = format!("{run_id}.seed-{n}");
-        let mut source = seed_source(spec, seed, t, resolver, Some(&run))?;
-        let spec_run = RunSpec { connector: plan.connector_pin(&artifact), plan: plan.clone(), run_id: run.clone(), site_id: site_id.to_string(), pid: std::process::id(), boot_id: boot_id(), trace_id: None };
-        let opened = engine.catalog.run(&run)?.is_none();
-        let outcome = seeding.run_next(&load, &spec_run, &mut source, &shape, dest, &head)?;
-        if opened && engine.catalog.run(&run)?.is_some() {
-            attempted.push(run.clone());
-        }
-        match outcome {
-            SeedOutcome::Ran(row) if row.status == RunStatus::Success => {
-                println!("{table}: {run} seeded · {} rows in {} batches", row.rows, row.batches);
-                if seeding.state(&spec.id, &table)?.committed() {
+    let outcome = (|| -> Result<bool> {
+        for n in 0..=seeding.state(&spec.id, &table)?.chunks.len() {
+            let run = format!("{run_id}.seed-{n}");
+            let limiter = metered.limiter(&run)?;
+            let mut source = seed_source(spec, seed, t, metered, Some(&run), limiter.clone())?;
+            let spec_run = RunSpec { connector: plan.connector_pin(&artifact), plan: plan.clone(), run_id: run.clone(), site_id: site_id.to_string(), pid: std::process::id(), boot_id: boot_id(), trace_id: None };
+            let opened = engine.catalog.run(&run)?.is_none();
+            let outcome = seeding.run_next(&load, &spec_run, &mut source, &shape, dest, &head);
+            finish(&table, limiter.as_ref());
+            let outcome = outcome?;
+            if opened && engine.catalog.run(&run)?.is_some() {
+                attempted.push(run.clone());
+            }
+            match outcome {
+                SeedOutcome::Ran(row) if row.status == RunStatus::Success => {
+                    println!("{table}: {run} seeded · {} rows in {} batches", row.rows, row.batches);
+                    if seeding.state(&spec.id, &table)?.committed() {
+                        return Ok(true);
+                    }
+                }
+                SeedOutcome::Ran(row) => bail!(
+                    "the seed failed as {} in run `{run}`: {}",
+                    row.error_kind.map(|k| k.name()).unwrap_or("unknown"),
+                    row.error_message.unwrap_or_default()
+                ),
+                SeedOutcome::Unavailable(warning) => {
+                    eprintln!("warning: {warning}");
                     return Ok(true);
                 }
+                SeedOutcome::Unchanged | SeedOutcome::Committed => return Ok(true),
+                SeedOutcome::Idle => return Ok(false),
             }
-            SeedOutcome::Ran(row) => bail!(
-                "the seed failed as {} in run `{run}`: {}",
-                row.error_kind.map(|k| k.name()).unwrap_or("unknown"),
-                row.error_message.unwrap_or_default()
-            ),
-            SeedOutcome::Unavailable(warning) => {
-                eprintln!("warning: {warning}");
-                return Ok(true);
-            }
-            SeedOutcome::Unchanged | SeedOutcome::Committed => return Ok(true),
-            SeedOutcome::Idle => return Ok(false),
         }
-    }
-    Ok(seeding.state(&spec.id, &table)?.committed())
+        Ok(seeding.state(&spec.id, &table)?.committed())
+    })();
+    finish(&table, probe_limiter.as_ref());
+    outcome
 }
 
 pub fn run(cmd: SeedCmd) -> Result<()> {
@@ -161,9 +198,11 @@ pub fn run(cmd: SeedCmd) -> Result<()> {
             let w = wire_at(&l.project, &project.now)?;
             let vars: std::collections::BTreeMap<String, String> = std::env::vars().collect();
             let resolver = Arc::new(contextful_outbound::assemble(&vars, w.clock.clone())?);
+            let clock: Arc<dyn Clock + Send + Sync> = w.clock.clone();
             let mut printed = false;
             for d in declared.iter().filter(|d| pipeline.as_deref().is_none_or(|p| p == d.spec.id)) {
                 let Some(seed) = d.spec.seed_block()? else { continue };
+                let metered = Metered { binding: seed_binding(&d.spec, &l.declaration)?, resolver: resolver.clone(), clock: clock.clone() };
                 for t in &d.spec.tables {
                     let table = d.spec.table_name(t.name());
                     let state = w.engine.seeding().state(&d.spec.id, &table)?;
@@ -176,7 +215,9 @@ pub fn run(cmd: SeedCmd) -> Result<()> {
                     let matched = match state.fingerprint.as_ref() {
                         None => "unstamped",
                         Some(stamped) => {
-                            let observed = HttpHead(seed_source(&d.spec, &seed, t, &resolver, None)?).fingerprint();
+                            let limiter = metered.limiter("seed-status")?;
+                            let observed = HttpHead(seed_source(&d.spec, &seed, t, &metered, None, limiter.clone())?).fingerprint();
+                            finish(&table, limiter.as_ref());
                             match probe(&table, Some(stamped.as_deref()), observed.as_deref()) {
                                 Ok(SeedProbe::Unchanged) => "match",
                                 Ok(SeedProbe::Load) | Ok(SeedProbe::Unavailable(_)) => "unavailable",

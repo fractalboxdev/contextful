@@ -265,6 +265,16 @@ pub(crate) struct HostChecked {
     tables: BTreeMap<String, String>,
 }
 
+/// The limiter binding a declared seed source's quota names, building that source first: a
+/// seed quota the manifest leaves unbound refuses at load (`connector.meter.quota-unbound`).
+pub(crate) fn seed_binding(spec: &PipelineSpec, declaration: &Path) -> Result<Option<LimiterBinding>> {
+    let Some(seed) = spec.seed_block()? else { return Ok(None) };
+    let config = build_source(spec, "seed source", &seed.source)?;
+    let Some(d) = &config.limiter else { return Ok(None) };
+    let text = std::fs::read_to_string(declaration).unwrap_or_default();
+    Ok(Some(require_binding(d, &manifest_bindings(&text)?)?.clone()))
+}
+
 /// Hold a specification to every rule checked before I/O, returning its source configuration.
 /// A declared seed source is built as a compiled-in HTTP source, so it refuses before a seeding run reaches it.
 pub(crate) fn check(spec: &PipelineSpec, declaration: &Path, tasks: &Tasks) -> Result<Checked> {
@@ -273,9 +283,7 @@ pub(crate) fn check(spec: &PipelineSpec, declaration: &Path, tasks: &Tasks) -> R
     for op in &spec.transforms {
         op.validate()?;
     }
-    if let Some(seed) = spec.seed_block()? {
-        build_source(spec, "seed source", &seed.source)?;
-    }
+    seed_binding(spec, declaration)?;
     match spec.source.name.as_str() {
         contextful_connectors::http::NAME => {
             let config = build_source(spec, "source", &spec.source)?;
@@ -919,7 +927,8 @@ pub fn run(cmd: PipelineCmd, tasks: &Tasks, bodies: &contextful_core::run::drive
                 // A declared seed loads before the table's live pull, and a seed another worker
                 // holds defers that pull (`run.seed.one-land-path`).
                 if let Some(seed) = &seed {
-                    match crate::seed::drive(&w.engine, &spec, seed, t, &run_id, &site_id, &resolver, &mut dest, &mut attempted) {
+                    let metered = crate::seed::Metered { binding: seed_binding(&spec, &l.declaration)?, resolver: resolver.clone(), clock: w.clock.clone() };
+                    match crate::seed::drive(&w.engine, &spec, seed, t, &run_id, &site_id, &metered, &mut dest, &mut attempted) {
                         Ok(true) => {}
                         Ok(false) => {
                             println!("{table}: the seed's chunk runs elsewhere; the live pull waits for its commit");

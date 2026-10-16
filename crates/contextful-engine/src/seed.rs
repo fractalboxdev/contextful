@@ -163,6 +163,7 @@ impl<J: JournalStore, B: BlobStore> Seeding<'_, J, B> {
             SeedProbe::Unavailable(warning) => return Ok(SeedOutcome::Unavailable(warning)),
             SeedProbe::Load => {}
         }
+        self.release_dead(pipeline_id, table)?;
         let Some(chunk) = self.engine.backfill().next(pipeline_id, &seed_table(table))? else {
             if plan_done(&state.chunks, None) {
                 self.stamp(pipeline_id, table, observed)?;
@@ -182,6 +183,23 @@ impl<J: JournalStore, B: BlobStore> Seeding<'_, J, B> {
             }
         }
         Ok(SeedOutcome::Ran(Box::new(row)))
+    }
+
+    /// Settle `Failed` every running seed chunk whose pending owner holds no attempt in flight
+    /// on an unexpired owner lease, so a chunk a killed run left running is claimable again.
+    fn release_dead(&self, pipeline_id: &str, table: &str) -> Result<(), EngineError> {
+        let catalog = &self.engine.catalog;
+        for chunk in catalog.chunks(pipeline_id, &seed_table(table))?.into_iter().filter(|c| c.status == ChunkStatus::Running) {
+            let scope = chunk.scope();
+            let live = match catalog.owner_at(&scope)? {
+                Some(owner) => owner.attempts.iter().map(|a| self.engine.holder_live(a)).collect::<Result<Vec<_>, _>>()?.contains(&true),
+                None => false,
+            };
+            if !live {
+                catalog.update_chunk(&scope, None, &mut |c| c.settle(RunStatus::PartialFailure))?;
+            }
+        }
+        Ok(())
     }
 
     /// Stamp the seed committed with the fingerprint its source answered at commit.
