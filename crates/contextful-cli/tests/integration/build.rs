@@ -410,3 +410,160 @@ fn a_build_at_a_horizon_reads_inputs_available_by_it_and_records_it() {
     assert!(!out.status.success());
     assert!(String::from_utf8_lossy(&out.stderr).contains("StoreAvailableTimeUndeclared"), "{}", String::from_utf8_lossy(&out.stderr));
 }
+
+const SUPERSEDED: &str = "x-interrupted";
+
+/// A scheduled build job feeding a coordinated publication whose receiver accepts every
+/// group: imported as v1, fired once at 01:00 and exported once.
+fn published_job(receiver: &contextful_acceptance::http::Server) -> (tempfile::TempDir, String, String) {
+    let dir = project();
+    let p = dir.path();
+    let group = format!("[[job]]\nname='daily-build'\nkind='build'\ntarget='daily'\nschedule='every 1h'\n[[export]]\nname='daily-copy'\ntable='daily'\nendpoint='{}'\nformat='changes-v1'\nkey=['day']\nschedule='every 30s'\n[[publication]]\nname='daily-projection'\njob='daily-build'\nmembers=['daily-copy']\n", receiver.url("/events"));
+    std::fs::write(p.join("contextful.toml"), format!("site_id='site-a'\n{DECLARATION}\n{group}")).unwrap();
+    std::fs::write(p.join(".contextful/issuance.toml"), "default_audience = 'contextful://acme-research'\nmax_lifetime_secs = 3600\n").unwrap();
+    stdout(&run(p, &["pipeline", "import", "--project", "research"]));
+    stdout(&run(p, &["pipeline", "serve", "--cycle", "--project", "research", "--now", "2030-01-01T01:00:00Z"]));
+    let public = stdout(&run(p, &["token", "keygen", "--out", ".contextful/issuer.seed"]));
+    let token = stdout(&run(p, &["token", "mint", "--issuer-key", ".contextful/issuer.seed", "--on-behalf-of", "svc://projection", "--zone", "on-prem:hq", "--table", "daily", "--ttl", "600"]));
+    export_group(p, &public, &token);
+    assert_eq!(receiver.received("/events").len(), 1);
+    (dir, public, token)
+}
+
+fn export_group(p: &Path, public: &str, token: &str) {
+    let out = Command::new(env!("CARGO_BIN_EXE_contextful"))
+        .args(["export", "group", "daily-projection", "--project", "research", "--public-key", public, "--audience", "contextful://acme-research"])
+        .current_dir(p).env("CONTEXTFUL_TOKEN", token).env_remove("CONTEXTFUL_NODE_ID").output().unwrap();
+    stdout(&out);
+}
+
+fn machine(p: &Path) -> contextful_sqlite::MachineCatalog {
+    let clock = std::sync::Arc::new(contextful_core::ports::FixedClock(contextful_core::time::Instant::parse("2030-01-01T01:00:00Z").unwrap()));
+    contextful_sqlite::MachineCatalog::open(&p.join(".contextful/context/research/machine.sqlite"), clock).unwrap()
+}
+
+/// Leave the job's scope as a container replaced during the plan phase leaves it: a
+/// running attempt at phase `plan` whose owner lease lapses, holding a pending owner pinned
+/// to the plan reference the completed fire ran under. Answers that reference.
+fn interrupt_in_plan_phase(p: &Path) -> String {
+    use contextful_core::coordinate::Catalog;
+    use contextful_core::run::own::{ExecutionOwner, OwnerScope, PlanPins};
+    use contextful_core::run::record::{Owner, Phase, RunStatus};
+    let catalog = machine(p);
+    let mut row = catalog.runs(None).unwrap().into_iter()
+        .find(|r| r.host_scope.as_deref() == Some("job:daily-build") && r.status == RunStatus::Success)
+        .expect("the completed fire");
+    let plan_ref = row.plan_ref.clone().expect("a host attempt records its plan reference");
+    row.run_id = "build-job-interrupted".into();
+    row.execution_id = SUPERSEDED.into();
+    row.status = RunStatus::Running;
+    row.phase = Phase::Plan;
+    row.ended_at = None;
+    row.rows = 0;
+    row.owner = Some(Owner::leased(1, "replaced-container", row.started_at));
+    catalog.put_run(&row).unwrap();
+    catalog.put_owner(&ExecutionOwner {
+        execution_id: SUPERSEDED.into(),
+        scope: OwnerScope::host("job:daily-build"),
+        pins: PlanPins { plan_ref: plan_ref.clone(), identities: Default::default() }.into(),
+        attempts: vec![row.run_id.clone()],
+        opened_at: row.started_at,
+    }).unwrap();
+    plan_ref
+}
+
+/// Change the job's target model and land a third day the next build publishes.
+fn change_declaration(p: &Path) {
+    let declaration = std::fs::read_to_string(p.join("contextful.toml")).unwrap();
+    std::fs::write(p.join("contextful.toml"), declaration.replace("FROM events GROUP BY day", "FROM events WHERE day IS NOT NULL GROUP BY day")).unwrap();
+    std::fs::write(p.join("third.jsonl"), "{\"day\":\"d3\"}\n").unwrap();
+    stdout(&run(p, &["context", "land", "events", "--rows", "third.jsonl", "--run-id", "r3", "--site-id", "site-a", "--now", "2030-01-01T01:30:00Z"]));
+}
+
+fn history(p: &Path) -> Vec<Value> {
+    stdout(&run(p, &["run", "history", "--project", "research", "--export"])).lines().skip(1).map(|l| serde_json::from_str(l).unwrap()).collect()
+}
+
+/// The retirement's row, and the job's attempts that completed after it.
+fn retirement_and_completions(p: &Path) -> (Value, usize) {
+    let rows = history(p);
+    let retired = rows.iter().find(|r| r["execution_id"] == SUPERSEDED && r["status"] == "canceled").cloned().unwrap_or_else(|| panic!("no retirement row: {rows:?}"));
+    let completed = rows.iter().filter(|r| r["host_scope"] == "job:daily-build" && r["status"] == "success").count();
+    (retired, completed)
+}
+
+/// `contextful run rewind` retires a pending execution pinned to a superseded plan reference, recording the reason
+/// and that reference, so the job's next fire plans fresh and completes and its publication exports again.
+// spec: run.own.rewind@7fbd9152
+// spec: run.own.rewind-record@e95e062b
+#[test]
+fn a_rewound_plan_phase_interruption_leaves_the_job_fireable_after_a_declaration_change() {
+    let receiver = contextful_acceptance::http::Server::start(|_| contextful_acceptance::http::Response::json(200, "{}"));
+    let (dir, public, token) = published_job(&receiver);
+    let p = dir.path();
+    let superseded = interrupt_in_plan_phase(p);
+    change_declaration(p);
+    let fire = || run(p, &["job", "fire", "daily-build", "--project", "research", "--now", "2030-01-01T02:00:00Z"]);
+    let out = fire();
+    assert!(!out.status.success());
+    let mismatch = String::from_utf8_lossy(&out.stderr).trim().to_string();
+    assert!(mismatch.contains("ExecutionPinMismatch: host scope `job:daily-build`"), "{mismatch}");
+    assert!(mismatch.contains(&format!("contextful run rewind {SUPERSEDED} --reason <text>")), "{mismatch}");
+    assert!(!mismatch.ends_with("or rewind"), "{mismatch}");
+    let unknown = run(p, &["run", "rewind", "x-unknown", "--project", "research", "--reason", "declaration changed", "--now", "2030-01-01T02:00:00Z"]);
+    refused(&unknown, "ExecutionRewindNotPending");
+    let rewound = stdout(&run(p, &["run", "rewind", SUPERSEDED, "--project", "research", "--reason", "declaration changed", "--now", "2030-01-01T02:00:00Z"]));
+    assert!(rewound.contains(&superseded), "{rewound}");
+    stdout(&fire());
+    let (retired, completed) = retirement_and_completions(p);
+    assert_eq!(retired["plan_ref"], superseded.as_str());
+    assert!(retired["error_message"].as_str().unwrap().contains("declaration changed"), "{retired}");
+    assert_eq!(completed, 2);
+    export_group(p, &public, &token);
+    let delivered = receiver.received("/events");
+    assert_eq!(delivered.len(), 2, "the publication exports again after the job completes");
+    let batch: Value = serde_json::from_slice(&delivered[1].body).unwrap();
+    assert!(batch.to_string().contains("d3"), "{batch}");
+}
+
+/// `pipeline apply` retires a job's pending owner whose declared plan reference the applied snapshot no longer
+/// produces, recording the snapshot version, so the next scheduled fire plans fresh and completes.
+// spec: run.own.apply-retires-superseded@54f03a5c
+#[test]
+fn applying_a_changed_declaration_retires_a_plan_phase_interruption() {
+    let receiver = contextful_acceptance::http::Server::start(|_| contextful_acceptance::http::Response::json(200, "{}"));
+    let (dir, public, token) = published_job(&receiver);
+    let p = dir.path();
+    let superseded = interrupt_in_plan_phase(p);
+    change_declaration(p);
+    let applied = stdout(&run(p, &["pipeline", "apply", "--project", "research", "--now", "2030-01-01T01:45:00Z"]));
+    assert!(applied.contains(&format!("retired execution `{SUPERSEDED}`")), "{applied}");
+    stdout(&run(p, &["pipeline", "serve", "--cycle", "--project", "research", "--now", "2030-01-01T02:00:00Z"]));
+    let (retired, completed) = retirement_and_completions(p);
+    assert_eq!(retired["plan_ref"], superseded.as_str());
+    assert!(retired["error_message"].as_str().unwrap().contains("superseded by applied snapshot v2"), "{retired}");
+    assert_eq!(completed, 2, "{:?}", history(p));
+    export_group(p, &public, &token);
+    assert_eq!(receiver.received("/events").len(), 2, "the publication exports again after the job completes");
+}
+
+/// An applied retirement meeting a live attempt leaves the owner pending and the snapshot claimed, and names the verb.
+// spec: run.own.apply-retire-refused@3db6c11b
+#[test]
+fn apply_leaves_an_owner_a_live_attempt_holds_and_names_the_verb() {
+    use contextful_core::coordinate::Catalog;
+    use contextful_core::run::own::OwnerScope;
+    let receiver = contextful_acceptance::http::Server::start(|_| contextful_acceptance::http::Response::json(200, "{}"));
+    let (dir, _, _) = published_job(&receiver);
+    let p = dir.path();
+    interrupt_in_plan_phase(p);
+    change_declaration(p);
+    // The attempt still renews its lease at the apply's instant.
+    let out = run(p, &["pipeline", "apply", "--project", "research", "--now", "2030-01-01T01:00:01Z"]);
+    let applied = stdout(&out);
+    assert!(applied.contains("applied v2"), "{applied}");
+    let err = String::from_utf8_lossy(&out.stderr);
+    assert!(err.contains("ExecutionRewindUnsafe") && err.contains(&format!("contextful run rewind {SUPERSEDED} --reason <text>")), "{err}");
+    let owner = machine(p).owner_at(&OwnerScope::host("job:daily-build")).unwrap().expect("the owner stays pending");
+    assert_eq!(owner.execution_id, SUPERSEDED);
+}

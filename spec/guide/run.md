@@ -35,8 +35,8 @@ carrying no script: branching is declared, never computed from data
 ({{run.journal.substrate-port}}) a target's orchestrator fills ({{run.orchestrate.role}}).
 
 The record opens before the first pull ({{run.record.row-at-open}}). An execution owner
-pins the connector and plan ({{run.own.pinned-plan-changed}}); host jobs use their own
-scope ({{run.own.host-scope}}).
+pins the connector and plan ({{run.own.pinned-plan-changed}}) until retired
+({{run.own.rewind}}); host jobs key their own scope ({{run.own.host-scope}}).
 
 Bodies: {{run.own.body-implementation}}, {{run.own.body-dependencies}}, {{run.own.body-compatibility}}.
 Items follow {{run.items.opt-in}} and {{run.items.identity}}; a delegate's answer records
@@ -46,7 +46,7 @@ admission follows {{run.items.entity-admission}}, {{run.items.overlap}} and {{ru
 Retries follow {{run.items.retry-budget}} and {{run.items.replay}}.
 
 Each pull records its value once ({{run.journal.step-output}}); outbound requests carry
-idempotency keys ({{run.journal.idempotency-key}}). Journal state persists through file and SQLite store
+idempotency keys ({{run.journal.idempotency-key}}). Journal state persists through file and SQLite
 ports ({{run.journal.storage-ports}},
 {{run.journal.sqlite-stores}}). A batch follows {{run.land.stage-order}}.
 Initialize {{run.journal.execution-recovery}} under {{run.journal.container-profile}}:
@@ -150,7 +150,7 @@ the boundary instant ({{run.advance.inclusive-boundary}}); `insights` declares a
 
 The process dies after its first page.
 
-On restart, startup marks the row `partial_failure`, its lease expired
+Startup marks the row `partial_failure`, its lease expired
 ({{run.record.orphan-reap}}). The next fire finds no commit marker newer than the cached
 position ({{run.own.marker-reconciles}}), sees the same plan hash, and replays. The
 journal hit hands the recorded page to the land path byte for byte

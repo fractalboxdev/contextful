@@ -187,7 +187,7 @@ pub fn run(cmd: JobCmd, bodies: &Bodies) -> Result<()> {
                 bail!("job `{name}` is kind `{}`; `job fire` fires a store-driven job", job.kind_name());
             };
             // Every origin of a sweep inherits the pinned structure from the driven input.
-            driven.input.structural_identity = Some(effective.structural_identity(&driven.tables)?);
+            driven.input = pinned_input(driven, &effective)?;
             let driven: &StoreDriven = driven;
             // Delivery bindings stay local; the applied job supplies the output table set.
             let grouped = crate::export::publication::validate_job(&text,&name,&driven.tables)?;
@@ -433,5 +433,54 @@ pub(crate) fn bind_declared(jobs: &[Job], specs: &[contextful_core::pipeline::de
     let targets = Targets::new(specs, jobs, models);
     bind_targets(jobs, &targets)?;
     contextful_core::job::dependent_jobs(specs, jobs)?;
+    Ok(())
+}
+
+/// The input a store-driven fire pins: the declared input under the effective
+/// declaration's structural identity, as fire and apply both read it.
+fn pinned_input(driven: &StoreDriven, effective: &crate::effective::Effective) -> Result<StoreInput> {
+    Ok(StoreInput { structural_identity: Some(effective.structural_identity(&driven.tables)?), ..driven.input.clone() })
+}
+
+/// Retire each store-driven or build job's pending owner whose declared plan reference
+/// applied snapshot `version` no longer produces (`run.own.apply-retires-superseded`). An
+/// owner `run.own.rewind-unsafe` protects stays pending, named with the verb that retires
+/// it (`run.own.apply-retire-refused`).
+pub(crate) fn retire_superseded(l: &crate::project::Located, project: &ProjectArgs, local: &str, version: u64, bodies: &Bodies) -> Result<()> {
+    use contextful_core::run::RunError;
+    use contextful_engine::EngineError;
+    let effective = crate::effective::Effective::resolve(l, local, Some(version))?;
+    let delegates = crate::delegate::declared(local)?;
+    let registered = |name: &str| bodies.get(name).is_some() || name.strip_prefix(BODY_PREFIX).is_some_and(|d| delegates.contains_key(d));
+    let mut declared = Vec::new();
+    for job in parse_jobs(&effective.main, &registered)? {
+        let reference = match &job.kind {
+            JobKind::StoreDriven(driven) if driven.sweep.is_none() => pinned_input(driven, &effective)?.plan_ref(),
+            _ if job.kind_name() == "build" => match effective.models.iter().find(|m| Some(&m.id) == job.target.as_ref()) {
+                Some(spec) => crate::build::job_plan_ref(&job.name, spec, &effective)?,
+                None => continue,
+            },
+            _ => continue,
+        };
+        declared.push((job.name, reference));
+    }
+    let catalog = l.project.store_root().join(contextful_core::store::catalog::MACHINE_CATALOG_FILE);
+    if declared.is_empty() || (!catalog.exists() && crate::storage::remote()?.is_none()) {
+        return Ok(());
+    }
+    let w = wire_at(&l.project, &project.now)?;
+    let reason = format!("superseded by applied snapshot v{version}");
+    for (name, reference) in declared {
+        let scope = contextful_engine::drive::job_scope(&name);
+        match w.engine.retire_superseded(&scope, &|pins| pins.declared_ref() != reference, &reason) {
+            Ok(Some(row)) => println!("{scope}: retired execution `{}` pinned to plan reference {} as {}", row.execution_id, row.plan_ref.unwrap_or_default(), row.run_id),
+            Ok(None) => {}
+            Err(e @ EngineError::Refused(RunError::ExecutionRewindUnsafe(_))) => {
+                let id = w.engine.catalog.owner_at(&scope)?.map(|o| o.execution_id).unwrap_or_default();
+                eprintln!("{scope}: {e}; the execution stays pending until `contextful run rewind {id} --reason <text>` retires it");
+            }
+            Err(e) => return Err(e.into()),
+        }
+    }
     Ok(())
 }

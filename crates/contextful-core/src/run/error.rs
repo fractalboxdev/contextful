@@ -36,6 +36,15 @@ pub enum RunError {
     /// A connector identity, component world or plan hash moved under a pending owner. (`run.own.pinned-plan-changed`)
     #[error("ExecutionPinMismatch: {0}")]
     ExecutionPinMismatch(String),
+    /// A rewind naming an execution no pending owner holds. (`run.own.rewind-not-pending`)
+    #[error("ExecutionRewindNotPending: {0}")]
+    ExecutionRewindNotPending(String),
+    /// An unforced rewind of an owner no attempt has asked another plan reference of. (`run.own.rewind-plan-current`)
+    #[error("ExecutionRewindPlanCurrent: {0}")]
+    ExecutionRewindPlanCurrent(String),
+    /// A retirement of an owner a live attempt, a waiting attempt or a pending awakeable still holds. (`run.own.rewind-unsafe`)
+    #[error("ExecutionRewindUnsafe: {0}")]
+    ExecutionRewindUnsafe(String),
     /// A run whose staged parts pass the per-run staged-bytes bound. (`run.own.staged-bytes`)
     #[error("RunStagedBytesExceeded: {0}")]
     RunStagedBytesExceeded(String),
