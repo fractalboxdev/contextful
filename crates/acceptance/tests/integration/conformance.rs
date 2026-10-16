@@ -326,3 +326,47 @@ fn consumer_scenarios_reject_cursor_skips_duplicate_identity_and_premature_ackno
         assert_eq!(result.diagnostic.as_deref(), Some(diagnostic), "{report:?}");
     }
 }
+
+#[test]
+#[cfg(unix)]
+fn a_failed_scenario_stops_its_daemon_so_the_daemon_ends_its_own_children() {
+    let _guard = super::CONFORMANCE_ENV.lock().unwrap();
+    let dir = tempfile::tempdir().unwrap();
+    let marker = dir.path().join("child.pid");
+    let binary = dir.path().join("contextful");
+    // The daemon starts a child in its own process group, as a serve dispatches one, ends
+    // it on SIGTERM, and never serves, so the scenario fails on its deadline.
+    executable(&binary, &format!(r#"#!/bin/sh
+case "$1 $2" in
+"--version ") printf 'contextful 0.5.0 contextful-full\n';;
+"token keygen") printf 'ed25519/fixture\n';;
+"pipeline serve")
+  perl -e 'setpgrp(0, 0); exec "sleep", "300"' &
+  child=$!
+  printf '%s' "$child" > '{marker}'
+  trap 'kill -TERM -"$child"; exit 0' TERM
+  while :; do sleep 0.1; done;;
+*) printf 'ok\n';;
+esac
+"#, marker = marker.display()));
+    let report = conformance::run(&Options {
+        binary,
+        storage_profile: "local".into(),
+        required: vec!["graceful-restart".into()],
+        timeout_seconds: 10,
+    })
+    .unwrap();
+    let result = report.scenarios.iter().find(|r| r.id == "graceful-restart").unwrap();
+    assert_eq!(result.diagnostic.as_deref(), Some("ConformanceDaemonTimeout"));
+    let child = std::fs::read_to_string(&marker).unwrap();
+    let alive = || std::process::Command::new("/bin/kill").args(["-0", child.trim()]).status().unwrap().success();
+    let deadline = std::time::Instant::now() + std::time::Duration::from_secs(5);
+    while alive() && std::time::Instant::now() < deadline {
+        std::thread::sleep(std::time::Duration::from_millis(50));
+    }
+    let orphaned = alive();
+    if orphaned {
+        let _ = std::process::Command::new("/bin/kill").args(["-KILL", child.trim()]).status();
+    }
+    assert!(!orphaned, "the daemon's dispatched child outlived the scenario");
+}
