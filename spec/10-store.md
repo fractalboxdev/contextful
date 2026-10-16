@@ -558,8 +558,10 @@ Fetching a bucket into a store: the digest diff, the parallel download, and the 
   *A-store*
 - `pointer-last` — A pull writes a table's pointer only after every Parquet part of the snapshot it names is home, so no reader meets a pointer ahead of its data.
   *A-store*
-- `tombstone-applied` — A pull deletes the local copy of each key a tombstone names and no entry lists.
+- `tombstone-applied` — A pull deletes the local copy of each key a tombstone names and no entry lists; a key holding no local copy is neither verified nor reported.
   *because a deletion that never reaches a consumer resurrects once its tombstone ages out*
+- `cold-own-keys` — A pull into a store holding no `nodes/<node-id>/run-state.json` of its own node downloads that node's keys it lacks, so a replacement host reusing the node id tombstones none of them.
+  *because a push tombstones each key its node owns and no longer holds, deleting the run history a replacement host never pulled*
 - `pointer-advance` — A pull advances a local pointer only to a bucket pointer carrying a higher fence, or the same fence and a later snapshot, and verifies every advancing table before writing any pointer.
   *A-store*
 - `schema-merge` — A pulled `schema.json` differing from the local copy merges into it column by column through {{store.reconcile.incompatible}}'s lattice rather than replacing it.
