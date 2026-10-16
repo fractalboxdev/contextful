@@ -1,4 +1,4 @@
-//! `contextful memory` — synthesis, direct write, keyed recall and settlement.
+//! `contextful memory` — synthesis, direct write, keyed recall, settlement and the knowledge card.
 //!
 //! The adapter admits a credential, opens the read face, wires the inference endpoint
 //! for synthesis, and prints the selected command's result. No memory rule lives here.
@@ -9,6 +9,7 @@ use crate::clock::SystemClock;
 use anyhow::{Context, Result};
 use clap::Subcommand;
 use contextful_context::node;
+use contextful_context::read::explain::ExplainRequest;
 use contextful_context::read::RecallRequest;
 use contextful_core::memory::declare::Shape;
 use contextful_core::memory::settle::{Observation as SettleObservation, RawRegistration};
@@ -68,6 +69,20 @@ pub enum MemoryCmd {
         /// The maximum number of claims returned.
         #[arg(long)]
         limit: Option<u64>,
+    },
+    /// Resolve a name or alias to its canonical record and the live claims about it.
+    Explain {
+        #[command(flatten)]
+        project: Project,
+        /// The memory entities table resolved against.
+        #[arg(long)]
+        table: String,
+        /// A canonical name or an alias, in any script.
+        #[arg(long)]
+        reference: String,
+        /// The memory facts table whose claims about the identity the card carries.
+        #[arg(long)]
+        claims: Option<String>,
     },
     /// Run one synthesis pass from a source table into a claims table.
     Synthesize {
@@ -186,6 +201,14 @@ pub fn run(cmd: MemoryCmd) -> Result<()> {
             let session = face.session(&authority, &Request::default(), request.bounds())?;
             let response = face.recall(&session, &request)?;
             println!("{}", serde_json::to_string(&response.to_json())?);
+            Ok(())
+        }
+        MemoryCmd::Explain { project, table, reference, claims } => {
+            let request = ExplainRequest { claims, ..ExplainRequest::new(table, reference, SystemClock.now()) };
+            let (authority, _) = project.admit.admit(project.project.as_deref(), "a knowledge card")?;
+            let face = face(&locate(project.project.as_deref(), project.declaration.clone())?)?;
+            let session = face.session(&authority, &Request::default(), request.bounds())?;
+            println!("{}", serde_json::to_string(&face.explain(&session, &request)?)?);
             Ok(())
         }
         MemoryCmd::Synthesize { project, source, into, endpoint, model } => {

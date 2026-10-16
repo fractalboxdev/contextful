@@ -442,3 +442,49 @@ fn calibration_reports_the_settled_claims_of_a_table() {
     assert!(text.starts_with("1 settled predictions joined a claim in memory/facts"), "{text}");
     assert!(text.contains("memory_facts cfo: 1 samples"), "{text}");
 }
+
+/// `contextful memory explain` resolves an alias written in another script to one card with
+/// the live claims about its identity, lists the candidates an ambiguous alias matches, and
+/// returns the identity alone to a credential holding no grant on the claims table.
+#[test]
+fn explain_cli_answers_one_card_candidates_or_the_identity_alone() {
+    let (dir, public, token) = project();
+    let p = dir.path();
+    let manifest = std::fs::read_to_string(p.join("contextful.toml")).unwrap();
+    std::fs::write(
+        p.join("contextful.toml"),
+        format!("{manifest}\n[[table]]\nname = \"memory/entities\"\nshape = \"memory_entities\"\ncolumns = [\"entity_id\", \"kind\", \"name\", \"aliases\"]\n"),
+    )
+    .unwrap();
+    let entities = [
+        json!({ "entity_id": "e-acme", "kind": "company", "name": "Acme Holdings", "aliases": "[\"ACME\",\"アクメ\"]" }),
+        json!({ "entity_id": "e-globex", "kind": "company", "name": "Globex", "aliases": "[\"GX\"]" }),
+        json!({ "entity_id": "e-gx", "kind": "fund", "name": "GX Partners", "aliases": "[\"gx\"]" }),
+    ];
+    std::fs::write(p.join("entities.jsonl"), entities.iter().map(|e| format!("{e}\n")).collect::<String>()).unwrap();
+    stdout(&run(p, &["context", "land", "memory/entities", "--project", "research", "--rows", "entities.jsonl", "--run-id", "run-entities", "--site-id", "site-a"], &[]));
+    let claim = json!({ "subject": "e-acme", "predicate": "cfo", "object": "Dana", "confidence": 1.0,
+        "evidence": [{ "table": "research/notes", "run": "run-0001", "seq": 0 }] })
+    .to_string();
+    stdout(&run(p, &["memory", "write", "--project", "research", "--into", "memory/facts", "--claim", &claim, "--public-key", &public, "--audience", AUD], &[("CONTEXTFUL_TOKEN", &token)]));
+
+    let explain = |reference: &str, token: &str| -> Value {
+        let args = ["memory", "explain", "--project", "research", "--table", "memory/entities", "--reference", reference, "--claims", "memory/facts", "--public-key", &public, "--audience", AUD];
+        serde_json::from_str(&stdout(&run(p, &args, &[("CONTEXTFUL_TOKEN", token)]))).unwrap()
+    };
+    let identity = json!({ "entity_id": "e-acme", "kind": "company", "name": "Acme Holdings", "aliases": ["ACME", "アクメ"] });
+    let card = explain("アクメ", &token);
+    assert_eq!(card["entity"], identity, "{card}");
+    let object = card["claims"]["columns"].as_array().unwrap().iter().position(|c| c == "object").unwrap();
+    assert_eq!(card["claims"]["rows"][0][object], json!("Dana"), "{card}");
+    assert_eq!(card["claims"]["rows"].as_array().unwrap().len(), 1, "{card}");
+
+    assert_eq!(explain("GX", &token), json!({ "entity": null, "candidates": ["e-globex", "e-gx"] }));
+
+    let identities_only = stdout(&run(
+        p,
+        &["token", "mint", "--issuer-key", ".contextful/issuer.seed", "--on-behalf-of", "user://dana@acme.example", "--agent", "agent://reader", "--zone", "on-prem:hq", "--action", "read", "--table", "memory/entities", "--ttl", "600"],
+        &[],
+    ));
+    assert_eq!(explain("ACME", &identities_only), json!({ "entity": identity, "candidates": [] }));
+}

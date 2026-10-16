@@ -12,6 +12,7 @@
 //! does not persist answers `AuditEntryUnpersisted` in-band with no rows
 //! (`disclosure.record.unpersisted-wire`).
 
+use contextful_context::read::explain::ExplainRequest;
 use contextful_context::read::{Face, ReadFault, ReadOptions, RecallRequest, RetrieveRequest};
 use contextful_core::memory::declare::Shape;
 use contextful_core::read::face::{read_backend, register_tool, require, BuildIdentity, FaceScope, ToolKind, TOOLS};
@@ -514,6 +515,7 @@ impl<'a> Tools<'a> {
             "context.query" => args.get("sql").and_then(Value::as_str).map(str::to_string),
             "context.execute_query" => args.get("id").and_then(Value::as_str).and_then(template),
             "context.describe" | "context.reference" | "memory.recall" => return args.get("table").and_then(Value::as_str).map(str::to_string).into_iter().collect(),
+            "memory.explain" => return ["table", "claims"].iter().filter_map(|k| args.get(*k).and_then(Value::as_str).map(str::to_string)).collect(),
             "context.file" => return args.get("path").and_then(Value::as_str).and_then(|path| contextful_context::read::face::preview_target(path).ok()).into_iter().collect(),
             "context.subscribe" => return args.get("tables").and_then(Value::as_array).map(|ts| ts.iter().filter_map(Value::as_str).map(str::to_string).collect()).unwrap_or_default(),
             other => template(other),
@@ -537,9 +539,9 @@ impl<'a> Tools<'a> {
         let horizon = horizon(caller.authority.grants());
         let inherited;
         let args = match horizon {
-            // `memory.recall` names its own clocks and reads the horizon below; a
-            // subscription takes no bound.
-            Some(_) if name != "memory.recall" && name != "context.subscribe" => match inherit_horizon(args, horizon)? {
+            // `memory.recall` names its own clocks and a knowledge card reads the latest
+            // state, each reading the horizon below; a subscription takes no bound.
+            Some(_) if name != "memory.recall" && name != "memory.explain" && name != "context.subscribe" => match inherit_horizon(args, horizon)? {
                 Ok(a) => {
                     inherited = a;
                     &inherited
@@ -710,6 +712,25 @@ impl<'a> Tools<'a> {
                     ..RecallRequest::new(required(args, "table")?, required(args, "subject")?, self.clock.now())
                 };
                 self.session(caller, zone, request.bounds(), pins).and_then(|s| self.face.recall(&s, &request).map(|r| answered_in(r, s)))
+            }
+            "memory.explain" => {
+                only(args, name, &["table", "reference", "claims"])?;
+                // A knowledge card reads the latest state (`read.register.bound-arguments`).
+                if let Some(k) = ["as_of", "valid_as_of", "available_as_of", VINTAGE].into_iter().find(|k| args.contains_key(*k)) {
+                    return Err(invalid(format!("`{name}` takes no argument `{k}`")));
+                }
+                let request = ExplainRequest {
+                    claims: string(args, "claims")?,
+                    available_as_of: horizon.map(|at| Bound { at, inclusive: true }),
+                    max_duration_ms: integer(args, "max_duration_ms")?,
+                    max_response_bytes: integer(args, "max_response_bytes")?,
+                    ..ExplainRequest::new(required(args, "table")?, required(args, "reference")?, self.clock.now())
+                };
+                self.session(caller, zone, request.bounds(), pins).and_then(|s| {
+                    let card = self.face.explain(&s, &request)?;
+                    let rows = u64::from(!card["entity"].is_null()) + card["claims"]["rows"].as_array().map_or(0, |r| r.len() as u64);
+                    Ok((card, rows, s))
+                })
             }
             template if self.face.templates().iter().any(|t| t.id == template) => {
                 // No template parameter takes a read argument's name (`read.guard.template-reserved-parameter`).

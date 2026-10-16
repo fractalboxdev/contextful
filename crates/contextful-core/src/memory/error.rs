@@ -18,6 +18,9 @@ pub enum MemoryError {
     /// A mention resolves onto two identities with no separating key. (`read.resolve-entity.ambiguous-mention`)
     #[error("MemoryEntityAmbiguous: {0}")]
     EntityAmbiguous(String),
+    /// A knowledge card named a table declaring no `memory_entities` shape. (`read.resolve-entity.card-not-entities`)
+    #[error("MemoryExplainNotEntities: {0}")]
+    ExplainNotEntities(String),
     /// A claim names more evidence references than the bound. (`read.recall.evidence-references`)
     #[error("MemoryEvidenceOverflow: {0}")]
     EvidenceOverflow(String),
@@ -74,6 +77,7 @@ impl MemoryError {
             MemoryError::EdgeEndpointUnresolved(_) => "MemoryEdgeEndpointUnresolved",
             MemoryError::EntityAmbiguous(_) => "MemoryEntityAmbiguous",
             MemoryError::EvidenceOverflow(_) => "MemoryEvidenceOverflow",
+            MemoryError::ExplainNotEntities(_) => "MemoryExplainNotEntities",
             MemoryError::EvidenceUnresolved(_) => "MemoryEvidenceUnresolved",
             MemoryError::ExtractExhausted(_) => "MemoryExtractExhausted",
             MemoryError::ObservationOutOfOrder(_) => "MemoryObservationOutOfOrder",

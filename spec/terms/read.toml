@@ -58,6 +58,7 @@ MemoryObservationOutOfOrder   = { clause = "read.revise.observed-order", gloss =
 MemoryRecallNotClaims         = { clause = "read.recall.keyed-not-claims", gloss = "A keyed recall named a table declaring no `memory_facts` shape." }
 MemoryEntityAmbiguous         = { clause = "read.resolve-entity.ambiguous-mention", gloss = "A mention resolves onto two identities with no separating key." }
 MemoryEdgeEndpointUnresolved  = { clause = "read.resolve-entity.edge-endpoint", gloss = "A candidate edge endpoint resolves to no identity." }
+MemoryExplainNotEntities      = { clause = "read.resolve-entity.card-not-entities", gloss = "A knowledge card named a table declaring no `memory_entities` shape." }
 MemoryTraverseRelationUnwalkable = { clause = "read.traverse.walkable", gloss = "A traversal named a relation its declaration does not mark walkable." }
 MemoryTraverseHopsExceeded    = { clause = "read.traverse.hop-bound", gloss = "A traversal asked for more hops than the bound." }
 OutcomeRegistrationInvalid    = { clause = "read.settle.registration", gloss = "A prediction registration breaks the one-form, one-source, comparator-iff-metric rule." }

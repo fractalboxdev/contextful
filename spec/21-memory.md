@@ -246,8 +246,24 @@ Mention-to-entity matching, aliases, the knowledge card, place identity and near
   *A-read*
 - `ownership-live` — The ownership answer omits an `owned_by` edge whose `valid_to` falls at or before the anchor.
   *because an ended edge records a past owner, and returning it names that owner as current*
+- `knowledge-card` — `memory.explain` takes `table`, `reference` and an optional `claims` table, resolves `reference` against the names and aliases of `table`, and returns that identity's `entity_id`, `kind`, `name` and `aliases`.
+  *because a caller holding a name or an alias in any script needs the canonical record without knowing its opaque id*
+- `card-claims` — A card naming `claims` carries the claims {{read.recall.keyed}} returns for subject `entity_id` at the call instant, under {{read.recall.keyed-gate}}.
+  *because the card composes recall rather than restating which claims are live and which evidence a caller may see*
+- `card-candidates` — A `reference` matching two or more identities with no exact canonical name separating them returns their `entity_id`s as candidates and no identity; a `reference` matching none returns an empty card.
+  *because naming one of several matches guesses on the caller's behalf, and an absent identity is an answer, not a fault*
+- `card-authorization` — The card reads `table` and `claims` through the caller's session; a session registering no `claims` relation receives the identity alone, with no claims and no mention of that table.
+  *because a grant on identities is narrower than a grant on what the workspace concludes about them*
+- `card-not-entities` — A granted `table` declaring a shape other than `memory_entities`, or no memory shape, raises `MemoryExplainNotEntities`.
+  *because only a `memory_entities` table carries the identity, kind and aliases a card returns*
 
-unsettled: Which edges carry aliases and nearness's parent closure, and what fields form the knowledge card? owner: read-path affects: read.resolve-entity
+unsettled: Which edges carry aliases and nearness's parent closure? owner: read-path affects: read.resolve-entity
+
+#### Scenarios
+
+- `read.resolve-entity.knowledge-card`: WHEN `reference` is an alias written in another script, THEN `memory.explain` returns the one identity carrying it.
+- `read.resolve-entity.card-candidates`: WHEN `reference` is an alias two identities share, THEN the card lists both `entity_id`s and no identity.
+- `read.resolve-entity.card-authorization`: WHEN the caller holds a read grant on `table` and none on `claims`, THEN the card carries the identity and no claims.
 
 
 ## settle

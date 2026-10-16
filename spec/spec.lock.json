@@ -5091,7 +5091,7 @@
       "operation": "register",
       "subject": "tool-set",
       "kind": "behavior",
-      "statement": "The face exposes `context.describe`, `context.query`, `context.reference`, `context.execute_query` for templates, `context.files`, `context.file`, `context.subscribe`, `corpus.retrieve` and `memory.recall` as its closed tool set.",
+      "statement": "The face exposes `context.describe`, `context.query`, `context.reference`, `context.execute_query` for templates, `context.files`, `context.file`, `context.subscribe`, `corpus.retrieve`, `memory.recall` and `memory.explain` as its closed tool set.",
       "why": "A-read",
       "file": "spec/20-read.md",
       "line": 74
@@ -5102,7 +5102,7 @@
       "operation": "register",
       "subject": "bound-arguments",
       "kind": "behavior",
-      "statement": "Every read tool but `memory.recall` and `context.subscribe`, each template tool included, admits `as_of` and `valid_as_of` and echoes {{store.bound-time.echo}}; {{store.bound-time.valid-as-of}} wraps only the tables the read touches.",
+      "statement": "Every read tool but `memory.recall`, `memory.explain` and `context.subscribe`, each template tool included, admits `as_of` and `valid_as_of` and echoes {{store.bound-time.echo}}; {{store.bound-time.valid-as-of}} wraps only the tables the read touches.",
       "why": "because a session registers every granted table, and wrapping one declaring no pair refuses reads that never name it",
       "file": "spec/20-read.md",
       "line": 76
@@ -8124,6 +8124,70 @@
       "line": 247
     },
     {
+      "id": "read.resolve-entity.knowledge-card",
+      "contract": "read",
+      "operation": "resolve-entity",
+      "subject": "knowledge-card",
+      "kind": "behavior",
+      "statement": "`memory.explain` takes `table`, `reference` and an optional `claims` table, resolves `reference` against the names and aliases of `table`, and returns that identity's `entity_id`, `kind`, `name` and `aliases`.",
+      "why": "because a caller holding a name or an alias in any script needs the canonical record without knowing its opaque id",
+      "file": "spec/21-memory.md",
+      "line": 249,
+      "scenarios": [
+        "WHEN `reference` is an alias written in another script, THEN `memory.explain` returns the one identity carrying it."
+      ]
+    },
+    {
+      "id": "read.resolve-entity.card-claims",
+      "contract": "read",
+      "operation": "resolve-entity",
+      "subject": "card-claims",
+      "kind": "behavior",
+      "statement": "A card naming `claims` carries the claims {{read.recall.keyed}} returns for subject `entity_id` at the call instant, under {{read.recall.keyed-gate}}.",
+      "why": "because the card composes recall rather than restating which claims are live and which evidence a caller may see",
+      "file": "spec/21-memory.md",
+      "line": 251
+    },
+    {
+      "id": "read.resolve-entity.card-candidates",
+      "contract": "read",
+      "operation": "resolve-entity",
+      "subject": "card-candidates",
+      "kind": "behavior",
+      "statement": "A `reference` matching two or more identities with no exact canonical name separating them returns their `entity_id`s as candidates and no identity; a `reference` matching none returns an empty card.",
+      "why": "because naming one of several matches guesses on the caller's behalf, and an absent identity is an answer, not a fault",
+      "file": "spec/21-memory.md",
+      "line": 253,
+      "scenarios": [
+        "WHEN `reference` is an alias two identities share, THEN the card lists both `entity_id`s and no identity."
+      ]
+    },
+    {
+      "id": "read.resolve-entity.card-authorization",
+      "contract": "read",
+      "operation": "resolve-entity",
+      "subject": "card-authorization",
+      "kind": "behavior",
+      "statement": "The card reads `table` and `claims` through the caller's session; a session registering no `claims` relation receives the identity alone, with no claims and no mention of that table.",
+      "why": "because a grant on identities is narrower than a grant on what the workspace concludes about them",
+      "file": "spec/21-memory.md",
+      "line": 255,
+      "scenarios": [
+        "WHEN the caller holds a read grant on `table` and none on `claims`, THEN the card carries the identity and no claims."
+      ]
+    },
+    {
+      "id": "read.resolve-entity.card-not-entities",
+      "contract": "read",
+      "operation": "resolve-entity",
+      "subject": "card-not-entities",
+      "kind": "refusal",
+      "statement": "A granted `table` declaring a shape other than `memory_entities`, or no memory shape, raises `MemoryExplainNotEntities`.",
+      "why": "because only a `memory_entities` table carries the identity, kind and aliases a card returns",
+      "file": "spec/21-memory.md",
+      "line": 257
+    },
+    {
       "id": "read.settle.registration",
       "contract": "read",
       "operation": "settle",
@@ -8132,7 +8196,7 @@
       "statement": "A registration names exactly one form (relative horizon, absolute deadline, open watch) and one source (`metric`, `adjudicator`, `manual`), with a comparator exactly when the source is `metric`; otherwise it raises `OutcomeRegistrationInvalid`.",
       "why": "A-read",
       "file": "spec/21-memory.md",
-      "line": 257
+      "line": 273
     },
     {
       "id": "read.settle.source-mismatch",
@@ -8143,7 +8207,7 @@
       "statement": "An observation naming a `metric` series other than the registration's, or carrying a verdict whose resolution source or registered series is absent or differs, raises `OutcomeSourceMismatch`, naming each source by its wire name.",
       "why": "A-read",
       "file": "spec/21-memory.md",
-      "line": 259
+      "line": 275
     },
     {
       "id": "read.settle.settling-citation",
@@ -8154,7 +8218,7 @@
       "statement": "An `adjudicator` or `manual` verdict without an `http` or `https` settling citation raises `OutcomeCitationMissing`; the citation rides the label view.",
       "why": "A-read",
       "file": "spec/21-memory.md",
-      "line": 261
+      "line": 277
     },
     {
       "id": "read.settle.grace-window",
@@ -8165,7 +8229,7 @@
       "statement": "The label join keeps an observation from the prediction instant through the deadline plus an inclusive grace of 86400 s.",
       "why": "",
       "file": "spec/21-memory.md",
-      "line": 263
+      "line": 279
     },
     {
       "id": "read.settle.calibration-report",
@@ -8176,7 +8240,7 @@
       "statement": "Calibration reports group settled predictions by shape and predicate, and name sample count, Brier score, expected calibration error over 10 equal-width bins, and the held-out score {{read.synthesize.confidence-calibration}} uses, over every fifth prediction.",
       "why": "A-read",
       "file": "spec/21-memory.md",
-      "line": 264
+      "line": 280
     },
     {
       "id": "read.settle.statement-bound",
@@ -8187,7 +8251,7 @@
       "statement": "A registration's optional `statement`, the falsifiable claim it scores, holds at most 4096 B; a longer one raises `OutcomeStatementTooLong`, and the statement takes part in {{read.settle.registration-conflict}}.",
       "why": "because a registration reads on its own only with its claim text, and an unbounded text field lets one row outweigh the table",
       "file": "spec/21-memory.md",
-      "line": 266
+      "line": 282
     },
     {
       "id": "read.settle.metric-reference",
@@ -8198,7 +8262,7 @@
       "statement": "A registration's optional `metric`, `<table>:<series_id>` with both parts non-empty, names the series a `metric` source resolves against and is never looked up in the store; a malformed one, or one under another source, raises `OutcomeMetricReferenceInvalid`.",
       "why": "because a registration precedes its series' first landing, so a store lookup refuses every prediction made before its data exists",
       "file": "spec/21-memory.md",
-      "line": 268
+      "line": 284
     },
     {
       "id": "read.settle.deadline-date",
@@ -8209,7 +8273,7 @@
       "statement": "A `deadline_at` given as a bare `YYYY-MM-DD` resolves as {{store.bound-time.instant-comparison}} resolves a date: the deadline is the next UTC midnight, so the whole named day precedes it.",
       "why": "because one date spelling then means one instant on every clock the engine compares",
       "file": "spec/21-memory.md",
-      "line": 270
+      "line": 286
     },
     {
       "id": "read.settle.predict-verb",
@@ -8220,7 +8284,7 @@
       "statement": "`contextful memory predict --into <table> --registration <json>` checks {{read.settle.registration}} and lands the registration in that `predictions` table under the admitted credential's write grant, then prints `prediction_id: <id>`.",
       "why": "because a registration nothing lands leaves its outcome no prediction to settle against",
       "file": "spec/21-memory.md",
-      "line": 272
+      "line": 288
     },
     {
       "id": "read.settle.observe-verb",
@@ -8231,7 +8295,7 @@
       "statement": "`contextful memory observe --into <table> --observation <json>` reads the prediction's stored registration through the writer's session, checks {{read.settle.source-mismatch}} and {{read.settle.settling-citation}}, lands it in that `outcomes` table, and prints its label row.",
       "why": "because a verdict is checked against the source registered before it, never one the observation asserts",
       "file": "spec/21-memory.md",
-      "line": 274
+      "line": 290
     },
     {
       "id": "read.settle.verb-attribution",
@@ -8242,7 +8306,7 @@
       "statement": "Both verbs admit a capability token as `contextful memory write` does, and each landed row carries `_authored_by` from its subject under {{store.reserve.injected}}.",
       "why": "because a settled outcome is weighed by who registered and who observed it",
       "file": "spec/21-memory.md",
-      "line": 276
+      "line": 292
     },
     {
       "id": "read.settle.prediction-unregistered",
@@ -8253,7 +8317,7 @@
       "statement": "An observation naming a `prediction_id` no row of the declared `predictions` table carries in the writer's session raises `OutcomePredictionUnregistered`, and nothing lands.",
       "why": "because a verdict with no registration has no source to check it against",
       "file": "spec/21-memory.md",
-      "line": 278
+      "line": 294
     },
     {
       "id": "read.settle.restated-landing",
@@ -8264,7 +8328,7 @@
       "statement": "A registration or observation identical to the stored row of its `prediction_id` lands nothing, and the verb succeeds with its usual output.",
       "why": "because a retried verb restates one registration, and landing it again commits a run that records nothing new",
       "file": "spec/21-memory.md",
-      "line": 280
+      "line": 296
     },
     {
       "id": "read.settle.registration-conflict",
@@ -8275,7 +8339,7 @@
       "statement": "A registration whose `prediction_id` a stored registration with any other field already holds raises `OutcomeRegistrationConflict`, and nothing lands.",
       "why": "because rewriting a registration after the fact changes the deadline or source a verdict is scored against",
       "file": "spec/21-memory.md",
-      "line": 282
+      "line": 298
     },
     {
       "id": "read.settle.outcome-settled",
@@ -8286,7 +8350,7 @@
       "statement": "An observation differing from a stored outcome of its `prediction_id` that carries a verdict raises `OutcomeAlreadySettled`; a stored outcome without a verdict is replaced.",
       "why": "because a verdict rewritten after scoring silently changes the calibration it fed",
       "file": "spec/21-memory.md",
-      "line": 284
+      "line": 300
     },
     {
       "id": "read.settle.label-join",
@@ -8297,7 +8361,7 @@
       "statement": "The label view of Shapes runs over a declared `predictions` and `outcomes` table pair as read through the reader's session.",
       "why": "because the view's grace window and self-rated filter then hold for every reader, not each reader's own join",
       "file": "spec/21-memory.md",
-      "line": 286
+      "line": 302
     },
     {
       "id": "read.settle.calibration-verb",
@@ -8308,7 +8372,7 @@
       "statement": "`contextful memory calibration --table <claims>` joins label rows carrying a verdict to that claims table on `prediction_id` equal to `claim_id`, through the caller's session, and prints {{read.settle.calibration-report}} with the count of joined predictions, as JSON under `--json`.",
       "why": "because a prediction's shape, predicate and emitted confidence are those of the claim it scores",
       "file": "spec/21-memory.md",
-      "line": 288
+      "line": 304
     },
     {
       "id": "read.traverse.call",
@@ -8319,7 +8383,7 @@
       "statement": "`memory.traverse` takes `table`, `seed`, `rel_types`, `hops`, `as_of_ingest`, `observed_at` and `available_as_of`, and returns the reached edges whose `valid_from` and `valid_to` cover `observed_at`, under one frozen anchor, as {{read.respond.one-projection}}.",
       "why": "",
       "file": "spec/21-memory.md",
-      "line": 310
+      "line": 326
     },
     {
       "id": "read.traverse.clocks",
@@ -8330,7 +8394,7 @@
       "statement": "An absent `as_of_ingest` reads the latest committed state, an absent `observed_at` the call's instant, and an absent `hops` 1; `contextful.bounds` echoes each supplied bound as {{read.recall.keyed-clocks}} does.",
       "why": "",
       "file": "spec/21-memory.md",
-      "line": 311
+      "line": 327
     },
     {
       "id": "read.traverse.cli-verb",
@@ -8341,7 +8405,7 @@
       "statement": "The `contextful memory traverse` verb passes its arguments through {{read.traverse.call}} and prints the same JSON response.",
       "why": "",
       "file": "spec/21-memory.md",
-      "line": 312
+      "line": 328
     },
     {
       "id": "read.traverse.enforced-edges",
@@ -8352,7 +8416,7 @@
       "statement": "Every edge reads through the caller's enforced session, and each edge's citations pass {{read.recall.evidence-unresolved}}; an edge failing either is neither returned nor walked through.",
       "why": "because walking through a hidden edge reveals the node beyond it",
       "file": "spec/21-memory.md",
-      "line": 313
+      "line": 329
     },
     {
       "id": "read.traverse.engine",
@@ -8363,7 +8427,7 @@
       "statement": "An engine-backed walk answers through {{read.resolve-entity.graph-index}}.",
       "why": "",
       "file": "spec/21-memory.md",
-      "line": 315
+      "line": 331
     },
     {
       "id": "read.traverse.walkable",
@@ -8374,7 +8438,7 @@
       "statement": "A `rel_types` entry whose declared relation is not walkable raises `MemoryTraverseRelationUnwalkable`.",
       "why": "A-read",
       "file": "spec/21-memory.md",
-      "line": 316
+      "line": 332
     },
     {
       "id": "read.traverse.hop-bound",
@@ -8385,7 +8449,7 @@
       "statement": "A walk follows at most 3 hops; a larger `hops` raises `MemoryTraverseHopsExceeded`.",
       "why": "A-read",
       "file": "spec/21-memory.md",
-      "line": 318
+      "line": 334
     },
     {
       "id": "read.traverse.fan-out",
@@ -8396,7 +8460,7 @@
       "statement": "A node expands at most 64 memory-edges, ordered by `valid_from` newest first then edge id; the rest count in `edges_omitted`.",
       "why": "A-read",
       "file": "spec/21-memory.md",
-      "line": 320
+      "line": 336
     },
     {
       "id": "read.traverse.frontier-cap",
@@ -8407,7 +8471,7 @@
       "statement": "A walk stops at 512 memory-edges and counts unexpanded edges in `edges_omitted`; a non-zero `edges_omitted` marks the walk incomplete, and `truncated` stays with {{read.respond.truncation-cause}}.",
       "why": "A-read",
       "file": "spec/21-memory.md",
-      "line": 322
+      "line": 338
     },
     {
       "id": "read.traverse.omitted-readable",
@@ -8418,7 +8482,7 @@
       "statement": "`edges_omitted` counts only edges the caller's session reads.",
       "why": "because a count of hidden edges discloses their existence, as {{read.recall.suppression-count}} avoids naming claims",
       "file": "spec/21-memory.md",
-      "line": 324
+      "line": 340
     },
     {
       "id": "read.traverse.cycle",
@@ -8429,7 +8493,7 @@
       "statement": "A visited node is never expanded again; the walk proceeds breadth-first by hop.",
       "why": "because a revisited node adds no edge and a cycle otherwise exhausts {{read.traverse.frontier-cap}}",
       "file": "spec/21-memory.md",
-      "line": 326
+      "line": 342
     },
     {
       "id": "run.journal.step-output",
@@ -30920,6 +30984,14 @@
       "read.rank.fusion"
     ],
     [
+      "read.resolve-entity.card-claims",
+      "read.recall.keyed"
+    ],
+    [
+      "read.resolve-entity.card-claims",
+      "read.recall.keyed-gate"
+    ],
+    [
       "read.settle.calibration-report",
       "read.synthesize.confidence-calibration"
     ],
@@ -35797,6 +35869,10 @@
           "MemoryEvidenceUnresolved": {
             "clause": "read.recall.evidence-unresolved",
             "gloss": "A claim's evidence does not resolve through the caller's session."
+          },
+          "MemoryExplainNotEntities": {
+            "clause": "read.resolve-entity.card-not-entities",
+            "gloss": "A knowledge card named a table declaring no `memory_entities` shape."
           },
           "MemoryExtractExhausted": {
             "clause": "read.synthesize.dead-letter",

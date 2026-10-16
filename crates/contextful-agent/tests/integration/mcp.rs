@@ -137,8 +137,8 @@ fn reference_dispatch_is_read_admitted_bounded_and_audited() {
     assert!(entries[3].attributes["contextful.read.snapshots"]["research/notes"].is_string(), "{:?}", entries[3].attributes);
 }
 
-/// The face exposes a closed tool set: `context.describe`, `context.query`, `context.execute_query` for templates, `context.files` and `context.file` over committed data files, `corpus.retrieve` for ranked reads across a prefix, and `memory.recall` for keyed claim reads.
-// spec: read.register.tool-set@ec1eab57
+/// The face exposes a closed tool set: `context.describe`, `context.query`, `context.execute_query` for templates, `context.files` and `context.file` over committed data files, `corpus.retrieve` for ranked reads across a prefix, `memory.recall` for keyed claim reads, and `memory.explain` for the knowledge card.
+// spec: read.register.tool-set@67f294da
 #[test]
 fn the_tool_list_is_the_closed_read_set() {
     let f = fixture();
@@ -146,7 +146,7 @@ fn the_tool_list_is_the_closed_read_set() {
     let server = Server::new(&f.face, f.authority.clone(), &current, &clock, &f.audit).unwrap();
     let tools = ask(&server, 1, "tools/list", json!({}));
     let names: Vec<&str> = tools["result"]["tools"].as_array().unwrap().iter().map(|t| t["name"].as_str().unwrap()).collect();
-    assert_eq!(names, ["context.describe", "context.query", "context.reference", "context.execute_query", "context.files", "context.file", "context.subscribe", "corpus.retrieve", "memory.recall"]);
+    assert_eq!(names, ["context.describe", "context.query", "context.reference", "context.execute_query", "context.files", "context.file", "context.subscribe", "corpus.retrieve", "memory.recall", "memory.explain"]);
     let unknown = call(&server, "memory.write", json!({}));
     assert_eq!(unknown["error"]["code"], json!(-32602), "{unknown}");
 }
@@ -393,8 +393,8 @@ fn as_of_on_every_read_tool_returns_the_pre_fold_row() {
     assert_eq!(refused["result"]["isError"], json!(true), "{refused}");
 }
 
-/// Every read tool but `memory.recall` and `context.subscribe`, each template tool included, admits `as_of` and `valid_as_of` and echoes {{store.bound-time.echo}}; {{store.bound-time.valid-as-of}} wraps only the tables the read touches.
-// spec: read.register.bound-arguments@0ce7bf68
+/// Every read tool but `memory.recall`, `memory.explain` and `context.subscribe`, each template tool included, admits `as_of` and `valid_as_of` and echoes {{store.bound-time.echo}}; {{store.bound-time.valid-as-of}} wraps only the tables the read touches.
+// spec: read.register.bound-arguments@93f37041
 #[test]
 fn valid_as_of_wraps_only_the_tables_a_read_touches() {
     let f = bounded();
@@ -435,6 +435,9 @@ fn valid_as_of_wraps_only_the_tables_a_read_touches() {
     // A subscription reads the commit record, never rows under a bound.
     let subscribed = call(&server, "context.subscribe", json!({ "tables": ["research/rates"], "valid_as_of": when }));
     assert_eq!(subscribed["error"]["code"], json!(-32602), "{subscribed}");
+    // A knowledge card reads the latest state and names no bound.
+    let card = call(&server, "memory.explain", json!({ "table": "research/rates", "reference": "eur", "valid_as_of": when }));
+    assert_eq!(card["error"]["code"], json!(-32602), "{card}");
 
     let retrieved = call(&server, "corpus.retrieve", json!({ "prefix": "research/rates", "query": "eur gbp", "valid_as_of": when }));
     assert_eq!(rows(&retrieved).as_array().unwrap().len(), 1, "{retrieved}");
@@ -815,7 +818,7 @@ fn every_read_tool_declares_both_bounds() {
         let properties = &tool["inputSchema"]["properties"];
         let (present, absent) = if tool["name"] == json!("memory.recall") {
             (vec!["observed_at", "as_of_ingest"], vec!["as_of", "valid_as_of", "available_as_of", "vintage"])
-        } else if tool["name"] == json!("context.subscribe") {
+        } else if tool["name"] == json!("context.subscribe") || tool["name"] == json!("memory.explain") {
             (vec![], vec!["as_of", "valid_as_of", "available_as_of", "vintage", "observed_at", "as_of_ingest"])
         } else {
             (vec!["as_of", "valid_as_of", "available_as_of", "vintage"], vec!["observed_at", "as_of_ingest"])
@@ -837,6 +840,55 @@ name = "research/facts"
 shape = "memory_facts"
 columns = ["claim_id", "subject", "predicate", "object", "scope", "tier", "confidence", "valid_from", "valid_to", "evidence", "superseded_by", "grant_id", "agent"]
 "#;
+
+/// [`CLAIMS`] beside an entities table naming `acme`, the subject of its claims, and a
+/// second claims table the credential holds no grant on.
+fn entities() -> Fixture {
+    let manifest = format!(
+        "{CLAIMS}\n[[table]]\nname = \"research/entities\"\nshape = \"memory_entities\"\ncolumns = [\"entity_id\", \"kind\", \"name\", \"aliases\"]\n\n[[table]]\nname = \"memory/facts\"\nshape = \"memory_facts\"\ncolumns = [\"claim_id\", \"subject\", \"predicate\", \"object\", \"scope\", \"tier\", \"confidence\", \"valid_from\", \"valid_to\", \"evidence\", \"superseded_by\", \"grant_id\", \"agent\"]\n"
+    );
+    fixture_over(&manifest, |store| {
+        seed_claims(store);
+        let entities = json!([
+            { "entity_id": "acme", "kind": "company", "name": "Acme Holdings", "aliases": r#"["ACME","アクメ"]"# },
+            { "entity_id": "globex", "kind": "company", "name": "Globex", "aliases": r#"["GX"]"# },
+            { "entity_id": "gx-partners", "kind": "fund", "name": "GX Partners", "aliases": r#"["gx"]"# },
+        ]);
+        put(store, &TableDecl::named("research/entities"), "entities-1", "2030-01-02T00:00:00Z", entities, &[]);
+    })
+}
+
+/// `memory.explain` resolves an alias in any script to one card carrying the live claims
+/// about it, lists candidates for an ambiguous reference, and returns the identity alone
+/// where the credential reads no claims table.
+#[test]
+fn memory_explain_answers_the_knowledge_card_over_the_tool_protocol() {
+    let f = entities();
+    let clock = FixedClock(at("2030-06-01T00:00:00Z"));
+    let server = Server::new(&f.face, f.authority.clone(), &current, &clock, &f.audit).unwrap();
+    let identity = json!({ "entity_id": "acme", "kind": "company", "name": "Acme Holdings", "aliases": ["ACME", "アクメ"] });
+
+    let card = call(&server, "memory.explain", json!({ "table": "research/entities", "reference": "アクメ", "claims": "research/facts" }));
+    let content = &card["result"]["structuredContent"];
+    assert_eq!(content["entity"], identity, "{card}");
+    let object = content["claims"]["columns"].as_array().unwrap().iter().position(|c| c == "object").unwrap();
+    let objects: Vec<&Value> = content["claims"]["rows"].as_array().unwrap().iter().map(|r| &r[object]).collect();
+    assert_eq!(objects, [&json!("Lee")], "{card}");
+
+    let ambiguous = call(&server, "memory.explain", json!({ "table": "research/entities", "reference": "GX", "claims": "research/facts" }));
+    assert_eq!(ambiguous["result"]["structuredContent"], json!({ "entity": null, "candidates": ["globex", "gx-partners"] }), "{ambiguous}");
+    let unknown = call(&server, "memory.explain", json!({ "table": "research/entities", "reference": "Initech" }));
+    assert_eq!(unknown["result"]["structuredContent"], json!({ "entity": null, "candidates": [] }), "{unknown}");
+
+    let alone = call(&server, "memory.explain", json!({ "table": "research/entities", "reference": "acme", "claims": "memory/facts" }));
+    assert_eq!(alone["result"]["structuredContent"], json!({ "entity": identity, "candidates": [] }), "{alone}");
+    assert!(!alone.to_string().contains("memory/facts"), "{alone}");
+
+    let facts = call(&server, "memory.explain", json!({ "table": "research/facts", "reference": "acme" }));
+    assert_eq!(facts["result"]["structuredContent"]["error"]["identifier"], json!("MemoryExplainNotEntities"), "{facts}");
+    let missing = call(&server, "memory.explain", json!({ "table": "research/entities" }));
+    assert_eq!(missing["error"]["code"], json!(-32602), "{missing}");
+}
 
 /// Dana holds from 2030-01-01 until Lee's 2030-03-01 start retires her.
 fn claims() -> Fixture {
