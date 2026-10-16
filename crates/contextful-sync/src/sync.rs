@@ -496,8 +496,9 @@ pub struct PullReport {
 /// Which tables a pull reaches.
 #[derive(Debug, Clone, Default)]
 pub struct PullScope {
-    /// The tables requested by name; empty requests every table.
-    pub tables: Vec<String>,
+    /// The tables requested, each through the grant pattern matcher
+    /// (`authority.grant.one-matcher`); empty requests every table.
+    pub tables: Vec<contextful_core::grant::TablePattern>,
     /// Tables declaring `replicate = false`.
     pub replicate_off: Vec<String>,
     /// The generation to restore; absent pulls the bucket manifest (`store.pull.generation`).
@@ -1202,7 +1203,12 @@ impl Syncer {
     pub fn pull(&self, scope: &PullScope) -> Result<PullReport> {
         let replica = self.store.replica_of().is_some();
         if replica {
-            if let Some(t) = scope.tables.iter().find(|t| scope.replicate_off.contains(t)) {
+            // A concrete name requests its table; a prefix or `*` skips replicate-off tables as an unscoped refresh does.
+            let mut named = scope.tables.iter().filter_map(|p| match p {
+                contextful_core::grant::TablePattern::Exact(name) => Some(name),
+                _ => None,
+            });
+            if let Some(t) = named.find(|t| scope.replicate_off.contains(*t)) {
                 return Err(StoreError::ReplicaSensitiveTable(format!(
                     "table `{t}` replicates off; read it through the proxying face of `{}`",
                     self.store.replica_of().unwrap_or_default()
@@ -1217,7 +1223,7 @@ impl Syncer {
             if key.starts_with(&control_prefix) { return true; }
             match table_of(key) {
                 None => scope.tables.is_empty(),
-                Some(t) => (scope.tables.is_empty() || scope.tables.contains(&t)) && !(replica && scope.replicate_off.contains(&t)),
+                Some(t) => (scope.tables.is_empty() || scope.tables.iter().any(|p| p.covers_name(&t))) && !(replica && scope.replicate_off.contains(&t)),
             }
         };
         let in_project = |k: &str| k.starts_with(&format!("{}/", self.project));
