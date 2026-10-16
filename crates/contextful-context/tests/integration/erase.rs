@@ -1336,6 +1336,7 @@ fn a_repeat_purge_signs_the_latest_earlier_request_id_of_its_tenant() {
     let second = purge(&t, &other.store, &signer, "acme-purged-tenant").unwrap();
     assert_eq!(second.receipt.prior_request_id.as_deref(), Some(first.receipt.request_id.as_str()));
     assert_eq!(second.receipt.affected_counts.values().sum::<usize>(), 0);
+    assert_eq!(second.receipt.transaction_id, "", "a repeat purge holding no rows rewrote the store");
     second.receipt.verify("acme-purged-tenant", &trusted).unwrap();
     let third = purge(&t, &second.store, &signer, "acme-purged-tenant").unwrap();
     assert_eq!(third.receipt.prior_request_id.as_deref(), Some(second.receipt.request_id.as_str()));
@@ -1345,4 +1346,29 @@ fn a_repeat_purge_signs_the_latest_earlier_request_id_of_its_tenant() {
     for entry in contextful_policy::audit::entries(&audit_dir).unwrap() {
         assert!(!entry.attributes.to_string().contains("acme-purged-tenant"), "the chain carries the tenant in cleartext");
     }
+}
+
+/// A zero-row purge on a store already holding an erasure frontier rewrites nothing: the frontier and the erasure entries stay as they were.
+#[test]
+#[cfg(feature = "read")]
+fn a_zero_row_purge_after_an_earlier_erasure_leaves_the_frontier_unchanged() {
+    use contextful_core::{issue::SignatureAlgorithm, store::reconcile::ColumnType};
+    use contextful_policy::issue::{SeedSigner, SignerKey};
+    let t = tenanted(ColumnType::Utf8);
+    let signer = std::sync::Arc::new(SeedSigner::generate(SignatureAlgorithm::Ed25519));
+    let audit_dir = t.project.audit_dir();
+    let store = t.fixture.store.with_erasure_verifier(audit_dir.clone(), vec![SignerKey::of(signer.as_ref())]).unwrap();
+    let first = purge(&t, &store, &signer, "acme-purged-tenant").unwrap();
+    assert_ne!(first.receipt.transaction_id, "");
+    let frontier = first.store.root().join("_erasure_frontier.json");
+    let before = std::fs::read(&frontier).expect("the first purge publishes a frontier");
+    let entries = contextful_policy::audit::entries(&audit_dir).unwrap();
+    let erasures = |entries: &[contextful_policy::audit::AuditEntry]| entries.iter().filter(|entry| entry.attributes["operation"] == "erasure").count();
+    let purged = purge(&t, &first.store, &signer, "initech").expect("a purge of an absent tenant signs a receipt");
+    assert_eq!(purged.receipt.transaction_id, "");
+    assert_eq!(purged.receipt.affected_counts, std::collections::BTreeMap::from([("events".to_string(), 0), ("global".to_string(), 0), ("orders".to_string(), 0)]));
+    assert_eq!(std::fs::read(&frontier).unwrap(), before, "a zero-row purge republished the frontier");
+    let after = contextful_policy::audit::entries(&audit_dir).unwrap();
+    assert_eq!(after.len(), entries.len() + 1, "a zero-row purge signs more than its receipt entry");
+    assert_eq!(erasures(&after), erasures(&entries), "a zero-row purge signs an erasure entry");
 }

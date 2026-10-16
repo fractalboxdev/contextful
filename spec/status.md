@@ -9,13 +9,13 @@ An unpinned clause is `committed`; a pinned one is `performed` when its Rust, Le
 | `authority` | 2 | 16 | 298 | 79 | 29 | 8 | 266 | 0 | 266 |
 | `connector` | 2 | 14 | 375 | 92 | 22 | 12 | 292 | 0 | 292 |
 | `corpus` | 1 | 10 | 80 | 37 | 7 | 0 | 80 | 0 | 80 |
-| `disclosure` | 3 | 16 | 177 | 69 | 14 | 5 | 154 | 0 | 154 |
+| `disclosure` | 3 | 16 | 179 | 69 | 14 | 4 | 156 | 0 | 156 |
 | `read` | 2 | 20 | 287 | 46 | 29 | 15 | 245 | 0 | 245 |
 | `run` | 3 | 29 | 534 | 118 | 45 | 16 | 502 | 0 | 502 |
 | `store` | 3 | 19 | 290 | 64 | 14 | 10 | 280 | 0 | 280 |
 | `surface` | 2 | 21 | 160 | 63 | 23 | 0 | 133 | 0 | 133 |
 | `topology` | 1 | 6 | 79 | 25 | 5 | 3 | 76 | 0 | 76 |
-| **total** | 22 | 169 | 2602 | 657 | 212 | 74 | 2308 | 0 | |
+| **total** | 22 | 169 | 2604 | 657 | 212 | 73 | 2310 | 0 | |
 
 Decision records: 18.
 
@@ -33,7 +33,7 @@ A milestone reads `closed` when its acceptance test computes `passing` and every
 | 5 — The read face under enforcement | 17 | 309 | 269 | passing | closed |
 | 6 — Sync and replicas | 8 | 83 | 83 | passing | closed |
 | 7 — Memory | 6 | 72 | 57 | passing | closed |
-| 8 — Accountability | 5 | 91 | 84 | passing | closed |
+| 8 — Accountability | 5 | 93 | 86 | passing | closed |
 | 9 — Visibility | 6 | 50 | 40 | passing | closed |
 | 10 — Cadence and the operator plane | 11 | 100 | 88 | passing | closed |
 | 11 — The derive tier | 7 | 98 | 97 | passing | closed |
@@ -1045,9 +1045,11 @@ Unscheduled operations: 13.
 | `disclosure.reach.subject-principals` | `crates/contextful-core/tests/integration/disclosure/reach.rs::a_subject_reaches_its_user_principal_its_linked_principals_and_their_groups` | performed |
 | `disclosure.receipt.chain-record` | `crates/contextful-context/tests/integration/erase.rs::a_tenant_purge_rewrites_the_tenant_out_of_every_table_and_returns_a_verifying_receipt` | performed |
 | `disclosure.receipt.coverage` | `crates/contextful-policy/tests/integration/receipt.rs::a_version_one_receipt_covers_the_canonical_store_and_excludes_replicas_and_the_bucket` | performed |
+| `disclosure.receipt.prior-request` | `crates/contextful-context/tests/integration/erase.rs::a_repeat_purge_signs_the_latest_earlier_request_id_of_its_tenant` | performed |
 | `disclosure.receipt.pseudonym` | `crates/contextful-policy/tests/integration/receipt.rs::the_tenant_hash_is_salted_per_receipt_and_a_cleartext_identifier_refuses_before_signing` | performed |
 | `disclosure.receipt.replayed` | `crates/contextful-policy/tests/integration/receipt.rs::returning_an_earlier_artifact_byte_for_byte_raises_receipt_replayed` | performed |
 | `disclosure.receipt.widened-claim` | `crates/contextful-policy/tests/integration/receipt.rs::a_coverage_block_broader_than_its_version_raises_receipt_claim_widened` | performed |
+| `disclosure.receipt.zero-rows` | `crates/contextful-context/tests/integration/erase.rs::a_purge_of_a_tenant_holding_no_rows_signs_a_zero_count_receipt` | performed |
 | `disclosure.record.audit-key` | `crates/contextful-context/tests/integration/erase.rs::the_project_audit_key_has_one_stable_private_creation_and_refuses_bad_files` | performed |
 | `disclosure.record.bound-entry` | `crates/contextful-agent/tests/integration/mcp.rs::a_bounded_reads_entry_carries_its_bounds_snapshot_query_and_digest` | performed |
 | `disclosure.record.chain-header` | `crates/contextful-policy/tests/integration/audit.rs::a_chain_header_fixes_the_digest_and_segment_size_and_roots_the_first_link` | performed |

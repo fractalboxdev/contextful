@@ -232,7 +232,8 @@ struct Plan<'a> {
     clock: &'a dyn Clock,
     guard: &'a dyn Fn() -> Result<()>,
     select: &'a dyn Fn(&RetainedRows) -> Result<(ErasureSelection, String)>,
-    /// An empty selection returns an unpublished outcome with an empty transaction id.
+    /// An empty selection returns an unpublished outcome with an empty transaction id,
+    /// before any staging and whatever frontier the store already holds.
     allow_empty: bool,
 }
 
@@ -267,6 +268,9 @@ fn publish(store: &Store, plan: &Plan<'_>) -> Result<Erased> {
             batches.insert(decl.name.clone(), parts);
         }
         let (selected, subject_hash) = (plan.select)(&rows)?;
+        if plan.allow_empty && selected.affected_tables().next().is_none() {
+            return Ok(Erased { store:configured.clone(), transaction_id:String::new(), subject_hash, affected_counts:BTreeMap::new() });
+        }
         let mut nonce = [0; 32]; getrandom::fill(&mut nonce).map_err(|_| incomplete("erasure transaction identity is unavailable"))?;
         let transaction_id = crate::store::etag(&nonce);
         let staging = bound.root().join("_erasure/staging").join(&transaction_id);
@@ -279,7 +283,6 @@ fn publish(store: &Store, plan: &Plan<'_>) -> Result<Erased> {
         targets.sort(); targets.dedup();
         if targets.is_empty() {
             std::fs::remove_dir_all(&staging).at(&staging)?;
-            if plan.allow_empty { return Ok(Erased { store:configured.clone(), transaction_id:String::new(), subject_hash, affected_counts:BTreeMap::new() }); }
             return Err(unsupported("erasure selects no retained row versions"));
         }
         let mut hashes = BTreeMap::new();

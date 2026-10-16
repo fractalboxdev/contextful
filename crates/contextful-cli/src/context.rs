@@ -309,6 +309,7 @@ fn run_purge(args: &StoreArgs, tenant: &str, issuer_key: &Path, admit: &AdmitArg
     let audit_dir = located.project.audit_dir();
     let purged = purge_tenant(&store, PurgeRequest { declarations: pack.tables(), tenant, signer: Some(signer), audit_dir: &audit_dir, audit_key: &audit_key, clock: &clock })?;
     if json { println!("{}", serde_json::to_string(&purged.receipt)?); }
+    else if purged.receipt.transaction_id.is_empty() { println!("purge: tenant holds no retained rows; receipt {} signed", purged.receipt.request_id); }
     else { println!("purge {}: receipt {} signed, physical collection complete", purged.receipt.transaction_id, purged.receipt.request_id); }
     Ok(())
 }
