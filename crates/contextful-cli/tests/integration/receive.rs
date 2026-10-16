@@ -45,7 +45,7 @@ fn line(table: &str, row: serde_json::Value) -> String {
 }
 
 /// A delivered batch answers after every touched table commits, in declaration order, naming the batch run id.
-// spec: run.land.receive-ack@166465d4
+// spec: run.land.receive-ack@dc8272d4
 #[test]
 fn a_batch_over_two_tables_answers_after_both_commit_naming_its_run_id() {
     let dir = receiving(4096, 2);
@@ -69,7 +69,7 @@ fn a_batch_over_two_tables_answers_after_both_commit_naming_its_run_id() {
 
 /// A resend under a key whose tables all committed names the original run id and lands nothing; a key whose run
 /// committed one of two tables lands the other on resend.
-// spec: run.land.receive-batch-key@0853d526
+// spec: run.land.receive-batch-key@439b2557
 #[test]
 fn a_resent_key_replays_committed_tables_and_lands_the_rest() {
     let dir = receiving(4096, 2);
@@ -89,7 +89,8 @@ fn a_resent_key_replays_committed_tables_and_lands_the_rest() {
     let partial = receive(dir.path(), "flush-2", &broken);
     assert!(!partial.status.success(), "{}", String::from_utf8_lossy(&partial.stdout));
     let partial = answer(&partial);
-    assert_eq!((partial["committed"].clone(), partial["retryable"].clone()), (serde_json::json!(false), serde_json::json!(true)), "{partial}");
+    // A schema-incompatible table is no retryable class, so the answer tells the sender not to resend the bytes.
+    assert_eq!((partial["committed"].clone(), partial["retryable"].clone()), (serde_json::json!(false), serde_json::json!(false)), "{partial}");
     let mended = format!("{}{}", line("spans", serde_json::json!({ "id": "s2" })), line("events", serde_json::json!({ "id": "e2" })));
     let resent = receive(dir.path(), "flush-2", &mended);
     assert!(resent.status.success(), "{}", stderr(&resent));
@@ -104,7 +105,6 @@ fn a_resent_key_replays_committed_tables_and_lands_the_rest() {
 /// A delivered batch enters at the pull position, so a credential-shaped cell passes the secret guard before the
 /// recorded pull and lands masked.
 // spec: run.land.receive-entry@2e83385c
-// spec: connector.source.receive-recorded@99489281
 #[test]
 fn a_delivered_credential_lands_masked_and_no_stored_byte_holds_it() {
     const KEY: &str = "zK9s8d7f6g5h";
@@ -147,7 +147,6 @@ fn a_body_one_byte_past_the_bound_lands_nothing() {
 /// A batch arriving while every queue slot of its pipeline is held raises `ReceiveBackpressure`, retryable, before
 /// reading its body, and its answer carries a 1 s retry interval.
 // spec: run.land.receive-backpressure@92c0c916
-// spec: run.land.receive-queue@e0e977ce
 // spec: run.land.receive-retry-after@7811fd03
 #[test]
 fn a_third_batch_past_two_held_slots_is_told_to_retry_after_one_second() {
@@ -174,4 +173,41 @@ fn a_third_batch_past_two_held_slots_is_told_to_retry_after_one_second() {
     }
     assert_eq!(rows(dir.path(), "SELECT id FROM otel_spans ORDER BY id"), serde_json::json!([["s0"], ["s1"]]));
     assert!(receive(dir.path(), "flush-3", &line("spans", serde_json::json!({ "id": "s3" }))).status.success(), "a freed slot admits the retry");
+}
+
+/// Batches of one pipeline land one at a time: a batch whose body arrived waits while another holds the land lock,
+/// and commits once it is released.
+// spec: run.land.receive-queue@e0e977ce
+#[test]
+fn a_batch_waits_for_the_land_lock_another_batch_holds() {
+    let dir = receiving(4096, 2);
+    let queue = dir.path().join(".contextful/run/research/receive/otel");
+    std::fs::create_dir_all(&queue).unwrap();
+    let lock = std::fs::File::options().read(true).write(true).create(true).truncate(false).open(queue.join("land.lock")).unwrap();
+    lock.lock().unwrap();
+    let mut child = receiver(dir.path(), "flush-1").stdin(Stdio::piped()).stdout(Stdio::piped()).stderr(Stdio::piped()).spawn().unwrap();
+    let mut err = BufReader::new(child.stderr.take().unwrap());
+    let mut queued = String::new();
+    err.read_line(&mut queued).unwrap();
+    assert!(queued.contains("queue slot"), "{queued}");
+    child.stdin.take().unwrap().write_all(line("spans", serde_json::json!({ "id": "s1" })).as_bytes()).unwrap();
+    // An unlocked batch lands well inside this wait.
+    std::thread::sleep(std::time::Duration::from_secs(5));
+    assert!(child.try_wait().unwrap().is_none(), "the batch waits while the land lock is held");
+    assert!(!dir.path().join(".contextful/context/research/tables/otel_spans").exists(), "no row lands while the land lock is held");
+    lock.unlock().unwrap();
+    let out = child.wait_with_output().unwrap();
+    assert!(out.status.success(), "{}", stderr(&out));
+    assert_eq!(answer(&out)["committed"], true);
+    assert_eq!(rows(dir.path(), "SELECT id FROM otel_spans"), serde_json::json!([["s1"]]));
+}
+
+/// A `receive` pipeline declaring a `schedule` fails validation: a sender, not the cadence, starts its runs.
+// spec: connector.source.receive-unscheduled@0e261316
+#[test]
+fn a_scheduled_receive_pipeline_fails_validation() {
+    let dir = project("[[pipeline]]\nid = \"otel\"\nschedule = \"every 1h\"\ntables = [\"spans\"]\n[pipeline.source]\nname = \"receive\"\nconfig = { format = \"jsonl\", max_batch_bytes = 4096, max_queue_depth = 2 }\n");
+    let out = cf(dir.path(), &["pipeline", "validate"]);
+    assert!(!out.status.success(), "a scheduled receive pipeline validates");
+    assert!(stderr(&out).contains("schedule"), "{}", stderr(&out));
 }

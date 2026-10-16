@@ -582,6 +582,8 @@ The declared behavior of each source compiled into the engine.
 - `receive-form` — A `receive` source declares `format = "jsonl"`, a positive `max_batch_bytes` and a positive `max_queue_depth`, neither defaulted; it serves every declared table and requests nothing from outside.
   *because a ceiling the sender fills must be the operator's choice, not a guess the binary carries*
 - `receive-recorded` — A delivered batch is bounded and recorded before it lands, so {{connector.source.poll-only-increments}} reaches no `receive` source.
+- `receive-unscheduled` — A `receive` pipeline declaring a `schedule` fails validation.
+  *because a sender, not the cadence, starts its runs, so a scheduled fire fails on every beat*
 - `receive-body` — A `receive` body holds one JSON object per line, `table` naming a declared table and `row` its row object; another shape fails the whole batch as {{run.land.unreadable-input}}, naming the line.
 - `twin-api` — A source reading through an API licensed to see what no individual user sees raises `ConnectorTwinApiSource`. A sanctioned, disclosed organization-wide export path is admitted.
   *A-read*
@@ -633,6 +635,8 @@ The declared behavior of each source compiled into the engine.
 - `drive-oauth-shape` — `oauth.refresh_token`, `oauth.client_id` and `oauth.client_secret` each hold one `${secret://<name>}` reference and nothing else, checked before any request.
 - `drive-origin` — The drive API and token endpoints are `www.googleapis.com` and `oauth2.googleapis.com` over TLS on the default port; another host, port or scheme refuses as {{connector.source.provider-origin}}, loopback excepted.
 - `drive-position-owned` — `incremental` beside the drive source refuses as {{connector.package.component-position}} at validation.
+
+unsettled: Does a job whose `after` names a `receive` pipeline fire after each delivered batch commits, or does validation refuse it? owner: connector affects: connector.source
 
 #### Scenarios
 

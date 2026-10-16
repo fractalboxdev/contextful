@@ -7,15 +7,15 @@ An unpinned clause is `committed`; a pinned one is `performed` when its Rust, Le
 | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
 | `assurance` | 3 | 18 | 316 | 64 | 24 | 8 | 276 | 0 | 276 |
 | `authority` | 2 | 16 | 295 | 79 | 29 | 9 | 229 | 0 | 229 |
-| `connector` | 2 | 14 | 367 | 92 | 21 | 11 | 269 | 0 | 269 |
+| `connector` | 2 | 14 | 371 | 92 | 21 | 12 | 273 | 0 | 273 |
 | `corpus` | 1 | 10 | 79 | 37 | 7 | 0 | 79 | 0 | 79 |
 | `disclosure` | 3 | 16 | 170 | 69 | 13 | 6 | 127 | 0 | 127 |
 | `read` | 2 | 19 | 276 | 45 | 28 | 13 | 233 | 0 | 233 |
-| `run` | 3 | 29 | 517 | 114 | 44 | 13 | 470 | 0 | 470 |
+| `run` | 3 | 29 | 525 | 116 | 45 | 13 | 478 | 0 | 478 |
 | `store` | 3 | 19 | 290 | 64 | 14 | 11 | 280 | 0 | 280 |
 | `surface` | 2 | 21 | 160 | 63 | 23 | 0 | 133 | 0 | 133 |
 | `topology` | 1 | 6 | 79 | 25 | 5 | 3 | 74 | 0 | 74 |
-| **total** | 22 | 168 | 2549 | 652 | 208 | 74 | 2170 | 0 | |
+| **total** | 22 | 168 | 2561 | 654 | 209 | 75 | 2182 | 0 | |
 
 Decision records: 18.
 
@@ -29,7 +29,7 @@ A milestone reads `closed` when its acceptance test computes `passing` and every
 | 1 — The authority core | 14 | 244 | 230 | passing | closed |
 | 2 — The store | 9 | 183 | 173 | passing | closed |
 | 3 — The run path | 12 | 271 | 255 | passing | closed |
-| 4 — Ingest | 25 | 570 | 447 | passing | closed |
+| 4 — Ingest | 25 | 582 | 459 | passing | closed |
 | 5 — The read face under enforcement | 17 | 308 | 244 | passing | open |
 | 6 — Sync and replicas | 8 | 83 | 83 | passing | closed |
 | 7 — Memory | 6 | 71 | 56 | passing | closed |
@@ -815,6 +815,10 @@ Unscheduled operations: 12.
 | `connector.source.pointer-ambiguity` | `crates/contextful-connectors/tests/integration/http.rs::expansion_rejects_two_pointer_forms` | performed |
 | `connector.source.pointer-column-missing` | `crates/contextful-connectors/tests/integration/http.rs::expansion_refuses_a_missing_row_pointer_before_detail_io` | performed |
 | `connector.source.prefix-listing` | `crates/contextful-connectors/tests/integration/object.rs::a_prefix_lands_each_listed_object_in_key_order_and_latest_lands_one` | performed |
+| `connector.source.receive-body` | `crates/contextful-connectors/tests/integration/receive.rs::a_receive_body_splits_by_declared_table_and_fails_whole_on_a_bad_line` | performed |
+| `connector.source.receive-form` | `crates/contextful-connectors/tests/integration/receive.rs::a_receive_source_declares_both_ceilings_and_the_jsonl_format` | performed |
+| `connector.source.receive-recorded` | `crates/contextful-engine/tests/integration/runner.rs::a_receive_batch_key_resumes_its_own_owner_and_no_other_keys` | performed |
+| `connector.source.receive-unscheduled` | `crates/contextful-cli/tests/integration/receive.rs::a_scheduled_receive_pipeline_fails_validation` | performed |
 | `connector.source.table-pattern` | `crates/contextful-cli/tests/integration/pipeline.rs::each_table_binds_its_segment_and_keeps_its_own_position` | performed |
 | `connector.source.table-unmatched` | `crates/contextful-connectors/tests/integration/http.rs::a_table_off_the_pattern_is_refused_before_any_request` | performed |
 | `connector.source.target-column-occupied` | `crates/contextful-connectors/tests/integration/http.rs::expansion_refuses_an_occupied_target_before_detail_io` | performed |
@@ -1509,6 +1513,14 @@ Unscheduled operations: 12.
 | `run.land.parse-boundary` | `crates/contextful-connectors/tests/integration/boundary.rs::a_decode_runs_in_a_child_the_parent_kills_at_its_deadline` | performed |
 | `run.land.parse-crashed` | `crates/contextful-connectors/tests/integration/boundary.rs::a_crashed_decode_is_named_and_a_refusal_crosses_intact` | performed |
 | `run.land.partial-parse` | `crates/contextful-decode/tests/integration/pdf.rs::a_page_that_fails_to_render_refuses_the_whole_document` | performed |
+| `run.land.receive-ack` | `crates/contextful-cli/tests/integration/receive.rs::a_batch_over_two_tables_answers_after_both_commit_naming_its_run_id` | performed |
+| `run.land.receive-backpressure` | `crates/contextful-cli/tests/integration/receive.rs::a_third_batch_past_two_held_slots_is_told_to_retry_after_one_second` | performed |
+| `run.land.receive-batch-key` | `crates/contextful-cli/tests/integration/receive.rs::a_resent_key_replays_committed_tables_and_lands_the_rest` | performed |
+| `run.land.receive-batch-too-large` | `crates/contextful-cli/tests/integration/receive.rs::a_body_one_byte_past_the_bound_lands_nothing` | performed |
+| `run.land.receive-entry` | `crates/contextful-cli/tests/integration/receive.rs::a_delivered_credential_lands_masked_and_no_stored_byte_holds_it` | performed |
+| `run.land.receive-queue` | `crates/contextful-cli/tests/integration/receive.rs::a_batch_waits_for_the_land_lock_another_batch_holds` | performed |
+| `run.land.receive-resume` | `crates/contextful-engine/tests/integration/runner.rs::a_receive_batch_key_resumes_its_own_owner_and_no_other_keys` | performed |
+| `run.land.receive-retry-after` | `crates/contextful-cli/tests/integration/receive.rs::a_third_batch_past_two_held_slots_is_told_to_retry_after_one_second` | performed |
 | `run.land.session` | `crates/contextful-context/tests/integration/session.rs::a_session_commits_each_micro_batch_as_its_own_run` | performed |
 | `run.land.session-input` | `crates/contextful-cli/tests/integration/context.rs::a_session_land_commits_each_stdin_batch_as_its_own_run` | performed |
 | `run.land.session-schema` | `crates/contextful-context/tests/integration/session.rs::a_session_reads_schema_json_once_while_its_version_holds` | performed |

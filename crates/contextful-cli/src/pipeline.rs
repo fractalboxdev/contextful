@@ -340,6 +340,13 @@ pub(crate) fn check(spec: &PipelineSpec, declaration: &Path, tasks: &Tasks) -> R
                 ))
                 .into());
             }
+            if let Some(schedule) = &spec.schedule {
+                return Err(RunError::Invalid(format!(
+                    "pipeline `{}` declares `schedule = \"{schedule}\"` beside the `receive` source; a sender, not the cadence, starts its runs",
+                    spec.id
+                ))
+                .into());
+            }
             Ok(Checked::Receive(config))
         }
         contextful_connectors::image::NAME => {

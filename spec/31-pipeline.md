@@ -204,10 +204,12 @@ The stage order from pull to commit, the one destination, the ingest tally and c
   *because a land per second otherwise rereads and rewrites the schema under the lock every writer of the table waits on*
 - `receive-entry` — A delivered batch enters at the pull position of {{run.land.stage-order}}: each declared table it touches lands as one run whose single pull yields that table's rows.
   *because a pushed row needs the guard, the recorded pull and redaction a pulled row passes*
-- `receive-ack` — `contextful pipeline receive <id> --key <key>` reads one batch on stdin and answers after every touched table commits, in declaration order, naming the batch run id; a batch committing only some tables answers retryable.
+- `receive-ack` — `contextful pipeline receive <id> --key <key>` reads one batch on stdin and answers after every touched table commits, in declaration order, naming the batch id and each table's run id; a failed table answers retryable only under {{run.retry.retryable-classes}}.
   *because no commit spans two tables, so a sender learns success only once the last table commits*
-- `receive-batch-key` — A batch key fixes each touched table's run id and owner scope: a table whose run under the key committed replays it and lands nothing; any other table resumes its pending owner, recorded pull included.
-  *because a sender retrying after a lost answer must neither duplicate committed tables nor lose uncommitted ones*
+- `receive-batch-key` — A batch key fixes each touched table's run id stem `receive-<digest>.<table>`, a later attempt taking `.2`, `.3`, and its owner scope; a table whose run under the key committed replays it and lands nothing.
+  *because a sender retrying after a lost answer must not duplicate committed tables*
+- `receive-resume` — A table under a batch key whose run did not commit resumes the key's pending owner, recorded pull included, and no other key's.
+  *because a sender retrying after a lost answer must not lose uncommitted tables*
 - `receive-batch-too-large` — A body past the source's `max_batch_bytes` raises `ReceiveBatchTooLarge`, non-retryable; the reader stops one byte past the bound and no table lands.
   *because an unbounded body is an unbounded allocation the sender controls*
 - `receive-queue` — Batches of one pipeline land one at a time; up to `max_queue_depth` batches hold a queue slot, waiting or landing, from before the body is read until the answer.
@@ -264,7 +266,7 @@ flowchart LR
 - `run.land.observed-schema`: WHEN a source exposes no schema before its first batch, THEN planning succeeds and staging checks that batch against the declared table columns.
 - `run.land.session-input`: WHEN stdin carries `run-1`, `run-2` and `run-1` again, THEN the session prints two commits and one replay, one line each.
 - `run.land.session-schema`: WHEN a session lands 300 single-row runs under one schema, THEN it parses `schema.json` once and leaves the file's bytes and identity unchanged.
-- `run.land.receive-ack`: WHEN one `jsonl` batch carries rows for two declared tables, THEN the answer follows both commits and names the batch run id.
+- `run.land.receive-ack`: WHEN one `jsonl` batch carries rows for two declared tables, THEN the answer follows both commits and names the batch id and each table's run id.
 - `run.land.receive-entry`: WHEN a delivered row carries a credential-shaped cell, THEN the table lands it masked.
 - `run.land.receive-batch-key`: WHEN a batch whose tables all committed arrives again under its key, THEN the answer names the original run id and no row lands.
 - `run.land.receive-batch-too-large`: WHEN a body passes `max_batch_bytes` by one byte, THEN the receiver raises `ReceiveBatchTooLarge` and no table lands.

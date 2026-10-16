@@ -14,8 +14,8 @@ use contextful_core::run::derive::task::Tasks;
 use contextful_core::run::journal::sha256_hex;
 use contextful_core::run::own::receive_digest;
 use contextful_core::run::record::{RunRow, RunStatus};
-use contextful_core::run::RunError;
-use contextful_engine::RunSpec;
+use contextful_core::run::{Failure, FailureTag, RunError};
+use contextful_engine::{EngineError, RunSpec};
 use serde_json::{json, Value};
 use std::fs::File;
 use std::io::Read;
@@ -51,6 +51,21 @@ fn take_slot(dir: &Path, depth: u32) -> Result<Option<(u32, File)>> {
         }
     }
     Ok(None)
+}
+
+/// Whether a failed table's class retries (`run.retry.retryable-classes`): `Transient` and
+/// `RateLimited` do; a refusal before the run, a schema mismatch or any other class does not.
+fn retries(tag: Option<FailureTag>) -> bool {
+    matches!(tag, Some(FailureTag::Transient | FailureTag::RateLimited))
+}
+
+/// The class an error raised around a table's run carries, when it carries one.
+fn class(e: &anyhow::Error) -> Option<FailureTag> {
+    match e.downcast_ref::<EngineError>() {
+        Some(EngineError::Failure(f)) if !f.deterministic => Some(f.tag),
+        Some(_) => None,
+        None => e.downcast_ref::<Failure>().filter(|f| !f.deterministic).map(|f| f.tag),
+    }
 }
 
 /// The run of `stem` that committed, or the id the next attempt takes: attempts are
@@ -133,6 +148,7 @@ pub(crate) fn receive(args: Receive<'_>, tasks: &Tasks) -> Result<()> {
     let artifact = sha256_hex(serde_json::to_string(&spec.source).unwrap_or_default().as_bytes());
     let mut tables = Vec::new();
     let mut failed: Option<String> = None;
+    let mut retryable = false;
     let mut opened = false;
     for t in &spec.tables {
         let Some(rows) = split.remove(t.name()) else { continue };
@@ -160,12 +176,14 @@ pub(crate) fn receive(args: Receive<'_>, tasks: &Tasks) -> Result<()> {
             Ok(row) => {
                 let why = format!("{}: {}", row.error_kind.map(|k| k.name()).unwrap_or("unknown"), row.error_message.unwrap_or_default());
                 eprintln!("{}", RunError::PipelineTableFailed(format!("table `{table}` failed in run `{}`: {why}", row.run_id)));
+                retryable = retries(row.error_kind);
                 tables.push(json!({ "table": table, "run_id": row.run_id, "outcome": "failed" }));
                 failed = Some(table);
                 break;
             }
             Err(e) => {
                 eprintln!("{}", RunError::PipelineTableFailed(format!("table `{table}` failed as refused in run `{next}`: {e:#}")));
+                retryable = retries(class(&e));
                 tables.push(json!({ "table": table, "run_id": next, "outcome": "failed" }));
                 failed = Some(table);
                 break;
@@ -173,13 +191,16 @@ pub(crate) fn receive(args: Receive<'_>, tasks: &Tasks) -> Result<()> {
         }
     }
     let committed = failed.is_none();
-    say(&json!({ "pipeline": spec.id, "key": key, "run_id": base, "committed": committed, "retryable": !committed, "tables": tables }));
+    say(&json!({ "pipeline": spec.id, "key": key, "run_id": base, "committed": committed, "retryable": retryable, "tables": tables }));
     let pushed = if opened { crate::sync::push_after_run(&l, w.clock.now()) } else { Ok(()) };
     if let Some(table) = failed {
         if let Err(e) = pushed {
             eprintln!("{e:#}");
         }
-        bail!("pipeline `{}`: batch `{key}` committed no row of `{table}` or any table after it; resend it under the same key", spec.id);
+        if retryable {
+            bail!("pipeline `{}`: batch `{key}` committed no row of `{table}` or any table after it; resend it under the same key", spec.id);
+        }
+        bail!("pipeline `{}`: batch `{key}` committed no row of `{table}` or any table after it, and its failure class does not retry; mend the batch before resending it under the same key", spec.id);
     }
     pushed
 }
