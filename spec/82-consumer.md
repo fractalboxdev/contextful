@@ -22,7 +22,7 @@ Artifact compatibility: source-independent execution, required capabilities, sce
 - `mutation-controls` — Planted cursor skips, duplicate public identities, repeated in-window scheduling and acknowledgement before receiver commit each fail their owning scenario.
   *because a scenario that accepts its motivating defect proves no compatibility*
 - `report` — Evidence records the suite revision and version, supplied binary SHA-256 digest, reported version, feature profile, storage profile and every scenario outcome, requirement and diagnostic.
-- `command-diagnostic` — A failed artifact command's diagnostic names its verb and the first error identifier its stderr carries; no other stderr text enters the report.
+- `command-diagnostic` — A failed or timed-out artifact command's diagnostic, a scenario step's included, names its verb and the first error identifier its stderr carries; no other stderr text enters the report.
   *because a provider failure must name its cause while stderr may carry binding credentials*
 - `provenance` — Unknown source correspondence remains null; a reported version or successful scenario never supplies a source commit.
   *because source correspondence requires evidence beyond behavior and a version string*

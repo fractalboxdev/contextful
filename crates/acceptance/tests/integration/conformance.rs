@@ -230,8 +230,33 @@ fn a_hung_artifact_keeps_machine_readable_failed_outcomes() {
     assert_eq!(result.outcome, Outcome::Failed);
     assert_eq!(
         result.diagnostic.as_deref(),
-        Some("ConformanceProcessTimeout")
+        Some("ConformanceProcessTimeout:version")
     );
+}
+
+#[test]
+#[cfg(unix)]
+fn a_failed_or_hung_scenario_step_names_its_verb_and_error_identifier() {
+    let dir = tempfile::tempdir().unwrap();
+    let binary = dir.path().join("contextful");
+    for (step, timeout_seconds, diagnostic) in [
+        ("printf '%s\\n' StorageBindingUnavailable 'endpoint secret-material' >&2; exit 1", 30, "ConformanceCaptureFailed:run:StorageBindingUnavailable"),
+        ("exit 1", 30, "ConformanceCaptureFailed:run"),
+        ("while :; do :; done", 1, "ConformanceProcessTimeout:run"),
+    ] {
+        executable(&binary, &format!("#!/bin/sh\ncase \"$1 $2\" in\n'--version ') printf 'contextful fixture contextful-full\\n';;\n*' --help') ;;\n'run start') {step};;\n*) exit 99;;\nesac\n"));
+        let report = conformance::run(&Options {
+            binary: binary.clone(),
+            storage_profile: "local".into(),
+            required: vec!["pagination-checkpoint".into()],
+            timeout_seconds,
+        })
+        .unwrap();
+        let result = report.scenarios.iter().find(|s| s.required).unwrap();
+        assert_eq!(result.outcome, Outcome::Failed);
+        assert_eq!(result.diagnostic.as_deref(), Some(diagnostic));
+        assert!(!serde_json::to_string(&report).unwrap().contains("secret-material"));
+    }
 }
 
 #[test]

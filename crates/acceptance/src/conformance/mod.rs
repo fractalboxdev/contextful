@@ -363,7 +363,7 @@ impl Fixture {
                 break status;
             }
             if Instant::now() >= deadline {
-                return Err("ConformanceProcessTimeout".into());
+                return Err(format!("ConformanceProcessTimeout:{}", verb(args)));
             }
             std::thread::sleep(Duration::from_millis(10));
         };
@@ -381,12 +381,7 @@ impl Fixture {
     fn ok(&self, args: &[&str], env: &[(&str, &str)]) -> Result<String> {
         let out = self.invoke(args, env)?;
         if !out.status.success() {
-            let verb = args.first().copied().unwrap_or("version");
-            // Only the first error identifier leaves stderr; message text may carry credentials.
-            return Err(match error_identifier(&out.stderr) {
-                Some(code) => format!("ConformanceCommandFailed:{verb}:{code}"),
-                None => format!("ConformanceCommandFailed:{verb}"),
-            });
+            return Err(failed("ConformanceCommandFailed", args, &out.stderr));
         }
         Ok(out.stdout.trim().into())
     }
@@ -394,6 +389,20 @@ impl Fixture {
     fn query(&self, sql: &str) -> Result<serde_json::Value> {
         serde_json::from_str(&self.ok(&["query", "--json", "--project", "research", sql], &[])?)
             .map_err(|_| "ConformanceQueryMalformed".into())
+    }
+}
+
+/// The command an invocation names: its first argument, less any leading dashes.
+fn verb<'a>(args: &[&'a str]) -> &'a str {
+    args.first().map_or("version", |arg| arg.trim_start_matches('-'))
+}
+
+/// `<diagnostic>:<verb>`, closed by the first error identifier of the failed command's
+/// stderr; message text may carry credentials and never leaves it.
+fn failed(diagnostic: &str, args: &[&str], stderr: &str) -> String {
+    match error_identifier(stderr) {
+        Some(code) => format!("{diagnostic}:{}:{code}", verb(args)),
+        None => format!("{diagnostic}:{}", verb(args)),
     }
 }
 
