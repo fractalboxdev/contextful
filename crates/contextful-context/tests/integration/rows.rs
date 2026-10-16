@@ -96,3 +96,42 @@ fn a_table_counts_its_rows_and_streams_them_batch_by_batch() {
     let streamed: Vec<_> = batches.concat();
     assert_eq!(streamed, table_rows(&f.store, &d, &["doc_id"]).unwrap());
 }
+
+fn row(value: serde_json::Value) -> serde_json::Map<String, serde_json::Value> {
+    value.as_object().unwrap().clone()
+}
+
+/// A keyed read over rows the caller holds keeps one survivor per dedup line, the highest on
+/// `order_by` then the tiebreak, a full tie keeping the row read later; an unkeyed table keeps
+/// every row (`store.declare.dedup-view`).
+#[test]
+fn a_keyed_read_keeps_one_survivor_per_key_from_rows_the_caller_holds() {
+    use contextful_context::rows::{latest_columns, latest_survivors};
+    let keyed = decl("name = \"documents\"\nprimary_key = [\"doc_id\"]\norder_by = \"version\"");
+    assert_eq!(latest_columns(&keyed, &["path", "_run_id"]), ["path", "_run_id", "doc_id", "version", "_ingested_at", "_row_seq"]);
+    assert_eq!(latest_columns(&decl("name = \"documents\""), &["path"]), ["path"]);
+    let rows = [
+        row(json!({"doc_id": "d1", "version": 2, "_ingested_at": "2026-01-01T00:00:00.000000000Z", "_run_id": "r1", "_row_seq": 0})),
+        row(json!({"doc_id": "d2", "version": 1, "_ingested_at": "2026-01-01T00:00:00.000000000Z", "_run_id": "r1", "_row_seq": 1})),
+        row(json!({"doc_id": "d1", "version": 1, "_ingested_at": "2026-01-02T00:00:00.000000000Z", "_run_id": "r2", "_row_seq": 0})),
+        row(json!({"doc_id": "d2", "version": 1, "_ingested_at": "2026-01-01T00:00:00.000000000Z", "_run_id": "r1", "_row_seq": 1})),
+    ];
+    assert_eq!(latest_survivors(&keyed, &rows), [0, 3]);
+    assert_eq!(latest_survivors(&decl("name = \"documents\""), &rows), [0, 1, 2, 3]);
+}
+
+/// The keyed read composes over the store's table read: a later landing of a key replaces
+/// the earlier one under the default `_ingested_at` order.
+#[test]
+fn a_keyed_read_over_the_table_read_keeps_the_latest_landing_per_key() {
+    use contextful_context::rows::{latest_columns, latest_survivors};
+    let f = Fixture::new();
+    let d = decl("name = \"documents\"\nprimary_key = [\"doc_id\"]");
+    f.land(&d, "r1", json!([{"doc_id": "d1", "path": "a.txt"}, {"doc_id": "d2", "path": "b.txt"}]), "2026-01-01T00:00:00Z").unwrap();
+    f.land(&d, "r2", json!([{"doc_id": "d1", "path": "a2.txt"}]), "2026-01-02T00:00:00Z").unwrap();
+    let read = latest_columns(&d, &["path"]);
+    let rows = table_rows(&f.store, &d, &read.iter().map(String::as_str).collect::<Vec<_>>()).unwrap();
+    let mut paths: Vec<_> = latest_survivors(&d, &rows).into_iter().map(|i| rows[i]["path"].clone()).collect();
+    paths.sort_by_key(|p| p.to_string());
+    assert_eq!(paths, [json!("a2.txt"), json!("b.txt")]);
+}

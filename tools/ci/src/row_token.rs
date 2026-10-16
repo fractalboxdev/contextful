@@ -37,8 +37,9 @@ const UNMEDIATED: &[(&str, &str)] = &[
     ("crates/contextful-context/src/read/face.rs::operator_query", "read.guard.statement-provenance"),
     // The audit view projects audit entries, never a stored row.
     ("crates/contextful-context/src/read/audit.rs::audit_reads", "disclosure.record.reads-view"),
-    // The run path selects a parent table's rows under the run's capability allowlist and
-    // journal; an admitted run reads through the read face instead.
+    // The run path selects a parent table's rows, and each table a host task joins
+    // (`run.select.join-keyed`), under the run's capability allowlist and journal; an
+    // admitted run reads through the read face instead.
     ("crates/contextful-context/src/rows.rs::table_rows", "run.select.parent-scan"),
     ("crates/contextful-context/src/rows.rs::table_row_batches", "run.select.parent-scan"),
     // Converts a batch its caller already holds; reads no store.
