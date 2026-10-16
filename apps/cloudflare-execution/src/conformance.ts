@@ -36,3 +36,19 @@ export function completeConformanceReport(report: SuiteReport, source: ReleasePr
     compatible,
   };
 }
+
+/** Runs one command in the Container and answers its exit code. */
+export type ContainerExec = (argv: string[]) => Promise<{ exitCode: number }>;
+
+/**
+ * A suite process outlives a Durable Object restart and the in-memory guard it held. Its
+ * setup clears execution rows, so a second suite refuses while one lives, and a new suite
+ * first ends every artifact process an earlier run left driving the bindings.
+ */
+export async function admitConformanceRun(exec: ContainerExec) {
+  const suite = await exec(["/usr/bin/pgrep", "-f", "/usr/local/bin/contextful-conformance"]);
+  if (suite.exitCode === 0) throw new Error("ConformanceAlreadyRunning");
+  if (suite.exitCode !== 1) throw new Error("ConformanceContainerUnavailable");
+  const swept = await exec(["/usr/bin/pkill", "-KILL", "-f", "/usr/local/bin/contextful"]);
+  if (swept.exitCode !== 0 && swept.exitCode !== 1) throw new Error("ConformanceContainerUnavailable");
+}

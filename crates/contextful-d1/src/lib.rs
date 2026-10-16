@@ -50,6 +50,14 @@ pub struct D1 {
     agent: ureq::Agent,
 }
 
+/// Total attempts of a request whose repetition changes nothing (`run.journal.d1-transport`).
+const TRANSPORT_ATTEMPTS: u32 = 3;
+
+/// Whether a statement only reads, so a resend after a lost answer changes nothing.
+fn reads(sql: &str) -> bool {
+    sql.trim_start().get(..6).is_some_and(|word| word.eq_ignore_ascii_case("select"))
+}
+
 /// A complete backup carries these D1 tables and its R2 objects together.
 pub const EXECUTION_SCHEMA_VERSION: i64 = 3;
 const TABLES: &[(&str, &str)] = &[
@@ -108,11 +116,7 @@ impl D1 {
     }
 
     pub fn health(&self) -> Result<(), String> {
-        let response = self
-            .agent
-            .get(&format!("{}/health", self.endpoint))
-            .call()
-            .map_err(|_| "StorageBindingUnavailable")?;
+        let response = self.resend(|| self.agent.get(&format!("{}/health", self.endpoint)).call())?;
         if response.status() == 200 {
             Ok(())
         } else {
@@ -271,12 +275,12 @@ impl D1 {
     pub fn query(&self, sql: &str, params: Vec<Value>) -> Result<QueryResult, String> {
         let body = serde_json::to_vec(&Statement { sql, params })
             .map_err(|_| "StorageBindingRequestInvalid")?;
-        let mut response = self
-            .agent
-            .post(&format!("{}/sql", self.endpoint))
-            .header("content-type", "application/json")
-            .send(body.as_slice())
-            .map_err(|_| "StorageBindingUnavailable")?;
+        let url = format!("{}/sql", self.endpoint);
+        let mut response = if reads(sql) {
+            self.resend(|| self.agent.post(&url).header("content-type", "application/json").send(body.as_slice()))?
+        } else {
+            self.write(self.agent.post(&url).header("content-type", "application/json"), &body)?
+        };
         if response.status() != 200 {
             return Err("StorageBindingFailed".into());
         }
@@ -289,12 +293,12 @@ impl D1 {
 
     pub fn batch(&self, statements: &[Statement<'_>]) -> Result<Vec<QueryResult>, String> {
         let body = serde_json::to_vec(statements).map_err(|_| "StorageBindingRequestInvalid")?;
-        let mut response = self
-            .agent
-            .post(&format!("{}/batch", self.endpoint))
-            .header("content-type", "application/json")
-            .send(body.as_slice())
-            .map_err(|_| "StorageBindingUnavailable")?;
+        let url = format!("{}/batch", self.endpoint);
+        let mut response = if statements.iter().all(|s| reads(s.sql)) {
+            self.resend(|| self.agent.post(&url).header("content-type", "application/json").send(body.as_slice()))?
+        } else {
+            self.write(self.agent.post(&url).header("content-type", "application/json"), &body)?
+        };
         if response.status() != 200 {
             return Err("StorageBindingFailed".into());
         }
@@ -307,11 +311,8 @@ impl D1 {
 
     pub fn put_blob(&self, sha256: &str, bytes: &[u8]) -> Result<(), String> {
         Self::digest(sha256, bytes)?;
-        let response = self
-            .agent
-            .put(&format!("{}/blob/{sha256}", self.endpoint))
-            .send(bytes)
-            .map_err(|_| "StorageBindingUnavailable")?;
+        // A content-addressed put lands the identical object on every resend.
+        let response = self.resend(|| self.agent.put(&format!("{}/blob/{sha256}", self.endpoint)).send(bytes))?;
         if response.status() == 204 {
             Ok(())
         } else {
@@ -321,11 +322,7 @@ impl D1 {
 
     pub fn get_blob(&self, sha256: &str) -> Result<Option<Vec<u8>>, String> {
         Self::valid_digest(sha256)?;
-        let mut response = self
-            .agent
-            .get(&format!("{}/blob/{sha256}", self.endpoint))
-            .call()
-            .map_err(|_| "StorageBindingUnavailable")?;
+        let mut response = self.resend(|| self.agent.get(&format!("{}/blob/{sha256}", self.endpoint)).call())?;
         if response.status() == 404 {
             return Ok(None);
         }
@@ -342,8 +339,7 @@ impl D1 {
 
     pub fn head_blob(&self, sha256: &str) -> Result<bool, String> {
         Self::valid_digest(sha256)?;
-        let response = self.agent.head(&format!("{}/blob/{sha256}", self.endpoint))
-            .call().map_err(|_| "StorageBindingUnavailable")?;
+        let response = self.resend(|| self.agent.head(&format!("{}/blob/{sha256}", self.endpoint)).call())?;
         if response.status() == 204 { Ok(true) }
         else if response.status() == 404 { Ok(false) }
         else { Err("StorageBindingFailed".into()) }
@@ -351,16 +347,46 @@ impl D1 {
 
     pub fn delete_blob(&self, sha256: &str) -> Result<(), String> {
         Self::valid_digest(sha256)?;
-        let response = self
-            .agent
-            .delete(&format!("{}/blob/{sha256}", self.endpoint))
-            .call()
-            .map_err(|_| "StorageBindingUnavailable")?;
+        let response = self.resend(|| self.agent.delete(&format!("{}/blob/{sha256}", self.endpoint)).call())?;
         if response.status() == 204 {
             Ok(())
         } else {
             Err("StorageBindingFailed".into())
         }
+    }
+
+    /// Send a request whose repetition changes nothing, resending after a transport failure
+    /// that left no HTTP answer; an answered status never resends.
+    fn resend(
+        &self,
+        send: impl Fn() -> Result<ureq::http::Response<ureq::Body>, ureq::Error>,
+    ) -> Result<ureq::http::Response<ureq::Body>, String> {
+        let mut attempt = 1;
+        loop {
+            match send() {
+                Ok(response) => return Ok(response),
+                Err(_) if attempt < TRANSPORT_ATTEMPTS => {
+                    attempt += 1;
+                    std::thread::sleep(Duration::from_millis(50 * u64::from(attempt - 1)));
+                }
+                Err(_) => return Err("StorageBindingUnavailable".into()),
+            }
+        }
+    }
+
+    /// Send a write once over a fresh connection: a pooled one the outbound path already
+    /// closed would drop it unanswered, and a write whose answer is lost may have committed.
+    fn write(
+        &self,
+        request: ureq::RequestBuilder<ureq::typestate::WithBody>,
+        body: &[u8],
+    ) -> Result<ureq::http::Response<ureq::Body>, String> {
+        request
+            .config()
+            .max_idle_age(Duration::ZERO)
+            .build()
+            .send(body)
+            .map_err(|_| "StorageBindingUnavailable".into())
     }
 
     fn valid_digest(sha256: &str) -> Result<(), String> {

@@ -110,6 +110,8 @@ Recording a step's value once, resolving it on replay, and collecting what a rep
   *A-run*
 - `d1-blob` — D1 stores each blob digest, whose R2 object key is `blobs/<sha256>`; the R2 write precedes its D1 reference, and a read verifies the content digest.
   *A-run*
+- `d1-transport` — A D1 read, health probe or content-addressed blob request left without an HTTP answer resends, within 3 attempts; a writing statement goes once over a fresh connection and raises `StorageBindingUnavailable`.
+  *because a write whose answer is lost may have committed, and resending it could apply it twice*
 - `d1-atomicity` — D1 commits metadata atomically; an interrupted R2 upload can leave an unreferenced object, while R2 deletion follows removal of every D1 reference.
   *A-run*
 - `d1-guard` — A committed D1 guard prevents owner or lease transfer throughout an admitted external callback; a crash guard requires recorded receipt or idempotency evidence before takeover.
