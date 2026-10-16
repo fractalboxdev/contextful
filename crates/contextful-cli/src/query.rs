@@ -28,6 +28,10 @@ pub struct QueryArgs {
     /// Deliver at most this many rows, setting `truncated` when more exist.
     #[arg(long)]
     limit: Option<u64>,
+    /// Pass every relation through the zone step at `local:device`; a project declaring
+    /// `[project.zone] incognito_default = true` does so without it (`read.query.incognito`).
+    #[arg(long)]
+    incognito: bool,
     /// The statement, run raw.
     sql: String,
 }
@@ -74,8 +78,9 @@ pub fn run(args: QueryArgs) -> Result<()> {
     };
     let response = match located {
         Some((project, declaration)) => {
+            let incognito = args.incognito || project.zone()?.incognito_default;
             let face = open_face(&project, &declaration, &manifest(&declaration, named)?, Pepper::resolve(|k| std::env::var(k).ok()))?;
-            face.operator_query(&args.sql, opts)?
+            if incognito { face.operator_query_incognito(&args.sql, opts)? } else { face.operator_query(&args.sql, opts)? }
         }
         None => operator_query(&args.sql, opts)?,
     };

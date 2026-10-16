@@ -6,16 +6,16 @@ An unpinned clause is `committed`; a pinned one is `performed` when its Rust, Le
 | Contract | Files | Operations | Clauses | Refusals | Limits | Unsettled | Performed | Broken | Floor |
 | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
 | `assurance` | 3 | 18 | 323 | 65 | 24 | 5 | 281 | 0 | 281 |
-| `authority` | 2 | 16 | 298 | 79 | 29 | 8 | 271 | 0 | 271 |
+| `authority` | 2 | 16 | 299 | 80 | 29 | 8 | 274 | 0 | 274 |
 | `connector` | 2 | 14 | 375 | 92 | 22 | 12 | 292 | 0 | 292 |
 | `corpus` | 1 | 10 | 80 | 37 | 7 | 0 | 80 | 0 | 80 |
 | `disclosure` | 3 | 16 | 187 | 69 | 14 | 5 | 165 | 0 | 165 |
-| `read` | 2 | 20 | 313 | 54 | 29 | 15 | 271 | 0 | 271 |
+| `read` | 2 | 20 | 314 | 54 | 29 | 15 | 272 | 0 | 271 |
 | `run` | 3 | 29 | 551 | 126 | 45 | 16 | 519 | 0 | 519 |
 | `store` | 3 | 19 | 295 | 64 | 15 | 10 | 284 | 0 | 284 |
 | `surface` | 2 | 21 | 161 | 63 | 23 | 0 | 134 | 0 | 134 |
 | `topology` | 1 | 6 | 79 | 25 | 5 | 3 | 76 | 0 | 76 |
-| **total** | 22 | 169 | 2662 | 674 | 213 | 74 | 2373 | 0 | |
+| **total** | 22 | 169 | 2664 | 675 | 213 | 74 | 2377 | 0 | |
 
 Decision records: 18.
 
@@ -30,7 +30,7 @@ A milestone reads `closed` when its acceptance test computes `passing` and every
 | 2 — The store | 9 | 183 | 173 | passing | closed |
 | 3 — The run path | 12 | 286 | 275 | passing | closed |
 | 4 — Ingest | 25 | 593 | 495 | passing | closed |
-| 5 — The read face under enforcement | 17 | 312 | 275 | passing | closed |
+| 5 — The read face under enforcement | 17 | 314 | 279 | passing | closed |
 | 6 — Sync and replicas | 8 | 88 | 87 | passing | closed |
 | 7 — Memory | 6 | 92 | 77 | passing | closed |
 | 8 — Accountability | 5 | 96 | 89 | passing | closed |
@@ -496,6 +496,7 @@ Unscheduled operations: 13.
 | `authority.place.allow-set-entry` | `crates/contextful-policy/tests/integration/enforce/zone.rs::allow_set_entries_take_six_forms` | performed |
 | `authority.place.asserted-zone` | `crates/contextful-policy/tests/integration/enforce/zone.rs::an_asserted_zone_never_replaces_the_signed_one` | performed |
 | `authority.place.caller-zone` | `crates/contextful-context/tests/integration/read/enforce.rs::the_zone_is_declared_per_request` | performed |
+| `authority.place.default-widened` | `crates/contextful-cli/tests/integration/token.rs::a_mint_widening_a_fixed_project_default_is_refused` | performed |
 | `authority.place.disjunctive` | `crates/contextful-policy/tests/integration/enforce/zone.rs::any_matching_entry_admits_the_zone` | performed |
 | `authority.place.empty-evidence` | `crates/contextful-core/tests/integration/place.rs::a_row_naming_no_evidence_resolves_fail_closed` | performed |
 | `authority.place.envelope` | `crates/contextful-context/tests/integration/read/respond.rs::a_zone_excluded_relation_is_named_beside_its_empty_rows` | performed |
@@ -506,12 +507,14 @@ Unscheduled operations: 13.
 | `authority.place.fail-closed` | `crates/contextful-policy/tests/integration/enforce/zone.rs::an_undeclared_table_resolves_to_the_fail_closed_pair` | performed |
 | `authority.place.floor-widened` | `crates/contextful-policy/tests/integration/enforce/zone.rs::widening_a_protected_surface_needs_the_override` | performed |
 | `authority.place.identifier-length` | `crates/contextful-policy/tests/integration/enforce/zone.rs::a_zone_identifier_holds_at_most_128_chars` | performed |
+| `authority.place.incognito` | `crates/contextful-cli/tests/integration/mcp.rs::an_incognito_server_pins_its_credential_to_the_fail_closed_pair` | performed |
 | `authority.place.incognito-widening` | `crates/contextful-policy/tests/integration/enforce/zone.rs::incognito_refuses_a_wider_zone_and_pins_an_absent_one` | performed |
 | `authority.place.narrowest-grain` | `crates/contextful-policy/tests/integration/enforce/zone.rs::the_narrowest_grain_wins` | performed |
 | `authority.place.protected-floor` | `crates/contextful-policy/tests/integration/enforce/zone.rs::a_protected_surface_resolves_down_to_its_floor` | performed |
 | `authority.place.removal-with-public-cloud` | `crates/contextful-policy/tests/integration/enforce/zone.rs::write_time_removal_beside_a_public_cloud_is_refused` | performed |
 | `authority.place.serve-outcome` | `crates/contextful-policy/tests/integration/enforce/zone.rs::serving_a_row_yields_a_drop_flag_and_masked_columns` | performed |
 | `authority.place.symbolic-inclusion` | `crates/contextful-policy/tests/integration/enforce/zone.rs::inclusion_is_decided_over_constructors_and_identifiers` | performed |
+| `authority.place.team-default` | `crates/contextful-cli/tests/integration/token.rs::a_mint_naming_no_zone_signs_the_project_default` | performed |
 | `authority.place.undeclared` | `crates/contextful-policy/tests/integration/enforce/zone.rs::only_the_wildcard_admits_an_undeclared_zone` | performed |
 | `authority.place.unparsed-pattern` | `crates/contextful-policy/tests/integration/enforce/zone.rs::an_unparsed_entry_is_refused_by_name` | performed |
 | `authority.place.zone-string` | `crates/contextful-policy/tests/integration/enforce/zone.rs::zone_strings_parse_by_category_and_identifier` | performed |
@@ -1194,6 +1197,7 @@ Unscheduled operations: 13.
 | `read.query.declaration-default` | `crates/contextful-cli/tests/integration/query.rs::a_declaration_path_supplies_the_manifest` | performed |
 | `read.query.discovered-project` | `crates/contextful-cli/tests/integration/query.rs::a_discovered_project_registers_its_tables` | performed |
 | `read.query.engine-fault` | `crates/contextful-cli/tests/integration/query.rs::a_rejected_statement_prints_nothing` | performed |
+| `read.query.incognito` | `crates/contextful-cli/tests/integration/query.rs::an_incognito_query_passes_the_zone_step_at_local_device` | performed |
 | `read.query.json-only` | `crates/contextful-cli/tests/integration/query.rs::the_verb_prints_only_the_json_projection` | performed |
 | `read.query.limit-truncates` | `crates/contextful-cli/tests/integration/query.rs::a_limit_truncates_exactly` | performed |
 | `read.query.one-statement` | `crates/contextful-cli/tests/integration/query.rs::text_holding_two_statements_runs_none` | performed |

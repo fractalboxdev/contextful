@@ -214,6 +214,67 @@ allow = ["public-cloud:*"]
     assert_eq!(answers[1]["result"]["structuredContent"]["rows"], json!([]), "zone exclusion holds under owner");
 }
 
+/// Incognito pins the session to the fail-closed pair, the uncredentialed local owner's reads included; `contextful mcp --incognito` turns it on for the admitted credential and never off.
+// spec: authority.place.incognito@0631be7a
+#[test]
+fn an_incognito_server_pins_its_credential_to_the_fail_closed_pair() {
+    let dir = tempfile::tempdir().unwrap();
+    let root = dir.path();
+    std::fs::create_dir_all(root.join(".contextful")).unwrap();
+    std::fs::write(root.join(".contextful/issuance.toml"), format!("default_audience = \"{AUD}\"\nmax_lifetime_secs = 3600\n")).unwrap();
+    std::fs::write(root.join("contextful.toml"), r#"authoring_posture = "per_request"
+[project]
+name = "research"
+
+[[pipeline.tables]]
+name = "research/vendor"
+[pipeline.tables.policy.zone]
+allow = ["public-cloud:*"]
+
+[[pipeline.tables]]
+name = "research/device"
+[pipeline.tables.policy.zone]
+allow = ["local:device", "public-cloud:*"]
+"#).unwrap();
+    std::fs::write(root.join("vendor.jsonl"), "{\"vendor_id\":\"v1\"}\n").unwrap();
+    for table in ["research/vendor", "research/device"] {
+        stdout(&run(root, &["context", "land", table, "--project", "research", "--rows", "vendor.jsonl", "--run-id", "run-0001", "--site-id", "site-a"]));
+    }
+    let public = stdout(&run(root, &["token", "keygen", "--out", ".contextful/issuer.seed"]));
+    let mint = |zone: &[&str]| {
+        let mut args = vec!["token", "mint", "--issuer-key", ".contextful/issuer.seed", "--on-behalf-of", "user://dana@acme.example", "--table", "research/*", "--ttl", "600"];
+        args.extend_from_slice(zone);
+        stdout(&run(root, &args))
+    };
+    let query = |id, table: &str| json!({ "jsonrpc": "2.0", "id": id, "method": "tools/call", "params": { "name": "context.query", "arguments": { "sql": format!("SELECT vendor_id FROM \"{table}\"") } } });
+    let answers = |args: &[&str], token: &str| -> Vec<Value> {
+        let out = serve(root, args, Some(token), &[query(1, "research/vendor"), query(2, "research/device")]);
+        assert!(out.status.success(), "{}", String::from_utf8_lossy(&out.stderr));
+        String::from_utf8_lossy(&out.stdout).lines().map(|line| serde_json::from_str(line).unwrap()).collect()
+    };
+    let plain = ["mcp", "--project", "research", "--public-key", &public, "--audience", AUD];
+    let incognito = ["mcp", "--incognito", "--project", "research", "--public-key", &public, "--audience", AUD];
+
+    // A credential signing no zone serves under `local:device` once incognito.
+    let unzoned = mint(&[]);
+    let on = answers(&incognito, &unzoned);
+    assert_eq!(on[0]["result"]["structuredContent"]["rows"], json!([]), "{on:?}");
+    assert_eq!(
+        on[0]["result"]["structuredContent"]["contextful.restriction"],
+        json!({ "zone": "local:device", "incognito": true, "tables": [{ "table": "research/vendor", "excluded": true, "rows_dropped": 1, "columns_masked": [] }] }),
+        "{on:?}"
+    );
+    assert_eq!(on[1]["result"]["structuredContent"]["rows"], json!([["v1"]]), "{on:?}");
+
+    // A credential signing a public cloud reads it plainly, and the incognito process refuses it.
+    let cloud = mint(&["--zone", "public-cloud:eu"]);
+    let off = answers(&plain, &cloud);
+    assert_eq!(off[0]["result"]["structuredContent"]["rows"], json!([["v1"]]), "{off:?}");
+    let on = answers(&incognito, &cloud);
+    assert_eq!(on[0]["result"]["isError"], json!(true), "{on:?}");
+    assert!(on[0]["result"]["content"][0]["text"].as_str().unwrap().contains("EnforceIncognitoWidening"), "{on:?}");
+}
+
 #[test]
 fn owner_credential_does_not_follow_a_recreated_store_at_the_same_path() {
     let (dir, public, _) = project();

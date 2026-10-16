@@ -533,3 +533,52 @@ fn token_exchange_binds_a_proved_holder_key_and_otherwise_mints_a_short_lived_be
     let err = stderr(&exchange(p.path(), &["--jwt", &jwt, "--dpop", &proof(&other, "cli-2")], None));
     assert!(err.contains("ExchangeHolderProofInvalid"), "{err}");
 }
+
+/// A project whose declaration carries `[project.zone]` holding `zone`, with an issuer key.
+fn zoned(zone: &str) -> tempfile::TempDir {
+    let p = project();
+    std::fs::write(p.path().join("contextful.toml"), format!("[project]\nname = \"research\"\n\n[project.zone]\n{zone}")).unwrap();
+    keygen(p.path());
+    p
+}
+
+/// The zone and incognito flag a minted credential signs.
+fn signed_zone(token: &str) -> (Option<String>, bool) {
+    let sub = contextful_policy::verify::introspect(token).unwrap().authority.sub;
+    (sub.zone, sub.incognito)
+}
+
+fn mint_zone(dir: &Path, zone: Option<&str>) -> Output {
+    let mut args = vec!["--on-behalf-of", "user://dana@acme.example", "--table", "research/*"];
+    args.extend(zone.iter().flat_map(|z| ["--zone", *z]));
+    mint(dir, &args)
+}
+
+/// `[project.zone]` declares `default`, `users_may_widen` and `incognito_default`; `contextful token mint` naming no `--zone` signs `default`, and under `incognito_default = true` mints incognito.
+// spec: authority.place.team-default@5790d5a9
+#[test]
+fn a_mint_naming_no_zone_signs_the_project_default() {
+    let p = zoned("default = \"on-prem:hq\"\n");
+    assert_eq!(signed_zone(&stdout(&mint_zone(p.path(), None))), (Some("on-prem:hq".into()), false));
+    let named = stdout(&mint_zone(p.path(), Some("public-cloud:eu")));
+    assert_eq!(signed_zone(&named), (Some("public-cloud:eu".into()), false), "a widenable default yields to a named zone");
+
+    let p = zoned("default = \"on-prem:hq\"\nincognito_default = true\n");
+    assert_eq!(signed_zone(&stdout(&mint_zone(p.path(), None))), (Some("on-prem:hq".into()), true));
+
+    let p = zoned("default = \"nowhere\"\n");
+    let err = stderr(&mint_zone(p.path(), None));
+    assert!(err.contains("[project.zone]") && err.contains("nowhere"), "{err}");
+}
+
+/// Under `users_may_widen = false`, a `contextful token mint` signing a zone other than the project's `default` or `local:device` raises `EnforceZoneDefaultWidened`, naming both.
+// spec: authority.place.default-widened@09682198
+#[test]
+fn a_mint_widening_a_fixed_project_default_is_refused() {
+    let p = zoned("default = \"on-prem:hq\"\nusers_may_widen = false\n");
+    let err = stderr(&mint_zone(p.path(), Some("public-cloud:eu")));
+    assert!(err.starts_with("EnforceZoneDefaultWidened") && err.contains("public-cloud:eu") && err.contains("on-prem:hq"), "{err}");
+    for zone in ["on-prem:hq", "local:device"] {
+        assert_eq!(signed_zone(&stdout(&mint_zone(p.path(), Some(zone)))).0.as_deref(), Some(zone));
+    }
+}

@@ -74,7 +74,7 @@ fn keys(v: &Value) -> Vec<&str> {
 }
 
 /// `contextful query --json <sql>` prints the one projection for a statement over no store.
-// spec: read.query.operator-verb@70205979
+// spec: read.query.operator-verb@50c0b158
 #[test]
 fn a_statement_prints_the_one_projection() {
     let dir = tempfile::tempdir().unwrap();
@@ -116,7 +116,7 @@ fn operator_text_runs_raw_where_token_text_is_gated() {
 }
 
 /// `--project` registers every table under its bare name; a quiet table reads as zero rows.
-// spec: read.query.project-relations@239bf3fa
+// spec: read.query.project-relations@858767b4
 #[test]
 fn a_project_registers_every_table_under_its_bare_name() {
     let p = project();
@@ -125,6 +125,29 @@ fn a_project_registers_every_table_under_its_bare_name() {
     let quiet = query(p.path(), &["--project", "research", "SELECT * FROM \"research/quiet\""]);
     assert_eq!(quiet["rows"], json!([]));
     assert_eq!(quiet["truncated"], json!(false));
+}
+
+/// Under `--incognito`, or a project whose `[project.zone]` sets `incognito_default = true`, each relation passes the zone step at `local:device`: an excluded table yields no row, an excluded column arrives null, and the restriction block reports both.
+// spec: read.query.incognito@6d3aade8
+#[test]
+fn an_incognito_query_passes_the_zone_step_at_local_device() {
+    let p = project();
+    let declaration = |extra: &str| {
+        format!("authoring_posture = \"per_request\"\n[project]\nname = \"research\"\n{extra}\n[[pipeline.tables]]\nname = \"research/notes\"\n[pipeline.tables.policy.zone]\nallow = [\"public-cloud:*\"]\n\n[[pipeline.tables]]\nname = \"research/quiet\"\n")
+    };
+    std::fs::write(p.path().join("contextful.toml"), declaration("")).unwrap();
+    let sql = "SELECT note_id FROM \"research/notes\" ORDER BY note_id";
+    assert_eq!(query(p.path(), &[sql])["rows"], json!([["n1"], ["n2"]]), "the owner's plain read stays unrestricted");
+
+    let withheld = json!({ "zone": "local:device", "incognito": true, "tables": [{ "table": "research/notes", "excluded": true, "rows_dropped": 2, "columns_masked": [] }] });
+    let flagged = query(p.path(), &["--incognito", sql]);
+    assert_eq!((&flagged["rows"], &flagged["contextful.restriction"]), (&json!([]), &withheld), "{flagged}");
+    let admitted = query(p.path(), &["--incognito", "SELECT count(*) AS n FROM \"research/quiet\""]);
+    assert_eq!((&admitted["rows"], admitted.get("contextful.restriction")), (&json!([["0"]]), None), "{admitted}");
+
+    std::fs::write(p.path().join("contextful.toml"), declaration("[project.zone]\nincognito_default = true\n")).unwrap();
+    let defaulted = query(p.path(), &[sql]);
+    assert_eq!((&defaulted["rows"], &defaulted["contextful.restriction"]), (&json!([]), &withheld), "{defaulted}");
 }
 
 /// An operator's raw read delivers at most the least `limits.max_rows` among the relations

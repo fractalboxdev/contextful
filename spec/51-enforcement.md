@@ -354,12 +354,14 @@ Inference zones: grammar, composition across grains, floors, incognito, and the 
   *A-authority*
 - `empty-evidence` — A synthesized row naming no evidence table raises `EnforceEvidenceListEmpty` and resolves to the fail-closed pair of {{authority.place.fail-closed}}.
   *because an empty list intersects to every zone, and a row citing nothing then resolves to the widest set*
-- `incognito` — Incognito pins the session to the fail-closed pair, the uncredentialed local owner's reads included.
+- `incognito` — Incognito pins the session to the fail-closed pair, the uncredentialed local owner's reads included; `contextful mcp --incognito` turns it on for the admitted credential and never off.
   *A-authority*
 - `incognito-widening` — A session asserting a zone wider than the incognito pin raises `EnforceIncognitoWidening`.
   *A-authority*
-- `team-default` — A project declares a default zone, whether users widen it, and whether incognito is on by default.
+- `team-default` — `[project.zone]` declares `default`, `users_may_widen` and `incognito_default`; `contextful token mint` naming no `--zone` signs `default`, and under `incognito_default = true` mints incognito.
   *A-authority*
+- `default-widened` — Under `users_may_widen = false`, a `contextful token mint` signing a zone other than the project's `default` or `local:device` raises `EnforceZoneDefaultWidened`, naming both.
+  *because a default any minter replaces bounds nothing the project owner chose*
 - `serve-outcome` — Serving one row yields a drop flag and the list of zone-masked columns.
   *A-authority*
 - `envelope` — A response envelope carries the zone's removals, the asserted zone and the incognito flag in {{read.respond.restriction-block}}, and no removed value.

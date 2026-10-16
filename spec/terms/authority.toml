@@ -96,6 +96,7 @@ EnforceRemovalWithPublicCloud        = { clause = "authority.place.removal-with-
 EnforceEvidenceFloorExceeded         = { clause = "authority.place.evidence-floor", gloss = "A synthesized row declaring a set wider than its evidence intersection." }
 EnforceEvidenceListEmpty             = { clause = "authority.place.empty-evidence", gloss = "A synthesized row naming no evidence table." }
 EnforceIncognitoWidening             = { clause = "authority.place.incognito-widening", gloss = "A session asserting a zone wider than the incognito pin." }
+EnforceZoneDefaultWidened            = { clause = "authority.place.default-widened", gloss = "A mint signing a zone other than a non-widenable project default." }
 EnforceCredentialShapedValue         = { clause = "authority.resist.credential-shaped-value", gloss = "A credential-shaped value on the write path." }
 EnforceWriteOnReadOnlyFace           = { clause = "authority.resist.write-tool", gloss = "A write tool registered on an organization-wide face." }
 
