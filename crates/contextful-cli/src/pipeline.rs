@@ -996,6 +996,7 @@ pub fn run(cmd: PipelineCmd, tasks: &Tasks, bodies: &contextful_core::run::drive
                 // A table that cannot open is a failed table like one whose run fails, so
                 // `continue` lands the others.
                 let mut limiters: Vec<Arc<contextful_outbound::Limiter>> = Vec::new();
+                let trace = crate::telemetry::RunTrace::open();
                 let outcome = (|| -> Result<contextful_core::run::record::RunRow> {
                     let connector = loaded.as_ref().map_or_else(|| built_in(&spec), component::Loaded::connector_spec);
                     let plan = plan(&spec, t.name(), connector)?;
@@ -1017,7 +1018,7 @@ pub fn run(cmd: PipelineCmd, tasks: &Tasks, bodies: &contextful_core::run::drive
                         }
                         _ => (connector, None),
                     };
-                    let run = RunSpec { plan, connector, run_id: run_id.clone(), site_id: site_id.clone(), pid: std::process::id(), boot_id: boot_id(), trace_id: None };
+                    let run = RunSpec { plan, connector, run_id: run_id.clone(), site_id: site_id.clone(), pid: std::process::id(), boot_id: boot_id(), trace_id: Some(trace.trace_id()) };
                     let shape = Chain { ops: spec.transforms.clone(), table: table.clone() };
                     let source: Box<dyn Source> = match &checked {
                         Checked::Http(config, binding) => {
@@ -1078,6 +1079,9 @@ pub fn run(cmd: PipelineCmd, tasks: &Tasks, bodies: &contextful_core::run::drive
                     for entry in limiter.audit() {
                         eprintln!("{table}: {entry}");
                     }
+                }
+                if let Ok(row) = &outcome {
+                    trace.close(row);
                 }
                 let row = match outcome {
                     Ok(row) => row,

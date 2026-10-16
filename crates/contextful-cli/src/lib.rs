@@ -62,6 +62,8 @@ mod secrets;
 mod seed;
 #[cfg(feature = "read-plane")]
 mod serve;
+#[cfg(feature = "data-plane")]
+mod telemetry;
 #[cfg(feature = "read-plane")]
 mod sync;
 #[cfg(feature = "data-plane")]
@@ -332,6 +334,8 @@ pub fn main_host(host: Host) {
         #[cfg(feature = "pdf")]
         Cmd::Decode { kind, input } => std::process::exit(contextful_connectors::boundary::worker(&kind, &input)),
     };
+    #[cfg(feature = "data-plane")]
+    telemetry::finish();
     if let Err(e) = result {
         eprintln!("{e:#}");
         std::process::exit(1);

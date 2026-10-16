@@ -1078,6 +1078,7 @@ dependencies = [
  "contextful-core",
  "contextful-eval",
  "contextful-outbound",
+ "getrandom 0.3.4",
  "serde_json",
  "tempfile",
  "ureq",

@@ -29,7 +29,7 @@ pub trait Inference {
     /// One call and its record: the content and, from an endpoint exposing them, the
     /// token log-probabilities (`connector.infer.logprobs`).
     fn call(&self, messages: &[Message]) -> Result<CallRecord, String> {
-        Ok(CallRecord { content: self.complete(messages)?, logprobs: None })
+        Ok(CallRecord { content: self.complete(messages)?, logprobs: None, usage: None })
     }
 }
 
@@ -40,6 +40,17 @@ pub struct CallRecord {
     pub content: String,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub logprobs: Option<serde_json::Value>,
+    /// The endpoint's token counts for the call, where it reports `usage`
+    /// (`connector.infer.usage`).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub usage: Option<Usage>,
+}
+
+/// The tokens one model call consumed and produced, as its endpoint reports them.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+pub struct Usage {
+    pub input_tokens: u64,
+    pub output_tokens: u64,
 }
 
 /// A reference from a claim to the landed row it rests on: the row's table and its

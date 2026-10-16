@@ -302,6 +302,9 @@ Model egress: the single endpoint, the data fence and the trust label of model o
   *because tuning adds knowledge after pre-training, and an estimated cutoff often falls before the reported one*
 - `logprobs` — A call to an endpoint exposing token log-probabilities lands them with the call record.
   *because probe-based leakage estimates read first-token probabilities*
+- `usage` — A call record carries the input and output token counts of the endpoint's `usage` beside the content; an answer without them records none.
+  *because server-run evaluation prices every model call from its usage, failed attempts included*
+- `model-span` — A traced call records one client span, child of the caller's, carrying `gen_ai.operation.name`, `gen_ai.request.model`, `gen_ai.response.model`, `gen_ai.usage.input_tokens`, `gen_ai.usage.output_tokens`, `server.address` and, on failure, `error.type`, never message content; its request's `traceparent` names it.
 - `hosted-tools` — A model call under a credential carrying {{authority.grant.horizon}} that declares a provider-hosted tool, such as search, browse or fetch, raises `InferHostedToolUnderHorizon`, naming the tool, before any byte leaves.
   *because search inside the provider never reaches the mediated client, so no hook sees it*
 

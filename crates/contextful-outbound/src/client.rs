@@ -31,18 +31,20 @@ pub fn is_over_limit(f: &Failure) -> bool {
     f.deterministic && f.message.contains(OVER_LIMIT)
 }
 
-/// A header value: plain text, or material hydrated from a reference.
+/// A header value: plain text, material hydrated from a reference, or a W3C trace carrier
+/// the host adds on its own behalf, which declares nothing and selects no client.
 #[derive(Debug, Clone)]
 pub enum HeaderValue {
     Plain(String),
     Sensitive(std::sync::Arc<Hydrated>),
+    Carrier(String),
 }
 
 impl HeaderValue {
     /// The value as it goes on the wire; only a transport reads it.
     pub fn text(&self) -> &str {
         match self {
-            HeaderValue::Plain(s) => s,
+            HeaderValue::Plain(s) | HeaderValue::Carrier(s) => s,
             HeaderValue::Sensitive(h) => h.reveal(),
         }
     }
@@ -347,8 +349,9 @@ impl Client {
             addrs: &addrs,
             headers: wire,
             body,
-            // A request carrying a declared header takes the hardened client, which bypasses the system proxy.
-            direct: !headers.is_empty(),
+            // A request carrying a declared header takes the hardened client, which bypasses the
+            // system proxy; a carrier the host adds declares nothing.
+            direct: headers.iter().any(|(_, v)| !matches!(v, HeaderValue::Carrier(_))),
             timeout,
             max_body,
             read_body: self.read_body,

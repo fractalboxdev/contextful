@@ -10,3 +10,4 @@ mod stale;
 mod suppress;
 mod sweep;
 mod template;
+mod trace;

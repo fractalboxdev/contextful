@@ -571,10 +571,14 @@ pub fn run(cmd: RunCmd) -> Result<()> {
                 None => format!("run-{}", &sha256_hex(format!("{}{}", w.clock.now().unix_nanos(), std::process::id()).as_bytes())[..12]),
             };
             let connector = plan.connector_pin(&artifact_hash(&plan.spec.connector.command, &cwd));
-            let spec = RunSpec { connector, plan: plan.clone(), run_id, site_id, pid: std::process::id(), boot_id: boot_id(), trace_id: None };
+            let trace = crate::telemetry::RunTrace::open();
+            let spec = RunSpec { connector, plan: plan.clone(), run_id, site_id, pid: std::process::id(), boot_id: boot_id(), trace_id: Some(trace.trace_id()) };
             let mut source = CommandSource { argv: plan.spec.connector.command.clone(), cwd };
             let mut dest = StoreDestination { store, decls, node, author, normalize: None, relational_parts: BTreeMap::new(), schema_diffs: Vec::new() };
             let ran = w.engine.run(&spec, &mut source, &mut dest);
+            if let Ok(row) = &ran {
+                trace.close(row);
+            }
             // Every outcome past run open publishes (`run.record.failure-publishes`).
             if w.engine.catalog.run(&spec.run_id)?.is_some() {
                 let pushed = crate::sync::push_after_run(&l, w.clock.now());

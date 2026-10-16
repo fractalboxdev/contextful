@@ -7,15 +7,15 @@ An unpinned clause is `committed`; a pinned one is `performed` when its Rust, Le
 | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
 | `assurance` | 3 | 18 | 316 | 64 | 24 | 8 | 276 | 0 | 276 |
 | `authority` | 2 | 16 | 295 | 79 | 29 | 9 | 230 | 0 | 230 |
-| `connector` | 2 | 14 | 373 | 92 | 22 | 12 | 275 | 0 | 275 |
+| `connector` | 2 | 14 | 375 | 92 | 22 | 12 | 277 | 0 | 277 |
 | `corpus` | 1 | 10 | 79 | 37 | 7 | 0 | 79 | 0 | 79 |
-| `disclosure` | 3 | 16 | 173 | 69 | 13 | 5 | 147 | 0 | 147 |
+| `disclosure` | 3 | 16 | 177 | 69 | 14 | 5 | 151 | 0 | 151 |
 | `read` | 2 | 19 | 277 | 45 | 28 | 13 | 234 | 0 | 234 |
-| `run` | 3 | 29 | 527 | 116 | 45 | 13 | 495 | 0 | 495 |
+| `run` | 3 | 29 | 529 | 116 | 45 | 14 | 497 | 0 | 497 |
 | `store` | 3 | 19 | 290 | 64 | 14 | 11 | 280 | 0 | 280 |
 | `surface` | 2 | 21 | 160 | 63 | 23 | 0 | 133 | 0 | 133 |
 | `topology` | 1 | 6 | 79 | 25 | 5 | 3 | 74 | 0 | 74 |
-| **total** | 22 | 168 | 2569 | 654 | 210 | 74 | 2223 | 0 | |
+| **total** | 22 | 168 | 2577 | 654 | 211 | 75 | 2231 | 0 | |
 
 Decision records: 18.
 
@@ -28,12 +28,12 @@ A milestone reads `closed` when its acceptance test computes `passing` and every
 | 0 — The test-first gate | 2 | 22 | 19 | passing | closed |
 | 1 — The authority core | 14 | 244 | 231 | passing | closed |
 | 2 — The store | 9 | 183 | 173 | passing | closed |
-| 3 — The run path | 12 | 273 | 262 | passing | closed |
-| 4 — Ingest | 25 | 584 | 471 | passing | closed |
+| 3 — The run path | 12 | 275 | 264 | passing | closed |
+| 4 — Ingest | 25 | 586 | 473 | passing | closed |
 | 5 — The read face under enforcement | 17 | 308 | 244 | passing | open |
 | 6 — Sync and replicas | 8 | 83 | 83 | passing | closed |
 | 7 — Memory | 6 | 72 | 57 | passing | closed |
-| 8 — Accountability | 5 | 87 | 80 | passing | closed |
+| 8 — Accountability | 5 | 91 | 84 | passing | closed |
 | 9 — Visibility | 6 | 50 | 40 | passing | closed |
 | 10 — Cadence and the operator plane | 11 | 100 | 86 | passing | open |
 | 11 — The derive tier | 7 | 94 | 93 | passing | closed |
@@ -604,9 +604,11 @@ Unscheduled operations: 12.
 | `connector.infer.logprobs` | `crates/contextful-outbound/tests/integration/infer.rs::an_endpoint_exposing_logprobs_lands_them_with_the_call_record` | performed |
 | `connector.infer.marker-derivation` | `crates/contextful-core/tests/integration/connector/infer.rs::a_fence_lookalike_in_content_cannot_close_its_own_block` | performed |
 | `connector.infer.mediated-call` | `crates/contextful-outbound/tests/integration/infer.rs::a_completion_passes_the_hook_and_the_address_check` | performed |
+| `connector.infer.model-span` | `crates/contextful-outbound/tests/integration/infer.rs::a_traced_call_records_a_gen_ai_span_its_request_names` | performed |
 | `connector.infer.output-taint` | `crates/contextful-memory/tests/integration/synthesize.rs::a_synthesized_claim_lands_under_the_label_of_its_inputs` | performed |
 | `connector.infer.provenance-order` | `crates/contextful-core/tests/integration/connector/infer.rs::provenance_labels_order_by_trust` | performed |
 | `connector.infer.replay` | `crates/contextful-core/tests/integration/connector/infer.rs::the_token_is_content_bound_not_a_constant` | performed |
+| `connector.infer.usage` | `crates/contextful-outbound/tests/integration/infer.rs::a_call_record_carries_the_endpoint_usage` | performed |
 | `connector.infer.value-cap` | `crates/contextful-core/tests/integration/connector/infer.rs::an_over_long_value_is_capped_and_marked` | performed |
 | `connector.lease.bootstrap-declared-leased` | `crates/contextful-outbound/tests/integration/lease.rs::the_bootstrap_name_cannot_be_leased` | performed |
 | `connector.lease.bootstrap-non-recursion` | `crates/contextful-outbound/tests/integration/lease.rs::the_mint_credential_comes_from_the_adapters_behind_the_provider` | performed |
@@ -1010,7 +1012,11 @@ Unscheduled operations: 12.
 | `disclosure.record.segment` | `crates/contextful-policy/tests/integration/audit.rs::a_segment_closes_at_4096_entries_under_one_signed_root` | performed |
 | `disclosure.record.segment-open` | `crates/contextful-policy/tests/integration/audit.rs::an_append_group_that_creates_a_segment_adds_one_directory_sync` | performed |
 | `disclosure.record.single-writer` | `crates/contextful-policy/tests/integration/audit.rs::two_writers_on_one_directory_append_into_one_linear_chain` | performed |
+| `disclosure.record.span-export` | `crates/contextful-outbound/tests/integration/telemetry.rs::spans_leave_as_otlp_json_to_the_configured_collector` | performed |
+| `disclosure.record.span-queue` | `crates/contextful-outbound/tests/integration/telemetry.rs::a_collector_that_never_answers_adds_no_latency_and_drops_count` | performed |
+| `disclosure.record.span-unconfigured` | `crates/contextful-outbound/tests/integration/telemetry.rs::no_endpoint_builds_no_exporter` | performed |
 | `disclosure.record.tip-signing` | `crates/contextful-policy/tests/integration/audit.rs::the_tip_signs_at_segment_close_on_idle_and_at_export` | performed |
+| `disclosure.record.trace-carrier` | `crates/contextful-core/tests/integration/disclosure/trace.rs::a_well_formed_traceparent_names_the_parent_and_a_malformed_one_is_ignored` | performed |
 | `disclosure.record.unanchored-over-signed` | `crates/contextful-policy/tests/integration/audit.rs::an_unanchored_handle_links_under_an_unsigned_tip_and_refuses_a_signed_chain` | performed |
 | `disclosure.record.unpersisted-entry` | `crates/contextful-agent/tests/integration/audit.rs::a_read_whose_entry_does_not_sync_releases_no_rows` | performed |
 | `disclosure.record.unpersisted-wire` | `crates/contextful-agent/tests/integration/audit.rs::a_read_whose_entry_does_not_sync_releases_no_rows` | performed |
@@ -1688,6 +1694,7 @@ Unscheduled operations: 12.
 | `run.record.rebuild-restores-history` | `crates/contextful-cli/tests/integration/run.rs::a_catalog_rebuild_restores_every_recorded_run` | performed |
 | `run.record.reserved-table` | `crates/contextful-cli/tests/integration/run.rs::a_run_appends_a_plan_and_a_commit_row_to_the_run_record` | performed |
 | `run.record.row-at-open` | `crates/contextful-engine/tests/integration/runner.rs::the_row_exists_before_the_first_pull` | performed |
+| `run.record.run-span` | `crates/contextful-cli/tests/integration/trace.rs::a_run_exports_its_span_under_the_callers_span` | performed |
 | `run.record.schema-diff-home` | `crates/contextful-cli/tests/integration/pipeline.rs::a_native_downgrade_is_recorded_on_the_commit_and_in_history` | performed |
 | `run.record.schema-diff-shape` | `crates/contextful-cli/tests/integration/pipeline.rs::a_downgrade_event_names_all_five_fields_and_an_uncommitted_stage_records_none` | performed |
 | `run.record.site-id-length` | `crates/contextful-core/tests/integration/run/record.rs::a_site_id_is_1_to_64_path_safe_chars` | performed |
@@ -1696,6 +1703,7 @@ Unscheduled operations: 12.
 | `run.record.status-set` | `crates/contextful-core/tests/integration/run/record.rs::seven_statuses_spelled_once_for_record_and_wire` | performed |
 | `run.record.sweep-bounds` | `crates/contextful-engine/tests/integration/sweep.rs::an_origin_row_names_its_bounds_sweep_and_origin` | performed |
 | `run.record.time-travel` | `crates/contextful-context/tests/integration/run_record.rs::an_as_of_bound_rewinds_run_history_with_every_other_table` | performed |
+| `run.record.trace-context` | `crates/contextful-cli/tests/integration/trace.rs::a_run_records_the_callers_trace_or_a_fresh_one` | performed |
 | `run.record.truncation-flag` | `crates/contextful-core/tests/integration/run/record.rs::history_echoes_its_window_and_flags_truncation` | performed |
 | `run.record.writing-site` | `crates/contextful-cli/tests/integration/run.rs::every_landed_row_names_the_site_that_wrote_it` | performed |
 | `run.retry.attempt-counter` | `crates/contextful-engine/tests/integration/attempts.rs::a_crash_mid_schedule_resumes_the_remaining_attempts` | performed |
