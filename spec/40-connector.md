@@ -579,6 +579,12 @@ The declared behavior of each source compiled into the engine.
 - `search-degradation` — An absent provider key and a provider `5xx` are transient failures yielding a zero-row outcome, and a replay returns the journaled result set.
 - `poll-only-increments` — Incremental loading is a scheduled poll. A replication socket held open is not a source read.
   *because its output is unbounded and has no recorded exchange to replay*
+- `receive-form` — A `receive` source declares `format = "jsonl"`, a positive `max_batch_bytes` and a positive `max_queue_depth`, neither defaulted; it serves every declared table and requests nothing from outside.
+  *because a ceiling the sender fills must be the operator's choice, not a guess the binary carries*
+- `receive-recorded` — A delivered batch is bounded and recorded before it lands, so {{connector.source.poll-only-increments}} reaches no `receive` source.
+- `receive-unscheduled` — A `receive` pipeline declaring a `schedule` fails validation.
+  *because a sender, not the cadence, starts its runs, so a scheduled fire fails on every beat*
+- `receive-body` — A `receive` body holds one JSON object per line, `table` naming a declared table and `row` its row object; another shape fails the whole batch as {{run.land.unreadable-input}}, naming the line.
 - `twin-api` — A source reading through an API licensed to see what no individual user sees raises `ConnectorTwinApiSource`. A sanctioned, disclosed organization-wide export path is admitted.
   *A-read*
 - `drive-walk` — The drive source walks the tree under `folder_id` breadth-first through `files.list`, paging each folder, within `drive_id` when declared. Each folder is listed once, its children sorted by name and id; no shortcut is followed.
@@ -630,8 +636,12 @@ The declared behavior of each source compiled into the engine.
 - `drive-origin` — The drive API and token endpoints are `www.googleapis.com` and `oauth2.googleapis.com` over TLS on the default port; another host, port or scheme refuses as {{connector.source.provider-origin}}, loopback excepted.
 - `drive-position-owned` — `incremental` beside the drive source refuses as {{connector.package.component-position}} at validation.
 
+unsettled: Does a job whose `after` names a `receive` pipeline fire after each delivered batch commits, or does validation refuse it? owner: connector affects: connector.source
+
 #### Scenarios
 
+- `connector.source.receive-form`: WHEN a `receive` source omits `max_queue_depth`, THEN validation refuses naming the key.
+- `connector.source.receive-body`: WHEN line 2 of a body names an undeclared table, THEN the batch fails naming line 2 and no table lands.
 - `connector.source.drive-root-set`: WHEN `folder_ids` is empty or accompanies `folder_id`, THEN validation raises `ConnectorDriveRootsInvalid` before listing.
 - `connector.source.drive-root-validation`: WHEN one selected root belongs to another Shared Drive, THEN `ConnectorDriveRootRejected` names it before any selected folder is listed.
 - `connector.source.drive-overlap`: WHEN two selected roots reach one file, THEN one `files` row carries the least root id as `resolved_root`.

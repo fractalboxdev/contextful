@@ -38,3 +38,27 @@ fn a_seeding_scope_is_named_by_its_seed_table_segment() {
     assert!(!OwnerScope::chunk("feed", "filings", "c0").seeding());
     assert!(!OwnerScope::host("job:seed#seed").seeding());
 }
+
+/// A delivered batch runs under an owner scope its batch key fixes: one key keeps one scope
+/// across resends, and two keys or the live table never share an owner.
+#[test]
+fn a_receive_scope_is_fixed_by_its_batch_key_and_apart_from_the_table() {
+    use contextful_core::run::own::OwnerScope;
+    let first = OwnerScope::receive("otel", "otel_spans", "flush-1");
+    assert_eq!(first, OwnerScope::receive("otel", "otel_spans", "flush-1"));
+    assert_ne!(first, OwnerScope::receive("otel", "otel_spans", "flush-2"));
+    assert_ne!(first, OwnerScope::table("otel", "otel_spans"));
+    assert_ne!(first, OwnerScope::receive("otel", "otel_events", "flush-1"));
+    assert_eq!(first.pipeline_table().map(|(p, _)| p), Some("otel"));
+    // The scope's table segment carries no byte of the sender's key.
+    let (_, table) = OwnerScope::receive("otel", "otel_spans", "../k/../y").pipeline_table().map(|(p, t)| (p.to_string(), t.to_string())).unwrap();
+    assert!(table.starts_with("otel_spans#receive-") && !table.contains('/') && !table.contains(".."), "{table}");
+}
+
+/// Each receive refusal's display opens with its identifier.
+#[test]
+fn receive_refusals_name_their_identifiers() {
+    use contextful_core::run::RunError;
+    assert!(RunError::ReceiveBatchTooLarge("x".into()).to_string().starts_with("ReceiveBatchTooLarge: "));
+    assert!(RunError::ReceiveBackpressure("x".into()).to_string().starts_with("ReceiveBackpressure: "));
+}

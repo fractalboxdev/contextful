@@ -78,6 +78,8 @@ PipelinePartialParse           = { clause = "run.land.partial-parse", gloss = "A
 PipelineParseCrashed           = { clause = "run.land.parse-crashed", gloss = "A non-zero exit or fatal signal from the decode process." }
 PipelineTypeDeclaredLate       = { clause = "run.land.late-type", gloss = "A pull declaring a type for a column an earlier staged batch of its run carried undeclared." }
 PipelineTableFailed            = { clause = "run.land.table-failed", gloss = "One table's pull failing inside a fire." }
+ReceiveBatchTooLarge           = { clause = "run.land.receive-batch-too-large", gloss = "A delivered body past its source's `max_batch_bytes`." }
+ReceiveBackpressure            = { clause = "run.land.receive-backpressure", gloss = "A delivered batch arriving while every queue slot of its pipeline is held." }
 ExportSignalUnknown            = { clause = "run.export.signal-unknown", gloss = "An export block naming a signal the built-in arm does not map." }
 ExportCommitSeqMissing         = { clause = "run.export.commit-seq-missing", gloss = "A table holding rows no cursor passes, their `_commit_seq` null." }
 ExportDeliveryRefused          = { clause = "run.export.delivery-refused", gloss = "An OTLP target answering other than 2xx, or unreachable." }
@@ -162,6 +164,7 @@ cancel-poll-interval       = { clause = "run.cancel.poll-interval", value = 500,
 normalize-nesting-depth    = { clause = "run.normalize.nesting-depth", value = 5, unit = "levels", basis = "chosen", gloss = "Nesting `native` keeps before a subtree lands as `Json`." }
 parse-child-deadline       = { clause = "run.land.parse-deadline", value = 60, unit = "s", basis = "chosen", gloss = "Wall clock one input's decoder child may run." }
 parse-child-memory         = { clause = "run.land.parse-memory", value = 512, unit = "MiB", basis = "chosen", gloss = "Memory one input's decoder child may consume." }
+receive-retry-after        = { clause = "run.land.receive-retry-after", value = 1, unit = "s", basis = "chosen", gloss = "Interval a backpressured sender waits before resending." }
 staged-bytes-per-run       = { clause = "run.own.staged-bytes", value = 1, unit = "GiB", basis = "chosen", gloss = "Bytes one run stages before its commit." }
 owner-lease-renewal        = { clause = "run.record.owner-lease", value = 10, unit = "s", basis = "chosen", gloss = "Renewal cadence of a run row's owner lease." }
 owner-lease-ttl            = { clause = "run.record.owner-lease", value = 30, unit = "s", basis = "chosen", gloss = "Life of an unrenewed run owner lease." }
