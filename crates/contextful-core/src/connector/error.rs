@@ -6,6 +6,21 @@ pub enum ConnectorError {
     /// An image file header that does not parse. (`connector.source.image-header`)
     #[error("ConnectorImageHeaderUnreadable: {0}")]
     ConnectorImageHeaderUnreadable(String),
+    /// An image body and its quotability marker not null together. (`connector.source.marker-body-pairing`)
+    #[error("ConnectorQuotabilityMismatch: {0}")]
+    ConnectorQuotabilityMismatch(String),
+    /// A next-page announcement naming no cursor. (`connector.source.page-cursor-missing`)
+    #[error("ConnectorPageCursorMissing: {0}")]
+    ConnectorPageCursorMissing(String),
+    /// A metric read at a grain the vendor estimates. (`connector.source.metric-grain`)
+    #[error("ConnectorMetricGrainRejected: {0}")]
+    ConnectorMetricGrainRejected(String),
+    /// A report stream ordered by the engine-injected ingest stamp. (`connector.source.ordering-column`)
+    #[error("ConnectorOrderingColumnRejected: {0}")]
+    ConnectorOrderingColumnRejected(String),
+    /// An authentication failure on a report read. (`connector.source.report-auth`)
+    #[error("ConnectorAuthTerminal: {0}")]
+    ConnectorAuthTerminal(String),
     /// A delimited body invalid under its declared encoding. (`connector.source.declared-encoding`)
     #[error("ConnectorEncodingInvalid: {0}")]
     ConnectorEncodingInvalid(String),
