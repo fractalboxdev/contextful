@@ -63,6 +63,14 @@ struct ClaimWriteRequest {
     claim: CandidateClaim,
 }
 
+/// Mark `hydration` complete, then report the mapped snapshot set on `out` as the
+/// `hydrated:` line, so a reader waiting on the line finds the face answering reads
+/// (`read.cache.warming-read`).
+pub fn announce_hydrated(hydration: &Hydration, files: usize, bytes: u64, out: &mut impl std::io::Write) {
+    hydration.finish();
+    let _ = writeln!(out, "hydrated: snapshot set mapped (files: {files}, bytes: {bytes})");
+}
+
 #[cfg(feature = "data-plane")]
 fn claim_write_error(error: MemoryFault) -> contextful_agent::http::HttpResponse {
     let (status, identifier): (u16, String) = match &error {
@@ -389,10 +397,9 @@ pub fn run(args: ServeArgs, tasks: &Tasks) -> Result<()> {
     #[cfg(feature = "data-plane")]
     let http = http.with_awake(&awake);
     let hydrated = |set: contextful_context::read::MappedSnapshotSet| {
-        use std::io::Write;
-        let _ = writeln!(std::io::stderr(), "hydrated: snapshot set mapped (files: {}, bytes: {})", set.files().count(), set.bytes());
+        let (files, bytes) = (set.files().count(), set.bytes());
         *mapped.lock().unwrap_or_else(std::sync::PoisonError::into_inner) = Some(set);
-        hydration.finish();
+        announce_hydrated(&hydration, files, bytes, &mut std::io::stderr());
     };
     // The listener binds warming whether or not the store pulls; mapping touches every page
     // of the set, so it runs behind the listener (`read.cache.cold-start`).
