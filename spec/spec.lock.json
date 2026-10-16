@@ -23248,6 +23248,17 @@
       "line": 245
     },
     {
+      "id": "disclosure.erase.tenant-rewrite",
+      "contract": "disclosure",
+      "operation": "erase",
+      "subject": "tenant-rewrite",
+      "kind": "behavior",
+      "statement": "`context erase --tenant <id>` rewrites every row whose bare outermost partition column holds the identifier's exact bytes out of every table through {{disclosure.erase.atomic-publication}}, and prints a freshly signed receipt.",
+      "why": "A-disclosure",
+      "file": "spec/62-accountability.md",
+      "line": 247
+    },
+    {
       "id": "disclosure.receipt.pseudonym",
       "contract": "disclosure",
       "operation": "receipt",
@@ -23256,7 +23267,7 @@
       "statement": "`tenant_hash` is SHA-256 over a random per-receipt `salt` and the tenant identifier. A receipt carrying the identifier in cleartext raises `ReceiptIdentifierLeak` before signing.",
       "why": "A-disclosure",
       "file": "spec/62-accountability.md",
-      "line": 280
+      "line": 282
     },
     {
       "id": "disclosure.receipt.widened-claim",
@@ -23267,7 +23278,7 @@
       "statement": "A coverage block naming a scope broader than its `receipt_version` declares raises `ReceiptClaimWidened`.",
       "why": "A-disclosure",
       "file": "spec/62-accountability.md",
-      "line": 282
+      "line": 284
     },
     {
       "id": "disclosure.receipt.replayed",
@@ -23278,7 +23289,7 @@
       "statement": "Returning the byte-identical earlier artifact in place of a freshly signed one raises `ReceiptReplayed`.",
       "why": "A-disclosure",
       "file": "spec/62-accountability.md",
-      "line": 284
+      "line": 286
     },
     {
       "id": "disclosure.receipt.no-rewrite-engine",
@@ -23289,7 +23300,29 @@
       "statement": "A purge where the columnar rewrite engine is unavailable raises `ReceiptWithoutRewrite` and signs nothing.",
       "why": "because a receipt over a rewrite that did not run states a false claim",
       "file": "spec/62-accountability.md",
-      "line": 286
+      "line": 288
+    },
+    {
+      "id": "disclosure.receipt.coverage",
+      "contract": "disclosure",
+      "operation": "receipt",
+      "subject": "coverage",
+      "kind": "behavior",
+      "statement": "A `receipt_version` 1 coverage block covers the canonical store and names replicas and the replication bucket as excluded.",
+      "why": "because the object interface has no delete, so a claim over the replication bucket names a removal that never ran",
+      "file": "spec/62-accountability.md",
+      "line": 290
+    },
+    {
+      "id": "disclosure.receipt.chain-record",
+      "contract": "disclosure",
+      "operation": "receipt",
+      "subject": "chain-record",
+      "kind": "behavior",
+      "statement": "A purge appends its receipt's `request_id` and SHA-256 digest to the audit chain after signing; a digest the chain already holds follows {{disclosure.receipt.replayed}}.",
+      "why": "A-disclosure",
+      "file": "spec/62-accountability.md",
+      "line": 292
     },
     {
       "id": "surface.arm.unreadable-schedule",
@@ -30989,6 +31022,14 @@
     [
       "disclosure.erase.restage-cache",
       "read.synthesize.extract-cache"
+    ],
+    [
+      "disclosure.erase.tenant-rewrite",
+      "disclosure.erase.atomic-publication"
+    ],
+    [
+      "disclosure.receipt.chain-record",
+      "disclosure.receipt.replayed"
     ],
     [
       "surface.arm.pulled-history",

@@ -5,7 +5,7 @@ use crate::error::IoPath;
 use crate::erasure_frontier::{relative_path, Certificate, Frontier, RetiredDirectory, TableReplacement, CERTIFICATE_FILE, FRONTIER_FILE};
 use arrow_array::{BooleanArray, RecordBatch};
 use arrow_select::{concat::concat_batches, filter::filter_record_batch};
-use contextful_core::disclosure::erase::{column_key_set_declared, select_column_keys_declared, select_keys, select_subject, ErasureError, RetainedRows};
+use contextful_core::disclosure::erase::{column_key_set_declared, select_column_keys_declared, select_keys, select_subject, select_tenant, tenant_columns, ErasureError, ErasureSelection, RetainedRows, TableTypes};
 use contextful_core::ports::{Clock, SigningPort};
 use contextful_core::store::declare::{DeclarationSet, TableDecl};
 use contextful_core::store::lay_out::{SnapshotManifest, MANIFEST_FILE, SNAPSHOTS_DIR};
@@ -17,6 +17,7 @@ use contextful_policy::audit::{self, AuditLog};
 mod recovery_tests;
 use contextful_policy::enforce::erase::ForgetAdmission;
 use contextful_policy::issue::SignerKey;
+use contextful_policy::receipt::{Coverage, ReceiptClaim, TenantReceipt, RECEIPT_VERSION};
 use contextful_policy::verify::AdmittedAuthority;
 use serde_json::json;
 use std::{collections::BTreeMap, path::{Path, PathBuf}, sync::Arc};
@@ -106,16 +107,114 @@ pub fn erase_declared(store: &Store, declarations: &DeclarationSet, request: Era
     if request.audit_key.is_empty() { return Err(incomplete("no project audit key is configured")); }
     let all: Vec<&str> = request.declarations.iter().map(|decl| decl.name.as_str()).collect();
     ForgetAdmission::admit(request.admission.authority(), &all)?;
+    let guard = || revalidate(&request);
+    let select = |rows: &RetainedRows| -> Result<(ErasureSelection, String)> {
+        Ok(match &request.selector {
+            EraseSelector::Subject(subject) => (select_subject(request.declarations, rows, request.tables, subject)?,
+                audit::query_digest(request.audit_key, &format!("contextful.erasure.subject\n{subject}"))),
+            EraseSelector::KeySet { subject_hash, keys } => {
+                key_set_scope(request.tables, keys)?;
+                (select_keys(request.declarations, rows, keys)?, key_set_hash(subject_hash)?)
+            }
+            EraseSelector::ColumnKeySet { subject_hash, column, keys } => {
+                key_set_scope(request.tables, &column_key_set_declared(declarations, column, keys)?)?;
+                (select_column_keys_declared(declarations, rows, column, keys)?, key_set_hash(subject_hash)?)
+            }
+        })
+    };
+    publish(store, &Plan { declarations: request.declarations, signer, audit_dir: request.audit_dir, audit_key: request.audit_key, clock: request.clock, guard: &guard, select: &select })
+}
+
+/// A store owner's tenant purge; the caller presents no capability credential.
+pub struct PurgeRequest<'a> {
+    pub declarations: &'a [TableDecl],
+    pub tenant: &'a str,
+    pub signer: Option<Arc<dyn SigningPort + Send + Sync>>,
+    pub audit_dir: &'a Path,
+    pub audit_key: &'a [u8],
+    pub clock: &'a dyn Clock,
+}
+
+pub struct Purged {
+    pub store: Store,
+    pub receipt: TenantReceipt,
+}
+
+const RECEIPT_OPERATION: &str = "tenant-receipt";
+
+/// Rewrite every row whose bare outermost partition column holds the tenant's exact bytes
+/// out of every table through one signed publication, then sign a fresh salted receipt
+/// and record its digest on the audit chain.
+pub fn purge_tenant(store: &Store, request: PurgeRequest<'_>) -> Result<Purged> {
+    let signer = request.signer.as_ref().ok_or_else(|| incomplete("no purge signing port is configured"))?;
+    if request.audit_key.is_empty() { return Err(incomplete("no project audit key is configured")); }
+    let mut types = TableTypes::new();
+    for decl in request.declarations {
+        if let Some(schema) = store.try_schema(&decl.name)? {
+            types.insert(decl.name.clone(), schema.columns.into_iter().map(|column| (column.name, column.ty)).collect());
+        }
+    }
+    let columns = tenant_columns(request.declarations, &types)?;
+    let select = |rows: &RetainedRows| -> Result<(ErasureSelection, String)> {
+        Ok((select_tenant(request.declarations, rows, &columns, request.tenant)?,
+            audit::query_digest(request.audit_key, &format!("contextful.erasure.tenant\n{}", request.tenant))))
+    };
+    let guard = || Ok(());
+    let erased = publish(store, &Plan { declarations: request.declarations, signer, audit_dir: request.audit_dir, audit_key: request.audit_key, clock: request.clock, guard: &guard, select: &select })?;
+    let mut nonce = [0; 32]; getrandom::fill(&mut nonce).map_err(|_| incomplete("the receipt request identity is unavailable"))?;
+    let store_id = crate::project::store_id(erased.store.root()).map_err(|_| incomplete("the purge store identity is unavailable"))?;
+    let claim = ReceiptClaim {
+        request_id: crate::store::etag(&nonce),
+        transaction_id: erased.transaction_id.clone(),
+        store_id,
+        affected_counts: erased.affected_counts.clone(),
+        coverage: Coverage::of_version(RECEIPT_VERSION).ok_or_else(|| incomplete("the receipt version declares no coverage"))?,
+        issued_at: request.clock.now().to_rfc3339(),
+    };
+    let receipt = TenantReceipt::sign(claim, request.tenant, &ConfiguredSigner(signer.clone()))?;
+    receipt.check_fresh(&issued_receipts(request.audit_dir)?)?;
+    let log = AuditLog::anchor(request.audit_dir, ConfiguredSigner(signer.clone())).map_err(|_| incomplete("the canonical audit chain cannot open under the purge signer"))?;
+    log.append(json!({"operation":RECEIPT_OPERATION,"request_id":receipt.request_id,"transaction_id":receipt.transaction_id,"receipt_sha256":receipt.digest()}))
+        .map_err(|_| incomplete("the receipt audit entry did not persist"))?;
+    log.export().map_err(|_| incomplete("the receipt audit evidence did not sign"))?;
+    Ok(Purged { store: erased.store, receipt })
+}
+
+/// The digest of every receipt the audit chain records, oldest first.
+pub fn issued_receipts(audit_dir: &Path) -> Result<Vec<String>> {
+    let entries = match audit::entries(audit_dir) {
+        Ok(entries) => entries,
+        Err(_) if !audit_dir.exists() => return Ok(Vec::new()),
+        Err(_) => return Err(incomplete("the audit chain holding issued receipts is unreadable")),
+    };
+    Ok(entries.iter().filter(|entry| entry.attributes.get("operation").and_then(serde_json::Value::as_str) == Some(RECEIPT_OPERATION))
+        .filter_map(|entry| entry.attributes.get("receipt_sha256").and_then(serde_json::Value::as_str).map(str::to_string)).collect())
+}
+
+/// One signed publication: the selection a caller supplies, staged, signed, committed and
+/// collected under the canonical frontier.
+struct Plan<'a> {
+    declarations: &'a [TableDecl],
+    signer: &'a Arc<dyn SigningPort + Send + Sync>,
+    audit_dir: &'a Path,
+    audit_key: &'a [u8],
+    clock: &'a dyn Clock,
+    guard: &'a dyn Fn() -> Result<()>,
+    select: &'a dyn Fn(&RetainedRows) -> Result<(ErasureSelection, String)>,
+}
+
+fn publish(store: &Store, plan: &Plan<'_>) -> Result<Erased> {
+    let signer = plan.signer;
     let key = SignerKey::of(signer.as_ref());
-    crate::erasure_frontier::check_signer(store, request.audit_dir, &key)?;
+    crate::erasure_frontier::check_signer(store, plan.audit_dir, &key)?;
     let configured = store.clone();
     configured.with_frontier(|bound| {
-        revalidate(&request)?;
-        if request.audit_key != bound.canonical_audit_key()? { return Err(incomplete("the supplied audit key disagrees with the canonical project key")); }
+        (plan.guard)()?;
+        if plan.audit_key != bound.canonical_audit_key()? { return Err(incomplete("the supplied audit key disagrees with the canonical project key")); }
         let mut batches: BTreeMap<String, Vec<(PathBuf, Vec<RecordBatch>)>> = BTreeMap::new();
         let mut rows = RetainedRows::new();
         let mut directories = BTreeMap::new();
-        for decl in request.declarations {
+        for decl in plan.declarations {
             let directory = bound.table_dir(&decl.name)?;
             let mut retained = Vec::new();
             let mut parts = Vec::new();
@@ -134,18 +233,7 @@ pub fn erase_declared(store: &Store, declarations: &DeclarationSet, request: Era
             rows.insert(decl.name.clone(), retained);
             batches.insert(decl.name.clone(), parts);
         }
-        let (selected, subject_hash) = match &request.selector {
-            EraseSelector::Subject(subject) => (select_subject(request.declarations, &rows, request.tables, subject)?,
-                audit::query_digest(request.audit_key, &format!("contextful.erasure.subject\n{subject}"))),
-            EraseSelector::KeySet { subject_hash, keys } => {
-                key_set_scope(request.tables, keys)?;
-                (select_keys(request.declarations, &rows, keys)?, key_set_hash(subject_hash)?)
-            }
-            EraseSelector::ColumnKeySet { subject_hash, column, keys } => {
-                key_set_scope(request.tables, &column_key_set_declared(declarations, column, keys)?)?;
-                (select_column_keys_declared(declarations, &rows, column, keys)?, key_set_hash(subject_hash)?)
-            }
-        };
+        let (selected, subject_hash) = (plan.select)(&rows)?;
         let mut nonce = [0; 32]; getrandom::fill(&mut nonce).map_err(|_| incomplete("erasure transaction identity is unavailable"))?;
         let transaction_id = crate::store::etag(&nonce);
         let staging = bound.root().join("_erasure/staging").join(&transaction_id);
@@ -163,7 +251,7 @@ pub fn erase_declared(store: &Store, declarations: &DeclarationSet, request: Era
         let mut counts = BTreeMap::new();
         let store_id = crate::project::store_id(bound.root()).map_err(|_| incomplete("the erasure store identity is unavailable"))?;
         for name in &targets {
-            let decl = request.declarations.iter().find(|decl| decl.name == *name).ok_or_else(|| unsupported("a selected frontier table has no declaration"))?;
+            let decl = plan.declarations.iter().find(|decl| decl.name == *name).ok_or_else(|| unsupported("a selected frontier table has no declaration"))?;
             let source = &directories[*name];
             let old_inventory = crate::erasure_frontier::retirement_inventory(source)?;
             let old_directory = source.strip_prefix(bound.root()).map_err(|_| incomplete("the retired directory escapes its store"))?.components().map(|component| component.as_os_str().to_str().ok_or_else(|| incomplete("the retired path is not text"))).collect::<Result<Vec<_>>>()?.join("/");
@@ -220,9 +308,9 @@ pub fn erase_declared(store: &Store, declarations: &DeclarationSet, request: Era
             hashes.insert((*name).to_string(), crate::store::etag(&serde_json::to_vec(&inventory).map_err(|_| incomplete("replacement inventory does not encode"))?));
             inventories.insert((*name).to_string(), inventory);
         }
-        revalidate(&request)?;
-        let log = AuditLog::anchor(request.audit_dir, ConfiguredSigner(signer.clone())).map_err(|_| incomplete("the canonical audit chain cannot open under the erasure signer"))?;
-        let entry = log.append(json!({"operation":"erasure","store_id":store_id,"transaction_id":transaction_id,"subject_hash":subject_hash,"affected_counts":counts,"replacement_hashes":hashes,"retired_directories":retired,"executed_at":request.clock.now().to_rfc3339()}))
+        (plan.guard)()?;
+        let log = AuditLog::anchor(plan.audit_dir, ConfiguredSigner(signer.clone())).map_err(|_| incomplete("the canonical audit chain cannot open under the erasure signer"))?;
+        let entry = log.append(json!({"operation":"erasure","store_id":store_id,"transaction_id":transaction_id,"subject_hash":subject_hash,"affected_counts":counts,"replacement_hashes":hashes,"retired_directories":retired,"executed_at":plan.clock.now().to_rfc3339()}))
             .map_err(|_| incomplete("the row-free erasure audit entry did not persist"))?;
         log.export().map_err(|_| incomplete("the erasure audit evidence did not sign"))?;
         drop(log);
@@ -259,7 +347,7 @@ pub fn erase_declared(store: &Store, declarations: &DeclarationSet, request: Era
                 return Err(incomplete("the retired inventory changed before publication"));
             }
         }
-        revalidate(&request)?;
+        (plan.guard)()?;
         let frontier = Frontier { version:1, transaction_id:transaction_id.clone(), audit_hash:entry.entry_hash, audit_seq:entry.seq, tables:replacements };
         let bytes = serde_json::to_vec(&frontier).map_err(|_| incomplete("the project frontier does not encode"))?;
         bound.metadata().replace(&bound.root().join(FRONTIER_FILE), &bytes)?;

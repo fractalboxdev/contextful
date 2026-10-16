@@ -287,3 +287,50 @@ referenced_by = [{ table = "notes", column = "blob" }]
     assert!(error.to_string().starts_with("ErasureScopeUnsupported"));
     assert!(!format!("{selected:?}").contains("shared"));
 }
+
+fn tenant_pack(declaration: &str) -> Vec<TableDecl> {
+    TableDecl::parse_declaration_set(declaration, &[]).unwrap()
+}
+
+/// A tenant column of a non-string type raises `PurgeTenantColumnType`.
+// spec: disclosure.erase.tenant-column-type@6776f6b7
+#[test]
+fn a_tenant_column_of_a_non_string_type_raises_purge_tenant_column_type() {
+    use contextful_core::disclosure::erase::{tenant_columns, ErasureError};
+    use contextful_core::store::reconcile::ColumnType;
+    let declared = tenant_pack("[[pipeline.tables]]\nname = \"orders\"\npartition_by = [\"tenant\"]\ncolumns = {tenant=\"int64\"}\n");
+    assert_eq!(tenant_columns(&declared, &BTreeMap::new()).unwrap_err(), ErasureError::PurgeTenantColumnType("orders".into()));
+    let reconciled = tenant_pack("[[pipeline.tables]]\nname = \"orders\"\npartition_by = [\"tenant\"]\n");
+    let types = BTreeMap::from([("orders".to_string(), BTreeMap::from([("tenant".to_string(), ColumnType::Timestamp)]))]);
+    assert_eq!(tenant_columns(&reconciled, &types).unwrap_err(), ErasureError::PurgeTenantColumnType("orders".into()));
+    let text = BTreeMap::from([("orders".to_string(), BTreeMap::from([("tenant".to_string(), ColumnType::Utf8)]))]);
+    assert_eq!(tenant_columns(&reconciled, &text).unwrap(), BTreeMap::from([("orders".to_string(), "tenant".to_string())]));
+}
+
+/// A purge finding no model declaring an outermost partition key raises `PurgeTenantUndeclared`.
+// spec: disclosure.erase.tenant-undeclared@3e6810bb
+#[test]
+fn a_purge_finding_no_outermost_partition_key_raises_purge_tenant_undeclared() {
+    use contextful_core::disclosure::erase::{tenant_columns, ErasureError};
+    let unpartitioned = tenant_pack("[[pipeline.tables]]\nname = \"orders\"\n[[pipeline.tables]]\nname = \"events\"\ncluster_by = [\"tenant\"]\n");
+    assert_eq!(tenant_columns(&unpartitioned, &BTreeMap::new()).unwrap_err(), ErasureError::PurgeTenantUndeclared);
+    let mixed = tenant_pack("[[pipeline.tables]]\nname = \"orders\"\n[[pipeline.tables]]\nname = \"events\"\npartition_by = [\"org\", \"day\"]\n");
+    assert_eq!(tenant_columns(&mixed, &BTreeMap::new()).unwrap(), BTreeMap::from([("events".to_string(), "org".to_string())]));
+}
+
+#[test]
+fn a_tenant_selection_removes_matching_rows_from_every_partitioned_table() {
+    use contextful_core::disclosure::erase::select_tenant;
+    let tables = tenant_pack("[[pipeline.tables]]\nname = \"orders\"\npartition_by = [\"tenant\"]\n[[pipeline.tables]]\nname = \"events\"\npartition_by = [\"org\"]\n[[pipeline.tables]]\nname = \"global\"\n");
+    let columns = BTreeMap::from([("orders".to_string(), "tenant".to_string()), ("events".to_string(), "org".to_string())]);
+    let rows: RetainedRows = BTreeMap::from([
+        ("orders".to_string(), objects(json!([{"tenant":"acme"}, {"tenant":"globex"}, {"tenant":"ACME"}]))),
+        ("events".to_string(), objects(json!([{"org":"globex"}, {"org":"acme"}]))),
+        ("global".to_string(), objects(json!([{"tenant":"acme"}]))),
+    ]);
+    let selection = select_tenant(&tables, &rows, &columns, "acme").unwrap();
+    assert_eq!(selection.removes("orders"), &[true, false, false]);
+    assert_eq!(selection.removes("events"), &[false, true]);
+    assert_eq!(selection.removes("global"), &[false]);
+    assert!(select_tenant(&tables, &rows, &columns, "").is_err(), "an empty tenant identifier selects nothing");
+}

@@ -119,9 +119,9 @@ Ada leaves and is erased under the forget grant ({{disclosure.erase.privilege}})
 cascade invalidates facts derived from her rows ({{disclosure.erase.cascade}}) or commits
 nothing ({{disclosure.erase.cascade-unbounded}}); files and cached copies of her rows are
 collected ({{disclosure.erase.physical-removal}}); re-synthesis replays untouched
-batches through the cache ({{disclosure.erase.restage-cache}}). A tenant purge signs a receipt
-naming a salted pseudonym ({{disclosure.receipt.pseudonym}}) within its version's claim
-({{disclosure.receipt.widened-claim}}).
+batches through the cache ({{disclosure.erase.restage-cache}}). A tenant purge
+({{disclosure.erase.tenant-rewrite}}) signs a receipt naming a salted pseudonym
+({{disclosure.receipt.pseudonym}}) within its version's claim ({{disclosure.receipt.coverage}}).
 
 ## Where to look
 

@@ -244,6 +244,8 @@ The one erasure verb: subject tombstones, the bounded provenance cascade, the re
   *A-disclosure*
 - `owner-only` — A purge presented with a capability token raises `PurgeRequiresOwner`, evaluated before anything reveals store contents.
   *A-disclosure*
+- `tenant-rewrite` — `context erase --tenant <id>` rewrites every row whose bare outermost partition column holds the identifier's exact bytes out of every table through {{disclosure.erase.atomic-publication}}, and prints a freshly signed receipt.
+  *A-disclosure*
 
 A subject erasure:
 
@@ -285,6 +287,10 @@ The signed artifact a tenant purge returns: its claim, its coverage block, its p
   *A-disclosure*
 - `no-rewrite-engine` — A purge where the columnar rewrite engine is unavailable raises `ReceiptWithoutRewrite` and signs nothing.
   *because a receipt over a rewrite that did not run states a false claim*
+- `coverage` — A `receipt_version` 1 coverage block covers the canonical store and names replicas and the replication bucket as excluded.
+  *because the object interface has no delete, so a claim over the replication bucket names a removal that never ran*
+- `chain-record` — A purge appends its receipt's `request_id` and SHA-256 digest to the audit chain after signing; a digest the chain already holds follows {{disclosure.receipt.replayed}}.
+  *A-disclosure*
 
 A tenant purge, its receipt, and an offline check of it:
 
@@ -297,7 +303,7 @@ sequenceDiagram
         participant L as audit chain
     end
     participant V as verifier
-    O->>P: forget --tenant, no capability token
+    O->>P: context erase --tenant, no capability token
     P->>S: rewrite run files, snapshots, builds, memory mirror
     P->>P: hash tenant with fresh salt, sign payload
     P->>L: append the receipt entry under request_id
@@ -305,8 +311,6 @@ sequenceDiagram
     O->>V: receipt and the tenant identifier
     V->>V: recompute hashes, check the signature
 ```
-
-unsettled: Does the replication bucket fall inside the receipt claim once the object interface gains a delete? owner: disclosure affects: disclosure.receipt
 
 unsettled: Which record holds a purge's `request_id` so a repeat purge returns it as `prior_request_id`? owner: disclosure affects: disclosure.receipt
 

@@ -1156,3 +1156,104 @@ fn recovery_completes_a_committed_frontier_discards_uncommitted_replacements_and
     let read = contextful_context::rows::table_rows(&bound, &table, &["id"]);
     assert!(read.unwrap_err().to_string().starts_with("ErasureTransactionIncomplete"), "a disagreeing record releases store content");
 }
+
+#[cfg(feature = "read")]
+struct Tenanted {
+    fixture: Fixture,
+    tables: Vec<contextful_core::store::declare::TableDecl>,
+    project: contextful_context::project::Project,
+}
+
+#[cfg(feature = "read")]
+fn tenanted(orders_tenant_type: contextful_core::store::reconcile::ColumnType) -> Tenanted {
+    use contextful_core::store::reconcile::ColumnType;
+    let fixture = Fixture::new();
+    let orders = decl("name = \"orders\"\nprimary_key = [\"id\"]\npartition_by = [\"tenant\"]\nretain_runs = \"90d\"");
+    let events = decl("name = \"events\"\nprimary_key = [\"id\"]\npartition_by = [\"org\", \"kind\"]\nretain_runs = \"90d\"");
+    let global = decl("name = \"global\"\nprimary_key = [\"id\"]");
+    let tenant = |value: &str| if orders_tenant_type == ColumnType::Utf8 { json!(value) } else { json!(7) };
+    fixture.land_typed(&orders, "run-0001", json!([
+        { "id":"o1", "tenant":tenant("acme-purged-tenant"), "note":"acme-purged-tenant order" },
+        { "id":"o2", "tenant":tenant("globex"), "note":"globex order" },
+    ]), "2030-01-01T00:00:00Z", &[("tenant", orders_tenant_type)]).unwrap();
+    fixture.land(&events, "run-0001", json!([
+        { "id":"e1", "org":"acme-purged-tenant", "kind":"login" },
+        { "id":"e2", "org":"globex", "kind":"login" },
+    ]), "2030-01-01T00:00:00Z").unwrap();
+    fixture.land(&global, "run-0001", json!([{ "id":"g1", "label":"shared" }]), "2030-01-01T00:00:00Z").unwrap();
+    for table in [&orders, &events] {
+        contextful_context::fold::fold(&fixture.store, table, crate::support::at("2030-01-01T00:01:00Z")).unwrap();
+    }
+    contextful_context::project::ensure_store_id(fixture.store.root()).unwrap();
+    let project = contextful_context::project::Project { dir:fixture.store.root().ancestors().nth(3).unwrap().to_path_buf(), name:"research".into() };
+    Tenanted { fixture, tables: vec![orders, events, global], project }
+}
+
+#[cfg(feature = "read")]
+fn purge(t: &Tenanted, store: &contextful_context::Store, signer: &std::sync::Arc<contextful_policy::issue::SeedSigner>, tenant: &str) -> contextful_context::Result<contextful_context::erase::Purged> {
+    use contextful_context::erase::{purge_tenant, PurgeRequest};
+    let audit_key = contextful_context::project::audit_key(&t.fixture.store, &t.project).unwrap();
+    let audit_dir = t.project.audit_dir();
+    let clock = contextful_core::ports::FixedClock(crate::read::at("2030-01-01T00:05:00Z"));
+    purge_tenant(store, PurgeRequest { declarations:&t.tables, tenant, signer:Some(signer.clone()), audit_dir:&audit_dir, audit_key:&audit_key, clock:&clock })
+}
+
+/// A purge appends its receipt's `request_id` and SHA-256 digest to the audit chain after signing; a digest the chain already holds follows {{disclosure.receipt.replayed}}.
+// spec: disclosure.receipt.chain-record@9df60be2
+#[test]
+#[cfg(feature = "read")]
+fn a_tenant_purge_rewrites_the_tenant_out_of_every_table_and_returns_a_verifying_receipt() {
+    use contextful_core::{issue::SignatureAlgorithm, store::reconcile::ColumnType};
+    use contextful_policy::{issue::{SeedSigner, SignerKey}, receipt::TenantReceipt};
+    let t = tenanted(ColumnType::Utf8);
+    let signer = std::sync::Arc::new(SeedSigner::generate(SignatureAlgorithm::Ed25519));
+    let audit_dir = t.project.audit_dir();
+    let store = t.fixture.store.with_erasure_verifier(audit_dir.clone(), vec![SignerKey::of(signer.as_ref())]).unwrap();
+    let purged = purge(&t, &store, &signer, "acme-purged-tenant").unwrap();
+    let rows = |name: &str| serde_json::to_value(contextful_context::rows::table_rows(&purged.store, t.tables.iter().find(|table| table.name == name).unwrap(), &["id"]).unwrap()).unwrap();
+    assert_eq!(rows("orders"), json!([{ "id":"o2" }]));
+    assert_eq!(rows("events"), json!([{ "id":"e2" }]));
+    assert_eq!(rows("global"), json!([{ "id":"g1" }]));
+    fn check(directory: &std::path::Path) {
+        for entry in std::fs::read_dir(directory).unwrap() {
+            let path = entry.unwrap().path();
+            assert!(!path.file_name().unwrap().to_string_lossy().contains("acme-purged-tenant"), "a purged tenant survives in {}", path.display());
+            if path.is_dir() { check(&path); }
+            else {
+                let bytes = std::fs::read(&path).unwrap();
+                assert!(!bytes.windows(18).any(|window| window == b"acme-purged-tenant"), "a purged tenant's bytes survive in {}", path.display());
+            }
+        }
+    }
+    check(purged.store.root());
+    check(&audit_dir);
+    let receipt = &purged.receipt;
+    receipt.verify("acme-purged-tenant", &[SignerKey::of(signer.as_ref())]).unwrap();
+    // One retained version in the landed run and one in the folded snapshot, per table.
+    assert_eq!(receipt.affected_counts, std::collections::BTreeMap::from([("events".to_string(), 2), ("orders".to_string(), 2)]));
+    assert_eq!(receipt.coverage.excluded, ["replicas", "replication-bucket"]);
+    assert_eq!(contextful_context::erase::issued_receipts(&audit_dir).unwrap(), vec![receipt.digest()]);
+    let recorded = contextful_policy::audit::entries(&audit_dir).unwrap();
+    assert!(recorded.iter().any(|entry| entry.attributes["request_id"] == json!(receipt.request_id) && entry.attributes["receipt_sha256"] == json!(receipt.digest())),
+        "the chain records no entry binding the receipt's request id to its digest");
+    let again = purge(&t, &purged.store, &signer, "acme-purged-tenant").unwrap();
+    assert_ne!(again.receipt.request_id, receipt.request_id);
+    assert_ne!(again.receipt.digest(), receipt.digest(), "a repeat purge returns the earlier artifact");
+    let issued = contextful_context::erase::issued_receipts(&audit_dir).unwrap();
+    assert_eq!(receipt.check_fresh(&issued).unwrap_err(), contextful_core::disclosure::erase::ErasureError::ReceiptReplayed);
+    let _: &TenantReceipt = &again.receipt;
+}
+
+#[test]
+#[cfg(feature = "read")]
+fn a_tenant_purge_over_a_reconciled_non_string_tenant_column_refuses_before_signing() {
+    use contextful_core::{issue::SignatureAlgorithm, store::reconcile::ColumnType};
+    use contextful_policy::issue::{SeedSigner, SignerKey};
+    let t = tenanted(ColumnType::Int64);
+    let signer = std::sync::Arc::new(SeedSigner::generate(SignatureAlgorithm::Ed25519));
+    let audit_dir = t.project.audit_dir();
+    let store = t.fixture.store.with_erasure_verifier(audit_dir.clone(), vec![SignerKey::of(signer.as_ref())]).unwrap();
+    let refusal = purge(&t, &store, &signer, "acme-purged-tenant").err().expect("a non-string tenant column purges");
+    assert!(refusal.to_string().contains("PurgeTenantColumnType"), "{refusal}");
+    assert!(contextful_policy::audit::entries(&audit_dir).unwrap_or_default().is_empty(), "a refused purge signs an audit entry");
+}

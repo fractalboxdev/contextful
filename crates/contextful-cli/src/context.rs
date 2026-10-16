@@ -74,11 +74,15 @@ pub enum ContextCmd {
         /// Resume an authenticated committed frontier without selecting or signing another erasure.
         #[arg(long)]
         recover: bool,
-        #[arg(long, required_unless_present_any = ["keyset_file", "recover"], conflicts_with_all = ["keyset_file", "recover"])]
+        #[arg(long, required_unless_present_any = ["keyset_file", "recover", "tenant"], conflicts_with_all = ["keyset_file", "recover"])]
         subject: Option<String>,
         #[arg(long = "key-set", alias = "keyset-file", conflicts_with = "recover")]
         keyset_file: Option<PathBuf>,
-        #[arg(long, value_delimiter = ',', required_unless_present_any = ["recover", "keyset_file"], conflicts_with = "recover")]
+        /// Purge one tenant's rows from every table partitioned outermost by a tenant
+        /// column, as the store owner, and print its signed receipt.
+        #[arg(long, conflicts_with_all = ["subject", "keyset_file", "tables", "recover"])]
+        tenant: Option<String>,
+        #[arg(long, value_delimiter = ',', required_unless_present_any = ["recover", "keyset_file", "tenant"], conflicts_with = "recover")]
         tables: Vec<String>,
         /// Explicit configured signing port; verification pins remain independent.
         #[arg(long, required_unless_present = "recover", conflicts_with = "recover")]
@@ -270,6 +274,29 @@ fn run_erasure_recovery(args: &StoreArgs, admit: &AdmitArgs, json: bool) -> Resu
     Ok(())
 }
 
+/// A tenant purge answers the store owner alone: a presented capability credential
+/// refuses before the project is located (`disclosure.erase.owner-only`).
+fn run_purge(args: &StoreArgs, tenant: &str, issuer_key: &Path, admit: &AdmitArgs, json: bool) -> Result<()> {
+    use contextful_context::erase::{purge_tenant, PurgeRequest};
+    use contextful_core::disclosure::erase::ErasureError;
+    use contextful_policy::issue::SeedSigner;
+    if AdmitArgs::presented() {
+        return Err(ErasureError::PurgeRequiresOwner(format!("a tenant purge answers the local store owner; unset {}, which presents a capability credential", crate::admit::TOKEN_VAR)).into());
+    }
+    let located = locate(args.project.as_deref(), args.declaration.clone())?;
+    let text = std::fs::read_to_string(&located.declaration)?;
+    let pack = contextful_core::store::declare::DeclarationSet::parse(&text, &crate::project::pipeline_files(&located.declaration)?)?;
+    let store = crate::project::open_store(&located.project, admit.public_key.as_deref(), admit.keyset.as_deref())?;
+    let signer = std::sync::Arc::new(SeedSigner::resolve(Some(issuer_key))?);
+    let clock = crate::clock::SystemClock;
+    let audit_key = contextful_context::project::audit_key(&store, &located.project)?;
+    let audit_dir = located.project.audit_dir();
+    let purged = purge_tenant(&store, PurgeRequest { declarations: pack.tables(), tenant, signer: Some(signer), audit_dir: &audit_dir, audit_key: &audit_key, clock: &clock })?;
+    if json { println!("{}", serde_json::to_string(&purged.receipt)?); }
+    else { println!("purge {}: receipt {} signed, physical collection complete", purged.receipt.transaction_id, purged.receipt.request_id); }
+    Ok(())
+}
+
 fn run_erasure(args: &StoreArgs, subject: Option<&str>, keyset_file: Option<&Path>, tables: &[String], issuer_key: &Path, admit: &AdmitArgs, json: bool) -> Result<()> {
     use contextful_context::erase::{erase_declared, EraseRequest, EraseSelector};
     use contextful_core::disclosure::erase::RetainedRows;
@@ -359,8 +386,9 @@ pub fn run(cmd: ContextCmd) -> Result<()> {
             println!("{}", serde_json::to_string(value)?);
             Ok(())
         }
-        ContextCmd::Erase { store, recover, subject, keyset_file, tables, issuer_key, admit, json } => {
+        ContextCmd::Erase { store, recover, subject, keyset_file, tenant, tables, issuer_key, admit, json } => {
             if recover { run_erasure_recovery(&store, &admit, json) }
+            else if let Some(tenant) = tenant { run_purge(&store, &tenant, issuer_key.as_deref().context("a purge has no explicit signing port")?, &admit, json) }
             else { run_erasure(&store, subject.as_deref(), keyset_file.as_deref(), &tables, issuer_key.as_deref().context("erasure has no explicit signing port")?, &admit, json) }
         }
         ContextCmd::Land { table, store, rows, run_id, session, site_id, types, now: at, admit } => {

@@ -13,6 +13,7 @@ pub mod keyset;
 pub mod operator;
 pub mod possession;
 pub mod profile;
+pub mod receipt;
 pub mod replica;
 pub mod revoke;
 pub mod verify;
