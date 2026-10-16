@@ -1,6 +1,7 @@
 //! Refusals owned by the erasure contract; no row or subject material enters them.
 
 use crate::store::declare::{DeclarationSet, ErasureSurvival, TableDecl};
+use crate::store::reconcile::ColumnType;
 use serde_json::{Map, Value};
 use std::collections::BTreeMap;
 
@@ -38,10 +39,50 @@ pub fn select_subject(
             return Err(ErasureError::ErasureSubjectUndeclared(table.clone()));
         }
     }
-    select(declarations, rows, requested, &|decl, row| {
+    select(declarations, rows, requested, Direct::HonourSurvival, &|decl, row| {
         let column = decl.subject_id.as_ref().ok_or_else(|| ErasureError::ErasureSubjectUndeclared(decl.name.clone()))?;
         let value = row.get(column).ok_or_else(|| ErasureError::ErasureScopeUnsupported("incomplete erasure subject column".into()))?;
         Ok(value.as_str() == Some(subject))
+    })
+}
+
+/// Reconciled column types per table, as each table's stored schema records them.
+pub type TableTypes = BTreeMap<String, BTreeMap<String, ColumnType>>;
+
+/// The bare outermost partition column of each declaration that names one, keyed by
+/// table. A declared type, else the reconciled type, other than text refuses; a table
+/// with neither has landed no row and holds no tenant.
+pub fn tenant_columns(declarations: &[TableDecl], types: &TableTypes) -> Result<BTreeMap<String, String>, ErasureError> {
+    let mut columns = BTreeMap::new();
+    for decl in declarations {
+        let Some(column) = decl.partition_by().first().filter(|column| is_bare(column)) else { continue };
+        let ty = decl.column_types().get(column).cloned().or_else(|| types.get(&decl.name).and_then(|table| table.get(column)).cloned());
+        if ty.is_some_and(|ty| !matches!(ty, ColumnType::Utf8 | ColumnType::Null)) {
+            return Err(ErasureError::PurgeTenantColumnType(decl.name.clone()));
+        }
+        columns.insert(decl.name.clone(), column.clone());
+    }
+    if columns.is_empty() { return Err(ErasureError::PurgeTenantUndeclared); }
+    Ok(columns)
+}
+
+fn is_bare(column: &str) -> bool {
+    !column.is_empty() && column.chars().all(|ch| ch.is_alphanumeric() || ch == '_')
+}
+
+/// Selects every row whose tenant column holds the identifier's exact bytes, with the
+/// exclusively referenced descendants the ordinary cascade reaches.
+pub fn select_tenant(
+    declarations: &[TableDecl],
+    rows: &RetainedRows,
+    columns: &BTreeMap<String, String>,
+    tenant: &str,
+) -> Result<ErasureSelection, ErasureError> {
+    if tenant.is_empty() { return Err(ErasureError::ErasureScopeUnsupported("a purge names no tenant identifier".into())); }
+    let requested: Vec<String> = columns.keys().cloned().collect();
+    select(declarations, rows, &requested, Direct::Every, &|decl, row| {
+        let column = columns.get(&decl.name).ok_or(ErasureError::PurgeTenantUndeclared)?;
+        Ok(row.get(column).and_then(Value::as_str) == Some(tenant))
     })
 }
 
@@ -98,7 +139,7 @@ pub fn select_keys(
 
 fn select_key_rows(declarations: &[TableDecl], rows: &RetainedRows, keys: &RetainedRows) -> Result<ErasureSelection, ErasureError> {
     let unsupported = || ErasureError::ErasureScopeUnsupported("incomplete declared erasure key set".into());
-    select(declarations, rows, &keys.keys().cloned().collect::<Vec<_>>(), &|decl, row| {
+    select(declarations, rows, &keys.keys().cloned().collect::<Vec<_>>(), Direct::HonourSurvival, &|decl, row| {
         let selectors = keys.get(&decl.name).ok_or_else(unsupported)?;
         for selector in selectors {
             if selector.keys().any(|key| !row.contains_key(key)) { return Err(unsupported()); }
@@ -107,10 +148,19 @@ fn select_key_rows(declarations: &[TableDecl], rows: &RetainedRows, keys: &Retai
     })
 }
 
+/// Whether a requested table declared `on_erase = "survive"` keeps its directly matched
+/// rows. A tenant's own rows never survive its purge; survival governs the cascade alone.
+#[derive(Clone, Copy, PartialEq, Eq)]
+enum Direct {
+    HonourSurvival,
+    Every,
+}
+
 fn select(
     declarations: &[TableDecl],
     rows: &RetainedRows,
     requested: &[String],
+    direct: Direct,
     choose: &impl Fn(&TableDecl, &Map<String, Value>) -> Result<bool, ErasureError>,
 ) -> Result<ErasureSelection, ErasureError> {
     let unsupported = || ErasureError::ErasureScopeUnsupported("incomplete erasure reference universe".into());
@@ -140,7 +190,7 @@ fn select(
     }
     for table in requested {
         let decl = declared.get(table.as_str()).ok_or_else(unsupported)?;
-        if decl.on_erase == Some(ErasureSurvival::Survive) {
+        if direct == Direct::HonourSurvival && decl.on_erase == Some(ErasureSurvival::Survive) {
             continue;
         }
         for (mask, row) in removed.get_mut(table).ok_or_else(unsupported)?.iter_mut().zip(&rows[table]) {
@@ -204,4 +254,16 @@ pub enum ErasureError {
     ErasureSubjectUndeclared(String),
     #[error("ErasureCascadeUnbounded: the reference cascade exceeds its declared bound")]
     ErasureCascadeUnbounded,
+    #[error("PurgeRequiresOwner: {0}")]
+    PurgeRequiresOwner(String),
+    #[error("PurgeTenantColumnType: table `{0}` partitions outermost by a column that is not text")]
+    PurgeTenantColumnType(String),
+    #[error("PurgeTenantUndeclared: no table declares an outermost partition key")]
+    PurgeTenantUndeclared,
+    #[error("ReceiptIdentifierLeak: the receipt carries the tenant identifier in cleartext")]
+    ReceiptIdentifierLeak,
+    #[error("ReceiptClaimWidened: {0}")]
+    ReceiptClaimWidened(String),
+    #[error("ReceiptReplayed: the artifact repeats an earlier receipt byte for byte")]
+    ReceiptReplayed,
 }

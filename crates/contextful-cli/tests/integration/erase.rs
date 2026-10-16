@@ -376,3 +376,58 @@ fn erase_requires_forget_and_explicit_signing_and_preserves_normal_pinned_reads(
     assert!(refused.get("error").is_some() || refused["result"]["isError"] == true, "an opened MCP reader retains retired signing authority: {refused}");
     assert!(refused["result"]["structuredContent"].get("rows").is_none());
 }
+
+fn tenant_project(root: &std::path::Path) -> String {
+    ok(run(root, &["init", "research", "--authoring-posture", "per_request"], None, None));
+    std::fs::write(root.join("contextful.toml"), r#"authoring_posture = "per_request"
+[[pipeline.tables]]
+name = "orders"
+primary_key = ["id"]
+partition_by = ["tenant"]
+columns = { id = "utf8", tenant = "utf8" }
+[[pipeline.tables]]
+name = "global"
+primary_key = ["id"]
+"#).unwrap();
+    std::fs::write(root.join("orders.jsonl"), "{\"id\":\"o1\",\"tenant\":\"cli-purged-tenant\"}\n{\"id\":\"o2\",\"tenant\":\"globex\"}\n").unwrap();
+    std::fs::write(root.join("global.jsonl"), "{\"id\":\"g1\"}\n").unwrap();
+    std::fs::write(root.join(".contextful/issuance.toml"), "default_audience = \"erasure-fixture\"\nmax_lifetime_secs = 3600\n").unwrap();
+    ok(run(root, &["context", "land", "orders", "--project", "research", "--rows", "orders.jsonl", "--run-id", "r1", "--site-id", "fixture"], None, None));
+    ok(run(root, &["context", "land", "global", "--project", "research", "--rows", "global.jsonl", "--run-id", "r1", "--site-id", "fixture"], None, None));
+    ok(run(root, &["token", "keygen", "--out", ".contextful/issuer.seed"], None, None))
+}
+
+/// A purge presented with a capability token raises `PurgeRequiresOwner`, evaluated before anything reveals store contents.
+// spec: disclosure.erase.owner-only@b39a1c2e
+#[test]
+fn a_purge_presented_with_a_capability_token_raises_purge_requires_owner_before_reading_the_store() {
+    let empty = tempfile::tempdir().unwrap();
+    let refused = run(empty.path(), &["context", "erase", "--project", "absent", "--tenant", "cli-purged-tenant", "--issuer-key", "absent.seed"], Some("any-capability-token"), None);
+    assert!(!refused.status.success());
+    assert!(String::from_utf8_lossy(&refused.stderr).contains("PurgeRequiresOwner"), "{}", String::from_utf8_lossy(&refused.stderr));
+    let directory = tempfile::tempdir().unwrap(); let root = directory.path();
+    let pins = tenant_project(root);
+    let token = ok(run(root, &["token", "mint", "--issuer-key", ".contextful/issuer.seed", "--on-behalf-of", "user://fixture", "--agent", "agent://fixture", "--zone", "on-prem:fixture", "--action", "forget", "--table", "*", "--ttl", "3600"], None, None));
+    let store = root.join(".contextful/context/research");
+    let refused = run(root, &["context", "erase", "--project", "research", "--tenant", "cli-purged-tenant", "--issuer-key", ".contextful/issuer.seed", "--json"], Some(&token), Some(&pins));
+    assert!(String::from_utf8_lossy(&refused.stderr).contains("PurgeRequiresOwner"), "{}", String::from_utf8_lossy(&refused.stderr));
+    assert!(!store.join("_erasure_frontier.json").exists(), "a refused purge publishes a frontier");
+    assert!(!root.join(".contextful/audit.key").exists(), "a refused purge bootstraps an audit key");
+}
+
+/// `context erase --tenant <id>` rewrites every row whose bare outermost partition column holds the identifier's exact bytes out of every table through {{disclosure.erase.atomic-publication}}, and prints a freshly signed receipt.
+// spec: disclosure.erase.tenant-rewrite@8493f8e0
+#[test]
+fn an_owner_purge_rewrites_the_tenant_out_and_prints_a_verifying_receipt() {
+    let directory = tempfile::tempdir().unwrap(); let root = directory.path();
+    let pins = tenant_project(root);
+    let receipt = ok(run(root, &["context", "erase", "--project", "research", "--tenant", "cli-purged-tenant", "--issuer-key", ".contextful/issuer.seed", "--json"], None, Some(&pins)));
+    assert!(!receipt.contains("cli-purged-tenant"), "the printed receipt carries the tenant identifier");
+    let receipt: contextful_policy::receipt::TenantReceipt = serde_json::from_str(&receipt).unwrap();
+    let pin: contextful_policy::issue::SignerKey = pins.replacen('/', ":", 1).parse().unwrap();
+    receipt.verify("cli-purged-tenant", &[pin]).unwrap();
+    let rows: serde_json::Value = serde_json::from_str(&ok(run(root, &["query", "--json", "--project", "research", "SELECT id FROM orders ORDER BY id"], None, Some(&pins)))).unwrap();
+    assert_eq!(rows["rows"], serde_json::json!([["o2"]]));
+    let rows: serde_json::Value = serde_json::from_str(&ok(run(root, &["query", "--json", "--project", "research", "SELECT id FROM global"], None, Some(&pins)))).unwrap();
+    assert_eq!(rows["rows"], serde_json::json!([["g1"]]));
+}

@@ -83,7 +83,7 @@ impl ControlReceipt {
     }
 }
 
-fn normalized_public_key(key: &SignerKey) -> Option<Vec<u8>> {
+pub(crate) fn normalized_public_key(key: &SignerKey) -> Option<Vec<u8>> {
     match key.algorithm {
         SignatureAlgorithm::Ed25519 => Some(key.public_key.clone()),
         SignatureAlgorithm::Es256 => {

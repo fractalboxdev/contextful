@@ -12,6 +12,7 @@ mod issue;
 mod keyset;
 mod possession;
 mod profile;
+mod receipt;
 mod replica;
 mod revoke;
 mod support;
