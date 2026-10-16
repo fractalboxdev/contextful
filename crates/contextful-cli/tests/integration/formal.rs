@@ -570,8 +570,46 @@ fn a_composition_theorem_offered_as_mediation_is_refused() {
     assert!(err.contains("Fx.mediates"), "{err}");
 }
 
+/// `statement_reach_released_rows_pass_session_layers`: the mediation induction ranges over the read path's statement execution, and every row a reachable state has released passed every layer of the session.
+// spec: assurance.prove.mediation-relation@23fee7b2
+#[test]
+fn the_mediation_constant_ranges_over_reachable_statement_states() {
+    let inv = repo_inventory("formal");
+    let offered: Vec<(&String, &toml::Value)> = inv["constant"]
+        .as_table()
+        .unwrap()
+        .iter()
+        .filter(|(_, row)| row.get("offered_as").and_then(|v| v.as_str()) == Some("mediation"))
+        .collect();
+    assert_eq!(offered.len(), 1, "{offered:?}");
+    let (name, row) = offered[0];
+    assert_eq!(name, "Mediation.statement_reach_released_rows_pass_session_layers");
+    assert_eq!(row["module"].as_str(), Some("Contextful.Mediation"));
+    // It quantifies over the states a statement reaches from its start, not over a list of layers.
+    let statement = row["statement"].as_str().unwrap();
+    for part in ["Mediation.Reach s (Mediation.start rows) σ", "r ∈ σ.released", "l ∈ s.layers → l r = true"] {
+        assert!(statement.contains(part), "{statement} lacks `{part}`");
+    }
+    assert!(!statement.contains("composed") && !statement.contains("List Layer"), "{statement}");
+    // The one step extending the released rows carries the session fold's verdict.
+    let source = std::fs::read_to_string(repo().join("formal/Contextful/Mediation.lean")).unwrap();
+    assert!(source.contains("composed s.layers r = true → Step s ⟨r :: rs, out⟩ ⟨rs, out ++ [r]⟩"), "release");
+    assert!(source.contains("composed s.layers r = false → Step s ⟨r :: rs, out⟩ ⟨rs, out⟩"), "drop");
+    assert_eq!(source.matches("out ++ [r]").count(), 1, "one route releases a row");
+    // Its binding names the read path's admission value and a read-path test that resolve.
+    let binding = row["binding"].as_str().unwrap();
+    let (decision, test) = binding.split_once("; test ").expect("a module path and a test");
+    for (path, needle) in [(decision.trim(), "pub struct "), (test.trim(), "fn ")] {
+        let (file, item) = path.split_once("::").unwrap();
+        let text = std::fs::read_to_string(repo().join(file)).unwrap();
+        assert!(text.contains(&format!("{needle}{item}")), "{path}");
+    }
+    assert!(test.contains("read/"), "{test}");
+}
+
 /// A proof target is bound to one authenticated query path, recorded beside it as a module path and a test, before the claim names it.
 // spec: assurance.prove.target-binding@663d9541
+// spec: assurance.prove.proof-targets@060e2988
 #[test]
 fn a_target_binds_a_module_path_and_a_test_in_the_tree() {
     let bound = "binding   = \"engine/fx/src/lib.rs::narrows; test engine/fx/tests/fx.rs::narrows_holds\"\n";
@@ -603,7 +641,7 @@ fn a_target_binds_a_module_path_and_a_test_in_the_tree() {
     // Every target of the policy package binds a module path and a test that resolve.
     let inv = repo_inventory("formal");
     let targets = inv["claim"]["targets"].as_array().unwrap();
-    assert_eq!(targets.len(), 3);
+    assert_eq!(targets.len(), 4);
     for t in targets {
         let binding = inv["constant"][t.as_str().unwrap()]["binding"].as_str().unwrap();
         let (decision, test) = binding.split_once("; test ").expect("a module path and a test");
@@ -868,21 +906,22 @@ fn the_policy_package_has_one_library_no_dependency_and_an_exact_toolchain() {
     assert!(parts.iter().all(|p| !p.is_empty() && p.chars().all(|c| c.is_ascii_digit())), "one exact release: {pin}");
 }
 
-/// Four modules carry the package — the layer algebra, placement with the floor, the authority mapping and connector host containment — and the library root re-exports all four.
-// spec: assurance.model.module-layout@6a3957c1
+/// Five modules carry the package — the layer algebra, placement with the floor, the authority mapping, connector host containment and statement execution — and the library root re-exports all five.
+// spec: assurance.model.module-layout@7c3ce87b
 #[test]
-fn the_library_root_re_exports_four_modules() {
+fn the_library_root_re_exports_five_modules() {
     let formal = repo().join("formal");
     let root = std::fs::read_to_string(formal.join("Contextful.lean")).unwrap();
     let imports: Vec<&str> = root.lines().filter_map(|l| l.strip_prefix("import ")).map(str::trim).collect();
-    assert_eq!(imports, ["Contextful.Layer", "Contextful.Placement", "Contextful.Authority", "Contextful.Allowlist"]);
+    assert_eq!(imports, ["Contextful.Layer", "Contextful.Placement", "Contextful.Authority", "Contextful.Allowlist", "Contextful.Mediation"]);
     let modules: Vec<PathBuf> = lean_sources(&formal.join("Contextful"));
-    assert_eq!(modules.len(), 4, "{modules:?}");
+    assert_eq!(modules.len(), 5, "{modules:?}");
     for (module, carries) in [
         ("Layer", "def composed"),
         ("Placement", "def floor"),
         ("Authority", "def attenuate"),
         ("Allowlist", "def includedIn"),
+        ("Mediation", "inductive Reach"),
     ] {
         let text = std::fs::read_to_string(formal.join(format!("Contextful/{module}.lean"))).unwrap();
         assert!(text.contains(carries), "{module} carries `{carries}`");

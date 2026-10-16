@@ -182,17 +182,52 @@ theorem permits_iff_audience_and_every_block :
   · intro ⟨ha, hall⟩
     exact ⟨⟨ha, hall _ (Or.inl rfl)⟩, fun b hb => hall b (Or.inr hb)⟩
 
-/-- The authority mapping's three proof targets: inclusion, narrowing for a fixed trusted
-environment, and profile meaning. -/
--- spec: assurance.prove.proof-targets@d4f07193
-theorem authorityMapping_inclusion_narrowing_meaning :
+/-- A chain of attenuations: append each block in order, leaving the parent's blocks unchanged. -/
+def attenuateAll (c : Credential) (bs : List Block) : Credential :=
+  bs.foldl attenuate c
+
+theorem attenuateAll_appended :
+    ∀ (bs : List Block) (c : Credential), attenuateAll c bs = { c with appended := c.appended ++ bs } := by
+  intro bs
+  induction bs with
+  | nil => intro c; simp [attenuateAll]
+  | cons b bs ih =>
+    intro c
+    change attenuateAll (attenuate c b) bs = _
+    rw [ih]
+    simp [attenuate, List.append_assoc]
+
+/-- Restriction preservation: for a fixed trusted environment, every block of a credential,
+its authority block and each appended one, admits each request that any chain of
+attenuations of that credential permits. No attenuation drops a parent restriction. -/
+-- spec: assurance.prove.restriction-preservation@99cb0d14
+theorem attenuateAll_permits_every_parent_block :
+    ∀ (env : Env) (c : Credential) (bs : List Block) (r : Request),
+      permits env (attenuateAll c bs) r = true →
+        ∀ (b : Block), b ∈ c.authority :: c.appended → b.admits env r = true := by
+  intro env c bs r h b hb
+  rw [attenuateAll_appended] at h
+  have ⟨_, hall⟩ := (permits_iff_audience_and_every_block env _ r).mp h
+  apply hall b
+  rcases List.mem_cons.mp hb with hb | hb
+  · exact hb ▸ List.mem_cons_self
+  · exact List.mem_cons_of_mem _ (List.mem_append_left _ hb)
+
+/-- The authority mapping's four proof targets: inclusion, narrowing for a fixed trusted
+environment, profile meaning, and restriction preservation. -/
+-- spec: assurance.prove.proof-targets@060e2988
+theorem authorityMapping_inclusion_narrowing_meaning_restriction :
     (∀ (child parent : Grant), child.includedIn parent = true →
         ∀ r : Request, child.permits r = true → parent.permits r = true) ∧
       (∀ (env : Env) (c : Credential) (b : Block) (r : Request),
         permits env (attenuate c b) r = true → permits env c r = true) ∧
-      ∀ (env : Env) (c : Credential) (r : Request),
+      (∀ (env : Env) (c : Credential) (r : Request),
         permits env c r = true ↔
-          c.audience = some env.audience ∧ ∀ (b : Block), b ∈ c.authority :: c.appended → b.admits env r = true :=
-  ⟨grant_includedIn_permits, attenuate_permits_parent, permits_iff_audience_and_every_block⟩
+          c.audience = some env.audience ∧ ∀ (b : Block), b ∈ c.authority :: c.appended → b.admits env r = true) ∧
+      ∀ (env : Env) (c : Credential) (bs : List Block) (r : Request),
+        permits env (attenuateAll c bs) r = true →
+          ∀ (b : Block), b ∈ c.authority :: c.appended → b.admits env r = true :=
+  ⟨grant_includedIn_permits, attenuate_permits_parent, permits_iff_audience_and_every_block,
+    attenuateAll_permits_every_parent_block⟩
 
 end Authority
