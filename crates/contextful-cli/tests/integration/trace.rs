@@ -1,4 +1,5 @@
 //! A run continuing the caller's W3C trace and exporting its span, through the built binary.
+#![cfg(feature = "data-plane")]
 
 use crate::pipeline::{ok, project, Vendor};
 use serde_json::Value;
